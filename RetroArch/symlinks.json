@@ -1,0 +1,12 @@
+{
+    "flatpak": "org.libretro.RetroArch",
+    "config":
+    {
+        "windows": "${portable}/Emulators/RetroArch/",
+        "linux": "${host}/${flatpak}/config/retroarch/"
+    },
+    "retroarch.cfg":
+    {
+        "linux": "${host}/${flatpak}/config/retroarch/"
+    }
+}

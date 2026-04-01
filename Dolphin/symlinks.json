@@ -1,0 +1,17 @@
+{
+    "flatpak": "org.DolphinEmu.dolphin-emu",
+    "portable.txt":
+    {
+        "windows": "${portable}/Emulators/Dolphin-x64/"
+    },
+    "config":
+    {
+        "windows": "${portable}/Emulators/Dolphin-x64/User/Config/",
+        "linux": "${host}/${flatpak}/config/dolphin-emu/"
+    },
+    "data":
+    {
+        "windows": "${portable}/Emulators/Dolphin-x64/User/",
+        "linux": "${host}/${flatpak}/data/dolphin-emu/"
+    }
+}

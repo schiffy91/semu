@@ -1,0 +1,13 @@
+{
+    "flatpak": "info.cemu.Cemu",
+    "config":
+    {
+        "windows": "${portable}/Emulators/Cemu/portable/",
+        "linux": "${host}/${flatpak}/config/Cemu/"
+    },
+    "data":
+    {
+        "windows": "${portable}/Emulators/Cemu/portable/",
+        "linux": "${host}/${flatpak}/data/Cemu/"
+    }
+}

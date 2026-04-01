@@ -1,0 +1,52 @@
+# Ignore everything by default
+*
+
+# Allow project files
+!.gitignore
+!README.md
+!setup.py
+!setup.json
+!decrypt3ds.py
+
+# Allow docs
+!docs/
+!docs/**
+
+# Allow test infrastructure
+!test/
+!test/**
+
+# Allow CI
+!.github/
+!.github/**
+
+# Allow emulator directories (but not their contents by default)
+!Cemu/
+!Dolphin/
+!ES-DE/
+!Lime3DS/
+!PCSX2/
+!RetroArch/
+!Ryujinx/
+
+# Allow only manifests and portable markers inside emulator dirs
+Cemu/*
+!Cemu/symlinks.json
+Dolphin/*
+!Dolphin/symlinks.json
+!Dolphin/portable.txt
+ES-DE/*
+!ES-DE/symlinks.json
+Lime3DS/*
+!Lime3DS/symlinks.json
+PCSX2/*
+!PCSX2/symlinks.json
+!PCSX2/portable.ini
+RetroArch/*
+!RetroArch/symlinks.json
+Ryujinx/*
+!Ryujinx/symlinks.json
+
+# Python cache
+__pycache__/
+.pytest_cache/
