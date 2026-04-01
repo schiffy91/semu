@@ -10,6 +10,8 @@
 !Dockerfile
 !flake.nix
 !flake.lock
+!nix/
+!nix/**
 
 # Allow docs
 !docs/
@@ -56,6 +58,9 @@ Ryujinx/*
 !Makefile
 !test/cloud-init/
 !test/cloud-init/**
+
+# Nix build output
+result
 
 # Python cache
 __pycache__/

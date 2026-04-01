@@ -44,8 +44,9 @@ def test_capture_creates_readonly_snapshot(mock_project, monkeypatch):
 
     snapshot = mock_project / "TestEmu" / "originals" / "v1.0" / "config" / "settings.ini"
     assert snapshot.exists()
-    # Check read-only
-    assert not os.access(str(snapshot), os.W_OK)
+    # Check permission bits are read-only (root can still write, so check mode not access)
+    mode = oct(snapshot.stat().st_mode)
+    assert mode.endswith("444")  # r--r--r--
 
 
 def test_capture_appends_to_manifest(mock_project, monkeypatch):

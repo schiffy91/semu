@@ -13,15 +13,19 @@
       pkgs = nixpkgs.legacyPackages.${system};
       isLinux = pkgs.stdenv.hostPlatform.isLinux;
     in {
-      # --- Cross-platform emulators ---
+      # --- Cross-platform emulators (from nixpkgs) ---
       dolphin = pkgs.dolphin-emu;
       azahar = pkgs.azahar;
 
-      # --- Linux-only emulators ---
+      # --- Linux-only emulators (from nixpkgs) ---
     } // pkgs.lib.optionalAttrs isLinux {
       pcsx2 = pkgs.pcsx2;
       cemu = pkgs.cemu;
       retroarch = pkgs.retroarch-bare;
+    } // {
+      # --- Custom-packaged emulators ---
+      ryujinx = pkgs.callPackage ./nix/ryujinx.nix {};
+      es-de = pkgs.callPackage ./nix/es-de.nix {};
     });
 
     # Dev shell for working on schemulator itself
