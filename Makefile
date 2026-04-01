@@ -1,4 +1,6 @@
 SHELL := /bin/bash
+CONTAINER_ENGINE := $(shell command -v podman 2>/dev/null || command -v docker 2>/dev/null)
+CONTAINER_IMAGE := schemulator-test
 VM_DIR := test/vms
 CLOUD_INIT := test/cloud-init
 SSH_PORT_LINUX := 2222
@@ -11,7 +13,25 @@ LINUX_DISK := $(VM_DIR)/linux.qcow2
 LINUX_SEED := $(VM_DIR)/seed.img
 LINUX_PID := $(VM_DIR)/linux.pid
 
-# --- Linux VM ---
+# =============================================================================
+# Container tests (fast, deterministic, same locally and in CI)
+# =============================================================================
+
+.PHONY: container-build container-test test help
+
+container-build: ## Build test container image
+	$(CONTAINER_ENGINE) build -t $(CONTAINER_IMAGE) .
+
+container-test: container-build ## Run tests in container (fast, deterministic)
+	$(CONTAINER_ENGINE) run --rm -v "$$(pwd):/schemulator:ro" $(CONTAINER_IMAGE) \
+		python -m pytest test/ -v
+
+test: ## Run tests locally (native)
+	python -m pytest test/ -v
+
+# =============================================================================
+# QEMU VM (full system, for flatpak/GUI/integration testing)
+# =============================================================================
 
 $(VM_DIR):
 	mkdir -p $(VM_DIR)
@@ -29,7 +49,6 @@ $(LINUX_DISK): $(ARCH_BASE)
 
 $(LINUX_SEED): $(VM_KEY) $(CLOUD_INIT)/user-data $(CLOUD_INIT)/meta-data | $(VM_DIR)
 	@echo "Building cloud-init seed ISO..."
-	@# Inject SSH public key into user-data
 	@mkdir -p $(VM_DIR)/cloud-init-tmp
 	@cp $(CLOUD_INIT)/meta-data $(VM_DIR)/cloud-init-tmp/
 	@cat $(CLOUD_INIT)/user-data > $(VM_DIR)/cloud-init-tmp/user-data
@@ -43,9 +62,9 @@ $(LINUX_SEED): $(VM_KEY) $(CLOUD_INIT)/user-data $(CLOUD_INIT)/meta-data | $(VM_
 		$(VM_DIR)/cloud-init-tmp/ && mv $(VM_DIR)/seed.iso $@)
 	@rm -rf $(VM_DIR)/cloud-init-tmp
 
-.PHONY: linux linux-ssh linux-sync linux-test linux-stop linux-clean linux-purge test help
+.PHONY: linux linux-ssh linux-sync linux-test linux-stop linux-clean linux-purge
 
-linux: $(LINUX_DISK) $(LINUX_SEED) $(VM_KEY) ## Start Linux VM
+linux: $(LINUX_DISK) $(LINUX_SEED) $(VM_KEY) ## Start Linux VM (full system)
 	@if [ -f $(LINUX_PID) ] && kill -0 $$(cat $(LINUX_PID)) 2>/dev/null; then \
 		echo "VM already running (pid $$(cat $(LINUX_PID)))"; \
 		exit 0; \
@@ -73,7 +92,7 @@ linux: $(LINUX_DISK) $(LINUX_SEED) $(VM_KEY) ## Start Linux VM
 linux-ssh: ## SSH into Linux VM
 	ssh $(SSH_OPTS) -p $(SSH_PORT_LINUX) arch@localhost
 
-linux-sync: ## Sync project files into Linux VM (git-tracked files only)
+linux-sync: ## Sync project files into Linux VM
 	git ls-files -z | rsync -az --files-from=- --from0 \
 		-e "ssh $(SSH_OPTS) -p $(SSH_PORT_LINUX)" \
 		. arch@localhost:~/schemulator/
@@ -96,12 +115,9 @@ linux-purge: linux-clean ## Delete everything including base image
 	rm -f $(ARCH_BASE)
 	rm -f $(VM_KEY) $(VM_KEY).pub
 
-# --- Local test ---
-
-test: ## Run tests locally (macOS)
-	python -m pytest test/ -v
-
-# --- Help ---
+# =============================================================================
+# Help
+# =============================================================================
 
 help: ## Show available targets
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | \
