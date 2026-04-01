@@ -14,10 +14,32 @@ LINUX_SEED := $(VM_DIR)/seed.img
 LINUX_PID := $(VM_DIR)/linux.pid
 
 # =============================================================================
-# Container tests (fast, deterministic, same locally and in CI)
+# Setup (build everything + wire symlinks)
 # =============================================================================
 
-.PHONY: container-build container-test test help
+.PHONY: all install setup container-build container-test test help
+
+all: install ## Build all emulators + set up symlinks (idempotent, cached by nix)
+install: setup
+PYTHON := $(shell command -v python3 2>/dev/null || command -v python 2>/dev/null)
+
+setup: ## Build all emulators and wire config symlinks
+	@echo "Building schemulator bundle (nix handles caching)..."
+	nix build .#default
+	@echo ""
+	@echo "Setting up config symlinks..."
+	$(PYTHON) setup.py symlink
+	@echo ""
+	@echo "Done. Launch emulators with:"
+	@echo "  nix run .#es-de-launch    # ES-DE frontend"
+	@echo "  nix run .              # schemulator CLI"
+	@echo ""
+	@echo "Or build individually:"
+	@echo "  nix build .#azahar .#dolphin .#retroarch .#ryujinx .#es-de"
+
+# =============================================================================
+# Container tests (fast, deterministic, same locally and in CI)
+# =============================================================================
 
 container-build: ## Build test container image
 	$(CONTAINER_ENGINE) build -t $(CONTAINER_IMAGE) .
@@ -27,7 +49,7 @@ container-test: container-build ## Run tests in container (fast, deterministic)
 		python -m pytest test/ -v
 
 test: ## Run tests locally (native)
-	python -m pytest test/ -v
+	$(PYTHON) -m pytest test/ -v
 
 # =============================================================================
 # QEMU VM (full system, for flatpak/GUI/integration testing)
