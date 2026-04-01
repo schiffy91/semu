@@ -14,8 +14,22 @@
       isLinux = pkgs.stdenv.hostPlatform.isLinux;
       ryujinx = pkgs.callPackage ./nix/ryujinx.nix {};
       es-de = pkgs.callPackage ./nix/es-de.nix {};
-      retroarch = if isLinux then pkgs.retroarch-bare
-                  else pkgs.callPackage ./nix/retroarch-mac.nix {};
+      retroarch = if isLinux then
+        (pkgs.retroarch.withCores (cores: with cores; [
+          # Best cores for each system we have ROMs for
+          gambatte       # gb, gbc
+          mgba           # gba
+          genesis-plus-gx # genesis
+          snes9x         # snes
+          mesen          # nes
+          mupen64plus    # n64
+          desmume        # nds
+          beetle-psx-hw  # psx
+          ppsspp         # psp
+          flycast        # dreamcast
+          dolphin        # gc, wii (alternative to standalone)
+        ]))
+      else pkgs.callPackage ./nix/retroarch-mac.nix {};
     in {
       # --- Individual emulators ---
       dolphin = pkgs.dolphin-emu;
