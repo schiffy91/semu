@@ -14,15 +14,16 @@
       isLinux = pkgs.stdenv.hostPlatform.isLinux;
       ryujinx = pkgs.callPackage ./nix/ryujinx.nix {};
       es-de = pkgs.callPackage ./nix/es-de.nix {};
+      retroarch = if isLinux then pkgs.retroarch-bare
+                  else pkgs.callPackage ./nix/retroarch-mac.nix {};
     in {
       # --- Individual emulators ---
       dolphin = pkgs.dolphin-emu;
       azahar = pkgs.azahar;
-      inherit ryujinx es-de;
+      inherit ryujinx es-de retroarch;
     } // pkgs.lib.optionalAttrs isLinux {
       pcsx2 = pkgs.pcsx2;
       cemu = pkgs.cemu;
-      retroarch = pkgs.retroarch-bare;
       es-de-steamdeck = pkgs.callPackage ./nix/es-de.nix { steamDeck = true; };
     } // {
       # --- Unified bundle ---
@@ -30,7 +31,7 @@
         inherit (pkgs) dolphin-emu azahar;
         pcsx2 = if isLinux then pkgs.pcsx2 else null;
         cemu = if isLinux then pkgs.cemu else null;
-        retroarch-bare = if isLinux then pkgs.retroarch-bare else null;
+        retroarch-bare = retroarch;
         inherit ryujinx es-de;
       };
     });
