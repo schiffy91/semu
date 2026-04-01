@@ -1,0 +1,15 @@
+#cloud-config
+password: test
+chpasswd:
+  expire: false
+ssh_pwauth: true
+packages:
+  - python
+  - python-pip
+  - python-pycryptodome
+  - python-pytest
+  - git
+  - rsync
+  - flatpak
+runcmd:
+  - systemctl enable --now sshd
