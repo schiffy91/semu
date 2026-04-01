@@ -1,4 +1,4 @@
-{ lib, stdenv, fetchurl, appimageTools ? null, undmg ? null }:
+{ lib, stdenv, fetchurl, appimageTools ? null, undmg ? null, steamDeck ? false }:
 
 let
   version = "3.4.0";
@@ -18,8 +18,17 @@ let
       hash = "sha256-TLZs/JIwmXEfoP7Rnuhrl0SmKU4C4//Rnuhn93qI7H4=";
       name = "ES-DE_x64.AppImage";
     };
-    # ES-DE does not provide an aarch64-linux build
+    x86_64-linux-steamdeck = {
+      url = "https://gitlab.com/es-de/emulationstation-de/-/package_files/246876039/download";
+      hash = "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="; # TODO: get hash
+      name = "ES-DE_x64_SteamDeck.AppImage";
+    };
   };
+
+  sourceKey =
+    if steamDeck && stdenv.hostPlatform.system == "x86_64-linux"
+    then "x86_64-linux-steamdeck"
+    else stdenv.hostPlatform.system;
 in
 if stdenv.hostPlatform.isDarwin then
   stdenv.mkDerivation {
@@ -41,11 +50,12 @@ if stdenv.hostPlatform.isDarwin then
   }
 else if stdenv.hostPlatform.system == "x86_64-linux" then
   appimageTools.wrapType2 {
-    pname = "es-de";
+    pname = if steamDeck then "es-de-steamdeck" else "es-de";
     inherit version;
-    src = fetchurl sources.x86_64-linux;
+    src = fetchurl sources.${sourceKey};
     meta = {
-      description = "EmulationStation Desktop Edition — emulator frontend";
+      description = "EmulationStation Desktop Edition — emulator frontend"
+        + lib.optionalString steamDeck " (Steam Deck optimized)";
       homepage = "https://es-de.org";
       platforms = [ "x86_64-linux" ];
       license = lib.licenses.mit;
