@@ -12,11 +12,11 @@
     packages = forAllSystems (system: let
       pkgs = nixpkgs.legacyPackages.${system};
       isLinux = pkgs.stdenv.hostPlatform.isLinux;
+      isDarwin = pkgs.stdenv.hostPlatform.isDarwin;
       ryujinx = pkgs.callPackage ./nix/ryujinx.nix {};
       es-de = pkgs.callPackage ./nix/es-de.nix {};
       retroarch = if isLinux then
         (pkgs.retroarch.withCores (cores: with cores; [
-          # Best cores for each system we have ROMs for
           gambatte       # gb, gbc
           mgba           # gba
           genesis-plus-gx # genesis
@@ -30,36 +30,31 @@
           dolphin        # gc, wii (alternative to standalone)
         ]))
       else pkgs.callPackage ./nix/retroarch-mac.nix {};
+      pcsx2 = if isLinux then pkgs.pcsx2
+              else pkgs.callPackage ./nix/pcsx2-mac.nix {};
+      cemu = if isLinux then pkgs.cemu
+             else pkgs.callPackage ./nix/cemu-mac.nix {};
     in {
-      # --- Individual emulators ---
+      # --- Individual emulators (all platforms) ---
       dolphin = pkgs.dolphin-emu;
       azahar = pkgs.azahar;
-      inherit ryujinx es-de retroarch;
+      inherit ryujinx es-de retroarch pcsx2 cemu;
     } // pkgs.lib.optionalAttrs isLinux {
-      pcsx2 = pkgs.pcsx2;
-      cemu = pkgs.cemu;
       es-de-steamdeck = pkgs.callPackage ./nix/es-de.nix { steamDeck = true; };
     } // {
       # --- Unified bundle ---
       default = pkgs.callPackage ./nix/schemulator.nix {
         inherit (pkgs) dolphin-emu azahar;
-        pcsx2 = if isLinux then pkgs.pcsx2 else null;
-        cemu = if isLinux then pkgs.cemu else null;
+        inherit pcsx2 cemu ryujinx es-de;
         retroarch-bare = retroarch;
-        inherit ryujinx es-de;
       };
     });
 
     # `nix run` launches schemulator CLI
-    # `nix run .#es-de-launch` launches ES-DE with all emulators in PATH
     apps = forAllSystems (system: {
       default = {
         type = "app";
         program = "${self.packages.${system}.default}/bin/schemulator";
-      };
-      es-de-launch = {
-        type = "app";
-        program = "${self.packages.${system}.default}/bin/es-de";
       };
     });
 
