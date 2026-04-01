@@ -23,6 +23,7 @@
       pcsx2 = pkgs.pcsx2;
       cemu = pkgs.cemu;
       retroarch = pkgs.retroarch-bare;
+      es-de-steamdeck = pkgs.callPackage ./nix/es-de.nix { steamDeck = true; };
     } // {
       # --- Unified bundle ---
       default = pkgs.callPackage ./nix/schemulator.nix {

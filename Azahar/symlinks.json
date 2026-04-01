@@ -2,7 +2,7 @@
     "data":
     {
         "windows": "${portable}/Emulators/Azahar/user/",
-        "linux": "${host}/azahar-emu/",
-        "macos": "${host}/azahar-emu/"
+        "linux": "~/.local/share/azahar-emu/",
+        "macos": "${host}/Azahar/"
     }
 }
