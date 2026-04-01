@@ -8,6 +8,8 @@
 !setup.json
 !decrypt3ds.py
 !Dockerfile
+!flake.nix
+!flake.lock
 
 # Allow docs
 !docs/
