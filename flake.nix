@@ -14,6 +14,8 @@
       isLinux = pkgs.stdenv.hostPlatform.isLinux;
       ryujinx = pkgs.callPackage ./nix/ryujinx.nix {};
       es-de = pkgs.callPackage ./nix/es-de.nix {};
+      retroarch-cores = if isLinux then null
+        else pkgs.callPackage ./nix/retroarch-cores-mac.nix {};
       retroarch = if isLinux then
         (pkgs.retroarch.withCores (cores: with cores; [
           # Best cores for each system we have ROMs for
@@ -35,6 +37,8 @@
       dolphin = pkgs.dolphin-emu;
       azahar = pkgs.azahar;
       inherit ryujinx es-de retroarch;
+    } // pkgs.lib.optionalAttrs (!isLinux) {
+      inherit retroarch-cores;
     } // pkgs.lib.optionalAttrs isLinux {
       pcsx2 = pkgs.pcsx2;
       cemu = pkgs.cemu;
