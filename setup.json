@@ -1,0 +1,11 @@
+{
+    "host":
+    {
+        "windows": "~/AppData/Roaming/",
+        "linux": "~/.var/app/"
+    },
+    "portable": {
+        "windows": "~/Documents/ES-DE/",
+        "linux": "~/ES-DE/"
+    }
+}

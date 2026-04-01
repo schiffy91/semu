@@ -1,0 +1,12 @@
+{
+    "flatpak": "net.pcsx2.PCSX2",
+    "portable.ini": 
+    {
+        "windows": "${portable}/Emulators/PCSX2-Qt/"
+    },
+    "config":
+    {
+        "windows": "${portable}/Emulators/PCSX2-Qt/",
+        "linux": "${host}/${flatpak}/config/PCSX2/"
+    }
+}

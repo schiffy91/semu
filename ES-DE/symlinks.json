@@ -1,0 +1,11 @@
+{
+    "ES-DE":
+    {
+        "windows": "${portable}/ES-DE/",
+        "linux": "${portable}/"
+    },
+    "es_settings.xml":
+    {
+        "windows": "${portable}/ES-DE/settings/"
+    }
+}

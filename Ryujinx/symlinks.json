@@ -1,0 +1,8 @@
+{
+    "flatpak": "org.ryujinx.Ryujinx",
+    "config":
+    {
+        "windows": "${portable}/Emulators/Ryujinx/portable",
+        "linux": "${host}/${flatpak}/config/Ryujinx/"
+    }
+}

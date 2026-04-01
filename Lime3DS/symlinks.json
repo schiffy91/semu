@@ -1,0 +1,8 @@
+{
+    "flatpak": "io.github.lime3ds.Lime3DS",
+    "data":
+    {
+        "windows": "${portable}/Emulators/Lime3DS/user/",
+        "linux": "${host}/${flatpak}/data/lime3ds-emu/"
+    }
+}
