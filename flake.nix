@@ -35,10 +35,15 @@
     });
 
     # `nix run` launches schemulator CLI
+    # `nix run .#es-de-launch` launches ES-DE with all emulators in PATH
     apps = forAllSystems (system: {
       default = {
         type = "app";
         program = "${self.packages.${system}.default}/bin/schemulator";
+      };
+      es-de-launch = {
+        type = "app";
+        program = "${self.packages.${system}.default}/bin/es-de";
       };
     });
 

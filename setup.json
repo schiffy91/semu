@@ -8,6 +8,6 @@
     "portable": {
         "windows": "~/Documents/ES-DE/",
         "linux": "~/ES-DE/",
-        "macos": "~/Library/Application Support/ES-DE/"
+        "macos": "~/ES-DE/"
     }
 }
