@@ -21,14 +21,12 @@ LINUX_PID := $(VM_DIR)/linux.pid
 
 all: install ## Build all emulators + set up symlinks (idempotent, cached by nix)
 install: setup
-PYTHON := $(shell command -v python3 2>/dev/null || command -v python 2>/dev/null)
-
 setup: ## Build all emulators and wire config symlinks
 	@echo "Building schemulator bundle (nix handles caching)..."
 	nix build .#default
 	@echo ""
 	@echo "Setting up config symlinks..."
-	$(PYTHON) setup.py symlink
+	python3 setup.py symlink
 	@echo ""
 	@echo "Done. Launch emulators with:"
 	@echo "  nix run .#es-de-launch    # ES-DE frontend"
@@ -49,7 +47,7 @@ container-test: container-build ## Run tests in container (fast, deterministic)
 		python -m pytest test/ -v
 
 test: ## Run tests locally (native)
-	$(PYTHON) -m pytest test/ -v
+	python3 -m pytest test/ -v
 
 # =============================================================================
 # QEMU VM (full system, for flatpak/GUI/integration testing)
