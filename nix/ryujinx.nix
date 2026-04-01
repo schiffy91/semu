@@ -10,7 +10,7 @@ let
   sources = {
     aarch64-darwin = {
       url = "https://git.ryujinx.app/api/v4/projects/1/packages/generic/Ryubing/${version}/ryujinx-${version}-macos_universal.app.tar.gz";
-      hash = "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
+      hash = "sha256-5IGLuEyY4NMSBpGCHpB3IJnkYQEnPT8UX/2xDu4sDbs=";
     };
     x86_64-linux = {
       url = "https://git.ryujinx.app/api/v4/projects/1/packages/generic/Ryubing/${version}/ryujinx-${version}-linux_x64.tar.gz";

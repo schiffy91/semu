@@ -28,6 +28,7 @@ test/vms/
 !.github/**
 
 # Allow emulator directories (but not their contents by default)
+!Azahar/
 !Cemu/
 !Dolphin/
 !ES-DE/
@@ -37,6 +38,8 @@ test/vms/
 !Ryujinx/
 
 # Allow only manifests and portable markers inside emulator dirs
+Azahar/*
+!Azahar/symlinks.json
 Cemu/*
 !Cemu/symlinks.json
 Dolphin/*
