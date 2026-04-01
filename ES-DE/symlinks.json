@@ -2,10 +2,12 @@
     "ES-DE":
     {
         "windows": "${portable}/ES-DE/",
-        "linux": "${portable}/"
+        "linux": "${portable}/",
+        "macos": "${portable}/"
     },
     "es_settings.xml":
     {
-        "windows": "${portable}/ES-DE/settings/"
+        "windows": "${portable}/ES-DE/settings/",
+        "macos": "${portable}/settings/"
     }
 }

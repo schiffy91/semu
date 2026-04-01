@@ -3,11 +3,13 @@
     "config":
     {
         "windows": "${portable}/Emulators/Cemu/portable/",
-        "linux": "${host}/${flatpak}/config/Cemu/"
+        "linux": "${host}/${flatpak}/config/Cemu/",
+        "macos": "${host}/Cemu/"
     },
     "data":
     {
         "windows": "${portable}/Emulators/Cemu/portable/",
-        "linux": "${host}/${flatpak}/data/Cemu/"
+        "linux": "${host}/${flatpak}/data/Cemu/",
+        "macos": "${host}/Cemu/"
     }
 }

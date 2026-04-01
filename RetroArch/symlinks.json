@@ -3,10 +3,12 @@
     "config":
     {
         "windows": "${portable}/Emulators/RetroArch/",
-        "linux": "${host}/${flatpak}/config/retroarch/"
+        "linux": "${host}/${flatpak}/config/retroarch/",
+        "macos": "${host}/RetroArch/"
     },
     "retroarch.cfg":
     {
-        "linux": "${host}/${flatpak}/config/retroarch/"
+        "linux": "${host}/${flatpak}/config/retroarch/",
+        "macos": "${host}/RetroArch/"
     }
 }

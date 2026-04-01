@@ -7,11 +7,13 @@
     "config":
     {
         "windows": "${portable}/Emulators/Dolphin-x64/User/Config/",
-        "linux": "${host}/${flatpak}/config/dolphin-emu/"
+        "linux": "${host}/${flatpak}/config/dolphin-emu/",
+        "macos": "${host}/dolphin-emu/Config/"
     },
     "data":
     {
         "windows": "${portable}/Emulators/Dolphin-x64/User/",
-        "linux": "${host}/${flatpak}/data/dolphin-emu/"
+        "linux": "${host}/${flatpak}/data/dolphin-emu/",
+        "macos": "${host}/dolphin-emu/"
     }
 }
