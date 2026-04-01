@@ -6,10 +6,13 @@ import zipfile
 import setup
 
 
+def _config_path(mock_project):
+    return str(mock_project / "setup.json")
+
+
 def test_backup_creates_zip(mock_project, monkeypatch):
     monkeypatch.chdir(mock_project)
-    args = argparse.Namespace(config=str(mock_project / "setup.json"), emulators=[])
-    setup.parse_config(str(mock_project / "setup.json"), str(mock_project))
+    args = argparse.Namespace(config=_config_path(mock_project), emulators=[])
     setup.cmd_backup(args)
 
     backups = list((mock_project / "backups").glob("*.zip"))
@@ -21,7 +24,6 @@ def test_backup_creates_zip(mock_project, monkeypatch):
 
 def test_backup_rotation(mock_project, monkeypatch):
     monkeypatch.chdir(mock_project)
-    setup.parse_config(str(mock_project / "setup.json"), str(mock_project))
 
     # Create 7 dummy backup files to test rotation
     backup_dir = mock_project / "backups"
@@ -29,68 +31,62 @@ def test_backup_rotation(mock_project, monkeypatch):
     for i in range(7):
         (backup_dir / f"{setup.PLATFORM}-2026010{i}-120000.zip").write_bytes(b"fake")
 
-    # Run one real backup (triggers rotation)
-    args = argparse.Namespace(config=str(mock_project / "setup.json"), emulators=[])
+    args = argparse.Namespace(config=_config_path(mock_project), emulators=[])
     setup.cmd_backup(args)
 
     backups = list(backup_dir.glob(f"{setup.PLATFORM}-*.zip"))
-    assert len(backups) == 5  # rotated to max 5
+    assert len(backups) == 5
 
 
-def test_capture_creates_readonly_snapshot(mock_project, monkeypatch):
-    monkeypatch.chdir(mock_project)
-    args = argparse.Namespace(emulator="TestEmu", version="v1.0", config=None)
+def test_capture_creates_readonly_snapshot(mock_project):
+    args = argparse.Namespace(emulator="TestEmu", version="v1.0", config=_config_path(mock_project))
     setup.cmd_capture(args)
 
     snapshot = mock_project / "TestEmu" / "originals" / "v1.0" / "config" / "settings.ini"
     assert snapshot.exists()
-    # Check permission bits are read-only (root can still write, so check mode not access)
     mode = oct(snapshot.stat().st_mode)
-    assert mode.endswith("444")  # r--r--r--
+    assert mode.endswith("444")
 
 
-def test_capture_appends_to_manifest(mock_project, monkeypatch):
-    monkeypatch.chdir(mock_project)
-    setup.cmd_capture(argparse.Namespace(emulator="TestEmu", version="v1.0", config=None))
-    setup.cmd_capture(argparse.Namespace(emulator="TestEmu", version="v2.0", config=None))
+def test_capture_appends_to_manifest(mock_project):
+    cfg = _config_path(mock_project)
+    setup.cmd_capture(argparse.Namespace(emulator="TestEmu", version="v1.0", config=cfg))
+    setup.cmd_capture(argparse.Namespace(emulator="TestEmu", version="v2.0", config=cfg))
 
-    manifest = json.load(open(mock_project / "TestEmu" / "originals" / "manifest.json"))
+    with open(mock_project / "TestEmu" / "originals" / "manifest.json") as f:
+        manifest = json.load(f)
     assert len(manifest) == 2
     assert manifest[0]["version"] == "v1.0"
     assert manifest[1]["version"] == "v2.0"
 
 
-def test_capture_rejects_duplicate_version(mock_project, monkeypatch):
-    monkeypatch.chdir(mock_project)
-    setup.cmd_capture(argparse.Namespace(emulator="TestEmu", version="v1.0", config=None))
-    setup.cmd_capture(argparse.Namespace(emulator="TestEmu", version="v1.0", config=None))
+def test_capture_rejects_duplicate_version(mock_project):
+    cfg = _config_path(mock_project)
+    setup.cmd_capture(argparse.Namespace(emulator="TestEmu", version="v1.0", config=cfg))
+    setup.cmd_capture(argparse.Namespace(emulator="TestEmu", version="v1.0", config=cfg))
 
-    manifest = json.load(open(mock_project / "TestEmu" / "originals" / "manifest.json"))
-    assert len(manifest) == 1  # didn't duplicate
+    with open(mock_project / "TestEmu" / "originals" / "manifest.json") as f:
+        manifest = json.load(f)
+    assert len(manifest) == 1
 
 
-def test_revert_restores_snapshot(mock_project, monkeypatch):
-    monkeypatch.chdir(mock_project)
+def test_revert_restores_snapshot(mock_project):
+    cfg = _config_path(mock_project)
     # Capture original
-    setup.cmd_capture(argparse.Namespace(emulator="TestEmu", version="v1.0", config=None))
+    setup.cmd_capture(argparse.Namespace(emulator="TestEmu", version="v1.0", config=cfg))
 
     # Modify the config
     config_file = mock_project / "TestEmu" / "config" / "settings.ini"
     config_file.write_text("[General]\nfullscreen=false\nmodified=true\n")
 
     # Revert
-    setup.parse_config(str(mock_project / "setup.json"), str(mock_project))
-    setup.cmd_revert(argparse.Namespace(
-        emulator="TestEmu", version="v1.0",
-        config=str(mock_project / "setup.json")
-    ))
+    setup.cmd_revert(argparse.Namespace(emulator="TestEmu", version="v1.0", config=cfg))
 
-    # Check config was restored
     assert config_file.read_text() == "[General]\nfullscreen=true\n"
 
 
-def test_migrate_copies_matching_entries(mock_project, monkeypatch):
-    monkeypatch.chdir(mock_project)
+def test_migrate_copies_matching_entries(mock_project):
+    cfg = _config_path(mock_project)
     # Create a second emulator with same structure
     emu2 = mock_project / "TargetEmu"
     emu2.mkdir()
@@ -105,11 +101,6 @@ def test_migrate_copies_matching_entries(mock_project, monkeypatch):
     }
     (emu2 / "symlinks.json").write_text(json.dumps(symlinks2))
 
-    setup.parse_config(str(mock_project / "setup.json"), str(mock_project))
-    setup.cmd_migrate(argparse.Namespace(
-        source="TestEmu", target="TargetEmu",
-        config=str(mock_project / "setup.json")
-    ))
+    setup.cmd_migrate(argparse.Namespace(source="TestEmu", target="TargetEmu", config=cfg))
 
-    # Target should now have source's config
     assert (emu2 / "config" / "settings.ini").read_text() == "[General]\nfullscreen=true\n"

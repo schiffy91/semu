@@ -3,7 +3,7 @@
     "data":
     {
         "windows": "${portable}/Emulators/Lime3DS/user/",
-        "linux": "${host}/${flatpak}/data/lime3ds-emu/",
+        "linux": "${host}/lime3ds-emu/",
         "macos": "${host}/lime3ds-emu/"
     }
 }

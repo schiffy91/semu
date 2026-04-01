@@ -24,34 +24,53 @@ def console_log(message):
     print(f"{message}")
 
 
+_EXECUTE_DISPATCH = {
+    "unlink": lambda args, kw: os.unlink(*args),
+    "remove": lambda args, kw: os.remove(*args),
+    "symlink": lambda args, kw: os.symlink(args[0], args[1], **kw),
+    "makedirs": lambda args, kw: os.makedirs(*args, exist_ok=True),
+    "run": lambda args, kw: subprocess.run(*args, capture_output=True, text=True, check=False),
+    "install": lambda args, kw: subprocess.run(*args, stdin=sys.stdin, stdout=sys.stdout, check=False),
+    "chmod": lambda args, kw: os.chmod(*args),
+    "rmdir": lambda args, kw: os.rmdir(*args),
+}
+
+
 def execute(name, *args, **kwargs):
     global NUM_ERRORS
     console_log(f"{name}({', '.join(repr(arg) for arg in args)})")
-    if not DRY_RUN:
-        try:
-            if name == "unlink": return os.unlink(*args)
-            if name == "remove": return os.remove(*args)
-            if name == "symlink": return os.symlink(rf"{args[0]}", rf"{args[1]}", **kwargs)
-            if name == "makedirs": return os.makedirs(*args, exist_ok=True)
-            if name == "run": return subprocess.run(*args, capture_output=True, text=True, check=False)
-            if name == "install": return subprocess.run(*args, stdin=sys.stdin, stdout=sys.stdout, check=False)
-            if name == "chmod": return os.chmod(*args)
-            if name == "rmdir": return os.rmdir(*args)
-        except Exception as e:
-            console_error(f"Failed to execute {name}({', '.join(repr(arg) for arg in args)})\n{e}\n")
-            NUM_ERRORS += 1
+    if DRY_RUN:
+        return None
+    fn = _EXECUTE_DISPATCH.get(name)
+    if fn is None:
+        console_error(f"Unknown execute command: {name}")
+        NUM_ERRORS += 1
+        return None
+    try:
+        return fn(args, kwargs)
+    except Exception as e:
+        console_error(f"Failed to execute {name}({', '.join(repr(arg) for arg in args)})\n{e}\n")
+        NUM_ERRORS += 1
+        return None
 
 
 def rmtree(path):
-    for root, dirs, files in os.walk(path, topdown=False):
+    """Remove directory tree without following symlinks."""
+    for root, dirs, files in os.walk(path, topdown=False, followlinks=False):
         for name in files:
             filename = os.path.join(root, name)
-            execute("chmod", filename, stat.S_IRWXU)
-            execute("remove", filename)
+            if os.path.islink(filename):
+                execute("unlink", filename)
+            else:
+                execute("chmod", filename, stat.S_IRWXU)
+                execute("remove", filename)
         for name in dirs:
             dirname = os.path.join(root, name)
-            execute("chmod", dirname, stat.S_IRWXU)
-            execute("rmdir", dirname)
+            if os.path.islink(dirname):
+                execute("unlink", dirname)
+            else:
+                execute("chmod", dirname, stat.S_IRWXU)
+                execute("rmdir", dirname)
     execute("rmdir", path)
 
 
@@ -93,26 +112,61 @@ def create_symlinks(link, source):
 def setup_flatpak(flatpak_id, path):
     if PLATFORM != "linux" or not flatpak_id or "flatpak" not in (shutil.which("flatpak") or ""):
         return
-    if flatpak_id not in execute("run", ["flatpak", "list", "--app"]).stdout:
+    result = execute("run", ["flatpak", "list", "--app"])
+    if result and flatpak_id not in result.stdout:
         execute("install", ["flatpak", "install", "-y", flatpak_id])
     execute("run", ["sudo", "flatpak", "override", flatpak_id, f"--filesystem={path}"])
     execute("run", ["sudo", "flatpak", "override", flatpak_id, f"--filesystem={PORTABLE}"])
 
 
+def _find_project_dir(config_path):
+    """Resolve the project directory from the config file path."""
+    if os.path.isabs(config_path):
+        return os.path.dirname(config_path)
+    return os.path.dirname(os.path.abspath(config_path)) or "."
+
+
+def _resolve_config(args):
+    """Get config file path and project directory."""
+    config_file = args.config or os.path.join(os.path.dirname(os.path.abspath(__file__)), "setup.json")
+    project_dir = _find_project_dir(config_file)
+    return config_file, project_dir
+
+
 def parse_config(file_path, path):
-    file = json.load(open(file_path))
-    global HOST, PORTABLE
-    HOST = {k: os.path.expanduser(v) for k, v in file["host"].items()}[PLATFORM]
-    PORTABLE = {k: os.path.expanduser(v) for k, v in file["portable"].items()}[PLATFORM]
+    global HOST, PORTABLE, NUM_ERRORS
+    NUM_ERRORS = 0
+
+    with open(file_path) as f:
+        config_data = json.load(f)
+
+    if PLATFORM not in config_data.get("host", {}):
+        console_error(f"Platform '{PLATFORM}' not found in config host paths")
+        return {}
+    if PLATFORM not in config_data.get("portable", {}):
+        console_error(f"Platform '{PLATFORM}' not found in config portable paths")
+        return {}
+
+    HOST = os.path.expanduser(config_data["host"][PLATFORM])
+    PORTABLE = os.path.expanduser(config_data["portable"][PLATFORM])
+
     results = {}
     for emulator in os.listdir(path):
         symlinks_file = os.path.join(path, emulator, "symlinks.json")
         if not os.path.isfile(symlinks_file):
             continue
-        config = json.load(open(symlinks_file))
-        flatpak_id = config.get("flatpak", "")
-        for entry, links in config.items():
+        with open(symlinks_file) as f:
+            try:
+                symlinks_config = json.load(f)
+            except json.JSONDecodeError as e:
+                console_error(f"Invalid JSON in {symlinks_file}: {e}")
+                continue
+
+        flatpak_id = symlinks_config.get("flatpak", "")
+        for entry, links in symlinks_config.items():
             if entry == "flatpak":
+                continue
+            if not isinstance(links, dict):
                 continue
             source = os.path.abspath(os.path.join(path, emulator, entry))
             if PLATFORM not in links:
@@ -129,12 +183,18 @@ def parse_config(file_path, path):
     return results
 
 
+def _filter_emulators(emulators_dict, filter_list):
+    """Filter emulators dict by name list (case-insensitive). Empty list = all."""
+    if not filter_list:
+        return emulators_dict
+    lower_filter = [e.lower() for e in filter_list]
+    return {k: v for k, v in emulators_dict.items() if k.lower() in lower_filter}
+
+
 def cmd_symlink(args):
     """Wire emulator configs into host filesystem via symlinks."""
-    config_file = args.config or "setup.json"
-    for emulator, entries in parse_config(config_file, ".").items():
-        if args.emulators and emulator.lower() not in [e.lower() for e in args.emulators]:
-            continue
+    config_file, project_dir = _resolve_config(args)
+    for emulator, entries in _filter_emulators(parse_config(config_file, project_dir), args.emulators).items():
         console_log(f"\n{emulator}")
         for flatpak, link_path, source_path in entries:
             setup_flatpak(flatpak, source_path)
@@ -144,10 +204,8 @@ def cmd_symlink(args):
 
 def cmd_status(args):
     """Show emulator symlink status."""
-    config_file = args.config or "setup.json"
-    for emulator, entries in parse_config(config_file, ".").items():
-        if args.emulators and emulator.lower() not in [e.lower() for e in args.emulators]:
-            continue
+    config_file, project_dir = _resolve_config(args)
+    for emulator, entries in _filter_emulators(parse_config(config_file, project_dir), args.emulators).items():
         for _, link_path, source_path in entries:
             exists = "OK" if os.path.exists(source_path) else "MISSING"
             linked = "linked" if os.path.islink(link_path) else "not linked"
@@ -156,30 +214,27 @@ def cmd_status(args):
             console_log(f"    link:   {link_path}")
 
 
-# Dirs to skip when backing up (large, not config)
 BACKUP_EXCLUDE = {"ROMs", "downloaded_media", "n3ds-fixed", "n3ds-original"}
 
 
 def cmd_backup(args):
     """Snapshot emulator configs to a timestamped zip."""
-    config_file = args.config or "setup.json"
+    config_file, project_dir = _resolve_config(args)
     timestamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
-    backup_dir = os.path.join(".", "backups")
+    backup_dir = os.path.join(project_dir, "backups")
     os.makedirs(backup_dir, exist_ok=True)
     backup_path = os.path.join(backup_dir, f"{PLATFORM}-{timestamp}.zip")
 
-    emulators = parse_config(config_file, ".")
+    emulators = _filter_emulators(parse_config(config_file, project_dir), args.emulators)
     count = 0
 
     with zipfile.ZipFile(backup_path, "w", zipfile.ZIP_DEFLATED) as zf:
         for emulator, entries in emulators.items():
-            if args.emulators and emulator.lower() not in [e.lower() for e in args.emulators]:
-                continue
             for _, _, source_path in entries:
                 if not os.path.exists(source_path):
                     continue
                 if os.path.isfile(source_path):
-                    arcname = os.path.relpath(source_path, ".")
+                    arcname = os.path.relpath(source_path, project_dir)
                     zf.write(source_path, arcname)
                     count += 1
                 elif os.path.isdir(source_path):
@@ -187,13 +242,12 @@ def cmd_backup(args):
                         dirs[:] = [d for d in dirs if d not in BACKUP_EXCLUDE]
                         for f in files:
                             filepath = os.path.join(root, f)
-                            arcname = os.path.relpath(filepath, ".")
+                            arcname = os.path.relpath(filepath, project_dir)
                             zf.write(filepath, arcname)
                             count += 1
 
     console_log(f"Backed up {count} files to {backup_path}")
 
-    # Rotate old backups (keep last 5)
     max_backups = 5
     existing = sorted(
         [f for f in os.listdir(backup_dir) if f.startswith(f"{PLATFORM}-") and f.endswith(".zip")]
@@ -204,23 +258,32 @@ def cmd_backup(args):
         console_log(f"Removed old backup: {old}")
 
 
-def _originals_dir(emulator_dir):
-    return os.path.join(emulator_dir, "originals")
+def _find_emulator_dir(project_dir, name):
+    """Find emulator directory by case-insensitive name match."""
+    for d in os.listdir(project_dir):
+        if d.lower() == name.lower() and os.path.isdir(os.path.join(project_dir, d)):
+            return d
+    return None
 
 
-def _originals_manifest(emulator_dir):
-    return os.path.join(_originals_dir(emulator_dir), "manifest.json")
+def _originals_dir(project_dir, emulator_dir):
+    return os.path.join(project_dir, emulator_dir, "originals")
 
 
-def _load_originals_manifest(emulator_dir):
-    manifest_path = _originals_manifest(emulator_dir)
+def _originals_manifest(project_dir, emulator_dir):
+    return os.path.join(_originals_dir(project_dir, emulator_dir), "manifest.json")
+
+
+def _load_originals_manifest(project_dir, emulator_dir):
+    manifest_path = _originals_manifest(project_dir, emulator_dir)
     if os.path.exists(manifest_path):
-        return json.load(open(manifest_path))
+        with open(manifest_path) as f:
+            return json.load(f)
     return []
 
 
-def _save_originals_manifest(emulator_dir, manifest):
-    manifest_path = _originals_manifest(emulator_dir)
+def _save_originals_manifest(project_dir, emulator_dir, manifest):
+    manifest_path = _originals_manifest(project_dir, emulator_dir)
     os.makedirs(os.path.dirname(manifest_path), exist_ok=True)
     with open(manifest_path, "w") as f:
         json.dump(manifest, f, indent=2)
@@ -228,16 +291,13 @@ def _save_originals_manifest(emulator_dir, manifest):
 
 def cmd_originals(args):
     """List captured original configs for an emulator."""
-    emulator_dir = None
-    for d in os.listdir("."):
-        if d.lower() == args.emulator.lower() and os.path.isdir(d):
-            emulator_dir = d
-            break
+    _, project_dir = _resolve_config(args)
+    emulator_dir = _find_emulator_dir(project_dir, args.emulator)
     if not emulator_dir:
         console_error(f"Emulator '{args.emulator}' not found")
         return
 
-    manifest = _load_originals_manifest(emulator_dir)
+    manifest = _load_originals_manifest(project_dir, emulator_dir)
     if not manifest:
         console_log(f"No originals captured for {emulator_dir}")
         return
@@ -249,35 +309,32 @@ def cmd_originals(args):
 
 def cmd_capture(args):
     """Capture current config as an original (immutable snapshot)."""
-    emulator_dir = None
-    for d in os.listdir("."):
-        if d.lower() == args.emulator.lower() and os.path.isdir(d):
-            emulator_dir = d
-            break
+    _, project_dir = _resolve_config(args)
+    emulator_dir = _find_emulator_dir(project_dir, args.emulator)
     if not emulator_dir:
         console_error(f"Emulator '{args.emulator}' not found")
         return
 
     version = args.version
-    originals_base = _originals_dir(emulator_dir)
-    snapshot_dir = os.path.join(originals_base, version)
+    snapshot_dir = os.path.join(_originals_dir(project_dir, emulator_dir), version)
 
     if os.path.exists(snapshot_dir):
         console_error(f"Original '{version}' already exists for {emulator_dir}")
         return
 
-    # Find config/data dirs for this emulator
-    symlinks_file = os.path.join(emulator_dir, "symlinks.json")
+    symlinks_file = os.path.join(project_dir, emulator_dir, "symlinks.json")
     if not os.path.isfile(symlinks_file):
         console_error(f"No symlinks.json for {emulator_dir}")
         return
 
-    config = json.load(open(symlinks_file))
+    with open(symlinks_file) as f:
+        config = json.load(f)
+
     copied = 0
     for entry in config:
         if entry == "flatpak":
             continue
-        source = os.path.join(emulator_dir, entry)
+        source = os.path.join(project_dir, emulator_dir, entry)
         if not os.path.exists(source):
             continue
         dest = os.path.join(snapshot_dir, entry)
@@ -288,62 +345,56 @@ def cmd_capture(args):
             shutil.copy2(source, dest)
         copied += 1
 
-    # Make snapshot read-only
     for root, dirs, files in os.walk(snapshot_dir):
         for f in files:
             os.chmod(os.path.join(root, f), stat.S_IRUSR | stat.S_IRGRP | stat.S_IROTH)
 
-    # Append to manifest
-    manifest = _load_originals_manifest(emulator_dir)
+    manifest = _load_originals_manifest(project_dir, emulator_dir)
     manifest.append({
         "version": version,
         "captured": datetime.datetime.now().isoformat(),
     })
-    _save_originals_manifest(emulator_dir, manifest)
+    _save_originals_manifest(project_dir, emulator_dir, manifest)
 
     console_log(f"Captured {copied} entries as original '{version}' for {emulator_dir}")
 
 
 def cmd_revert(args):
     """Revert emulator config to a captured original."""
-    emulator_dir = None
-    for d in os.listdir("."):
-        if d.lower() == args.emulator.lower() and os.path.isdir(d):
-            emulator_dir = d
-            break
+    config_file, project_dir = _resolve_config(args)
+    emulator_dir = _find_emulator_dir(project_dir, args.emulator)
     if not emulator_dir:
         console_error(f"Emulator '{args.emulator}' not found")
         return
 
-    manifest = _load_originals_manifest(emulator_dir)
+    manifest = _load_originals_manifest(project_dir, emulator_dir)
     if not manifest:
         console_error(f"No originals captured for {emulator_dir}")
         return
 
     version = args.version
     if not version:
-        # Default to latest
         version = manifest[-1]["version"]
 
-    snapshot_dir = os.path.join(_originals_dir(emulator_dir), version)
+    snapshot_dir = os.path.join(_originals_dir(project_dir, emulator_dir), version)
     if not os.path.exists(snapshot_dir):
         console_error(f"Original '{version}' not found for {emulator_dir}")
         return
 
-    # Auto-backup before reverting
-    console_log(f"Backing up current config before revert...")
-    backup_args = argparse.Namespace(config=args.config, emulators=[emulator_dir])
+    console_log("Backing up current config before revert...")
+    backup_args = argparse.Namespace(config=config_file, emulators=[emulator_dir])
     cmd_backup(backup_args)
 
-    # Copy snapshot over current config
-    symlinks_file = os.path.join(emulator_dir, "symlinks.json")
-    config = json.load(open(symlinks_file))
+    symlinks_file = os.path.join(project_dir, emulator_dir, "symlinks.json")
+    with open(symlinks_file) as f:
+        config = json.load(f)
+
     restored = 0
     for entry in config:
         if entry == "flatpak":
             continue
         src = os.path.join(snapshot_dir, entry)
-        dst = os.path.join(emulator_dir, entry)
+        dst = os.path.join(project_dir, emulator_dir, entry)
         if not os.path.exists(src):
             continue
         if os.path.isdir(src):
@@ -359,13 +410,9 @@ def cmd_revert(args):
 
 def cmd_migrate(args):
     """Migrate configs from one emulator to another."""
-    source_dir = None
-    target_dir = None
-    for d in os.listdir("."):
-        if d.lower() == args.source.lower() and os.path.isdir(d):
-            source_dir = d
-        if d.lower() == args.target.lower() and os.path.isdir(d):
-            target_dir = d
+    config_file, project_dir = _resolve_config(args)
+    source_dir = _find_emulator_dir(project_dir, args.source)
+    target_dir = _find_emulator_dir(project_dir, args.target)
 
     if not source_dir:
         console_error(f"Source emulator '{args.source}' not found")
@@ -374,20 +421,20 @@ def cmd_migrate(args):
         console_error(f"Target emulator '{args.target}' not found")
         return
 
-    # Auto-backup both before migrating
     console_log("Backing up both emulators before migration...")
-    backup_args = argparse.Namespace(config=args.config, emulators=[source_dir, target_dir])
+    backup_args = argparse.Namespace(config=config_file, emulators=[source_dir, target_dir])
     cmd_backup(backup_args)
 
-    # Find matching directories to copy
-    source_symlinks = os.path.join(source_dir, "symlinks.json")
-    target_symlinks = os.path.join(target_dir, "symlinks.json")
+    source_symlinks = os.path.join(project_dir, source_dir, "symlinks.json")
+    target_symlinks = os.path.join(project_dir, target_dir, "symlinks.json")
     if not os.path.isfile(source_symlinks) or not os.path.isfile(target_symlinks):
         console_error("Both emulators must have symlinks.json")
         return
 
-    source_config = json.load(open(source_symlinks))
-    target_config = json.load(open(target_symlinks))
+    with open(source_symlinks) as f:
+        source_config = json.load(f)
+    with open(target_symlinks) as f:
+        target_config = json.load(f)
 
     migrated = 0
     for entry in source_config:
@@ -395,8 +442,8 @@ def cmd_migrate(args):
             continue
         if entry not in target_config:
             continue
-        src = os.path.join(source_dir, entry)
-        dst = os.path.join(target_dir, entry)
+        src = os.path.join(project_dir, source_dir, entry)
+        dst = os.path.join(project_dir, target_dir, entry)
         if not os.path.exists(src):
             continue
         console_log(f"  Migrating {entry}: {source_dir} -> {target_dir}")
@@ -417,7 +464,7 @@ def main():
         prog="schemulator",
         description="Deterministic emulation environment manager",
     )
-    parser.add_argument("--config", "-c", help="Path to config JSON (default: setup.json)")
+    parser.add_argument("--config", "-c", help="Path to config JSON (default: setup.json next to this script)")
 
     sub = parser.add_subparsers(dest="command")
 
@@ -460,9 +507,7 @@ def main():
     if args.command in commands:
         commands[args.command](args)
     elif args.command is None:
-        # Backward compatibility: no subcommand = symlink all
         args.emulators = []
-        args.config = args.config or "setup.json"
         cmd_symlink(args)
 
 

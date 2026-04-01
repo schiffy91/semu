@@ -2,14 +2,14 @@
     "flatpak": "info.cemu.Cemu",
     "config":
     {
-        "windows": "${portable}/Emulators/Cemu/portable/",
-        "linux": "${host}/${flatpak}/config/Cemu/",
-        "macos": "${host}/Cemu/"
+        "windows": "${portable}/Emulators/Cemu/portable/config/",
+        "linux": "${host}/Cemu/",
+        "macos": "${host}/Cemu/config/"
     },
     "data":
     {
-        "windows": "${portable}/Emulators/Cemu/portable/",
-        "linux": "${host}/${flatpak}/data/Cemu/",
-        "macos": "${host}/Cemu/"
+        "windows": "${portable}/Emulators/Cemu/portable/data/",
+        "linux": "~/.local/share/Cemu/",
+        "macos": "${host}/Cemu/data/"
     }
 }

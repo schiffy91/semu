@@ -69,7 +69,7 @@ def check_file(filepath):
     result = {
         "path": filepath,
         "needs_fix": False,
-        "already_ok": False,
+        "already_ok": True,  # Assume OK until we find a partition that isn't
         "truly_encrypted": False,
         "error": None,
         "partitions": 0,
@@ -88,11 +88,16 @@ def check_file(filepath):
                 result["partitions"] += 1
 
                 if info["no_crypto_flag"]:
-                    result["already_ok"] = True
+                    pass  # This partition is fine
                 elif info["content_decrypted"]:
                     result["needs_fix"] = True
+                    result["already_ok"] = False
                 else:
                     result["truly_encrypted"] = True
+                    result["already_ok"] = False
+
+            if result["partitions"] == 0:
+                result["already_ok"] = False
     except Exception as e:
         result["error"] = str(e)
     return result
@@ -105,6 +110,7 @@ def fix_file(input_path, output_path):
     with open(output_path, "r+b") as f:
         parts = parse_ncsd_partitions(f)
         if parts is None:
+            os.remove(output_path)
             return False
 
         for idx, offset, size in parts:
@@ -139,9 +145,7 @@ def main():
 
     input_path = Path(args.input)
     if input_path.is_dir():
-        files = sorted(input_path.glob("*.3ds"))
-        if not files:
-            files = sorted(input_path.glob("*.3DS"))
+        files = sorted(f for f in input_path.iterdir() if f.suffix.lower() == ".3ds")
     elif input_path.is_file():
         files = [input_path]
     else:
