@@ -9,7 +9,7 @@ import pytest
 # Add project root to path so we can import setup and decrypt3ds
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-PLATFORM = {"win32": "windows", "darwin": "macos", "linux": "linux"}[sys.platform]
+PLATFORM = {"win32": "windows", "darwin": "macos", "linux": "linux"}.get(sys.platform, "linux")
 
 
 @pytest.fixture

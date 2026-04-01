@@ -8,6 +8,7 @@
     "es_settings.xml":
     {
         "windows": "${portable}/ES-DE/settings/",
+        "linux": "${portable}/settings/",
         "macos": "${portable}/settings/"
     }
 }

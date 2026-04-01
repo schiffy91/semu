@@ -8,18 +8,24 @@ let
       hash = "sha256-fpwMwi7vwbd0n/+Vy1JBDWGJtZ7GkUSBd9b6wbErQ6w=";
       name = "ES-DE_${version}-arm64.dmg";
     };
+    x86_64-darwin = {
+      url = "https://gitlab.com/es-de/emulationstation-de/-/package_files/243196947/download";
+      hash = "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="; # TODO: get hash
+      name = "ES-DE_${version}-x64.dmg";
+    };
     x86_64-linux = {
       url = "https://gitlab.com/es-de/emulationstation-de/-/package_files/246875981/download";
       hash = "sha256-TLZs/JIwmXEfoP7Rnuhrl0SmKU4C4//Rnuhn93qI7H4=";
       name = "ES-DE_x64.AppImage";
     };
+    # ES-DE does not provide an aarch64-linux build
   };
 in
 if stdenv.hostPlatform.isDarwin then
   stdenv.mkDerivation {
     pname = "es-de";
     inherit version;
-    src = fetchurl sources.aarch64-darwin;
+    src = fetchurl (sources.${stdenv.hostPlatform.system} or (throw "ES-DE: unsupported platform ${stdenv.hostPlatform.system}"));
     sourceRoot = ".";
     nativeBuildInputs = [ undmg ];
     installPhase = ''
@@ -29,11 +35,11 @@ if stdenv.hostPlatform.isDarwin then
     meta = {
       description = "EmulationStation Desktop Edition — emulator frontend";
       homepage = "https://es-de.org";
-      platforms = [ "aarch64-darwin" ];
+      platforms = [ "aarch64-darwin" "x86_64-darwin" ];
       license = lib.licenses.mit;
     };
   }
-else
+else if stdenv.hostPlatform.system == "x86_64-linux" then
   appimageTools.wrapType2 {
     pname = "es-de";
     inherit version;
@@ -45,3 +51,5 @@ else
       license = lib.licenses.mit;
     };
   }
+else
+  throw "ES-DE: unsupported platform ${stdenv.hostPlatform.system}"

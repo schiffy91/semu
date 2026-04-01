@@ -2,7 +2,7 @@
     "host":
     {
         "windows": "~/AppData/Roaming/",
-        "linux": "~/.var/app/",
+        "linux": "~/.config/",
         "macos": "~/Library/Application Support/"
     },
     "portable": {

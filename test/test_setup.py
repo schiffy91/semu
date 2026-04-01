@@ -2,9 +2,15 @@ import json
 import os
 import sys
 
+import pytest
 import setup
 
-PLATFORM = {"win32": "windows", "darwin": "macos", "linux": "linux"}[sys.platform]
+PLATFORM = {"win32": "windows", "darwin": "macos", "linux": "linux"}.get(sys.platform, "linux")
+
+symlink_unsupported = pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="Symlinks require elevated privileges on Windows"
+)
 
 
 def test_parse_config_returns_emulators(mock_project):
@@ -22,6 +28,28 @@ def test_parse_config_resolves_platform_paths(mock_project):
         assert os.path.exists(source_path)
 
 
+def test_parse_config_handles_missing_platform(tmp_path):
+    config = {"host": {"windows": str(tmp_path)}, "portable": {"windows": str(tmp_path)}}
+    (tmp_path / "setup.json").write_text(json.dumps(config))
+    if PLATFORM != "windows":
+        results = setup.parse_config(str(tmp_path / "setup.json"), str(tmp_path))
+        assert results == {}
+
+
+def test_parse_config_handles_invalid_json(tmp_path):
+    emu = tmp_path / "BadEmu"
+    emu.mkdir()
+    (emu / "symlinks.json").write_text("{invalid json")
+    config = {
+        "host": {PLATFORM: str(tmp_path)},
+        "portable": {PLATFORM: str(tmp_path)},
+    }
+    (tmp_path / "setup.json").write_text(json.dumps(config))
+    results = setup.parse_config(str(tmp_path / "setup.json"), str(tmp_path))
+    assert "BADEMU" not in results
+
+
+@symlink_unsupported
 def test_create_symlink(tmp_path):
     source = tmp_path / "source_file.txt"
     source.write_text("hello")
@@ -32,6 +60,7 @@ def test_create_symlink(tmp_path):
     assert link.read_text() == "hello"
 
 
+@symlink_unsupported
 def test_create_symlink_to_directory(tmp_path):
     source_dir = tmp_path / "source_dir"
     source_dir.mkdir()
@@ -48,3 +77,12 @@ def test_create_symlink_to_directory(tmp_path):
 
 def test_platform_detection():
     assert PLATFORM in ("windows", "macos", "linux")
+
+
+def test_resolve_config_defaults_to_script_dir():
+    """Config should resolve relative to setup.py, not CWD."""
+    import argparse
+    args = argparse.Namespace(config=None)
+    config_file, project_dir = setup._resolve_config(args)
+    assert os.path.isabs(config_file)
+    assert os.path.isabs(project_dir)
