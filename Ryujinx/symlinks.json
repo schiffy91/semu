@@ -3,6 +3,7 @@
     "config":
     {
         "windows": "${portable}/Emulators/Ryujinx/portable",
-        "linux": "${host}/${flatpak}/config/Ryujinx/"
+        "linux": "${host}/${flatpak}/config/Ryujinx/",
+        "macos": "${host}/Ryujinx/"
     }
 }

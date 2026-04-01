@@ -7,6 +7,7 @@
     "config":
     {
         "windows": "${portable}/Emulators/PCSX2-Qt/",
-        "linux": "${host}/${flatpak}/config/PCSX2/"
+        "linux": "${host}/${flatpak}/config/PCSX2/",
+        "macos": "${host}/PCSX2/"
     }
 }
