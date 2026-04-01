@@ -2,7 +2,16 @@ name: Smoke Tests
 on: [push, pull_request]
 
 jobs:
-  test:
+  # Container test — same Dockerfile used locally via `make container-test`
+  container:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -t schemulator-test .
+      - run: docker run --rm -v "$PWD:/schemulator:ro" schemulator-test python -m pytest test/ -v
+
+  # Native tests on each platform
+  native:
     strategy:
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
