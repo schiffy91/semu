@@ -1,70 +1,55 @@
-# Ignore everything by default
-*
-
-# Allow project files
-!.gitignore
-!README.md
-!setup.py
-!setup.json
-!decrypt3ds.py
-!Dockerfile
-!flake.nix
-!flake.lock
-!nix/
-!nix/**
-
-# Allow docs
-!docs/
-!docs/**
-
-# Allow test infrastructure
-!test/
-!test/**
-# But not VM disk images
-test/vms/
-
-# Allow CI
-!.github/
-!.github/**
-
-# Allow emulator directories (but not their contents by default)
-!Azahar/
-!Cemu/
-!Dolphin/
-!ES-DE/
-!Lime3DS/
-!PCSX2/
-!RetroArch/
-!Ryujinx/
-
-# Allow only manifests and portable markers inside emulator dirs
-Azahar/*
-!Azahar/symlinks.json
-Cemu/*
-!Cemu/symlinks.json
-Dolphin/*
-!Dolphin/symlinks.json
-!Dolphin/portable.txt
-ES-DE/*
-!ES-DE/symlinks.json
-Lime3DS/*
-!Lime3DS/symlinks.json
-PCSX2/*
-!PCSX2/symlinks.json
-!PCSX2/portable.ini
-RetroArch/*
-!RetroArch/symlinks.json
-Ryujinx/*
-!Ryujinx/symlinks.json
-
-# Allow Makefile and cloud-init
-!Makefile
-!test/cloud-init/
-!test/cloud-init/**
-
-# Nix build output
-result
-
-# Python cache
+# === OS / editor junk ===
+.DS_Store
+*.sync-conflict-*
+.stfolder/
 __pycache__/
 .pytest_cache/
+
+# === Build / dev artifacts ===
+.venv/
+result
+
+# === VM images ===
+test/vms/
+
+# === Backups (large zips) ===
+backups/
+
+# === Emulator runtime data (large, per-machine, or copyrighted) ===
+# ROMs and scraped media
+ES-DE/ES-DE/ROMs/
+ES-DE/ES-DE/downloaded_media/
+
+# Emulator save data, BIOS, and binary blobs
+*/bios/
+*/memcards/
+*/sstates/
+*/StateSaves/
+*/ScreenShots/
+*/screenshots/
+*/states/
+*/saves/
+*/nand/
+*/sdmc/
+*/sdcard/
+*/mlc01/
+*/keys.txt
+*/mcu.dat
+*/originals/
+
+# Emulator config/data dirs (symlinked at runtime, not source-controlled)
+Azahar/data/
+Cemu/config/
+Cemu/data/
+Dolphin/config/
+Dolphin/data/
+ES-DE/ES-DE/gamelists/
+ES-DE/ES-DE/themes/
+Lime3DS/data/
+PCSX2/config/
+RetroArch/config/
+RetroArch/retroarch.cfg
+Ryujinx/config/
+
+# ES-DE settings (written by ES-DE at runtime)
+ES-DE/es_settings.xml
