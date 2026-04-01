@@ -24,7 +24,8 @@
           mesen          # nes
           mupen64plus    # n64
           desmume        # nds
-          beetle-psx-hw  # psx
+          beetle-psx     # psx (default)
+          beetle-psx-hw  # psx (hardware accelerated)
           ppsspp         # psp
           flycast        # dreamcast
           dolphin        # gc, wii (alternative to standalone)

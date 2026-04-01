@@ -17,7 +17,8 @@ let
     mesen            = { hash = "sha256-5YYK6MMNc3ZHsoYWlKv0esWl+Xzvwe0lbdgaf66P3Dg="; desc = "NES"; };
     mupen64plus_next = { hash = "sha256-MWgaL2OoV71D21C5nP2GoRzKc6ZtK5MmE1nvoUrE9yg="; desc = "N64"; };
     desmume          = { hash = "sha256-8aIGJrN8B+XDd9wx02gtH9S02BAXNi+nlKsuLIU/E8k="; desc = "NDS"; };
-    mednafen_psx_hw  = { hash = "sha256-zykVBUFlaP5W67SGGIkYYv6krqMVJp0RB5qLh/oTWro="; desc = "PSX"; };
+    mednafen_psx     = { hash = "sha256-PSDXxaJAQAUiD9B+bbxYHi7UgGIKB3u86gZa0kYzsto="; desc = "PSX"; };
+    mednafen_psx_hw  = { hash = "sha256-zykVBUFlaP5W67SGGIkYYv6krqMVJp0RB5qLh/oTWro="; desc = "PSX (HW)"; };
     ppsspp           = { hash = "sha256-x7AAXg/oRFt7wsXCzNymU2Harm8NQpAJ7rFWxZREfrg="; desc = "PSP"; };
     flycast          = { hash = "sha256-6WEcYN56ClhyguHo4o7SKR1l+Ih/XdjC8fAOwj9jN3s="; desc = "Dreamcast"; };
   };
