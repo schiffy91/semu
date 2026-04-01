@@ -1,7 +1,4 @@
-{ lib, stdenv, fetchurl, autoPatchelfHook ? null, makeWrapper ? null,
-  gtk3 ? null, libX11 ? null, libgbm ? null, mesa ? null, SDL2 ? null,
-  openal ? null, icu ? null, openssl ? null, zlib ? null,
-}:
+{ lib, stdenv, fetchurl, makeWrapper, writeShellScript }:
 
 let
   version = "1.3.3";
@@ -26,13 +23,36 @@ let
   src = fetchurl (sources.${stdenv.hostPlatform.system} or (throw "Ryujinx: unsupported platform ${stdenv.hostPlatform.system}"));
 in
 if stdenv.hostPlatform.isDarwin then
+  # .NET apps need a writable directory. We store the tarball and extract
+  # to ~/.local/share/ryujinx-app on first launch via a wrapper script.
   stdenv.mkDerivation {
     pname = "ryujinx";
     inherit version src;
     sourceRoot = ".";
+    nativeBuildInputs = [ makeWrapper ];
     installPhase = ''
-      mkdir -p $out/Applications
-      cp -r Ryujinx.app $out/Applications/
+      mkdir -p $out/share/ryujinx $out/bin
+
+      # Store the original tarball for extraction at runtime
+      cp ${src} $out/share/ryujinx/ryujinx.tar.gz
+
+      # Wrapper that extracts to a writable location on first run
+      cat > $out/bin/ryujinx <<'WRAPPER'
+      #!/bin/bash
+      APP_DIR="$HOME/.local/share/ryujinx-app"
+      if [ ! -d "$APP_DIR/Ryujinx.app" ]; then
+        echo "First run: extracting Ryujinx..."
+        mkdir -p "$APP_DIR"
+        tar xzf "$0/../share/ryujinx/ryujinx.tar.gz" -C "$APP_DIR"
+        xattr -dr com.apple.quarantine "$APP_DIR/Ryujinx.app" 2>/dev/null
+      fi
+      open "$APP_DIR/Ryujinx.app" --args "$@"
+      WRAPPER
+      chmod +x $out/bin/ryujinx
+
+      # Fix the share path in the wrapper (make it relative to the script)
+      substituteInPlace $out/bin/ryujinx \
+        --replace '$0/../share/ryujinx/ryujinx.tar.gz' "$out/share/ryujinx/ryujinx.tar.gz"
     '';
     meta = {
       description = "Nintendo Switch emulator (Ryubing fork)";
@@ -46,8 +66,7 @@ else
     pname = "ryujinx";
     inherit version src;
     sourceRoot = ".";
-    nativeBuildInputs = [ autoPatchelfHook makeWrapper ];
-    buildInputs = [ gtk3 libX11 libgbm mesa SDL2 openal icu openssl zlib ];
+    nativeBuildInputs = [ makeWrapper ];
     installPhase = ''
       mkdir -p $out/bin $out/lib/ryujinx
       cp -r publish/* $out/lib/ryujinx/
