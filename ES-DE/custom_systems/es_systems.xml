@@ -26,7 +26,7 @@
     <fullname>Nintendo GameCube</fullname>
     <path>%ROMPATH%/gc</path>
     <extension>.ciso .CISO .dol .DOL .elf .ELF .gcm .GCM .gcz .GCZ .iso .ISO .nkit.iso .NKIT.ISO .rvz .RVZ .tgc .TGC .wad .WAD .wbfs .WBFS .wia .WIA .7z .7Z .zip .ZIP</extension>
-    <command label="Dolphin (Standalone)">%EMULATOR_DOLPHIN% -b -e --config Dolphin.Display.Fullscreen=True %ROM%</command>
+    <command label="Dolphin (Standalone)">%EMULATOR_DOLPHIN% --config Dolphin.Display.Fullscreen=True -b -e %ROM%</command>
     <platform>gc</platform>
     <theme>gc</theme>
   </system>
@@ -35,7 +35,7 @@
     <fullname>Nintendo Wii</fullname>
     <path>%ROMPATH%/wii</path>
     <extension>.ciso .CISO .dol .DOL .elf .ELF .gcm .GCM .gcz .GCZ .iso .ISO .nkit.iso .NKIT.ISO .rvz .RVZ .tgc .TGC .wad .WAD .wbfs .WBFS .wia .WIA .7z .7Z .zip .ZIP</extension>
-    <command label="Dolphin (Standalone)">%EMULATOR_DOLPHIN% -b -e --config Dolphin.Display.Fullscreen=True %ROM%</command>
+    <command label="Dolphin (Standalone)">%EMULATOR_DOLPHIN% --config Dolphin.Display.Fullscreen=True -b -e %ROM%</command>
     <platform>wii</platform>
     <theme>wii</theme>
   </system>
