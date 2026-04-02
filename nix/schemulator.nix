@@ -1,5 +1,5 @@
 { lib, stdenv, makeWrapper, symlinkJoin, python3,
-  dolphin-emu, azahar,
+  dolphin-emu, azahar, ares ? null,
   pcsx2 ? null, cemu ? null, retroarch-bare ? null,
   ryujinx ? null, es-de ? null,
 }:
@@ -43,6 +43,7 @@ let
   emulators = lib.filter (x: x != null) [
     dolphin-emu
     azahar
+    ares
     pcsx2
     cemu
     retroarch-bare

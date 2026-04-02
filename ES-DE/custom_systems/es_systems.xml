@@ -89,7 +89,8 @@
     <fullname>Nintendo 64</fullname>
     <path>%ROMPATH%/n64</path>
     <extension>.n64 .N64 .v64 .V64 .z64 .Z64 .ndd .NDD .7z .7Z .zip .ZIP</extension>
-    <command label="Mupen64Plus-Next">%EMULATOR_RETROARCH% -f --appendconfig=~/.config/retroarch/n64-override.cfg -L %CORE_RETROARCH%/mupen64plus_next_libretro.dylib %ROM%</command>
+    <command label="ares (Standalone)">%EMULATOR_ARES% --fullscreen --system "Nintendo 64" %ROM%</command>
+    <command label="Mupen64Plus-Next">%EMULATOR_RETROARCH% -f -L %CORE_RETROARCH%/mupen64plus_next_libretro.dylib %ROM%</command>
     <platform>n64</platform>
     <theme>n64</theme>
   </system>
