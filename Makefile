@@ -29,13 +29,13 @@ setup: ## Build all emulators and wire config symlinks
 	python3 setup.py symlink
 	@echo ""
 	@echo "Done. Launch emulators:"
-	@echo "  nix build .#es-de && open result/Applications/ES-DE.app"
-	@echo "  nix build .#azahar && open result/Applications/azahar.app"
-	@echo "  nix build .#dolphin && open result/Applications/Dolphin.app"
-	@echo "  nix build .#retroarch && open result/Applications/RetroArch.app"
-	@echo "  nix build .#pcsx2 && open result/Applications/PCSX2.app"
-	@echo "  nix build .#cemu && open result/Applications/Cemu.app"
-	@echo "  nix build .#ryujinx && result/bin/ryujinx"
+	@echo "  open result/Applications/ES-DE.app"
+	@echo "  open result/Applications/azahar.app"
+	@echo "  open result/Applications/Dolphin.app"
+	@echo "  open result/Applications/RetroArch.app"
+	@echo "  open result/Applications/PCSX2.app"
+	@echo "  open result/Applications/Cemu.app"
+	@echo "  result/bin/ryujinx"
 
 # =============================================================================
 # Container tests (fast, deterministic, same locally and in CI)
