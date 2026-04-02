@@ -7,7 +7,7 @@
     <fullname>Nintendo 3DS</fullname>
     <path>%ROMPATH%/n3ds</path>
     <extension>.3ds .3DS .3dsx .3DSX .app .APP .axf .AXF .cci .CCI .cxi .CXI .elf .ELF .7z .7Z .zip .ZIP</extension>
-    <command label="Azahar (Standalone)">%EMULATOR_AZAHAR% %ROM%</command>
+    <command label="Azahar (Standalone)">%EMULATOR_AZAHAR% --fullscreen %ROM%</command>
     <platform>n3ds</platform>
     <theme>n3ds</theme>
   </system>
@@ -26,7 +26,7 @@
     <fullname>Nintendo GameCube</fullname>
     <path>%ROMPATH%/gc</path>
     <extension>.ciso .CISO .dol .DOL .elf .ELF .gcm .GCM .gcz .GCZ .iso .ISO .nkit.iso .NKIT.ISO .rvz .RVZ .tgc .TGC .wad .WAD .wbfs .WBFS .wia .WIA .7z .7Z .zip .ZIP</extension>
-    <command label="Dolphin (Standalone)">%EMULATOR_DOLPHIN% -b -e %ROM%</command>
+    <command label="Dolphin (Standalone)">%EMULATOR_DOLPHIN% -b -e --config Dolphin.Display.Fullscreen=True %ROM%</command>
     <platform>gc</platform>
     <theme>gc</theme>
   </system>
@@ -35,7 +35,7 @@
     <fullname>Nintendo Wii</fullname>
     <path>%ROMPATH%/wii</path>
     <extension>.ciso .CISO .dol .DOL .elf .ELF .gcm .GCM .gcz .GCZ .iso .ISO .nkit.iso .NKIT.ISO .rvz .RVZ .tgc .TGC .wad .WAD .wbfs .WBFS .wia .WIA .7z .7Z .zip .ZIP</extension>
-    <command label="Dolphin (Standalone)">%EMULATOR_DOLPHIN% -b -e %ROM%</command>
+    <command label="Dolphin (Standalone)">%EMULATOR_DOLPHIN% -b -e --config Dolphin.Display.Fullscreen=True %ROM%</command>
     <platform>wii</platform>
     <theme>wii</theme>
   </system>
@@ -143,7 +143,7 @@
     <fullname>Nintendo Switch</fullname>
     <path>%ROMPATH%/switch</path>
     <extension>.nca .NCA .nro .NRO .nso .NSO .nsp .NSP .xci .XCI .7z .7Z .zip .ZIP</extension>
-    <command label="Ryujinx (Standalone)">%EMULATOR_RYUJINX% %ROM%</command>
+    <command label="Ryujinx (Standalone)">%EMULATOR_RYUJINX% --fullscreen %ROM%</command>
     <platform>switch</platform>
     <theme>switch</theme>
   </system>
