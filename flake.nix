@@ -35,18 +35,19 @@
               else pkgs.callPackage ./nix/pcsx2-mac.nix {};
       cemu = if isLinux then pkgs.cemu
              else pkgs.callPackage ./nix/cemu-mac.nix {};
+      azahar = if isDarwin then pkgs.callPackage ./nix/azahar-mac.nix {}
+               else pkgs.azahar;
     in {
       # --- Individual emulators (all platforms) ---
       dolphin = pkgs.dolphin-emu;
-      azahar = pkgs.azahar;
-      inherit ryujinx es-de retroarch pcsx2 cemu;
+      inherit azahar ryujinx es-de retroarch pcsx2 cemu;
     } // pkgs.lib.optionalAttrs isLinux {
       es-de-steamdeck = pkgs.callPackage ./nix/es-de.nix { steamDeck = true; };
     } // {
       # --- Unified bundle ---
       default = pkgs.callPackage ./nix/schemulator.nix {
-        inherit (pkgs) dolphin-emu azahar;
-        inherit pcsx2 cemu ryujinx es-de;
+        inherit (pkgs) dolphin-emu;
+        inherit azahar pcsx2 cemu ryujinx es-de;
         retroarch-bare = retroarch;
       };
     });
