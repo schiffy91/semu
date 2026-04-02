@@ -22,7 +22,7 @@ let
     mednafen_psx_hw  = { hash = "sha256-zykVBUFlaP5W67SGGIkYYv6krqMVJp0RB5qLh/oTWro="; desc = "PSX (HW)"; };
     ppsspp           = { hash = "sha256-x7AAXg/oRFt7wsXCzNymU2Harm8NQpAJ7rFWxZREfrg="; desc = "PSP"; };
     flycast          = { hash = "sha256-6WEcYN56ClhyguHo4o7SKR1l+Ih/XdjC8fAOwj9jN3s="; desc = "Dreamcast"; };
-    azahar           = { hash = "sha256-0GRdBdzGTUIpDodr5wbn1ELooQBgh2SefWWoWFdURkc="; desc = "3DS"; };
+    azahar           = { hash = "sha256-Uc777uTjH+D5A6hukbCcvp5AcQDoQ0tWF8PtHtezK50="; desc = "3DS"; };
   };
 
   coreSrcs = lib.mapAttrsToList (name: info: fetchurl {
