@@ -48,8 +48,15 @@ stdenv.mkDerivation {
     ${lib.concatMapStringsSep "\n" (src: "unzip -o ${src} -d $out/cores/") coreSrcs}
 
     # Create a CLI wrapper that tells RetroArch where cores are
-    makeWrapper $out/Applications/RetroArch.app/Contents/MacOS/RetroArch $out/bin/retroarch \
-      --append-flags "--libretro-directory=$out/cores"
+    # Config path uses $HOME which must expand at runtime, so we write a shell script
+    cat > $out/bin/retroarch <<WRAPPER
+    #!/bin/bash
+    exec $out/Applications/RetroArch.app/Contents/MacOS/RetroArch \
+      --config="\$HOME/Library/Application Support/RetroArch/retroarch.cfg" \
+      --libretro-directory=$out/cores \
+      "\$@"
+    WRAPPER
+    chmod +x $out/bin/retroarch
   '';
   meta = {
     description = "RetroArch with ${toString (lib.length (lib.attrNames cores))} cores (${lib.concatStringsSep ", " (lib.mapAttrsToList (_: i: i.desc) cores)})";
