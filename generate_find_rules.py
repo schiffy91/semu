@@ -16,7 +16,7 @@ def main():
     )
 
     emulators = {
-        "RETROARCH": f"{result_dir}/Applications/RetroArch.app/Contents/MacOS/RetroArch",
+        "RETROARCH": f"{result_dir}/bin/retroarch",
         "AZAHAR": f"{result_dir}/Applications/azahar.app/Contents/MacOS/azahar",
         "DOLPHIN": f"{result_dir}/Applications/Dolphin.app/Contents/MacOS/Dolphin",
         "PCSX2": f"{result_dir}/Applications/PCSX2.app/Contents/MacOS/PCSX2",
