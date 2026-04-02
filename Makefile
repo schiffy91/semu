@@ -25,36 +25,14 @@ setup: ## Build all emulators and wire config symlinks
 	@echo "Building schemulator bundle (nix handles caching)..."
 	nix build .#default
 	@echo ""
-	@echo "Installing emulator apps to /Applications/..."
-	@for app in result/Applications/*.app; do \
-		name=$$(basename "$$app"); \
-		target=$$(cd result/Applications && pwd -P)/$$name; \
-		if [ -L "/Applications/$$name" ]; then \
-			rm -f "/Applications/$$name"; \
-		elif [ -d "/Applications/$$name" ]; then \
-			echo "  $$name: replacing existing app with symlink"; \
-			rm -rf "/Applications/$$name"; \
-		fi; \
-		ln -sf "$$target" "/Applications/$$name"; \
-		echo "  $$name -> $$target"; \
-	done
-	@# Ryujinx needs special handling (.NET app extracts on first run)
-	@if [ -f result/bin/ryujinx ]; then \
+	@# Extract Ryujinx on first run (.NET needs writable dir)
+	@if [ -f result/bin/ryujinx ] && [ ! -d "$$HOME/.local/share/ryujinx-app/Ryujinx.app" ]; then \
+		echo "Extracting Ryujinx (first run)..."; \
 		result/bin/ryujinx --help >/dev/null 2>&1 || true; \
-		if [ -d "$$HOME/.local/share/ryujinx-app/Ryujinx.app" ]; then \
-			rm -f "/Applications/Ryujinx.app"; \
-			ln -sf "$$HOME/.local/share/ryujinx-app/Ryujinx.app" "/Applications/Ryujinx.app"; \
-			echo "  Ryujinx.app -> $$HOME/.local/share/ryujinx-app/Ryujinx.app"; \
-		fi; \
 	fi
 	@echo ""
-	@echo "Setting up RetroArch cores..."
-	@mkdir -p "$$HOME/Library/Application Support/RetroArch/cores"
-	@for core in result/cores/*.dylib; do \
-		name=$$(basename "$$core"); \
-		ln -sf "$$(cd result/cores && pwd -P)/$$name" "$$HOME/Library/Application Support/RetroArch/cores/$$name"; \
-	done
-	@echo "  $$(ls result/cores/*.dylib 2>/dev/null | wc -l | tr -d ' ') cores linked"
+	@echo "Generating ES-DE find rules..."
+	@python3 generate_find_rules.py result
 	@echo ""
 	@echo "Setting up config symlinks..."
 	python3 setup.py symlink
