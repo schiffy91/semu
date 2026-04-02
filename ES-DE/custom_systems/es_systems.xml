@@ -1,0 +1,159 @@
+<?xml version="1.0"?>
+<!-- Schemulator preferred emulator defaults -->
+<!-- Only systems where we override ES-DE's built-in defaults -->
+<systemList>
+  <system>
+    <name>n3ds</name>
+    <fullname>Nintendo 3DS</fullname>
+    <path>%ROMPATH%/n3ds</path>
+    <extension>.3ds .3DS .3dsx .3DSX .app .APP .axf .AXF .cci .CCI .cxi .CXI .elf .ELF .7z .7Z .zip .ZIP</extension>
+    <command label="Azahar (Standalone)">%EMULATOR_AZAHAR% %ROM%</command>
+    <platform>n3ds</platform>
+    <theme>n3ds</theme>
+  </system>
+  <system>
+    <name>psx</name>
+    <fullname>Sony PlayStation</fullname>
+    <path>%ROMPATH%/psx</path>
+    <extension>.bin .BIN .ccd .CCD .chd .CHD .cue .CUE .ecm .ECM .exe .EXE .img .IMG .iso .ISO .m3u .M3U .pbp .PBP .psexe .PSEXE .toc .TOC .7z .7Z .zip .ZIP</extension>
+    <command label="SwanStation">%EMULATOR_RETROARCH% -f -L %CORE_RETROARCH%/swanstation_libretro.dylib %ROM%</command>
+    <command label="Beetle PSX HW">%EMULATOR_RETROARCH% -f -L %CORE_RETROARCH%/mednafen_psx_hw_libretro.dylib %ROM%</command>
+    <platform>psx</platform>
+    <theme>psx</theme>
+  </system>
+  <system>
+    <name>gc</name>
+    <fullname>Nintendo GameCube</fullname>
+    <path>%ROMPATH%/gc</path>
+    <extension>.ciso .CISO .dol .DOL .elf .ELF .gcm .GCM .gcz .GCZ .iso .ISO .nkit.iso .NKIT.ISO .rvz .RVZ .tgc .TGC .wad .WAD .wbfs .WBFS .wia .WIA .7z .7Z .zip .ZIP</extension>
+    <command label="Dolphin (Standalone)">%EMULATOR_DOLPHIN% -b -e %ROM%</command>
+    <platform>gc</platform>
+    <theme>gc</theme>
+  </system>
+  <system>
+    <name>wii</name>
+    <fullname>Nintendo Wii</fullname>
+    <path>%ROMPATH%/wii</path>
+    <extension>.ciso .CISO .dol .DOL .elf .ELF .gcm .GCM .gcz .GCZ .iso .ISO .nkit.iso .NKIT.ISO .rvz .RVZ .tgc .TGC .wad .WAD .wbfs .WBFS .wia .WIA .7z .7Z .zip .ZIP</extension>
+    <command label="Dolphin (Standalone)">%EMULATOR_DOLPHIN% -b -e %ROM%</command>
+    <platform>wii</platform>
+    <theme>wii</theme>
+  </system>
+  <system>
+    <name>dreamcast</name>
+    <fullname>Sega Dreamcast</fullname>
+    <path>%ROMPATH%/dreamcast</path>
+    <extension>.cdi .CDI .chd .CHD .cue .CUE .gdi .GDI .iso .ISO .7z .7Z .zip .ZIP</extension>
+    <command label="Flycast">%EMULATOR_RETROARCH% -f -L %CORE_RETROARCH%/flycast_libretro.dylib %ROM%</command>
+    <platform>dreamcast</platform>
+    <theme>dreamcast</theme>
+  </system>
+  <system>
+    <name>gb</name>
+    <fullname>Nintendo Game Boy</fullname>
+    <path>%ROMPATH%/gb</path>
+    <extension>.bin .BIN .dmg .DMG .gb .GB .gbs .GBS .7z .7Z .zip .ZIP</extension>
+    <command label="Gambatte">%EMULATOR_RETROARCH% -f -L %CORE_RETROARCH%/gambatte_libretro.dylib %ROM%</command>
+    <platform>gb</platform>
+    <theme>gb</theme>
+  </system>
+  <system>
+    <name>gba</name>
+    <fullname>Nintendo Game Boy Advance</fullname>
+    <path>%ROMPATH%/gba</path>
+    <extension>.gba .GBA .7z .7Z .zip .ZIP</extension>
+    <command label="mGBA">%EMULATOR_RETROARCH% -f -L %CORE_RETROARCH%/mgba_libretro.dylib %ROM%</command>
+    <platform>gba</platform>
+    <theme>gba</theme>
+  </system>
+  <system>
+    <name>gbc</name>
+    <fullname>Nintendo Game Boy Color</fullname>
+    <path>%ROMPATH%/gbc</path>
+    <extension>.gb .GB .gbc .GBC .7z .7Z .zip .ZIP</extension>
+    <command label="Gambatte">%EMULATOR_RETROARCH% -f -L %CORE_RETROARCH%/gambatte_libretro.dylib %ROM%</command>
+    <platform>gbc</platform>
+    <theme>gbc</theme>
+  </system>
+  <system>
+    <name>genesis</name>
+    <fullname>Sega Genesis</fullname>
+    <path>%ROMPATH%/genesis</path>
+    <extension>.bin .BIN .gen .GEN .md .MD .sg .SG .smd .SMD .7z .7Z .zip .ZIP</extension>
+    <command label="Genesis Plus GX">%EMULATOR_RETROARCH% -f -L %CORE_RETROARCH%/genesis_plus_gx_libretro.dylib %ROM%</command>
+    <platform>genesis</platform>
+    <theme>genesis</theme>
+  </system>
+  <system>
+    <name>n64</name>
+    <fullname>Nintendo 64</fullname>
+    <path>%ROMPATH%/n64</path>
+    <extension>.n64 .N64 .v64 .V64 .z64 .Z64 .ndd .NDD .7z .7Z .zip .ZIP</extension>
+    <command label="Mupen64Plus-Next">%EMULATOR_RETROARCH% -f -L %CORE_RETROARCH%/mupen64plus_next_libretro.dylib %ROM%</command>
+    <platform>n64</platform>
+    <theme>n64</theme>
+  </system>
+  <system>
+    <name>nds</name>
+    <fullname>Nintendo DS</fullname>
+    <path>%ROMPATH%/nds</path>
+    <extension>.nds .NDS .7z .7Z .zip .ZIP</extension>
+    <command label="DeSmuME">%EMULATOR_RETROARCH% -f -L %CORE_RETROARCH%/desmume_libretro.dylib %ROM%</command>
+    <platform>nds</platform>
+    <theme>nds</theme>
+  </system>
+  <system>
+    <name>nes</name>
+    <fullname>Nintendo Entertainment System</fullname>
+    <path>%ROMPATH%/nes</path>
+    <extension>.nes .NES .unf .UNF .unif .UNIF .7z .7Z .zip .ZIP</extension>
+    <command label="Mesen">%EMULATOR_RETROARCH% -f -L %CORE_RETROARCH%/mesen_libretro.dylib %ROM%</command>
+    <platform>nes</platform>
+    <theme>nes</theme>
+  </system>
+  <system>
+    <name>ps2</name>
+    <fullname>Sony PlayStation 2</fullname>
+    <path>%ROMPATH%/ps2</path>
+    <extension>.bin .BIN .chd .CHD .cso .CSO .dump .DUMP .gz .GZ .img .IMG .iso .ISO .mdf .MDF .nrg .NRG .7z .7Z .zip .ZIP</extension>
+    <command label="PCSX2 (Standalone)">%EMULATOR_PCSX2% -batch -fullscreen %ROM%</command>
+    <platform>ps2</platform>
+    <theme>ps2</theme>
+  </system>
+  <system>
+    <name>psp</name>
+    <fullname>Sony PSP</fullname>
+    <path>%ROMPATH%/psp</path>
+    <extension>.chd .CHD .cso .CSO .iso .ISO .pbp .PBP .7z .7Z .zip .ZIP</extension>
+    <command label="PPSSPP">%EMULATOR_RETROARCH% -f -L %CORE_RETROARCH%/ppsspp_libretro.dylib %ROM%</command>
+    <platform>psp</platform>
+    <theme>psp</theme>
+  </system>
+  <system>
+    <name>snes</name>
+    <fullname>Super Nintendo</fullname>
+    <path>%ROMPATH%/snes</path>
+    <extension>.sfc .SFC .smc .SMC .7z .7Z .zip .ZIP</extension>
+    <command label="Snes9x">%EMULATOR_RETROARCH% -f -L %CORE_RETROARCH%/snes9x_libretro.dylib %ROM%</command>
+    <platform>snes</platform>
+    <theme>snes</theme>
+  </system>
+  <system>
+    <name>switch</name>
+    <fullname>Nintendo Switch</fullname>
+    <path>%ROMPATH%/switch</path>
+    <extension>.nca .NCA .nro .NRO .nso .NSO .nsp .NSP .xci .XCI .7z .7Z .zip .ZIP</extension>
+    <command label="Ryujinx (Standalone)">%EMULATOR_RYUJINX% %ROM%</command>
+    <platform>switch</platform>
+    <theme>switch</theme>
+  </system>
+  <system>
+    <name>wiiu</name>
+    <fullname>Nintendo Wii U</fullname>
+    <path>%ROMPATH%/wiiu</path>
+    <extension>.rpx .RPX .wua .WUA .wud .WUD .wux .WUX</extension>
+    <command label="Cemu (Standalone)">%EMULATOR_CEMU% -f -g %ROM%</command>
+    <platform>wiiu</platform>
+    <theme>wiiu</theme>
+  </system>
+</systemList>

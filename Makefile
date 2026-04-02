@@ -31,8 +31,11 @@ setup: ## Build all emulators and wire config symlinks
 		result/bin/ryujinx --help >/dev/null 2>&1 || true; \
 	fi
 	@echo ""
-	@echo "Generating ES-DE find rules..."
+	@echo "Configuring ES-DE..."
 	@python3 generate_find_rules.py result
+	@mkdir -p "$$HOME/ES-DE/custom_systems"
+	@cp ES-DE/custom_systems/es_systems.xml "$$HOME/ES-DE/custom_systems/es_systems.xml"
+	@echo "  ~/ES-DE/custom_systems/es_systems.xml"
 	@echo ""
 	@echo "Setting up config symlinks..."
 	python3 setup.py symlink
