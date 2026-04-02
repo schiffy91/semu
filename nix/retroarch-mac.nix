@@ -1,7 +1,7 @@
 # RetroArch for macOS — pre-built universal DMG + pre-built cores from buildbot.
 # nixpkgs retroarch is marked broken on Darwin, so we package the official builds.
-# Cores are baked into the app bundle so no manual downloading is needed.
-{ lib, stdenv, fetchurl, undmg, unzip, makeWrapper }:
+# Cores are baked in so no manual downloading is needed.
+{ lib, stdenv, fetchurl, undmg, unzip }:
 
 let
   version = "1.22.2";
@@ -38,7 +38,7 @@ stdenv.mkDerivation {
     hash = "sha256-gbeRIbom1TkGSuE7TQQZoSDD0WWvvmVs9fVBKxX9tDQ=";
   };
   sourceRoot = ".";
-  nativeBuildInputs = [ undmg unzip makeWrapper ];
+  nativeBuildInputs = [ undmg unzip ];
   installPhase = ''
     mkdir -p $out/Applications $out/cores $out/bin
 
@@ -47,16 +47,25 @@ stdenv.mkDerivation {
     # Install pre-built cores
     ${lib.concatMapStringsSep "\n" (src: "unzip -o ${src} -d $out/cores/") coreSrcs}
 
-    # Create a CLI wrapper that tells RetroArch where cores are
-    # Config path uses $HOME which must expand at runtime, so we write a shell script
-    cat > $out/bin/retroarch <<WRAPPER
-    #!/bin/bash
-    exec $out/Applications/RetroArch.app/Contents/MacOS/RetroArch \
-      --config="\$HOME/Library/Application Support/RetroArch/retroarch.cfg" \
-      --libretro-directory=$out/cores \
-      "\$@"
-    WRAPPER
+    # Wrapper: passes --config (user config with video_driver=gl) and
+    # sets libretro_directory via --appendconfig so RetroArch finds our cores.
+    # We write the cores path to a temp config that gets appended.
+    echo 'libretro_directory = "$out/cores"' > $out/cores/path.cfg
+
+    cat > $out/bin/retroarch <<'WRAPPER'
+#!/bin/bash
+SCRIPT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+CONFIG="$HOME/Library/Application Support/RetroArch/retroarch.cfg"
+CORES_CFG="$SCRIPT_DIR/cores/path.cfg"
+exec "$SCRIPT_DIR/Applications/RetroArch.app/Contents/MacOS/RetroArch" \
+  --config="$CONFIG" \
+  --appendconfig="$CORES_CFG" \
+  "$@"
+WRAPPER
     chmod +x $out/bin/retroarch
+
+    # Write the actual cores path (nix store path, not variable)
+    echo "libretro_directory = \"$out/cores\"" > $out/cores/path.cfg
   '';
   meta = {
     description = "RetroArch with ${toString (lib.length (lib.attrNames cores))} cores (${lib.concatStringsSep ", " (lib.mapAttrsToList (_: i: i.desc) cores)})";
