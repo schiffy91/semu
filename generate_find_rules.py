@@ -22,6 +22,7 @@ def main():
         "PCSX2": f"{result_dir}/Applications/PCSX2.app/Contents/MacOS/PCSX2",
         "CEMU": f"{result_dir}/Applications/Cemu.app/Contents/MacOS/Cemu",
         "RYUJINX": ryujinx_bin,
+        "ARES": f"{result_dir}/Applications/ares.app/Contents/MacOS/ares",
     }
 
     lines = [

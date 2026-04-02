@@ -40,13 +40,14 @@
     in {
       # --- Individual emulators (all platforms) ---
       dolphin = pkgs.dolphin-emu;
+      ares = pkgs.ares;
       inherit azahar ryujinx es-de retroarch pcsx2 cemu;
     } // pkgs.lib.optionalAttrs isLinux {
       es-de-steamdeck = pkgs.callPackage ./nix/es-de.nix { steamDeck = true; };
     } // {
       # --- Unified bundle ---
       default = pkgs.callPackage ./nix/schemulator.nix {
-        inherit (pkgs) dolphin-emu;
+        inherit (pkgs) dolphin-emu ares;
         inherit azahar pcsx2 cemu ryujinx es-de;
         retroarch-bare = retroarch;
       };
