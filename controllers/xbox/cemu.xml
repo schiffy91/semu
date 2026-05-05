@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<emulated_controller>
+    <type>Wii U GamePad</type>
+    <controller>
+        <api>SDLController</api>
+        <uuid>0_xbox</uuid>
+        <display_name>Xbox Wireless Controller</display_name>
+        <rumble>1</rumble>
+        <mappings>
+            <entry><mapping>1</mapping><button>button_0</button></entry>
+            <entry><mapping>2</mapping><button>button_1</button></entry>
+            <entry><mapping>3</mapping><button>button_3</button></entry>
+            <entry><mapping>4</mapping><button>button_4</button></entry>
+            <entry><mapping>5</mapping><button>button_9</button></entry>
+            <entry><mapping>6</mapping><button>button_10</button></entry>
+            <entry><mapping>7</mapping><button>+axis_4</button></entry>
+            <entry><mapping>8</mapping><button>+axis_5</button></entry>
+            <entry><mapping>13</mapping><button>button_6</button></entry>
+            <entry><mapping>14</mapping><button>button_4</button></entry>
+            <entry><mapping>15</mapping><button>button_5</button></entry>
+        </mappings>
+    </controller>
+</emulated_controller>

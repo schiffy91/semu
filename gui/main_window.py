@@ -1,0 +1,260 @@
+"""Main installer window: emulator cards + global actions + status bar."""
+
+from __future__ import annotations
+
+import os
+import sys
+
+from PySide6.QtCore import Qt
+from PySide6.QtWidgets import (
+    QFileDialog,
+    QHBoxLayout,
+    QInputDialog,
+    QLabel,
+    QMainWindow,
+    QMessageBox,
+    QPushButton,
+    QScrollArea,
+    QSizePolicy,
+    QStatusBar,
+    QVBoxLayout,
+    QWidget,
+)
+
+from core import controllers, lifecycle, state, steam, syncthing, updater
+from core.backup import cmd_backup, cmd_revert
+from gui.dialogs.progress import ProgressDialog
+from gui.dialogs.steamdeck import SteamDeckDialog
+from gui.dialogs.syncthing import SyncthingDialog
+from gui.emulator_card import EmulatorCard
+from gui.manifest import EMULATORS
+from gui.workers import CoreWorker, make_args
+
+
+class MainWindow(QMainWindow):
+    def __init__(self):
+        super().__init__()
+        self.setWindowTitle("Schemulator")
+        self.resize(820, 720)
+        self._project_dir = self._discover_project_dir()
+        self._cards = {}
+        self._current_worker = None
+        self._progress = None
+
+        central = QWidget()
+        self.setCentralWidget(central)
+
+        layout = QVBoxLayout(central)
+
+        layout.addWidget(self._build_header())
+        layout.addWidget(self._build_card_list(), stretch=1)
+        layout.addLayout(self._build_global_actions())
+
+        self.setStatusBar(QStatusBar())
+        self._refresh_status()
+
+    def _discover_project_dir(self) -> str:
+        env = os.environ.get("SCHEMULATOR_PROJECT_DIR")
+        if env and os.path.isdir(env):
+            return env
+        return os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+    def _build_header(self) -> QWidget:
+        wrap = QWidget()
+        layout = QHBoxLayout(wrap)
+        title = QLabel("<h2>Schemulator</h2>")
+        sub = QLabel(f"Project: <code>{self._project_dir}</code>  |  Platform: <b>{state.PLATFORM}</b>")
+        sub.setStyleSheet("color: #aaa;")
+        spacer = QWidget()
+        spacer.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+
+        change_btn = QPushButton("Change project…")
+        change_btn.clicked.connect(self._choose_project_dir)
+
+        layout.addWidget(title)
+        layout.addWidget(sub)
+        layout.addWidget(spacer)
+        layout.addWidget(change_btn)
+        return wrap
+
+    def _build_card_list(self) -> QWidget:
+        container = QWidget()
+        layout = QVBoxLayout(container)
+        layout.setSpacing(8)
+        for meta in EMULATORS:
+            card = EmulatorCard(meta, current_platform=state.PLATFORM)
+            card.install_clicked.connect(self._on_install)
+            card.update_clicked.connect(self._on_update)
+            card.uninstall_clicked.connect(self._on_uninstall)
+            card.backup_clicked.connect(self._on_backup)
+            card.rollback_clicked.connect(self._on_rollback)
+            card.revert_clicked.connect(self._on_revert)
+            card.open_config_clicked.connect(self._on_open_config)
+            card.apply_controller_clicked.connect(self._on_apply_controller)
+            layout.addWidget(card)
+            self._cards[meta.name] = card
+        layout.addStretch()
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setWidget(container)
+        return scroll
+
+    def _build_global_actions(self) -> QHBoxLayout:
+        row = QHBoxLayout()
+        install_all = QPushButton("Install All")
+        install_all.clicked.connect(lambda: self._on_install(""))
+        update_all = QPushButton("Update All")
+        update_all.clicked.connect(lambda: self._on_update(""))
+        backup_all = QPushButton("Backup All")
+        backup_all.clicked.connect(lambda: self._on_backup(""))
+
+        steamdeck_btn = QPushButton("Steam Deck setup…")
+        steamdeck_btn.clicked.connect(self._open_steamdeck)
+        if state.PLATFORM != "linux":
+            steamdeck_btn.setEnabled(False)
+
+        sync_btn = QPushButton("Sync saves…")
+        sync_btn.clicked.connect(self._open_syncthing)
+
+        row.addWidget(install_all)
+        row.addWidget(update_all)
+        row.addWidget(backup_all)
+        row.addStretch()
+        row.addWidget(steamdeck_btn)
+        row.addWidget(sync_btn)
+        return row
+
+    # -------- versions --------
+
+    def _refresh_status(self):
+        installed = updater.installed_versions(self._project_dir)
+        manifest = None  # offline-friendly: don't block startup on a network call
+        for name, card in self._cards.items():
+            v = installed.get(name.lower())
+            latest = manifest.emulators.get(name.lower(), {}).get("version") if manifest else None
+            card.set_installed(version=v, update_available_to=latest)
+        self.statusBar().showMessage(
+            f"{sum(1 for v in installed.values() if v)}/{len(self._cards)} installed"
+        )
+
+    def _choose_project_dir(self):
+        chosen = QFileDialog.getExistingDirectory(self, "Choose project directory", self._project_dir)
+        if chosen:
+            self._project_dir = chosen
+            self._refresh_status()
+
+    # -------- worker plumbing --------
+
+    def _run_worker(self, fn, args, label: str):
+        if self._current_worker and self._current_worker.isRunning():
+            QMessageBox.information(self, "Busy", "Another operation is in progress.")
+            return
+        self._progress = ProgressDialog(label, parent=self)
+        self._progress.show()
+
+        worker = CoreWorker(fn, args)
+        worker.progress.connect(self._progress.append)
+        worker.finished_ok.connect(self._on_worker_finished)
+        self._current_worker = worker
+        worker.start()
+
+    def _on_worker_finished(self, ok: bool):
+        if self._progress:
+            self._progress.set_finished(ok)
+        self._refresh_status()
+
+    # -------- card slots --------
+
+    def _emulators_arg(self, name: str):
+        return [name] if name else []
+
+    def _on_install(self, name: str):
+        self._run_worker(
+            lifecycle.install,
+            make_args(config=None, emulators=self._emulators_arg(name)),
+            f"Installing {name or 'all emulators'}",
+        )
+
+    def _on_update(self, name: str):
+        self._run_worker(
+            lifecycle.update,
+            make_args(config=None, emulators=self._emulators_arg(name)),
+            f"Updating {name or 'all emulators'}",
+        )
+
+    def _on_uninstall(self, name: str):
+        if QMessageBox.question(
+            self, "Uninstall", f"Remove symlinks for {name}? Project-dir config is preserved."
+        ) != QMessageBox.Yes:
+            return
+        self._run_worker(
+            lifecycle.uninstall,
+            make_args(config=None, emulators=self._emulators_arg(name)),
+            f"Uninstalling {name}",
+        )
+
+    def _on_backup(self, name: str):
+        self._run_worker(
+            cmd_backup,
+            make_args(config=None, emulators=self._emulators_arg(name)),
+            f"Backing up {name or 'all emulators'}",
+        )
+
+    def _on_rollback(self, name: str):
+        if QMessageBox.question(
+            self, "Rollback", f"Roll back {name} to the previous build?"
+        ) != QMessageBox.Yes:
+            return
+        self._run_worker(
+            lifecycle.rollback,
+            make_args(config=None, emulators=self._emulators_arg(name)),
+            f"Rolling back {name}",
+        )
+
+    def _on_revert(self, name: str):
+        self._run_worker(
+            cmd_revert,
+            make_args(config=None, emulator=name, version=None),
+            f"Reverting {name} to original",
+        )
+
+    def _on_open_config(self, name: str):
+        target = os.path.join(self._project_dir, name)
+        if not os.path.isdir(target):
+            QMessageBox.information(self, "Open config", f"{target} doesn't exist yet.")
+            return
+        self._open_in_file_manager(target)
+
+    def _on_apply_controller(self, name: str):
+        profiles = controllers.list_profiles()
+        if not profiles:
+            QMessageBox.information(self, "Controllers", "No bundled controller profiles found.")
+            return
+        chosen, ok = QInputDialog.getItem(
+            self, "Apply controller defaults",
+            f"Choose a profile for {name}:", profiles, 0, False,
+        )
+        if not ok:
+            return
+        applied = controllers.apply(self._project_dir, name, chosen)
+        msg = "Applied." if applied else "No bundled fragment for that combination."
+        QMessageBox.information(self, "Controllers", msg)
+
+    # -------- global dialogs --------
+
+    def _open_steamdeck(self):
+        SteamDeckDialog(self._project_dir, parent=self).exec()
+        self._refresh_status()
+
+    def _open_syncthing(self):
+        SyncthingDialog(self._project_dir, parent=self).exec()
+
+    @staticmethod
+    def _open_in_file_manager(path: str):
+        import subprocess
+        if sys.platform == "darwin":
+            subprocess.Popen(["open", path])
+        elif sys.platform == "win32":
+            os.startfile(path)  # type: ignore[attr-defined]
+        else:
+            subprocess.Popen(["xdg-open", path])

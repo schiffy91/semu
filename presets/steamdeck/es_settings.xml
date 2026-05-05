@@ -1,0 +1,22 @@
+<?xml version="1.0"?>
+<!--
+  Steam Deck-tuned defaults for ES-DE. Borrows EmuDeck's choices where they
+  match our emulator pack. Users can override anything via ES-DE's own UI;
+  this is just the first-launch starting point.
+-->
+<settings>
+  <string name="Theme" value="linea" />
+  <string name="ThemeVariant" value="dark" />
+  <string name="ThemeColorScheme" value="steamdeck" />
+  <bool   name="FullscreenMode" value="true" />
+  <bool   name="VSync" value="true" />
+  <int    name="MaxVRAM" value="512" />
+  <bool   name="GamelistVideoPause" value="false" />
+  <bool   name="GamelistVideoMute" value="false" />
+  <bool   name="ScreensaverVideoMuted" value="false" />
+  <string name="AudioCard" value="default" />
+  <string name="StartupSystem" value="" />
+  <bool   name="HiddenSystemsShowAllowed" value="false" />
+  <bool   name="ShowHelpPrompts" value="true" />
+  <bool   name="ShowOnscreenKeyboard" value="true" />
+</settings>

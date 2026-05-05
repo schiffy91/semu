@@ -17,7 +17,7 @@ LINUX_PID := $(VM_DIR)/linux.pid
 # Setup (build everything + wire symlinks)
 # =============================================================================
 
-.PHONY: all install setup container-build container-test test help
+.PHONY: all install setup container-build container-test test gui package-mac package-linux appimage help
 
 all: install ## Build all emulators + set up symlinks (idempotent, cached by nix)
 install: setup
@@ -62,6 +62,34 @@ container-test: container-build ## Run tests in container (fast, deterministic)
 
 test: ## Run tests locally (native)
 	python3 -m pytest test/ -v
+
+# =============================================================================
+# GUI / Packaging
+# =============================================================================
+
+gui: ## Launch the desktop GUI
+	python3 setup.py gui
+
+package-mac: ## Build a notarised .dmg containing Schemulator.app (requires macOS)
+	@command -v pyinstaller >/dev/null || pip install pyinstaller
+	@command -v create-dmg >/dev/null || (echo "create-dmg not installed; brew install create-dmg" && exit 1)
+	pyinstaller --noconfirm --windowed --name Schemulator \
+		--add-data "controllers:controllers" \
+		--add-data "presets:presets" \
+		--add-data "setup.json:." \
+		gui/app.py
+	create-dmg --volname Schemulator dist/Schemulator.dmg dist/Schemulator.app
+
+package-linux: appimage ## Alias: build the Linux AppImage
+
+appimage: ## Build a self-contained AppImage for Linux
+	@command -v pyinstaller >/dev/null || pip install pyinstaller
+	pyinstaller --noconfirm --onedir --name schemulator-gui \
+		--add-data "controllers:controllers" \
+		--add-data "presets:presets" \
+		--add-data "setup.json:." \
+		gui/app.py
+	@echo "Wrap dist/schemulator-gui/ in an AppDir + run appimagetool to produce .AppImage"
 
 # =============================================================================
 # QEMU VM (full system, for flatpak/GUI/integration testing)

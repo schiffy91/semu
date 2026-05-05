@@ -21,13 +21,15 @@ nix develop
 |------------|-----------------------|-------|-------|
 | Dolphin    | GameCube, Wii         | Yes   | Yes   |
 | Azahar     | Nintendo 3DS          | Yes   | Yes   |
-| PCSX2      | PlayStation 2         | —     | Yes   |
-| Cemu       | Wii U                 | —     | Yes   |
-| RetroArch  | Multi-system (cores)  | —     | Yes   |
+| PCSX2      | PlayStation 2         | Yes   | Yes   |
+| Cemu       | Wii U                 | Yes   | Yes   |
+| RetroArch  | Multi-system (cores)  | Yes   | Yes   |
 | Ryujinx    | Nintendo Switch       | Yes   | Yes   |
+| Lime3DS    | Nintendo 3DS (legacy) | —     | Yes   |
 | ES-DE      | Frontend              | Yes   | Yes   |
 
-All emulators are pinned to exact versions via `flake.lock`.
+All emulators are pinned to exact versions via `flake.lock`. macOS variants
+live in `nix/<emulator>-mac.nix`; Linux uses upstream nixpkgs.
 
 ## How It Works
 
@@ -49,7 +51,32 @@ schemulator capture <emulator> <version>  # Snapshot config as immutable origina
 schemulator originals <emulator>          # List captured originals
 schemulator revert <emulator> [version]   # Restore from original (auto-backs up)
 schemulator migrate <source> <target>     # Copy configs between emulators
+schemulator install [emulator...]         # Build emulators + symlink configs
+schemulator update  [emulator...]         # Atomic update (keeps prev for rollback)
+schemulator uninstall [emulator...]       # Remove symlinks (preserves project-dir data)
+schemulator rollback [emulator...]        # Swap back to previous build + revert config
+schemulator gui                           # Launch the desktop installer/updater
 ```
+
+## Desktop GUI
+
+```sh
+schemulator gui   # or: make gui
+```
+
+The GUI (PySide6) shows one card per emulator with install / update / rollback /
+revert actions. From the main window:
+
+- **Steam Deck setup…** — scan an SD card for ROMs, write a non-Steam shortcut
+  for ES-DE, install the bundled Steam Input layout, surface missing
+  BIOS / firmware.
+- **Sync saves…** — bootstrap the bundled Syncthing sidecar and pair other
+  devices via their device ID. Syncs only `<project_dir>/saves/` so ROM paths
+  can differ across devices.
+- Per-card menu: Apply controller defaults (Xbox / DualSense / generic-XInput /
+  Deck), open config folder, uninstall.
+
+See [docs/phase3-gui.md](docs/phase3-gui.md) for architecture details.
 
 ## NixOS
 
