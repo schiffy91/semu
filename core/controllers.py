@@ -16,8 +16,13 @@ PROFILES = ("xbox", "dualsense", "generic-xinput", "steamdeck")
 
 
 # Per-emulator: where in <project_dir>/<Emulator>/ does the profile fragment land?
+#
+# RetroArch is intentionally absent: it ships its own libretro-joypad-autoconfig
+# database that already handles Xbox / DualSense / generic XInput correctly when
+# the device is plugged in. Overriding it from here would conflict with that
+# detection. Users who want custom RetroArch bindings can drop a file under
+# `<project_dir>/RetroArch/config/autoconfig/<driver>/<Device>.cfg` directly.
 PROFILE_TARGETS = {
-    "RetroArch": ("config", "autoconfig.fragment.cfg"),
     "Dolphin":   ("config", "GCPadNew.ini"),
     "PCSX2":     ("config", "inputprofiles", "schemulator.ini"),
     "Cemu":      ("config", "controllerProfiles", "schemulator.xml"),

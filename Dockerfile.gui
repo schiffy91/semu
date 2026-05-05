@@ -1,0 +1,15 @@
+FROM --platform=linux/amd64 archlinux:latest
+# Heavier image used only for GUI / Syncthing E2E tests. Adds Qt6 runtime,
+# Xvfb, PySide6, syncthing. Don't use for the fast unit-test loop — that's
+# what the slim Dockerfile is for.
+RUN echo 'DisableSandbox' >> /etc/pacman.conf && \
+    sed -i 's/^SigLevel.*/SigLevel = Never/' /etc/pacman.conf && \
+    pacman -Syu --noconfirm \
+        python python-pip python-pycryptodome python-pytest python-pyside6 \
+        git xorg-server-xvfb mesa libxkbcommon libxkbcommon-x11 dbus \
+        fontconfig ttf-dejavu syncthing wget curl base-devel \
+        qt6-base qt6-wayland libxcb xcb-util xcb-util-image \
+        xcb-util-keysyms xcb-util-renderutil xcb-util-wm && \
+    pacman -Scc --noconfirm
+WORKDIR /schemulator
+ENV QT_QPA_PLATFORM=offscreen
