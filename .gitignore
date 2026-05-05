@@ -57,3 +57,6 @@ ES-DE/es_settings.xml
 # Allow ES-DE custom systems config (static, checked in)
 !ES-DE/custom_systems/
 !ES-DE/custom_systems/**
+
+# === Bundled runtime binaries (downloaded by package targets, not committed) ===
+bin/

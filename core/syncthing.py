@@ -20,7 +20,7 @@ import subprocess
 import time
 import urllib.error
 import urllib.request
-import xml.etree.ElementTree as ET
+import xml.etree.ElementTree as ET  # noqa: S405 — local syncthing config only
 from dataclasses import dataclass
 from typing import List, Optional
 
@@ -74,7 +74,14 @@ def init(home: Optional[str] = None) -> bool:
     if os.path.exists(os.path.join(home, "config.xml")):
         return True
     os.makedirs(home, exist_ok=True)
-    subprocess.run([binary, f"--generate={home}"], check=False)
+    # syncthing 1.x uses `generate` subcommand; older builds used `--generate=PATH`.
+    # Try the modern form first; fall back if it fails.
+    result = subprocess.run(
+        [binary, "generate", f"--home={home}", "--no-port-probing"],
+        capture_output=True, text=True,
+    )
+    if result.returncode != 0:
+        subprocess.run([binary, f"--generate={home}"], capture_output=True, text=True)
     return os.path.exists(os.path.join(home, "config.xml"))
 
 
@@ -111,18 +118,35 @@ def api_key(home: Optional[str] = None) -> Optional[str]:
         return None
 
 
-def start(home: Optional[str] = None) -> Optional[subprocess.Popen]:
-    """Spawn syncthing as a child process. Caller is responsible for terminate()."""
+def start(home: Optional[str] = None, wait_for_ready: float = 15.0) -> Optional[subprocess.Popen]:
+    """Spawn syncthing as a child process and wait until the REST API is reachable.
+
+    Returns the Popen handle (caller terminates it) or None if startup failed.
+    """
     binary = find_binary()
     if not binary:
         return None
     home = home or _config_home()
     init(home)
-    return subprocess.Popen(
-        [binary, "serve", f"--home={home}", "--no-browser", "--no-restart"],
+    env = os.environ.copy()
+    env["STNORESTART"] = "1"
+    env["STNOUPGRADE"] = "1"
+    proc = subprocess.Popen(
+        [binary, "serve", f"--home={home}", "--no-browser", "--no-upgrade", "--no-restart"],
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
+        env=env,
     )
+    if wait_for_ready > 0:
+        deadline = time.monotonic() + wait_for_ready
+        while time.monotonic() < deadline:
+            if proc.poll() is not None:
+                return None  # died during startup
+            if _ping(home, timeout=1.0):
+                return proc
+            time.sleep(0.5)
+        # Timed out — still return the proc so caller can decide.
+    return proc
 
 
 def stop(proc: Optional[subprocess.Popen]) -> None:

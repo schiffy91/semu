@@ -52,7 +52,14 @@ class SdCard:
 
 
 def list_sdcards() -> List[SdCard]:
-    """Enumerate currently-mounted external storage candidates."""
+    """Enumerate currently-mounted external storage candidates.
+
+    Steam Deck convention: `/run/media/deck/<sd_label>/`. Older / non-Deck
+    Linux: `/media/<user>/<sd_label>/` or `/run/media/<sd_label>/`. We
+    distinguish a "user directory" from an actual mount by inspecting
+    contents — only directories that look like ROM stores (have an
+    `Emulation/` subtree, or hold known ROM extensions) are reported.
+    """
     cards: List[SdCard] = []
     for root in SD_MOUNT_ROOTS:
         if not os.path.isdir(root):
@@ -61,13 +68,13 @@ def list_sdcards() -> List[SdCard]:
             user_path = os.path.join(root, user_dir)
             if not os.path.isdir(user_path):
                 continue
-            # Either /run/media/<user>/<label> (modern) or /run/media/<label> (legacy)
-            if _looks_like_mount(user_path):
+            if _looks_like_rom_store(user_path):
                 cards.append(_inspect_mount(user_path, user_dir))
                 continue
+            # Treat user_path as a username; descend one more level.
             for label in _safe_listdir(user_path):
                 mount = os.path.join(user_path, label)
-                if _looks_like_mount(mount):
+                if _looks_like_rom_store(mount):
                     cards.append(_inspect_mount(mount, label))
     return cards
 
@@ -80,15 +87,39 @@ def _safe_listdir(path: str) -> List[str]:
 
 
 def _looks_like_mount(path: str) -> bool:
-    """A mount has children we can read and isn't a regular file."""
+    """Path is a readable directory (kept for backward compat)."""
     if not os.path.isdir(path):
         return False
-    # Skip mountpoints we can't read.
     try:
         os.listdir(path)
     except OSError:
         return False
     return True
+
+
+def _looks_like_rom_store(path: str) -> bool:
+    """A directory worth surfacing as an SD card: contains an Emulation/
+    subtree (EmuDeck convention) or has at least one ROM extension somewhere
+    in the first two levels."""
+    if not _looks_like_mount(path):
+        return False
+    if os.path.isdir(os.path.join(path, "Emulation")):
+        return True
+    try:
+        for entry in os.listdir(path):
+            full = os.path.join(path, entry)
+            if os.path.isfile(full) and os.path.splitext(entry)[1].lower() in EXT_TO_SYSTEM:
+                return True
+            if os.path.isdir(full):
+                try:
+                    for sub in os.listdir(full):
+                        if os.path.splitext(sub)[1].lower() in EXT_TO_SYSTEM:
+                            return True
+                except OSError:
+                    continue
+    except OSError:
+        return False
+    return False
 
 
 def _inspect_mount(mount_path: str, label: str) -> SdCard:
