@@ -16,15 +16,37 @@ The CLI is Python. PySide6 keeps one language, one codebase, and avoids shipping
 ## Architecture
 
 ```
-setup.py (CLI)          ← Phase 2, the source of truth for all operations
+setup.py (CLI shim)     ← thin argparse wrapper, re-exports for tests
    ↑
-core/                   ← Shared library: install, update, backup, migrate, resolve
+core/                   ← Shared library: every action lives here
+   ├── state.py         ← module-level globals (PLATFORM, HOST, PORTABLE, DRY_RUN)
+   ├── exec.py          ← centralised filesystem/subprocess dispatcher
+   ├── symlinks.py      ← parse_config + create_symlinks (lifted from setup.py)
+   ├── flatpak.py       ← Flatpak install / override / reset helpers
+   ├── backup.py        ← backup, capture, revert, migrate, originals
+   ├── lifecycle.py     ← install / update / uninstall / rollback
+   ├── steam.py         ← shortcuts.vdf binary KeyValues codec
+   ├── sdcard.py        ← SD detection, ROM scan, BIOS check (Steam Deck)
+   ├── controllers.py   ← apply controller-profile bundles per emulator
+   ├── syncthing.py     ← sidecar lifecycle + REST helpers + folder mapping
+   ├── updater.py       ← version manifest fetch, atomic swap, rollback
+   └── cli.py           ← argparse + command dispatcher
    ↑
-gui/                    ← Phase 3, thin UI layer that calls into core/
+gui/                    ← Phase 3 PySide6 UI; never duplicates core logic
+   ├── app.py
    ├── main_window.py
    ├── emulator_card.py
-   ├── dialogs/
-   └── workers.py       ← QThread wrappers for async operations
+   ├── manifest.py      ← static EmulatorMeta entries for the card grid
+   ├── workers.py       ← QThread wrapper that streams stdout/err to a Qt signal
+   └── dialogs/
+       ├── progress.py    ← streaming log + close button
+       ├── steamdeck.py   ← SD scan, firmware check, Steam shortcut/layout
+       └── syncthing.py   ← device ID display + peer pairing
+```
+
+```
+controllers/<profile>/<emulator>.<ext>   bundled controller fragments (xbox, dualsense, generic-xinput, steamdeck)
+presets/steamdeck/                        Deck-tuned RetroArch + ES-DE defaults
 ```
 
 The GUI never implements business logic directly. Every action calls the same `core.*` functions the CLI uses. This means:
@@ -142,6 +164,42 @@ class InstallWorker(QThread):
 - Background update checks on a schedule
 - Notification when updates are available
 - Quick actions: update all, open ES-DE
+
+## Steam Deck flow
+
+The "Steam Deck setup…" button on the main window opens a dialog that:
+
+1. Scans `/run/media/deck/*` and `/run/media/<user>/*` for SD cards
+2. Detects EmuDeck-style `Emulation/roms/<system>/` layout, falls back to
+   extension-based scan
+3. Reports missing BIOS / firmware files (PCSX2, Ryujinx, Cemu, Azahar)
+4. Optionally writes a non-Steam shortcut for ES-DE to
+   `~/.steam/steam/userdata/<id>/config/shortcuts.vdf`
+5. Optionally installs the bundled Steam Input layout to
+   `~/.steam/steam/controller_base/templates/`
+
+The shortcuts.vdf binary KeyValues codec lives in `core/steam.py` (no external
+dependency).
+
+## macOS
+
+Same GUI, packaged as a notarised `.dmg` containing `Schemulator.app`. Self-update
+via Sparkle (driven by `core/updater.py::fetch_manifest`). Controllers are
+exposed via GameController.framework natively; the bundled `controllers/xbox/`
+and `controllers/dualsense/` fragments are merged into each emulator's config
+when the user clicks "Apply controller defaults" on a card.
+
+## Save sync
+
+The "Sync saves…" button opens the Syncthing dialog. The first launch generates
+a Syncthing config under `~/.config/schemulator/syncthing/`; the dialog shows
+this device's ID and accepts a peer's ID to authorise. The shared folder is
+`<project_dir>/saves/` with symlinks back into each emulator's save subdirectory
+(see `core.syncthing.SAVE_PATHS` for the full mapping).
+
+Each device picks its own ROM root via the Steam Deck wizard (or just the
+filesystem for macOS); only saves are synced, so ROM paths can differ across
+devices.
 
 ## Packaging
 

@@ -51,13 +51,26 @@
         inherit azahar pcsx2 cemu ryujinx es-de;
         retroarch-bare = retroarch;
       };
+
+      # --- Desktop GUI (PySide6) ---
+      # `nix run .#gui` launches the installer/updater UI.
+      gui =
+        let py = pkgs.python3.withPackages (ps: [ ps.pyside6 ]);
+        in pkgs.writeShellScriptBin "schemulator-gui" ''
+          export QT_QPA_PLATFORM=''${QT_QPA_PLATFORM:-xcb}
+          cd ${./.} && exec ${py}/bin/python setup.py gui "$@"
+        '';
     });
 
-    # `nix run` launches schemulator CLI
+    # `nix run` launches schemulator CLI; `nix run .#gui` launches the GUI.
     apps = forAllSystems (system: {
       default = {
         type = "app";
         program = "${self.packages.${system}.default}/bin/schemulator";
+      };
+      gui = {
+        type = "app";
+        program = "${self.packages.${system}.gui}/bin/schemulator-gui";
       };
     });
 

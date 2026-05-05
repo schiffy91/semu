@@ -1,0 +1,34 @@
+"controller_mappings"
+{
+    "version"          "3"
+    "revision"         "1"
+    "title"            "Schemulator: ES-DE on Deck"
+    "description"      "Default Schemulator layout for ES-DE in Game Mode."
+    "creator"          "76561197960265728"
+    "Timestamp"        ""
+    "actions"
+    {
+        "Default"
+        {
+            "title"         "Default"
+            "StickPadGyro"
+            {
+                "left_trackpad"
+                {
+                    "mode"     "dpad"
+                    "inputs"
+                    {
+                        "dpad_north" { "activators" { "Full_Press" { "bindings" { "binding" "key_press UP_ARROW" } } } }
+                        "dpad_south" { "activators" { "Full_Press" { "bindings" { "binding" "key_press DOWN_ARROW" } } } }
+                        "dpad_west"  { "activators" { "Full_Press" { "bindings" { "binding" "key_press LEFT_ARROW" } } } }
+                        "dpad_east"  { "activators" { "Full_Press" { "bindings" { "binding" "key_press RIGHT_ARROW" } } } }
+                    }
+                }
+            }
+        }
+    }
+    "localization"
+    {
+        "english" { "title" "Schemulator: ES-DE on Deck" }
+    }
+}

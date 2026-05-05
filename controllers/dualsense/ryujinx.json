@@ -1,0 +1,37 @@
+{
+  "version": 1,
+  "backend": "GamepadSDL2",
+  "id": "0",
+  "controller_type": "ProController",
+  "deadzone_left": 0.1,
+  "deadzone_right": 0.1,
+  "trigger_threshold": 0.5,
+  "left_joycon": {
+    "stick_up": "Axis_1-",
+    "stick_down": "Axis_1+",
+    "stick_left": "Axis_0-",
+    "stick_right": "Axis_0+",
+    "stick_button": "Button_7",
+    "dpad_up": "Button_11",
+    "dpad_down": "Button_12",
+    "dpad_left": "Button_13",
+    "dpad_right": "Button_14",
+    "minus": "Button_4",
+    "shoulder": "Button_9",
+    "trigger": "Axis_4+"
+  },
+  "right_joycon": {
+    "stick_up": "Axis_3-",
+    "stick_down": "Axis_3+",
+    "stick_left": "Axis_2-",
+    "stick_right": "Axis_2+",
+    "stick_button": "Button_8",
+    "button_a": "Button_1",
+    "button_b": "Button_0",
+    "button_x": "Button_3",
+    "button_y": "Button_2",
+    "plus": "Button_6",
+    "shoulder": "Button_10",
+    "trigger": "Axis_5+"
+  }
+}
