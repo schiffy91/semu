@@ -23,7 +23,9 @@ from PySide6.QtWidgets import (
 
 from core import controllers, lifecycle, state, steam, syncthing, updater
 from core.backup import cmd_backup, cmd_revert
+from gui.dialogs.originals import OriginalsDialog
 from gui.dialogs.progress import ProgressDialog
+from gui.dialogs.settings import SettingsDialog
 from gui.dialogs.steamdeck import SteamDeckDialog
 from gui.dialogs.syncthing import SyncthingDialog
 from gui.emulator_card import EmulatorCard
@@ -70,11 +72,14 @@ class MainWindow(QMainWindow):
 
         change_btn = QPushButton("Change project…")
         change_btn.clicked.connect(self._choose_project_dir)
+        settings_btn = QPushButton("Settings…")
+        settings_btn.clicked.connect(self._open_settings)
 
         layout.addWidget(title)
         layout.addWidget(sub)
         layout.addWidget(spacer)
         layout.addWidget(change_btn)
+        layout.addWidget(settings_btn)
         return wrap
 
     def _build_card_list(self) -> QWidget:
@@ -212,11 +217,9 @@ class MainWindow(QMainWindow):
         )
 
     def _on_revert(self, name: str):
-        self._run_worker(
-            cmd_revert,
-            make_args(config=None, emulator=name, version=None),
-            f"Reverting {name} to original",
-        )
+        # Open the originals browser instead of blindly reverting to latest.
+        OriginalsDialog(name, self._project_dir, parent=self).exec()
+        self._refresh_status()
 
     def _on_open_config(self, name: str):
         target = os.path.join(self._project_dir, name)
@@ -248,6 +251,10 @@ class MainWindow(QMainWindow):
 
     def _open_syncthing(self):
         SyncthingDialog(self._project_dir, parent=self).exec()
+
+    def _open_settings(self):
+        if SettingsDialog(self._project_dir, parent=self).exec():
+            self._refresh_status()
 
     @staticmethod
     def _open_in_file_manager(path: str):

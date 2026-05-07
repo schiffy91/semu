@@ -43,33 +43,48 @@ def _save_originals_manifest(project_dir, emulator_dir, manifest):
 
 
 def cmd_backup(args):
-    """Snapshot emulator configs to a timestamped zip."""
+    """Snapshot emulator configs to a timestamped zip.
+
+    Writes atomically: zip is created at <name>.zip.tmp and renamed only after
+    a complete write. A crashed/cancelled backup leaves the .tmp behind for
+    inspection but never a half-valid .zip.
+    """
     config_file, project_dir = resolve_config(args)
     timestamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
     backup_dir = os.path.join(project_dir, "backups")
     os.makedirs(backup_dir, exist_ok=True)
     backup_path = os.path.join(backup_dir, f"{state.PLATFORM}-{timestamp}.zip")
+    tmp_path = backup_path + ".tmp"
 
     emulators = filter_emulators(parse_config(config_file, project_dir), args.emulators)
     count = 0
 
-    with zipfile.ZipFile(backup_path, "w", zipfile.ZIP_DEFLATED) as zf:
-        for _, entries in emulators.items():
-            for _, _, source_path in entries:
-                if not os.path.exists(source_path):
-                    continue
-                if os.path.isfile(source_path):
-                    arcname = os.path.relpath(source_path, project_dir)
-                    zf.write(source_path, arcname)
-                    count += 1
-                elif os.path.isdir(source_path):
-                    for root, dirs, files in os.walk(source_path):
-                        dirs[:] = [d for d in dirs if d not in BACKUP_EXCLUDE]
-                        for f in files:
-                            filepath = os.path.join(root, f)
-                            arcname = os.path.relpath(filepath, project_dir)
-                            zf.write(filepath, arcname)
-                            count += 1
+    try:
+        with zipfile.ZipFile(tmp_path, "w", zipfile.ZIP_DEFLATED) as zf:
+            for _, entries in emulators.items():
+                for _, _, source_path in entries:
+                    if not os.path.exists(source_path):
+                        continue
+                    if os.path.isfile(source_path):
+                        arcname = os.path.relpath(source_path, project_dir)
+                        zf.write(source_path, arcname)
+                        count += 1
+                    elif os.path.isdir(source_path):
+                        for root, dirs, files in os.walk(source_path):
+                            dirs[:] = [d for d in dirs if d not in BACKUP_EXCLUDE]
+                            for f in files:
+                                filepath = os.path.join(root, f)
+                                arcname = os.path.relpath(filepath, project_dir)
+                                zf.write(filepath, arcname)
+                                count += 1
+        os.replace(tmp_path, backup_path)
+    except Exception:
+        if os.path.exists(tmp_path):
+            try:
+                os.remove(tmp_path)
+            except OSError:
+                pass
+        raise
 
     console_log(f"Backed up {count} files to {backup_path}")
 
