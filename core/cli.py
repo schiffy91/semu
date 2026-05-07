@@ -200,7 +200,7 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_parser("gui", help="Launch the desktop GUI")
 
     p_ctrl = sub.add_parser("controllers", help="Apply bundled controller-profile fragments")
-    p_ctrl.add_argument("profile", choices=["xbox", "dualsense", "steamdeck"], help="Profile name")
+    p_ctrl.add_argument("profile", choices=["xbox", "dualsense"], help="Profile name")
     p_ctrl.add_argument("emulator", nargs="?", help="Emulator name (default: all)")
 
     p_sd = sub.add_parser("sd-scan", help="Scan SD cards / external storage for ROMs")

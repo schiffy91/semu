@@ -406,6 +406,32 @@ class MainWindow(QMainWindow):
             f"Schemulator needs {names} for install/update operations.\n\n{hints}",
         )
 
+    def recover_interrupted_updates(self) -> None:
+        """Detect and offer to complete any update interrupted by a crash.
+
+        See core.lifecycle.detect_interrupted_updates for the failure mode.
+        Round-2 critic finding #5.
+        """
+        pending = lifecycle.detect_interrupted_updates(self._project_dir)
+        if not pending:
+            return
+        names = ", ".join(pending)
+        result = QMessageBox.question(
+            self,
+            "Interrupted update detected",
+            f"It looks like a previous update of {names} was interrupted "
+            f"(probably from a crash or power loss). The new build is on disk "
+            f"but wasn't promoted into place. Complete the update now?",
+        )
+        if result != QMessageBox.Yes:
+            return
+        for emu in pending:
+            try:
+                lifecycle.recover_interrupted_update(self._project_dir, emu)
+            except Exception as e:
+                self.statusBar().showMessage(f"Recovery failed for {emu}: {e}", 8000)
+        self._refresh_status()
+
     def maybe_show_first_run_wizard(self) -> bool:
         """Run the first-run wizard if this looks like a fresh install. Returns
         True if the user completed it, False if they skipped/cancelled or it

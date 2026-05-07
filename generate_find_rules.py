@@ -38,14 +38,16 @@ def _emulator_paths(result_dir: str) -> dict:
             ),
             "ARES":      f"{result_dir}/Applications/ares.app/Contents/MacOS/ares",
         }
-    # Linux: standard FHS bin dir
+    # Linux: standard FHS bin dir. Binary names match what the corresponding
+    # nix derivation actually emits (verified against nix/*.nix in this repo
+    # and the matching nixpkgs attributes). Round-2 critic finding #1.
     return {
         "RETROARCH": f"{result_dir}/bin/retroarch",
         "AZAHAR":    f"{result_dir}/bin/azahar",
         "DOLPHIN":   f"{result_dir}/bin/dolphin-emu",
         "PCSX2":     f"{result_dir}/bin/pcsx2-qt",
-        "CEMU":      f"{result_dir}/bin/Cemu",
-        "RYUJINX":   f"{result_dir}/bin/Ryujinx",
+        "CEMU":      f"{result_dir}/bin/Cemu",         # nixpkgs cemu emits exact case 'Cemu'
+        "RYUJINX":   f"{result_dir}/bin/ryujinx",      # our nix/ryujinx.nix:73 wrapper
         "ARES":      f"{result_dir}/bin/ares",
     }
 

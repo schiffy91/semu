@@ -34,6 +34,11 @@ def main():
             window.show_prereq_warnings()
         except Exception as e:
             print(f"Prereq check skipped: {e}", file=sys.stderr)
+        # Recover from any update that crashed mid-rename last time.
+        try:
+            window.recover_interrupted_updates()
+        except Exception as e:
+            print(f"Update recovery skipped: {e}", file=sys.stderr)
         try:
             window.maybe_show_first_run_wizard()
         except Exception as e:

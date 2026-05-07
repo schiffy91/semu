@@ -38,7 +38,6 @@ SAVE_PATHS = {
     "Cemu":      ["data/mlc01/usr/save"],
     "Ryujinx":   ["config/bis_system", "config/bis_user/save"],
     "Azahar":    ["data/sdmc"],
-    "Lime3DS":   ["data/sdmc"],
 }
 
 

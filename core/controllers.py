@@ -12,7 +12,7 @@ from typing import List
 from core.console import console_error, console_log
 
 
-PROFILES = ("xbox", "dualsense", "steamdeck")
+PROFILES = ("xbox", "dualsense")
 
 
 # Per-emulator: where in <project_dir>/<Emulator>/ does the profile fragment land?
@@ -28,7 +28,6 @@ PROFILE_TARGETS = {
     "Cemu":      ("config", "controllerProfiles", "schemulator.xml"),
     "Ryujinx":   ("config", "profiles", "controller", "schemulator.json"),
     "Azahar":    ("data", "config", "qt-config.ini"),
-    "Lime3DS":   ("data", "config", "qt-config.ini"),
 }
 
 

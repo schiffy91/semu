@@ -1,0 +1,7 @@
+{
+    "data":
+    {
+        "linux": "~/.local/share/ares/",
+        "macos": "${host}/ares/"
+    }
+}
