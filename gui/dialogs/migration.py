@@ -27,6 +27,7 @@ from PySide6.QtWidgets import (
 
 from core.backup import cmd_migrate
 from core.symlinks import find_emulator_dir
+from gui.workers import CoreWorker, make_args
 
 
 class MigrationDialog(QDialog):
@@ -130,13 +131,28 @@ class MigrationDialog(QDialog):
         )
         if confirm != QMessageBox.Yes:
             return
-        try:
-            cmd_migrate(argparse.Namespace(
-                config=os.path.join(self._project_dir, "setup.json"),
-                source=src, target=tgt,
-            ))
-        except Exception as e:
-            QMessageBox.critical(self, "Migrate", f"Migration failed:\n{e}")
-            return
-        QMessageBox.information(self, "Migrate", "Migration complete.")
-        self.accept()
+        # Run on a worker so the UI stays responsive during big copies.
+        from gui.dialogs.progress import ProgressDialog
+        progress = ProgressDialog(f"Migrating {src} → {tgt}", parent=self)
+        progress.show()
+
+        worker = CoreWorker(cmd_migrate, make_args(
+            config=os.path.join(self._project_dir, "setup.json"),
+            source=src, target=tgt,
+        ))
+        self._worker = worker  # keep reference so it isn't GC'd
+
+        def on_progress(text: str):
+            progress.append(text)
+
+        def on_finished(ok: bool):
+            progress.set_finished(ok)
+            if ok:
+                QMessageBox.information(self, "Migrate", "Migration complete.")
+                self.accept()
+            else:
+                QMessageBox.critical(self, "Migrate", "Migration failed — see log.")
+
+        worker.progress.connect(on_progress)
+        worker.finished_ok.connect(on_finished)
+        worker.start()
