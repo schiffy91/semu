@@ -4,6 +4,7 @@ import argparse
 import datetime
 import json
 import os
+import re
 import shutil
 import stat as stat_module
 import zipfile
@@ -17,6 +18,19 @@ from core.symlinks import (
     parse_config,
     resolve_config,
 )
+
+
+_VALID_VERSION_RE = re.compile(r"^[A-Za-z0-9._-]+$")
+
+
+def _validate_version(version: str) -> bool:
+    """Reject version labels that could escape the originals/<version> dir.
+    Only allow [A-Za-z0-9._-]+; explicitly reject .. and absolute paths."""
+    if not version or len(version) > 64:
+        return False
+    if version in (".", ".."):
+        return False
+    return bool(_VALID_VERSION_RE.match(version))
 
 
 def _originals_dir(project_dir, emulator_dir):
@@ -46,11 +60,11 @@ def cmd_backup(args):
     """Snapshot emulator configs to a timestamped zip.
 
     Writes atomically: zip is created at <name>.zip.tmp and renamed only after
-    a complete write. A crashed/cancelled backup leaves the .tmp behind for
-    inspection but never a half-valid .zip.
+    a complete write. Microsecond precision avoids collisions when two backups
+    fire within the same second (critic finding #16).
     """
     config_file, project_dir = resolve_config(args)
-    timestamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+    timestamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S-%f")
     backup_dir = os.path.join(project_dir, "backups")
     os.makedirs(backup_dir, exist_ok=True)
     backup_path = os.path.join(backup_dir, f"{state.PLATFORM}-{timestamp}.zip")
@@ -128,6 +142,12 @@ def cmd_capture(args):
         return
 
     version = args.version
+    if not _validate_version(version):
+        console_error(
+            f"Invalid version label: {version!r}. "
+            f"Use [A-Za-z0-9._-] (max 64 chars; '.' and '..' are rejected)."
+        )
+        return
     snapshot_dir = os.path.join(_originals_dir(project_dir, emulator_dir), version)
 
     if os.path.exists(snapshot_dir):
@@ -142,27 +162,48 @@ def cmd_capture(args):
     with open(symlinks_file) as f:
         config = json.load(f)
 
-    copied = 0
-    for entry in config:
-        if entry == "flatpak":
-            continue
-        source = os.path.join(project_dir, emulator_dir, entry)
-        if not os.path.exists(source):
-            continue
-        dest = os.path.join(snapshot_dir, entry)
-        if os.path.isdir(source):
-            shutil.copytree(source, dest, dirs_exist_ok=True)
-        else:
-            os.makedirs(os.path.dirname(dest), exist_ok=True)
-            shutil.copy2(source, dest)
-        copied += 1
+    # Stage to a hidden temp dir, then atomic-rename. A crashed capture
+    # leaves only the temp dir behind (caller can clean up) — never a
+    # half-populated visible snapshot (critic finding #18).
+    tmp_dir = os.path.join(_originals_dir(project_dir, emulator_dir), f".{version}.tmp")
+    if os.path.exists(tmp_dir):
+        shutil.rmtree(tmp_dir)
+    os.makedirs(tmp_dir, exist_ok=True)
 
-    for root, _, files in os.walk(snapshot_dir):
-        for f in files:
-            os.chmod(
-                os.path.join(root, f),
-                stat_module.S_IRUSR | stat_module.S_IRGRP | stat_module.S_IROTH,
-            )
+    copied = 0
+    try:
+        for entry in config:
+            if entry == "flatpak":
+                continue
+            source = os.path.join(project_dir, emulator_dir, entry)
+            if not os.path.exists(source):
+                continue
+            dest = os.path.join(tmp_dir, entry)
+            if os.path.isdir(source):
+                shutil.copytree(source, dest, dirs_exist_ok=True)
+            else:
+                os.makedirs(os.path.dirname(dest), exist_ok=True)
+                shutil.copy2(source, dest)
+            copied += 1
+
+        os.rename(tmp_dir, snapshot_dir)
+    except Exception:
+        if os.path.exists(tmp_dir):
+            try:
+                shutil.rmtree(tmp_dir)
+            except OSError:
+                pass
+        raise
+
+    # Mark the snapshot dir read-only at the directory level so a typo
+    # `rm -rf` at top-level fails. DO NOT chmod 444 the contained files —
+    # cmd_revert uses shutil.copy2 which preserves mode bits, so 444 files
+    # would land as unwritable in the live config and the emulator would
+    # fail at next-run when it rewrites settings (critic finding #13).
+    try:
+        os.chmod(snapshot_dir, 0o555)
+    except OSError:
+        pass
 
     manifest = _load_originals_manifest(project_dir, emulator_dir)
     manifest.append({
@@ -188,6 +229,9 @@ def cmd_revert(args):
         return
 
     version = args.version or manifest[-1]["version"]
+    if not _validate_version(version):
+        console_error(f"Invalid version label: {version!r}")
+        return
     snapshot_dir = os.path.join(_originals_dir(project_dir, emulator_dir), version)
     if not os.path.exists(snapshot_dir):
         console_error(f"Original '{version}' not found for {emulator_dir}")
@@ -214,9 +258,38 @@ def cmd_revert(args):
             shutil.copytree(src, dst)
         else:
             shutil.copy2(src, dst)
+        # Make restored files writable. shutil.copy2 preserves mode bits and
+        # captured originals may have been chmod'd read-only by older versions
+        # of cmd_capture; if we don't fix this the emulator will EACCES on its
+        # next config write (critic finding #13).
+        _chmod_writable(dst)
         restored += 1
 
     console_log(f"Reverted {emulator_dir} to original '{version}' ({restored} entries)")
+
+
+def _chmod_writable(path: str) -> None:
+    """Recursively set u+w on `path` and (if a dir) every file under it."""
+    try:
+        if os.path.isdir(path) and not os.path.islink(path):
+            for root, dirs, files in os.walk(path):
+                for d in dirs:
+                    p = os.path.join(root, d)
+                    try:
+                        os.chmod(p, os.stat(p).st_mode | 0o200)
+                    except OSError:
+                        pass
+                for f in files:
+                    p = os.path.join(root, f)
+                    try:
+                        os.chmod(p, os.stat(p).st_mode | 0o200)
+                    except OSError:
+                        pass
+            os.chmod(path, os.stat(path).st_mode | 0o200)
+        elif os.path.exists(path):
+            os.chmod(path, os.stat(path).st_mode | 0o200)
+    except OSError:
+        pass
 
 
 def cmd_migrate(args):

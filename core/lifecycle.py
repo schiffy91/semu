@@ -15,16 +15,14 @@ Lifecycle invariants:
 """
 
 import argparse
-import datetime
 import os
 import shutil
 import subprocess
-from typing import List, Optional
 
 from core import flatpak, state
 from core.backup import cmd_backup, cmd_capture
 from core.console import console_error, console_log
-from core.exec import delete, execute
+from core.exec import delete
 from core.symlinks import (
     create_symlinks,
     parse_config,
@@ -113,9 +111,42 @@ def install(args) -> int:
     return succeeded
 
 
+def _staging_result(project_dir: str, emulator: str) -> str:
+    return os.path.join(project_dir, f"result-{emulator.lower()}-staging")
+
+
+def _nix_build_to(emulator: str, project_dir: str, out_link: str) -> bool:
+    """Build to a specific out-link path. Used by update() to stage the new
+    build to a temp path before atomically swapping it into place."""
+    if not _nix_available():
+        console_error("nix not found on PATH; install Nix or use the native installer")
+        return False
+    target = _nix_build_target(emulator)
+    cmd = ["nix", "build", f"{project_dir}#{target}", "--out-link", out_link]
+    console_log(f"$ {' '.join(cmd)}")
+    if state.DRY_RUN:
+        return True
+    try:
+        result = subprocess.run(cmd, check=False)
+        return result.returncode == 0
+    except FileNotFoundError:
+        console_error("nix not found on PATH; install Nix or use the native installer")
+        return False
+
+
 def update(args) -> int:
-    """Update emulators with prev-build retention for rollback. Returns the number
-    of emulators successfully updated."""
+    """Update emulators with prev-build retention for rollback.
+
+    Order of operations is critical for atomicity:
+      1. Build the new version to `result-<emu>-staging` (the user's existing
+         `result-<emu>` keeps working throughout this step — they can launch
+         the emulator while the update downloads).
+      2. Move the current `result-<emu>` to `result-<emu>-prev`.
+      3. Move the staged build into place at `result-<emu>`.
+      4. Wire symlinks.
+
+    On any failure the original `result-<emu>` is preserved untouched.
+    """
     config_file, project_dir = resolve_config(args)
     emulators = filter_emulators(parse_config(config_file, project_dir), args.emulators or [])
     if not emulators:
@@ -130,30 +161,36 @@ def update(args) -> int:
         console_log(f"\n=== Updating {emulator} ===")
         old_link = _result_dir(project_dir, emulator)
         prev_link = _previous_result(project_dir, emulator)
+        staging_link = _staging_result(project_dir, emulator)
 
-        # Move current result aside as the rollback target.
-        moved_aside = False
-        if os.path.islink(old_link):
-            if os.path.lexists(prev_link):
-                if os.path.islink(prev_link):
-                    os.unlink(prev_link)
-                else:
-                    # Defensive: don't delete a real directory without warning.
-                    console_error(f"Refusing to overwrite non-symlink at {prev_link}")
-                    continue
-            os.rename(old_link, prev_link)
-            moved_aside = True
-
-        if not _nix_build(emulator, project_dir):
-            console_error(f"Update build failed for {emulator}; restoring previous build")
-            if moved_aside and os.path.lexists(prev_link):
-                # Restore old result so the user isn't stranded.
-                if os.path.lexists(old_link):
-                    if os.path.islink(old_link):
-                        os.unlink(old_link)
-                os.rename(prev_link, old_link)
+        # Defensive: if `prev` exists as a real directory (not a symlink),
+        # something else dropped it there. Refuse to clobber.
+        if os.path.lexists(prev_link) and not os.path.islink(prev_link):
+            console_error(f"Refusing to overwrite non-symlink at {prev_link}")
             continue
 
+        # Step 1: build to staging. Old result keeps working.
+        if os.path.lexists(staging_link):
+            os.unlink(staging_link)
+        if not _nix_build_to(emulator, project_dir, staging_link):
+            console_error(f"Update build failed for {emulator}; current install untouched")
+            if os.path.lexists(staging_link):
+                try:
+                    os.unlink(staging_link)
+                except OSError:
+                    pass
+            continue
+
+        # Step 2: rotate prev. The old result becomes the rollback target.
+        if os.path.islink(old_link):
+            if os.path.lexists(prev_link):
+                os.unlink(prev_link)
+            os.rename(old_link, prev_link)
+
+        # Step 3: atomic swap-in.
+        os.rename(staging_link, old_link)
+
+        # Step 4: re-wire symlinks (configs may have moved within result/).
         for flatpak_id, link_path, source_path in entries:
             flatpak.setup_flatpak(flatpak_id, source_path)
             create_symlinks(link_path, source_path)

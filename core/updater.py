@@ -59,12 +59,14 @@ def installed_versions(project_dir: str) -> Dict[str, str]:
          extract the trailing `-<version>` chunk.
       3. `<project_dir>/result-<emulator>/version.txt` if the package writes one.
     """
+    import re
+
     out: Dict[str, str] = {}
     if not os.path.isdir(project_dir):
         return out
 
+    # 1) explicit version.txt override (highest priority).
     for entry in os.listdir(project_dir):
-        # 1) explicit version.txt override
         version_file = os.path.join(project_dir, entry, "version.txt")
         if os.path.isfile(version_file):
             try:
@@ -73,32 +75,44 @@ def installed_versions(project_dir: str) -> Dict[str, str]:
             except OSError:
                 pass
 
-    # 2) result-<emu> symlinks → derive version from store path
+    # 2) result-<emu> symlinks → derive version from store path. Skip emulators
+    # we already have an explicit version for (critic finding #10).
     for entry in os.listdir(project_dir):
-        if not entry.startswith("result-") or entry.endswith("-prev"):
+        if not entry.startswith("result-"):
+            continue
+        if entry.endswith(("-prev", "-staging")):
+            continue
+        emu = entry[len("result-"):]
+        if emu in out:
             continue
         result_path = os.path.join(project_dir, entry)
         if not os.path.islink(result_path):
             continue
-        emu = entry[len("result-"):]
-        target = os.readlink(result_path)
         # Try a per-package version.txt first.
         ver_path = os.path.join(result_path, "version.txt")
         if os.path.exists(ver_path):
             try:
                 with open(ver_path) as f:
                     out[emu] = f.read().strip()
-                continue
+                    continue
             except OSError:
                 pass
-        # Otherwise, mine the nix store name. Pattern: /nix/store/<hash>-<name>-<version>.
+        # Mine the nix store name. Pattern: /nix/store/<hash>-<rest>. The
+        # version is the rightmost chunk that starts with a digit (handles
+        # "dolphin-emu-2603a" → "2603a", "cemu-2.0-105" → "2.0-105",
+        # "pcsx2-2.6.3-456-g4a5b6c" → "2.6.3-456-g4a5b6c"). Critic finding #11.
+        target = os.readlink(result_path)
         base = os.path.basename(target.rstrip("/"))
-        # Strip leading <hash>-
-        if "-" in base:
-            base = base.split("-", 1)[1]
-        # If anything remains, take the last `-<...>` chunk as version.
-        if "-" in base:
-            out[emu] = base.rsplit("-", 1)[-1]
+        # Strip leading <hash>- (32 lowercase chars + hyphen).
+        match = re.match(r"^[a-z0-9]{16,}-(.+)$", base)
+        rest = match.group(1) if match else base
+        # Find the FIRST chunk that begins with a digit; the version is
+        # everything from that chunk onward.
+        chunks = rest.split("-")
+        for i, c in enumerate(chunks):
+            if c and c[0].isdigit():
+                out[emu] = "-".join(chunks[i:])
+                break
         else:
             out[emu] = "installed"
 

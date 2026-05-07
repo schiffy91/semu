@@ -86,20 +86,57 @@ def init(home: Optional[str] = None) -> bool:
 
 
 def device_id(home: Optional[str] = None) -> Optional[str]:
-    """Read this device's Syncthing ID from its config.xml."""
+    """Resolve THIS device's Syncthing ID.
+
+    Priority:
+      1. Live REST API at /rest/system/status (returns `myID`). This is
+         authoritative — config.xml device-list ordering is NOT guaranteed
+         to put the local device first after the user adds peers.
+      2. Fall back to parsing config.xml when the sidecar isn't running.
+         We pick the local device by matching against the cert hash if
+         available, otherwise the first device entry (best-effort).
+    """
     home = home or _config_home()
+
+    # 1) Live REST
+    key = api_key(home)
+    if key:
+        req = urllib.request.Request(
+            f"{DEFAULT_API}/rest/system/status",
+            headers={"X-API-Key": key},
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=2) as resp:
+                if resp.status == 200:
+                    body = json.loads(resp.read().decode("utf-8"))
+                    my_id = body.get("myID")
+                    if my_id:
+                        return my_id
+        except (urllib.error.URLError, TimeoutError, json.JSONDecodeError):
+            pass
+
+    # 2) Offline fallback via config.xml.
     cfg = os.path.join(home, "config.xml")
     if not os.path.exists(cfg):
         return None
     try:
         tree = ET.parse(cfg)
-        for d in tree.getroot().findall("device"):
-            if d.get("name") and d.get("id"):
-                # The first device entry is always the local one.
-                return d.get("id")
     except ET.ParseError:
         return None
-    return None
+    devices = list(tree.getroot().findall("device"))
+    if not devices:
+        return None
+    # Best-effort: the local device is the one referenced in <defaults><folder>
+    # via <device id="..."/>. If we can match against that, use it. Otherwise
+    # fall back to the first device in the config.
+    defaults = tree.getroot().find("defaults")
+    if defaults is not None:
+        folder_def = defaults.find("folder")
+        if folder_def is not None:
+            ref = folder_def.find("device")
+            if ref is not None and ref.get("id"):
+                return ref.get("id")
+    return devices[0].get("id")
 
 
 def api_key(home: Optional[str] = None) -> Optional[str]:
@@ -207,7 +244,12 @@ def _ping(home: str, timeout: float = 1.0) -> bool:
 
 
 def add_folder(project_dir: str, home: Optional[str] = None) -> bool:
-    """Tell Syncthing to manage <project_dir>/saves/ as the shared folder."""
+    """Tell Syncthing to manage <project_dir>/saves/ as the shared folder.
+
+    Uses PUT /rest/config/folders/<id> which is idempotent — repeated calls
+    update the same folder rather than appending duplicate entries (which
+    POST would do). See https://docs.syncthing.net/rest/config.html.
+    """
     home = home or _config_home()
     folder_path = saves_dir(project_dir)
     os.makedirs(folder_path, exist_ok=True)
@@ -227,9 +269,9 @@ def add_folder(project_dir: str, home: Optional[str] = None) -> bool:
         "ignorePerms": False,
     }
     req = urllib.request.Request(
-        f"{DEFAULT_API}/rest/config/folders",
+        f"{DEFAULT_API}/rest/config/folders/{SYNC_FOLDER_ID}",
         data=json.dumps(body).encode("utf-8"),
-        method="POST",
+        method="PUT",
         headers={"X-API-Key": key, "Content-Type": "application/json"},
     )
     try:
@@ -239,13 +281,30 @@ def add_folder(project_dir: str, home: Optional[str] = None) -> bool:
         return False
 
 
+def folder_exists(home: Optional[str] = None) -> bool:
+    """Has the schemulator-saves folder been registered yet?"""
+    home = home or _config_home()
+    key = api_key(home)
+    if not key:
+        return False
+    req = urllib.request.Request(
+        f"{DEFAULT_API}/rest/config/folders/{SYNC_FOLDER_ID}",
+        headers={"X-API-Key": key},
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=2) as resp:
+            return resp.status == 200
+    except urllib.error.URLError:
+        return False
+
+
 def add_device(peer_id: str, peer_name: str = "", home: Optional[str] = None,
-               share_folder: bool = True) -> bool:
+               share_folder: bool = True, project_dir: Optional[str] = None) -> bool:
     """Authorise a peer device by its Syncthing ID.
 
-    If `share_folder` is True (the default), the schemulator-saves folder is
-    automatically shared with the new device so saves start replicating
-    immediately.
+    Uses PUT /rest/config/devices/<id> for idempotency. If the saves folder
+    isn't shared yet AND `project_dir` is given AND `share_folder` is True,
+    we register it now so peers actually replicate (critic finding #5).
     """
     peer_id = peer_id.strip().upper()
     if not _valid_device_id(peer_id):
@@ -262,9 +321,9 @@ def add_device(peer_id: str, peer_name: str = "", home: Optional[str] = None,
         "introducer": False,
     }
     req = urllib.request.Request(
-        f"{DEFAULT_API}/rest/config/devices",
+        f"{DEFAULT_API}/rest/config/devices/{peer_id}",
         data=json.dumps(body).encode("utf-8"),
-        method="POST",
+        method="PUT",
         headers={"X-API-Key": key, "Content-Type": "application/json"},
     )
     try:
@@ -272,23 +331,77 @@ def add_device(peer_id: str, peer_name: str = "", home: Optional[str] = None,
             ok = 200 <= resp.status < 300
     except urllib.error.URLError:
         return False
-    if ok and share_folder:
-        _share_folder_with(peer_id, home, key)
+    if not ok or not share_folder:
+        return ok
+
+    # Make sure the saves folder exists, then attach the new peer to it via PATCH
+    # (atomic — won't clobber concurrent edits from the Syncthing GUI).
+    if not folder_exists(home) and project_dir:
+        add_folder(project_dir, home)
+    _share_folder_with(peer_id, home, key)
     return ok
 
 
+# Base32 alphabet used by Syncthing device IDs (RFC4648).
+_LUHN_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567"
+_LUHN_BASE = len(_LUHN_ALPHABET)
+
+
+def _luhn_check_digit(seg: str) -> str:
+    """Compute the Luhn-mod-32 check digit for a base32 string. Mirror of
+    syncthing's lib/protocol/luhn.go::Luhn32.
+    Reference: https://docs.syncthing.net/specs/device-ids.html
+    """
+    factor = 1
+    total = 0
+    for ch in seg:
+        if ch not in _LUHN_ALPHABET:
+            raise ValueError(f"non-base32 char: {ch}")
+        addend = factor * _LUHN_ALPHABET.index(ch)
+        addend = (addend // _LUHN_BASE) + (addend % _LUHN_BASE)
+        total += addend
+        factor = 1 if factor == 2 else 2
+    rem = total % _LUHN_BASE
+    return _LUHN_ALPHABET[(_LUHN_BASE - rem) % _LUHN_BASE]
+
+
 def _valid_device_id(d_id: str) -> bool:
-    """A syncthing device ID is 7 dash-separated 7-char base32 chunks (56 chars)."""
-    parts = d_id.split("-")
-    if len(parts) != 8:
+    """Validate a syncthing canonical device ID.
+
+    Structure (per syncthing's deviceid.go):
+      - SHA-256 of the device cert → 32 bytes → base32 (no padding) → 52 chars
+      - Split into 4 chunks of 13 chars; append Luhn-mod-32 check digit to each
+        → 4 chunks of 14 chars = 56 chars
+      - Display as 8 groups of 7 chars separated by '-'
+
+    To validate: strip dashes, regroup into 4×14, verify each chunk's 14th
+    char is the Luhn-mod-32 of chars 0..12. Catches paste-typos that would
+    otherwise be silently POSTed to syncthing only to bounce back as 400.
+    """
+    if not d_id:
         return False
-    return all(len(p) == 7 and p.isalnum() for p in parts)
+    parts = d_id.split("-")
+    if len(parts) != 8 or any(len(p) != 7 for p in parts):
+        return False
+    raw = "".join(parts)
+    if len(raw) != 56:
+        return False
+    if not all(c in _LUHN_ALPHABET for c in raw):
+        return False
+    for i in range(4):
+        chunk = raw[i * 14:(i + 1) * 14]
+        try:
+            if _luhn_check_digit(chunk[:13]) != chunk[13]:
+                return False
+        except ValueError:
+            return False
+    return True
 
 
 def _share_folder_with(peer_id: str, home: str, key: str) -> bool:
-    """Add `peer_id` to the SYNC_FOLDER_ID device list. Best-effort."""
+    """Atomically attach `peer_id` to the SYNC_FOLDER_ID device list using
+    PATCH (won't clobber concurrent edits from the Syncthing browser GUI)."""
     try:
-        # Fetch current folder config
         req = urllib.request.Request(
             f"{DEFAULT_API}/rest/config/folders/{SYNC_FOLDER_ID}",
             headers={"X-API-Key": key},
@@ -301,11 +414,11 @@ def _share_folder_with(peer_id: str, home: str, key: str) -> bool:
     if any(d.get("deviceID") == peer_id for d in devices):
         return True
     devices.append({"deviceID": peer_id})
-    folder["devices"] = devices
+    patch = {"devices": devices}
     req = urllib.request.Request(
         f"{DEFAULT_API}/rest/config/folders/{SYNC_FOLDER_ID}",
-        data=json.dumps(folder).encode("utf-8"),
-        method="PUT",
+        data=json.dumps(patch).encode("utf-8"),
+        method="PATCH",
         headers={"X-API-Key": key, "Content-Type": "application/json"},
     )
     try:

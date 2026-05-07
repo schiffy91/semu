@@ -6,7 +6,6 @@ my configs from one fork's directory layout to its successor."
 
 from __future__ import annotations
 
-import argparse
 import json
 import os
 from typing import List
@@ -19,14 +18,12 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QListWidget,
-    QListWidgetItem,
     QMessageBox,
     QPushButton,
     QVBoxLayout,
 )
 
 from core.backup import cmd_migrate
-from core.symlinks import find_emulator_dir
 from gui.workers import CoreWorker, make_args
 
 

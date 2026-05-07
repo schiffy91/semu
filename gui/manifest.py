@@ -18,8 +18,9 @@ EMULATORS: List[EmulatorMeta] = [
     EmulatorMeta("Dolphin",   "GameCube, Wii",                 ["linux", "macos"]),
     EmulatorMeta("PCSX2",     "PlayStation 2",                 ["linux", "macos"]),
     EmulatorMeta("Cemu",      "Wii U",                         ["linux", "macos"]),
-    EmulatorMeta("Ryujinx",   "Nintendo Switch",               ["linux", "macos"]),
+    # Ryujinx upstream archived Oct 2024 — kept for users with existing
+    # libraries; Azahar is the recommended path forward for Switch.
+    EmulatorMeta("Ryujinx",   "Nintendo Switch (unmaintained upstream)", ["linux", "macos"]),
     EmulatorMeta("Azahar",    "Nintendo 3DS",                  ["linux", "macos"]),
-    EmulatorMeta("Lime3DS",   "Nintendo 3DS (legacy)",         ["linux"]),
     EmulatorMeta("ES-DE",     "Frontend",                      ["linux", "macos"]),
 ]

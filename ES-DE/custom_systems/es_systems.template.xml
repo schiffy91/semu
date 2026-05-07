@@ -16,8 +16,8 @@
     <fullname>Sony PlayStation</fullname>
     <path>%ROMPATH%/psx</path>
     <extension>.bin .BIN .ccd .CCD .chd .CHD .cue .CUE .ecm .ECM .exe .EXE .img .IMG .iso .ISO .m3u .M3U .pbp .PBP .psexe .PSEXE .toc .TOC .7z .7Z .zip .ZIP</extension>
-    <command label="SwanStation">%EMULATOR_RETROARCH% -f -L %CORE_RETROARCH%/swanstation_libretro.dylib %ROM%</command>
-    <command label="Beetle PSX HW">%EMULATOR_RETROARCH% -f -L %CORE_RETROARCH%/mednafen_psx_hw_libretro.dylib %ROM%</command>
+    <command label="SwanStation">%EMULATOR_RETROARCH% -f -L %CORE_RETROARCH%/swanstation_libretro.%LIBEXT% %ROM%</command>
+    <command label="Beetle PSX HW">%EMULATOR_RETROARCH% -f -L %CORE_RETROARCH%/mednafen_psx_hw_libretro.%LIBEXT% %ROM%</command>
     <platform>psx</platform>
     <theme>psx</theme>
   </system>
@@ -44,7 +44,7 @@
     <fullname>Sega Dreamcast</fullname>
     <path>%ROMPATH%/dreamcast</path>
     <extension>.cdi .CDI .chd .CHD .cue .CUE .gdi .GDI .iso .ISO .7z .7Z .zip .ZIP</extension>
-    <command label="Flycast">%EMULATOR_RETROARCH% -f -L %CORE_RETROARCH%/flycast_libretro.dylib %ROM%</command>
+    <command label="Flycast">%EMULATOR_RETROARCH% -f -L %CORE_RETROARCH%/flycast_libretro.%LIBEXT% %ROM%</command>
     <platform>dreamcast</platform>
     <theme>dreamcast</theme>
   </system>
@@ -53,7 +53,7 @@
     <fullname>Nintendo Game Boy</fullname>
     <path>%ROMPATH%/gb</path>
     <extension>.bin .BIN .dmg .DMG .gb .GB .gbs .GBS .7z .7Z .zip .ZIP</extension>
-    <command label="Gambatte">%EMULATOR_RETROARCH% -f -L %CORE_RETROARCH%/gambatte_libretro.dylib %ROM%</command>
+    <command label="Gambatte">%EMULATOR_RETROARCH% -f -L %CORE_RETROARCH%/gambatte_libretro.%LIBEXT% %ROM%</command>
     <platform>gb</platform>
     <theme>gb</theme>
   </system>
@@ -62,7 +62,7 @@
     <fullname>Nintendo Game Boy Advance</fullname>
     <path>%ROMPATH%/gba</path>
     <extension>.gba .GBA .7z .7Z .zip .ZIP</extension>
-    <command label="mGBA">%EMULATOR_RETROARCH% -f -L %CORE_RETROARCH%/mgba_libretro.dylib %ROM%</command>
+    <command label="mGBA">%EMULATOR_RETROARCH% -f -L %CORE_RETROARCH%/mgba_libretro.%LIBEXT% %ROM%</command>
     <platform>gba</platform>
     <theme>gba</theme>
   </system>
@@ -71,7 +71,7 @@
     <fullname>Nintendo Game Boy Color</fullname>
     <path>%ROMPATH%/gbc</path>
     <extension>.gb .GB .gbc .GBC .7z .7Z .zip .ZIP</extension>
-    <command label="Gambatte">%EMULATOR_RETROARCH% -f -L %CORE_RETROARCH%/gambatte_libretro.dylib %ROM%</command>
+    <command label="Gambatte">%EMULATOR_RETROARCH% -f -L %CORE_RETROARCH%/gambatte_libretro.%LIBEXT% %ROM%</command>
     <platform>gbc</platform>
     <theme>gbc</theme>
   </system>
@@ -80,7 +80,7 @@
     <fullname>Sega Genesis</fullname>
     <path>%ROMPATH%/genesis</path>
     <extension>.bin .BIN .gen .GEN .md .MD .sg .SG .smd .SMD .7z .7Z .zip .ZIP</extension>
-    <command label="Genesis Plus GX">%EMULATOR_RETROARCH% -f -L %CORE_RETROARCH%/genesis_plus_gx_libretro.dylib %ROM%</command>
+    <command label="Genesis Plus GX">%EMULATOR_RETROARCH% -f -L %CORE_RETROARCH%/genesis_plus_gx_libretro.%LIBEXT% %ROM%</command>
     <platform>genesis</platform>
     <theme>genesis</theme>
   </system>
@@ -90,7 +90,7 @@
     <path>%ROMPATH%/n64</path>
     <extension>.n64 .N64 .v64 .V64 .z64 .Z64 .ndd .NDD .7z .7Z .zip .ZIP</extension>
     <command label="ares (Standalone)">%EMULATOR_ARES% --fullscreen --system "Nintendo 64" %ROM%</command>
-    <command label="Mupen64Plus-Next">%EMULATOR_RETROARCH% -f -L %CORE_RETROARCH%/mupen64plus_next_libretro.dylib %ROM%</command>
+    <command label="Mupen64Plus-Next">%EMULATOR_RETROARCH% -f -L %CORE_RETROARCH%/mupen64plus_next_libretro.%LIBEXT% %ROM%</command>
     <platform>n64</platform>
     <theme>n64</theme>
   </system>
@@ -99,7 +99,7 @@
     <fullname>Nintendo DS</fullname>
     <path>%ROMPATH%/nds</path>
     <extension>.nds .NDS .7z .7Z .zip .ZIP</extension>
-    <command label="DeSmuME">%EMULATOR_RETROARCH% -f -L %CORE_RETROARCH%/desmume_libretro.dylib %ROM%</command>
+    <command label="DeSmuME">%EMULATOR_RETROARCH% -f -L %CORE_RETROARCH%/desmume_libretro.%LIBEXT% %ROM%</command>
     <platform>nds</platform>
     <theme>nds</theme>
   </system>
@@ -108,7 +108,7 @@
     <fullname>Nintendo Entertainment System</fullname>
     <path>%ROMPATH%/nes</path>
     <extension>.nes .NES .unf .UNF .unif .UNIF .7z .7Z .zip .ZIP</extension>
-    <command label="Mesen">%EMULATOR_RETROARCH% -f -L %CORE_RETROARCH%/mesen_libretro.dylib %ROM%</command>
+    <command label="Mesen">%EMULATOR_RETROARCH% -f -L %CORE_RETROARCH%/mesen_libretro.%LIBEXT% %ROM%</command>
     <platform>nes</platform>
     <theme>nes</theme>
   </system>
@@ -126,7 +126,7 @@
     <fullname>Sony PSP</fullname>
     <path>%ROMPATH%/psp</path>
     <extension>.chd .CHD .cso .CSO .iso .ISO .pbp .PBP .7z .7Z .zip .ZIP</extension>
-    <command label="PPSSPP">%EMULATOR_RETROARCH% -f -L %CORE_RETROARCH%/ppsspp_libretro.dylib %ROM%</command>
+    <command label="PPSSPP">%EMULATOR_RETROARCH% -f -L %CORE_RETROARCH%/ppsspp_libretro.%LIBEXT% %ROM%</command>
     <platform>psp</platform>
     <theme>psp</theme>
   </system>
@@ -135,7 +135,7 @@
     <fullname>Super Nintendo</fullname>
     <path>%ROMPATH%/snes</path>
     <extension>.sfc .SFC .smc .SMC .7z .7Z .zip .ZIP</extension>
-    <command label="Snes9x">%EMULATOR_RETROARCH% -f -L %CORE_RETROARCH%/snes9x_libretro.dylib %ROM%</command>
+    <command label="Snes9x">%EMULATOR_RETROARCH% -f -L %CORE_RETROARCH%/snes9x_libretro.%LIBEXT% %ROM%</command>
     <platform>snes</platform>
     <theme>snes</theme>
   </system>

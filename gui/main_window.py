@@ -162,8 +162,15 @@ class MainWindow(QMainWindow):
         )
 
     def _kick_off_manifest_fetch(self):
-        """Fetch the version manifest in the background so update availability
-        shows up without blocking startup."""
+        """Fetch the version manifest in the background, IF the user has
+        opted in via setup.json's `check_for_updates` flag (default: false
+        to keep launch offline-friendly; users in restricted networks won't
+        see hangs from a background HTTPS request).
+
+        Critic finding #34.
+        """
+        if not self._setting("check_for_updates", default=False):
+            return
         from PySide6.QtCore import QThread, Signal
 
         if hasattr(self, "_manifest_thread") and self._manifest_thread.isRunning():
@@ -179,6 +186,18 @@ class MainWindow(QMainWindow):
         self._manifest_thread = ManifestFetcher()
         self._manifest_thread.done.connect(self._on_manifest_loaded)
         self._manifest_thread.start()
+
+    def _setting(self, name: str, default):
+        """Read a setting from setup.json, falling back to `default`."""
+        config_path = self._config_path()
+        if not os.path.exists(config_path):
+            return default
+        try:
+            with open(config_path) as f:
+                cfg = json.load(f)
+        except (OSError, json.JSONDecodeError):
+            return default
+        return cfg.get(name, default)
 
     def _on_manifest_loaded(self, emulators: dict):
         self._latest_versions = {
@@ -246,6 +265,13 @@ class MainWindow(QMainWindow):
         self._progress.show()
 
         worker = CoreWorker(fn, args)
+        # Track every spawned worker so the QThread isn't GC'd mid-run, and
+        # prune finished ones to avoid an unbounded list (critic finding #20).
+        if not hasattr(self, "_workers"):
+            self._workers = []
+        self._workers = [w for w in self._workers if w.isRunning()]
+        self._workers.append(worker)
+
         worker.progress.connect(self._progress.append)
         worker.finished_ok.connect(self._on_worker_finished)
         self._current_worker = worker
