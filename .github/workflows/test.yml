@@ -1,8 +1,9 @@
-name: Smoke Tests
+name: Tests
+
 on: [push, pull_request]
 
 jobs:
-  # Container test — same Dockerfile used locally via `make container-test`
+  # Slim container test — fast unit-test loop in the same Arch image we use locally.
   container:
     runs-on: ubuntu-latest
     steps:
@@ -10,9 +11,12 @@ jobs:
       - run: docker build -t schemulator-test .
       - run: docker run --rm -v "$PWD:/schemulator:ro" schemulator-test python -m pytest test/ -v
 
-  # Native tests on each platform
+  # Native tests on Linux + macOS + Windows. Includes the GUI integration
+  # suite (offscreen Qt) and the live syncthing tests when the binary is
+  # bundled.
   native:
     strategy:
+      fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
     runs-on: ${{ matrix.os }}
@@ -21,5 +25,51 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+
+      - name: Install Python deps (incl. PySide6 for GUI integration tests)
+        run: pip install pycryptodome pytest PySide6 vdf
+
+      - name: Install Linux Qt + Xvfb deps
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libegl1 libgl1 libxcb-cursor0 libxkbcommon-x11-0 \
+            libxcb-icccm4 libxcb-keysyms1 libxcb-shape0 libxkbcommon0 libfontconfig1
+
+      - name: Bundle syncthing binary (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          mkdir -p bin
+          curl -L -o /tmp/st.tar.gz \
+            https://github.com/syncthing/syncthing/releases/download/v1.27.10/syncthing-linux-amd64-v1.27.10.tar.gz
+          tar -xzf /tmp/st.tar.gz -C /tmp
+          mv /tmp/syncthing-linux-amd64-v1.27.10/syncthing bin/syncthing
+          chmod +x bin/syncthing
+
+      - name: Bundle syncthing binary (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          mkdir -p bin
+          curl -L -o /tmp/st.tar.gz \
+            https://github.com/syncthing/syncthing/releases/download/v1.27.10/syncthing-macos-universal-v1.27.10.zip
+          unzip -d /tmp /tmp/st.tar.gz
+          mv /tmp/syncthing-macos-universal-v1.27.10/syncthing bin/syncthing
+          chmod +x bin/syncthing
+        continue-on-error: true   # macOS GitHub-hosted has no Wine; fall through
+
+      - name: Run unit + integration tests
+        env:
+          QT_QPA_PLATFORM: offscreen
+          SCHEMULATOR_SYNCTHING: ${{ github.workspace }}/bin/syncthing
+        run: python -m pytest test/ -v
+
+  # CLI E2E test: invoke the actual setup.py binary on a fake project tree.
+  cli-e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
       - run: pip install pycryptodome pytest
-      - run: python -m pytest test/ -v
+      - run: python -m pytest test/test_cli_e2e.py -v

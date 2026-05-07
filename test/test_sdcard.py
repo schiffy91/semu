@@ -53,13 +53,27 @@ def test_check_firmware_reports_missing(tmp_path):
     pcsx2.mkdir()
     missing = sdcard.check_firmware(str(tmp_path))
     assert "PCSX2" in missing
+    assert "PS2 BIOS" in missing["PCSX2"]
 
 
 def test_check_firmware_clears_when_present(tmp_path):
-    pcsx2 = tmp_path / "PCSX2" / "bios"
-    pcsx2.mkdir(parents=True)
-    for f in sdcard.FIRMWARE_REQUIREMENTS["PCSX2"]:
-        (tmp_path / "PCSX2" / f).parent.mkdir(parents=True, exist_ok=True)
-        (tmp_path / "PCSX2" / f).write_bytes(b"")
+    bios = tmp_path / "PCSX2" / "bios"
+    bios.mkdir(parents=True)
+    (bios / "ps2-0230a.bin").write_bytes(b"")
     missing = sdcard.check_firmware(str(tmp_path))
     assert "PCSX2" not in missing
+
+
+def test_check_firmware_skips_uninstalled_emulators(tmp_path):
+    # Emulator dir doesn't exist - no warning emitted.
+    missing = sdcard.check_firmware(str(tmp_path))
+    assert missing == {}
+
+
+def test_check_firmware_returns_descriptions(tmp_path):
+    for emu in ("PCSX2", "Ryujinx", "Cemu", "Azahar"):
+        (tmp_path / emu).mkdir()
+    missing = sdcard.check_firmware(str(tmp_path))
+    assert set(missing.keys()) == {"PCSX2", "Ryujinx", "Cemu", "Azahar"}
+    for desc in missing.values():
+        assert isinstance(desc, str) and len(desc) > 0
