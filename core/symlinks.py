@@ -142,24 +142,37 @@ def resolve_config(args):
     return config_file, project_dir
 
 
-def _flatpak_installed(flatpak_id: str) -> bool:
+def _flatpak_installed(flatpak_id: str, _cache=None) -> bool:
     """Return True if `flatpak_id` is installed in the user-scope Flatpak DB.
 
-    On non-Linux platforms returns False (Flatpak doesn't apply).
+    On non-Linux platforms returns False (Flatpak doesn't apply). Round-7 #1:
+    when called from inside parse_config we pass in a pre-fetched set so the
+    8-emulator hot path doesn't fork+exec `flatpak list` 8 times.
     """
     if state.PLATFORM != "linux" or not flatpak_id:
         return False
+    if _cache is not None:
+        return flatpak_id in _cache
+    return flatpak_id in _list_user_flatpaks()
+
+
+def _list_user_flatpaks() -> set:
+    """Return the set of user-scope Flatpak app IDs installed on this host.
+    Empty set on non-Linux or when flatpak isn't on PATH. Times out at 1s
+    so a stuck flatpakd doesn't block the GUI thread (round-7 #1)."""
+    if state.PLATFORM != "linux":
+        return set()
     import shutil, subprocess
     if not shutil.which("flatpak"):
-        return False
+        return set()
     try:
         result = subprocess.run(
             ["flatpak", "list", "--user", "--app", "--columns=application"],
-            capture_output=True, text=True, check=False, timeout=5,
+            capture_output=True, text=True, check=False, timeout=1,
         )
-        return flatpak_id in (result.stdout or "")
+        return {line.strip() for line in (result.stdout or "").splitlines() if line.strip()}
     except (subprocess.SubprocessError, OSError):
-        return False
+        return set()
 
 
 def _flatpak_remap(link: str, flatpak_id: str) -> str:
@@ -222,6 +235,10 @@ def parse_config(file_path, path):
         console_error(f"portable path is not absolute after expansion: {state.PORTABLE!r}")
         return {}
 
+    # Pre-fetch the user's Flatpak app list once. Without this, every
+    # emulator we iterate would fork+exec `flatpak list` again — round-7 #1.
+    flatpak_cache = _list_user_flatpaks()
+
     results = {}
     for emulator in os.listdir(path):
         symlinks_file = os.path.join(path, emulator, "symlinks.json")
@@ -235,7 +252,7 @@ def parse_config(file_path, path):
                 continue
 
         flatpak_id = symlinks_config.get("flatpak", "")
-        flatpak_active = _flatpak_installed(flatpak_id)
+        flatpak_active = _flatpak_installed(flatpak_id, _cache=flatpak_cache)
         for entry, links in symlinks_config.items():
             if entry == "flatpak":
                 continue

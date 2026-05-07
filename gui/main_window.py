@@ -550,9 +550,17 @@ class MainWindow(QMainWindow):
 
     def _seed_project_dir(self, project_dir: str) -> None:
         """Create a default setup.json + per-emulator dirs in the user's
-        chosen project dir if they don't exist yet. We copy from the bundled
-        repo's templates so the lifecycle's parse_config has something to
-        work against."""
+        chosen project dir if they don't exist yet.
+
+        Round-7 critic finding #4: the previous version did `shutil.copytree`
+        for 8 emulator dirs on the GUI thread. On Steam Deck SD-card project
+        dirs that froze the UI for 1-3s. Now we just write setup.json
+        synchronously (it's a few KB) and let the install worker pull each
+        emulator's manifest dir lazily — `core.symlinks.parse_config` walks
+        the project dir looking for `<Emu>/symlinks.json`, so we instead
+        copy ONLY the symlinks.json files and create the per-emulator
+        directories on demand inside lifecycle.install.
+        """
         os.makedirs(project_dir, exist_ok=True)
         setup_json = os.path.join(project_dir, "setup.json")
         if not os.path.exists(setup_json):
@@ -571,17 +579,23 @@ class MainWindow(QMainWindow):
             with open(setup_json, "w") as f:
                 json.dump(defaults, f, indent=4)
 
-        # Copy each bundled emulator dir into the project dir if missing.
-        # We use a shallow copytree so the user's existing data isn't touched.
+        # Copy ONLY the symlinks.json + tiny static data per emulator so
+        # parse_config can resolve targets. Bulk save data (which the user
+        # cares about) lives at the OS-level paths and gets pulled in by
+        # the migrate=True path during install.
         repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        import shutil
         from gui.manifest import EMULATORS
         for meta in EMULATORS:
-            src = os.path.join(repo_root, meta.name)
-            dst = os.path.join(project_dir, meta.name)
-            if os.path.isdir(src) and not os.path.exists(dst):
+            src = os.path.join(repo_root, meta.name, "symlinks.json")
+            dst_dir = os.path.join(project_dir, meta.name)
+            if not os.path.exists(src):
+                continue
+            os.makedirs(dst_dir, exist_ok=True)
+            dst = os.path.join(dst_dir, "symlinks.json")
+            if not os.path.exists(dst):
                 try:
-                    shutil.copytree(src, dst)
+                    with open(src, "rb") as r, open(dst, "wb") as w:
+                        w.write(r.read())
                 except OSError:
                     pass
 

@@ -128,7 +128,7 @@ def test_sdcard_handles_unreadable_dir(tmp_path, monkeypatch):
     forbidden = mount / "forbidden"
     forbidden.mkdir()
     (mount / "snes").mkdir()
-    (mount / "snes" / "mario.sfc").write_bytes(b"\0")
+    (mount / "snes" / "mario.sfc").write_bytes(b"\0" * 2048)
     try:
         os.chmod(forbidden, 0o000)
         result = sdcard.scan_roms(str(mount))
@@ -143,7 +143,7 @@ def test_sdcard_max_depth_limits_walk(tmp_path):
     for i in range(10):
         deep = deep / f"level{i}"
         deep.mkdir()
-    (deep / "deep.gba").write_bytes(b"\0")
+    (deep / "deep.gba").write_bytes(b"\0" * 2048)
 
     result = sdcard.scan_roms(str(tmp_path), max_depth=3)
     # 10 levels deep, max_depth=3 - should NOT find deep.gba

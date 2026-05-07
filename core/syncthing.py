@@ -300,7 +300,11 @@ def add_folder(project_dir: str, home: Optional[str] = None) -> bool:
         "label": SYNC_FOLDER_NAME,
         "path": folder_path,
         "type": "sendreceive",
-        "rescanIntervalS": 60,
+        # fsWatcher catches changes within ~10s; periodic rescan is just a
+        # safety net. 60s wakes one CPU core every minute on Steam Deck;
+        # 1h is plenty for missed-event recovery and saves real battery
+        # (round-7 critic finding #7).
+        "rescanIntervalS": 3600,
         "fsWatcherEnabled": True,
         "ignorePerms": True,
     }
