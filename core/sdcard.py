@@ -70,14 +70,27 @@ class SdCard:
     rom_systems: Dict[str, List[str]] = field(default_factory=dict)
 
 
+def _is_root_volume(path: str) -> bool:
+    """True if `path` resolves to the same mount as `/`. On macOS, /Volumes
+    contains the boot disk itself ("/Volumes/Macintosh HD") which would make
+    the scanner walk the entire disk — bound it (critic finding #17)."""
+    try:
+        return os.stat(path).st_dev == os.stat("/").st_dev
+    except OSError:
+        return False
+
+
 def list_sdcards() -> List[SdCard]:
     """Enumerate currently-mounted external storage candidates.
 
     Steam Deck convention: `/run/media/deck/<sd_label>/`. Older / non-Deck
-    Linux: `/media/<user>/<sd_label>/` or `/run/media/<sd_label>/`. We
-    distinguish a "user directory" from an actual mount by inspecting
-    contents — only directories that look like ROM stores (have an
-    `Emulation/` subtree, or hold known ROM extensions) are reported.
+    Linux: `/media/<user>/<sd_label>/` or `/run/media/<sd_label>/`. macOS:
+    `/Volumes/<sd_label>/`, but we explicitly skip the boot volume which
+    would otherwise trigger a full-disk walk.
+
+    A user-dir vs actual-mount disambiguation: only directories that look
+    like ROM stores (have an `Emulation/` subtree, or hold known ROM
+    extensions in the first two levels) are reported.
     """
     cards: List[SdCard] = []
     for root in SD_MOUNT_ROOTS:
@@ -87,12 +100,17 @@ def list_sdcards() -> List[SdCard]:
             user_path = os.path.join(root, user_dir)
             if not os.path.isdir(user_path):
                 continue
+            # Skip the boot volume on /Volumes (macOS) — same fs as /.
+            if root == "/Volumes" and _is_root_volume(user_path):
+                continue
             if _looks_like_rom_store(user_path):
                 cards.append(_inspect_mount(user_path, user_dir))
                 continue
             # Treat user_path as a username; descend one more level.
             for label in _safe_listdir(user_path):
                 mount = os.path.join(user_path, label)
+                if root == "/Volumes" and _is_root_volume(mount):
+                    continue
                 if _looks_like_rom_store(mount):
                     cards.append(_inspect_mount(mount, label))
     return cards

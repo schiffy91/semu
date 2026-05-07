@@ -62,7 +62,11 @@ class SteamDeckDialog(QDialog):
         steam_layout = QVBoxLayout(steam_group)
         self._add_shortcut = QCheckBox("Add ES-DE as a non-Steam game")
         self._add_shortcut.setChecked(True)
-        self._install_layout = QCheckBox("Install bundled controller layout for ES-DE")
+        # Critic finding #15: this only installs the layout as a *template* —
+        # users still need to pick it from Steam's controller picker. Fully
+        # auto-applying would require touching userdata/<id>/config/localconfig.vdf
+        # which is high-risk (Steam rewrites it on shutdown). Be honest in the UI.
+        self._install_layout = QCheckBox("Install ES-DE controller layout template (visible in Steam's picker)")
         self._install_layout.setChecked(True)
         steam_layout.addWidget(self._add_shortcut)
         steam_layout.addWidget(self._install_layout)
@@ -136,10 +140,11 @@ class SteamDeckDialog(QDialog):
             if not shortcuts_path:
                 notes.append("No Steam install found; shortcut skipped.")
             else:
+                exe = self._es_de_exe()
                 shortcut = steam.Shortcut(
                     appname="ES-DE (Schemulator)",
-                    exe=self._es_de_exe(),
-                    start_dir=os.path.dirname(self._es_de_exe()),
+                    exe=exe,
+                    start_dir=os.path.dirname(exe) if os.path.isabs(exe) else "",
                     launch_options="",
                     tags=["Schemulator", "Emulation"],
                 )
@@ -182,17 +187,27 @@ class SteamDeckDialog(QDialog):
         QMessageBox.information(self, "Steam Deck setup", "\n\n".join(notes) or "Nothing to apply.")
         self.accept()
 
-    @staticmethod
-    def _es_de_exe() -> str:
-        # Best-effort guess; user can edit via Steam UI afterward.
+    def _es_de_exe(self) -> str:
+        """Locate the ES-DE binary. Prefers the schemulator-installed copy
+        over a system one so the shortcut points at the version we manage.
+        """
+        # 1) Schemulator-installed via result-es-de
+        for emu in steam.discover_installed_emulators(self._project_dir):
+            if emu.name.lower() in ("es-de", "esde"):
+                return emu.exe
+        # 2) Anywhere on PATH or known installer locations.
+        import shutil
+        which = shutil.which("es-de")
+        if which:
+            return which
         for candidate in (
-            "/usr/bin/es-de",
             os.path.expanduser("~/Applications/ES-DE.AppImage"),
             "/var/lib/flatpak/exports/bin/org.es_de.frontend",
+            os.path.expanduser("~/.local/bin/es-de"),
         ):
             if os.path.exists(candidate):
                 return candidate
-        return "/usr/bin/es-de"
+        return "es-de"  # let Steam complain that the path doesn't exist
 
     @staticmethod
     def _steam_layout_dest() -> str:

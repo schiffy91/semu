@@ -3,24 +3,18 @@ optionally install the bundled emulators that have a build for this platform."""
 
 from __future__ import annotations
 
-import argparse
-import json
 import os
 from typing import List
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
-    QCheckBox,
     QFileDialog,
-    QGroupBox,
     QHBoxLayout,
     QLabel,
     QListWidget,
     QListWidgetItem,
-    QMessageBox,
     QPushButton,
     QVBoxLayout,
-    QWidget,
     QWizard,
     QWizardPage,
 )
@@ -30,22 +24,28 @@ from gui.manifest import EMULATORS
 
 
 def has_run_before(project_dir: str) -> bool:
-    """Heuristic: any installed result-* symlink or non-default setup.json
-    means first-run is done."""
+    """True if this looks like an established schemulator install.
+
+    Heuristics (all gated on the entry being a real install indicator, not
+    just a directory with a coincidentally-similar name):
+      1. Any `result-<emu>` SYMLINK whose target exists (a real successful
+         install). A regular directory named "result-oriented-things" doesn't
+         count (critic finding #27).
+      2. A backups/ directory with at least one zip in it.
+    Both indicate the user has done at least one cycle of install + use.
+    """
     if not os.path.isdir(project_dir):
         return False
-    if any(name.startswith("result-") for name in os.listdir(project_dir)):
-        return True
-    setup = os.path.join(project_dir, "setup.json")
-    if os.path.exists(setup):
-        try:
-            with open(setup) as f:
-                cfg = json.load(f)
-        except (OSError, json.JSONDecodeError):
-            return False
-        host = cfg.get("host", {}).get(state.PLATFORM, "")
-        if host and not host.endswith(("AppData/Roaming/", ".config/", "Application Support/")):
+    for name in os.listdir(project_dir):
+        if not name.startswith("result-"):
+            continue
+        path = os.path.join(project_dir, name)
+        # Must be a symlink AND the target must exist.
+        if os.path.islink(path) and os.path.exists(path):
             return True
+    backup_dir = os.path.join(project_dir, "backups")
+    if os.path.isdir(backup_dir) and any(f.endswith(".zip") for f in os.listdir(backup_dir)):
+        return True
     return False
 
 

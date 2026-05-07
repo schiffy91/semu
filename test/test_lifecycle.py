@@ -50,7 +50,15 @@ def project(tmp_path, monkeypatch):
         os.symlink(str(fake_store), out_link)
         return True
 
+    def fake_build_to(emulator, project_dir, out_link):
+        # Used by update(): build directly to the requested path.
+        if os.path.lexists(out_link):
+            os.unlink(out_link)
+        os.symlink(str(fake_store), out_link)
+        return True
+
     monkeypatch.setattr(lifecycle, "_nix_build", fake_build)
+    monkeypatch.setattr(lifecycle, "_nix_build_to", fake_build_to)
     monkeypatch.setattr(lifecycle, "_nix_available", lambda: True)
 
     return tmp_path
@@ -90,16 +98,28 @@ def test_update_keeps_prev_for_rollback(project):
     # Old build moved aside; new build in place
     assert os.path.islink(project / "result-testemu")
     assert os.path.islink(project / "result-testemu-prev")
+    # Staging link should be cleaned up (atomic-swap leaves nothing behind).
+    assert not os.path.lexists(project / "result-testemu-staging")
 
 
-def test_update_failure_restores_previous(project, monkeypatch):
+def test_update_failure_keeps_current_install_intact(project, monkeypatch):
+    """If the new build fails, the user's *current* install must keep working.
+    The atomic update flow builds to result-<emu>-staging FIRST and only
+    swaps on success — so a failed build never touches result-<emu> (critic
+    finding #9)."""
     lifecycle.install(_args(project))
-    # Now make nix fail
-    monkeypatch.setattr(lifecycle, "_nix_build", lambda *a, **kw: False)
+    original_target = os.readlink(project / "result-testemu")
+
+    # Now make nix fail for the staging build.
+    monkeypatch.setattr(lifecycle, "_nix_build_to", lambda *a, **kw: False)
     lifecycle.update(_args(project))
-    # Previous build should be restored as the active one
-    assert os.path.islink(project / "result-testemu")
+
+    # Current install untouched — same target path.
+    assert os.readlink(project / "result-testemu") == original_target
+    # No prev was created (the rotation never happened).
     assert not os.path.lexists(project / "result-testemu-prev")
+    # No staging artifact lingering.
+    assert not os.path.lexists(project / "result-testemu-staging")
 
 
 def test_rollback_swaps_back(project):

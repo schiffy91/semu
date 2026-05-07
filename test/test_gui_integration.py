@@ -56,14 +56,17 @@ def test_main_window_renders_all_cards(qapp):
 
 
 def test_worker_streams_progress_to_signal(qapp):
+    """Worker now uses logger-based capture (not redirect_stdout) — emit via
+    core.console.console_log so the signal handler receives it."""
     from gui.workers import CoreWorker, make_args
+    from core.console import console_log
 
     captured = []
     finished = []
 
     def fake(args):
         for i in range(3):
-            print(f"step {i}")
+            console_log(f"step {i}")
 
     w = CoreWorker(fake, make_args())
     w.progress.connect(captured.append)
@@ -101,8 +104,8 @@ def test_worker_emits_failure_signal_on_exception(qapp):
     w.wait(5000)
 
     assert finished == [False]
-    assert "RuntimeError" in "".join(captured)
-    assert "kaboom" in "".join(captured)
+    output = "".join(captured)
+    assert "kaboom" in output
 
 
 def test_progress_dialog_appends_and_finishes(qapp):

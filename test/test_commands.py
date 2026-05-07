@@ -38,14 +38,24 @@ def test_backup_rotation(mock_project, monkeypatch):
     assert len(backups) == 5
 
 
-def test_capture_creates_readonly_snapshot(mock_project):
+def test_capture_creates_snapshot_with_readonly_dir(mock_project):
+    """The snapshot DIRECTORY is read-only (so a typo `rm -rf` fails) but the
+    contained FILES stay writable so cmd_revert can restore them and the
+    emulator can rewrite its config at next run (critic finding #13)."""
     args = argparse.Namespace(emulator="TestEmu", version="v1.0", config=_config_path(mock_project))
     setup.cmd_capture(args)
 
-    snapshot = mock_project / "TestEmu" / "originals" / "v1.0" / "config" / "settings.ini"
-    assert snapshot.exists()
-    mode = oct(snapshot.stat().st_mode)
-    assert mode.endswith("444")
+    snapshot_dir = mock_project / "TestEmu" / "originals" / "v1.0"
+    assert snapshot_dir.exists()
+    assert snapshot_dir.is_dir()
+    # Directory should NOT have user-write bit set.
+    dir_mode = snapshot_dir.stat().st_mode & 0o777
+    assert not (dir_mode & 0o200), oct(dir_mode)
+    # Contained file should be writable so revert+emulator-startup work.
+    snapshot_file = snapshot_dir / "config" / "settings.ini"
+    assert snapshot_file.exists()
+    file_mode = snapshot_file.stat().st_mode & 0o777
+    assert file_mode & 0o200, oct(file_mode)
 
 
 def test_capture_appends_to_manifest(mock_project):

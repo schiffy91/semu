@@ -12,7 +12,7 @@ from typing import List
 from core.console import console_error, console_log
 
 
-PROFILES = ("xbox", "dualsense", "generic-xinput", "steamdeck")
+PROFILES = ("xbox", "dualsense", "steamdeck")
 
 
 # Per-emulator: where in <project_dir>/<Emulator>/ does the profile fragment land?

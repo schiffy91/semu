@@ -229,37 +229,81 @@ def remove_shortcut(path: str, appname: str) -> bool:
     return True
 
 
+# Per-emulator binary names (lowercase emulator key → list of plausible binary
+# basenames in priority order). The first match wins. Without this we pick
+# whatever os.listdir() happens to return first, which is e.g.
+# `retroarch-cg2glsl` (a shader-converter helper) instead of `retroarch`.
+_BINARY_PREFERENCE = {
+    "retroarch": ("retroarch",),
+    "dolphin":   ("dolphin-emu", "dolphin"),
+    "pcsx2":     ("pcsx2-qt", "pcsx2"),
+    "cemu":      ("Cemu", "cemu"),
+    "ryujinx":   ("Ryujinx", "ryujinx"),
+    "azahar":    ("azahar", "azahar-emu"),
+    "lime3ds":   ("lime3ds", "lime3ds-emu"),
+    "es-de":     ("es-de", "emulationstation"),
+    "ares":      ("ares",),
+}
+
+
 def discover_installed_emulators(project_dir: str) -> List["DiscoveredEmulator"]:
     """Walk `<project_dir>/result-<emu>/` symlinks and find launchable binaries
     for each installed emulator. Returns one DiscoveredEmulator per emulator
     that has a usable binary in the standard layout (Linux: bin/<name>; macOS:
-    Applications/<Name>.app/Contents/MacOS/<name>)."""
+    Applications/<Name>.app/Contents/MacOS/<name>).
+
+    Picks the binary by exact-name preference (see _BINARY_PREFERENCE), falling
+    back to the first executable found only if no preferred name exists. This
+    avoids picking up shader-converter / config-helper binaries that ship in
+    the same bin/ as the actual emulator (critic finding #19).
+    """
     out: List[DiscoveredEmulator] = []
     if not os.path.isdir(project_dir):
         return out
     for entry in os.listdir(project_dir):
-        if not entry.startswith("result-") or entry.endswith("-prev"):
+        if not entry.startswith("result-") or entry.endswith("-prev") or entry.endswith("-staging"):
             continue
         result = os.path.join(project_dir, entry)
         emulator = entry[len("result-"):]
-        # Linux: <result>/bin/<some_name>
-        bin_dir = os.path.join(result, "bin")
-        if os.path.isdir(bin_dir):
-            for fname in os.listdir(bin_dir):
-                full = os.path.join(bin_dir, fname)
-                if os.path.isfile(full) and os.access(full, os.X_OK):
-                    out.append(DiscoveredEmulator(name=emulator, exe=full, kind="binary"))
-                    break
-            continue
-        # macOS: <result>/Applications/<Name>.app
-        apps = os.path.join(result, "Applications")
-        if os.path.isdir(apps):
-            for entry in os.listdir(apps):
-                if entry.endswith(".app"):
-                    app_path = os.path.join(apps, entry)
-                    out.append(DiscoveredEmulator(name=emulator, exe=app_path, kind="app"))
-                    break
+        chosen = _choose_binary(result, emulator)
+        if chosen:
+            out.append(chosen)
     return out
+
+
+def _choose_binary(result: str, emulator: str) -> "Optional[DiscoveredEmulator]":
+    """Inspect a single result-<emu> dir for the right launchable."""
+    # Linux: <result>/bin/<...>. Prefer an exact-name match.
+    bin_dir = os.path.join(result, "bin")
+    if os.path.isdir(bin_dir):
+        preferred = _BINARY_PREFERENCE.get(emulator.lower(), ())
+        for name in preferred:
+            full = os.path.join(bin_dir, name)
+            if os.path.isfile(full) and os.access(full, os.X_OK):
+                return DiscoveredEmulator(name=emulator, exe=full, kind="binary")
+        # Fallback: first executable that looks like a top-level launcher
+        # (skip helpers whose name suggests a converter/library).
+        for fname in sorted(os.listdir(bin_dir)):
+            if any(x in fname for x in ("converter", "validator", "bench", "shader-")):
+                continue
+            full = os.path.join(bin_dir, fname)
+            if os.path.isfile(full) and os.access(full, os.X_OK):
+                return DiscoveredEmulator(name=emulator, exe=full, kind="binary")
+        return None
+
+    # macOS: <result>/Applications/<Name>.app
+    apps = os.path.join(result, "Applications")
+    if os.path.isdir(apps):
+        # Prefer an .app whose name matches the emulator (case-insensitive).
+        candidates = sorted(e for e in os.listdir(apps) if e.endswith(".app"))
+        for entry in candidates:
+            stem = entry[:-len(".app")].lower()
+            if stem == emulator.lower() or stem.replace(" ", "-") == emulator.lower():
+                return DiscoveredEmulator(name=emulator, exe=os.path.join(apps, entry), kind="app")
+        if candidates:
+            return DiscoveredEmulator(name=emulator, exe=os.path.join(apps, candidates[0]), kind="app")
+
+    return None
 
 
 @dataclass
