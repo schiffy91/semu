@@ -142,6 +142,38 @@ def test_pii_regex_does_redact_real_user_paths(tmp_path, monkeypatch):
 
 # ----- R2-9: atomic settings write -----
 
+def test_settings_dialog_writes_successfully(tmp_path):
+    """Positive-path: a successful save updates the file with the new values
+    AND removes the .tmp staging file (round-3 critic finding #8)."""
+    pytest.importorskip("PySide6")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    import sys
+    from PySide6.QtWidgets import QApplication
+    QApplication.instance() or QApplication(sys.argv)
+
+    cfg_path = tmp_path / "setup.json"
+    cfg_path.write_text(json.dumps({
+        "host": {state.PLATFORM: "/old"},
+        "portable": {state.PLATFORM: "/old-portable"},
+    }, indent=4))
+
+    from gui.dialogs.settings import SettingsDialog
+    d = SettingsDialog(str(tmp_path))
+    d._host_input[1].setText("/new-host")
+    d._portable_input[1].setText("/new-portable")
+    d._check_updates.setChecked(True)
+    d._autostart_sync.setChecked(False)
+    d._save()
+
+    parsed = json.loads(cfg_path.read_text())
+    assert parsed["host"][state.PLATFORM] == "/new-host"
+    assert parsed["portable"][state.PLATFORM] == "/new-portable"
+    assert parsed["check_for_updates"] is True
+    assert parsed["autostart_syncthing"] is False
+    # No .tmp left behind.
+    assert not (tmp_path / "setup.json.tmp").exists()
+
+
 def test_settings_dialog_writes_atomically(tmp_path):
     """Crash mid-save must not leave an empty/truncated setup.json. We
     verify by patching json.dump to raise, then checking the file is intact.
@@ -205,3 +237,93 @@ def test_ares_in_gui_manifest():
 
 def test_steamdeck_not_in_profiles():
     assert "steamdeck" not in controllers.PROFILES
+
+
+# ----- R3-3: FirstRunWizard wires chosen project_dir into install -----
+
+def test_first_run_wizard_seeds_project_dir(tmp_path):
+    """When the wizard finishes with a fresh project dir, _seed_project_dir
+    must drop a setup.json AND copy the bundled emulator manifest dirs in.
+    Without this the install worker runs against an empty dir and parse_config
+    finds zero emulators (round-3 critic finding #3)."""
+    pytest.importorskip("PySide6")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    import sys
+    from PySide6.QtWidgets import QApplication
+    QApplication.instance() or QApplication(sys.argv)
+
+    fresh = tmp_path / "fresh-project"
+    from gui.main_window import MainWindow
+    w = MainWindow()
+    w._project_dir = str(fresh)
+    w._seed_project_dir(str(fresh))
+
+    setup_json = fresh / "setup.json"
+    assert setup_json.exists()
+    with open(setup_json) as f:
+        cfg = json.load(f)
+    assert state.PLATFORM in cfg["host"]
+    # At least one emulator dir copied in.
+    seeded = [d for d in fresh.iterdir() if d.is_dir()]
+    assert len(seeded) >= 1
+    assert any((d / "symlinks.json").exists() for d in seeded)
+
+
+# ----- R3-5: PII redaction preserves /home vs /Users prefix -----
+
+def test_pii_redaction_preserves_home_prefix_on_linux(tmp_path, monkeypatch):
+    """Linux logs should redact to /home/<USER>, not /Users/<USER>."""
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path))
+    monkeypatch.setattr(logger_mod, "_LOGGER", None)
+    log = logger_mod.get_logger()
+    log.info("loaded /home/jdoe/Documents/notes.txt")
+    for h in log.handlers:
+        if hasattr(h, "flush"):
+            h.flush()
+    contents = open(os.path.join(str(tmp_path), "schemulator", "schemulator.log")).read()
+    assert "/home/<USER>" in contents
+    assert "/Users/<USER>" not in contents
+    assert "jdoe" not in contents
+
+
+def test_pii_redaction_preserves_users_prefix_on_macos(tmp_path, monkeypatch):
+    """macOS logs should redact to /Users/<USER>, not /home/<USER>."""
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path))
+    monkeypatch.setattr(logger_mod, "_LOGGER", None)
+    log = logger_mod.get_logger()
+    log.info("loaded /Users/alice/Library/Caches/x")
+    for h in log.handlers:
+        if hasattr(h, "flush"):
+            h.flush()
+    contents = open(os.path.join(str(tmp_path), "schemulator", "schemulator.log")).read()
+    assert "/Users/<USER>" in contents
+    assert "alice" not in contents
+
+
+# ----- R3-1: flake systems list excludes aarch64-linux -----
+
+def test_flake_does_not_claim_aarch64_linux():
+    repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    flake = open(os.path.join(repo_root, "flake.nix")).read()
+    # Find the systems = [...] line and ensure aarch64-linux is gone.
+    import re
+    match = re.search(r"systems\s*=\s*\[([^\]]+)\]", flake)
+    assert match
+    systems_str = match.group(1)
+    assert "aarch64-linux" not in systems_str
+
+
+# ----- R3-2: README emulator table -----
+
+def test_readme_does_not_advertise_lime3ds():
+    repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    readme = open(os.path.join(repo_root, "README.md")).read()
+    # Lime3DS may appear in changelog-style commit messages, but not in the
+    # supported-emulators table.
+    assert "| Lime3DS" not in readme
+
+
+def test_readme_advertises_ares():
+    repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    readme = open(os.path.join(repo_root, "README.md")).read()
+    assert "| Ares" in readme

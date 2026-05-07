@@ -435,7 +435,15 @@ class MainWindow(QMainWindow):
     def maybe_show_first_run_wizard(self) -> bool:
         """Run the first-run wizard if this looks like a fresh install. Returns
         True if the user completed it, False if they skipped/cancelled or it
-        wasn't shown."""
+        wasn't shown.
+
+        Round-3 critic finding #3: previously the chosen project dir was
+        assigned to self._project_dir but the install worker was invoked with
+        config=None, which made resolve_config() fall back to the bundled
+        setup.json next to setup.py — so install ran against the schemulator
+        repo root, NOT the user's chosen dir. We now seed setup.json into the
+        chosen dir and pass the explicit config path through to the worker.
+        """
         if has_run_before(self._project_dir):
             return False
         wiz = FirstRunWizard(self._project_dir, parent=self)
@@ -444,15 +452,56 @@ class MainWindow(QMainWindow):
         chosen_dir = wiz.project_dir() or self._project_dir
         if chosen_dir != self._project_dir:
             self._project_dir = chosen_dir
+        # Seed a default setup.json in the chosen dir if none exists yet.
+        self._seed_project_dir(self._project_dir)
+        # Title bar / header text now references the new dir.
+        self._refresh_status()
+
         emulators = wiz.selected_emulators()
         if emulators:
-            from core.lifecycle import install
             self._run_worker(
-                install,
-                make_args(config=None, emulators=emulators),
+                lifecycle.install,
+                make_args(config=self._config_path(), emulators=emulators),
                 f"Installing {len(emulators)} emulators",
             )
         return True
+
+    def _seed_project_dir(self, project_dir: str) -> None:
+        """Create a default setup.json + per-emulator dirs in the user's
+        chosen project dir if they don't exist yet. We copy from the bundled
+        repo's templates so the lifecycle's parse_config has something to
+        work against."""
+        os.makedirs(project_dir, exist_ok=True)
+        setup_json = os.path.join(project_dir, "setup.json")
+        if not os.path.exists(setup_json):
+            defaults = {
+                "host": {
+                    "linux":   os.path.expanduser("~/.config"),
+                    "macos":   os.path.expanduser("~/Library/Application Support"),
+                    "windows": os.path.expanduser("~/AppData/Roaming"),
+                },
+                "portable": {
+                    "linux":   os.path.expanduser("~/ES-DE"),
+                    "macos":   os.path.expanduser("~/ES-DE"),
+                    "windows": os.path.expanduser("~/Documents/ES-DE"),
+                },
+            }
+            with open(setup_json, "w") as f:
+                json.dump(defaults, f, indent=4)
+
+        # Copy each bundled emulator dir into the project dir if missing.
+        # We use a shallow copytree so the user's existing data isn't touched.
+        repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        import shutil
+        from gui.manifest import EMULATORS
+        for meta in EMULATORS:
+            src = os.path.join(repo_root, meta.name)
+            dst = os.path.join(project_dir, meta.name)
+            if os.path.isdir(src) and not os.path.exists(dst):
+                try:
+                    shutil.copytree(src, dst)
+                except OSError:
+                    pass
 
     @staticmethod
     def _open_in_file_manager(path: str):
