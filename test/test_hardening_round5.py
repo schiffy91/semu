@@ -42,19 +42,25 @@ def test_populate_save_links_refuses_target_outside_project(tmp_path, capsys, mo
 
 
 def test_add_folder_writes_stignore(tmp_path, monkeypatch):
-    """The stignore file must be present after add_folder (defence in
-    depth on top of the symlink check)."""
+    """The stignore file must be present at the project-dir root after
+    add_folder. After the round-6 sync architecture rework Syncthing
+    shares the project dir itself (not a saves/ shadow tree), so stignore
+    lives at project/.stignore and excludes the per-machine subtrees."""
     from core import syncthing
     monkeypatch.setattr(syncthing, "api_key", lambda *a, **kw: None)
     project = tmp_path / "project"
     project.mkdir()
     syncthing.add_folder(str(project))
-    stignore = project / "saves" / ".stignore"
+    stignore = project / ".stignore"
     assert stignore.exists()
     contents = stignore.read_text()
     assert "Schemulator" in contents
-    # Excludes dotfiles and tmp/swp churn.
+    # Per-machine subtrees that must NOT cross devices.
+    for excluded in ("result-*", "backups", "originals", "ROMs"):
+        assert excluded in contents
+    # Editor / OS churn rules survive.
     assert "*.tmp" in contents and "*.swp" in contents
+    # Dotfile defence carries over from round 5.
     assert "/.??*" in contents
 
 

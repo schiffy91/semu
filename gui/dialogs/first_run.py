@@ -79,15 +79,20 @@ class _ProjectPage(QWizardPage):
 
 
 class _SdCardPage(QWizardPage):
+    """Page 2: pick an SD card. The chosen card is committed to ES-DE's
+    settings on wizard finish (round-6 critic finding #7) so the user
+    doesn't have to revisit the SteamDeck dialog separately."""
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setTitle("SD card")
         self.setSubTitle(
-            "Optional: pick an SD card with ROMs. Schemulator can wire each "
-            "emulator to read from the card automatically. (Steam Deck only.)"
+            "Optional: pick an SD card with ROMs. Schemulator wires ES-DE to "
+            "read ROMs from the chosen card. (Steam Deck only.)"
         )
         layout = QVBoxLayout(self)
         self._cards = sdcard.list_sdcards()
+        self._combo = None
         if not self._cards:
             layout.addWidget(QLabel("No external storage detected. You can skip this step."))
         else:
@@ -111,6 +116,15 @@ class _SdCardPage(QWizardPage):
             self._summary.setText(
                 f"Detected {n} ROMs across {len(c.rom_systems)} systems on {c.mount_path}."
             )
+
+    def chosen_card(self):
+        """The SdCard the user picked, or None if no SD detected / skipped."""
+        if self._combo is None:
+            return None
+        idx = self._combo.currentIndex()
+        if 0 <= idx < len(self._cards):
+            return self._cards[idx]
+        return None
 
 
 class _EmulatorsPage(QWizardPage):
@@ -150,7 +164,8 @@ class FirstRunWizard(QWizard):
         self.setWindowTitle("Schemulator — first run")
         self.resize(640, 460)
         self.addPage(_ProjectPage(default_project_dir))
-        self.addPage(_SdCardPage())
+        self._sd_page = _SdCardPage()
+        self.addPage(self._sd_page)
         self._emu_page = _EmulatorsPage()
         self.addPage(self._emu_page)
 
@@ -159,3 +174,7 @@ class FirstRunWizard(QWizard):
 
     def project_dir(self) -> str:
         return self.field("project_dir") or ""
+
+    def chosen_sd_card(self):
+        """The SdCard the user picked on page 2, or None."""
+        return self._sd_page.chosen_card()
