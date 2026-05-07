@@ -57,7 +57,7 @@ class SteamDeckDialog(QDialog):
         fw_layout.addWidget(self._firmware_label)
         layout.addWidget(fw_group)
 
-        # Steam shortcut
+        # Steam shortcut: detect every installed emulator and offer each.
         steam_group = QGroupBox("Steam integration")
         steam_layout = QVBoxLayout(steam_group)
         self._add_shortcut = QCheckBox("Add ES-DE as a non-Steam game")
@@ -66,6 +66,16 @@ class SteamDeckDialog(QDialog):
         self._install_layout.setChecked(True)
         steam_layout.addWidget(self._add_shortcut)
         steam_layout.addWidget(self._install_layout)
+
+        self._emulator_checks = {}
+        self._discovered = steam.discover_installed_emulators(self._project_dir)
+        if self._discovered:
+            steam_layout.addWidget(QLabel("Also add as separate non-Steam games:"))
+            for emu in self._discovered:
+                cb = QCheckBox(emu.name)
+                cb.setChecked(False)
+                self._emulator_checks[emu.name] = cb
+                steam_layout.addWidget(cb)
         layout.addWidget(steam_group)
 
         # Buttons
@@ -153,6 +163,21 @@ class SteamDeckDialog(QDialog):
                 f"Selected SD root: {chosen_card.mount_path}. "
                 "Run 'Install All' from the main window to wire emulators to this ROM root."
             )
+
+        # Per-emulator Steam shortcuts
+        if self._emulator_checks:
+            shortcuts_path = steam.shortcuts_path()
+            for emu in self._discovered:
+                cb = self._emulator_checks.get(emu.name)
+                if cb and cb.isChecked() and shortcuts_path:
+                    sc = steam.Shortcut(
+                        appname=f"{emu.name.capitalize()} (Schemulator)",
+                        exe=emu.exe,
+                        start_dir=os.path.dirname(emu.exe),
+                        tags=["Schemulator", "Emulation"],
+                    )
+                    steam.upsert_shortcut(shortcuts_path, sc)
+                    notes.append(f"Added {emu.name} as a non-Steam game.")
 
         QMessageBox.information(self, "Steam Deck setup", "\n\n".join(notes) or "Nothing to apply.")
         self.accept()

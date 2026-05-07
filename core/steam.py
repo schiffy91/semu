@@ -227,3 +227,43 @@ def remove_shortcut(path: str, appname: str) -> bool:
     with open(path, "wb") as f:
         f.write(encode_shortcuts(new))
     return True
+
+
+def discover_installed_emulators(project_dir: str) -> List["DiscoveredEmulator"]:
+    """Walk `<project_dir>/result-<emu>/` symlinks and find launchable binaries
+    for each installed emulator. Returns one DiscoveredEmulator per emulator
+    that has a usable binary in the standard layout (Linux: bin/<name>; macOS:
+    Applications/<Name>.app/Contents/MacOS/<name>)."""
+    out: List[DiscoveredEmulator] = []
+    if not os.path.isdir(project_dir):
+        return out
+    for entry in os.listdir(project_dir):
+        if not entry.startswith("result-") or entry.endswith("-prev"):
+            continue
+        result = os.path.join(project_dir, entry)
+        emulator = entry[len("result-"):]
+        # Linux: <result>/bin/<some_name>
+        bin_dir = os.path.join(result, "bin")
+        if os.path.isdir(bin_dir):
+            for fname in os.listdir(bin_dir):
+                full = os.path.join(bin_dir, fname)
+                if os.path.isfile(full) and os.access(full, os.X_OK):
+                    out.append(DiscoveredEmulator(name=emulator, exe=full, kind="binary"))
+                    break
+            continue
+        # macOS: <result>/Applications/<Name>.app
+        apps = os.path.join(result, "Applications")
+        if os.path.isdir(apps):
+            for entry in os.listdir(apps):
+                if entry.endswith(".app"):
+                    app_path = os.path.join(apps, entry)
+                    out.append(DiscoveredEmulator(name=emulator, exe=app_path, kind="app"))
+                    break
+    return out
+
+
+@dataclass
+class DiscoveredEmulator:
+    name: str          # lowercase emulator name (matches result-<name>/)
+    exe: str           # absolute path to launchable binary or .app
+    kind: str          # "binary" (Linux) or "app" (macOS)
