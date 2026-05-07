@@ -17,19 +17,24 @@ nix develop
 
 ## Emulators
 
-| Emulator   | Systems               | macOS | Linux |
-|------------|-----------------------|-------|-------|
-| Dolphin    | GameCube, Wii         | Yes   | Yes   |
-| Azahar     | Nintendo 3DS          | Yes   | Yes   |
-| PCSX2      | PlayStation 2         | Yes   | Yes   |
-| Cemu       | Wii U                 | Yes   | Yes   |
-| RetroArch  | Multi-system (cores)  | Yes   | Yes   |
-| Ryujinx    | Nintendo Switch       | Yes   | Yes   |
-| Lime3DS    | Nintendo 3DS (legacy) | —     | Yes   |
-| ES-DE      | Frontend              | Yes   | Yes   |
+| Emulator   | Systems                  | macOS | Linux (x86_64) |
+|------------|--------------------------|-------|----------------|
+| RetroArch  | Multi-system (cores)     | Yes   | Yes            |
+| Dolphin    | GameCube, Wii            | Yes   | Yes            |
+| PCSX2      | PlayStation 2            | Yes   | Yes            |
+| Cemu       | Wii U                    | Yes   | Yes            |
+| Ryujinx    | Nintendo Switch (Ryubing fork) | Yes | Yes        |
+| Azahar     | Nintendo 3DS             | Yes   | Yes            |
+| Ares       | N64 (HW-accelerated)     | Yes   | Yes            |
+| ES-DE      | Frontend                 | Yes   | Yes            |
 
 All emulators are pinned to exact versions via `flake.lock`. macOS variants
-live in `nix/<emulator>-mac.nix`; Linux uses upstream nixpkgs.
+live in `nix/<emulator>-mac.nix`; Linux x86_64 uses upstream nixpkgs.
+
+aarch64-linux is currently unsupported — the Ryujinx wrapper has no
+verified ARM64 hash committed yet. ARM Linux users (Asahi, Pi, ARM cloud
+runners) can build individual emulators manually but the unified bundle
+won't evaluate.
 
 ## How It Works
 

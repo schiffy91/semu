@@ -47,7 +47,9 @@ class _PIIScrubFormatter(logging.Formatter):
         home_re = _home_path_re()
         if home_re is not None:
             msg = home_re.sub("<HOME>", msg)
-        msg = _USER_RE.sub(r"/Users/<USER>", msg)
+        # Preserve the original /home or /Users prefix in the redaction so
+        # logs from a Linux user don't read like macOS logs (round-3 #5).
+        msg = _USER_RE.sub(lambda m: m.group(0)[:m.start(1) - m.start()] + "<USER>", msg)
         msg = _DEVID_RE.sub("<DEVICE-ID>", msg)
         return msg
 

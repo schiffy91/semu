@@ -6,7 +6,12 @@
   };
 
   outputs = { self, nixpkgs }: let
-    systems = [ "aarch64-darwin" "x86_64-darwin" "x86_64-linux" "aarch64-linux" ];
+    # aarch64-linux dropped: our Ryujinx wrapper has no verified ARM64 hash
+    # yet, and the unified bundle pulls Ryujinx unconditionally — so claiming
+    # aarch64-linux support would break `nix flake check` and `nix run` for
+    # ARM Linux users (round-3 critic finding #1). Re-add when we ship a
+    # verified hash in nix/ryujinx.nix.
+    systems = [ "aarch64-darwin" "x86_64-darwin" "x86_64-linux" ];
     forAllSystems = f: nixpkgs.lib.genAttrs systems (system: f system);
   in {
     packages = forAllSystems (system: let
