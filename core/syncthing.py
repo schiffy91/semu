@@ -262,22 +262,33 @@ def _ping(home: str, timeout: float = 1.0) -> bool:
 
 
 def add_folder(project_dir: str, home: Optional[str] = None) -> bool:
-    """Tell Syncthing to manage <project_dir>/saves/ as the shared folder.
+    """Share the entire project directory via Syncthing, filtered by .stignore
+    to only sync save-relevant subtrees.
 
-    Security posture (round-5 critic finding #2):
-      - `ignorePerms=true`: a hostile peer can't push hostile mode bits
-        through to local files (e.g. setuid).
-      - A `.stignore` is dropped into saves/ that excludes symlinks and
-        anything outside the saves subtree. Combined with the symlink
-        sanitisation in _populate_save_links, this neutralises the
-        peer-pre-symlink attack on private dirs like ~/.ssh.
-      - Uses PUT /rest/config/folders/<id> for idempotency (multiple calls
-        update the single folder entry instead of appending duplicates).
+    Round-6 architecture rework (#4): the previous implementation built a
+    `<project>/saves/<Emulator>/<sub>` shadow tree of symlinks pointing back
+    into the per-emulator dirs. That broke cross-device sync because:
+      1. Syncthing replicates symlinks AS symlinks (doesn't follow them), so
+         the peer received link metadata pointing at a path that didn't exist
+         on the peer's filesystem — saves appeared as dangling links.
+      2. Save state lived OUTSIDE the linked tree on Mac (because the
+         shipped `<project>/Dolphin/data/` was empty, so the host symlink
+         didn't redirect anything; Dolphin wrote saves to its real
+         ~/Library/.../Dolphin Emulator/StateSaves directory.
+
+    Now we share `<project>` itself with a generated `.stignore` that
+    excludes the things peers don't need (result-* nix store links, build
+    artifacts, local backups, captured originals, ROMs, the saves/ shadow
+    tree). The actual save data lives at `<project>/<Emulator>/data/...` /
+    `<project>/<Emulator>/config/...` which IS in the shared tree.
+
+    Security posture from round-5 carries forward:
+      - ignorePerms=true so a hostile peer can't push setuid bits.
+      - .stignore excludes symlinks-leaving-project AND dotfiles.
+      - Idempotent PUT semantics.
     """
     home = home or _config_home()
-    folder_path = saves_dir(project_dir)
-    os.makedirs(folder_path, exist_ok=True)
-    _populate_save_links(project_dir, folder_path)
+    folder_path = project_dir
     _write_stignore(folder_path)
 
     key = api_key(home)
@@ -307,17 +318,45 @@ def add_folder(project_dir: str, home: Optional[str] = None) -> bool:
 
 
 def _write_stignore(folder_path: str) -> None:
-    """Drop a .stignore that locks Syncthing to regular files inside the
-    saves tree only. Defends against a paired peer pre-placing a symlink
-    that exfiltrates host data. Idempotent — overwrites whatever's there."""
+    """Drop a .stignore at the project-dir root that filters Syncthing to
+    only the save-relevant subtrees. Excludes:
+      - nix build artifacts (result-*, .direnv/)
+      - local-only backups + captured originals
+      - ROM directories (typically gigabytes; users have their own copies)
+      - the legacy saves/ shadow tree from earlier rounds
+      - dotfiles (defence in depth against hostile peers)
+      - editor / OS churn
+
+    Idempotent — overwrites whatever's there.
+    """
     stignore = os.path.join(folder_path, ".stignore")
     rules = [
-        "// Schemulator — DO NOT EDIT (overwritten on every add_folder call)",
-        "// Excludes symlinks and dotfiles to defend against a hostile peer",
-        "// pre-placing a link that exfiltrates host filesystem contents.",
+        "// Schemulator — DO NOT EDIT (regenerated on every add_folder call)",
+        "//",
+        "// Build artifacts (per-machine, not for sync):",
+        "result-*",
+        ".direnv",
+        "//",
+        "// Local-only state (backups, captured originals, package.json):",
+        "backups",
+        "originals",
+        "//",
+        "// Legacy: the symlink-shadow tree we used in earlier versions; now",
+        "// project/<Emu>/data/... is the real save dir, so saves/ is dropped.",
+        "saves",
+        "//",
+        "// ROMs are the user's responsibility; don't push gigabytes:",
+        "ROMs",
+        "downloaded_media",
+        "n3ds-fixed",
+        "n3ds-original",
+        "//",
+        "// Editor / OS churn:",
         "(?d)*.tmp",
         "(?d)*.swp",
-        "// Skip dotfiles other than .stignore itself.",
+        ".DS_Store",
+        "//",
+        "// Dotfiles (defence in depth: a hostile peer could pre-place ssh keys etc):",
         "/.??*",
         "!.stignore",
     ]

@@ -6,6 +6,7 @@ config locations. The CLI and the GUI both call into here.
 
 import json
 import os
+from typing import Dict
 
 from core import state
 from core.console import console_error
@@ -24,44 +25,105 @@ def _create_parent_dirs(path):
 
 
 def _link_has_user_data(link: str) -> bool:
-    """If `link` is a real directory (not a symlink) with files inside, the
-    user has accumulated data there directly. We must not silently delete it."""
+    """If `link` is a real directory containing real (non-symlink) entries,
+    the user has accumulated data there. We must not silently delete it.
+
+    A directory full ONLY of symlinks (e.g. one schemulator created on a
+    previous run, where each child is a per-file symlink into the project
+    dir) is NOT user data — it's our own wiring. Returns False there so
+    re-install / uninstall flows that legitimately want to replace it can
+    proceed. Round-6 critic refinement.
+    """
     if not os.path.isdir(link) or os.path.islink(link):
         return False
     try:
-        return any(True for _ in os.scandir(link))
+        for entry in os.scandir(link):
+            # Real file or real subdirectory → user data.
+            if not entry.is_symlink():
+                return True
+        return False
     except OSError:
         return False
 
 
-def create_symlink(link, source):
+def create_symlink(link, source, migrate=False):
+    """Wire a host path to point at the project-dir source.
+
+    If `link` is a real directory containing user data:
+      - migrate=False (default): refuse and emit an error so the caller can
+        prompt the user. Protects existing saves from silent destruction.
+      - migrate=True: copy the user's data into `source` (preserving anything
+        already there — `source` wins on conflict), then replace `link` with
+        the symlink. This is the active migration path the GUI invokes after
+        the user opts in.
+    """
     if os.path.lexists(_parent(link)):
         own(_parent(link))
     if os.path.lexists(link):
         own(link)
-    # CRITICAL: refuse to silently delete a populated real directory at the
-    # link path. Users sometimes pre-populate ~/.config/<emu>/ with saves
-    # before discovering schemulator; clobbering it would lose their data.
     if _link_has_user_data(link):
-        from core.console import console_error
-        console_error(
-            f"Refusing to replace existing data at {link}\n"
-            f"  Move its contents into {source} first, then re-run symlink.\n"
-            f"  (This protects user data when migrating an existing install.)"
-        )
-        return
+        if not migrate:
+            from core.console import console_error
+            console_error(
+                f"Refusing to replace existing data at {link}\n"
+                f"  Move its contents into {source} first, then re-run symlink,\n"
+                f"  or invoke with migrate=True to auto-merge into the project dir.\n"
+            )
+            return
+        _migrate_existing(link, source)
     delete(link)
     _create_parent_dirs(link)
     execute("symlink", source, link, target_is_directory=os.path.isdir(source))
 
 
-def create_symlinks(link, source):
+def _migrate_existing(link: str, source: str) -> None:
+    """Copy contents of the host link path into the project source dir.
+    Already-present files in `source` win — the project dir is the source of
+    truth (e.g. user already cloud-synced a save from another device)."""
+    import shutil
+    from core.console import console_log
+    if not os.path.isdir(source):
+        os.makedirs(source, exist_ok=True)
+    moved = 0
+    for entry in os.listdir(link):
+        src_path = os.path.join(link, entry)
+        dst_path = os.path.join(source, entry)
+        if os.path.exists(dst_path):
+            continue  # project version wins
+        try:
+            if os.path.isdir(src_path):
+                shutil.copytree(src_path, dst_path, symlinks=True)
+            else:
+                shutil.copy2(src_path, dst_path)
+            moved += 1
+        except OSError:
+            pass
+    console_log(f"Migrated {moved} existing entries from {link} into {source}")
+
+
+def create_symlinks(link, source, migrate=False):
     if os.path.isdir(source):
         for item in os.listdir(source):
-            create_symlink(os.path.join(link, item), os.path.join(source, item))
+            create_symlink(os.path.join(link, item), os.path.join(source, item), migrate=migrate)
     else:
         _, file_name = os.path.split(source)
-        create_symlink(os.path.join(link, file_name), source)
+        create_symlink(os.path.join(link, file_name), source, migrate=migrate)
+
+
+def detect_existing_user_data(parsed: dict) -> Dict[str, list]:
+    """Return {EMULATOR: [link_path, ...]} for emulators where the host link
+    target already contains user data.
+
+    Used by the GUI to prompt "Move existing data into project dir?" before
+    running symlink (round-6 critic finding #3). `parsed` is the dict
+    returned by parse_config().
+    """
+    out = {}
+    for emulator, entries in parsed.items():
+        for _, link_path, _ in entries:
+            if _link_has_user_data(link_path):
+                out.setdefault(emulator, []).append(link_path)
+    return out
 
 
 def _find_project_dir(config_path):

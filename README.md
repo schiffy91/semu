@@ -4,16 +4,24 @@ Deterministic, reproducible emulation environment powered by Nix. All emulators 
 
 ## Quick Start
 
-```sh
-# Build and install everything
-nix build github:schiffy91/schemulator
+Schemulator currently ships from source via Nix; pre-built `.app` / `.dmg` /
+`.AppImage` artifacts are on the roadmap (`make package-mac`, `make appimage`)
+but not yet attached to GitHub releases. To run today:
 
-# Or run directly
+```sh
+# CLI: build all bundled emulators + wire host-config symlinks
 nix run github:schiffy91/schemulator -- symlink
+
+# GUI installer/updater (PySide6)
+nix run github:schiffy91/schemulator#gui
 
 # Dev shell (for contributing)
 nix develop
 ```
+
+A first-run wizard pops on launch, walks through choosing a project dir
+(put this on a cloud-synced folder for cross-device save sync), an SD card
+with ROMs (Steam Deck), and which emulators to install.
 
 ## Emulators
 

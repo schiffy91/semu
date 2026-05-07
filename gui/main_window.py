@@ -291,13 +291,74 @@ class MainWindow(QMainWindow):
         return os.path.join(self._project_dir, "setup.json")
 
     def _on_install(self, name: str):
+        # Detect pre-existing user data at the OS-level config paths and
+        # offer to migrate before silent failure (round-6 critic finding #3).
+        # Without this, users with prior Homebrew/apt Dolphin installs see
+        # "Installed 1/1" but their saves stay outside the project dir.
+        migrate = self._maybe_offer_migration(self._emulators_arg(name))
+        args = make_args(
+            config=self._config_path(),
+            emulators=self._emulators_arg(name),
+        )
+        if migrate:
+            args.migrate = True
         self._run_worker(
             lifecycle.install,
-            make_args(config=self._config_path(), emulators=self._emulators_arg(name)),
+            args,
             f"Installing {name or 'all emulators'}",
         )
 
+    def _maybe_offer_migration(self, emulator_names) -> bool:
+        """If any of the targeted emulators has existing user data at its OS
+        link path, ask the user whether to migrate it. Returns True if the
+        user opted in."""
+        from core.symlinks import detect_existing_user_data, parse_config, filter_emulators
+        try:
+            parsed = parse_config(self._config_path(), self._project_dir)
+        except Exception:
+            return False
+        parsed = filter_emulators(parsed, emulator_names or [])
+        existing = detect_existing_user_data(parsed)
+        if not existing:
+            return False
+        lines = []
+        for emu, paths in existing.items():
+            lines.append(f"<b>{emu}</b>")
+            for p in paths:
+                lines.append(f"  • {p}")
+        body = (
+            "Schemulator detected existing data at these locations:<br><br>"
+            + "<br>".join(lines)
+            + "<br><br>Move it into the project directory so it gets cloud-synced "
+            "with the rest of your saves? (Anything already in the project dir "
+            "wins — peers' saves aren't overwritten.)"
+        )
+        result = QMessageBox.question(
+            self, "Migrate existing data?", body,
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        )
+        return result == QMessageBox.StandardButton.Yes
+
     def _on_update(self, name: str):
+        # Warn if any of the targeted emulators is currently running. Update
+        # renames the result-<emu> symlink mid-run; on macOS this can crash
+        # the live emulator process (mmap'd .app pages unmap). Round-6 #5.
+        targets = self._emulators_arg(name)
+        if not targets:
+            from gui.manifest import EMULATORS
+            targets = [m.name for m in EMULATORS]
+        running = lifecycle.running_emulators(targets)
+        if running:
+            confirm = QMessageBox.warning(
+                self, "Emulator running",
+                f"These emulators are currently running and may crash if updated:\n  "
+                + "\n  ".join(running)
+                + "\n\nQuit them before continuing. Proceed anyway?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel,
+                QMessageBox.StandardButton.Cancel,
+            )
+            if confirm != QMessageBox.StandardButton.Yes:
+                return
         self._run_worker(
             lifecycle.update,
             make_args(config=self._config_path(), emulators=self._emulators_arg(name)),
@@ -393,7 +454,11 @@ class MainWindow(QMainWindow):
         AboutDialog(parent=self).exec()
 
     def show_prereq_warnings(self) -> None:
-        """If critical prereqs are missing, surface a warning. Non-blocking."""
+        """If critical prereqs are missing, surface a warning AND disable
+        install/update/rollback buttons on every card. Without disabling,
+        the user clicks Install, waits for a worker spin-up, then sees
+        'nix not found' inside a ProgressDialog (round-6 critic finding #10).
+        """
         from core import prereqs
         critical = prereqs.critical_missing()
         if not critical:
@@ -405,6 +470,12 @@ class MainWindow(QMainWindow):
             "Missing prerequisite",
             f"Schemulator needs {names} for install/update operations.\n\n{hints}",
         )
+        for card in self._cards.values():
+            card.action_button.setEnabled(False)
+            card.action_button.setText("Install Nix first")
+            card.action_button.setToolTip(
+                "Install Nix (https://nixos.org/download.html) and relaunch Schemulator."
+            )
 
     def recover_interrupted_updates(self) -> None:
         """Detect and offer to complete any update interrupted by a crash.
@@ -456,6 +527,17 @@ class MainWindow(QMainWindow):
         self._seed_project_dir(self._project_dir)
         # Title bar / header text now references the new dir.
         self._refresh_status()
+
+        # Wire the chosen SD card BEFORE install so the first launch of ES-DE
+        # finds ROMs on the card (round-6 #7).
+        sd_card = wiz.chosen_sd_card()
+        if sd_card:
+            from core import sdcard as _sd
+            written = _sd.wire_es_de_to_card(sd_card, self._project_dir)
+            if written:
+                self.statusBar().showMessage(
+                    f"Wired ES-DE ROM root to {sd_card.mount_path}", 8000,
+                )
 
         emulators = wiz.selected_emulators()
         if emulators:

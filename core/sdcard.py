@@ -213,6 +213,66 @@ def _scan_by_extension(root: str, max_depth: int) -> Dict[str, List[str]]:
     return out
 
 
+def wire_es_de_to_card(card: "SdCard", project_dir: str) -> str:
+    """Make ES-DE read ROMs from the chosen SD card's `Emulation/roms/` root.
+
+    ES-DE keeps its top-level settings in `<portable>/settings/es_settings.xml`
+    where `<portable>` resolves to `~/ES-DE/` on Linux/macOS. The
+    `ROMDirectory` setting is what `%ROMPATH%` substitutes to in
+    `es_systems.xml`. Setting it to the SD card's `Emulation/roms/` makes
+    every system in our shipped systems file resolve onto the card.
+
+    Returns the path to the file written, or "" if the write failed.
+    Round-6 critic finding #2.
+    """
+    import xml.etree.ElementTree as ET
+
+    rom_root = os.path.join(card.mount_path, "Emulation", "roms")
+    if not os.path.isdir(rom_root):
+        # Fall back to the card root if there's no EmuDeck layout.
+        rom_root = card.mount_path
+
+    settings_dir = os.path.expanduser("~/ES-DE/settings")
+    os.makedirs(settings_dir, exist_ok=True)
+    settings_path = os.path.join(settings_dir, "es_settings.xml")
+
+    # Load existing settings if present so we preserve user customisations.
+    if os.path.exists(settings_path):
+        try:
+            tree = ET.parse(settings_path)
+            root = tree.getroot()
+        except ET.ParseError:
+            root = ET.Element("settings")
+            tree = ET.ElementTree(root)
+    else:
+        root = ET.Element("settings")
+        tree = ET.ElementTree(root)
+
+    # Upsert the <string name="ROMDirectory" value="..." /> element.
+    found = False
+    for el in root.findall("string"):
+        if el.get("name") == "ROMDirectory":
+            el.set("value", rom_root)
+            found = True
+            break
+    if not found:
+        ET.SubElement(root, "string", {"name": "ROMDirectory", "value": rom_root})
+
+    # Atomic write
+    tmp = settings_path + ".tmp"
+    try:
+        tree.write(tmp, encoding="utf-8", xml_declaration=True)
+        os.replace(tmp, settings_path)
+    except OSError:
+        if os.path.exists(tmp):
+            try:
+                os.remove(tmp)
+            except OSError:
+                pass
+        return ""
+    return settings_path
+
+
 def best_card(cards: List[SdCard]) -> Optional[SdCard]:
     """Pick the most-likely 'the user's ROM card' from a list of mounts."""
     if not cards:

@@ -55,6 +55,47 @@ def _safe_env() -> dict:
     return env
 
 
+# Process names whose presence we warn about before update / rollback.
+# Update of a running emulator can crash it (mmap'd pages from the old
+# nix store path may unmap mid-run). Round-6 critic finding #5.
+_EMULATOR_PROCS = {
+    "dolphin": ("dolphin-emu", "Dolphin", "dolphin"),
+    "pcsx2":   ("pcsx2-qt", "PCSX2"),
+    "cemu":    ("Cemu", "cemu"),
+    "ryujinx": ("Ryujinx", "ryujinx"),
+    "azahar":  ("azahar",),
+    "retroarch": ("retroarch",),
+    "ares":    ("ares",),
+    "es-de":   ("es-de", "emulationstation"),
+}
+
+
+def running_emulators(emulators) -> list:
+    """Return the lowercase emulator names currently running, restricted to
+    the candidate set. Uses a portable `ps -e -o comm` so we don't need psutil.
+
+    macOS / Linux only — Windows users get an empty list (no false positive).
+    """
+    if state.PLATFORM not in ("linux", "macos"):
+        return []
+    try:
+        out = subprocess.run(
+            ["ps", "-e", "-o", "comm="],
+            capture_output=True, text=True, check=False, timeout=2,
+        )
+        comms = {line.strip().rsplit("/", 1)[-1] for line in out.stdout.splitlines() if line.strip()}
+    except (OSError, subprocess.SubprocessError):
+        return []
+    candidates = [e.lower() for e in emulators]
+    found = []
+    for emu in candidates:
+        for proc in _EMULATOR_PROCS.get(emu, ()):
+            if proc in comms:
+                found.append(emu)
+                break
+    return found
+
+
 def _nix_build_target(emulator: str) -> str:
     """Map an emulator name onto its `nix build` flake attribute."""
     return emulator.lower()
@@ -115,13 +156,22 @@ def _capture_original_if_first(emulator: str, project_dir: str, config_file: str
 
 
 def install(args) -> int:
-    """Build, link, and capture-baseline for the listed emulators (or all). Returns
-    the number of emulators successfully installed."""
+    """Build, link, and capture-baseline for the listed emulators (or all).
+
+    If `args.migrate` is True (set by the GUI when the user opts in via the
+    "Migrate existing data?" prompt), the symlink step copies any pre-existing
+    OS-level user data into the project dir before replacing it with the
+    symlink. Without that, users with a prior Homebrew/apt Dolphin install
+    see schemulator silently no-op on their saves (round-6 finding #3).
+
+    Returns the number of emulators successfully installed.
+    """
     config_file, project_dir = resolve_config(args)
     emulators = filter_emulators(parse_config(config_file, project_dir), args.emulators or [])
     if not emulators:
         console_error("No emulators matched")
         return 0
+    migrate = bool(getattr(args, "migrate", False))
     succeeded = 0
     for emulator, entries in emulators.items():
         console_log(f"\n=== Installing {emulator} ===")
@@ -130,7 +180,7 @@ def install(args) -> int:
             continue
         for flatpak_id, link_path, source_path in entries:
             flatpak.setup_flatpak(flatpak_id, source_path, project_dir=project_dir)
-            create_symlinks(link_path, source_path)
+            create_symlinks(link_path, source_path, migrate=migrate)
         _capture_original_if_first(emulator, project_dir, config_file)
         succeeded += 1
     console_log(f"\nInstalled {succeeded}/{len(emulators)} emulators.")
@@ -203,6 +253,27 @@ def _nix_build_to(emulator: str, project_dir: str, out_link: str) -> bool:
         return False
 
 
+def _filter_outdated(emulators: dict, project_dir: str) -> dict:
+    """Drop emulators from the dict whose installed version equals the
+    manifest's latest. Network-tolerant: if the manifest can't be fetched,
+    fall back to "update everything" rather than blocking on a network call.
+    """
+    from core import updater
+    manifest = updater.fetch_manifest()
+    if not manifest:
+        return emulators  # offline → don't block, let the user rebuild
+    installed = updater.installed_versions(project_dir)
+    out = {}
+    for name, entries in emulators.items():
+        latest = manifest.emulators.get(name.lower(), {}).get("version", "")
+        current = installed.get(name.lower(), "")
+        if latest and current == latest:
+            console_log(f"{name}: already at v{latest}; skipping.")
+            continue
+        out[name] = entries
+    return out
+
+
 def update(args) -> int:
     """Update emulators with prev-build retention for rollback.
 
@@ -224,6 +295,15 @@ def update(args) -> int:
 
     console_log("Backing up before update...")
     cmd_backup(argparse.Namespace(config=config_file, emulators=list(emulators.keys())))
+
+    # Skip emulators whose installed version already matches the manifest.
+    # Without this, "Update All" rebuilds every emulator from source via
+    # nix even if there's nothing to update — round-6 critic finding #8.
+    if getattr(args, "skip_up_to_date", True) and not getattr(args, "force", False):
+        emulators = _filter_outdated(emulators, project_dir)
+        if not emulators:
+            console_log("All targeted emulators are already up to date.")
+            return 0
 
     succeeded = 0
     for emulator, entries in emulators.items():
@@ -272,10 +352,16 @@ def update(args) -> int:
 def uninstall(args) -> int:
     """Remove host symlinks and Flatpak overrides. Project-dir data is preserved.
 
+    Round-6 critic finding #6: refuse to delete a real directory at the link
+    path (that means the symlink was previously broken and the emulator
+    accumulated data there directly). Mirrors the protection we have in
+    create_symlink for the install side.
+
     Note: this intentionally does NOT remove `result-<emulator>` symlinks. Those
     are how nix tracks the installed binary; removing them would orphan the
     build. Use `nix gc` for cleanup.
     """
+    from core.symlinks import _link_has_user_data
     config_file, project_dir = resolve_config(args)
     emulators = filter_emulators(parse_config(config_file, project_dir), args.emulators or [])
     if not emulators:
@@ -285,6 +371,13 @@ def uninstall(args) -> int:
     for emulator, entries in emulators.items():
         console_log(f"\n=== Uninstalling {emulator} ===")
         for flatpak_id, link_path, _ in entries:
+            if _link_has_user_data(link_path):
+                console_error(
+                    f"Skipping {link_path}: looks like a real directory with "
+                    f"data, not a schemulator symlink. Move its contents into "
+                    f"the project dir first or remove it manually."
+                )
+                continue
             delete(link_path)
             flatpak.remove_overrides(flatpak_id)
         succeeded += 1

@@ -164,10 +164,20 @@ class SteamDeckDialog(QDialog):
                 notes.append(f"Installed Steam Input layout to {layout_dst}.")
 
         if chosen_card:
-            notes.append(
-                f"Selected SD root: {chosen_card.mount_path}. "
-                "Run 'Install All' from the main window to wire emulators to this ROM root."
-            )
+            # Actually wire ES-DE's ROMDirectory to point at the chosen card's
+            # Emulation/roms/ root. Without this, the dialog reported "selected"
+            # but the user had no working ROM library in Game Mode (round-6 #2).
+            settings_written = sdcard.wire_es_de_to_card(chosen_card, self._project_dir)
+            if settings_written:
+                notes.append(
+                    f"Wired ES-DE ROM root to {chosen_card.mount_path}/Emulation/roms/.\n"
+                    f"({settings_written})"
+                )
+            else:
+                notes.append(
+                    f"Detected SD root at {chosen_card.mount_path} but couldn't "
+                    f"write ~/ES-DE/settings/es_settings.xml. ROM library not wired."
+                )
 
         # Per-emulator Steam shortcuts
         if self._emulator_checks:
