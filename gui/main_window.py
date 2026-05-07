@@ -23,6 +23,7 @@ from PySide6.QtWidgets import (
 
 from core import controllers, lifecycle, state, steam, syncthing, updater
 from core.backup import cmd_backup, cmd_revert
+from gui.dialogs.about import AboutDialog
 from gui.dialogs.first_run import FirstRunWizard, has_run_before
 from gui.dialogs.migration import MigrationDialog
 from gui.dialogs.originals import OriginalsDialog
@@ -76,12 +77,15 @@ class MainWindow(QMainWindow):
         change_btn.clicked.connect(self._choose_project_dir)
         settings_btn = QPushButton("Settings…")
         settings_btn.clicked.connect(self._open_settings)
+        about_btn = QPushButton("About")
+        about_btn.clicked.connect(self._open_about)
 
         layout.addWidget(title)
         layout.addWidget(sub)
         layout.addWidget(spacer)
         layout.addWidget(change_btn)
         layout.addWidget(settings_btn)
+        layout.addWidget(about_btn)
         return wrap
 
     def _build_card_list(self) -> QWidget:
@@ -180,17 +184,20 @@ class MainWindow(QMainWindow):
     def _emulators_arg(self, name: str):
         return [name] if name else []
 
+    def _config_path(self) -> str:
+        return os.path.join(self._project_dir, "setup.json")
+
     def _on_install(self, name: str):
         self._run_worker(
             lifecycle.install,
-            make_args(config=None, emulators=self._emulators_arg(name)),
+            make_args(config=self._config_path(), emulators=self._emulators_arg(name)),
             f"Installing {name or 'all emulators'}",
         )
 
     def _on_update(self, name: str):
         self._run_worker(
             lifecycle.update,
-            make_args(config=None, emulators=self._emulators_arg(name)),
+            make_args(config=self._config_path(), emulators=self._emulators_arg(name)),
             f"Updating {name or 'all emulators'}",
         )
 
@@ -201,14 +208,14 @@ class MainWindow(QMainWindow):
             return
         self._run_worker(
             lifecycle.uninstall,
-            make_args(config=None, emulators=self._emulators_arg(name)),
+            make_args(config=self._config_path(), emulators=self._emulators_arg(name)),
             f"Uninstalling {name}",
         )
 
     def _on_backup(self, name: str):
         self._run_worker(
             cmd_backup,
-            make_args(config=None, emulators=self._emulators_arg(name)),
+            make_args(config=self._config_path(), emulators=self._emulators_arg(name)),
             f"Backing up {name or 'all emulators'}",
         )
 
@@ -219,7 +226,7 @@ class MainWindow(QMainWindow):
             return
         self._run_worker(
             lifecycle.rollback,
-            make_args(config=None, emulators=self._emulators_arg(name)),
+            make_args(config=self._config_path(), emulators=self._emulators_arg(name)),
             f"Rolling back {name}",
         )
 
@@ -278,6 +285,23 @@ class MainWindow(QMainWindow):
     def _open_migration(self):
         MigrationDialog(self._project_dir, parent=self).exec()
         self._refresh_status()
+
+    def _open_about(self):
+        AboutDialog(parent=self).exec()
+
+    def show_prereq_warnings(self) -> None:
+        """If critical prereqs are missing, surface a warning. Non-blocking."""
+        from core import prereqs
+        critical = prereqs.critical_missing()
+        if not critical:
+            return
+        names = ", ".join(p.name for p in critical)
+        hints = "\n\n".join(p.install_hint for p in critical)
+        QMessageBox.warning(
+            self,
+            "Missing prerequisite",
+            f"Schemulator needs {names} for install/update operations.\n\n{hints}",
+        )
 
     def maybe_show_first_run_wizard(self) -> bool:
         """Run the first-run wizard if this looks like a fresh install. Returns
