@@ -123,22 +123,15 @@ def _safe_listdir(path: str) -> List[str]:
         return []
 
 
-def _looks_like_mount(path: str) -> bool:
-    """Path is a readable directory (kept for backward compat)."""
-    if not os.path.isdir(path):
-        return False
-    try:
-        os.listdir(path)
-    except OSError:
-        return False
-    return True
-
-
 def _looks_like_rom_store(path: str) -> bool:
     """A directory worth surfacing as an SD card: contains an Emulation/
     subtree (EmuDeck convention) or has at least one ROM extension somewhere
     in the first two levels."""
-    if not _looks_like_mount(path):
+    if not os.path.isdir(path):
+        return False
+    try:
+        os.listdir(path)  # readability probe
+    except OSError:
         return False
     if os.path.isdir(os.path.join(path, "Emulation")):
         return True
@@ -248,6 +241,25 @@ def _scan_by_extension(root: str, max_depth: int) -> Dict[str, List[str]]:
     return out
 
 
+def _es_de_settings_dir() -> str:
+    """Locate the ES-DE settings dir for the current platform.
+
+    ES-DE on macOS reads from ~/ES-DE/ ONLY if that directory pre-exists OR
+    a `~/ES-DE/.portable.txt` marker is present; otherwise it falls back to
+    ~/Library/Application Support/ES-DE/. Round-9 critic finding H3.
+    """
+    from core import state
+    home_es_de = os.path.expanduser("~/ES-DE/settings")
+    portable_marker = os.path.expanduser("~/ES-DE/.portable.txt")
+    if state.PLATFORM == "macos":
+        # Prefer the portable layout if the user has already opted into it,
+        # otherwise use the macOS-standard Application Support path.
+        if os.path.isdir(home_es_de) or os.path.isfile(portable_marker):
+            return home_es_de
+        return os.path.expanduser("~/Library/Application Support/ES-DE/settings")
+    return home_es_de
+
+
 def wire_es_de_to_card(card: "SdCard", project_dir: str) -> str:
     """Make ES-DE read ROMs from the chosen SD card's `Emulation/roms/` root.
 
@@ -267,7 +279,7 @@ def wire_es_de_to_card(card: "SdCard", project_dir: str) -> str:
         # Fall back to the card root if there's no EmuDeck layout.
         rom_root = card.mount_path
 
-    settings_dir = os.path.expanduser("~/ES-DE/settings")
+    settings_dir = _es_de_settings_dir()
     os.makedirs(settings_dir, exist_ok=True)
     settings_path = os.path.join(settings_dir, "es_settings.xml")
 
@@ -293,10 +305,14 @@ def wire_es_de_to_card(card: "SdCard", project_dir: str) -> str:
     if not found:
         ET.SubElement(root, "string", {"name": "ROMDirectory", "value": rom_root})
 
-    # Atomic write
+    # Atomic write with fsync before replace so a power loss between rename
+    # and metadata flush doesn't leave a zero-byte settings file (round-8 M9).
     tmp = settings_path + ".tmp"
     try:
-        tree.write(tmp, encoding="utf-8", xml_declaration=True)
+        with open(tmp, "wb") as f:
+            tree.write(f, encoding="utf-8", xml_declaration=True)
+            f.flush()
+            os.fsync(f.fileno())
         os.replace(tmp, settings_path)
     except OSError:
         if os.path.exists(tmp):

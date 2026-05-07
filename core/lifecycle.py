@@ -19,6 +19,7 @@ import os
 import shlex
 import shutil
 import subprocess
+from contextlib import contextmanager
 
 from core import flatpak, state
 from core.backup import cmd_backup, cmd_capture
@@ -164,9 +165,18 @@ def install(args) -> int:
     symlink. Without that, users with a prior Homebrew/apt Dolphin install
     see schemulator silently no-op on their saves (round-6 finding #3).
 
+    Holds a project-level file lock for the whole run so two GUI windows
+    or a GUI+CLI invocation can't interleave result-symlink rotations and
+    clobber each other's prev-link (round-8 critic finding H1).
+
     Returns the number of emulators successfully installed.
     """
     config_file, project_dir = resolve_config(args)
+    with _project_lock(project_dir):
+        return _install_locked(args, config_file, project_dir)
+
+
+def _install_locked(args, config_file, project_dir) -> int:
     emulators = filter_emulators(parse_config(config_file, project_dir), args.emulators or [])
     if not emulators:
         console_error("No emulators matched")
@@ -185,6 +195,19 @@ def install(args) -> int:
         succeeded += 1
     console_log(f"\nInstalled {succeeded}/{len(emulators)} emulators.")
     return succeeded
+
+
+@contextmanager
+def _project_lock(project_dir: str):
+    """Wrapper around core.lock.project_lock that emits a clean error log
+    instead of a traceback when the lock is held."""
+    from core.lock import project_lock, BusyError
+    try:
+        with project_lock(project_dir, wait=0.0) as path:
+            yield path
+    except BusyError as e:
+        console_error(str(e))
+        raise
 
 
 def _staging_result(project_dir: str, emulator: str) -> str:
@@ -286,8 +309,14 @@ def update(args) -> int:
       4. Wire symlinks.
 
     On any failure the original `result-<emu>` is preserved untouched.
+    Holds the project lock for the whole run (round-8 H1).
     """
     config_file, project_dir = resolve_config(args)
+    with _project_lock(project_dir):
+        return _update_locked(args, config_file, project_dir)
+
+
+def _update_locked(args, config_file, project_dir) -> int:
     emulators = filter_emulators(parse_config(config_file, project_dir), args.emulators or [])
     if not emulators:
         console_error("No emulators matched")
@@ -360,9 +389,16 @@ def uninstall(args) -> int:
     Note: this intentionally does NOT remove `result-<emulator>` symlinks. Those
     are how nix tracks the installed binary; removing them would orphan the
     build. Use `nix gc` for cleanup.
+
+    Held under the project lock (round-8 H1).
     """
     from core.symlinks import _link_has_user_data
     config_file, project_dir = resolve_config(args)
+    with _project_lock(project_dir):
+        return _uninstall_locked(args, config_file, project_dir, _link_has_user_data)
+
+
+def _uninstall_locked(args, config_file, project_dir, _link_has_user_data) -> int:
     emulators = filter_emulators(parse_config(config_file, project_dir), args.emulators or [])
     if not emulators:
         console_error("No emulators matched")
@@ -391,8 +427,15 @@ def rollback(args) -> int:
     If no previous build exists this is a no-op for that emulator (we can't roll
     back what isn't there). If no captured original exists, the symlink swap
     still proceeds so the user has a working previous binary.
+
+    Held under the project lock (round-8 H1).
     """
     config_file, project_dir = resolve_config(args)
+    with _project_lock(project_dir):
+        return _rollback_locked(args, config_file, project_dir)
+
+
+def _rollback_locked(args, config_file, project_dir) -> int:
     emulators = filter_emulators(parse_config(config_file, project_dir), args.emulators or [])
     if not emulators:
         console_error("No emulators matched")

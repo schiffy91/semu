@@ -29,8 +29,11 @@ def test_generate_find_rules_linux_ryujinx_path(monkeypatch):
 
 # ----- R2-3: Lime3DS fully removed -----
 
-def test_lime3ds_not_in_save_paths():
-    assert "Lime3DS" not in syncthing.SAVE_PATHS
+def test_lime3ds_not_referenced_in_syncthing():
+    """SAVE_PATHS was removed in the round-6 sync rework, but the test
+    still ensures syncthing has no Lime3DS-shaped key anywhere."""
+    src = open(syncthing.__file__).read()
+    assert "Lime3DS" not in src
 
 
 def test_lime3ds_not_in_profile_targets():

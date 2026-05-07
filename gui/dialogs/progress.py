@@ -1,6 +1,5 @@
 """Streaming log dialog used while a worker runs."""
 
-from PySide6.QtCore import Qt
 from PySide6.QtGui import QTextCursor
 from PySide6.QtWidgets import (
     QDialog,

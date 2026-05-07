@@ -29,17 +29,6 @@ SYNC_FOLDER_ID = "schemulator-saves"
 DEFAULT_API = "http://127.0.0.1:8384"
 SYNC_FOLDER_NAME = "Schemulator Saves"
 
-# Subdirectories under <project_dir>/<Emulator>/ that hold syncable saves.
-# Empty list means "ignore this emulator." The keys must match emulator dir names.
-SAVE_PATHS = {
-    "RetroArch": ["config/saves", "config/states"],
-    "Dolphin":   ["data/GC", "data/Wii", "data/StateSaves"],
-    "PCSX2":     ["config/memcards", "config/sstates"],
-    "Cemu":      ["data/mlc01/usr/save"],
-    "Ryujinx":   ["config/bis_system", "config/bis_user/save"],
-    "Azahar":    ["data/sdmc"],
-}
-
 
 @dataclass
 class SyncStatus:
@@ -518,58 +507,3 @@ def _share_folder_with(peer_id: str, home: str, key: str) -> bool:
         return False
 
 
-def saves_dir(project_dir: str) -> str:
-    return os.path.join(project_dir, "saves")
-
-
-def _populate_save_links(project_dir: str, saves_root: str) -> None:
-    """Create symlinks from <saves_root>/<Emulator>/<subdir> into the canonical
-    save locations under <project_dir>/<Emulator>/.
-
-    Hostile-peer defence (round-5 critic finding #2): if any component of the
-    candidate target is a symlink that escapes project_dir, refuse to link
-    it. Without this guard a peer who can write into the synced project dir
-    could pre-place `<project_dir>/Dolphin/data/GC` as a symlink to ~/.ssh,
-    and Syncthing in sendreceive mode would then exfiltrate ~/.ssh contents
-    to every paired device.
-    """
-    project_real = os.path.realpath(project_dir)
-    for emulator, subdirs in SAVE_PATHS.items():
-        emu_dir = os.path.join(project_dir, emulator)
-        if not os.path.isdir(emu_dir):
-            continue
-        for sub in subdirs:
-            target = os.path.join(emu_dir, sub)
-            # os.path.exists follows symlinks; we want to check existence
-            # AND verify the resolved path is still under the project dir.
-            if not os.path.exists(target):
-                continue
-            target_real = os.path.realpath(target)
-            try:
-                common = os.path.commonpath([project_real, target_real])
-            except ValueError:
-                # Different drives on Windows; bail.
-                continue
-            if common != project_real:
-                # Target resolves outside the project — refuse to share it.
-                from core.console import console_error
-                console_error(
-                    f"Refusing to share {target}: resolves outside project "
-                    f"to {target_real}. (A symlink in the project dir is "
-                    f"trying to share host filesystem.)"
-                )
-                continue
-            link_dir = os.path.join(saves_root, emulator)
-            os.makedirs(link_dir, exist_ok=True)
-            link = os.path.join(link_dir, os.path.basename(sub))
-            if os.path.lexists(link):
-                continue
-            try:
-                os.symlink(target, link)
-            except OSError:
-                pass
-
-
-def device_id_qr_payload(d_id: str) -> str:
-    """Format a device ID as a QR payload that Syncthing's mobile apps recognise."""
-    return f"syncthing://{d_id}"

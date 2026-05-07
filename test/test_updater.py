@@ -51,40 +51,7 @@ def test_installed_versions_falls_back_to_installed_marker(tmp_path):
     assert versions["weird"] == "installed"
 
 
-def test_has_update_returns_diffs():
-    manifest = updater.Manifest(
-        schemulator_version="1.0.0",
-        emulators={
-            "dolphin": {"version": "2604"},
-            "pcsx2":   {"version": "2.6.3"},
-            "ryujinx": {"version": "1.3.4"},
-        },
-    )
-    installed = {"dolphin": "2603a", "pcsx2": "2.6.3"}
-    diffs = updater.has_update(installed, manifest)
-    assert diffs == {"dolphin": "2604", "ryujinx": "1.3.4"}
-
-
-def test_atomic_swap_moves_dirs(tmp_path):
-    staging = tmp_path / "staging"
-    staging.mkdir()
-    (staging / "marker").write_text("new")
-
-    current = tmp_path / "current"
-    current.mkdir()
-    (current / "marker").write_text("old")
-
-    rollback = tmp_path / "rollback"
-
-    assert updater.atomic_swap(str(staging), str(current), str(rollback)) is True
-    assert (current / "marker").read_text() == "new"
-    assert (rollback / "marker").read_text() == "old"
-    assert not staging.exists()
-
-
-def test_atomic_swap_rejects_missing_staging(tmp_path):
-    assert updater.atomic_swap(
-        str(tmp_path / "missing"),
-        str(tmp_path / "current"),
-        str(tmp_path / "rollback"),
-    ) is False
+# has_update / stage_download / atomic_swap were removed (they were never
+# called outside their own tests after lifecycle.update grew its own
+# rename logic). The version-comparison live test now happens inside
+# lifecycle._filter_outdated, covered by test_hardening_round6.

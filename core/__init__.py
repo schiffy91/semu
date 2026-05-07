@@ -1,10 +1,14 @@
-"""Schemulator core: shared library used by both the CLI (setup.py) and the GUI."""
+"""Schemulator core: shared library used by both the CLI (setup.py) and the GUI.
+
+Modules are imported directly (e.g. `from core import lifecycle`) rather than
+through this package's `__all__`. The few names re-exported here are the ones
+setup.py's tests historically reach through, kept stable for back-compat.
+"""
 
 from core import state
 from core.console import console_error, console_log
-from core.exec import execute, DRY_RUN
+from core.exec import execute
 from core.symlinks import (
-    BACKUP_EXCLUDE,
     create_symlink,
     create_symlinks,
     parse_config,
@@ -29,8 +33,6 @@ PLATFORM = state.PLATFORM
 
 __all__ = [
     "PLATFORM",
-    "BACKUP_EXCLUDE",
-    "DRY_RUN",
     "console_error",
     "console_log",
     "create_symlink",
