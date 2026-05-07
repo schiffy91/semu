@@ -9,36 +9,12 @@ import pytest
 from core import flatpak, state, steam, symlinks
 
 
-# ----- R5-2: saves/ symlink-following defence -----
-
-def test_populate_save_links_refuses_target_outside_project(tmp_path, capsys, monkeypatch):
-    """A peer who can write into a synced project dir might pre-place a
-    symlink at <project>/Dolphin/data/GC pointing at ~/.ssh. The next
-    add_folder call must refuse to share it (round-5 critic finding #2)."""
-    monkeypatch.setattr(state, "PLATFORM", "linux")
-    from core import syncthing
-
-    project = tmp_path / "project"
-    project.mkdir()
-    (project / "Dolphin" / "data").mkdir(parents=True)
-    # Hostile pre-placement: GC links outside the project.
-    outside = tmp_path / "secret-host-dir"
-    outside.mkdir()
-    (outside / "private.txt").write_text("not-for-peers")
-    (project / "Dolphin" / "data" / "GC").symlink_to(outside)
-
-    saves = project / "saves"
-    syncthing._populate_save_links(str(project), str(saves))
-
-    # The hostile target must NOT have been linked into saves/.
-    if (saves / "Dolphin" / "GC").exists():
-        # If it does exist, the materialised target must also be inside the
-        # project — i.e. realpath under project_dir. The defence resolved it.
-        real = os.path.realpath(saves / "Dolphin" / "GC")
-        proj_real = os.path.realpath(project)
-        assert os.path.commonpath([real, proj_real]) == proj_real
-    # Error logged.
-    assert "Refusing to share" in capsys.readouterr().out
+# R5-2's saves/ shadow-tree defence is now obsolete: the round-6 sync
+# rework switched to sharing the project dir directly with .stignore
+# filtering. The hostile-peer-symlink attack is now mitigated by the
+# .stignore's `/.??*` rule and the receive-side validation; we no longer
+# materialise a saves/ shadow tree at all. The legacy test was deleted
+# along with _populate_save_links.
 
 
 def test_add_folder_writes_stignore(tmp_path, monkeypatch):

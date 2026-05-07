@@ -23,6 +23,27 @@ from PySide6.QtWidgets import (
 from core import sdcard, steam
 
 
+def _shortcut_for_discovered(emu) -> steam.Shortcut:
+    """Build a Steam shortcut for a discovered emulator. macOS .app bundles
+    can't be Exe'd directly — Steam needs an executable, not a directory.
+    Wrap with `open -a` so Steam launches the bundle correctly (round-9 H2).
+    """
+    if emu.kind == "app":
+        return steam.Shortcut(
+            appname=f"{emu.name.capitalize()} (Schemulator)",
+            exe="/usr/bin/open",
+            start_dir=os.path.dirname(emu.exe),
+            launch_options=f'-a "{emu.exe}" --new --wait-apps',
+            tags=["Schemulator", "Emulation"],
+        )
+    return steam.Shortcut(
+        appname=f"{emu.name.capitalize()} (Schemulator)",
+        exe=emu.exe,
+        start_dir=os.path.dirname(emu.exe),
+        tags=["Schemulator", "Emulation"],
+    )
+
+
 class SteamDeckDialog(QDialog):
     def __init__(self, project_dir: str, parent=None):
         super().__init__(parent)
@@ -141,13 +162,23 @@ class SteamDeckDialog(QDialog):
                 notes.append("No Steam install found; shortcut skipped.")
             else:
                 exe = self._es_de_exe()
-                shortcut = steam.Shortcut(
-                    appname="ES-DE (Schemulator)",
-                    exe=exe,
-                    start_dir=os.path.dirname(exe) if os.path.isabs(exe) else "",
-                    launch_options="",
-                    tags=["Schemulator", "Emulation"],
-                )
+                if exe.endswith(".app"):
+                    # macOS: wrap with `open -a` so Steam can launch the bundle.
+                    shortcut = steam.Shortcut(
+                        appname="ES-DE (Schemulator)",
+                        exe="/usr/bin/open",
+                        start_dir=os.path.dirname(exe),
+                        launch_options=f'-a "{exe}" --new --wait-apps',
+                        tags=["Schemulator", "Emulation"],
+                    )
+                else:
+                    shortcut = steam.Shortcut(
+                        appname="ES-DE (Schemulator)",
+                        exe=exe,
+                        start_dir=os.path.dirname(exe) if os.path.isabs(exe) else "",
+                        launch_options="",
+                        tags=["Schemulator", "Emulation"],
+                    )
                 steam.upsert_shortcut(shortcuts_path, shortcut)
                 notes.append(f"Wrote shortcut to {shortcuts_path}.")
 
@@ -185,12 +216,7 @@ class SteamDeckDialog(QDialog):
             for emu in self._discovered:
                 cb = self._emulator_checks.get(emu.name)
                 if cb and cb.isChecked() and shortcuts_path:
-                    sc = steam.Shortcut(
-                        appname=f"{emu.name.capitalize()} (Schemulator)",
-                        exe=emu.exe,
-                        start_dir=os.path.dirname(emu.exe),
-                        tags=["Schemulator", "Emulation"],
-                    )
+                    sc = _shortcut_for_discovered(emu)
                     steam.upsert_shortcut(shortcuts_path, sc)
                     notes.append(f"Added {emu.name} as a non-Steam game.")
 
@@ -221,5 +247,6 @@ class SteamDeckDialog(QDialog):
 
     @staticmethod
     def _steam_layout_dest() -> str:
-        steam_root = os.path.expanduser("~/.steam/steam")
-        return os.path.join(steam_root, "controller_base", "templates", "schemulator_es_de.vdf")
+        # Honour Flatpak / macOS Steam locations via find_steam_root. Round-9 H1.
+        root = steam.find_steam_root() or os.path.expanduser("~/.steam/steam")
+        return os.path.join(root, "controller_base", "templates", "schemulator_es_de.vdf")

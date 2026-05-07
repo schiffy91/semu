@@ -204,12 +204,39 @@ def shortcuts_path(steam_root: Optional[str] = None, user_id: Optional[str] = No
 
 
 def upsert_shortcut(path: str, shortcut: Shortcut) -> bool:
-    """Insert or update a shortcut by AppName. Returns True if file was written."""
+    """Insert or update a shortcut by AppName. Returns True if file was written.
+
+    Round-8 critic finding H8: if the existing shortcuts.vdf has bytes but
+    parses to an empty list (Steam was killed mid-write — happens often), we
+    do NOT silently nuke the user's other non-Steam games. Instead the
+    corrupt file is preserved as <path>.broken-<timestamp> for inspection
+    and a fresh shortcuts.vdf is written containing only this shortcut.
+    """
     existing: List[Shortcut] = []
+    rescued_empty = False
     if os.path.exists(path):
         try:
             with open(path, "rb") as f:
-                existing = decode_shortcuts(f.read())
+                raw = f.read()
+            decoded = decode_shortcuts(raw)
+            if not decoded and len(raw) > 16:
+                # File had real bytes but parsed empty → corrupt or unknown
+                # format. Sidestep destroying it: rename + start fresh.
+                rescued_empty = True
+                import datetime as _dt
+                stamp = _dt.datetime.now().strftime("%Y%m%d-%H%M%S")
+                broken_path = f"{path}.broken-{stamp}"
+                try:
+                    os.rename(path, broken_path)
+                    from core.console import console_error
+                    console_error(
+                        f"shortcuts.vdf at {path} was non-empty but couldn't "
+                        f"be parsed; preserved as {broken_path}. "
+                        f"Steam may have been killed mid-write."
+                    )
+                except OSError:
+                    pass
+            existing = decoded
         except Exception:
             existing = []
     found = False

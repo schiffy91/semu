@@ -42,7 +42,23 @@ def setup_flatpak(flatpak_id, path, project_dir=None):
 
     result = execute("run", ["flatpak", "list", "--user", "--app"])
     if result and flatpak_id not in result.stdout:
-        execute("install", ["flatpak", "install", "--user", "-y", flatpak_id])
+        # `flatpak install` can hang indefinitely if flatpakd is wedged or
+        # flathub is slow. 10 minutes is generous for a real download but
+        # cleanly bounds a stuck process so the GUI worker doesn't hang
+        # forever (round-8 critic finding H7).
+        import subprocess
+        try:
+            subprocess.run(
+                ["flatpak", "install", "--user", "-y", flatpak_id],
+                check=False, timeout=600,
+            )
+        except subprocess.TimeoutExpired:
+            from core.console import console_error
+            console_error(
+                f"flatpak install of {flatpak_id} timed out after 10m. "
+                f"Check `flatpak install --user {flatpak_id}` manually."
+            )
+            return
     execute("run", ["flatpak", "override", "--user", flatpak_id, f"--filesystem={path}"])
     if state.PORTABLE and (not project_dir or _path_under(state.PORTABLE, project_dir)):
         execute("run", ["flatpak", "override", "--user", flatpak_id, f"--filesystem={state.PORTABLE}"])
@@ -65,16 +81,4 @@ def remove_overrides(flatpak_id):
     execute("run", ["flatpak", "override", "--user", "--reset", flatpak_id])
 
 
-def uninstall(flatpak_id):
-    if state.PLATFORM != "linux" or not flatpak_id or not is_available():
-        return
-    execute("install", ["flatpak", "uninstall", "--user", "-y", flatpak_id])
-
-
-def sandbox_dir(flatpak_id: str) -> str:
-    """The path Flatpak uses for an app's sandboxed user data:
-    ~/.var/app/<id>/. Used to retarget symlinks when an emulator is installed
-    via Flatpak instead of natively."""
-    import os
-    return os.path.expanduser(f"~/.var/app/{flatpak_id}")
 

@@ -23,6 +23,24 @@ from core.symlinks import (
 _VALID_VERSION_RE = re.compile(r"^[A-Za-z0-9._-]+$")
 
 
+def _sweep_stale_tmp_zips(backup_dir: str, max_age_seconds: int = 3600) -> None:
+    """Delete *.tmp orphans (left by SIGKILL'd backups) older than threshold."""
+    import time
+    now = time.time()
+    try:
+        for name in os.listdir(backup_dir):
+            if not name.endswith(".zip.tmp"):
+                continue
+            path = os.path.join(backup_dir, name)
+            try:
+                if now - os.path.getmtime(path) > max_age_seconds:
+                    os.remove(path)
+            except OSError:
+                continue
+    except OSError:
+        pass
+
+
 def _validate_version(version: str) -> bool:
     """Reject version labels that could escape the originals/<version> dir.
     Only allow [A-Za-z0-9._-]+; explicitly reject .. and absolute paths."""
@@ -61,12 +79,15 @@ def cmd_backup(args):
 
     Writes atomically: zip is created at <name>.zip.tmp and renamed only after
     a complete write. Microsecond precision avoids collisions when two backups
-    fire within the same second (critic finding #16).
+    fire within the same second (critic finding #16). Stale .tmp files older
+    than an hour (orphans from a SIGKILL'd previous run) are swept on entry
+    so they don't accumulate forever (round-8 critic finding H4).
     """
     config_file, project_dir = resolve_config(args)
     timestamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S-%f")
     backup_dir = os.path.join(project_dir, "backups")
     os.makedirs(backup_dir, exist_ok=True)
+    _sweep_stale_tmp_zips(backup_dir)
     backup_path = os.path.join(backup_dir, f"{state.PLATFORM}-{timestamp}.zip")
     tmp_path = backup_path + ".tmp"
 
@@ -253,9 +274,17 @@ def cmd_revert(args):
         if not os.path.exists(src):
             continue
         if os.path.isdir(src):
+            # Atomic-ish: copytree into a sibling .tmp, then swap in.
+            # A crash between rmtree and copytree-into-place would otherwise
+            # destroy current data and leave the destination half-populated
+            # (round-8 critic finding H5).
+            tmp = dst + ".swap.tmp"
+            if os.path.exists(tmp):
+                shutil.rmtree(tmp)
+            shutil.copytree(src, tmp)
             if os.path.exists(dst):
                 shutil.rmtree(dst)
-            shutil.copytree(src, dst)
+            os.rename(tmp, dst)
         else:
             shutil.copy2(src, dst)
         # Make restored files writable. shutil.copy2 preserves mode bits and
@@ -331,9 +360,17 @@ def cmd_migrate(args):
             continue
         console_log(f"  Migrating {entry}: {source_dir} -> {target_dir}")
         if os.path.isdir(src):
+            # Atomic-ish: copytree into a sibling .tmp, then swap in.
+            # A crash between rmtree and copytree-into-place would otherwise
+            # destroy current data and leave the destination half-populated
+            # (round-8 critic finding H5).
+            tmp = dst + ".swap.tmp"
+            if os.path.exists(tmp):
+                shutil.rmtree(tmp)
+            shutil.copytree(src, tmp)
             if os.path.exists(dst):
                 shutil.rmtree(dst)
-            shutil.copytree(src, dst)
+            os.rename(tmp, dst)
         else:
             os.makedirs(os.path.dirname(dst), exist_ok=True)
             shutil.copy2(src, dst)

@@ -11,8 +11,6 @@ import sys
 from core import state
 from core.console import console_error, console_log
 
-DRY_RUN = state.DRY_RUN  # re-export for tests
-
 
 _DISPATCH = {
     "unlink": lambda args, kw: os.unlink(*args),

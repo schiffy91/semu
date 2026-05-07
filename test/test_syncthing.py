@@ -21,36 +21,9 @@ def _have_syncthing() -> bool:
 live = pytest.mark.skipif(not _have_syncthing(), reason="syncthing binary not bundled")
 
 
-def test_saves_dir(tmp_path):
-    assert syncthing.saves_dir(str(tmp_path)) == str(tmp_path / "saves")
-
-
-def test_populate_save_links_creates_symlinks(tmp_path):
-    project = tmp_path / "project"
-    (project / "RetroArch" / "config" / "saves").mkdir(parents=True)
-    (project / "RetroArch" / "config" / "states").mkdir(parents=True)
-    (project / "Dolphin" / "data" / "GC").mkdir(parents=True)
-
-    saves = project / "saves"
-    syncthing._populate_save_links(str(project), str(saves))
-
-    assert (saves / "RetroArch" / "saves").is_symlink()
-    assert (saves / "RetroArch" / "states").is_symlink()
-    assert (saves / "Dolphin" / "GC").is_symlink()
-
-
-def test_populate_skips_missing_emulators(tmp_path):
-    project = tmp_path / "project"
-    project.mkdir()
-    syncthing._populate_save_links(str(project), str(project / "saves"))
-    # Saves root not even created since nothing to link.
-    assert not (project / "saves").exists() or not list((project / "saves").iterdir())
-
-
-def test_qr_payload_format():
-    payload = syncthing.device_id_qr_payload("ABCDEFG-HIJKLMN")
-    assert payload.startswith("syncthing://")
-    assert "ABCDEFG" in payload
+# Saves now sync via the whole project dir filtered by .stignore (round-6
+# rework); the legacy saves/ shadow tree, _populate_save_links, saves_dir,
+# and device_id_qr_payload were removed. Their old tests went with them.
 
 
 def test_device_id_returns_none_when_no_config(tmp_path):
