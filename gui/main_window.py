@@ -56,7 +56,10 @@ class MainWindow(QMainWindow):
         layout.addLayout(self._build_global_actions())
 
         self.setStatusBar(QStatusBar())
+        self._latest_versions = {}
         self._refresh_status()
+        # Kick off the manifest fetch on a background thread so we don't block.
+        self._kick_off_manifest_fetch()
 
     def _discover_project_dir(self) -> str:
         env = os.environ.get("SCHEMULATOR_PROJECT_DIR")
@@ -144,14 +147,38 @@ class MainWindow(QMainWindow):
 
     def _refresh_status(self):
         installed = updater.installed_versions(self._project_dir)
-        manifest = None  # offline-friendly: don't block startup on a network call
         for name, card in self._cards.items():
             v = installed.get(name.lower())
-            latest = manifest.emulators.get(name.lower(), {}).get("version") if manifest else None
+            latest = self._latest_versions.get(name.lower()) if hasattr(self, "_latest_versions") else None
             card.set_installed(version=v, update_available_to=latest)
         self.statusBar().showMessage(
             f"{sum(1 for v in installed.values() if v)}/{len(self._cards)} installed"
         )
+
+    def _kick_off_manifest_fetch(self):
+        """Fetch the version manifest in the background so update availability
+        shows up without blocking startup."""
+        from PySide6.QtCore import QThread, Signal
+
+        if hasattr(self, "_manifest_thread") and self._manifest_thread.isRunning():
+            return
+
+        class ManifestFetcher(QThread):
+            done = Signal(dict)
+
+            def run(self):
+                m = updater.fetch_manifest()
+                self.done.emit(m.emulators if m else {})
+
+        self._manifest_thread = ManifestFetcher()
+        self._manifest_thread.done.connect(self._on_manifest_loaded)
+        self._manifest_thread.start()
+
+    def _on_manifest_loaded(self, emulators: dict):
+        self._latest_versions = {
+            name.lower(): info.get("version", "") for name, info in emulators.items()
+        }
+        self._refresh_status()
 
     def _choose_project_dir(self):
         chosen = QFileDialog.getExistingDirectory(self, "Choose project directory", self._project_dir)
