@@ -115,6 +115,49 @@ def _staging_result(project_dir: str, emulator: str) -> str:
     return os.path.join(project_dir, f"result-{emulator.lower()}-staging")
 
 
+def detect_interrupted_updates(project_dir: str) -> list:
+    """Find emulators where an update appears to have been interrupted.
+
+    Failure mode: between `os.rename(old, prev)` and `os.rename(staging, old)`
+    a power loss or SIGKILL can leave us with a `-staging` and `-prev` link
+    but no current `result-<emu>` link. Without recovery the GUI shows the
+    emulator as not-installed even though both binaries are intact (round-2
+    critic finding #5).
+
+    Returns a list of emulator names (lowercase) that need recovery.
+    """
+    if not os.path.isdir(project_dir):
+        return []
+    pending = []
+    for entry in os.listdir(project_dir):
+        if not entry.startswith("result-") or not entry.endswith("-staging"):
+            continue
+        emu = entry[len("result-"):-len("-staging")]
+        current = _result_dir(project_dir, emu)
+        if not os.path.lexists(current):
+            pending.append(emu)
+    return pending
+
+
+def recover_interrupted_update(project_dir: str, emulator: str) -> bool:
+    """Complete an interrupted update by promoting the staging build to
+    current. Safe to call only if `result-<emu>-staging` exists and
+    `result-<emu>` does not — caller must verify (use detect_interrupted_updates).
+    Returns True if recovery succeeded.
+    """
+    current = _result_dir(project_dir, emulator)
+    staging = _staging_result(project_dir, emulator)
+    if os.path.lexists(current):
+        console_error(f"Won't recover {emulator}: result-{emulator} already exists")
+        return False
+    if not os.path.islink(staging):
+        console_error(f"Won't recover {emulator}: no staging link present")
+        return False
+    os.rename(staging, current)
+    console_log(f"Recovered interrupted update for {emulator} (staging -> current).")
+    return True
+
+
 def _nix_build_to(emulator: str, project_dir: str, out_link: str) -> bool:
     """Build to a specific out-link path. Used by update() to stage the new
     build to a temp path before atomically swapping it into place."""

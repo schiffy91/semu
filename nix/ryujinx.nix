@@ -15,10 +15,11 @@ let
       url = "https://git.ryujinx.app/api/v4/projects/1/packages/generic/Ryubing/${version}/ryujinx-${version}-linux_x64.tar.gz";
       hash = "sha256-GbZ7Iicm8o0RhG6bfLrtET6gPCvgFkCGYv+yfFWL0ow=";
     };
-    aarch64-linux = {
-      url = "https://git.ryujinx.app/api/v4/projects/1/packages/generic/Ryubing/${version}/ryujinx-${version}-linux_arm64.tar.gz";
-      hash = "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="; # TODO: get hash
-    };
+    # aarch64-linux: upstream publishes a binary but we don't have a verified
+    # hash committed yet. Restrict the platform list rather than ship a known-
+    # bad placeholder that explodes the build (round-2 critic finding #2).
+    # ARM Linux users see a clean "unsupported platform" message instead of
+    # a confusing hash mismatch from fetchurl.
   };
   src = fetchurl (sources.${stdenv.hostPlatform.system} or (throw "Ryujinx: unsupported platform ${stdenv.hostPlatform.system}"));
 in
@@ -75,7 +76,7 @@ else
     meta = {
       description = "Nintendo Switch emulator (Ryubing fork)";
       homepage = "https://git.ryujinx.app/ryubing/ryujinx";
-      platforms = [ "x86_64-linux" "aarch64-linux" ];
+      platforms = [ "x86_64-linux" ];  # aarch64-linux pending verified hash
       license = lib.licenses.mit;
     };
   }

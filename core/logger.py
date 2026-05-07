@@ -18,16 +18,35 @@ from typing import Optional
 
 _LOGGER: Optional[logging.Logger] = None
 
-# Regex for likely PII to scrub on write.
-_HOME_RE = re.compile(re.escape(os.path.expanduser("~")))
-_USER_RE = re.compile(r"/(?:home|Users)/([^/\s]+)")
+# Device IDs are public-ish but combined with a username they're a
+# fingerprint, so always scrub them.
 _DEVID_RE = re.compile(r"\b(?:[A-Z0-9]{7}-){7}[A-Z0-9]{7}\b")
+
+# Match real per-user homes ONLY, not /home/runner (CI), /home/git (Forgejo
+# self-host), or /Users/Shared (macOS shared dir). Anchor to a 4th path
+# component existing — that's the strong signal it's a real user's home
+# (e.g. /home/alice/Documents, not /home/runner alone).
+_USER_RE = re.compile(
+    r"/(?:home|Users)/(?!Shared/|runner/|git/|admin/)([^/\s]+)(?=/[^/\s]+)"
+)
+
+
+def _home_path_re():
+    """Compute $HOME at format-time. Done lazily because some early-init
+    contexts have HOME unset; doing this at import-time would silently
+    fail to scrub anything (round-2 critic finding #6)."""
+    home = os.path.expanduser("~")
+    if not home or home == "~":
+        return None
+    return re.compile(re.escape(home))
 
 
 class _PIIScrubFormatter(logging.Formatter):
     def format(self, record: logging.LogRecord) -> str:
         msg = super().format(record)
-        msg = _HOME_RE.sub("<HOME>", msg)
+        home_re = _home_path_re()
+        if home_re is not None:
+            msg = home_re.sub("<HOME>", msg)
         msg = _USER_RE.sub(r"/Users/<USER>", msg)
         msg = _DEVID_RE.sub("<DEVICE-ID>", msg)
         return msg

@@ -230,17 +230,17 @@ def remove_shortcut(path: str, appname: str) -> bool:
 
 
 # Per-emulator binary names (lowercase emulator key → list of plausible binary
-# basenames in priority order). The first match wins. Without this we pick
-# whatever os.listdir() happens to return first, which is e.g.
-# `retroarch-cg2glsl` (a shader-converter helper) instead of `retroarch`.
+# basenames in priority order). Without this we pick whatever os.listdir()
+# happens to return first, which is e.g. `retroarch-cg2glsl` (a shader-converter
+# helper) instead of `retroarch`. Names verified against nix/*.nix and the
+# corresponding nixpkgs derivations (round-2 critic finding #1).
 _BINARY_PREFERENCE = {
     "retroarch": ("retroarch",),
     "dolphin":   ("dolphin-emu", "dolphin"),
     "pcsx2":     ("pcsx2-qt", "pcsx2"),
     "cemu":      ("Cemu", "cemu"),
-    "ryujinx":   ("Ryujinx", "ryujinx"),
+    "ryujinx":   ("ryujinx", "Ryujinx"),       # our wrapper at bin/ryujinx (lowercase)
     "azahar":    ("azahar", "azahar-emu"),
-    "lime3ds":   ("lime3ds", "lime3ds-emu"),
     "es-de":     ("es-de", "emulationstation"),
     "ares":      ("ares",),
 }

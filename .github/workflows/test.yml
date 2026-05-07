@@ -49,13 +49,16 @@ jobs:
       - name: Bundle syncthing binary (macOS)
         if: runner.os == 'macOS'
         run: |
+          set -euxo pipefail
           mkdir -p bin
-          curl -L -o /tmp/st.tar.gz \
+          # Variable name reflects archive type: it's a .zip on macOS.
+          curl -L -o /tmp/syncthing.zip \
             https://github.com/syncthing/syncthing/releases/download/v1.27.10/syncthing-macos-universal-v1.27.10.zip
-          unzip -d /tmp /tmp/st.tar.gz
+          unzip -d /tmp /tmp/syncthing.zip
           mv /tmp/syncthing-macos-universal-v1.27.10/syncthing bin/syncthing
           chmod +x bin/syncthing
-        continue-on-error: true   # macOS GitHub-hosted has no Wine; fall through
+        # Fail loudly if the upstream URL changes shape — silently skipping
+        # would let the macOS live tests get quietly disabled (round-2 #11).
 
       - name: Run unit + integration tests
         env:
