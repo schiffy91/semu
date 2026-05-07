@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import sys
 
@@ -20,6 +21,8 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+
+import atexit
 
 from core import controllers, lifecycle, state, steam, syncthing, updater
 from core.backup import cmd_backup, cmd_revert
@@ -57,9 +60,12 @@ class MainWindow(QMainWindow):
 
         self.setStatusBar(QStatusBar())
         self._latest_versions = {}
+        self._syncthing_proc = None
         self._refresh_status()
-        # Kick off the manifest fetch on a background thread so we don't block.
+        # Background tasks: manifest fetch + (optional) syncthing autostart.
         self._kick_off_manifest_fetch()
+        self._maybe_autostart_syncthing()
+        atexit.register(self._stop_syncthing)
 
     def _discover_project_dir(self) -> str:
         env = os.environ.get("SCHEMULATOR_PROJECT_DIR")
@@ -179,6 +185,50 @@ class MainWindow(QMainWindow):
             name.lower(): info.get("version", "") for name, info in emulators.items()
         }
         self._refresh_status()
+
+    def _maybe_autostart_syncthing(self):
+        """Start the bundled syncthing sidecar if a binary is available and
+        the user hasn't disabled it via setup.json or the env var."""
+        if os.environ.get("SCHEMULATOR_SKIP_AUTOSTART") == "1":
+            return
+        config_path = self._config_path()
+        if os.path.exists(config_path):
+            try:
+                with open(config_path) as f:
+                    cfg = json.load(f)
+                if not cfg.get("autostart_syncthing", True):
+                    return
+            except (OSError, ValueError, json.JSONDecodeError):
+                pass
+        if syncthing.find_binary() is None:
+            return
+        # Don't block startup; spawn in a thread.
+        from PySide6.QtCore import QThread, Signal
+
+        class Starter(QThread):
+            done = Signal(object)
+
+            def run(self):
+                proc = syncthing.start(wait_for_ready=8)
+                self.done.emit(proc)
+
+        self._st_starter = Starter()
+        self._st_starter.done.connect(self._on_syncthing_started)
+        self._st_starter.start()
+
+    def _on_syncthing_started(self, proc):
+        self._syncthing_proc = proc
+        if proc and proc.poll() is None:
+            self.statusBar().showMessage("Syncthing sidecar running.", 5000)
+
+    def _stop_syncthing(self):
+        if self._syncthing_proc is not None:
+            syncthing.stop(self._syncthing_proc)
+            self._syncthing_proc = None
+
+    def closeEvent(self, event):
+        self._stop_syncthing()
+        super().closeEvent(event)
 
     def _choose_project_dir(self):
         chosen = QFileDialog.getExistingDirectory(self, "Choose project directory", self._project_dir)

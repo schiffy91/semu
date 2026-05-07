@@ -6,6 +6,11 @@ import tempfile
 
 import pytest
 
+# Tests must never autostart the bundled syncthing sidecar — it would race
+# with the test_syncthing.py fixtures that spin up their own instances on
+# port 8384.
+os.environ.setdefault("SCHEMULATOR_SKIP_AUTOSTART", "1")
+
 # Add project root to path so we can import setup and decrypt3ds
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
