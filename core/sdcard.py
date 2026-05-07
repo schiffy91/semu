@@ -180,6 +180,37 @@ def scan_roms(mount_path: str, max_depth: int = 4) -> Dict[str, List[str]]:
     return _scan_by_extension(mount_path, max_depth)
 
 
+# Save-state / metadata extensions that aren't ROMs even when sitting in a
+# system dir. Filtering them out keeps the rom_systems lists from ballooning
+# on EmuDeck-layout cards where Dolphin/PCSX2 leave per-game state files.
+_NON_ROM_EXTS = frozenset({
+    ".srm", ".sav", ".state", ".s00", ".s01", ".s02", ".s03", ".s04",
+    ".s05", ".s06", ".s07", ".s08", ".s09", ".s10",
+    ".sa1", ".sa2",
+    ".rtc", ".rwx",
+    ".png", ".jpg", ".jpeg", ".webp", ".bmp",
+    ".txt", ".xml", ".json", ".cfg", ".ini",
+    ".log",
+})
+
+
+def _looks_like_rom(name: str, full_path: str) -> bool:
+    """Heuristic to drop save-state / artwork files from ROM listings.
+    Round-7 critic finding #6 (SD scans on EmuDeck-layout cards used to
+    list 50k+ entries because per-game save states slipped in)."""
+    if name.startswith("."):
+        return False
+    ext = os.path.splitext(name)[1].lower()
+    if ext in _NON_ROM_EXTS:
+        return False
+    try:
+        if os.path.getsize(full_path) < _MIN_ROM_SIZE:
+            return False
+    except OSError:
+        return False
+    return True
+
+
 def _scan_emudeck(roms_dir: str) -> Dict[str, List[str]]:
     out: Dict[str, List[str]] = {}
     for system in _safe_listdir(roms_dir):
@@ -189,8 +220,9 @@ def _scan_emudeck(roms_dir: str) -> Dict[str, List[str]]:
         files: List[str] = []
         for root, _, names in os.walk(sys_path):
             for name in names:
-                if not name.startswith("."):
-                    files.append(os.path.join(root, name))
+                full = os.path.join(root, name)
+                if _looks_like_rom(name, full):
+                    files.append(full)
         if files:
             out[system] = files
     return out
@@ -209,7 +241,10 @@ def _scan_by_extension(root: str, max_depth: int) -> Dict[str, List[str]]:
             system = EXT_TO_SYSTEM.get(ext)
             if not system:
                 continue
-            out.setdefault(system, []).append(os.path.join(dirpath, f))
+            full = os.path.join(dirpath, f)
+            if not _looks_like_rom(f, full):
+                continue
+            out.setdefault(system, []).append(full)
     return out
 
 

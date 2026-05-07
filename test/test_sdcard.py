@@ -8,9 +8,9 @@ from core import sdcard
 def test_emudeck_layout_detected(tmp_path):
     roms = tmp_path / "Emulation" / "roms"
     (roms / "snes").mkdir(parents=True)
-    (roms / "snes" / "mario.sfc").write_bytes(b"")
+    (roms / "snes" / "mario.sfc").write_bytes(b"\x00" * 2048)
     (roms / "n64").mkdir()
-    (roms / "n64" / "zelda.z64").write_bytes(b"")
+    (roms / "n64" / "zelda.z64").write_bytes(b"\x00" * 2048)
 
     found = sdcard.scan_roms(str(tmp_path))
     assert "snes" in found
@@ -20,9 +20,9 @@ def test_emudeck_layout_detected(tmp_path):
 
 def test_extension_fallback_when_no_emudeck_layout(tmp_path):
     (tmp_path / "Stuff").mkdir()
-    (tmp_path / "Stuff" / "game.gba").write_bytes(b"")
-    (tmp_path / "Stuff" / "switch.nsp").write_bytes(b"")
-    (tmp_path / "Stuff" / "ignore.txt").write_bytes(b"")
+    (tmp_path / "Stuff" / "game.gba").write_bytes(b"\x00" * 2048)
+    (tmp_path / "Stuff" / "switch.nsp").write_bytes(b"\x00" * 2048)
+    (tmp_path / "Stuff" / "ignore.txt").write_bytes(b"\x00" * 2048)
 
     found = sdcard.scan_roms(str(tmp_path))
     assert "gba" in found
@@ -32,7 +32,7 @@ def test_extension_fallback_when_no_emudeck_layout(tmp_path):
 
 def test_inspect_mount_marks_emudeck(tmp_path):
     (tmp_path / "Emulation" / "roms" / "ps2").mkdir(parents=True)
-    (tmp_path / "Emulation" / "roms" / "ps2" / "game.iso").write_bytes(b"")
+    (tmp_path / "Emulation" / "roms" / "ps2" / "game.iso").write_bytes(b"\x00" * 2048)
     card = sdcard._inspect_mount(str(tmp_path), "card")
     assert card.has_emudeck_layout is True
     assert "ps2" in card.rom_systems
@@ -59,7 +59,7 @@ def test_check_firmware_reports_missing(tmp_path):
 def test_check_firmware_clears_when_present(tmp_path):
     bios = tmp_path / "PCSX2" / "bios"
     bios.mkdir(parents=True)
-    (bios / "ps2-0230a.bin").write_bytes(b"")
+    (bios / "ps2-0230a.bin").write_bytes(b"\x00" * 2048)
     missing = sdcard.check_firmware(str(tmp_path))
     assert "PCSX2" not in missing
 

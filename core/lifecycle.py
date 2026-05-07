@@ -293,17 +293,17 @@ def update(args) -> int:
         console_error("No emulators matched")
         return 0
 
-    console_log("Backing up before update...")
-    cmd_backup(argparse.Namespace(config=config_file, emulators=list(emulators.keys())))
-
-    # Skip emulators whose installed version already matches the manifest.
-    # Without this, "Update All" rebuilds every emulator from source via
-    # nix even if there's nothing to update — round-6 critic finding #8.
+    # Skip emulators whose installed version already matches the manifest BEFORE
+    # taking the backup. Otherwise "Update All" with nothing to update still
+    # walks/zips hundreds of MB (round-7 critic finding #3).
     if getattr(args, "skip_up_to_date", True) and not getattr(args, "force", False):
         emulators = _filter_outdated(emulators, project_dir)
         if not emulators:
             console_log("All targeted emulators are already up to date.")
             return 0
+
+    console_log("Backing up emulators about to be updated...")
+    cmd_backup(argparse.Namespace(config=config_file, emulators=list(emulators.keys())))
 
     succeeded = 0
     for emulator, entries in emulators.items():
