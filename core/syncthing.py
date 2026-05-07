@@ -149,15 +149,37 @@ def start(home: Optional[str] = None, wait_for_ready: float = 15.0) -> Optional[
     return proc
 
 
-def stop(proc: Optional[subprocess.Popen]) -> None:
+def stop(proc: Optional[subprocess.Popen], home: Optional[str] = None) -> None:
+    """Gracefully stop the sidecar. Tries the REST `/system/shutdown` endpoint
+    first (lets syncthing flush state cleanly), then falls back to SIGTERM,
+    then SIGKILL."""
     if proc is None:
         return
+    # Best-effort REST shutdown first.
+    try:
+        key = api_key(home or _config_home())
+        if key:
+            req = urllib.request.Request(
+                f"{DEFAULT_API}/rest/system/shutdown",
+                method="POST",
+                headers={"X-API-Key": key},
+            )
+            try:
+                urllib.request.urlopen(req, timeout=2)
+            except (urllib.error.URLError, TimeoutError):
+                pass
+    except Exception:
+        pass
     try:
         proc.terminate()
         try:
             proc.wait(timeout=5)
         except subprocess.TimeoutExpired:
             proc.kill()
+            try:
+                proc.wait(timeout=2)
+            except subprocess.TimeoutExpired:
+                pass
     except Exception:
         pass
 
@@ -217,8 +239,17 @@ def add_folder(project_dir: str, home: Optional[str] = None) -> bool:
         return False
 
 
-def add_device(peer_id: str, peer_name: str = "", home: Optional[str] = None) -> bool:
-    """Authorise a peer device by its Syncthing ID."""
+def add_device(peer_id: str, peer_name: str = "", home: Optional[str] = None,
+               share_folder: bool = True) -> bool:
+    """Authorise a peer device by its Syncthing ID.
+
+    If `share_folder` is True (the default), the schemulator-saves folder is
+    automatically shared with the new device so saves start replicating
+    immediately.
+    """
+    peer_id = peer_id.strip().upper()
+    if not _valid_device_id(peer_id):
+        return False
     home = home or _config_home()
     key = api_key(home)
     if not key:
@@ -234,6 +265,47 @@ def add_device(peer_id: str, peer_name: str = "", home: Optional[str] = None) ->
         f"{DEFAULT_API}/rest/config/devices",
         data=json.dumps(body).encode("utf-8"),
         method="POST",
+        headers={"X-API-Key": key, "Content-Type": "application/json"},
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            ok = 200 <= resp.status < 300
+    except urllib.error.URLError:
+        return False
+    if ok and share_folder:
+        _share_folder_with(peer_id, home, key)
+    return ok
+
+
+def _valid_device_id(d_id: str) -> bool:
+    """A syncthing device ID is 7 dash-separated 7-char base32 chunks (56 chars)."""
+    parts = d_id.split("-")
+    if len(parts) != 8:
+        return False
+    return all(len(p) == 7 and p.isalnum() for p in parts)
+
+
+def _share_folder_with(peer_id: str, home: str, key: str) -> bool:
+    """Add `peer_id` to the SYNC_FOLDER_ID device list. Best-effort."""
+    try:
+        # Fetch current folder config
+        req = urllib.request.Request(
+            f"{DEFAULT_API}/rest/config/folders/{SYNC_FOLDER_ID}",
+            headers={"X-API-Key": key},
+        )
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            folder = json.loads(resp.read().decode("utf-8"))
+    except (urllib.error.URLError, json.JSONDecodeError):
+        return False
+    devices = folder.get("devices") or []
+    if any(d.get("deviceID") == peer_id for d in devices):
+        return True
+    devices.append({"deviceID": peer_id})
+    folder["devices"] = devices
+    req = urllib.request.Request(
+        f"{DEFAULT_API}/rest/config/folders/{SYNC_FOLDER_ID}",
+        data=json.dumps(folder).encode("utf-8"),
+        method="PUT",
         headers={"X-API-Key": key, "Content-Type": "application/json"},
     )
     try:

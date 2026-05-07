@@ -12,34 +12,53 @@ from typing import Dict, List, Optional
 
 
 # Maps a ROM file extension onto the ES-DE / EmuDeck system folder name.
+#
+# Notes on ambiguous extensions:
+#   - .iso could be GameCube, Wii, PS2, Dreamcast, PSP, or even PS1. We don't
+#     guess by extension; instead, EmuDeck-layout scanning is preferred and
+#     mixed-content carts fall through to extension scanning where .iso is
+#     intentionally absent.
+#   - .bin is also ambiguous (PS1 cue/bin, PS2 BIN/CUE, Dreamcast). Same
+#     reasoning — we drop it from the extension table.
+#   - .chd covers Dreamcast, PS1, PS2, Saturn — we map it to Dreamcast as the
+#     most common case but the user can recategorise via ES-DE.
 EXT_TO_SYSTEM: Dict[str, str] = {
     # Nintendo
     ".gb": "gb", ".gbc": "gbc", ".gba": "gba",
     ".nds": "nds",
     ".nes": "nes", ".smc": "snes", ".sfc": "snes",
     ".n64": "n64", ".z64": "n64", ".v64": "n64",
-    ".gcm": "gc", ".rvz": "gc", ".iso": "gc",
-    ".wad": "wii", ".wbfs": "wii",
-    ".3ds": "n3ds", ".cia": "n3ds",
+    ".gcm": "gc", ".rvz": "gc",
+    ".wad": "wii", ".wbfs": "wii", ".wia": "wii",
+    ".3ds": "n3ds", ".cia": "n3ds", ".cci": "n3ds",
     ".nsp": "switch", ".xci": "switch",
-    ".wua": "wiiu", ".rpx": "wiiu",
+    ".wua": "wiiu", ".rpx": "wiiu", ".wud": "wiiu",
     # Sega
     ".md": "genesis", ".gen": "genesis", ".smd": "genesis",
     ".gg": "gg", ".sms": "mastersystem",
     ".cdi": "dreamcast", ".gdi": "dreamcast", ".chd": "dreamcast",
+    ".32x": "sega32x",
     # Sony
-    ".cue": "psx", ".bin": "psx", ".pbp": "psx",
+    ".pbp": "psx", ".cue": "psx",
     ".cso": "psp",
-    # PCSX2 specific extensions
-    ".bin.ecm": "ps2",
+    # Atari
+    ".lnx": "atarilynx", ".jag": "atarijaguar", ".j64": "atarijaguar",
+    # Other
+    ".min": "pokemini",
 }
 
 
-# Standard /run/media mount roots to scan.
+# Standard /run/media mount roots to scan. macOS uses /Volumes; we list it last
+# so Linux paths take precedence on dual-platform devs.
 SD_MOUNT_ROOTS = (
     "/run/media",
     "/media",
+    "/Volumes",
 )
+
+
+# Minimum file size to consider a candidate "real ROM" rather than a stub.
+_MIN_ROM_SIZE = 1024  # 1KB; anything smaller is almost certainly a save state stub
 
 
 @dataclass
@@ -186,23 +205,32 @@ def best_card(cards: List[SdCard]) -> Optional[SdCard]:
     return max(cards, key=lambda c: sum(len(v) for v in c.rom_systems.values()))
 
 
-# Firmware / BIOS files that emulators expect. Returned by `check_firmware`.
+# Firmware / BIOS requirements per emulator. `glob` is checked relative to the
+# emulator's project-dir. The check passes if at least one match is found
+# (e.g. PCSX2 ships with several BIOS dumps and only one is needed). `desc`
+# is the user-facing description shown in the GUI when missing.
 FIRMWARE_REQUIREMENTS = {
-    "PCSX2":   ["bios/ps2-0230a-20080220.bin", "bios/ps2-0230e-20080220.bin"],
-    "Ryujinx": ["system/prod.keys", "system/title.keys"],
-    "Cemu":    ["keys.txt"],
-    "Azahar":  ["sysdata/aes_keys.txt"],
+    "PCSX2":   {"glob": "bios/*.bin", "desc": "PS2 BIOS (.bin) under PCSX2/bios/"},
+    "Ryujinx": {"glob": "config/system/prod.keys", "desc": "Switch keys (prod.keys) under Ryujinx/config/system/"},
+    "Cemu":    {"glob": "data/keys.txt", "desc": "Wii U keys.txt under Cemu/data/"},
+    "Azahar":  {"glob": "data/sysdata/aes_keys.txt", "desc": "3DS aes_keys.txt under Azahar/data/sysdata/"},
 }
 
 
-def check_firmware(project_dir: str) -> Dict[str, List[str]]:
-    """Return a {emulator: [missing files...]} map for emulators that need BIOS/keys."""
-    missing: Dict[str, List[str]] = {}
-    for emulator, files in FIRMWARE_REQUIREMENTS.items():
+def check_firmware(project_dir: str) -> Dict[str, str]:
+    """Return a {emulator: description} map for emulators with missing firmware.
+
+    Only emulators that have a project-dir already are checked — if the
+    directory doesn't exist (emulator not installed), no firmware warning
+    is emitted.
+    """
+    import glob as _glob
+    missing: Dict[str, str] = {}
+    for emulator, req in FIRMWARE_REQUIREMENTS.items():
         emu_dir = os.path.join(project_dir, emulator)
         if not os.path.isdir(emu_dir):
             continue
-        missing_files = [f for f in files if not os.path.exists(os.path.join(emu_dir, f))]
-        if missing_files:
-            missing[emulator] = missing_files
+        matches = _glob.glob(os.path.join(emu_dir, req["glob"]))
+        if not matches:
+            missing[emulator] = req["desc"]
     return missing

@@ -143,30 +143,54 @@ def decode_shortcuts(data: bytes) -> List[Shortcut]:
     return out
 
 
+STEAM_ROOT_CANDIDATES = (
+    "~/.steam/steam",                                              # Linux native
+    "~/.local/share/Steam",                                        # Linux alt
+    "~/.var/app/com.valvesoftware.Steam/.local/share/Steam",        # Linux Flatpak
+    "~/Library/Application Support/Steam",                          # macOS
+)
+
+
+def find_steam_root(extra: Optional[str] = None) -> Optional[str]:
+    """Locate a Steam install. Returns absolute path or None."""
+    candidates = [extra] + list(STEAM_ROOT_CANDIDATES) if extra else list(STEAM_ROOT_CANDIDATES)
+    for c in candidates:
+        if not c:
+            continue
+        path = os.path.expanduser(c)
+        if os.path.isdir(os.path.join(path, "userdata")):
+            return path
+    return None
+
+
+def list_steam_users(steam_root: Optional[str] = None) -> List[str]:
+    """All numeric userdata IDs under a Steam install, newest first."""
+    root = steam_root or find_steam_root()
+    if not root:
+        return []
+    userdata = os.path.join(root, "userdata")
+    if not os.path.isdir(userdata):
+        return []
+    users = [d for d in os.listdir(userdata) if d.isdigit()]
+    # Sort newest-modified first so the active user is preferred.
+    users.sort(key=lambda u: os.path.getmtime(os.path.join(userdata, u)), reverse=True)
+    return users
+
+
 def shortcuts_path(steam_root: Optional[str] = None, user_id: Optional[str] = None) -> Optional[str]:
     """Locate <steam_root>/userdata/<id>/config/shortcuts.vdf.
 
-    If `user_id` is None, picks the first userdata directory found. Returns
-    None if no Steam install is detected.
+    If `user_id` is None, picks the most-recently-modified userdata directory.
+    Returns None if no Steam install is detected.
     """
-    candidates = [
-        steam_root,
-        os.path.expanduser("~/.steam/steam"),
-        os.path.expanduser("~/.local/share/Steam"),
-        os.path.expanduser("~/.var/app/com.valvesoftware.Steam/.local/share/Steam"),
-    ]
-    for root in candidates:
-        if not root:
-            continue
-        userdata = os.path.join(root, "userdata")
-        if not os.path.isdir(userdata):
-            continue
-        users = [d for d in os.listdir(userdata) if d.isdigit()]
-        if not users:
-            continue
-        chosen = user_id or users[0]
-        return os.path.join(userdata, chosen, "config", "shortcuts.vdf")
-    return None
+    root = steam_root or find_steam_root()
+    if not root:
+        return None
+    users = list_steam_users(root)
+    if not users:
+        return None
+    chosen = user_id or users[0]
+    return os.path.join(root, "userdata", chosen, "config", "shortcuts.vdf")
 
 
 def upsert_shortcut(path: str, shortcut: Shortcut) -> bool:

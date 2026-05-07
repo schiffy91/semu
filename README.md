@@ -44,18 +44,29 @@ The project directory (cloud-synced via Google Drive / Syncthing) is the **sourc
 ## Commands
 
 ```sh
-schemulator symlink [emulator...]         # Wire configs into host paths
-schemulator status  [emulator...]         # Show symlink status
-schemulator backup  [emulator...]         # Zip configs (auto-rotates, keeps 5)
-schemulator capture <emulator> <version>  # Snapshot config as immutable original
-schemulator originals <emulator>          # List captured originals
-schemulator revert <emulator> [version]   # Restore from original (auto-backs up)
-schemulator migrate <source> <target>     # Copy configs between emulators
-schemulator install [emulator...]         # Build emulators + symlink configs
-schemulator update  [emulator...]         # Atomic update (keeps prev for rollback)
-schemulator uninstall [emulator...]       # Remove symlinks (preserves project-dir data)
-schemulator rollback [emulator...]        # Swap back to previous build + revert config
-schemulator gui                           # Launch the desktop installer/updater
+# Lifecycle
+schemulator install [emulator...]            # Build emulators + symlink configs (captures baseline)
+schemulator update  [emulator...]            # Atomic update; keeps prev build for rollback
+schemulator uninstall [emulator...]          # Remove symlinks (preserves project-dir data)
+schemulator rollback [emulator...]           # Swap back to previous build + revert config
+
+# Configs
+schemulator symlink [emulator...]            # Re-wire configs without rebuilding
+schemulator status  [emulator...]            # Show symlink status
+schemulator backup  [emulator...]            # Zip configs (auto-rotates, keeps 5)
+schemulator capture <emulator> <version>     # Snapshot config as immutable original
+schemulator originals <emulator>             # List captured originals
+schemulator revert <emulator> [version]      # Restore from original (auto-backs up)
+schemulator migrate <source> <target>        # Copy configs between emulators
+
+# Steam Deck / controllers / sync
+schemulator sd-scan                          # Detect SD cards + scan ROMs + check firmware
+schemulator controllers <profile> [emu]      # Apply xbox / dualsense / steamdeck profile
+schemulator steam-shortcut --exe PATH        # Add ES-DE as a non-Steam game
+schemulator sync {init,start,status,id,share,pair}  # Manage Syncthing sidecar
+
+# UI
+schemulator gui                              # Launch the desktop installer/updater
 ```
 
 ## Desktop GUI
