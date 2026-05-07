@@ -8,6 +8,7 @@ __pycache__/
 # === Build / dev artifacts ===
 .venv/
 result
+result-*
 
 # === VM images ===
 test/vms/
