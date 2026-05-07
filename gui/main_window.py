@@ -23,6 +23,8 @@ from PySide6.QtWidgets import (
 
 from core import controllers, lifecycle, state, steam, syncthing, updater
 from core.backup import cmd_backup, cmd_revert
+from gui.dialogs.first_run import FirstRunWizard, has_run_before
+from gui.dialogs.migration import MigrationDialog
 from gui.dialogs.originals import OriginalsDialog
 from gui.dialogs.progress import ProgressDialog
 from gui.dialogs.settings import SettingsDialog
@@ -95,6 +97,7 @@ class MainWindow(QMainWindow):
             card.rollback_clicked.connect(self._on_rollback)
             card.revert_clicked.connect(self._on_revert)
             card.open_config_clicked.connect(self._on_open_config)
+            card.open_install_clicked.connect(self._on_open_install)
             card.apply_controller_clicked.connect(self._on_apply_controller)
             layout.addWidget(card)
             self._cards[meta.name] = card
@@ -113,6 +116,9 @@ class MainWindow(QMainWindow):
         backup_all = QPushButton("Backup All")
         backup_all.clicked.connect(lambda: self._on_backup(""))
 
+        migrate_btn = QPushButton("Migrate…")
+        migrate_btn.clicked.connect(self._open_migration)
+
         steamdeck_btn = QPushButton("Steam Deck setup…")
         steamdeck_btn.clicked.connect(self._open_steamdeck)
         if state.PLATFORM != "linux":
@@ -124,6 +130,7 @@ class MainWindow(QMainWindow):
         row.addWidget(install_all)
         row.addWidget(update_all)
         row.addWidget(backup_all)
+        row.addWidget(migrate_btn)
         row.addStretch()
         row.addWidget(steamdeck_btn)
         row.addWidget(sync_btn)
@@ -228,6 +235,18 @@ class MainWindow(QMainWindow):
             return
         self._open_in_file_manager(target)
 
+    def _on_open_install(self, name: str):
+        # nix's `result-<emu>` symlink is what we hand to the file manager.
+        from core import lifecycle
+        target = lifecycle._result_dir(self._project_dir, name)
+        if not os.path.lexists(target):
+            QMessageBox.information(self, "Open install folder",
+                                    f"{name} isn't installed yet.")
+            return
+        # Resolve the symlink so the file manager opens the actual store path.
+        real = os.path.realpath(target)
+        self._open_in_file_manager(real)
+
     def _on_apply_controller(self, name: str):
         profiles = controllers.list_profiles()
         if not profiles:
@@ -255,6 +274,32 @@ class MainWindow(QMainWindow):
     def _open_settings(self):
         if SettingsDialog(self._project_dir, parent=self).exec():
             self._refresh_status()
+
+    def _open_migration(self):
+        MigrationDialog(self._project_dir, parent=self).exec()
+        self._refresh_status()
+
+    def maybe_show_first_run_wizard(self) -> bool:
+        """Run the first-run wizard if this looks like a fresh install. Returns
+        True if the user completed it, False if they skipped/cancelled or it
+        wasn't shown."""
+        if has_run_before(self._project_dir):
+            return False
+        wiz = FirstRunWizard(self._project_dir, parent=self)
+        if wiz.exec() != 1:
+            return False
+        chosen_dir = wiz.project_dir() or self._project_dir
+        if chosen_dir != self._project_dir:
+            self._project_dir = chosen_dir
+        emulators = wiz.selected_emulators()
+        if emulators:
+            from core.lifecycle import install
+            self._run_worker(
+                install,
+                make_args(config=None, emulators=emulators),
+                f"Installing {len(emulators)} emulators",
+            )
+        return True
 
     @staticmethod
     def _open_in_file_manager(path: str):

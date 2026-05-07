@@ -26,6 +26,7 @@ class EmulatorCard(QFrame):
     rollback_clicked = Signal(str)
     revert_clicked = Signal(str)
     open_config_clicked = Signal(str)
+    open_install_clicked = Signal(str)
     apply_controller_clicked = Signal(str)
 
     def __init__(self, meta: EmulatorMeta, current_platform: str, parent=None):
@@ -116,5 +117,6 @@ class EmulatorCard(QFrame):
         menu.addAction("Apply controller defaults...", lambda: self.apply_controller_clicked.emit(self.meta.name))
         menu.addSeparator()
         menu.addAction("Open config folder", lambda: self.open_config_clicked.emit(self.meta.name))
+        menu.addAction("Open install folder", lambda: self.open_install_clicked.emit(self.meta.name))
         menu.addAction("Uninstall", lambda: self.uninstall_clicked.emit(self.meta.name))
         menu.exec(self.menu_button.mapToGlobal(self.menu_button.rect().bottomLeft()))

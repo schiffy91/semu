@@ -26,6 +26,16 @@ def main():
 
     window = MainWindow()
     window.show()
+
+    if "--no-wizard" not in sys.argv:
+        # Show the first-run wizard if this looks like a fresh install. Done
+        # after `show()` so the wizard appears as a child of the main window.
+        try:
+            window.maybe_show_first_run_wizard()
+        except Exception as e:
+            # Wizard failure must not block the app.
+            print(f"First-run wizard skipped: {e}", file=sys.stderr)
+
     sys.exit(app.exec())
 
 
