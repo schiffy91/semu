@@ -182,12 +182,16 @@ def parse_config(file_path, path):
             source = os.path.abspath(os.path.join(path, emulator, entry))
             if state.PLATFORM not in links:
                 continue
-            link = os.path.abspath(os.path.expanduser(os.path.expandvars(
-                links[state.PLATFORM]
-                .replace("${host}", state.HOST)
-                .replace("${portable}", state.PORTABLE)
-                .replace("${flatpak}", flatpak_id)
-            )))
+            # Only our explicit ${host} / ${portable} / ${flatpak} placeholders
+            # are substituted, plus a leading ~/ via os.path.expanduser. We
+            # deliberately do NOT call os.path.expandvars: arbitrary $VAR
+            # substitution from a peer-controlled symlinks.json is a
+            # filesystem-redirection vector (round-5 critic finding #3).
+            raw = (links[state.PLATFORM]
+                   .replace("${host}", state.HOST)
+                   .replace("${portable}", state.PORTABLE)
+                   .replace("${flatpak}", flatpak_id))
+            link = os.path.abspath(os.path.expanduser(raw))
             if flatpak_active:
                 link = _flatpak_remap(link, flatpak_id)
             results.setdefault(emulator.upper(), []).append(

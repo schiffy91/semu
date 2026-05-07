@@ -11,7 +11,7 @@ from core.backup import (
     cmd_originals,
     cmd_revert,
 )
-from core.console import console_log
+from core.console import console_error, console_log
 from core.symlinks import (
     create_symlinks,
     filter_emulators,
@@ -28,7 +28,7 @@ def cmd_symlink(args):
     for emulator, entries in emulators.items():
         console_log(f"\n{emulator}")
         for flatpak_id, link_path, source_path in entries:
-            flatpak_module.setup_flatpak(flatpak_id, source_path)
+            flatpak_module.setup_flatpak(flatpak_id, source_path, project_dir=project_dir)
             create_symlinks(link_path, source_path)
     console_log(f"\n{state.NUM_ERRORS} errors occurred during setup\n")
 
