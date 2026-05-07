@@ -16,6 +16,7 @@ Lifecycle invariants:
 
 import argparse
 import os
+import shlex
 import shutil
 import subprocess
 
@@ -30,6 +31,28 @@ from core.symlinks import (
     find_emulator_dir,
     resolve_config,
 )
+
+
+# Environment variables we scrub before running `nix build`. Schemulator
+# inherits the GUI/CLI parent's full env; cleaning known-credential vars
+# before launching a long-running subprocess prevents accidental leakage
+# into nix logs / build sandbox env (round-5 critic finding #4).
+_CREDENTIAL_VARS = (
+    "GITHUB_TOKEN", "GH_TOKEN",
+    "AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_SESSION_TOKEN",
+    "GOOGLE_APPLICATION_CREDENTIALS",
+    "ANTHROPIC_API_KEY", "OPENAI_API_KEY",
+    "DOCKER_AUTH_CONFIG",
+    "NPM_TOKEN", "HF_TOKEN",
+)
+
+
+def _safe_env() -> dict:
+    """Return a copy of os.environ with credential-shaped vars removed."""
+    env = os.environ.copy()
+    for k in _CREDENTIAL_VARS:
+        env.pop(k, None)
+    return env
 
 
 def _nix_build_target(emulator: str) -> str:
@@ -58,11 +81,14 @@ def _nix_build(emulator: str, project_dir: str) -> bool:
     target = _nix_build_target(emulator)
     out_link = _result_dir(project_dir, emulator)
     cmd = ["nix", "build", f"{project_dir}#{target}", "--out-link", out_link]
-    console_log(f"$ {' '.join(cmd)}")
+    # shlex.join produces a faithful shell representation; the previous
+    # ' '.join could mislead during incident triage if any arg had spaces
+    # or shell metas (round-5 critic finding #5).
+    console_log(f"$ {shlex.join(cmd)}")
     if state.DRY_RUN:
         return True
     try:
-        result = subprocess.run(cmd, check=False)
+        result = subprocess.run(cmd, check=False, env=_safe_env())
         return result.returncode == 0
     except FileNotFoundError:
         console_error("nix not found on PATH; install Nix or use the native installer")
@@ -103,7 +129,7 @@ def install(args) -> int:
             console_error(f"nix build failed for {emulator}")
             continue
         for flatpak_id, link_path, source_path in entries:
-            flatpak.setup_flatpak(flatpak_id, source_path)
+            flatpak.setup_flatpak(flatpak_id, source_path, project_dir=project_dir)
             create_symlinks(link_path, source_path)
         _capture_original_if_first(emulator, project_dir, config_file)
         succeeded += 1
@@ -166,11 +192,11 @@ def _nix_build_to(emulator: str, project_dir: str, out_link: str) -> bool:
         return False
     target = _nix_build_target(emulator)
     cmd = ["nix", "build", f"{project_dir}#{target}", "--out-link", out_link]
-    console_log(f"$ {' '.join(cmd)}")
+    console_log(f"$ {shlex.join(cmd)}")
     if state.DRY_RUN:
         return True
     try:
-        result = subprocess.run(cmd, check=False)
+        result = subprocess.run(cmd, check=False, env=_safe_env())
         return result.returncode == 0
     except FileNotFoundError:
         console_error("nix not found on PATH; install Nix or use the native installer")
@@ -235,7 +261,7 @@ def update(args) -> int:
 
         # Step 4: re-wire symlinks (configs may have moved within result/).
         for flatpak_id, link_path, source_path in entries:
-            flatpak.setup_flatpak(flatpak_id, source_path)
+            flatpak.setup_flatpak(flatpak_id, source_path, project_dir=project_dir)
             create_symlinks(link_path, source_path)
         succeeded += 1
 
@@ -306,7 +332,7 @@ def rollback(args) -> int:
             console_error(f"Config revert skipped for {emulator}: {e}")
 
         for flatpak_id, link_path, source_path in entries:
-            flatpak.setup_flatpak(flatpak_id, source_path)
+            flatpak.setup_flatpak(flatpak_id, source_path, project_dir=project_dir)
             create_symlinks(link_path, source_path)
         succeeded += 1
     console_log(f"\nRolled back {succeeded}/{len(emulators)} emulators.")

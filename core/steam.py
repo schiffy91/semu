@@ -92,7 +92,12 @@ def decode_shortcuts(data: bytes) -> List[Shortcut]:
     pos = 0
 
     def read_cstring(start: int):
-        end = data.index(b"\x00", start)
+        end = data.find(b"\x00", start)
+        if end == -1:
+            # Truncated stream — return the remainder and signal EOF by
+            # advancing past the data length. parse_object's `while i < len`
+            # will exit cleanly (round-5 critic finding #6).
+            return data[start:].decode("utf-8", errors="replace"), len(data)
         return data[start:end].decode("utf-8", errors="replace"), end + 1
 
     def parse_object(start: int):
@@ -111,6 +116,11 @@ def decode_shortcuts(data: bytes) -> List[Shortcut]:
                 value, i = read_cstring(i)
                 out[key] = value
             elif marker == 0x02:
+                # Bounds-check the int32 read (round-5 critic finding #6).
+                # A truncated VDF that ends mid-int would otherwise raise a
+                # cryptic struct.error inside the catch-all.
+                if i + 4 > len(data):
+                    return out, i
                 value = struct.unpack("<I", data[i:i + 4])[0]
                 i += 4
                 out[key] = value
