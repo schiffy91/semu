@@ -85,3 +85,47 @@ def test_upsert_to_corrupt_file_starts_fresh(tmp_path):
     with open(path, "rb") as f:
         decoded = steam.decode_shortcuts(f.read())
     assert any(d.appname == "Recovered" for d in decoded)
+
+
+def test_discover_installed_emulators_linux(tmp_path):
+    """Linux layout: result-<emu>/bin/<binary>."""
+    result = tmp_path / "result-dolphin"
+    bin_dir = result / "bin"
+    bin_dir.mkdir(parents=True)
+    binary = bin_dir / "dolphin-emu"
+    binary.write_text("#!/bin/sh\nexit 0\n")
+    binary.chmod(0o755)
+
+    found = steam.discover_installed_emulators(str(tmp_path))
+    assert len(found) == 1
+    assert found[0].name == "dolphin"
+    assert found[0].exe == str(binary)
+    assert found[0].kind == "binary"
+
+
+def test_discover_installed_emulators_macos(tmp_path):
+    """macOS layout: result-<emu>/Applications/<Name>.app."""
+    result = tmp_path / "result-azahar"
+    apps = result / "Applications"
+    apps.mkdir(parents=True)
+    (apps / "Azahar.app").mkdir()
+
+    found = steam.discover_installed_emulators(str(tmp_path))
+    assert len(found) == 1
+    assert found[0].name == "azahar"
+    assert found[0].kind == "app"
+
+
+def test_discover_skips_prev_symlinks(tmp_path):
+    """result-<emu>-prev should be ignored so we don't duplicate shortcuts."""
+    for variant in ("result-dolphin", "result-dolphin-prev"):
+        result = tmp_path / variant
+        bin_dir = result / "bin"
+        bin_dir.mkdir(parents=True)
+        binary = bin_dir / "dolphin-emu"
+        binary.write_text("#!/bin/sh\n")
+        binary.chmod(0o755)
+
+    found = steam.discover_installed_emulators(str(tmp_path))
+    names = [e.name for e in found]
+    assert names == ["dolphin"]
