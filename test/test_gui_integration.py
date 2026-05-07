@@ -157,3 +157,31 @@ def test_emulator_card_renders_disabled_when_unsupported(qapp):
     card = EmulatorCard(meta, current_platform="linux")
     assert not card.action_button.isEnabled()
     assert "Unsupported" in card.action_button.text()
+
+
+def test_settings_dialog_loads_existing_config(qapp, fake_project):
+    from gui.dialogs.settings import SettingsDialog
+    d = SettingsDialog(str(fake_project))
+    # The fixture writes setup.json with str(tmp_path / 'host') etc.
+    assert "host" in d._host_input[1].text() or "Volumes" in d._host_input[1].text()
+
+
+def test_originals_dialog_shows_empty_state(qapp, fake_project):
+    from gui.dialogs.originals import OriginalsDialog
+    d = OriginalsDialog("TestEmu", str(fake_project))
+    assert d._list.count() == 1
+    assert "no originals" in d._list.item(0).text().lower()
+
+
+def test_originals_dialog_lists_captured_versions(qapp, fake_project):
+    import argparse
+    from core.backup import cmd_capture
+    cmd_capture(argparse.Namespace(
+        config=str(fake_project / "setup.json"),
+        emulator="TestEmu",
+        version="v1.0",
+    ))
+    from gui.dialogs.originals import OriginalsDialog
+    d = OriginalsDialog("TestEmu", str(fake_project))
+    items = [d._list.item(i).text() for i in range(d._list.count())]
+    assert any("v1.0" in t for t in items)
