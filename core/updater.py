@@ -50,16 +50,58 @@ def fetch_manifest(url: str = DEFAULT_MANIFEST_URL, timeout: float = 10.0) -> Op
 
 
 def installed_versions(project_dir: str) -> Dict[str, str]:
-    """Read each `<project_dir>/<Emulator>/version.txt` if present."""
+    """Resolve the version of each installed emulator.
+
+    Looks at:
+      1. `<project_dir>/<Emulator>/version.txt` (manually-written override)
+      2. `<project_dir>/result-<emulator>/` symlink target (nix store path).
+         The store path looks like `/nix/store/<hash>-<name>-<version>` so we
+         extract the trailing `-<version>` chunk.
+      3. `<project_dir>/result-<emulator>/version.txt` if the package writes one.
+    """
     out: Dict[str, str] = {}
     if not os.path.isdir(project_dir):
         return out
+
     for entry in os.listdir(project_dir):
-        sub = os.path.join(project_dir, entry)
-        version_file = os.path.join(sub, "version.txt")
+        # 1) explicit version.txt override
+        version_file = os.path.join(project_dir, entry, "version.txt")
         if os.path.isfile(version_file):
-            with open(version_file) as f:
-                out[entry.lower()] = f.read().strip()
+            try:
+                with open(version_file) as f:
+                    out[entry.lower()] = f.read().strip()
+            except OSError:
+                pass
+
+    # 2) result-<emu> symlinks → derive version from store path
+    for entry in os.listdir(project_dir):
+        if not entry.startswith("result-") or entry.endswith("-prev"):
+            continue
+        result_path = os.path.join(project_dir, entry)
+        if not os.path.islink(result_path):
+            continue
+        emu = entry[len("result-"):]
+        target = os.readlink(result_path)
+        # Try a per-package version.txt first.
+        ver_path = os.path.join(result_path, "version.txt")
+        if os.path.exists(ver_path):
+            try:
+                with open(ver_path) as f:
+                    out[emu] = f.read().strip()
+                continue
+            except OSError:
+                pass
+        # Otherwise, mine the nix store name. Pattern: /nix/store/<hash>-<name>-<version>.
+        base = os.path.basename(target.rstrip("/"))
+        # Strip leading <hash>-
+        if "-" in base:
+            base = base.split("-", 1)[1]
+        # If anything remains, take the last `-<...>` chunk as version.
+        if "-" in base:
+            out[emu] = base.rsplit("-", 1)[-1]
+        else:
+            out[emu] = "installed"
+
     return out
 
 
