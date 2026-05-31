@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-PROJECT_DIR="${1:-$HOME/schemulator}"
-SCHEM="${SCHEMULATOR_BIN:-$PROJECT_DIR/build/schemulator}"
+PROJECT_DIR="${1:-$HOME/semu}"
+SCHEM="${SEMU_BIN:-$PROJECT_DIR/build/semu}"
 
 "$SCHEM" doctor --project "$PROJECT_DIR"
 "$SCHEM" keymap validate --project "$PROJECT_DIR"
-"$SCHEM" keymap render --project "$PROJECT_DIR" --target retroarch >/tmp/schemulator-retroarch.cfg
+"$SCHEM" keymap render --project "$PROJECT_DIR" --target retroarch >/tmp/semu-retroarch.cfg
 "$SCHEM" screenshot status --project "$PROJECT_DIR"
 if { [ -n "${WAYLAND_DISPLAY:-}" ] || [ -n "${DISPLAY:-}" ]; } && \
    { command -v grim >/dev/null 2>&1 || command -v spectacle >/dev/null 2>&1 || command -v gnome-screenshot >/dev/null 2>&1 || command -v import >/dev/null 2>&1; }; then

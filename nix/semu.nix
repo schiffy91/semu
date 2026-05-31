@@ -4,7 +4,7 @@
   gopher64 ? null, melonds ? null, retroarch-bare ? null,
   ryujinx ? null, es-de ? null,
   syncthing ? null, syncthingtray ? null, curl ? null, bubblewrap ? null,
-  schemulatorCli ? null,
+  semuCli ? null,
   routedEmulators ? [],
 }:
 
@@ -12,26 +12,26 @@ let
   runtimeTools = lib.filter (x: x != null) [ syncthing syncthingtray curl bubblewrap ];
   runtimePath = lib.makeBinPath runtimeTools;
 
-  setupTool = if schemulatorCli != null then schemulatorCli else stdenv.mkDerivation {
-    pname = "schemulator";
+  setupTool = if semuCli != null then semuCli else stdenv.mkDerivation {
+    pname = "semu";
     version = "0.1.0";
     src = lib.cleanSource ./..;
     nativeBuildInputs = [ makeWrapper ];
     dontBuild = true;
     installPhase = ''
-      mkdir -p $out/bin $out/lib/schemulator
+      mkdir -p $out/bin $out/lib/semu
 
       # Copy BTRC runtime sources and generated manifest.
-      cp schemulator.btrc schemulator.json $out/lib/schemulator/
-      cp -r generated $out/lib/schemulator/
-      ${stdenv.cc.targetPrefix}cc generated/schemulator.c -std=c11 -D_DEFAULT_SOURCE -D_XOPEN_SOURCE=700 -o $out/lib/schemulator/schemulator-btrc -lm
-      makeWrapper $out/lib/schemulator/schemulator-btrc $out/bin/schemulator \
-        --set SCHEMULATOR_ASSET_ROOT $out/lib/schemulator \
-        --set SCHEMULATOR_BIN $out/bin/schemulator \
+      cp semu.btrc semu.json $out/lib/semu/
+      cp -r generated $out/lib/semu/
+      ${stdenv.cc.targetPrefix}cc generated/semu.c -std=c11 -D_DEFAULT_SOURCE -D_XOPEN_SOURCE=700 -o $out/lib/semu/semu-btrc -lm
+      makeWrapper $out/lib/semu/semu-btrc $out/bin/semu \
+        --set SEMU_ASSET_ROOT $out/lib/semu \
+        --set SEMU_BIN $out/bin/semu \
         --prefix PATH : ${lib.escapeShellArg runtimePath}
 
       if [ -d linux ]; then
-        cp -r linux $out/lib/schemulator/
+        cp -r linux $out/lib/semu/
       fi
     '';
     meta = {
@@ -60,7 +60,7 @@ let
   ];
 in
 symlinkJoin {
-  name = "schemulator-full";
+  name = "semu-full";
   paths = [ setupTool ] ++ routedEmulators ++ emulators;
-  meta.description = "Schemulator with all emulators bundled";
+  meta.description = "Semu with all emulators bundled";
 }

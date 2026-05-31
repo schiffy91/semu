@@ -3,7 +3,7 @@
 , coreutils
 , emulatorName
 , emulatorPackage
-, schemulatorCli
+, semuCli
 , executableName ? null
 , extraArgs ? []
 }:
@@ -16,10 +16,10 @@ let
   renderedExtraArgs = lib.escapeShellArgs extraArgs;
 in
 writeShellApplication {
-  name = "schem-${emulatorName}";
-  runtimeInputs = [ coreutils schemulatorCli ];
+  name = "semu-${emulatorName}";
+  runtimeInputs = [ coreutils semuCli ];
   text = ''
     set -euo pipefail
-    exec schemulator launcher routed ${lib.escapeShellArg emulatorName} ${lib.escapeShellArg executable} ${renderedExtraArgs} "$@"
+    exec semu launcher routed ${lib.escapeShellArg emulatorName} ${lib.escapeShellArg executable} ${renderedExtraArgs} "$@"
   '';
 }

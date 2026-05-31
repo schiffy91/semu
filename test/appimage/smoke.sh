@@ -2,7 +2,7 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-TMP="$(mktemp -d -t schemulator-appimage-smoke.XXXXXX)"
+TMP="$(mktemp -d -t semu-appimage-smoke.XXXXXX)"
 trap 'rm -rf "$TMP"' EXIT
 
 BIN_DIR="$TMP/bin"
@@ -37,7 +37,7 @@ cat > squashfs-root/usr/bin/es-de <<'EOF'
 echo fake es-de "$@"
 EOF
 chmod +x squashfs-root/usr/bin/es-de
-printf 'fake icon\n' > squashfs-root/schemulator.png
+printf 'fake icon\n' > squashfs-root/semu.png
 SH
 chmod +x "$TMP/fake-esde.AppImage"
 
@@ -54,20 +54,20 @@ OUTPUT="${2:?missing output}"
 for required in \
     AppRun \
     usr/bin/es-de \
-    usr/bin/schemulator \
+    usr/bin/semu \
     usr/bin/bwrap \
-    usr/bin/schem-retroarch \
-    usr/bin/schem-dolphin \
-    usr/bin/schem-ppsspp \
-    usr/bin/schem-flycast \
-    usr/bin/schem-gopher64 \
-    usr/bin/schem-melonds \
-    usr/bin/schem-pcsx2 \
-    usr/bin/schem-cemu \
-    usr/bin/schem-azahar \
-    usr/bin/schem-ryujinx \
-    usr/bin/schem-btrc \
-    usr/bin/schem-es-de \
+    usr/bin/semu-retroarch \
+    usr/bin/semu-dolphin \
+    usr/bin/semu-ppsspp \
+    usr/bin/semu-flycast \
+    usr/bin/semu-gopher64 \
+    usr/bin/semu-melonds \
+    usr/bin/semu-pcsx2 \
+    usr/bin/semu-cemu \
+    usr/bin/semu-azahar \
+    usr/bin/semu-ryujinx \
+    usr/bin/semu-btrc \
+    usr/bin/semu-es-de \
     nix/store \
     linux/AppRun \
     linux/ES-DE/es_find_rules_linux.xml; do
@@ -82,9 +82,9 @@ test ! -e "$APPDIR/linux/build-appimage.sh" || {
   exit 3
 }
 
-grep -F 'SCHEMULATOR_NIX_STORE_MOUNTED' "$APPDIR/AppRun" >/dev/null
+grep -F 'SEMU_NIX_STORE_MOUNTED' "$APPDIR/AppRun" >/dev/null
 grep -F -- '--ro-bind "$APPDIR/nix/store" /nix/store' "$APPDIR/AppRun" >/dev/null
-grep -F 'SCHEMULATOR_LAUNCHER_BIN' "$APPDIR/AppRun" >/dev/null
+grep -F 'SEMU_LAUNCHER_BIN' "$APPDIR/AppRun" >/dev/null
 ! grep -F 'sync setup' "$APPDIR/AppRun" >/dev/null
 ! grep -F 'pkexec' "$APPDIR/AppRun" >/dev/null
 
@@ -95,7 +95,7 @@ while IFS= read -r launcher; do
     echo "generated ES-DE launcher has no executable: $launcher" >&2
     exit 3
   }
-done < <(grep -o 'schem-[a-z0-9-]*' "$APPDIR/linux/ES-DE/es_find_rules_linux.xml" | sort -u)
+done < <(grep -o 'semu-[a-z0-9-]*' "$APPDIR/linux/ES-DE/es_find_rules_linux.xml" | sort -u)
 SH
 chmod +x "$BIN_DIR/appimagetool"
 
@@ -125,27 +125,27 @@ test -n "$ROOT" || {
   echo "fake nix copy missing local root" >&2
   exit 2
 }
-mkdir -p "$ROOT/nix/store/fake-schemulator-closure"
-printf 'fake closure\n' > "$ROOT/nix/store/fake-schemulator-closure/marker"
+mkdir -p "$ROOT/nix/store/fake-semu-closure"
+printf 'fake closure\n' > "$ROOT/nix/store/fake-semu-closure/marker"
 SH
 chmod +x "$BIN_DIR/nix"
 
 NIX_PACKAGE="$TMP/nix-package"
 mkdir -p "$NIX_PACKAGE/bin"
 for bin in \
-    schemulator \
+    semu \
     bwrap \
-    schem-retroarch \
-    schem-dolphin \
-    schem-ppsspp \
-    schem-flycast \
-    schem-gopher64 \
-    schem-melonds \
-    schem-pcsx2 \
-    schem-cemu \
-    schem-azahar \
-    schem-ryujinx \
-    schem-es-de; do
+    semu-retroarch \
+    semu-dolphin \
+    semu-ppsspp \
+    semu-flycast \
+    semu-gopher64 \
+    semu-melonds \
+    semu-pcsx2 \
+    semu-cemu \
+    semu-azahar \
+    semu-ryujinx \
+    semu-es-de; do
   cat > "$NIX_PACKAGE/bin/$bin" <<SH
 #!/usr/bin/env bash
 echo fake $bin "\$@"
@@ -156,18 +156,18 @@ done
 PARTIAL_NIX_PACKAGE="$TMP/partial-nix-package"
 mkdir -p "$PARTIAL_NIX_PACKAGE/bin"
 for bin in \
-    schemulator \
+    semu \
     bwrap \
-    schem-retroarch \
-    schem-dolphin \
-    schem-flycast \
-    schem-gopher64 \
-    schem-melonds \
-    schem-pcsx2 \
-    schem-cemu \
-    schem-azahar \
-    schem-ryujinx \
-    schem-es-de; do
+    semu-retroarch \
+    semu-dolphin \
+    semu-flycast \
+    semu-gopher64 \
+    semu-melonds \
+    semu-pcsx2 \
+    semu-cemu \
+    semu-azahar \
+    semu-ryujinx \
+    semu-es-de; do
   cat > "$PARTIAL_NIX_PACKAGE/bin/$bin" <<SH
 #!/usr/bin/env bash
 echo fake $bin "\$@"
@@ -177,7 +177,7 @@ done
 
 NO_BWRAP_NIX_PACKAGE="$TMP/no-bwrap-nix-package"
 mkdir -p "$NO_BWRAP_NIX_PACKAGE/bin"
-for bin in schemulator schem-es-de; do
+for bin in semu semu-es-de; do
   cat > "$NO_BWRAP_NIX_PACKAGE/bin/$bin" <<SH
 #!/usr/bin/env bash
 echo fake $bin "\$@"
@@ -193,7 +193,7 @@ expect_status 4 env \
   --output "$TMP/no-bwrap-nix.AppImage" \
   --arch x86_64
 
-PARTIAL_OUTPUT="$TMP/Schemulator-partial.AppImage"
+PARTIAL_OUTPUT="$TMP/Semu-partial.AppImage"
 PATH="$BIN_DIR:$PATH" \
 APPIMAGETOOL="$BIN_DIR/appimagetool" \
 "$REPO_ROOT/linux/build-appimage.sh" \
@@ -201,9 +201,9 @@ APPIMAGETOOL="$BIN_DIR/appimagetool" \
   --esde-appimage "$TMP/fake-esde.AppImage" \
   --output "$PARTIAL_OUTPUT" \
   --arch x86_64
-grep -F /usr/bin/schem-ppsspp "$PARTIAL_OUTPUT" >/dev/null
+grep -F /usr/bin/semu-ppsspp "$PARTIAL_OUTPUT" >/dev/null
 
-OUTPUT="$TMP/Schemulator-test.AppImage"
+OUTPUT="$TMP/Semu-test.AppImage"
 PATH="$BIN_DIR:$PATH" \
 APPIMAGETOOL="$BIN_DIR/appimagetool" \
 "$REPO_ROOT/linux/build-appimage.sh" \
@@ -214,20 +214,20 @@ APPIMAGETOOL="$BIN_DIR/appimagetool" \
 
 for expected in \
     /usr/bin/es-de \
-    /usr/bin/schemulator \
+    /usr/bin/semu \
     /usr/bin/bwrap \
-    /usr/bin/schem-retroarch \
-    /usr/bin/schem-dolphin \
-    /usr/bin/schem-ppsspp \
-    /usr/bin/schem-flycast \
-    /usr/bin/schem-gopher64 \
-    /usr/bin/schem-melonds \
-    /usr/bin/schem-pcsx2 \
-    /usr/bin/schem-cemu \
-    /usr/bin/schem-azahar \
-    /usr/bin/schem-ryujinx \
-    /usr/bin/schem-btrc \
-    /usr/bin/schem-es-de; do
+    /usr/bin/semu-retroarch \
+    /usr/bin/semu-dolphin \
+    /usr/bin/semu-ppsspp \
+    /usr/bin/semu-flycast \
+    /usr/bin/semu-gopher64 \
+    /usr/bin/semu-melonds \
+    /usr/bin/semu-pcsx2 \
+    /usr/bin/semu-cemu \
+    /usr/bin/semu-azahar \
+    /usr/bin/semu-ryujinx \
+    /usr/bin/semu-btrc \
+    /usr/bin/semu-es-de; do
   grep -F "$expected" "$OUTPUT" >/dev/null || {
     echo "missing executable in AppImage smoke output: $expected" >&2
     exit 4
@@ -246,7 +246,7 @@ SH
 chmod +x "$BIN_DIR/bwrap"
 
 APPDIR="$APPDIR" \
-SCHEMULATOR_BWRAP="$BIN_DIR/bwrap" \
+SEMU_BWRAP="$BIN_DIR/bwrap" \
 "$APPDIR/AppRun" --probe
 
 grep -F -- '--tmpfs' "$TMP/bwrap.args" >/dev/null
@@ -267,12 +267,12 @@ expect_status 1 env \
 MISSING_CLI_APPDIR="$TMP/AppRunMissingCli.AppDir"
 MISSING_CLI_PROJECT="$TMP/missing-cli-project"
 mkdir -p "$MISSING_CLI_APPDIR/usr/bin" "$MISSING_CLI_PROJECT"
-printf '{"schema_version":1}\n' > "$MISSING_CLI_PROJECT/schemulator.json"
+printf '{"schema_version":1}\n' > "$MISSING_CLI_PROJECT/semu.json"
 cp "$REPO_ROOT/linux/AppRun" "$MISSING_CLI_APPDIR/AppRun"
 chmod +x "$MISSING_CLI_APPDIR/AppRun"
 expect_status 2 env \
   APPDIR="$MISSING_CLI_APPDIR" \
-  SCHEMULATOR_PROJECT_DIR="$MISSING_CLI_PROJECT" \
+  SEMU_PROJECT_DIR="$MISSING_CLI_PROJECT" \
   "$MISSING_CLI_APPDIR/AppRun"
 
 BWRAP_MISSING_APPDIR="$TMP/AppRunMissingBwrap.AppDir"
@@ -307,17 +307,17 @@ expect_status 5 env \
 CLI_APPDIR="$TMP/AppRunCli.AppDir"
 CLI_PROJECT="$TMP/cli-project"
 mkdir -p "$CLI_APPDIR/usr/bin" "$CLI_APPDIR/linux/bin" "$CLI_PROJECT"
-printf '{"schema_version":1}\n' > "$CLI_PROJECT/schemulator.json"
+printf '{"schema_version":1}\n' > "$CLI_PROJECT/semu.json"
 cp "$REPO_ROOT/linux/AppRun" "$CLI_APPDIR/AppRun"
 chmod +x "$CLI_APPDIR/AppRun"
-cat > "$CLI_APPDIR/usr/bin/schemulator" <<SH
+cat > "$CLI_APPDIR/usr/bin/semu" <<SH
 #!/usr/bin/env bash
 printf '%s\n' "\$@" > "$TMP/cli.args"
 SH
-chmod +x "$CLI_APPDIR/usr/bin/schemulator"
+chmod +x "$CLI_APPDIR/usr/bin/semu"
 
 APPDIR="$CLI_APPDIR" \
-SCHEMULATOR_PROJECT_DIR="$CLI_PROJECT" \
+SEMU_PROJECT_DIR="$CLI_PROJECT" \
 "$CLI_APPDIR/AppRun" manifest --output "$TMP/manifest.json"
 grep -F 'manifest' "$TMP/cli.args" >/dev/null
 grep -F -- '--output' "$TMP/cli.args" >/dev/null
@@ -329,60 +329,60 @@ RUN_APPDIR="$TMP/AppRunLaunch.AppDir"
 RUN_PROJECT="$TMP/run-project"
 RUN_HOME="$TMP/run-home"
 mkdir -p "$RUN_APPDIR/usr/bin" "$RUN_APPDIR/linux/bin" "$RUN_PROJECT/ES-DE/custom_systems" "$RUN_HOME"
-printf '{"schema_version":1}\n' > "$RUN_PROJECT/schemulator.json"
+printf '{"schema_version":1}\n' > "$RUN_PROJECT/semu.json"
 printf '<systemList />\n' > "$RUN_PROJECT/ES-DE/custom_systems/es_systems.xml"
 printf '<ruleList />\n' > "$RUN_PROJECT/ES-DE/custom_systems/es_find_rules.xml"
 cp "$REPO_ROOT/linux/AppRun" "$RUN_APPDIR/AppRun"
 chmod +x "$RUN_APPDIR/AppRun"
-cat > "$RUN_APPDIR/usr/bin/schemulator" <<'SH'
+cat > "$RUN_APPDIR/usr/bin/semu" <<'SH'
 #!/usr/bin/env bash
 set -euo pipefail
 if [ "${1:-}" = "config" ] && [ "${2:-}" = "env" ]; then
-  printf 'export SCHEMULATOR_PROJECT_DIR=%q\n' "${SCHEMULATOR_PROJECT_DIR:?}"
-  printf 'export SCHEMULATOR_ROMS_DIR=%q\n' "$SCHEMULATOR_PROJECT_DIR/roms"
-  printf 'export SCHEMULATOR_BIN=%q\n' "$0"
+  printf 'export SEMU_PROJECT_DIR=%q\n' "${SEMU_PROJECT_DIR:?}"
+  printf 'export SEMU_ROMS_DIR=%q\n' "$SEMU_PROJECT_DIR/roms"
+  printf 'export SEMU_BIN=%q\n' "$0"
   exit 0
 fi
 if [ "${1:-}" = "apprun" ] && [ "${2:-}" = "prepare" ]; then
   mkdir -p "$HOME/ES-DE/custom_systems" "$HOME/ES-DE/settings"
   printf '<systemList />\n' > "$HOME/ES-DE/custom_systems/es_systems.xml"
-  printf '<ruleList><entry>%s/schem-retroarch</entry></ruleList>\n' "${SCHEMULATOR_LAUNCHER_BIN:?}" \
+  printf '<ruleList><entry>%s/semu-retroarch</entry></ruleList>\n' "${SEMU_LAUNCHER_BIN:?}" \
     > "$HOME/ES-DE/custom_systems/es_find_rules.xml"
-  printf '<string name="ROMDirectory" value="%s" />\n' "${SCHEMULATOR_ROMS_DIR:?}" \
+  printf '<string name="ROMDirectory" value="%s" />\n' "${SEMU_ROMS_DIR:?}" \
     > "$HOME/ES-DE/settings/es_settings.xml"
   exit 0
 fi
-printf 'unexpected cli: %s\n' "$*" > "${SCHEM_APP_RUN_UNEXPECTED:?}"
+printf 'unexpected cli: %s\n' "$*" > "${SEMU_APP_RUN_UNEXPECTED:?}"
 exit 9
 SH
-chmod +x "$RUN_APPDIR/usr/bin/schemulator"
+chmod +x "$RUN_APPDIR/usr/bin/semu"
 cat > "$RUN_APPDIR/usr/bin/es-de" <<SH
 #!/usr/bin/env bash
 printf '%s\n' "\$@" > "$TMP/esde.args"
 SH
 chmod +x "$RUN_APPDIR/usr/bin/es-de"
-cat > "$RUN_APPDIR/usr/bin/schem-retroarch" <<'SH'
+cat > "$RUN_APPDIR/usr/bin/semu-retroarch" <<'SH'
 #!/usr/bin/env bash
 exit 0
 SH
-chmod +x "$RUN_APPDIR/usr/bin/schem-retroarch"
+chmod +x "$RUN_APPDIR/usr/bin/semu-retroarch"
 
 APPDIR="$RUN_APPDIR" \
 HOME="$RUN_HOME" \
-SCHEMULATOR_PROJECT_DIR="$RUN_PROJECT" \
-SCHEM_APP_RUN_UNEXPECTED="$TMP/app-run-unexpected" \
+SEMU_PROJECT_DIR="$RUN_PROJECT" \
+SEMU_APP_RUN_UNEXPECTED="$TMP/app-run-unexpected" \
 "$RUN_APPDIR/AppRun"
 test ! -e "$TMP/app-run-unexpected"
 cmp -s "$RUN_PROJECT/ES-DE/custom_systems/es_systems.xml" "$RUN_HOME/ES-DE/custom_systems/es_systems.xml"
-grep -F "$RUN_APPDIR/usr/bin/schem-retroarch" "$RUN_HOME/ES-DE/custom_systems/es_find_rules.xml" >/dev/null
+grep -F "$RUN_APPDIR/usr/bin/semu-retroarch" "$RUN_HOME/ES-DE/custom_systems/es_find_rules.xml" >/dev/null
 grep -F "$RUN_PROJECT/roms" "$RUN_HOME/ES-DE/settings/es_settings.xml" >/dev/null
 grep -F -- '--resolution' "$TMP/esde.args" >/dev/null
 
 BOOTSTRAP_PROJECT="$TMP/bootstrap-project"
 mkdir -p "$BOOTSTRAP_PROJECT"
-SCHEMULATOR_LAUNCHER_BIN="$APPDIR/usr/bin" \
-"$REPO_ROOT/build/schemulator" bootstrap --project "$BOOTSTRAP_PROJECT" >/dev/null
-grep -F "$APPDIR/usr/bin/schem-retroarch" \
+SEMU_LAUNCHER_BIN="$APPDIR/usr/bin" \
+"$REPO_ROOT/build/semu" bootstrap --project "$BOOTSTRAP_PROJECT" >/dev/null
+grep -F "$APPDIR/usr/bin/semu-retroarch" \
   "$BOOTSTRAP_PROJECT/ES-DE/custom_systems/es_find_rules.xml" >/dev/null
 
 echo "OK AppImage assembly smoke"

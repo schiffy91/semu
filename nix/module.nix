@@ -1,20 +1,20 @@
 { config, lib, pkgs, ... }:
 
 let
-  cfg = config.programs.schemulator;
+  cfg = config.programs.semu;
 in {
-  options.programs.schemulator = {
-    enable = lib.mkEnableOption "Schemulator emulation environment";
+  options.programs.semu = {
+    enable = lib.mkEnableOption "Semu emulation environment";
 
     configDir = lib.mkOption {
       type = lib.types.path;
-      description = "Path to the schemulator config directory (cloud-synced)";
+      description = "Path to the semu config directory (cloud-synced)";
       example = "/home/user/GoogleDrive/media/Games/Emulation";
     };
 
     user = lib.mkOption {
       type = lib.types.str;
-      description = "User to run schemulator setup as";
+      description = "User to run semu setup as";
       example = "alex";
     };
 
@@ -54,16 +54,16 @@ in {
     services.flatpak.enable = lib.mkIf cfg.flatpak true;
 
     # Run BTRC bootstrap as the specified user, not root.
-    system.activationScripts.schemulator = ''
+    system.activationScripts.semu = ''
       if [ -d "${cfg.configDir}" ]; then
-        echo "Schemulator: bootstrapping from ${cfg.configDir}"
-        if [ -x "${cfg.configDir}/build/schemulator" ]; then
-          ${pkgs.su}/bin/su - ${cfg.user} -c 'cd "${cfg.configDir}" && ./build/schemulator bootstrap --project "$PWD"' || true
+        echo "Semu: bootstrapping from ${cfg.configDir}"
+        if [ -x "${cfg.configDir}/build/semu" ]; then
+          ${pkgs.su}/bin/su - ${cfg.user} -c 'cd "${cfg.configDir}" && ./build/semu bootstrap --project "$PWD"' || true
         else
-          echo "Schemulator: ${cfg.configDir}/build/schemulator missing; run make btrc-build first"
+          echo "Semu: ${cfg.configDir}/build/semu missing; run make btrc-build first"
         fi
       else
-        echo "Schemulator: config dir ${cfg.configDir} not found, skipping"
+        echo "Semu: config dir ${cfg.configDir} not found, skipping"
       fi
     '';
   };

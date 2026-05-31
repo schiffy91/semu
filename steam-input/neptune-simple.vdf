@@ -2,9 +2,9 @@
 {
 	"version"		"3"
 	"revision"		"1"
-	"title"		"Schemulator: Steam Deck - Neptune SIMPLE"
-	"description"		"Steam Deck controls for Schemulator: no gyro, right pad mouse, left pad hotkeys."
-	"creator"		"Schemulator"
+	"title"		"Semu: Steam Deck - Neptune SIMPLE"
+	"description"		"Steam Deck controls for Semu: no gyro, right pad mouse, left pad hotkeys."
+	"creator"		"Semu"
 	"controller_type"		"controller_neptune"
 	"actions"
 	{
@@ -98,7 +98,7 @@
 	{
 		"id" "20"
 		"mode" "radial_menu"
-		"name" "Schemulator Simple Radial"
+		"name" "Semu Simple Radial"
 		"inputs"
 		{
 			"touch_menu_button_0" { "activators" { "Full_Press" { "bindings" { "binding" "key_press LEFT_CONTROL, Save State, , " "binding" "key_press S, Save State, , " } } } }

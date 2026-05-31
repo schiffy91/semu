@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-PROJECT_DIR="${1:-$HOME/schemulator}"
-SCHEM="${SCHEMULATOR_BIN:-$PROJECT_DIR/build/schemulator}"
+PROJECT_DIR="${1:-$HOME/semu}"
+SCHEM="${SEMU_BIN:-$PROJECT_DIR/build/semu}"
 
 "$SCHEM" sync status --project "$PROJECT_DIR"
 "$SCHEM" sync setup --project "$PROJECT_DIR"

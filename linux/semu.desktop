@@ -1,8 +1,8 @@
 [Desktop Entry]
-Name=Schemulator
+Name=Semu
 Comment=Sandboxed emulation environment (ES-DE + bwrap)
 Exec=AppRun
-Icon=schemulator
+Icon=semu
 Type=Application
 Categories=Game;Emulator;
 Terminal=false

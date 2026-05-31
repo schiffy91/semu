@@ -1,6 +1,6 @@
 # E2E Status
 
-Schemulator is Steam Deck-first, but the verification layers have different
+Semu is Steam Deck-first, but the verification layers have different
 confidence levels.
 
 ## Automated Today
@@ -25,7 +25,7 @@ confidence levels.
 - `make appimage-smoke`: fake ES-DE/fake appimagetool AppImage assembly check
   that proves `--nix-package`, copied routed launchers, AppRun bubblewrap
   `/nix/store` mount args, CLI passthrough, no launch-time setup mutation,
-  normal AppRun ES-DE launch, and `SCHEMULATOR_LAUNCHER_BIN` bootstrap output.
+  normal AppRun ES-DE launch, and `SEMU_LAUNCHER_BIN` bootstrap output.
 - `make bazzite-desktop-vm-smoke`: Bazzite Desktop live ISO under QEMU TCG with
   checksum verification, Basic Graphics boot, and high-threshold framebuffer
   validation of the KDE live environment.
@@ -42,7 +42,7 @@ confidence levels.
 - Installed Bazzite pass: install to `test/vms/bazzite*.qcow2`, boot with
   `make bazzite-vm-start-installed`, SSH in, and run
   `make bazzite-vm-verify-ssh BAZZITE_SSH_USER=<guest-user>`.
-- Real AppImage pass on SteamOS: build `Schemulator-*.AppImage` with
+- Real AppImage pass on SteamOS: build `Semu-*.AppImage` with
   `linux/build-appimage.sh --nix-package result`, launch it on a Deck, verify
   ES-DE opens under Gamescope, ROM location override persists, Syncthing
   commands work, and routed launchers start real emulator binaries.
@@ -55,7 +55,7 @@ confidence levels.
 
 ## AppImage Scope
 
-The AppImage path bundles ES-DE, AppRun, the compiled BTRC `schemulator` CLI,
+The AppImage path bundles ES-DE, AppRun, the compiled BTRC `semu` CLI,
 ES-DE find rules, launcher scripts, and optionally a Nix closure copied into
 the AppDir with `--nix-package`. ROMs and BIOS remain user-owned and are not
 bundled. Flatpak launchers still require host Flatpak emulator installation
@@ -63,21 +63,21 @@ when no routed Nix payload is bundled.
 
 Linux flake outputs now expose routed Nix emulator wrappers:
 
-- `.#schem-retroarch`
-- `.#schem-dolphin`
-- `.#schem-ppsspp`
-- `.#schem-flycast`
-- `.#schem-gopher64`
-- `.#schem-melonds`
-- `.#schem-pcsx2`
-- `.#schem-cemu`
-- `.#schem-azahar`
-- `.#schem-ryujinx`
-- `.#schem-es-de`
-- `.#schem-routed-emulators`
+- `.#semu-retroarch`
+- `.#semu-dolphin`
+- `.#semu-ppsspp`
+- `.#semu-flycast`
+- `.#semu-gopher64`
+- `.#semu-melonds`
+- `.#semu-pcsx2`
+- `.#semu-cemu`
+- `.#semu-azahar`
+- `.#semu-ryujinx`
+- `.#semu-es-de`
+- `.#semu-routed-emulators`
 
 These wrappers avoid host symlinks by routing emulator state through
-`HOME`/`XDG_*` into `.schemulator/appimage-state`. AppRun can mount a bundled
+`HOME`/`XDG_*` into `.semu/appimage-state`. AppRun can mount a bundled
 Nix closure at `/nix/store` with bubblewrap. Local smoke tests now cover the
 assembly and routing design; the remaining gap is executing the final AppImage
 against real SteamOS/Gamescope/emulator binaries.
