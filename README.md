@@ -8,8 +8,9 @@ the BTRC runtime in `semu.btrc`.
 
 The runtime source of truth is BTRC, not Python and not per-emulator symlink
 manifests. `setup.py`, `setup.json`, `symlinks.json`, and the old Python
-find-rules generator have been removed. Python remains only for the test
-harness and the standalone `decrypt3ds.py` NoCrypto utility.
+find-rules generator have been removed. The old Python test harness and 3DS
+NoCrypto helper have been retired; the remaining utility behavior lives in
+`semu.btrc`.
 
 ## Current Status
 
@@ -420,8 +421,13 @@ media. Place user-owned files in the declared locations and run `doctor`.
 - `ENCRYPTED`: content does not look decrypted and must be redumped/decrypted.
 - `INVALID`: missing or malformed NCSD/NCCH headers.
 
-`decrypt3ds.py` can fix the NoCrypto flag on already-decrypted `.3ds` files.
-It does not perform full AES decryption.
+The BTRC utility can fix the NoCrypto flag on already-decrypted `.3ds`/`.cci`
+files. It does not perform full AES decryption.
+
+```sh
+build/semu utils n3ds-nocrypto ROMs/n3ds --check
+build/semu utils n3ds-nocrypto ROMs/n3ds -o ROMs/n3ds-fixed
+```
 
 ## Command Reference
 
@@ -589,9 +595,7 @@ build/semu screenshot setup --project "$PWD"
 Run fast tests:
 
 ```sh
-python3 -m pytest test/ -v
-build/semu e2e all
-bash test/appimage/smoke.sh
+make test
 make nix-e2e
 ```
 
@@ -654,10 +658,11 @@ make bazzite-desktop-vm-smoke
 - Bootstrap/doctor invariants.
 - Linux launcher shell syntax.
 - BTRC lifecycle/sandbox/launcher/sync E2E smokes.
+- BTRC 3DS NoCrypto utility smoke.
 - AppImage smoke wiring.
 - Nix routed wrapper smoke.
 - Runtime no-Python guard for Linux/Nix runtime paths.
-- Regression tests.
+- Generated-C smoke tests.
 - `git diff --check`.
 
 ## Removed Legacy Path
@@ -670,6 +675,7 @@ The following old path is gone:
 - `generate_find_rules.py`
 - stale `docs/phase*.md`
 - tests that only exercised the old Python setup/symlink manager
+- the old Python 3DS NoCrypto utility
 
 Do not reintroduce these as runtime dependencies. New install, setup,
 reconfigure, sync, screenshot, keymap, launcher, and lifecycle behavior belongs
@@ -686,5 +692,3 @@ See `test/E2E.md` for the active verification matrix. The short version:
 - Two-device Syncthing conflict/resolution testing is not yet complete.
 - A UI editor for `keymaps/steam_deck.skm`, `sync/sync.json`, and
   `verification/screenshots.json` is still future work.
-- `decrypt3ds.py` remains a Python utility; port or remove it if the repo must
-  become strictly zero-Python outside tests.

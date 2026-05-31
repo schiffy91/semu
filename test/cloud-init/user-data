@@ -4,12 +4,9 @@ chpasswd:
   expire: false
 ssh_pwauth: true
 packages:
-  - python
-  - python-pip
-  - python-pycryptodome
-  - python-pytest
   - gcc
   - git
+  - make
   - rsync
   - flatpak
   - syncthing
