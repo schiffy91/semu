@@ -14,7 +14,7 @@ result-*
 .mcp.json
 
 # === VM images ===
-test/vms/
+tests/vms/
 
 # === Backups (large zips) ===
 backups/
@@ -27,7 +27,7 @@ ES-DE/ES-DE/downloaded_media/
 ES-DE/ES-DE/saves/
 ES-DE/ES-DE/states/
 ES-DE/ES-DE/screenshots/
-linux/proof/
+packaging/linux/proof/
 
 # Common licensed game/media/emulator payloads. Source/config exceptions should
 # be added explicitly rather than broadening these patterns.
@@ -55,6 +55,7 @@ linux/proof/
 *.xci
 *.z64
 *.zip
+*.keys
 
 # Emulator save data, BIOS, and binary blobs
 */bios/
@@ -70,6 +71,7 @@ linux/proof/
 */sdcard/
 */mlc01/
 */keys.txt
+**/keys.txt
 */mcu.dat
 */originals/
 
@@ -89,6 +91,7 @@ Ryujinx/config/
 
 # ES-DE settings (written by ES-DE at runtime)
 ES-DE/es_settings.xml
+ES-DE/custom_systems/
 
 # Sync runtime data. Keep the editable sync profile, ignore generated service
 # helpers, logs, and Syncthing's local keys/database.
@@ -97,44 +100,5 @@ sync/logs/
 sync/syncthing/
 !sync/sync.json
 
-# Allow the curated/generated ES-DE systems catalog; find rules are generated
-# per host because they contain launcher paths.
-!ES-DE/custom_systems/
-!ES-DE/custom_systems/**
-ES-DE/custom_systems/es_find_rules.xml
-
-# Track only curated Steam Deck controller defaults from otherwise-runtime dirs.
-!Cemu/config/
-Cemu/config/*
-!Cemu/config/controllerProfiles/
-Cemu/config/controllerProfiles/*
-!Cemu/config/controllerProfiles/SteamInput-P1.xml
-
-!Dolphin/config/
-Dolphin/config/*
-!Dolphin/config/Profiles/
-Dolphin/config/Profiles/*
-!Dolphin/config/Profiles/GCPad/
-Dolphin/config/Profiles/GCPad/*
-!Dolphin/config/Profiles/GCPad/Steam Deck.ini
-!Dolphin/config/Profiles/Hotkeys/
-Dolphin/config/Profiles/Hotkeys/*
-!Dolphin/config/Profiles/Hotkeys/Steam Deck.ini
-!Dolphin/config/Profiles/Wiimote/
-Dolphin/config/Profiles/Wiimote/*
-!Dolphin/config/Profiles/Wiimote/Wiimote (SD).ini
-!Dolphin/config/Profiles/Wiimote/Wiimote + Classic Controller (SD).ini
-
-!PCSX2/config/
-PCSX2/config/*
-!PCSX2/config/inputprofiles/
-PCSX2/config/inputprofiles/*
-!PCSX2/config/inputprofiles/Steam Deck.ini
-
-!Ryujinx/config/
-Ryujinx/config/*
-!Ryujinx/config/profiles/
-Ryujinx/config/profiles/*
-!Ryujinx/config/profiles/controller/
-Ryujinx/config/profiles/controller/*
-!Ryujinx/config/profiles/controller/Steam Virtual Controller.json
+# Curated/generated defaults are source-controlled under emulators/.
+# Root emulator directories are local runtime state only.

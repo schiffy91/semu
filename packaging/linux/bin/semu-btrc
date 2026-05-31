@@ -10,8 +10,8 @@ fi
 if [ -z "$cli" ] && [ -x "$here/../semu" ]; then
   cli="$here/../semu"
 fi
-if [ -z "$cli" ] && [ -x "$here/../../build/semu" ]; then
-  cli="$here/../../build/semu"
+if [ -z "$cli" ] && [ -x "$here/../../../build/semu" ]; then
+  cli="$here/../../../build/semu"
 fi
 if [ -z "$cli" ] && [ -n "${APPDIR:-}" ] && [ -x "$APPDIR/usr/bin/semu" ]; then
   cli="$APPDIR/usr/bin/semu"

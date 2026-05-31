@@ -11,7 +11,7 @@ This tree is the Steam Deck-first runtime path for Semu.
   Nix-built `semu-*` launchers in `usr/bin`.
 - `bin/semu-*` launchers are stable ES-DE entry names. They are thin shims
   into `semu launcher ...`; emulator IDs, Flatpak IDs, X11/Wayland
-  policy, ROM/project grants, and RetroArch routing live in `semu.btrc`.
+  policy, ROM/project grants, and RetroArch routing live in `src/semu.btrc`.
 - `sandbox.sh` is a compatibility shim into `semu sandbox launch`.
   Bubblewrap composition and scratch symlink preparation are handled in BTRC.
 - Screenshot verification hooks are declared in `semu.json` and editable
@@ -45,6 +45,6 @@ build/semu sync tray --project "$PWD"
 
 Saves, states, screenshots, and gamelists sync by default. ROMs and BIOS are
 declared but disabled by default because they are large and user-owned.
-Controller profile and Steam Input expectations live in `semu.btrc` so
+Controller profile and Steam Input expectations live in `src/semu.btrc` so
 the UI/editor layer can update declarative config without changing launcher
 scripts.

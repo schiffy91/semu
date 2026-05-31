@@ -69,15 +69,15 @@ for required in \
     usr/bin/semu-btrc \
     usr/bin/semu-es-de \
     nix/store \
-    linux/AppRun \
-    linux/ES-DE/es_find_rules_linux.xml; do
+    packaging/linux/AppRun \
+    packaging/linux/ES-DE/es_find_rules_linux.xml; do
   test -e "$APPDIR/$required" || {
     echo "missing AppDir path: $required" >&2
     exit 3
   }
 done
 
-test ! -e "$APPDIR/linux/build-appimage.sh" || {
+test ! -e "$APPDIR/packaging/linux/build-appimage.sh" || {
   echo "build script must not be shipped inside AppDir" >&2
   exit 3
 }
@@ -91,11 +91,11 @@ grep -F 'SEMU_LAUNCHER_BIN' "$APPDIR/AppRun" >/dev/null
 find "$APPDIR/usr/bin" -maxdepth 1 -type f -perm -111 -print | sort > "$OUTPUT"
 
 while IFS= read -r launcher; do
-  test -x "$APPDIR/usr/bin/$launcher" || test -x "$APPDIR/linux/bin/$launcher" || {
+  test -x "$APPDIR/usr/bin/$launcher" || test -x "$APPDIR/packaging/linux/bin/$launcher" || {
     echo "generated ES-DE launcher has no executable: $launcher" >&2
     exit 3
   }
-done < <(grep -o 'semu-[a-z0-9-]*' "$APPDIR/linux/ES-DE/es_find_rules_linux.xml" | sort -u)
+done < <(grep -o 'semu-[a-z0-9-]*' "$APPDIR/packaging/linux/ES-DE/es_find_rules_linux.xml" | sort -u)
 SH
 chmod +x "$BIN_DIR/appimagetool"
 
@@ -187,7 +187,7 @@ done
 expect_status 4 env \
   PATH="$BIN_DIR:$PATH" \
   APPIMAGETOOL="$BIN_DIR/appimagetool" \
-  "$REPO_ROOT/linux/build-appimage.sh" \
+  "$REPO_ROOT/packaging/linux/build-appimage.sh" \
   --nix-package "$NO_BWRAP_NIX_PACKAGE" \
   --esde-appimage "$TMP/fake-esde.AppImage" \
   --output "$TMP/no-bwrap-nix.AppImage" \
@@ -196,7 +196,7 @@ expect_status 4 env \
 PARTIAL_OUTPUT="$TMP/Semu-partial.AppImage"
 PATH="$BIN_DIR:$PATH" \
 APPIMAGETOOL="$BIN_DIR/appimagetool" \
-"$REPO_ROOT/linux/build-appimage.sh" \
+"$REPO_ROOT/packaging/linux/build-appimage.sh" \
   --nix-package "$PARTIAL_NIX_PACKAGE" \
   --esde-appimage "$TMP/fake-esde.AppImage" \
   --output "$PARTIAL_OUTPUT" \
@@ -206,7 +206,7 @@ grep -F /usr/bin/semu-ppsspp "$PARTIAL_OUTPUT" >/dev/null
 OUTPUT="$TMP/Semu-test.AppImage"
 PATH="$BIN_DIR:$PATH" \
 APPIMAGETOOL="$BIN_DIR/appimagetool" \
-"$REPO_ROOT/linux/build-appimage.sh" \
+"$REPO_ROOT/packaging/linux/build-appimage.sh" \
   --nix-package "$NIX_PACKAGE" \
   --esde-appimage "$TMP/fake-esde.AppImage" \
   --output "$OUTPUT" \
@@ -236,7 +236,7 @@ done
 
 APPDIR="$TMP/AppRunProbe.AppDir"
 mkdir -p "$APPDIR/nix/store" "$APPDIR/usr/bin"
-cp "$REPO_ROOT/linux/AppRun" "$APPDIR/AppRun"
+cp "$REPO_ROOT/packaging/linux/AppRun" "$APPDIR/AppRun"
 chmod +x "$APPDIR/AppRun"
 
 cat > "$BIN_DIR/bwrap" <<SH
@@ -257,7 +257,7 @@ grep -F "$APPDIR/AppRun" "$TMP/bwrap.args" >/dev/null
 
 NO_PROJECT_APPDIR="$TMP/AppRunNoProject.AppDir"
 mkdir -p "$NO_PROJECT_APPDIR/usr/bin" "$TMP/no-project-home"
-cp "$REPO_ROOT/linux/AppRun" "$NO_PROJECT_APPDIR/AppRun"
+cp "$REPO_ROOT/packaging/linux/AppRun" "$NO_PROJECT_APPDIR/AppRun"
 chmod +x "$NO_PROJECT_APPDIR/AppRun"
 expect_status 1 env \
   APPDIR="$NO_PROJECT_APPDIR" \
@@ -268,7 +268,7 @@ MISSING_CLI_APPDIR="$TMP/AppRunMissingCli.AppDir"
 MISSING_CLI_PROJECT="$TMP/missing-cli-project"
 mkdir -p "$MISSING_CLI_APPDIR/usr/bin" "$MISSING_CLI_PROJECT"
 printf '{"schema_version":1}\n' > "$MISSING_CLI_PROJECT/semu.json"
-cp "$REPO_ROOT/linux/AppRun" "$MISSING_CLI_APPDIR/AppRun"
+cp "$REPO_ROOT/packaging/linux/AppRun" "$MISSING_CLI_APPDIR/AppRun"
 chmod +x "$MISSING_CLI_APPDIR/AppRun"
 expect_status 2 env \
   APPDIR="$MISSING_CLI_APPDIR" \
@@ -277,7 +277,7 @@ expect_status 2 env \
 
 BWRAP_MISSING_APPDIR="$TMP/AppRunMissingBwrap.AppDir"
 mkdir -p "$BWRAP_MISSING_APPDIR/nix/store"
-cp "$REPO_ROOT/linux/AppRun" "$BWRAP_MISSING_APPDIR/AppRun"
+cp "$REPO_ROOT/packaging/linux/AppRun" "$BWRAP_MISSING_APPDIR/AppRun"
 chmod +x "$BWRAP_MISSING_APPDIR/AppRun"
 expect_status 127 env \
   PATH="/usr/bin:/bin" \
@@ -287,28 +287,28 @@ expect_status 127 env \
 expect_status 4 env \
   PATH="$BIN_DIR:$PATH" \
   APPIMAGETOOL="$BIN_DIR/appimagetool" \
-  "$REPO_ROOT/linux/build-appimage.sh" \
+  "$REPO_ROOT/packaging/linux/build-appimage.sh" \
   --nix-package "$TMP/missing-nix-package" \
   --esde-appimage "$TMP/fake-esde.AppImage" \
   --output "$TMP/missing-nix.AppImage" \
   --arch x86_64
 
 NO_CLI_ROOT="$TMP/no-cli-root"
-mkdir -p "$NO_CLI_ROOT"
-cp -R "$REPO_ROOT/linux" "$NO_CLI_ROOT/linux"
+mkdir -p "$NO_CLI_ROOT/packaging"
+cp -R "$REPO_ROOT/packaging/linux" "$NO_CLI_ROOT/packaging/linux"
 expect_status 5 env \
   PATH="$BIN_DIR:$PATH" \
   APPIMAGETOOL="$BIN_DIR/appimagetool" \
-  "$NO_CLI_ROOT/linux/build-appimage.sh" \
+  "$NO_CLI_ROOT/packaging/linux/build-appimage.sh" \
   --esde-appimage "$TMP/fake-esde.AppImage" \
   --output "$TMP/no-cli.AppImage" \
   --arch x86_64
 
 CLI_APPDIR="$TMP/AppRunCli.AppDir"
 CLI_PROJECT="$TMP/cli-project"
-mkdir -p "$CLI_APPDIR/usr/bin" "$CLI_APPDIR/linux/bin" "$CLI_PROJECT"
+mkdir -p "$CLI_APPDIR/usr/bin" "$CLI_APPDIR/packaging/linux/bin" "$CLI_PROJECT"
 printf '{"schema_version":1}\n' > "$CLI_PROJECT/semu.json"
-cp "$REPO_ROOT/linux/AppRun" "$CLI_APPDIR/AppRun"
+cp "$REPO_ROOT/packaging/linux/AppRun" "$CLI_APPDIR/AppRun"
 chmod +x "$CLI_APPDIR/AppRun"
 cat > "$CLI_APPDIR/usr/bin/semu" <<SH
 #!/usr/bin/env bash
@@ -328,11 +328,11 @@ grep -F "$CLI_PROJECT" "$TMP/cli.args" >/dev/null
 RUN_APPDIR="$TMP/AppRunLaunch.AppDir"
 RUN_PROJECT="$TMP/run-project"
 RUN_HOME="$TMP/run-home"
-mkdir -p "$RUN_APPDIR/usr/bin" "$RUN_APPDIR/linux/bin" "$RUN_PROJECT/ES-DE/custom_systems" "$RUN_HOME"
+mkdir -p "$RUN_APPDIR/usr/bin" "$RUN_APPDIR/packaging/linux/bin" "$RUN_PROJECT/ES-DE/custom_systems" "$RUN_HOME"
 printf '{"schema_version":1}\n' > "$RUN_PROJECT/semu.json"
 printf '<systemList />\n' > "$RUN_PROJECT/ES-DE/custom_systems/es_systems.xml"
 printf '<ruleList />\n' > "$RUN_PROJECT/ES-DE/custom_systems/es_find_rules.xml"
-cp "$REPO_ROOT/linux/AppRun" "$RUN_APPDIR/AppRun"
+cp "$REPO_ROOT/packaging/linux/AppRun" "$RUN_APPDIR/AppRun"
 chmod +x "$RUN_APPDIR/AppRun"
 cat > "$RUN_APPDIR/usr/bin/semu" <<'SH'
 #!/usr/bin/env bash

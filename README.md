@@ -4,13 +4,13 @@ Semu is a Steam Deck-first emulation environment manager. Its goal is
 RetroDeck-like plug-and-play behavior with a smaller, declarative core:
 systems, launchers, controller defaults, keymaps, ROM paths, BIOS checks,
 Syncthing integration, screenshot hooks, and packaging metadata all flow from
-the BTRC runtime in `semu.btrc`.
+the BTRC runtime in `src/semu.btrc`.
 
 The runtime source of truth is BTRC, not Python and not per-emulator symlink
 manifests. `setup.py`, `setup.json`, `symlinks.json`, and the old Python
 find-rules generator have been removed. The old Python test harness and 3DS
 NoCrypto helper have been retired; the remaining utility behavior lives in
-`semu.btrc`.
+`src/semu.btrc`.
 
 ## Current Status
 
@@ -21,17 +21,17 @@ This repo currently provides:
 - A generated C snapshot used by Nix builds: `generated/semu.c`.
 - Steam Deck controller defaults with gyro disabled, right trackpad as mouse,
   left trackpad for radial hotkeys, and unified save/load/quit/menu actions.
-- A custom keymap language in `keymaps/steam_deck.skm` with tokenizer, parser,
+- A custom keymap language in `input/keymaps/steam_deck.skm` with tokenizer, parser,
   code generators, and authoring errors.
 - Declarative Syncthing config in `sync/sync.json`.
 - Declarative screenshot verification config in `verification/screenshots.json`.
-- Linux launcher shims and AppRun glue under `linux/`.
+- Linux launcher shims and AppRun glue under `packaging/linux/`.
 - Nix packages for the BTRC CLI, bundled emulator set, routed emulator wrappers,
   and a NixOS module.
 - Automated smoke coverage for bootstrap, lifecycle, launcher routing,
   screenshot hooks, sync setup, AppImage assembly wiring, and Nix routed wrappers.
 
-Important remaining production gaps are tracked in `test/E2E.md`. The biggest
+Important remaining production gaps are tracked in `tests/E2E.md`. The biggest
 ones are the physical Steam Deck Game Mode pass, a real SteamOS/AppImage pass
 with actual emulator binaries, and a true two-device Syncthing conflict test.
 
@@ -52,23 +52,25 @@ with actual emulator binaries, and a true two-device Syncthing conflict test.
 
 | Path | Purpose |
 |---|---|
-| `semu.btrc` | Canonical BTRC runtime and manifest generator. |
+| `src/semu.btrc` | Canonical BTRC runtime and manifest generator. |
 | `semu.json` | Generated JSON manifest for UI/editor/runtime consumers. |
 | `generated/semu.c` | Generated C snapshot compiled by Nix packages. |
-| `keymaps/steam_deck.skm` | Editable Steam Deck keymap source. |
+| `emulators/profiles/` | Curated emulator profile defaults and user-owned per-emulator config targets. |
+| `emulators/es-de/custom_systems/` | Generated ES-DE systems catalog snapshot. |
+| `input/keymaps/steam_deck.skm` | Editable Steam Deck keymap source. |
+| `input/steam-input/*.vdf` | Generated Steam Input template files. |
 | `sync/sync.json` | Editable Syncthing policy. |
 | `verification/screenshots.json` | Editable screenshot hook policy. |
-| `linux/AppRun` | AppImage entry point and bundled Nix-store mount wrapper. |
-| `linux/bin/semu-*` | Thin Linux launcher shims. |
-| `linux/ES-DE/*.xml` | Linux ES-DE systems/find-rules assets. |
-| `nix/*.nix` | Emulator packaging, routed wrappers, CLI package, NixOS module. |
-| `steam-input/*.vdf` | Generated Steam Input template files. |
-| `test/` | Local, VM, AppImage, Deck-style, and regression tests. |
+| `packaging/linux/AppRun` | AppImage entry point and bundled Nix-store mount wrapper. |
+| `packaging/linux/bin/semu-*` | Thin Linux launcher shims. |
+| `packaging/linux/ES-DE/*.xml` | Linux ES-DE systems/find-rules assets. |
+| `packaging/nix/*.nix` | Emulator packaging, routed wrappers, CLI package, NixOS module. |
+| `tests/` | Local, VM, AppImage, Deck-style, and regression tests. |
 | `ES-DE/ES-DE/` | User content root for ROMs, BIOS, saves, states, media, themes. |
 | `.semu/` | Runtime state created by launcher and AppImage routes. |
 
 Do not hand-edit `semu.json` or `generated/semu.c`. Edit
-`semu.btrc`, then regenerate.
+`src/semu.btrc`, then regenerate.
 
 ## Steam Deck Quick Start
 
@@ -97,7 +99,7 @@ What `deck install` does:
 - Creates ROM directories for every declared system.
 - Creates BIOS target directories.
 - Seeds Steam Deck controller defaults.
-- Seeds `keymaps/steam_deck.skm` if missing.
+- Seeds `input/keymaps/steam_deck.skm` if missing.
 - Renders Steam Input templates.
 - Renders ES-DE systems and find rules.
 - Renders `semu.json`.
@@ -162,7 +164,7 @@ ROMs and BIOS are never bundled.
 
 ```sh
 nix build .#default
-linux/build-appimage.sh \
+packaging/linux/build-appimage.sh \
   --nix-package result \
   --esde-appimage ./ES-DE.AppImage \
   --output ./Semu-x86_64.AppImage \
@@ -173,7 +175,7 @@ Why bubblewrap is used:
 
 - Nix-built binaries reference absolute `/nix/store/...` paths.
 - An AppImage cannot rewrite those paths safely.
-- `linux/AppRun` detects a bundled `nix/store` payload and re-execs through
+- `packaging/linux/AppRun` detects a bundled `nix/store` payload and re-execs through
   bubblewrap with that payload mounted read-only at `/nix/store`.
 
 Fallback behavior:
@@ -184,11 +186,11 @@ Fallback behavior:
 
 Current automated tests validate AppImage assembly logic with fake ES-DE and
 fake appimagetool. A real SteamOS/Game Mode AppImage pass is still listed in
-`test/E2E.md`.
+`tests/E2E.md`.
 
 ## Declarative Configuration
 
-### `semu.btrc`
+### `src/semu.btrc`
 
 This is the canonical runtime file. It defines:
 
@@ -232,7 +234,7 @@ Top-level sections include:
 - `launchers`
 - `systems`
 
-### `keymaps/steam_deck.skm`
+### `input/keymaps/steam_deck.skm`
 
 Editable keymap source:
 
@@ -398,7 +400,7 @@ Default hotkeys:
 | `wiiu` | Nintendo Wii U | `wiiu` | Cemu |
 | `switch` | Nintendo Switch | `switch` | Ryujinx |
 
-Supported extensions are declared per system in `semu.btrc` and emitted
+Supported extensions are declared per system in `src/semu.btrc` and emitted
 into `semu.json` and ES-DE systems XML.
 
 ## BIOS And Firmware
@@ -411,7 +413,7 @@ media. Place user-owned files in the declared locations and run `doctor`.
 | `psx` | PlayStation | yes | `scph5500.bin`, `scph5501.bin`, `scph5502.bin` | `ES-DE/ES-DE/bios` |
 | `ps2` | PlayStation 2 | yes, any one | `ps2-0230a-20080220.bin`, `ps2-0230e-20080220.bin`, `ps2-0230j-20080220.bin` | `ES-DE/ES-DE/bios/ps2` |
 | `switch_keys` | Switch | yes | `prod.keys`, `title.keys` | `ES-DE/ES-DE/bios/switch` |
-| `wiiu_keys` | Wii U | yes | `keys.txt` | `Cemu/data` |
+| `wiiu_keys` | Wii U | yes | `keys.txt` | `emulators/profiles/Cemu/data` |
 | `dreamcast` | Dreamcast | optional | `dc_boot.bin`, `dc_flash.bin` | `ES-DE/ES-DE/bios/dc` |
 
 3DS ROM preflight is built into `doctor`. It detects:
@@ -679,16 +681,16 @@ The following old path is gone:
 
 Do not reintroduce these as runtime dependencies. New install, setup,
 reconfigure, sync, screenshot, keymap, launcher, and lifecycle behavior belongs
-in `semu.btrc`.
+in `src/semu.btrc`.
 
 ## Known Gaps
 
-See `test/E2E.md` for the active verification matrix. The short version:
+See `tests/E2E.md` for the active verification matrix. The short version:
 
 - Physical Steam Deck Game Mode validation is still required.
 - Real AppImage execution on SteamOS with actual ES-DE and emulator binaries is
   still required.
 - Installed Bazzite VM verification is not yet complete.
 - Two-device Syncthing conflict/resolution testing is not yet complete.
-- A UI editor for `keymaps/steam_deck.skm`, `sync/sync.json`, and
+- A UI editor for `input/keymaps/steam_deck.skm`, `sync/sync.json`, and
   `verification/screenshots.json` is still future work.

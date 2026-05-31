@@ -15,14 +15,15 @@ let
   setupTool = if semuCli != null then semuCli else stdenv.mkDerivation {
     pname = "semu";
     version = "0.1.0";
-    src = lib.cleanSource ./..;
+    src = lib.cleanSource ../..;
     nativeBuildInputs = [ makeWrapper ];
     dontBuild = true;
     installPhase = ''
       mkdir -p $out/bin $out/lib/semu
 
       # Copy BTRC runtime sources and generated manifest.
-      cp semu.btrc semu.json $out/lib/semu/
+      cp src/semu.btrc $out/lib/semu/semu.btrc
+      cp semu.json $out/lib/semu/
       cp -r generated $out/lib/semu/
       ${stdenv.cc.targetPrefix}cc generated/semu.c -std=c11 -D_DEFAULT_SOURCE -D_XOPEN_SOURCE=700 -o $out/lib/semu/semu-btrc -lm
       makeWrapper $out/lib/semu/semu-btrc $out/bin/semu \
@@ -30,8 +31,9 @@ let
         --set SEMU_BIN $out/bin/semu \
         --prefix PATH : ${lib.escapeShellArg runtimePath}
 
-      if [ -d linux ]; then
-        cp -r linux $out/lib/semu/
+      if [ -d packaging/linux ]; then
+        mkdir -p $out/lib/semu/packaging
+        cp -r packaging/linux $out/lib/semu/packaging/
       fi
     '';
     meta = {

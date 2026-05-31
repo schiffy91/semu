@@ -1,7 +1,7 @@
 # SteamOS / Deck Verification
 
-`test/deck` is the Deck-like full-system verification layer. It is intentionally
-shell-thin; the state and behavior are declared in `semu.btrc`.
+`tests/deck` is the Deck-like full-system verification layer. It is intentionally
+shell-thin; the state and behavior are declared in `src/semu.btrc`.
 
 Generate the BTRC runtime on the host first, then run the thin guest scripts
 inside SteamOS, Bazzite, or the Arch VM. The guest path compiles
@@ -16,10 +16,10 @@ Inside the guest:
 
 ```sh
 cd ~/semu
-test/deck/provision.sh "$PWD"
-test/deck/verify-emulators.sh "$PWD"
-test/deck/verify-sync.sh "$PWD"
-test/deck/verify-input.sh "$PWD"
+tests/deck/provision.sh "$PWD"
+tests/deck/verify-emulators.sh "$PWD"
+tests/deck/verify-sync.sh "$PWD"
+tests/deck/verify-input.sh "$PWD"
 ```
 
 VMs can prove Linux packaging, Flatpak routing, Syncthing, BTRC bootstrap,
@@ -40,13 +40,13 @@ make bazzite-vm-smoke
 This downloads the current Bazzite Deck live ISO, boots it under QEMU TCG
 software emulation, selects the ISO's Basic Graphics Mode, exposes VNC on
 `127.0.0.1:5905`, and writes a framebuffer smoke screenshot to
-`test/vms/bazzite-screen.ppm`. On macOS, inspect it with:
+`tests/vms/bazzite-screen.ppm`. On macOS, inspect it with:
 
 ```sh
-sips -s format png test/vms/bazzite-screen.ppm --out test/vms/bazzite-screen.png
+sips -s format png tests/vms/bazzite-screen.ppm --out tests/vms/bazzite-screen.png
 ```
 
-Keep `VM_DIR` as a relative no-space path such as `test/vms`; GNU Make splits
+Keep `VM_DIR` as a relative no-space path such as `tests/vms`; GNU Make splits
 target names on spaces, so an absolute path under `My Drive` is not a valid VM
 artifact directory override.
 
@@ -71,7 +71,7 @@ make bazzite-desktop-vm-smoke
 ```
 
 It uses the same QEMU/TCG harness, but exposes VNC on `127.0.0.1:5906` and
-writes `test/vms/bazzite-desktop-screen.ppm`. SSH is forwarded to `2234` for
+writes `tests/vms/bazzite-desktop-screen.ppm`. SSH is forwarded to `2234` for
 this variant to avoid colliding with the default Deck/Arch VM ports.
 
 Set `BAZZITE_ISO_SHA256=<sha256>` to pin an exact ISO. When it is unset, the

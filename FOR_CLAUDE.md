@@ -26,12 +26,12 @@ The explicit direction from the user:
 
 ## Critical Constraints
 
-- Canonical runtime source: `semu.btrc`.
+- Canonical runtime source: `src/semu.btrc`.
 - Generated artifacts:
   - `semu.json`
   - `generated/semu.c`
 - Editable declarative user files:
-  - `keymaps/steam_deck.skm`
+  - `input/keymaps/steam_deck.skm`
   - `sync/sync.json`
   - `verification/screenshots.json`
 - Runtime install/setup/reconfigure/change/uninstall/reinstall/upgrade logic
@@ -49,7 +49,7 @@ The explicit direction from the user:
 
 ## Current Architecture
 
-`semu.btrc` owns:
+`src/semu.btrc` owns:
 
 - Manifest generation.
 - ES-DE system catalog and command rendering.
@@ -76,27 +76,29 @@ Nix owns:
 
 Linux/AppImage glue owns:
 
-- Thin launcher scripts in `linux/bin`.
-- AppImage entrypoint in `linux/AppRun`.
-- AppImage assembly in `linux/build-appimage.sh`.
+- Thin launcher scripts in `packaging/linux/bin`.
+- AppImage entrypoint in `packaging/linux/AppRun`.
+- AppImage assembly in `packaging/linux/build-appimage.sh`.
 
 ## Important Files
 
 | File | Role |
 |---|---|
-| `semu.btrc` | Main runtime implementation. |
+| `src/semu.btrc` | Main runtime implementation. |
 | `semu.json` | Generated manifest for UI/runtime/tooling. |
 | `generated/semu.c` | Generated C snapshot for Nix builds. |
-| `keymaps/steam_deck.skm` | Editable Steam Deck keymap source. |
+| `emulators/profiles/` | Curated emulator profile defaults and user-owned per-emulator config targets. |
+| `emulators/es-de/custom_systems/` | Generated ES-DE systems catalog snapshot. |
+| `input/keymaps/steam_deck.skm` | Editable Steam Deck keymap source. |
 | `sync/sync.json` | Editable Syncthing policy. |
 | `verification/screenshots.json` | Editable screenshot hook policy. |
 | `flake.nix` | Nix package/app/check outputs. |
-| `nix/semu-cli.nix` | BTRC CLI package. |
-| `nix/semu.nix` | Full bundle package. |
-| `nix/routed-emulator.nix` | Per-emulator state-routing wrapper. |
-| `linux/AppRun` | AppImage entrypoint. |
-| `linux/build-appimage.sh` | AppImage assembly script. |
-| `test/E2E.md` | Verification matrix and remaining gaps. |
+| `packaging/nix/semu-cli.nix` | BTRC CLI package. |
+| `packaging/nix/semu.nix` | Full bundle package. |
+| `packaging/nix/routed-emulator.nix` | Per-emulator state-routing wrapper. |
+| `packaging/linux/AppRun` | AppImage entrypoint. |
+| `packaging/linux/build-appimage.sh` | AppImage assembly script. |
+| `tests/E2E.md` | Verification matrix and remaining gaps. |
 | `README.md` | Detailed user/developer documentation. |
 
 ## Recent Cleanup
@@ -108,8 +110,8 @@ The legacy Python setup path was removed:
 - `generate_find_rules.py`
 - per-emulator `symlinks.json`
 - stale `docs/phase*.md`
-- old `test/test_setup.py`
-- old `test/test_commands.py`
+- old `tests/test_setup.py`
+- old `tests/test_commands.py`
 
 Tests now target the BTRC manifest/bootstrap/doctor/keymap/sync/AppImage paths
 instead of the old setup/symlink manager.
@@ -122,7 +124,7 @@ build/semu utils n3ds-nocrypto ROMs/n3ds -o ROMs/n3ds-fixed
 ```
 
 Packaging was updated so Nix no longer copies `setup.json` or `symlinks.json`.
-`linux/AppRun` now discovers projects by `semu.json` or ES-DE generated
+`packaging/linux/AppRun` now discovers projects by `semu.json` or ES-DE generated
 files, not `setup.json`.
 
 ## BTRC Repo Status
@@ -220,7 +222,7 @@ Syncthing:
 UI:
 
 - No UI editor exists yet for:
-  - `keymaps/steam_deck.skm`
+  - `input/keymaps/steam_deck.skm`
   - `sync/sync.json`
   - `verification/screenshots.json`
   - ROM location and BIOS status
@@ -250,7 +252,7 @@ project values simple BTRC code over cleverness.
 
 ## Style Guidance
 
-For `semu.btrc`:
+For `src/semu.btrc`:
 
 - Prefer existing helper patterns.
 - Keep data declarations close to their renderers.
@@ -277,15 +279,15 @@ Do not bring back:
 - per-emulator `symlinks.json`
 - `generate_find_rules.py`
 - Python as a repo, test, Linux/Nix, or AppImage dependency
-- hidden mutable config that is not represented in `semu.btrc`,
-  `semu.json`, `keymaps/steam_deck.skm`, `sync/sync.json`, or
+- hidden mutable config that is not represented in `src/semu.btrc`,
+  `semu.json`, `input/keymaps/steam_deck.skm`, `sync/sync.json`, or
   `verification/screenshots.json`
 
 ## Suggested Next Tasks
 
 1. Run the full verification matrix after this cleanup and update this file if
    any command fails.
-2. Build a small config UI that edits `keymaps/steam_deck.skm`, `sync/sync.json`,
+2. Build a small config UI that edits `input/keymaps/steam_deck.skm`, `sync/sync.json`,
    screenshot hooks, ROM path, and BIOS status using `semu.json`.
 3. Complete a real Steam Deck Game Mode pass and attach screenshots under
    `ES-DE/ES-DE/screenshots/verification/`.
