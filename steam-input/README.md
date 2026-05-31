@@ -1,7 +1,7 @@
 # Steam Input Templates
 
-The Steam Deck default is declared in `schemulator.btrc` and generated into
-`schemulator.json`:
+The Steam Deck default is declared in `semu.btrc` and generated into
+`semu.json`:
 
 - gyro disabled
 - right trackpad as mouse
@@ -32,8 +32,8 @@ Place exported Steam Deck controller template VDF files here:
 - `neptune-simple.vdf`
 - `neptune-full.vdf`
 
-The expected files and install destination are declared in `schemulator.json`.
-Run `schemulator steam-input status --project <dir>` to validate the generated
-VDFs, then `schemulator steam-input install --project <dir>` to copy them into
+The expected files and install destination are declared in `semu.json`.
+Run `semu steam-input status --project <dir>` to validate the generated
+VDFs, then `semu steam-input install --project <dir>` to copy them into
 Steam's controller template directory. Use `--dest PATH` for a nonstandard
 Steam install.

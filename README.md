@@ -1,10 +1,10 @@
-# Schemulator
+# Semu
 
-Schemulator is a Steam Deck-first emulation environment manager. Its goal is
+Semu is a Steam Deck-first emulation environment manager. Its goal is
 RetroDeck-like plug-and-play behavior with a smaller, declarative core:
 systems, launchers, controller defaults, keymaps, ROM paths, BIOS checks,
 Syncthing integration, screenshot hooks, and packaging metadata all flow from
-the BTRC runtime in `schemulator.btrc`.
+the BTRC runtime in `semu.btrc`.
 
 The runtime source of truth is BTRC, not Python and not per-emulator symlink
 manifests. `setup.py`, `setup.json`, `symlinks.json`, and the old Python
@@ -15,9 +15,9 @@ harness and the standalone `decrypt3ds.py` NoCrypto utility.
 
 This repo currently provides:
 
-- A compiled BTRC CLI: `build/schemulator`.
-- A generated runtime/UI manifest: `schemulator.json`.
-- A generated C snapshot used by Nix builds: `generated/schemulator.c`.
+- A compiled BTRC CLI: `build/semu`.
+- A generated runtime/UI manifest: `semu.json`.
+- A generated C snapshot used by Nix builds: `generated/semu.c`.
 - Steam Deck controller defaults with gyro disabled, right trackpad as mouse,
   left trackpad for radial hotkeys, and unified save/load/quit/menu actions.
 - A custom keymap language in `keymaps/steam_deck.skm` with tokenizer, parser,
@@ -42,7 +42,7 @@ with actual emulator binaries, and a true two-device Syncthing conflict test.
   screenshots, lifecycle, sandboxing, and launcher routing.
 - Nix for reproducible emulator builds and AppImage payload assembly.
 - No host symlink farm for Linux routed emulators. Routed wrappers place emulator
-  state under `.schemulator/appimage-state/<emulator>` via `HOME` and `XDG_*`.
+  state under `.semu/appimage-state/<emulator>` via `HOME` and `XDG_*`.
 - Small abstractions: controller model, backend, emitted input, emulator keymap.
 - KISS over framework layering. Generated files are allowed, duplicate sources
   of truth are not.
@@ -51,23 +51,23 @@ with actual emulator binaries, and a true two-device Syncthing conflict test.
 
 | Path | Purpose |
 |---|---|
-| `schemulator.btrc` | Canonical BTRC runtime and manifest generator. |
-| `schemulator.json` | Generated JSON manifest for UI/editor/runtime consumers. |
-| `generated/schemulator.c` | Generated C snapshot compiled by Nix packages. |
+| `semu.btrc` | Canonical BTRC runtime and manifest generator. |
+| `semu.json` | Generated JSON manifest for UI/editor/runtime consumers. |
+| `generated/semu.c` | Generated C snapshot compiled by Nix packages. |
 | `keymaps/steam_deck.skm` | Editable Steam Deck keymap source. |
 | `sync/sync.json` | Editable Syncthing policy. |
 | `verification/screenshots.json` | Editable screenshot hook policy. |
 | `linux/AppRun` | AppImage entry point and bundled Nix-store mount wrapper. |
-| `linux/bin/schem-*` | Thin Linux launcher shims. |
+| `linux/bin/semu-*` | Thin Linux launcher shims. |
 | `linux/ES-DE/*.xml` | Linux ES-DE systems/find-rules assets. |
 | `nix/*.nix` | Emulator packaging, routed wrappers, CLI package, NixOS module. |
 | `steam-input/*.vdf` | Generated Steam Input template files. |
 | `test/` | Local, VM, AppImage, Deck-style, and regression tests. |
 | `ES-DE/ES-DE/` | User content root for ROMs, BIOS, saves, states, media, themes. |
-| `.schemulator/` | Runtime state created by launcher and AppImage routes. |
+| `.semu/` | Runtime state created by launcher and AppImage routes. |
 
-Do not hand-edit `schemulator.json` or `generated/schemulator.c`. Edit
-`schemulator.btrc`, then regenerate.
+Do not hand-edit `semu.json` or `generated/semu.c`. Edit
+`semu.btrc`, then regenerate.
 
 ## Steam Deck Quick Start
 
@@ -75,16 +75,16 @@ From the project root:
 
 ```sh
 make btrc-build
-build/schemulator deck install --project "$PWD" --roms "$PWD/ES-DE/ES-DE/ROMs"
-build/schemulator doctor --project "$PWD"
-build/schemulator keymap validate --project "$PWD"
-build/schemulator screenshot status --project "$PWD"
+build/semu deck install --project "$PWD" --roms "$PWD/ES-DE/ES-DE/ROMs"
+build/semu doctor --project "$PWD"
+build/semu keymap validate --project "$PWD"
+build/semu screenshot status --project "$PWD"
 ```
 
 For a microSD ROM directory, pass the real mount path:
 
 ```sh
-build/schemulator deck install \
+build/semu deck install \
   --project "$PWD" \
   --roms "/run/media/mmcblk0p1/Emulation/ROMs"
 ```
@@ -99,13 +99,13 @@ What `deck install` does:
 - Seeds `keymaps/steam_deck.skm` if missing.
 - Renders Steam Input templates.
 - Renders ES-DE systems and find rules.
-- Renders `schemulator.json`.
+- Renders `semu.json`.
 - Installs desktop and systemd user sync helpers where applicable.
 
 After install, add your legally dumped BIOS/firmware files and ROMs, then run:
 
 ```sh
-build/schemulator doctor --project "$PWD"
+build/semu doctor --project "$PWD"
 ```
 
 The doctor reports missing BIOS, controller defaults, keymap validity,
@@ -123,22 +123,22 @@ nix build .#default
 Run the BTRC CLI from the bundle:
 
 ```sh
-result/bin/schemulator doctor --project "$PWD"
-result/bin/schemulator deck install --project "$PWD" --roms "$PWD/ES-DE/ES-DE/ROMs"
+result/bin/semu doctor --project "$PWD"
+result/bin/semu deck install --project "$PWD" --roms "$PWD/ES-DE/ES-DE/ROMs"
 ```
 
 Run routed emulator wrappers directly:
 
 ```sh
-nix run .#schem-retroarch -- --help
-nix run .#schem-dolphin -- --help
-nix run .#schem-pcsx2 -- --help
+nix run .#semu-retroarch -- --help
+nix run .#semu-dolphin -- --help
+nix run .#semu-pcsx2 -- --help
 ```
 
 Each routed wrapper sets:
 
-- `SCHEMULATOR_PROJECT_DIR`
-- `SCHEMULATOR_ROMS_DIR`
+- `SEMU_PROJECT_DIR`
+- `SEMU_ROMS_DIR`
 - `HOME`
 - `XDG_CONFIG_HOME`
 - `XDG_DATA_HOME`
@@ -147,7 +147,7 @@ Each routed wrapper sets:
 The wrapper state lives under:
 
 ```text
-<project>/.schemulator/appimage-state/<emulator>/
+<project>/.semu/appimage-state/<emulator>/
 ```
 
 That state path is included in the Syncthing folder declarations as
@@ -164,7 +164,7 @@ nix build .#default
 linux/build-appimage.sh \
   --nix-package result \
   --esde-appimage ./ES-DE.AppImage \
-  --output ./Schemulator-x86_64.AppImage \
+  --output ./Semu-x86_64.AppImage \
   --arch x86_64
 ```
 
@@ -187,7 +187,7 @@ fake appimagetool. A real SteamOS/Game Mode AppImage pass is still listed in
 
 ## Declarative Configuration
 
-### `schemulator.btrc`
+### `semu.btrc`
 
 This is the canonical runtime file. It defines:
 
@@ -209,10 +209,10 @@ Regenerate artifacts:
 
 ```sh
 make btrc-build
-build/schemulator manifest --output schemulator.json
+build/semu manifest --output semu.json
 ```
 
-### `schemulator.json`
+### `semu.json`
 
 Generated manifest used by tests, UI work, and external tooling. It should be
 treated as a build artifact even though it is committed for consumers that do
@@ -248,12 +248,12 @@ bind HKB + Start -> ${app.quit}
 Validate and render:
 
 ```sh
-build/schemulator keymap validate --project "$PWD"
-build/schemulator keymap render --project "$PWD" --target manifest
-build/schemulator keymap render --project "$PWD" --target retroarch
-build/schemulator keymap render --project "$PWD" --target dolphin
-build/schemulator keymap render --project "$PWD" --target pcsx2
-build/schemulator keymap render --project "$PWD" --target steam-input
+build/semu keymap validate --project "$PWD"
+build/semu keymap render --project "$PWD" --target manifest
+build/semu keymap render --project "$PWD" --target retroarch
+build/semu keymap render --project "$PWD" --target dolphin
+build/semu keymap render --project "$PWD" --target pcsx2
+build/semu keymap render --project "$PWD" --target steam-input
 ```
 
 The compiler catches duplicate actions, duplicate controller combos, missing
@@ -277,19 +277,19 @@ Editable Syncthing policy. Defaults:
 Commands:
 
 ```sh
-build/schemulator sync setup --project "$PWD"
-build/schemulator sync status --project "$PWD"
-build/schemulator sync force all --project "$PWD"
-build/schemulator sync force saves --project "$PWD"
-build/schemulator sync tray --project "$PWD"
-build/schemulator sync open --project "$PWD"
+build/semu sync setup --project "$PWD"
+build/semu sync status --project "$PWD"
+build/semu sync force all --project "$PWD"
+build/semu sync force saves --project "$PWD"
+build/semu sync tray --project "$PWD"
+build/semu sync open --project "$PWD"
 ```
 
 `sync setup` writes systemd user units:
 
-- `schemulator-syncthing.service`
-- `schemulator-sync-force.service`
-- `schemulator-sync-force.timer`
+- `semu-syncthing.service`
+- `semu-sync-force.service`
+- `semu-sync-force.timer`
 
 It also uses Syncthing's CLI/API when available to add the declared folders.
 
@@ -308,10 +308,10 @@ Editable screenshot policy. Defaults declare:
 Commands:
 
 ```sh
-build/schemulator screenshot setup --project "$PWD"
-build/schemulator screenshot status --project "$PWD"
-SCHEMULATOR_SCREENSHOT_HOOKS=1 build/schemulator launcher retroarch --project "$PWD" game.gba
-build/schemulator screenshot capture --project "$PWD" --emulator retroarch --hook manual_visual_checkpoint
+build/semu screenshot setup --project "$PWD"
+build/semu screenshot status --project "$PWD"
+SEMU_SCREENSHOT_HOOKS=1 build/semu launcher retroarch --project "$PWD" game.gba
+build/semu screenshot capture --project "$PWD" --emulator retroarch --hook manual_visual_checkpoint
 ```
 
 Screenshot hooks are deliberately declarative so VM/Deck verification can
@@ -397,12 +397,12 @@ Default hotkeys:
 | `wiiu` | Nintendo Wii U | `wiiu` | Cemu |
 | `switch` | Nintendo Switch | `switch` | Ryujinx |
 
-Supported extensions are declared per system in `schemulator.btrc` and emitted
-into `schemulator.json` and ES-DE systems XML.
+Supported extensions are declared per system in `semu.btrc` and emitted
+into `semu.json` and ES-DE systems XML.
 
 ## BIOS And Firmware
 
-Schemulator does not bundle BIOS, firmware, keys, copyrighted ROMs, or scraped
+Semu does not bundle BIOS, firmware, keys, copyrighted ROMs, or scraped
 media. Place user-owned files in the declared locations and run `doctor`.
 
 | ID | System | Required | Files | Target |
@@ -428,91 +428,91 @@ It does not perform full AES decryption.
 Manifest and bootstrap:
 
 ```sh
-build/schemulator manifest --output schemulator.json
-build/schemulator bootstrap --project "$PWD"
-build/schemulator doctor --project "$PWD"
-build/schemulator deck install --project "$PWD" --roms "$PWD/ES-DE/ES-DE/ROMs"
-build/schemulator deck verify --project "$PWD"
-build/schemulator deck launch --project "$PWD"
+build/semu manifest --output semu.json
+build/semu bootstrap --project "$PWD"
+build/semu doctor --project "$PWD"
+build/semu deck install --project "$PWD" --roms "$PWD/ES-DE/ES-DE/ROMs"
+build/semu deck verify --project "$PWD"
+build/semu deck launch --project "$PWD"
 ```
 
 Lifecycle:
 
 ```sh
-build/schemulator lifecycle install --project "$PWD" --roms "$PWD/ES-DE/ES-DE/ROMs"
-build/schemulator lifecycle setup --project "$PWD"
-build/schemulator lifecycle reconfigure --project "$PWD"
-build/schemulator lifecycle change --project "$PWD" --roms "/new/ROMs"
-build/schemulator lifecycle uninstall --project "$PWD"
-build/schemulator lifecycle reinstall --project "$PWD"
-build/schemulator lifecycle upgrade --project "$PWD"
-build/schemulator lifecycle status --project "$PWD"
+build/semu lifecycle install --project "$PWD" --roms "$PWD/ES-DE/ES-DE/ROMs"
+build/semu lifecycle setup --project "$PWD"
+build/semu lifecycle reconfigure --project "$PWD"
+build/semu lifecycle change --project "$PWD" --roms "/new/ROMs"
+build/semu lifecycle uninstall --project "$PWD"
+build/semu lifecycle reinstall --project "$PWD"
+build/semu lifecycle upgrade --project "$PWD"
+build/semu lifecycle status --project "$PWD"
 ```
 
 Config:
 
 ```sh
-build/schemulator config env --project "$PWD"
-build/schemulator config set-roms --project "$PWD" --roms "/path/to/ROMs"
+build/semu config env --project "$PWD"
+build/semu config set-roms --project "$PWD" --roms "/path/to/ROMs"
 ```
 
 Keymaps:
 
 ```sh
-build/schemulator keymap validate --project "$PWD"
-build/schemulator keymap render --project "$PWD" --target manifest
-build/schemulator keymap render --project "$PWD" --target retroarch
-build/schemulator keymap render --project "$PWD" --target dolphin
-build/schemulator keymap render --project "$PWD" --target pcsx2
-build/schemulator keymap render --project "$PWD" --target steam-input
+build/semu keymap validate --project "$PWD"
+build/semu keymap render --project "$PWD" --target manifest
+build/semu keymap render --project "$PWD" --target retroarch
+build/semu keymap render --project "$PWD" --target dolphin
+build/semu keymap render --project "$PWD" --target pcsx2
+build/semu keymap render --project "$PWD" --target steam-input
 ```
 
 Steam Input:
 
 ```sh
-build/schemulator steam-input install --project "$PWD"
-build/schemulator steam-input status --project "$PWD"
+build/semu steam-input install --project "$PWD"
+build/semu steam-input status --project "$PWD"
 ```
 
 Sync:
 
 ```sh
-build/schemulator sync setup --project "$PWD"
-build/schemulator sync start --project "$PWD"
-build/schemulator sync stop --project "$PWD"
-build/schemulator sync status --project "$PWD"
-build/schemulator sync force all --project "$PWD"
-build/schemulator sync autostart-on --project "$PWD"
-build/schemulator sync autostart-off --project "$PWD"
-build/schemulator sync tray --project "$PWD"
-build/schemulator sync open --project "$PWD"
+build/semu sync setup --project "$PWD"
+build/semu sync start --project "$PWD"
+build/semu sync stop --project "$PWD"
+build/semu sync status --project "$PWD"
+build/semu sync force all --project "$PWD"
+build/semu sync autostart-on --project "$PWD"
+build/semu sync autostart-off --project "$PWD"
+build/semu sync tray --project "$PWD"
+build/semu sync open --project "$PWD"
 ```
 
 Screenshots:
 
 ```sh
-build/schemulator screenshot setup --project "$PWD"
-build/schemulator screenshot status --project "$PWD"
-build/schemulator screenshot capture --project "$PWD" --emulator retroarch --hook manual_visual_checkpoint
+build/semu screenshot setup --project "$PWD"
+build/semu screenshot status --project "$PWD"
+build/semu screenshot capture --project "$PWD" --emulator retroarch --hook manual_visual_checkpoint
 ```
 
 Launchers and sandbox:
 
 ```sh
-build/schemulator sandbox prepare --project "$PWD" --emulator retroarch --scratch /tmp/schem-retroarch
-build/schemulator launcher retroarch --project "$PWD" -- -L core.so game.gba
-build/schemulator launcher dolphin --project "$PWD" -- game.iso
-build/schemulator launcher flatpak --project "$PWD" org.ppsspp.PPSSPP game.iso
+build/semu sandbox prepare --project "$PWD" --emulator retroarch --scratch /tmp/semu-retroarch
+build/semu launcher retroarch --project "$PWD" -- -L core.so game.gba
+build/semu launcher dolphin --project "$PWD" -- game.iso
+build/semu launcher flatpak --project "$PWD" org.ppsspp.PPSSPP game.iso
 ```
 
 E2E:
 
 ```sh
-build/schemulator e2e all
-build/schemulator e2e lifecycle
-build/schemulator e2e launcher
-build/schemulator e2e sandbox
-build/schemulator e2e sync
+build/semu e2e all
+build/semu e2e lifecycle
+build/semu e2e launcher
+build/semu e2e sandbox
+build/semu e2e sync
 ```
 
 ## Nix Outputs
@@ -521,18 +521,18 @@ Packages:
 
 ```sh
 nix build .#default
-nix build .#schem-routed-emulators
-nix build .#schem-retroarch
-nix build .#schem-dolphin
-nix build .#schem-ppsspp
-nix build .#schem-flycast
-nix build .#schem-gopher64
-nix build .#schem-melonds
-nix build .#schem-pcsx2
-nix build .#schem-cemu
-nix build .#schem-azahar
-nix build .#schem-ryujinx
-nix build .#schem-es-de
+nix build .#semu-routed-emulators
+nix build .#semu-retroarch
+nix build .#semu-dolphin
+nix build .#semu-ppsspp
+nix build .#semu-flycast
+nix build .#semu-gopher64
+nix build .#semu-melonds
+nix build .#semu-pcsx2
+nix build .#semu-cemu
+nix build .#semu-azahar
+nix build .#semu-ryujinx
+nix build .#semu-es-de
 nix build .#btrcpy
 ```
 
@@ -540,8 +540,8 @@ Apps:
 
 ```sh
 nix run .#default -- doctor --project "$PWD"
-nix run .#schem-retroarch -- --help
-nix run .#schem-dolphin -- --help
+nix run .#semu-retroarch -- --help
+nix run .#semu-dolphin -- --help
 ```
 
 Checks:
@@ -558,14 +558,14 @@ The flake supports `aarch64-darwin`, `x86_64-darwin`, `x86_64-linux`, and
 
 ```nix
 {
-  inputs.schemulator.url = "github:schiffy91/schemulator";
+  inputs.semu.url = "github:schiffy91/semu";
 
-  outputs = { self, nixpkgs, schemulator, ... }: {
+  outputs = { self, nixpkgs, semu, ... }: {
     nixosConfigurations.myhost = nixpkgs.lib.nixosSystem {
       modules = [
-        schemulator.nixosModules.default
+        semu.nixosModules.default
         {
-          programs.schemulator = {
+          programs.semu = {
             enable = true;
             configDir = "/home/deck/Emulation";
           };
@@ -582,15 +582,15 @@ Build and regenerate:
 
 ```sh
 make btrc-build
-build/schemulator manifest --output schemulator.json
-build/schemulator screenshot setup --project "$PWD"
+build/semu manifest --output semu.json
+build/semu screenshot setup --project "$PWD"
 ```
 
 Run fast tests:
 
 ```sh
 python3 -m pytest test/ -v
-build/schemulator e2e all
+build/semu e2e all
 bash test/appimage/smoke.sh
 make nix-e2e
 ```
@@ -603,7 +603,7 @@ make verify
 
 ### BTRC Compiler Dependency
 
-Normal Nix builds compile `generated/schemulator.c` and do not need a BTRC
+Normal Nix builds compile `generated/semu.c` and do not need a BTRC
 compiler checkout. The flake exposes a local `.#btrcpy` wrapper backed by the
 `btrc` input. Development builds use that flake-pinned compiler by default, so
 fresh checkouts can regenerate artifacts without an adjacent BTRC checkout.
@@ -673,7 +673,7 @@ The following old path is gone:
 
 Do not reintroduce these as runtime dependencies. New install, setup,
 reconfigure, sync, screenshot, keymap, launcher, and lifecycle behavior belongs
-in `schemulator.btrc`.
+in `semu.btrc`.
 
 ## Known Gaps
 

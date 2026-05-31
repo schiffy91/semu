@@ -7,8 +7,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - run: docker build -t schemulator-test .
-      - run: docker run --rm -v "$PWD:/schemulator:ro" schemulator-test python -m pytest test/ -v
+      - run: docker build -t semu-test .
+      - run: docker run --rm -v "$PWD:/semu:ro" semu-test python -m pytest test/ -v
 
   # Native tests on each platform
   native:

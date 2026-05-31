@@ -13,13 +13,13 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
 def _load_project_manifest(project):
-    return json.loads((project / "schemulator.json").read_text())
+    return json.loads((project / "semu.json").read_text())
 
 
 def _btrc_binary_or_skip():
-    binary = REPO_ROOT / "build" / "schemulator"
+    binary = REPO_ROOT / "build" / "semu"
     if not binary.is_file():
-        pytest.skip("build/schemulator is required for BTRC CLI coverage")
+        pytest.skip("build/semu is required for BTRC CLI coverage")
     try:
         probe = subprocess.run(
             [str(binary), "keymap", "validate"],
@@ -28,7 +28,7 @@ def _btrc_binary_or_skip():
             check=False,
         )
     except OSError as exc:
-        pytest.skip(f"build/schemulator cannot run on this platform: {exc}")
+        pytest.skip(f"build/semu cannot run on this platform: {exc}")
     if probe.returncode != 0:
         pytest.fail(probe.stderr or probe.stdout)
     return binary, probe
@@ -104,7 +104,7 @@ def test_manifest_declares_steam_deck_input_stack_and_defaults():
     assert "RetroArch/retroarch.cfg.linux-backup" in steam_deck_profile["profiles"]
 
     keymap = manifest["keymaps"]["steam_deck"]
-    assert keymap["source_language"] == "schemulator-keymap-v1"
+    assert keymap["source_language"] == "semu-keymap-v1"
     assert keymap["source_path"] == "${paths.keymaps}/steam_deck.skm"
     assert set(keymap["render_targets"]) == {
         "manifest",
@@ -141,7 +141,7 @@ def test_manifest_declares_steam_deck_input_stack_and_defaults():
     screenshots = manifest["screenshot_verification"]
     hooks = {item["id"]: item for item in screenshots["hooks"]}
     assert {"before_launch", "after_spawn", "after_exit", "manual_visual_checkpoint"} <= set(hooks)
-    assert screenshots["enable_env"] == "SCHEMULATOR_SCREENSHOT_HOOKS=1"
+    assert screenshots["enable_env"] == "SEMU_SCREENSHOT_HOOKS=1"
 
 
 def test_steam_deck_controller_defaults_are_no_gyro_and_retrodeck_style():
@@ -220,7 +220,7 @@ def test_linux_launcher_wrappers_are_executable_and_bash_syntax_valid():
     if not bash:
         pytest.skip("bash is required to syntax-check Linux launcher wrappers")
 
-    launchers = list((REPO_ROOT / "linux" / "bin").glob("schem-*"))
+    launchers = list((REPO_ROOT / "linux" / "bin").glob("semu-*"))
     launchers.extend([
         REPO_ROOT / "linux" / "AppRun",
         REPO_ROOT / "linux" / "build-appimage.sh",
@@ -258,7 +258,7 @@ def test_btrc_bootstrap_seeds_editable_steam_deck_keymap(tmp_path):
     source = keymap_source.read_text()
     assert "action state.save = Ctrl+V" in source
     assert "bind HKB + R1 -> ${state.save}" in source
-    assert (project / "schemulator.json").is_file()
+    assert (project / "semu.json").is_file()
     assert (project / "ES-DE" / "es_settings.xml").is_file()
     for path in [
         project / "ES-DE" / "ES-DE" / "ROMs" / "gb",
@@ -319,13 +319,13 @@ def test_btrc_bootstrap_seeds_editable_steam_deck_keymap(tmp_path):
         "Ryujinx/config/profiles/controller/Steam Virtual Controller.json",
         "linux/ES-DE/es_systems_linux.xml",
         "linux/ES-DE/es_find_rules_linux.xml",
-        "linux/bin/schem-retroarch",
-        "linux/bin/schem-dolphin",
-        "linux/bin/schem-pcsx2",
-        "linux/bin/schem-ryujinx",
+        "linux/bin/semu-retroarch",
+        "linux/bin/semu-dolphin",
+        "linux/bin/semu-pcsx2",
+        "linux/bin/semu-ryujinx",
     ]:
         assert (project / relative).is_file(), relative
-    assert os.access(project / "linux" / "bin" / "schem-retroarch", os.X_OK)
+    assert os.access(project / "linux" / "bin" / "semu-retroarch", os.X_OK)
     assert 'input_save_state = "v"' in (
         project / "RetroArch" / "retroarch.cfg.linux-backup"
     ).read_text()
@@ -395,7 +395,7 @@ def test_btrc_sync_setup_writes_declarative_units_and_rom_override(tmp_path):
     env = os.environ.copy()
     env["HOME"] = str(home)
     env["PATH"] = "/usr/bin:/bin"
-    env["SCHEMULATOR_BIN"] = str(binary)
+    env["SEMU_BIN"] = str(binary)
 
     install = subprocess.run(
         [
@@ -420,19 +420,19 @@ def test_btrc_sync_setup_writes_declarative_units_and_rom_override(tmp_path):
     assert (roms / "switch").is_dir()
 
     service_dir = home / ".config" / "systemd" / "user"
-    service = (service_dir / "schemulator-syncthing.service").read_text()
+    service = (service_dir / "semu-syncthing.service").read_text()
     assert "ExecStart=syncthing serve -H" in service
     assert str(project / "sync" / "syncthing") in service
-    force_service = (service_dir / "schemulator-sync-force.service").read_text()
+    force_service = (service_dir / "semu-sync-force.service").read_text()
     assert str(project / "sync" / "bin" / "sync-force.sh") in force_service
-    timer = (service_dir / "schemulator-sync-force.timer").read_text()
+    timer = (service_dir / "semu-sync-force.timer").read_text()
     assert "OnUnitActiveSec=15min" in timer
 
     force_script = project / "sync" / "bin" / "sync-force.sh"
     assert os.access(force_script, os.X_OK)
     assert "sync force all" in force_script.read_text()
 
-    desktop = (home / ".local" / "share" / "applications" / "schemulator.desktop").read_text()
+    desktop = (home / ".local" / "share" / "applications" / "semu.desktop").read_text()
     assert "Actions=ForceSync;SyncStatus;OpenSyncthing;OpenSyncTray;" in desktop
     assert "sync force all" in desktop
 
@@ -444,7 +444,7 @@ def test_btrc_sync_setup_writes_declarative_units_and_rom_override(tmp_path):
         env=env,
     )
     assert env_result.returncode == 0
-    assert "SCHEMULATOR_ROMS_DIR=" in env_result.stdout
+    assert "SEMU_ROMS_DIR=" in env_result.stdout
     assert str(roms) in env_result.stdout
 
 

@@ -1,6 +1,6 @@
 SHELL := /bin/bash
 CONTAINER_ENGINE := $(shell command -v podman 2>/dev/null || command -v docker 2>/dev/null)
-CONTAINER_IMAGE := schemulator-test
+CONTAINER_IMAGE := semu-test
 BTRC_ROOT ?= ../../../dev/btrc
 BTRC_FLAKE ?=
 BTRC_INPUT_ARGS ?= $(if $(BTRC_FLAKE),--override-input btrc "$(BTRC_FLAKE)",)
@@ -10,8 +10,8 @@ BTRC_TRANSPILE := nix run $(BTRC_INPUT_ARGS) .\#btrcpy --
 else
 BTRC_TRANSPILE := cd "$(BTRC_ROOT)" && nix develop --command ./bin/btrcpy
 endif
-SCHEMULATOR_C := build/schemulator.c
-SCHEMULATOR_BIN := build/schemulator
+SEMU_C := build/semu.c
+SEMU_BIN := build/semu
 VM_DIR := test/vms
 CLOUD_INIT := test/cloud-init
 SSH_PORT_LINUX := 2222
@@ -43,7 +43,7 @@ BAZZITE_STARTED := $(VM_DIR)/bazzite.started
 BAZZITE_MONITOR := $(VM_DIR)/bazzite-monitor.sock
 BAZZITE_SERIAL := $(VM_DIR)/bazzite-serial.log
 BAZZITE_SCREEN := $(VM_DIR)/bazzite-screen.ppm
-BAZZITE_SCREEN_TMP ?= /tmp/schemulator-bazzite-screen.ppm
+BAZZITE_SCREEN_TMP ?= /tmp/semu-bazzite-screen.ppm
 BAZZITE_SCREEN_WIDTH ?= 1280
 BAZZITE_SCREEN_HEIGHT ?= 800
 BAZZITE_MIN_NONBLACK_PERCENT ?= 0.1
@@ -73,21 +73,21 @@ BAZZITE_SSH_OPTS := -o "StrictHostKeyChecking=no" -o "UserKnownHostsFile=/dev/nu
 
 all: install ## Build all emulators + bootstrap content (idempotent, cached by nix)
 install: setup
-btrc-build: $(SCHEMULATOR_BIN) ## Build the BTRC schemulator CLI
+btrc-build: $(SEMU_BIN) ## Build the BTRC semu CLI
 
-$(SCHEMULATOR_BIN): schemulator.btrc
+$(SEMU_BIN): semu.btrc
 	@mkdir -p build
-	$(BTRC_TRANSPILE) "$(CURDIR)/schemulator.btrc" -o "$(CURDIR)/$(SCHEMULATOR_C)" --no-cache --no-stdlib
-	perl -0pi -e 's/\n+\z/\n/' "$(SCHEMULATOR_C)"
-	$(CC) "$(SCHEMULATOR_C)" -std=c11 -D_DEFAULT_SOURCE -D_XOPEN_SOURCE=700 -o "$@" -lm
+	$(BTRC_TRANSPILE) "$(CURDIR)/semu.btrc" -o "$(CURDIR)/$(SEMU_C)" --no-cache --no-stdlib
+	perl -0pi -e 's/\n+\z/\n/' "$(SEMU_C)"
+	$(CC) "$(SEMU_C)" -std=c11 -D_DEFAULT_SOURCE -D_XOPEN_SOURCE=700 -o "$@" -lm
 	@mkdir -p generated
-	cp "$(SCHEMULATOR_C)" generated/schemulator.c
+	cp "$(SEMU_C)" generated/semu.c
 
-manifest: $(SCHEMULATOR_BIN) ## Generate schemulator.json from schemulator.btrc
-	$(SCHEMULATOR_BIN) manifest --output schemulator.json
+manifest: $(SEMU_BIN) ## Generate semu.json from semu.btrc
+	$(SEMU_BIN) manifest --output semu.json
 
-setup: $(SCHEMULATOR_BIN) ## Build all emulators and bootstrap Steam Deck/Linux content
-	@echo "Building schemulator bundle (nix handles caching)..."
+setup: $(SEMU_BIN) ## Build all emulators and bootstrap Steam Deck/Linux content
+	@echo "Building semu bundle (nix handles caching)..."
 	nix build .#default
 	@echo ""
 	@# Extract Ryujinx on first run (.NET needs writable dir)
@@ -97,7 +97,7 @@ setup: $(SCHEMULATOR_BIN) ## Build all emulators and bootstrap Steam Deck/Linux 
 	fi
 	@echo ""
 	@echo "Bootstrapping Steam Deck/Linux-style content folders..."
-	$(SCHEMULATOR_BIN) bootstrap --project "$$(pwd)"
+	$(SEMU_BIN) bootstrap --project "$$(pwd)"
 	@echo ""
 	@echo "Done. Launch emulators:"
 	@echo "  open result/Applications/ES-DE.app"
@@ -116,7 +116,7 @@ container-build: ## Build test container image
 	$(CONTAINER_ENGINE) build -t $(CONTAINER_IMAGE) .
 
 container-test: container-build ## Run tests in container (fast, deterministic)
-	$(CONTAINER_ENGINE) run --rm -v "$$(pwd):/schemulator:ro" $(CONTAINER_IMAGE) \
+	$(CONTAINER_ENGINE) run --rm -v "$$(pwd):/semu:ro" $(CONTAINER_IMAGE) \
 		python -m pytest test/ -v
 
 test: ## Run tests locally (native)
@@ -125,55 +125,55 @@ test: ## Run tests locally (native)
 ftux-test: ## Validate Steam Deck/Linux first-run bootstrap path
 	python3 -m pytest test/test_ftux.py -v
 
-e2e-smoke: $(SCHEMULATOR_BIN) ## Run BTRC-native sandbox and lifecycle smoke tests
-	$(SCHEMULATOR_BIN) e2e all
+e2e-smoke: $(SEMU_BIN) ## Run BTRC-native sandbox and lifecycle smoke tests
+	$(SEMU_BIN) e2e all
 
-lifecycle-smoke: $(SCHEMULATOR_BIN) ## Validate install/reconfigure/change/uninstall/reinstall/upgrade lifecycle
-	$(SCHEMULATOR_BIN) e2e lifecycle
+lifecycle-smoke: $(SEMU_BIN) ## Validate install/reconfigure/change/uninstall/reinstall/upgrade lifecycle
+	$(SEMU_BIN) e2e lifecycle
 
-sandbox-smoke: $(SCHEMULATOR_BIN) ## Validate all BTRC sandbox prepare routes
-	$(SCHEMULATOR_BIN) e2e sandbox
+sandbox-smoke: $(SEMU_BIN) ## Validate all BTRC sandbox prepare routes
+	$(SEMU_BIN) e2e sandbox
 
-launcher-smoke: $(SCHEMULATOR_BIN) ## Validate BTRC Linux launcher routing with fake flatpak/bwrap
-	$(SCHEMULATOR_BIN) e2e launcher
+launcher-smoke: $(SEMU_BIN) ## Validate BTRC Linux launcher routing with fake flatpak/bwrap
+	$(SEMU_BIN) e2e launcher
 
-appimage-smoke: $(SCHEMULATOR_BIN) ## Validate AppImage assembly and Nix-store mount wiring with fakes
+appimage-smoke: $(SEMU_BIN) ## Validate AppImage assembly and Nix-store mount wiring with fakes
 	bash test/appimage/smoke.sh
 
 nix-e2e: ## Validate flake routed-emulator shape and mock wrapper behavior
 	@set -euo pipefail; \
 	host_system="$$(nix eval --impure --raw --expr builtins.currentSystem)"; \
-	nix eval .#packages.x86_64-linux.schem-routed-emulators.name >/dev/null; \
+	nix eval .#packages.x86_64-linux.semu-routed-emulators.name >/dev/null; \
 	nix eval .#packages.x86_64-linux.default.name >/dev/null; \
-	nix eval --raw .#apps.x86_64-linux.schem-retroarch.program | grep -F '/bin/schem-retroarch' >/dev/null; \
-	nix eval --raw .#apps.x86_64-linux.schem-es-de.program | grep -F '/bin/schem-es-de' >/dev/null; \
+	nix eval --raw .#apps.x86_64-linux.semu-retroarch.program | grep -F '/bin/semu-retroarch' >/dev/null; \
+	nix eval --raw .#apps.x86_64-linux.semu-es-de.program | grep -F '/bin/semu-es-de' >/dev/null; \
 	nix build ".#checks.$$host_system.routed-emulator-mock" --print-build-logs; \
 	echo "OK Nix routed-emulator smoke ($$host_system)"
 
-verify: $(SCHEMULATOR_BIN) ## Run deterministic BTRC/Steam Deck verification
+verify: $(SEMU_BIN) ## Run deterministic BTRC/Steam Deck verification
 	@set -euo pipefail; \
 	verify_dir="$(CURDIR)/build/verification"; \
 	rm -rf "$$verify_dir"; \
 	mkdir -p "$$verify_dir"; \
 	echo "== Manifest determinism =="; \
-	"$(SCHEMULATOR_BIN)" manifest --output "$$verify_dir/schemulator.json"; \
-	cmp -s "$$verify_dir/schemulator.json" "schemulator.json"; \
-	grep -F '"source_language": "schemulator-keymap-v1"' "$$verify_dir/schemulator.json" >/dev/null; \
-		grep -F '"source_path": "$${paths.keymaps}/steam_deck.skm"' "$$verify_dir/schemulator.json" >/dev/null; \
-		grep -F '"screenshot_verification"' "$$verify_dir/schemulator.json" >/dev/null; \
-		grep -F '"before_launch"' "$$verify_dir/schemulator.json" >/dev/null; \
-		grep -F '"after_spawn"' "$$verify_dir/schemulator.json" >/dev/null; \
-		grep -F '"engine": "syncthing"' "$$verify_dir/schemulator.json" >/dev/null; \
-		grep -F '"tray_app": "syncthingtray"' "$$verify_dir/schemulator.json" >/dev/null; \
-	cmp -s "$(SCHEMULATOR_C)" "generated/schemulator.c"; \
-	echo "OK manifest generated from BTRC matches schemulator.json"; \
+	"$(SEMU_BIN)" manifest --output "$$verify_dir/semu.json"; \
+	cmp -s "$$verify_dir/semu.json" "semu.json"; \
+	grep -F '"source_language": "semu-keymap-v1"' "$$verify_dir/semu.json" >/dev/null; \
+		grep -F '"source_path": "$${paths.keymaps}/steam_deck.skm"' "$$verify_dir/semu.json" >/dev/null; \
+		grep -F '"screenshot_verification"' "$$verify_dir/semu.json" >/dev/null; \
+		grep -F '"before_launch"' "$$verify_dir/semu.json" >/dev/null; \
+		grep -F '"after_spawn"' "$$verify_dir/semu.json" >/dev/null; \
+		grep -F '"engine": "syncthing"' "$$verify_dir/semu.json" >/dev/null; \
+		grep -F '"tray_app": "syncthingtray"' "$$verify_dir/semu.json" >/dev/null; \
+	cmp -s "$(SEMU_C)" "generated/semu.c"; \
+	echo "OK manifest generated from BTRC matches semu.json"; \
 	echo "== Keymap compiler and renderers =="; \
-	"$(SCHEMULATOR_BIN)" keymap validate --project "$(CURDIR)" | tee "$$verify_dir/keymap-validate.txt"; \
-	"$(SCHEMULATOR_BIN)" keymap render --project "$(CURDIR)" --target manifest --output "$$verify_dir/keymap.json"; \
-	"$(SCHEMULATOR_BIN)" keymap render --project "$(CURDIR)" --target retroarch --output "$$verify_dir/retroarch.cfg"; \
-	"$(SCHEMULATOR_BIN)" keymap render --project "$(CURDIR)" --target dolphin --output "$$verify_dir/dolphin.ini"; \
-	"$(SCHEMULATOR_BIN)" keymap render --project "$(CURDIR)" --target pcsx2 --output "$$verify_dir/pcsx2.ini"; \
-	"$(SCHEMULATOR_BIN)" keymap render --project "$(CURDIR)" --target steam-input --output "$$verify_dir/steam-input.vdf"; \
+	"$(SEMU_BIN)" keymap validate --project "$(CURDIR)" | tee "$$verify_dir/keymap-validate.txt"; \
+	"$(SEMU_BIN)" keymap render --project "$(CURDIR)" --target manifest --output "$$verify_dir/keymap.json"; \
+	"$(SEMU_BIN)" keymap render --project "$(CURDIR)" --target retroarch --output "$$verify_dir/retroarch.cfg"; \
+	"$(SEMU_BIN)" keymap render --project "$(CURDIR)" --target dolphin --output "$$verify_dir/dolphin.ini"; \
+	"$(SEMU_BIN)" keymap render --project "$(CURDIR)" --target pcsx2 --output "$$verify_dir/pcsx2.ini"; \
+	"$(SEMU_BIN)" keymap render --project "$(CURDIR)" --target steam-input --output "$$verify_dir/steam-input.vdf"; \
 	grep -F 'input_enable_hotkey = "ctrl"' "$$verify_dir/retroarch.cfg" >/dev/null; \
 	grep -F 'input_load_state = "a"' "$$verify_dir/retroarch.cfg" >/dev/null; \
 	grep -F 'input_save_state = "s"' "$$verify_dir/retroarch.cfg" >/dev/null; \
@@ -185,7 +185,7 @@ verify: $(SCHEMULATOR_BIN) ## Run deterministic BTRC/Steam Deck verification
 	grep -F 'key_press S, Save State' "$$verify_dir/steam-input.vdf" >/dev/null; \
 	echo "OK keymap render targets"; \
 	echo "== Doctor invariants =="; \
-	"$(SCHEMULATOR_BIN)" doctor --project "$(CURDIR)" | tee "$$verify_dir/doctor.txt"; \
+	"$(SEMU_BIN)" doctor --project "$(CURDIR)" | tee "$$verify_dir/doctor.txt"; \
 	grep -F 'OK gyro: disabled' "$$verify_dir/doctor.txt" >/dev/null; \
 	grep -F 'OK right_trackpad: mouse' "$$verify_dir/doctor.txt" >/dev/null; \
 	grep -F 'OK left_trackpad: radial_hotkeys' "$$verify_dir/doctor.txt" >/dev/null; \
@@ -207,23 +207,23 @@ verify: $(SCHEMULATOR_BIN) ## Run deterministic BTRC/Steam Deck verification
 	grep -F 'optional roms: watch, 3600s' "$$verify_dir/doctor.txt" >/dev/null; \
 	echo "OK doctor invariants"; \
 	echo "== Launcher syntax =="; \
-	bash -n linux/AppRun linux/sandbox.sh linux/build-appimage.sh linux/bin/schem-*; \
+	bash -n linux/AppRun linux/sandbox.sh linux/build-appimage.sh linux/bin/semu-*; \
 	echo "OK bash syntax"; \
 	echo "== BTRC lifecycle/sandbox smoke =="; \
-	"$(SCHEMULATOR_BIN)" e2e all; \
+	"$(SEMU_BIN)" e2e all; \
 	echo "OK BTRC lifecycle/sandbox smoke"; \
 	echo "== AppImage/Nix routing smoke =="; \
 	bash test/appimage/smoke.sh; \
 	$(MAKE) --no-print-directory nix-e2e; \
 	echo "OK AppImage/Nix routing smoke"; \
 	echo "== Runtime BTRC guard =="; \
-	if rg -n 'python|setup\.py|generate_find_rules' linux nix/schemulator.nix nix/module.nix; then \
+	if rg -n 'python|setup\.py|generate_find_rules' linux nix/semu.nix nix/module.nix; then \
 		echo "Runtime path must not depend on Python"; \
 		exit 1; \
 	fi; \
 	sandbox_dir="$$verify_dir/sandbox-retroarch"; \
 	rm -rf "$$sandbox_dir"; \
-	"$(SCHEMULATOR_BIN)" sandbox prepare --project "$(CURDIR)" --emulator retroarch --scratch "$$sandbox_dir"; \
+	"$(SEMU_BIN)" sandbox prepare --project "$(CURDIR)" --emulator retroarch --scratch "$$sandbox_dir"; \
 	test -L "$$sandbox_dir/.config/retroarch/retroarch.cfg"; \
 	echo "OK runtime is BTRC-backed"; \
 	echo "== Regression suite =="; \
@@ -300,37 +300,37 @@ linux-sync: ## Sync project files into Linux VM
 		[ -e "$$path" ] && printf '%s\0' "$$path"; \
 	done | rsync -az --files-from=- --from0 \
 		-e "ssh $(SSH_OPTS) -p $(SSH_PORT_LINUX)" \
-		. arch@localhost:~/schemulator/
+		. arch@localhost:~/semu/
 
 linux-test: linux-sync ## Sync + run tests in Linux VM
 	ssh $(SSH_OPTS) -p $(SSH_PORT_LINUX) arch@localhost \
-		'cd ~/schemulator && python -m pytest test/ -v'
+		'cd ~/semu && python -m pytest test/ -v'
 
 deck-vm-start: linux ## Start Deck-like Linux VM
 
 deck-vm-sync: btrc-build deck-vm-start ## Sync project and BTRC binary into VM
 	$(MAKE) linux-sync
-	ssh $(SSH_OPTS) -p $(SSH_PORT_LINUX) arch@localhost 'mkdir -p ~/schemulator/build'
+	ssh $(SSH_OPTS) -p $(SSH_PORT_LINUX) arch@localhost 'mkdir -p ~/semu/build'
 
 deck-vm-provision: deck-vm-sync ## Provision VM with Deck-style services/config
 	ssh $(SSH_OPTS) -p $(SSH_PORT_LINUX) arch@localhost \
-		'cd ~/schemulator && chmod +x test/deck/*.sh && SCHEMULATOR_BIN=$$PWD/build/schemulator test/deck/provision.sh "$$PWD"'
+		'cd ~/semu && chmod +x test/deck/*.sh && SEMU_BIN=$$PWD/build/semu test/deck/provision.sh "$$PWD"'
 
 deck-vm-verify: deck-vm-provision ## Run Deck-style emulator/input/sync checks in VM
 	ssh $(SSH_OPTS) -p $(SSH_PORT_LINUX) arch@localhost \
-		'cd ~/schemulator && SCHEMULATOR_BIN=$$PWD/build/schemulator test/deck/verify-emulators.sh "$$PWD"'
+		'cd ~/semu && SEMU_BIN=$$PWD/build/semu test/deck/verify-emulators.sh "$$PWD"'
 	ssh $(SSH_OPTS) -p $(SSH_PORT_LINUX) arch@localhost \
-		'cd ~/schemulator && SCHEMULATOR_BIN=$$PWD/build/schemulator test/deck/verify-sync.sh "$$PWD"'
+		'cd ~/semu && SEMU_BIN=$$PWD/build/semu test/deck/verify-sync.sh "$$PWD"'
 	ssh $(SSH_OPTS) -p $(SSH_PORT_LINUX) arch@localhost \
-		'cd ~/schemulator && SCHEMULATOR_BIN=$$PWD/build/schemulator test/deck/verify-input.sh "$$PWD"'
+		'cd ~/semu && SEMU_BIN=$$PWD/build/semu test/deck/verify-input.sh "$$PWD"'
 
 deck-vm-verify-strict: deck-vm-provision ## Run Deck VM checks and fail if input devices/services are missing
 	ssh $(SSH_OPTS) -p $(SSH_PORT_LINUX) arch@localhost \
-		'cd ~/schemulator && SCHEMULATOR_BIN=$$PWD/build/schemulator test/deck/verify-emulators.sh "$$PWD"'
+		'cd ~/semu && SEMU_BIN=$$PWD/build/semu test/deck/verify-emulators.sh "$$PWD"'
 	ssh $(SSH_OPTS) -p $(SSH_PORT_LINUX) arch@localhost \
-		'cd ~/schemulator && SCHEMULATOR_BIN=$$PWD/build/schemulator test/deck/verify-sync.sh "$$PWD"'
+		'cd ~/semu && SEMU_BIN=$$PWD/build/semu test/deck/verify-sync.sh "$$PWD"'
 	ssh $(SSH_OPTS) -p $(SSH_PORT_LINUX) arch@localhost \
-		'cd ~/schemulator && SCHEMULATOR_BIN=$$PWD/build/schemulator SCHEMULATOR_STRICT_INPUT=1 test/deck/verify-input.sh "$$PWD"'
+		'cd ~/semu && SEMU_BIN=$$PWD/build/semu SEMU_STRICT_INPUT=1 test/deck/verify-input.sh "$$PWD"'
 
 deck-vm-stop: linux-stop ## Stop Deck-like Linux VM
 
@@ -507,17 +507,17 @@ bazzite-vm-ssh: ## SSH into installed Bazzite VM once user/key exists
 bazzite-vm-sync: btrc-build ## Sync repo to installed Bazzite VM over SSH
 	git ls-files -co --exclude-standard -z | rsync -az --files-from=- --from0 \
 		-e "ssh $(BAZZITE_SSH_OPTS) -p $(BAZZITE_SSH_PORT)" \
-		. $(BAZZITE_SSH_USER)@localhost:~/schemulator/
+		. $(BAZZITE_SSH_USER)@localhost:~/semu/
 
 bazzite-vm-verify-ssh: bazzite-vm-sync ## Run Deck checks inside installed Bazzite VM over SSH
 	ssh $(BAZZITE_SSH_OPTS) -p $(BAZZITE_SSH_PORT) $(BAZZITE_SSH_USER)@localhost \
-		'cd ~/schemulator && chmod +x test/deck/*.sh && test/deck/provision.sh "$$PWD"'
+		'cd ~/semu && chmod +x test/deck/*.sh && test/deck/provision.sh "$$PWD"'
 	ssh $(BAZZITE_SSH_OPTS) -p $(BAZZITE_SSH_PORT) $(BAZZITE_SSH_USER)@localhost \
-		'cd ~/schemulator && test/deck/verify-emulators.sh "$$PWD"'
+		'cd ~/semu && test/deck/verify-emulators.sh "$$PWD"'
 	ssh $(BAZZITE_SSH_OPTS) -p $(BAZZITE_SSH_PORT) $(BAZZITE_SSH_USER)@localhost \
-		'cd ~/schemulator && test/deck/verify-sync.sh "$$PWD"'
+		'cd ~/semu && test/deck/verify-sync.sh "$$PWD"'
 	ssh $(BAZZITE_SSH_OPTS) -p $(BAZZITE_SSH_PORT) $(BAZZITE_SSH_USER)@localhost \
-		'cd ~/schemulator && test/deck/verify-input.sh "$$PWD"'
+		'cd ~/semu && test/deck/verify-input.sh "$$PWD"'
 
 bazzite-vm-stop: ## Stop Bazzite VM
 	@if [ -f "$(BAZZITE_PID)" ] && kill -0 "$$(cat "$(BAZZITE_PID)")" 2>/dev/null; then \

@@ -435,7 +435,7 @@ char* syncTimerText(void);
 void writeSyncSystemdUnits(char* project);
 char* deckDesktopText(char* project);
 void writeDeckDesktopEntry(char* project);
-char* schemulatorStateRoot(char* project);
+char* semuStateRoot(char* project);
 char* lifecycleStatePath(char* project);
 char* lifecycleBackupsRoot(char* project);
 char* upgradeBackupPath(char* project);
@@ -4031,7 +4031,7 @@ bool isSpaceChar(char c) {
 }
 
 char* defaultKeymapSource(void) {
-    return __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat("# Schemulator Steam Deck keymap\n", "action ui.open = Ctrl+O\n")), "action ui.pause = Ctrl+P\n")), "action ui.screenshot = Ctrl+X\n")), "action ui.fullscreen = Ctrl+Enter\n")), "action ui.menu = Ctrl+M\n")), "action app.quit = Ctrl+Q\n")), "action state.prev = Ctrl+J\n")), "action state.next = Ctrl+K\n")), "action state.load = Ctrl+A\n")), "action state.save = Ctrl+S\n")), "action speed.rewind = Ctrl+-\n")), "action speed.fast = Ctrl++\n")), "action screen.swap = Ctrl+Tab\n")), "action ui.escape = Esc\n")), "bind HKB + A -> ${ui.pause}\n")), "bind HKB + B -> ${ui.screenshot}\n")), "bind HKB + X -> ${ui.fullscreen}\n")), "bind HKB + Y -> ${ui.menu}\n")), "bind HKB + Start -> ${app.quit}\n")), "bind HKB + D-Pad Left -> ${state.prev}\n")), "bind HKB + D-Pad Right -> ${state.next}\n")), "bind HKB + L1 -> ${state.load}\n")), "bind HKB + R1 -> ${state.save}\n")), "bind HKB + L2 -> ${speed.rewind}\n")), "bind HKB + R2 -> ${speed.fast}\n")), "bind HKB + L3 -> ${screen.swap}\n")), "bind HKB + R3 -> ${ui.escape}\n"));
+    return __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat("# Semu Steam Deck keymap\n", "action ui.open = Ctrl+O\n")), "action ui.pause = Ctrl+P\n")), "action ui.screenshot = Ctrl+X\n")), "action ui.fullscreen = Ctrl+Enter\n")), "action ui.menu = Ctrl+M\n")), "action app.quit = Ctrl+Q\n")), "action state.prev = Ctrl+J\n")), "action state.next = Ctrl+K\n")), "action state.load = Ctrl+A\n")), "action state.save = Ctrl+S\n")), "action speed.rewind = Ctrl+-\n")), "action speed.fast = Ctrl++\n")), "action screen.swap = Ctrl+Tab\n")), "action ui.escape = Esc\n")), "bind HKB + A -> ${ui.pause}\n")), "bind HKB + B -> ${ui.screenshot}\n")), "bind HKB + X -> ${ui.fullscreen}\n")), "bind HKB + Y -> ${ui.menu}\n")), "bind HKB + Start -> ${app.quit}\n")), "bind HKB + D-Pad Left -> ${state.prev}\n")), "bind HKB + D-Pad Right -> ${state.next}\n")), "bind HKB + L1 -> ${state.load}\n")), "bind HKB + R1 -> ${state.save}\n")), "bind HKB + L2 -> ${speed.rewind}\n")), "bind HKB + R2 -> ${speed.fast}\n")), "bind HKB + L3 -> ${screen.swap}\n")), "bind HKB + R3 -> ${ui.escape}\n"));
 }
 
 char* actionAlias(char* id) {
@@ -5031,7 +5031,7 @@ char* keymapIrJson(KeymapIr* ir) {
         btrc_Vector_string_push(bindings, keymapIrBindingJson(ir, i));
     }
     btrc_Vector_string* __list_107 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_107, jsonStrField("source_language", "schemulator-keymap-v1"));
+    btrc_Vector_string_push(__list_107, jsonStrField("source_language", "semu-keymap-v1"));
     btrc_Vector_string_push(__list_107, jsonStrField("source_path", "${paths.keymaps}/steam_deck.skm"));
     btrc_Vector_string* __list_108 = btrc_Vector_string_new();
     btrc_Vector_string_push(__list_108, "manifest");
@@ -5213,11 +5213,11 @@ char* screenshotHookSpec(char* id, char* lifecycle, char* output, char* enabledB
 char* screenshotVerificationProfile(void) {
     btrc_Vector_string* emulators = lowercaseValues(linuxLauncherNames());
     char* output = "${paths.project_screenshots}/verification/${emulator}/${hook}.png";
-    char* enabledBy = "SCHEMULATOR_SCREENSHOT_HOOKS=1";
+    char* enabledBy = "SEMU_SCREENSHOT_HOOKS=1";
     btrc_Vector_string* __list_122 = btrc_Vector_string_new();
     btrc_Vector_string_push(__list_122, jsonBoolField("enabled_by_default", false));
     btrc_Vector_string_push(__list_122, jsonStrField("enable_env", enabledBy));
-    btrc_Vector_string_push(__list_122, jsonStrField("delay_env", "SCHEMULATOR_SCREENSHOT_DELAY_SECONDS"));
+    btrc_Vector_string_push(__list_122, jsonStrField("delay_env", "SEMU_SCREENSHOT_DELAY_SECONDS"));
     btrc_Vector_string_push(__list_122, jsonStrField("output_root", "${paths.project_screenshots}/verification"));
     btrc_Vector_string* __list_123 = btrc_Vector_string_new();
     btrc_Vector_string* __list_124 = btrc_Vector_string_new();
@@ -5252,7 +5252,7 @@ char* screenshotVerificationProfile(void) {
     btrc_Vector_string_push(__list_132, screenshotHookSpec("before_launch", "launcher.before_exec", output, enabledBy, 0, emulators, "Captures the desktop state immediately before launching an emulator."));
     btrc_Vector_string_push(__list_132, screenshotHookSpec("after_spawn", "launcher.after_spawn", output, enabledBy, 2000, emulators, "Captures the emulator after the process has had time to present its first frame."));
     btrc_Vector_string_push(__list_132, screenshotHookSpec("after_exit", "launcher.after_exit", output, enabledBy, 0, emulators, "Captures the return path after the emulator exits, usually back to ES-DE."));
-    btrc_Vector_string_push(__list_132, screenshotHookSpec("manual_visual_checkpoint", "operator.manual", output, "schemulator screenshot capture", 0, emulators, "CLI hook for VM/Deck verification scripts when a process is already running."));
+    btrc_Vector_string_push(__list_132, screenshotHookSpec("manual_visual_checkpoint", "operator.manual", output, "semu screenshot capture", 0, emulators, "CLI hook for VM/Deck verification scripts when a process is already running."));
     btrc_Vector_string_push(__list_122, jsonField("hooks", jsonArray(__list_132)));
     return jsonObject(__list_122);
 }
@@ -5416,8 +5416,8 @@ char* controllerProfiles(void) {
     btrc_Vector_string* __list_169 = btrc_Vector_string_new();
     btrc_Vector_string_push(__list_169, jsonStrField("templates_dir", "~/.steam/steam/controller_base/templates"));
     btrc_Vector_string* __list_170 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_170, steamInputTemplate("neptune_simple", "Schemulator: Steam Deck - Neptune SIMPLE", "${project}/steam-input/neptune-simple.vdf", "Generated Steam Input template; doctor validates it and steam-input install copies it."));
-    btrc_Vector_string_push(__list_170, steamInputTemplate("neptune_full", "Schemulator: Steam Deck - Neptune FULL", "${project}/steam-input/neptune-full.vdf", "Optional full hotkey layout for users who want RetroDeck-style chords."));
+    btrc_Vector_string_push(__list_170, steamInputTemplate("neptune_simple", "Semu: Steam Deck - Neptune SIMPLE", "${project}/steam-input/neptune-simple.vdf", "Generated Steam Input template; doctor validates it and steam-input install copies it."));
+    btrc_Vector_string_push(__list_170, steamInputTemplate("neptune_full", "Semu: Steam Deck - Neptune FULL", "${project}/steam-input/neptune-full.vdf", "Optional full hotkey layout for users who want RetroDeck-style chords."));
     btrc_Vector_string_push(__list_169, jsonField("templates", jsonArray(__list_170)));
     char* steamInput = jsonObject(__list_169);
     btrc_Vector_string* __list_173 = btrc_Vector_string_new();
@@ -5465,7 +5465,7 @@ char* syncProfile(void) {
     btrc_Vector_string* __list_182 = btrc_Vector_string_new();
     btrc_Vector_string_push(__list_182, syncFolderSpec("saves", "Saves", "${paths.project_saves}", true, true, 900));
     btrc_Vector_string_push(__list_182, syncFolderSpec("states", "States", "${paths.project_states}", true, true, 900));
-    btrc_Vector_string_push(__list_182, syncFolderSpec("emulator_state", "Emulator State", "${paths.project}/.schemulator/appimage-state", true, true, 900));
+    btrc_Vector_string_push(__list_182, syncFolderSpec("emulator_state", "Emulator State", "${paths.project}/.semu/appimage-state", true, true, 900));
     btrc_Vector_string_push(__list_182, syncFolderSpec("screenshots", "Screenshots", "${paths.project_screenshots}", true, true, 1800));
     btrc_Vector_string_push(__list_182, syncFolderSpec("gamelists", "Gamelists", "${paths.project_gamelists}", true, true, 1800));
     btrc_Vector_string_push(__list_182, syncFolderSpec("roms", "ROMs", "${paths.project_roms}", false, true, 3600));
@@ -5526,7 +5526,7 @@ btrc_Vector_string* lowercaseValues(btrc_Vector_string* values) {
 }
 
 char* schemLauncherName(char* emulator) {
-    return __btrc_str_track(__btrc_strcat("schem-", __btrc_str_track(__btrc_toLower(emulator))));
+    return __btrc_str_track(__btrc_strcat("semu-", __btrc_str_track(__btrc_toLower(emulator))));
 }
 
 btrc_Vector_string* retroarchCoreSearchPaths(void) {
@@ -5704,7 +5704,7 @@ char* SystemCatalog_systemsJson(SystemCatalog* self) {
 }
 
 char* SystemCatalog_esSystemsXml(SystemCatalog* self) {
-    return __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat("<?xml version=\"1.0\"?>\n", "<!-- Generated by schemulator.btrc from the system catalog -->\n")), "<systemList>\n")), btrc_Vector_string_join(self->esSystemSpecs, ""))), "</systemList>\n"));
+    return __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat("<?xml version=\"1.0\"?>\n", "<!-- Generated by semu.btrc from the system catalog -->\n")), "<systemList>\n")), btrc_Vector_string_join(self->esSystemSpecs, ""))), "</systemList>\n"));
 }
 
 SystemCatalog* systemCatalog(void) {
@@ -6064,7 +6064,7 @@ char* keymapSourcePath(char* project) {
 }
 
 char* homeDir(void) {
-    return Environment_get("SCHEMULATOR_HOME", Environment_get("HOME", "."));
+    return Environment_get("SEMU_HOME", Environment_get("HOME", "."));
 }
 
 char* systemdUserDir(void) {
@@ -6252,7 +6252,7 @@ char* currentUid(void) {
 }
 
 char* launchRomsRoot(char* project) {
-    return Environment_get("SCHEMULATOR_ROMS_DIR", configuredRomsRoot(project));
+    return Environment_get("SEMU_ROMS_DIR", configuredRomsRoot(project));
 }
 
 char* xdgRunDir(void) {
@@ -6322,7 +6322,7 @@ int sandboxLaunch(char* project, char* emulator, char* executable, btrc_Vector_s
         printf("%s\n", __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat("sandbox: project dir '", project)), "' missing")));
         return 2;
     }
-    char* scratch = joinPath(homeDir(), __btrc_str_track(__btrc_strcat(".local/share/schemulator/scratch/", emulator)));
+    char* scratch = joinPath(homeDir(), __btrc_str_track(__btrc_strcat(".local/share/semu/scratch/", emulator)));
     FileSystem_removeRecursive(scratch);
     ensureDir(scratch);
     char* emuDir = sandboxProjectEmulatorDir(project, emulator);
@@ -6342,8 +6342,8 @@ int sandboxLaunch(char* project, char* emulator, char* executable, btrc_Vector_s
     }
     char* home = homeDir();
     char* runDir = xdgRunDir();
-    char* shareNet = Environment_get("SCHEMULATOR_SHARE_NET", "1");
-    char* command = ShellWords_quote(Environment_get("SCHEMULATOR_BWRAP", "bwrap"));
+    char* shareNet = Environment_get("SEMU_SHARE_NET", "1");
+    char* command = ShellWords_quote(Environment_get("SEMU_BWRAP", "bwrap"));
     btrc_Vector_string* __list_348 = btrc_Vector_string_new();
     btrc_Vector_string_push(__list_348, "--ro-bind");
     btrc_Vector_string_push(__list_348, "/usr");
@@ -6475,7 +6475,7 @@ int sandboxLaunch(char* project, char* emulator, char* executable, btrc_Vector_s
         btrc_Vector_string_push(bwrapArgs, arg);
     }
     (command = shellAppendAll(command, bwrapArgs));
-    if (strcmp(Environment_get("SCHEMULATOR_DEBUG", "0"), "1") == 0) {
+    if (strcmp(Environment_get("SEMU_DEBUG", "0"), "1") == 0) {
         printf("%s\n", command);
     }
     UnixShell* shell = UnixShell_new();
@@ -6577,7 +6577,7 @@ char* launcherFlatpakId(char* emulator) {
 
 bool launcherUsesX11(char* emulator) {
     char* key = __btrc_str_track(__btrc_toLower(emulator));
-    char* forceX11 = Environment_get("SCHEMULATOR_FLATPAK_X11", Environment_get("SCHEM_FLATPAK_X11", "0"));
+    char* forceX11 = Environment_get("SEMU_FLATPAK_X11", Environment_get("SEMU_FLATPAK_X11", "0"));
     return (((strcmp(key, "azahar") == 0) || (strcmp(key, "dolphin") == 0)) || (strcmp(forceX11, "1") == 0));
 }
 
@@ -6594,11 +6594,11 @@ btrc_Vector_string* launcherPresetArgs(char* emulator) {
 }
 
 char* launcherFlatpakStateRoot(char* project, char* emulator) {
-    return joinPath(joinPath(project, ".schemulator/flatpak-state"), __btrc_str_track(__btrc_toLower(emulator)));
+    return joinPath(joinPath(project, ".semu/flatpak-state"), __btrc_str_track(__btrc_toLower(emulator)));
 }
 
 char* launcherRoutedStateRoot(char* project, char* emulator) {
-    return joinPath(joinPath(project, ".schemulator/appimage-state"), __btrc_str_track(__btrc_toLower(emulator)));
+    return joinPath(joinPath(project, ".semu/appimage-state"), __btrc_str_track(__btrc_toLower(emulator)));
 }
 
 void launcherCopyDirContents(char* source, char* destination) {
@@ -6702,7 +6702,7 @@ int launcherRunRouted(char* project, char* emulator, char* executable, btrc_Vect
         btrc_Vector_string_push(finalArgs, arg);
     }
     char* roms = launchRomsRoot(project);
-    char* command = __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat("SCHEMULATOR_PROJECT_DIR=", ShellWords_quote(project))), " SCHEMULATOR_ROMS_DIR=")), ShellWords_quote(roms))), " HOME=")), ShellWords_quote(home))), " XDG_CONFIG_HOME=")), ShellWords_quote(configRoot))), " XDG_DATA_HOME=")), ShellWords_quote(dataRoot))), " XDG_CACHE_HOME=")), ShellWords_quote(cacheRoot))), " ")), ShellWords_quote(executable)));
+    char* command = __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat("SEMU_PROJECT_DIR=", ShellWords_quote(project))), " SEMU_ROMS_DIR=")), ShellWords_quote(roms))), " HOME=")), ShellWords_quote(home))), " XDG_CONFIG_HOME=")), ShellWords_quote(configRoot))), " XDG_DATA_HOME=")), ShellWords_quote(dataRoot))), " XDG_CACHE_HOME=")), ShellWords_quote(cacheRoot))), " ")), ShellWords_quote(executable)));
     (command = shellAppendAll(command, finalArgs));
     UnixShell* shell = UnixShell_new();
     screenshotCaptureHook(project, emulator, "before_launch");
@@ -6830,14 +6830,14 @@ void writeGeneratedManifest(char* output) {
 }
 
 char* assetRoot(char* project) {
-    char* configured = Environment_get("SCHEMULATOR_ASSET_ROOT", "");
-    if ((((int)strlen(configured)) > 0) && FileSystem_exists(joinPath(configured, "linux/bin/schem-retroarch"))) {
+    char* configured = Environment_get("SEMU_ASSET_ROOT", "");
+    if ((((int)strlen(configured)) > 0) && FileSystem_exists(joinPath(configured, "linux/bin/semu-retroarch"))) {
         return configured;
     }
-    if (FileSystem_exists("linux/bin/schem-retroarch")) {
+    if (FileSystem_exists("linux/bin/semu-retroarch")) {
         return ".";
     }
-    if (FileSystem_exists(joinPath(project, "linux/bin/schem-retroarch"))) {
+    if (FileSystem_exists(joinPath(project, "linux/bin/semu-retroarch"))) {
         return project;
     }
     return project;
@@ -6883,7 +6883,7 @@ void seedBundledDirFiles(char* project, char* relative, bool executable) {
 void seedLinuxAssets(char* project) {
     seedBundledFile(project, "linux/AppRun", true);
     seedBundledFile(project, "linux/sandbox.sh", true);
-    seedBundledFile(project, "linux/schemulator.desktop", false);
+    seedBundledFile(project, "linux/semu.desktop", false);
     seedBundledFile(project, "linux/ES-DE/es_systems_linux.xml", false);
     seedBundledFile(project, "linux/ES-DE/es_find_rules_linux.xml", false);
     seedBundledDirFiles(project, "linux/bin", true);
@@ -7344,19 +7344,19 @@ char* steamInputActionBindings(KeymapIr* ir, char* actionId) {
 }
 
 char* steamInputTemplateVdf(char* title, bool full, KeymapIr* ir) {
-    char* radialName = (full ? "Schemulator Full Radial" : "Schemulator Simple Radial");
-    return __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat("\"controller_mappings\"\n", "{\n")), "\t\"version\"\t\t\"3\"\n")), "\t\"revision\"\t\t\"1\"\n")), "\t\"title\"\t\t\"")), title)), "\"\n")), "\t\"description\"\t\t\"Steam Deck controls for Schemulator: no gyro, right pad mouse, left pad hotkeys.\"\n")), "\t\"creator\"\t\t\"Schemulator\"\n")), "\t\"controller_type\"\t\t\"controller_neptune\"\n")), "\t\"actions\"\n")), "\t{\n")), "\t\t\"Default\" { \"title\" \"Gamepad\" \"legacy_set\" \"1\" }\n")), "\t\t\"Preset_1000001\" { \"title\" \"Hotkeys\" \"legacy_set\" \"1\" }\n")), "\t}\n")), "\t\"group\"\n")), "\t{\n")), "\t\t\"id\" \"0\"\n")), "\t\t\"mode\" \"four_buttons\"\n")), "\t\t\"inputs\"\n")), "\t\t{\n")), "\t\t\t\"button_a\" { \"activators\" { \"Full_Press\" { \"bindings\" { \"binding\" \"xinput_button A, , \" } } } }\n")), "\t\t\t\"button_b\" { \"activators\" { \"Full_Press\" { \"bindings\" { \"binding\" \"xinput_button B, , \" } } } }\n")), "\t\t\t\"button_x\" { \"activators\" { \"Full_Press\" { \"bindings\" { \"binding\" \"xinput_button X, , \" } } } }\n")), "\t\t\t\"button_y\" { \"activators\" { \"Full_Press\" { \"bindings\" { \"binding\" \"xinput_button Y, , \" } } } }\n")), "\t\t}\n")), "\t}\n")), "\t\"group\"\n")), "\t{\n")), "\t\t\"id\" \"1\"\n")), "\t\t\"mode\" \"dpad\"\n")), "\t\t\"inputs\"\n")), "\t\t{\n")), "\t\t\t\"dpad_north\" { \"activators\" { \"Full_Press\" { \"bindings\" { \"binding\" \"xinput_button DPAD_UP, , \" } } } }\n")), "\t\t\t\"dpad_south\" { \"activators\" { \"Full_Press\" { \"bindings\" { \"binding\" \"xinput_button DPAD_DOWN, , \" } } } }\n")), "\t\t\t\"dpad_east\" { \"activators\" { \"Full_Press\" { \"bindings\" { \"binding\" \"xinput_button DPAD_RIGHT, , \" } } } }\n")), "\t\t\t\"dpad_west\" { \"activators\" { \"Full_Press\" { \"bindings\" { \"binding\" \"xinput_button DPAD_LEFT, , \" } } } }\n")), "\t\t}\n")), "\t}\n")), "\t\"group\" { \"id\" \"2\" \"mode\" \"joystick_move\" }\n")), "\t\"group\" { \"id\" \"3\" \"mode\" \"joystick_move\" \"inputs\" { \"click\" { \"activators\" { \"Full_Press\" { \"bindings\" { \"binding\" \"xinput_button JOYSTICK_RIGHT, , \" } } } } } }\n")), "\t\"group\" { \"id\" \"4\" \"mode\" \"trigger\" \"inputs\" { \"click\" { \"activators\" { \"Full_Press\" { \"bindings\" { \"binding\" \"xinput_button TRIGGER_LEFT, , \" } } } } } }\n")), "\t\"group\" { \"id\" \"5\" \"mode\" \"trigger\" \"inputs\" { \"click\" { \"activators\" { \"Full_Press\" { \"bindings\" { \"binding\" \"xinput_button TRIGGER_RIGHT, , \" } } } } } }\n")), "\t\"group\" { \"id\" \"6\" \"mode\" \"absolute_mouse\" \"inputs\" { \"click\" { \"activators\" { \"Soft_Press\" { \"bindings\" { \"binding\" \"mouse_button LEFT, , \" } } } } } }\n")), "\t\"group\"\n")), "\t{\n")), "\t\t\"id\" \"7\"\n")), "\t\t\"mode\" \"switches\"\n")), "\t\t\"inputs\"\n")), "\t\t{\n")), "\t\t\t\"button_escape\" { \"activators\" { \"Full_Press\" { \"bindings\" { \"binding\" \"xinput_button START, , \" } } } }\n")), "\t\t\t\"button_menu\" { \"activators\" { \"Full_Press\" { \"bindings\" { \"binding\" \"xinput_button SELECT, , \" } } \"Long_Press\" { \"bindings\" { \"binding\" \"controller_action CHANGE_PRESET 2 0 0, Hotkey, , \" } } } }\n")), "\t\t\t\"left_bumper\" { \"activators\" { \"Full_Press\" { \"bindings\" { \"binding\" \"xinput_button SHOULDER_LEFT, , \" } } } }\n")), "\t\t\t\"right_bumper\" { \"activators\" { \"Full_Press\" { \"bindings\" { \"binding\" \"xinput_button SHOULDER_RIGHT, , \" } } } }\n")), "\t\t\t\"button_back_left_upper\" { \"activators\" { \"Full_Press\" { \"bindings\" { \"binding\" \"controller_action CHANGE_PRESET 2 0 0, Hotkey, , \" } } } }\n")), "\t\t\t\"button_back_right_upper\" { \"activators\" { \"Full_Press\" { \"bindings\" { \"binding\" \"controller_action CHANGE_PRESET 2 0 0, Hotkey, , \" } } } }\n")), "\t\t}\n")), "\t}\n")), "\t\"group\"\n")), "\t{\n")), "\t\t\"id\" \"10\"\n")), "\t\t\"mode\" \"four_buttons\"\n")), "\t\t\"inputs\"\n")), "\t\t{\n")), "\t\t\t\"button_a\" { \"activators\" { \"Full_Press\" { \"bindings\" { ")), steamInputActionBindings(ir, "ui.pause"))), " } } } }\n")), "\t\t\t\"button_b\" { \"activators\" { \"Full_Press\" { \"bindings\" { ")), steamInputActionBindings(ir, "ui.screenshot"))), " } } } }\n")), "\t\t\t\"button_x\" { \"activators\" { \"Full_Press\" { \"bindings\" { ")), steamInputActionBindings(ir, "ui.fullscreen"))), " } } } }\n")), "\t\t\t\"button_y\" { \"activators\" { \"Full_Press\" { \"bindings\" { ")), steamInputActionBindings(ir, "ui.menu"))), " } } } }\n")), "\t\t}\n")), "\t}\n")), "\t\"group\" { \"id\" \"11\" \"mode\" \"trigger\" \"inputs\" { \"click\" { \"activators\" { \"Full_Press\" { \"bindings\" { ")), steamInputActionBindings(ir, "speed.rewind"))), " } } } } } }\n")), "\t\"group\" { \"id\" \"12\" \"mode\" \"trigger\" \"inputs\" { \"click\" { \"activators\" { \"Full_Press\" { \"bindings\" { ")), steamInputActionBindings(ir, "speed.fast"))), " } } } } } }\n")), "\t\"group\"\n")), "\t{\n")), "\t\t\"id\" \"13\"\n")), "\t\t\"mode\" \"dpad\"\n")), "\t\t\"inputs\"\n")), "\t\t{\n")), "\t\t\t\"dpad_north\" { \"activators\" { \"Full_Press\" { \"bindings\" { ")), steamInputActionBindings(ir, "ui.open"))), " } } } }\n")), "\t\t\t\"dpad_south\" { \"activators\" { \"Full_Press\" { \"bindings\" { ")), steamInputActionBindings(ir, "ui.escape"))), " } } } }\n")), "\t\t\t\"dpad_east\" { \"activators\" { \"Full_Press\" { \"bindings\" { ")), steamInputActionBindings(ir, "state.next"))), " } } } }\n")), "\t\t\t\"dpad_west\" { \"activators\" { \"Full_Press\" { \"bindings\" { ")), steamInputActionBindings(ir, "state.prev"))), " } } } }\n")), "\t\t}\n")), "\t}\n")), "\t\"group\"\n")), "\t{\n")), "\t\t\"id\" \"14\"\n")), "\t\t\"mode\" \"switches\"\n")), "\t\t\"inputs\"\n")), "\t\t{\n")), "\t\t\t\"button_escape\" { \"activators\" { \"Full_Press\" { \"bindings\" { ")), steamInputActionBindings(ir, "app.quit"))), " } } } }\n")), "\t\t\t\"button_menu\" { \"activators\" { \"release\" { \"bindings\" { \"binding\" \"controller_action CHANGE_PRESET 1 0 0, , \" } } } }\n")), "\t\t\t\"left_bumper\" { \"activators\" { \"Full_Press\" { \"bindings\" { ")), steamInputActionBindings(ir, "state.load"))), " } } } }\n")), "\t\t\t\"right_bumper\" { \"activators\" { \"Full_Press\" { \"bindings\" { ")), steamInputActionBindings(ir, "state.save"))), " } } } }\n")), "\t\t\t\"button_back_left_upper\" { \"activators\" { \"release\" { \"bindings\" { \"binding\" \"controller_action CHANGE_PRESET 1 0 0, , \" } } } }\n")), "\t\t\t\"button_back_right_upper\" { \"activators\" { \"release\" { \"bindings\" { \"binding\" \"controller_action CHANGE_PRESET 1 0 0, , \" } } } }\n")), "\t\t}\n")), "\t}\n")), "\t\"group\"\n")), "\t{\n")), "\t\t\"id\" \"20\"\n")), "\t\t\"mode\" \"radial_menu\"\n")), "\t\t\"name\" \"")), radialName)), "\"\n")), "\t\t\"inputs\"\n")), "\t\t{\n")), "\t\t\t\"touch_menu_button_0\" { \"activators\" { \"Full_Press\" { \"bindings\" { ")), steamInputActionBindings(ir, "state.save"))), " } } } }\n")), "\t\t\t\"touch_menu_button_1\" { \"activators\" { \"Full_Press\" { \"bindings\" { ")), steamInputActionBindings(ir, "state.load"))), " } } } }\n")), "\t\t\t\"touch_menu_button_2\" { \"activators\" { \"Full_Press\" { \"bindings\" { ")), steamInputActionBindings(ir, "app.quit"))), " } } } }\n")), "\t\t\t\"touch_menu_button_3\" { \"activators\" { \"Full_Press\" { \"bindings\" { ")), steamInputActionBindings(ir, "ui.menu"))), " } } } }\n")), "\t\t\t\"touch_menu_button_4\" { \"activators\" { \"Full_Press\" { \"bindings\" { ")), steamInputActionBindings(ir, "ui.screenshot"))), " } } } }\n")), "\t\t\t\"touch_menu_button_5\" { \"activators\" { \"Full_Press\" { \"bindings\" { ")), steamInputActionBindings(ir, "ui.escape"))), " } } } }\n")), "\t\t}\n")), "\t}\n")), "\t\"preset\" { \"id\" \"0\" \"name\" \"Default\" \"group_source_bindings\" { \"0\" \"button_diamond active\" \"1\" \"dpad active\" \"2\" \"joystick active\" \"3\" \"right_joystick active\" \"4\" \"left_trigger active\" \"5\" \"right_trigger active\" \"6\" \"right_trackpad active\" \"7\" \"switch active\" \"20\" \"left_trackpad active\" } }\n")), "\t\"preset\" { \"id\" \"1\" \"name\" \"Preset_1000001\" \"group_source_bindings\" { \"10\" \"button_diamond active\" \"13\" \"dpad active\" \"2\" \"joystick active\" \"3\" \"right_joystick active\" \"11\" \"left_trigger active\" \"12\" \"right_trigger active\" \"6\" \"right_trackpad active\" \"14\" \"switch active\" \"20\" \"left_trackpad active\" } }\n")), "\t\"settings\" { \"left_trackpad_mode\" \"0\" \"right_trackpad_mode\" \"0\" }\n")), "}\n"));
+    char* radialName = (full ? "Semu Full Radial" : "Semu Simple Radial");
+    return __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat("\"controller_mappings\"\n", "{\n")), "\t\"version\"\t\t\"3\"\n")), "\t\"revision\"\t\t\"1\"\n")), "\t\"title\"\t\t\"")), title)), "\"\n")), "\t\"description\"\t\t\"Steam Deck controls for Semu: no gyro, right pad mouse, left pad hotkeys.\"\n")), "\t\"creator\"\t\t\"Semu\"\n")), "\t\"controller_type\"\t\t\"controller_neptune\"\n")), "\t\"actions\"\n")), "\t{\n")), "\t\t\"Default\" { \"title\" \"Gamepad\" \"legacy_set\" \"1\" }\n")), "\t\t\"Preset_1000001\" { \"title\" \"Hotkeys\" \"legacy_set\" \"1\" }\n")), "\t}\n")), "\t\"group\"\n")), "\t{\n")), "\t\t\"id\" \"0\"\n")), "\t\t\"mode\" \"four_buttons\"\n")), "\t\t\"inputs\"\n")), "\t\t{\n")), "\t\t\t\"button_a\" { \"activators\" { \"Full_Press\" { \"bindings\" { \"binding\" \"xinput_button A, , \" } } } }\n")), "\t\t\t\"button_b\" { \"activators\" { \"Full_Press\" { \"bindings\" { \"binding\" \"xinput_button B, , \" } } } }\n")), "\t\t\t\"button_x\" { \"activators\" { \"Full_Press\" { \"bindings\" { \"binding\" \"xinput_button X, , \" } } } }\n")), "\t\t\t\"button_y\" { \"activators\" { \"Full_Press\" { \"bindings\" { \"binding\" \"xinput_button Y, , \" } } } }\n")), "\t\t}\n")), "\t}\n")), "\t\"group\"\n")), "\t{\n")), "\t\t\"id\" \"1\"\n")), "\t\t\"mode\" \"dpad\"\n")), "\t\t\"inputs\"\n")), "\t\t{\n")), "\t\t\t\"dpad_north\" { \"activators\" { \"Full_Press\" { \"bindings\" { \"binding\" \"xinput_button DPAD_UP, , \" } } } }\n")), "\t\t\t\"dpad_south\" { \"activators\" { \"Full_Press\" { \"bindings\" { \"binding\" \"xinput_button DPAD_DOWN, , \" } } } }\n")), "\t\t\t\"dpad_east\" { \"activators\" { \"Full_Press\" { \"bindings\" { \"binding\" \"xinput_button DPAD_RIGHT, , \" } } } }\n")), "\t\t\t\"dpad_west\" { \"activators\" { \"Full_Press\" { \"bindings\" { \"binding\" \"xinput_button DPAD_LEFT, , \" } } } }\n")), "\t\t}\n")), "\t}\n")), "\t\"group\" { \"id\" \"2\" \"mode\" \"joystick_move\" }\n")), "\t\"group\" { \"id\" \"3\" \"mode\" \"joystick_move\" \"inputs\" { \"click\" { \"activators\" { \"Full_Press\" { \"bindings\" { \"binding\" \"xinput_button JOYSTICK_RIGHT, , \" } } } } } }\n")), "\t\"group\" { \"id\" \"4\" \"mode\" \"trigger\" \"inputs\" { \"click\" { \"activators\" { \"Full_Press\" { \"bindings\" { \"binding\" \"xinput_button TRIGGER_LEFT, , \" } } } } } }\n")), "\t\"group\" { \"id\" \"5\" \"mode\" \"trigger\" \"inputs\" { \"click\" { \"activators\" { \"Full_Press\" { \"bindings\" { \"binding\" \"xinput_button TRIGGER_RIGHT, , \" } } } } } }\n")), "\t\"group\" { \"id\" \"6\" \"mode\" \"absolute_mouse\" \"inputs\" { \"click\" { \"activators\" { \"Soft_Press\" { \"bindings\" { \"binding\" \"mouse_button LEFT, , \" } } } } } }\n")), "\t\"group\"\n")), "\t{\n")), "\t\t\"id\" \"7\"\n")), "\t\t\"mode\" \"switches\"\n")), "\t\t\"inputs\"\n")), "\t\t{\n")), "\t\t\t\"button_escape\" { \"activators\" { \"Full_Press\" { \"bindings\" { \"binding\" \"xinput_button START, , \" } } } }\n")), "\t\t\t\"button_menu\" { \"activators\" { \"Full_Press\" { \"bindings\" { \"binding\" \"xinput_button SELECT, , \" } } \"Long_Press\" { \"bindings\" { \"binding\" \"controller_action CHANGE_PRESET 2 0 0, Hotkey, , \" } } } }\n")), "\t\t\t\"left_bumper\" { \"activators\" { \"Full_Press\" { \"bindings\" { \"binding\" \"xinput_button SHOULDER_LEFT, , \" } } } }\n")), "\t\t\t\"right_bumper\" { \"activators\" { \"Full_Press\" { \"bindings\" { \"binding\" \"xinput_button SHOULDER_RIGHT, , \" } } } }\n")), "\t\t\t\"button_back_left_upper\" { \"activators\" { \"Full_Press\" { \"bindings\" { \"binding\" \"controller_action CHANGE_PRESET 2 0 0, Hotkey, , \" } } } }\n")), "\t\t\t\"button_back_right_upper\" { \"activators\" { \"Full_Press\" { \"bindings\" { \"binding\" \"controller_action CHANGE_PRESET 2 0 0, Hotkey, , \" } } } }\n")), "\t\t}\n")), "\t}\n")), "\t\"group\"\n")), "\t{\n")), "\t\t\"id\" \"10\"\n")), "\t\t\"mode\" \"four_buttons\"\n")), "\t\t\"inputs\"\n")), "\t\t{\n")), "\t\t\t\"button_a\" { \"activators\" { \"Full_Press\" { \"bindings\" { ")), steamInputActionBindings(ir, "ui.pause"))), " } } } }\n")), "\t\t\t\"button_b\" { \"activators\" { \"Full_Press\" { \"bindings\" { ")), steamInputActionBindings(ir, "ui.screenshot"))), " } } } }\n")), "\t\t\t\"button_x\" { \"activators\" { \"Full_Press\" { \"bindings\" { ")), steamInputActionBindings(ir, "ui.fullscreen"))), " } } } }\n")), "\t\t\t\"button_y\" { \"activators\" { \"Full_Press\" { \"bindings\" { ")), steamInputActionBindings(ir, "ui.menu"))), " } } } }\n")), "\t\t}\n")), "\t}\n")), "\t\"group\" { \"id\" \"11\" \"mode\" \"trigger\" \"inputs\" { \"click\" { \"activators\" { \"Full_Press\" { \"bindings\" { ")), steamInputActionBindings(ir, "speed.rewind"))), " } } } } } }\n")), "\t\"group\" { \"id\" \"12\" \"mode\" \"trigger\" \"inputs\" { \"click\" { \"activators\" { \"Full_Press\" { \"bindings\" { ")), steamInputActionBindings(ir, "speed.fast"))), " } } } } } }\n")), "\t\"group\"\n")), "\t{\n")), "\t\t\"id\" \"13\"\n")), "\t\t\"mode\" \"dpad\"\n")), "\t\t\"inputs\"\n")), "\t\t{\n")), "\t\t\t\"dpad_north\" { \"activators\" { \"Full_Press\" { \"bindings\" { ")), steamInputActionBindings(ir, "ui.open"))), " } } } }\n")), "\t\t\t\"dpad_south\" { \"activators\" { \"Full_Press\" { \"bindings\" { ")), steamInputActionBindings(ir, "ui.escape"))), " } } } }\n")), "\t\t\t\"dpad_east\" { \"activators\" { \"Full_Press\" { \"bindings\" { ")), steamInputActionBindings(ir, "state.next"))), " } } } }\n")), "\t\t\t\"dpad_west\" { \"activators\" { \"Full_Press\" { \"bindings\" { ")), steamInputActionBindings(ir, "state.prev"))), " } } } }\n")), "\t\t}\n")), "\t}\n")), "\t\"group\"\n")), "\t{\n")), "\t\t\"id\" \"14\"\n")), "\t\t\"mode\" \"switches\"\n")), "\t\t\"inputs\"\n")), "\t\t{\n")), "\t\t\t\"button_escape\" { \"activators\" { \"Full_Press\" { \"bindings\" { ")), steamInputActionBindings(ir, "app.quit"))), " } } } }\n")), "\t\t\t\"button_menu\" { \"activators\" { \"release\" { \"bindings\" { \"binding\" \"controller_action CHANGE_PRESET 1 0 0, , \" } } } }\n")), "\t\t\t\"left_bumper\" { \"activators\" { \"Full_Press\" { \"bindings\" { ")), steamInputActionBindings(ir, "state.load"))), " } } } }\n")), "\t\t\t\"right_bumper\" { \"activators\" { \"Full_Press\" { \"bindings\" { ")), steamInputActionBindings(ir, "state.save"))), " } } } }\n")), "\t\t\t\"button_back_left_upper\" { \"activators\" { \"release\" { \"bindings\" { \"binding\" \"controller_action CHANGE_PRESET 1 0 0, , \" } } } }\n")), "\t\t\t\"button_back_right_upper\" { \"activators\" { \"release\" { \"bindings\" { \"binding\" \"controller_action CHANGE_PRESET 1 0 0, , \" } } } }\n")), "\t\t}\n")), "\t}\n")), "\t\"group\"\n")), "\t{\n")), "\t\t\"id\" \"20\"\n")), "\t\t\"mode\" \"radial_menu\"\n")), "\t\t\"name\" \"")), radialName)), "\"\n")), "\t\t\"inputs\"\n")), "\t\t{\n")), "\t\t\t\"touch_menu_button_0\" { \"activators\" { \"Full_Press\" { \"bindings\" { ")), steamInputActionBindings(ir, "state.save"))), " } } } }\n")), "\t\t\t\"touch_menu_button_1\" { \"activators\" { \"Full_Press\" { \"bindings\" { ")), steamInputActionBindings(ir, "state.load"))), " } } } }\n")), "\t\t\t\"touch_menu_button_2\" { \"activators\" { \"Full_Press\" { \"bindings\" { ")), steamInputActionBindings(ir, "app.quit"))), " } } } }\n")), "\t\t\t\"touch_menu_button_3\" { \"activators\" { \"Full_Press\" { \"bindings\" { ")), steamInputActionBindings(ir, "ui.menu"))), " } } } }\n")), "\t\t\t\"touch_menu_button_4\" { \"activators\" { \"Full_Press\" { \"bindings\" { ")), steamInputActionBindings(ir, "ui.screenshot"))), " } } } }\n")), "\t\t\t\"touch_menu_button_5\" { \"activators\" { \"Full_Press\" { \"bindings\" { ")), steamInputActionBindings(ir, "ui.escape"))), " } } } }\n")), "\t\t}\n")), "\t}\n")), "\t\"preset\" { \"id\" \"0\" \"name\" \"Default\" \"group_source_bindings\" { \"0\" \"button_diamond active\" \"1\" \"dpad active\" \"2\" \"joystick active\" \"3\" \"right_joystick active\" \"4\" \"left_trigger active\" \"5\" \"right_trigger active\" \"6\" \"right_trackpad active\" \"7\" \"switch active\" \"20\" \"left_trackpad active\" } }\n")), "\t\"preset\" { \"id\" \"1\" \"name\" \"Preset_1000001\" \"group_source_bindings\" { \"10\" \"button_diamond active\" \"13\" \"dpad active\" \"2\" \"joystick active\" \"3\" \"right_joystick active\" \"11\" \"left_trigger active\" \"12\" \"right_trigger active\" \"6\" \"right_trackpad active\" \"14\" \"switch active\" \"20\" \"left_trackpad active\" } }\n")), "\t\"settings\" { \"left_trackpad_mode\" \"0\" \"right_trackpad_mode\" \"0\" }\n")), "}\n"));
 }
 
 void writeSteamInputTemplates(char* project) {
     ensureDir(joinPath(project, "steam-input"));
     KeymapIr* ir = projectKeymapIr(project);
-    FileSystem_writeText(joinPath(project, "steam-input/neptune-simple.vdf"), steamInputTemplateVdf("Schemulator: Steam Deck - Neptune SIMPLE", false, ir));
-    FileSystem_writeText(joinPath(project, "steam-input/neptune-full.vdf"), steamInputTemplateVdf("Schemulator: Steam Deck - Neptune FULL", true, ir));
+    FileSystem_writeText(joinPath(project, "steam-input/neptune-simple.vdf"), steamInputTemplateVdf("Semu: Steam Deck - Neptune SIMPLE", false, ir));
+    FileSystem_writeText(joinPath(project, "steam-input/neptune-full.vdf"), steamInputTemplateVdf("Semu: Steam Deck - Neptune FULL", true, ir));
 }
 
 char* esFindRulesXml(char* launcherBin) {
-    char* result = __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat("<?xml version=\"1.0\"?>\n", "<!-- Generated by schemulator.btrc from the launcher catalog -->\n")), "<ruleList>\n"));
+    char* result = __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat("<?xml version=\"1.0\"?>\n", "<!-- Generated by semu.btrc from the launcher catalog -->\n")), "<ruleList>\n"));
     int __n_392 = btrc_Vector_string_iterLen(linuxLauncherNames());
     for (int __i_391 = 0; (__i_391 < __n_392); (__i_391++)) {
         char* emulator = btrc_Vector_string_iterGet(linuxLauncherNames(), __i_391);
@@ -7376,7 +7376,7 @@ void writeEsDeFiles(char* project) {
     ensureDir(customSystemsRoot(project));
     SystemCatalog* catalog = systemCatalog();
     FileSystem_writeText(joinPath(customSystemsRoot(project), "es_systems.xml"), SystemCatalog_esSystemsXml(catalog));
-    char* launcherBin = Environment_get("SCHEMULATOR_LAUNCHER_BIN", joinPath(project, "linux/bin"));
+    char* launcherBin = Environment_get("SEMU_LAUNCHER_BIN", joinPath(project, "linux/bin"));
     FileSystem_writeText(joinPath(customSystemsRoot(project), "es_find_rules.xml"), esFindRulesXml(launcherBin));
     FileSystem_writeText(joinPath(project, "ES-DE/es_settings.xml"), esSettingsXmlForProject(project));
 }
@@ -7393,9 +7393,9 @@ void writeEsDeRuntimeFiles(char* project, char* userHome) {
     ensureDir(settingsRoot);
     SystemCatalog* catalog = systemCatalog();
     FileSystem_writeText(joinPath(customRoot, "es_systems.xml"), SystemCatalog_esSystemsXml(catalog));
-    char* launcherBin = Environment_get("SCHEMULATOR_LAUNCHER_BIN", joinPath(project, "linux/bin"));
+    char* launcherBin = Environment_get("SEMU_LAUNCHER_BIN", joinPath(project, "linux/bin"));
     FileSystem_writeText(joinPath(customRoot, "es_find_rules.xml"), esFindRulesXml(launcherBin));
-    char* roms = Environment_get("SCHEMULATOR_ROMS_DIR", configuredRomsRoot(project));
+    char* roms = Environment_get("SEMU_ROMS_DIR", configuredRomsRoot(project));
     FileSystem_writeText(joinPath(settingsRoot, "es_settings.xml"), esSettingsXmlForRuntime(project, roms));
 }
 
@@ -7430,7 +7430,7 @@ void bootstrapSteamDeck(char* project) {
     seedEmulatorDefaults(project);
     writeSteamInputTemplates(project);
     writeScreenshotDefaults(project);
-    writeGeneratedManifest(joinPath(project, "schemulator.json"));
+    writeGeneratedManifest(joinPath(project, "semu.json"));
     writeEsDeFiles(project);
     int __fstr_399_len = snprintf(NULL, 0, "Bootstrapped Steam Deck/Linux content at %s", contentRoot(project));
     char* __fstr_399_buf = __btrc_str_track(((char*)malloc((__fstr_399_len + 1))));
@@ -7883,7 +7883,7 @@ bool envEnabled(char* value) {
 }
 
 bool screenshotHooksEnabled(char* project) {
-    char* value = Environment_get("SCHEMULATOR_SCREENSHOT_HOOKS", "");
+    char* value = Environment_get("SEMU_SCREENSHOT_HOOKS", "");
     if (((int)strlen(value)) > 0) {
         return envEnabled(value);
     }
@@ -7911,7 +7911,7 @@ char* screenshotDelaySeconds(char* project) {
     int __fstr_452_len = snprintf(NULL, 0, "%d", delay);
     char* __fstr_452_buf = __btrc_str_track(((char*)malloc((__fstr_452_len + 1))));
     snprintf(__fstr_452_buf, (__fstr_452_len + 1), "%d", delay);
-    return Environment_get("SCHEMULATOR_SCREENSHOT_DELAY_SECONDS", __fstr_452_buf);
+    return Environment_get("SEMU_SCREENSHOT_DELAY_SECONDS", __fstr_452_buf);
 }
 
 char* screenshotSafeName(char* value) {
@@ -7942,7 +7942,7 @@ char* screenshotExpandCommandTemplate(char* project, char* value, char* emulator
 }
 
 char* screenshotCapturePath(char* project, char* emulator, char* hook) {
-    char* configured = Environment_get("SCHEMULATOR_SCREENSHOT_OUTPUT", screenshotString(project, "output_pattern", "${paths.project_screenshots}/verification/${emulator}/${hook}.png"));
+    char* configured = Environment_get("SEMU_SCREENSHOT_OUTPUT", screenshotString(project, "output_pattern", "${paths.project_screenshots}/verification/${emulator}/${hook}.png"));
     return screenshotExpandPathTemplate(project, configured, emulator, hook);
 }
 
@@ -7964,7 +7964,7 @@ char* screenshotAutoTool(void) {
 }
 
 char* screenshotConfiguredTool(char* project) {
-    char* envTool = Environment_get("SCHEMULATOR_SCREENSHOT_TOOL", "");
+    char* envTool = Environment_get("SEMU_SCREENSHOT_TOOL", "");
     if ((((int)strlen(envTool)) > 0) && (!(strcmp(envTool, "auto") == 0))) {
         return envTool;
     }
@@ -7976,7 +7976,7 @@ char* screenshotConfiguredTool(char* project) {
 }
 
 char* screenshotCaptureCommand(char* project, char* emulator, char* hook, char* output) {
-    char* template = Environment_get("SCHEMULATOR_SCREENSHOT_CMD", screenshotString(project, "command", ""));
+    char* template = Environment_get("SEMU_SCREENSHOT_CMD", screenshotString(project, "command", ""));
     if (((int)strlen(template)) > 0) {
         if (__btrc_strContains(template, "${output}")) {
             return screenshotExpandCommandTemplate(project, template, emulator, hook, output);
@@ -8017,7 +8017,7 @@ bool screenshotCaptureTo(char* project, char* emulator, char* hook, char* output
     ensureDir(PathTools_dirname(output));
     char* command = screenshotCaptureCommand(project, emulator, hook, output);
     if (((int)strlen(command)) == 0) {
-        printf("%s\n", "MISSING screenshot_tool: install grim/spectacle/gnome-screenshot/ImageMagick import or set SCHEMULATOR_SCREENSHOT_CMD");
+        printf("%s\n", "MISSING screenshot_tool: install grim/spectacle/gnome-screenshot/ImageMagick import or set SEMU_SCREENSHOT_CMD");
         return false;
     }
     UnixShell* shell = UnixShell_new();
@@ -8071,7 +8071,7 @@ void screenshotScheduleHook(char* project, char* emulator, char* hook) {
     ensureDir(PathTools_dirname(output));
     char* command = screenshotCaptureCommand(project, emulator, hook, output);
     if (((int)strlen(command)) == 0) {
-        printf("%s\n", "MISSING screenshot_tool: install grim/spectacle/gnome-screenshot/ImageMagick import or set SCHEMULATOR_SCREENSHOT_CMD");
+        printf("%s\n", "MISSING screenshot_tool: install grim/spectacle/gnome-screenshot/ImageMagick import or set SEMU_SCREENSHOT_CMD");
         return;
     }
     char* delay = screenshotDelaySeconds(project);
@@ -8092,7 +8092,7 @@ void doctorScreenshotHooks(char* project) {
     printf("%s\n", "");
     printf("%s\n", "Screenshot verification hooks");
     reportFile("screenshot_config", screenshotConfigPath(project));
-    printf("%s\n", (screenshotHooksEnabled(project) ? "  OK launcher_hooks: enabled" : "  optional launcher_hooks: disabled (set SCHEMULATOR_SCREENSHOT_HOOKS=1)"));
+    printf("%s\n", (screenshotHooksEnabled(project) ? "  OK launcher_hooks: enabled" : "  optional launcher_hooks: disabled (set SEMU_SCREENSHOT_HOOKS=1)"));
     printf("%s\n", "  OK hooks: before_launch, after_spawn, after_exit, manual_visual_checkpoint");
     char* tool = screenshotConfiguredTool(project);
     if (((int)strlen(tool)) > 0) {
@@ -8101,7 +8101,7 @@ void doctorScreenshotHooks(char* project) {
         snprintf(__fstr_472_buf, (__fstr_472_len + 1), "  OK screenshot_tool: %s", tool);
         printf("%s\n", __fstr_472_buf);
     } else {
-        printf("%s\n", "  MISSING screenshot_tool: install grim/spectacle/gnome-screenshot/ImageMagick import or set SCHEMULATOR_SCREENSHOT_CMD");
+        printf("%s\n", "  MISSING screenshot_tool: install grim/spectacle/gnome-screenshot/ImageMagick import or set SEMU_SCREENSHOT_CMD");
     }
     printf("%s\n", __btrc_str_track(__btrc_strcat("  output_pattern: ", screenshotString(project, "output_pattern", "${paths.project_screenshots}/verification/${emulator}/${hook}.png"))));
 }
@@ -8114,7 +8114,7 @@ char* syncFolderPath(char* project, char* id) {
         return joinPath(contentRoot(project), "states");
     }
     if (strcmp(id, "emulator_state") == 0) {
-        return joinPath(schemulatorStateRoot(project), "appimage-state");
+        return joinPath(semuStateRoot(project), "appimage-state");
     }
     if (strcmp(id, "screenshots") == 0) {
         return joinPath(contentRoot(project), "screenshots");
@@ -8145,27 +8145,27 @@ btrc_Vector_string* syncFolderIds(void) {
 
 char* syncFolderLabel(char* id) {
     if (strcmp(id, "saves") == 0) {
-        return "Schemulator Saves";
+        return "Semu Saves";
     }
     if (strcmp(id, "states") == 0) {
-        return "Schemulator States";
+        return "Semu States";
     }
     if (strcmp(id, "emulator_state") == 0) {
-        return "Schemulator Emulator State";
+        return "Semu Emulator State";
     }
     if (strcmp(id, "screenshots") == 0) {
-        return "Schemulator Screenshots";
+        return "Semu Screenshots";
     }
     if (strcmp(id, "gamelists") == 0) {
-        return "Schemulator Gamelists";
+        return "Semu Gamelists";
     }
     if (strcmp(id, "roms") == 0) {
-        return "Schemulator ROMs";
+        return "Semu ROMs";
     }
     if (strcmp(id, "bios") == 0) {
-        return "Schemulator BIOS";
+        return "Semu BIOS";
     }
-    return "Schemulator";
+    return "Semu";
 }
 
 bool syncFolderEnabled(char* project, char* id) {
@@ -8185,11 +8185,11 @@ char* syncGuiAddress(char* project) {
 }
 
 char* serviceExecutable(void) {
-    return Environment_get("SCHEMULATOR_BIN", "schemulator");
+    return Environment_get("SEMU_BIN", "semu");
 }
 
 char* syncServiceText(char* project) {
-    return __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat("[Unit]\n", "Description=Schemulator Syncthing\n")), "After=network-online.target\n\n")), "[Service]\n")), "Type=simple\n")), "ExecStart=syncthing serve -H ")), ShellWords_quote(syncthingHome(project)))), " --no-browser --no-restart\n")), "Restart=on-failure\n")), "RestartSec=5\n\n")), "[Install]\n")), "WantedBy=default.target\n"));
+    return __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat("[Unit]\n", "Description=Semu Syncthing\n")), "After=network-online.target\n\n")), "[Service]\n")), "Type=simple\n")), "ExecStart=syncthing serve -H ")), ShellWords_quote(syncthingHome(project)))), " --no-browser --no-restart\n")), "Restart=on-failure\n")), "RestartSec=5\n\n")), "[Install]\n")), "WantedBy=default.target\n"));
 }
 
 char* syncForceScriptText(char* project) {
@@ -8197,11 +8197,11 @@ char* syncForceScriptText(char* project) {
 }
 
 char* syncForceServiceText(char* project) {
-    return __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat("[Unit]\n", "Description=Schemulator force Syncthing scan\n\n")), "[Service]\n")), "Type=oneshot\n")), "ExecStart=")), ShellWords_quote(joinPath(syncScriptsDir(project), "sync-force.sh")))), "\n"));
+    return __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat("[Unit]\n", "Description=Semu force Syncthing scan\n\n")), "[Service]\n")), "Type=oneshot\n")), "ExecStart=")), ShellWords_quote(joinPath(syncScriptsDir(project), "sync-force.sh")))), "\n"));
 }
 
 char* syncTimerText(void) {
-    return __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat("[Unit]\n", "Description=Schemulator scheduled Syncthing scan\n\n")), "[Timer]\n")), "OnBootSec=5min\n")), "OnUnitActiveSec=15min\n")), "Persistent=true\n\n")), "[Install]\n")), "WantedBy=timers.target\n"));
+    return __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat("[Unit]\n", "Description=Semu scheduled Syncthing scan\n\n")), "[Timer]\n")), "OnBootSec=5min\n")), "OnUnitActiveSec=15min\n")), "Persistent=true\n\n")), "[Install]\n")), "WantedBy=timers.target\n"));
 }
 
 void writeSyncSystemdUnits(char* project) {
@@ -8210,35 +8210,35 @@ void writeSyncSystemdUnits(char* project) {
     char* script = joinPath(syncScriptsDir(project), "sync-force.sh");
     FileSystem_writeText(script, syncForceScriptText(project));
     FileSystem_chmod(script, 493);
-    FileSystem_writeText(joinPath(systemdUserDir(), "schemulator-syncthing.service"), syncServiceText(project));
-    FileSystem_writeText(joinPath(systemdUserDir(), "schemulator-sync-force.service"), syncForceServiceText(project));
-    FileSystem_writeText(joinPath(systemdUserDir(), "schemulator-sync-force.timer"), syncTimerText());
+    FileSystem_writeText(joinPath(systemdUserDir(), "semu-syncthing.service"), syncServiceText(project));
+    FileSystem_writeText(joinPath(systemdUserDir(), "semu-sync-force.service"), syncForceServiceText(project));
+    FileSystem_writeText(joinPath(systemdUserDir(), "semu-sync-force.timer"), syncTimerText());
 }
 
 char* deckDesktopText(char* project) {
     char* exe = serviceExecutable();
-    return __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat("[Desktop Entry]\n", "Type=Application\n")), "Name=Schemulator\n")), "Comment=Steam Deck emulation frontend\n")), "Exec=")), exe)), " deck launch --project ")), ShellWords_quote(project))), "\n")), "Terminal=false\n")), "Categories=Game;Emulator;\n")), "Actions=ForceSync;SyncStatus;OpenSyncthing;OpenSyncTray;\n\n")), "[Desktop Action ForceSync]\n")), "Name=Force Sync\n")), "Exec=")), exe)), " sync force all --project ")), ShellWords_quote(project))), "\n\n")), "[Desktop Action SyncStatus]\n")), "Name=Sync Status\n")), "Exec=")), exe)), " sync status --project ")), ShellWords_quote(project))), "\n\n")), "[Desktop Action OpenSyncthing]\n")), "Name=Open Syncthing\n")), "Exec=")), exe)), " sync open --project ")), ShellWords_quote(project))), "\n\n")), "[Desktop Action OpenSyncTray]\n")), "Name=Open Sync Tray\n")), "Exec=")), exe)), " sync tray --project ")), ShellWords_quote(project))), "\n"));
+    return __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat("[Desktop Entry]\n", "Type=Application\n")), "Name=Semu\n")), "Comment=Steam Deck emulation frontend\n")), "Exec=")), exe)), " deck launch --project ")), ShellWords_quote(project))), "\n")), "Terminal=false\n")), "Categories=Game;Emulator;\n")), "Actions=ForceSync;SyncStatus;OpenSyncthing;OpenSyncTray;\n\n")), "[Desktop Action ForceSync]\n")), "Name=Force Sync\n")), "Exec=")), exe)), " sync force all --project ")), ShellWords_quote(project))), "\n\n")), "[Desktop Action SyncStatus]\n")), "Name=Sync Status\n")), "Exec=")), exe)), " sync status --project ")), ShellWords_quote(project))), "\n\n")), "[Desktop Action OpenSyncthing]\n")), "Name=Open Syncthing\n")), "Exec=")), exe)), " sync open --project ")), ShellWords_quote(project))), "\n\n")), "[Desktop Action OpenSyncTray]\n")), "Name=Open Sync Tray\n")), "Exec=")), exe)), " sync tray --project ")), ShellWords_quote(project))), "\n"));
 }
 
 void writeDeckDesktopEntry(char* project) {
     ensureDir(applicationsDir());
-    FileSystem_writeText(joinPath(applicationsDir(), "schemulator.desktop"), deckDesktopText(project));
+    FileSystem_writeText(joinPath(applicationsDir(), "semu.desktop"), deckDesktopText(project));
 }
 
-char* schemulatorStateRoot(char* project) {
-    return joinPath(project, ".schemulator");
+char* semuStateRoot(char* project) {
+    return joinPath(project, ".semu");
 }
 
 char* lifecycleStatePath(char* project) {
-    return joinPath(schemulatorStateRoot(project), "lifecycle.json");
+    return joinPath(semuStateRoot(project), "lifecycle.json");
 }
 
 char* lifecycleBackupsRoot(char* project) {
-    return joinPath(schemulatorStateRoot(project), "backups");
+    return joinPath(semuStateRoot(project), "backups");
 }
 
 char* upgradeBackupPath(char* project) {
-    return joinPath(lifecycleBackupsRoot(project), "pre-upgrade-schemulator.json");
+    return joinPath(lifecycleBackupsRoot(project), "pre-upgrade-semu.json");
 }
 
 void removePath(char* path) {
@@ -8248,13 +8248,13 @@ void removePath(char* path) {
 }
 
 void writeLifecycleState(char* project, char* action) {
-    ensureDir(schemulatorStateRoot(project));
+    ensureDir(semuStateRoot(project));
     btrc_Vector_string* __list_475 = btrc_Vector_string_new();
     btrc_Vector_string_push(__list_475, jsonStrField("schema_version", "1"));
     btrc_Vector_string_push(__list_475, jsonStrField("action", action));
     btrc_Vector_string_push(__list_475, jsonStrField("project", project));
     btrc_Vector_string_push(__list_475, jsonStrField("roms_dir", configuredRomsRoot(project)));
-    btrc_Vector_string_push(__list_475, jsonStrField("source", "schemulator.btrc"));
+    btrc_Vector_string_push(__list_475, jsonStrField("source", "semu.btrc"));
     FileSystem_writeText(lifecycleStatePath(project), __btrc_str_track(__btrc_strcat(jsonObject(__list_475), "\n")));
 }
 
@@ -8268,7 +8268,7 @@ void lifecycleReconfigure(char* project, char* romsDir) {
     seedEmulatorDefaults(project);
     writeSteamInputTemplates(project);
     writeScreenshotDefaults(project);
-    writeGeneratedManifest(joinPath(project, "schemulator.json"));
+    writeGeneratedManifest(joinPath(project, "semu.json"));
     writeEsDeFiles(project);
     writeSyncSystemdUnits(project);
     writeDeckDesktopEntry(project);
@@ -8287,19 +8287,19 @@ void lifecycleInstall(char* project, char* romsDir) {
 void lifecycleUninstall(char* project, bool purgeGenerated, bool purgeState) {
     syncStop(project);
     syncAutostart(project, false);
-    removePath(joinPath(systemdUserDir(), "schemulator-syncthing.service"));
-    removePath(joinPath(systemdUserDir(), "schemulator-sync-force.service"));
-    removePath(joinPath(systemdUserDir(), "schemulator-sync-force.timer"));
-    removePath(joinPath(applicationsDir(), "schemulator.desktop"));
+    removePath(joinPath(systemdUserDir(), "semu-syncthing.service"));
+    removePath(joinPath(systemdUserDir(), "semu-sync-force.service"));
+    removePath(joinPath(systemdUserDir(), "semu-sync-force.timer"));
+    removePath(joinPath(applicationsDir(), "semu.desktop"));
     removePath(joinPath(syncScriptsDir(project), "sync-force.sh"));
-    removePath(joinPath(schemulatorStateRoot(project), "appimage-state"));
+    removePath(joinPath(semuStateRoot(project), "appimage-state"));
     if (purgeGenerated) {
         removePath(joinPath(project, "ES-DE/custom_systems"));
         removePath(joinPath(project, "ES-DE/es_settings.xml"));
-        removePath(joinPath(project, "schemulator.json"));
+        removePath(joinPath(project, "semu.json"));
     }
     if (purgeState) {
-        removePath(schemulatorStateRoot(project));
+        removePath(semuStateRoot(project));
     } else {
         writeLifecycleState(project, "uninstall");
     }
@@ -8372,8 +8372,8 @@ bool lifecycleChangeKeymap(char* project, char* actionId, char* command) {
 
 void lifecycleUpgrade(char* project) {
     ensureDir(lifecycleBackupsRoot(project));
-    if (FileSystem_exists(joinPath(project, "schemulator.json"))) {
-        FileSystem_writeText(upgradeBackupPath(project), FileSystem_readText(joinPath(project, "schemulator.json")));
+    if (FileSystem_exists(joinPath(project, "semu.json"))) {
+        FileSystem_writeText(upgradeBackupPath(project), FileSystem_readText(joinPath(project, "semu.json")));
     }
     lifecycleReconfigure(project, "");
     writeLifecycleState(project, "upgrade");
@@ -8384,12 +8384,12 @@ void lifecycleUpgrade(char* project) {
 }
 
 void lifecycleStatus(char* project) {
-    printf("%s\n", "Schemulator lifecycle");
+    printf("%s\n", "Semu lifecycle");
     reportFile("state", lifecycleStatePath(project));
-    reportFile("manifest", joinPath(project, "schemulator.json"));
+    reportFile("manifest", joinPath(project, "semu.json"));
     reportFile("sync_config", syncConfigPath(project));
-    reportFile("desktop_entry", joinPath(applicationsDir(), "schemulator.desktop"));
-    reportFile("systemd_service", joinPath(systemdUserDir(), "schemulator-syncthing.service"));
+    reportFile("desktop_entry", joinPath(applicationsDir(), "semu.desktop"));
+    reportFile("systemd_service", joinPath(systemdUserDir(), "semu-syncthing.service"));
     int __fstr_494_len = snprintf(NULL, 0, "  roms_dir: %s", configuredRomsRoot(project));
     char* __fstr_494_buf = __btrc_str_track(((char*)malloc((__fstr_494_len + 1))));
     snprintf(__fstr_494_buf, (__fstr_494_len + 1), "  roms_dir: %s", configuredRomsRoot(project));
@@ -8424,7 +8424,7 @@ char* syncApiKey(char* project) {
 char* syncScanUrl(char* project, char* target) {
     char* url = __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat("http://", syncGuiAddress(project))), "/rest/db/scan"));
     if ((!(strcmp(target, "all") == 0)) && (((int)strlen(target)) > 0)) {
-        (url = __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(url, "?folder=schemulator-")), target)));
+        (url = __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(url, "?folder=semu-")), target)));
     }
     return url;
 }
@@ -8495,7 +8495,7 @@ bool syncAddFolder(char* project, char* id) {
     }
     ensureDir(syncFolderPath(project, id));
     UnixShell* shell = UnixShell_new();
-    char* command = __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat("syncthing cli -H ", ShellWords_quote(syncthingHome(project)))), " --gui-address ")), ShellWords_quote(syncGuiAddress(project)))), " config folders add")), " --id ")), ShellWords_quote(__btrc_str_track(__btrc_strcat("schemulator-", id))))), " --label ")), ShellWords_quote(syncFolderLabel(id)))), " --path ")), ShellWords_quote(syncFolderPath(project, id)))), " --type sendreceive")), " --rescan-intervals ")), Strings_fromInt(syncFolderRescan(project, id))));
+    char* command = __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat("syncthing cli -H ", ShellWords_quote(syncthingHome(project)))), " --gui-address ")), ShellWords_quote(syncGuiAddress(project)))), " config folders add")), " --id ")), ShellWords_quote(__btrc_str_track(__btrc_strcat("semu-", id))))), " --label ")), ShellWords_quote(syncFolderLabel(id)))), " --path ")), ShellWords_quote(syncFolderPath(project, id)))), " --type sendreceive")), " --rescan-intervals ")), Strings_fromInt(syncFolderRescan(project, id))));
     if (syncFolderWatch(project, id)) {
         (command = __btrc_str_track(__btrc_strcat(command, " --fswatcher-enabled")));
     }
@@ -8530,24 +8530,24 @@ bool syncSetup(char* project) {
     writeSyncDefaults(project, "");
     writeSyncSystemdUnits(project);
     if (!commandExists("syncthing")) {
-        printf("%s\n", "MISSING syncthing: install package or use bundled Schemulator");
+        printf("%s\n", "MISSING syncthing: install package or use bundled Semu");
         return false;
     }
     syncGenerateIfNeeded(project);
     bool ok = syncSystemctl("daemon-reload", "");
     if (syncBool(project, "start_at_boot", true)) {
-        if (!syncSystemctl("enable", "schemulator-syncthing.service")) {
+        if (!syncSystemctl("enable", "semu-syncthing.service")) {
             (ok = false);
         }
-        if (!syncSystemctl("enable", "schemulator-sync-force.timer")) {
+        if (!syncSystemctl("enable", "semu-sync-force.timer")) {
             (ok = false);
         }
     }
     if (syncBool(project, "enabled", true)) {
-        if (!syncSystemctl("start", "schemulator-syncthing.service")) {
+        if (!syncSystemctl("start", "semu-syncthing.service")) {
             (ok = false);
         }
-        if (!syncSystemctl("start", "schemulator-sync-force.timer")) {
+        if (!syncSystemctl("start", "semu-sync-force.timer")) {
             (ok = false);
         }
         if (!syncWaitForApi(project)) {
@@ -8573,7 +8573,7 @@ bool syncSetup(char* project) {
 
 bool syncStart(char* project) {
     bool ok = syncSetup(project);
-    if (!syncSystemctl("start", "schemulator-syncthing.service")) {
+    if (!syncSystemctl("start", "semu-syncthing.service")) {
         (ok = false);
     }
     printf("%s\n", (ok ? "OK sync start" : "MISSING sync start failed"));
@@ -8582,10 +8582,10 @@ bool syncStart(char* project) {
 
 bool syncStop(char* project) {
     bool ok = true;
-    if (!syncSystemctl("stop", "schemulator-sync-force.timer")) {
+    if (!syncSystemctl("stop", "semu-sync-force.timer")) {
         (ok = false);
     }
-    if (!syncSystemctl("stop", "schemulator-syncthing.service")) {
+    if (!syncSystemctl("stop", "semu-syncthing.service")) {
         (ok = false);
     }
     printf("%s\n", (ok ? "OK sync stop" : "MISSING sync stop incomplete"));
@@ -8596,18 +8596,18 @@ bool syncAutostart(char* project, bool enabled) {
     writeSyncSystemdUnits(project);
     bool ok = syncSystemctl("daemon-reload", "");
     if (enabled) {
-        if (!syncSystemctl("enable", "schemulator-syncthing.service")) {
+        if (!syncSystemctl("enable", "semu-syncthing.service")) {
             (ok = false);
         }
-        if (!syncSystemctl("enable", "schemulator-sync-force.timer")) {
+        if (!syncSystemctl("enable", "semu-sync-force.timer")) {
             (ok = false);
         }
         printf("%s\n", (ok ? "OK sync autostart enabled" : "MISSING sync autostart enable incomplete"));
     } else {
-        if (!syncSystemctl("disable", "schemulator-syncthing.service")) {
+        if (!syncSystemctl("disable", "semu-syncthing.service")) {
             (ok = false);
         }
-        if (!syncSystemctl("disable", "schemulator-sync-force.timer")) {
+        if (!syncSystemctl("disable", "semu-sync-force.timer")) {
             (ok = false);
         }
         printf("%s\n", (ok ? "OK sync autostart disabled" : "MISSING sync autostart disable incomplete"));
@@ -8657,11 +8657,11 @@ bool syncForce(char* project, char* target) {
 }
 
 void syncStatus(char* project) {
-    printf("%s\n", "Schemulator sync");
+    printf("%s\n", "Semu sync");
     reportFile("sync_config", syncConfigPath(project));
     reportFile("syncthing_config", syncConfigXmlPath(project));
-    reportFile("systemd_service", joinPath(systemdUserDir(), "schemulator-syncthing.service"));
-    reportFile("systemd_timer", joinPath(systemdUserDir(), "schemulator-sync-force.timer"));
+    reportFile("systemd_service", joinPath(systemdUserDir(), "semu-syncthing.service"));
+    reportFile("systemd_timer", joinPath(systemdUserDir(), "semu-sync-force.timer"));
     printf("%s\n", (commandExists("syncthing") ? "  OK syncthing: executable found" : "  MISSING syncthing: executable not found"));
     printf("%s\n", (commandExists("syncthingtray") ? "  OK syncthingtray: executable found" : "  optional syncthingtray: executable not found"));
     printf("%s\n", (commandExists("curl") ? "  OK curl: executable found" : "  MISSING curl: executable not found"));
@@ -8727,7 +8727,7 @@ void doctorSync(char* project) {
 }
 
 void doctorSteamDeck(char* project) {
-    printf("%s\n", "Schemulator doctor (BTRC)");
+    printf("%s\n", "Semu doctor (BTRC)");
     printf("%s\n", "");
     printf("%s\n", "Paths");
     reportPath("project_roms", romsRoot(project));
@@ -8888,7 +8888,7 @@ bool e2ePrepareSandbox(char* project, char* scratchRoot, char* emulator) {
 }
 
 int e2eSandboxSmoke(void) {
-    char* tmp = e2eTempDir("schemulator-sandbox-smoke");
+    char* tmp = e2eTempDir("semu-sandbox-smoke");
     char* project = joinPath(tmp, "project");
     char* scratchRoot = joinPath(tmp, "scratch");
     ensureDir(project);
@@ -8981,7 +8981,7 @@ int e2eSandboxSmoke(void) {
 }
 
 ExecResult* e2eRunLifecycle(char* exe, char* home, char* mode, char* project, char* romsDir) {
-    Command* command = Command_check(Command_capture(Command_flag(Command_arg(Command_arg(Command_envVar(Command_envVar(Command_envVar(Command_new(exe), "SCHEMULATOR_HOME", home), "SCHEMULATOR_BIN", exe), "PATH", "/usr/bin:/bin"), "lifecycle"), mode), "--project", project), true), false);
+    Command* command = Command_check(Command_capture(Command_flag(Command_arg(Command_arg(Command_envVar(Command_envVar(Command_envVar(Command_new(exe), "SEMU_HOME", home), "SEMU_BIN", exe), "PATH", "/usr/bin:/bin"), "lifecycle"), mode), "--project", project), true), false);
     if (((int)strlen(romsDir)) > 0) {
         Command_flag(command, "--roms", romsDir);
     }
@@ -9001,7 +9001,7 @@ ExecResult* e2eRunLifecycle(char* exe, char* home, char* mode, char* project, ch
 }
 
 ExecResult* e2eRunLifecycleChange(char* exe, char* home, char* project, char* actionId, char* commandText) {
-    Command* command = Command_check(Command_capture(Command_flag(Command_flag(Command_flag(Command_arg(Command_arg(Command_envVar(Command_envVar(Command_envVar(Command_new(exe), "SCHEMULATOR_HOME", home), "SCHEMULATOR_BIN", exe), "PATH", "/usr/bin:/bin"), "lifecycle"), "change"), "--project", project), "--action", actionId), "--command", commandText), true), false);
+    Command* command = Command_check(Command_capture(Command_flag(Command_flag(Command_flag(Command_arg(Command_arg(Command_envVar(Command_envVar(Command_envVar(Command_new(exe), "SEMU_HOME", home), "SEMU_BIN", exe), "PATH", "/usr/bin:/bin"), "lifecycle"), "change"), "--project", project), "--action", actionId), "--command", commandText), true), false);
     UnixShell* shell = UnixShell_new();
     ExecResult* result = UnixShell_runCommand(shell, command);
     if (shell != NULL) {
@@ -9018,7 +9018,7 @@ ExecResult* e2eRunLifecycleChange(char* exe, char* home, char* project, char* ac
 }
 
 ExecResult* e2eRunLifecycleArgs(char* exe, char* home, char* project, btrc_Vector_string* lifecycleArgs) {
-    Command* command = Command_check(Command_capture(Command_arg(Command_envVar(Command_envVar(Command_envVar(Command_new(exe), "SCHEMULATOR_HOME", home), "SCHEMULATOR_BIN", exe), "PATH", "/usr/bin:/bin"), "lifecycle"), true), false);
+    Command* command = Command_check(Command_capture(Command_arg(Command_envVar(Command_envVar(Command_envVar(Command_new(exe), "SEMU_HOME", home), "SEMU_BIN", exe), "PATH", "/usr/bin:/bin"), "lifecycle"), true), false);
     int __n_549 = btrc_Vector_string_iterLen(lifecycleArgs);
     for (int __i_548 = 0; (__i_548 < __n_549); (__i_548++)) {
         char* arg = btrc_Vector_string_iterGet(lifecycleArgs, __i_548);
@@ -9041,7 +9041,7 @@ ExecResult* e2eRunLifecycleArgs(char* exe, char* home, char* project, btrc_Vecto
 }
 
 ExecResult* e2eRunSync(char* exe, char* home, char* binDir, char* project, btrc_Vector_string* syncArgs) {
-    Command* command = Command_check(Command_capture(Command_arg(Command_envVar(Command_envVar(Command_envVar(Command_envVar(Command_new(exe), "SCHEMULATOR_HOME", home), "SCHEMULATOR_BIN", exe), "PATH", __btrc_str_track(__btrc_strcat(binDir, ":/usr/bin:/bin"))), "SCHEM_CAPTURE", joinPath(PathTools_dirname(binDir), "capture")), "sync"), true), false);
+    Command* command = Command_check(Command_capture(Command_arg(Command_envVar(Command_envVar(Command_envVar(Command_envVar(Command_new(exe), "SEMU_HOME", home), "SEMU_BIN", exe), "PATH", __btrc_str_track(__btrc_strcat(binDir, ":/usr/bin:/bin"))), "SEMU_CAPTURE", joinPath(PathTools_dirname(binDir), "capture")), "sync"), true), false);
     int __n_551 = btrc_Vector_string_iterLen(syncArgs);
     for (int __i_550 = 0; (__i_550 < __n_551); (__i_550++)) {
         char* arg = btrc_Vector_string_iterGet(syncArgs, __i_550);
@@ -9064,7 +9064,7 @@ ExecResult* e2eRunSync(char* exe, char* home, char* binDir, char* project, btrc_
 }
 
 ExecResult* e2eRunSteamInput(char* exe, char* home, char* project, btrc_Vector_string* steamInputArgs) {
-    Command* command = Command_check(Command_capture(Command_arg(Command_envVar(Command_envVar(Command_envVar(Command_new(exe), "SCHEMULATOR_HOME", home), "SCHEMULATOR_BIN", exe), "PATH", "/usr/bin:/bin"), "steam-input"), true), false);
+    Command* command = Command_check(Command_capture(Command_arg(Command_envVar(Command_envVar(Command_envVar(Command_new(exe), "SEMU_HOME", home), "SEMU_BIN", exe), "PATH", "/usr/bin:/bin"), "steam-input"), true), false);
     int __n_553 = btrc_Vector_string_iterLen(steamInputArgs);
     for (int __i_552 = 0; (__i_552 < __n_553); (__i_552++)) {
         char* arg = btrc_Vector_string_iterGet(steamInputArgs, __i_552);
@@ -9087,7 +9087,7 @@ ExecResult* e2eRunSteamInput(char* exe, char* home, char* project, btrc_Vector_s
 }
 
 ExecResult* e2eRunLauncher(char* exe, char* home, char* project, char* roms, char* binDir, char* captureDir, char* bwrapPath, char* emulator, btrc_Vector_string* emulatorArgs) {
-    Command* command = Command_check(Command_capture(Command_arg(Command_arg(Command_envVar(Command_envVar(Command_envVar(Command_envVar(Command_envVar(Command_envVar(Command_envVar(Command_envVar(Command_envVar(Command_envVar(Command_new(exe), "SCHEMULATOR_HOME", home), "SCHEMULATOR_BIN", exe), "SCHEMULATOR_PROJECT_DIR", project), "SCHEMULATOR_ROMS_DIR", roms), "SCHEM_FLATPAK_CAPTURE", captureDir), "SCHEMULATOR_BWRAP", bwrapPath), "SCHEMULATOR_SCREENSHOT_HOOKS", "1"), "SCHEMULATOR_SCREENSHOT_DELAY_SECONDS", "0"), "PATH", __btrc_str_track(__btrc_strcat(binDir, ":/usr/bin:/bin"))), "WAYLAND_DISPLAY", "wayland-test"), "launcher"), emulator), true), false);
+    Command* command = Command_check(Command_capture(Command_arg(Command_arg(Command_envVar(Command_envVar(Command_envVar(Command_envVar(Command_envVar(Command_envVar(Command_envVar(Command_envVar(Command_envVar(Command_envVar(Command_new(exe), "SEMU_HOME", home), "SEMU_BIN", exe), "SEMU_PROJECT_DIR", project), "SEMU_ROMS_DIR", roms), "SEMU_FLATPAK_CAPTURE", captureDir), "SEMU_BWRAP", bwrapPath), "SEMU_SCREENSHOT_HOOKS", "1"), "SEMU_SCREENSHOT_DELAY_SECONDS", "0"), "PATH", __btrc_str_track(__btrc_strcat(binDir, ":/usr/bin:/bin"))), "WAYLAND_DISPLAY", "wayland-test"), "launcher"), emulator), true), false);
     int __n_555 = btrc_Vector_string_iterLen(emulatorArgs);
     for (int __i_554 = 0; (__i_554 < __n_555); (__i_554++)) {
         char* arg = btrc_Vector_string_iterGet(emulatorArgs, __i_554);
@@ -9162,12 +9162,12 @@ bool e2eCatalogConsistency(char* project, char* launcherBin) {
 }
 
 int e2eLifecycleSmoke(CliArgs* args) {
-    char* tmp = e2eTempDir("schemulator-lifecycle-smoke");
+    char* tmp = e2eTempDir("semu-lifecycle-smoke");
     char* project = joinPath(tmp, "project");
     char* home = joinPath(tmp, "home");
     char* romsOne = joinPath(tmp, "roms-one");
     char* romsTwo = joinPath(tmp, "roms-two");
-    char* exe = Environment_get("SCHEMULATOR_BIN", args->program);
+    char* exe = Environment_get("SEMU_BIN", args->program);
     ensureDir(project);
     ensureDir(home);
     if (!e2eRunOk(e2eRunLifecycle(exe, home, "install", project, romsOne), "install")) {
@@ -9188,10 +9188,10 @@ int e2eLifecycleSmoke(CliArgs* args) {
     if (!e2eContains(FileSystem_readText(screenshotConfigPath(project)), "output_pattern", "screenshot config after install")) {
         return 1;
     }
-    if (!e2eOk(FileSystem_exists(joinPath(home, ".local/share/applications/schemulator.desktop")), "desktop entry missing after install")) {
+    if (!e2eOk(FileSystem_exists(joinPath(home, ".local/share/applications/semu.desktop")), "desktop entry missing after install")) {
         return 1;
     }
-    if (!e2eOk(FileSystem_exists(joinPath(home, ".config/systemd/user/schemulator-syncthing.service")), "systemd service missing after install")) {
+    if (!e2eOk(FileSystem_exists(joinPath(home, ".config/systemd/user/semu-syncthing.service")), "systemd service missing after install")) {
         return 1;
     }
     char* steamTemplates = joinPath(home, "steam-templates");
@@ -9272,10 +9272,10 @@ int e2eLifecycleSmoke(CliArgs* args) {
     if (!e2eRunOk(e2eRunLifecycle(exe, home, "uninstall", project, ""), "uninstall")) {
         return 1;
     }
-    if (!e2eOk((!FileSystem_exists(joinPath(home, ".local/share/applications/schemulator.desktop"))), "desktop entry should be removed by uninstall")) {
+    if (!e2eOk((!FileSystem_exists(joinPath(home, ".local/share/applications/semu.desktop"))), "desktop entry should be removed by uninstall")) {
         return 1;
     }
-    if (!e2eOk((!FileSystem_exists(joinPath(home, ".config/systemd/user/schemulator-syncthing.service"))), "systemd service should be removed by uninstall")) {
+    if (!e2eOk((!FileSystem_exists(joinPath(home, ".config/systemd/user/semu-syncthing.service"))), "systemd service should be removed by uninstall")) {
         return 1;
     }
     if (!e2eOk(FileSystem_exists(syncConfigPath(project)), "sync config should survive uninstall")) {
@@ -9290,20 +9290,20 @@ int e2eLifecycleSmoke(CliArgs* args) {
     if (!e2eRunOk(e2eRunLifecycle(exe, home, "reinstall", project, ""), "reinstall")) {
         return 1;
     }
-    if (!e2eOk(FileSystem_exists(joinPath(home, ".local/share/applications/schemulator.desktop")), "desktop entry missing after reinstall")) {
+    if (!e2eOk(FileSystem_exists(joinPath(home, ".local/share/applications/semu.desktop")), "desktop entry missing after reinstall")) {
         return 1;
     }
     if (!e2eContains(FileSystem_readText(syncConfigPath(project)), romsTwo, "sync config after reinstall")) {
         return 1;
     }
-    FileSystem_writeText(joinPath(project, "schemulator.json"), "{\"legacy\": true}\n");
+    FileSystem_writeText(joinPath(project, "semu.json"), "{\"legacy\": true}\n");
     if (!e2eRunOk(e2eRunLifecycle(exe, home, "upgrade", project, ""), "upgrade")) {
         return 1;
     }
     if (!e2eContains(FileSystem_readText(upgradeBackupPath(project)), "\"legacy\": true", "upgrade backup")) {
         return 1;
     }
-    if (!e2eContains(FileSystem_readText(joinPath(project, "schemulator.json")), "\"schema_version\": 1", "regenerated manifest")) {
+    if (!e2eContains(FileSystem_readText(joinPath(project, "semu.json")), "\"schema_version\": 1", "regenerated manifest")) {
         return 1;
     }
     if (!e2eContains(FileSystem_readText(keymapSourcePath(project)), "action state.save = Ctrl+V", "keymap should survive upgrade")) {
@@ -9327,26 +9327,26 @@ int e2eLifecycleSmoke(CliArgs* args) {
 }
 
 int e2eLauncherSmoke(CliArgs* args) {
-    char* tmp = e2eTempDir("schemulator-launcher-smoke");
+    char* tmp = e2eTempDir("semu-launcher-smoke");
     char* project = joinPath(tmp, "project");
     char* roms = joinPath(tmp, "roms");
     char* home = joinPath(tmp, "home");
     char* capture = joinPath(tmp, "capture");
     char* binDir = joinPath(tmp, "bin");
-    char* exe = Environment_get("SCHEMULATOR_BIN", args->program);
+    char* exe = Environment_get("SEMU_BIN", args->program);
     ensureDir(project);
     ensureDir(roms);
     ensureDir(home);
     ensureDir(capture);
     ensureDir(binDir);
     char* fakeFlatpak = joinPath(binDir, "flatpak");
-    FileSystem_writeText(fakeFlatpak, __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat("#!/usr/bin/env sh\n", "set -eu\n")), "capture=\"${SCHEM_FLATPAK_CAPTURE:?}\"\n")), "mkdir -p \"$capture\"\n")), "idx=\"$(find \"$capture\" -type f -name 'flatpak-*.args' | wc -l | tr -d ' ')\"\n")), "idx=\"$((idx + 1))\"\n")), "printf '%s\\n' \"$@\" > \"$capture/flatpak-$idx.args\"\n")));
+    FileSystem_writeText(fakeFlatpak, __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat("#!/usr/bin/env sh\n", "set -eu\n")), "capture=\"${SEMU_FLATPAK_CAPTURE:?}\"\n")), "mkdir -p \"$capture\"\n")), "idx=\"$(find \"$capture\" -type f -name 'flatpak-*.args' | wc -l | tr -d ' ')\"\n")), "idx=\"$((idx + 1))\"\n")), "printf '%s\\n' \"$@\" > \"$capture/flatpak-$idx.args\"\n")));
     FileSystem_chmod(fakeFlatpak, 493);
     char* fakeBwrap = joinPath(binDir, "bwrap");
-    FileSystem_writeText(fakeBwrap, __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat("#!/usr/bin/env sh\n", "set -eu\n")), "printf '%s\\n' \"$@\" > \"${SCHEM_FLATPAK_CAPTURE:?}/retroarch.args\"\n")));
+    FileSystem_writeText(fakeBwrap, __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat("#!/usr/bin/env sh\n", "set -eu\n")), "printf '%s\\n' \"$@\" > \"${SEMU_FLATPAK_CAPTURE:?}/retroarch.args\"\n")));
     FileSystem_chmod(fakeBwrap, 493);
     char* fakeGrim = joinPath(binDir, "grim");
-    FileSystem_writeText(fakeGrim, __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat("#!/usr/bin/env sh\n", "set -eu\n")), "out=\"${1:?}\"\n")), "mkdir -p \"$(dirname \"$out\")\"\n")), "printf 'fake screenshot %s\\n' \"$out\" > \"$out\"\n")), "printf '%s\\n' \"$out\" >> \"${SCHEM_FLATPAK_CAPTURE:?}/grim.log\"\n")));
+    FileSystem_writeText(fakeGrim, __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat("#!/usr/bin/env sh\n", "set -eu\n")), "out=\"${1:?}\"\n")), "mkdir -p \"$(dirname \"$out\")\"\n")), "printf 'fake screenshot %s\\n' \"$out\" > \"$out\"\n")), "printf '%s\\n' \"$out\" >> \"${SEMU_FLATPAK_CAPTURE:?}/grim.log\"\n")));
     FileSystem_chmod(fakeGrim, 493);
     btrc_Vector_string* __list_565 = btrc_Vector_string_new();
     btrc_Vector_string_push(__list_565, "game.wua");
@@ -9519,24 +9519,24 @@ int e2eLauncherSmoke(CliArgs* args) {
 
 void e2eWriteSyncFakes(char* binDir) {
     char* fakeSystemctl = joinPath(binDir, "systemctl");
-    FileSystem_writeText(fakeSystemctl, __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat("#!/usr/bin/env sh\n", "set -eu\n")), "mkdir -p \"${SCHEM_CAPTURE:?}\"\n")), "printf '%s\\n' \"$*\" >> \"$SCHEM_CAPTURE/systemctl.log\"\n")));
+    FileSystem_writeText(fakeSystemctl, __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat("#!/usr/bin/env sh\n", "set -eu\n")), "mkdir -p \"${SEMU_CAPTURE:?}\"\n")), "printf '%s\\n' \"$*\" >> \"$SEMU_CAPTURE/systemctl.log\"\n")));
     FileSystem_chmod(fakeSystemctl, 493);
     char* fakeCurl = joinPath(binDir, "curl");
-    FileSystem_writeText(fakeCurl, __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat("#!/usr/bin/env sh\n", "set -eu\n")), "mkdir -p \"${SCHEM_CAPTURE:?}\"\n")), "printf '%s\\n' \"$*\" >> \"$SCHEM_CAPTURE/curl.log\"\n")));
+    FileSystem_writeText(fakeCurl, __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat("#!/usr/bin/env sh\n", "set -eu\n")), "mkdir -p \"${SEMU_CAPTURE:?}\"\n")), "printf '%s\\n' \"$*\" >> \"$SEMU_CAPTURE/curl.log\"\n")));
     FileSystem_chmod(fakeCurl, 493);
     char* fakeSyncthing = joinPath(binDir, "syncthing");
-    FileSystem_writeText(fakeSyncthing, __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat("#!/usr/bin/env sh\n", "set -eu\n")), "mkdir -p \"${SCHEM_CAPTURE:?}\"\n")), "printf '%s\\n' \"$*\" >> \"$SCHEM_CAPTURE/syncthing.log\"\n")), "if [ \"${1:-}\" = generate ]; then\n")), "  home=\"\"\n")), "  while [ $# -gt 0 ]; do\n")), "    if [ \"$1\" = -H ]; then home=\"$2\"; shift 2; else shift; fi\n")), "  done\n")), "  mkdir -p \"$home\"\n")), "  printf '<configuration><gui><apikey>test-key</apikey></gui></configuration>\\n' > \"$home/config.xml\"\n")), "  exit 0\n")), "fi\n")), "exit 0\n")));
+    FileSystem_writeText(fakeSyncthing, __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat("#!/usr/bin/env sh\n", "set -eu\n")), "mkdir -p \"${SEMU_CAPTURE:?}\"\n")), "printf '%s\\n' \"$*\" >> \"$SEMU_CAPTURE/syncthing.log\"\n")), "if [ \"${1:-}\" = generate ]; then\n")), "  home=\"\"\n")), "  while [ $# -gt 0 ]; do\n")), "    if [ \"$1\" = -H ]; then home=\"$2\"; shift 2; else shift; fi\n")), "  done\n")), "  mkdir -p \"$home\"\n")), "  printf '<configuration><gui><apikey>test-key</apikey></gui></configuration>\\n' > \"$home/config.xml\"\n")), "  exit 0\n")), "fi\n")), "exit 0\n")));
     FileSystem_chmod(fakeSyncthing, 493);
 }
 
 int e2eSyncSmoke(CliArgs* args) {
-    char* tmp = e2eTempDir("schemulator-sync-smoke");
+    char* tmp = e2eTempDir("semu-sync-smoke");
     char* project = joinPath(tmp, "project");
     char* missingProject = joinPath(tmp, "missing-project");
     char* home = joinPath(tmp, "home");
     char* binDir = joinPath(tmp, "bin");
     char* capture = joinPath(tmp, "capture");
-    char* exe = Environment_get("SCHEMULATOR_BIN", args->program);
+    char* exe = Environment_get("SEMU_BIN", args->program);
     ensureDir(project);
     ensureDir(missingProject);
     ensureDir(home);
@@ -9552,16 +9552,16 @@ int e2eSyncSmoke(CliArgs* args) {
     if (!e2eContains(systemctlLog, "--user daemon-reload", "sync daemon-reload")) {
         return 1;
     }
-    if (!e2eContains(systemctlLog, "--user enable schemulator-syncthing.service", "sync enable service")) {
+    if (!e2eContains(systemctlLog, "--user enable semu-syncthing.service", "sync enable service")) {
         return 1;
     }
-    if (!e2eContains(systemctlLog, "--user enable schemulator-sync-force.timer", "sync enable timer")) {
+    if (!e2eContains(systemctlLog, "--user enable semu-sync-force.timer", "sync enable timer")) {
         return 1;
     }
-    if (!e2eContains(systemctlLog, "--user start schemulator-syncthing.service", "sync start service")) {
+    if (!e2eContains(systemctlLog, "--user start semu-syncthing.service", "sync start service")) {
         return 1;
     }
-    if (!e2eContains(FileSystem_readText(joinPath(capture, "syncthing.log")), "schemulator-emulator_state", "sync emulator state folder")) {
+    if (!e2eContains(FileSystem_readText(joinPath(capture, "syncthing.log")), "semu-emulator_state", "sync emulator state folder")) {
         return 1;
     }
     btrc_Vector_string* __list_576 = btrc_Vector_string_new();
@@ -9580,7 +9580,7 @@ int e2eSyncSmoke(CliArgs* args) {
     if (!e2eContains(curlLog, "/rest/db/scan", "sync force all url")) {
         return 1;
     }
-    if (!e2eContains(curlLog, "?folder=schemulator-saves", "sync force saves url")) {
+    if (!e2eContains(curlLog, "?folder=semu-saves", "sync force saves url")) {
         return 1;
     }
     if (!e2eContains(curlLog, "X-API-Key: test-key", "sync force api key")) {
@@ -9599,10 +9599,10 @@ int e2eSyncSmoke(CliArgs* args) {
         return 1;
     }
     (systemctlLog = FileSystem_readText(joinPath(capture, "systemctl.log")));
-    if (!e2eContains(systemctlLog, "--user disable schemulator-syncthing.service", "sync disable service")) {
+    if (!e2eContains(systemctlLog, "--user disable semu-syncthing.service", "sync disable service")) {
         return 1;
     }
-    if (!e2eContains(systemctlLog, "--user enable schemulator-syncthing.service", "sync re-enable service")) {
+    if (!e2eContains(systemctlLog, "--user enable semu-syncthing.service", "sync re-enable service")) {
         return 1;
     }
     btrc_Vector_string* __list_580 = btrc_Vector_string_new();
@@ -9652,7 +9652,7 @@ int e2eCommand(CliArgs* args) {
 }
 
 void printUsage(void) {
-    printf("%s\n", "schemulator [manifest|bootstrap|doctor|deck|lifecycle|sync|config|apprun|steam-input|keymap|screenshot|sandbox|launcher|e2e] [validate|render|install|setup|reconfigure|change|uninstall|reinstall|upgrade|status|force|capture|prepare|launch] [--project PATH] [--roms PATH] [--source PATH] [--output PATH] [--dest PATH] [--target manifest|retroarch|dolphin|pcsx2|steam-input] [--emulator NAME] [--hook HOOK] [--scratch PATH] [--action ID] [--command KEYS]");
+    printf("%s\n", "semu [manifest|bootstrap|doctor|deck|lifecycle|sync|config|apprun|steam-input|keymap|screenshot|sandbox|launcher|e2e] [validate|render|install|setup|reconfigure|change|uninstall|reinstall|upgrade|status|force|capture|prepare|launch] [--project PATH] [--roms PATH] [--source PATH] [--output PATH] [--dest PATH] [--target manifest|retroarch|dolphin|pcsx2|steam-input] [--emulator NAME] [--hook HOOK] [--scratch PATH] [--action ID] [--command KEYS]");
 }
 
 char* retroarchKeyName(char* key) {
@@ -9733,7 +9733,7 @@ char* renderKeymap(KeymapIr* ir, char* target) {
         return renderPcsx2Keymap(ir);
     }
     if (strcmp(target, "steam-input") == 0) {
-        return steamInputTemplateVdf("Schemulator: Steam Deck - Neptune FULL", true, ir);
+        return steamInputTemplateVdf("Semu: Steam Deck - Neptune FULL", true, ir);
     }
     int __fstr_583_len = snprintf(NULL, 0, "unknown keymap target: %s\n", target);
     char* __fstr_583_buf = __btrc_str_track(((char*)malloc((__fstr_583_len + 1))));
@@ -9946,7 +9946,7 @@ int appRunCommand(CliArgs* args, char* project) {
 }
 
 char* steamInputTemplateDir(CliArgs* args) {
-    return CliArgs_valueAfter(args, "--dest", Environment_get("SCHEMULATOR_STEAM_INPUT_DIR", joinPath(homeDir(), ".steam/steam/controller_base/templates")));
+    return CliArgs_valueAfter(args, "--dest", Environment_get("SEMU_STEAM_INPUT_DIR", joinPath(homeDir(), ".steam/steam/controller_base/templates")));
 }
 
 void copySteamInputTemplate(char* project, char* destination, char* name) {
@@ -9987,9 +9987,9 @@ int configCommand(CliArgs* args, char* project) {
         (mode = CliArgs_get(args, 1));
     }
     if (strcmp(mode, "env") == 0) {
-        printf("%s\n", __btrc_str_track(__btrc_strcat("export SCHEMULATOR_PROJECT_DIR=", ShellWords_quote(project))));
-        printf("%s\n", __btrc_str_track(__btrc_strcat("export SCHEMULATOR_ROMS_DIR=", ShellWords_quote(configuredRomsRoot(project)))));
-        printf("%s\n", __btrc_str_track(__btrc_strcat("export SCHEMULATOR_BIN=", ShellWords_quote(serviceExecutable()))));
+        printf("%s\n", __btrc_str_track(__btrc_strcat("export SEMU_PROJECT_DIR=", ShellWords_quote(project))));
+        printf("%s\n", __btrc_str_track(__btrc_strcat("export SEMU_ROMS_DIR=", ShellWords_quote(configuredRomsRoot(project)))));
+        printf("%s\n", __btrc_str_track(__btrc_strcat("export SEMU_BIN=", ShellWords_quote(serviceExecutable()))));
         return 0;
     }
     if (strcmp(mode, "set-roms") == 0) {
@@ -10075,7 +10075,7 @@ int deckLaunch(char* project) {
     }
     writeEsDeRuntimeFiles(project, homeDir());
     UnixShell* shell = UnixShell_new();
-    char* env = __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat("SCHEMULATOR_PROJECT_DIR=", ShellWords_quote(project))), " SCHEMULATOR_ROMS_DIR=")), ShellWords_quote(configuredRomsRoot(project))));
+    char* env = __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat("SEMU_PROJECT_DIR=", ShellWords_quote(project))), " SEMU_ROMS_DIR=")), ShellWords_quote(configuredRomsRoot(project))));
     if (commandExists("es-de")) {
         UnixShell_runRaw(shell, __btrc_str_track(__btrc_strcat(env, " es-de")), false, false, "");
         int __btrc_ret_614 = 0;
@@ -10150,19 +10150,19 @@ int deckCommand(CliArgs* args, char* project) {
 
 char* launcherNameFromProgram(char* program) {
     char* base = PathTools_basename(program);
-    if (!__btrc_startsWith(base, "schem-")) {
+    if (!__btrc_startsWith(base, "semu-")) {
         return "";
     }
-    if (((strcmp(base, "schem-btrc") == 0) || (strcmp(base, "schem-flatpak") == 0)) || (strcmp(base, "schemulator") == 0)) {
+    if (((strcmp(base, "semu-btrc") == 0) || (strcmp(base, "semu-flatpak") == 0)) || (strcmp(base, "semu") == 0)) {
         return "";
     }
-    return Strings_removePrefix(base, "schem-");
+    return Strings_removePrefix(base, "semu-");
 }
 
 int main(int argc, char** argv) {
     CliArgs* args = CliArgs_new(argc, argv);
     char* command = CliArgs_command(args);
-    char* project = CliArgs_valueAfter(args, "--project", Environment_get("SCHEMULATOR_PROJECT_DIR", "."));
+    char* project = CliArgs_valueAfter(args, "--project", Environment_get("SEMU_PROJECT_DIR", "."));
     char* programLauncher = launcherNameFromProgram(args->program);
     if (((int)strlen(programLauncher)) > 0) {
         int __btrc_ret_618 = launcherRunEmulator(project, programLauncher, launcherPassthroughArgs(args));
@@ -10174,7 +10174,7 @@ int main(int argc, char** argv) {
         return __btrc_ret_618;
     }
     if ((strcmp(command, "") == 0) || (strcmp(command, "manifest") == 0)) {
-        char* output = CliArgs_valueAfter(args, "--output", "schemulator.json");
+        char* output = CliArgs_valueAfter(args, "--output", "semu.json");
         writeGeneratedManifest(output);
         int __btrc_ret_619 = 0;
         if (args != NULL) {

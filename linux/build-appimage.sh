@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# Build Schemulator.AppImage.
+# Build Semu.AppImage.
 #
 # Inputs (from --arg, or defaults):
 #   --esde-appimage PATH   Path to an existing ES-DE AppImage (we'll extract it)
 #   --nix-package PATH     Optional Nix package output whose closure is bundled
-#   --output PATH          Where to write the resulting Schemulator-*.AppImage
+#   --output PATH          Where to write the resulting Semu-*.AppImage
 #   --arch aarch64|x86_64  Target arch (appimagetool needs to know)
 #
 # Requires `appimagetool` in PATH or alongside this script.
@@ -14,7 +14,7 @@ set -euo pipefail
 ARCH="$(uname -m)"
 OUTPUT=""
 ESDE_APPIMAGE=""
-NIX_PACKAGE="${SCHEMULATOR_NIX_PACKAGE:-}"
+NIX_PACKAGE="${SEMU_NIX_PACKAGE:-}"
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -30,11 +30,11 @@ done
 
 HERE="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)"
 [ -z "$ESDE_APPIMAGE" ] && ESDE_APPIMAGE="$HERE/../ES-DE.AppImage"
-[ -z "$OUTPUT" ] && OUTPUT="$HERE/../Schemulator-${ARCH}.AppImage"
+[ -z "$OUTPUT" ] && OUTPUT="$HERE/../Semu-${ARCH}.AppImage"
 
 if [ ! -f "$ESDE_APPIMAGE" ]; then
   echo "ES-DE AppImage not found at $ESDE_APPIMAGE" >&2
-  echo "Pass --esde-appimage <path> or place one alongside the schemulator dir." >&2
+  echo "Pass --esde-appimage <path> or place one alongside the semu dir." >&2
   exit 2
 fi
 
@@ -42,40 +42,40 @@ APPIMAGETOOL="${APPIMAGETOOL:-$(command -v appimagetool || true)}"
 [ -z "$APPIMAGETOOL" ] && APPIMAGETOOL="$HERE/../bin/appimagetool"
 [ -x "$APPIMAGETOOL" ] || { echo "appimagetool not found (try APPIMAGETOOL=...)" >&2; exit 3; }
 
-WORK="$(mktemp -d -t schemulator-appimage.XXXXXX)"
+WORK="$(mktemp -d -t semu-appimage.XXXXXX)"
 trap 'rm -rf "$WORK"' EXIT
-APPDIR="$WORK/Schemulator.AppDir"
+APPDIR="$WORK/Semu.AppDir"
 mkdir -p "$APPDIR"
 
-SCHEM_NIX_BINS=(
-  schemulator
+SEMU_NIX_BINS=(
+  semu
   bwrap
-  schem-retroarch
-  schem-dolphin
-  schem-ppsspp
-  schem-flycast
-  schem-gopher64
-  schem-melonds
-  schem-pcsx2
-  schem-cemu
-  schem-azahar
-  schem-ryujinx
-  schem-es-de
+  semu-retroarch
+  semu-dolphin
+  semu-ppsspp
+  semu-flycast
+  semu-gopher64
+  semu-melonds
+  semu-pcsx2
+  semu-cemu
+  semu-azahar
+  semu-ryujinx
+  semu-es-de
 )
 
-SCHEM_SHIM_BINS=(
-  schem-btrc
-  schem-flatpak
-  schem-retroarch
-  schem-dolphin
-  schem-ppsspp
-  schem-flycast
-  schem-gopher64
-  schem-melonds
-  schem-pcsx2
-  schem-cemu
-  schem-azahar
-  schem-ryujinx
+SEMU_SHIM_BINS=(
+  semu-btrc
+  semu-flatpak
+  semu-retroarch
+  semu-dolphin
+  semu-ppsspp
+  semu-flycast
+  semu-gopher64
+  semu-melonds
+  semu-pcsx2
+  semu-cemu
+  semu-azahar
+  semu-ryujinx
 )
 
 # Extract ES-DE's squashfs payload into the AppDir.
@@ -104,7 +104,7 @@ if [ -n "$NIX_PACKAGE" ]; then
 
   # Copy the routed launchers into usr/bin as real files. Their interpreters
   # and referenced emulator binaries live in the bundled /nix/store closure.
-	  for bin in "${SCHEM_NIX_BINS[@]}"; do
+	  for bin in "${SEMU_NIX_BINS[@]}"; do
 	    if [ -x "$NIX_PACKAGE/bin/$bin" ]; then
 	      cp "$NIX_PACKAGE/bin/$bin" "$APPDIR/usr/bin/$bin"
 	      chmod +x "$APPDIR/usr/bin/$bin"
@@ -116,25 +116,25 @@ if [ -n "$NIX_PACKAGE" ]; then
 	  fi
 	fi
 
-# Schemulator linux/ tree.
+# Semu linux/ tree.
 mkdir -p "$APPDIR/linux"
 cp -r "$HERE/." "$APPDIR/linux/"
 # Don't ship the build script itself inside.
 rm -f "$APPDIR/linux/build-appimage.sh"
 
-for bin in "${SCHEM_SHIM_BINS[@]}"; do
+for bin in "${SEMU_SHIM_BINS[@]}"; do
   if [ ! -x "$APPDIR/usr/bin/$bin" ] && [ -x "$HERE/bin/$bin" ]; then
     cp "$HERE/bin/$bin" "$APPDIR/usr/bin/$bin"
     chmod +x "$APPDIR/usr/bin/$bin"
   fi
 done
 
-# BTRC CLI. Source of truth is schemulator.btrc; this is the compiled runtime
+# BTRC CLI. Source of truth is semu.btrc; this is the compiled runtime
 # entry used by AppRun for deck/sync/config commands.
-if [ ! -x "$APPDIR/usr/bin/schemulator" ] && [ -x "$HERE/../build/schemulator" ]; then
-  cp "$HERE/../build/schemulator" "$APPDIR/usr/bin/schemulator"
-  chmod +x "$APPDIR/usr/bin/schemulator"
-elif [ ! -x "$APPDIR/usr/bin/schemulator" ]; then
+if [ ! -x "$APPDIR/usr/bin/semu" ] && [ -x "$HERE/../build/semu" ]; then
+  cp "$HERE/../build/semu" "$APPDIR/usr/bin/semu"
+  chmod +x "$APPDIR/usr/bin/semu"
+elif [ ! -x "$APPDIR/usr/bin/semu" ]; then
   echo "compiled BTRC CLI not found; run 'make btrc-build' or pass --nix-package" >&2
   exit 5
 fi
@@ -142,17 +142,17 @@ fi
 # AppRun, .desktop, icon at the AppDir root (appimagetool requirements).
 cp "$HERE/AppRun" "$APPDIR/AppRun"
 chmod +x "$APPDIR/AppRun"
-cp "$HERE/schemulator.desktop" "$APPDIR/schemulator.desktop"
+cp "$HERE/semu.desktop" "$APPDIR/semu.desktop"
 # Icon: borrow ES-DE's icon (a controller silhouette) as a stand-in.
 ESDE_ICON="$(find "$SQ" -maxdepth 2 \( -name '*.png' -o -name '*.svg' \) | head -1)"
 if [ -n "$ESDE_ICON" ]; then
   # Use ES-DE's icon as a stand-in; named to match the .desktop file.
   ext="${ESDE_ICON##*.}"
-  cp "$ESDE_ICON" "$APPDIR/schemulator.$ext"
+  cp "$ESDE_ICON" "$APPDIR/semu.$ext"
 else
   # Synthesize a tiny solid-color PNG fallback so appimagetool stops complaining.
   printf '\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x06\x00\x00\x00\x1f\x15\xc4\x89\x00\x00\x00\rIDATx\x9cc\xfc\xff\xff?\x03\x00\x06\xfd\x02\xfe\x00\x00\x00\x00IEND\xaeB`\x82' \
-    > "$APPDIR/schemulator.png"
+    > "$APPDIR/semu.png"
 fi
 
 # Pack.

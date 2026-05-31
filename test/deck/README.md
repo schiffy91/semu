@@ -1,11 +1,11 @@
 # SteamOS / Deck Verification
 
 `test/deck` is the Deck-like full-system verification layer. It is intentionally
-shell-thin; the state and behavior are declared in `schemulator.btrc`.
+shell-thin; the state and behavior are declared in `semu.btrc`.
 
 Generate the BTRC runtime on the host first, then run the thin guest scripts
 inside SteamOS, Bazzite, or the Arch VM. The guest path compiles
-`generated/schemulator.c`; it does not need the sibling `../btrc` checkout.
+`generated/semu.c`; it does not need the sibling `../btrc` checkout.
 
 ```sh
 make btrc-build
@@ -15,7 +15,7 @@ make deck-vm-sync
 Inside the guest:
 
 ```sh
-cd ~/schemulator
+cd ~/semu
 test/deck/provision.sh "$PWD"
 test/deck/verify-emulators.sh "$PWD"
 test/deck/verify-sync.sh "$PWD"

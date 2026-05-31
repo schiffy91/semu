@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-PROJECT_DIR="${1:-$HOME/schemulator}"
-SCHEM="${SCHEMULATOR_BIN:-$PROJECT_DIR/build/schemulator}"
-STRICT="${SCHEMULATOR_STRICT_INPUT:-0}"
+PROJECT_DIR="${1:-$HOME/semu}"
+SCHEM="${SEMU_BIN:-$PROJECT_DIR/build/semu}"
+STRICT="${SEMU_STRICT_INPUT:-0}"
 
 "$SCHEM" doctor --project "$PROJECT_DIR" | grep -F 'OK hotkeys: HKB+L1 load, HKB+R1 save, HKB+Start quit'
 "$SCHEM" doctor --project "$PROJECT_DIR" | grep -F 'OK right_trackpad: mouse'

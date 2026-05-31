@@ -1,5 +1,5 @@
 {
-  description = "Schemulator — deterministic emulation environment";
+  description = "Semu — deterministic emulation environment";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
@@ -53,12 +53,12 @@
       syncthingtray = if isLinux then pkgs.syncthingtray else null;
       bubblewrap = if isLinux then pkgs.bubblewrap else null;
       btrcpy = btrc.packages.${system}.btrcpy;
-      schemulatorCli = pkgs.callPackage ./nix/schemulator-cli.nix {
+      semuCli = pkgs.callPackage ./nix/semu-cli.nix {
         inherit (pkgs) syncthing curl;
         inherit syncthingtray bubblewrap;
       };
       routedEmulator = args: pkgs.callPackage ./nix/routed-emulator.nix (args // {
-        inherit schemulatorCli;
+        inherit semuCli;
       });
       routedEmulators = if isLinux then [
         (routedEmulator {
@@ -121,32 +121,32 @@
       es-de-steamdeck = pkgs.callPackage ./nix/es-de.nix { steamDeck = true; };
     } // {
       # --- Unified bundle ---
-      default = pkgs.callPackage ./nix/schemulator.nix {
+      default = pkgs.callPackage ./nix/semu.nix {
         inherit (pkgs) dolphin-emu ares;
         inherit azahar pcsx2 cemu ppsspp flycast gopher64 melonds ryujinx es-de syncthingtray bubblewrap;
         inherit (pkgs) syncthing curl;
-        inherit schemulatorCli routedEmulators;
+        inherit semuCli routedEmulators;
         retroarch-bare = retroarch;
       };
     } // pkgs.lib.optionalAttrs isLinux {
-      schem-retroarch = builtins.elemAt routedEmulators 0;
-      schem-dolphin = builtins.elemAt routedEmulators 1;
-      schem-ppsspp = builtins.elemAt routedEmulators 2;
-      schem-flycast = builtins.elemAt routedEmulators 3;
-      schem-gopher64 = builtins.elemAt routedEmulators 4;
-      schem-melonds = builtins.elemAt routedEmulators 5;
-      schem-pcsx2 = builtins.elemAt routedEmulators 6;
-      schem-cemu = builtins.elemAt routedEmulators 7;
-      schem-azahar = builtins.elemAt routedEmulators 8;
-      schem-ryujinx = builtins.elemAt routedEmulators 9;
-      schem-es-de = builtins.elemAt routedEmulators 10;
-      schem-routed-emulators = pkgs.symlinkJoin {
-        name = "schemulator-routed-emulators";
+      semu-retroarch = builtins.elemAt routedEmulators 0;
+      semu-dolphin = builtins.elemAt routedEmulators 1;
+      semu-ppsspp = builtins.elemAt routedEmulators 2;
+      semu-flycast = builtins.elemAt routedEmulators 3;
+      semu-gopher64 = builtins.elemAt routedEmulators 4;
+      semu-melonds = builtins.elemAt routedEmulators 5;
+      semu-pcsx2 = builtins.elemAt routedEmulators 6;
+      semu-cemu = builtins.elemAt routedEmulators 7;
+      semu-azahar = builtins.elemAt routedEmulators 8;
+      semu-ryujinx = builtins.elemAt routedEmulators 9;
+      semu-es-de = builtins.elemAt routedEmulators 10;
+      semu-routed-emulators = pkgs.symlinkJoin {
+        name = "semu-routed-emulators";
         paths = routedEmulators;
       };
     });
 
-    # `nix run` launches schemulator CLI
+    # `nix run` launches semu CLI
     apps = forAllSystems (system: let
       pkgs = mkPkgs system;
       isLinux = pkgs.stdenv.hostPlatform.isLinux;
@@ -157,26 +157,26 @@
     in {
       default = {
         type = "app";
-        program = "${self.packages.${system}.default}/bin/schemulator";
+        program = "${self.packages.${system}.default}/bin/semu";
       };
     } // pkgs.lib.optionalAttrs isLinux {
-      schem-retroarch = emulatorApp "schem-retroarch";
-      schem-dolphin = emulatorApp "schem-dolphin";
-      schem-ppsspp = emulatorApp "schem-ppsspp";
-      schem-flycast = emulatorApp "schem-flycast";
-      schem-gopher64 = emulatorApp "schem-gopher64";
-      schem-melonds = emulatorApp "schem-melonds";
-      schem-pcsx2 = emulatorApp "schem-pcsx2";
-      schem-cemu = emulatorApp "schem-cemu";
-      schem-azahar = emulatorApp "schem-azahar";
-      schem-ryujinx = emulatorApp "schem-ryujinx";
-      schem-es-de = emulatorApp "schem-es-de";
+      semu-retroarch = emulatorApp "semu-retroarch";
+      semu-dolphin = emulatorApp "semu-dolphin";
+      semu-ppsspp = emulatorApp "semu-ppsspp";
+      semu-flycast = emulatorApp "semu-flycast";
+      semu-gopher64 = emulatorApp "semu-gopher64";
+      semu-melonds = emulatorApp "semu-melonds";
+      semu-pcsx2 = emulatorApp "semu-pcsx2";
+      semu-cemu = emulatorApp "semu-cemu";
+      semu-azahar = emulatorApp "semu-azahar";
+      semu-ryujinx = emulatorApp "semu-ryujinx";
+      semu-es-de = emulatorApp "semu-es-de";
     });
 
     checks = forAllSystems (system: let
       pkgs = mkPkgs system;
       lib = pkgs.lib;
-      schemulatorCli = pkgs.callPackage ./nix/schemulator-cli.nix {
+      semuCli = pkgs.callPackage ./nix/semu-cli.nix {
         syncthing = null;
         syncthingtray = null;
         curl = null;
@@ -330,11 +330,11 @@
       mkMockEmulator = commandName: pkgs.writeShellApplication {
         name = commandName;
         text = ''
-          : "''${SCHEMULATOR_CAPTURE:?}"
+          : "''${SEMU_CAPTURE:?}"
           {
             printf 'COMMAND=%s\n' "''${0##*/}"
-            printf 'SCHEMULATOR_PROJECT_DIR=%s\n' "$SCHEMULATOR_PROJECT_DIR"
-            printf 'SCHEMULATOR_ROMS_DIR=%s\n' "$SCHEMULATOR_ROMS_DIR"
+            printf 'SEMU_PROJECT_DIR=%s\n' "$SEMU_PROJECT_DIR"
+            printf 'SEMU_ROMS_DIR=%s\n' "$SEMU_ROMS_DIR"
             printf 'HOME=%s\n' "$HOME"
             printf 'XDG_CONFIG_HOME=%s\n' "$XDG_CONFIG_HOME"
             printf 'XDG_DATA_HOME=%s\n' "$XDG_DATA_HOME"
@@ -342,20 +342,20 @@
             for arg in "$@"; do
               printf 'ARG=%s\n' "$arg"
             done
-          } > "$SCHEMULATOR_CAPTURE"
+          } > "$SEMU_CAPTURE"
         '';
       };
       mkMockRoutedEmulator = spec:
         pkgs.callPackage ./nix/routed-emulator.nix ({
           inherit (spec) emulatorName;
           emulatorPackage = mkMockEmulator spec.commandName;
-          inherit schemulatorCli;
+          inherit semuCli;
         } // lib.optionalAttrs (spec ? executableName) {
           inherit (spec) executableName;
         });
       mkRoutedEmulatorCheck = spec: let
         mockRoutedEmulator = mkMockRoutedEmulator spec;
-      in lib.nameValuePair "routed-emulator-${spec.emulatorName}-mock" (pkgs.runCommand "schemulator-routed-emulator-${spec.emulatorName}-mock-check" {
+      in lib.nameValuePair "routed-emulator-${spec.emulatorName}-mock" (pkgs.runCommand "semu-routed-emulator-${spec.emulatorName}-mock-check" {
         nativeBuildInputs = [ pkgs.coreutils pkgs.gnugrep ];
       } ''
         project="$TMPDIR/project-${spec.emulatorName}"
@@ -363,16 +363,16 @@
         mkdir -p "$project"
         ${spec.seedScript}
 
-        SCHEMULATOR_PROJECT_DIR="$project" \
-        SCHEMULATOR_CAPTURE="$capture" \
-        ${mockRoutedEmulator}/bin/schem-${spec.emulatorName} \
+        SEMU_PROJECT_DIR="$project" \
+        SEMU_CAPTURE="$capture" \
+        ${mockRoutedEmulator}/bin/semu-${spec.emulatorName} \
           "roms/${spec.emulatorName} game.rom" \
           "--sentinel=${spec.emulatorName}"
 
-        state="$project/.schemulator/appimage-state/${spec.emulatorName}"
+        state="$project/.semu/appimage-state/${spec.emulatorName}"
         grep -F "COMMAND=${spec.commandName}" "$capture"
-        grep -F "SCHEMULATOR_PROJECT_DIR=$project" "$capture"
-        grep -F "SCHEMULATOR_ROMS_DIR=$project/ES-DE/ES-DE/ROMs" "$capture"
+        grep -F "SEMU_PROJECT_DIR=$project" "$capture"
+        grep -F "SEMU_ROMS_DIR=$project/ES-DE/ES-DE/ROMs" "$capture"
         grep -F "HOME=$state/home" "$capture"
         grep -F "XDG_CONFIG_HOME=$state/config" "$capture"
         grep -F "XDG_DATA_HOME=$state/data" "$capture"
@@ -385,7 +385,7 @@
       '');
       routedEmulatorChecks = lib.listToAttrs (map mkRoutedEmulatorCheck routedEmulatorMatrix);
     in routedEmulatorChecks // {
-      routed-emulator-mock = pkgs.runCommand "schemulator-routed-emulator-mock-check" {} ''
+      routed-emulator-mock = pkgs.runCommand "semu-routed-emulator-mock-check" {} ''
         ${lib.concatMapStringsSep "\n" (check: "test -e ${check}") (lib.attrValues routedEmulatorChecks)}
         touch "$out"
       '';

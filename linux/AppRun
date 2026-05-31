@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Schemulator AppImage entry point.
+# Semu AppImage entry point.
 #
 # Resolves $APPDIR (set by the AppImage runtime), wires ES-DE's custom_systems
 # at the user's ~/ES-DE/ to point at the bundled bwrap launchers, and launches
@@ -10,14 +10,14 @@ set -e
 APPDIR="${APPDIR:-$(dirname "$(readlink -f "$0")")}"
 export PATH="$APPDIR/usr/bin:${PATH:-}"
 
-if [ -d "$APPDIR/nix/store" ] && [ -z "${SCHEMULATOR_NIX_STORE_MOUNTED:-}" ]; then
-  BWRAP="${SCHEMULATOR_BWRAP:-$(command -v bwrap || true)}"
+if [ -d "$APPDIR/nix/store" ] && [ -z "${SEMU_NIX_STORE_MOUNTED:-}" ]; then
+  BWRAP="${SEMU_BWRAP:-$(command -v bwrap || true)}"
   if [ -z "$BWRAP" ]; then
-    echo "Schemulator: bundled Nix store needs bubblewrap to mount /nix/store." >&2
+    echo "Semu: bundled Nix store needs bubblewrap to mount /nix/store." >&2
     echo "Install bubblewrap or use the Flatpak launcher fallback." >&2
     exit 127
   fi
-  export SCHEMULATOR_NIX_STORE_MOUNTED=1
+  export SEMU_NIX_STORE_MOUNTED=1
   exec "$BWRAP" \
     --dev-bind / / \
     --tmpfs /nix \
@@ -25,75 +25,75 @@ if [ -d "$APPDIR/nix/store" ] && [ -z "${SCHEMULATOR_NIX_STORE_MOUNTED:-}" ]; th
     "$APPDIR/AppRun" "$@"
 fi
 
-SCHEM_LINUX="$APPDIR/linux"
-SCHEM_BIN="$SCHEM_LINUX/bin"
-SCHEM_CLI="${SCHEMULATOR_CLI:-$APPDIR/usr/bin/schemulator}"
-export SCHEMULATOR_ASSET_ROOT="${SCHEMULATOR_ASSET_ROOT:-$APPDIR}"
-if [ -x "$APPDIR/usr/bin/schem-retroarch" ]; then
-  export SCHEMULATOR_LAUNCHER_BIN="${SCHEMULATOR_LAUNCHER_BIN:-$APPDIR/usr/bin}"
+SEMU_LINUX="$APPDIR/linux"
+SEMU_BIN="$SEMU_LINUX/bin"
+SEMU_CLI="${SEMU_CLI:-$APPDIR/usr/bin/semu}"
+export SEMU_ASSET_ROOT="${SEMU_ASSET_ROOT:-$APPDIR}"
+if [ -x "$APPDIR/usr/bin/semu-retroarch" ]; then
+  export SEMU_LAUNCHER_BIN="${SEMU_LAUNCHER_BIN:-$APPDIR/usr/bin}"
 else
-  export SCHEMULATOR_LAUNCHER_BIN="${SCHEMULATOR_LAUNCHER_BIN:-$SCHEM_BIN}"
+  export SEMU_LAUNCHER_BIN="${SEMU_LAUNCHER_BIN:-$SEMU_BIN}"
 fi
 
 # Where the user's emulator state lives (cloud-synced via Syncthing/Google
 # Drive/whatever the user wires up). Default to a sibling of ROMs, but allow
 # explicit override.
-if [ -z "${SCHEMULATOR_PROJECT_DIR:-}" ]; then
+if [ -z "${SEMU_PROJECT_DIR:-}" ]; then
   for candidate in \
-      "$HOME/schemulator" \
-      "$HOME/Documents/schemulator" \
+      "$HOME/semu" \
+      "$HOME/Documents/semu" \
       "$HOME/Documents/Emulation" \
       "$HOME/Emulation" \
       "$HOME/Games/Emulation"; do
-    if [ -d "$candidate" ] && { [ -f "$candidate/schemulator.json" ] || \
+    if [ -d "$candidate" ] && { [ -f "$candidate/semu.json" ] || \
          [ -f "$candidate/ES-DE/custom_systems/es_systems.xml" ]; }; then
-      export SCHEMULATOR_PROJECT_DIR="$candidate"
+      export SEMU_PROJECT_DIR="$candidate"
       break
     fi
   done
 fi
-if [ -z "${SCHEMULATOR_PROJECT_DIR:-}" ]; then
-  echo "Schemulator: no project dir found. Set SCHEMULATOR_PROJECT_DIR to point" >&2
-  echo "  at your cloud-synced emulator directory (the one with schemulator.json)." >&2
+if [ -z "${SEMU_PROJECT_DIR:-}" ]; then
+  echo "Semu: no project dir found. Set SEMU_PROJECT_DIR to point" >&2
+  echo "  at your cloud-synced emulator directory (the one with semu.json)." >&2
   exit 1
 fi
 
-if [ ! -x "$SCHEM_CLI" ] && [ "${SCHEMULATOR_ALLOW_PROJECT_CLI:-0}" = "1" ] && \
-   [ -x "$SCHEMULATOR_PROJECT_DIR/build/schemulator" ]; then
-  SCHEM_CLI="$SCHEMULATOR_PROJECT_DIR/build/schemulator"
+if [ ! -x "$SEMU_CLI" ] && [ "${SEMU_ALLOW_PROJECT_CLI:-0}" = "1" ] && \
+   [ -x "$SEMU_PROJECT_DIR/build/semu" ]; then
+  SEMU_CLI="$SEMU_PROJECT_DIR/build/semu"
 fi
-export SCHEMULATOR_BIN="$SCHEM_CLI"
+export SEMU_BIN="$SEMU_CLI"
 
 case "${1:-}" in
   deck|sync|config|doctor|bootstrap|keymap|screenshot|manifest|lifecycle|sandbox|launcher|apprun|steam-input|e2e)
-    if [ ! -x "$SCHEM_CLI" ]; then
-      echo "Schemulator: BTRC CLI not found at $SCHEM_CLI" >&2
+    if [ ! -x "$SEMU_CLI" ]; then
+      echo "Semu: BTRC CLI not found at $SEMU_CLI" >&2
       exit 2
     fi
-    exec "$SCHEM_CLI" "$@" --project "$SCHEMULATOR_PROJECT_DIR"
+    exec "$SEMU_CLI" "$@" --project "$SEMU_PROJECT_DIR"
     ;;
 esac
 
-if [ ! -x "$SCHEM_CLI" ]; then
-  echo "Schemulator: bundled BTRC CLI not found at $SCHEM_CLI" >&2
-  echo "Rebuild the AppImage with linux/build-appimage.sh or set SCHEMULATOR_CLI." >&2
+if [ ! -x "$SEMU_CLI" ]; then
+  echo "Semu: bundled BTRC CLI not found at $SEMU_CLI" >&2
+  echo "Rebuild the AppImage with linux/build-appimage.sh or set SEMU_CLI." >&2
   exit 2
 fi
-eval "$("$SCHEM_CLI" config env --project "$SCHEMULATOR_PROJECT_DIR")"
+eval "$("$SEMU_CLI" config env --project "$SEMU_PROJECT_DIR")"
 
-export SCHEMULATOR_ROMS_DIR="${SCHEMULATOR_ROMS_DIR:-$SCHEMULATOR_PROJECT_DIR/ES-DE/ES-DE/ROMs}"
-"$SCHEM_CLI" apprun prepare --project "$SCHEMULATOR_PROJECT_DIR" >/dev/null
+export SEMU_ROMS_DIR="${SEMU_ROMS_DIR:-$SEMU_PROJECT_DIR/ES-DE/ES-DE/ROMs}"
+"$SEMU_CLI" apprun prepare --project "$SEMU_PROJECT_DIR" >/dev/null
 
 # Surface the AppArmor userns gotcha early instead of letting bwrap fail.
 # Do not modify host sysctls from AppRun; setup/doctor reports the remediation.
 if [ -r /proc/sys/kernel/apparmor_restrict_unprivileged_userns ] && \
    [ "$(cat /proc/sys/kernel/apparmor_restrict_unprivileged_userns)" = "1" ]; then
   cat >&2 <<'WARN'
-Schemulator: unprivileged user namespaces are still restricted on this host.
+Semu: unprivileged user namespaces are still restricted on this host.
   bwrap (the emulator sandbox) will fail until you run:
       sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
       echo 'kernel.apparmor_restrict_unprivileged_userns=0' | \
-          sudo tee /etc/sysctl.d/99-schemulator-userns.conf
+          sudo tee /etc/sysctl.d/99-semu-userns.conf
   See linux/README.md for the rationale.
 WARN
 fi
@@ -143,9 +143,9 @@ fi
 
 # Force ES-DE to a sane resolution if running under virgl. Skip if user
 # already passed --resolution.
-SCHEM_ESDE_ARGS=()
+SEMU_ESDE_ARGS=()
 if [[ ! " $* " =~ " --resolution " ]]; then
-  SCHEM_ESDE_ARGS+=( --resolution 1280 800 )
+  SEMU_ESDE_ARGS+=( --resolution 1280 800 )
 fi
 
 # ES-DE picks GLX (X11) when DISPLAY is set, even though it would prefer
@@ -153,4 +153,4 @@ fi
 # GL 2.1 — the same incompatibility virgl has. Force Wayland.
 unset DISPLAY
 
-exec "$APPDIR/usr/bin/es-de" "${SCHEM_ESDE_ARGS[@]}" "$@"
+exec "$APPDIR/usr/bin/es-de" "${SEMU_ESDE_ARGS[@]}" "$@"

@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-PROJECT_DIR="${1:-$HOME/schemulator}"
-ROMS_DIR="${SCHEMULATOR_ROMS_DIR:-$PROJECT_DIR/ES-DE/ES-DE/ROMs}"
+PROJECT_DIR="${1:-$HOME/semu}"
+ROMS_DIR="${SEMU_ROMS_DIR:-$PROJECT_DIR/ES-DE/ES-DE/ROMs}"
 
 cd "$PROJECT_DIR"
 
@@ -21,10 +21,10 @@ if command -v flatpak >/dev/null 2>&1; then
 fi
 
 mkdir -p "$PROJECT_DIR/build"
-if command -v cc >/dev/null 2>&1 && [ -f "$PROJECT_DIR/generated/schemulator.c" ]; then
-  cc "$PROJECT_DIR/generated/schemulator.c" -std=c11 -D_DEFAULT_SOURCE -D_XOPEN_SOURCE=700 -o "$PROJECT_DIR/build/schemulator" -lm
+if command -v cc >/dev/null 2>&1 && [ -f "$PROJECT_DIR/generated/semu.c" ]; then
+  cc "$PROJECT_DIR/generated/semu.c" -std=c11 -D_DEFAULT_SOURCE -D_XOPEN_SOURCE=700 -o "$PROJECT_DIR/build/semu" -lm
 fi
 
-export SCHEMULATOR_BIN="$PROJECT_DIR/build/schemulator"
-"$SCHEMULATOR_BIN" deck install --project "$PROJECT_DIR" --roms "$ROMS_DIR"
-"$SCHEMULATOR_BIN" sync setup --project "$PROJECT_DIR"
+export SEMU_BIN="$PROJECT_DIR/build/semu"
+"$SEMU_BIN" deck install --project "$PROJECT_DIR" --roms "$ROMS_DIR"
+"$SEMU_BIN" sync setup --project "$PROJECT_DIR"

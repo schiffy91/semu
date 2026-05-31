@@ -1,7 +1,7 @@
 # FOR_CLAUDE.md
 
 This file is a handoff for Claude Code or another coding agent continuing work
-on Schemulator.
+on Semu.
 
 ## User Intent
 
@@ -26,10 +26,10 @@ The explicit direction from the user:
 
 ## Critical Constraints
 
-- Canonical runtime source: `schemulator.btrc`.
+- Canonical runtime source: `semu.btrc`.
 - Generated artifacts:
-  - `schemulator.json`
-  - `generated/schemulator.c`
+  - `semu.json`
+  - `generated/semu.c`
 - Editable declarative user files:
   - `keymaps/steam_deck.skm`
   - `sync/sync.json`
@@ -41,15 +41,15 @@ The explicit direction from the user:
   `generate_find_rules.py` were intentionally removed.
 - Be careful with this worktree. It may already be dirty. Do not revert user
   changes or broad unrelated modifications.
-- Schemulator has a `btrc` flake input and a local `.#btrcpy` wrapper package.
+- Semu has a `btrc` flake input and a local `.#btrcpy` wrapper package.
   `make btrc-build` defaults to the flake-pinned compiler. Use
   `BTRC_FLAKE=path:/absolute/path/to/btrc` or `BTRC_USE_FLAKE=0` only when
   testing unpublished local compiler changes. Normal Nix package builds compile
-  `generated/schemulator.c` and do not need the BTRC compiler checkout.
+  `generated/semu.c` and do not need the BTRC compiler checkout.
 
 ## Current Architecture
 
-`schemulator.btrc` owns:
+`semu.btrc` owns:
 
 - Manifest generation.
 - ES-DE system catalog and command rendering.
@@ -69,7 +69,7 @@ The explicit direction from the user:
 Nix owns:
 
 - Emulator packages.
-- `schemulator` CLI package.
+- `semu` CLI package.
 - Routed emulator wrapper packages.
 - Full default bundle.
 - NixOS module.
@@ -84,15 +84,15 @@ Linux/AppImage glue owns:
 
 | File | Role |
 |---|---|
-| `schemulator.btrc` | Main runtime implementation. |
-| `schemulator.json` | Generated manifest for UI/runtime/tooling. |
-| `generated/schemulator.c` | Generated C snapshot for Nix builds. |
+| `semu.btrc` | Main runtime implementation. |
+| `semu.json` | Generated manifest for UI/runtime/tooling. |
+| `generated/semu.c` | Generated C snapshot for Nix builds. |
 | `keymaps/steam_deck.skm` | Editable Steam Deck keymap source. |
 | `sync/sync.json` | Editable Syncthing policy. |
 | `verification/screenshots.json` | Editable screenshot hook policy. |
 | `flake.nix` | Nix package/app/check outputs. |
-| `nix/schemulator-cli.nix` | BTRC CLI package. |
-| `nix/schemulator.nix` | Full bundle package. |
+| `nix/semu-cli.nix` | BTRC CLI package. |
+| `nix/semu.nix` | Full bundle package. |
 | `nix/routed-emulator.nix` | Per-emulator state-routing wrapper. |
 | `linux/AppRun` | AppImage entrypoint. |
 | `linux/build-appimage.sh` | AppImage assembly script. |
@@ -115,20 +115,20 @@ Tests now target the BTRC manifest/bootstrap/doctor/keymap/sync/AppImage paths
 instead of the old setup/symlink manager.
 
 Packaging was updated so Nix no longer copies `setup.json` or `symlinks.json`.
-`linux/AppRun` now discovers projects by `schemulator.json` or ES-DE generated
+`linux/AppRun` now discovers projects by `semu.json` or ES-DE generated
 files, not `setup.json`.
 
 ## BTRC Repo Status
 
 During this handoff, the BTRC compiler/stdlib import-visibility work was pushed
-to `schiffy91/btrc` and Schemulator was updated to consume BTRC through its
-flake input. Schemulator now has a `btrc` flake input and a `.#btrcpy` package,
+to `schiffy91/btrc` and Semu was updated to consume BTRC through its
+flake input. Semu now has a `btrc` flake input and a `.#btrcpy` package,
 and `make btrc-build` uses the flake-pinned compiler by default. Override with
 `BTRC_FLAKE=path:/absolute/path/to/btrc` or `BTRC_USE_FLAKE=0` only when testing
 unpublished compiler changes.
 
 Submodule recommendation: avoid adding BTRC as a submodule for now. Generated C
-keeps normal Schemulator builds independent from the compiler checkout, and a
+keeps normal Semu builds independent from the compiler checkout, and a
 submodule would add nested-git friction for Steam Deck users. Prefer the pinned
 flake input. Revisit a submodule only if offline compiler development inside
 this repo becomes a hard requirement.
@@ -140,8 +140,8 @@ this repo becomes a hard requirement.
 - Consolidated ES-DE settings XML path rendering.
 - Added `syncFolderIds()` and reused it across sync setup/status/doctor loops.
 - Made launcher doctor checks loop over `linuxLauncherNames()`.
-- Added `SCHEMULATOR_FLATPAK_X11` as the preferred env var while keeping
-  `SCHEM_FLATPAK_X11` as fallback compatibility.
+- Added `SEMU_FLATPAK_X11` as the preferred env var while keeping
+  `SEMU_FLATPAK_X11` as fallback compatibility.
 - Kept `std.map` import because the generated JSON support still needs it even
   though map usage is not obvious at source level.
 
@@ -151,10 +151,10 @@ Use these from the repo root:
 
 ```sh
 make btrc-build
-build/schemulator manifest --output schemulator.json
-build/schemulator screenshot setup --project .
+build/semu manifest --output semu.json
+build/semu screenshot setup --project .
 python3 -m pytest test/ -v
-build/schemulator e2e all
+build/semu e2e all
 bash test/appimage/smoke.sh
 make nix-e2e
 nix build .#default --print-build-logs
@@ -219,7 +219,7 @@ UI:
   - `sync/sync.json`
   - `verification/screenshots.json`
   - ROM location and BIOS status
-- Build UI against `schemulator.json` rather than duplicating catalog data.
+- Build UI against `semu.json` rather than duplicating catalog data.
 
 Python:
 
@@ -252,7 +252,7 @@ project values simple BTRC code over cleverness.
 
 ## Style Guidance
 
-For `schemulator.btrc`:
+For `semu.btrc`:
 
 - Prefer existing helper patterns.
 - Keep data declarations close to their renderers.
@@ -280,8 +280,8 @@ Do not bring back:
 - per-emulator `symlinks.json`
 - `generate_find_rules.py`
 - Python as a Linux/Nix/AppImage runtime dependency
-- hidden mutable config that is not represented in `schemulator.btrc`,
-  `schemulator.json`, `keymaps/steam_deck.skm`, `sync/sync.json`, or
+- hidden mutable config that is not represented in `semu.btrc`,
+  `semu.json`, `keymaps/steam_deck.skm`, `sync/sync.json`, or
   `verification/screenshots.json`
 
 ## Suggested Next Tasks
@@ -291,7 +291,7 @@ Do not bring back:
 2. Port or retire `decrypt3ds.py` if strict zero-Python outside tests is still a
    hard requirement.
 3. Build a small config UI that edits `keymaps/steam_deck.skm`, `sync/sync.json`,
-   screenshot hooks, ROM path, and BIOS status using `schemulator.json`.
+   screenshot hooks, ROM path, and BIOS status using `semu.json`.
 4. Complete a real Steam Deck Game Mode pass and attach screenshots under
    `ES-DE/ES-DE/screenshots/verification/`.
 5. Complete a real AppImage pass on SteamOS.

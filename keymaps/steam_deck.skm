@@ -1,4 +1,4 @@
-# Schemulator Steam Deck keymap
+# Semu Steam Deck keymap
 action ui.open = Ctrl+O
 action ui.pause = Ctrl+P
 action ui.screenshot = Ctrl+X

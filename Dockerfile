@@ -5,4 +5,4 @@ RUN echo 'DisableSandbox' >> /etc/pacman.conf && \
     sed -i 's/^SigLevel.*/SigLevel = Never/' /etc/pacman.conf && \
     pacman -Syu --noconfirm python python-pycryptodome python-pytest git && \
     pacman -Scc --noconfirm
-WORKDIR /schemulator
+WORKDIR /semu
