@@ -23,7 +23,7 @@
       isLinux = pkgs.stdenv.hostPlatform.isLinux;
       isDarwin = pkgs.stdenv.hostPlatform.isDarwin;
       ryujinx = pkgs.ryubing;
-      es-de = pkgs.callPackage ./nix/es-de.nix {};
+      es-de = pkgs.callPackage ./packaging/nix/es-de.nix {};
       retroarch = if isLinux then
         (pkgs.retroarch.withCores (cores: [
           cores.gambatte       # gb, gbc
@@ -39,25 +39,25 @@
           cores.flycast        # dreamcast
           cores.dolphin        # gc, wii (alternative to standalone)
         ]))
-      else pkgs.callPackage ./nix/retroarch-mac.nix {};
+      else pkgs.callPackage ./packaging/nix/retroarch-mac.nix {};
       pcsx2 = if isLinux then pkgs.pcsx2
-              else pkgs.callPackage ./nix/pcsx2-mac.nix {};
+              else pkgs.callPackage ./packaging/nix/pcsx2-mac.nix {};
       cemu = if isLinux then pkgs.cemu
-             else pkgs.callPackage ./nix/cemu-mac.nix {};
+             else pkgs.callPackage ./packaging/nix/cemu-mac.nix {};
       ppsspp = if isLinux then pkgs.ppsspp else null;
       flycast = if isLinux then pkgs.flycast else null;
       gopher64 = if isLinux then pkgs.gopher64 else null;
       melonds = if isLinux then pkgs.melonds else null;
-      azahar = if isDarwin then pkgs.callPackage ./nix/azahar-mac.nix {}
+      azahar = if isDarwin then pkgs.callPackage ./packaging/nix/azahar-mac.nix {}
                else pkgs.azahar;
       syncthingtray = if isLinux then pkgs.syncthingtray else null;
       bubblewrap = if isLinux then pkgs.bubblewrap else null;
       btrcpy = btrc.packages.${system}.btrcpy;
-      semuCli = pkgs.callPackage ./nix/semu-cli.nix {
+      semuCli = pkgs.callPackage ./packaging/nix/semu-cli.nix {
         inherit (pkgs) syncthing curl;
         inherit syncthingtray bubblewrap;
       };
-      routedEmulator = args: pkgs.callPackage ./nix/routed-emulator.nix (args // {
+      routedEmulator = args: pkgs.callPackage ./packaging/nix/routed-emulator.nix (args // {
         inherit semuCli;
       });
       routedEmulators = if isLinux then [
@@ -118,10 +118,10 @@
       inherit azahar ryujinx es-de retroarch pcsx2 cemu;
     } // pkgs.lib.optionalAttrs isLinux {
       inherit ppsspp flycast gopher64 melonds;
-      es-de-steamdeck = pkgs.callPackage ./nix/es-de.nix { steamDeck = true; };
+      es-de-steamdeck = pkgs.callPackage ./packaging/nix/es-de.nix { steamDeck = true; };
     } // {
       # --- Unified bundle ---
-      default = pkgs.callPackage ./nix/semu.nix {
+      default = pkgs.callPackage ./packaging/nix/semu.nix {
         inherit (pkgs) dolphin-emu ares;
         inherit azahar pcsx2 cemu ppsspp flycast gopher64 melonds ryujinx es-de syncthingtray bubblewrap;
         inherit (pkgs) syncthing curl;
@@ -176,7 +176,7 @@
     checks = forAllSystems (system: let
       pkgs = mkPkgs system;
       lib = pkgs.lib;
-      semuCli = pkgs.callPackage ./nix/semu-cli.nix {
+      semuCli = pkgs.callPackage ./packaging/nix/semu-cli.nix {
         syncthing = null;
         syncthingtray = null;
         curl = null;
@@ -188,9 +188,9 @@
           commandName = "retroarch";
           executableName = "retroarch";
           seedScript = ''
-            mkdir -p "$project/RetroArch/config"
-            printf 'seed input\n' > "$project/RetroArch/config/input.cfg"
-            printf 'seed retroarch\n' > "$project/RetroArch/retroarch.cfg"
+            mkdir -p "$project/emulators/profiles/RetroArch/config"
+            printf 'seed input\n' > "$project/emulators/profiles/RetroArch/config/input.cfg"
+            printf 'seed retroarch\n' > "$project/emulators/profiles/RetroArch/retroarch.cfg"
           '';
           stateAssertions = ''
             grep -F 'ARG=--config' "$capture"
@@ -206,9 +206,9 @@
           commandName = "dolphin-emu";
           executableName = "dolphin-emu";
           seedScript = ''
-            mkdir -p "$project/Dolphin/config" "$project/Dolphin/data"
-            printf 'seed dolphin config\n' > "$project/Dolphin/config/settings.ini"
-            printf 'seed dolphin data\n' > "$project/Dolphin/data/memory-card.raw"
+            mkdir -p "$project/emulators/profiles/Dolphin/config" "$project/emulators/profiles/Dolphin/data"
+            printf 'seed dolphin config\n' > "$project/emulators/profiles/Dolphin/config/settings.ini"
+            printf 'seed dolphin data\n' > "$project/emulators/profiles/Dolphin/data/memory-card.raw"
           '';
           stateAssertions = ''
             test -f "$state/config/dolphin-emu/settings.ini"
@@ -221,9 +221,9 @@
           emulatorName = "ppsspp";
           commandName = "ppsspp";
           seedScript = ''
-            mkdir -p "$project/PPSSPP/config" "$project/PPSSPP/data"
-            printf 'seed ppsspp config\n' > "$project/PPSSPP/config/ppsspp.ini"
-            printf 'seed ppsspp data\n' > "$project/PPSSPP/data/save.bin"
+            mkdir -p "$project/emulators/profiles/PPSSPP/config" "$project/emulators/profiles/PPSSPP/data"
+            printf 'seed ppsspp config\n' > "$project/emulators/profiles/PPSSPP/config/ppsspp.ini"
+            printf 'seed ppsspp data\n' > "$project/emulators/profiles/PPSSPP/data/save.bin"
           '';
           stateAssertions = ''
             test -f "$state/config/ppsspp/ppsspp.ini"
@@ -236,9 +236,9 @@
           emulatorName = "flycast";
           commandName = "flycast";
           seedScript = ''
-            mkdir -p "$project/Flycast/config" "$project/Flycast/data"
-            printf 'seed flycast config\n' > "$project/Flycast/config/emu.cfg"
-            printf 'seed flycast data\n' > "$project/Flycast/data/flash.bin"
+            mkdir -p "$project/emulators/profiles/Flycast/config" "$project/emulators/profiles/Flycast/data"
+            printf 'seed flycast config\n' > "$project/emulators/profiles/Flycast/config/emu.cfg"
+            printf 'seed flycast data\n' > "$project/emulators/profiles/Flycast/data/flash.bin"
           '';
           stateAssertions = ''
             test -f "$state/config/flycast/emu.cfg"
@@ -251,8 +251,8 @@
           emulatorName = "gopher64";
           commandName = "gopher64";
           seedScript = ''
-            mkdir -p "$project/Gopher64/config"
-            printf 'seed gopher64 config\n' > "$project/Gopher64/config/settings.toml"
+            mkdir -p "$project/emulators/profiles/Gopher64/config"
+            printf 'seed gopher64 config\n' > "$project/emulators/profiles/Gopher64/config/settings.toml"
           '';
           stateAssertions = ''
             test -f "$state/config/gopher64/settings.toml"
@@ -264,9 +264,9 @@
           commandName = "melonDS";
           executableName = "melonDS";
           seedScript = ''
-            mkdir -p "$project/melonDS/config" "$project/melonDS/data"
-            printf 'seed melonds config\n' > "$project/melonDS/config/melonDS.ini"
-            printf 'seed melonds data\n' > "$project/melonDS/data/firmware.bin"
+            mkdir -p "$project/emulators/profiles/melonDS/config" "$project/emulators/profiles/melonDS/data"
+            printf 'seed melonds config\n' > "$project/emulators/profiles/melonDS/config/melonDS.ini"
+            printf 'seed melonds data\n' > "$project/emulators/profiles/melonDS/data/firmware.bin"
           '';
           stateAssertions = ''
             test -f "$state/config/melonDS/melonDS.ini"
@@ -279,8 +279,8 @@
           emulatorName = "pcsx2";
           commandName = "pcsx2-qt";
           seedScript = ''
-            mkdir -p "$project/PCSX2/config"
-            printf 'seed pcsx2 config\n' > "$project/PCSX2/config/PCSX2.ini"
+            mkdir -p "$project/emulators/profiles/PCSX2/config"
+            printf 'seed pcsx2 config\n' > "$project/emulators/profiles/PCSX2/config/PCSX2.ini"
           '';
           stateAssertions = ''
             test -f "$state/config/PCSX2/PCSX2.ini"
@@ -291,9 +291,9 @@
           emulatorName = "cemu";
           commandName = "cemu";
           seedScript = ''
-            mkdir -p "$project/Cemu/config" "$project/Cemu/data"
-            printf 'seed cemu config\n' > "$project/Cemu/config/settings.xml"
-            printf 'seed cemu data\n' > "$project/Cemu/data/mlc.bin"
+            mkdir -p "$project/emulators/profiles/Cemu/config" "$project/emulators/profiles/Cemu/data"
+            printf 'seed cemu config\n' > "$project/emulators/profiles/Cemu/config/settings.xml"
+            printf 'seed cemu data\n' > "$project/emulators/profiles/Cemu/data/mlc.bin"
           '';
           stateAssertions = ''
             test -f "$state/config/Cemu/settings.xml"
@@ -306,8 +306,8 @@
           emulatorName = "azahar";
           commandName = "azahar";
           seedScript = ''
-            mkdir -p "$project/Azahar/data"
-            printf 'seed azahar data\n' > "$project/Azahar/data/qt-config.ini"
+            mkdir -p "$project/emulators/profiles/Azahar/data"
+            printf 'seed azahar data\n' > "$project/emulators/profiles/Azahar/data/qt-config.ini"
           '';
           stateAssertions = ''
             test -f "$state/data/azahar-emu/qt-config.ini"
@@ -318,8 +318,8 @@
           emulatorName = "ryujinx";
           commandName = "Ryujinx";
           seedScript = ''
-            mkdir -p "$project/Ryujinx/config"
-            printf 'seed ryujinx config\n' > "$project/Ryujinx/config/Config.json"
+            mkdir -p "$project/emulators/profiles/Ryujinx/config"
+            printf 'seed ryujinx config\n' > "$project/emulators/profiles/Ryujinx/config/Config.json"
           '';
           stateAssertions = ''
             test -f "$state/config/Ryujinx/Config.json"
@@ -346,7 +346,7 @@
         '';
       };
       mkMockRoutedEmulator = spec:
-        pkgs.callPackage ./nix/routed-emulator.nix ({
+        pkgs.callPackage ./packaging/nix/routed-emulator.nix ({
           inherit (spec) emulatorName;
           emulatorPackage = mkMockEmulator spec.commandName;
           inherit semuCli;
@@ -392,7 +392,7 @@
     });
 
     # NixOS module
-    nixosModules.default = import ./nix/module.nix;
+    nixosModules.default = import ./packaging/nix/module.nix;
 
     # Dev shell
     devShells = forAllSystems (system: let

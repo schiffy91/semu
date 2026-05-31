@@ -782,7 +782,11 @@ string manifestPaths() {
         jsonStrField("project_custom_systems", "${project}/ES-DE/custom_systems"),
         jsonStrField("settings", "${paths.runtime_content_root}/settings"),
         jsonStrField("project_settings", "${project}/ES-DE"),
-        jsonStrField("keymaps", "${project}/keymaps"),
+        jsonStrField("keymaps", "${project}/input/keymaps"),
+        jsonStrField("steam_input", "${project}/input/steam-input"),
+        jsonStrField("emulator_profiles", "${project}/emulators/profiles"),
+        jsonStrField("es_de_profiles", "${project}/emulators/es-de"),
+        jsonStrField("linux_packaging", "${project}/packaging/linux"),
         jsonStrField("retroarch_system", "${paths.bios}")
     ]);
 }
@@ -1111,13 +1115,13 @@ string controllerProfiles() {
             steamInputTemplate(
                 "neptune_simple",
                 "Semu: Steam Deck - Neptune SIMPLE",
-                "${project}/steam-input/neptune-simple.vdf",
+                "${project}/input/steam-input/neptune-simple.vdf",
                 "Generated Steam Input template; doctor validates it and steam-input install copies it."
             ),
             steamInputTemplate(
                 "neptune_full",
                 "Semu: Steam Deck - Neptune FULL",
-                "${project}/steam-input/neptune-full.vdf",
+                "${project}/input/steam-input/neptune-full.vdf",
                 "Optional full hotkey layout for users who want RetroDeck-style chords."
             )
         ]))
@@ -1211,7 +1215,7 @@ string biosEntries() {
             "wiiu",
             true,
             ["keys.txt"],
-            "${project}/Cemu/data",
+            "${project}/emulators/profiles/Cemu/data",
             "",
             "Cemu needs user-supplied Wii U keys for encrypted content."
         ),
@@ -1250,7 +1254,7 @@ Vector<string> lowercaseValues(Vector<string> values) {
     return out;
 }
 
-string schemLauncherName(string emulator) {
+string semuLauncherName(string emulator) {
     return "semu-" + emulator.toLower();
 }
 
@@ -1265,7 +1269,7 @@ Vector<string> retroarchCoreSearchPaths() {
 string launcherEntries() {
     Vector<string> linuxEmulatorFields = [];
     for emulator in linuxLauncherNames() {
-        linuxEmulatorFields.push(jsonStrField(emulator, "${project}/linux/bin/" + schemLauncherName(emulator)));
+        linuxEmulatorFields.push(jsonStrField(emulator, "${project}/packaging/linux/bin/" + semuLauncherName(emulator)));
     }
     string linux = jsonObject([
         jsonField("emulators", jsonObject(linuxEmulatorFields)),
@@ -1689,8 +1693,28 @@ string customSystemsRoot(string project) {
     return joinPath(project, "ES-DE/custom_systems");
 }
 
+string esDeProfileCustomSystemsRoot(string project) {
+    return joinPath(project, "emulators/es-de/custom_systems");
+}
+
+string emulatorProfilesRoot(string project) {
+    return joinPath(project, "emulators/profiles");
+}
+
+string emulatorProfilePath(string project, string relative) {
+    return joinPath(emulatorProfilesRoot(project), relative);
+}
+
+string linuxPackagingRoot(string project) {
+    return joinPath(project, "packaging/linux");
+}
+
+string linuxLauncherBin(string project) {
+    return joinPath(linuxPackagingRoot(project), "bin");
+}
+
 string keymapsRoot(string project) {
-    return joinPath(project, "keymaps");
+    return joinPath(project, "input/keymaps");
 }
 
 string keymapSourcePath(string project) {
@@ -1759,14 +1783,14 @@ Vector<string> declaredRomDirs() {
 
 Vector<string> controllerProfileFiles() {
     return [
-        "RetroArch/retroarch.cfg.linux-backup",
-        "Dolphin/config/Profiles/GCPad/Steam Deck.ini",
-        "Dolphin/config/Profiles/Hotkeys/Steam Deck.ini",
-        "Dolphin/config/Profiles/Wiimote/Wiimote (SD).ini",
-        "Dolphin/config/Profiles/Wiimote/Wiimote + Classic Controller (SD).ini",
-        "Cemu/config/controllerProfiles/SteamInput-P1.xml",
-        "PCSX2/config/inputprofiles/Steam Deck.ini",
-        "Ryujinx/config/profiles/controller/Steam Virtual Controller.json"
+        "emulators/profiles/RetroArch/retroarch.cfg.linux-backup",
+        "emulators/profiles/Dolphin/config/Profiles/GCPad/Steam Deck.ini",
+        "emulators/profiles/Dolphin/config/Profiles/Hotkeys/Steam Deck.ini",
+        "emulators/profiles/Dolphin/config/Profiles/Wiimote/Wiimote (SD).ini",
+        "emulators/profiles/Dolphin/config/Profiles/Wiimote/Wiimote + Classic Controller (SD).ini",
+        "emulators/profiles/Cemu/config/controllerProfiles/SteamInput-P1.xml",
+        "emulators/profiles/PCSX2/config/inputprofiles/Steam Deck.ini",
+        "emulators/profiles/Ryujinx/config/profiles/controller/Steam Virtual Controller.json"
     ];
 }
 
@@ -1818,6 +1842,13 @@ string sandboxProjectEmulatorDir(string project, string emulator) {
     string wanted = emulator.toLower();
     for name in FileSystem.listDir(project) {
         string candidate = joinPath(project, name);
+        if (FileSystem.isDir(candidate) && name.toLower().equals(wanted)) {
+            return candidate;
+        }
+    }
+    string profileRoot = emulatorProfilesRoot(project);
+    for name in FileSystem.listDir(profileRoot) {
+        string candidate = joinPath(profileRoot, name);
         if (FileSystem.isDir(candidate) && name.toLower().equals(wanted)) {
             return candidate;
         }
@@ -2153,52 +2184,62 @@ void launcherCopyFile(string source, string destination) {
     FileSystem.writeText(destination, FileSystem.readText(source));
 }
 
+void launcherCopyProfileDir(string project, string relative, string destination) {
+    launcherCopyDirContents(joinPath(project, relative), destination);
+    launcherCopyDirContents(emulatorProfilePath(project, relative), destination);
+}
+
+void launcherCopyProfileFile(string project, string relative, string destination) {
+    launcherCopyFile(joinPath(project, relative), destination);
+    launcherCopyFile(emulatorProfilePath(project, relative), destination);
+}
+
 void launcherSeedRoutedState(string project, string emulator, string configRoot, string dataRoot) {
     string key = emulator.toLower();
     if (key.equals("retroarch")) {
-        launcherCopyDirContents(joinPath(project, "RetroArch/config"), joinPath(configRoot, "retroarch"));
-        launcherCopyFile(joinPath(project, "RetroArch/retroarch.cfg"), joinPath(configRoot, "retroarch/retroarch.cfg"));
+        launcherCopyProfileDir(project, "RetroArch/config", joinPath(configRoot, "retroarch"));
+        launcherCopyProfileFile(project, "RetroArch/retroarch.cfg", joinPath(configRoot, "retroarch/retroarch.cfg"));
         return;
     }
     if (key.equals("dolphin")) {
-        launcherCopyDirContents(joinPath(project, "Dolphin/config"), joinPath(configRoot, "dolphin-emu"));
-        launcherCopyDirContents(joinPath(project, "Dolphin/data"), joinPath(dataRoot, "dolphin-emu"));
+        launcherCopyProfileDir(project, "Dolphin/config", joinPath(configRoot, "dolphin-emu"));
+        launcherCopyProfileDir(project, "Dolphin/data", joinPath(dataRoot, "dolphin-emu"));
         return;
     }
     if (key.equals("pcsx2")) {
-        launcherCopyDirContents(joinPath(project, "PCSX2/config"), joinPath(configRoot, "PCSX2"));
+        launcherCopyProfileDir(project, "PCSX2/config", joinPath(configRoot, "PCSX2"));
         return;
     }
     if (key.equals("cemu")) {
-        launcherCopyDirContents(joinPath(project, "Cemu/config"), joinPath(configRoot, "Cemu"));
-        launcherCopyDirContents(joinPath(project, "Cemu/data"), joinPath(dataRoot, "Cemu"));
+        launcherCopyProfileDir(project, "Cemu/config", joinPath(configRoot, "Cemu"));
+        launcherCopyProfileDir(project, "Cemu/data", joinPath(dataRoot, "Cemu"));
         return;
     }
     if (key.equals("azahar")) {
-        launcherCopyDirContents(joinPath(project, "Azahar/data"), joinPath(dataRoot, "azahar-emu"));
+        launcherCopyProfileDir(project, "Azahar/data", joinPath(dataRoot, "azahar-emu"));
         return;
     }
     if (key.equals("ppsspp")) {
-        launcherCopyDirContents(joinPath(project, "PPSSPP/config"), joinPath(configRoot, "ppsspp"));
-        launcherCopyDirContents(joinPath(project, "PPSSPP/data"), joinPath(dataRoot, "ppsspp"));
+        launcherCopyProfileDir(project, "PPSSPP/config", joinPath(configRoot, "ppsspp"));
+        launcherCopyProfileDir(project, "PPSSPP/data", joinPath(dataRoot, "ppsspp"));
         return;
     }
     if (key.equals("flycast")) {
-        launcherCopyDirContents(joinPath(project, "Flycast/config"), joinPath(configRoot, "flycast"));
-        launcherCopyDirContents(joinPath(project, "Flycast/data"), joinPath(dataRoot, "flycast"));
+        launcherCopyProfileDir(project, "Flycast/config", joinPath(configRoot, "flycast"));
+        launcherCopyProfileDir(project, "Flycast/data", joinPath(dataRoot, "flycast"));
         return;
     }
     if (key.equals("gopher64")) {
-        launcherCopyDirContents(joinPath(project, "Gopher64/config"), joinPath(configRoot, "gopher64"));
+        launcherCopyProfileDir(project, "Gopher64/config", joinPath(configRoot, "gopher64"));
         return;
     }
     if (key.equals("melonds")) {
-        launcherCopyDirContents(joinPath(project, "melonDS/config"), joinPath(configRoot, "melonDS"));
-        launcherCopyDirContents(joinPath(project, "melonDS/data"), joinPath(dataRoot, "melonDS"));
+        launcherCopyProfileDir(project, "melonDS/config", joinPath(configRoot, "melonDS"));
+        launcherCopyProfileDir(project, "melonDS/data", joinPath(dataRoot, "melonDS"));
         return;
     }
     if (key.equals("ryujinx")) {
-        launcherCopyDirContents(joinPath(project, "Ryujinx/config"), joinPath(configRoot, "Ryujinx"));
+        launcherCopyProfileDir(project, "Ryujinx/config", joinPath(configRoot, "Ryujinx"));
         return;
     }
 }
@@ -2348,13 +2389,13 @@ void writeGeneratedManifest(string output) {
 
 string assetRoot(string project) {
     string configured = Environment.get("SEMU_ASSET_ROOT", "");
-    if (configured.len() > 0 && FileSystem.exists(joinPath(configured, "linux/bin/semu-retroarch"))) {
+    if (configured.len() > 0 && FileSystem.exists(joinPath(configured, "packaging/linux/bin/semu-retroarch"))) {
         return configured;
     }
-    if (FileSystem.exists("linux/bin/semu-retroarch")) {
+    if (FileSystem.exists("packaging/linux/bin/semu-retroarch")) {
         return ".";
     }
-    if (FileSystem.exists(joinPath(project, "linux/bin/semu-retroarch"))) {
+    if (FileSystem.exists(joinPath(project, "packaging/linux/bin/semu-retroarch"))) {
         return project;
     }
     return project;
@@ -2396,12 +2437,12 @@ void seedBundledDirFiles(string project, string relative, bool executable) {
 }
 
 void seedLinuxAssets(string project) {
-    seedBundledFile(project, "linux/AppRun", true);
-    seedBundledFile(project, "linux/sandbox.sh", true);
-    seedBundledFile(project, "linux/semu.desktop", false);
-    seedBundledFile(project, "linux/ES-DE/es_systems_linux.xml", false);
-    seedBundledFile(project, "linux/ES-DE/es_find_rules_linux.xml", false);
-    seedBundledDirFiles(project, "linux/bin", true);
+    seedBundledFile(project, "packaging/linux/AppRun", true);
+    seedBundledFile(project, "packaging/linux/sandbox.sh", true);
+    seedBundledFile(project, "packaging/linux/semu.desktop", false);
+    seedBundledFile(project, "packaging/linux/ES-DE/es_systems_linux.xml", false);
+    seedBundledFile(project, "packaging/linux/ES-DE/es_find_rules_linux.xml", false);
+    seedBundledDirFiles(project, "packaging/linux/bin", true);
 }
 
 string textLines(Vector<string> items) {
@@ -2655,7 +2696,7 @@ string ryujinxProfileText() {
 }
 
 void writeProfile(string project, string relative, string text) {
-    string target = joinPath(project, relative);
+    string target = emulatorProfilePath(project, relative);
     ensureDir(PathTools.dirname(target));
     FileSystem.writeText(target, text);
 }
@@ -2911,14 +2952,14 @@ string steamInputTemplateVdf(string title, bool full, KeymapIr ir) {
 }
 
 void writeSteamInputTemplates(string project) {
-    ensureDir(joinPath(project, "steam-input"));
+    ensureDir(joinPath(project, "input/steam-input"));
     KeymapIr ir = projectKeymapIr(project);
     FileSystem.writeText(
-        joinPath(project, "steam-input/neptune-simple.vdf"),
+        joinPath(project, "input/steam-input/neptune-simple.vdf"),
         steamInputTemplateVdf("Semu: Steam Deck - Neptune SIMPLE", false, ir)
     );
     FileSystem.writeText(
-        joinPath(project, "steam-input/neptune-full.vdf"),
+        joinPath(project, "input/steam-input/neptune-full.vdf"),
         steamInputTemplateVdf("Semu: Steam Deck - Neptune FULL", true, ir)
     );
 }
@@ -2931,7 +2972,7 @@ string esFindRulesXml(string launcherBin) {
         result = result
             + "  <emulator name=\"" + xmlEscape(emulator) + "\">\n"
             + "    <rule type=\"staticpath\">\n"
-            + "      <entry>" + xmlEscape(joinPath(launcherBin, schemLauncherName(emulator))) + "</entry>\n"
+            + "      <entry>" + xmlEscape(joinPath(launcherBin, semuLauncherName(emulator))) + "</entry>\n"
             + "    </rule>\n"
             + "  </emulator>\n";
     }
@@ -2952,9 +2993,13 @@ void writeEsDeFiles(string project) {
     ensureDir(customSystemsRoot(project));
 
     SystemCatalog catalog = systemCatalog();
-    FileSystem.writeText(joinPath(customSystemsRoot(project), "es_systems.xml"), catalog.esSystemsXml());
+    string systemsXml = catalog.esSystemsXml();
+    FileSystem.writeText(joinPath(customSystemsRoot(project), "es_systems.xml"), systemsXml);
 
-    string launcherBin = Environment.get("SEMU_LAUNCHER_BIN", joinPath(project, "linux/bin"));
+    ensureDir(esDeProfileCustomSystemsRoot(project));
+    FileSystem.writeText(joinPath(esDeProfileCustomSystemsRoot(project), "es_systems.xml"), systemsXml);
+
+    string launcherBin = Environment.get("SEMU_LAUNCHER_BIN", linuxLauncherBin(project));
     FileSystem.writeText(joinPath(customSystemsRoot(project), "es_find_rules.xml"), esFindRulesXml(launcherBin));
 
     FileSystem.writeText(joinPath(project, "ES-DE/es_settings.xml"), esSettingsXmlForProject(project));
@@ -2978,7 +3023,7 @@ void writeEsDeRuntimeFiles(string project, string userHome) {
     SystemCatalog catalog = systemCatalog();
     FileSystem.writeText(joinPath(customRoot, "es_systems.xml"), catalog.esSystemsXml());
 
-    string launcherBin = Environment.get("SEMU_LAUNCHER_BIN", joinPath(project, "linux/bin"));
+    string launcherBin = Environment.get("SEMU_LAUNCHER_BIN", linuxLauncherBin(project));
     FileSystem.writeText(joinPath(customRoot, "es_find_rules.xml"), esFindRulesXml(launcherBin));
 
     string roms = Environment.get("SEMU_ROMS_DIR", configuredRomsRoot(project));
@@ -3010,8 +3055,8 @@ void bootstrapSteamDeck(string project) {
     ensureDir(joinPath(biosRoot(project), "ps2"));
     ensureDir(joinPath(biosRoot(project), "switch"));
     ensureDir(joinPath(biosRoot(project), "dc"));
-    ensureDir(joinPath(project, "Cemu/data"));
-    ensureDir(joinPath(project, "steam-input"));
+    ensureDir(emulatorProfilePath(project, "Cemu/data"));
+    ensureDir(joinPath(project, "input/steam-input"));
 
     seedKeymapDefaults(project);
     seedEmulatorDefaults(project);
@@ -3965,7 +4010,7 @@ void writeLifecycleState(string project, string action) {
             jsonStrField("action", action),
             jsonStrField("project", project),
             jsonStrField("roms_dir", configuredRomsRoot(project)),
-            jsonStrField("source", "semu.btrc")
+            jsonStrField("source", "src/semu.btrc")
         ]) + "\n"
     );
 }
@@ -4296,7 +4341,7 @@ void doctorSteamDeck(string project) {
     reportBios("psx", biosRoot(project), ["scph5500.bin", "scph5501.bin", "scph5502.bin"], true, false);
     reportBios("ps2", joinPath(biosRoot(project), "ps2"), ["ps2-0230a-20080220.bin", "ps2-0230e-20080220.bin", "ps2-0230j-20080220.bin"], true, true);
     reportBios("switch_keys", joinPath(biosRoot(project), "switch"), ["prod.keys", "title.keys"], true, false);
-    reportBios("wiiu_keys", joinPath(project, "Cemu/data"), ["keys.txt"], true, false);
+    reportBios("wiiu_keys", emulatorProfilePath(project, "Cemu/data"), ["keys.txt"], true, false);
     reportBios("dreamcast", joinPath(biosRoot(project), "dc"), ["dc_boot.bin", "dc_flash.bin"], false, false);
 
     print("");
@@ -4342,8 +4387,8 @@ void doctorSteamDeck(string project) {
 
     print("");
     print("Steam Input templates");
-    reportSteamInputTemplate("neptune_simple", joinPath(project, "steam-input/neptune-simple.vdf"));
-    reportSteamInputTemplate("neptune_full", joinPath(project, "steam-input/neptune-full.vdf"));
+    reportSteamInputTemplate("neptune_simple", joinPath(project, "input/steam-input/neptune-simple.vdf"));
+    reportSteamInputTemplate("neptune_full", joinPath(project, "input/steam-input/neptune-full.vdf"));
 
     print("");
     print("ROM preflight");
@@ -4356,7 +4401,7 @@ void doctorSteamDeck(string project) {
     print("");
     print("linux launchers");
     for emulator in linuxLauncherNames() {
-        reportFile(emulator, joinPath(joinPath(project, "linux/bin"), schemLauncherName(emulator)));
+        reportFile(emulator, joinPath(linuxLauncherBin(project), semuLauncherName(emulator)));
     }
 }
 
@@ -4419,21 +4464,21 @@ int e2eSandboxSmoke() {
     ensureDir(project);
     ensureDir(scratchRoot);
 
-    e2eSeedFile(joinPath(project, "Azahar/data/qt-config.ini"));
+    e2eSeedFile(emulatorProfilePath(project, "Azahar/data/qt-config.ini"));
     if (!e2ePrepareSandbox(project, scratchRoot, "azahar")) { return 1; }
-    if (!e2eAssertLink(joinPath(scratchRoot, "azahar/.local/share/azahar-emu/qt-config.ini"), joinPath(project, "Azahar/data/qt-config.ini"))) { return 1; }
+    if (!e2eAssertLink(joinPath(scratchRoot, "azahar/.local/share/azahar-emu/qt-config.ini"), emulatorProfilePath(project, "Azahar/data/qt-config.ini"))) { return 1; }
 
-    e2eSeedFile(joinPath(project, "Cemu/config/settings.xml"));
-    e2eSeedFile(joinPath(project, "Cemu/data/keys.txt"));
+    e2eSeedFile(emulatorProfilePath(project, "Cemu/config/settings.xml"));
+    e2eSeedFile(emulatorProfilePath(project, "Cemu/data/keys.txt"));
     if (!e2ePrepareSandbox(project, scratchRoot, "cemu")) { return 1; }
-    if (!e2eAssertLink(joinPath(scratchRoot, "cemu/.config/Cemu/settings.xml"), joinPath(project, "Cemu/config/settings.xml"))) { return 1; }
-    if (!e2eAssertLink(joinPath(scratchRoot, "cemu/.local/share/Cemu/keys.txt"), joinPath(project, "Cemu/data/keys.txt"))) { return 1; }
+    if (!e2eAssertLink(joinPath(scratchRoot, "cemu/.config/Cemu/settings.xml"), emulatorProfilePath(project, "Cemu/config/settings.xml"))) { return 1; }
+    if (!e2eAssertLink(joinPath(scratchRoot, "cemu/.local/share/Cemu/keys.txt"), emulatorProfilePath(project, "Cemu/data/keys.txt"))) { return 1; }
 
-    e2eSeedFile(joinPath(project, "Dolphin/config/Dolphin.ini"));
-    e2eSeedFile(joinPath(project, "Dolphin/data/Wii/title.dat"));
+    e2eSeedFile(emulatorProfilePath(project, "Dolphin/config/Dolphin.ini"));
+    e2eSeedFile(emulatorProfilePath(project, "Dolphin/data/Wii/title.dat"));
     if (!e2ePrepareSandbox(project, scratchRoot, "dolphin")) { return 1; }
-    if (!e2eAssertLink(joinPath(scratchRoot, "dolphin/.config/dolphin-emu/Dolphin.ini"), joinPath(project, "Dolphin/config/Dolphin.ini"))) { return 1; }
-    if (!e2eAssertLink(joinPath(scratchRoot, "dolphin/.local/share/dolphin-emu/Wii"), joinPath(project, "Dolphin/data/Wii"))) { return 1; }
+    if (!e2eAssertLink(joinPath(scratchRoot, "dolphin/.config/dolphin-emu/Dolphin.ini"), emulatorProfilePath(project, "Dolphin/config/Dolphin.ini"))) { return 1; }
+    if (!e2eAssertLink(joinPath(scratchRoot, "dolphin/.local/share/dolphin-emu/Wii"), emulatorProfilePath(project, "Dolphin/data/Wii"))) { return 1; }
 
     e2eSeedFile(joinPath(project, "ES-DE/ES-DE/ROMs/.keep"));
     e2eSeedFile(joinPath(project, "ES-DE/es_settings.xml"));
@@ -4443,23 +4488,23 @@ int e2eSandboxSmoke() {
     if (!e2eAssertLink(joinPath(scratchRoot, "es-de/ES-DE/settings/es_settings.xml"), joinPath(project, "ES-DE/es_settings.xml"))) { return 1; }
     if (!e2eAssertLink(joinPath(scratchRoot, "es-de/ES-DE/custom_systems/es_find_rules.xml"), joinPath(project, "ES-DE/custom_systems/es_find_rules.xml"))) { return 1; }
 
-    e2eSeedFile(joinPath(project, "Lime3DS/data/qt-config.ini"));
+    e2eSeedFile(emulatorProfilePath(project, "Lime3DS/data/qt-config.ini"));
     if (!e2ePrepareSandbox(project, scratchRoot, "lime3ds")) { return 1; }
-    if (!e2eAssertLink(joinPath(scratchRoot, "lime3ds/.config/lime3ds-emu/qt-config.ini"), joinPath(project, "Lime3DS/data/qt-config.ini"))) { return 1; }
+    if (!e2eAssertLink(joinPath(scratchRoot, "lime3ds/.config/lime3ds-emu/qt-config.ini"), emulatorProfilePath(project, "Lime3DS/data/qt-config.ini"))) { return 1; }
 
-    e2eSeedFile(joinPath(project, "PCSX2/config/PCSX2.ini"));
+    e2eSeedFile(emulatorProfilePath(project, "PCSX2/config/PCSX2.ini"));
     if (!e2ePrepareSandbox(project, scratchRoot, "pcsx2")) { return 1; }
-    if (!e2eAssertLink(joinPath(scratchRoot, "pcsx2/.config/PCSX2/PCSX2.ini"), joinPath(project, "PCSX2/config/PCSX2.ini"))) { return 1; }
+    if (!e2eAssertLink(joinPath(scratchRoot, "pcsx2/.config/PCSX2/PCSX2.ini"), emulatorProfilePath(project, "PCSX2/config/PCSX2.ini"))) { return 1; }
 
-    e2eSeedFile(joinPath(project, "RetroArch/config/input.cfg"));
-    e2eSeedFile(joinPath(project, "RetroArch/retroarch.cfg"));
+    e2eSeedFile(emulatorProfilePath(project, "RetroArch/config/input.cfg"));
+    e2eSeedFile(emulatorProfilePath(project, "RetroArch/retroarch.cfg"));
     if (!e2ePrepareSandbox(project, scratchRoot, "retroarch")) { return 1; }
-    if (!e2eAssertLink(joinPath(scratchRoot, "retroarch/.config/retroarch/input.cfg"), joinPath(project, "RetroArch/config/input.cfg"))) { return 1; }
-    if (!e2eAssertLink(joinPath(scratchRoot, "retroarch/.config/retroarch/retroarch.cfg"), joinPath(project, "RetroArch/retroarch.cfg"))) { return 1; }
+    if (!e2eAssertLink(joinPath(scratchRoot, "retroarch/.config/retroarch/input.cfg"), emulatorProfilePath(project, "RetroArch/config/input.cfg"))) { return 1; }
+    if (!e2eAssertLink(joinPath(scratchRoot, "retroarch/.config/retroarch/retroarch.cfg"), emulatorProfilePath(project, "RetroArch/retroarch.cfg"))) { return 1; }
 
-    e2eSeedFile(joinPath(project, "Ryujinx/config/Config.json"));
+    e2eSeedFile(emulatorProfilePath(project, "Ryujinx/config/Config.json"));
     if (!e2ePrepareSandbox(project, scratchRoot, "ryujinx")) { return 1; }
-    if (!e2eAssertLink(joinPath(scratchRoot, "ryujinx/.config/Ryujinx/Config.json"), joinPath(project, "Ryujinx/config/Config.json"))) { return 1; }
+    if (!e2eAssertLink(joinPath(scratchRoot, "ryujinx/.config/Ryujinx/Config.json"), emulatorProfilePath(project, "Ryujinx/config/Config.json"))) { return 1; }
 
     if (!e2eOk(sandboxProjectEmulatorDir(project, "missing").len() == 0, "missing emulator unexpectedly resolved")) { return 1; }
     ensureDir(joinPath(project, "Foo"));
@@ -4600,7 +4645,7 @@ bool e2eCatalogConsistency(string project, string launcherBin) {
         if (!e2eContains(systems, "<name>" + id + "</name>", "ES-DE system catalog " + id)) { return false; }
     }
     for emulator in linuxLauncherNames() {
-        string launcher = joinPath(launcherBin, schemLauncherName(emulator));
+        string launcher = joinPath(launcherBin, semuLauncherName(emulator));
         if (!e2eContains(rules, "<emulator name=\"" + emulator + "\">", "ES-DE find rule " + emulator)) { return false; }
         if (!e2eContains(rules, launcher, "ES-DE launcher path " + emulator)) { return false; }
         if (!e2eOk(FileSystem.exists(launcher), "launcher missing " + launcher)) { return false; }
@@ -4620,7 +4665,7 @@ int e2eLifecycleSmoke(CliArgs args) {
 
     if (!e2eRunOk(e2eRunLifecycle(exe, home, "install", project, romsOne), "install")) { return 1; }
     if (!e2eRunOk(e2eRunLifecycle(exe, home, "install", project, romsOne), "install idempotent")) { return 1; }
-    if (!e2eCatalogConsistency(project, joinPath(project, "linux/bin"))) { return 1; }
+    if (!e2eCatalogConsistency(project, linuxLauncherBin(project))) { return 1; }
     if (!e2eOk(FileSystem.isDir(joinPath(romsOne, "gba")), "install did not create configured ROM dirs")) { return 1; }
     if (!e2eContains(FileSystem.readText(syncConfigPath(project)), romsOne, "sync config after install")) { return 1; }
     if (!e2eContains(FileSystem.readText(screenshotConfigPath(project)), "output_pattern", "screenshot config after install")) { return 1; }
@@ -4641,19 +4686,19 @@ int e2eLifecycleSmoke(CliArgs args) {
 
     if (!e2eRunOk(e2eRunLifecycleChange(exe, home, project, "state.save", "Ctrl+V"), "change keymap")) { return 1; }
     if (!e2eContains(FileSystem.readText(keymapSourcePath(project)), "action state.save = Ctrl+V", "keymap source after change")) { return 1; }
-    if (!e2eContains(FileSystem.readText(joinPath(project, "RetroArch/retroarch.cfg")), "input_save_state = \"v\"", "RetroArch keymap after change")) { return 1; }
-    if (!e2eContains(FileSystem.readText(joinPath(project, "Dolphin/config/Profiles/Hotkeys/Steam Deck.ini")), "Save State/Save State Slot 1 = @(Ctrl+V)", "Dolphin keymap after change")) { return 1; }
-    if (!e2eContains(FileSystem.readText(joinPath(project, "PCSX2/config/inputprofiles/Steam Deck.ini")), "SaveStateToSlot = Keyboard/Control & Keyboard/V", "PCSX2 keymap after change")) { return 1; }
-    if (!e2eContains(FileSystem.readText(joinPath(project, "steam-input/neptune-full.vdf")), "key_press V, Save State", "Steam Input keymap after change")) { return 1; }
+    if (!e2eContains(FileSystem.readText(emulatorProfilePath(project, "RetroArch/retroarch.cfg")), "input_save_state = \"v\"", "RetroArch keymap after change")) { return 1; }
+    if (!e2eContains(FileSystem.readText(emulatorProfilePath(project, "Dolphin/config/Profiles/Hotkeys/Steam Deck.ini")), "Save State/Save State Slot 1 = @(Ctrl+V)", "Dolphin keymap after change")) { return 1; }
+    if (!e2eContains(FileSystem.readText(emulatorProfilePath(project, "PCSX2/config/inputprofiles/Steam Deck.ini")), "SaveStateToSlot = Keyboard/Control & Keyboard/V", "PCSX2 keymap after change")) { return 1; }
+    if (!e2eContains(FileSystem.readText(joinPath(project, "input/steam-input/neptune-full.vdf")), "key_press V, Save State", "Steam Input keymap after change")) { return 1; }
 
     string keymapBeforeFailure = FileSystem.readText(keymapSourcePath(project));
-    string retroarchBeforeFailure = FileSystem.readText(joinPath(project, "RetroArch/retroarch.cfg"));
+    string retroarchBeforeFailure = FileSystem.readText(emulatorProfilePath(project, "RetroArch/retroarch.cfg"));
     if (!e2eOk(!e2eRunLifecycleArgs(exe, home, project, ["change", "--action", "state.save"]).ok(), "lifecycle change without command unexpectedly succeeded")) { return 1; }
     if (!e2eOk(!e2eRunLifecycleChange(exe, home, project, "missing.action", "Ctrl+B").ok(), "unknown keymap action unexpectedly succeeded")) { return 1; }
     if (!e2eOk(!e2eRunLifecycleChange(exe, home, project, "state.save", "Ctrl").ok(), "invalid keymap command unexpectedly succeeded")) { return 1; }
     if (!e2eOk(!e2eRunLifecycleArgs(exe, home, project, ["definitely-not-a-mode"]).ok(), "unknown lifecycle mode unexpectedly succeeded")) { return 1; }
     if (!e2eOk(FileSystem.readText(keymapSourcePath(project)).equals(keymapBeforeFailure), "failed keymap change mutated source")) { return 1; }
-    if (!e2eOk(FileSystem.readText(joinPath(project, "RetroArch/retroarch.cfg")).equals(retroarchBeforeFailure), "failed keymap change mutated RetroArch config")) { return 1; }
+    if (!e2eOk(FileSystem.readText(emulatorProfilePath(project, "RetroArch/retroarch.cfg")).equals(retroarchBeforeFailure), "failed keymap change mutated RetroArch config")) { return 1; }
 
     if (!e2eRunOk(e2eRunLifecycle(exe, home, "uninstall", project, ""), "uninstall")) { return 1; }
     if (!e2eOk(!FileSystem.exists(joinPath(home, ".local/share/applications/semu.desktop")), "desktop entry should be removed by uninstall")) { return 1; }
@@ -4772,8 +4817,8 @@ int e2eLauncherSmoke(CliArgs args) {
     if (!e2eRunOk(e2eRunLauncher(exe, home, project, roms, binDir, capture, fakeBwrap, "melonds", ["game.nds"]), "launcher melonds")) { return 1; }
     if (!e2eContains(FileSystem.readText(joinPath(capture, "flatpak-9.args")), "net.kuribo64.melonDS", "melonds flatpak id")) { return 1; }
 
-    e2eSeedFile(joinPath(project, "RetroArch/config/input.cfg"));
-    e2eSeedFile(joinPath(project, "RetroArch/retroarch.cfg"));
+    e2eSeedFile(emulatorProfilePath(project, "RetroArch/config/input.cfg"));
+    e2eSeedFile(emulatorProfilePath(project, "RetroArch/retroarch.cfg"));
     if (!e2eRunOk(e2eRunLauncher(exe, home, project, roms, binDir, capture, fakeBwrap, "retroarch", ["-L", "core.so", "game.gba"]), "launcher retroarch")) { return 1; }
     if (!e2eContains(FileSystem.readText(joinPath(capture, "retroarch.args")), "/usr/bin/retroarch", "retroarch executable")) { return 1; }
     if (!e2eContains(FileSystem.readText(joinPath(capture, "retroarch.args")), "-L", "retroarch core flag")) { return 1; }
@@ -5223,7 +5268,7 @@ string steamInputTemplateDir(CliArgs args) {
 }
 
 void copySteamInputTemplate(string project, string destination, string name) {
-    string source = joinPath(project, "steam-input/" + name);
+    string source = joinPath(project, "input/steam-input/" + name);
     FileSystem.writeText(joinPath(destination, name), FileSystem.readText(source));
 }
 
@@ -5243,8 +5288,8 @@ int steamInputCommand(CliArgs args, string project) {
     }
     if (mode.equals("status") || mode.equals("validate")) {
         writeSteamInputTemplates(project);
-        reportSteamInputTemplate("neptune_simple", joinPath(project, "steam-input/neptune-simple.vdf"));
-        reportSteamInputTemplate("neptune_full", joinPath(project, "steam-input/neptune-full.vdf"));
+        reportSteamInputTemplate("neptune_simple", joinPath(project, "input/steam-input/neptune-simple.vdf"));
+        reportSteamInputTemplate("neptune_full", joinPath(project, "input/steam-input/neptune-full.vdf"));
         return 0;
     }
     printUsage();

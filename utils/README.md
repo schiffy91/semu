@@ -1,6 +1,6 @@
 # Semu Utilities
 
-Utilities are implemented in `semu.btrc` and exposed through the `semu utils`
+Utilities are implemented in `src/semu.btrc` and exposed through the `semu utils`
 command group.
 
 ```sh

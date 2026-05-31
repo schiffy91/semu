@@ -39,11 +39,11 @@ confidence levels.
   left-trackpad radial menu, unified save/load/quit hotkeys inside each emulator,
   screenshot contents from real Gamescope emulator windows, and quit returning
   to ES-DE in Game Mode.
-- Installed Bazzite pass: install to `test/vms/bazzite*.qcow2`, boot with
+- Installed Bazzite pass: install to `tests/vms/bazzite*.qcow2`, boot with
   `make bazzite-vm-start-installed`, SSH in, and run
   `make bazzite-vm-verify-ssh BAZZITE_SSH_USER=<guest-user>`.
 - Real AppImage pass on SteamOS: build `Semu-*.AppImage` with
-  `linux/build-appimage.sh --nix-package result`, launch it on a Deck, verify
+  `packaging/linux/build-appimage.sh --nix-package result`, launch it on a Deck, verify
   ES-DE opens under Gamescope, ROM location override persists, Syncthing
   commands work, and routed launchers start real emulator binaries.
 - True multi-device Syncthing: current tests cover config, systemd units, local

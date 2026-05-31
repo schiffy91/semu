@@ -25,7 +25,7 @@ if [ -d "$APPDIR/nix/store" ] && [ -z "${SEMU_NIX_STORE_MOUNTED:-}" ]; then
     "$APPDIR/AppRun" "$@"
 fi
 
-SEMU_LINUX="$APPDIR/linux"
+SEMU_LINUX="$APPDIR/packaging/linux"
 SEMU_BIN="$SEMU_LINUX/bin"
 SEMU_CLI="${SEMU_CLI:-$APPDIR/usr/bin/semu}"
 export SEMU_ASSET_ROOT="${SEMU_ASSET_ROOT:-$APPDIR}"
@@ -65,7 +65,7 @@ fi
 export SEMU_BIN="$SEMU_CLI"
 
 case "${1:-}" in
-  deck|sync|config|doctor|bootstrap|keymap|screenshot|manifest|lifecycle|sandbox|launcher|apprun|steam-input|e2e)
+  deck|sync|config|doctor|bootstrap|keymap|screenshot|manifest|lifecycle|sandbox|launcher|apprun|steam-input|utils|util|n3ds-nocrypto|3ds-nocrypto|e2e)
     if [ ! -x "$SEMU_CLI" ]; then
       echo "Semu: BTRC CLI not found at $SEMU_CLI" >&2
       exit 2
@@ -76,7 +76,7 @@ esac
 
 if [ ! -x "$SEMU_CLI" ]; then
   echo "Semu: bundled BTRC CLI not found at $SEMU_CLI" >&2
-  echo "Rebuild the AppImage with linux/build-appimage.sh or set SEMU_CLI." >&2
+  echo "Rebuild the AppImage with packaging/linux/build-appimage.sh or set SEMU_CLI." >&2
   exit 2
 fi
 eval "$("$SEMU_CLI" config env --project "$SEMU_PROJECT_DIR")"
@@ -94,7 +94,7 @@ Semu: unprivileged user namespaces are still restricted on this host.
       sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
       echo 'kernel.apparmor_restrict_unprivileged_userns=0' | \
           sudo tee /etc/sysctl.d/99-semu-userns.conf
-  See linux/README.md for the rationale.
+  See packaging/linux/README.md for the rationale.
 WARN
 fi
 
