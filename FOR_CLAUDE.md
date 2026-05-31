@@ -22,7 +22,7 @@ The explicit direction from the user:
 - Verification should be test-first. Use programmatic tests where possible and
   visual screenshot checks where programmatic confidence is not enough.
 - Avoid overengineering. KISS, DRY, elegant, modular, production-oriented.
-- Do not reintroduce the old Python setup/symlink manager.
+- Do not reintroduce the old Python setup/symlink manager or Python utility code.
 
 ## Critical Constraints
 
@@ -36,7 +36,7 @@ The explicit direction from the user:
   - `verification/screenshots.json`
 - Runtime install/setup/reconfigure/change/uninstall/reinstall/upgrade logic
   belongs in BTRC.
-- Linux/Nix/AppImage runtime paths must not depend on Python.
+- Runtime, test, Linux/Nix, and AppImage paths must not depend on Python.
 - `setup.py`, `setup.json`, per-emulator `symlinks.json`, and
   `generate_find_rules.py` were intentionally removed.
 - Be careful with this worktree. It may already be dirty. Do not revert user
@@ -114,6 +114,13 @@ The legacy Python setup path was removed:
 Tests now target the BTRC manifest/bootstrap/doctor/keymap/sync/AppImage paths
 instead of the old setup/symlink manager.
 
+The old Python NoCrypto helper was ported into BTRC as:
+
+```sh
+build/semu utils n3ds-nocrypto ROMs/n3ds --check
+build/semu utils n3ds-nocrypto ROMs/n3ds -o ROMs/n3ds-fixed
+```
+
 Packaging was updated so Nix no longer copies `setup.json` or `symlinks.json`.
 `linux/AppRun` now discovers projects by `semu.json` or ES-DE generated
 files, not `setup.json`.
@@ -153,9 +160,7 @@ Use these from the repo root:
 make btrc-build
 build/semu manifest --output semu.json
 build/semu screenshot setup --project .
-python3 -m pytest test/ -v
-build/semu e2e all
-bash test/appimage/smoke.sh
+make test
 make nix-e2e
 nix build .#default --print-build-logs
 make verify
@@ -221,13 +226,6 @@ UI:
   - ROM location and BIOS status
 - Build UI against `semu.json` rather than duplicating catalog data.
 
-Python:
-
-- `decrypt3ds.py` remains a Python utility for setting NoCrypto flags on
-  already-decrypted 3DS dumps.
-- If the repo must become strictly zero-Python outside tests, port this utility
-  to BTRC or remove it after replacing its behavior.
-
 Shell:
 
 - Shell remains for thin launchers, AppRun, AppImage assembly, and test scripts.
@@ -241,7 +239,7 @@ Only address these in the BTRC language if they remove real friction:
 - Better argv-style process APIs. Some code still uses shell strings plus
   `ShellWords.quote`.
 - First-class TOML read/write if future emulator configs need TOML editing.
-- Binary read/write helpers if `decrypt3ds.py` is ported to BTRC cleanly.
+- Binary read/write helpers if more ROM/header utilities move into BTRC.
 - Pretty JSON write support for generated user-editable config files.
 - Native file glob/sorted-directory helpers for deterministic catalog scans.
 - Image/screenshot validation helpers, such as nonblank PNG checks, if visual
@@ -266,7 +264,6 @@ For tests:
 
 - Add tests at the behavior boundary.
 - Prefer BTRC `e2e` checks for runtime behavior.
-- Use Python tests only as harnesses around the BTRC binary or standalone tools.
 - Use fake binaries for deterministic launcher/AppImage checks.
 - Use visual screenshots for SteamOS/Gamescope surfaces that cannot be proven
   headlessly.
@@ -279,7 +276,7 @@ Do not bring back:
 - `setup.json`
 - per-emulator `symlinks.json`
 - `generate_find_rules.py`
-- Python as a Linux/Nix/AppImage runtime dependency
+- Python as a repo, test, Linux/Nix, or AppImage dependency
 - hidden mutable config that is not represented in `semu.btrc`,
   `semu.json`, `keymaps/steam_deck.skm`, `sync/sync.json`, or
   `verification/screenshots.json`
@@ -288,12 +285,10 @@ Do not bring back:
 
 1. Run the full verification matrix after this cleanup and update this file if
    any command fails.
-2. Port or retire `decrypt3ds.py` if strict zero-Python outside tests is still a
-   hard requirement.
-3. Build a small config UI that edits `keymaps/steam_deck.skm`, `sync/sync.json`,
+2. Build a small config UI that edits `keymaps/steam_deck.skm`, `sync/sync.json`,
    screenshot hooks, ROM path, and BIOS status using `semu.json`.
-4. Complete a real Steam Deck Game Mode pass and attach screenshots under
+3. Complete a real Steam Deck Game Mode pass and attach screenshots under
    `ES-DE/ES-DE/screenshots/verification/`.
-5. Complete a real AppImage pass on SteamOS.
-6. Add more routed-wrapper checks for real emulator startup once the SteamOS
+4. Complete a real AppImage pass on SteamOS.
+5. Add more routed-wrapper checks for real emulator startup once the SteamOS
    environment is available.

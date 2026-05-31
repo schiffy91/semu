@@ -9,8 +9,8 @@ confidence levels.
   invariants, launcher shim syntax, runtime no-Python guard, BTRC sandbox
   preparation, BTRC Linux launcher routing, BTRC lifecycle install/reconfigure/
   change/uninstall/reinstall/upgrade smoke, fake AppImage assembly with bundled
-  Nix-store mount wiring, routed Nix wrapper behavior, and regression tests for
-  the BTRC FTUX path plus the 3DS NoCrypto utility.
+  Nix-store mount wiring, routed Nix wrapper behavior, generated-C smoke, and
+  the BTRC 3DS NoCrypto utility.
 - `make e2e-smoke`: BTRC-native smoke for sandbox symlink specs, emulator
   launcher routing, declarative screenshot launch hooks, and lifecycle state
   transitions.

@@ -69,7 +69,7 @@ BAZZITE_SSH_OPTS := -o "StrictHostKeyChecking=no" -o "UserKnownHostsFile=/dev/nu
 # Setup (build bundle + write declarative runtime config)
 # =============================================================================
 
-.PHONY: all install setup btrc-build manifest verify ftux-test container-build container-test test e2e-smoke lifecycle-smoke sandbox-smoke launcher-smoke appimage-smoke nix-e2e help
+.PHONY: all install setup btrc-build generated-build generated-smoke manifest verify ftux-test container-build container-test test e2e-smoke lifecycle-smoke sandbox-smoke launcher-smoke appimage-smoke nix-e2e help
 
 all: install ## Build all emulators + bootstrap content (idempotent, cached by nix)
 install: setup
@@ -116,14 +116,20 @@ container-build: ## Build test container image
 	$(CONTAINER_ENGINE) build -t $(CONTAINER_IMAGE) .
 
 container-test: container-build ## Run tests in container (fast, deterministic)
-	$(CONTAINER_ENGINE) run --rm -v "$$(pwd):/semu:ro" $(CONTAINER_IMAGE) \
-		python -m pytest test/ -v
+	$(CONTAINER_ENGINE) run --rm -v "$$(pwd):/semu" $(CONTAINER_IMAGE) \
+		$(MAKE) -C /semu test
 
-test: ## Run tests locally (native)
-	python3 -m pytest test/ -v
+generated-build: generated/semu.c ## Build committed generated C without invoking BTRC
+	@mkdir -p build
+	$(CC) generated/semu.c -std=c11 -D_DEFAULT_SOURCE -D_XOPEN_SOURCE=700 -o "$(SEMU_BIN)" -lm
 
-ftux-test: ## Validate Steam Deck/Linux first-run bootstrap path
-	python3 -m pytest test/test_ftux.py -v
+generated-smoke: generated-build ## Run BTRC-native smoke tests from generated C
+	$(SEMU_BIN) e2e all
+	bash -n linux/AppRun linux/sandbox.sh linux/build-appimage.sh linux/bin/semu-*
+
+test: generated-smoke appimage-smoke ## Run tests locally (native, no Python)
+
+ftux-test: generated-smoke ## Validate Steam Deck/Linux first-run bootstrap path
 
 e2e-smoke: $(SEMU_BIN) ## Run BTRC-native sandbox and lifecycle smoke tests
 	$(SEMU_BIN) e2e all
@@ -137,7 +143,7 @@ sandbox-smoke: $(SEMU_BIN) ## Validate all BTRC sandbox prepare routes
 launcher-smoke: $(SEMU_BIN) ## Validate BTRC Linux launcher routing with fake flatpak/bwrap
 	$(SEMU_BIN) e2e launcher
 
-appimage-smoke: $(SEMU_BIN) ## Validate AppImage assembly and Nix-store mount wiring with fakes
+appimage-smoke: generated-build ## Validate AppImage assembly and Nix-store mount wiring with fakes
 	bash test/appimage/smoke.sh
 
 nix-e2e: ## Validate flake routed-emulator shape and mock wrapper behavior
@@ -226,8 +232,8 @@ verify: $(SEMU_BIN) ## Run deterministic BTRC/Steam Deck verification
 	"$(SEMU_BIN)" sandbox prepare --project "$(CURDIR)" --emulator retroarch --scratch "$$sandbox_dir"; \
 	test -L "$$sandbox_dir/.config/retroarch/retroarch.cfg"; \
 	echo "OK runtime is BTRC-backed"; \
-	echo "== Regression suite =="; \
-	python3 -m pytest test/ -v; \
+	echo "== Generated-C smoke =="; \
+	$(MAKE) --no-print-directory generated-smoke; \
 	echo "== Whitespace check =="; \
 	git diff --check; \
 	echo "Verification artifacts: $$verify_dir"
@@ -304,7 +310,7 @@ linux-sync: ## Sync project files into Linux VM
 
 linux-test: linux-sync ## Sync + run tests in Linux VM
 	ssh $(SSH_OPTS) -p $(SSH_PORT_LINUX) arch@localhost \
-		'cd ~/semu && python -m pytest test/ -v'
+		'cd ~/semu && make test'
 
 deck-vm-start: linux ## Start Deck-like Linux VM
 

@@ -3,6 +3,6 @@ FROM --platform=linux/amd64 archlinux:latest
 # SigLevel=Never: acceptable for CI test containers only
 RUN echo 'DisableSandbox' >> /etc/pacman.conf && \
     sed -i 's/^SigLevel.*/SigLevel = Never/' /etc/pacman.conf && \
-    pacman -Syu --noconfirm python python-pycryptodome python-pytest git && \
+    pacman -Syu --noconfirm base-devel bash git && \
     pacman -Scc --noconfirm
 WORKDIR /semu

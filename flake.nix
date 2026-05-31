@@ -400,10 +400,10 @@
     in {
       default = pkgs.mkShell {
         buildInputs = [
-          (pkgs.python3.withPackages (ps: [
-            ps.pycryptodome
-            ps.pytest
-          ]))
+          pkgs.bash
+          pkgs.gnumake
+          pkgs.stdenv.cc
+          pkgs.ripgrep
         ];
       };
     });

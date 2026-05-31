@@ -3158,6 +3158,88 @@ class BinaryReader {
     }
 }
 
+class BinaryEditor {
+    private FILE* handle;
+    private bool opened;
+
+    public BinaryEditor(string path, string mode = "r+b") {
+        self.handle = fopen(path, mode);
+        self.opened = self.handle != NULL;
+    }
+
+    public bool ok() {
+        return self.opened;
+    }
+
+    public bool seek(long offset) {
+        if (!self.opened) { return false; }
+        return fseek(self.handle, offset, SEEK_SET) == 0;
+    }
+
+    public int readU8(long offset) {
+        if (!self.seek(offset)) { return -1; }
+        byte buf[1];
+        size_t n = fread(buf, 1, 1, self.handle);
+        if (n != 1) { return -1; }
+        return (int)buf[0];
+    }
+
+    public long readLe32(long offset) {
+        if (!self.seek(offset)) { return -1; }
+        byte buf[4];
+        size_t n = fread(buf, 1, 4, self.handle);
+        if (n != 4) { return -1; }
+        return (long)buf[0]
+            + ((long)buf[1] * 256)
+            + ((long)buf[2] * 65536)
+            + ((long)buf[3] * 16777216);
+    }
+
+    public string readAscii(long offset, int count) {
+        if (!self.seek(offset)) { return ""; }
+        char* buf = (char*)malloc(count + 1);
+        size_t n = fread(buf, 1, count, self.handle);
+        buf[n] = '\0';
+        return buf;
+    }
+
+    public bool writeU8(long offset, int value) {
+        if (!self.seek(offset)) { return false; }
+        byte buf[1];
+        buf[0] = (byte)value;
+        size_t n = fwrite(buf, 1, 1, self.handle);
+        return n == 1;
+    }
+
+    public bool writeLe32(long offset, long value) {
+        if (!self.seek(offset)) { return false; }
+        byte buf[4];
+        buf[0] = (byte)(value % 256);
+        buf[1] = (byte)((value / 256) % 256);
+        buf[2] = (byte)((value / 65536) % 256);
+        buf[3] = (byte)((value / 16777216) % 256);
+        size_t n = fwrite(buf, 1, 4, self.handle);
+        return n == 4;
+    }
+
+    public bool writeAscii(long offset, string text) {
+        if (!self.seek(offset)) { return false; }
+        size_t n = fwrite(text, 1, text.len(), self.handle);
+        return n == (size_t)text.len();
+    }
+
+    public void close() {
+        if (self.opened) {
+            fclose(self.handle);
+            self.opened = false;
+        }
+    }
+
+    public void __del__() {
+        self.close();
+    }
+}
+
 class N3dsRomCheck {
     public string status;
     public string note;
@@ -3248,6 +3330,221 @@ N3dsRomCheck checkN3dsRom(string path) {
         result.note = "could not classify NCCH encryption flags";
     }
     return result;
+}
+
+Vector<string> n3dsInputFiles(string input) {
+    Vector<string> files = [];
+    if (FileSystem.isDir(input)) {
+        for name in FileSystem.listDir(input) {
+            if (n3dsRomName(name)) {
+                files.push(joinPath(input, name));
+            }
+        }
+        files.sort();
+    } else if (FileSystem.isFile(input) && n3dsRomName(input)) {
+        files.push(input);
+    }
+    return files;
+}
+
+bool copyFilePath(string source, string destination) {
+    ensureDir(PathTools.dirname(destination));
+    UnixShell shell = UnixShell();
+    ExecResult result = shell.runCommand(Command("cp").arg("-p").arg(source).arg(destination).check(false));
+    return result.ok();
+}
+
+bool n3dsNoCryptoFlag(int flags) {
+    return ((flags / 4) % 2) == 1;
+}
+
+int patchN3dsNoCryptoFlags(string path) {
+    BinaryEditor editor = BinaryEditor(path);
+    if (!editor.ok()) { return -1; }
+    if (!editor.readAscii(0x100, 4).equals("NCSD")) {
+        editor.close();
+        return -1;
+    }
+
+    int patched = 0;
+    for (int i = 0; i < 8; i++) {
+        long entry = 0x120 + (i * 8);
+        long offsetMu = editor.readLe32(entry);
+        long sizeMu = editor.readLe32(entry + 4);
+        if (offsetMu < 0 || sizeMu <= 0) {
+            continue;
+        }
+        long partOffset = offsetMu * 0x200;
+        if (!editor.readAscii(partOffset + 0x100, 4).equals("NCCH")) {
+            continue;
+        }
+        long flagsOffset = partOffset + 0x100 + 0x8f;
+        int flags = editor.readU8(flagsOffset);
+        if (flags < 0) {
+            editor.close();
+            return -1;
+        }
+        if (!n3dsNoCryptoFlag(flags)) {
+            if (!editor.writeU8(flagsOffset, flags + 4)) {
+                editor.close();
+                return -1;
+            }
+            if (!editor.writeU8(partOffset + 0x100 + 0x8b, 0)) {
+                editor.close();
+                return -1;
+            }
+            patched++;
+        }
+    }
+    editor.close();
+    return patched;
+}
+
+bool fixN3dsNoCryptoFile(string input, string output) {
+    if (!copyFilePath(input, output)) {
+        return false;
+    }
+    int patched = patchN3dsNoCryptoFlags(output);
+    if (patched < 0) {
+        removePath(output);
+        return false;
+    }
+    return true;
+}
+
+string n3dsNoCryptoInputArg(CliArgs args, int startIndex) {
+    int i = startIndex;
+    while (i < args.count()) {
+        string value = args.get(i);
+        if (value.equals("-o") || value.equals("--output")) {
+            i = i + 2;
+        } else if (value.startsWith("--")) {
+            i = i + 1;
+        } else {
+            return value;
+        }
+    }
+    return "";
+}
+
+void printN3dsNoCryptoCheckSummary(int total, int ok, int needsFix, int encrypted, int invalid, int unknown) {
+    print("");
+    print(f"Summary: {total} files");
+    print(f"  Already OK (NoCrypto set):    {ok}");
+    print(f"  Needs fix (flag missing):     {needsFix}");
+    print(f"  Truly encrypted (need keys):  {encrypted}");
+    print(f"  Invalid/errors:               {invalid}");
+    if (unknown > 0) {
+        print(f"  Unknown:                      {unknown}");
+    }
+}
+
+int n3dsNoCryptoCommand(CliArgs args, int startIndex) {
+    string input = n3dsNoCryptoInputArg(args, startIndex);
+    if (input.len() == 0) {
+        print("error 0:0 n3ds-nocrypto needs an input .3ds/.cci file or directory");
+        return 1;
+    }
+    Vector<string> files = n3dsInputFiles(input);
+    if (files.len == 0) {
+        print("error 0:0 no .3ds/.cci files found");
+        return 1;
+    }
+
+    if (args.has("--check")) {
+        int ok = 0;
+        int needsFix = 0;
+        int encrypted = 0;
+        int invalid = 0;
+        int unknown = 0;
+        for file in files {
+            N3dsRomCheck result = checkN3dsRom(file);
+            string name = PathTools.basename(file);
+            if (result.status.equals("OK")) {
+                print(f"  OK:        {name}");
+                ok++;
+            } else if (result.status.equals("NEEDS_FIX")) {
+                print(f"  NEEDS FIX: {name}");
+                needsFix++;
+            } else if (result.status.equals("ENCRYPTED")) {
+                print(f"  ENCRYPTED: {name} (truly encrypted, cannot fix with flag flip)");
+                encrypted++;
+            } else if (result.status.equals("INVALID")) {
+                print(f"  ERROR:     {name}: {result.note}");
+                invalid++;
+            } else {
+                print(f"  UNKNOWN:   {name}: {result.note}");
+                unknown++;
+            }
+        }
+        printN3dsNoCryptoCheckSummary(files.len, ok, needsFix, encrypted, invalid, unknown);
+        return invalid > 0 ? 1 : 0;
+    }
+
+    string outputDir = args.valueAfter("--output", args.valueAfter("-o", ""));
+    if (outputDir.len() == 0) {
+        print("error 0:0 n3ds-nocrypto fix mode needs -o/--output DIR");
+        return 1;
+    }
+    ensureDir(outputDir);
+
+    int fixed = 0;
+    int copied = 0;
+    int failed = 0;
+    for (int i = 0; i < files.len; i++) {
+        string file = files.get(i);
+        string name = PathTools.basename(file);
+        string output = joinPath(outputDir, name);
+        print(f"[{i + 1}/{files.len}] {name}");
+        N3dsRomCheck result = checkN3dsRom(file);
+        if (result.status.equals("OK")) {
+            print("  Already OK, copying as-is");
+            if (copyFilePath(file, output)) {
+                copied++;
+            } else {
+                print("  FAILED");
+                failed++;
+            }
+        } else if (result.status.equals("NEEDS_FIX")) {
+            print("  Fixing NoCrypto flag...");
+            if (fixN3dsNoCryptoFile(file, output)) {
+                print("  Done");
+                fixed++;
+            } else {
+                print("  FAILED");
+                failed++;
+            }
+        } else if (result.status.equals("ENCRYPTED")) {
+            print("  Truly encrypted, skipping (needs full decryption)");
+            failed++;
+        } else if (result.status.equals("INVALID")) {
+            print(f"  ERROR: {result.note}");
+            failed++;
+        } else {
+            print("  Unknown state, copying as-is");
+            if (copyFilePath(file, output)) {
+                copied++;
+            } else {
+                print("  FAILED");
+                failed++;
+            }
+        }
+    }
+    print("");
+    print(f"Done: {fixed} fixed, {copied} copied as-is, {failed} failed");
+    return failed == 0 ? 0 : 1;
+}
+
+int utilitiesCommand(CliArgs args) {
+    string mode = "";
+    if (args.count() > 1 && !args.get(1).startsWith("--")) {
+        mode = args.get(1);
+    }
+    if (mode.equals("n3ds-nocrypto") || mode.equals("3ds-nocrypto")) {
+        return n3dsNoCryptoCommand(args, 2);
+    }
+    printUsage();
+    return 1;
 }
 
 void reportN3dsRomPreflight(string project) {
@@ -4574,6 +4871,78 @@ int e2eSyncSmoke(CliArgs args) {
     return 0;
 }
 
+bool e2eWriteFakeN3dsRom(string path, bool noCrypto, bool decrypted) {
+    ensureDir(PathTools.dirname(path));
+    BinaryEditor editor = BinaryEditor(path, "w+b");
+    if (!editor.ok()) { return false; }
+    bool ok = true;
+    long partOffset = 0x200;
+    ok = ok && editor.writeAscii(0x100, "NCSD");
+    ok = ok && editor.writeLe32(0x120, 1);
+    ok = ok && editor.writeLe32(0x124, 4);
+    ok = ok && editor.writeAscii(partOffset + 0x100, "NCCH");
+    ok = ok && editor.writeU8(partOffset + 0x100 + 0x8b, noCrypto ? 0 : 1);
+    ok = ok && editor.writeU8(partOffset + 0x100 + 0x8f, noCrypto ? 4 : 0);
+    ok = ok && editor.writeLe32(partOffset + 0x100 + 0xa0, 1);
+    ok = ok && editor.writeAscii(partOffset + 0x200, decrypted ? ".code" : "cipher");
+    editor.close();
+    return ok;
+}
+
+ExecResult e2eRunN3dsNoCrypto(string exe, string input, string outputDir, Vector<string> extraArgs) {
+    Command command = Command(exe)
+        .envVar("SEMU_BIN", exe)
+        .envVar("PATH", "/usr/bin:/bin")
+        .arg("utils")
+        .arg("n3ds-nocrypto")
+        .arg(input)
+        .capture(true)
+        .check(false);
+    if (outputDir.len() > 0) {
+        command.flag("-o", outputDir);
+    }
+    for arg in extraArgs {
+        command.arg(arg);
+    }
+    UnixShell shell = UnixShell();
+    ExecResult result = shell.runCommand(command);
+    return result;
+}
+
+int e2eN3dsNoCryptoSmoke(CliArgs args) {
+    string tmp = e2eTempDir("semu-n3ds-nocrypto-smoke");
+    string input = joinPath(tmp, "input");
+    string output = joinPath(tmp, "output");
+    string exe = Environment.get("SEMU_BIN", args.program);
+    ensureDir(input);
+    ensureDir(output);
+    string needsPath = joinPath(input, "needs.3ds");
+    string okPath = joinPath(input, "already-ok.3ds");
+    if (!e2eOk(e2eWriteFakeN3dsRom(needsPath, false, true), "fake needs-fix 3DS ROM")) { return 1; }
+    if (!e2eOk(e2eWriteFakeN3dsRom(okPath, true, true), "fake OK 3DS ROM")) { return 1; }
+
+    ExecResult check = e2eRunN3dsNoCrypto(exe, input, "", ["--check"]);
+    if (!e2eRunOk(check, "n3ds-nocrypto check")) { return 1; }
+    if (!e2eContains(check.stdout(), "NEEDS FIX: needs.3ds", "n3ds-nocrypto check output")) { return 1; }
+    if (!e2eContains(check.stdout(), "OK:        already-ok.3ds", "n3ds-nocrypto OK output")) { return 1; }
+
+    Vector<string> noArgs = [];
+    if (!e2eRunOk(e2eRunN3dsNoCrypto(exe, input, output, noArgs), "n3ds-nocrypto fix")) { return 1; }
+    string fixedPath = joinPath(output, "needs.3ds");
+    N3dsRomCheck fixed = checkN3dsRom(fixedPath);
+    if (!e2eOk(fixed.status.equals("OK"), "fixed fake ROM should be OK")) { return 1; }
+    BinaryReader reader = BinaryReader(fixedPath);
+    int flags = reader.readU8(0x200 + 0x100 + 0x8f);
+    int cryptoMethod = reader.readU8(0x200 + 0x100 + 0x8b);
+    reader.close();
+    if (!e2eOk(n3dsNoCryptoFlag(flags), "fixed fake ROM NoCrypto flag missing")) { return 1; }
+    if (!e2eOk(cryptoMethod == 0, "fixed fake ROM crypto method not cleared")) { return 1; }
+    if (!e2eOk(checkN3dsRom(joinPath(output, "already-ok.3ds")).status.equals("OK"), "already OK fake ROM copy")) { return 1; }
+
+    print("OK BTRC n3ds-nocrypto smoke");
+    return 0;
+}
+
 int e2eCommand(CliArgs args) {
     string mode = "all";
     if (args.count() > 1 && !args.get(1).startsWith("--")) {
@@ -4591,6 +4960,9 @@ int e2eCommand(CliArgs args) {
     if (mode.equals("sync")) {
         return e2eSyncSmoke(args);
     }
+    if (mode.equals("n3ds-nocrypto") || mode.equals("utils")) {
+        return e2eN3dsNoCryptoSmoke(args);
+    }
     if (mode.equals("all")) {
         int sandboxStatus = e2eSandboxSmoke();
         if (sandboxStatus != 0) { return sandboxStatus; }
@@ -4598,6 +4970,8 @@ int e2eCommand(CliArgs args) {
         if (launcherStatus != 0) { return launcherStatus; }
         int syncStatus = e2eSyncSmoke(args);
         if (syncStatus != 0) { return syncStatus; }
+        int n3dsStatus = e2eN3dsNoCryptoSmoke(args);
+        if (n3dsStatus != 0) { return n3dsStatus; }
         return e2eLifecycleSmoke(args);
     }
     printUsage();
@@ -4605,7 +4979,7 @@ int e2eCommand(CliArgs args) {
 }
 
 void printUsage() {
-    print("semu [manifest|bootstrap|doctor|deck|lifecycle|sync|config|apprun|steam-input|keymap|screenshot|sandbox|launcher|e2e] [validate|render|install|setup|reconfigure|change|uninstall|reinstall|upgrade|status|force|capture|prepare|launch] [--project PATH] [--roms PATH] [--source PATH] [--output PATH] [--dest PATH] [--target manifest|retroarch|dolphin|pcsx2|steam-input] [--emulator NAME] [--hook HOOK] [--scratch PATH] [--action ID] [--command KEYS]");
+    print("semu [manifest|bootstrap|doctor|deck|lifecycle|sync|config|apprun|steam-input|keymap|screenshot|sandbox|launcher|utils|e2e] [n3ds-nocrypto|validate|render|install|setup|reconfigure|change|uninstall|reinstall|upgrade|status|force|capture|prepare|launch] [--project PATH] [--roms PATH] [--source PATH] [--output PATH] [--dest PATH] [--target manifest|retroarch|dolphin|pcsx2|steam-input] [--emulator NAME] [--hook HOOK] [--scratch PATH] [--action ID] [--command KEYS]");
 }
 
 string retroarchKeyName(string key) {
@@ -5075,6 +5449,14 @@ int main(int argc, char** argv) {
     }
     if (command.equals("launcher")) {
         int status = launcherCommand(args, project);
+        return status;
+    }
+    if (command.equals("utils") || command.equals("util")) {
+        int status = utilitiesCommand(args);
+        return status;
+    }
+    if (command.equals("n3ds-nocrypto") || command.equals("3ds-nocrypto")) {
+        int status = n3dsNoCryptoCommand(args, 1);
         return status;
     }
     if (command.equals("e2e")) {
