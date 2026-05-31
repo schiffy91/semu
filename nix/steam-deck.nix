@@ -15,8 +15,8 @@ EOF
   cat > $out/share/applications/schemulator-setup.desktop <<'EOF'
 [Desktop Entry]
 Name=Schemulator Setup
-Comment=Set up emulator symlinks and configs
-Exec=${schemulator}/bin/schemulator symlink
+Comment=Install Steam Deck defaults and generated configs
+Exec=${schemulator}/bin/schemulator deck install
 Type=Application
 Categories=Settings;
 Terminal=true

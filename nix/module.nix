@@ -49,16 +49,19 @@ in {
     in
       lib.filter (x: x != null)
         (map (name: emulatorPackages.${name} or null) cfg.emulators)
-      ++ cfg.extraPackages
-      ++ [ (pkgs.python3.withPackages (ps: [ ps.pycryptodome ])) ];
+      ++ cfg.extraPackages;
 
     services.flatpak.enable = lib.mkIf cfg.flatpak true;
 
-    # Run symlink setup as the specified user, not root
+    # Run BTRC bootstrap as the specified user, not root.
     system.activationScripts.schemulator = ''
       if [ -d "${cfg.configDir}" ]; then
-        echo "Schemulator: setting up symlinks from ${cfg.configDir}"
-        ${pkgs.su}/bin/su - ${cfg.user} -c 'cd "${cfg.configDir}" && ${pkgs.python3}/bin/python setup.py symlink' || true
+        echo "Schemulator: bootstrapping from ${cfg.configDir}"
+        if [ -x "${cfg.configDir}/build/schemulator" ]; then
+          ${pkgs.su}/bin/su - ${cfg.user} -c 'cd "${cfg.configDir}" && ./build/schemulator bootstrap --project "$PWD"' || true
+        else
+          echo "Schemulator: ${cfg.configDir}/build/schemulator missing; run make btrc-build first"
+        fi
       else
         echo "Schemulator: config dir ${cfg.configDir} not found, skipping"
       fi

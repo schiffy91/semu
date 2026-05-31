@@ -1,5 +1,25 @@
 {
   "nodes": {
+    "btrc": {
+      "inputs": {
+        "nixpkgs": [
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "lastModified": 1780267264,
+        "narHash": "sha256-1+QbTaLt3+c4o6qD+ukFGVJoPQYhaFLTkHSolZAp3ws=",
+        "owner": "schiffy91",
+        "repo": "btrc",
+        "rev": "7c3820d5d4bc201180bce02182e8e763d5deac41",
+        "type": "github"
+      },
+      "original": {
+        "owner": "schiffy91",
+        "repo": "btrc",
+        "type": "github"
+      }
+    },
     "nixpkgs": {
       "locked": {
         "lastModified": 1774709303,
@@ -18,6 +38,7 @@
     },
     "root": {
       "inputs": {
+        "btrc": "btrc",
         "nixpkgs": "nixpkgs"
       }
     }

@@ -1,58 +1,11 @@
-import json
 import os
 import struct
 import sys
-import tempfile
 
 import pytest
 
-# Add project root to path so we can import setup and decrypt3ds
+# Add project root to path so tests can import decrypt3ds.
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-PLATFORM = {"win32": "windows", "darwin": "macos", "linux": "linux"}.get(sys.platform, "linux")
-
-
-@pytest.fixture
-def temp_dir(tmp_path):
-    """Provides a temporary directory that's cleaned up after the test."""
-    return tmp_path
-
-
-@pytest.fixture
-def mock_project(tmp_path):
-    """Creates a mock project structure with config and emulator manifests."""
-    # setup.json
-    config = {
-        "host": {
-            "windows": str(tmp_path / "host_win"),
-            "linux": str(tmp_path / "host_linux"),
-            "macos": str(tmp_path / "host_macos"),
-        },
-        "portable": {
-            "windows": str(tmp_path / "portable_win"),
-            "linux": str(tmp_path / "portable_linux"),
-            "macos": str(tmp_path / "portable_macos"),
-        },
-    }
-    (tmp_path / "setup.json").write_text(json.dumps(config))
-
-    # A mock emulator with symlinks.json
-    emu_dir = tmp_path / "TestEmu"
-    emu_dir.mkdir()
-    config_dir = emu_dir / "config"
-    config_dir.mkdir()
-    (config_dir / "settings.ini").write_text("[General]\nfullscreen=true\n")
-
-    symlinks = {
-        "config": {
-            "windows": str(tmp_path / "host_win" / "TestEmu"),
-            "linux": str(tmp_path / "host_linux" / "TestEmu"),
-            "macos": str(tmp_path / "host_macos" / "TestEmu"),
-        }
-    }
-    (emu_dir / "symlinks.json").write_text(json.dumps(symlinks))
-
-    return tmp_path
 
 
 def build_test_3ds(path, no_crypto=False):

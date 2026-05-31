@@ -1,6 +1,17 @@
 SHELL := /bin/bash
 CONTAINER_ENGINE := $(shell command -v podman 2>/dev/null || command -v docker 2>/dev/null)
 CONTAINER_IMAGE := schemulator-test
+BTRC_ROOT ?= ../../../dev/btrc
+BTRC_FLAKE ?=
+BTRC_INPUT_ARGS ?= $(if $(BTRC_FLAKE),--override-input btrc "$(BTRC_FLAKE)",)
+BTRC_USE_FLAKE ?= 1
+ifeq ($(BTRC_USE_FLAKE),1)
+BTRC_TRANSPILE := nix run $(BTRC_INPUT_ARGS) .\#btrcpy --
+else
+BTRC_TRANSPILE := cd "$(BTRC_ROOT)" && nix develop --command ./bin/btrcpy
+endif
+SCHEMULATOR_C := build/schemulator.c
+SCHEMULATOR_BIN := build/schemulator
 VM_DIR := test/vms
 CLOUD_INIT := test/cloud-init
 SSH_PORT_LINUX := 2222
@@ -12,16 +23,70 @@ ARCH_BASE := $(VM_DIR)/arch-base.qcow2
 LINUX_DISK := $(VM_DIR)/linux.qcow2
 LINUX_SEED := $(VM_DIR)/seed.img
 LINUX_PID := $(VM_DIR)/linux.pid
+BAZZITE_ISO_URL ?= https://download.bazzite.gg/bazzite-deck-stable-live-amd64.iso
+BAZZITE_ISO := $(VM_DIR)/bazzite-deck-stable-live-amd64.iso
+BAZZITE_ISO_CHECKSUM_URL ?= $(BAZZITE_ISO_URL)-CHECKSUM
+BAZZITE_ISO_SHA256 ?=
+BAZZITE_VERIFY_ISO ?= 1
+BAZZITE_DESKTOP_ISO_URL ?= https://download.bazzite.gg/bazzite-stable-live-amd64.iso
+BAZZITE_DESKTOP_ISO := $(VM_DIR)/bazzite-stable-live-amd64.iso
+BAZZITE_DESKTOP_DISK := $(VM_DIR)/bazzite-desktop.qcow2
+BAZZITE_DESKTOP_PID := $(VM_DIR)/bazzite-desktop.pid
+BAZZITE_DESKTOP_STARTED := $(VM_DIR)/bazzite-desktop.started
+BAZZITE_DESKTOP_MONITOR := $(VM_DIR)/bazzite-desktop-monitor.sock
+BAZZITE_DESKTOP_SERIAL := $(VM_DIR)/bazzite-desktop-serial.log
+BAZZITE_DESKTOP_SCREEN := $(VM_DIR)/bazzite-desktop-screen.ppm
+BAZZITE_DISK := $(VM_DIR)/bazzite.qcow2
+BAZZITE_DISK_SIZE ?= 80G
+BAZZITE_PID := $(VM_DIR)/bazzite.pid
+BAZZITE_STARTED := $(VM_DIR)/bazzite.started
+BAZZITE_MONITOR := $(VM_DIR)/bazzite-monitor.sock
+BAZZITE_SERIAL := $(VM_DIR)/bazzite-serial.log
+BAZZITE_SCREEN := $(VM_DIR)/bazzite-screen.ppm
+BAZZITE_SCREEN_TMP ?= /tmp/schemulator-bazzite-screen.ppm
+BAZZITE_SCREEN_WIDTH ?= 1280
+BAZZITE_SCREEN_HEIGHT ?= 800
+BAZZITE_MIN_NONBLACK_PERCENT ?= 0.1
+BAZZITE_MEM ?= 8192
+BAZZITE_SMP ?= 4
+BAZZITE_VNC_DISPLAY ?= 5
+BAZZITE_VNC_PORT ?= $(shell expr 5900 + $(BAZZITE_VNC_DISPLAY))
+BAZZITE_SSH_PORT ?= 2223
+BAZZITE_OVMF ?= /opt/homebrew/share/qemu/edk2-x86_64-code.fd
+BAZZITE_OVMF_VARS ?= $(VM_DIR)/bazzite-ovmf-vars.fd
+BAZZITE_OVMF_VARS_TEMPLATE ?=
+BAZZITE_SSH_USER ?= bazzite
+BAZZITE_BOOT_MODE ?= live
+BAZZITE_BASIC_GRAPHICS ?= 0
+BAZZITE_BASIC_GRAPHICS_KEYS ?= 30
+BAZZITE_BASIC_GRAPHICS_KEY_DELAY ?= 0.2
+BAZZITE_MIN_BOOT_WAIT ?= 30
+BAZZITE_BOOT_WAIT ?= 180
+BAZZITE_SMOKE_POLL ?= 10
+BAZZITE_SSH_OPTS := -o "StrictHostKeyChecking=no" -o "UserKnownHostsFile=/dev/null" -o "LogLevel=ERROR" -i "$(VM_KEY)"
 
 # =============================================================================
-# Setup (build everything + wire symlinks)
+# Setup (build bundle + write declarative runtime config)
 # =============================================================================
 
-.PHONY: all install setup container-build container-test test help
+.PHONY: all install setup btrc-build manifest verify ftux-test container-build container-test test e2e-smoke lifecycle-smoke sandbox-smoke launcher-smoke appimage-smoke nix-e2e help
 
-all: install ## Build all emulators + set up symlinks (idempotent, cached by nix)
+all: install ## Build all emulators + bootstrap content (idempotent, cached by nix)
 install: setup
-setup: ## Build all emulators and wire config symlinks
+btrc-build: $(SCHEMULATOR_BIN) ## Build the BTRC schemulator CLI
+
+$(SCHEMULATOR_BIN): schemulator.btrc
+	@mkdir -p build
+	$(BTRC_TRANSPILE) "$(CURDIR)/schemulator.btrc" -o "$(CURDIR)/$(SCHEMULATOR_C)" --no-cache --no-stdlib
+	perl -0pi -e 's/\n+\z/\n/' "$(SCHEMULATOR_C)"
+	$(CC) "$(SCHEMULATOR_C)" -std=c11 -D_DEFAULT_SOURCE -D_XOPEN_SOURCE=700 -o "$@" -lm
+	@mkdir -p generated
+	cp "$(SCHEMULATOR_C)" generated/schemulator.c
+
+manifest: $(SCHEMULATOR_BIN) ## Generate schemulator.json from schemulator.btrc
+	$(SCHEMULATOR_BIN) manifest --output schemulator.json
+
+setup: $(SCHEMULATOR_BIN) ## Build all emulators and bootstrap Steam Deck/Linux content
 	@echo "Building schemulator bundle (nix handles caching)..."
 	nix build .#default
 	@echo ""
@@ -31,14 +96,8 @@ setup: ## Build all emulators and wire config symlinks
 		result/bin/ryujinx --help >/dev/null 2>&1 || true; \
 	fi
 	@echo ""
-	@echo "Configuring ES-DE..."
-	@python3 generate_find_rules.py result
-	@mkdir -p "$$HOME/ES-DE/custom_systems"
-	@cp ES-DE/custom_systems/es_systems.xml "$$HOME/ES-DE/custom_systems/es_systems.xml"
-	@echo "  ~/ES-DE/custom_systems/es_systems.xml"
-	@echo ""
-	@echo "Setting up config symlinks..."
-	python3 setup.py symlink
+	@echo "Bootstrapping Steam Deck/Linux-style content folders..."
+	$(SCHEMULATOR_BIN) bootstrap --project "$$(pwd)"
 	@echo ""
 	@echo "Done. Launch emulators:"
 	@echo "  open result/Applications/ES-DE.app"
@@ -62,6 +121,116 @@ container-test: container-build ## Run tests in container (fast, deterministic)
 
 test: ## Run tests locally (native)
 	python3 -m pytest test/ -v
+
+ftux-test: ## Validate Steam Deck/Linux first-run bootstrap path
+	python3 -m pytest test/test_ftux.py -v
+
+e2e-smoke: $(SCHEMULATOR_BIN) ## Run BTRC-native sandbox and lifecycle smoke tests
+	$(SCHEMULATOR_BIN) e2e all
+
+lifecycle-smoke: $(SCHEMULATOR_BIN) ## Validate install/reconfigure/change/uninstall/reinstall/upgrade lifecycle
+	$(SCHEMULATOR_BIN) e2e lifecycle
+
+sandbox-smoke: $(SCHEMULATOR_BIN) ## Validate all BTRC sandbox prepare routes
+	$(SCHEMULATOR_BIN) e2e sandbox
+
+launcher-smoke: $(SCHEMULATOR_BIN) ## Validate BTRC Linux launcher routing with fake flatpak/bwrap
+	$(SCHEMULATOR_BIN) e2e launcher
+
+appimage-smoke: $(SCHEMULATOR_BIN) ## Validate AppImage assembly and Nix-store mount wiring with fakes
+	bash test/appimage/smoke.sh
+
+nix-e2e: ## Validate flake routed-emulator shape and mock wrapper behavior
+	@set -euo pipefail; \
+	host_system="$$(nix eval --impure --raw --expr builtins.currentSystem)"; \
+	nix eval .#packages.x86_64-linux.schem-routed-emulators.name >/dev/null; \
+	nix eval .#packages.x86_64-linux.default.name >/dev/null; \
+	nix eval --raw .#apps.x86_64-linux.schem-retroarch.program | grep -F '/bin/schem-retroarch' >/dev/null; \
+	nix eval --raw .#apps.x86_64-linux.schem-es-de.program | grep -F '/bin/schem-es-de' >/dev/null; \
+	nix build ".#checks.$$host_system.routed-emulator-mock" --print-build-logs; \
+	echo "OK Nix routed-emulator smoke ($$host_system)"
+
+verify: $(SCHEMULATOR_BIN) ## Run deterministic BTRC/Steam Deck verification
+	@set -euo pipefail; \
+	verify_dir="$(CURDIR)/build/verification"; \
+	rm -rf "$$verify_dir"; \
+	mkdir -p "$$verify_dir"; \
+	echo "== Manifest determinism =="; \
+	"$(SCHEMULATOR_BIN)" manifest --output "$$verify_dir/schemulator.json"; \
+	cmp -s "$$verify_dir/schemulator.json" "schemulator.json"; \
+	grep -F '"source_language": "schemulator-keymap-v1"' "$$verify_dir/schemulator.json" >/dev/null; \
+		grep -F '"source_path": "$${paths.keymaps}/steam_deck.skm"' "$$verify_dir/schemulator.json" >/dev/null; \
+		grep -F '"screenshot_verification"' "$$verify_dir/schemulator.json" >/dev/null; \
+		grep -F '"before_launch"' "$$verify_dir/schemulator.json" >/dev/null; \
+		grep -F '"after_spawn"' "$$verify_dir/schemulator.json" >/dev/null; \
+		grep -F '"engine": "syncthing"' "$$verify_dir/schemulator.json" >/dev/null; \
+		grep -F '"tray_app": "syncthingtray"' "$$verify_dir/schemulator.json" >/dev/null; \
+	cmp -s "$(SCHEMULATOR_C)" "generated/schemulator.c"; \
+	echo "OK manifest generated from BTRC matches schemulator.json"; \
+	echo "== Keymap compiler and renderers =="; \
+	"$(SCHEMULATOR_BIN)" keymap validate --project "$(CURDIR)" | tee "$$verify_dir/keymap-validate.txt"; \
+	"$(SCHEMULATOR_BIN)" keymap render --project "$(CURDIR)" --target manifest --output "$$verify_dir/keymap.json"; \
+	"$(SCHEMULATOR_BIN)" keymap render --project "$(CURDIR)" --target retroarch --output "$$verify_dir/retroarch.cfg"; \
+	"$(SCHEMULATOR_BIN)" keymap render --project "$(CURDIR)" --target dolphin --output "$$verify_dir/dolphin.ini"; \
+	"$(SCHEMULATOR_BIN)" keymap render --project "$(CURDIR)" --target pcsx2 --output "$$verify_dir/pcsx2.ini"; \
+	"$(SCHEMULATOR_BIN)" keymap render --project "$(CURDIR)" --target steam-input --output "$$verify_dir/steam-input.vdf"; \
+	grep -F 'input_enable_hotkey = "ctrl"' "$$verify_dir/retroarch.cfg" >/dev/null; \
+	grep -F 'input_load_state = "a"' "$$verify_dir/retroarch.cfg" >/dev/null; \
+	grep -F 'input_save_state = "s"' "$$verify_dir/retroarch.cfg" >/dev/null; \
+	grep -F 'input_exit_emulator = "q"' "$$verify_dir/retroarch.cfg" >/dev/null; \
+	grep -F 'General/Stop = @(Ctrl+Q)' "$$verify_dir/dolphin.ini" >/dev/null; \
+	grep -F 'Save State/Save State Slot 1 = @(Ctrl+S)' "$$verify_dir/dolphin.ini" >/dev/null; \
+	grep -F 'SaveStateToSlot = Keyboard/Control & Keyboard/S' "$$verify_dir/pcsx2.ini" >/dev/null; \
+	grep -F 'LoadStateFromSlot = Keyboard/Control & Keyboard/A' "$$verify_dir/pcsx2.ini" >/dev/null; \
+	grep -F 'key_press S, Save State' "$$verify_dir/steam-input.vdf" >/dev/null; \
+	echo "OK keymap render targets"; \
+	echo "== Doctor invariants =="; \
+	"$(SCHEMULATOR_BIN)" doctor --project "$(CURDIR)" | tee "$$verify_dir/doctor.txt"; \
+	grep -F 'OK gyro: disabled' "$$verify_dir/doctor.txt" >/dev/null; \
+	grep -F 'OK right_trackpad: mouse' "$$verify_dir/doctor.txt" >/dev/null; \
+	grep -F 'OK left_trackpad: radial_hotkeys' "$$verify_dir/doctor.txt" >/dev/null; \
+	grep -F 'OK hotkeys: HKB+L1 load, HKB+R1 save, HKB+Start quit' "$$verify_dir/doctor.txt" >/dev/null; \
+	grep -F 'OK layers: controller_model -> emulation_backend -> emitted_input -> emulator_keymap' "$$verify_dir/doctor.txt" >/dev/null; \
+	grep -F 'OK backends: uinput, evemu, uhid, inputplumber, steam_input' "$$verify_dir/doctor.txt" >/dev/null; \
+	grep -F 'OK controller_models: steam_deck, steam_controller, xbox_xinput, dualshock4, dualsense, switch_pro' "$$verify_dir/doctor.txt" >/dev/null; \
+	grep -F 'Keymap compiler' "$$verify_dir/doctor.txt" >/dev/null; \
+	grep -F 'OK steam_deck:' "$$verify_dir/doctor.txt" >/dev/null; \
+	grep -F 'OK neptune_simple: controller_neptune, trackpads, save/load/quit' "$$verify_dir/doctor.txt" >/dev/null; \
+		grep -F 'OK neptune_full: controller_neptune, trackpads, save/load/quit' "$$verify_dir/doctor.txt" >/dev/null; \
+		grep -F 'ROM preflight' "$$verify_dir/doctor.txt" >/dev/null; \
+		grep -F 'Screenshot verification hooks' "$$verify_dir/doctor.txt" >/dev/null; \
+		grep -F 'OK hooks: before_launch, after_spawn, after_exit, manual_visual_checkpoint' "$$verify_dir/doctor.txt" >/dev/null; \
+		grep -E 'OK screenshot_tool|MISSING screenshot_tool' "$$verify_dir/doctor.txt" >/dev/null; \
+		grep -F 'Sync' "$$verify_dir/doctor.txt" >/dev/null; \
+	grep -F 'OK start_at_boot: enabled' "$$verify_dir/doctor.txt" >/dev/null; \
+	grep -F 'OK saves: watch, 900s' "$$verify_dir/doctor.txt" >/dev/null; \
+	grep -F 'optional roms: watch, 3600s' "$$verify_dir/doctor.txt" >/dev/null; \
+	echo "OK doctor invariants"; \
+	echo "== Launcher syntax =="; \
+	bash -n linux/AppRun linux/sandbox.sh linux/build-appimage.sh linux/bin/schem-*; \
+	echo "OK bash syntax"; \
+	echo "== BTRC lifecycle/sandbox smoke =="; \
+	"$(SCHEMULATOR_BIN)" e2e all; \
+	echo "OK BTRC lifecycle/sandbox smoke"; \
+	echo "== AppImage/Nix routing smoke =="; \
+	bash test/appimage/smoke.sh; \
+	$(MAKE) --no-print-directory nix-e2e; \
+	echo "OK AppImage/Nix routing smoke"; \
+	echo "== Runtime BTRC guard =="; \
+	if rg -n 'python|setup\.py|generate_find_rules' linux nix/schemulator.nix nix/module.nix; then \
+		echo "Runtime path must not depend on Python"; \
+		exit 1; \
+	fi; \
+	sandbox_dir="$$verify_dir/sandbox-retroarch"; \
+	rm -rf "$$sandbox_dir"; \
+	"$(SCHEMULATOR_BIN)" sandbox prepare --project "$(CURDIR)" --emulator retroarch --scratch "$$sandbox_dir"; \
+	test -L "$$sandbox_dir/.config/retroarch/retroarch.cfg"; \
+	echo "OK runtime is BTRC-backed"; \
+	echo "== Regression suite =="; \
+	python3 -m pytest test/ -v; \
+	echo "== Whitespace check =="; \
+	git diff --check; \
+	echo "Verification artifacts: $$verify_dir"
 
 # =============================================================================
 # QEMU VM (full system, for flatpak/GUI/integration testing)
@@ -96,44 +265,74 @@ $(LINUX_SEED): $(VM_KEY) $(CLOUD_INIT)/user-data $(CLOUD_INIT)/meta-data | $(VM_
 		$(VM_DIR)/cloud-init-tmp/ && mv $(VM_DIR)/seed.iso $@)
 	@rm -rf $(VM_DIR)/cloud-init-tmp
 
-.PHONY: linux linux-ssh linux-sync linux-test linux-stop linux-clean linux-purge
+.PHONY: linux linux-ssh linux-sync linux-test linux-stop linux-clean linux-purge deck-vm-start deck-vm-sync deck-vm-provision deck-vm-verify deck-vm-verify-strict deck-vm-stop bazzite-iso bazzite-vm-start bazzite-vm-start-live bazzite-vm-start-installed bazzite-vm-screenshot bazzite-vm-smoke bazzite-desktop-vm-smoke bazzite-vm-ssh bazzite-vm-sync bazzite-vm-verify-ssh bazzite-vm-stop bazzite-vm-clean
 
 linux: $(LINUX_DISK) $(LINUX_SEED) $(VM_KEY) ## Start Linux VM (full system)
 	@if [ -f $(LINUX_PID) ] && kill -0 $$(cat $(LINUX_PID)) 2>/dev/null; then \
 		echo "VM already running (pid $$(cat $(LINUX_PID)))"; \
-		exit 0; \
-	fi
-	@echo "Starting Arch Linux x86_64 VM..."
-	qemu-system-x86_64 \
-		-machine q35 \
-		-cpu qemu64 \
-		-m 2048 \
-		-smp 2 \
-		-drive file=$(LINUX_DISK),if=virtio \
-		-drive file=$(LINUX_SEED),if=virtio,format=raw \
-		-nic user,hostfwd=tcp::$(SSH_PORT_LINUX)-:22 \
-		-display none \
-		-daemonize \
-		-pidfile $(LINUX_PID)
-	@echo "Waiting for SSH..."
-	@for i in $$(seq 1 180); do \
+	else \
+		echo "Starting Arch Linux x86_64 VM..."; \
+		qemu-system-x86_64 \
+			-machine q35 \
+			-cpu qemu64 \
+			-m 2048 \
+			-smp 2 \
+			-drive file=$(LINUX_DISK),if=virtio \
+			-drive file=$(LINUX_SEED),if=virtio,format=raw \
+			-nic user,hostfwd=tcp::$(SSH_PORT_LINUX)-:22 \
+			-display none \
+			-daemonize \
+			-pidfile $(LINUX_PID); \
+	fi; \
+	echo "Waiting for SSH..."; \
+	for i in $$(seq 1 180); do \
 		ssh -q $(SSH_OPTS) -o "ConnectTimeout=2" -p $(SSH_PORT_LINUX) arch@localhost true 2>/dev/null && break; \
 		[ $$i -eq 180 ] && echo "Timed out" && exit 1; \
 		sleep 3; \
-	done
-	@echo "VM ready."
+	done; \
+	echo "VM ready."
 
 linux-ssh: ## SSH into Linux VM
 	ssh $(SSH_OPTS) -p $(SSH_PORT_LINUX) arch@localhost
 
 linux-sync: ## Sync project files into Linux VM
-	git ls-files -z | rsync -az --files-from=- --from0 \
+	@git ls-files -co --exclude-standard -z | while IFS= read -r -d '' path; do \
+		[ -e "$$path" ] && printf '%s\0' "$$path"; \
+	done | rsync -az --files-from=- --from0 \
 		-e "ssh $(SSH_OPTS) -p $(SSH_PORT_LINUX)" \
 		. arch@localhost:~/schemulator/
 
 linux-test: linux-sync ## Sync + run tests in Linux VM
 	ssh $(SSH_OPTS) -p $(SSH_PORT_LINUX) arch@localhost \
 		'cd ~/schemulator && python -m pytest test/ -v'
+
+deck-vm-start: linux ## Start Deck-like Linux VM
+
+deck-vm-sync: btrc-build deck-vm-start ## Sync project and BTRC binary into VM
+	$(MAKE) linux-sync
+	ssh $(SSH_OPTS) -p $(SSH_PORT_LINUX) arch@localhost 'mkdir -p ~/schemulator/build'
+
+deck-vm-provision: deck-vm-sync ## Provision VM with Deck-style services/config
+	ssh $(SSH_OPTS) -p $(SSH_PORT_LINUX) arch@localhost \
+		'cd ~/schemulator && chmod +x test/deck/*.sh && SCHEMULATOR_BIN=$$PWD/build/schemulator test/deck/provision.sh "$$PWD"'
+
+deck-vm-verify: deck-vm-provision ## Run Deck-style emulator/input/sync checks in VM
+	ssh $(SSH_OPTS) -p $(SSH_PORT_LINUX) arch@localhost \
+		'cd ~/schemulator && SCHEMULATOR_BIN=$$PWD/build/schemulator test/deck/verify-emulators.sh "$$PWD"'
+	ssh $(SSH_OPTS) -p $(SSH_PORT_LINUX) arch@localhost \
+		'cd ~/schemulator && SCHEMULATOR_BIN=$$PWD/build/schemulator test/deck/verify-sync.sh "$$PWD"'
+	ssh $(SSH_OPTS) -p $(SSH_PORT_LINUX) arch@localhost \
+		'cd ~/schemulator && SCHEMULATOR_BIN=$$PWD/build/schemulator test/deck/verify-input.sh "$$PWD"'
+
+deck-vm-verify-strict: deck-vm-provision ## Run Deck VM checks and fail if input devices/services are missing
+	ssh $(SSH_OPTS) -p $(SSH_PORT_LINUX) arch@localhost \
+		'cd ~/schemulator && SCHEMULATOR_BIN=$$PWD/build/schemulator test/deck/verify-emulators.sh "$$PWD"'
+	ssh $(SSH_OPTS) -p $(SSH_PORT_LINUX) arch@localhost \
+		'cd ~/schemulator && SCHEMULATOR_BIN=$$PWD/build/schemulator test/deck/verify-sync.sh "$$PWD"'
+	ssh $(SSH_OPTS) -p $(SSH_PORT_LINUX) arch@localhost \
+		'cd ~/schemulator && SCHEMULATOR_BIN=$$PWD/build/schemulator SCHEMULATOR_STRICT_INPUT=1 test/deck/verify-input.sh "$$PWD"'
+
+deck-vm-stop: linux-stop ## Stop Deck-like Linux VM
 
 linux-stop: ## Stop Linux VM
 	@if [ -f $(LINUX_PID) ] && kill -0 $$(cat $(LINUX_PID)) 2>/dev/null; then \
@@ -148,6 +347,187 @@ linux-clean: linux-stop ## Delete Linux VM disk (keeps base image)
 linux-purge: linux-clean ## Delete everything including base image
 	rm -f $(ARCH_BASE)
 	rm -f $(VM_KEY) $(VM_KEY).pub
+
+# =============================================================================
+# Bazzite Deck VM (SteamOS-like, software-rendered on Apple Silicon)
+# =============================================================================
+
+$(BAZZITE_ISO): | $(VM_DIR)
+	@echo "Downloading Bazzite ISO (~10GB, resumable): $(BAZZITE_ISO_URL)"
+	curl -L --fail -C - -o "$@" "$(BAZZITE_ISO_URL)"
+
+$(BAZZITE_DISK): | $(VM_DIR)
+	qemu-img create -f qcow2 "$@" "$(BAZZITE_DISK_SIZE)"
+
+bazzite-iso: $(BAZZITE_ISO) ## Download current Bazzite Deck live ISO
+	@if [ "$(BAZZITE_VERIFY_ISO)" = "1" ]; then \
+		actual="$$(shasum -a 256 "$(BAZZITE_ISO)" | awk '{print $$1}')"; \
+		if [ -n "$(BAZZITE_ISO_SHA256)" ]; then \
+			expected="$(BAZZITE_ISO_SHA256)"; \
+		else \
+			expected="$$(curl -fsSL "$(BAZZITE_ISO_CHECKSUM_URL)" | awk 'match($$0,/[0-9a-fA-F]{64}/){print substr($$0,RSTART,RLENGTH); exit}')"; \
+		fi; \
+		if [ -z "$$expected" ]; then \
+			echo "Could not resolve SHA256 for $(BAZZITE_ISO_URL)"; \
+			exit 2; \
+		fi; \
+		if [ "$$actual" != "$$expected" ]; then \
+			echo "SHA256 mismatch for $(BAZZITE_ISO)"; \
+			echo "expected $$expected"; \
+			echo "actual   $$actual"; \
+			exit 2; \
+		fi; \
+		echo "OK Bazzite ISO SHA256 $$actual"; \
+	fi
+
+bazzite-vm-start-live: ## Boot Bazzite live ISO over VNC
+	$(MAKE) bazzite-vm-start BAZZITE_BOOT_MODE=live
+
+bazzite-vm-start-installed: ## Boot installed Bazzite disk over VNC without attaching the ISO
+	$(MAKE) bazzite-vm-start BAZZITE_BOOT_MODE=installed BAZZITE_BASIC_GRAPHICS=0
+
+bazzite-vm-start: $(BAZZITE_DISK) $(VM_KEY) ## Boot Bazzite VM over VNC
+	@if [ "$(BAZZITE_BOOT_MODE)" != "live" ] && [ "$(BAZZITE_BOOT_MODE)" != "installed" ]; then \
+		echo "BAZZITE_BOOT_MODE must be live or installed"; \
+		exit 2; \
+	fi
+	@if [ "$(BAZZITE_BOOT_MODE)" = "live" ]; then \
+		$(MAKE) bazzite-iso; \
+	fi
+	@if [ ! -f "$(BAZZITE_OVMF)" ]; then \
+		echo "Missing OVMF firmware: $(BAZZITE_OVMF)"; \
+		echo "Set BAZZITE_OVMF=/path/to/edk2-x86_64-code.fd"; \
+		exit 2; \
+	fi
+	@rm -f "$(BAZZITE_STARTED)"
+	@if [ -f "$(BAZZITE_PID)" ] && kill -0 "$$(cat "$(BAZZITE_PID)")" 2>/dev/null; then \
+		echo "Bazzite VM already running (pid $$(cat "$(BAZZITE_PID)"))"; \
+	else \
+		set -e; \
+		rm -f "$(BAZZITE_MONITOR)" "$(BAZZITE_SERIAL)"; \
+		echo "Starting Bazzite VM ($(BAZZITE_BOOT_MODE), TCG/software rendering, VNC :$(BAZZITE_VNC_DISPLAY))..."; \
+		ovmf_args=(-drive if=pflash,format=raw,readonly=on,file="$(BAZZITE_OVMF)"); \
+		if [ -n "$(BAZZITE_OVMF_VARS_TEMPLATE)" ]; then \
+			if [ ! -f "$(BAZZITE_OVMF_VARS)" ]; then \
+				cp "$(BAZZITE_OVMF_VARS_TEMPLATE)" "$(BAZZITE_OVMF_VARS)"; \
+			fi; \
+			ovmf_args+=(-drive if=pflash,format=raw,file="$(BAZZITE_OVMF_VARS)"); \
+		elif [ -f "$(BAZZITE_OVMF_VARS)" ]; then \
+			ovmf_args+=(-drive if=pflash,format=raw,file="$(BAZZITE_OVMF_VARS)"); \
+		fi; \
+		if [ "$(BAZZITE_BOOT_MODE)" = "live" ]; then \
+			boot_args=(-cdrom "$(BAZZITE_ISO)" -boot order=d,menu=on); \
+		else \
+			boot_args=(-boot order=c,menu=on); \
+		fi; \
+		qemu-system-x86_64 \
+			-machine q35,accel=tcg \
+			-cpu max \
+			-m $(BAZZITE_MEM) \
+			-smp $(BAZZITE_SMP) \
+			"$${ovmf_args[@]}" \
+			-drive file="$(BAZZITE_DISK)",if=virtio,format=qcow2,cache=writeback,discard=unmap \
+			"$${boot_args[@]}" \
+			-device virtio-vga \
+			-display vnc=127.0.0.1:$(BAZZITE_VNC_DISPLAY) \
+			-nic user,hostfwd=tcp::$(BAZZITE_SSH_PORT)-:22 \
+			-serial file:"$(BAZZITE_SERIAL)" \
+			-monitor unix:"$(BAZZITE_MONITOR)",server,nowait \
+			-daemonize \
+			-pidfile "$(BAZZITE_PID)"; \
+		touch "$(BAZZITE_STARTED)"; \
+	fi
+	@echo "Bazzite VM VNC: 127.0.0.1:$(BAZZITE_VNC_PORT)"
+	@echo "SSH after install/key setup: ssh -p $(BAZZITE_SSH_PORT) $(BAZZITE_SSH_USER)@localhost"
+	@if [ "$(BAZZITE_BASIC_GRAPHICS)" = "1" ] && [ -f "$(BAZZITE_STARTED)" ]; then \
+		echo "Selecting Bazzite Basic Graphics Mode..."; \
+		for i in $$(seq 1 100); do \
+			[ -S "$(BAZZITE_MONITOR)" ] && break; \
+			sleep 0.1; \
+		done; \
+		if [ ! -S "$(BAZZITE_MONITOR)" ]; then \
+			echo "Timed out waiting for Bazzite monitor socket"; \
+			exit 2; \
+		fi; \
+		for i in $$(seq 1 $(BAZZITE_BASIC_GRAPHICS_KEYS)); do \
+			printf 'sendkey down\n' | nc -U "$(BAZZITE_MONITOR)" >/dev/null; \
+			sleep $(BAZZITE_BASIC_GRAPHICS_KEY_DELAY); \
+		done; \
+		printf 'sendkey ret\n' | nc -U "$(BAZZITE_MONITOR)" >/dev/null; \
+	fi
+
+bazzite-vm-screenshot: ## Capture current Bazzite VM framebuffer to PPM
+	@if [ ! -S "$(BAZZITE_MONITOR)" ]; then \
+		echo "Bazzite monitor socket not found; run make bazzite-vm-start first"; \
+		exit 2; \
+	fi
+	@rm -f "$(BAZZITE_SCREEN_TMP)"
+	@printf 'screendump $(BAZZITE_SCREEN_TMP)\n' | nc -U "$(BAZZITE_MONITOR)" >/dev/null
+	@cp "$(BAZZITE_SCREEN_TMP)" "$(BAZZITE_SCREEN)"
+	@perl -0777 -e 'my $$file = shift; open my $$fh, "<:raw", $$file or die "open $$file: $$!\n"; local $$/; my $$ppm = <$$fh>; $$ppm =~ /\AP6\s+(?:#[^\n]*\n\s*)?(\d+)\s+(\d+)\s+(\d+)\s/s or die "invalid PPM header\n"; my ($$w, $$h, $$max) = ($$1, $$2, $$3); die "unexpected framebuffer $${w}x$${h}, want $(BAZZITE_SCREEN_WIDTH)x$(BAZZITE_SCREEN_HEIGHT)\n" unless $$w == $(BAZZITE_SCREEN_WIDTH) && $$h == $(BAZZITE_SCREEN_HEIGHT) && $$max == 255; my $$pixels = substr($$ppm, length($$&)); die "blank framebuffer\n" unless $$pixels =~ /[^\0]/; my $$nonblack = ($$pixels =~ tr/\0//c); my $$percent = 100 * $$nonblack / length($$pixels); die sprintf("framebuffer too sparse %.2f%%, want %.2f%%\n", $$percent, $(BAZZITE_MIN_NONBLACK_PERCENT)) unless $$percent >= $(BAZZITE_MIN_NONBLACK_PERCENT);' "$(BAZZITE_SCREEN)"
+	@ls -lh "$(BAZZITE_SCREEN)"
+
+bazzite-vm-smoke: ## Boot Bazzite VM and capture a visual smoke screenshot
+	$(MAKE) bazzite-vm-start-live BAZZITE_BASIC_GRAPHICS=1
+	@echo "Waiting $(BAZZITE_MIN_BOOT_WAIT)s for firmware/GRUB to hand off..."
+	@sleep $(BAZZITE_MIN_BOOT_WAIT)
+	@echo "Waiting up to $(BAZZITE_BOOT_WAIT)s for a nonblank Bazzite framebuffer..."
+	@ok=0; deadline=$$((SECONDS + $(BAZZITE_BOOT_WAIT))); \
+	while [ $$SECONDS -lt $$deadline ]; do \
+		if $(MAKE) --no-print-directory bazzite-vm-screenshot; then \
+			ok=1; \
+			break; \
+		fi; \
+		sleep $(BAZZITE_SMOKE_POLL); \
+	done; \
+	if [ $$ok -ne 1 ]; then \
+		echo "Timed out waiting for a valid nonblank Bazzite framebuffer"; \
+		exit 2; \
+	fi
+	@echo "Open the VNC display at 127.0.0.1:$(BAZZITE_VNC_PORT) for manual install/Game Mode checks."
+
+bazzite-desktop-vm-smoke: ## Boot Bazzite Desktop ISO over VNC for no-GPU VM validation
+	$(MAKE) bazzite-vm-smoke \
+		BAZZITE_ISO_URL=$(BAZZITE_DESKTOP_ISO_URL) \
+		BAZZITE_ISO=$(BAZZITE_DESKTOP_ISO) \
+		BAZZITE_DISK=$(BAZZITE_DESKTOP_DISK) \
+		BAZZITE_PID=$(BAZZITE_DESKTOP_PID) \
+		BAZZITE_STARTED=$(BAZZITE_DESKTOP_STARTED) \
+		BAZZITE_MONITOR=$(BAZZITE_DESKTOP_MONITOR) \
+		BAZZITE_SERIAL=$(BAZZITE_DESKTOP_SERIAL) \
+		BAZZITE_SCREEN=$(BAZZITE_DESKTOP_SCREEN) \
+		BAZZITE_VNC_DISPLAY=6 \
+		BAZZITE_VNC_PORT=5906 \
+		BAZZITE_SSH_PORT=2234 \
+		BAZZITE_MIN_NONBLACK_PERCENT=20
+
+bazzite-vm-ssh: ## SSH into installed Bazzite VM once user/key exists
+	ssh $(BAZZITE_SSH_OPTS) -p $(BAZZITE_SSH_PORT) $(BAZZITE_SSH_USER)@localhost
+
+bazzite-vm-sync: btrc-build ## Sync repo to installed Bazzite VM over SSH
+	git ls-files -co --exclude-standard -z | rsync -az --files-from=- --from0 \
+		-e "ssh $(BAZZITE_SSH_OPTS) -p $(BAZZITE_SSH_PORT)" \
+		. $(BAZZITE_SSH_USER)@localhost:~/schemulator/
+
+bazzite-vm-verify-ssh: bazzite-vm-sync ## Run Deck checks inside installed Bazzite VM over SSH
+	ssh $(BAZZITE_SSH_OPTS) -p $(BAZZITE_SSH_PORT) $(BAZZITE_SSH_USER)@localhost \
+		'cd ~/schemulator && chmod +x test/deck/*.sh && test/deck/provision.sh "$$PWD"'
+	ssh $(BAZZITE_SSH_OPTS) -p $(BAZZITE_SSH_PORT) $(BAZZITE_SSH_USER)@localhost \
+		'cd ~/schemulator && test/deck/verify-emulators.sh "$$PWD"'
+	ssh $(BAZZITE_SSH_OPTS) -p $(BAZZITE_SSH_PORT) $(BAZZITE_SSH_USER)@localhost \
+		'cd ~/schemulator && test/deck/verify-sync.sh "$$PWD"'
+	ssh $(BAZZITE_SSH_OPTS) -p $(BAZZITE_SSH_PORT) $(BAZZITE_SSH_USER)@localhost \
+		'cd ~/schemulator && test/deck/verify-input.sh "$$PWD"'
+
+bazzite-vm-stop: ## Stop Bazzite VM
+	@if [ -f "$(BAZZITE_PID)" ] && kill -0 "$$(cat "$(BAZZITE_PID)")" 2>/dev/null; then \
+		kill "$$(cat "$(BAZZITE_PID)")"; rm -f "$(BAZZITE_PID)" "$(BAZZITE_STARTED)" "$(BAZZITE_MONITOR)"; echo "Bazzite VM stopped."; \
+	else \
+		echo "No Bazzite VM running."; rm -f "$(BAZZITE_PID)" "$(BAZZITE_STARTED)" "$(BAZZITE_MONITOR)"; \
+	fi
+
+bazzite-vm-clean: bazzite-vm-stop ## Delete Bazzite VM disk and runtime sockets/logs
+	rm -f "$(BAZZITE_DISK)" "$(BAZZITE_PID)" "$(BAZZITE_STARTED)" "$(BAZZITE_MONITOR)" "$(BAZZITE_SERIAL)" "$(BAZZITE_SCREEN)" "$(BAZZITE_OVMF_VARS)" "$(BAZZITE_ISO).CHECKSUM"
 
 # =============================================================================
 # Help

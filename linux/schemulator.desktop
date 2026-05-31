@@ -1,0 +1,25 @@
+[Desktop Entry]
+Name=Schemulator
+Comment=Sandboxed emulation environment (ES-DE + bwrap)
+Exec=AppRun
+Icon=schemulator
+Type=Application
+Categories=Game;Emulator;
+Terminal=false
+Actions=ForceSync;SyncStatus;OpenSyncthing;OpenSyncTray;
+
+[Desktop Action ForceSync]
+Name=Force Sync
+Exec=AppRun sync force all
+
+[Desktop Action SyncStatus]
+Name=Sync Status
+Exec=AppRun sync status
+
+[Desktop Action OpenSyncthing]
+Name=Open Syncthing
+Exec=AppRun sync open
+
+[Desktop Action OpenSyncTray]
+Name=Open Sync Tray
+Exec=AppRun sync tray

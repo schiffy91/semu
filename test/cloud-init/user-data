@@ -8,8 +8,14 @@ packages:
   - python-pip
   - python-pycryptodome
   - python-pytest
+  - gcc
   - git
   - rsync
   - flatpak
+  - syncthing
+  - curl
+  - jq
+  - evtest
 runcmd:
   - systemctl enable --now sshd
+  - loginctl enable-linger arch

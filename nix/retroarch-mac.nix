@@ -10,18 +10,18 @@ let
   coreBaseUrl = "https://buildbot.libretro.com/nightly/apple/osx/${arch}/latest";
 
   cores = {
-    gambatte         = { hash = "sha256-Y1gBR6N3C1VTk25N8Oc/xnFU9q+ZoWecqp/8HBVxyCQ="; desc = "GB/GBC"; };
-    mgba             = { hash = "sha256-v1JZrZrtfOv40VWgBxmttDWeHn6GlSZWxj3FogA9o6M="; desc = "GBA"; };
-    genesis_plus_gx  = { hash = "sha256-TAnHLRQmQUtwm61ujNlWphB9DHhBc4+Nf+AfFuu1csA="; desc = "Genesis"; };
-    snes9x           = { hash = "sha256-/boCYf5Np+r6ho3D+hHQbRmp/Quq9tmWXBbryzflGxY="; desc = "SNES"; };
-    mesen            = { hash = "sha256-5YYK6MMNc3ZHsoYWlKv0esWl+Xzvwe0lbdgaf66P3Dg="; desc = "NES"; };
-    mupen64plus_next = { hash = "sha256-MWgaL2OoV71D21C5nP2GoRzKc6ZtK5MmE1nvoUrE9yg="; desc = "N64"; };
-    desmume          = { hash = "sha256-8aIGJrN8B+XDd9wx02gtH9S02BAXNi+nlKsuLIU/E8k="; desc = "NDS"; };
-    swanstation      = { hash = "sha256-36HY4rbnGqhWzJAYJ7hKEV+vKSFktgEsdZ77BwlE6rw="; desc = "PSX"; };
-    mednafen_psx     = { hash = "sha256-PSDXxaJAQAUiD9B+bbxYHi7UgGIKB3u86gZa0kYzsto="; desc = "PSX (alt)"; };
-    mednafen_psx_hw  = { hash = "sha256-zykVBUFlaP5W67SGGIkYYv6krqMVJp0RB5qLh/oTWro="; desc = "PSX (HW)"; };
-    ppsspp           = { hash = "sha256-x7AAXg/oRFt7wsXCzNymU2Harm8NQpAJ7rFWxZREfrg="; desc = "PSP"; };
-    flycast          = { hash = "sha256-6WEcYN56ClhyguHo4o7SKR1l+Ih/XdjC8fAOwj9jN3s="; desc = "Dreamcast"; };
+    gambatte         = { hash = "sha256-8OzixaD1BU3/mCpqKkIu52gmprermOzvMwrNWprpACk="; desc = "GB/GBC"; };
+    mgba             = { hash = "sha256-Nj4ycSzqpV2G1YtvK95Zj6ujflVXJ0AEMoCEb+KrE5Y="; desc = "GBA"; };
+    genesis_plus_gx  = { hash = "sha256-NeuJmCpcH1gVvc0Vq46WK9Yig3O3g1GHWNZjIgVRvV0="; desc = "Genesis"; };
+    snes9x           = { hash = "sha256-ZykQuEdE6Hw39EAhl1LKEOVEAhuefYSaxpHgp3ocJT4="; desc = "SNES"; };
+    mesen            = { hash = "sha256-sR0XhlTwYyLUXdSKoqPIalZgtkZyqdU6Jke6DEx9C9w="; desc = "NES"; };
+    mupen64plus_next = { hash = "sha256-t5WaLXckPsBclONQObYsp1MY80OLluYFf4vsaccXL48="; desc = "N64"; };
+    desmume          = { hash = "sha256-Opebjz3KsOikDbKwTAI/Ol4QCqJirfvzzs7kRCCDqxY="; desc = "NDS"; };
+    swanstation      = { hash = "sha256-JRgvm4hzm6CV84oFZiUMdZ4aThPS2MbKeckzOqFtao4="; desc = "PSX"; };
+    mednafen_psx     = { hash = "sha256-8XVpJFpO0B5A4M41ut45Qy8cqukQr1r7tEk5UCa8hZo="; desc = "PSX (alt)"; };
+    mednafen_psx_hw  = { hash = "sha256-LH+s08JnP9IsXFFiU4Rxd8K0RwofG4L+tpqc1O5s1JM="; desc = "PSX (HW)"; };
+    ppsspp           = { hash = "sha256-OCVTkUFwqtzd5Eizur96PIWmoCeEKv/iBBS94w/a8+Q="; desc = "PSP"; };
+    flycast          = { hash = "sha256-eI1d/EECOKpu2k0Gp21fESDC4X5J4t8VSE2ye4ATmZ4="; desc = "Dreamcast"; };
   };
 
   coreSrcs = lib.mapAttrsToList (name: info: fetchurl {

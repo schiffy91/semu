@@ -10,7 +10,7 @@ let
     };
     x86_64-darwin = {
       url = "https://gitlab.com/es-de/emulationstation-de/-/package_files/243196947/download";
-      hash = "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="; # TODO: get hash
+      hash = "sha256-iDBvw/caxHCIlQ3QuoOcGUYjtxl3IqmjikYBUN4ZH2w=";
       name = "ES-DE_${version}-x64.dmg";
     };
     x86_64-linux = {
