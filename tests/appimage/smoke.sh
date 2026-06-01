@@ -276,11 +276,14 @@ expect_status 2 env \
   "$MISSING_CLI_APPDIR/AppRun"
 
 BWRAP_MISSING_APPDIR="$TMP/AppRunMissingBwrap.AppDir"
+NO_BWRAP_PATH="$TMP/no-bwrap-path"
 mkdir -p "$BWRAP_MISSING_APPDIR/nix/store"
+mkdir -p "$NO_BWRAP_PATH"
+ln -s "$(command -v bash)" "$NO_BWRAP_PATH/bash"
 cp "$REPO_ROOT/packaging/linux/AppRun" "$BWRAP_MISSING_APPDIR/AppRun"
 chmod +x "$BWRAP_MISSING_APPDIR/AppRun"
 expect_status 127 env \
-  PATH="/usr/bin:/bin" \
+  PATH="$NO_BWRAP_PATH" \
   APPDIR="$BWRAP_MISSING_APPDIR" \
   "$BWRAP_MISSING_APPDIR/AppRun"
 

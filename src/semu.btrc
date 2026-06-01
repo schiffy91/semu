@@ -4174,11 +4174,22 @@ bool syncWaitForApi(string project) {
 bool syncAddFolder(string project, string id) {
     if (!syncFolderEnabled(project, id)) { return true; }
     ensureDir(syncFolderPath(project, id));
+    string apiKey = syncApiKey(project);
+    if (apiKey.len() == 0) { return false; }
     UnixShell shell = UnixShell();
+    string folderId = "semu-" + id;
+    string cliPrefix = "syncthing cli -H " + ShellWords.quote(syncthingHome(project))
+        + " --gui-address " + ShellWords.quote(syncGuiAddress(project))
+        + " --gui-apikey " + ShellWords.quote(apiKey);
+    ExecResult existing = shell.runUnchecked(
+        cliPrefix + " config folders list | grep -Fx " + ShellWords.quote(folderId) + " >/dev/null 2>&1"
+    );
+    if (existing.ok()) { return true; }
     string command = "syncthing cli -H " + ShellWords.quote(syncthingHome(project))
         + " --gui-address " + ShellWords.quote(syncGuiAddress(project))
+        + " --gui-apikey " + ShellWords.quote(apiKey)
         + " config folders add"
-        + " --id " + ShellWords.quote("semu-" + id)
+        + " --id " + ShellWords.quote(folderId)
         + " --label " + ShellWords.quote(syncFolderLabel(id))
         + " --path " + ShellWords.quote(syncFolderPath(project, id))
         + " --type sendreceive"

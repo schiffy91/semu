@@ -2,12 +2,12 @@
 set -euo pipefail
 
 PROJECT_DIR="${1:-$HOME/semu}"
-SCHEM="${SEMU_BIN:-$PROJECT_DIR/build/semu}"
+SEMU="${SEMU_BIN:-$PROJECT_DIR/build/semu}"
 STRICT="${SEMU_STRICT_INPUT:-0}"
 
-"$SCHEM" doctor --project "$PROJECT_DIR" | grep -F 'OK hotkeys: HKB+L1 load, HKB+R1 save, HKB+Start quit'
-"$SCHEM" doctor --project "$PROJECT_DIR" | grep -F 'OK right_trackpad: mouse'
-"$SCHEM" doctor --project "$PROJECT_DIR" | grep -F 'OK left_trackpad: radial_hotkeys'
+"$SEMU" doctor --project "$PROJECT_DIR" | grep -F 'OK hotkeys: HKB+L1 load, HKB+R1 save, HKB+Start quit'
+"$SEMU" doctor --project "$PROJECT_DIR" | grep -F 'OK right_trackpad: mouse'
+"$SEMU" doctor --project "$PROJECT_DIR" | grep -F 'OK left_trackpad: radial_hotkeys'
 
 if [ -e /dev/uinput ]; then
   echo "OK /dev/uinput"
