@@ -47,6 +47,9 @@ string steamInputKeyBindings(string command, string label) {
 }
 
 string steamInputActionBindings(KeymapIr ir, string actionId) {
+    if (actionId.equals("app.quit")) {
+        return steamInputKeyBindings("Alt+F4", steamInputActionLabel(actionId));
+    }
     return steamInputKeyBindings(irActionCommand(ir, actionId), steamInputActionLabel(actionId));
 }
 

@@ -21,10 +21,122 @@ bool launcherUsesX11(string emulator) {
 Vector<string> launcherPresetArgs(string emulator) {
     string key = emulator.toLower();
     if (key.equals("dolphin")) {
-        return ["-b", "-e"];
+        return ["--config", "Dolphin.Display.Fullscreen=True", "-b", "-e"];
+    }
+    if (key.equals("retroarch")) {
+        return ["-f"];
+    }
+    if (key.equals("ppsspp")) {
+        return ["--fullscreen"];
+    }
+    if (key.equals("flycast")) {
+        return ["-config", "window:fullscreen=yes"];
+    }
+    if (key.equals("gopher64")) {
+        return ["--fullscreen"];
+    }
+    if (key.equals("melonds")) {
+        return ["--fullscreen"];
+    }
+    if (key.equals("pcsx2")) {
+        return ["-batch", "-fullscreen"];
+    }
+    if (key.equals("cemu")) {
+        return ["-f", "-g"];
+    }
+    if (key.equals("azahar")) {
+        return ["-f"];
+    }
+    if (key.equals("ryujinx")) {
+        return ["--fullscreen"];
     }
     Vector<string> empty = [];
     return empty;
+}
+
+bool launcherIsUtilityArg(string arg) {
+    return arg.equals("--help")
+        || arg.equals("-h")
+        || arg.equals("--version")
+        || arg.equals("-v")
+        || arg.equals("--features")
+        || arg.equals("--license")
+        || arg.equals("--author");
+}
+
+bool launcherIsUtilityInvocation(Vector<string> emulatorArgs) {
+    for arg in emulatorArgs {
+        if (launcherIsUtilityArg(arg)) { return true; }
+    }
+    return false;
+}
+
+bool launcherHasFlag(Vector<string> emulatorArgs, string flag) {
+    for arg in emulatorArgs {
+        if (arg.equals(flag)) { return true; }
+        if (arg.startsWith(flag + "=")) { return true; }
+    }
+    return false;
+}
+
+bool launcherDefaultAlreadyPresent(string emulator, string arg, Vector<string> emulatorArgs) {
+    string key = emulator.toLower();
+    if (arg.equals("-f") || arg.equals("--fullscreen")) {
+        return launcherHasFlag(emulatorArgs, "-f") || launcherHasFlag(emulatorArgs, "--fullscreen");
+    }
+    if (arg.equals("-batch")) {
+        return launcherHasFlag(emulatorArgs, "-batch") || launcherHasFlag(emulatorArgs, "--batch");
+    }
+    if (arg.equals("-fullscreen")) {
+        return launcherHasFlag(emulatorArgs, "-fullscreen") || launcherHasFlag(emulatorArgs, "--fullscreen");
+    }
+    if (key.equals("flycast") && arg.equals("-config")) {
+        return false;
+    }
+    if (arg.equals("-config")) {
+        return launcherHasFlag(emulatorArgs, "-config") || launcherHasFlag(emulatorArgs, "--config");
+    }
+    if (arg.equals("--config")) {
+        return false;
+    }
+    if (key.equals("dolphin") && arg.equals("-b")) {
+        return launcherHasFlag(emulatorArgs, "-b") || launcherHasFlag(emulatorArgs, "--batch");
+    }
+    if (key.equals("dolphin") && arg.equals("-e")) {
+        return launcherHasFlag(emulatorArgs, "-e") || launcherHasFlag(emulatorArgs, "--exec");
+    }
+    if (key.equals("cemu") && arg.equals("-g")) {
+        return launcherHasFlag(emulatorArgs, "-g") || launcherHasFlag(emulatorArgs, "--game");
+    }
+    return false;
+}
+
+bool launcherDefaultTakesValue(string arg) {
+    return arg.equals("--config") || arg.equals("-config");
+}
+
+Vector<string> launcherArgsWithDefaults(string emulator, Vector<string> emulatorArgs) {
+    if (launcherIsUtilityInvocation(emulatorArgs)) {
+        return emulatorArgs;
+    }
+    Vector<string> out = [];
+    Vector<string> defaults = launcherPresetArgs(emulator);
+    for (int i = 0; i < defaults.len; i++) {
+        string arg = defaults.get(i);
+        if (!launcherDefaultAlreadyPresent(emulator, arg, emulatorArgs)) {
+            out.push(arg);
+            if (launcherDefaultTakesValue(arg) && i + 1 < defaults.len) {
+                i++;
+                out.push(defaults.get(i));
+            }
+        } else if (launcherDefaultTakesValue(arg)) {
+            i++;
+        }
+    }
+    for arg in emulatorArgs {
+        out.push(arg);
+    }
+    return out;
 }
 
 string launcherFlatpakStateRoot(string project, string emulator) {
@@ -136,7 +248,7 @@ int launcherRunRouted(string project, string emulator, string executable, Vector
             finalArgs.push(retroarchConfig);
         }
     }
-    for arg in emulatorArgs {
+    for arg in launcherArgsWithDefaults(emulator, emulatorArgs) {
         finalArgs.push(arg);
     }
 
@@ -201,10 +313,7 @@ int launcherRunFlatpak(string project, string emulator, string flatpakId, Vector
         flatpakArgs.push("--env=XAUTHORITY=");
     }
     flatpakArgs.push(flatpakId);
-    for arg in launcherPresetArgs(emulator) {
-        flatpakArgs.push(arg);
-    }
-    for arg in emulatorArgs {
+    for arg in launcherArgsWithDefaults(emulator, emulatorArgs) {
         flatpakArgs.push(arg);
     }
     command = shellAppendAll(command, flatpakArgs);

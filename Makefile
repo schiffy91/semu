@@ -210,6 +210,8 @@ verify: payload-audit $(SEMU_BIN) ## Run deterministic BTRC/Steam Deck verificat
 	grep -F 'SaveStateToSlot = Keyboard/Control & Keyboard/S' "$$verify_dir/pcsx2.ini" >/dev/null; \
 	grep -F 'LoadStateFromSlot = Keyboard/Control & Keyboard/A' "$$verify_dir/pcsx2.ini" >/dev/null; \
 	grep -F 'key_press S, Save State' "$$verify_dir/steam-input.vdf" >/dev/null; \
+	grep -F 'key_press LEFT_ALT, Quit' "$$verify_dir/steam-input.vdf" >/dev/null; \
+	grep -F 'key_press F4, Quit' "$$verify_dir/steam-input.vdf" >/dev/null; \
 	echo "OK keymap render targets"; \
 	echo "== Doctor invariants =="; \
 	"$(SEMU_BIN)" doctor --project "$(CURDIR)" | tee "$$verify_dir/doctor.txt"; \
