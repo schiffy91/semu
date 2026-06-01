@@ -14,6 +14,9 @@ SEMU_SOURCE := src/semu.btrc
 SEMU_C := build/semu.c
 SEMU_BIN := build/semu
 VM_DIR := tests/vms
+E2E_GRAPH := tests/e2e/graph.json
+E2E_GRAPH_NODES ?=
+E2E_GRAPH_ARGS ?=
 CLOUD_INIT := tests/cloud-init
 SSH_PORT_LINUX := 2222
 VM_KEY := $(VM_DIR)/id_ed25519
@@ -70,7 +73,7 @@ BAZZITE_SSH_OPTS := -o "StrictHostKeyChecking=no" -o "UserKnownHostsFile=/dev/nu
 # Setup (build bundle + write declarative runtime config)
 # =============================================================================
 
-.PHONY: all install setup btrc-build generated-build generated-smoke manifest verify ftux-test container-build container-test test e2e-smoke lifecycle-smoke sandbox-smoke launcher-smoke appimage-smoke nix-e2e help
+.PHONY: all install setup btrc-build generated-build generated-smoke manifest verify payload-audit ftux-test container-build container-test test e2e-smoke e2e-graph-list e2e-graph-status e2e-graph-coverage e2e-graph-run lifecycle-smoke sandbox-smoke launcher-smoke appimage-smoke nix-e2e help
 
 all: install ## Build all emulators + bootstrap content (idempotent, cached by nix)
 install: setup
@@ -128,12 +131,27 @@ generated-smoke: generated-build ## Run BTRC-native smoke tests from generated C
 	$(SEMU_BIN) e2e all
 	bash -n packaging/linux/AppRun packaging/linux/sandbox.sh packaging/linux/build-appimage.sh packaging/linux/bin/semu-*
 
-test: generated-smoke appimage-smoke ## Run tests locally (native, no Python)
+payload-audit: $(SEMU_BIN) ## Fail if tracked licensed payloads or VM artifacts would be upstreamed
+	$(SEMU_BIN) e2e payload-audit --project "$(CURDIR)"
+
+test: payload-audit generated-smoke appimage-smoke ## Run tests locally (native, no Python)
 
 ftux-test: generated-smoke ## Validate Steam Deck/Linux first-run bootstrap path
 
 e2e-smoke: $(SEMU_BIN) ## Run BTRC-native sandbox and lifecycle smoke tests
 	$(SEMU_BIN) e2e all
+
+e2e-graph-list: $(SEMU_BIN) ## List declarative E2E graph nodes
+	$(SEMU_BIN) e2e graph "$(E2E_GRAPH)" list
+
+e2e-graph-status: $(SEMU_BIN) ## Show cached/stale E2E graph node state
+	$(SEMU_BIN) e2e graph "$(E2E_GRAPH)" status $(E2E_GRAPH_ARGS)
+
+e2e-graph-coverage: $(SEMU_BIN) ## Check declared E2E operation coverage
+	$(SEMU_BIN) e2e graph "$(E2E_GRAPH)" coverage
+
+e2e-graph-run: $(SEMU_BIN) ## Run E2E graph defaults or E2E_GRAPH_NODES="node ..."
+	$(SEMU_BIN) e2e graph "$(E2E_GRAPH)" run $(E2E_GRAPH_NODES) $(E2E_GRAPH_ARGS)
 
 lifecycle-smoke: $(SEMU_BIN) ## Validate install/reconfigure/change/uninstall/reinstall/upgrade lifecycle
 	$(SEMU_BIN) e2e lifecycle
@@ -157,7 +175,7 @@ nix-e2e: ## Validate flake routed-emulator shape and mock wrapper behavior
 	nix build ".#checks.$$host_system.routed-emulator-mock" --print-build-logs; \
 	echo "OK Nix routed-emulator smoke ($$host_system)"
 
-verify: $(SEMU_BIN) ## Run deterministic BTRC/Steam Deck verification
+verify: payload-audit $(SEMU_BIN) ## Run deterministic BTRC/Steam Deck verification
 	@set -euo pipefail; \
 	verify_dir="$(CURDIR)/build/verification"; \
 	rm -rf "$$verify_dir"; \

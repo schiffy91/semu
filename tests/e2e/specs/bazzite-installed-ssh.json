@@ -1,0 +1,16 @@
+{
+  "name": "bazzite-installed-ssh",
+  "state": "bazzite-installed-ssh",
+  "parentState": "payload-audit",
+  "stateMaterial": "{{sourceHash}}:{{bazziteUser}}",
+  "args": {
+    "bazziteUser": "bazzite"
+  },
+  "operations": [
+    {
+      "op": "make",
+      "command": "bazzite-vm-verify-ssh BAZZITE_SSH_USER={{bazziteUser}}",
+      "expect": "OK deck input preflight"
+    }
+  ]
+}

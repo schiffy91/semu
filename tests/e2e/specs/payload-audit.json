@@ -1,0 +1,27 @@
+{
+  "name": "payload-audit",
+  "state": "payload-audit",
+  "stateMaterial": "{{sourceHash}}",
+  "operations": [
+    {
+      "op": "require-command",
+      "command": "git"
+    },
+    {
+      "op": "require-command",
+      "command": "make"
+    },
+    {
+      "op": "artifact",
+      "path": ".gitignore"
+    },
+    {
+      "op": "host",
+      "command": "git check-ignore -q tests/vms && printf ignored",
+      "expect": "ignored"
+    },
+    {
+      "op": "payload-audit"
+    }
+  ]
+}

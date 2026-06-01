@@ -1,0 +1,13 @@
+{
+  "name": "generated-smoke",
+  "state": "generated-smoke",
+  "parentState": "payload-audit",
+  "stateMaterial": "{{sourceHash}}",
+  "operations": [
+    {
+      "op": "make",
+      "command": "generated-smoke",
+      "expect": "OK"
+    }
+  ]
+}

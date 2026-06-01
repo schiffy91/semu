@@ -1,0 +1,13 @@
+{
+  "name": "bazzite-deck-live",
+  "state": "bazzite-deck-live",
+  "parentState": "payload-audit",
+  "stateMaterial": "{{sourceHash}}",
+  "operations": [
+    {
+      "op": "make",
+      "command": "bazzite-vm-smoke",
+      "expect": "Open the VNC display"
+    }
+  ]
+}

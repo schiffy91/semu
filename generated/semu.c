@@ -227,9 +227,24 @@ typedef struct BinaryEditor BinaryEditor;
 void BinaryEditor_destroy(BinaryEditor* self);
 typedef struct N3dsRomCheck N3dsRomCheck;
 void N3dsRomCheck_destroy(N3dsRomCheck* self);
+typedef struct SemuE2eOperation SemuE2eOperation;
+void SemuE2eOperation_destroy(SemuE2eOperation* self);
+typedef struct SemuE2eSpec SemuE2eSpec;
+void SemuE2eSpec_destroy(SemuE2eSpec* self);
+typedef struct SemuE2eGraphNode SemuE2eGraphNode;
+void SemuE2eGraphNode_destroy(SemuE2eGraphNode* self);
+typedef struct SemuE2eGraph SemuE2eGraph;
+void SemuE2eGraph_destroy(SemuE2eGraph* self);
+typedef struct SemuE2eParser SemuE2eParser;
+typedef struct SemuE2eRunner SemuE2eRunner;
+void SemuE2eRunner_destroy(SemuE2eRunner* self);
+typedef struct SemuE2eGraphRunner SemuE2eGraphRunner;
+void SemuE2eGraphRunner_destroy(SemuE2eGraphRunner* self);
 typedef struct btrc_Vector_string btrc_Vector_string;
 typedef struct btrc_Vector_bool btrc_Vector_bool;
 typedef struct btrc_Vector_int btrc_Vector_int;
+typedef struct btrc_Vector_SemuE2eOperation btrc_Vector_SemuE2eOperation;
+typedef struct btrc_Vector_SemuE2eGraphNode btrc_Vector_SemuE2eGraphNode;
 typedef struct btrc_Map_string_string btrc_Map_string_string;
 typedef struct btrc_Map_string_bool btrc_Map_string_bool;
 char* jsonQ(char* value);
@@ -507,6 +522,13 @@ int e2eSyncSmoke(CliArgs* args);
 bool e2eWriteFakeN3dsRom(char* path, bool noCrypto, bool decrypted);
 ExecResult* e2eRunN3dsNoCrypto(char* exe, char* input, char* outputDir, btrc_Vector_string* extraArgs);
 int e2eN3dsNoCryptoSmoke(CliArgs* args);
+void e2eFatal(char* message);
+char* e2eExpandArgs(char* text, btrc_Map_string_string* args);
+btrc_Vector_string* semuE2eOperationCatalog(void);
+int e2ePayloadAudit(char* project);
+btrc_Map_string_string* e2eGraphArgs(CliArgs* args, int startIndex);
+btrc_Vector_string* e2eGraphTargets(CliArgs* args, int startIndex);
+int e2eGraphCommand(CliArgs* args);
 int e2eCommand(CliArgs* args);
 void printUsage(void);
 char* retroarchKeyName(char* key);
@@ -571,6 +593,7 @@ void ExecResult_init(ExecResult* self, int code, char* out, char* err, char* com
 ExecResult* ExecResult_new(int code, char* out, char* err, char* command);
 bool ExecResult_ok(ExecResult* self);
 char* ExecResult_stdout(ExecResult* self);
+char* ExecResult_trimmed(ExecResult* self);
 void Command_init(Command* self, char* executable);
 Command* Command_new(char* executable);
 Command* Command_arg(Command* self, char* value);
@@ -695,6 +718,67 @@ bool BinaryEditor_writeAscii(BinaryEditor* self, long offset, char* text);
 void BinaryEditor_close(BinaryEditor* self);
 void N3dsRomCheck_init(N3dsRomCheck* self);
 N3dsRomCheck* N3dsRomCheck_new(void);
+void SemuE2eOperation_init(SemuE2eOperation* self);
+SemuE2eOperation* SemuE2eOperation_new(void);
+void SemuE2eOperation_expandArgs(SemuE2eOperation* self, btrc_Map_string_string* args);
+void SemuE2eSpec_init(SemuE2eSpec* self);
+SemuE2eSpec* SemuE2eSpec_new(void);
+void SemuE2eSpec_setArg(SemuE2eSpec* self, char* key, char* value);
+void SemuE2eSpec_setArgPair(SemuE2eSpec* self, char* pair);
+char* SemuE2eSpec_stateDir(SemuE2eSpec* self);
+char* SemuE2eSpec_stateHashFile(SemuE2eSpec* self);
+char* SemuE2eSpec_parentHashFile(SemuE2eSpec* self);
+char* SemuE2eSpec_resolveParentHash(SemuE2eSpec* self);
+char* SemuE2eSpec_operationsMaterial(SemuE2eSpec* self);
+char* SemuE2eSpec_hashMaterial(SemuE2eSpec* self);
+void SemuE2eSpec_computeStateHash(SemuE2eSpec* self);
+void SemuE2eSpec_setDerivedArgs(SemuE2eSpec* self);
+void SemuE2eSpec_refreshDerivedArgs(SemuE2eSpec* self);
+void SemuE2eSpec_expandArgs(SemuE2eSpec* self);
+void SemuE2eSpec_recordState(SemuE2eSpec* self);
+void SemuE2eGraphNode_init(SemuE2eGraphNode* self);
+SemuE2eGraphNode* SemuE2eGraphNode_new(void);
+void SemuE2eGraph_init(SemuE2eGraph* self);
+SemuE2eGraph* SemuE2eGraph_new(void);
+char* SemuE2eGraph_resolvePath(SemuE2eGraph* self, char* base, char* value);
+char* SemuE2eGraph_resolvedWorkspaceRoot(SemuE2eGraph* self);
+char* SemuE2eGraph_resolvedSpecPath(SemuE2eGraph* self, SemuE2eGraphNode* node);
+SemuE2eGraphNode* SemuE2eGraph_node(SemuE2eGraph* self, char* id);
+btrc_Vector_string* SemuE2eGraph_defaultTargets(SemuE2eGraph* self);
+int SemuE2eParser_skipSpaces(char* text, int i);
+int SemuE2eParser_keyPosition(char* text, char* key);
+char* SemuE2eParser_parseStringValue(char* text, int i, char* fallback);
+char* SemuE2eParser_field(char* text, char* key, char* fallback);
+int SemuE2eParser_intField(char* text, char* key, int fallback);
+char* SemuE2eParser_objectField(char* text, char* key);
+btrc_Vector_string* SemuE2eParser_stringArray(char* text, char* key);
+btrc_Vector_string* SemuE2eParser_objectArray(char* text, char* key);
+btrc_Map_string_string* SemuE2eParser_argsObject(char* text);
+SemuE2eOperation* SemuE2eParser_operation(char* objectText);
+btrc_Vector_SemuE2eOperation* SemuE2eParser_operations(char* text);
+SemuE2eSpec* SemuE2eParser_readSpecFile(char* path);
+SemuE2eGraphNode* SemuE2eParser_graphNode(char* objectText);
+SemuE2eGraph* SemuE2eParser_readGraphFile(char* path);
+void SemuE2eRunner_init(SemuE2eRunner* self, SemuE2eSpec* spec, char* workspaceRoot, char* program);
+SemuE2eRunner* SemuE2eRunner_new(SemuE2eSpec* spec, char* workspaceRoot, char* program);
+void SemuE2eRunner_fail(SemuE2eRunner* self, char* message);
+bool SemuE2eRunner_outputMatches(SemuE2eRunner* self, ExecResult* result, char* expect);
+void SemuE2eRunner_assertResult(SemuE2eRunner* self, char* label, ExecResult* result, char* expect);
+ExecResult* SemuE2eRunner_runWorkspaceCommand(SemuE2eRunner* self, char* command);
+void SemuE2eRunner_runOperation(SemuE2eRunner* self, SemuE2eOperation* op);
+int SemuE2eRunner_run(SemuE2eRunner* self);
+void SemuE2eGraphRunner_init(SemuE2eGraphRunner* self, SemuE2eGraph* graph, btrc_Map_string_string* args, char* program);
+SemuE2eGraphRunner* SemuE2eGraphRunner_new(SemuE2eGraph* graph, btrc_Map_string_string* args, char* program);
+char* SemuE2eGraphRunner_sourceHash(SemuE2eGraphRunner* self);
+void SemuE2eGraphRunner_applyStructuralOverrides(SemuE2eGraphRunner* self, SemuE2eSpec* spec, btrc_Map_string_string* overrides);
+SemuE2eSpec* SemuE2eGraphRunner_specFor(SemuE2eGraphRunner* self, SemuE2eGraphNode* node);
+bool SemuE2eGraphRunner_force(SemuE2eGraphRunner* self);
+bool SemuE2eGraphRunner_ready(SemuE2eGraphRunner* self, SemuE2eSpec* spec);
+void SemuE2eGraphRunner_list(SemuE2eGraphRunner* self);
+void SemuE2eGraphRunner_status(SemuE2eGraphRunner* self);
+int SemuE2eGraphRunner_operationCoverage(SemuE2eGraphRunner* self);
+int SemuE2eGraphRunner_runNode(SemuE2eGraphRunner* self, char* id);
+int SemuE2eGraphRunner_run(SemuE2eGraphRunner* self, btrc_Vector_string* targets);
 typedef bool (*__btrc_fn_bool_string)(char*);
 typedef void (*__btrc_fn_void_string)(char*);
 typedef char* (*__btrc_fn_string_string)(char*);
@@ -706,6 +790,14 @@ typedef bool (*__btrc_fn_bool_int)(int);
 typedef void (*__btrc_fn_void_int)(int);
 typedef int (*__btrc_fn_int_int)(int);
 typedef int (*__btrc_fn_int_int_int)(int, int);
+typedef bool (*__btrc_fn_bool_SemuE2eOperation)(SemuE2eOperation*);
+typedef void (*__btrc_fn_void_SemuE2eOperation)(SemuE2eOperation*);
+typedef SemuE2eOperation* (*__btrc_fn_SemuE2eOperation_SemuE2eOperation)(SemuE2eOperation*);
+typedef SemuE2eOperation* (*__btrc_fn_SemuE2eOperation_SemuE2eOperation_SemuE2eOperation)(SemuE2eOperation*, SemuE2eOperation*);
+typedef bool (*__btrc_fn_bool_SemuE2eGraphNode)(SemuE2eGraphNode*);
+typedef void (*__btrc_fn_void_SemuE2eGraphNode)(SemuE2eGraphNode*);
+typedef SemuE2eGraphNode* (*__btrc_fn_SemuE2eGraphNode_SemuE2eGraphNode)(SemuE2eGraphNode*);
+typedef SemuE2eGraphNode* (*__btrc_fn_SemuE2eGraphNode_SemuE2eGraphNode_SemuE2eGraphNode)(SemuE2eGraphNode*, SemuE2eGraphNode*);
 
 struct btrc_Vector_string {
     int __rc;
@@ -724,6 +816,20 @@ struct btrc_Vector_bool {
 struct btrc_Vector_int {
     int __rc;
     int* data;
+    int len;
+    int cap;
+};
+
+struct btrc_Vector_SemuE2eOperation {
+    int __rc;
+    SemuE2eOperation** data;
+    int len;
+    int cap;
+};
+
+struct btrc_Vector_SemuE2eGraphNode {
+    int __rc;
+    SemuE2eGraphNode** data;
     int len;
     int cap;
 };
@@ -925,6 +1031,70 @@ struct N3dsRomCheck {
     int partitions;
 };
 
+struct SemuE2eOperation {
+    int __rc;
+    char* kind;
+    char* command;
+    char* expect;
+    char* name;
+    char* path;
+    int timeout;
+};
+
+struct SemuE2eSpec {
+    int __rc;
+    char* name;
+    char* state;
+    char* parentState;
+    char* stateRoot;
+    char* stateMaterial;
+    char* parentHash;
+    char* stateHash;
+    char* stateHashShort;
+    btrc_Map_string_string* args;
+    btrc_Vector_SemuE2eOperation* operations;
+};
+
+struct SemuE2eGraphNode {
+    int __rc;
+    char* id;
+    char* specPath;
+    btrc_Vector_string* after;
+    btrc_Map_string_string* args;
+};
+
+struct SemuE2eGraph {
+    int __rc;
+    char* name;
+    char* path;
+    char* baseDir;
+    char* workspaceRoot;
+    btrc_Vector_string* defaults;
+    btrc_Vector_SemuE2eGraphNode* nodes;
+};
+
+struct SemuE2eParser {
+    int __rc;
+};
+
+struct SemuE2eRunner {
+    int __rc;
+    SemuE2eSpec* spec;
+    char* workspaceRoot;
+    char* program;
+    int failures;
+};
+
+struct SemuE2eGraphRunner {
+    int __rc;
+    SemuE2eGraph* graph;
+    btrc_Map_string_string* args;
+    btrc_Vector_string* done;
+    btrc_Vector_string* visiting;
+    char* sourceHashValue;
+    char* program;
+};
+
 /* Type-dependent comparison/hashing macros for generic collections.
  * Uses __builtin_choose_expr — unselected branch is NOT evaluated.
  * Cast chain (void*)(intptr_t) avoids float-to-pointer hard errors. */
@@ -1088,6 +1258,102 @@ static btrc_Vector_int* btrc_Vector_int_copy(btrc_Vector_int* self);
 static void btrc_Vector_int_removeAt(btrc_Vector_int* self, int idx);
 static int btrc_Vector_int_iterLen(btrc_Vector_int* self);
 static int btrc_Vector_int_iterGet(btrc_Vector_int* self, int i);
+
+static void btrc_Vector_SemuE2eOperation_init(btrc_Vector_SemuE2eOperation* self);
+static btrc_Vector_SemuE2eOperation* btrc_Vector_SemuE2eOperation_new(void);
+static void btrc_Vector_SemuE2eOperation_destroy(btrc_Vector_SemuE2eOperation* self);
+static void btrc_Vector_SemuE2eOperation_push(btrc_Vector_SemuE2eOperation* self, SemuE2eOperation* val);
+static SemuE2eOperation* btrc_Vector_SemuE2eOperation_pop(btrc_Vector_SemuE2eOperation* self);
+static SemuE2eOperation* btrc_Vector_SemuE2eOperation_get(btrc_Vector_SemuE2eOperation* self, int i);
+static void btrc_Vector_SemuE2eOperation_set(btrc_Vector_SemuE2eOperation* self, int i, SemuE2eOperation* val);
+static void btrc_Vector_SemuE2eOperation_free(btrc_Vector_SemuE2eOperation* self);
+static void btrc_Vector_SemuE2eOperation_remove(btrc_Vector_SemuE2eOperation* self, int idx);
+static void btrc_Vector_SemuE2eOperation_reverse(btrc_Vector_SemuE2eOperation* self);
+static btrc_Vector_SemuE2eOperation* btrc_Vector_SemuE2eOperation_reversed(btrc_Vector_SemuE2eOperation* self);
+static void btrc_Vector_SemuE2eOperation_swap(btrc_Vector_SemuE2eOperation* self, int i, int j);
+static void btrc_Vector_SemuE2eOperation_clear(btrc_Vector_SemuE2eOperation* self);
+static void btrc_Vector_SemuE2eOperation_fill(btrc_Vector_SemuE2eOperation* self, SemuE2eOperation* val);
+static int btrc_Vector_SemuE2eOperation_size(btrc_Vector_SemuE2eOperation* self);
+static bool btrc_Vector_SemuE2eOperation_isEmpty(btrc_Vector_SemuE2eOperation* self);
+static SemuE2eOperation* btrc_Vector_SemuE2eOperation_first(btrc_Vector_SemuE2eOperation* self);
+static SemuE2eOperation* btrc_Vector_SemuE2eOperation_last(btrc_Vector_SemuE2eOperation* self);
+static btrc_Vector_SemuE2eOperation* btrc_Vector_SemuE2eOperation_slice(btrc_Vector_SemuE2eOperation* self, int start, int end);
+static btrc_Vector_SemuE2eOperation* btrc_Vector_SemuE2eOperation_take(btrc_Vector_SemuE2eOperation* self, int n);
+static btrc_Vector_SemuE2eOperation* btrc_Vector_SemuE2eOperation_drop(btrc_Vector_SemuE2eOperation* self, int n);
+static void btrc_Vector_SemuE2eOperation_extend(btrc_Vector_SemuE2eOperation* self, btrc_Vector_SemuE2eOperation* other);
+static void btrc_Vector_SemuE2eOperation_insert(btrc_Vector_SemuE2eOperation* self, int idx, SemuE2eOperation* val);
+static bool btrc_Vector_SemuE2eOperation_contains(btrc_Vector_SemuE2eOperation* self, SemuE2eOperation* val);
+static int btrc_Vector_SemuE2eOperation_indexOf(btrc_Vector_SemuE2eOperation* self, SemuE2eOperation* val);
+static int btrc_Vector_SemuE2eOperation_lastIndexOf(btrc_Vector_SemuE2eOperation* self, SemuE2eOperation* val);
+static int btrc_Vector_SemuE2eOperation_count(btrc_Vector_SemuE2eOperation* self, SemuE2eOperation* val);
+static void btrc_Vector_SemuE2eOperation_removeAll(btrc_Vector_SemuE2eOperation* self, SemuE2eOperation* val);
+static btrc_Vector_SemuE2eOperation* btrc_Vector_SemuE2eOperation_distinct(btrc_Vector_SemuE2eOperation* self);
+static void btrc_Vector_SemuE2eOperation_sort(btrc_Vector_SemuE2eOperation* self);
+static btrc_Vector_SemuE2eOperation* btrc_Vector_SemuE2eOperation_sorted(btrc_Vector_SemuE2eOperation* self);
+static SemuE2eOperation* btrc_Vector_SemuE2eOperation_min(btrc_Vector_SemuE2eOperation* self);
+static SemuE2eOperation* btrc_Vector_SemuE2eOperation_max(btrc_Vector_SemuE2eOperation* self);
+static SemuE2eOperation* btrc_Vector_SemuE2eOperation_sum(btrc_Vector_SemuE2eOperation* self);
+static char* btrc_Vector_SemuE2eOperation_join(btrc_Vector_SemuE2eOperation* self, char* sep);
+static char* btrc_Vector_SemuE2eOperation_joinToString(btrc_Vector_SemuE2eOperation* self, char* sep);
+static btrc_Vector_SemuE2eOperation* btrc_Vector_SemuE2eOperation_filter(btrc_Vector_SemuE2eOperation* self, __btrc_fn_bool_SemuE2eOperation pred);
+static int btrc_Vector_SemuE2eOperation_findIndex(btrc_Vector_SemuE2eOperation* self, __btrc_fn_bool_SemuE2eOperation pred);
+static void btrc_Vector_SemuE2eOperation_forEach(btrc_Vector_SemuE2eOperation* self, __btrc_fn_void_SemuE2eOperation fn);
+static btrc_Vector_SemuE2eOperation* btrc_Vector_SemuE2eOperation_map(btrc_Vector_SemuE2eOperation* self, __btrc_fn_SemuE2eOperation_SemuE2eOperation fn);
+static bool btrc_Vector_SemuE2eOperation_any(btrc_Vector_SemuE2eOperation* self, __btrc_fn_bool_SemuE2eOperation pred);
+static bool btrc_Vector_SemuE2eOperation_all(btrc_Vector_SemuE2eOperation* self, __btrc_fn_bool_SemuE2eOperation pred);
+static SemuE2eOperation* btrc_Vector_SemuE2eOperation_reduce(btrc_Vector_SemuE2eOperation* self, SemuE2eOperation* init, __btrc_fn_SemuE2eOperation_SemuE2eOperation_SemuE2eOperation fn);
+static btrc_Vector_SemuE2eOperation* btrc_Vector_SemuE2eOperation_copy(btrc_Vector_SemuE2eOperation* self);
+static void btrc_Vector_SemuE2eOperation_removeAt(btrc_Vector_SemuE2eOperation* self, int idx);
+static int btrc_Vector_SemuE2eOperation_iterLen(btrc_Vector_SemuE2eOperation* self);
+static SemuE2eOperation* btrc_Vector_SemuE2eOperation_iterGet(btrc_Vector_SemuE2eOperation* self, int i);
+
+static void btrc_Vector_SemuE2eGraphNode_init(btrc_Vector_SemuE2eGraphNode* self);
+static btrc_Vector_SemuE2eGraphNode* btrc_Vector_SemuE2eGraphNode_new(void);
+static void btrc_Vector_SemuE2eGraphNode_destroy(btrc_Vector_SemuE2eGraphNode* self);
+static void btrc_Vector_SemuE2eGraphNode_push(btrc_Vector_SemuE2eGraphNode* self, SemuE2eGraphNode* val);
+static SemuE2eGraphNode* btrc_Vector_SemuE2eGraphNode_pop(btrc_Vector_SemuE2eGraphNode* self);
+static SemuE2eGraphNode* btrc_Vector_SemuE2eGraphNode_get(btrc_Vector_SemuE2eGraphNode* self, int i);
+static void btrc_Vector_SemuE2eGraphNode_set(btrc_Vector_SemuE2eGraphNode* self, int i, SemuE2eGraphNode* val);
+static void btrc_Vector_SemuE2eGraphNode_free(btrc_Vector_SemuE2eGraphNode* self);
+static void btrc_Vector_SemuE2eGraphNode_remove(btrc_Vector_SemuE2eGraphNode* self, int idx);
+static void btrc_Vector_SemuE2eGraphNode_reverse(btrc_Vector_SemuE2eGraphNode* self);
+static btrc_Vector_SemuE2eGraphNode* btrc_Vector_SemuE2eGraphNode_reversed(btrc_Vector_SemuE2eGraphNode* self);
+static void btrc_Vector_SemuE2eGraphNode_swap(btrc_Vector_SemuE2eGraphNode* self, int i, int j);
+static void btrc_Vector_SemuE2eGraphNode_clear(btrc_Vector_SemuE2eGraphNode* self);
+static void btrc_Vector_SemuE2eGraphNode_fill(btrc_Vector_SemuE2eGraphNode* self, SemuE2eGraphNode* val);
+static int btrc_Vector_SemuE2eGraphNode_size(btrc_Vector_SemuE2eGraphNode* self);
+static bool btrc_Vector_SemuE2eGraphNode_isEmpty(btrc_Vector_SemuE2eGraphNode* self);
+static SemuE2eGraphNode* btrc_Vector_SemuE2eGraphNode_first(btrc_Vector_SemuE2eGraphNode* self);
+static SemuE2eGraphNode* btrc_Vector_SemuE2eGraphNode_last(btrc_Vector_SemuE2eGraphNode* self);
+static btrc_Vector_SemuE2eGraphNode* btrc_Vector_SemuE2eGraphNode_slice(btrc_Vector_SemuE2eGraphNode* self, int start, int end);
+static btrc_Vector_SemuE2eGraphNode* btrc_Vector_SemuE2eGraphNode_take(btrc_Vector_SemuE2eGraphNode* self, int n);
+static btrc_Vector_SemuE2eGraphNode* btrc_Vector_SemuE2eGraphNode_drop(btrc_Vector_SemuE2eGraphNode* self, int n);
+static void btrc_Vector_SemuE2eGraphNode_extend(btrc_Vector_SemuE2eGraphNode* self, btrc_Vector_SemuE2eGraphNode* other);
+static void btrc_Vector_SemuE2eGraphNode_insert(btrc_Vector_SemuE2eGraphNode* self, int idx, SemuE2eGraphNode* val);
+static bool btrc_Vector_SemuE2eGraphNode_contains(btrc_Vector_SemuE2eGraphNode* self, SemuE2eGraphNode* val);
+static int btrc_Vector_SemuE2eGraphNode_indexOf(btrc_Vector_SemuE2eGraphNode* self, SemuE2eGraphNode* val);
+static int btrc_Vector_SemuE2eGraphNode_lastIndexOf(btrc_Vector_SemuE2eGraphNode* self, SemuE2eGraphNode* val);
+static int btrc_Vector_SemuE2eGraphNode_count(btrc_Vector_SemuE2eGraphNode* self, SemuE2eGraphNode* val);
+static void btrc_Vector_SemuE2eGraphNode_removeAll(btrc_Vector_SemuE2eGraphNode* self, SemuE2eGraphNode* val);
+static btrc_Vector_SemuE2eGraphNode* btrc_Vector_SemuE2eGraphNode_distinct(btrc_Vector_SemuE2eGraphNode* self);
+static void btrc_Vector_SemuE2eGraphNode_sort(btrc_Vector_SemuE2eGraphNode* self);
+static btrc_Vector_SemuE2eGraphNode* btrc_Vector_SemuE2eGraphNode_sorted(btrc_Vector_SemuE2eGraphNode* self);
+static SemuE2eGraphNode* btrc_Vector_SemuE2eGraphNode_min(btrc_Vector_SemuE2eGraphNode* self);
+static SemuE2eGraphNode* btrc_Vector_SemuE2eGraphNode_max(btrc_Vector_SemuE2eGraphNode* self);
+static SemuE2eGraphNode* btrc_Vector_SemuE2eGraphNode_sum(btrc_Vector_SemuE2eGraphNode* self);
+static char* btrc_Vector_SemuE2eGraphNode_join(btrc_Vector_SemuE2eGraphNode* self, char* sep);
+static char* btrc_Vector_SemuE2eGraphNode_joinToString(btrc_Vector_SemuE2eGraphNode* self, char* sep);
+static btrc_Vector_SemuE2eGraphNode* btrc_Vector_SemuE2eGraphNode_filter(btrc_Vector_SemuE2eGraphNode* self, __btrc_fn_bool_SemuE2eGraphNode pred);
+static int btrc_Vector_SemuE2eGraphNode_findIndex(btrc_Vector_SemuE2eGraphNode* self, __btrc_fn_bool_SemuE2eGraphNode pred);
+static void btrc_Vector_SemuE2eGraphNode_forEach(btrc_Vector_SemuE2eGraphNode* self, __btrc_fn_void_SemuE2eGraphNode fn);
+static btrc_Vector_SemuE2eGraphNode* btrc_Vector_SemuE2eGraphNode_map(btrc_Vector_SemuE2eGraphNode* self, __btrc_fn_SemuE2eGraphNode_SemuE2eGraphNode fn);
+static bool btrc_Vector_SemuE2eGraphNode_any(btrc_Vector_SemuE2eGraphNode* self, __btrc_fn_bool_SemuE2eGraphNode pred);
+static bool btrc_Vector_SemuE2eGraphNode_all(btrc_Vector_SemuE2eGraphNode* self, __btrc_fn_bool_SemuE2eGraphNode pred);
+static SemuE2eGraphNode* btrc_Vector_SemuE2eGraphNode_reduce(btrc_Vector_SemuE2eGraphNode* self, SemuE2eGraphNode* init, __btrc_fn_SemuE2eGraphNode_SemuE2eGraphNode_SemuE2eGraphNode fn);
+static btrc_Vector_SemuE2eGraphNode* btrc_Vector_SemuE2eGraphNode_copy(btrc_Vector_SemuE2eGraphNode* self);
+static void btrc_Vector_SemuE2eGraphNode_removeAt(btrc_Vector_SemuE2eGraphNode* self, int idx);
+static int btrc_Vector_SemuE2eGraphNode_iterLen(btrc_Vector_SemuE2eGraphNode* self);
+static SemuE2eGraphNode* btrc_Vector_SemuE2eGraphNode_iterGet(btrc_Vector_SemuE2eGraphNode* self, int i);
 
 static void btrc_Map_string_string_init(btrc_Map_string_string* self);
 static btrc_Map_string_string* btrc_Map_string_string_new(void);
@@ -2327,6 +2593,836 @@ static int btrc_Vector_int_iterGet(btrc_Vector_int* self, int i) {
     return self->data[i];
 }
 
+static void btrc_Vector_SemuE2eOperation_init(btrc_Vector_SemuE2eOperation* self) {
+    self->__rc = 1;
+    (self->data = NULL);
+    (self->len = 0);
+    (self->cap = 0);
+}
+
+static btrc_Vector_SemuE2eOperation* btrc_Vector_SemuE2eOperation_new(void) {
+    btrc_Vector_SemuE2eOperation* self = ((btrc_Vector_SemuE2eOperation*)malloc(sizeof(btrc_Vector_SemuE2eOperation)));
+    memset(self, 0, sizeof(btrc_Vector_SemuE2eOperation));
+    btrc_Vector_SemuE2eOperation_init(self);
+    return self;
+}
+
+static void btrc_Vector_SemuE2eOperation_destroy(btrc_Vector_SemuE2eOperation* self) {
+    free(self);
+}
+
+static void btrc_Vector_SemuE2eOperation_push(btrc_Vector_SemuE2eOperation* self, SemuE2eOperation* val) {
+    (val->__rc++);
+    if (self->len >= self->cap) {
+        (self->cap = ((self->cap == 0) ? 4 : (self->cap * 2)));
+        (self->data = ((SemuE2eOperation**)__btrc_safe_realloc(self->data, (sizeof(SemuE2eOperation*) * self->cap))));
+    }
+    (self->data[self->len] = val);
+    (self->len++);
+}
+
+static SemuE2eOperation* btrc_Vector_SemuE2eOperation_pop(btrc_Vector_SemuE2eOperation* self) {
+    if (self->len <= 0) {
+        fprintf(stderr, "Vector pop from empty list\n");
+        exit(1);
+    }
+    (self->len--);
+    return self->data[self->len];
+}
+
+static SemuE2eOperation* btrc_Vector_SemuE2eOperation_get(btrc_Vector_SemuE2eOperation* self, int i) {
+    if ((i < 0) || (i >= self->len)) {
+        fprintf(stderr, "Vector index out of bounds: %d (len=%d)\n", i, self->len);
+        exit(1);
+    }
+    return self->data[i];
+}
+
+static void btrc_Vector_SemuE2eOperation_set(btrc_Vector_SemuE2eOperation* self, int i, SemuE2eOperation* val) {
+    if ((i < 0) || (i >= self->len)) {
+        fprintf(stderr, "Vector index out of bounds: %d (len=%d)\n", i, self->len);
+        exit(1);
+    }
+    if (self->data[i]) {
+        if ((--self->data[i]->__rc) <= 0) {
+            SemuE2eOperation_destroy(self->data[i]);
+        }
+    }
+    (val->__rc++);
+    (self->data[i] = val);
+}
+
+static void btrc_Vector_SemuE2eOperation_free(btrc_Vector_SemuE2eOperation* self) {
+    for (int i = 0; (i < self->len); (i++)) {
+        if (self->data[i]) {
+            if ((--self->data[i]->__rc) <= 0) {
+                SemuE2eOperation_destroy(self->data[i]);
+            }
+        }
+    }
+    free(self->data);
+    (self->data = NULL);
+    (self->len = 0);
+    (self->cap = 0);
+}
+
+static void btrc_Vector_SemuE2eOperation_remove(btrc_Vector_SemuE2eOperation* self, int idx) {
+    if ((idx < 0) || (idx >= self->len)) {
+        fprintf(stderr, "Vector remove index out of bounds: %d (len=%d)\n", idx, self->len);
+        exit(1);
+    }
+    if (self->data[idx]) {
+        if ((--self->data[idx]->__rc) <= 0) {
+            SemuE2eOperation_destroy(self->data[idx]);
+        }
+    }
+    for (int i = idx; (i < (self->len - 1)); (i++)) {
+        (self->data[i] = self->data[(i + 1)]);
+    }
+    (self->len--);
+}
+
+static void btrc_Vector_SemuE2eOperation_reverse(btrc_Vector_SemuE2eOperation* self) {
+    for (int i = 0; (i < (self->len / 2)); (i++)) {
+        SemuE2eOperation* tmp = self->data[i];
+        (self->data[i] = self->data[((self->len - 1) - i)]);
+        (self->data[((self->len - 1) - i)] = tmp);
+    }
+}
+
+static btrc_Vector_SemuE2eOperation* btrc_Vector_SemuE2eOperation_reversed(btrc_Vector_SemuE2eOperation* self) {
+    btrc_Vector_SemuE2eOperation* result = btrc_Vector_SemuE2eOperation_new();
+    for (int i = (self->len - 1); (i >= 0); (i--)) {
+        btrc_Vector_SemuE2eOperation_push(result, self->data[i]);
+    }
+    return result;
+}
+
+static void btrc_Vector_SemuE2eOperation_swap(btrc_Vector_SemuE2eOperation* self, int i, int j) {
+    if ((((i < 0) || (i >= self->len)) || (j < 0)) || (j >= self->len)) {
+        fprintf(stderr, "Vector swap index out of bounds\n");
+        exit(1);
+    }
+    SemuE2eOperation* tmp = self->data[i];
+    (self->data[i] = self->data[j]);
+    (self->data[j] = tmp);
+}
+
+static void btrc_Vector_SemuE2eOperation_clear(btrc_Vector_SemuE2eOperation* self) {
+    for (int i = 0; (i < self->len); (i++)) {
+        if (self->data[i]) {
+            if ((--self->data[i]->__rc) <= 0) {
+                SemuE2eOperation_destroy(self->data[i]);
+            }
+        }
+    }
+    (self->len = 0);
+}
+
+static void btrc_Vector_SemuE2eOperation_fill(btrc_Vector_SemuE2eOperation* self, SemuE2eOperation* val) {
+    for (int i = 0; (i < self->len); (i++)) {
+        if (self->data[i]) {
+            if ((--self->data[i]->__rc) <= 0) {
+                SemuE2eOperation_destroy(self->data[i]);
+            }
+        }
+        (val->__rc++);
+        (self->data[i] = val);
+    }
+}
+
+static int btrc_Vector_SemuE2eOperation_size(btrc_Vector_SemuE2eOperation* self) {
+    return self->len;
+}
+
+static bool btrc_Vector_SemuE2eOperation_isEmpty(btrc_Vector_SemuE2eOperation* self) {
+    return (self->len == 0);
+}
+
+static SemuE2eOperation* btrc_Vector_SemuE2eOperation_first(btrc_Vector_SemuE2eOperation* self) {
+    if (self->len == 0) {
+        fprintf(stderr, "Vector.first() called on empty list\n");
+        exit(1);
+    }
+    return self->data[0];
+}
+
+static SemuE2eOperation* btrc_Vector_SemuE2eOperation_last(btrc_Vector_SemuE2eOperation* self) {
+    if (self->len == 0) {
+        fprintf(stderr, "Vector.last() called on empty list\n");
+        exit(1);
+    }
+    return self->data[(self->len - 1)];
+}
+
+static btrc_Vector_SemuE2eOperation* btrc_Vector_SemuE2eOperation_slice(btrc_Vector_SemuE2eOperation* self, int start, int end) {
+    if (start < 0) {
+        (start = (self->len + start));
+    }
+    if (end < 0) {
+        (end = (self->len + end));
+    }
+    if (start < 0) {
+        (start = 0);
+    }
+    if (end > self->len) {
+        (end = self->len);
+    }
+    btrc_Vector_SemuE2eOperation* result = btrc_Vector_SemuE2eOperation_new();
+    for (int i = start; (i < end); (i++)) {
+        btrc_Vector_SemuE2eOperation_push(result, self->data[i]);
+    }
+    return result;
+}
+
+static btrc_Vector_SemuE2eOperation* btrc_Vector_SemuE2eOperation_take(btrc_Vector_SemuE2eOperation* self, int n) {
+    if (n > self->len) {
+        (n = self->len);
+    }
+    if (n < 0) {
+        (n = 0);
+    }
+    return btrc_Vector_SemuE2eOperation_slice(self, 0, n);
+}
+
+static btrc_Vector_SemuE2eOperation* btrc_Vector_SemuE2eOperation_drop(btrc_Vector_SemuE2eOperation* self, int n) {
+    if (n > self->len) {
+        (n = self->len);
+    }
+    if (n < 0) {
+        (n = 0);
+    }
+    return btrc_Vector_SemuE2eOperation_slice(self, n, self->len);
+}
+
+static void btrc_Vector_SemuE2eOperation_extend(btrc_Vector_SemuE2eOperation* self, btrc_Vector_SemuE2eOperation* other) {
+    for (int i = 0; (i < other->len); (i++)) {
+        btrc_Vector_SemuE2eOperation_push(self, other->data[i]);
+    }
+}
+
+static void btrc_Vector_SemuE2eOperation_insert(btrc_Vector_SemuE2eOperation* self, int idx, SemuE2eOperation* val) {
+    if ((idx < 0) || (idx > self->len)) {
+        fprintf(stderr, "Vector insert index out of bounds: %d (size %d)\n", idx, self->len);
+        exit(1);
+    }
+    (val->__rc++);
+    if (self->len >= self->cap) {
+        (self->cap = ((self->cap == 0) ? 4 : (self->cap * 2)));
+        (self->data = ((SemuE2eOperation**)__btrc_safe_realloc(self->data, (sizeof(SemuE2eOperation*) * self->cap))));
+    }
+    for (int i = self->len; (i > idx); (i--)) {
+        (self->data[i] = self->data[(i - 1)]);
+    }
+    (self->data[idx] = val);
+    (self->len++);
+}
+
+static bool btrc_Vector_SemuE2eOperation_contains(btrc_Vector_SemuE2eOperation* self, SemuE2eOperation* val) {
+    for (int i = 0; (i < self->len); (i++)) {
+        if (__btrc_eq(self->data[i], val)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static int btrc_Vector_SemuE2eOperation_indexOf(btrc_Vector_SemuE2eOperation* self, SemuE2eOperation* val) {
+    for (int i = 0; (i < self->len); (i++)) {
+        if (__btrc_eq(self->data[i], val)) {
+            return i;
+        }
+    }
+    return (-1);
+}
+
+static int btrc_Vector_SemuE2eOperation_lastIndexOf(btrc_Vector_SemuE2eOperation* self, SemuE2eOperation* val) {
+    for (int i = (self->len - 1); (i >= 0); (i--)) {
+        if (__btrc_eq(self->data[i], val)) {
+            return i;
+        }
+    }
+    return (-1);
+}
+
+static int btrc_Vector_SemuE2eOperation_count(btrc_Vector_SemuE2eOperation* self, SemuE2eOperation* val) {
+    int c = 0;
+    for (int i = 0; (i < self->len); (i++)) {
+        if (__btrc_eq(self->data[i], val)) {
+            (c++);
+        }
+    }
+    return c;
+}
+
+static void btrc_Vector_SemuE2eOperation_removeAll(btrc_Vector_SemuE2eOperation* self, SemuE2eOperation* val) {
+    int j = 0;
+    for (int i = 0; (i < self->len); (i++)) {
+        if (!__btrc_eq(self->data[i], val)) {
+            (self->data[j] = self->data[i]);
+            (j++);
+        } else if (self->data[i]) {
+            if ((--self->data[i]->__rc) <= 0) {
+                SemuE2eOperation_destroy(self->data[i]);
+            }
+        }
+    }
+    (self->len = j);
+}
+
+static btrc_Vector_SemuE2eOperation* btrc_Vector_SemuE2eOperation_distinct(btrc_Vector_SemuE2eOperation* self) {
+    btrc_Vector_SemuE2eOperation* result = btrc_Vector_SemuE2eOperation_new();
+    for (int i = 0; (i < self->len); (i++)) {
+        if (!btrc_Vector_SemuE2eOperation_contains(result, self->data[i])) {
+            btrc_Vector_SemuE2eOperation_push(result, self->data[i]);
+        }
+    }
+    return result;
+}
+
+static void btrc_Vector_SemuE2eOperation_sort(btrc_Vector_SemuE2eOperation* self) {
+    for (int i = 1; (i < self->len); (i++)) {
+        SemuE2eOperation* key = self->data[i];
+        int j = (i - 1);
+        while ((j >= 0) && __btrc_lt(key, self->data[j])) {
+            (self->data[(j + 1)] = self->data[j]);
+            (j = (j - 1));
+        }
+        (self->data[(j + 1)] = key);
+    }
+}
+
+static btrc_Vector_SemuE2eOperation* btrc_Vector_SemuE2eOperation_sorted(btrc_Vector_SemuE2eOperation* self) {
+    btrc_Vector_SemuE2eOperation* result = btrc_Vector_SemuE2eOperation_new();
+    for (int i = 0; (i < self->len); (i++)) {
+        btrc_Vector_SemuE2eOperation_push(result, self->data[i]);
+    }
+    btrc_Vector_SemuE2eOperation_sort(result);
+    return result;
+}
+
+static SemuE2eOperation* btrc_Vector_SemuE2eOperation_min(btrc_Vector_SemuE2eOperation* self) {
+    if (self->len <= 0) {
+        fprintf(stderr, "Vector min on empty list\n");
+        exit(1);
+    }
+    SemuE2eOperation* m = self->data[0];
+    for (int i = 1; (i < self->len); (i++)) {
+        if (__btrc_lt(self->data[i], m)) {
+            (m = self->data[i]);
+        }
+    }
+    return m;
+}
+
+static SemuE2eOperation* btrc_Vector_SemuE2eOperation_max(btrc_Vector_SemuE2eOperation* self) {
+    if (self->len <= 0) {
+        fprintf(stderr, "Vector max on empty list\n");
+        exit(1);
+    }
+    SemuE2eOperation* m = self->data[0];
+    for (int i = 1; (i < self->len); (i++)) {
+        if (__btrc_gt(self->data[i], m)) {
+            (m = self->data[i]);
+        }
+    }
+    return m;
+}
+
+static btrc_Vector_SemuE2eOperation* btrc_Vector_SemuE2eOperation_filter(btrc_Vector_SemuE2eOperation* self, __btrc_fn_bool_SemuE2eOperation pred) {
+    btrc_Vector_SemuE2eOperation* result = btrc_Vector_SemuE2eOperation_new();
+    for (int i = 0; (i < self->len); (i++)) {
+        if (pred(self->data[i])) {
+            btrc_Vector_SemuE2eOperation_push(result, self->data[i]);
+        }
+    }
+    return result;
+}
+
+static int btrc_Vector_SemuE2eOperation_findIndex(btrc_Vector_SemuE2eOperation* self, __btrc_fn_bool_SemuE2eOperation pred) {
+    for (int i = 0; (i < self->len); (i++)) {
+        if (pred(self->data[i])) {
+            return i;
+        }
+    }
+    return (-1);
+}
+
+static void btrc_Vector_SemuE2eOperation_forEach(btrc_Vector_SemuE2eOperation* self, __btrc_fn_void_SemuE2eOperation fn) {
+    for (int i = 0; (i < self->len); (i++)) {
+        fn(self->data[i]);
+    }
+}
+
+static btrc_Vector_SemuE2eOperation* btrc_Vector_SemuE2eOperation_map(btrc_Vector_SemuE2eOperation* self, __btrc_fn_SemuE2eOperation_SemuE2eOperation fn) {
+    btrc_Vector_SemuE2eOperation* result = btrc_Vector_SemuE2eOperation_new();
+    for (int i = 0; (i < self->len); (i++)) {
+        btrc_Vector_SemuE2eOperation_push(result, fn(self->data[i]));
+    }
+    return result;
+}
+
+static bool btrc_Vector_SemuE2eOperation_any(btrc_Vector_SemuE2eOperation* self, __btrc_fn_bool_SemuE2eOperation pred) {
+    for (int i = 0; (i < self->len); (i++)) {
+        if (pred(self->data[i])) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool btrc_Vector_SemuE2eOperation_all(btrc_Vector_SemuE2eOperation* self, __btrc_fn_bool_SemuE2eOperation pred) {
+    for (int i = 0; (i < self->len); (i++)) {
+        if (!pred(self->data[i])) {
+            return false;
+        }
+    }
+    return true;
+}
+
+static SemuE2eOperation* btrc_Vector_SemuE2eOperation_reduce(btrc_Vector_SemuE2eOperation* self, SemuE2eOperation* init, __btrc_fn_SemuE2eOperation_SemuE2eOperation_SemuE2eOperation fn) {
+    SemuE2eOperation* acc = init;
+    for (int i = 0; (i < self->len); (i++)) {
+        (acc = fn(acc, self->data[i]));
+    }
+    return acc;
+}
+
+static btrc_Vector_SemuE2eOperation* btrc_Vector_SemuE2eOperation_copy(btrc_Vector_SemuE2eOperation* self) {
+    btrc_Vector_SemuE2eOperation* result = btrc_Vector_SemuE2eOperation_new();
+    for (int i = 0; (i < self->len); (i++)) {
+        btrc_Vector_SemuE2eOperation_push(result, self->data[i]);
+    }
+    return result;
+}
+
+static void btrc_Vector_SemuE2eOperation_removeAt(btrc_Vector_SemuE2eOperation* self, int idx) {
+    btrc_Vector_SemuE2eOperation_remove(self, idx);
+}
+
+static int btrc_Vector_SemuE2eOperation_iterLen(btrc_Vector_SemuE2eOperation* self) {
+    return self->len;
+}
+
+static SemuE2eOperation* btrc_Vector_SemuE2eOperation_iterGet(btrc_Vector_SemuE2eOperation* self, int i) {
+    return self->data[i];
+}
+
+static void btrc_Vector_SemuE2eGraphNode_init(btrc_Vector_SemuE2eGraphNode* self) {
+    self->__rc = 1;
+    (self->data = NULL);
+    (self->len = 0);
+    (self->cap = 0);
+}
+
+static btrc_Vector_SemuE2eGraphNode* btrc_Vector_SemuE2eGraphNode_new(void) {
+    btrc_Vector_SemuE2eGraphNode* self = ((btrc_Vector_SemuE2eGraphNode*)malloc(sizeof(btrc_Vector_SemuE2eGraphNode)));
+    memset(self, 0, sizeof(btrc_Vector_SemuE2eGraphNode));
+    btrc_Vector_SemuE2eGraphNode_init(self);
+    return self;
+}
+
+static void btrc_Vector_SemuE2eGraphNode_destroy(btrc_Vector_SemuE2eGraphNode* self) {
+    free(self);
+}
+
+static void btrc_Vector_SemuE2eGraphNode_push(btrc_Vector_SemuE2eGraphNode* self, SemuE2eGraphNode* val) {
+    (val->__rc++);
+    if (self->len >= self->cap) {
+        (self->cap = ((self->cap == 0) ? 4 : (self->cap * 2)));
+        (self->data = ((SemuE2eGraphNode**)__btrc_safe_realloc(self->data, (sizeof(SemuE2eGraphNode*) * self->cap))));
+    }
+    (self->data[self->len] = val);
+    (self->len++);
+}
+
+static SemuE2eGraphNode* btrc_Vector_SemuE2eGraphNode_pop(btrc_Vector_SemuE2eGraphNode* self) {
+    if (self->len <= 0) {
+        fprintf(stderr, "Vector pop from empty list\n");
+        exit(1);
+    }
+    (self->len--);
+    return self->data[self->len];
+}
+
+static SemuE2eGraphNode* btrc_Vector_SemuE2eGraphNode_get(btrc_Vector_SemuE2eGraphNode* self, int i) {
+    if ((i < 0) || (i >= self->len)) {
+        fprintf(stderr, "Vector index out of bounds: %d (len=%d)\n", i, self->len);
+        exit(1);
+    }
+    return self->data[i];
+}
+
+static void btrc_Vector_SemuE2eGraphNode_set(btrc_Vector_SemuE2eGraphNode* self, int i, SemuE2eGraphNode* val) {
+    if ((i < 0) || (i >= self->len)) {
+        fprintf(stderr, "Vector index out of bounds: %d (len=%d)\n", i, self->len);
+        exit(1);
+    }
+    if (self->data[i]) {
+        if ((--self->data[i]->__rc) <= 0) {
+            SemuE2eGraphNode_destroy(self->data[i]);
+        }
+    }
+    (val->__rc++);
+    (self->data[i] = val);
+}
+
+static void btrc_Vector_SemuE2eGraphNode_free(btrc_Vector_SemuE2eGraphNode* self) {
+    for (int i = 0; (i < self->len); (i++)) {
+        if (self->data[i]) {
+            if ((--self->data[i]->__rc) <= 0) {
+                SemuE2eGraphNode_destroy(self->data[i]);
+            }
+        }
+    }
+    free(self->data);
+    (self->data = NULL);
+    (self->len = 0);
+    (self->cap = 0);
+}
+
+static void btrc_Vector_SemuE2eGraphNode_remove(btrc_Vector_SemuE2eGraphNode* self, int idx) {
+    if ((idx < 0) || (idx >= self->len)) {
+        fprintf(stderr, "Vector remove index out of bounds: %d (len=%d)\n", idx, self->len);
+        exit(1);
+    }
+    if (self->data[idx]) {
+        if ((--self->data[idx]->__rc) <= 0) {
+            SemuE2eGraphNode_destroy(self->data[idx]);
+        }
+    }
+    for (int i = idx; (i < (self->len - 1)); (i++)) {
+        (self->data[i] = self->data[(i + 1)]);
+    }
+    (self->len--);
+}
+
+static void btrc_Vector_SemuE2eGraphNode_reverse(btrc_Vector_SemuE2eGraphNode* self) {
+    for (int i = 0; (i < (self->len / 2)); (i++)) {
+        SemuE2eGraphNode* tmp = self->data[i];
+        (self->data[i] = self->data[((self->len - 1) - i)]);
+        (self->data[((self->len - 1) - i)] = tmp);
+    }
+}
+
+static btrc_Vector_SemuE2eGraphNode* btrc_Vector_SemuE2eGraphNode_reversed(btrc_Vector_SemuE2eGraphNode* self) {
+    btrc_Vector_SemuE2eGraphNode* result = btrc_Vector_SemuE2eGraphNode_new();
+    for (int i = (self->len - 1); (i >= 0); (i--)) {
+        btrc_Vector_SemuE2eGraphNode_push(result, self->data[i]);
+    }
+    return result;
+}
+
+static void btrc_Vector_SemuE2eGraphNode_swap(btrc_Vector_SemuE2eGraphNode* self, int i, int j) {
+    if ((((i < 0) || (i >= self->len)) || (j < 0)) || (j >= self->len)) {
+        fprintf(stderr, "Vector swap index out of bounds\n");
+        exit(1);
+    }
+    SemuE2eGraphNode* tmp = self->data[i];
+    (self->data[i] = self->data[j]);
+    (self->data[j] = tmp);
+}
+
+static void btrc_Vector_SemuE2eGraphNode_clear(btrc_Vector_SemuE2eGraphNode* self) {
+    for (int i = 0; (i < self->len); (i++)) {
+        if (self->data[i]) {
+            if ((--self->data[i]->__rc) <= 0) {
+                SemuE2eGraphNode_destroy(self->data[i]);
+            }
+        }
+    }
+    (self->len = 0);
+}
+
+static void btrc_Vector_SemuE2eGraphNode_fill(btrc_Vector_SemuE2eGraphNode* self, SemuE2eGraphNode* val) {
+    for (int i = 0; (i < self->len); (i++)) {
+        if (self->data[i]) {
+            if ((--self->data[i]->__rc) <= 0) {
+                SemuE2eGraphNode_destroy(self->data[i]);
+            }
+        }
+        (val->__rc++);
+        (self->data[i] = val);
+    }
+}
+
+static int btrc_Vector_SemuE2eGraphNode_size(btrc_Vector_SemuE2eGraphNode* self) {
+    return self->len;
+}
+
+static bool btrc_Vector_SemuE2eGraphNode_isEmpty(btrc_Vector_SemuE2eGraphNode* self) {
+    return (self->len == 0);
+}
+
+static SemuE2eGraphNode* btrc_Vector_SemuE2eGraphNode_first(btrc_Vector_SemuE2eGraphNode* self) {
+    if (self->len == 0) {
+        fprintf(stderr, "Vector.first() called on empty list\n");
+        exit(1);
+    }
+    return self->data[0];
+}
+
+static SemuE2eGraphNode* btrc_Vector_SemuE2eGraphNode_last(btrc_Vector_SemuE2eGraphNode* self) {
+    if (self->len == 0) {
+        fprintf(stderr, "Vector.last() called on empty list\n");
+        exit(1);
+    }
+    return self->data[(self->len - 1)];
+}
+
+static btrc_Vector_SemuE2eGraphNode* btrc_Vector_SemuE2eGraphNode_slice(btrc_Vector_SemuE2eGraphNode* self, int start, int end) {
+    if (start < 0) {
+        (start = (self->len + start));
+    }
+    if (end < 0) {
+        (end = (self->len + end));
+    }
+    if (start < 0) {
+        (start = 0);
+    }
+    if (end > self->len) {
+        (end = self->len);
+    }
+    btrc_Vector_SemuE2eGraphNode* result = btrc_Vector_SemuE2eGraphNode_new();
+    for (int i = start; (i < end); (i++)) {
+        btrc_Vector_SemuE2eGraphNode_push(result, self->data[i]);
+    }
+    return result;
+}
+
+static btrc_Vector_SemuE2eGraphNode* btrc_Vector_SemuE2eGraphNode_take(btrc_Vector_SemuE2eGraphNode* self, int n) {
+    if (n > self->len) {
+        (n = self->len);
+    }
+    if (n < 0) {
+        (n = 0);
+    }
+    return btrc_Vector_SemuE2eGraphNode_slice(self, 0, n);
+}
+
+static btrc_Vector_SemuE2eGraphNode* btrc_Vector_SemuE2eGraphNode_drop(btrc_Vector_SemuE2eGraphNode* self, int n) {
+    if (n > self->len) {
+        (n = self->len);
+    }
+    if (n < 0) {
+        (n = 0);
+    }
+    return btrc_Vector_SemuE2eGraphNode_slice(self, n, self->len);
+}
+
+static void btrc_Vector_SemuE2eGraphNode_extend(btrc_Vector_SemuE2eGraphNode* self, btrc_Vector_SemuE2eGraphNode* other) {
+    for (int i = 0; (i < other->len); (i++)) {
+        btrc_Vector_SemuE2eGraphNode_push(self, other->data[i]);
+    }
+}
+
+static void btrc_Vector_SemuE2eGraphNode_insert(btrc_Vector_SemuE2eGraphNode* self, int idx, SemuE2eGraphNode* val) {
+    if ((idx < 0) || (idx > self->len)) {
+        fprintf(stderr, "Vector insert index out of bounds: %d (size %d)\n", idx, self->len);
+        exit(1);
+    }
+    (val->__rc++);
+    if (self->len >= self->cap) {
+        (self->cap = ((self->cap == 0) ? 4 : (self->cap * 2)));
+        (self->data = ((SemuE2eGraphNode**)__btrc_safe_realloc(self->data, (sizeof(SemuE2eGraphNode*) * self->cap))));
+    }
+    for (int i = self->len; (i > idx); (i--)) {
+        (self->data[i] = self->data[(i - 1)]);
+    }
+    (self->data[idx] = val);
+    (self->len++);
+}
+
+static bool btrc_Vector_SemuE2eGraphNode_contains(btrc_Vector_SemuE2eGraphNode* self, SemuE2eGraphNode* val) {
+    for (int i = 0; (i < self->len); (i++)) {
+        if (__btrc_eq(self->data[i], val)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static int btrc_Vector_SemuE2eGraphNode_indexOf(btrc_Vector_SemuE2eGraphNode* self, SemuE2eGraphNode* val) {
+    for (int i = 0; (i < self->len); (i++)) {
+        if (__btrc_eq(self->data[i], val)) {
+            return i;
+        }
+    }
+    return (-1);
+}
+
+static int btrc_Vector_SemuE2eGraphNode_lastIndexOf(btrc_Vector_SemuE2eGraphNode* self, SemuE2eGraphNode* val) {
+    for (int i = (self->len - 1); (i >= 0); (i--)) {
+        if (__btrc_eq(self->data[i], val)) {
+            return i;
+        }
+    }
+    return (-1);
+}
+
+static int btrc_Vector_SemuE2eGraphNode_count(btrc_Vector_SemuE2eGraphNode* self, SemuE2eGraphNode* val) {
+    int c = 0;
+    for (int i = 0; (i < self->len); (i++)) {
+        if (__btrc_eq(self->data[i], val)) {
+            (c++);
+        }
+    }
+    return c;
+}
+
+static void btrc_Vector_SemuE2eGraphNode_removeAll(btrc_Vector_SemuE2eGraphNode* self, SemuE2eGraphNode* val) {
+    int j = 0;
+    for (int i = 0; (i < self->len); (i++)) {
+        if (!__btrc_eq(self->data[i], val)) {
+            (self->data[j] = self->data[i]);
+            (j++);
+        } else if (self->data[i]) {
+            if ((--self->data[i]->__rc) <= 0) {
+                SemuE2eGraphNode_destroy(self->data[i]);
+            }
+        }
+    }
+    (self->len = j);
+}
+
+static btrc_Vector_SemuE2eGraphNode* btrc_Vector_SemuE2eGraphNode_distinct(btrc_Vector_SemuE2eGraphNode* self) {
+    btrc_Vector_SemuE2eGraphNode* result = btrc_Vector_SemuE2eGraphNode_new();
+    for (int i = 0; (i < self->len); (i++)) {
+        if (!btrc_Vector_SemuE2eGraphNode_contains(result, self->data[i])) {
+            btrc_Vector_SemuE2eGraphNode_push(result, self->data[i]);
+        }
+    }
+    return result;
+}
+
+static void btrc_Vector_SemuE2eGraphNode_sort(btrc_Vector_SemuE2eGraphNode* self) {
+    for (int i = 1; (i < self->len); (i++)) {
+        SemuE2eGraphNode* key = self->data[i];
+        int j = (i - 1);
+        while ((j >= 0) && __btrc_lt(key, self->data[j])) {
+            (self->data[(j + 1)] = self->data[j]);
+            (j = (j - 1));
+        }
+        (self->data[(j + 1)] = key);
+    }
+}
+
+static btrc_Vector_SemuE2eGraphNode* btrc_Vector_SemuE2eGraphNode_sorted(btrc_Vector_SemuE2eGraphNode* self) {
+    btrc_Vector_SemuE2eGraphNode* result = btrc_Vector_SemuE2eGraphNode_new();
+    for (int i = 0; (i < self->len); (i++)) {
+        btrc_Vector_SemuE2eGraphNode_push(result, self->data[i]);
+    }
+    btrc_Vector_SemuE2eGraphNode_sort(result);
+    return result;
+}
+
+static SemuE2eGraphNode* btrc_Vector_SemuE2eGraphNode_min(btrc_Vector_SemuE2eGraphNode* self) {
+    if (self->len <= 0) {
+        fprintf(stderr, "Vector min on empty list\n");
+        exit(1);
+    }
+    SemuE2eGraphNode* m = self->data[0];
+    for (int i = 1; (i < self->len); (i++)) {
+        if (__btrc_lt(self->data[i], m)) {
+            (m = self->data[i]);
+        }
+    }
+    return m;
+}
+
+static SemuE2eGraphNode* btrc_Vector_SemuE2eGraphNode_max(btrc_Vector_SemuE2eGraphNode* self) {
+    if (self->len <= 0) {
+        fprintf(stderr, "Vector max on empty list\n");
+        exit(1);
+    }
+    SemuE2eGraphNode* m = self->data[0];
+    for (int i = 1; (i < self->len); (i++)) {
+        if (__btrc_gt(self->data[i], m)) {
+            (m = self->data[i]);
+        }
+    }
+    return m;
+}
+
+static btrc_Vector_SemuE2eGraphNode* btrc_Vector_SemuE2eGraphNode_filter(btrc_Vector_SemuE2eGraphNode* self, __btrc_fn_bool_SemuE2eGraphNode pred) {
+    btrc_Vector_SemuE2eGraphNode* result = btrc_Vector_SemuE2eGraphNode_new();
+    for (int i = 0; (i < self->len); (i++)) {
+        if (pred(self->data[i])) {
+            btrc_Vector_SemuE2eGraphNode_push(result, self->data[i]);
+        }
+    }
+    return result;
+}
+
+static int btrc_Vector_SemuE2eGraphNode_findIndex(btrc_Vector_SemuE2eGraphNode* self, __btrc_fn_bool_SemuE2eGraphNode pred) {
+    for (int i = 0; (i < self->len); (i++)) {
+        if (pred(self->data[i])) {
+            return i;
+        }
+    }
+    return (-1);
+}
+
+static void btrc_Vector_SemuE2eGraphNode_forEach(btrc_Vector_SemuE2eGraphNode* self, __btrc_fn_void_SemuE2eGraphNode fn) {
+    for (int i = 0; (i < self->len); (i++)) {
+        fn(self->data[i]);
+    }
+}
+
+static btrc_Vector_SemuE2eGraphNode* btrc_Vector_SemuE2eGraphNode_map(btrc_Vector_SemuE2eGraphNode* self, __btrc_fn_SemuE2eGraphNode_SemuE2eGraphNode fn) {
+    btrc_Vector_SemuE2eGraphNode* result = btrc_Vector_SemuE2eGraphNode_new();
+    for (int i = 0; (i < self->len); (i++)) {
+        btrc_Vector_SemuE2eGraphNode_push(result, fn(self->data[i]));
+    }
+    return result;
+}
+
+static bool btrc_Vector_SemuE2eGraphNode_any(btrc_Vector_SemuE2eGraphNode* self, __btrc_fn_bool_SemuE2eGraphNode pred) {
+    for (int i = 0; (i < self->len); (i++)) {
+        if (pred(self->data[i])) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool btrc_Vector_SemuE2eGraphNode_all(btrc_Vector_SemuE2eGraphNode* self, __btrc_fn_bool_SemuE2eGraphNode pred) {
+    for (int i = 0; (i < self->len); (i++)) {
+        if (!pred(self->data[i])) {
+            return false;
+        }
+    }
+    return true;
+}
+
+static SemuE2eGraphNode* btrc_Vector_SemuE2eGraphNode_reduce(btrc_Vector_SemuE2eGraphNode* self, SemuE2eGraphNode* init, __btrc_fn_SemuE2eGraphNode_SemuE2eGraphNode_SemuE2eGraphNode fn) {
+    SemuE2eGraphNode* acc = init;
+    for (int i = 0; (i < self->len); (i++)) {
+        (acc = fn(acc, self->data[i]));
+    }
+    return acc;
+}
+
+static btrc_Vector_SemuE2eGraphNode* btrc_Vector_SemuE2eGraphNode_copy(btrc_Vector_SemuE2eGraphNode* self) {
+    btrc_Vector_SemuE2eGraphNode* result = btrc_Vector_SemuE2eGraphNode_new();
+    for (int i = 0; (i < self->len); (i++)) {
+        btrc_Vector_SemuE2eGraphNode_push(result, self->data[i]);
+    }
+    return result;
+}
+
+static void btrc_Vector_SemuE2eGraphNode_removeAt(btrc_Vector_SemuE2eGraphNode* self, int idx) {
+    btrc_Vector_SemuE2eGraphNode_remove(self, idx);
+}
+
+static int btrc_Vector_SemuE2eGraphNode_iterLen(btrc_Vector_SemuE2eGraphNode* self) {
+    return self->len;
+}
+
+static SemuE2eGraphNode* btrc_Vector_SemuE2eGraphNode_iterGet(btrc_Vector_SemuE2eGraphNode* self, int i) {
+    return self->data[i];
+}
+
 static void btrc_Map_string_string_init(btrc_Map_string_string* self) {
     self->__rc = 1;
     (self->cap = 16);
@@ -3168,6 +4264,10 @@ bool ExecResult_ok(ExecResult* self) {
 
 char* ExecResult_stdout(ExecResult* self) {
     return self->out;
+}
+
+char* ExecResult_trimmed(ExecResult* self) {
+    return __btrc_str_track(__btrc_trim(self->out));
 }
 
 void Command_init(Command* self, char* executable) {
@@ -10269,10 +11369,1247 @@ int e2eN3dsNoCryptoSmoke(CliArgs* args) {
     }
 }
 
+void e2eFatal(char* message) {
+    printf("%s\n", __btrc_str_track(__btrc_strcat("error 0:0 ", message)));
+    exit(1);
+}
+
+char* e2eExpandArgs(char* text, btrc_Map_string_string* args) {
+    char* result = Strings_copy(text);
+    int __n_646 = btrc_Map_string_string_iterLen(args);
+    for (int __i_645 = 0; (__i_645 < __n_646); (__i_645++)) {
+        char* key = btrc_Map_string_string_iterGet(args, __i_645);
+        char* value = btrc_Map_string_string_iterValueAt(args, __i_645);
+        (result = Strings_replace(result, __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat("{{", key)), "}}")), value));
+    }
+    int __n_648 = btrc_Map_string_string_iterLen(args);
+    for (int __i_647 = 0; (__i_647 < __n_648); (__i_647++)) {
+        char* key = btrc_Map_string_string_iterGet(args, __i_647);
+        char* value = btrc_Map_string_string_iterValueAt(args, __i_647);
+        (result = Strings_replace(result, __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat("${", key)), "}")), value));
+    }
+    return result;
+}
+
+void SemuE2eOperation_init(SemuE2eOperation* self) {
+    self->__rc = 1;
+    (self->kind = "");
+    (self->command = "");
+    (self->expect = "");
+    (self->name = "");
+    (self->path = "");
+    (self->timeout = 300);
+}
+
+SemuE2eOperation* SemuE2eOperation_new(void) {
+    SemuE2eOperation* self = ((SemuE2eOperation*)malloc(sizeof(SemuE2eOperation)));
+    memset(self, 0, sizeof(SemuE2eOperation));
+    SemuE2eOperation_init(self);
+    return self;
+}
+
+void SemuE2eOperation_destroy(SemuE2eOperation* self) {
+    free(self);
+}
+
+void SemuE2eOperation_expandArgs(SemuE2eOperation* self, btrc_Map_string_string* args) {
+    (self->kind = e2eExpandArgs(self->kind, args));
+    (self->command = e2eExpandArgs(self->command, args));
+    (self->expect = e2eExpandArgs(self->expect, args));
+    (self->name = e2eExpandArgs(self->name, args));
+    (self->path = e2eExpandArgs(self->path, args));
+}
+
+void SemuE2eSpec_init(SemuE2eSpec* self) {
+    self->__rc = 1;
+    (self->name = "semu-e2e");
+    (self->state = "semu-e2e");
+    (self->parentState = "root");
+    (self->stateRoot = "tests/vms/e2e-state");
+    (self->stateMaterial = "");
+    (self->parentHash = "root");
+    (self->stateHash = "");
+    (self->stateHashShort = "");
+    if (self->args != NULL) {
+        if ((--self->args->__rc) <= 0) {
+            btrc_Map_string_string_free(self->args);
+        }
+    }
+    (self->args = btrc_Map_string_string_new());
+    (btrc_Map_string_string_new()->__rc++);
+    if (self->operations != NULL) {
+        if ((--self->operations->__rc) <= 0) {
+            btrc_Vector_SemuE2eOperation_free(self->operations);
+        }
+    }
+    btrc_Vector_SemuE2eOperation* __list_650 = btrc_Vector_SemuE2eOperation_new();
+    (self->operations = __list_650);
+    btrc_Vector_SemuE2eOperation* __list_649 = btrc_Vector_SemuE2eOperation_new();
+    (__list_649->__rc++);
+}
+
+SemuE2eSpec* SemuE2eSpec_new(void) {
+    SemuE2eSpec* self = ((SemuE2eSpec*)malloc(sizeof(SemuE2eSpec)));
+    memset(self, 0, sizeof(SemuE2eSpec));
+    SemuE2eSpec_init(self);
+    return self;
+}
+
+void SemuE2eSpec_destroy(SemuE2eSpec* self) {
+    if (self->args != NULL) {
+        if ((--self->args->__rc) <= 0) {
+            btrc_Map_string_string_free(self->args);
+        }
+    }
+    if (self->operations != NULL) {
+        if ((--self->operations->__rc) <= 0) {
+            btrc_Vector_SemuE2eOperation_free(self->operations);
+        }
+    }
+    if (__btrc_tracking) {
+        __btrc_mark_destroyed(self);
+    }
+    free(self);
+}
+
+void SemuE2eSpec_setArg(SemuE2eSpec* self, char* key, char* value) {
+    btrc_Map_string_string_put(self->args, key, value);
+}
+
+void SemuE2eSpec_setArgPair(SemuE2eSpec* self, char* pair) {
+    int pos = Strings_find(pair, "=", 0);
+    if (pos <= 0) {
+        e2eFatal(__btrc_str_track(__btrc_strcat("Expected --arg key=value, got ", pair)));
+    }
+    btrc_Map_string_string_put(self->args, __btrc_str_track(__btrc_substring(pair, 0, pos)), __btrc_str_track(__btrc_substring(pair, (pos + 1), ((((int)strlen(pair)) - pos) - 1))));
+}
+
+char* SemuE2eSpec_stateDir(SemuE2eSpec* self) {
+    return joinPath(self->stateRoot, self->state);
+}
+
+char* SemuE2eSpec_stateHashFile(SemuE2eSpec* self) {
+    return joinPath(SemuE2eSpec_stateDir(self), "hash");
+}
+
+char* SemuE2eSpec_parentHashFile(SemuE2eSpec* self) {
+    return joinPath(joinPath(self->stateRoot, self->parentState), "hash");
+}
+
+char* SemuE2eSpec_resolveParentHash(SemuE2eSpec* self) {
+    if ((strcmp(self->parentState, "root") == 0) || (((int)strlen(self->parentState)) == 0)) {
+        return "root";
+    }
+    if (FileSystem_exists(SemuE2eSpec_parentHashFile(self))) {
+        return __btrc_str_track(__btrc_trim(FileSystem_readText(SemuE2eSpec_parentHashFile(self))));
+    }
+    return __btrc_str_track(__btrc_strcat("missing:", self->parentState));
+}
+
+char* SemuE2eSpec_operationsMaterial(SemuE2eSpec* self) {
+    btrc_Vector_string* lines = btrc_Vector_string_new();
+    int __n_652 = btrc_Vector_SemuE2eOperation_iterLen(self->operations);
+    for (int __i_651 = 0; (__i_651 < __n_652); (__i_651++)) {
+        SemuE2eOperation* op = btrc_Vector_SemuE2eOperation_iterGet(self->operations, __i_651);
+        btrc_Vector_string_push(lines, __btrc_str_track(__btrc_strcat("op=", op->kind)));
+        btrc_Vector_string_push(lines, __btrc_str_track(__btrc_strcat("name=", op->name)));
+        btrc_Vector_string_push(lines, __btrc_str_track(__btrc_strcat("command=", op->command)));
+        btrc_Vector_string_push(lines, __btrc_str_track(__btrc_strcat("expect=", op->expect)));
+        btrc_Vector_string_push(lines, __btrc_str_track(__btrc_strcat("path=", op->path)));
+        btrc_Vector_string_push(lines, __btrc_str_track(__btrc_strcat("timeout=", Strings_fromInt(op->timeout))));
+    }
+    return btrc_Vector_string_join(lines, "\n");
+}
+
+char* SemuE2eSpec_hashMaterial(SemuE2eSpec* self) {
+    char* material = self->stateMaterial;
+    if (((int)strlen(material)) == 0) {
+        (material = self->name);
+    }
+    return __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat("parent=", self->parentHash)), "\nstate=")), self->state)), "\nmaterial=")), material)), "\noperations=\n")), SemuE2eSpec_operationsMaterial(self))), "\n"));
+}
+
+void SemuE2eSpec_computeStateHash(SemuE2eSpec* self) {
+    (self->parentHash = SemuE2eSpec_resolveParentHash(self));
+    char* command = __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat("printf %s ", ShellWords_quote(SemuE2eSpec_hashMaterial(self)))), " | (if command -v sha256sum >/dev/null 2>&1; then sha256sum; else shasum -a 256; fi)")), " | awk '{print $1}'"));
+    ExecResult* result = UnixShell_runRaw(UnixShell_new(), command, true, false, "");
+    if (!ExecResult_ok(result)) {
+        e2eFatal(__btrc_str_track(__btrc_strcat("Failed to compute E2E state hash for ", self->state)));
+    }
+    (self->stateHash = ExecResult_trimmed(result));
+    (self->stateHashShort = __btrc_str_track(__btrc_substring(self->stateHash, 0, 12)));
+}
+
+void SemuE2eSpec_setDerivedArgs(SemuE2eSpec* self) {
+    btrc_Map_string_string_putIfAbsent(self->args, "name", self->name);
+    btrc_Map_string_string_putIfAbsent(self->args, "state", self->state);
+    btrc_Map_string_string_putIfAbsent(self->args, "parentState", self->parentState);
+    btrc_Map_string_string_putIfAbsent(self->args, "stateRoot", self->stateRoot);
+    btrc_Map_string_string_putIfAbsent(self->args, "stateMaterial", self->stateMaterial);
+    btrc_Map_string_string_putIfAbsent(self->args, "parentHash", self->parentHash);
+    btrc_Map_string_string_putIfAbsent(self->args, "stateHash", self->stateHash);
+    btrc_Map_string_string_putIfAbsent(self->args, "stateHashShort", self->stateHashShort);
+}
+
+void SemuE2eSpec_refreshDerivedArgs(SemuE2eSpec* self) {
+    btrc_Map_string_string_put(self->args, "name", self->name);
+    btrc_Map_string_string_put(self->args, "state", self->state);
+    btrc_Map_string_string_put(self->args, "parentState", self->parentState);
+    btrc_Map_string_string_put(self->args, "stateRoot", self->stateRoot);
+    btrc_Map_string_string_put(self->args, "stateMaterial", self->stateMaterial);
+    btrc_Map_string_string_put(self->args, "parentHash", self->parentHash);
+    btrc_Map_string_string_put(self->args, "stateHash", self->stateHash);
+    btrc_Map_string_string_put(self->args, "stateHashShort", self->stateHashShort);
+}
+
+void SemuE2eSpec_expandArgs(SemuE2eSpec* self) {
+    SemuE2eSpec_setDerivedArgs(self);
+    (self->name = e2eExpandArgs(self->name, self->args));
+    (self->state = e2eExpandArgs(self->state, self->args));
+    (self->parentState = e2eExpandArgs(self->parentState, self->args));
+    (self->stateRoot = e2eExpandArgs(self->stateRoot, self->args));
+    (self->stateMaterial = e2eExpandArgs(self->stateMaterial, self->args));
+    SemuE2eSpec_refreshDerivedArgs(self);
+    SemuE2eSpec_computeStateHash(self);
+    SemuE2eSpec_refreshDerivedArgs(self);
+    int __n_654 = btrc_Vector_SemuE2eOperation_iterLen(self->operations);
+    for (int __i_653 = 0; (__i_653 < __n_654); (__i_653++)) {
+        SemuE2eOperation* op = btrc_Vector_SemuE2eOperation_iterGet(self->operations, __i_653);
+        SemuE2eOperation_expandArgs(op, self->args);
+    }
+}
+
+void SemuE2eSpec_recordState(SemuE2eSpec* self) {
+    ensureDir(SemuE2eSpec_stateDir(self));
+    FileSystem_writeText(SemuE2eSpec_stateHashFile(self), __btrc_str_track(__btrc_strcat(self->stateHash, "\n")));
+    btrc_Vector_string* __list_656 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_656, jsonStrField("state", self->state));
+    btrc_Vector_string_push(__list_656, jsonStrField("parentState", self->parentState));
+    btrc_Vector_string_push(__list_656, jsonStrField("parentHash", self->parentHash));
+    btrc_Vector_string_push(__list_656, jsonStrField("hash", self->stateHash));
+    btrc_Vector_string_push(__list_656, jsonStrField("hashShort", self->stateHashShort));
+    FileSystem_writeText(joinPath(SemuE2eSpec_stateDir(self), "metadata.json"), __btrc_str_track(__btrc_strcat(jsonObject(__list_656), "\n")));
+}
+
+void SemuE2eGraphNode_init(SemuE2eGraphNode* self) {
+    self->__rc = 1;
+    (self->id = "");
+    (self->specPath = "");
+    if (self->after != NULL) {
+        if ((--self->after->__rc) <= 0) {
+            btrc_Vector_string_free(self->after);
+        }
+    }
+    btrc_Vector_string* __list_658 = btrc_Vector_string_new();
+    (self->after = __list_658);
+    btrc_Vector_string* __list_657 = btrc_Vector_string_new();
+    (__list_657->__rc++);
+    if (self->args != NULL) {
+        if ((--self->args->__rc) <= 0) {
+            btrc_Map_string_string_free(self->args);
+        }
+    }
+    (self->args = btrc_Map_string_string_new());
+    (btrc_Map_string_string_new()->__rc++);
+}
+
+SemuE2eGraphNode* SemuE2eGraphNode_new(void) {
+    SemuE2eGraphNode* self = ((SemuE2eGraphNode*)malloc(sizeof(SemuE2eGraphNode)));
+    memset(self, 0, sizeof(SemuE2eGraphNode));
+    SemuE2eGraphNode_init(self);
+    return self;
+}
+
+void SemuE2eGraphNode_destroy(SemuE2eGraphNode* self) {
+    if (self->after != NULL) {
+        if ((--self->after->__rc) <= 0) {
+            btrc_Vector_string_free(self->after);
+        }
+    }
+    if (self->args != NULL) {
+        if ((--self->args->__rc) <= 0) {
+            btrc_Map_string_string_free(self->args);
+        }
+    }
+    if (__btrc_tracking) {
+        __btrc_mark_destroyed(self);
+    }
+    free(self);
+}
+
+void SemuE2eGraph_init(SemuE2eGraph* self) {
+    self->__rc = 1;
+    (self->name = "semu-e2e");
+    (self->path = "");
+    (self->baseDir = ".");
+    (self->workspaceRoot = ".");
+    if (self->defaults != NULL) {
+        if ((--self->defaults->__rc) <= 0) {
+            btrc_Vector_string_free(self->defaults);
+        }
+    }
+    btrc_Vector_string* __list_660 = btrc_Vector_string_new();
+    (self->defaults = __list_660);
+    btrc_Vector_string* __list_659 = btrc_Vector_string_new();
+    (__list_659->__rc++);
+    if (self->nodes != NULL) {
+        if ((--self->nodes->__rc) <= 0) {
+            btrc_Vector_SemuE2eGraphNode_free(self->nodes);
+        }
+    }
+    btrc_Vector_SemuE2eGraphNode* __list_662 = btrc_Vector_SemuE2eGraphNode_new();
+    (self->nodes = __list_662);
+    btrc_Vector_SemuE2eGraphNode* __list_661 = btrc_Vector_SemuE2eGraphNode_new();
+    (__list_661->__rc++);
+}
+
+SemuE2eGraph* SemuE2eGraph_new(void) {
+    SemuE2eGraph* self = ((SemuE2eGraph*)malloc(sizeof(SemuE2eGraph)));
+    memset(self, 0, sizeof(SemuE2eGraph));
+    SemuE2eGraph_init(self);
+    return self;
+}
+
+void SemuE2eGraph_destroy(SemuE2eGraph* self) {
+    if (self->defaults != NULL) {
+        if ((--self->defaults->__rc) <= 0) {
+            btrc_Vector_string_free(self->defaults);
+        }
+    }
+    if (self->nodes != NULL) {
+        if ((--self->nodes->__rc) <= 0) {
+            btrc_Vector_SemuE2eGraphNode_free(self->nodes);
+        }
+    }
+    if (__btrc_tracking) {
+        __btrc_mark_destroyed(self);
+    }
+    free(self);
+}
+
+char* SemuE2eGraph_resolvePath(SemuE2eGraph* self, char* base, char* value) {
+    if (__btrc_startsWith(value, "/")) {
+        return value;
+    }
+    return joinPath(base, value);
+}
+
+char* SemuE2eGraph_resolvedWorkspaceRoot(SemuE2eGraph* self) {
+    return SemuE2eGraph_resolvePath(self, self->baseDir, self->workspaceRoot);
+}
+
+char* SemuE2eGraph_resolvedSpecPath(SemuE2eGraph* self, SemuE2eGraphNode* node) {
+    return SemuE2eGraph_resolvePath(self, self->baseDir, node->specPath);
+}
+
+SemuE2eGraphNode* SemuE2eGraph_node(SemuE2eGraph* self, char* id) {
+    int __n_664 = btrc_Vector_SemuE2eGraphNode_iterLen(self->nodes);
+    for (int __i_663 = 0; (__i_663 < __n_664); (__i_663++)) {
+        SemuE2eGraphNode* item = btrc_Vector_SemuE2eGraphNode_iterGet(self->nodes, __i_663);
+        if (strcmp(item->id, id) == 0) {
+            return item;
+        }
+    }
+    e2eFatal(__btrc_str_track(__btrc_strcat("Unknown E2E graph node: ", id)));
+    return SemuE2eGraphNode_new();
+}
+
+btrc_Vector_string* SemuE2eGraph_defaultTargets(SemuE2eGraph* self) {
+    if (!btrc_Vector_string_isEmpty(self->defaults)) {
+        return self->defaults;
+    }
+    btrc_Vector_string* result = btrc_Vector_string_new();
+    int __n_666 = btrc_Vector_SemuE2eGraphNode_iterLen(self->nodes);
+    for (int __i_665 = 0; (__i_665 < __n_666); (__i_665++)) {
+        SemuE2eGraphNode* item = btrc_Vector_SemuE2eGraphNode_iterGet(self->nodes, __i_665);
+        btrc_Vector_string_push(result, item->id);
+    }
+    return result;
+}
+
+int SemuE2eParser_skipSpaces(char* text, int i) {
+    int len = ((int)strlen(text));
+    while ((i < len) && ((((text[i] == ' ') || (text[i] == '\n')) || (text[i] == '\t')) || (text[i] == '\r'))) {
+        (i++);
+    }
+    return i;
+}
+
+int SemuE2eParser_keyPosition(char* text, char* key) {
+    return Strings_find(text, __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat("\"", key)), "\"")), 0);
+}
+
+char* SemuE2eParser_parseStringValue(char* text, int i, char* fallback) {
+    int len = ((int)strlen(text));
+    (i = SemuE2eParser_skipSpaces(text, i));
+    if ((i >= len) || (text[i] != ((char)34))) {
+        return fallback;
+    }
+    (i++);
+    int start = i;
+    bool escaped = false;
+    while (i < len) {
+        if ((!escaped) && (text[i] == ((char)34))) {
+            return JsonObject_unescape(JsonObject_slice(text, start, i));
+        }
+        (escaped = ((!escaped) && (text[i] == '\\')));
+        if (text[i] != '\\') {
+            (escaped = false);
+        }
+        (i++);
+    }
+    return fallback;
+}
+
+char* SemuE2eParser_field(char* text, char* key, char* fallback) {
+    int pos = SemuE2eParser_keyPosition(text, key);
+    if (pos < 0) {
+        return fallback;
+    }
+    int colon = Strings_find(text, ":", pos);
+    if (colon < 0) {
+        return fallback;
+    }
+    int i = SemuE2eParser_skipSpaces(text, (colon + 1));
+    int len = ((int)strlen(text));
+    if ((i < len) && (text[i] == ((char)34))) {
+        return SemuE2eParser_parseStringValue(text, i, fallback);
+    }
+    int start = i;
+    while ((((i < len) && (text[i] != ',')) && (text[i] != '}')) && (text[i] != ']')) {
+        (i++);
+    }
+    char* raw = __btrc_str_track(__btrc_trim(JsonObject_slice(text, start, i)));
+    if (((int)strlen(raw)) == 0) {
+        return fallback;
+    }
+    return raw;
+}
+
+int SemuE2eParser_intField(char* text, char* key, int fallback) {
+    char* raw = SemuE2eParser_field(text, key, "");
+    if (((int)strlen(raw)) == 0) {
+        return fallback;
+    }
+    return Strings_toInt(raw);
+}
+
+char* SemuE2eParser_objectField(char* text, char* key) {
+    int pos = SemuE2eParser_keyPosition(text, key);
+    if (pos < 0) {
+        return "";
+    }
+    int colon = Strings_find(text, ":", pos);
+    if (colon < 0) {
+        return "";
+    }
+    int i = SemuE2eParser_skipSpaces(text, (colon + 1));
+    int len = ((int)strlen(text));
+    if ((i >= len) || (text[i] != '{')) {
+        return "";
+    }
+    int depth = 0;
+    bool inString = false;
+    bool escaped = false;
+    for (int j = i; (j < len); (j++)) {
+        char c = text[j];
+        if (inString) {
+            if ((!escaped) && (c == ((char)34))) {
+                (inString = false);
+            }
+            (escaped = ((!escaped) && (c == '\\')));
+            if (c != '\\') {
+                (escaped = false);
+            }
+            continue;
+        }
+        if (c == ((char)34)) {
+            (inString = true);
+            (escaped = false);
+            continue;
+        }
+        if (c == '{') {
+            (depth++);
+            continue;
+        }
+        if (c == '}') {
+            (depth--);
+            if (depth == 0) {
+                return JsonObject_slice(text, i, (j + 1));
+            }
+        }
+    }
+    return "";
+}
+
+btrc_Vector_string* SemuE2eParser_stringArray(char* text, char* key) {
+    btrc_Vector_string* result = btrc_Vector_string_new();
+    int pos = SemuE2eParser_keyPosition(text, key);
+    if (pos < 0) {
+        return result;
+    }
+    int arrayStart = Strings_find(text, "[", pos);
+    if (arrayStart < 0) {
+        return result;
+    }
+    int len = ((int)strlen(text));
+    bool inString = false;
+    bool escaped = false;
+    int start = (-1);
+    for (int i = (arrayStart + 1); (i < len); (i++)) {
+        char c = text[i];
+        if (inString) {
+            if ((!escaped) && (c == ((char)34))) {
+                btrc_Vector_string_push(result, JsonObject_unescape(JsonObject_slice(text, start, i)));
+                (inString = false);
+                (start = (-1));
+            }
+            (escaped = ((!escaped) && (c == '\\')));
+            if (c != '\\') {
+                (escaped = false);
+            }
+            continue;
+        }
+        if (c == ((char)34)) {
+            (inString = true);
+            (escaped = false);
+            (start = (i + 1));
+            continue;
+        }
+        if (c == ']') {
+            break;
+        }
+    }
+    return result;
+}
+
+btrc_Vector_string* SemuE2eParser_objectArray(char* text, char* key) {
+    btrc_Vector_string* result = btrc_Vector_string_new();
+    int pos = SemuE2eParser_keyPosition(text, key);
+    if (pos < 0) {
+        return result;
+    }
+    int arrayStart = Strings_find(text, "[", pos);
+    if (arrayStart < 0) {
+        return result;
+    }
+    int len = ((int)strlen(text));
+    int depth = 0;
+    int start = (-1);
+    bool inString = false;
+    bool escaped = false;
+    for (int i = (arrayStart + 1); (i < len); (i++)) {
+        char c = text[i];
+        if (inString) {
+            if ((!escaped) && (c == ((char)34))) {
+                (inString = false);
+            }
+            (escaped = ((!escaped) && (c == '\\')));
+            if (c != '\\') {
+                (escaped = false);
+            }
+            continue;
+        }
+        if (c == ((char)34)) {
+            (inString = true);
+            (escaped = false);
+            continue;
+        }
+        if (c == '{') {
+            if (depth == 0) {
+                (start = i);
+            }
+            (depth++);
+            continue;
+        }
+        if (c == '}') {
+            (depth--);
+            if ((depth == 0) && (start >= 0)) {
+                btrc_Vector_string_push(result, JsonObject_slice(text, start, (i + 1)));
+                (start = (-1));
+            }
+            continue;
+        }
+        if ((c == ']') && (depth == 0)) {
+            break;
+        }
+    }
+    return result;
+}
+
+btrc_Map_string_string* SemuE2eParser_argsObject(char* text) {
+    btrc_Map_string_string* result = btrc_Map_string_string_new();
+    char* argsText = SemuE2eParser_objectField(text, "args");
+    if (((int)strlen(argsText)) == 0) {
+        return result;
+    }
+    JsonObject* parsed = JsonObject_parse(argsText);
+    int __n_668 = btrc_Map_string_string_iterLen(parsed->values);
+    for (int __i_667 = 0; (__i_667 < __n_668); (__i_667++)) {
+        char* key = btrc_Map_string_string_iterGet(parsed->values, __i_667);
+        char* value = btrc_Map_string_string_iterValueAt(parsed->values, __i_667);
+        btrc_Map_string_string_put(result, key, value);
+    }
+    return result;
+}
+
+SemuE2eOperation* SemuE2eParser_operation(char* objectText) {
+    SemuE2eOperation* op = SemuE2eOperation_new();
+    (op->kind = SemuE2eParser_field(objectText, "op", ""));
+    if (((int)strlen(op->kind)) == 0) {
+        (op->kind = SemuE2eParser_field(objectText, "kind", ""));
+    }
+    (op->command = SemuE2eParser_field(objectText, "command", ""));
+    (op->expect = SemuE2eParser_field(objectText, "expect", ""));
+    (op->name = SemuE2eParser_field(objectText, "name", ""));
+    (op->path = SemuE2eParser_field(objectText, "path", ""));
+    (op->timeout = SemuE2eParser_intField(objectText, "timeout", 300));
+    return op;
+    if (op != NULL) {
+        if ((--op->__rc) <= 0) {
+            SemuE2eOperation_destroy(op);
+        }
+    }
+}
+
+btrc_Vector_SemuE2eOperation* SemuE2eParser_operations(char* text) {
+    btrc_Vector_SemuE2eOperation* result = btrc_Vector_SemuE2eOperation_new();
+    int __n_670 = btrc_Vector_string_iterLen(SemuE2eParser_objectArray(text, "operations"));
+    for (int __i_669 = 0; (__i_669 < __n_670); (__i_669++)) {
+        char* objectText = btrc_Vector_string_iterGet(SemuE2eParser_objectArray(text, "operations"), __i_669);
+        btrc_Vector_SemuE2eOperation_push(result, SemuE2eParser_operation(objectText));
+    }
+    return result;
+}
+
+SemuE2eSpec* SemuE2eParser_readSpecFile(char* path) {
+    char* text = FileSystem_readText(path);
+    SemuE2eSpec* spec = SemuE2eSpec_new();
+    (spec->name = SemuE2eParser_field(text, "name", spec->name));
+    (spec->state = SemuE2eParser_field(text, "state", spec->name));
+    (spec->parentState = SemuE2eParser_field(text, "parentState", spec->parentState));
+    (spec->stateRoot = SemuE2eParser_field(text, "stateRoot", spec->stateRoot));
+    (spec->stateMaterial = SemuE2eParser_field(text, "stateMaterial", spec->stateMaterial));
+    if (spec->args != NULL) {
+        if ((--spec->args->__rc) <= 0) {
+            btrc_Map_string_string_free(spec->args);
+        }
+    }
+    (spec->args = SemuE2eParser_argsObject(text));
+    (SemuE2eParser_argsObject(text)->__rc++);
+    if (spec->operations != NULL) {
+        if ((--spec->operations->__rc) <= 0) {
+            btrc_Vector_SemuE2eOperation_free(spec->operations);
+        }
+    }
+    (spec->operations = SemuE2eParser_operations(text));
+    (SemuE2eParser_operations(text)->__rc++);
+    return spec;
+    if (spec != NULL) {
+        if ((--spec->__rc) <= 0) {
+            SemuE2eSpec_destroy(spec);
+        }
+    }
+}
+
+SemuE2eGraphNode* SemuE2eParser_graphNode(char* objectText) {
+    SemuE2eGraphNode* node = SemuE2eGraphNode_new();
+    (node->id = SemuE2eParser_field(objectText, "id", ""));
+    (node->specPath = SemuE2eParser_field(objectText, "spec", ""));
+    if (node->after != NULL) {
+        if ((--node->after->__rc) <= 0) {
+            btrc_Vector_string_free(node->after);
+        }
+    }
+    (node->after = SemuE2eParser_stringArray(objectText, "after"));
+    (SemuE2eParser_stringArray(objectText, "after")->__rc++);
+    char* argsText = SemuE2eParser_objectField(objectText, "args");
+    if (((int)strlen(argsText)) > 0) {
+        JsonObject* parsed = JsonObject_parse(argsText);
+        int __n_672 = btrc_Map_string_string_iterLen(parsed->values);
+        for (int __i_671 = 0; (__i_671 < __n_672); (__i_671++)) {
+            char* key = btrc_Map_string_string_iterGet(parsed->values, __i_671);
+            char* value = btrc_Map_string_string_iterValueAt(parsed->values, __i_671);
+            btrc_Map_string_string_put(node->args, key, value);
+        }
+    }
+    if (((int)strlen(node->id)) == 0) {
+        e2eFatal("Graph node is missing id");
+    }
+    if (((int)strlen(node->specPath)) == 0) {
+        e2eFatal(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat("Graph node ", node->id)), " is missing spec")));
+    }
+    return node;
+    if (node != NULL) {
+        if ((--node->__rc) <= 0) {
+            SemuE2eGraphNode_destroy(node);
+        }
+    }
+}
+
+SemuE2eGraph* SemuE2eParser_readGraphFile(char* path) {
+    char* text = FileSystem_readText(path);
+    SemuE2eGraph* graph = SemuE2eGraph_new();
+    (graph->path = path);
+    (graph->baseDir = PathTools_dirname(path));
+    (graph->name = SemuE2eParser_field(text, "name", graph->name));
+    (graph->workspaceRoot = SemuE2eParser_field(text, "workspaceRoot", graph->workspaceRoot));
+    if (graph->defaults != NULL) {
+        if ((--graph->defaults->__rc) <= 0) {
+            btrc_Vector_string_free(graph->defaults);
+        }
+    }
+    (graph->defaults = SemuE2eParser_stringArray(text, "default"));
+    (SemuE2eParser_stringArray(text, "default")->__rc++);
+    int __n_674 = btrc_Vector_string_iterLen(SemuE2eParser_objectArray(text, "nodes"));
+    for (int __i_673 = 0; (__i_673 < __n_674); (__i_673++)) {
+        char* objectText = btrc_Vector_string_iterGet(SemuE2eParser_objectArray(text, "nodes"), __i_673);
+        btrc_Vector_SemuE2eGraphNode_push(graph->nodes, SemuE2eParser_graphNode(objectText));
+    }
+    if (btrc_Vector_SemuE2eGraphNode_isEmpty(graph->nodes)) {
+        e2eFatal(__btrc_str_track(__btrc_strcat("Graph has no nodes: ", path)));
+    }
+    return graph;
+    if (graph != NULL) {
+        if ((--graph->__rc) <= 0) {
+            SemuE2eGraph_destroy(graph);
+        }
+    }
+}
+
+btrc_Vector_string* semuE2eOperationCatalog(void) {
+    btrc_Vector_string* kinds = btrc_Vector_string_new();
+    btrc_Vector_string_push(kinds, "require-command");
+    btrc_Vector_string_push(kinds, "artifact");
+    btrc_Vector_string_push(kinds, "host");
+    btrc_Vector_string_push(kinds, "make");
+    btrc_Vector_string_push(kinds, "payload-audit");
+    return kinds;
+}
+
+int e2ePayloadAudit(char* project) {
+    char* forbidden = "'^(Azahar|Cemu|Dolphin|ES-DE|Lime3DS|PCSX2|RetroArch|Ryujinx)(/|$)|(^|/)(ROMs|bios|BIOS|saves|states|nand|sdmc|sdcard|mlc01|originals)(/|$)|\\.(3ds|3dz|cia|cci|cxi|nds|nsp|xci|iso|chd|rvz|wad|wua|wud|ciso|gcz|wbfs|elf|dol|bin|cue|img|qcow2|fd|pkg|rap|z64|n64|v64|sfc|smc|gba|gbc|gb|nes|7z|zip|rar|appimage|AppImage|dmg|keys)$'";
+    char* command = __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat("cd ", ShellWords_quote(project))), " && bad=$(git ls-files | LC_ALL=C grep -E ")), forbidden)), " || true)")), " && if [ -n \"$bad\" ]; then printf 'Forbidden tracked payloads:\\n%s\\n' \"$bad\"; exit 1; fi"));
+    ExecResult* result = UnixShell_runRaw(UnixShell_new(), command, true, false, "");
+    if (!ExecResult_ok(result)) {
+        printf("%s\n", ExecResult_stdout(result));
+        return 1;
+    }
+    printf("%s\n", "OK payload audit");
+    return 0;
+}
+
+void SemuE2eRunner_init(SemuE2eRunner* self, SemuE2eSpec* spec, char* workspaceRoot, char* program) {
+    self->__rc = 1;
+    if (self->spec != NULL) {
+        if ((--self->spec->__rc) <= 0) {
+            SemuE2eSpec_destroy(self->spec);
+        }
+    }
+    (self->spec = spec);
+    (spec->__rc++);
+    (self->workspaceRoot = workspaceRoot);
+    (self->program = program);
+    (self->failures = 0);
+}
+
+SemuE2eRunner* SemuE2eRunner_new(SemuE2eSpec* spec, char* workspaceRoot, char* program) {
+    SemuE2eRunner* self = ((SemuE2eRunner*)malloc(sizeof(SemuE2eRunner)));
+    memset(self, 0, sizeof(SemuE2eRunner));
+    SemuE2eRunner_init(self, spec, workspaceRoot, program);
+    return self;
+}
+
+void SemuE2eRunner_destroy(SemuE2eRunner* self) {
+    if (self->spec != NULL) {
+        if ((--self->spec->__rc) <= 0) {
+            SemuE2eSpec_destroy(self->spec);
+        }
+    }
+    if (__btrc_tracking) {
+        __btrc_mark_destroyed(self);
+    }
+    free(self);
+}
+
+void SemuE2eRunner_fail(SemuE2eRunner* self, char* message) {
+    (self->failures++);
+    printf("%s\n", __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat("E2E FAIL ", self->spec->name)), ": ")), message)));
+}
+
+bool SemuE2eRunner_outputMatches(SemuE2eRunner* self, ExecResult* result, char* expect) {
+    if (((int)strlen(expect)) == 0) {
+        return true;
+    }
+    return __btrc_strContains(ExecResult_stdout(result), expect);
+}
+
+void SemuE2eRunner_assertResult(SemuE2eRunner* self, char* label, ExecResult* result, char* expect) {
+    if (!ExecResult_ok(result)) {
+        printf("%s\n", ExecResult_stdout(result));
+        SemuE2eRunner_fail(self, __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(label, " failed with exit code ")), Strings_fromInt(result->code))));
+        return;
+    }
+    if (!SemuE2eRunner_outputMatches(self, result, expect)) {
+        printf("%s\n", ExecResult_stdout(result));
+        SemuE2eRunner_fail(self, __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(label, " output did not contain expected text: ")), expect)));
+    }
+}
+
+ExecResult* SemuE2eRunner_runWorkspaceCommand(SemuE2eRunner* self, char* command) {
+    char* rendered = __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat("cd ", ShellWords_quote(self->workspaceRoot))), " && ")), command)), " 2>&1"));
+    return UnixShell_runRaw(UnixShell_new(), rendered, true, false, "");
+}
+
+void SemuE2eRunner_runOperation(SemuE2eRunner* self, SemuE2eOperation* op) {
+    printf("%s\n", __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat("e2e ", self->spec->name)), ": ")), op->kind)));
+    if (strcmp(op->kind, "require-command") == 0) {
+        ExecResult* result = SemuE2eRunner_runWorkspaceCommand(self, __btrc_str_track(__btrc_strcat("command -v ", ShellWords_quote(op->command))));
+        SemuE2eRunner_assertResult(self, __btrc_str_track(__btrc_strcat("require command ", op->command)), result, op->expect);
+        return;
+    }
+    if (strcmp(op->kind, "artifact") == 0) {
+        ExecResult* result = SemuE2eRunner_runWorkspaceCommand(self, __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat("test -e ", ShellWords_quote(op->path))), " && printf exists")));
+        SemuE2eRunner_assertResult(self, __btrc_str_track(__btrc_strcat("artifact ", op->path)), result, ((((int)strlen(op->expect)) > 0) ? op->expect : "exists"));
+        return;
+    }
+    if (strcmp(op->kind, "host") == 0) {
+        ExecResult* result = SemuE2eRunner_runWorkspaceCommand(self, op->command);
+        SemuE2eRunner_assertResult(self, "host command", result, op->expect);
+        return;
+    }
+    if (strcmp(op->kind, "make") == 0) {
+        ExecResult* result = SemuE2eRunner_runWorkspaceCommand(self, __btrc_str_track(__btrc_strcat("make ", op->command)));
+        SemuE2eRunner_assertResult(self, __btrc_str_track(__btrc_strcat("make ", op->command)), result, op->expect);
+        return;
+    }
+    if (strcmp(op->kind, "payload-audit") == 0) {
+        int status = e2ePayloadAudit(self->workspaceRoot);
+        if (status != 0) {
+            SemuE2eRunner_fail(self, "payload audit failed");
+        }
+        return;
+    }
+    SemuE2eRunner_fail(self, __btrc_str_track(__btrc_strcat("Unknown E2E operation: ", op->kind)));
+}
+
+int SemuE2eRunner_run(SemuE2eRunner* self) {
+    if (btrc_Vector_SemuE2eOperation_isEmpty(self->spec->operations)) {
+        e2eFatal(__btrc_str_track(__btrc_strcat("E2E spec has no operations: ", self->spec->name)));
+    }
+    int __n_676 = btrc_Vector_SemuE2eOperation_iterLen(self->spec->operations);
+    for (int __i_675 = 0; (__i_675 < __n_676); (__i_675++)) {
+        SemuE2eOperation* op = btrc_Vector_SemuE2eOperation_iterGet(self->spec->operations, __i_675);
+        if (self->failures > 0) {
+            break;
+        }
+        SemuE2eRunner_runOperation(self, op);
+    }
+    if (self->failures > 0) {
+        return 1;
+    }
+    SemuE2eSpec_recordState(self->spec);
+    return 0;
+}
+
+void SemuE2eGraphRunner_init(SemuE2eGraphRunner* self, SemuE2eGraph* graph, btrc_Map_string_string* args, char* program) {
+    self->__rc = 1;
+    if (self->graph != NULL) {
+        if ((--self->graph->__rc) <= 0) {
+            SemuE2eGraph_destroy(self->graph);
+        }
+    }
+    (self->graph = graph);
+    (graph->__rc++);
+    if (self->args != NULL) {
+        if ((--self->args->__rc) <= 0) {
+            btrc_Map_string_string_free(self->args);
+        }
+    }
+    (self->args = args);
+    (args->__rc++);
+    if (self->done != NULL) {
+        if ((--self->done->__rc) <= 0) {
+            btrc_Vector_string_free(self->done);
+        }
+    }
+    btrc_Vector_string* __list_678 = btrc_Vector_string_new();
+    (self->done = __list_678);
+    btrc_Vector_string* __list_677 = btrc_Vector_string_new();
+    (__list_677->__rc++);
+    if (self->visiting != NULL) {
+        if ((--self->visiting->__rc) <= 0) {
+            btrc_Vector_string_free(self->visiting);
+        }
+    }
+    btrc_Vector_string* __list_680 = btrc_Vector_string_new();
+    (self->visiting = __list_680);
+    btrc_Vector_string* __list_679 = btrc_Vector_string_new();
+    (__list_679->__rc++);
+    (self->sourceHashValue = "");
+    (self->program = program);
+}
+
+SemuE2eGraphRunner* SemuE2eGraphRunner_new(SemuE2eGraph* graph, btrc_Map_string_string* args, char* program) {
+    SemuE2eGraphRunner* self = ((SemuE2eGraphRunner*)malloc(sizeof(SemuE2eGraphRunner)));
+    memset(self, 0, sizeof(SemuE2eGraphRunner));
+    SemuE2eGraphRunner_init(self, graph, args, program);
+    return self;
+}
+
+void SemuE2eGraphRunner_destroy(SemuE2eGraphRunner* self) {
+    if (self->graph != NULL) {
+        if ((--self->graph->__rc) <= 0) {
+            SemuE2eGraph_destroy(self->graph);
+        }
+    }
+    if (self->args != NULL) {
+        if ((--self->args->__rc) <= 0) {
+            btrc_Map_string_string_free(self->args);
+        }
+    }
+    if (self->done != NULL) {
+        if ((--self->done->__rc) <= 0) {
+            btrc_Vector_string_free(self->done);
+        }
+    }
+    if (self->visiting != NULL) {
+        if ((--self->visiting->__rc) <= 0) {
+            btrc_Vector_string_free(self->visiting);
+        }
+    }
+    if (__btrc_tracking) {
+        __btrc_mark_destroyed(self);
+    }
+    free(self);
+}
+
+char* SemuE2eGraphRunner_sourceHash(SemuE2eGraphRunner* self) {
+    if (((int)strlen(self->sourceHashValue)) > 0) {
+        return self->sourceHashValue;
+    }
+    char* root = SemuE2eGraph_resolvedWorkspaceRoot(self->graph);
+    char* command = __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat("cd ", ShellWords_quote(root))), " && find . -type f")), " ! -path './.git/*'")), " ! -path './.semu/*'")), " ! -path './.venv/*'")), " ! -path './.pytest_cache/*'")), " ! -path './.stfolder/*'")), " ! -path './tests/vms/*'")), " ! -path './build/*'")), " ! -path './backups/*'")), " ! -path './result/*'")), " ! -path './result-*/*'")), " ! -path './Azahar/*'")), " ! -path './Cemu/*'")), " ! -path './Dolphin/*'")), " ! -path './ES-DE/*'")), " ! -path './Lime3DS/*'")), " ! -path './PCSX2/*'")), " ! -path './RetroArch/*'")), " ! -path './Ryujinx/*'")), " ! -path './ES-DE/ES-DE/ROMs/*'")), " ! -path './ES-DE/ES-DE/bios/*'")), " ! -path './ES-DE/ES-DE/saves/*'")), " ! -path './ES-DE/ES-DE/states/*'")), " ! -path './ES-DE/ES-DE/downloaded_media/*'")), " ! -path './ES-DE/ES-DE/screenshots/*'")), " ! -path './sync/bin/*'")), " ! -path './sync/logs/*'")), " ! -path './sync/syncthing/*'")), " ! -name '.DS_Store'")), " ! -name '._*'")), " \\( -name '*.btrc' -o -name '*.nix' -o -name '*.json' -o -name '*.sh' -o -name '*.md' -o -name '*.xml' -o -name '*.ini' -o -name '*.cfg' -o -name '*.desktop' -o -name '*.vdf' -o -name '*.skm' -o -name '*.c' -o -name 'Makefile' -o -name 'Dockerfile' -o -name 'flake.lock' \\)")), " -print0 | LC_ALL=C sort -z | xargs -0 shasum -a 256 | shasum -a 256 | awk '{print $1}'"));
+    ExecResult* result = UnixShell_runRaw(UnixShell_new(), command, true, false, "");
+    if (!ExecResult_ok(result)) {
+        e2eFatal(__btrc_str_track(__btrc_strcat("Failed to compute workspace source hash for ", root)));
+    }
+    char* toolHash = "missing";
+    if ((((int)strlen(self->program)) > 0) && FileSystem_exists(self->program)) {
+        ExecResult* tool = UnixShell_runRaw(UnixShell_new(), __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat("shasum -a 256 ", ShellWords_quote(self->program))), " | awk '{print $1}'")), true, false, "");
+        if (ExecResult_ok(tool)) {
+            (toolHash = ExecResult_trimmed(tool));
+        }
+    }
+    (self->sourceHashValue = __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(ExecResult_trimmed(result), ":semu=")), toolHash)));
+    return self->sourceHashValue;
+}
+
+void SemuE2eGraphRunner_applyStructuralOverrides(SemuE2eGraphRunner* self, SemuE2eSpec* spec, btrc_Map_string_string* overrides) {
+    if (btrc_Map_string_string_has(overrides, "name")) {
+        (spec->name = btrc_Map_string_string_get(overrides, "name"));
+    }
+    if (btrc_Map_string_string_has(overrides, "state")) {
+        (spec->state = btrc_Map_string_string_get(overrides, "state"));
+    }
+    if (btrc_Map_string_string_has(overrides, "parentState")) {
+        (spec->parentState = btrc_Map_string_string_get(overrides, "parentState"));
+    }
+    if (btrc_Map_string_string_has(overrides, "stateRoot")) {
+        (spec->stateRoot = btrc_Map_string_string_get(overrides, "stateRoot"));
+    }
+    if (btrc_Map_string_string_has(overrides, "stateMaterial")) {
+        (spec->stateMaterial = btrc_Map_string_string_get(overrides, "stateMaterial"));
+    }
+}
+
+SemuE2eSpec* SemuE2eGraphRunner_specFor(SemuE2eGraphRunner* self, SemuE2eGraphNode* node) {
+    SemuE2eSpec* spec = SemuE2eParser_readSpecFile(SemuE2eGraph_resolvedSpecPath(self->graph, node));
+    SemuE2eSpec_setArg(spec, "graphName", self->graph->name);
+    SemuE2eSpec_setArg(spec, "nodeId", node->id);
+    SemuE2eSpec_setArg(spec, "workspaceRoot", SemuE2eGraph_resolvedWorkspaceRoot(self->graph));
+    SemuE2eSpec_setArg(spec, "sourceHash", SemuE2eGraphRunner_sourceHash(self));
+    SemuE2eSpec_setArg(spec, "program", self->program);
+    SemuE2eGraphRunner_applyStructuralOverrides(self, spec, node->args);
+    SemuE2eGraphRunner_applyStructuralOverrides(self, spec, self->args);
+    int __n_682 = btrc_Map_string_string_iterLen(node->args);
+    for (int __i_681 = 0; (__i_681 < __n_682); (__i_681++)) {
+        char* key = btrc_Map_string_string_iterGet(node->args, __i_681);
+        char* value = btrc_Map_string_string_iterValueAt(node->args, __i_681);
+        SemuE2eSpec_setArg(spec, key, value);
+    }
+    int __n_684 = btrc_Map_string_string_iterLen(self->args);
+    for (int __i_683 = 0; (__i_683 < __n_684); (__i_683++)) {
+        char* key = btrc_Map_string_string_iterGet(self->args, __i_683);
+        char* value = btrc_Map_string_string_iterValueAt(self->args, __i_683);
+        SemuE2eSpec_setArg(spec, key, value);
+    }
+    SemuE2eSpec_expandArgs(spec);
+    return spec;
+}
+
+bool SemuE2eGraphRunner_force(SemuE2eGraphRunner* self) {
+    return (strcmp(btrc_Map_string_string_getOrDefault(self->args, "force", "false"), "true") == 0);
+}
+
+bool SemuE2eGraphRunner_ready(SemuE2eGraphRunner* self, SemuE2eSpec* spec) {
+    if (!FileSystem_exists(SemuE2eSpec_stateHashFile(spec))) {
+        return false;
+    }
+    return (strcmp(__btrc_str_track(__btrc_trim(FileSystem_readText(SemuE2eSpec_stateHashFile(spec)))), spec->stateHash) == 0);
+}
+
+void SemuE2eGraphRunner_list(SemuE2eGraphRunner* self) {
+    int __n_686 = btrc_Vector_SemuE2eGraphNode_iterLen(self->graph->nodes);
+    for (int __i_685 = 0; (__i_685 < __n_686); (__i_685++)) {
+        SemuE2eGraphNode* node = btrc_Vector_SemuE2eGraphNode_iterGet(self->graph->nodes, __i_685);
+        char* parents = (btrc_Vector_string_isEmpty(node->after) ? "root" : btrc_Vector_string_join(node->after, ","));
+        printf("%s\n", __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(node->id, " <- ")), parents)), " :: ")), SemuE2eGraph_resolvedSpecPath(self->graph, node))));
+    }
+}
+
+void SemuE2eGraphRunner_status(SemuE2eGraphRunner* self) {
+    int __n_688 = btrc_Vector_SemuE2eGraphNode_iterLen(self->graph->nodes);
+    for (int __i_687 = 0; (__i_687 < __n_688); (__i_687++)) {
+        SemuE2eGraphNode* node = btrc_Vector_SemuE2eGraphNode_iterGet(self->graph->nodes, __i_687);
+        SemuE2eSpec* spec = SemuE2eGraphRunner_specFor(self, node);
+        char* recorded = "missing";
+        if (FileSystem_exists(SemuE2eSpec_stateHashFile(spec))) {
+            char* saved = __btrc_str_track(__btrc_trim(FileSystem_readText(SemuE2eSpec_stateHashFile(spec))));
+            (recorded = ((strcmp(saved, spec->stateHash) == 0) ? "ready" : "stale"));
+        }
+        printf("%s\n", __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(node->id, " ")), recorded)), " ")), spec->stateHashShort)), " ")), SemuE2eSpec_stateDir(spec))));
+    }
+}
+
+int SemuE2eGraphRunner_operationCoverage(SemuE2eGraphRunner* self) {
+    btrc_Vector_string* covered = btrc_Vector_string_new();
+    int __n_690 = btrc_Vector_SemuE2eGraphNode_iterLen(self->graph->nodes);
+    for (int __i_689 = 0; (__i_689 < __n_690); (__i_689++)) {
+        SemuE2eGraphNode* node = btrc_Vector_SemuE2eGraphNode_iterGet(self->graph->nodes, __i_689);
+        SemuE2eSpec* spec = SemuE2eParser_readSpecFile(SemuE2eGraph_resolvedSpecPath(self->graph, node));
+        int __n_692 = btrc_Vector_SemuE2eOperation_iterLen(spec->operations);
+        for (int __i_691 = 0; (__i_691 < __n_692); (__i_691++)) {
+            SemuE2eOperation* op = btrc_Vector_SemuE2eOperation_iterGet(spec->operations, __i_691);
+            if ((((int)strlen(op->kind)) > 0) && (!btrc_Vector_string_contains(covered, op->kind))) {
+                btrc_Vector_string_push(covered, op->kind);
+            }
+        }
+    }
+    btrc_Vector_string* missing = btrc_Vector_string_new();
+    btrc_Vector_string* catalog = semuE2eOperationCatalog();
+    int __n_694 = btrc_Vector_string_iterLen(catalog);
+    for (int __i_693 = 0; (__i_693 < __n_694); (__i_693++)) {
+        char* kind = btrc_Vector_string_iterGet(catalog, __i_693);
+        if (!btrc_Vector_string_contains(covered, kind)) {
+            btrc_Vector_string_push(missing, kind);
+        }
+    }
+    if (!btrc_Vector_string_isEmpty(missing)) {
+        printf("%s\n", __btrc_str_track(__btrc_strcat("Missing e2e operation coverage: ", btrc_Vector_string_join(missing, ", "))));
+        return 1;
+    }
+    printf("%s\n", __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat("E2E operation coverage: ", Strings_fromInt(covered->len))), "/")), Strings_fromInt(catalog->len))));
+    return 0;
+}
+
+int SemuE2eGraphRunner_runNode(SemuE2eGraphRunner* self, char* id) {
+    if (btrc_Vector_string_contains(self->done, id)) {
+        return 0;
+    }
+    if (btrc_Vector_string_contains(self->visiting, id)) {
+        e2eFatal(__btrc_str_track(__btrc_strcat("Cycle in E2E graph at ", id)));
+    }
+    btrc_Vector_string_push(self->visiting, id);
+    SemuE2eGraphNode* node = SemuE2eGraph_node(self->graph, id);
+    int __n_696 = btrc_Vector_string_iterLen(node->after);
+    for (int __i_695 = 0; (__i_695 < __n_696); (__i_695++)) {
+        char* parent = btrc_Vector_string_iterGet(node->after, __i_695);
+        int parentResult = SemuE2eGraphRunner_runNode(self, parent);
+        if (parentResult != 0) {
+            btrc_Vector_string_removeAll(self->visiting, id);
+            return parentResult;
+        }
+    }
+    SemuE2eSpec* spec = SemuE2eGraphRunner_specFor(self, node);
+    if ((!SemuE2eGraphRunner_force(self)) && SemuE2eGraphRunner_ready(self, spec)) {
+        printf("%s\n", __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat("graph ", self->graph->name)), ": skip ")), node->id)), " -> ")), spec->state)), "@")), spec->stateHashShort)));
+        btrc_Vector_string_push(self->done, id);
+        btrc_Vector_string_removeAll(self->visiting, id);
+        return 0;
+    }
+    printf("%s\n", __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat("graph ", self->graph->name)), ": run ")), node->id)), " -> ")), spec->state)), "@")), spec->stateHashShort)));
+    SemuE2eRunner* runner = SemuE2eRunner_new(spec, SemuE2eGraph_resolvedWorkspaceRoot(self->graph), self->program);
+    int result = SemuE2eRunner_run(runner);
+    if (result != 0) {
+        btrc_Vector_string_removeAll(self->visiting, id);
+        if (runner != NULL) {
+            if ((--runner->__rc) <= 0) {
+                SemuE2eRunner_destroy(runner);
+            }
+        }
+        return result;
+    }
+    btrc_Vector_string_push(self->done, id);
+    btrc_Vector_string_removeAll(self->visiting, id);
+    int __btrc_ret_697 = 0;
+    if (runner != NULL) {
+        if ((--runner->__rc) <= 0) {
+            SemuE2eRunner_destroy(runner);
+        }
+    }
+    return __btrc_ret_697;
+    if (runner != NULL) {
+        if ((--runner->__rc) <= 0) {
+            SemuE2eRunner_destroy(runner);
+        }
+    }
+}
+
+int SemuE2eGraphRunner_run(SemuE2eGraphRunner* self, btrc_Vector_string* targets) {
+    btrc_Vector_string* selected = (btrc_Vector_string_isEmpty(targets) ? SemuE2eGraph_defaultTargets(self->graph) : targets);
+    int __n_699 = btrc_Vector_string_iterLen(selected);
+    for (int __i_698 = 0; (__i_698 < __n_699); (__i_698++)) {
+        char* id = btrc_Vector_string_iterGet(selected, __i_698);
+        int result = SemuE2eGraphRunner_runNode(self, id);
+        if (result != 0) {
+            return result;
+        }
+    }
+    return 0;
+}
+
+btrc_Map_string_string* e2eGraphArgs(CliArgs* args, int startIndex) {
+    btrc_Map_string_string* result = btrc_Map_string_string_new();
+    for (int i = startIndex; (i < CliArgs_count(args)); (i++)) {
+        char* value = CliArgs_get(args, i);
+        if (strcmp(value, "--arg") == 0) {
+            if ((i + 1) >= CliArgs_count(args)) {
+                e2eFatal("Expected --arg key=value");
+            }
+            SemuE2eSpec* spec = SemuE2eSpec_new();
+            SemuE2eSpec_setArgPair(spec, CliArgs_get(args, (i + 1)));
+            int __n_701 = btrc_Map_string_string_iterLen(spec->args);
+            for (int __i_700 = 0; (__i_700 < __n_701); (__i_700++)) {
+                char* key = btrc_Map_string_string_iterGet(spec->args, __i_700);
+                char* item = btrc_Map_string_string_iterValueAt(spec->args, __i_700);
+                btrc_Map_string_string_put(result, key, item);
+            }
+            (i++);
+            continue;
+            if (spec != NULL) {
+                if ((--spec->__rc) <= 0) {
+                    SemuE2eSpec_destroy(spec);
+                }
+            }
+        }
+        if (__btrc_startsWith(value, "--arg=")) {
+            SemuE2eSpec* spec = SemuE2eSpec_new();
+            SemuE2eSpec_setArgPair(spec, Strings_removePrefix(value, "--arg="));
+            int __n_703 = btrc_Map_string_string_iterLen(spec->args);
+            for (int __i_702 = 0; (__i_702 < __n_703); (__i_702++)) {
+                char* key = btrc_Map_string_string_iterGet(spec->args, __i_702);
+                char* item = btrc_Map_string_string_iterValueAt(spec->args, __i_702);
+                btrc_Map_string_string_put(result, key, item);
+            }
+            if (spec != NULL) {
+                if ((--spec->__rc) <= 0) {
+                    SemuE2eSpec_destroy(spec);
+                }
+            }
+        }
+    }
+    return result;
+}
+
+btrc_Vector_string* e2eGraphTargets(CliArgs* args, int startIndex) {
+    btrc_Vector_string* result = btrc_Vector_string_new();
+    for (int i = startIndex; (i < CliArgs_count(args)); (i++)) {
+        char* value = CliArgs_get(args, i);
+        if (strcmp(value, "--arg") == 0) {
+            (i++);
+            continue;
+        }
+        if (__btrc_startsWith(value, "--arg=")) {
+            continue;
+        }
+        btrc_Vector_string_push(result, value);
+    }
+    return result;
+}
+
+int e2eGraphCommand(CliArgs* args) {
+    if (CliArgs_count(args) < 4) {
+        printf("%s\n", "Usage: semu e2e graph <graph.json> <list|status|coverage|run> [node ...] [--arg key=value]");
+        return 1;
+    }
+    SemuE2eGraph* graph = SemuE2eParser_readGraphFile(CliArgs_get(args, 2));
+    char* action = CliArgs_get(args, 3);
+    btrc_Map_string_string* overrides = e2eGraphArgs(args, 4);
+    SemuE2eGraphRunner* runner = SemuE2eGraphRunner_new(graph, overrides, args->program);
+    if (strcmp(action, "list") == 0) {
+        SemuE2eGraphRunner_list(runner);
+        int __btrc_ret_704 = 0;
+        if (runner != NULL) {
+            if ((--runner->__rc) <= 0) {
+                SemuE2eGraphRunner_destroy(runner);
+            }
+        }
+        return __btrc_ret_704;
+    }
+    if (strcmp(action, "status") == 0) {
+        SemuE2eGraphRunner_status(runner);
+        int __btrc_ret_705 = 0;
+        if (runner != NULL) {
+            if ((--runner->__rc) <= 0) {
+                SemuE2eGraphRunner_destroy(runner);
+            }
+        }
+        return __btrc_ret_705;
+    }
+    if (strcmp(action, "coverage") == 0) {
+        int __btrc_ret_706 = SemuE2eGraphRunner_operationCoverage(runner);
+        if (runner != NULL) {
+            if ((--runner->__rc) <= 0) {
+                SemuE2eGraphRunner_destroy(runner);
+            }
+        }
+        return __btrc_ret_706;
+    }
+    if (strcmp(action, "run") == 0) {
+        int __btrc_ret_707 = SemuE2eGraphRunner_run(runner, e2eGraphTargets(args, 4));
+        if (runner != NULL) {
+            if ((--runner->__rc) <= 0) {
+                SemuE2eGraphRunner_destroy(runner);
+            }
+        }
+        return __btrc_ret_707;
+    }
+    printf("%s\n", "Usage: semu e2e graph <graph.json> <list|status|coverage|run> [node ...] [--arg key=value]");
+    int __btrc_ret_708 = 1;
+    if (runner != NULL) {
+        if ((--runner->__rc) <= 0) {
+            SemuE2eGraphRunner_destroy(runner);
+        }
+    }
+    return __btrc_ret_708;
+    if (runner != NULL) {
+        if ((--runner->__rc) <= 0) {
+            SemuE2eGraphRunner_destroy(runner);
+        }
+    }
+}
+
 int e2eCommand(CliArgs* args) {
     char* mode = "all";
     if ((CliArgs_count(args) > 1) && (!__btrc_startsWith(CliArgs_get(args, 1), "--"))) {
         (mode = CliArgs_get(args, 1));
+    }
+    if (strcmp(mode, "graph") == 0) {
+        return e2eGraphCommand(args);
+    }
+    if (strcmp(mode, "payload-audit") == 0) {
+        return e2ePayloadAudit(CliArgs_valueAfter(args, "--project", "."));
     }
     if (strcmp(mode, "sandbox") == 0) {
         return e2eSandboxSmoke();
@@ -10313,7 +12650,7 @@ int e2eCommand(CliArgs* args) {
 }
 
 void printUsage(void) {
-    printf("%s\n", "semu [manifest|bootstrap|doctor|deck|lifecycle|sync|config|apprun|steam-input|keymap|screenshot|sandbox|launcher|utils|e2e] [n3ds-nocrypto|validate|render|install|setup|reconfigure|change|uninstall|reinstall|upgrade|status|force|capture|prepare|launch] [--project PATH] [--roms PATH] [--source PATH] [--output PATH] [--dest PATH] [--target manifest|retroarch|dolphin|pcsx2|steam-input] [--emulator NAME] [--hook HOOK] [--scratch PATH] [--action ID] [--command KEYS]");
+    printf("%s\n", "semu [manifest|bootstrap|doctor|deck|lifecycle|sync|config|apprun|steam-input|keymap|screenshot|sandbox|launcher|utils|e2e] [graph|payload-audit|n3ds-nocrypto|validate|render|install|setup|reconfigure|change|uninstall|reinstall|upgrade|status|force|capture|prepare|launch] [--project PATH] [--roms PATH] [--source PATH] [--output PATH] [--dest PATH] [--target manifest|retroarch|dolphin|pcsx2|steam-input] [--emulator NAME] [--hook HOOK] [--scratch PATH] [--action ID] [--command KEYS]");
 }
 
 char* retroarchKeyName(char* key) {
@@ -10362,9 +12699,9 @@ char* pcsx2Chord(KeymapIr* ir, char* actionId) {
     char* modifiers = keymapCommandModifierPart(command);
     if (((int)strlen(modifiers)) > 0) {
         btrc_Vector_string* modifierParts = Strings_split(modifiers, "+");
-        int __n_646 = btrc_Vector_string_iterLen(modifierParts);
-        for (int __i_645 = 0; (__i_645 < __n_646); (__i_645++)) {
-            char* modifier = btrc_Vector_string_iterGet(modifierParts, __i_645);
+        int __n_710 = btrc_Vector_string_iterLen(modifierParts);
+        for (int __i_709 = 0; (__i_709 < __n_710); (__i_709++)) {
+            char* modifier = btrc_Vector_string_iterGet(modifierParts, __i_709);
             if (strcmp(modifier, "Ctrl") == 0) {
                 btrc_Vector_string_push(parts, "Keyboard/Control");
             } else {
@@ -10396,10 +12733,10 @@ char* renderKeymap(KeymapIr* ir, char* target) {
     if (strcmp(target, "steam-input") == 0) {
         return steamInputTemplateVdf("Semu: Steam Deck - Neptune FULL", true, ir);
     }
-    int __fstr_647_len = snprintf(NULL, 0, "unknown keymap target: %s\n", target);
-    char* __fstr_647_buf = __btrc_str_track(((char*)malloc((__fstr_647_len + 1))));
-    snprintf(__fstr_647_buf, (__fstr_647_len + 1), "unknown keymap target: %s\n", target);
-    return __fstr_647_buf;
+    int __fstr_711_len = snprintf(NULL, 0, "unknown keymap target: %s\n", target);
+    char* __fstr_711_buf = __btrc_str_track(((char*)malloc((__fstr_711_len + 1))));
+    snprintf(__fstr_711_buf, (__fstr_711_len + 1), "unknown keymap target: %s\n", target);
+    return __fstr_711_buf;
 }
 
 bool isKeymapTarget(char* target) {
@@ -10416,10 +12753,10 @@ int keymapCommand(CliArgs* args) {
     char* source = defaultKeymapSource();
     if (((int)strlen(sourcePath)) > 0) {
         if (!FileSystem_exists(sourcePath)) {
-            int __fstr_650_len = snprintf(NULL, 0, "error 0:0 keymap source not found: %s", sourcePath);
-            char* __fstr_650_buf = __btrc_str_track(((char*)malloc((__fstr_650_len + 1))));
-            snprintf(__fstr_650_buf, (__fstr_650_len + 1), "error 0:0 keymap source not found: %s", sourcePath);
-            printf("%s\n", __fstr_650_buf);
+            int __fstr_714_len = snprintf(NULL, 0, "error 0:0 keymap source not found: %s", sourcePath);
+            char* __fstr_714_buf = __btrc_str_track(((char*)malloc((__fstr_714_len + 1))));
+            snprintf(__fstr_714_buf, (__fstr_714_len + 1), "error 0:0 keymap source not found: %s", sourcePath);
+            printf("%s\n", __fstr_714_buf);
             return 1;
         }
         (source = FileSystem_readText(sourcePath));
@@ -10431,57 +12768,57 @@ int keymapCommand(CliArgs* args) {
     if (strcmp(mode, "validate") == 0) {
         if (KeymapErrors_count(errors) == 0) {
             printf("%s\n", "OK keymap steam_deck");
-            int __btrc_ret_651 = 0;
+            int __btrc_ret_715 = 0;
             if (errors != NULL) {
                 if ((--errors->__rc) <= 0) {
                     KeymapErrors_destroy(errors);
                 }
             }
-            return __btrc_ret_651;
+            return __btrc_ret_715;
         }
         for (int i = 0; (i < KeymapErrors_count(errors)); (i++)) {
-            int __fstr_654_len = snprintf(NULL, 0, "%s %d:%d %s", btrc_Vector_string_get(errors->levels, i), btrc_Vector_int_get(errors->lines, i), btrc_Vector_int_get(errors->columns, i), btrc_Vector_string_get(errors->messages, i));
-            char* __fstr_654_buf = __btrc_str_track(((char*)malloc((__fstr_654_len + 1))));
-            snprintf(__fstr_654_buf, (__fstr_654_len + 1), "%s %d:%d %s", btrc_Vector_string_get(errors->levels, i), btrc_Vector_int_get(errors->lines, i), btrc_Vector_int_get(errors->columns, i), btrc_Vector_string_get(errors->messages, i));
-            printf("%s\n", __fstr_654_buf);
+            int __fstr_718_len = snprintf(NULL, 0, "%s %d:%d %s", btrc_Vector_string_get(errors->levels, i), btrc_Vector_int_get(errors->lines, i), btrc_Vector_int_get(errors->columns, i), btrc_Vector_string_get(errors->messages, i));
+            char* __fstr_718_buf = __btrc_str_track(((char*)malloc((__fstr_718_len + 1))));
+            snprintf(__fstr_718_buf, (__fstr_718_len + 1), "%s %d:%d %s", btrc_Vector_string_get(errors->levels, i), btrc_Vector_int_get(errors->lines, i), btrc_Vector_int_get(errors->columns, i), btrc_Vector_string_get(errors->messages, i));
+            printf("%s\n", __fstr_718_buf);
         }
-        int __btrc_ret_655 = 1;
+        int __btrc_ret_719 = 1;
         if (errors != NULL) {
             if ((--errors->__rc) <= 0) {
                 KeymapErrors_destroy(errors);
             }
         }
-        return __btrc_ret_655;
+        return __btrc_ret_719;
     }
     if (strcmp(mode, "render") == 0) {
         if (KeymapErrors_count(errors) > 0) {
             for (int i = 0; (i < KeymapErrors_count(errors)); (i++)) {
-                int __fstr_658_len = snprintf(NULL, 0, "%s %d:%d %s", btrc_Vector_string_get(errors->levels, i), btrc_Vector_int_get(errors->lines, i), btrc_Vector_int_get(errors->columns, i), btrc_Vector_string_get(errors->messages, i));
-                char* __fstr_658_buf = __btrc_str_track(((char*)malloc((__fstr_658_len + 1))));
-                snprintf(__fstr_658_buf, (__fstr_658_len + 1), "%s %d:%d %s", btrc_Vector_string_get(errors->levels, i), btrc_Vector_int_get(errors->lines, i), btrc_Vector_int_get(errors->columns, i), btrc_Vector_string_get(errors->messages, i));
-                printf("%s\n", __fstr_658_buf);
+                int __fstr_722_len = snprintf(NULL, 0, "%s %d:%d %s", btrc_Vector_string_get(errors->levels, i), btrc_Vector_int_get(errors->lines, i), btrc_Vector_int_get(errors->columns, i), btrc_Vector_string_get(errors->messages, i));
+                char* __fstr_722_buf = __btrc_str_track(((char*)malloc((__fstr_722_len + 1))));
+                snprintf(__fstr_722_buf, (__fstr_722_len + 1), "%s %d:%d %s", btrc_Vector_string_get(errors->levels, i), btrc_Vector_int_get(errors->lines, i), btrc_Vector_int_get(errors->columns, i), btrc_Vector_string_get(errors->messages, i));
+                printf("%s\n", __fstr_722_buf);
             }
-            int __btrc_ret_659 = 1;
+            int __btrc_ret_723 = 1;
             if (errors != NULL) {
                 if ((--errors->__rc) <= 0) {
                     KeymapErrors_destroy(errors);
                 }
             }
-            return __btrc_ret_659;
+            return __btrc_ret_723;
         }
         char* target = CliArgs_valueAfter(args, "--target", "manifest");
         if (!isKeymapTarget(target)) {
-            int __fstr_662_len = snprintf(NULL, 0, "error 0:0 unknown keymap target '%s'", target);
-            char* __fstr_662_buf = __btrc_str_track(((char*)malloc((__fstr_662_len + 1))));
-            snprintf(__fstr_662_buf, (__fstr_662_len + 1), "error 0:0 unknown keymap target '%s'", target);
-            printf("%s\n", __fstr_662_buf);
-            int __btrc_ret_663 = 1;
+            int __fstr_726_len = snprintf(NULL, 0, "error 0:0 unknown keymap target '%s'", target);
+            char* __fstr_726_buf = __btrc_str_track(((char*)malloc((__fstr_726_len + 1))));
+            snprintf(__fstr_726_buf, (__fstr_726_len + 1), "error 0:0 unknown keymap target '%s'", target);
+            printf("%s\n", __fstr_726_buf);
+            int __btrc_ret_727 = 1;
             if (errors != NULL) {
                 if ((--errors->__rc) <= 0) {
                     KeymapErrors_destroy(errors);
                 }
             }
-            return __btrc_ret_663;
+            return __btrc_ret_727;
         }
         char* rendered = renderKeymap(ir, target);
         char* output = CliArgs_valueAfter(args, "--output", "");
@@ -10490,22 +12827,22 @@ int keymapCommand(CliArgs* args) {
         } else {
             printf("%s\n", rendered);
         }
-        int __btrc_ret_664 = 0;
+        int __btrc_ret_728 = 0;
         if (errors != NULL) {
             if ((--errors->__rc) <= 0) {
                 KeymapErrors_destroy(errors);
             }
         }
-        return __btrc_ret_664;
+        return __btrc_ret_728;
     }
     printUsage();
-    int __btrc_ret_665 = 1;
+    int __btrc_ret_729 = 1;
     if (errors != NULL) {
         if ((--errors->__rc) <= 0) {
             KeymapErrors_destroy(errors);
         }
     }
-    return __btrc_ret_665;
+    return __btrc_ret_729;
     if (errors != NULL) {
         if ((--errors->__rc) <= 0) {
             KeymapErrors_destroy(errors);
@@ -10520,10 +12857,10 @@ int screenshotCommand(CliArgs* args, char* project) {
     }
     if ((strcmp(mode, "setup") == 0) || (strcmp(mode, "defaults") == 0)) {
         writeScreenshotDefaults(project);
-        int __fstr_668_len = snprintf(NULL, 0, "OK screenshot defaults: %s", screenshotConfigPath(project));
-        char* __fstr_668_buf = __btrc_str_track(((char*)malloc((__fstr_668_len + 1))));
-        snprintf(__fstr_668_buf, (__fstr_668_len + 1), "OK screenshot defaults: %s", screenshotConfigPath(project));
-        printf("%s\n", __fstr_668_buf);
+        int __fstr_732_len = snprintf(NULL, 0, "OK screenshot defaults: %s", screenshotConfigPath(project));
+        char* __fstr_732_buf = __btrc_str_track(((char*)malloc((__fstr_732_len + 1))));
+        snprintf(__fstr_732_buf, (__fstr_732_len + 1), "OK screenshot defaults: %s", screenshotConfigPath(project));
+        printf("%s\n", __fstr_732_buf);
         return 0;
     }
     if (strcmp(mode, "status") == 0) {
@@ -10626,10 +12963,10 @@ int steamInputCommand(CliArgs* args, char* project) {
         ensureDir(destination);
         copySteamInputTemplate(project, destination, "neptune-simple.vdf");
         copySteamInputTemplate(project, destination, "neptune-full.vdf");
-        int __fstr_671_len = snprintf(NULL, 0, "OK steam-input templates: %s", destination);
-        char* __fstr_671_buf = __btrc_str_track(((char*)malloc((__fstr_671_len + 1))));
-        snprintf(__fstr_671_buf, (__fstr_671_len + 1), "OK steam-input templates: %s", destination);
-        printf("%s\n", __fstr_671_buf);
+        int __fstr_735_len = snprintf(NULL, 0, "OK steam-input templates: %s", destination);
+        char* __fstr_735_buf = __btrc_str_track(((char*)malloc((__fstr_735_len + 1))));
+        snprintf(__fstr_735_buf, (__fstr_735_len + 1), "OK steam-input templates: %s", destination);
+        printf("%s\n", __fstr_735_buf);
         return 0;
     }
     if ((strcmp(mode, "status") == 0) || (strcmp(mode, "validate") == 0)) {
@@ -10665,18 +13002,18 @@ int configCommand(CliArgs* args, char* project) {
         writeSyncDefaults(project, roms);
         ensureRomDirsAt(roms);
         writeEsDeFiles(project);
-        int __fstr_674_len = snprintf(NULL, 0, "OK roms_dir: %s", roms);
-        char* __fstr_674_buf = __btrc_str_track(((char*)malloc((__fstr_674_len + 1))));
-        snprintf(__fstr_674_buf, (__fstr_674_len + 1), "OK roms_dir: %s", roms);
-        printf("%s\n", __fstr_674_buf);
+        int __fstr_738_len = snprintf(NULL, 0, "OK roms_dir: %s", roms);
+        char* __fstr_738_buf = __btrc_str_track(((char*)malloc((__fstr_738_len + 1))));
+        snprintf(__fstr_738_buf, (__fstr_738_len + 1), "OK roms_dir: %s", roms);
+        printf("%s\n", __fstr_738_buf);
         return 0;
     }
     if (strcmp(mode, "show") == 0) {
         reportFile("sync_config", syncConfigPath(project));
-        int __fstr_677_len = snprintf(NULL, 0, "  roms_dir: %s", configuredRomsRoot(project));
-        char* __fstr_677_buf = __btrc_str_track(((char*)malloc((__fstr_677_len + 1))));
-        snprintf(__fstr_677_buf, (__fstr_677_len + 1), "  roms_dir: %s", configuredRomsRoot(project));
-        printf("%s\n", __fstr_677_buf);
+        int __fstr_741_len = snprintf(NULL, 0, "  roms_dir: %s", configuredRomsRoot(project));
+        char* __fstr_741_buf = __btrc_str_track(((char*)malloc((__fstr_741_len + 1))));
+        snprintf(__fstr_741_buf, (__fstr_741_len + 1), "  roms_dir: %s", configuredRomsRoot(project));
+        printf("%s\n", __fstr_741_buf);
         return 0;
     }
     printUsage();
@@ -10739,23 +13076,23 @@ int deckLaunch(char* project) {
     char* env = __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat("SEMU_PROJECT_DIR=", ShellWords_quote(project))), " SEMU_ROMS_DIR=")), ShellWords_quote(configuredRomsRoot(project))));
     if (commandExists("es-de")) {
         UnixShell_runRaw(shell, __btrc_str_track(__btrc_strcat(env, " es-de")), false, false, "");
-        int __btrc_ret_678 = 0;
+        int __btrc_ret_742 = 0;
         if (shell != NULL) {
             if ((--shell->__rc) <= 0) {
                 UnixShell_destroy(shell);
             }
         }
-        return __btrc_ret_678;
+        return __btrc_ret_742;
     } else {
         printf("%s\n", "MISSING es-de: use the bundled AppImage or install ES-DE");
     }
-    int __btrc_ret_679 = 127;
+    int __btrc_ret_743 = 127;
     if (shell != NULL) {
         if ((--shell->__rc) <= 0) {
             UnixShell_destroy(shell);
         }
     }
-    return __btrc_ret_679;
+    return __btrc_ret_743;
     if (shell != NULL) {
         if ((--shell->__rc) <= 0) {
             UnixShell_destroy(shell);
@@ -10781,21 +13118,21 @@ int deckCommand(CliArgs* args, char* project) {
         KeymapErrors* errors = KeymapErrors_new();
         compileKeymap((FileSystem_exists(keymapSourcePath(project)) ? FileSystem_readText(keymapSourcePath(project)) : defaultKeymapSource()), errors);
         if (KeymapErrors_count(errors) > 0) {
-            int __btrc_ret_680 = 1;
+            int __btrc_ret_744 = 1;
             if (errors != NULL) {
                 if ((--errors->__rc) <= 0) {
                     KeymapErrors_destroy(errors);
                 }
             }
-            return __btrc_ret_680;
+            return __btrc_ret_744;
         }
-        int __btrc_ret_681 = 0;
+        int __btrc_ret_745 = 0;
         if (errors != NULL) {
             if ((--errors->__rc) <= 0) {
                 KeymapErrors_destroy(errors);
             }
         }
-        return __btrc_ret_681;
+        return __btrc_ret_745;
         if (errors != NULL) {
             if ((--errors->__rc) <= 0) {
                 KeymapErrors_destroy(errors);
@@ -10826,44 +13163,44 @@ int main(int argc, char** argv) {
     char* project = CliArgs_valueAfter(args, "--project", Environment_get("SEMU_PROJECT_DIR", "."));
     char* programLauncher = launcherNameFromProgram(args->program);
     if (((int)strlen(programLauncher)) > 0) {
-        int __btrc_ret_682 = launcherRunEmulator(project, programLauncher, launcherPassthroughArgs(args));
+        int __btrc_ret_746 = launcherRunEmulator(project, programLauncher, launcherPassthroughArgs(args));
         if (args != NULL) {
             if ((--args->__rc) <= 0) {
                 CliArgs_destroy(args);
             }
         }
-        return __btrc_ret_682;
+        return __btrc_ret_746;
     }
     if ((strcmp(command, "") == 0) || (strcmp(command, "manifest") == 0)) {
         char* output = CliArgs_valueAfter(args, "--output", "semu.json");
         writeGeneratedManifest(output);
-        int __btrc_ret_683 = 0;
+        int __btrc_ret_747 = 0;
         if (args != NULL) {
             if ((--args->__rc) <= 0) {
                 CliArgs_destroy(args);
             }
         }
-        return __btrc_ret_683;
+        return __btrc_ret_747;
     }
     if (strcmp(command, "bootstrap") == 0) {
         bootstrapSteamDeck(project);
-        int __btrc_ret_684 = 0;
+        int __btrc_ret_748 = 0;
         if (args != NULL) {
             if ((--args->__rc) <= 0) {
                 CliArgs_destroy(args);
             }
         }
-        return __btrc_ret_684;
+        return __btrc_ret_748;
     }
     if (strcmp(command, "doctor") == 0) {
         doctorSteamDeck(project);
-        int __btrc_ret_685 = 0;
+        int __btrc_ret_749 = 0;
         if (args != NULL) {
             if ((--args->__rc) <= 0) {
                 CliArgs_destroy(args);
             }
         }
-        return __btrc_ret_685;
+        return __btrc_ret_749;
     }
     if (strcmp(command, "deck") == 0) {
         int status = deckCommand(args, project);
@@ -10983,13 +13320,13 @@ int main(int argc, char** argv) {
         return status;
     }
     printUsage();
-    int __btrc_ret_686 = 1;
+    int __btrc_ret_750 = 1;
     if (args != NULL) {
         if ((--args->__rc) <= 0) {
             CliArgs_destroy(args);
         }
     }
-    return __btrc_ret_686;
+    return __btrc_ret_750;
     if (args != NULL) {
         if ((--args->__rc) <= 0) {
             CliArgs_destroy(args);

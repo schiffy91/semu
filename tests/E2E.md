@@ -5,6 +5,12 @@ confidence levels.
 
 ## Automated Today
 
+- `make e2e-graph-run`: declarative JSON graph runner that composes the fast
+  host tests, records content-addressed state under `tests/vms/e2e-state`, and
+  skips nodes whose source/material hash is already ready. The default graph runs
+  `payload-audit`, `generated-smoke`, and `appimage-smoke`.
+- `make e2e-graph-status`, `make e2e-graph-list`, and
+  `make e2e-graph-coverage`: graph inspection and operation-coverage checks.
 - `make verify`: BTRC manifest determinism, keymap compiler/renderers, doctor
   invariants, launcher shim syntax, runtime no-Python guard, BTRC sandbox
   preparation, BTRC Linux launcher routing, BTRC lifecycle install/reconfigure/
@@ -32,6 +38,28 @@ confidence levels.
 - `make bazzite-vm-smoke`: Bazzite Deck ISO boot path under QEMU TCG. This
   validates firmware/GRUB/live-image bootability, but no-GPU TCG currently only
   reaches the Deck splash.
+
+## Graph Usage
+
+The graph lives at `tests/e2e/graph.json`; specs live under
+`tests/e2e/specs/*.json`.
+
+```sh
+make e2e-graph-list
+make e2e-graph-status
+make e2e-graph-coverage
+make e2e-graph-run
+make e2e-graph-run E2E_GRAPH_NODES="verify"
+make e2e-graph-run E2E_GRAPH_NODES="arch-deck-vm"
+make e2e-graph-run E2E_GRAPH_NODES="bazzite-installed-ssh" \
+  E2E_GRAPH_ARGS="--arg bazziteUser=<guest-user>"
+```
+
+The graph intentionally delegates to the existing Make targets instead of
+reimplementing QEMU or SteamOS behavior inside BTRC. It adds dependency ordering,
+state hashes, skip/resume behavior, operation coverage, and a payload audit that
+fails if tracked ROMs, BIOS, emulator runtime directories, VM disks, or similar
+licensed artifacts would be upstreamed.
 
 ## Not Done Yet
 

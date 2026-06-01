@@ -4999,10 +4999,873 @@ int e2eN3dsNoCryptoSmoke(CliArgs args) {
     return 0;
 }
 
+void e2eFatal(string message) {
+    print("error 0:0 " + message);
+    exit(1);
+}
+
+string e2eExpandArgs(string text, Map<string, string> args) {
+    string result = Strings.copy(text);
+    for key, value in args {
+        result = Strings.replace(result, "{{" + key + "}}", value);
+    }
+    for key, value in args {
+        result = Strings.replace(result, "${" + key + "}", value);
+    }
+    return result;
+}
+
+class SemuE2eOperation {
+    public string kind;
+    public string command;
+    public string expect;
+    public string name;
+    public string path;
+    public int timeout;
+
+    public SemuE2eOperation() {
+        self.kind = "";
+        self.command = "";
+        self.expect = "";
+        self.name = "";
+        self.path = "";
+        self.timeout = 300;
+    }
+
+    public void expandArgs(Map<string, string> args) {
+        self.kind = e2eExpandArgs(self.kind, args);
+        self.command = e2eExpandArgs(self.command, args);
+        self.expect = e2eExpandArgs(self.expect, args);
+        self.name = e2eExpandArgs(self.name, args);
+        self.path = e2eExpandArgs(self.path, args);
+    }
+}
+
+class SemuE2eSpec {
+    public string name;
+    public string state;
+    public string parentState;
+    public string stateRoot;
+    public string stateMaterial;
+    public string parentHash;
+    public string stateHash;
+    public string stateHashShort;
+    public Map<string, string> args;
+    public Vector<SemuE2eOperation> operations;
+
+    public SemuE2eSpec() {
+        self.name = "semu-e2e";
+        self.state = "semu-e2e";
+        self.parentState = "root";
+        self.stateRoot = "tests/vms/e2e-state";
+        self.stateMaterial = "";
+        self.parentHash = "root";
+        self.stateHash = "";
+        self.stateHashShort = "";
+        self.args = {};
+        self.operations = [];
+    }
+
+    public void setArg(string key, string value) {
+        self.args.put(key, value);
+    }
+
+    public void setArgPair(string pair) {
+        int pos = Strings.find(pair, "=", 0);
+        if (pos <= 0) { e2eFatal("Expected --arg key=value, got " + pair); }
+        self.args.put(pair.substring(0, pos), pair.substring(pos + 1, pair.len() - pos - 1));
+    }
+
+    public string stateDir() {
+        return joinPath(self.stateRoot, self.state);
+    }
+
+    public string stateHashFile() {
+        return joinPath(self.stateDir(), "hash");
+    }
+
+    public string parentHashFile() {
+        return joinPath(joinPath(self.stateRoot, self.parentState), "hash");
+    }
+
+    public string resolveParentHash() {
+        if (self.parentState.equals("root") || self.parentState.len() == 0) {
+            return "root";
+        }
+        if (FileSystem.exists(self.parentHashFile())) {
+            return FileSystem.readText(self.parentHashFile()).trim();
+        }
+        return "missing:" + self.parentState;
+    }
+
+    public string operationsMaterial() {
+        Vector<string> lines = [];
+        for op in self.operations {
+            lines.push("op=" + op.kind);
+            lines.push("name=" + op.name);
+            lines.push("command=" + op.command);
+            lines.push("expect=" + op.expect);
+            lines.push("path=" + op.path);
+            lines.push("timeout=" + Strings.fromInt(op.timeout));
+        }
+        return lines.join("\n");
+    }
+
+    public string hashMaterial() {
+        string material = self.stateMaterial;
+        if (material.len() == 0) {
+            material = self.name;
+        }
+        return "parent=" + self.parentHash
+            + "\nstate=" + self.state
+            + "\nmaterial=" + material
+            + "\noperations=\n" + self.operationsMaterial()
+            + "\n";
+    }
+
+    public void computeStateHash() {
+        self.parentHash = self.resolveParentHash();
+        string command = "printf %s " + ShellWords.quote(self.hashMaterial())
+            + " | (if command -v sha256sum >/dev/null 2>&1; then sha256sum; else shasum -a 256; fi)"
+            + " | awk '{print $1}'";
+        ExecResult result = UnixShell().runRaw(command, true, false, "");
+        if (!result.ok()) { e2eFatal("Failed to compute E2E state hash for " + self.state); }
+        self.stateHash = result.trimmed();
+        self.stateHashShort = self.stateHash.substring(0, 12);
+    }
+
+    public void setDerivedArgs() {
+        self.args.putIfAbsent("name", self.name);
+        self.args.putIfAbsent("state", self.state);
+        self.args.putIfAbsent("parentState", self.parentState);
+        self.args.putIfAbsent("stateRoot", self.stateRoot);
+        self.args.putIfAbsent("stateMaterial", self.stateMaterial);
+        self.args.putIfAbsent("parentHash", self.parentHash);
+        self.args.putIfAbsent("stateHash", self.stateHash);
+        self.args.putIfAbsent("stateHashShort", self.stateHashShort);
+    }
+
+    public void refreshDerivedArgs() {
+        self.args.put("name", self.name);
+        self.args.put("state", self.state);
+        self.args.put("parentState", self.parentState);
+        self.args.put("stateRoot", self.stateRoot);
+        self.args.put("stateMaterial", self.stateMaterial);
+        self.args.put("parentHash", self.parentHash);
+        self.args.put("stateHash", self.stateHash);
+        self.args.put("stateHashShort", self.stateHashShort);
+    }
+
+    public void expandArgs() {
+        self.setDerivedArgs();
+        self.name = e2eExpandArgs(self.name, self.args);
+        self.state = e2eExpandArgs(self.state, self.args);
+        self.parentState = e2eExpandArgs(self.parentState, self.args);
+        self.stateRoot = e2eExpandArgs(self.stateRoot, self.args);
+        self.stateMaterial = e2eExpandArgs(self.stateMaterial, self.args);
+        self.refreshDerivedArgs();
+        self.computeStateHash();
+        self.refreshDerivedArgs();
+        for op in self.operations {
+            op.expandArgs(self.args);
+        }
+    }
+
+    public void recordState() {
+        ensureDir(self.stateDir());
+        FileSystem.writeText(self.stateHashFile(), self.stateHash + "\n");
+        FileSystem.writeText(
+            joinPath(self.stateDir(), "metadata.json"),
+            jsonObject([
+                jsonStrField("state", self.state),
+                jsonStrField("parentState", self.parentState),
+                jsonStrField("parentHash", self.parentHash),
+                jsonStrField("hash", self.stateHash),
+                jsonStrField("hashShort", self.stateHashShort)
+            ]) + "\n"
+        );
+    }
+}
+
+class SemuE2eGraphNode {
+    public string id;
+    public string specPath;
+    public Vector<string> after;
+    public Map<string, string> args;
+
+    public SemuE2eGraphNode() {
+        self.id = "";
+        self.specPath = "";
+        self.after = [];
+        self.args = {};
+    }
+}
+
+class SemuE2eGraph {
+    public string name;
+    public string path;
+    public string baseDir;
+    public string workspaceRoot;
+    public Vector<string> defaults;
+    public Vector<SemuE2eGraphNode> nodes;
+
+    public SemuE2eGraph() {
+        self.name = "semu-e2e";
+        self.path = "";
+        self.baseDir = ".";
+        self.workspaceRoot = ".";
+        self.defaults = [];
+        self.nodes = [];
+    }
+
+    public string resolvePath(string base, string value) {
+        if (value.startsWith("/")) { return value; }
+        return joinPath(base, value);
+    }
+
+    public string resolvedWorkspaceRoot() {
+        return self.resolvePath(self.baseDir, self.workspaceRoot);
+    }
+
+    public string resolvedSpecPath(SemuE2eGraphNode node) {
+        return self.resolvePath(self.baseDir, node.specPath);
+    }
+
+    public SemuE2eGraphNode node(string id) {
+        for item in self.nodes {
+            if (item.id.equals(id)) { return item; }
+        }
+        e2eFatal("Unknown E2E graph node: " + id);
+        return SemuE2eGraphNode();
+    }
+
+    public Vector<string> defaultTargets() {
+        if (!self.defaults.isEmpty()) { return self.defaults; }
+        Vector<string> result = [];
+        for item in self.nodes {
+            result.push(item.id);
+        }
+        return result;
+    }
+}
+
+class SemuE2eParser {
+    class int skipSpaces(string text, int i) {
+        int len = text.len();
+        while (i < len && (text[i] == ' ' || text[i] == '\n' || text[i] == '\t' || text[i] == '\r')) {
+            i++;
+        }
+        return i;
+    }
+
+    class int keyPosition(string text, string key) {
+        return Strings.find(text, "\"" + key + "\"", 0);
+    }
+
+    class string parseStringValue(string text, int i, string fallback) {
+        int len = text.len();
+        i = SemuE2eParser.skipSpaces(text, i);
+        if (i >= len || text[i] != (char)34) { return fallback; }
+        i++;
+        int start = i;
+        bool escaped = false;
+        while (i < len) {
+            if (!escaped && text[i] == (char)34) {
+                return JsonObject.unescape(JsonObject.slice(text, start, i));
+            }
+            escaped = !escaped && text[i] == '\\';
+            if (text[i] != '\\') { escaped = false; }
+            i++;
+        }
+        return fallback;
+    }
+
+    class string field(string text, string key, string fallback) {
+        int pos = SemuE2eParser.keyPosition(text, key);
+        if (pos < 0) { return fallback; }
+        int colon = Strings.find(text, ":", pos);
+        if (colon < 0) { return fallback; }
+        int i = SemuE2eParser.skipSpaces(text, colon + 1);
+        int len = text.len();
+        if (i < len && text[i] == (char)34) {
+            return SemuE2eParser.parseStringValue(text, i, fallback);
+        }
+        int start = i;
+        while (i < len && text[i] != ',' && text[i] != '}' && text[i] != ']') {
+            i++;
+        }
+        string raw = JsonObject.slice(text, start, i).trim();
+        if (raw.len() == 0) { return fallback; }
+        return raw;
+    }
+
+    class int intField(string text, string key, int fallback) {
+        string raw = SemuE2eParser.field(text, key, "");
+        if (raw.len() == 0) { return fallback; }
+        return Strings.toInt(raw);
+    }
+
+    class string objectField(string text, string key) {
+        int pos = SemuE2eParser.keyPosition(text, key);
+        if (pos < 0) { return ""; }
+        int colon = Strings.find(text, ":", pos);
+        if (colon < 0) { return ""; }
+        int i = SemuE2eParser.skipSpaces(text, colon + 1);
+        int len = text.len();
+        if (i >= len || text[i] != '{') { return ""; }
+        int depth = 0;
+        bool inString = false;
+        bool escaped = false;
+        for (int j = i; j < len; j++) {
+            char c = text[j];
+            if (inString) {
+                if (!escaped && c == (char)34) { inString = false; }
+                escaped = !escaped && c == '\\';
+                if (c != '\\') { escaped = false; }
+                continue;
+            }
+            if (c == (char)34) {
+                inString = true;
+                escaped = false;
+                continue;
+            }
+            if (c == '{') {
+                depth++;
+                continue;
+            }
+            if (c == '}') {
+                depth--;
+                if (depth == 0) {
+                    return JsonObject.slice(text, i, j + 1);
+                }
+            }
+        }
+        return "";
+    }
+
+    class Vector<string> stringArray(string text, string key) {
+        Vector<string> result = [];
+        int pos = SemuE2eParser.keyPosition(text, key);
+        if (pos < 0) { return result; }
+        int arrayStart = Strings.find(text, "[", pos);
+        if (arrayStart < 0) { return result; }
+        int len = text.len();
+        bool inString = false;
+        bool escaped = false;
+        int start = -1;
+        for (int i = arrayStart + 1; i < len; i++) {
+            char c = text[i];
+            if (inString) {
+                if (!escaped && c == (char)34) {
+                    result.push(JsonObject.unescape(JsonObject.slice(text, start, i)));
+                    inString = false;
+                    start = -1;
+                }
+                escaped = !escaped && c == '\\';
+                if (c != '\\') { escaped = false; }
+                continue;
+            }
+            if (c == (char)34) {
+                inString = true;
+                escaped = false;
+                start = i + 1;
+                continue;
+            }
+            if (c == ']') { break; }
+        }
+        return result;
+    }
+
+    class Vector<string> objectArray(string text, string key) {
+        Vector<string> result = [];
+        int pos = SemuE2eParser.keyPosition(text, key);
+        if (pos < 0) { return result; }
+        int arrayStart = Strings.find(text, "[", pos);
+        if (arrayStart < 0) { return result; }
+        int len = text.len();
+        int depth = 0;
+        int start = -1;
+        bool inString = false;
+        bool escaped = false;
+        for (int i = arrayStart + 1; i < len; i++) {
+            char c = text[i];
+            if (inString) {
+                if (!escaped && c == (char)34) { inString = false; }
+                escaped = !escaped && c == '\\';
+                if (c != '\\') { escaped = false; }
+                continue;
+            }
+            if (c == (char)34) {
+                inString = true;
+                escaped = false;
+                continue;
+            }
+            if (c == '{') {
+                if (depth == 0) { start = i; }
+                depth++;
+                continue;
+            }
+            if (c == '}') {
+                depth--;
+                if (depth == 0 && start >= 0) {
+                    result.push(JsonObject.slice(text, start, i + 1));
+                    start = -1;
+                }
+                continue;
+            }
+            if (c == ']' && depth == 0) { break; }
+        }
+        return result;
+    }
+
+    class Map<string, string> argsObject(string text) {
+        Map<string, string> result = {};
+        string argsText = SemuE2eParser.objectField(text, "args");
+        if (argsText.len() == 0) { return result; }
+        JsonObject parsed = JsonObject.parse(argsText);
+        for key, value in parsed.values {
+            result.put(key, value);
+        }
+        return result;
+    }
+
+    class SemuE2eOperation operation(string objectText) {
+        SemuE2eOperation op = SemuE2eOperation();
+        op.kind = SemuE2eParser.field(objectText, "op", "");
+        if (op.kind.len() == 0) {
+            op.kind = SemuE2eParser.field(objectText, "kind", "");
+        }
+        op.command = SemuE2eParser.field(objectText, "command", "");
+        op.expect = SemuE2eParser.field(objectText, "expect", "");
+        op.name = SemuE2eParser.field(objectText, "name", "");
+        op.path = SemuE2eParser.field(objectText, "path", "");
+        op.timeout = SemuE2eParser.intField(objectText, "timeout", 300);
+        return op;
+    }
+
+    class Vector<SemuE2eOperation> operations(string text) {
+        Vector<SemuE2eOperation> result = [];
+        for objectText in SemuE2eParser.objectArray(text, "operations") {
+            result.push(SemuE2eParser.operation(objectText));
+        }
+        return result;
+    }
+
+    class SemuE2eSpec readSpecFile(string path) {
+        string text = FileSystem.readText(path);
+        SemuE2eSpec spec = SemuE2eSpec();
+        spec.name = SemuE2eParser.field(text, "name", spec.name);
+        spec.state = SemuE2eParser.field(text, "state", spec.name);
+        spec.parentState = SemuE2eParser.field(text, "parentState", spec.parentState);
+        spec.stateRoot = SemuE2eParser.field(text, "stateRoot", spec.stateRoot);
+        spec.stateMaterial = SemuE2eParser.field(text, "stateMaterial", spec.stateMaterial);
+        spec.args = SemuE2eParser.argsObject(text);
+        spec.operations = SemuE2eParser.operations(text);
+        return spec;
+    }
+
+    class SemuE2eGraphNode graphNode(string objectText) {
+        SemuE2eGraphNode node = SemuE2eGraphNode();
+        node.id = SemuE2eParser.field(objectText, "id", "");
+        node.specPath = SemuE2eParser.field(objectText, "spec", "");
+        node.after = SemuE2eParser.stringArray(objectText, "after");
+        string argsText = SemuE2eParser.objectField(objectText, "args");
+        if (argsText.len() > 0) {
+            JsonObject parsed = JsonObject.parse(argsText);
+            for key, value in parsed.values {
+                node.args.put(key, value);
+            }
+        }
+        if (node.id.len() == 0) { e2eFatal("Graph node is missing id"); }
+        if (node.specPath.len() == 0) { e2eFatal("Graph node " + node.id + " is missing spec"); }
+        return node;
+    }
+
+    class SemuE2eGraph readGraphFile(string path) {
+        string text = FileSystem.readText(path);
+        SemuE2eGraph graph = SemuE2eGraph();
+        graph.path = path;
+        graph.baseDir = PathTools.dirname(path);
+        graph.name = SemuE2eParser.field(text, "name", graph.name);
+        graph.workspaceRoot = SemuE2eParser.field(text, "workspaceRoot", graph.workspaceRoot);
+        graph.defaults = SemuE2eParser.stringArray(text, "default");
+        for objectText in SemuE2eParser.objectArray(text, "nodes") {
+            graph.nodes.push(SemuE2eParser.graphNode(objectText));
+        }
+        if (graph.nodes.isEmpty()) { e2eFatal("Graph has no nodes: " + path); }
+        return graph;
+    }
+}
+
+Vector<string> semuE2eOperationCatalog() {
+    Vector<string> kinds = [];
+    kinds.push("require-command");
+    kinds.push("artifact");
+    kinds.push("host");
+    kinds.push("make");
+    kinds.push("payload-audit");
+    return kinds;
+}
+
+int e2ePayloadAudit(string project) {
+    string forbidden = "'^(Azahar|Cemu|Dolphin|ES-DE|Lime3DS|PCSX2|RetroArch|Ryujinx)(/|$)|(^|/)(ROMs|bios|BIOS|saves|states|nand|sdmc|sdcard|mlc01|originals)(/|$)|\\.(3ds|3dz|cia|cci|cxi|nds|nsp|xci|iso|chd|rvz|wad|wua|wud|ciso|gcz|wbfs|elf|dol|bin|cue|img|qcow2|fd|pkg|rap|z64|n64|v64|sfc|smc|gba|gbc|gb|nes|7z|zip|rar|appimage|AppImage|dmg|keys)$'";
+    string command = "cd " + ShellWords.quote(project)
+        + " && bad=$(git ls-files | LC_ALL=C grep -E " + forbidden + " || true)"
+        + " && if [ -n \"$bad\" ]; then printf 'Forbidden tracked payloads:\\n%s\\n' \"$bad\"; exit 1; fi";
+    ExecResult result = UnixShell().runRaw(command, true, false, "");
+    if (!result.ok()) {
+        print(result.stdout());
+        return 1;
+    }
+    print("OK payload audit");
+    return 0;
+}
+
+class SemuE2eRunner {
+    public SemuE2eSpec spec;
+    public string workspaceRoot;
+    public string program;
+    public int failures;
+
+    public SemuE2eRunner(SemuE2eSpec spec, string workspaceRoot, string program) {
+        self.spec = spec;
+        self.workspaceRoot = workspaceRoot;
+        self.program = program;
+        self.failures = 0;
+    }
+
+    public void fail(string message) {
+        self.failures++;
+        print("E2E FAIL " + self.spec.name + ": " + message);
+    }
+
+    public bool outputMatches(ExecResult result, string expect) {
+        if (expect.len() == 0) { return true; }
+        return result.stdout().contains(expect);
+    }
+
+    public void assertResult(string label, ExecResult result, string expect) {
+        if (!result.ok()) {
+            print(result.stdout());
+            self.fail(label + " failed with exit code " + Strings.fromInt(result.code));
+            return;
+        }
+        if (!self.outputMatches(result, expect)) {
+            print(result.stdout());
+            self.fail(label + " output did not contain expected text: " + expect);
+        }
+    }
+
+    public ExecResult runWorkspaceCommand(string command) {
+        string rendered = "cd " + ShellWords.quote(self.workspaceRoot) + " && " + command + " 2>&1";
+        return UnixShell().runRaw(rendered, true, false, "");
+    }
+
+    public void runOperation(SemuE2eOperation op) {
+        print("e2e " + self.spec.name + ": " + op.kind);
+        if (op.kind.equals("require-command")) {
+            ExecResult result = self.runWorkspaceCommand("command -v " + ShellWords.quote(op.command));
+            self.assertResult("require command " + op.command, result, op.expect);
+            return;
+        }
+        if (op.kind.equals("artifact")) {
+            ExecResult result = self.runWorkspaceCommand("test -e " + ShellWords.quote(op.path) + " && printf exists");
+            self.assertResult("artifact " + op.path, result, op.expect.len() > 0 ? op.expect : "exists");
+            return;
+        }
+        if (op.kind.equals("host")) {
+            ExecResult result = self.runWorkspaceCommand(op.command);
+            self.assertResult("host command", result, op.expect);
+            return;
+        }
+        if (op.kind.equals("make")) {
+            ExecResult result = self.runWorkspaceCommand("make " + op.command);
+            self.assertResult("make " + op.command, result, op.expect);
+            return;
+        }
+        if (op.kind.equals("payload-audit")) {
+            int status = e2ePayloadAudit(self.workspaceRoot);
+            if (status != 0) { self.fail("payload audit failed"); }
+            return;
+        }
+        self.fail("Unknown E2E operation: " + op.kind);
+    }
+
+    public int run() {
+        if (self.spec.operations.isEmpty()) {
+            e2eFatal("E2E spec has no operations: " + self.spec.name);
+        }
+        for op in self.spec.operations {
+            if (self.failures > 0) { break; }
+            self.runOperation(op);
+        }
+        if (self.failures > 0) { return 1; }
+        self.spec.recordState();
+        return 0;
+    }
+}
+
+class SemuE2eGraphRunner {
+    public SemuE2eGraph graph;
+    public Map<string, string> args;
+    public Vector<string> done;
+    public Vector<string> visiting;
+    public string sourceHashValue;
+    public string program;
+
+    public SemuE2eGraphRunner(SemuE2eGraph graph, Map<string, string> args, string program) {
+        self.graph = graph;
+        self.args = args;
+        self.done = [];
+        self.visiting = [];
+        self.sourceHashValue = "";
+        self.program = program;
+    }
+
+    public string sourceHash() {
+        if (self.sourceHashValue.len() > 0) { return self.sourceHashValue; }
+        string root = self.graph.resolvedWorkspaceRoot();
+        string command = "cd " + ShellWords.quote(root)
+            + " && find . -type f"
+            + " ! -path './.git/*'"
+            + " ! -path './.semu/*'"
+            + " ! -path './.venv/*'"
+            + " ! -path './.pytest_cache/*'"
+            + " ! -path './.stfolder/*'"
+            + " ! -path './tests/vms/*'"
+            + " ! -path './build/*'"
+            + " ! -path './backups/*'"
+            + " ! -path './result/*'"
+            + " ! -path './result-*/*'"
+            + " ! -path './Azahar/*'"
+            + " ! -path './Cemu/*'"
+            + " ! -path './Dolphin/*'"
+            + " ! -path './ES-DE/*'"
+            + " ! -path './Lime3DS/*'"
+            + " ! -path './PCSX2/*'"
+            + " ! -path './RetroArch/*'"
+            + " ! -path './Ryujinx/*'"
+            + " ! -path './ES-DE/ES-DE/ROMs/*'"
+            + " ! -path './ES-DE/ES-DE/bios/*'"
+            + " ! -path './ES-DE/ES-DE/saves/*'"
+            + " ! -path './ES-DE/ES-DE/states/*'"
+            + " ! -path './ES-DE/ES-DE/downloaded_media/*'"
+            + " ! -path './ES-DE/ES-DE/screenshots/*'"
+            + " ! -path './sync/bin/*'"
+            + " ! -path './sync/logs/*'"
+            + " ! -path './sync/syncthing/*'"
+            + " ! -name '.DS_Store'"
+            + " ! -name '._*'"
+            + " \\( -name '*.btrc' -o -name '*.nix' -o -name '*.json' -o -name '*.sh' -o -name '*.md' -o -name '*.xml' -o -name '*.ini' -o -name '*.cfg' -o -name '*.desktop' -o -name '*.vdf' -o -name '*.skm' -o -name '*.c' -o -name 'Makefile' -o -name 'Dockerfile' -o -name 'flake.lock' \\)"
+            + " -print0 | LC_ALL=C sort -z | xargs -0 shasum -a 256 | shasum -a 256 | awk '{print $1}'";
+        ExecResult result = UnixShell().runRaw(command, true, false, "");
+        if (!result.ok()) { e2eFatal("Failed to compute workspace source hash for " + root); }
+        string toolHash = "missing";
+        if (self.program.len() > 0 && FileSystem.exists(self.program)) {
+            ExecResult tool = UnixShell().runRaw("shasum -a 256 " + ShellWords.quote(self.program) + " | awk '{print $1}'", true, false, "");
+            if (tool.ok()) { toolHash = tool.trimmed(); }
+        }
+        self.sourceHashValue = result.trimmed() + ":semu=" + toolHash;
+        return self.sourceHashValue;
+    }
+
+    public void applyStructuralOverrides(SemuE2eSpec spec, Map<string, string> overrides) {
+        if (overrides.has("name")) { spec.name = overrides.get("name"); }
+        if (overrides.has("state")) { spec.state = overrides.get("state"); }
+        if (overrides.has("parentState")) { spec.parentState = overrides.get("parentState"); }
+        if (overrides.has("stateRoot")) { spec.stateRoot = overrides.get("stateRoot"); }
+        if (overrides.has("stateMaterial")) { spec.stateMaterial = overrides.get("stateMaterial"); }
+    }
+
+    public SemuE2eSpec specFor(SemuE2eGraphNode node) {
+        SemuE2eSpec spec = SemuE2eParser.readSpecFile(self.graph.resolvedSpecPath(node));
+        spec.setArg("graphName", self.graph.name);
+        spec.setArg("nodeId", node.id);
+        spec.setArg("workspaceRoot", self.graph.resolvedWorkspaceRoot());
+        spec.setArg("sourceHash", self.sourceHash());
+        spec.setArg("program", self.program);
+        self.applyStructuralOverrides(spec, node.args);
+        self.applyStructuralOverrides(spec, self.args);
+        for key, value in node.args {
+            spec.setArg(key, value);
+        }
+        for key, value in self.args {
+            spec.setArg(key, value);
+        }
+        spec.expandArgs();
+        return spec;
+    }
+
+    public bool force() {
+        return self.args.getOrDefault("force", "false").equals("true");
+    }
+
+    public bool ready(SemuE2eSpec spec) {
+        if (!FileSystem.exists(spec.stateHashFile())) { return false; }
+        return FileSystem.readText(spec.stateHashFile()).trim().equals(spec.stateHash);
+    }
+
+    public void list() {
+        for node in self.graph.nodes {
+            string parents = node.after.isEmpty() ? "root" : node.after.join(",");
+            print(node.id + " <- " + parents + " :: " + self.graph.resolvedSpecPath(node));
+        }
+    }
+
+    public void status() {
+        for node in self.graph.nodes {
+            SemuE2eSpec spec = self.specFor(node);
+            string recorded = "missing";
+            if (FileSystem.exists(spec.stateHashFile())) {
+                string saved = FileSystem.readText(spec.stateHashFile()).trim();
+                recorded = saved.equals(spec.stateHash) ? "ready" : "stale";
+            }
+            print(node.id + " " + recorded + " " + spec.stateHashShort + " " + spec.stateDir());
+        }
+    }
+
+    public int operationCoverage() {
+        Vector<string> covered = [];
+        for node in self.graph.nodes {
+            SemuE2eSpec spec = SemuE2eParser.readSpecFile(self.graph.resolvedSpecPath(node));
+            for op in spec.operations {
+                if (op.kind.len() > 0 && !covered.contains(op.kind)) {
+                    covered.push(op.kind);
+                }
+            }
+        }
+        Vector<string> missing = [];
+        Vector<string> catalog = semuE2eOperationCatalog();
+        for kind in catalog {
+            if (!covered.contains(kind)) {
+                missing.push(kind);
+            }
+        }
+        if (!missing.isEmpty()) {
+            print("Missing e2e operation coverage: " + missing.join(", "));
+            return 1;
+        }
+        print("E2E operation coverage: " + Strings.fromInt(covered.len) + "/" + Strings.fromInt(catalog.len));
+        return 0;
+    }
+
+    public int runNode(string id) {
+        if (self.done.contains(id)) { return 0; }
+        if (self.visiting.contains(id)) { e2eFatal("Cycle in E2E graph at " + id); }
+        self.visiting.push(id);
+        SemuE2eGraphNode node = self.graph.node(id);
+        for parent in node.after {
+            int parentResult = self.runNode(parent);
+            if (parentResult != 0) {
+                self.visiting.removeAll(id);
+                return parentResult;
+            }
+        }
+        SemuE2eSpec spec = self.specFor(node);
+        if (!self.force() && self.ready(spec)) {
+            print("graph " + self.graph.name + ": skip " + node.id + " -> " + spec.state + "@" + spec.stateHashShort);
+            self.done.push(id);
+            self.visiting.removeAll(id);
+            return 0;
+        }
+        print("graph " + self.graph.name + ": run " + node.id + " -> " + spec.state + "@" + spec.stateHashShort);
+        SemuE2eRunner runner = SemuE2eRunner(spec, self.graph.resolvedWorkspaceRoot(), self.program);
+        int result = runner.run();
+        if (result != 0) {
+            self.visiting.removeAll(id);
+            return result;
+        }
+        self.done.push(id);
+        self.visiting.removeAll(id);
+        return 0;
+    }
+
+    public int run(Vector<string> targets) {
+        Vector<string> selected = targets.isEmpty() ? self.graph.defaultTargets() : targets;
+        for id in selected {
+            int result = self.runNode(id);
+            if (result != 0) { return result; }
+        }
+        return 0;
+    }
+}
+
+Map<string, string> e2eGraphArgs(CliArgs args, int startIndex) {
+    Map<string, string> result = {};
+    for (int i = startIndex; i < args.count(); i++) {
+        string value = args.get(i);
+        if (value.equals("--arg")) {
+            if (i + 1 >= args.count()) { e2eFatal("Expected --arg key=value"); }
+            SemuE2eSpec spec = SemuE2eSpec();
+            spec.setArgPair(args.get(i + 1));
+            for key, item in spec.args {
+                result.put(key, item);
+            }
+            i++;
+            continue;
+        }
+        if (value.startsWith("--arg=")) {
+            SemuE2eSpec spec = SemuE2eSpec();
+            spec.setArgPair(Strings.removePrefix(value, "--arg="));
+            for key, item in spec.args {
+                result.put(key, item);
+            }
+        }
+    }
+    return result;
+}
+
+Vector<string> e2eGraphTargets(CliArgs args, int startIndex) {
+    Vector<string> result = [];
+    for (int i = startIndex; i < args.count(); i++) {
+        string value = args.get(i);
+        if (value.equals("--arg")) {
+            i++;
+            continue;
+        }
+        if (value.startsWith("--arg=")) { continue; }
+        result.push(value);
+    }
+    return result;
+}
+
+int e2eGraphCommand(CliArgs args) {
+    if (args.count() < 4) {
+        print("Usage: semu e2e graph <graph.json> <list|status|coverage|run> [node ...] [--arg key=value]");
+        return 1;
+    }
+    SemuE2eGraph graph = SemuE2eParser.readGraphFile(args.get(2));
+    string action = args.get(3);
+    Map<string, string> overrides = e2eGraphArgs(args, 4);
+    SemuE2eGraphRunner runner = SemuE2eGraphRunner(graph, overrides, args.program);
+    if (action.equals("list")) {
+        runner.list();
+        return 0;
+    }
+    if (action.equals("status")) {
+        runner.status();
+        return 0;
+    }
+    if (action.equals("coverage")) {
+        return runner.operationCoverage();
+    }
+    if (action.equals("run")) {
+        return runner.run(e2eGraphTargets(args, 4));
+    }
+    print("Usage: semu e2e graph <graph.json> <list|status|coverage|run> [node ...] [--arg key=value]");
+    return 1;
+}
+
 int e2eCommand(CliArgs args) {
     string mode = "all";
     if (args.count() > 1 && !args.get(1).startsWith("--")) {
         mode = args.get(1);
+    }
+    if (mode.equals("graph")) {
+        return e2eGraphCommand(args);
+    }
+    if (mode.equals("payload-audit")) {
+        return e2ePayloadAudit(args.valueAfter("--project", "."));
     }
     if (mode.equals("sandbox")) {
         return e2eSandboxSmoke();
@@ -5035,7 +5898,7 @@ int e2eCommand(CliArgs args) {
 }
 
 void printUsage() {
-    print("semu [manifest|bootstrap|doctor|deck|lifecycle|sync|config|apprun|steam-input|keymap|screenshot|sandbox|launcher|utils|e2e] [n3ds-nocrypto|validate|render|install|setup|reconfigure|change|uninstall|reinstall|upgrade|status|force|capture|prepare|launch] [--project PATH] [--roms PATH] [--source PATH] [--output PATH] [--dest PATH] [--target manifest|retroarch|dolphin|pcsx2|steam-input] [--emulator NAME] [--hook HOOK] [--scratch PATH] [--action ID] [--command KEYS]");
+    print("semu [manifest|bootstrap|doctor|deck|lifecycle|sync|config|apprun|steam-input|keymap|screenshot|sandbox|launcher|utils|e2e] [graph|payload-audit|n3ds-nocrypto|validate|render|install|setup|reconfigure|change|uninstall|reinstall|upgrade|status|force|capture|prepare|launch] [--project PATH] [--roms PATH] [--source PATH] [--output PATH] [--dest PATH] [--target manifest|retroarch|dolphin|pcsx2|steam-input] [--emulator NAME] [--hook HOOK] [--scratch PATH] [--action ID] [--command KEYS]");
 }
 
 string retroarchKeyName(string key) {

@@ -1,0 +1,12 @@
+{
+  "name": "appimage-smoke",
+  "state": "appimage-smoke",
+  "parentState": "generated-smoke",
+  "stateMaterial": "{{sourceHash}}",
+  "operations": [
+    {
+      "op": "make",
+      "command": "appimage-smoke"
+    }
+  ]
+}
