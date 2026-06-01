@@ -12,6 +12,7 @@ build/
 result
 result-*
 .mcp.json
+.deck-smoke/
 
 # === VM images ===
 tests/vms/
