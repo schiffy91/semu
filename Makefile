@@ -129,7 +129,7 @@ generated-build: generated/semu.c ## Build committed generated C without invokin
 
 generated-smoke: generated-build ## Run BTRC-native smoke tests from generated C
 	$(SEMU_BIN) e2e all
-	bash -n packaging/linux/AppRun packaging/linux/sandbox.sh packaging/linux/build-appimage.sh packaging/linux/bin/semu-*
+	bash -n packaging/linux/AppRun packaging/linux/sandbox.sh packaging/linux/build-appimage.sh packaging/linux/bin/semu-* utils/steam-deck-bootstrap.sh
 
 payload-audit: $(SEMU_BIN) ## Fail if tracked licensed payloads or VM artifacts would be upstreamed
 	$(SEMU_BIN) e2e payload-audit --project "$(CURDIR)"
