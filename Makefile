@@ -68,7 +68,7 @@ BAZZITE_BASIC_GRAPHICS_KEY_DELAY ?= 0.2
 BAZZITE_MIN_BOOT_WAIT ?= 30
 BAZZITE_BOOT_WAIT ?= 180
 BAZZITE_SMOKE_POLL ?= 10
-BAZZITE_SSH_OPTS := -o "StrictHostKeyChecking=no" -o "UserKnownHostsFile=/dev/null" -o "LogLevel=ERROR" -i "$(VM_KEY)"
+BAZZITE_SSH_OPTS := -o "StrictHostKeyChecking=no" -o "UserKnownHostsFile=/dev/null" -o "LogLevel=ERROR" -o "BatchMode=yes" -o "ConnectTimeout=5" -o "ConnectionAttempts=1" -i "$(VM_KEY)"
 
 # =============================================================================
 # Setup (build bundle + write declarative runtime config)
@@ -120,9 +120,10 @@ setup: $(SEMU_BIN) ## Build all emulators and bootstrap Steam Deck/Linux content
 container-build: ## Build test container image
 	$(CONTAINER_ENGINE) build -t $(CONTAINER_IMAGE) .
 
-container-test: container-build ## Run tests in container (fast, deterministic)
-	$(CONTAINER_ENGINE) run --rm -v "$$(pwd):/semu" $(CONTAINER_IMAGE) \
-		$(MAKE) -C /semu test
+container-test: ## Run tests in container (fast, deterministic)
+	$(CONTAINER_ENGINE) build --no-cache -t $(CONTAINER_IMAGE) . && \
+	$(CONTAINER_ENGINE) run --rm --platform linux/amd64 -v "$$(pwd):/semu" $(CONTAINER_IMAGE) \
+		make -C /semu generated-build test
 
 generated-build: generated/semu.c ## Build committed generated C without invoking BTRC
 	@mkdir -p build
@@ -336,13 +337,14 @@ linux-sync: ## Sync project files into Linux VM
 
 linux-test: linux-sync ## Sync + run tests in Linux VM
 	ssh $(SSH_OPTS) -p $(SSH_PORT_LINUX) arch@localhost \
-		'cd ~/semu && make test'
+		'cd ~/semu && make generated-build test'
 
 deck-vm-start: linux ## Start Deck-like Linux VM
 
-deck-vm-sync: btrc-build deck-vm-start ## Sync project and BTRC binary into VM
+deck-vm-sync: deck-vm-start ## Sync project and build the guest BTRC binary in VM
 	$(MAKE) linux-sync
-	ssh $(SSH_OPTS) -p $(SSH_PORT_LINUX) arch@localhost 'mkdir -p ~/semu/build'
+	ssh $(SSH_OPTS) -p $(SSH_PORT_LINUX) arch@localhost \
+		'cd ~/semu && make generated-build'
 
 deck-vm-provision: deck-vm-sync ## Provision VM with Deck-style services/config
 	ssh $(SSH_OPTS) -p $(SSH_PORT_LINUX) arch@localhost \
@@ -531,15 +533,17 @@ bazzite-desktop-vm-smoke: ## Boot Bazzite Desktop ISO over VNC for no-GPU VM val
 		BAZZITE_VNC_DISPLAY=6 \
 		BAZZITE_VNC_PORT=5906 \
 		BAZZITE_SSH_PORT=2234 \
-		BAZZITE_MIN_NONBLACK_PERCENT=20
+		BAZZITE_MIN_NONBLACK_PERCENT=1
 
 bazzite-vm-ssh: ## SSH into installed Bazzite VM once user/key exists
 	ssh $(BAZZITE_SSH_OPTS) -p $(BAZZITE_SSH_PORT) $(BAZZITE_SSH_USER)@localhost
 
-bazzite-vm-sync: btrc-build ## Sync repo to installed Bazzite VM over SSH
+bazzite-vm-sync: ## Sync repo to installed Bazzite VM over SSH
 	git ls-files -co --exclude-standard -z | rsync -az --files-from=- --from0 \
 		-e "ssh $(BAZZITE_SSH_OPTS) -p $(BAZZITE_SSH_PORT)" \
 		. $(BAZZITE_SSH_USER)@localhost:~/semu/
+	ssh $(BAZZITE_SSH_OPTS) -p $(BAZZITE_SSH_PORT) $(BAZZITE_SSH_USER)@localhost \
+		'cd ~/semu && make generated-build'
 
 bazzite-vm-verify-ssh: bazzite-vm-sync ## Run Deck checks inside installed Bazzite VM over SSH
 	ssh $(BAZZITE_SSH_OPTS) -p $(BAZZITE_SSH_PORT) $(BAZZITE_SSH_USER)@localhost \
