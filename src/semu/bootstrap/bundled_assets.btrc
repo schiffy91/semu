@@ -1,0 +1,61 @@
+void writeGeneratedManifest(string output) {
+    FileSystem.writeText(output, buildJson() + "\n");
+}
+
+string assetRoot(string project) {
+    string configured = Environment.get("SEMU_ASSET_ROOT", "");
+    if (configured.len() > 0 && FileSystem.exists(joinPath(configured, "packaging/linux/bin/semu-retroarch"))) {
+        return configured;
+    }
+    if (FileSystem.exists("packaging/linux/bin/semu-retroarch")) {
+        return ".";
+    }
+    if (FileSystem.exists(joinPath(project, "packaging/linux/bin/semu-retroarch"))) {
+        return project;
+    }
+    return project;
+}
+
+void seedBundledFileFromRoot(string root, string project, string relative, bool executable) {
+    string source = joinPath(root, relative);
+    string target = joinPath(project, relative);
+    if (source.equals(target)) {
+        return;
+    }
+    if (!FileSystem.isFile(source)) {
+        return;
+    }
+    ensureDir(PathTools.dirname(target));
+    FileSystem.writeText(target, FileSystem.readText(source));
+    if (executable) {
+        FileSystem.chmod(target, 493);
+    }
+}
+
+void seedBundledFile(string project, string relative, bool executable) {
+    seedBundledFileFromRoot(assetRoot(project), project, relative, executable);
+}
+
+void seedBundledDirFiles(string project, string relative, bool executable) {
+    string root = assetRoot(project);
+    string sourceDir = joinPath(root, relative);
+    if (!FileSystem.isDir(sourceDir)) {
+        return;
+    }
+    ensureDir(joinPath(project, relative));
+    for name in FileSystem.listDir(sourceDir) {
+        string source = joinPath(sourceDir, name);
+        if (FileSystem.isFile(source)) {
+            seedBundledFileFromRoot(root, project, joinPath(relative, name), executable);
+        }
+    }
+}
+
+void seedLinuxAssets(string project) {
+    seedBundledFile(project, "packaging/linux/AppRun", true);
+    seedBundledFile(project, "packaging/linux/sandbox.sh", true);
+    seedBundledFile(project, "packaging/linux/semu.desktop", false);
+    seedBundledFile(project, "packaging/linux/ES-DE/es_systems_linux.xml", false);
+    seedBundledFile(project, "packaging/linux/ES-DE/es_find_rules_linux.xml", false);
+    seedBundledDirFiles(project, "packaging/linux/bin", true);
+}

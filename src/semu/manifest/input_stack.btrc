@@ -1,0 +1,178 @@
+string inputStack() {
+    Vector<string> controllerIds = ["steam_deck", "steam_controller", "xbox_xinput", "dualshock4", "dualsense", "switch_pro"];
+    return jsonObject([
+        jsonField("layers", jsonStringArray([
+            "controller_model",
+            "emulation_backend",
+            "emitted_input",
+            "emulator_keymap"
+        ])),
+        jsonField("controller_models", jsonArray([
+            controllerModel(
+                "steam_deck",
+                "Steam Deck Built-in Controller",
+                "Valve",
+                "xbox",
+                ["gamepad", "left_trackpad", "right_trackpad", "grip_buttons", "gyro", "mouse_pointer", "keyboard_hotkeys"],
+                ["gamepad", "keyboard", "mouse"],
+                "inputplumber",
+                "opt_in",
+                "Primary target: right trackpad mouse, left trackpad radial hotkeys, gyro opt-in."
+            ),
+            controllerModel(
+                "steam_controller",
+                "Steam Controller",
+                "Valve",
+                "steam",
+                ["gamepad", "left_trackpad", "right_trackpad", "dual_stage_triggers", "gyro", "keyboard_hotkeys"],
+                ["gamepad", "keyboard", "mouse"],
+                "inputplumber",
+                "opt_in",
+                "Same abstraction as Deck controls, but with external Steam Controller hardware."
+            ),
+            controllerModel(
+                "xbox_xinput",
+                "Xbox / XInput Controller",
+                "Microsoft",
+                "xbox",
+                ["gamepad", "analog_triggers", "rumble"],
+                ["gamepad", "keyboard"],
+                "uinput",
+                "hardware_absent",
+                "Baseline portable gamepad model for SDL/XInput-style controllers."
+            ),
+            controllerModel(
+                "dualshock4",
+                "DualShock 4",
+                "Sony",
+                "playstation",
+                ["gamepad", "touchpad", "gyro", "rumble"],
+                ["gamepad", "keyboard", "mouse"],
+                "uinput",
+                "opt_in",
+                "PlayStation layout with touchpad available for mouse or menu bindings."
+            ),
+            controllerModel(
+                "dualsense",
+                "DualSense",
+                "Sony",
+                "playstation",
+                ["gamepad", "touchpad", "gyro", "adaptive_triggers", "rumble"],
+                ["gamepad", "keyboard", "mouse"],
+                "uinput",
+                "opt_in",
+                "DualShock-family mapping plus DualSense-specific trigger capability metadata."
+            ),
+            controllerModel(
+                "switch_pro",
+                "Nintendo Switch Pro Controller",
+                "Nintendo",
+                "nintendo",
+                ["gamepad", "gyro", "rumble"],
+                ["gamepad", "keyboard"],
+                "uinput",
+                "opt_in",
+                "Nintendo layout model; face-button labeling can be handled above emulator keymaps."
+            )
+        ])),
+        jsonField("emulation_backends", jsonArray([
+            emulationBackend(
+                "uinput",
+                "Linux uinput",
+                "kernel_virtual_input",
+                ["gamepad", "keyboard", "mouse"],
+                ["/dev/uinput"],
+                true,
+                false,
+                "Fast automated Linux smoke tests for emitted key/button events."
+            ),
+            emulationBackend(
+                "evemu",
+                "evemu record/replay",
+                "evdev_replay",
+                ["recorded_evdev"],
+                ["evemu", "/dev/input"],
+                true,
+                false,
+                "Replay captured physical controller events into the same keymap pipeline."
+            ),
+            emulationBackend(
+                "uhid",
+                "Linux UHID",
+                "userspace_hid",
+                ["hid_device"],
+                ["/dev/uhid"],
+                true,
+                false,
+                "Use when Steam needs a HID-shaped device instead of a generic uinput pad."
+            ),
+            emulationBackend(
+                "inputplumber",
+                "InputPlumber",
+                "routing_daemon",
+                ["gamepad", "keyboard", "mouse"],
+                ["inputplumber", "/dev/uinput"],
+                true,
+                false,
+                "Preferred route for Deck-style trackpad/radial/keyboard composition."
+            ),
+            emulationBackend(
+                "steam_input",
+                "Steam Input / Game Mode",
+                "steam_client",
+                ["steam_virtual_gamepad", "keyboard", "mouse"],
+                ["steam", "gamescope_or_game_mode"],
+                false,
+                true,
+                "Final integration layer; requires visual/live Steam verification."
+            )
+        ])),
+        jsonField("verification_profiles", jsonArray([
+            verificationProfile(
+                "linux_virtual_input",
+                "Linux virtual input smoke test",
+                "uinput",
+                controllerIds,
+                ["device_created", "save_load_quit_events", "mouse_motion_optional", "no_gyro_events_when_disabled"],
+                true,
+                false
+            ),
+            verificationProfile(
+                "evdev_replay",
+                "Recorded controller replay",
+                "evemu",
+                controllerIds,
+                ["descriptor_replay", "button_event_order", "axis_ranges"],
+                true,
+                false
+            ),
+            verificationProfile(
+                "steam_hid_shape",
+                "Steam HID shape test",
+                "uhid",
+                ["steam_deck", "steam_controller"],
+                ["steam_detects_device", "hid_identity_stable"],
+                true,
+                false
+            ),
+            verificationProfile(
+                "deck_route",
+                "Deck-style route test",
+                "inputplumber",
+                ["steam_deck", "steam_controller"],
+                ["right_trackpad_mouse", "left_radial_hotkeys", "keyboard_chords"],
+                true,
+                false
+            ),
+            verificationProfile(
+                "steam_deck_game_mode",
+                "Steam Deck Game Mode final pass",
+                "steam_input",
+                ["steam_deck"],
+                ["template_visible", "radial_menu_visual", "hotkeys_work_in_emulators", "quit_returns_to_es_de"],
+                false,
+                true
+            )
+        ]))
+    ]);
+}

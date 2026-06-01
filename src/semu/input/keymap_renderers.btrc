@@ -1,0 +1,88 @@
+string retroarchKeyName(string key) {
+    if (key.equals("+")) { return "add"; }
+    if (key.equals("-")) { return "subtract"; }
+    return key.toLower();
+}
+
+string keymapCommandKey(KeymapIr ir, string actionId) {
+    return retroarchKeyName(keymapCommandKeyPart(irActionCommand(ir, actionId)));
+}
+
+string renderRetroArchKeymap(KeymapIr ir) {
+    return "input_enable_hotkey = \"ctrl\"\n"
+        + "input_exit_emulator = " + jsonQ(keymapCommandKey(ir, "app.quit")) + "\n"
+        + "input_load_state = " + jsonQ(keymapCommandKey(ir, "state.load")) + "\n"
+        + "input_menu_toggle = " + jsonQ(keymapCommandKey(ir, "ui.menu")) + "\n"
+        + "input_save_state = " + jsonQ(keymapCommandKey(ir, "state.save")) + "\n"
+        + "input_screenshot = " + jsonQ(keymapCommandKey(ir, "ui.screenshot")) + "\n"
+        + "input_state_slot_decrease = " + jsonQ(keymapCommandKey(ir, "state.prev")) + "\n"
+        + "input_state_slot_increase = " + jsonQ(keymapCommandKey(ir, "state.next")) + "\n"
+        + "input_toggle_fast_forward = " + jsonQ(keymapCommandKey(ir, "speed.fast")) + "\n"
+        + "input_toggle_fullscreen = " + jsonQ(keymapCommandKey(ir, "ui.fullscreen")) + "\n";
+}
+
+string dolphinChord(KeymapIr ir, string actionId) {
+    string command = irActionCommand(ir, actionId);
+    if (command.equals("Esc")) { return "Escape"; }
+    return "@(" + command + ")";
+}
+
+string renderDolphinKeymap(KeymapIr ir) {
+    return "General/Open = " + dolphinChord(ir, "ui.open") + "\n"
+        + "General/Toggle Pause = " + dolphinChord(ir, "ui.pause") + "\n"
+        + "General/Stop = " + dolphinChord(ir, "app.quit") + "\n"
+        + "General/Toggle Fullscreen = " + dolphinChord(ir, "ui.fullscreen") + "\n"
+        + "General/Take Screenshot = " + dolphinChord(ir, "ui.screenshot") + "\n"
+        + "Load State/Load State Slot 1 = " + dolphinChord(ir, "state.load") + "\n"
+        + "Save State/Save State Slot 1 = " + dolphinChord(ir, "state.save") + "\n";
+}
+
+string pcsx2KeyName(string key) {
+    if (key.equals("+")) { return "Plus"; }
+    if (key.equals("-")) { return "Minus"; }
+    return key;
+}
+
+string pcsx2Chord(KeymapIr ir, string actionId) {
+    string command = irActionCommand(ir, actionId);
+    Vector<string> parts = [];
+    string modifiers = keymapCommandModifierPart(command);
+    if (modifiers.len() > 0) {
+        Vector<string> modifierParts = Strings.split(modifiers, "+");
+        for modifier in modifierParts {
+            if (modifier.equals("Ctrl")) {
+                parts.push("Keyboard/Control");
+            } else {
+                parts.push("Keyboard/" + modifier);
+            }
+        }
+    }
+    parts.push("Keyboard/" + pcsx2KeyName(keymapCommandKeyPart(command)));
+    return parts.join(" & ");
+}
+
+string renderPcsx2Keymap(KeymapIr ir) {
+    return "OpenPauseMenu = " + pcsx2Chord(ir, "ui.menu") + "\n"
+        + "TogglePause = " + pcsx2Chord(ir, "ui.pause") + "\n"
+        + "ToggleFullscreen = " + pcsx2Chord(ir, "ui.fullscreen") + "\n"
+        + "PreviousSaveStateSlot = " + pcsx2Chord(ir, "state.prev") + "\n"
+        + "NextSaveStateSlot = " + pcsx2Chord(ir, "state.next") + "\n"
+        + "SaveStateToSlot = " + pcsx2Chord(ir, "state.save") + "\n"
+        + "LoadStateFromSlot = " + pcsx2Chord(ir, "state.load") + "\n"
+        + "Screenshot = " + pcsx2Chord(ir, "ui.screenshot") + "\n"
+        + "ToggleTurbo = " + pcsx2Chord(ir, "speed.fast") + "\n"
+        + "ToggleSlowMotion = " + pcsx2Chord(ir, "speed.rewind") + "\n";
+}
+
+string renderKeymap(KeymapIr ir, string target) {
+    if (target.equals("manifest")) { return keymapIrJson(ir) + "\n"; }
+    if (target.equals("retroarch")) { return renderRetroArchKeymap(ir); }
+    if (target.equals("dolphin")) { return renderDolphinKeymap(ir); }
+    if (target.equals("pcsx2")) { return renderPcsx2Keymap(ir); }
+    if (target.equals("steam-input")) { return steamInputTemplateVdf("Semu: Steam Deck - Neptune FULL", true, ir); }
+    return f"unknown keymap target: {target}\n";
+}
+
+bool isKeymapTarget(string target) {
+    return target.equals("manifest") || target.equals("retroarch") || target.equals("dolphin") || target.equals("pcsx2") || target.equals("steam-input");
+}

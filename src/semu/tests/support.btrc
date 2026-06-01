@@ -1,0 +1,173 @@
+bool e2eOk(bool condition, string message) {
+    if (condition) { return true; }
+    print("E2E FAIL " + message);
+    return false;
+}
+
+bool e2eContains(string text, string expected, string message) {
+    return e2eOk(text.contains(expected), message + ": missing " + expected);
+}
+
+string e2eTempDir(string label) {
+    string tmp = FileSystem.tempDir(label);
+    if (tmp.len() > 0) { return tmp; }
+    string fallback = joinPath(Environment.get("TMPDIR", "/tmp"), label + "-fallback");
+    FileSystem.removeRecursive(fallback);
+    ensureDir(fallback);
+    return fallback;
+}
+
+void e2eSeedFile(string path) {
+    ensureDir(PathTools.dirname(path));
+    FileSystem.writeText(path, "seed " + path + "\n");
+}
+
+bool e2eAssertLink(string linkPath, string targetPath) {
+    if (!e2eOk(FileSystem.isSymlink(linkPath), "expected symlink " + linkPath)) {
+        return false;
+    }
+    string target = FileSystem.readLink(linkPath);
+    if (!e2eOk(target.len() > 0, "readlink failed " + linkPath)) {
+        return false;
+    }
+    return e2eOk(target.equals(targetPath), "bad symlink target for " + linkPath);
+}
+
+ExecResult e2eRunLifecycle(string exe, string home, string mode, string project, string romsDir) {
+    Command command = Command(exe)
+        .envVar("SEMU_HOME", home)
+        .envVar("SEMU_BIN", exe)
+        .envVar("PATH", "/usr/bin:/bin")
+        .arg("lifecycle")
+        .arg(mode)
+        .flag("--project", project)
+        .capture(true)
+        .check(false);
+    if (romsDir.len() > 0) {
+        command.flag("--roms", romsDir);
+    }
+    UnixShell shell = UnixShell();
+    ExecResult result = shell.runCommand(command);
+    return result;
+}
+
+ExecResult e2eRunLifecycleChange(string exe, string home, string project, string actionId, string commandText) {
+    Command command = Command(exe)
+        .envVar("SEMU_HOME", home)
+        .envVar("SEMU_BIN", exe)
+        .envVar("PATH", "/usr/bin:/bin")
+        .arg("lifecycle")
+        .arg("change")
+        .flag("--project", project)
+        .flag("--action", actionId)
+        .flag("--command", commandText)
+        .capture(true)
+        .check(false);
+    UnixShell shell = UnixShell();
+    ExecResult result = shell.runCommand(command);
+    return result;
+}
+
+ExecResult e2eRunLifecycleArgs(string exe, string home, string project, Vector<string> lifecycleArgs) {
+    Command command = Command(exe)
+        .envVar("SEMU_HOME", home)
+        .envVar("SEMU_BIN", exe)
+        .envVar("PATH", "/usr/bin:/bin")
+        .arg("lifecycle")
+        .capture(true)
+        .check(false);
+    for arg in lifecycleArgs {
+        command.arg(arg);
+    }
+    command.flag("--project", project);
+    UnixShell shell = UnixShell();
+    ExecResult result = shell.runCommand(command);
+    return result;
+}
+
+ExecResult e2eRunSync(string exe, string home, string binDir, string project, Vector<string> syncArgs) {
+    Command command = Command(exe)
+        .envVar("SEMU_HOME", home)
+        .envVar("SEMU_BIN", exe)
+        .envVar("PATH", binDir + ":/usr/bin:/bin")
+        .envVar("SEMU_CAPTURE", joinPath(PathTools.dirname(binDir), "capture"))
+        .arg("sync")
+        .capture(true)
+        .check(false);
+    for arg in syncArgs {
+        command.arg(arg);
+    }
+    command.flag("--project", project);
+    UnixShell shell = UnixShell();
+    ExecResult result = shell.runCommand(command);
+    return result;
+}
+
+ExecResult e2eRunSteamInput(string exe, string home, string project, Vector<string> steamInputArgs) {
+    Command command = Command(exe)
+        .envVar("SEMU_HOME", home)
+        .envVar("SEMU_BIN", exe)
+        .envVar("PATH", "/usr/bin:/bin")
+        .arg("steam-input")
+        .capture(true)
+        .check(false);
+    for arg in steamInputArgs {
+        command.arg(arg);
+    }
+    command.flag("--project", project);
+    UnixShell shell = UnixShell();
+    ExecResult result = shell.runCommand(command);
+    return result;
+}
+
+ExecResult e2eRunLauncher(string exe, string home, string project, string roms, string binDir, string captureDir, string bwrapPath, string emulator, Vector<string> emulatorArgs) {
+    Command command = Command(exe)
+        .envVar("SEMU_HOME", home)
+        .envVar("SEMU_BIN", exe)
+        .envVar("SEMU_PROJECT_DIR", project)
+        .envVar("SEMU_ROMS_DIR", roms)
+        .envVar("SEMU_FLATPAK_CAPTURE", captureDir)
+        .envVar("SEMU_BWRAP", bwrapPath)
+        .envVar("SEMU_SCREENSHOT_HOOKS", "1")
+        .envVar("SEMU_SCREENSHOT_DELAY_SECONDS", "0")
+        .envVar("PATH", binDir + ":/usr/bin:/bin")
+        .envVar("WAYLAND_DISPLAY", "wayland-test")
+        .arg("launcher")
+        .arg(emulator)
+        .capture(true)
+        .check(false);
+    for arg in emulatorArgs {
+        command.arg(arg);
+    }
+    UnixShell shell = UnixShell();
+    ExecResult result = shell.runCommand(command);
+    return result;
+}
+
+bool e2eRunOk(ExecResult result, string label) {
+    if (result.ok()) { return true; }
+    print("E2E FAIL " + label);
+    print(result.stdout());
+    return false;
+}
+
+bool e2eWaitForFile(string path, string label) {
+    UnixShell shell = UnixShell();
+    ExecResult result = shell.runRaw("for i in 1 2 3 4 5; do [ -f " + ShellWords.quote(path) + " ] && exit 0; sleep 0.1; done; exit 1", false, false, "");
+    return e2eOk(result.ok(), label + ": missing " + path);
+}
+
+bool e2eCatalogConsistency(string project, string launcherBin) {
+    string systems = FileSystem.readText(joinPath(customSystemsRoot(project), "es_systems.xml"));
+    string rules = FileSystem.readText(joinPath(customSystemsRoot(project), "es_find_rules.xml"));
+    for id in declaredSystemIds() {
+        if (!e2eContains(systems, "<name>" + id + "</name>", "ES-DE system catalog " + id)) { return false; }
+    }
+    for emulator in linuxLauncherNames() {
+        string launcher = joinPath(launcherBin, semuLauncherName(emulator));
+        if (!e2eContains(rules, "<emulator name=\"" + emulator + "\">", "ES-DE find rule " + emulator)) { return false; }
+        if (!e2eContains(rules, launcher, "ES-DE launcher path " + emulator)) { return false; }
+        if (!e2eOk(FileSystem.exists(launcher), "launcher missing " + launcher)) { return false; }
+    }
+    return true;
+}

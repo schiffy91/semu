@@ -1,11 +1,11 @@
 # SteamOS / Deck Verification
 
-`tests/deck` is the Deck-like full-system verification layer. It is intentionally
-shell-thin; the state and behavior are declared in `src/semu.btrc`.
+`tests/deck` documents the Deck-like full-system verification layer. The
+runtime commands live in BTRC under `src/semu/`.
 
-Generate the BTRC runtime on the host first, then run the thin guest scripts
-inside SteamOS, Bazzite, or the Arch VM. The guest path compiles
-`generated/semu.c`; it does not need the sibling `../btrc` checkout.
+Generate the BTRC runtime on the host first, then run the Deck commands inside
+SteamOS, Bazzite, or the Arch VM. The guest path compiles `generated/semu.c`
+from this repo.
 
 ```sh
 make btrc-build
@@ -16,10 +16,10 @@ Inside the guest:
 
 ```sh
 cd ~/semu
-tests/deck/provision.sh "$PWD"
-tests/deck/verify-emulators.sh "$PWD"
-tests/deck/verify-sync.sh "$PWD"
-tests/deck/verify-input.sh "$PWD"
+build/semu deck provision --project "$PWD"
+build/semu deck verify-emulators --project "$PWD"
+build/semu deck verify-sync --project "$PWD"
+build/semu deck verify-input --project "$PWD"
 ```
 
 VMs can prove Linux packaging, Flatpak routing, Syncthing, BTRC bootstrap,
@@ -46,12 +46,11 @@ software emulation, selects the ISO's Basic Graphics Mode, exposes VNC on
 sips -s format png tests/vms/bazzite-screen.ppm --out tests/vms/bazzite-screen.png
 ```
 
-Keep `VM_DIR` as a relative no-space path such as `tests/vms`; GNU Make splits
-target names on spaces, so an absolute path under `My Drive` is not a valid VM
-artifact directory override.
+Keep `VM_DIR` as a relative path such as `tests/vms`; GNU Make target parsing
+works cleanly with path names that avoid spaces.
 
-After installing Bazzite, boot the installed disk without the ISO attached and
-add this repo's SSH key to the guest user:
+After installing Bazzite, boot the installed disk and add this repo's SSH key to
+the guest user:
 
 ```sh
 make bazzite-vm-start-installed
@@ -63,8 +62,8 @@ Then run:
 make bazzite-vm-verify-ssh BAZZITE_SSH_USER=<guest-user>
 ```
 
-For a more reliable no-GPU installer/runtime smoke on Apple Silicon, use the
-Bazzite Desktop ISO variant:
+For a more reliable software-rendered installer/runtime smoke on Apple Silicon,
+use the Bazzite Desktop ISO variant:
 
 ```sh
 make bazzite-desktop-vm-smoke
@@ -77,11 +76,9 @@ this variant to avoid colliding with the default Deck/Arch VM ports.
 Set `BAZZITE_ISO_SHA256=<sha256>` to pin an exact ISO. When it is unset, the
 harness verifies the downloaded ISO against Bazzite's current checksum URL.
 
-Bazzite Deck is much closer to SteamOS than the fast Arch VM, but on Apple
-Silicon it still cannot prove hardware-specific Neptune trackpad behavior or
-GPU-accelerated Gamescope. Rosetta can translate x86_64 Linux userland inside
-an arm64 Linux VM, but it cannot hardware-virtualize a full x86_64 SteamOS-like
-guest; this target uses QEMU TCG/software rendering for that reason. It is
-useful for Steam Gaming Mode boot behavior, Fedora Atomic/Bazzite runtime
-assumptions, Syncthing/systemd user services, and our Linux launcher/profile
-install path.
+Bazzite Deck is much closer to SteamOS than the fast Arch VM. On Apple Silicon,
+this target uses QEMU TCG/software rendering, which is useful for Steam Gaming
+Mode boot behavior, Fedora Atomic/Bazzite runtime assumptions,
+Syncthing/systemd user services, and the Linux launcher/profile install path.
+A physical Deck remains the validation target for Neptune trackpads and
+GPU-accelerated Gamescope.

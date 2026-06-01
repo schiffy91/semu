@@ -1,0 +1,249 @@
+string textLines(Vector<string> items) {
+    return items.join("\n") + "\n";
+}
+
+KeymapIr projectKeymapIr(string project) {
+    string source = FileSystem.exists(keymapSourcePath(project)) ? FileSystem.readText(keymapSourcePath(project)) : defaultKeymapSource();
+    KeymapErrors errors = KeymapErrors();
+    KeymapIr ir = compileKeymap(source, errors);
+    if (errors.count() == 0) {
+        return ir;
+    }
+    KeymapErrors fallbackErrors = KeymapErrors();
+    return compileKeymap(defaultKeymapSource(), fallbackErrors);
+}
+
+string retroArchProfileText(string project, KeymapIr ir) {
+    return textLines([
+        "config_save_on_exit = \"true\"",
+        "video_fullscreen = \"true\"",
+        "video_vsync = \"true\"",
+        "audio_driver = \"pulse\"",
+        "input_driver = \"sdl2\"",
+        "input_autodetect_enable = \"true\"",
+        "input_remap_binds_enable = \"true\"",
+        "savestate_directory = \"" + joinPath(contentRoot(project), "states") + "\"",
+        "savefile_directory = \"" + joinPath(contentRoot(project), "saves") + "\"",
+        "screenshot_directory = \"" + joinPath(contentRoot(project), "screenshots") + "\""
+    ]) + renderRetroArchKeymap(ir);
+}
+
+string dolphinGcpadProfileText() {
+    return textLines([
+        "[Profile]",
+        "Device = SDL/0/Steam Deck Controller",
+        "Buttons/A = `Button S`",
+        "Buttons/B = `Button W`",
+        "Buttons/X = `Button E`",
+        "Buttons/Y = `Button N`",
+        "Buttons/Z = `Shoulder R`|Back",
+        "Buttons/Start = Start",
+        "Main Stick/Up = `Axis 1-`",
+        "Main Stick/Down = `Axis 1+`",
+        "Main Stick/Left = `Axis 0-`",
+        "Main Stick/Right = `Axis 0+`",
+        "C-Stick/Up = `Axis 4-`",
+        "C-Stick/Down = `Axis 4+`",
+        "C-Stick/Left = `Axis 3-`",
+        "C-Stick/Right = `Axis 3+`",
+        "Triggers/L = `Trigger L`",
+        "Triggers/R = `Trigger R`",
+        "Triggers/L-Analog = `Trigger L`",
+        "Triggers/R-Analog = `Trigger R`",
+        "D-Pad/Up = `Pad N`",
+        "D-Pad/Down = `Pad S`",
+        "D-Pad/Left = `Pad W`",
+        "D-Pad/Right = `Pad E`",
+        "Rumble/Motor = Strong",
+        "Options/Always Connected = True"
+    ]);
+}
+
+string dolphinHotkeysProfileText(KeymapIr ir) {
+    return textLines([
+        "[Profile]",
+        "Device = XInput2/0/Virtual core pointer"
+    ]) + renderDolphinKeymap(ir)
+        + textLines([
+            "Emulation Speed/Disable Emulation Speed Limit = Tab",
+            "Controller Profile 1/Next Profile = @(Alt+F5)",
+            "Other State Hotkeys/Undo Load State = F12",
+            "Other State Hotkeys/Undo Save State = @(Shift+F12)"
+        ]);
+}
+
+string dolphinWiimoteProfileText(bool classic) {
+    Vector<string> lines = [
+        "[Profile]",
+        "Device = SteamDeck/0/Steam Deck",
+        "Buttons/A = `XInput2/0/Virtual core pointer:Click 1`",
+        "Buttons/B = `R4`",
+        "Buttons/1 = `L4`",
+        "Buttons/2 = `L5`",
+        "Buttons/- = View",
+        "Buttons/+ = Menu",
+        "D-Pad/Up = `D-Pad Up`",
+        "D-Pad/Down = `D-Pad Down`",
+        "D-Pad/Left = `D-Pad Left`",
+        "D-Pad/Right = `D-Pad Right`",
+        "IR/Vertical Offset = 12.",
+        "IR/Total Yaw = 19.",
+        "IR/Total Pitch = 22.",
+        "IR/Auto-Hide = True",
+        "IR/Up = `XInput2/0/Virtual core pointer:Cursor Y-`",
+        "IR/Down = `XInput2/0/Virtual core pointer:Cursor Y+`",
+        "IR/Left = `XInput2/0/Virtual core pointer:Cursor X-`",
+        "IR/Right = `XInput2/0/Virtual core pointer:Cursor X+`",
+        "IR/Hide = `Thumb L`",
+        "IMUIR/Enabled = False"
+    ];
+    if (classic) {
+        lines.push("Extension = Classic");
+        lines.push("Classic/Buttons/A = B");
+        lines.push("Classic/Buttons/B = A");
+        lines.push("Classic/Buttons/X = Y");
+        lines.push("Classic/Buttons/Y = X");
+        lines.push("Classic/Buttons/ZL = `L1`");
+        lines.push("Classic/Buttons/ZR = `R1`");
+        lines.push("Classic/Buttons/- = View");
+        lines.push("Classic/Buttons/+ = Menu");
+        lines.push("Classic/Left Stick/Up = `Left Stick Y+`");
+        lines.push("Classic/Left Stick/Down = `Left Stick Y-`");
+        lines.push("Classic/Left Stick/Left = `Left Stick X-`");
+        lines.push("Classic/Left Stick/Right = `Left Stick X+`");
+        lines.push("Classic/Right Stick/Up = `Right Stick Y+`");
+        lines.push("Classic/Right Stick/Down = `Right Stick Y-`");
+        lines.push("Classic/Right Stick/Left = `Right Stick X-`");
+        lines.push("Classic/Right Stick/Right = `Right Stick X+`");
+        lines.push("Classic/Triggers/L = `L2`");
+        lines.push("Classic/Triggers/R = `R2`");
+        lines.push("Classic/D-Pad/Up = `D-Pad Up`");
+        lines.push("Classic/D-Pad/Down = `D-Pad Down`");
+        lines.push("Classic/D-Pad/Left = `D-Pad Left`");
+        lines.push("Classic/D-Pad/Right = `D-Pad Right`");
+    } else {
+        lines.push("Nunchuk/Buttons/C = `Shoulder R`");
+        lines.push("Nunchuk/Buttons/Z = `Trigger R`");
+        lines.push("Nunchuk/Stick/Up = `Axis 1-`");
+        lines.push("Nunchuk/Stick/Down = `Axis 1+`");
+        lines.push("Nunchuk/Stick/Left = `Axis 0-`");
+        lines.push("Nunchuk/Stick/Right = `Axis 0+`");
+    }
+    lines.push("Rumble/Motor = Strong");
+    return textLines(lines);
+}
+
+string pcsx2ProfileText(KeymapIr ir) {
+    return textLines([
+        "[Pad]",
+        "UseProfileHotkeyBindings = true",
+        "MultitapPort1 = false",
+        "MultitapPort2 = false",
+        "",
+        "[InputSources]",
+        "Keyboard = true",
+        "Mouse = true",
+        "SDL = true",
+        "DInput = false",
+        "XInput = false",
+        "",
+        "[Pad1]",
+        "Type = DualShock2",
+        "Up = SDL-1/DPadUp",
+        "Right = SDL-1/DPadRight",
+        "Down = SDL-1/DPadDown",
+        "Left = SDL-1/DPadLeft",
+        "Triangle = SDL-1/Y",
+        "Circle = SDL-1/B",
+        "Cross = SDL-1/A",
+        "Square = SDL-1/X",
+        "Select = SDL-1/Back",
+        "Start = SDL-1/Start",
+        "L1 = SDL-1/LeftShoulder",
+        "L2 = SDL-1/+LeftTrigger",
+        "R1 = SDL-1/RightShoulder",
+        "R2 = SDL-1/+RightTrigger",
+        "L3 = SDL-1/LeftStick",
+        "R3 = SDL-1/RightStick",
+        "LUp = SDL-1/-LeftY",
+        "LRight = SDL-1/+LeftX",
+        "LDown = SDL-1/+LeftY",
+        "LLeft = SDL-1/-LeftX",
+        "RUp = SDL-1/-RightY",
+        "RRight = SDL-1/+RightX",
+        "RDown = SDL-1/+RightY",
+        "RLeft = SDL-1/-RightX",
+        "",
+        "[Pad2]",
+        "Type = None",
+        "",
+        "[Hotkeys]"
+    ]) + renderPcsx2Keymap(ir);
+}
+
+string cemuProfileText() {
+    return "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
+        + "<emulated_controller>\n"
+        + "\t<type>Wii U GamePad</type>\n"
+        + "\t<profile>SteamInput-P1</profile>\n"
+        + "\t<controller>\n"
+        + "\t\t<api>SDLController</api>\n"
+        + "\t\t<display_name>Steam Virtual Gamepad</display_name>\n"
+        + "\t\t<rumble>0</rumble>\n"
+        + "\t</controller>\n"
+        + "</emulated_controller>\n";
+}
+
+string ryujinxProfileText() {
+    return jsonObject([
+        jsonField("left_joycon_stick", jsonObject([
+            jsonStrField("joystick", "Left"),
+            jsonBoolField("invert_stick_x", false),
+            jsonBoolField("invert_stick_y", false),
+            jsonStrField("stick_button", "LeftStick")
+        ])),
+        jsonField("right_joycon_stick", jsonObject([
+            jsonStrField("joystick", "Right"),
+            jsonBoolField("invert_stick_x", false),
+            jsonBoolField("invert_stick_y", false),
+            jsonStrField("stick_button", "RightStick")
+        ])),
+        jsonField("motion", jsonObject([
+            jsonField("slot", "0"),
+            jsonField("alt_slot", "0"),
+            jsonBoolField("mirror_input", false),
+            jsonStrField("motion_backend", "CemuHook"),
+            jsonField("sensitivity", "100"),
+            jsonField("gyro_deadzone", "1"),
+            jsonBoolField("enable_motion", false)
+        ])),
+        jsonField("rumble", jsonObject([
+            jsonField("strong_rumble", "1"),
+            jsonField("weak_rumble", "1"),
+            jsonBoolField("enable_rumble", true)
+        ])),
+        jsonField("left_joycon", jsonObject([
+            jsonStrField("button_minus", "Back"),
+            jsonStrField("button_l", "LeftShoulder"),
+            jsonStrField("button_zl", "LeftTrigger"),
+            jsonStrField("dpad_up", "DpadUp"),
+            jsonStrField("dpad_down", "DpadDown"),
+            jsonStrField("dpad_left", "DpadLeft"),
+            jsonStrField("dpad_right", "DpadRight")
+        ])),
+        jsonField("right_joycon", jsonObject([
+            jsonStrField("button_plus", "Start"),
+            jsonStrField("button_r", "RightShoulder"),
+            jsonStrField("button_zr", "RightTrigger"),
+            jsonStrField("button_x", "Y"),
+            jsonStrField("button_b", "A"),
+            jsonStrField("button_y", "X"),
+            jsonStrField("button_a", "B")
+        ])),
+        jsonField("version", "1"),
+        jsonStrField("backend", "GamepadSDL2"),
+        jsonStrField("id", "0-f7390003-28de-0000-ff11-000001000000"),
+        jsonStrField("controller_type", "ProController"),
+        jsonStrField("player_index", "Player1")
+    ]) + "\n";
+}

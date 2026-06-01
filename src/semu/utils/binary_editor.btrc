@@ -1,0 +1,81 @@
+class BinaryEditor {
+    private FILE* handle;
+    private bool opened;
+
+    public BinaryEditor(string path, string mode = "r+b") {
+        self.handle = fopen(path, mode);
+        self.opened = self.handle != NULL;
+    }
+
+    public bool ok() {
+        return self.opened;
+    }
+
+    public bool seek(long offset) {
+        if (!self.opened) { return false; }
+        return fseek(self.handle, offset, SEEK_SET) == 0;
+    }
+
+    public int readU8(long offset) {
+        if (!self.seek(offset)) { return -1; }
+        byte buf[1];
+        size_t n = fread(buf, 1, 1, self.handle);
+        if (n != 1) { return -1; }
+        return (int)buf[0];
+    }
+
+    public long readLe32(long offset) {
+        if (!self.seek(offset)) { return -1; }
+        byte buf[4];
+        size_t n = fread(buf, 1, 4, self.handle);
+        if (n != 4) { return -1; }
+        return (long)buf[0]
+            + ((long)buf[1] * 256)
+            + ((long)buf[2] * 65536)
+            + ((long)buf[3] * 16777216);
+    }
+
+    public string readAscii(long offset, int count) {
+        if (!self.seek(offset)) { return ""; }
+        char* buf = (char*)malloc(count + 1);
+        size_t n = fread(buf, 1, count, self.handle);
+        buf[n] = '\0';
+        return buf;
+    }
+
+    public bool writeU8(long offset, int value) {
+        if (!self.seek(offset)) { return false; }
+        byte buf[1];
+        buf[0] = (byte)value;
+        size_t n = fwrite(buf, 1, 1, self.handle);
+        return n == 1;
+    }
+
+    public bool writeLe32(long offset, long value) {
+        if (!self.seek(offset)) { return false; }
+        byte buf[4];
+        buf[0] = (byte)(value % 256);
+        buf[1] = (byte)((value / 256) % 256);
+        buf[2] = (byte)((value / 65536) % 256);
+        buf[3] = (byte)((value / 16777216) % 256);
+        size_t n = fwrite(buf, 1, 4, self.handle);
+        return n == 4;
+    }
+
+    public bool writeAscii(long offset, string text) {
+        if (!self.seek(offset)) { return false; }
+        size_t n = fwrite(text, 1, text.len(), self.handle);
+        return n == (size_t)text.len();
+    }
+
+    public void close() {
+        if (self.opened) {
+            fclose(self.handle);
+            self.opened = false;
+        }
+    }
+
+    public void __del__() {
+        self.close();
+    }
+}

@@ -1,0 +1,252 @@
+string launcherFlatpakId(string emulator) {
+    string key = emulator.toLower();
+    if (key.equals("azahar")) { return "org.azahar_emu.Azahar"; }
+    if (key.equals("cemu")) { return "info.cemu.Cemu"; }
+    if (key.equals("dolphin")) { return "org.DolphinEmu.dolphin-emu"; }
+    if (key.equals("flycast")) { return "org.flycast.Flycast"; }
+    if (key.equals("gopher64")) { return "io.github.gopher64.gopher64"; }
+    if (key.equals("melonds")) { return "net.kuribo64.melonDS"; }
+    if (key.equals("pcsx2")) { return "net.pcsx2.PCSX2"; }
+    if (key.equals("ppsspp")) { return "org.ppsspp.PPSSPP"; }
+    if (key.equals("ryujinx")) { return "org.ryujinx.Ryujinx"; }
+    return "";
+}
+
+bool launcherUsesX11(string emulator) {
+    string key = emulator.toLower();
+    string forceX11 = Environment.get("SEMU_FLATPAK_X11", Environment.get("SEMU_FLATPAK_X11", "0"));
+    return key.equals("azahar") || key.equals("dolphin") || forceX11.equals("1");
+}
+
+Vector<string> launcherPresetArgs(string emulator) {
+    string key = emulator.toLower();
+    if (key.equals("dolphin")) {
+        return ["-b", "-e"];
+    }
+    Vector<string> empty = [];
+    return empty;
+}
+
+string launcherFlatpakStateRoot(string project, string emulator) {
+    return joinPath(joinPath(project, ".semu/flatpak-state"), emulator.toLower());
+}
+
+string launcherRoutedStateRoot(string project, string emulator) {
+    return joinPath(joinPath(project, ".semu/appimage-state"), emulator.toLower());
+}
+
+void launcherCopyDirContents(string source, string destination) {
+    if (!FileSystem.isDir(source)) {
+        return;
+    }
+    ensureDir(destination);
+    UnixShell shell = UnixShell();
+    shell.runRaw("cp -a " + ShellWords.quote(joinPath(source, ".")) + " " + ShellWords.quote(destination) + " 2>/dev/null || true", false, false, "");
+}
+
+void launcherCopyFile(string source, string destination) {
+    if (!FileSystem.isFile(source)) {
+        return;
+    }
+    ensureDir(PathTools.dirname(destination));
+    FileSystem.writeText(destination, FileSystem.readText(source));
+}
+
+void launcherCopyProfileDir(string project, string relative, string destination) {
+    launcherCopyDirContents(joinPath(project, relative), destination);
+    launcherCopyDirContents(emulatorProfilePath(project, relative), destination);
+}
+
+void launcherCopyProfileFile(string project, string relative, string destination) {
+    launcherCopyFile(joinPath(project, relative), destination);
+    launcherCopyFile(emulatorProfilePath(project, relative), destination);
+}
+
+void launcherSeedRoutedState(string project, string emulator, string configRoot, string dataRoot) {
+    string key = emulator.toLower();
+    if (key.equals("retroarch")) {
+        launcherCopyProfileDir(project, "RetroArch/config", joinPath(configRoot, "retroarch"));
+        launcherCopyProfileFile(project, "RetroArch/retroarch.cfg", joinPath(configRoot, "retroarch/retroarch.cfg"));
+        return;
+    }
+    if (key.equals("dolphin")) {
+        launcherCopyProfileDir(project, "Dolphin/config", joinPath(configRoot, "dolphin-emu"));
+        launcherCopyProfileDir(project, "Dolphin/data", joinPath(dataRoot, "dolphin-emu"));
+        return;
+    }
+    if (key.equals("pcsx2")) {
+        launcherCopyProfileDir(project, "PCSX2/config", joinPath(configRoot, "PCSX2"));
+        return;
+    }
+    if (key.equals("cemu")) {
+        launcherCopyProfileDir(project, "Cemu/config", joinPath(configRoot, "Cemu"));
+        launcherCopyProfileDir(project, "Cemu/data", joinPath(dataRoot, "Cemu"));
+        return;
+    }
+    if (key.equals("azahar")) {
+        launcherCopyProfileDir(project, "Azahar/data", joinPath(dataRoot, "azahar-emu"));
+        return;
+    }
+    if (key.equals("ppsspp")) {
+        launcherCopyProfileDir(project, "PPSSPP/config", joinPath(configRoot, "ppsspp"));
+        launcherCopyProfileDir(project, "PPSSPP/data", joinPath(dataRoot, "ppsspp"));
+        return;
+    }
+    if (key.equals("flycast")) {
+        launcherCopyProfileDir(project, "Flycast/config", joinPath(configRoot, "flycast"));
+        launcherCopyProfileDir(project, "Flycast/data", joinPath(dataRoot, "flycast"));
+        return;
+    }
+    if (key.equals("gopher64")) {
+        launcherCopyProfileDir(project, "Gopher64/config", joinPath(configRoot, "gopher64"));
+        return;
+    }
+    if (key.equals("melonds")) {
+        launcherCopyProfileDir(project, "melonDS/config", joinPath(configRoot, "melonDS"));
+        launcherCopyProfileDir(project, "melonDS/data", joinPath(dataRoot, "melonDS"));
+        return;
+    }
+    if (key.equals("ryujinx")) {
+        launcherCopyProfileDir(project, "Ryujinx/config", joinPath(configRoot, "Ryujinx"));
+        return;
+    }
+}
+
+int launcherRunRouted(string project, string emulator, string executable, Vector<string> emulatorArgs) {
+    if (!FileSystem.isDir(project)) {
+        print("launcher: project dir '" + project + "' missing");
+        return 2;
+    }
+    string stateRoot = launcherRoutedStateRoot(project, emulator);
+    string home = joinPath(stateRoot, "home");
+    string configRoot = joinPath(stateRoot, "config");
+    string dataRoot = joinPath(stateRoot, "data");
+    string cacheRoot = joinPath(stateRoot, "cache");
+    ensureDir(home);
+    ensureDir(configRoot);
+    ensureDir(dataRoot);
+    ensureDir(cacheRoot);
+    launcherSeedRoutedState(project, emulator, configRoot, dataRoot);
+
+    Vector<string> finalArgs = [];
+    if (emulator.toLower().equals("retroarch")) {
+        string retroarchConfig = joinPath(configRoot, "retroarch/retroarch.cfg");
+        if (FileSystem.exists(retroarchConfig)) {
+            finalArgs.push("--config");
+            finalArgs.push(retroarchConfig);
+        }
+    }
+    for arg in emulatorArgs {
+        finalArgs.push(arg);
+    }
+
+    string roms = launchRomsRoot(project);
+    string command = "SEMU_PROJECT_DIR=" + ShellWords.quote(project)
+        + " SEMU_ROMS_DIR=" + ShellWords.quote(roms)
+        + " HOME=" + ShellWords.quote(home)
+        + " XDG_CONFIG_HOME=" + ShellWords.quote(configRoot)
+        + " XDG_DATA_HOME=" + ShellWords.quote(dataRoot)
+        + " XDG_CACHE_HOME=" + ShellWords.quote(cacheRoot)
+        + " " + ShellWords.quote(executable);
+    command = shellAppendAll(command, finalArgs);
+    UnixShell shell = UnixShell();
+    screenshotCaptureHook(project, emulator, "before_launch");
+    screenshotScheduleHook(project, emulator, "after_spawn");
+    ExecResult result = shell.runRaw(command, false, false, "");
+    screenshotCaptureHook(project, emulator, "after_exit");
+    return result.code;
+}
+
+int launcherRunFlatpak(string project, string emulator, string flatpakId, Vector<string> emulatorArgs) {
+    if (!FileSystem.isDir(project)) {
+        print("launcher: project dir '" + project + "' missing");
+        return 2;
+    }
+    string roms = launchRomsRoot(project);
+    string stateRoot = launcherFlatpakStateRoot(project, emulator);
+    string uid = currentUid();
+    ensureDir(joinPath(stateRoot, "config"));
+    ensureDir(joinPath(stateRoot, "data"));
+    ensureDir(joinPath(stateRoot, "cache"));
+    string command = "unset VK_ICD_FILENAMES LIBGL_ALWAYS_SOFTWARE; ";
+    if (launcherUsesX11(emulator)) {
+        command = command + "unset MESA_LOADER_DRIVER_OVERRIDE MESA_GL_VERSION_OVERRIDE MESA_GLSL_VERSION_OVERRIDE; "
+            + "if [ -z \"${DISPLAY:-}\" ] || [ -z \"${XAUTHORITY:-}\" ]; then "
+            + "p=$(pgrep -x plasmashell | head -1 || pgrep -x kwin_wayland | head -1 || true); "
+            + "if [ -n \"$p\" ] && [ -r \"/proc/$p/environ\" ]; then "
+            + "eval \"$(tr '\\0' '\\n' < /proc/$p/environ | grep -E '^(DISPLAY|XAUTHORITY)=' | sed 's/^/export /')\"; "
+            + "fi; fi; "
+            + "if [ -z \"${XAUTHORITY:-}\" ]; then for f in /run/user/" + uid + "/xauth_*; do [ -r \"$f\" ] && export XAUTHORITY=\"$f\" && break; done; fi; "
+            + "export DISPLAY=\"${DISPLAY:-:1}\"; ";
+    }
+    command = command + "flatpak run";
+    Vector<string> flatpakArgs = [
+        "--filesystem=" + project,
+        "--filesystem=" + roms,
+        "--filesystem=" + stateRoot + ":create",
+        "--env=XDG_CONFIG_HOME=" + joinPath(stateRoot, "config"),
+        "--env=XDG_DATA_HOME=" + joinPath(stateRoot, "data"),
+        "--env=XDG_CACHE_HOME=" + joinPath(stateRoot, "cache")
+    ];
+    if (launcherUsesX11(emulator)) {
+        flatpakArgs.push("--socket=x11");
+    } else {
+        flatpakArgs.push("--socket=wayland");
+        flatpakArgs.push("--env=QT_QPA_PLATFORM=wayland");
+        flatpakArgs.push("--env=SDL_VIDEODRIVER=wayland");
+        flatpakArgs.push("--env=GDK_BACKEND=wayland");
+        flatpakArgs.push("--env=XDG_SESSION_TYPE=wayland");
+        flatpakArgs.push("--env=WAYLAND_DISPLAY=" + Environment.get("WAYLAND_DISPLAY", "wayland-0"));
+        flatpakArgs.push("--env=DISPLAY=");
+        flatpakArgs.push("--env=XAUTHORITY=");
+    }
+    flatpakArgs.push(flatpakId);
+    for arg in launcherPresetArgs(emulator) {
+        flatpakArgs.push(arg);
+    }
+    for arg in emulatorArgs {
+        flatpakArgs.push(arg);
+    }
+    command = shellAppendAll(command, flatpakArgs);
+    UnixShell shell = UnixShell();
+    screenshotCaptureHook(project, emulator, "before_launch");
+    screenshotScheduleHook(project, emulator, "after_spawn");
+    ExecResult result = shell.runRaw(command, false, false, "");
+    screenshotCaptureHook(project, emulator, "after_exit");
+    return result.code;
+}
+
+int launcherRunEmulator(string project, string emulator, Vector<string> emulatorArgs) {
+    if (emulator.equals("flatpak")) {
+        if (emulatorArgs.len == 0) {
+            print("error 0:0 launcher flatpak needs FLATPAK_ID [ARGS...]");
+            return 1;
+        }
+        return launcherRunFlatpak(project, "flatpak", emulatorArgs.get(0), vectorTail(emulatorArgs, 1));
+    }
+    if (emulator.toLower().equals("retroarch")) {
+        return sandboxLaunch(project, "retroarch", "/usr/bin/retroarch", emulatorArgs);
+    }
+    string flatpakId = launcherFlatpakId(emulator);
+    if (flatpakId.len() == 0) {
+        print("error 0:0 unknown launcher emulator '" + emulator + "'");
+        return 1;
+    }
+    return launcherRunFlatpak(project, emulator, flatpakId, emulatorArgs);
+}
+
+int launcherCommand(CliArgs args, string project) {
+    if (args.count() < 2) {
+        print("error 0:0 launcher needs EMULATOR [ARGS...]");
+        return 1;
+    }
+    string emulator = args.get(1);
+    if (emulator.equals("routed")) {
+        if (args.count() < 4) {
+            print("error 0:0 launcher routed needs EMULATOR EXECUTABLE [ARGS...]");
+            return 1;
+        }
+        return launcherRunRouted(project, args.get(2), args.get(3), cliTail(args, 4));
+    }
+    return launcherRunEmulator(project, emulator, cliTail(args, 2));
+}

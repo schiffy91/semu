@@ -1,0 +1,44 @@
+string manifestPaths() {
+    return jsonObject([
+        jsonStrField("project_content_root", "${project}/ES-DE/ES-DE"),
+        jsonStrField("runtime_content_root", "${portable}"),
+        jsonStrField("roms", "${paths.runtime_content_root}/ROMs"),
+        jsonStrField("project_roms", "${paths.project_content_root}/ROMs"),
+        jsonStrField("bios", "${paths.runtime_content_root}/bios"),
+        jsonStrField("project_bios", "${paths.project_content_root}/bios"),
+        jsonStrField("saves", "${paths.runtime_content_root}/saves"),
+        jsonStrField("project_saves", "${paths.project_content_root}/saves"),
+        jsonStrField("states", "${paths.runtime_content_root}/states"),
+        jsonStrField("project_states", "${paths.project_content_root}/states"),
+        jsonStrField("screenshots", "${paths.runtime_content_root}/screenshots"),
+        jsonStrField("project_screenshots", "${paths.project_content_root}/screenshots"),
+        jsonStrField("media", "${paths.runtime_content_root}/downloaded_media"),
+        jsonStrField("project_media", "${paths.project_content_root}/downloaded_media"),
+        jsonStrField("gamelists", "${paths.runtime_content_root}/gamelists"),
+        jsonStrField("project_gamelists", "${paths.project_content_root}/gamelists"),
+        jsonStrField("themes", "${paths.runtime_content_root}/themes"),
+        jsonStrField("project_themes", "${paths.project_content_root}/themes"),
+        jsonStrField("custom_systems", "${paths.runtime_content_root}/custom_systems"),
+        jsonStrField("project_custom_systems", "${project}/ES-DE/custom_systems"),
+        jsonStrField("settings", "${paths.runtime_content_root}/settings"),
+        jsonStrField("project_settings", "${project}/ES-DE"),
+        jsonStrField("keymaps", "${project}/input/keymaps"),
+        jsonStrField("steam_input", "${project}/input/steam-input"),
+        jsonStrField("emulator_profiles", "${project}/emulators/profiles"),
+        jsonStrField("es_de_profiles", "${project}/emulators/es-de"),
+        jsonStrField("linux_packaging", "${project}/packaging/linux"),
+        jsonStrField("retroarch_system", "${paths.bios}")
+    ]);
+}
+
+string esDe() {
+    string settings = jsonObject([
+        jsonStrField("ROMDirectory", "~/ES-DE/ROMs"),
+        jsonStrField("MediaDirectory", "~/ES-DE/downloaded_media"),
+        jsonStrField("UserThemeDirectory", "~/ES-DE/themes"),
+        jsonStrField("SaveGamelistsMode", "always"),
+        jsonStrField("CreatePlaceholderSystemDirectories", "false"),
+        jsonStrField("InputControllerType", "xbox")
+    ]);
+    return jsonObject([jsonField("settings", settings)]);
+}

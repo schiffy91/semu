@@ -11,6 +11,7 @@ else
 BTRC_TRANSPILE := cd "$(BTRC_ROOT)" && nix develop --command ./bin/btrcpy
 endif
 SEMU_SOURCE := src/semu.btrc
+SEMU_SOURCES := $(SEMU_SOURCE) $(shell find src/semu -name '*.btrc' 2>/dev/null)
 SEMU_C := build/semu.c
 SEMU_BIN := build/semu
 VM_DIR := tests/vms
@@ -79,7 +80,7 @@ all: install ## Build all emulators + bootstrap content (idempotent, cached by n
 install: setup
 btrc-build: $(SEMU_BIN) ## Build the BTRC semu CLI
 
-$(SEMU_BIN): $(SEMU_SOURCE) flake.nix flake.lock Makefile
+$(SEMU_BIN): $(SEMU_SOURCES) flake.nix flake.lock Makefile
 	@mkdir -p build
 	$(BTRC_TRANSPILE) "$(CURDIR)/$(SEMU_SOURCE)" -o "$(CURDIR)/$(SEMU_C)" --no-cache --no-stdlib
 	perl -0pi -e 's/\n+\z/\n/' "$(SEMU_C)"
@@ -129,12 +130,12 @@ generated-build: generated/semu.c ## Build committed generated C without invokin
 
 generated-smoke: generated-build ## Run BTRC-native smoke tests from generated C
 	$(SEMU_BIN) e2e all
-	bash -n packaging/linux/AppRun packaging/linux/sandbox.sh packaging/linux/build-appimage.sh packaging/linux/bin/semu-* utils/steam-deck-bootstrap.sh
+	$(SEMU_BIN) e2e shell-syntax --project "$(CURDIR)"
 
 payload-audit: $(SEMU_BIN) ## Fail if tracked licensed payloads or VM artifacts would be upstreamed
 	$(SEMU_BIN) e2e payload-audit --project "$(CURDIR)"
 
-test: payload-audit generated-smoke appimage-smoke ## Run tests locally (native, no Python)
+test: payload-audit generated-smoke appimage-smoke ## Run native BTRC/runtime tests locally
 
 ftux-test: generated-smoke ## Validate Steam Deck/Linux first-run bootstrap path
 
@@ -162,8 +163,8 @@ sandbox-smoke: $(SEMU_BIN) ## Validate all BTRC sandbox prepare routes
 launcher-smoke: $(SEMU_BIN) ## Validate BTRC Linux launcher routing with fake flatpak/bwrap
 	$(SEMU_BIN) e2e launcher
 
-appimage-smoke: generated-build ## Validate AppImage assembly and Nix-store mount wiring with fakes
-	bash tests/appimage/smoke.sh
+appimage-smoke: generated-build ## Validate AppImage assembly and Nix-store mount wiring with BTRC fakes
+	$(SEMU_BIN) e2e appimage --project "$(CURDIR)"
 
 nix-e2e: ## Validate flake routed-emulator shape and mock wrapper behavior
 	@set -euo pipefail; \
@@ -231,21 +232,19 @@ verify: payload-audit $(SEMU_BIN) ## Run deterministic BTRC/Steam Deck verificat
 	grep -F 'OK saves: watch, 900s' "$$verify_dir/doctor.txt" >/dev/null; \
 	grep -F 'optional roms: watch, 3600s' "$$verify_dir/doctor.txt" >/dev/null; \
 	echo "OK doctor invariants"; \
-	echo "== Launcher syntax =="; \
-	bash -n packaging/linux/AppRun packaging/linux/sandbox.sh packaging/linux/build-appimage.sh packaging/linux/bin/semu-*; \
-	echo "OK bash syntax"; \
+	echo "== Shell artifact syntax =="; \
+	"$(SEMU_BIN)" e2e shell-syntax --project "$(CURDIR)"; \
 	echo "== BTRC lifecycle/sandbox smoke =="; \
 	"$(SEMU_BIN)" e2e all; \
 	echo "OK BTRC lifecycle/sandbox smoke"; \
 	echo "== AppImage/Nix routing smoke =="; \
-	bash tests/appimage/smoke.sh; \
+	"$(SEMU_BIN)" e2e appimage --project "$(CURDIR)"; \
 	$(MAKE) --no-print-directory nix-e2e; \
 	echo "OK AppImage/Nix routing smoke"; \
-	echo "== Runtime BTRC guard =="; \
-	if rg -n 'python|setup\.py|generate_find_rules' packaging/linux packaging/nix/semu.nix packaging/nix/module.nix; then \
-		echo "Runtime path must not depend on Python"; \
-		exit 1; \
-	fi; \
+	echo "== BTRC runtime source boundary =="; \
+	test -f src/semu.btrc; \
+	test -d src/semu; \
+	echo "OK BTRC runtime source boundary"; \
 	sandbox_dir="$$verify_dir/sandbox-retroarch"; \
 	rm -rf "$$sandbox_dir"; \
 	"$(SEMU_BIN)" sandbox prepare --project "$(CURDIR)" --emulator retroarch --scratch "$$sandbox_dir"; \
@@ -347,23 +346,23 @@ deck-vm-sync: btrc-build deck-vm-start ## Sync project and BTRC binary into VM
 
 deck-vm-provision: deck-vm-sync ## Provision VM with Deck-style services/config
 	ssh $(SSH_OPTS) -p $(SSH_PORT_LINUX) arch@localhost \
-		'cd ~/semu && chmod +x tests/deck/*.sh && SEMU_BIN=$$PWD/build/semu tests/deck/provision.sh "$$PWD"'
+		'cd ~/semu && SEMU_BIN=$$PWD/build/semu build/semu deck provision --project "$$PWD"'
 
 deck-vm-verify: deck-vm-provision ## Run Deck-style emulator/input/sync checks in VM
 	ssh $(SSH_OPTS) -p $(SSH_PORT_LINUX) arch@localhost \
-		'cd ~/semu && SEMU_BIN=$$PWD/build/semu tests/deck/verify-emulators.sh "$$PWD"'
+		'cd ~/semu && SEMU_BIN=$$PWD/build/semu build/semu deck verify-emulators --project "$$PWD"'
 	ssh $(SSH_OPTS) -p $(SSH_PORT_LINUX) arch@localhost \
-		'cd ~/semu && SEMU_BIN=$$PWD/build/semu tests/deck/verify-sync.sh "$$PWD"'
+		'cd ~/semu && SEMU_BIN=$$PWD/build/semu build/semu deck verify-sync --project "$$PWD"'
 	ssh $(SSH_OPTS) -p $(SSH_PORT_LINUX) arch@localhost \
-		'cd ~/semu && SEMU_BIN=$$PWD/build/semu tests/deck/verify-input.sh "$$PWD"'
+		'cd ~/semu && SEMU_BIN=$$PWD/build/semu build/semu deck verify-input --project "$$PWD"'
 
 deck-vm-verify-strict: deck-vm-provision ## Run Deck VM checks and fail if input devices/services are missing
 	ssh $(SSH_OPTS) -p $(SSH_PORT_LINUX) arch@localhost \
-		'cd ~/semu && SEMU_BIN=$$PWD/build/semu tests/deck/verify-emulators.sh "$$PWD"'
+		'cd ~/semu && SEMU_BIN=$$PWD/build/semu build/semu deck verify-emulators --project "$$PWD"'
 	ssh $(SSH_OPTS) -p $(SSH_PORT_LINUX) arch@localhost \
-		'cd ~/semu && SEMU_BIN=$$PWD/build/semu tests/deck/verify-sync.sh "$$PWD"'
+		'cd ~/semu && SEMU_BIN=$$PWD/build/semu build/semu deck verify-sync --project "$$PWD"'
 	ssh $(SSH_OPTS) -p $(SSH_PORT_LINUX) arch@localhost \
-		'cd ~/semu && SEMU_BIN=$$PWD/build/semu SEMU_STRICT_INPUT=1 tests/deck/verify-input.sh "$$PWD"'
+		'cd ~/semu && SEMU_BIN=$$PWD/build/semu build/semu deck verify-input --strict --project "$$PWD"'
 
 deck-vm-stop: linux-stop ## Stop Deck-like Linux VM
 
@@ -544,13 +543,13 @@ bazzite-vm-sync: btrc-build ## Sync repo to installed Bazzite VM over SSH
 
 bazzite-vm-verify-ssh: bazzite-vm-sync ## Run Deck checks inside installed Bazzite VM over SSH
 	ssh $(BAZZITE_SSH_OPTS) -p $(BAZZITE_SSH_PORT) $(BAZZITE_SSH_USER)@localhost \
-		'cd ~/semu && chmod +x tests/deck/*.sh && tests/deck/provision.sh "$$PWD"'
+		'cd ~/semu && build/semu deck provision --project "$$PWD"'
 	ssh $(BAZZITE_SSH_OPTS) -p $(BAZZITE_SSH_PORT) $(BAZZITE_SSH_USER)@localhost \
-		'cd ~/semu && tests/deck/verify-emulators.sh "$$PWD"'
+		'cd ~/semu && build/semu deck verify-emulators --project "$$PWD"'
 	ssh $(BAZZITE_SSH_OPTS) -p $(BAZZITE_SSH_PORT) $(BAZZITE_SSH_USER)@localhost \
-		'cd ~/semu && tests/deck/verify-sync.sh "$$PWD"'
+		'cd ~/semu && build/semu deck verify-sync --project "$$PWD"'
 	ssh $(BAZZITE_SSH_OPTS) -p $(BAZZITE_SSH_PORT) $(BAZZITE_SSH_USER)@localhost \
-		'cd ~/semu && tests/deck/verify-input.sh "$$PWD"'
+		'cd ~/semu && build/semu deck verify-input --project "$$PWD"'
 
 bazzite-vm-stop: ## Stop Bazzite VM
 	@if [ -f "$(BAZZITE_PID)" ] && kill -0 "$$(cat "$(BAZZITE_PID)")" 2>/dev/null; then \

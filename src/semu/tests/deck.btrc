@@ -1,0 +1,125 @@
+void deckMaybeRun(string command) {
+    UnixShell().runUnchecked(command + " >/dev/null 2>&1 || true");
+}
+
+void deckInstallHostPackages() {
+    if (commandExists("pacman")) {
+        deckMaybeRun("sudo pacman -Sy --needed --noconfirm bash curl jq rsync syncthing flatpak bubblewrap retroarch evtest gcc inputplumber");
+    }
+    if (commandExists("rpm-ostree")) {
+        deckMaybeRun("rpm-ostree install -y curl jq syncthing flatpak bubblewrap evtest gcc inputplumber");
+    }
+    if (commandExists("flatpak")) {
+        deckMaybeRun("flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo");
+    }
+}
+
+void deckBuildGeneratedCli(string project) {
+    ensureDir(joinPath(project, "build"));
+    string generated = joinPath(project, "generated/semu.c");
+    string output = joinPath(project, "build/semu");
+    if (commandExists("cc") && FileSystem.exists(generated)) {
+        ExecResult result = UnixShell().runRaw(
+            "cc " + ShellWords.quote(generated) + " -std=c11 -o " + ShellWords.quote(output) + " -lm",
+            true,
+            false,
+            ""
+        );
+        if (!result.ok()) {
+            print(result.stdout());
+        }
+    }
+}
+
+int deckProvisionCommand(CliArgs args, string project) {
+    string roms = args.valueAfter("--roms", Environment.get("SEMU_ROMS_DIR", joinPath(project, "ES-DE/ES-DE/ROMs")));
+    deckInstallHostPackages();
+    deckBuildGeneratedCli(project);
+    lifecycleInstall(project, roms);
+    syncSetup(project);
+    print("OK deck provision");
+    return 0;
+}
+
+bool deckHasGraphicalSession() {
+    return Environment.get("WAYLAND_DISPLAY", "").len() > 0 || Environment.get("DISPLAY", "").len() > 0;
+}
+
+bool deckHasScreenshotTool() {
+    return commandExists("grim")
+        || commandExists("spectacle")
+        || commandExists("gnome-screenshot")
+        || commandExists("import");
+}
+
+int deckVerifyEmulatorsCommand(CliArgs args, string project) {
+    doctorSteamDeck(project);
+    KeymapErrors errors = KeymapErrors();
+    compileKeymap(FileSystem.exists(keymapSourcePath(project)) ? FileSystem.readText(keymapSourcePath(project)) : defaultKeymapSource(), errors);
+    if (errors.count() > 0) { return 1; }
+    KeymapIr ir = compileKeymap(FileSystem.exists(keymapSourcePath(project)) ? FileSystem.readText(keymapSourcePath(project)) : defaultKeymapSource(), KeymapErrors());
+    FileSystem.writeText("/tmp/semu-retroarch.cfg", renderRetroArchKeymap(ir));
+    doctorScreenshotHooks(project);
+    if (deckHasGraphicalSession() && deckHasScreenshotTool()) {
+        screenshotCaptureTo(project, "deck_preflight", "manual_visual_checkpoint", screenshotCapturePath(project, "deck_preflight", "manual_visual_checkpoint"));
+    } else {
+        print("INFO screenshot capture waits for a graphical session and screenshot tool");
+    }
+    int sandboxStatus = e2eSandboxSmoke();
+    if (sandboxStatus != 0) { return sandboxStatus; }
+    int launcherStatus = e2eLauncherSmoke(args);
+    if (launcherStatus != 0) { return launcherStatus; }
+    deckMaybeRun("retroarch --version | head -1");
+    deckMaybeRun("flatpak list --app");
+    print("OK deck emulator preflight");
+    return 0;
+}
+
+int deckVerifyInputCommand(string project, bool strict) {
+    doctorSteamDeck(project);
+    bool ok = true;
+    if (FileSystem.exists("/dev/uinput")) {
+        print("OK /dev/uinput");
+    } else if (strict) {
+        print("FAIL /dev/uinput missing; virtual-input automation unavailable");
+        ok = false;
+    } else {
+        print("INFO /dev/uinput unavailable in this environment");
+    }
+    if (commandExists("inputplumber")) {
+        print("OK inputplumber");
+    } else if (strict) {
+        print("FAIL inputplumber missing; Steam Deck route cannot be verified");
+        ok = false;
+    } else {
+        print("INFO inputplumber verification waits for the Deck environment");
+    }
+    print(ok ? "OK deck input preflight" : "FAIL deck input preflight");
+    return ok ? 0 : 2;
+}
+
+bool deckWaitForSyncHealth(string project) {
+    UnixShell shell = UnixShell();
+    for (int i = 0; i < 30; i++) {
+        ExecResult result = shell.runUnchecked("curl -fsS http://" + syncGuiAddress(project) + "/rest/noauth/health >/dev/null 2>&1");
+        if (result.ok()) { return true; }
+        shell.runUnchecked("sleep 1");
+    }
+    return false;
+}
+
+int deckVerifySyncCommand(string project) {
+    syncStatus(project);
+    if (!syncSetup(project)) { return 1; }
+    if (!deckWaitForSyncHealth(project)) {
+        print("FAIL deck sync health");
+        return 2;
+    }
+    if (!syncForce(project, "all")) { return 1; }
+    if (!FileSystem.isDir(syncthingHome(project))) {
+        print("FAIL deck sync home missing");
+        return 2;
+    }
+    print("OK deck sync");
+    return 0;
+}

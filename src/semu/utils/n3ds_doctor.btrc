@@ -1,0 +1,26 @@
+void reportN3dsRomPreflight(string project) {
+    string n3dsDir = joinPath(romsRoot(project), "n3ds");
+    if (!FileSystem.isDir(n3dsDir)) {
+        print(f"  MISSING n3ds rom dir: {n3dsDir}");
+        return;
+    }
+    Vector<string> entries = FileSystem.listDir(n3dsDir);
+    int checked = 0;
+    int archives = 0;
+    for name in entries {
+        string path = joinPath(n3dsDir, name);
+        if (FileSystem.isFile(path) && n3dsRomName(name)) {
+            checked++;
+            N3dsRomCheck result = checkN3dsRom(path);
+            print(f"  {result.status} n3ds/{name}: {result.note}");
+        } else if (FileSystem.isFile(path) && n3dsArchiveName(name)) {
+            archives++;
+        }
+    }
+    if (checked == 0) {
+        print("  OK n3ds: no top-level .3ds/.cci files to preflight");
+    }
+    if (archives > 0) {
+        print(f"  WARN n3ds archives unchecked: {archives} zip/7z file(s)");
+    }
+}

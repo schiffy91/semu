@@ -1,0 +1,96 @@
+bool keymapIrHasAction(KeymapIr ir, string id) {
+    for action in ir.actionIds {
+        if (action.equals(id)) { return true; }
+    }
+    return false;
+}
+
+Vector<string> requiredKeymapActions() {
+    return [
+        "ui.open",
+        "ui.pause",
+        "ui.screenshot",
+        "ui.fullscreen",
+        "ui.menu",
+        "app.quit",
+        "state.prev",
+        "state.next",
+        "state.load",
+        "state.save",
+        "speed.rewind",
+        "speed.fast",
+        "screen.swap",
+        "ui.escape"
+    ];
+}
+
+bool allowedModifier(string modifier) {
+    return modifier.equals("Ctrl") || modifier.equals("Alt") || modifier.equals("Shift") || modifier.equals("Meta");
+}
+
+void validateKeymapIr(KeymapIr ir, KeymapErrors errors) {
+    if (ir.actionIds.len == 0) {
+        errors.error(0, 0, "keymap has no actions");
+    }
+    if (ir.bindingCombos.len == 0) {
+        errors.error(0, 0, "keymap has no controller bindings");
+    }
+    for required in requiredKeymapActions() {
+        if (!keymapIrHasAction(ir, required)) {
+            errors.error(0, 0, f"missing required action '{required}'");
+        }
+    }
+    for (int i = 0; i < ir.actionIds.len; i++) {
+        string id = ir.actionIds.get(i);
+        string command = ir.actionCommands.get(i);
+        if (command.len() == 0) {
+            errors.error(0, 0, f"action '{id}' has no key");
+        }
+        if (allowedModifier(command)) {
+            errors.error(0, 0, f"action '{id}' has no key after modifier '{command}'");
+        }
+        string modifiers = keymapCommandModifierPart(command);
+        if (modifiers.len() > 0) {
+            Vector<string> parts = Strings.split(modifiers, "+");
+            for modifier in parts {
+                if (!allowedModifier(modifier)) {
+                    errors.error(0, 0, f"action '{id}' uses unsupported modifier '{modifier}'");
+                }
+            }
+        }
+    }
+    for (int i = 0; i < ir.actionIds.len; i++) {
+        for (int j = i + 1; j < ir.actionIds.len; j++) {
+            if (ir.actionIds.get(i).equals(ir.actionIds.get(j))) {
+                errors.error(0, 0, f"duplicate action '{ir.actionIds.get(i)}'");
+            }
+        }
+    }
+    for (int i = 0; i < ir.bindingActions.len; i++) {
+        if (!keymapIrHasAction(ir, ir.bindingActions.get(i))) {
+            errors.error(0, 0, f"binding '{ir.bindingCombos.get(i)}' references unknown action '{ir.bindingActions.get(i)}'");
+        }
+    }
+    for (int i = 0; i < ir.bindingCombos.len; i++) {
+        for (int j = i + 1; j < ir.bindingCombos.len; j++) {
+            if (ir.bindingCombos.get(i).equals(ir.bindingCombos.get(j))) {
+                errors.error(0, 0, f"duplicate controller combo '{ir.bindingCombos.get(i)}'");
+            }
+        }
+    }
+}
+
+KeymapIr compileKeymap(string source, KeymapErrors errors) {
+    KeymapTokens tokens = lexKeymap(source, errors);
+    KeymapParser parser = KeymapParser(tokens, errors);
+    KeymapIr ir = parser.parse();
+    validateKeymapIr(ir, errors);
+    return ir;
+}
+
+KeymapIr defaultKeymapIr() {
+    KeymapErrors errors = KeymapErrors();
+    string source = defaultKeymapSource();
+    KeymapIr ir = compileKeymap(source, errors);
+    return ir;
+}

@@ -1,0 +1,64 @@
+bool copyFilePath(string source, string destination) {
+    ensureDir(PathTools.dirname(destination));
+    UnixShell shell = UnixShell();
+    ExecResult result = shell.runCommand(Command("cp").arg("-p").arg(source).arg(destination).check(false));
+    return result.ok();
+}
+
+bool n3dsNoCryptoFlag(int flags) {
+    return ((flags / 4) % 2) == 1;
+}
+
+int patchN3dsNoCryptoFlags(string path) {
+    BinaryEditor editor = BinaryEditor(path);
+    if (!editor.ok()) { return -1; }
+    if (!editor.readAscii(0x100, 4).equals("NCSD")) {
+        editor.close();
+        return -1;
+    }
+
+    int patched = 0;
+    for (int i = 0; i < 8; i++) {
+        long entry = 0x120 + (i * 8);
+        long offsetMu = editor.readLe32(entry);
+        long sizeMu = editor.readLe32(entry + 4);
+        if (offsetMu < 0 || sizeMu <= 0) {
+            continue;
+        }
+        long partOffset = offsetMu * 0x200;
+        if (!editor.readAscii(partOffset + 0x100, 4).equals("NCCH")) {
+            continue;
+        }
+        long flagsOffset = partOffset + 0x100 + 0x8f;
+        int flags = editor.readU8(flagsOffset);
+        if (flags < 0) {
+            editor.close();
+            return -1;
+        }
+        if (!n3dsNoCryptoFlag(flags)) {
+            if (!editor.writeU8(flagsOffset, flags + 4)) {
+                editor.close();
+                return -1;
+            }
+            if (!editor.writeU8(partOffset + 0x100 + 0x8b, 0)) {
+                editor.close();
+                return -1;
+            }
+            patched++;
+        }
+    }
+    editor.close();
+    return patched;
+}
+
+bool fixN3dsNoCryptoFile(string input, string output) {
+    if (!copyFilePath(input, output)) {
+        return false;
+    }
+    int patched = patchN3dsNoCryptoFlags(output);
+    if (patched < 0) {
+        removePath(output);
+        return false;
+    }
+    return true;
+}
