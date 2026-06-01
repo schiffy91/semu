@@ -59,6 +59,19 @@ bool syncSyncthingAvailable() {
     return syncSyncthingExecutable().len() > 0;
 }
 
+string syncCurlExecutable() {
+    string configured = Environment.get("SEMU_CURL_BIN", "");
+    if (configured.len() > 0 && FileSystem.exists(configured)) { return configured; }
+    if (FileSystem.exists("/usr/bin/curl")) { return "/usr/bin/curl"; }
+    if (FileSystem.exists("/usr/local/bin/curl")) { return "/usr/local/bin/curl"; }
+    if (commandExists("curl")) { return "curl"; }
+    return "";
+}
+
+bool syncCurlAvailable() {
+    return syncCurlExecutable().len() > 0;
+}
+
 string syncServiceText(string project) {
     return "[Unit]\n"
         + "Description=Semu Syncthing\n"
