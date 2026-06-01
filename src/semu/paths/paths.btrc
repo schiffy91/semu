@@ -1,0 +1,171 @@
+string joinPath(string left, string right) {
+    return PathTools.join(left, right);
+}
+
+string contentRoot(string project) {
+    return joinPath(project, "ES-DE/ES-DE");
+}
+
+string romsRoot(string project) {
+    return joinPath(contentRoot(project), "ROMs");
+}
+
+string syncRoot(string project) {
+    return joinPath(project, "sync");
+}
+
+string syncConfigPath(string project) {
+    return joinPath(syncRoot(project), "sync.json");
+}
+
+string syncthingHome(string project) {
+    return joinPath(syncRoot(project), "syncthing");
+}
+
+string syncthingConfigDir(string project) {
+    return joinPath(syncthingHome(project), "config");
+}
+
+string syncthingDataDir(string project) {
+    return joinPath(syncthingHome(project), "data");
+}
+
+string syncScriptsDir(string project) {
+    return joinPath(syncRoot(project), "bin");
+}
+
+string syncLogDir(string project) {
+    return joinPath(syncRoot(project), "logs");
+}
+
+string biosRoot(string project) {
+    return joinPath(contentRoot(project), "bios");
+}
+
+string customSystemsRoot(string project) {
+    return joinPath(project, "ES-DE/custom_systems");
+}
+
+string esDeProfileCustomSystemsRoot(string project) {
+    return joinPath(project, "emulators/es-de/custom_systems");
+}
+
+string emulatorProfilesRoot(string project) {
+    return joinPath(project, "emulators/profiles");
+}
+
+string emulatorProfilePath(string project, string relative) {
+    return joinPath(emulatorProfilesRoot(project), relative);
+}
+
+string linuxPackagingRoot(string project) {
+    return joinPath(project, "packaging/linux");
+}
+
+string linuxLauncherBin(string project) {
+    return joinPath(linuxPackagingRoot(project), "bin");
+}
+
+string keymapsRoot(string project) {
+    return joinPath(project, "input/keymaps");
+}
+
+string keymapSourcePath(string project) {
+    return joinPath(keymapsRoot(project), "steam_deck.skm");
+}
+
+string homeDir() {
+    return Environment.get("SEMU_HOME", Environment.get("HOME", "."));
+}
+
+string systemdUserDir() {
+    return joinPath(homeDir(), ".config/systemd/user");
+}
+
+string applicationsDir() {
+    return joinPath(homeDir(), ".local/share/applications");
+}
+
+string expandProjectTemplate(string project, string value) {
+    string result = Strings.replace(value, "${project}", project);
+    result = Strings.replace(result, "${paths.project_roms}", romsRoot(project));
+    result = Strings.replace(result, "${paths.project_bios}", biosRoot(project));
+    result = Strings.replace(result, "${paths.project_saves}", joinPath(contentRoot(project), "saves"));
+    result = Strings.replace(result, "${paths.project_states}", joinPath(contentRoot(project), "states"));
+    result = Strings.replace(result, "${paths.project_screenshots}", joinPath(contentRoot(project), "screenshots"));
+    result = Strings.replace(result, "${paths.project_gamelists}", joinPath(contentRoot(project), "gamelists"));
+    return result;
+}
+
+JsonObject syncConfig(string project) {
+    string path = syncConfigPath(project);
+    if (!FileSystem.exists(path)) {
+        return JsonObject.parse("{}");
+    }
+    return JsonObject.readFile(path);
+}
+
+string syncString(string project, string key, string fallback) {
+    JsonObject config = syncConfig(project);
+    return expandProjectTemplate(project, config.getString(key, fallback));
+}
+
+bool syncBool(string project, string key, bool fallback) {
+    JsonObject config = syncConfig(project);
+    return config.getBool(key, fallback);
+}
+
+int syncInt(string project, string key, int fallback) {
+    JsonObject config = syncConfig(project);
+    return config.getInt(key, fallback);
+}
+
+string configuredRomsRoot(string project) {
+    return syncString(project, "roms_dir", "${paths.project_roms}");
+}
+
+Vector<string> declaredSystemIds() {
+    SystemCatalog catalog = systemCatalog();
+    return catalog.ids;
+}
+
+Vector<string> declaredRomDirs() {
+    SystemCatalog catalog = systemCatalog();
+    return catalog.romDirs;
+}
+
+Vector<string> controllerProfileFiles() {
+    return [
+        "emulators/profiles/RetroArch/retroarch.cfg.linux-backup",
+        "emulators/profiles/Dolphin/config/Profiles/GCPad/Steam Deck.ini",
+        "emulators/profiles/Dolphin/config/Profiles/Hotkeys/Steam Deck.ini",
+        "emulators/profiles/Dolphin/config/Profiles/Wiimote/Wiimote (SD).ini",
+        "emulators/profiles/Dolphin/config/Profiles/Wiimote/Wiimote + Classic Controller (SD).ini",
+        "emulators/profiles/Cemu/config/controllerProfiles/SteamInput-P1.xml",
+        "emulators/profiles/PCSX2/config/inputprofiles/Steam Deck.ini",
+        "emulators/profiles/Ryujinx/config/profiles/controller/Steam Virtual Controller.json"
+    ];
+}
+
+string esSettingsXmlWithPaths(string roms, string media, string themes) {
+    return "<?xml version=\"1.0\"?>\n"
+        + "<string name=\"ROMDirectory\" value=\"" + roms + "\" />\n"
+        + "<string name=\"MediaDirectory\" value=\"" + media + "\" />\n"
+        + "<string name=\"UserThemeDirectory\" value=\"" + themes + "\" />\n"
+        + "<string name=\"SaveGamelistsMode\" value=\"always\" />\n"
+        + "<string name=\"CreatePlaceholderSystemDirectories\" value=\"false\" />\n"
+        + "<string name=\"InputControllerType\" value=\"xbox\" />\n"
+        + "<string name=\"Theme\" value=\"slate-es-de\" />\n";
+}
+
+string esSettingsXmlForProject(string project) {
+    return esSettingsXmlWithPaths(
+        configuredRomsRoot(project),
+        joinPath(contentRoot(project), "downloaded_media"),
+        joinPath(contentRoot(project), "themes")
+    );
+}
+
+void ensureDir(string path) {
+    FileSystem.mkdirp(path);
+}

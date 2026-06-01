@@ -1,0 +1,99 @@
+bool syncStart(string project) {
+    bool ok = syncSetup(project);
+    if (!syncSystemctl("start", "semu-syncthing.service")) { ok = false; }
+    print(ok ? "OK sync start" : "MISSING sync start failed");
+    return ok;
+}
+
+bool syncStop(string project) {
+    bool ok = true;
+    if (!syncSystemctl("stop", "semu-sync-force.timer")) { ok = false; }
+    if (!syncSystemctl("stop", "semu-syncthing.service")) { ok = false; }
+    print(ok ? "OK sync stop" : "MISSING sync stop incomplete");
+    return ok;
+}
+
+bool syncAutostart(string project, bool enabled) {
+    writeSyncSystemdUnits(project);
+    bool ok = syncSystemctl("daemon-reload", "");
+    if (enabled) {
+        if (!syncSystemctl("enable", "semu-syncthing.service")) { ok = false; }
+        if (!syncSystemctl("enable", "semu-sync-force.timer")) { ok = false; }
+        print(ok ? "OK sync autostart enabled" : "MISSING sync autostart enable incomplete");
+    } else {
+        if (!syncSystemctl("disable", "semu-syncthing.service")) { ok = false; }
+        if (!syncSystemctl("disable", "semu-sync-force.timer")) { ok = false; }
+        print(ok ? "OK sync autostart disabled" : "MISSING sync autostart disable incomplete");
+    }
+    return ok;
+}
+
+bool syncForce(string project, string target) {
+    string apiKey = syncApiKey(project);
+    if (apiKey.len() == 0) {
+        print("MISSING syncthing API key; run sync setup/start first");
+        return false;
+    }
+    UnixShell shell = UnixShell();
+    string command = "curl -fsS -X POST -H " + ShellWords.quote("X-API-Key: " + apiKey)
+        + " " + ShellWords.quote(syncScanUrl(project, target));
+    ExecResult result = shell.runUnchecked(command);
+    if (result.ok()) {
+        print(f"OK sync force: {target}");
+        return true;
+    } else {
+        print(f"MISSING sync force failed: {target}");
+    }
+    return false;
+}
+
+void syncStatus(string project) {
+    print("Semu sync");
+    reportFile("sync_config", syncConfigPath(project));
+    reportFile("syncthing_config", syncConfigXmlPath(project));
+    reportFile("systemd_service", joinPath(systemdUserDir(), "semu-syncthing.service"));
+    reportFile("systemd_timer", joinPath(systemdUserDir(), "semu-sync-force.timer"));
+    print(commandExists("syncthing") ? "  OK syncthing: executable found" : "  MISSING syncthing: executable not found");
+    print(commandExists("syncthingtray") ? "  OK syncthingtray: executable found" : "  optional syncthingtray: executable not found");
+    print(commandExists("curl") ? "  OK curl: executable found" : "  MISSING curl: executable not found");
+    for id in syncFolderIds() {
+        string mark = syncFolderEnabled(project, id) ? "OK" : "optional";
+        print(f"  {mark} {id}: {syncFolderPath(project, id)}");
+    }
+}
+
+void syncTray(string project) {
+    UnixShell shell = UnixShell();
+    if (commandExists("syncthingtray")) {
+        shell.runUnchecked("syncthingtray >/dev/null 2>&1 &");
+        print("OK sync tray");
+    } else if (commandExists("flatpak")) {
+        shell.runUnchecked("flatpak run io.github.martchus.syncthingtray >/dev/null 2>&1 &");
+        print("OK sync tray flatpak");
+    } else {
+        print("MISSING syncthingtray");
+    }
+}
+
+void syncOpen(string project) {
+    UnixShell shell = UnixShell();
+    shell.runUnchecked("xdg-open " + ShellWords.quote("http://" + syncGuiAddress(project)) + " >/dev/null 2>&1 &");
+    print("OK sync open");
+}
+
+void doctorSync(string project) {
+    print("");
+    print("Sync");
+    reportFile("sync_config", syncConfigPath(project));
+    print(commandExists("syncthing") ? "  OK syncthing: executable found" : "  MISSING syncthing: executable not found");
+    print(commandExists("curl") ? "  OK curl: executable found" : "  MISSING curl: executable not found");
+    print(syncBool(project, "start_at_boot", true) ? "  OK start_at_boot: enabled" : "  optional start_at_boot: disabled");
+    print(syncBool(project, "tray", true) ? "  OK tray: enabled" : "  optional tray: disabled");
+    for id in syncFolderIds() {
+        string mark = syncFolderEnabled(project, id) ? "OK" : "optional";
+        string watch = syncFolderWatch(project, id) ? "watch" : "scan";
+        int interval = syncFolderRescan(project, id);
+        print(f"  {mark} {id}: {watch}, {interval}s, {syncFolderPath(project, id)}");
+    }
+}
+

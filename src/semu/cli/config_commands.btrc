@@ -1,0 +1,132 @@
+void printUsage() {
+    print("semu [manifest|bootstrap|doctor|deck|lifecycle|sync|config|apprun|steam-input|keymap|screenshot|sandbox|launcher|utils|e2e] [graph|payload-audit|n3ds-nocrypto|validate|render|install|setup|reconfigure|change|uninstall|reinstall|upgrade|status|force|capture|prepare|launch] [--project PATH] [--roms PATH] [--source PATH] [--output PATH] [--dest PATH] [--target manifest|retroarch|dolphin|pcsx2|steam-input] [--emulator NAME] [--hook HOOK] [--scratch PATH] [--action ID] [--command KEYS]");
+}
+int keymapCommand(CliArgs args) {
+    string mode = "validate";
+    if (args.count() > 1 && !args.get(1).startsWith("--")) {
+        mode = args.get(1);
+    }
+    string sourcePath = args.valueAfter("--source", "");
+    string project = args.valueAfter("--project", "");
+    string source = defaultKeymapSource();
+    if (sourcePath.len() > 0) {
+        if (!FileSystem.exists(sourcePath)) {
+            print(f"error 0:0 keymap source not found: {sourcePath}");
+            return 1;
+        }
+        source = FileSystem.readText(sourcePath);
+    } else if (project.len() > 0 && FileSystem.exists(keymapSourcePath(project))) {
+        source = FileSystem.readText(keymapSourcePath(project));
+    }
+    KeymapErrors errors = KeymapErrors();
+    KeymapIr ir = compileKeymap(source, errors);
+    if (mode.equals("validate")) {
+        if (errors.count() == 0) {
+            print("OK keymap steam_deck");
+            return 0;
+        }
+        for (int i = 0; i < errors.count(); i++) {
+            print(f"{errors.levels.get(i)} {errors.lines.get(i)}:{errors.columns.get(i)} {errors.messages.get(i)}");
+        }
+        return 1;
+    }
+    if (mode.equals("render")) {
+        if (errors.count() > 0) {
+            for (int i = 0; i < errors.count(); i++) {
+                print(f"{errors.levels.get(i)} {errors.lines.get(i)}:{errors.columns.get(i)} {errors.messages.get(i)}");
+            }
+            return 1;
+        }
+        string target = args.valueAfter("--target", "manifest");
+        if (!isKeymapTarget(target)) {
+            print(f"error 0:0 unknown keymap target '{target}'");
+            return 1;
+        }
+        string rendered = renderKeymap(ir, target);
+        string output = args.valueAfter("--output", "");
+        if (output.len() > 0) {
+            FileSystem.writeText(output, rendered);
+        } else {
+            print(rendered);
+        }
+        return 0;
+    }
+    printUsage();
+    return 1;
+}
+
+int screenshotCommand(CliArgs args, string project) {
+    string mode = "status";
+    if (args.count() > 1 && !args.get(1).startsWith("--")) {
+        mode = args.get(1);
+    }
+    if (mode.equals("setup") || mode.equals("defaults")) {
+        writeScreenshotDefaults(project);
+        print(f"OK screenshot defaults: {screenshotConfigPath(project)}");
+        return 0;
+    }
+    if (mode.equals("status")) {
+        doctorScreenshotHooks(project);
+        return 0;
+    }
+    if (mode.equals("validate")) {
+        doctorScreenshotHooks(project);
+        return screenshotConfiguredTool(project).len() > 0 ? 0 : 1;
+    }
+    if (mode.equals("capture")) {
+        string emulator = args.valueAfter("--emulator", "");
+        if (emulator.len() == 0 && args.count() > 2 && !args.get(2).startsWith("--")) {
+            emulator = args.get(2);
+        }
+        if (emulator.len() == 0) {
+            print("error 0:0 screenshot capture needs --emulator NAME");
+            return 1;
+        }
+        string hook = args.valueAfter("--hook", "manual_visual_checkpoint");
+        string output = args.valueAfter("--output", screenshotCapturePath(project, emulator, hook));
+        return screenshotCaptureTo(project, emulator, hook, output) ? 0 : 1;
+    }
+    printUsage();
+    return 1;
+}
+
+int syncCommand(CliArgs args, string project) {
+    string mode = "status";
+    if (args.count() > 1 && !args.get(1).startsWith("--")) {
+        mode = args.get(1);
+    }
+    if (mode.equals("setup")) {
+        return syncSetup(project) ? 0 : 1;
+    }
+    if (mode.equals("start")) {
+        return syncStart(project) ? 0 : 1;
+    }
+    if (mode.equals("stop")) {
+        return syncStop(project) ? 0 : 1;
+    }
+    if (mode.equals("status")) {
+        syncStatus(project);
+        return 0;
+    }
+    if (mode.equals("force") || mode.equals("now")) {
+        string target = "all";
+        if (args.count() > 2 && !args.get(2).startsWith("--")) {
+            target = args.get(2);
+        }
+        return syncForce(project, target) ? 0 : 1;
+    }
+    if (mode.equals("tray")) {
+        syncTray(project);
+        return 0;
+    }
+    if (mode.equals("open")) {
+        syncOpen(project);
+        return 0;
+    }
+    if (mode.equals("autostart")) {
+        string action = args.count() > 2 ? args.get(2) : "enable";
+        return syncAutostart(project, !action.equals("disable")) ? 0 : 1;
+    }
+    printUsage();
+    return 1;
+}

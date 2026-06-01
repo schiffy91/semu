@@ -12,7 +12,7 @@ confidence levels.
 - `make e2e-graph-status`, `make e2e-graph-list`, and
   `make e2e-graph-coverage`: graph inspection and operation-coverage checks.
 - `make verify`: BTRC manifest determinism, keymap compiler/renderers, doctor
-  invariants, launcher shim syntax, runtime no-Python guard, BTRC sandbox
+  invariants, launcher shim syntax, BTRC runtime source guard, BTRC sandbox
   preparation, BTRC Linux launcher routing, BTRC lifecycle install/reconfigure/
   change/uninstall/reinstall/upgrade smoke, fake AppImage assembly with bundled
   Nix-store mount wiring, routed Nix wrapper behavior, generated-C smoke, and
@@ -30,14 +30,14 @@ confidence levels.
   `HOME`/`XDG_*`, seed copying, and RetroArch `--config` injection.
 - `make appimage-smoke`: fake ES-DE/fake appimagetool AppImage assembly check
   that proves `--nix-package`, copied routed launchers, AppRun bubblewrap
-  `/nix/store` mount args, CLI passthrough, no launch-time setup mutation,
+  `/nix/store` mount args, CLI passthrough, stable launch-time filesystem,
   normal AppRun ES-DE launch, and `SEMU_LAUNCHER_BIN` bootstrap output.
 - `make bazzite-desktop-vm-smoke`: Bazzite Desktop live ISO under QEMU TCG with
   checksum verification, Basic Graphics boot, and high-threshold framebuffer
   validation of the KDE live environment.
 - `make bazzite-vm-smoke`: Bazzite Deck ISO boot path under QEMU TCG. This
-  validates firmware/GRUB/live-image bootability, but no-GPU TCG currently only
-  reaches the Deck splash.
+  validates firmware/GRUB/live-image bootability through the software-rendered
+  Deck splash path.
 
 ## Graph Usage
 
@@ -61,7 +61,7 @@ state hashes, skip/resume behavior, operation coverage, and a payload audit that
 fails if tracked ROMs, BIOS, emulator runtime directories, VM disks, or similar
 licensed artifacts would be upstreamed.
 
-## Not Done Yet
+## Next Verification Passes
 
 - Physical Steam Deck pass: Neptune trackpads, Steam Input template visibility,
   left-trackpad radial menu, unified save/load/quit hotkeys inside each emulator,
@@ -75,19 +75,18 @@ licensed artifacts would be upstreamed.
   ES-DE opens under Gamescope, ROM location override persists, Syncthing
   commands work, and routed launchers start real emulator binaries.
 - True multi-device Syncthing: current tests cover config, systemd units, local
-  service/API, and force-rescan commands. They do not pair with a second real
-  device and verify conflict/resolution behavior.
+  service/API, and force-rescan commands. A second real device pass should
+  verify conflict/resolution behavior.
 - User-owned BIOS coverage: doctor declares required BIOS/firmware and reports
-  missing files, but PSX, PS2, and Switch BIOS/key files are not present in this
-  repo and cannot be bundled.
+  missing files. The PSX, PS2, and Switch BIOS/key checks use user-provided
+  files.
 
 ## AppImage Scope
 
 The AppImage path bundles ES-DE, AppRun, the compiled BTRC `semu` CLI,
 ES-DE find rules, launcher scripts, and optionally a Nix closure copied into
-the AppDir with `--nix-package`. ROMs and BIOS remain user-owned and are not
-bundled. Flatpak launchers still require host Flatpak emulator installation
-when no routed Nix payload is bundled.
+the AppDir with `--nix-package`. ROMs and BIOS remain user-owned. Flatpak
+launchers are the host-backed route for systems outside the routed Nix payload.
 
 Linux flake outputs now expose routed Nix emulator wrappers:
 

@@ -1,0 +1,84 @@
+int appRunCommand(CliArgs args, string project) {
+    string mode = "prepare";
+    if (args.count() > 1 && !args.get(1).startsWith("--")) {
+        mode = args.get(1);
+    }
+    if (mode.equals("prepare")) {
+        writeEsDeRuntimeFiles(project, homeDir());
+        print("OK apprun prepare");
+        return 0;
+    }
+    printUsage();
+    return 1;
+}
+
+string steamInputTemplateDir(CliArgs args) {
+    return args.valueAfter(
+        "--dest",
+        Environment.get("SEMU_STEAM_INPUT_DIR", joinPath(homeDir(), ".steam/steam/controller_base/templates"))
+    );
+}
+
+void copySteamInputTemplate(string project, string destination, string name) {
+    string source = joinPath(project, "input/steam-input/" + name);
+    FileSystem.writeText(joinPath(destination, name), FileSystem.readText(source));
+}
+
+int steamInputCommand(CliArgs args, string project) {
+    string mode = "status";
+    if (args.count() > 1 && !args.get(1).startsWith("--")) {
+        mode = args.get(1);
+    }
+    if (mode.equals("install") || mode.equals("copy")) {
+        string destination = steamInputTemplateDir(args);
+        writeSteamInputTemplates(project);
+        ensureDir(destination);
+        copySteamInputTemplate(project, destination, "neptune-simple.vdf");
+        copySteamInputTemplate(project, destination, "neptune-full.vdf");
+        print(f"OK steam-input templates: {destination}");
+        return 0;
+    }
+    if (mode.equals("status") || mode.equals("validate")) {
+        writeSteamInputTemplates(project);
+        reportSteamInputTemplate("neptune_simple", joinPath(project, "input/steam-input/neptune-simple.vdf"));
+        reportSteamInputTemplate("neptune_full", joinPath(project, "input/steam-input/neptune-full.vdf"));
+        return 0;
+    }
+    printUsage();
+    return 1;
+}
+
+int configCommand(CliArgs args, string project) {
+    string mode = "show";
+    if (args.count() > 1 && !args.get(1).startsWith("--")) {
+        mode = args.get(1);
+    }
+    if (mode.equals("env")) {
+        print("export SEMU_PROJECT_DIR=" + ShellWords.quote(project));
+        print("export SEMU_ROMS_DIR=" + ShellWords.quote(configuredRomsRoot(project)));
+        print("export SEMU_BIN=" + ShellWords.quote(serviceExecutable()));
+        return 0;
+    }
+    if (mode.equals("set-roms")) {
+        string roms = args.valueAfter("--roms", "");
+        if (roms.len() == 0 && args.count() > 2) {
+            roms = args.get(2);
+        }
+        if (roms.len() == 0) {
+            print("error 0:0 set-roms needs --roms PATH");
+            return 1;
+        }
+        writeSyncDefaults(project, roms);
+        ensureRomDirsAt(roms);
+        writeEsDeFiles(project);
+        print(f"OK roms_dir: {roms}");
+        return 0;
+    }
+    if (mode.equals("show")) {
+        reportFile("sync_config", syncConfigPath(project));
+        print(f"  roms_dir: {configuredRomsRoot(project)}");
+        return 0;
+    }
+    printUsage();
+    return 1;
+}

@@ -1,0 +1,41 @@
+void bootstrapSteamDeck(string project) {
+    writeSyncDefaults(project, "");
+    ensureDir(contentRoot(project));
+    ensureRomDirsAt(configuredRomsRoot(project));
+    if (!configuredRomsRoot(project).equals(romsRoot(project))) {
+        ensureRomDirsAt(romsRoot(project));
+    }
+    ensureDir(biosRoot(project));
+    ensureDir(joinPath(contentRoot(project), "saves"));
+    ensureDir(joinPath(contentRoot(project), "states"));
+    ensureDir(joinPath(contentRoot(project), "screenshots"));
+    ensureDir(joinPath(contentRoot(project), "downloaded_media"));
+    ensureDir(joinPath(contentRoot(project), "gamelists"));
+    ensureDir(joinPath(contentRoot(project), "themes"));
+    ensureDir(customSystemsRoot(project));
+
+    Vector<string> ids = declaredSystemIds();
+    for id in ids {
+        ensureDir(joinPath(joinPath(contentRoot(project), "downloaded_media"), id));
+        ensureDir(joinPath(joinPath(contentRoot(project), "gamelists"), id));
+    }
+
+    ensureDir(joinPath(biosRoot(project), "ps2"));
+    ensureDir(joinPath(biosRoot(project), "switch"));
+    ensureDir(joinPath(biosRoot(project), "dc"));
+    ensureDir(emulatorProfilePath(project, "Cemu/data"));
+    ensureDir(joinPath(project, "input/steam-input"));
+
+    seedKeymapDefaults(project);
+    seedEmulatorDefaults(project);
+    writeSteamInputTemplates(project);
+    writeScreenshotDefaults(project);
+    writeGeneratedManifest(joinPath(project, "semu.json"));
+    writeEsDeFiles(project);
+
+    print(f"Bootstrapped Steam Deck/Linux content at {contentRoot(project)}");
+    print(f"  roms:    {romsRoot(project)}");
+    print(f"  bios:    {biosRoot(project)}");
+    print(f"  systems: {joinPath(customSystemsRoot(project), \"es_systems.xml\")}");
+}
+

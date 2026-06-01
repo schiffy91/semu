@@ -3,7 +3,7 @@
 	"version"		"3"
 	"revision"		"1"
 	"title"		"Semu: Steam Deck - Neptune FULL"
-	"description"		"Steam Deck controls for Semu: no gyro, right pad mouse, left pad hotkeys."
+	"description"		"Steam Deck controls for Semu: gyro opt-in, right pad mouse, left pad hotkeys."
 	"creator"		"Semu"
 	"controller_type"		"controller_neptune"
 	"actions"

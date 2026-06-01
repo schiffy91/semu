@@ -1,0 +1,32 @@
+string jsonQ(string value) {
+    return "\"" + JsonObject.escape(value) + "\"";
+}
+
+string jsonField(string key, string value) {
+    return jsonQ(key) + ": " + value;
+}
+
+string jsonStrField(string key, string value) {
+    return jsonField(key, jsonQ(value));
+}
+
+string jsonBoolField(string key, bool value) {
+    return jsonField(key, value ? "true" : "false");
+}
+
+string jsonObject(Vector<string> fields) {
+    return "{" + fields.join(", ") + "}";
+}
+
+string jsonArray(Vector<string> values) {
+    return "[" + values.join(", ") + "]";
+}
+
+string jsonStringArray(Vector<string> values) {
+    Vector<string> quoted = [];
+    for value in values {
+        quoted.push(jsonQ(value));
+    }
+    return jsonArray(quoted);
+}
+

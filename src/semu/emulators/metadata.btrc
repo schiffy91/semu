@@ -1,0 +1,76 @@
+Vector<string> linuxLauncherNames() {
+    return [
+        "RETROARCH",
+        "DOLPHIN",
+        "PPSSPP",
+        "FLYCAST",
+        "AZAHAR",
+        "GOPHER64",
+        "MELONDS",
+        "PCSX2",
+        "CEMU",
+        "RYUJINX"
+    ];
+}
+
+Vector<string> lowercaseValues(Vector<string> values) {
+    Vector<string> out = [];
+    for value in values {
+        out.push(value.toLower());
+    }
+    return out;
+}
+
+string semuLauncherName(string emulator) {
+    return "semu-" + emulator.toLower();
+}
+
+Vector<string> retroarchCoreSearchPaths() {
+    return [
+        "/usr/lib/x86_64-linux-gnu/libretro",
+        "/usr/lib/aarch64-linux-gnu/libretro",
+        "/usr/lib/libretro"
+    ];
+}
+
+string launcherEntries() {
+    Vector<string> linuxEmulatorFields = [];
+    for emulator in linuxLauncherNames() {
+        linuxEmulatorFields.push(jsonStrField(emulator, "${project}/packaging/linux/bin/" + semuLauncherName(emulator)));
+    }
+    string linux = jsonObject([
+        jsonField("emulators", jsonObject(linuxEmulatorFields)),
+        jsonField("cores", jsonObject([
+            jsonField("RETROARCH", jsonStringArray(retroarchCoreSearchPaths()))
+        ])),
+        jsonField("flatpaks", jsonObject([
+            jsonStrField("org.DolphinEmu.dolphin-emu", "GameCube/Wii"),
+            jsonStrField("org.ppsspp.PPSSPP", "PSP"),
+            jsonStrField("org.flycast.Flycast", "Dreamcast"),
+            jsonStrField("org.azahar_emu.Azahar", "Nintendo 3DS"),
+            jsonStrField("io.github.gopher64.gopher64", "Nintendo 64"),
+            jsonStrField("net.kuribo64.melonDS", "Nintendo DS"),
+            jsonStrField("net.pcsx2.PCSX2", "PlayStation 2"),
+            jsonStrField("info.cemu.Cemu", "Wii U"),
+            jsonStrField("org.ryujinx.Ryujinx", "Nintendo Switch")
+        ]))
+    ]);
+    string macos = jsonObject([
+        jsonField("emulators", jsonObject([
+            jsonStrField("RETROARCH", "${project}/result/bin/retroarch"),
+            jsonStrField("AZAHAR", "${project}/result/Applications/azahar.app/Contents/MacOS/azahar"),
+            jsonStrField("DOLPHIN", "${project}/result/Applications/Dolphin.app/Contents/MacOS/Dolphin"),
+            jsonStrField("PCSX2", "${project}/result/Applications/PCSX2.app/Contents/MacOS/PCSX2"),
+            jsonStrField("CEMU", "${project}/result/Applications/Cemu.app/Contents/MacOS/Cemu"),
+            jsonStrField("RYUJINX", "~/.local/share/ryujinx-app/Ryujinx.app/Contents/MacOS/Ryujinx"),
+            jsonStrField("ARES", "${project}/result/Applications/ares.app/Contents/MacOS/ares")
+        ])),
+        jsonField("cores", jsonObject([
+            jsonField("RETROARCH", jsonStringArray(["${project}/result/cores"]))
+        ]))
+    ]);
+    return jsonObject([
+        jsonField("linux", linux),
+        jsonField("macos", macos)
+    ]);
+}

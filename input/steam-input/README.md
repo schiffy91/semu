@@ -1,9 +1,9 @@
 # Steam Input Templates
 
-The Steam Deck default is declared in `src/semu.btrc` and generated into
-`semu.json`:
+The Steam Deck default is declared under `src/semu/input/` and
+`src/semu/bootstrap/`, then generated into `semu.json`:
 
-- gyro disabled
+- gyro opt-in
 - right trackpad as mouse
 - left trackpad as the radial hotkey surface
 - `View` as the hotkey button (`HKB`), with `L4`/`R4` optional in exported

@@ -1,0 +1,116 @@
+string syncConfigXmlPath(string project) {
+    return joinPath(syncthingHome(project), "config.xml");
+}
+
+string findXmlValue(string text, string startTag, string endTag) {
+    int start = text.indexOf(startTag);
+    if (start < 0) { return ""; }
+    start = start + startTag.len();
+    int end = Strings.find(text, endTag, start);
+    if (end < 0) { return ""; }
+    return text.substring(start, end - start);
+}
+
+string syncApiKey(string project) {
+    string path = syncConfigXmlPath(project);
+    if (!FileSystem.exists(path)) { return ""; }
+    return findXmlValue(FileSystem.readText(path), "<apikey>", "</apikey>");
+}
+
+string syncScanUrl(string project, string target) {
+    string url = "http://" + syncGuiAddress(project) + "/rest/db/scan";
+    if (!target.equals("all") && target.len() > 0) {
+        url = url + "?folder=semu-" + target;
+    }
+    return url;
+}
+
+void syncGenerateIfNeeded(string project) {
+    if (FileSystem.exists(syncConfigXmlPath(project))) {
+        return;
+    }
+    UnixShell shell = UnixShell();
+    shell.runUnchecked("syncthing generate -H " + ShellWords.quote(syncthingHome(project)) + " --no-port-probing >/dev/null 2>&1");
+}
+
+bool syncSystemctl(string verb, string unit) {
+    UnixShell shell = UnixShell();
+    ExecResult result = shell.runUnchecked("systemctl --user " + verb + " " + unit + " >/dev/null 2>&1");
+    return result.ok();
+}
+
+bool syncWaitForApi(string project) {
+    UnixShell shell = UnixShell();
+    string url = "http://" + syncGuiAddress(project) + "/rest/noauth/health";
+    for (int i = 0; i < 20; i++) {
+        ExecResult result = shell.runUnchecked("curl -fsS " + ShellWords.quote(url) + " >/dev/null 2>&1");
+        if (result.ok()) { return true; }
+        shell.runUnchecked("sleep 1");
+    }
+    return false;
+}
+
+bool syncAddFolder(string project, string id) {
+    if (!syncFolderEnabled(project, id)) { return true; }
+    ensureDir(syncFolderPath(project, id));
+    string apiKey = syncApiKey(project);
+    if (apiKey.len() == 0) { return false; }
+    UnixShell shell = UnixShell();
+    string folderId = "semu-" + id;
+    string cliPrefix = "syncthing cli -H " + ShellWords.quote(syncthingHome(project))
+        + " --gui-address " + ShellWords.quote(syncGuiAddress(project))
+        + " --gui-apikey " + ShellWords.quote(apiKey);
+    ExecResult existing = shell.runUnchecked(
+        cliPrefix + " config folders list | grep -Fx " + ShellWords.quote(folderId) + " >/dev/null 2>&1"
+    );
+    if (existing.ok()) { return true; }
+    string command = "syncthing cli -H " + ShellWords.quote(syncthingHome(project))
+        + " --gui-address " + ShellWords.quote(syncGuiAddress(project))
+        + " --gui-apikey " + ShellWords.quote(apiKey)
+        + " config folders add"
+        + " --id " + ShellWords.quote(folderId)
+        + " --label " + ShellWords.quote(syncFolderLabel(id))
+        + " --path " + ShellWords.quote(syncFolderPath(project, id))
+        + " --type sendreceive"
+        + " --rescan-intervals " + Strings.fromInt(syncFolderRescan(project, id));
+    if (syncFolderWatch(project, id)) {
+        command = command + " --fswatcher-enabled";
+    }
+    ExecResult result = shell.runUnchecked(command + " >/dev/null 2>&1");
+    return result.ok();
+}
+
+bool syncConfigureFolders(string project) {
+    bool ok = true;
+    for id in syncFolderIds() {
+        if (!syncAddFolder(project, id)) { ok = false; }
+    }
+    return ok;
+}
+
+bool syncSetup(string project) {
+    writeSyncDefaults(project, "");
+    writeSyncSystemdUnits(project);
+    if (!commandExists("syncthing")) {
+        print("MISSING syncthing: install package or use bundled Semu");
+        return false;
+    }
+    syncGenerateIfNeeded(project);
+    bool ok = syncSystemctl("daemon-reload", "");
+    if (syncBool(project, "start_at_boot", true)) {
+        if (!syncSystemctl("enable", "semu-syncthing.service")) { ok = false; }
+        if (!syncSystemctl("enable", "semu-sync-force.timer")) { ok = false; }
+    }
+    if (syncBool(project, "enabled", true)) {
+        if (!syncSystemctl("start", "semu-syncthing.service")) { ok = false; }
+        if (!syncSystemctl("start", "semu-sync-force.timer")) { ok = false; }
+        if (!syncWaitForApi(project)) { ok = false; }
+        if (!syncConfigureFolders(project)) { ok = false; }
+    }
+    if (ok) {
+        print(f"OK sync setup: {syncConfigPath(project)}");
+    } else {
+        print(f"MISSING sync setup incomplete: {syncConfigPath(project)}");
+    }
+    return ok;
+}

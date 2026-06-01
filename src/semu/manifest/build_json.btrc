@@ -1,0 +1,20 @@
+string systemEntries() {
+    SystemCatalog catalog = systemCatalog();
+    return catalog.systemsJson();
+}
+
+string buildJson() {
+    return jsonObject([
+        jsonField("schema_version", "1"),
+        jsonField("paths", manifestPaths()),
+        jsonField("es_de", esDe()),
+        jsonField("input", inputStack()),
+        jsonField("controller_profiles", controllerProfiles()),
+        jsonField("keymaps", keymapsJson()),
+        jsonField("screenshot_verification", screenshotVerificationProfile()),
+        jsonField("sync", syncProfile()),
+        jsonField("bios", biosEntries()),
+        jsonField("launchers", launcherEntries()),
+        jsonField("systems", systemEntries())
+    ]);
+}

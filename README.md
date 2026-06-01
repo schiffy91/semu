@@ -4,13 +4,11 @@ Semu is a Steam Deck-first emulation environment manager. Its goal is
 RetroDeck-like plug-and-play behavior with a smaller, declarative core:
 systems, launchers, controller defaults, keymaps, ROM paths, BIOS checks,
 Syncthing integration, screenshot hooks, and packaging metadata all flow from
-the BTRC runtime in `src/semu.btrc`.
+the BTRC runtime in `src/semu.btrc` and `src/semu/`.
 
-The runtime source of truth is BTRC, not Python and not per-emulator symlink
-manifests. `setup.py`, `setup.json`, `symlinks.json`, and the old Python
-find-rules generator have been removed. The old Python test harness and 3DS
-NoCrypto helper have been retired; the remaining utility behavior lives in
-`src/semu.btrc`.
+The BTRC source tree is the runtime source of truth for setup, install,
+reconfigure, sync, screenshot, keymap, launcher, lifecycle, test, and utility
+behavior. Generated artifacts and packaging inputs are derived from that source.
 
 ## Current Status
 
@@ -42,17 +40,18 @@ with actual emulator binaries, and a true two-device Syncthing conflict test.
 - BTRC runtime logic only for install, bootstrap, doctor, keymaps, sync,
   screenshots, lifecycle, sandboxing, and launcher routing.
 - Nix for reproducible emulator builds and AppImage payload assembly.
-- No host symlink farm for Linux routed emulators. Routed wrappers place emulator
-  state under `.semu/appimage-state/<emulator>` via `HOME` and `XDG_*`.
+- Routed wrappers place Linux emulator state under
+  `.semu/appimage-state/<emulator>` via `HOME` and `XDG_*`.
 - Small abstractions: controller model, backend, emitted input, emulator keymap.
-- KISS over framework layering. Generated files are allowed, duplicate sources
-  of truth are not.
+- KISS over framework layering. Generated files are allowed; BTRC remains the
+  single runtime source of truth.
 
 ## Repository Layout
 
 | Path | Purpose |
 |---|---|
-| `src/semu.btrc` | Canonical BTRC runtime and manifest generator. |
+| `src/semu.btrc` | Small BTRC entrypoint and command dispatcher. |
+| `src/semu/` | BTRC runtime modules grouped by manifest, input, emulators, sync, verification, utilities, and tests. |
 | `semu.json` | Generated JSON manifest for UI/editor/runtime consumers. |
 | `generated/semu.c` | Generated C snapshot compiled by Nix packages. |
 | `emulators/profiles/` | Curated emulator profile defaults and user-owned per-emulator config targets. |
@@ -69,8 +68,8 @@ with actual emulator binaries, and a true two-device Syncthing conflict test.
 | `ES-DE/ES-DE/` | User content root for ROMs, BIOS, saves, states, media, themes. |
 | `.semu/` | Runtime state created by launcher and AppImage routes. |
 
-Do not hand-edit `semu.json` or `generated/semu.c`. Edit
-`src/semu.btrc`, then regenerate.
+Edit the BTRC sources under `src/`, then regenerate `semu.json` and
+`generated/semu.c`.
 
 ## Steam Deck Quick Start
 
@@ -183,7 +182,7 @@ That state path is included in the Syncthing folder declarations as
 
 The AppImage path wraps ES-DE, AppRun, the compiled BTRC CLI, Linux launcher
 shims, and optionally a copied Nix closure for routed emulator wrappers.
-ROMs and BIOS are never bundled.
+ROMs and BIOS stay in user-owned project folders.
 
 ```sh
 nix build .#default
@@ -197,15 +196,16 @@ packaging/linux/build-appimage.sh \
 Why bubblewrap is used:
 
 - Nix-built binaries reference absolute `/nix/store/...` paths.
-- An AppImage cannot rewrite those paths safely.
-- `packaging/linux/AppRun` detects a bundled `nix/store` payload and re-execs through
-  bubblewrap with that payload mounted read-only at `/nix/store`.
+- AppRun preserves those paths by mounting a bundled Nix store payload at the
+  expected `/nix/store` location.
+- `packaging/linux/AppRun` detects a bundled `nix/store` payload and re-execs
+  through bubblewrap with that payload mounted read-only at `/nix/store`.
 
 Fallback behavior:
 
 - If a routed Nix binary exists inside the AppImage, ES-DE find rules point at it.
-- If no routed Nix payload is bundled, Flatpak-backed launchers remain the host
-  fallback for supported standalone emulators.
+- Flatpak-backed launchers are the host fallback for supported standalone
+  emulators when the AppImage is built without a routed Nix payload.
 
 Current automated tests validate AppImage assembly logic with fake ES-DE and
 fake appimagetool. A real SteamOS/Game Mode AppImage pass is still listed in
@@ -213,9 +213,9 @@ fake appimagetool. A real SteamOS/Game Mode AppImage pass is still listed in
 
 ## Declarative Configuration
 
-### `src/semu.btrc`
+### `src/semu.btrc` And `src/semu/`
 
-This is the canonical runtime file. It defines:
+This is the canonical BTRC runtime tree. It defines:
 
 - JSON manifest generation.
 - Systems catalog and ES-DE commands.
@@ -241,8 +241,8 @@ build/semu manifest --output semu.json
 ### `semu.json`
 
 Generated manifest used by tests, UI work, and external tooling. It should be
-treated as a build artifact even though it is committed for consumers that do
-not compile BTRC locally.
+treated as a build artifact even though it is committed for tooling that reads
+the manifest directly.
 
 Top-level sections include:
 
@@ -341,7 +341,7 @@ build/semu screenshot capture --project "$PWD" --emulator retroarch --hook manua
 ```
 
 Screenshot hooks are deliberately declarative so VM/Deck verification can
-toggle them without editing launcher code.
+toggle them while launcher code stays stable.
 
 ## Controller Model
 
@@ -356,12 +356,12 @@ Declared controller models:
 
 | ID | Layout | Preferred Backend | Gyro Policy |
 |---|---|---|---|
-| `steam_deck` | Xbox-like Deck layout | `inputplumber` | disabled by default |
-| `steam_controller` | Steam Controller | `inputplumber` | disabled by default |
-| `xbox_xinput` | Xbox/XInput | `uinput` | not available |
-| `dualshock4` | PlayStation | `uinput` | disabled by default |
-| `dualsense` | PlayStation | `uinput` | disabled by default |
-| `switch_pro` | Nintendo | `uinput` | disabled by default |
+| `steam_deck` | Xbox-like Deck layout | `inputplumber` | opt-in |
+| `steam_controller` | Steam Controller | `inputplumber` | opt-in |
+| `xbox_xinput` | Xbox/XInput | `uinput` | hardware absent |
+| `dualshock4` | PlayStation | `uinput` | opt-in |
+| `dualsense` | PlayStation | `uinput` | opt-in |
+| `switch_pro` | Nintendo | `uinput` | opt-in |
 
 Declared backends:
 
@@ -423,13 +423,14 @@ Default hotkeys:
 | `wiiu` | Nintendo Wii U | `wiiu` | Cemu |
 | `switch` | Nintendo Switch | `switch` | Ryujinx |
 
-Supported extensions are declared per system in `src/semu.btrc` and emitted
+Supported extensions are declared per system in `src/semu/manifest/` and emitted
 into `semu.json` and ES-DE systems XML.
 
 ## BIOS And Firmware
 
-Semu does not bundle BIOS, firmware, keys, copyrighted ROMs, or scraped
-media. Place user-owned files in the declared locations and run `doctor`.
+Semu expects BIOS, firmware, keys, ROMs, and scraped media to live in
+user-owned project folders. Place those files in the declared locations and run
+`doctor`.
 
 | ID | System | Required | Files | Target |
 |---|---|---:|---|---|
@@ -443,11 +444,11 @@ media. Place user-owned files in the declared locations and run `doctor`.
 
 - `OK`: NoCrypto flag is already set.
 - `NEEDS_FIX`: content looks decrypted but NoCrypto flag is missing.
-- `ENCRYPTED`: content does not look decrypted and must be redumped/decrypted.
+- `ENCRYPTED`: content is encrypted and should be redumped/decrypted.
 - `INVALID`: missing or malformed NCSD/NCCH headers.
 
-The BTRC utility can fix the NoCrypto flag on already-decrypted `.3ds`/`.cci`
-files. It does not perform full AES decryption.
+The BTRC utility in `src/semu/utils/n3ds_nocrypto.btrc` fixes the NoCrypto flag
+on already-decrypted `.3ds`/`.cci` files.
 
 ```sh
 build/semu utils n3ds-nocrypto ROMs/n3ds --check
@@ -632,38 +633,37 @@ make verify
 
 ### BTRC Compiler Dependency
 
-Normal Nix builds compile `generated/semu.c` and do not need a BTRC
-compiler checkout. The flake exposes a local `.#btrcpy` wrapper backed by the
-`btrc` input. Development builds use that flake-pinned compiler by default, so
-fresh checkouts can regenerate artifacts without an adjacent BTRC checkout.
+Normal Nix builds compile the committed `generated/semu.c` snapshot. The flake
+exposes a local `.#btrcpy` wrapper backed by the `btrc` input. Development
+builds use that flake-pinned compiler by default, so fresh checkouts can
+regenerate artifacts from the pinned compiler.
 
 ```make
 BTRC_FLAKE ?=
 BTRC_USE_FLAKE ?= 1
 ```
 
-That keeps the production package independent from a live compiler worktree. To
-test unpublished BTRC compiler changes, override the flake input explicitly:
+That keeps the production package tied to committed generated C while BTRC
+development remains explicit. To test unpublished BTRC compiler changes,
+override the flake input:
 
 ```sh
 make btrc-build BTRC_FLAKE=path:/absolute/path/to/btrc
 ```
 
-The legacy local checkout escape hatch is still available:
+The local checkout override is available for compiler worktree testing:
 
 ```sh
 make btrc-build BTRC_USE_FLAKE=0 BTRC_ROOT=/absolute/path/to/btrc
 ```
 
-I would not make BTRC a git submodule right now. A submodule would pin the
-compiler source, but it would also add nested git friction to the Steam
-Deck/user-facing repo and would not help normal users because they build from
-the generated C snapshot. The cleaner long-term options are:
+The current dependency model keeps BTRC in the flake input and keeps Semu
+focused on generated runtime artifacts. Long-term options:
 
 - keep `BTRC_FLAKE` as the normal local development override;
 - keep `inputs.btrc` pinned to a known-good BTRC commit;
-- only add a submodule under something like `vendor/btrc` if offline compiler
-  hacking inside this repo becomes more important than repository simplicity.
+- add a `vendor/btrc` submodule only for offline compiler development inside
+  this repo.
 
 Run VM/deck-oriented checks:
 
@@ -686,34 +686,24 @@ make bazzite-desktop-vm-smoke
 - BTRC 3DS NoCrypto utility smoke.
 - AppImage smoke wiring.
 - Nix routed wrapper smoke.
-- Runtime no-Python guard for Linux/Nix runtime paths.
+- BTRC runtime source guard for Linux/Nix runtime paths.
 - Generated-C smoke tests.
 - `git diff --check`.
 
-## Removed Legacy Path
+## Runtime Ownership
 
-The following old path is gone:
-
-- `setup.py`
-- `setup.json`
-- per-emulator `symlinks.json`
-- `generate_find_rules.py`
-- stale `docs/phase*.md`
-- tests that only exercised the old Python setup/symlink manager
-- the old Python 3DS NoCrypto utility
-
-Do not reintroduce these as runtime dependencies. New install, setup,
-reconfigure, sync, screenshot, keymap, launcher, and lifecycle behavior belongs
-in `src/semu.btrc`.
+Install, setup, reconfigure, sync, screenshot, keymap, launcher, lifecycle,
+tests, and utility behavior belongs in the BTRC source tree under `src/`.
+Packaging, generated manifests, generated C, Steam Input templates, and tests
+consume that BTRC-owned runtime model.
 
 ## Known Gaps
 
 See `tests/E2E.md` for the active verification matrix. The short version:
 
-- Physical Steam Deck Game Mode validation is still required.
-- Real AppImage execution on SteamOS with actual ES-DE and emulator binaries is
-  still required.
-- Installed Bazzite VM verification is not yet complete.
-- Two-device Syncthing conflict/resolution testing is not yet complete.
-- A UI editor for `input/keymaps/steam_deck.skm`, `sync/sync.json`, and
-  `verification/screenshots.json` is still future work.
+- Physical Steam Deck Game Mode validation.
+- Real AppImage execution on SteamOS with actual ES-DE and emulator binaries.
+- Installed Bazzite VM verification.
+- Two-device Syncthing conflict/resolution testing.
+- UI editor for `input/keymaps/steam_deck.skm`, `sync/sync.json`, and
+  `verification/screenshots.json`.
