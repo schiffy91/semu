@@ -33,8 +33,8 @@ confidence levels.
   `/nix/store` mount args, CLI passthrough, stable launch-time filesystem,
   normal AppRun ES-DE launch, and `SEMU_LAUNCHER_BIN` bootstrap output.
 - `make bazzite-desktop-vm-smoke`: Bazzite Desktop live ISO under QEMU TCG with
-  checksum verification, Basic Graphics boot, and high-threshold framebuffer
-  validation of the KDE live environment.
+  checksum verification, Basic Graphics boot, and nonblank framebuffer
+  validation of the live boot path.
 - `make bazzite-vm-smoke`: Bazzite Deck ISO boot path under QEMU TCG. This
   validates firmware/GRUB/live-image bootability through the software-rendered
   Deck splash path.
