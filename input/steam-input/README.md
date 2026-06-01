@@ -1,6 +1,6 @@
 # Steam Input Templates
 
-The Steam Deck default is declared in `semu.btrc` and generated into
+The Steam Deck default is declared in `src/semu.btrc` and generated into
 `semu.json`:
 
 - gyro disabled
