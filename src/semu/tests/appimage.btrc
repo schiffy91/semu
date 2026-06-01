@@ -28,7 +28,7 @@ string e2eFakeAppImageToolText() {
         "if [ \"${1:-}\" = \"--no-appstream\" ]; then shift; fi",
         "APPDIR=\"${1:?missing AppDir}\"",
         "OUTPUT=\"${2:?missing output}\"",
-        "for required in AppRun usr/bin/es-de usr/bin/semu usr/bin/bwrap usr/bin/semu-retroarch usr/bin/semu-dolphin usr/bin/semu-ppsspp usr/bin/semu-flycast usr/bin/semu-gopher64 usr/bin/semu-melonds usr/bin/semu-pcsx2 usr/bin/semu-cemu usr/bin/semu-azahar usr/bin/semu-ryujinx usr/bin/semu-btrc usr/bin/semu-es-de nix/store packaging/linux/AppRun packaging/linux/ES-DE/es_find_rules_linux.xml; do",
+        "for required in AppRun usr/bin/es-de usr/bin/semu usr/bin/bwrap usr/bin/syncthing usr/bin/curl usr/bin/semu-retroarch usr/bin/semu-dolphin usr/bin/semu-ppsspp usr/bin/semu-flycast usr/bin/semu-gopher64 usr/bin/semu-melonds usr/bin/semu-pcsx2 usr/bin/semu-cemu usr/bin/semu-azahar usr/bin/semu-ryujinx usr/bin/semu-btrc usr/bin/semu-es-de nix/store packaging/linux/AppRun packaging/linux/ES-DE/es_find_rules_linux.xml; do",
         "  test -e \"$APPDIR/$required\" || { echo \"missing AppDir path: $required\" >&2; exit 3; }",
         "done",
         "test ! -e \"$APPDIR/packaging/linux/build-appimage.sh\" || { echo \"build script shipped inside AppDir\" >&2; exit 3; }",
@@ -66,6 +66,8 @@ Vector<string> appImageExpectedBins() {
     return [
         "semu",
         "bwrap",
+        "syncthing",
+        "curl",
         "semu-retroarch",
         "semu-dolphin",
         "semu-ppsspp",
@@ -183,6 +185,7 @@ int e2eAppImageSmoke(CliArgs args) {
     string cliAppDir = joinPath(tmp, "AppRunCli.AppDir");
     string cliProject = joinPath(tmp, "cli-project");
     string cliArgs = joinPath(tmp, "cli.args");
+    string cliEnv = joinPath(tmp, "cli.env");
     ensureDir(joinPath(cliAppDir, "usr/bin"));
     ensureDir(joinPath(cliAppDir, "packaging/linux/bin"));
     ensureDir(cliProject);
@@ -191,7 +194,8 @@ int e2eAppImageSmoke(CliArgs args) {
     FileSystem.chmod(joinPath(cliAppDir, "AppRun"), 493);
     e2eWriteExecutable(joinPath(cliAppDir, "usr/bin/semu"), textLines([
         "#!/usr/bin/env bash",
-        "printf '%s\\n' \"$@\" > " + ShellWords.quote(cliArgs)
+        "printf '%s\\n' \"$@\" > " + ShellWords.quote(cliArgs),
+        "printf 'SEMU_SERVICE_BIN=%s\\n' \"${SEMU_SERVICE_BIN:-}\" > " + ShellWords.quote(cliEnv)
     ]));
     if (!e2eExpectStatus(0, "APPDIR=" + ShellWords.quote(cliAppDir)
         + " SEMU_PROJECT_DIR=" + ShellWords.quote(cliProject)
@@ -199,6 +203,14 @@ int e2eAppImageSmoke(CliArgs args) {
         + " manifest --output " + ShellWords.quote(joinPath(tmp, "manifest.json")))) { return 1; }
     if (!e2eFileContains(cliArgs, "manifest", "AppRun CLI passthrough")) { return 1; }
     if (!e2eFileContains(cliArgs, "--project", "AppRun project arg")) { return 1; }
+
+    if (!e2eExpectStatus(0, "APPIMAGE=/opt/Semu.AppImage"
+        + " APPDIR=" + ShellWords.quote(cliAppDir)
+        + " " + ShellWords.quote(joinPath(cliAppDir, "AppRun"))
+        + " sync setup --project " + ShellWords.quote(cliProject))) { return 1; }
+    if (!e2eFileContains(cliArgs, "sync", "AppRun explicit project sync passthrough")) { return 1; }
+    if (!e2eFileContains(cliArgs, "setup", "AppRun sync setup passthrough")) { return 1; }
+    if (!e2eFileContains(cliEnv, "SEMU_SERVICE_BIN=/opt/Semu.AppImage", "AppRun service executable")) { return 1; }
 
     string bootstrapProject = joinPath(tmp, "bootstrap-project");
     ensureDir(bootstrapProject);

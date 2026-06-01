@@ -181,8 +181,8 @@ That state path is included in the Syncthing folder declarations as
 ## AppImage Build
 
 The AppImage path wraps ES-DE, AppRun, the compiled BTRC CLI, Linux launcher
-shims, and optionally a copied Nix closure for routed emulator wrappers.
-ROMs and BIOS stay in user-owned project folders.
+shims, bundled Syncthing/curl, and optionally a copied Nix closure for routed
+emulator wrappers. ROMs and BIOS stay in user-owned project folders.
 
 ```sh
 nix build .#default
@@ -206,6 +206,9 @@ Fallback behavior:
 - If a routed Nix binary exists inside the AppImage, ES-DE find rules point at it.
 - Flatpak-backed launchers are the host fallback for supported standalone
   emulators when the AppImage is built without a routed Nix payload.
+- `sync setup` from the AppImage installs user systemd units whose Syncthing
+  daemon starts through the stable AppImage path, not the temporary AppImage
+  mount path.
 
 Current automated tests validate AppImage assembly logic with fake ES-DE and
 fake appimagetool. A real SteamOS/Game Mode AppImage pass is still listed in
@@ -322,7 +325,10 @@ build/semu sync open --project "$PWD"
 - `semu-sync-force.service`
 - `semu-sync-force.timer`
 
-It also uses Syncthing's CLI/API when available to add the declared folders.
+It starts `semu-syncthing.service`, waits for the local API, and adds the
+declared folders. When setup is run from the AppImage, the service runs
+`sync daemon` through the AppImage so bundled Syncthing is available after the
+initial AppImage process exits.
 
 ### `verification/screenshots.json`
 
