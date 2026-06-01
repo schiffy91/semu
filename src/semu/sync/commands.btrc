@@ -35,7 +35,11 @@ bool syncForce(string project, string target) {
         return false;
     }
     UnixShell shell = UnixShell();
-    string command = "curl -fsS -X POST -H " + ShellWords.quote("X-API-Key: " + apiKey)
+    if (!syncCurlAvailable()) {
+        print("MISSING curl: install package or use bundled Semu");
+        return false;
+    }
+    string command = ShellWords.quote(syncCurlExecutable()) + " -fsS -X POST -H " + ShellWords.quote("X-API-Key: " + apiKey)
         + " " + ShellWords.quote(syncScanUrl(project, target));
     ExecResult result = shell.runUnchecked(command);
     if (result.ok()) {
@@ -55,7 +59,7 @@ void syncStatus(string project) {
     reportFile("systemd_timer", joinPath(systemdUserDir(), "semu-sync-force.timer"));
     print(syncSyncthingAvailable() ? "  OK syncthing: executable found" : "  MISSING syncthing: executable not found");
     print(commandExists("syncthingtray") ? "  OK syncthingtray: executable found" : "  optional syncthingtray: executable not found");
-    print(commandExists("curl") ? "  OK curl: executable found" : "  MISSING curl: executable not found");
+    print(syncCurlAvailable() ? "  OK curl: executable found" : "  MISSING curl: executable not found");
     for id in syncFolderIds() {
         string mark = syncFolderEnabled(project, id) ? "OK" : "optional";
         print(f"  {mark} {id}: {syncFolderPath(project, id)}");
@@ -86,7 +90,7 @@ void doctorSync(string project) {
     print("Sync");
     reportFile("sync_config", syncConfigPath(project));
     print(syncSyncthingAvailable() ? "  OK syncthing: executable found" : "  MISSING syncthing: executable not found");
-    print(commandExists("curl") ? "  OK curl: executable found" : "  MISSING curl: executable not found");
+    print(syncCurlAvailable() ? "  OK curl: executable found" : "  MISSING curl: executable not found");
     print(syncBool(project, "start_at_boot", true) ? "  OK start_at_boot: enabled" : "  optional start_at_boot: disabled");
     print(syncBool(project, "tray", true) ? "  OK tray: enabled" : "  optional tray: disabled");
     for id in syncFolderIds() {

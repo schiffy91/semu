@@ -42,8 +42,9 @@ bool syncSystemctl(string verb, string unit) {
 bool syncWaitForApi(string project) {
     UnixShell shell = UnixShell();
     string url = "http://" + syncGuiAddress(project) + "/rest/noauth/health";
+    string curl = ShellWords.quote(syncCurlExecutable());
     for (int i = 0; i < 20; i++) {
-        ExecResult result = shell.runUnchecked("curl -fsS " + ShellWords.quote(url) + " >/dev/null 2>&1");
+        ExecResult result = shell.runUnchecked(curl + " -fsS " + ShellWords.quote(url) + " >/dev/null 2>&1");
         if (result.ok()) { return true; }
         shell.runUnchecked("sleep 1");
     }
@@ -113,6 +114,10 @@ bool syncSetup(string project) {
     writeSyncSystemdUnits(project);
     if (!syncSyncthingAvailable()) {
         print("MISSING syncthing: install package or use bundled Semu");
+        return false;
+    }
+    if (!syncCurlAvailable()) {
+        print("MISSING curl: install package or use bundled Semu");
         return false;
     }
     syncGenerateIfNeeded(project);
