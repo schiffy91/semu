@@ -76,11 +76,11 @@ all: install ## Build all emulators + bootstrap content (idempotent, cached by n
 install: setup
 btrc-build: $(SEMU_BIN) ## Build the BTRC semu CLI
 
-$(SEMU_BIN): $(SEMU_SOURCE)
+$(SEMU_BIN): $(SEMU_SOURCE) flake.nix flake.lock Makefile
 	@mkdir -p build
 	$(BTRC_TRANSPILE) "$(CURDIR)/$(SEMU_SOURCE)" -o "$(CURDIR)/$(SEMU_C)" --no-cache --no-stdlib
 	perl -0pi -e 's/\n+\z/\n/' "$(SEMU_C)"
-	$(CC) "$(SEMU_C)" -std=c11 -D_DEFAULT_SOURCE -D_XOPEN_SOURCE=700 -o "$@" -lm
+	$(CC) "$(SEMU_C)" -std=c11 -o "$@" -lm
 	@mkdir -p generated
 	cp "$(SEMU_C)" generated/semu.c
 
@@ -122,7 +122,7 @@ container-test: container-build ## Run tests in container (fast, deterministic)
 
 generated-build: generated/semu.c ## Build committed generated C without invoking BTRC
 	@mkdir -p build
-	$(CC) generated/semu.c -std=c11 -D_DEFAULT_SOURCE -D_XOPEN_SOURCE=700 -o "$(SEMU_BIN)" -lm
+	$(CC) generated/semu.c -std=c11 -o "$(SEMU_BIN)" -lm
 
 generated-smoke: generated-build ## Run BTRC-native smoke tests from generated C
 	$(SEMU_BIN) e2e all

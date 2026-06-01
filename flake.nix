@@ -22,9 +22,15 @@
       pkgs = mkPkgs system;
       isLinux = pkgs.stdenv.hostPlatform.isLinux;
       isDarwin = pkgs.stdenv.hostPlatform.isDarwin;
-      ryujinx = pkgs.ryubing;
-      es-de = pkgs.callPackage ./packaging/nix/es-de.nix {};
-      retroarch = if isLinux then
+      isX86Linux = system == "x86_64-linux";
+      isFullBundleTarget = isDarwin || isX86Linux;
+      ryujinx =
+        if system == "x86_64-darwin" then null
+        else pkgs.ryubing;
+      es-de =
+        if isFullBundleTarget then pkgs.callPackage ./packaging/nix/es-de.nix {}
+        else null;
+      retroarch = if isX86Linux then
         (pkgs.retroarch.withCores (cores: [
           cores.gambatte       # gb, gbc
           cores.mgba           # gba
@@ -39,17 +45,21 @@
           cores.flycast        # dreamcast
           cores.dolphin        # gc, wii (alternative to standalone)
         ]))
-      else pkgs.callPackage ./packaging/nix/retroarch-mac.nix {};
-      pcsx2 = if isLinux then pkgs.pcsx2
-              else pkgs.callPackage ./packaging/nix/pcsx2-mac.nix {};
-      cemu = if isLinux then pkgs.cemu
-             else pkgs.callPackage ./packaging/nix/cemu-mac.nix {};
-      ppsspp = if isLinux then pkgs.ppsspp else null;
-      flycast = if isLinux then pkgs.flycast else null;
-      gopher64 = if isLinux then pkgs.gopher64 else null;
-      melonds = if isLinux then pkgs.melonds else null;
+      else if isDarwin then pkgs.callPackage ./packaging/nix/retroarch-mac.nix {}
+      else null;
+      pcsx2 = if isX86Linux then pkgs.pcsx2
+              else if isDarwin then pkgs.callPackage ./packaging/nix/pcsx2-mac.nix {}
+              else null;
+      cemu = if isX86Linux then pkgs.cemu
+             else if isDarwin then pkgs.callPackage ./packaging/nix/cemu-mac.nix {}
+             else null;
+      ppsspp = if isX86Linux then pkgs.ppsspp else null;
+      flycast = if isX86Linux then pkgs.flycast else null;
+      gopher64 = if isX86Linux then pkgs.gopher64 else null;
+      melonds = if isX86Linux then pkgs.melonds else null;
       azahar = if isDarwin then pkgs.callPackage ./packaging/nix/azahar-mac.nix {}
-               else pkgs.azahar;
+               else if isX86Linux then pkgs.azahar
+               else null;
       syncthingtray = if isLinux then pkgs.syncthingtray else null;
       bubblewrap = if isLinux then pkgs.bubblewrap else null;
       btrcpy = btrc.packages.${system}.btrcpy;
@@ -60,7 +70,7 @@
       routedEmulator = args: pkgs.callPackage ./packaging/nix/routed-emulator.nix (args // {
         inherit semuCli;
       });
-      routedEmulators = if isLinux then [
+      routedEmulators = if isX86Linux then [
         (routedEmulator {
           emulatorName = "retroarch";
           emulatorPackage = retroarch;
@@ -111,24 +121,29 @@
         })
       ] else [];
     in {
-      # --- Individual emulators (all platforms) ---
+      # --- Core Semu tooling (all platforms) ---
       inherit btrcpy;
+      semu-cli = semuCli;
+    } // pkgs.lib.optionalAttrs isFullBundleTarget {
+      # --- Individual emulators (supported desktop/Deck platforms) ---
       dolphin = pkgs.dolphin-emu;
       ares = pkgs.ares;
-      inherit azahar ryujinx es-de retroarch pcsx2 cemu;
-    } // pkgs.lib.optionalAttrs isLinux {
+      inherit azahar es-de retroarch pcsx2 cemu;
+    } // pkgs.lib.optionalAttrs (ryujinx != null && isFullBundleTarget) {
+      inherit ryujinx;
+    } // pkgs.lib.optionalAttrs isX86Linux {
       inherit ppsspp flycast gopher64 melonds;
       es-de-steamdeck = pkgs.callPackage ./packaging/nix/es-de.nix { steamDeck = true; };
     } // {
       # --- Unified bundle ---
-      default = pkgs.callPackage ./packaging/nix/semu.nix {
+      default = if isFullBundleTarget then pkgs.callPackage ./packaging/nix/semu.nix {
         inherit (pkgs) dolphin-emu ares;
         inherit azahar pcsx2 cemu ppsspp flycast gopher64 melonds ryujinx es-de syncthingtray bubblewrap;
         inherit (pkgs) syncthing curl;
         inherit semuCli routedEmulators;
         retroarch-bare = retroarch;
-      };
-    } // pkgs.lib.optionalAttrs isLinux {
+      } else semuCli;
+    } // pkgs.lib.optionalAttrs isX86Linux {
       semu-retroarch = builtins.elemAt routedEmulators 0;
       semu-dolphin = builtins.elemAt routedEmulators 1;
       semu-ppsspp = builtins.elemAt routedEmulators 2;
@@ -149,7 +164,7 @@
     # `nix run` launches semu CLI
     apps = forAllSystems (system: let
       pkgs = mkPkgs system;
-      isLinux = pkgs.stdenv.hostPlatform.isLinux;
+      isX86Linux = system == "x86_64-linux";
       emulatorApp = name: {
         type = "app";
         program = "${self.packages.${system}.${name}}/bin/${name}";
@@ -159,7 +174,7 @@
         type = "app";
         program = "${self.packages.${system}.default}/bin/semu";
       };
-    } // pkgs.lib.optionalAttrs isLinux {
+    } // pkgs.lib.optionalAttrs isX86Linux {
       semu-retroarch = emulatorApp "semu-retroarch";
       semu-dolphin = emulatorApp "semu-dolphin";
       semu-ppsspp = emulatorApp "semu-ppsspp";
