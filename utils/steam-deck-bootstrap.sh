@@ -24,7 +24,7 @@ Usage:
   steam-deck-bootstrap.sh [install|update|status|nix-upgrade|gc] [options]
 
 Actions:
-  install       Prepare Nix, clone/update Semu, build, configure Deck defaults.
+  install       Prepare Nix/dev shell, clone/update Semu, build, configure Deck defaults.
   update        Pull Semu, rebuild, run Semu upgrade/reconfigure checks.
   status        Print Nix, SSH, Semu, sync, and Deck doctor status.
   nix-upgrade   Upgrade the Nix installation, then restart nix-daemon.
@@ -415,6 +415,15 @@ build_semu() {
   semu_bin >/dev/null || die "Semu build finished but result/bin/semu is missing"
 }
 
+realize_dev_shell() {
+  load_nix_profile
+  have nix || die "nix is required to realize the Semu dev shell"
+  (
+    cd "$PROJECT"
+    run nix --extra-experimental-features "nix-command flakes" develop --command true
+  )
+}
+
 run_semu_setup() {
   local semu roms
   semu="$(semu_bin)"
@@ -555,6 +564,7 @@ main() {
       install_nix_if_needed
       ensure_nix_daemon_mount_dependency
       ensure_repo
+      realize_dev_shell
       build_semu
       if [ "$ACTION" = "install" ]; then
         run_semu_setup

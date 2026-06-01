@@ -143,7 +143,7 @@ class SemuE2eGraphRunner {
             + " ! -path './sync/syncthing/*'"
             + " ! -name '.DS_Store'"
             + " ! -name '._*'"
-            + " \\( -name '*.btrc' -o -name '*.nix' -o -name '*.json' -o -name '*.sh' -o -name '*.md' -o -name '*.xml' -o -name '*.ini' -o -name '*.cfg' -o -name '*.desktop' -o -name '*.vdf' -o -name '*.skm' -o -name '*.c' -o -name 'Makefile' -o -name 'Dockerfile' -o -name 'flake.lock' \\)"
+            + " \\( -name '*.btrc' -o -name '*.nix' -o -name '*.json' -o -name '*.sh' -o -name '*.md' -o -name '*.xml' -o -name '*.ini' -o -name '*.cfg' -o -name '*.desktop' -o -name '*.vdf' -o -name '*.skm' -o -name '*.c' -o -name 'Makefile' -o -name 'flake.lock' \\)"
             + " -print0 | LC_ALL=C sort -z | xargs -0 shasum -a 256 | shasum -a 256 | awk '{print $1}'";
         ExecResult result = UnixShell().runRaw(command, true, false, "");
         if (!result.ok()) { e2eFatal("Failed to compute workspace source hash for " + root); }

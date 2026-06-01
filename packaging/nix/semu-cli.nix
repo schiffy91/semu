@@ -21,6 +21,8 @@ stdenv.mkDerivation {
     cp src/semu.btrc $out/lib/semu/semu.btrc
     cp semu.json $out/lib/semu/
     cp -r generated $out/lib/semu/
+    mkdir -p $out/lib/semu/src/semu/bootstrap
+    cp -r src/semu/bootstrap/templates $out/lib/semu/src/semu/bootstrap/
     ${stdenv.cc.targetPrefix}cc generated/semu.c -std=c11 -o $out/lib/semu/semu-btrc -lm
     makeWrapper $out/lib/semu/semu-btrc $out/bin/semu \
       --set SEMU_ASSET_ROOT $out/lib/semu \

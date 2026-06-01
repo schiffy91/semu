@@ -1,7 +1,7 @@
 # SteamOS / Deck Verification
 
-`tests/deck` documents the Deck-like full-system verification layer. The
-runtime commands live in BTRC under `src/semu/`.
+`tests/vm` documents the Deck-like VM verification layer. The runtime commands
+live in BTRC under `src/semu/`.
 
 Generate the BTRC runtime on the host first, then run the Deck commands inside
 SteamOS, Bazzite, or the Arch VM. The guest path compiles `generated/semu.c`

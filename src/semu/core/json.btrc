@@ -14,12 +14,41 @@ string jsonBoolField(string key, bool value) {
     return jsonField(key, value ? "true" : "false");
 }
 
+string jsonIntField(string key, int value) {
+    return jsonField(key, f"{value}");
+}
+
+string jsonIndent(string value) {
+    Vector<string> lines = Strings.split(value, "\n");
+    Vector<string> indented = [];
+    for line in lines {
+        indented.push("  " + line);
+    }
+    return indented.join("\n");
+}
+
 string jsonObject(Vector<string> fields) {
-    return "{" + fields.join(", ") + "}";
+    if (fields.len == 0) {
+        return "{}";
+    }
+    Vector<string> lines = [];
+    for (int i = 0; i < fields.len; i++) {
+        string suffix = i + 1 < fields.len ? "," : "";
+        lines.push(jsonIndent(fields.get(i)) + suffix);
+    }
+    return "{\n" + lines.join("\n") + "\n}";
 }
 
 string jsonArray(Vector<string> values) {
-    return "[" + values.join(", ") + "]";
+    if (values.len == 0) {
+        return "[]";
+    }
+    Vector<string> lines = [];
+    for (int i = 0; i < values.len; i++) {
+        string suffix = i + 1 < values.len ? "," : "";
+        lines.push(jsonIndent(values.get(i)) + suffix);
+    }
+    return "[\n" + lines.join("\n") + "\n]";
 }
 
 string jsonStringArray(Vector<string> values) {
@@ -29,4 +58,3 @@ string jsonStringArray(Vector<string> values) {
     }
     return jsonArray(quoted);
 }
-

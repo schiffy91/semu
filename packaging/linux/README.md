@@ -17,7 +17,7 @@ This tree is the Steam Deck-first runtime path for Semu.
 - `sandbox.sh` is a compatibility shim into `semu sandbox launch`.
   Bubblewrap composition and scratch symlink preparation are handled in BTRC.
 - Screenshot verification hooks are declared in `semu.json` and editable
-  through `verification/screenshots.json`. When
+  through `tests/verification/screenshots.json`. When
   `SEMU_SCREENSHOT_HOOKS=1` is set, emulator launchers capture
   `before_launch`, delayed `after_spawn`, and `after_exit` images under
   `ES-DE/ES-DE/screenshots/verification`.
