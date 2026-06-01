@@ -1,0 +1,79 @@
+{
+  "name": "semu-e2e",
+  "workspaceRoot": "../..",
+  "default": [
+    "payload-audit",
+    "generated-smoke",
+    "appimage-smoke"
+  ],
+  "nodes": [
+    {
+      "id": "payload-audit",
+      "spec": "specs/payload-audit.json",
+      "after": []
+    },
+    {
+      "id": "generated-smoke",
+      "spec": "specs/generated-smoke.json",
+      "after": [
+        "payload-audit"
+      ]
+    },
+    {
+      "id": "appimage-smoke",
+      "spec": "specs/appimage-smoke.json",
+      "after": [
+        "generated-smoke"
+      ]
+    },
+    {
+      "id": "nix-e2e",
+      "spec": "specs/nix-e2e.json",
+      "after": [
+        "appimage-smoke"
+      ]
+    },
+    {
+      "id": "verify",
+      "spec": "specs/verify.json",
+      "after": [
+        "nix-e2e"
+      ]
+    },
+    {
+      "id": "arch-deck-vm",
+      "spec": "specs/arch-deck-vm.json",
+      "after": [
+        "verify"
+      ]
+    },
+    {
+      "id": "arch-deck-vm-strict",
+      "spec": "specs/arch-deck-vm-strict.json",
+      "after": [
+        "arch-deck-vm"
+      ]
+    },
+    {
+      "id": "bazzite-desktop-live",
+      "spec": "specs/bazzite-desktop-live.json",
+      "after": [
+        "payload-audit"
+      ]
+    },
+    {
+      "id": "bazzite-deck-live",
+      "spec": "specs/bazzite-deck-live.json",
+      "after": [
+        "payload-audit"
+      ]
+    },
+    {
+      "id": "bazzite-installed-ssh",
+      "spec": "specs/bazzite-installed-ssh.json",
+      "after": [
+        "payload-audit"
+      ]
+    }
+  ]
+}

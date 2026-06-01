@@ -8,12 +8,12 @@ cd "$PROJECT_DIR"
 
 if command -v pacman >/dev/null 2>&1; then
   sudo pacman -Sy --needed --noconfirm \
-    bash curl jq rsync syncthing flatpak bubblewrap retroarch evtest gcc \
+    bash curl jq rsync syncthing flatpak bubblewrap retroarch evtest gcc inputplumber \
     || true
 fi
 
 if command -v rpm-ostree >/dev/null 2>&1; then
-  rpm-ostree install -y curl jq syncthing flatpak bubblewrap evtest gcc || true
+  rpm-ostree install -y curl jq syncthing flatpak bubblewrap evtest gcc inputplumber || true
 fi
 
 if command -v flatpak >/dev/null 2>&1; then

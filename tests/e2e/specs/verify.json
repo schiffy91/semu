@@ -1,0 +1,13 @@
+{
+  "name": "verify",
+  "state": "verify",
+  "parentState": "nix-e2e",
+  "stateMaterial": "{{sourceHash}}",
+  "operations": [
+    {
+      "op": "make",
+      "command": "verify",
+      "expect": "Verification artifacts"
+    }
+  ]
+}

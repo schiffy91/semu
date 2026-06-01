@@ -1,0 +1,13 @@
+{
+  "name": "nix-e2e",
+  "state": "nix-e2e",
+  "parentState": "appimage-smoke",
+  "stateMaterial": "{{sourceHash}}",
+  "operations": [
+    {
+      "op": "make",
+      "command": "nix-e2e",
+      "expect": "OK Nix routed-emulator smoke"
+    }
+  ]
+}
