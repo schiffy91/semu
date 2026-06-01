@@ -8,7 +8,8 @@ This tree is the Steam Deck-first runtime path for Semu.
   before the first normal launch.
 - If the AppImage was built with `--nix-package`, `AppRun` mounts the bundled
   closure at `/nix/store` with bubblewrap and routes ES-DE find rules to the
-  Nix-built `semu-*` launchers in `usr/bin`.
+  Nix-built `semu-*` launchers in `usr/bin`. The same payload also includes
+  bundled `syncthing` and `curl` for sync setup.
 - `bin/semu-*` launchers are stable ES-DE entry names. They are thin shims
   into `semu launcher ...`; emulator IDs, Flatpak IDs, X11/Wayland
   policy, ROM/project grants, and RetroArch routing live under
@@ -38,14 +39,18 @@ without understanding emulator launchers.
 Syncthing is integrated through BTRC commands:
 
 ```sh
-build/semu sync setup --project "$PWD"
-build/semu sync force all --project "$PWD"
-build/semu sync status --project "$PWD"
-build/semu sync tray --project "$PWD"
+./Semu-x86_64.AppImage sync setup --project "$PWD"
+./Semu-x86_64.AppImage sync force all --project "$PWD"
+./Semu-x86_64.AppImage sync status --project "$PWD"
+./Semu-x86_64.AppImage sync tray --project "$PWD"
 ```
 
 Saves, states, screenshots, and gamelists sync by default. ROMs and BIOS are
-declared as opt-in folders because they are large and user-owned.
+declared as opt-in folders because they are large and user-owned. `sync setup`
+writes and starts user systemd units; when invoked from the AppImage, the
+Syncthing service points back to the stable AppImage path and runs
+`sync daemon`, so the daemon can remount the bundled Nix closure every time it
+starts.
 Controller profile and Steam Input expectations live under `src/semu/input/` and
 `src/semu/bootstrap/` so
 the UI/editor layer can update declarative config without changing launcher

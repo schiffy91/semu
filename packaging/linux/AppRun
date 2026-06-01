@@ -28,11 +28,32 @@ fi
 SEMU_LINUX="$APPDIR/packaging/linux"
 SEMU_BIN="$SEMU_LINUX/bin"
 SEMU_CLI="${SEMU_CLI:-$APPDIR/usr/bin/semu}"
+if [ -z "${SEMU_PROJECT_DIR:-}" ]; then
+  previous_arg=""
+  for arg in "$@"; do
+    if [ "$previous_arg" = "--project" ]; then
+      export SEMU_PROJECT_DIR="$arg"
+      break
+    fi
+    case "$arg" in
+      --project=*)
+        export SEMU_PROJECT_DIR="${arg#--project=}"
+        break
+        ;;
+    esac
+    previous_arg="$arg"
+  done
+fi
 export SEMU_ASSET_ROOT="${SEMU_ASSET_ROOT:-$APPDIR}"
 if [ -x "$APPDIR/usr/bin/semu-retroarch" ]; then
   export SEMU_LAUNCHER_BIN="${SEMU_LAUNCHER_BIN:-$APPDIR/usr/bin}"
 else
   export SEMU_LAUNCHER_BIN="${SEMU_LAUNCHER_BIN:-$SEMU_BIN}"
+fi
+if [ -n "${APPIMAGE:-}" ]; then
+  export SEMU_SERVICE_BIN="${SEMU_SERVICE_BIN:-$APPIMAGE}"
+else
+  export SEMU_SERVICE_BIN="${SEMU_SERVICE_BIN:-$SEMU_CLI}"
 fi
 
 # Where the user's emulator state lives (cloud-synced via Syncthing/Google

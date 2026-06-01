@@ -41,7 +41,22 @@ string syncGuiAddress(string project) {
 }
 
 string serviceExecutable() {
+    string serviceBin = Environment.get("SEMU_SERVICE_BIN", "");
+    if (serviceBin.len() > 0) { return serviceBin; }
     return Environment.get("SEMU_BIN", "semu");
+}
+
+string syncSyncthingExecutable() {
+    string configured = Environment.get("SEMU_SYNCTHING_BIN", "");
+    if (configured.len() > 0 && FileSystem.exists(configured)) { return configured; }
+    if (FileSystem.exists("/usr/bin/syncthing")) { return "/usr/bin/syncthing"; }
+    if (FileSystem.exists("/usr/local/bin/syncthing")) { return "/usr/local/bin/syncthing"; }
+    if (commandExists("syncthing")) { return "syncthing"; }
+    return "";
+}
+
+bool syncSyncthingAvailable() {
+    return syncSyncthingExecutable().len() > 0;
 }
 
 string syncServiceText(string project) {
@@ -50,7 +65,7 @@ string syncServiceText(string project) {
         + "After=network-online.target\n\n"
         + "[Service]\n"
         + "Type=simple\n"
-        + "ExecStart=syncthing serve -H " + ShellWords.quote(syncthingHome(project)) + " --no-browser --no-restart\n"
+        + "ExecStart=" + ShellWords.quote(serviceExecutable()) + " sync daemon --project " + ShellWords.quote(project) + "\n"
         + "Restart=on-failure\n"
         + "RestartSec=5\n\n"
         + "[Install]\n"

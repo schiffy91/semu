@@ -58,6 +58,7 @@ int e2eSyncSmoke(CliArgs args) {
     if (!e2eContains(systemctlLog, "--user enable semu-syncthing.service", "sync enable service")) { return 1; }
     if (!e2eContains(systemctlLog, "--user enable semu-sync-force.timer", "sync enable timer")) { return 1; }
     if (!e2eContains(systemctlLog, "--user start semu-syncthing.service", "sync start service")) { return 1; }
+    if (!e2eContains(FileSystem.readText(joinPath(home, ".config/systemd/user/semu-syncthing.service")), "sync daemon --project", "sync service daemon entrypoint")) { return 1; }
     if (!e2eContains(FileSystem.readText(joinPath(capture, "syncthing.log")), "semu-emulator_state", "sync emulator state folder")) { return 1; }
 
     if (!e2eRunOk(e2eRunSync(exe, home, binDir, project, ["force", "all"]), "sync force all")) { return 1; }

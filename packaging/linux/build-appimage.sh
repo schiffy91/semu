@@ -51,6 +51,8 @@ mkdir -p "$APPDIR"
 SEMU_NIX_BINS=(
   semu
   bwrap
+  syncthing
+  curl
   semu-retroarch
   semu-dolphin
   semu-ppsspp
@@ -113,6 +115,14 @@ if [ -n "$NIX_PACKAGE" ]; then
   done
   if [ ! -x "$APPDIR/usr/bin/bwrap" ]; then
     echo "Nix package did not provide bwrap; AppImage sandbox mounting would fail" >&2
+    exit 4
+  fi
+  if [ ! -x "$APPDIR/usr/bin/syncthing" ]; then
+    echo "Nix package did not provide syncthing; sync service setup would fail" >&2
+    exit 4
+  fi
+  if [ ! -x "$APPDIR/usr/bin/curl" ]; then
+    echo "Nix package did not provide curl; sync API setup would fail" >&2
     exit 4
   fi
 fi

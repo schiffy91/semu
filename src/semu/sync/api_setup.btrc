@@ -30,7 +30,7 @@ void syncGenerateIfNeeded(string project) {
         return;
     }
     UnixShell shell = UnixShell();
-    shell.runUnchecked("syncthing generate -H " + ShellWords.quote(syncthingHome(project)) + " --no-port-probing >/dev/null 2>&1");
+    shell.runUnchecked(ShellWords.quote(syncSyncthingExecutable()) + " generate -H " + ShellWords.quote(syncthingHome(project)) + " --no-port-probing >/dev/null 2>&1");
 }
 
 bool syncSystemctl(string verb, string unit) {
@@ -57,14 +57,15 @@ bool syncAddFolder(string project, string id) {
     if (apiKey.len() == 0) { return false; }
     UnixShell shell = UnixShell();
     string folderId = "semu-" + id;
-    string cliPrefix = "syncthing cli -H " + ShellWords.quote(syncthingHome(project))
+    string syncthing = ShellWords.quote(syncSyncthingExecutable());
+    string cliPrefix = syncthing + " cli -H " + ShellWords.quote(syncthingHome(project))
         + " --gui-address " + ShellWords.quote(syncGuiAddress(project))
         + " --gui-apikey " + ShellWords.quote(apiKey);
     ExecResult existing = shell.runUnchecked(
         cliPrefix + " config folders list | grep -Fx " + ShellWords.quote(folderId) + " >/dev/null 2>&1"
     );
     if (existing.ok()) { return true; }
-    string command = "syncthing cli -H " + ShellWords.quote(syncthingHome(project))
+    string command = syncthing + " cli -H " + ShellWords.quote(syncthingHome(project))
         + " --gui-address " + ShellWords.quote(syncGuiAddress(project))
         + " --gui-apikey " + ShellWords.quote(apiKey)
         + " config folders add"
@@ -88,10 +89,29 @@ bool syncConfigureFolders(string project) {
     return ok;
 }
 
+bool syncDaemon(string project) {
+    writeSyncDefaults(project, "");
+    if (!syncSyncthingAvailable()) {
+        print("MISSING syncthing: install package or use bundled Semu");
+        return false;
+    }
+    syncGenerateIfNeeded(project);
+    UnixShell shell = UnixShell();
+    ExecResult result = shell.runRaw(
+        ShellWords.quote(syncSyncthingExecutable())
+            + " serve -H " + ShellWords.quote(syncthingHome(project))
+            + " --no-browser --no-restart",
+        false,
+        false,
+        ""
+    );
+    return result.ok();
+}
+
 bool syncSetup(string project) {
     writeSyncDefaults(project, "");
     writeSyncSystemdUnits(project);
-    if (!commandExists("syncthing")) {
+    if (!syncSyncthingAvailable()) {
         print("MISSING syncthing: install package or use bundled Semu");
         return false;
     }
