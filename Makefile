@@ -297,6 +297,14 @@ linux: $(LINUX_DISK) $(LINUX_SEED) $(VM_KEY) ## Start Linux VM (full system)
 		[ $$i -eq 180 ] && echo "Timed out" && exit 1; \
 		sleep 3; \
 	done; \
+	echo "Waiting for cloud-init and guest rsync..."; \
+	ssh $(SSH_OPTS) -p $(SSH_PORT_LINUX) arch@localhost \
+		'if command -v cloud-init >/dev/null 2>&1; then cloud-init status --wait >/dev/null; fi'; \
+	for i in $$(seq 1 60); do \
+		ssh -q $(SSH_OPTS) -o "ConnectTimeout=2" -p $(SSH_PORT_LINUX) arch@localhost 'command -v rsync >/dev/null' 2>/dev/null && break; \
+		[ $$i -eq 60 ] && echo "Timed out waiting for guest rsync" && exit 1; \
+		sleep 2; \
+	done; \
 	echo "VM ready."
 
 linux-ssh: ## SSH into Linux VM

@@ -22,7 +22,7 @@ fi
 
 mkdir -p "$PROJECT_DIR/build"
 if command -v cc >/dev/null 2>&1 && [ -f "$PROJECT_DIR/generated/semu.c" ]; then
-  cc "$PROJECT_DIR/generated/semu.c" -std=c11 -D_DEFAULT_SOURCE -D_XOPEN_SOURCE=700 -o "$PROJECT_DIR/build/semu" -lm
+  cc "$PROJECT_DIR/generated/semu.c" -std=c11 -o "$PROJECT_DIR/build/semu" -lm
 fi
 
 export SEMU_BIN="$PROJECT_DIR/build/semu"
