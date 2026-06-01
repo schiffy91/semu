@@ -74,12 +74,12 @@ string renderPcsx2Keymap(KeymapIr ir) {
         + "ToggleSlowMotion = " + pcsx2Chord(ir, "speed.rewind") + "\n";
 }
 
-string renderKeymap(KeymapIr ir, string target) {
+string renderKeymap(string project, KeymapIr ir, string target) {
     if (target.equals("manifest")) { return keymapIrJson(ir) + "\n"; }
     if (target.equals("retroarch")) { return renderRetroArchKeymap(ir); }
     if (target.equals("dolphin")) { return renderDolphinKeymap(ir); }
     if (target.equals("pcsx2")) { return renderPcsx2Keymap(ir); }
-    if (target.equals("steam-input")) { return steamInputTemplateVdf("Semu: Steam Deck - Neptune FULL", true, ir); }
+    if (target.equals("steam-input")) { return steamInputTemplateVdf(project, "Semu: Steam Deck - Neptune FULL", true, ir); }
     return f"unknown keymap target: {target}\n";
 }
 

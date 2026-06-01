@@ -5,7 +5,7 @@ bool commandExists(string name) {
 }
 
 string verificationRoot(string project) {
-    return joinPath(project, "verification");
+    return joinPath(project, "tests/verification");
 }
 
 string screenshotConfigPath(string project) {

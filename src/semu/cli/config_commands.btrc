@@ -42,7 +42,7 @@ int keymapCommand(CliArgs args) {
             print(f"error 0:0 unknown keymap target '{target}'");
             return 1;
         }
-        string rendered = renderKeymap(ir, target);
+        string rendered = renderKeymap(project, ir, target);
         string output = args.valueAfter("--output", "");
         if (output.len() > 0) {
             FileSystem.writeText(output, rendered);

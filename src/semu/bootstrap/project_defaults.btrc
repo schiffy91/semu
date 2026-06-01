@@ -26,36 +26,40 @@ void seedKeymapDefaults(string project) {
     }
 }
 
-string syncDefaultConfigText(string project, string romsDir) {
-    string roms = romsDir.len() > 0 ? romsDir : "${paths.project_roms}";
+string syncConfigText(JsonObject config, string romsDir) {
+    string roms = romsDir.len() > 0 ? romsDir : config.getString("roms_dir", "${paths.project_roms}");
     return jsonObject([
-        jsonBoolField("enabled", true),
-        jsonBoolField("start_at_boot", true),
-        jsonBoolField("tray", true),
-        jsonStrField("gui_address", "127.0.0.1:8384"),
+        jsonBoolField("enabled", config.getBool("enabled", true)),
+        jsonBoolField("start_at_boot", config.getBool("start_at_boot", true)),
+        jsonBoolField("tray", config.getBool("tray", true)),
+        jsonStrField("gui_address", config.getString("gui_address", "127.0.0.1:8384")),
         jsonStrField("roms_dir", roms),
-        jsonBoolField("sync_saves", true),
-        jsonBoolField("sync_states", true),
-        jsonBoolField("sync_emulator_state", true),
-        jsonBoolField("sync_screenshots", true),
-        jsonBoolField("sync_gamelists", true),
-        jsonBoolField("sync_roms", false),
-        jsonBoolField("sync_bios", false),
-        jsonField("rescan_saves_s", "900"),
-        jsonField("rescan_states_s", "900"),
-        jsonField("rescan_emulator_state_s", "900"),
-        jsonField("rescan_screenshots_s", "1800"),
-        jsonField("rescan_gamelists_s", "1800"),
-        jsonField("rescan_roms_s", "3600"),
-        jsonField("rescan_bios_s", "3600"),
-        jsonBoolField("watch_saves", true),
-        jsonBoolField("watch_states", true),
-        jsonBoolField("watch_emulator_state", true),
-        jsonBoolField("watch_screenshots", true),
-        jsonBoolField("watch_gamelists", true),
-        jsonBoolField("watch_roms", true),
-        jsonBoolField("watch_bios", true)
+        jsonBoolField("sync_saves", config.getBool("sync_saves", true)),
+        jsonBoolField("sync_states", config.getBool("sync_states", true)),
+        jsonBoolField("sync_emulator_state", config.getBool("sync_emulator_state", true)),
+        jsonBoolField("sync_screenshots", config.getBool("sync_screenshots", true)),
+        jsonBoolField("sync_gamelists", config.getBool("sync_gamelists", true)),
+        jsonBoolField("sync_roms", config.getBool("sync_roms", false)),
+        jsonBoolField("sync_bios", config.getBool("sync_bios", false)),
+        jsonIntField("rescan_saves_s", config.getInt("rescan_saves_s", 900)),
+        jsonIntField("rescan_states_s", config.getInt("rescan_states_s", 900)),
+        jsonIntField("rescan_emulator_state_s", config.getInt("rescan_emulator_state_s", 900)),
+        jsonIntField("rescan_screenshots_s", config.getInt("rescan_screenshots_s", 1800)),
+        jsonIntField("rescan_gamelists_s", config.getInt("rescan_gamelists_s", 1800)),
+        jsonIntField("rescan_roms_s", config.getInt("rescan_roms_s", 3600)),
+        jsonIntField("rescan_bios_s", config.getInt("rescan_bios_s", 3600)),
+        jsonBoolField("watch_saves", config.getBool("watch_saves", true)),
+        jsonBoolField("watch_states", config.getBool("watch_states", true)),
+        jsonBoolField("watch_emulator_state", config.getBool("watch_emulator_state", true)),
+        jsonBoolField("watch_screenshots", config.getBool("watch_screenshots", true)),
+        jsonBoolField("watch_gamelists", config.getBool("watch_gamelists", true)),
+        jsonBoolField("watch_roms", config.getBool("watch_roms", true)),
+        jsonBoolField("watch_bios", config.getBool("watch_bios", true))
     ]) + "\n";
+}
+
+string syncDefaultConfigText(string project, string romsDir) {
+    return syncConfigText(JsonObject.parse("{}"), romsDir);
 }
 
 void writeSyncDefaults(string project, string romsDir) {
@@ -71,8 +75,7 @@ void writeSyncDefaults(string project, string romsDir) {
     }
     if (romsDir.len() > 0) {
         JsonObject config = JsonObject.readFile(path);
-        config.setString("roms_dir", romsDir);
-        config.writeFile(path);
+        FileSystem.writeText(path, syncConfigText(config, romsDir));
     }
 }
 

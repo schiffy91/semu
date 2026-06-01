@@ -22,7 +22,7 @@ This repo currently provides:
 - A custom keymap language in `input/keymaps/steam_deck.skm` with tokenizer, parser,
   code generators, and authoring errors.
 - Declarative Syncthing config in `sync/sync.json`.
-- Declarative screenshot verification config in `verification/screenshots.json`.
+- Declarative screenshot verification config in `tests/verification/screenshots.json`.
 - Linux launcher shims and AppRun glue under `packaging/linux/`.
 - Nix packages for the BTRC CLI, bundled emulator set, routed emulator wrappers,
   and a NixOS module.
@@ -59,12 +59,17 @@ with actual emulator binaries, and a true two-device Syncthing conflict test.
 | `input/keymaps/steam_deck.skm` | Editable Steam Deck keymap source. |
 | `input/steam-input/*.vdf` | Generated Steam Input template files. |
 | `sync/sync.json` | Editable Syncthing policy. |
-| `verification/screenshots.json` | Editable screenshot hook policy. |
+| `tests/verification/screenshots.json` | Editable screenshot hook policy. |
 | `packaging/linux/AppRun` | AppImage entry point and bundled Nix-store mount wrapper. |
 | `packaging/linux/bin/semu-*` | Thin Linux launcher shims. |
 | `packaging/linux/ES-DE/*.xml` | Linux ES-DE systems/find-rules assets. |
 | `packaging/nix/*.nix` | Emulator packaging, routed wrappers, CLI package, NixOS module. |
-| `tests/` | Local, VM, AppImage, Deck-style, and regression tests. |
+| `packaging/nix/flake/*.nix` | Flake package, app, check, and dev-shell modules. |
+| `mk/build.mk` | Build/bootstrap Make targets. |
+| `tests/Makefile` | Fast test, verification, and E2E graph targets. |
+| `tests/vm/` | Arch VM harness and cloud-init fixtures. |
+| `tests/bazzite/` | Bazzite VM harness. |
+| `tests/steam-deck/` | Physical Deck SSH smoke helpers. |
 | `ES-DE/ES-DE/` | User content root for ROMs, BIOS, saves, states, media, themes. |
 | `.semu/` | Runtime state created by launcher and AppImage routes. |
 
@@ -80,10 +85,11 @@ curl -fsSL https://raw.githubusercontent.com/schiffy91/semu/main/utils/steam-dec
   | bash -s -- install --yes
 ```
 
-That script prepares a persistent SteamOS `/nix` bind mount, installs official
-multi-user Nix if needed, clones or updates this repo under `~/semu`, builds the
-Semu flake, runs Deck install, copies Steam Input templates, starts Syncthing
-helpers, and enables SSH for remote verification. For a microSD ROM directory:
+That script handles the shell-only host setup: persistent SteamOS `/nix`,
+official multi-user Nix if needed, repo clone/update, dev-shell/tooling
+realization, flake build, and SSH enablement. Product setup then delegates to
+the BTRC CLI (`deck install`, Steam Input, keymap, screenshot, sync, and
+doctor). For a microSD ROM directory:
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/schiffy91/semu/main/utils/steam-deck-bootstrap.sh \
@@ -330,7 +336,7 @@ declared folders. When setup is run from the AppImage, the service runs
 `sync daemon` through the AppImage so bundled Syncthing is available after the
 initial AppImage process exits.
 
-### `verification/screenshots.json`
+### `tests/verification/screenshots.json`
 
 Editable screenshot policy. Defaults declare:
 
@@ -625,6 +631,7 @@ The flake supports `aarch64-darwin`, `x86_64-darwin`, `x86_64-linux`, and
 Build and regenerate:
 
 ```sh
+nix develop
 make btrc-build
 build/semu manifest --output semu.json
 build/semu screenshot setup --project "$PWD"
@@ -634,6 +641,7 @@ Run fast tests:
 
 ```sh
 make test
+make tests TESTNAME=launcher
 make nix-e2e
 ```
 
@@ -645,14 +653,13 @@ make verify
 
 ### BTRC Compiler Dependency
 
-Normal Nix builds compile the committed `generated/semu.c` snapshot. The flake
-exposes a local `.#btrcpy` wrapper backed by the `btrc` input. Development
-builds use that flake-pinned compiler by default, so fresh checkouts can
-regenerate artifacts from the pinned compiler.
+Normal Nix builds compile the committed `generated/semu.c` snapshot. The dev
+shell exposes the pinned BTRC compiler as `btrcpy` and `SEMU_BTRCPY`, so source
+regeneration does not depend on a local Mac checkout.
 
 ```make
 BTRC_FLAKE ?=
-BTRC_USE_FLAKE ?= 1
+BTRCPY ?= btrcpy
 ```
 
 That keeps the production package tied to committed generated C while BTRC
@@ -661,12 +668,6 @@ override the flake input:
 
 ```sh
 make btrc-build BTRC_FLAKE=path:/absolute/path/to/btrc
-```
-
-The local checkout override is available for compiler worktree testing:
-
-```sh
-make btrc-build BTRC_USE_FLAKE=0 BTRC_ROOT=/absolute/path/to/btrc
 ```
 
 The current dependency model keeps BTRC in the flake input and keeps Semu
@@ -718,4 +719,4 @@ See `tests/E2E.md` for the active verification matrix. The short version:
 - Installed Bazzite VM verification.
 - Two-device Syncthing conflict/resolution testing.
 - UI editor for `input/keymaps/steam_deck.skm`, `sync/sync.json`, and
-  `verification/screenshots.json`.
+  `tests/verification/screenshots.json`.

@@ -6,7 +6,8 @@ int e2eShellSyntaxSmoke(string project) {
         + " packaging/linux/sandbox.sh"
         + " packaging/linux/build-appimage.sh"
         + " packaging/linux/bin/semu-*"
-        + " utils/steam-deck-bootstrap.sh";
+        + " utils/steam-deck-bootstrap.sh"
+        + " tests/steam-deck/ssh-smoke.sh";
     ExecResult result = UnixShell().runRaw(command, true, false, "");
     if (!result.ok()) {
         print(result.stdout());
