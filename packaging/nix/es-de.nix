@@ -15,7 +15,7 @@ let
     };
     x86_64-linux = {
       url = "https://gitlab.com/es-de/emulationstation-de/-/package_files/246875981/download";
-      hash = "sha256-TLZs/JIwmXEfoP7Rnuhrl0SmKU4C4//Rnuhn93qI7H4=";
+      hash = "sha256-TLZs/JIwmXEc+g7d2D22R0SmKU4C4//Rnuhn93qI7H4=";
       name = "ES-DE_x64.AppImage";
     };
     x86_64-linux-steamdeck = {

@@ -54,7 +54,13 @@
              else if isDarwin then pkgs.callPackage ./packaging/nix/cemu-mac.nix {}
              else null;
       ppsspp = if isX86Linux then pkgs.ppsspp else null;
-      flycast = if isX86Linux then pkgs.flycast else null;
+      flycast = if isX86Linux then pkgs.flycast.overrideAttrs (old: {
+        postPatch = (old.postPatch or "") + ''
+          substituteInPlace core/deps/glslang/SPIRV/SpvBuilder.h \
+            --replace-fail '#include <unordered_map>' '#include <cstdint>
+          #include <unordered_map>'
+        '';
+      }) else null;
       gopher64 = if isX86Linux then pkgs.gopher64 else null;
       melonds = if isX86Linux then pkgs.melonds else null;
       azahar = if isDarwin then pkgs.callPackage ./packaging/nix/azahar-mac.nix {}
