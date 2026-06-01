@@ -74,6 +74,29 @@ Do not hand-edit `semu.json` or `generated/semu.c`. Edit
 
 ## Steam Deck Quick Start
 
+For a first-run Deck setup from Desktop Mode, run the bootstrap script:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/schiffy91/semu/main/utils/steam-deck-bootstrap.sh \
+  | bash -s -- install --yes
+```
+
+That script prepares a persistent SteamOS `/nix` bind mount, installs official
+multi-user Nix if needed, clones or updates this repo under `~/semu`, builds the
+Semu flake, runs Deck install, copies Steam Input templates, starts Syncthing
+helpers, and enables SSH for remote verification. For a microSD ROM directory:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/schiffy91/semu/main/utils/steam-deck-bootstrap.sh \
+  | bash -s -- install --yes --roms /run/media/mmcblk0p1/Emulation/ROMs
+```
+
+After the first install, update the Deck with:
+
+```sh
+~/semu/utils/steam-deck-bootstrap.sh update --yes
+```
+
 From the project root:
 
 ```sh
