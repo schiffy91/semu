@@ -271,6 +271,11 @@ bind HKB + L1 -> ${state.load}
 bind HKB + Start -> ${app.quit}
 ```
 
+Steam Input renders the quit action as `Alt+F4` so the left-trackpad radial
+and `HKB + Start` close standalone emulator windows consistently in Game Mode.
+Emulator-native keymap renderers keep `Ctrl+Q` where that is the supported
+in-emulator quit binding.
+
 Validate and render:
 
 ```sh
@@ -379,7 +384,8 @@ Steam Deck defaults:
 - Right trackpad is mouse.
 - Left trackpad is radial hotkeys.
 - Hotkey button is `HKB` (`View`, with L4/R4 optional in Steam Input).
-- Unified quit is `Ctrl+Q`.
+- Steam Input quit is `Alt+F4`; emulator-native quit remains `Ctrl+Q` where
+  supported.
 - Unified load state is `Ctrl+A`.
 - Unified save state is `Ctrl+S`.
 
@@ -391,7 +397,7 @@ Default hotkeys:
 | `HKB + B` | screenshot | `Ctrl+X` |
 | `HKB + X` | fullscreen | `Ctrl+Enter` |
 | `HKB + Y` | menu | `Ctrl+M` |
-| `HKB + Start` | quit emulator | `Ctrl+Q` |
+| `HKB + Start` | quit emulator | `Alt+F4` in Steam Input |
 | `HKB + D-Pad Left` | previous state slot | `Ctrl+J` |
 | `HKB + D-Pad Right` | next state slot | `Ctrl+K` |
 | `HKB + L1` | load state | `Ctrl+A` |

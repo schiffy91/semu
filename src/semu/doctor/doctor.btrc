@@ -62,7 +62,8 @@ void reportSteamInputTemplate(string label, string path) {
     if (!text.contains("right_trackpad active")) { missing.push("right_trackpad"); }
     if (!text.contains("key_press LEFT_CONTROL, Save State")) { missing.push("save_state"); }
     if (!text.contains("key_press A, Load State")) { missing.push("load_state"); }
-    if (!text.contains("key_press Q, Quit")) { missing.push("quit"); }
+    if (!text.contains("key_press LEFT_ALT, Quit")) { missing.push("quit_alt"); }
+    if (!text.contains("key_press F4, Quit")) { missing.push("quit_f4"); }
     if (text.contains("\"mode\" \"gyro") || text.contains("gyro_")) { missing.push("gyro_opt_in_policy"); }
     int balance = braceBalance(text);
     if (balance != 0) { missing.push(f"brace_balance={balance}"); }

@@ -154,7 +154,7 @@ int sandboxLaunch(string project, string emulator, string executable, Vector<str
     bwrapArgs.push("VK_ICD_FILENAMES");
     bwrapArgs.push("--");
     bwrapArgs.push(executable);
-    for arg in emulatorArgs {
+    for arg in launcherArgsWithDefaults(emulator, emulatorArgs) {
         bwrapArgs.push(arg);
     }
     command = shellAppendAll(command, bwrapArgs);

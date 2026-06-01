@@ -144,6 +144,29 @@ ExecResult e2eRunLauncher(string exe, string home, string project, string roms, 
     return result;
 }
 
+ExecResult e2eRunRoutedLauncher(string exe, string home, string project, string roms, string binDir, string captureDir, string emulator, string routedExe, Vector<string> emulatorArgs) {
+    Command command = Command(exe)
+        .envVar("SEMU_HOME", home)
+        .envVar("SEMU_BIN", exe)
+        .envVar("SEMU_PROJECT_DIR", project)
+        .envVar("SEMU_ROMS_DIR", roms)
+        .envVar("SEMU_FLATPAK_CAPTURE", captureDir)
+        .envVar("SEMU_SCREENSHOT_HOOKS", "0")
+        .envVar("PATH", binDir + ":/usr/bin:/bin")
+        .arg("launcher")
+        .arg("routed")
+        .arg(emulator)
+        .arg(routedExe)
+        .capture(true)
+        .check(false);
+    for arg in emulatorArgs {
+        command.arg(arg);
+    }
+    UnixShell shell = UnixShell();
+    ExecResult result = shell.runCommand(command);
+    return result;
+}
+
 bool e2eRunOk(ExecResult result, string label) {
     if (result.ok()) { return true; }
     print("E2E FAIL " + label);

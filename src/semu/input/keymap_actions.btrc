@@ -101,7 +101,7 @@ Vector<string> actionSystems(string id) {
     if (id.equals("ui.screenshot")) { return ["retroarch", "dolphin", "azahar", "pcsx2"]; }
     if (id.equals("ui.fullscreen")) { return ["dolphin", "azahar", "melonds", "pcsx2"]; }
     if (id.equals("ui.menu")) { return ["retroarch", "pcsx2", "ppsspp"]; }
-    if (id.equals("app.quit")) { return ["retroarch", "dolphin", "azahar", "pcsx2", "ppsspp"]; }
+    if (id.equals("app.quit")) { return ["retroarch", "dolphin", "azahar", "pcsx2", "ppsspp", "flycast", "gopher64", "melonds", "cemu", "ryujinx"]; }
     if (id.equals("state.prev")) { return ["retroarch", "dolphin", "pcsx2", "ppsspp"]; }
     if (id.equals("state.next")) { return ["retroarch", "dolphin", "pcsx2", "ppsspp"]; }
     if (id.equals("state.load")) { return ["retroarch", "dolphin", "azahar", "pcsx2", "ppsspp"]; }
