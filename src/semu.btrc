@@ -1,4 +1,4 @@
-import std.{iterable, vector, map, strings, io, platform, process, fs, json, cli}
+import std.{iterable, vector, map, strings, io, platform, process, fs, json, cli, graph}
 
 string jsonQ(string value) {
     return "\"" + JsonObject.escape(value) + "\"";
@@ -5005,14 +5005,7 @@ void e2eFatal(string message) {
 }
 
 string e2eExpandArgs(string text, Map<string, string> args) {
-    string result = Strings.copy(text);
-    for key, value in args {
-        result = Strings.replace(result, "{{" + key + "}}", value);
-    }
-    for key, value in args {
-        result = Strings.replace(result, "${" + key + "}", value);
-    }
-    return result;
+    return GraphJson.expand(text, args);
 }
 
 class SemuE2eOperation {
@@ -5187,246 +5180,41 @@ class SemuE2eSpec {
     }
 }
 
-class SemuE2eGraphNode {
-    public string id;
-    public string specPath;
-    public Vector<string> after;
-    public Map<string, string> args;
-
-    public SemuE2eGraphNode() {
-        self.id = "";
-        self.specPath = "";
-        self.after = [];
-        self.args = {};
-    }
-}
-
-class SemuE2eGraph {
-    public string name;
-    public string path;
-    public string baseDir;
-    public string workspaceRoot;
-    public Vector<string> defaults;
-    public Vector<SemuE2eGraphNode> nodes;
-
-    public SemuE2eGraph() {
-        self.name = "semu-e2e";
-        self.path = "";
-        self.baseDir = ".";
-        self.workspaceRoot = ".";
-        self.defaults = [];
-        self.nodes = [];
-    }
-
-    public string resolvePath(string base, string value) {
-        if (value.startsWith("/")) { return value; }
-        return joinPath(base, value);
-    }
-
-    public string resolvedWorkspaceRoot() {
-        return self.resolvePath(self.baseDir, self.workspaceRoot);
-    }
-
-    public string resolvedSpecPath(SemuE2eGraphNode node) {
-        return self.resolvePath(self.baseDir, node.specPath);
-    }
-
-    public SemuE2eGraphNode node(string id) {
-        for item in self.nodes {
-            if (item.id.equals(id)) { return item; }
-        }
-        e2eFatal("Unknown E2E graph node: " + id);
-        return SemuE2eGraphNode();
-    }
-
-    public Vector<string> defaultTargets() {
-        if (!self.defaults.isEmpty()) { return self.defaults; }
-        Vector<string> result = [];
-        for item in self.nodes {
-            result.push(item.id);
-        }
-        return result;
-    }
-}
-
 class SemuE2eParser {
     class int skipSpaces(string text, int i) {
-        int len = text.len();
-        while (i < len && (text[i] == ' ' || text[i] == '\n' || text[i] == '\t' || text[i] == '\r')) {
-            i++;
-        }
-        return i;
+        return GraphJson.skipSpaces(text, i);
     }
 
     class int keyPosition(string text, string key) {
-        return Strings.find(text, "\"" + key + "\"", 0);
+        return GraphJson.keyPosition(text, key);
     }
 
     class string parseStringValue(string text, int i, string fallback) {
-        int len = text.len();
-        i = SemuE2eParser.skipSpaces(text, i);
-        if (i >= len || text[i] != (char)34) { return fallback; }
-        i++;
-        int start = i;
-        bool escaped = false;
-        while (i < len) {
-            if (!escaped && text[i] == (char)34) {
-                return JsonObject.unescape(JsonObject.slice(text, start, i));
-            }
-            escaped = !escaped && text[i] == '\\';
-            if (text[i] != '\\') { escaped = false; }
-            i++;
-        }
-        return fallback;
+        return GraphJson.parseStringValue(text, i, fallback);
     }
 
     class string field(string text, string key, string fallback) {
-        int pos = SemuE2eParser.keyPosition(text, key);
-        if (pos < 0) { return fallback; }
-        int colon = Strings.find(text, ":", pos);
-        if (colon < 0) { return fallback; }
-        int i = SemuE2eParser.skipSpaces(text, colon + 1);
-        int len = text.len();
-        if (i < len && text[i] == (char)34) {
-            return SemuE2eParser.parseStringValue(text, i, fallback);
-        }
-        int start = i;
-        while (i < len && text[i] != ',' && text[i] != '}' && text[i] != ']') {
-            i++;
-        }
-        string raw = JsonObject.slice(text, start, i).trim();
-        if (raw.len() == 0) { return fallback; }
-        return raw;
+        return GraphJson.field(text, key, fallback);
     }
 
     class int intField(string text, string key, int fallback) {
-        string raw = SemuE2eParser.field(text, key, "");
-        if (raw.len() == 0) { return fallback; }
-        return Strings.toInt(raw);
+        return GraphJson.intField(text, key, fallback);
     }
 
     class string objectField(string text, string key) {
-        int pos = SemuE2eParser.keyPosition(text, key);
-        if (pos < 0) { return ""; }
-        int colon = Strings.find(text, ":", pos);
-        if (colon < 0) { return ""; }
-        int i = SemuE2eParser.skipSpaces(text, colon + 1);
-        int len = text.len();
-        if (i >= len || text[i] != '{') { return ""; }
-        int depth = 0;
-        bool inString = false;
-        bool escaped = false;
-        for (int j = i; j < len; j++) {
-            char c = text[j];
-            if (inString) {
-                if (!escaped && c == (char)34) { inString = false; }
-                escaped = !escaped && c == '\\';
-                if (c != '\\') { escaped = false; }
-                continue;
-            }
-            if (c == (char)34) {
-                inString = true;
-                escaped = false;
-                continue;
-            }
-            if (c == '{') {
-                depth++;
-                continue;
-            }
-            if (c == '}') {
-                depth--;
-                if (depth == 0) {
-                    return JsonObject.slice(text, i, j + 1);
-                }
-            }
-        }
-        return "";
+        return GraphJson.objectField(text, key);
     }
 
     class Vector<string> stringArray(string text, string key) {
-        Vector<string> result = [];
-        int pos = SemuE2eParser.keyPosition(text, key);
-        if (pos < 0) { return result; }
-        int arrayStart = Strings.find(text, "[", pos);
-        if (arrayStart < 0) { return result; }
-        int len = text.len();
-        bool inString = false;
-        bool escaped = false;
-        int start = -1;
-        for (int i = arrayStart + 1; i < len; i++) {
-            char c = text[i];
-            if (inString) {
-                if (!escaped && c == (char)34) {
-                    result.push(JsonObject.unescape(JsonObject.slice(text, start, i)));
-                    inString = false;
-                    start = -1;
-                }
-                escaped = !escaped && c == '\\';
-                if (c != '\\') { escaped = false; }
-                continue;
-            }
-            if (c == (char)34) {
-                inString = true;
-                escaped = false;
-                start = i + 1;
-                continue;
-            }
-            if (c == ']') { break; }
-        }
-        return result;
+        return GraphJson.stringArray(text, key);
     }
 
     class Vector<string> objectArray(string text, string key) {
-        Vector<string> result = [];
-        int pos = SemuE2eParser.keyPosition(text, key);
-        if (pos < 0) { return result; }
-        int arrayStart = Strings.find(text, "[", pos);
-        if (arrayStart < 0) { return result; }
-        int len = text.len();
-        int depth = 0;
-        int start = -1;
-        bool inString = false;
-        bool escaped = false;
-        for (int i = arrayStart + 1; i < len; i++) {
-            char c = text[i];
-            if (inString) {
-                if (!escaped && c == (char)34) { inString = false; }
-                escaped = !escaped && c == '\\';
-                if (c != '\\') { escaped = false; }
-                continue;
-            }
-            if (c == (char)34) {
-                inString = true;
-                escaped = false;
-                continue;
-            }
-            if (c == '{') {
-                if (depth == 0) { start = i; }
-                depth++;
-                continue;
-            }
-            if (c == '}') {
-                depth--;
-                if (depth == 0 && start >= 0) {
-                    result.push(JsonObject.slice(text, start, i + 1));
-                    start = -1;
-                }
-                continue;
-            }
-            if (c == ']' && depth == 0) { break; }
-        }
-        return result;
+        return GraphJson.objectArray(text, key);
     }
 
     class Map<string, string> argsObject(string text) {
-        Map<string, string> result = {};
-        string argsText = SemuE2eParser.objectField(text, "args");
-        if (argsText.len() == 0) { return result; }
-        JsonObject parsed = JsonObject.parse(argsText);
-        for key, value in parsed.values {
-            result.put(key, value);
-        }
-        return result;
+        return GraphJson.argsObject(text);
     }
 
     class SemuE2eOperation operation(string objectText) {
@@ -5464,36 +5252,8 @@ class SemuE2eParser {
         return spec;
     }
 
-    class SemuE2eGraphNode graphNode(string objectText) {
-        SemuE2eGraphNode node = SemuE2eGraphNode();
-        node.id = SemuE2eParser.field(objectText, "id", "");
-        node.specPath = SemuE2eParser.field(objectText, "spec", "");
-        node.after = SemuE2eParser.stringArray(objectText, "after");
-        string argsText = SemuE2eParser.objectField(objectText, "args");
-        if (argsText.len() > 0) {
-            JsonObject parsed = JsonObject.parse(argsText);
-            for key, value in parsed.values {
-                node.args.put(key, value);
-            }
-        }
-        if (node.id.len() == 0) { e2eFatal("Graph node is missing id"); }
-        if (node.specPath.len() == 0) { e2eFatal("Graph node " + node.id + " is missing spec"); }
-        return node;
-    }
-
-    class SemuE2eGraph readGraphFile(string path) {
-        string text = FileSystem.readText(path);
-        SemuE2eGraph graph = SemuE2eGraph();
-        graph.path = path;
-        graph.baseDir = PathTools.dirname(path);
-        graph.name = SemuE2eParser.field(text, "name", graph.name);
-        graph.workspaceRoot = SemuE2eParser.field(text, "workspaceRoot", graph.workspaceRoot);
-        graph.defaults = SemuE2eParser.stringArray(text, "default");
-        for objectText in SemuE2eParser.objectArray(text, "nodes") {
-            graph.nodes.push(SemuE2eParser.graphNode(objectText));
-        }
-        if (graph.nodes.isEmpty()) { e2eFatal("Graph has no nodes: " + path); }
-        return graph;
+    class ExecutionGraph readGraphFile(string path) {
+        return GraphParser.readFile(path);
     }
 }
 
@@ -5606,18 +5366,14 @@ class SemuE2eRunner {
 }
 
 class SemuE2eGraphRunner {
-    public SemuE2eGraph graph;
+    public ExecutionGraph graph;
     public Map<string, string> args;
-    public Vector<string> done;
-    public Vector<string> visiting;
     public string sourceHashValue;
     public string program;
 
-    public SemuE2eGraphRunner(SemuE2eGraph graph, Map<string, string> args, string program) {
+    public SemuE2eGraphRunner(ExecutionGraph graph, Map<string, string> args, string program) {
         self.graph = graph;
         self.args = args;
-        self.done = [];
-        self.visiting = [];
         self.sourceHashValue = "";
         self.program = program;
     }
@@ -5677,7 +5433,7 @@ class SemuE2eGraphRunner {
         if (overrides.has("stateMaterial")) { spec.stateMaterial = overrides.get("stateMaterial"); }
     }
 
-    public SemuE2eSpec specFor(SemuE2eGraphNode node) {
+    public SemuE2eSpec specFor(GraphNode node) {
         SemuE2eSpec spec = SemuE2eParser.readSpecFile(self.graph.resolvedSpecPath(node));
         spec.setArg("graphName", self.graph.name);
         spec.setArg("nodeId", node.id);
@@ -5706,10 +5462,7 @@ class SemuE2eGraphRunner {
     }
 
     public void list() {
-        for node in self.graph.nodes {
-            string parents = node.after.isEmpty() ? "root" : node.after.join(",");
-            print(node.id + " <- " + parents + " :: " + self.graph.resolvedSpecPath(node));
-        }
+        GraphReport.list(self.graph);
     }
 
     public void status() {
@@ -5749,41 +5502,21 @@ class SemuE2eGraphRunner {
         return 0;
     }
 
-    public int runNode(string id) {
-        if (self.done.contains(id)) { return 0; }
-        if (self.visiting.contains(id)) { e2eFatal("Cycle in E2E graph at " + id); }
-        self.visiting.push(id);
-        SemuE2eGraphNode node = self.graph.node(id);
-        for parent in node.after {
-            int parentResult = self.runNode(parent);
-            if (parentResult != 0) {
-                self.visiting.removeAll(id);
-                return parentResult;
-            }
-        }
-        SemuE2eSpec spec = self.specFor(node);
-        if (!self.force() && self.ready(spec)) {
-            print("graph " + self.graph.name + ": skip " + node.id + " -> " + spec.state + "@" + spec.stateHashShort);
-            self.done.push(id);
-            self.visiting.removeAll(id);
-            return 0;
-        }
-        print("graph " + self.graph.name + ": run " + node.id + " -> " + spec.state + "@" + spec.stateHashShort);
-        SemuE2eRunner runner = SemuE2eRunner(spec, self.graph.resolvedWorkspaceRoot(), self.program);
-        int result = runner.run();
-        if (result != 0) {
-            self.visiting.removeAll(id);
-            return result;
-        }
-        self.done.push(id);
-        self.visiting.removeAll(id);
-        return 0;
-    }
-
     public int run(Vector<string> targets) {
-        Vector<string> selected = targets.isEmpty() ? self.graph.defaultTargets() : targets;
-        for id in selected {
-            int result = self.runNode(id);
+        GraphTraversal traversal = GraphTraversal(self.graph);
+        Vector<string> order = traversal.order(targets);
+        if (!traversal.ok()) { e2eFatal(traversal.error); }
+
+        for id in order {
+            GraphNode node = self.graph.node(id);
+            SemuE2eSpec spec = self.specFor(node);
+            if (!self.force() && self.ready(spec)) {
+                print("graph " + self.graph.name + ": skip " + node.id + " -> " + spec.state + "@" + spec.stateHashShort);
+                continue;
+            }
+            print("graph " + self.graph.name + ": run " + node.id + " -> " + spec.state + "@" + spec.stateHashShort);
+            SemuE2eRunner runner = SemuE2eRunner(spec, self.graph.resolvedWorkspaceRoot(), self.program);
+            int result = runner.run();
             if (result != 0) { return result; }
         }
         return 0;
@@ -5791,42 +5524,11 @@ class SemuE2eGraphRunner {
 }
 
 Map<string, string> e2eGraphArgs(CliArgs args, int startIndex) {
-    Map<string, string> result = {};
-    for (int i = startIndex; i < args.count(); i++) {
-        string value = args.get(i);
-        if (value.equals("--arg")) {
-            if (i + 1 >= args.count()) { e2eFatal("Expected --arg key=value"); }
-            SemuE2eSpec spec = SemuE2eSpec();
-            spec.setArgPair(args.get(i + 1));
-            for key, item in spec.args {
-                result.put(key, item);
-            }
-            i++;
-            continue;
-        }
-        if (value.startsWith("--arg=")) {
-            SemuE2eSpec spec = SemuE2eSpec();
-            spec.setArgPair(Strings.removePrefix(value, "--arg="));
-            for key, item in spec.args {
-                result.put(key, item);
-            }
-        }
-    }
-    return result;
+    return GraphCli.args(args, startIndex);
 }
 
 Vector<string> e2eGraphTargets(CliArgs args, int startIndex) {
-    Vector<string> result = [];
-    for (int i = startIndex; i < args.count(); i++) {
-        string value = args.get(i);
-        if (value.equals("--arg")) {
-            i++;
-            continue;
-        }
-        if (value.startsWith("--arg=")) { continue; }
-        result.push(value);
-    }
-    return result;
+    return GraphCli.targets(args, startIndex);
 }
 
 int e2eGraphCommand(CliArgs args) {
@@ -5834,7 +5536,7 @@ int e2eGraphCommand(CliArgs args) {
         print("Usage: semu e2e graph <graph.json> <list|status|coverage|run> [node ...] [--arg key=value]");
         return 1;
     }
-    SemuE2eGraph graph = SemuE2eParser.readGraphFile(args.get(2));
+    ExecutionGraph graph = SemuE2eParser.readGraphFile(args.get(2));
     string action = args.get(3);
     Map<string, string> overrides = e2eGraphArgs(args, 4);
     SemuE2eGraphRunner runner = SemuE2eGraphRunner(graph, overrides, args.program);
