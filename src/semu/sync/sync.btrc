@@ -1,0 +1,561 @@
+class SyncService {
+    public SyncService() {}
+
+    public bool setup(string project) { return syncSetup(project); }
+    public bool daemon(string project) { return syncDaemon(project); }
+    public bool start(string project) { return syncStart(project); }
+    public bool stop(string project) { return syncStop(project); }
+    public bool force(string project, string target) { return syncForce(project, target); }
+    public void status(string project) { syncStatus(project); }
+}
+
+class SemuLifecycle {
+    public SemuLifecycle() {}
+
+    public void install(string project, string romsDir) { lifecycleInstall(project, romsDir); }
+    public void reconfigure(string project, string romsDir) { lifecycleReconfigure(project, romsDir); }
+    public void uninstall(string project, bool purgeGenerated, bool purgeState) { lifecycleUninstall(project, purgeGenerated, purgeState); }
+    public void upgrade(string project) { lifecycleUpgrade(project); }
+    public void status(string project) { lifecycleStatus(project); }
+}
+
+// ---- src/semu/sync/model.btrc ----
+string syncFolderPath(string project, string id) {
+    if (id.equals("saves")) { return joinPath(contentRoot(project), "saves"); }
+    if (id.equals("states")) { return joinPath(contentRoot(project), "states"); }
+    if (id.equals("emulator_state")) { return joinPath(semuStateRoot(project), "appimage-state"); }
+    if (id.equals("screenshots")) { return joinPath(contentRoot(project), "screenshots"); }
+    if (id.equals("gamelists")) { return joinPath(contentRoot(project), "gamelists"); }
+    if (id.equals("roms")) { return configuredRomsRoot(project); }
+    if (id.equals("bios")) { return biosRoot(project); }
+    return project;
+}
+
+Vector<string> syncFolderIds() {
+    return ["saves", "states", "emulator_state", "screenshots", "gamelists", "roms", "bios"];
+}
+
+string syncFolderLabel(string id) {
+    if (id.equals("saves")) { return "Semu Saves"; }
+    if (id.equals("states")) { return "Semu States"; }
+    if (id.equals("emulator_state")) { return "Semu Emulator State"; }
+    if (id.equals("screenshots")) { return "Semu Screenshots"; }
+    if (id.equals("gamelists")) { return "Semu Gamelists"; }
+    if (id.equals("roms")) { return "Semu ROMs"; }
+    if (id.equals("bios")) { return "Semu BIOS"; }
+    return "Semu";
+}
+
+bool syncFolderEnabled(string project, string id) {
+    return syncBool(project, "sync_" + id, false);
+}
+
+bool syncFolderWatch(string project, string id) {
+    return syncBool(project, "watch_" + id, true);
+}
+
+int syncFolderRescan(string project, string id) {
+    return syncInt(project, "rescan_" + id + "_s", 900);
+}
+
+string syncGuiAddress(string project) {
+    return syncString(project, "gui_address", "127.0.0.1:8384");
+}
+
+string serviceExecutable() {
+    string serviceBin = Environment.get("SEMU_SERVICE_BIN", "");
+    if (serviceBin.len() > 0) { return serviceBin; }
+    return Environment.get("SEMU_BIN", "semu");
+}
+
+string syncSyncthingExecutable() {
+    string configured = Environment.get("SEMU_SYNCTHING_BIN", "");
+    if (configured.len() > 0 && FileSystem.exists(configured)) { return configured; }
+    if (FileSystem.exists("/usr/bin/syncthing")) { return "/usr/bin/syncthing"; }
+    if (FileSystem.exists("/usr/local/bin/syncthing")) { return "/usr/local/bin/syncthing"; }
+    if (commandExists("syncthing")) { return "syncthing"; }
+    return "";
+}
+
+bool syncSyncthingAvailable() {
+    return syncSyncthingExecutable().len() > 0;
+}
+
+string syncCurlExecutable() {
+    string configured = Environment.get("SEMU_CURL_BIN", "");
+    if (configured.len() > 0 && FileSystem.exists(configured)) { return configured; }
+    if (FileSystem.exists("/usr/bin/curl")) { return "/usr/bin/curl"; }
+    if (FileSystem.exists("/usr/local/bin/curl")) { return "/usr/local/bin/curl"; }
+    if (commandExists("curl")) { return "curl"; }
+    return "";
+}
+
+bool syncCurlAvailable() {
+    return syncCurlExecutable().len() > 0;
+}
+
+string syncServiceText(string project) {
+    return "[Unit]\n"
+        + "Description=Semu Syncthing\n"
+        + "After=network-online.target\n\n"
+        + "[Service]\n"
+        + "Type=simple\n"
+        + "ExecStart=" + ShellWords.quote(serviceExecutable()) + " sync daemon --project " + ShellWords.quote(project) + "\n"
+        + "Restart=on-failure\n"
+        + "RestartSec=5\n\n"
+        + "[Install]\n"
+        + "WantedBy=default.target\n";
+}
+
+string syncForceScriptText(string project) {
+    return "#!/usr/bin/env bash\n"
+        + "set -euo pipefail\n"
+        + "exec " + ShellWords.quote(serviceExecutable()) + " sync force all --project " + ShellWords.quote(project) + "\n";
+}
+
+string syncForceServiceText(string project) {
+    return "[Unit]\n"
+        + "Description=Semu force Syncthing scan\n\n"
+        + "[Service]\n"
+        + "Type=oneshot\n"
+        + "ExecStart=" + ShellWords.quote(joinPath(syncScriptsDir(project), "sync-force.sh")) + "\n";
+}
+
+string syncTimerText() {
+    return "[Unit]\n"
+        + "Description=Semu scheduled Syncthing scan\n\n"
+        + "[Timer]\n"
+        + "OnBootSec=5min\n"
+        + "OnUnitActiveSec=15min\n"
+        + "Persistent=true\n\n"
+        + "[Install]\n"
+        + "WantedBy=timers.target\n";
+}
+
+void writeSyncSystemdUnits(string project) {
+    ensureDir(systemdUserDir());
+    ensureDir(syncScriptsDir(project));
+    string script = joinPath(syncScriptsDir(project), "sync-force.sh");
+    FileSystem.writeText(script, syncForceScriptText(project));
+    FileSystem.chmod(script, 493);
+    FileSystem.writeText(joinPath(systemdUserDir(), "semu-syncthing.service"), syncServiceText(project));
+    FileSystem.writeText(joinPath(systemdUserDir(), "semu-sync-force.service"), syncForceServiceText(project));
+    FileSystem.writeText(joinPath(systemdUserDir(), "semu-sync-force.timer"), syncTimerText());
+}
+
+string deckDesktopText(string project) {
+    string exe = serviceExecutable();
+    return "[Desktop Entry]\n"
+        + "Type=Application\n"
+        + "Name=Semu\n"
+        + "Comment=Steam Deck emulation frontend\n"
+        + "Exec=" + exe + " deck launch --project " + ShellWords.quote(project) + "\n"
+        + "Terminal=false\n"
+        + "Categories=Game;Emulator;\n"
+        + "Actions=ForceSync;SyncStatus;OpenSyncthing;OpenSyncTray;\n\n"
+        + "[Desktop Action ForceSync]\n"
+        + "Name=Force Sync\n"
+        + "Exec=" + exe + " sync force all --project " + ShellWords.quote(project) + "\n\n"
+        + "[Desktop Action SyncStatus]\n"
+        + "Name=Sync Status\n"
+        + "Exec=" + exe + " sync status --project " + ShellWords.quote(project) + "\n\n"
+        + "[Desktop Action OpenSyncthing]\n"
+        + "Name=Open Syncthing\n"
+        + "Exec=" + exe + " sync open --project " + ShellWords.quote(project) + "\n\n"
+        + "[Desktop Action OpenSyncTray]\n"
+        + "Name=Open Sync Tray\n"
+        + "Exec=" + exe + " sync tray --project " + ShellWords.quote(project) + "\n";
+}
+
+void writeDeckDesktopEntry(string project) {
+    ensureDir(applicationsDir());
+    FileSystem.writeText(joinPath(applicationsDir(), "semu.desktop"), deckDesktopText(project));
+}
+
+// ---- src/semu/sync/api_setup.btrc ----
+string syncConfigXmlPath(string project) {
+    return joinPath(syncthingHome(project), "config.xml");
+}
+
+string findXmlValue(string text, string startTag, string endTag) {
+    int start = text.indexOf(startTag);
+    if (start < 0) { return ""; }
+    start = start + startTag.len();
+    int end = Strings.find(text, endTag, start);
+    if (end < 0) { return ""; }
+    return text.substring(start, end - start);
+}
+
+string syncApiKey(string project) {
+    string path = syncConfigXmlPath(project);
+    if (!FileSystem.exists(path)) { return ""; }
+    return findXmlValue(FileSystem.readText(path), "<apikey>", "</apikey>");
+}
+
+string syncScanUrl(string project, string target) {
+    string url = "http://" + syncGuiAddress(project) + "/rest/db/scan";
+    if (!target.equals("all") && target.len() > 0) {
+        url = url + "?folder=semu-" + target;
+    }
+    return url;
+}
+
+void syncGenerateIfNeeded(string project) {
+    if (FileSystem.exists(syncConfigXmlPath(project))) {
+        return;
+    }
+    UnixShell shell = UnixShell();
+    shell.runUnchecked(ShellWords.quote(syncSyncthingExecutable()) + " generate -H " + ShellWords.quote(syncthingHome(project)) + " --no-port-probing >/dev/null 2>&1");
+}
+
+bool syncSystemctl(string verb, string unit) {
+    UnixShell shell = UnixShell();
+    ExecResult result = shell.runUnchecked("systemctl --user " + verb + " " + unit + " >/dev/null 2>&1");
+    return result.ok();
+}
+
+bool syncWaitForApi(string project) {
+    UnixShell shell = UnixShell();
+    string url = "http://" + syncGuiAddress(project) + "/rest/noauth/health";
+    string curl = ShellWords.quote(syncCurlExecutable());
+    for (int i = 0; i < 20; i++) {
+        ExecResult result = shell.runUnchecked(curl + " -fsS " + ShellWords.quote(url) + " >/dev/null 2>&1");
+        if (result.ok()) { return true; }
+        shell.runUnchecked("sleep 1");
+    }
+    return false;
+}
+
+bool syncAddFolder(string project, string id) {
+    if (!syncFolderEnabled(project, id)) { return true; }
+    ensureDir(syncFolderPath(project, id));
+    string apiKey = syncApiKey(project);
+    if (apiKey.len() == 0) { return false; }
+    UnixShell shell = UnixShell();
+    string folderId = "semu-" + id;
+    string syncthing = ShellWords.quote(syncSyncthingExecutable());
+    string cliPrefix = syncthing + " cli -H " + ShellWords.quote(syncthingHome(project))
+        + " --gui-address " + ShellWords.quote(syncGuiAddress(project))
+        + " --gui-apikey " + ShellWords.quote(apiKey);
+    ExecResult existing = shell.runUnchecked(
+        cliPrefix + " config folders list | grep -Fx " + ShellWords.quote(folderId) + " >/dev/null 2>&1"
+    );
+    if (existing.ok()) { return true; }
+    string command = syncthing + " cli -H " + ShellWords.quote(syncthingHome(project))
+        + " --gui-address " + ShellWords.quote(syncGuiAddress(project))
+        + " --gui-apikey " + ShellWords.quote(apiKey)
+        + " config folders add"
+        + " --id " + ShellWords.quote(folderId)
+        + " --label " + ShellWords.quote(syncFolderLabel(id))
+        + " --path " + ShellWords.quote(syncFolderPath(project, id))
+        + " --type sendreceive"
+        + " --rescan-intervals " + Strings.fromInt(syncFolderRescan(project, id));
+    if (syncFolderWatch(project, id)) {
+        command = command + " --fswatcher-enabled";
+    }
+    ExecResult result = shell.runUnchecked(command + " >/dev/null 2>&1");
+    return result.ok();
+}
+
+bool syncConfigureFolders(string project) {
+    bool ok = true;
+    for id in syncFolderIds() {
+        if (!syncAddFolder(project, id)) { ok = false; }
+    }
+    return ok;
+}
+
+bool syncDaemon(string project) {
+    writeSyncDefaults(project, "");
+    if (!syncSyncthingAvailable()) {
+        print("MISSING syncthing: install package or use bundled Semu");
+        return false;
+    }
+    syncGenerateIfNeeded(project);
+    UnixShell shell = UnixShell();
+    ExecResult result = shell.runRaw(
+        ShellWords.quote(syncSyncthingExecutable())
+            + " serve -H " + ShellWords.quote(syncthingHome(project))
+            + " --no-browser --no-restart",
+        false,
+        false,
+        ""
+    );
+    return result.ok();
+}
+
+bool syncSetup(string project) {
+    writeSyncDefaults(project, "");
+    writeSyncSystemdUnits(project);
+    if (!syncSyncthingAvailable()) {
+        print("MISSING syncthing: install package or use bundled Semu");
+        return false;
+    }
+    if (!syncCurlAvailable()) {
+        print("MISSING curl: install package or use bundled Semu");
+        return false;
+    }
+    syncGenerateIfNeeded(project);
+    bool ok = syncSystemctl("daemon-reload", "");
+    if (syncBool(project, "start_at_boot", true)) {
+        if (!syncSystemctl("enable", "semu-syncthing.service")) { ok = false; }
+        if (!syncSystemctl("enable", "semu-sync-force.timer")) { ok = false; }
+    }
+    if (syncBool(project, "enabled", true)) {
+        if (!syncSystemctl("start", "semu-syncthing.service")) { ok = false; }
+        if (!syncSystemctl("start", "semu-sync-force.timer")) { ok = false; }
+        if (!syncWaitForApi(project)) { ok = false; }
+        if (!syncConfigureFolders(project)) { ok = false; }
+    }
+    if (ok) {
+        print(f"OK sync setup: {syncConfigPath(project)}");
+    } else {
+        print(f"MISSING sync setup incomplete: {syncConfigPath(project)}");
+    }
+    return ok;
+}
+
+// ---- src/semu/sync/lifecycle.btrc ----
+string semuStateRoot(string project) {
+    return joinPath(project, ".semu");
+}
+
+string lifecycleStatePath(string project) {
+    return joinPath(semuStateRoot(project), "lifecycle.json");
+}
+
+string lifecycleBackupsRoot(string project) {
+    return joinPath(semuStateRoot(project), "backups");
+}
+
+string upgradeBackupPath(string project) {
+    return joinPath(lifecycleBackupsRoot(project), "pre-upgrade-semu.json");
+}
+
+void removePath(string path) {
+    if (FileSystem.exists(path)) {
+        FileSystem.removeRecursive(path);
+    }
+}
+
+void writeLifecycleState(string project, string action) {
+    ensureDir(semuStateRoot(project));
+    FileSystem.writeText(
+        lifecycleStatePath(project),
+        jsonObject([
+            jsonStrField("schema_version", "1"),
+            jsonStrField("action", action),
+            jsonStrField("project", project),
+            jsonStrField("roms_dir", configuredRomsRoot(project)),
+            jsonStrField("source", "src/semu.btrc")
+        ]) + "\n"
+    );
+}
+
+void lifecycleReconfigure(string project, string romsDir) {
+    writeSyncDefaults(project, romsDir);
+    ensureRomDirsAt(configuredRomsRoot(project));
+    if (!configuredRomsRoot(project).equals(romsRoot(project))) {
+        ensureRomDirsAt(romsRoot(project));
+    }
+    seedKeymapDefaults(project);
+    seedEmulatorDefaults(project);
+    writeSteamInputTemplates(project);
+    writeScreenshotDefaults(project);
+    writeGeneratedManifest(joinPath(project, "semu.json"));
+    writeEsDeFiles(project);
+    writeSyncSystemdUnits(project);
+    writeDeckDesktopEntry(project);
+    writeLifecycleState(project, "reconfigure");
+}
+
+void lifecycleInstall(string project, string romsDir) {
+    lifecycleReconfigure(project, romsDir);
+    if (syncBool(project, "enabled", true)) {
+        syncSetup(project);
+    }
+    writeLifecycleState(project, "install");
+    doctorSteamDeck(project);
+}
+
+void lifecycleUninstall(string project, bool purgeGenerated, bool purgeState) {
+    syncStop(project);
+    syncAutostart(project, false);
+    removePath(joinPath(systemdUserDir(), "semu-syncthing.service"));
+    removePath(joinPath(systemdUserDir(), "semu-sync-force.service"));
+    removePath(joinPath(systemdUserDir(), "semu-sync-force.timer"));
+    removePath(joinPath(applicationsDir(), "semu.desktop"));
+    removePath(joinPath(syncScriptsDir(project), "sync-force.sh"));
+    removePath(joinPath(semuStateRoot(project), "appimage-state"));
+    if (purgeGenerated) {
+        removePath(joinPath(project, "ES-DE/custom_systems"));
+        removePath(joinPath(project, "ES-DE/es_settings.xml"));
+        removePath(joinPath(project, "semu.json"));
+    }
+    if (purgeState) {
+        removePath(semuStateRoot(project));
+    } else {
+        writeLifecycleState(project, "uninstall");
+    }
+    print("OK lifecycle uninstall");
+}
+
+bool lifecycleChangeKeymap(string project, string actionId, string command) {
+    seedKeymapDefaults(project);
+    string path = keymapSourcePath(project);
+    string source = FileSystem.readText(path);
+    Vector<string> lines = Strings.split(source, "\n");
+    Vector<string> out = [];
+    bool changed = false;
+    string prefix = "action " + actionId + " = ";
+    for line in lines {
+        if (line.startsWith(prefix)) {
+            out.push(prefix + command);
+            changed = true;
+        } else if (line.len() > 0) {
+            out.push(line);
+        }
+    }
+    if (!changed) {
+        print(f"error 0:0 unknown keymap action '{actionId}'");
+        return false;
+    }
+    string next = out.join("\n") + "\n";
+    KeymapErrors errors = KeymapErrors();
+    compileKeymap(next, errors);
+    if (errors.count() > 0) {
+        for (int i = 0; i < errors.count(); i++) {
+            print(f"{errors.levels.get(i)} {errors.lines.get(i)}:{errors.columns.get(i)} {errors.messages.get(i)}");
+        }
+        return false;
+    }
+    FileSystem.writeText(path, next);
+    lifecycleReconfigure(project, "");
+    writeLifecycleState(project, "change");
+    print(f"OK lifecycle change: {actionId}={command}");
+    return true;
+}
+
+void lifecycleUpgrade(string project) {
+    ensureDir(lifecycleBackupsRoot(project));
+    if (FileSystem.exists(joinPath(project, "semu.json"))) {
+        FileSystem.writeText(upgradeBackupPath(project), FileSystem.readText(joinPath(project, "semu.json")));
+    }
+    lifecycleReconfigure(project, "");
+    writeLifecycleState(project, "upgrade");
+    print(f"OK lifecycle upgrade: backup {upgradeBackupPath(project)}");
+}
+
+void lifecycleStatus(string project) {
+    print("Semu lifecycle");
+    reportFile("state", lifecycleStatePath(project));
+    reportFile("manifest", joinPath(project, "semu.json"));
+    reportFile("sync_config", syncConfigPath(project));
+    reportFile("desktop_entry", joinPath(applicationsDir(), "semu.desktop"));
+    reportFile("systemd_service", joinPath(systemdUserDir(), "semu-syncthing.service"));
+    print(f"  roms_dir: {configuredRomsRoot(project)}");
+}
+
+// ---- src/semu/sync/commands.btrc ----
+bool syncStart(string project) {
+    bool ok = syncSetup(project);
+    if (!syncSystemctl("start", "semu-syncthing.service")) { ok = false; }
+    print(ok ? "OK sync start" : "MISSING sync start failed");
+    return ok;
+}
+
+bool syncStop(string project) {
+    bool ok = true;
+    if (!syncSystemctl("stop", "semu-sync-force.timer")) { ok = false; }
+    if (!syncSystemctl("stop", "semu-syncthing.service")) { ok = false; }
+    print(ok ? "OK sync stop" : "MISSING sync stop incomplete");
+    return ok;
+}
+
+bool syncAutostart(string project, bool enabled) {
+    writeSyncSystemdUnits(project);
+    bool ok = syncSystemctl("daemon-reload", "");
+    if (enabled) {
+        if (!syncSystemctl("enable", "semu-syncthing.service")) { ok = false; }
+        if (!syncSystemctl("enable", "semu-sync-force.timer")) { ok = false; }
+        print(ok ? "OK sync autostart enabled" : "MISSING sync autostart enable incomplete");
+    } else {
+        if (!syncSystemctl("disable", "semu-syncthing.service")) { ok = false; }
+        if (!syncSystemctl("disable", "semu-sync-force.timer")) { ok = false; }
+        print(ok ? "OK sync autostart disabled" : "MISSING sync autostart disable incomplete");
+    }
+    return ok;
+}
+
+bool syncForce(string project, string target) {
+    string apiKey = syncApiKey(project);
+    if (apiKey.len() == 0) {
+        print("MISSING syncthing API key; run sync setup/start first");
+        return false;
+    }
+    UnixShell shell = UnixShell();
+    if (!syncCurlAvailable()) {
+        print("MISSING curl: install package or use bundled Semu");
+        return false;
+    }
+    string command = ShellWords.quote(syncCurlExecutable()) + " -fsS -X POST -H " + ShellWords.quote("X-API-Key: " + apiKey)
+        + " " + ShellWords.quote(syncScanUrl(project, target));
+    ExecResult result = shell.runUnchecked(command);
+    if (result.ok()) {
+        print(f"OK sync force: {target}");
+        return true;
+    } else {
+        print(f"MISSING sync force failed: {target}");
+    }
+    return false;
+}
+
+void syncStatus(string project) {
+    print("Semu sync");
+    reportFile("sync_config", syncConfigPath(project));
+    reportFile("syncthing_config", syncConfigXmlPath(project));
+    reportFile("systemd_service", joinPath(systemdUserDir(), "semu-syncthing.service"));
+    reportFile("systemd_timer", joinPath(systemdUserDir(), "semu-sync-force.timer"));
+    print(syncSyncthingAvailable() ? "  OK syncthing: executable found" : "  MISSING syncthing: executable not found");
+    print(commandExists("syncthingtray") ? "  OK syncthingtray: executable found" : "  optional syncthingtray: executable not found");
+    print(syncCurlAvailable() ? "  OK curl: executable found" : "  MISSING curl: executable not found");
+    for id in syncFolderIds() {
+        string mark = syncFolderEnabled(project, id) ? "OK" : "optional";
+        print(f"  {mark} {id}: {syncFolderPath(project, id)}");
+    }
+}
+
+void syncTray(string project) {
+    UnixShell shell = UnixShell();
+    if (commandExists("syncthingtray")) {
+        shell.runUnchecked("syncthingtray >/dev/null 2>&1 &");
+        print("OK sync tray");
+    } else if (commandExists("flatpak")) {
+        shell.runUnchecked("flatpak run io.github.martchus.syncthingtray >/dev/null 2>&1 &");
+        print("OK sync tray flatpak");
+    } else {
+        print("MISSING syncthingtray");
+    }
+}
+
+void syncOpen(string project) {
+    UnixShell shell = UnixShell();
+    shell.runUnchecked("xdg-open " + ShellWords.quote("http://" + syncGuiAddress(project)) + " >/dev/null 2>&1 &");
+    print("OK sync open");
+}
+
+void doctorSync(string project) {
+    print("");
+    print("Sync");
+    reportFile("sync_config", syncConfigPath(project));
+    print(syncSyncthingAvailable() ? "  OK syncthing: executable found" : "  MISSING syncthing: executable not found");
+    print(syncCurlAvailable() ? "  OK curl: executable found" : "  MISSING curl: executable not found");
+    print(syncBool(project, "start_at_boot", true) ? "  OK start_at_boot: enabled" : "  optional start_at_boot: disabled");
+    print(syncBool(project, "tray", true) ? "  OK tray: enabled" : "  optional tray: disabled");
+    for id in syncFolderIds() {
+        string mark = syncFolderEnabled(project, id) ? "OK" : "optional";
+        string watch = syncFolderWatch(project, id) ? "watch" : "scan";
+        int interval = syncFolderRescan(project, id);
+        print(f"  {mark} {id}: {watch}, {interval}s, {syncFolderPath(project, id)}");
+    }
+}

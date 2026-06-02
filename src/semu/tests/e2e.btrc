@@ -1,3 +1,11 @@
+class SemuE2eCli {
+    public SemuE2eCli() {}
+
+    public int run(CliArgs args) {
+        return e2eCommand(args);
+    }
+}
+
 int e2eCommand(CliArgs args) {
     string mode = "all";
     if (args.count() > 1 && !args.get(1).startsWith("--")) {

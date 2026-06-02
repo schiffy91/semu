@@ -65,8 +65,8 @@ with actual emulator binaries, and a true two-device Syncthing conflict test.
 | `packaging/linux/ES-DE/*.xml` | Linux ES-DE systems/find-rules assets. |
 | `packaging/nix/*.nix` | Emulator packaging, routed wrappers, CLI package, NixOS module. |
 | `packaging/nix/flake/*.nix` | Flake package, app, check, and dev-shell modules. |
-| `mk/build.mk` | Build/bootstrap Make targets. |
-| `tests/Makefile` | Fast test, verification, and E2E graph targets. |
+| `Makefile` | Root build/bootstrap targets and test entrypoints. |
+| `tests/Makefile` | Fast test, verification, and E2E graph targets included by the root Makefile. |
 | `tests/vm/` | Arch VM harness and cloud-init fixtures. |
 | `tests/bazzite/` | Bazzite VM harness. |
 | `tests/steam-deck/` | Physical Deck SSH smoke helpers. |
@@ -75,6 +75,10 @@ with actual emulator binaries, and a true two-device Syncthing conflict test.
 
 Edit the BTRC sources under `src/`, then regenerate `semu.json` and
 `generated/semu.c`.
+
+BTRC modules under `src/semu/` are grouped by runtime domain and expose named
+class owners for manifest rendering, bootstrap, sync/lifecycle, keymaps,
+emulator launch/sandbox routing, screenshot verification, utilities, and tests.
 
 ## Steam Deck Quick Start
 

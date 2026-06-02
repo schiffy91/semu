@@ -1,3 +1,0 @@
-int decrypt3dsNoCryptoCommand(CliArgs args, int startIndex) {
-    return n3dsNoCryptoCommand(args, startIndex);
-}

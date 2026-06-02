@@ -1,3 +1,12 @@
+class EmulatorProfileGenerator {
+    public EmulatorProfileGenerator() {}
+
+    public KeymapIr keymap(string project) { return projectKeymapIr(project); }
+    public string retroarch(string project, KeymapIr ir) { return retroArchProfileText(project, ir); }
+    public string dolphinHotkeys(KeymapIr ir) { return dolphinHotkeysProfileText(ir); }
+    public string pcsx2(KeymapIr ir) { return pcsx2ProfileText(ir); }
+}
+
 string textLines(Vector<string> items) {
     return items.join("\n") + "\n";
 }

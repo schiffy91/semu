@@ -1,3 +1,12 @@
+class SemuE2eSupport {
+    public SemuE2eSupport() {}
+
+    public bool ok(bool condition, string message) { return e2eOk(condition, message); }
+    public string tempDir(string label) { return e2eTempDir(label); }
+    public bool runOk(ExecResult result, string label) { return e2eRunOk(result, label); }
+    public bool catalogConsistency(string project, string launcherBin) { return e2eCatalogConsistency(project, launcherBin); }
+}
+
 bool e2eOk(bool condition, string message) {
     if (condition) { return true; }
     print("E2E FAIL " + message);

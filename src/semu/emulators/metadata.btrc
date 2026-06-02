@@ -1,3 +1,12 @@
+class EmulatorCatalog {
+    public EmulatorCatalog() {}
+
+    public Vector<string> linuxLaunchers() { return linuxLauncherNames(); }
+    public string launcherName(string emulator) { return semuLauncherName(emulator); }
+    public Vector<string> retroarchCorePaths() { return retroarchCoreSearchPaths(); }
+    public string manifestEntries() { return launcherEntries(); }
+}
+
 Vector<string> linuxLauncherNames() {
     return [
         "RETROARCH",

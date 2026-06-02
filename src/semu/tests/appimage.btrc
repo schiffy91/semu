@@ -1,3 +1,11 @@
+class SemuAppImageSmoke {
+    public SemuAppImageSmoke() {}
+
+    public int run(CliArgs args) {
+        return e2eAppImageSmoke(args);
+    }
+}
+
 void e2eWriteExecutable(string path, string text) {
     FileSystem.writeText(path, text);
     FileSystem.chmod(path, 493);
