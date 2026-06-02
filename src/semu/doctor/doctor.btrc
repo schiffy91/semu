@@ -1,3 +1,11 @@
+class SemuDoctor {
+    public SemuDoctor() {}
+
+    public void run(string project) {
+        doctorSteamDeck(project);
+    }
+}
+
 bool allPresent(string target, Vector<string> files) {
     for file in files {
         if (!FileSystem.exists(joinPath(target, file))) {

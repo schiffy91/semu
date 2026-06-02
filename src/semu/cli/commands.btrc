@@ -1,0 +1,339 @@
+class SemuCliCommands {
+    public SemuCliCommands() {}
+
+    public int keymap(CliArgs args) { return keymapCommand(args); }
+    public int screenshot(CliArgs args, string project) { return screenshotCommand(args, project); }
+    public int sync(CliArgs args, string project) { return syncCommand(args, project); }
+    public int lifecycle(CliArgs args, string project) { return lifecycleCommand(args, project); }
+    public int deck(CliArgs args, string project) { return deckCommand(args, project); }
+    public int config(CliArgs args, string project) { return configCommand(args, project); }
+}
+
+// ---- src/semu/cli/config_commands.btrc ----
+void printUsage() {
+    print("semu [manifest|bootstrap|doctor|deck|lifecycle|sync|config|apprun|steam-input|keymap|screenshot|sandbox|launcher|utils|e2e] [graph|payload-audit|n3ds-nocrypto|validate|render|install|setup|daemon|reconfigure|change|uninstall|reinstall|upgrade|status|force|capture|prepare|launch] [--project PATH] [--roms PATH] [--source PATH] [--output PATH] [--dest PATH] [--target manifest|retroarch|dolphin|pcsx2|steam-input] [--emulator NAME] [--hook HOOK] [--scratch PATH] [--action ID] [--command KEYS]");
+}
+int keymapCommand(CliArgs args) {
+    string mode = "validate";
+    if (args.count() > 1 && !args.get(1).startsWith("--")) {
+        mode = args.get(1);
+    }
+    string sourcePath = args.valueAfter("--source", "");
+    string project = args.valueAfter("--project", "");
+    string source = defaultKeymapSource();
+    if (sourcePath.len() > 0) {
+        if (!FileSystem.exists(sourcePath)) {
+            print(f"error 0:0 keymap source not found: {sourcePath}");
+            return 1;
+        }
+        source = FileSystem.readText(sourcePath);
+    } else if (project.len() > 0 && FileSystem.exists(keymapSourcePath(project))) {
+        source = FileSystem.readText(keymapSourcePath(project));
+    }
+    KeymapErrors errors = KeymapErrors();
+    KeymapIr ir = compileKeymap(source, errors);
+    if (mode.equals("validate")) {
+        if (errors.count() == 0) {
+            print("OK keymap steam_deck");
+            return 0;
+        }
+        for (int i = 0; i < errors.count(); i++) {
+            print(f"{errors.levels.get(i)} {errors.lines.get(i)}:{errors.columns.get(i)} {errors.messages.get(i)}");
+        }
+        return 1;
+    }
+    if (mode.equals("render")) {
+        if (errors.count() > 0) {
+            for (int i = 0; i < errors.count(); i++) {
+                print(f"{errors.levels.get(i)} {errors.lines.get(i)}:{errors.columns.get(i)} {errors.messages.get(i)}");
+            }
+            return 1;
+        }
+        string target = args.valueAfter("--target", "manifest");
+        if (!isKeymapTarget(target)) {
+            print(f"error 0:0 unknown keymap target '{target}'");
+            return 1;
+        }
+        string rendered = renderKeymap(project, ir, target);
+        string output = args.valueAfter("--output", "");
+        if (output.len() > 0) {
+            FileSystem.writeText(output, rendered);
+        } else {
+            print(rendered);
+        }
+        return 0;
+    }
+    printUsage();
+    return 1;
+}
+
+int screenshotCommand(CliArgs args, string project) {
+    string mode = "status";
+    if (args.count() > 1 && !args.get(1).startsWith("--")) {
+        mode = args.get(1);
+    }
+    if (mode.equals("setup") || mode.equals("defaults")) {
+        writeScreenshotDefaults(project);
+        print(f"OK screenshot defaults: {screenshotConfigPath(project)}");
+        return 0;
+    }
+    if (mode.equals("status")) {
+        doctorScreenshotHooks(project);
+        return 0;
+    }
+    if (mode.equals("validate")) {
+        doctorScreenshotHooks(project);
+        return screenshotConfiguredTool(project).len() > 0 ? 0 : 1;
+    }
+    if (mode.equals("capture")) {
+        string emulator = args.valueAfter("--emulator", "");
+        if (emulator.len() == 0 && args.count() > 2 && !args.get(2).startsWith("--")) {
+            emulator = args.get(2);
+        }
+        if (emulator.len() == 0) {
+            print("error 0:0 screenshot capture needs --emulator NAME");
+            return 1;
+        }
+        string hook = args.valueAfter("--hook", "manual_visual_checkpoint");
+        string output = args.valueAfter("--output", screenshotCapturePath(project, emulator, hook));
+        return screenshotCaptureTo(project, emulator, hook, output) ? 0 : 1;
+    }
+    printUsage();
+    return 1;
+}
+
+int syncCommand(CliArgs args, string project) {
+    string mode = "status";
+    if (args.count() > 1 && !args.get(1).startsWith("--")) {
+        mode = args.get(1);
+    }
+    if (mode.equals("setup")) {
+        return syncSetup(project) ? 0 : 1;
+    }
+    if (mode.equals("daemon")) {
+        return syncDaemon(project) ? 0 : 1;
+    }
+    if (mode.equals("start")) {
+        return syncStart(project) ? 0 : 1;
+    }
+    if (mode.equals("stop")) {
+        return syncStop(project) ? 0 : 1;
+    }
+    if (mode.equals("status")) {
+        syncStatus(project);
+        return 0;
+    }
+    if (mode.equals("force") || mode.equals("now")) {
+        string target = "all";
+        if (args.count() > 2 && !args.get(2).startsWith("--")) {
+            target = args.get(2);
+        }
+        return syncForce(project, target) ? 0 : 1;
+    }
+    if (mode.equals("tray")) {
+        syncTray(project);
+        return 0;
+    }
+    if (mode.equals("open")) {
+        syncOpen(project);
+        return 0;
+    }
+    if (mode.equals("autostart")) {
+        string action = args.count() > 2 ? args.get(2) : "enable";
+        return syncAutostart(project, !action.equals("disable")) ? 0 : 1;
+    }
+    printUsage();
+    return 1;
+}
+
+// ---- src/semu/cli/app_steam_config.btrc ----
+int appRunCommand(CliArgs args, string project) {
+    string mode = "prepare";
+    if (args.count() > 1 && !args.get(1).startsWith("--")) {
+        mode = args.get(1);
+    }
+    if (mode.equals("prepare")) {
+        writeEsDeRuntimeFiles(project, homeDir());
+        print("OK apprun prepare");
+        return 0;
+    }
+    printUsage();
+    return 1;
+}
+
+string steamInputTemplateDir(CliArgs args) {
+    return args.valueAfter(
+        "--dest",
+        Environment.get("SEMU_STEAM_INPUT_DIR", joinPath(homeDir(), ".steam/steam/controller_base/templates"))
+    );
+}
+
+void copySteamInputTemplate(string project, string destination, string name) {
+    string source = joinPath(project, "input/steam-input/" + name);
+    FileSystem.writeText(joinPath(destination, name), FileSystem.readText(source));
+}
+
+int steamInputCommand(CliArgs args, string project) {
+    string mode = "status";
+    if (args.count() > 1 && !args.get(1).startsWith("--")) {
+        mode = args.get(1);
+    }
+    if (mode.equals("install") || mode.equals("copy")) {
+        string destination = steamInputTemplateDir(args);
+        writeSteamInputTemplates(project);
+        ensureDir(destination);
+        copySteamInputTemplate(project, destination, "neptune-simple.vdf");
+        copySteamInputTemplate(project, destination, "neptune-full.vdf");
+        print(f"OK steam-input templates: {destination}");
+        return 0;
+    }
+    if (mode.equals("status") || mode.equals("validate")) {
+        writeSteamInputTemplates(project);
+        reportSteamInputTemplate("neptune_simple", joinPath(project, "input/steam-input/neptune-simple.vdf"));
+        reportSteamInputTemplate("neptune_full", joinPath(project, "input/steam-input/neptune-full.vdf"));
+        return 0;
+    }
+    printUsage();
+    return 1;
+}
+
+int configCommand(CliArgs args, string project) {
+    string mode = "show";
+    if (args.count() > 1 && !args.get(1).startsWith("--")) {
+        mode = args.get(1);
+    }
+    if (mode.equals("env")) {
+        print("export SEMU_PROJECT_DIR=" + ShellWords.quote(project));
+        print("export SEMU_ROMS_DIR=" + ShellWords.quote(configuredRomsRoot(project)));
+        print("export SEMU_BIN=" + ShellWords.quote(serviceExecutable()));
+        return 0;
+    }
+    if (mode.equals("set-roms")) {
+        string roms = args.valueAfter("--roms", "");
+        if (roms.len() == 0 && args.count() > 2) {
+            roms = args.get(2);
+        }
+        if (roms.len() == 0) {
+            print("error 0:0 set-roms needs --roms PATH");
+            return 1;
+        }
+        writeSyncDefaults(project, roms);
+        ensureRomDirsAt(roms);
+        writeEsDeFiles(project);
+        print(f"OK roms_dir: {roms}");
+        return 0;
+    }
+    if (mode.equals("show")) {
+        reportFile("sync_config", syncConfigPath(project));
+        print(f"  roms_dir: {configuredRomsRoot(project)}");
+        return 0;
+    }
+    printUsage();
+    return 1;
+}
+
+// ---- src/semu/cli/lifecycle_deck_commands.btrc ----
+int lifecycleCommand(CliArgs args, string project) {
+    string mode = "status";
+    if (args.count() > 1 && !args.get(1).startsWith("--")) {
+        mode = args.get(1);
+    }
+    if (mode.equals("install") || mode.equals("setup")) {
+        lifecycleInstall(project, args.valueAfter("--roms", ""));
+        return 0;
+    }
+    if (mode.equals("reconfigure")) {
+        lifecycleReconfigure(project, args.valueAfter("--roms", ""));
+        writeLifecycleState(project, "reconfigure");
+        print("OK lifecycle reconfigure");
+        return 0;
+    }
+    if (mode.equals("change")) {
+        string actionId = args.valueAfter("--action", "");
+        string command = args.valueAfter("--command", "");
+        if (actionId.len() == 0 || command.len() == 0) {
+            print("error 0:0 lifecycle change needs --action ID --command KEYS");
+            return 1;
+        }
+        return lifecycleChangeKeymap(project, actionId, command) ? 0 : 1;
+    }
+    if (mode.equals("uninstall")) {
+        lifecycleUninstall(project, args.has("--purge-generated"), args.has("--purge-state"));
+        return 0;
+    }
+    if (mode.equals("reinstall")) {
+        lifecycleUninstall(project, false, false);
+        lifecycleInstall(project, args.valueAfter("--roms", ""));
+        writeLifecycleState(project, "reinstall");
+        return 0;
+    }
+    if (mode.equals("upgrade")) {
+        lifecycleUpgrade(project);
+        return 0;
+    }
+    if (mode.equals("status")) {
+        lifecycleStatus(project);
+        return 0;
+    }
+    printUsage();
+    return 1;
+}
+
+int deckLaunch(string project) {
+    if (!FileSystem.exists(syncConfigPath(project))) {
+        print("MISSING setup: run lifecycle install --project " + ShellWords.quote(project));
+        return 2;
+    }
+    writeEsDeRuntimeFiles(project, homeDir());
+    UnixShell shell = UnixShell();
+    string env = "SEMU_PROJECT_DIR=" + ShellWords.quote(project)
+        + " SEMU_ROMS_DIR=" + ShellWords.quote(configuredRomsRoot(project));
+    if (commandExists("es-de")) {
+        shell.runRaw(env + " es-de", false, false, "");
+        return 0;
+    } else {
+        print("MISSING es-de: use the bundled AppImage or install ES-DE");
+    }
+    return 127;
+}
+
+int deckCommand(CliArgs args, string project) {
+    string mode = "install";
+    if (args.count() > 1 && !args.get(1).startsWith("--")) {
+        mode = args.get(1);
+    }
+    if (mode.equals("install")) {
+        string roms = args.valueAfter("--roms", "");
+        lifecycleInstall(project, roms);
+        return 0;
+    }
+    if (mode.equals("provision")) {
+        return deckProvisionCommand(args, project);
+    }
+    if (mode.equals("verify-emulators")) {
+        return deckVerifyEmulatorsCommand(args, project);
+    }
+    if (mode.equals("verify-sync")) {
+        return deckVerifySyncCommand(project);
+    }
+    if (mode.equals("verify-input")) {
+        return deckVerifyInputCommand(project, args.has("--strict") || Environment.get("SEMU_STRICT_INPUT", "0").equals("1"));
+    }
+    if (mode.equals("setup") || mode.equals("reconfigure") || mode.equals("change") || mode.equals("uninstall") || mode.equals("reinstall") || mode.equals("upgrade") || mode.equals("status")) {
+        return lifecycleCommand(args, project);
+    }
+    if (mode.equals("verify")) {
+        doctorSteamDeck(project);
+        KeymapErrors errors = KeymapErrors();
+        compileKeymap(FileSystem.exists(keymapSourcePath(project)) ? FileSystem.readText(keymapSourcePath(project)) : defaultKeymapSource(), errors);
+        if (errors.count() > 0) {
+            return 1;
+        }
+        return 0;
+    }
+    if (mode.equals("launch")) {
+        return deckLaunch(project);
+    }
+    printUsage();
+    return 1;
+}

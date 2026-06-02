@@ -1,3 +1,19 @@
+class EmulatorLauncher {
+    public EmulatorLauncher() {}
+
+    public int run(string project, string emulator, Vector<string> args) {
+        return launcherRunEmulator(project, emulator, args);
+    }
+
+    public int runRouted(string project, string emulator, string executable, Vector<string> args) {
+        return launcherRunRouted(project, emulator, executable, args);
+    }
+
+    public int runFlatpak(string project, string emulator, string flatpakId, Vector<string> args) {
+        return launcherRunFlatpak(project, emulator, flatpakId, args);
+    }
+}
+
 string launcherFlatpakId(string emulator) {
     string key = emulator.toLower();
     if (key.equals("azahar")) { return "org.azahar_emu.Azahar"; }

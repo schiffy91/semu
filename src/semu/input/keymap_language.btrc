@@ -1,0 +1,355 @@
+class KeymapCompiler {
+    public KeymapCompiler() {}
+
+    public KeymapTokens lex(string source, KeymapErrors errors) {
+        return lexKeymap(source, errors);
+    }
+
+    public KeymapIr compile(string source, KeymapErrors errors) {
+        return compileKeymap(source, errors);
+    }
+
+    public KeymapIr defaults() {
+        return defaultKeymapIr();
+    }
+}
+
+// ---- src/semu/input/keymap_actions.btrc ----
+bool isIdentChar(char c) {
+    if (c >= 'a' && c <= 'z') { return true; }
+    if (c >= 'A' && c <= 'Z') { return true; }
+    if (c >= '0' && c <= '9') { return true; }
+    if (c == '_' || c == '.' || c == '-' || c == '/') { return true; }
+    return false;
+}
+
+bool isSpaceChar(char c) {
+    return c == ' ' || c == '\t' || c == '\r';
+}
+
+string defaultKeymapSource() {
+    return "# Semu Steam Deck keymap\n"
+        + "action ui.open = Ctrl+O\n"
+        + "action ui.pause = Ctrl+P\n"
+        + "action ui.screenshot = Ctrl+X\n"
+        + "action ui.fullscreen = Ctrl+Enter\n"
+        + "action ui.menu = Ctrl+M\n"
+        + "action app.quit = Ctrl+Q\n"
+        + "action state.prev = Ctrl+J\n"
+        + "action state.next = Ctrl+K\n"
+        + "action state.load = Ctrl+A\n"
+        + "action state.save = Ctrl+S\n"
+        + "action speed.rewind = Ctrl+-\n"
+        + "action speed.fast = Ctrl++\n"
+        + "action screen.swap = Ctrl+Tab\n"
+        + "action ui.escape = Esc\n"
+        + "bind HKB + A -> ${ui.pause}\n"
+        + "bind HKB + B -> ${ui.screenshot}\n"
+        + "bind HKB + X -> ${ui.fullscreen}\n"
+        + "bind HKB + Y -> ${ui.menu}\n"
+        + "bind HKB + Start -> ${app.quit}\n"
+        + "bind HKB + D-Pad Left -> ${state.prev}\n"
+        + "bind HKB + D-Pad Right -> ${state.next}\n"
+        + "bind HKB + L1 -> ${state.load}\n"
+        + "bind HKB + R1 -> ${state.save}\n"
+        + "bind HKB + L2 -> ${speed.rewind}\n"
+        + "bind HKB + R2 -> ${speed.fast}\n"
+        + "bind HKB + L3 -> ${screen.swap}\n"
+        + "bind HKB + R3 -> ${ui.escape}\n";
+}
+
+string actionAlias(string id) {
+    if (id.equals("ui.open")) { return "open"; }
+    if (id.equals("ui.pause")) { return "pause"; }
+    if (id.equals("ui.screenshot")) { return "screenshot"; }
+    if (id.equals("ui.fullscreen")) { return "fullscreen"; }
+    if (id.equals("ui.menu")) { return "menu"; }
+    if (id.equals("app.quit")) { return "quit"; }
+    if (id.equals("state.prev")) { return "previous_state_slot"; }
+    if (id.equals("state.next")) { return "next_state_slot"; }
+    if (id.equals("state.load")) { return "load_state"; }
+    if (id.equals("state.save")) { return "save_state"; }
+    if (id.equals("speed.rewind")) { return "rewind"; }
+    if (id.equals("speed.fast")) { return "fast_forward"; }
+    if (id.equals("screen.swap")) { return "swap_screens"; }
+    if (id.equals("ui.escape")) { return "escape"; }
+    return id;
+}
+
+string actionLabel(string id) {
+    if (id.equals("ui.open")) { return "Open"; }
+    if (id.equals("ui.pause")) { return "Pause / Resume"; }
+    if (id.equals("ui.screenshot")) { return "Take Screenshot"; }
+    if (id.equals("ui.fullscreen")) { return "Toggle Fullscreen"; }
+    if (id.equals("ui.menu")) { return "Open Menu"; }
+    if (id.equals("app.quit")) { return "Quit Emulator"; }
+    if (id.equals("state.prev")) { return "Previous State Slot"; }
+    if (id.equals("state.next")) { return "Next State Slot"; }
+    if (id.equals("state.load")) { return "Load State"; }
+    if (id.equals("state.save")) { return "Save State"; }
+    if (id.equals("speed.rewind")) { return "Rewind"; }
+    if (id.equals("speed.fast")) { return "Fast Forward"; }
+    if (id.equals("screen.swap")) { return "Swap Screens"; }
+    if (id.equals("ui.escape")) { return "Escape"; }
+    return id;
+}
+
+string actionNote(string id) {
+    if (id.equals("ui.open")) { return "Open content or emulator dialog where supported."; }
+    if (id.equals("ui.pause")) { return "Primary pause toggle for emulator cores and standalone emulators."; }
+    if (id.equals("ui.screenshot")) { return "Screenshot command for emulators that expose a keyboard hotkey."; }
+    if (id.equals("ui.fullscreen")) { return "Standalone fullscreen toggle."; }
+    if (id.equals("ui.menu")) { return "Open the emulator quick menu when supported."; }
+    if (id.equals("app.quit")) { return "Unified exit command for Game Mode."; }
+    if (id.equals("state.prev")) { return "Move to the previous save-state slot."; }
+    if (id.equals("state.next")) { return "Move to the next save-state slot."; }
+    if (id.equals("state.load")) { return "Load the current save-state slot."; }
+    if (id.equals("state.save")) { return "Save to the current save-state slot."; }
+    if (id.equals("speed.rewind")) { return "RetroArch rewind where the core supports rewind."; }
+    if (id.equals("speed.fast")) { return "Fast-forward toggle."; }
+    if (id.equals("screen.swap")) { return "Swap displays for dual-screen systems."; }
+    if (id.equals("ui.escape")) { return "Plain escape for menus and desktop-oriented components."; }
+    return "";
+}
+
+Vector<string> actionSystems(string id) {
+    if (id.equals("ui.open")) { return ["dolphin"]; }
+    if (id.equals("ui.pause")) { return ["retroarch", "dolphin", "azahar", "melonds", "pcsx2"]; }
+    if (id.equals("ui.screenshot")) { return ["retroarch", "dolphin", "azahar", "pcsx2"]; }
+    if (id.equals("ui.fullscreen")) { return ["dolphin", "azahar", "melonds", "pcsx2"]; }
+    if (id.equals("ui.menu")) { return ["retroarch", "pcsx2", "ppsspp"]; }
+    if (id.equals("app.quit")) { return ["retroarch", "dolphin", "azahar", "pcsx2", "ppsspp", "flycast", "gopher64", "melonds", "cemu", "ryujinx"]; }
+    if (id.equals("state.prev")) { return ["retroarch", "dolphin", "pcsx2", "ppsspp"]; }
+    if (id.equals("state.next")) { return ["retroarch", "dolphin", "pcsx2", "ppsspp"]; }
+    if (id.equals("state.load")) { return ["retroarch", "dolphin", "azahar", "pcsx2", "ppsspp"]; }
+    if (id.equals("state.save")) { return ["retroarch", "dolphin", "azahar", "pcsx2", "ppsspp"]; }
+    if (id.equals("speed.rewind")) { return ["retroarch"]; }
+    if (id.equals("speed.fast")) { return ["retroarch", "melonds", "pcsx2", "ppsspp"]; }
+    if (id.equals("screen.swap")) { return ["azahar", "melonds", "cemu"]; }
+    if (id.equals("ui.escape")) { return ["pc"]; }
+    Vector<string> empty = [];
+    return empty;
+}
+
+// ---- src/semu/input/keymap_lexer.btrc ----
+int lastPlusIndex(string text) {
+    int result = -1;
+    for (int i = 0; i < text.len(); i++) {
+        if (text.charAt(i) == '+') {
+            result = i;
+        }
+    }
+    return result;
+}
+
+string keymapCommandKeyPart(string command) {
+    if (command.endsWith("++")) { return "+"; }
+    if (command.endsWith("+-")) { return "-"; }
+    int plus = lastPlusIndex(command);
+    if (plus < 0) { return command; }
+    return command.substring(plus + 1, command.len() - plus - 1);
+}
+
+string keymapCommandModifierPart(string command) {
+    if (command.endsWith("++") || command.endsWith("+-")) {
+        if (command.len() <= 2) { return ""; }
+        return command.substring(0, command.len() - 2);
+    }
+    int plus = lastPlusIndex(command);
+    if (plus < 0) { return ""; }
+    return command.substring(0, plus);
+}
+
+KeymapTokens lexKeymap(string source, KeymapErrors errors) {
+    KeymapTokens tokens = KeymapTokens();
+    int line = 1;
+    int column = 1;
+    int i = 0;
+    while (i < source.len()) {
+        char c = source.charAt(i);
+        if (c == '\n') {
+            tokens.push("newline", "\n", line, column);
+            i++;
+            line++;
+            column = 1;
+        } else if (isSpaceChar(c)) {
+            i++;
+            column++;
+        } else if (c == '#') {
+            while (i < source.len() && source.charAt(i) != '\n') {
+                i++;
+                column++;
+            }
+        } else if (c == '=') {
+            tokens.push("equals", "=", line, column);
+            i++;
+            column++;
+        } else if (c == '+') {
+            tokens.push("plus", "+", line, column);
+            i++;
+            column++;
+        } else if (c == '-') {
+            if (i + 1 < source.len() && source.charAt(i + 1) == '>') {
+                tokens.push("arrow", "->", line, column);
+                i = i + 2;
+                column = column + 2;
+            } else {
+                tokens.push("ident", "-", line, column);
+                i++;
+                column++;
+            }
+        } else if (c == '$') {
+            int startColumn = column;
+            if (i + 1 < source.len() && source.charAt(i + 1) == '{') {
+                i = i + 2;
+                column = column + 2;
+                int start = i;
+                while (i < source.len() && source.charAt(i) != '}' && source.charAt(i) != '\n') {
+                    i++;
+                    column++;
+                }
+                if (i >= source.len() || source.charAt(i) == '\n') {
+                    errors.error(line, startColumn, "unterminated action reference");
+                } else {
+                    tokens.push("ref", source.substring(start, i - start), line, startColumn);
+                    i++;
+                    column++;
+                }
+            } else {
+                errors.error(line, column, "expected ${action.id}");
+                i++;
+                column++;
+            }
+        } else if (c == '"') {
+            int startColumn = column;
+            i++;
+            column++;
+            int start = i;
+            while (i < source.len() && source.charAt(i) != '"') {
+                if (source.charAt(i) == '\n') {
+                    errors.error(line, startColumn, "unterminated string");
+                    break;
+                }
+                i++;
+                column++;
+            }
+            if (i < source.len() && source.charAt(i) == '"') {
+                tokens.push("string", source.substring(start, i - start), line, startColumn);
+                i++;
+                column++;
+            }
+        } else if (isIdentChar(c)) {
+            int start = i;
+            int startColumn = column;
+            while (i < source.len() && isIdentChar(source.charAt(i))) {
+                i++;
+                column++;
+            }
+            tokens.push("ident", source.substring(start, i - start), line, startColumn);
+        } else {
+            errors.error(line, column, f"unexpected character '{c}'");
+            i++;
+            column++;
+        }
+    }
+    tokens.push("eof", "", line, column);
+    return tokens;
+}
+
+// ---- src/semu/input/keymap_validate.btrc ----
+bool keymapIrHasAction(KeymapIr ir, string id) {
+    for action in ir.actionIds {
+        if (action.equals(id)) { return true; }
+    }
+    return false;
+}
+
+Vector<string> requiredKeymapActions() {
+    return [
+        "ui.open",
+        "ui.pause",
+        "ui.screenshot",
+        "ui.fullscreen",
+        "ui.menu",
+        "app.quit",
+        "state.prev",
+        "state.next",
+        "state.load",
+        "state.save",
+        "speed.rewind",
+        "speed.fast",
+        "screen.swap",
+        "ui.escape"
+    ];
+}
+
+bool allowedModifier(string modifier) {
+    return modifier.equals("Ctrl") || modifier.equals("Alt") || modifier.equals("Shift") || modifier.equals("Meta");
+}
+
+void validateKeymapIr(KeymapIr ir, KeymapErrors errors) {
+    if (ir.actionIds.len == 0) {
+        errors.error(0, 0, "keymap has no actions");
+    }
+    if (ir.bindingCombos.len == 0) {
+        errors.error(0, 0, "keymap has no controller bindings");
+    }
+    for required in requiredKeymapActions() {
+        if (!keymapIrHasAction(ir, required)) {
+            errors.error(0, 0, f"missing required action '{required}'");
+        }
+    }
+    for (int i = 0; i < ir.actionIds.len; i++) {
+        string id = ir.actionIds.get(i);
+        string command = ir.actionCommands.get(i);
+        if (command.len() == 0) {
+            errors.error(0, 0, f"action '{id}' has no key");
+        }
+        if (allowedModifier(command)) {
+            errors.error(0, 0, f"action '{id}' has no key after modifier '{command}'");
+        }
+        string modifiers = keymapCommandModifierPart(command);
+        if (modifiers.len() > 0) {
+            Vector<string> parts = Strings.split(modifiers, "+");
+            for modifier in parts {
+                if (!allowedModifier(modifier)) {
+                    errors.error(0, 0, f"action '{id}' uses unsupported modifier '{modifier}'");
+                }
+            }
+        }
+    }
+    for (int i = 0; i < ir.actionIds.len; i++) {
+        for (int j = i + 1; j < ir.actionIds.len; j++) {
+            if (ir.actionIds.get(i).equals(ir.actionIds.get(j))) {
+                errors.error(0, 0, f"duplicate action '{ir.actionIds.get(i)}'");
+            }
+        }
+    }
+    for (int i = 0; i < ir.bindingActions.len; i++) {
+        if (!keymapIrHasAction(ir, ir.bindingActions.get(i))) {
+            errors.error(0, 0, f"binding '{ir.bindingCombos.get(i)}' references unknown action '{ir.bindingActions.get(i)}'");
+        }
+    }
+    for (int i = 0; i < ir.bindingCombos.len; i++) {
+        for (int j = i + 1; j < ir.bindingCombos.len; j++) {
+            if (ir.bindingCombos.get(i).equals(ir.bindingCombos.get(j))) {
+                errors.error(0, 0, f"duplicate controller combo '{ir.bindingCombos.get(i)}'");
+            }
+        }
+    }
+}
+
+KeymapIr compileKeymap(string source, KeymapErrors errors) {
+    KeymapTokens tokens = lexKeymap(source, errors);
+    KeymapParser parser = KeymapParser(tokens, errors);
+    KeymapIr ir = parser.parse();
+    validateKeymapIr(ir, errors);
+    return ir;
+}
+
+KeymapIr defaultKeymapIr() {
+    KeymapErrors errors = KeymapErrors();
+    string source = defaultKeymapSource();
+    KeymapIr ir = compileKeymap(source, errors);
+    return ir;
+}

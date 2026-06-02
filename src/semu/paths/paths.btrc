@@ -1,3 +1,13 @@
+class SemuPaths {
+    public SemuPaths() {}
+
+    public string content(string project) { return contentRoot(project); }
+    public string roms(string project) { return romsRoot(project); }
+    public string configuredRoms(string project) { return configuredRomsRoot(project); }
+    public string bios(string project) { return biosRoot(project); }
+    public string keymap(string project) { return keymapSourcePath(project); }
+}
+
 string joinPath(string left, string right) {
     return PathTools.join(left, right);
 }

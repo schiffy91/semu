@@ -1,0 +1,416 @@
+// ---- src/semu/bootstrap/bundled_assets.btrc ----
+string assetRoot(string project) {
+    string configured = Environment.get("SEMU_ASSET_ROOT", "");
+    if (configured.len() > 0 && (
+        FileSystem.exists(joinPath(configured, "packaging/linux/bin/semu-retroarch"))
+            || FileSystem.exists(joinPath(configured, "src/semu/bootstrap/templates/steam_input_template.vdf"))
+    )) {
+        return configured;
+    }
+    if (FileSystem.exists("packaging/linux/bin/semu-retroarch")) {
+        return ".";
+    }
+    if (FileSystem.exists(joinPath(project, "packaging/linux/bin/semu-retroarch"))) {
+        return project;
+    }
+    return project;
+}
+
+string bundledText(string project, string relative, string fallback) {
+    string source = joinPath(assetRoot(project), relative);
+    if (FileSystem.isFile(source)) {
+        return FileSystem.readText(source);
+    }
+    source = joinPath(project, relative);
+    if (FileSystem.isFile(source)) {
+        return FileSystem.readText(source);
+    }
+    return fallback;
+}
+
+string renderTemplate(string source, Vector<string> names, Vector<string> values) {
+    string result = source;
+    for (int i = 0; i < names.len; i++) {
+        result = Strings.replace(result, "${" + names.get(i) + "}", values.get(i));
+    }
+    return result;
+}
+
+void seedBundledFileFromRoot(string root, string project, string relative, bool executable) {
+    string source = joinPath(root, relative);
+    string target = joinPath(project, relative);
+    if (source.equals(target)) {
+        return;
+    }
+    if (!FileSystem.isFile(source)) {
+        return;
+    }
+    ensureDir(PathTools.dirname(target));
+    FileSystem.writeText(target, FileSystem.readText(source));
+    if (executable) {
+        FileSystem.chmod(target, 493);
+    }
+}
+
+void seedBundledFile(string project, string relative, bool executable) {
+    seedBundledFileFromRoot(assetRoot(project), project, relative, executable);
+}
+
+void seedBundledDirFiles(string project, string relative, bool executable) {
+    string root = assetRoot(project);
+    string sourceDir = joinPath(root, relative);
+    if (!FileSystem.isDir(sourceDir)) {
+        return;
+    }
+    ensureDir(joinPath(project, relative));
+    for name in FileSystem.listDir(sourceDir) {
+        string source = joinPath(sourceDir, name);
+        if (FileSystem.isFile(source)) {
+            seedBundledFileFromRoot(root, project, joinPath(relative, name), executable);
+        }
+    }
+}
+
+void seedLinuxAssets(string project) {
+    seedBundledFile(project, "packaging/linux/AppRun", true);
+    seedBundledFile(project, "packaging/linux/sandbox.sh", true);
+    seedBundledFile(project, "packaging/linux/semu.desktop", false);
+    seedBundledFile(project, "packaging/linux/ES-DE/es_systems_linux.xml", false);
+    seedBundledFile(project, "packaging/linux/ES-DE/es_find_rules_linux.xml", false);
+    seedBundledDirFiles(project, "packaging/linux/bin", true);
+}
+
+// ---- src/semu/bootstrap/project_defaults.btrc ----
+void writeProfile(string project, string relative, string text) {
+    string target = emulatorProfilePath(project, relative);
+    ensureDir(PathTools.dirname(target));
+    FileSystem.writeText(target, text);
+}
+
+void seedEmulatorDefaults(string project) {
+    seedLinuxAssets(project);
+    KeymapIr ir = projectKeymapIr(project);
+    writeProfile(project, "RetroArch/retroarch.cfg.linux-backup", retroArchProfileText(project, ir));
+    writeProfile(project, "RetroArch/retroarch.cfg", retroArchProfileText(project, ir));
+    writeProfile(project, "Dolphin/config/Profiles/GCPad/Steam Deck.ini", dolphinGcpadProfileText());
+    writeProfile(project, "Dolphin/config/Profiles/Hotkeys/Steam Deck.ini", dolphinHotkeysProfileText(ir));
+    writeProfile(project, "Dolphin/config/Profiles/Wiimote/Wiimote (SD).ini", dolphinWiimoteProfileText(false));
+    writeProfile(project, "Dolphin/config/Profiles/Wiimote/Wiimote + Classic Controller (SD).ini", dolphinWiimoteProfileText(true));
+    writeProfile(project, "Cemu/config/controllerProfiles/SteamInput-P1.xml", cemuProfileText());
+    writeProfile(project, "PCSX2/config/inputprofiles/Steam Deck.ini", pcsx2ProfileText(ir));
+    writeProfile(project, "Ryujinx/config/profiles/controller/Steam Virtual Controller.json", ryujinxProfileText());
+}
+
+void seedKeymapDefaults(string project) {
+    ensureDir(keymapsRoot(project));
+    string keymapPath = keymapSourcePath(project);
+    if (!FileSystem.exists(keymapPath)) {
+        FileSystem.writeText(keymapPath, defaultKeymapSource());
+    }
+}
+
+string syncConfigText(JsonObject config, string romsDir) {
+    string roms = romsDir.len() > 0 ? romsDir : config.getString("roms_dir", "${paths.project_roms}");
+    return jsonObject([
+        jsonBoolField("enabled", config.getBool("enabled", true)),
+        jsonBoolField("start_at_boot", config.getBool("start_at_boot", true)),
+        jsonBoolField("tray", config.getBool("tray", true)),
+        jsonStrField("gui_address", config.getString("gui_address", "127.0.0.1:8384")),
+        jsonStrField("roms_dir", roms),
+        jsonBoolField("sync_saves", config.getBool("sync_saves", true)),
+        jsonBoolField("sync_states", config.getBool("sync_states", true)),
+        jsonBoolField("sync_emulator_state", config.getBool("sync_emulator_state", true)),
+        jsonBoolField("sync_screenshots", config.getBool("sync_screenshots", true)),
+        jsonBoolField("sync_gamelists", config.getBool("sync_gamelists", true)),
+        jsonBoolField("sync_roms", config.getBool("sync_roms", false)),
+        jsonBoolField("sync_bios", config.getBool("sync_bios", false)),
+        jsonIntField("rescan_saves_s", config.getInt("rescan_saves_s", 900)),
+        jsonIntField("rescan_states_s", config.getInt("rescan_states_s", 900)),
+        jsonIntField("rescan_emulator_state_s", config.getInt("rescan_emulator_state_s", 900)),
+        jsonIntField("rescan_screenshots_s", config.getInt("rescan_screenshots_s", 1800)),
+        jsonIntField("rescan_gamelists_s", config.getInt("rescan_gamelists_s", 1800)),
+        jsonIntField("rescan_roms_s", config.getInt("rescan_roms_s", 3600)),
+        jsonIntField("rescan_bios_s", config.getInt("rescan_bios_s", 3600)),
+        jsonBoolField("watch_saves", config.getBool("watch_saves", true)),
+        jsonBoolField("watch_states", config.getBool("watch_states", true)),
+        jsonBoolField("watch_emulator_state", config.getBool("watch_emulator_state", true)),
+        jsonBoolField("watch_screenshots", config.getBool("watch_screenshots", true)),
+        jsonBoolField("watch_gamelists", config.getBool("watch_gamelists", true)),
+        jsonBoolField("watch_roms", config.getBool("watch_roms", true)),
+        jsonBoolField("watch_bios", config.getBool("watch_bios", true))
+    ]) + "\n";
+}
+
+string syncDefaultConfigText(string project, string romsDir) {
+    return syncConfigText(JsonObject.parse("{}"), romsDir);
+}
+
+void writeSyncDefaults(string project, string romsDir) {
+    ensureDir(syncRoot(project));
+    ensureDir(syncScriptsDir(project));
+    ensureDir(syncLogDir(project));
+    ensureDir(syncthingConfigDir(project));
+    ensureDir(syncthingDataDir(project));
+    string path = syncConfigPath(project);
+    if (!FileSystem.exists(path)) {
+        FileSystem.writeText(path, syncDefaultConfigText(project, romsDir));
+        return;
+    }
+    if (romsDir.len() > 0) {
+        JsonObject config = JsonObject.readFile(path);
+        FileSystem.writeText(path, syncConfigText(config, romsDir));
+    }
+}
+
+void ensureRomDirsAt(string root) {
+    ensureDir(root);
+    for rom in declaredRomDirs() {
+        ensureDir(joinPath(root, rom));
+    }
+}
+
+// ---- src/semu/bootstrap/es_de_assets.btrc ----
+string esFindRulesTemplate() {
+    return "<?xml version=\"1.0\"?>\n"
+        + "<!-- Generated by semu.btrc from the launcher catalog -->\n"
+        + "<ruleList>\n"
+        + "${EMULATOR_RULES}"
+        + "  <core name=\"RETROARCH\">\n"
+        + "    <rule type=\"corepath\">\n"
+        + "${RETROARCH_CORE_RULES}"
+        + "    </rule>\n"
+        + "  </core>\n"
+        + "</ruleList>\n";
+}
+
+string esLauncherRulesXml(string launcherBin) {
+    string result = "";
+    for emulator in linuxLauncherNames() {
+        result = result
+            + "  <emulator name=\"" + xmlEscape(emulator) + "\">\n"
+            + "    <rule type=\"staticpath\">\n"
+            + "      <entry>" + xmlEscape(joinPath(launcherBin, semuLauncherName(emulator))) + "</entry>\n"
+            + "    </rule>\n"
+            + "  </emulator>\n";
+    }
+    return result;
+}
+
+string esRetroarchCoreRulesXml() {
+    string result = "";
+    for corePath in retroarchCoreSearchPaths() {
+        result = result + "      <entry>" + xmlEscape(corePath) + "</entry>\n";
+    }
+    return result;
+}
+
+string esFindRulesXml(string project, string launcherBin) {
+    string template = bundledText(project, "src/semu/bootstrap/templates/es_find_rules.xml", esFindRulesTemplate());
+    return renderTemplate(
+        template,
+        ["EMULATOR_RULES", "RETROARCH_CORE_RULES"],
+        [esLauncherRulesXml(launcherBin), esRetroarchCoreRulesXml()]
+    );
+}
+
+void writeEsDeFiles(string project) {
+    ensureDir(customSystemsRoot(project));
+
+    SystemCatalog catalog = systemCatalog();
+    string systemsXml = catalog.esSystemsXml();
+    FileSystem.writeText(joinPath(customSystemsRoot(project), "es_systems.xml"), systemsXml);
+
+    ensureDir(esDeProfileCustomSystemsRoot(project));
+    FileSystem.writeText(joinPath(esDeProfileCustomSystemsRoot(project), "es_systems.xml"), systemsXml);
+
+    string launcherBin = Environment.get("SEMU_LAUNCHER_BIN", linuxLauncherBin(project));
+    FileSystem.writeText(joinPath(customSystemsRoot(project), "es_find_rules.xml"), esFindRulesXml(project, launcherBin));
+
+    FileSystem.writeText(joinPath(project, "ES-DE/es_settings.xml"), esSettingsXmlForProject(project));
+}
+
+string esSettingsXmlForRuntime(string project, string romsDir) {
+    string roms = romsDir.len() > 0 ? romsDir : configuredRomsRoot(project);
+    return esSettingsXmlWithPaths(
+        roms,
+        joinPath(contentRoot(project), "downloaded_media"),
+        joinPath(contentRoot(project), "themes")
+    );
+}
+
+void writeEsDeRuntimeFiles(string project, string userHome) {
+    string customRoot = joinPath(userHome, "ES-DE/custom_systems");
+    string settingsRoot = joinPath(userHome, "ES-DE/settings");
+    ensureDir(customRoot);
+    ensureDir(settingsRoot);
+
+    SystemCatalog catalog = systemCatalog();
+    FileSystem.writeText(joinPath(customRoot, "es_systems.xml"), catalog.esSystemsXml());
+
+    string launcherBin = Environment.get("SEMU_LAUNCHER_BIN", linuxLauncherBin(project));
+    FileSystem.writeText(joinPath(customRoot, "es_find_rules.xml"), esFindRulesXml(project, launcherBin));
+
+    string roms = Environment.get("SEMU_ROMS_DIR", configuredRomsRoot(project));
+    FileSystem.writeText(joinPath(settingsRoot, "es_settings.xml"), esSettingsXmlForRuntime(project, roms));
+}
+
+// ---- src/semu/bootstrap/steam_input_templates.btrc ----
+string steamInputKeyName(string key) {
+    if (key.equals("Ctrl")) { return "LEFT_CONTROL"; }
+    if (key.equals("Alt")) { return "LEFT_ALT"; }
+    if (key.equals("Shift")) { return "LEFT_SHIFT"; }
+    if (key.equals("Meta")) { return "LEFT_GUI"; }
+    if (key.equals("Enter")) { return "RETURN"; }
+    if (key.equals("Esc")) { return "ESCAPE"; }
+    if (key.equals("Tab")) { return "TAB"; }
+    if (key.equals("+")) { return "KEYPAD_PLUS"; }
+    if (key.equals("-")) { return "KEYPAD_DASH"; }
+    return key.toUpper();
+}
+
+string steamInputActionLabel(string id) {
+    if (id.equals("ui.open")) { return "Open"; }
+    if (id.equals("ui.pause")) { return "Pause / Resume"; }
+    if (id.equals("ui.screenshot")) { return "Screenshot"; }
+    if (id.equals("ui.fullscreen")) { return "Fullscreen"; }
+    if (id.equals("ui.menu")) { return "Menu"; }
+    if (id.equals("app.quit")) { return "Quit"; }
+    if (id.equals("state.prev")) { return "Previous State Slot"; }
+    if (id.equals("state.next")) { return "Next State Slot"; }
+    if (id.equals("state.load")) { return "Load State"; }
+    if (id.equals("state.save")) { return "Save State"; }
+    if (id.equals("speed.rewind")) { return "Rewind"; }
+    if (id.equals("speed.fast")) { return "Fast Forward"; }
+    if (id.equals("screen.swap")) { return "Swap Screens"; }
+    if (id.equals("ui.escape")) { return "Escape"; }
+    return actionLabel(id);
+}
+
+string steamInputKeyBindings(string command, string label) {
+    Vector<string> keys = [];
+    string modifiers = keymapCommandModifierPart(command);
+    if (modifiers.len() > 0) {
+        for modifier in Strings.split(modifiers, "+") {
+            keys.push(steamInputKeyName(modifier));
+        }
+    }
+    keys.push(steamInputKeyName(keymapCommandKeyPart(command)));
+
+    Vector<string> bindings = [];
+    for key in keys {
+        bindings.push("\"binding\" \"key_press " + key + ", " + label + ", , \"");
+    }
+    return bindings.join(" ");
+}
+
+string steamInputActionBindings(KeymapIr ir, string actionId) {
+    if (actionId.equals("app.quit")) {
+        return steamInputKeyBindings("Alt+F4", steamInputActionLabel(actionId));
+    }
+    return steamInputKeyBindings(irActionCommand(ir, actionId), steamInputActionLabel(actionId));
+}
+
+string steamInputTemplateVdf(string project, string title, bool full, KeymapIr ir) {
+    string radialName = full ? "Semu Full Radial" : "Semu Simple Radial";
+    string template = bundledText(project, "src/semu/bootstrap/templates/steam_input_template.vdf", "");
+    return renderTemplate(
+        template,
+        [
+            "TITLE",
+            "RADIAL_NAME",
+            "UI_PAUSE",
+            "UI_SCREENSHOT",
+            "UI_FULLSCREEN",
+            "UI_MENU",
+            "SPEED_REWIND",
+            "SPEED_FAST",
+            "UI_OPEN",
+            "UI_ESCAPE",
+            "STATE_NEXT",
+            "STATE_PREV",
+            "APP_QUIT",
+            "STATE_LOAD",
+            "STATE_SAVE"
+        ],
+        [
+            title,
+            radialName,
+            steamInputActionBindings(ir, "ui.pause"),
+            steamInputActionBindings(ir, "ui.screenshot"),
+            steamInputActionBindings(ir, "ui.fullscreen"),
+            steamInputActionBindings(ir, "ui.menu"),
+            steamInputActionBindings(ir, "speed.rewind"),
+            steamInputActionBindings(ir, "speed.fast"),
+            steamInputActionBindings(ir, "ui.open"),
+            steamInputActionBindings(ir, "ui.escape"),
+            steamInputActionBindings(ir, "state.next"),
+            steamInputActionBindings(ir, "state.prev"),
+            steamInputActionBindings(ir, "app.quit"),
+            steamInputActionBindings(ir, "state.load"),
+            steamInputActionBindings(ir, "state.save")
+        ]
+    );
+}
+
+void writeSteamInputTemplates(string project) {
+    ensureDir(joinPath(project, "input/steam-input"));
+    KeymapIr ir = projectKeymapIr(project);
+    FileSystem.writeText(
+        joinPath(project, "input/steam-input/neptune-simple.vdf"),
+        steamInputTemplateVdf(project, "Semu: Steam Deck - Neptune SIMPLE", false, ir)
+    );
+    FileSystem.writeText(
+        joinPath(project, "input/steam-input/neptune-full.vdf"),
+        steamInputTemplateVdf(project, "Semu: Steam Deck - Neptune FULL", true, ir)
+    );
+}
+
+// ---- bootstrap workflow ----
+class ProjectBootstrap {
+    public ProjectBootstrap() {}
+
+    public void bootstrap(string project) {
+    writeSyncDefaults(project, "");
+    ensureDir(contentRoot(project));
+    ensureRomDirsAt(configuredRomsRoot(project));
+    if (!configuredRomsRoot(project).equals(romsRoot(project))) {
+        ensureRomDirsAt(romsRoot(project));
+    }
+    ensureDir(biosRoot(project));
+    ensureDir(joinPath(contentRoot(project), "saves"));
+    ensureDir(joinPath(contentRoot(project), "states"));
+    ensureDir(joinPath(contentRoot(project), "screenshots"));
+    ensureDir(joinPath(contentRoot(project), "downloaded_media"));
+    ensureDir(joinPath(contentRoot(project), "gamelists"));
+    ensureDir(joinPath(contentRoot(project), "themes"));
+    ensureDir(customSystemsRoot(project));
+
+    Vector<string> ids = declaredSystemIds();
+    for id in ids {
+        ensureDir(joinPath(joinPath(contentRoot(project), "downloaded_media"), id));
+        ensureDir(joinPath(joinPath(contentRoot(project), "gamelists"), id));
+    }
+
+    ensureDir(joinPath(biosRoot(project), "ps2"));
+    ensureDir(joinPath(biosRoot(project), "switch"));
+    ensureDir(joinPath(biosRoot(project), "dc"));
+    ensureDir(emulatorProfilePath(project, "Cemu/data"));
+    ensureDir(joinPath(project, "input/steam-input"));
+
+    seedKeymapDefaults(project);
+    seedEmulatorDefaults(project);
+    writeSteamInputTemplates(project);
+    writeScreenshotDefaults(project);
+    writeGeneratedManifest(joinPath(project, "semu.json"));
+    writeEsDeFiles(project);
+
+    print(f"Bootstrapped Steam Deck/Linux content at {contentRoot(project)}");
+    print(f"  roms:    {romsRoot(project)}");
+    print(f"  bios:    {biosRoot(project)}");
+    print(f"  systems: {joinPath(customSystemsRoot(project), \"es_systems.xml\")}");
+}
+}
+
+void bootstrapSteamDeck(string project) {
+    ProjectBootstrap().bootstrap(project);
+}

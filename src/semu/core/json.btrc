@@ -1,3 +1,13 @@
+class JsonWriter {
+    public JsonWriter() {}
+
+    public string quote(string value) { return jsonQ(value); }
+    public string field(string key, string value) { return jsonField(key, value); }
+    public string object(Vector<string> fields) { return jsonObject(fields); }
+    public string array(Vector<string> values) { return jsonArray(values); }
+    public string stringArray(Vector<string> values) { return jsonStringArray(values); }
+}
+
 string jsonQ(string value) {
     return "\"" + JsonObject.escape(value) + "\"";
 }

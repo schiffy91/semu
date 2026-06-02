@@ -1,3 +1,13 @@
+class ScreenshotVerification {
+    public ScreenshotVerification() {}
+
+    public void writeDefaults(string project) { writeScreenshotDefaults(project); }
+    public bool capture(string project, string emulator, string hook) { return screenshotCapture(project, emulator, hook); }
+    public void captureHook(string project, string emulator, string hook) { screenshotCaptureHook(project, emulator, hook); }
+    public void scheduleHook(string project, string emulator, string hook) { screenshotScheduleHook(project, emulator, hook); }
+    public void doctor(string project) { doctorScreenshotHooks(project); }
+}
+
 bool commandExists(string name) {
     UnixShell shell = UnixShell();
     ExecResult result = shell.runUnchecked(f"command -v {ShellWords.quote(name)} >/dev/null 2>&1");

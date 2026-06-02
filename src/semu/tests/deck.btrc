@@ -1,3 +1,12 @@
+class DeckVerificationSuite {
+    public DeckVerificationSuite() {}
+
+    public int provision(CliArgs args, string project) { return deckProvisionCommand(args, project); }
+    public int verifyEmulators(CliArgs args, string project) { return deckVerifyEmulatorsCommand(args, project); }
+    public int verifyInput(string project, bool strict) { return deckVerifyInputCommand(project, strict); }
+    public int verifySync(string project) { return deckVerifySyncCommand(project); }
+}
+
 void deckMaybeRun(string command) {
     UnixShell().runUnchecked(command + " >/dev/null 2>&1 || true");
 }

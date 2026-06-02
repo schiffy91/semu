@@ -1,3 +1,119 @@
+class EmulatorSandbox {
+    public EmulatorSandbox() {}
+
+    public int prepare(CliArgs args, string project) {
+        return sandboxPrepareCommand(args, project);
+    }
+
+    public int launch(string project, string emulator, string executable, Vector<string> args) {
+        return sandboxLaunch(project, emulator, executable, args);
+    }
+}
+
+// ---- src/semu/emulators/sandbox_specs.btrc ----
+string stripTrailingSlashes(string path) {
+    string result = path;
+    while (result.len() > 1 && result.charAt(result.len() - 1) == '/') {
+        result = result.substring(0, result.len() - 1);
+    }
+    return result;
+}
+
+string sandboxResolveTarget(string scratch, string target) {
+    string resolved = Strings.replace(target, "${host}", "$HOME/.config");
+    resolved = Strings.replace(resolved, "${portable}", "$HOME/ES-DE");
+    if (resolved.startsWith("~/")) {
+        resolved = "$HOME/" + Strings.removePrefix(resolved, "~/");
+    }
+    resolved = stripTrailingSlashes(resolved);
+    if (resolved.startsWith("$HOME/")) {
+        return joinPath(scratch, Strings.removePrefix(resolved, "$HOME/"));
+    }
+    return resolved;
+}
+
+string sandboxProjectEmulatorDir(string project, string emulator) {
+    string wanted = emulator.toLower();
+    for name in FileSystem.listDir(project) {
+        string candidate = joinPath(project, name);
+        if (FileSystem.isDir(candidate) && name.toLower().equals(wanted)) {
+            return candidate;
+        }
+    }
+    string profileRoot = emulatorProfilesRoot(project);
+    for name in FileSystem.listDir(profileRoot) {
+        string candidate = joinPath(profileRoot, name);
+        if (FileSystem.isDir(candidate) && name.toLower().equals(wanted)) {
+            return candidate;
+        }
+    }
+    return "";
+}
+
+void sandboxSymlink(string linkPath, string sourcePath) {
+    ensureDir(PathTools.dirname(linkPath));
+    FileSystem.removeRecursive(linkPath);
+    FileSystem.symlink(sourcePath, linkPath);
+}
+
+void sandboxApplyLink(string emuDir, string scratch, string entry, string linuxTarget) {
+    string source = joinPath(emuDir, entry);
+    if (!FileSystem.exists(source)) {
+        return;
+    }
+    string destDir = sandboxResolveTarget(scratch, linuxTarget);
+    if (FileSystem.isDir(source)) {
+        ensureDir(destDir);
+        for child in FileSystem.listDir(source) {
+            sandboxSymlink(joinPath(destDir, child), joinPath(source, child));
+        }
+        return;
+    }
+    sandboxSymlink(joinPath(destDir, PathTools.basename(source)), source);
+}
+
+bool sandboxApplyKnownLinks(string key, string emuDir, string scratch) {
+    if (key.equals("azahar")) {
+        sandboxApplyLink(emuDir, scratch, "data", "~/.local/share/azahar-emu/");
+        return true;
+    }
+    if (key.equals("cemu")) {
+        sandboxApplyLink(emuDir, scratch, "config", "~/.config/Cemu/");
+        sandboxApplyLink(emuDir, scratch, "data", "~/.local/share/Cemu/");
+        return true;
+    }
+    if (key.equals("dolphin")) {
+        sandboxApplyLink(emuDir, scratch, "config", "~/.config/dolphin-emu/");
+        sandboxApplyLink(emuDir, scratch, "data", "~/.local/share/dolphin-emu/");
+        return true;
+    }
+    if (key.equals("es-de")) {
+        sandboxApplyLink(emuDir, scratch, "ES-DE", "${portable}/");
+        sandboxApplyLink(emuDir, scratch, "es_settings.xml", "${portable}/settings/");
+        sandboxApplyLink(emuDir, scratch, "custom_systems", "${portable}/custom_systems/");
+        return true;
+    }
+    if (key.equals("lime3ds")) {
+        sandboxApplyLink(emuDir, scratch, "data", "${host}/lime3ds-emu/");
+        return true;
+    }
+    if (key.equals("pcsx2")) {
+        sandboxApplyLink(emuDir, scratch, "config", "${host}/PCSX2/");
+        return true;
+    }
+    if (key.equals("retroarch")) {
+        sandboxApplyLink(emuDir, scratch, "config", "${host}/retroarch/");
+        sandboxApplyLink(emuDir, scratch, "retroarch.cfg", "${host}/retroarch/");
+        return true;
+    }
+    if (key.equals("ryujinx")) {
+        sandboxApplyLink(emuDir, scratch, "config", "~/.config/Ryujinx/");
+        return true;
+    }
+    return false;
+}
+
+// ---- src/semu/emulators/sandbox_launch.btrc ----
 string currentUid() {
     return Strings.fromInt(Platform.euid());
 }
@@ -167,4 +283,45 @@ int sandboxLaunch(string project, string emulator, string executable, Vector<str
     ExecResult result = shell.runRaw(command, false, false, "");
     screenshotCaptureHook(project, emulator, "after_exit");
     return result.code;
+}
+
+// ---- src/semu/emulators/sandbox_commands.btrc ----
+int sandboxPrepareCommand(CliArgs args, string project) {
+    string emulator = args.valueAfter("--emulator", "");
+    string scratch = args.valueAfter("--scratch", "");
+    if (emulator.len() == 0 || scratch.len() == 0) {
+        print("error 0:0 sandbox prepare needs --emulator NAME --scratch PATH");
+        return 1;
+    }
+    string emuDir = sandboxProjectEmulatorDir(project, emulator);
+    if (emuDir.len() == 0) {
+        print(f"sandbox: no emulator directory for '{emulator}' under {project}");
+        return 3;
+    }
+    ensureDir(scratch);
+    bool ok = sandboxApplyKnownLinks(emulator.toLower(), emuDir, scratch);
+    if (!ok) {
+        print(f"sandbox: no BTRC symlink spec for '{emulator}'");
+        return 3;
+    }
+    return 0;
+}
+
+int sandboxCommand(CliArgs args, string project) {
+    string mode = "prepare";
+    if (args.count() > 1 && !args.get(1).startsWith("--")) {
+        mode = args.get(1);
+    }
+    if (mode.equals("prepare")) {
+        return sandboxPrepareCommand(args, project);
+    }
+    if (mode.equals("launch")) {
+        if (args.count() < 4) {
+            print("error 0:0 sandbox launch needs EMULATOR EXECUTABLE [ARGS...]");
+            return 1;
+        }
+        return sandboxLaunch(project, args.get(2), args.get(3), cliTail(args, 4));
+    }
+    printUsage();
+    return 1;
 }
