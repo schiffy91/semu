@@ -99,7 +99,7 @@ SystemCatalog systemCatalog() {
             "nes",
             "nes",
             [".3dsen", ".bin", ".fds", ".nes", ".unf", ".unif", ".7z", ".zip"],
-            [commandSpec("Nestopia", "%EMULATOR_RETROARCH% -f -L %CORE_RETROARCH%/nestopia_libretro.so %ROM%")],
+            [commandSpec("Mesen", "%EMULATOR_RETROARCH% -f -L %CORE_RETROARCH%/mesen_libretro.so %ROM%")],
             [commandSpec("Mesen", "%EMULATOR_RETROARCH% -f -L %CORE_RETROARCH%/mesen_libretro.dylib %ROM%")],
             noBios,
             ""
@@ -135,7 +135,7 @@ SystemCatalog systemCatalog() {
             "n64",
             "n64",
             [".bin", ".d64", ".n64", ".ndd", ".u1", ".v64", ".z64", ".7z", ".zip"],
-            [commandSpec("Gopher64", "%EMULATOR_GOPHER64% %ROM%")],
+            [commandSpec("Mupen64Plus-Next", "%EMULATOR_RETROARCH% -f -L %CORE_RETROARCH%/mupen64plus_next_libretro.so %ROM%")],
             [commandSpec("ares", "%EMULATOR_ARES% --fullscreen --system \"Nintendo 64\" %ROM%")],
             noBios,
             ""

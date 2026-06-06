@@ -1,20 +1,9 @@
-class KeymapCompiler {
-    public KeymapCompiler() {}
-
-    public KeymapTokens lex(string source, KeymapErrors errors) {
-        return lexKeymap(source, errors);
-    }
-
-    public KeymapIr compile(string source, KeymapErrors errors) {
-        return compileKeymap(source, errors);
-    }
-
-    public KeymapIr defaults() {
-        return defaultKeymapIr();
-    }
+class SemuKeymapLanguage {
+    class KeymapIr compile(string source, KeymapErrors errors) { return compileKeymap(source, errors); }
+    class string render(KeymapIr ir, string target) { return renderKeymap(ir, target); }
 }
 
-// ---- src/semu/input/keymap_actions.btrc ----
+// ---- keymap_actions.btrc ----
 bool isIdentChar(char c) {
     if (c >= 'a' && c <= 'z') { return true; }
     if (c >= 'A' && c <= 'Z') { return true; }
@@ -131,7 +120,7 @@ Vector<string> actionSystems(string id) {
     return empty;
 }
 
-// ---- src/semu/input/keymap_lexer.btrc ----
+// ---- keymap_lexer.btrc ----
 int lastPlusIndex(string text) {
     int result = -1;
     for (int i = 0; i < text.len(); i++) {
@@ -256,7 +245,7 @@ KeymapTokens lexKeymap(string source, KeymapErrors errors) {
     return tokens;
 }
 
-// ---- src/semu/input/keymap_validate.btrc ----
+// ---- keymap_validate.btrc ----
 bool keymapIrHasAction(KeymapIr ir, string id) {
     for action in ir.actionIds {
         if (action.equals(id)) { return true; }
@@ -352,4 +341,206 @@ KeymapIr defaultKeymapIr() {
     string source = defaultKeymapSource();
     KeymapIr ir = compileKeymap(source, errors);
     return ir;
+}
+
+// ---- keymap_manifest.btrc ----
+string keymapIrActionJson(KeymapIr ir, int index) {
+    string id = ir.actionIds.get(index);
+    return jsonObject([
+        jsonStrField("id", id),
+        jsonStrField("alias", actionAlias(id)),
+        jsonStrField("label", actionLabel(id)),
+        jsonStrField("command", ir.actionCommands.get(index)),
+        jsonField("systems", jsonStringArray(actionSystems(id))),
+        jsonStrField("note", actionNote(id))
+    ]);
+}
+
+string keymapIrBindingJson(KeymapIr ir, int index) {
+    string action = ir.bindingActions.get(index);
+    return jsonObject([
+        jsonStrField("combo", ir.bindingCombos.get(index)),
+        jsonStrField("action", action),
+        jsonStrField("action_alias", actionAlias(action))
+    ]);
+}
+
+string keymapIrJson(KeymapIr ir) {
+    Vector<string> actions = [];
+    for (int i = 0; i < ir.actionIds.len; i++) {
+        actions.push(keymapIrActionJson(ir, i));
+    }
+    Vector<string> bindings = [];
+    for (int i = 0; i < ir.bindingCombos.len; i++) {
+        bindings.push(keymapIrBindingJson(ir, i));
+    }
+    return jsonObject([
+        jsonStrField("source_language", "semu-keymap-v1"),
+        jsonStrField("source_path", "${paths.keymaps}/steam_deck.skm"),
+        jsonField("render_targets", jsonStringArray(["manifest", "retroarch", "dolphin", "pcsx2", "steam-input"])),
+        jsonField("actions", jsonArray(actions)),
+        jsonField("bindings", jsonArray(bindings))
+    ]);
+}
+
+string irActionCommand(KeymapIr ir, string id) {
+    for (int i = 0; i < ir.actionIds.len; i++) {
+        if (ir.actionIds.get(i).equals(id)) {
+            return ir.actionCommands.get(i);
+        }
+    }
+    return "";
+}
+
+string irBindingCombo(KeymapIr ir, string id) {
+    for (int i = 0; i < ir.bindingActions.len; i++) {
+        if (ir.bindingActions.get(i).equals(id)) {
+            return ir.bindingCombos.get(i);
+        }
+    }
+    return "";
+}
+
+string keymapsJson() {
+    return jsonObject([
+        jsonField("steam_deck", keymapIrJson(defaultKeymapIr()))
+    ]);
+}
+
+string hotkeyFromKeymapIr(KeymapIr ir, string actionId) {
+    return hotkeySpec(
+        actionAlias(actionId),
+        actionLabel(actionId),
+        irBindingCombo(ir, actionId),
+        irActionCommand(ir, actionId),
+        actionSystems(actionId),
+        actionNote(actionId)
+    );
+}
+
+string hotkeySpec(
+    string id,
+    string label,
+    string combo,
+    string command,
+    Vector<string> systems,
+    string note
+) {
+    return jsonObject([
+        jsonStrField("id", id),
+        jsonStrField("label", label),
+        jsonStrField("combo", combo),
+        jsonStrField("command", command),
+        jsonField("systems", jsonStringArray(systems)),
+        jsonStrField("note", note)
+    ]);
+}
+
+string steamDeckHotkeys() {
+    KeymapIr ir = defaultKeymapIr();
+    return jsonArray([
+        hotkeyFromKeymapIr(ir, "ui.pause"),
+        hotkeyFromKeymapIr(ir, "ui.screenshot"),
+        hotkeyFromKeymapIr(ir, "ui.fullscreen"),
+        hotkeyFromKeymapIr(ir, "ui.menu"),
+        hotkeyFromKeymapIr(ir, "app.quit"),
+        hotkeyFromKeymapIr(ir, "state.prev"),
+        hotkeyFromKeymapIr(ir, "state.next"),
+        hotkeyFromKeymapIr(ir, "state.load"),
+        hotkeyFromKeymapIr(ir, "state.save"),
+        hotkeyFromKeymapIr(ir, "speed.rewind"),
+        hotkeyFromKeymapIr(ir, "speed.fast"),
+        hotkeyFromKeymapIr(ir, "screen.swap"),
+        hotkeyFromKeymapIr(ir, "ui.escape")
+    ]);
+}
+
+// ---- keymap_renderers.btrc ----
+string retroarchKeyName(string key) {
+    if (key.equals("+")) { return "add"; }
+    if (key.equals("-")) { return "subtract"; }
+    return key.toLower();
+}
+
+string keymapCommandKey(KeymapIr ir, string actionId) {
+    return retroarchKeyName(keymapCommandKeyPart(irActionCommand(ir, actionId)));
+}
+
+string renderRetroArchKeymap(KeymapIr ir) {
+    return "input_exit_emulator = \"escape\"\n"
+        + "input_quit_gamepad_combo = \"4\"\n"
+        + "input_load_state = " + jsonQ(keymapCommandKey(ir, "state.load")) + "\n"
+        + "input_menu_toggle = " + jsonQ(keymapCommandKey(ir, "ui.menu")) + "\n"
+        + "input_save_state = " + jsonQ(keymapCommandKey(ir, "state.save")) + "\n"
+        + "input_screenshot = " + jsonQ(keymapCommandKey(ir, "ui.screenshot")) + "\n"
+        + "input_state_slot_decrease = " + jsonQ(keymapCommandKey(ir, "state.prev")) + "\n"
+        + "input_state_slot_increase = " + jsonQ(keymapCommandKey(ir, "state.next")) + "\n"
+        + "input_toggle_fast_forward = " + jsonQ(keymapCommandKey(ir, "speed.fast")) + "\n"
+        + "input_toggle_fullscreen = " + jsonQ(keymapCommandKey(ir, "ui.fullscreen")) + "\n";
+}
+
+string dolphinChord(KeymapIr ir, string actionId) {
+    string command = irActionCommand(ir, actionId);
+    if (command.equals("Esc")) { return "Escape"; }
+    return "@(" + command + ")";
+}
+
+string renderDolphinKeymap(KeymapIr ir) {
+    return "General/Open = " + dolphinChord(ir, "ui.open") + "\n"
+        + "General/Toggle Pause = " + dolphinChord(ir, "ui.pause") + "\n"
+        + "General/Stop = " + dolphinChord(ir, "app.quit") + "\n"
+        + "General/Toggle Fullscreen = " + dolphinChord(ir, "ui.fullscreen") + "\n"
+        + "General/Take Screenshot = " + dolphinChord(ir, "ui.screenshot") + "\n"
+        + "Load State/Load State Slot 1 = " + dolphinChord(ir, "state.load") + "\n"
+        + "Save State/Save State Slot 1 = " + dolphinChord(ir, "state.save") + "\n";
+}
+
+string pcsx2KeyName(string key) {
+    if (key.equals("+")) { return "Plus"; }
+    if (key.equals("-")) { return "Minus"; }
+    return key;
+}
+
+string pcsx2Chord(KeymapIr ir, string actionId) {
+    string command = irActionCommand(ir, actionId);
+    Vector<string> parts = [];
+    string modifiers = keymapCommandModifierPart(command);
+    if (modifiers.len() > 0) {
+        Vector<string> modifierParts = Strings.split(modifiers, "+");
+        for modifier in modifierParts {
+            if (modifier.equals("Ctrl")) {
+                parts.push("Keyboard/Control");
+            } else {
+                parts.push("Keyboard/" + modifier);
+            }
+        }
+    }
+    parts.push("Keyboard/" + pcsx2KeyName(keymapCommandKeyPart(command)));
+    return parts.join(" & ");
+}
+
+string renderPcsx2Keymap(KeymapIr ir) {
+    return "OpenPauseMenu = " + pcsx2Chord(ir, "ui.menu") + "\n"
+        + "TogglePause = " + pcsx2Chord(ir, "ui.pause") + "\n"
+        + "ToggleFullscreen = " + pcsx2Chord(ir, "ui.fullscreen") + "\n"
+        + "PreviousSaveStateSlot = " + pcsx2Chord(ir, "state.prev") + "\n"
+        + "NextSaveStateSlot = " + pcsx2Chord(ir, "state.next") + "\n"
+        + "SaveStateToSlot = " + pcsx2Chord(ir, "state.save") + "\n"
+        + "LoadStateFromSlot = " + pcsx2Chord(ir, "state.load") + "\n"
+        + "Screenshot = " + pcsx2Chord(ir, "ui.screenshot") + "\n"
+        + "ToggleTurbo = " + pcsx2Chord(ir, "speed.fast") + "\n"
+        + "ToggleSlowMotion = " + pcsx2Chord(ir, "speed.rewind") + "\n";
+}
+
+string renderKeymap(KeymapIr ir, string target) {
+    if (target.equals("manifest")) { return keymapIrJson(ir) + "\n"; }
+    if (target.equals("retroarch")) { return renderRetroArchKeymap(ir); }
+    if (target.equals("dolphin")) { return renderDolphinKeymap(ir); }
+    if (target.equals("pcsx2")) { return renderPcsx2Keymap(ir); }
+    if (target.equals("steam-input")) { return steamInputTemplateVdf("Semu: Steam Deck - Neptune FULL", true, ir); }
+    return f"unknown keymap target: {target}\n";
+}
+
+bool isKeymapTarget(string target) {
+    return target.equals("manifest") || target.equals("retroarch") || target.equals("dolphin") || target.equals("pcsx2") || target.equals("steam-input");
 }

@@ -1,7 +1,7 @@
 # SteamOS / Deck Verification
 
-`tests/vm` documents the Deck-like VM verification layer. The runtime commands
-live in BTRC under `src/semu/`.
+`tests/deck` documents the Deck-like full-system verification layer. The
+runtime commands live in BTRC under `src/semu/`.
 
 Generate the BTRC runtime on the host first, then run the Deck commands inside
 SteamOS, Bazzite, or the Arch VM. The guest path compiles `generated/semu.c`
@@ -10,6 +10,12 @@ from this repo.
 ```sh
 make btrc-build
 make deck-vm-sync
+```
+
+For a quick physical Deck SSH/screenshot preflight, run:
+
+```sh
+make deck-ssh-smoke DECK_HOST=steamdeck.local DECK_ROMS=/run/media/deck/SD
 ```
 
 Inside the guest:
@@ -49,17 +55,27 @@ sips -s format png tests/vms/bazzite-screen.ppm --out tests/vms/bazzite-screen.p
 Keep `VM_DIR` as a relative path such as `tests/vms`; GNU Make target parsing
 works cleanly with path names that avoid spaces.
 
-After installing Bazzite, boot the installed disk and add this repo's SSH key to
-the guest user:
+The installed Bazzite E2E path is owned by the graph. It remasters the Deck ISO
+with the test kickstart, installs into a fresh qcow2 disk, boots that disk, syncs
+this repo over SSH, and runs the Deck checks inside the guest:
 
 ```sh
-make bazzite-vm-start-installed
+make e2e-graph-run E2E_GRAPH_NODES="bazzite-installed-ssh" \
+  E2E_GRAPH_ARGS="--arg bazziteSshPort=2224"
 ```
 
-Then run:
+The graph-created guest user is `bazzite`. To inspect the installed VM after a
+run, start it and open SSH:
 
 ```sh
-make bazzite-vm-verify-ssh BAZZITE_SSH_USER=<guest-user>
+make bazzite-vm-start-installed \
+  BAZZITE_DISK=tests/vms/bazzite-e2e.qcow2 \
+  BAZZITE_PID=tests/vms/bazzite-e2e.pid \
+  BAZZITE_MONITOR=tests/vms/bazzite-e2e-monitor.sock \
+  BAZZITE_SERIAL=tests/vms/bazzite-e2e-serial.log \
+  BAZZITE_SSH_PORT=2224 \
+  BAZZITE_VNC_DISPLAY=7
+make bazzite-vm-ssh BAZZITE_SSH_USER=bazzite BAZZITE_SSH_PORT=2224
 ```
 
 For a more reliable software-rendered installer/runtime smoke on Apple Silicon,

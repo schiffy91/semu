@@ -1,7 +1,4 @@
-# =============================================================================
-# QEMU VM (full system, for flatpak/GUI/integration testing)
-# =============================================================================
-
+VM_DIR := tests/vms
 CLOUD_INIT := tests/vm/cloud-init
 SSH_PORT_LINUX := 2222
 VM_KEY := $(VM_DIR)/id_ed25519

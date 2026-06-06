@@ -22,10 +22,10 @@ This repo currently provides:
 - A custom keymap language in `input/keymaps/steam_deck.skm` with tokenizer, parser,
   code generators, and authoring errors.
 - Declarative Syncthing config in `sync/sync.json`.
-- Declarative screenshot verification config in `tests/verification/screenshots.json`.
+- Declarative screenshot verification config in `verification/screenshots.json`.
 - Linux launcher shims and AppRun glue under `packaging/linux/`.
 - Nix packages for the BTRC CLI, bundled emulator set, routed emulator wrappers,
-  and a NixOS module.
+  SteamOS graphics bridge, and a NixOS module.
 - Automated smoke coverage for bootstrap, lifecycle, launcher routing,
   screenshot hooks, sync setup, AppImage assembly wiring, and Nix routed wrappers.
 
@@ -40,6 +40,8 @@ with actual emulator binaries, and a true two-device Syncthing conflict test.
 - BTRC runtime logic only for install, bootstrap, doctor, keymaps, sync,
   screenshots, lifecycle, sandboxing, and launcher routing.
 - Nix for reproducible emulator builds and AppImage payload assembly.
+- Nix-built GUI emulators route through the bundled nixGL Mesa bridge on
+  SteamOS/non-NixOS hosts so OpenGL/Vulkan drivers resolve cleanly.
 - Routed wrappers place Linux emulator state under
   `.semu/appimage-state/<emulator>` via `HOME` and `XDG_*`.
 - Small abstractions: controller model, backend, emitted input, emulator keymap.
@@ -59,26 +61,17 @@ with actual emulator binaries, and a true two-device Syncthing conflict test.
 | `input/keymaps/steam_deck.skm` | Editable Steam Deck keymap source. |
 | `input/steam-input/*.vdf` | Generated Steam Input template files. |
 | `sync/sync.json` | Editable Syncthing policy. |
-| `tests/verification/screenshots.json` | Editable screenshot hook policy. |
+| `verification/screenshots.json` | Editable screenshot hook policy. |
 | `packaging/linux/AppRun` | AppImage entry point and bundled Nix-store mount wrapper. |
 | `packaging/linux/bin/semu-*` | Thin Linux launcher shims. |
 | `packaging/linux/ES-DE/*.xml` | Linux ES-DE systems/find-rules assets. |
 | `packaging/nix/*.nix` | Emulator packaging, routed wrappers, CLI package, NixOS module. |
-| `packaging/nix/flake/*.nix` | Flake package, app, check, and dev-shell modules. |
-| `Makefile` | Root build/bootstrap targets and test entrypoints. |
-| `tests/Makefile` | Fast test, verification, and E2E graph targets included by the root Makefile. |
-| `tests/vm/` | Arch VM harness and cloud-init fixtures. |
-| `tests/bazzite/` | Bazzite VM harness. |
-| `tests/steam-deck/` | Physical Deck SSH smoke helpers. |
+| `tests/` | Local, VM, AppImage, Deck-style, and regression tests. |
 | `ES-DE/ES-DE/` | User content root for ROMs, BIOS, saves, states, media, themes. |
 | `.semu/` | Runtime state created by launcher and AppImage routes. |
 
 Edit the BTRC sources under `src/`, then regenerate `semu.json` and
 `generated/semu.c`.
-
-BTRC modules under `src/semu/` are grouped by runtime domain and expose named
-class owners for manifest rendering, bootstrap, sync/lifecycle, keymaps,
-emulator launch/sandbox routing, screenshot verification, utilities, and tests.
 
 ## Steam Deck Quick Start
 
@@ -89,11 +82,10 @@ curl -fsSL https://raw.githubusercontent.com/schiffy91/semu/main/utils/steam-dec
   | bash -s -- install --yes
 ```
 
-That script handles the shell-only host setup: persistent SteamOS `/nix`,
-official multi-user Nix if needed, repo clone/update, dev-shell/tooling
-realization, flake build, and SSH enablement. Product setup then delegates to
-the BTRC CLI (`deck install`, Steam Input, keymap, screenshot, sync, and
-doctor). For a microSD ROM directory:
+That script prepares a persistent SteamOS `/nix` bind mount, installs official
+multi-user Nix if needed, clones or updates this repo under `~/semu`, builds the
+Semu flake, runs Deck install, copies Steam Input templates, starts Syncthing
+helpers, and enables SSH for remote verification. For a microSD ROM directory:
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/schiffy91/semu/main/utils/steam-deck-bootstrap.sh \
@@ -121,8 +113,11 @@ For a microSD ROM directory, pass the real mount path:
 ```sh
 build/semu deck install \
   --project "$PWD" \
-  --roms "/run/media/mmcblk0p1/Emulation/ROMs"
+  --roms "/run/media/deck/SD"
 ```
+
+`/run/media/deck/SD` is auto-normalized when it contains the common
+`Emulation/ES-DE/ES-DE/ROMs` layout.
 
 What `deck install` does:
 
@@ -179,6 +174,11 @@ Each routed wrapper sets:
 - `XDG_DATA_HOME`
 - `XDG_CACHE_HOME`
 
+On SteamOS and other non-NixOS Linux hosts, routed GUI emulators are wrapped
+with the bundled `nixGLIntel` Mesa bridge when available. This keeps the
+emulators Nix-built while allowing them to use the host GPU stack; RetroArch
+uses `glcore` by default for hardware-rendered cores such as N64.
+
 The wrapper state lives under:
 
 ```text
@@ -191,8 +191,8 @@ That state path is included in the Syncthing folder declarations as
 ## AppImage Build
 
 The AppImage path wraps ES-DE, AppRun, the compiled BTRC CLI, Linux launcher
-shims, bundled Syncthing/curl, and optionally a copied Nix closure for routed
-emulator wrappers. ROMs and BIOS stay in user-owned project folders.
+shims, and optionally a copied Nix closure for routed emulator wrappers.
+ROMs and BIOS stay in user-owned project folders.
 
 ```sh
 nix build .#default
@@ -214,11 +214,10 @@ Why bubblewrap is used:
 Fallback behavior:
 
 - If a routed Nix binary exists inside the AppImage, ES-DE find rules point at it.
+- If the routed payload includes `nixGLIntel`, emulator launches use it for
+  host GPU driver access on SteamOS/non-NixOS systems.
 - Flatpak-backed launchers are the host fallback for supported standalone
   emulators when the AppImage is built without a routed Nix payload.
-- `sync setup` from the AppImage installs user systemd units whose Syncthing
-  daemon starts through the stable AppImage path, not the temporary AppImage
-  mount path.
 
 Current automated tests validate AppImage assembly logic with fake ES-DE and
 fake appimagetool. A real SteamOS/Game Mode AppImage pass is still listed in
@@ -284,10 +283,10 @@ bind HKB + L1 -> ${state.load}
 bind HKB + Start -> ${app.quit}
 ```
 
-Steam Input renders the quit action as `Alt+F4` so the left-trackpad radial
-and `HKB + Start` close standalone emulator windows consistently in Game Mode.
-Emulator-native keymap renderers keep `Ctrl+Q` where that is the supported
-in-emulator quit binding.
+Steam Input renders the quit action as `Select+Start`, `Esc`, `Ctrl+Q`, and
+`Alt+F4` so the left-trackpad radial and `HKB + Start` can use emulator-native
+quit handling first, then fall back to closing standalone emulator windows in
+Game Mode.
 
 Validate and render:
 
@@ -335,12 +334,9 @@ build/semu sync open --project "$PWD"
 - `semu-sync-force.service`
 - `semu-sync-force.timer`
 
-It starts `semu-syncthing.service`, waits for the local API, and adds the
-declared folders. When setup is run from the AppImage, the service runs
-`sync daemon` through the AppImage so bundled Syncthing is available after the
-initial AppImage process exits.
+It also uses Syncthing's CLI/API when available to add the declared folders.
 
-### `tests/verification/screenshots.json`
+### `verification/screenshots.json`
 
 Editable screenshot policy. Defaults declare:
 
@@ -400,8 +396,8 @@ Steam Deck defaults:
 - Right trackpad is mouse.
 - Left trackpad is radial hotkeys.
 - Hotkey button is `HKB` (`View`, with L4/R4 optional in Steam Input).
-- Steam Input quit is `Alt+F4`; emulator-native quit remains `Ctrl+Q` where
-  supported.
+- Steam Input quit emits `Select+Start`, `Esc`, `Ctrl+Q`, and `Alt+F4`;
+  RetroArch uses native `Start+Select` quit handling.
 - Unified load state is `Ctrl+A`.
 - Unified save state is `Ctrl+S`.
 
@@ -413,7 +409,7 @@ Default hotkeys:
 | `HKB + B` | screenshot | `Ctrl+X` |
 | `HKB + X` | fullscreen | `Ctrl+Enter` |
 | `HKB + Y` | menu | `Ctrl+M` |
-| `HKB + Start` | quit emulator | `Alt+F4` in Steam Input |
+| `HKB + Start` | quit emulator | `Select+Start`, `Esc`, `Ctrl+Q`, `Alt+F4` in Steam Input |
 | `HKB + D-Pad Left` | previous state slot | `Ctrl+J` |
 | `HKB + D-Pad Right` | next state slot | `Ctrl+K` |
 | `HKB + L1` | load state | `Ctrl+A` |
@@ -469,8 +465,8 @@ user-owned project folders. Place those files in the declared locations and run
 - `ENCRYPTED`: content is encrypted and should be redumped/decrypted.
 - `INVALID`: missing or malformed NCSD/NCCH headers.
 
-The BTRC utility in `src/semu/utils/n3ds_nocrypto.btrc` fixes the NoCrypto flag
-on already-decrypted `.3ds`/`.cci` files.
+The BTRC utility in `src/semu/utils/n3ds.btrc` fixes the NoCrypto flag on
+already-decrypted `.3ds`/`.cci` files.
 
 ```sh
 build/semu utils n3ds-nocrypto ROMs/n3ds --check
@@ -635,7 +631,6 @@ The flake supports `aarch64-darwin`, `x86_64-darwin`, `x86_64-linux`, and
 Build and regenerate:
 
 ```sh
-nix develop
 make btrc-build
 build/semu manifest --output semu.json
 build/semu screenshot setup --project "$PWD"
@@ -645,7 +640,6 @@ Run fast tests:
 
 ```sh
 make test
-make tests TESTNAME=launcher
 make nix-e2e
 ```
 
@@ -657,30 +651,14 @@ make verify
 
 ### BTRC Compiler Dependency
 
-Normal Nix builds compile the committed `generated/semu.c` snapshot. The dev
-shell exposes the pinned BTRC compiler as `btrcpy` and `SEMU_BTRCPY`, so source
-regeneration does not depend on a local Mac checkout.
-
-```make
-BTRC_FLAKE ?=
-BTRCPY ?= btrcpy
-```
+Normal Nix builds compile the committed `generated/semu.c` snapshot. The flake
+also exposes `.#btrcpy`, backed by the pinned `btrc` input, so `make
+btrc-build` can regenerate artifacts without a machine-local compiler path.
 
 That keeps the production package tied to committed generated C while BTRC
-development remains explicit. To test unpublished BTRC compiler changes,
-override the flake input:
-
-```sh
-make btrc-build BTRC_FLAKE=path:/absolute/path/to/btrc
-```
-
-The current dependency model keeps BTRC in the flake input and keeps Semu
-focused on generated runtime artifacts. Long-term options:
-
-- keep `BTRC_FLAKE` as the normal local development override;
-- keep `inputs.btrc` pinned to a known-good BTRC commit;
-- add a `vendor/btrc` submodule only for offline compiler development inside
-  this repo.
+development remains reproducible through the Nix flake/dev shell. Compiler
+experiments should update or override the flake input intentionally in a
+separate compiler-work branch, not through local Makefile paths.
 
 Run VM/deck-oriented checks:
 
@@ -689,6 +667,8 @@ make deck-vm-verify
 make deck-vm-verify-strict
 make bazzite-vm-smoke
 make bazzite-desktop-vm-smoke
+make e2e-graph-run E2E_GRAPH_NODES="bazzite-installed-ssh" \
+  E2E_GRAPH_ARGS="--arg bazziteSshPort=2224"
 ```
 
 `make verify` currently covers:
@@ -704,6 +684,7 @@ make bazzite-desktop-vm-smoke
 - AppImage smoke wiring.
 - Nix routed wrapper smoke.
 - BTRC runtime source guard for Linux/Nix runtime paths.
+- Graph-owned installed Bazzite VM provisioning and Deck SSH verification.
 - Generated-C smoke tests.
 - `git diff --check`.
 
@@ -720,7 +701,6 @@ See `tests/E2E.md` for the active verification matrix. The short version:
 
 - Physical Steam Deck Game Mode validation.
 - Real AppImage execution on SteamOS with actual ES-DE and emulator binaries.
-- Installed Bazzite VM verification.
 - Two-device Syncthing conflict/resolution testing.
 - UI editor for `input/keymaps/steam_deck.skm`, `sync/sync.json`, and
-  `tests/verification/screenshots.json`.
+  `verification/screenshots.json`.

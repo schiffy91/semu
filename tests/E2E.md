@@ -38,6 +38,9 @@ confidence levels.
 - `make bazzite-vm-smoke`: Bazzite Deck ISO boot path under QEMU TCG. This
   validates firmware/GRUB/live-image bootability through the software-rendered
   Deck splash path.
+- `build/semu e2e graph tests/e2e/graph.json run bazzite-installed-ssh`:
+  graph-owned Bazzite Deck VM installation, installed-disk boot, SSH sync, and
+  Deck verification inside the guest.
 
 ## Graph Usage
 
@@ -52,7 +55,7 @@ make e2e-graph-run
 make e2e-graph-run E2E_GRAPH_NODES="verify"
 make e2e-graph-run E2E_GRAPH_NODES="arch-deck-vm"
 make e2e-graph-run E2E_GRAPH_NODES="bazzite-installed-ssh" \
-  E2E_GRAPH_ARGS="--arg bazziteUser=<guest-user>"
+  E2E_GRAPH_ARGS="--arg bazziteSshPort=2224"
 ```
 
 The graph intentionally delegates to the existing Make targets instead of
@@ -61,15 +64,18 @@ state hashes, skip/resume behavior, operation coverage, and a payload audit that
 fails if tracked ROMs, BIOS, emulator runtime directories, VM disks, or similar
 licensed artifacts would be upstreamed.
 
+The Bazzite install node remasters the downloaded Deck ISO with a test
+kickstart, creates a fresh qcow2 disk, runs the installer, and accepts the node
+only after the VM powers off cleanly and the installed disk has real allocated
+content. The SSH node boots that disk and runs the Deck provision/emulator/sync/
+input checks through the same BTRC CLI used on a physical Deck.
+
 ## Next Verification Passes
 
 - Physical Steam Deck pass: Neptune trackpads, Steam Input template visibility,
   left-trackpad radial menu, unified save/load/quit hotkeys inside each emulator,
   screenshot contents from real Gamescope emulator windows, and quit returning
   to ES-DE in Game Mode.
-- Installed Bazzite pass: install to `tests/vms/bazzite*.qcow2`, boot with
-  `make bazzite-vm-start-installed`, SSH in, and run
-  `make bazzite-vm-verify-ssh BAZZITE_SSH_USER=<guest-user>`.
 - Real AppImage pass on SteamOS: build `Semu-*.AppImage` with
   `packaging/linux/build-appimage.sh --nix-package result`, launch it on a Deck, verify
   ES-DE opens under Gamescope, ROM location override persists, Syncthing

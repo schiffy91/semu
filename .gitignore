@@ -1,5 +1,6 @@
 # === OS / editor junk ===
 .DS_Store
+._*
 *.sync-conflict-*
 .stfolder/
 __pycache__/
@@ -11,6 +12,8 @@ __pycache__/
 build/
 result
 result-*
+result *
+.semu/
 .mcp.json
 .deck-smoke/
 
@@ -88,6 +91,7 @@ Lime3DS/data/
 PCSX2/config/
 RetroArch/config/
 RetroArch/retroarch.cfg
+emulators/profiles/RetroArch/retroarch.cfg
 Ryujinx/config/
 
 # ES-DE settings (written by ES-DE at runtime)

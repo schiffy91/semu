@@ -1,25 +1,9 @@
-class SyncService {
-    public SyncService() {}
-
-    public bool setup(string project) { return syncSetup(project); }
-    public bool daemon(string project) { return syncDaemon(project); }
-    public bool start(string project) { return syncStart(project); }
-    public bool stop(string project) { return syncStop(project); }
-    public bool force(string project, string target) { return syncForce(project, target); }
-    public void status(string project) { syncStatus(project); }
+class SemuSyncRuntime {
+    class bool setup(string project) { return syncSetup(project); }
+    class int command(CliArgs args, string project) { return syncCommand(args, project); }
 }
 
-class SemuLifecycle {
-    public SemuLifecycle() {}
-
-    public void install(string project, string romsDir) { lifecycleInstall(project, romsDir); }
-    public void reconfigure(string project, string romsDir) { lifecycleReconfigure(project, romsDir); }
-    public void uninstall(string project, bool purgeGenerated, bool purgeState) { lifecycleUninstall(project, purgeGenerated, purgeState); }
-    public void upgrade(string project) { lifecycleUpgrade(project); }
-    public void status(string project) { lifecycleStatus(project); }
-}
-
-// ---- src/semu/sync/model.btrc ----
+// ---- model.btrc ----
 string syncFolderPath(string project, string id) {
     if (id.equals("saves")) { return joinPath(contentRoot(project), "saves"); }
     if (id.equals("states")) { return joinPath(contentRoot(project), "states"); }
@@ -63,17 +47,22 @@ string syncGuiAddress(string project) {
 }
 
 string serviceExecutable() {
-    string serviceBin = Environment.get("SEMU_SERVICE_BIN", "");
-    if (serviceBin.len() > 0) { return serviceBin; }
     return Environment.get("SEMU_BIN", "semu");
 }
 
 string syncSyncthingExecutable() {
     string configured = Environment.get("SEMU_SYNCTHING_BIN", "");
     if (configured.len() > 0 && FileSystem.exists(configured)) { return configured; }
-    if (FileSystem.exists("/usr/bin/syncthing")) { return "/usr/bin/syncthing"; }
-    if (FileSystem.exists("/usr/local/bin/syncthing")) { return "/usr/local/bin/syncthing"; }
-    if (commandExists("syncthing")) { return "syncthing"; }
+    string homeLocal = joinPath(Environment.get("HOME", ""), ".local/bin/syncthing");
+    if (homeLocal.len() > 0 && FileSystem.exists(homeLocal)) { return homeLocal; }
+    if (FileSystem.exists("/home/linuxbrew/.linuxbrew/bin/syncthing")) {
+        return "/home/linuxbrew/.linuxbrew/bin/syncthing";
+    }
+    if (FileSystem.exists("/var/home/linuxbrew/.linuxbrew/bin/syncthing")) {
+        return "/var/home/linuxbrew/.linuxbrew/bin/syncthing";
+    }
+    string path = commandPath("syncthing");
+    if (path.len() > 0) { return path; }
     return "";
 }
 
@@ -81,26 +70,15 @@ bool syncSyncthingAvailable() {
     return syncSyncthingExecutable().len() > 0;
 }
 
-string syncCurlExecutable() {
-    string configured = Environment.get("SEMU_CURL_BIN", "");
-    if (configured.len() > 0 && FileSystem.exists(configured)) { return configured; }
-    if (FileSystem.exists("/usr/bin/curl")) { return "/usr/bin/curl"; }
-    if (FileSystem.exists("/usr/local/bin/curl")) { return "/usr/local/bin/curl"; }
-    if (commandExists("curl")) { return "curl"; }
-    return "";
-}
-
-bool syncCurlAvailable() {
-    return syncCurlExecutable().len() > 0;
-}
-
 string syncServiceText(string project) {
+    string syncthing = syncSyncthingExecutable();
+    if (syncthing.len() == 0) { syncthing = "syncthing"; }
     return "[Unit]\n"
         + "Description=Semu Syncthing\n"
         + "After=network-online.target\n\n"
         + "[Service]\n"
         + "Type=simple\n"
-        + "ExecStart=" + ShellWords.quote(serviceExecutable()) + " sync daemon --project " + ShellWords.quote(project) + "\n"
+        + "ExecStart=" + ShellWords.quote(syncthing) + " serve -H " + ShellWords.quote(syncthingHome(project)) + " --no-browser --no-restart\n"
         + "Restart=on-failure\n"
         + "RestartSec=5\n\n"
         + "[Install]\n"
@@ -172,7 +150,7 @@ void writeDeckDesktopEntry(string project) {
     FileSystem.writeText(joinPath(applicationsDir(), "semu.desktop"), deckDesktopText(project));
 }
 
-// ---- src/semu/sync/api_setup.btrc ----
+// ---- api_setup.btrc ----
 string syncConfigXmlPath(string project) {
     return joinPath(syncthingHome(project), "config.xml");
 }
@@ -217,9 +195,8 @@ bool syncSystemctl(string verb, string unit) {
 bool syncWaitForApi(string project) {
     UnixShell shell = UnixShell();
     string url = "http://" + syncGuiAddress(project) + "/rest/noauth/health";
-    string curl = ShellWords.quote(syncCurlExecutable());
     for (int i = 0; i < 20; i++) {
-        ExecResult result = shell.runUnchecked(curl + " -fsS " + ShellWords.quote(url) + " >/dev/null 2>&1");
+        ExecResult result = shell.runUnchecked("curl -fsS " + ShellWords.quote(url) + " >/dev/null 2>&1");
         if (result.ok()) { return true; }
         shell.runUnchecked("sleep 1");
     }
@@ -265,34 +242,11 @@ bool syncConfigureFolders(string project) {
     return ok;
 }
 
-bool syncDaemon(string project) {
-    writeSyncDefaults(project, "");
-    if (!syncSyncthingAvailable()) {
-        print("MISSING syncthing: install package or use bundled Semu");
-        return false;
-    }
-    syncGenerateIfNeeded(project);
-    UnixShell shell = UnixShell();
-    ExecResult result = shell.runRaw(
-        ShellWords.quote(syncSyncthingExecutable())
-            + " serve -H " + ShellWords.quote(syncthingHome(project))
-            + " --no-browser --no-restart",
-        false,
-        false,
-        ""
-    );
-    return result.ok();
-}
-
 bool syncSetup(string project) {
     writeSyncDefaults(project, "");
     writeSyncSystemdUnits(project);
     if (!syncSyncthingAvailable()) {
         print("MISSING syncthing: install package or use bundled Semu");
-        return false;
-    }
-    if (!syncCurlAvailable()) {
-        print("MISSING curl: install package or use bundled Semu");
         return false;
     }
     syncGenerateIfNeeded(project);
@@ -315,7 +269,7 @@ bool syncSetup(string project) {
     return ok;
 }
 
-// ---- src/semu/sync/lifecycle.btrc ----
+// ---- lifecycle.btrc ----
 string semuStateRoot(string project) {
     return joinPath(project, ".semu");
 }
@@ -354,10 +308,7 @@ void writeLifecycleState(string project, string action) {
 
 void lifecycleReconfigure(string project, string romsDir) {
     writeSyncDefaults(project, romsDir);
-    ensureRomDirsAt(configuredRomsRoot(project));
-    if (!configuredRomsRoot(project).equals(romsRoot(project))) {
-        ensureRomDirsAt(romsRoot(project));
-    }
+    ensureProjectContentDirs(project);
     seedKeymapDefaults(project);
     seedEmulatorDefaults(project);
     writeSteamInputTemplates(project);
@@ -456,7 +407,7 @@ void lifecycleStatus(string project) {
     print(f"  roms_dir: {configuredRomsRoot(project)}");
 }
 
-// ---- src/semu/sync/commands.btrc ----
+// ---- commands.btrc ----
 bool syncStart(string project) {
     bool ok = syncSetup(project);
     if (!syncSystemctl("start", "semu-syncthing.service")) { ok = false; }
@@ -494,11 +445,7 @@ bool syncForce(string project, string target) {
         return false;
     }
     UnixShell shell = UnixShell();
-    if (!syncCurlAvailable()) {
-        print("MISSING curl: install package or use bundled Semu");
-        return false;
-    }
-    string command = ShellWords.quote(syncCurlExecutable()) + " -fsS -X POST -H " + ShellWords.quote("X-API-Key: " + apiKey)
+    string command = "curl -fsS -X POST -H " + ShellWords.quote("X-API-Key: " + apiKey)
         + " " + ShellWords.quote(syncScanUrl(project, target));
     ExecResult result = shell.runUnchecked(command);
     if (result.ok()) {
@@ -518,7 +465,7 @@ void syncStatus(string project) {
     reportFile("systemd_timer", joinPath(systemdUserDir(), "semu-sync-force.timer"));
     print(syncSyncthingAvailable() ? "  OK syncthing: executable found" : "  MISSING syncthing: executable not found");
     print(commandExists("syncthingtray") ? "  OK syncthingtray: executable found" : "  optional syncthingtray: executable not found");
-    print(syncCurlAvailable() ? "  OK curl: executable found" : "  MISSING curl: executable not found");
+    print(commandExists("curl") ? "  OK curl: executable found" : "  MISSING curl: executable not found");
     for id in syncFolderIds() {
         string mark = syncFolderEnabled(project, id) ? "OK" : "optional";
         print(f"  {mark} {id}: {syncFolderPath(project, id)}");
@@ -549,7 +496,7 @@ void doctorSync(string project) {
     print("Sync");
     reportFile("sync_config", syncConfigPath(project));
     print(syncSyncthingAvailable() ? "  OK syncthing: executable found" : "  MISSING syncthing: executable not found");
-    print(syncCurlAvailable() ? "  OK curl: executable found" : "  MISSING curl: executable not found");
+    print(commandExists("curl") ? "  OK curl: executable found" : "  MISSING curl: executable not found");
     print(syncBool(project, "start_at_boot", true) ? "  OK start_at_boot: enabled" : "  optional start_at_boot: disabled");
     print(syncBool(project, "tray", true) ? "  OK tray: enabled" : "  optional tray: disabled");
     for id in syncFolderIds() {

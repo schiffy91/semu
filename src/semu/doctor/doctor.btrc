@@ -1,9 +1,6 @@
 class SemuDoctor {
-    public SemuDoctor() {}
-
-    public void run(string project) {
-        doctorSteamDeck(project);
-    }
+    class void run(string project) { doctorSteamDeck(project); }
+    class void sync(string project) { doctorSync(project); }
 }
 
 bool allPresent(string target, Vector<string> files) {
@@ -34,6 +31,27 @@ void reportBios(string id, string target, Vector<string> files, bool required, b
     string mark = ok ? "OK" : (required ? "MISSING" : "optional");
     string requiredText = required ? "required" : "optional";
     print(f"  {mark} {id} ({requiredText}) -> {target}");
+    if (!ok && required) {
+        print(f"       expected: {files.join(\", \")}");
+    }
+}
+
+bool biosOkInAnyTarget(Vector<string> targets, Vector<string> files, bool anyMatch) {
+    for target in targets {
+        bool ok = anyMatch ? anyPresent(target, files) : allPresent(target, files);
+        if (ok) { return true; }
+    }
+    return false;
+}
+
+void reportBiosTargets(string id, Vector<string> targets, Vector<string> files, bool required, bool anyMatch) {
+    bool ok = biosOkInAnyTarget(targets, files, anyMatch);
+    string mark = ok ? "OK" : (required ? "MISSING" : "optional");
+    string requiredText = required ? "required" : "optional";
+    print(f"  {mark} {id} ({requiredText})");
+    for target in targets {
+        print(f"       path: {target}");
+    }
     if (!ok && required) {
         print(f"       expected: {files.join(\", \")}");
     }
@@ -70,6 +88,9 @@ void reportSteamInputTemplate(string label, string path) {
     if (!text.contains("right_trackpad active")) { missing.push("right_trackpad"); }
     if (!text.contains("key_press LEFT_CONTROL, Save State")) { missing.push("save_state"); }
     if (!text.contains("key_press A, Load State")) { missing.push("load_state"); }
+    if (!text.contains("xinput_button SELECT, Quit")) { missing.push("quit_select"); }
+    if (!text.contains("xinput_button START, Quit")) { missing.push("quit_start"); }
+    if (!text.contains("key_press ESCAPE, Quit")) { missing.push("quit_escape"); }
     if (!text.contains("key_press LEFT_ALT, Quit")) { missing.push("quit_alt"); }
     if (!text.contains("key_press F4, Quit")) { missing.push("quit_f4"); }
     if (text.contains("\"mode\" \"gyro") || text.contains("gyro_")) { missing.push("gyro_opt_in_policy"); }
@@ -95,11 +116,37 @@ void doctorSteamDeck(string project) {
 
     print("");
     print("BIOS / firmware");
-    reportBios("psx", biosRoot(project), ["scph5500.bin", "scph5501.bin", "scph5502.bin"], true, false);
-    reportBios("ps2", joinPath(biosRoot(project), "ps2"), ["ps2-0230a-20080220.bin", "ps2-0230e-20080220.bin", "ps2-0230j-20080220.bin"], true, true);
-    reportBios("switch_keys", joinPath(biosRoot(project), "switch"), ["prod.keys", "title.keys"], true, false);
-    reportBios("wiiu_keys", emulatorProfilePath(project, "Cemu/data"), ["keys.txt"], true, false);
-    reportBios("dreamcast", joinPath(biosRoot(project), "dc"), ["dc_boot.bin", "dc_flash.bin"], false, false);
+    string externalRoot = configuredEmulationRoot(project);
+    reportBiosTargets("psx", [
+        biosRoot(project),
+        joinPath(externalRoot, "RetroArch/config/system")
+    ], ["scph5500.bin", "scph5501.bin", "scph5502.bin"], true, false);
+    reportBiosTargets("ps2", [
+        joinPath(biosRoot(project), "ps2"),
+        joinPath(externalRoot, "PCSX2/config/bios")
+    ], [
+        "ps2-0230a-20080220.bin",
+        "ps2-0230e-20080220.bin",
+        "ps2-0230j-20080220.bin",
+        "SCPH-10000.bin",
+        "SCPH-30004R.bin",
+        "SCPH-39001.bin",
+        "SCPH-70012.bin",
+        "SCPH-90006.bin"
+    ], true, true);
+    reportBiosTargets("switch_keys", [
+        joinPath(biosRoot(project), "switch"),
+        joinPath(externalRoot, "Ryujinx/config/system")
+    ], ["prod.keys", "title.keys"], true, false);
+    reportBiosTargets("wiiu_keys", [
+        emulatorProfilePath(project, "Cemu/data"),
+        joinPath(externalRoot, "Cemu/data")
+    ], ["keys.txt"], true, false);
+    reportBiosTargets("dreamcast", [
+        joinPath(biosRoot(project), "dc"),
+        joinPath(externalRoot, "RetroArch/config/system"),
+        joinPath(externalRoot, "Flycast/data")
+    ], ["dc_boot.bin", "dc_flash.bin"], false, false);
 
     print("");
     print("Controller profiles");

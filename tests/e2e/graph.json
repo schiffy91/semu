@@ -69,10 +69,17 @@
       ]
     },
     {
+      "id": "bazzite-installed-vm",
+      "spec": "specs/bazzite-installed-vm.json",
+      "after": [
+        "bazzite-deck-live"
+      ]
+    },
+    {
       "id": "bazzite-installed-ssh",
       "spec": "specs/bazzite-installed-ssh.json",
       "after": [
-        "payload-audit"
+        "bazzite-installed-vm"
       ]
     }
   ]

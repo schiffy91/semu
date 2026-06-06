@@ -1,20 +1,9 @@
-class SemuManifest {
-    public SemuManifest() {}
-
-    public string render() {
-        return buildJson();
-    }
-
-    public void write(string output) {
-        FileSystem.writeText(output, self.render() + "\n");
-    }
+class SemuManifestCompiler {
+    class string build() { return buildJson(); }
+    class string systems() { return systemEntries(); }
 }
 
-void writeGeneratedManifest(string output) {
-    SemuManifest().write(output);
-}
-
-// ---- src/semu/manifest/spec_helpers.btrc ----
+// ---- spec_helpers.btrc ----
 string commandSpec(string label, string command) {
     return jsonObject([
         jsonStrField("label", label),
@@ -93,7 +82,7 @@ string steamInputTemplate(string id, string title, string source, string note) {
     ]);
 }
 
-// ---- src/semu/manifest/es_xml.btrc ----
+// ---- es_xml.btrc ----
 string xmlEscape(string value) {
     string result = Strings.replace(value, "&", "&amp;");
     result = Strings.replace(result, "\"", "&quot;");
@@ -142,7 +131,7 @@ string esSystemSpec(
     return result;
 }
 
-// ---- src/semu/manifest/paths_esde.btrc ----
+// ---- paths_esde.btrc ----
 string manifestPaths() {
     return jsonObject([
         jsonStrField("project_content_root", "${project}/ES-DE/ES-DE"),
@@ -177,18 +166,21 @@ string manifestPaths() {
 }
 
 string esDe() {
-    string settings = jsonObject([
-        jsonStrField("ROMDirectory", "~/ES-DE/ROMs"),
-        jsonStrField("MediaDirectory", "~/ES-DE/downloaded_media"),
-        jsonStrField("UserThemeDirectory", "~/ES-DE/themes"),
-        jsonStrField("SaveGamelistsMode", "always"),
-        jsonStrField("CreatePlaceholderSystemDirectories", "false"),
-        jsonStrField("InputControllerType", "xbox")
-    ]);
+	    string settings = jsonObject([
+	        jsonStrField("ROMDirectory", "~/ES-DE/ROMs"),
+	        jsonStrField("MediaDirectory", "~/ES-DE/downloaded_media"),
+	        jsonStrField("UserThemeDirectory", "~/ES-DE/themes"),
+	        jsonStrField("ApplicationUpdaterFrequency", "never"),
+	        jsonStrField("SaveGamelistsMode", "always"),
+	        jsonStrField("CreatePlaceholderSystemDirectories", "false"),
+	        jsonStrField("InputControllerType", "xbox"),
+	        jsonStrField("StartupSystem", "${env.SEMU_STARTUP_SYSTEM}"),
+	        jsonStrField("StartupView", "system")
+	    ]);
     return jsonObject([jsonField("settings", settings)]);
 }
 
-// ---- src/semu/manifest/input_metadata.btrc ----
+// ---- input_metadata.btrc ----
 string controllerModel(
     string id,
     string label,
@@ -315,7 +307,7 @@ string screenshotVerificationProfile() {
     ]);
 }
 
-// ---- src/semu/manifest/input_stack.btrc ----
+// ---- input_stack.btrc ----
 string inputStack() {
     Vector<string> controllerIds = ["steam_deck", "steam_controller", "xbox_xinput", "dualshock4", "dualsense", "switch_pro"];
     return jsonObject([
@@ -495,7 +487,7 @@ string inputStack() {
     ]);
 }
 
-// ---- src/semu/manifest/profiles_sync_bios.btrc ----
+// ---- profiles_sync_bios.btrc ----
 string controllerProfiles() {
     string steamInput = jsonObject([
         jsonStrField("templates_dir", "~/.steam/steam/controller_base/templates"),
@@ -619,7 +611,7 @@ string biosEntries() {
     ]);
 }
 
-// ---- src/semu/manifest/build_json.btrc ----
+// ---- build_json.btrc ----
 string systemEntries() {
     SystemCatalog catalog = systemCatalog();
     return catalog.systemsJson();

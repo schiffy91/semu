@@ -1,0 +1,15 @@
+class SemuShell {
+    class bool exists(string name) { return commandExists(name); }
+    class string path(string name) { return commandPath(name); }
+}
+
+string commandPath(string name) {
+    UnixShell shell = UnixShell();
+    ExecResult result = shell.runRaw("command -v " + ShellWords.quote(name), true, false, "");
+    if (!result.ok()) { return ""; }
+    return result.trimmed();
+}
+
+bool commandExists(string name) {
+    return commandPath(name).len() > 0;
+}

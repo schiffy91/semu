@@ -47,30 +47,41 @@ class SemuE2eRunner {
         }
     }
 
-    public ExecResult runWorkspaceCommand(string command) {
+    public ExecResult runWorkspaceCommandWithTimeout(string command, int timeout) {
         string rendered = "cd " + ShellWords.quote(self.workspaceRoot) + " && " + command + " 2>&1";
+        if (timeout > 0) {
+            string wrapped = "perl -e 'alarm shift; exec @ARGV' "
+                + Strings.fromInt(timeout)
+                + " /bin/bash -lc "
+                + ShellWords.quote(rendered);
+            return UnixShell().runRaw(wrapped, true, false, "");
+        }
         return UnixShell().runRaw(rendered, true, false, "");
+    }
+
+    public ExecResult runWorkspaceCommand(string command) {
+        return self.runWorkspaceCommandWithTimeout(command, 0);
     }
 
     public void runOperation(SemuE2eOperation op) {
         print("e2e " + self.spec.name + ": " + op.kind);
         if (op.kind.equals("require-command")) {
-            ExecResult result = self.runWorkspaceCommand("command -v " + ShellWords.quote(op.command));
+            ExecResult result = self.runWorkspaceCommandWithTimeout("command -v " + ShellWords.quote(op.command), op.timeout);
             self.assertResult("require command " + op.command, result, op.expect);
             return;
         }
         if (op.kind.equals("artifact")) {
-            ExecResult result = self.runWorkspaceCommand("test -e " + ShellWords.quote(op.path) + " && printf exists");
+            ExecResult result = self.runWorkspaceCommandWithTimeout("test -e " + ShellWords.quote(op.path) + " && printf exists", op.timeout);
             self.assertResult("artifact " + op.path, result, op.expect.len() > 0 ? op.expect : "exists");
             return;
         }
         if (op.kind.equals("host")) {
-            ExecResult result = self.runWorkspaceCommand(op.command);
+            ExecResult result = self.runWorkspaceCommandWithTimeout(op.command, op.timeout);
             self.assertResult("host command", result, op.expect);
             return;
         }
         if (op.kind.equals("make")) {
-            ExecResult result = self.runWorkspaceCommand("make " + op.command);
+            ExecResult result = self.runWorkspaceCommandWithTimeout("make " + op.command, op.timeout);
             self.assertResult("make " + op.command, result, op.expect);
             return;
         }
@@ -143,7 +154,7 @@ class SemuE2eGraphRunner {
             + " ! -path './sync/syncthing/*'"
             + " ! -name '.DS_Store'"
             + " ! -name '._*'"
-            + " \\( -name '*.btrc' -o -name '*.nix' -o -name '*.json' -o -name '*.sh' -o -name '*.md' -o -name '*.xml' -o -name '*.ini' -o -name '*.cfg' -o -name '*.desktop' -o -name '*.vdf' -o -name '*.skm' -o -name '*.c' -o -name 'Makefile' -o -name 'flake.lock' \\)"
+            + " \\( -name '*.btrc' -o -name '*.nix' -o -name '*.json' -o -name '*.sh' -o -name '*.md' -o -name '*.xml' -o -name '*.ini' -o -name '*.cfg' -o -name '*.desktop' -o -name '*.vdf' -o -name '*.skm' -o -name '*.c' -o -name 'Makefile' -o -name 'Dockerfile' -o -name 'flake.lock' \\)"
             + " -print0 | LC_ALL=C sort -z | xargs -0 shasum -a 256 | shasum -a 256 | awk '{print $1}'";
         ExecResult result = UnixShell().runRaw(command, true, false, "");
         if (!result.ok()) { e2eFatal("Failed to compute workspace source hash for " + root); }

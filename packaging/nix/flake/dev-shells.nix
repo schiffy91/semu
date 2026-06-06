@@ -1,20 +1,14 @@
-{ pkgs, btrc, system }:
+{ self, nixpkgs, btrc, systems, forAllSystems, mkPkgs, ... }:
 
-{
-  default = pkgs.mkShell {
-    packages = [
-      btrc.packages.${system}.btrcpy
-      pkgs.bash
-      pkgs.curl
-      pkgs.git
-      pkgs.gnumake
-      pkgs.jq
-      pkgs.ripgrep
-      pkgs.stdenv.cc
-    ];
-
-    shellHook = ''
-      export SEMU_BTRCPY="${btrc.packages.${system}.btrcpy}/bin/btrcpy"
-    '';
-  };
-}
+forAllSystems (system: let
+      pkgs = mkPkgs system;
+    in {
+      default = pkgs.mkShell {
+        buildInputs = [
+          pkgs.bash
+          pkgs.gnumake
+          pkgs.stdenv.cc
+          pkgs.ripgrep
+        ];
+      };
+    })

@@ -28,33 +28,21 @@ fi
 SEMU_LINUX="$APPDIR/packaging/linux"
 SEMU_BIN="$SEMU_LINUX/bin"
 SEMU_CLI="${SEMU_CLI:-$APPDIR/usr/bin/semu}"
-if [ -z "${SEMU_PROJECT_DIR:-}" ]; then
-  previous_arg=""
-  for arg in "$@"; do
-    if [ "$previous_arg" = "--project" ]; then
-      export SEMU_PROJECT_DIR="$arg"
-      break
-    fi
-    case "$arg" in
-      --project=*)
-        export SEMU_PROJECT_DIR="${arg#--project=}"
-        break
-        ;;
-    esac
-    previous_arg="$arg"
-  done
-fi
 export SEMU_ASSET_ROOT="${SEMU_ASSET_ROOT:-$APPDIR}"
 if [ -x "$APPDIR/usr/bin/semu-retroarch" ]; then
   export SEMU_LAUNCHER_BIN="${SEMU_LAUNCHER_BIN:-$APPDIR/usr/bin}"
 else
   export SEMU_LAUNCHER_BIN="${SEMU_LAUNCHER_BIN:-$SEMU_BIN}"
 fi
-if [ -n "${APPIMAGE:-}" ]; then
-  export SEMU_SERVICE_BIN="${SEMU_SERVICE_BIN:-$APPIMAGE}"
-else
-  export SEMU_SERVICE_BIN="${SEMU_SERVICE_BIN:-$SEMU_CLI}"
+if [ -d "$APPDIR/usr/lib/retroarch/cores" ]; then
+  export SEMU_RETROARCH_CORE_DIR="${SEMU_RETROARCH_CORE_DIR:-$APPDIR/usr/lib/retroarch/cores}"
 fi
+
+case "${1:-}" in
+  -h|--help|help)
+    exec "$SEMU_CLI" "$@"
+    ;;
+esac
 
 # Where the user's emulator state lives (cloud-synced via Syncthing/Google
 # Drive/whatever the user wires up). Default to a sibling of ROMs, but allow
@@ -86,7 +74,9 @@ fi
 export SEMU_BIN="$SEMU_CLI"
 
 case "${1:-}" in
-  deck|sync|config|doctor|bootstrap|keymap|screenshot|manifest|lifecycle|sandbox|launcher|apprun|steam-input|utils|util|n3ds-nocrypto|3ds-nocrypto|e2e)
+  "" )
+    ;;
+  -h|--help|help|deck|sync|config|doctor|bootstrap|keymap|screenshot|manifest|lifecycle|sandbox|launcher|apprun|steam-input|utils|util|n3ds-nocrypto|3ds-nocrypto|e2e)
     if [ ! -x "$SEMU_CLI" ]; then
       echo "Semu: BTRC CLI not found at $SEMU_CLI" >&2
       exit 2
@@ -102,7 +92,46 @@ if [ ! -x "$SEMU_CLI" ]; then
 fi
 eval "$("$SEMU_CLI" config env --project "$SEMU_PROJECT_DIR")"
 
-export SEMU_ROMS_DIR="${SEMU_ROMS_DIR:-$SEMU_PROJECT_DIR/ES-DE/ES-DE/ROMs}"
+normalize_roms_dir() {
+  local root="$1"
+  local candidate
+  for candidate in \
+      "$root/Emulation/ES-DE/ES-DE/ROMs" \
+      "$root/ES-DE/ES-DE/ROMs" \
+      "$root/Emulation/ROMs" \
+      "$root/ROMs"; do
+    if [ -d "$candidate" ]; then
+      printf '%s\n' "$candidate"
+      return
+    fi
+  done
+  printf '%s\n' "$root"
+}
+
+detect_roms_dir() {
+  if [ -n "${SEMU_ROMS:-}" ]; then
+    normalize_roms_dir "$SEMU_ROMS"
+    return
+  fi
+  local candidate
+  for candidate in \
+      /run/media/deck/SD/Emulation/ES-DE/ES-DE/ROMs \
+      /mnt/SD/Emulation/ES-DE/ES-DE/ROMs \
+      /run/media/deck/SD \
+      /mnt/SD \
+      /run/media/deck/*/Emulation/ROMs \
+      /run/media/deck/*/Emulation/ES-DE/ES-DE/ROMs \
+      /run/media/deck/*/ROMs \
+      "$SEMU_PROJECT_DIR/ES-DE/ES-DE/ROMs"; do
+    if [ -d "$candidate" ]; then
+      printf '%s\n' "$candidate"
+      return
+    fi
+  done
+  printf '%s\n' "$SEMU_PROJECT_DIR/ES-DE/ES-DE/ROMs"
+}
+
+export SEMU_ROMS_DIR="${SEMU_ROMS_DIR:-$(detect_roms_dir)}"
 "$SEMU_CLI" apprun prepare --project "$SEMU_PROJECT_DIR" >/dev/null
 
 # Surface the AppArmor userns gotcha early instead of letting bwrap fail.
@@ -165,6 +194,12 @@ fi
 # Force ES-DE to a sane resolution if running under virgl. Skip if user
 # already passed --resolution.
 SEMU_ESDE_ARGS=()
+if [[ ! " $* " =~ " --no-splash " ]]; then
+  SEMU_ESDE_ARGS+=( --no-splash )
+fi
+if [[ ! " $* " =~ " --no-update-check " ]]; then
+  SEMU_ESDE_ARGS+=( --no-update-check )
+fi
 if [[ ! " $* " =~ " --resolution " ]]; then
   SEMU_ESDE_ARGS+=( --resolution 1280 800 )
 fi

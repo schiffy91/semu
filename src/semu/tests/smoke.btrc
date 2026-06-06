@@ -1,15 +1,440 @@
 class SemuSmokeTests {
-    public SemuSmokeTests() {}
-
-    public int launcher(CliArgs args) { return e2eLauncherSmoke(args); }
-    public int lifecycle(CliArgs args) { return e2eLifecycleSmoke(args); }
-    public int sandbox() { return e2eSandboxSmoke(); }
-    public int shellSyntax(string project) { return e2eShellSyntaxSmoke(project); }
-    public int sync(CliArgs args) { return e2eSyncSmoke(args); }
-    public int n3ds(CliArgs args) { return e2eN3dsNoCryptoSmoke(args); }
+    class int all(CliArgs args) { return e2eAll(args); }
 }
 
-// ---- src/semu/tests/launcher_smoke.btrc ----
+// ---- support.btrc ----
+bool e2eOk(bool condition, string message) {
+    if (condition) { return true; }
+    print("E2E FAIL " + message);
+    return false;
+}
+
+bool e2eContains(string text, string expected, string message) {
+    return e2eOk(text.contains(expected), message + ": missing " + expected);
+}
+
+string e2eTempDir(string label) {
+    string tmp = FileSystem.tempDir(label);
+    if (tmp.len() > 0) { return tmp; }
+    string fallback = joinPath(Environment.get("TMPDIR", "/tmp"), label + "-fallback");
+    FileSystem.removeRecursive(fallback);
+    ensureDir(fallback);
+    return fallback;
+}
+
+void e2eSeedFile(string path) {
+    ensureDir(PathTools.dirname(path));
+    FileSystem.writeText(path, "seed " + path + "\n");
+}
+
+bool e2eAssertLink(string linkPath, string targetPath) {
+    if (!e2eOk(FileSystem.isSymlink(linkPath), "expected symlink " + linkPath)) {
+        return false;
+    }
+    string target = FileSystem.readLink(linkPath);
+    if (!e2eOk(target.len() > 0, "readlink failed " + linkPath)) {
+        return false;
+    }
+    return e2eOk(target.equals(targetPath), "bad symlink target for " + linkPath);
+}
+
+ExecResult e2eRunLifecycle(string exe, string home, string mode, string project, string romsDir) {
+    Command command = Command(exe)
+        .envVar("SEMU_HOME", home)
+        .envVar("SEMU_BIN", exe)
+        .envVar("PATH", "/usr/bin:/bin")
+        .arg("lifecycle")
+        .arg(mode)
+        .flag("--project", project)
+        .capture(true)
+        .check(false);
+    if (romsDir.len() > 0) {
+        command.flag("--roms", romsDir);
+    }
+    UnixShell shell = UnixShell();
+    ExecResult result = shell.runCommand(command);
+    return result;
+}
+
+ExecResult e2eRunLifecycleChange(string exe, string home, string project, string actionId, string commandText) {
+    Command command = Command(exe)
+        .envVar("SEMU_HOME", home)
+        .envVar("SEMU_BIN", exe)
+        .envVar("PATH", "/usr/bin:/bin")
+        .arg("lifecycle")
+        .arg("change")
+        .flag("--project", project)
+        .flag("--action", actionId)
+        .flag("--command", commandText)
+        .capture(true)
+        .check(false);
+    UnixShell shell = UnixShell();
+    ExecResult result = shell.runCommand(command);
+    return result;
+}
+
+ExecResult e2eRunLifecycleArgs(string exe, string home, string project, Vector<string> lifecycleArgs) {
+    Command command = Command(exe)
+        .envVar("SEMU_HOME", home)
+        .envVar("SEMU_BIN", exe)
+        .envVar("PATH", "/usr/bin:/bin")
+        .arg("lifecycle")
+        .capture(true)
+        .check(false);
+    for arg in lifecycleArgs {
+        command.arg(arg);
+    }
+    command.flag("--project", project);
+    UnixShell shell = UnixShell();
+    ExecResult result = shell.runCommand(command);
+    return result;
+}
+
+ExecResult e2eRunSync(string exe, string home, string binDir, string project, Vector<string> syncArgs) {
+    Command command = Command(exe)
+        .envVar("SEMU_HOME", home)
+        .envVar("SEMU_BIN", exe)
+        .envVar("PATH", binDir + ":/usr/bin:/bin")
+        .envVar("SEMU_CAPTURE", joinPath(PathTools.dirname(binDir), "capture"))
+        .arg("sync")
+        .capture(true)
+        .check(false);
+    for arg in syncArgs {
+        command.arg(arg);
+    }
+    command.flag("--project", project);
+    UnixShell shell = UnixShell();
+    ExecResult result = shell.runCommand(command);
+    return result;
+}
+
+ExecResult e2eRunSteamInput(string exe, string home, string project, Vector<string> steamInputArgs) {
+    Command command = Command(exe)
+        .envVar("SEMU_HOME", home)
+        .envVar("SEMU_BIN", exe)
+        .envVar("PATH", "/usr/bin:/bin")
+        .arg("steam-input")
+        .capture(true)
+        .check(false);
+    for arg in steamInputArgs {
+        command.arg(arg);
+    }
+    command.flag("--project", project);
+    UnixShell shell = UnixShell();
+    ExecResult result = shell.runCommand(command);
+    return result;
+}
+
+ExecResult e2eRunLauncher(string exe, string home, string project, string roms, string binDir, string captureDir, string bwrapPath, string emulator, Vector<string> emulatorArgs) {
+    Command command = Command(exe)
+        .envVar("SEMU_HOME", home)
+        .envVar("SEMU_BIN", exe)
+        .envVar("SEMU_PROJECT_DIR", project)
+        .envVar("SEMU_ROMS_DIR", roms)
+        .envVar("SEMU_FLATPAK_CAPTURE", captureDir)
+        .envVar("SEMU_BWRAP", bwrapPath)
+        .envVar("SEMU_SCREENSHOT_HOOKS", "1")
+        .envVar("SEMU_SCREENSHOT_DELAY_SECONDS", "0")
+        .envVar("PATH", binDir + ":/usr/bin:/bin")
+        .envVar("WAYLAND_DISPLAY", "wayland-test")
+        .arg("launcher")
+        .arg(emulator)
+        .capture(true)
+        .check(false);
+    for arg in emulatorArgs {
+        command.arg(arg);
+    }
+    UnixShell shell = UnixShell();
+    ExecResult result = shell.runCommand(command);
+    return result;
+}
+
+ExecResult e2eRunRoutedLauncher(string exe, string home, string project, string roms, string binDir, string captureDir, string emulator, string routedExe, Vector<string> emulatorArgs) {
+    Command command = Command(exe)
+        .envVar("SEMU_HOME", home)
+        .envVar("SEMU_BIN", exe)
+        .envVar("SEMU_PROJECT_DIR", project)
+        .envVar("SEMU_ROMS_DIR", roms)
+        .envVar("SEMU_FLATPAK_CAPTURE", captureDir)
+        .envVar("SEMU_SCREENSHOT_HOOKS", "0")
+        .envVar("PATH", binDir + ":/usr/bin:/bin")
+        .arg("launcher")
+        .arg("routed")
+        .arg(emulator)
+        .arg(routedExe)
+        .capture(true)
+        .check(false);
+    for arg in emulatorArgs {
+        command.arg(arg);
+    }
+    UnixShell shell = UnixShell();
+    ExecResult result = shell.runCommand(command);
+    return result;
+}
+
+bool e2eRunOk(ExecResult result, string label) {
+    if (result.ok()) { return true; }
+    print("E2E FAIL " + label);
+    print(result.stdout());
+    return false;
+}
+
+bool e2eWaitForFile(string path, string label) {
+    UnixShell shell = UnixShell();
+    ExecResult result = shell.runRaw("for i in 1 2 3 4 5; do [ -f " + ShellWords.quote(path) + " ] && exit 0; sleep 0.1; done; exit 1", false, false, "");
+    return e2eOk(result.ok(), label + ": missing " + path);
+}
+
+bool e2eCatalogConsistency(string project, string launcherBin) {
+    string systems = FileSystem.readText(joinPath(customSystemsRoot(project), "es_systems.xml"));
+    string rules = FileSystem.readText(joinPath(customSystemsRoot(project), "es_find_rules.xml"));
+    for id in declaredSystemIds() {
+        if (!e2eContains(systems, "<name>" + id + "</name>", "ES-DE system catalog " + id)) { return false; }
+    }
+    for emulator in linuxLauncherNames() {
+        string launcher = joinPath(launcherBin, semuLauncherName(emulator));
+        if (!e2eContains(rules, "<emulator name=\"" + emulator + "\">", "ES-DE find rule " + emulator)) { return false; }
+        if (!e2eContains(rules, launcher, "ES-DE launcher path " + emulator)) { return false; }
+        if (!e2eOk(FileSystem.exists(launcher), "launcher missing " + launcher)) { return false; }
+    }
+    return true;
+}
+
+// ---- lifecycle_smoke.btrc ----
+int e2eLifecycleSmoke(CliArgs args) {
+    string tmp = e2eTempDir("semu-lifecycle-smoke");
+    string project = joinPath(tmp, "project");
+    string home = joinPath(tmp, "home");
+    string romsOne = joinPath(tmp, "roms-one");
+    string romsTwo = joinPath(tmp, "roms-two");
+    string exe = Environment.get("SEMU_BIN", args.program);
+    ensureDir(project);
+    ensureDir(home);
+    ensureDir(joinPath(romsOne, "existing"));
+    ensureDir(joinPath(romsTwo, "existing"));
+
+    if (!e2eRunOk(e2eRunLifecycle(exe, home, "install", project, romsOne), "install")) { return 1; }
+    if (!e2eRunOk(e2eRunLifecycle(exe, home, "install", project, romsOne), "install idempotent")) { return 1; }
+    if (!e2eCatalogConsistency(project, linuxLauncherBin(project))) { return 1; }
+    if (!e2eOk(!FileSystem.exists(joinPath(romsOne, "gba")), "install mutated external ROM dirs")) { return 1; }
+    if (!e2eOk(FileSystem.isDir(joinPath(romsRoot(project), "gba")), "install did not create project fallback ROM dirs")) { return 1; }
+    if (!e2eContains(FileSystem.readText(syncConfigPath(project)), romsOne, "sync config after install")) { return 1; }
+    if (!e2eContains(FileSystem.readText(screenshotConfigPath(project)), "output_pattern", "screenshot config after install")) { return 1; }
+    if (!e2eOk(FileSystem.exists(joinPath(home, ".local/share/applications/semu.desktop")), "desktop entry missing after install")) { return 1; }
+    if (!e2eOk(FileSystem.exists(joinPath(home, ".config/systemd/user/semu-syncthing.service")), "systemd service missing after install")) { return 1; }
+    string steamTemplates = joinPath(home, "steam-templates");
+    if (!e2eRunOk(e2eRunSteamInput(exe, home, project, ["install", "--dest", steamTemplates]), "steam-input install")) { return 1; }
+    if (!e2eContains(FileSystem.readText(joinPath(steamTemplates, "neptune-simple.vdf")), "\"controller_type\"\t\t\"controller_neptune\"", "installed Steam Input simple template")) { return 1; }
+
+    e2eSeedFile(joinPath(contentRoot(project), "saves/gba/game.sav"));
+    e2eSeedFile(joinPath(biosRoot(project), "ps2/ps2-0230a-20080220.bin"));
+    if (!e2eRunOk(e2eRunLifecycle(exe, home, "reconfigure", project, romsTwo), "reconfigure")) { return 1; }
+    if (!e2eContains(FileSystem.readText(syncConfigPath(project)), romsTwo, "sync config after reconfigure")) { return 1; }
+    if (!e2eContains(FileSystem.readText(joinPath(project, "ES-DE/es_settings.xml")), romsTwo, "ES-DE settings after reconfigure")) { return 1; }
+    if (!e2eOk(FileSystem.exists(joinPath(romsOne, "existing")), "original ROM root sentinel missing")) { return 1; }
+    if (!e2eOk(!FileSystem.exists(joinPath(romsTwo, "gba")), "reconfigure mutated external ROM dirs")) { return 1; }
+    if (!e2eOk(FileSystem.exists(joinPath(contentRoot(project), "saves/gba/game.sav")), "save should survive reconfigure")) { return 1; }
+    if (!e2eOk(FileSystem.exists(joinPath(biosRoot(project), "ps2/ps2-0230a-20080220.bin")), "BIOS should survive reconfigure")) { return 1; }
+
+    if (!e2eRunOk(e2eRunLifecycleChange(exe, home, project, "state.save", "Ctrl+V"), "change keymap")) { return 1; }
+    if (!e2eContains(FileSystem.readText(keymapSourcePath(project)), "action state.save = Ctrl+V", "keymap source after change")) { return 1; }
+    if (!e2eContains(FileSystem.readText(emulatorProfilePath(project, "RetroArch/retroarch.cfg")), "input_save_state = \"v\"", "RetroArch keymap after change")) { return 1; }
+    if (!e2eContains(FileSystem.readText(emulatorProfilePath(project, "Dolphin/config/Profiles/Hotkeys/Steam Deck.ini")), "Save State/Save State Slot 1 = @(Ctrl+V)", "Dolphin keymap after change")) { return 1; }
+    if (!e2eContains(FileSystem.readText(emulatorProfilePath(project, "PCSX2/config/inputprofiles/Steam Deck.ini")), "SaveStateToSlot = Keyboard/Control & Keyboard/V", "PCSX2 keymap after change")) { return 1; }
+    if (!e2eContains(FileSystem.readText(joinPath(project, "input/steam-input/neptune-full.vdf")), "key_press V, Save State", "Steam Input keymap after change")) { return 1; }
+
+    string keymapBeforeFailure = FileSystem.readText(keymapSourcePath(project));
+    string retroarchBeforeFailure = FileSystem.readText(emulatorProfilePath(project, "RetroArch/retroarch.cfg"));
+    if (!e2eOk(!e2eRunLifecycleArgs(exe, home, project, ["change", "--action", "state.save"]).ok(), "lifecycle change without command unexpectedly succeeded")) { return 1; }
+    if (!e2eOk(!e2eRunLifecycleChange(exe, home, project, "missing.action", "Ctrl+B").ok(), "unknown keymap action unexpectedly succeeded")) { return 1; }
+    if (!e2eOk(!e2eRunLifecycleChange(exe, home, project, "state.save", "Ctrl").ok(), "invalid keymap command unexpectedly succeeded")) { return 1; }
+    if (!e2eOk(!e2eRunLifecycleArgs(exe, home, project, ["definitely-not-a-mode"]).ok(), "unknown lifecycle mode unexpectedly succeeded")) { return 1; }
+    if (!e2eOk(FileSystem.readText(keymapSourcePath(project)).equals(keymapBeforeFailure), "failed keymap change mutated source")) { return 1; }
+    if (!e2eOk(FileSystem.readText(emulatorProfilePath(project, "RetroArch/retroarch.cfg")).equals(retroarchBeforeFailure), "failed keymap change mutated RetroArch config")) { return 1; }
+
+    if (!e2eRunOk(e2eRunLifecycle(exe, home, "uninstall", project, ""), "uninstall")) { return 1; }
+    if (!e2eOk(!FileSystem.exists(joinPath(home, ".local/share/applications/semu.desktop")), "uninstall clears desktop entry")) { return 1; }
+    if (!e2eOk(!FileSystem.exists(joinPath(home, ".config/systemd/user/semu-syncthing.service")), "uninstall clears systemd service")) { return 1; }
+    if (!e2eOk(FileSystem.exists(syncConfigPath(project)), "sync config should survive uninstall")) { return 1; }
+    if (!e2eOk(FileSystem.exists(joinPath(contentRoot(project), "saves/gba/game.sav")), "save should survive uninstall")) { return 1; }
+    if (!e2eOk(FileSystem.exists(joinPath(biosRoot(project), "ps2/ps2-0230a-20080220.bin")), "BIOS should survive uninstall")) { return 1; }
+
+    if (!e2eRunOk(e2eRunLifecycle(exe, home, "reinstall", project, ""), "reinstall")) { return 1; }
+    if (!e2eOk(FileSystem.exists(joinPath(home, ".local/share/applications/semu.desktop")), "desktop entry missing after reinstall")) { return 1; }
+    if (!e2eContains(FileSystem.readText(syncConfigPath(project)), romsTwo, "sync config after reinstall")) { return 1; }
+
+    FileSystem.writeText(joinPath(project, "semu.json"), "{\"previous_manifest\": true}\n");
+    if (!e2eRunOk(e2eRunLifecycle(exe, home, "upgrade", project, ""), "upgrade")) { return 1; }
+    if (!e2eContains(FileSystem.readText(upgradeBackupPath(project)), "\"previous_manifest\": true", "upgrade backup")) { return 1; }
+    if (!e2eContains(FileSystem.readText(joinPath(project, "semu.json")), "\"schema_version\": 1", "regenerated manifest")) { return 1; }
+    if (!e2eContains(FileSystem.readText(keymapSourcePath(project)), "action state.save = Ctrl+V", "keymap should survive upgrade")) { return 1; }
+
+    if (!e2eRunOk(e2eRunLifecycleArgs(exe, home, project, ["uninstall", "--purge-generated", "--purge-state"]), "purge uninstall")) { return 1; }
+    if (!e2eOk(!FileSystem.exists(joinPath(project, "ES-DE/custom_systems")), "custom systems should be purged")) { return 1; }
+    if (!e2eOk(!FileSystem.exists(lifecycleStatePath(project)), "lifecycle state should be purged")) { return 1; }
+
+    print("OK BTRC lifecycle smoke");
+    return 0;
+}
+
+// ---- sandbox_smoke.btrc ----
+bool e2ePrepareSandbox(string project, string scratchRoot, string emulator) {
+    string scratch = joinPath(scratchRoot, emulator);
+    FileSystem.removeRecursive(scratch);
+    string emuDir = sandboxProjectEmulatorDir(project, emulator);
+    if (!e2eOk(emuDir.len() > 0, "missing emulator dir " + emulator)) {
+        return false;
+    }
+    ensureDir(scratch);
+    if (!e2eOk(sandboxApplyKnownLinks(emulator.toLower(), emuDir, scratch), "missing sandbox spec " + emulator)) {
+        return false;
+    }
+    if (!e2eOk(sandboxApplyKnownLinks(emulator.toLower(), emuDir, scratch), "sandbox idempotency failed " + emulator)) {
+        return false;
+    }
+    return true;
+}
+
+int e2eSandboxSmoke() {
+    string tmp = e2eTempDir("semu-sandbox-smoke");
+    string project = joinPath(tmp, "project");
+    string scratchRoot = joinPath(tmp, "scratch");
+    ensureDir(project);
+    ensureDir(scratchRoot);
+
+    e2eSeedFile(emulatorProfilePath(project, "Azahar/data/qt-config.ini"));
+    if (!e2ePrepareSandbox(project, scratchRoot, "azahar")) { return 1; }
+    if (!e2eAssertLink(joinPath(scratchRoot, "azahar/.local/share/azahar-emu/qt-config.ini"), emulatorProfilePath(project, "Azahar/data/qt-config.ini"))) { return 1; }
+
+    e2eSeedFile(emulatorProfilePath(project, "Cemu/config/settings.xml"));
+    e2eSeedFile(emulatorProfilePath(project, "Cemu/data/keys.txt"));
+    if (!e2ePrepareSandbox(project, scratchRoot, "cemu")) { return 1; }
+    if (!e2eAssertLink(joinPath(scratchRoot, "cemu/.config/Cemu/settings.xml"), emulatorProfilePath(project, "Cemu/config/settings.xml"))) { return 1; }
+    if (!e2eAssertLink(joinPath(scratchRoot, "cemu/.local/share/Cemu/keys.txt"), emulatorProfilePath(project, "Cemu/data/keys.txt"))) { return 1; }
+
+    e2eSeedFile(emulatorProfilePath(project, "Dolphin/config/Dolphin.ini"));
+    e2eSeedFile(emulatorProfilePath(project, "Dolphin/data/Wii/title.dat"));
+    if (!e2ePrepareSandbox(project, scratchRoot, "dolphin")) { return 1; }
+    if (!e2eAssertLink(joinPath(scratchRoot, "dolphin/.config/dolphin-emu/Dolphin.ini"), emulatorProfilePath(project, "Dolphin/config/Dolphin.ini"))) { return 1; }
+    if (!e2eAssertLink(joinPath(scratchRoot, "dolphin/.local/share/dolphin-emu/Wii"), emulatorProfilePath(project, "Dolphin/data/Wii"))) { return 1; }
+
+    e2eSeedFile(joinPath(project, "ES-DE/ES-DE/ROMs/.keep"));
+    e2eSeedFile(joinPath(project, "ES-DE/es_settings.xml"));
+    e2eSeedFile(joinPath(project, "ES-DE/custom_systems/es_find_rules.xml"));
+    if (!e2ePrepareSandbox(project, scratchRoot, "es-de")) { return 1; }
+    if (!e2eAssertLink(joinPath(scratchRoot, "es-de/ES-DE/ROMs"), joinPath(project, "ES-DE/ES-DE/ROMs"))) { return 1; }
+    if (!e2eAssertLink(joinPath(scratchRoot, "es-de/ES-DE/settings/es_settings.xml"), joinPath(project, "ES-DE/es_settings.xml"))) { return 1; }
+    if (!e2eAssertLink(joinPath(scratchRoot, "es-de/ES-DE/custom_systems/es_find_rules.xml"), joinPath(project, "ES-DE/custom_systems/es_find_rules.xml"))) { return 1; }
+
+    e2eSeedFile(emulatorProfilePath(project, "Lime3DS/data/qt-config.ini"));
+    if (!e2ePrepareSandbox(project, scratchRoot, "lime3ds")) { return 1; }
+    if (!e2eAssertLink(joinPath(scratchRoot, "lime3ds/.config/lime3ds-emu/qt-config.ini"), emulatorProfilePath(project, "Lime3DS/data/qt-config.ini"))) { return 1; }
+
+    e2eSeedFile(emulatorProfilePath(project, "PCSX2/config/PCSX2.ini"));
+    if (!e2ePrepareSandbox(project, scratchRoot, "pcsx2")) { return 1; }
+    if (!e2eAssertLink(joinPath(scratchRoot, "pcsx2/.config/PCSX2/PCSX2.ini"), emulatorProfilePath(project, "PCSX2/config/PCSX2.ini"))) { return 1; }
+
+    e2eSeedFile(emulatorProfilePath(project, "RetroArch/config/input.cfg"));
+    e2eSeedFile(emulatorProfilePath(project, "RetroArch/retroarch.cfg"));
+    if (!e2ePrepareSandbox(project, scratchRoot, "retroarch")) { return 1; }
+    if (!e2eAssertLink(joinPath(scratchRoot, "retroarch/.config/retroarch/input.cfg"), emulatorProfilePath(project, "RetroArch/config/input.cfg"))) { return 1; }
+    if (!e2eAssertLink(joinPath(scratchRoot, "retroarch/.config/retroarch/retroarch.cfg"), emulatorProfilePath(project, "RetroArch/retroarch.cfg"))) { return 1; }
+
+    e2eSeedFile(emulatorProfilePath(project, "Ryujinx/config/Config.json"));
+    if (!e2ePrepareSandbox(project, scratchRoot, "ryujinx")) { return 1; }
+    if (!e2eAssertLink(joinPath(scratchRoot, "ryujinx/.config/Ryujinx/Config.json"), emulatorProfilePath(project, "Ryujinx/config/Config.json"))) { return 1; }
+
+    if (!e2eOk(sandboxProjectEmulatorDir(project, "missing").len() == 0, "missing emulator unexpectedly resolved")) { return 1; }
+    ensureDir(joinPath(project, "Foo"));
+    if (!e2eOk(!sandboxApplyKnownLinks("foo", joinPath(project, "Foo"), joinPath(scratchRoot, "foo")), "unknown emulator spec unexpectedly succeeded")) { return 1; }
+
+    print("OK BTRC sandbox smoke");
+    return 0;
+}
+
+// ---- sync_smoke.btrc ----
+void e2eWriteSyncFakes(string binDir) {
+    string fakeSystemctl = joinPath(binDir, "systemctl");
+    FileSystem.writeText(fakeSystemctl,
+        "#!/usr/bin/env sh\n"
+        + "set -eu\n"
+        + "mkdir -p \"${SEMU_CAPTURE:?}\"\n"
+        + "printf '%s\\n' \"$*\" >> \"$SEMU_CAPTURE/systemctl.log\"\n"
+    );
+    FileSystem.chmod(fakeSystemctl, 493);
+
+    string fakeCurl = joinPath(binDir, "curl");
+    FileSystem.writeText(fakeCurl,
+        "#!/usr/bin/env sh\n"
+        + "set -eu\n"
+        + "mkdir -p \"${SEMU_CAPTURE:?}\"\n"
+        + "printf '%s\\n' \"$*\" >> \"$SEMU_CAPTURE/curl.log\"\n"
+    );
+    FileSystem.chmod(fakeCurl, 493);
+
+    string fakeSyncthing = joinPath(binDir, "syncthing");
+    FileSystem.writeText(fakeSyncthing,
+        "#!/usr/bin/env sh\n"
+        + "set -eu\n"
+        + "mkdir -p \"${SEMU_CAPTURE:?}\"\n"
+        + "printf '%s\\n' \"$*\" >> \"$SEMU_CAPTURE/syncthing.log\"\n"
+        + "if [ \"${1:-}\" = generate ]; then\n"
+        + "  home=\"\"\n"
+        + "  while [ $# -gt 0 ]; do\n"
+        + "    if [ \"$1\" = -H ]; then home=\"$2\"; shift 2; else shift; fi\n"
+        + "  done\n"
+        + "  mkdir -p \"$home\"\n"
+        + "  printf '<configuration><gui><apikey>test-key</apikey></gui></configuration>\\n' > \"$home/config.xml\"\n"
+        + "  exit 0\n"
+        + "fi\n"
+        + "exit 0\n"
+    );
+    FileSystem.chmod(fakeSyncthing, 493);
+}
+
+int e2eSyncSmoke(CliArgs args) {
+    string tmp = e2eTempDir("semu-sync-smoke");
+    string project = joinPath(tmp, "project");
+    string missingProject = joinPath(tmp, "missing-project");
+    string home = joinPath(tmp, "home");
+    string binDir = joinPath(tmp, "bin");
+    string capture = joinPath(tmp, "capture");
+    string exe = Environment.get("SEMU_BIN", args.program);
+    ensureDir(project);
+    ensureDir(missingProject);
+    ensureDir(home);
+    ensureDir(binDir);
+    ensureDir(capture);
+    e2eWriteSyncFakes(binDir);
+
+    if (!e2eRunOk(e2eRunSync(exe, home, binDir, project, ["setup"]), "sync setup")) { return 1; }
+    string systemctlLog = FileSystem.readText(joinPath(capture, "systemctl.log"));
+    if (!e2eContains(systemctlLog, "--user daemon-reload", "sync daemon-reload")) { return 1; }
+    if (!e2eContains(systemctlLog, "--user enable semu-syncthing.service", "sync enable service")) { return 1; }
+    if (!e2eContains(systemctlLog, "--user enable semu-sync-force.timer", "sync enable timer")) { return 1; }
+    if (!e2eContains(systemctlLog, "--user start semu-syncthing.service", "sync start service")) { return 1; }
+    if (!e2eContains(FileSystem.readText(joinPath(capture, "syncthing.log")), "semu-emulator_state", "sync emulator state folder")) { return 1; }
+
+    if (!e2eRunOk(e2eRunSync(exe, home, binDir, project, ["force", "all"]), "sync force all")) { return 1; }
+    if (!e2eRunOk(e2eRunSync(exe, home, binDir, project, ["force", "saves"]), "sync force saves")) { return 1; }
+    string curlLog = FileSystem.readText(joinPath(capture, "curl.log"));
+    if (!e2eContains(curlLog, "/rest/db/scan", "sync force all url")) { return 1; }
+    if (!e2eContains(curlLog, "?folder=semu-saves", "sync force saves url")) { return 1; }
+    if (!e2eContains(curlLog, "X-API-Key: test-key", "sync force api key")) { return 1; }
+
+    if (!e2eRunOk(e2eRunSync(exe, home, binDir, project, ["autostart", "disable"]), "sync autostart disable")) { return 1; }
+    if (!e2eRunOk(e2eRunSync(exe, home, binDir, project, ["autostart", "enable"]), "sync autostart enable")) { return 1; }
+    systemctlLog = FileSystem.readText(joinPath(capture, "systemctl.log"));
+    if (!e2eContains(systemctlLog, "--user disable semu-syncthing.service", "sync disable service")) { return 1; }
+    if (!e2eContains(systemctlLog, "--user enable semu-syncthing.service", "sync re-enable service")) { return 1; }
+
+    if (!e2eOk(!e2eRunSync(exe, home, binDir, missingProject, ["force", "all"]).ok(), "sync force without API key unexpectedly succeeded")) { return 1; }
+
+    print("OK BTRC sync smoke");
+    return 0;
+}
+
+// ---- launcher_smoke.btrc ----
 int e2eLauncherSmoke(CliArgs args) {
     string tmp = e2eTempDir("semu-launcher-smoke");
     string project = joinPath(tmp, "project");
@@ -149,258 +574,7 @@ int e2eLauncherSmoke(CliArgs args) {
     return 0;
 }
 
-// ---- src/semu/tests/lifecycle_smoke.btrc ----
-int e2eLifecycleSmoke(CliArgs args) {
-    string tmp = e2eTempDir("semu-lifecycle-smoke");
-    string project = joinPath(tmp, "project");
-    string home = joinPath(tmp, "home");
-    string romsOne = joinPath(tmp, "roms-one");
-    string romsTwo = joinPath(tmp, "roms-two");
-    string exe = Environment.get("SEMU_BIN", args.program);
-    ensureDir(project);
-    ensureDir(home);
-
-    if (!e2eRunOk(e2eRunLifecycle(exe, home, "install", project, romsOne), "install")) { return 1; }
-    if (!e2eRunOk(e2eRunLifecycle(exe, home, "install", project, romsOne), "install idempotent")) { return 1; }
-    if (!e2eCatalogConsistency(project, linuxLauncherBin(project))) { return 1; }
-    if (!e2eOk(FileSystem.isDir(joinPath(romsOne, "gba")), "install did not create configured ROM dirs")) { return 1; }
-    if (!e2eContains(FileSystem.readText(syncConfigPath(project)), romsOne, "sync config after install")) { return 1; }
-    if (!e2eContains(FileSystem.readText(screenshotConfigPath(project)), "output_pattern", "screenshot config after install")) { return 1; }
-    if (!e2eOk(FileSystem.exists(joinPath(home, ".local/share/applications/semu.desktop")), "desktop entry missing after install")) { return 1; }
-    if (!e2eOk(FileSystem.exists(joinPath(home, ".config/systemd/user/semu-syncthing.service")), "systemd service missing after install")) { return 1; }
-    string steamTemplates = joinPath(home, "steam-templates");
-    if (!e2eRunOk(e2eRunSteamInput(exe, home, project, ["install", "--dest", steamTemplates]), "steam-input install")) { return 1; }
-    if (!e2eContains(FileSystem.readText(joinPath(steamTemplates, "neptune-simple.vdf")), "\"controller_type\"\t\t\"controller_neptune\"", "installed Steam Input simple template")) { return 1; }
-
-    e2eSeedFile(joinPath(contentRoot(project), "saves/gba/game.sav"));
-    e2eSeedFile(joinPath(biosRoot(project), "ps2/ps2-0230a-20080220.bin"));
-    if (!e2eRunOk(e2eRunLifecycle(exe, home, "reconfigure", project, romsTwo), "reconfigure")) { return 1; }
-    if (!e2eContains(FileSystem.readText(syncConfigPath(project)), romsTwo, "sync config after reconfigure")) { return 1; }
-    if (!e2eContains(FileSystem.readText(joinPath(project, "ES-DE/es_settings.xml")), romsTwo, "ES-DE settings after reconfigure")) { return 1; }
-    if (!e2eOk(FileSystem.exists(joinPath(romsOne, "gba")), "original ROM root remains intact")) { return 1; }
-    if (!e2eOk(FileSystem.exists(joinPath(contentRoot(project), "saves/gba/game.sav")), "save should survive reconfigure")) { return 1; }
-    if (!e2eOk(FileSystem.exists(joinPath(biosRoot(project), "ps2/ps2-0230a-20080220.bin")), "BIOS should survive reconfigure")) { return 1; }
-
-    if (!e2eRunOk(e2eRunLifecycleChange(exe, home, project, "state.save", "Ctrl+V"), "change keymap")) { return 1; }
-    if (!e2eContains(FileSystem.readText(keymapSourcePath(project)), "action state.save = Ctrl+V", "keymap source after change")) { return 1; }
-    if (!e2eContains(FileSystem.readText(emulatorProfilePath(project, "RetroArch/retroarch.cfg")), "input_save_state = \"v\"", "RetroArch keymap after change")) { return 1; }
-    if (!e2eContains(FileSystem.readText(emulatorProfilePath(project, "Dolphin/config/Profiles/Hotkeys/Steam Deck.ini")), "Save State/Save State Slot 1 = @(Ctrl+V)", "Dolphin keymap after change")) { return 1; }
-    if (!e2eContains(FileSystem.readText(emulatorProfilePath(project, "PCSX2/config/inputprofiles/Steam Deck.ini")), "SaveStateToSlot = Keyboard/Control & Keyboard/V", "PCSX2 keymap after change")) { return 1; }
-    if (!e2eContains(FileSystem.readText(joinPath(project, "input/steam-input/neptune-full.vdf")), "key_press V, Save State", "Steam Input keymap after change")) { return 1; }
-
-    string keymapBeforeFailure = FileSystem.readText(keymapSourcePath(project));
-    string retroarchBeforeFailure = FileSystem.readText(emulatorProfilePath(project, "RetroArch/retroarch.cfg"));
-    if (!e2eOk(!e2eRunLifecycleArgs(exe, home, project, ["change", "--action", "state.save"]).ok(), "lifecycle change without command unexpectedly succeeded")) { return 1; }
-    if (!e2eOk(!e2eRunLifecycleChange(exe, home, project, "missing.action", "Ctrl+B").ok(), "unknown keymap action unexpectedly succeeded")) { return 1; }
-    if (!e2eOk(!e2eRunLifecycleChange(exe, home, project, "state.save", "Ctrl").ok(), "invalid keymap command unexpectedly succeeded")) { return 1; }
-    if (!e2eOk(!e2eRunLifecycleArgs(exe, home, project, ["definitely-not-a-mode"]).ok(), "unknown lifecycle mode unexpectedly succeeded")) { return 1; }
-    if (!e2eOk(FileSystem.readText(keymapSourcePath(project)).equals(keymapBeforeFailure), "failed keymap change mutated source")) { return 1; }
-    if (!e2eOk(FileSystem.readText(emulatorProfilePath(project, "RetroArch/retroarch.cfg")).equals(retroarchBeforeFailure), "failed keymap change mutated RetroArch config")) { return 1; }
-
-    if (!e2eRunOk(e2eRunLifecycle(exe, home, "uninstall", project, ""), "uninstall")) { return 1; }
-    if (!e2eOk(!FileSystem.exists(joinPath(home, ".local/share/applications/semu.desktop")), "uninstall clears desktop entry")) { return 1; }
-    if (!e2eOk(!FileSystem.exists(joinPath(home, ".config/systemd/user/semu-syncthing.service")), "uninstall clears systemd service")) { return 1; }
-    if (!e2eOk(FileSystem.exists(syncConfigPath(project)), "sync config should survive uninstall")) { return 1; }
-    if (!e2eOk(FileSystem.exists(joinPath(contentRoot(project), "saves/gba/game.sav")), "save should survive uninstall")) { return 1; }
-    if (!e2eOk(FileSystem.exists(joinPath(biosRoot(project), "ps2/ps2-0230a-20080220.bin")), "BIOS should survive uninstall")) { return 1; }
-
-    if (!e2eRunOk(e2eRunLifecycle(exe, home, "reinstall", project, ""), "reinstall")) { return 1; }
-    if (!e2eOk(FileSystem.exists(joinPath(home, ".local/share/applications/semu.desktop")), "desktop entry missing after reinstall")) { return 1; }
-    if (!e2eContains(FileSystem.readText(syncConfigPath(project)), romsTwo, "sync config after reinstall")) { return 1; }
-
-    FileSystem.writeText(joinPath(project, "semu.json"), "{\"previous_manifest\": true}\n");
-    if (!e2eRunOk(e2eRunLifecycle(exe, home, "upgrade", project, ""), "upgrade")) { return 1; }
-    if (!e2eContains(FileSystem.readText(upgradeBackupPath(project)), "\"previous_manifest\": true", "upgrade backup")) { return 1; }
-    if (!e2eContains(FileSystem.readText(joinPath(project, "semu.json")), "\"schema_version\": 1", "regenerated manifest")) { return 1; }
-    if (!e2eContains(FileSystem.readText(keymapSourcePath(project)), "action state.save = Ctrl+V", "keymap should survive upgrade")) { return 1; }
-
-    if (!e2eRunOk(e2eRunLifecycleArgs(exe, home, project, ["uninstall", "--purge-generated", "--purge-state"]), "purge uninstall")) { return 1; }
-    if (!e2eOk(!FileSystem.exists(joinPath(project, "ES-DE/custom_systems")), "custom systems should be purged")) { return 1; }
-    if (!e2eOk(!FileSystem.exists(lifecycleStatePath(project)), "lifecycle state should be purged")) { return 1; }
-
-    print("OK BTRC lifecycle smoke");
-    return 0;
-}
-
-// ---- src/semu/tests/sandbox_smoke.btrc ----
-bool e2ePrepareSandbox(string project, string scratchRoot, string emulator) {
-    string scratch = joinPath(scratchRoot, emulator);
-    FileSystem.removeRecursive(scratch);
-    string emuDir = sandboxProjectEmulatorDir(project, emulator);
-    if (!e2eOk(emuDir.len() > 0, "missing emulator dir " + emulator)) {
-        return false;
-    }
-    ensureDir(scratch);
-    if (!e2eOk(sandboxApplyKnownLinks(emulator.toLower(), emuDir, scratch), "missing sandbox spec " + emulator)) {
-        return false;
-    }
-    if (!e2eOk(sandboxApplyKnownLinks(emulator.toLower(), emuDir, scratch), "sandbox idempotency failed " + emulator)) {
-        return false;
-    }
-    return true;
-}
-
-int e2eSandboxSmoke() {
-    string tmp = e2eTempDir("semu-sandbox-smoke");
-    string project = joinPath(tmp, "project");
-    string scratchRoot = joinPath(tmp, "scratch");
-    ensureDir(project);
-    ensureDir(scratchRoot);
-
-    e2eSeedFile(emulatorProfilePath(project, "Azahar/data/qt-config.ini"));
-    if (!e2ePrepareSandbox(project, scratchRoot, "azahar")) { return 1; }
-    if (!e2eAssertLink(joinPath(scratchRoot, "azahar/.local/share/azahar-emu/qt-config.ini"), emulatorProfilePath(project, "Azahar/data/qt-config.ini"))) { return 1; }
-
-    e2eSeedFile(emulatorProfilePath(project, "Cemu/config/settings.xml"));
-    e2eSeedFile(emulatorProfilePath(project, "Cemu/data/keys.txt"));
-    if (!e2ePrepareSandbox(project, scratchRoot, "cemu")) { return 1; }
-    if (!e2eAssertLink(joinPath(scratchRoot, "cemu/.config/Cemu/settings.xml"), emulatorProfilePath(project, "Cemu/config/settings.xml"))) { return 1; }
-    if (!e2eAssertLink(joinPath(scratchRoot, "cemu/.local/share/Cemu/keys.txt"), emulatorProfilePath(project, "Cemu/data/keys.txt"))) { return 1; }
-
-    e2eSeedFile(emulatorProfilePath(project, "Dolphin/config/Dolphin.ini"));
-    e2eSeedFile(emulatorProfilePath(project, "Dolphin/data/Wii/title.dat"));
-    if (!e2ePrepareSandbox(project, scratchRoot, "dolphin")) { return 1; }
-    if (!e2eAssertLink(joinPath(scratchRoot, "dolphin/.config/dolphin-emu/Dolphin.ini"), emulatorProfilePath(project, "Dolphin/config/Dolphin.ini"))) { return 1; }
-    if (!e2eAssertLink(joinPath(scratchRoot, "dolphin/.local/share/dolphin-emu/Wii"), emulatorProfilePath(project, "Dolphin/data/Wii"))) { return 1; }
-
-    e2eSeedFile(joinPath(project, "ES-DE/ES-DE/ROMs/.keep"));
-    e2eSeedFile(joinPath(project, "ES-DE/es_settings.xml"));
-    e2eSeedFile(joinPath(project, "ES-DE/custom_systems/es_find_rules.xml"));
-    if (!e2ePrepareSandbox(project, scratchRoot, "es-de")) { return 1; }
-    if (!e2eAssertLink(joinPath(scratchRoot, "es-de/ES-DE/ROMs"), joinPath(project, "ES-DE/ES-DE/ROMs"))) { return 1; }
-    if (!e2eAssertLink(joinPath(scratchRoot, "es-de/ES-DE/settings/es_settings.xml"), joinPath(project, "ES-DE/es_settings.xml"))) { return 1; }
-    if (!e2eAssertLink(joinPath(scratchRoot, "es-de/ES-DE/custom_systems/es_find_rules.xml"), joinPath(project, "ES-DE/custom_systems/es_find_rules.xml"))) { return 1; }
-
-    e2eSeedFile(emulatorProfilePath(project, "Lime3DS/data/qt-config.ini"));
-    if (!e2ePrepareSandbox(project, scratchRoot, "lime3ds")) { return 1; }
-    if (!e2eAssertLink(joinPath(scratchRoot, "lime3ds/.config/lime3ds-emu/qt-config.ini"), emulatorProfilePath(project, "Lime3DS/data/qt-config.ini"))) { return 1; }
-
-    e2eSeedFile(emulatorProfilePath(project, "PCSX2/config/PCSX2.ini"));
-    if (!e2ePrepareSandbox(project, scratchRoot, "pcsx2")) { return 1; }
-    if (!e2eAssertLink(joinPath(scratchRoot, "pcsx2/.config/PCSX2/PCSX2.ini"), emulatorProfilePath(project, "PCSX2/config/PCSX2.ini"))) { return 1; }
-
-    e2eSeedFile(emulatorProfilePath(project, "RetroArch/config/input.cfg"));
-    e2eSeedFile(emulatorProfilePath(project, "RetroArch/retroarch.cfg"));
-    if (!e2ePrepareSandbox(project, scratchRoot, "retroarch")) { return 1; }
-    if (!e2eAssertLink(joinPath(scratchRoot, "retroarch/.config/retroarch/input.cfg"), emulatorProfilePath(project, "RetroArch/config/input.cfg"))) { return 1; }
-    if (!e2eAssertLink(joinPath(scratchRoot, "retroarch/.config/retroarch/retroarch.cfg"), emulatorProfilePath(project, "RetroArch/retroarch.cfg"))) { return 1; }
-
-    e2eSeedFile(emulatorProfilePath(project, "Ryujinx/config/Config.json"));
-    if (!e2ePrepareSandbox(project, scratchRoot, "ryujinx")) { return 1; }
-    if (!e2eAssertLink(joinPath(scratchRoot, "ryujinx/.config/Ryujinx/Config.json"), emulatorProfilePath(project, "Ryujinx/config/Config.json"))) { return 1; }
-
-    if (!e2eOk(sandboxProjectEmulatorDir(project, "missing").len() == 0, "missing emulator unexpectedly resolved")) { return 1; }
-    ensureDir(joinPath(project, "Foo"));
-    if (!e2eOk(!sandboxApplyKnownLinks("foo", joinPath(project, "Foo"), joinPath(scratchRoot, "foo")), "unknown emulator spec unexpectedly succeeded")) { return 1; }
-
-    print("OK BTRC sandbox smoke");
-    return 0;
-}
-
-// ---- src/semu/tests/shell_syntax.btrc ----
-int e2eShellSyntaxSmoke(string project) {
-    string root = project;
-    string command = "cd " + ShellWords.quote(root)
-        + " && bash -n"
-        + " packaging/linux/AppRun"
-        + " packaging/linux/sandbox.sh"
-        + " packaging/linux/build-appimage.sh"
-        + " packaging/linux/bin/semu-*"
-        + " utils/steam-deck-bootstrap.sh"
-        + " tests/steam-deck/ssh-smoke.sh";
-    ExecResult result = UnixShell().runRaw(command, true, false, "");
-    if (!result.ok()) {
-        print(result.stdout());
-        return result.code;
-    }
-    print("OK shell artifact syntax");
-    return 0;
-}
-
-// ---- src/semu/tests/sync_smoke.btrc ----
-void e2eWriteSyncFakes(string binDir) {
-    string fakeSystemctl = joinPath(binDir, "systemctl");
-    FileSystem.writeText(fakeSystemctl,
-        "#!/usr/bin/env sh\n"
-        + "set -eu\n"
-        + "mkdir -p \"${SEMU_CAPTURE:?}\"\n"
-        + "printf '%s\\n' \"$*\" >> \"$SEMU_CAPTURE/systemctl.log\"\n"
-    );
-    FileSystem.chmod(fakeSystemctl, 493);
-
-    string fakeCurl = joinPath(binDir, "curl");
-    FileSystem.writeText(fakeCurl,
-        "#!/usr/bin/env sh\n"
-        + "set -eu\n"
-        + "mkdir -p \"${SEMU_CAPTURE:?}\"\n"
-        + "printf '%s\\n' \"$*\" >> \"$SEMU_CAPTURE/curl.log\"\n"
-    );
-    FileSystem.chmod(fakeCurl, 493);
-
-    string fakeSyncthing = joinPath(binDir, "syncthing");
-    FileSystem.writeText(fakeSyncthing,
-        "#!/usr/bin/env sh\n"
-        + "set -eu\n"
-        + "mkdir -p \"${SEMU_CAPTURE:?}\"\n"
-        + "printf '%s\\n' \"$*\" >> \"$SEMU_CAPTURE/syncthing.log\"\n"
-        + "if [ \"${1:-}\" = generate ]; then\n"
-        + "  home=\"\"\n"
-        + "  while [ $# -gt 0 ]; do\n"
-        + "    if [ \"$1\" = -H ]; then home=\"$2\"; shift 2; else shift; fi\n"
-        + "  done\n"
-        + "  mkdir -p \"$home\"\n"
-        + "  printf '<configuration><gui><apikey>test-key</apikey></gui></configuration>\\n' > \"$home/config.xml\"\n"
-        + "  exit 0\n"
-        + "fi\n"
-        + "exit 0\n"
-    );
-    FileSystem.chmod(fakeSyncthing, 493);
-}
-
-int e2eSyncSmoke(CliArgs args) {
-    string tmp = e2eTempDir("semu-sync-smoke");
-    string project = joinPath(tmp, "project");
-    string missingProject = joinPath(tmp, "missing-project");
-    string home = joinPath(tmp, "home");
-    string binDir = joinPath(tmp, "bin");
-    string capture = joinPath(tmp, "capture");
-    string exe = Environment.get("SEMU_BIN", args.program);
-    ensureDir(project);
-    ensureDir(missingProject);
-    ensureDir(home);
-    ensureDir(binDir);
-    ensureDir(capture);
-    e2eWriteSyncFakes(binDir);
-
-    if (!e2eRunOk(e2eRunSync(exe, home, binDir, project, ["setup"]), "sync setup")) { return 1; }
-    string systemctlLog = FileSystem.readText(joinPath(capture, "systemctl.log"));
-    if (!e2eContains(systemctlLog, "--user daemon-reload", "sync daemon-reload")) { return 1; }
-    if (!e2eContains(systemctlLog, "--user enable semu-syncthing.service", "sync enable service")) { return 1; }
-    if (!e2eContains(systemctlLog, "--user enable semu-sync-force.timer", "sync enable timer")) { return 1; }
-    if (!e2eContains(systemctlLog, "--user start semu-syncthing.service", "sync start service")) { return 1; }
-    if (!e2eContains(FileSystem.readText(joinPath(home, ".config/systemd/user/semu-syncthing.service")), "sync daemon --project", "sync service daemon entrypoint")) { return 1; }
-    if (!e2eContains(FileSystem.readText(joinPath(capture, "syncthing.log")), "semu-emulator_state", "sync emulator state folder")) { return 1; }
-
-    if (!e2eRunOk(e2eRunSync(exe, home, binDir, project, ["force", "all"]), "sync force all")) { return 1; }
-    if (!e2eRunOk(e2eRunSync(exe, home, binDir, project, ["force", "saves"]), "sync force saves")) { return 1; }
-    string curlLog = FileSystem.readText(joinPath(capture, "curl.log"));
-    if (!e2eContains(curlLog, "/rest/db/scan", "sync force all url")) { return 1; }
-    if (!e2eContains(curlLog, "?folder=semu-saves", "sync force saves url")) { return 1; }
-    if (!e2eContains(curlLog, "X-API-Key: test-key", "sync force api key")) { return 1; }
-
-    if (!e2eRunOk(e2eRunSync(exe, home, binDir, project, ["autostart", "disable"]), "sync autostart disable")) { return 1; }
-    if (!e2eRunOk(e2eRunSync(exe, home, binDir, project, ["autostart", "enable"]), "sync autostart enable")) { return 1; }
-    systemctlLog = FileSystem.readText(joinPath(capture, "systemctl.log"));
-    if (!e2eContains(systemctlLog, "--user disable semu-syncthing.service", "sync disable service")) { return 1; }
-    if (!e2eContains(systemctlLog, "--user enable semu-syncthing.service", "sync re-enable service")) { return 1; }
-
-    if (!e2eOk(!e2eRunSync(exe, home, binDir, missingProject, ["force", "all"]).ok(), "sync force without API key unexpectedly succeeded")) { return 1; }
-
-    print("OK BTRC sync smoke");
-    return 0;
-}
-
-// ---- src/semu/tests/n3ds_smoke.btrc ----
+// ---- n3ds_smoke.btrc ----
 bool e2eWriteFakeN3dsRom(string path, bool noCrypto, bool decrypted) {
     ensureDir(PathTools.dirname(path));
     BinaryEditor editor = BinaryEditor(path, "w+b");
@@ -488,5 +662,24 @@ int e2eN3dsNoCryptoSmoke(CliArgs args) {
     if (!e2eOk(checkN3dsRom(joinPath(output, "already-ok.3ds")).status.equals("OK"), "already OK fake ROM copy")) { return 1; }
 
     print("OK BTRC n3ds-nocrypto smoke");
+    return 0;
+}
+
+// ---- shell_syntax.btrc ----
+int e2eShellSyntaxSmoke(string project) {
+    string root = project;
+    string command = "cd " + ShellWords.quote(root)
+        + " && bash -n"
+        + " packaging/linux/AppRun"
+        + " packaging/linux/sandbox.sh"
+        + " packaging/linux/build-appimage.sh"
+        + " packaging/linux/bin/semu-*"
+        + " utils/steam-deck-bootstrap.sh";
+    ExecResult result = UnixShell().runRaw(command, true, false, "");
+    if (!result.ok()) {
+        print(result.stdout());
+        return result.code;
+    }
+    print("OK shell artifact syntax");
     return 0;
 }

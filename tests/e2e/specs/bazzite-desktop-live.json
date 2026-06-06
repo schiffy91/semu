@@ -2,11 +2,14 @@
   "name": "bazzite-desktop-live",
   "state": "bazzite-desktop-live",
   "parentState": "payload-audit",
-  "stateMaterial": "{{sourceHash}}",
+  "stateMaterial": "{{sourceHash}}:{{bazziteDesktopSshPort}}",
+  "args": {
+    "bazziteDesktopSshPort": "2234"
+  },
   "operations": [
     {
       "op": "make",
-      "command": "bazzite-desktop-vm-smoke",
+      "command": "bazzite-desktop-vm-smoke BAZZITE_SSH_PORT={{bazziteDesktopSshPort}}",
       "expect": "Open the VNC display"
     }
   ]
