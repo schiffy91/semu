@@ -1,11 +1,6 @@
 class SemuPaths {
-    public SemuPaths() {}
-
-    public string content(string project) { return contentRoot(project); }
-    public string roms(string project) { return romsRoot(project); }
-    public string configuredRoms(string project) { return configuredRomsRoot(project); }
-    public string bios(string project) { return biosRoot(project); }
-    public string keymap(string project) { return keymapSourcePath(project); }
+    class string content(string project) { return contentRoot(project); }
+    class string roms(string project) { return configuredRomsRoot(project); }
 }
 
 string joinPath(string left, string right) {
@@ -134,6 +129,37 @@ string configuredRomsRoot(string project) {
     return syncString(project, "roms_dir", "${paths.project_roms}");
 }
 
+string normalizeRomsRoot(string romsDir) {
+    if (romsDir.len() == 0) { return ""; }
+    Vector<string> candidates = [
+        joinPath(romsDir, "Emulation/ES-DE/ES-DE/ROMs"),
+        joinPath(romsDir, "ES-DE/ES-DE/ROMs"),
+        joinPath(romsDir, "Emulation/ROMs"),
+        joinPath(romsDir, "ROMs")
+    ];
+    for candidate in candidates {
+        if (FileSystem.isDir(candidate)) { return candidate; }
+    }
+    return romsDir;
+}
+
+string configuredEmulationRoot(string project) {
+    string configured = Environment.get("SEMU_EMULATION_ROOT", syncString(project, "emulation_root", ""));
+    if (configured.len() > 0) { return configured; }
+
+    string roms = configuredRomsRoot(project);
+    if (roms.endsWith("/ES-DE/ES-DE/ROMs")) {
+        return PathTools.dirname(PathTools.dirname(PathTools.dirname(roms)));
+    }
+    if (FileSystem.isDir("/run/media/deck/SD/Emulation")) {
+        return "/run/media/deck/SD/Emulation";
+    }
+    if (FileSystem.isDir("/mnt/SD/Emulation")) {
+        return "/mnt/SD/Emulation";
+    }
+    return "";
+}
+
 Vector<string> declaredSystemIds() {
     SystemCatalog catalog = systemCatalog();
     return catalog.ids;
@@ -158,13 +184,18 @@ Vector<string> controllerProfileFiles() {
 }
 
 string esSettingsXmlWithPaths(string roms, string media, string themes) {
+    string startupSystem = Environment.get("SEMU_STARTUP_SYSTEM", "");
+    string startupView = Environment.get("SEMU_STARTUP_VIEW", "system");
     return "<?xml version=\"1.0\"?>\n"
         + "<string name=\"ROMDirectory\" value=\"" + roms + "\" />\n"
         + "<string name=\"MediaDirectory\" value=\"" + media + "\" />\n"
         + "<string name=\"UserThemeDirectory\" value=\"" + themes + "\" />\n"
+        + "<string name=\"ApplicationUpdaterFrequency\" value=\"never\" />\n"
         + "<string name=\"SaveGamelistsMode\" value=\"always\" />\n"
         + "<string name=\"CreatePlaceholderSystemDirectories\" value=\"false\" />\n"
         + "<string name=\"InputControllerType\" value=\"xbox\" />\n"
+        + "<string name=\"StartupSystem\" value=\"" + xmlEscape(startupSystem) + "\" />\n"
+        + "<string name=\"StartupView\" value=\"" + xmlEscape(startupView) + "\" />\n"
         + "<string name=\"Theme\" value=\"slate-es-de\" />\n";
 }
 

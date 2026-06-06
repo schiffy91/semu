@@ -12,6 +12,10 @@ import ./semu/sync/*;
 import ./semu/tests/*;
 import ./semu/cli/*;
 
+class SemuApp {
+    class int run(int argc, char** argv) { return main(argc, argv); }
+}
+
 string launcherNameFromProgram(string program) {
     string base = PathTools.basename(program);
     if (!base.startsWith("semu-")) {
@@ -23,87 +27,79 @@ string launcherNameFromProgram(string program) {
     return Strings.removePrefix(base, "semu-");
 }
 
-class SemuApp {
-    public SemuApp() {}
-
-    public int run(int argc, char** argv) {
-        CliArgs args = CliArgs(argc, argv);
-        string command = args.command();
-        string project = args.valueAfter("--project", Environment.get("SEMU_PROJECT_DIR", "."));
-        string programLauncher = launcherNameFromProgram(args.program);
-        if (programLauncher.len() > 0) {
-            return launcherRunEmulator(project, programLauncher, launcherPassthroughArgs(args));
-        }
-        if (command.equals("") || command.equals("manifest")) {
-            string output = args.valueAfter("--output", "semu.json");
-            writeGeneratedManifest(output);
-            return 0;
-        }
-        if (command.equals("bootstrap")) {
-            bootstrapSteamDeck(project);
-            return 0;
-        }
-        if (command.equals("doctor")) {
-            doctorSteamDeck(project);
-            return 0;
-        }
-        if (command.equals("deck")) {
-            int status = deckCommand(args, project);
-            return status;
-        }
-        if (command.equals("lifecycle")) {
-            int status = lifecycleCommand(args, project);
-            return status;
-        }
-        if (command.equals("sync")) {
-            int status = syncCommand(args, project);
-            return status;
-        }
-        if (command.equals("config")) {
-            int status = configCommand(args, project);
-            return status;
-        }
-        if (command.equals("apprun")) {
-            int status = appRunCommand(args, project);
-            return status;
-        }
-        if (command.equals("steam-input")) {
-            int status = steamInputCommand(args, project);
-            return status;
-        }
-        if (command.equals("keymap")) {
-            int status = keymapCommand(args);
-            return status;
-        }
-        if (command.equals("screenshot")) {
-            int status = screenshotCommand(args, project);
-            return status;
-        }
-        if (command.equals("sandbox")) {
-            int status = sandboxCommand(args, project);
-            return status;
-        }
-        if (command.equals("launcher")) {
-            int status = launcherCommand(args, project);
-            return status;
-        }
-        if (command.equals("utils") || command.equals("util")) {
-            int status = utilitiesCommand(args);
-            return status;
-        }
-        if (command.equals("n3ds-nocrypto") || command.equals("3ds-nocrypto")) {
-            int status = n3dsNoCryptoCommand(args, 1);
-            return status;
-        }
-        if (command.equals("e2e")) {
-            int status = e2eCommand(args);
-            return status;
-        }
-        printUsage();
-        return 1;
-    }
-}
-
 int main(int argc, char** argv) {
-    return SemuApp().run(argc, argv);
+    CliArgs args = CliArgs(argc, argv);
+    string command = args.command();
+    string project = args.valueAfter("--project", Environment.get("SEMU_PROJECT_DIR", "."));
+    string programLauncher = launcherNameFromProgram(args.program);
+    if (programLauncher.len() > 0) {
+        return launcherRunEmulator(project, programLauncher, launcherPassthroughArgs(args));
+    }
+    if (command.equals("") || command.equals("manifest")) {
+        string output = args.valueAfter("--output", "semu.json");
+        writeGeneratedManifest(output);
+        return 0;
+    }
+    if (command.equals("bootstrap")) {
+        bootstrapSteamDeck(project);
+        return 0;
+    }
+    if (command.equals("doctor")) {
+        doctorSteamDeck(project);
+        return 0;
+    }
+    if (command.equals("deck")) {
+        int status = deckCommand(args, project);
+        return status;
+    }
+    if (command.equals("lifecycle")) {
+        int status = lifecycleCommand(args, project);
+        return status;
+    }
+    if (command.equals("sync")) {
+        int status = syncCommand(args, project);
+        return status;
+    }
+    if (command.equals("config")) {
+        int status = configCommand(args, project);
+        return status;
+    }
+    if (command.equals("apprun")) {
+        int status = appRunCommand(args, project);
+        return status;
+    }
+    if (command.equals("steam-input")) {
+        int status = steamInputCommand(args, project);
+        return status;
+    }
+    if (command.equals("keymap")) {
+        int status = keymapCommand(args);
+        return status;
+    }
+    if (command.equals("screenshot")) {
+        int status = screenshotCommand(args, project);
+        return status;
+    }
+    if (command.equals("sandbox")) {
+        int status = sandboxCommand(args, project);
+        return status;
+    }
+    if (command.equals("launcher")) {
+        int status = launcherCommand(args, project);
+        return status;
+    }
+    if (command.equals("utils") || command.equals("util")) {
+        int status = utilitiesCommand(args);
+        return status;
+    }
+    if (command.equals("n3ds-nocrypto") || command.equals("3ds-nocrypto")) {
+        int status = n3dsNoCryptoCommand(args, 1);
+        return status;
+    }
+    if (command.equals("e2e")) {
+        int status = e2eCommand(args);
+        return status;
+    }
+    printUsage();
+    return 1;
 }

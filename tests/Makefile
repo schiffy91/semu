@@ -1,17 +1,8 @@
-TESTNAME ?=
-KNOWN_TEST_TARGETS := test verify nix-e2e appimage-smoke generated-smoke payload-audit e2e-smoke lifecycle-smoke sandbox-smoke launcher-smoke e2e-graph-run e2e-graph-list e2e-graph-status e2e-graph-coverage deck-vm-verify deck-vm-verify-strict bazzite-vm-smoke bazzite-desktop-vm-smoke
+E2E_GRAPH := tests/e2e/graph.json
+E2E_GRAPH_NODES ?=
+E2E_GRAPH_ARGS ?=
 
-.PHONY: generated-build generated-smoke payload-audit test tests ftux-test e2e-smoke e2e-graph-list e2e-graph-status e2e-graph-coverage e2e-graph-run lifecycle-smoke sandbox-smoke launcher-smoke appimage-smoke nix-e2e verify
-
-tests: ## Run all fast tests or one test with TESTNAME=<name>
-	@if [ -z "$(TESTNAME)" ]; then \
-		$(MAKE) --no-print-directory test; \
-	elif case " $(KNOWN_TEST_TARGETS) " in *" $(TESTNAME) "*) true ;; *) false ;; esac; then \
-		$(MAKE) --no-print-directory "$(TESTNAME)"; \
-	else \
-		$(MAKE) --no-print-directory "$(SEMU_BIN)"; \
-		"$(SEMU_BIN)" e2e "$(TESTNAME)"; \
-	fi
+.PHONY: payload-audit generated-build generated-smoke test ftux-test e2e-smoke e2e-graph-list e2e-graph-status e2e-graph-coverage e2e-graph-run lifecycle-smoke sandbox-smoke launcher-smoke appimage-smoke deck-ssh-smoke nix-e2e verify
 
 generated-build: generated/semu.c ## Build committed generated C without invoking BTRC
 	@mkdir -p build
@@ -55,6 +46,9 @@ launcher-smoke: $(SEMU_BIN) ## Validate BTRC Linux launcher routing with fake fl
 appimage-smoke: generated-build ## Validate AppImage assembly and Nix-store mount wiring with BTRC fakes
 	$(SEMU_BIN) e2e appimage --project "$(CURDIR)"
 
+deck-ssh-smoke: ## Probe a physical Steam Deck over SSH and capture a baseline screenshot
+	tests/deck/ssh-smoke.sh
+
 nix-e2e: ## Validate flake routed-emulator shape and mock wrapper behavior
 	@set -euo pipefail; \
 	host_system="$$(nix eval --impure --raw --expr builtins.currentSystem)"; \
@@ -89,15 +83,18 @@ verify: payload-audit $(SEMU_BIN) ## Run deterministic BTRC/Steam Deck verificat
 	"$(SEMU_BIN)" keymap render --project "$(CURDIR)" --target dolphin --output "$$verify_dir/dolphin.ini"; \
 	"$(SEMU_BIN)" keymap render --project "$(CURDIR)" --target pcsx2 --output "$$verify_dir/pcsx2.ini"; \
 	"$(SEMU_BIN)" keymap render --project "$(CURDIR)" --target steam-input --output "$$verify_dir/steam-input.vdf"; \
-	grep -F 'input_enable_hotkey = "ctrl"' "$$verify_dir/retroarch.cfg" >/dev/null; \
+	grep -F 'input_exit_emulator = "escape"' "$$verify_dir/retroarch.cfg" >/dev/null; \
+	grep -F 'input_quit_gamepad_combo = "4"' "$$verify_dir/retroarch.cfg" >/dev/null; \
 	grep -F 'input_load_state = "a"' "$$verify_dir/retroarch.cfg" >/dev/null; \
 	grep -F 'input_save_state = "s"' "$$verify_dir/retroarch.cfg" >/dev/null; \
-	grep -F 'input_exit_emulator = "q"' "$$verify_dir/retroarch.cfg" >/dev/null; \
 	grep -F 'General/Stop = @(Ctrl+Q)' "$$verify_dir/dolphin.ini" >/dev/null; \
 	grep -F 'Save State/Save State Slot 1 = @(Ctrl+S)' "$$verify_dir/dolphin.ini" >/dev/null; \
 	grep -F 'SaveStateToSlot = Keyboard/Control & Keyboard/S' "$$verify_dir/pcsx2.ini" >/dev/null; \
 	grep -F 'LoadStateFromSlot = Keyboard/Control & Keyboard/A' "$$verify_dir/pcsx2.ini" >/dev/null; \
 	grep -F 'key_press S, Save State' "$$verify_dir/steam-input.vdf" >/dev/null; \
+	grep -F 'xinput_button SELECT, Quit' "$$verify_dir/steam-input.vdf" >/dev/null; \
+	grep -F 'xinput_button START, Quit' "$$verify_dir/steam-input.vdf" >/dev/null; \
+	grep -F 'key_press ESCAPE, Quit' "$$verify_dir/steam-input.vdf" >/dev/null; \
 	grep -F 'key_press LEFT_ALT, Quit' "$$verify_dir/steam-input.vdf" >/dev/null; \
 	grep -F 'key_press F4, Quit' "$$verify_dir/steam-input.vdf" >/dev/null; \
 	echo "OK keymap render targets"; \
@@ -136,12 +133,9 @@ verify: payload-audit $(SEMU_BIN) ## Run deterministic BTRC/Steam Deck verificat
 	test -f src/semu.btrc; \
 	test -d src/semu; \
 	echo "OK BTRC runtime source boundary"; \
-	sandbox_project="$$verify_dir/runtime-project"; \
-	rm -rf "$$sandbox_project"; \
-	"$(SEMU_BIN)" bootstrap --project "$$sandbox_project" >/dev/null; \
 	sandbox_dir="$$verify_dir/sandbox-retroarch"; \
 	rm -rf "$$sandbox_dir"; \
-	"$(SEMU_BIN)" sandbox prepare --project "$$sandbox_project" --emulator retroarch --scratch "$$sandbox_dir"; \
+	"$(SEMU_BIN)" sandbox prepare --project "$(CURDIR)" --emulator retroarch --scratch "$$sandbox_dir"; \
 	test -L "$$sandbox_dir/.config/retroarch/retroarch.cfg"; \
 	echo "OK runtime is BTRC-backed"; \
 	echo "== Generated-C smoke =="; \
@@ -149,7 +143,6 @@ verify: payload-audit $(SEMU_BIN) ## Run deterministic BTRC/Steam Deck verificat
 	echo "== Whitespace check =="; \
 	git diff --check; \
 	echo "Verification artifacts: $$verify_dir"
-
 
 include tests/vm/Makefile
 include tests/bazzite/Makefile

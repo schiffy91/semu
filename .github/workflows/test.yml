@@ -2,15 +2,6 @@ name: Smoke Tests
 on: [push, pull_request]
 
 jobs:
-  # Container test — same Dockerfile used locally via `make container-test`
-  container:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - run: docker build -t semu-test .
-      - run: docker run --rm -v "$PWD:/semu" semu-test make test
-
-  # Native tests on each platform
   native:
     strategy:
       matrix:
@@ -18,4 +9,5 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
+      - uses: DeterminateSystems/nix-installer-action@main
       - run: make test

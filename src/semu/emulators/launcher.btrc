@@ -1,17 +1,6 @@
-class EmulatorLauncher {
-    public EmulatorLauncher() {}
-
-    public int run(string project, string emulator, Vector<string> args) {
-        return launcherRunEmulator(project, emulator, args);
-    }
-
-    public int runRouted(string project, string emulator, string executable, Vector<string> args) {
-        return launcherRunRouted(project, emulator, executable, args);
-    }
-
-    public int runFlatpak(string project, string emulator, string flatpakId, Vector<string> args) {
-        return launcherRunFlatpak(project, emulator, flatpakId, args);
-    }
+class SemuLauncher {
+    class int command(CliArgs args, string project) { return launcherCommand(args, project); }
+    class int emulator(string project, string emulator, Vector<string> args) { return launcherRunEmulator(project, emulator, args); }
 }
 
 string launcherFlatpakId(string emulator) {
@@ -181,13 +170,149 @@ void launcherCopyFile(string source, string destination) {
 }
 
 void launcherCopyProfileDir(string project, string relative, string destination) {
-    launcherCopyDirContents(joinPath(project, relative), destination);
     launcherCopyDirContents(emulatorProfilePath(project, relative), destination);
 }
 
 void launcherCopyProfileFile(string project, string relative, string destination) {
-    launcherCopyFile(joinPath(project, relative), destination);
     launcherCopyFile(emulatorProfilePath(project, relative), destination);
+}
+
+void launcherCopyStateDir(string project, string relative, string destination) {
+    launcherCopyProfileDir(project, relative, destination);
+}
+
+string launcherRetroArchSystemDir(string project) {
+    string externalRoot = configuredEmulationRoot(project);
+    string externalSystem = joinPath(externalRoot, "RetroArch/config/system");
+    if (externalRoot.len() > 0 && FileSystem.isDir(externalSystem)) {
+        return externalSystem;
+    }
+    return biosRoot(project);
+}
+
+string launcherRetroArchConfigValue(string key, string value) {
+    return key + " = \"" + Strings.replace(value, "\"", "\\\"") + "\"\n";
+}
+
+string launcherRetroArchConfig(string project) {
+    string content = contentRoot(project);
+    return ""
+        + launcherRetroArchConfigValue("config_save_on_exit", "false")
+        + launcherRetroArchConfigValue("video_driver", "glcore")
+        + launcherRetroArchConfigValue("video_fullscreen", "true")
+        + launcherRetroArchConfigValue("video_windowed_fullscreen", "false")
+        + launcherRetroArchConfigValue("video_vsync", "true")
+        + launcherRetroArchConfigValue("audio_driver", "pulse")
+        + launcherRetroArchConfigValue("input_driver", "sdl2")
+        + launcherRetroArchConfigValue("input_joypad_driver", "sdl2")
+        + launcherRetroArchConfigValue("input_autodetect_enable", "true")
+        + launcherRetroArchConfigValue("input_remap_binds_enable", "true")
+        + launcherRetroArchConfigValue("system_directory", launcherRetroArchSystemDir(project))
+        + launcherRetroArchConfigValue("savestate_directory", joinPath(content, "states"))
+        + launcherRetroArchConfigValue("savefile_directory", joinPath(content, "saves"))
+        + launcherRetroArchConfigValue("screenshot_directory", joinPath(content, "screenshots"))
+        + launcherRetroArchConfigValue("input_exit_emulator", "escape")
+        + launcherRetroArchConfigValue("input_quit_gamepad_combo", "4")
+        + launcherRetroArchConfigValue("input_load_state", "a")
+        + launcherRetroArchConfigValue("input_save_state", "s")
+        + launcherRetroArchConfigValue("input_menu_toggle", "m")
+        + launcherRetroArchConfigValue("input_screenshot", "x")
+        + launcherRetroArchConfigValue("input_state_slot_decrease", "j")
+        + launcherRetroArchConfigValue("input_state_slot_increase", "k")
+        + launcherRetroArchConfigValue("input_toggle_fast_forward", "add")
+        + launcherRetroArchConfigValue("input_toggle_fullscreen", "enter");
+}
+
+bool launcherUsesNixGl(string emulator) {
+    if (Environment.get("SEMU_DISABLE_NIXGL", "0").equals("1")) {
+        return false;
+    }
+    string key = emulator.toLower();
+    return key.equals("retroarch")
+        || key.equals("dolphin")
+        || key.equals("ppsspp")
+        || key.equals("flycast")
+        || key.equals("gopher64")
+        || key.equals("melonds")
+        || key.equals("pcsx2")
+        || key.equals("cemu")
+        || key.equals("azahar")
+        || key.equals("ryujinx");
+}
+
+string launcherNixGlCandidate(string path) {
+    if (path.len() > 0 && FileSystem.isFile(path)) {
+        return path;
+    }
+    return "";
+}
+
+string launcherNixGlWrapper(string project) {
+    string configured = launcherNixGlCandidate(Environment.get("SEMU_NIXGL", ""));
+    if (configured.len() > 0) { return configured; }
+
+    string path = commandPath("nixGLIntel");
+    if (path.len() > 0) { return path; }
+    path = commandPath("nixGL");
+    if (path.len() > 0) { return path; }
+
+    path = launcherNixGlCandidate(joinPath(project, "result/bin/nixGLIntel"));
+    if (path.len() > 0) { return path; }
+    return launcherNixGlCandidate(joinPath(project, "result/bin/nixGL"));
+}
+
+string launcherRoutedExecutableCommand(string project, string emulator, string executable) {
+    string command = ShellWords.quote(executable);
+    if (launcherUsesNixGl(emulator)) {
+        string wrapper = launcherNixGlWrapper(project);
+        if (wrapper.len() > 0) {
+            return ShellWords.quote(wrapper) + " " + command;
+        }
+    }
+    return command;
+}
+
+string launcherRoutedEnvironment(string project, string emulator, string home, string configRoot, string dataRoot, string cacheRoot) {
+    string roms = launchRomsRoot(project);
+    return "SEMU_PROJECT_DIR=" + ShellWords.quote(project)
+        + " SEMU_ROMS_DIR=" + ShellWords.quote(roms)
+        + " SEMU_EMULATOR=" + ShellWords.quote(emulator)
+        + " HOME=" + ShellWords.quote(home)
+        + " XDG_CONFIG_HOME=" + ShellWords.quote(configRoot)
+        + " XDG_DATA_HOME=" + ShellWords.quote(dataRoot)
+        + " XDG_CACHE_HOME=" + ShellWords.quote(cacheRoot);
+}
+
+string launcherRoutedDisplaySetup() {
+    string uid = currentUid();
+    return "if command -v pgrep >/dev/null 2>&1 && { [ -z \"${DISPLAY:-}\" ] || [ -z \"${XAUTHORITY:-}\" ]; }; then "
+        + "p=$(pgrep -x kwin_wayland | head -1 || true); "
+        + "if [ -n \"$p\" ] && [ -r \"/proc/$p/environ\" ]; then "
+        + "eval \"$(tr '\\0' '\\n' < /proc/$p/environ | grep -E '^(DISPLAY|XAUTHORITY)=' | sed 's/^/export /')\"; "
+        + "fi; fi; "
+        + "if command -v pgrep >/dev/null 2>&1 && [ -z \"${XAUTHORITY:-}\" ]; then "
+        + "x=$(pgrep -a kwin_wayland | awk '{ for (i=1; i<NF; i++) if ($i == \"--xwayland-xauthority\") { print $(i+1); exit } }' || true); "
+        + "[ -n \"$x\" ] && export XAUTHORITY=\"$x\"; "
+        + "fi; "
+        + "if [ -z \"${XAUTHORITY:-}\" ]; then for f in /run/user/" + uid + "/xauth_*; do [ -r \"$f\" ] && export XAUTHORITY=\"$f\" && break; done; fi; "
+        + "export DISPLAY=\"${DISPLAY:-:0}\"; ";
+}
+
+string launcherQuitWatchCommand(string childCommand) {
+    if (Environment.get("SEMU_DISABLE_QUIT_WATCH", "0").equals("1")) {
+        return childCommand;
+    }
+    string watcher = commandPath("semu-quit-watch");
+    if (watcher.len() == 0) {
+        return childCommand;
+    }
+    return ShellWords.quote(watcher) + " -- sh -c " + ShellWords.quote(childCommand);
+}
+
+void launcherWriteRetroArchConfig(string project, string configRoot) {
+    string retroarchRoot = joinPath(configRoot, "retroarch");
+    ensureDir(retroarchRoot);
+    FileSystem.writeText(joinPath(retroarchRoot, "retroarch.cfg"), launcherRetroArchConfig(project));
 }
 
 void launcherSeedRoutedState(string project, string emulator, string configRoot, string dataRoot) {
@@ -195,47 +320,48 @@ void launcherSeedRoutedState(string project, string emulator, string configRoot,
     if (key.equals("retroarch")) {
         launcherCopyProfileDir(project, "RetroArch/config", joinPath(configRoot, "retroarch"));
         launcherCopyProfileFile(project, "RetroArch/retroarch.cfg", joinPath(configRoot, "retroarch/retroarch.cfg"));
+        launcherWriteRetroArchConfig(project, configRoot);
         return;
     }
     if (key.equals("dolphin")) {
-        launcherCopyProfileDir(project, "Dolphin/config", joinPath(configRoot, "dolphin-emu"));
-        launcherCopyProfileDir(project, "Dolphin/data", joinPath(dataRoot, "dolphin-emu"));
+        launcherCopyStateDir(project, "Dolphin/config", joinPath(configRoot, "dolphin-emu"));
+        launcherCopyStateDir(project, "Dolphin/data", joinPath(dataRoot, "dolphin-emu"));
         return;
     }
     if (key.equals("pcsx2")) {
-        launcherCopyProfileDir(project, "PCSX2/config", joinPath(configRoot, "PCSX2"));
+        launcherCopyStateDir(project, "PCSX2/config", joinPath(configRoot, "PCSX2"));
         return;
     }
     if (key.equals("cemu")) {
-        launcherCopyProfileDir(project, "Cemu/config", joinPath(configRoot, "Cemu"));
-        launcherCopyProfileDir(project, "Cemu/data", joinPath(dataRoot, "Cemu"));
+        launcherCopyStateDir(project, "Cemu/config", joinPath(configRoot, "Cemu"));
+        launcherCopyStateDir(project, "Cemu/data", joinPath(dataRoot, "Cemu"));
         return;
     }
     if (key.equals("azahar")) {
-        launcherCopyProfileDir(project, "Azahar/data", joinPath(dataRoot, "azahar-emu"));
+        launcherCopyStateDir(project, "Azahar/data", joinPath(dataRoot, "azahar-emu"));
         return;
     }
     if (key.equals("ppsspp")) {
-        launcherCopyProfileDir(project, "PPSSPP/config", joinPath(configRoot, "ppsspp"));
-        launcherCopyProfileDir(project, "PPSSPP/data", joinPath(dataRoot, "ppsspp"));
+        launcherCopyStateDir(project, "PPSSPP/config", joinPath(configRoot, "ppsspp"));
+        launcherCopyStateDir(project, "PPSSPP/data", joinPath(dataRoot, "ppsspp"));
         return;
     }
     if (key.equals("flycast")) {
-        launcherCopyProfileDir(project, "Flycast/config", joinPath(configRoot, "flycast"));
-        launcherCopyProfileDir(project, "Flycast/data", joinPath(dataRoot, "flycast"));
+        launcherCopyStateDir(project, "Flycast/config", joinPath(configRoot, "flycast"));
+        launcherCopyStateDir(project, "Flycast/data", joinPath(dataRoot, "flycast"));
         return;
     }
     if (key.equals("gopher64")) {
-        launcherCopyProfileDir(project, "Gopher64/config", joinPath(configRoot, "gopher64"));
+        launcherCopyStateDir(project, "Gopher64/config", joinPath(configRoot, "gopher64"));
         return;
     }
     if (key.equals("melonds")) {
-        launcherCopyProfileDir(project, "melonDS/config", joinPath(configRoot, "melonDS"));
-        launcherCopyProfileDir(project, "melonDS/data", joinPath(dataRoot, "melonDS"));
+        launcherCopyStateDir(project, "melonDS/config", joinPath(configRoot, "melonDS"));
+        launcherCopyStateDir(project, "melonDS/data", joinPath(dataRoot, "melonDS"));
         return;
     }
     if (key.equals("ryujinx")) {
-        launcherCopyProfileDir(project, "Ryujinx/config", joinPath(configRoot, "Ryujinx"));
+        launcherCopyStateDir(project, "Ryujinx/config", joinPath(configRoot, "Ryujinx"));
         return;
     }
 }
@@ -268,15 +394,11 @@ int launcherRunRouted(string project, string emulator, string executable, Vector
         finalArgs.push(arg);
     }
 
-    string roms = launchRomsRoot(project);
-    string command = "SEMU_PROJECT_DIR=" + ShellWords.quote(project)
-        + " SEMU_ROMS_DIR=" + ShellWords.quote(roms)
-        + " HOME=" + ShellWords.quote(home)
-        + " XDG_CONFIG_HOME=" + ShellWords.quote(configRoot)
-        + " XDG_DATA_HOME=" + ShellWords.quote(dataRoot)
-        + " XDG_CACHE_HOME=" + ShellWords.quote(cacheRoot)
-        + " " + ShellWords.quote(executable);
-    command = shellAppendAll(command, finalArgs);
+    string childCommand = launcherRoutedExecutableCommand(project, emulator, executable);
+    childCommand = shellAppendAll(childCommand, finalArgs);
+    string command = launcherRoutedDisplaySetup()
+        + launcherRoutedEnvironment(project, emulator, home, configRoot, dataRoot, cacheRoot)
+        + " " + launcherQuitWatchCommand(childCommand);
     UnixShell shell = UnixShell();
     screenshotCaptureHook(project, emulator, "before_launch");
     screenshotScheduleHook(project, emulator, "after_spawn");

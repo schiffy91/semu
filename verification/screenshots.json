@@ -1,0 +1,1 @@
+{"schema_version": 1, "enabled": false, "tool": "auto", "command": "", "delay_seconds": 2, "capture_before_launch": true, "capture_after_spawn": true, "capture_after_exit": true, "output_pattern": "${paths.project_screenshots}/verification/${emulator}/${hook}.png"}

@@ -1,11 +1,6 @@
-class JsonWriter {
-    public JsonWriter() {}
-
-    public string quote(string value) { return jsonQ(value); }
-    public string field(string key, string value) { return jsonField(key, value); }
-    public string object(Vector<string> fields) { return jsonObject(fields); }
-    public string array(Vector<string> values) { return jsonArray(values); }
-    public string stringArray(Vector<string> values) { return jsonStringArray(values); }
+class SemuJson {
+    class string object(Vector<string> fields) { return jsonObject(fields); }
+    class void writePretty(string path, string text) { writeJsonPrettyFile(path, text); }
 }
 
 string jsonQ(string value) {
@@ -24,41 +19,12 @@ string jsonBoolField(string key, bool value) {
     return jsonField(key, value ? "true" : "false");
 }
 
-string jsonIntField(string key, int value) {
-    return jsonField(key, f"{value}");
-}
-
-string jsonIndent(string value) {
-    Vector<string> lines = Strings.split(value, "\n");
-    Vector<string> indented = [];
-    for line in lines {
-        indented.push("  " + line);
-    }
-    return indented.join("\n");
-}
-
 string jsonObject(Vector<string> fields) {
-    if (fields.len == 0) {
-        return "{}";
-    }
-    Vector<string> lines = [];
-    for (int i = 0; i < fields.len; i++) {
-        string suffix = i + 1 < fields.len ? "," : "";
-        lines.push(jsonIndent(fields.get(i)) + suffix);
-    }
-    return "{\n" + lines.join("\n") + "\n}";
+    return "{" + fields.join(", ") + "}";
 }
 
 string jsonArray(Vector<string> values) {
-    if (values.len == 0) {
-        return "[]";
-    }
-    Vector<string> lines = [];
-    for (int i = 0; i < values.len; i++) {
-        string suffix = i + 1 < values.len ? "," : "";
-        lines.push(jsonIndent(values.get(i)) + suffix);
-    }
-    return "[\n" + lines.join("\n") + "\n]";
+    return "[" + values.join(", ") + "]";
 }
 
 string jsonStringArray(Vector<string> values) {
@@ -67,4 +33,26 @@ string jsonStringArray(Vector<string> values) {
         quoted.push(jsonQ(value));
     }
     return jsonArray(quoted);
+}
+
+void writeJsonPrettyFile(string path, string text) {
+    FileSystem.writeText(path, text + "\n");
+    string tmp = path + ".tmp";
+    UnixShell shell = UnixShell();
+    if (commandExists("python3")) {
+        ExecResult result = shell.runUnchecked(
+            "python3 -m json.tool " + ShellWords.quote(path) + " > " + ShellWords.quote(tmp)
+                + " && mv " + ShellWords.quote(tmp) + " " + ShellWords.quote(path)
+        );
+        if (result.ok()) { return; }
+        FileSystem.removeRecursive(tmp);
+    }
+    if (commandExists("jq")) {
+        ExecResult result = shell.runUnchecked(
+            "jq . " + ShellWords.quote(path) + " > " + ShellWords.quote(tmp)
+                + " && mv " + ShellWords.quote(tmp) + " " + ShellWords.quote(path)
+        );
+        if (result.ok()) { return; }
+        FileSystem.removeRecursive(tmp);
+    }
 }

@@ -1,14 +1,21 @@
-class DeckVerificationSuite {
-    public DeckVerificationSuite() {}
-
-    public int provision(CliArgs args, string project) { return deckProvisionCommand(args, project); }
-    public int verifyEmulators(CliArgs args, string project) { return deckVerifyEmulatorsCommand(args, project); }
-    public int verifyInput(string project, bool strict) { return deckVerifyInputCommand(project, strict); }
-    public int verifySync(string project) { return deckVerifySyncCommand(project); }
+class SemuDeckTests {
+    class int provision(CliArgs args, string project) { return deckProvisionCommand(args, project); }
+    class int verifyInput(string project, bool strict) { return deckVerifyInputCommand(project, strict); }
 }
 
 void deckMaybeRun(string command) {
     UnixShell().runUnchecked(command + " >/dev/null 2>&1 || true");
+}
+
+string deckBrewExecutable() {
+    if (commandExists("brew")) { return "brew"; }
+    if (FileSystem.exists("/home/linuxbrew/.linuxbrew/bin/brew")) {
+        return "/home/linuxbrew/.linuxbrew/bin/brew";
+    }
+    if (FileSystem.exists("/var/home/linuxbrew/.linuxbrew/bin/brew")) {
+        return "/var/home/linuxbrew/.linuxbrew/bin/brew";
+    }
+    return "";
 }
 
 void deckInstallHostPackages() {
@@ -16,7 +23,11 @@ void deckInstallHostPackages() {
         deckMaybeRun("sudo pacman -Sy --needed --noconfirm bash curl jq rsync syncthing flatpak bubblewrap retroarch evtest gcc inputplumber");
     }
     if (commandExists("rpm-ostree")) {
-        deckMaybeRun("rpm-ostree install -y curl jq syncthing flatpak bubblewrap evtest gcc inputplumber");
+        deckMaybeRun("sudo -n rpm-ostree install -y curl jq syncthing flatpak bubblewrap evtest gcc inputplumber");
+    }
+    string brew = deckBrewExecutable();
+    if (brew.len() > 0) {
+        deckMaybeRun(ShellWords.quote(brew) + " install syncthing jq");
     }
     if (commandExists("flatpak")) {
         deckMaybeRun("flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo");

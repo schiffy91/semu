@@ -1,0 +1,30 @@
+cmdline
+lang en_US.UTF-8
+timezone Etc/UTC --utc
+network --bootproto=dhcp --device=link --activate --hostname=semu-bazzite-e2e
+zerombr
+ignoredisk --only-use=vda
+clearpart --all --initlabel --drives=vda
+bootloader --location=mbr --boot-drive=vda --timeout=1
+part /boot/efi --fstype=efi --size=600 --ondisk=vda
+part /boot --fstype=ext4 --size=1024 --ondisk=vda
+part / --fstype=ext4 --size=20480 --grow --ondisk=vda
+services --enabled=sshd
+shutdown
+
+%include /usr/share/anaconda/interactive-defaults.ks
+
+%post --erroronfail --log=/tmp/semu-ssh.log
+set -oue pipefail
+if ! id -u bazzite >/dev/null 2>&1; then
+  useradd -m -G wheel -s /bin/bash bazzite
+  printf 'bazzite:semu\n' | chpasswd
+fi
+install -d -m 0700 -o bazzite -g bazzite /home/bazzite/.ssh
+cat > /home/bazzite/.ssh/authorized_keys <<'EOF'
+@SEMU_VM_SSH_PUBKEY@
+EOF
+chown bazzite:bazzite /home/bazzite/.ssh/authorized_keys
+chmod 0600 /home/bazzite/.ssh/authorized_keys
+systemctl enable sshd.service
+%end

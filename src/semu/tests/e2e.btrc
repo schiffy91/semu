@@ -1,9 +1,5 @@
-class SemuE2eCli {
-    public SemuE2eCli() {}
-
-    public int run(CliArgs args) {
-        return e2eCommand(args);
-    }
+class SemuE2eCommand {
+    class int command(CliArgs args) { return e2eCommand(args); }
 }
 
 int e2eCommand(CliArgs args) {

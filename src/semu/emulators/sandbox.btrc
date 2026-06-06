@@ -1,16 +1,9 @@
-class EmulatorSandbox {
-    public EmulatorSandbox() {}
-
-    public int prepare(CliArgs args, string project) {
-        return sandboxPrepareCommand(args, project);
-    }
-
-    public int launch(string project, string emulator, string executable, Vector<string> args) {
-        return sandboxLaunch(project, emulator, executable, args);
-    }
+class SemuEmulatorSandbox {
+    class int launch(string project, string emulator, string executable, Vector<string> args) { return sandboxLaunch(project, emulator, executable, args); }
+    class int command(CliArgs args, string project) { return sandboxCommand(args, project); }
 }
 
-// ---- src/semu/emulators/sandbox_specs.btrc ----
+// ---- sandbox_specs.btrc ----
 string stripTrailingSlashes(string path) {
     string result = path;
     while (result.len() > 1 && result.charAt(result.len() - 1) == '/') {
@@ -34,15 +27,15 @@ string sandboxResolveTarget(string scratch, string target) {
 
 string sandboxProjectEmulatorDir(string project, string emulator) {
     string wanted = emulator.toLower();
-    for name in FileSystem.listDir(project) {
-        string candidate = joinPath(project, name);
+    string profileRoot = emulatorProfilesRoot(project);
+    for name in FileSystem.listDir(profileRoot) {
+        string candidate = joinPath(profileRoot, name);
         if (FileSystem.isDir(candidate) && name.toLower().equals(wanted)) {
             return candidate;
         }
     }
-    string profileRoot = emulatorProfilesRoot(project);
-    for name in FileSystem.listDir(profileRoot) {
-        string candidate = joinPath(profileRoot, name);
+    for name in FileSystem.listDir(project) {
+        string candidate = joinPath(project, name);
         if (FileSystem.isDir(candidate) && name.toLower().equals(wanted)) {
             return candidate;
         }
@@ -113,7 +106,7 @@ bool sandboxApplyKnownLinks(string key, string emuDir, string scratch) {
     return false;
 }
 
-// ---- src/semu/emulators/sandbox_launch.btrc ----
+// ---- sandbox_launch.btrc ----
 string currentUid() {
     return Strings.fromInt(Platform.euid());
 }
@@ -285,7 +278,7 @@ int sandboxLaunch(string project, string emulator, string executable, Vector<str
     return result.code;
 }
 
-// ---- src/semu/emulators/sandbox_commands.btrc ----
+// ---- sandbox_commands.btrc ----
 int sandboxPrepareCommand(CliArgs args, string project) {
     string emulator = args.valueAfter("--emulator", "");
     string scratch = args.valueAfter("--scratch", "");

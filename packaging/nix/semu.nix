@@ -4,12 +4,13 @@
   gopher64 ? null, melonds ? null, retroarch-bare ? null,
   ryujinx ? null, es-de ? null,
   syncthing ? null, syncthingtray ? null, curl ? null, bubblewrap ? null,
+  nixGLIntel ? null,
   semuCli ? null,
   routedEmulators ? [],
 }:
 
 let
-  runtimeTools = lib.filter (x: x != null) [ syncthing syncthingtray curl bubblewrap ];
+  runtimeTools = lib.filter (x: x != null) [ syncthing syncthingtray curl bubblewrap nixGLIntel ];
   runtimePath = lib.makeBinPath runtimeTools;
 
   setupTool = if semuCli != null then semuCli else stdenv.mkDerivation {
@@ -25,9 +26,21 @@ let
       cp src/semu.btrc $out/lib/semu/semu.btrc
       cp semu.json $out/lib/semu/
       cp -r generated $out/lib/semu/
-      mkdir -p $out/lib/semu/src/semu/bootstrap
-      cp -r src/semu/bootstrap/templates $out/lib/semu/src/semu/bootstrap/
+      if [ -d src/semu/bootstrap/templates ]; then
+        mkdir -p $out/lib/semu/src/semu/bootstrap
+        cp -r src/semu/bootstrap/templates $out/lib/semu/src/semu/bootstrap/
+      fi
       ${stdenv.cc.targetPrefix}cc generated/semu.c -std=c11 -o $out/lib/semu/semu-btrc -lm
+      ${if stdenv.hostPlatform.isLinux then ''
+        ${stdenv.cc.targetPrefix}cc src/semu/quit-watch.c -std=c11 -O2 -o $out/bin/semu-quit-watch
+      '' else ''
+        cat > $out/bin/semu-quit-watch <<'WRAPPER'
+        #!/usr/bin/env sh
+        [ "$1" = "--" ] && shift
+        exec "$@"
+        WRAPPER
+        chmod +x $out/bin/semu-quit-watch
+      ''}
       makeWrapper $out/lib/semu/semu-btrc $out/bin/semu \
         --set SEMU_ASSET_ROOT $out/lib/semu \
         --set SEMU_BIN $out/bin/semu \
@@ -61,6 +74,7 @@ let
     syncthingtray
     curl
     bubblewrap
+    nixGLIntel
   ];
 in
 symlinkJoin {

@@ -1,7 +1,6 @@
-# =============================================================================
-# Bazzite Deck VM (SteamOS-like, software-rendered on Apple Silicon)
-# =============================================================================
-
+VM_DIR ?= tests/vms
+XORRISO ?= nix shell nixpkgs\#xorriso -c xorriso
+VM_KEY ?= $(VM_DIR)/id_ed25519
 BAZZITE_ISO_URL ?= https://download.bazzite.gg/bazzite-deck-stable-live-amd64.iso
 BAZZITE_ISO := $(VM_DIR)/bazzite-deck-stable-live-amd64.iso
 BAZZITE_ISO_CHECKSUM_URL ?= $(BAZZITE_ISO_URL)-CHECKSUM
@@ -42,9 +41,25 @@ BAZZITE_BASIC_GRAPHICS_KEY_DELAY ?= 0.2
 BAZZITE_MIN_BOOT_WAIT ?= 30
 BAZZITE_BOOT_WAIT ?= 180
 BAZZITE_SMOKE_POLL ?= 10
+BAZZITE_SSH_WAIT ?= 1800
+BAZZITE_SSH_POLL ?= 10
 BAZZITE_SSH_OPTS := -o "StrictHostKeyChecking=no" -o "UserKnownHostsFile=/dev/null" -o "LogLevel=ERROR" -o "BatchMode=yes" -o "ConnectTimeout=5" -o "ConnectionAttempts=1" -i "$(VM_KEY)"
+BAZZITE_INSTALL_ISO ?= $(VM_DIR)/bazzite-e2e-install.iso
+BAZZITE_INSTALL_GRUB ?= tests/bazzite/grub.cfg
+BAZZITE_INSTALL_KS_TEMPLATE ?= tests/bazzite/ks.cfg.in
+BAZZITE_INSTALL_KS ?= $(VM_DIR)/bazzite-e2e.ks
+BAZZITE_INSTALL_ENTRYPOINT ?= tests/bazzite/semu-e2e-install
+BAZZITE_INSTALL_TIMEOUT ?= 14400
+BAZZITE_INSTALL_MIN_ACTUAL_SIZE ?= 1073741824
+BAZZITE_E2E_DISK ?= $(VM_DIR)/bazzite-e2e.qcow2
+BAZZITE_E2E_PID ?= $(VM_DIR)/bazzite-e2e.pid
+BAZZITE_E2E_STARTED ?= $(VM_DIR)/bazzite-e2e.started
+BAZZITE_E2E_MONITOR ?= $(VM_DIR)/bazzite-e2e-monitor.sock
+BAZZITE_E2E_SERIAL ?= $(VM_DIR)/bazzite-e2e-serial.log
+BAZZITE_E2E_SCREEN ?= $(VM_DIR)/bazzite-e2e-screen.ppm
+BAZZITE_E2E_SSH_PORT ?= 2224
 
-.PHONY: bazzite-iso bazzite-vm-start bazzite-vm-start-live bazzite-vm-start-installed bazzite-vm-screenshot bazzite-vm-smoke bazzite-desktop-vm-smoke bazzite-vm-ssh bazzite-vm-sync bazzite-vm-verify-ssh bazzite-vm-stop bazzite-vm-clean
+.PHONY: bazzite-iso bazzite-vm-install bazzite-e2e-install bazzite-e2e-verify bazzite-vm-start bazzite-vm-start-live bazzite-vm-start-installed bazzite-vm-screenshot bazzite-vm-smoke bazzite-desktop-vm-smoke bazzite-vm-ssh bazzite-vm-wait-ssh bazzite-vm-sync bazzite-vm-verify-ssh bazzite-vm-stop bazzite-vm-clean
 
 $(BAZZITE_ISO): | $(VM_DIR)
 	@echo "Downloading Bazzite ISO (~10GB, resumable): $(BAZZITE_ISO_URL)"
@@ -52,6 +67,18 @@ $(BAZZITE_ISO): | $(VM_DIR)
 
 $(BAZZITE_DISK): | $(VM_DIR)
 	qemu-img create -f qcow2 "$@" "$(BAZZITE_DISK_SIZE)"
+
+$(BAZZITE_INSTALL_KS): $(BAZZITE_INSTALL_KS_TEMPLATE) $(VM_KEY) | $(VM_DIR)
+	@sed "s|@SEMU_VM_SSH_PUBKEY@|$$(cat $(VM_KEY).pub)|" "$(BAZZITE_INSTALL_KS_TEMPLATE)" > "$@"
+
+$(BAZZITE_INSTALL_ISO): $(BAZZITE_ISO) $(BAZZITE_INSTALL_KS) $(BAZZITE_INSTALL_GRUB) $(BAZZITE_INSTALL_ENTRYPOINT) | $(VM_DIR)
+	@rm -f "$@"
+	$(XORRISO) -indev "$(BAZZITE_ISO)" -outdev "$@" -boot_image any replay \
+		-map "$(BAZZITE_INSTALL_KS)" /ks.cfg \
+		-map "$(BAZZITE_INSTALL_ENTRYPOINT)" /semu-e2e-install \
+		-chmod 0755 /semu-e2e-install -- \
+		-map "$(BAZZITE_INSTALL_GRUB)" /EFI/BOOT/grub.cfg \
+		-map "$(BAZZITE_INSTALL_GRUB)" /boot/grub2/grub.cfg
 
 bazzite-iso: $(BAZZITE_ISO) ## Download current Bazzite Deck live ISO
 	@if [ "$(BAZZITE_VERIFY_ISO)" = "1" ]; then \
@@ -73,6 +100,89 @@ bazzite-iso: $(BAZZITE_ISO) ## Download current Bazzite Deck live ISO
 		fi; \
 		echo "OK Bazzite ISO SHA256 $$actual"; \
 	fi
+
+bazzite-vm-install: $(BAZZITE_INSTALL_ISO) $(VM_KEY) ## Install Bazzite into a disposable VM disk
+	@$(MAKE) --no-print-directory bazzite-vm-stop || true
+	@rm -f "$(BAZZITE_DISK)" "$(BAZZITE_PID)" "$(BAZZITE_STARTED)" "$(BAZZITE_MONITOR)" "$(BAZZITE_SERIAL)" "$(BAZZITE_SCREEN)"
+	qemu-img create -f qcow2 "$(BAZZITE_DISK)" "$(BAZZITE_DISK_SIZE)"
+	qemu-system-x86_64 \
+		-machine q35,accel=tcg \
+		-cpu max \
+		-m $(BAZZITE_MEM) \
+		-smp $(BAZZITE_SMP) \
+		-drive if=pflash,format=raw,readonly=on,file="$(BAZZITE_OVMF)" \
+		-drive file="$(BAZZITE_DISK)",if=virtio,format=qcow2,cache=writeback,discard=unmap \
+		-cdrom "$(BAZZITE_INSTALL_ISO)" \
+		-boot order=d,menu=off \
+		-device virtio-vga \
+		-display vnc=127.0.0.1:$(BAZZITE_VNC_DISPLAY) \
+		-nic user,hostfwd=tcp::$(BAZZITE_SSH_PORT)-:22 \
+		-serial file:"$(BAZZITE_SERIAL)" \
+		-monitor unix:"$(BAZZITE_MONITOR)",server,nowait \
+		-daemonize \
+		-pidfile "$(BAZZITE_PID)"
+	@echo "Waiting up to $(BAZZITE_INSTALL_TIMEOUT)s for Bazzite install to power off..."
+	@deadline=$$((SECONDS + $(BAZZITE_INSTALL_TIMEOUT))); \
+	while [ -f "$(BAZZITE_PID)" ] && kill -0 "$$(cat "$(BAZZITE_PID)")" 2>/dev/null; do \
+		if [ $$SECONDS -ge $$deadline ]; then \
+			echo "Timed out waiting for Bazzite install"; \
+			tail -n 160 "$(BAZZITE_SERIAL)" 2>/dev/null || true; \
+			exit 2; \
+		fi; \
+		sleep 15; \
+	done; \
+	rm -f "$(BAZZITE_PID)" "$(BAZZITE_STARTED)" "$(BAZZITE_MONITOR)"
+	@if ! grep -E 'Reached target.*Power-Off|Powering off|reboot: Power down|Installation complete' "$(BAZZITE_SERIAL)" >/dev/null 2>&1; then \
+		echo "Bazzite installer did not report a clean completion"; \
+		tail -n 160 "$(BAZZITE_SERIAL)" 2>/dev/null || true; \
+		exit 2; \
+	fi
+	@actual_bytes="$$(qemu-img info --output=json "$(BAZZITE_DISK)" | perl -0ne 'print $$1 if /"actual-size":\s*([0-9]+)/')"; \
+	if [ -z "$$actual_bytes" ] || [ "$$actual_bytes" -lt "$(BAZZITE_INSTALL_MIN_ACTUAL_SIZE)" ]; then \
+		echo "Bazzite install did not write a complete VM disk"; \
+		qemu-img info "$(BAZZITE_DISK)"; \
+		tail -n 160 "$(BAZZITE_SERIAL)" 2>/dev/null || true; \
+		exit 2; \
+	fi; \
+	actual="$$(qemu-img info "$(BAZZITE_DISK)" | awk '/disk size:/ {print $$3}')"; \
+	echo "OK Bazzite installed VM ($(BAZZITE_DISK), disk size $$actual, actual bytes $$actual_bytes)"
+
+bazzite-e2e-install: ## Build a fresh graph-owned Bazzite Deck VM disk
+	$(MAKE) bazzite-vm-stop
+	$(MAKE) bazzite-vm-stop \
+		BAZZITE_PID=$(BAZZITE_DESKTOP_PID) \
+		BAZZITE_STARTED=$(BAZZITE_DESKTOP_STARTED) \
+		BAZZITE_MONITOR=$(BAZZITE_DESKTOP_MONITOR)
+	$(MAKE) bazzite-vm-install \
+		BAZZITE_DISK=$(BAZZITE_E2E_DISK) \
+		BAZZITE_PID=$(BAZZITE_E2E_PID) \
+		BAZZITE_STARTED=$(BAZZITE_E2E_STARTED) \
+		BAZZITE_MONITOR=$(BAZZITE_E2E_MONITOR) \
+		BAZZITE_SERIAL=$(BAZZITE_E2E_SERIAL) \
+		BAZZITE_SCREEN=$(BAZZITE_E2E_SCREEN) \
+		BAZZITE_SSH_PORT=$(BAZZITE_E2E_SSH_PORT) \
+		BAZZITE_VNC_DISPLAY=7 \
+		BAZZITE_VNC_PORT=5907
+
+bazzite-e2e-verify: bazzite-e2e-install ## Boot the graph-owned Bazzite VM and run Semu Deck verification
+	$(MAKE) bazzite-vm-start-installed \
+		BAZZITE_DISK=$(BAZZITE_E2E_DISK) \
+		BAZZITE_PID=$(BAZZITE_E2E_PID) \
+		BAZZITE_STARTED=$(BAZZITE_E2E_STARTED) \
+		BAZZITE_MONITOR=$(BAZZITE_E2E_MONITOR) \
+		BAZZITE_SERIAL=$(BAZZITE_E2E_SERIAL) \
+		BAZZITE_SCREEN=$(BAZZITE_E2E_SCREEN) \
+		BAZZITE_SSH_PORT=$(BAZZITE_E2E_SSH_PORT) \
+		BAZZITE_VNC_DISPLAY=7 \
+		BAZZITE_VNC_PORT=5907
+	$(MAKE) bazzite-vm-verify-ssh \
+		BAZZITE_DISK=$(BAZZITE_E2E_DISK) \
+		BAZZITE_PID=$(BAZZITE_E2E_PID) \
+		BAZZITE_STARTED=$(BAZZITE_E2E_STARTED) \
+		BAZZITE_MONITOR=$(BAZZITE_E2E_MONITOR) \
+		BAZZITE_SERIAL=$(BAZZITE_E2E_SERIAL) \
+		BAZZITE_SCREEN=$(BAZZITE_E2E_SCREEN) \
+		BAZZITE_SSH_PORT=$(BAZZITE_E2E_SSH_PORT)
 
 bazzite-vm-start-live: ## Boot Bazzite live ISO over VNC
 	$(MAKE) bazzite-vm-start BAZZITE_BOOT_MODE=live
@@ -198,7 +308,21 @@ bazzite-desktop-vm-smoke: ## Boot Bazzite Desktop ISO over VNC for no-GPU VM val
 bazzite-vm-ssh: ## SSH into installed Bazzite VM once user/key exists
 	ssh $(BAZZITE_SSH_OPTS) -p $(BAZZITE_SSH_PORT) $(BAZZITE_SSH_USER)@localhost
 
-bazzite-vm-sync: ## Sync repo to installed Bazzite VM over SSH
+bazzite-vm-wait-ssh: ## Wait for installed Bazzite VM SSH readiness
+	@echo "Waiting up to $(BAZZITE_SSH_WAIT)s for Bazzite SSH on port $(BAZZITE_SSH_PORT)..."
+	@deadline=$$((SECONDS + $(BAZZITE_SSH_WAIT))); \
+	while [ $$SECONDS -lt $$deadline ]; do \
+		if ssh $(BAZZITE_SSH_OPTS) -p $(BAZZITE_SSH_PORT) $(BAZZITE_SSH_USER)@localhost 'true' >/dev/null 2>&1; then \
+			echo "OK Bazzite SSH ready"; \
+			exit 0; \
+		fi; \
+		sleep $(BAZZITE_SSH_POLL); \
+	done; \
+	echo "Timed out waiting for Bazzite SSH"; \
+	tail -n 160 "$(BAZZITE_SERIAL)" 2>/dev/null || true; \
+	exit 2
+
+bazzite-vm-sync: bazzite-vm-wait-ssh ## Sync repo to installed Bazzite VM over SSH
 	git ls-files -co --exclude-standard -z | rsync -az --files-from=- --from0 \
 		-e "ssh $(BAZZITE_SSH_OPTS) -p $(BAZZITE_SSH_PORT)" \
 		. $(BAZZITE_SSH_USER)@localhost:~/semu/

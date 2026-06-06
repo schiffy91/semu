@@ -44,15 +44,18 @@ APPIMAGETOOL="${APPIMAGETOOL:-$(command -v appimagetool || true)}"
 [ -x "$APPIMAGETOOL" ] || { echo "appimagetool not found (try APPIMAGETOOL=...)" >&2; exit 3; }
 
 WORK="$(mktemp -d -t semu-appimage.XXXXXX)"
-trap 'rm -rf "$WORK"' EXIT
+cleanup() {
+  chmod -R u+w "$WORK" 2>/dev/null || true
+  rm -rf "$WORK"
+}
+trap cleanup EXIT
 APPDIR="$WORK/Semu.AppDir"
 mkdir -p "$APPDIR"
 
 SEMU_NIX_BINS=(
   semu
+  semu-quit-watch
   bwrap
-  syncthing
-  curl
   semu-retroarch
   semu-dolphin
   semu-ppsspp
@@ -64,6 +67,8 @@ SEMU_NIX_BINS=(
   semu-azahar
   semu-ryujinx
   semu-es-de
+  nixGLIntel
+  nixGL
 )
 
 SEMU_SHIM_BINS=(
@@ -109,6 +114,8 @@ if [ -n "$NIX_PACKAGE" ]; then
   # and referenced emulator binaries live in the bundled /nix/store closure.
   for bin in "${SEMU_NIX_BINS[@]}"; do
     if [ -x "$NIX_PACKAGE/bin/$bin" ]; then
+      chmod u+w "$APPDIR/usr/bin/$bin" 2>/dev/null || true
+      rm -f "$APPDIR/usr/bin/$bin"
       cp "$NIX_PACKAGE/bin/$bin" "$APPDIR/usr/bin/$bin"
       chmod +x "$APPDIR/usr/bin/$bin"
     fi
@@ -117,13 +124,12 @@ if [ -n "$NIX_PACKAGE" ]; then
     echo "Nix package did not provide bwrap; AppImage sandbox mounting would fail" >&2
     exit 4
   fi
-  if [ ! -x "$APPDIR/usr/bin/syncthing" ]; then
-    echo "Nix package did not provide syncthing; sync service setup would fail" >&2
-    exit 4
-  fi
-  if [ ! -x "$APPDIR/usr/bin/curl" ]; then
-    echo "Nix package did not provide curl; sync API setup would fail" >&2
-    exit 4
+  if [ -d "$NIX_PACKAGE/lib/retroarch/cores" ]; then
+    echo "Copying RetroArch cores into AppDir..."
+    mkdir -p "$APPDIR/usr/lib/retroarch"
+    chmod -R u+w "$APPDIR/usr/lib/retroarch/cores" 2>/dev/null || true
+    rm -rf "$APPDIR/usr/lib/retroarch/cores"
+    cp -aL "$NIX_PACKAGE/lib/retroarch/cores" "$APPDIR/usr/lib/retroarch/cores"
   fi
 fi
 
@@ -132,6 +138,11 @@ mkdir -p "$APPDIR/packaging/linux"
 cp -r "$HERE/." "$APPDIR/packaging/linux/"
 # Don't ship the build script itself inside.
 rm -f "$APPDIR/packaging/linux/build-appimage.sh"
+
+if [ -d "$REPO_ROOT/src/semu/bootstrap/templates" ]; then
+  mkdir -p "$APPDIR/src/semu/bootstrap"
+  cp -r "$REPO_ROOT/src/semu/bootstrap/templates" "$APPDIR/src/semu/bootstrap/"
+fi
 
 for bin in "${SEMU_SHIM_BINS[@]}"; do
   if [ ! -x "$APPDIR/usr/bin/$bin" ] && [ -x "$HERE/bin/$bin" ]; then
@@ -155,7 +166,7 @@ cp "$HERE/AppRun" "$APPDIR/AppRun"
 chmod +x "$APPDIR/AppRun"
 cp "$HERE/semu.desktop" "$APPDIR/semu.desktop"
 # Icon: borrow ES-DE's icon (a controller silhouette) as a stand-in.
-ESDE_ICON="$(find "$SQ" -maxdepth 2 \( -name '*.png' -o -name '*.svg' \) | head -1)"
+ESDE_ICON="$(find "$SQ" -maxdepth 3 -type f \( -name '*.png' -o -name '*.svg' \) | head -1)"
 if [ -n "$ESDE_ICON" ]; then
   # Use ES-DE's icon as a stand-in; named to match the .desktop file.
   ext="${ESDE_ICON##*.}"
@@ -173,6 +184,8 @@ case "$ARCH" in
   aarch64) ARCH_FOR_TOOL=aarch64 ;;
   x86_64)  ARCH_FOR_TOOL=x86_64 ;;
 esac
+chmod u+w "$OUTPUT" 2>/dev/null || true
+rm -f "$OUTPUT"
 ARCH="$ARCH_FOR_TOOL" "$APPIMAGETOOL" --no-appstream "$APPDIR" "$OUTPUT"
 echo "Built: $OUTPUT"
 ls -la "$OUTPUT"

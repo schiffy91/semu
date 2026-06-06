@@ -1,21 +1,8 @@
-class N3dsNoCryptoTool {
-    public N3dsNoCryptoTool() {}
-
-    public int run(CliArgs args, int startIndex) {
-        return n3dsNoCryptoCommand(args, startIndex);
-    }
-
-    public N3dsRomCheck check(string path) {
-        return checkN3dsRom(path);
-    }
+class SemuN3dsTools {
+    class int command(CliArgs args) { return utilitiesCommand(args); }
 }
 
-// ---- src/semu/utils/decrypt3ds_nocrypto.btrc ----
-int decrypt3dsNoCryptoCommand(CliArgs args, int startIndex) {
-    return n3dsNoCryptoCommand(args, startIndex);
-}
-
-// ---- src/semu/utils/n3ds_check.btrc ----
+// 3DS ROM classification.
 class N3dsRomCheck {
     public string status;
     public string note;
@@ -123,7 +110,7 @@ Vector<string> n3dsInputFiles(string input) {
     return files;
 }
 
-// ---- src/semu/utils/n3ds_patch.btrc ----
+// NoCrypto patching.
 bool copyFilePath(string source, string destination) {
     ensureDir(PathTools.dirname(destination));
     UnixShell shell = UnixShell();
@@ -189,7 +176,35 @@ bool fixN3dsNoCryptoFile(string input, string output) {
     return true;
 }
 
-// ---- src/semu/utils/n3ds_cli.btrc ----
+// Doctor integration.
+void reportN3dsRomPreflight(string project) {
+    string n3dsDir = joinPath(romsRoot(project), "n3ds");
+    if (!FileSystem.isDir(n3dsDir)) {
+        print(f"  MISSING n3ds rom dir: {n3dsDir}");
+        return;
+    }
+    Vector<string> entries = FileSystem.listDir(n3dsDir);
+    int checked = 0;
+    int archives = 0;
+    for name in entries {
+        string path = joinPath(n3dsDir, name);
+        if (FileSystem.isFile(path) && n3dsRomName(name)) {
+            checked++;
+            N3dsRomCheck result = checkN3dsRom(path);
+            print(f"  {result.status} n3ds/{name}: {result.note}");
+        } else if (FileSystem.isFile(path) && n3dsArchiveName(name)) {
+            archives++;
+        }
+    }
+    if (checked == 0) {
+        print("  OK n3ds: no top-level .3ds/.cci files to preflight");
+    }
+    if (archives > 0) {
+        print(f"  WARN n3ds archives unchecked: {archives} zip/7z file(s)");
+    }
+}
+
+// CLI wiring.
 string n3dsNoCryptoInputArg(CliArgs args, int startIndex) {
     int i = startIndex;
     while (i < args.count()) {
@@ -328,30 +343,7 @@ int utilitiesCommand(CliArgs args) {
     return 1;
 }
 
-// ---- src/semu/utils/n3ds_doctor.btrc ----
-void reportN3dsRomPreflight(string project) {
-    string n3dsDir = joinPath(romsRoot(project), "n3ds");
-    if (!FileSystem.isDir(n3dsDir)) {
-        print(f"  MISSING n3ds rom dir: {n3dsDir}");
-        return;
-    }
-    Vector<string> entries = FileSystem.listDir(n3dsDir);
-    int checked = 0;
-    int archives = 0;
-    for name in entries {
-        string path = joinPath(n3dsDir, name);
-        if (FileSystem.isFile(path) && n3dsRomName(name)) {
-            checked++;
-            N3dsRomCheck result = checkN3dsRom(path);
-            print(f"  {result.status} n3ds/{name}: {result.note}");
-        } else if (FileSystem.isFile(path) && n3dsArchiveName(name)) {
-            archives++;
-        }
-    }
-    if (checked == 0) {
-        print("  OK n3ds: no top-level .3ds/.cci files to preflight");
-    }
-    if (archives > 0) {
-        print(f"  WARN n3ds archives unchecked: {archives} zip/7z file(s)");
-    }
+// Compatibility alias for the old decrypt3ds utility name.
+int decrypt3dsNoCryptoCommand(CliArgs args, int startIndex) {
+    return n3dsNoCryptoCommand(args, startIndex);
 }
