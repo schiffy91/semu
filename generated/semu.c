@@ -12044,7 +12044,7 @@ char* e2eFakeAppImageToolText(void) {
     btrc_Vector_string_push(__list_686, "if [ \"${1:-}\" = \"--no-appstream\" ]; then shift; fi");
     btrc_Vector_string_push(__list_686, "APPDIR=\"${1:?missing AppDir}\"");
     btrc_Vector_string_push(__list_686, "OUTPUT=\"${2:?missing output}\"");
-    btrc_Vector_string_push(__list_686, "for required in AppRun usr/bin/es-de usr/bin/semu usr/bin/semu-quit-watch usr/bin/bwrap usr/bin/semu-retroarch usr/bin/semu-dolphin usr/bin/semu-ppsspp usr/bin/semu-flycast usr/bin/semu-gopher64 usr/bin/semu-melonds usr/bin/semu-pcsx2 usr/bin/semu-cemu usr/bin/semu-azahar usr/bin/semu-ryujinx usr/bin/semu-btrc usr/bin/semu-es-de usr/lib/retroarch/cores nix/store packaging/linux/AppRun packaging/linux/ES-DE/es_find_rules_linux.xml; do");
+    btrc_Vector_string_push(__list_686, "for required in AppRun usr/bin/es-de usr/bin/semu usr/bin/semu-quit-watch usr/bin/bwrap usr/bin/semu-retroarch usr/bin/semu-dolphin usr/bin/semu-ppsspp usr/bin/semu-flycast usr/bin/semu-gopher64 usr/bin/semu-melonds usr/bin/semu-pcsx2 usr/bin/semu-cemu usr/bin/semu-azahar usr/bin/semu-ryujinx usr/bin/semu-btrc usr/bin/semu-es-de usr/bin/syncthing usr/bin/syncthingtray usr/bin/curl usr/lib/retroarch/cores nix/store packaging/linux/AppRun packaging/linux/ES-DE/es_find_rules_linux.xml; do");
     btrc_Vector_string_push(__list_686, "  test -e \"$APPDIR/$required\" || { echo \"missing AppDir path: $required\" >&2; exit 3; }");
     btrc_Vector_string_push(__list_686, "done");
     btrc_Vector_string_push(__list_686, "test ! -e \"$APPDIR/packaging/linux/build-appimage.sh\" || { echo \"build script shipped inside AppDir\" >&2; exit 3; }");
@@ -12055,6 +12055,7 @@ char* e2eFakeAppImageToolText(void) {
     btrc_Vector_string_push(__list_686, "grep -F -- '--ro-bind \"$APPDIR/nix/store\" /nix/store' \"$APPDIR/AppRun\" >/dev/null");
     btrc_Vector_string_push(__list_686, "grep -F 'SEMU_LAUNCHER_BIN' \"$APPDIR/AppRun\" >/dev/null");
     btrc_Vector_string_push(__list_686, "grep -F 'SEMU_RETROARCH_CORE_DIR' \"$APPDIR/AppRun\" >/dev/null");
+    btrc_Vector_string_push(__list_686, "grep -F 'SEMU_SYNCTHING_BIN' \"$APPDIR/AppRun\" >/dev/null");
     btrc_Vector_string_push(__list_686, "grep -F 'fake semu-btrc' \"$APPDIR/usr/bin/semu\" >/dev/null");
     btrc_Vector_string_push(__list_686, "! grep -F 'wrapped semu' \"$APPDIR/usr/bin/semu\" >/dev/null");
     btrc_Vector_string_push(__list_686, "! grep -F 'sync setup' \"$APPDIR/AppRun\" >/dev/null");
@@ -12100,6 +12101,9 @@ btrc_Vector_string* appImageExpectedBins(void) {
     btrc_Vector_string_push(__list_688, "semu-azahar");
     btrc_Vector_string_push(__list_688, "semu-ryujinx");
     btrc_Vector_string_push(__list_688, "semu-es-de");
+    btrc_Vector_string_push(__list_688, "syncthing");
+    btrc_Vector_string_push(__list_688, "syncthingtray");
+    btrc_Vector_string_push(__list_688, "curl");
     return __list_688;
 }
 

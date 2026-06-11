@@ -67,6 +67,9 @@ SEMU_NIX_BINS=(
   semu-azahar
   semu-ryujinx
   semu-es-de
+  syncthing
+  syncthingtray
+  curl
   nixGLIntel
   nixGL
 )
