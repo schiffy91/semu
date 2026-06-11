@@ -163,6 +163,16 @@ fi
 
 # AppRun, .desktop, icon at the AppDir root (appimagetool requirements).
 cp "$HERE/AppRun" "$APPDIR/AppRun"
+# AppRun is the one script the AppImage runtime execs before the bundled Nix
+# store is mounted. Nix may patch the source copy's shebang when this builder is
+# run from a package output, so force the root entrypoint back to a host-portable
+# interpreter before packing.
+APPRUN_REWRITE="$APPDIR/AppRun.portable"
+{
+  printf '%s\n' '#!/usr/bin/env bash'
+  tail -n +2 "$APPDIR/AppRun"
+} > "$APPRUN_REWRITE"
+mv "$APPRUN_REWRITE" "$APPDIR/AppRun"
 chmod +x "$APPDIR/AppRun"
 cp "$HERE/semu.desktop" "$APPDIR/semu.desktop"
 # Icon: borrow ES-DE's icon (a controller silhouette) as a stand-in.

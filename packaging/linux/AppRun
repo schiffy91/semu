@@ -8,13 +8,25 @@
 set -e
 
 APPDIR="${APPDIR:-$(dirname "$(readlink -f "$0")")}"
+HOST_PATH="${PATH:-}"
 export PATH="$APPDIR/usr/bin:${PATH:-}"
 
 if [ -d "$APPDIR/nix/store" ] && [ -z "${SEMU_NIX_STORE_MOUNTED:-}" ]; then
-  BWRAP="${SEMU_BWRAP:-$(command -v bwrap || true)}"
+  BWRAP="${SEMU_BWRAP:-}"
+  if [ -z "$BWRAP" ]; then
+    for candidate in /usr/bin/bwrap /bin/bwrap; do
+      if [ -x "$candidate" ]; then
+        BWRAP="$candidate"
+        break
+      fi
+    done
+  fi
+  if [ -z "$BWRAP" ]; then
+    BWRAP="$(PATH="$HOST_PATH" command -v bwrap || true)"
+  fi
   if [ -z "$BWRAP" ]; then
     echo "Semu: bundled Nix store needs bubblewrap to mount /nix/store." >&2
-    echo "Install bubblewrap or use the Flatpak launcher fallback." >&2
+    echo "Install host bubblewrap or set SEMU_BWRAP to a host-executable bwrap." >&2
     exit 127
   fi
   export SEMU_NIX_STORE_MOUNTED=1
@@ -67,31 +79,6 @@ if [ -z "${SEMU_PROJECT_DIR:-}" ]; then
   exit 1
 fi
 
-if [ ! -x "$SEMU_CLI" ] && [ "${SEMU_ALLOW_PROJECT_CLI:-0}" = "1" ] && \
-   [ -x "$SEMU_PROJECT_DIR/build/semu" ]; then
-  SEMU_CLI="$SEMU_PROJECT_DIR/build/semu"
-fi
-export SEMU_BIN="$SEMU_CLI"
-
-case "${1:-}" in
-  "" )
-    ;;
-  -h|--help|help|deck|sync|config|doctor|bootstrap|keymap|screenshot|manifest|lifecycle|sandbox|launcher|apprun|steam-input|utils|util|n3ds-nocrypto|3ds-nocrypto|e2e)
-    if [ ! -x "$SEMU_CLI" ]; then
-      echo "Semu: BTRC CLI not found at $SEMU_CLI" >&2
-      exit 2
-    fi
-    exec "$SEMU_CLI" "$@" --project "$SEMU_PROJECT_DIR"
-    ;;
-esac
-
-if [ ! -x "$SEMU_CLI" ]; then
-  echo "Semu: bundled BTRC CLI not found at $SEMU_CLI" >&2
-  echo "Rebuild the AppImage with packaging/linux/build-appimage.sh or set SEMU_CLI." >&2
-  exit 2
-fi
-eval "$("$SEMU_CLI" config env --project "$SEMU_PROJECT_DIR")"
-
 normalize_roms_dir() {
   local root="$1"
   local candidate
@@ -132,7 +119,38 @@ detect_roms_dir() {
 }
 
 export SEMU_ROMS_DIR="${SEMU_ROMS_DIR:-$(detect_roms_dir)}"
-"$SEMU_CLI" apprun prepare --project "$SEMU_PROJECT_DIR" >/dev/null
+SEMU_DETECTED_ROMS_DIR="$SEMU_ROMS_DIR"
+
+if [ ! -x "$SEMU_CLI" ] && [ "${SEMU_ALLOW_PROJECT_CLI:-0}" = "1" ] && \
+   [ -x "$SEMU_PROJECT_DIR/build/semu" ]; then
+  SEMU_CLI="$SEMU_PROJECT_DIR/build/semu"
+fi
+export SEMU_BIN="$SEMU_CLI"
+
+case "${1:-}" in
+  "" )
+    ;;
+  -h|--help|help|deck|sync|config|doctor|bootstrap|keymap|screenshot|manifest|lifecycle|sandbox|launcher|apprun|steam-input|utils|util|n3ds-nocrypto|3ds-nocrypto|e2e)
+    if [ ! -x "$SEMU_CLI" ]; then
+      echo "Semu: BTRC CLI not found at $SEMU_CLI" >&2
+      exit 2
+    fi
+    SEMU_CLI_CONTEXT_ARGS=( --project "$SEMU_PROJECT_DIR" )
+    if [[ ! " $* " =~ " --roms " ]]; then
+      SEMU_CLI_CONTEXT_ARGS+=( --roms "$SEMU_ROMS_DIR" )
+    fi
+    exec "$SEMU_CLI" "$@" "${SEMU_CLI_CONTEXT_ARGS[@]}"
+    ;;
+esac
+
+if [ ! -x "$SEMU_CLI" ]; then
+  echo "Semu: bundled BTRC CLI not found at $SEMU_CLI" >&2
+  echo "Rebuild the AppImage with packaging/linux/build-appimage.sh or set SEMU_CLI." >&2
+  exit 2
+fi
+eval "$("$SEMU_CLI" config env --project "$SEMU_PROJECT_DIR" --roms "$SEMU_ROMS_DIR")"
+export SEMU_ROMS_DIR="$SEMU_DETECTED_ROMS_DIR"
+"$SEMU_CLI" apprun prepare --project "$SEMU_PROJECT_DIR" --roms "$SEMU_ROMS_DIR" >/dev/null
 
 # Surface the AppArmor userns gotcha early instead of letting bwrap fail.
 # Do not modify host sysctls from AppRun; setup/doctor reports the remediation.
