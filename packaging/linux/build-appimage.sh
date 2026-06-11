@@ -120,6 +120,16 @@ if [ -n "$NIX_PACKAGE" ]; then
       chmod +x "$APPDIR/usr/bin/$bin"
     fi
   done
+  # The Nix package's bin/semu is a makeWrapper script that sets SEMU_BIN back
+  # to its /nix/store output. Inside the AppImage, generated desktop entries
+  # and systemd units must point at the stable AppImage executable instead, so
+  # ship the raw BTRC runtime as usr/bin/semu and let AppRun provide the env.
+  if [ -x "$NIX_PACKAGE/lib/semu/semu-btrc" ]; then
+    chmod u+w "$APPDIR/usr/bin/semu" 2>/dev/null || true
+    rm -f "$APPDIR/usr/bin/semu"
+    cp "$NIX_PACKAGE/lib/semu/semu-btrc" "$APPDIR/usr/bin/semu"
+    chmod +x "$APPDIR/usr/bin/semu"
+  fi
   if [ ! -x "$APPDIR/usr/bin/bwrap" ]; then
     echo "Nix package did not provide bwrap; AppImage sandbox mounting would fail" >&2
     exit 4
