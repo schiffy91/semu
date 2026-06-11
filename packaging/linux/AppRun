@@ -50,6 +50,9 @@ fi
 if [ -d "$APPDIR/usr/lib/retroarch/cores" ]; then
   export SEMU_RETROARCH_CORE_DIR="${SEMU_RETROARCH_CORE_DIR:-$APPDIR/usr/lib/retroarch/cores}"
 fi
+if [ -x "$APPDIR/usr/bin/syncthing" ]; then
+  export SEMU_SYNCTHING_BIN="${SEMU_SYNCTHING_BIN:-$APPDIR/usr/bin/syncthing}"
+fi
 
 case "${1:-}" in
   -h|--help|help)

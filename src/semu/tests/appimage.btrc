@@ -32,7 +32,7 @@ string e2eFakeAppImageToolText() {
         "if [ \"${1:-}\" = \"--no-appstream\" ]; then shift; fi",
         "APPDIR=\"${1:?missing AppDir}\"",
         "OUTPUT=\"${2:?missing output}\"",
-        "for required in AppRun usr/bin/es-de usr/bin/semu usr/bin/semu-quit-watch usr/bin/bwrap usr/bin/semu-retroarch usr/bin/semu-dolphin usr/bin/semu-ppsspp usr/bin/semu-flycast usr/bin/semu-gopher64 usr/bin/semu-melonds usr/bin/semu-pcsx2 usr/bin/semu-cemu usr/bin/semu-azahar usr/bin/semu-ryujinx usr/bin/semu-btrc usr/bin/semu-es-de usr/lib/retroarch/cores nix/store packaging/linux/AppRun packaging/linux/ES-DE/es_find_rules_linux.xml; do",
+        "for required in AppRun usr/bin/es-de usr/bin/semu usr/bin/semu-quit-watch usr/bin/bwrap usr/bin/semu-retroarch usr/bin/semu-dolphin usr/bin/semu-ppsspp usr/bin/semu-flycast usr/bin/semu-gopher64 usr/bin/semu-melonds usr/bin/semu-pcsx2 usr/bin/semu-cemu usr/bin/semu-azahar usr/bin/semu-ryujinx usr/bin/semu-btrc usr/bin/semu-es-de usr/bin/syncthing usr/bin/syncthingtray usr/bin/curl usr/lib/retroarch/cores nix/store packaging/linux/AppRun packaging/linux/ES-DE/es_find_rules_linux.xml; do",
         "  test -e \"$APPDIR/$required\" || { echo \"missing AppDir path: $required\" >&2; exit 3; }",
         "done",
         "test ! -e \"$APPDIR/packaging/linux/build-appimage.sh\" || { echo \"build script shipped inside AppDir\" >&2; exit 3; }",
@@ -43,6 +43,7 @@ string e2eFakeAppImageToolText() {
         "grep -F -- '--ro-bind \"$APPDIR/nix/store\" /nix/store' \"$APPDIR/AppRun\" >/dev/null",
         "grep -F 'SEMU_LAUNCHER_BIN' \"$APPDIR/AppRun\" >/dev/null",
         "grep -F 'SEMU_RETROARCH_CORE_DIR' \"$APPDIR/AppRun\" >/dev/null",
+        "grep -F 'SEMU_SYNCTHING_BIN' \"$APPDIR/AppRun\" >/dev/null",
         "grep -F 'fake semu-btrc' \"$APPDIR/usr/bin/semu\" >/dev/null",
         "! grep -F 'wrapped semu' \"$APPDIR/usr/bin/semu\" >/dev/null",
         "! grep -F 'sync setup' \"$APPDIR/AppRun\" >/dev/null",
@@ -87,7 +88,10 @@ Vector<string> appImageExpectedBins() {
         "semu-cemu",
         "semu-azahar",
         "semu-ryujinx",
-        "semu-es-de"
+        "semu-es-de",
+        "syncthing",
+        "syncthingtray",
+        "curl"
     ];
 }
 
