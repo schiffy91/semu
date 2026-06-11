@@ -31,17 +31,19 @@ build/semu screenshot status --project "$PWD"
 ```
 
 On Steam Deck, pass an external SD card path to `--roms` if desired, for
-example `/run/media/mmcblk0p1/Emulation/ROMs`. The choice is stored in
+example `/run/media/deck/SD`. The choice is stored in
 `sync/sync.json`, which is intentionally flat JSON so a small UI can edit it
 without understanding emulator launchers.
 
-Syncthing is integrated through BTRC commands:
+Syncthing is integrated through BTRC commands. In an AppImage install, run the
+commands through the AppImage so generated systemd units point at the stable
+AppImage entrypoint:
 
 ```sh
-build/semu sync setup --project "$PWD"
-build/semu sync force all --project "$PWD"
-build/semu sync status --project "$PWD"
-build/semu sync tray --project "$PWD"
+Semu-x86_64.AppImage sync setup --project "$PWD" --roms /run/media/deck/SD
+Semu-x86_64.AppImage sync force all --project "$PWD"
+Semu-x86_64.AppImage sync status --project "$PWD"
+Semu-x86_64.AppImage sync tray --project "$PWD"
 ```
 
 Saves, states, screenshots, and gamelists sync by default. ROMs and BIOS are
