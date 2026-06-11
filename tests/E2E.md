@@ -72,20 +72,37 @@ input checks through the same BTRC CLI used on a physical Deck.
 
 ## Next Verification Passes
 
-- Physical Steam Deck pass: Neptune trackpads, Steam Input template visibility,
-  left-trackpad radial menu, unified save/load/quit hotkeys inside each emulator,
-  screenshot contents from real Gamescope emulator windows, and quit returning
-  to ES-DE in Game Mode.
-- Real AppImage pass on SteamOS: build `Semu-*.AppImage` with
-  `packaging/linux/build-appimage.sh --nix-package result`, launch it on a Deck, verify
-  ES-DE opens under Gamescope, ROM location override persists, Syncthing
-  commands work, and routed launchers start real emulator binaries.
+- Physical Steam Deck Game Mode pass: Neptune trackpads, Steam Input template
+  visibility, left-trackpad radial menu, unified save/load/quit hotkeys inside
+  each emulator, screenshot contents from real Gamescope emulator windows, and
+  quit returning to ES-DE in Game Mode.
+- Broad real-emulator Deck pass: launch representative games through RetroArch,
+  Dolphin, PPSSPP, Flycast, melonDS, PCSX2, Cemu, Azahar, Gopher64, and Ryujinx;
+  verify fullscreen windowing, controller input, and return-to-ES-DE behavior.
 - True multi-device Syncthing: current tests cover config, systemd units, local
   service/API, and force-rescan commands. A second real device pass should
   verify conflict/resolution behavior.
 - User-owned BIOS coverage: doctor declares required BIOS/firmware and reports
   missing files. The PSX, PS2, and Switch BIOS/key checks use user-provided
   files.
+
+## Physical Deck Evidence
+
+The SteamOS/AppImage path has been smoke-tested on a physical Steam Deck in
+Desktop Mode with the AppImage built from the Nix package closure:
+
+- ES-DE launched fullscreen at the Deck's 1280x800 display resolution.
+- `/run/media/deck/SD` was auto-normalized to the ES-DE ROM directory.
+- AppImage-owned `sync setup`, `sync serve`, and `sync force all` worked, with
+  Syncthing running from the mounted AppImage payload rather than a host package.
+- `doctor` reported Steam Deck defaults, screenshot tooling, Syncthing, and
+  Linux launchers as present.
+- A Game Boy title launched through the bundled RetroArch/Gambatte route and
+  returned to ES-DE after a window-close command.
+
+This evidence does not prove the physical left-trackpad radial menu because SSH
+and X11 key injection cannot generate the Steam Input/evdev events consumed by
+the quit watcher. That remains a physical Game Mode check.
 
 ## AppImage Scope
 
@@ -111,6 +128,7 @@ Linux flake outputs now expose routed Nix emulator wrappers:
 
 These wrappers avoid host symlinks by routing emulator state through
 `HOME`/`XDG_*` into `.semu/appimage-state`. AppRun can mount a bundled
-Nix closure at `/nix/store` with bubblewrap. Local smoke tests now cover the
-assembly and routing design; the remaining gap is executing the final AppImage
-against real SteamOS/Gamescope/emulator binaries.
+Nix closure at `/nix/store` with bubblewrap. Local smoke tests cover assembly
+and routing; physical Deck smoke covers ES-DE, Syncthing, SD-card detection, and
+one RetroArch launch loop. The remaining gap is the broad Game Mode emulator and
+Steam Input pass.

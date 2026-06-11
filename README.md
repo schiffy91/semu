@@ -29,9 +29,10 @@ This repo currently provides:
 - Automated smoke coverage for bootstrap, lifecycle, launcher routing,
   screenshot hooks, sync setup, AppImage assembly wiring, and Nix routed wrappers.
 
-Important remaining production gaps are tracked in `tests/E2E.md`. The biggest
-ones are the physical Steam Deck Game Mode pass, a real SteamOS/AppImage pass
-with actual emulator binaries, and a true two-device Syncthing conflict test.
+Important remaining production gaps are tracked in `tests/E2E.md`. The
+SteamOS/AppImage path has a physical Deck smoke pass, but the final production
+gate is still a Game Mode pass that exercises the Steam Input radial menu and
+representative games across the routed emulator set.
 
 ## Design Principles
 
@@ -89,7 +90,7 @@ helpers, and enables SSH for remote verification. For a microSD ROM directory:
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/schiffy91/semu/main/utils/steam-deck-bootstrap.sh \
-  | bash -s -- install --yes --roms /run/media/mmcblk0p1/Emulation/ROMs
+  | bash -s -- install --yes --roms /run/media/deck/SD
 ```
 
 After the first install, update the Deck with:
@@ -219,9 +220,11 @@ Fallback behavior:
 - Flatpak-backed launchers are the host fallback for supported standalone
   emulators when the AppImage is built without a routed Nix payload.
 
-Current automated tests validate AppImage assembly logic with fake ES-DE and
-fake appimagetool. A real SteamOS/Game Mode AppImage pass is still listed in
-`tests/E2E.md`.
+Automated tests validate AppImage assembly logic with fake ES-DE and fake
+appimagetool. Physical Deck evidence covers Desktop Mode ES-DE launch,
+AppImage-owned Syncthing, SD-card ROM detection, and a RetroArch/GB launch loop.
+Game Mode, physical Steam Input radial quit, and broad per-emulator game loops
+remain the final manual gates listed in `tests/E2E.md`.
 
 ## Declarative Configuration
 
