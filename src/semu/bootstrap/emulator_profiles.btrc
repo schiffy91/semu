@@ -22,6 +22,8 @@ string retroArchProfileText(string project, KeymapIr ir) {
     return textLines([
         "config_save_on_exit = \"true\"",
         "video_fullscreen = \"true\"",
+        "video_scale_integer = \"true\"",
+        "video_force_aspect = \"true\"",
         "video_vsync = \"true\"",
         "audio_driver = \"pulse\"",
         "input_driver = \"sdl2\"",
@@ -184,6 +186,89 @@ string pcsx2ProfileText(KeymapIr ir) {
         "",
         "[Hotkeys]"
     ]) + renderPcsx2Keymap(ir);
+}
+
+string pcsx2BiosDir(string project) {
+    string external = joinPath(configuredEmulationRoot(project), "PCSX2/config/bios");
+    if (FileSystem.isDir(external)) { return external; }
+    return joinPath(biosRoot(project), "ps2");
+}
+
+string pcsx2ConfigText(string project) {
+    return textLines([
+        "[UI]",
+        "SettingsVersion = 1",
+        "InhibitScreensaver = true",
+        "ConfirmShutdown = false",
+        "StartPaused = false",
+        "PauseOnFocusLoss = false",
+        "StartFullscreen = true",
+        "DoubleClickTogglesFullscreen = true",
+        "HideMouseCursor = true",
+        "RenderToSeparateWindow = false",
+        "HideMainWindowWhenRunning = true",
+        "DisableWindowResize = false",
+        "PreferEnglishGameList = false",
+        "Theme = darkfusionblue",
+        "SetupWizardIncomplete = false",
+        "",
+        "[Folders]",
+        "Bios = " + pcsx2BiosDir(project),
+        "Snapshots = snaps",
+        "Savestates = sstates",
+        "MemoryCards = memcards",
+        "Logs = logs",
+        "Cheats = cheats",
+        "Patches = patches",
+        "UserResources = resources",
+        "Cache = cache",
+        "Textures = textures",
+        "InputProfiles = inputprofiles",
+        "",
+        "[EmuCore]",
+        "EnablePatches = true",
+        "EnableWideScreenPatches = false",
+        "EnableFastBoot = true",
+        "UseSavestateSelector = true",
+        "McdFolderAutoManage = true",
+        "",
+        "[EmuCore/GS]",
+        "AspectRatio = Auto 4:3/3:2",
+        "IntegerScaling = true",
+        "Renderer = -1",
+        "upscale_multiplier = 1",
+        "filter = 0",
+        "VsyncEnable = true",
+        "",
+        "[InputSources]",
+        "Keyboard = true",
+        "Mouse = true",
+        "SDL = true",
+        "SDLControllerEnhancedMode = true"
+    ]);
+}
+
+string azaharConfigText(string project) {
+    string dataRoot = joinPath(launcherRoutedStateRoot(project, "azahar"), "data/azahar-emu");
+    return textLines([
+        "[Data%20Storage]",
+        "nand_directory=" + joinPath(dataRoot, "nand/"),
+        "nand_directory\\default=false",
+        "sdmc_directory=" + joinPath(dataRoot, "sdmc/"),
+        "sdmc_directory\\default=false",
+        "use_custom_storage=false",
+        "use_custom_storage\\default=true",
+        "use_virtual_sd=true",
+        "use_virtual_sd\\default=true",
+        "",
+        "[Renderer]",
+        "graphics_api=0",
+        "graphics_api\\default=false",
+        "",
+        "[UI]",
+        "fullscreen=true",
+        "fullscreen\\default=false"
+    ]);
 }
 
 string cemuProfileText() {

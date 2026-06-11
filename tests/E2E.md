@@ -106,6 +106,19 @@ Desktop Mode with the AppImage built from the Nix package closure:
   Linux launchers as present.
 - A Game Boy title launched through the bundled RetroArch/Gambatte route and
   returned to ES-DE after a window-close command.
+- SSH access, passwordless sudo, Desktop Mode display environment discovery,
+  and Spectacle screenshots were verified from `deck@steamdeck.local`.
+- Deck panel brightness was lowered programmatically through
+  `/sys/class/backlight/amdgpu_bl0/brightness` for unattended OLED safety.
+- A broad Desktop Mode routed-wrapper pass launched representative SD-card ROMs
+  through RetroArch GBA/SNES/N64, Dolphin, PPSSPP, Flycast, melonDS, PCSX2,
+  Cemu, Azahar, Gopher64, and Ryujinx, then captured screenshots for each route.
+- The broad pass produced real game frames for RetroArch GBA/SNES/N64,
+  Dolphin, PPSSPP, Flycast, and melonDS.
+- The same pass exposed production gaps: PCSX2 and Cemu still showed setup
+  wizards in the installed AppImage, Azahar tried an unsuitable Vulkan path,
+  Ryujinx did not see Switch keys from the SD card, and Gopher64 failed while
+  creating its window.
 
 This evidence does not prove the physical left-trackpad radial menu because SSH
 and X11 key injection cannot generate the Steam Input/evdev events consumed by

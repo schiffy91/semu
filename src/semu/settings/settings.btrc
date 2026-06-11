@@ -1,0 +1,243 @@
+class SemuSettings {
+    class int command(CliArgs args, string project) { return settingsCommand(args, project); }
+    class void defaults(string project) { writeSettingsDefaults(project); }
+}
+
+string settingsRoot(string project) {
+    return joinPath(project, "settings");
+}
+
+string semuSettingsPath(string project) {
+    return joinPath(settingsRoot(project), "semu-settings.json");
+}
+
+string settingsDefaultConfigText() {
+    return jsonObject([
+        jsonField("schema_version", "1"),
+        jsonBoolField("visual_integer_scaling", true),
+        jsonBoolField("visual_crt_shaders", true),
+        jsonBoolField("visual_bezels", true),
+        jsonStrField("visual_bezel_policy", "classic"),
+        jsonStrField("visual_retroarch_shader_preset", "bezel/Mega_Bezel/Presets/MBZ__5__POTATO.slangp"),
+        jsonStrField("visual_classic_systems", "gb,gbc,gba,nes,snes,genesis,n64,nds,dreamcast,psx,ps2,psp,gc,wii"),
+        jsonStrField("visual_modern_systems", "n3ds,wiiu,switch"),
+        jsonStrField("ui_theme", "es-de-default"),
+        jsonStrField("ui_settings_entry", "es-de")
+    ]) + "\n";
+}
+
+void writeSettingsDefaults(string project) {
+    ensureDir(settingsRoot(project));
+    string path = semuSettingsPath(project);
+    if (!FileSystem.exists(path)) {
+        writeJsonPrettyFile(path, settingsDefaultConfigText());
+    }
+}
+
+JsonObject settingsConfig(string project) {
+    writeSettingsDefaults(project);
+    return JsonObject.readFile(semuSettingsPath(project));
+}
+
+bool settingBoolValue(string value) {
+    string normalized = value.toLower();
+    return normalized.equals("1") || normalized.equals("true") || normalized.equals("yes") || normalized.equals("on");
+}
+
+bool settingBoolLiteral(string value) {
+    string normalized = value.toLower();
+    return normalized.equals("1")
+        || normalized.equals("0")
+        || normalized.equals("true")
+        || normalized.equals("false")
+        || normalized.equals("yes")
+        || normalized.equals("no")
+        || normalized.equals("on")
+        || normalized.equals("off");
+}
+
+string settingSyncJsonKey(string key) {
+    if (key.equals("roms.dir")) { return "roms_dir"; }
+    if (key.equals("sync.enabled")) { return "enabled"; }
+    if (key.equals("sync.start_at_boot")) { return "start_at_boot"; }
+    if (key.equals("sync.tray")) { return "tray"; }
+    if (key.equals("sync.gui_address")) { return "gui_address"; }
+    if (key.equals("sync.saves")) { return "sync_saves"; }
+    if (key.equals("sync.states")) { return "sync_states"; }
+    if (key.equals("sync.emulator_state")) { return "sync_emulator_state"; }
+    if (key.equals("sync.screenshots")) { return "sync_screenshots"; }
+    if (key.equals("sync.gamelists")) { return "sync_gamelists"; }
+    if (key.equals("sync.roms")) { return "sync_roms"; }
+    if (key.equals("sync.bios")) { return "sync_bios"; }
+    return "";
+}
+
+string settingJsonKey(string key) {
+    if (key.equals("visual.integer_scaling")) { return "visual_integer_scaling"; }
+    if (key.equals("visual.crt_shaders")) { return "visual_crt_shaders"; }
+    if (key.equals("visual.bezels")) { return "visual_bezels"; }
+    if (key.equals("visual.bezel_policy")) { return "visual_bezel_policy"; }
+    if (key.equals("visual.retroarch_shader_preset")) { return "visual_retroarch_shader_preset"; }
+    if (key.equals("visual.classic_systems")) { return "visual_classic_systems"; }
+    if (key.equals("visual.modern_systems")) { return "visual_modern_systems"; }
+    if (key.equals("ui.theme")) { return "ui_theme"; }
+    if (key.equals("ui.settings_entry")) { return "ui_settings_entry"; }
+    return "";
+}
+
+bool settingIsBool(string key) {
+    return key.equals("sync.enabled")
+        || key.equals("sync.start_at_boot")
+        || key.equals("sync.tray")
+        || key.equals("sync.saves")
+        || key.equals("sync.states")
+        || key.equals("sync.emulator_state")
+        || key.equals("sync.screenshots")
+        || key.equals("sync.gamelists")
+        || key.equals("sync.roms")
+        || key.equals("sync.bios")
+        || key.equals("visual.integer_scaling")
+        || key.equals("visual.crt_shaders")
+        || key.equals("visual.bezels");
+}
+
+Vector<string> settingsKeys() {
+    return [
+        "roms.dir",
+        "sync.enabled",
+        "sync.start_at_boot",
+        "sync.tray",
+        "sync.gui_address",
+        "sync.saves",
+        "sync.states",
+        "sync.emulator_state",
+        "sync.screenshots",
+        "sync.gamelists",
+        "sync.roms",
+        "sync.bios",
+        "visual.integer_scaling",
+        "visual.crt_shaders",
+        "visual.bezels",
+        "visual.bezel_policy",
+        "visual.retroarch_shader_preset",
+        "visual.classic_systems",
+        "visual.modern_systems",
+        "ui.theme",
+        "ui.settings_entry"
+    ];
+}
+
+string settingsGetValue(string project, string key) {
+    string syncKey = settingSyncJsonKey(key);
+    if (syncKey.len() > 0) {
+        JsonObject config = syncConfig(project);
+        if (settingIsBool(key)) {
+            return config.getBool(syncKey, false) ? "true" : "false";
+        }
+        return expandProjectTemplate(project, config.getString(syncKey, ""));
+    }
+
+    string jsonKey = settingJsonKey(key);
+    if (jsonKey.len() > 0) {
+        JsonObject config = settingsConfig(project);
+        if (settingIsBool(key)) {
+            return config.getBool(jsonKey, false) ? "true" : "false";
+        }
+        return config.getString(jsonKey, "");
+    }
+
+    return "";
+}
+
+bool settingsPutValue(string project, string key, string value) {
+    string syncKey = settingSyncJsonKey(key);
+    if (syncKey.len() > 0) {
+        writeSyncDefaults(project, "");
+        JsonObject config = JsonObject.readFile(syncConfigPath(project));
+        if (key.equals("roms.dir")) {
+            config.setString(syncKey, normalizeRomsRoot(value));
+        } else if (settingIsBool(key)) {
+            if (!settingBoolLiteral(value)) {
+                print(f"error 0:0 {key} expects a boolean");
+                return false;
+            }
+            config.setBool(syncKey, settingBoolValue(value));
+        } else {
+            config.setString(syncKey, value);
+        }
+        writeJsonPrettyFile(syncConfigPath(project), config.stringify());
+        return true;
+    }
+
+    string jsonKey = settingJsonKey(key);
+    if (jsonKey.len() > 0) {
+        JsonObject config = settingsConfig(project);
+        if (settingIsBool(key)) {
+            if (!settingBoolLiteral(value)) {
+                print(f"error 0:0 {key} expects a boolean");
+                return false;
+            }
+            config.setBool(jsonKey, settingBoolValue(value));
+        } else {
+            config.setString(jsonKey, value);
+        }
+        writeJsonPrettyFile(semuSettingsPath(project), config.stringify());
+        return true;
+    }
+
+    print(f"error 0:0 unknown setting '{key}'");
+    return false;
+}
+
+void settingsList(string project) {
+    for key in settingsKeys() {
+        print(key + "=" + settingsGetValue(project, key));
+    }
+}
+
+int settingsCommand(CliArgs args, string project) {
+    string mode = "list";
+    if (args.count() > 1 && !args.get(1).startsWith("--")) {
+        mode = args.get(1);
+    }
+    if (mode.equals("list") || mode.equals("show")) {
+        settingsList(project);
+        return 0;
+    }
+    if (mode.equals("get")) {
+        if (args.count() < 3) {
+            print("error 0:0 settings get needs KEY");
+            return 1;
+        }
+        string value = settingsGetValue(project, args.get(2));
+        if (value.len() == 0 && settingSyncJsonKey(args.get(2)).len() == 0 && settingJsonKey(args.get(2)).len() == 0) {
+            print(f"error 0:0 unknown setting '{args.get(2)}'");
+            return 1;
+        }
+        print(value);
+        return 0;
+    }
+    if (mode.equals("put") || mode.equals("set")) {
+        if (args.count() < 4) {
+            print("error 0:0 settings put needs KEY VALUE");
+            return 1;
+        }
+        if (!settingsPutValue(project, args.get(2), args.get(3))) {
+            return 1;
+        }
+        print(args.get(2) + "=" + settingsGetValue(project, args.get(2)));
+        if (args.has("--apply")) {
+            lifecycleReconfigure(project, "");
+            print("OK settings applied");
+        }
+        return 0;
+    }
+    if (mode.equals("apply")) {
+        writeSettingsDefaults(project);
+        lifecycleReconfigure(project, "");
+        print("OK settings applied");
+        return 0;
+    }
+    printUsage();
+    return 1;
+}

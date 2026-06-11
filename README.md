@@ -22,6 +22,9 @@ This repo currently provides:
 - A custom keymap language in `input/keymaps/steam_deck.skm` with tokenizer, parser,
   code generators, and authoring errors.
 - Declarative Syncthing config in `sync/sync.json`.
+- Declarative Semu settings in `settings/semu-settings.json`, with CLI
+  `settings list|get|put|apply` access for ROMs, sync toggles, visual policy,
+  and ES-DE settings entry rollout.
 - Declarative screenshot verification config in `verification/screenshots.json`.
 - Linux launcher shims and AppRun glue under `packaging/linux/`.
 - Nix packages for the BTRC CLI, bundled emulator set, routed emulator wrappers,
@@ -64,6 +67,7 @@ The input, shader, bezel, and ES-DE settings rollout is specified in
 | `emulators/es-de/custom_systems/` | Generated ES-DE systems catalog snapshot. |
 | `input/keymaps/steam_deck.skm` | Editable Steam Deck keymap source. |
 | `input/steam-input/*.vdf` | Generated Steam Input template files. |
+| `settings/semu-settings.json` | Editable Semu visual/UI policy and settings defaults. |
 | `sync/sync.json` | Editable Syncthing policy. |
 | `verification/screenshots.json` | Editable screenshot hook policy. |
 | `packaging/linux/AppRun` | AppImage entry point and bundled Nix-store mount wrapper. |
@@ -126,6 +130,7 @@ build/semu deck install \
 What `deck install` does:
 
 - Writes `sync/sync.json` if missing and creates sync state directories.
+- Writes `settings/semu-settings.json` if missing.
 - Creates the ES-DE content tree.
 - Creates ROM directories for every declared system.
 - Creates BIOS target directories.
@@ -342,6 +347,36 @@ build/semu sync open --project "$PWD"
 
 It also uses Syncthing's CLI/API when available to add the declared folders.
 
+### `settings/semu-settings.json`
+
+Editable Semu policy for the settings entrypoint, visual defaults, and settings
+CLI. It is intentionally key/value-shaped so ES-DE entries, scripts, and the
+future controller UI can all use the same `get` and `put` contract.
+
+Default visual policy:
+
+- Native integer scaling is enabled for classic systems.
+- CRT shaders and bezels are enabled by policy for classic systems.
+- The default modern exclusions are `n3ds`, `wiiu`, and `switch`.
+- RetroArch receives native integer-scaling config immediately.
+- RetroArch shader/bezel presets remain declarative until the shader payload is
+  bundled and verified on Deck.
+
+Commands:
+
+```sh
+build/semu settings list --project "$PWD"
+build/semu settings get roms.dir --project "$PWD"
+build/semu settings put roms.dir /run/media/deck/SD --apply --project "$PWD"
+build/semu settings put visual.integer_scaling true --project "$PWD"
+build/semu settings put visual.bezels true --project "$PWD"
+build/semu settings put sync.roms false --project "$PWD"
+build/semu settings apply --project "$PWD"
+```
+
+`roms.dir` uses the same normalization as `deck install`; `/run/media/deck/SD`
+resolves to `Emulation/ES-DE/ES-DE/ROMs` when that layout is present.
+
 ### `verification/screenshots.json`
 
 Editable screenshot policy. Defaults declare:
@@ -464,6 +499,11 @@ user-owned project folders. Place those files in the declared locations and run
 | `wiiu_keys` | Wii U | yes | `keys.txt` | `emulators/profiles/Cemu/data` |
 | `dreamcast` | Dreamcast | optional | `dc_boot.bin`, `dc_flash.bin` | `ES-DE/ES-DE/bios/dc` |
 
+On Steam Deck, Semu also detects the common SD-card emulation root derived from
+the ROM path, such as `/run/media/deck/SD/Emulation`. Routed emulator state
+seeding uses that external root for host-owned files including PCSX2 BIOS,
+Cemu `keys.txt`, and Ryujinx `prod.keys`/`title.keys` when present.
+
 3DS ROM preflight is built into `doctor`. It detects:
 
 - `OK`: NoCrypto flag is already set.
@@ -510,6 +550,18 @@ Config:
 ```sh
 build/semu config env --project "$PWD"
 build/semu config set-roms --project "$PWD" --roms "/path/to/ROMs"
+build/semu config show --project "$PWD"
+```
+
+Settings:
+
+```sh
+build/semu settings list --project "$PWD"
+build/semu settings get roms.dir --project "$PWD"
+build/semu settings put roms.dir "/path/to/ROMs" --apply --project "$PWD"
+build/semu settings put visual.integer_scaling true --project "$PWD"
+build/semu settings put visual.bezels true --project "$PWD"
+build/semu settings apply --project "$PWD"
 ```
 
 Keymaps:
@@ -708,5 +760,6 @@ See `tests/E2E.md` for the active verification matrix. The short version:
 - Physical Steam Deck Game Mode validation.
 - Real AppImage execution on SteamOS with actual ES-DE and emulator binaries.
 - Two-device Syncthing conflict/resolution testing.
-- UI editor for `input/keymaps/steam_deck.skm`, `sync/sync.json`, and
+- ES-DE/controller UI editor for `settings/semu-settings.json`,
+  `input/keymaps/steam_deck.skm`, `sync/sync.json`, and
   `verification/screenshots.json`.

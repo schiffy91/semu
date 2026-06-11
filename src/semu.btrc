@@ -9,6 +9,7 @@ import ./semu/doctor/*;
 import ./semu/utils/*;
 import ./semu/verification/*;
 import ./semu/sync/*;
+import ./semu/settings/*;
 import ./semu/tests/*;
 import ./semu/cli/*;
 
@@ -62,6 +63,10 @@ int main(int argc, char** argv) {
     }
     if (command.equals("config")) {
         int status = configCommand(args, project);
+        return status;
+    }
+    if (command.equals("settings")) {
+        int status = settingsCommand(args, project);
         return status;
     }
     if (command.equals("apprun")) {
