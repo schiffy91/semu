@@ -79,6 +79,13 @@ input checks through the same BTRC CLI used on a physical Deck.
 - Broad real-emulator Deck pass: launch representative games through RetroArch,
   Dolphin, PPSSPP, Flycast, melonDS, PCSX2, Cemu, Azahar, Gopher64, and Ryujinx;
   verify fullscreen windowing, controller input, and return-to-ES-DE behavior.
+- Input and settings pass: compare Semu's bottom-left radial behavior against
+  RetroArch-native save/load/quit/menu handling, then expose Semu Settings
+  entries through ES-DE for ROM location, Syncthing, shader, bezel, input test,
+  doctor, and reconfigure actions.
+- Visual pass after input is solid: verify RetroArch shader/bezel presets first,
+  then test standalone emulator wrapper experiments with gamescope ReShade or
+  vkBasalt behind feature flags and screenshot evidence.
 - True multi-device Syncthing: current tests cover config, systemd units, local
   service/API, and force-rescan commands. A second real device pass should
   verify conflict/resolution behavior.

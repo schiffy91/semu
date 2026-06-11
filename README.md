@@ -33,6 +33,8 @@ Important remaining production gaps are tracked in `tests/E2E.md`. The
 SteamOS/AppImage path has a physical Deck smoke pass, but the final production
 gate is still a Game Mode pass that exercises the Steam Input radial menu and
 representative games across the routed emulator set.
+The input, shader, bezel, and ES-DE settings rollout is specified in
+`docs/input-and-visuals.md`.
 
 ## Design Principles
 
@@ -55,6 +57,7 @@ representative games across the routed emulator set.
 |---|---|
 | `src/semu.btrc` | Small BTRC entrypoint and command dispatcher. |
 | `src/semu/` | BTRC runtime modules grouped by manifest, input, emulators, sync, verification, utilities, and tests. |
+| `docs/` | Architecture notes and production rollout plans for input, visuals, settings, and verification. |
 | `semu.json` | Generated JSON manifest for UI/editor/runtime consumers. |
 | `generated/semu.c` | Generated C snapshot compiled by Nix packages. |
 | `emulators/profiles/` | Curated emulator profile defaults and user-owned per-emulator config targets. |
