@@ -409,6 +409,10 @@ int e2eSyncSmoke(CliArgs args) {
 
     if (!e2eRunOk(e2eRunSync(exe, home, binDir, project, ["setup"]), "sync setup")) { return 1; }
     string systemctlLog = FileSystem.readText(joinPath(capture, "systemctl.log"));
+    string syncService = FileSystem.readText(joinPath(home, ".config/systemd/user/semu-syncthing.service"));
+    string syncForceScript = FileSystem.readText(joinPath(project, "sync/bin/sync-force.sh"));
+    if (!e2eContains(syncService, " sync serve --project ", "sync service stable semu entrypoint")) { return 1; }
+    if (!e2eContains(syncForceScript, " sync force all --project ", "sync force stable semu entrypoint")) { return 1; }
     if (!e2eContains(systemctlLog, "--user daemon-reload", "sync daemon-reload")) { return 1; }
     if (!e2eContains(systemctlLog, "--user enable semu-syncthing.service", "sync enable service")) { return 1; }
     if (!e2eContains(systemctlLog, "--user enable semu-sync-force.timer", "sync enable timer")) { return 1; }

@@ -227,9 +227,9 @@ int e2eAppImageSmoke(CliArgs args) {
     ]));
     if (!e2eExpectStatus(0, "APPDIR=" + ShellWords.quote(cliAppDir)
         + " APPIMAGE=" + ShellWords.quote(cliAppImage)
-        + " SEMU_PROJECT_DIR=" + ShellWords.quote(cliProject)
         + " " + ShellWords.quote(joinPath(cliAppDir, "AppRun"))
-        + " manifest --output " + ShellWords.quote(joinPath(tmp, "manifest.json")))) { return 1; }
+        + " manifest --output " + ShellWords.quote(joinPath(tmp, "manifest.json"))
+        + " --project " + ShellWords.quote(cliProject))) { return 1; }
     if (!e2eFileContains(cliArgs, "manifest", "AppRun CLI passthrough")) { return 1; }
     if (!e2eFileContains(cliArgs, "--project", "AppRun project arg")) { return 1; }
     if (!e2eFileContains(cliArgs, "--roms", "AppRun roms arg")) { return 1; }

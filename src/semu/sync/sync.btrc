@@ -70,15 +70,17 @@ bool syncSyncthingAvailable() {
     return syncSyncthingExecutable().len() > 0;
 }
 
+string syncServeCommand(string project) {
+    return ShellWords.quote(serviceExecutable()) + " sync serve --project " + ShellWords.quote(project);
+}
+
 string syncServiceText(string project) {
-    string syncthing = syncSyncthingExecutable();
-    if (syncthing.len() == 0) { syncthing = "syncthing"; }
     return "[Unit]\n"
         + "Description=Semu Syncthing\n"
         + "After=network-online.target\n\n"
         + "[Service]\n"
         + "Type=simple\n"
-        + "ExecStart=" + ShellWords.quote(syncthing) + " serve -H " + ShellWords.quote(syncthingHome(project)) + " --no-browser --no-restart\n"
+        + "ExecStart=" + syncServeCommand(project) + "\n"
         + "Restart=on-failure\n"
         + "RestartSec=5\n\n"
         + "[Install]\n"
@@ -413,6 +415,23 @@ bool syncStart(string project) {
     if (!syncSystemctl("start", "semu-syncthing.service")) { ok = false; }
     print(ok ? "OK sync start" : "MISSING sync start failed");
     return ok;
+}
+
+bool syncServe(string project) {
+    string syncthing = syncSyncthingExecutable();
+    if (syncthing.len() == 0) {
+        print("MISSING syncthing: executable not found");
+        return false;
+    }
+    ExecResult result = UnixShell().runRaw(
+        ShellWords.quote(syncthing)
+            + " serve -H " + ShellWords.quote(syncthingHome(project))
+            + " --no-browser --no-restart",
+        false,
+        false,
+        ""
+    );
+    return result.ok();
 }
 
 bool syncStop(string project) {
