@@ -80,6 +80,20 @@ arg_value() {
   done
 }
 
+arg_present() {
+  local name="$1"
+  shift
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      "$name"|"$name"=*)
+        return 0
+        ;;
+    esac
+    shift
+  done
+  return 1
+}
+
 # Where the user's emulator state lives (cloud-synced via Syncthing/Google
 # Drive/whatever the user wires up). Default to a sibling of ROMs, but allow
 # explicit override.
@@ -177,8 +191,11 @@ case "${1:-}" in
     if [ "${1:-}" = "launcher" ]; then
       exec "$SEMU_CLI" "$@"
     fi
-    SEMU_CLI_CONTEXT_ARGS=( --project "$SEMU_PROJECT_DIR" )
-    if [[ ! " $* " =~ " --roms " ]]; then
+    SEMU_CLI_CONTEXT_ARGS=()
+    if ! arg_present --project "$@"; then
+      SEMU_CLI_CONTEXT_ARGS+=( --project "$SEMU_PROJECT_DIR" )
+    fi
+    if ! arg_present --roms "$@"; then
       SEMU_CLI_CONTEXT_ARGS+=( --roms "$SEMU_ROMS_DIR" )
     fi
     exec "$SEMU_CLI" "$@" "${SEMU_CLI_CONTEXT_ARGS[@]}"
