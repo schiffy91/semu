@@ -43,6 +43,8 @@ string e2eFakeAppImageToolText() {
         "grep -F -- '--ro-bind \"$APPDIR/nix/store\" /nix/store' \"$APPDIR/AppRun\" >/dev/null",
         "grep -F 'SEMU_LAUNCHER_BIN' \"$APPDIR/AppRun\" >/dev/null",
         "grep -F 'SEMU_RETROARCH_CORE_DIR' \"$APPDIR/AppRun\" >/dev/null",
+        "grep -F 'fake semu-btrc' \"$APPDIR/usr/bin/semu\" >/dev/null",
+        "! grep -F 'wrapped semu' \"$APPDIR/usr/bin/semu\" >/dev/null",
         "! grep -F 'sync setup' \"$APPDIR/AppRun\" >/dev/null",
         "! grep -F 'pkexec' \"$APPDIR/AppRun\" >/dev/null",
         "find \"$APPDIR/usr/bin\" -maxdepth 1 -type f -perm -111 -print | sort > \"$OUTPUT\"",
@@ -91,13 +93,18 @@ Vector<string> appImageExpectedBins() {
 
 void e2eWriteFakeNixPackage(string root, bool includeBwrap) {
     ensureDir(joinPath(root, "bin"));
+    ensureDir(joinPath(root, "lib/semu"));
     ensureDir(joinPath(root, "lib/retroarch/cores"));
+    e2eWriteExecutable(joinPath(root, "lib/semu/semu-btrc"), textLines([
+        "#!/usr/bin/env bash",
+        "echo fake semu-btrc \"$@\""
+    ]));
     FileSystem.writeText(joinPath(root, "lib/retroarch/cores/gambatte_libretro.so"), "fake core\n");
     for bin in appImageExpectedBins() {
         if (includeBwrap || !bin.equals("bwrap")) {
             e2eWriteExecutable(joinPath(root, "bin/" + bin), textLines([
                 "#!/usr/bin/env bash",
-                "echo fake " + bin + " \"$@\""
+                "echo wrapped " + bin + " \"$@\""
             ]));
         }
     }
