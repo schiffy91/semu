@@ -245,6 +245,20 @@ int e2eAppImageSmoke(CliArgs args) {
     if (!e2eFileContains(cliArgs, "--project", "AppRun project arg")) { return 1; }
     if (!e2eFileContains(cliArgs, "--roms", "AppRun roms arg")) { return 1; }
     if (!e2eFileContains(cliEnv, cliAppImage, "AppRun stable SEMU_BIN")) { return 1; }
+    if (!e2eExpectStatus(0, "APPDIR=" + ShellWords.quote(cliAppDir)
+        + " APPIMAGE=" + ShellWords.quote(cliAppImage)
+        + " SEMU_PROJECT_DIR=" + ShellWords.quote(cliProject)
+        + " SEMU_ROMS=" + ShellWords.quote(joinPath(tmp, "roms"))
+        + " " + ShellWords.quote(joinPath(cliAppDir, "AppRun"))
+        + " launcher routed retroarch /bin/retroarch game.rom --sentinel")) { return 1; }
+    string launcherArgs = FileSystem.readText(cliArgs);
+    if (!e2eContains(launcherArgs, "launcher", "AppRun launcher passthrough")) { return 1; }
+    if (!e2eContains(launcherArgs, "--sentinel", "AppRun launcher emulator arg")) { return 1; }
+    if (launcherArgs.contains("--project") || launcherArgs.contains("--roms")) {
+        print("launcher AppRun passthrough leaked context args:");
+        print(launcherArgs);
+        return 1;
+    }
 
     string bootstrapProject = joinPath(tmp, "bootstrap-project");
     ensureDir(bootstrapProject);
