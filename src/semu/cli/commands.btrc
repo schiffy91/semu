@@ -300,8 +300,9 @@ int configCommand(CliArgs args, string project) {
         mode = args.get(1);
     }
     if (mode.equals("env")) {
+        string roms = args.valueAfter("--roms", configuredRomsRoot(project));
         print("export SEMU_PROJECT_DIR=" + ShellWords.quote(project));
-        print("export SEMU_ROMS_DIR=" + ShellWords.quote(configuredRomsRoot(project)));
+        print("export SEMU_ROMS_DIR=" + ShellWords.quote(normalizeRomsRoot(roms)));
         print("export SEMU_BIN=" + ShellWords.quote(serviceExecutable()));
         return 0;
     }

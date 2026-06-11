@@ -36,7 +36,10 @@ string e2eFakeAppImageToolText() {
         "  test -e \"$APPDIR/$required\" || { echo \"missing AppDir path: $required\" >&2; exit 3; }",
         "done",
         "test ! -e \"$APPDIR/packaging/linux/build-appimage.sh\" || { echo \"build script shipped inside AppDir\" >&2; exit 3; }",
+        "head -1 \"$APPDIR/AppRun\" | grep -F '#!/usr/bin/env bash' >/dev/null",
         "grep -F 'SEMU_NIX_STORE_MOUNTED' \"$APPDIR/AppRun\" >/dev/null",
+        "grep -F 'HOST_PATH=' \"$APPDIR/AppRun\" >/dev/null",
+        "grep -F 'PATH=\"$HOST_PATH\" command -v bwrap' \"$APPDIR/AppRun\" >/dev/null",
         "grep -F -- '--ro-bind \"$APPDIR/nix/store\" /nix/store' \"$APPDIR/AppRun\" >/dev/null",
         "grep -F 'SEMU_LAUNCHER_BIN' \"$APPDIR/AppRun\" >/dev/null",
         "grep -F 'SEMU_RETROARCH_CORE_DIR' \"$APPDIR/AppRun\" >/dev/null",
@@ -166,6 +169,23 @@ int e2eAppImageSmoke(CliArgs args) {
     if (!e2eFileContains(bwrapArgs, "--tmpfs", "bwrap args tmpfs")) { return 1; }
     if (!e2eFileContains(bwrapArgs, "/nix/store", "bwrap args nix store")) { return 1; }
 
+    string hostBwrapAppDir = joinPath(tmp, "AppRunHostBwrap.AppDir");
+    ensureDir(joinPath(hostBwrapAppDir, "nix/store"));
+    ensureDir(joinPath(hostBwrapAppDir, "usr/bin"));
+    copyFilePath(joinPath(project, "packaging/linux/AppRun"), joinPath(hostBwrapAppDir, "AppRun"));
+    FileSystem.chmod(joinPath(hostBwrapAppDir, "AppRun"), 493);
+    e2eWriteExecutable(joinPath(hostBwrapAppDir, "usr/bin/bwrap"), textLines([
+        "#!/usr/bin/env bash",
+        "echo bundled bwrap should not bootstrap the Nix store >&2",
+        "exit 88"
+    ]));
+    UnixShell().runRaw("rm -f " + ShellWords.quote(bwrapArgs), true, false, "");
+    if (!e2eExpectStatus(0, "APPDIR=" + ShellWords.quote(hostBwrapAppDir)
+        + " PATH=" + ShellWords.quote(binDir) + ":$PATH"
+        + " " + ShellWords.quote(joinPath(hostBwrapAppDir, "AppRun")) + " --probe")) { return 1; }
+    if (!e2eFileContains(bwrapArgs, "--tmpfs", "host bwrap args tmpfs")) { return 1; }
+    if (!e2eFileContains(bwrapArgs, "/nix/store", "host bwrap args nix store")) { return 1; }
+
     string noProject = joinPath(tmp, "AppRunNoProject.AppDir");
     ensureDir(joinPath(noProject, "usr/bin"));
     copyFilePath(joinPath(project, "packaging/linux/AppRun"), joinPath(noProject, "AppRun"));
@@ -207,6 +227,7 @@ int e2eAppImageSmoke(CliArgs args) {
         + " manifest --output " + ShellWords.quote(joinPath(tmp, "manifest.json")))) { return 1; }
     if (!e2eFileContains(cliArgs, "manifest", "AppRun CLI passthrough")) { return 1; }
     if (!e2eFileContains(cliArgs, "--project", "AppRun project arg")) { return 1; }
+    if (!e2eFileContains(cliArgs, "--roms", "AppRun roms arg")) { return 1; }
 
     string bootstrapProject = joinPath(tmp, "bootstrap-project");
     ensureDir(bootstrapProject);
