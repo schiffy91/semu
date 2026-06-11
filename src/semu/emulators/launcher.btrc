@@ -169,6 +169,15 @@ void launcherCopyFile(string source, string destination) {
     FileSystem.writeText(destination, FileSystem.readText(source));
 }
 
+void launcherCopyFirstExisting(Vector<string> sources, string destination) {
+    for source in sources {
+        if (FileSystem.isFile(source)) {
+            launcherCopyFile(source, destination);
+            return;
+        }
+    }
+}
+
 void launcherCopyProfileDir(string project, string relative, string destination) {
     launcherCopyDirContents(emulatorProfilePath(project, relative), destination);
 }
@@ -201,6 +210,8 @@ string launcherRetroArchConfig(string project) {
         + launcherRetroArchConfigValue("video_driver", "glcore")
         + launcherRetroArchConfigValue("video_fullscreen", "true")
         + launcherRetroArchConfigValue("video_windowed_fullscreen", "false")
+        + launcherRetroArchConfigValue("video_scale_integer", "true")
+        + launcherRetroArchConfigValue("video_force_aspect", "true")
         + launcherRetroArchConfigValue("video_vsync", "true")
         + launcherRetroArchConfigValue("audio_driver", "pulse")
         + launcherRetroArchConfigValue("input_driver", "sdl2")
@@ -335,9 +346,14 @@ void launcherSeedRoutedState(string project, string emulator, string configRoot,
     if (key.equals("cemu")) {
         launcherCopyStateDir(project, "Cemu/config", joinPath(configRoot, "Cemu"));
         launcherCopyStateDir(project, "Cemu/data", joinPath(dataRoot, "Cemu"));
+        launcherCopyFirstExisting([
+            joinPath(configuredEmulationRoot(project), "Cemu/data/keys.txt"),
+            emulatorProfilePath(project, "Cemu/data/keys.txt")
+        ], joinPath(dataRoot, "Cemu/keys.txt"));
         return;
     }
     if (key.equals("azahar")) {
+        launcherCopyStateDir(project, "Azahar/config", joinPath(configRoot, "azahar-emu"));
         launcherCopyStateDir(project, "Azahar/data", joinPath(dataRoot, "azahar-emu"));
         return;
     }
@@ -362,6 +378,16 @@ void launcherSeedRoutedState(string project, string emulator, string configRoot,
     }
     if (key.equals("ryujinx")) {
         launcherCopyStateDir(project, "Ryujinx/config", joinPath(configRoot, "Ryujinx"));
+        string systemRoot = joinPath(configRoot, "Ryujinx/system");
+        ensureDir(systemRoot);
+        launcherCopyFirstExisting([
+            joinPath(configuredEmulationRoot(project), "Ryujinx/config/system/prod.keys"),
+            joinPath(biosRoot(project), "switch/prod.keys")
+        ], joinPath(systemRoot, "prod.keys"));
+        launcherCopyFirstExisting([
+            joinPath(configuredEmulationRoot(project), "Ryujinx/config/system/title.keys"),
+            joinPath(biosRoot(project), "switch/title.keys")
+        ], joinPath(systemRoot, "title.keys"));
         return;
     }
 }

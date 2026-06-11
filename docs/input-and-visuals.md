@@ -6,10 +6,12 @@ loop. Input must become boring before visual treatment gets clever.
 ## Implementation Order
 
 1. Prove the Steam Deck input contract in Game Mode.
-2. Add an ES-DE Semu Settings entrypoint for configuration actions.
-3. Ship RetroArch-native shader and bezel presets for RetroArch-backed systems.
-4. Prototype standalone emulator post-processing behind explicit feature flags.
-5. Add broader bezel artwork once the wrapper path is proven per emulator.
+2. Use the shipped `semu settings list|get|put|apply` CLI as the mutation
+   contract.
+3. Add an ES-DE Semu Settings entrypoint for configuration actions.
+4. Ship RetroArch-native shader and bezel presets for RetroArch-backed systems.
+5. Prototype standalone emulator post-processing behind explicit feature flags.
+6. Add broader bezel artwork once the wrapper path is proven per emulator.
 
 ## RetroArch Versus Semu Input
 
@@ -75,6 +77,8 @@ Production tasks:
 - Bundle or fetch `libretro-shaders-slang` through Nix.
 - Configure RetroArch for Vulkan where available and GLCore fallback.
 - Add a per-system shader preset map in Semu configuration.
+- Keep native integer scaling on by default for classic systems unless a
+  specific shader preset requires exact viewport control.
 - Enable shaders with `video_shader_enable = true`.
 - Write per-system preset references into the generated RetroArch config.
 - Keep a performance tier for the Steam Deck OLED panel, starting with lighter
@@ -147,10 +151,37 @@ RetroArch bezels can become production before standalone bezels. Standalone
 bezels require per-emulator screenshot proof that content is not cropped,
 stretched, or hidden behind the bezel.
 
+Default policy:
+
+- `visual.integer_scaling=true`
+- `visual.crt_shaders=true`
+- `visual.bezels=true`
+- `visual.bezel_policy=classic`
+- Classic visual systems:
+  `gb,gbc,gba,nes,snes,genesis,n64,nds,dreamcast,psx,ps2,psp,gc,wii`
+- Modern exclusions: `n3ds,wiiu,switch`
+
 ## ES-DE Semu Settings Entry
 
 Semu needs a settings entrypoint inside ES-DE so configuration is controller
 reachable on the Deck.
+
+The first shipped contract is CLI-backed and file-backed:
+
+```sh
+semu settings list
+semu settings get roms.dir
+semu settings put roms.dir /run/media/deck/SD --apply
+semu settings put visual.integer_scaling true
+semu settings put visual.bezels true
+semu settings put sync.roms false
+semu settings apply
+```
+
+The CLI writes `settings/semu-settings.json` and `sync/sync.json`; it does not
+store shadow state. ES-DE entries should call this CLI and then run
+`settings apply` or pass `--apply` for mutations that require generated files
+to be rerendered.
 
 Recommended shape:
 

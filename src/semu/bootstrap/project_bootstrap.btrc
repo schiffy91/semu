@@ -171,7 +171,9 @@ void seedEmulatorDefaults(string project) {
     writeProfile(project, "Dolphin/config/Profiles/Wiimote/Wiimote (SD).ini", dolphinWiimoteProfileText(false));
     writeProfile(project, "Dolphin/config/Profiles/Wiimote/Wiimote + Classic Controller (SD).ini", dolphinWiimoteProfileText(true));
     writeProfile(project, "Cemu/config/controllerProfiles/SteamInput-P1.xml", cemuProfileText());
+    writeProfile(project, "PCSX2/config/inis/PCSX2.ini", pcsx2ConfigText(project));
     writeProfile(project, "PCSX2/config/inputprofiles/Steam Deck.ini", pcsx2ProfileText(ir));
+    writeProfile(project, "Azahar/config/qt-config.ini", azaharConfigText(project));
     writeProfile(project, "Ryujinx/config/profiles/controller/Steam Virtual Controller.json", ryujinxProfileText());
 }
 
@@ -278,6 +280,7 @@ void ensureProjectContentDirs(string project) {
 // ---- deck_bootstrap.btrc ----
 void bootstrapSteamDeck(string project) {
     writeSyncDefaults(project, "");
+    writeSettingsDefaults(project);
     ensureProjectContentDirs(project);
 
     seedKeymapDefaults(project);

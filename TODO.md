@@ -5,6 +5,11 @@
 - Exercise representative games across the routed emulator set on the physical
   Deck: RetroArch, Dolphin, PPSSPP, Flycast, melonDS, PCSX2, Cemu, Azahar,
   Gopher64, and Ryujinx.
+- Rebuild/reinstall the AppImage and rerun the broad Deck pass after the
+  settings/state-seeding changes: PCSX2 setup wizard, Azahar OpenGL config,
+  Cemu keys/state, Ryujinx keys, and RetroArch integer scaling.
+- Fix the Gopher64 routed Deck launch failure where it panics while creating
+  the window under the current Desktop Mode wrapper.
 - Add ES-DE `Semu Settings` entries for ROM location, Syncthing, sync folders,
   CRT shaders, bezels, input test, doctor, and reconfigure.
 - Add RetroArch shader preset configuration, starting with bundled
@@ -13,6 +18,7 @@
   ReShade and vkBasalt only after the input gates pass.
 - Promote `utils/steam-deck-bootstrap.sh` into BTRC Deck commands after the
   full physical Game Mode pass.
-- Add a controller-first settings UI for keymaps, sync folders, screenshots,
+- Add a controller-first settings UI on top of the current
+  `settings list|get|put|apply` CLI for keymaps, sync folders, screenshots,
   ROM paths, BIOS status, shaders, and bezels.
 - Pair a second Syncthing device and verify conflict behavior.
