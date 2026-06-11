@@ -130,6 +130,15 @@ bool e2eFileContains(string path, string expected, string label) {
     return e2eContains(FileSystem.readText(path), expected, label);
 }
 
+int e2eCountArgLines(string text, string expected) {
+    int count = 0;
+    Vector<string> lines = Strings.split(text, "\n");
+    for line in lines {
+        if (line.equals(expected)) { count += 1; }
+    }
+    return count;
+}
+
 string e2eBuildAppImageCommand(string project, string binDir, string nixPackage, string esde, string output) {
     return "cd " + ShellWords.quote(project)
         + " && PATH=" + ShellWords.quote(binDir) + ":$PATH"
@@ -240,10 +249,22 @@ int e2eAppImageSmoke(CliArgs args) {
         + " APPIMAGE=" + ShellWords.quote(cliAppImage)
         + " " + ShellWords.quote(joinPath(cliAppDir, "AppRun"))
         + " manifest --output " + ShellWords.quote(joinPath(tmp, "manifest.json"))
-        + " --project " + ShellWords.quote(cliProject))) { return 1; }
+        + " --project " + ShellWords.quote(cliProject)
+        + " --roms=" + ShellWords.quote(joinPath(tmp, "explicit-roms")))) { return 1; }
     if (!e2eFileContains(cliArgs, "manifest", "AppRun CLI passthrough")) { return 1; }
     if (!e2eFileContains(cliArgs, "--project", "AppRun project arg")) { return 1; }
     if (!e2eFileContains(cliArgs, "--roms", "AppRun roms arg")) { return 1; }
+    string manifestArgs = FileSystem.readText(cliArgs);
+    if (e2eCountArgLines(manifestArgs, "--project") != 1) {
+        print("AppRun duplicated --project:");
+        print(manifestArgs);
+        return 1;
+    }
+    if (e2eCountArgLines(manifestArgs, "--roms") != 0) {
+        print("AppRun appended duplicate --roms after explicit --roms=...");
+        print(manifestArgs);
+        return 1;
+    }
     if (!e2eFileContains(cliEnv, cliAppImage, "AppRun stable SEMU_BIN")) { return 1; }
     if (!e2eExpectStatus(0, "APPDIR=" + ShellWords.quote(cliAppDir)
         + " APPIMAGE=" + ShellWords.quote(cliAppImage)
