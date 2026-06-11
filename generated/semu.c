@@ -12275,6 +12275,21 @@ int e2eAppImageSmoke(CliArgs* args) {
     if (!e2eFileContains(cliEnv, cliAppImage, "AppRun stable SEMU_BIN")) {
         return 1;
     }
+    if (!e2eExpectStatus(0, __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat("APPDIR=", ShellWords_quote(cliAppDir))), " APPIMAGE=")), ShellWords_quote(cliAppImage))), " SEMU_PROJECT_DIR=")), ShellWords_quote(cliProject))), " SEMU_ROMS=")), ShellWords_quote(joinPath(tmp, "roms")))), " ")), ShellWords_quote(joinPath(cliAppDir, "AppRun")))), " launcher routed retroarch /bin/retroarch game.rom --sentinel")))) {
+        return 1;
+    }
+    char* launcherArgs = FileSystem_readText(cliArgs);
+    if (!e2eContains(launcherArgs, "launcher", "AppRun launcher passthrough")) {
+        return 1;
+    }
+    if (!e2eContains(launcherArgs, "--sentinel", "AppRun launcher emulator arg")) {
+        return 1;
+    }
+    if (__btrc_strContains(launcherArgs, "--project") || __btrc_strContains(launcherArgs, "--roms")) {
+        printf("%s\n", "launcher AppRun passthrough leaked context args:");
+        printf("%s\n", launcherArgs);
+        return 1;
+    }
     char* bootstrapProject = joinPath(tmp, "bootstrap-project");
     ensureDir(bootstrapProject);
     char* launcherBin = joinPath(appDir, "usr/bin");
