@@ -542,6 +542,7 @@ char* syncGuiAddress(char* project);
 char* serviceExecutable(void);
 char* syncSyncthingExecutable(void);
 bool syncSyncthingAvailable(void);
+char* syncServeCommand(char* project);
 char* syncServiceText(char* project);
 char* syncForceScriptText(char* project);
 char* syncForceServiceText(char* project);
@@ -572,6 +573,7 @@ bool lifecycleChangeKeymap(char* project, char* actionId, char* command);
 void lifecycleUpgrade(char* project);
 void lifecycleStatus(char* project);
 bool syncStart(char* project);
+bool syncServe(char* project);
 bool syncStop(char* project);
 bool syncAutostart(char* project, bool enabled);
 bool syncForce(char* project, char* target);
@@ -11446,12 +11448,12 @@ bool syncSyncthingAvailable(void) {
     return (((int)strlen(syncSyncthingExecutable())) > 0);
 }
 
+char* syncServeCommand(char* project) {
+    return __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(ShellWords_quote(serviceExecutable()), " sync serve --project ")), ShellWords_quote(project)));
+}
+
 char* syncServiceText(char* project) {
-    char* syncthing = syncSyncthingExecutable();
-    if (((int)strlen(syncthing)) == 0) {
-        (syncthing = "syncthing");
-    }
-    return __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat("[Unit]\n", "Description=Semu Syncthing\n")), "After=network-online.target\n\n")), "[Service]\n")), "Type=simple\n")), "ExecStart=")), ShellWords_quote(syncthing))), " serve -H ")), ShellWords_quote(syncthingHome(project)))), " --no-browser --no-restart\n")), "Restart=on-failure\n")), "RestartSec=5\n\n")), "[Install]\n")), "WantedBy=default.target\n"));
+    return __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat("[Unit]\n", "Description=Semu Syncthing\n")), "After=network-online.target\n\n")), "[Service]\n")), "Type=simple\n")), "ExecStart=")), syncServeCommand(project))), "\n")), "Restart=on-failure\n")), "RestartSec=5\n\n")), "[Install]\n")), "WantedBy=default.target\n"));
 }
 
 char* syncForceScriptText(char* project) {
@@ -11856,6 +11858,16 @@ bool syncStart(char* project) {
     return ok;
 }
 
+bool syncServe(char* project) {
+    char* syncthing = syncSyncthingExecutable();
+    if (((int)strlen(syncthing)) == 0) {
+        printf("%s\n", "MISSING syncthing: executable not found");
+        return false;
+    }
+    ExecResult* result = UnixShell_runRaw(UnixShell_new(), __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(ShellWords_quote(syncthing), " serve -H ")), ShellWords_quote(syncthingHome(project)))), " --no-browser --no-restart")), false, false, "");
+    return ExecResult_ok(result);
+}
+
 bool syncStop(char* project) {
     bool ok = true;
     if (!syncSystemctl("stop", "semu-sync-force.timer")) {
@@ -12237,7 +12249,7 @@ int e2eAppImageSmoke(CliArgs* args) {
     btrc_Vector_string_push(__list_703, __btrc_str_track(__btrc_strcat("printf '%s\\n' \"$@\" > ", ShellWords_quote(cliArgs))));
     btrc_Vector_string_push(__list_703, __btrc_str_track(__btrc_strcat("printf '%s\\n' \"${SEMU_BIN:-}\" > ", ShellWords_quote(cliEnv))));
     e2eWriteExecutable(joinPath(cliAppDir, "usr/bin/semu"), textLines(__list_703));
-    if (!e2eExpectStatus(0, __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat("APPDIR=", ShellWords_quote(cliAppDir))), " APPIMAGE=")), ShellWords_quote(cliAppImage))), " SEMU_PROJECT_DIR=")), ShellWords_quote(cliProject))), " ")), ShellWords_quote(joinPath(cliAppDir, "AppRun")))), " manifest --output ")), ShellWords_quote(joinPath(tmp, "manifest.json")))))) {
+    if (!e2eExpectStatus(0, __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat("APPDIR=", ShellWords_quote(cliAppDir))), " APPIMAGE=")), ShellWords_quote(cliAppImage))), " ")), ShellWords_quote(joinPath(cliAppDir, "AppRun")))), " manifest --output ")), ShellWords_quote(joinPath(tmp, "manifest.json")))), " --project ")), ShellWords_quote(cliProject))))) {
         return 1;
     }
     if (!e2eFileContains(cliArgs, "manifest", "AppRun CLI passthrough")) {
@@ -13791,6 +13803,14 @@ int e2eSyncSmoke(CliArgs* args) {
         return 1;
     }
     char* systemctlLog = FileSystem_readText(joinPath(capture, "systemctl.log"));
+    char* syncService = FileSystem_readText(joinPath(home, ".config/systemd/user/semu-syncthing.service"));
+    char* syncForceScript = FileSystem_readText(joinPath(project, "sync/bin/sync-force.sh"));
+    if (!e2eContains(syncService, " sync serve --project ", "sync service stable semu entrypoint")) {
+        return 1;
+    }
+    if (!e2eContains(syncForceScript, " sync force all --project ", "sync force stable semu entrypoint")) {
+        return 1;
+    }
     if (!e2eContains(systemctlLog, "--user daemon-reload", "sync daemon-reload")) {
         return 1;
     }
@@ -14298,7 +14318,7 @@ int e2eShellSyntaxSmoke(char* project) {
 }
 
 void printUsage(void) {
-    printf("%s\n", "semu [manifest|bootstrap|doctor|deck|lifecycle|sync|config|apprun|steam-input|keymap|screenshot|sandbox|launcher|utils|e2e] [graph|payload-audit|n3ds-nocrypto|validate|render|install|setup|reconfigure|change|uninstall|reinstall|upgrade|status|force|capture|prepare|launch] [--project PATH] [--roms PATH] [--source PATH] [--output PATH] [--dest PATH] [--target manifest|retroarch|dolphin|pcsx2|steam-input] [--emulator NAME] [--hook HOOK] [--scratch PATH] [--action ID] [--command KEYS]");
+    printf("%s\n", "semu [manifest|bootstrap|doctor|deck|lifecycle|sync|config|apprun|steam-input|keymap|screenshot|sandbox|launcher|utils|e2e] [graph|payload-audit|n3ds-nocrypto|validate|render|install|setup|reconfigure|change|uninstall|reinstall|upgrade|status|force|serve|capture|prepare|launch] [--project PATH] [--roms PATH] [--source PATH] [--output PATH] [--dest PATH] [--target manifest|retroarch|dolphin|pcsx2|steam-input] [--emulator NAME] [--hook HOOK] [--scratch PATH] [--action ID] [--command KEYS]");
 }
 
 int keymapCommand(CliArgs* args) {
@@ -14456,6 +14476,9 @@ int syncCommand(CliArgs* args, char* project) {
     }
     if (strcmp(mode, "start") == 0) {
         return (syncStart(project) ? 0 : 1);
+    }
+    if (strcmp(mode, "serve") == 0) {
+        return (syncServe(project) ? 0 : 1);
     }
     if (strcmp(mode, "stop") == 0) {
         return (syncStop(project) ? 0 : 1);

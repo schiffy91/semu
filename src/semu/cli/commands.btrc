@@ -5,7 +5,7 @@ class SemuCliCommands {
 
 // ---- config_commands.btrc ----
 void printUsage() {
-    print("semu [manifest|bootstrap|doctor|deck|lifecycle|sync|config|apprun|steam-input|keymap|screenshot|sandbox|launcher|utils|e2e] [graph|payload-audit|n3ds-nocrypto|validate|render|install|setup|reconfigure|change|uninstall|reinstall|upgrade|status|force|capture|prepare|launch] [--project PATH] [--roms PATH] [--source PATH] [--output PATH] [--dest PATH] [--target manifest|retroarch|dolphin|pcsx2|steam-input] [--emulator NAME] [--hook HOOK] [--scratch PATH] [--action ID] [--command KEYS]");
+    print("semu [manifest|bootstrap|doctor|deck|lifecycle|sync|config|apprun|steam-input|keymap|screenshot|sandbox|launcher|utils|e2e] [graph|payload-audit|n3ds-nocrypto|validate|render|install|setup|reconfigure|change|uninstall|reinstall|upgrade|status|force|serve|capture|prepare|launch] [--project PATH] [--roms PATH] [--source PATH] [--output PATH] [--dest PATH] [--target manifest|retroarch|dolphin|pcsx2|steam-input] [--emulator NAME] [--hook HOOK] [--scratch PATH] [--action ID] [--command KEYS]");
 }
 int keymapCommand(CliArgs args) {
     string mode = "validate";
@@ -106,6 +106,9 @@ int syncCommand(CliArgs args, string project) {
     }
     if (mode.equals("start")) {
         return syncStart(project) ? 0 : 1;
+    }
+    if (mode.equals("serve")) {
+        return syncServe(project) ? 0 : 1;
     }
     if (mode.equals("stop")) {
         return syncStop(project) ? 0 : 1;

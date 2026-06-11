@@ -57,9 +57,35 @@ case "${1:-}" in
     ;;
 esac
 
+arg_value() {
+  local name="$1"
+  shift
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      "$name")
+        if [ $# -gt 1 ]; then
+          printf '%s\n' "$2"
+          return
+        fi
+        ;;
+      "$name"=*)
+        printf '%s\n' "${1#*=}"
+        return
+        ;;
+    esac
+    shift
+  done
+}
+
 # Where the user's emulator state lives (cloud-synced via Syncthing/Google
 # Drive/whatever the user wires up). Default to a sibling of ROMs, but allow
 # explicit override.
+if [ -z "${SEMU_PROJECT_DIR:-}" ]; then
+  SEMU_ARG_PROJECT="$(arg_value --project "$@" || true)"
+  if [ -n "$SEMU_ARG_PROJECT" ]; then
+    export SEMU_PROJECT_DIR="$SEMU_ARG_PROJECT"
+  fi
+fi
 if [ -z "${SEMU_PROJECT_DIR:-}" ]; then
   for candidate in \
       "$HOME/semu" \
@@ -101,6 +127,12 @@ detect_roms_dir() {
     normalize_roms_dir "$SEMU_ROMS"
     return
   fi
+  local arg_roms
+  arg_roms="$(arg_value --roms "$@" || true)"
+  if [ -n "$arg_roms" ]; then
+    normalize_roms_dir "$arg_roms"
+    return
+  fi
   local candidate
   for candidate in \
       /run/media/deck/SD/Emulation/ES-DE/ES-DE/ROMs \
@@ -119,7 +151,7 @@ detect_roms_dir() {
   printf '%s\n' "$SEMU_PROJECT_DIR/ES-DE/ES-DE/ROMs"
 }
 
-export SEMU_ROMS_DIR="${SEMU_ROMS_DIR:-$(detect_roms_dir)}"
+export SEMU_ROMS_DIR="${SEMU_ROMS_DIR:-$(detect_roms_dir "$@")}"
 SEMU_DETECTED_ROMS_DIR="$SEMU_ROMS_DIR"
 
 if [ ! -x "$SEMU_CLI" ] && [ "${SEMU_ALLOW_PROJECT_CLI:-0}" = "1" ] && \
