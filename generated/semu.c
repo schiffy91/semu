@@ -12223,17 +12223,21 @@ int e2eAppImageSmoke(CliArgs* args) {
     char* cliAppDir = joinPath(tmp, "AppRunCli.AppDir");
     char* cliProject = joinPath(tmp, "cli-project");
     char* cliArgs = joinPath(tmp, "cli.args");
+    char* cliEnv = joinPath(tmp, "cli.env");
+    char* cliAppImage = joinPath(tmp, "Semu-x86_64.AppImage");
     ensureDir(joinPath(cliAppDir, "usr/bin"));
     ensureDir(joinPath(cliAppDir, "packaging/linux/bin"));
     ensureDir(cliProject);
+    FileSystem_writeText(cliAppImage, "fake appimage\n");
     FileSystem_writeText(joinPath(cliProject, "semu.json"), "{\"schema_version\":1}\n");
     copyFilePath(joinPath(project, "packaging/linux/AppRun"), joinPath(cliAppDir, "AppRun"));
     FileSystem_chmod(joinPath(cliAppDir, "AppRun"), 493);
     btrc_Vector_string* __list_703 = btrc_Vector_string_new();
     btrc_Vector_string_push(__list_703, "#!/usr/bin/env bash");
     btrc_Vector_string_push(__list_703, __btrc_str_track(__btrc_strcat("printf '%s\\n' \"$@\" > ", ShellWords_quote(cliArgs))));
+    btrc_Vector_string_push(__list_703, __btrc_str_track(__btrc_strcat("printf '%s\\n' \"${SEMU_BIN:-}\" > ", ShellWords_quote(cliEnv))));
     e2eWriteExecutable(joinPath(cliAppDir, "usr/bin/semu"), textLines(__list_703));
-    if (!e2eExpectStatus(0, __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat("APPDIR=", ShellWords_quote(cliAppDir))), " SEMU_PROJECT_DIR=")), ShellWords_quote(cliProject))), " ")), ShellWords_quote(joinPath(cliAppDir, "AppRun")))), " manifest --output ")), ShellWords_quote(joinPath(tmp, "manifest.json")))))) {
+    if (!e2eExpectStatus(0, __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat("APPDIR=", ShellWords_quote(cliAppDir))), " APPIMAGE=")), ShellWords_quote(cliAppImage))), " SEMU_PROJECT_DIR=")), ShellWords_quote(cliProject))), " ")), ShellWords_quote(joinPath(cliAppDir, "AppRun")))), " manifest --output ")), ShellWords_quote(joinPath(tmp, "manifest.json")))))) {
         return 1;
     }
     if (!e2eFileContains(cliArgs, "manifest", "AppRun CLI passthrough")) {
@@ -12243,6 +12247,9 @@ int e2eAppImageSmoke(CliArgs* args) {
         return 1;
     }
     if (!e2eFileContains(cliArgs, "--roms", "AppRun roms arg")) {
+        return 1;
+    }
+    if (!e2eFileContains(cliEnv, cliAppImage, "AppRun stable SEMU_BIN")) {
         return 1;
     }
     char* bootstrapProject = joinPath(tmp, "bootstrap-project");

@@ -38,13 +38,14 @@ if [ -d "$APPDIR/nix/store" ] && [ -z "${SEMU_NIX_STORE_MOUNTED:-}" ]; then
 fi
 
 SEMU_LINUX="$APPDIR/packaging/linux"
-SEMU_BIN="$SEMU_LINUX/bin"
+SEMU_PACKAGING_BIN="$SEMU_LINUX/bin"
 SEMU_CLI="${SEMU_CLI:-$APPDIR/usr/bin/semu}"
+SEMU_APP_EXEC="${APPIMAGE:-$APPDIR/AppRun}"
 export SEMU_ASSET_ROOT="${SEMU_ASSET_ROOT:-$APPDIR}"
 if [ -x "$APPDIR/usr/bin/semu-retroarch" ]; then
   export SEMU_LAUNCHER_BIN="${SEMU_LAUNCHER_BIN:-$APPDIR/usr/bin}"
 else
-  export SEMU_LAUNCHER_BIN="${SEMU_LAUNCHER_BIN:-$SEMU_BIN}"
+  export SEMU_LAUNCHER_BIN="${SEMU_LAUNCHER_BIN:-$SEMU_PACKAGING_BIN}"
 fi
 if [ -d "$APPDIR/usr/lib/retroarch/cores" ]; then
   export SEMU_RETROARCH_CORE_DIR="${SEMU_RETROARCH_CORE_DIR:-$APPDIR/usr/lib/retroarch/cores}"
@@ -125,7 +126,10 @@ if [ ! -x "$SEMU_CLI" ] && [ "${SEMU_ALLOW_PROJECT_CLI:-0}" = "1" ] && \
    [ -x "$SEMU_PROJECT_DIR/build/semu" ]; then
   SEMU_CLI="$SEMU_PROJECT_DIR/build/semu"
 fi
-export SEMU_BIN="$SEMU_CLI"
+# Commands written to desktop entries and systemd user units need a stable
+# entrypoint. The bundled CLI lives under the transient AppImage mount, so point
+# Semu-generated launchers back at the AppImage itself.
+export SEMU_BIN="${SEMU_BIN:-$SEMU_APP_EXEC}"
 
 case "${1:-}" in
   "" )
