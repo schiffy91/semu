@@ -257,9 +257,10 @@ Fallback behavior:
 
 Automated tests validate AppImage assembly logic with fake ES-DE and fake
 appimagetool. Physical Deck evidence covers Desktop Mode ES-DE launch,
-AppImage-owned Syncthing, SD-card ROM detection, and a RetroArch/GB launch loop.
-Game Mode, physical Steam Input radial quit, and broad per-emulator game loops
-remain the final manual gates listed in `tests/E2E.md`.
+AppImage-owned Syncthing, SD-card ROM detection, and a broad Desktop Mode
+required-route emulator loop with screenshots and uinput quit evidence. Game
+Mode, physical Steam Input radial quit, and ES-DE return flow remain the final
+manual gates listed in `tests/E2E.md`.
 
 ## Declarative Configuration
 

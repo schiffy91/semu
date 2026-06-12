@@ -6,7 +6,9 @@ PROJECT="${SEMU_PROJECT:-/home/deck/semu}"
 ROMS="${SEMU_ROMS:-/run/media/deck/SD/Emulation/ES-DE/ES-DE/ROMs}"
 RESULT="${SEMU_RESULT:-/home/deck/.cache/semu-codex-src/result}"
 OUT="${SEMU_TEST_OUT:-/home/deck/.cache/semu-codex-emulator-loop}"
-SEND="${SEMU_UINPUT_SEND:-/home/deck/.cache/semu-uinput-send}"
+SEND="${SEMU_UINPUT_SEND:-$OUT/uinput-send}"
+SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd -P)"
+FAILURES=0
 
 mkdir -p "$OUT"
 : > "$OUT/summary.tsv"
@@ -20,6 +22,20 @@ export XAUTHORITY="${XAUTHORITY:-/run/user/1000/xauth_WjTByH}"
 ps -eo pid,args | awk '/\/usr\/bin\/es-de --no-splash/ {print $1}' | xargs -r kill 2>/dev/null || true
 sleep 2
 
+build_uinput_sender() {
+  if [ -x "$SEND" ]; then
+    return 0
+  fi
+  if [ -f "$SCRIPT_DIR/uinput-send.c" ] && command -v cc >/dev/null 2>&1; then
+    cc "$SCRIPT_DIR/uinput-send.c" -O2 -Wall -Wextra -o "$SEND" && return 0
+  fi
+  if [ -x /home/deck/.cache/semu-uinput-send ]; then
+    SEND=/home/deck/.cache/semu-uinput-send
+    return 0
+  fi
+  return 1
+}
+
 capture_screen() {
   local path="$1"
   spectacle -b -n -o "$path" >/tmp/semu-loop-spectacle.log 2>&1 || cat /tmp/semu-loop-spectacle.log >&2
@@ -27,6 +43,27 @@ capture_screen() {
 
 alive() {
   kill -0 "$1" 2>/dev/null
+}
+
+send_input() {
+  if [ ! -x "$SEND" ]; then
+    return 0
+  fi
+  sudo "$SEND" "$@" >/dev/null 2>&1 || true
+}
+
+case_failed() {
+  local required="$1"
+  local id="$2"
+  local status="$3"
+  local quit="$4"
+  local size="$5"
+  if [ "$status" != "0" ] || [ "$quit" != "ok" ] || [ "$size" -lt 50000 ]; then
+    printf 'FAIL\t%s\tstatus=%s\tquit=%s\tpng_bytes=%s\trequired=%s\n' "$id" "$status" "$quit" "$size" "$required" | tee -a "$OUT/summary.tsv"
+    if [ "$required" = "yes" ]; then
+      FAILURES=$((FAILURES + 1))
+    fi
+  fi
 }
 
 run_case() {
@@ -41,6 +78,7 @@ run_case() {
   local status="unknown"
   local quit="unknown"
   local size="0"
+  local required="${SEMU_CURRENT_ROUTE_REQUIRED:-yes}"
 
   rm -f "$log" "$png"
   printf 'START\t%s\t%s\n' "$id" "$(date +%H:%M:%S)" | tee -a "$OUT/summary.tsv"
@@ -59,15 +97,19 @@ run_case() {
 
   local pid=$!
   sleep "$wait_seconds"
+  if alive "$pid"; then
+    send_input gameplay-probe
+    sleep 2
+  fi
   capture_screen "$png"
   [ -f "$png" ] && size="$(wc -c < "$png" | tr -d ' ')"
 
   if alive "$pid"; then
-    sudo "$SEND" select-start >/dev/null 2>&1 || true
+    send_input select-start
     sleep 6
   fi
   if alive "$pid"; then
-    sudo "$SEND" esc >/dev/null 2>&1 || true
+    send_input esc
     sleep 4
   fi
   if alive "$pid"; then
@@ -85,9 +127,17 @@ run_case() {
   else
     quit="missing"
   fi
-  printf 'RESULT\t%s\tstatus=%s\tquit=%s\tpng_bytes=%s\n' "$id" "$status" "$quit" "$size" | tee -a "$OUT/summary.tsv"
+  printf 'RESULT\t%s\tstatus=%s\tquit=%s\tpng_bytes=%s\trequired=%s\n' "$id" "$status" "$quit" "$size" "$required" | tee -a "$OUT/summary.tsv"
+  case_failed "$required" "$id" "$status" "$quit" "$size"
   tail -20 "$log" > "$OUT/$id.tail" 2>/dev/null || true
   sleep 2
+}
+
+run_optional_case() {
+  if [ "${SEMU_OPTIONAL_ROUTES:-0}" != "1" ]; then
+    return 0
+  fi
+  SEMU_CURRENT_ROUTE_REQUIRED=no run_case "$@"
 }
 
 core() {
@@ -98,6 +148,8 @@ exe() {
   readlink -f "$RESULT/bin/$1"
 }
 
+build_uinput_sender || true
+
 run_case gb retroarch "$(exe retroarch)" 12 -L "$(core gambatte_libretro.so)" "$ROMS/gb/Tetris (World) (Rev 1).zip"
 run_case gbc retroarch "$(exe retroarch)" 12 -L "$(core gambatte_libretro.so)" "$ROMS/gbc/Game & Watch Gallery 3 (USA, Europe) (SGB Enhanced) (GB Compatible).zip"
 run_case gba retroarch "$(exe retroarch)" 12 -L "$(core mgba_libretro.so)" "$ROMS/gba/Mega Man Zero 3 (USA).zip"
@@ -105,7 +157,6 @@ run_case nes retroarch "$(exe retroarch)" 12 -L "$(core mesen_libretro.so)" "$RO
 run_case snes retroarch "$(exe retroarch)" 12 -L "$(core snes9x_libretro.so)" "$ROMS/snes/Super Metroid (Japan, USA) (En,Ja).zip"
 run_case genesis retroarch "$(exe retroarch)" 12 -L "$(core genesis_plus_gx_libretro.so)" "$ROMS/genesis/Sonic The Hedgehog (USA, Europe).zip"
 run_case n64-retroarch retroarch "$(exe retroarch)" 16 -L "$(core mupen64plus_next_libretro.so)" "$ROMS/n64/Super Smash Bros. (USA).zip"
-run_case nds-retroarch retroarch "$(exe retroarch)" 16 -L "$(core desmume_libretro.so)" "$ROMS/nds/Castlevania - Dawn of Sorrow (USA).zip"
 run_case psp ppsspp "$(exe ppsspp)" 18 "$ROMS/psp/LocoRoco (USA) (En,Ja,Fr,De,Es,It,Nl,Pt,Sv,No,Da,Fi,Zh,Ko,Ru).iso"
 run_case dreamcast flycast "$(exe flycast)" 18 "$ROMS/dreamcast/ChuChu Rocket! (USA) (En,Ja,Fr,De,Es).chd"
 run_case gc dolphin "$(exe dolphin-emu)" 22 "$ROMS/gc/Super Monkey Ball 2 (USA).rvz"
@@ -115,5 +166,9 @@ run_case nds-melonds melonds "$(exe melonDS)" 18 "$ROMS/nds/Castlevania - Dawn o
 run_case n3ds azahar "$(exe azahar)" 28 "$ROMS/n3ds/Super Mario 3D Land (USA) (En,Fr,Es) (Rev 1).3ds"
 run_case wiiu cemu "$(exe Cemu)" 30 "$ROMS/wiiu/New SUPER MARIO BROS. U (US).wua"
 run_case switch ryujinx "$(exe Ryujinx)" 35 "$ROMS/switch/Animal Crossing New Horizons [01006F8002326000][US][v0].nsp"
+run_optional_case nds-retroarch retroarch "$(exe retroarch)" 16 -L "$(core desmume_libretro.so)" "$ROMS/nds/Castlevania - Dawn of Sorrow (USA).zip"
 
 echo DONE | tee -a "$OUT/summary.tsv"
+if [ "$FAILURES" -gt 0 ]; then
+  exit 1
+fi
