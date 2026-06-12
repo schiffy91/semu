@@ -5,7 +5,7 @@
 - Rebuilt and installed the self-contained AppImage at
   `/home/deck/Applications/Semu/Semu-x86_64.AppImage`.
 - Installed AppImage hash
-  `655fb40aac66e887f9bffab0a651260093acaf66f1cc5569e7d4a9f89354f611`.
+  `70711920d08ffe7d5cce01da1cc9cacbd7f4156a1d85b7bc428aebb98a30566d`.
 - Ran the Desktop Mode direct AppImage Deck loop over the required routed
   emulator set with clean process startup, foreground-window wait, screenshots,
   scripted input probes, and unified quit verification. `gb`, `gbc`, `gba`,
@@ -24,17 +24,21 @@
   painted ES-DE from the Steam-launched process in Desktop Mode.
 - Verified PCSX2 runtime config uses the Deck SD-card BIOS path and does not
   bake local Mac paths into committed profiles.
-- Built the clean `/home/deck/semu-latest` checkout at commit `9232cdf` with
+- Built the clean `/home/deck/semu-latest` checkout at commit `02dd2ff` with
   `nix build .#default`; output
-  `/nix/store/jplbqr1rn7zygrkv3ihrd538aqfqjzc2-semu-full`.
+  `/nix/store/1s33ra0m8qdqjkpqf0hvjan13bfbz0a5-semu-full`.
 - On that pushed Deck checkout, `result/bin/semu e2e presentation` passed and
   `presentation plan --system gb` resolved shader, bezel, runtime preset, and
   launcher shader paths as `ok` against the bundled shader tree.
+- On that pushed Deck checkout, `result/bin/semu e2e appimage` passed against
+  the AppRun and AppImage assembly smoke path.
 - Verified the installed AppImage CLI from `/home/deck/Applications/Semu`:
   `presentation plan --system gb` resolves shader, bezel, runtime preset, and
   launcher shader paths from the mounted AppImage payload, and
   `keymap capabilities app.quit` plus the doctor input section report the
   Desktop-verified quit set with physical Game Mode still pending.
+- Launched the installed AppImage in Deck Desktop Mode and captured a 1280x800
+  screenshot showing ES-DE running through the bundled AppRun/bwrap path.
 
 ## Verified Locally
 
