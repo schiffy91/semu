@@ -356,7 +356,7 @@ string steamInputTemplateDir(CliArgs args) {
 
 void copySteamInputTemplate(string project, string destination, string name) {
     string source = joinPath(project, "input/steam-input/" + name);
-    FileSystem.writeText(joinPath(destination, name), FileSystem.readText(source));
+    SemuGeneratedFiles.writeExternalInstall("steam_input_template", joinPath(destination, name), FileSystem.readText(source));
 }
 
 int steamInputCommand(CliArgs args, string project) {

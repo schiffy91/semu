@@ -963,7 +963,7 @@ bool presentationBroadcastState(string project, string system, string emulator) 
         return false;
     }
     ensureDir(presentationStateRoot(project));
-    writeJsonPrettyFile(presentationStatePath(project, system), state);
+    SemuGeneratedFiles.writeProjectJson(project, presentationStatePath(project, system), state);
     return true;
 }
 

@@ -248,6 +248,7 @@ typedef struct KeymapIr KeymapIr;
 void KeymapIr_destroy(KeymapIr* self);
 typedef struct KeymapParser KeymapParser;
 void KeymapParser_destroy(KeymapParser* self);
+typedef struct SemuGeneratedFiles SemuGeneratedFiles;
 typedef struct SemuPaths SemuPaths;
 typedef struct SemuLauncher SemuLauncher;
 typedef struct SemuEmulatorMetadata SemuEmulatorMetadata;
@@ -405,6 +406,8 @@ bool writeValidatedKeymapSource(char* project, char* source);
 bool keymapPutActionCommand(char* project, char* actionId, char* command);
 bool keymapPutBindingCombo(char* project, char* actionId, char* combo);
 int keymapUi(char* project);
+bool semuPathWithin(char* path, char* root);
+char* semuGeneratedProjectScope(char* project, char* path);
 char* joinPath(char* left, char* right);
 char* contentRoot(char* project);
 char* romsRoot(char* project);
@@ -520,6 +523,7 @@ char* azaharConfigText(char* project);
 char* cemuProfileText(void);
 char* ryujinxProfileText(void);
 void writeGeneratedManifest(char* output);
+void writeProjectManifest(char* project);
 char* bundledText(char* project, char* relative, char* fallback);
 char* renderBundledTemplate(char* project, char* relative, btrc_Map_string_string* values, char* fallback);
 char* assetRoot(char* project);
@@ -527,7 +531,7 @@ void seedBundledFileFromRoot(char* root, char* project, char* relative, bool exe
 void seedBundledFile(char* project, char* relative, bool executable);
 void seedBundledDirFiles(char* project, char* relative, bool executable);
 char* portableShellHeader(void);
-void writeExecutableText(char* path, char* text);
+void writeGeneratedExecutableText(char* project, char* path, char* text);
 btrc_Vector_string* managedLinuxLauncherFiles(void);
 btrc_Vector_string* obsoleteLinuxStateDirs(void);
 char* linuxSandboxShimText(void);
@@ -1002,6 +1006,10 @@ void KeymapParser_skipLine(KeymapParser* self);
 char* KeymapParser_valueToken(KeymapParser* self, char* expected);
 char* KeymapParser_chordCommand(KeymapParser* self);
 KeymapIr* KeymapParser_parse(KeymapParser* self);
+bool SemuGeneratedFiles_isProjectGenerated(char* project, char* path);
+void SemuGeneratedFiles_writeProject(char* project, char* path, char* text);
+void SemuGeneratedFiles_writeProjectJson(char* project, char* path, char* text);
+void SemuGeneratedFiles_writeExternalInstall(char* purpose, char* path, char* text);
 void SemuUpgradeCleanup_pruneLinuxLaunchers(char* project);
 void SemuUpgradeCleanup_pruneObsoleteState(char* project);
 void SemuUpgradeCleanup_beforeSeedingLinuxAssets(char* project);
@@ -1569,6 +1577,10 @@ struct KeymapParser {
     KeymapTokens* tokens;
     KeymapErrors* errors;
     int index;
+};
+
+struct SemuGeneratedFiles {
+    int __rc;
 };
 
 struct SemuPaths {
@@ -12297,6 +12309,74 @@ KeymapIr* KeymapParser_parse(KeymapParser* self) {
     }
 }
 
+bool SemuGeneratedFiles_isProjectGenerated(char* project, char* path) {
+    return (((int)strlen(semuGeneratedProjectScope(project, path))) > 0);
+}
+
+void SemuGeneratedFiles_writeProject(char* project, char* path, char* text) {
+    char* scope = semuGeneratedProjectScope(project, path);
+    if (((int)strlen(scope)) == 0) {
+        printf("%s\n", __btrc_str_track(__btrc_strcat("error 0:0 refused generated write outside Semu-owned roots: ", path)));
+        return;
+    }
+    ensureDir(PathTools_dirname(path));
+    FileSystem_writeText(path, text);
+}
+
+void SemuGeneratedFiles_writeProjectJson(char* project, char* path, char* text) {
+    SemuGeneratedFiles_writeProject(project, path, jsonPrettyText(text));
+}
+
+void SemuGeneratedFiles_writeExternalInstall(char* purpose, char* path, char* text) {
+    ensureDir(PathTools_dirname(path));
+    FileSystem_writeText(path, text);
+}
+
+bool semuPathWithin(char* path, char* root) {
+    if (((int)strlen(root)) == 0) {
+        return false;
+    }
+    if (strcmp(path, root) == 0) {
+        return true;
+    }
+    char* prefix = (__btrc_endsWith(root, "/") ? root : __btrc_str_track(__btrc_strcat(root, "/")));
+    return __btrc_startsWith(path, prefix);
+}
+
+char* semuGeneratedProjectScope(char* project, char* path) {
+    if (strcmp(path, joinPath(project, "semu.json")) == 0) {
+        return "manifest";
+    }
+    if (strcmp(path, joinPath(project, "ES-DE/es_settings.xml")) == 0) {
+        return "es_de_settings";
+    }
+    if (semuPathWithin(path, customSystemsRoot(project))) {
+        return "es_de_custom_systems";
+    }
+    if (semuPathWithin(path, esDeProfileCustomSystemsRoot(project))) {
+        return "es_de_profile";
+    }
+    if (semuPathWithin(path, linuxPackagingRoot(project))) {
+        return "linux_packaging";
+    }
+    if (semuPathWithin(path, emulatorProfilesRoot(project))) {
+        return "emulator_profiles";
+    }
+    if (semuPathWithin(path, joinPath(project, "input/steam-input"))) {
+        return "steam_input_templates";
+    }
+    if (semuPathWithin(path, joinPath(project, "settings/es-de"))) {
+        return "settings_entries";
+    }
+    if (semuPathWithin(path, joinPath(project, "settings/presentation-state"))) {
+        return "presentation_state";
+    }
+    if (semuPathWithin(path, joinPath(project, ".semu"))) {
+        return "runtime_state";
+    }
+    return "";
+}
+
 char* joinPath(char* left, char* right) {
     return PathTools_join(left, right);
 }
@@ -14000,6 +14080,10 @@ void writeGeneratedManifest(char* output) {
     writeJsonPrettyFile(output, buildJson());
 }
 
+void writeProjectManifest(char* project) {
+    SemuGeneratedFiles_writeProjectJson(project, joinPath(project, "semu.json"), buildJson());
+}
+
 char* bundledText(char* project, char* relative, char* fallback) {
     char* root = assetRoot(project);
     char* fromRoot = joinPath(root, relative);
@@ -14075,9 +14159,8 @@ char* portableShellHeader(void) {
     return "#!/usr/bin/env sh\n";
 }
 
-void writeExecutableText(char* path, char* text) {
-    ensureDir(PathTools_dirname(path));
-    FileSystem_writeText(path, text);
+void writeGeneratedExecutableText(char* project, char* path, char* text) {
+    SemuGeneratedFiles_writeProject(project, path, text);
     FileSystem_chmod(path, 493);
 }
 
@@ -14156,14 +14239,14 @@ char* linuxLauncherShimText(char* emulator) {
 
 void seedPortableLinuxShims(char* project) {
     SemuUpgradeCleanup_beforeSeedingLinuxAssets(project);
-    writeExecutableText(joinPath(project, "packaging/linux/sandbox.sh"), linuxSandboxShimText());
-    writeExecutableText(joinPath(project, "packaging/linux/bin/semu-btrc"), linuxBtrcShimText());
-    writeExecutableText(joinPath(project, "packaging/linux/bin/semu-flatpak"), linuxFlatpakShimText());
-    writeExecutableText(joinPath(project, "packaging/linux/bin/semu-settings"), linuxSettingsShimText());
+    writeGeneratedExecutableText(project, joinPath(project, "packaging/linux/sandbox.sh"), linuxSandboxShimText());
+    writeGeneratedExecutableText(project, joinPath(project, "packaging/linux/bin/semu-btrc"), linuxBtrcShimText());
+    writeGeneratedExecutableText(project, joinPath(project, "packaging/linux/bin/semu-flatpak"), linuxFlatpakShimText());
+    writeGeneratedExecutableText(project, joinPath(project, "packaging/linux/bin/semu-settings"), linuxSettingsShimText());
     int __n_480 = btrc_Vector_string_iterLen(linuxLauncherNames());
     for (int __i_479 = 0; (__i_479 < __n_480); (__i_479++)) {
         char* emulator = btrc_Vector_string_iterGet(linuxLauncherNames(), __i_479);
-        writeExecutableText(joinPath(project, __btrc_str_track(__btrc_strcat("packaging/linux/bin/", semuLauncherName(emulator)))), linuxLauncherShimText(emulator));
+        writeGeneratedExecutableText(project, joinPath(project, __btrc_str_track(__btrc_strcat("packaging/linux/bin/", semuLauncherName(emulator)))), linuxLauncherShimText(emulator));
     }
 }
 
@@ -14178,8 +14261,7 @@ void seedLinuxAssets(char* project) {
 
 void writeProfile(char* project, char* relative, char* text) {
     char* target = emulatorProfilePath(project, relative);
-    ensureDir(PathTools_dirname(target));
-    FileSystem_writeText(target, text);
+    SemuGeneratedFiles_writeProject(project, target, text);
 }
 
 void seedEmulatorDefaults(char* project) {
@@ -14311,7 +14393,7 @@ void bootstrapSteamDeck(char* project) {
     seedEmulatorDefaults(project);
     writeSteamInputTemplates(project);
     writeScreenshotDefaults(project);
-    writeGeneratedManifest(joinPath(project, "semu.json"));
+    writeProjectManifest(project);
     writeEsDeFiles(project);
     int __fstr_491_len = snprintf(NULL, 0, "Bootstrapped Steam Deck/Linux content at %s", contentRoot(project));
     char* __fstr_491_buf = __btrc_str_track(((char*)malloc((__fstr_491_len + 1))));
@@ -14383,16 +14465,16 @@ void writeEsDeFiles(char* project) {
     SystemCatalog* catalog = systemCatalog();
     SettingsEntries_write(project);
     char* systemsXml = SystemCatalog_esSystemsXml(catalog, project);
-    FileSystem_writeText(joinPath(customSystemsRoot(project), "es_systems.xml"), systemsXml);
+    SemuGeneratedFiles_writeProject(project, joinPath(customSystemsRoot(project), "es_systems.xml"), systemsXml);
     ensureDir(esDeProfileCustomSystemsRoot(project));
-    FileSystem_writeText(joinPath(esDeProfileCustomSystemsRoot(project), "es_systems.xml"), systemsXml);
+    SemuGeneratedFiles_writeProject(project, joinPath(esDeProfileCustomSystemsRoot(project), "es_systems.xml"), systemsXml);
     char* packagingSystems = joinPath(linuxPackagingRoot(project), "ES-DE");
     ensureDir(packagingSystems);
-    FileSystem_writeText(joinPath(packagingSystems, "es_systems_linux.xml"), SystemCatalog_esSystemsXml(catalog, "${project}"));
-    FileSystem_writeText(joinPath(packagingSystems, "es_find_rules_linux.xml"), esFindRulesXml("${project}", "@SEMU_LINUX_BIN@"));
+    SemuGeneratedFiles_writeProject(project, joinPath(packagingSystems, "es_systems_linux.xml"), SystemCatalog_esSystemsXml(catalog, "${project}"));
+    SemuGeneratedFiles_writeProject(project, joinPath(packagingSystems, "es_find_rules_linux.xml"), esFindRulesXml("${project}", "@SEMU_LINUX_BIN@"));
     char* launcherBin = esLauncherBin(project);
-    FileSystem_writeText(joinPath(customSystemsRoot(project), "es_find_rules.xml"), esFindRulesXml(project, launcherBin));
-    FileSystem_writeText(joinPath(project, "ES-DE/es_settings.xml"), esSettingsXmlForProject(project));
+    SemuGeneratedFiles_writeProject(project, joinPath(customSystemsRoot(project), "es_find_rules.xml"), esFindRulesXml(project, launcherBin));
+    SemuGeneratedFiles_writeProject(project, joinPath(project, "ES-DE/es_settings.xml"), esSettingsXmlForProject(project));
 }
 
 char* esSettingsXmlForRuntime(char* project, char* romsDir) {
@@ -14407,11 +14489,11 @@ void writeEsDeRuntimeFiles(char* project, char* userHome) {
     ensureDir(settingsRoot);
     SystemCatalog* catalog = systemCatalog();
     SettingsEntries_write(project);
-    FileSystem_writeText(joinPath(customRoot, "es_systems.xml"), SystemCatalog_esSystemsXml(catalog, project));
+    SemuGeneratedFiles_writeExternalInstall("es_de_custom_systems", joinPath(customRoot, "es_systems.xml"), SystemCatalog_esSystemsXml(catalog, project));
     char* launcherBin = esLauncherBin(project);
-    FileSystem_writeText(joinPath(customRoot, "es_find_rules.xml"), esFindRulesXml(project, launcherBin));
+    SemuGeneratedFiles_writeExternalInstall("es_de_find_rules", joinPath(customRoot, "es_find_rules.xml"), esFindRulesXml(project, launcherBin));
     char* roms = Environment_get("SEMU_ROMS_DIR", configuredRomsRoot(project));
-    FileSystem_writeText(joinPath(settingsRoot, "es_settings.xml"), esSettingsXmlForRuntime(project, roms));
+    SemuGeneratedFiles_writeExternalInstall("es_de_settings", joinPath(settingsRoot, "es_settings.xml"), esSettingsXmlForRuntime(project, roms));
 }
 
 char* steamInputKeyName(char* key) {
@@ -14556,8 +14638,8 @@ char* steamInputTemplateVdf(char* title, bool full, KeymapIr* ir, char* project)
 void writeSteamInputTemplates(char* project) {
     ensureDir(joinPath(project, "input/steam-input"));
     KeymapIr* ir = projectKeymapIr(project);
-    FileSystem_writeText(joinPath(project, "input/steam-input/neptune-simple.vdf"), steamInputTemplateVdf("Semu: Steam Deck - Neptune SIMPLE", false, ir, project));
-    FileSystem_writeText(joinPath(project, "input/steam-input/neptune-full.vdf"), steamInputTemplateVdf("Semu: Steam Deck - Neptune FULL", true, ir, project));
+    SemuGeneratedFiles_writeProject(project, joinPath(project, "input/steam-input/neptune-simple.vdf"), steamInputTemplateVdf("Semu: Steam Deck - Neptune SIMPLE", false, ir, project));
+    SemuGeneratedFiles_writeProject(project, joinPath(project, "input/steam-input/neptune-full.vdf"), steamInputTemplateVdf("Semu: Steam Deck - Neptune FULL", true, ir, project));
 }
 
 bool allPresent(char* target, btrc_Vector_string* files) {
@@ -16526,7 +16608,7 @@ void lifecycleReconfigure(char* project, char* romsDir) {
     seedEmulatorDefaults(project);
     writeSteamInputTemplates(project);
     writeScreenshotDefaults(project);
-    writeGeneratedManifest(joinPath(project, "semu.json"));
+    writeProjectManifest(project);
     writeEsDeFiles(project);
     writeSyncSystemdUnits(project);
     writeDeckDesktopEntry(project);
@@ -17051,7 +17133,7 @@ void SettingsEntries_write(char* project) {
     int __n_757 = btrc_Vector_SettingsEntrySpec_iterLen(SettingsEntries_all());
     for (int __i_756 = 0; (__i_756 < __n_757); (__i_756++)) {
         SettingsEntrySpec* entry = btrc_Vector_SettingsEntrySpec_iterGet(SettingsEntries_all(), __i_756);
-        FileSystem_writeText(joinPath(SettingsEntries_root(project), entry->filename), __btrc_str_track(__btrc_strcat(entry->action, "\n")));
+        SemuGeneratedFiles_writeProject(project, joinPath(SettingsEntries_root(project), entry->filename), __btrc_str_track(__btrc_strcat(entry->action, "\n")));
     }
 }
 
@@ -18686,7 +18768,7 @@ bool presentationBroadcastState(char* project, char* system, char* emulator) {
         return false;
     }
     ensureDir(presentationStateRoot(project));
-    writeJsonPrettyFile(presentationStatePath(project, system), state);
+    SemuGeneratedFiles_writeProjectJson(project, presentationStatePath(project, system), state);
     return true;
 }
 
@@ -20854,6 +20936,18 @@ int e2eLifecycleSmoke(CliArgs* args) {
     if (!e2eCatalogConsistency(project, linuxLauncherBin(project))) {
         return 1;
     }
+    if (!e2eOk(SemuGeneratedFiles_isProjectGenerated(project, joinPath(project, "ES-DE/es_settings.xml")), "ES-DE settings should be classified as generated")) {
+        return 1;
+    }
+    if (!e2eOk(SemuGeneratedFiles_isProjectGenerated(project, emulatorProfilePath(project, "RetroArch/retroarch.cfg")), "emulator profile should be classified as generated")) {
+        return 1;
+    }
+    if (!e2eOk(SemuGeneratedFiles_isProjectGenerated(project, joinPath(project, "input/steam-input/neptune-simple.vdf")), "Steam Input template should be classified as generated")) {
+        return 1;
+    }
+    if (!e2eOk((!SemuGeneratedFiles_isProjectGenerated(project, joinPath(romsOne, "gba"))), "external ROM root should not be generated output")) {
+        return 1;
+    }
     if (!e2eOk((!FileSystem_exists(joinPath(romsOne, "gba"))), "install mutated external ROM dirs")) {
         return 1;
     }
@@ -22779,7 +22873,7 @@ char* steamInputTemplateDir(CliArgs* args) {
 
 void copySteamInputTemplate(char* project, char* destination, char* name) {
     char* source = joinPath(project, __btrc_str_track(__btrc_strcat("input/steam-input/", name)));
-    FileSystem_writeText(joinPath(destination, name), FileSystem_readText(source));
+    SemuGeneratedFiles_writeExternalInstall("steam_input_template", joinPath(destination, name), FileSystem_readText(source));
 }
 
 int steamInputCommand(CliArgs* args, char* project) {

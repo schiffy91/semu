@@ -209,7 +209,7 @@ class SettingsEntries {
     class void write(string project) {
         ensureDir(SettingsEntries.root(project));
         for entry in SettingsEntries.all() {
-            FileSystem.writeText(joinPath(SettingsEntries.root(project), entry.filename), entry.action + "\n");
+            SemuGeneratedFiles.writeProject(project, joinPath(SettingsEntries.root(project), entry.filename), entry.action + "\n");
         }
     }
 

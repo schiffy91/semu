@@ -17,6 +17,9 @@
   `status=139` before quit. The production DS route remains melonDS.
 - Verified `presentation plan` runs from the installed AppImage and resolves
   bundled RetroArch shader paths.
+- Verified Steam can launch the installed AppImage via the generated shortcut
+  URI `steam://rungameid/16468373422993309696`; the AppImage stayed running and
+  painted ES-DE from the Steam-launched process in Desktop Mode.
 - Verified PCSX2 runtime config uses the Deck SD-card BIOS path and does not
   bake local Mac paths into committed profiles.
 
@@ -39,6 +42,9 @@
   generated emulator profiles and ES-DE files are compiled artifacts, and live
   emulator config is adapter state that Semu may read/broadcast but not treat as
   policy source.
+- Added `SemuGeneratedFiles` so core generated writes are explicitly classified
+  as Semu project artifacts or external install artifacts. Smoke coverage now
+  rejects external ROM paths as generated output.
 - Local verification passed for BTRC presentation smoke, generated-C e2e,
   AppImage/Nix routing smoke, JSON formatting, and whitespace checks.
 

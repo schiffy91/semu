@@ -602,7 +602,7 @@ void lifecycleReconfigure(string project, string romsDir) {
     seedEmulatorDefaults(project);
     writeSteamInputTemplates(project);
     writeScreenshotDefaults(project);
-    writeGeneratedManifest(joinPath(project, "semu.json"));
+    writeProjectManifest(project);
     writeEsDeFiles(project);
     writeSyncSystemdUnits(project);
     writeDeckDesktopEntry(project);
