@@ -5,6 +5,7 @@
   ryujinx ? null, es-de ? null,
   syncthing ? null, syncthingtray ? null, curl ? null, bubblewrap ? null,
   libretro-shaders-slang ? null,
+  semuVisualAssets ? null,
   nixGLIntel ? null,
   semuCli ? null,
   routedEmulators ? [],
@@ -75,6 +76,7 @@ let
     curl
     bubblewrap
     libretro-shaders-slang
+    semuVisualAssets
     nixGLIntel
   ];
 in

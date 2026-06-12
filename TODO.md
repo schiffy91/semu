@@ -79,10 +79,6 @@
 - Verified the pushed Deck result runs `presentation audit --system gb
   --strict` with shader, bezel, runtime preset, and launcher shader statuses
   all `ok`.
-- Verified strict PSP presentation audit fails with missing declared PSP shader
-  and bezel assets, recording the gap under
-  `.semu/verification/presentation-assets.json` instead of editing emulator
-  config.
 - Rebuilt and installed the AppImage from commit `d674470`; backup of the prior
   install is
   `/home/deck/Applications/Semu/Semu-x86_64.AppImage.prev-d674470-20260612-042319`.
@@ -107,6 +103,18 @@
   shader, bezel, runtime preset, and launcher shader readiness under
   `.semu/verification/presentation-assets.json`; strict mode fails when a
   required asset is declared but not bundled.
+- `presentation audit` now checks transitive shader preset dependencies,
+  including nested `#reference` files and referenced image sidecars, and reports
+  `missing_dependency_count` separately from top-level missing assets.
+- Added the `semu-visual-assets` Nix package with pinned Duimon Vintage TV,
+  Duimon Mega Bezel, and Soqueroeu TV-console packs. The AppImage builder now
+  copies `Mega_Bezel_Packs` beside `shaders_slang`, matching upstream relative
+  reference layout.
+- Verified a strict bundled visual audit locally against combined
+  `libretro-shaders-slang` and `semu-visual-assets`: `gb`, `gbc`, `gba`, `nes`,
+  `snes`, `genesis`, `n64`, `nds`, `dreamcast`, `psx`, `ps2`, `psp`, `n3ds`,
+  `gc`, and `wii` all resolved with zero missing assets and zero missing
+  dependencies; `wiiu` and `switch` are disabled by default.
 - Dynamic 4:3/16:9 systems now have editable widescreen shader, bezel, and
   runtime preset overrides in `settings/presentation/*.json`.
 - Added dependency-free BTRC terminal UIs for presentation, input/keymap, and
@@ -173,13 +181,13 @@
 
 ## Remaining Visual Work
 
-- Add or package the requested photorealistic bezel art packs: classic grey Game
-  Boy, frost purple GBC, purple wide GBA, Panasonic/Sony CRT, maximized DS/3DS,
-  and red God of War or black PSP. `presentation audit --strict` is now the
-  gate for proving those declared assets are actually present.
-- The new Deck-side `presentation plan --system ps2` check shows the generic
-  Mega_Bezel runtime preset resolves, but the requested PS2-specific Soqueroeu
-  TV background preset is still missing from the bundled assets.
+- Replace packaged fallback handheld shell art with the exact requested
+  photorealistic shells where the current bundle still uses libretro fallbacks:
+  classic grey Game Boy, frost purple GBC, purple wide GBA, and red God of War
+  PSP. `presentation audit --strict` is now the gate for proving those declared
+  assets and sidecars are actually present.
+- Run the same strict visual audit from the Deck-built AppImage after rebuilding
+  with the pinned visual asset package.
 - Prototype standalone visual effects behind feature flags with gamescope
   ReShade and vkBasalt only after the input gates pass.
 

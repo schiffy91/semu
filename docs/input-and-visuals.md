@@ -137,9 +137,11 @@ station policy and runtime state for launchers, future compositor wrappers, and
 settings UIs. `presentation audit` checks every selected shader, bezel, runtime
 preset, and launcher-effective shader path, writes
 `.semu/verification/presentation-assets.json`, and exits non-zero with
-`--strict` when a required presentation asset is missing. Emulators are
-adapters: they read and/or broadcast their own config state, while Semu keeps
-the display policy stable.
+`--strict` when a required presentation asset is missing. It also follows
+shader preset sidecars such as nested `#reference` files and referenced image
+paths, reporting `missing_dependency_count` separately from top-level missing
+assets. Emulators are adapters: they read and/or broadcast their own config
+state, while Semu keeps the display policy stable.
 
 `presentation plan` reports asset resolution at separate layers:
 
@@ -152,6 +154,7 @@ the display policy stable.
 | `resolved_bezel_file` | Existing file for `selected_bezel_file`, if present in the bundled RetroArch shader tree or project assets. |
 | `resolved_runtime_preset` | Existing file for `selected_runtime_preset`, if present. |
 | `resolved_launcher_shader` | The file the launcher will actually pass to RetroArch. Runtime preset wins over shader file; global visual toggles can make this empty. |
+| `dependency_count` / `missing_dependency_count` | Recursive preset sidecar checks for files referenced by selected shader/bezel/runtime presets. |
 | `*_status` | `ok`, `missing`, or `disabled`; missing means policy exists but the asset is not bundled or installed yet. |
 
 The audit report is verification adapter state, not policy. It should be used
@@ -177,7 +180,7 @@ not be edited by hand and does not directly change emulator-native config.
 | `nds` | Dual 256x192 LCDs | Dual LCD grid and persistence | Maximized DS top/bottom bezel | Dual stacked LCD |
 | `n3ds` | 400x240 top plus 320x240 bottom LCDs | 3DS LCD geometry | Maximized 3DS top/bottom bezel | Dual asymmetric LCD |
 | `psp` | 480x272 PSP LCD | PSP LCD grid and color response | Red God of War PSP or original black PSP | Single 16:9 LCD |
-| `wiiu` | HD TV plus optional gamepad screen | Modern output by default | Clean 16:9 or TV/gamepad layout | Dynamic 16:9 or dual |
+| `wiiu` | HD TV plus optional gamepad screen | Modern output by default | Disabled by default; optional TV/gamepad layout | Dynamic 16:9 or dual |
 | `switch` | Modern 16:9 handheld/docked display | Off by default | Off by default | Modern fullscreen |
 
 For 4:3-era systems that can also run 16:9, Semu reads emulator/game config
@@ -286,8 +289,8 @@ Default policy:
 - `visual.bezels=true`
 - `visual.bezel_policy=classic`
 - Classic visual systems:
-  `gb,gbc,gba,nes,snes,genesis,n64,nds,dreamcast,psx,ps2,psp,gc,wii`
-- Modern exclusions: `n3ds,wiiu,switch`
+  `gb,gbc,gba,nes,snes,genesis,n64,nds,dreamcast,psx,ps2,psp,n3ds,gc,wii`
+- Modern exclusions: `wiiu,switch`
 
 ## ES-DE Semu Settings Entry
 
@@ -348,6 +351,8 @@ path is proven.
 - RetroArch-native shaders and overlays are the first production visual path.
 - Mega_Bezel is supported through RetroArch, not by trying to port its shader
   graph into Semu.
+- `Mega_Bezel_Packs` are packaged beside `shaders_slang`, not inside it, so
+  upstream relative references continue to resolve.
 - `gamescope` ReShade and `vkBasalt` are opt-in experiments until real Deck
   screenshots prove them per emulator.
 - Settings are exposed through ES-DE as Semu-owned actions, not hidden in shell

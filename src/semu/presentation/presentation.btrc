@@ -112,7 +112,7 @@ class PresentationStationSpec {
         if (self.system.equals("gc")) { return "bezels/tv/clean-component-16x9.json"; }
         if (self.system.equals("wii")) { return "bezels/tv/clean-component-16x9.json"; }
         if (self.system.equals("ps2")) { return "bezels/tv/clean-component-16x9.json"; }
-        if (self.system.equals("wiiu")) { return "bezels/wiiu/clean-16x9.json"; }
+        if (self.system.equals("wiiu")) { return ""; }
         return "bezels/tv/clean-16x9.json";
     }
 
@@ -250,21 +250,21 @@ class PresentationCatalog {
         string panasonic = "Mega_Bezel_Packs/Duimon-Vintage-TV/Presets/Potato/Panasonic_Panacolor_TH20-B8/TH20-B8-[POTATO].slangp";
         return [
             PresentationStationSpec("gb", "Nintendo Game Boy", "RETROARCH", "retroarch", "retroarch.cfg core-options", "DMG-01 reflective STN LCD", "retroarch_slang", "handheld/gameboy.slangp", "green DMG tint, LCD matrix, slow-pixel ghosting", "retroarch_slang_or_overlay", "handheld/console-border/dmg.slangp", "classic grey Game Boy shell", "handheld/console-border/dmg.slangp", "single_lcd", "integer_native", "10:9", false, "dmg_lcd", "Prefer DMG green palette and ghosting over sharp monochrome output."),
-            PresentationStationSpec("gbc", "Nintendo Game Boy Color", "RETROARCH", "retroarch", "retroarch.cfg core-options", "Game Boy Color TFT LCD", "retroarch_slang", "handheld/sameboy-lcd-gbc-color-motionblur.slangp", "GBC LCD color response with mild motion blur", "retroarch_slang_or_overlay", "handheld/console-border/gbc.slangp", "frost purple Game Boy Color shell", "handheld/console-border/gbc.slangp", "single_lcd", "integer_native", "10:9", false, "gbc_lcd", "Frost purple artwork is the desired bezel target; bundled fallback is the libretro GBC console border."),
-            PresentationStationSpec("gba", "Nintendo Game Boy Advance", "RETROARCH", "retroarch", "retroarch.cfg core-options", "AGB-001 reflective TFT LCD", "retroarch_slang", "handheld/agb001-gba-color-motionblur.slangp", "original GBA color and LCD persistence", "retroarch_slang_or_overlay", "handheld/console-border/gba-agb001-color-motionblur.slangp", "purple wide Game Boy Advance shell", "handheld/console-border/gba-agb001-color-motionblur.slangp", "single_lcd", "integer_native", "3:2", false, "gba_lcd", "Use the original wide GBA target, not SP-first artwork."),
+            PresentationStationSpec("gbc", "Nintendo Game Boy Color", "RETROARCH", "retroarch", "retroarch.cfg core-options", "Game Boy Color TFT LCD", "retroarch_slang", "handheld/authentic_gbc.slangp", "GBC LCD color response with mild motion blur", "retroarch_slang_or_overlay", "handheld/console-border/gbc.slangp", "frost purple Game Boy Color shell", "handheld/console-border/gbc.slangp", "single_lcd", "integer_native", "10:9", false, "gbc_lcd", "Frost purple artwork is the desired bezel target; bundled fallback is the libretro GBC console border."),
+            PresentationStationSpec("gba", "Nintendo Game Boy Advance", "RETROARCH", "retroarch", "retroarch.cfg core-options", "AGB-001 reflective TFT LCD", "retroarch_slang", "handheld/agb001.slangp", "original GBA color and LCD persistence", "retroarch_slang_or_overlay", "handheld/console-border/gba-agb001-color-motionblur.slangp", "purple wide Game Boy Advance shell", "handheld/console-border/gba-agb001-color-motionblur.slangp", "single_lcd", "integer_native", "3:2", false, "gba_lcd", "Use the original wide GBA target, not SP-first artwork."),
             PresentationStationSpec("nes", "Nintendo Entertainment System", "RETROARCH", "retroarch", "retroarch.cfg core-options", "consumer CRT over composite", "retroarch_slang", "ntsc/ntsc-256px-composite-scanline.slangp", "NES composite artifacting, phosphor mask, scanlines", "retroarch_mega_bezel", panasonic, "elegant Panasonic or Sony consumer CRT", "ntsc/ntsc-256px-composite-scanline.slangp", "single_crt", "integer_or_aspect", "4:3", false, "crt_240p", "Classic 240p TV path. Use the system-specific NTSC runtime preset; Mesen is unstable with the generic Mega_Bezel runtime on Deck."),
             PresentationStationSpec("snes", "Super Nintendo", "RETROARCH", "retroarch", "retroarch.cfg core-options", "consumer CRT over S-Video/composite", "retroarch_slang", "ntsc/ntsc-256px-svideo-scanline.slangp", "SNES-era CRT scanlines and soft analog video", "retroarch_mega_bezel", panasonic, "elegant Panasonic or Sony consumer CRT", crtRuntime, "single_crt", "integer_or_aspect", "4:3", false, "crt_240p", "Prefer S-Video-like clarity unless a game profile requests composite artifacts."),
             PresentationStationSpec("genesis", "Sega Genesis", "RETROARCH", "retroarch", "retroarch.cfg core-options", "consumer CRT over composite/RGB", "retroarch_slang", "ntsc/ntsc-320px-composite-scanline.slangp", "Genesis dithering blended by analog CRT video", "retroarch_mega_bezel", panasonic, "elegant Panasonic or Sony consumer CRT", "ntsc/ntsc-320px-composite-scanline.slangp", "single_crt", "integer_or_aspect", "4:3", false, "crt_240p", "Composite blending matters for dithering-heavy art. Use the system-specific NTSC runtime preset; Genesis Plus GX is unstable with the generic Mega_Bezel runtime on Deck."),
             PresentationStationSpec("n64", "Nintendo 64", "RETROARCH", "retroarch", "retroarch.cfg core-options", "consumer CRT over composite/S-Video", "retroarch_slang", "crt/crt-royale.slangp", "late-90s CRT with N64 VI softness and scanlines", "retroarch_mega_bezel", panasonic, "elegant Panasonic or Sony consumer CRT", crtRuntime, "single_crt", "aspect_preserve", "4:3", false, "crt_240p_480i", "Do not sharpen away the hardware VI softness."),
-            PresentationStationSpec("nds", "Nintendo DS", "MELONDS", "melonds", "melonDS.ini", "dual 256x192 resistive LCDs", "retroarch_or_native_lcd", "handheld/lcd-grid-v2-nds-color-motionblur.slangp", "two LCD panels with mild persistence", "universal_dual_screen", "bezels/nds/maximized-dual-screen.json", "good-looking DS bezel that maximizes top and bottom screens", "Mega_Bezel_Packs/Duimon-Mega-Bezel/Presets/Standard/Nintendo_NDS/NDS_Vertical-[STD]-[LCD-GRID]-[Integer].slangp", "dual_lcd_stacked", "integer_native", "dual:256x192", false, "nds_dual_lcd", "Layout adapter must expose both screens and support stacked/side-by-side variants."),
+            PresentationStationSpec("nds", "Nintendo DS", "MELONDS", "melonds", "melonDS.ini", "dual 256x192 resistive LCDs", "retroarch_or_native_lcd", "handheld/lcd1x_nds.slangp", "two LCD panels with mild persistence", "universal_dual_screen", "Mega_Bezel_Packs/Duimon-Mega-Bezel/Presets/Standard/Nintendo_NDS/NDS_Vertical-[STD]-[LCD-GRID]-[Integer].slangp", "good-looking DS bezel that maximizes top and bottom screens", "Mega_Bezel_Packs/Duimon-Mega-Bezel/Presets/Standard/Nintendo_NDS/NDS_Vertical-[STD]-[LCD-GRID]-[Integer].slangp", "dual_lcd_stacked", "integer_native", "dual:256x192", false, "nds_dual_lcd", "Layout adapter must expose both screens and support stacked/side-by-side variants."),
             PresentationStationSpec("dreamcast", "Sega Dreamcast", "FLYCAST", "flycast", "emu.cfg", "consumer CRT or VGA monitor", "native_or_wrapper_crt", crtShader, "480i/480p era CRT or VGA softness", "universal_crt_bezel", "Mega_Bezel_Packs/Soqueroeu-TV-Backgrounds_V2.0/presets/TV-Console/Sega_Dreamcast-[FLAT].slangp", "elegant Panasonic or Sony CRT unless VGA mode is detected", crtRuntime, "single_tv", "aspect_preserve", "4:3_or_16:9", true, "crt_or_vga", "Prefer 4:3 CRT; swap to 16:9/flat only when config or game profile proves widescreen."),
             PresentationStationSpec("psx", "Sony PlayStation", "RETROARCH", "retroarch", "retroarch.cfg core-options", "consumer CRT over composite/S-Video", "retroarch_slang", "crt/crt-royale.slangp", "PS1 240p/480i CRT with analog softness", "retroarch_mega_bezel", panasonic, "elegant Panasonic or Sony consumer CRT", crtRuntime, "single_crt", "aspect_preserve", "4:3", false, "crt_240p_480i", "Preserve wobble/softness instead of HD-cleaning the output."),
             PresentationStationSpec("ps2", "Sony PlayStation 2", "PCSX2", "pcsx2", "PCSX2.ini", "consumer CRT, component CRT, or early flat panel", "native_or_wrapper_crt", "crt/crt-royale.slangp", "PS2 480i CRT scanlines and deinterlacing when applicable", "universal_crt_bezel", "Mega_Bezel_Packs/Soqueroeu-TV-Backgrounds_V2.0/presets/TV-Console/Sony_Playstation(PS2)-[FLAT].slangp", "elegant Panasonic or Sony CRT for 4:3; flat 16:9 frame for widescreen", crtRuntime, "single_tv", "aspect_preserve", "4:3_or_16:9", true, "crt_480i", "Aspect should follow PCSX2/game widescreen state."),
-            PresentationStationSpec("psp", "Sony PSP", "PPSSPP", "ppsspp", "ppsspp.ini", "480x272 PSP LCD", "native_or_wrapper_lcd", "handheld/lcd-grid-v2-psp-color-motionblur.slangp", "PSP LCD color, pixel grid, and mild persistence", "universal_handheld_bezel", "bezels/psp/red-god-of-war-or-original-black.json", "red God of War PSP or original black PSP shell", "handheld/console-border/psp.slangp", "single_lcd_wide", "integer_or_aspect", "16:9", false, "psp_lcd", "Prefer red God of War shell when artwork exists; original black is acceptable fallback."),
-            PresentationStationSpec("n3ds", "Nintendo 3DS", "AZAHAR", "azahar", "qt-config.ini", "dual LCDs, 400x240 top and 320x240 bottom", "native_or_wrapper_lcd", "handheld/lcd-grid-v2-nds-color.slangp", "3DS LCD panels with asymmetric top/bottom geometry", "universal_dual_screen", "bezels/3ds/maximized-dual-screen.json", "good-looking 3DS bezel that maximizes top and bottom screens", "Mega_Bezel_Packs/Duimon-Vintage-TV/Presets/Potato/Sampo_9519/9519-[POTATO]-[3DS]-[Color].slangp", "dual_lcd_asymmetric", "integer_or_aspect", "dual:400x240+320x240", false, "n3ds_dual_lcd", "Azahar is only an adapter; Semu owns the dual-screen presentation contract."),
+            PresentationStationSpec("psp", "Sony PSP", "PPSSPP", "ppsspp", "ppsspp.ini", "480x272 PSP LCD", "native_or_wrapper_lcd", "handheld/lcd1x_psp.slangp", "PSP LCD color, pixel grid, and mild persistence", "universal_handheld_bezel", "handheld/console-border/psp.slangp", "red God of War PSP or original black PSP shell", "handheld/console-border/psp.slangp", "single_lcd_wide", "integer_or_aspect", "16:9", false, "psp_lcd", "Prefer red God of War shell when artwork exists; bundled fallback is the original black PSP-style libretro border."),
+            PresentationStationSpec("n3ds", "Nintendo 3DS", "AZAHAR", "azahar", "qt-config.ini", "dual LCDs, 400x240 top and 320x240 bottom", "native_or_wrapper_lcd", "handheld/lcd-grid-v2.slangp", "3DS LCD panels with asymmetric top/bottom geometry", "universal_dual_screen", "Mega_Bezel_Packs/Duimon-Vintage-TV/Presets/Potato/Sampo_9519/9519-[POTATO]-[3DS]-[Color].slangp", "good-looking 3DS bezel that maximizes top and bottom screens", "Mega_Bezel_Packs/Duimon-Vintage-TV/Presets/Potato/Sampo_9519/9519-[POTATO]-[3DS]-[Color].slangp", "dual_lcd_asymmetric", "integer_or_aspect", "dual:400x240+320x240", false, "n3ds_dual_lcd", "Azahar is only an adapter; Semu owns the dual-screen presentation contract."),
             PresentationStationSpec("gc", "Nintendo GameCube", "DOLPHIN", "dolphin", "Dolphin.ini GFX.ini", "consumer CRT or component CRT", "native_or_wrapper_crt", "crt/crt-royale.slangp", "GameCube 480i/480p CRT or component-era softness", "universal_crt_bezel", "Mega_Bezel_Packs/Soqueroeu-TV-Backgrounds_V2.0/presets/TV-Console/Nintendo_GameCube-[FLAT].slangp", "elegant Panasonic or Sony CRT for 4:3; flat frame for widescreen", crtRuntime, "single_tv", "aspect_preserve", "4:3_or_16:9", true, "crt_480i_480p", "Dolphin aspect setting should drive 4:3 vs 16:9 presentation."),
             PresentationStationSpec("wii", "Nintendo Wii", "DOLPHIN", "dolphin", "Dolphin.ini GFX.ini", "consumer CRT/component TV", "native_or_wrapper_crt", "crt/crt-royale.slangp", "Wii 480i/480p TV output with CRT/component-era behavior", "universal_crt_bezel", "Mega_Bezel_Packs/Soqueroeu-TV-Backgrounds_V2.0/presets/TV-Console/Nintendo_Wii_4x3-[FLAT].slangp", "elegant Panasonic or Sony CRT for 4:3; 16:9 frame when widescreen", crtRuntime, "single_tv", "aspect_preserve", "4:3_or_16:9", true, "crt_or_widescreen_tv", "Dolphin/game settings should drive 4:3 vs 16:9 presentation."),
-            PresentationStationSpec("wiiu", "Nintendo Wii U", "CEMU", "cemu", "settings.xml", "HD TV plus optional gamepad screen", "native_or_wrapper_modern", "", "modern 16:9 output by default", "universal_modern_frame", "bezels/wiiu/tv-gamepad-or-clean-16x9.json", "clean 16:9 frame, optional gamepad layout when exposed", "", "modern_tv_optional_gamepad", "aspect_preserve", "16:9_or_dual", true, "modern_hd", "No default CRT; only use TV/gamepad bezel when the adapter sees both regions."),
+            PresentationStationSpec("wiiu", "Nintendo Wii U", "CEMU", "cemu", "settings.xml", "HD TV plus optional gamepad screen", "off_by_default", "", "modern 16:9 output by default", "off_by_default", "", "clean 16:9 frame, optional gamepad layout when exposed", "", "modern_tv_optional_gamepad", "aspect_preserve", "16:9_or_dual", true, "modern_hd", "Modern HD system: no default CRT or bezel; only enable a TV/gamepad frame when the adapter sees both regions."),
             PresentationStationSpec("switch", "Nintendo Switch", "RYUJINX", "ryujinx", "Config.json", "modern 16:9 handheld/docked display", "off_by_default", "", "modern HDMI/OLED output; no era CRT treatment", "off_by_default", "", "no default bezel for modern Switch", "", "modern_fullscreen", "aspect_fill_or_preserve", "16:9", false, "modern_hd", "Modern system: fullscreen first, optional cosmetic frame only when explicitly enabled.")
         ];
     }
@@ -411,6 +411,8 @@ string presentationResolveAssetCandidate(string project, string candidate) {
     if (shaderDir.len() > 0) {
         string shaderPath = joinPath(shaderDir, candidate);
         if (FileSystem.exists(shaderPath)) { return shaderPath; }
+        string shaderBundlePath = joinPath(PathTools.dirname(shaderDir), candidate);
+        if (FileSystem.exists(shaderBundlePath)) { return shaderBundlePath; }
     }
     string projectPath = joinPath(project, candidate);
     return FileSystem.exists(projectPath) ? projectPath : "";
@@ -710,6 +712,110 @@ string presentationResolveSelectedShader(string project, string runtimePreset, s
     return presentationResolveLauncherShader(project, runtimePreset, shaderFile);
 }
 
+bool presentationDependencyTextFile(string path) {
+    string lower = path.toLower();
+    return lower.endsWith(".slangp")
+        || lower.endsWith(".slang")
+        || lower.endsWith(".params");
+}
+
+string presentationFirstQuotedValue(string text) {
+    int start = -1;
+    for (int i = 0; i < text.len(); i++) {
+        if (text.charAt(i) == '"') {
+            if (start < 0) {
+                start = i + 1;
+            } else {
+                return text.substring(start, i - start);
+            }
+        }
+    }
+    return "";
+}
+
+string presentationUnquotedValue(string text) {
+    string value = text.trim();
+    if (value.len() >= 2 && value.charAt(0) == '"' && value.charAt(value.len() - 1) == '"') {
+        return value.substring(1, value.len() - 2);
+    }
+    return value;
+}
+
+string presentationDependencyAfter(string line, string marker) {
+    int position = line.indexOf(marker);
+    if (position < 0) { return ""; }
+    string remainder = line.substring(position + marker.len(), line.len() - position - marker.len()).trim();
+    string quoted = presentationFirstQuotedValue(remainder);
+    if (quoted.len() > 0) { return quoted; }
+    return presentationUnquotedValue(remainder);
+}
+
+string presentationDependencyFromLine(string line) {
+    string trimmed = line.trim();
+    if (trimmed.len() == 0 || trimmed.startsWith("//")) { return ""; }
+    if (trimmed.startsWith("#reference")) {
+        return presentationDependencyAfter(trimmed, "#reference");
+    }
+    if (!trimmed.contains("Image")) { return ""; }
+    int equals = trimmed.indexOf("=");
+    if (equals < 0) { return ""; }
+    string key = trimmed.substring(0, equals).trim();
+    if (!key.endsWith("Image")) { return ""; }
+    string value = trimmed.substring(equals + 1, trimmed.len() - equals - 1);
+    string quoted = presentationFirstQuotedValue(value);
+    if (quoted.len() > 0) { return quoted; }
+    return presentationUnquotedValue(value);
+}
+
+string presentationDependencyPath(string source, string dependency) {
+    if (dependency.len() == 0) { return ""; }
+    if (dependency.startsWith("http://") || dependency.startsWith("https://")) { return ""; }
+    if (dependency.startsWith("/")) { return dependency; }
+    return joinPath(PathTools.dirname(source), dependency);
+}
+
+class PresentationDependencyAudit {
+    public Vector<string> visited;
+    public Vector<string> missing;
+    public int dependencyCount;
+    public int missingDependencyCount;
+
+    public PresentationDependencyAudit() {
+        self.visited = [];
+        self.missing = [];
+        self.dependencyCount = 0;
+        self.missingDependencyCount = 0;
+    }
+
+    public void scan(string path) {
+        self.scanDepth(path, 0);
+    }
+
+    public void scanDepth(string path, int depth) {
+        if (path.len() == 0 || depth > 32) { return; }
+        if (!FileSystem.isFile(path)) { return; }
+        if (self.visited.contains(path)) { return; }
+        self.visited.push(path);
+        if (!presentationDependencyTextFile(path)) { return; }
+
+        Vector<string> lines = Strings.split(FileSystem.readText(path), "\n");
+        for line in lines {
+            string dependency = presentationDependencyFromLine(line);
+            string dependencyPath = presentationDependencyPath(path, dependency);
+            if (dependencyPath.len() == 0) { continue; }
+            self.dependencyCount++;
+            if (FileSystem.exists(dependencyPath)) {
+                if (presentationDependencyTextFile(dependencyPath)) {
+                    self.scanDepth(dependencyPath, depth + 1);
+                }
+            } else {
+                self.missingDependencyCount++;
+                self.missing.push(path + " -> " + dependency);
+            }
+        }
+    }
+}
+
 class PresentationAssetAuditRow {
     public string system;
     public string label;
@@ -730,6 +836,9 @@ class PresentationAssetAuditRow {
     public string launcherStatus;
     public bool required;
     public int missingAssetCount;
+    public int dependencyCount;
+    public int missingDependencyCount;
+    public Vector<string> missingDependencies;
 
     public PresentationAssetAuditRow(string project, PresentationStationSpec spec, string emulator) {
         JsonObject config = spec.config(project);
@@ -765,10 +874,19 @@ class PresentationAssetAuditRow {
         if (self.bezelStatus.equals("missing")) { self.missingAssetCount++; }
         if (self.runtimeStatus.equals("missing")) { self.missingAssetCount++; }
         if (self.required && self.launcherStatus.equals("missing")) { self.missingAssetCount++; }
+
+        PresentationDependencyAudit dependencies = PresentationDependencyAudit();
+        dependencies.scan(self.resolvedShader);
+        dependencies.scan(self.resolvedBezel);
+        dependencies.scan(self.resolvedRuntime);
+        dependencies.scan(self.resolvedLauncher);
+        self.dependencyCount = dependencies.dependencyCount;
+        self.missingDependencyCount = dependencies.missingDependencyCount;
+        self.missingDependencies = dependencies.missing;
     }
 
     public bool ok() {
-        return self.missingAssetCount == 0;
+        return self.missingAssetCount == 0 && self.missingDependencyCount == 0;
     }
 
     public string status() {
@@ -783,6 +901,9 @@ class PresentationAssetAuditRow {
             jsonStrField("status", self.status()),
             jsonBoolField("required", self.required),
             jsonField("missing_asset_count", Strings.fromInt(self.missingAssetCount)),
+            jsonField("dependency_count", Strings.fromInt(self.dependencyCount)),
+            jsonField("missing_dependency_count", Strings.fromInt(self.missingDependencyCount)),
+            jsonField("missing_dependencies", jsonStringArray(self.missingDependencies)),
             jsonStrField("effective_aspect", self.effectiveAspect),
             jsonStrField("presentation_mode", self.presentationMode),
             jsonStrField("shader_backend", self.shaderBackend),
@@ -807,6 +928,7 @@ class PresentationAssetAuditRow {
             + " bezel=" + self.bezelStatus
             + " runtime=" + self.runtimeStatus
             + " launcher=" + self.launcherStatus
+            + " deps=" + (self.missingDependencyCount == 0 ? "ok" : "missing")
             + " aspect=" + self.effectiveAspect;
     }
 }
@@ -900,6 +1022,7 @@ int presentationAudit(string project, string system, string emulator, bool stric
     int okCount = 0;
     int missingSystemCount = 0;
     int missingAssetCount = 0;
+    int missingDependencyCount = 0;
     int disabledCount = 0;
     print("Presentation asset audit");
     for spec in specs {
@@ -907,6 +1030,7 @@ int presentationAudit(string project, string system, string emulator, bool stric
         rowsJson.push(row.json());
         print("  " + row.line());
         missingAssetCount = missingAssetCount + row.missingAssetCount;
+        missingDependencyCount = missingDependencyCount + row.missingDependencyCount;
         if (row.status().equals("ok")) {
             okCount++;
         } else if (row.status().equals("disabled")) {
@@ -924,11 +1048,12 @@ int presentationAudit(string project, string system, string emulator, bool stric
         jsonField("ok_count", Strings.fromInt(okCount)),
         jsonField("missing_system_count", Strings.fromInt(missingSystemCount)),
         jsonField("missing_asset_count", Strings.fromInt(missingAssetCount)),
+        jsonField("missing_dependency_count", Strings.fromInt(missingDependencyCount)),
         jsonField("disabled_count", Strings.fromInt(disabledCount)),
         jsonField("systems", jsonArray(rowsJson))
     ]);
     SemuGeneratedFiles.writeAdapterState(project, presentationAssetAuditPath(project), jsonPrettyText(report));
-    print("  ok: " + Strings.fromInt(okCount) + " missing: " + Strings.fromInt(missingSystemCount) + " missing_assets: " + Strings.fromInt(missingAssetCount) + " disabled: " + Strings.fromInt(disabledCount));
+    print("  ok: " + Strings.fromInt(okCount) + " missing: " + Strings.fromInt(missingSystemCount) + " missing_assets: " + Strings.fromInt(missingAssetCount) + " missing_dependencies: " + Strings.fromInt(missingDependencyCount) + " disabled: " + Strings.fromInt(disabledCount));
     print("  report: " + presentationAssetAuditPath(project));
     if (strict && missingSystemCount > 0) {
         return 2;
