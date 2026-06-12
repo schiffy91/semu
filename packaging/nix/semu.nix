@@ -4,8 +4,7 @@
   melonds ? null, retroarch-bare ? null,
   ryujinx ? null, es-de ? null,
   syncthing ? null, syncthingtray ? null, curl ? null, bubblewrap ? null,
-  libretro-shaders-slang ? null,
-  semuVisualAssets ? null,
+  semuShaderBundle ? null,
   nixGLIntel ? null,
   semuCli ? null,
   routedEmulators ? [],
@@ -75,8 +74,7 @@ let
     syncthingtray
     curl
     bubblewrap
-    libretro-shaders-slang
-    semuVisualAssets
+    semuShaderBundle
     nixGLIntel
   ];
 in
