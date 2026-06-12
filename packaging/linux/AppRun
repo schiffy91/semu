@@ -186,7 +186,7 @@ fi
 # Commands written to desktop entries and systemd user units need a stable
 # entrypoint. The bundled CLI lives under the transient AppImage mount, so point
 # Semu-generated launchers back at the AppImage itself.
-export SEMU_BIN="${SEMU_BIN:-$SEMU_APP_EXEC}"
+export SEMU_BIN="$SEMU_APP_EXEC"
 
 case "${1:-}" in
   "" )
