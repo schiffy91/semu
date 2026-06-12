@@ -635,8 +635,12 @@ Config:
 ```sh
 build/semu config env --project "$PWD"
 build/semu config set-roms --project "$PWD" --roms "/path/to/ROMs"
+build/semu config set-roms --project "$PWD" --roms "/path/to/ROMs" --apply
 build/semu config show --project "$PWD"
 ```
+
+`config set-roms` edits only the owned `sync/sync.json` source; pass `--apply`
+or run `settings apply` to regenerate emulator and ES-DE files.
 
 Settings:
 
