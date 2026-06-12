@@ -767,6 +767,7 @@ char* e2eFakeNixText(void);
 btrc_Vector_string* appImageExpectedBins(void);
 void e2eWriteFakeNixPackage(char* root, bool includeBwrap);
 bool e2eExpectStatus(int expected, char* command);
+char* e2eCleanAppRunFixtureEnv(void);
 bool e2eFileContains(char* path, char* expected, char* label);
 int e2eCountArgLines(char* text, char* expected);
 char* e2eBuildAppImageCommand(char* project, char* binDir, char* nixPackage, char* esde, char* output);
@@ -20286,6 +20287,10 @@ bool e2eExpectStatus(int expected, char* command) {
     return false;
 }
 
+char* e2eCleanAppRunFixtureEnv(void) {
+    return "SEMU_NIX_STORE_MOUNTED= APPIMAGE= ";
+}
+
 bool e2eFileContains(char* path, char* expected, char* label) {
     if (!FileSystem_exists(path)) {
         printf("%s\n", __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat("missing ", label)), ": ")), path)));
@@ -20369,7 +20374,7 @@ int e2eAppImageSmoke(CliArgs* args) {
     btrc_Vector_string_push(__list_855, "#!/usr/bin/env bash");
     btrc_Vector_string_push(__list_855, __btrc_str_track(__btrc_strcat("printf '%s\\n' \"$@\" > ", ShellWords_quote(bwrapArgs))));
     e2eWriteExecutable(joinPath(binDir, "bwrap"), textLines(__list_855));
-    if (!e2eExpectStatus(0, __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat("APPDIR=", ShellWords_quote(appDir))), " SEMU_BWRAP=")), ShellWords_quote(joinPath(binDir, "bwrap")))), " ")), ShellWords_quote(joinPath(appDir, "AppRun")))), " --probe")))) {
+    if (!e2eExpectStatus(0, __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(e2eCleanAppRunFixtureEnv(), "APPDIR=")), ShellWords_quote(appDir))), " SEMU_BWRAP=")), ShellWords_quote(joinPath(binDir, "bwrap")))), " ")), ShellWords_quote(joinPath(appDir, "AppRun")))), " --probe")))) {
         return 1;
     }
     if (!e2eFileContains(bwrapArgs, "--tmpfs", "bwrap args tmpfs")) {
@@ -20389,7 +20394,7 @@ int e2eAppImageSmoke(CliArgs* args) {
     btrc_Vector_string_push(__list_857, "exit 88");
     e2eWriteExecutable(joinPath(hostBwrapAppDir, "usr/bin/bwrap"), textLines(__list_857));
     UnixShell_runRaw(UnixShell_new(), __btrc_str_track(__btrc_strcat("rm -f ", ShellWords_quote(bwrapArgs))), true, false, "");
-    if (!e2eExpectStatus(0, __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat("APPDIR=", ShellWords_quote(hostBwrapAppDir))), " SEMU_BWRAP=")), ShellWords_quote(joinPath(binDir, "bwrap")))), " PATH=")), ShellWords_quote(binDir))), ":$PATH")), " ")), ShellWords_quote(joinPath(hostBwrapAppDir, "AppRun")))), " --probe")))) {
+    if (!e2eExpectStatus(0, __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(e2eCleanAppRunFixtureEnv(), "APPDIR=")), ShellWords_quote(hostBwrapAppDir))), " SEMU_BWRAP=")), ShellWords_quote(joinPath(binDir, "bwrap")))), " PATH=")), ShellWords_quote(binDir))), ":$PATH")), " ")), ShellWords_quote(joinPath(hostBwrapAppDir, "AppRun")))), " --probe")))) {
         return 1;
     }
     if (!e2eFileContains(bwrapArgs, "--tmpfs", "host bwrap args tmpfs")) {
@@ -20402,7 +20407,7 @@ int e2eAppImageSmoke(CliArgs* args) {
     ensureDir(joinPath(noProject, "usr/bin"));
     copyFilePath(joinPath(project, "packaging/linux/AppRun"), joinPath(noProject, "AppRun"));
     FileSystem_chmod(joinPath(noProject, "AppRun"), 493);
-    if (!e2eExpectStatus(1, __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat("APPDIR=", ShellWords_quote(noProject))), " HOME=")), ShellWords_quote(joinPath(tmp, "no-project-home")))), " ")), ShellWords_quote(joinPath(noProject, "AppRun")))))) {
+    if (!e2eExpectStatus(1, __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(e2eCleanAppRunFixtureEnv(), "APPDIR=")), ShellWords_quote(noProject))), " HOME=")), ShellWords_quote(joinPath(tmp, "no-project-home")))), " ")), ShellWords_quote(joinPath(noProject, "AppRun")))))) {
         return 1;
     }
     char* missingCli = joinPath(tmp, "AppRunMissingCli.AppDir");
@@ -20412,7 +20417,7 @@ int e2eAppImageSmoke(CliArgs* args) {
     FileSystem_writeText(joinPath(missingProject, "semu.json"), "{\"schema_version\":1}\n");
     copyFilePath(joinPath(project, "packaging/linux/AppRun"), joinPath(missingCli, "AppRun"));
     FileSystem_chmod(joinPath(missingCli, "AppRun"), 493);
-    if (!e2eExpectStatus(2, __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat("APPDIR=", ShellWords_quote(missingCli))), " SEMU_PROJECT_DIR=")), ShellWords_quote(missingProject))), " ")), ShellWords_quote(joinPath(missingCli, "AppRun")))))) {
+    if (!e2eExpectStatus(2, __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(e2eCleanAppRunFixtureEnv(), "APPDIR=")), ShellWords_quote(missingCli))), " SEMU_PROJECT_DIR=")), ShellWords_quote(missingProject))), " ")), ShellWords_quote(joinPath(missingCli, "AppRun")))))) {
         return 1;
     }
     char* missingPackage = joinPath(tmp, "missing-nix-package");
@@ -20441,7 +20446,7 @@ int e2eAppImageSmoke(CliArgs* args) {
     btrc_Vector_string_push(__list_859, "  printf 'LD_PRELOAD=%s\\n' \"${LD_PRELOAD:-}\"");
     btrc_Vector_string_push(__list_859, __btrc_str_track(__btrc_strcat("} > ", ShellWords_quote(cliEnv))));
     e2eWriteExecutable(joinPath(cliAppDir, "usr/bin/semu"), textLines(__list_859));
-    if (!e2eExpectStatus(0, __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat("APPDIR=", ShellWords_quote(cliAppDir))), " APPIMAGE=")), ShellWords_quote(cliAppImage))), " ")), ShellWords_quote(joinPath(cliAppDir, "AppRun")))), " manifest --output ")), ShellWords_quote(joinPath(tmp, "manifest.json")))), " --project ")), ShellWords_quote(cliProject))), " --roms=")), ShellWords_quote(joinPath(tmp, "explicit-roms")))))) {
+    if (!e2eExpectStatus(0, __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(e2eCleanAppRunFixtureEnv(), "APPDIR=")), ShellWords_quote(cliAppDir))), " APPIMAGE=")), ShellWords_quote(cliAppImage))), " ")), ShellWords_quote(joinPath(cliAppDir, "AppRun")))), " manifest --output ")), ShellWords_quote(joinPath(tmp, "manifest.json")))), " --project ")), ShellWords_quote(cliProject))), " --roms=")), ShellWords_quote(joinPath(tmp, "explicit-roms")))))) {
         return 1;
     }
     if (!e2eFileContains(cliArgs, "manifest", "AppRun CLI passthrough")) {
@@ -20492,7 +20497,7 @@ int e2eAppImageSmoke(CliArgs* args) {
     if (!e2eFileContains(shimArgs, "launcher", "semu-btrc runtime CLI")) {
         return 1;
     }
-    if (!e2eExpectStatus(0, __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat("APPDIR=", ShellWords_quote(cliAppDir))), " APPIMAGE=")), ShellWords_quote(cliAppImage))), " SEMU_PROJECT_DIR=")), ShellWords_quote(cliProject))), " SteamAppId=3834341984")), " LD_LIBRARY_PATH=/steam/runtime")), " LD_PRELOAD=/steam/overlay.so")), " ")), ShellWords_quote(joinPath(cliAppDir, "AppRun")))), " doctor")))) {
+    if (!e2eExpectStatus(0, __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(e2eCleanAppRunFixtureEnv(), "APPDIR=")), ShellWords_quote(cliAppDir))), " APPIMAGE=")), ShellWords_quote(cliAppImage))), " SEMU_PROJECT_DIR=")), ShellWords_quote(cliProject))), " SteamAppId=3834341984")), " LD_LIBRARY_PATH=/steam/runtime")), " LD_PRELOAD=/steam/overlay.so")), " ")), ShellWords_quote(joinPath(cliAppDir, "AppRun")))), " doctor")))) {
         return 1;
     }
     if (!e2eFileContains(cliEnv, "LD_LIBRARY_PATH=", "AppRun clears Steam LD_LIBRARY_PATH")) {
@@ -20501,7 +20506,7 @@ int e2eAppImageSmoke(CliArgs* args) {
     if (!e2eFileContains(cliEnv, "LD_PRELOAD=", "AppRun clears Steam LD_PRELOAD")) {
         return 1;
     }
-    if (!e2eExpectStatus(0, __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat("APPDIR=", ShellWords_quote(cliAppDir))), " APPIMAGE=")), ShellWords_quote(cliAppImage))), " SEMU_PROJECT_DIR=")), ShellWords_quote(cliProject))), " SEMU_ROMS=")), ShellWords_quote(joinPath(tmp, "roms-root")))), " ")), ShellWords_quote(joinPath(cliAppDir, "AppRun")))), " presentation plan --system gb")))) {
+    if (!e2eExpectStatus(0, __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(e2eCleanAppRunFixtureEnv(), "APPDIR=")), ShellWords_quote(cliAppDir))), " APPIMAGE=")), ShellWords_quote(cliAppImage))), " SEMU_PROJECT_DIR=")), ShellWords_quote(cliProject))), " SEMU_ROMS=")), ShellWords_quote(joinPath(tmp, "roms-root")))), " ")), ShellWords_quote(joinPath(cliAppDir, "AppRun")))), " presentation plan --system gb")))) {
         return 1;
     }
     char* presentationArgs = FileSystem_readText(cliArgs);
@@ -20517,7 +20522,7 @@ int e2eAppImageSmoke(CliArgs* args) {
     if (!e2eContains(presentationArgs, "--roms", "AppRun presentation roms arg")) {
         return 1;
     }
-    if (!e2eExpectStatus(0, __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat("APPDIR=", ShellWords_quote(cliAppDir))), " APPIMAGE=")), ShellWords_quote(cliAppImage))), " SEMU_PROJECT_DIR=")), ShellWords_quote(cliProject))), " SEMU_ROMS=")), ShellWords_quote(joinPath(tmp, "roms")))), " ")), ShellWords_quote(joinPath(cliAppDir, "AppRun")))), " launcher routed retroarch /bin/retroarch game.rom --sentinel")))) {
+    if (!e2eExpectStatus(0, __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(e2eCleanAppRunFixtureEnv(), "APPDIR=")), ShellWords_quote(cliAppDir))), " APPIMAGE=")), ShellWords_quote(cliAppImage))), " SEMU_PROJECT_DIR=")), ShellWords_quote(cliProject))), " SEMU_ROMS=")), ShellWords_quote(joinPath(tmp, "roms")))), " ")), ShellWords_quote(joinPath(cliAppDir, "AppRun")))), " launcher routed retroarch /bin/retroarch game.rom --sentinel")))) {
         return 1;
     }
     char* launcherArgs = FileSystem_readText(cliArgs);
