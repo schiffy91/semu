@@ -32,6 +32,23 @@ The production target is not to imitate RetroArch everywhere. It is to expose a
 single Semu controller contract and use the strongest native feature available
 behind each emulator route.
 
+## Ownership Boundary
+
+Semu policy is edited only through Semu-owned files and commands:
+`settings/semu-settings.json`, `settings/presentation/*.json`,
+`input/keymaps/steam_deck.skm`, `sync/sync.json`, and the matching
+`settings`, `presentation`, `keymap`, and `sync` CLI/UI commands.
+
+Generated emulator profiles, Steam Input templates, ES-DE systems, desktop
+entries, systemd units, and routed launcher config are compiled artifacts. They
+are rewritten by `settings apply`, `lifecycle reconfigure`, or commands that
+explicitly pass `--apply`.
+
+Live emulator config is adapter state. Semu can read it to infer runtime aspect,
+screen layout, or capability state, and helpers can broadcast normalized state
+back into `settings/presentation-state/*.json`; Semu policy still changes by
+editing the owned files above, then compiling into emulator-readable files.
+
 ## Current Left Trackpad Radial Contract
 
 The generated Steam Input template currently uses the left trackpad radial menu
