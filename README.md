@@ -42,9 +42,9 @@ This repo currently provides:
 Important remaining production gaps are tracked in `TODO.md` and
 `tests/E2E.md`. The SteamOS/AppImage path has a physical Deck Desktop Mode pass
 over the routed emulator set with screenshot, input, and structured quit-watch
-evidence. The current installed Deck AppImage was rebuilt from commit `d674470`
+evidence. The current installed Deck AppImage was rebuilt from commit `04a4b79`
 and smoke-tested at
-`4481bb59323b7ba5106dbf2639a53f1a10070036e09b74ee2be22d3d93a581fb`.
+`d00df401164f38172cabbe9657cecb779967b3fce4f06e1d8b9ef59b391c86cf`.
 The final production gate is still a Game Mode pass that exercises the Steam
 Input left-trackpad radial menu and representative games across the routed
 emulator set.
@@ -296,10 +296,10 @@ Fallback behavior:
 
 Automated tests validate AppImage assembly logic with fake ES-DE and fake
 appimagetool. Physical Deck evidence currently covers Desktop Mode ES-DE launch,
-AppImage-owned Syncthing, SD-card ROM detection, and required-route process
-launch/quit automation. Game Mode, physical Steam Input radial quit, controller
-input in-game, fullscreen presentation, and ES-DE return flow remain the final
-manual gates listed in `tests/E2E.md`.
+AppImage-owned Syncthing, SD-card ROM detection, strict visual asset auditing,
+and required-route process launch/input/quit automation. Game Mode, physical
+Steam Input radial quit, and ES-DE return flow remain the final manual gates
+listed in `tests/E2E.md`.
 
 ## Declarative Configuration
 

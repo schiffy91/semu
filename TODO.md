@@ -5,15 +5,25 @@
 - Rebuilt and installed the self-contained AppImage at
   `/home/deck/Applications/Semu/Semu-x86_64.AppImage`.
 - Installed AppImage hash
-  `4481bb59323b7ba5106dbf2639a53f1a10070036e09b74ee2be22d3d93a581fb`.
+  `d00df401164f38172cabbe9657cecb779967b3fce4f06e1d8b9ef59b391c86cf`
+  from commit `04a4b79`; previous install backup:
+  `/home/deck/Applications/Semu/Semu-x86_64.AppImage.prev-04a4b79-20260612-051628`.
+- Verified the installed AppImage opens ES-DE in Deck Desktop Mode and captured
+  `/home/deck/semu-evidence/installed-launch.png` at 1280x800.
+- Verified the installed AppImage strict presentation audit against the real
+  Deck project: `ok: 15`, `missing_assets: 0`,
+  `missing_dependencies: 0`, `disabled: 2`.
 - Ran the Desktop Mode direct AppImage Deck loop over the required routed
   emulator set with clean process startup, foreground-window wait, screenshots,
   scripted input probes, and unified quit verification. `gb`, `gbc`, `gba`,
   `nes`, `snes`, `genesis`, `n64-retroarch`, `psp`, `dreamcast`, `gc`, `wii`,
   `ps2`, `nds-melonds`, `n3ds`, `wiiu`, and `switch` all passed.
-- Visually inspected final 3DS and Wii captures: 3DS shows Super Mario 3D Land
-  in-game UI, and Wii is past the strap screen at Kirby's Epic Yarn's save
-  prompt.
+- Evidence is under `/home/deck/semu-evidence/emulator-loop-04a4b79`; every
+  required route reported `status=0`, `quit=ok`, `visual=changed`, and
+  `input_visual=changed`.
+- Copied the evidence locally to
+  `/tmp/semu-deck-evidence/emulator-loop-04a4b79` and visually inspected a
+  contact sheet at `/tmp/semu-deck-evidence/emulator-loop-contact.jpg`.
 - Confirmed the RetroArch DeSmuME DS alternate route is not production-ready on
   the Deck loop: the earlier optional route produced a screenshot but exited
   `status=139` before quit. The production DS route remains melonDS.
@@ -186,8 +196,6 @@
   classic grey Game Boy, frost purple GBC, purple wide GBA, and red God of War
   PSP. `presentation audit --strict` is now the gate for proving those declared
   assets and sidecars are actually present.
-- Run the same strict visual audit from the Deck-built AppImage after rebuilding
-  with the pinned visual asset package.
 - Prototype standalone visual effects behind feature flags with gamescope
   ReShade and vkBasalt only after the input gates pass.
 
@@ -195,8 +203,6 @@
 
 - Promote `utils/steam-deck-bootstrap.sh` into BTRC Deck commands after the
   full physical Game Mode pass.
-- Clean up the non-fatal Nix `symlinkJoin` build-log warning for
-  `libretro-shaders-slang` (`libretro: is a link instead of a directory`).
 - Extend the dependency-free BTRC settings UI to cover screenshot hooks, BIOS
   status, and advanced per-emulator settings.
 - Pair a second Syncthing device and verify conflict behavior.
