@@ -23,10 +23,10 @@ AppImage and a Nix-built `result` tree:
 
 ```sh
 SEMU_APPIMAGE=/home/deck/Applications/Semu/Semu-x86_64.AppImage \
-SEMU_PROJECT=/home/deck/semu \
-SEMU_ROMS=/run/media/deck/SD/Emulation/ES-DE/ES-DE/ROMs \
-SEMU_RESULT=/home/deck/.cache/semu-verify-a555de7/result \
-SEMU_TEST_OUT=/home/deck/.cache/semu-emulator-loop-a555de7-v2 \
+SEMU_PROJECT=/home/deck/semu-latest \
+SEMU_ROMS=/run/media/deck/SD \
+SEMU_RESULT=/home/deck/semu-latest/result \
+SEMU_TEST_OUT=/home/deck/.cache/semu-emulator-loop-cad8b59 \
 bash tests/deck/emulator-loop.sh
 ```
 
@@ -43,6 +43,16 @@ When `SEMU_QUIT_WATCH_LOG` is not set, routed emulator launches write Semu-owned
 evidence under `.semu/verification/quit-watch/<emulator>.log`. Use those files
 for the physical Game Mode pass, where the AppImage is launched through Steam
 and the left-trackpad radial menu is operated on the Deck itself.
+
+The current installed AppImage smoke on the physical Deck is:
+
+- commit: `cad8b59`
+- path: `/home/deck/Applications/Semu/Semu-x86_64.AppImage`
+- sha256:
+  `8bd5e8850e231ab1a93375c3e02c369b1502fd0a5c4a11d741539ff96a17bd36`
+- verified: packaged `e2e appimage`, GB presentation asset resolution, app.quit
+  capability report, and bundled `semu-quit-watch` start/exit evidence
+- pending: physical Game Mode left-trackpad radial quit/save/load proof
 
 Inside the guest:
 
