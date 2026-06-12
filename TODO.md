@@ -24,6 +24,12 @@
   painted ES-DE from the Steam-launched process in Desktop Mode.
 - Verified PCSX2 runtime config uses the Deck SD-card BIOS path and does not
   bake local Mac paths into committed profiles.
+- Built the clean `/home/deck/semu-latest` checkout at commit `bf3b78a` with
+  `nix build .#default`; output
+  `/nix/store/jplbqr1rn7zygrkv3ihrd538aqfqjzc2-semu-full`.
+- On that pushed Deck checkout, `result/bin/semu e2e presentation` passed and
+  `presentation plan --system gb` resolved shader, bezel, runtime preset, and
+  launcher shader paths as `ok` against the bundled shader tree.
 
 ## Verified Locally
 
@@ -83,6 +89,9 @@
 - Add or package the requested photorealistic bezel art packs: classic grey Game
   Boy, frost purple GBC, purple wide GBA, Panasonic/Sony CRT, maximized DS/3DS,
   and red God of War or black PSP.
+- The new Deck-side `presentation plan --system ps2` check shows the generic
+  Mega_Bezel runtime preset resolves, but the requested PS2-specific Soqueroeu
+  TV background preset is still missing from the bundled assets.
 - Prototype standalone visual effects behind feature flags with gamescope
   ReShade and vkBasalt only after the input gates pass.
 
@@ -90,6 +99,8 @@
 
 - Promote `utils/steam-deck-bootstrap.sh` into BTRC Deck commands after the
   full physical Game Mode pass.
+- Clean up the non-fatal Nix `symlinkJoin` build-log warning for
+  `libretro-shaders-slang` (`libretro: is a link instead of a directory`).
 - Extend the dependency-free BTRC settings UI to cover screenshot hooks, BIOS
   status, and advanced per-emulator settings.
 - Pair a second Syncthing device and verify conflict behavior.
