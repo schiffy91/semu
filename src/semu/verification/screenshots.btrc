@@ -30,7 +30,7 @@ void writeScreenshotDefaults(string project) {
     ensureDir(joinPath(contentRoot(project), "screenshots/verification"));
     string path = screenshotConfigPath(project);
     if (!FileSystem.exists(path)) {
-        FileSystem.writeText(path, screenshotDefaultConfigText());
+        SemuGeneratedFiles.writeSource(project, path, screenshotDefaultConfigText());
     }
 }
 

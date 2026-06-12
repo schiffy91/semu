@@ -200,7 +200,7 @@ bool syncPutSetting(string project, string key, string value) {
         print(f"error 0:0 {spec.key} expects a non-negative integer");
         return false;
     }
-    writeJsonPrettyFile(syncConfigPath(project), syncConfigTextWithOverride(project, spec.key, value));
+    SemuGeneratedFiles.writeSourceJson(project, syncConfigPath(project), syncConfigTextWithOverride(project, spec.key, value));
     return true;
 }
 
@@ -401,11 +401,11 @@ void writeSyncSystemdUnits(string project) {
     ensureDir(systemdUserDir());
     ensureDir(syncScriptsDir(project));
     string script = joinPath(syncScriptsDir(project), "sync-force.sh");
-    FileSystem.writeText(script, syncForceScriptText(project));
+    SemuGeneratedFiles.writeProject(project, script, syncForceScriptText(project));
     FileSystem.chmod(script, 493);
-    FileSystem.writeText(joinPath(systemdUserDir(), "semu-syncthing.service"), syncServiceText(project));
-    FileSystem.writeText(joinPath(systemdUserDir(), "semu-sync-force.service"), syncForceServiceText(project));
-    FileSystem.writeText(joinPath(systemdUserDir(), "semu-sync-force.timer"), syncTimerText());
+    SemuGeneratedFiles.writeExternalInstall("systemd_user_unit", joinPath(systemdUserDir(), "semu-syncthing.service"), syncServiceText(project));
+    SemuGeneratedFiles.writeExternalInstall("systemd_user_unit", joinPath(systemdUserDir(), "semu-sync-force.service"), syncForceServiceText(project));
+    SemuGeneratedFiles.writeExternalInstall("systemd_user_unit", joinPath(systemdUserDir(), "semu-sync-force.timer"), syncTimerText());
 }
 
 string deckDesktopText(string project) {
@@ -434,7 +434,7 @@ string deckDesktopText(string project) {
 
 void writeDeckDesktopEntry(string project) {
     ensureDir(applicationsDir());
-    FileSystem.writeText(joinPath(applicationsDir(), "semu.desktop"), deckDesktopText(project));
+    SemuGeneratedFiles.writeExternalInstall("desktop_entry", joinPath(applicationsDir(), "semu.desktop"), deckDesktopText(project));
 }
 
 // ---- api_setup.btrc ----
@@ -583,7 +583,8 @@ void removePath(string path) {
 
 void writeLifecycleState(string project, string action) {
     ensureDir(semuStateRoot(project));
-    FileSystem.writeText(
+    SemuGeneratedFiles.writeAdapterState(
+        project,
         lifecycleStatePath(project),
         jsonObject([
             jsonStrField("schema_version", "1"),
@@ -669,7 +670,7 @@ bool lifecycleChangeKeymap(string project, string actionId, string command) {
         }
         return false;
     }
-    FileSystem.writeText(path, next);
+    SemuGeneratedFiles.writeSource(project, path, next);
     lifecycleReconfigure(project, "");
     writeLifecycleState(project, "change");
     print(f"OK lifecycle change: {actionId}={command}");
@@ -679,7 +680,7 @@ bool lifecycleChangeKeymap(string project, string actionId, string command) {
 void lifecycleUpgrade(string project) {
     ensureDir(lifecycleBackupsRoot(project));
     if (FileSystem.exists(joinPath(project, "semu.json"))) {
-        FileSystem.writeText(upgradeBackupPath(project), FileSystem.readText(joinPath(project, "semu.json")));
+        SemuGeneratedFiles.writeAdapterState(project, upgradeBackupPath(project), FileSystem.readText(joinPath(project, "semu.json")));
     }
     lifecycleReconfigure(project, "");
     writeLifecycleState(project, "upgrade");

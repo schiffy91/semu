@@ -161,21 +161,20 @@ string launcherRoutedStateRoot(string project, string emulator) {
     return joinPath(joinPath(project, ".semu/appimage-state"), emulator.toLower());
 }
 
-void launcherCopyDirContents(string source, string destination) {
+void launcherCopyDirContents(string project, string source, string destination) {
     if (!FileSystem.isDir(source)) {
         return;
     }
-    ensureDir(destination);
+    SemuGeneratedFiles.ensureAdapterStateDir(project, destination);
     UnixShell shell = UnixShell();
     shell.runRaw("cp -a " + ShellWords.quote(joinPath(source, ".")) + " " + ShellWords.quote(destination) + " 2>/dev/null || true", false, false, "");
 }
 
-void launcherCopyFile(string source, string destination) {
+void launcherCopyFile(string project, string source, string destination) {
     if (!FileSystem.isFile(source)) {
         return;
     }
-    ensureDir(PathTools.dirname(destination));
-    FileSystem.writeText(destination, FileSystem.readText(source));
+    SemuGeneratedFiles.writeAdapterState(project, destination, FileSystem.readText(source));
 }
 
 void launcherSymlinkDir(string source, string destination) {
@@ -187,21 +186,21 @@ void launcherSymlinkDir(string source, string destination) {
     FileSystem.symlink(source, destination);
 }
 
-void launcherCopyFirstExisting(Vector<string> sources, string destination) {
+void launcherCopyFirstExisting(string project, Vector<string> sources, string destination) {
     for source in sources {
         if (FileSystem.isFile(source)) {
-            launcherCopyFile(source, destination);
+            launcherCopyFile(project, source, destination);
             return;
         }
     }
 }
 
 void launcherCopyProfileDir(string project, string relative, string destination) {
-    launcherCopyDirContents(emulatorProfilePath(project, relative), destination);
+    launcherCopyDirContents(project, emulatorProfilePath(project, relative), destination);
 }
 
 void launcherCopyProfileFile(string project, string relative, string destination) {
-    launcherCopyFile(emulatorProfilePath(project, relative), destination);
+    launcherCopyFile(project, emulatorProfilePath(project, relative), destination);
 }
 
 void launcherCopyStateDir(string project, string relative, string destination) {
@@ -272,7 +271,7 @@ void launcherWriteCemuSettings(string project, string configRoot, string dataRoo
         return;
     }
     ensureDir(PathTools.dirname(settings));
-    FileSystem.writeText(settings, launcherCemuSettingsText(project, dataRoot));
+    SemuGeneratedFiles.writeAdapterState(project, settings, launcherCemuSettingsText(project, dataRoot));
 }
 
 bool launcherUsesNixGl(string emulator) {
@@ -363,19 +362,19 @@ string launcherQuitWatchCommand(string childCommand) {
 void launcherWriteRetroArchConfig(string project, string configRoot) {
     string retroarchRoot = joinPath(configRoot, "retroarch");
     ensureDir(retroarchRoot);
-    FileSystem.writeText(joinPath(retroarchRoot, "retroarch.cfg"), launcherRetroArchConfig(project));
+    SemuGeneratedFiles.writeAdapterState(project, joinPath(retroarchRoot, "retroarch.cfg"), launcherRetroArchConfig(project));
 }
 
 void launcherWritePcsx2Config(string project, string configRoot) {
     string pcsx2Root = joinPath(configRoot, "PCSX2/inis");
     ensureDir(pcsx2Root);
-    FileSystem.writeText(joinPath(pcsx2Root, "PCSX2.ini"), pcsx2ConfigText(project));
+    SemuGeneratedFiles.writeAdapterState(project, joinPath(pcsx2Root, "PCSX2.ini"), pcsx2ConfigText(project));
 }
 
-void launcherWriteAzaharConfig(string configRoot, string dataRoot) {
+void launcherWriteAzaharConfig(string project, string configRoot, string dataRoot) {
     string azaharRoot = joinPath(configRoot, "azahar-emu");
     ensureDir(azaharRoot);
-    FileSystem.writeText(joinPath(azaharRoot, "qt-config.ini"), azaharConfigTextForDataRoot(dataRoot));
+    SemuGeneratedFiles.writeAdapterState(project, joinPath(azaharRoot, "qt-config.ini"), azaharConfigTextForDataRoot(dataRoot));
 }
 
 void launcherSeedRoutedState(string project, string emulator, string configRoot, string dataRoot) {
@@ -399,7 +398,7 @@ void launcherSeedRoutedState(string project, string emulator, string configRoot,
     if (key.equals("cemu")) {
         launcherCopyStateDir(project, "Cemu/config", joinPath(configRoot, "Cemu"));
         launcherCopyStateDir(project, "Cemu/data", joinPath(dataRoot, "Cemu"));
-        launcherCopyFirstExisting([
+        launcherCopyFirstExisting(project, [
             joinPath(configuredEmulationRoot(project), "Cemu/data/keys.txt"),
             emulatorProfilePath(project, "Cemu/data/keys.txt")
         ], joinPath(dataRoot, "Cemu/keys.txt"));
@@ -409,7 +408,7 @@ void launcherSeedRoutedState(string project, string emulator, string configRoot,
     if (key.equals("azahar")) {
         launcherCopyStateDir(project, "Azahar/config", joinPath(configRoot, "azahar-emu"));
         launcherCopyStateDir(project, "Azahar/data", joinPath(dataRoot, "azahar-emu"));
-        launcherWriteAzaharConfig(configRoot, dataRoot);
+        launcherWriteAzaharConfig(project, configRoot, dataRoot);
         return;
     }
     if (key.equals("ppsspp")) {
@@ -439,11 +438,11 @@ void launcherSeedRoutedState(string project, string emulator, string configRoot,
         launcherSymlinkDir(joinPath(externalConfig, "sdcard"), joinPath(configRoot, "Ryujinx/sdcard"));
         string systemRoot = joinPath(configRoot, "Ryujinx/system");
         ensureDir(systemRoot);
-        launcherCopyFirstExisting([
+        launcherCopyFirstExisting(project, [
             joinPath(configuredEmulationRoot(project), "Ryujinx/config/system/prod.keys"),
             joinPath(biosRoot(project), "switch/prod.keys")
         ], joinPath(systemRoot, "prod.keys"));
-        launcherCopyFirstExisting([
+        launcherCopyFirstExisting(project, [
             joinPath(configuredEmulationRoot(project), "Ryujinx/config/system/title.keys"),
             joinPath(biosRoot(project), "switch/title.keys")
         ], joinPath(systemRoot, "title.keys"));

@@ -5,13 +5,10 @@
 - Rebuilt and installed the self-contained AppImage at
   `/home/deck/Applications/Semu/Semu-x86_64.AppImage`.
 - Ran the Desktop Mode direct AppImage Deck loop over the required routed
-  emulator set with screenshots and process quit verification: GB, GBC, GBA,
-  NES, SNES, Genesis, N64/RetroArch, PSP, Dreamcast, GameCube, Wii, PS2,
-  DS/melonDS, 3DS, Wii U, and Switch all returned `status=0`, `quit=ok`, and
-  1280x800 nonblank screenshots.
-- Verified representative screenshots for GB LCD, Genesis CRT/NTSC, SNES CRT,
-  PS2 runtime, DS/melonDS, 3DS top/bottom layout, Wii U, and Switch. Current
-  evidence lives under `build/deck-loop-a555de7-v2`.
+  emulator set. Processes launched and accepted the scripted quit path, but the
+  captured PNGs were later found to be desktop captures rather than reliable
+  emulator framebuffer proof. Treat `build/deck-loop-*` as process evidence
+  only until the foreground/window capture issue is fixed and rerun.
 - Confirmed the RetroArch DeSmuME DS alternate route is not production-ready on
   the Deck loop: the earlier optional route produced a screenshot but exited
   `status=139` before quit. The production DS route remains melonDS.
@@ -45,6 +42,10 @@
 - Added `SemuGeneratedFiles` so core generated writes are explicitly classified
   as Semu project artifacts or external install artifacts. Smoke coverage now
   rejects external ROM paths as generated output.
+- Extended the ownership boundary so source writes, generated project writes,
+  routed adapter-state writes, and documented external install writes use
+  separate APIs. Smoke coverage now classifies source, generated, adapter-state,
+  and external ROM paths explicitly.
 - Local verification passed for BTRC presentation smoke, generated-C e2e,
   AppImage/Nix routing smoke, JSON formatting, and whitespace checks.
 
@@ -52,6 +53,8 @@
 
 - Run a real Steam Deck Game Mode pass for Steam Input templates, the physical
   left-trackpad radial quit, and ES-DE return flow.
+- Fix and rerun Desktop Mode visual capture so the required emulator loop proves
+  actual emulator windows/framebuffers, not only process launch and quit.
 - Confirm controller movement/buttons inside representative games from Game
   Mode, not only SSH/uinput.
 - Confirm the physical left-trackpad radial Quit action returns to ES-DE for
