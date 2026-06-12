@@ -508,7 +508,7 @@ class SettingsUi {
             index++;
         }
         print("");
-        print("Commands: number = edit/toggle, p = presentation, i = input, s = sync, a = compile/apply, q = quit");
+        print("Commands: number = edit/toggle, p = presentation, v = visual audit, i = input, s = sync, a = compile/apply, q = quit");
         print("Select:");
     }
 
@@ -522,6 +522,11 @@ class SettingsUi {
             if (choice.equals("q") || choice.equals("quit")) { return 0; }
             if (choice.equals("p") || choice.equals("presentation")) {
                 int status = presentationUi(self.project);
+                if (status != 0) { return status; }
+                continue;
+            }
+            if (choice.equals("v") || choice.equals("visual") || choice.equals("audit")) {
+                int status = presentationAudit(self.project, "", "", false);
                 if (status != 0) { return status; }
                 continue;
             }

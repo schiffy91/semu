@@ -307,6 +307,10 @@ string presentationStatePath(string project, string system) {
     return joinPath(presentationStateRoot(project), system + ".json");
 }
 
+string presentationAssetAuditPath(string project) {
+    return joinPath(semuStateRoot(project), "verification/presentation-assets.json");
+}
+
 bool presentationKnownField(string field) {
     return field.equals("label")
         || field.equals("default_emulator")
@@ -706,6 +710,107 @@ string presentationResolveSelectedShader(string project, string runtimePreset, s
     return presentationResolveLauncherShader(project, runtimePreset, shaderFile);
 }
 
+class PresentationAssetAuditRow {
+    public string system;
+    public string label;
+    public string effectiveAspect;
+    public string presentationMode;
+    public string shaderBackend;
+    public string bezelBackend;
+    public string selectedShader;
+    public string selectedBezel;
+    public string selectedRuntime;
+    public string resolvedShader;
+    public string resolvedBezel;
+    public string resolvedRuntime;
+    public string resolvedLauncher;
+    public string shaderStatus;
+    public string bezelStatus;
+    public string runtimeStatus;
+    public string launcherStatus;
+    public bool required;
+    public int missingAssetCount;
+
+    public PresentationAssetAuditRow(string project, PresentationStationSpec spec, string emulator) {
+        JsonObject config = spec.config(project);
+        string selectedEmulator = emulator.len() > 0 ? emulator : config.getString("default_emulator", spec.defaultEmulator);
+        PresentationRuntimeState state = presentationAdapterRuntimeState(project, spec, config, selectedEmulator);
+        self.system = spec.system;
+        self.label = config.getString("label", spec.label);
+        self.effectiveAspect = state.aspect;
+        self.presentationMode = state.bezelMode;
+        self.shaderBackend = config.getString("shader_backend", spec.shaderBackend);
+        self.bezelBackend = config.getString("bezel_backend", spec.bezelBackend);
+        self.selectedShader = presentationEffectiveValue(config, spec, state, "shader_file", spec.shaderFile, "widescreen_shader_file", spec.defaultWidescreenShaderFile());
+        self.selectedBezel = presentationEffectiveValue(config, spec, state, "bezel_file", spec.bezelFile, "widescreen_bezel_file", spec.defaultWidescreenBezelFile());
+        self.selectedRuntime = presentationEffectiveValue(config, spec, state, "runtime_preset", spec.runtimePreset, "widescreen_runtime_preset", spec.defaultWidescreenRuntimePreset());
+        string launcher = presentationResolveSelectedShader(project, self.selectedRuntime, self.selectedShader);
+        bool visualsEnabled = presentationVisualsEnabled(project);
+        PresentationResolvedAssets assets = PresentationResolvedAssets(project, self.selectedShader, self.selectedBezel, self.selectedRuntime, launcher);
+        self.resolvedShader = assets.shaderFile;
+        self.resolvedBezel = assets.bezelFile;
+        self.resolvedRuntime = assets.runtimePreset;
+        self.resolvedLauncher = assets.launcherShader;
+        self.shaderStatus = assets.status(self.selectedShader, self.resolvedShader);
+        self.bezelStatus = assets.status(self.selectedBezel, self.resolvedBezel);
+        self.runtimeStatus = assets.status(self.selectedRuntime, self.resolvedRuntime);
+        self.launcherStatus = assets.launcherStatus(visualsEnabled);
+        self.required = !(self.shaderBackend.equals("off_by_default")
+            && self.bezelBackend.equals("off_by_default")
+            && self.selectedShader.len() == 0
+            && self.selectedBezel.len() == 0
+            && self.selectedRuntime.len() == 0);
+        self.missingAssetCount = 0;
+        if (self.shaderStatus.equals("missing")) { self.missingAssetCount++; }
+        if (self.bezelStatus.equals("missing")) { self.missingAssetCount++; }
+        if (self.runtimeStatus.equals("missing")) { self.missingAssetCount++; }
+        if (self.required && self.launcherStatus.equals("missing")) { self.missingAssetCount++; }
+    }
+
+    public bool ok() {
+        return self.missingAssetCount == 0;
+    }
+
+    public string status() {
+        if (!self.required) { return "disabled"; }
+        return self.ok() ? "ok" : "missing";
+    }
+
+    public string json() {
+        return jsonObject([
+            jsonStrField("system", self.system),
+            jsonStrField("label", self.label),
+            jsonStrField("status", self.status()),
+            jsonBoolField("required", self.required),
+            jsonField("missing_asset_count", Strings.fromInt(self.missingAssetCount)),
+            jsonStrField("effective_aspect", self.effectiveAspect),
+            jsonStrField("presentation_mode", self.presentationMode),
+            jsonStrField("shader_backend", self.shaderBackend),
+            jsonStrField("selected_shader_file", self.selectedShader),
+            jsonStrField("resolved_shader_file", self.resolvedShader),
+            jsonStrField("shader_file_status", self.shaderStatus),
+            jsonStrField("bezel_backend", self.bezelBackend),
+            jsonStrField("selected_bezel_file", self.selectedBezel),
+            jsonStrField("resolved_bezel_file", self.resolvedBezel),
+            jsonStrField("bezel_file_status", self.bezelStatus),
+            jsonStrField("selected_runtime_preset", self.selectedRuntime),
+            jsonStrField("resolved_runtime_preset", self.resolvedRuntime),
+            jsonStrField("runtime_preset_status", self.runtimeStatus),
+            jsonStrField("resolved_launcher_shader", self.resolvedLauncher),
+            jsonStrField("launcher_shader_status", self.launcherStatus)
+        ]);
+    }
+
+    public string line() {
+        return self.status().toUpper() + " " + self.system
+            + " shader=" + self.shaderStatus
+            + " bezel=" + self.bezelStatus
+            + " runtime=" + self.runtimeStatus
+            + " launcher=" + self.launcherStatus
+            + " aspect=" + self.effectiveAspect;
+    }
+}
+
 string presentationPlanJson(string project, string system, string emulator) {
     PresentationStationSpec spec = PresentationCatalog.find(system);
     if (!spec.known()) { return ""; }
@@ -769,6 +874,66 @@ void presentationList(string project) {
     for spec in PresentationCatalog.all() {
         print(spec.system + " " + spec.label + " shader=" + presentationConfigValue(project, spec.system, "shader_file") + " bezel=" + presentationConfigValue(project, spec.system, "bezel_file"));
     }
+}
+
+Vector<PresentationStationSpec> presentationAuditSpecs(string system) {
+    Vector<PresentationStationSpec> specs = [];
+    if (system.len() > 0) {
+        PresentationStationSpec spec = PresentationCatalog.find(system);
+        if (spec.known()) {
+            specs.push(spec);
+        }
+        return specs;
+    }
+    return PresentationCatalog.all();
+}
+
+int presentationAudit(string project, string system, string emulator, bool strict) {
+    writePresentationDefaults(project);
+    Vector<PresentationStationSpec> specs = presentationAuditSpecs(system);
+    if (specs.len == 0) {
+        print("error 0:0 unknown presentation system '" + system + "'");
+        return 1;
+    }
+
+    Vector<string> rowsJson = [];
+    int okCount = 0;
+    int missingSystemCount = 0;
+    int missingAssetCount = 0;
+    int disabledCount = 0;
+    print("Presentation asset audit");
+    for spec in specs {
+        PresentationAssetAuditRow row = PresentationAssetAuditRow(project, spec, emulator);
+        rowsJson.push(row.json());
+        print("  " + row.line());
+        missingAssetCount = missingAssetCount + row.missingAssetCount;
+        if (row.status().equals("ok")) {
+            okCount++;
+        } else if (row.status().equals("disabled")) {
+            disabledCount++;
+        } else {
+            missingSystemCount++;
+        }
+    }
+
+    string report = jsonObject([
+        jsonField("schema_version", "1"),
+        jsonStrField("project", project),
+        jsonStrField("system", system),
+        jsonBoolField("strict", strict),
+        jsonField("ok_count", Strings.fromInt(okCount)),
+        jsonField("missing_system_count", Strings.fromInt(missingSystemCount)),
+        jsonField("missing_asset_count", Strings.fromInt(missingAssetCount)),
+        jsonField("disabled_count", Strings.fromInt(disabledCount)),
+        jsonField("systems", jsonArray(rowsJson))
+    ]);
+    SemuGeneratedFiles.writeAdapterState(project, presentationAssetAuditPath(project), jsonPrettyText(report));
+    print("  ok: " + Strings.fromInt(okCount) + " missing: " + Strings.fromInt(missingSystemCount) + " missing_assets: " + Strings.fromInt(missingAssetCount) + " disabled: " + Strings.fromInt(disabledCount));
+    print("  report: " + presentationAssetAuditPath(project));
+    if (strict && missingSystemCount > 0) {
+        return 2;
+    }
+    return 0;
 }
 
 class PresentationUiField {
@@ -854,7 +1019,7 @@ class PresentationUi {
             index++;
         }
         print("");
-        print("Commands: number = edit system, a = apply, q = back");
+        print("Commands: number = edit system, audit = visual audit, a = apply, q = back");
         print("Select:");
     }
 
@@ -872,7 +1037,7 @@ class PresentationUi {
             index++;
         }
         print("");
-        print("Commands: number = edit/toggle, plan = show plan, state = show runtime state, a = apply, b = back, q = quit");
+        print("Commands: number = edit/toggle, plan = show plan, state = show runtime state, audit = visual audit, a = apply, b = back, q = quit");
         print("Select:");
     }
 
@@ -946,12 +1111,22 @@ class PresentationUi {
                 self.apply();
                 continue;
             }
+            if (choice.equals("audit") || choice.equals("assets")) {
+                int status = presentationAudit(self.project, "", "", false);
+                if (status != 0) { return status; }
+                continue;
+            }
             if (choice.equals("plan")) {
                 self.showPlan(spec);
                 continue;
             }
             if (choice.equals("state")) {
                 self.showState(spec);
+                continue;
+            }
+            if (choice.equals("audit") || choice.equals("assets")) {
+                int status = presentationAudit(self.project, spec.system, "", false);
+                if (status != 0) { return status; }
                 continue;
             }
             if (!choice.isDigitStr()) {
@@ -1043,6 +1218,10 @@ int presentationCommand(CliArgs args, string project) {
     if (mode.equals("list")) {
         presentationList(project);
         return 0;
+    }
+    if (mode.equals("audit") || mode.equals("assets")) {
+        string system = presentationSystemArg(args, 2);
+        return presentationAudit(project, system, args.valueAfter("--emulator", ""), args.has("--strict"));
     }
     if (mode.equals("ui")) {
         return presentationUi(project);
