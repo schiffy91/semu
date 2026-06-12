@@ -5,7 +5,7 @@ class SemuCliCommands {
 
 // ---- config_commands.btrc ----
 void printUsage() {
-    print("semu [manifest|bootstrap|doctor|deck|lifecycle|sync|config|settings|presentation|apprun|steam-input|keymap|screenshot|sandbox|launcher|utils|e2e] [graph|payload-audit|n3ds-nocrypto|validate|render|install|setup|reconfigure|change|uninstall|reinstall|upgrade|status|force|serve|capture|prepare|launch|list|get|put|entry|ui|apply|plan|state|broadcast|defaults] [--project PATH] [--roms PATH] [--source PATH] [--output PATH] [--dest PATH] [--target manifest|retroarch|dolphin|pcsx2|steam-input] [--system SYSTEM] [--emulator NAME] [--hook HOOK] [--scratch PATH] [--action ID] [--command KEYS]");
+    print("semu [manifest|bootstrap|doctor|deck|lifecycle|sync|config|settings|presentation|apprun|steam-input|keymap|screenshot|sandbox|launcher|utils|e2e] [graph|payload-audit|n3ds-nocrypto|validate|render|install|setup|compile|reconfigure|change|uninstall|reinstall|upgrade|status|force|serve|capture|prepare|launch|list|get|put|entry|ui|apply|plan|state|broadcast|defaults] [--project PATH] [--roms PATH] [--source PATH] [--output PATH] [--dest PATH] [--target manifest|retroarch|dolphin|pcsx2|steam-input] [--system SYSTEM] [--emulator NAME] [--hook HOOK] [--scratch PATH] [--action ID] [--command KEYS]");
 }
 int keymapCommand(CliArgs args) {
     string mode = "validate";
@@ -236,6 +236,11 @@ int lifecycleCommand(CliArgs args, string project) {
         lifecycleInstall(project, args.valueAfter("--roms", ""));
         return 0;
     }
+    if (mode.equals("compile")) {
+        lifecycleCompile(project, args.valueAfter("--roms", ""), "compile");
+        print("OK lifecycle compile");
+        return 0;
+    }
     if (mode.equals("reconfigure")) {
         lifecycleReconfigure(project, args.valueAfter("--roms", ""));
         writeLifecycleState(project, "reconfigure");
@@ -313,7 +318,7 @@ int deckCommand(CliArgs args, string project) {
     if (mode.equals("verify-input")) {
         return deckVerifyInputCommand(project, args.has("--strict") || Environment.get("SEMU_STRICT_INPUT", "0").equals("1"));
     }
-    if (mode.equals("setup") || mode.equals("reconfigure") || mode.equals("change") || mode.equals("uninstall") || mode.equals("reinstall") || mode.equals("upgrade") || mode.equals("status")) {
+    if (mode.equals("setup") || mode.equals("compile") || mode.equals("reconfigure") || mode.equals("change") || mode.equals("uninstall") || mode.equals("reinstall") || mode.equals("upgrade") || mode.equals("status")) {
         return lifecycleCommand(args, project);
     }
     if (mode.equals("verify")) {
@@ -421,6 +426,7 @@ int configCommand(CliArgs args, string project) {
             || mode.equals("get")
             || mode.equals("put")
             || mode.equals("set")
+            || mode.equals("compile")
             || mode.equals("apply")
             || mode.equals("ui")
             || mode.equals("entry")) {

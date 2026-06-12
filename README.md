@@ -99,8 +99,9 @@ Semu-owned source files are the only user-editable configuration surface:
 - `verification/screenshots.json`
 
 Everything else that an emulator or ES-DE reads is compiled from those files by
-`lifecycle reconfigure`, `settings apply`, or a command that explicitly passes
-`--apply`. That includes `emulators/profiles/`, `input/steam-input/*.vdf`,
+`lifecycle compile`, `lifecycle reconfigure`, `settings compile`,
+`settings apply`, or a command that explicitly passes `--apply`. That includes
+`emulators/profiles/`, `input/steam-input/*.vdf`,
 `emulators/es-de/custom_systems/`, `ES-DE/es_settings.xml`, systemd user units,
 desktop entries, and launcher runtime files.
 
@@ -416,8 +417,8 @@ resolves to `Emulation/ES-DE/ES-DE/ROMs` when that layout is present.
 The terminal UI is dependency-free BTRC output/input: numbered rows edit string
 settings, toggle boolean settings, and apply by running lifecycle reconfigure.
 The focused presentation, input, and sync UIs edit only Semu-owned source files;
-`apply` compiles those sources into emulator profiles, ES-DE entries, Steam
-Input templates, desktop files, and systemd user units.
+`compile` and `apply` compile those sources into emulator profiles, ES-DE
+entries, Steam Input templates, desktop files, and systemd user units.
 
 ### `settings/presentation/*.json`
 
