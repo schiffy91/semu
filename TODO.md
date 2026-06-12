@@ -51,6 +51,10 @@
   routed adapter-state writes, and documented external install writes use
   separate APIs. Smoke coverage now classifies source, generated, adapter-state,
   and external ROM paths explicitly.
+- Added explicit `settings compile` / `lifecycle compile` paths so Semu-owned
+  source files can be compiled into emulator and ES-DE artifacts without
+  implying that the UI directly edits emulator-native files. Smoke coverage now
+  exercises the compile command and ES-DE settings entry.
 - Local verification passed for BTRC presentation smoke, generated-C e2e,
   AppImage/Nix routing smoke, JSON formatting, and whitespace checks.
 

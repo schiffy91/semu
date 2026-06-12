@@ -198,6 +198,7 @@ class SettingsEntries {
             SettingsEntrySpec("Open Sync Settings.semu", "Open Sync Settings", "ui sync"),
             SettingsEntrySpec("Use Steam Deck SD ROMs.semu", "Use Steam Deck SD ROMs", "put roms.dir /run/media/deck/SD apply"),
             SettingsEntrySpec("Apply Settings.semu", "Apply Settings", "apply"),
+            SettingsEntrySpec("Compile Settings.semu", "Compile Settings", "compile"),
             SettingsEntrySpec("Toggle Integer Scaling.semu", "Toggle Integer Scaling", "toggle visual.integer_scaling apply"),
             SettingsEntrySpec("Toggle CRT Shaders.semu", "Toggle CRT Shaders", "toggle visual.crt_shaders apply"),
             SettingsEntrySpec("Toggle Bezels.semu", "Toggle Bezels", "toggle visual.bezels apply"),
@@ -447,6 +448,11 @@ class SettingsEntryAction {
         if (verb.equals("ui")) {
             return self.runUi();
         }
+        if (verb.equals("compile")) {
+            lifecycleCompile(self.project, "", "compile");
+            print("OK settings compiled");
+            return 0;
+        }
         if (verb.equals("apply")) {
             lifecycleReconfigure(self.project, "");
             print("OK settings applied");
@@ -486,6 +492,8 @@ class SettingsUi {
         print("Semu Settings");
         print("=============");
         print("Project: " + self.project);
+        print("Source: " + semuSettingsPath(self.project));
+        print("Edits update Semu-owned JSON. Use compile/apply to regenerate emulator and ES-DE files.");
         print("");
         string group = "";
         int index = 1;
@@ -500,7 +508,7 @@ class SettingsUi {
             index++;
         }
         print("");
-        print("Commands: number = edit/toggle, p = presentation, i = input, s = sync, a = apply, q = quit");
+        print("Commands: number = edit/toggle, p = presentation, i = input, s = sync, a = compile/apply, q = quit");
         print("Select:");
     }
 
@@ -721,6 +729,12 @@ int settingsCommand(CliArgs args, string project) {
             lifecycleReconfigure(project, "");
             print("OK settings applied");
         }
+        return 0;
+    }
+    if (mode.equals("compile")) {
+        writeSettingsDefaults(project);
+        lifecycleCompile(project, "", "compile");
+        print("OK settings compiled");
         return 0;
     }
     if (mode.equals("apply")) {

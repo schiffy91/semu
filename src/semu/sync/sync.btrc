@@ -596,7 +596,7 @@ void writeLifecycleState(string project, string action) {
     );
 }
 
-void lifecycleReconfigure(string project, string romsDir) {
+void lifecycleCompile(string project, string romsDir, string action) {
     writeSyncDefaults(project, romsDir);
     ensureProjectContentDirs(project);
     seedKeymapDefaults(project);
@@ -607,7 +607,11 @@ void lifecycleReconfigure(string project, string romsDir) {
     writeEsDeFiles(project);
     writeSyncSystemdUnits(project);
     writeDeckDesktopEntry(project);
-    writeLifecycleState(project, "reconfigure");
+    writeLifecycleState(project, action);
+}
+
+void lifecycleReconfigure(string project, string romsDir) {
+    lifecycleCompile(project, romsDir, "reconfigure");
 }
 
 void lifecycleInstall(string project, string romsDir) {

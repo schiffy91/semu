@@ -629,6 +629,7 @@ int e2eSettingsSmoke(CliArgs args) {
     ExecResult uiEdit = e2eRunSettingsUiScript(exe, home, project, "1\n" + sdRoot + "\na\nq\n");
     if (!e2eRunOk(uiEdit, "settings ui edit/apply")) { return 1; }
     if (!e2eContains(uiEdit.stdout(), "Semu Settings", "settings ui title")) { return 1; }
+    if (!e2eContains(uiEdit.stdout(), "Edits update Semu-owned JSON", "settings ui owned boundary")) { return 1; }
     if (!e2eContains(uiEdit.stdout(), "ROM Directory", "settings ui rom row")) { return 1; }
     if (!e2eContains(FileSystem.readText(syncConfigPath(project)), normalizedRoms, "settings ui normalized ROM path")) { return 1; }
     if (!e2eOk(FileSystem.exists(joinPath(project, "ES-DE/es_settings.xml")), "settings ui apply did not reconfigure ES-DE")) { return 1; }
@@ -672,6 +673,8 @@ int e2eSettingsSmoke(CliArgs args) {
     if (!e2eRunOk(e2eRunSync(exe, home, "/usr/bin", project, ["put", "sync_saves", "true", "--apply"]), "sync put apply")) { return 1; }
     if (!e2eContains(FileSystem.readText(syncConfigPath(project)), "\"sync_saves\": true", "sync apply persisted owned config")) { return 1; }
     if (!e2eOk(FileSystem.exists(joinPath(project, "ES-DE/es_settings.xml")), "sync apply did not reconfigure ES-DE")) { return 1; }
+    if (!e2eRunOk(e2eRunSettings(exe, home, project, ["compile"]), "settings compile")) { return 1; }
+    if (!e2eContains(FileSystem.readText(lifecycleStatePath(project)), "\"action\": \"compile\"", "settings compile lifecycle state")) { return 1; }
 
     SettingsEntries.write(project);
     string presentationEntry = joinPath(SettingsEntries.root(project), "Open Presentation Settings.semu");
@@ -679,8 +682,11 @@ int e2eSettingsSmoke(CliArgs args) {
     string inputEntry = joinPath(SettingsEntries.root(project), "Open Input Settings.semu");
     if (!e2eContains(FileSystem.readText(inputEntry), "ui input", "input ES-DE entry action")) { return 1; }
     string syncEntry = joinPath(SettingsEntries.root(project), "Open Sync Settings.semu");
+    string compileEntry = joinPath(SettingsEntries.root(project), "Compile Settings.semu");
     if (!e2eContains(FileSystem.readText(syncEntry), "ui sync", "sync ES-DE entry action")) { return 1; }
+    if (!e2eContains(FileSystem.readText(compileEntry), "compile", "compile ES-DE entry action")) { return 1; }
     if (!e2eContains(e2eRunSettings(exe, home, project, ["entry", syncEntry]).stdout(), "Semu Sync Settings", "sync settings ES-DE UI entry")) { return 1; }
+    if (!e2eContains(e2eRunSettings(exe, home, project, ["entry", compileEntry]).stdout(), "OK settings compiled", "compile settings ES-DE entry")) { return 1; }
     string presentationPutEntry = joinPath(SettingsEntries.root(project), "Set GB Bezel.semu");
     FileSystem.writeText(presentationPutEntry, "presentation put gb bezel_file bezels/gb/from-entry.json\n");
     if (!e2eRunOk(e2eRunSettings(exe, home, project, ["entry", presentationPutEntry]), "presentation settings ES-DE put entry")) { return 1; }
