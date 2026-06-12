@@ -111,6 +111,14 @@ Everything else that an emulator or ES-DE reads is compiled from those files by
 `emulators/es-de/custom_systems/`, `ES-DE/es_settings.xml`, systemd user units,
 desktop entries, and launcher runtime files.
 
+Steam itself is external state. `steam-input install` compiles the owned keymap
+into project templates, installs those templates into Steam's template
+directory, and writes one documented Steam config-set entry that selects the
+Semu template for the Semu non-Steam shortcut. `steam-input status` and
+`deck game-mode-ready` both report that selection separately from shortcut
+existence, because a shortcut without the Semu template does not prove the
+left-trackpad radial contract.
+
 Runtime emulator config under `.semu/appimage-state/<emulator>` is adapter
 state. Semu may read it to broadcast normalized presentation state, and launchers
 may seed it from generated profiles, but it is not the source of truth. Do not
@@ -737,14 +745,19 @@ Steam Input:
 
 ```sh
 build/semu steam-input install --project "$PWD"
+build/semu steam-input select --project "$PWD"
 build/semu steam-input status --project "$PWD"
 build/semu steam-input status --project "$PWD" \
-  --shortcuts-file "$HOME/.local/share/Steam/userdata/52445373/config/shortcuts.vdf"
+  --shortcuts-file "$HOME/.local/share/Steam/userdata/52445373/config/shortcuts.vdf" \
+  --configset-file "$HOME/.local/share/Steam/steamapps/common/Steam Controller Configs/52445373/config/configset_controller_neptune.vdf"
 ```
 
 `steam-input status` renders the owned templates and parses Steam's binary
 `shortcuts.vdf` to report the Semu shortcut appid, derived 64-bit launch id,
-and `steam://rungameid/...` URI. It does not edit Steam userdata.
+and `steam://rungameid/...` URI. It also checks Steam's Neptune controller
+config set for the generated Semu template selection. `steam-input install` and
+`steam-input select` are the only commands that write that documented external
+Steam selection artifact.
 
 Sync:
 

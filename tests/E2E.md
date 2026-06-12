@@ -78,8 +78,9 @@ input checks through the same BTRC CLI used on a physical Deck.
   each emulator, screenshot contents from real Gamescope emulator windows, and
   structured quit-watch evidence plus return-to-ES-DE in Game Mode.
 - Steam launch metadata pass: run `build/semu steam-input status --project
-  "$PWD"` on the Deck and verify the reported `steam://rungameid/...` URI
-  launches Semu before starting the physical Game Mode pass.
+  "$PWD"` on the Deck and verify both the reported `steam://rungameid/...` URI
+  and the Semu Neptune template selection before starting the physical Game Mode
+  pass.
 - Broad real-emulator Game Mode pass: repeat the representative routed-emulator
   loop from Game Mode so Steam Input, Gamescope, and return-to-ES-DE behavior
   are proven outside Desktop Mode.
@@ -89,8 +90,8 @@ input checks through the same BTRC CLI used on a physical Deck.
   reconfigure actions.
 - Game Mode readiness pass: run `semu deck game-mode-ready --prepare` before
   the physical pass, then `semu deck game-mode-ready --require-evidence` after
-  the pass so session, Steam shortcut, AppImage, checklist, and quit evidence
-  are checked together.
+  the pass so session, Steam shortcut, selected Steam Input template, AppImage,
+  checklist, and quit evidence are checked together.
 - Visual pass after input is solid: verify `settings/presentation/*.json`
   resolves the intended shader/bezel for every system, prove RetroArch native
   presets first, then test standalone emulator wrapper experiments with
