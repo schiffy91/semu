@@ -150,6 +150,7 @@ build/semu deck install --project "$PWD" --roms "$PWD/ES-DE/ES-DE/ROMs"
 build/semu doctor --project "$PWD"
 build/semu keymap validate --project "$PWD"
 build/semu screenshot status --project "$PWD"
+build/semu deck game-mode-ready --project "$PWD" --prepare
 build/semu deck game-mode-evidence --project "$PWD" --prepare
 ```
 
@@ -190,9 +191,19 @@ and Linux launchers.
 
 For the physical Game Mode pass, launch Semu from Steam, open a representative
 game for each routed emulator, use the left-trackpad radial Quit action, then
-audit the Semu-owned launcher evidence:
+audit the Semu-owned launcher evidence. Before switching modes, run the
+readiness gate so missing Steam shortcut/AppImage/checklist state is caught
+without confusing Desktop Mode with Game Mode:
 
 ```sh
+build/semu deck game-mode-ready --project "$PWD" --prepare
+```
+
+After the physical pass, require both Game Mode readiness and complete quit
+evidence:
+
+```sh
+build/semu deck game-mode-ready --project "$PWD" --require-evidence
 build/semu deck game-mode-evidence --project "$PWD"
 ```
 

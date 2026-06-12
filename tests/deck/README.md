@@ -42,9 +42,26 @@ RetroArch DeSmuME for DS when melonDS is already the required DS route, run only
 When `SEMU_QUIT_WATCH_LOG` is not set, routed emulator launches write Semu-owned
 evidence under `.semu/verification/quit-watch/<emulator>.log`. Use those files
 for the physical Game Mode pass, where the AppImage is launched through Steam
-and the left-trackpad radial menu is operated on the Deck itself. Run
-`semu deck game-mode-evidence --project /home/deck/semu-latest` after the pass
-to fail any route that lacks a `reason=` event.
+and the left-trackpad radial menu is operated on the Deck itself. Run the
+readiness gate before switching to Game Mode:
+
+```sh
+semu deck game-mode-ready --project /home/deck/semu-latest --prepare
+```
+
+That command writes `.semu/verification/game-mode-readiness.json` and fails if
+the session is only Desktop Mode, Steam is not running, the Steam shortcut is
+missing, the installed AppImage is missing/non-executable, or the physical
+checklist has not been prepared. Use `--allow-desktop` only as an SSH preflight
+escape hatch; the final proof should run in Game Mode without it. After the
+physical pass, require both readiness and evidence:
+
+```sh
+semu deck game-mode-ready --project /home/deck/semu-latest --require-evidence
+semu deck game-mode-evidence --project /home/deck/semu-latest
+```
+
+`game-mode-evidence` fails any route that lacks a `reason=` event.
 
 The current installed AppImage smoke on the physical Deck is:
 

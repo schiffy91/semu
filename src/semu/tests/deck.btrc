@@ -72,6 +72,35 @@ bool deckHasScreenshotTool() {
         || commandExists("import");
 }
 
+bool deckEnvBool(string key, bool fallback) {
+    string value = Environment.get(key, "");
+    if (value.len() == 0) { return fallback; }
+    return value.equals("1") || value.equals("true") || value.equals("yes");
+}
+
+bool deckProcessRunning(string pattern) {
+    if (!commandExists("pgrep")) { return false; }
+    ExecResult result = UnixShell().runRaw("pgrep -f " + ShellWords.quote(pattern) + " >/dev/null 2>&1", false, false, "");
+    return result.ok();
+}
+
+string deckSessionKind() {
+    string sessionOverride = Environment.get("SEMU_DECK_SESSION", "");
+    if (sessionOverride.len() > 0) { return sessionOverride; }
+    bool gamescope = deckProcessRunning("(^|/)gamescope( |$)") || deckProcessRunning("gamescope-session");
+    bool kwin = deckProcessRunning("(^|/)kwin_wayland( |$)") || deckProcessRunning("kwin_wayland_wrapper");
+    if (gamescope && !kwin) { return "game_mode"; }
+    if (gamescope && kwin) { return "mixed_gamescope_desktop"; }
+    if (kwin) { return "desktop_mode"; }
+    return "unknown";
+}
+
+bool deckSteamRunning() {
+    string steamOverride = Environment.get("SEMU_STEAM_RUNNING", "");
+    if (steamOverride.len() > 0) { return deckEnvBool("SEMU_STEAM_RUNNING", false); }
+    return deckProcessRunning("(^|/)steam( |$)") || deckProcessRunning("steamwebhelper");
+}
+
 int deckVerifyEmulatorsCommand(CliArgs args, string project) {
     doctorSteamDeck(project);
     KeymapErrors errors = KeymapErrors();
@@ -126,6 +155,14 @@ string deckQuitEvidencePath(string project, string emulator) {
     return joinPath(deckQuitEvidenceRoot(project), emulator.toLower() + ".log");
 }
 
+string deckGameModeChecklistPath(string project) {
+    return joinPath(semuStateRoot(project), "verification/game-mode-checklist.txt");
+}
+
+string deckGameModeReadinessPath(string project) {
+    return joinPath(semuStateRoot(project), "verification/game-mode-readiness.json");
+}
+
 bool deckQuitEvidenceHasLifecycle(string text) {
     return text.contains(" start child=") && text.contains(" exit child=");
 }
@@ -133,6 +170,15 @@ bool deckQuitEvidenceHasLifecycle(string text) {
 bool deckQuitEvidenceHasQuitReason(string text) {
     return text.contains(" reason=")
         && (text.contains(" terminate child=") || text.contains(" quit child=") || text.contains("quit path="));
+}
+
+bool deckQuitEvidenceComplete(string project, Vector<string> emulators) {
+    for emulator in emulators {
+        string path = deckQuitEvidencePath(project, emulator);
+        if (!FileSystem.exists(path)) { return false; }
+        if (!deckQuitEvidenceHasQuitReason(FileSystem.readText(path))) { return false; }
+    }
+    return true;
 }
 
 bool deckKnownEvidenceEmulator(string emulator) {
@@ -194,7 +240,7 @@ int deckGameModeEvidenceCommand(CliArgs args, string project) {
     SemuGeneratedFiles.ensureAdapterStateDir(project, root);
 
     if (prepare) {
-        string checklist = joinPath(semuStateRoot(project), "verification/game-mode-checklist.txt");
+        string checklist = deckGameModeChecklistPath(project);
         SemuGeneratedFiles.writeAdapterState(project, checklist, deckGameModeChecklistText(project, emulators));
         print("OK prepared Game Mode checklist: " + checklist);
     }
@@ -229,6 +275,138 @@ int deckGameModeEvidenceCommand(CliArgs args, string project) {
     print("PENDING Game Mode quit evidence");
     print("  Use the physical left-trackpad Quit action in Game Mode for each pending emulator, then rerun without --allow-pending.");
     return allowPending ? 0 : 2;
+}
+
+SteamShortcutRecord deckSemuShortcut(CliArgs args) {
+    string appName = args.valueAfter("--app-name", steamDefaultShortcutName());
+    string exe = args.valueAfter("--exe", steamDefaultShortcutExe());
+    string file = args.valueAfter("--shortcuts-file", "");
+    if (file.len() > 0) {
+        return steamShortcutFind(steamShortcutsRead(file), appName, exe);
+    }
+    for candidate in steamShortcutsFiles() {
+        SteamShortcutRecord found = steamShortcutFind(steamShortcutsRead(candidate), appName, exe);
+        if (found.appid > 0) { return found; }
+    }
+    return SteamShortcutRecord();
+}
+
+bool deckPathExecutable(string path) {
+    if (!FileSystem.isFile(path)) { return false; }
+    ExecResult result = UnixShell().runRaw("[ -x " + ShellWords.quote(path) + " ]", false, false, "");
+    return result.ok();
+}
+
+string deckSha256(string path) {
+    if (!FileSystem.isFile(path) || !commandExists("sha256sum")) { return ""; }
+    ExecResult result = UnixShell().runRaw("sha256sum " + ShellWords.quote(path) + " | awk '{print $1}'", true, false, "");
+    if (!result.ok()) { return ""; }
+    return result.trimmed();
+}
+
+string deckGameModeReadinessJson(
+    string project,
+    string session,
+    bool sessionOk,
+    bool steamOk,
+    bool shortcutOk,
+    string launchUri,
+    string appImage,
+    bool appImageOk,
+    string appImageHash,
+    bool checklistOk,
+    bool evidenceRequired,
+    bool evidenceOk
+) {
+    return jsonObject([
+        jsonStrField("schema_version", "1"),
+        jsonStrField("project", project),
+        jsonStrField("session", session),
+        jsonBoolField("session_ok", sessionOk),
+        jsonBoolField("steam_running", steamOk),
+        jsonBoolField("shortcut_found", shortcutOk),
+        jsonStrField("launch_uri", launchUri),
+        jsonStrField("appimage", appImage),
+        jsonBoolField("appimage_ok", appImageOk),
+        jsonStrField("appimage_sha256", appImageHash),
+        jsonStrField("checklist", deckGameModeChecklistPath(project)),
+        jsonBoolField("checklist_ok", checklistOk),
+        jsonStrField("quit_evidence_root", deckQuitEvidenceRoot(project)),
+        jsonBoolField("evidence_required", evidenceRequired),
+        jsonBoolField("evidence_ok", evidenceOk)
+    ]);
+}
+
+int deckGameModeReadinessCommand(CliArgs args, string project) {
+    Vector<string> emulators = deckEvidenceEmulators(args);
+    for emulator in emulators {
+        if (!deckKnownEvidenceEmulator(emulator)) {
+            print("error 0:0 unknown emulator '" + emulator + "'");
+            return 1;
+        }
+    }
+
+    if (args.has("--prepare")) {
+        SemuGeneratedFiles.writeAdapterState(project, deckGameModeChecklistPath(project), deckGameModeChecklistText(project, emulators));
+    }
+
+    string session = deckSessionKind();
+    bool allowDesktop = args.has("--allow-desktop");
+    bool sessionOk = session.equals("game_mode") || (allowDesktop && session.equals("desktop_mode"));
+    bool steamOk = deckSteamRunning();
+    string appImage = args.valueAfter("--appimage", args.valueAfter("--exe", steamDefaultShortcutExe()));
+    bool appImageOk = deckPathExecutable(appImage);
+    string appImageHash = deckSha256(appImage);
+    SteamShortcutRecord shortcut = deckSemuShortcut(args);
+    bool shortcutOk = shortcut.appid > 0;
+    bool checklistOk = FileSystem.isFile(deckGameModeChecklistPath(project));
+    bool evidenceRequired = args.has("--require-evidence");
+    bool evidenceOk = deckQuitEvidenceComplete(project, emulators);
+    string launchUri = shortcutOk ? shortcut.launchUri() : "";
+
+    string report = deckGameModeReadinessJson(
+        project,
+        session,
+        sessionOk,
+        steamOk,
+        shortcutOk,
+        launchUri,
+        appImage,
+        appImageOk,
+        appImageHash,
+        checklistOk,
+        evidenceRequired,
+        evidenceOk
+    );
+    SemuGeneratedFiles.writeAdapterState(project, deckGameModeReadinessPath(project), jsonPrettyText(report));
+
+    print("Game Mode readiness");
+    if (sessionOk) {
+        print("  OK session: " + session);
+    } else {
+        print("  PENDING session: " + session + " (switch to Steam Game Mode for physical proof)");
+    }
+    print(steamOk ? "  OK steam: running" : "  MISSING steam: not running");
+    if (shortcutOk) {
+        print("  OK shortcut: " + shortcut.appName);
+        print("       uri: " + launchUri);
+    } else {
+        print("  MISSING shortcut: " + args.valueAfter("--app-name", steamDefaultShortcutName()));
+    }
+    print(appImageOk ? "  OK appimage: " + appImage : "  MISSING appimage: " + appImage);
+    if (appImageHash.len() > 0) {
+        print("       sha256: " + appImageHash);
+    }
+    print(checklistOk ? "  OK checklist: " + deckGameModeChecklistPath(project) : "  MISSING checklist: run with --prepare");
+    if (evidenceRequired) {
+        print(evidenceOk ? "  OK evidence: physical quit logs complete" : "  PENDING evidence: physical quit logs incomplete");
+    } else {
+        print(evidenceOk ? "  OK evidence: physical quit logs complete" : "  PENDING evidence: not required for preflight");
+    }
+    print("  report: " + deckGameModeReadinessPath(project));
+
+    bool ok = sessionOk && steamOk && shortcutOk && appImageOk && checklistOk && (!evidenceRequired || evidenceOk);
+    return ok ? 0 : 2;
 }
 
 bool deckWaitForSyncHealth(string project) {

@@ -87,6 +87,10 @@ input checks through the same BTRC CLI used on a physical Deck.
   RetroArch-native save/load/quit/menu handling, then verify the generated
   Semu Settings ES-DE entries for ROM location, Syncthing, shader, bezel, and
   reconfigure actions.
+- Game Mode readiness pass: run `semu deck game-mode-ready --prepare` before
+  the physical pass, then `semu deck game-mode-ready --require-evidence` after
+  the pass so session, Steam shortcut, AppImage, checklist, and quit evidence
+  are checked together.
 - Visual pass after input is solid: verify `settings/presentation/*.json`
   resolves the intended shader/bezel for every system, prove RetroArch native
   presets first, then test standalone emulator wrapper experiments with
@@ -145,6 +149,7 @@ Desktop Mode with the AppImage built from the Nix package closure:
 This evidence does not prove the physical left-trackpad radial menu because SSH
 and X11 key injection cannot generate the Steam Input/evdev events consumed by
 the quit watcher. That remains a physical Game Mode check, now audited with
+`semu deck game-mode-ready --require-evidence` and
 `semu deck game-mode-evidence`.
 
 ## AppImage Scope
