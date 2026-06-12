@@ -352,7 +352,8 @@ int deckGameModeReadinessCommand(CliArgs args, string project) {
 
     string session = deckSessionKind();
     bool allowDesktop = args.has("--allow-desktop");
-    bool sessionOk = session.equals("game_mode") || (allowDesktop && session.equals("desktop_mode"));
+    bool desktopPreflight = session.equals("desktop_mode") || session.equals("mixed_gamescope_desktop");
+    bool sessionOk = session.equals("game_mode") || (allowDesktop && desktopPreflight);
     bool steamOk = deckSteamRunning();
     string appImage = args.valueAfter("--appimage", args.valueAfter("--exe", steamDefaultShortcutExe()));
     bool appImageOk = deckPathExecutable(appImage);

@@ -1243,6 +1243,10 @@ int e2eDeckEvidenceSmoke(CliArgs args) {
     if (!e2eContains(desktopAllowed.stdout(), "OK shortcut: Semu-x86_64.AppImage", "readiness shortcut status")) { return 1; }
     if (!e2eContains(desktopAllowed.stdout(), "OK appimage: " + appImage, "readiness AppImage status")) { return 1; }
 
+    ExecResult mixedAllowed = e2eRunDeckEnv(exe, home, project, desktopAllowedArgs, "mixed_gamescope_desktop", "1");
+    if (!e2eRunOk(mixedAllowed, "mixed Desktop/Gamescope readiness with explicit override")) { return 1; }
+    if (!e2eContains(mixedAllowed.stdout(), "OK session: mixed_gamescope_desktop", "mixed Desktop override status")) { return 1; }
+
     ExecResult missingSteam = e2eRunDeckEnv(exe, home, project, readyArgs, "game_mode", "0");
     if (!e2eOk(!missingSteam.ok(), "readiness unexpectedly succeeded without Steam")) { return 1; }
     if (!e2eContains(missingSteam.stdout(), "MISSING steam: not running", "missing Steam readiness status")) { return 1; }

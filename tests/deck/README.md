@@ -53,8 +53,9 @@ That command writes `.semu/verification/game-mode-readiness.json` and fails if
 the session is only Desktop Mode, Steam is not running, the Steam shortcut is
 missing, the installed AppImage is missing/non-executable, or the physical
 checklist has not been prepared. Use `--allow-desktop` only as an SSH preflight
-escape hatch; the final proof should run in Game Mode without it. After the
-physical pass, require both readiness and evidence:
+escape hatch for Desktop Mode or mixed Desktop/Gamescope sessions; the final
+proof should run in Game Mode without it. After the physical pass, require both
+readiness and evidence:
 
 ```sh
 semu deck game-mode-ready --project /home/deck/semu-latest --require-evidence
