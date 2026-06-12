@@ -2,6 +2,25 @@
 
 ## Verified On Steam Deck
 
+- Rebuilt and installed the self-contained AppImage from commit `ece63b0` at
+  `/home/deck/Applications/Semu/Semu-x86_64.AppImage`.
+- Installed AppImage hash is now
+  `bf84d6afa695c893b395a651d9f66dbcc278190bc21e70a63b8d1901092b776c`;
+  prior install backup:
+  `/home/deck/Applications/Semu/Semu-x86_64.AppImage.prev-ece63b0-20260612-060433`.
+- Verified the installed `ece63b0` AppImage reports the real Steam shortcut,
+  `steam://rungameid/16468373422993309696`, and the selected Semu Neptune
+  Steam Input template in
+  `/home/deck/.local/share/Steam/steamapps/common/Steam Controller Configs/52445373/config/configset_controller_neptune.vdf`.
+- Verified `deck game-mode-ready --prepare --allow-desktop` from the installed
+  AppImage passes session, Steam process, shortcut, selected Steam Input
+  template, AppImage hash, and checklist checks; physical quit evidence remains
+  pending until the Game Mode radial pass.
+- Verified the installed AppImage runs `e2e deck-evidence` and strict
+  `presentation audit` with `ok: 15`, `missing_assets: 0`,
+  `missing_dependencies: 0`, and `disabled: 2`.
+- Verified the installed AppImage opens ES-DE in Deck Desktop Mode and captured
+  `/home/deck/semu-evidence/installed-ece63b0-launch.png` at 1280x800.
 - Rebuilt and installed the self-contained AppImage at
   `/home/deck/Applications/Semu/Semu-x86_64.AppImage`.
 - Installed AppImage hash

@@ -42,9 +42,12 @@ This repo currently provides:
 Important remaining production gaps are tracked in `TODO.md` and
 `tests/E2E.md`. The SteamOS/AppImage path has a physical Deck Desktop Mode pass
 over the routed emulator set with screenshot, input, and structured quit-watch
-evidence. The current installed Deck AppImage was rebuilt from commit `04a4b79`
-and smoke-tested at
-`d00df401164f38172cabbe9657cecb779967b3fce4f06e1d8b9ef59b391c86cf`.
+evidence. The current installed Deck AppImage was rebuilt from commit
+`ece63b0` and smoke-tested at
+`bf84d6afa695c893b395a651d9f66dbcc278190bc21e70a63b8d1901092b776c`.
+Its Steam shortcut is present, the generated Semu Neptune Steam Input template
+is selected for that shortcut, and ES-DE launches in Desktop Mode from the
+installed AppImage.
 The final production gate is still a Game Mode pass that exercises the Steam
 Input left-trackpad radial menu and representative games across the routed
 emulator set.
