@@ -343,6 +343,7 @@ void ensureProjectContentDirs(string project) {
 void bootstrapSteamDeck(string project) {
     writeSyncDefaults(project, "");
     writeSettingsDefaults(project);
+    writePresentationDefaults(project);
     ensureProjectContentDirs(project);
 
     seedKeymapDefaults(project);

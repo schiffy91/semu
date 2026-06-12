@@ -165,6 +165,8 @@ build/semu keymap validate --project "$PWD"
 build/semu screenshot status --project "$PWD"
 build/semu deck game-mode-ready --project "$PWD" --prepare
 build/semu deck game-mode-evidence --project "$PWD" --prepare
+build/semu deck state-evidence --project "$PWD" --prepare
+build/semu deck production-status --project "$PWD" --prepare --allow-desktop
 ```
 
 For a microSD ROM directory, pass the real mount path:
@@ -203,25 +205,31 @@ Steam Input templates, 3DS ROM NoCrypto status, screenshot hooks, sync status,
 and Linux launchers.
 
 For the physical Game Mode pass, launch Semu from Steam, open a representative
-game for each routed emulator, use the left-trackpad radial Quit action, then
-audit the Semu-owned launcher evidence. Before switching modes, run the
-readiness gate so missing Steam shortcut/AppImage/checklist state is caught
-without confusing Desktop Mode with Game Mode:
+game for each routed emulator, use the left-trackpad radial Quit action, and use
+Save State/Load State for each emulator with generated state support. Before
+switching modes, run the readiness gate so missing Steam
+shortcut/AppImage/checklist state is caught without confusing Desktop Mode with
+Game Mode:
 
 ```sh
 build/semu deck game-mode-ready --project "$PWD" --prepare
 ```
 
-After the physical pass, require both Game Mode readiness and complete quit
-evidence:
+After the physical pass, require Game Mode readiness, complete quit evidence,
+generated state save/load evidence, owned source config, and the presentation
+asset audit:
 
 ```sh
 build/semu deck game-mode-ready --project "$PWD" --require-evidence
 build/semu deck game-mode-evidence --project "$PWD"
+build/semu deck state-evidence --project "$PWD"
+build/semu deck production-ready --project "$PWD"
 ```
 
 Missing or lifecycle-only logs remain `PENDING`; a passing emulator needs a
-quit-watch line with a `reason=` value plus child exit evidence.
+quit-watch line with a `reason=` value plus child exit evidence. State evidence
+is Semu adapter state under `.semu/verification/state-actions`; emulator-native
+config remains compiled output.
 
 ## Linux Desktop Quick Start
 

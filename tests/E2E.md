@@ -88,10 +88,13 @@ input checks through the same BTRC CLI used on a physical Deck.
   RetroArch-native save/load/quit/menu handling, then verify the generated
   Semu Settings ES-DE entries for ROM location, Syncthing, shader, bezel, and
   reconfigure actions.
-- Game Mode readiness pass: run `semu deck game-mode-ready --prepare` before
-  the physical pass, then `semu deck game-mode-ready --require-evidence` after
-  the pass so session, Steam shortcut, selected Steam Input template, AppImage,
-  checklist, and quit evidence are checked together.
+- Game Mode readiness pass: run `semu deck game-mode-ready --prepare`,
+  `semu deck game-mode-evidence --prepare`, `semu deck state-evidence
+  --prepare`, and `semu deck production-status --prepare --allow-desktop`
+  before the physical pass. After the pass, run `semu deck production-ready`
+  so session, Steam shortcut, selected Steam Input template, AppImage, owned
+  source config, presentation audit, quit evidence, and generated state
+  save/load evidence are checked together.
 - Visual pass after input is solid: verify `settings/presentation/*.json`
   resolves the intended shader/bezel for every system, prove RetroArch native
   presets first, then test standalone emulator wrapper experiments with

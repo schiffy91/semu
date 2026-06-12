@@ -820,20 +820,35 @@ int deckVerifyEmulatorsCommand(CliArgs* args, char* project);
 int deckVerifyInputCommand(char* project, bool strict);
 char* deckQuitEvidenceRoot(char* project);
 char* deckQuitEvidencePath(char* project, char* emulator);
+char* deckStateEvidenceRoot(char* project);
+char* deckStateEvidencePath(char* project, char* emulator);
 char* deckGameModeChecklistPath(char* project);
+char* deckStateEvidenceChecklistPath(char* project);
 char* deckGameModeReadinessPath(char* project);
+char* deckProductionReadinessPath(char* project);
 bool deckQuitEvidenceHasLifecycle(char* text);
 bool deckQuitEvidenceHasQuitReason(char* text);
 bool deckQuitEvidenceComplete(char* project, btrc_Vector_string* emulators);
+btrc_Vector_string* deckStateEvidenceEmulators(void);
+bool deckKnownStateEvidenceEmulator(char* emulator);
+btrc_Vector_string* deckRequestedStateEvidenceEmulators(CliArgs* args);
+bool deckStateEvidenceHasAction(char* text, char* action);
+bool deckStateEvidenceComplete(char* project, btrc_Vector_string* emulators);
 bool deckKnownEvidenceEmulator(char* emulator);
 btrc_Vector_string* deckEvidenceEmulators(CliArgs* args);
 char* deckGameModeChecklistText(char* project, btrc_Vector_string* emulators);
+char* deckStateEvidenceChecklistText(char* project, btrc_Vector_string* emulators);
 int deckGameModeEvidenceCommand(CliArgs* args, char* project);
+int deckStateEvidenceCommand(CliArgs* args, char* project);
 SteamShortcutRecord* deckSemuShortcut(CliArgs* args);
 bool deckPathExecutable(char* path);
 char* deckSha256(char* path);
 char* deckGameModeReadinessJson(char* project, char* session, bool sessionOk, bool steamOk, bool shortcutOk, char* launchUri, bool steamInputOk, char* appImage, bool appImageOk, char* appImageHash, bool checklistOk, bool evidenceRequired, bool evidenceOk);
 int deckGameModeReadinessCommand(CliArgs* args, char* project);
+bool deckSourceConfigOk(char* project);
+bool deckPresentationAuditReportOk(char* project);
+char* deckProductionReadinessJson(char* project, char* session, bool sessionOk, bool steamOk, bool shortcutOk, bool steamInputOk, char* launchUri, char* appImage, bool appImageOk, char* appImageHash, bool sourceConfigOk, bool presentationOk, bool quitEvidenceOk, bool stateEvidenceOk, bool evidenceRequired);
+int deckProductionReadinessCommand(CliArgs* args, char* project, bool statusMode);
 bool deckWaitForSyncHealth(char* project);
 int deckVerifySyncCommand(char* project);
 int e2eCommand(CliArgs* args);
@@ -885,6 +900,8 @@ ExecResult* e2eRunN3dsNoCrypto(char* exe, char* input, char* outputDir, btrc_Vec
 ExecResult* e2eRunDecrypt3dsNoCrypto(char* exe, char* input, btrc_Vector_string* extraArgs);
 int e2eN3dsNoCryptoSmoke(CliArgs* args);
 char* e2eQuitEvidenceText(char* emulator, bool quit);
+char* e2eStateEvidenceText(char* emulator, bool save, bool load);
+char* e2ePresentationAuditOkText(char* project);
 int e2eDeckEvidenceSmoke(CliArgs* args);
 int e2eShellSyntaxSmoke(char* project);
 int e2eQuitWatchSmoke(char* project);
@@ -15384,6 +15401,7 @@ void ensureProjectContentDirs(char* project) {
 void bootstrapSteamDeck(char* project) {
     writeSyncDefaults(project, "");
     writeSettingsDefaults(project);
+    writePresentationDefaults(project);
     ensureProjectContentDirs(project);
     seedKeymapDefaults(project);
     seedEmulatorDefaults(project);
@@ -17604,6 +17622,7 @@ void writeLifecycleState(char* project, char* action) {
 
 void lifecycleCompile(char* project, char* romsDir, char* action) {
     writeSyncDefaults(project, romsDir);
+    writePresentationDefaults(project);
     ensureProjectContentDirs(project);
     seedKeymapDefaults(project);
     seedEmulatorDefaults(project);
@@ -21532,12 +21551,28 @@ char* deckQuitEvidencePath(char* project, char* emulator) {
     return joinPath(deckQuitEvidenceRoot(project), __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_toLower(emulator)), ".log")));
 }
 
+char* deckStateEvidenceRoot(char* project) {
+    return joinPath(semuStateRoot(project), "verification/state-actions");
+}
+
+char* deckStateEvidencePath(char* project, char* emulator) {
+    return joinPath(deckStateEvidenceRoot(project), __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_toLower(emulator)), ".log")));
+}
+
 char* deckGameModeChecklistPath(char* project) {
     return joinPath(semuStateRoot(project), "verification/game-mode-checklist.txt");
 }
 
+char* deckStateEvidenceChecklistPath(char* project) {
+    return joinPath(semuStateRoot(project), "verification/state-evidence-checklist.txt");
+}
+
 char* deckGameModeReadinessPath(char* project) {
     return joinPath(semuStateRoot(project), "verification/game-mode-readiness.json");
+}
+
+char* deckProductionReadinessPath(char* project) {
+    return joinPath(semuStateRoot(project), "verification/production-readiness.json");
 }
 
 bool deckQuitEvidenceHasLifecycle(char* text) {
@@ -21563,11 +21598,70 @@ bool deckQuitEvidenceComplete(char* project, btrc_Vector_string* emulators) {
     return true;
 }
 
+btrc_Vector_string* deckStateEvidenceEmulators(void) {
+    return actionCapabilityEmulators("state.save", "generated");
+}
+
+bool deckKnownStateEvidenceEmulator(char* emulator) {
+    char* key = __btrc_str_track(__btrc_toLower(emulator));
+    int __n_901 = btrc_Vector_string_iterLen(deckStateEvidenceEmulators());
+    for (int __i_900 = 0; (__i_900 < __n_901); (__i_900++)) {
+        char* name = btrc_Vector_string_iterGet(deckStateEvidenceEmulators(), __i_900);
+        if (strcmp(__btrc_str_track(__btrc_toLower(name)), key) == 0) {
+            return true;
+        }
+    }
+    return false;
+}
+
+btrc_Vector_string* deckRequestedStateEvidenceEmulators(CliArgs* args) {
+    char* requested = CliArgs_valueAfter(args, "--emulator", "");
+    if (((((int)strlen(requested)) == 0) && (CliArgs_count(args) > 2)) && (!__btrc_startsWith(CliArgs_get(args, 2), "--"))) {
+        (requested = CliArgs_get(args, 2));
+    }
+    if (((int)strlen(requested)) > 0) {
+        btrc_Vector_string* __list_902 = btrc_Vector_string_new();
+        btrc_Vector_string_push(__list_902, __btrc_str_track(__btrc_toLower(requested)));
+        return __list_902;
+    }
+    return deckStateEvidenceEmulators();
+}
+
+bool deckStateEvidenceHasAction(char* text, char* action) {
+    int __n_904 = btrc_Vector_string_iterLen(Strings_split(text, "\n"));
+    for (int __i_903 = 0; (__i_903 < __n_904); (__i_903++)) {
+        char* line = btrc_Vector_string_iterGet(Strings_split(text, "\n"), __i_903);
+        if (__btrc_strContains(line, __btrc_str_track(__btrc_strcat("action=", action))) && __btrc_strContains(line, "result=ok")) {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool deckStateEvidenceComplete(char* project, btrc_Vector_string* emulators) {
+    int __n_906 = btrc_Vector_string_iterLen(emulators);
+    for (int __i_905 = 0; (__i_905 < __n_906); (__i_905++)) {
+        char* emulator = btrc_Vector_string_iterGet(emulators, __i_905);
+        char* path = deckStateEvidencePath(project, emulator);
+        if (!FileSystem_exists(path)) {
+            return false;
+        }
+        char* text = FileSystem_readText(path);
+        if (!deckStateEvidenceHasAction(text, "state.save")) {
+            return false;
+        }
+        if (!deckStateEvidenceHasAction(text, "state.load")) {
+            return false;
+        }
+    }
+    return true;
+}
+
 bool deckKnownEvidenceEmulator(char* emulator) {
     char* key = __btrc_str_track(__btrc_toLower(emulator));
-    int __n_901 = btrc_Vector_string_iterLen(linuxLauncherNames());
-    for (int __i_900 = 0; (__i_900 < __n_901); (__i_900++)) {
-        char* name = btrc_Vector_string_iterGet(linuxLauncherNames(), __i_900);
+    int __n_908 = btrc_Vector_string_iterLen(linuxLauncherNames());
+    for (int __i_907 = 0; (__i_907 < __n_908); (__i_907++)) {
+        char* name = btrc_Vector_string_iterGet(linuxLauncherNames(), __i_907);
         if (strcmp(__btrc_str_track(__btrc_toLower(name)), key) == 0) {
             return true;
         }
@@ -21581,43 +21675,70 @@ btrc_Vector_string* deckEvidenceEmulators(CliArgs* args) {
         (requested = CliArgs_get(args, 2));
     }
     if (((int)strlen(requested)) > 0) {
-        btrc_Vector_string* __list_902 = btrc_Vector_string_new();
-        btrc_Vector_string_push(__list_902, __btrc_str_track(__btrc_toLower(requested)));
-        return __list_902;
+        btrc_Vector_string* __list_909 = btrc_Vector_string_new();
+        btrc_Vector_string_push(__list_909, __btrc_str_track(__btrc_toLower(requested)));
+        return __list_909;
     }
     return lowercaseValues(linuxLauncherNames());
 }
 
 char* deckGameModeChecklistText(char* project, btrc_Vector_string* emulators) {
-    btrc_Vector_string* __list_903 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_903, "Semu Game Mode Verification");
-    btrc_Vector_string_push(__list_903, "");
-    btrc_Vector_string_push(__list_903, __btrc_str_track(__btrc_strcat("Project: ", project)));
-    btrc_Vector_string_push(__list_903, __btrc_str_track(__btrc_strcat("Quit evidence root: ", deckQuitEvidenceRoot(project))));
-    btrc_Vector_string_push(__list_903, "");
-    btrc_Vector_string_push(__list_903, "For each emulator:");
-    btrc_Vector_string_push(__list_903, "1. Launch Semu from Steam Game Mode.");
-    btrc_Vector_string_push(__list_903, "2. Launch a representative game through ES-DE.");
-    btrc_Vector_string_push(__list_903, "3. Confirm fullscreen content and controller movement/buttons.");
-    btrc_Vector_string_push(__list_903, "4. Open the physical left-trackpad radial menu.");
-    btrc_Vector_string_push(__list_903, "5. Press Quit and confirm return to ES-DE.");
-    btrc_Vector_string_push(__list_903, "6. Verify the matching quit-watch log contains reason=select+start.");
-    btrc_Vector_string_push(__list_903, "");
-    btrc_Vector_string_push(__list_903, "Evidence files:");
-    btrc_Vector_string* lines = __list_903;
-    int __n_905 = btrc_Vector_string_iterLen(emulators);
-    for (int __i_904 = 0; (__i_904 < __n_905); (__i_904++)) {
-        char* emulator = btrc_Vector_string_iterGet(emulators, __i_904);
+    btrc_Vector_string* __list_910 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_910, "Semu Game Mode Verification");
+    btrc_Vector_string_push(__list_910, "");
+    btrc_Vector_string_push(__list_910, __btrc_str_track(__btrc_strcat("Project: ", project)));
+    btrc_Vector_string_push(__list_910, __btrc_str_track(__btrc_strcat("Quit evidence root: ", deckQuitEvidenceRoot(project))));
+    btrc_Vector_string_push(__list_910, "");
+    btrc_Vector_string_push(__list_910, "For each emulator:");
+    btrc_Vector_string_push(__list_910, "1. Launch Semu from Steam Game Mode.");
+    btrc_Vector_string_push(__list_910, "2. Launch a representative game through ES-DE.");
+    btrc_Vector_string_push(__list_910, "3. Confirm fullscreen content and controller movement/buttons.");
+    btrc_Vector_string_push(__list_910, "4. Open the physical left-trackpad radial menu.");
+    btrc_Vector_string_push(__list_910, "5. Press Quit and confirm return to ES-DE.");
+    btrc_Vector_string_push(__list_910, "6. Verify the matching quit-watch log contains reason=select+start.");
+    btrc_Vector_string_push(__list_910, "");
+    btrc_Vector_string_push(__list_910, "Evidence files:");
+    btrc_Vector_string* lines = __list_910;
+    int __n_912 = btrc_Vector_string_iterLen(emulators);
+    for (int __i_911 = 0; (__i_911 < __n_912); (__i_911++)) {
+        char* emulator = btrc_Vector_string_iterGet(emulators, __i_911);
         btrc_Vector_string_push(lines, __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat("- ", emulator)), ": ")), deckQuitEvidencePath(project, emulator))));
+    }
+    return textLines(lines);
+}
+
+char* deckStateEvidenceChecklistText(char* project, btrc_Vector_string* emulators) {
+    btrc_Vector_string* __list_913 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_913, "Semu State Action Verification");
+    btrc_Vector_string_push(__list_913, "");
+    btrc_Vector_string_push(__list_913, __btrc_str_track(__btrc_strcat("Project: ", project)));
+    btrc_Vector_string_push(__list_913, __btrc_str_track(__btrc_strcat("State evidence root: ", deckStateEvidenceRoot(project))));
+    btrc_Vector_string_push(__list_913, "");
+    btrc_Vector_string_push(__list_913, "For each state-capable emulator:");
+    btrc_Vector_string_push(__list_913, "1. Launch Semu from Steam Game Mode.");
+    btrc_Vector_string_push(__list_913, "2. Launch a representative game through ES-DE.");
+    btrc_Vector_string_push(__list_913, "3. Create a visible in-game change.");
+    btrc_Vector_string_push(__list_913, "4. Use the physical left-trackpad radial Save State action.");
+    btrc_Vector_string_push(__list_913, "5. Create a second visible in-game change.");
+    btrc_Vector_string_push(__list_913, "6. Use the physical left-trackpad radial Load State action.");
+    btrc_Vector_string_push(__list_913, "7. Confirm the first saved state is restored.");
+    btrc_Vector_string_push(__list_913, "8. Record action=state.save result=ok and action=state.load result=ok in the matching evidence file.");
+    btrc_Vector_string_push(__list_913, "");
+    btrc_Vector_string_push(__list_913, "Evidence files:");
+    btrc_Vector_string* lines = __list_913;
+    int __n_915 = btrc_Vector_string_iterLen(emulators);
+    for (int __i_914 = 0; (__i_914 < __n_915); (__i_914++)) {
+        char* emulator = btrc_Vector_string_iterGet(emulators, __i_914);
+        btrc_Vector_string_push(lines, __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat("- ", emulator)), ": ")), deckStateEvidencePath(project, emulator))));
     }
     return textLines(lines);
 }
 
 int deckGameModeEvidenceCommand(CliArgs* args, char* project) {
     btrc_Vector_string* emulators = deckEvidenceEmulators(args);
-    int __n_907 = btrc_Vector_string_iterLen(emulators);
-    for (int __i_906 = 0; (__i_906 < __n_907); (__i_906++)) {
-        char* emulator = btrc_Vector_string_iterGet(emulators, __i_906);
+    int __n_917 = btrc_Vector_string_iterLen(emulators);
+    for (int __i_916 = 0; (__i_916 < __n_917); (__i_916++)) {
+        char* emulator = btrc_Vector_string_iterGet(emulators, __i_916);
         if (!deckKnownEvidenceEmulator(emulator)) {
             printf("%s\n", __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat("error 0:0 unknown emulator '", emulator)), "'")));
             return 1;
@@ -21635,9 +21756,9 @@ int deckGameModeEvidenceCommand(CliArgs* args, char* project) {
     printf("%s\n", "Game Mode quit evidence");
     printf("%s\n", __btrc_str_track(__btrc_strcat("  root: ", root)));
     bool allOk = true;
-    int __n_909 = btrc_Vector_string_iterLen(emulators);
-    for (int __i_908 = 0; (__i_908 < __n_909); (__i_908++)) {
-        char* emulator = btrc_Vector_string_iterGet(emulators, __i_908);
+    int __n_919 = btrc_Vector_string_iterLen(emulators);
+    for (int __i_918 = 0; (__i_918 < __n_919); (__i_918++)) {
+        char* emulator = btrc_Vector_string_iterGet(emulators, __i_918);
         char* path = deckQuitEvidencePath(project, emulator);
         if (!FileSystem_exists(path)) {
             printf("%s\n", __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat("PENDING ", emulator)), ": missing ")), path)));
@@ -21664,6 +21785,56 @@ int deckGameModeEvidenceCommand(CliArgs* args, char* project) {
     return (allowPending ? 0 : 2);
 }
 
+int deckStateEvidenceCommand(CliArgs* args, char* project) {
+    btrc_Vector_string* emulators = deckRequestedStateEvidenceEmulators(args);
+    int __n_921 = btrc_Vector_string_iterLen(emulators);
+    for (int __i_920 = 0; (__i_920 < __n_921); (__i_920++)) {
+        char* emulator = btrc_Vector_string_iterGet(emulators, __i_920);
+        if (!deckKnownStateEvidenceEmulator(emulator)) {
+            printf("%s\n", __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat("error 0:0 state evidence is not generated for emulator '", emulator)), "'")));
+            return 1;
+        }
+    }
+    bool prepare = CliArgs_has(args, "--prepare");
+    bool allowPending = (CliArgs_has(args, "--allow-pending") || prepare);
+    char* root = deckStateEvidenceRoot(project);
+    SemuGeneratedFiles_ensureAdapterStateDir(project, root);
+    if (prepare) {
+        char* checklist = deckStateEvidenceChecklistPath(project);
+        SemuGeneratedFiles_writeAdapterState(project, checklist, deckStateEvidenceChecklistText(project, emulators));
+        printf("%s\n", __btrc_str_track(__btrc_strcat("OK prepared state evidence checklist: ", checklist)));
+    }
+    printf("%s\n", "Game Mode state evidence");
+    printf("%s\n", __btrc_str_track(__btrc_strcat("  root: ", root)));
+    bool allOk = true;
+    int __n_923 = btrc_Vector_string_iterLen(emulators);
+    for (int __i_922 = 0; (__i_922 < __n_923); (__i_922++)) {
+        char* emulator = btrc_Vector_string_iterGet(emulators, __i_922);
+        char* path = deckStateEvidencePath(project, emulator);
+        if (!FileSystem_exists(path)) {
+            printf("%s\n", __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat("PENDING ", emulator)), ": missing ")), path)));
+            (allOk = false);
+        } else {
+            char* text = FileSystem_readText(path);
+            bool saveOk = deckStateEvidenceHasAction(text, "state.save");
+            bool loadOk = deckStateEvidenceHasAction(text, "state.load");
+            if (saveOk && loadOk) {
+                printf("%s\n", __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat("OK ", emulator)), ": save/load evidence ")), path)));
+            } else {
+                printf("%s\n", __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat("PENDING ", emulator)), ": save=")), (saveOk ? "ok" : "missing"))), " load=")), (loadOk ? "ok" : "missing"))), " ")), path)));
+                (allOk = false);
+            }
+        }
+    }
+    if (allOk) {
+        printf("%s\n", "OK Game Mode state evidence");
+        return 0;
+    }
+    printf("%s\n", "PENDING Game Mode state evidence");
+    printf("%s\n", "  Use the physical left-trackpad Save State and Load State actions for each pending emulator, then rerun without --allow-pending.");
+    return (allowPending ? 0 : 2);
+}
+
 SteamShortcutRecord* deckSemuShortcut(CliArgs* args) {
     char* appName = CliArgs_valueAfter(args, "--app-name", steamDefaultShortcutName());
     char* exe = CliArgs_valueAfter(args, "--exe", steamDefaultShortcutExe());
@@ -21671,9 +21842,9 @@ SteamShortcutRecord* deckSemuShortcut(CliArgs* args) {
     if (((int)strlen(file)) > 0) {
         return steamShortcutFind(steamShortcutsRead(file), appName, exe);
     }
-    int __n_911 = btrc_Vector_string_iterLen(steamShortcutsFiles());
-    for (int __i_910 = 0; (__i_910 < __n_911); (__i_910++)) {
-        char* candidate = btrc_Vector_string_iterGet(steamShortcutsFiles(), __i_910);
+    int __n_925 = btrc_Vector_string_iterLen(steamShortcutsFiles());
+    for (int __i_924 = 0; (__i_924 < __n_925); (__i_924++)) {
+        char* candidate = btrc_Vector_string_iterGet(steamShortcutsFiles(), __i_924);
         SteamShortcutRecord* found = steamShortcutFind(steamShortcutsRead(candidate), appName, exe);
         if (found->appid > 0) {
             return found;
@@ -21702,31 +21873,31 @@ char* deckSha256(char* path) {
 }
 
 char* deckGameModeReadinessJson(char* project, char* session, bool sessionOk, bool steamOk, bool shortcutOk, char* launchUri, bool steamInputOk, char* appImage, bool appImageOk, char* appImageHash, bool checklistOk, bool evidenceRequired, bool evidenceOk) {
-    btrc_Vector_string* __list_912 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_912, jsonStrField("schema_version", "1"));
-    btrc_Vector_string_push(__list_912, jsonStrField("project", project));
-    btrc_Vector_string_push(__list_912, jsonStrField("session", session));
-    btrc_Vector_string_push(__list_912, jsonBoolField("session_ok", sessionOk));
-    btrc_Vector_string_push(__list_912, jsonBoolField("steam_running", steamOk));
-    btrc_Vector_string_push(__list_912, jsonBoolField("shortcut_found", shortcutOk));
-    btrc_Vector_string_push(__list_912, jsonStrField("launch_uri", launchUri));
-    btrc_Vector_string_push(__list_912, jsonBoolField("steam_input_selected", steamInputOk));
-    btrc_Vector_string_push(__list_912, jsonStrField("appimage", appImage));
-    btrc_Vector_string_push(__list_912, jsonBoolField("appimage_ok", appImageOk));
-    btrc_Vector_string_push(__list_912, jsonStrField("appimage_sha256", appImageHash));
-    btrc_Vector_string_push(__list_912, jsonStrField("checklist", deckGameModeChecklistPath(project)));
-    btrc_Vector_string_push(__list_912, jsonBoolField("checklist_ok", checklistOk));
-    btrc_Vector_string_push(__list_912, jsonStrField("quit_evidence_root", deckQuitEvidenceRoot(project)));
-    btrc_Vector_string_push(__list_912, jsonBoolField("evidence_required", evidenceRequired));
-    btrc_Vector_string_push(__list_912, jsonBoolField("evidence_ok", evidenceOk));
-    return jsonObject(__list_912);
+    btrc_Vector_string* __list_926 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_926, jsonStrField("schema_version", "1"));
+    btrc_Vector_string_push(__list_926, jsonStrField("project", project));
+    btrc_Vector_string_push(__list_926, jsonStrField("session", session));
+    btrc_Vector_string_push(__list_926, jsonBoolField("session_ok", sessionOk));
+    btrc_Vector_string_push(__list_926, jsonBoolField("steam_running", steamOk));
+    btrc_Vector_string_push(__list_926, jsonBoolField("shortcut_found", shortcutOk));
+    btrc_Vector_string_push(__list_926, jsonStrField("launch_uri", launchUri));
+    btrc_Vector_string_push(__list_926, jsonBoolField("steam_input_selected", steamInputOk));
+    btrc_Vector_string_push(__list_926, jsonStrField("appimage", appImage));
+    btrc_Vector_string_push(__list_926, jsonBoolField("appimage_ok", appImageOk));
+    btrc_Vector_string_push(__list_926, jsonStrField("appimage_sha256", appImageHash));
+    btrc_Vector_string_push(__list_926, jsonStrField("checklist", deckGameModeChecklistPath(project)));
+    btrc_Vector_string_push(__list_926, jsonBoolField("checklist_ok", checklistOk));
+    btrc_Vector_string_push(__list_926, jsonStrField("quit_evidence_root", deckQuitEvidenceRoot(project)));
+    btrc_Vector_string_push(__list_926, jsonBoolField("evidence_required", evidenceRequired));
+    btrc_Vector_string_push(__list_926, jsonBoolField("evidence_ok", evidenceOk));
+    return jsonObject(__list_926);
 }
 
 int deckGameModeReadinessCommand(CliArgs* args, char* project) {
     btrc_Vector_string* emulators = deckEvidenceEmulators(args);
-    int __n_914 = btrc_Vector_string_iterLen(emulators);
-    for (int __i_913 = 0; (__i_913 < __n_914); (__i_913++)) {
-        char* emulator = btrc_Vector_string_iterGet(emulators, __i_913);
+    int __n_928 = btrc_Vector_string_iterLen(emulators);
+    for (int __i_927 = 0; (__i_927 < __n_928); (__i_927++)) {
+        char* emulator = btrc_Vector_string_iterGet(emulators, __i_927);
         if (!deckKnownEvidenceEmulator(emulator)) {
             printf("%s\n", __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat("error 0:0 unknown emulator '", emulator)), "'")));
             return 1;
@@ -21781,28 +21952,123 @@ int deckGameModeReadinessCommand(CliArgs* args, char* project) {
     return (ok ? 0 : 2);
 }
 
+bool deckSourceConfigOk(char* project) {
+    return (((FileSystem_isFile(syncConfigPath(project)) && FileSystem_isFile(semuSettingsPath(project))) && FileSystem_isFile(keymapSourcePath(project))) && FileSystem_isDir(presentationSettingsRoot(project)));
+}
+
+bool deckPresentationAuditReportOk(char* project) {
+    char* path = presentationAssetAuditPath(project);
+    if (!FileSystem_isFile(path)) {
+        return false;
+    }
+    JsonObject* report = JsonObject_readFile(path);
+    return (((JsonObject_getInt(report, "missing_system_count", 1) == 0) && (JsonObject_getInt(report, "missing_asset_count", 1) == 0)) && (JsonObject_getInt(report, "missing_dependency_count", 1) == 0));
+}
+
+char* deckProductionReadinessJson(char* project, char* session, bool sessionOk, bool steamOk, bool shortcutOk, bool steamInputOk, char* launchUri, char* appImage, bool appImageOk, char* appImageHash, bool sourceConfigOk, bool presentationOk, bool quitEvidenceOk, bool stateEvidenceOk, bool evidenceRequired) {
+    btrc_Vector_string* __list_929 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_929, jsonStrField("schema_version", "1"));
+    btrc_Vector_string_push(__list_929, jsonStrField("project", project));
+    btrc_Vector_string_push(__list_929, jsonStrField("session", session));
+    btrc_Vector_string_push(__list_929, jsonBoolField("session_ok", sessionOk));
+    btrc_Vector_string_push(__list_929, jsonBoolField("steam_running", steamOk));
+    btrc_Vector_string_push(__list_929, jsonBoolField("shortcut_found", shortcutOk));
+    btrc_Vector_string_push(__list_929, jsonBoolField("steam_input_selected", steamInputOk));
+    btrc_Vector_string_push(__list_929, jsonStrField("launch_uri", launchUri));
+    btrc_Vector_string_push(__list_929, jsonStrField("appimage", appImage));
+    btrc_Vector_string_push(__list_929, jsonBoolField("appimage_ok", appImageOk));
+    btrc_Vector_string_push(__list_929, jsonStrField("appimage_sha256", appImageHash));
+    btrc_Vector_string_push(__list_929, jsonBoolField("source_config_ok", sourceConfigOk));
+    btrc_Vector_string_push(__list_929, jsonBoolField("presentation_audit_ok", presentationOk));
+    btrc_Vector_string_push(__list_929, jsonStrField("presentation_audit", presentationAssetAuditPath(project)));
+    btrc_Vector_string_push(__list_929, jsonBoolField("quit_evidence_ok", quitEvidenceOk));
+    btrc_Vector_string_push(__list_929, jsonStrField("quit_evidence_root", deckQuitEvidenceRoot(project)));
+    btrc_Vector_string_push(__list_929, jsonBoolField("state_evidence_ok", stateEvidenceOk));
+    btrc_Vector_string_push(__list_929, jsonStrField("state_evidence_root", deckStateEvidenceRoot(project)));
+    btrc_Vector_string_push(__list_929, jsonBoolField("evidence_required", evidenceRequired));
+    return jsonObject(__list_929);
+}
+
+int deckProductionReadinessCommand(CliArgs* args, char* project, bool statusMode) {
+    btrc_Vector_string* quitEmulators = deckEvidenceEmulators(args);
+    int __n_931 = btrc_Vector_string_iterLen(quitEmulators);
+    for (int __i_930 = 0; (__i_930 < __n_931); (__i_930++)) {
+        char* emulator = btrc_Vector_string_iterGet(quitEmulators, __i_930);
+        if (!deckKnownEvidenceEmulator(emulator)) {
+            printf("%s\n", __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat("error 0:0 unknown emulator '", emulator)), "'")));
+            return 1;
+        }
+    }
+    btrc_Vector_string* stateEmulators = deckStateEvidenceEmulators();
+    if (CliArgs_has(args, "--prepare")) {
+        SemuGeneratedFiles_writeAdapterState(project, deckGameModeChecklistPath(project), deckGameModeChecklistText(project, quitEmulators));
+        SemuGeneratedFiles_writeAdapterState(project, deckStateEvidenceChecklistPath(project), deckStateEvidenceChecklistText(project, stateEmulators));
+    }
+    bool evidenceRequired = (CliArgs_has(args, "--require-evidence") || (!statusMode));
+    bool allowDesktop = CliArgs_has(args, "--allow-desktop");
+    bool allowPending = (statusMode || (CliArgs_has(args, "--allow-pending") && (!evidenceRequired)));
+    char* session = deckSessionKind();
+    bool desktopPreflight = ((strcmp(session, "desktop_mode") == 0) || (strcmp(session, "mixed_gamescope_desktop") == 0));
+    bool sessionOk = ((strcmp(session, "game_mode") == 0) || (allowDesktop && desktopPreflight));
+    bool steamOk = deckSteamRunning();
+    char* appImage = CliArgs_valueAfter(args, "--appimage", CliArgs_valueAfter(args, "--exe", steamDefaultShortcutExe()));
+    bool appImageOk = deckPathExecutable(appImage);
+    char* appImageHash = deckSha256(appImage);
+    SteamShortcutRecord* shortcut = deckSemuShortcut(args);
+    bool shortcutOk = (shortcut->appid > 0);
+    bool steamInputOk = steamInputSelectionOk(project, args);
+    char* launchUri = (shortcutOk ? SteamShortcutRecord_launchUri(shortcut) : "");
+    bool sourceConfigOk = deckSourceConfigOk(project);
+    bool presentationOk = false;
+    if (CliArgs_has(args, "--audit-visuals")) {
+        (presentationOk = (presentationAudit(project, "", "", true) == 0));
+    } else {
+        (presentationOk = deckPresentationAuditReportOk(project));
+    }
+    bool quitEvidenceOk = deckQuitEvidenceComplete(project, quitEmulators);
+    bool stateEvidenceOk = deckStateEvidenceComplete(project, stateEmulators);
+    char* report = deckProductionReadinessJson(project, session, sessionOk, steamOk, shortcutOk, steamInputOk, launchUri, appImage, appImageOk, appImageHash, sourceConfigOk, presentationOk, quitEvidenceOk, stateEvidenceOk, evidenceRequired);
+    SemuGeneratedFiles_writeAdapterState(project, deckProductionReadinessPath(project), jsonPrettyText(report));
+    printf("%s\n", "Semu production readiness");
+    printf("%s\n", (sessionOk ? __btrc_str_track(__btrc_strcat("  OK session: ", session)) : __btrc_str_track(__btrc_strcat("  PENDING session: ", session))));
+    printf("%s\n", (steamOk ? "  OK steam: running" : "  MISSING steam: not running"));
+    printf("%s\n", (shortcutOk ? __btrc_str_track(__btrc_strcat("  OK shortcut: ", launchUri)) : __btrc_str_track(__btrc_strcat("  MISSING shortcut: ", CliArgs_valueAfter(args, "--app-name", steamDefaultShortcutName())))));
+    printf("%s\n", (steamInputOk ? "  OK steam-input: Semu template selected" : "  PENDING steam-input: Semu template not selected"));
+    printf("%s\n", (appImageOk ? __btrc_str_track(__btrc_strcat("  OK appimage: ", appImage)) : __btrc_str_track(__btrc_strcat("  MISSING appimage: ", appImage))));
+    if (((int)strlen(appImageHash)) > 0) {
+        printf("%s\n", __btrc_str_track(__btrc_strcat("       sha256: ", appImageHash)));
+    }
+    printf("%s\n", (sourceConfigOk ? "  OK owned config sources" : "  MISSING owned config sources"));
+    printf("%s\n", (presentationOk ? "  OK presentation audit" : "  PENDING presentation audit: run with --audit-visuals or fix missing assets"));
+    printf("%s\n", (quitEvidenceOk ? "  OK quit evidence: physical logs complete" : "  PENDING quit evidence: physical logs incomplete"));
+    printf("%s\n", (stateEvidenceOk ? "  OK state evidence: physical save/load logs complete" : "  PENDING state evidence: physical save/load logs incomplete"));
+    printf("%s\n", __btrc_str_track(__btrc_strcat("  report: ", deckProductionReadinessPath(project))));
+    bool ok = (((((((sessionOk && steamOk) && shortcutOk) && steamInputOk) && appImageOk) && sourceConfigOk) && presentationOk) && ((!evidenceRequired) || (quitEvidenceOk && stateEvidenceOk)));
+    return (ok ? 0 : (allowPending ? 0 : 2));
+}
+
 bool deckWaitForSyncHealth(char* project) {
     UnixShell* shell = UnixShell_new();
     for (int i = 0; (i < 30); (i++)) {
         ExecResult* result = UnixShell_runUnchecked(shell, __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat("curl -fsS http://", syncGuiAddress(project))), "/rest/noauth/health >/dev/null 2>&1")));
         if (ExecResult_ok(result)) {
-            bool __btrc_ret_915 = true;
+            bool __btrc_ret_932 = true;
             if (shell != NULL) {
                 if ((--shell->__rc) <= 0) {
                     UnixShell_destroy(shell);
                 }
             }
-            return __btrc_ret_915;
+            return __btrc_ret_932;
         }
         UnixShell_runUnchecked(shell, "sleep 1");
     }
-    bool __btrc_ret_916 = false;
+    bool __btrc_ret_933 = false;
     if (shell != NULL) {
         if ((--shell->__rc) <= 0) {
             UnixShell_destroy(shell);
         }
     }
-    return __btrc_ret_916;
+    return __btrc_ret_933;
     if (shell != NULL) {
         if ((--shell->__rc) <= 0) {
             UnixShell_destroy(shell);
@@ -21981,10 +22247,10 @@ void SemuE2eSpec_init(SemuE2eSpec* self) {
             btrc_Vector_SemuE2eOperation_free(self->operations);
         }
     }
-    btrc_Vector_SemuE2eOperation* __list_918 = btrc_Vector_SemuE2eOperation_new();
-    (self->operations = __list_918);
-    btrc_Vector_SemuE2eOperation* __list_917 = btrc_Vector_SemuE2eOperation_new();
-    (__list_917->__rc++);
+    btrc_Vector_SemuE2eOperation* __list_935 = btrc_Vector_SemuE2eOperation_new();
+    (self->operations = __list_935);
+    btrc_Vector_SemuE2eOperation* __list_934 = btrc_Vector_SemuE2eOperation_new();
+    (__list_934->__rc++);
 }
 
 SemuE2eSpec* SemuE2eSpec_new(void) {
@@ -22039,9 +22305,9 @@ char* SemuE2eSpec_resolveParentHash(SemuE2eSpec* self) {
 
 char* SemuE2eSpec_operationsMaterial(SemuE2eSpec* self) {
     btrc_Vector_string* lines = btrc_Vector_string_new();
-    int __n_920 = btrc_Vector_SemuE2eOperation_iterLen(self->operations);
-    for (int __i_919 = 0; (__i_919 < __n_920); (__i_919++)) {
-        SemuE2eOperation* op = btrc_Vector_SemuE2eOperation_iterGet(self->operations, __i_919);
+    int __n_937 = btrc_Vector_SemuE2eOperation_iterLen(self->operations);
+    for (int __i_936 = 0; (__i_936 < __n_937); (__i_936++)) {
+        SemuE2eOperation* op = btrc_Vector_SemuE2eOperation_iterGet(self->operations, __i_936);
         btrc_Vector_string_push(lines, __btrc_str_track(__btrc_strcat("op=", op->kind)));
         btrc_Vector_string_push(lines, __btrc_str_track(__btrc_strcat("name=", op->name)));
         btrc_Vector_string_push(lines, __btrc_str_track(__btrc_strcat("command=", op->command)));
@@ -22103,9 +22369,9 @@ void SemuE2eSpec_expandArgs(SemuE2eSpec* self) {
     SemuE2eSpec_refreshDerivedArgs(self);
     SemuE2eSpec_computeStateHash(self);
     SemuE2eSpec_refreshDerivedArgs(self);
-    int __n_922 = btrc_Vector_SemuE2eOperation_iterLen(self->operations);
-    for (int __i_921 = 0; (__i_921 < __n_922); (__i_921++)) {
-        SemuE2eOperation* op = btrc_Vector_SemuE2eOperation_iterGet(self->operations, __i_921);
+    int __n_939 = btrc_Vector_SemuE2eOperation_iterLen(self->operations);
+    for (int __i_938 = 0; (__i_938 < __n_939); (__i_938++)) {
+        SemuE2eOperation* op = btrc_Vector_SemuE2eOperation_iterGet(self->operations, __i_938);
         SemuE2eOperation_expandArgs(op, self->args);
     }
 }
@@ -22113,13 +22379,13 @@ void SemuE2eSpec_expandArgs(SemuE2eSpec* self) {
 void SemuE2eSpec_recordState(SemuE2eSpec* self) {
     ensureDir(SemuE2eSpec_stateDir(self));
     FileSystem_writeText(SemuE2eSpec_stateHashFile(self), __btrc_str_track(__btrc_strcat(self->stateHash, "\n")));
-    btrc_Vector_string* __list_924 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_924, jsonStrField("state", self->state));
-    btrc_Vector_string_push(__list_924, jsonStrField("parentState", self->parentState));
-    btrc_Vector_string_push(__list_924, jsonStrField("parentHash", self->parentHash));
-    btrc_Vector_string_push(__list_924, jsonStrField("hash", self->stateHash));
-    btrc_Vector_string_push(__list_924, jsonStrField("hashShort", self->stateHashShort));
-    FileSystem_writeText(joinPath(SemuE2eSpec_stateDir(self), "metadata.json"), __btrc_str_track(__btrc_strcat(jsonObject(__list_924), "\n")));
+    btrc_Vector_string* __list_941 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_941, jsonStrField("state", self->state));
+    btrc_Vector_string_push(__list_941, jsonStrField("parentState", self->parentState));
+    btrc_Vector_string_push(__list_941, jsonStrField("parentHash", self->parentHash));
+    btrc_Vector_string_push(__list_941, jsonStrField("hash", self->stateHash));
+    btrc_Vector_string_push(__list_941, jsonStrField("hashShort", self->stateHashShort));
+    FileSystem_writeText(joinPath(SemuE2eSpec_stateDir(self), "metadata.json"), __btrc_str_track(__btrc_strcat(jsonObject(__list_941), "\n")));
 }
 
 char* SemuE2eParser_field(char* text, char* key, char* fallback) {
@@ -22159,9 +22425,9 @@ SemuE2eOperation* SemuE2eParser_operation(char* objectText) {
 
 btrc_Vector_SemuE2eOperation* SemuE2eParser_operations(char* text) {
     btrc_Vector_SemuE2eOperation* result = btrc_Vector_SemuE2eOperation_new();
-    int __n_926 = btrc_Vector_string_iterLen(SemuE2eParser_objectArray(text, "operations"));
-    for (int __i_925 = 0; (__i_925 < __n_926); (__i_925++)) {
-        char* objectText = btrc_Vector_string_iterGet(SemuE2eParser_objectArray(text, "operations"), __i_925);
+    int __n_943 = btrc_Vector_string_iterLen(SemuE2eParser_objectArray(text, "operations"));
+    for (int __i_942 = 0; (__i_942 < __n_943); (__i_942++)) {
+        char* objectText = btrc_Vector_string_iterGet(SemuE2eParser_objectArray(text, "operations"), __i_942);
         btrc_Vector_SemuE2eOperation_push(result, SemuE2eParser_operation(objectText));
     }
     return result;
@@ -22329,9 +22595,9 @@ int SemuE2eRunner_run(SemuE2eRunner* self) {
     if (btrc_Vector_SemuE2eOperation_isEmpty(self->spec->operations)) {
         e2eFatal(__btrc_str_track(__btrc_strcat("E2E spec has no operations: ", self->spec->name)));
     }
-    int __n_928 = btrc_Vector_SemuE2eOperation_iterLen(self->spec->operations);
-    for (int __i_927 = 0; (__i_927 < __n_928); (__i_927++)) {
-        SemuE2eOperation* op = btrc_Vector_SemuE2eOperation_iterGet(self->spec->operations, __i_927);
+    int __n_945 = btrc_Vector_SemuE2eOperation_iterLen(self->spec->operations);
+    for (int __i_944 = 0; (__i_944 < __n_945); (__i_944++)) {
+        SemuE2eOperation* op = btrc_Vector_SemuE2eOperation_iterGet(self->spec->operations, __i_944);
         if (self->failures > 0) {
             break;
         }
@@ -22436,16 +22702,16 @@ SemuE2eSpec* SemuE2eGraphRunner_specFor(SemuE2eGraphRunner* self, GraphNode* nod
     SemuE2eSpec_setArg(spec, "program", self->program);
     SemuE2eGraphRunner_applyStructuralOverrides(self, spec, node->args);
     SemuE2eGraphRunner_applyStructuralOverrides(self, spec, self->args);
-    int __n_930 = btrc_Map_string_string_iterLen(node->args);
-    for (int __i_929 = 0; (__i_929 < __n_930); (__i_929++)) {
-        char* key = btrc_Map_string_string_iterGet(node->args, __i_929);
-        char* value = btrc_Map_string_string_iterValueAt(node->args, __i_929);
+    int __n_947 = btrc_Map_string_string_iterLen(node->args);
+    for (int __i_946 = 0; (__i_946 < __n_947); (__i_946++)) {
+        char* key = btrc_Map_string_string_iterGet(node->args, __i_946);
+        char* value = btrc_Map_string_string_iterValueAt(node->args, __i_946);
         SemuE2eSpec_setArg(spec, key, value);
     }
-    int __n_932 = btrc_Map_string_string_iterLen(self->args);
-    for (int __i_931 = 0; (__i_931 < __n_932); (__i_931++)) {
-        char* key = btrc_Map_string_string_iterGet(self->args, __i_931);
-        char* value = btrc_Map_string_string_iterValueAt(self->args, __i_931);
+    int __n_949 = btrc_Map_string_string_iterLen(self->args);
+    for (int __i_948 = 0; (__i_948 < __n_949); (__i_948++)) {
+        char* key = btrc_Map_string_string_iterGet(self->args, __i_948);
+        char* value = btrc_Map_string_string_iterValueAt(self->args, __i_948);
         SemuE2eSpec_setArg(spec, key, value);
     }
     SemuE2eSpec_expandArgs(spec);
@@ -22468,9 +22734,9 @@ void SemuE2eGraphRunner_list(SemuE2eGraphRunner* self) {
 }
 
 void SemuE2eGraphRunner_status(SemuE2eGraphRunner* self) {
-    int __n_934 = btrc_Vector_GraphNode_iterLen(self->graph->nodes);
-    for (int __i_933 = 0; (__i_933 < __n_934); (__i_933++)) {
-        GraphNode* node = btrc_Vector_GraphNode_iterGet(self->graph->nodes, __i_933);
+    int __n_951 = btrc_Vector_GraphNode_iterLen(self->graph->nodes);
+    for (int __i_950 = 0; (__i_950 < __n_951); (__i_950++)) {
+        GraphNode* node = btrc_Vector_GraphNode_iterGet(self->graph->nodes, __i_950);
         SemuE2eSpec* spec = SemuE2eGraphRunner_specFor(self, node);
         char* recorded = "missing";
         if (FileSystem_exists(SemuE2eSpec_stateHashFile(spec))) {
@@ -22483,13 +22749,13 @@ void SemuE2eGraphRunner_status(SemuE2eGraphRunner* self) {
 
 int SemuE2eGraphRunner_operationCoverage(SemuE2eGraphRunner* self) {
     btrc_Vector_string* covered = btrc_Vector_string_new();
-    int __n_936 = btrc_Vector_GraphNode_iterLen(self->graph->nodes);
-    for (int __i_935 = 0; (__i_935 < __n_936); (__i_935++)) {
-        GraphNode* node = btrc_Vector_GraphNode_iterGet(self->graph->nodes, __i_935);
+    int __n_953 = btrc_Vector_GraphNode_iterLen(self->graph->nodes);
+    for (int __i_952 = 0; (__i_952 < __n_953); (__i_952++)) {
+        GraphNode* node = btrc_Vector_GraphNode_iterGet(self->graph->nodes, __i_952);
         SemuE2eSpec* spec = SemuE2eParser_readSpecFile(ExecutionGraph_resolvedSpecPath(self->graph, node));
-        int __n_938 = btrc_Vector_SemuE2eOperation_iterLen(spec->operations);
-        for (int __i_937 = 0; (__i_937 < __n_938); (__i_937++)) {
-            SemuE2eOperation* op = btrc_Vector_SemuE2eOperation_iterGet(spec->operations, __i_937);
+        int __n_955 = btrc_Vector_SemuE2eOperation_iterLen(spec->operations);
+        for (int __i_954 = 0; (__i_954 < __n_955); (__i_954++)) {
+            SemuE2eOperation* op = btrc_Vector_SemuE2eOperation_iterGet(spec->operations, __i_954);
             if ((((int)strlen(op->kind)) > 0) && (!btrc_Vector_string_contains(covered, op->kind))) {
                 btrc_Vector_string_push(covered, op->kind);
             }
@@ -22497,9 +22763,9 @@ int SemuE2eGraphRunner_operationCoverage(SemuE2eGraphRunner* self) {
     }
     btrc_Vector_string* missing = btrc_Vector_string_new();
     btrc_Vector_string* catalog = semuE2eOperationCatalog();
-    int __n_940 = btrc_Vector_string_iterLen(catalog);
-    for (int __i_939 = 0; (__i_939 < __n_940); (__i_939++)) {
-        char* kind = btrc_Vector_string_iterGet(catalog, __i_939);
+    int __n_957 = btrc_Vector_string_iterLen(catalog);
+    for (int __i_956 = 0; (__i_956 < __n_957); (__i_956++)) {
+        char* kind = btrc_Vector_string_iterGet(catalog, __i_956);
         if (!btrc_Vector_string_contains(covered, kind)) {
             btrc_Vector_string_push(missing, kind);
         }
@@ -22518,9 +22784,9 @@ int SemuE2eGraphRunner_run(SemuE2eGraphRunner* self, btrc_Vector_string* targets
     if (!GraphTraversal_ok(traversal)) {
         e2eFatal(traversal->error);
     }
-    int __n_942 = btrc_Vector_string_iterLen(order);
-    for (int __i_941 = 0; (__i_941 < __n_942); (__i_941++)) {
-        char* id = btrc_Vector_string_iterGet(order, __i_941);
+    int __n_959 = btrc_Vector_string_iterLen(order);
+    for (int __i_958 = 0; (__i_958 < __n_959); (__i_958++)) {
+        char* id = btrc_Vector_string_iterGet(order, __i_958);
         GraphNode* node = ExecutionGraph_node(self->graph, id);
         SemuE2eSpec* spec = SemuE2eGraphRunner_specFor(self, node);
         if ((!SemuE2eGraphRunner_force(self)) && SemuE2eGraphRunner_ready(self, spec)) {
@@ -22549,13 +22815,13 @@ int SemuE2eGraphRunner_run(SemuE2eGraphRunner* self, btrc_Vector_string* targets
             }
         }
     }
-    int __btrc_ret_943 = 0;
+    int __btrc_ret_960 = 0;
     if (traversal != NULL) {
         if ((--traversal->__rc) <= 0) {
             GraphTraversal_destroy(traversal);
         }
     }
-    return __btrc_ret_943;
+    return __btrc_ret_960;
     if (traversal != NULL) {
         if ((--traversal->__rc) <= 0) {
             GraphTraversal_destroy(traversal);
@@ -22582,50 +22848,50 @@ int e2eGraphCommand(CliArgs* args) {
     SemuE2eGraphRunner* runner = SemuE2eGraphRunner_new(graph, overrides, args->program);
     if (strcmp(action, "list") == 0) {
         SemuE2eGraphRunner_list(runner);
-        int __btrc_ret_944 = 0;
+        int __btrc_ret_961 = 0;
         if (runner != NULL) {
             if ((--runner->__rc) <= 0) {
                 SemuE2eGraphRunner_destroy(runner);
             }
         }
-        return __btrc_ret_944;
+        return __btrc_ret_961;
     }
     if (strcmp(action, "status") == 0) {
         SemuE2eGraphRunner_status(runner);
-        int __btrc_ret_945 = 0;
+        int __btrc_ret_962 = 0;
         if (runner != NULL) {
             if ((--runner->__rc) <= 0) {
                 SemuE2eGraphRunner_destroy(runner);
             }
         }
-        return __btrc_ret_945;
+        return __btrc_ret_962;
     }
     if (strcmp(action, "coverage") == 0) {
-        int __btrc_ret_946 = SemuE2eGraphRunner_operationCoverage(runner);
+        int __btrc_ret_963 = SemuE2eGraphRunner_operationCoverage(runner);
         if (runner != NULL) {
             if ((--runner->__rc) <= 0) {
                 SemuE2eGraphRunner_destroy(runner);
             }
         }
-        return __btrc_ret_946;
+        return __btrc_ret_963;
     }
     if (strcmp(action, "run") == 0) {
-        int __btrc_ret_947 = SemuE2eGraphRunner_run(runner, e2eGraphTargets(args, 4));
+        int __btrc_ret_964 = SemuE2eGraphRunner_run(runner, e2eGraphTargets(args, 4));
         if (runner != NULL) {
             if ((--runner->__rc) <= 0) {
                 SemuE2eGraphRunner_destroy(runner);
             }
         }
-        return __btrc_ret_947;
+        return __btrc_ret_964;
     }
     printf("%s\n", "Usage: semu e2e graph <graph.json> <list|status|coverage|run> [node ...] [--arg key=value]");
-    int __btrc_ret_948 = 1;
+    int __btrc_ret_965 = 1;
     if (runner != NULL) {
         if ((--runner->__rc) <= 0) {
             SemuE2eGraphRunner_destroy(runner);
         }
     }
-    return __btrc_ret_948;
+    return __btrc_ret_965;
     if (runner != NULL) {
         if ((--runner->__rc) <= 0) {
             SemuE2eGraphRunner_destroy(runner);
@@ -22719,9 +22985,9 @@ ExecResult* e2eRunLifecycleChange(char* exe, char* home, char* project, char* ac
 
 ExecResult* e2eRunLifecycleArgs(char* exe, char* home, char* project, btrc_Vector_string* lifecycleArgs) {
     Command* command = Command_check(Command_capture(Command_arg(Command_envVar(Command_envVar(Command_envVar(Command_new(exe), "SEMU_HOME", home), "SEMU_BIN", exe), "PATH", "/usr/bin:/bin"), "lifecycle"), true), false);
-    int __n_950 = btrc_Vector_string_iterLen(lifecycleArgs);
-    for (int __i_949 = 0; (__i_949 < __n_950); (__i_949++)) {
-        char* arg = btrc_Vector_string_iterGet(lifecycleArgs, __i_949);
+    int __n_967 = btrc_Vector_string_iterLen(lifecycleArgs);
+    for (int __i_966 = 0; (__i_966 < __n_967); (__i_966++)) {
+        char* arg = btrc_Vector_string_iterGet(lifecycleArgs, __i_966);
         Command_arg(command, arg);
     }
     Command_flag(command, "--project", project);
@@ -22742,9 +23008,9 @@ ExecResult* e2eRunLifecycleArgs(char* exe, char* home, char* project, btrc_Vecto
 
 ExecResult* e2eRunSync(char* exe, char* home, char* binDir, char* project, btrc_Vector_string* syncArgs) {
     Command* command = Command_check(Command_capture(Command_arg(Command_envVar(Command_envVar(Command_envVar(Command_envVar(Command_envVar(Command_envVar(Command_new(exe), "SEMU_HOME", home), "SEMU_BIN", exe), "SEMU_SYNCTHING_BIN", joinPath(binDir, "syncthing")), "SEMU_CURL_BIN", joinPath(binDir, "curl")), "PATH", __btrc_str_track(__btrc_strcat(binDir, ":/usr/bin:/bin"))), "SEMU_CAPTURE", joinPath(PathTools_dirname(binDir), "capture")), "sync"), true), false);
-    int __n_952 = btrc_Vector_string_iterLen(syncArgs);
-    for (int __i_951 = 0; (__i_951 < __n_952); (__i_951++)) {
-        char* arg = btrc_Vector_string_iterGet(syncArgs, __i_951);
+    int __n_969 = btrc_Vector_string_iterLen(syncArgs);
+    for (int __i_968 = 0; (__i_968 < __n_969); (__i_968++)) {
+        char* arg = btrc_Vector_string_iterGet(syncArgs, __i_968);
         Command_arg(command, arg);
     }
     Command_flag(command, "--project", project);
@@ -22765,9 +23031,9 @@ ExecResult* e2eRunSync(char* exe, char* home, char* binDir, char* project, btrc_
 
 ExecResult* e2eRunSteamInput(char* exe, char* home, char* project, btrc_Vector_string* steamInputArgs) {
     Command* command = Command_check(Command_capture(Command_arg(Command_envVar(Command_envVar(Command_envVar(Command_new(exe), "SEMU_HOME", home), "SEMU_BIN", exe), "PATH", "/usr/bin:/bin"), "steam-input"), true), false);
-    int __n_954 = btrc_Vector_string_iterLen(steamInputArgs);
-    for (int __i_953 = 0; (__i_953 < __n_954); (__i_953++)) {
-        char* arg = btrc_Vector_string_iterGet(steamInputArgs, __i_953);
+    int __n_971 = btrc_Vector_string_iterLen(steamInputArgs);
+    for (int __i_970 = 0; (__i_970 < __n_971); (__i_970++)) {
+        char* arg = btrc_Vector_string_iterGet(steamInputArgs, __i_970);
         Command_arg(command, arg);
     }
     Command_flag(command, "--project", project);
@@ -22791,13 +23057,13 @@ bool e2eWriteSteamShortcutFixtureFor(char* path, char* exe) {
     char* payload = __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat("\\000shortcuts\\000\\0000\\000\\002appid\\000\\140\\152\\213\\344\\001AppName\\000Semu-x86_64.AppImage\\000\\001Exe\\000\"", exe)), "\"\\000\\001StartDir\\000")), PathTools_dirname(exe))), "/\\000\\001LaunchOptions\\000\\000\\010\\010"));
     UnixShell* shell = UnixShell_new();
     ExecResult* result = UnixShell_runRaw(shell, __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat("printf ", ShellWords_quote(payload))), " > ")), ShellWords_quote(path))), false, false, "");
-    bool __btrc_ret_955 = e2eOk(ExecResult_ok(result), "write Steam shortcut fixture");
+    bool __btrc_ret_972 = e2eOk(ExecResult_ok(result), "write Steam shortcut fixture");
     if (shell != NULL) {
         if ((--shell->__rc) <= 0) {
             UnixShell_destroy(shell);
         }
     }
-    return __btrc_ret_955;
+    return __btrc_ret_972;
     if (shell != NULL) {
         if ((--shell->__rc) <= 0) {
             UnixShell_destroy(shell);
@@ -22817,9 +23083,9 @@ bool e2eWriteSteamConfigSetFixture(char* path) {
 
 ExecResult* e2eRunSettings(char* exe, char* home, char* project, btrc_Vector_string* settingsArgs) {
     Command* command = Command_check(Command_capture(Command_arg(Command_envVar(Command_envVar(Command_envVar(Command_new(exe), "SEMU_HOME", home), "SEMU_BIN", exe), "PATH", "/usr/bin:/bin"), "settings"), true), false);
-    int __n_957 = btrc_Vector_string_iterLen(settingsArgs);
-    for (int __i_956 = 0; (__i_956 < __n_957); (__i_956++)) {
-        char* arg = btrc_Vector_string_iterGet(settingsArgs, __i_956);
+    int __n_974 = btrc_Vector_string_iterLen(settingsArgs);
+    for (int __i_973 = 0; (__i_973 < __n_974); (__i_973++)) {
+        char* arg = btrc_Vector_string_iterGet(settingsArgs, __i_973);
         Command_arg(command, arg);
     }
     Command_flag(command, "--project", project);
@@ -22840,9 +23106,9 @@ ExecResult* e2eRunSettings(char* exe, char* home, char* project, btrc_Vector_str
 
 ExecResult* e2eRunConfig(char* exe, char* home, char* project, btrc_Vector_string* configArgs) {
     Command* command = Command_check(Command_capture(Command_arg(Command_envVar(Command_envVar(Command_envVar(Command_new(exe), "SEMU_HOME", home), "SEMU_BIN", exe), "PATH", "/usr/bin:/bin"), "config"), true), false);
-    int __n_959 = btrc_Vector_string_iterLen(configArgs);
-    for (int __i_958 = 0; (__i_958 < __n_959); (__i_958++)) {
-        char* arg = btrc_Vector_string_iterGet(configArgs, __i_958);
+    int __n_976 = btrc_Vector_string_iterLen(configArgs);
+    for (int __i_975 = 0; (__i_975 < __n_976); (__i_975++)) {
+        char* arg = btrc_Vector_string_iterGet(configArgs, __i_975);
         Command_arg(command, arg);
     }
     Command_flag(command, "--project", project);
@@ -22863,9 +23129,9 @@ ExecResult* e2eRunConfig(char* exe, char* home, char* project, btrc_Vector_strin
 
 ExecResult* e2eRunPresentation(char* exe, char* home, char* project, btrc_Vector_string* presentationArgs) {
     Command* command = Command_check(Command_capture(Command_arg(Command_envVar(Command_envVar(Command_envVar(Command_new(exe), "SEMU_HOME", home), "SEMU_BIN", exe), "PATH", "/usr/bin:/bin"), "presentation"), true), false);
-    int __n_961 = btrc_Vector_string_iterLen(presentationArgs);
-    for (int __i_960 = 0; (__i_960 < __n_961); (__i_960++)) {
-        char* arg = btrc_Vector_string_iterGet(presentationArgs, __i_960);
+    int __n_978 = btrc_Vector_string_iterLen(presentationArgs);
+    for (int __i_977 = 0; (__i_977 < __n_978); (__i_977++)) {
+        char* arg = btrc_Vector_string_iterGet(presentationArgs, __i_977);
         Command_arg(command, arg);
     }
     Command_flag(command, "--project", project);
@@ -22886,9 +23152,9 @@ ExecResult* e2eRunPresentation(char* exe, char* home, char* project, btrc_Vector
 
 ExecResult* e2eRunKeymap(char* exe, char* home, char* project, btrc_Vector_string* keymapArgs) {
     Command* command = Command_check(Command_capture(Command_arg(Command_envVar(Command_envVar(Command_envVar(Command_new(exe), "SEMU_HOME", home), "SEMU_BIN", exe), "PATH", "/usr/bin:/bin"), "keymap"), true), false);
-    int __n_963 = btrc_Vector_string_iterLen(keymapArgs);
-    for (int __i_962 = 0; (__i_962 < __n_963); (__i_962++)) {
-        char* arg = btrc_Vector_string_iterGet(keymapArgs, __i_962);
+    int __n_980 = btrc_Vector_string_iterLen(keymapArgs);
+    for (int __i_979 = 0; (__i_979 < __n_980); (__i_979++)) {
+        char* arg = btrc_Vector_string_iterGet(keymapArgs, __i_979);
         Command_arg(command, arg);
     }
     Command_flag(command, "--project", project);
@@ -22914,20 +23180,20 @@ ExecResult* e2eRunSettingsUiScript(char* exe, char* home, char* project, char* s
 
 ExecResult* e2eRunSettingsUiScriptArgs(char* exe, char* home, char* project, btrc_Vector_string* uiArgs, char* script) {
     char* command = __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat("printf %s ", ShellWords_quote(script))), " | SEMU_HOME=")), ShellWords_quote(home))), " SEMU_BIN=")), ShellWords_quote(exe))), " PATH=/usr/bin:/bin ")), ShellWords_quote(exe))), " settings ui"));
-    int __n_965 = btrc_Vector_string_iterLen(uiArgs);
-    for (int __i_964 = 0; (__i_964 < __n_965); (__i_964++)) {
-        char* arg = btrc_Vector_string_iterGet(uiArgs, __i_964);
+    int __n_982 = btrc_Vector_string_iterLen(uiArgs);
+    for (int __i_981 = 0; (__i_981 < __n_982); (__i_981++)) {
+        char* arg = btrc_Vector_string_iterGet(uiArgs, __i_981);
         (command = __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(command, " ")), ShellWords_quote(arg))));
     }
     (command = __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(command, " --project ")), ShellWords_quote(project))));
     UnixShell* shell = UnixShell_new();
-    ExecResult* __btrc_ret_966 = UnixShell_runRaw(shell, command, true, false, "");
+    ExecResult* __btrc_ret_983 = UnixShell_runRaw(shell, command, true, false, "");
     if (shell != NULL) {
         if ((--shell->__rc) <= 0) {
             UnixShell_destroy(shell);
         }
     }
-    return __btrc_ret_966;
+    return __btrc_ret_983;
     if (shell != NULL) {
         if ((--shell->__rc) <= 0) {
             UnixShell_destroy(shell);
@@ -22938,13 +23204,13 @@ ExecResult* e2eRunSettingsUiScriptArgs(char* exe, char* home, char* project, btr
 ExecResult* e2eRunDoctor(char* exe, char* home, char* project) {
     Command* command = Command_check(Command_capture(Command_flag(Command_arg(Command_envVar(Command_envVar(Command_envVar(Command_new(exe), "SEMU_HOME", home), "SEMU_BIN", exe), "PATH", "/usr/bin:/bin"), "doctor"), "--project", project), true), false);
     UnixShell* shell = UnixShell_new();
-    ExecResult* __btrc_ret_967 = UnixShell_runCommand(shell, command);
+    ExecResult* __btrc_ret_984 = UnixShell_runCommand(shell, command);
     if (shell != NULL) {
         if ((--shell->__rc) <= 0) {
             UnixShell_destroy(shell);
         }
     }
-    return __btrc_ret_967;
+    return __btrc_ret_984;
     if (shell != NULL) {
         if ((--shell->__rc) <= 0) {
             UnixShell_destroy(shell);
@@ -22964,20 +23230,20 @@ ExecResult* e2eRunDeckEnv(char* exe, char* home, char* project, btrc_Vector_stri
     if (((int)strlen(steamRunning)) > 0) {
         Command_envVar(command, "SEMU_STEAM_RUNNING", steamRunning);
     }
-    int __n_969 = btrc_Vector_string_iterLen(deckArgs);
-    for (int __i_968 = 0; (__i_968 < __n_969); (__i_968++)) {
-        char* arg = btrc_Vector_string_iterGet(deckArgs, __i_968);
+    int __n_986 = btrc_Vector_string_iterLen(deckArgs);
+    for (int __i_985 = 0; (__i_985 < __n_986); (__i_985++)) {
+        char* arg = btrc_Vector_string_iterGet(deckArgs, __i_985);
         Command_arg(command, arg);
     }
     Command_flag(command, "--project", project);
     UnixShell* shell = UnixShell_new();
-    ExecResult* __btrc_ret_970 = UnixShell_runCommand(shell, command);
+    ExecResult* __btrc_ret_987 = UnixShell_runCommand(shell, command);
     if (shell != NULL) {
         if ((--shell->__rc) <= 0) {
             UnixShell_destroy(shell);
         }
     }
-    return __btrc_ret_970;
+    return __btrc_ret_987;
     if (shell != NULL) {
         if ((--shell->__rc) <= 0) {
             UnixShell_destroy(shell);
@@ -22987,9 +23253,9 @@ ExecResult* e2eRunDeckEnv(char* exe, char* home, char* project, btrc_Vector_stri
 
 ExecResult* e2eRunLauncher(char* exe, char* home, char* project, char* roms, char* binDir, char* captureDir, char* bwrapPath, char* emulator, btrc_Vector_string* emulatorArgs) {
     Command* command = Command_check(Command_capture(Command_arg(Command_arg(Command_envVar(Command_envVar(Command_envVar(Command_envVar(Command_envVar(Command_envVar(Command_envVar(Command_envVar(Command_envVar(Command_envVar(Command_new(exe), "SEMU_HOME", home), "SEMU_BIN", exe), "SEMU_PROJECT_DIR", project), "SEMU_ROMS_DIR", roms), "SEMU_FLATPAK_CAPTURE", captureDir), "SEMU_BWRAP", bwrapPath), "SEMU_SCREENSHOT_HOOKS", "1"), "SEMU_SCREENSHOT_DELAY_SECONDS", "0"), "PATH", __btrc_str_track(__btrc_strcat(binDir, ":/usr/bin:/bin"))), "WAYLAND_DISPLAY", "wayland-test"), "launcher"), emulator), true), false);
-    int __n_972 = btrc_Vector_string_iterLen(emulatorArgs);
-    for (int __i_971 = 0; (__i_971 < __n_972); (__i_971++)) {
-        char* arg = btrc_Vector_string_iterGet(emulatorArgs, __i_971);
+    int __n_989 = btrc_Vector_string_iterLen(emulatorArgs);
+    for (int __i_988 = 0; (__i_988 < __n_989); (__i_988++)) {
+        char* arg = btrc_Vector_string_iterGet(emulatorArgs, __i_988);
         Command_arg(command, arg);
     }
     UnixShell* shell = UnixShell_new();
@@ -23009,9 +23275,9 @@ ExecResult* e2eRunLauncher(char* exe, char* home, char* project, char* roms, cha
 
 ExecResult* e2eRunRoutedLauncher(char* exe, char* home, char* project, char* roms, char* binDir, char* captureDir, char* emulator, char* routedExe, btrc_Vector_string* emulatorArgs) {
     Command* command = Command_check(Command_capture(Command_arg(Command_arg(Command_arg(Command_arg(Command_envVar(Command_envVar(Command_envVar(Command_envVar(Command_envVar(Command_envVar(Command_envVar(Command_new(exe), "SEMU_HOME", home), "SEMU_BIN", exe), "SEMU_PROJECT_DIR", project), "SEMU_ROMS_DIR", roms), "SEMU_FLATPAK_CAPTURE", captureDir), "SEMU_SCREENSHOT_HOOKS", "0"), "PATH", __btrc_str_track(__btrc_strcat(binDir, ":/usr/bin:/bin"))), "launcher"), "routed"), emulator), routedExe), true), false);
-    int __n_974 = btrc_Vector_string_iterLen(emulatorArgs);
-    for (int __i_973 = 0; (__i_973 < __n_974); (__i_973++)) {
-        char* arg = btrc_Vector_string_iterGet(emulatorArgs, __i_973);
+    int __n_991 = btrc_Vector_string_iterLen(emulatorArgs);
+    for (int __i_990 = 0; (__i_990 < __n_991); (__i_990++)) {
+        char* arg = btrc_Vector_string_iterGet(emulatorArgs, __i_990);
         Command_arg(command, arg);
     }
     UnixShell* shell = UnixShell_new();
@@ -23041,13 +23307,13 @@ bool e2eRunOk(ExecResult* result, char* label) {
 bool e2eWaitForFile(char* path, char* label) {
     UnixShell* shell = UnixShell_new();
     ExecResult* result = UnixShell_runRaw(shell, __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat("for i in 1 2 3 4 5; do [ -f ", ShellWords_quote(path))), " ] && exit 0; sleep 0.1; done; exit 1")), false, false, "");
-    bool __btrc_ret_975 = e2eOk(ExecResult_ok(result), __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(label, ": missing ")), path)));
+    bool __btrc_ret_992 = e2eOk(ExecResult_ok(result), __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(label, ": missing ")), path)));
     if (shell != NULL) {
         if ((--shell->__rc) <= 0) {
             UnixShell_destroy(shell);
         }
     }
-    return __btrc_ret_975;
+    return __btrc_ret_992;
     if (shell != NULL) {
         if ((--shell->__rc) <= 0) {
             UnixShell_destroy(shell);
@@ -23058,16 +23324,16 @@ bool e2eWaitForFile(char* path, char* label) {
 bool e2eCatalogConsistency(char* project, char* launcherBin) {
     char* systems = FileSystem_readText(joinPath(customSystemsRoot(project), "es_systems.xml"));
     char* rules = FileSystem_readText(joinPath(customSystemsRoot(project), "es_find_rules.xml"));
-    int __n_977 = btrc_Vector_string_iterLen(declaredSystemIds());
-    for (int __i_976 = 0; (__i_976 < __n_977); (__i_976++)) {
-        char* id = btrc_Vector_string_iterGet(declaredSystemIds(), __i_976);
+    int __n_994 = btrc_Vector_string_iterLen(declaredSystemIds());
+    for (int __i_993 = 0; (__i_993 < __n_994); (__i_993++)) {
+        char* id = btrc_Vector_string_iterGet(declaredSystemIds(), __i_993);
         if (!e2eContains(systems, __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat("<name>", id)), "</name>")), __btrc_str_track(__btrc_strcat("ES-DE system catalog ", id)))) {
             return false;
         }
     }
-    int __n_979 = btrc_Vector_string_iterLen(linuxLauncherNames());
-    for (int __i_978 = 0; (__i_978 < __n_979); (__i_978++)) {
-        char* emulator = btrc_Vector_string_iterGet(linuxLauncherNames(), __i_978);
+    int __n_996 = btrc_Vector_string_iterLen(linuxLauncherNames());
+    for (int __i_995 = 0; (__i_995 < __n_996); (__i_995++)) {
+        char* emulator = btrc_Vector_string_iterGet(linuxLauncherNames(), __i_995);
         char* launcher = joinPath(launcherBin, semuLauncherName(emulator));
         if (!e2eContains(rules, __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat("<emulator name=\"", emulator)), "\">")), __btrc_str_track(__btrc_strcat("ES-DE find rule ", emulator)))) {
             return false;
@@ -23212,11 +23478,11 @@ int e2eLifecycleSmoke(CliArgs* args) {
         return 1;
     }
     char* steamTemplates = joinPath(home, "steam-templates");
-    btrc_Vector_string* __list_980 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_980, "install");
-    btrc_Vector_string_push(__list_980, "--dest");
-    btrc_Vector_string_push(__list_980, steamTemplates);
-    if (!e2eRunOk(e2eRunSteamInput(exe, home, project, __list_980), "steam-input install")) {
+    btrc_Vector_string* __list_997 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_997, "install");
+    btrc_Vector_string_push(__list_997, "--dest");
+    btrc_Vector_string_push(__list_997, steamTemplates);
+    if (!e2eRunOk(e2eRunSteamInput(exe, home, project, __list_997), "steam-input install")) {
         return 1;
     }
     if (!e2eContains(FileSystem_readText(joinPath(steamTemplates, "neptune-simple.vdf")), "\"controller_type\"\t\t\"controller_neptune\"", "installed Steam Input simple template")) {
@@ -23230,17 +23496,17 @@ int e2eLifecycleSmoke(CliArgs* args) {
     if (!e2eWriteSteamConfigSetFixture(configSetFile)) {
         return 1;
     }
-    btrc_Vector_string* __list_981 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_981, "select");
-    btrc_Vector_string_push(__list_981, "--shortcuts-file");
-    btrc_Vector_string_push(__list_981, shortcutsFile);
-    btrc_Vector_string_push(__list_981, "--configset-file");
-    btrc_Vector_string_push(__list_981, configSetFile);
-    btrc_Vector_string_push(__list_981, "--app-name");
-    btrc_Vector_string_push(__list_981, "Semu-x86_64.AppImage");
-    btrc_Vector_string_push(__list_981, "--exe");
-    btrc_Vector_string_push(__list_981, "/home/deck/Applications/Semu/Semu-x86_64.AppImage");
-    ExecResult* selection = e2eRunSteamInput(exe, home, project, __list_981);
+    btrc_Vector_string* __list_998 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_998, "select");
+    btrc_Vector_string_push(__list_998, "--shortcuts-file");
+    btrc_Vector_string_push(__list_998, shortcutsFile);
+    btrc_Vector_string_push(__list_998, "--configset-file");
+    btrc_Vector_string_push(__list_998, configSetFile);
+    btrc_Vector_string_push(__list_998, "--app-name");
+    btrc_Vector_string_push(__list_998, "Semu-x86_64.AppImage");
+    btrc_Vector_string_push(__list_998, "--exe");
+    btrc_Vector_string_push(__list_998, "/home/deck/Applications/Semu/Semu-x86_64.AppImage");
+    ExecResult* selection = e2eRunSteamInput(exe, home, project, __list_998);
     if (!e2eRunOk(selection, "steam-input shortcut selection")) {
         return 1;
     }
@@ -23251,17 +23517,17 @@ int e2eLifecycleSmoke(CliArgs* args) {
     if (!e2eContains(configSetText, "\"template\"\t\t\"neptune-full.vdf\"", "Steam Input selected template")) {
         return 1;
     }
-    btrc_Vector_string* __list_983 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_983, "status");
-    btrc_Vector_string_push(__list_983, "--shortcuts-file");
-    btrc_Vector_string_push(__list_983, shortcutsFile);
-    btrc_Vector_string_push(__list_983, "--configset-file");
-    btrc_Vector_string_push(__list_983, configSetFile);
-    btrc_Vector_string_push(__list_983, "--app-name");
-    btrc_Vector_string_push(__list_983, "Semu-x86_64.AppImage");
-    btrc_Vector_string_push(__list_983, "--exe");
-    btrc_Vector_string_push(__list_983, "/home/deck/Applications/Semu/Semu-x86_64.AppImage");
-    ExecResult* shortcutStatus = e2eRunSteamInput(exe, home, project, __list_983);
+    btrc_Vector_string* __list_1000 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_1000, "status");
+    btrc_Vector_string_push(__list_1000, "--shortcuts-file");
+    btrc_Vector_string_push(__list_1000, shortcutsFile);
+    btrc_Vector_string_push(__list_1000, "--configset-file");
+    btrc_Vector_string_push(__list_1000, configSetFile);
+    btrc_Vector_string_push(__list_1000, "--app-name");
+    btrc_Vector_string_push(__list_1000, "Semu-x86_64.AppImage");
+    btrc_Vector_string_push(__list_1000, "--exe");
+    btrc_Vector_string_push(__list_1000, "/home/deck/Applications/Semu/Semu-x86_64.AppImage");
+    ExecResult* shortcutStatus = e2eRunSteamInput(exe, home, project, __list_1000);
     if (!e2eRunOk(shortcutStatus, "steam-input shortcut status")) {
         return 1;
     }
@@ -23331,11 +23597,11 @@ int e2eLifecycleSmoke(CliArgs* args) {
     }
     char* keymapBeforeFailure = FileSystem_readText(keymapSourcePath(project));
     char* retroarchBeforeFailure = FileSystem_readText(emulatorProfilePath(project, "RetroArch/retroarch.cfg"));
-    btrc_Vector_string* __list_985 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_985, "change");
-    btrc_Vector_string_push(__list_985, "--action");
-    btrc_Vector_string_push(__list_985, "state.save");
-    if (!e2eOk((!ExecResult_ok(e2eRunLifecycleArgs(exe, home, project, __list_985))), "lifecycle change without command unexpectedly succeeded")) {
+    btrc_Vector_string* __list_1002 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_1002, "change");
+    btrc_Vector_string_push(__list_1002, "--action");
+    btrc_Vector_string_push(__list_1002, "state.save");
+    if (!e2eOk((!ExecResult_ok(e2eRunLifecycleArgs(exe, home, project, __list_1002))), "lifecycle change without command unexpectedly succeeded")) {
         return 1;
     }
     if (!e2eOk((!ExecResult_ok(e2eRunLifecycleChange(exe, home, project, "missing.action", "Ctrl+B"))), "unknown keymap action unexpectedly succeeded")) {
@@ -23344,9 +23610,9 @@ int e2eLifecycleSmoke(CliArgs* args) {
     if (!e2eOk((!ExecResult_ok(e2eRunLifecycleChange(exe, home, project, "state.save", "Ctrl"))), "invalid keymap command unexpectedly succeeded")) {
         return 1;
     }
-    btrc_Vector_string* __list_986 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_986, "definitely-not-a-mode");
-    if (!e2eOk((!ExecResult_ok(e2eRunLifecycleArgs(exe, home, project, __list_986))), "unknown lifecycle mode unexpectedly succeeded")) {
+    btrc_Vector_string* __list_1003 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_1003, "definitely-not-a-mode");
+    if (!e2eOk((!ExecResult_ok(e2eRunLifecycleArgs(exe, home, project, __list_1003))), "unknown lifecycle mode unexpectedly succeeded")) {
         return 1;
     }
     if (!e2eOk((strcmp(FileSystem_readText(keymapSourcePath(project)), keymapBeforeFailure) == 0), "failed keymap change mutated source")) {
@@ -23395,11 +23661,11 @@ int e2eLifecycleSmoke(CliArgs* args) {
     if (!e2eContains(FileSystem_readText(keymapSourcePath(project)), "action state.save = Ctrl+V", "keymap should survive upgrade")) {
         return 1;
     }
-    btrc_Vector_string* __list_987 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_987, "uninstall");
-    btrc_Vector_string_push(__list_987, "--purge-generated");
-    btrc_Vector_string_push(__list_987, "--purge-state");
-    if (!e2eRunOk(e2eRunLifecycleArgs(exe, home, project, __list_987), "purge uninstall")) {
+    btrc_Vector_string* __list_1004 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_1004, "uninstall");
+    btrc_Vector_string_push(__list_1004, "--purge-generated");
+    btrc_Vector_string_push(__list_1004, "--purge-state");
+    if (!e2eRunOk(e2eRunLifecycleArgs(exe, home, project, __list_1004), "purge uninstall")) {
         return 1;
     }
     if (!e2eOk((!FileSystem_exists(joinPath(project, "ES-DE/custom_systems"))), "custom systems should be purged")) {
@@ -23548,9 +23814,9 @@ int e2eSyncSmoke(CliArgs* args) {
     ensureDir(binDir);
     ensureDir(capture);
     e2eWriteSyncFakes(binDir);
-    btrc_Vector_string* __list_988 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_988, "setup");
-    if (!e2eRunOk(e2eRunSync(exe, home, binDir, project, __list_988), "sync setup")) {
+    btrc_Vector_string* __list_1005 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_1005, "setup");
+    if (!e2eRunOk(e2eRunSync(exe, home, binDir, project, __list_1005), "sync setup")) {
         return 1;
     }
     char* systemctlLog = FileSystem_readText(joinPath(capture, "systemctl.log"));
@@ -23577,16 +23843,16 @@ int e2eSyncSmoke(CliArgs* args) {
     if (!e2eContains(FileSystem_readText(joinPath(capture, "syncthing.log")), "semu-emulator_state", "sync emulator state folder")) {
         return 1;
     }
-    btrc_Vector_string* __list_989 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_989, "force");
-    btrc_Vector_string_push(__list_989, "all");
-    if (!e2eRunOk(e2eRunSync(exe, home, binDir, project, __list_989), "sync force all")) {
+    btrc_Vector_string* __list_1006 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_1006, "force");
+    btrc_Vector_string_push(__list_1006, "all");
+    if (!e2eRunOk(e2eRunSync(exe, home, binDir, project, __list_1006), "sync force all")) {
         return 1;
     }
-    btrc_Vector_string* __list_990 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_990, "force");
-    btrc_Vector_string_push(__list_990, "saves");
-    if (!e2eRunOk(e2eRunSync(exe, home, binDir, project, __list_990), "sync force saves")) {
+    btrc_Vector_string* __list_1007 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_1007, "force");
+    btrc_Vector_string_push(__list_1007, "saves");
+    if (!e2eRunOk(e2eRunSync(exe, home, binDir, project, __list_1007), "sync force saves")) {
         return 1;
     }
     char* curlLog = FileSystem_readText(joinPath(capture, "curl.log"));
@@ -23599,16 +23865,16 @@ int e2eSyncSmoke(CliArgs* args) {
     if (!e2eContains(curlLog, "X-API-Key: test-key", "sync force api key")) {
         return 1;
     }
-    btrc_Vector_string* __list_991 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_991, "autostart");
-    btrc_Vector_string_push(__list_991, "disable");
-    if (!e2eRunOk(e2eRunSync(exe, home, binDir, project, __list_991), "sync autostart disable")) {
+    btrc_Vector_string* __list_1008 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_1008, "autostart");
+    btrc_Vector_string_push(__list_1008, "disable");
+    if (!e2eRunOk(e2eRunSync(exe, home, binDir, project, __list_1008), "sync autostart disable")) {
         return 1;
     }
-    btrc_Vector_string* __list_992 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_992, "autostart");
-    btrc_Vector_string_push(__list_992, "enable");
-    if (!e2eRunOk(e2eRunSync(exe, home, binDir, project, __list_992), "sync autostart enable")) {
+    btrc_Vector_string* __list_1009 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_1009, "autostart");
+    btrc_Vector_string_push(__list_1009, "enable");
+    if (!e2eRunOk(e2eRunSync(exe, home, binDir, project, __list_1009), "sync autostart enable")) {
         return 1;
     }
     (systemctlLog = FileSystem_readText(joinPath(capture, "systemctl.log")));
@@ -23618,10 +23884,10 @@ int e2eSyncSmoke(CliArgs* args) {
     if (!e2eContains(systemctlLog, "--user enable semu-syncthing.service", "sync re-enable service")) {
         return 1;
     }
-    btrc_Vector_string* __list_993 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_993, "force");
-    btrc_Vector_string_push(__list_993, "all");
-    if (!e2eOk((!ExecResult_ok(e2eRunSync(exe, home, binDir, missingProject, __list_993))), "sync force without API key unexpectedly succeeded")) {
+    btrc_Vector_string* __list_1010 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_1010, "force");
+    btrc_Vector_string_push(__list_1010, "all");
+    if (!e2eOk((!ExecResult_ok(e2eRunSync(exe, home, binDir, missingProject, __list_1010))), "sync force without API key unexpectedly succeeded")) {
         return 1;
     }
     printf("%s\n", "OK BTRC sync smoke");
@@ -23641,23 +23907,23 @@ int e2eSettingsSmoke(CliArgs* args) {
     ensureDir(home);
     ensureDir(normalizedRoms);
     ensureDir(configRoms);
-    btrc_Vector_string* __list_994 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_994, "put");
-    btrc_Vector_string_push(__list_994, "visual.integer_scaling");
-    btrc_Vector_string_push(__list_994, "true");
-    if (!e2eRunOk(e2eRunSettings(exe, home, project, __list_994), "settings put bool")) {
+    btrc_Vector_string* __list_1011 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_1011, "put");
+    btrc_Vector_string_push(__list_1011, "visual.integer_scaling");
+    btrc_Vector_string_push(__list_1011, "true");
+    if (!e2eRunOk(e2eRunSettings(exe, home, project, __list_1011), "settings put bool")) {
         return 1;
     }
-    btrc_Vector_string* __list_995 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_995, "put");
-    btrc_Vector_string_push(__list_995, "ui.theme");
-    btrc_Vector_string_push(__list_995, "deck-dark");
-    if (!e2eRunOk(e2eRunSettings(exe, home, project, __list_995), "settings put string")) {
+    btrc_Vector_string* __list_1012 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_1012, "put");
+    btrc_Vector_string_push(__list_1012, "ui.theme");
+    btrc_Vector_string_push(__list_1012, "deck-dark");
+    if (!e2eRunOk(e2eRunSettings(exe, home, project, __list_1012), "settings put string")) {
         return 1;
     }
-    btrc_Vector_string* __list_996 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_996, "list");
-    ExecResult* list = e2eRunSettings(exe, home, project, __list_996);
+    btrc_Vector_string* __list_1013 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_1013, "list");
+    ExecResult* list = e2eRunSettings(exe, home, project, __list_1013);
     if (!e2eRunOk(list, "settings list")) {
         return 1;
     }
@@ -23667,17 +23933,17 @@ int e2eSettingsSmoke(CliArgs* args) {
     if (!e2eContains(ExecResult_stdout(list), "ui.theme=deck-dark", "settings list string")) {
         return 1;
     }
-    btrc_Vector_string* __list_998 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_998, "put");
-    btrc_Vector_string_push(__list_998, "visual.integer_scaling");
-    btrc_Vector_string_push(__list_998, "maybe");
-    if (!e2eOk((!ExecResult_ok(e2eRunSettings(exe, home, project, __list_998))), "invalid boolean setting unexpectedly succeeded")) {
+    btrc_Vector_string* __list_1015 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_1015, "put");
+    btrc_Vector_string_push(__list_1015, "visual.integer_scaling");
+    btrc_Vector_string_push(__list_1015, "maybe");
+    if (!e2eOk((!ExecResult_ok(e2eRunSettings(exe, home, project, __list_1015))), "invalid boolean setting unexpectedly succeeded")) {
         return 1;
     }
-    btrc_Vector_string* __list_999 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_999, "set-roms");
-    btrc_Vector_string_push(__list_999, configRoot);
-    if (!e2eRunOk(e2eRunConfig(exe, home, project, __list_999), "config set-roms source-only")) {
+    btrc_Vector_string* __list_1016 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_1016, "set-roms");
+    btrc_Vector_string_push(__list_1016, configRoot);
+    if (!e2eRunOk(e2eRunConfig(exe, home, project, __list_1016), "config set-roms source-only")) {
         return 1;
     }
     if (!e2eContains(FileSystem_readText(syncConfigPath(project)), configRoms, "config set-roms persisted owned source")) {
@@ -23686,11 +23952,11 @@ int e2eSettingsSmoke(CliArgs* args) {
     if (!e2eOk((!FileSystem_exists(joinPath(project, "ES-DE/es_settings.xml"))), "config set-roms mutated generated ES-DE before apply")) {
         return 1;
     }
-    btrc_Vector_string* __list_1000 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_1000, "set-roms");
-    btrc_Vector_string_push(__list_1000, sdRoot);
-    btrc_Vector_string_push(__list_1000, "--apply");
-    if (!e2eRunOk(e2eRunConfig(exe, home, project, __list_1000), "config set-roms apply")) {
+    btrc_Vector_string* __list_1017 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_1017, "set-roms");
+    btrc_Vector_string_push(__list_1017, sdRoot);
+    btrc_Vector_string_push(__list_1017, "--apply");
+    if (!e2eRunOk(e2eRunConfig(exe, home, project, __list_1017), "config set-roms apply")) {
         return 1;
     }
     if (!e2eContains(FileSystem_readText(syncConfigPath(project)), normalizedRoms, "config set-roms apply persisted owned source")) {
@@ -23732,9 +23998,9 @@ int e2eSettingsSmoke(CliArgs* args) {
     if (!e2eRunOk(uiEof, "settings ui eof")) {
         return 1;
     }
-    btrc_Vector_string* __list_1001 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_1001, "presentation");
-    ExecResult* presentationUiEdit = e2eRunSettingsUiScriptArgs(exe, home, project, __list_1001, "1\n10\nbezels/gb/ui-owned.json\nplan\nb\nq\n");
+    btrc_Vector_string* __list_1018 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_1018, "presentation");
+    ExecResult* presentationUiEdit = e2eRunSettingsUiScriptArgs(exe, home, project, __list_1018, "1\n10\nbezels/gb/ui-owned.json\nplan\nb\nq\n");
     if (!e2eRunOk(presentationUiEdit, "presentation settings ui edit")) {
         return 1;
     }
@@ -23764,9 +24030,9 @@ int e2eSettingsSmoke(CliArgs* args) {
         return 1;
     }
     char* retroarchBeforeInputUi = FileSystem_readText(emulatorProfilePath(project, "RetroArch/retroarch.cfg"));
-    btrc_Vector_string* __list_1003 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_1003, "input");
-    ExecResult* inputUiEdit = e2eRunSettingsUiScriptArgs(exe, home, project, __list_1003, "10\nc\nCtrl+W\nback\nq\n");
+    btrc_Vector_string* __list_1020 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_1020, "input");
+    ExecResult* inputUiEdit = e2eRunSettingsUiScriptArgs(exe, home, project, __list_1020, "10\nc\nCtrl+W\nback\nq\n");
     if (!e2eRunOk(inputUiEdit, "input settings ui edit")) {
         return 1;
     }
@@ -23782,16 +24048,16 @@ int e2eSettingsSmoke(CliArgs* args) {
     if (!e2eOk((strcmp(FileSystem_readText(emulatorProfilePath(project, "RetroArch/retroarch.cfg")), retroarchBeforeInputUi) == 0), "input ui edit mutated generated RetroArch profile before apply")) {
         return 1;
     }
-    btrc_Vector_string* __list_1005 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_1005, "get");
-    btrc_Vector_string_push(__list_1005, "state.save");
-    if (!e2eContains(ExecResult_stdout(e2eRunKeymap(exe, home, project, __list_1005)), "state.save=Ctrl+W", "keymap get edited command")) {
+    btrc_Vector_string* __list_1022 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_1022, "get");
+    btrc_Vector_string_push(__list_1022, "state.save");
+    if (!e2eContains(ExecResult_stdout(e2eRunKeymap(exe, home, project, __list_1022)), "state.save=Ctrl+W", "keymap get edited command")) {
         return 1;
     }
-    btrc_Vector_string* __list_1006 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_1006, "capabilities");
-    btrc_Vector_string_push(__list_1006, "state.save");
-    ExecResult* stateCapabilities = e2eRunKeymap(exe, home, project, __list_1006);
+    btrc_Vector_string* __list_1023 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_1023, "capabilities");
+    btrc_Vector_string_push(__list_1023, "state.save");
+    ExecResult* stateCapabilities = e2eRunKeymap(exe, home, project, __list_1023);
     if (!e2eRunOk(stateCapabilities, "keymap state capability report")) {
         return 1;
     }
@@ -23801,12 +24067,12 @@ int e2eSettingsSmoke(CliArgs* args) {
     if (!e2eContains(ExecResult_stdout(stateCapabilities), "disabled=azahar,ppsspp,flycast,melonds,cemu,ryujinx", "state save disabled capabilities")) {
         return 1;
     }
-    btrc_Vector_string* __list_1008 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_1008, "put");
-    btrc_Vector_string_push(__list_1008, "state.save");
-    btrc_Vector_string_push(__list_1008, "Ctrl+W");
-    btrc_Vector_string_push(__list_1008, "--apply");
-    if (!e2eRunOk(e2eRunKeymap(exe, home, project, __list_1008), "keymap put apply")) {
+    btrc_Vector_string* __list_1025 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_1025, "put");
+    btrc_Vector_string_push(__list_1025, "state.save");
+    btrc_Vector_string_push(__list_1025, "Ctrl+W");
+    btrc_Vector_string_push(__list_1025, "--apply");
+    if (!e2eRunOk(e2eRunKeymap(exe, home, project, __list_1025), "keymap put apply")) {
         return 1;
     }
     if (!e2eContains(FileSystem_readText(emulatorProfilePath(project, "RetroArch/retroarch.cfg")), "input_save_state = \"w\"", "input apply regenerated RetroArch profile")) {
@@ -23814,9 +24080,9 @@ int e2eSettingsSmoke(CliArgs* args) {
     }
     char* syncServicePath = joinPath(home, ".config/systemd/user/semu-syncthing.service");
     char* syncServiceBeforeUi = (FileSystem_exists(syncServicePath) ? FileSystem_readText(syncServicePath) : "");
-    btrc_Vector_string* __list_1009 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_1009, "sync");
-    ExecResult* syncUiEdit = e2eRunSettingsUiScriptArgs(exe, home, project, __list_1009, "6\nq\n");
+    btrc_Vector_string* __list_1026 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_1026, "sync");
+    ExecResult* syncUiEdit = e2eRunSettingsUiScriptArgs(exe, home, project, __list_1026, "6\nq\n");
     if (!e2eRunOk(syncUiEdit, "sync settings ui edit")) {
         return 1;
     }
@@ -23835,18 +24101,18 @@ int e2eSettingsSmoke(CliArgs* args) {
     if (!e2eOk((strcmp(FileSystem_readText(syncServicePath), syncServiceBeforeUi) == 0), "sync ui edit mutated generated service before apply")) {
         return 1;
     }
-    btrc_Vector_string* __list_1011 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_1011, "get");
-    btrc_Vector_string_push(__list_1011, "sync_saves");
-    if (!e2eContains(ExecResult_stdout(e2eRunSync(exe, home, "/usr/bin", project, __list_1011)), "sync_saves=false", "sync get edited value")) {
+    btrc_Vector_string* __list_1028 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_1028, "get");
+    btrc_Vector_string_push(__list_1028, "sync_saves");
+    if (!e2eContains(ExecResult_stdout(e2eRunSync(exe, home, "/usr/bin", project, __list_1028)), "sync_saves=false", "sync get edited value")) {
         return 1;
     }
-    btrc_Vector_string* __list_1012 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_1012, "put");
-    btrc_Vector_string_push(__list_1012, "sync_saves");
-    btrc_Vector_string_push(__list_1012, "true");
-    btrc_Vector_string_push(__list_1012, "--apply");
-    if (!e2eRunOk(e2eRunSync(exe, home, "/usr/bin", project, __list_1012), "sync put apply")) {
+    btrc_Vector_string* __list_1029 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_1029, "put");
+    btrc_Vector_string_push(__list_1029, "sync_saves");
+    btrc_Vector_string_push(__list_1029, "true");
+    btrc_Vector_string_push(__list_1029, "--apply");
+    if (!e2eRunOk(e2eRunSync(exe, home, "/usr/bin", project, __list_1029), "sync put apply")) {
         return 1;
     }
     if (!e2eContains(FileSystem_readText(syncConfigPath(project)), "\"sync_saves\": true", "sync apply persisted owned config")) {
@@ -23855,9 +24121,9 @@ int e2eSettingsSmoke(CliArgs* args) {
     if (!e2eOk(FileSystem_exists(joinPath(project, "ES-DE/es_settings.xml")), "sync apply did not reconfigure ES-DE")) {
         return 1;
     }
-    btrc_Vector_string* __list_1013 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_1013, "compile");
-    if (!e2eRunOk(e2eRunSettings(exe, home, project, __list_1013), "settings compile")) {
+    btrc_Vector_string* __list_1030 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_1030, "compile");
+    if (!e2eRunOk(e2eRunSettings(exe, home, project, __list_1030), "settings compile")) {
         return 1;
     }
     if (!e2eContains(FileSystem_readText(lifecycleStatePath(project)), "\"action\": \"compile\"", "settings compile lifecycle state")) {
@@ -23880,34 +24146,34 @@ int e2eSettingsSmoke(CliArgs* args) {
     if (!e2eContains(FileSystem_readText(compileEntry), "compile", "compile ES-DE entry action")) {
         return 1;
     }
-    btrc_Vector_string* __list_1014 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_1014, "entry");
-    btrc_Vector_string_push(__list_1014, syncEntry);
-    if (!e2eContains(ExecResult_stdout(e2eRunSettings(exe, home, project, __list_1014)), "Semu Sync Settings", "sync settings ES-DE UI entry")) {
+    btrc_Vector_string* __list_1031 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_1031, "entry");
+    btrc_Vector_string_push(__list_1031, syncEntry);
+    if (!e2eContains(ExecResult_stdout(e2eRunSettings(exe, home, project, __list_1031)), "Semu Sync Settings", "sync settings ES-DE UI entry")) {
         return 1;
     }
-    btrc_Vector_string* __list_1015 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_1015, "entry");
-    btrc_Vector_string_push(__list_1015, compileEntry);
-    if (!e2eContains(ExecResult_stdout(e2eRunSettings(exe, home, project, __list_1015)), "OK settings compiled", "compile settings ES-DE entry")) {
+    btrc_Vector_string* __list_1032 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_1032, "entry");
+    btrc_Vector_string_push(__list_1032, compileEntry);
+    if (!e2eContains(ExecResult_stdout(e2eRunSettings(exe, home, project, __list_1032)), "OK settings compiled", "compile settings ES-DE entry")) {
         return 1;
     }
     char* presentationPutEntry = joinPath(SettingsEntries_root(project), "Set GB Bezel.semu");
     FileSystem_writeText(presentationPutEntry, "presentation put gb bezel_file bezels/gb/from-entry.json\n");
-    btrc_Vector_string* __list_1016 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_1016, "entry");
-    btrc_Vector_string_push(__list_1016, presentationPutEntry);
-    if (!e2eRunOk(e2eRunSettings(exe, home, project, __list_1016), "presentation settings ES-DE put entry")) {
+    btrc_Vector_string* __list_1033 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_1033, "entry");
+    btrc_Vector_string_push(__list_1033, presentationPutEntry);
+    if (!e2eRunOk(e2eRunSettings(exe, home, project, __list_1033), "presentation settings ES-DE put entry")) {
         return 1;
     }
     if (!e2eContains(FileSystem_readText(joinPath(presentationSettingsRoot(project), "gb.json")), "from-entry", "presentation entry persisted owned config")) {
         return 1;
     }
     char* entry = joinPath(SettingsEntries_root(project), "Toggle Bezels.semu");
-    btrc_Vector_string* __list_1017 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_1017, "entry");
-    btrc_Vector_string_push(__list_1017, entry);
-    if (!e2eRunOk(e2eRunSettings(exe, home, project, __list_1017), "settings ES-DE entry")) {
+    btrc_Vector_string* __list_1034 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_1034, "entry");
+    btrc_Vector_string_push(__list_1034, entry);
+    if (!e2eRunOk(e2eRunSettings(exe, home, project, __list_1034), "settings ES-DE entry")) {
         return 1;
     }
     if (!e2eContains(FileSystem_readText(semuSettingsPath(project)), "\"visual_bezels\": false", "settings entry toggled bezel setting")) {
@@ -23931,9 +24197,9 @@ int e2ePresentationSmoke(CliArgs* args) {
     char* exe = e2eExecutable(args);
     ensureDir(project);
     ensureDir(home);
-    btrc_Vector_string* __list_1018 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_1018, "defaults");
-    if (!e2eRunOk(e2eRunPresentation(exe, home, project, __list_1018), "presentation defaults")) {
+    btrc_Vector_string* __list_1035 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_1035, "defaults");
+    if (!e2eRunOk(e2eRunPresentation(exe, home, project, __list_1035), "presentation defaults")) {
         return 1;
     }
     if (!e2eOk(FileSystem_exists(joinPath(presentationSettingsRoot(project), "gb.json")), "gb presentation config missing")) {
@@ -23946,10 +24212,10 @@ int e2ePresentationSmoke(CliArgs* args) {
     ensureDir(joinPath(shaderRoot, "handheld/console-border"));
     FileSystem_writeText(joinPath(shaderRoot, "handheld/gameboy.slangp"), "# fake gb shader\n");
     FileSystem_writeText(joinPath(shaderRoot, "handheld/console-border/dmg.slangp"), "# fake gb runtime/bezel\n");
-    btrc_Vector_string* __list_1019 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_1019, "plan");
-    btrc_Vector_string_push(__list_1019, "gb");
-    ExecResult* gb = e2eRunPresentation(exe, home, project, __list_1019);
+    btrc_Vector_string* __list_1036 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_1036, "plan");
+    btrc_Vector_string_push(__list_1036, "gb");
+    ExecResult* gb = e2eRunPresentation(exe, home, project, __list_1036);
     if (!e2eRunOk(gb, "presentation gb plan")) {
         return 1;
     }
@@ -23980,11 +24246,11 @@ int e2ePresentationSmoke(CliArgs* args) {
     if (!e2eContains(ExecResult_stdout(gb), "\"launcher_shader_status\": \"ok\"", "gb launcher shader status")) {
         return 1;
     }
-    btrc_Vector_string* __list_1021 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_1021, "audit");
-    btrc_Vector_string_push(__list_1021, "gb");
-    btrc_Vector_string_push(__list_1021, "--strict");
-    ExecResult* gbAudit = e2eRunPresentation(exe, home, project, __list_1021);
+    btrc_Vector_string* __list_1038 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_1038, "audit");
+    btrc_Vector_string_push(__list_1038, "gb");
+    btrc_Vector_string_push(__list_1038, "--strict");
+    ExecResult* gbAudit = e2eRunPresentation(exe, home, project, __list_1038);
     if (!e2eRunOk(gbAudit, "presentation gb asset audit")) {
         return 1;
     }
@@ -24014,19 +24280,19 @@ int e2ePresentationSmoke(CliArgs* args) {
     FileSystem_writeText(joinPath(shaderBundleRoot, "Mega_Bezel_Packs/test/base/base.slangp"), "# fake base shader\n");
     FileSystem_writeText(joinPath(shaderBundleRoot, "Mega_Bezel_Packs/test/images/shell.png"), "fake bezel image\n");
     FileSystem_writeText(dependencyPreset, "#reference \"base/base.slangp\"\nBackgroundImage = \"images/shell.png\"\n");
-    btrc_Vector_string* __list_1023 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_1023, "put");
-    btrc_Vector_string_push(__list_1023, "gb");
-    btrc_Vector_string_push(__list_1023, "runtime_preset");
-    btrc_Vector_string_push(__list_1023, "Mega_Bezel_Packs/test/root.slangp");
-    if (!e2eRunOk(e2eRunPresentation(exe, home, project, __list_1023), "presentation dependency preset put")) {
+    btrc_Vector_string* __list_1040 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_1040, "put");
+    btrc_Vector_string_push(__list_1040, "gb");
+    btrc_Vector_string_push(__list_1040, "runtime_preset");
+    btrc_Vector_string_push(__list_1040, "Mega_Bezel_Packs/test/root.slangp");
+    if (!e2eRunOk(e2eRunPresentation(exe, home, project, __list_1040), "presentation dependency preset put")) {
         return 1;
     }
-    btrc_Vector_string* __list_1024 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_1024, "audit");
-    btrc_Vector_string_push(__list_1024, "gb");
-    btrc_Vector_string_push(__list_1024, "--strict");
-    ExecResult* dependencyAudit = e2eRunPresentation(exe, home, project, __list_1024);
+    btrc_Vector_string* __list_1041 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_1041, "audit");
+    btrc_Vector_string_push(__list_1041, "gb");
+    btrc_Vector_string_push(__list_1041, "--strict");
+    ExecResult* dependencyAudit = e2eRunPresentation(exe, home, project, __list_1041);
     if (!e2eRunOk(dependencyAudit, "presentation dependency audit")) {
         return 1;
     }
@@ -24040,11 +24306,11 @@ int e2ePresentationSmoke(CliArgs* args) {
         return 1;
     }
     FileSystem_writeText(dependencyPreset, "#reference \"base/missing.slangp\"\nBackgroundImage = \"images/shell.png\"\n");
-    btrc_Vector_string* __list_1026 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_1026, "audit");
-    btrc_Vector_string_push(__list_1026, "gb");
-    btrc_Vector_string_push(__list_1026, "--strict");
-    ExecResult* missingDependencyAudit = e2eRunPresentation(exe, home, project, __list_1026);
+    btrc_Vector_string* __list_1043 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_1043, "audit");
+    btrc_Vector_string_push(__list_1043, "gb");
+    btrc_Vector_string_push(__list_1043, "--strict");
+    ExecResult* missingDependencyAudit = e2eRunPresentation(exe, home, project, __list_1043);
     if (!e2eOk((!ExecResult_ok(missingDependencyAudit)), "presentation missing dependency audit unexpectedly succeeded")) {
         return 1;
     }
@@ -24054,19 +24320,19 @@ int e2ePresentationSmoke(CliArgs* args) {
     if (!e2eContains(FileSystem_readText(auditReport), "base/missing.slangp", "presentation missing dependency report")) {
         return 1;
     }
-    btrc_Vector_string* __list_1028 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_1028, "put");
-    btrc_Vector_string_push(__list_1028, "gb");
-    btrc_Vector_string_push(__list_1028, "runtime_preset");
-    btrc_Vector_string_push(__list_1028, "handheld/console-border/dmg.slangp");
-    if (!e2eRunOk(e2eRunPresentation(exe, home, project, __list_1028), "presentation restore gb runtime")) {
+    btrc_Vector_string* __list_1045 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_1045, "put");
+    btrc_Vector_string_push(__list_1045, "gb");
+    btrc_Vector_string_push(__list_1045, "runtime_preset");
+    btrc_Vector_string_push(__list_1045, "handheld/console-border/dmg.slangp");
+    if (!e2eRunOk(e2eRunPresentation(exe, home, project, __list_1045), "presentation restore gb runtime")) {
         return 1;
     }
-    btrc_Vector_string* __list_1029 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_1029, "audit");
-    btrc_Vector_string_push(__list_1029, "psp");
-    btrc_Vector_string_push(__list_1029, "--strict");
-    ExecResult* pspAudit = e2eRunPresentation(exe, home, project, __list_1029);
+    btrc_Vector_string* __list_1046 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_1046, "audit");
+    btrc_Vector_string_push(__list_1046, "psp");
+    btrc_Vector_string_push(__list_1046, "--strict");
+    ExecResult* pspAudit = e2eRunPresentation(exe, home, project, __list_1046);
     if (!e2eOk((!ExecResult_ok(pspAudit)), "presentation psp strict audit unexpectedly succeeded")) {
         return 1;
     }
@@ -24076,9 +24342,9 @@ int e2ePresentationSmoke(CliArgs* args) {
     if (!e2eContains(FileSystem_readText(auditReport), "\"system\": \"psp\"", "psp audit report system")) {
         return 1;
     }
-    btrc_Vector_string* __list_1031 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_1031, "audit");
-    ExecResult* allAudit = e2eRunPresentation(exe, home, project, __list_1031);
+    btrc_Vector_string* __list_1048 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_1048, "audit");
+    ExecResult* allAudit = e2eRunPresentation(exe, home, project, __list_1048);
     if (!e2eRunOk(allAudit, "presentation all asset audit")) {
         return 1;
     }
@@ -24091,24 +24357,24 @@ int e2ePresentationSmoke(CliArgs* args) {
     if (!e2eContains(ExecResult_stdout(allAudit), "missing:", "all audit summary")) {
         return 1;
     }
-    btrc_Vector_string* __list_1033 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_1033, "put");
-    btrc_Vector_string_push(__list_1033, "visual.crt_shaders");
-    btrc_Vector_string_push(__list_1033, "false");
-    if (!e2eRunOk(e2eRunSettings(exe, home, project, __list_1033), "presentation disable shaders setting")) {
+    btrc_Vector_string* __list_1050 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_1050, "put");
+    btrc_Vector_string_push(__list_1050, "visual.crt_shaders");
+    btrc_Vector_string_push(__list_1050, "false");
+    if (!e2eRunOk(e2eRunSettings(exe, home, project, __list_1050), "presentation disable shaders setting")) {
         return 1;
     }
-    btrc_Vector_string* __list_1034 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_1034, "put");
-    btrc_Vector_string_push(__list_1034, "visual.bezels");
-    btrc_Vector_string_push(__list_1034, "false");
-    if (!e2eRunOk(e2eRunSettings(exe, home, project, __list_1034), "presentation disable bezels setting")) {
+    btrc_Vector_string* __list_1051 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_1051, "put");
+    btrc_Vector_string_push(__list_1051, "visual.bezels");
+    btrc_Vector_string_push(__list_1051, "false");
+    if (!e2eRunOk(e2eRunSettings(exe, home, project, __list_1051), "presentation disable bezels setting")) {
         return 1;
     }
-    btrc_Vector_string* __list_1035 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_1035, "plan");
-    btrc_Vector_string_push(__list_1035, "gb");
-    ExecResult* gbDisabled = e2eRunPresentation(exe, home, project, __list_1035);
+    btrc_Vector_string* __list_1052 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_1052, "plan");
+    btrc_Vector_string_push(__list_1052, "gb");
+    ExecResult* gbDisabled = e2eRunPresentation(exe, home, project, __list_1052);
     if (!e2eRunOk(gbDisabled, "presentation gb disabled visual plan")) {
         return 1;
     }
@@ -24121,56 +24387,56 @@ int e2ePresentationSmoke(CliArgs* args) {
     if (!e2eContains(ExecResult_stdout(gbDisabled), "\"launcher_shader_status\": \"disabled\"", "gb disabled launcher shader status")) {
         return 1;
     }
-    btrc_Vector_string* __list_1037 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_1037, "put");
-    btrc_Vector_string_push(__list_1037, "visual.crt_shaders");
-    btrc_Vector_string_push(__list_1037, "true");
-    if (!e2eRunOk(e2eRunSettings(exe, home, project, __list_1037), "presentation reenable shaders setting")) {
+    btrc_Vector_string* __list_1054 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_1054, "put");
+    btrc_Vector_string_push(__list_1054, "visual.crt_shaders");
+    btrc_Vector_string_push(__list_1054, "true");
+    if (!e2eRunOk(e2eRunSettings(exe, home, project, __list_1054), "presentation reenable shaders setting")) {
         return 1;
     }
-    btrc_Vector_string* __list_1038 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_1038, "put");
-    btrc_Vector_string_push(__list_1038, "visual.bezels");
-    btrc_Vector_string_push(__list_1038, "true");
-    if (!e2eRunOk(e2eRunSettings(exe, home, project, __list_1038), "presentation reenable bezels setting")) {
+    btrc_Vector_string* __list_1055 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_1055, "put");
+    btrc_Vector_string_push(__list_1055, "visual.bezels");
+    btrc_Vector_string_push(__list_1055, "true");
+    if (!e2eRunOk(e2eRunSettings(exe, home, project, __list_1055), "presentation reenable bezels setting")) {
         return 1;
     }
-    btrc_Vector_string* __list_1039 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_1039, "plan");
-    btrc_Vector_string_push(__list_1039, "gbc");
-    ExecResult* gbc = e2eRunPresentation(exe, home, project, __list_1039);
+    btrc_Vector_string* __list_1056 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_1056, "plan");
+    btrc_Vector_string_push(__list_1056, "gbc");
+    ExecResult* gbc = e2eRunPresentation(exe, home, project, __list_1056);
     if (!e2eRunOk(gbc, "presentation gbc plan")) {
         return 1;
     }
     if (!e2eContains(ExecResult_stdout(gbc), "frost purple Game Boy Color", "gbc bezel intent")) {
         return 1;
     }
-    btrc_Vector_string* __list_1041 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_1041, "plan");
-    btrc_Vector_string_push(__list_1041, "gba");
-    ExecResult* gba = e2eRunPresentation(exe, home, project, __list_1041);
+    btrc_Vector_string* __list_1058 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_1058, "plan");
+    btrc_Vector_string_push(__list_1058, "gba");
+    ExecResult* gba = e2eRunPresentation(exe, home, project, __list_1058);
     if (!e2eRunOk(gba, "presentation gba plan")) {
         return 1;
     }
     if (!e2eContains(ExecResult_stdout(gba), "purple wide Game Boy Advance", "gba bezel intent")) {
         return 1;
     }
-    btrc_Vector_string* __list_1043 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_1043, "plan");
-    btrc_Vector_string_push(__list_1043, "genesis");
-    ExecResult* genesis = e2eRunPresentation(exe, home, project, __list_1043);
+    btrc_Vector_string* __list_1060 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_1060, "plan");
+    btrc_Vector_string_push(__list_1060, "genesis");
+    ExecResult* genesis = e2eRunPresentation(exe, home, project, __list_1060);
     if (!e2eRunOk(genesis, "presentation genesis plan")) {
         return 1;
     }
     if (!e2eContains(ExecResult_stdout(genesis), "ntsc/ntsc-320px-composite-scanline.slangp", "genesis runtime preset")) {
         return 1;
     }
-    btrc_Vector_string* __list_1045 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_1045, "plan");
-    btrc_Vector_string_push(__list_1045, "n3ds");
-    btrc_Vector_string_push(__list_1045, "--emulator");
-    btrc_Vector_string_push(__list_1045, "AZAHAR");
-    ExecResult* n3ds = e2eRunPresentation(exe, home, project, __list_1045);
+    btrc_Vector_string* __list_1062 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_1062, "plan");
+    btrc_Vector_string_push(__list_1062, "n3ds");
+    btrc_Vector_string_push(__list_1062, "--emulator");
+    btrc_Vector_string_push(__list_1062, "AZAHAR");
+    ExecResult* n3ds = e2eRunPresentation(exe, home, project, __list_1062);
     if (!e2eRunOk(n3ds, "presentation n3ds plan")) {
         return 1;
     }
@@ -24186,10 +24452,10 @@ int e2ePresentationSmoke(CliArgs* args) {
     if (!e2eContains(ExecResult_stdout(n3ds), "Azahar is only an adapter", "n3ds not overfit")) {
         return 1;
     }
-    btrc_Vector_string* __list_1047 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_1047, "plan");
-    btrc_Vector_string_push(__list_1047, "ps2");
-    ExecResult* ps2 = e2eRunPresentation(exe, home, project, __list_1047);
+    btrc_Vector_string* __list_1064 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_1064, "plan");
+    btrc_Vector_string_push(__list_1064, "ps2");
+    ExecResult* ps2 = e2eRunPresentation(exe, home, project, __list_1064);
     if (!e2eRunOk(ps2, "presentation ps2 plan")) {
         return 1;
     }
@@ -24208,10 +24474,10 @@ int e2ePresentationSmoke(CliArgs* args) {
     char* pcsx2IniPath = joinPath(launcherRoutedStateRoot(project, "pcsx2"), "config/PCSX2/inis/PCSX2.ini");
     ensureDir(PathTools_dirname(pcsx2IniPath));
     FileSystem_writeText(pcsx2IniPath, "[EmuCore/GS]\nAspectRatio = 16:9\nEnableWidescreenPatches = true\n");
-    btrc_Vector_string* __list_1049 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_1049, "state");
-    btrc_Vector_string_push(__list_1049, "ps2");
-    ExecResult* ps2State = e2eRunPresentation(exe, home, project, __list_1049);
+    btrc_Vector_string* __list_1066 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_1066, "state");
+    btrc_Vector_string_push(__list_1066, "ps2");
+    ExecResult* ps2State = e2eRunPresentation(exe, home, project, __list_1066);
     if (!e2eRunOk(ps2State, "presentation ps2 state")) {
         return 1;
     }
@@ -24221,10 +24487,10 @@ int e2ePresentationSmoke(CliArgs* args) {
     if (!e2eContains(ExecResult_stdout(ps2State), "\"confidence\": \"config\"", "ps2 state confidence")) {
         return 1;
     }
-    btrc_Vector_string* __list_1051 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_1051, "plan");
-    btrc_Vector_string_push(__list_1051, "ps2");
-    ExecResult* ps2Wide = e2eRunPresentation(exe, home, project, __list_1051);
+    btrc_Vector_string* __list_1068 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_1068, "plan");
+    btrc_Vector_string_push(__list_1068, "ps2");
+    ExecResult* ps2Wide = e2eRunPresentation(exe, home, project, __list_1068);
     if (!e2eRunOk(ps2Wide, "presentation ps2 widescreen plan")) {
         return 1;
     }
@@ -24237,44 +24503,44 @@ int e2ePresentationSmoke(CliArgs* args) {
     if (!e2eContains(ExecResult_stdout(ps2Wide), "\"selected_bezel_file\": \"bezels/tv/clean-component-16x9.json\"", "ps2 widescreen selected bezel")) {
         return 1;
     }
-    btrc_Vector_string* __list_1053 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_1053, "put");
-    btrc_Vector_string_push(__list_1053, "ps2");
-    btrc_Vector_string_push(__list_1053, "widescreen_bezel_file");
-    btrc_Vector_string_push(__list_1053, "bezels/ps2/custom-wide.json");
-    if (!e2eRunOk(e2eRunPresentation(exe, home, project, __list_1053), "presentation widescreen bezel put")) {
+    btrc_Vector_string* __list_1070 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_1070, "put");
+    btrc_Vector_string_push(__list_1070, "ps2");
+    btrc_Vector_string_push(__list_1070, "widescreen_bezel_file");
+    btrc_Vector_string_push(__list_1070, "bezels/ps2/custom-wide.json");
+    if (!e2eRunOk(e2eRunPresentation(exe, home, project, __list_1070), "presentation widescreen bezel put")) {
         return 1;
     }
-    btrc_Vector_string* __list_1054 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_1054, "plan");
-    btrc_Vector_string_push(__list_1054, "ps2");
-    ExecResult* ps2CustomWide = e2eRunPresentation(exe, home, project, __list_1054);
+    btrc_Vector_string* __list_1071 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_1071, "plan");
+    btrc_Vector_string_push(__list_1071, "ps2");
+    ExecResult* ps2CustomWide = e2eRunPresentation(exe, home, project, __list_1071);
     if (!e2eContains(ExecResult_stdout(ps2CustomWide), "\"selected_bezel_file\": \"bezels/ps2/custom-wide.json\"", "ps2 custom widescreen bezel")) {
         return 1;
     }
-    btrc_Vector_string* __list_1056 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_1056, "broadcast");
-    btrc_Vector_string_push(__list_1056, "ps2");
-    if (!e2eRunOk(e2eRunPresentation(exe, home, project, __list_1056), "presentation ps2 broadcast")) {
+    btrc_Vector_string* __list_1073 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_1073, "broadcast");
+    btrc_Vector_string_push(__list_1073, "ps2");
+    if (!e2eRunOk(e2eRunPresentation(exe, home, project, __list_1073), "presentation ps2 broadcast")) {
         return 1;
     }
     if (!e2eContains(FileSystem_readText(presentationStatePath(project, "ps2")), "\"aspect\": \"16:9\"", "presentation broadcast state")) {
         return 1;
     }
-    btrc_Vector_string* __list_1057 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_1057, "plan");
-    btrc_Vector_string_push(__list_1057, "psp");
-    ExecResult* psp = e2eRunPresentation(exe, home, project, __list_1057);
+    btrc_Vector_string* __list_1074 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_1074, "plan");
+    btrc_Vector_string_push(__list_1074, "psp");
+    ExecResult* psp = e2eRunPresentation(exe, home, project, __list_1074);
     if (!e2eRunOk(psp, "presentation psp plan")) {
         return 1;
     }
     if (!e2eContains(ExecResult_stdout(psp), "red God of War PSP or original black PSP shell", "psp bezel intent")) {
         return 1;
     }
-    btrc_Vector_string* __list_1059 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_1059, "plan");
-    btrc_Vector_string_push(__list_1059, "switch");
-    ExecResult* switchPlan = e2eRunPresentation(exe, home, project, __list_1059);
+    btrc_Vector_string* __list_1076 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_1076, "plan");
+    btrc_Vector_string_push(__list_1076, "switch");
+    ExecResult* switchPlan = e2eRunPresentation(exe, home, project, __list_1076);
     if (!e2eRunOk(switchPlan, "presentation switch plan")) {
         return 1;
     }
@@ -24284,37 +24550,37 @@ int e2ePresentationSmoke(CliArgs* args) {
     if (!e2eContains(ExecResult_stdout(switchPlan), "\"layout\": \"modern_fullscreen\"", "switch modern fullscreen")) {
         return 1;
     }
-    btrc_Vector_string* __list_1061 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_1061, "put");
-    btrc_Vector_string_push(__list_1061, "gb");
-    btrc_Vector_string_push(__list_1061, "bezel_file");
-    btrc_Vector_string_push(__list_1061, "bezels/gb/classic-grey-game-boy.json");
-    if (!e2eRunOk(e2eRunPresentation(exe, home, project, __list_1061), "presentation put")) {
+    btrc_Vector_string* __list_1078 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_1078, "put");
+    btrc_Vector_string_push(__list_1078, "gb");
+    btrc_Vector_string_push(__list_1078, "bezel_file");
+    btrc_Vector_string_push(__list_1078, "bezels/gb/classic-grey-game-boy.json");
+    if (!e2eRunOk(e2eRunPresentation(exe, home, project, __list_1078), "presentation put")) {
         return 1;
     }
     if (!e2eContains(FileSystem_readText(joinPath(presentationSettingsRoot(project), "gb.json")), "classic-grey-game-boy", "presentation put persisted")) {
         return 1;
     }
-    btrc_Vector_string* __list_1062 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_1062, "get");
-    btrc_Vector_string_push(__list_1062, "gb");
-    btrc_Vector_string_push(__list_1062, "bezel_file");
-    if (!e2eContains(ExecResult_stdout(e2eRunPresentation(exe, home, project, __list_1062)), "classic-grey-game-boy", "presentation get")) {
+    btrc_Vector_string* __list_1079 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_1079, "get");
+    btrc_Vector_string_push(__list_1079, "gb");
+    btrc_Vector_string_push(__list_1079, "bezel_file");
+    if (!e2eContains(ExecResult_stdout(e2eRunPresentation(exe, home, project, __list_1079)), "classic-grey-game-boy", "presentation get")) {
         return 1;
     }
-    btrc_Vector_string* __list_1063 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_1063, "put");
-    btrc_Vector_string_push(__list_1063, "ps2");
-    btrc_Vector_string_push(__list_1063, "dynamic_aspect");
-    btrc_Vector_string_push(__list_1063, "false");
-    if (!e2eRunOk(e2eRunPresentation(exe, home, project, __list_1063), "presentation bool put")) {
+    btrc_Vector_string* __list_1080 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_1080, "put");
+    btrc_Vector_string_push(__list_1080, "ps2");
+    btrc_Vector_string_push(__list_1080, "dynamic_aspect");
+    btrc_Vector_string_push(__list_1080, "false");
+    if (!e2eRunOk(e2eRunPresentation(exe, home, project, __list_1080), "presentation bool put")) {
         return 1;
     }
-    btrc_Vector_string* __list_1064 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_1064, "get");
-    btrc_Vector_string_push(__list_1064, "ps2");
-    btrc_Vector_string_push(__list_1064, "dynamic_aspect");
-    if (!e2eContains(ExecResult_stdout(e2eRunPresentation(exe, home, project, __list_1064)), "false", "presentation bool get")) {
+    btrc_Vector_string* __list_1081 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_1081, "get");
+    btrc_Vector_string_push(__list_1081, "ps2");
+    btrc_Vector_string_push(__list_1081, "dynamic_aspect");
+    if (!e2eContains(ExecResult_stdout(e2eRunPresentation(exe, home, project, __list_1081)), "false", "presentation bool get")) {
         return 1;
     }
     printf("%s\n", "OK BTRC presentation smoke");
@@ -24353,9 +24619,9 @@ int e2eLauncherSmoke(CliArgs* args) {
     char* fakeGrim = joinPath(binDir, "grim");
     FileSystem_writeText(fakeGrim, __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat("#!/usr/bin/env sh\n", "set -eu\n")), "out=\"${1:?}\"\n")), "mkdir -p \"$(dirname \"$out\")\"\n")), "printf 'fake screenshot %s\\n' \"$out\" > \"$out\"\n")), "printf '%s\\n' \"$out\" >> \"${SEMU_FLATPAK_CAPTURE:?}/grim.log\"\n")));
     FileSystem_chmod(fakeGrim, 493);
-    btrc_Vector_string* __list_1065 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_1065, "game.wua");
-    if (!e2eRunOk(e2eRunLauncher(exe, home, project, roms, binDir, capture, fakeBwrap, "cemu", __list_1065), "launcher cemu")) {
+    btrc_Vector_string* __list_1082 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_1082, "game.wua");
+    if (!e2eRunOk(e2eRunLauncher(exe, home, project, roms, binDir, capture, fakeBwrap, "cemu", __list_1082), "launcher cemu")) {
         return 1;
     }
     if (!e2eContains(FileSystem_readText(joinPath(capture, "flatpak-1.args")), "run", "cemu flatpak args")) {
@@ -24405,9 +24671,9 @@ int e2eLauncherSmoke(CliArgs* args) {
     if (!e2eContains(FileSystem_readText(joinPath(cemuScreens, "after_exit.png")), "fake screenshot", "cemu screenshot content")) {
         return 1;
     }
-    btrc_Vector_string* __list_1066 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_1066, "game.iso");
-    if (!e2eRunOk(e2eRunLauncher(exe, home, project, roms, binDir, capture, fakeBwrap, "dolphin", __list_1066), "launcher dolphin")) {
+    btrc_Vector_string* __list_1083 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_1083, "game.iso");
+    if (!e2eRunOk(e2eRunLauncher(exe, home, project, roms, binDir, capture, fakeBwrap, "dolphin", __list_1083), "launcher dolphin")) {
         return 1;
     }
     if (!e2eContains(FileSystem_readText(joinPath(capture, "flatpak-2.args")), "--socket=x11", "dolphin x11")) {
@@ -24428,9 +24694,9 @@ int e2eLauncherSmoke(CliArgs* args) {
     if (!e2eContains(FileSystem_readText(joinPath(capture, "flatpak-2.args")), "game.iso", "dolphin rom arg")) {
         return 1;
     }
-    btrc_Vector_string* __list_1067 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_1067, "game.3ds");
-    if (!e2eRunOk(e2eRunLauncher(exe, home, project, roms, binDir, capture, fakeBwrap, "azahar", __list_1067), "launcher azahar")) {
+    btrc_Vector_string* __list_1084 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_1084, "game.3ds");
+    if (!e2eRunOk(e2eRunLauncher(exe, home, project, roms, binDir, capture, fakeBwrap, "azahar", __list_1084), "launcher azahar")) {
         return 1;
     }
     if (!e2eContains(FileSystem_readText(joinPath(capture, "flatpak-3.args")), "--socket=x11", "azahar x11")) {
@@ -24459,9 +24725,9 @@ int e2eLauncherSmoke(CliArgs* args) {
     if (!e2eContains(azaharConfig, "graphics_api\\default=false", "azahar graphics api explicitly configured")) {
         return 1;
     }
-    btrc_Vector_string* __list_1068 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_1068, "game.iso");
-    if (!e2eRunOk(e2eRunLauncher(exe, home, project, roms, binDir, capture, fakeBwrap, "pcsx2", __list_1068), "launcher pcsx2")) {
+    btrc_Vector_string* __list_1085 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_1085, "game.iso");
+    if (!e2eRunOk(e2eRunLauncher(exe, home, project, roms, binDir, capture, fakeBwrap, "pcsx2", __list_1085), "launcher pcsx2")) {
         return 1;
     }
     if (!e2eContains(FileSystem_readText(joinPath(capture, "flatpak-4.args")), "--socket=wayland", "pcsx2 wayland")) {
@@ -24483,9 +24749,9 @@ int e2eLauncherSmoke(CliArgs* args) {
     if (!e2eOk((!__btrc_strContains(pcsx2Ini, "/Users/")), "pcsx2 config leaked host-local path")) {
         return 1;
     }
-    btrc_Vector_string* __list_1069 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_1069, "game.nsp");
-    if (!e2eRunOk(e2eRunLauncher(exe, home, project, roms, binDir, capture, fakeBwrap, "ryujinx", __list_1069), "launcher ryujinx")) {
+    btrc_Vector_string* __list_1086 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_1086, "game.nsp");
+    if (!e2eRunOk(e2eRunLauncher(exe, home, project, roms, binDir, capture, fakeBwrap, "ryujinx", __list_1086), "launcher ryujinx")) {
         return 1;
     }
     if (!e2eContains(FileSystem_readText(joinPath(capture, "flatpak-5.args")), "org.ryujinx.Ryujinx", "ryujinx flatpak id")) {
@@ -24494,9 +24760,9 @@ int e2eLauncherSmoke(CliArgs* args) {
     if (!e2eContains(FileSystem_readText(joinPath(capture, "flatpak-5.args")), "--fullscreen", "ryujinx fullscreen flag")) {
         return 1;
     }
-    btrc_Vector_string* __list_1070 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_1070, "game.iso");
-    if (!e2eRunOk(e2eRunLauncher(exe, home, project, roms, binDir, capture, fakeBwrap, "ppsspp", __list_1070), "launcher ppsspp")) {
+    btrc_Vector_string* __list_1087 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_1087, "game.iso");
+    if (!e2eRunOk(e2eRunLauncher(exe, home, project, roms, binDir, capture, fakeBwrap, "ppsspp", __list_1087), "launcher ppsspp")) {
         return 1;
     }
     if (!e2eContains(FileSystem_readText(joinPath(capture, "flatpak-6.args")), "org.ppsspp.PPSSPP", "ppsspp flatpak id")) {
@@ -24505,9 +24771,9 @@ int e2eLauncherSmoke(CliArgs* args) {
     if (!e2eContains(FileSystem_readText(joinPath(capture, "flatpak-6.args")), "--fullscreen", "ppsspp fullscreen flag")) {
         return 1;
     }
-    btrc_Vector_string* __list_1071 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_1071, "game.chd");
-    if (!e2eRunOk(e2eRunLauncher(exe, home, project, roms, binDir, capture, fakeBwrap, "flycast", __list_1071), "launcher flycast")) {
+    btrc_Vector_string* __list_1088 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_1088, "game.chd");
+    if (!e2eRunOk(e2eRunLauncher(exe, home, project, roms, binDir, capture, fakeBwrap, "flycast", __list_1088), "launcher flycast")) {
         return 1;
     }
     if (!e2eContains(FileSystem_readText(joinPath(capture, "flatpak-7.args")), "org.flycast.Flycast", "flycast flatpak id")) {
@@ -24519,9 +24785,9 @@ int e2eLauncherSmoke(CliArgs* args) {
     if (!e2eContains(FileSystem_readText(joinPath(capture, "flatpak-7.args")), "window:fullscreen=yes", "flycast fullscreen config")) {
         return 1;
     }
-    btrc_Vector_string* __list_1072 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_1072, "game.nds");
-    if (!e2eRunOk(e2eRunLauncher(exe, home, project, roms, binDir, capture, fakeBwrap, "melonds", __list_1072), "launcher melonds")) {
+    btrc_Vector_string* __list_1089 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_1089, "game.nds");
+    if (!e2eRunOk(e2eRunLauncher(exe, home, project, roms, binDir, capture, fakeBwrap, "melonds", __list_1089), "launcher melonds")) {
         return 1;
     }
     if (!e2eContains(FileSystem_readText(joinPath(capture, "flatpak-8.args")), "net.kuribo64.melonDS", "melonds flatpak id")) {
@@ -24530,9 +24796,9 @@ int e2eLauncherSmoke(CliArgs* args) {
     if (!e2eContains(FileSystem_readText(joinPath(capture, "flatpak-8.args")), "--fullscreen", "melonds fullscreen flag")) {
         return 1;
     }
-    btrc_Vector_string* __list_1073 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_1073, "--help");
-    if (!e2eRunOk(e2eRunLauncher(exe, home, project, roms, binDir, capture, fakeBwrap, "dolphin", __list_1073), "launcher dolphin help")) {
+    btrc_Vector_string* __list_1090 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_1090, "--help");
+    if (!e2eRunOk(e2eRunLauncher(exe, home, project, roms, binDir, capture, fakeBwrap, "dolphin", __list_1090), "launcher dolphin help")) {
         return 1;
     }
     if (!e2eOk((!__btrc_strContains(FileSystem_readText(joinPath(capture, "flatpak-9.args")), "Dolphin.Display.Fullscreen=True")), "dolphin help should not receive fullscreen defaults")) {
@@ -24540,11 +24806,11 @@ int e2eLauncherSmoke(CliArgs* args) {
     }
     e2eSeedFile(emulatorProfilePath(project, "RetroArch/config/input.cfg"));
     e2eSeedFile(emulatorProfilePath(project, "RetroArch/retroarch.cfg"));
-    btrc_Vector_string* __list_1074 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_1074, "-L");
-    btrc_Vector_string_push(__list_1074, "core.so");
-    btrc_Vector_string_push(__list_1074, "game.gba");
-    if (!e2eRunOk(e2eRunLauncher(exe, home, project, roms, binDir, capture, fakeBwrap, "retroarch", __list_1074), "launcher retroarch")) {
+    btrc_Vector_string* __list_1091 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_1091, "-L");
+    btrc_Vector_string_push(__list_1091, "core.so");
+    btrc_Vector_string_push(__list_1091, "game.gba");
+    if (!e2eRunOk(e2eRunLauncher(exe, home, project, roms, binDir, capture, fakeBwrap, "retroarch", __list_1091), "launcher retroarch")) {
         return 1;
     }
     char* retroarchArgs = FileSystem_readText(joinPath(capture, "retroarch.args"));
@@ -24600,9 +24866,9 @@ int e2eLauncherSmoke(CliArgs* args) {
     char* fakeRouted = joinPath(binDir, "fake-emulator");
     FileSystem_writeText(fakeRouted, __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat("#!/usr/bin/env sh\n", "set -eu\n")), "env | grep '^SEMU_QUIT_WATCH_LOG=' > \"${SEMU_FLATPAK_CAPTURE:?}/routed-dolphin.env\"\n")), "printf '%s\\n' \"$@\" > \"${SEMU_FLATPAK_CAPTURE:?}/routed-dolphin.args\"\n")));
     FileSystem_chmod(fakeRouted, 493);
-    btrc_Vector_string* __list_1075 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_1075, "game.iso");
-    if (!e2eRunOk(e2eRunRoutedLauncher(exe, home, project, roms, binDir, capture, "dolphin", fakeRouted, __list_1075), "routed dolphin")) {
+    btrc_Vector_string* __list_1092 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_1092, "game.iso");
+    if (!e2eRunOk(e2eRunRoutedLauncher(exe, home, project, roms, binDir, capture, "dolphin", fakeRouted, __list_1092), "routed dolphin")) {
         return 1;
     }
     char* dolphinQuitLog = launcherQuitWatchLogPath(project, "dolphin");
@@ -24627,9 +24893,9 @@ int e2eLauncherSmoke(CliArgs* args) {
     char* fakeCemu = joinPath(binDir, "fake-cemu");
     FileSystem_writeText(fakeCemu, __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat("#!/usr/bin/env sh\n", "set -eu\n")), "printf '%s\\n' \"$@\" > \"${SEMU_FLATPAK_CAPTURE:?}/routed-cemu.args\"\n")));
     FileSystem_chmod(fakeCemu, 493);
-    btrc_Vector_string* __list_1076 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_1076, "game.wua");
-    if (!e2eRunOk(e2eRunRoutedLauncher(exe, home, project, roms, binDir, capture, "cemu", fakeCemu, __list_1076), "routed cemu")) {
+    btrc_Vector_string* __list_1093 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_1093, "game.wua");
+    if (!e2eRunOk(e2eRunRoutedLauncher(exe, home, project, roms, binDir, capture, "cemu", fakeCemu, __list_1093), "routed cemu")) {
         return 1;
     }
     char* routedCemuSettings = joinPath(launcherRoutedStateRoot(project, "cemu"), "config/Cemu/settings.xml");
@@ -24645,9 +24911,9 @@ int e2eLauncherSmoke(CliArgs* args) {
     char* fakeRyujinx = joinPath(binDir, "fake-ryujinx");
     FileSystem_writeText(fakeRyujinx, __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat("#!/usr/bin/env sh\n", "set -eu\n")), "printf '%s\\n' \"$@\" > \"${SEMU_FLATPAK_CAPTURE:?}/routed-ryujinx.args\"\n")));
     FileSystem_chmod(fakeRyujinx, 493);
-    btrc_Vector_string* __list_1077 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_1077, "game.nsp");
-    if (!e2eRunOk(e2eRunRoutedLauncher(exe, home, project, roms, binDir, capture, "ryujinx", fakeRyujinx, __list_1077), "routed ryujinx")) {
+    btrc_Vector_string* __list_1094 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_1094, "game.nsp");
+    if (!e2eRunOk(e2eRunRoutedLauncher(exe, home, project, roms, binDir, capture, "ryujinx", fakeRyujinx, __list_1094), "routed ryujinx")) {
         return 1;
     }
     char* routedRyujinxRoot = joinPath(launcherRoutedStateRoot(project, "ryujinx"), "config/Ryujinx");
@@ -24671,13 +24937,13 @@ bool e2eWriteFakeN3dsRom(char* path, bool noCrypto, bool decrypted) {
     ensureDir(PathTools_dirname(path));
     BinaryEditor* editor = BinaryEditor_new(path, "w+b");
     if (!BinaryEditor_ok(editor)) {
-        bool __btrc_ret_1078 = false;
+        bool __btrc_ret_1095 = false;
         if (editor != NULL) {
             if ((--editor->__rc) <= 0) {
                 BinaryEditor_destroy(editor);
             }
         }
-        return __btrc_ret_1078;
+        return __btrc_ret_1095;
     }
     bool ok = true;
     long partOffset = 0x200;
@@ -24708,9 +24974,9 @@ ExecResult* e2eRunN3dsNoCrypto(char* exe, char* input, char* outputDir, btrc_Vec
     if (((int)strlen(outputDir)) > 0) {
         Command_flag(command, "-o", outputDir);
     }
-    int __n_1080 = btrc_Vector_string_iterLen(extraArgs);
-    for (int __i_1079 = 0; (__i_1079 < __n_1080); (__i_1079++)) {
-        char* arg = btrc_Vector_string_iterGet(extraArgs, __i_1079);
+    int __n_1097 = btrc_Vector_string_iterLen(extraArgs);
+    for (int __i_1096 = 0; (__i_1096 < __n_1097); (__i_1096++)) {
+        char* arg = btrc_Vector_string_iterGet(extraArgs, __i_1096);
         Command_arg(command, arg);
     }
     UnixShell* shell = UnixShell_new();
@@ -24730,9 +24996,9 @@ ExecResult* e2eRunN3dsNoCrypto(char* exe, char* input, char* outputDir, btrc_Vec
 
 ExecResult* e2eRunDecrypt3dsNoCrypto(char* exe, char* input, btrc_Vector_string* extraArgs) {
     Command* command = Command_check(Command_capture(Command_arg(Command_arg(Command_arg(Command_envVar(Command_envVar(Command_new(exe), "SEMU_BIN", exe), "PATH", "/usr/bin:/bin"), "utils"), "decrypt3ds"), input), true), false);
-    int __n_1082 = btrc_Vector_string_iterLen(extraArgs);
-    for (int __i_1081 = 0; (__i_1081 < __n_1082); (__i_1081++)) {
-        char* arg = btrc_Vector_string_iterGet(extraArgs, __i_1081);
+    int __n_1099 = btrc_Vector_string_iterLen(extraArgs);
+    for (int __i_1098 = 0; (__i_1098 < __n_1099); (__i_1098++)) {
+        char* arg = btrc_Vector_string_iterGet(extraArgs, __i_1098);
         Command_arg(command, arg);
     }
     UnixShell* shell = UnixShell_new();
@@ -24775,9 +25041,9 @@ int e2eN3dsNoCryptoSmoke(CliArgs* args) {
     if (!e2eOk(e2eWriteFakeN3dsRom(externalOkPath, true, true), "fake external OK 3DS ROM")) {
         return 1;
     }
-    btrc_Vector_string* __list_1083 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_1083, "--check");
-    ExecResult* check = e2eRunN3dsNoCrypto(exe, input, "", __list_1083);
+    btrc_Vector_string* __list_1100 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_1100, "--check");
+    ExecResult* check = e2eRunN3dsNoCrypto(exe, input, "", __list_1100);
     if (!e2eRunOk(check, "n3ds-nocrypto check")) {
         return 1;
     }
@@ -24787,9 +25053,9 @@ int e2eN3dsNoCryptoSmoke(CliArgs* args) {
     if (!e2eContains(ExecResult_stdout(check), "OK:        already-ok.3ds", "n3ds-nocrypto OK output")) {
         return 1;
     }
-    btrc_Vector_string* __list_1085 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_1085, "--check");
-    if (!e2eRunOk(e2eRunDecrypt3dsNoCrypto(exe, input, __list_1085), "decrypt3ds compatibility check")) {
+    btrc_Vector_string* __list_1102 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_1102, "--check");
+    if (!e2eRunOk(e2eRunDecrypt3dsNoCrypto(exe, input, __list_1102), "decrypt3ds compatibility check")) {
         return 1;
     }
     btrc_Vector_string* noArgs = btrc_Vector_string_new();
@@ -24806,60 +25072,60 @@ int e2eN3dsNoCryptoSmoke(CliArgs* args) {
     int cryptoMethod = BinaryReader_readU8(reader, ((0x200 + 0x100) + 0x8b));
     BinaryReader_close(reader);
     if (!e2eOk(n3dsNoCryptoFlag(flags), "fixed fake ROM NoCrypto flag missing")) {
-        int __btrc_ret_1086 = 1;
+        int __btrc_ret_1103 = 1;
         if (reader != NULL) {
             if ((--reader->__rc) <= 0) {
                 BinaryReader_destroy(reader);
             }
         }
-        return __btrc_ret_1086;
+        return __btrc_ret_1103;
     }
     if (!e2eOk((cryptoMethod == 0), "fixed fake ROM crypto method not cleared")) {
-        int __btrc_ret_1087 = 1;
+        int __btrc_ret_1104 = 1;
         if (reader != NULL) {
             if ((--reader->__rc) <= 0) {
                 BinaryReader_destroy(reader);
             }
         }
-        return __btrc_ret_1087;
+        return __btrc_ret_1104;
     }
     if (!e2eOk((strcmp(checkN3dsRom(joinPath(output, "already-ok.3ds"))->status, "OK") == 0), "already OK fake ROM copy")) {
-        int __btrc_ret_1088 = 1;
+        int __btrc_ret_1105 = 1;
         if (reader != NULL) {
             if ((--reader->__rc) <= 0) {
                 BinaryReader_destroy(reader);
             }
         }
-        return __btrc_ret_1088;
+        return __btrc_ret_1105;
     }
     writeSyncDefaults(project, externalRoms);
     ExecResult* doctor = e2eRunDoctor(exe, home, project);
     if (!e2eRunOk(doctor, "doctor configured n3ds preflight")) {
-        int __btrc_ret_1089 = 1;
+        int __btrc_ret_1106 = 1;
         if (reader != NULL) {
             if ((--reader->__rc) <= 0) {
                 BinaryReader_destroy(reader);
             }
         }
-        return __btrc_ret_1089;
+        return __btrc_ret_1106;
     }
     if (!e2eContains(ExecResult_stdout(doctor), "OK n3ds/external-ok.3ds", "doctor should preflight configured external n3ds ROMs")) {
-        int __btrc_ret_1090 = 1;
+        int __btrc_ret_1107 = 1;
         if (reader != NULL) {
             if ((--reader->__rc) <= 0) {
                 BinaryReader_destroy(reader);
             }
         }
-        return __btrc_ret_1090;
+        return __btrc_ret_1107;
     }
     printf("%s\n", "OK BTRC n3ds-nocrypto smoke");
-    int __btrc_ret_1091 = 0;
+    int __btrc_ret_1108 = 0;
     if (reader != NULL) {
         if ((--reader->__rc) <= 0) {
             BinaryReader_destroy(reader);
         }
     }
-    return __btrc_ret_1091;
+    return __btrc_ret_1108;
     if (reader != NULL) {
         if ((--reader->__rc) <= 0) {
             BinaryReader_destroy(reader);
@@ -24868,42 +25134,75 @@ int e2eN3dsNoCryptoSmoke(CliArgs* args) {
 }
 
 char* e2eQuitEvidenceText(char* emulator, bool quit) {
-    btrc_Vector_string* __list_1092 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_1092, __btrc_str_track(__btrc_strcat("time=1 start child=100 command=", emulator)));
-    btrc_Vector_string_push(__list_1092, "time=2 exit child=100 status=0 quit_requested=0");
-    btrc_Vector_string* lines = __list_1092;
+    btrc_Vector_string* __list_1109 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_1109, __btrc_str_track(__btrc_strcat("time=1 start child=100 command=", emulator)));
+    btrc_Vector_string_push(__list_1109, "time=2 exit child=100 status=0 quit_requested=0");
+    btrc_Vector_string* lines = __list_1109;
     if (quit) {
-        btrc_Vector_string* __list_1093 = btrc_Vector_string_new();
-        btrc_Vector_string_push(__list_1093, __btrc_str_track(__btrc_strcat("time=1 start child=100 command=", emulator)));
-        btrc_Vector_string_push(__list_1093, "time=2 terminate child=100 reason=select+start");
-        btrc_Vector_string_push(__list_1093, "time=3 exit child=100 status=143 quit_requested=1");
-        (lines = __list_1093);
+        btrc_Vector_string* __list_1110 = btrc_Vector_string_new();
+        btrc_Vector_string_push(__list_1110, __btrc_str_track(__btrc_strcat("time=1 start child=100 command=", emulator)));
+        btrc_Vector_string_push(__list_1110, "time=2 terminate child=100 reason=select+start");
+        btrc_Vector_string_push(__list_1110, "time=3 exit child=100 status=143 quit_requested=1");
+        (lines = __list_1110);
     }
     return textLines(lines);
+}
+
+char* e2eStateEvidenceText(char* emulator, bool save, bool load) {
+    btrc_Vector_string* __list_1111 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_1111, __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat("time=1 emulator=", emulator)), " action=launch result=ok")));
+    btrc_Vector_string* lines = __list_1111;
+    if (save) {
+        btrc_Vector_string_push(lines, __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat("time=2 emulator=", emulator)), " action=state.save result=ok slot=1")));
+    }
+    if (load) {
+        btrc_Vector_string_push(lines, __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat("time=3 emulator=", emulator)), " action=state.load result=ok slot=1")));
+    }
+    return textLines(lines);
+}
+
+char* e2ePresentationAuditOkText(char* project) {
+    btrc_Vector_string* __list_1112 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_1112, jsonField("schema_version", "1"));
+    btrc_Vector_string_push(__list_1112, jsonStrField("project", project));
+    btrc_Vector_string_push(__list_1112, jsonStrField("system", ""));
+    btrc_Vector_string_push(__list_1112, jsonBoolField("strict", true));
+    btrc_Vector_string_push(__list_1112, jsonField("ok_count", "0"));
+    btrc_Vector_string_push(__list_1112, jsonField("missing_system_count", "0"));
+    btrc_Vector_string_push(__list_1112, jsonField("missing_asset_count", "0"));
+    btrc_Vector_string_push(__list_1112, jsonField("missing_dependency_count", "0"));
+    btrc_Vector_string_push(__list_1112, jsonField("disabled_count", "0"));
+    btrc_Vector_string_push(__list_1112, jsonField("systems", "[]"));
+    return jsonPrettyText(jsonObject(__list_1112));
 }
 
 int e2eDeckEvidenceSmoke(CliArgs* args) {
     char* tmp = e2eTempDir("semu-deck-evidence-smoke");
     char* project = joinPath(tmp, "project");
     char* home = joinPath(tmp, "home");
+    char* roms = joinPath(tmp, "roms");
     char* exe = e2eExecutable(args);
     ensureDir(project);
     ensureDir(home);
-    btrc_Vector_string* __list_1094 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_1094, "game-mode-evidence");
-    btrc_Vector_string_push(__list_1094, "retroarch");
-    ExecResult* missing = e2eRunDeck(exe, home, project, __list_1094);
+    ensureDir(roms);
+    if (!e2eRunOk(e2eRunLifecycle(exe, home, "install", project, roms), "deck evidence lifecycle install")) {
+        return 1;
+    }
+    btrc_Vector_string* __list_1113 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_1113, "game-mode-evidence");
+    btrc_Vector_string_push(__list_1113, "retroarch");
+    ExecResult* missing = e2eRunDeck(exe, home, project, __list_1113);
     if (!e2eOk((!ExecResult_ok(missing)), "missing Game Mode evidence unexpectedly succeeded")) {
         return 1;
     }
     if (!e2eContains(ExecResult_stdout(missing), "PENDING retroarch", "missing evidence status")) {
         return 1;
     }
-    btrc_Vector_string* __list_1096 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_1096, "game-mode-evidence");
-    btrc_Vector_string_push(__list_1096, "retroarch");
-    btrc_Vector_string_push(__list_1096, "--prepare");
-    ExecResult* prepare = e2eRunDeck(exe, home, project, __list_1096);
+    btrc_Vector_string* __list_1115 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_1115, "game-mode-evidence");
+    btrc_Vector_string_push(__list_1115, "retroarch");
+    btrc_Vector_string_push(__list_1115, "--prepare");
+    ExecResult* prepare = e2eRunDeck(exe, home, project, __list_1115);
     if (!e2eRunOk(prepare, "game-mode evidence prepare")) {
         return 1;
     }
@@ -24919,53 +25218,132 @@ int e2eDeckEvidenceSmoke(CliArgs* args) {
     }
     char* retroarchLog = deckQuitEvidencePath(project, "retroarch");
     SemuGeneratedFiles_writeAdapterState(project, retroarchLog, e2eQuitEvidenceText("retroarch", false));
-    btrc_Vector_string* __list_1098 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_1098, "game-mode-evidence");
-    btrc_Vector_string_push(__list_1098, "retroarch");
-    btrc_Vector_string_push(__list_1098, "--allow-pending");
-    ExecResult* partial = e2eRunDeck(exe, home, project, __list_1098);
+    btrc_Vector_string* __list_1117 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_1117, "game-mode-evidence");
+    btrc_Vector_string_push(__list_1117, "retroarch");
+    btrc_Vector_string_push(__list_1117, "--allow-pending");
+    ExecResult* partial = e2eRunDeck(exe, home, project, __list_1117);
     if (!e2eRunOk(partial, "partial Game Mode evidence with allow-pending")) {
         return 1;
     }
     if (!e2eContains(ExecResult_stdout(partial), "PARTIAL retroarch", "partial evidence status")) {
         return 1;
     }
-    btrc_Vector_string* __list_1100 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_1100, "game-mode-evidence");
-    btrc_Vector_string_push(__list_1100, "retroarch");
-    if (!e2eOk((!ExecResult_ok(e2eRunDeck(exe, home, project, __list_1100))), "partial Game Mode evidence unexpectedly succeeded")) {
+    btrc_Vector_string* __list_1119 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_1119, "game-mode-evidence");
+    btrc_Vector_string_push(__list_1119, "retroarch");
+    if (!e2eOk((!ExecResult_ok(e2eRunDeck(exe, home, project, __list_1119))), "partial Game Mode evidence unexpectedly succeeded")) {
         return 1;
     }
     SemuGeneratedFiles_writeAdapterState(project, retroarchLog, e2eQuitEvidenceText("retroarch", true));
-    btrc_Vector_string* __list_1101 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_1101, "game-mode-evidence");
-    btrc_Vector_string_push(__list_1101, "--emulator");
-    btrc_Vector_string_push(__list_1101, "retroarch");
-    ExecResult* ok = e2eRunDeck(exe, home, project, __list_1101);
+    btrc_Vector_string* __list_1120 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_1120, "game-mode-evidence");
+    btrc_Vector_string_push(__list_1120, "--emulator");
+    btrc_Vector_string_push(__list_1120, "retroarch");
+    ExecResult* ok = e2eRunDeck(exe, home, project, __list_1120);
     if (!e2eRunOk(ok, "complete Game Mode evidence")) {
         return 1;
     }
     if (!e2eContains(ExecResult_stdout(ok), "OK retroarch", "complete evidence status")) {
         return 1;
     }
-    int __n_1104 = btrc_Vector_string_iterLen(lowercaseValues(linuxLauncherNames()));
-    for (int __i_1103 = 0; (__i_1103 < __n_1104); (__i_1103++)) {
-        char* emulator = btrc_Vector_string_iterGet(lowercaseValues(linuxLauncherNames()), __i_1103);
+    int __n_1123 = btrc_Vector_string_iterLen(lowercaseValues(linuxLauncherNames()));
+    for (int __i_1122 = 0; (__i_1122 < __n_1123); (__i_1122++)) {
+        char* emulator = btrc_Vector_string_iterGet(lowercaseValues(linuxLauncherNames()), __i_1122);
         SemuGeneratedFiles_writeAdapterState(project, deckQuitEvidencePath(project, emulator), e2eQuitEvidenceText(emulator, true));
     }
-    btrc_Vector_string* __list_1105 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_1105, "game-mode-evidence");
-    ExecResult* all = e2eRunDeck(exe, home, project, __list_1105);
+    btrc_Vector_string* __list_1124 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_1124, "game-mode-evidence");
+    ExecResult* all = e2eRunDeck(exe, home, project, __list_1124);
     if (!e2eRunOk(all, "all Game Mode evidence")) {
         return 1;
     }
     if (!e2eContains(ExecResult_stdout(all), "OK Game Mode quit evidence", "all evidence status")) {
         return 1;
     }
-    btrc_Vector_string* __list_1107 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_1107, "game-mode-evidence");
-    btrc_Vector_string_push(__list_1107, "gopher64");
-    if (!e2eOk((!ExecResult_ok(e2eRunDeck(exe, home, project, __list_1107))), "unknown evidence emulator unexpectedly succeeded")) {
+    btrc_Vector_string* __list_1126 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_1126, "game-mode-evidence");
+    btrc_Vector_string_push(__list_1126, "gopher64");
+    if (!e2eOk((!ExecResult_ok(e2eRunDeck(exe, home, project, __list_1126))), "unknown evidence emulator unexpectedly succeeded")) {
+        return 1;
+    }
+    btrc_Vector_string* __list_1127 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_1127, "state-evidence");
+    btrc_Vector_string_push(__list_1127, "retroarch");
+    ExecResult* stateMissing = e2eRunDeck(exe, home, project, __list_1127);
+    if (!e2eOk((!ExecResult_ok(stateMissing)), "missing state evidence unexpectedly succeeded")) {
+        return 1;
+    }
+    if (!e2eContains(ExecResult_stdout(stateMissing), "PENDING retroarch", "missing state evidence status")) {
+        return 1;
+    }
+    btrc_Vector_string* __list_1129 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_1129, "state-evidence");
+    btrc_Vector_string_push(__list_1129, "retroarch");
+    btrc_Vector_string_push(__list_1129, "--prepare");
+    ExecResult* statePrepare = e2eRunDeck(exe, home, project, __list_1129);
+    if (!e2eRunOk(statePrepare, "state evidence prepare")) {
+        return 1;
+    }
+    char* stateChecklist = deckStateEvidenceChecklistPath(project);
+    if (!e2eOk(FileSystem_exists(stateChecklist), "state evidence checklist missing")) {
+        return 1;
+    }
+    if (!e2eContains(FileSystem_readText(stateChecklist), "physical left-trackpad radial Save State", "state checklist physical save")) {
+        return 1;
+    }
+    if (!e2eOk(SemuGeneratedFiles_isAdapterState(project, stateChecklist), "state checklist should be adapter state")) {
+        return 1;
+    }
+    char* stateLog = deckStateEvidencePath(project, "retroarch");
+    SemuGeneratedFiles_writeAdapterState(project, stateLog, e2eStateEvidenceText("retroarch", true, false));
+    btrc_Vector_string* __list_1131 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_1131, "state-evidence");
+    btrc_Vector_string_push(__list_1131, "retroarch");
+    btrc_Vector_string_push(__list_1131, "--allow-pending");
+    ExecResult* statePartial = e2eRunDeck(exe, home, project, __list_1131);
+    if (!e2eRunOk(statePartial, "partial state evidence with allow-pending")) {
+        return 1;
+    }
+    if (!e2eContains(ExecResult_stdout(statePartial), "save=ok load=missing", "partial state evidence status")) {
+        return 1;
+    }
+    btrc_Vector_string* __list_1133 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_1133, "state-evidence");
+    btrc_Vector_string_push(__list_1133, "retroarch");
+    if (!e2eOk((!ExecResult_ok(e2eRunDeck(exe, home, project, __list_1133))), "partial state evidence unexpectedly succeeded")) {
+        return 1;
+    }
+    SemuGeneratedFiles_writeAdapterState(project, stateLog, e2eStateEvidenceText("retroarch", true, true));
+    btrc_Vector_string* __list_1134 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_1134, "state-evidence");
+    btrc_Vector_string_push(__list_1134, "--emulator");
+    btrc_Vector_string_push(__list_1134, "retroarch");
+    ExecResult* stateOk = e2eRunDeck(exe, home, project, __list_1134);
+    if (!e2eRunOk(stateOk, "complete state evidence")) {
+        return 1;
+    }
+    if (!e2eContains(ExecResult_stdout(stateOk), "OK retroarch", "complete state evidence status")) {
+        return 1;
+    }
+    btrc_Vector_string* __list_1136 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_1136, "state-evidence");
+    btrc_Vector_string_push(__list_1136, "ppsspp");
+    if (!e2eOk((!ExecResult_ok(e2eRunDeck(exe, home, project, __list_1136))), "disabled state evidence emulator unexpectedly succeeded")) {
+        return 1;
+    }
+    int __n_1138 = btrc_Vector_string_iterLen(deckStateEvidenceEmulators());
+    for (int __i_1137 = 0; (__i_1137 < __n_1138); (__i_1137++)) {
+        char* emulator = btrc_Vector_string_iterGet(deckStateEvidenceEmulators(), __i_1137);
+        SemuGeneratedFiles_writeAdapterState(project, deckStateEvidencePath(project, emulator), e2eStateEvidenceText(emulator, true, true));
+    }
+    btrc_Vector_string* __list_1139 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_1139, "state-evidence");
+    ExecResult* stateAll = e2eRunDeck(exe, home, project, __list_1139);
+    if (!e2eRunOk(stateAll, "all generated state evidence")) {
+        return 1;
+    }
+    if (!e2eContains(ExecResult_stdout(stateAll), "OK Game Mode state evidence", "all state evidence status")) {
         return 1;
     }
     char* appImage = joinPath(tmp, "Semu-x86_64.AppImage");
@@ -24979,32 +25357,32 @@ int e2eDeckEvidenceSmoke(CliArgs* args) {
     if (!e2eWriteSteamConfigSetFixture(configSetFile)) {
         return 1;
     }
-    btrc_Vector_string* __list_1108 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_1108, "select");
-    btrc_Vector_string_push(__list_1108, "--shortcuts-file");
-    btrc_Vector_string_push(__list_1108, shortcutsFile);
-    btrc_Vector_string_push(__list_1108, "--configset-file");
-    btrc_Vector_string_push(__list_1108, configSetFile);
-    btrc_Vector_string_push(__list_1108, "--exe");
-    btrc_Vector_string_push(__list_1108, appImage);
-    btrc_Vector_string_push(__list_1108, "--app-name");
-    btrc_Vector_string_push(__list_1108, "Semu-x86_64.AppImage");
-    ExecResult* selection = e2eRunSteamInput(exe, home, project, __list_1108);
+    btrc_Vector_string* __list_1141 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_1141, "select");
+    btrc_Vector_string_push(__list_1141, "--shortcuts-file");
+    btrc_Vector_string_push(__list_1141, shortcutsFile);
+    btrc_Vector_string_push(__list_1141, "--configset-file");
+    btrc_Vector_string_push(__list_1141, configSetFile);
+    btrc_Vector_string_push(__list_1141, "--exe");
+    btrc_Vector_string_push(__list_1141, appImage);
+    btrc_Vector_string_push(__list_1141, "--app-name");
+    btrc_Vector_string_push(__list_1141, "Semu-x86_64.AppImage");
+    ExecResult* selection = e2eRunSteamInput(exe, home, project, __list_1141);
     if (!e2eRunOk(selection, "Game Mode Steam Input selection")) {
         return 1;
     }
-    btrc_Vector_string* __list_1110 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_1110, "game-mode-ready");
-    btrc_Vector_string_push(__list_1110, "--shortcuts-file");
-    btrc_Vector_string_push(__list_1110, shortcutsFile);
-    btrc_Vector_string_push(__list_1110, "--configset-file");
-    btrc_Vector_string_push(__list_1110, configSetFile);
-    btrc_Vector_string_push(__list_1110, "--exe");
-    btrc_Vector_string_push(__list_1110, appImage);
-    btrc_Vector_string_push(__list_1110, "--appimage");
-    btrc_Vector_string_push(__list_1110, appImage);
-    btrc_Vector_string_push(__list_1110, "--prepare");
-    btrc_Vector_string* readyArgs = __list_1110;
+    btrc_Vector_string* __list_1143 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_1143, "game-mode-ready");
+    btrc_Vector_string_push(__list_1143, "--shortcuts-file");
+    btrc_Vector_string_push(__list_1143, shortcutsFile);
+    btrc_Vector_string_push(__list_1143, "--configset-file");
+    btrc_Vector_string_push(__list_1143, configSetFile);
+    btrc_Vector_string_push(__list_1143, "--exe");
+    btrc_Vector_string_push(__list_1143, appImage);
+    btrc_Vector_string_push(__list_1143, "--appimage");
+    btrc_Vector_string_push(__list_1143, appImage);
+    btrc_Vector_string_push(__list_1143, "--prepare");
+    btrc_Vector_string* readyArgs = __list_1143;
     ExecResult* desktop = e2eRunDeckEnv(exe, home, project, readyArgs, "desktop_mode", "1");
     if (!e2eOk((!ExecResult_ok(desktop)), "Desktop Mode readiness unexpectedly succeeded without --allow-desktop")) {
         return 1;
@@ -25012,19 +25390,19 @@ int e2eDeckEvidenceSmoke(CliArgs* args) {
     if (!e2eContains(ExecResult_stdout(desktop), "PENDING session: desktop_mode", "Desktop Mode readiness status")) {
         return 1;
     }
-    btrc_Vector_string* __list_1111 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_1111, "game-mode-ready");
-    btrc_Vector_string_push(__list_1111, "--shortcuts-file");
-    btrc_Vector_string_push(__list_1111, shortcutsFile);
-    btrc_Vector_string_push(__list_1111, "--configset-file");
-    btrc_Vector_string_push(__list_1111, configSetFile);
-    btrc_Vector_string_push(__list_1111, "--exe");
-    btrc_Vector_string_push(__list_1111, appImage);
-    btrc_Vector_string_push(__list_1111, "--appimage");
-    btrc_Vector_string_push(__list_1111, appImage);
-    btrc_Vector_string_push(__list_1111, "--prepare");
-    btrc_Vector_string_push(__list_1111, "--allow-desktop");
-    btrc_Vector_string* desktopAllowedArgs = __list_1111;
+    btrc_Vector_string* __list_1144 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_1144, "game-mode-ready");
+    btrc_Vector_string_push(__list_1144, "--shortcuts-file");
+    btrc_Vector_string_push(__list_1144, shortcutsFile);
+    btrc_Vector_string_push(__list_1144, "--configset-file");
+    btrc_Vector_string_push(__list_1144, configSetFile);
+    btrc_Vector_string_push(__list_1144, "--exe");
+    btrc_Vector_string_push(__list_1144, appImage);
+    btrc_Vector_string_push(__list_1144, "--appimage");
+    btrc_Vector_string_push(__list_1144, appImage);
+    btrc_Vector_string_push(__list_1144, "--prepare");
+    btrc_Vector_string_push(__list_1144, "--allow-desktop");
+    btrc_Vector_string* desktopAllowedArgs = __list_1144;
     ExecResult* desktopAllowed = e2eRunDeckEnv(exe, home, project, desktopAllowedArgs, "desktop_mode", "1");
     if (!e2eRunOk(desktopAllowed, "Desktop readiness with explicit override")) {
         return 1;
@@ -25062,19 +25440,19 @@ int e2eDeckEvidenceSmoke(CliArgs* args) {
     if (!e2eContains(ExecResult_stdout(gameReady), "steam://rungameid/", "Game Mode launch URI")) {
         return 1;
     }
-    btrc_Vector_string* __list_1112 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_1112, "game-mode-ready");
-    btrc_Vector_string_push(__list_1112, "--shortcuts-file");
-    btrc_Vector_string_push(__list_1112, shortcutsFile);
-    btrc_Vector_string_push(__list_1112, "--configset-file");
-    btrc_Vector_string_push(__list_1112, configSetFile);
-    btrc_Vector_string_push(__list_1112, "--exe");
-    btrc_Vector_string_push(__list_1112, appImage);
-    btrc_Vector_string_push(__list_1112, "--appimage");
-    btrc_Vector_string_push(__list_1112, appImage);
-    btrc_Vector_string_push(__list_1112, "--prepare");
-    btrc_Vector_string_push(__list_1112, "--require-evidence");
-    btrc_Vector_string* requireEvidenceArgs = __list_1112;
+    btrc_Vector_string* __list_1145 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_1145, "game-mode-ready");
+    btrc_Vector_string_push(__list_1145, "--shortcuts-file");
+    btrc_Vector_string_push(__list_1145, shortcutsFile);
+    btrc_Vector_string_push(__list_1145, "--configset-file");
+    btrc_Vector_string_push(__list_1145, configSetFile);
+    btrc_Vector_string_push(__list_1145, "--exe");
+    btrc_Vector_string_push(__list_1145, appImage);
+    btrc_Vector_string_push(__list_1145, "--appimage");
+    btrc_Vector_string_push(__list_1145, appImage);
+    btrc_Vector_string_push(__list_1145, "--prepare");
+    btrc_Vector_string_push(__list_1145, "--require-evidence");
+    btrc_Vector_string* requireEvidenceArgs = __list_1145;
     ExecResult* requireEvidence = e2eRunDeckEnv(exe, home, project, requireEvidenceArgs, "game_mode", "1");
     if (!e2eRunOk(requireEvidence, "Game Mode readiness with required evidence")) {
         return 1;
@@ -25097,6 +25475,54 @@ int e2eDeckEvidenceSmoke(CliArgs* args) {
         return 1;
     }
     if (!e2eContains(readinessJson, "\"evidence_required\": true", "readiness report evidence gate")) {
+        return 1;
+    }
+    btrc_Vector_string* __list_1146 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_1146, "production-ready");
+    btrc_Vector_string_push(__list_1146, "--shortcuts-file");
+    btrc_Vector_string_push(__list_1146, shortcutsFile);
+    btrc_Vector_string_push(__list_1146, "--configset-file");
+    btrc_Vector_string_push(__list_1146, configSetFile);
+    btrc_Vector_string_push(__list_1146, "--exe");
+    btrc_Vector_string_push(__list_1146, appImage);
+    btrc_Vector_string_push(__list_1146, "--appimage");
+    btrc_Vector_string_push(__list_1146, appImage);
+    btrc_Vector_string_push(__list_1146, "--prepare");
+    btrc_Vector_string_push(__list_1146, "--allow-desktop");
+    btrc_Vector_string* productionArgs = __list_1146;
+    ExecResult* productionMissingAudit = e2eRunDeckEnv(exe, home, project, productionArgs, "game_mode", "1");
+    if (!e2eOk((!ExecResult_ok(productionMissingAudit)), "production readiness unexpectedly succeeded without presentation audit")) {
+        return 1;
+    }
+    if (!e2eContains(ExecResult_stdout(productionMissingAudit), "PENDING presentation audit", "production missing presentation audit")) {
+        return 1;
+    }
+    SemuGeneratedFiles_writeAdapterState(project, presentationAssetAuditPath(project), e2ePresentationAuditOkText(project));
+    ExecResult* productionReady = e2eRunDeckEnv(exe, home, project, productionArgs, "game_mode", "1");
+    if (!e2eRunOk(productionReady, "production readiness with physical evidence")) {
+        return 1;
+    }
+    if (!e2eContains(ExecResult_stdout(productionReady), "OK owned config sources", "production source boundary")) {
+        return 1;
+    }
+    if (!e2eContains(ExecResult_stdout(productionReady), "OK presentation audit", "production presentation audit")) {
+        return 1;
+    }
+    if (!e2eContains(ExecResult_stdout(productionReady), "OK state evidence: physical save/load logs complete", "production state evidence")) {
+        return 1;
+    }
+    char* productionReport = deckProductionReadinessPath(project);
+    if (!e2eOk(FileSystem_exists(productionReport), "production readiness report missing")) {
+        return 1;
+    }
+    if (!e2eOk(SemuGeneratedFiles_isAdapterState(project, productionReport), "production readiness report should be adapter state")) {
+        return 1;
+    }
+    char* productionJson = FileSystem_readText(productionReport);
+    if (!e2eContains(productionJson, "\n    \"source_config_ok\": true", "production report should be pretty JSON")) {
+        return 1;
+    }
+    if (!e2eContains(productionJson, "\"state_evidence_ok\": true", "production report state evidence flag")) {
         return 1;
     }
     printf("%s\n", "OK BTRC Deck evidence smoke");
@@ -25152,7 +25578,7 @@ int e2eQuitWatchSmoke(char* project) {
 }
 
 void printUsage(void) {
-    printf("%s\n", "semu [manifest|bootstrap|doctor|deck|lifecycle|sync|config|settings|presentation|apprun|steam-input|keymap|screenshot|sandbox|launcher|utils|e2e] [graph|payload-audit|n3ds-nocrypto|validate|render|capabilities|install|setup|compile|reconfigure|change|uninstall|reinstall|upgrade|status|force|serve|capture|prepare|launch|game-mode-ready|game-mode-evidence|list|get|put|entry|ui|apply|plan|state|broadcast|audit|defaults] [--project PATH] [--roms PATH] [--source PATH] [--output PATH] [--dest PATH] [--target manifest|retroarch|dolphin|pcsx2|steam-input] [--system SYSTEM] [--emulator NAME] [--hook HOOK] [--scratch PATH] [--action ID] [--command KEYS]");
+    printf("%s\n", "semu [manifest|bootstrap|doctor|deck|lifecycle|sync|config|settings|presentation|apprun|steam-input|keymap|screenshot|sandbox|launcher|utils|e2e] [graph|payload-audit|n3ds-nocrypto|validate|render|capabilities|install|setup|compile|reconfigure|change|uninstall|reinstall|upgrade|status|force|serve|capture|prepare|launch|game-mode-ready|game-mode-evidence|state-evidence|production-status|production-ready|list|get|put|entry|ui|apply|plan|state|broadcast|audit|defaults] [--project PATH] [--roms PATH] [--source PATH] [--output PATH] [--dest PATH] [--target manifest|retroarch|dolphin|pcsx2|steam-input] [--system SYSTEM] [--emulator NAME] [--hook HOOK] [--scratch PATH] [--action ID] [--command KEYS]");
 }
 
 int keymapCommand(CliArgs* args) {
@@ -25165,10 +25591,10 @@ int keymapCommand(CliArgs* args) {
     char* source = defaultKeymapSource();
     if (((int)strlen(sourcePath)) > 0) {
         if (!FileSystem_exists(sourcePath)) {
-            int __fstr_1115_len = snprintf(NULL, 0, "error 0:0 keymap source not found: %s", sourcePath);
-            char* __fstr_1115_buf = __btrc_str_track(((char*)malloc((__fstr_1115_len + 1))));
-            snprintf(__fstr_1115_buf, (__fstr_1115_len + 1), "error 0:0 keymap source not found: %s", sourcePath);
-            printf("%s\n", __fstr_1115_buf);
+            int __fstr_1149_len = snprintf(NULL, 0, "error 0:0 keymap source not found: %s", sourcePath);
+            char* __fstr_1149_buf = __btrc_str_track(((char*)malloc((__fstr_1149_len + 1))));
+            snprintf(__fstr_1149_buf, (__fstr_1149_len + 1), "error 0:0 keymap source not found: %s", sourcePath);
+            printf("%s\n", __fstr_1149_buf);
             return 1;
         }
         (source = FileSystem_readText(sourcePath));
@@ -25180,57 +25606,57 @@ int keymapCommand(CliArgs* args) {
     if (strcmp(mode, "validate") == 0) {
         if (KeymapErrors_count(errors) == 0) {
             printf("%s\n", "OK keymap steam_deck");
-            int __btrc_ret_1116 = 0;
+            int __btrc_ret_1150 = 0;
             if (errors != NULL) {
                 if ((--errors->__rc) <= 0) {
                     KeymapErrors_destroy(errors);
                 }
             }
-            return __btrc_ret_1116;
+            return __btrc_ret_1150;
         }
         for (int i = 0; (i < KeymapErrors_count(errors)); (i++)) {
-            int __fstr_1119_len = snprintf(NULL, 0, "%s %d:%d %s", btrc_Vector_string_get(errors->levels, i), btrc_Vector_int_get(errors->lines, i), btrc_Vector_int_get(errors->columns, i), btrc_Vector_string_get(errors->messages, i));
-            char* __fstr_1119_buf = __btrc_str_track(((char*)malloc((__fstr_1119_len + 1))));
-            snprintf(__fstr_1119_buf, (__fstr_1119_len + 1), "%s %d:%d %s", btrc_Vector_string_get(errors->levels, i), btrc_Vector_int_get(errors->lines, i), btrc_Vector_int_get(errors->columns, i), btrc_Vector_string_get(errors->messages, i));
-            printf("%s\n", __fstr_1119_buf);
+            int __fstr_1153_len = snprintf(NULL, 0, "%s %d:%d %s", btrc_Vector_string_get(errors->levels, i), btrc_Vector_int_get(errors->lines, i), btrc_Vector_int_get(errors->columns, i), btrc_Vector_string_get(errors->messages, i));
+            char* __fstr_1153_buf = __btrc_str_track(((char*)malloc((__fstr_1153_len + 1))));
+            snprintf(__fstr_1153_buf, (__fstr_1153_len + 1), "%s %d:%d %s", btrc_Vector_string_get(errors->levels, i), btrc_Vector_int_get(errors->lines, i), btrc_Vector_int_get(errors->columns, i), btrc_Vector_string_get(errors->messages, i));
+            printf("%s\n", __fstr_1153_buf);
         }
-        int __btrc_ret_1120 = 1;
+        int __btrc_ret_1154 = 1;
         if (errors != NULL) {
             if ((--errors->__rc) <= 0) {
                 KeymapErrors_destroy(errors);
             }
         }
-        return __btrc_ret_1120;
+        return __btrc_ret_1154;
     }
     if (strcmp(mode, "render") == 0) {
         if (KeymapErrors_count(errors) > 0) {
             for (int i = 0; (i < KeymapErrors_count(errors)); (i++)) {
-                int __fstr_1123_len = snprintf(NULL, 0, "%s %d:%d %s", btrc_Vector_string_get(errors->levels, i), btrc_Vector_int_get(errors->lines, i), btrc_Vector_int_get(errors->columns, i), btrc_Vector_string_get(errors->messages, i));
-                char* __fstr_1123_buf = __btrc_str_track(((char*)malloc((__fstr_1123_len + 1))));
-                snprintf(__fstr_1123_buf, (__fstr_1123_len + 1), "%s %d:%d %s", btrc_Vector_string_get(errors->levels, i), btrc_Vector_int_get(errors->lines, i), btrc_Vector_int_get(errors->columns, i), btrc_Vector_string_get(errors->messages, i));
-                printf("%s\n", __fstr_1123_buf);
+                int __fstr_1157_len = snprintf(NULL, 0, "%s %d:%d %s", btrc_Vector_string_get(errors->levels, i), btrc_Vector_int_get(errors->lines, i), btrc_Vector_int_get(errors->columns, i), btrc_Vector_string_get(errors->messages, i));
+                char* __fstr_1157_buf = __btrc_str_track(((char*)malloc((__fstr_1157_len + 1))));
+                snprintf(__fstr_1157_buf, (__fstr_1157_len + 1), "%s %d:%d %s", btrc_Vector_string_get(errors->levels, i), btrc_Vector_int_get(errors->lines, i), btrc_Vector_int_get(errors->columns, i), btrc_Vector_string_get(errors->messages, i));
+                printf("%s\n", __fstr_1157_buf);
             }
-            int __btrc_ret_1124 = 1;
+            int __btrc_ret_1158 = 1;
             if (errors != NULL) {
                 if ((--errors->__rc) <= 0) {
                     KeymapErrors_destroy(errors);
                 }
             }
-            return __btrc_ret_1124;
+            return __btrc_ret_1158;
         }
         char* target = CliArgs_valueAfter(args, "--target", "manifest");
         if (!isKeymapTarget(target)) {
-            int __fstr_1127_len = snprintf(NULL, 0, "error 0:0 unknown keymap target '%s'", target);
-            char* __fstr_1127_buf = __btrc_str_track(((char*)malloc((__fstr_1127_len + 1))));
-            snprintf(__fstr_1127_buf, (__fstr_1127_len + 1), "error 0:0 unknown keymap target '%s'", target);
-            printf("%s\n", __fstr_1127_buf);
-            int __btrc_ret_1128 = 1;
+            int __fstr_1161_len = snprintf(NULL, 0, "error 0:0 unknown keymap target '%s'", target);
+            char* __fstr_1161_buf = __btrc_str_track(((char*)malloc((__fstr_1161_len + 1))));
+            snprintf(__fstr_1161_buf, (__fstr_1161_len + 1), "error 0:0 unknown keymap target '%s'", target);
+            printf("%s\n", __fstr_1161_buf);
+            int __btrc_ret_1162 = 1;
             if (errors != NULL) {
                 if ((--errors->__rc) <= 0) {
                     KeymapErrors_destroy(errors);
                 }
             }
-            return __btrc_ret_1128;
+            return __btrc_ret_1162;
         }
         char* rendered = renderKeymap(ir, target);
         char* output = CliArgs_valueAfter(args, "--output", "");
@@ -25239,131 +25665,131 @@ int keymapCommand(CliArgs* args) {
         } else {
             printf("%s\n", rendered);
         }
-        int __btrc_ret_1129 = 0;
+        int __btrc_ret_1163 = 0;
         if (errors != NULL) {
             if ((--errors->__rc) <= 0) {
                 KeymapErrors_destroy(errors);
             }
         }
-        return __btrc_ret_1129;
+        return __btrc_ret_1163;
     }
     if (strcmp(mode, "ui") == 0) {
-        int __btrc_ret_1130 = keymapUi(project);
+        int __btrc_ret_1164 = keymapUi(project);
         if (errors != NULL) {
             if ((--errors->__rc) <= 0) {
                 KeymapErrors_destroy(errors);
             }
         }
-        return __btrc_ret_1130;
+        return __btrc_ret_1164;
     }
     if ((strcmp(mode, "capabilities") == 0) || (strcmp(mode, "capability") == 0)) {
         if (KeymapErrors_count(errors) > 0) {
             for (int i = 0; (i < KeymapErrors_count(errors)); (i++)) {
-                int __fstr_1133_len = snprintf(NULL, 0, "%s %d:%d %s", btrc_Vector_string_get(errors->levels, i), btrc_Vector_int_get(errors->lines, i), btrc_Vector_int_get(errors->columns, i), btrc_Vector_string_get(errors->messages, i));
-                char* __fstr_1133_buf = __btrc_str_track(((char*)malloc((__fstr_1133_len + 1))));
-                snprintf(__fstr_1133_buf, (__fstr_1133_len + 1), "%s %d:%d %s", btrc_Vector_string_get(errors->levels, i), btrc_Vector_int_get(errors->lines, i), btrc_Vector_int_get(errors->columns, i), btrc_Vector_string_get(errors->messages, i));
-                printf("%s\n", __fstr_1133_buf);
+                int __fstr_1167_len = snprintf(NULL, 0, "%s %d:%d %s", btrc_Vector_string_get(errors->levels, i), btrc_Vector_int_get(errors->lines, i), btrc_Vector_int_get(errors->columns, i), btrc_Vector_string_get(errors->messages, i));
+                char* __fstr_1167_buf = __btrc_str_track(((char*)malloc((__fstr_1167_len + 1))));
+                snprintf(__fstr_1167_buf, (__fstr_1167_len + 1), "%s %d:%d %s", btrc_Vector_string_get(errors->levels, i), btrc_Vector_int_get(errors->lines, i), btrc_Vector_int_get(errors->columns, i), btrc_Vector_string_get(errors->messages, i));
+                printf("%s\n", __fstr_1167_buf);
             }
-            int __btrc_ret_1134 = 1;
+            int __btrc_ret_1168 = 1;
             if (errors != NULL) {
                 if ((--errors->__rc) <= 0) {
                     KeymapErrors_destroy(errors);
                 }
             }
-            return __btrc_ret_1134;
+            return __btrc_ret_1168;
         }
         char* actionId = CliArgs_valueAfter(args, "--action", "");
         if (((((int)strlen(actionId)) == 0) && (CliArgs_count(args) > 2)) && (!__btrc_startsWith(CliArgs_get(args, 2), "--"))) {
             (actionId = CliArgs_get(args, 2));
         }
-        int __btrc_ret_1135 = keymapCapabilitiesCommand(ir, actionId);
+        int __btrc_ret_1169 = keymapCapabilitiesCommand(ir, actionId);
         if (errors != NULL) {
             if ((--errors->__rc) <= 0) {
                 KeymapErrors_destroy(errors);
             }
         }
-        return __btrc_ret_1135;
+        return __btrc_ret_1169;
     }
     if (strcmp(mode, "get") == 0) {
         if (CliArgs_count(args) < 3) {
             printf("%s\n", "error 0:0 keymap get needs ACTION");
-            int __btrc_ret_1136 = 1;
+            int __btrc_ret_1170 = 1;
             if (errors != NULL) {
                 if ((--errors->__rc) <= 0) {
                     KeymapErrors_destroy(errors);
                 }
             }
-            return __btrc_ret_1136;
+            return __btrc_ret_1170;
         }
         char* actionId = CliArgs_get(args, 2);
         if (!keymapIrHasAction(ir, actionId)) {
-            int __fstr_1139_len = snprintf(NULL, 0, "error 0:0 unknown keymap action '%s'", actionId);
-            char* __fstr_1139_buf = __btrc_str_track(((char*)malloc((__fstr_1139_len + 1))));
-            snprintf(__fstr_1139_buf, (__fstr_1139_len + 1), "error 0:0 unknown keymap action '%s'", actionId);
-            printf("%s\n", __fstr_1139_buf);
-            int __btrc_ret_1140 = 1;
+            int __fstr_1173_len = snprintf(NULL, 0, "error 0:0 unknown keymap action '%s'", actionId);
+            char* __fstr_1173_buf = __btrc_str_track(((char*)malloc((__fstr_1173_len + 1))));
+            snprintf(__fstr_1173_buf, (__fstr_1173_len + 1), "error 0:0 unknown keymap action '%s'", actionId);
+            printf("%s\n", __fstr_1173_buf);
+            int __btrc_ret_1174 = 1;
             if (errors != NULL) {
                 if ((--errors->__rc) <= 0) {
                     KeymapErrors_destroy(errors);
                 }
             }
-            return __btrc_ret_1140;
+            return __btrc_ret_1174;
         }
         printf("%s\n", __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(actionId, "=")), irActionCommand(ir, actionId))));
         printf("%s\n", __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(actionId, ".binding=")), irBindingCombo(ir, actionId))));
-        int __btrc_ret_1141 = 0;
+        int __btrc_ret_1175 = 0;
         if (errors != NULL) {
             if ((--errors->__rc) <= 0) {
                 KeymapErrors_destroy(errors);
             }
         }
-        return __btrc_ret_1141;
+        return __btrc_ret_1175;
     }
     if ((strcmp(mode, "put") == 0) || (strcmp(mode, "set") == 0)) {
         if (CliArgs_count(args) < 4) {
             printf("%s\n", "error 0:0 keymap put needs ACTION KEYS");
-            int __btrc_ret_1142 = 1;
+            int __btrc_ret_1176 = 1;
             if (errors != NULL) {
                 if ((--errors->__rc) <= 0) {
                     KeymapErrors_destroy(errors);
                 }
             }
-            return __btrc_ret_1142;
+            return __btrc_ret_1176;
         }
         char* actionId = CliArgs_get(args, 2);
         char* command = CliArgs_get(args, 3);
         if (!keymapPutActionCommand(project, actionId, command)) {
-            int __btrc_ret_1143 = 1;
+            int __btrc_ret_1177 = 1;
             if (errors != NULL) {
                 if ((--errors->__rc) <= 0) {
                     KeymapErrors_destroy(errors);
                 }
             }
-            return __btrc_ret_1143;
+            return __btrc_ret_1177;
         }
         printf("%s\n", __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(actionId, "=")), irActionCommand(projectKeymapUiIr(project), actionId))));
         if (CliArgs_has(args, "--apply")) {
             lifecycleReconfigure(project, "");
             printf("%s\n", "OK settings applied");
         }
-        int __btrc_ret_1144 = 0;
+        int __btrc_ret_1178 = 0;
         if (errors != NULL) {
             if ((--errors->__rc) <= 0) {
                 KeymapErrors_destroy(errors);
             }
         }
-        return __btrc_ret_1144;
+        return __btrc_ret_1178;
     }
     if ((strcmp(mode, "bind") == 0) || (strcmp(mode, "binding") == 0)) {
         if ((CliArgs_count(args) < 4) && (((int)strlen(CliArgs_valueAfter(args, "--combo", ""))) == 0)) {
             printf("%s\n", "error 0:0 keymap bind needs ACTION COMBO");
-            int __btrc_ret_1145 = 1;
+            int __btrc_ret_1179 = 1;
             if (errors != NULL) {
                 if ((--errors->__rc) <= 0) {
                     KeymapErrors_destroy(errors);
                 }
             }
-            return __btrc_ret_1145;
+            return __btrc_ret_1179;
         }
         char* actionId = CliArgs_get(args, 2);
         char* combo = CliArgs_valueAfter(args, "--combo", "");
@@ -25371,35 +25797,35 @@ int keymapCommand(CliArgs* args) {
             (combo = CliArgs_get(args, 3));
         }
         if (!keymapPutBindingCombo(project, actionId, combo)) {
-            int __btrc_ret_1146 = 1;
+            int __btrc_ret_1180 = 1;
             if (errors != NULL) {
                 if ((--errors->__rc) <= 0) {
                     KeymapErrors_destroy(errors);
                 }
             }
-            return __btrc_ret_1146;
+            return __btrc_ret_1180;
         }
         printf("%s\n", __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(actionId, ".binding=")), irBindingCombo(projectKeymapUiIr(project), actionId))));
         if (CliArgs_has(args, "--apply")) {
             lifecycleReconfigure(project, "");
             printf("%s\n", "OK settings applied");
         }
-        int __btrc_ret_1147 = 0;
+        int __btrc_ret_1181 = 0;
         if (errors != NULL) {
             if ((--errors->__rc) <= 0) {
                 KeymapErrors_destroy(errors);
             }
         }
-        return __btrc_ret_1147;
+        return __btrc_ret_1181;
     }
     printUsage();
-    int __btrc_ret_1148 = 1;
+    int __btrc_ret_1182 = 1;
     if (errors != NULL) {
         if ((--errors->__rc) <= 0) {
             KeymapErrors_destroy(errors);
         }
     }
-    return __btrc_ret_1148;
+    return __btrc_ret_1182;
     if (errors != NULL) {
         if ((--errors->__rc) <= 0) {
             KeymapErrors_destroy(errors);
@@ -25414,10 +25840,10 @@ int screenshotCommand(CliArgs* args, char* project) {
     }
     if ((strcmp(mode, "setup") == 0) || (strcmp(mode, "defaults") == 0)) {
         writeScreenshotDefaults(project);
-        int __fstr_1151_len = snprintf(NULL, 0, "OK screenshot defaults: %s", screenshotConfigPath(project));
-        char* __fstr_1151_buf = __btrc_str_track(((char*)malloc((__fstr_1151_len + 1))));
-        snprintf(__fstr_1151_buf, (__fstr_1151_len + 1), "OK screenshot defaults: %s", screenshotConfigPath(project));
-        printf("%s\n", __fstr_1151_buf);
+        int __fstr_1185_len = snprintf(NULL, 0, "OK screenshot defaults: %s", screenshotConfigPath(project));
+        char* __fstr_1185_buf = __btrc_str_track(((char*)malloc((__fstr_1185_len + 1))));
+        snprintf(__fstr_1185_buf, (__fstr_1185_len + 1), "OK screenshot defaults: %s", screenshotConfigPath(project));
+        printf("%s\n", __fstr_1185_buf);
         return 0;
     }
     if (strcmp(mode, "status") == 0) {
@@ -25463,10 +25889,10 @@ int syncCommand(CliArgs* args, char* project) {
         }
         SyncSettingSpec* spec = SyncSettingsRegistry_find(CliArgs_get(args, 2));
         if (!SyncSettingSpec_known(spec)) {
-            int __fstr_1154_len = snprintf(NULL, 0, "error 0:0 unknown sync setting '%s'", CliArgs_get(args, 2));
-            char* __fstr_1154_buf = __btrc_str_track(((char*)malloc((__fstr_1154_len + 1))));
-            snprintf(__fstr_1154_buf, (__fstr_1154_len + 1), "error 0:0 unknown sync setting '%s'", CliArgs_get(args, 2));
-            printf("%s\n", __fstr_1154_buf);
+            int __fstr_1188_len = snprintf(NULL, 0, "error 0:0 unknown sync setting '%s'", CliArgs_get(args, 2));
+            char* __fstr_1188_buf = __btrc_str_track(((char*)malloc((__fstr_1188_len + 1))));
+            snprintf(__fstr_1188_buf, (__fstr_1188_len + 1), "error 0:0 unknown sync setting '%s'", CliArgs_get(args, 2));
+            printf("%s\n", __fstr_1188_buf);
             return 1;
         }
         printf("%s\n", __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(spec->key, "=")), syncSettingValue(project, spec))));
@@ -25585,23 +26011,23 @@ int deckLaunch(char* project) {
     char* env = __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat("SEMU_PROJECT_DIR=", ShellWords_quote(project))), " SEMU_ROMS_DIR=")), ShellWords_quote(configuredRomsRoot(project))));
     if (commandExists("es-de")) {
         UnixShell_runRaw(shell, __btrc_str_track(__btrc_strcat(env, " es-de")), false, false, "");
-        int __btrc_ret_1155 = 0;
+        int __btrc_ret_1189 = 0;
         if (shell != NULL) {
             if ((--shell->__rc) <= 0) {
                 UnixShell_destroy(shell);
             }
         }
-        return __btrc_ret_1155;
+        return __btrc_ret_1189;
     } else {
         printf("%s\n", "MISSING es-de: use the bundled AppImage or install ES-DE");
     }
-    int __btrc_ret_1156 = 127;
+    int __btrc_ret_1190 = 127;
     if (shell != NULL) {
         if ((--shell->__rc) <= 0) {
             UnixShell_destroy(shell);
         }
     }
-    return __btrc_ret_1156;
+    return __btrc_ret_1190;
     if (shell != NULL) {
         if ((--shell->__rc) <= 0) {
             UnixShell_destroy(shell);
@@ -25634,8 +26060,17 @@ int deckCommand(CliArgs* args, char* project) {
     if ((strcmp(mode, "game-mode-evidence") == 0) || (strcmp(mode, "verify-game-mode") == 0)) {
         return deckGameModeEvidenceCommand(args, project);
     }
+    if ((strcmp(mode, "state-evidence") == 0) || (strcmp(mode, "verify-state") == 0)) {
+        return deckStateEvidenceCommand(args, project);
+    }
     if (((strcmp(mode, "game-mode-ready") == 0) || (strcmp(mode, "game-mode-readiness") == 0)) || (strcmp(mode, "verify-game-mode-ready") == 0)) {
         return deckGameModeReadinessCommand(args, project);
+    }
+    if (strcmp(mode, "production-status") == 0) {
+        return deckProductionReadinessCommand(args, project, true);
+    }
+    if ((strcmp(mode, "production-ready") == 0) || (strcmp(mode, "verify-production") == 0)) {
+        return deckProductionReadinessCommand(args, project, false);
     }
     if ((((((((strcmp(mode, "setup") == 0) || (strcmp(mode, "compile") == 0)) || (strcmp(mode, "reconfigure") == 0)) || (strcmp(mode, "change") == 0)) || (strcmp(mode, "uninstall") == 0)) || (strcmp(mode, "reinstall") == 0)) || (strcmp(mode, "upgrade") == 0)) || (strcmp(mode, "status") == 0)) {
         return lifecycleCommand(args, project);
@@ -25645,21 +26080,21 @@ int deckCommand(CliArgs* args, char* project) {
         KeymapErrors* errors = KeymapErrors_new();
         compileKeymap((FileSystem_exists(keymapSourcePath(project)) ? FileSystem_readText(keymapSourcePath(project)) : defaultKeymapSource()), errors);
         if (KeymapErrors_count(errors) > 0) {
-            int __btrc_ret_1157 = 1;
+            int __btrc_ret_1191 = 1;
             if (errors != NULL) {
                 if ((--errors->__rc) <= 0) {
                     KeymapErrors_destroy(errors);
                 }
             }
-            return __btrc_ret_1157;
+            return __btrc_ret_1191;
         }
-        int __btrc_ret_1158 = 0;
+        int __btrc_ret_1192 = 0;
         if (errors != NULL) {
             if ((--errors->__rc) <= 0) {
                 KeymapErrors_destroy(errors);
             }
         }
-        return __btrc_ret_1158;
+        return __btrc_ret_1192;
         if (errors != NULL) {
             if ((--errors->__rc) <= 0) {
                 KeymapErrors_destroy(errors);
@@ -25707,10 +26142,10 @@ int steamInputCommand(CliArgs* args, char* project) {
         ensureDir(destination);
         copySteamInputTemplate(project, destination, "neptune-simple.vdf");
         copySteamInputTemplate(project, destination, "neptune-full.vdf");
-        int __fstr_1161_len = snprintf(NULL, 0, "OK steam-input templates: %s", destination);
-        char* __fstr_1161_buf = __btrc_str_track(((char*)malloc((__fstr_1161_len + 1))));
-        snprintf(__fstr_1161_buf, (__fstr_1161_len + 1), "OK steam-input templates: %s", destination);
-        printf("%s\n", __fstr_1161_buf);
+        int __fstr_1195_len = snprintf(NULL, 0, "OK steam-input templates: %s", destination);
+        char* __fstr_1195_buf = __btrc_str_track(((char*)malloc((__fstr_1195_len + 1))));
+        snprintf(__fstr_1195_buf, (__fstr_1195_len + 1), "OK steam-input templates: %s", destination);
+        printf("%s\n", __fstr_1195_buf);
         steamInputInstallSelection(args);
         return 0;
     }
@@ -25761,10 +26196,10 @@ int configCommand(CliArgs* args, char* project) {
         if (!settingsPutValue(project, "roms.dir", roms)) {
             return 1;
         }
-        int __fstr_1164_len = snprintf(NULL, 0, "OK owned roms_dir: %s", configuredRomsRoot(project));
-        char* __fstr_1164_buf = __btrc_str_track(((char*)malloc((__fstr_1164_len + 1))));
-        snprintf(__fstr_1164_buf, (__fstr_1164_len + 1), "OK owned roms_dir: %s", configuredRomsRoot(project));
-        printf("%s\n", __fstr_1164_buf);
+        int __fstr_1198_len = snprintf(NULL, 0, "OK owned roms_dir: %s", configuredRomsRoot(project));
+        char* __fstr_1198_buf = __btrc_str_track(((char*)malloc((__fstr_1198_len + 1))));
+        snprintf(__fstr_1198_buf, (__fstr_1198_len + 1), "OK owned roms_dir: %s", configuredRomsRoot(project));
+        printf("%s\n", __fstr_1198_buf);
         if (CliArgs_has(args, "--apply")) {
             lifecycleReconfigure(project, "");
             printf("%s\n", "OK settings applied");
@@ -25777,10 +26212,10 @@ int configCommand(CliArgs* args, char* project) {
     if (strcmp(mode, "show") == 0) {
         reportFile("sync_config", syncConfigPath(project));
         reportFile("settings_config", semuSettingsPath(project));
-        int __fstr_1167_len = snprintf(NULL, 0, "  roms_dir: %s", configuredRomsRoot(project));
-        char* __fstr_1167_buf = __btrc_str_track(((char*)malloc((__fstr_1167_len + 1))));
-        snprintf(__fstr_1167_buf, (__fstr_1167_len + 1), "  roms_dir: %s", configuredRomsRoot(project));
-        printf("%s\n", __fstr_1167_buf);
+        int __fstr_1201_len = snprintf(NULL, 0, "  roms_dir: %s", configuredRomsRoot(project));
+        char* __fstr_1201_buf = __btrc_str_track(((char*)malloc((__fstr_1201_len + 1))));
+        snprintf(__fstr_1201_buf, (__fstr_1201_len + 1), "  roms_dir: %s", configuredRomsRoot(project));
+        printf("%s\n", __fstr_1201_buf);
         return 0;
     }
     printUsage();
@@ -25804,44 +26239,44 @@ int main(int argc, char** argv) {
     char* project = CliArgs_valueAfter(args, "--project", Environment_get("SEMU_PROJECT_DIR", "."));
     char* programLauncher = launcherNameFromProgram(args->program);
     if (((int)strlen(programLauncher)) > 0) {
-        int __btrc_ret_1168 = launcherRunEmulator(project, programLauncher, launcherPassthroughArgs(args));
+        int __btrc_ret_1202 = launcherRunEmulator(project, programLauncher, launcherPassthroughArgs(args));
         if (args != NULL) {
             if ((--args->__rc) <= 0) {
                 CliArgs_destroy(args);
             }
         }
-        return __btrc_ret_1168;
+        return __btrc_ret_1202;
     }
     if ((strcmp(command, "") == 0) || (strcmp(command, "manifest") == 0)) {
         char* output = CliArgs_valueAfter(args, "--output", "semu.json");
         writeGeneratedManifest(output);
-        int __btrc_ret_1169 = 0;
+        int __btrc_ret_1203 = 0;
         if (args != NULL) {
             if ((--args->__rc) <= 0) {
                 CliArgs_destroy(args);
             }
         }
-        return __btrc_ret_1169;
+        return __btrc_ret_1203;
     }
     if (strcmp(command, "bootstrap") == 0) {
         bootstrapSteamDeck(project);
-        int __btrc_ret_1170 = 0;
+        int __btrc_ret_1204 = 0;
         if (args != NULL) {
             if ((--args->__rc) <= 0) {
                 CliArgs_destroy(args);
             }
         }
-        return __btrc_ret_1170;
+        return __btrc_ret_1204;
     }
     if (strcmp(command, "doctor") == 0) {
         doctorSteamDeck(project);
-        int __btrc_ret_1171 = 0;
+        int __btrc_ret_1205 = 0;
         if (args != NULL) {
             if ((--args->__rc) <= 0) {
                 CliArgs_destroy(args);
             }
         }
-        return __btrc_ret_1171;
+        return __btrc_ret_1205;
     }
     if (strcmp(command, "deck") == 0) {
         int status = deckCommand(args, project);
@@ -25979,13 +26414,13 @@ int main(int argc, char** argv) {
         return status;
     }
     printUsage();
-    int __btrc_ret_1172 = 1;
+    int __btrc_ret_1206 = 1;
     if (args != NULL) {
         if ((--args->__rc) <= 0) {
             CliArgs_destroy(args);
         }
     }
-    return __btrc_ret_1172;
+    return __btrc_ret_1206;
     if (args != NULL) {
         if ((--args->__rc) <= 0) {
             CliArgs_destroy(args);

@@ -107,8 +107,16 @@ the radial path.
 - `deck game-mode-evidence --prepare` writes the Semu-owned physical test
   checklist; `deck game-mode-evidence` fails any emulator whose quit-watch log
   is missing or lacks a `reason=` event.
+- `deck state-evidence --prepare` writes the Semu-owned save/load checklist for
+  emulators with generated state contracts; `deck state-evidence` fails until
+  the matching adapter-state log has both `action=state.save result=ok` and
+  `action=state.load result=ok`.
 - `deck game-mode-ready --require-evidence` combines the readiness gate with
   complete quit-watch evidence after the physical pass.
+- `deck production-status` is the SSH-friendly composed report. `deck
+  production-ready` is the final gate: owned source config, presentation audit,
+  Steam shortcut/template selection, installed AppImage, quit evidence, and
+  generated state evidence must all pass.
 - Save and load are only marked production-ready for an emulator after a real
   state file is created and reloaded from the radial path.
 - Unsupported state actions are hidden or rendered as disabled capability
