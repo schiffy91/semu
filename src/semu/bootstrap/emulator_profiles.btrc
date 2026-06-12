@@ -94,9 +94,16 @@ string retroArchProfileText(string project, KeymapIr ir) {
     ]) + retroArchVisualConfigText(project) + renderRetroArchKeymap(ir);
 }
 
-string dolphinGcpadProfileText() {
-    return textLines([
-        "[Profile]",
+Vector<string> dolphinSection(string header, Vector<string> lines) {
+    Vector<string> result = [header];
+    for line in lines {
+        result.push(line);
+    }
+    return result;
+}
+
+Vector<string> dolphinGcpadLines() {
+    return [
         "Device = SDL/0/Steam Deck Controller",
         "Buttons/A = `Button S`",
         "Buttons/B = `Button W`",
@@ -122,7 +129,44 @@ string dolphinGcpadProfileText() {
         "D-Pad/Right = `Pad E`",
         "Rumble/Motor = Strong",
         "Options/Always Connected = True"
+    ];
+}
+
+string dolphinGcpadProfileText() {
+    return textLines(dolphinSection("[Profile]", dolphinGcpadLines()));
+}
+
+string dolphinConfigText() {
+    return textLines([
+        "[Analytics]",
+        "Enabled = False",
+        "PermissionAsked = True",
+        "",
+        "[Core]",
+        "SIDevice0 = 6",
+        "SIDevice1 = 0",
+        "SIDevice2 = 0",
+        "SIDevice3 = 0",
+        "WiimoteSource0 = 1",
+        "WiimoteSource1 = 0",
+        "WiimoteSource2 = 0",
+        "WiimoteSource3 = 0",
+        "",
+        "[Interface]",
+        "ConfirmStop = False",
+        "UsePanicHandlers = False"
     ]);
+}
+
+string dolphinGcpadRuntimeText() {
+    Vector<string> lines = dolphinSection("[GCPad1]", dolphinGcpadLines());
+    lines.push("[GCPad2]");
+    lines.push("Device = SDL/0/Steam Deck Controller");
+    lines.push("[GCPad3]");
+    lines.push("Device = SDL/0/Steam Deck Controller");
+    lines.push("[GCPad4]");
+    lines.push("Device = SDL/0/Steam Deck Controller");
+    return textLines(lines);
 }
 
 string dolphinHotkeysProfileText(KeymapIr ir) {
@@ -138,14 +182,13 @@ string dolphinHotkeysProfileText(KeymapIr ir) {
         ]);
 }
 
-string dolphinWiimoteProfileText(bool classic) {
+Vector<string> dolphinWiimoteLines(bool classic) {
     Vector<string> lines = [
-        "[Profile]",
         "Device = SteamDeck/0/Steam Deck",
-        "Buttons/A = `XInput2/0/Virtual core pointer:Click 1`",
-        "Buttons/B = `R4`",
-        "Buttons/1 = `L4`",
-        "Buttons/2 = `L5`",
+        "Buttons/A = `A`|`XInput2/0/Virtual core pointer:Click 1`|`XInput2/0/Virtual core pointer:Return`",
+        "Buttons/B = B|`R4`",
+        "Buttons/1 = X",
+        "Buttons/2 = Y",
         "Buttons/- = View",
         "Buttons/+ = Menu",
         "D-Pad/Up = `D-Pad Up`",
@@ -161,7 +204,19 @@ string dolphinWiimoteProfileText(bool classic) {
         "IR/Left = `XInput2/0/Virtual core pointer:Cursor X-`",
         "IR/Right = `XInput2/0/Virtual core pointer:Cursor X+`",
         "IR/Hide = `Thumb L`",
-        "IMUIR/Enabled = False"
+        "IMUIR/Enabled = False",
+        "IMUAccelerometer/Up = `Accel Up`",
+        "IMUAccelerometer/Down = `Accel Down`",
+        "IMUAccelerometer/Left = `Accel Left`",
+        "IMUAccelerometer/Right = `Accel Right`",
+        "IMUAccelerometer/Forward = `Accel Forward`",
+        "IMUAccelerometer/Backward = `Accel Backward`",
+        "IMUGyroscope/Pitch Up = `Gyro Pitch Up`",
+        "IMUGyroscope/Pitch Down = `Gyro Pitch Down`",
+        "IMUGyroscope/Roll Left = `Gyro Roll Left`",
+        "IMUGyroscope/Roll Right = `Gyro Roll Right`",
+        "IMUGyroscope/Yaw Left = `Gyro Yaw Left`",
+        "IMUGyroscope/Yaw Right = `Gyro Yaw Right`"
     ];
     if (classic) {
         lines.push("Extension = Classic");
@@ -188,18 +243,72 @@ string dolphinWiimoteProfileText(bool classic) {
         lines.push("Classic/D-Pad/Left = `D-Pad Left`");
         lines.push("Classic/D-Pad/Right = `D-Pad Right`");
     } else {
+        lines.push("Extension = Nunchuk");
         lines.push("Nunchuk/Buttons/C = `Shoulder R`");
         lines.push("Nunchuk/Buttons/Z = `Trigger R`");
-        lines.push("Nunchuk/Stick/Up = `Axis 1-`");
-        lines.push("Nunchuk/Stick/Down = `Axis 1+`");
-        lines.push("Nunchuk/Stick/Left = `Axis 0-`");
-        lines.push("Nunchuk/Stick/Right = `Axis 0+`");
+        lines.push("Nunchuk/Stick/Up = `Left Stick Y+`");
+        lines.push("Nunchuk/Stick/Down = `Left Stick Y-`");
+        lines.push("Nunchuk/Stick/Left = `Left Stick X-`");
+        lines.push("Nunchuk/Stick/Right = `Left Stick X+`");
     }
     lines.push("Rumble/Motor = Strong");
+    return lines;
+}
+
+string dolphinWiimoteProfileText(bool classic) {
+    return textLines(dolphinSection("[Profile]", dolphinWiimoteLines(classic)));
+}
+
+Vector<string> dolphinWiimoteRuntimeLines() {
+    return [
+        "Device = XInput2/0/Virtual core pointer",
+        "Buttons/A = Return|`Click 1`|`SteamDeck/0/Steam Deck:A`",
+        "Buttons/B = B|`Click 3`|`SteamDeck/0/Steam Deck:B`|`SteamDeck/0/Steam Deck:R4`",
+        "Buttons/1 = 1|`SteamDeck/0/Steam Deck:X`",
+        "Buttons/2 = 2|`SteamDeck/0/Steam Deck:Y`",
+        "Buttons/- = Q|`SteamDeck/0/Steam Deck:View`",
+        "Buttons/+ = E|`SteamDeck/0/Steam Deck:Menu`",
+        "Buttons/Home = Return",
+        "D-Pad/Up = Up|`SteamDeck/0/Steam Deck:D-Pad Up`",
+        "D-Pad/Down = Down|`SteamDeck/0/Steam Deck:D-Pad Down`",
+        "D-Pad/Left = Left|`SteamDeck/0/Steam Deck:D-Pad Left`",
+        "D-Pad/Right = Right|`SteamDeck/0/Steam Deck:D-Pad Right`",
+        "IR/Vertical Offset = 12.",
+        "IR/Total Yaw = 19.",
+        "IR/Total Pitch = 22.",
+        "IR/Auto-Hide = True",
+        "IR/Up = `Cursor Y-`",
+        "IR/Down = `Cursor Y+`",
+        "IR/Left = `Cursor X-`",
+        "IR/Right = `Cursor X+`",
+        "IR/Hide = `SteamDeck/0/Steam Deck:Thumb L`",
+        "IMUIR/Enabled = False",
+        "Extension = Nunchuk",
+        "Nunchuk/Buttons/C = `SteamDeck/0/Steam Deck:Shoulder R`",
+        "Nunchuk/Buttons/Z = `SteamDeck/0/Steam Deck:Trigger R`",
+        "Nunchuk/Stick/Up = `SteamDeck/0/Steam Deck:Left Stick Y+`",
+        "Nunchuk/Stick/Down = `SteamDeck/0/Steam Deck:Left Stick Y-`",
+        "Nunchuk/Stick/Left = `SteamDeck/0/Steam Deck:Left Stick X-`",
+        "Nunchuk/Stick/Right = `SteamDeck/0/Steam Deck:Left Stick X+`",
+        "Rumble/Motor = Strong"
+    ];
+}
+
+string dolphinWiimoteRuntimeText() {
+    Vector<string> lines = dolphinSection("[Wiimote1]", dolphinWiimoteRuntimeLines());
+    lines.push("Source = 1");
+    lines.push("[Wiimote2]");
+    lines.push("Device = SteamDeck/0/Steam Deck");
+    lines.push("[Wiimote3]");
+    lines.push("Device = SteamDeck/0/Steam Deck");
+    lines.push("[Wiimote4]");
+    lines.push("Device = SteamDeck/0/Steam Deck");
+    lines.push("[BalanceBoard]");
+    lines.push("Device = SteamDeck/0/Steam Deck");
     return textLines(lines);
 }
 
-string pcsx2ProfileText(KeymapIr ir) {
+string pcsx2PadBindingsText() {
     return textLines([
         "[Pad]",
         "UseProfileHotkeyBindings = true",
@@ -215,16 +324,16 @@ string pcsx2ProfileText(KeymapIr ir) {
         "",
         "[Pad1]",
         "Type = DualShock2",
-        "Up = SDL-1/DPadUp",
-        "Right = SDL-1/DPadRight",
-        "Down = SDL-1/DPadDown",
-        "Left = SDL-1/DPadLeft",
-        "Triangle = SDL-1/Y",
-        "Circle = SDL-1/B",
-        "Cross = SDL-1/A",
-        "Square = SDL-1/X",
-        "Select = SDL-1/Back",
-        "Start = SDL-1/Start",
+        "Up = SDL-1/DPadUp | Keyboard/Up",
+        "Right = SDL-1/DPadRight | Keyboard/Right",
+        "Down = SDL-1/DPadDown | Keyboard/Down",
+        "Left = SDL-1/DPadLeft | Keyboard/Left",
+        "Triangle = SDL-1/Y | Keyboard/I",
+        "Circle = SDL-1/B | Keyboard/X",
+        "Cross = SDL-1/A | Keyboard/Z",
+        "Square = SDL-1/X | Keyboard/A",
+        "Select = SDL-1/Back | Keyboard/Backspace",
+        "Start = SDL-1/Start | Keyboard/Enter",
         "L1 = SDL-1/LeftShoulder",
         "L2 = SDL-1/+LeftTrigger",
         "R1 = SDL-1/RightShoulder",
@@ -241,8 +350,12 @@ string pcsx2ProfileText(KeymapIr ir) {
         "RLeft = SDL-1/-RightX",
         "",
         "[Pad2]",
-        "Type = None",
-        "",
+        "Type = None"
+    ]);
+}
+
+string pcsx2ProfileText(KeymapIr ir) {
+    return pcsx2PadBindingsText() + textLines([
         "[Hotkeys]"
     ]) + renderPcsx2Keymap(ir);
 }
@@ -298,13 +411,8 @@ string pcsx2ConfigText(string project) {
         "upscale_multiplier = 1",
         "filter = 0",
         "VsyncEnable = true",
-        "",
-        "[InputSources]",
-        "Keyboard = true",
-        "Mouse = true",
-        "SDL = true",
-        "SDLControllerEnhancedMode = true"
-    ]);
+        ""
+    ]) + pcsx2PadBindingsText();
 }
 
 string azaharConfigTextForDataRoot(string dataRoot) {

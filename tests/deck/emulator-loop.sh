@@ -10,7 +10,6 @@ SEND="${SEMU_UINPUT_SEND:-$OUT/uinput-send}"
 SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd -P)"
 FAILURES=0
 BASELINE="$OUT/baseline.png"
-BASELINE_SHA=""
 CASE_FILTER="${SEMU_CASES:-}"
 
 mkdir -p "$OUT"
@@ -43,6 +42,20 @@ discover_graphical_env() {
 
 discover_graphical_env
 
+cleanup_emulators() {
+  local name
+  for name in \
+    retroarch dolphin-emu ppsspp flycast melonDS pcsx2-qt Cemu azahar Ryujinx es-de; do
+    pkill -TERM -x "$name" 2>/dev/null || true
+  done
+  sleep 1
+  for name in \
+    retroarch dolphin-emu ppsspp flycast melonDS pcsx2-qt Cemu azahar Ryujinx es-de; do
+    pkill -KILL -x "$name" 2>/dev/null || true
+  done
+}
+
+cleanup_emulators
 ps -eo pid,args | awk '/\/usr\/bin\/es-de --no-splash/ {print $1}' | xargs -r kill 2>/dev/null || true
 sleep 2
 
@@ -52,6 +65,19 @@ build_uinput_sender() {
   fi
   if [ -f "$SCRIPT_DIR/uinput-send.c" ] && command -v cc >/dev/null 2>&1; then
     cc "$SCRIPT_DIR/uinput-send.c" -O2 -Wall -Wextra -o "$SEND" && return 0
+  fi
+  local nix_cmd=""
+  if command -v nix >/dev/null 2>&1; then
+    nix_cmd="$(command -v nix)"
+  elif [ -x /nix/var/nix/profiles/default/bin/nix ]; then
+    nix_cmd=/nix/var/nix/profiles/default/bin/nix
+  fi
+  if [ -n "$nix_cmd" ] && [ -f "$SCRIPT_DIR/uinput-send.c" ]; then
+    (
+      cd "$PROJECT"
+      "$nix_cmd" --extra-experimental-features "nix-command flakes" develop -c \
+        cc "$SCRIPT_DIR/uinput-send.c" -O2 -Wall -Wextra -o "$SEND"
+    ) && return 0
   fi
   if [ -x /home/deck/.cache/semu-uinput-send ]; then
     SEND=/home/deck/.cache/semu-uinput-send
@@ -85,7 +111,7 @@ window_snapshot() {
 
 focus_emulator_window() {
   local emulator="$1"
-  command -v xdotool >/dev/null 2>&1 || return 0
+  command -v xdotool >/dev/null 2>&1 || return 1
   local patterns=()
   case "$emulator" in
     retroarch) patterns=("RetroArch") ;;
@@ -107,6 +133,21 @@ focus_emulator_window() {
       return 0
     fi
   done
+  return 1
+}
+
+wait_for_emulator_window() {
+  local emulator="$1"
+  local attempts="${2:-12}"
+  local i=0
+  while [ "$i" -lt "$attempts" ]; do
+    if focus_emulator_window "$emulator"; then
+      return 0
+    fi
+    sleep 1
+    i=$((i + 1))
+  done
+  return 1
 }
 
 alive() {
@@ -114,10 +155,30 @@ alive() {
 }
 
 send_input() {
-  if [ ! -x "$SEND" ]; then
-    return 0
-  fi
-  sudo "$SEND" "$@" >/dev/null 2>&1 || true
+  local action
+  for action in "$@"; do
+    case "$action" in
+      xkey-*)
+        command -v xdotool >/dev/null 2>&1 && xdotool key "${action#xkey-}" >/dev/null 2>&1 || true
+        ;;
+      xclick)
+        command -v xdotool >/dev/null 2>&1 && xdotool click 1 >/dev/null 2>&1 || true
+        ;;
+      *)
+        [ -x "$SEND" ] && sudo "$SEND" "$action" >/dev/null 2>&1 || true
+        ;;
+    esac
+    sleep 0.1
+  done
+}
+
+input_probe_actions() {
+  case "$1" in
+    n3ds) printf '%s\n' key-a ;;
+    ps2) printf '%s\n' enter ;;
+    wii) printf '%s\n' steam-a xkey-Return xclick ;;
+    *) printf '%s\n' gameplay-probe ;;
+  esac
 }
 
 case_selected() {
@@ -136,8 +197,9 @@ case_failed() {
   local quit="$4"
   local size="$5"
   local visual="$6"
-  if [ "$status" != "0" ] || [ "$quit" != "ok" ] || [ "$size" -lt 50000 ] || [ "$visual" != "changed" ]; then
-    printf 'FAIL\t%s\tstatus=%s\tquit=%s\tpng_bytes=%s\tvisual=%s\trequired=%s\n' "$id" "$status" "$quit" "$size" "$visual" "$required" | tee -a "$OUT/summary.tsv"
+  local input_visual="$7"
+  if [ "$status" != "0" ] || [ "$quit" != "ok" ] || [ "$size" -lt 50000 ] || [ "$visual" != "changed" ] || [ "$input_visual" != "changed" ]; then
+    printf 'FAIL\t%s\tstatus=%s\tquit=%s\tpng_bytes=%s\tvisual=%s\tinput_visual=%s\trequired=%s\n' "$id" "$status" "$quit" "$size" "$visual" "$input_visual" "$required" | tee -a "$OUT/summary.tsv"
     if [ "$required" = "yes" ]; then
       FAILURES=$((FAILURES + 1))
     fi
@@ -154,16 +216,25 @@ run_case() {
   case_selected "$id" || return 0
 
   local log="$OUT/$id.log"
+  local case_baseline="$OUT/$id.baseline.png"
   local png="$OUT/$id.png"
+  local input_png="$OUT/$id.after-input.png"
   local status="unknown"
   local quit="unknown"
   local size="0"
+  local case_baseline_sha=""
   local sha=""
+  local input_sha=""
   local visual="unknown"
+  local input_visual="not-run"
+  local input_probe=""
+  local quit_debug="${SEMU_QUIT_WATCH_DEBUG:-0}"
   local required="${SEMU_CURRENT_ROUTE_REQUIRED:-yes}"
 
-  rm -f "$log" "$png"
+  rm -f "$log" "$case_baseline" "$png" "$input_png"
   printf 'START\t%s\t%s\n' "$id" "$(date +%H:%M:%S)" | tee -a "$OUT/summary.tsv"
+  capture_screen "$case_baseline"
+  case_baseline_sha="$(file_sha "$case_baseline" || true)"
 
   setsid env \
     XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" \
@@ -174,25 +245,38 @@ run_case() {
     SEMU_PROJECT_DIR="$PROJECT" \
     SEMU_ROMS="$ROMS" \
     SEMU_ROMS_DIR="$ROMS" \
-    SEMU_QUIT_WATCH_DEBUG=1 \
+    SEMU_QUIT_WATCH_DEBUG="$quit_debug" \
     "$APP" launcher routed "$emulator" "$executable" "$@" >"$log" 2>&1 < /dev/null &
 
   local pid=$!
   sleep "$wait_seconds"
-  if alive "$pid"; then
-    send_input gameplay-probe
-    sleep 2
-  fi
-  focus_emulator_window "$emulator"
+  wait_for_emulator_window "$emulator" 12 || true
   sleep 1
   window_snapshot "$OUT/$id.windows"
   capture_screen "$png"
   [ -f "$png" ] && size="$(wc -c < "$png" | tr -d ' ')"
   sha="$(file_sha "$png" || true)"
-  if [ -n "$sha" ] && [ -n "$BASELINE_SHA" ] && [ "$sha" != "$BASELINE_SHA" ]; then
+  if ! alive "$pid"; then
+    visual="not-running"
+  elif [ -n "$sha" ] && [ -n "$case_baseline_sha" ] && [ "$sha" != "$case_baseline_sha" ]; then
     visual="changed"
-  elif [ -n "$sha" ] && [ "$sha" = "$BASELINE_SHA" ]; then
+  elif [ -n "$sha" ] && [ "$sha" = "$case_baseline_sha" ]; then
     visual="baseline"
+  fi
+
+  if alive "$pid"; then
+    input_probe="$(input_probe_actions "$id")"
+    send_input $input_probe
+    sleep 2
+    capture_screen "$input_png"
+    input_sha="$(file_sha "$input_png" || true)"
+    if [ -n "$input_sha" ] && [ -n "$case_baseline_sha" ] && [ "$input_sha" = "$case_baseline_sha" ]; then
+      input_visual="baseline"
+    elif [ -n "$input_sha" ] && [ -n "$sha" ] && [ "$input_sha" != "$sha" ]; then
+      input_visual="changed"
+    elif [ -n "$input_sha" ]; then
+      input_visual="unchanged"
+    fi
   fi
 
   if alive "$pid"; then
@@ -213,13 +297,14 @@ run_case() {
 
   wait "$pid" >/dev/null 2>&1
   status="$?"
+  cleanup_emulators
   if grep -q 'quit key: select+start\|quit key: escape\|quit requested' "$log" 2>/dev/null; then
     quit="ok"
   else
     quit="missing"
   fi
-  printf 'RESULT\t%s\tstatus=%s\tquit=%s\tpng_bytes=%s\tvisual=%s\trequired=%s\n' "$id" "$status" "$quit" "$size" "$visual" "$required" | tee -a "$OUT/summary.tsv"
-  case_failed "$required" "$id" "$status" "$quit" "$size" "$visual"
+  printf 'RESULT\t%s\tstatus=%s\tquit=%s\tpng_bytes=%s\tvisual=%s\tinput_visual=%s\trequired=%s\n' "$id" "$status" "$quit" "$size" "$visual" "$input_visual" "$required" | tee -a "$OUT/summary.tsv"
+  case_failed "$required" "$id" "$status" "$quit" "$size" "$visual" "$input_visual"
   tail -20 "$log" > "$OUT/$id.tail" 2>/dev/null || true
   sleep 2
 }
@@ -241,7 +326,6 @@ exe() {
 
 build_uinput_sender || true
 capture_screen "$BASELINE"
-BASELINE_SHA="$(file_sha "$BASELINE" || true)"
 window_snapshot "$OUT/baseline.windows"
 
 run_case gb retroarch "$(exe retroarch)" 12 -L "$(core gambatte_libretro.so)" "$ROMS/gb/Tetris (World) (Rev 1).zip"

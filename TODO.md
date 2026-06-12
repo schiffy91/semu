@@ -4,11 +4,16 @@
 
 - Rebuilt and installed the self-contained AppImage at
   `/home/deck/Applications/Semu/Semu-x86_64.AppImage`.
+- Installed AppImage hash
+  `4b7dc3f90d603a3c4b2a1b0f1c5dc6bac6dbe7491f3ea63b11523d318aa7d261`.
 - Ran the Desktop Mode direct AppImage Deck loop over the required routed
-  emulator set. Processes launched and accepted the scripted quit path, but the
-  captured PNGs were later found to be desktop captures rather than reliable
-  emulator framebuffer proof. Treat `build/deck-loop-*` as process evidence
-  only until the foreground/window capture issue is fixed and rerun.
+  emulator set with clean process startup, foreground-window wait, screenshots,
+  scripted input probes, and unified quit verification. `gb`, `gbc`, `gba`,
+  `nes`, `snes`, `genesis`, `n64-retroarch`, `psp`, `dreamcast`, `gc`, `wii`,
+  `ps2`, `nds-melonds`, `n3ds`, `wiiu`, and `switch` all passed.
+- Visually inspected final 3DS and Wii captures: 3DS shows Super Mario 3D Land
+  in-game UI, and Wii is past the strap screen at Kirby's Epic Yarn's save
+  prompt.
 - Confirmed the RetroArch DeSmuME DS alternate route is not production-ready on
   the Deck loop: the earlier optional route produced a screenshot but exited
   `status=139` before quit. The production DS route remains melonDS.
@@ -53,8 +58,6 @@
 
 - Run a real Steam Deck Game Mode pass for Steam Input templates, the physical
   left-trackpad radial quit, and ES-DE return flow.
-- Fix and rerun Desktop Mode visual capture so the required emulator loop proves
-  actual emulator windows/framebuffers, not only process launch and quit.
 - Confirm controller movement/buttons inside representative games from Game
   Mode, not only SSH/uinput.
 - Confirm the physical left-trackpad radial Quit action returns to ES-DE for
