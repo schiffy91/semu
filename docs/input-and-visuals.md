@@ -44,6 +44,12 @@ entries, systemd units, and routed launcher config are compiled artifacts. They
 are rewritten by `settings apply`, `lifecycle reconfigure`, or commands that
 explicitly pass `--apply`.
 
+Steam's selected controller layout is also treated as a compiled external
+install artifact. Semu owns the desired keymap and template; `steam-input
+install` copies the generated Neptune templates into Steam and merges a single
+documented config-set entry that maps the Semu shortcut to the selected Semu
+template. The rest of Steam userdata remains Steam-owned.
+
 Live emulator config is adapter state. Semu can read it to infer runtime aspect,
 screen layout, or capability state, and helpers can broadcast normalized state
 back into `settings/presentation-state/*.json`; Semu policy still changes by
@@ -91,7 +97,8 @@ the radial path.
 - `keymap validate` verifies the canonical action names and controller combos.
 - `deck game-mode-ready --prepare` writes the Semu-owned physical checklist and
   readiness report. It verifies the current session, Steam process, Steam
-  shortcut, installed AppImage, and checklist state before the physical pass.
+  shortcut, Steam Input template selection, installed AppImage, and checklist
+  state before the physical pass.
   `--allow-desktop` is for SSH preflight only, including mixed
   Desktop/Gamescope sessions; final proof must run from Steam Game Mode.
 - A Game Mode test opens each emulator through ES-DE, launches one known-good

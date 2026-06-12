@@ -311,6 +311,7 @@ string deckGameModeReadinessJson(
     bool steamOk,
     bool shortcutOk,
     string launchUri,
+    bool steamInputOk,
     string appImage,
     bool appImageOk,
     string appImageHash,
@@ -326,6 +327,7 @@ string deckGameModeReadinessJson(
         jsonBoolField("steam_running", steamOk),
         jsonBoolField("shortcut_found", shortcutOk),
         jsonStrField("launch_uri", launchUri),
+        jsonBoolField("steam_input_selected", steamInputOk),
         jsonStrField("appimage", appImage),
         jsonBoolField("appimage_ok", appImageOk),
         jsonStrField("appimage_sha256", appImageHash),
@@ -360,6 +362,7 @@ int deckGameModeReadinessCommand(CliArgs args, string project) {
     string appImageHash = deckSha256(appImage);
     SteamShortcutRecord shortcut = deckSemuShortcut(args);
     bool shortcutOk = shortcut.appid > 0;
+    bool steamInputOk = steamInputSelectionOk(project, args);
     bool checklistOk = FileSystem.isFile(deckGameModeChecklistPath(project));
     bool evidenceRequired = args.has("--require-evidence");
     bool evidenceOk = deckQuitEvidenceComplete(project, emulators);
@@ -372,6 +375,7 @@ int deckGameModeReadinessCommand(CliArgs args, string project) {
         steamOk,
         shortcutOk,
         launchUri,
+        steamInputOk,
         appImage,
         appImageOk,
         appImageHash,
@@ -394,6 +398,7 @@ int deckGameModeReadinessCommand(CliArgs args, string project) {
     } else {
         print("  MISSING shortcut: " + args.valueAfter("--app-name", steamDefaultShortcutName()));
     }
+    print(steamInputOk ? "  OK steam-input: Semu template selected" : "  PENDING steam-input: select Semu template with `semu steam-input install`");
     print(appImageOk ? "  OK appimage: " + appImage : "  MISSING appimage: " + appImage);
     if (appImageHash.len() > 0) {
         print("       sha256: " + appImageHash);
@@ -406,7 +411,7 @@ int deckGameModeReadinessCommand(CliArgs args, string project) {
     }
     print("  report: " + deckGameModeReadinessPath(project));
 
-    bool ok = sessionOk && steamOk && shortcutOk && appImageOk && checklistOk && (!evidenceRequired || evidenceOk);
+    bool ok = sessionOk && steamOk && shortcutOk && steamInputOk && appImageOk && checklistOk && (!evidenceRequired || evidenceOk);
     return ok ? 0 : 2;
 }
 

@@ -374,7 +374,7 @@ int appRunCommand(CliArgs args, string project) {
 string steamInputTemplateDir(CliArgs args) {
     return args.valueAfter(
         "--dest",
-        Environment.get("SEMU_STEAM_INPUT_DIR", joinPath(homeDir(), ".steam/steam/controller_base/templates"))
+        Environment.get("SEMU_STEAM_INPUT_DIR", joinPath(steamRoot(), "controller_base/templates"))
     );
 }
 
@@ -395,7 +395,12 @@ int steamInputCommand(CliArgs args, string project) {
         copySteamInputTemplate(project, destination, "neptune-simple.vdf");
         copySteamInputTemplate(project, destination, "neptune-full.vdf");
         print(f"OK steam-input templates: {destination}");
+        steamInputInstallSelection(args);
         return 0;
+    }
+    if (mode.equals("select") || mode.equals("apply")) {
+        writeSteamInputTemplates(project);
+        return steamInputInstallSelection(args) ? 0 : 2;
     }
     if (mode.equals("status") || mode.equals("validate")) {
         writeSteamInputTemplates(project);
@@ -404,6 +409,12 @@ int steamInputCommand(CliArgs args, string project) {
         print("");
         print("Steam shortcut");
         steamShortcutStatus(project, args);
+        print("");
+        print("Steam Input selection");
+        steamInputSelectionStatus(args);
+        if (mode.equals("validate") && !steamInputSelectionOk(project, args)) {
+            return 2;
+        }
         return 0;
     }
     printUsage();

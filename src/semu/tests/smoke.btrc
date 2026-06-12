@@ -151,6 +151,20 @@ bool e2eWriteSteamShortcutFixture(string path) {
     return e2eWriteSteamShortcutFixtureFor(path, "/home/deck/Applications/Semu/Semu-x86_64.AppImage");
 }
 
+bool e2eWriteSteamConfigSetFixture(string path) {
+    ensureDir(PathTools.dirname(path));
+    FileSystem.writeText(path,
+        "\"controller_config\"\n"
+        + "{\n"
+        + "\t\"retrodeck\"\n"
+        + "\t{\n"
+        + "\t\t\"template\"\t\t\"RetroDECK_controller_steamdeck_neptune_full.vdf\"\n"
+        + "\t}\n"
+        + "}\n"
+    );
+    return e2eOk(FileSystem.exists(path), "write Steam configset fixture");
+}
+
 ExecResult e2eRunSettings(string exe, string home, string project, Vector<string> settingsArgs) {
     Command command = Command(exe)
         .envVar("SEMU_HOME", home)
@@ -411,9 +425,23 @@ int e2eLifecycleSmoke(CliArgs args) {
     if (!e2eContains(FileSystem.readText(joinPath(steamTemplates, "neptune-simple.vdf")), "\"controller_type\"\t\t\"controller_neptune\"", "installed Steam Input simple template")) { return 1; }
     string shortcutsFile = joinPath(home, "steam-userdata/52445373/config/shortcuts.vdf");
     if (!e2eWriteSteamShortcutFixture(shortcutsFile)) { return 1; }
+    string configSetFile = joinPath(home, "controller-configs/52445373/config/configset_controller_neptune.vdf");
+    if (!e2eWriteSteamConfigSetFixture(configSetFile)) { return 1; }
+    ExecResult selection = e2eRunSteamInput(exe, home, project, [
+        "select",
+        "--shortcuts-file", shortcutsFile,
+        "--configset-file", configSetFile,
+        "--app-name", "Semu-x86_64.AppImage",
+        "--exe", "/home/deck/Applications/Semu/Semu-x86_64.AppImage"
+    ]);
+    if (!e2eRunOk(selection, "steam-input shortcut selection")) { return 1; }
+    string configSetText = FileSystem.readText(configSetFile);
+    if (!e2eContains(configSetText, "\"semu-x8664appimage\"", "Steam Input selection key")) { return 1; }
+    if (!e2eContains(configSetText, "\"template\"\t\t\"neptune-full.vdf\"", "Steam Input selected template")) { return 1; }
     ExecResult shortcutStatus = e2eRunSteamInput(exe, home, project, [
         "status",
         "--shortcuts-file", shortcutsFile,
+        "--configset-file", configSetFile,
         "--app-name", "Semu-x86_64.AppImage",
         "--exe", "/home/deck/Applications/Semu/Semu-x86_64.AppImage"
     ]);
@@ -422,6 +450,7 @@ int e2eLifecycleSmoke(CliArgs args) {
     if (!e2eContains(shortcutStatus.stdout(), "appid: 3834341984", "Steam shortcut appid")) { return 1; }
     if (!e2eContains(shortcutStatus.stdout(), "launch_id: 16468373422993309696", "Steam shortcut launch id")) { return 1; }
     if (!e2eContains(shortcutStatus.stdout(), "steam://rungameid/16468373422993309696", "Steam shortcut URI")) { return 1; }
+    if (!e2eContains(shortcutStatus.stdout(), "OK selection: semu-x8664appimage -> neptune-full.vdf", "Steam Input selection status")) { return 1; }
 
     e2eSeedFile(joinPath(contentRoot(project), "saves/gba/game.sav"));
     e2eSeedFile(joinPath(biosRoot(project), "ps2/ps2-0230a-20080220.bin"));
@@ -1267,9 +1296,20 @@ int e2eDeckEvidenceSmoke(CliArgs args) {
     FileSystem.chmod(appImage, 493);
     string shortcutsFile = joinPath(home, "steam-userdata/52445373/config/shortcuts.vdf");
     if (!e2eWriteSteamShortcutFixtureFor(shortcutsFile, appImage)) { return 1; }
+    string configSetFile = joinPath(home, "controller-configs/52445373/config/configset_controller_neptune.vdf");
+    if (!e2eWriteSteamConfigSetFixture(configSetFile)) { return 1; }
+    ExecResult selection = e2eRunSteamInput(exe, home, project, [
+        "select",
+        "--shortcuts-file", shortcutsFile,
+        "--configset-file", configSetFile,
+        "--exe", appImage,
+        "--app-name", "Semu-x86_64.AppImage"
+    ]);
+    if (!e2eRunOk(selection, "Game Mode Steam Input selection")) { return 1; }
     Vector<string> readyArgs = [
         "game-mode-ready",
         "--shortcuts-file", shortcutsFile,
+        "--configset-file", configSetFile,
         "--exe", appImage,
         "--appimage", appImage,
         "--prepare"
@@ -1281,6 +1321,7 @@ int e2eDeckEvidenceSmoke(CliArgs args) {
     Vector<string> desktopAllowedArgs = [
         "game-mode-ready",
         "--shortcuts-file", shortcutsFile,
+        "--configset-file", configSetFile,
         "--exe", appImage,
         "--appimage", appImage,
         "--prepare",
@@ -1308,6 +1349,7 @@ int e2eDeckEvidenceSmoke(CliArgs args) {
     Vector<string> requireEvidenceArgs = [
         "game-mode-ready",
         "--shortcuts-file", shortcutsFile,
+        "--configset-file", configSetFile,
         "--exe", appImage,
         "--appimage", appImage,
         "--prepare",

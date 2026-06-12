@@ -2,6 +2,7 @@
 
 class SemuSteam {
     class void shortcutsStatus(string project, CliArgs args) { steamShortcutStatus(project, args); }
+    class bool selected(string project, CliArgs args) { return steamInputSelectionOk(project, args); }
 }
 
 class SteamShortcutRecord {
@@ -188,12 +189,33 @@ string steamRoot() {
     return joinPath(home, ".steam/steam");
 }
 
+string steamControllerConfigRoot() {
+    return joinPath(steamRoot(), "steamapps/common/Steam Controller Configs");
+}
+
+string steamControllerConfigSetFile(string account) {
+    return joinPath(steamControllerConfigRoot(), account + "/config/configset_controller_neptune.vdf");
+}
+
 Vector<string> steamShortcutsFiles() {
     Vector<string> files = [];
     string userdata = joinPath(steamRoot(), "userdata");
     if (!FileSystem.isDir(userdata)) { return files; }
     for account in FileSystem.listDir(userdata) {
         string path = joinPath(joinPath(userdata, account), "config/shortcuts.vdf");
+        if (FileSystem.isFile(path)) {
+            files.push(path);
+        }
+    }
+    return files;
+}
+
+Vector<string> steamConfigSetFiles() {
+    Vector<string> files = [];
+    string root = steamControllerConfigRoot();
+    if (!FileSystem.isDir(root)) { return files; }
+    for account in FileSystem.listDir(root) {
+        string path = steamControllerConfigSetFile(account);
         if (FileSystem.isFile(path)) {
             files.push(path);
         }
@@ -212,6 +234,237 @@ SteamShortcutRecord steamShortcutFind(Vector<SteamShortcutRecord> records, strin
         }
     }
     return SteamShortcutRecord();
+}
+
+SteamShortcutRecord steamShortcutFindFromArgs(CliArgs args) {
+    string appName = args.valueAfter("--app-name", steamDefaultShortcutName());
+    string exe = args.valueAfter("--exe", steamDefaultShortcutExe());
+    string file = args.valueAfter("--shortcuts-file", "");
+    if (file.len() > 0) {
+        return steamShortcutFind(steamShortcutsRead(file), appName, exe);
+    }
+    for candidate in steamShortcutsFiles() {
+        SteamShortcutRecord found = steamShortcutFind(steamShortcutsRead(candidate), appName, exe);
+        if (found.appid > 0) { return found; }
+    }
+    return SteamShortcutRecord();
+}
+
+bool steamShortcutConfigKeyChar(char c) {
+    if (c >= 'a' && c <= 'z') { return true; }
+    if (c >= '0' && c <= '9') { return true; }
+    if (c == '-' || c == ' ') { return true; }
+    return false;
+}
+
+string steamShortcutConfigKey(string appName) {
+    string lower = appName.toLower();
+    string key = "";
+    for (int i = 0; i < lower.len(); i++) {
+        char c = lower.charAt(i);
+        if (steamShortcutConfigKeyChar(c)) {
+            key = key + lower.substring(i, 1);
+        }
+    }
+    return key;
+}
+
+string steamInputSelectedTemplateName(CliArgs args) {
+    return args.valueAfter("--template", Environment.get("SEMU_STEAM_INPUT_TEMPLATE", "neptune-full.vdf"));
+}
+
+string steamConfigSetEntryText(string key, string template) {
+    return "\t\"" + key + "\"\n"
+        + "\t{\n"
+        + "\t\t\"template\"\t\t\"" + template + "\"\n"
+        + "\t}";
+}
+
+Vector<string> steamConfigSetEntryLines(string key, string template) {
+    return Strings.split(steamConfigSetEntryText(key, template), "\n");
+}
+
+bool steamConfigSetLineIsKey(string line, string key) {
+    return line.trim().equals("\"" + key + "\"");
+}
+
+bool steamConfigSetEntryHasTemplate(string text, string key, string template) {
+    Vector<string> lines = Strings.split(text, "\n");
+    bool inEntry = false;
+    for line in lines {
+        string trimmed = line.trim();
+        if (!inEntry && trimmed.equals("\"" + key + "\"")) {
+            inEntry = true;
+            continue;
+        }
+        if (inEntry && trimmed.equals("}")) {
+            return false;
+        }
+        if (inEntry && trimmed.equals("\"template\"\t\t\"" + template + "\"")) {
+            return true;
+        }
+        if (inEntry && trimmed.equals("\"template\" \"" + template + "\"")) {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool steamConfigSetHasEntry(string text, string key) {
+    for line in Strings.split(text, "\n") {
+        if (steamConfigSetLineIsKey(line, key)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+string steamEmptyConfigSetText() {
+    return "\"controller_config\"\n{\n}\n";
+}
+
+string steamConfigSetMergeText(string text, string key, string template) {
+    string source = text.trim().len() > 0 ? text : steamEmptyConfigSetText();
+    Vector<string> lines = Strings.split(source, "\n");
+    Vector<string> withoutEntry = [];
+    bool replaced = false;
+    int i = 0;
+    while (i < lines.len) {
+        string line = lines.get(i);
+        if (steamConfigSetLineIsKey(line, key)) {
+            for entryLine in steamConfigSetEntryLines(key, template) {
+                withoutEntry.push(entryLine);
+            }
+            replaced = true;
+            i++;
+            while (i < lines.len && !lines.get(i).trim().equals("}")) {
+                i++;
+            }
+            if (i < lines.len) { i++; }
+            continue;
+        }
+        withoutEntry.push(line);
+        i++;
+    }
+    if (replaced) {
+        return withoutEntry.join("\n").trim() + "\n";
+    }
+
+    int insertBefore = -1;
+    for (int j = 0; j < withoutEntry.len; j++) {
+        if (withoutEntry.get(j).trim().equals("}")) {
+            insertBefore = j;
+        }
+    }
+    Vector<string> merged = [];
+    bool inserted = false;
+    for (int j = 0; j < withoutEntry.len; j++) {
+        if (j == insertBefore) {
+            for entryLine in steamConfigSetEntryLines(key, template) {
+                merged.push(entryLine);
+            }
+            inserted = true;
+        }
+        merged.push(withoutEntry.get(j));
+    }
+    if (!inserted) {
+        merged = Strings.split(steamEmptyConfigSetText().trim(), "\n");
+        for entryLine in steamConfigSetEntryLines(key, template) {
+            merged.push(entryLine);
+        }
+        merged.push("}");
+    }
+    return merged.join("\n").trim() + "\n";
+}
+
+Vector<string> steamConfigSetFilesFromArgs(CliArgs args) {
+    string configured = args.valueAfter("--configset-file", "");
+    if (configured.len() > 0) {
+        return [configured];
+    }
+    return steamConfigSetFiles();
+}
+
+bool steamInputSelectionFileOk(string path, string key, string template) {
+    if (!FileSystem.isFile(path)) { return false; }
+    return steamConfigSetEntryHasTemplate(FileSystem.readText(path), key, template);
+}
+
+bool steamInputSelectionOk(string project, CliArgs args) {
+    SteamShortcutRecord shortcut = steamShortcutFindFromArgs(args);
+    if (shortcut.appid <= 0) { return false; }
+    string key = steamShortcutConfigKey(shortcut.appName);
+    string template = steamInputSelectedTemplateName(args);
+    for path in steamConfigSetFilesFromArgs(args) {
+        if (steamInputSelectionFileOk(path, key, template)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool steamInputInstallSelection(CliArgs args) {
+    SteamShortcutRecord shortcut = steamShortcutFindFromArgs(args);
+    if (shortcut.appid <= 0) {
+        print("PENDING steam-input selection: Semu shortcut not found");
+        return false;
+    }
+    string key = steamShortcutConfigKey(shortcut.appName);
+    string template = steamInputSelectedTemplateName(args);
+    Vector<string> files = steamConfigSetFilesFromArgs(args);
+    if (files.len == 0) {
+        print("PENDING steam-input selection: no configset_controller_neptune.vdf found");
+        return false;
+    }
+    bool ok = true;
+    for path in files {
+        string previous = FileSystem.isFile(path) ? FileSystem.readText(path) : steamEmptyConfigSetText();
+        string next = steamConfigSetMergeText(previous, key, template);
+        SemuGeneratedFiles.writeExternalInstall("steam_input_configset:" + key + ":" + template, path, next);
+        if (steamInputSelectionFileOk(path, key, template)) {
+            print("OK steam-input selection: " + key + " -> " + template);
+            print("     file: " + path);
+        } else {
+            print("FAIL steam-input selection: " + key + " -> " + template);
+            print("     file: " + path);
+            ok = false;
+        }
+    }
+    return ok;
+}
+
+void steamInputSelectionStatus(CliArgs args) {
+    SteamShortcutRecord shortcut = steamShortcutFindFromArgs(args);
+    string template = steamInputSelectedTemplateName(args);
+    if (shortcut.appid <= 0) {
+        print("  PENDING selection: shortcut missing");
+        return;
+    }
+    string key = steamShortcutConfigKey(shortcut.appName);
+    print("  shortcut_key: " + key);
+    print("  expected_template: " + template);
+    Vector<string> files = steamConfigSetFilesFromArgs(args);
+    if (files.len == 0) {
+        print("  PENDING selection: no configset_controller_neptune.vdf found");
+        return;
+    }
+    for path in files {
+        if (!FileSystem.isFile(path)) {
+            print("  PENDING selection: missing " + path);
+            continue;
+        }
+        string text = FileSystem.readText(path);
+        if (steamConfigSetEntryHasTemplate(text, key, template)) {
+            print("  OK selection: " + key + " -> " + template);
+            print("       file: " + path);
+        } else if (steamConfigSetHasEntry(text, key)) {
+            print("  PENDING selection: " + key + " has a different Steam template");
+            print("       file: " + path);
+        } else {
+            print("  PENDING selection: " + key + " not configured");
+            print("       file: " + path);
+        }
+    }
 }
 
 void steamShortcutReportFile(string path, string appName, string exe) {
