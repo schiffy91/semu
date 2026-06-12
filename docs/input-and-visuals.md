@@ -92,8 +92,8 @@ the radial path.
 - `deck game-mode-ready --prepare` writes the Semu-owned physical checklist and
   readiness report. It verifies the current session, Steam process, Steam
   shortcut, installed AppImage, and checklist state before the physical pass.
-  `--allow-desktop` is for SSH preflight only; final proof must run from Steam
-  Game Mode.
+  `--allow-desktop` is for SSH preflight only, including mixed
+  Desktop/Gamescope sessions; final proof must run from Steam Game Mode.
 - A Game Mode test opens each emulator through ES-DE, launches one known-good
   ROM, confirms controller movement/buttons, opens the left-trackpad radial, and
   uses Quit to return to ES-DE.

@@ -20978,7 +20978,8 @@ int deckGameModeReadinessCommand(CliArgs* args, char* project) {
     }
     char* session = deckSessionKind();
     bool allowDesktop = CliArgs_has(args, "--allow-desktop");
-    bool sessionOk = ((strcmp(session, "game_mode") == 0) || (allowDesktop && (strcmp(session, "desktop_mode") == 0)));
+    bool desktopPreflight = ((strcmp(session, "desktop_mode") == 0) || (strcmp(session, "mixed_gamescope_desktop") == 0));
+    bool sessionOk = ((strcmp(session, "game_mode") == 0) || (allowDesktop && desktopPreflight));
     bool steamOk = deckSteamRunning();
     char* appImage = CliArgs_valueAfter(args, "--appimage", CliArgs_valueAfter(args, "--exe", steamDefaultShortcutExe()));
     bool appImageOk = deckPathExecutable(appImage);
@@ -24092,6 +24093,13 @@ int e2eDeckEvidenceSmoke(CliArgs* args) {
         return 1;
     }
     if (!e2eContains(ExecResult_stdout(desktopAllowed), __btrc_str_track(__btrc_strcat("OK appimage: ", appImage)), "readiness AppImage status")) {
+        return 1;
+    }
+    ExecResult* mixedAllowed = e2eRunDeckEnv(exe, home, project, desktopAllowedArgs, "mixed_gamescope_desktop", "1");
+    if (!e2eRunOk(mixedAllowed, "mixed Desktop/Gamescope readiness with explicit override")) {
+        return 1;
+    }
+    if (!e2eContains(ExecResult_stdout(mixedAllowed), "OK session: mixed_gamescope_desktop", "mixed Desktop override status")) {
         return 1;
     }
     ExecResult* missingSteam = e2eRunDeckEnv(exe, home, project, readyArgs, "game_mode", "0");
