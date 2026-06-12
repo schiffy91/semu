@@ -125,6 +125,10 @@ bool e2eExpectStatus(int expected, string command) {
     return false;
 }
 
+string e2eCleanAppRunFixtureEnv() {
+    return "SEMU_NIX_STORE_MOUNTED= APPIMAGE= ";
+}
+
 bool e2eFileContains(string path, string expected, string label) {
     if (!FileSystem.exists(path)) {
         print("missing " + label + ": " + path);
@@ -206,7 +210,8 @@ int e2eAppImageSmoke(CliArgs args) {
         "#!/usr/bin/env bash",
         "printf '%s\\n' \"$@\" > " + ShellWords.quote(bwrapArgs)
     ]));
-    if (!e2eExpectStatus(0, "APPDIR=" + ShellWords.quote(appDir)
+    if (!e2eExpectStatus(0, e2eCleanAppRunFixtureEnv()
+        + "APPDIR=" + ShellWords.quote(appDir)
         + " SEMU_BWRAP=" + ShellWords.quote(joinPath(binDir, "bwrap"))
         + " " + ShellWords.quote(joinPath(appDir, "AppRun")) + " --probe")) { return 1; }
     if (!e2eFileContains(bwrapArgs, "--tmpfs", "bwrap args tmpfs")) { return 1; }
@@ -223,7 +228,8 @@ int e2eAppImageSmoke(CliArgs args) {
         "exit 88"
     ]));
     UnixShell().runRaw("rm -f " + ShellWords.quote(bwrapArgs), true, false, "");
-    if (!e2eExpectStatus(0, "APPDIR=" + ShellWords.quote(hostBwrapAppDir)
+    if (!e2eExpectStatus(0, e2eCleanAppRunFixtureEnv()
+        + "APPDIR=" + ShellWords.quote(hostBwrapAppDir)
         + " SEMU_BWRAP=" + ShellWords.quote(joinPath(binDir, "bwrap"))
         + " PATH=" + ShellWords.quote(binDir) + ":$PATH"
         + " " + ShellWords.quote(joinPath(hostBwrapAppDir, "AppRun")) + " --probe")) { return 1; }
@@ -234,7 +240,8 @@ int e2eAppImageSmoke(CliArgs args) {
     ensureDir(joinPath(noProject, "usr/bin"));
     copyFilePath(joinPath(project, "packaging/linux/AppRun"), joinPath(noProject, "AppRun"));
     FileSystem.chmod(joinPath(noProject, "AppRun"), 493);
-    if (!e2eExpectStatus(1, "APPDIR=" + ShellWords.quote(noProject)
+    if (!e2eExpectStatus(1, e2eCleanAppRunFixtureEnv()
+        + "APPDIR=" + ShellWords.quote(noProject)
         + " HOME=" + ShellWords.quote(joinPath(tmp, "no-project-home"))
         + " " + ShellWords.quote(joinPath(noProject, "AppRun")))) { return 1; }
 
@@ -245,7 +252,8 @@ int e2eAppImageSmoke(CliArgs args) {
     FileSystem.writeText(joinPath(missingProject, "semu.json"), "{\"schema_version\":1}\n");
     copyFilePath(joinPath(project, "packaging/linux/AppRun"), joinPath(missingCli, "AppRun"));
     FileSystem.chmod(joinPath(missingCli, "AppRun"), 493);
-    if (!e2eExpectStatus(2, "APPDIR=" + ShellWords.quote(missingCli)
+    if (!e2eExpectStatus(2, e2eCleanAppRunFixtureEnv()
+        + "APPDIR=" + ShellWords.quote(missingCli)
         + " SEMU_PROJECT_DIR=" + ShellWords.quote(missingProject)
         + " " + ShellWords.quote(joinPath(missingCli, "AppRun")))) { return 1; }
 
@@ -274,7 +282,8 @@ int e2eAppImageSmoke(CliArgs args) {
         "  printf 'LD_PRELOAD=%s\\n' \"${LD_PRELOAD:-}\"",
         "} > " + ShellWords.quote(cliEnv)
     ]));
-    if (!e2eExpectStatus(0, "APPDIR=" + ShellWords.quote(cliAppDir)
+    if (!e2eExpectStatus(0, e2eCleanAppRunFixtureEnv()
+        + "APPDIR=" + ShellWords.quote(cliAppDir)
         + " APPIMAGE=" + ShellWords.quote(cliAppImage)
         + " " + ShellWords.quote(joinPath(cliAppDir, "AppRun"))
         + " manifest --output " + ShellWords.quote(joinPath(tmp, "manifest.json"))
@@ -317,7 +326,8 @@ int e2eAppImageSmoke(CliArgs args) {
         + " " + ShellWords.quote(joinPath(shimDir, "semu-btrc"))
         + " launcher retroarch game.rom")) { return 1; }
     if (!e2eFileContains(shimArgs, "launcher", "semu-btrc runtime CLI")) { return 1; }
-    if (!e2eExpectStatus(0, "APPDIR=" + ShellWords.quote(cliAppDir)
+    if (!e2eExpectStatus(0, e2eCleanAppRunFixtureEnv()
+        + "APPDIR=" + ShellWords.quote(cliAppDir)
         + " APPIMAGE=" + ShellWords.quote(cliAppImage)
         + " SEMU_PROJECT_DIR=" + ShellWords.quote(cliProject)
         + " SteamAppId=3834341984"
@@ -327,7 +337,8 @@ int e2eAppImageSmoke(CliArgs args) {
         + " doctor")) { return 1; }
     if (!e2eFileContains(cliEnv, "LD_LIBRARY_PATH=", "AppRun clears Steam LD_LIBRARY_PATH")) { return 1; }
     if (!e2eFileContains(cliEnv, "LD_PRELOAD=", "AppRun clears Steam LD_PRELOAD")) { return 1; }
-    if (!e2eExpectStatus(0, "APPDIR=" + ShellWords.quote(cliAppDir)
+    if (!e2eExpectStatus(0, e2eCleanAppRunFixtureEnv()
+        + "APPDIR=" + ShellWords.quote(cliAppDir)
         + " APPIMAGE=" + ShellWords.quote(cliAppImage)
         + " SEMU_PROJECT_DIR=" + ShellWords.quote(cliProject)
         + " SEMU_ROMS=" + ShellWords.quote(joinPath(tmp, "roms-root"))
@@ -338,7 +349,8 @@ int e2eAppImageSmoke(CliArgs args) {
     if (!e2eContains(presentationArgs, "--system", "AppRun presentation system arg")) { return 1; }
     if (!e2eContains(presentationArgs, "--project", "AppRun presentation project arg")) { return 1; }
     if (!e2eContains(presentationArgs, "--roms", "AppRun presentation roms arg")) { return 1; }
-    if (!e2eExpectStatus(0, "APPDIR=" + ShellWords.quote(cliAppDir)
+    if (!e2eExpectStatus(0, e2eCleanAppRunFixtureEnv()
+        + "APPDIR=" + ShellWords.quote(cliAppDir)
         + " APPIMAGE=" + ShellWords.quote(cliAppImage)
         + " SEMU_PROJECT_DIR=" + ShellWords.quote(cliProject)
         + " SEMU_ROMS=" + ShellWords.quote(joinPath(tmp, "roms"))
