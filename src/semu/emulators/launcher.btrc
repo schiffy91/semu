@@ -348,7 +348,13 @@ string launcherRoutedDisplaySetup() {
         + "export DISPLAY=\"${DISPLAY:-:0}\"; ";
 }
 
-string launcherQuitWatchCommand(string childCommand) {
+string launcherQuitWatchLogPath(string project, string emulator) {
+    string root = joinPath(semuStateRoot(project), "verification/quit-watch");
+    ensureDir(root);
+    return joinPath(root, emulator.toLower() + ".log");
+}
+
+string launcherQuitWatchCommand(string project, string emulator, string childCommand) {
     if (Environment.get("SEMU_DISABLE_QUIT_WATCH", "0").equals("1")) {
         return childCommand;
     }
@@ -356,7 +362,12 @@ string launcherQuitWatchCommand(string childCommand) {
     if (watcher.len() == 0) {
         return childCommand;
     }
-    return ShellWords.quote(watcher) + " -- sh -c " + ShellWords.quote(childCommand);
+    string defaultLog = launcherQuitWatchLogPath(project, emulator);
+    string script = "if [ -z \"${SEMU_QUIT_WATCH_LOG:-}\" ]; then export SEMU_QUIT_WATCH_LOG="
+        + ShellWords.quote(defaultLog)
+        + "; fi; "
+        + "exec " + ShellWords.quote(watcher) + " -- sh -c " + ShellWords.quote(childCommand);
+    return "sh -c " + ShellWords.quote(script);
 }
 
 void launcherWriteRetroArchConfig(string project, string configRoot) {
@@ -482,7 +493,7 @@ int launcherRunRouted(string project, string emulator, string executable, Vector
     childCommand = shellAppendAll(childCommand, finalArgs);
     string command = launcherRoutedDisplaySetup()
         + launcherRoutedEnvironment(project, emulator, home, configRoot, dataRoot, cacheRoot)
-        + " " + launcherQuitWatchCommand(childCommand);
+        + " " + launcherQuitWatchCommand(project, emulator, childCommand);
     UnixShell shell = UnixShell();
     screenshotCaptureHook(project, emulator, "before_launch");
     screenshotScheduleHook(project, emulator, "after_spawn");

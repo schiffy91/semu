@@ -39,6 +39,11 @@ quit adapter observation contains a line with `quit ... reason=<chord>`, such as
 melonDS is already the required DS route, run only with
 `SEMU_OPTIONAL_ROUTES=1`.
 
+When `SEMU_QUIT_WATCH_LOG` is not set, routed emulator launches write Semu-owned
+evidence under `.semu/verification/quit-watch/<emulator>.log`. Use those files
+for the physical Game Mode pass, where the AppImage is launched through Steam
+and the left-trackpad radial menu is operated on the Deck itself.
+
 Inside the guest:
 
 ```sh

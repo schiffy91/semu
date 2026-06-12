@@ -84,6 +84,10 @@
 - Added structured `semu-quit-watch` evidence logging. The Deck loop now keeps
   per-system quit-watch logs and treats `quit ... reason=<chord>` as the Semu
   launcher-layer proof that a unified quit action was observed.
+- Routed launcher runs now default quit evidence to the Semu-owned
+  `.semu/verification/quit-watch/<emulator>.log` path when
+  `SEMU_QUIT_WATCH_LOG` is not explicitly set, so Steam/Game Mode launches can
+  be audited without mutating emulator-native config.
 - Added input capability reporting so save/load/slot state actions are only
   advertised for generated RetroArch, Dolphin, and PCSX2 profiles. Other
   emulator routes are marked disabled until adapter config and physical state
