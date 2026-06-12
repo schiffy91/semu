@@ -48,6 +48,8 @@ Live emulator config is adapter state. Semu can read it to infer runtime aspect,
 screen layout, or capability state, and helpers can broadcast normalized state
 back into `settings/presentation-state/*.json`; Semu policy still changes by
 editing the owned files above, then compiling into emulator-readable files.
+Direct emulator-native config edits are not a valid production workflow unless a
+documented adapter migration explicitly owns the one-time import/export step.
 
 ## Current Left Trackpad Radial Contract
 

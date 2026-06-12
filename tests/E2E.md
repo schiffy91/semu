@@ -126,8 +126,11 @@ Desktop Mode with the AppImage built from the Nix package closure:
 - Commit `43c070b` added structured quit-watch evidence. On the physical Deck,
   the Nix result watcher observed an injected `/dev/uinput` Select+Start event,
   logged `quit ... reason=select+start`, terminated the child process, and
-  exited cleanly. The installed AppImage was rebuilt with hash
-  `5b58bc7a23c159b0bbd6e298d58686fc8a18ef9c18ef64c598331a338bdd76e5`; its
+  exited cleanly. The current installed AppImage was rebuilt from commit
+  `cad8b59` with hash
+  `8bd5e8850e231ab1a93375c3e02c369b1502fd0a5c4a11d741539ff96a17bd36`; its
+  packaged `e2e appimage` smoke passed inside the AppImage runtime, GB
+  presentation asset resolution reported shader/bezel/runtime preset `ok`, and
   bundled `usr/bin/semu-quit-watch` was extracted and verified to write durable
   start/exit evidence.
 - The optional RetroArch DeSmuME DS route is not production-ready on the Deck
@@ -164,6 +167,7 @@ Linux flake outputs now expose routed Nix emulator wrappers:
 These wrappers avoid host symlinks by routing emulator state through
 `HOME`/`XDG_*` into `.semu/appimage-state`. AppRun can mount a bundled
 Nix closure at `/nix/store` with bubblewrap. Local smoke tests cover assembly
-and routing; physical Deck smoke covers ES-DE, Syncthing, SD-card detection, and
-the broad Desktop Mode required-route emulator loop. The remaining gap is the
-broad Game Mode emulator and Steam Input pass.
+and routing; physical Deck smoke covers ES-DE, Syncthing, SD-card detection,
+the broad Desktop Mode required-route emulator loop, and the installed AppImage
+runtime at commit `cad8b59`. The remaining gap is the broad Game Mode emulator
+and Steam Input pass.
