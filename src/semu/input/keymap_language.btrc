@@ -544,3 +544,246 @@ string renderKeymap(KeymapIr ir, string target) {
 bool isKeymapTarget(string target) {
     return target.equals("manifest") || target.equals("retroarch") || target.equals("dolphin") || target.equals("pcsx2") || target.equals("steam-input");
 }
+
+string keymapOwnedSource(string project) {
+    seedKeymapDefaults(project);
+    return FileSystem.readText(keymapSourcePath(project));
+}
+
+KeymapIr projectKeymapUiIr(string project) {
+    KeymapErrors errors = KeymapErrors();
+    return compileKeymap(keymapOwnedSource(project), errors);
+}
+
+bool writeValidatedKeymapSource(string project, string source) {
+    KeymapErrors errors = KeymapErrors();
+    compileKeymap(source, errors);
+    if (errors.count() > 0) {
+        for (int i = 0; i < errors.count(); i++) {
+            print(f"{errors.levels.get(i)} {errors.lines.get(i)}:{errors.columns.get(i)} {errors.messages.get(i)}");
+        }
+        return false;
+    }
+    FileSystem.writeText(keymapSourcePath(project), source);
+    return true;
+}
+
+bool keymapPutActionCommand(string project, string actionId, string command) {
+    string source = keymapOwnedSource(project);
+    Vector<string> lines = Strings.split(source, "\n");
+    Vector<string> out = [];
+    bool changed = false;
+    string prefix = "action " + actionId + " = ";
+    for line in lines {
+        if (line.startsWith(prefix)) {
+            out.push(prefix + command);
+            changed = true;
+        } else if (line.len() > 0) {
+            out.push(line);
+        }
+    }
+    if (!changed) {
+        print(f"error 0:0 unknown keymap action '{actionId}'");
+        return false;
+    }
+    return writeValidatedKeymapSource(project, out.join("\n") + "\n");
+}
+
+bool keymapPutBindingCombo(string project, string actionId, string combo) {
+    string source = keymapOwnedSource(project);
+    Vector<string> lines = Strings.split(source, "\n");
+    Vector<string> out = [];
+    bool changed = false;
+    string suffix = " -> ${" + actionId + "}";
+    for line in lines {
+        if (line.startsWith("bind ") && line.endsWith(suffix)) {
+            out.push("bind " + combo + suffix);
+            changed = true;
+        } else if (line.len() > 0) {
+            out.push(line);
+        }
+    }
+    if (!changed) {
+        print(f"error 0:0 unknown keymap binding '{actionId}'");
+        return false;
+    }
+    return writeValidatedKeymapSource(project, out.join("\n") + "\n");
+}
+
+class KeymapUiAction {
+    public string id;
+    public string label;
+
+    public KeymapUiAction(string id, string label) {
+        self.id = id;
+        self.label = label;
+    }
+
+    public bool known() {
+        return self.id.len() > 0;
+    }
+}
+
+class KeymapUiActions {
+    class KeymapUiAction empty() {
+        return KeymapUiAction("", "");
+    }
+
+    class Vector<KeymapUiAction> all() {
+        Vector<KeymapUiAction> actions = [];
+        for id in requiredKeymapActions() {
+            actions.push(KeymapUiAction(id, actionLabel(id)));
+        }
+        return actions;
+    }
+
+    class KeymapUiAction at(int index) {
+        Vector<KeymapUiAction> actions = KeymapUiActions.all();
+        if (index < 0 || index >= actions.len) {
+            return KeymapUiActions.empty();
+        }
+        return actions.get(index);
+    }
+}
+
+class KeymapUi {
+    public string project;
+
+    public KeymapUi(string project) {
+        self.project = project;
+    }
+
+    public void renderActions() {
+        KeymapIr ir = projectKeymapUiIr(self.project);
+        print("");
+        print("Semu Input Settings");
+        print("===================");
+        print("Source: " + keymapSourcePath(self.project));
+        print("Edits update Semu-owned keymap source. Use apply to compile emulator-facing files.");
+        print("");
+        int index = 1;
+        for action in KeymapUiActions.all() {
+            print("  " + Strings.fromInt(index) + ". " + action.label + " [" + action.id + "] command=" + irActionCommand(ir, action.id) + " combo=" + irBindingCombo(ir, action.id));
+            index++;
+        }
+        print("");
+        print("Commands: number = edit action, a = apply, q = back");
+        print("Select:");
+    }
+
+    public void renderAction(KeymapUiAction action) {
+        KeymapIr ir = projectKeymapUiIr(self.project);
+        print("");
+        print("Semu Input: " + action.label + " [" + action.id + "]");
+        print("==============================");
+        print("Command: " + irActionCommand(ir, action.id));
+        print("Controller Combo: " + irBindingCombo(ir, action.id));
+        print("Systems: " + actionSystems(action.id).join(","));
+        print(actionNote(action.id));
+        print("");
+        print("Commands: c = edit command, b = edit controller combo, a = apply, back = back, q = quit");
+        print("Select:");
+    }
+
+    public int apply() {
+        lifecycleReconfigure(self.project, "");
+        print("OK settings applied");
+        return 0;
+    }
+
+    public bool editCommand(KeymapUiAction action) {
+        KeymapIr ir = projectKeymapUiIr(self.project);
+        print("Current command for " + action.label + ": " + irActionCommand(ir, action.id));
+        print("New command, empty to cancel:");
+        string value = settingsReadLine();
+        if (settingsLineIsEof(value)) { return false; }
+        value = value.trim();
+        if (value.len() == 0) {
+            print("Cancelled");
+            return true;
+        }
+        if (keymapPutActionCommand(self.project, action.id, value)) {
+            print(action.id + "=" + irActionCommand(projectKeymapUiIr(self.project), action.id));
+            print("OK owned keymap source updated: " + keymapSourcePath(self.project));
+            return true;
+        }
+        return false;
+    }
+
+    public bool editBinding(KeymapUiAction action) {
+        KeymapIr ir = projectKeymapUiIr(self.project);
+        print("Current controller combo for " + action.label + ": " + irBindingCombo(ir, action.id));
+        print("New controller combo, empty to cancel:");
+        string value = settingsReadLine();
+        if (settingsLineIsEof(value)) { return false; }
+        value = value.trim();
+        if (value.len() == 0) {
+            print("Cancelled");
+            return true;
+        }
+        if (keymapPutBindingCombo(self.project, action.id, value)) {
+            print(action.id + ".binding=" + irBindingCombo(projectKeymapUiIr(self.project), action.id));
+            print("OK owned keymap source updated: " + keymapSourcePath(self.project));
+            return true;
+        }
+        return false;
+    }
+
+    public int runAction(KeymapUiAction action) {
+        while (true) {
+            self.renderAction(action);
+            string choice = settingsReadLine();
+            if (settingsLineIsEof(choice)) { return 2; }
+            choice = choice.trim();
+            if (choice.len() == 0) { continue; }
+            if (choice.equals("back")) { return 0; }
+            if (choice.equals("q") || choice.equals("quit")) { return 2; }
+            if (choice.equals("a") || choice.equals("apply")) {
+                self.apply();
+                continue;
+            }
+            if (choice.equals("c") || choice.equals("command")) {
+                if (!self.editCommand(action)) { return 1; }
+                continue;
+            }
+            if (choice.equals("b") || choice.equals("binding") || choice.equals("combo")) {
+                if (!self.editBinding(action)) { return 1; }
+                continue;
+            }
+            print("Unknown command: " + choice);
+        }
+        return 0;
+    }
+
+    public int run() {
+        while (true) {
+            self.renderActions();
+            string choice = settingsReadLine();
+            if (settingsLineIsEof(choice)) { return 0; }
+            choice = choice.trim();
+            if (choice.len() == 0) { continue; }
+            if (choice.equals("q") || choice.equals("quit") || choice.equals("b") || choice.equals("back")) { return 0; }
+            if (choice.equals("a") || choice.equals("apply")) {
+                self.apply();
+                continue;
+            }
+            if (!choice.isDigitStr()) {
+                print("Unknown command: " + choice);
+                continue;
+            }
+            KeymapUiAction action = KeymapUiActions.at(choice.toInt() - 1);
+            if (!action.known()) {
+                print("Unknown input action number: " + choice);
+                continue;
+            }
+            int status = self.runAction(action);
+            if (status == 2) { return 0; }
+            if (status != 0) { return status; }
+        }
+        return 0;
+    }
+}
+
+int keymapUi(string project) {
+    return KeymapUi(project).run();
+}

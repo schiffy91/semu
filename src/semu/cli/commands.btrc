@@ -13,7 +13,7 @@ int keymapCommand(CliArgs args) {
         mode = args.get(1);
     }
     string sourcePath = args.valueAfter("--source", "");
-    string project = args.valueAfter("--project", "");
+    string project = args.valueAfter("--project", Environment.get("SEMU_PROJECT_DIR", "."));
     string source = defaultKeymapSource();
     if (sourcePath.len() > 0) {
         if (!FileSystem.exists(sourcePath)) {
@@ -54,6 +54,60 @@ int keymapCommand(CliArgs args) {
             FileSystem.writeText(output, rendered);
         } else {
             print(rendered);
+        }
+        return 0;
+    }
+    if (mode.equals("ui")) {
+        return keymapUi(project);
+    }
+    if (mode.equals("get")) {
+        if (args.count() < 3) {
+            print("error 0:0 keymap get needs ACTION");
+            return 1;
+        }
+        string actionId = args.get(2);
+        if (!keymapIrHasAction(ir, actionId)) {
+            print(f"error 0:0 unknown keymap action '{actionId}'");
+            return 1;
+        }
+        print(actionId + "=" + irActionCommand(ir, actionId));
+        print(actionId + ".binding=" + irBindingCombo(ir, actionId));
+        return 0;
+    }
+    if (mode.equals("put") || mode.equals("set")) {
+        if (args.count() < 4) {
+            print("error 0:0 keymap put needs ACTION KEYS");
+            return 1;
+        }
+        string actionId = args.get(2);
+        string command = args.get(3);
+        if (!keymapPutActionCommand(project, actionId, command)) {
+            return 1;
+        }
+        print(actionId + "=" + irActionCommand(projectKeymapUiIr(project), actionId));
+        if (args.has("--apply")) {
+            lifecycleReconfigure(project, "");
+            print("OK settings applied");
+        }
+        return 0;
+    }
+    if (mode.equals("bind") || mode.equals("binding")) {
+        if (args.count() < 4 && args.valueAfter("--combo", "").len() == 0) {
+            print("error 0:0 keymap bind needs ACTION COMBO");
+            return 1;
+        }
+        string actionId = args.get(2);
+        string combo = args.valueAfter("--combo", "");
+        if (combo.len() == 0) {
+            combo = args.get(3);
+        }
+        if (!keymapPutBindingCombo(project, actionId, combo)) {
+            return 1;
+        }
+        print(actionId + ".binding=" + irBindingCombo(projectKeymapUiIr(project), actionId));
+        if (args.has("--apply")) {
+            lifecycleReconfigure(project, "");
+            print("OK settings applied");
         }
         return 0;
     }
