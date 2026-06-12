@@ -942,16 +942,19 @@ int e2eLauncherSmoke(CliArgs args) {
     e2eSeedFile(emulatorProfilePath(project, "RetroArch/config/input.cfg"));
     e2eSeedFile(emulatorProfilePath(project, "RetroArch/retroarch.cfg"));
     if (!e2eRunOk(e2eRunLauncher(exe, home, project, roms, binDir, capture, fakeBwrap, "retroarch", ["-L", "core.so", "game.gba"]), "launcher retroarch")) { return 1; }
-    if (!e2eContains(FileSystem.readText(joinPath(capture, "retroarch.args")), "/usr/bin/retroarch", "retroarch executable")) { return 1; }
-    if (!e2eContains(FileSystem.readText(joinPath(capture, "retroarch.args")), "-f", "retroarch fullscreen flag")) { return 1; }
-    if (!e2eContains(FileSystem.readText(joinPath(capture, "retroarch.args")), "-L", "retroarch core flag")) { return 1; }
-    if (!e2eContains(FileSystem.readText(joinPath(capture, "retroarch.args")), "core.so", "retroarch core arg")) { return 1; }
-    if (!e2eContains(FileSystem.readText(joinPath(capture, "retroarch.args")), "game.gba", "retroarch rom arg")) { return 1; }
-    if (!e2eContains(FileSystem.readText(joinPath(capture, "retroarch.args")), "--ro-bind-try", "retroarch rom bind")) { return 1; }
-    if (!e2eContains(FileSystem.readText(joinPath(capture, "retroarch.args")), "--set-shader=" + shaderPreset, "retroarch shader argv")) { return 1; }
+    string retroarchArgs = FileSystem.readText(joinPath(capture, "retroarch.args"));
+    string expectedLauncherShader = presentationResolvedShaderPath(project, "gba");
+    string expectedConfigShader = retroArchShaderPresetPath(project);
+    if (!e2eContains(retroarchArgs, "/usr/bin/retroarch", "retroarch executable")) { return 1; }
+    if (!e2eContains(retroarchArgs, "-f", "retroarch fullscreen flag")) { return 1; }
+    if (!e2eContains(retroarchArgs, "-L", "retroarch core flag")) { return 1; }
+    if (!e2eContains(retroarchArgs, "core.so", "retroarch core arg")) { return 1; }
+    if (!e2eContains(retroarchArgs, "game.gba", "retroarch rom arg")) { return 1; }
+    if (!e2eContains(retroarchArgs, "--ro-bind-try", "retroarch rom bind")) { return 1; }
+    if (!e2eContains(retroarchArgs, "--set-shader=" + expectedLauncherShader, "retroarch shader argv")) { return 1; }
     string generatedRetroarchConfig = launcherRetroArchConfig(project);
     if (!e2eContains(generatedRetroarchConfig, "video_shader_enable = \"true\"", "retroarch shader enabled")) { return 1; }
-    if (!e2eContains(generatedRetroarchConfig, shaderPreset, "retroarch Mega_Bezel preset")) { return 1; }
+    if (!e2eContains(generatedRetroarchConfig, expectedConfigShader, "retroarch Mega_Bezel preset")) { return 1; }
     if (!e2eContains(generatedRetroarchConfig, "video_scale_integer = \"true\"", "retroarch integer scaling")) { return 1; }
     string retroScreens = joinPath(contentRoot(project), "screenshots/verification/retroarch");
     if (!e2eOk(FileSystem.exists(joinPath(retroScreens, "before_launch.png")), "retroarch before_launch screenshot missing")) { return 1; }
