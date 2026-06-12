@@ -11,6 +11,7 @@ SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd -P)"
 FAILURES=0
 BASELINE="$OUT/baseline.png"
 BASELINE_SHA=""
+CASE_FILTER="${SEMU_CASES:-}"
 
 mkdir -p "$OUT"
 : > "$OUT/summary.tsv"
@@ -119,6 +120,15 @@ send_input() {
   sudo "$SEND" "$@" >/dev/null 2>&1 || true
 }
 
+case_selected() {
+  local id="$1"
+  [ -z "$CASE_FILTER" ] && return 0
+  case ",$CASE_FILTER," in
+    *,"$id",*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
 case_failed() {
   local required="$1"
   local id="$2"
@@ -140,6 +150,8 @@ run_case() {
   local executable="$3"
   local wait_seconds="$4"
   shift 4
+
+  case_selected "$id" || return 0
 
   local log="$OUT/$id.log"
   local png="$OUT/$id.png"
