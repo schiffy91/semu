@@ -20288,7 +20288,7 @@ bool e2eExpectStatus(int expected, char* command) {
 }
 
 char* e2eCleanAppRunFixtureEnv(void) {
-    return "SEMU_NIX_STORE_MOUNTED= APPIMAGE= ";
+    return "SEMU_NIX_STORE_MOUNTED= APPIMAGE= SEMU_PROJECT_DIR= SEMU_ROMS= SEMU_ROMS_DIR= SEMU_CLI= SEMU_RUNTIME_CLI= SEMU_BIN= ";
 }
 
 bool e2eFileContains(char* path, char* expected, char* label) {

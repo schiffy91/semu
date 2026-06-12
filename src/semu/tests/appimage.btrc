@@ -126,7 +126,7 @@ bool e2eExpectStatus(int expected, string command) {
 }
 
 string e2eCleanAppRunFixtureEnv() {
-    return "SEMU_NIX_STORE_MOUNTED= APPIMAGE= ";
+    return "SEMU_NIX_STORE_MOUNTED= APPIMAGE= SEMU_PROJECT_DIR= SEMU_ROMS= SEMU_ROMS_DIR= SEMU_CLI= SEMU_RUNTIME_CLI= SEMU_BIN= ";
 }
 
 bool e2eFileContains(string path, string expected, string label) {
