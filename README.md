@@ -28,7 +28,8 @@ This repo currently provides:
 - Per-system presentation settings in `settings/presentation/*.json`, with
   BTRC-owned `presentation plan|get|put|defaults` access for shader files,
   bezel files, display layout, scale policy, adapter source, and dynamic aspect
-  policy.
+  policy. `presentation plan` reports selected policy, resolved asset files,
+  launcher-effective shader choice, and missing/disabled asset status.
 - Declarative screenshot verification config in `verification/screenshots.json`.
 - Linux launcher shims and AppRun glue under `packaging/linux/`.
 - Nix packages for the BTRC CLI, bundled emulator set, routed emulator wrappers,

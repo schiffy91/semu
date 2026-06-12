@@ -718,6 +718,10 @@ int e2ePresentationSmoke(CliArgs args) {
     if (!e2eRunOk(e2eRunPresentation(exe, home, project, ["defaults"]), "presentation defaults")) { return 1; }
     if (!e2eOk(FileSystem.exists(joinPath(presentationSettingsRoot(project), "gb.json")), "gb presentation config missing")) { return 1; }
     if (!e2eOk(FileSystem.exists(joinPath(presentationSettingsRoot(project), "n3ds.json")), "n3ds presentation config missing")) { return 1; }
+    string shaderRoot = joinPath(project, "result/share/libretro/shaders/shaders_slang");
+    ensureDir(joinPath(shaderRoot, "handheld/console-border"));
+    FileSystem.writeText(joinPath(shaderRoot, "handheld/gameboy.slangp"), "# fake gb shader\n");
+    FileSystem.writeText(joinPath(shaderRoot, "handheld/console-border/dmg.slangp"), "# fake gb runtime/bezel\n");
 
     ExecResult gb = e2eRunPresentation(exe, home, project, ["plan", "gb"]);
     if (!e2eRunOk(gb, "presentation gb plan")) { return 1; }
@@ -725,6 +729,20 @@ int e2ePresentationSmoke(CliArgs args) {
     if (!e2eContains(gb.stdout(), "\"shader_file\": \"handheld/gameboy.slangp\"", "gb shader")) { return 1; }
     if (!e2eContains(gb.stdout(), "classic grey Game Boy", "gb bezel intent")) { return 1; }
     if (!e2eContains(gb.stdout(), "\"scale_policy\": \"integer_native\"", "gb integer scale")) { return 1; }
+    if (!e2eContains(gb.stdout(), "\"resolved_shader_file\": \"" + joinPath(shaderRoot, "handheld/gameboy.slangp") + "\"", "gb resolved shader file")) { return 1; }
+    if (!e2eContains(gb.stdout(), "\"resolved_bezel_file\": \"" + joinPath(shaderRoot, "handheld/console-border/dmg.slangp") + "\"", "gb resolved bezel file")) { return 1; }
+    if (!e2eContains(gb.stdout(), "\"resolved_runtime_preset\": \"" + joinPath(shaderRoot, "handheld/console-border/dmg.slangp") + "\"", "gb resolved runtime preset")) { return 1; }
+    if (!e2eContains(gb.stdout(), "\"resolved_launcher_shader\": \"" + joinPath(shaderRoot, "handheld/console-border/dmg.slangp") + "\"", "gb launcher shader")) { return 1; }
+    if (!e2eContains(gb.stdout(), "\"launcher_shader_status\": \"ok\"", "gb launcher shader status")) { return 1; }
+    if (!e2eRunOk(e2eRunSettings(exe, home, project, ["put", "visual.crt_shaders", "false"]), "presentation disable shaders setting")) { return 1; }
+    if (!e2eRunOk(e2eRunSettings(exe, home, project, ["put", "visual.bezels", "false"]), "presentation disable bezels setting")) { return 1; }
+    ExecResult gbDisabled = e2eRunPresentation(exe, home, project, ["plan", "gb"]);
+    if (!e2eRunOk(gbDisabled, "presentation gb disabled visual plan")) { return 1; }
+    if (!e2eContains(gbDisabled.stdout(), "\"launcher_visuals_enabled\": false", "gb disabled launcher visuals")) { return 1; }
+    if (!e2eContains(gbDisabled.stdout(), "\"resolved_launcher_shader\": \"\"", "gb disabled launcher shader")) { return 1; }
+    if (!e2eContains(gbDisabled.stdout(), "\"launcher_shader_status\": \"disabled\"", "gb disabled launcher shader status")) { return 1; }
+    if (!e2eRunOk(e2eRunSettings(exe, home, project, ["put", "visual.crt_shaders", "true"]), "presentation reenable shaders setting")) { return 1; }
+    if (!e2eRunOk(e2eRunSettings(exe, home, project, ["put", "visual.bezels", "true"]), "presentation reenable bezels setting")) { return 1; }
 
     ExecResult gbc = e2eRunPresentation(exe, home, project, ["plan", "gbc"]);
     if (!e2eRunOk(gbc, "presentation gbc plan")) { return 1; }

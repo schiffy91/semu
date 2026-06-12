@@ -209,6 +209,36 @@ class PresentationProbeText {
     }
 }
 
+class PresentationResolvedAssets {
+    public string shaderFile;
+    public string bezelFile;
+    public string runtimePreset;
+    public string launcherShader;
+
+    public PresentationResolvedAssets(
+        string project,
+        string selectedShaderFile,
+        string selectedBezelFile,
+        string selectedRuntimePreset,
+        string selectedLauncherShader
+    ) {
+        self.shaderFile = presentationResolveAssetCandidate(project, selectedShaderFile);
+        self.bezelFile = presentationResolveAssetCandidate(project, selectedBezelFile);
+        self.runtimePreset = presentationResolveAssetCandidate(project, selectedRuntimePreset);
+        self.launcherShader = selectedLauncherShader;
+    }
+
+    public string status(string candidate, string resolved) {
+        if (candidate.len() == 0) { return "disabled"; }
+        return resolved.len() > 0 ? "ok" : "missing";
+    }
+
+    public string launcherStatus(bool visualsEnabled) {
+        if (!visualsEnabled) { return "disabled"; }
+        return self.launcherShader.len() > 0 ? "ok" : "missing";
+    }
+}
+
 class PresentationCatalog {
     class PresentationStationSpec empty() {
         return PresentationStationSpec("", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", false, "", "");
@@ -363,31 +393,49 @@ bool presentationPutValue(string project, string system, string field, string va
     return true;
 }
 
-string presentationResolveShaderCandidate(string project, string candidate) {
+bool presentationVisualsEnabled(string project) {
+    return settingsGetValue(project, "visual.crt_shaders").equals("true")
+        || settingsGetValue(project, "visual.bezels").equals("true");
+}
+
+string presentationResolveAssetCandidate(string project, string candidate) {
     if (candidate.len() == 0) { return ""; }
     if (candidate.startsWith("/")) {
         return FileSystem.exists(candidate) ? candidate : "";
     }
     string shaderDir = retroArchShaderDir(project);
-    if (shaderDir.len() == 0) { return ""; }
-    string path = joinPath(shaderDir, candidate);
-    return FileSystem.exists(path) ? path : "";
+    if (shaderDir.len() > 0) {
+        string shaderPath = joinPath(shaderDir, candidate);
+        if (FileSystem.exists(shaderPath)) { return shaderPath; }
+    }
+    string projectPath = joinPath(project, candidate);
+    return FileSystem.exists(projectPath) ? projectPath : "";
+}
+
+string presentationResolveShaderCandidate(string project, string candidate) {
+    return presentationResolveAssetCandidate(project, candidate);
+}
+
+string presentationResolveLauncherShader(string project, string runtimePreset, string shaderFile) {
+    if (!presentationVisualsEnabled(project)) { return ""; }
+    string runtime = presentationResolveShaderCandidate(project, runtimePreset);
+    if (runtime.len() > 0) { return runtime; }
+    string shader = presentationResolveShaderCandidate(project, shaderFile);
+    if (shader.len() > 0) { return shader; }
+    return retroArchShaderPresetPath(project);
 }
 
 string presentationResolvedShaderPath(string project, string system) {
-    if (!settingsGetValue(project, "visual.crt_shaders").equals("true")
-            && !settingsGetValue(project, "visual.bezels").equals("true")) {
-        return "";
-    }
+    if (!presentationVisualsEnabled(project)) { return ""; }
     PresentationStationSpec spec = PresentationCatalog.find(system);
     if (!spec.known()) {
         return retroArchShaderPresetPath(project);
     }
-    string runtime = presentationResolveShaderCandidate(project, presentationConfigValue(project, system, "runtime_preset"));
-    if (runtime.len() > 0) { return runtime; }
-    string shader = presentationResolveShaderCandidate(project, presentationConfigValue(project, system, "shader_file"));
-    if (shader.len() > 0) { return shader; }
-    return retroArchShaderPresetPath(project);
+    JsonObject config = spec.config(project);
+    PresentationRuntimeState state = presentationAdapterRuntimeState(project, spec, config, config.getString("default_emulator", spec.defaultEmulator));
+    string selectedShader = presentationEffectiveValue(config, spec, state, "shader_file", spec.shaderFile, "widescreen_shader_file", spec.defaultWidescreenShaderFile());
+    string selectedRuntime = presentationEffectiveValue(config, spec, state, "runtime_preset", spec.runtimePreset, "widescreen_runtime_preset", spec.defaultWidescreenRuntimePreset());
+    return presentationResolveLauncherShader(project, selectedRuntime, selectedShader);
 }
 
 bool presentationArgTakesValue(string arg) {
@@ -655,11 +703,7 @@ string presentationEffectiveValue(JsonObject config, PresentationStationSpec spe
 }
 
 string presentationResolveSelectedShader(string project, string runtimePreset, string shaderFile) {
-    string runtime = presentationResolveShaderCandidate(project, runtimePreset);
-    if (runtime.len() > 0) { return runtime; }
-    string shader = presentationResolveShaderCandidate(project, shaderFile);
-    if (shader.len() > 0) { return shader; }
-    return retroArchShaderPresetPath(project);
+    return presentationResolveLauncherShader(project, runtimePreset, shaderFile);
 }
 
 string presentationPlanJson(string project, string system, string emulator) {
@@ -673,6 +717,8 @@ string presentationPlanJson(string project, string system, string emulator) {
     string selectedBezel = presentationEffectiveValue(config, spec, state, "bezel_file", spec.bezelFile, "widescreen_bezel_file", spec.defaultWidescreenBezelFile());
     string selectedRuntime = presentationEffectiveValue(config, spec, state, "runtime_preset", spec.runtimePreset, "widescreen_runtime_preset", spec.defaultWidescreenRuntimePreset());
     string resolved = presentationResolveSelectedShader(project, selectedRuntime, selectedShader);
+    bool visualsEnabled = presentationVisualsEnabled(project);
+    PresentationResolvedAssets assets = PresentationResolvedAssets(project, selectedShader, selectedBezel, selectedRuntime, resolved);
     return jsonObject([
         jsonField("schema_version", "1"),
         jsonStrField("system", system),
@@ -685,16 +731,25 @@ string presentationPlanJson(string project, string system, string emulator) {
         jsonStrField("shader_file", config.getString("shader_file", spec.shaderFile)),
         jsonStrField("shader_intent", config.getString("shader_intent", spec.shaderIntent)),
         jsonStrField("resolved_shader", resolved),
+        jsonStrField("resolved_shader_file", assets.shaderFile),
+        jsonStrField("shader_file_status", assets.status(selectedShader, assets.shaderFile)),
         jsonStrField("bezel_backend", config.getString("bezel_backend", spec.bezelBackend)),
         jsonStrField("bezel_file", config.getString("bezel_file", spec.bezelFile)),
         jsonStrField("bezel_intent", config.getString("bezel_intent", spec.bezelIntent)),
+        jsonStrField("resolved_bezel_file", assets.bezelFile),
+        jsonStrField("bezel_file_status", assets.status(selectedBezel, assets.bezelFile)),
         jsonStrField("runtime_preset", config.getString("runtime_preset", spec.runtimePreset)),
+        jsonStrField("resolved_runtime_preset", assets.runtimePreset),
+        jsonStrField("runtime_preset_status", assets.status(selectedRuntime, assets.runtimePreset)),
         jsonStrField("widescreen_shader_file", config.getString("widescreen_shader_file", spec.defaultWidescreenShaderFile())),
         jsonStrField("widescreen_bezel_file", config.getString("widescreen_bezel_file", spec.defaultWidescreenBezelFile())),
         jsonStrField("widescreen_runtime_preset", config.getString("widescreen_runtime_preset", spec.defaultWidescreenRuntimePreset())),
         jsonStrField("selected_shader_file", selectedShader),
         jsonStrField("selected_bezel_file", selectedBezel),
         jsonStrField("selected_runtime_preset", selectedRuntime),
+        jsonBoolField("launcher_visuals_enabled", visualsEnabled),
+        jsonStrField("resolved_launcher_shader", assets.launcherShader),
+        jsonStrField("launcher_shader_status", assets.launcherStatus(visualsEnabled)),
         jsonField("runtime_state", state.json()),
         jsonStrField("effective_aspect", state.aspect),
         jsonStrField("effective_layout", state.layout),
