@@ -5,7 +5,7 @@
 - Rebuilt and installed the self-contained AppImage at
   `/home/deck/Applications/Semu/Semu-x86_64.AppImage`.
 - Installed AppImage hash
-  `f212ad3cf3fd2a72a8c9c866e78d29679b3d6d8ea89866a31a4a07d33180f2ea`.
+  `8763f1bb950c908ca8a0687c18c5c961be36f7f3423f07291afcf4372da0d8ac`.
 - Ran the Desktop Mode direct AppImage Deck loop over the required routed
   emulator set with clean process startup, foreground-window wait, screenshots,
   scripted input probes, and unified quit verification. `gb`, `gbc`, `gba`,
@@ -64,6 +64,16 @@
   launcher shader statuses all `ok`.
 - Launched the installed AppImage in Deck Desktop Mode and captured a 1280x800
   screenshot showing ES-DE running through the bundled AppRun/bwrap path.
+- Rebuilt and installed the AppImage from commit `3dd0c0a`; backup of the prior
+  install is
+  `/home/deck/Applications/Semu/Semu-x86_64.AppImage.prev-3dd0c0a-20260612-035730`.
+- Installed AppImage hash is now
+  `8763f1bb950c908ca8a0687c18c5c961be36f7f3423f07291afcf4372da0d8ac`.
+- Verified the installed `3dd0c0a` AppImage runs `e2e deck-evidence`,
+  `e2e appimage`, `deck game-mode-ready --prepare`, `deck game-mode-ready
+  --prepare --allow-desktop`, `deck game-mode-evidence --allow-pending`,
+  `keymap capabilities app.quit`, and `presentation plan --system gb` with
+  shader, bezel, runtime preset, and launcher shader statuses all `ok`.
 
 ## Verified Locally
 
