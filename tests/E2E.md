@@ -76,7 +76,7 @@ input checks through the same BTRC CLI used on a physical Deck.
 - Physical Steam Deck Game Mode pass: Neptune trackpads, Steam Input template
   visibility, left-trackpad radial menu, unified save/load/quit hotkeys inside
   each emulator, screenshot contents from real Gamescope emulator windows, and
-  quit returning to ES-DE in Game Mode.
+  structured quit-watch evidence plus return-to-ES-DE in Game Mode.
 - Steam launch metadata pass: run `build/semu steam-input status --project
   "$PWD"` on the Deck and verify the reported `steam://rungameid/...` URI
   launches Semu before starting the physical Game Mode pass.
@@ -118,7 +118,9 @@ Desktop Mode with the AppImage built from the Nix package closure:
 - A broad Desktop Mode required-route pass launched representative SD-card ROMs
   through RetroArch GB/GBC/GBA/NES/SNES/Genesis/N64, PPSSPP, Flycast, Dolphin,
   PCSX2, melonDS, Azahar, Cemu, and Ryujinx. Every required route returned
-  `status=0`, `quit=ok`, and a 1280x800 nonblank screenshot.
+  `status=0`, `quit=ok`, and a 1280x800 nonblank screenshot. New passes keep
+  per-system `$SEMU_TEST_OUT/<system>.quit-watch.log` files and require a
+  `quit ... reason=<chord>` line for Semu launcher-layer quit evidence.
 - The broad pass produced real visible frames for the required systems, with
   evidence copied under `build/deck-loop-a555de7-v2`.
 - The optional RetroArch DeSmuME DS route is not production-ready on the Deck

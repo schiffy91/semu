@@ -1117,3 +1117,36 @@ int e2eShellSyntaxSmoke(string project) {
     print("OK shell artifact syntax");
     return 0;
 }
+
+// ---- quit_watch.btrc ----
+int e2eQuitWatchSmoke(string project) {
+    if (!commandExists("cc")) {
+        print("SKIP quit-watch smoke: cc not found");
+        return 0;
+    }
+
+    string tmp = e2eTempDir("semu-quit-watch");
+    string source = joinPath(project, "src/semu/quit-watch.c");
+    string output = joinPath(tmp, "semu-quit-watch");
+    string log = joinPath(tmp, "quit-watch.log");
+    if (!e2eOk(FileSystem.exists(source), "quit-watch source missing")) { return 1; }
+
+    string buildCommand = "cc " + ShellWords.quote(source)
+        + " -std=c11 -Wall -Wextra -o " + ShellWords.quote(output);
+    ExecResult build = UnixShell().runRaw(buildCommand, true, false, "");
+    if (!e2eRunOk(build, "compile quit-watch")) { return 1; }
+
+    string runCommand = "SEMU_QUIT_WATCH_LOG=" + ShellWords.quote(log)
+        + " " + ShellWords.quote(output)
+        + " -- sh -c " + ShellWords.quote("exit 0");
+    ExecResult run = UnixShell().runRaw(runCommand, true, false, "");
+    if (!e2eRunOk(run, "run quit-watch")) { return 1; }
+    if (!e2eOk(FileSystem.exists(log), "quit-watch evidence log missing")) { return 1; }
+
+    string evidence = FileSystem.readText(log);
+    if (!e2eContains(evidence, " start child=", "quit-watch start evidence")) { return 1; }
+    if (!e2eContains(evidence, " exit child=", "quit-watch exit evidence")) { return 1; }
+
+    print("OK quit-watch evidence smoke");
+    return 0;
+}

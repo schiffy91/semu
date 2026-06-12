@@ -826,6 +826,7 @@ ExecResult* e2eRunN3dsNoCrypto(char* exe, char* input, char* outputDir, btrc_Vec
 ExecResult* e2eRunDecrypt3dsNoCrypto(char* exe, char* input, btrc_Vector_string* extraArgs);
 int e2eN3dsNoCryptoSmoke(CliArgs* args);
 int e2eShellSyntaxSmoke(char* project);
+int e2eQuitWatchSmoke(char* project);
 void printUsage(void);
 int keymapCommand(CliArgs* args);
 int screenshotCommand(CliArgs* args, char* project);
@@ -20715,6 +20716,9 @@ int e2eCommand(CliArgs* args) {
     if (strcmp(mode, "shell-syntax") == 0) {
         return e2eShellSyntaxSmoke(CliArgs_valueAfter(args, "--project", Environment_get("SEMU_PROJECT_DIR", ".")));
     }
+    if (strcmp(mode, "quit-watch") == 0) {
+        return e2eQuitWatchSmoke(CliArgs_valueAfter(args, "--project", Environment_get("SEMU_PROJECT_DIR", ".")));
+    }
     if (strcmp(mode, "appimage") == 0) {
         return e2eAppImageSmoke(args);
     }
@@ -20771,6 +20775,10 @@ int e2eCommand(CliArgs* args) {
         int shellStatus = e2eShellSyntaxSmoke(CliArgs_valueAfter(args, "--project", Environment_get("SEMU_PROJECT_DIR", ".")));
         if (shellStatus != 0) {
             return shellStatus;
+        }
+        int quitWatchStatus = e2eQuitWatchSmoke(CliArgs_valueAfter(args, "--project", Environment_get("SEMU_PROJECT_DIR", ".")));
+        if (quitWatchStatus != 0) {
+            return quitWatchStatus;
         }
         return e2eLifecycleSmoke(args);
     }
@@ -23512,6 +23520,42 @@ int e2eShellSyntaxSmoke(char* project) {
         return result->code;
     }
     printf("%s\n", "OK shell artifact syntax");
+    return 0;
+}
+
+int e2eQuitWatchSmoke(char* project) {
+    if (!commandExists("cc")) {
+        printf("%s\n", "SKIP quit-watch smoke: cc not found");
+        return 0;
+    }
+    char* tmp = e2eTempDir("semu-quit-watch");
+    char* source = joinPath(project, "src/semu/quit-watch.c");
+    char* output = joinPath(tmp, "semu-quit-watch");
+    char* log = joinPath(tmp, "quit-watch.log");
+    if (!e2eOk(FileSystem_exists(source), "quit-watch source missing")) {
+        return 1;
+    }
+    char* buildCommand = __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat("cc ", ShellWords_quote(source))), " -std=c11 -Wall -Wextra -o ")), ShellWords_quote(output)));
+    ExecResult* build = UnixShell_runRaw(UnixShell_new(), buildCommand, true, false, "");
+    if (!e2eRunOk(build, "compile quit-watch")) {
+        return 1;
+    }
+    char* runCommand = __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat("SEMU_QUIT_WATCH_LOG=", ShellWords_quote(log))), " ")), ShellWords_quote(output))), " -- sh -c ")), ShellWords_quote("exit 0")));
+    ExecResult* run = UnixShell_runRaw(UnixShell_new(), runCommand, true, false, "");
+    if (!e2eRunOk(run, "run quit-watch")) {
+        return 1;
+    }
+    if (!e2eOk(FileSystem_exists(log), "quit-watch evidence log missing")) {
+        return 1;
+    }
+    char* evidence = FileSystem_readText(log);
+    if (!e2eContains(evidence, " start child=", "quit-watch start evidence")) {
+        return 1;
+    }
+    if (!e2eContains(evidence, " exit child=", "quit-watch exit evidence")) {
+        return 1;
+    }
+    printf("%s\n", "OK quit-watch evidence smoke");
     return 0;
 }
 

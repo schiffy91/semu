@@ -216,6 +216,7 @@ run_case() {
   case_selected "$id" || return 0
 
   local log="$OUT/$id.log"
+  local quit_log="$OUT/$id.quit-watch.log"
   local case_baseline="$OUT/$id.baseline.png"
   local png="$OUT/$id.png"
   local input_png="$OUT/$id.after-input.png"
@@ -231,7 +232,7 @@ run_case() {
   local quit_debug="${SEMU_QUIT_WATCH_DEBUG:-0}"
   local required="${SEMU_CURRENT_ROUTE_REQUIRED:-yes}"
 
-  rm -f "$log" "$case_baseline" "$png" "$input_png"
+  rm -f "$log" "$quit_log" "$case_baseline" "$png" "$input_png"
   printf 'START\t%s\t%s\n' "$id" "$(date +%H:%M:%S)" | tee -a "$OUT/summary.tsv"
   capture_screen "$case_baseline"
   case_baseline_sha="$(file_sha "$case_baseline" || true)"
@@ -246,6 +247,7 @@ run_case() {
     SEMU_ROMS="$ROMS" \
     SEMU_ROMS_DIR="$ROMS" \
     SEMU_QUIT_WATCH_DEBUG="$quit_debug" \
+    SEMU_QUIT_WATCH_LOG="$quit_log" \
     "$APP" launcher routed "$emulator" "$executable" "$@" >"$log" 2>&1 < /dev/null &
 
   local pid=$!
@@ -298,7 +300,9 @@ run_case() {
   wait "$pid" >/dev/null 2>&1
   status="$?"
   cleanup_emulators
-  if grep -q 'quit key: select+start\|quit key: escape\|quit requested' "$log" 2>/dev/null; then
+  if grep -q ' quit .*reason=' "$quit_log" 2>/dev/null; then
+    quit="ok"
+  elif grep -q 'quit key: select+start\|quit key: escape\|quit requested' "$log" 2>/dev/null; then
     quit="ok"
   else
     quit="missing"
@@ -306,6 +310,7 @@ run_case() {
   printf 'RESULT\t%s\tstatus=%s\tquit=%s\tpng_bytes=%s\tvisual=%s\tinput_visual=%s\trequired=%s\n' "$id" "$status" "$quit" "$size" "$visual" "$input_visual" "$required" | tee -a "$OUT/summary.tsv"
   case_failed "$required" "$id" "$status" "$quit" "$size" "$visual" "$input_visual"
   tail -20 "$log" > "$OUT/$id.tail" 2>/dev/null || true
+  tail -40 "$quit_log" > "$OUT/$id.quit-watch.tail" 2>/dev/null || true
   sleep 2
 }
 

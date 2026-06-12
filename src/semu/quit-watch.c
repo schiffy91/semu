@@ -5,6 +5,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <signal.h>
+#include <stdarg.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -48,6 +49,8 @@ typedef struct {
     size_t len;
 } SemuInputWatcher;
 
+static char semu_last_quit_reason[64];
+
 static bool semu_debug_enabled(void) {
     const char *value = getenv("SEMU_QUIT_WATCH_DEBUG");
     return value != NULL && value[0] != '\0' && strcmp(value, "0") != 0;
@@ -60,6 +63,50 @@ static bool semu_debug_enabled(void) {
             fputc('\n', stderr); \
         } \
     } while (0)
+
+static const char *semu_evidence_path(void) {
+    const char *value = getenv("SEMU_QUIT_WATCH_LOG");
+    if (value == NULL || value[0] == '\0') {
+        return NULL;
+    }
+    return value;
+}
+
+static void semu_evidence(const char *format, ...) {
+    const char *path = semu_evidence_path();
+    if (path == NULL) {
+        return;
+    }
+
+    FILE *file = fopen(path, "a");
+    if (file == NULL) {
+        SEMU_DEBUG("evidence open %s failed: %s", path, strerror(errno));
+        return;
+    }
+
+    fprintf(file, "time=%ld ", (long)time(NULL));
+    va_list args;
+    va_start(args, format);
+    vfprintf(file, format, args);
+    va_end(args);
+    fputc('\n', file);
+    fclose(file);
+}
+
+static const char *semu_quit_reason(void) {
+    if (semu_last_quit_reason[0] == '\0') {
+        return "unknown";
+    }
+    return semu_last_quit_reason;
+}
+
+#ifdef __linux__
+static void semu_set_quit_reason(const char *reason) {
+    int written = snprintf(semu_last_quit_reason, sizeof(semu_last_quit_reason), "%s", reason);
+    if (written < 0 || (size_t)written >= sizeof(semu_last_quit_reason)) {
+        semu_last_quit_reason[sizeof(semu_last_quit_reason) - 1] = '\0';
+    }
+}
 
 static bool semu_path_is_open(SemuInputWatcher *watcher, const char *path) {
     for (size_t i = 0; i < watcher->len; i++) {
@@ -79,6 +126,7 @@ static void semu_close_input_fd(SemuInputWatcher *watcher, size_t index) {
     watcher->items[index] = watcher->items[watcher->len - 1];
     watcher->len--;
 }
+#endif
 
 static void semu_close_inputs(SemuInputWatcher *watcher) {
     for (size_t i = 0; i < watcher->len; i++) {
@@ -124,11 +172,13 @@ static void semu_scan_inputs(SemuInputWatcher *watcher) {
         watcher->items[watcher->len].path[sizeof(watcher->items[watcher->len].path) - 1] = '\0';
         watcher->len++;
         SEMU_DEBUG("watch %s", path);
+        semu_evidence("watch path=%s", path);
     }
     closedir(dir);
 #endif
 }
 
+#ifdef __linux__
 static bool semu_key_down(SemuInputFd *input, int code) {
     return code >= 0 && code < SEMU_MAX_KEYS && input->down[code];
 }
@@ -149,22 +199,27 @@ static bool semu_record_key(SemuInputFd *input, int code, int value) {
 
     if (code == KEY_ESC) {
         SEMU_DEBUG("quit key: escape");
+        semu_set_quit_reason("escape");
         return true;
     }
     if (code == KEY_Q && ctrl) {
         SEMU_DEBUG("quit key: ctrl+q");
+        semu_set_quit_reason("ctrl+q");
         return true;
     }
     if (code == KEY_F4 && alt) {
         SEMU_DEBUG("quit key: alt+f4");
+        semu_set_quit_reason("alt+f4");
         return true;
     }
     if ((code == BTN_SELECT || code == BTN_START) && select_start) {
         SEMU_DEBUG("quit key: select+start");
+        semu_set_quit_reason("select+start");
         return true;
     }
     return false;
 }
+#endif
 
 static bool semu_poll_quit(SemuInputWatcher *watcher, int timeout_ms) {
 #ifndef __linux__
@@ -206,8 +261,16 @@ static bool semu_poll_quit(SemuInputWatcher *watcher, int timeout_ms) {
             for (size_t j = 0; j < count; j++) {
                 if (events[j].type == EV_KEY) {
                     SEMU_DEBUG("event %s key=%u value=%d", watcher->items[i].path, events[j].code, events[j].value);
+                    semu_evidence("event path=%s key=%u value=%d", watcher->items[i].path, events[j].code, events[j].value);
                 }
                 if (events[j].type == EV_KEY && semu_record_key(&watcher->items[i], events[j].code, events[j].value)) {
+                    semu_evidence(
+                        "quit path=%s reason=%s key=%u value=%d",
+                        watcher->items[i].path,
+                        semu_quit_reason(),
+                        events[j].code,
+                        events[j].value
+                    );
                     return true;
                 }
             }
@@ -271,6 +334,7 @@ int main(int argc, char **argv) {
     }
     setpgid(child, child);
     SEMU_DEBUG("child pid=%ld", (long)child);
+    semu_evidence("start child=%ld command=%s", (long)child, argv[command_index]);
 
     SemuInputWatcher watcher;
     memset(&watcher, 0, sizeof(watcher));
@@ -281,6 +345,12 @@ int main(int argc, char **argv) {
         int status = 0;
         pid_t waited = waitpid(child, &status, WNOHANG);
         if (waited == child) {
+            semu_evidence(
+                "exit child=%ld status=%d quit_requested=%d",
+                (long)child,
+                semu_status_code(status),
+                quit_requested ? 1 : 0
+            );
             semu_close_inputs(&watcher);
             return quit_requested ? 0 : semu_status_code(status);
         }
@@ -295,7 +365,9 @@ int main(int argc, char **argv) {
             quit_requested = true;
             fprintf(stderr, "semu-quit-watch: quit requested\n");
             SEMU_DEBUG("quit requested");
+            semu_evidence("terminate child=%ld reason=%s", (long)child, semu_quit_reason());
             semu_terminate_child_group(child);
+            semu_evidence("exit child=%ld status=0 quit_requested=1", (long)child);
             semu_close_inputs(&watcher);
             return 0;
         }
