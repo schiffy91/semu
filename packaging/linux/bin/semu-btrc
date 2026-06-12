@@ -2,7 +2,7 @@
 set -eu
 
 here="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd -P)"
-cli="${SEMU_BIN:-${SEMU_CLI:-}}"
+cli="${SEMU_RUNTIME_CLI:-${SEMU_CLI:-${SEMU_BIN:-}}}"
 
 if [ -z "$cli" ] && [ -x "$here/semu" ]; then
   cli="$here/semu"

@@ -44,6 +44,7 @@ string e2eFakeAppImageToolText() {
         "grep -F 'unset LD_PRELOAD' \"$APPDIR/AppRun\" >/dev/null",
         "grep -F 'unset LD_LIBRARY_PATH' \"$APPDIR/AppRun\" >/dev/null",
         "grep -F 'SEMU_LAUNCHER_BIN' \"$APPDIR/AppRun\" >/dev/null",
+        "grep -F 'SEMU_RUNTIME_CLI' \"$APPDIR/AppRun\" >/dev/null",
         "grep -F 'SEMU_RETROARCH_CORE_DIR' \"$APPDIR/AppRun\" >/dev/null",
         "grep -F 'SEMU_SYNCTHING_BIN' \"$APPDIR/AppRun\" >/dev/null",
         "grep -F 'fake semu-btrc' \"$APPDIR/usr/bin/semu\" >/dev/null",
@@ -268,6 +269,7 @@ int e2eAppImageSmoke(CliArgs args) {
         "printf '%s\\n' \"$@\" > " + ShellWords.quote(cliArgs),
         "{",
         "  printf 'SEMU_BIN=%s\\n' \"${SEMU_BIN:-}\"",
+        "  printf 'SEMU_RUNTIME_CLI=%s\\n' \"${SEMU_RUNTIME_CLI:-}\"",
         "  printf 'LD_LIBRARY_PATH=%s\\n' \"${LD_LIBRARY_PATH:-}\"",
         "  printf 'LD_PRELOAD=%s\\n' \"${LD_PRELOAD:-}\"",
         "} > " + ShellWords.quote(cliEnv)
@@ -293,6 +295,28 @@ int e2eAppImageSmoke(CliArgs args) {
         return 1;
     }
     if (!e2eFileContains(cliEnv, cliAppImage, "AppRun stable SEMU_BIN")) { return 1; }
+    if (!e2eFileContains(cliEnv, joinPath(cliAppDir, "usr/bin/semu"), "AppRun runtime CLI")) { return 1; }
+    string shimDir = joinPath(tmp, "btrc-shim");
+    string shimRuntime = joinPath(tmp, "runtime-cli");
+    string shimStable = joinPath(tmp, "stable-appimage");
+    string shimArgs = joinPath(tmp, "btrc-shim.args");
+    ensureDir(shimDir);
+    copyFilePath(joinPath(project, "packaging/linux/bin/semu-btrc"), joinPath(shimDir, "semu-btrc"));
+    FileSystem.chmod(joinPath(shimDir, "semu-btrc"), 493);
+    e2eWriteExecutable(shimRuntime, textLines([
+        "#!/usr/bin/env bash",
+        "printf '%s\\n' \"$@\" > " + ShellWords.quote(shimArgs)
+    ]));
+    e2eWriteExecutable(shimStable, textLines([
+        "#!/usr/bin/env bash",
+        "echo stable AppImage should not run >&2",
+        "exit 91"
+    ]));
+    if (!e2eExpectStatus(0, "SEMU_RUNTIME_CLI=" + ShellWords.quote(shimRuntime)
+        + " SEMU_BIN=" + ShellWords.quote(shimStable)
+        + " " + ShellWords.quote(joinPath(shimDir, "semu-btrc"))
+        + " launcher retroarch game.rom")) { return 1; }
+    if (!e2eFileContains(shimArgs, "launcher", "semu-btrc runtime CLI")) { return 1; }
     if (!e2eExpectStatus(0, "APPDIR=" + ShellWords.quote(cliAppDir)
         + " APPIMAGE=" + ShellWords.quote(cliAppImage)
         + " SEMU_PROJECT_DIR=" + ShellWords.quote(cliProject)

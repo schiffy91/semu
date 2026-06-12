@@ -45,6 +45,7 @@ fi
 SEMU_LINUX="$APPDIR/packaging/linux"
 SEMU_PACKAGING_BIN="$SEMU_LINUX/bin"
 SEMU_CLI="${SEMU_CLI:-$APPDIR/usr/bin/semu}"
+export SEMU_RUNTIME_CLI="${SEMU_RUNTIME_CLI:-$SEMU_CLI}"
 SEMU_APP_EXEC="${APPIMAGE:-$APPDIR/AppRun}"
 export SEMU_ASSET_ROOT="${SEMU_ASSET_ROOT:-$APPDIR}"
 if [ -x "$APPDIR/usr/bin/semu-retroarch" ]; then
