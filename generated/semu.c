@@ -769,6 +769,7 @@ bool e2eExpectStatus(int expected, char* command);
 bool e2eFileContains(char* path, char* expected, char* label);
 int e2eCountArgLines(char* text, char* expected);
 char* e2eBuildAppImageCommand(char* project, char* binDir, char* nixPackage, char* esde, char* output);
+char* e2eBuildAppImageCommandWithEnv(char* project, char* binDir, char* nixPackage, char* esde, char* output, char* extraEnv);
 int e2eAppImageSmoke(CliArgs* args);
 void deckMaybeRun(char* command);
 char* deckBrewExecutable(void);
@@ -20204,6 +20205,7 @@ char* e2eFakeNixText(void) {
     btrc_Vector_string_push(__list_839, "#!/usr/bin/env bash");
     btrc_Vector_string_push(__list_839, "set -euo pipefail");
     btrc_Vector_string_push(__list_839, "if [ \"${1:-}\" != \"copy\" ]; then echo \"fake nix only supports copy\" >&2; exit 2; fi");
+    btrc_Vector_string_push(__list_839, "if [ -n \"${SEMU_FAKE_NIX_ARGS:-}\" ]; then printf '%s\\n' \"$@\" > \"$SEMU_FAKE_NIX_ARGS\"; fi");
     btrc_Vector_string_push(__list_839, "ROOT=\"\"");
     btrc_Vector_string_push(__list_839, "while [ $# -gt 0 ]; do");
     btrc_Vector_string_push(__list_839, "  case \"$1\" in");
@@ -20294,7 +20296,12 @@ int e2eCountArgLines(char* text, char* expected) {
 }
 
 char* e2eBuildAppImageCommand(char* project, char* binDir, char* nixPackage, char* esde, char* output) {
-    return __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat("cd ", ShellWords_quote(project))), " && PATH=")), ShellWords_quote(binDir))), ":$PATH")), " APPIMAGETOOL=")), ShellWords_quote(joinPath(binDir, "appimagetool")))), " packaging/linux/build-appimage.sh")), " --nix-package ")), ShellWords_quote(nixPackage))), " --esde-appimage ")), ShellWords_quote(esde))), " --output ")), ShellWords_quote(output))), " --arch x86_64"));
+    return e2eBuildAppImageCommandWithEnv(project, binDir, nixPackage, esde, output, "");
+}
+
+char* e2eBuildAppImageCommandWithEnv(char* project, char* binDir, char* nixPackage, char* esde, char* output, char* extraEnv) {
+    char* env = ((((int)strlen(extraEnv)) > 0) ? __btrc_str_track(__btrc_strcat(extraEnv, " ")) : "");
+    return __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat("cd ", ShellWords_quote(project))), " && ")), env)), "PATH=")), ShellWords_quote(binDir))), ":$PATH")), " APPIMAGETOOL=")), ShellWords_quote(joinPath(binDir, "appimagetool")))), " packaging/linux/build-appimage.sh")), " --nix-package ")), ShellWords_quote(nixPackage))), " --esde-appimage ")), ShellWords_quote(esde))), " --output ")), ShellWords_quote(output))), " --arch x86_64"));
 }
 
 int e2eAppImageSmoke(CliArgs* args) {
@@ -20325,6 +20332,19 @@ int e2eAppImageSmoke(CliArgs* args) {
         }
     }
     if (!e2eFileContains(output, "/usr/bin/es-de", "AppImage output es-de")) {
+        return 1;
+    }
+    char* packageLink = joinPath(tmp, "result");
+    UnixShell_runRaw(UnixShell_new(), __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat("ln -s ", ShellWords_quote(package))), " ")), ShellWords_quote(packageLink))), true, false, "");
+    char* nixArgs = joinPath(tmp, "nix.args");
+    if (!e2eExpectStatus(0, e2eBuildAppImageCommandWithEnv(project, binDir, packageLink, fakeEsde, joinPath(tmp, "Semu-link.AppImage"), __btrc_str_track(__btrc_strcat("SEMU_FAKE_NIX_ARGS=", ShellWords_quote(nixArgs)))))) {
+        return 1;
+    }
+    char* nixArgText = FileSystem_readText(nixArgs);
+    if (!e2eOk(__btrc_strContains(nixArgText, package), "AppImage build canonicalizes linked Nix package before nix copy")) {
+        return 1;
+    }
+    if (!e2eOk((!__btrc_strContains(nixArgText, packageLink)), "AppImage build does not pass linked result path to nix copy")) {
         return 1;
     }
     char* appDir = joinPath(tmp, "AppRunProbe.AppDir");

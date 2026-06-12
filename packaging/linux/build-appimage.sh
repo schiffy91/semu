@@ -43,6 +43,11 @@ APPIMAGETOOL="${APPIMAGETOOL:-$(command -v appimagetool || true)}"
 [ -z "$APPIMAGETOOL" ] && APPIMAGETOOL="$REPO_ROOT/bin/appimagetool"
 [ -x "$APPIMAGETOOL" ] || { echo "appimagetool not found (try APPIMAGETOOL=...)" >&2; exit 3; }
 
+if [ -z "${TMPDIR:-}" ] && [ -n "${HOME:-}" ] && [ -d "$HOME/.cache" ]; then
+  export TMPDIR="$HOME/.cache/semu-appimage-work"
+  mkdir -p "$TMPDIR"
+fi
+
 WORK="$(mktemp -d -t semu-appimage.XXXXXX)"
 cleanup() {
   chmod -R u+w "$WORK" 2>/dev/null || true
@@ -109,6 +114,7 @@ fi
 
 if [ -n "$NIX_PACKAGE" ]; then
   [ -e "$NIX_PACKAGE" ] || { echo "Nix package not found: $NIX_PACKAGE" >&2; exit 4; }
+  NIX_PACKAGE="$(readlink -f "$NIX_PACKAGE")"
   command -v nix >/dev/null 2>&1 || {
     echo "nix is required when --nix-package is used" >&2
     exit 4

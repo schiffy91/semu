@@ -243,6 +243,11 @@ packaging/linux/build-appimage.sh \
   --arch x86_64
 ```
 
+`--nix-package` may point at the usual `result` symlink; the builder resolves it
+before `nix copy`. On SteamOS, the builder defaults temporary AppDir work to
+`$HOME/.cache/semu-appimage-work` when `TMPDIR` is unset, because `/tmp` can be
+too small for the copied Nix closure.
+
 Why bubblewrap is used:
 
 - Nix-built binaries reference absolute `/nix/store/...` paths.
@@ -262,9 +267,7 @@ Fallback behavior:
 Automated tests validate AppImage assembly logic with fake ES-DE and fake
 appimagetool. Physical Deck evidence currently covers Desktop Mode ES-DE launch,
 AppImage-owned Syncthing, SD-card ROM detection, and required-route process
-launch/quit automation. The broad emulator loop still needs a corrected visual
-capture pass because the last PNG set captured the desktop rather than reliable
-emulator framebuffers. Game Mode, physical Steam Input radial quit, controller
+launch/quit automation. Game Mode, physical Steam Input radial quit, controller
 input in-game, fullscreen presentation, and ES-DE return flow remain the final
 manual gates listed in `tests/E2E.md`.
 

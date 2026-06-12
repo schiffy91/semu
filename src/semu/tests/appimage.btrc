@@ -62,6 +62,7 @@ string e2eFakeNixText() {
         "#!/usr/bin/env bash",
         "set -euo pipefail",
         "if [ \"${1:-}\" != \"copy\" ]; then echo \"fake nix only supports copy\" >&2; exit 2; fi",
+        "if [ -n \"${SEMU_FAKE_NIX_ARGS:-}\" ]; then printf '%s\\n' \"$@\" > \"$SEMU_FAKE_NIX_ARGS\"; fi",
         "ROOT=\"\"",
         "while [ $# -gt 0 ]; do",
         "  case \"$1\" in",
@@ -141,8 +142,14 @@ int e2eCountArgLines(string text, string expected) {
 }
 
 string e2eBuildAppImageCommand(string project, string binDir, string nixPackage, string esde, string output) {
+    return e2eBuildAppImageCommandWithEnv(project, binDir, nixPackage, esde, output, "");
+}
+
+string e2eBuildAppImageCommandWithEnv(string project, string binDir, string nixPackage, string esde, string output, string extraEnv) {
+    string env = extraEnv.len() > 0 ? extraEnv + " " : "";
     return "cd " + ShellWords.quote(project)
-        + " && PATH=" + ShellWords.quote(binDir) + ":$PATH"
+        + " && " + env
+        + "PATH=" + ShellWords.quote(binDir) + ":$PATH"
         + " APPIMAGETOOL=" + ShellWords.quote(joinPath(binDir, "appimagetool"))
         + " packaging/linux/build-appimage.sh"
         + " --nix-package " + ShellWords.quote(nixPackage)
@@ -173,6 +180,20 @@ int e2eAppImageSmoke(CliArgs args) {
         if (!e2eFileContains(output, "/usr/bin/" + bin, "AppImage output " + bin)) { return 1; }
     }
     if (!e2eFileContains(output, "/usr/bin/es-de", "AppImage output es-de")) { return 1; }
+
+    string packageLink = joinPath(tmp, "result");
+    UnixShell().runRaw("ln -s " + ShellWords.quote(package) + " " + ShellWords.quote(packageLink), true, false, "");
+    string nixArgs = joinPath(tmp, "nix.args");
+    if (!e2eExpectStatus(0, e2eBuildAppImageCommandWithEnv(
+            project,
+            binDir,
+            packageLink,
+            fakeEsde,
+            joinPath(tmp, "Semu-link.AppImage"),
+            "SEMU_FAKE_NIX_ARGS=" + ShellWords.quote(nixArgs)))) { return 1; }
+    string nixArgText = FileSystem.readText(nixArgs);
+    if (!e2eOk(nixArgText.contains(package), "AppImage build canonicalizes linked Nix package before nix copy")) { return 1; }
+    if (!e2eOk(!nixArgText.contains(packageLink), "AppImage build does not pass linked result path to nix copy")) { return 1; }
 
     string appDir = joinPath(tmp, "AppRunProbe.AppDir");
     ensureDir(joinPath(appDir, "nix/store"));
