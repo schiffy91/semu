@@ -158,6 +158,38 @@ int syncCommand(CliArgs args, string project) {
     if (mode.equals("setup")) {
         return syncSetup(project) ? 0 : 1;
     }
+    if (mode.equals("ui")) {
+        return syncUi(project);
+    }
+    if (mode.equals("get")) {
+        if (args.count() < 3) {
+            print("error 0:0 sync get needs KEY");
+            return 1;
+        }
+        SyncSettingSpec spec = SyncSettingsRegistry.find(args.get(2));
+        if (!spec.known()) {
+            print(f"error 0:0 unknown sync setting '{args.get(2)}'");
+            return 1;
+        }
+        print(spec.key + "=" + syncSettingValue(project, spec));
+        return 0;
+    }
+    if (mode.equals("put") || mode.equals("set")) {
+        if (args.count() < 4) {
+            print("error 0:0 sync put needs KEY VALUE");
+            return 1;
+        }
+        string key = args.get(2);
+        if (!syncPutSetting(project, key, args.get(3))) {
+            return 1;
+        }
+        print(key + "=" + syncSettingValue(project, SyncSettingsRegistry.find(key)));
+        if (args.has("--apply")) {
+            lifecycleReconfigure(project, "");
+            print("OK sync settings applied");
+        }
+        return 0;
+    }
     if (mode.equals("start")) {
         return syncStart(project) ? 0 : 1;
     }

@@ -30,6 +30,279 @@ string syncFolderLabel(string id) {
     return "Semu";
 }
 
+class SyncSettingSpec {
+    public string key;
+    public string label;
+    public string group;
+    public string jsonKey;
+    public string kind;
+    public string fallback;
+
+    public SyncSettingSpec(string key, string label, string group, string jsonKey, string kind, string fallback) {
+        self.key = key;
+        self.label = label;
+        self.group = group;
+        self.jsonKey = jsonKey;
+        self.kind = kind;
+        self.fallback = fallback;
+    }
+
+    public bool known() {
+        return self.key.len() > 0;
+    }
+
+    public bool isBool() {
+        return self.kind.equals("bool");
+    }
+
+    public bool isInt() {
+        return self.kind.equals("int");
+    }
+}
+
+class SyncSettingsRegistry {
+    class SyncSettingSpec empty() {
+        return SyncSettingSpec("", "", "", "", "", "");
+    }
+
+    class Vector<SyncSettingSpec> all() {
+        return [
+            SyncSettingSpec("enabled", "Syncthing Enabled", "Runtime", "enabled", "bool", "true"),
+            SyncSettingSpec("start_at_boot", "Start At Boot", "Runtime", "start_at_boot", "bool", "true"),
+            SyncSettingSpec("tray", "Show Sync Tray", "Runtime", "tray", "bool", "true"),
+            SyncSettingSpec("gui_address", "Syncthing UI Address", "Runtime", "gui_address", "string", "127.0.0.1:8384"),
+            SyncSettingSpec("roms_dir", "ROM Directory", "Folders", "roms_dir", "string", "${paths.project_roms}"),
+            SyncSettingSpec("sync_saves", "Sync Saves", "Folders", "sync_saves", "bool", "true"),
+            SyncSettingSpec("sync_states", "Sync States", "Folders", "sync_states", "bool", "true"),
+            SyncSettingSpec("sync_emulator_state", "Sync Emulator State", "Folders", "sync_emulator_state", "bool", "true"),
+            SyncSettingSpec("sync_screenshots", "Sync Screenshots", "Folders", "sync_screenshots", "bool", "true"),
+            SyncSettingSpec("sync_gamelists", "Sync Gamelists", "Folders", "sync_gamelists", "bool", "true"),
+            SyncSettingSpec("sync_roms", "Sync ROMs", "Folders", "sync_roms", "bool", "false"),
+            SyncSettingSpec("sync_bios", "Sync BIOS", "Folders", "sync_bios", "bool", "false"),
+            SyncSettingSpec("watch_saves", "Watch Saves", "Watchers", "watch_saves", "bool", "true"),
+            SyncSettingSpec("watch_states", "Watch States", "Watchers", "watch_states", "bool", "true"),
+            SyncSettingSpec("watch_emulator_state", "Watch Emulator State", "Watchers", "watch_emulator_state", "bool", "true"),
+            SyncSettingSpec("watch_screenshots", "Watch Screenshots", "Watchers", "watch_screenshots", "bool", "true"),
+            SyncSettingSpec("watch_gamelists", "Watch Gamelists", "Watchers", "watch_gamelists", "bool", "true"),
+            SyncSettingSpec("watch_roms", "Watch ROMs", "Watchers", "watch_roms", "bool", "true"),
+            SyncSettingSpec("watch_bios", "Watch BIOS", "Watchers", "watch_bios", "bool", "true"),
+            SyncSettingSpec("rescan_saves_s", "Save Rescan Seconds", "Intervals", "rescan_saves_s", "int", "900"),
+            SyncSettingSpec("rescan_states_s", "State Rescan Seconds", "Intervals", "rescan_states_s", "int", "900"),
+            SyncSettingSpec("rescan_emulator_state_s", "Emulator State Rescan Seconds", "Intervals", "rescan_emulator_state_s", "int", "900"),
+            SyncSettingSpec("rescan_screenshots_s", "Screenshot Rescan Seconds", "Intervals", "rescan_screenshots_s", "int", "1800"),
+            SyncSettingSpec("rescan_gamelists_s", "Gamelist Rescan Seconds", "Intervals", "rescan_gamelists_s", "int", "1800"),
+            SyncSettingSpec("rescan_roms_s", "ROM Rescan Seconds", "Intervals", "rescan_roms_s", "int", "3600"),
+            SyncSettingSpec("rescan_bios_s", "BIOS Rescan Seconds", "Intervals", "rescan_bios_s", "int", "3600")
+        ];
+    }
+
+    class SyncSettingSpec find(string key) {
+        for spec in SyncSettingsRegistry.all() {
+            if (spec.key.equals(key) || spec.jsonKey.equals(key)) {
+                return spec;
+            }
+        }
+        return SyncSettingsRegistry.empty();
+    }
+
+    class SyncSettingSpec at(int index) {
+        Vector<SyncSettingSpec> specs = SyncSettingsRegistry.all();
+        if (index < 0 || index >= specs.len) {
+            return SyncSettingsRegistry.empty();
+        }
+        return specs.get(index);
+    }
+}
+
+bool syncUiBoolLiteral(string value) {
+    string normalized = value.toLower();
+    return normalized.equals("1")
+        || normalized.equals("0")
+        || normalized.equals("true")
+        || normalized.equals("false")
+        || normalized.equals("yes")
+        || normalized.equals("no")
+        || normalized.equals("on")
+        || normalized.equals("off");
+}
+
+bool syncUiBoolValue(string value) {
+    string normalized = value.toLower();
+    return normalized.equals("1") || normalized.equals("true") || normalized.equals("yes") || normalized.equals("on");
+}
+
+bool syncUiIntLiteral(string value) {
+    return value.len() > 0 && value.isDigitStr();
+}
+
+string syncSettingStoredString(string project, JsonObject config, SyncSettingSpec spec) {
+    if (spec.key.equals("roms_dir")) {
+        return configuredRomsRoot(project);
+    }
+    return expandProjectTemplate(project, config.getString(spec.jsonKey, spec.fallback));
+}
+
+string syncSettingValue(string project, SyncSettingSpec spec) {
+    if (!spec.known()) { return ""; }
+    JsonObject config = syncConfig(project);
+    if (spec.isBool()) {
+        return config.getBool(spec.jsonKey, syncUiBoolValue(spec.fallback)) ? "true" : "false";
+    }
+    if (spec.isInt()) {
+        return Strings.fromInt(config.getInt(spec.jsonKey, spec.fallback.toInt()));
+    }
+    return syncSettingStoredString(project, config, spec);
+}
+
+string syncSettingJsonField(string project, JsonObject config, SyncSettingSpec spec, string overrideKey, string overrideValue) {
+    if (spec.isBool()) {
+        bool value = spec.key.equals(overrideKey)
+            ? syncUiBoolValue(overrideValue)
+            : config.getBool(spec.jsonKey, syncUiBoolValue(spec.fallback));
+        return jsonBoolField(spec.jsonKey, value);
+    }
+    if (spec.isInt()) {
+        int value = spec.key.equals(overrideKey)
+            ? overrideValue.toInt()
+            : config.getInt(spec.jsonKey, spec.fallback.toInt());
+        return jsonField(spec.jsonKey, Strings.fromInt(value));
+    }
+    string value = spec.key.equals(overrideKey)
+        ? overrideValue
+        : config.getString(spec.jsonKey, spec.fallback);
+    if (spec.key.equals("roms_dir") && spec.key.equals(overrideKey)) {
+        value = normalizeRomsRoot(value);
+    }
+    return jsonStrField(spec.jsonKey, value);
+}
+
+string syncConfigTextWithOverride(string project, string overrideKey, string overrideValue) {
+    writeSyncDefaults(project, "");
+    JsonObject config = JsonObject.readFile(syncConfigPath(project));
+    Vector<string> fields = [];
+    for spec in SyncSettingsRegistry.all() {
+        fields.push(syncSettingJsonField(project, config, spec, overrideKey, overrideValue));
+    }
+    return jsonObject(fields) + "\n";
+}
+
+bool syncPutSetting(string project, string key, string value) {
+    SyncSettingSpec spec = SyncSettingsRegistry.find(key);
+    if (!spec.known()) {
+        print(f"error 0:0 unknown sync setting '{key}'");
+        return false;
+    }
+    if (spec.isBool() && !syncUiBoolLiteral(value)) {
+        print(f"error 0:0 {spec.key} expects a boolean");
+        return false;
+    }
+    if (spec.isInt() && !syncUiIntLiteral(value)) {
+        print(f"error 0:0 {spec.key} expects a non-negative integer");
+        return false;
+    }
+    writeJsonPrettyFile(syncConfigPath(project), syncConfigTextWithOverride(project, spec.key, value));
+    return true;
+}
+
+class SyncSettingsUi {
+    public string project;
+
+    public SyncSettingsUi(string project) {
+        self.project = project;
+    }
+
+    public void render() {
+        print("");
+        print("Semu Sync Settings");
+        print("==================");
+        print("Project: " + self.project);
+        print("Source: " + syncConfigPath(self.project));
+        print("Edits update Semu-owned sync/sync.json. Use apply to compile service files and launcher state.");
+        print("");
+        string group = "";
+        int index = 1;
+        for spec in SyncSettingsRegistry.all() {
+            if (!spec.group.equals(group)) {
+                group = spec.group;
+                print(group);
+            }
+            string hint = spec.isBool() ? "toggle" : "edit";
+            print("  " + Strings.fromInt(index) + ". " + spec.label + " [" + spec.key + "] = " + syncSettingValue(self.project, spec) + " (" + hint + ")");
+            index++;
+        }
+        print("");
+        print("Commands: number = edit/toggle, a = apply, setup = setup/start, status = status, open = open UI, q = back");
+        print("Select:");
+    }
+
+    public int apply() {
+        lifecycleReconfigure(self.project, "");
+        print("OK sync settings applied");
+        return 0;
+    }
+
+    public int run() {
+        writeSyncDefaults(self.project, "");
+        while (true) {
+            self.render();
+            string choice = settingsReadLine();
+            if (settingsLineIsEof(choice)) { return 0; }
+            choice = choice.trim();
+            if (choice.len() == 0) { continue; }
+            if (choice.equals("q") || choice.equals("quit") || choice.equals("back")) { return 0; }
+            if (choice.equals("a") || choice.equals("apply")) {
+                self.apply();
+                continue;
+            }
+            if (choice.equals("setup")) {
+                return syncSetup(self.project) ? 0 : 1;
+            }
+            if (choice.equals("status")) {
+                syncStatus(self.project);
+                continue;
+            }
+            if (choice.equals("open")) {
+                syncOpen(self.project);
+                continue;
+            }
+            if (!choice.isDigitStr()) {
+                print("Unknown command: " + choice);
+                continue;
+            }
+            SyncSettingSpec spec = SyncSettingsRegistry.at(choice.toInt() - 1);
+            if (!spec.known()) {
+                print("Unknown setting number: " + choice);
+                continue;
+            }
+            if (spec.isBool()) {
+                string current = syncSettingValue(self.project, spec);
+                string next = current.equals("true") ? "false" : "true";
+                if (syncPutSetting(self.project, spec.key, next)) {
+                    print(spec.key + "=" + syncSettingValue(self.project, spec));
+                }
+                continue;
+            }
+            print("Current " + spec.label + ": " + syncSettingValue(self.project, spec));
+            print("New value, empty to cancel:");
+            string value = settingsReadLine();
+            if (settingsLineIsEof(value)) { return 0; }
+            value = value.trim();
+            if (value.len() == 0) {
+                print("Cancelled");
+                continue;
+            }
+            if (syncPutSetting(self.project, spec.key, value)) {
+                print(spec.key + "=" + syncSettingValue(self.project, spec));
+            }
+        }
+        return 0;
+    }
+}
+
+int syncUi(string project) {
+    return SyncSettingsUi(project).run();
+}
+
 bool syncFolderEnabled(string project, string id) {
     return syncBool(project, "sync_" + id, false);
 }
