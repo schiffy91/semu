@@ -657,6 +657,10 @@ int e2eSettingsSmoke(CliArgs args) {
     if (!e2eContains(FileSystem.readText(keymapSourcePath(project)), "action state.save = Ctrl+W", "input ui persisted owned keymap")) { return 1; }
     if (!e2eOk(FileSystem.readText(emulatorProfilePath(project, "RetroArch/retroarch.cfg")).equals(retroarchBeforeInputUi), "input ui edit mutated generated RetroArch profile before apply")) { return 1; }
     if (!e2eContains(e2eRunKeymap(exe, home, project, ["get", "state.save"]).stdout(), "state.save=Ctrl+W", "keymap get edited command")) { return 1; }
+    ExecResult stateCapabilities = e2eRunKeymap(exe, home, project, ["capabilities", "state.save"]);
+    if (!e2eRunOk(stateCapabilities, "keymap state capability report")) { return 1; }
+    if (!e2eContains(stateCapabilities.stdout(), "pending state.save: generated=retroarch,dolphin,pcsx2", "state save generated capabilities")) { return 1; }
+    if (!e2eContains(stateCapabilities.stdout(), "disabled=azahar,ppsspp,flycast,melonds,cemu,ryujinx", "state save disabled capabilities")) { return 1; }
     if (!e2eRunOk(e2eRunKeymap(exe, home, project, ["put", "state.save", "Ctrl+W", "--apply"]), "keymap put apply")) { return 1; }
     if (!e2eContains(FileSystem.readText(emulatorProfilePath(project, "RetroArch/retroarch.cfg")), "input_save_state = \"w\"", "input apply regenerated RetroArch profile")) { return 1; }
 

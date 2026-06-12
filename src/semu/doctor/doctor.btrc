@@ -174,6 +174,11 @@ void doctorSteamDeck(string project) {
     print("  OK backends: uinput, evemu, uhid, inputplumber, steam_input");
     print("  OK controller_models: steam_deck, steam_controller, xbox_xinput, dualshock4, dualsense, switch_pro");
     print("  OK steam_deck verification: linux_virtual_input, deck_route, steam_deck_game_mode");
+    print("");
+    print("Input capabilities");
+    print("  " + keymapCapabilitySummary("app.quit"));
+    print("  " + keymapCapabilitySummary("state.save"));
+    print("  " + keymapCapabilitySummary("state.load"));
 
     string keymapPath = keymapSourcePath(project);
     string keymapSource = FileSystem.exists(keymapPath) ? FileSystem.readText(keymapPath) : defaultKeymapSource();

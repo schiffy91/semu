@@ -101,6 +101,124 @@ string actionNote(string id) {
     return "";
 }
 
+class KeymapActionCapability {
+    public string actionId;
+    public string emulator;
+    public string status;
+    public string evidence;
+    public string note;
+
+    public KeymapActionCapability(string actionId, string emulator, string status, string evidence, string note) {
+        self.actionId = actionId;
+        self.emulator = emulator;
+        self.status = status;
+        self.evidence = evidence;
+        self.note = note;
+    }
+
+    public string json() {
+        return jsonObject([
+            jsonStrField("emulator", self.emulator),
+            jsonStrField("status", self.status),
+            jsonStrField("evidence", self.evidence),
+            jsonStrField("note", self.note)
+        ]);
+    }
+
+    public string line() {
+        return self.actionId + " " + self.status + " " + self.emulator
+            + " evidence=" + self.evidence + " note=" + self.note;
+    }
+}
+
+Vector<KeymapActionCapability> keymapStateActionCapabilities(string id) {
+    return [
+        KeymapActionCapability(id, "retroarch", "generated", "renderRetroArchKeymap", "native RetroArch state hotkeys and shared states directory"),
+        KeymapActionCapability(id, "dolphin", "generated", "renderDolphinKeymap", "Dolphin hotkey profile renders slot-1 state hotkeys"),
+        KeymapActionCapability(id, "pcsx2", "generated", "renderPcsx2Keymap", "PCSX2 input profile renders state slot hotkeys"),
+        KeymapActionCapability(id, "azahar", "disabled", "no generated state hotkey profile", "do not advertise until adapter config and state-file proof exist"),
+        KeymapActionCapability(id, "ppsspp", "disabled", "no generated state hotkey profile", "do not advertise until adapter config and state-file proof exist"),
+        KeymapActionCapability(id, "flycast", "disabled", "no Semu state contract", "state action remains hidden/disabled for this route"),
+        KeymapActionCapability(id, "melonds", "disabled", "no Semu state contract", "state action remains hidden/disabled for this route"),
+        KeymapActionCapability(id, "cemu", "disabled", "no Semu state contract", "state action remains hidden/disabled for this route"),
+        KeymapActionCapability(id, "ryujinx", "disabled", "no Semu state contract", "state action remains hidden/disabled for this route")
+    ];
+}
+
+Vector<KeymapActionCapability> actionCapabilities(string id) {
+    if (id.equals("app.quit")) {
+        return [
+            KeymapActionCapability(id, "retroarch", "desktop_verified", "Deck desktop loop", "physical Game Mode radial proof pending"),
+            KeymapActionCapability(id, "dolphin", "desktop_verified", "Deck desktop loop", "physical Game Mode radial proof pending"),
+            KeymapActionCapability(id, "ppsspp", "desktop_verified", "Deck desktop loop", "physical Game Mode radial proof pending"),
+            KeymapActionCapability(id, "flycast", "desktop_verified", "Deck desktop loop", "physical Game Mode radial proof pending"),
+            KeymapActionCapability(id, "melonds", "desktop_verified", "Deck desktop loop", "physical Game Mode radial proof pending"),
+            KeymapActionCapability(id, "pcsx2", "desktop_verified", "Deck desktop loop", "physical Game Mode radial proof pending"),
+            KeymapActionCapability(id, "cemu", "desktop_verified", "Deck desktop loop", "physical Game Mode radial proof pending"),
+            KeymapActionCapability(id, "azahar", "desktop_verified", "Deck desktop loop", "physical Game Mode radial proof pending"),
+            KeymapActionCapability(id, "ryujinx", "desktop_verified", "Deck desktop loop", "physical Game Mode radial proof pending")
+        ];
+    }
+    if (id.equals("state.prev") || id.equals("state.next") || id.equals("state.load") || id.equals("state.save")) {
+        return keymapStateActionCapabilities(id);
+    }
+    Vector<KeymapActionCapability> empty = [];
+    return empty;
+}
+
+Vector<string> actionCapabilityEmulators(string id, string status) {
+    Vector<string> emulators = [];
+    for capability in actionCapabilities(id) {
+        if (capability.status.equals(status)) {
+            emulators.push(capability.emulator);
+        }
+    }
+    return emulators;
+}
+
+string actionCapabilitiesJson(string id) {
+    Vector<string> items = [];
+    for capability in actionCapabilities(id) {
+        items.push(capability.json());
+    }
+    return jsonArray(items);
+}
+
+string keymapCapabilitySummary(string id) {
+    Vector<string> generated = actionCapabilityEmulators(id, "generated");
+    Vector<string> desktopVerified = actionCapabilityEmulators(id, "desktop_verified");
+    Vector<string> disabled = actionCapabilityEmulators(id, "disabled");
+    if (id.equals("app.quit")) {
+        return "OK app.quit: desktop_verified=" + desktopVerified.join(",") + "; physical_game_mode=pending";
+    }
+    if (id.startsWith("state.")) {
+        return "pending " + id + ": generated=" + generated.join(",")
+            + "; disabled=" + disabled.join(",")
+            + "; physical_state_proof=pending";
+    }
+    return "info " + id + ": systems=" + actionSystems(id).join(",");
+}
+
+int keymapCapabilitiesCommand(KeymapIr ir, string actionId) {
+    if (actionId.len() > 0 && !keymapIrHasAction(ir, actionId)) {
+        print(f"error 0:0 unknown keymap action '{actionId}'");
+        return 1;
+    }
+    Vector<string> ids = [];
+    if (actionId.len() > 0) {
+        ids.push(actionId);
+    } else {
+        ids = requiredKeymapActions();
+    }
+    for id in ids {
+        print(keymapCapabilitySummary(id));
+        for capability in actionCapabilities(id) {
+            print("  " + capability.line());
+        }
+    }
+    return 0;
+}
+
 Vector<string> actionSystems(string id) {
     if (id.equals("ui.open")) { return ["dolphin"]; }
     if (id.equals("ui.pause")) { return ["retroarch", "dolphin", "azahar", "melonds", "pcsx2"]; }
@@ -108,10 +226,10 @@ Vector<string> actionSystems(string id) {
     if (id.equals("ui.fullscreen")) { return ["dolphin", "azahar", "melonds", "pcsx2"]; }
     if (id.equals("ui.menu")) { return ["retroarch", "pcsx2", "ppsspp"]; }
     if (id.equals("app.quit")) { return ["retroarch", "dolphin", "azahar", "pcsx2", "ppsspp", "flycast", "melonds", "cemu", "ryujinx"]; }
-    if (id.equals("state.prev")) { return ["retroarch", "dolphin", "pcsx2", "ppsspp"]; }
-    if (id.equals("state.next")) { return ["retroarch", "dolphin", "pcsx2", "ppsspp"]; }
-    if (id.equals("state.load")) { return ["retroarch", "dolphin", "azahar", "pcsx2", "ppsspp"]; }
-    if (id.equals("state.save")) { return ["retroarch", "dolphin", "azahar", "pcsx2", "ppsspp"]; }
+    if (id.equals("state.prev")) { return actionCapabilityEmulators(id, "generated"); }
+    if (id.equals("state.next")) { return actionCapabilityEmulators(id, "generated"); }
+    if (id.equals("state.load")) { return actionCapabilityEmulators(id, "generated"); }
+    if (id.equals("state.save")) { return actionCapabilityEmulators(id, "generated"); }
     if (id.equals("speed.rewind")) { return ["retroarch"]; }
     if (id.equals("speed.fast")) { return ["retroarch", "melonds", "pcsx2", "ppsspp"]; }
     if (id.equals("screen.swap")) { return ["azahar", "melonds", "cemu"]; }
@@ -352,6 +470,7 @@ string keymapIrActionJson(KeymapIr ir, int index) {
         jsonStrField("label", actionLabel(id)),
         jsonStrField("command", ir.actionCommands.get(index)),
         jsonField("systems", jsonStringArray(actionSystems(id))),
+        jsonField("capabilities", actionCapabilitiesJson(id)),
         jsonStrField("note", actionNote(id))
     ]);
 }
@@ -679,6 +798,13 @@ class KeymapUi {
         print("Command: " + irActionCommand(ir, action.id));
         print("Controller Combo: " + irBindingCombo(ir, action.id));
         print("Systems: " + actionSystems(action.id).join(","));
+        Vector<KeymapActionCapability> capabilities = actionCapabilities(action.id);
+        if (capabilities.len > 0) {
+            print("Capabilities:");
+            for capability in capabilities {
+                print("  " + capability.status + " " + capability.emulator + ": " + capability.note);
+            }
+        }
         print(actionNote(action.id));
         print("");
         print("Commands: c = edit command, b = edit controller combo, a = apply, back = back, q = quit");

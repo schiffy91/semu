@@ -440,8 +440,7 @@
                     "systems": [
                         "retroarch",
                         "dolphin",
-                        "pcsx2",
-                        "ppsspp"
+                        "pcsx2"
                     ],
                     "note": "Move to the previous save-state slot."
                 },
@@ -453,8 +452,7 @@
                     "systems": [
                         "retroarch",
                         "dolphin",
-                        "pcsx2",
-                        "ppsspp"
+                        "pcsx2"
                     ],
                     "note": "Move to the next save-state slot."
                 },
@@ -466,9 +464,7 @@
                     "systems": [
                         "retroarch",
                         "dolphin",
-                        "azahar",
-                        "pcsx2",
-                        "ppsspp"
+                        "pcsx2"
                     ],
                     "note": "Load the current save-state slot."
                 },
@@ -480,9 +476,7 @@
                     "systems": [
                         "retroarch",
                         "dolphin",
-                        "azahar",
-                        "pcsx2",
-                        "ppsspp"
+                        "pcsx2"
                     ],
                     "note": "Save to the current save-state slot."
                 },
@@ -583,6 +577,7 @@
                     "systems": [
                         "dolphin"
                     ],
+                    "capabilities": [],
                     "note": "Open content or emulator dialog where supported."
                 },
                 {
@@ -597,6 +592,7 @@
                         "melonds",
                         "pcsx2"
                     ],
+                    "capabilities": [],
                     "note": "Primary pause toggle for emulator cores and standalone emulators."
                 },
                 {
@@ -610,6 +606,7 @@
                         "azahar",
                         "pcsx2"
                     ],
+                    "capabilities": [],
                     "note": "Screenshot command for emulators that expose a keyboard hotkey."
                 },
                 {
@@ -623,6 +620,7 @@
                         "melonds",
                         "pcsx2"
                     ],
+                    "capabilities": [],
                     "note": "Standalone fullscreen toggle."
                 },
                 {
@@ -635,6 +633,7 @@
                         "pcsx2",
                         "ppsspp"
                     ],
+                    "capabilities": [],
                     "note": "Open the emulator quick menu when supported."
                 },
                 {
@@ -653,6 +652,62 @@
                         "cemu",
                         "ryujinx"
                     ],
+                    "capabilities": [
+                        {
+                            "emulator": "retroarch",
+                            "status": "desktop_verified",
+                            "evidence": "Deck desktop loop",
+                            "note": "physical Game Mode radial proof pending"
+                        },
+                        {
+                            "emulator": "dolphin",
+                            "status": "desktop_verified",
+                            "evidence": "Deck desktop loop",
+                            "note": "physical Game Mode radial proof pending"
+                        },
+                        {
+                            "emulator": "ppsspp",
+                            "status": "desktop_verified",
+                            "evidence": "Deck desktop loop",
+                            "note": "physical Game Mode radial proof pending"
+                        },
+                        {
+                            "emulator": "flycast",
+                            "status": "desktop_verified",
+                            "evidence": "Deck desktop loop",
+                            "note": "physical Game Mode radial proof pending"
+                        },
+                        {
+                            "emulator": "melonds",
+                            "status": "desktop_verified",
+                            "evidence": "Deck desktop loop",
+                            "note": "physical Game Mode radial proof pending"
+                        },
+                        {
+                            "emulator": "pcsx2",
+                            "status": "desktop_verified",
+                            "evidence": "Deck desktop loop",
+                            "note": "physical Game Mode radial proof pending"
+                        },
+                        {
+                            "emulator": "cemu",
+                            "status": "desktop_verified",
+                            "evidence": "Deck desktop loop",
+                            "note": "physical Game Mode radial proof pending"
+                        },
+                        {
+                            "emulator": "azahar",
+                            "status": "desktop_verified",
+                            "evidence": "Deck desktop loop",
+                            "note": "physical Game Mode radial proof pending"
+                        },
+                        {
+                            "emulator": "ryujinx",
+                            "status": "desktop_verified",
+                            "evidence": "Deck desktop loop",
+                            "note": "physical Game Mode radial proof pending"
+                        }
+                    ],
                     "note": "Unified exit command for Game Mode."
                 },
                 {
@@ -663,8 +718,63 @@
                     "systems": [
                         "retroarch",
                         "dolphin",
-                        "pcsx2",
-                        "ppsspp"
+                        "pcsx2"
+                    ],
+                    "capabilities": [
+                        {
+                            "emulator": "retroarch",
+                            "status": "generated",
+                            "evidence": "renderRetroArchKeymap",
+                            "note": "native RetroArch state hotkeys and shared states directory"
+                        },
+                        {
+                            "emulator": "dolphin",
+                            "status": "generated",
+                            "evidence": "renderDolphinKeymap",
+                            "note": "Dolphin hotkey profile renders slot-1 state hotkeys"
+                        },
+                        {
+                            "emulator": "pcsx2",
+                            "status": "generated",
+                            "evidence": "renderPcsx2Keymap",
+                            "note": "PCSX2 input profile renders state slot hotkeys"
+                        },
+                        {
+                            "emulator": "azahar",
+                            "status": "disabled",
+                            "evidence": "no generated state hotkey profile",
+                            "note": "do not advertise until adapter config and state-file proof exist"
+                        },
+                        {
+                            "emulator": "ppsspp",
+                            "status": "disabled",
+                            "evidence": "no generated state hotkey profile",
+                            "note": "do not advertise until adapter config and state-file proof exist"
+                        },
+                        {
+                            "emulator": "flycast",
+                            "status": "disabled",
+                            "evidence": "no Semu state contract",
+                            "note": "state action remains hidden/disabled for this route"
+                        },
+                        {
+                            "emulator": "melonds",
+                            "status": "disabled",
+                            "evidence": "no Semu state contract",
+                            "note": "state action remains hidden/disabled for this route"
+                        },
+                        {
+                            "emulator": "cemu",
+                            "status": "disabled",
+                            "evidence": "no Semu state contract",
+                            "note": "state action remains hidden/disabled for this route"
+                        },
+                        {
+                            "emulator": "ryujinx",
+                            "status": "disabled",
+                            "evidence": "no Semu state contract",
+                            "note": "state action remains hidden/disabled for this route"
+                        }
                     ],
                     "note": "Move to the previous save-state slot."
                 },
@@ -676,8 +786,63 @@
                     "systems": [
                         "retroarch",
                         "dolphin",
-                        "pcsx2",
-                        "ppsspp"
+                        "pcsx2"
+                    ],
+                    "capabilities": [
+                        {
+                            "emulator": "retroarch",
+                            "status": "generated",
+                            "evidence": "renderRetroArchKeymap",
+                            "note": "native RetroArch state hotkeys and shared states directory"
+                        },
+                        {
+                            "emulator": "dolphin",
+                            "status": "generated",
+                            "evidence": "renderDolphinKeymap",
+                            "note": "Dolphin hotkey profile renders slot-1 state hotkeys"
+                        },
+                        {
+                            "emulator": "pcsx2",
+                            "status": "generated",
+                            "evidence": "renderPcsx2Keymap",
+                            "note": "PCSX2 input profile renders state slot hotkeys"
+                        },
+                        {
+                            "emulator": "azahar",
+                            "status": "disabled",
+                            "evidence": "no generated state hotkey profile",
+                            "note": "do not advertise until adapter config and state-file proof exist"
+                        },
+                        {
+                            "emulator": "ppsspp",
+                            "status": "disabled",
+                            "evidence": "no generated state hotkey profile",
+                            "note": "do not advertise until adapter config and state-file proof exist"
+                        },
+                        {
+                            "emulator": "flycast",
+                            "status": "disabled",
+                            "evidence": "no Semu state contract",
+                            "note": "state action remains hidden/disabled for this route"
+                        },
+                        {
+                            "emulator": "melonds",
+                            "status": "disabled",
+                            "evidence": "no Semu state contract",
+                            "note": "state action remains hidden/disabled for this route"
+                        },
+                        {
+                            "emulator": "cemu",
+                            "status": "disabled",
+                            "evidence": "no Semu state contract",
+                            "note": "state action remains hidden/disabled for this route"
+                        },
+                        {
+                            "emulator": "ryujinx",
+                            "status": "disabled",
+                            "evidence": "no Semu state contract",
+                            "note": "state action remains hidden/disabled for this route"
+                        }
                     ],
                     "note": "Move to the next save-state slot."
                 },
@@ -689,9 +854,63 @@
                     "systems": [
                         "retroarch",
                         "dolphin",
-                        "azahar",
-                        "pcsx2",
-                        "ppsspp"
+                        "pcsx2"
+                    ],
+                    "capabilities": [
+                        {
+                            "emulator": "retroarch",
+                            "status": "generated",
+                            "evidence": "renderRetroArchKeymap",
+                            "note": "native RetroArch state hotkeys and shared states directory"
+                        },
+                        {
+                            "emulator": "dolphin",
+                            "status": "generated",
+                            "evidence": "renderDolphinKeymap",
+                            "note": "Dolphin hotkey profile renders slot-1 state hotkeys"
+                        },
+                        {
+                            "emulator": "pcsx2",
+                            "status": "generated",
+                            "evidence": "renderPcsx2Keymap",
+                            "note": "PCSX2 input profile renders state slot hotkeys"
+                        },
+                        {
+                            "emulator": "azahar",
+                            "status": "disabled",
+                            "evidence": "no generated state hotkey profile",
+                            "note": "do not advertise until adapter config and state-file proof exist"
+                        },
+                        {
+                            "emulator": "ppsspp",
+                            "status": "disabled",
+                            "evidence": "no generated state hotkey profile",
+                            "note": "do not advertise until adapter config and state-file proof exist"
+                        },
+                        {
+                            "emulator": "flycast",
+                            "status": "disabled",
+                            "evidence": "no Semu state contract",
+                            "note": "state action remains hidden/disabled for this route"
+                        },
+                        {
+                            "emulator": "melonds",
+                            "status": "disabled",
+                            "evidence": "no Semu state contract",
+                            "note": "state action remains hidden/disabled for this route"
+                        },
+                        {
+                            "emulator": "cemu",
+                            "status": "disabled",
+                            "evidence": "no Semu state contract",
+                            "note": "state action remains hidden/disabled for this route"
+                        },
+                        {
+                            "emulator": "ryujinx",
+                            "status": "disabled",
+                            "evidence": "no Semu state contract",
+                            "note": "state action remains hidden/disabled for this route"
+                        }
                     ],
                     "note": "Load the current save-state slot."
                 },
@@ -703,9 +922,63 @@
                     "systems": [
                         "retroarch",
                         "dolphin",
-                        "azahar",
-                        "pcsx2",
-                        "ppsspp"
+                        "pcsx2"
+                    ],
+                    "capabilities": [
+                        {
+                            "emulator": "retroarch",
+                            "status": "generated",
+                            "evidence": "renderRetroArchKeymap",
+                            "note": "native RetroArch state hotkeys and shared states directory"
+                        },
+                        {
+                            "emulator": "dolphin",
+                            "status": "generated",
+                            "evidence": "renderDolphinKeymap",
+                            "note": "Dolphin hotkey profile renders slot-1 state hotkeys"
+                        },
+                        {
+                            "emulator": "pcsx2",
+                            "status": "generated",
+                            "evidence": "renderPcsx2Keymap",
+                            "note": "PCSX2 input profile renders state slot hotkeys"
+                        },
+                        {
+                            "emulator": "azahar",
+                            "status": "disabled",
+                            "evidence": "no generated state hotkey profile",
+                            "note": "do not advertise until adapter config and state-file proof exist"
+                        },
+                        {
+                            "emulator": "ppsspp",
+                            "status": "disabled",
+                            "evidence": "no generated state hotkey profile",
+                            "note": "do not advertise until adapter config and state-file proof exist"
+                        },
+                        {
+                            "emulator": "flycast",
+                            "status": "disabled",
+                            "evidence": "no Semu state contract",
+                            "note": "state action remains hidden/disabled for this route"
+                        },
+                        {
+                            "emulator": "melonds",
+                            "status": "disabled",
+                            "evidence": "no Semu state contract",
+                            "note": "state action remains hidden/disabled for this route"
+                        },
+                        {
+                            "emulator": "cemu",
+                            "status": "disabled",
+                            "evidence": "no Semu state contract",
+                            "note": "state action remains hidden/disabled for this route"
+                        },
+                        {
+                            "emulator": "ryujinx",
+                            "status": "disabled",
+                            "evidence": "no Semu state contract",
+                            "note": "state action remains hidden/disabled for this route"
+                        }
                     ],
                     "note": "Save to the current save-state slot."
                 },
@@ -717,6 +990,7 @@
                     "systems": [
                         "retroarch"
                     ],
+                    "capabilities": [],
                     "note": "RetroArch rewind where the core supports rewind."
                 },
                 {
@@ -730,6 +1004,7 @@
                         "pcsx2",
                         "ppsspp"
                     ],
+                    "capabilities": [],
                     "note": "Fast-forward toggle."
                 },
                 {
@@ -742,6 +1017,7 @@
                         "melonds",
                         "cemu"
                     ],
+                    "capabilities": [],
                     "note": "Swap displays for dual-screen systems."
                 },
                 {
@@ -752,6 +1028,7 @@
                     "systems": [
                         "pc"
                     ],
+                    "capabilities": [],
                     "note": "Plain escape for menus and desktop-oriented components."
                 }
             ],
