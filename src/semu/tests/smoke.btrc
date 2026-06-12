@@ -354,7 +354,8 @@ int e2eLifecycleSmoke(CliArgs args) {
     if (!e2eRunOk(shortcutStatus, "steam-input shortcut status")) { return 1; }
     if (!e2eContains(shortcutStatus.stdout(), "OK shortcut: Semu-x86_64.AppImage", "Steam shortcut status")) { return 1; }
     if (!e2eContains(shortcutStatus.stdout(), "appid: 3834341984", "Steam shortcut appid")) { return 1; }
-    if (!e2eContains(shortcutStatus.stdout(), "steam://rungameid/3834341984", "Steam shortcut URI")) { return 1; }
+    if (!e2eContains(shortcutStatus.stdout(), "launch_id: 16468373422993309696", "Steam shortcut launch id")) { return 1; }
+    if (!e2eContains(shortcutStatus.stdout(), "steam://rungameid/16468373422993309696", "Steam shortcut URI")) { return 1; }
 
     e2eSeedFile(joinPath(contentRoot(project), "saves/gba/game.sav"));
     e2eSeedFile(joinPath(biosRoot(project), "ps2/ps2-0230a-20080220.bin"));
