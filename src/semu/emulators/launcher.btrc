@@ -350,7 +350,7 @@ string launcherRoutedDisplaySetup() {
 
 string launcherQuitWatchLogPath(string project, string emulator) {
     string root = joinPath(semuStateRoot(project), "verification/quit-watch");
-    ensureDir(root);
+    SemuGeneratedFiles.ensureAdapterStateDir(project, root);
     return joinPath(root, emulator.toLower() + ".log");
 }
 

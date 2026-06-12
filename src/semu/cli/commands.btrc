@@ -5,7 +5,7 @@ class SemuCliCommands {
 
 // ---- config_commands.btrc ----
 void printUsage() {
-    print("semu [manifest|bootstrap|doctor|deck|lifecycle|sync|config|settings|presentation|apprun|steam-input|keymap|screenshot|sandbox|launcher|utils|e2e] [graph|payload-audit|n3ds-nocrypto|validate|render|capabilities|install|setup|compile|reconfigure|change|uninstall|reinstall|upgrade|status|force|serve|capture|prepare|launch|list|get|put|entry|ui|apply|plan|state|broadcast|defaults] [--project PATH] [--roms PATH] [--source PATH] [--output PATH] [--dest PATH] [--target manifest|retroarch|dolphin|pcsx2|steam-input] [--system SYSTEM] [--emulator NAME] [--hook HOOK] [--scratch PATH] [--action ID] [--command KEYS]");
+    print("semu [manifest|bootstrap|doctor|deck|lifecycle|sync|config|settings|presentation|apprun|steam-input|keymap|screenshot|sandbox|launcher|utils|e2e] [graph|payload-audit|n3ds-nocrypto|validate|render|capabilities|install|setup|compile|reconfigure|change|uninstall|reinstall|upgrade|status|force|serve|capture|prepare|launch|game-mode-evidence|list|get|put|entry|ui|apply|plan|state|broadcast|defaults] [--project PATH] [--roms PATH] [--source PATH] [--output PATH] [--dest PATH] [--target manifest|retroarch|dolphin|pcsx2|steam-input] [--system SYSTEM] [--emulator NAME] [--hook HOOK] [--scratch PATH] [--action ID] [--command KEYS]");
 }
 int keymapCommand(CliArgs args) {
     string mode = "validate";
@@ -330,6 +330,9 @@ int deckCommand(CliArgs args, string project) {
     }
     if (mode.equals("verify-input")) {
         return deckVerifyInputCommand(project, args.has("--strict") || Environment.get("SEMU_STRICT_INPUT", "0").equals("1"));
+    }
+    if (mode.equals("game-mode-evidence") || mode.equals("verify-game-mode")) {
+        return deckGameModeEvidenceCommand(args, project);
     }
     if (mode.equals("setup") || mode.equals("compile") || mode.equals("reconfigure") || mode.equals("change") || mode.equals("uninstall") || mode.equals("reinstall") || mode.equals("upgrade") || mode.equals("status")) {
         return lifecycleCommand(args, project);

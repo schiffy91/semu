@@ -86,12 +86,16 @@
   implying that the UI directly edits emulator-native files. Smoke coverage now
   exercises the compile command and ES-DE settings entry.
 - Added structured `semu-quit-watch` evidence logging. The Deck loop now keeps
-  per-system quit-watch logs and treats `quit ... reason=<chord>` as the Semu
-  launcher-layer proof that a unified quit action was observed.
+  per-system quit-watch logs and treats a quit-watch `reason=<chord>` event as
+  the Semu launcher-layer proof that a unified quit action was observed.
 - Routed launcher runs now default quit evidence to the Semu-owned
   `.semu/verification/quit-watch/<emulator>.log` path when
   `SEMU_QUIT_WATCH_LOG` is not explicitly set, so Steam/Game Mode launches can
   be audited without mutating emulator-native config.
+- Added `deck game-mode-evidence` as the physical Game Mode evidence gate. It
+  prepares a Semu-owned checklist under `.semu/verification`, fails on missing
+  or lifecycle-only logs, and passes only when each selected emulator has
+  quit-watch evidence with a `reason=` value.
 - Added input capability reporting so save/load/slot state actions are only
   advertised for generated RetroArch, Dolphin, and PCSX2 profiles. Other
   emulator routes are marked disabled until adapter config and physical state
@@ -105,8 +109,7 @@
 ## Remaining Physical Gates
 
 - Run a real Steam Deck Game Mode pass for Steam Input templates, the physical
-  left-trackpad radial quit, structured quit-watch evidence, and ES-DE return
-  flow.
+  left-trackpad radial quit, `deck game-mode-evidence`, and ES-DE return flow.
 - Confirm controller movement/buttons inside representative games from Game
   Mode, not only SSH/uinput.
 - Confirm the physical left-trackpad radial Quit action returns to ES-DE for
