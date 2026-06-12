@@ -185,5 +185,7 @@ These wrappers avoid host symlinks by routing emulator state through
 Nix closure at `/nix/store` with bubblewrap. Local smoke tests cover assembly
 and routing; physical Deck smoke covers ES-DE, Syncthing, SD-card detection,
 the broad Desktop Mode required-route emulator loop, and the installed AppImage
-runtime at commit `04a4b79`. The remaining gap is the broad Game Mode emulator
-and Steam Input pass.
+runtime at commit `ece63b0`. Steam shortcut discovery and Semu Neptune Steam
+Input template selection are verified from the installed AppImage. The remaining
+gap is the broad physical Game Mode emulator pass using the left-trackpad radial
+menu.
