@@ -80,9 +80,9 @@ input checks through the same BTRC CLI used on a physical Deck.
 - Steam launch metadata pass: run `build/semu steam-input status --project
   "$PWD"` on the Deck and verify the reported `steam://rungameid/...` URI
   launches Semu before starting the physical Game Mode pass.
-- Broad real-emulator Deck pass: launch representative games through RetroArch,
-  Dolphin, PPSSPP, Flycast, melonDS, PCSX2, Cemu, Azahar, and Ryujinx;
-  verify fullscreen windowing, controller input, and return-to-ES-DE behavior.
+- Broad real-emulator Game Mode pass: repeat the representative routed-emulator
+  loop from Game Mode so Steam Input, Gamescope, and return-to-ES-DE behavior
+  are proven outside Desktop Mode.
 - Input and settings pass: compare Semu's bottom-left radial behavior against
   RetroArch-native save/load/quit/menu handling, then verify the generated
   Semu Settings ES-DE entries for ROM location, Syncthing, shader, bezel, and
@@ -125,14 +125,20 @@ Desktop Mode with the AppImage built from the Nix package closure:
   `status=0`, `quit=ok`, and a 1280x800 nonblank screenshot. New passes keep
   per-system `$SEMU_TEST_OUT/<system>.quit-watch.log` files and require a
   quit-watch `reason=<chord>` event for Semu launcher-layer quit evidence.
-- The broad pass produced real visible frames for the required systems, with
-  evidence copied under `build/deck-loop-a555de7-v2`.
+- The current broad pass used the installed `04a4b79` AppImage and produced
+  real visible frames for the required systems, with evidence under
+  `/home/deck/semu-evidence/emulator-loop-04a4b79` and a local contact sheet at
+  `/tmp/semu-deck-evidence/emulator-loop-contact.jpg`.
+- The installed `04a4b79` AppImage strict visual audit resolved every required
+  shader, bezel, runtime preset, launcher shader, and transitive sidecar
+  dependency from the mounted AppImage payload: 15 OK, 0 missing assets, 0
+  missing dependencies, Wii U/Switch disabled by default.
 - Commit `43c070b` added structured quit-watch evidence. On the physical Deck,
   the Nix result watcher observed an injected `/dev/uinput` Select+Start event,
   logged `reason=select+start`, terminated the child process, and
   exited cleanly. The current installed AppImage was rebuilt from commit
-  `3dd0c0a` with hash
-  `8763f1bb950c908ca8a0687c18c5c961be36f7f3423f07291afcf4372da0d8ac`; its
+  `04a4b79` with hash
+  `d00df401164f38172cabbe9657cecb779967b3fce4f06e1d8b9ef59b391c86cf`; its
   packaged `e2e appimage` smoke passed inside the AppImage runtime, GB
   presentation asset resolution reported shader/bezel/runtime preset `ok`, and
   installed-path `e2e deck-evidence`, `deck game-mode-ready --prepare`,
@@ -178,5 +184,5 @@ These wrappers avoid host symlinks by routing emulator state through
 Nix closure at `/nix/store` with bubblewrap. Local smoke tests cover assembly
 and routing; physical Deck smoke covers ES-DE, Syncthing, SD-card detection,
 the broad Desktop Mode required-route emulator loop, and the installed AppImage
-runtime at commit `3dd0c0a`. The remaining gap is the broad Game Mode emulator
+runtime at commit `04a4b79`. The remaining gap is the broad Game Mode emulator
 and Steam Input pass.
