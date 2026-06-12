@@ -48,12 +48,13 @@ to fail any route that lacks a `reason=` event.
 
 The current installed AppImage smoke on the physical Deck is:
 
-- commit: `cad8b59`
+- commit: `0f7c239`
 - path: `/home/deck/Applications/Semu/Semu-x86_64.AppImage`
 - sha256:
-  `8bd5e8850e231ab1a93375c3e02c369b1502fd0a5c4a11d741539ff96a17bd36`
-- verified: packaged `e2e appimage`, GB presentation asset resolution, app.quit
-  capability report, and bundled `semu-quit-watch` start/exit evidence
+  `f212ad3cf3fd2a72a8c9c866e78d29679b3d6d8ea89866a31a4a07d33180f2ea`
+- verified: installed-path `e2e deck-evidence`, `deck game-mode-evidence
+  --allow-pending`, GB presentation asset resolution, app.quit capability
+  report, and prior bundled `semu-quit-watch` start/exit evidence
 - pending: physical Game Mode left-trackpad radial quit/save/load proof
 
 Inside the guest:

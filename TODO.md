@@ -5,7 +5,7 @@
 - Rebuilt and installed the self-contained AppImage at
   `/home/deck/Applications/Semu/Semu-x86_64.AppImage`.
 - Installed AppImage hash
-  `8bd5e8850e231ab1a93375c3e02c369b1502fd0a5c4a11d741539ff96a17bd36`.
+  `f212ad3cf3fd2a72a8c9c866e78d29679b3d6d8ea89866a31a4a07d33180f2ea`.
 - Ran the Desktop Mode direct AppImage Deck loop over the required routed
   emulator set with clean process startup, foreground-window wait, screenshots,
   scripted input probes, and unified quit verification. `gb`, `gbc`, `gba`,
@@ -24,6 +24,13 @@
   painted ES-DE from the Steam-launched process in Desktop Mode.
 - Verified PCSX2 runtime config uses the Deck SD-card BIOS path and does not
   bake local Mac paths into committed profiles.
+- Built the clean `/home/deck/semu-latest` checkout at commit `0f7c239` with
+  `nix build .#default`; output
+  `/nix/store/zs1iwb8ivfdzvilq8dv9kyvfkhhd2p21-semu-full`.
+- On that pushed Deck checkout, `result/bin/semu e2e deck-evidence` passed and
+  `result/bin/semu deck game-mode-evidence --prepare --allow-pending` wrote the
+  physical checklist under `.semu/verification` while correctly reporting every
+  physical Game Mode quit log as pending.
 - Built the clean `/home/deck/semu-latest` checkout at commit `cad8b59` with
   `nix build .#default`; output
   `/nix/store/3yf0h0sxz32w5khh0afaa02xxlynb08c-semu-full`.
@@ -43,11 +50,18 @@
   Desktop-verified quit set with physical Game Mode still pending.
 - Verified Linux structured quit evidence on the Deck from the Nix result:
   `semu-quit-watch` observed an injected `/dev/uinput` Select+Start event on
-  `/dev/input/event11`, logged `quit ... reason=select+start`, terminated the
+  `/dev/input/event11`, logged `reason=select+start`, terminated the
   child process, and exited cleanly.
 - Rebuilt and installed the AppImage from commit `cad8b59`; extracted the
   installed AppImage's bundled `usr/bin/semu-quit-watch` and verified it writes
   durable start/exit evidence.
+- Rebuilt and installed the AppImage from commit `0f7c239`; backup of the prior
+  install is
+  `/home/deck/Applications/Semu/Semu-x86_64.AppImage.prev-0f7c239-20260612-032707`.
+- Verified the installed `0f7c239` AppImage runs `e2e deck-evidence`,
+  `deck game-mode-evidence --allow-pending`, `keymap capabilities app.quit`,
+  and `presentation plan --system gb` with shader, bezel, runtime preset, and
+  launcher shader statuses all `ok`.
 - Launched the installed AppImage in Deck Desktop Mode and captured a 1280x800
   screenshot showing ES-DE running through the bundled AppRun/bwrap path.
 
