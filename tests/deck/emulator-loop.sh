@@ -9,15 +9,38 @@ OUT="${SEMU_TEST_OUT:-/home/deck/.cache/semu-codex-emulator-loop}"
 SEND="${SEMU_UINPUT_SEND:-$OUT/uinput-send}"
 SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd -P)"
 FAILURES=0
+BASELINE="$OUT/baseline.png"
+BASELINE_SHA=""
 
 mkdir -p "$OUT"
 : > "$OUT/summary.tsv"
 
-export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/1000}"
-export DBUS_SESSION_BUS_ADDRESS="${DBUS_SESSION_BUS_ADDRESS:-unix:path=/run/user/1000/bus}"
-export WAYLAND_DISPLAY="${WAYLAND_DISPLAY:-wayland-0}"
-export DISPLAY="${DISPLAY:-:0}"
-export XAUTHORITY="${XAUTHORITY:-/run/user/1000/xauth_WjTByH}"
+discover_graphical_env() {
+  local kwin_pid kwin_xauth
+  kwin_pid="$(pgrep -f '/usr/bin/kwin_wayland( |$)' | head -1 || true)"
+  if [ -n "$kwin_pid" ] && [ -r "/proc/$kwin_pid/environ" ]; then
+    while IFS= read -r line; do
+      case "$line" in
+        DISPLAY=*|XAUTHORITY=*|WAYLAND_DISPLAY=*|XDG_RUNTIME_DIR=*|DBUS_SESSION_BUS_ADDRESS=*) export "$line" ;;
+      esac
+    done < <(tr '\0' '\n' < "/proc/$kwin_pid/environ")
+  fi
+  if [ -z "${XAUTHORITY:-}" ]; then
+    kwin_xauth="$(pgrep -a kwin_wayland | awk '{ for (i=1; i<NF; i++) if ($i == "--xwayland-xauthority") { print $(i+1); exit } }' || true)"
+    [ -n "$kwin_xauth" ] && export XAUTHORITY="$kwin_xauth"
+  fi
+  if [ -z "${XAUTHORITY:-}" ]; then
+    for candidate in /run/user/1000/xauth_*; do
+      [ -r "$candidate" ] && export XAUTHORITY="$candidate" && break
+    done
+  fi
+  export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/1000}"
+  export DBUS_SESSION_BUS_ADDRESS="${DBUS_SESSION_BUS_ADDRESS:-unix:path=/run/user/1000/bus}"
+  export WAYLAND_DISPLAY="${WAYLAND_DISPLAY:-wayland-0}"
+  export DISPLAY="${DISPLAY:-:0}"
+}
+
+discover_graphical_env
 
 ps -eo pid,args | awk '/\/usr\/bin\/es-de --no-splash/ {print $1}' | xargs -r kill 2>/dev/null || true
 sleep 2
@@ -41,6 +64,50 @@ capture_screen() {
   spectacle -b -n -o "$path" >/tmp/semu-loop-spectacle.log 2>&1 || cat /tmp/semu-loop-spectacle.log >&2
 }
 
+file_sha() {
+  local path="$1"
+  [ -f "$path" ] || return 1
+  sha256sum "$path" | awk '{print $1}'
+}
+
+window_snapshot() {
+  local path="$1"
+  {
+    echo "DISPLAY=${DISPLAY:-}"
+    echo "XAUTHORITY=${XAUTHORITY:-}"
+    if command -v xdotool >/dev/null 2>&1; then
+      xdotool getactivewindow getwindowname 2>/dev/null || true
+      xdotool search --onlyvisible --name '.*' getwindowname %@ 2>/dev/null || true
+    fi
+  } > "$path"
+}
+
+focus_emulator_window() {
+  local emulator="$1"
+  command -v xdotool >/dev/null 2>&1 || return 0
+  local patterns=()
+  case "$emulator" in
+    retroarch) patterns=("RetroArch") ;;
+    dolphin) patterns=("Dolphin") ;;
+    ppsspp) patterns=("PPSSPP") ;;
+    flycast) patterns=("Flycast") ;;
+    melonds) patterns=("melonDS") ;;
+    pcsx2) patterns=("PCSX2") ;;
+    cemu) patterns=("Cemu" "CEMU") ;;
+    azahar) patterns=("Azahar") ;;
+    ryujinx) patterns=("Ryujinx") ;;
+    *) patterns=("$emulator") ;;
+  esac
+  local pattern win
+  for pattern in "${patterns[@]}"; do
+    win="$(xdotool search --onlyvisible --name "$pattern" 2>/dev/null | tail -1 || true)"
+    if [ -n "$win" ]; then
+      xdotool windowactivate "$win" >/dev/null 2>&1 || xdotool windowraise "$win" >/dev/null 2>&1 || true
+      return 0
+    fi
+  done
+}
+
 alive() {
   kill -0 "$1" 2>/dev/null
 }
@@ -58,8 +125,9 @@ case_failed() {
   local status="$3"
   local quit="$4"
   local size="$5"
-  if [ "$status" != "0" ] || [ "$quit" != "ok" ] || [ "$size" -lt 50000 ]; then
-    printf 'FAIL\t%s\tstatus=%s\tquit=%s\tpng_bytes=%s\trequired=%s\n' "$id" "$status" "$quit" "$size" "$required" | tee -a "$OUT/summary.tsv"
+  local visual="$6"
+  if [ "$status" != "0" ] || [ "$quit" != "ok" ] || [ "$size" -lt 50000 ] || [ "$visual" != "changed" ]; then
+    printf 'FAIL\t%s\tstatus=%s\tquit=%s\tpng_bytes=%s\tvisual=%s\trequired=%s\n' "$id" "$status" "$quit" "$size" "$visual" "$required" | tee -a "$OUT/summary.tsv"
     if [ "$required" = "yes" ]; then
       FAILURES=$((FAILURES + 1))
     fi
@@ -78,6 +146,8 @@ run_case() {
   local status="unknown"
   local quit="unknown"
   local size="0"
+  local sha=""
+  local visual="unknown"
   local required="${SEMU_CURRENT_ROUTE_REQUIRED:-yes}"
 
   rm -f "$log" "$png"
@@ -101,8 +171,17 @@ run_case() {
     send_input gameplay-probe
     sleep 2
   fi
+  focus_emulator_window "$emulator"
+  sleep 1
+  window_snapshot "$OUT/$id.windows"
   capture_screen "$png"
   [ -f "$png" ] && size="$(wc -c < "$png" | tr -d ' ')"
+  sha="$(file_sha "$png" || true)"
+  if [ -n "$sha" ] && [ -n "$BASELINE_SHA" ] && [ "$sha" != "$BASELINE_SHA" ]; then
+    visual="changed"
+  elif [ -n "$sha" ] && [ "$sha" = "$BASELINE_SHA" ]; then
+    visual="baseline"
+  fi
 
   if alive "$pid"; then
     send_input select-start
@@ -127,8 +206,8 @@ run_case() {
   else
     quit="missing"
   fi
-  printf 'RESULT\t%s\tstatus=%s\tquit=%s\tpng_bytes=%s\trequired=%s\n' "$id" "$status" "$quit" "$size" "$required" | tee -a "$OUT/summary.tsv"
-  case_failed "$required" "$id" "$status" "$quit" "$size"
+  printf 'RESULT\t%s\tstatus=%s\tquit=%s\tpng_bytes=%s\tvisual=%s\trequired=%s\n' "$id" "$status" "$quit" "$size" "$visual" "$required" | tee -a "$OUT/summary.tsv"
+  case_failed "$required" "$id" "$status" "$quit" "$size" "$visual"
   tail -20 "$log" > "$OUT/$id.tail" 2>/dev/null || true
   sleep 2
 }
@@ -149,6 +228,9 @@ exe() {
 }
 
 build_uinput_sender || true
+capture_screen "$BASELINE"
+BASELINE_SHA="$(file_sha "$BASELINE" || true)"
+window_snapshot "$OUT/baseline.windows"
 
 run_case gb retroarch "$(exe retroarch)" 12 -L "$(core gambatte_libretro.so)" "$ROMS/gb/Tetris (World) (Rev 1).zip"
 run_case gbc retroarch "$(exe retroarch)" 12 -L "$(core gambatte_libretro.so)" "$ROMS/gbc/Game & Watch Gallery 3 (USA, Europe) (SGB Enhanced) (GB Compatible).zip"
