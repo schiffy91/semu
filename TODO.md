@@ -4,12 +4,17 @@
 
 - Rebuilt and installed the self-contained AppImage at
   `/home/deck/Applications/Semu/Semu-x86_64.AppImage`.
-- Ran the AppImage Deck loop over the routed emulator set with screenshots and
-  process quit verification: GB, GBC, GBA, NES, SNES, Genesis, N64,
-  DS/RetroArch, PSP, Dreamcast, GameCube, Wii, PS2, DS/melonDS, 3DS, Wii U,
-  and Switch all returned `status=0` and `quit=ok`.
-- Verified representative screenshots for GB LCD, Genesis CRT/NTSC, PS2
-  runtime, and 3DS top/bottom layout.
+- Ran the Desktop Mode direct AppImage Deck loop over the required routed
+  emulator set with screenshots and process quit verification: GB, GBC, GBA,
+  NES, SNES, Genesis, N64/RetroArch, PSP, Dreamcast, GameCube, Wii, PS2,
+  DS/melonDS, 3DS, Wii U, and Switch all returned `status=0`, `quit=ok`, and
+  1280x800 nonblank screenshots.
+- Verified representative screenshots for GB LCD, Genesis CRT/NTSC, SNES CRT,
+  PS2 runtime, DS/melonDS, 3DS top/bottom layout, Wii U, and Switch. Current
+  evidence lives under `build/deck-loop-a555de7-v2`.
+- Confirmed the RetroArch DeSmuME DS alternate route is not production-ready on
+  the Deck loop: the earlier optional route produced a screenshot but exited
+  `status=139` before quit. The production DS route remains melonDS.
 - Verified `presentation plan` runs from the installed AppImage and resolves
   bundled RetroArch shader paths.
 - Verified PCSX2 runtime config uses the Deck SD-card BIOS path and does not
@@ -39,10 +44,10 @@
 
 ## Remaining Physical Gates
 
-- Run a real Steam Deck Game Mode pass for controls, Steam Input templates,
+- Run a real Steam Deck Game Mode pass for Steam Input templates, the physical
   left-trackpad radial quit, and ES-DE return flow.
 - Confirm controller movement/buttons inside representative games from Game
-  Mode, not SSH/uinput.
+  Mode, not only SSH/uinput.
 - Confirm the physical left-trackpad radial Quit action returns to ES-DE for
   RetroArch, Dolphin, PPSSPP, Flycast, melonDS, PCSX2, Cemu, Azahar, and
   Ryujinx.

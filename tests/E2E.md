@@ -112,11 +112,15 @@ Desktop Mode with the AppImage built from the Nix package closure:
   and Spectacle screenshots were verified from `deck@steamdeck.local`.
 - Deck panel brightness was lowered programmatically through
   `/sys/class/backlight/amdgpu_bl0/brightness` for unattended OLED safety.
-- A broad Desktop Mode routed-wrapper pass launched representative SD-card ROMs
-  through RetroArch GBA/SNES/N64, Dolphin, PPSSPP, Flycast, melonDS, PCSX2,
-  Cemu, Azahar, and Ryujinx, then captured screenshots for each route.
-- The broad pass produced real game frames for RetroArch GBA/SNES/N64,
-  Dolphin, PPSSPP, Flycast, and melonDS.
+- A broad Desktop Mode required-route pass launched representative SD-card ROMs
+  through RetroArch GB/GBC/GBA/NES/SNES/Genesis/N64, PPSSPP, Flycast, Dolphin,
+  PCSX2, melonDS, Azahar, Cemu, and Ryujinx. Every required route returned
+  `status=0`, `quit=ok`, and a 1280x800 nonblank screenshot.
+- The broad pass produced real visible frames for the required systems, with
+  evidence copied under `build/deck-loop-a555de7-v2`.
+- The optional RetroArch DeSmuME DS route is not production-ready on the Deck
+  loop; an earlier optional pass produced a screenshot but exited `status=139`.
+  melonDS is the required DS route.
 - Earlier passes exposed production gaps around PCSX2 and Cemu setup prompts,
   Azahar Vulkan defaults, Ryujinx SD-card keys, and the removed Gopher64 route.
 
@@ -149,5 +153,5 @@ These wrappers avoid host symlinks by routing emulator state through
 `HOME`/`XDG_*` into `.semu/appimage-state`. AppRun can mount a bundled
 Nix closure at `/nix/store` with bubblewrap. Local smoke tests cover assembly
 and routing; physical Deck smoke covers ES-DE, Syncthing, SD-card detection, and
-one RetroArch launch loop. The remaining gap is the broad Game Mode emulator and
-Steam Input pass.
+the broad Desktop Mode required-route emulator loop. The remaining gap is the
+broad Game Mode emulator and Steam Input pass.

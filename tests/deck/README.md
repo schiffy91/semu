@@ -18,6 +18,24 @@ For a quick physical Deck SSH/screenshot preflight, run:
 make deck-ssh-smoke DECK_HOST=steamdeck.local DECK_ROMS=/run/media/deck/SD
 ```
 
+For the Desktop Mode direct emulator loop on a physical Deck, use the installed
+AppImage and a Nix-built `result` tree:
+
+```sh
+SEMU_APPIMAGE=/home/deck/Applications/Semu/Semu-x86_64.AppImage \
+SEMU_PROJECT=/home/deck/semu \
+SEMU_ROMS=/run/media/deck/SD/Emulation/ES-DE/ES-DE/ROMs \
+SEMU_RESULT=/home/deck/.cache/semu-verify-a555de7/result \
+SEMU_TEST_OUT=/home/deck/.cache/semu-emulator-loop-a555de7-v2 \
+bash tests/deck/emulator-loop.sh
+```
+
+The loop compiles `tests/deck/uinput-send.c` when `cc` is available and uses it
+to send a small gameplay probe plus Select+Start quit. Required routes fail the
+script if launch, screenshot capture, or quit evidence fails. Alternate routes,
+such as RetroArch DeSmuME for DS when melonDS is already the required DS route,
+run only with `SEMU_OPTIONAL_ROUTES=1`.
+
 Inside the guest:
 
 ```sh
