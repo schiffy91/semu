@@ -377,6 +377,9 @@ int steamInputCommand(CliArgs args, string project) {
         writeSteamInputTemplates(project);
         reportSteamInputTemplate("neptune_simple", joinPath(project, "input/steam-input/neptune-simple.vdf"));
         reportSteamInputTemplate("neptune_full", joinPath(project, "input/steam-input/neptune-full.vdf"));
+        print("");
+        print("Steam shortcut");
+        steamShortcutStatus(project, args);
         return 0;
     }
     printUsage();

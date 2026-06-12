@@ -77,6 +77,9 @@ input checks through the same BTRC CLI used on a physical Deck.
   visibility, left-trackpad radial menu, unified save/load/quit hotkeys inside
   each emulator, screenshot contents from real Gamescope emulator windows, and
   quit returning to ES-DE in Game Mode.
+- Steam launch metadata pass: run `build/semu steam-input status --project
+  "$PWD"` on the Deck and verify the reported `steam://rungameid/...` URI
+  launches Semu before starting the physical Game Mode pass.
 - Broad real-emulator Deck pass: launch representative games through RetroArch,
   Dolphin, PPSSPP, Flycast, melonDS, PCSX2, Cemu, Azahar, and Ryujinx;
   verify fullscreen windowing, controller input, and return-to-ES-DE behavior.

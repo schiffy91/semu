@@ -16,6 +16,15 @@ class BinaryReader {
         return fseek(self.handle, offset, SEEK_SET) == 0;
     }
 
+    public long length() {
+        if (!self.opened) { return 0; }
+        long here = ftell(self.handle);
+        fseek(self.handle, 0, SEEK_END);
+        long end = ftell(self.handle);
+        fseek(self.handle, here, SEEK_SET);
+        return end;
+    }
+
     public int readU8(long offset) {
         if (!self.seek(offset)) { return -1; }
         byte buf[1];
@@ -43,6 +52,29 @@ class BinaryReader {
         return buf;
     }
 
+    public string readCString(long offset) {
+        string out = "";
+        long pos = offset;
+        while (true) {
+            int value = self.readU8(pos);
+            if (value <= 0) { return out; }
+            out = out + self.readAscii(pos, 1);
+            pos++;
+        }
+        return out;
+    }
+
+    public long cstringEnd(long offset) {
+        long pos = offset;
+        while (true) {
+            int value = self.readU8(pos);
+            if (value < 0) { return pos; }
+            pos++;
+            if (value == 0) { return pos; }
+        }
+        return pos;
+    }
+
     public void close() {
         if (self.opened) {
             fclose(self.handle);
@@ -54,4 +86,3 @@ class BinaryReader {
         self.close();
     }
 }
-

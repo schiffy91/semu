@@ -1,0 +1,244 @@
+#include <stdio.h>
+
+class SemuSteam {
+    class void shortcutsStatus(string project, CliArgs args) { steamShortcutStatus(project, args); }
+}
+
+class SteamShortcutRecord {
+    public string index;
+    public long appid;
+    public string appName;
+    public string exe;
+    public string startDir;
+    public string launchOptions;
+
+    public SteamShortcutRecord() {
+        self.index = "";
+        self.appid = 0;
+        self.appName = "";
+        self.exe = "";
+        self.startDir = "";
+        self.launchOptions = "";
+    }
+
+    public bool matches(string wantedName, string wantedExe) {
+        bool nameOk = wantedName.len() == 0 || self.appName.equals(wantedName);
+        bool exeOk = wantedExe.len() == 0 || steamUnquoteExe(self.exe).equals(steamUnquoteExe(wantedExe));
+        return nameOk && exeOk;
+    }
+
+    public string launchUri() {
+        if (self.appid <= 0) { return ""; }
+        return "steam://rungameid/" + steamAppIdString(self.appid);
+    }
+}
+
+string steamAppIdString(long value) {
+    char* buffer = (char*)malloc(32);
+    snprintf(buffer, 32, "%ld", value);
+    return buffer;
+}
+
+class SteamShortcutsParser {
+    public BinaryReader reader;
+    public long offset;
+    public long end;
+    public Vector<SteamShortcutRecord> records;
+
+    public SteamShortcutsParser(string path) {
+        self.reader = BinaryReader(path);
+        self.offset = 0;
+        self.end = self.reader.length();
+        self.records = [];
+    }
+
+    public bool ok() {
+        return self.reader.ok();
+    }
+
+    public int readType() {
+        if (self.offset >= self.end) { return 8; }
+        int type = self.reader.readU8(self.offset);
+        self.offset++;
+        return type;
+    }
+
+    public string readKey() {
+        string key = self.reader.readCString(self.offset);
+        self.offset = self.reader.cstringEnd(self.offset);
+        return key;
+    }
+
+    public string readStringValue() {
+        string value = self.reader.readCString(self.offset);
+        self.offset = self.reader.cstringEnd(self.offset);
+        return value;
+    }
+
+    public long readIntValue() {
+        long value = self.reader.readLe32(self.offset);
+        self.offset = self.offset + 4;
+        return value;
+    }
+
+    public void skipValue(int type) {
+        if (type == 1) {
+            self.readStringValue();
+        } else if (type == 2) {
+            self.readIntValue();
+        } else if (type == 0) {
+            self.skipObject();
+        }
+    }
+
+    public void skipObject() {
+        while (self.offset < self.end) {
+            int type = self.readType();
+            if (type == 8) { return; }
+            self.readKey();
+            self.skipValue(type);
+        }
+    }
+
+    public void parseShortcut(string index) {
+        SteamShortcutRecord record = SteamShortcutRecord();
+        record.index = index;
+        while (self.offset < self.end) {
+            int type = self.readType();
+            if (type == 8) {
+                self.records.push(record);
+                return;
+            }
+            string key = self.readKey();
+            if (type == 1) {
+                string value = self.readStringValue();
+                if (key.equals("AppName")) { record.appName = value; }
+                else if (key.equals("Exe")) { record.exe = value; }
+                else if (key.equals("StartDir")) { record.startDir = value; }
+                else if (key.equals("LaunchOptions")) { record.launchOptions = value; }
+            } else if (type == 2) {
+                long value = self.readIntValue();
+                if (key.equals("appid")) { record.appid = value; }
+            } else if (type == 0) {
+                self.skipObject();
+            } else {
+                self.skipValue(type);
+            }
+        }
+    }
+
+    public void parseShortcutsObject() {
+        while (self.offset < self.end) {
+            int type = self.readType();
+            if (type == 8) { return; }
+            string key = self.readKey();
+            if (type == 0 && key.isDigitStr()) {
+                self.parseShortcut(key);
+            } else {
+                self.skipValue(type);
+            }
+        }
+    }
+
+    public Vector<SteamShortcutRecord> parse() {
+        if (!self.ok()) { return self.records; }
+        while (self.offset < self.end) {
+            int type = self.readType();
+            if (type == 8) { return self.records; }
+            string key = self.readKey();
+            if (type == 0 && key.equals("shortcuts")) {
+                self.parseShortcutsObject();
+            } else {
+                self.skipValue(type);
+            }
+        }
+        return self.records;
+    }
+}
+
+string steamUnquoteExe(string value) {
+    string out = value.trim();
+    if (out.len() >= 2 && out.startsWith("\"") && out.endsWith("\"")) {
+        return out.substring(1, out.len() - 2);
+    }
+    return out;
+}
+
+string steamDefaultShortcutName() {
+    return Environment.get("SEMU_STEAM_SHORTCUT_NAME", "Semu-x86_64.AppImage");
+}
+
+string steamDefaultShortcutExe() {
+    return Environment.get("SEMU_STEAM_SHORTCUT_EXE", "/home/deck/Applications/Semu/Semu-x86_64.AppImage");
+}
+
+string steamRoot() {
+    string configured = Environment.get("SEMU_STEAM_ROOT", "");
+    if (configured.len() > 0) { return configured; }
+    string home = homeDir();
+    string local = joinPath(home, ".local/share/Steam");
+    if (FileSystem.isDir(local)) { return local; }
+    return joinPath(home, ".steam/steam");
+}
+
+Vector<string> steamShortcutsFiles() {
+    Vector<string> files = [];
+    string userdata = joinPath(steamRoot(), "userdata");
+    if (!FileSystem.isDir(userdata)) { return files; }
+    for account in FileSystem.listDir(userdata) {
+        string path = joinPath(joinPath(userdata, account), "config/shortcuts.vdf");
+        if (FileSystem.isFile(path)) {
+            files.push(path);
+        }
+    }
+    return files;
+}
+
+Vector<SteamShortcutRecord> steamShortcutsRead(string path) {
+    return SteamShortcutsParser(path).parse();
+}
+
+SteamShortcutRecord steamShortcutFind(Vector<SteamShortcutRecord> records, string appName, string exe) {
+    for record in records {
+        if (record.matches(appName, exe)) {
+            return record;
+        }
+    }
+    return SteamShortcutRecord();
+}
+
+void steamShortcutReportFile(string path, string appName, string exe) {
+    if (!FileSystem.isFile(path)) {
+        print("  MISSING shortcuts: " + path);
+        return;
+    }
+    Vector<SteamShortcutRecord> records = steamShortcutsRead(path);
+    SteamShortcutRecord found = steamShortcutFind(records, appName, exe);
+    if (found.appid <= 0) {
+        print("  MISSING shortcut: " + appName + " in " + path);
+        return;
+    }
+    print("  OK shortcut: " + found.appName);
+    print("       file: " + path);
+    print("       appid: " + steamAppIdString(found.appid));
+    print("       exe: " + steamUnquoteExe(found.exe));
+    print("       uri: " + found.launchUri());
+}
+
+void steamShortcutStatus(string project, CliArgs args) {
+    string appName = args.valueAfter("--app-name", steamDefaultShortcutName());
+    string exe = args.valueAfter("--exe", steamDefaultShortcutExe());
+    string file = args.valueAfter("--shortcuts-file", "");
+    if (file.len() > 0) {
+        steamShortcutReportFile(file, appName, exe);
+        return;
+    }
+    Vector<string> files = steamShortcutsFiles();
+    if (files.len == 0) {
+        print("  MISSING shortcuts: " + joinPath(steamRoot(), "userdata/*/config/shortcuts.vdf"));
+        return;
+    }
+    for candidate in files {
+        steamShortcutReportFile(candidate, appName, exe);
+    }
+}
