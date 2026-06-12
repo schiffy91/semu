@@ -398,8 +398,11 @@ Examples:
 build/semu presentation defaults --project "$PWD"
 build/semu presentation list --project "$PWD"
 build/semu presentation plan --system gb --project "$PWD"
+build/semu presentation state --system ps2 --project "$PWD"
+build/semu presentation broadcast --system ps2 --project "$PWD"
 build/semu presentation get gb shader_file --project "$PWD"
 build/semu presentation put gb bezel_file bezels/gb/classic-grey-game-boy.json --project "$PWD"
+build/semu presentation put ps2 widescreen_bezel_file bezels/ps2/clean-wide.json --project "$PWD"
 ```
 
 The defaults encode the current visual target:
@@ -416,9 +419,19 @@ The defaults encode the current visual target:
 - `psp`: 16:9 LCD station with red God of War PSP or original black PSP target.
 - `wiiu`, `switch`: modern fullscreen station; no default CRT treatment.
 
-`presentation plan` resolves a runtime shader only when the bundled shader tree
-is available. Missing optional art packs stay visible as empty/unresolved fields
-instead of silently pretending a preset exists.
+`presentation state` reads known emulator adapter config files and normalizes
+the observed display state. `presentation broadcast` writes that normalized
+state under `settings/presentation-state/<system>.json` for launchers, settings
+entrypoints, and future compositor wrappers. `presentation plan` then exposes
+both declared station policy and effective runtime decisions:
+`effective_aspect`, `presentation_mode`, `selected_shader_file`,
+`selected_bezel_file`, and `selected_runtime_preset`.
+
+Dynamic 4:3/16:9 systems can keep CRT defaults for 4:3 while editing
+`widescreen_shader_file`, `widescreen_bezel_file`, and
+`widescreen_runtime_preset` for widescreen output. Missing optional art packs
+stay visible as empty/unresolved fields instead of silently pretending a preset
+exists.
 
 ### `verification/screenshots.json`
 
@@ -612,7 +625,10 @@ Presentation:
 
 ```sh
 build/semu presentation plan --system gb --project "$PWD"
+build/semu presentation state --system ps2 --project "$PWD"
+build/semu presentation broadcast --system ps2 --project "$PWD"
 build/semu presentation put ps2 bezel_file "/path/to/sony-crt.slangp" --project "$PWD"
+build/semu presentation put ps2 widescreen_bezel_file "/path/to/wide-frame.json" --project "$PWD"
 build/semu presentation put wii aspect_policy "4:3_or_16:9" --project "$PWD"
 ```
 
