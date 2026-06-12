@@ -32,7 +32,7 @@ string e2eFakeAppImageToolText() {
         "if [ \"${1:-}\" = \"--no-appstream\" ]; then shift; fi",
         "APPDIR=\"${1:?missing AppDir}\"",
         "OUTPUT=\"${2:?missing output}\"",
-        "for required in AppRun usr/bin/es-de usr/bin/semu usr/bin/semu-quit-watch usr/bin/bwrap usr/bin/semu-retroarch usr/bin/semu-dolphin usr/bin/semu-ppsspp usr/bin/semu-flycast usr/bin/semu-gopher64 usr/bin/semu-melonds usr/bin/semu-pcsx2 usr/bin/semu-cemu usr/bin/semu-azahar usr/bin/semu-ryujinx usr/bin/semu-btrc usr/bin/semu-es-de usr/bin/syncthing usr/bin/syncthingtray usr/bin/curl usr/lib/retroarch/cores nix/store packaging/linux/AppRun packaging/linux/ES-DE/es_find_rules_linux.xml; do",
+        "for required in AppRun usr/bin/es-de usr/bin/semu usr/bin/semu-quit-watch usr/bin/bwrap usr/bin/semu-retroarch usr/bin/semu-dolphin usr/bin/semu-ppsspp usr/bin/semu-flycast usr/bin/semu-melonds usr/bin/semu-pcsx2 usr/bin/semu-cemu usr/bin/semu-azahar usr/bin/semu-ryujinx usr/bin/semu-btrc usr/bin/semu-es-de usr/bin/syncthing usr/bin/syncthingtray usr/bin/curl usr/lib/retroarch/cores nix/store packaging/linux/AppRun packaging/linux/ES-DE/es_find_rules_linux.xml; do",
         "  test -e \"$APPDIR/$required\" || { echo \"missing AppDir path: $required\" >&2; exit 3; }",
         "done",
         "test ! -e \"$APPDIR/packaging/linux/build-appimage.sh\" || { echo \"build script shipped inside AppDir\" >&2; exit 3; }",
@@ -82,7 +82,6 @@ Vector<string> appImageExpectedBins() {
         "semu-dolphin",
         "semu-ppsspp",
         "semu-flycast",
-        "semu-gopher64",
         "semu-melonds",
         "semu-pcsx2",
         "semu-cemu",
@@ -201,6 +200,7 @@ int e2eAppImageSmoke(CliArgs args) {
     ]));
     UnixShell().runRaw("rm -f " + ShellWords.quote(bwrapArgs), true, false, "");
     if (!e2eExpectStatus(0, "APPDIR=" + ShellWords.quote(hostBwrapAppDir)
+        + " SEMU_BWRAP=" + ShellWords.quote(joinPath(binDir, "bwrap"))
         + " PATH=" + ShellWords.quote(binDir) + ":$PATH"
         + " " + ShellWords.quote(joinPath(hostBwrapAppDir, "AppRun")) + " --probe")) { return 1; }
     if (!e2eFileContains(bwrapArgs, "--tmpfs", "host bwrap args tmpfs")) { return 1; }
@@ -266,6 +266,17 @@ int e2eAppImageSmoke(CliArgs args) {
         return 1;
     }
     if (!e2eFileContains(cliEnv, cliAppImage, "AppRun stable SEMU_BIN")) { return 1; }
+    if (!e2eExpectStatus(0, "APPDIR=" + ShellWords.quote(cliAppDir)
+        + " APPIMAGE=" + ShellWords.quote(cliAppImage)
+        + " SEMU_PROJECT_DIR=" + ShellWords.quote(cliProject)
+        + " SEMU_ROMS=" + ShellWords.quote(joinPath(tmp, "roms-root"))
+        + " " + ShellWords.quote(joinPath(cliAppDir, "AppRun"))
+        + " presentation plan --system gb")) { return 1; }
+    string presentationArgs = FileSystem.readText(cliArgs);
+    if (!e2eContains(presentationArgs, "presentation", "AppRun presentation command")) { return 1; }
+    if (!e2eContains(presentationArgs, "--system", "AppRun presentation system arg")) { return 1; }
+    if (!e2eContains(presentationArgs, "--project", "AppRun presentation project arg")) { return 1; }
+    if (!e2eContains(presentationArgs, "--roms", "AppRun presentation roms arg")) { return 1; }
     if (!e2eExpectStatus(0, "APPDIR=" + ShellWords.quote(cliAppDir)
         + " APPIMAGE=" + ShellWords.quote(cliAppImage)
         + " SEMU_PROJECT_DIR=" + ShellWords.quote(cliProject)

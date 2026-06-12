@@ -46,7 +46,13 @@ APPIMAGETOOL="${APPIMAGETOOL:-$(command -v appimagetool || true)}"
 WORK="$(mktemp -d -t semu-appimage.XXXXXX)"
 cleanup() {
   chmod -R u+w "$WORK" 2>/dev/null || true
-  rm -rf "$WORK"
+  rm -rf "$WORK" 2>/dev/null || {
+    if command -v sudo >/dev/null 2>&1 && sudo -n true 2>/dev/null; then
+      sudo rm -rf "$WORK"
+    else
+      echo "warning: could not remove AppImage workdir: $WORK" >&2
+    fi
+  }
 }
 trap cleanup EXIT
 APPDIR="$WORK/Semu.AppDir"
@@ -60,7 +66,6 @@ SEMU_NIX_BINS=(
   semu-dolphin
   semu-ppsspp
   semu-flycast
-  semu-gopher64
   semu-melonds
   semu-pcsx2
   semu-cemu
@@ -81,7 +86,6 @@ SEMU_SHIM_BINS=(
   semu-dolphin
   semu-ppsspp
   semu-flycast
-  semu-gopher64
   semu-melonds
   semu-pcsx2
   semu-cemu
@@ -143,6 +147,13 @@ if [ -n "$NIX_PACKAGE" ]; then
     chmod -R u+w "$APPDIR/usr/lib/retroarch/cores" 2>/dev/null || true
     rm -rf "$APPDIR/usr/lib/retroarch/cores"
     cp -aL "$NIX_PACKAGE/lib/retroarch/cores" "$APPDIR/usr/lib/retroarch/cores"
+  fi
+  if [ -d "$NIX_PACKAGE/share/libretro/shaders/shaders_slang" ]; then
+    echo "Copying RetroArch shaders into AppDir..."
+    mkdir -p "$APPDIR/usr/share/libretro/shaders"
+    chmod -R u+w "$APPDIR/usr/share/libretro/shaders/shaders_slang" 2>/dev/null || true
+    rm -rf "$APPDIR/usr/share/libretro/shaders/shaders_slang"
+    cp -aL "$NIX_PACKAGE/share/libretro/shaders/shaders_slang" "$APPDIR/usr/share/libretro/shaders/shaders_slang"
   fi
 fi
 

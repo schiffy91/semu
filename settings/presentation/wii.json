@@ -1,0 +1,22 @@
+{
+    "schema_version": 1,
+    "system": "wii",
+    "label": "Nintendo Wii",
+    "default_emulator": "DOLPHIN",
+    "adapter": "dolphin",
+    "adapter_config": "Dolphin.ini GFX.ini",
+    "hardware_display": "consumer CRT/component TV",
+    "shader_backend": "native_or_wrapper_crt",
+    "shader_file": "crt/crt-royale.slangp",
+    "shader_intent": "Wii 480i/480p TV output with CRT/component-era behavior",
+    "bezel_backend": "universal_crt_bezel",
+    "bezel_file": "Mega_Bezel_Packs/Soqueroeu-TV-Backgrounds_V2.0/presets/TV-Console/Nintendo_Wii_4x3-[FLAT].slangp",
+    "bezel_intent": "elegant Panasonic or Sony CRT for 4:3; 16:9 frame when widescreen",
+    "runtime_preset": "bezel/Mega_Bezel/Presets/MBZ__5__POTATO.slangp",
+    "layout": "single_tv",
+    "scale_policy": "aspect_preserve",
+    "aspect_policy": "4:3_or_16:9",
+    "dynamic_aspect": true,
+    "profile": "crt_or_widescreen_tv",
+    "notes": "Dolphin/game settings should drive 4:3 vs 16:9 presentation."
+}

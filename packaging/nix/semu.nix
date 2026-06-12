@@ -1,9 +1,10 @@
 { lib, stdenv, makeWrapper, symlinkJoin,
   dolphin-emu, azahar, ares ? null,
   pcsx2 ? null, cemu ? null, ppsspp ? null, flycast ? null,
-  gopher64 ? null, melonds ? null, retroarch-bare ? null,
+  melonds ? null, retroarch-bare ? null,
   ryujinx ? null, es-de ? null,
   syncthing ? null, syncthingtray ? null, curl ? null, bubblewrap ? null,
+  libretro-shaders-slang ? null,
   nixGLIntel ? null,
   semuCli ? null,
   routedEmulators ? [],
@@ -65,7 +66,6 @@ let
     cemu
     ppsspp
     flycast
-    gopher64
     melonds
     retroarch-bare
     ryujinx
@@ -74,6 +74,7 @@ let
     syncthingtray
     curl
     bubblewrap
+    libretro-shaders-slang
     nixGLIntel
   ];
 in

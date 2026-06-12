@@ -1,0 +1,22 @@
+{
+    "schema_version": 1,
+    "system": "psx",
+    "label": "Sony PlayStation",
+    "default_emulator": "RETROARCH",
+    "adapter": "retroarch",
+    "adapter_config": "retroarch.cfg core-options",
+    "hardware_display": "consumer CRT over composite/S-Video",
+    "shader_backend": "retroarch_slang",
+    "shader_file": "crt/crt-royale.slangp",
+    "shader_intent": "PS1 240p/480i CRT with analog softness",
+    "bezel_backend": "retroarch_mega_bezel",
+    "bezel_file": "Mega_Bezel_Packs/Duimon-Vintage-TV/Presets/Potato/Panasonic_Panacolor_TH20-B8/TH20-B8-[POTATO].slangp",
+    "bezel_intent": "elegant Panasonic or Sony consumer CRT",
+    "runtime_preset": "bezel/Mega_Bezel/Presets/MBZ__5__POTATO.slangp",
+    "layout": "single_crt",
+    "scale_policy": "aspect_preserve",
+    "aspect_policy": "4:3",
+    "dynamic_aspect": false,
+    "profile": "crt_240p_480i",
+    "notes": "Preserve wobble/softness instead of HD-cleaning the output."
+}

@@ -35,24 +35,88 @@ string jsonStringArray(Vector<string> values) {
     return jsonArray(quoted);
 }
 
+bool jsonPrettyWhitespace(char c) {
+    return c == ' ' || c == '\n' || c == '\r' || c == '\t';
+}
+
+string jsonPrettyIndent(int level) {
+    string result = "";
+    for i in range(level * 4) {
+        result = result + " ";
+    }
+    return result;
+}
+
+int jsonPrettyNextNonWhitespace(string text, int start) {
+    int i = start;
+    while (i < text.len() && jsonPrettyWhitespace(text.charAt(i))) {
+        i++;
+    }
+    return i;
+}
+
+bool jsonPrettyMatchingClose(char open, char close) {
+    return (open == '{' && close == '}') || (open == '[' && close == ']');
+}
+
+string jsonPrettyText(string text) {
+    string result = "";
+    int indent = 0;
+    bool inString = false;
+    bool escaped = false;
+    for (int i = 0; i < text.len(); i++) {
+        char c = text.charAt(i);
+        string one = text.substring(i, 1);
+        if (inString) {
+            result = result + one;
+            if (escaped) {
+                escaped = false;
+            } else if (c == '\\') {
+                escaped = true;
+            } else if (c == '"') {
+                inString = false;
+            }
+            continue;
+        }
+        if (jsonPrettyWhitespace(c)) {
+            continue;
+        }
+        if (c == '"') {
+            inString = true;
+            result = result + one;
+            continue;
+        }
+        if (c == '{' || c == '[') {
+            int next = jsonPrettyNextNonWhitespace(text, i + 1);
+            if (next < text.len() && jsonPrettyMatchingClose(c, text.charAt(next))) {
+                result = result + one + text.substring(next, 1);
+                i = next;
+            } else {
+                result = result + one + "\n";
+                indent++;
+                result = result + jsonPrettyIndent(indent);
+            }
+            continue;
+        }
+        if (c == '}' || c == ']') {
+            indent--;
+            if (indent < 0) { indent = 0; }
+            result = result + "\n" + jsonPrettyIndent(indent) + one;
+            continue;
+        }
+        if (c == ',') {
+            result = result + ",\n" + jsonPrettyIndent(indent);
+            continue;
+        }
+        if (c == ':') {
+            result = result + ": ";
+            continue;
+        }
+        result = result + one;
+    }
+    return result.trim() + "\n";
+}
+
 void writeJsonPrettyFile(string path, string text) {
-    FileSystem.writeText(path, text + "\n");
-    string tmp = path + ".tmp";
-    UnixShell shell = UnixShell();
-    if (commandExists("python3")) {
-        ExecResult result = shell.runUnchecked(
-            "python3 -m json.tool " + ShellWords.quote(path) + " > " + ShellWords.quote(tmp)
-                + " && mv " + ShellWords.quote(tmp) + " " + ShellWords.quote(path)
-        );
-        if (result.ok()) { return; }
-        FileSystem.removeRecursive(tmp);
-    }
-    if (commandExists("jq")) {
-        ExecResult result = shell.runUnchecked(
-            "jq . " + ShellWords.quote(path) + " > " + ShellWords.quote(tmp)
-                + " && mv " + ShellWords.quote(tmp) + " " + ShellWords.quote(path)
-        );
-        if (result.ok()) { return; }
-        FileSystem.removeRecursive(tmp);
-    }
+    FileSystem.writeText(path, jsonPrettyText(text));
 }

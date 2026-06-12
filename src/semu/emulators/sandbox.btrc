@@ -112,7 +112,7 @@ string currentUid() {
 }
 
 string launchRomsRoot(string project) {
-    return Environment.get("SEMU_ROMS_DIR", configuredRomsRoot(project));
+    return normalizeRomsRoot(Environment.get("SEMU_ROMS_DIR", configuredRomsRoot(project)));
 }
 
 string xdgRunDir() {
@@ -263,7 +263,7 @@ int sandboxLaunch(string project, string emulator, string executable, Vector<str
     bwrapArgs.push("VK_ICD_FILENAMES");
     bwrapArgs.push("--");
     bwrapArgs.push(executable);
-    for arg in launcherArgsWithDefaults(emulator, emulatorArgs) {
+    for arg in launcherArgsWithDefaults(project, emulator, emulatorArgs) {
         bwrapArgs.push(arg);
     }
     command = shellAppendAll(command, bwrapArgs);

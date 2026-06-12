@@ -1,0 +1,22 @@
+{
+    "schema_version": 1,
+    "system": "gba",
+    "label": "Nintendo Game Boy Advance",
+    "default_emulator": "RETROARCH",
+    "adapter": "retroarch",
+    "adapter_config": "retroarch.cfg core-options",
+    "hardware_display": "AGB-001 reflective TFT LCD",
+    "shader_backend": "retroarch_slang",
+    "shader_file": "handheld/agb001-gba-color-motionblur.slangp",
+    "shader_intent": "original GBA color and LCD persistence",
+    "bezel_backend": "retroarch_slang_or_overlay",
+    "bezel_file": "handheld/console-border/gba-agb001-color-motionblur.slangp",
+    "bezel_intent": "purple wide Game Boy Advance shell",
+    "runtime_preset": "handheld/console-border/gba-agb001-color-motionblur.slangp",
+    "layout": "single_lcd",
+    "scale_policy": "integer_native",
+    "aspect_policy": "3:2",
+    "dynamic_aspect": false,
+    "profile": "gba_lcd",
+    "notes": "Use the original wide GBA target, not SP-first artwork."
+}

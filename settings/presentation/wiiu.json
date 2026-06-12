@@ -1,0 +1,22 @@
+{
+    "schema_version": 1,
+    "system": "wiiu",
+    "label": "Nintendo Wii U",
+    "default_emulator": "CEMU",
+    "adapter": "cemu",
+    "adapter_config": "settings.xml",
+    "hardware_display": "HD TV plus optional gamepad screen",
+    "shader_backend": "native_or_wrapper_modern",
+    "shader_file": "",
+    "shader_intent": "modern 16:9 output by default",
+    "bezel_backend": "universal_modern_frame",
+    "bezel_file": "bezels/wiiu/tv-gamepad-or-clean-16x9.json",
+    "bezel_intent": "clean 16:9 frame, optional gamepad layout when exposed",
+    "runtime_preset": "",
+    "layout": "modern_tv_optional_gamepad",
+    "scale_policy": "aspect_preserve",
+    "aspect_policy": "16:9_or_dual",
+    "dynamic_aspect": true,
+    "profile": "modern_hd",
+    "notes": "No default CRT; only use TV/gamepad bezel when the adapter sees both regions."
+}

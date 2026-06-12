@@ -1,6 +1,426 @@
+#include <stdio.h>
+
 class SemuSettings {
     class int command(CliArgs args, string project) { return settingsCommand(args, project); }
     class void defaults(string project) { writeSettingsDefaults(project); }
+}
+
+class SettingSpec {
+    public string key;
+    public string label;
+    public string group;
+    public string storage;
+    public string jsonKey;
+    public string kind;
+
+    public SettingSpec(string key, string label, string group, string storage, string jsonKey, string kind) {
+        self.key = key;
+        self.label = label;
+        self.group = group;
+        self.storage = storage;
+        self.jsonKey = jsonKey;
+        self.kind = kind;
+    }
+
+    public bool known() {
+        return self.key.len() > 0;
+    }
+
+    public bool isBool() {
+        return self.kind.equals("bool");
+    }
+
+    public bool isSync() {
+        return self.storage.equals("sync");
+    }
+}
+
+class SettingsRegistry {
+    class SettingSpec empty() {
+        return SettingSpec("", "", "", "", "", "");
+    }
+
+    class Vector<SettingSpec> all() {
+        return [
+            SettingSpec("roms.dir", "ROM Directory", "Paths", "sync", "roms_dir", "string"),
+            SettingSpec("sync.enabled", "Syncthing Enabled", "Sync", "sync", "enabled", "bool"),
+            SettingSpec("sync.start_at_boot", "Start Sync At Boot", "Sync", "sync", "start_at_boot", "bool"),
+            SettingSpec("sync.tray", "Show Sync Tray", "Sync", "sync", "tray", "bool"),
+            SettingSpec("sync.gui_address", "Syncthing UI Address", "Sync", "sync", "gui_address", "string"),
+            SettingSpec("sync.saves", "Sync Saves", "Sync Folders", "sync", "sync_saves", "bool"),
+            SettingSpec("sync.states", "Sync States", "Sync Folders", "sync", "sync_states", "bool"),
+            SettingSpec("sync.emulator_state", "Sync Emulator State", "Sync Folders", "sync", "sync_emulator_state", "bool"),
+            SettingSpec("sync.screenshots", "Sync Screenshots", "Sync Folders", "sync", "sync_screenshots", "bool"),
+            SettingSpec("sync.gamelists", "Sync Gamelists", "Sync Folders", "sync", "sync_gamelists", "bool"),
+            SettingSpec("sync.roms", "Sync ROMs", "Sync Folders", "sync", "sync_roms", "bool"),
+            SettingSpec("sync.bios", "Sync BIOS", "Sync Folders", "sync", "sync_bios", "bool"),
+            SettingSpec("visual.integer_scaling", "Native Integer Scaling", "Visuals", "semu", "visual_integer_scaling", "bool"),
+            SettingSpec("visual.crt_shaders", "CRT Shaders", "Visuals", "semu", "visual_crt_shaders", "bool"),
+            SettingSpec("visual.bezels", "Bezels", "Visuals", "semu", "visual_bezels", "bool"),
+            SettingSpec("visual.bezel_policy", "Bezel Policy", "Visuals", "semu", "visual_bezel_policy", "string"),
+            SettingSpec("visual.retroarch_shader_preset", "RetroArch Shader Preset", "Visuals", "semu", "visual_retroarch_shader_preset", "string"),
+            SettingSpec("visual.classic_systems", "Classic Visual Systems", "Visuals", "semu", "visual_classic_systems", "string"),
+            SettingSpec("visual.modern_systems", "Modern Visual Exclusions", "Visuals", "semu", "visual_modern_systems", "string"),
+            SettingSpec("ui.theme", "ES-DE Theme", "UI", "semu", "ui_theme", "string"),
+            SettingSpec("ui.settings_entry", "Settings Entry", "UI", "semu", "ui_settings_entry", "string")
+        ];
+    }
+
+    class SettingSpec find(string key) {
+        for spec in SettingsRegistry.all() {
+            if (spec.key.equals(key)) {
+                return spec;
+            }
+        }
+        return SettingsRegistry.empty();
+    }
+
+    class SettingSpec at(int index) {
+        Vector<SettingSpec> specs = SettingsRegistry.all();
+        if (index < 0 || index >= specs.len) {
+            return SettingsRegistry.empty();
+        }
+        return specs.get(index);
+    }
+
+    class Vector<string> keys() {
+        Vector<string> result = [];
+        for spec in SettingsRegistry.all() {
+            result.push(spec.key);
+        }
+        return result;
+    }
+}
+
+class SettingsStore {
+    public string project;
+
+    public SettingsStore(string project) {
+        self.project = project;
+    }
+
+    public string get(SettingSpec spec) {
+        if (!spec.known()) { return ""; }
+        if (spec.isSync()) {
+            if (spec.key.equals("roms.dir")) {
+                return configuredRomsRoot(self.project);
+            }
+            JsonObject config = syncConfig(self.project);
+            if (spec.isBool()) {
+                return config.getBool(spec.jsonKey, false) ? "true" : "false";
+            }
+            return expandProjectTemplate(self.project, config.getString(spec.jsonKey, ""));
+        }
+
+        JsonObject config = settingsConfig(self.project);
+        if (spec.isBool()) {
+            return config.getBool(spec.jsonKey, false) ? "true" : "false";
+        }
+        return config.getString(spec.jsonKey, "");
+    }
+
+    public bool put(SettingSpec spec, string value) {
+        if (!spec.known()) {
+            print(f"error 0:0 unknown setting '{spec.key}'");
+            return false;
+        }
+        if (spec.isSync()) {
+            return self.putSync(spec, value);
+        }
+        return self.putSemu(spec, value);
+    }
+
+    public bool putSync(SettingSpec spec, string value) {
+        writeSyncDefaults(self.project, "");
+        JsonObject config = JsonObject.readFile(syncConfigPath(self.project));
+        if (spec.key.equals("roms.dir")) {
+            config.setString(spec.jsonKey, normalizeRomsRoot(value));
+        } else if (spec.isBool()) {
+            if (!settingBoolLiteral(value)) {
+                print(f"error 0:0 {spec.key} expects a boolean");
+                return false;
+            }
+            config.setBool(spec.jsonKey, settingBoolValue(value));
+        } else {
+            config.setString(spec.jsonKey, value);
+        }
+        writeJsonPrettyFile(syncConfigPath(self.project), config.stringify());
+        return true;
+    }
+
+    public bool putSemu(SettingSpec spec, string value) {
+        JsonObject config = settingsConfig(self.project);
+        if (spec.isBool()) {
+            if (!settingBoolLiteral(value)) {
+                print(f"error 0:0 {spec.key} expects a boolean");
+                return false;
+            }
+            config.setBool(spec.jsonKey, settingBoolValue(value));
+        } else {
+            config.setString(spec.jsonKey, value);
+        }
+        writeJsonPrettyFile(semuSettingsPath(self.project), config.stringify());
+        return true;
+    }
+
+    public bool putKey(string key, string value) {
+        SettingSpec spec = SettingsRegistry.find(key);
+        if (!spec.known()) {
+            print(f"error 0:0 unknown setting '{key}'");
+            return false;
+        }
+        return self.put(spec, value);
+    }
+}
+
+class SettingsEntrySpec {
+    public string filename;
+    public string label;
+    public string action;
+
+    public SettingsEntrySpec(string filename, string label, string action) {
+        self.filename = filename;
+        self.label = label;
+        self.action = action;
+    }
+}
+
+class SettingsEntries {
+    class string root(string project) {
+        return joinPath(settingsRoot(project), "es-de");
+    }
+
+    class Vector<SettingsEntrySpec> all() {
+        return [
+            SettingsEntrySpec("Open Semu Settings.semu", "Open Settings UI", "ui"),
+            SettingsEntrySpec("Use Steam Deck SD ROMs.semu", "Use Steam Deck SD ROMs", "put roms.dir /run/media/deck/SD apply"),
+            SettingsEntrySpec("Apply Settings.semu", "Apply Settings", "apply"),
+            SettingsEntrySpec("Toggle Integer Scaling.semu", "Toggle Integer Scaling", "toggle visual.integer_scaling apply"),
+            SettingsEntrySpec("Toggle CRT Shaders.semu", "Toggle CRT Shaders", "toggle visual.crt_shaders apply"),
+            SettingsEntrySpec("Toggle Bezels.semu", "Toggle Bezels", "toggle visual.bezels apply"),
+            SettingsEntrySpec("Toggle Syncthing.semu", "Toggle Syncthing", "toggle sync.enabled apply"),
+            SettingsEntrySpec("Open Syncthing UI.semu", "Open Syncthing UI", "sync open")
+        ];
+    }
+
+    class void write(string project) {
+        ensureDir(SettingsEntries.root(project));
+        for entry in SettingsEntries.all() {
+            FileSystem.writeText(joinPath(SettingsEntries.root(project), entry.filename), entry.action + "\n");
+        }
+    }
+
+    class string esSystemXml(string project) {
+        return "  <system>\n"
+            + "    <name>semu-settings</name>\n"
+            + "    <fullname>Semu Settings</fullname>\n"
+            + "    <path>" + xmlEscape(SettingsEntries.root(project)) + "</path>\n"
+            + "    <extension>.semu .SEMU</extension>\n"
+            + "    <command label=\"Semu Settings\">%EMULATOR_SEMU_SETTINGS% %ROM%</command>\n"
+            + "    <platform>pc</platform>\n"
+            + "    <theme>tools</theme>\n"
+            + "  </system>\n";
+    }
+
+    class int run(string project, string path) {
+        if (!FileSystem.isFile(path)) {
+            print("error 0:0 settings entry not found: " + path);
+            return 1;
+        }
+        string action = FileSystem.readText(path).trim();
+        if (action.len() == 0) {
+            print("error 0:0 empty settings entry: " + path);
+            return 1;
+        }
+        return SettingsEntryAction(project, action).run();
+    }
+}
+
+class SettingsEntryAction {
+    public string project;
+    public Vector<string> words;
+
+    public SettingsEntryAction(string project, string action) {
+        self.project = project;
+        self.words = Strings.split(action, " ");
+    }
+
+    public string word(int index) {
+        if (index < 0 || index >= self.words.len) { return ""; }
+        return self.words.get(index);
+    }
+
+    public bool shouldApply(int index) {
+        return self.word(index).equals("apply");
+    }
+
+    public int applyIfRequested(int index) {
+        if (self.shouldApply(index)) {
+            lifecycleReconfigure(self.project, "");
+            print("OK settings applied");
+        }
+        return 0;
+    }
+
+    public int runPut() {
+        string key = self.word(1);
+        string value = self.word(2);
+        if (key.len() == 0 || value.len() == 0) {
+            print("error 0:0 settings entry put needs KEY VALUE");
+            return 1;
+        }
+        if (!SettingsStore(self.project).putKey(key, value)) {
+            return 1;
+        }
+        print(key + "=" + settingsGetValue(self.project, key));
+        return self.applyIfRequested(3);
+    }
+
+    public int runToggle() {
+        string key = self.word(1);
+        SettingSpec spec = SettingsRegistry.find(key);
+        if (!spec.known()) {
+            print("error 0:0 unknown setting '" + key + "'");
+            return 1;
+        }
+        if (!spec.isBool()) {
+            print("error 0:0 setting '" + key + "' is not boolean");
+            return 1;
+        }
+        string current = SettingsStore(self.project).get(spec);
+        string next = current.equals("true") ? "false" : "true";
+        if (!SettingsStore(self.project).put(spec, next)) {
+            return 1;
+        }
+        print(key + "=" + settingsGetValue(self.project, key));
+        return self.applyIfRequested(2);
+    }
+
+    public int runSync() {
+        string mode = self.word(1);
+        if (mode.len() == 0) {
+            print("error 0:0 settings entry sync needs MODE");
+            return 1;
+        }
+        if (mode.equals("open")) {
+            syncOpen(self.project);
+            return 0;
+        }
+        if (mode.equals("start")) {
+            return syncStart(self.project) ? 0 : 1;
+        }
+        if (mode.equals("status")) {
+            syncStatus(self.project);
+            return 0;
+        }
+        if (mode.equals("force")) {
+            return syncForce(self.project, "all") ? 0 : 1;
+        }
+        print("error 0:0 unknown settings sync action '" + mode + "'");
+        return 1;
+    }
+
+    public int run() {
+        string verb = self.word(0);
+        if (verb.equals("ui")) {
+            return SettingsUi(self.project).run();
+        }
+        if (verb.equals("apply")) {
+            lifecycleReconfigure(self.project, "");
+            print("OK settings applied");
+            return 0;
+        }
+        if (verb.equals("put")) {
+            return self.runPut();
+        }
+        if (verb.equals("toggle")) {
+            return self.runToggle();
+        }
+        if (verb.equals("sync")) {
+            return self.runSync();
+        }
+        print("error 0:0 unknown settings entry action '" + verb + "'");
+        return 1;
+    }
+}
+
+class SettingsUi {
+    public string project;
+    public SettingsStore store;
+
+    public SettingsUi(string project) {
+        self.project = project;
+        self.store = SettingsStore(project);
+    }
+
+    public void render() {
+        print("");
+        print("Semu Settings");
+        print("=============");
+        print("Project: " + self.project);
+        print("");
+        string group = "";
+        int index = 1;
+        for spec in SettingsRegistry.all() {
+            if (!spec.group.equals(group)) {
+                group = spec.group;
+                print(group);
+            }
+            string value = self.store.get(spec);
+            string hint = spec.isBool() ? "toggle" : "edit";
+            print("  " + Strings.fromInt(index) + ". " + spec.label + " [" + spec.key + "] = " + value + " (" + hint + ")");
+            index++;
+        }
+        print("");
+        print("Commands: number = edit/toggle, a = apply, q = quit");
+        print("Select:");
+    }
+
+    public int run() {
+        while (true) {
+            self.render();
+            string choice = settingsReadLine();
+            if (settingsLineIsEof(choice)) { return 0; }
+            choice = choice.trim();
+            if (choice.len() == 0) { continue; }
+            if (choice.equals("q") || choice.equals("quit")) { return 0; }
+            if (choice.equals("a") || choice.equals("apply")) {
+                lifecycleReconfigure(self.project, "");
+                print("OK settings applied");
+                continue;
+            }
+            if (!choice.isDigitStr()) {
+                print("Unknown command: " + choice);
+                continue;
+            }
+            SettingSpec spec = SettingsRegistry.at(choice.toInt() - 1);
+            if (!spec.known()) {
+                print("Unknown setting number: " + choice);
+                continue;
+            }
+            if (spec.isBool()) {
+                string current = self.store.get(spec);
+                string next = current.equals("true") ? "false" : "true";
+                if (self.store.put(spec, next)) {
+                    print(spec.key + "=" + self.store.get(spec));
+                }
+                continue;
+            }
+            print("Current " + spec.label + ": " + self.store.get(spec));
+            print("New value, empty to cancel:");
+            string value = settingsReadLine();
+            if (settingsLineIsEof(value)) { return 0; }
+            value = value.trim();
+            if (value.len() == 0) {
+                print("Cancelled");
+                continue;
+            }
+            if (self.store.put(spec, value)) {
+                print(spec.key + "=" + self.store.get(spec));
+            }
+        }
+        return 0;
+    }
 }
 
 string settingsRoot(string project) {
@@ -39,6 +459,19 @@ JsonObject settingsConfig(string project) {
     return JsonObject.readFile(semuSettingsPath(project));
 }
 
+string settingsReadLine() {
+    char buf[4096];
+    if (fgets(buf, 4096, stdin) != NULL) {
+        string line = __btrc_strdup(buf);
+        return line.trim();
+    }
+    return "__SEMU_EOF__";
+}
+
+bool settingsLineIsEof(string line) {
+    return line.equals("__SEMU_EOF__");
+}
+
 bool settingBoolValue(string value) {
     string normalized = value.toLower();
     return normalized.equals("1") || normalized.equals("true") || normalized.equals("yes") || normalized.equals("on");
@@ -57,141 +490,36 @@ bool settingBoolLiteral(string value) {
 }
 
 string settingSyncJsonKey(string key) {
-    if (key.equals("roms.dir")) { return "roms_dir"; }
-    if (key.equals("sync.enabled")) { return "enabled"; }
-    if (key.equals("sync.start_at_boot")) { return "start_at_boot"; }
-    if (key.equals("sync.tray")) { return "tray"; }
-    if (key.equals("sync.gui_address")) { return "gui_address"; }
-    if (key.equals("sync.saves")) { return "sync_saves"; }
-    if (key.equals("sync.states")) { return "sync_states"; }
-    if (key.equals("sync.emulator_state")) { return "sync_emulator_state"; }
-    if (key.equals("sync.screenshots")) { return "sync_screenshots"; }
-    if (key.equals("sync.gamelists")) { return "sync_gamelists"; }
-    if (key.equals("sync.roms")) { return "sync_roms"; }
-    if (key.equals("sync.bios")) { return "sync_bios"; }
-    return "";
+    SettingSpec spec = SettingsRegistry.find(key);
+    return spec.isSync() ? spec.jsonKey : "";
 }
 
 string settingJsonKey(string key) {
-    if (key.equals("visual.integer_scaling")) { return "visual_integer_scaling"; }
-    if (key.equals("visual.crt_shaders")) { return "visual_crt_shaders"; }
-    if (key.equals("visual.bezels")) { return "visual_bezels"; }
-    if (key.equals("visual.bezel_policy")) { return "visual_bezel_policy"; }
-    if (key.equals("visual.retroarch_shader_preset")) { return "visual_retroarch_shader_preset"; }
-    if (key.equals("visual.classic_systems")) { return "visual_classic_systems"; }
-    if (key.equals("visual.modern_systems")) { return "visual_modern_systems"; }
-    if (key.equals("ui.theme")) { return "ui_theme"; }
-    if (key.equals("ui.settings_entry")) { return "ui_settings_entry"; }
-    return "";
+    SettingSpec spec = SettingsRegistry.find(key);
+    return spec.storage.equals("semu") ? spec.jsonKey : "";
 }
 
 bool settingIsBool(string key) {
-    return key.equals("sync.enabled")
-        || key.equals("sync.start_at_boot")
-        || key.equals("sync.tray")
-        || key.equals("sync.saves")
-        || key.equals("sync.states")
-        || key.equals("sync.emulator_state")
-        || key.equals("sync.screenshots")
-        || key.equals("sync.gamelists")
-        || key.equals("sync.roms")
-        || key.equals("sync.bios")
-        || key.equals("visual.integer_scaling")
-        || key.equals("visual.crt_shaders")
-        || key.equals("visual.bezels");
+    SettingSpec spec = SettingsRegistry.find(key);
+    return spec.known() && spec.isBool();
 }
 
 Vector<string> settingsKeys() {
-    return [
-        "roms.dir",
-        "sync.enabled",
-        "sync.start_at_boot",
-        "sync.tray",
-        "sync.gui_address",
-        "sync.saves",
-        "sync.states",
-        "sync.emulator_state",
-        "sync.screenshots",
-        "sync.gamelists",
-        "sync.roms",
-        "sync.bios",
-        "visual.integer_scaling",
-        "visual.crt_shaders",
-        "visual.bezels",
-        "visual.bezel_policy",
-        "visual.retroarch_shader_preset",
-        "visual.classic_systems",
-        "visual.modern_systems",
-        "ui.theme",
-        "ui.settings_entry"
-    ];
+    return SettingsRegistry.keys();
 }
 
 string settingsGetValue(string project, string key) {
-    string syncKey = settingSyncJsonKey(key);
-    if (syncKey.len() > 0) {
-        JsonObject config = syncConfig(project);
-        if (settingIsBool(key)) {
-            return config.getBool(syncKey, false) ? "true" : "false";
-        }
-        return expandProjectTemplate(project, config.getString(syncKey, ""));
-    }
-
-    string jsonKey = settingJsonKey(key);
-    if (jsonKey.len() > 0) {
-        JsonObject config = settingsConfig(project);
-        if (settingIsBool(key)) {
-            return config.getBool(jsonKey, false) ? "true" : "false";
-        }
-        return config.getString(jsonKey, "");
-    }
-
-    return "";
+    return SettingsStore(project).get(SettingsRegistry.find(key));
 }
 
 bool settingsPutValue(string project, string key, string value) {
-    string syncKey = settingSyncJsonKey(key);
-    if (syncKey.len() > 0) {
-        writeSyncDefaults(project, "");
-        JsonObject config = JsonObject.readFile(syncConfigPath(project));
-        if (key.equals("roms.dir")) {
-            config.setString(syncKey, normalizeRomsRoot(value));
-        } else if (settingIsBool(key)) {
-            if (!settingBoolLiteral(value)) {
-                print(f"error 0:0 {key} expects a boolean");
-                return false;
-            }
-            config.setBool(syncKey, settingBoolValue(value));
-        } else {
-            config.setString(syncKey, value);
-        }
-        writeJsonPrettyFile(syncConfigPath(project), config.stringify());
-        return true;
-    }
-
-    string jsonKey = settingJsonKey(key);
-    if (jsonKey.len() > 0) {
-        JsonObject config = settingsConfig(project);
-        if (settingIsBool(key)) {
-            if (!settingBoolLiteral(value)) {
-                print(f"error 0:0 {key} expects a boolean");
-                return false;
-            }
-            config.setBool(jsonKey, settingBoolValue(value));
-        } else {
-            config.setString(jsonKey, value);
-        }
-        writeJsonPrettyFile(semuSettingsPath(project), config.stringify());
-        return true;
-    }
-
-    print(f"error 0:0 unknown setting '{key}'");
-    return false;
+    return SettingsStore(project).putKey(key, value);
 }
 
 void settingsList(string project) {
-    for key in settingsKeys() {
-        print(key + "=" + settingsGetValue(project, key));
+    SettingsStore store = SettingsStore(project);
+    for spec in SettingsRegistry.all() {
+        print(spec.key + "=" + store.get(spec));
     }
 }
 
@@ -204,17 +532,27 @@ int settingsCommand(CliArgs args, string project) {
         settingsList(project);
         return 0;
     }
+    if (mode.equals("ui")) {
+        return SettingsUi(project).run();
+    }
+    if (mode.equals("entry")) {
+        if (args.count() < 3) {
+            print("error 0:0 settings entry needs PATH");
+            return 1;
+        }
+        return SettingsEntries.run(project, args.get(2));
+    }
     if (mode.equals("get")) {
         if (args.count() < 3) {
             print("error 0:0 settings get needs KEY");
             return 1;
         }
-        string value = settingsGetValue(project, args.get(2));
-        if (value.len() == 0 && settingSyncJsonKey(args.get(2)).len() == 0 && settingJsonKey(args.get(2)).len() == 0) {
+        SettingSpec spec = SettingsRegistry.find(args.get(2));
+        if (!spec.known()) {
             print(f"error 0:0 unknown setting '{args.get(2)}'");
             return 1;
         }
-        print(value);
+        print(SettingsStore(project).get(spec));
         return 0;
     }
     if (mode.equals("put") || mode.equals("set")) {
@@ -222,7 +560,8 @@ int settingsCommand(CliArgs args, string project) {
             print("error 0:0 settings put needs KEY VALUE");
             return 1;
         }
-        if (!settingsPutValue(project, args.get(2), args.get(3))) {
+        SettingsStore store = SettingsStore(project);
+        if (!store.putKey(args.get(2), args.get(3))) {
             return 1;
         }
         print(args.get(2) + "=" + settingsGetValue(project, args.get(2)));

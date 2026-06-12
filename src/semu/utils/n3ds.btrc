@@ -178,7 +178,7 @@ bool fixN3dsNoCryptoFile(string input, string output) {
 
 // Doctor integration.
 void reportN3dsRomPreflight(string project) {
-    string n3dsDir = joinPath(romsRoot(project), "n3ds");
+    string n3dsDir = joinPath(configuredRomsRoot(project), "n3ds");
     if (!FileSystem.isDir(n3dsDir)) {
         print(f"  MISSING n3ds rom dir: {n3dsDir}");
         return;

@@ -6,8 +6,8 @@ loop. Input must become boring before visual treatment gets clever.
 ## Implementation Order
 
 1. Prove the Steam Deck input contract in Game Mode.
-2. Use the shipped `semu settings list|get|put|apply` CLI as the mutation
-   contract.
+2. Use the shipped `semu settings list|get|put|ui|apply` CLI/UI as the
+   mutation contract.
 3. Add an ES-DE Semu Settings entrypoint for configuration actions.
 4. Ship RetroArch-native shader and bezel presets for RetroArch-backed systems.
 5. Prototype standalone emulator post-processing behind explicit feature flags.
@@ -67,6 +67,52 @@ prove the actual Neptune left-trackpad radial menu.
 
 ## Visual Pipeline
 
+Semu now treats visuals as a station-owned presentation contract rather than an
+emulator-owned trick. Global toggles live in `settings/semu-settings.json`;
+per-system shader, bezel, layout, and adapter defaults live in
+`settings/presentation/<system>.json`.
+
+The command contract is:
+
+```sh
+semu presentation defaults
+semu presentation list
+semu presentation plan --system gb
+semu presentation get gb shader_file
+semu presentation put gb bezel_file bezels/gb/classic-grey-game-boy.json
+```
+
+`presentation plan` emits normalized JSON for launchers, future compositor
+wrappers, and settings UIs. Emulators are adapters: they read and/or broadcast
+their own config state, while Semu keeps the display policy stable.
+
+## Station Defaults
+
+| System | Display Target | Shader Target | Bezel Target | Layout/Aspect |
+|---|---|---|---|---|
+| `gb` | DMG-01 reflective STN LCD | Green DMG tint, LCD grid, slow-pixel ghosting | Classic grey Game Boy | Single LCD, integer native, 10:9 |
+| `gbc` | Game Boy Color TFT LCD | GBC LCD color and mild persistence | Frost purple Game Boy Color | Single LCD, integer native, 10:9 |
+| `gba` | AGB-001 reflective TFT LCD | Original GBA color and LCD persistence | Purple wide Game Boy Advance | Single LCD, integer native, 3:2 |
+| `nes` | Consumer CRT over composite | NES composite artifacts, phosphor mask, scanlines | Panasonic/Sony consumer CRT | 4:3 CRT |
+| `snes` | Consumer CRT over S-Video/composite | Soft analog CRT scanlines | Panasonic/Sony consumer CRT | 4:3 CRT |
+| `genesis` | Consumer CRT over composite/RGB | Composite dithering blend and scanlines | Panasonic/Sony consumer CRT | 4:3 CRT |
+| `psx` | Consumer CRT over composite/S-Video | 240p/480i analog softness | Panasonic/Sony consumer CRT | 4:3 CRT |
+| `n64` | Consumer CRT over composite/S-Video | CRT scanlines plus N64 VI softness | Panasonic/Sony consumer CRT | 4:3 CRT |
+| `dreamcast` | CRT or VGA monitor | 480i/480p CRT/VGA behavior | CRT for 4:3, flat frame for VGA/wide | Dynamic 4:3 or 16:9 |
+| `gc` | Consumer/component TV | 480i/480p TV output | CRT for 4:3, flat frame for widescreen | Dynamic 4:3 or 16:9 |
+| `wii` | Consumer/component TV | 480i/480p TV output | CRT for 4:3, flat frame for widescreen | Dynamic 4:3 or 16:9 |
+| `ps2` | CRT/component/early flat panel | 480i CRT scanlines and deinterlacing | CRT for 4:3, flat frame for widescreen | Dynamic 4:3 or 16:9 |
+| `nds` | Dual 256x192 LCDs | Dual LCD grid and persistence | Maximized DS top/bottom bezel | Dual stacked LCD |
+| `n3ds` | 400x240 top plus 320x240 bottom LCDs | 3DS LCD geometry | Maximized 3DS top/bottom bezel | Dual asymmetric LCD |
+| `psp` | 480x272 PSP LCD | PSP LCD grid and color response | Red God of War PSP or original black PSP | Single 16:9 LCD |
+| `wiiu` | HD TV plus optional gamepad screen | Modern output by default | Clean 16:9 or TV/gamepad layout | Dynamic 16:9 or dual |
+| `switch` | Modern 16:9 handheld/docked display | Off by default | Off by default | Modern fullscreen |
+
+For 4:3-era systems that can also run 16:9, Semu should read emulator/game
+config through the adapter and broadcast the resulting aspect in the normalized
+presentation state. The bezel choice then follows the state: CRT for 4:3, flat
+or clean frame for widescreen.
+
 ### RetroArch Systems
 
 RetroArch-backed systems should use RetroArch's native shader and overlay stack
@@ -76,15 +122,15 @@ Production tasks:
 
 - Bundle or fetch `libretro-shaders-slang` through Nix.
 - Configure RetroArch for Vulkan where available and GLCore fallback.
-- Add a per-system shader preset map in Semu configuration.
+- Use `settings/presentation/<system>.json` as the per-system shader/bezel map.
 - Keep native integer scaling on by default for classic systems unless a
   specific shader preset requires exact viewport control.
 - Enable shaders with `video_shader_enable = true`.
 - Write per-system preset references into the generated RetroArch config.
 - Keep a performance tier for the Steam Deck OLED panel, starting with lighter
   presets before expensive reflection presets.
-- Treat Mega_Bezel as a RetroArch-only backend, not as a generic Semu visual
-  layer.
+- Treat Mega_Bezel presets as one backend. The normalized presentation plan is
+  still Semu-owned so standalone emulators can consume the same policy later.
 
 Mega_Bezel is attractive for 4:3 and CRT presentation because it provides CRT,
 bezel, reflection, and scaling presets inside RetroArch. Its own setup guidance
@@ -142,8 +188,11 @@ Semu should model bezels as declarative presentation data:
 |---|---|
 | `system` | System id such as `snes`, `psx`, or `gc`. |
 | `aspect` | Native content shape: `4:3`, `3:2`, `8:7`, `16:9`, dual-screen, or custom. |
-| `backend` | `retroarch_shader`, `retroarch_overlay`, `emulator_native`, `gamescope_reshade`, or `vkbasalt`. |
-| `preset` | Shader, overlay, or wrapper preset path. |
+| `shader_backend` | `retroarch_slang`, `native_or_wrapper_crt`, `native_or_wrapper_lcd`, or `off_by_default`. |
+| `shader_file` | Hardware-era shader path such as a DMG LCD, GBC LCD, CRT, or PSP LCD preset. |
+| `bezel_backend` | `retroarch_mega_bezel`, `universal_crt_bezel`, `universal_dual_screen`, or `off_by_default`. |
+| `bezel_file` | Bezel artwork or preset path, editable per system. |
+| `runtime_preset` | Combined runtime preset when the backend needs shader plus bezel in one file. |
 | `safe_area` | Viewport constraints for OLED and overscan-sensitive presets. |
 | `enabled` | Per-system on/off switch. |
 
@@ -166,7 +215,7 @@ Default policy:
 Semu needs a settings entrypoint inside ES-DE so configuration is controller
 reachable on the Deck.
 
-The first shipped contract is CLI-backed and file-backed:
+The first shipped contract is BTRC UI-backed, CLI-backed, and file-backed:
 
 ```sh
 semu settings list
@@ -175,19 +224,24 @@ semu settings put roms.dir /run/media/deck/SD --apply
 semu settings put visual.integer_scaling true
 semu settings put visual.bezels true
 semu settings put sync.roms false
+semu settings ui
 semu settings apply
 ```
 
-The CLI writes `settings/semu-settings.json` and `sync/sync.json`; it does not
-store shadow state. ES-DE entries should call this CLI and then run
-`settings apply` or pass `--apply` for mutations that require generated files
-to be rerendered.
+The CLI and terminal UI write `settings/semu-settings.json` and
+`sync/sync.json`; they do not store shadow state. The UI is dependency-free
+BTRC: numbered rows edit string settings, toggle boolean settings, and apply
+by running lifecycle reconfigure. ES-DE entries should call this CLI/UI and then
+run `settings apply` or pass `--apply` for mutations that require generated
+files to be rerendered.
 
-Recommended shape:
+Implemented shape:
 
-- Add a pseudo-system named `Semu Settings`.
-- Generate settings launch entries into an ES-DE-visible directory.
-- Route each entry to `semu settings <action>` or `semu settings ui`.
+- A pseudo-system named `Semu Settings` is appended to generated ES-DE systems.
+- Settings launch entries are generated under `settings/es-de`, outside the SD
+  ROM tree.
+- `%EMULATOR_SEMU_SETTINGS%` routes each `.semu` action file to
+  `semu settings entry`.
 - Keep all mutations declarative: update config files, then run lifecycle
   reconfigure.
 
@@ -205,9 +259,9 @@ Initial settings actions:
 | Doctor | Runs `semu doctor` and shows a readable result. |
 | Rebuild ES-DE Config | Runs lifecycle reconfigure after settings changes. |
 
-The first version can be a simple ES-DE action menu backed by BTRC commands.
-A richer controller-first settings UI can follow once the command contracts are
-stable.
+The first ES-DE version can be an action menu backed by these BTRC commands.
+A richer controller-first settings UI can follow once the Deck Game Mode input
+path is proven.
 
 ## Decisions
 

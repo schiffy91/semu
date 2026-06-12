@@ -10,6 +10,7 @@ import ./semu/utils/*;
 import ./semu/verification/*;
 import ./semu/sync/*;
 import ./semu/settings/*;
+import ./semu/presentation/*;
 import ./semu/tests/*;
 import ./semu/cli/*;
 
@@ -67,6 +68,10 @@ int main(int argc, char** argv) {
     }
     if (command.equals("settings")) {
         int status = settingsCommand(args, project);
+        return status;
+    }
+    if (command.equals("presentation")) {
+        int status = presentationCommand(args, project);
         return status;
     }
     if (command.equals("apprun")) {

@@ -125,6 +125,64 @@ ExecResult e2eRunSteamInput(string exe, string home, string project, Vector<stri
     return result;
 }
 
+ExecResult e2eRunSettings(string exe, string home, string project, Vector<string> settingsArgs) {
+    Command command = Command(exe)
+        .envVar("SEMU_HOME", home)
+        .envVar("SEMU_BIN", exe)
+        .envVar("PATH", "/usr/bin:/bin")
+        .arg("settings")
+        .capture(true)
+        .check(false);
+    for arg in settingsArgs {
+        command.arg(arg);
+    }
+    command.flag("--project", project);
+    UnixShell shell = UnixShell();
+    ExecResult result = shell.runCommand(command);
+    return result;
+}
+
+ExecResult e2eRunPresentation(string exe, string home, string project, Vector<string> presentationArgs) {
+    Command command = Command(exe)
+        .envVar("SEMU_HOME", home)
+        .envVar("SEMU_BIN", exe)
+        .envVar("PATH", "/usr/bin:/bin")
+        .arg("presentation")
+        .capture(true)
+        .check(false);
+    for arg in presentationArgs {
+        command.arg(arg);
+    }
+    command.flag("--project", project);
+    UnixShell shell = UnixShell();
+    ExecResult result = shell.runCommand(command);
+    return result;
+}
+
+ExecResult e2eRunSettingsUiScript(string exe, string home, string project, string script) {
+    string command = "printf %s " + ShellWords.quote(script)
+        + " | SEMU_HOME=" + ShellWords.quote(home)
+        + " SEMU_BIN=" + ShellWords.quote(exe)
+        + " PATH=/usr/bin:/bin "
+        + ShellWords.quote(exe)
+        + " settings ui --project " + ShellWords.quote(project);
+    UnixShell shell = UnixShell();
+    return shell.runRaw(command, true, false, "");
+}
+
+ExecResult e2eRunDoctor(string exe, string home, string project) {
+    Command command = Command(exe)
+        .envVar("SEMU_HOME", home)
+        .envVar("SEMU_BIN", exe)
+        .envVar("PATH", "/usr/bin:/bin")
+        .arg("doctor")
+        .flag("--project", project)
+        .capture(true)
+        .check(false);
+    UnixShell shell = UnixShell();
+    return shell.runCommand(command);
+}
+
 ExecResult e2eRunLauncher(string exe, string home, string project, string roms, string binDir, string captureDir, string bwrapPath, string emulator, Vector<string> emulatorArgs) {
     Command command = Command(exe)
         .envVar("SEMU_HOME", home)
@@ -197,6 +255,13 @@ bool e2eCatalogConsistency(string project, string launcherBin) {
         if (!e2eContains(rules, launcher, "ES-DE launcher path " + emulator)) { return false; }
         if (!e2eOk(FileSystem.exists(launcher), "launcher missing " + launcher)) { return false; }
     }
+    string settingsLauncher = joinPath(launcherBin, "semu-settings");
+    if (!e2eContains(systems, "<name>semu-settings</name>", "ES-DE settings system")) { return false; }
+    if (!e2eContains(systems, SettingsEntries.root(project), "ES-DE settings path")) { return false; }
+    if (!e2eContains(rules, "<emulator name=\"SEMU_SETTINGS\">", "ES-DE settings find rule")) { return false; }
+    if (!e2eContains(rules, settingsLauncher, "ES-DE settings launcher path")) { return false; }
+    if (!e2eOk(FileSystem.exists(settingsLauncher), "settings launcher missing " + settingsLauncher)) { return false; }
+    if (!e2eOk(FileSystem.exists(joinPath(SettingsEntries.root(project), "Toggle Bezels.semu")), "settings entry missing")) { return false; }
     return true;
 }
 
@@ -228,6 +293,8 @@ int e2eLifecycleSmoke(CliArgs args) {
 
     e2eSeedFile(joinPath(contentRoot(project), "saves/gba/game.sav"));
     e2eSeedFile(joinPath(biosRoot(project), "ps2/ps2-0230a-20080220.bin"));
+    e2eSeedFile(joinPath(linuxLauncherBin(project), "semu-obsolete"));
+    e2eSeedFile(joinPath(joinPath(semuStateRoot(project), "appimage-state"), "gopher64/config/sentinel"));
     if (!e2eRunOk(e2eRunLifecycle(exe, home, "reconfigure", project, romsTwo), "reconfigure")) { return 1; }
     if (!e2eContains(FileSystem.readText(syncConfigPath(project)), romsTwo, "sync config after reconfigure")) { return 1; }
     if (!e2eContains(FileSystem.readText(joinPath(project, "ES-DE/es_settings.xml")), romsTwo, "ES-DE settings after reconfigure")) { return 1; }
@@ -235,6 +302,8 @@ int e2eLifecycleSmoke(CliArgs args) {
     if (!e2eOk(!FileSystem.exists(joinPath(romsTwo, "gba")), "reconfigure mutated external ROM dirs")) { return 1; }
     if (!e2eOk(FileSystem.exists(joinPath(contentRoot(project), "saves/gba/game.sav")), "save should survive reconfigure")) { return 1; }
     if (!e2eOk(FileSystem.exists(joinPath(biosRoot(project), "ps2/ps2-0230a-20080220.bin")), "BIOS should survive reconfigure")) { return 1; }
+    if (!e2eOk(!FileSystem.exists(joinPath(linuxLauncherBin(project), "semu-obsolete")), "reconfigure should prune stale launcher")) { return 1; }
+    if (!e2eOk(!FileSystem.exists(joinPath(joinPath(semuStateRoot(project), "appimage-state"), "gopher64")), "reconfigure should prune obsolete emulator state")) { return 1; }
 
     if (!e2eRunOk(e2eRunLifecycleChange(exe, home, project, "state.save", "Ctrl+V"), "change keymap")) { return 1; }
     if (!e2eContains(FileSystem.readText(keymapSourcePath(project)), "action state.save = Ctrl+V", "keymap source after change")) { return 1; }
@@ -438,11 +507,122 @@ int e2eSyncSmoke(CliArgs args) {
     return 0;
 }
 
+// ---- settings_smoke.btrc ----
+int e2eSettingsSmoke(CliArgs args) {
+    string tmp = e2eTempDir("semu-settings-smoke");
+    string project = joinPath(tmp, "project");
+    string home = joinPath(tmp, "home");
+    string sdRoot = joinPath(tmp, "sd-card");
+    string normalizedRoms = joinPath(sdRoot, "Emulation/ES-DE/ES-DE/ROMs");
+    string exe = Environment.get("SEMU_BIN", args.program);
+    ensureDir(project);
+    ensureDir(home);
+    ensureDir(normalizedRoms);
+
+    if (!e2eRunOk(e2eRunSettings(exe, home, project, ["put", "visual.integer_scaling", "true"]), "settings put bool")) { return 1; }
+    if (!e2eRunOk(e2eRunSettings(exe, home, project, ["put", "ui.theme", "deck-dark"]), "settings put string")) { return 1; }
+    ExecResult list = e2eRunSettings(exe, home, project, ["list"]);
+    if (!e2eRunOk(list, "settings list")) { return 1; }
+    if (!e2eContains(list.stdout(), "visual.integer_scaling=true", "settings list bool")) { return 1; }
+    if (!e2eContains(list.stdout(), "ui.theme=deck-dark", "settings list string")) { return 1; }
+    if (!e2eOk(!e2eRunSettings(exe, home, project, ["put", "visual.integer_scaling", "maybe"]).ok(), "invalid boolean setting unexpectedly succeeded")) { return 1; }
+
+    ExecResult uiEdit = e2eRunSettingsUiScript(exe, home, project, "1\n" + sdRoot + "\na\nq\n");
+    if (!e2eRunOk(uiEdit, "settings ui edit/apply")) { return 1; }
+    if (!e2eContains(uiEdit.stdout(), "Semu Settings", "settings ui title")) { return 1; }
+    if (!e2eContains(uiEdit.stdout(), "ROM Directory", "settings ui rom row")) { return 1; }
+    if (!e2eContains(FileSystem.readText(syncConfigPath(project)), normalizedRoms, "settings ui normalized ROM path")) { return 1; }
+    if (!e2eOk(FileSystem.exists(joinPath(project, "ES-DE/es_settings.xml")), "settings ui apply did not reconfigure ES-DE")) { return 1; }
+
+    ExecResult uiToggle = e2eRunSettingsUiScript(exe, home, project, "13\nq\n");
+    if (!e2eRunOk(uiToggle, "settings ui toggle")) { return 1; }
+    if (!e2eContains(FileSystem.readText(semuSettingsPath(project)), "\"visual_integer_scaling\": false", "settings ui toggled bool")) { return 1; }
+    if (!e2eContains(FileSystem.readText(semuSettingsPath(project)), "\n    \"ui_theme\": \"deck-dark\"", "settings json pretty output")) { return 1; }
+
+    ExecResult uiEof = e2eRunSettingsUiScript(exe, home, project, "");
+    if (!e2eRunOk(uiEof, "settings ui eof")) { return 1; }
+
+    SettingsEntries.write(project);
+    string entry = joinPath(SettingsEntries.root(project), "Toggle Bezels.semu");
+    if (!e2eRunOk(e2eRunSettings(exe, home, project, ["entry", entry]), "settings ES-DE entry")) { return 1; }
+    if (!e2eContains(FileSystem.readText(semuSettingsPath(project)), "\"visual_bezels\": false", "settings entry toggled bezel setting")) { return 1; }
+    string systemsXml = systemCatalog().esSystemsXml(project);
+    if (!e2eContains(systemsXml, "<name>semu-settings</name>", "settings ES-DE system")) { return 1; }
+    if (!e2eContains(systemsXml, SettingsEntries.root(project), "settings ES-DE action path")) { return 1; }
+
+    print("OK BTRC settings smoke");
+    return 0;
+}
+
+// ---- presentation_smoke.btrc ----
+int e2ePresentationSmoke(CliArgs args) {
+    string tmp = e2eTempDir("semu-presentation-smoke");
+    string project = joinPath(tmp, "project");
+    string home = joinPath(tmp, "home");
+    string exe = Environment.get("SEMU_BIN", args.program);
+    ensureDir(project);
+    ensureDir(home);
+
+    if (!e2eRunOk(e2eRunPresentation(exe, home, project, ["defaults"]), "presentation defaults")) { return 1; }
+    if (!e2eOk(FileSystem.exists(joinPath(presentationSettingsRoot(project), "gb.json")), "gb presentation config missing")) { return 1; }
+    if (!e2eOk(FileSystem.exists(joinPath(presentationSettingsRoot(project), "n3ds.json")), "n3ds presentation config missing")) { return 1; }
+
+    ExecResult gb = e2eRunPresentation(exe, home, project, ["plan", "gb"]);
+    if (!e2eRunOk(gb, "presentation gb plan")) { return 1; }
+    if (!e2eContains(gb.stdout(), "\"system\": \"gb\"", "gb plan system")) { return 1; }
+    if (!e2eContains(gb.stdout(), "\"shader_file\": \"handheld/gameboy.slangp\"", "gb shader")) { return 1; }
+    if (!e2eContains(gb.stdout(), "classic grey Game Boy", "gb bezel intent")) { return 1; }
+    if (!e2eContains(gb.stdout(), "\"scale_policy\": \"integer_native\"", "gb integer scale")) { return 1; }
+
+    ExecResult gbc = e2eRunPresentation(exe, home, project, ["plan", "gbc"]);
+    if (!e2eRunOk(gbc, "presentation gbc plan")) { return 1; }
+    if (!e2eContains(gbc.stdout(), "frost purple Game Boy Color", "gbc bezel intent")) { return 1; }
+
+    ExecResult gba = e2eRunPresentation(exe, home, project, ["plan", "gba"]);
+    if (!e2eRunOk(gba, "presentation gba plan")) { return 1; }
+    if (!e2eContains(gba.stdout(), "purple wide Game Boy Advance", "gba bezel intent")) { return 1; }
+
+    ExecResult genesis = e2eRunPresentation(exe, home, project, ["plan", "genesis"]);
+    if (!e2eRunOk(genesis, "presentation genesis plan")) { return 1; }
+    if (!e2eContains(genesis.stdout(), "ntsc/ntsc-320px-composite-scanline.slangp", "genesis runtime preset")) { return 1; }
+
+    ExecResult n3ds = e2eRunPresentation(exe, home, project, ["plan", "n3ds", "--emulator", "AZAHAR"]);
+    if (!e2eRunOk(n3ds, "presentation n3ds plan")) { return 1; }
+    if (!e2eContains(n3ds.stdout(), "\"adapter\": \"azahar\"", "n3ds adapter")) { return 1; }
+    if (!e2eContains(n3ds.stdout(), "\"role\": \"top\"", "n3ds top region")) { return 1; }
+    if (!e2eContains(n3ds.stdout(), "\"native_size\": \"320x240\"", "n3ds bottom native")) { return 1; }
+    if (!e2eContains(n3ds.stdout(), "Azahar is only an adapter", "n3ds not overfit")) { return 1; }
+
+    ExecResult ps2 = e2eRunPresentation(exe, home, project, ["plan", "ps2"]);
+    if (!e2eRunOk(ps2, "presentation ps2 plan")) { return 1; }
+    if (!e2eContains(ps2.stdout(), "\"dynamic_aspect\": true", "ps2 dynamic aspect")) { return 1; }
+    if (!e2eContains(ps2.stdout(), "Panasonic", "ps2 crt bezel")) { return 1; }
+
+    ExecResult psp = e2eRunPresentation(exe, home, project, ["plan", "psp"]);
+    if (!e2eRunOk(psp, "presentation psp plan")) { return 1; }
+    if (!e2eContains(psp.stdout(), "red God of War PSP or original black PSP shell", "psp bezel intent")) { return 1; }
+
+    ExecResult switchPlan = e2eRunPresentation(exe, home, project, ["plan", "switch"]);
+    if (!e2eRunOk(switchPlan, "presentation switch plan")) { return 1; }
+    if (!e2eContains(switchPlan.stdout(), "\"shader_backend\": \"off_by_default\"", "switch shader off")) { return 1; }
+    if (!e2eContains(switchPlan.stdout(), "\"layout\": \"modern_fullscreen\"", "switch modern fullscreen")) { return 1; }
+
+    if (!e2eRunOk(e2eRunPresentation(exe, home, project, ["put", "gb", "bezel_file", "bezels/gb/classic-grey-game-boy.json"]), "presentation put")) { return 1; }
+    if (!e2eContains(FileSystem.readText(joinPath(presentationSettingsRoot(project), "gb.json")), "classic-grey-game-boy", "presentation put persisted")) { return 1; }
+    if (!e2eContains(e2eRunPresentation(exe, home, project, ["get", "gb", "bezel_file"]).stdout(), "classic-grey-game-boy", "presentation get")) { return 1; }
+    if (!e2eRunOk(e2eRunPresentation(exe, home, project, ["put", "ps2", "dynamic_aspect", "false"]), "presentation bool put")) { return 1; }
+    if (!e2eContains(e2eRunPresentation(exe, home, project, ["get", "ps2", "dynamic_aspect"]).stdout(), "false", "presentation bool get")) { return 1; }
+
+    print("OK BTRC presentation smoke");
+    return 0;
+}
+
 // ---- launcher_smoke.btrc ----
 int e2eLauncherSmoke(CliArgs args) {
     string tmp = e2eTempDir("semu-launcher-smoke");
     string project = joinPath(tmp, "project");
-    string roms = joinPath(tmp, "roms");
+    string emulationRoot = joinPath(tmp, "sd/Emulation");
+    string roms = joinPath(emulationRoot, "ES-DE/ES-DE/ROMs");
     string home = joinPath(tmp, "home");
     string capture = joinPath(tmp, "capture");
     string binDir = joinPath(tmp, "bin");
@@ -452,6 +632,15 @@ int e2eLauncherSmoke(CliArgs args) {
     ensureDir(home);
     ensureDir(capture);
     ensureDir(binDir);
+    string shaderPreset = joinPath(project, "result/share/libretro/shaders/shaders_slang/bezel/Mega_Bezel/Presets/MBZ__5__POTATO.slangp");
+    e2eSeedFile(shaderPreset);
+    e2eSeedFile(joinPath(emulationRoot, "Cemu/data/keys.txt"));
+    e2eSeedFile(joinPath(emulationRoot, "PCSX2/config/bios/SCPH-39001.bin"));
+    ensureDir(joinPath(emulationRoot, "Cemu/data/mlc01"));
+    e2eSeedFile(joinPath(emulationRoot, "Ryujinx/config/bis/system/Contents/registered/firmware.nca"));
+    e2eSeedFile(joinPath(emulationRoot, "Ryujinx/config/games/0100/game.json"));
+    e2eSeedFile(joinPath(emulationRoot, "Ryujinx/config/mods/contents/0100/mod.txt"));
+    e2eSeedFile(joinPath(emulationRoot, "Ryujinx/config/sdcard/Nintendo/save.dat"));
 
     string fakeFlatpak = joinPath(binDir, "flatpak");
     FileSystem.writeText(fakeFlatpak,
@@ -514,13 +703,23 @@ int e2eLauncherSmoke(CliArgs args) {
     if (!e2eRunOk(e2eRunLauncher(exe, home, project, roms, binDir, capture, fakeBwrap, "azahar", ["game.3ds"]), "launcher azahar")) { return 1; }
     if (!e2eContains(FileSystem.readText(joinPath(capture, "flatpak-3.args")), "--socket=x11", "azahar x11")) { return 1; }
     if (!e2eContains(FileSystem.readText(joinPath(capture, "flatpak-3.args")), "org.azahar_emu.Azahar", "azahar flatpak id")) { return 1; }
-    if (!e2eContains(FileSystem.readText(joinPath(capture, "flatpak-3.args")), "-f", "azahar fullscreen flag")) { return 1; }
+    string azaharArgLines = "\n" + FileSystem.readText(joinPath(capture, "flatpak-3.args")) + "\n";
+    if (!e2eOk(!azaharArgLines.contains("\n-f\n"), "azahar should not receive -f because it prevents positional ROM boot")) { return 1; }
+    string azaharConfig = azaharConfigText(project);
+    if (!e2eContains(azaharConfig, "firstStart=false", "azahar first-run prompts disabled")) { return 1; }
+    if (!e2eContains(azaharConfig, "renderer_debug=false", "azahar renderer debug disabled")) { return 1; }
+    if (!e2eContains(azaharConfig, "renderer_debug\\default=false", "azahar renderer debug explicitly configured")) { return 1; }
+    if (!e2eContains(azaharConfig, "graphics_api=1", "azahar uses OpenGL on Steam Deck")) { return 1; }
+    if (!e2eContains(azaharConfig, "graphics_api\\default=false", "azahar graphics api explicitly configured")) { return 1; }
 
     if (!e2eRunOk(e2eRunLauncher(exe, home, project, roms, binDir, capture, fakeBwrap, "pcsx2", ["game.iso"]), "launcher pcsx2")) { return 1; }
     if (!e2eContains(FileSystem.readText(joinPath(capture, "flatpak-4.args")), "--socket=wayland", "pcsx2 wayland")) { return 1; }
     if (!e2eContains(FileSystem.readText(joinPath(capture, "flatpak-4.args")), "net.pcsx2.PCSX2", "pcsx2 flatpak id")) { return 1; }
     if (!e2eContains(FileSystem.readText(joinPath(capture, "flatpak-4.args")), "-batch", "pcsx2 batch flag")) { return 1; }
     if (!e2eContains(FileSystem.readText(joinPath(capture, "flatpak-4.args")), "-fullscreen", "pcsx2 fullscreen flag")) { return 1; }
+    string pcsx2Ini = FileSystem.readText(joinPath(launcherFlatpakStateRoot(project, "pcsx2"), "config/PCSX2/inis/PCSX2.ini"));
+    if (!e2eContains(pcsx2Ini, "Bios = " + joinPath(emulationRoot, "PCSX2/config/bios"), "pcsx2 Deck BIOS path")) { return 1; }
+    if (!e2eOk(!pcsx2Ini.contains("/Users/"), "pcsx2 config leaked host-local path")) { return 1; }
 
     if (!e2eRunOk(e2eRunLauncher(exe, home, project, roms, binDir, capture, fakeBwrap, "ryujinx", ["game.nsp"]), "launcher ryujinx")) { return 1; }
     if (!e2eContains(FileSystem.readText(joinPath(capture, "flatpak-5.args")), "org.ryujinx.Ryujinx", "ryujinx flatpak id")) { return 1; }
@@ -535,16 +734,12 @@ int e2eLauncherSmoke(CliArgs args) {
     if (!e2eContains(FileSystem.readText(joinPath(capture, "flatpak-7.args")), "-config", "flycast config flag")) { return 1; }
     if (!e2eContains(FileSystem.readText(joinPath(capture, "flatpak-7.args")), "window:fullscreen=yes", "flycast fullscreen config")) { return 1; }
 
-    if (!e2eRunOk(e2eRunLauncher(exe, home, project, roms, binDir, capture, fakeBwrap, "gopher64", ["game.z64"]), "launcher gopher64")) { return 1; }
-    if (!e2eContains(FileSystem.readText(joinPath(capture, "flatpak-8.args")), "io.github.gopher64.gopher64", "gopher64 flatpak id")) { return 1; }
-    if (!e2eContains(FileSystem.readText(joinPath(capture, "flatpak-8.args")), "--fullscreen", "gopher64 fullscreen flag")) { return 1; }
-
     if (!e2eRunOk(e2eRunLauncher(exe, home, project, roms, binDir, capture, fakeBwrap, "melonds", ["game.nds"]), "launcher melonds")) { return 1; }
-    if (!e2eContains(FileSystem.readText(joinPath(capture, "flatpak-9.args")), "net.kuribo64.melonDS", "melonds flatpak id")) { return 1; }
-    if (!e2eContains(FileSystem.readText(joinPath(capture, "flatpak-9.args")), "--fullscreen", "melonds fullscreen flag")) { return 1; }
+    if (!e2eContains(FileSystem.readText(joinPath(capture, "flatpak-8.args")), "net.kuribo64.melonDS", "melonds flatpak id")) { return 1; }
+    if (!e2eContains(FileSystem.readText(joinPath(capture, "flatpak-8.args")), "--fullscreen", "melonds fullscreen flag")) { return 1; }
 
     if (!e2eRunOk(e2eRunLauncher(exe, home, project, roms, binDir, capture, fakeBwrap, "dolphin", ["--help"]), "launcher dolphin help")) { return 1; }
-    if (!e2eOk(!FileSystem.readText(joinPath(capture, "flatpak-10.args")).contains("Dolphin.Display.Fullscreen=True"), "dolphin help should not receive fullscreen defaults")) { return 1; }
+    if (!e2eOk(!FileSystem.readText(joinPath(capture, "flatpak-9.args")).contains("Dolphin.Display.Fullscreen=True"), "dolphin help should not receive fullscreen defaults")) { return 1; }
 
     e2eSeedFile(emulatorProfilePath(project, "RetroArch/config/input.cfg"));
     e2eSeedFile(emulatorProfilePath(project, "RetroArch/retroarch.cfg"));
@@ -555,6 +750,11 @@ int e2eLauncherSmoke(CliArgs args) {
     if (!e2eContains(FileSystem.readText(joinPath(capture, "retroarch.args")), "core.so", "retroarch core arg")) { return 1; }
     if (!e2eContains(FileSystem.readText(joinPath(capture, "retroarch.args")), "game.gba", "retroarch rom arg")) { return 1; }
     if (!e2eContains(FileSystem.readText(joinPath(capture, "retroarch.args")), "--ro-bind-try", "retroarch rom bind")) { return 1; }
+    if (!e2eContains(FileSystem.readText(joinPath(capture, "retroarch.args")), "--set-shader=" + shaderPreset, "retroarch shader argv")) { return 1; }
+    string generatedRetroarchConfig = launcherRetroArchConfig(project);
+    if (!e2eContains(generatedRetroarchConfig, "video_shader_enable = \"true\"", "retroarch shader enabled")) { return 1; }
+    if (!e2eContains(generatedRetroarchConfig, shaderPreset, "retroarch Mega_Bezel preset")) { return 1; }
+    if (!e2eContains(generatedRetroarchConfig, "video_scale_integer = \"true\"", "retroarch integer scaling")) { return 1; }
     string retroScreens = joinPath(contentRoot(project), "screenshots/verification/retroarch");
     if (!e2eOk(FileSystem.exists(joinPath(retroScreens, "before_launch.png")), "retroarch before_launch screenshot missing")) { return 1; }
     if (!e2eWaitForFile(joinPath(retroScreens, "after_spawn.png"), "retroarch after_spawn screenshot")) { return 1; }
@@ -573,6 +773,33 @@ int e2eLauncherSmoke(CliArgs args) {
     if (!e2eContains(FileSystem.readText(joinPath(capture, "routed-dolphin.args")), "-b", "routed dolphin batch flag")) { return 1; }
     if (!e2eContains(FileSystem.readText(joinPath(capture, "routed-dolphin.args")), "-e", "routed dolphin exec flag")) { return 1; }
     if (!e2eContains(FileSystem.readText(joinPath(capture, "routed-dolphin.args")), "game.iso", "routed dolphin rom arg")) { return 1; }
+
+    string fakeCemu = joinPath(binDir, "fake-cemu");
+    FileSystem.writeText(fakeCemu,
+        "#!/usr/bin/env sh\n"
+        + "set -eu\n"
+        + "printf '%s\\n' \"$@\" > \"${SEMU_FLATPAK_CAPTURE:?}/routed-cemu.args\"\n"
+    );
+    FileSystem.chmod(fakeCemu, 493);
+    if (!e2eRunOk(e2eRunRoutedLauncher(exe, home, project, roms, binDir, capture, "cemu", fakeCemu, ["game.wua"]), "routed cemu")) { return 1; }
+    string routedCemuSettings = joinPath(launcherRoutedStateRoot(project, "cemu"), "config/Cemu/settings.xml");
+    if (!e2eContains(FileSystem.readText(routedCemuSettings), "<mlc_path>" + joinPath(emulationRoot, "Cemu/data/mlc01") + "</mlc_path>", "routed cemu mlc path")) { return 1; }
+    if (!e2eContains(FileSystem.readText(routedCemuSettings), "<Entry>" + joinPath(roms, "wiiu") + "</Entry>", "routed cemu game path")) { return 1; }
+    if (!e2eContains(FileSystem.readText(joinPath(launcherRoutedStateRoot(project, "cemu"), "data/Cemu/keys.txt")), "seed", "routed cemu keys")) { return 1; }
+
+    string fakeRyujinx = joinPath(binDir, "fake-ryujinx");
+    FileSystem.writeText(fakeRyujinx,
+        "#!/usr/bin/env sh\n"
+        + "set -eu\n"
+        + "printf '%s\\n' \"$@\" > \"${SEMU_FLATPAK_CAPTURE:?}/routed-ryujinx.args\"\n"
+    );
+    FileSystem.chmod(fakeRyujinx, 493);
+    if (!e2eRunOk(e2eRunRoutedLauncher(exe, home, project, roms, binDir, capture, "ryujinx", fakeRyujinx, ["game.nsp"]), "routed ryujinx")) { return 1; }
+    string routedRyujinxRoot = joinPath(launcherRoutedStateRoot(project, "ryujinx"), "config/Ryujinx");
+    if (!e2eAssertLink(joinPath(routedRyujinxRoot, "bis/system/Contents/registered"), joinPath(emulationRoot, "Ryujinx/config/bis/system/Contents/registered"))) { return 1; }
+    if (!e2eAssertLink(joinPath(routedRyujinxRoot, "games"), joinPath(emulationRoot, "Ryujinx/config/games"))) { return 1; }
+    if (!e2eAssertLink(joinPath(routedRyujinxRoot, "mods"), joinPath(emulationRoot, "Ryujinx/config/mods"))) { return 1; }
+    if (!e2eAssertLink(joinPath(routedRyujinxRoot, "sdcard"), joinPath(emulationRoot, "Ryujinx/config/sdcard"))) { return 1; }
 
     print("OK BTRC launcher smoke");
     return 0;
@@ -638,13 +865,21 @@ int e2eN3dsNoCryptoSmoke(CliArgs args) {
     string tmp = e2eTempDir("semu-n3ds-nocrypto-smoke");
     string input = joinPath(tmp, "input");
     string output = joinPath(tmp, "output");
+    string project = joinPath(tmp, "project");
+    string home = joinPath(tmp, "home");
+    string externalRoms = joinPath(tmp, "sd/Emulation/ES-DE/ES-DE/ROMs");
     string exe = Environment.get("SEMU_BIN", args.program);
     ensureDir(input);
     ensureDir(output);
+    ensureDir(project);
+    ensureDir(home);
+    ensureDir(joinPath(externalRoms, "n3ds"));
     string needsPath = joinPath(input, "needs.3ds");
     string okPath = joinPath(input, "already-ok.3ds");
+    string externalOkPath = joinPath(externalRoms, "n3ds/external-ok.3ds");
     if (!e2eOk(e2eWriteFakeN3dsRom(needsPath, false, true), "fake needs-fix 3DS ROM")) { return 1; }
     if (!e2eOk(e2eWriteFakeN3dsRom(okPath, true, true), "fake OK 3DS ROM")) { return 1; }
+    if (!e2eOk(e2eWriteFakeN3dsRom(externalOkPath, true, true), "fake external OK 3DS ROM")) { return 1; }
 
     ExecResult check = e2eRunN3dsNoCrypto(exe, input, "", ["--check"]);
     if (!e2eRunOk(check, "n3ds-nocrypto check")) { return 1; }
@@ -664,6 +899,11 @@ int e2eN3dsNoCryptoSmoke(CliArgs args) {
     if (!e2eOk(n3dsNoCryptoFlag(flags), "fixed fake ROM NoCrypto flag missing")) { return 1; }
     if (!e2eOk(cryptoMethod == 0, "fixed fake ROM crypto method not cleared")) { return 1; }
     if (!e2eOk(checkN3dsRom(joinPath(output, "already-ok.3ds")).status.equals("OK"), "already OK fake ROM copy")) { return 1; }
+
+    writeSyncDefaults(project, externalRoms);
+    ExecResult doctor = e2eRunDoctor(exe, home, project);
+    if (!e2eRunOk(doctor, "doctor configured n3ds preflight")) { return 1; }
+    if (!e2eContains(doctor.stdout(), "OK n3ds/external-ok.3ds", "doctor should preflight configured external n3ds ROMs")) { return 1; }
 
     print("OK BTRC n3ds-nocrypto smoke");
     return 0;

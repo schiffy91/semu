@@ -31,6 +31,12 @@ int e2eCommand(CliArgs args) {
     if (mode.equals("sync")) {
         return e2eSyncSmoke(args);
     }
+    if (mode.equals("settings")) {
+        return e2eSettingsSmoke(args);
+    }
+    if (mode.equals("presentation")) {
+        return e2ePresentationSmoke(args);
+    }
     if (mode.equals("n3ds-nocrypto") || mode.equals("utils")) {
         return e2eN3dsNoCryptoSmoke(args);
     }
@@ -41,6 +47,10 @@ int e2eCommand(CliArgs args) {
         if (launcherStatus != 0) { return launcherStatus; }
         int syncStatus = e2eSyncSmoke(args);
         if (syncStatus != 0) { return syncStatus; }
+        int settingsStatus = e2eSettingsSmoke(args);
+        if (settingsStatus != 0) { return settingsStatus; }
+        int presentationStatus = e2ePresentationSmoke(args);
+        if (presentationStatus != 0) { return presentationStatus; }
         int n3dsStatus = e2eN3dsNoCryptoSmoke(args);
         if (n3dsStatus != 0) { return n3dsStatus; }
         int appImageStatus = e2eAppImageSmoke(args);

@@ -18,13 +18,72 @@ KeymapIr projectKeymapIr(string project) {
     return compileKeymap(defaultKeymapSource(), fallbackErrors);
 }
 
+string retroArchConfigValue(string key, string value) {
+    return key + " = \"" + Strings.replace(value, "\"", "\\\"") + "\"\n";
+}
+
+string retroArchShaderDir(string project) {
+    string configured = Environment.get("SEMU_RETROARCH_SHADER_DIR", "");
+    if (configured.len() > 0 && FileSystem.isDir(configured)) {
+        return configured;
+    }
+
+    string assetRoot = Environment.get("SEMU_ASSET_ROOT", "");
+    string appImageShaders = joinPath(assetRoot, "usr/share/libretro/shaders/shaders_slang");
+    if (assetRoot.len() > 0 && FileSystem.isDir(appImageShaders)) {
+        return appImageShaders;
+    }
+
+    string resultShaders = joinPath(project, "result/share/libretro/shaders/shaders_slang");
+    if (FileSystem.isDir(resultShaders)) {
+        return resultShaders;
+    }
+    return "";
+}
+
+string retroArchShaderPresetPath(string project) {
+    if (!settingsGetValue(project, "visual.crt_shaders").equals("true")
+            && !settingsGetValue(project, "visual.bezels").equals("true")) {
+        return "";
+    }
+
+    string preset = settingsGetValue(project, "visual.retroarch_shader_preset");
+    if (preset.len() == 0) {
+        return "";
+    }
+    if (preset.startsWith("/")) {
+        return FileSystem.exists(preset) ? preset : "";
+    }
+
+    string shaderDir = retroArchShaderDir(project);
+    if (shaderDir.len() == 0) {
+        return "";
+    }
+    string path = joinPath(shaderDir, preset);
+    return FileSystem.exists(path) ? path : "";
+}
+
+string retroArchVisualConfigText(string project) {
+    string shader = retroArchShaderPresetPath(project);
+    string integerScaling = settingsGetValue(project, "visual.integer_scaling").equals("false") ? "false" : "true";
+    string config = ""
+        + retroArchConfigValue("video_fullscreen", "true")
+        + retroArchConfigValue("video_scale_integer", integerScaling)
+        + retroArchConfigValue("video_force_aspect", "true")
+        + retroArchConfigValue("video_vsync", "true");
+    if (shader.len() > 0) {
+        config = config
+            + retroArchConfigValue("video_shader_enable", "true")
+            + retroArchConfigValue("video_shader", shader);
+    } else {
+        config = config + retroArchConfigValue("video_shader_enable", "false");
+    }
+    return config;
+}
+
 string retroArchProfileText(string project, KeymapIr ir) {
     return textLines([
         "config_save_on_exit = \"true\"",
-        "video_fullscreen = \"true\"",
-        "video_scale_integer = \"true\"",
-        "video_force_aspect = \"true\"",
-        "video_vsync = \"true\"",
         "audio_driver = \"pulse\"",
         "input_driver = \"sdl2\"",
         "input_autodetect_enable = \"true\"",
@@ -32,7 +91,7 @@ string retroArchProfileText(string project, KeymapIr ir) {
         "savestate_directory = \"" + joinPath(contentRoot(project), "states") + "\"",
         "savefile_directory = \"" + joinPath(contentRoot(project), "saves") + "\"",
         "screenshot_directory = \"" + joinPath(contentRoot(project), "screenshots") + "\""
-    ]) + renderRetroArchKeymap(ir);
+    ]) + retroArchVisualConfigText(project) + renderRetroArchKeymap(ir);
 }
 
 string dolphinGcpadProfileText() {
@@ -248,27 +307,41 @@ string pcsx2ConfigText(string project) {
     ]);
 }
 
-string azaharConfigText(string project) {
-    string dataRoot = joinPath(launcherRoutedStateRoot(project, "azahar"), "data/azahar-emu");
+string azaharConfigTextForDataRoot(string dataRoot) {
+    string azaharRoot = joinPath(dataRoot, "azahar-emu");
     return textLines([
         "[Data%20Storage]",
-        "nand_directory=" + joinPath(dataRoot, "nand/"),
+        "nand_directory=" + joinPath(azaharRoot, "nand/"),
         "nand_directory\\default=false",
-        "sdmc_directory=" + joinPath(dataRoot, "sdmc/"),
+        "sdmc_directory=" + joinPath(azaharRoot, "sdmc/"),
         "sdmc_directory\\default=false",
         "use_custom_storage=false",
         "use_custom_storage\\default=true",
         "use_virtual_sd=true",
         "use_virtual_sd\\default=true",
         "",
+        "[Debugging]",
+        "renderer_debug=false",
+        "renderer_debug\\default=false",
+        "",
         "[Renderer]",
-        "graphics_api=0",
+        "graphics_api=1",
         "graphics_api\\default=false",
         "",
         "[UI]",
+        "confirmClose=false",
+        "confirmClose\\default=false",
+        "firstStart=false",
+        "firstStart\\default=false",
         "fullscreen=true",
-        "fullscreen\\default=false"
+        "fullscreen\\default=false",
+        "saveStateWarning=false",
+        "saveStateWarning\\default=false"
     ]);
+}
+
+string azaharConfigText(string project) {
+    return azaharConfigTextForDataRoot(joinPath(launcherRoutedStateRoot(project, "azahar"), "data"));
 }
 
 string cemuProfileText() {

@@ -1,0 +1,22 @@
+{
+    "schema_version": 1,
+    "system": "psp",
+    "label": "Sony PSP",
+    "default_emulator": "PPSSPP",
+    "adapter": "ppsspp",
+    "adapter_config": "ppsspp.ini",
+    "hardware_display": "480x272 PSP LCD",
+    "shader_backend": "native_or_wrapper_lcd",
+    "shader_file": "handheld/lcd-grid-v2-psp-color-motionblur.slangp",
+    "shader_intent": "PSP LCD color, pixel grid, and mild persistence",
+    "bezel_backend": "universal_handheld_bezel",
+    "bezel_file": "bezels/psp/red-god-of-war-or-original-black.json",
+    "bezel_intent": "red God of War PSP or original black PSP shell",
+    "runtime_preset": "handheld/console-border/psp.slangp",
+    "layout": "single_lcd_wide",
+    "scale_policy": "integer_or_aspect",
+    "aspect_policy": "16:9",
+    "dynamic_aspect": false,
+    "profile": "psp_lcd",
+    "notes": "Prefer red God of War shell when artwork exists; original black is acceptable fallback."
+}

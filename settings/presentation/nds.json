@@ -1,0 +1,22 @@
+{
+    "schema_version": 1,
+    "system": "nds",
+    "label": "Nintendo DS",
+    "default_emulator": "MELONDS",
+    "adapter": "melonds",
+    "adapter_config": "melonDS.ini",
+    "hardware_display": "dual 256x192 resistive LCDs",
+    "shader_backend": "retroarch_or_native_lcd",
+    "shader_file": "handheld/lcd-grid-v2-nds-color-motionblur.slangp",
+    "shader_intent": "two LCD panels with mild persistence",
+    "bezel_backend": "universal_dual_screen",
+    "bezel_file": "bezels/nds/maximized-dual-screen.json",
+    "bezel_intent": "good-looking DS bezel that maximizes top and bottom screens",
+    "runtime_preset": "Mega_Bezel_Packs/Duimon-Mega-Bezel/Presets/Standard/Nintendo_NDS/NDS_Vertical-[STD]-[LCD-GRID]-[Integer].slangp",
+    "layout": "dual_lcd_stacked",
+    "scale_policy": "integer_native",
+    "aspect_policy": "dual:256x192",
+    "dynamic_aspect": false,
+    "profile": "nds_dual_lcd",
+    "notes": "Layout adapter must expose both screens and support stacked/side-by-side variants."
+}
