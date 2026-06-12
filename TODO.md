@@ -86,6 +86,10 @@
   runtime-preset, and launcher-effective shader paths with `ok`, `missing`, or
   `disabled` status, so Semu can detect missing bundled assets without editing
   emulator-native config.
+- Added `presentation audit` plus settings UI access to record per-system
+  shader, bezel, runtime preset, and launcher shader readiness under
+  `.semu/verification/presentation-assets.json`; strict mode fails when a
+  required asset is declared but not bundled.
 - Dynamic 4:3/16:9 systems now have editable widescreen shader, bezel, and
   runtime preset overrides in `settings/presentation/*.json`.
 - Added dependency-free BTRC terminal UIs for presentation, input/keymap, and
@@ -154,7 +158,8 @@
 
 - Add or package the requested photorealistic bezel art packs: classic grey Game
   Boy, frost purple GBC, purple wide GBA, Panasonic/Sony CRT, maximized DS/3DS,
-  and red God of War or black PSP.
+  and red God of War or black PSP. `presentation audit --strict` is now the
+  gate for proving those declared assets are actually present.
 - The new Deck-side `presentation plan --system ps2` check shows the generic
   Mega_Bezel runtime preset resolves, but the requested PS2-specific Soqueroeu
   TV background preset is still missing from the bundled assets.

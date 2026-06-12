@@ -692,6 +692,12 @@ int e2eSettingsSmoke(CliArgs args) {
     if (!e2eContains(presentationUiEdit.stdout(), "\"selected_bezel_file\": \"bezels/gb/ui-owned.json\"", "presentation ui plan")) { return 1; }
     if (!e2eContains(FileSystem.readText(joinPath(presentationSettingsRoot(project), "gb.json")), "ui-owned", "presentation ui persisted owned config")) { return 1; }
 
+    ExecResult visualAuditUi = e2eRunSettingsUiScript(exe, home, project, "v\nq\n");
+    if (!e2eRunOk(visualAuditUi, "settings ui visual audit")) { return 1; }
+    if (!e2eContains(visualAuditUi.stdout(), "Presentation asset audit", "settings ui audit output")) { return 1; }
+    if (!e2eContains(visualAuditUi.stdout(), "report: " + presentationAssetAuditPath(project), "settings ui audit report path")) { return 1; }
+    if (!e2eOk(SemuGeneratedFiles.isAdapterState(project, presentationAssetAuditPath(project)), "presentation audit report should be adapter state")) { return 1; }
+
     string retroarchBeforeInputUi = FileSystem.readText(emulatorProfilePath(project, "RetroArch/retroarch.cfg"));
     ExecResult inputUiEdit = e2eRunSettingsUiScriptArgs(exe, home, project, ["input"], "10\nc\nCtrl+W\nback\nq\n");
     if (!e2eRunOk(inputUiEdit, "input settings ui edit")) { return 1; }
@@ -777,6 +783,27 @@ int e2ePresentationSmoke(CliArgs args) {
     if (!e2eContains(gb.stdout(), "\"resolved_runtime_preset\": \"" + joinPath(shaderRoot, "handheld/console-border/dmg.slangp") + "\"", "gb resolved runtime preset")) { return 1; }
     if (!e2eContains(gb.stdout(), "\"resolved_launcher_shader\": \"" + joinPath(shaderRoot, "handheld/console-border/dmg.slangp") + "\"", "gb launcher shader")) { return 1; }
     if (!e2eContains(gb.stdout(), "\"launcher_shader_status\": \"ok\"", "gb launcher shader status")) { return 1; }
+
+    ExecResult gbAudit = e2eRunPresentation(exe, home, project, ["audit", "gb", "--strict"]);
+    if (!e2eRunOk(gbAudit, "presentation gb asset audit")) { return 1; }
+    if (!e2eContains(gbAudit.stdout(), "OK gb shader=ok bezel=ok runtime=ok launcher=ok", "gb audit ok line")) { return 1; }
+    string auditReport = presentationAssetAuditPath(project);
+    if (!e2eOk(FileSystem.exists(auditReport), "presentation audit report missing")) { return 1; }
+    if (!e2eOk(SemuGeneratedFiles.isAdapterState(project, auditReport), "presentation audit report should be adapter state")) { return 1; }
+    if (!e2eContains(FileSystem.readText(auditReport), "\"system\": \"gb\"", "gb audit report system")) { return 1; }
+    if (!e2eContains(FileSystem.readText(auditReport), "\"missing_asset_count\": 0", "gb audit report missing asset count")) { return 1; }
+
+    ExecResult pspAudit = e2eRunPresentation(exe, home, project, ["audit", "psp", "--strict"]);
+    if (!e2eOk(!pspAudit.ok(), "presentation psp strict audit unexpectedly succeeded")) { return 1; }
+    if (!e2eContains(pspAudit.stdout(), "MISSING psp", "psp audit missing line")) { return 1; }
+    if (!e2eContains(FileSystem.readText(auditReport), "\"system\": \"psp\"", "psp audit report system")) { return 1; }
+
+    ExecResult allAudit = e2eRunPresentation(exe, home, project, ["audit"]);
+    if (!e2eRunOk(allAudit, "presentation all asset audit")) { return 1; }
+    if (!e2eContains(allAudit.stdout(), "Presentation asset audit", "all audit title")) { return 1; }
+    if (!e2eContains(allAudit.stdout(), "DISABLED switch", "all audit disabled switch")) { return 1; }
+    if (!e2eContains(allAudit.stdout(), "missing:", "all audit summary")) { return 1; }
+
     if (!e2eRunOk(e2eRunSettings(exe, home, project, ["put", "visual.crt_shaders", "false"]), "presentation disable shaders setting")) { return 1; }
     if (!e2eRunOk(e2eRunSettings(exe, home, project, ["put", "visual.bezels", "false"]), "presentation disable bezels setting")) { return 1; }
     ExecResult gbDisabled = e2eRunPresentation(exe, home, project, ["plan", "gb"]);

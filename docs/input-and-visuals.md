@@ -122,6 +122,7 @@ The command contract is:
 semu presentation defaults
 semu presentation list
 semu presentation plan --system gb
+semu presentation audit --system gb --strict
 semu presentation state --system ps2
 semu presentation broadcast --system ps2
 semu presentation get gb shader_file
@@ -133,8 +134,12 @@ semu presentation put ps2 widescreen_bezel_file bezels/ps2/clean-wide.json
 adapter config files. `presentation broadcast` persists that state under
 `settings/presentation-state/<system>.json`. `presentation plan` combines the
 station policy and runtime state for launchers, future compositor wrappers, and
-settings UIs. Emulators are adapters: they read and/or broadcast their own
-config state, while Semu keeps the display policy stable.
+settings UIs. `presentation audit` checks every selected shader, bezel, runtime
+preset, and launcher-effective shader path, writes
+`.semu/verification/presentation-assets.json`, and exits non-zero with
+`--strict` when a required presentation asset is missing. Emulators are
+adapters: they read and/or broadcast their own config state, while Semu keeps
+the display policy stable.
 
 `presentation plan` reports asset resolution at separate layers:
 
@@ -148,6 +153,10 @@ config state, while Semu keeps the display policy stable.
 | `resolved_runtime_preset` | Existing file for `selected_runtime_preset`, if present. |
 | `resolved_launcher_shader` | The file the launcher will actually pass to RetroArch. Runtime preset wins over shader file; global visual toggles can make this empty. |
 | `*_status` | `ok`, `missing`, or `disabled`; missing means policy exists but the asset is not bundled or installed yet. |
+
+The audit report is verification adapter state, not policy. It should be used
+to decide which Semu-owned assets or Nix payloads need to be added; it should
+not be edited by hand and does not directly change emulator-native config.
 
 ## Station Defaults
 

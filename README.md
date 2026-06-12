@@ -26,10 +26,12 @@ This repo currently provides:
   `settings list|get|put|ui|apply` access for ROMs, sync toggles, visual
   policy, and ES-DE settings entry rollout.
 - Per-system presentation settings in `settings/presentation/*.json`, with
-  BTRC-owned `presentation plan|get|put|defaults` access for shader files,
+  BTRC-owned `presentation plan|audit|get|put|defaults` access for shader files,
   bezel files, display layout, scale policy, adapter source, and dynamic aspect
   policy. `presentation plan` reports selected policy, resolved asset files,
   launcher-effective shader choice, and missing/disabled asset status.
+  `presentation audit` records required/missing visual assets under
+  `.semu/verification` without editing emulator-native config.
 - Declarative screenshot verification config in `verification/screenshots.json`.
 - Linux launcher shims and AppRun glue under `packaging/linux/`.
 - Nix packages for the BTRC CLI, bundled emulator set, routed emulator wrappers,
