@@ -123,6 +123,13 @@ Desktop Mode with the AppImage built from the Nix package closure:
   `quit ... reason=<chord>` line for Semu launcher-layer quit evidence.
 - The broad pass produced real visible frames for the required systems, with
   evidence copied under `build/deck-loop-a555de7-v2`.
+- Commit `43c070b` added structured quit-watch evidence. On the physical Deck,
+  the Nix result watcher observed an injected `/dev/uinput` Select+Start event,
+  logged `quit ... reason=select+start`, terminated the child process, and
+  exited cleanly. The installed AppImage was rebuilt with hash
+  `5b58bc7a23c159b0bbd6e298d58686fc8a18ef9c18ef64c598331a338bdd76e5`; its
+  bundled `usr/bin/semu-quit-watch` was extracted and verified to write durable
+  start/exit evidence.
 - The optional RetroArch DeSmuME DS route is not production-ready on the Deck
   loop; an earlier optional pass produced a screenshot but exited `status=139`.
   melonDS is the required DS route.
