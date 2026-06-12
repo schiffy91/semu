@@ -66,13 +66,17 @@ semu deck game-mode-evidence --project /home/deck/semu-latest
 
 The current installed AppImage smoke on the physical Deck is:
 
-- commit: `0f7c239`
+- commit: `3dd0c0a`
 - path: `/home/deck/Applications/Semu/Semu-x86_64.AppImage`
 - sha256:
-  `f212ad3cf3fd2a72a8c9c866e78d29679b3d6d8ea89866a31a4a07d33180f2ea`
-- verified: installed-path `e2e deck-evidence`, `deck game-mode-evidence
-  --allow-pending`, GB presentation asset resolution, app.quit capability
-  report, and prior bundled `semu-quit-watch` start/exit evidence
+  `8763f1bb950c908ca8a0687c18c5c961be36f7f3423f07291afcf4372da0d8ac`
+- backup:
+  `/home/deck/Applications/Semu/Semu-x86_64.AppImage.prev-3dd0c0a-20260612-035730`
+- verified: installed-path `e2e deck-evidence`, `e2e appimage`,
+  `deck game-mode-ready --prepare`, `deck game-mode-ready --prepare
+  --allow-desktop`, `deck game-mode-evidence --allow-pending`, GB presentation
+  asset resolution, app.quit capability report, and bundled `semu-quit-watch`
+  start/exit evidence
 - pending: physical Game Mode left-trackpad radial quit/save/load proof
 
 Inside the guest:
