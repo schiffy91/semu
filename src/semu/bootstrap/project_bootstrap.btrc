@@ -149,7 +149,7 @@ string linuxBtrcShimText() {
         + "set -eu\n"
         + "\n"
         + "here=\"$(CDPATH= cd -- \"$(dirname -- \"$0\")\" && pwd -P)\"\n"
-        + "cli=\"${SEMU_BIN:-${SEMU_CLI:-}}\"\n"
+        + "cli=\"${SEMU_RUNTIME_CLI:-${SEMU_CLI:-${SEMU_BIN:-}}}\"\n"
         + "\n"
         + "if [ -z \"$cli\" ] && [ -x \"$here/semu\" ]; then\n"
         + "  cli=\"$here/semu\"\n"
