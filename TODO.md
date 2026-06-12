@@ -30,6 +30,10 @@
   `sync/sync.json`.
 - Added smoke coverage that proves input and sync UI edits do not mutate
   generated emulator or service files before an explicit apply.
+- Documented the ownership boundary: Semu-owned JSON/keymap files are source,
+  generated emulator profiles and ES-DE files are compiled artifacts, and live
+  emulator config is adapter state that Semu may read/broadcast but not treat as
+  policy source.
 - Local verification passed for BTRC presentation smoke, generated-C e2e,
   AppImage/Nix routing smoke, JSON formatting, and whitespace checks.
 

@@ -67,7 +67,7 @@ The input, shader, bezel, and ES-DE settings rollout is specified in
 | `docs/` | Architecture notes and production rollout plans for input, visuals, settings, and verification. |
 | `semu.json` | Generated JSON manifest for UI/editor/runtime consumers. |
 | `generated/semu.c` | Generated C snapshot compiled by Nix packages. |
-| `emulators/profiles/` | Curated emulator profile defaults and user-owned per-emulator config targets. |
+| `emulators/profiles/` | Generated Semu-owned emulator profile targets compiled from owned settings/keymaps. |
 | `emulators/es-de/custom_systems/` | Generated ES-DE systems catalog snapshot. |
 | `input/keymaps/steam_deck.skm` | Editable Steam Deck keymap source. |
 | `input/steam-input/*.vdf` | Generated Steam Input template files. |
@@ -85,6 +85,28 @@ The input, shader, bezel, and ES-DE settings rollout is specified in
 
 Edit the BTRC sources under `src/`, then regenerate `semu.json` and
 `generated/semu.c`.
+
+## Configuration Boundary
+
+Semu-owned source files are the only user-editable configuration surface:
+
+- `settings/semu-settings.json`
+- `settings/presentation/*.json`
+- `input/keymaps/steam_deck.skm`
+- `sync/sync.json`
+- `verification/screenshots.json`
+
+Everything else that an emulator or ES-DE reads is compiled from those files by
+`lifecycle reconfigure`, `settings apply`, or a command that explicitly passes
+`--apply`. That includes `emulators/profiles/`, `input/steam-input/*.vdf`,
+`emulators/es-de/custom_systems/`, `ES-DE/es_settings.xml`, systemd user units,
+desktop entries, and launcher runtime files.
+
+Runtime emulator config under `.semu/appimage-state/<emulator>` is adapter
+state. Semu may read it to broadcast normalized presentation state, and launchers
+may seed it from generated profiles, but it is not the source of truth. Do not
+hand-edit emulator configs to change Semu policy; change the owned JSON/keymap
+files and apply.
 
 ## Steam Deck Quick Start
 
