@@ -951,14 +951,27 @@ int e2eLauncherSmoke(CliArgs args) {
     if (!e2eOk(FileSystem.exists(joinPath(retroScreens, "after_exit.png")), "retroarch after_exit screenshot missing")) { return 1; }
     if (!e2eContains(FileSystem.readText(joinPath(capture, "grim.log")), "screenshots/verification/retroarch/after_exit.png", "retroarch screenshot hook log")) { return 1; }
 
+    string fakeQuitWatch = joinPath(binDir, "semu-quit-watch");
+    FileSystem.writeText(fakeQuitWatch,
+        "#!/usr/bin/env sh\n"
+        + "set -eu\n"
+        + "if [ \"${1:-}\" = \"--\" ]; then shift; fi\n"
+        + "exec \"$@\"\n"
+    );
+    FileSystem.chmod(fakeQuitWatch, 493);
+
     string fakeRouted = joinPath(binDir, "fake-emulator");
     FileSystem.writeText(fakeRouted,
         "#!/usr/bin/env sh\n"
         + "set -eu\n"
+        + "env | grep '^SEMU_QUIT_WATCH_LOG=' > \"${SEMU_FLATPAK_CAPTURE:?}/routed-dolphin.env\"\n"
         + "printf '%s\\n' \"$@\" > \"${SEMU_FLATPAK_CAPTURE:?}/routed-dolphin.args\"\n"
     );
     FileSystem.chmod(fakeRouted, 493);
     if (!e2eRunOk(e2eRunRoutedLauncher(exe, home, project, roms, binDir, capture, "dolphin", fakeRouted, ["game.iso"]), "routed dolphin")) { return 1; }
+    string dolphinQuitLog = launcherQuitWatchLogPath(project, "dolphin");
+    if (!e2eContains(FileSystem.readText(joinPath(capture, "routed-dolphin.env")), "SEMU_QUIT_WATCH_LOG=" + dolphinQuitLog, "routed dolphin quit evidence env")) { return 1; }
+    if (!e2eOk(FileSystem.isDir(PathTools.dirname(dolphinQuitLog)), "routed quit-watch evidence dir missing")) { return 1; }
     if (!e2eContains(FileSystem.readText(joinPath(capture, "routed-dolphin.args")), "Dolphin.Display.Fullscreen=True", "routed dolphin fullscreen config")) { return 1; }
     if (!e2eContains(FileSystem.readText(joinPath(capture, "routed-dolphin.args")), "-b", "routed dolphin batch flag")) { return 1; }
     if (!e2eContains(FileSystem.readText(joinPath(capture, "routed-dolphin.args")), "-e", "routed dolphin exec flag")) { return 1; }

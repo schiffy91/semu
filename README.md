@@ -536,6 +536,8 @@ Steam Deck defaults:
   RetroArch uses native `Start+Select` quit handling.
 - `semu-quit-watch` records quit evidence from the launcher layer, so Semu can
   prove the unified quit contract without editing emulator-native config.
+  Routed launches write to `.semu/verification/quit-watch/<emulator>.log` by
+  default; tests can override with `SEMU_QUIT_WATCH_LOG`.
 - Unified load state is `Ctrl+A`.
 - Unified save state is `Ctrl+S`.
 

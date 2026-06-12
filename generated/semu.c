@@ -487,7 +487,8 @@ char* launcherNixGlWrapper(char* project);
 char* launcherRoutedExecutableCommand(char* project, char* emulator, char* executable);
 char* launcherRoutedEnvironment(char* project, char* emulator, char* home, char* configRoot, char* dataRoot, char* cacheRoot);
 char* launcherRoutedDisplaySetup(void);
-char* launcherQuitWatchCommand(char* childCommand);
+char* launcherQuitWatchLogPath(char* project, char* emulator);
+char* launcherQuitWatchCommand(char* project, char* emulator, char* childCommand);
 void launcherWriteRetroArchConfig(char* project, char* configRoot);
 void launcherWritePcsx2Config(char* project, char* configRoot);
 void launcherWriteAzaharConfig(char* project, char* configRoot, char* dataRoot);
@@ -13691,7 +13692,13 @@ char* launcherRoutedDisplaySetup(void) {
     return __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat("if command -v pgrep >/dev/null 2>&1 && { [ -z \"${DISPLAY:-}\" ] || [ -z \"${XAUTHORITY:-}\" ]; }; then ", "p=$(pgrep -x kwin_wayland | head -1 || true); ")), "if [ -n \"$p\" ] && [ -r \"/proc/$p/environ\" ]; then ")), "eval \"$(tr '\\0' '\\n' < /proc/$p/environ | grep -E '^(DISPLAY|XAUTHORITY)=' | sed 's/^/export /')\"; ")), "fi; fi; ")), "if command -v pgrep >/dev/null 2>&1 && [ -z \"${XAUTHORITY:-}\" ]; then ")), "x=$(pgrep -a kwin_wayland | awk '{ for (i=1; i<NF; i++) if ($i == \"--xwayland-xauthority\") { print $(i+1); exit } }' || true); ")), "[ -n \"$x\" ] && export XAUTHORITY=\"$x\"; ")), "fi; ")), "if [ -z \"${XAUTHORITY:-}\" ]; then for f in /run/user/")), uid)), "/xauth_*; do [ -r \"$f\" ] && export XAUTHORITY=\"$f\" && break; done; fi; ")), "export DISPLAY=\"${DISPLAY:-:0}\"; "));
 }
 
-char* launcherQuitWatchCommand(char* childCommand) {
+char* launcherQuitWatchLogPath(char* project, char* emulator) {
+    char* root = joinPath(semuStateRoot(project), "verification/quit-watch");
+    ensureDir(root);
+    return joinPath(root, __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_toLower(emulator)), ".log")));
+}
+
+char* launcherQuitWatchCommand(char* project, char* emulator, char* childCommand) {
     if (strcmp(Environment_get("SEMU_DISABLE_QUIT_WATCH", "0"), "1") == 0) {
         return childCommand;
     }
@@ -13699,7 +13706,9 @@ char* launcherQuitWatchCommand(char* childCommand) {
     if (((int)strlen(watcher)) == 0) {
         return childCommand;
     }
-    return __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(ShellWords_quote(watcher), " -- sh -c ")), ShellWords_quote(childCommand)));
+    char* defaultLog = launcherQuitWatchLogPath(project, emulator);
+    char* script = __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat("if [ -z \"${SEMU_QUIT_WATCH_LOG:-}\" ]; then export SEMU_QUIT_WATCH_LOG=", ShellWords_quote(defaultLog))), "; fi; ")), "exec ")), ShellWords_quote(watcher))), " -- sh -c ")), ShellWords_quote(childCommand)));
+    return __btrc_str_track(__btrc_strcat("sh -c ", ShellWords_quote(script)));
 }
 
 void launcherWriteRetroArchConfig(char* project, char* configRoot) {
@@ -13820,7 +13829,7 @@ int launcherRunRouted(char* project, char* emulator, char* executable, btrc_Vect
     }
     char* childCommand = launcherRoutedExecutableCommand(project, emulator, executable);
     (childCommand = shellAppendAll(childCommand, finalArgs));
-    char* command = __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(launcherRoutedDisplaySetup(), launcherRoutedEnvironment(project, emulator, home, configRoot, dataRoot, cacheRoot))), " ")), launcherQuitWatchCommand(childCommand)));
+    char* command = __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(launcherRoutedDisplaySetup(), launcherRoutedEnvironment(project, emulator, home, configRoot, dataRoot, cacheRoot))), " ")), launcherQuitWatchCommand(project, emulator, childCommand)));
     UnixShell* shell = UnixShell_new();
     screenshotCaptureHook(project, emulator, "before_launch");
     screenshotScheduleHook(project, emulator, "after_spawn");
@@ -23248,12 +23257,22 @@ int e2eLauncherSmoke(CliArgs* args) {
     if (!e2eContains(FileSystem_readText(joinPath(capture, "grim.log")), "screenshots/verification/retroarch/after_exit.png", "retroarch screenshot hook log")) {
         return 1;
     }
+    char* fakeQuitWatch = joinPath(binDir, "semu-quit-watch");
+    FileSystem_writeText(fakeQuitWatch, __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat("#!/usr/bin/env sh\n", "set -eu\n")), "if [ \"${1:-}\" = \"--\" ]; then shift; fi\n")), "exec \"$@\"\n")));
+    FileSystem_chmod(fakeQuitWatch, 493);
     char* fakeRouted = joinPath(binDir, "fake-emulator");
-    FileSystem_writeText(fakeRouted, __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat("#!/usr/bin/env sh\n", "set -eu\n")), "printf '%s\\n' \"$@\" > \"${SEMU_FLATPAK_CAPTURE:?}/routed-dolphin.args\"\n")));
+    FileSystem_writeText(fakeRouted, __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat("#!/usr/bin/env sh\n", "set -eu\n")), "env | grep '^SEMU_QUIT_WATCH_LOG=' > \"${SEMU_FLATPAK_CAPTURE:?}/routed-dolphin.env\"\n")), "printf '%s\\n' \"$@\" > \"${SEMU_FLATPAK_CAPTURE:?}/routed-dolphin.args\"\n")));
     FileSystem_chmod(fakeRouted, 493);
     btrc_Vector_string* __list_1005 = btrc_Vector_string_new();
     btrc_Vector_string_push(__list_1005, "game.iso");
     if (!e2eRunOk(e2eRunRoutedLauncher(exe, home, project, roms, binDir, capture, "dolphin", fakeRouted, __list_1005), "routed dolphin")) {
+        return 1;
+    }
+    char* dolphinQuitLog = launcherQuitWatchLogPath(project, "dolphin");
+    if (!e2eContains(FileSystem_readText(joinPath(capture, "routed-dolphin.env")), __btrc_str_track(__btrc_strcat("SEMU_QUIT_WATCH_LOG=", dolphinQuitLog)), "routed dolphin quit evidence env")) {
+        return 1;
+    }
+    if (!e2eOk(FileSystem_isDir(PathTools_dirname(dolphinQuitLog)), "routed quit-watch evidence dir missing")) {
         return 1;
     }
     if (!e2eContains(FileSystem_readText(joinPath(capture, "routed-dolphin.args")), "Dolphin.Display.Fullscreen=True", "routed dolphin fullscreen config")) {
