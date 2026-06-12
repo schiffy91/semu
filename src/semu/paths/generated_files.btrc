@@ -1,0 +1,69 @@
+class SemuGeneratedFiles {
+    class bool isProjectGenerated(string project, string path) {
+        return semuGeneratedProjectScope(project, path).len() > 0;
+    }
+
+    class string projectScope(string project, string path) {
+        return semuGeneratedProjectScope(project, path);
+    }
+
+    class void writeProject(string project, string path, string text) {
+        string scope = semuGeneratedProjectScope(project, path);
+        if (scope.len() == 0) {
+            print("error 0:0 refused generated write outside Semu-owned roots: " + path);
+            return;
+        }
+        ensureDir(PathTools.dirname(path));
+        FileSystem.writeText(path, text);
+    }
+
+    class void writeProjectJson(string project, string path, string text) {
+        SemuGeneratedFiles.writeProject(project, path, jsonPrettyText(text));
+    }
+
+    class void writeExternalInstall(string purpose, string path, string text) {
+        ensureDir(PathTools.dirname(path));
+        FileSystem.writeText(path, text);
+    }
+}
+
+bool semuPathWithin(string path, string root) {
+    if (root.len() == 0) { return false; }
+    if (path.equals(root)) { return true; }
+    string prefix = root.endsWith("/") ? root : root + "/";
+    return path.startsWith(prefix);
+}
+
+string semuGeneratedProjectScope(string project, string path) {
+    if (path.equals(joinPath(project, "semu.json"))) {
+        return "manifest";
+    }
+    if (path.equals(joinPath(project, "ES-DE/es_settings.xml"))) {
+        return "es_de_settings";
+    }
+    if (semuPathWithin(path, customSystemsRoot(project))) {
+        return "es_de_custom_systems";
+    }
+    if (semuPathWithin(path, esDeProfileCustomSystemsRoot(project))) {
+        return "es_de_profile";
+    }
+    if (semuPathWithin(path, linuxPackagingRoot(project))) {
+        return "linux_packaging";
+    }
+    if (semuPathWithin(path, emulatorProfilesRoot(project))) {
+        return "emulator_profiles";
+    }
+    if (semuPathWithin(path, joinPath(project, "input/steam-input"))) {
+        return "steam_input_templates";
+    }
+    if (semuPathWithin(path, joinPath(project, "settings/es-de"))) {
+        return "settings_entries";
+    }
+    if (semuPathWithin(path, joinPath(project, "settings/presentation-state"))) {
+        return "presentation_state";
+    }
+    if (semuPathWithin(path, joinPath(project, ".semu"))) {
+        return "runtime_state";
+    }
+    return "";
+}

@@ -334,6 +334,10 @@ int e2eLifecycleSmoke(CliArgs args) {
     if (!e2eRunOk(e2eRunLifecycle(exe, home, "install", project, romsOne), "install")) { return 1; }
     if (!e2eRunOk(e2eRunLifecycle(exe, home, "install", project, romsOne), "install idempotent")) { return 1; }
     if (!e2eCatalogConsistency(project, linuxLauncherBin(project))) { return 1; }
+    if (!e2eOk(SemuGeneratedFiles.isProjectGenerated(project, joinPath(project, "ES-DE/es_settings.xml")), "ES-DE settings should be classified as generated")) { return 1; }
+    if (!e2eOk(SemuGeneratedFiles.isProjectGenerated(project, emulatorProfilePath(project, "RetroArch/retroarch.cfg")), "emulator profile should be classified as generated")) { return 1; }
+    if (!e2eOk(SemuGeneratedFiles.isProjectGenerated(project, joinPath(project, "input/steam-input/neptune-simple.vdf")), "Steam Input template should be classified as generated")) { return 1; }
+    if (!e2eOk(!SemuGeneratedFiles.isProjectGenerated(project, joinPath(romsOne, "gba")), "external ROM root should not be generated output")) { return 1; }
     if (!e2eOk(!FileSystem.exists(joinPath(romsOne, "gba")), "install mutated external ROM dirs")) { return 1; }
     if (!e2eOk(FileSystem.isDir(joinPath(romsRoot(project), "gba")), "install did not create project fallback ROM dirs")) { return 1; }
     if (!e2eContains(FileSystem.readText(syncConfigPath(project)), romsOne, "sync config after install")) { return 1; }
