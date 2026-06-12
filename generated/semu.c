@@ -720,6 +720,7 @@ bool presentationBroadcastState(char* project, char* system, char* emulator);
 char* presentationSystemArg(CliArgs* args, int positionalIndex);
 int presentationCommand(CliArgs* args, char* project);
 char* steamAppIdString(long value);
+char* steamLaunchIdString(long appid);
 char* steamUnquoteExe(char* value);
 char* steamDefaultShortcutName(void);
 char* steamDefaultShortcutExe(void);
@@ -18816,12 +18817,18 @@ char* SteamShortcutRecord_launchUri(SteamShortcutRecord* self) {
     if (self->appid <= 0) {
         return "";
     }
-    return __btrc_str_track(__btrc_strcat("steam://rungameid/", steamAppIdString(self->appid)));
+    return __btrc_str_track(__btrc_strcat("steam://rungameid/", steamLaunchIdString(self->appid)));
 }
 
 char* steamAppIdString(long value) {
     char* buffer = ((char*)malloc(32));
     snprintf(buffer, 32, "%ld", value);
+    return buffer;
+}
+
+char* steamLaunchIdString(long appid) {
+    char* buffer = ((char*)malloc(32));
+    snprintf(buffer, 32, "%llu", ((((uint64_t)appid) << 32) | 0x02000000));
     return buffer;
 }
 
@@ -19059,6 +19066,7 @@ void steamShortcutReportFile(char* path, char* appName, char* exe) {
     printf("%s\n", __btrc_str_track(__btrc_strcat("  OK shortcut: ", found->appName)));
     printf("%s\n", __btrc_str_track(__btrc_strcat("       file: ", path)));
     printf("%s\n", __btrc_str_track(__btrc_strcat("       appid: ", steamAppIdString(found->appid))));
+    printf("%s\n", __btrc_str_track(__btrc_strcat("       launch_id: ", steamLaunchIdString(found->appid))));
     printf("%s\n", __btrc_str_track(__btrc_strcat("       exe: ", steamUnquoteExe(found->exe))));
     printf("%s\n", __btrc_str_track(__btrc_strcat("       uri: ", SteamShortcutRecord_launchUri(found))));
 }
@@ -19122,6 +19130,8 @@ char* e2eFakeAppImageToolText(void) {
     btrc_Vector_string_push(__list_819, "grep -F 'HOST_PATH=' \"$APPDIR/AppRun\" >/dev/null");
     btrc_Vector_string_push(__list_819, "grep -F 'PATH=\"$HOST_PATH\" command -v bwrap' \"$APPDIR/AppRun\" >/dev/null");
     btrc_Vector_string_push(__list_819, "grep -F -- '--ro-bind \"$APPDIR/nix/store\" /nix/store' \"$APPDIR/AppRun\" >/dev/null");
+    btrc_Vector_string_push(__list_819, "grep -F 'unset LD_PRELOAD' \"$APPDIR/AppRun\" >/dev/null");
+    btrc_Vector_string_push(__list_819, "grep -F 'unset LD_LIBRARY_PATH' \"$APPDIR/AppRun\" >/dev/null");
     btrc_Vector_string_push(__list_819, "grep -F 'SEMU_LAUNCHER_BIN' \"$APPDIR/AppRun\" >/dev/null");
     btrc_Vector_string_push(__list_819, "grep -F 'SEMU_RETROARCH_CORE_DIR' \"$APPDIR/AppRun\" >/dev/null");
     btrc_Vector_string_push(__list_819, "grep -F 'SEMU_SYNCTHING_BIN' \"$APPDIR/AppRun\" >/dev/null");
@@ -19339,7 +19349,11 @@ int e2eAppImageSmoke(CliArgs* args) {
     btrc_Vector_string* __list_840 = btrc_Vector_string_new();
     btrc_Vector_string_push(__list_840, "#!/usr/bin/env bash");
     btrc_Vector_string_push(__list_840, __btrc_str_track(__btrc_strcat("printf '%s\\n' \"$@\" > ", ShellWords_quote(cliArgs))));
-    btrc_Vector_string_push(__list_840, __btrc_str_track(__btrc_strcat("printf '%s\\n' \"${SEMU_BIN:-}\" > ", ShellWords_quote(cliEnv))));
+    btrc_Vector_string_push(__list_840, "{");
+    btrc_Vector_string_push(__list_840, "  printf 'SEMU_BIN=%s\\n' \"${SEMU_BIN:-}\"");
+    btrc_Vector_string_push(__list_840, "  printf 'LD_LIBRARY_PATH=%s\\n' \"${LD_LIBRARY_PATH:-}\"");
+    btrc_Vector_string_push(__list_840, "  printf 'LD_PRELOAD=%s\\n' \"${LD_PRELOAD:-}\"");
+    btrc_Vector_string_push(__list_840, __btrc_str_track(__btrc_strcat("} > ", ShellWords_quote(cliEnv))));
     e2eWriteExecutable(joinPath(cliAppDir, "usr/bin/semu"), textLines(__list_840));
     if (!e2eExpectStatus(0, __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat("APPDIR=", ShellWords_quote(cliAppDir))), " APPIMAGE=")), ShellWords_quote(cliAppImage))), " ")), ShellWords_quote(joinPath(cliAppDir, "AppRun")))), " manifest --output ")), ShellWords_quote(joinPath(tmp, "manifest.json")))), " --project ")), ShellWords_quote(cliProject))), " --roms=")), ShellWords_quote(joinPath(tmp, "explicit-roms")))))) {
         return 1;
@@ -19365,6 +19379,15 @@ int e2eAppImageSmoke(CliArgs* args) {
         return 1;
     }
     if (!e2eFileContains(cliEnv, cliAppImage, "AppRun stable SEMU_BIN")) {
+        return 1;
+    }
+    if (!e2eExpectStatus(0, __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat("APPDIR=", ShellWords_quote(cliAppDir))), " APPIMAGE=")), ShellWords_quote(cliAppImage))), " SEMU_PROJECT_DIR=")), ShellWords_quote(cliProject))), " SteamAppId=3834341984")), " LD_LIBRARY_PATH=/steam/runtime")), " LD_PRELOAD=/steam/overlay.so")), " ")), ShellWords_quote(joinPath(cliAppDir, "AppRun")))), " doctor")))) {
+        return 1;
+    }
+    if (!e2eFileContains(cliEnv, "LD_LIBRARY_PATH=", "AppRun clears Steam LD_LIBRARY_PATH")) {
+        return 1;
+    }
+    if (!e2eFileContains(cliEnv, "LD_PRELOAD=", "AppRun clears Steam LD_PRELOAD")) {
         return 1;
     }
     if (!e2eExpectStatus(0, __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat("APPDIR=", ShellWords_quote(cliAppDir))), " APPIMAGE=")), ShellWords_quote(cliAppImage))), " SEMU_PROJECT_DIR=")), ShellWords_quote(cliProject))), " SEMU_ROMS=")), ShellWords_quote(joinPath(tmp, "roms-root")))), " ")), ShellWords_quote(joinPath(cliAppDir, "AppRun")))), " presentation plan --system gb")))) {
@@ -20882,7 +20905,10 @@ int e2eLifecycleSmoke(CliArgs* args) {
     if (!e2eContains(ExecResult_stdout(shortcutStatus), "appid: 3834341984", "Steam shortcut appid")) {
         return 1;
     }
-    if (!e2eContains(ExecResult_stdout(shortcutStatus), "steam://rungameid/3834341984", "Steam shortcut URI")) {
+    if (!e2eContains(ExecResult_stdout(shortcutStatus), "launch_id: 16468373422993309696", "Steam shortcut launch id")) {
+        return 1;
+    }
+    if (!e2eContains(ExecResult_stdout(shortcutStatus), "steam://rungameid/16468373422993309696", "Steam shortcut URI")) {
         return 1;
     }
     e2eSeedFile(joinPath(contentRoot(project), "saves/gba/game.sav"));

@@ -37,6 +37,11 @@ if [ -d "$APPDIR/nix/store" ] && [ -z "${SEMU_NIX_STORE_MOUNTED:-}" ]; then
     "$APPDIR/AppRun" "$@"
 fi
 
+if [ -n "${SteamAppId:-}${SteamGameId:-}${STEAM_COMPAT_CLIENT_INSTALL_PATH:-}" ]; then
+  unset LD_PRELOAD
+  unset LD_LIBRARY_PATH
+fi
+
 SEMU_LINUX="$APPDIR/packaging/linux"
 SEMU_PACKAGING_BIN="$SEMU_LINUX/bin"
 SEMU_CLI="${SEMU_CLI:-$APPDIR/usr/bin/semu}"

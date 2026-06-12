@@ -29,13 +29,19 @@ class SteamShortcutRecord {
 
     public string launchUri() {
         if (self.appid <= 0) { return ""; }
-        return "steam://rungameid/" + steamAppIdString(self.appid);
+        return "steam://rungameid/" + steamLaunchIdString(self.appid);
     }
 }
 
 string steamAppIdString(long value) {
     char* buffer = (char*)malloc(32);
     snprintf(buffer, 32, "%ld", value);
+    return buffer;
+}
+
+string steamLaunchIdString(long appid) {
+    char* buffer = (char*)malloc(32);
+    snprintf(buffer, 32, "%llu", (((uint64_t)appid) << 32) | 0x02000000);
     return buffer;
 }
 
@@ -221,6 +227,7 @@ void steamShortcutReportFile(string path, string appName, string exe) {
     print("  OK shortcut: " + found.appName);
     print("       file: " + path);
     print("       appid: " + steamAppIdString(found.appid));
+    print("       launch_id: " + steamLaunchIdString(found.appid));
     print("       exe: " + steamUnquoteExe(found.exe));
     print("       uri: " + found.launchUri());
 }

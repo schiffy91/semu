@@ -41,6 +41,8 @@ string e2eFakeAppImageToolText() {
         "grep -F 'HOST_PATH=' \"$APPDIR/AppRun\" >/dev/null",
         "grep -F 'PATH=\"$HOST_PATH\" command -v bwrap' \"$APPDIR/AppRun\" >/dev/null",
         "grep -F -- '--ro-bind \"$APPDIR/nix/store\" /nix/store' \"$APPDIR/AppRun\" >/dev/null",
+        "grep -F 'unset LD_PRELOAD' \"$APPDIR/AppRun\" >/dev/null",
+        "grep -F 'unset LD_LIBRARY_PATH' \"$APPDIR/AppRun\" >/dev/null",
         "grep -F 'SEMU_LAUNCHER_BIN' \"$APPDIR/AppRun\" >/dev/null",
         "grep -F 'SEMU_RETROARCH_CORE_DIR' \"$APPDIR/AppRun\" >/dev/null",
         "grep -F 'SEMU_SYNCTHING_BIN' \"$APPDIR/AppRun\" >/dev/null",
@@ -243,7 +245,11 @@ int e2eAppImageSmoke(CliArgs args) {
     e2eWriteExecutable(joinPath(cliAppDir, "usr/bin/semu"), textLines([
         "#!/usr/bin/env bash",
         "printf '%s\\n' \"$@\" > " + ShellWords.quote(cliArgs),
-        "printf '%s\\n' \"${SEMU_BIN:-}\" > " + ShellWords.quote(cliEnv)
+        "{",
+        "  printf 'SEMU_BIN=%s\\n' \"${SEMU_BIN:-}\"",
+        "  printf 'LD_LIBRARY_PATH=%s\\n' \"${LD_LIBRARY_PATH:-}\"",
+        "  printf 'LD_PRELOAD=%s\\n' \"${LD_PRELOAD:-}\"",
+        "} > " + ShellWords.quote(cliEnv)
     ]));
     if (!e2eExpectStatus(0, "APPDIR=" + ShellWords.quote(cliAppDir)
         + " APPIMAGE=" + ShellWords.quote(cliAppImage)
@@ -266,6 +272,16 @@ int e2eAppImageSmoke(CliArgs args) {
         return 1;
     }
     if (!e2eFileContains(cliEnv, cliAppImage, "AppRun stable SEMU_BIN")) { return 1; }
+    if (!e2eExpectStatus(0, "APPDIR=" + ShellWords.quote(cliAppDir)
+        + " APPIMAGE=" + ShellWords.quote(cliAppImage)
+        + " SEMU_PROJECT_DIR=" + ShellWords.quote(cliProject)
+        + " SteamAppId=3834341984"
+        + " LD_LIBRARY_PATH=/steam/runtime"
+        + " LD_PRELOAD=/steam/overlay.so"
+        + " " + ShellWords.quote(joinPath(cliAppDir, "AppRun"))
+        + " doctor")) { return 1; }
+    if (!e2eFileContains(cliEnv, "LD_LIBRARY_PATH=", "AppRun clears Steam LD_LIBRARY_PATH")) { return 1; }
+    if (!e2eFileContains(cliEnv, "LD_PRELOAD=", "AppRun clears Steam LD_PRELOAD")) { return 1; }
     if (!e2eExpectStatus(0, "APPDIR=" + ShellWords.quote(cliAppDir)
         + " APPIMAGE=" + ShellWords.quote(cliAppImage)
         + " SEMU_PROJECT_DIR=" + ShellWords.quote(cliProject)

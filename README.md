@@ -690,8 +690,8 @@ build/semu steam-input status --project "$PWD" \
 ```
 
 `steam-input status` renders the owned templates and parses Steam's binary
-`shortcuts.vdf` to report the Semu shortcut appid and `steam://rungameid/...`
-URI. It does not edit Steam userdata.
+`shortcuts.vdf` to report the Semu shortcut appid, derived 64-bit launch id,
+and `steam://rungameid/...` URI. It does not edit Steam userdata.
 
 Sync:
 
