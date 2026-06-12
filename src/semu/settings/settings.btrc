@@ -195,6 +195,7 @@ class SettingsEntries {
             SettingsEntrySpec("Open Semu Settings.semu", "Open Settings UI", "ui"),
             SettingsEntrySpec("Open Presentation Settings.semu", "Open Presentation Settings", "ui presentation"),
             SettingsEntrySpec("Open Input Settings.semu", "Open Input Settings", "ui input"),
+            SettingsEntrySpec("Open Sync Settings.semu", "Open Sync Settings", "ui sync"),
             SettingsEntrySpec("Use Steam Deck SD ROMs.semu", "Use Steam Deck SD ROMs", "put roms.dir /run/media/deck/SD apply"),
             SettingsEntrySpec("Apply Settings.semu", "Apply Settings", "apply"),
             SettingsEntrySpec("Toggle Integer Scaling.semu", "Toggle Integer Scaling", "toggle visual.integer_scaling apply"),
@@ -304,6 +305,22 @@ class SettingsEntryAction {
             print("error 0:0 settings entry sync needs MODE");
             return 1;
         }
+        if (mode.equals("ui")) {
+            return syncUi(self.project);
+        }
+        if (mode.equals("put") || mode.equals("set")) {
+            string key = self.word(2);
+            string value = self.word(3);
+            if (key.len() == 0 || value.len() == 0) {
+                print("error 0:0 settings entry sync put needs KEY VALUE");
+                return 1;
+            }
+            if (!syncPutSetting(self.project, key, value)) {
+                return 1;
+            }
+            print(key + "=" + syncSettingValue(self.project, SyncSettingsRegistry.find(key)));
+            return self.applyIfRequested(4);
+        }
         if (mode.equals("open")) {
             syncOpen(self.project);
             return 0;
@@ -332,6 +349,9 @@ class SettingsEntryAction {
         }
         if (section.equals("input") || section.equals("keymap")) {
             return keymapUi(self.project);
+        }
+        if (section.equals("sync")) {
+            return syncUi(self.project);
         }
         print("error 0:0 unknown settings UI section '" + section + "'");
         return 1;
@@ -480,7 +500,7 @@ class SettingsUi {
             index++;
         }
         print("");
-        print("Commands: number = edit/toggle, p = presentation, i = input, a = apply, q = quit");
+        print("Commands: number = edit/toggle, p = presentation, i = input, s = sync, a = apply, q = quit");
         print("Select:");
     }
 
@@ -499,6 +519,11 @@ class SettingsUi {
             }
             if (choice.equals("i") || choice.equals("input") || choice.equals("keymap")) {
                 int status = keymapUi(self.project);
+                if (status != 0) { return status; }
+                continue;
+            }
+            if (choice.equals("s") || choice.equals("sync")) {
+                int status = syncUi(self.project);
                 if (status != 0) { return status; }
                 continue;
             }
@@ -656,6 +681,9 @@ int settingsCommand(CliArgs args, string project) {
         }
         if (args.count() > 2 && (args.get(2).equals("input") || args.get(2).equals("keymap"))) {
             return keymapUi(project);
+        }
+        if (args.count() > 2 && args.get(2).equals("sync")) {
+            return syncUi(project);
         }
         return SettingsUi(project).run();
     }

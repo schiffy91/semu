@@ -24,6 +24,12 @@
   `selected_bezel_file`, and `selected_runtime_preset`.
 - Dynamic 4:3/16:9 systems now have editable widescreen shader, bezel, and
   runtime preset overrides in `settings/presentation/*.json`.
+- Added dependency-free BTRC terminal UIs for presentation, input/keymap, and
+  sync settings. These edit only Semu-owned source files:
+  `settings/presentation/*.json`, `input/keymaps/steam_deck.skm`, and
+  `sync/sync.json`.
+- Added smoke coverage that proves input and sync UI edits do not mutate
+  generated emulator or service files before an explicit apply.
 - Local verification passed for BTRC presentation smoke, generated-C e2e,
   AppImage/Nix routing smoke, JSON formatting, and whitespace checks.
 
@@ -51,7 +57,6 @@
 
 - Promote `utils/steam-deck-bootstrap.sh` into BTRC Deck commands after the
   full physical Game Mode pass.
-- Extend the current dependency-free BTRC settings UI to cover keymaps,
-  screenshots, BIOS status, and `presentation get|put` per-system visual
-  settings.
+- Extend the dependency-free BTRC settings UI to cover screenshot hooks, BIOS
+  status, and advanced per-emulator settings.
 - Pair a second Syncthing device and verify conflict behavior.

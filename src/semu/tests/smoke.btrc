@@ -586,11 +586,28 @@ int e2eSettingsSmoke(CliArgs args) {
     if (!e2eRunOk(e2eRunKeymap(exe, home, project, ["put", "state.save", "Ctrl+W", "--apply"]), "keymap put apply")) { return 1; }
     if (!e2eContains(FileSystem.readText(emulatorProfilePath(project, "RetroArch/retroarch.cfg")), "input_save_state = \"w\"", "input apply regenerated RetroArch profile")) { return 1; }
 
+    string syncServicePath = joinPath(home, ".config/systemd/user/semu-syncthing.service");
+    string syncServiceBeforeUi = FileSystem.exists(syncServicePath) ? FileSystem.readText(syncServicePath) : "";
+    ExecResult syncUiEdit = e2eRunSettingsUiScriptArgs(exe, home, project, ["sync"], "6\nq\n");
+    if (!e2eRunOk(syncUiEdit, "sync settings ui edit")) { return 1; }
+    if (!e2eContains(syncUiEdit.stdout(), "Semu Sync Settings", "sync ui title")) { return 1; }
+    if (!e2eContains(syncUiEdit.stdout(), "Edits update Semu-owned sync/sync.json", "sync ui owned boundary")) { return 1; }
+    if (!e2eContains(FileSystem.readText(syncConfigPath(project)), "\"sync_saves\": false", "sync ui persisted owned config")) { return 1; }
+    if (!e2eOk(FileSystem.exists(syncServicePath), "sync service missing before sync UI boundary check")) { return 1; }
+    if (!e2eOk(FileSystem.readText(syncServicePath).equals(syncServiceBeforeUi), "sync ui edit mutated generated service before apply")) { return 1; }
+    if (!e2eContains(e2eRunSync(exe, home, "/usr/bin", project, ["get", "sync_saves"]).stdout(), "sync_saves=false", "sync get edited value")) { return 1; }
+    if (!e2eRunOk(e2eRunSync(exe, home, "/usr/bin", project, ["put", "sync_saves", "true", "--apply"]), "sync put apply")) { return 1; }
+    if (!e2eContains(FileSystem.readText(syncConfigPath(project)), "\"sync_saves\": true", "sync apply persisted owned config")) { return 1; }
+    if (!e2eOk(FileSystem.exists(joinPath(project, "ES-DE/es_settings.xml")), "sync apply did not reconfigure ES-DE")) { return 1; }
+
     SettingsEntries.write(project);
     string presentationEntry = joinPath(SettingsEntries.root(project), "Open Presentation Settings.semu");
     if (!e2eContains(FileSystem.readText(presentationEntry), "ui presentation", "presentation ES-DE entry action")) { return 1; }
     string inputEntry = joinPath(SettingsEntries.root(project), "Open Input Settings.semu");
     if (!e2eContains(FileSystem.readText(inputEntry), "ui input", "input ES-DE entry action")) { return 1; }
+    string syncEntry = joinPath(SettingsEntries.root(project), "Open Sync Settings.semu");
+    if (!e2eContains(FileSystem.readText(syncEntry), "ui sync", "sync ES-DE entry action")) { return 1; }
+    if (!e2eContains(e2eRunSettings(exe, home, project, ["entry", syncEntry]).stdout(), "Semu Sync Settings", "sync settings ES-DE UI entry")) { return 1; }
     string presentationPutEntry = joinPath(SettingsEntries.root(project), "Set GB Bezel.semu");
     FileSystem.writeText(presentationPutEntry, "presentation put gb bezel_file bezels/gb/from-entry.json\n");
     if (!e2eRunOk(e2eRunSettings(exe, home, project, ["entry", presentationPutEntry]), "presentation settings ES-DE put entry")) { return 1; }

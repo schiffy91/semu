@@ -378,6 +378,9 @@ build/semu settings put visual.integer_scaling true --project "$PWD"
 build/semu settings put visual.bezels true --project "$PWD"
 build/semu settings put sync.roms false --project "$PWD"
 build/semu settings ui --project "$PWD"
+build/semu settings ui presentation --project "$PWD"
+build/semu settings ui input --project "$PWD"
+build/semu settings ui sync --project "$PWD"
 build/semu settings apply --project "$PWD"
 ```
 
@@ -385,6 +388,9 @@ build/semu settings apply --project "$PWD"
 resolves to `Emulation/ES-DE/ES-DE/ROMs` when that layout is present.
 The terminal UI is dependency-free BTRC output/input: numbered rows edit string
 settings, toggle boolean settings, and apply by running lifecycle reconfigure.
+The focused presentation, input, and sync UIs edit only Semu-owned source files;
+`apply` compiles those sources into emulator profiles, ES-DE entries, Steam
+Input templates, desktop files, and systemd user units.
 
 ### `settings/presentation/*.json`
 
@@ -636,6 +642,10 @@ Keymaps:
 
 ```sh
 build/semu keymap validate --project "$PWD"
+build/semu keymap ui --project "$PWD"
+build/semu keymap get state.save --project "$PWD"
+build/semu keymap put state.save Ctrl+S --apply --project "$PWD"
+build/semu keymap bind app.quit left_trackpad.radial.quit --project "$PWD"
 build/semu keymap render --project "$PWD" --target manifest
 build/semu keymap render --project "$PWD" --target retroarch
 build/semu keymap render --project "$PWD" --target dolphin
@@ -654,12 +664,15 @@ Sync:
 
 ```sh
 build/semu sync setup --project "$PWD"
+build/semu sync ui --project "$PWD"
+build/semu sync get sync_saves --project "$PWD"
+build/semu sync put sync_saves true --apply --project "$PWD"
 build/semu sync start --project "$PWD"
 build/semu sync stop --project "$PWD"
 build/semu sync status --project "$PWD"
 build/semu sync force all --project "$PWD"
-build/semu sync autostart-on --project "$PWD"
-build/semu sync autostart-off --project "$PWD"
+build/semu sync autostart enable --project "$PWD"
+build/semu sync autostart disable --project "$PWD"
 build/semu sync tray --project "$PWD"
 build/semu sync open --project "$PWD"
 ```
@@ -827,6 +840,5 @@ See `tests/E2E.md` for the active verification matrix. The short version:
 - Physical Steam Deck Game Mode validation.
 - Manual Steam Input radial validation in Game Mode.
 - Two-device Syncthing conflict/resolution testing.
-- Future editors for `input/keymaps/steam_deck.skm`,
-  `verification/screenshots.json`, BIOS status, and advanced per-emulator
-  settings.
+- Future editors for `verification/screenshots.json`, BIOS status, and advanced
+  per-emulator settings.
