@@ -23249,32 +23249,35 @@ int e2eLauncherSmoke(CliArgs* args) {
     if (!e2eRunOk(e2eRunLauncher(exe, home, project, roms, binDir, capture, fakeBwrap, "retroarch", __list_1008), "launcher retroarch")) {
         return 1;
     }
-    if (!e2eContains(FileSystem_readText(joinPath(capture, "retroarch.args")), "/usr/bin/retroarch", "retroarch executable")) {
+    char* retroarchArgs = FileSystem_readText(joinPath(capture, "retroarch.args"));
+    char* expectedLauncherShader = presentationResolvedShaderPath(project, "gba");
+    char* expectedConfigShader = retroArchShaderPresetPath(project);
+    if (!e2eContains(retroarchArgs, "/usr/bin/retroarch", "retroarch executable")) {
         return 1;
     }
-    if (!e2eContains(FileSystem_readText(joinPath(capture, "retroarch.args")), "-f", "retroarch fullscreen flag")) {
+    if (!e2eContains(retroarchArgs, "-f", "retroarch fullscreen flag")) {
         return 1;
     }
-    if (!e2eContains(FileSystem_readText(joinPath(capture, "retroarch.args")), "-L", "retroarch core flag")) {
+    if (!e2eContains(retroarchArgs, "-L", "retroarch core flag")) {
         return 1;
     }
-    if (!e2eContains(FileSystem_readText(joinPath(capture, "retroarch.args")), "core.so", "retroarch core arg")) {
+    if (!e2eContains(retroarchArgs, "core.so", "retroarch core arg")) {
         return 1;
     }
-    if (!e2eContains(FileSystem_readText(joinPath(capture, "retroarch.args")), "game.gba", "retroarch rom arg")) {
+    if (!e2eContains(retroarchArgs, "game.gba", "retroarch rom arg")) {
         return 1;
     }
-    if (!e2eContains(FileSystem_readText(joinPath(capture, "retroarch.args")), "--ro-bind-try", "retroarch rom bind")) {
+    if (!e2eContains(retroarchArgs, "--ro-bind-try", "retroarch rom bind")) {
         return 1;
     }
-    if (!e2eContains(FileSystem_readText(joinPath(capture, "retroarch.args")), __btrc_str_track(__btrc_strcat("--set-shader=", shaderPreset)), "retroarch shader argv")) {
+    if (!e2eContains(retroarchArgs, __btrc_str_track(__btrc_strcat("--set-shader=", expectedLauncherShader)), "retroarch shader argv")) {
         return 1;
     }
     char* generatedRetroarchConfig = launcherRetroArchConfig(project);
     if (!e2eContains(generatedRetroarchConfig, "video_shader_enable = \"true\"", "retroarch shader enabled")) {
         return 1;
     }
-    if (!e2eContains(generatedRetroarchConfig, shaderPreset, "retroarch Mega_Bezel preset")) {
+    if (!e2eContains(generatedRetroarchConfig, expectedConfigShader, "retroarch Mega_Bezel preset")) {
         return 1;
     }
     if (!e2eContains(generatedRetroarchConfig, "video_scale_integer = \"true\"", "retroarch integer scaling")) {
