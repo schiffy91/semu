@@ -74,12 +74,27 @@ let
     syncthingtray
     curl
     bubblewrap
-    semuShaderBundle
     nixGLIntel
   ];
+
+  shaderPostBuild = lib.optionalString (semuShaderBundle != null) ''
+    if [ -L "$out/share/libretro" ]; then
+      existing="$(readlink "$out/share/libretro")"
+      rm "$out/share/libretro"
+      mkdir -p "$out/share/libretro"
+      cp -aL "$existing/." "$out/share/libretro/" 2>/dev/null || true
+    else
+      mkdir -p "$out/share/libretro"
+    fi
+
+    chmod -R u+w "$out/share/libretro" 2>/dev/null || true
+    rm -rf "$out/share/libretro/shaders"
+    cp -aL ${semuShaderBundle}/share/libretro/shaders "$out/share/libretro/shaders"
+  '';
 in
 symlinkJoin {
   name = "semu-full";
   paths = [ setupTool ] ++ routedEmulators ++ emulators;
+  postBuild = shaderPostBuild;
   meta.description = "Semu with all emulators bundled";
 }
