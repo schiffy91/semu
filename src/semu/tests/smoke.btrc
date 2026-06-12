@@ -244,6 +244,22 @@ ExecResult e2eRunDoctor(string exe, string home, string project) {
     return shell.runCommand(command);
 }
 
+ExecResult e2eRunDeck(string exe, string home, string project, Vector<string> deckArgs) {
+    Command command = Command(exe)
+        .envVar("SEMU_HOME", home)
+        .envVar("SEMU_BIN", exe)
+        .envVar("PATH", "/usr/bin:/bin")
+        .arg("deck")
+        .capture(true)
+        .check(false);
+    for arg in deckArgs {
+        command.arg(arg);
+    }
+    command.flag("--project", project);
+    UnixShell shell = UnixShell();
+    return shell.runCommand(command);
+}
+
 ExecResult e2eRunLauncher(string exe, string home, string project, string roms, string binDir, string captureDir, string bwrapPath, string emulator, Vector<string> emulatorArgs) {
     Command command = Command(exe)
         .envVar("SEMU_HOME", home)
@@ -355,6 +371,7 @@ int e2eLifecycleSmoke(CliArgs args) {
     if (!e2eOk(SemuGeneratedFiles.isProjectGenerated(project, joinPath(project, "input/steam-input/neptune-simple.vdf")), "Steam Input template should be classified as generated")) { return 1; }
     if (!e2eOk(SemuGeneratedFiles.isAdapterState(project, lifecycleStatePath(project)), "lifecycle state should be classified as adapter state")) { return 1; }
     if (!e2eOk(SemuGeneratedFiles.isAdapterState(project, joinPath(launcherRoutedStateRoot(project, "pcsx2"), "config/PCSX2/inis/PCSX2.ini")), "routed emulator home should be classified as adapter state")) { return 1; }
+    if (!e2eOk(SemuGeneratedFiles.isAdapterState(project, deckQuitEvidencePath(project, "retroarch")), "quit-watch evidence should be classified as adapter state")) { return 1; }
     if (!e2eOk(SemuGeneratedFiles.isProjectOwned(project, syncConfigPath(project)), "sync config should be owned")) { return 1; }
     if (!e2eOk(SemuGeneratedFiles.isProjectOwned(project, emulatorProfilePath(project, "RetroArch/retroarch.cfg")), "emulator profile should be owned generated output")) { return 1; }
     if (!e2eContains(FileSystem.readText(emulatorProfilePath(project, "Dolphin/config/Dolphin.ini")), "PermissionAsked = True", "generated Dolphin analytics prompt config")) { return 1; }
@@ -1120,6 +1137,65 @@ int e2eN3dsNoCryptoSmoke(CliArgs args) {
     if (!e2eContains(doctor.stdout(), "OK n3ds/external-ok.3ds", "doctor should preflight configured external n3ds ROMs")) { return 1; }
 
     print("OK BTRC n3ds-nocrypto smoke");
+    return 0;
+}
+
+// ---- deck_evidence_smoke.btrc ----
+string e2eQuitEvidenceText(string emulator, bool quit) {
+    Vector<string> lines = [
+        "time=1 start child=100 command=" + emulator,
+        "time=2 exit child=100 status=0 quit_requested=0"
+    ];
+    if (quit) {
+        lines = [
+            "time=1 start child=100 command=" + emulator,
+            "time=2 terminate child=100 reason=select+start",
+            "time=3 exit child=100 status=143 quit_requested=1"
+        ];
+    }
+    return textLines(lines);
+}
+
+int e2eDeckEvidenceSmoke(CliArgs args) {
+    string tmp = e2eTempDir("semu-deck-evidence-smoke");
+    string project = joinPath(tmp, "project");
+    string home = joinPath(tmp, "home");
+    string exe = e2eExecutable(args);
+    ensureDir(project);
+    ensureDir(home);
+
+    ExecResult missing = e2eRunDeck(exe, home, project, ["game-mode-evidence", "retroarch"]);
+    if (!e2eOk(!missing.ok(), "missing Game Mode evidence unexpectedly succeeded")) { return 1; }
+    if (!e2eContains(missing.stdout(), "PENDING retroarch", "missing evidence status")) { return 1; }
+
+    ExecResult prepare = e2eRunDeck(exe, home, project, ["game-mode-evidence", "retroarch", "--prepare"]);
+    if (!e2eRunOk(prepare, "game-mode evidence prepare")) { return 1; }
+    string checklist = joinPath(semuStateRoot(project), "verification/game-mode-checklist.txt");
+    if (!e2eOk(FileSystem.exists(checklist), "Game Mode checklist missing")) { return 1; }
+    if (!e2eContains(FileSystem.readText(checklist), "physical left-trackpad radial menu", "Game Mode checklist physical input")) { return 1; }
+    if (!e2eOk(SemuGeneratedFiles.isAdapterState(project, checklist), "Game Mode checklist should be adapter state")) { return 1; }
+
+    string retroarchLog = deckQuitEvidencePath(project, "retroarch");
+    SemuGeneratedFiles.writeAdapterState(project, retroarchLog, e2eQuitEvidenceText("retroarch", false));
+    ExecResult partial = e2eRunDeck(exe, home, project, ["game-mode-evidence", "retroarch", "--allow-pending"]);
+    if (!e2eRunOk(partial, "partial Game Mode evidence with allow-pending")) { return 1; }
+    if (!e2eContains(partial.stdout(), "PARTIAL retroarch", "partial evidence status")) { return 1; }
+    if (!e2eOk(!e2eRunDeck(exe, home, project, ["game-mode-evidence", "retroarch"]).ok(), "partial Game Mode evidence unexpectedly succeeded")) { return 1; }
+
+    SemuGeneratedFiles.writeAdapterState(project, retroarchLog, e2eQuitEvidenceText("retroarch", true));
+    ExecResult ok = e2eRunDeck(exe, home, project, ["game-mode-evidence", "--emulator", "retroarch"]);
+    if (!e2eRunOk(ok, "complete Game Mode evidence")) { return 1; }
+    if (!e2eContains(ok.stdout(), "OK retroarch", "complete evidence status")) { return 1; }
+
+    for emulator in lowercaseValues(linuxLauncherNames()) {
+        SemuGeneratedFiles.writeAdapterState(project, deckQuitEvidencePath(project, emulator), e2eQuitEvidenceText(emulator, true));
+    }
+    ExecResult all = e2eRunDeck(exe, home, project, ["game-mode-evidence"]);
+    if (!e2eRunOk(all, "all Game Mode evidence")) { return 1; }
+    if (!e2eContains(all.stdout(), "OK Game Mode quit evidence", "all evidence status")) { return 1; }
+    if (!e2eOk(!e2eRunDeck(exe, home, project, ["game-mode-evidence", "gopher64"]).ok(), "unknown evidence emulator unexpectedly succeeded")) { return 1; }
+
+    print("OK BTRC Deck evidence smoke");
     return 0;
 }
 

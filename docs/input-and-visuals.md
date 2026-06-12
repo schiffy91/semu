@@ -50,6 +50,8 @@ back into `settings/presentation-state/*.json`; Semu policy still changes by
 editing the owned files above, then compiling into emulator-readable files.
 Direct emulator-native config edits are not a valid production workflow unless a
 documented adapter migration explicitly owns the one-time import/export step.
+Semu verification files under `.semu/verification` are also adapter state: they
+record launcher evidence for audits, not emulator-owned policy.
 
 ## Current Left Trackpad Radial Contract
 
@@ -90,6 +92,9 @@ the radial path.
 - A Game Mode test opens each emulator through ES-DE, launches one known-good
   ROM, confirms controller movement/buttons, opens the left-trackpad radial, and
   uses Quit to return to ES-DE.
+- `deck game-mode-evidence --prepare` writes the Semu-owned physical test
+  checklist; `deck game-mode-evidence` fails any emulator whose quit-watch log
+  is missing or lacks a `reason=` event.
 - Save and load are only marked production-ready for an emulator after a real
   state file is created and reloaded from the radial path.
 - Unsupported state actions are hidden or rendered as disabled capability

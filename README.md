@@ -113,7 +113,9 @@ Runtime emulator config under `.semu/appimage-state/<emulator>` is adapter
 state. Semu may read it to broadcast normalized presentation state, and launchers
 may seed it from generated profiles, but it is not the source of truth. Do not
 hand-edit emulator configs to change Semu policy; change the owned JSON/keymap
-files and apply.
+files and apply. Verification artifacts under `.semu/verification` are also
+Semu adapter state; they record launcher evidence such as quit-watch logs, not
+emulator policy.
 
 ## Steam Deck Quick Start
 
@@ -148,6 +150,7 @@ build/semu deck install --project "$PWD" --roms "$PWD/ES-DE/ES-DE/ROMs"
 build/semu doctor --project "$PWD"
 build/semu keymap validate --project "$PWD"
 build/semu screenshot status --project "$PWD"
+build/semu deck game-mode-evidence --project "$PWD" --prepare
 ```
 
 For a microSD ROM directory, pass the real mount path:
@@ -184,6 +187,17 @@ build/semu doctor --project "$PWD"
 The doctor reports missing BIOS, controller defaults, keymap validity,
 Steam Input templates, 3DS ROM NoCrypto status, screenshot hooks, sync status,
 and Linux launchers.
+
+For the physical Game Mode pass, launch Semu from Steam, open a representative
+game for each routed emulator, use the left-trackpad radial Quit action, then
+audit the Semu-owned launcher evidence:
+
+```sh
+build/semu deck game-mode-evidence --project "$PWD"
+```
+
+Missing or lifecycle-only logs remain `PENDING`; a passing emulator needs a
+quit-watch line with a `reason=` value plus child exit evidence.
 
 ## Linux Desktop Quick Start
 
@@ -540,7 +554,8 @@ Steam Deck defaults:
 - `semu-quit-watch` records quit evidence from the launcher layer, so Semu can
   prove the unified quit contract without editing emulator-native config.
   Routed launches write to `.semu/verification/quit-watch/<emulator>.log` by
-  default; tests can override with `SEMU_QUIT_WATCH_LOG`.
+  default; `deck game-mode-evidence` audits those logs for a `reason=` event,
+  and tests can override with `SEMU_QUIT_WATCH_LOG`.
 - Unified load state is `Ctrl+A`.
 - Unified save state is `Ctrl+S`.
 

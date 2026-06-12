@@ -34,15 +34,17 @@ The loop compiles `tests/deck/uinput-send.c` when `cc` is available and uses it
 to send a small gameplay probe plus Select+Start quit. Required routes fail the
 script if launch, screenshot capture, or structured quit-watch evidence fails.
 Each case writes `$SEMU_TEST_OUT/<system>.quit-watch.log`; a successful Semu
-quit adapter observation contains a line with `quit ... reason=<chord>`, such as
-`reason=select+start`. Alternate routes, such as RetroArch DeSmuME for DS when
-melonDS is already the required DS route, run only with
+quit adapter observation contains a quit-watch line with `reason=<chord>`, such
+as `terminate child=... reason=select+start`. Alternate routes, such as
+RetroArch DeSmuME for DS when melonDS is already the required DS route, run only with
 `SEMU_OPTIONAL_ROUTES=1`.
 
 When `SEMU_QUIT_WATCH_LOG` is not set, routed emulator launches write Semu-owned
 evidence under `.semu/verification/quit-watch/<emulator>.log`. Use those files
 for the physical Game Mode pass, where the AppImage is launched through Steam
-and the left-trackpad radial menu is operated on the Deck itself.
+and the left-trackpad radial menu is operated on the Deck itself. Run
+`semu deck game-mode-evidence --project /home/deck/semu-latest` after the pass
+to fail any route that lacks a `reason=` event.
 
 The current installed AppImage smoke on the physical Deck is:
 

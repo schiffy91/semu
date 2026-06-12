@@ -120,12 +120,12 @@ Desktop Mode with the AppImage built from the Nix package closure:
   PCSX2, melonDS, Azahar, Cemu, and Ryujinx. Every required route returned
   `status=0`, `quit=ok`, and a 1280x800 nonblank screenshot. New passes keep
   per-system `$SEMU_TEST_OUT/<system>.quit-watch.log` files and require a
-  `quit ... reason=<chord>` line for Semu launcher-layer quit evidence.
+  quit-watch `reason=<chord>` event for Semu launcher-layer quit evidence.
 - The broad pass produced real visible frames for the required systems, with
   evidence copied under `build/deck-loop-a555de7-v2`.
 - Commit `43c070b` added structured quit-watch evidence. On the physical Deck,
   the Nix result watcher observed an injected `/dev/uinput` Select+Start event,
-  logged `quit ... reason=select+start`, terminated the child process, and
+  logged `reason=select+start`, terminated the child process, and
   exited cleanly. The current installed AppImage was rebuilt from commit
   `cad8b59` with hash
   `8bd5e8850e231ab1a93375c3e02c369b1502fd0a5c4a11d741539ff96a17bd36`; its
@@ -141,7 +141,8 @@ Desktop Mode with the AppImage built from the Nix package closure:
 
 This evidence does not prove the physical left-trackpad radial menu because SSH
 and X11 key injection cannot generate the Steam Input/evdev events consumed by
-the quit watcher. That remains a physical Game Mode check.
+the quit watcher. That remains a physical Game Mode check, now audited with
+`semu deck game-mode-evidence`.
 
 ## AppImage Scope
 

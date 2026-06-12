@@ -175,6 +175,9 @@ string semuAdapterStateScope(string project, string path) {
     if (semuPathWithin(path, joinPath(project, ".semu/flatpak-state"))) {
         return "flatpak_emulator";
     }
+    if (semuPathWithin(path, joinPath(project, ".semu/verification"))) {
+        return "verification";
+    }
     if (semuPathWithin(path, lifecycleBackupsRoot(project))) {
         return "lifecycle_backup";
     }
