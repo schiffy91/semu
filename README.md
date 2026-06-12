@@ -22,9 +22,13 @@ This repo currently provides:
 - A custom keymap language in `input/keymaps/steam_deck.skm` with tokenizer, parser,
   code generators, and authoring errors.
 - Declarative Syncthing config in `sync/sync.json`.
-- Declarative Semu settings in `settings/semu-settings.json`, with CLI
-  `settings list|get|put|apply` access for ROMs, sync toggles, visual policy,
-  and ES-DE settings entry rollout.
+- Declarative Semu settings in `settings/semu-settings.json`, with BTRC-owned
+  `settings list|get|put|ui|apply` access for ROMs, sync toggles, visual
+  policy, and ES-DE settings entry rollout.
+- Per-system presentation settings in `settings/presentation/*.json`, with
+  BTRC-owned `presentation plan|get|put|defaults` access for shader files,
+  bezel files, display layout, scale policy, adapter source, and dynamic aspect
+  policy.
 - Declarative screenshot verification config in `verification/screenshots.json`.
 - Linux launcher shims and AppRun glue under `packaging/linux/`.
 - Nix packages for the BTRC CLI, bundled emulator set, routed emulator wrappers,
@@ -68,6 +72,7 @@ The input, shader, bezel, and ES-DE settings rollout is specified in
 | `input/keymaps/steam_deck.skm` | Editable Steam Deck keymap source. |
 | `input/steam-input/*.vdf` | Generated Steam Input template files. |
 | `settings/semu-settings.json` | Editable Semu visual/UI policy and settings defaults. |
+| `settings/presentation/*.json` | Editable per-system presentation profiles for shaders, bezels, layouts, and emulator adapters. |
 | `sync/sync.json` | Editable Syncthing policy. |
 | `verification/screenshots.json` | Editable screenshot hook policy. |
 | `packaging/linux/AppRun` | AppImage entry point and bundled Nix-store mount wrapper. |
@@ -350,17 +355,18 @@ It also uses Syncthing's CLI/API when available to add the declared folders.
 ### `settings/semu-settings.json`
 
 Editable Semu policy for the settings entrypoint, visual defaults, and settings
-CLI. It is intentionally key/value-shaped so ES-DE entries, scripts, and the
-future controller UI can all use the same `get` and `put` contract.
+CLI/UI. It is intentionally key/value-shaped so ES-DE entries, scripts, and the
+terminal UI all use the same `get` and `put` contract.
 
 Default visual policy:
 
 - Native integer scaling is enabled for classic systems.
 - CRT shaders and bezels are enabled by policy for classic systems.
 - The default modern exclusions are `n3ds`, `wiiu`, and `switch`.
-- RetroArch receives native integer-scaling config immediately.
-- RetroArch shader/bezel presets remain declarative until the shader payload is
-  bundled and verified on Deck.
+- RetroArch receives native integer-scaling config and the configured shader
+  preset path.
+- The AppImage bundles `libretro-shaders-slang`; RetroArch shader/bezel
+  screenshot proof is tracked in `tests/E2E.md`.
 
 Commands:
 
@@ -371,11 +377,48 @@ build/semu settings put roms.dir /run/media/deck/SD --apply --project "$PWD"
 build/semu settings put visual.integer_scaling true --project "$PWD"
 build/semu settings put visual.bezels true --project "$PWD"
 build/semu settings put sync.roms false --project "$PWD"
+build/semu settings ui --project "$PWD"
 build/semu settings apply --project "$PWD"
 ```
 
 `roms.dir` uses the same normalization as `deck install`; `/run/media/deck/SD`
 resolves to `Emulation/ES-DE/ES-DE/ROMs` when that layout is present.
+The terminal UI is dependency-free BTRC output/input: numbered rows edit string
+settings, toggle boolean settings, and apply by running lifecycle reconfigure.
+
+### `settings/presentation/*.json`
+
+Editable per-system presentation profiles. Each system has its own JSON file
+with a shader file, bezel file, runtime preset, hardware-display target, layout,
+scale policy, dynamic aspect policy, and emulator adapter source.
+
+Examples:
+
+```sh
+build/semu presentation defaults --project "$PWD"
+build/semu presentation list --project "$PWD"
+build/semu presentation plan --system gb --project "$PWD"
+build/semu presentation get gb shader_file --project "$PWD"
+build/semu presentation put gb bezel_file bezels/gb/classic-grey-game-boy.json --project "$PWD"
+```
+
+The defaults encode the current visual target:
+
+- `gb`: DMG green LCD tint, pixel persistence, and classic grey Game Boy shell.
+- `gbc`: Game Boy Color LCD behavior and frost purple shell target.
+- `gba`: original wide purple GBA target with AGB-001 LCD behavior.
+- `nes`, `snes`, `genesis`, `psx`, `n64`: 4:3 CRT station with scanlines,
+  analog softness, and Panasonic/Sony-style CRT bezel target.
+- `dreamcast`, `gc`, `wii`, `ps2`: dynamic 4:3 or 16:9 TV station driven by
+  emulator/game config where available.
+- `nds`, `n3ds`: dual-screen LCD station with top/bottom regions and maximized
+  handheld bezel target.
+- `psp`: 16:9 LCD station with red God of War PSP or original black PSP target.
+- `wiiu`, `switch`: modern fullscreen station; no default CRT treatment.
+
+`presentation plan` resolves a runtime shader only when the bundled shader tree
+is available. Missing optional art packs stay visible as empty/unresolved fields
+instead of silently pretending a preset exists.
 
 ### `verification/screenshots.json`
 
@@ -470,7 +513,7 @@ Default hotkeys:
 | `nes` | NES | `nes` | RetroArch Nestopia |
 | `snes` | Super Nintendo | `snes` | RetroArch Snes9x |
 | `genesis` | Sega Genesis / Mega Drive | `genesis` | RetroArch Genesis Plus GX |
-| `n64` | Nintendo 64 | `n64` | Gopher64 |
+| `n64` | Nintendo 64 | `n64` | RetroArch Mupen64Plus-Next |
 | `nds` | Nintendo DS | `nds` | melonDS, DeSmuME fallback |
 | `dreamcast` | Sega Dreamcast | `dreamcast` | Flycast |
 | `psx` | Sony PlayStation | `psx` | RetroArch Beetle PSX |
@@ -561,7 +604,16 @@ build/semu settings get roms.dir --project "$PWD"
 build/semu settings put roms.dir "/path/to/ROMs" --apply --project "$PWD"
 build/semu settings put visual.integer_scaling true --project "$PWD"
 build/semu settings put visual.bezels true --project "$PWD"
+build/semu settings ui --project "$PWD"
 build/semu settings apply --project "$PWD"
+```
+
+Presentation:
+
+```sh
+build/semu presentation plan --system gb --project "$PWD"
+build/semu presentation put ps2 bezel_file "/path/to/sony-crt.slangp" --project "$PWD"
+build/semu presentation put wii aspect_policy "4:3_or_16:9" --project "$PWD"
 ```
 
 Keymaps:
@@ -634,7 +686,6 @@ nix build .#semu-retroarch
 nix build .#semu-dolphin
 nix build .#semu-ppsspp
 nix build .#semu-flycast
-nix build .#semu-gopher64
 nix build .#semu-melonds
 nix build .#semu-pcsx2
 nix build .#semu-cemu
@@ -758,8 +809,8 @@ consume that BTRC-owned runtime model.
 See `tests/E2E.md` for the active verification matrix. The short version:
 
 - Physical Steam Deck Game Mode validation.
-- Real AppImage execution on SteamOS with actual ES-DE and emulator binaries.
+- Manual Steam Input radial validation in Game Mode.
 - Two-device Syncthing conflict/resolution testing.
-- ES-DE/controller UI editor for `settings/semu-settings.json`,
-  `input/keymaps/steam_deck.skm`, `sync/sync.json`, and
-  `verification/screenshots.json`.
+- Future editors for `input/keymaps/steam_deck.skm`,
+  `verification/screenshots.json`, BIOS status, and advanced per-emulator
+  settings.

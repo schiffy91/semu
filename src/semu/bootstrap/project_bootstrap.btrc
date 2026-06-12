@@ -87,6 +87,55 @@ void writeExecutableText(string path, string text) {
     FileSystem.chmod(path, 493);
 }
 
+Vector<string> managedLinuxLauncherFiles() {
+    Vector<string> files = [
+        "semu-btrc",
+        "semu-flatpak",
+        "semu-settings"
+    ];
+    for emulator in linuxLauncherNames() {
+        files.push(semuLauncherName(emulator));
+    }
+    return files;
+}
+
+Vector<string> obsoleteLinuxStateDirs() {
+    return [
+        "gopher64"
+    ];
+}
+
+class SemuUpgradeCleanup {
+    class void pruneLinuxLaunchers(string project) {
+        string bin = linuxLauncherBin(project);
+        if (!FileSystem.isDir(bin)) {
+            return;
+        }
+        Vector<string> managed = managedLinuxLauncherFiles();
+        for name in FileSystem.listDir(bin) {
+            if (!name.startsWith("semu-")) {
+                continue;
+            }
+            if (managed.contains(name)) {
+                continue;
+            }
+            removePath(joinPath(bin, name));
+        }
+    }
+
+    class void pruneObsoleteState(string project) {
+        string stateRoot = joinPath(semuStateRoot(project), "appimage-state");
+        for name in obsoleteLinuxStateDirs() {
+            removePath(joinPath(stateRoot, name));
+        }
+    }
+
+    class void beforeSeedingLinuxAssets(string project) {
+        SemuUpgradeCleanup.pruneLinuxLaunchers(project);
+        SemuUpgradeCleanup.pruneObsoleteState(project);
+    }
+}
+
 string linuxSandboxShimText() {
     return portableShellHeader()
         + "exec \"$(dirname \"$0\")/bin/semu-btrc\" sandbox launch \"$@\"\n";
@@ -128,15 +177,22 @@ string linuxFlatpakShimText() {
         + "exec \"$(dirname \"$0\")/semu-btrc\" launcher flatpak \"$@\"\n";
 }
 
+string linuxSettingsShimText() {
+    return portableShellHeader()
+        + "exec \"$(dirname \"$0\")/semu-btrc\" settings entry \"$@\"\n";
+}
+
 string linuxLauncherShimText(string emulator) {
     return portableShellHeader()
         + "exec \"$(dirname \"$0\")/semu-btrc\" launcher " + emulator.toLower() + " \"$@\"\n";
 }
 
 void seedPortableLinuxShims(string project) {
+    SemuUpgradeCleanup.beforeSeedingLinuxAssets(project);
     writeExecutableText(joinPath(project, "packaging/linux/sandbox.sh"), linuxSandboxShimText());
     writeExecutableText(joinPath(project, "packaging/linux/bin/semu-btrc"), linuxBtrcShimText());
     writeExecutableText(joinPath(project, "packaging/linux/bin/semu-flatpak"), linuxFlatpakShimText());
+    writeExecutableText(joinPath(project, "packaging/linux/bin/semu-settings"), linuxSettingsShimText());
     for emulator in linuxLauncherNames() {
         writeExecutableText(
             joinPath(project, "packaging/linux/bin/" + semuLauncherName(emulator)),
@@ -326,6 +382,12 @@ string esFindRulesXml(string project, string launcherBin) {
             + "    </rule>\n"
             + "  </emulator>\n";
     }
+    launcherRules = launcherRules
+        + "  <emulator name=\"SEMU_SETTINGS\">\n"
+        + "    <rule type=\"staticpath\">\n"
+        + "      <entry>" + xmlEscape(joinPath(launcherBin, "semu-settings")) + "</entry>\n"
+        + "    </rule>\n"
+        + "  </emulator>\n";
     string retroarchCoreRules = "";
     string envCorePath = Environment.get("SEMU_RETROARCH_CORE_DIR", "");
     retroarchCoreRules = appendRetroArchCoreRule(retroarchCoreRules, envCorePath);
@@ -348,7 +410,8 @@ void writeEsDeFiles(string project) {
     ensureDir(customSystemsRoot(project));
 
     SystemCatalog catalog = systemCatalog();
-    string systemsXml = catalog.esSystemsXml();
+    SettingsEntries.write(project);
+    string systemsXml = catalog.esSystemsXml(project);
     FileSystem.writeText(joinPath(customSystemsRoot(project), "es_systems.xml"), systemsXml);
 
     ensureDir(esDeProfileCustomSystemsRoot(project));
@@ -356,7 +419,8 @@ void writeEsDeFiles(string project) {
 
     string packagingSystems = joinPath(linuxPackagingRoot(project), "ES-DE");
     ensureDir(packagingSystems);
-    FileSystem.writeText(joinPath(packagingSystems, "es_systems_linux.xml"), systemsXml);
+    FileSystem.writeText(joinPath(packagingSystems, "es_systems_linux.xml"), catalog.esSystemsXml("${project}"));
+    FileSystem.writeText(joinPath(packagingSystems, "es_find_rules_linux.xml"), esFindRulesXml("${project}", "@SEMU_LINUX_BIN@"));
 
     string launcherBin = esLauncherBin(project);
     FileSystem.writeText(joinPath(customSystemsRoot(project), "es_find_rules.xml"), esFindRulesXml(project, launcherBin));
@@ -380,7 +444,8 @@ void writeEsDeRuntimeFiles(string project, string userHome) {
     ensureDir(settingsRoot);
 
     SystemCatalog catalog = systemCatalog();
-    FileSystem.writeText(joinPath(customRoot, "es_systems.xml"), catalog.esSystemsXml());
+    SettingsEntries.write(project);
+    FileSystem.writeText(joinPath(customRoot, "es_systems.xml"), catalog.esSystemsXml(project));
 
     string launcherBin = esLauncherBin(project);
     FileSystem.writeText(joinPath(customRoot, "es_find_rules.xml"), esFindRulesXml(project, launcherBin));

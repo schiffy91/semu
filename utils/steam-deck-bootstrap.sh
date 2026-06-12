@@ -83,7 +83,44 @@ load_nix_profile() {
   fi
 }
 
+is_steamos() {
+  [ -d /home/.steamos ] || grep -qi 'steamos' /etc/os-release 2>/dev/null
+}
+
+ensure_steamos_nix_mount() {
+  is_steamos || return 0
+  have sudo || die 'sudo is required to prepare the persistent SteamOS Nix mount'
+
+  local source=/home/.steamos/offload/nix
+  sudo mkdir -p "$source" /nix
+
+  if ! mountpoint -q /nix && [ -n "$(find /nix -mindepth 1 -maxdepth 1 -print -quit 2>/dev/null || true)" ]; then
+    warn '/nix is not a mountpoint and is not empty; leaving the existing Nix store in place'
+    return 0
+  fi
+
+  sudo tee /etc/systemd/system/nix.mount >/dev/null <<EOF
+[Unit]
+Description=Persistent Nix store bind mount for SteamOS
+RequiresMountsFor=/home
+
+[Mount]
+What=$source
+Where=/nix
+Type=none
+Options=bind
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+  sudo systemctl daemon-reload || true
+  sudo systemctl enable nix.mount >/dev/null 2>&1 || true
+  mountpoint -q /nix || sudo mount --bind "$source" /nix
+}
+
 ensure_nix() {
+  ensure_steamos_nix_mount
   load_nix_profile
   if have nix; then
     log "Nix: $(nix --version)"

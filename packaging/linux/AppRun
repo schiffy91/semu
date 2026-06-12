@@ -50,6 +50,9 @@ fi
 if [ -d "$APPDIR/usr/lib/retroarch/cores" ]; then
   export SEMU_RETROARCH_CORE_DIR="${SEMU_RETROARCH_CORE_DIR:-$APPDIR/usr/lib/retroarch/cores}"
 fi
+if [ -d "$APPDIR/usr/share/libretro/shaders/shaders_slang" ]; then
+  export SEMU_RETROARCH_SHADER_DIR="${SEMU_RETROARCH_SHADER_DIR:-$APPDIR/usr/share/libretro/shaders/shaders_slang}"
+fi
 if [ -x "$APPDIR/usr/bin/syncthing" ]; then
   export SEMU_SYNCTHING_BIN="${SEMU_SYNCTHING_BIN:-$APPDIR/usr/bin/syncthing}"
 fi
@@ -183,7 +186,7 @@ export SEMU_BIN="${SEMU_BIN:-$SEMU_APP_EXEC}"
 case "${1:-}" in
   "" )
     ;;
-  -h|--help|help|deck|sync|config|doctor|bootstrap|keymap|screenshot|manifest|lifecycle|sandbox|launcher|apprun|steam-input|utils|util|n3ds-nocrypto|3ds-nocrypto|e2e)
+  -h|--help|help|deck|sync|config|settings|presentation|doctor|bootstrap|keymap|screenshot|manifest|lifecycle|sandbox|launcher|apprun|steam-input|utils|util|n3ds-nocrypto|3ds-nocrypto|e2e)
     if [ ! -x "$SEMU_CLI" ]; then
       echo "Semu: BTRC CLI not found at $SEMU_CLI" >&2
       exit 2
@@ -281,9 +284,26 @@ if [[ ! " $* " =~ " --resolution " ]]; then
   SEMU_ESDE_ARGS+=( --resolution 1280 800 )
 fi
 
+SEMU_ESDE_PASSTHROUGH_ARGS=()
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --project|--roms)
+      shift
+      [ "$#" -gt 0 ] && shift
+      ;;
+    --project=*|--roms=*)
+      shift
+      ;;
+    *)
+      SEMU_ESDE_PASSTHROUGH_ARGS+=( "$1" )
+      shift
+      ;;
+  esac
+done
+
 # ES-DE picks GLX (X11) when DISPLAY is set, even though it would prefer
 # Wayland. Under SVM, X11 means Xwayland → GLX which only exposes
 # GL 2.1 — the same incompatibility virgl has. Force Wayland.
 unset DISPLAY
 
-exec "$APPDIR/usr/bin/es-de" "${SEMU_ESDE_ARGS[@]}" "$@"
+exec "$APPDIR/usr/bin/es-de" "${SEMU_ESDE_ARGS[@]}" "${SEMU_ESDE_PASSTHROUGH_ARGS[@]}"

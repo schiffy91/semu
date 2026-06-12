@@ -43,10 +43,13 @@ forAllSystems (system: let
           #include <unordered_map>'
         '';
       }) else null;
-      gopher64 = if isX86Linux then pkgs.gopher64 else null;
       melonds = if isX86Linux then pkgs.melonds else null;
       azahar = if isDarwin then pkgs.callPackage ../azahar-mac.nix {}
-               else if isX86Linux then pkgs.azahar
+               else if isX86Linux then pkgs.azahar.overrideAttrs (old: {
+                 cmakeFlags = (old.cmakeFlags or []) ++ [
+                   (pkgs.lib.cmakeBool "ENABLE_VULKAN" false)
+                 ];
+               })
                else null;
       syncthingtray = if isLinux then pkgs.syncthingtray else null;
       bubblewrap = if isLinux then pkgs.bubblewrap else null;
@@ -80,10 +83,6 @@ forAllSystems (system: let
         (routedEmulator {
           emulatorName = "flycast";
           emulatorPackage = flycast;
-        })
-        (routedEmulator {
-          emulatorName = "gopher64";
-          emulatorPackage = gopher64;
         })
         (routedEmulator {
           emulatorName = "melonds";
@@ -124,14 +123,14 @@ forAllSystems (system: let
     } // pkgs.lib.optionalAttrs (ryujinx != null && isFullBundleTarget) {
       inherit ryujinx;
     } // pkgs.lib.optionalAttrs isX86Linux {
-      inherit ppsspp flycast gopher64 melonds;
+      inherit ppsspp flycast melonds;
       es-de-steamdeck = pkgs.callPackage ../es-de.nix { steamDeck = true; };
     } // {
       # --- Unified bundle ---
       default = if isFullBundleTarget then pkgs.callPackage ../semu.nix {
         inherit (pkgs) dolphin-emu ares;
-        inherit azahar pcsx2 cemu ppsspp flycast gopher64 melonds ryujinx es-de syncthingtray bubblewrap nixGLIntel;
-        inherit (pkgs) syncthing curl;
+        inherit azahar pcsx2 cemu ppsspp flycast melonds ryujinx es-de syncthingtray bubblewrap nixGLIntel;
+        inherit (pkgs) syncthing curl libretro-shaders-slang;
         inherit semuCli routedEmulators;
         retroarch-bare = retroarch;
       } else semuCli;
@@ -140,13 +139,12 @@ forAllSystems (system: let
       semu-dolphin = builtins.elemAt routedEmulators 1;
       semu-ppsspp = builtins.elemAt routedEmulators 2;
       semu-flycast = builtins.elemAt routedEmulators 3;
-      semu-gopher64 = builtins.elemAt routedEmulators 4;
-      semu-melonds = builtins.elemAt routedEmulators 5;
-      semu-pcsx2 = builtins.elemAt routedEmulators 6;
-      semu-cemu = builtins.elemAt routedEmulators 7;
-      semu-azahar = builtins.elemAt routedEmulators 8;
-      semu-ryujinx = builtins.elemAt routedEmulators 9;
-      semu-es-de = builtins.elemAt routedEmulators 10;
+      semu-melonds = builtins.elemAt routedEmulators 4;
+      semu-pcsx2 = builtins.elemAt routedEmulators 5;
+      semu-cemu = builtins.elemAt routedEmulators 6;
+      semu-azahar = builtins.elemAt routedEmulators 7;
+      semu-ryujinx = builtins.elemAt routedEmulators 8;
+      semu-es-de = builtins.elemAt routedEmulators 9;
       semu-nixgl = nixGLIntel;
       semu-routed-emulators = pkgs.symlinkJoin {
         name = "semu-routed-emulators";

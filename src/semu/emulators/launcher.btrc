@@ -9,7 +9,6 @@ string launcherFlatpakId(string emulator) {
     if (key.equals("cemu")) { return "info.cemu.Cemu"; }
     if (key.equals("dolphin")) { return "org.DolphinEmu.dolphin-emu"; }
     if (key.equals("flycast")) { return "org.flycast.Flycast"; }
-    if (key.equals("gopher64")) { return "io.github.gopher64.gopher64"; }
     if (key.equals("melonds")) { return "net.kuribo64.melonDS"; }
     if (key.equals("pcsx2")) { return "net.pcsx2.PCSX2"; }
     if (key.equals("ppsspp")) { return "org.ppsspp.PPSSPP"; }
@@ -37,9 +36,6 @@ Vector<string> launcherPresetArgs(string emulator) {
     if (key.equals("flycast")) {
         return ["-config", "window:fullscreen=yes"];
     }
-    if (key.equals("gopher64")) {
-        return ["--fullscreen"];
-    }
     if (key.equals("melonds")) {
         return ["--fullscreen"];
     }
@@ -50,13 +46,26 @@ Vector<string> launcherPresetArgs(string emulator) {
         return ["-f", "-g"];
     }
     if (key.equals("azahar")) {
-        return ["-f"];
+        Vector<string> empty = [];
+        return empty;
     }
     if (key.equals("ryujinx")) {
         return ["--fullscreen"];
     }
     Vector<string> empty = [];
     return empty;
+}
+
+Vector<string> launcherPresetArgsForProject(string project, string emulator, Vector<string> emulatorArgs) {
+    Vector<string> defaults = launcherPresetArgs(emulator);
+    if (emulator.toLower().equals("retroarch")) {
+        string system = presentationSystemFromArgs(project, emulatorArgs);
+        string shader = system.len() > 0 ? presentationResolvedShaderPath(project, system) : retroArchShaderPresetPath(project);
+        if (shader.len() > 0) {
+            defaults.push("--set-shader=" + shader);
+        }
+    }
+    return defaults;
 }
 
 bool launcherIsUtilityArg(string arg) {
@@ -120,12 +129,12 @@ bool launcherDefaultTakesValue(string arg) {
     return arg.equals("--config") || arg.equals("-config");
 }
 
-Vector<string> launcherArgsWithDefaults(string emulator, Vector<string> emulatorArgs) {
+Vector<string> launcherArgsWithDefaults(string project, string emulator, Vector<string> emulatorArgs) {
     if (launcherIsUtilityInvocation(emulatorArgs)) {
         return emulatorArgs;
     }
     Vector<string> out = [];
-    Vector<string> defaults = launcherPresetArgs(emulator);
+    Vector<string> defaults = launcherPresetArgsForProject(project, emulator, emulatorArgs);
     for (int i = 0; i < defaults.len; i++) {
         string arg = defaults.get(i);
         if (!launcherDefaultAlreadyPresent(emulator, arg, emulatorArgs)) {
@@ -169,6 +178,15 @@ void launcherCopyFile(string source, string destination) {
     FileSystem.writeText(destination, FileSystem.readText(source));
 }
 
+void launcherSymlinkDir(string source, string destination) {
+    if (!FileSystem.isDir(source)) {
+        return;
+    }
+    ensureDir(PathTools.dirname(destination));
+    removePath(destination);
+    FileSystem.symlink(source, destination);
+}
+
 void launcherCopyFirstExisting(Vector<string> sources, string destination) {
     for source in sources {
         if (FileSystem.isFile(source)) {
@@ -199,39 +217,62 @@ string launcherRetroArchSystemDir(string project) {
     return biosRoot(project);
 }
 
-string launcherRetroArchConfigValue(string key, string value) {
-    return key + " = \"" + Strings.replace(value, "\"", "\\\"") + "\"\n";
-}
-
 string launcherRetroArchConfig(string project) {
     string content = contentRoot(project);
     return ""
-        + launcherRetroArchConfigValue("config_save_on_exit", "false")
-        + launcherRetroArchConfigValue("video_driver", "glcore")
-        + launcherRetroArchConfigValue("video_fullscreen", "true")
-        + launcherRetroArchConfigValue("video_windowed_fullscreen", "false")
-        + launcherRetroArchConfigValue("video_scale_integer", "true")
-        + launcherRetroArchConfigValue("video_force_aspect", "true")
-        + launcherRetroArchConfigValue("video_vsync", "true")
-        + launcherRetroArchConfigValue("audio_driver", "pulse")
-        + launcherRetroArchConfigValue("input_driver", "sdl2")
-        + launcherRetroArchConfigValue("input_joypad_driver", "sdl2")
-        + launcherRetroArchConfigValue("input_autodetect_enable", "true")
-        + launcherRetroArchConfigValue("input_remap_binds_enable", "true")
-        + launcherRetroArchConfigValue("system_directory", launcherRetroArchSystemDir(project))
-        + launcherRetroArchConfigValue("savestate_directory", joinPath(content, "states"))
-        + launcherRetroArchConfigValue("savefile_directory", joinPath(content, "saves"))
-        + launcherRetroArchConfigValue("screenshot_directory", joinPath(content, "screenshots"))
-        + launcherRetroArchConfigValue("input_exit_emulator", "escape")
-        + launcherRetroArchConfigValue("input_quit_gamepad_combo", "4")
-        + launcherRetroArchConfigValue("input_load_state", "a")
-        + launcherRetroArchConfigValue("input_save_state", "s")
-        + launcherRetroArchConfigValue("input_menu_toggle", "m")
-        + launcherRetroArchConfigValue("input_screenshot", "x")
-        + launcherRetroArchConfigValue("input_state_slot_decrease", "j")
-        + launcherRetroArchConfigValue("input_state_slot_increase", "k")
-        + launcherRetroArchConfigValue("input_toggle_fast_forward", "add")
-        + launcherRetroArchConfigValue("input_toggle_fullscreen", "enter");
+        + retroArchConfigValue("config_save_on_exit", "false")
+        + retroArchConfigValue("video_driver", "glcore")
+        + retroArchConfigValue("video_windowed_fullscreen", "false")
+        + retroArchVisualConfigText(project)
+        + retroArchConfigValue("audio_driver", "pulse")
+        + retroArchConfigValue("input_driver", "sdl2")
+        + retroArchConfigValue("input_joypad_driver", "sdl2")
+        + retroArchConfigValue("input_autodetect_enable", "true")
+        + retroArchConfigValue("input_remap_binds_enable", "true")
+        + retroArchConfigValue("system_directory", launcherRetroArchSystemDir(project))
+        + retroArchConfigValue("savestate_directory", joinPath(content, "states"))
+        + retroArchConfigValue("savefile_directory", joinPath(content, "saves"))
+        + retroArchConfigValue("screenshot_directory", joinPath(content, "screenshots"))
+        + retroArchConfigValue("input_exit_emulator", "escape")
+        + retroArchConfigValue("input_quit_gamepad_combo", "4")
+        + retroArchConfigValue("input_load_state", "a")
+        + retroArchConfigValue("input_save_state", "s")
+        + retroArchConfigValue("input_menu_toggle", "m")
+        + retroArchConfigValue("input_screenshot", "x")
+        + retroArchConfigValue("input_state_slot_decrease", "j")
+        + retroArchConfigValue("input_state_slot_increase", "k")
+        + retroArchConfigValue("input_toggle_fast_forward", "add")
+        + retroArchConfigValue("input_toggle_fullscreen", "enter");
+}
+
+string launcherCemuMlcPath(string project, string dataRoot) {
+    string externalRoot = configuredEmulationRoot(project);
+    string externalMlc = joinPath(externalRoot, "Cemu/data/mlc01");
+    if (externalRoot.len() > 0 && FileSystem.isDir(externalMlc)) {
+        return externalMlc;
+    }
+    return joinPath(dataRoot, "Cemu/mlc01");
+}
+
+string launcherCemuSettingsText(string project, string dataRoot) {
+    return "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n"
+        + "<content>\n"
+        + "  <mlc_path>" + xmlEscape(launcherCemuMlcPath(project, dataRoot)) + "</mlc_path>\n"
+        + "  <fullscreen>true</fullscreen>\n"
+        + "  <permanent_storage>true</permanent_storage>\n"
+        + "  <GamePaths>\n"
+        + "    <Entry>" + xmlEscape(joinPath(launchRomsRoot(project), "wiiu")) + "</Entry>\n"
+        + "  </GamePaths>\n"
+        + "</content>\n";
+}
+
+void launcherWriteCemuSettings(string project, string configRoot, string dataRoot) {
+    string settings = joinPath(configRoot, "Cemu/settings.xml");
+    if (FileSystem.isFile(settings)) {
+        return;
+    }
+    ensureDir(PathTools.dirname(settings));
+    FileSystem.writeText(settings, launcherCemuSettingsText(project, dataRoot));
 }
 
 bool launcherUsesNixGl(string emulator) {
@@ -243,7 +284,6 @@ bool launcherUsesNixGl(string emulator) {
         || key.equals("dolphin")
         || key.equals("ppsspp")
         || key.equals("flycast")
-        || key.equals("gopher64")
         || key.equals("melonds")
         || key.equals("pcsx2")
         || key.equals("cemu")
@@ -326,6 +366,18 @@ void launcherWriteRetroArchConfig(string project, string configRoot) {
     FileSystem.writeText(joinPath(retroarchRoot, "retroarch.cfg"), launcherRetroArchConfig(project));
 }
 
+void launcherWritePcsx2Config(string project, string configRoot) {
+    string pcsx2Root = joinPath(configRoot, "PCSX2/inis");
+    ensureDir(pcsx2Root);
+    FileSystem.writeText(joinPath(pcsx2Root, "PCSX2.ini"), pcsx2ConfigText(project));
+}
+
+void launcherWriteAzaharConfig(string configRoot, string dataRoot) {
+    string azaharRoot = joinPath(configRoot, "azahar-emu");
+    ensureDir(azaharRoot);
+    FileSystem.writeText(joinPath(azaharRoot, "qt-config.ini"), azaharConfigTextForDataRoot(dataRoot));
+}
+
 void launcherSeedRoutedState(string project, string emulator, string configRoot, string dataRoot) {
     string key = emulator.toLower();
     if (key.equals("retroarch")) {
@@ -341,6 +393,7 @@ void launcherSeedRoutedState(string project, string emulator, string configRoot,
     }
     if (key.equals("pcsx2")) {
         launcherCopyStateDir(project, "PCSX2/config", joinPath(configRoot, "PCSX2"));
+        launcherWritePcsx2Config(project, configRoot);
         return;
     }
     if (key.equals("cemu")) {
@@ -350,11 +403,13 @@ void launcherSeedRoutedState(string project, string emulator, string configRoot,
             joinPath(configuredEmulationRoot(project), "Cemu/data/keys.txt"),
             emulatorProfilePath(project, "Cemu/data/keys.txt")
         ], joinPath(dataRoot, "Cemu/keys.txt"));
+        launcherWriteCemuSettings(project, configRoot, dataRoot);
         return;
     }
     if (key.equals("azahar")) {
         launcherCopyStateDir(project, "Azahar/config", joinPath(configRoot, "azahar-emu"));
         launcherCopyStateDir(project, "Azahar/data", joinPath(dataRoot, "azahar-emu"));
+        launcherWriteAzaharConfig(configRoot, dataRoot);
         return;
     }
     if (key.equals("ppsspp")) {
@@ -367,10 +422,6 @@ void launcherSeedRoutedState(string project, string emulator, string configRoot,
         launcherCopyStateDir(project, "Flycast/data", joinPath(dataRoot, "flycast"));
         return;
     }
-    if (key.equals("gopher64")) {
-        launcherCopyStateDir(project, "Gopher64/config", joinPath(configRoot, "gopher64"));
-        return;
-    }
     if (key.equals("melonds")) {
         launcherCopyStateDir(project, "melonDS/config", joinPath(configRoot, "melonDS"));
         launcherCopyStateDir(project, "melonDS/data", joinPath(dataRoot, "melonDS"));
@@ -378,6 +429,14 @@ void launcherSeedRoutedState(string project, string emulator, string configRoot,
     }
     if (key.equals("ryujinx")) {
         launcherCopyStateDir(project, "Ryujinx/config", joinPath(configRoot, "Ryujinx"));
+        string externalConfig = joinPath(configuredEmulationRoot(project), "Ryujinx/config");
+        launcherSymlinkDir(
+            joinPath(externalConfig, "bis/system/Contents/registered"),
+            joinPath(configRoot, "Ryujinx/bis/system/Contents/registered")
+        );
+        launcherSymlinkDir(joinPath(externalConfig, "games"), joinPath(configRoot, "Ryujinx/games"));
+        launcherSymlinkDir(joinPath(externalConfig, "mods"), joinPath(configRoot, "Ryujinx/mods"));
+        launcherSymlinkDir(joinPath(externalConfig, "sdcard"), joinPath(configRoot, "Ryujinx/sdcard"));
         string systemRoot = joinPath(configRoot, "Ryujinx/system");
         ensureDir(systemRoot);
         launcherCopyFirstExisting([
@@ -416,7 +475,7 @@ int launcherRunRouted(string project, string emulator, string executable, Vector
             finalArgs.push(retroarchConfig);
         }
     }
-    for arg in launcherArgsWithDefaults(emulator, emulatorArgs) {
+    for arg in launcherArgsWithDefaults(project, emulator, emulatorArgs) {
         finalArgs.push(arg);
     }
 
@@ -440,10 +499,14 @@ int launcherRunFlatpak(string project, string emulator, string flatpakId, Vector
     }
     string roms = launchRomsRoot(project);
     string stateRoot = launcherFlatpakStateRoot(project, emulator);
+    string configRoot = joinPath(stateRoot, "config");
+    string dataRoot = joinPath(stateRoot, "data");
+    string cacheRoot = joinPath(stateRoot, "cache");
     string uid = currentUid();
-    ensureDir(joinPath(stateRoot, "config"));
-    ensureDir(joinPath(stateRoot, "data"));
-    ensureDir(joinPath(stateRoot, "cache"));
+    ensureDir(configRoot);
+    ensureDir(dataRoot);
+    ensureDir(cacheRoot);
+    launcherSeedRoutedState(project, emulator, configRoot, dataRoot);
     string command = "unset VK_ICD_FILENAMES LIBGL_ALWAYS_SOFTWARE; ";
     if (launcherUsesX11(emulator)) {
         command = command + "unset MESA_LOADER_DRIVER_OVERRIDE MESA_GL_VERSION_OVERRIDE MESA_GLSL_VERSION_OVERRIDE; "
@@ -460,9 +523,9 @@ int launcherRunFlatpak(string project, string emulator, string flatpakId, Vector
         "--filesystem=" + project,
         "--filesystem=" + roms,
         "--filesystem=" + stateRoot + ":create",
-        "--env=XDG_CONFIG_HOME=" + joinPath(stateRoot, "config"),
-        "--env=XDG_DATA_HOME=" + joinPath(stateRoot, "data"),
-        "--env=XDG_CACHE_HOME=" + joinPath(stateRoot, "cache")
+        "--env=XDG_CONFIG_HOME=" + configRoot,
+        "--env=XDG_DATA_HOME=" + dataRoot,
+        "--env=XDG_CACHE_HOME=" + cacheRoot
     ];
     if (launcherUsesX11(emulator)) {
         flatpakArgs.push("--socket=x11");
@@ -477,7 +540,7 @@ int launcherRunFlatpak(string project, string emulator, string flatpakId, Vector
         flatpakArgs.push("--env=XAUTHORITY=");
     }
     flatpakArgs.push(flatpakId);
-    for arg in launcherArgsWithDefaults(emulator, emulatorArgs) {
+    for arg in launcherArgsWithDefaults(project, emulator, emulatorArgs) {
         flatpakArgs.push(arg);
     }
     command = shellAppendAll(command, flatpakArgs);

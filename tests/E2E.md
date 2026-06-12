@@ -18,7 +18,8 @@ confidence levels.
   Nix-store mount wiring, routed Nix wrapper behavior, generated-C smoke, and
   the BTRC 3DS NoCrypto utility.
 - `make e2e-smoke`: BTRC-native smoke for sandbox symlink specs, emulator
-  launcher routing, declarative screenshot launch hooks, and lifecycle state
+  launcher routing, declarative screenshot launch hooks, the dependency-free
+  settings UI, the per-system presentation matrix, and lifecycle state
   transitions.
 - `make deck-vm-verify`: Arch Linux VM provisioning, emulator preflight,
   BTRC sandbox/launcher route smokes, Syncthing setup/API force sync,
@@ -77,15 +78,16 @@ input checks through the same BTRC CLI used on a physical Deck.
   each emulator, screenshot contents from real Gamescope emulator windows, and
   quit returning to ES-DE in Game Mode.
 - Broad real-emulator Deck pass: launch representative games through RetroArch,
-  Dolphin, PPSSPP, Flycast, melonDS, PCSX2, Cemu, Azahar, Gopher64, and Ryujinx;
+  Dolphin, PPSSPP, Flycast, melonDS, PCSX2, Cemu, Azahar, and Ryujinx;
   verify fullscreen windowing, controller input, and return-to-ES-DE behavior.
 - Input and settings pass: compare Semu's bottom-left radial behavior against
-  RetroArch-native save/load/quit/menu handling, then expose Semu Settings
-  entries through ES-DE for ROM location, Syncthing, shader, bezel, input test,
-  doctor, and reconfigure actions.
-- Visual pass after input is solid: verify RetroArch shader/bezel presets first,
-  then test standalone emulator wrapper experiments with gamescope ReShade or
-  vkBasalt behind feature flags and screenshot evidence.
+  RetroArch-native save/load/quit/menu handling, then verify the generated
+  Semu Settings ES-DE entries for ROM location, Syncthing, shader, bezel, and
+  reconfigure actions.
+- Visual pass after input is solid: verify `settings/presentation/*.json`
+  resolves the intended shader/bezel for every system, prove RetroArch native
+  presets first, then test standalone emulator wrapper experiments with
+  gamescope ReShade or vkBasalt behind feature flags and screenshot evidence.
 - True multi-device Syncthing: current tests cover config, systemd units, local
   service/API, and force-rescan commands. A second real device pass should
   verify conflict/resolution behavior.
@@ -112,13 +114,11 @@ Desktop Mode with the AppImage built from the Nix package closure:
   `/sys/class/backlight/amdgpu_bl0/brightness` for unattended OLED safety.
 - A broad Desktop Mode routed-wrapper pass launched representative SD-card ROMs
   through RetroArch GBA/SNES/N64, Dolphin, PPSSPP, Flycast, melonDS, PCSX2,
-  Cemu, Azahar, Gopher64, and Ryujinx, then captured screenshots for each route.
+  Cemu, Azahar, and Ryujinx, then captured screenshots for each route.
 - The broad pass produced real game frames for RetroArch GBA/SNES/N64,
   Dolphin, PPSSPP, Flycast, and melonDS.
-- The same pass exposed production gaps: PCSX2 and Cemu still showed setup
-  wizards in the installed AppImage, Azahar tried an unsuitable Vulkan path,
-  Ryujinx did not see Switch keys from the SD card, and Gopher64 failed while
-  creating its window.
+- Earlier passes exposed production gaps around PCSX2 and Cemu setup prompts,
+  Azahar Vulkan defaults, Ryujinx SD-card keys, and the removed Gopher64 route.
 
 This evidence does not prove the physical left-trackpad radial menu because SSH
 and X11 key injection cannot generate the Steam Input/evdev events consumed by
@@ -137,7 +137,6 @@ Linux flake outputs now expose routed Nix emulator wrappers:
 - `.#semu-dolphin`
 - `.#semu-ppsspp`
 - `.#semu-flycast`
-- `.#semu-gopher64`
 - `.#semu-melonds`
 - `.#semu-pcsx2`
 - `.#semu-cemu`

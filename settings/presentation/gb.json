@@ -1,0 +1,22 @@
+{
+    "schema_version": 1,
+    "system": "gb",
+    "label": "Nintendo Game Boy",
+    "default_emulator": "RETROARCH",
+    "adapter": "retroarch",
+    "adapter_config": "retroarch.cfg core-options",
+    "hardware_display": "DMG-01 reflective STN LCD",
+    "shader_backend": "retroarch_slang",
+    "shader_file": "handheld/gameboy.slangp",
+    "shader_intent": "green DMG tint, LCD matrix, slow-pixel ghosting",
+    "bezel_backend": "retroarch_slang_or_overlay",
+    "bezel_file": "handheld/console-border/dmg.slangp",
+    "bezel_intent": "classic grey Game Boy shell",
+    "runtime_preset": "handheld/console-border/dmg.slangp",
+    "layout": "single_lcd",
+    "scale_policy": "integer_native",
+    "aspect_policy": "10:9",
+    "dynamic_aspect": false,
+    "profile": "dmg_lcd",
+    "notes": "Prefer DMG green palette and ghosting over sharp monochrome output."
+}

@@ -75,18 +75,6 @@ forAllSystems (system: let
           '';
         }
         {
-          emulatorName = "gopher64";
-          commandName = "gopher64";
-          seedScript = ''
-            mkdir -p "$project/emulators/profiles/Gopher64/config"
-            printf 'seed gopher64 config\n' > "$project/emulators/profiles/Gopher64/config/settings.toml"
-          '';
-          stateAssertions = ''
-            test -f "$state/config/gopher64/settings.toml"
-            test ! -L "$state/config/gopher64/settings.toml"
-          '';
-        }
-        {
           emulatorName = "melonds";
           commandName = "melonDS";
           executableName = "melonDS";

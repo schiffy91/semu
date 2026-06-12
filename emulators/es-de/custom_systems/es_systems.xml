@@ -155,4 +155,13 @@
     <platform>switch</platform>
     <theme>switch</theme>
   </system>
+  <system>
+    <name>semu-settings</name>
+    <fullname>Semu Settings</fullname>
+    <path>${project}/settings/es-de</path>
+    <extension>.semu .SEMU</extension>
+    <command label="Semu Settings">%EMULATOR_SEMU_SETTINGS% %ROM%</command>
+    <platform>pc</platform>
+    <theme>tools</theme>
+  </system>
 </systemList>

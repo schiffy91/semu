@@ -1,0 +1,22 @@
+{
+    "schema_version": 1,
+    "system": "genesis",
+    "label": "Sega Genesis",
+    "default_emulator": "RETROARCH",
+    "adapter": "retroarch",
+    "adapter_config": "retroarch.cfg core-options",
+    "hardware_display": "consumer CRT over composite/RGB",
+    "shader_backend": "retroarch_slang",
+    "shader_file": "ntsc/ntsc-320px-composite-scanline.slangp",
+    "shader_intent": "Genesis dithering blended by analog CRT video",
+    "bezel_backend": "retroarch_mega_bezel",
+    "bezel_file": "Mega_Bezel_Packs/Duimon-Vintage-TV/Presets/Potato/Panasonic_Panacolor_TH20-B8/TH20-B8-[POTATO].slangp",
+    "bezel_intent": "elegant Panasonic or Sony consumer CRT",
+    "runtime_preset": "ntsc/ntsc-320px-composite-scanline.slangp",
+    "layout": "single_crt",
+    "scale_policy": "integer_or_aspect",
+    "aspect_policy": "4:3",
+    "dynamic_aspect": false,
+    "profile": "crt_240p",
+    "notes": "Composite blending matters for dithering-heavy art. Use the system-specific NTSC runtime preset; Genesis Plus GX is unstable with the generic Mega_Bezel runtime on Deck."
+}

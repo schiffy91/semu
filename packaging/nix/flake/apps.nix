@@ -17,7 +17,6 @@ forAllSystems (system: let
       semu-dolphin = emulatorApp "semu-dolphin";
       semu-ppsspp = emulatorApp "semu-ppsspp";
       semu-flycast = emulatorApp "semu-flycast";
-      semu-gopher64 = emulatorApp "semu-gopher64";
       semu-melonds = emulatorApp "semu-melonds";
       semu-pcsx2 = emulatorApp "semu-pcsx2";
       semu-cemu = emulatorApp "semu-cemu";

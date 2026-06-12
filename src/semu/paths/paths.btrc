@@ -147,7 +147,7 @@ string configuredEmulationRoot(string project) {
     string configured = Environment.get("SEMU_EMULATION_ROOT", syncString(project, "emulation_root", ""));
     if (configured.len() > 0) { return configured; }
 
-    string roms = configuredRomsRoot(project);
+    string roms = normalizeRomsRoot(Environment.get("SEMU_ROMS_DIR", configuredRomsRoot(project)));
     if (roms.endsWith("/ES-DE/ES-DE/ROMs")) {
         return PathTools.dirname(PathTools.dirname(PathTools.dirname(roms)));
     }
