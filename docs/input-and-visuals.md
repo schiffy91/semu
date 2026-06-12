@@ -78,13 +78,19 @@ The command contract is:
 semu presentation defaults
 semu presentation list
 semu presentation plan --system gb
+semu presentation state --system ps2
+semu presentation broadcast --system ps2
 semu presentation get gb shader_file
 semu presentation put gb bezel_file bezels/gb/classic-grey-game-boy.json
+semu presentation put ps2 widescreen_bezel_file bezels/ps2/clean-wide.json
 ```
 
-`presentation plan` emits normalized JSON for launchers, future compositor
-wrappers, and settings UIs. Emulators are adapters: they read and/or broadcast
-their own config state, while Semu keeps the display policy stable.
+`presentation state` emits normalized runtime JSON by reading known emulator
+adapter config files. `presentation broadcast` persists that state under
+`settings/presentation-state/<system>.json`. `presentation plan` combines the
+station policy and runtime state for launchers, future compositor wrappers, and
+settings UIs. Emulators are adapters: they read and/or broadcast their own
+config state, while Semu keeps the display policy stable.
 
 ## Station Defaults
 
@@ -108,10 +114,12 @@ their own config state, while Semu keeps the display policy stable.
 | `wiiu` | HD TV plus optional gamepad screen | Modern output by default | Clean 16:9 or TV/gamepad layout | Dynamic 16:9 or dual |
 | `switch` | Modern 16:9 handheld/docked display | Off by default | Off by default | Modern fullscreen |
 
-For 4:3-era systems that can also run 16:9, Semu should read emulator/game
-config through the adapter and broadcast the resulting aspect in the normalized
-presentation state. The bezel choice then follows the state: CRT for 4:3, flat
-or clean frame for widescreen.
+For 4:3-era systems that can also run 16:9, Semu reads emulator/game config
+through the adapter and broadcasts the resulting aspect in normalized
+presentation state. The plan then exposes `effective_aspect`,
+`presentation_mode`, `selected_shader_file`, `selected_bezel_file`, and
+`selected_runtime_preset`. The bezel choice follows the state: CRT for 4:3,
+flat or clean frame for widescreen.
 
 ### RetroArch Systems
 
@@ -193,6 +201,11 @@ Semu should model bezels as declarative presentation data:
 | `bezel_backend` | `retroarch_mega_bezel`, `universal_crt_bezel`, `universal_dual_screen`, or `off_by_default`. |
 | `bezel_file` | Bezel artwork or preset path, editable per system. |
 | `runtime_preset` | Combined runtime preset when the backend needs shader plus bezel in one file. |
+| `widescreen_shader_file` | Optional shader override when adapter state reports 16:9. |
+| `widescreen_bezel_file` | Optional bezel override when adapter state reports 16:9. |
+| `widescreen_runtime_preset` | Optional combined preset override for widescreen output. |
+| `effective_aspect` | Runtime aspect after static policy and adapter probes are composed. |
+| `presentation_mode` | Normalized mode such as `crt_4x3`, `widescreen_frame`, `handheld_lcd`, or `dual_screen`. |
 | `safe_area` | Viewport constraints for OLED and overscan-sensitive presets. |
 | `enabled` | Per-system on/off switch. |
 

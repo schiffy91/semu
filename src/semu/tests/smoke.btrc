@@ -596,7 +596,27 @@ int e2ePresentationSmoke(CliArgs args) {
     ExecResult ps2 = e2eRunPresentation(exe, home, project, ["plan", "ps2"]);
     if (!e2eRunOk(ps2, "presentation ps2 plan")) { return 1; }
     if (!e2eContains(ps2.stdout(), "\"dynamic_aspect\": true", "ps2 dynamic aspect")) { return 1; }
+    if (!e2eContains(ps2.stdout(), "\"effective_aspect\": \"4:3\"", "ps2 default effective aspect")) { return 1; }
+    if (!e2eContains(ps2.stdout(), "\"presentation_mode\": \"crt_4x3\"", "ps2 default crt mode")) { return 1; }
     if (!e2eContains(ps2.stdout(), "Panasonic", "ps2 crt bezel")) { return 1; }
+
+    string pcsx2IniPath = joinPath(launcherRoutedStateRoot(project, "pcsx2"), "config/PCSX2/inis/PCSX2.ini");
+    ensureDir(PathTools.dirname(pcsx2IniPath));
+    FileSystem.writeText(pcsx2IniPath, "[EmuCore/GS]\nAspectRatio = 16:9\nEnableWidescreenPatches = true\n");
+    ExecResult ps2State = e2eRunPresentation(exe, home, project, ["state", "ps2"]);
+    if (!e2eRunOk(ps2State, "presentation ps2 state")) { return 1; }
+    if (!e2eContains(ps2State.stdout(), "\"aspect\": \"16:9\"", "ps2 state widescreen")) { return 1; }
+    if (!e2eContains(ps2State.stdout(), "\"confidence\": \"config\"", "ps2 state confidence")) { return 1; }
+    ExecResult ps2Wide = e2eRunPresentation(exe, home, project, ["plan", "ps2"]);
+    if (!e2eRunOk(ps2Wide, "presentation ps2 widescreen plan")) { return 1; }
+    if (!e2eContains(ps2Wide.stdout(), "\"effective_aspect\": \"16:9\"", "ps2 widescreen effective aspect")) { return 1; }
+    if (!e2eContains(ps2Wide.stdout(), "\"presentation_mode\": \"widescreen_frame\"", "ps2 widescreen mode")) { return 1; }
+    if (!e2eContains(ps2Wide.stdout(), "\"selected_bezel_file\": \"bezels/tv/clean-component-16x9.json\"", "ps2 widescreen selected bezel")) { return 1; }
+    if (!e2eRunOk(e2eRunPresentation(exe, home, project, ["put", "ps2", "widescreen_bezel_file", "bezels/ps2/custom-wide.json"]), "presentation widescreen bezel put")) { return 1; }
+    ExecResult ps2CustomWide = e2eRunPresentation(exe, home, project, ["plan", "ps2"]);
+    if (!e2eContains(ps2CustomWide.stdout(), "\"selected_bezel_file\": \"bezels/ps2/custom-wide.json\"", "ps2 custom widescreen bezel")) { return 1; }
+    if (!e2eRunOk(e2eRunPresentation(exe, home, project, ["broadcast", "ps2"]), "presentation ps2 broadcast")) { return 1; }
+    if (!e2eContains(FileSystem.readText(presentationStatePath(project, "ps2")), "\"aspect\": \"16:9\"", "presentation broadcast state")) { return 1; }
 
     ExecResult psp = e2eRunPresentation(exe, home, project, ["plan", "psp"]);
     if (!e2eRunOk(psp, "presentation psp plan")) { return 1; }

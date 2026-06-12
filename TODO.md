@@ -15,6 +15,18 @@
 - Verified PCSX2 runtime config uses the Deck SD-card BIOS path and does not
   bake local Mac paths into committed profiles.
 
+## Verified Locally
+
+- Added `presentation state` and `presentation broadcast` so emulator adapters
+  can expose normalized runtime aspect/layout state without owning Semu policy.
+- `presentation plan` now reports effective runtime decisions:
+  `effective_aspect`, `presentation_mode`, `selected_shader_file`,
+  `selected_bezel_file`, and `selected_runtime_preset`.
+- Dynamic 4:3/16:9 systems now have editable widescreen shader, bezel, and
+  runtime preset overrides in `settings/presentation/*.json`.
+- Local verification passed for BTRC presentation smoke, generated-C e2e,
+  AppImage/Nix routing smoke, JSON formatting, and whitespace checks.
+
 ## Remaining Physical Gates
 
 - Run a real Steam Deck Game Mode pass for controls, Steam Input templates,
