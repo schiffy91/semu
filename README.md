@@ -256,10 +256,12 @@ Fallback behavior:
   emulators when the AppImage is built without a routed Nix payload.
 
 Automated tests validate AppImage assembly logic with fake ES-DE and fake
-appimagetool. Physical Deck evidence covers Desktop Mode ES-DE launch,
-AppImage-owned Syncthing, SD-card ROM detection, and a broad Desktop Mode
-required-route emulator loop with screenshots and uinput quit evidence. Game
-Mode, physical Steam Input radial quit, and ES-DE return flow remain the final
+appimagetool. Physical Deck evidence currently covers Desktop Mode ES-DE launch,
+AppImage-owned Syncthing, SD-card ROM detection, and required-route process
+launch/quit automation. The broad emulator loop still needs a corrected visual
+capture pass because the last PNG set captured the desktop rather than reliable
+emulator framebuffers. Game Mode, physical Steam Input radial quit, controller
+input in-game, fullscreen presentation, and ES-DE return flow remain the final
 manual gates listed in `tests/E2E.md`.
 
 ## Declarative Configuration

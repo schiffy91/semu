@@ -56,7 +56,7 @@ void seedBundledFileFromRoot(string root, string project, string relative, bool 
         return;
     }
     ensureDir(PathTools.dirname(target));
-    FileSystem.writeText(target, FileSystem.readText(source));
+    SemuGeneratedFiles.writeOwnedProject(project, target, FileSystem.readText(source));
     if (executable) {
         FileSystem.chmod(target, 493);
     }
@@ -83,12 +83,6 @@ void seedBundledDirFiles(string project, string relative, bool executable) {
 
 string portableShellHeader() {
     return "#!/usr/bin/env sh\n";
-}
-
-void writeExecutableText(string path, string text) {
-    ensureDir(PathTools.dirname(path));
-    FileSystem.writeText(path, text);
-    FileSystem.chmod(path, 493);
 }
 
 void writeGeneratedExecutableText(string project, string path, string text) {
@@ -246,7 +240,7 @@ void seedKeymapDefaults(string project) {
     ensureDir(keymapsRoot(project));
     string keymapPath = keymapSourcePath(project);
     if (!FileSystem.exists(keymapPath)) {
-        FileSystem.writeText(keymapPath, defaultKeymapSource());
+        SemuGeneratedFiles.writeSource(project, keymapPath, defaultKeymapSource());
     }
 }
 
@@ -290,13 +284,13 @@ void writeSyncDefaults(string project, string romsDir) {
     ensureDir(syncthingDataDir(project));
     string path = syncConfigPath(project);
     if (!FileSystem.exists(path)) {
-        writeJsonPrettyFile(path, syncDefaultConfigText(project, romsDir));
+        SemuGeneratedFiles.writeSourceJson(project, path, syncDefaultConfigText(project, romsDir));
         return;
     }
     if (romsDir.len() > 0) {
         JsonObject config = JsonObject.readFile(path);
         config.setString("roms_dir", normalizeRomsRoot(romsDir));
-        writeJsonPrettyFile(path, config.stringify());
+        SemuGeneratedFiles.writeSourceJson(project, path, config.stringify());
     }
 }
 

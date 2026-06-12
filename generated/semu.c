@@ -407,7 +407,9 @@ bool keymapPutActionCommand(char* project, char* actionId, char* command);
 bool keymapPutBindingCombo(char* project, char* actionId, char* combo);
 int keymapUi(char* project);
 bool semuPathWithin(char* path, char* root);
+char* semuSourceProjectScope(char* project, char* path);
 char* semuGeneratedProjectScope(char* project, char* path);
+char* semuAdapterStateScope(char* project, char* path);
 char* joinPath(char* left, char* right);
 char* contentRoot(char* project);
 char* romsRoot(char* project);
@@ -456,10 +458,10 @@ bool launcherDefaultTakesValue(char* arg);
 btrc_Vector_string* launcherArgsWithDefaults(char* project, char* emulator, btrc_Vector_string* emulatorArgs);
 char* launcherFlatpakStateRoot(char* project, char* emulator);
 char* launcherRoutedStateRoot(char* project, char* emulator);
-void launcherCopyDirContents(char* source, char* destination);
-void launcherCopyFile(char* source, char* destination);
+void launcherCopyDirContents(char* project, char* source, char* destination);
+void launcherCopyFile(char* project, char* source, char* destination);
 void launcherSymlinkDir(char* source, char* destination);
-void launcherCopyFirstExisting(btrc_Vector_string* sources, char* destination);
+void launcherCopyFirstExisting(char* project, btrc_Vector_string* sources, char* destination);
 void launcherCopyProfileDir(char* project, char* relative, char* destination);
 void launcherCopyProfileFile(char* project, char* relative, char* destination);
 void launcherCopyStateDir(char* project, char* relative, char* destination);
@@ -477,7 +479,7 @@ char* launcherRoutedDisplaySetup(void);
 char* launcherQuitWatchCommand(char* childCommand);
 void launcherWriteRetroArchConfig(char* project, char* configRoot);
 void launcherWritePcsx2Config(char* project, char* configRoot);
-void launcherWriteAzaharConfig(char* configRoot, char* dataRoot);
+void launcherWriteAzaharConfig(char* project, char* configRoot, char* dataRoot);
 void launcherSeedRoutedState(char* project, char* emulator, char* configRoot, char* dataRoot);
 int launcherRunRouted(char* project, char* emulator, char* executable, btrc_Vector_string* emulatorArgs);
 int launcherRunFlatpak(char* project, char* emulator, char* flatpakId, btrc_Vector_string* emulatorArgs);
@@ -1006,9 +1008,18 @@ void KeymapParser_skipLine(KeymapParser* self);
 char* KeymapParser_valueToken(KeymapParser* self, char* expected);
 char* KeymapParser_chordCommand(KeymapParser* self);
 KeymapIr* KeymapParser_parse(KeymapParser* self);
+bool SemuGeneratedFiles_isProjectSource(char* project, char* path);
 bool SemuGeneratedFiles_isProjectGenerated(char* project, char* path);
+bool SemuGeneratedFiles_isProjectOwned(char* project, char* path);
+bool SemuGeneratedFiles_isAdapterState(char* project, char* path);
+char* SemuGeneratedFiles_ownedScope(char* project, char* path);
+void SemuGeneratedFiles_writeSource(char* project, char* path, char* text);
+void SemuGeneratedFiles_writeSourceJson(char* project, char* path, char* text);
 void SemuGeneratedFiles_writeProject(char* project, char* path, char* text);
 void SemuGeneratedFiles_writeProjectJson(char* project, char* path, char* text);
+void SemuGeneratedFiles_writeOwnedProject(char* project, char* path, char* text);
+void SemuGeneratedFiles_writeAdapterState(char* project, char* path, char* text);
+void SemuGeneratedFiles_ensureAdapterStateDir(char* project, char* path);
 void SemuGeneratedFiles_writeExternalInstall(char* purpose, char* path, char* text);
 void SemuUpgradeCleanup_pruneLinuxLaunchers(char* project);
 void SemuUpgradeCleanup_pruneObsoleteState(char* project);
@@ -11595,7 +11606,7 @@ bool writeValidatedKeymapSource(char* project, char* source) {
         }
         return __btrc_ret_329;
     }
-    FileSystem_writeText(keymapSourcePath(project), source);
+    SemuGeneratedFiles_writeSource(project, keymapSourcePath(project), source);
     bool __btrc_ret_330 = true;
     if (errors != NULL) {
         if ((--errors->__rc) <= 0) {
@@ -12309,8 +12320,50 @@ KeymapIr* KeymapParser_parse(KeymapParser* self) {
     }
 }
 
+bool SemuGeneratedFiles_isProjectSource(char* project, char* path) {
+    return (((int)strlen(semuSourceProjectScope(project, path))) > 0);
+}
+
 bool SemuGeneratedFiles_isProjectGenerated(char* project, char* path) {
     return (((int)strlen(semuGeneratedProjectScope(project, path))) > 0);
+}
+
+bool SemuGeneratedFiles_isProjectOwned(char* project, char* path) {
+    return ((SemuGeneratedFiles_isProjectSource(project, path) || SemuGeneratedFiles_isProjectGenerated(project, path)) || SemuGeneratedFiles_isAdapterState(project, path));
+}
+
+bool SemuGeneratedFiles_isAdapterState(char* project, char* path) {
+    return (((int)strlen(semuAdapterStateScope(project, path))) > 0);
+}
+
+char* SemuGeneratedFiles_ownedScope(char* project, char* path) {
+    char* source = semuSourceProjectScope(project, path);
+    if (((int)strlen(source)) > 0) {
+        return __btrc_str_track(__btrc_strcat("source:", source));
+    }
+    char* generated = semuGeneratedProjectScope(project, path);
+    if (((int)strlen(generated)) > 0) {
+        return __btrc_str_track(__btrc_strcat("generated:", generated));
+    }
+    char* adapter = semuAdapterStateScope(project, path);
+    if (((int)strlen(adapter)) > 0) {
+        return __btrc_str_track(__btrc_strcat("adapter_state:", adapter));
+    }
+    return "";
+}
+
+void SemuGeneratedFiles_writeSource(char* project, char* path, char* text) {
+    char* scope = semuSourceProjectScope(project, path);
+    if (((int)strlen(scope)) == 0) {
+        printf("%s\n", __btrc_str_track(__btrc_strcat("error 0:0 refused source write outside Semu-owned source roots: ", path)));
+        return;
+    }
+    ensureDir(PathTools_dirname(path));
+    FileSystem_writeText(path, text);
+}
+
+void SemuGeneratedFiles_writeSourceJson(char* project, char* path, char* text) {
+    SemuGeneratedFiles_writeSource(project, path, jsonPrettyText(text));
 }
 
 void SemuGeneratedFiles_writeProject(char* project, char* path, char* text) {
@@ -12327,7 +12380,40 @@ void SemuGeneratedFiles_writeProjectJson(char* project, char* path, char* text) 
     SemuGeneratedFiles_writeProject(project, path, jsonPrettyText(text));
 }
 
+void SemuGeneratedFiles_writeOwnedProject(char* project, char* path, char* text) {
+    char* scope = SemuGeneratedFiles_ownedScope(project, path);
+    if (((int)strlen(scope)) == 0) {
+        printf("%s\n", __btrc_str_track(__btrc_strcat("error 0:0 refused owned write outside Semu-owned roots: ", path)));
+        return;
+    }
+    ensureDir(PathTools_dirname(path));
+    FileSystem_writeText(path, text);
+}
+
+void SemuGeneratedFiles_writeAdapterState(char* project, char* path, char* text) {
+    char* scope = semuAdapterStateScope(project, path);
+    if (((int)strlen(scope)) == 0) {
+        printf("%s\n", __btrc_str_track(__btrc_strcat("error 0:0 refused adapter-state write outside Semu runtime roots: ", path)));
+        return;
+    }
+    ensureDir(PathTools_dirname(path));
+    FileSystem_writeText(path, text);
+}
+
+void SemuGeneratedFiles_ensureAdapterStateDir(char* project, char* path) {
+    char* scope = semuAdapterStateScope(project, path);
+    if (((int)strlen(scope)) == 0) {
+        printf("%s\n", __btrc_str_track(__btrc_strcat("error 0:0 refused adapter-state directory outside Semu runtime roots: ", path)));
+        return;
+    }
+    ensureDir(path);
+}
+
 void SemuGeneratedFiles_writeExternalInstall(char* purpose, char* path, char* text) {
+    if (((int)strlen(purpose)) == 0) {
+        printf("%s\n", __btrc_str_track(__btrc_strcat("error 0:0 refused undocumented external install write: ", path)));
+        return;
+    }
     ensureDir(PathTools_dirname(path));
     FileSystem_writeText(path, text);
 }
@@ -12341,6 +12427,28 @@ bool semuPathWithin(char* path, char* root) {
     }
     char* prefix = (__btrc_endsWith(root, "/") ? root : __btrc_str_track(__btrc_strcat(root, "/")));
     return __btrc_startsWith(path, prefix);
+}
+
+char* semuSourceProjectScope(char* project, char* path) {
+    if (strcmp(path, syncConfigPath(project)) == 0) {
+        return "sync_config";
+    }
+    if (strcmp(path, semuSettingsPath(project)) == 0) {
+        return "settings_config";
+    }
+    if (strcmp(path, screenshotConfigPath(project)) == 0) {
+        return "screenshot_config";
+    }
+    if (semuPathWithin(path, presentationSettingsRoot(project))) {
+        return "presentation_settings";
+    }
+    if (semuPathWithin(path, keymapsRoot(project))) {
+        return "keymap_source";
+    }
+    if (semuPathWithin(path, joinPath(project, "src/semu/bootstrap/templates"))) {
+        return "bootstrap_templates";
+    }
+    return "";
 }
 
 char* semuGeneratedProjectScope(char* project, char* path) {
@@ -12371,8 +12479,24 @@ char* semuGeneratedProjectScope(char* project, char* path) {
     if (semuPathWithin(path, joinPath(project, "settings/presentation-state"))) {
         return "presentation_state";
     }
-    if (semuPathWithin(path, joinPath(project, ".semu"))) {
-        return "runtime_state";
+    if (semuPathWithin(path, joinPath(project, "sync/bin"))) {
+        return "sync_scripts";
+    }
+    return "";
+}
+
+char* semuAdapterStateScope(char* project, char* path) {
+    if (strcmp(path, lifecycleStatePath(project)) == 0) {
+        return "lifecycle";
+    }
+    if (semuPathWithin(path, joinPath(project, ".semu/appimage-state"))) {
+        return "routed_emulator";
+    }
+    if (semuPathWithin(path, joinPath(project, ".semu/flatpak-state"))) {
+        return "flatpak_emulator";
+    }
+    if (semuPathWithin(path, lifecycleBackupsRoot(project))) {
+        return "lifecycle_backup";
     }
     return "";
 }
@@ -12780,11 +12904,11 @@ char* launcherRoutedStateRoot(char* project, char* emulator) {
     return joinPath(joinPath(project, ".semu/appimage-state"), __btrc_str_track(__btrc_toLower(emulator)));
 }
 
-void launcherCopyDirContents(char* source, char* destination) {
+void launcherCopyDirContents(char* project, char* source, char* destination) {
     if (!FileSystem_isDir(source)) {
         return;
     }
-    ensureDir(destination);
+    SemuGeneratedFiles_ensureAdapterStateDir(project, destination);
     UnixShell* shell = UnixShell_new();
     UnixShell_runRaw(shell, __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat("cp -a ", ShellWords_quote(joinPath(source, ".")))), " ")), ShellWords_quote(destination))), " 2>/dev/null || true")), false, false, "");
     if (shell != NULL) {
@@ -12794,12 +12918,11 @@ void launcherCopyDirContents(char* source, char* destination) {
     }
 }
 
-void launcherCopyFile(char* source, char* destination) {
+void launcherCopyFile(char* project, char* source, char* destination) {
     if (!FileSystem_isFile(source)) {
         return;
     }
-    ensureDir(PathTools_dirname(destination));
-    FileSystem_writeText(destination, FileSystem_readText(source));
+    SemuGeneratedFiles_writeAdapterState(project, destination, FileSystem_readText(source));
 }
 
 void launcherSymlinkDir(char* source, char* destination) {
@@ -12811,23 +12934,23 @@ void launcherSymlinkDir(char* source, char* destination) {
     FileSystem_symlink(source, destination);
 }
 
-void launcherCopyFirstExisting(btrc_Vector_string* sources, char* destination) {
+void launcherCopyFirstExisting(char* project, btrc_Vector_string* sources, char* destination) {
     int __n_394 = btrc_Vector_string_iterLen(sources);
     for (int __i_393 = 0; (__i_393 < __n_394); (__i_393++)) {
         char* source = btrc_Vector_string_iterGet(sources, __i_393);
         if (FileSystem_isFile(source)) {
-            launcherCopyFile(source, destination);
+            launcherCopyFile(project, source, destination);
             return;
         }
     }
 }
 
 void launcherCopyProfileDir(char* project, char* relative, char* destination) {
-    launcherCopyDirContents(emulatorProfilePath(project, relative), destination);
+    launcherCopyDirContents(project, emulatorProfilePath(project, relative), destination);
 }
 
 void launcherCopyProfileFile(char* project, char* relative, char* destination) {
-    launcherCopyFile(emulatorProfilePath(project, relative), destination);
+    launcherCopyFile(project, emulatorProfilePath(project, relative), destination);
 }
 
 void launcherCopyStateDir(char* project, char* relative, char* destination) {
@@ -12867,7 +12990,7 @@ void launcherWriteCemuSettings(char* project, char* configRoot, char* dataRoot) 
         return;
     }
     ensureDir(PathTools_dirname(settings));
-    FileSystem_writeText(settings, launcherCemuSettingsText(project, dataRoot));
+    SemuGeneratedFiles_writeAdapterState(project, settings, launcherCemuSettingsText(project, dataRoot));
 }
 
 bool launcherUsesNixGl(char* emulator) {
@@ -12940,19 +13063,19 @@ char* launcherQuitWatchCommand(char* childCommand) {
 void launcherWriteRetroArchConfig(char* project, char* configRoot) {
     char* retroarchRoot = joinPath(configRoot, "retroarch");
     ensureDir(retroarchRoot);
-    FileSystem_writeText(joinPath(retroarchRoot, "retroarch.cfg"), launcherRetroArchConfig(project));
+    SemuGeneratedFiles_writeAdapterState(project, joinPath(retroarchRoot, "retroarch.cfg"), launcherRetroArchConfig(project));
 }
 
 void launcherWritePcsx2Config(char* project, char* configRoot) {
     char* pcsx2Root = joinPath(configRoot, "PCSX2/inis");
     ensureDir(pcsx2Root);
-    FileSystem_writeText(joinPath(pcsx2Root, "PCSX2.ini"), pcsx2ConfigText(project));
+    SemuGeneratedFiles_writeAdapterState(project, joinPath(pcsx2Root, "PCSX2.ini"), pcsx2ConfigText(project));
 }
 
-void launcherWriteAzaharConfig(char* configRoot, char* dataRoot) {
+void launcherWriteAzaharConfig(char* project, char* configRoot, char* dataRoot) {
     char* azaharRoot = joinPath(configRoot, "azahar-emu");
     ensureDir(azaharRoot);
-    FileSystem_writeText(joinPath(azaharRoot, "qt-config.ini"), azaharConfigTextForDataRoot(dataRoot));
+    SemuGeneratedFiles_writeAdapterState(project, joinPath(azaharRoot, "qt-config.ini"), azaharConfigTextForDataRoot(dataRoot));
 }
 
 void launcherSeedRoutedState(char* project, char* emulator, char* configRoot, char* dataRoot) {
@@ -12979,14 +13102,14 @@ void launcherSeedRoutedState(char* project, char* emulator, char* configRoot, ch
         btrc_Vector_string* __list_396 = btrc_Vector_string_new();
         btrc_Vector_string_push(__list_396, joinPath(configuredEmulationRoot(project), "Cemu/data/keys.txt"));
         btrc_Vector_string_push(__list_396, emulatorProfilePath(project, "Cemu/data/keys.txt"));
-        launcherCopyFirstExisting(__list_396, joinPath(dataRoot, "Cemu/keys.txt"));
+        launcherCopyFirstExisting(project, __list_396, joinPath(dataRoot, "Cemu/keys.txt"));
         launcherWriteCemuSettings(project, configRoot, dataRoot);
         return;
     }
     if (strcmp(key, "azahar") == 0) {
         launcherCopyStateDir(project, "Azahar/config", joinPath(configRoot, "azahar-emu"));
         launcherCopyStateDir(project, "Azahar/data", joinPath(dataRoot, "azahar-emu"));
-        launcherWriteAzaharConfig(configRoot, dataRoot);
+        launcherWriteAzaharConfig(project, configRoot, dataRoot);
         return;
     }
     if (strcmp(key, "ppsspp") == 0) {
@@ -13016,11 +13139,11 @@ void launcherSeedRoutedState(char* project, char* emulator, char* configRoot, ch
         btrc_Vector_string* __list_398 = btrc_Vector_string_new();
         btrc_Vector_string_push(__list_398, joinPath(configuredEmulationRoot(project), "Ryujinx/config/system/prod.keys"));
         btrc_Vector_string_push(__list_398, joinPath(biosRoot(project), "switch/prod.keys"));
-        launcherCopyFirstExisting(__list_398, joinPath(systemRoot, "prod.keys"));
+        launcherCopyFirstExisting(project, __list_398, joinPath(systemRoot, "prod.keys"));
         btrc_Vector_string* __list_400 = btrc_Vector_string_new();
         btrc_Vector_string_push(__list_400, joinPath(configuredEmulationRoot(project), "Ryujinx/config/system/title.keys"));
         btrc_Vector_string_push(__list_400, joinPath(biosRoot(project), "switch/title.keys"));
-        launcherCopyFirstExisting(__list_400, joinPath(systemRoot, "title.keys"));
+        launcherCopyFirstExisting(project, __list_400, joinPath(systemRoot, "title.keys"));
         return;
     }
 }
@@ -14128,7 +14251,7 @@ void seedBundledFileFromRoot(char* root, char* project, char* relative, bool exe
         return;
     }
     ensureDir(PathTools_dirname(target));
-    FileSystem_writeText(target, FileSystem_readText(source));
+    SemuGeneratedFiles_writeOwnedProject(project, target, FileSystem_readText(source));
     if (executable) {
         FileSystem_chmod(target, 493);
     }
@@ -14284,7 +14407,7 @@ void seedKeymapDefaults(char* project) {
     ensureDir(keymapsRoot(project));
     char* keymapPath = keymapSourcePath(project);
     if (!FileSystem_exists(keymapPath)) {
-        FileSystem_writeText(keymapPath, defaultKeymapSource());
+        SemuGeneratedFiles_writeSource(project, keymapPath, defaultKeymapSource());
     }
 }
 
@@ -14328,13 +14451,13 @@ void writeSyncDefaults(char* project, char* romsDir) {
     ensureDir(syncthingDataDir(project));
     char* path = syncConfigPath(project);
     if (!FileSystem_exists(path)) {
-        writeJsonPrettyFile(path, syncDefaultConfigText(project, romsDir));
+        SemuGeneratedFiles_writeSourceJson(project, path, syncDefaultConfigText(project, romsDir));
         return;
     }
     if (((int)strlen(romsDir)) > 0) {
         JsonObject* config = JsonObject_readFile(path);
         JsonObject_setString(config, "roms_dir", normalizeRomsRoot(romsDir));
-        writeJsonPrettyFile(path, JsonObject_stringify(config));
+        SemuGeneratedFiles_writeSourceJson(project, path, JsonObject_stringify(config));
     }
 }
 
@@ -15655,7 +15778,7 @@ void writeScreenshotDefaults(char* project) {
     ensureDir(joinPath(contentRoot(project), "screenshots/verification"));
     char* path = screenshotConfigPath(project);
     if (!FileSystem_exists(path)) {
-        FileSystem_writeText(path, screenshotDefaultConfigText());
+        SemuGeneratedFiles_writeSource(project, path, screenshotDefaultConfigText());
     }
 }
 
@@ -16146,7 +16269,7 @@ bool syncPutSetting(char* project, char* key, char* value) {
         printf("%s\n", __fstr_682_buf);
         return false;
     }
-    writeJsonPrettyFile(syncConfigPath(project), syncConfigTextWithOverride(project, spec->key, value));
+    SemuGeneratedFiles_writeSourceJson(project, syncConfigPath(project), syncConfigTextWithOverride(project, spec->key, value));
     return true;
 }
 
@@ -16349,11 +16472,11 @@ void writeSyncSystemdUnits(char* project) {
     ensureDir(systemdUserDir());
     ensureDir(syncScriptsDir(project));
     char* script = joinPath(syncScriptsDir(project), "sync-force.sh");
-    FileSystem_writeText(script, syncForceScriptText(project));
+    SemuGeneratedFiles_writeProject(project, script, syncForceScriptText(project));
     FileSystem_chmod(script, 493);
-    FileSystem_writeText(joinPath(systemdUserDir(), "semu-syncthing.service"), syncServiceText(project));
-    FileSystem_writeText(joinPath(systemdUserDir(), "semu-sync-force.service"), syncForceServiceText(project));
-    FileSystem_writeText(joinPath(systemdUserDir(), "semu-sync-force.timer"), syncTimerText());
+    SemuGeneratedFiles_writeExternalInstall("systemd_user_unit", joinPath(systemdUserDir(), "semu-syncthing.service"), syncServiceText(project));
+    SemuGeneratedFiles_writeExternalInstall("systemd_user_unit", joinPath(systemdUserDir(), "semu-sync-force.service"), syncForceServiceText(project));
+    SemuGeneratedFiles_writeExternalInstall("systemd_user_unit", joinPath(systemdUserDir(), "semu-sync-force.timer"), syncTimerText());
 }
 
 char* deckDesktopText(char* project) {
@@ -16363,7 +16486,7 @@ char* deckDesktopText(char* project) {
 
 void writeDeckDesktopEntry(char* project) {
     ensureDir(applicationsDir());
-    FileSystem_writeText(joinPath(applicationsDir(), "semu.desktop"), deckDesktopText(project));
+    SemuGeneratedFiles_writeExternalInstall("desktop_entry", joinPath(applicationsDir(), "semu.desktop"), deckDesktopText(project));
 }
 
 char* syncConfigXmlPath(char* project) {
@@ -16598,7 +16721,7 @@ void writeLifecycleState(char* project, char* action) {
     btrc_Vector_string_push(__list_700, jsonStrField("project", project));
     btrc_Vector_string_push(__list_700, jsonStrField("roms_dir", configuredRomsRoot(project)));
     btrc_Vector_string_push(__list_700, jsonStrField("source", "src/semu.btrc"));
-    FileSystem_writeText(lifecycleStatePath(project), __btrc_str_track(__btrc_strcat(jsonObject(__list_700), "\n")));
+    SemuGeneratedFiles_writeAdapterState(project, lifecycleStatePath(project), __btrc_str_track(__btrc_strcat(jsonObject(__list_700), "\n")));
 }
 
 void lifecycleReconfigure(char* project, char* romsDir) {
@@ -16689,7 +16812,7 @@ bool lifecycleChangeKeymap(char* project, char* actionId, char* command) {
         }
         return __btrc_ret_709;
     }
-    FileSystem_writeText(path, next);
+    SemuGeneratedFiles_writeSource(project, path, next);
     lifecycleReconfigure(project, "");
     writeLifecycleState(project, "change");
     int __fstr_712_len = snprintf(NULL, 0, "OK lifecycle change: %s=%s", actionId, command);
@@ -16713,7 +16836,7 @@ bool lifecycleChangeKeymap(char* project, char* actionId, char* command) {
 void lifecycleUpgrade(char* project) {
     ensureDir(lifecycleBackupsRoot(project));
     if (FileSystem_exists(joinPath(project, "semu.json"))) {
-        FileSystem_writeText(upgradeBackupPath(project), FileSystem_readText(joinPath(project, "semu.json")));
+        SemuGeneratedFiles_writeAdapterState(project, upgradeBackupPath(project), FileSystem_readText(joinPath(project, "semu.json")));
     }
     lifecycleReconfigure(project, "");
     writeLifecycleState(project, "upgrade");
@@ -17056,7 +17179,7 @@ bool SettingsStore_putSync(SettingsStore* self, SettingSpec* spec, char* value) 
     } else {
         JsonObject_setString(config, spec->jsonKey, value);
     }
-    writeJsonPrettyFile(syncConfigPath(self->project), JsonObject_stringify(config));
+    SemuGeneratedFiles_writeSourceJson(self->project, syncConfigPath(self->project), JsonObject_stringify(config));
     return true;
 }
 
@@ -17074,7 +17197,7 @@ bool SettingsStore_putSemu(SettingsStore* self, SettingSpec* spec, char* value) 
     } else {
         JsonObject_setString(config, spec->jsonKey, value);
     }
-    writeJsonPrettyFile(semuSettingsPath(self->project), JsonObject_stringify(config));
+    SemuGeneratedFiles_writeSourceJson(self->project, semuSettingsPath(self->project), JsonObject_stringify(config));
     return true;
 }
 
@@ -17544,7 +17667,7 @@ void writeSettingsDefaults(char* project) {
     ensureDir(settingsRoot(project));
     char* path = semuSettingsPath(project);
     if (!FileSystem_exists(path)) {
-        writeJsonPrettyFile(path, settingsDefaultConfigText());
+        SemuGeneratedFiles_writeSourceJson(project, path, settingsDefaultConfigText());
     }
 }
 
@@ -17789,7 +17912,7 @@ void PresentationStationSpec_writeDefault(PresentationStationSpec* self, char* p
     ensureDir(presentationSettingsRoot(project));
     char* path = PresentationStationSpec_configPath(self, project);
     if (!FileSystem_exists(path)) {
-        writeJsonPrettyFile(path, PresentationStationSpec_defaultConfigText(self));
+        SemuGeneratedFiles_writeSourceJson(project, path, PresentationStationSpec_defaultConfigText(self));
     }
 }
 
@@ -18030,7 +18153,7 @@ bool presentationPutValue(char* project, char* system, char* field, char* value)
     } else {
         JsonObject_setString(config, field, value);
     }
-    writeJsonPrettyFile(PresentationStationSpec_configPath(spec, project), JsonObject_stringify(config));
+    SemuGeneratedFiles_writeSourceJson(project, PresentationStationSpec_configPath(spec, project), JsonObject_stringify(config));
     return true;
 }
 
@@ -20936,6 +21059,21 @@ int e2eLifecycleSmoke(CliArgs* args) {
     if (!e2eCatalogConsistency(project, linuxLauncherBin(project))) {
         return 1;
     }
+    if (!e2eOk(SemuGeneratedFiles_isProjectSource(project, syncConfigPath(project)), "sync config should be classified as owned source")) {
+        return 1;
+    }
+    if (!e2eOk(SemuGeneratedFiles_isProjectSource(project, semuSettingsPath(project)), "settings config should be classified as owned source")) {
+        return 1;
+    }
+    if (!e2eOk(SemuGeneratedFiles_isProjectSource(project, keymapSourcePath(project)), "keymap should be classified as owned source")) {
+        return 1;
+    }
+    if (!e2eOk(SemuGeneratedFiles_isProjectSource(project, screenshotConfigPath(project)), "screenshot config should be classified as owned source")) {
+        return 1;
+    }
+    if (!e2eOk(SemuGeneratedFiles_isProjectSource(project, joinPath(presentationSettingsRoot(project), "gb.json")), "presentation config should be classified as owned source")) {
+        return 1;
+    }
     if (!e2eOk(SemuGeneratedFiles_isProjectGenerated(project, joinPath(project, "ES-DE/es_settings.xml")), "ES-DE settings should be classified as generated")) {
         return 1;
     }
@@ -20945,7 +21083,31 @@ int e2eLifecycleSmoke(CliArgs* args) {
     if (!e2eOk(SemuGeneratedFiles_isProjectGenerated(project, joinPath(project, "input/steam-input/neptune-simple.vdf")), "Steam Input template should be classified as generated")) {
         return 1;
     }
+    if (!e2eOk(SemuGeneratedFiles_isAdapterState(project, lifecycleStatePath(project)), "lifecycle state should be classified as adapter state")) {
+        return 1;
+    }
+    if (!e2eOk(SemuGeneratedFiles_isAdapterState(project, joinPath(launcherRoutedStateRoot(project, "pcsx2"), "config/PCSX2/inis/PCSX2.ini")), "routed emulator home should be classified as adapter state")) {
+        return 1;
+    }
+    if (!e2eOk(SemuGeneratedFiles_isProjectOwned(project, syncConfigPath(project)), "sync config should be owned")) {
+        return 1;
+    }
+    if (!e2eOk(SemuGeneratedFiles_isProjectOwned(project, emulatorProfilePath(project, "RetroArch/retroarch.cfg")), "emulator profile should be owned generated output")) {
+        return 1;
+    }
     if (!e2eOk((!SemuGeneratedFiles_isProjectGenerated(project, joinPath(romsOne, "gba"))), "external ROM root should not be generated output")) {
+        return 1;
+    }
+    if (!e2eOk((!SemuGeneratedFiles_isProjectOwned(project, joinPath(romsOne, "gba"))), "external ROM root should not be Semu-owned")) {
+        return 1;
+    }
+    if (!e2eOk((!SemuGeneratedFiles_isProjectSource(project, emulatorProfilePath(project, "RetroArch/retroarch.cfg"))), "generated RetroArch profile should not be source-editable")) {
+        return 1;
+    }
+    if (!e2eOk((!SemuGeneratedFiles_isAdapterState(project, emulatorProfilePath(project, "RetroArch/retroarch.cfg"))), "generated RetroArch profile should not be adapter-state editable")) {
+        return 1;
+    }
+    if (!e2eOk((!SemuGeneratedFiles_isProjectGenerated(project, syncConfigPath(project))), "sync source should not be generated output")) {
         return 1;
     }
     if (!e2eOk((!FileSystem_exists(joinPath(romsOne, "gba"))), "install mutated external ROM dirs")) {

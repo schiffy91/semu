@@ -144,7 +144,7 @@ class SettingsStore {
         } else {
             config.setString(spec.jsonKey, value);
         }
-        writeJsonPrettyFile(syncConfigPath(self.project), config.stringify());
+        SemuGeneratedFiles.writeSourceJson(self.project, syncConfigPath(self.project), config.stringify());
         return true;
     }
 
@@ -159,7 +159,7 @@ class SettingsStore {
         } else {
             config.setString(spec.jsonKey, value);
         }
-        writeJsonPrettyFile(semuSettingsPath(self.project), config.stringify());
+        SemuGeneratedFiles.writeSourceJson(self.project, semuSettingsPath(self.project), config.stringify());
         return true;
     }
 
@@ -593,7 +593,7 @@ void writeSettingsDefaults(string project) {
     ensureDir(settingsRoot(project));
     string path = semuSettingsPath(project);
     if (!FileSystem.exists(path)) {
-        writeJsonPrettyFile(path, settingsDefaultConfigText());
+        SemuGeneratedFiles.writeSourceJson(project, path, settingsDefaultConfigText());
     }
 }
 

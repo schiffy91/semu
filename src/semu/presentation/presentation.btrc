@@ -124,7 +124,7 @@ class PresentationStationSpec {
         ensureDir(presentationSettingsRoot(project));
         string path = self.configPath(project);
         if (!FileSystem.exists(path)) {
-            writeJsonPrettyFile(path, self.defaultConfigText());
+            SemuGeneratedFiles.writeSourceJson(project, path, self.defaultConfigText());
         }
     }
 
@@ -359,7 +359,7 @@ bool presentationPutValue(string project, string system, string field, string va
     } else {
         config.setString(field, value);
     }
-    writeJsonPrettyFile(spec.configPath(project), config.stringify());
+    SemuGeneratedFiles.writeSourceJson(project, spec.configPath(project), config.stringify());
     return true;
 }
 

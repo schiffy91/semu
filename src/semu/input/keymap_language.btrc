@@ -564,7 +564,7 @@ bool writeValidatedKeymapSource(string project, string source) {
         }
         return false;
     }
-    FileSystem.writeText(keymapSourcePath(project), source);
+    SemuGeneratedFiles.writeSource(project, keymapSourcePath(project), source);
     return true;
 }
 
