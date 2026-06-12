@@ -122,6 +122,19 @@ station policy and runtime state for launchers, future compositor wrappers, and
 settings UIs. Emulators are adapters: they read and/or broadcast their own
 config state, while Semu keeps the display policy stable.
 
+`presentation plan` reports asset resolution at separate layers:
+
+| Field | Meaning |
+|---|---|
+| `selected_shader_file` | Semu-owned shader policy after runtime aspect selection. |
+| `selected_bezel_file` | Semu-owned bezel policy after runtime aspect selection. |
+| `selected_runtime_preset` | Semu-owned combined shader/bezel preset for backends that need one file. |
+| `resolved_shader_file` | Existing file for `selected_shader_file`, if present in the bundled RetroArch shader tree or project assets. |
+| `resolved_bezel_file` | Existing file for `selected_bezel_file`, if present in the bundled RetroArch shader tree or project assets. |
+| `resolved_runtime_preset` | Existing file for `selected_runtime_preset`, if present. |
+| `resolved_launcher_shader` | The file the launcher will actually pass to RetroArch. Runtime preset wins over shader file; global visual toggles can make this empty. |
+| `*_status` | `ok`, `missing`, or `disabled`; missing means policy exists but the asset is not bundled or installed yet. |
+
 ## Station Defaults
 
 | System | Display Target | Shader Target | Bezel Target | Layout/Aspect |
@@ -148,8 +161,8 @@ For 4:3-era systems that can also run 16:9, Semu reads emulator/game config
 through the adapter and broadcasts the resulting aspect in normalized
 presentation state. The plan then exposes `effective_aspect`,
 `presentation_mode`, `selected_shader_file`, `selected_bezel_file`, and
-`selected_runtime_preset`. The bezel choice follows the state: CRT for 4:3,
-flat or clean frame for widescreen.
+`selected_runtime_preset`, plus the resolved runtime files. The bezel choice
+follows the state: CRT for 4:3, flat or clean frame for widescreen.
 
 ### RetroArch Systems
 

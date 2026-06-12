@@ -32,6 +32,10 @@
 - `presentation plan` now reports effective runtime decisions:
   `effective_aspect`, `presentation_mode`, `selected_shader_file`,
   `selected_bezel_file`, and `selected_runtime_preset`.
+- `presentation plan` now also reports separate resolved shader, bezel,
+  runtime-preset, and launcher-effective shader paths with `ok`, `missing`, or
+  `disabled` status, so Semu can detect missing bundled assets without editing
+  emulator-native config.
 - Dynamic 4:3/16:9 systems now have editable widescreen shader, bezel, and
   runtime preset overrides in `settings/presentation/*.json`.
 - Added dependency-free BTRC terminal UIs for presentation, input/keymap, and

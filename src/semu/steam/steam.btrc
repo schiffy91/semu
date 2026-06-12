@@ -41,7 +41,8 @@ string steamAppIdString(long value) {
 
 string steamLaunchIdString(long appid) {
     char* buffer = (char*)malloc(32);
-    snprintf(buffer, 32, "%llu", (((uint64_t)appid) << 32) | 0x02000000);
+    uint64_t launchId = (((uint64_t)appid) << 32) | 0x02000000;
+    snprintf(buffer, 32, "%llu", (unsigned long long)launchId);
     return buffer;
 }
 
