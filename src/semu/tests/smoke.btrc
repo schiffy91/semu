@@ -22,6 +22,14 @@ string e2eTempDir(string label) {
     return fallback;
 }
 
+string e2eExecutable(CliArgs args) {
+    string runtimeCli = Environment.get("SEMU_RUNTIME_CLI", "");
+    if (runtimeCli.len() > 0) {
+        return runtimeCli;
+    }
+    return Environment.get("SEMU_BIN", args.program);
+}
+
 void e2eSeedFile(string path) {
     ensureDir(PathTools.dirname(path));
     FileSystem.writeText(path, "seed " + path + "\n");
@@ -325,7 +333,7 @@ int e2eLifecycleSmoke(CliArgs args) {
     string home = joinPath(tmp, "home");
     string romsOne = joinPath(tmp, "roms-one");
     string romsTwo = joinPath(tmp, "roms-two");
-    string exe = Environment.get("SEMU_BIN", args.program);
+    string exe = e2eExecutable(args);
     ensureDir(project);
     ensureDir(home);
     ensureDir(joinPath(romsOne, "existing"));
@@ -557,7 +565,7 @@ int e2eSyncSmoke(CliArgs args) {
     string home = joinPath(tmp, "home");
     string binDir = joinPath(tmp, "bin");
     string capture = joinPath(tmp, "capture");
-    string exe = Environment.get("SEMU_BIN", args.program);
+    string exe = e2eExecutable(args);
     ensureDir(project);
     ensureDir(missingProject);
     ensureDir(home);
@@ -605,7 +613,7 @@ int e2eSettingsSmoke(CliArgs args) {
     string normalizedRoms = joinPath(sdRoot, "Emulation/ES-DE/ES-DE/ROMs");
     string configRoot = joinPath(tmp, "config-card");
     string configRoms = joinPath(configRoot, "Emulation/ES-DE/ES-DE/ROMs");
-    string exe = Environment.get("SEMU_BIN", args.program);
+    string exe = e2eExecutable(args);
     ensureDir(project);
     ensureDir(home);
     ensureDir(normalizedRoms);
@@ -711,7 +719,7 @@ int e2ePresentationSmoke(CliArgs args) {
     string tmp = e2eTempDir("semu-presentation-smoke");
     string project = joinPath(tmp, "project");
     string home = joinPath(tmp, "home");
-    string exe = Environment.get("SEMU_BIN", args.program);
+    string exe = e2eExecutable(args);
     ensureDir(project);
     ensureDir(home);
 
@@ -816,7 +824,7 @@ int e2eLauncherSmoke(CliArgs args) {
     string home = joinPath(tmp, "home");
     string capture = joinPath(tmp, "capture");
     string binDir = joinPath(tmp, "bin");
-    string exe = Environment.get("SEMU_BIN", args.program);
+    string exe = e2eExecutable(args);
     ensureDir(project);
     ensureDir(roms);
     ensureDir(home);
@@ -1071,7 +1079,7 @@ int e2eN3dsNoCryptoSmoke(CliArgs args) {
     string project = joinPath(tmp, "project");
     string home = joinPath(tmp, "home");
     string externalRoms = joinPath(tmp, "sd/Emulation/ES-DE/ES-DE/ROMs");
-    string exe = Environment.get("SEMU_BIN", args.program);
+    string exe = e2eExecutable(args);
     ensureDir(input);
     ensureDir(output);
     ensureDir(project);

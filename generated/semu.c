@@ -794,6 +794,7 @@ int e2eGraphCommand(CliArgs* args);
 bool e2eOk(bool condition, char* message);
 bool e2eContains(char* text, char* expected, char* message);
 char* e2eTempDir(char* label);
+char* e2eExecutable(CliArgs* args);
 void e2eSeedFile(char* path);
 bool e2eAssertLink(char* linkPath, char* targetPath);
 ExecResult* e2eRunLifecycle(char* exe, char* home, char* mode, char* project, char* romsDir);
@@ -21557,6 +21558,14 @@ char* e2eTempDir(char* label) {
     return fallback;
 }
 
+char* e2eExecutable(CliArgs* args) {
+    char* runtimeCli = Environment_get("SEMU_RUNTIME_CLI", "");
+    if (((int)strlen(runtimeCli)) > 0) {
+        return runtimeCli;
+    }
+    return Environment_get("SEMU_BIN", args->program);
+}
+
 void e2eSeedFile(char* path) {
     ensureDir(PathTools_dirname(path));
     FileSystem_writeText(path, __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat("seed ", path)), "\n")));
@@ -21957,7 +21966,7 @@ int e2eLifecycleSmoke(CliArgs* args) {
     char* home = joinPath(tmp, "home");
     char* romsOne = joinPath(tmp, "roms-one");
     char* romsTwo = joinPath(tmp, "roms-two");
-    char* exe = Environment_get("SEMU_BIN", args->program);
+    char* exe = e2eExecutable(args);
     ensureDir(project);
     ensureDir(home);
     ensureDir(joinPath(romsOne, "existing"));
@@ -22358,7 +22367,7 @@ int e2eSyncSmoke(CliArgs* args) {
     char* home = joinPath(tmp, "home");
     char* binDir = joinPath(tmp, "bin");
     char* capture = joinPath(tmp, "capture");
-    char* exe = Environment_get("SEMU_BIN", args->program);
+    char* exe = e2eExecutable(args);
     ensureDir(project);
     ensureDir(missingProject);
     ensureDir(home);
@@ -22453,7 +22462,7 @@ int e2eSettingsSmoke(CliArgs* args) {
     char* normalizedRoms = joinPath(sdRoot, "Emulation/ES-DE/ES-DE/ROMs");
     char* configRoot = joinPath(tmp, "config-card");
     char* configRoms = joinPath(configRoot, "Emulation/ES-DE/ES-DE/ROMs");
-    char* exe = Environment_get("SEMU_BIN", args->program);
+    char* exe = e2eExecutable(args);
     ensureDir(project);
     ensureDir(home);
     ensureDir(normalizedRoms);
@@ -22732,7 +22741,7 @@ int e2ePresentationSmoke(CliArgs* args) {
     char* tmp = e2eTempDir("semu-presentation-smoke");
     char* project = joinPath(tmp, "project");
     char* home = joinPath(tmp, "home");
-    char* exe = Environment_get("SEMU_BIN", args->program);
+    char* exe = e2eExecutable(args);
     ensureDir(project);
     ensureDir(home);
     btrc_Vector_string* __list_964 = btrc_Vector_string_new();
@@ -23022,7 +23031,7 @@ int e2eLauncherSmoke(CliArgs* args) {
     char* home = joinPath(tmp, "home");
     char* capture = joinPath(tmp, "capture");
     char* binDir = joinPath(tmp, "bin");
-    char* exe = Environment_get("SEMU_BIN", args->program);
+    char* exe = e2eExecutable(args);
     ensureDir(project);
     ensureDir(roms);
     ensureDir(home);
@@ -23447,7 +23456,7 @@ int e2eN3dsNoCryptoSmoke(CliArgs* args) {
     char* project = joinPath(tmp, "project");
     char* home = joinPath(tmp, "home");
     char* externalRoms = joinPath(tmp, "sd/Emulation/ES-DE/ES-DE/ROMs");
-    char* exe = Environment_get("SEMU_BIN", args->program);
+    char* exe = e2eExecutable(args);
     ensureDir(input);
     ensureDir(output);
     ensureDir(project);
