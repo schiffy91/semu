@@ -95,6 +95,7 @@ ExecResult e2eRunSync(string exe, string home, string binDir, string project, Ve
         .envVar("SEMU_HOME", home)
         .envVar("SEMU_BIN", exe)
         .envVar("SEMU_SYNCTHING_BIN", joinPath(binDir, "syncthing"))
+        .envVar("SEMU_CURL_BIN", joinPath(binDir, "curl"))
         .envVar("PATH", binDir + ":/usr/bin:/bin")
         .envVar("SEMU_CAPTURE", joinPath(PathTools.dirname(binDir), "capture"))
         .arg("sync")
