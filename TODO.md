@@ -183,13 +183,21 @@
   Steam process state, Steam shortcut discovery, selected Steam Input template,
   installed AppImage executability, checklist state, and can require complete
   quit-watch evidence after the physical pass.
+- Added `deck state-evidence` for physical Save State/Load State proof. It
+  writes a Semu-owned checklist under `.semu/verification`, only accepts
+  emulators with generated state contracts, and requires matching adapter-state
+  `action=state.save result=ok` plus `action=state.load result=ok` lines.
+- Added `deck production-status` and `deck production-ready` as the composed
+  gate across owned config source files, presentation asset audit, Steam
+  shortcut/Input selection, installed AppImage, quit evidence, and generated
+  state evidence.
 - Added `steam-input select` and extended `steam-input install/status` so Semu
   no longer treats copied templates as enough. The command now merges a
   documented Steam config-set entry that maps the Semu non-Steam shortcut to the
   generated Neptune template, and `deck game-mode-ready` gates on that selection.
 - Local `e2e deck-evidence` now simulates Desktop Mode, Game Mode, missing Steam,
   Steam shortcut discovery, Steam Input selection, AppImage checks, readiness
-  JSON formatting, and the combined `--require-evidence` gate.
+  JSON formatting, state evidence, and the composed production-ready gate.
 - Added input capability reporting so save/load/slot state actions are only
   advertised for generated RetroArch, Dolphin, and PCSX2 profiles. Other
   emulator routes are marked disabled until adapter config and physical state

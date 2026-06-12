@@ -598,6 +598,7 @@ void writeLifecycleState(string project, string action) {
 
 void lifecycleCompile(string project, string romsDir, string action) {
     writeSyncDefaults(project, romsDir);
+    writePresentationDefaults(project);
     ensureProjectContentDirs(project);
     seedKeymapDefaults(project);
     seedEmulatorDefaults(project);
