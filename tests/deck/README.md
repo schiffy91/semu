@@ -32,9 +32,12 @@ bash tests/deck/emulator-loop.sh
 
 The loop compiles `tests/deck/uinput-send.c` when `cc` is available and uses it
 to send a small gameplay probe plus Select+Start quit. Required routes fail the
-script if launch, screenshot capture, or quit evidence fails. Alternate routes,
-such as RetroArch DeSmuME for DS when melonDS is already the required DS route,
-run only with `SEMU_OPTIONAL_ROUTES=1`.
+script if launch, screenshot capture, or structured quit-watch evidence fails.
+Each case writes `$SEMU_TEST_OUT/<system>.quit-watch.log`; a successful Semu
+quit adapter observation contains a line with `quit ... reason=<chord>`, such as
+`reason=select+start`. Alternate routes, such as RetroArch DeSmuME for DS when
+melonDS is already the required DS route, run only with
+`SEMU_OPTIONAL_ROUTES=1`.
 
 Inside the guest:
 
@@ -51,7 +54,9 @@ emulator launchers, routed sandbox preparation, and generated keymaps.
 `make deck-vm-verify-strict` additionally fails when `/dev/uinput` or
 `inputplumber` is missing. A physical Steam Deck is still the only trustworthy
 final check for Neptune trackpads, Steam Input radial menus, and Game Mode
-return-to-ES-DE.
+return-to-ES-DE. The Game Mode pass should preserve the same quit-watch
+evidence files so physical radial behavior is compared against the Desktop Mode
+adapter contract instead of inferred from screenshots alone.
 
 ## Bazzite Deck VM
 

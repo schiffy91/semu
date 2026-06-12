@@ -39,10 +39,10 @@ This repo currently provides:
 
 Important remaining production gaps are tracked in `TODO.md` and
 `tests/E2E.md`. The SteamOS/AppImage path has a physical Deck Desktop Mode pass
-over the routed emulator set with screenshot, input, and quit verification. The
-final production gate is still a Game Mode pass that exercises the Steam Input
-left-trackpad radial menu and representative games across the routed emulator
-set.
+over the routed emulator set with screenshot, input, and structured quit-watch
+evidence. The final production gate is still a Game Mode pass that exercises
+the Steam Input left-trackpad radial menu and representative games across the
+routed emulator set.
 The input, shader, bezel, and ES-DE settings rollout is specified in
 `docs/input-and-visuals.md`.
 
@@ -534,6 +534,8 @@ Steam Deck defaults:
 - Hotkey button is `HKB` (`View`, with L4/R4 optional in Steam Input).
 - Steam Input quit emits `Select+Start`, `Esc`, `Ctrl+Q`, and `Alt+F4`;
   RetroArch uses native `Start+Select` quit handling.
+- `semu-quit-watch` records quit evidence from the launcher layer, so Semu can
+  prove the unified quit contract without editing emulator-native config.
 - Unified load state is `Ctrl+A`.
 - Unified save state is `Ctrl+S`.
 

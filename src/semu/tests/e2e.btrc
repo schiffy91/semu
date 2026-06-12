@@ -16,6 +16,9 @@ int e2eCommand(CliArgs args) {
     if (mode.equals("shell-syntax")) {
         return e2eShellSyntaxSmoke(args.valueAfter("--project", Environment.get("SEMU_PROJECT_DIR", ".")));
     }
+    if (mode.equals("quit-watch")) {
+        return e2eQuitWatchSmoke(args.valueAfter("--project", Environment.get("SEMU_PROJECT_DIR", ".")));
+    }
     if (mode.equals("appimage")) {
         return e2eAppImageSmoke(args);
     }
@@ -57,6 +60,8 @@ int e2eCommand(CliArgs args) {
         if (appImageStatus != 0) { return appImageStatus; }
         int shellStatus = e2eShellSyntaxSmoke(args.valueAfter("--project", Environment.get("SEMU_PROJECT_DIR", ".")));
         if (shellStatus != 0) { return shellStatus; }
+        int quitWatchStatus = e2eQuitWatchSmoke(args.valueAfter("--project", Environment.get("SEMU_PROJECT_DIR", ".")));
+        if (quitWatchStatus != 0) { return quitWatchStatus; }
         return e2eLifecycleSmoke(args);
     }
     printUsage();
