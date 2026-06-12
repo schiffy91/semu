@@ -135,12 +135,20 @@ ExecResult e2eRunSteamInput(string exe, string home, string project, Vector<stri
     return result;
 }
 
-bool e2eWriteSteamShortcutFixture(string path) {
+bool e2eWriteSteamShortcutFixtureFor(string path, string exe) {
     ensureDir(PathTools.dirname(path));
-    string payload = "\\000shortcuts\\000\\0000\\000\\002appid\\000\\140\\152\\213\\344\\001AppName\\000Semu-x86_64.AppImage\\000\\001Exe\\000\"/home/deck/Applications/Semu/Semu-x86_64.AppImage\"\\000\\001StartDir\\000/home/deck/Applications/Semu/\\000\\001LaunchOptions\\000\\000\\010\\010";
+    string payload = "\\000shortcuts\\000\\0000\\000\\002appid\\000\\140\\152\\213\\344\\001AppName\\000Semu-x86_64.AppImage\\000\\001Exe\\000\""
+        + exe
+        + "\"\\000\\001StartDir\\000"
+        + PathTools.dirname(exe)
+        + "/\\000\\001LaunchOptions\\000\\000\\010\\010";
     UnixShell shell = UnixShell();
     ExecResult result = shell.runRaw("printf " + ShellWords.quote(payload) + " > " + ShellWords.quote(path), false, false, "");
     return e2eOk(result.ok(), "write Steam shortcut fixture");
+}
+
+bool e2eWriteSteamShortcutFixture(string path) {
+    return e2eWriteSteamShortcutFixtureFor(path, "/home/deck/Applications/Semu/Semu-x86_64.AppImage");
 }
 
 ExecResult e2eRunSettings(string exe, string home, string project, Vector<string> settingsArgs) {
@@ -245,6 +253,10 @@ ExecResult e2eRunDoctor(string exe, string home, string project) {
 }
 
 ExecResult e2eRunDeck(string exe, string home, string project, Vector<string> deckArgs) {
+    return e2eRunDeckEnv(exe, home, project, deckArgs, "", "");
+}
+
+ExecResult e2eRunDeckEnv(string exe, string home, string project, Vector<string> deckArgs, string session, string steamRunning) {
     Command command = Command(exe)
         .envVar("SEMU_HOME", home)
         .envVar("SEMU_BIN", exe)
@@ -252,6 +264,12 @@ ExecResult e2eRunDeck(string exe, string home, string project, Vector<string> de
         .arg("deck")
         .capture(true)
         .check(false);
+    if (session.len() > 0) {
+        command.envVar("SEMU_DECK_SESSION", session);
+    }
+    if (steamRunning.len() > 0) {
+        command.envVar("SEMU_STEAM_RUNNING", steamRunning);
+    }
     for arg in deckArgs {
         command.arg(arg);
     }
@@ -1194,6 +1212,64 @@ int e2eDeckEvidenceSmoke(CliArgs args) {
     if (!e2eRunOk(all, "all Game Mode evidence")) { return 1; }
     if (!e2eContains(all.stdout(), "OK Game Mode quit evidence", "all evidence status")) { return 1; }
     if (!e2eOk(!e2eRunDeck(exe, home, project, ["game-mode-evidence", "gopher64"]).ok(), "unknown evidence emulator unexpectedly succeeded")) { return 1; }
+
+    string appImage = joinPath(tmp, "Semu-x86_64.AppImage");
+    e2eSeedFile(appImage);
+    FileSystem.chmod(appImage, 493);
+    string shortcutsFile = joinPath(home, "steam-userdata/52445373/config/shortcuts.vdf");
+    if (!e2eWriteSteamShortcutFixtureFor(shortcutsFile, appImage)) { return 1; }
+    Vector<string> readyArgs = [
+        "game-mode-ready",
+        "--shortcuts-file", shortcutsFile,
+        "--exe", appImage,
+        "--appimage", appImage,
+        "--prepare"
+    ];
+    ExecResult desktop = e2eRunDeckEnv(exe, home, project, readyArgs, "desktop_mode", "1");
+    if (!e2eOk(!desktop.ok(), "Desktop Mode readiness unexpectedly succeeded without --allow-desktop")) { return 1; }
+    if (!e2eContains(desktop.stdout(), "PENDING session: desktop_mode", "Desktop Mode readiness status")) { return 1; }
+
+    Vector<string> desktopAllowedArgs = [
+        "game-mode-ready",
+        "--shortcuts-file", shortcutsFile,
+        "--exe", appImage,
+        "--appimage", appImage,
+        "--prepare",
+        "--allow-desktop"
+    ];
+    ExecResult desktopAllowed = e2eRunDeckEnv(exe, home, project, desktopAllowedArgs, "desktop_mode", "1");
+    if (!e2eRunOk(desktopAllowed, "Desktop readiness with explicit override")) { return 1; }
+    if (!e2eContains(desktopAllowed.stdout(), "OK session: desktop_mode", "Desktop override status")) { return 1; }
+    if (!e2eContains(desktopAllowed.stdout(), "OK shortcut: Semu-x86_64.AppImage", "readiness shortcut status")) { return 1; }
+    if (!e2eContains(desktopAllowed.stdout(), "OK appimage: " + appImage, "readiness AppImage status")) { return 1; }
+
+    ExecResult missingSteam = e2eRunDeckEnv(exe, home, project, readyArgs, "game_mode", "0");
+    if (!e2eOk(!missingSteam.ok(), "readiness unexpectedly succeeded without Steam")) { return 1; }
+    if (!e2eContains(missingSteam.stdout(), "MISSING steam: not running", "missing Steam readiness status")) { return 1; }
+
+    ExecResult gameReady = e2eRunDeckEnv(exe, home, project, readyArgs, "game_mode", "1");
+    if (!e2eRunOk(gameReady, "Game Mode readiness")) { return 1; }
+    if (!e2eContains(gameReady.stdout(), "OK session: game_mode", "Game Mode readiness status")) { return 1; }
+    if (!e2eContains(gameReady.stdout(), "steam://rungameid/", "Game Mode launch URI")) { return 1; }
+
+    Vector<string> requireEvidenceArgs = [
+        "game-mode-ready",
+        "--shortcuts-file", shortcutsFile,
+        "--exe", appImage,
+        "--appimage", appImage,
+        "--prepare",
+        "--require-evidence"
+    ];
+    ExecResult requireEvidence = e2eRunDeckEnv(exe, home, project, requireEvidenceArgs, "game_mode", "1");
+    if (!e2eRunOk(requireEvidence, "Game Mode readiness with required evidence")) { return 1; }
+    if (!e2eContains(requireEvidence.stdout(), "OK evidence: physical quit logs complete", "required evidence readiness status")) { return 1; }
+    string readinessReport = deckGameModeReadinessPath(project);
+    if (!e2eOk(FileSystem.exists(readinessReport), "Game Mode readiness report missing")) { return 1; }
+    if (!e2eOk(SemuGeneratedFiles.isAdapterState(project, readinessReport), "Game Mode readiness report should be adapter state")) { return 1; }
+    string readinessJson = FileSystem.readText(readinessReport);
+    if (!e2eContains(readinessJson, "\n    \"session\": \"game_mode\"", "readiness report should be pretty JSON")) { return 1; }
+    if (!e2eContains(readinessJson, "\"shortcut_found\": true", "readiness report shortcut flag")) { return 1; }
+    if (!e2eContains(readinessJson, "\"evidence_required\": true", "readiness report evidence gate")) { return 1; }
 
     print("OK BTRC Deck evidence smoke");
     return 0;

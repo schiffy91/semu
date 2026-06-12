@@ -110,6 +110,14 @@
   prepares a Semu-owned checklist under `.semu/verification`, fails on missing
   or lifecycle-only logs, and passes only when each selected emulator has
   quit-watch evidence with a `reason=` value.
+- Added `deck game-mode-ready` as the physical pass readiness gate. It writes a
+  Semu-owned JSON report under `.semu/verification`, verifies session type,
+  Steam process state, Steam shortcut discovery, installed AppImage
+  executability, checklist state, and can require complete quit-watch evidence
+  after the physical pass.
+- Local `e2e deck-evidence` now simulates Desktop Mode, Game Mode, missing Steam,
+  Steam shortcut discovery, AppImage checks, readiness JSON formatting, and the
+  combined `--require-evidence` gate.
 - Added input capability reporting so save/load/slot state actions are only
   advertised for generated RetroArch, Dolphin, and PCSX2 profiles. Other
   emulator routes are marked disabled until adapter config and physical state

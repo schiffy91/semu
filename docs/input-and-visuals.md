@@ -89,12 +89,19 @@ the radial path.
 - `doctor` verifies the generated Steam Input VDF exists and contains the
   expected radial actions.
 - `keymap validate` verifies the canonical action names and controller combos.
+- `deck game-mode-ready --prepare` writes the Semu-owned physical checklist and
+  readiness report. It verifies the current session, Steam process, Steam
+  shortcut, installed AppImage, and checklist state before the physical pass.
+  `--allow-desktop` is for SSH preflight only; final proof must run from Steam
+  Game Mode.
 - A Game Mode test opens each emulator through ES-DE, launches one known-good
   ROM, confirms controller movement/buttons, opens the left-trackpad radial, and
   uses Quit to return to ES-DE.
 - `deck game-mode-evidence --prepare` writes the Semu-owned physical test
   checklist; `deck game-mode-evidence` fails any emulator whose quit-watch log
   is missing or lacks a `reason=` event.
+- `deck game-mode-ready --require-evidence` combines the readiness gate with
+  complete quit-watch evidence after the physical pass.
 - Save and load are only marked production-ready for an emulator after a real
   state file is created and reloaded from the radial path.
 - Unsupported state actions are hidden or rendered as disabled capability
