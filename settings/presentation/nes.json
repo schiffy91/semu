@@ -12,7 +12,7 @@
     "bezel_backend": "retroarch_mega_bezel",
     "bezel_file": "Mega_Bezel_Packs/Duimon-Vintage-TV/Presets/Potato/Panasonic_Panacolor_TH20-B8/TH20-B8-[POTATO].slangp",
     "bezel_intent": "elegant Panasonic or Sony consumer CRT",
-    "runtime_preset": "bezel/Mega_Bezel/Presets/MBZ__5__POTATO.slangp",
+    "runtime_preset": "ntsc/ntsc-256px-composite-scanline.slangp",
     "widescreen_shader_file": "",
     "widescreen_bezel_file": "",
     "widescreen_runtime_preset": "",
@@ -21,5 +21,5 @@
     "aspect_policy": "4:3",
     "dynamic_aspect": false,
     "profile": "crt_240p",
-    "notes": "Classic 240p TV path."
+    "notes": "Classic 240p TV path. Use the system-specific NTSC runtime preset; Mesen is unstable with the generic Mega_Bezel runtime on Deck."
 }

@@ -40,12 +40,12 @@
 typedef struct {
     int fd;
     char path[256];
+    bool down[SEMU_MAX_KEYS];
 } SemuInputFd;
 
 typedef struct {
     SemuInputFd items[SEMU_MAX_INPUT_FDS];
     size_t len;
-    bool down[SEMU_MAX_KEYS];
 } SemuInputWatcher;
 
 static bool semu_debug_enabled(void) {
@@ -118,6 +118,7 @@ static void semu_scan_inputs(SemuInputWatcher *watcher) {
             continue;
         }
 
+        memset(&watcher->items[watcher->len], 0, sizeof(watcher->items[watcher->len]));
         watcher->items[watcher->len].fd = fd;
         strncpy(watcher->items[watcher->len].path, path, sizeof(watcher->items[watcher->len].path) - 1);
         watcher->items[watcher->len].path[sizeof(watcher->items[watcher->len].path) - 1] = '\0';
@@ -128,23 +129,23 @@ static void semu_scan_inputs(SemuInputWatcher *watcher) {
 #endif
 }
 
-static bool semu_key_down(SemuInputWatcher *watcher, int code) {
-    return code >= 0 && code < SEMU_MAX_KEYS && watcher->down[code];
+static bool semu_key_down(SemuInputFd *input, int code) {
+    return code >= 0 && code < SEMU_MAX_KEYS && input->down[code];
 }
 
-static bool semu_record_key(SemuInputWatcher *watcher, int code, int value) {
+static bool semu_record_key(SemuInputFd *input, int code, int value) {
     if (code < 0 || code >= SEMU_MAX_KEYS) {
         return false;
     }
     if (value == 0) {
-        watcher->down[code] = false;
+        input->down[code] = false;
         return false;
     }
 
-    watcher->down[code] = true;
-    bool ctrl = semu_key_down(watcher, KEY_LEFTCTRL) || semu_key_down(watcher, KEY_RIGHTCTRL);
-    bool alt = semu_key_down(watcher, KEY_LEFTALT) || semu_key_down(watcher, KEY_RIGHTALT);
-    bool select_start = semu_key_down(watcher, BTN_SELECT) && semu_key_down(watcher, BTN_START);
+    input->down[code] = true;
+    bool ctrl = semu_key_down(input, KEY_LEFTCTRL) || semu_key_down(input, KEY_RIGHTCTRL);
+    bool alt = semu_key_down(input, KEY_LEFTALT) || semu_key_down(input, KEY_RIGHTALT);
+    bool select_start = semu_key_down(input, BTN_SELECT) && semu_key_down(input, BTN_START);
 
     if (code == KEY_ESC) {
         SEMU_DEBUG("quit key: escape");
@@ -206,7 +207,7 @@ static bool semu_poll_quit(SemuInputWatcher *watcher, int timeout_ms) {
                 if (events[j].type == EV_KEY) {
                     SEMU_DEBUG("event %s key=%u value=%d", watcher->items[i].path, events[j].code, events[j].value);
                 }
-                if (events[j].type == EV_KEY && semu_record_key(watcher, events[j].code, events[j].value)) {
+                if (events[j].type == EV_KEY && semu_record_key(&watcher->items[i], events[j].code, events[j].value)) {
                     return true;
                 }
             }
@@ -292,6 +293,7 @@ int main(int argc, char **argv) {
 
         if (semu_poll_quit(&watcher, 100)) {
             quit_requested = true;
+            fprintf(stderr, "semu-quit-watch: quit requested\n");
             SEMU_DEBUG("quit requested");
             semu_terminate_child_group(child);
             semu_close_inputs(&watcher);

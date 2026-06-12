@@ -225,6 +225,9 @@ void seedEmulatorDefaults(string project) {
     KeymapIr ir = projectKeymapIr(project);
     writeProfile(project, "RetroArch/retroarch.cfg.linux-backup", retroArchProfileText(project, ir));
     writeProfile(project, "RetroArch/retroarch.cfg", retroArchProfileText(project, ir));
+    writeProfile(project, "Dolphin/config/Dolphin.ini", dolphinConfigText());
+    writeProfile(project, "Dolphin/config/GCPadNew.ini", dolphinGcpadRuntimeText());
+    writeProfile(project, "Dolphin/config/WiimoteNew.ini", dolphinWiimoteRuntimeText());
     writeProfile(project, "Dolphin/config/Profiles/GCPad/Steam Deck.ini", dolphinGcpadProfileText());
     writeProfile(project, "Dolphin/config/Profiles/Hotkeys/Steam Deck.ini", dolphinHotkeysProfileText(ir));
     writeProfile(project, "Dolphin/config/Profiles/Wiimote/Wiimote (SD).ini", dolphinWiimoteProfileText(false));

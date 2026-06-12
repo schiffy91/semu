@@ -36,10 +36,12 @@ This repo currently provides:
 - Automated smoke coverage for bootstrap, lifecycle, launcher routing,
   screenshot hooks, sync setup, AppImage assembly wiring, and Nix routed wrappers.
 
-Important remaining production gaps are tracked in `tests/E2E.md`. The
-SteamOS/AppImage path has a physical Deck smoke pass, but the final production
-gate is still a Game Mode pass that exercises the Steam Input radial menu and
-representative games across the routed emulator set.
+Important remaining production gaps are tracked in `TODO.md` and
+`tests/E2E.md`. The SteamOS/AppImage path has a physical Deck Desktop Mode pass
+over the routed emulator set with screenshot, input, and quit verification. The
+final production gate is still a Game Mode pass that exercises the Steam Input
+left-trackpad radial menu and representative games across the routed emulator
+set.
 The input, shader, bezel, and ES-DE settings rollout is specified in
 `docs/input-and-visuals.md`.
 

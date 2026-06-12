@@ -341,11 +341,17 @@ int e2eLifecycleSmoke(CliArgs args) {
     if (!e2eOk(SemuGeneratedFiles.isProjectSource(project, joinPath(presentationSettingsRoot(project), "gb.json")), "presentation config should be classified as owned source")) { return 1; }
     if (!e2eOk(SemuGeneratedFiles.isProjectGenerated(project, joinPath(project, "ES-DE/es_settings.xml")), "ES-DE settings should be classified as generated")) { return 1; }
     if (!e2eOk(SemuGeneratedFiles.isProjectGenerated(project, emulatorProfilePath(project, "RetroArch/retroarch.cfg")), "emulator profile should be classified as generated")) { return 1; }
+    if (!e2eOk(SemuGeneratedFiles.isProjectGenerated(project, emulatorProfilePath(project, "Dolphin/config/Dolphin.ini")), "Dolphin runtime config should be classified as generated")) { return 1; }
+    if (!e2eOk(SemuGeneratedFiles.isProjectGenerated(project, emulatorProfilePath(project, "Dolphin/config/GCPadNew.ini")), "Dolphin runtime pad config should be classified as generated")) { return 1; }
+    if (!e2eOk(SemuGeneratedFiles.isProjectGenerated(project, emulatorProfilePath(project, "Dolphin/config/WiimoteNew.ini")), "Dolphin runtime Wiimote config should be classified as generated")) { return 1; }
     if (!e2eOk(SemuGeneratedFiles.isProjectGenerated(project, joinPath(project, "input/steam-input/neptune-simple.vdf")), "Steam Input template should be classified as generated")) { return 1; }
     if (!e2eOk(SemuGeneratedFiles.isAdapterState(project, lifecycleStatePath(project)), "lifecycle state should be classified as adapter state")) { return 1; }
     if (!e2eOk(SemuGeneratedFiles.isAdapterState(project, joinPath(launcherRoutedStateRoot(project, "pcsx2"), "config/PCSX2/inis/PCSX2.ini")), "routed emulator home should be classified as adapter state")) { return 1; }
     if (!e2eOk(SemuGeneratedFiles.isProjectOwned(project, syncConfigPath(project)), "sync config should be owned")) { return 1; }
     if (!e2eOk(SemuGeneratedFiles.isProjectOwned(project, emulatorProfilePath(project, "RetroArch/retroarch.cfg")), "emulator profile should be owned generated output")) { return 1; }
+    if (!e2eContains(FileSystem.readText(emulatorProfilePath(project, "Dolphin/config/Dolphin.ini")), "PermissionAsked = True", "generated Dolphin analytics prompt config")) { return 1; }
+    if (!e2eContains(FileSystem.readText(emulatorProfilePath(project, "Dolphin/config/GCPadNew.ini")), "[GCPad1]", "generated Dolphin GameCube runtime config")) { return 1; }
+    if (!e2eContains(FileSystem.readText(emulatorProfilePath(project, "Dolphin/config/WiimoteNew.ini")), "Buttons/A = Return|`Click 1`|`SteamDeck/0/Steam Deck:A`", "generated Dolphin Wii runtime config")) { return 1; }
     if (!e2eOk(!SemuGeneratedFiles.isProjectGenerated(project, joinPath(romsOne, "gba")), "external ROM root should not be generated output")) { return 1; }
     if (!e2eOk(!SemuGeneratedFiles.isProjectOwned(project, joinPath(romsOne, "gba")), "external ROM root should not be Semu-owned")) { return 1; }
     if (!e2eOk(!SemuGeneratedFiles.isProjectSource(project, emulatorProfilePath(project, "RetroArch/retroarch.cfg")), "generated RetroArch profile should not be source-editable")) { return 1; }

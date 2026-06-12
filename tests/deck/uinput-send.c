@@ -18,7 +18,9 @@ typedef struct {
 
 static const SemuKey semu_keys[] = {
     {"a", BTN_SOUTH},
+    {"steam-a", BTN_SOUTH},
     {"b", BTN_EAST},
+    {"steam-b", BTN_EAST},
     {"x", BTN_WEST},
     {"y", BTN_NORTH},
     {"l1", BTN_TL},
@@ -38,6 +40,13 @@ static const SemuKey semu_keys[] = {
     {"space", KEY_SPACE},
     {"key-z", KEY_Z},
     {"key-x", KEY_X},
+    {"key-up", KEY_UP},
+    {"key-down", KEY_DOWN},
+    {"key-left", KEY_LEFT},
+    {"key-right", KEY_RIGHT},
+    {"key-a", KEY_A},
+    {"key-s", KEY_S},
+    {"mouse-click", BTN_LEFT},
 };
 
 static void semu_die(const char *message) {
@@ -52,13 +61,16 @@ static int semu_ioctl(int fd, unsigned long request, int value, const char *labe
     return 0;
 }
 
-static int semu_open_uinput(void) {
+static int semu_open_uinput(bool steam_identity) {
     int fd = open("/dev/uinput", O_WRONLY | O_NONBLOCK | O_CLOEXEC);
     if (fd < 0) {
         semu_die("open /dev/uinput");
     }
 
     semu_ioctl(fd, UI_SET_EVBIT, EV_KEY, "UI_SET_EVBIT EV_KEY");
+    semu_ioctl(fd, UI_SET_EVBIT, EV_REL, "UI_SET_EVBIT EV_REL");
+    semu_ioctl(fd, UI_SET_RELBIT, REL_X, "UI_SET_RELBIT REL_X");
+    semu_ioctl(fd, UI_SET_RELBIT, REL_Y, "UI_SET_RELBIT REL_Y");
     for (size_t i = 0; i < sizeof(semu_keys) / sizeof(semu_keys[0]); i++) {
         semu_ioctl(fd, UI_SET_KEYBIT, semu_keys[i].code, "UI_SET_KEYBIT");
     }
@@ -67,8 +79,8 @@ static int semu_open_uinput(void) {
     memset(&device, 0, sizeof(device));
     snprintf(device.name, sizeof(device.name), "semu-test-input");
     device.id.bustype = BUS_USB;
-    device.id.vendor = 0x28de;
-    device.id.product = 0x1205;
+    device.id.vendor = steam_identity ? 0x28de : 0x1209;
+    device.id.product = steam_identity ? 0x1205 : 0x5e01;
     device.id.version = 1;
 
     if (write(fd, &device, sizeof(device)) != sizeof(device)) {
@@ -132,7 +144,16 @@ static bool semu_named_key(const char *name, int *code) {
 
 static void semu_usage(void) {
     fprintf(stderr, "usage: semu-uinput-send ACTION...\n");
-    fprintf(stderr, "actions: select-start esc enter start select a b x y l1 r1 up down left right key-z key-x gameplay-probe\n");
+    fprintf(stderr, "actions: select-start esc enter start select a steam-a b steam-b x y l1 r1 up down left right key-z key-x key-up key-down key-left key-right key-a key-s mouse-click gameplay-probe\n");
+}
+
+static bool semu_uses_steam_identity(int argc, char **argv) {
+    for (int i = 1; i < argc; i++) {
+        if (strcmp(argv[i], "select-start") == 0 || strcmp(argv[i], "start") == 0 || strcmp(argv[i], "select") == 0 || strncmp(argv[i], "steam-", 6) == 0) {
+            return true;
+        }
+    }
+    return false;
 }
 
 int main(int argc, char **argv) {
@@ -141,17 +162,18 @@ int main(int argc, char **argv) {
         return 64;
     }
 
-    int fd = semu_open_uinput();
+    int fd = semu_open_uinput(semu_uses_steam_identity(argc, argv));
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "select-start") == 0) {
             semu_select_start(fd);
             continue;
         }
         if (strcmp(argv[i], "gameplay-probe") == 0) {
-            semu_tap(fd, BTN_START);
-            semu_tap(fd, BTN_SOUTH);
-            semu_tap(fd, BTN_DPAD_RIGHT);
-            semu_tap(fd, BTN_SOUTH);
+            semu_tap(fd, KEY_ENTER);
+            usleep(250000);
+            semu_tap(fd, KEY_Z);
+            semu_tap(fd, KEY_RIGHT);
+            semu_tap(fd, KEY_Z);
             continue;
         }
 

@@ -514,9 +514,17 @@ char* retroArchShaderDir(char* project);
 char* retroArchShaderPresetPath(char* project);
 char* retroArchVisualConfigText(char* project);
 char* retroArchProfileText(char* project, KeymapIr* ir);
+btrc_Vector_string* dolphinSection(char* header, btrc_Vector_string* lines);
+btrc_Vector_string* dolphinGcpadLines(void);
 char* dolphinGcpadProfileText(void);
+char* dolphinConfigText(void);
+char* dolphinGcpadRuntimeText(void);
 char* dolphinHotkeysProfileText(KeymapIr* ir);
+btrc_Vector_string* dolphinWiimoteLines(bool classic);
 char* dolphinWiimoteProfileText(bool classic);
+btrc_Vector_string* dolphinWiimoteRuntimeLines(void);
+char* dolphinWiimoteRuntimeText(void);
+char* pcsx2PadBindingsText(void);
 char* pcsx2ProfileText(KeymapIr* ir);
 char* pcsx2BiosDir(char* project);
 char* pcsx2ConfigText(char* project);
@@ -13890,74 +13898,133 @@ char* retroArchProfileText(char* project, KeymapIr* ir) {
     return __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(textLines(__list_454), retroArchVisualConfigText(project))), renderRetroArchKeymap(ir)));
 }
 
-char* dolphinGcpadProfileText(void) {
+btrc_Vector_string* dolphinSection(char* header, btrc_Vector_string* lines) {
     btrc_Vector_string* __list_455 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_455, "[Profile]");
-    btrc_Vector_string_push(__list_455, "Device = SDL/0/Steam Deck Controller");
-    btrc_Vector_string_push(__list_455, "Buttons/A = `Button S`");
-    btrc_Vector_string_push(__list_455, "Buttons/B = `Button W`");
-    btrc_Vector_string_push(__list_455, "Buttons/X = `Button E`");
-    btrc_Vector_string_push(__list_455, "Buttons/Y = `Button N`");
-    btrc_Vector_string_push(__list_455, "Buttons/Z = `Shoulder R`|Back");
-    btrc_Vector_string_push(__list_455, "Buttons/Start = Start");
-    btrc_Vector_string_push(__list_455, "Main Stick/Up = `Axis 1-`");
-    btrc_Vector_string_push(__list_455, "Main Stick/Down = `Axis 1+`");
-    btrc_Vector_string_push(__list_455, "Main Stick/Left = `Axis 0-`");
-    btrc_Vector_string_push(__list_455, "Main Stick/Right = `Axis 0+`");
-    btrc_Vector_string_push(__list_455, "C-Stick/Up = `Axis 4-`");
-    btrc_Vector_string_push(__list_455, "C-Stick/Down = `Axis 4+`");
-    btrc_Vector_string_push(__list_455, "C-Stick/Left = `Axis 3-`");
-    btrc_Vector_string_push(__list_455, "C-Stick/Right = `Axis 3+`");
-    btrc_Vector_string_push(__list_455, "Triggers/L = `Trigger L`");
-    btrc_Vector_string_push(__list_455, "Triggers/R = `Trigger R`");
-    btrc_Vector_string_push(__list_455, "Triggers/L-Analog = `Trigger L`");
-    btrc_Vector_string_push(__list_455, "Triggers/R-Analog = `Trigger R`");
-    btrc_Vector_string_push(__list_455, "D-Pad/Up = `Pad N`");
-    btrc_Vector_string_push(__list_455, "D-Pad/Down = `Pad S`");
-    btrc_Vector_string_push(__list_455, "D-Pad/Left = `Pad W`");
-    btrc_Vector_string_push(__list_455, "D-Pad/Right = `Pad E`");
-    btrc_Vector_string_push(__list_455, "Rumble/Motor = Strong");
-    btrc_Vector_string_push(__list_455, "Options/Always Connected = True");
-    return textLines(__list_455);
+    btrc_Vector_string_push(__list_455, header);
+    btrc_Vector_string* result = __list_455;
+    int __n_457 = btrc_Vector_string_iterLen(lines);
+    for (int __i_456 = 0; (__i_456 < __n_457); (__i_456++)) {
+        char* line = btrc_Vector_string_iterGet(lines, __i_456);
+        btrc_Vector_string_push(result, line);
+    }
+    return result;
+}
+
+btrc_Vector_string* dolphinGcpadLines(void) {
+    btrc_Vector_string* __list_458 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_458, "Device = SDL/0/Steam Deck Controller");
+    btrc_Vector_string_push(__list_458, "Buttons/A = `Button S`");
+    btrc_Vector_string_push(__list_458, "Buttons/B = `Button W`");
+    btrc_Vector_string_push(__list_458, "Buttons/X = `Button E`");
+    btrc_Vector_string_push(__list_458, "Buttons/Y = `Button N`");
+    btrc_Vector_string_push(__list_458, "Buttons/Z = `Shoulder R`|Back");
+    btrc_Vector_string_push(__list_458, "Buttons/Start = Start");
+    btrc_Vector_string_push(__list_458, "Main Stick/Up = `Axis 1-`");
+    btrc_Vector_string_push(__list_458, "Main Stick/Down = `Axis 1+`");
+    btrc_Vector_string_push(__list_458, "Main Stick/Left = `Axis 0-`");
+    btrc_Vector_string_push(__list_458, "Main Stick/Right = `Axis 0+`");
+    btrc_Vector_string_push(__list_458, "C-Stick/Up = `Axis 4-`");
+    btrc_Vector_string_push(__list_458, "C-Stick/Down = `Axis 4+`");
+    btrc_Vector_string_push(__list_458, "C-Stick/Left = `Axis 3-`");
+    btrc_Vector_string_push(__list_458, "C-Stick/Right = `Axis 3+`");
+    btrc_Vector_string_push(__list_458, "Triggers/L = `Trigger L`");
+    btrc_Vector_string_push(__list_458, "Triggers/R = `Trigger R`");
+    btrc_Vector_string_push(__list_458, "Triggers/L-Analog = `Trigger L`");
+    btrc_Vector_string_push(__list_458, "Triggers/R-Analog = `Trigger R`");
+    btrc_Vector_string_push(__list_458, "D-Pad/Up = `Pad N`");
+    btrc_Vector_string_push(__list_458, "D-Pad/Down = `Pad S`");
+    btrc_Vector_string_push(__list_458, "D-Pad/Left = `Pad W`");
+    btrc_Vector_string_push(__list_458, "D-Pad/Right = `Pad E`");
+    btrc_Vector_string_push(__list_458, "Rumble/Motor = Strong");
+    btrc_Vector_string_push(__list_458, "Options/Always Connected = True");
+    return __list_458;
+}
+
+char* dolphinGcpadProfileText(void) {
+    return textLines(dolphinSection("[Profile]", dolphinGcpadLines()));
+}
+
+char* dolphinConfigText(void) {
+    btrc_Vector_string* __list_459 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_459, "[Analytics]");
+    btrc_Vector_string_push(__list_459, "Enabled = False");
+    btrc_Vector_string_push(__list_459, "PermissionAsked = True");
+    btrc_Vector_string_push(__list_459, "");
+    btrc_Vector_string_push(__list_459, "[Core]");
+    btrc_Vector_string_push(__list_459, "SIDevice0 = 6");
+    btrc_Vector_string_push(__list_459, "SIDevice1 = 0");
+    btrc_Vector_string_push(__list_459, "SIDevice2 = 0");
+    btrc_Vector_string_push(__list_459, "SIDevice3 = 0");
+    btrc_Vector_string_push(__list_459, "WiimoteSource0 = 1");
+    btrc_Vector_string_push(__list_459, "WiimoteSource1 = 0");
+    btrc_Vector_string_push(__list_459, "WiimoteSource2 = 0");
+    btrc_Vector_string_push(__list_459, "WiimoteSource3 = 0");
+    btrc_Vector_string_push(__list_459, "");
+    btrc_Vector_string_push(__list_459, "[Interface]");
+    btrc_Vector_string_push(__list_459, "ConfirmStop = False");
+    btrc_Vector_string_push(__list_459, "UsePanicHandlers = False");
+    return textLines(__list_459);
+}
+
+char* dolphinGcpadRuntimeText(void) {
+    btrc_Vector_string* lines = dolphinSection("[GCPad1]", dolphinGcpadLines());
+    btrc_Vector_string_push(lines, "[GCPad2]");
+    btrc_Vector_string_push(lines, "Device = SDL/0/Steam Deck Controller");
+    btrc_Vector_string_push(lines, "[GCPad3]");
+    btrc_Vector_string_push(lines, "Device = SDL/0/Steam Deck Controller");
+    btrc_Vector_string_push(lines, "[GCPad4]");
+    btrc_Vector_string_push(lines, "Device = SDL/0/Steam Deck Controller");
+    return textLines(lines);
 }
 
 char* dolphinHotkeysProfileText(KeymapIr* ir) {
-    btrc_Vector_string* __list_456 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_456, "[Profile]");
-    btrc_Vector_string_push(__list_456, "Device = XInput2/0/Virtual core pointer");
-    btrc_Vector_string* __list_457 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_457, "Emulation Speed/Disable Emulation Speed Limit = Tab");
-    btrc_Vector_string_push(__list_457, "Controller Profile 1/Next Profile = @(Alt+F5)");
-    btrc_Vector_string_push(__list_457, "Other State Hotkeys/Undo Load State = F12");
-    btrc_Vector_string_push(__list_457, "Other State Hotkeys/Undo Save State = @(Shift+F12)");
-    return __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(textLines(__list_456), renderDolphinKeymap(ir))), textLines(__list_457)));
+    btrc_Vector_string* __list_460 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_460, "[Profile]");
+    btrc_Vector_string_push(__list_460, "Device = XInput2/0/Virtual core pointer");
+    btrc_Vector_string* __list_461 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_461, "Emulation Speed/Disable Emulation Speed Limit = Tab");
+    btrc_Vector_string_push(__list_461, "Controller Profile 1/Next Profile = @(Alt+F5)");
+    btrc_Vector_string_push(__list_461, "Other State Hotkeys/Undo Load State = F12");
+    btrc_Vector_string_push(__list_461, "Other State Hotkeys/Undo Save State = @(Shift+F12)");
+    return __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(textLines(__list_460), renderDolphinKeymap(ir))), textLines(__list_461)));
 }
 
-char* dolphinWiimoteProfileText(bool classic) {
-    btrc_Vector_string* __list_458 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_458, "[Profile]");
-    btrc_Vector_string_push(__list_458, "Device = SteamDeck/0/Steam Deck");
-    btrc_Vector_string_push(__list_458, "Buttons/A = `XInput2/0/Virtual core pointer:Click 1`");
-    btrc_Vector_string_push(__list_458, "Buttons/B = `R4`");
-    btrc_Vector_string_push(__list_458, "Buttons/1 = `L4`");
-    btrc_Vector_string_push(__list_458, "Buttons/2 = `L5`");
-    btrc_Vector_string_push(__list_458, "Buttons/- = View");
-    btrc_Vector_string_push(__list_458, "Buttons/+ = Menu");
-    btrc_Vector_string_push(__list_458, "D-Pad/Up = `D-Pad Up`");
-    btrc_Vector_string_push(__list_458, "D-Pad/Down = `D-Pad Down`");
-    btrc_Vector_string_push(__list_458, "D-Pad/Left = `D-Pad Left`");
-    btrc_Vector_string_push(__list_458, "D-Pad/Right = `D-Pad Right`");
-    btrc_Vector_string_push(__list_458, "IR/Vertical Offset = 12.");
-    btrc_Vector_string_push(__list_458, "IR/Total Yaw = 19.");
-    btrc_Vector_string_push(__list_458, "IR/Total Pitch = 22.");
-    btrc_Vector_string_push(__list_458, "IR/Auto-Hide = True");
-    btrc_Vector_string_push(__list_458, "IR/Up = `XInput2/0/Virtual core pointer:Cursor Y-`");
-    btrc_Vector_string_push(__list_458, "IR/Down = `XInput2/0/Virtual core pointer:Cursor Y+`");
-    btrc_Vector_string_push(__list_458, "IR/Left = `XInput2/0/Virtual core pointer:Cursor X-`");
-    btrc_Vector_string_push(__list_458, "IR/Right = `XInput2/0/Virtual core pointer:Cursor X+`");
-    btrc_Vector_string_push(__list_458, "IR/Hide = `Thumb L`");
-    btrc_Vector_string_push(__list_458, "IMUIR/Enabled = False");
-    btrc_Vector_string* lines = __list_458;
+btrc_Vector_string* dolphinWiimoteLines(bool classic) {
+    btrc_Vector_string* __list_462 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_462, "Device = SteamDeck/0/Steam Deck");
+    btrc_Vector_string_push(__list_462, "Buttons/A = `A`|`XInput2/0/Virtual core pointer:Click 1`|`XInput2/0/Virtual core pointer:Return`");
+    btrc_Vector_string_push(__list_462, "Buttons/B = B|`R4`");
+    btrc_Vector_string_push(__list_462, "Buttons/1 = X");
+    btrc_Vector_string_push(__list_462, "Buttons/2 = Y");
+    btrc_Vector_string_push(__list_462, "Buttons/- = View");
+    btrc_Vector_string_push(__list_462, "Buttons/+ = Menu");
+    btrc_Vector_string_push(__list_462, "D-Pad/Up = `D-Pad Up`");
+    btrc_Vector_string_push(__list_462, "D-Pad/Down = `D-Pad Down`");
+    btrc_Vector_string_push(__list_462, "D-Pad/Left = `D-Pad Left`");
+    btrc_Vector_string_push(__list_462, "D-Pad/Right = `D-Pad Right`");
+    btrc_Vector_string_push(__list_462, "IR/Vertical Offset = 12.");
+    btrc_Vector_string_push(__list_462, "IR/Total Yaw = 19.");
+    btrc_Vector_string_push(__list_462, "IR/Total Pitch = 22.");
+    btrc_Vector_string_push(__list_462, "IR/Auto-Hide = True");
+    btrc_Vector_string_push(__list_462, "IR/Up = `XInput2/0/Virtual core pointer:Cursor Y-`");
+    btrc_Vector_string_push(__list_462, "IR/Down = `XInput2/0/Virtual core pointer:Cursor Y+`");
+    btrc_Vector_string_push(__list_462, "IR/Left = `XInput2/0/Virtual core pointer:Cursor X-`");
+    btrc_Vector_string_push(__list_462, "IR/Right = `XInput2/0/Virtual core pointer:Cursor X+`");
+    btrc_Vector_string_push(__list_462, "IR/Hide = `Thumb L`");
+    btrc_Vector_string_push(__list_462, "IMUIR/Enabled = False");
+    btrc_Vector_string_push(__list_462, "IMUAccelerometer/Up = `Accel Up`");
+    btrc_Vector_string_push(__list_462, "IMUAccelerometer/Down = `Accel Down`");
+    btrc_Vector_string_push(__list_462, "IMUAccelerometer/Left = `Accel Left`");
+    btrc_Vector_string_push(__list_462, "IMUAccelerometer/Right = `Accel Right`");
+    btrc_Vector_string_push(__list_462, "IMUAccelerometer/Forward = `Accel Forward`");
+    btrc_Vector_string_push(__list_462, "IMUAccelerometer/Backward = `Accel Backward`");
+    btrc_Vector_string_push(__list_462, "IMUGyroscope/Pitch Up = `Gyro Pitch Up`");
+    btrc_Vector_string_push(__list_462, "IMUGyroscope/Pitch Down = `Gyro Pitch Down`");
+    btrc_Vector_string_push(__list_462, "IMUGyroscope/Roll Left = `Gyro Roll Left`");
+    btrc_Vector_string_push(__list_462, "IMUGyroscope/Roll Right = `Gyro Roll Right`");
+    btrc_Vector_string_push(__list_462, "IMUGyroscope/Yaw Left = `Gyro Yaw Left`");
+    btrc_Vector_string_push(__list_462, "IMUGyroscope/Yaw Right = `Gyro Yaw Right`");
+    btrc_Vector_string* lines = __list_462;
     if (classic) {
         btrc_Vector_string_push(lines, "Extension = Classic");
         btrc_Vector_string_push(lines, "Classic/Buttons/A = B");
@@ -13983,63 +14050,121 @@ char* dolphinWiimoteProfileText(bool classic) {
         btrc_Vector_string_push(lines, "Classic/D-Pad/Left = `D-Pad Left`");
         btrc_Vector_string_push(lines, "Classic/D-Pad/Right = `D-Pad Right`");
     } else {
+        btrc_Vector_string_push(lines, "Extension = Nunchuk");
         btrc_Vector_string_push(lines, "Nunchuk/Buttons/C = `Shoulder R`");
         btrc_Vector_string_push(lines, "Nunchuk/Buttons/Z = `Trigger R`");
-        btrc_Vector_string_push(lines, "Nunchuk/Stick/Up = `Axis 1-`");
-        btrc_Vector_string_push(lines, "Nunchuk/Stick/Down = `Axis 1+`");
-        btrc_Vector_string_push(lines, "Nunchuk/Stick/Left = `Axis 0-`");
-        btrc_Vector_string_push(lines, "Nunchuk/Stick/Right = `Axis 0+`");
+        btrc_Vector_string_push(lines, "Nunchuk/Stick/Up = `Left Stick Y+`");
+        btrc_Vector_string_push(lines, "Nunchuk/Stick/Down = `Left Stick Y-`");
+        btrc_Vector_string_push(lines, "Nunchuk/Stick/Left = `Left Stick X-`");
+        btrc_Vector_string_push(lines, "Nunchuk/Stick/Right = `Left Stick X+`");
     }
     btrc_Vector_string_push(lines, "Rumble/Motor = Strong");
+    return lines;
+}
+
+char* dolphinWiimoteProfileText(bool classic) {
+    return textLines(dolphinSection("[Profile]", dolphinWiimoteLines(classic)));
+}
+
+btrc_Vector_string* dolphinWiimoteRuntimeLines(void) {
+    btrc_Vector_string* __list_463 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_463, "Device = XInput2/0/Virtual core pointer");
+    btrc_Vector_string_push(__list_463, "Buttons/A = Return|`Click 1`|`SteamDeck/0/Steam Deck:A`");
+    btrc_Vector_string_push(__list_463, "Buttons/B = B|`Click 3`|`SteamDeck/0/Steam Deck:B`|`SteamDeck/0/Steam Deck:R4`");
+    btrc_Vector_string_push(__list_463, "Buttons/1 = 1|`SteamDeck/0/Steam Deck:X`");
+    btrc_Vector_string_push(__list_463, "Buttons/2 = 2|`SteamDeck/0/Steam Deck:Y`");
+    btrc_Vector_string_push(__list_463, "Buttons/- = Q|`SteamDeck/0/Steam Deck:View`");
+    btrc_Vector_string_push(__list_463, "Buttons/+ = E|`SteamDeck/0/Steam Deck:Menu`");
+    btrc_Vector_string_push(__list_463, "Buttons/Home = Return");
+    btrc_Vector_string_push(__list_463, "D-Pad/Up = Up|`SteamDeck/0/Steam Deck:D-Pad Up`");
+    btrc_Vector_string_push(__list_463, "D-Pad/Down = Down|`SteamDeck/0/Steam Deck:D-Pad Down`");
+    btrc_Vector_string_push(__list_463, "D-Pad/Left = Left|`SteamDeck/0/Steam Deck:D-Pad Left`");
+    btrc_Vector_string_push(__list_463, "D-Pad/Right = Right|`SteamDeck/0/Steam Deck:D-Pad Right`");
+    btrc_Vector_string_push(__list_463, "IR/Vertical Offset = 12.");
+    btrc_Vector_string_push(__list_463, "IR/Total Yaw = 19.");
+    btrc_Vector_string_push(__list_463, "IR/Total Pitch = 22.");
+    btrc_Vector_string_push(__list_463, "IR/Auto-Hide = True");
+    btrc_Vector_string_push(__list_463, "IR/Up = `Cursor Y-`");
+    btrc_Vector_string_push(__list_463, "IR/Down = `Cursor Y+`");
+    btrc_Vector_string_push(__list_463, "IR/Left = `Cursor X-`");
+    btrc_Vector_string_push(__list_463, "IR/Right = `Cursor X+`");
+    btrc_Vector_string_push(__list_463, "IR/Hide = `SteamDeck/0/Steam Deck:Thumb L`");
+    btrc_Vector_string_push(__list_463, "IMUIR/Enabled = False");
+    btrc_Vector_string_push(__list_463, "Extension = Nunchuk");
+    btrc_Vector_string_push(__list_463, "Nunchuk/Buttons/C = `SteamDeck/0/Steam Deck:Shoulder R`");
+    btrc_Vector_string_push(__list_463, "Nunchuk/Buttons/Z = `SteamDeck/0/Steam Deck:Trigger R`");
+    btrc_Vector_string_push(__list_463, "Nunchuk/Stick/Up = `SteamDeck/0/Steam Deck:Left Stick Y+`");
+    btrc_Vector_string_push(__list_463, "Nunchuk/Stick/Down = `SteamDeck/0/Steam Deck:Left Stick Y-`");
+    btrc_Vector_string_push(__list_463, "Nunchuk/Stick/Left = `SteamDeck/0/Steam Deck:Left Stick X-`");
+    btrc_Vector_string_push(__list_463, "Nunchuk/Stick/Right = `SteamDeck/0/Steam Deck:Left Stick X+`");
+    btrc_Vector_string_push(__list_463, "Rumble/Motor = Strong");
+    return __list_463;
+}
+
+char* dolphinWiimoteRuntimeText(void) {
+    btrc_Vector_string* lines = dolphinSection("[Wiimote1]", dolphinWiimoteRuntimeLines());
+    btrc_Vector_string_push(lines, "Source = 1");
+    btrc_Vector_string_push(lines, "[Wiimote2]");
+    btrc_Vector_string_push(lines, "Device = SteamDeck/0/Steam Deck");
+    btrc_Vector_string_push(lines, "[Wiimote3]");
+    btrc_Vector_string_push(lines, "Device = SteamDeck/0/Steam Deck");
+    btrc_Vector_string_push(lines, "[Wiimote4]");
+    btrc_Vector_string_push(lines, "Device = SteamDeck/0/Steam Deck");
+    btrc_Vector_string_push(lines, "[BalanceBoard]");
+    btrc_Vector_string_push(lines, "Device = SteamDeck/0/Steam Deck");
     return textLines(lines);
 }
 
+char* pcsx2PadBindingsText(void) {
+    btrc_Vector_string* __list_464 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_464, "[Pad]");
+    btrc_Vector_string_push(__list_464, "UseProfileHotkeyBindings = true");
+    btrc_Vector_string_push(__list_464, "MultitapPort1 = false");
+    btrc_Vector_string_push(__list_464, "MultitapPort2 = false");
+    btrc_Vector_string_push(__list_464, "");
+    btrc_Vector_string_push(__list_464, "[InputSources]");
+    btrc_Vector_string_push(__list_464, "Keyboard = true");
+    btrc_Vector_string_push(__list_464, "Mouse = true");
+    btrc_Vector_string_push(__list_464, "SDL = true");
+    btrc_Vector_string_push(__list_464, "DInput = false");
+    btrc_Vector_string_push(__list_464, "XInput = false");
+    btrc_Vector_string_push(__list_464, "");
+    btrc_Vector_string_push(__list_464, "[Pad1]");
+    btrc_Vector_string_push(__list_464, "Type = DualShock2");
+    btrc_Vector_string_push(__list_464, "Up = SDL-1/DPadUp | Keyboard/Up");
+    btrc_Vector_string_push(__list_464, "Right = SDL-1/DPadRight | Keyboard/Right");
+    btrc_Vector_string_push(__list_464, "Down = SDL-1/DPadDown | Keyboard/Down");
+    btrc_Vector_string_push(__list_464, "Left = SDL-1/DPadLeft | Keyboard/Left");
+    btrc_Vector_string_push(__list_464, "Triangle = SDL-1/Y | Keyboard/I");
+    btrc_Vector_string_push(__list_464, "Circle = SDL-1/B | Keyboard/X");
+    btrc_Vector_string_push(__list_464, "Cross = SDL-1/A | Keyboard/Z");
+    btrc_Vector_string_push(__list_464, "Square = SDL-1/X | Keyboard/A");
+    btrc_Vector_string_push(__list_464, "Select = SDL-1/Back | Keyboard/Backspace");
+    btrc_Vector_string_push(__list_464, "Start = SDL-1/Start | Keyboard/Enter");
+    btrc_Vector_string_push(__list_464, "L1 = SDL-1/LeftShoulder");
+    btrc_Vector_string_push(__list_464, "L2 = SDL-1/+LeftTrigger");
+    btrc_Vector_string_push(__list_464, "R1 = SDL-1/RightShoulder");
+    btrc_Vector_string_push(__list_464, "R2 = SDL-1/+RightTrigger");
+    btrc_Vector_string_push(__list_464, "L3 = SDL-1/LeftStick");
+    btrc_Vector_string_push(__list_464, "R3 = SDL-1/RightStick");
+    btrc_Vector_string_push(__list_464, "LUp = SDL-1/-LeftY");
+    btrc_Vector_string_push(__list_464, "LRight = SDL-1/+LeftX");
+    btrc_Vector_string_push(__list_464, "LDown = SDL-1/+LeftY");
+    btrc_Vector_string_push(__list_464, "LLeft = SDL-1/-LeftX");
+    btrc_Vector_string_push(__list_464, "RUp = SDL-1/-RightY");
+    btrc_Vector_string_push(__list_464, "RRight = SDL-1/+RightX");
+    btrc_Vector_string_push(__list_464, "RDown = SDL-1/+RightY");
+    btrc_Vector_string_push(__list_464, "RLeft = SDL-1/-RightX");
+    btrc_Vector_string_push(__list_464, "");
+    btrc_Vector_string_push(__list_464, "[Pad2]");
+    btrc_Vector_string_push(__list_464, "Type = None");
+    return textLines(__list_464);
+}
+
 char* pcsx2ProfileText(KeymapIr* ir) {
-    btrc_Vector_string* __list_459 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_459, "[Pad]");
-    btrc_Vector_string_push(__list_459, "UseProfileHotkeyBindings = true");
-    btrc_Vector_string_push(__list_459, "MultitapPort1 = false");
-    btrc_Vector_string_push(__list_459, "MultitapPort2 = false");
-    btrc_Vector_string_push(__list_459, "");
-    btrc_Vector_string_push(__list_459, "[InputSources]");
-    btrc_Vector_string_push(__list_459, "Keyboard = true");
-    btrc_Vector_string_push(__list_459, "Mouse = true");
-    btrc_Vector_string_push(__list_459, "SDL = true");
-    btrc_Vector_string_push(__list_459, "DInput = false");
-    btrc_Vector_string_push(__list_459, "XInput = false");
-    btrc_Vector_string_push(__list_459, "");
-    btrc_Vector_string_push(__list_459, "[Pad1]");
-    btrc_Vector_string_push(__list_459, "Type = DualShock2");
-    btrc_Vector_string_push(__list_459, "Up = SDL-1/DPadUp");
-    btrc_Vector_string_push(__list_459, "Right = SDL-1/DPadRight");
-    btrc_Vector_string_push(__list_459, "Down = SDL-1/DPadDown");
-    btrc_Vector_string_push(__list_459, "Left = SDL-1/DPadLeft");
-    btrc_Vector_string_push(__list_459, "Triangle = SDL-1/Y");
-    btrc_Vector_string_push(__list_459, "Circle = SDL-1/B");
-    btrc_Vector_string_push(__list_459, "Cross = SDL-1/A");
-    btrc_Vector_string_push(__list_459, "Square = SDL-1/X");
-    btrc_Vector_string_push(__list_459, "Select = SDL-1/Back");
-    btrc_Vector_string_push(__list_459, "Start = SDL-1/Start");
-    btrc_Vector_string_push(__list_459, "L1 = SDL-1/LeftShoulder");
-    btrc_Vector_string_push(__list_459, "L2 = SDL-1/+LeftTrigger");
-    btrc_Vector_string_push(__list_459, "R1 = SDL-1/RightShoulder");
-    btrc_Vector_string_push(__list_459, "R2 = SDL-1/+RightTrigger");
-    btrc_Vector_string_push(__list_459, "L3 = SDL-1/LeftStick");
-    btrc_Vector_string_push(__list_459, "R3 = SDL-1/RightStick");
-    btrc_Vector_string_push(__list_459, "LUp = SDL-1/-LeftY");
-    btrc_Vector_string_push(__list_459, "LRight = SDL-1/+LeftX");
-    btrc_Vector_string_push(__list_459, "LDown = SDL-1/+LeftY");
-    btrc_Vector_string_push(__list_459, "LLeft = SDL-1/-LeftX");
-    btrc_Vector_string_push(__list_459, "RUp = SDL-1/-RightY");
-    btrc_Vector_string_push(__list_459, "RRight = SDL-1/+RightX");
-    btrc_Vector_string_push(__list_459, "RDown = SDL-1/+RightY");
-    btrc_Vector_string_push(__list_459, "RLeft = SDL-1/-RightX");
-    btrc_Vector_string_push(__list_459, "");
-    btrc_Vector_string_push(__list_459, "[Pad2]");
-    btrc_Vector_string_push(__list_459, "Type = None");
-    btrc_Vector_string_push(__list_459, "");
-    btrc_Vector_string_push(__list_459, "[Hotkeys]");
-    return __btrc_str_track(__btrc_strcat(textLines(__list_459), renderPcsx2Keymap(ir)));
+    btrc_Vector_string* __list_465 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_465, "[Hotkeys]");
+    return __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(pcsx2PadBindingsText(), textLines(__list_465))), renderPcsx2Keymap(ir)));
 }
 
 char* pcsx2BiosDir(char* project) {
@@ -14051,90 +14176,85 @@ char* pcsx2BiosDir(char* project) {
 }
 
 char* pcsx2ConfigText(char* project) {
-    btrc_Vector_string* __list_460 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_460, "[UI]");
-    btrc_Vector_string_push(__list_460, "SettingsVersion = 1");
-    btrc_Vector_string_push(__list_460, "InhibitScreensaver = true");
-    btrc_Vector_string_push(__list_460, "ConfirmShutdown = false");
-    btrc_Vector_string_push(__list_460, "StartPaused = false");
-    btrc_Vector_string_push(__list_460, "PauseOnFocusLoss = false");
-    btrc_Vector_string_push(__list_460, "StartFullscreen = true");
-    btrc_Vector_string_push(__list_460, "DoubleClickTogglesFullscreen = true");
-    btrc_Vector_string_push(__list_460, "HideMouseCursor = true");
-    btrc_Vector_string_push(__list_460, "RenderToSeparateWindow = false");
-    btrc_Vector_string_push(__list_460, "HideMainWindowWhenRunning = true");
-    btrc_Vector_string_push(__list_460, "DisableWindowResize = false");
-    btrc_Vector_string_push(__list_460, "PreferEnglishGameList = false");
-    btrc_Vector_string_push(__list_460, "Theme = darkfusionblue");
-    btrc_Vector_string_push(__list_460, "SetupWizardIncomplete = false");
-    btrc_Vector_string_push(__list_460, "");
-    btrc_Vector_string_push(__list_460, "[Folders]");
-    btrc_Vector_string_push(__list_460, __btrc_str_track(__btrc_strcat("Bios = ", pcsx2BiosDir(project))));
-    btrc_Vector_string_push(__list_460, "Snapshots = snaps");
-    btrc_Vector_string_push(__list_460, "Savestates = sstates");
-    btrc_Vector_string_push(__list_460, "MemoryCards = memcards");
-    btrc_Vector_string_push(__list_460, "Logs = logs");
-    btrc_Vector_string_push(__list_460, "Cheats = cheats");
-    btrc_Vector_string_push(__list_460, "Patches = patches");
-    btrc_Vector_string_push(__list_460, "UserResources = resources");
-    btrc_Vector_string_push(__list_460, "Cache = cache");
-    btrc_Vector_string_push(__list_460, "Textures = textures");
-    btrc_Vector_string_push(__list_460, "InputProfiles = inputprofiles");
-    btrc_Vector_string_push(__list_460, "");
-    btrc_Vector_string_push(__list_460, "[EmuCore]");
-    btrc_Vector_string_push(__list_460, "EnablePatches = true");
-    btrc_Vector_string_push(__list_460, "EnableWideScreenPatches = false");
-    btrc_Vector_string_push(__list_460, "EnableFastBoot = true");
-    btrc_Vector_string_push(__list_460, "UseSavestateSelector = true");
-    btrc_Vector_string_push(__list_460, "McdFolderAutoManage = true");
-    btrc_Vector_string_push(__list_460, "");
-    btrc_Vector_string_push(__list_460, "[EmuCore/GS]");
-    btrc_Vector_string_push(__list_460, "AspectRatio = Auto 4:3/3:2");
-    btrc_Vector_string_push(__list_460, "IntegerScaling = true");
-    btrc_Vector_string_push(__list_460, "Renderer = -1");
-    btrc_Vector_string_push(__list_460, "upscale_multiplier = 1");
-    btrc_Vector_string_push(__list_460, "filter = 0");
-    btrc_Vector_string_push(__list_460, "VsyncEnable = true");
-    btrc_Vector_string_push(__list_460, "");
-    btrc_Vector_string_push(__list_460, "[InputSources]");
-    btrc_Vector_string_push(__list_460, "Keyboard = true");
-    btrc_Vector_string_push(__list_460, "Mouse = true");
-    btrc_Vector_string_push(__list_460, "SDL = true");
-    btrc_Vector_string_push(__list_460, "SDLControllerEnhancedMode = true");
-    return textLines(__list_460);
+    btrc_Vector_string* __list_466 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_466, "[UI]");
+    btrc_Vector_string_push(__list_466, "SettingsVersion = 1");
+    btrc_Vector_string_push(__list_466, "InhibitScreensaver = true");
+    btrc_Vector_string_push(__list_466, "ConfirmShutdown = false");
+    btrc_Vector_string_push(__list_466, "StartPaused = false");
+    btrc_Vector_string_push(__list_466, "PauseOnFocusLoss = false");
+    btrc_Vector_string_push(__list_466, "StartFullscreen = true");
+    btrc_Vector_string_push(__list_466, "DoubleClickTogglesFullscreen = true");
+    btrc_Vector_string_push(__list_466, "HideMouseCursor = true");
+    btrc_Vector_string_push(__list_466, "RenderToSeparateWindow = false");
+    btrc_Vector_string_push(__list_466, "HideMainWindowWhenRunning = true");
+    btrc_Vector_string_push(__list_466, "DisableWindowResize = false");
+    btrc_Vector_string_push(__list_466, "PreferEnglishGameList = false");
+    btrc_Vector_string_push(__list_466, "Theme = darkfusionblue");
+    btrc_Vector_string_push(__list_466, "SetupWizardIncomplete = false");
+    btrc_Vector_string_push(__list_466, "");
+    btrc_Vector_string_push(__list_466, "[Folders]");
+    btrc_Vector_string_push(__list_466, __btrc_str_track(__btrc_strcat("Bios = ", pcsx2BiosDir(project))));
+    btrc_Vector_string_push(__list_466, "Snapshots = snaps");
+    btrc_Vector_string_push(__list_466, "Savestates = sstates");
+    btrc_Vector_string_push(__list_466, "MemoryCards = memcards");
+    btrc_Vector_string_push(__list_466, "Logs = logs");
+    btrc_Vector_string_push(__list_466, "Cheats = cheats");
+    btrc_Vector_string_push(__list_466, "Patches = patches");
+    btrc_Vector_string_push(__list_466, "UserResources = resources");
+    btrc_Vector_string_push(__list_466, "Cache = cache");
+    btrc_Vector_string_push(__list_466, "Textures = textures");
+    btrc_Vector_string_push(__list_466, "InputProfiles = inputprofiles");
+    btrc_Vector_string_push(__list_466, "");
+    btrc_Vector_string_push(__list_466, "[EmuCore]");
+    btrc_Vector_string_push(__list_466, "EnablePatches = true");
+    btrc_Vector_string_push(__list_466, "EnableWideScreenPatches = false");
+    btrc_Vector_string_push(__list_466, "EnableFastBoot = true");
+    btrc_Vector_string_push(__list_466, "UseSavestateSelector = true");
+    btrc_Vector_string_push(__list_466, "McdFolderAutoManage = true");
+    btrc_Vector_string_push(__list_466, "");
+    btrc_Vector_string_push(__list_466, "[EmuCore/GS]");
+    btrc_Vector_string_push(__list_466, "AspectRatio = Auto 4:3/3:2");
+    btrc_Vector_string_push(__list_466, "IntegerScaling = true");
+    btrc_Vector_string_push(__list_466, "Renderer = -1");
+    btrc_Vector_string_push(__list_466, "upscale_multiplier = 1");
+    btrc_Vector_string_push(__list_466, "filter = 0");
+    btrc_Vector_string_push(__list_466, "VsyncEnable = true");
+    btrc_Vector_string_push(__list_466, "");
+    return __btrc_str_track(__btrc_strcat(textLines(__list_466), pcsx2PadBindingsText()));
 }
 
 char* azaharConfigTextForDataRoot(char* dataRoot) {
     char* azaharRoot = joinPath(dataRoot, "azahar-emu");
-    btrc_Vector_string* __list_461 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_461, "[Data%20Storage]");
-    btrc_Vector_string_push(__list_461, __btrc_str_track(__btrc_strcat("nand_directory=", joinPath(azaharRoot, "nand/"))));
-    btrc_Vector_string_push(__list_461, "nand_directory\\default=false");
-    btrc_Vector_string_push(__list_461, __btrc_str_track(__btrc_strcat("sdmc_directory=", joinPath(azaharRoot, "sdmc/"))));
-    btrc_Vector_string_push(__list_461, "sdmc_directory\\default=false");
-    btrc_Vector_string_push(__list_461, "use_custom_storage=false");
-    btrc_Vector_string_push(__list_461, "use_custom_storage\\default=true");
-    btrc_Vector_string_push(__list_461, "use_virtual_sd=true");
-    btrc_Vector_string_push(__list_461, "use_virtual_sd\\default=true");
-    btrc_Vector_string_push(__list_461, "");
-    btrc_Vector_string_push(__list_461, "[Debugging]");
-    btrc_Vector_string_push(__list_461, "renderer_debug=false");
-    btrc_Vector_string_push(__list_461, "renderer_debug\\default=false");
-    btrc_Vector_string_push(__list_461, "");
-    btrc_Vector_string_push(__list_461, "[Renderer]");
-    btrc_Vector_string_push(__list_461, "graphics_api=1");
-    btrc_Vector_string_push(__list_461, "graphics_api\\default=false");
-    btrc_Vector_string_push(__list_461, "");
-    btrc_Vector_string_push(__list_461, "[UI]");
-    btrc_Vector_string_push(__list_461, "confirmClose=false");
-    btrc_Vector_string_push(__list_461, "confirmClose\\default=false");
-    btrc_Vector_string_push(__list_461, "firstStart=false");
-    btrc_Vector_string_push(__list_461, "firstStart\\default=false");
-    btrc_Vector_string_push(__list_461, "fullscreen=true");
-    btrc_Vector_string_push(__list_461, "fullscreen\\default=false");
-    btrc_Vector_string_push(__list_461, "saveStateWarning=false");
-    btrc_Vector_string_push(__list_461, "saveStateWarning\\default=false");
-    return textLines(__list_461);
+    btrc_Vector_string* __list_467 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_467, "[Data%20Storage]");
+    btrc_Vector_string_push(__list_467, __btrc_str_track(__btrc_strcat("nand_directory=", joinPath(azaharRoot, "nand/"))));
+    btrc_Vector_string_push(__list_467, "nand_directory\\default=false");
+    btrc_Vector_string_push(__list_467, __btrc_str_track(__btrc_strcat("sdmc_directory=", joinPath(azaharRoot, "sdmc/"))));
+    btrc_Vector_string_push(__list_467, "sdmc_directory\\default=false");
+    btrc_Vector_string_push(__list_467, "use_custom_storage=false");
+    btrc_Vector_string_push(__list_467, "use_custom_storage\\default=true");
+    btrc_Vector_string_push(__list_467, "use_virtual_sd=true");
+    btrc_Vector_string_push(__list_467, "use_virtual_sd\\default=true");
+    btrc_Vector_string_push(__list_467, "");
+    btrc_Vector_string_push(__list_467, "[Debugging]");
+    btrc_Vector_string_push(__list_467, "renderer_debug=false");
+    btrc_Vector_string_push(__list_467, "renderer_debug\\default=false");
+    btrc_Vector_string_push(__list_467, "");
+    btrc_Vector_string_push(__list_467, "[Renderer]");
+    btrc_Vector_string_push(__list_467, "graphics_api=1");
+    btrc_Vector_string_push(__list_467, "graphics_api\\default=false");
+    btrc_Vector_string_push(__list_467, "");
+    btrc_Vector_string_push(__list_467, "[UI]");
+    btrc_Vector_string_push(__list_467, "confirmClose=false");
+    btrc_Vector_string_push(__list_467, "confirmClose\\default=false");
+    btrc_Vector_string_push(__list_467, "firstStart=false");
+    btrc_Vector_string_push(__list_467, "firstStart\\default=false");
+    btrc_Vector_string_push(__list_467, "fullscreen=true");
+    btrc_Vector_string_push(__list_467, "fullscreen\\default=false");
+    btrc_Vector_string_push(__list_467, "saveStateWarning=false");
+    btrc_Vector_string_push(__list_467, "saveStateWarning\\default=false");
+    return textLines(__list_467);
 }
 
 char* azaharConfigText(char* project) {
@@ -14146,57 +14266,57 @@ char* cemuProfileText(void) {
 }
 
 char* ryujinxProfileText(void) {
-    btrc_Vector_string* __list_462 = btrc_Vector_string_new();
-    btrc_Vector_string* __list_463 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_463, jsonStrField("joystick", "Left"));
-    btrc_Vector_string_push(__list_463, jsonBoolField("invert_stick_x", false));
-    btrc_Vector_string_push(__list_463, jsonBoolField("invert_stick_y", false));
-    btrc_Vector_string_push(__list_463, jsonStrField("stick_button", "LeftStick"));
-    btrc_Vector_string_push(__list_462, jsonField("left_joycon_stick", jsonObject(__list_463)));
-    btrc_Vector_string* __list_464 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_464, jsonStrField("joystick", "Right"));
-    btrc_Vector_string_push(__list_464, jsonBoolField("invert_stick_x", false));
-    btrc_Vector_string_push(__list_464, jsonBoolField("invert_stick_y", false));
-    btrc_Vector_string_push(__list_464, jsonStrField("stick_button", "RightStick"));
-    btrc_Vector_string_push(__list_462, jsonField("right_joycon_stick", jsonObject(__list_464)));
-    btrc_Vector_string* __list_465 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_465, jsonField("slot", "0"));
-    btrc_Vector_string_push(__list_465, jsonField("alt_slot", "0"));
-    btrc_Vector_string_push(__list_465, jsonBoolField("mirror_input", false));
-    btrc_Vector_string_push(__list_465, jsonStrField("motion_backend", "CemuHook"));
-    btrc_Vector_string_push(__list_465, jsonField("sensitivity", "100"));
-    btrc_Vector_string_push(__list_465, jsonField("gyro_deadzone", "1"));
-    btrc_Vector_string_push(__list_465, jsonBoolField("enable_motion", false));
-    btrc_Vector_string_push(__list_462, jsonField("motion", jsonObject(__list_465)));
-    btrc_Vector_string* __list_466 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_466, jsonField("strong_rumble", "1"));
-    btrc_Vector_string_push(__list_466, jsonField("weak_rumble", "1"));
-    btrc_Vector_string_push(__list_466, jsonBoolField("enable_rumble", true));
-    btrc_Vector_string_push(__list_462, jsonField("rumble", jsonObject(__list_466)));
-    btrc_Vector_string* __list_467 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_467, jsonStrField("button_minus", "Back"));
-    btrc_Vector_string_push(__list_467, jsonStrField("button_l", "LeftShoulder"));
-    btrc_Vector_string_push(__list_467, jsonStrField("button_zl", "LeftTrigger"));
-    btrc_Vector_string_push(__list_467, jsonStrField("dpad_up", "DpadUp"));
-    btrc_Vector_string_push(__list_467, jsonStrField("dpad_down", "DpadDown"));
-    btrc_Vector_string_push(__list_467, jsonStrField("dpad_left", "DpadLeft"));
-    btrc_Vector_string_push(__list_467, jsonStrField("dpad_right", "DpadRight"));
-    btrc_Vector_string_push(__list_462, jsonField("left_joycon", jsonObject(__list_467)));
     btrc_Vector_string* __list_468 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_468, jsonStrField("button_plus", "Start"));
-    btrc_Vector_string_push(__list_468, jsonStrField("button_r", "RightShoulder"));
-    btrc_Vector_string_push(__list_468, jsonStrField("button_zr", "RightTrigger"));
-    btrc_Vector_string_push(__list_468, jsonStrField("button_x", "Y"));
-    btrc_Vector_string_push(__list_468, jsonStrField("button_b", "A"));
-    btrc_Vector_string_push(__list_468, jsonStrField("button_y", "X"));
-    btrc_Vector_string_push(__list_468, jsonStrField("button_a", "B"));
-    btrc_Vector_string_push(__list_462, jsonField("right_joycon", jsonObject(__list_468)));
-    btrc_Vector_string_push(__list_462, jsonField("version", "1"));
-    btrc_Vector_string_push(__list_462, jsonStrField("backend", "GamepadSDL2"));
-    btrc_Vector_string_push(__list_462, jsonStrField("id", "0-f7390003-28de-0000-ff11-000001000000"));
-    btrc_Vector_string_push(__list_462, jsonStrField("controller_type", "ProController"));
-    btrc_Vector_string_push(__list_462, jsonStrField("player_index", "Player1"));
-    return __btrc_str_track(__btrc_strcat(jsonObject(__list_462), "\n"));
+    btrc_Vector_string* __list_469 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_469, jsonStrField("joystick", "Left"));
+    btrc_Vector_string_push(__list_469, jsonBoolField("invert_stick_x", false));
+    btrc_Vector_string_push(__list_469, jsonBoolField("invert_stick_y", false));
+    btrc_Vector_string_push(__list_469, jsonStrField("stick_button", "LeftStick"));
+    btrc_Vector_string_push(__list_468, jsonField("left_joycon_stick", jsonObject(__list_469)));
+    btrc_Vector_string* __list_470 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_470, jsonStrField("joystick", "Right"));
+    btrc_Vector_string_push(__list_470, jsonBoolField("invert_stick_x", false));
+    btrc_Vector_string_push(__list_470, jsonBoolField("invert_stick_y", false));
+    btrc_Vector_string_push(__list_470, jsonStrField("stick_button", "RightStick"));
+    btrc_Vector_string_push(__list_468, jsonField("right_joycon_stick", jsonObject(__list_470)));
+    btrc_Vector_string* __list_471 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_471, jsonField("slot", "0"));
+    btrc_Vector_string_push(__list_471, jsonField("alt_slot", "0"));
+    btrc_Vector_string_push(__list_471, jsonBoolField("mirror_input", false));
+    btrc_Vector_string_push(__list_471, jsonStrField("motion_backend", "CemuHook"));
+    btrc_Vector_string_push(__list_471, jsonField("sensitivity", "100"));
+    btrc_Vector_string_push(__list_471, jsonField("gyro_deadzone", "1"));
+    btrc_Vector_string_push(__list_471, jsonBoolField("enable_motion", false));
+    btrc_Vector_string_push(__list_468, jsonField("motion", jsonObject(__list_471)));
+    btrc_Vector_string* __list_472 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_472, jsonField("strong_rumble", "1"));
+    btrc_Vector_string_push(__list_472, jsonField("weak_rumble", "1"));
+    btrc_Vector_string_push(__list_472, jsonBoolField("enable_rumble", true));
+    btrc_Vector_string_push(__list_468, jsonField("rumble", jsonObject(__list_472)));
+    btrc_Vector_string* __list_473 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_473, jsonStrField("button_minus", "Back"));
+    btrc_Vector_string_push(__list_473, jsonStrField("button_l", "LeftShoulder"));
+    btrc_Vector_string_push(__list_473, jsonStrField("button_zl", "LeftTrigger"));
+    btrc_Vector_string_push(__list_473, jsonStrField("dpad_up", "DpadUp"));
+    btrc_Vector_string_push(__list_473, jsonStrField("dpad_down", "DpadDown"));
+    btrc_Vector_string_push(__list_473, jsonStrField("dpad_left", "DpadLeft"));
+    btrc_Vector_string_push(__list_473, jsonStrField("dpad_right", "DpadRight"));
+    btrc_Vector_string_push(__list_468, jsonField("left_joycon", jsonObject(__list_473)));
+    btrc_Vector_string* __list_474 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_474, jsonStrField("button_plus", "Start"));
+    btrc_Vector_string_push(__list_474, jsonStrField("button_r", "RightShoulder"));
+    btrc_Vector_string_push(__list_474, jsonStrField("button_zr", "RightTrigger"));
+    btrc_Vector_string_push(__list_474, jsonStrField("button_x", "Y"));
+    btrc_Vector_string_push(__list_474, jsonStrField("button_b", "A"));
+    btrc_Vector_string_push(__list_474, jsonStrField("button_y", "X"));
+    btrc_Vector_string_push(__list_474, jsonStrField("button_a", "B"));
+    btrc_Vector_string_push(__list_468, jsonField("right_joycon", jsonObject(__list_474)));
+    btrc_Vector_string_push(__list_468, jsonField("version", "1"));
+    btrc_Vector_string_push(__list_468, jsonStrField("backend", "GamepadSDL2"));
+    btrc_Vector_string_push(__list_468, jsonStrField("id", "0-f7390003-28de-0000-ff11-000001000000"));
+    btrc_Vector_string_push(__list_468, jsonStrField("controller_type", "ProController"));
+    btrc_Vector_string_push(__list_468, jsonStrField("player_index", "Player1"));
+    return __btrc_str_track(__btrc_strcat(jsonObject(__list_468), "\n"));
 }
 
 void writeGeneratedManifest(char* output) {
@@ -14268,9 +14388,9 @@ void seedBundledDirFiles(char* project, char* relative, bool executable) {
         return;
     }
     ensureDir(joinPath(project, relative));
-    int __n_470 = btrc_Vector_string_iterLen(FileSystem_listDir(sourceDir));
-    for (int __i_469 = 0; (__i_469 < __n_470); (__i_469++)) {
-        char* name = btrc_Vector_string_iterGet(FileSystem_listDir(sourceDir), __i_469);
+    int __n_476 = btrc_Vector_string_iterLen(FileSystem_listDir(sourceDir));
+    for (int __i_475 = 0; (__i_475 < __n_476); (__i_475++)) {
+        char* name = btrc_Vector_string_iterGet(FileSystem_listDir(sourceDir), __i_475);
         char* source = joinPath(sourceDir, name);
         if (FileSystem_isFile(source)) {
             seedBundledFileFromRoot(root, project, joinPath(relative, name), executable);
@@ -14288,23 +14408,23 @@ void writeGeneratedExecutableText(char* project, char* path, char* text) {
 }
 
 btrc_Vector_string* managedLinuxLauncherFiles(void) {
-    btrc_Vector_string* __list_471 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_471, "semu-btrc");
-    btrc_Vector_string_push(__list_471, "semu-flatpak");
-    btrc_Vector_string_push(__list_471, "semu-settings");
-    btrc_Vector_string* files = __list_471;
-    int __n_473 = btrc_Vector_string_iterLen(linuxLauncherNames());
-    for (int __i_472 = 0; (__i_472 < __n_473); (__i_472++)) {
-        char* emulator = btrc_Vector_string_iterGet(linuxLauncherNames(), __i_472);
+    btrc_Vector_string* __list_477 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_477, "semu-btrc");
+    btrc_Vector_string_push(__list_477, "semu-flatpak");
+    btrc_Vector_string_push(__list_477, "semu-settings");
+    btrc_Vector_string* files = __list_477;
+    int __n_479 = btrc_Vector_string_iterLen(linuxLauncherNames());
+    for (int __i_478 = 0; (__i_478 < __n_479); (__i_478++)) {
+        char* emulator = btrc_Vector_string_iterGet(linuxLauncherNames(), __i_478);
         btrc_Vector_string_push(files, semuLauncherName(emulator));
     }
     return files;
 }
 
 btrc_Vector_string* obsoleteLinuxStateDirs(void) {
-    btrc_Vector_string* __list_474 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_474, "gopher64");
-    return __list_474;
+    btrc_Vector_string* __list_480 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_480, "gopher64");
+    return __list_480;
 }
 
 void SemuUpgradeCleanup_pruneLinuxLaunchers(char* project) {
@@ -14313,9 +14433,9 @@ void SemuUpgradeCleanup_pruneLinuxLaunchers(char* project) {
         return;
     }
     btrc_Vector_string* managed = managedLinuxLauncherFiles();
-    int __n_476 = btrc_Vector_string_iterLen(FileSystem_listDir(bin));
-    for (int __i_475 = 0; (__i_475 < __n_476); (__i_475++)) {
-        char* name = btrc_Vector_string_iterGet(FileSystem_listDir(bin), __i_475);
+    int __n_482 = btrc_Vector_string_iterLen(FileSystem_listDir(bin));
+    for (int __i_481 = 0; (__i_481 < __n_482); (__i_481++)) {
+        char* name = btrc_Vector_string_iterGet(FileSystem_listDir(bin), __i_481);
         if (!__btrc_startsWith(name, "semu-")) {
             continue;
         }
@@ -14328,9 +14448,9 @@ void SemuUpgradeCleanup_pruneLinuxLaunchers(char* project) {
 
 void SemuUpgradeCleanup_pruneObsoleteState(char* project) {
     char* stateRoot = joinPath(semuStateRoot(project), "appimage-state");
-    int __n_478 = btrc_Vector_string_iterLen(obsoleteLinuxStateDirs());
-    for (int __i_477 = 0; (__i_477 < __n_478); (__i_477++)) {
-        char* name = btrc_Vector_string_iterGet(obsoleteLinuxStateDirs(), __i_477);
+    int __n_484 = btrc_Vector_string_iterLen(obsoleteLinuxStateDirs());
+    for (int __i_483 = 0; (__i_483 < __n_484); (__i_483++)) {
+        char* name = btrc_Vector_string_iterGet(obsoleteLinuxStateDirs(), __i_483);
         removePath(joinPath(stateRoot, name));
     }
 }
@@ -14366,9 +14486,9 @@ void seedPortableLinuxShims(char* project) {
     writeGeneratedExecutableText(project, joinPath(project, "packaging/linux/bin/semu-btrc"), linuxBtrcShimText());
     writeGeneratedExecutableText(project, joinPath(project, "packaging/linux/bin/semu-flatpak"), linuxFlatpakShimText());
     writeGeneratedExecutableText(project, joinPath(project, "packaging/linux/bin/semu-settings"), linuxSettingsShimText());
-    int __n_480 = btrc_Vector_string_iterLen(linuxLauncherNames());
-    for (int __i_479 = 0; (__i_479 < __n_480); (__i_479++)) {
-        char* emulator = btrc_Vector_string_iterGet(linuxLauncherNames(), __i_479);
+    int __n_486 = btrc_Vector_string_iterLen(linuxLauncherNames());
+    for (int __i_485 = 0; (__i_485 < __n_486); (__i_485++)) {
+        char* emulator = btrc_Vector_string_iterGet(linuxLauncherNames(), __i_485);
         writeGeneratedExecutableText(project, joinPath(project, __btrc_str_track(__btrc_strcat("packaging/linux/bin/", semuLauncherName(emulator)))), linuxLauncherShimText(emulator));
     }
 }
@@ -14392,6 +14512,9 @@ void seedEmulatorDefaults(char* project) {
     KeymapIr* ir = projectKeymapIr(project);
     writeProfile(project, "RetroArch/retroarch.cfg.linux-backup", retroArchProfileText(project, ir));
     writeProfile(project, "RetroArch/retroarch.cfg", retroArchProfileText(project, ir));
+    writeProfile(project, "Dolphin/config/Dolphin.ini", dolphinConfigText());
+    writeProfile(project, "Dolphin/config/GCPadNew.ini", dolphinGcpadRuntimeText());
+    writeProfile(project, "Dolphin/config/WiimoteNew.ini", dolphinWiimoteRuntimeText());
     writeProfile(project, "Dolphin/config/Profiles/GCPad/Steam Deck.ini", dolphinGcpadProfileText());
     writeProfile(project, "Dolphin/config/Profiles/Hotkeys/Steam Deck.ini", dolphinHotkeysProfileText(ir));
     writeProfile(project, "Dolphin/config/Profiles/Wiimote/Wiimote (SD).ini", dolphinWiimoteProfileText(false));
@@ -14413,34 +14536,34 @@ void seedKeymapDefaults(char* project) {
 
 char* syncDefaultConfigText(char* project, char* romsDir) {
     char* roms = ((((int)strlen(romsDir)) > 0) ? normalizeRomsRoot(romsDir) : "${paths.project_roms}");
-    btrc_Vector_string* __list_481 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_481, jsonBoolField("enabled", true));
-    btrc_Vector_string_push(__list_481, jsonBoolField("start_at_boot", true));
-    btrc_Vector_string_push(__list_481, jsonBoolField("tray", true));
-    btrc_Vector_string_push(__list_481, jsonStrField("gui_address", "127.0.0.1:8384"));
-    btrc_Vector_string_push(__list_481, jsonStrField("roms_dir", roms));
-    btrc_Vector_string_push(__list_481, jsonBoolField("sync_saves", true));
-    btrc_Vector_string_push(__list_481, jsonBoolField("sync_states", true));
-    btrc_Vector_string_push(__list_481, jsonBoolField("sync_emulator_state", true));
-    btrc_Vector_string_push(__list_481, jsonBoolField("sync_screenshots", true));
-    btrc_Vector_string_push(__list_481, jsonBoolField("sync_gamelists", true));
-    btrc_Vector_string_push(__list_481, jsonBoolField("sync_roms", false));
-    btrc_Vector_string_push(__list_481, jsonBoolField("sync_bios", false));
-    btrc_Vector_string_push(__list_481, jsonField("rescan_saves_s", "900"));
-    btrc_Vector_string_push(__list_481, jsonField("rescan_states_s", "900"));
-    btrc_Vector_string_push(__list_481, jsonField("rescan_emulator_state_s", "900"));
-    btrc_Vector_string_push(__list_481, jsonField("rescan_screenshots_s", "1800"));
-    btrc_Vector_string_push(__list_481, jsonField("rescan_gamelists_s", "1800"));
-    btrc_Vector_string_push(__list_481, jsonField("rescan_roms_s", "3600"));
-    btrc_Vector_string_push(__list_481, jsonField("rescan_bios_s", "3600"));
-    btrc_Vector_string_push(__list_481, jsonBoolField("watch_saves", true));
-    btrc_Vector_string_push(__list_481, jsonBoolField("watch_states", true));
-    btrc_Vector_string_push(__list_481, jsonBoolField("watch_emulator_state", true));
-    btrc_Vector_string_push(__list_481, jsonBoolField("watch_screenshots", true));
-    btrc_Vector_string_push(__list_481, jsonBoolField("watch_gamelists", true));
-    btrc_Vector_string_push(__list_481, jsonBoolField("watch_roms", true));
-    btrc_Vector_string_push(__list_481, jsonBoolField("watch_bios", true));
-    return __btrc_str_track(__btrc_strcat(jsonObject(__list_481), "\n"));
+    btrc_Vector_string* __list_487 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_487, jsonBoolField("enabled", true));
+    btrc_Vector_string_push(__list_487, jsonBoolField("start_at_boot", true));
+    btrc_Vector_string_push(__list_487, jsonBoolField("tray", true));
+    btrc_Vector_string_push(__list_487, jsonStrField("gui_address", "127.0.0.1:8384"));
+    btrc_Vector_string_push(__list_487, jsonStrField("roms_dir", roms));
+    btrc_Vector_string_push(__list_487, jsonBoolField("sync_saves", true));
+    btrc_Vector_string_push(__list_487, jsonBoolField("sync_states", true));
+    btrc_Vector_string_push(__list_487, jsonBoolField("sync_emulator_state", true));
+    btrc_Vector_string_push(__list_487, jsonBoolField("sync_screenshots", true));
+    btrc_Vector_string_push(__list_487, jsonBoolField("sync_gamelists", true));
+    btrc_Vector_string_push(__list_487, jsonBoolField("sync_roms", false));
+    btrc_Vector_string_push(__list_487, jsonBoolField("sync_bios", false));
+    btrc_Vector_string_push(__list_487, jsonField("rescan_saves_s", "900"));
+    btrc_Vector_string_push(__list_487, jsonField("rescan_states_s", "900"));
+    btrc_Vector_string_push(__list_487, jsonField("rescan_emulator_state_s", "900"));
+    btrc_Vector_string_push(__list_487, jsonField("rescan_screenshots_s", "1800"));
+    btrc_Vector_string_push(__list_487, jsonField("rescan_gamelists_s", "1800"));
+    btrc_Vector_string_push(__list_487, jsonField("rescan_roms_s", "3600"));
+    btrc_Vector_string_push(__list_487, jsonField("rescan_bios_s", "3600"));
+    btrc_Vector_string_push(__list_487, jsonBoolField("watch_saves", true));
+    btrc_Vector_string_push(__list_487, jsonBoolField("watch_states", true));
+    btrc_Vector_string_push(__list_487, jsonBoolField("watch_emulator_state", true));
+    btrc_Vector_string_push(__list_487, jsonBoolField("watch_screenshots", true));
+    btrc_Vector_string_push(__list_487, jsonBoolField("watch_gamelists", true));
+    btrc_Vector_string_push(__list_487, jsonBoolField("watch_roms", true));
+    btrc_Vector_string_push(__list_487, jsonBoolField("watch_bios", true));
+    return __btrc_str_track(__btrc_strcat(jsonObject(__list_487), "\n"));
 }
 
 void writeSyncDefaults(char* project, char* romsDir) {
@@ -14463,9 +14586,9 @@ void writeSyncDefaults(char* project, char* romsDir) {
 
 void ensureRomDirsAt(char* root) {
     ensureDir(root);
-    int __n_483 = btrc_Vector_string_iterLen(declaredRomDirs());
-    for (int __i_482 = 0; (__i_482 < __n_483); (__i_482++)) {
-        char* rom = btrc_Vector_string_iterGet(declaredRomDirs(), __i_482);
+    int __n_489 = btrc_Vector_string_iterLen(declaredRomDirs());
+    for (int __i_488 = 0; (__i_488 < __n_489); (__i_488++)) {
+        char* rom = btrc_Vector_string_iterGet(declaredRomDirs(), __i_488);
         ensureDir(joinPath(root, rom));
     }
 }
@@ -14476,10 +14599,10 @@ void ensureProjectRomDirs(char* project) {
         ensureRomDirsAt(configured);
         return;
     }
-    int __fstr_486_len = snprintf(NULL, 0, "INFO external_roms: leaving %s untouched", configured);
-    char* __fstr_486_buf = __btrc_str_track(((char*)malloc((__fstr_486_len + 1))));
-    snprintf(__fstr_486_buf, (__fstr_486_len + 1), "INFO external_roms: leaving %s untouched", configured);
-    printf("%s\n", __fstr_486_buf);
+    int __fstr_492_len = snprintf(NULL, 0, "INFO external_roms: leaving %s untouched", configured);
+    char* __fstr_492_buf = __btrc_str_track(((char*)malloc((__fstr_492_len + 1))));
+    snprintf(__fstr_492_buf, (__fstr_492_len + 1), "INFO external_roms: leaving %s untouched", configured);
+    printf("%s\n", __fstr_492_buf);
     ensureRomDirsAt(romsRoot(project));
 }
 
@@ -14495,9 +14618,9 @@ void ensureProjectContentDirs(char* project) {
     ensureDir(joinPath(contentRoot(project), "themes"));
     ensureDir(customSystemsRoot(project));
     btrc_Vector_string* ids = declaredSystemIds();
-    int __n_488 = btrc_Vector_string_iterLen(ids);
-    for (int __i_487 = 0; (__i_487 < __n_488); (__i_487++)) {
-        char* id = btrc_Vector_string_iterGet(ids, __i_487);
+    int __n_494 = btrc_Vector_string_iterLen(ids);
+    for (int __i_493 = 0; (__i_493 < __n_494); (__i_493++)) {
+        char* id = btrc_Vector_string_iterGet(ids, __i_493);
         ensureDir(joinPath(joinPath(contentRoot(project), "downloaded_media"), id));
         ensureDir(joinPath(joinPath(contentRoot(project), "gamelists"), id));
     }
@@ -14518,22 +14641,22 @@ void bootstrapSteamDeck(char* project) {
     writeScreenshotDefaults(project);
     writeProjectManifest(project);
     writeEsDeFiles(project);
-    int __fstr_491_len = snprintf(NULL, 0, "Bootstrapped Steam Deck/Linux content at %s", contentRoot(project));
-    char* __fstr_491_buf = __btrc_str_track(((char*)malloc((__fstr_491_len + 1))));
-    snprintf(__fstr_491_buf, (__fstr_491_len + 1), "Bootstrapped Steam Deck/Linux content at %s", contentRoot(project));
-    printf("%s\n", __fstr_491_buf);
-    int __fstr_494_len = snprintf(NULL, 0, "  roms:    %s", romsRoot(project));
-    char* __fstr_494_buf = __btrc_str_track(((char*)malloc((__fstr_494_len + 1))));
-    snprintf(__fstr_494_buf, (__fstr_494_len + 1), "  roms:    %s", romsRoot(project));
-    printf("%s\n", __fstr_494_buf);
-    int __fstr_497_len = snprintf(NULL, 0, "  bios:    %s", biosRoot(project));
+    int __fstr_497_len = snprintf(NULL, 0, "Bootstrapped Steam Deck/Linux content at %s", contentRoot(project));
     char* __fstr_497_buf = __btrc_str_track(((char*)malloc((__fstr_497_len + 1))));
-    snprintf(__fstr_497_buf, (__fstr_497_len + 1), "  bios:    %s", biosRoot(project));
+    snprintf(__fstr_497_buf, (__fstr_497_len + 1), "Bootstrapped Steam Deck/Linux content at %s", contentRoot(project));
     printf("%s\n", __fstr_497_buf);
-    int __fstr_500_len = snprintf(NULL, 0, "  systems: %s", joinPath(customSystemsRoot(project), "es_systems.xml"));
+    int __fstr_500_len = snprintf(NULL, 0, "  roms:    %s", romsRoot(project));
     char* __fstr_500_buf = __btrc_str_track(((char*)malloc((__fstr_500_len + 1))));
-    snprintf(__fstr_500_buf, (__fstr_500_len + 1), "  systems: %s", joinPath(customSystemsRoot(project), "es_systems.xml"));
+    snprintf(__fstr_500_buf, (__fstr_500_len + 1), "  roms:    %s", romsRoot(project));
     printf("%s\n", __fstr_500_buf);
+    int __fstr_503_len = snprintf(NULL, 0, "  bios:    %s", biosRoot(project));
+    char* __fstr_503_buf = __btrc_str_track(((char*)malloc((__fstr_503_len + 1))));
+    snprintf(__fstr_503_buf, (__fstr_503_len + 1), "  bios:    %s", biosRoot(project));
+    printf("%s\n", __fstr_503_buf);
+    int __fstr_506_len = snprintf(NULL, 0, "  systems: %s", joinPath(customSystemsRoot(project), "es_systems.xml"));
+    char* __fstr_506_buf = __btrc_str_track(((char*)malloc((__fstr_506_len + 1))));
+    snprintf(__fstr_506_buf, (__fstr_506_len + 1), "  systems: %s", joinPath(customSystemsRoot(project), "es_systems.xml"));
+    printf("%s\n", __fstr_506_buf);
 }
 
 char* esLauncherBin(char* project) {
@@ -14557,9 +14680,9 @@ char* appendRetroArchCoreRule(char* rules, char* corePath) {
 
 char* esFindRulesXml(char* project, char* launcherBin) {
     char* launcherRules = "";
-    int __n_502 = btrc_Vector_string_iterLen(linuxLauncherNames());
-    for (int __i_501 = 0; (__i_501 < __n_502); (__i_501++)) {
-        char* emulator = btrc_Vector_string_iterGet(linuxLauncherNames(), __i_501);
+    int __n_508 = btrc_Vector_string_iterLen(linuxLauncherNames());
+    for (int __i_507 = 0; (__i_507 < __n_508); (__i_507++)) {
+        char* emulator = btrc_Vector_string_iterGet(linuxLauncherNames(), __i_507);
         (launcherRules = __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(launcherRules, "  <emulator name=\"")), xmlEscape(emulator))), "\">\n")), "    <rule type=\"staticpath\">\n")), "      <entry>")), xmlEscape(joinPath(launcherBin, semuLauncherName(emulator))))), "</entry>\n")), "    </rule>\n")), "  </emulator>\n")));
     }
     (launcherRules = __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(launcherRules, "  <emulator name=\"SEMU_SETTINGS\">\n")), "    <rule type=\"staticpath\">\n")), "      <entry>")), xmlEscape(joinPath(launcherBin, "semu-settings")))), "</entry>\n")), "    </rule>\n")), "  </emulator>\n")));
@@ -14570,9 +14693,9 @@ char* esFindRulesXml(char* project, char* launcherBin) {
     if (FileSystem_isDir(projectCorePath)) {
         (retroarchCoreRules = appendRetroArchCoreRule(retroarchCoreRules, projectCorePath));
     }
-    int __n_504 = btrc_Vector_string_iterLen(retroarchCoreSearchPaths());
-    for (int __i_503 = 0; (__i_503 < __n_504); (__i_503++)) {
-        char* corePath = btrc_Vector_string_iterGet(retroarchCoreSearchPaths(), __i_503);
+    int __n_510 = btrc_Vector_string_iterLen(retroarchCoreSearchPaths());
+    for (int __i_509 = 0; (__i_509 < __n_510); (__i_509++)) {
+        char* corePath = btrc_Vector_string_iterGet(retroarchCoreSearchPaths(), __i_509);
         if ((!(strcmp(corePath, envCorePath) == 0)) && (!(strcmp(corePath, projectCorePath) == 0))) {
             (retroarchCoreRules = appendRetroArchCoreRule(retroarchCoreRules, corePath));
         }
@@ -14700,17 +14823,17 @@ char* steamInputKeyBindings(char* command, char* label) {
     btrc_Vector_string* keys = btrc_Vector_string_new();
     char* modifiers = keymapCommandModifierPart(command);
     if (((int)strlen(modifiers)) > 0) {
-        int __n_506 = btrc_Vector_string_iterLen(Strings_split(modifiers, "+"));
-        for (int __i_505 = 0; (__i_505 < __n_506); (__i_505++)) {
-            char* modifier = btrc_Vector_string_iterGet(Strings_split(modifiers, "+"), __i_505);
+        int __n_512 = btrc_Vector_string_iterLen(Strings_split(modifiers, "+"));
+        for (int __i_511 = 0; (__i_511 < __n_512); (__i_511++)) {
+            char* modifier = btrc_Vector_string_iterGet(Strings_split(modifiers, "+"), __i_511);
             btrc_Vector_string_push(keys, steamInputKeyName(modifier));
         }
     }
     btrc_Vector_string_push(keys, steamInputKeyName(keymapCommandKeyPart(command)));
     btrc_Vector_string* bindings = btrc_Vector_string_new();
-    int __n_508 = btrc_Vector_string_iterLen(keys);
-    for (int __i_507 = 0; (__i_507 < __n_508); (__i_507++)) {
-        char* key = btrc_Vector_string_iterGet(keys, __i_507);
+    int __n_514 = btrc_Vector_string_iterLen(keys);
+    for (int __i_513 = 0; (__i_513 < __n_514); (__i_513++)) {
+        char* key = btrc_Vector_string_iterGet(keys, __i_513);
         btrc_Vector_string_push(bindings, __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat("\"binding\" \"key_press ", key)), ", ")), label)), ", , \"")));
     }
     return btrc_Vector_string_join(bindings, " ");
@@ -14766,9 +14889,9 @@ void writeSteamInputTemplates(char* project) {
 }
 
 bool allPresent(char* target, btrc_Vector_string* files) {
-    int __n_510 = btrc_Vector_string_iterLen(files);
-    for (int __i_509 = 0; (__i_509 < __n_510); (__i_509++)) {
-        char* file = btrc_Vector_string_iterGet(files, __i_509);
+    int __n_516 = btrc_Vector_string_iterLen(files);
+    for (int __i_515 = 0; (__i_515 < __n_516); (__i_515++)) {
+        char* file = btrc_Vector_string_iterGet(files, __i_515);
         if (!FileSystem_exists(joinPath(target, file))) {
             return false;
         }
@@ -14777,9 +14900,9 @@ bool allPresent(char* target, btrc_Vector_string* files) {
 }
 
 bool anyPresent(char* target, btrc_Vector_string* files) {
-    int __n_512 = btrc_Vector_string_iterLen(files);
-    for (int __i_511 = 0; (__i_511 < __n_512); (__i_511++)) {
-        char* file = btrc_Vector_string_iterGet(files, __i_511);
+    int __n_518 = btrc_Vector_string_iterLen(files);
+    for (int __i_517 = 0; (__i_517 < __n_518); (__i_517++)) {
+        char* file = btrc_Vector_string_iterGet(files, __i_517);
         if (FileSystem_exists(joinPath(target, file))) {
             return true;
         }
@@ -14789,32 +14912,32 @@ bool anyPresent(char* target, btrc_Vector_string* files) {
 
 void reportPath(char* label, char* path) {
     char* mark = (FileSystem_isDir(path) ? "OK" : "MISSING");
-    int __fstr_515_len = snprintf(NULL, 0, "  %s %s: %s", mark, label, path);
-    char* __fstr_515_buf = __btrc_str_track(((char*)malloc((__fstr_515_len + 1))));
-    snprintf(__fstr_515_buf, (__fstr_515_len + 1), "  %s %s: %s", mark, label, path);
-    printf("%s\n", __fstr_515_buf);
+    int __fstr_521_len = snprintf(NULL, 0, "  %s %s: %s", mark, label, path);
+    char* __fstr_521_buf = __btrc_str_track(((char*)malloc((__fstr_521_len + 1))));
+    snprintf(__fstr_521_buf, (__fstr_521_len + 1), "  %s %s: %s", mark, label, path);
+    printf("%s\n", __fstr_521_buf);
 }
 
 void reportBios(char* id, char* target, btrc_Vector_string* files, bool required, bool anyMatch) {
     bool ok = (anyMatch ? anyPresent(target, files) : allPresent(target, files));
     char* mark = (ok ? "OK" : (required ? "MISSING" : "optional"));
     char* requiredText = (required ? "required" : "optional");
-    int __fstr_518_len = snprintf(NULL, 0, "  %s %s (%s) -> %s", mark, id, requiredText, target);
-    char* __fstr_518_buf = __btrc_str_track(((char*)malloc((__fstr_518_len + 1))));
-    snprintf(__fstr_518_buf, (__fstr_518_len + 1), "  %s %s (%s) -> %s", mark, id, requiredText, target);
-    printf("%s\n", __fstr_518_buf);
+    int __fstr_524_len = snprintf(NULL, 0, "  %s %s (%s) -> %s", mark, id, requiredText, target);
+    char* __fstr_524_buf = __btrc_str_track(((char*)malloc((__fstr_524_len + 1))));
+    snprintf(__fstr_524_buf, (__fstr_524_len + 1), "  %s %s (%s) -> %s", mark, id, requiredText, target);
+    printf("%s\n", __fstr_524_buf);
     if ((!ok) && required) {
-        int __fstr_521_len = snprintf(NULL, 0, "       expected: %s", btrc_Vector_string_join(files, ", "));
-        char* __fstr_521_buf = __btrc_str_track(((char*)malloc((__fstr_521_len + 1))));
-        snprintf(__fstr_521_buf, (__fstr_521_len + 1), "       expected: %s", btrc_Vector_string_join(files, ", "));
-        printf("%s\n", __fstr_521_buf);
+        int __fstr_527_len = snprintf(NULL, 0, "       expected: %s", btrc_Vector_string_join(files, ", "));
+        char* __fstr_527_buf = __btrc_str_track(((char*)malloc((__fstr_527_len + 1))));
+        snprintf(__fstr_527_buf, (__fstr_527_len + 1), "       expected: %s", btrc_Vector_string_join(files, ", "));
+        printf("%s\n", __fstr_527_buf);
     }
 }
 
 bool biosOkInAnyTarget(btrc_Vector_string* targets, btrc_Vector_string* files, bool anyMatch) {
-    int __n_523 = btrc_Vector_string_iterLen(targets);
-    for (int __i_522 = 0; (__i_522 < __n_523); (__i_522++)) {
-        char* target = btrc_Vector_string_iterGet(targets, __i_522);
+    int __n_529 = btrc_Vector_string_iterLen(targets);
+    for (int __i_528 = 0; (__i_528 < __n_529); (__i_528++)) {
+        char* target = btrc_Vector_string_iterGet(targets, __i_528);
         bool ok = (anyMatch ? anyPresent(target, files) : allPresent(target, files));
         if (ok) {
             return true;
@@ -14827,32 +14950,32 @@ void reportBiosTargets(char* id, btrc_Vector_string* targets, btrc_Vector_string
     bool ok = biosOkInAnyTarget(targets, files, anyMatch);
     char* mark = (ok ? "OK" : (required ? "MISSING" : "optional"));
     char* requiredText = (required ? "required" : "optional");
-    int __fstr_526_len = snprintf(NULL, 0, "  %s %s (%s)", mark, id, requiredText);
-    char* __fstr_526_buf = __btrc_str_track(((char*)malloc((__fstr_526_len + 1))));
-    snprintf(__fstr_526_buf, (__fstr_526_len + 1), "  %s %s (%s)", mark, id, requiredText);
-    printf("%s\n", __fstr_526_buf);
-    int __n_528 = btrc_Vector_string_iterLen(targets);
-    for (int __i_527 = 0; (__i_527 < __n_528); (__i_527++)) {
-        char* target = btrc_Vector_string_iterGet(targets, __i_527);
-        int __fstr_531_len = snprintf(NULL, 0, "       path: %s", target);
-        char* __fstr_531_buf = __btrc_str_track(((char*)malloc((__fstr_531_len + 1))));
-        snprintf(__fstr_531_buf, (__fstr_531_len + 1), "       path: %s", target);
-        printf("%s\n", __fstr_531_buf);
+    int __fstr_532_len = snprintf(NULL, 0, "  %s %s (%s)", mark, id, requiredText);
+    char* __fstr_532_buf = __btrc_str_track(((char*)malloc((__fstr_532_len + 1))));
+    snprintf(__fstr_532_buf, (__fstr_532_len + 1), "  %s %s (%s)", mark, id, requiredText);
+    printf("%s\n", __fstr_532_buf);
+    int __n_534 = btrc_Vector_string_iterLen(targets);
+    for (int __i_533 = 0; (__i_533 < __n_534); (__i_533++)) {
+        char* target = btrc_Vector_string_iterGet(targets, __i_533);
+        int __fstr_537_len = snprintf(NULL, 0, "       path: %s", target);
+        char* __fstr_537_buf = __btrc_str_track(((char*)malloc((__fstr_537_len + 1))));
+        snprintf(__fstr_537_buf, (__fstr_537_len + 1), "       path: %s", target);
+        printf("%s\n", __fstr_537_buf);
     }
     if ((!ok) && required) {
-        int __fstr_534_len = snprintf(NULL, 0, "       expected: %s", btrc_Vector_string_join(files, ", "));
-        char* __fstr_534_buf = __btrc_str_track(((char*)malloc((__fstr_534_len + 1))));
-        snprintf(__fstr_534_buf, (__fstr_534_len + 1), "       expected: %s", btrc_Vector_string_join(files, ", "));
-        printf("%s\n", __fstr_534_buf);
+        int __fstr_540_len = snprintf(NULL, 0, "       expected: %s", btrc_Vector_string_join(files, ", "));
+        char* __fstr_540_buf = __btrc_str_track(((char*)malloc((__fstr_540_len + 1))));
+        snprintf(__fstr_540_buf, (__fstr_540_len + 1), "       expected: %s", btrc_Vector_string_join(files, ", "));
+        printf("%s\n", __fstr_540_buf);
     }
 }
 
 void reportFile(char* label, char* path) {
     char* mark = (FileSystem_exists(path) ? "OK" : "MISSING");
-    int __fstr_537_len = snprintf(NULL, 0, "  %s %s: %s", mark, label, path);
-    char* __fstr_537_buf = __btrc_str_track(((char*)malloc((__fstr_537_len + 1))));
-    snprintf(__fstr_537_buf, (__fstr_537_len + 1), "  %s %s: %s", mark, label, path);
-    printf("%s\n", __fstr_537_buf);
+    int __fstr_543_len = snprintf(NULL, 0, "  %s %s: %s", mark, label, path);
+    char* __fstr_543_buf = __btrc_str_track(((char*)malloc((__fstr_543_len + 1))));
+    snprintf(__fstr_543_buf, (__fstr_543_len + 1), "  %s %s: %s", mark, label, path);
+    printf("%s\n", __fstr_543_buf);
 }
 
 int braceBalance(char* text) {
@@ -14870,10 +14993,10 @@ int braceBalance(char* text) {
 
 void reportSteamInputTemplate(char* label, char* path) {
     if (!FileSystem_exists(path)) {
-        int __fstr_540_len = snprintf(NULL, 0, "  MISSING %s: %s", label, path);
-        char* __fstr_540_buf = __btrc_str_track(((char*)malloc((__fstr_540_len + 1))));
-        snprintf(__fstr_540_buf, (__fstr_540_len + 1), "  MISSING %s: %s", label, path);
-        printf("%s\n", __fstr_540_buf);
+        int __fstr_546_len = snprintf(NULL, 0, "  MISSING %s: %s", label, path);
+        char* __fstr_546_buf = __btrc_str_track(((char*)malloc((__fstr_546_len + 1))));
+        snprintf(__fstr_546_buf, (__fstr_546_len + 1), "  MISSING %s: %s", label, path);
+        printf("%s\n", __fstr_546_buf);
         return;
     }
     char* text = FileSystem_readText(path);
@@ -14916,21 +15039,21 @@ void reportSteamInputTemplate(char* label, char* path) {
     }
     int balance = braceBalance(text);
     if (balance != 0) {
-        int __fstr_542_len = snprintf(NULL, 0, "brace_balance=%d", balance);
-        char* __fstr_542_buf = __btrc_str_track(((char*)malloc((__fstr_542_len + 1))));
-        snprintf(__fstr_542_buf, (__fstr_542_len + 1), "brace_balance=%d", balance);
-        btrc_Vector_string_push(missing, __fstr_542_buf);
+        int __fstr_548_len = snprintf(NULL, 0, "brace_balance=%d", balance);
+        char* __fstr_548_buf = __btrc_str_track(((char*)malloc((__fstr_548_len + 1))));
+        snprintf(__fstr_548_buf, (__fstr_548_len + 1), "brace_balance=%d", balance);
+        btrc_Vector_string_push(missing, __fstr_548_buf);
     }
     if (missing->len == 0) {
-        int __fstr_545_len = snprintf(NULL, 0, "  OK %s: controller_neptune, trackpads, save/load/quit", label);
-        char* __fstr_545_buf = __btrc_str_track(((char*)malloc((__fstr_545_len + 1))));
-        snprintf(__fstr_545_buf, (__fstr_545_len + 1), "  OK %s: controller_neptune, trackpads, save/load/quit", label);
-        printf("%s\n", __fstr_545_buf);
+        int __fstr_551_len = snprintf(NULL, 0, "  OK %s: controller_neptune, trackpads, save/load/quit", label);
+        char* __fstr_551_buf = __btrc_str_track(((char*)malloc((__fstr_551_len + 1))));
+        snprintf(__fstr_551_buf, (__fstr_551_len + 1), "  OK %s: controller_neptune, trackpads, save/load/quit", label);
+        printf("%s\n", __fstr_551_buf);
     } else {
-        int __fstr_548_len = snprintf(NULL, 0, "  INVALID %s: %s", label, btrc_Vector_string_join(missing, ", "));
-        char* __fstr_548_buf = __btrc_str_track(((char*)malloc((__fstr_548_len + 1))));
-        snprintf(__fstr_548_buf, (__fstr_548_len + 1), "  INVALID %s: %s", label, btrc_Vector_string_join(missing, ", "));
-        printf("%s\n", __fstr_548_buf);
+        int __fstr_554_len = snprintf(NULL, 0, "  INVALID %s: %s", label, btrc_Vector_string_join(missing, ", "));
+        char* __fstr_554_buf = __btrc_str_track(((char*)malloc((__fstr_554_len + 1))));
+        snprintf(__fstr_554_buf, (__fstr_554_len + 1), "  INVALID %s: %s", label, btrc_Vector_string_join(missing, ", "));
+        printf("%s\n", __fstr_554_buf);
     }
 }
 
@@ -14948,60 +15071,60 @@ void doctorSteamDeck(char* project) {
     printf("%s\n", "");
     printf("%s\n", "BIOS / firmware");
     char* externalRoot = configuredEmulationRoot(project);
-    btrc_Vector_string* __list_551 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_551, biosRoot(project));
-    btrc_Vector_string_push(__list_551, joinPath(externalRoot, "RetroArch/config/system"));
-    btrc_Vector_string* __list_552 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_552, "scph5500.bin");
-    btrc_Vector_string_push(__list_552, "scph5501.bin");
-    btrc_Vector_string_push(__list_552, "scph5502.bin");
-    reportBiosTargets("psx", __list_551, __list_552, true, false);
-    btrc_Vector_string* __list_555 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_555, joinPath(biosRoot(project), "ps2"));
-    btrc_Vector_string_push(__list_555, joinPath(externalRoot, "PCSX2/config/bios"));
-    btrc_Vector_string* __list_556 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_556, "ps2-0230a-20080220.bin");
-    btrc_Vector_string_push(__list_556, "ps2-0230e-20080220.bin");
-    btrc_Vector_string_push(__list_556, "ps2-0230j-20080220.bin");
-    btrc_Vector_string_push(__list_556, "SCPH-10000.bin");
-    btrc_Vector_string_push(__list_556, "SCPH-30004R.bin");
-    btrc_Vector_string_push(__list_556, "SCPH-39001.bin");
-    btrc_Vector_string_push(__list_556, "SCPH-70012.bin");
-    btrc_Vector_string_push(__list_556, "SCPH-90006.bin");
-    reportBiosTargets("ps2", __list_555, __list_556, true, true);
-    btrc_Vector_string* __list_559 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_559, joinPath(biosRoot(project), "switch"));
-    btrc_Vector_string_push(__list_559, joinPath(externalRoot, "Ryujinx/config/system"));
-    btrc_Vector_string* __list_560 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_560, "prod.keys");
-    btrc_Vector_string_push(__list_560, "title.keys");
-    reportBiosTargets("switch_keys", __list_559, __list_560, true, false);
-    btrc_Vector_string* __list_563 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_563, emulatorProfilePath(project, "Cemu/data"));
-    btrc_Vector_string_push(__list_563, joinPath(externalRoot, "Cemu/data"));
-    btrc_Vector_string* __list_564 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_564, "keys.txt");
-    reportBiosTargets("wiiu_keys", __list_563, __list_564, true, false);
-    btrc_Vector_string* __list_567 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_567, joinPath(biosRoot(project), "dc"));
-    btrc_Vector_string_push(__list_567, joinPath(externalRoot, "RetroArch/config/system"));
-    btrc_Vector_string_push(__list_567, joinPath(externalRoot, "Flycast/data"));
-    btrc_Vector_string* __list_568 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_568, "dc_boot.bin");
-    btrc_Vector_string_push(__list_568, "dc_flash.bin");
-    reportBiosTargets("dreamcast", __list_567, __list_568, false, false);
+    btrc_Vector_string* __list_557 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_557, biosRoot(project));
+    btrc_Vector_string_push(__list_557, joinPath(externalRoot, "RetroArch/config/system"));
+    btrc_Vector_string* __list_558 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_558, "scph5500.bin");
+    btrc_Vector_string_push(__list_558, "scph5501.bin");
+    btrc_Vector_string_push(__list_558, "scph5502.bin");
+    reportBiosTargets("psx", __list_557, __list_558, true, false);
+    btrc_Vector_string* __list_561 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_561, joinPath(biosRoot(project), "ps2"));
+    btrc_Vector_string_push(__list_561, joinPath(externalRoot, "PCSX2/config/bios"));
+    btrc_Vector_string* __list_562 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_562, "ps2-0230a-20080220.bin");
+    btrc_Vector_string_push(__list_562, "ps2-0230e-20080220.bin");
+    btrc_Vector_string_push(__list_562, "ps2-0230j-20080220.bin");
+    btrc_Vector_string_push(__list_562, "SCPH-10000.bin");
+    btrc_Vector_string_push(__list_562, "SCPH-30004R.bin");
+    btrc_Vector_string_push(__list_562, "SCPH-39001.bin");
+    btrc_Vector_string_push(__list_562, "SCPH-70012.bin");
+    btrc_Vector_string_push(__list_562, "SCPH-90006.bin");
+    reportBiosTargets("ps2", __list_561, __list_562, true, true);
+    btrc_Vector_string* __list_565 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_565, joinPath(biosRoot(project), "switch"));
+    btrc_Vector_string_push(__list_565, joinPath(externalRoot, "Ryujinx/config/system"));
+    btrc_Vector_string* __list_566 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_566, "prod.keys");
+    btrc_Vector_string_push(__list_566, "title.keys");
+    reportBiosTargets("switch_keys", __list_565, __list_566, true, false);
+    btrc_Vector_string* __list_569 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_569, emulatorProfilePath(project, "Cemu/data"));
+    btrc_Vector_string_push(__list_569, joinPath(externalRoot, "Cemu/data"));
+    btrc_Vector_string* __list_570 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_570, "keys.txt");
+    reportBiosTargets("wiiu_keys", __list_569, __list_570, true, false);
+    btrc_Vector_string* __list_573 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_573, joinPath(biosRoot(project), "dc"));
+    btrc_Vector_string_push(__list_573, joinPath(externalRoot, "RetroArch/config/system"));
+    btrc_Vector_string_push(__list_573, joinPath(externalRoot, "Flycast/data"));
+    btrc_Vector_string* __list_574 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_574, "dc_boot.bin");
+    btrc_Vector_string_push(__list_574, "dc_flash.bin");
+    reportBiosTargets("dreamcast", __list_573, __list_574, false, false);
     printf("%s\n", "");
     printf("%s\n", "Controller profiles");
     bool controllersOk = true;
-    int __n_570 = btrc_Vector_string_iterLen(controllerProfileFiles());
-    for (int __i_569 = 0; (__i_569 < __n_570); (__i_569++)) {
-        char* profile = btrc_Vector_string_iterGet(controllerProfileFiles(), __i_569);
+    int __n_576 = btrc_Vector_string_iterLen(controllerProfileFiles());
+    for (int __i_575 = 0; (__i_575 < __n_576); (__i_575++)) {
+        char* profile = btrc_Vector_string_iterGet(controllerProfileFiles(), __i_575);
         if (!FileSystem_exists(joinPath(project, profile))) {
             (controllersOk = false);
-            int __fstr_573_len = snprintf(NULL, 0, "  MISSING %s", profile);
-            char* __fstr_573_buf = __btrc_str_track(((char*)malloc((__fstr_573_len + 1))));
-            snprintf(__fstr_573_buf, (__fstr_573_len + 1), "  MISSING %s", profile);
-            printf("%s\n", __fstr_573_buf);
+            int __fstr_579_len = snprintf(NULL, 0, "  MISSING %s", profile);
+            char* __fstr_579_buf = __btrc_str_track(((char*)malloc((__fstr_579_len + 1))));
+            snprintf(__fstr_579_buf, (__fstr_579_len + 1), "  MISSING %s", profile);
+            printf("%s\n", __fstr_579_buf);
         }
     }
     if (controllersOk) {
@@ -15026,16 +15149,16 @@ void doctorSteamDeck(char* project) {
     printf("%s\n", "");
     printf("%s\n", "Keymap compiler");
     if (KeymapErrors_count(errors) == 0) {
-        int __fstr_576_len = snprintf(NULL, 0, "  OK steam_deck: %s", keymapPath);
-        char* __fstr_576_buf = __btrc_str_track(((char*)malloc((__fstr_576_len + 1))));
-        snprintf(__fstr_576_buf, (__fstr_576_len + 1), "  OK steam_deck: %s", keymapPath);
-        printf("%s\n", __fstr_576_buf);
+        int __fstr_582_len = snprintf(NULL, 0, "  OK steam_deck: %s", keymapPath);
+        char* __fstr_582_buf = __btrc_str_track(((char*)malloc((__fstr_582_len + 1))));
+        snprintf(__fstr_582_buf, (__fstr_582_len + 1), "  OK steam_deck: %s", keymapPath);
+        printf("%s\n", __fstr_582_buf);
     } else {
         for (int i = 0; (i < KeymapErrors_count(errors)); (i++)) {
-            int __fstr_579_len = snprintf(NULL, 0, "  %s %d:%d %s", btrc_Vector_string_get(errors->levels, i), btrc_Vector_int_get(errors->lines, i), btrc_Vector_int_get(errors->columns, i), btrc_Vector_string_get(errors->messages, i));
-            char* __fstr_579_buf = __btrc_str_track(((char*)malloc((__fstr_579_len + 1))));
-            snprintf(__fstr_579_buf, (__fstr_579_len + 1), "  %s %d:%d %s", btrc_Vector_string_get(errors->levels, i), btrc_Vector_int_get(errors->lines, i), btrc_Vector_int_get(errors->columns, i), btrc_Vector_string_get(errors->messages, i));
-            printf("%s\n", __fstr_579_buf);
+            int __fstr_585_len = snprintf(NULL, 0, "  %s %d:%d %s", btrc_Vector_string_get(errors->levels, i), btrc_Vector_int_get(errors->lines, i), btrc_Vector_int_get(errors->columns, i), btrc_Vector_string_get(errors->messages, i));
+            char* __fstr_585_buf = __btrc_str_track(((char*)malloc((__fstr_585_len + 1))));
+            snprintf(__fstr_585_buf, (__fstr_585_len + 1), "  %s %d:%d %s", btrc_Vector_string_get(errors->levels, i), btrc_Vector_int_get(errors->lines, i), btrc_Vector_int_get(errors->columns, i), btrc_Vector_string_get(errors->messages, i));
+            printf("%s\n", __fstr_585_buf);
         }
     }
     printf("%s\n", "");
@@ -15049,9 +15172,9 @@ void doctorSteamDeck(char* project) {
     doctorSync(project);
     printf("%s\n", "");
     printf("%s\n", "linux launchers");
-    int __n_581 = btrc_Vector_string_iterLen(linuxLauncherNames());
-    for (int __i_580 = 0; (__i_580 < __n_581); (__i_580++)) {
-        char* emulator = btrc_Vector_string_iterGet(linuxLauncherNames(), __i_580);
+    int __n_587 = btrc_Vector_string_iterLen(linuxLauncherNames());
+    for (int __i_586 = 0; (__i_586 < __n_587); (__i_586++)) {
+        char* emulator = btrc_Vector_string_iterGet(linuxLauncherNames(), __i_586);
         reportFile(emulator, joinPath(linuxLauncherBin(project), semuLauncherName(emulator)));
     }
     if (errors != NULL) {
@@ -15370,10 +15493,10 @@ N3dsRomCheck* checkN3dsRom(char* path) {
         (result->note = "decrypted content is missing NoCrypto flags");
     } else if (sawNoCrypto) {
         (result->status = "OK");
-        int __fstr_582_len = snprintf(NULL, 0, "%d NoCrypto partition(s)", result->partitions);
-        char* __fstr_582_buf = __btrc_str_track(((char*)malloc((__fstr_582_len + 1))));
-        snprintf(__fstr_582_buf, (__fstr_582_len + 1), "%d NoCrypto partition(s)", result->partitions);
-        (result->note = __fstr_582_buf);
+        int __fstr_588_len = snprintf(NULL, 0, "%d NoCrypto partition(s)", result->partitions);
+        char* __fstr_588_buf = __btrc_str_track(((char*)malloc((__fstr_588_len + 1))));
+        snprintf(__fstr_588_buf, (__fstr_588_len + 1), "%d NoCrypto partition(s)", result->partitions);
+        (result->note = __fstr_588_buf);
     } else {
         (result->status = "UNKNOWN");
         (result->note = "could not classify NCCH encryption flags");
@@ -15399,9 +15522,9 @@ N3dsRomCheck* checkN3dsRom(char* path) {
 btrc_Vector_string* n3dsInputFiles(char* input) {
     btrc_Vector_string* files = btrc_Vector_string_new();
     if (FileSystem_isDir(input)) {
-        int __n_584 = btrc_Vector_string_iterLen(FileSystem_listDir(input));
-        for (int __i_583 = 0; (__i_583 < __n_584); (__i_583++)) {
-            char* name = btrc_Vector_string_iterGet(FileSystem_listDir(input), __i_583);
+        int __n_590 = btrc_Vector_string_iterLen(FileSystem_listDir(input));
+        for (int __i_589 = 0; (__i_589 < __n_590); (__i_589++)) {
+            char* name = btrc_Vector_string_iterGet(FileSystem_listDir(input), __i_589);
             if (n3dsRomName(name)) {
                 btrc_Vector_string_push(files, joinPath(input, name));
             }
@@ -15417,13 +15540,13 @@ bool copyFilePath(char* source, char* destination) {
     ensureDir(PathTools_dirname(destination));
     UnixShell* shell = UnixShell_new();
     ExecResult* result = UnixShell_runCommand(shell, Command_check(Command_arg(Command_arg(Command_arg(Command_new("cp"), "-p"), source), destination), false));
-    bool __btrc_ret_585 = ExecResult_ok(result);
+    bool __btrc_ret_591 = ExecResult_ok(result);
     if (shell != NULL) {
         if ((--shell->__rc) <= 0) {
             UnixShell_destroy(shell);
         }
     }
-    return __btrc_ret_585;
+    return __btrc_ret_591;
     if (shell != NULL) {
         if ((--shell->__rc) <= 0) {
             UnixShell_destroy(shell);
@@ -15438,23 +15561,23 @@ bool n3dsNoCryptoFlag(int flags) {
 int patchN3dsNoCryptoFlags(char* path) {
     BinaryEditor* editor = BinaryEditor_new(path, "r+b");
     if (!BinaryEditor_ok(editor)) {
-        int __btrc_ret_586 = (-1);
+        int __btrc_ret_592 = (-1);
         if (editor != NULL) {
             if ((--editor->__rc) <= 0) {
                 BinaryEditor_destroy(editor);
             }
         }
-        return __btrc_ret_586;
+        return __btrc_ret_592;
     }
     if (!(strcmp(BinaryEditor_readAscii(editor, 0x100, 4), "NCSD") == 0)) {
         BinaryEditor_close(editor);
-        int __btrc_ret_587 = (-1);
+        int __btrc_ret_593 = (-1);
         if (editor != NULL) {
             if ((--editor->__rc) <= 0) {
                 BinaryEditor_destroy(editor);
             }
         }
-        return __btrc_ret_587;
+        return __btrc_ret_593;
     }
     int patched = 0;
     for (int i = 0; (i < 8); (i++)) {
@@ -15472,34 +15595,34 @@ int patchN3dsNoCryptoFlags(char* path) {
         int flags = BinaryEditor_readU8(editor, flagsOffset);
         if (flags < 0) {
             BinaryEditor_close(editor);
-            int __btrc_ret_588 = (-1);
+            int __btrc_ret_594 = (-1);
             if (editor != NULL) {
                 if ((--editor->__rc) <= 0) {
                     BinaryEditor_destroy(editor);
                 }
             }
-            return __btrc_ret_588;
+            return __btrc_ret_594;
         }
         if (!n3dsNoCryptoFlag(flags)) {
             if (!BinaryEditor_writeU8(editor, flagsOffset, (flags + 4))) {
                 BinaryEditor_close(editor);
-                int __btrc_ret_589 = (-1);
+                int __btrc_ret_595 = (-1);
                 if (editor != NULL) {
                     if ((--editor->__rc) <= 0) {
                         BinaryEditor_destroy(editor);
                     }
                 }
-                return __btrc_ret_589;
+                return __btrc_ret_595;
             }
             if (!BinaryEditor_writeU8(editor, ((partOffset + 0x100) + 0x8b), 0)) {
                 BinaryEditor_close(editor);
-                int __btrc_ret_590 = (-1);
+                int __btrc_ret_596 = (-1);
                 if (editor != NULL) {
                     if ((--editor->__rc) <= 0) {
                         BinaryEditor_destroy(editor);
                     }
                 }
-                return __btrc_ret_590;
+                return __btrc_ret_596;
             }
             (patched++);
         }
@@ -15533,26 +15656,26 @@ bool fixN3dsNoCryptoFile(char* input, char* output) {
 void reportN3dsRomPreflight(char* project) {
     char* n3dsDir = joinPath(configuredRomsRoot(project), "n3ds");
     if (!FileSystem_isDir(n3dsDir)) {
-        int __fstr_593_len = snprintf(NULL, 0, "  MISSING n3ds rom dir: %s", n3dsDir);
-        char* __fstr_593_buf = __btrc_str_track(((char*)malloc((__fstr_593_len + 1))));
-        snprintf(__fstr_593_buf, (__fstr_593_len + 1), "  MISSING n3ds rom dir: %s", n3dsDir);
-        printf("%s\n", __fstr_593_buf);
+        int __fstr_599_len = snprintf(NULL, 0, "  MISSING n3ds rom dir: %s", n3dsDir);
+        char* __fstr_599_buf = __btrc_str_track(((char*)malloc((__fstr_599_len + 1))));
+        snprintf(__fstr_599_buf, (__fstr_599_len + 1), "  MISSING n3ds rom dir: %s", n3dsDir);
+        printf("%s\n", __fstr_599_buf);
         return;
     }
     btrc_Vector_string* entries = FileSystem_listDir(n3dsDir);
     int checked = 0;
     int archives = 0;
-    int __n_595 = btrc_Vector_string_iterLen(entries);
-    for (int __i_594 = 0; (__i_594 < __n_595); (__i_594++)) {
-        char* name = btrc_Vector_string_iterGet(entries, __i_594);
+    int __n_601 = btrc_Vector_string_iterLen(entries);
+    for (int __i_600 = 0; (__i_600 < __n_601); (__i_600++)) {
+        char* name = btrc_Vector_string_iterGet(entries, __i_600);
         char* path = joinPath(n3dsDir, name);
         if (FileSystem_isFile(path) && n3dsRomName(name)) {
             (checked++);
             N3dsRomCheck* result = checkN3dsRom(path);
-            int __fstr_598_len = snprintf(NULL, 0, "  %s n3ds/%s: %s", result->status, name, result->note);
-            char* __fstr_598_buf = __btrc_str_track(((char*)malloc((__fstr_598_len + 1))));
-            snprintf(__fstr_598_buf, (__fstr_598_len + 1), "  %s n3ds/%s: %s", result->status, name, result->note);
-            printf("%s\n", __fstr_598_buf);
+            int __fstr_604_len = snprintf(NULL, 0, "  %s n3ds/%s: %s", result->status, name, result->note);
+            char* __fstr_604_buf = __btrc_str_track(((char*)malloc((__fstr_604_len + 1))));
+            snprintf(__fstr_604_buf, (__fstr_604_len + 1), "  %s n3ds/%s: %s", result->status, name, result->note);
+            printf("%s\n", __fstr_604_buf);
         } else if (FileSystem_isFile(path) && n3dsArchiveName(name)) {
             (archives++);
         }
@@ -15561,10 +15684,10 @@ void reportN3dsRomPreflight(char* project) {
         printf("%s\n", "  OK n3ds: no top-level .3ds/.cci files to preflight");
     }
     if (archives > 0) {
-        int __fstr_601_len = snprintf(NULL, 0, "  WARN n3ds archives unchecked: %d zip/7z file(s)", archives);
-        char* __fstr_601_buf = __btrc_str_track(((char*)malloc((__fstr_601_len + 1))));
-        snprintf(__fstr_601_buf, (__fstr_601_len + 1), "  WARN n3ds archives unchecked: %d zip/7z file(s)", archives);
-        printf("%s\n", __fstr_601_buf);
+        int __fstr_607_len = snprintf(NULL, 0, "  WARN n3ds archives unchecked: %d zip/7z file(s)", archives);
+        char* __fstr_607_buf = __btrc_str_track(((char*)malloc((__fstr_607_len + 1))));
+        snprintf(__fstr_607_buf, (__fstr_607_len + 1), "  WARN n3ds archives unchecked: %d zip/7z file(s)", archives);
+        printf("%s\n", __fstr_607_buf);
     }
 }
 
@@ -15585,31 +15708,31 @@ char* n3dsNoCryptoInputArg(CliArgs* args, int startIndex) {
 
 void printN3dsNoCryptoCheckSummary(int total, int ok, int needsFix, int encrypted, int invalid, int unknown) {
     printf("%s\n", "");
-    int __fstr_604_len = snprintf(NULL, 0, "Summary: %d files", total);
-    char* __fstr_604_buf = __btrc_str_track(((char*)malloc((__fstr_604_len + 1))));
-    snprintf(__fstr_604_buf, (__fstr_604_len + 1), "Summary: %d files", total);
-    printf("%s\n", __fstr_604_buf);
-    int __fstr_607_len = snprintf(NULL, 0, "  Already OK (NoCrypto set):    %d", ok);
-    char* __fstr_607_buf = __btrc_str_track(((char*)malloc((__fstr_607_len + 1))));
-    snprintf(__fstr_607_buf, (__fstr_607_len + 1), "  Already OK (NoCrypto set):    %d", ok);
-    printf("%s\n", __fstr_607_buf);
-    int __fstr_610_len = snprintf(NULL, 0, "  Needs fix (flag missing):     %d", needsFix);
+    int __fstr_610_len = snprintf(NULL, 0, "Summary: %d files", total);
     char* __fstr_610_buf = __btrc_str_track(((char*)malloc((__fstr_610_len + 1))));
-    snprintf(__fstr_610_buf, (__fstr_610_len + 1), "  Needs fix (flag missing):     %d", needsFix);
+    snprintf(__fstr_610_buf, (__fstr_610_len + 1), "Summary: %d files", total);
     printf("%s\n", __fstr_610_buf);
-    int __fstr_613_len = snprintf(NULL, 0, "  Truly encrypted (need keys):  %d", encrypted);
+    int __fstr_613_len = snprintf(NULL, 0, "  Already OK (NoCrypto set):    %d", ok);
     char* __fstr_613_buf = __btrc_str_track(((char*)malloc((__fstr_613_len + 1))));
-    snprintf(__fstr_613_buf, (__fstr_613_len + 1), "  Truly encrypted (need keys):  %d", encrypted);
+    snprintf(__fstr_613_buf, (__fstr_613_len + 1), "  Already OK (NoCrypto set):    %d", ok);
     printf("%s\n", __fstr_613_buf);
-    int __fstr_616_len = snprintf(NULL, 0, "  Invalid/errors:               %d", invalid);
+    int __fstr_616_len = snprintf(NULL, 0, "  Needs fix (flag missing):     %d", needsFix);
     char* __fstr_616_buf = __btrc_str_track(((char*)malloc((__fstr_616_len + 1))));
-    snprintf(__fstr_616_buf, (__fstr_616_len + 1), "  Invalid/errors:               %d", invalid);
+    snprintf(__fstr_616_buf, (__fstr_616_len + 1), "  Needs fix (flag missing):     %d", needsFix);
     printf("%s\n", __fstr_616_buf);
+    int __fstr_619_len = snprintf(NULL, 0, "  Truly encrypted (need keys):  %d", encrypted);
+    char* __fstr_619_buf = __btrc_str_track(((char*)malloc((__fstr_619_len + 1))));
+    snprintf(__fstr_619_buf, (__fstr_619_len + 1), "  Truly encrypted (need keys):  %d", encrypted);
+    printf("%s\n", __fstr_619_buf);
+    int __fstr_622_len = snprintf(NULL, 0, "  Invalid/errors:               %d", invalid);
+    char* __fstr_622_buf = __btrc_str_track(((char*)malloc((__fstr_622_len + 1))));
+    snprintf(__fstr_622_buf, (__fstr_622_len + 1), "  Invalid/errors:               %d", invalid);
+    printf("%s\n", __fstr_622_buf);
     if (unknown > 0) {
-        int __fstr_619_len = snprintf(NULL, 0, "  Unknown:                      %d", unknown);
-        char* __fstr_619_buf = __btrc_str_track(((char*)malloc((__fstr_619_len + 1))));
-        snprintf(__fstr_619_buf, (__fstr_619_len + 1), "  Unknown:                      %d", unknown);
-        printf("%s\n", __fstr_619_buf);
+        int __fstr_625_len = snprintf(NULL, 0, "  Unknown:                      %d", unknown);
+        char* __fstr_625_buf = __btrc_str_track(((char*)malloc((__fstr_625_len + 1))));
+        snprintf(__fstr_625_buf, (__fstr_625_len + 1), "  Unknown:                      %d", unknown);
+        printf("%s\n", __fstr_625_buf);
     }
 }
 
@@ -15630,40 +15753,40 @@ int n3dsNoCryptoCommand(CliArgs* args, int startIndex) {
         int encrypted = 0;
         int invalid = 0;
         int unknown = 0;
-        int __n_621 = btrc_Vector_string_iterLen(files);
-        for (int __i_620 = 0; (__i_620 < __n_621); (__i_620++)) {
-            char* file = btrc_Vector_string_iterGet(files, __i_620);
+        int __n_627 = btrc_Vector_string_iterLen(files);
+        for (int __i_626 = 0; (__i_626 < __n_627); (__i_626++)) {
+            char* file = btrc_Vector_string_iterGet(files, __i_626);
             N3dsRomCheck* result = checkN3dsRom(file);
             char* name = PathTools_basename(file);
             if (strcmp(result->status, "OK") == 0) {
-                int __fstr_624_len = snprintf(NULL, 0, "  OK:        %s", name);
-                char* __fstr_624_buf = __btrc_str_track(((char*)malloc((__fstr_624_len + 1))));
-                snprintf(__fstr_624_buf, (__fstr_624_len + 1), "  OK:        %s", name);
-                printf("%s\n", __fstr_624_buf);
+                int __fstr_630_len = snprintf(NULL, 0, "  OK:        %s", name);
+                char* __fstr_630_buf = __btrc_str_track(((char*)malloc((__fstr_630_len + 1))));
+                snprintf(__fstr_630_buf, (__fstr_630_len + 1), "  OK:        %s", name);
+                printf("%s\n", __fstr_630_buf);
                 (ok++);
             } else if (strcmp(result->status, "NEEDS_FIX") == 0) {
-                int __fstr_627_len = snprintf(NULL, 0, "  NEEDS FIX: %s", name);
-                char* __fstr_627_buf = __btrc_str_track(((char*)malloc((__fstr_627_len + 1))));
-                snprintf(__fstr_627_buf, (__fstr_627_len + 1), "  NEEDS FIX: %s", name);
-                printf("%s\n", __fstr_627_buf);
+                int __fstr_633_len = snprintf(NULL, 0, "  NEEDS FIX: %s", name);
+                char* __fstr_633_buf = __btrc_str_track(((char*)malloc((__fstr_633_len + 1))));
+                snprintf(__fstr_633_buf, (__fstr_633_len + 1), "  NEEDS FIX: %s", name);
+                printf("%s\n", __fstr_633_buf);
                 (needsFix++);
             } else if (strcmp(result->status, "ENCRYPTED") == 0) {
-                int __fstr_630_len = snprintf(NULL, 0, "  ENCRYPTED: %s (truly encrypted, cannot fix with flag flip)", name);
-                char* __fstr_630_buf = __btrc_str_track(((char*)malloc((__fstr_630_len + 1))));
-                snprintf(__fstr_630_buf, (__fstr_630_len + 1), "  ENCRYPTED: %s (truly encrypted, cannot fix with flag flip)", name);
-                printf("%s\n", __fstr_630_buf);
+                int __fstr_636_len = snprintf(NULL, 0, "  ENCRYPTED: %s (truly encrypted, cannot fix with flag flip)", name);
+                char* __fstr_636_buf = __btrc_str_track(((char*)malloc((__fstr_636_len + 1))));
+                snprintf(__fstr_636_buf, (__fstr_636_len + 1), "  ENCRYPTED: %s (truly encrypted, cannot fix with flag flip)", name);
+                printf("%s\n", __fstr_636_buf);
                 (encrypted++);
             } else if (strcmp(result->status, "INVALID") == 0) {
-                int __fstr_633_len = snprintf(NULL, 0, "  ERROR:     %s: %s", name, result->note);
-                char* __fstr_633_buf = __btrc_str_track(((char*)malloc((__fstr_633_len + 1))));
-                snprintf(__fstr_633_buf, (__fstr_633_len + 1), "  ERROR:     %s: %s", name, result->note);
-                printf("%s\n", __fstr_633_buf);
+                int __fstr_639_len = snprintf(NULL, 0, "  ERROR:     %s: %s", name, result->note);
+                char* __fstr_639_buf = __btrc_str_track(((char*)malloc((__fstr_639_len + 1))));
+                snprintf(__fstr_639_buf, (__fstr_639_len + 1), "  ERROR:     %s: %s", name, result->note);
+                printf("%s\n", __fstr_639_buf);
                 (invalid++);
             } else {
-                int __fstr_636_len = snprintf(NULL, 0, "  UNKNOWN:   %s: %s", name, result->note);
-                char* __fstr_636_buf = __btrc_str_track(((char*)malloc((__fstr_636_len + 1))));
-                snprintf(__fstr_636_buf, (__fstr_636_len + 1), "  UNKNOWN:   %s: %s", name, result->note);
-                printf("%s\n", __fstr_636_buf);
+                int __fstr_642_len = snprintf(NULL, 0, "  UNKNOWN:   %s: %s", name, result->note);
+                char* __fstr_642_buf = __btrc_str_track(((char*)malloc((__fstr_642_len + 1))));
+                snprintf(__fstr_642_buf, (__fstr_642_len + 1), "  UNKNOWN:   %s: %s", name, result->note);
+                printf("%s\n", __fstr_642_buf);
                 (unknown++);
             }
         }
@@ -15683,10 +15806,10 @@ int n3dsNoCryptoCommand(CliArgs* args, int startIndex) {
         char* file = btrc_Vector_string_get(files, i);
         char* name = PathTools_basename(file);
         char* output = joinPath(outputDir, name);
-        int __fstr_639_len = snprintf(NULL, 0, "[%d/%d] %s", (i + 1), files->len, name);
-        char* __fstr_639_buf = __btrc_str_track(((char*)malloc((__fstr_639_len + 1))));
-        snprintf(__fstr_639_buf, (__fstr_639_len + 1), "[%d/%d] %s", (i + 1), files->len, name);
-        printf("%s\n", __fstr_639_buf);
+        int __fstr_645_len = snprintf(NULL, 0, "[%d/%d] %s", (i + 1), files->len, name);
+        char* __fstr_645_buf = __btrc_str_track(((char*)malloc((__fstr_645_len + 1))));
+        snprintf(__fstr_645_buf, (__fstr_645_len + 1), "[%d/%d] %s", (i + 1), files->len, name);
+        printf("%s\n", __fstr_645_buf);
         N3dsRomCheck* result = checkN3dsRom(file);
         if (strcmp(result->status, "OK") == 0) {
             printf("%s\n", "  Already OK, copying as-is");
@@ -15709,10 +15832,10 @@ int n3dsNoCryptoCommand(CliArgs* args, int startIndex) {
             printf("%s\n", "  Truly encrypted, skipping (needs full decryption)");
             (failed++);
         } else if (strcmp(result->status, "INVALID") == 0) {
-            int __fstr_642_len = snprintf(NULL, 0, "  ERROR: %s", result->note);
-            char* __fstr_642_buf = __btrc_str_track(((char*)malloc((__fstr_642_len + 1))));
-            snprintf(__fstr_642_buf, (__fstr_642_len + 1), "  ERROR: %s", result->note);
-            printf("%s\n", __fstr_642_buf);
+            int __fstr_648_len = snprintf(NULL, 0, "  ERROR: %s", result->note);
+            char* __fstr_648_buf = __btrc_str_track(((char*)malloc((__fstr_648_len + 1))));
+            snprintf(__fstr_648_buf, (__fstr_648_len + 1), "  ERROR: %s", result->note);
+            printf("%s\n", __fstr_648_buf);
             (failed++);
         } else {
             printf("%s\n", "  Unknown state, copying as-is");
@@ -15725,10 +15848,10 @@ int n3dsNoCryptoCommand(CliArgs* args, int startIndex) {
         }
     }
     printf("%s\n", "");
-    int __fstr_645_len = snprintf(NULL, 0, "Done: %d fixed, %d copied as-is, %d failed", fixed, copied, failed);
-    char* __fstr_645_buf = __btrc_str_track(((char*)malloc((__fstr_645_len + 1))));
-    snprintf(__fstr_645_buf, (__fstr_645_len + 1), "Done: %d fixed, %d copied as-is, %d failed", fixed, copied, failed);
-    printf("%s\n", __fstr_645_buf);
+    int __fstr_651_len = snprintf(NULL, 0, "Done: %d fixed, %d copied as-is, %d failed", fixed, copied, failed);
+    char* __fstr_651_buf = __btrc_str_track(((char*)malloc((__fstr_651_len + 1))));
+    snprintf(__fstr_651_buf, (__fstr_651_len + 1), "Done: %d fixed, %d copied as-is, %d failed", fixed, copied, failed);
+    printf("%s\n", __fstr_651_buf);
     return ((failed == 0) ? 0 : 1);
 }
 
@@ -15760,17 +15883,17 @@ char* screenshotConfigPath(char* project) {
 }
 
 char* screenshotDefaultConfigText(void) {
-    btrc_Vector_string* __list_646 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_646, jsonField("schema_version", "1"));
-    btrc_Vector_string_push(__list_646, jsonBoolField("enabled", false));
-    btrc_Vector_string_push(__list_646, jsonStrField("tool", "auto"));
-    btrc_Vector_string_push(__list_646, jsonStrField("command", ""));
-    btrc_Vector_string_push(__list_646, jsonField("delay_seconds", "2"));
-    btrc_Vector_string_push(__list_646, jsonBoolField("capture_before_launch", true));
-    btrc_Vector_string_push(__list_646, jsonBoolField("capture_after_spawn", true));
-    btrc_Vector_string_push(__list_646, jsonBoolField("capture_after_exit", true));
-    btrc_Vector_string_push(__list_646, jsonStrField("output_pattern", "${paths.project_screenshots}/verification/${emulator}/${hook}.png"));
-    return __btrc_str_track(__btrc_strcat(jsonObject(__list_646), "\n"));
+    btrc_Vector_string* __list_652 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_652, jsonField("schema_version", "1"));
+    btrc_Vector_string_push(__list_652, jsonBoolField("enabled", false));
+    btrc_Vector_string_push(__list_652, jsonStrField("tool", "auto"));
+    btrc_Vector_string_push(__list_652, jsonStrField("command", ""));
+    btrc_Vector_string_push(__list_652, jsonField("delay_seconds", "2"));
+    btrc_Vector_string_push(__list_652, jsonBoolField("capture_before_launch", true));
+    btrc_Vector_string_push(__list_652, jsonBoolField("capture_after_spawn", true));
+    btrc_Vector_string_push(__list_652, jsonBoolField("capture_after_exit", true));
+    btrc_Vector_string_push(__list_652, jsonStrField("output_pattern", "${paths.project_screenshots}/verification/${emulator}/${hook}.png"));
+    return __btrc_str_track(__btrc_strcat(jsonObject(__list_652), "\n"));
 }
 
 void writeScreenshotDefaults(char* project) {
@@ -15836,10 +15959,10 @@ bool screenshotHookEnabled(char* project, char* hook) {
 
 char* screenshotDelaySeconds(char* project) {
     int delay = screenshotInt(project, "delay_seconds", 2);
-    int __fstr_647_len = snprintf(NULL, 0, "%d", delay);
-    char* __fstr_647_buf = __btrc_str_track(((char*)malloc((__fstr_647_len + 1))));
-    snprintf(__fstr_647_buf, (__fstr_647_len + 1), "%d", delay);
-    return Environment_get("SEMU_SCREENSHOT_DELAY_SECONDS", __fstr_647_buf);
+    int __fstr_653_len = snprintf(NULL, 0, "%d", delay);
+    char* __fstr_653_buf = __btrc_str_track(((char*)malloc((__fstr_653_len + 1))));
+    snprintf(__fstr_653_buf, (__fstr_653_len + 1), "%d", delay);
+    return Environment_get("SEMU_SCREENSHOT_DELAY_SECONDS", __fstr_653_buf);
 }
 
 char* screenshotSafeName(char* value) {
@@ -15875,15 +15998,15 @@ char* screenshotCapturePath(char* project, char* emulator, char* hook) {
 }
 
 char* screenshotAutoTool(void) {
-    btrc_Vector_string* __list_648 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_648, "grim");
-    btrc_Vector_string_push(__list_648, "spectacle");
-    btrc_Vector_string_push(__list_648, "gnome-screenshot");
-    btrc_Vector_string_push(__list_648, "import");
-    btrc_Vector_string* candidates = __list_648;
-    int __n_650 = btrc_Vector_string_iterLen(candidates);
-    for (int __i_649 = 0; (__i_649 < __n_650); (__i_649++)) {
-        char* candidate = btrc_Vector_string_iterGet(candidates, __i_649);
+    btrc_Vector_string* __list_654 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_654, "grim");
+    btrc_Vector_string_push(__list_654, "spectacle");
+    btrc_Vector_string_push(__list_654, "gnome-screenshot");
+    btrc_Vector_string_push(__list_654, "import");
+    btrc_Vector_string* candidates = __list_654;
+    int __n_656 = btrc_Vector_string_iterLen(candidates);
+    for (int __i_655 = 0; (__i_655 < __n_656); (__i_655++)) {
+        char* candidate = btrc_Vector_string_iterGet(candidates, __i_655);
         if (commandExists(candidate)) {
             return candidate;
         }
@@ -15918,25 +16041,25 @@ char* screenshotCaptureCommand(char* project, char* emulator, char* hook, char* 
     char* command = ShellWords_quote(tool);
     char* base = PathTools_basename(tool);
     if (strcmp(base, "spectacle") == 0) {
-        btrc_Vector_string* __list_651 = btrc_Vector_string_new();
-        btrc_Vector_string_push(__list_651, "-b");
-        btrc_Vector_string_push(__list_651, "-n");
-        btrc_Vector_string_push(__list_651, "-o");
-        btrc_Vector_string_push(__list_651, output);
-        return shellAppendAll(command, __list_651);
+        btrc_Vector_string* __list_657 = btrc_Vector_string_new();
+        btrc_Vector_string_push(__list_657, "-b");
+        btrc_Vector_string_push(__list_657, "-n");
+        btrc_Vector_string_push(__list_657, "-o");
+        btrc_Vector_string_push(__list_657, output);
+        return shellAppendAll(command, __list_657);
     }
     if (strcmp(base, "gnome-screenshot") == 0) {
-        btrc_Vector_string* __list_652 = btrc_Vector_string_new();
-        btrc_Vector_string_push(__list_652, "-f");
-        btrc_Vector_string_push(__list_652, output);
-        return shellAppendAll(command, __list_652);
+        btrc_Vector_string* __list_658 = btrc_Vector_string_new();
+        btrc_Vector_string_push(__list_658, "-f");
+        btrc_Vector_string_push(__list_658, output);
+        return shellAppendAll(command, __list_658);
     }
     if (strcmp(base, "import") == 0) {
-        btrc_Vector_string* __list_653 = btrc_Vector_string_new();
-        btrc_Vector_string_push(__list_653, "-window");
-        btrc_Vector_string_push(__list_653, "root");
-        btrc_Vector_string_push(__list_653, output);
-        return shellAppendAll(command, __list_653);
+        btrc_Vector_string* __list_659 = btrc_Vector_string_new();
+        btrc_Vector_string_push(__list_659, "-window");
+        btrc_Vector_string_push(__list_659, "root");
+        btrc_Vector_string_push(__list_659, output);
+        return shellAppendAll(command, __list_659);
     }
     return shellAppend(command, output);
 }
@@ -15951,29 +16074,29 @@ bool screenshotCaptureTo(char* project, char* emulator, char* hook, char* output
     UnixShell* shell = UnixShell_new();
     ExecResult* result = UnixShell_runRaw(shell, command, false, false, "");
     if (ExecResult_ok(result) && FileSystem_isFile(output)) {
-        int __fstr_656_len = snprintf(NULL, 0, "OK screenshot %s:%s: %s", emulator, hook, output);
-        char* __fstr_656_buf = __btrc_str_track(((char*)malloc((__fstr_656_len + 1))));
-        snprintf(__fstr_656_buf, (__fstr_656_len + 1), "OK screenshot %s:%s: %s", emulator, hook, output);
-        printf("%s\n", __fstr_656_buf);
-        bool __btrc_ret_657 = true;
+        int __fstr_662_len = snprintf(NULL, 0, "OK screenshot %s:%s: %s", emulator, hook, output);
+        char* __fstr_662_buf = __btrc_str_track(((char*)malloc((__fstr_662_len + 1))));
+        snprintf(__fstr_662_buf, (__fstr_662_len + 1), "OK screenshot %s:%s: %s", emulator, hook, output);
+        printf("%s\n", __fstr_662_buf);
+        bool __btrc_ret_663 = true;
         if (shell != NULL) {
             if ((--shell->__rc) <= 0) {
                 UnixShell_destroy(shell);
             }
         }
-        return __btrc_ret_657;
+        return __btrc_ret_663;
     }
-    int __fstr_660_len = snprintf(NULL, 0, "MISSING screenshot %s:%s: %s", emulator, hook, output);
-    char* __fstr_660_buf = __btrc_str_track(((char*)malloc((__fstr_660_len + 1))));
-    snprintf(__fstr_660_buf, (__fstr_660_len + 1), "MISSING screenshot %s:%s: %s", emulator, hook, output);
-    printf("%s\n", __fstr_660_buf);
-    bool __btrc_ret_661 = false;
+    int __fstr_666_len = snprintf(NULL, 0, "MISSING screenshot %s:%s: %s", emulator, hook, output);
+    char* __fstr_666_buf = __btrc_str_track(((char*)malloc((__fstr_666_len + 1))));
+    snprintf(__fstr_666_buf, (__fstr_666_len + 1), "MISSING screenshot %s:%s: %s", emulator, hook, output);
+    printf("%s\n", __fstr_666_buf);
+    bool __btrc_ret_667 = false;
     if (shell != NULL) {
         if ((--shell->__rc) <= 0) {
             UnixShell_destroy(shell);
         }
     }
-    return __btrc_ret_661;
+    return __btrc_ret_667;
     if (shell != NULL) {
         if ((--shell->__rc) <= 0) {
             UnixShell_destroy(shell);
@@ -16005,10 +16128,10 @@ void screenshotScheduleHook(char* project, char* emulator, char* hook) {
     char* delay = screenshotDelaySeconds(project);
     UnixShell* shell = UnixShell_new();
     UnixShell_runRaw(shell, __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat("(sleep ", ShellWords_quote(delay))), "; ")), command)), ") >/dev/null 2>&1 &")), false, false, "");
-    int __fstr_664_len = snprintf(NULL, 0, "OK screenshot scheduled %s:%s: %s", emulator, hook, output);
-    char* __fstr_664_buf = __btrc_str_track(((char*)malloc((__fstr_664_len + 1))));
-    snprintf(__fstr_664_buf, (__fstr_664_len + 1), "OK screenshot scheduled %s:%s: %s", emulator, hook, output);
-    printf("%s\n", __fstr_664_buf);
+    int __fstr_670_len = snprintf(NULL, 0, "OK screenshot scheduled %s:%s: %s", emulator, hook, output);
+    char* __fstr_670_buf = __btrc_str_track(((char*)malloc((__fstr_670_len + 1))));
+    snprintf(__fstr_670_buf, (__fstr_670_len + 1), "OK screenshot scheduled %s:%s: %s", emulator, hook, output);
+    printf("%s\n", __fstr_670_buf);
     if (shell != NULL) {
         if ((--shell->__rc) <= 0) {
             UnixShell_destroy(shell);
@@ -16024,10 +16147,10 @@ void doctorScreenshotHooks(char* project) {
     printf("%s\n", "  OK hooks: before_launch, after_spawn, after_exit, manual_visual_checkpoint");
     char* tool = screenshotConfiguredTool(project);
     if (((int)strlen(tool)) > 0) {
-        int __fstr_667_len = snprintf(NULL, 0, "  OK screenshot_tool: %s", tool);
-        char* __fstr_667_buf = __btrc_str_track(((char*)malloc((__fstr_667_len + 1))));
-        snprintf(__fstr_667_buf, (__fstr_667_len + 1), "  OK screenshot_tool: %s", tool);
-        printf("%s\n", __fstr_667_buf);
+        int __fstr_673_len = snprintf(NULL, 0, "  OK screenshot_tool: %s", tool);
+        char* __fstr_673_buf = __btrc_str_track(((char*)malloc((__fstr_673_len + 1))));
+        snprintf(__fstr_673_buf, (__fstr_673_len + 1), "  OK screenshot_tool: %s", tool);
+        printf("%s\n", __fstr_673_buf);
     } else {
         printf("%s\n", "  MISSING screenshot_tool: install grim/spectacle/gnome-screenshot/ImageMagick import or set SEMU_SCREENSHOT_CMD");
     }
@@ -16060,15 +16183,15 @@ char* syncFolderPath(char* project, char* id) {
 }
 
 btrc_Vector_string* syncFolderIds(void) {
-    btrc_Vector_string* __list_668 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_668, "saves");
-    btrc_Vector_string_push(__list_668, "states");
-    btrc_Vector_string_push(__list_668, "emulator_state");
-    btrc_Vector_string_push(__list_668, "screenshots");
-    btrc_Vector_string_push(__list_668, "gamelists");
-    btrc_Vector_string_push(__list_668, "roms");
-    btrc_Vector_string_push(__list_668, "bios");
-    return __list_668;
+    btrc_Vector_string* __list_674 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_674, "saves");
+    btrc_Vector_string_push(__list_674, "states");
+    btrc_Vector_string_push(__list_674, "emulator_state");
+    btrc_Vector_string_push(__list_674, "screenshots");
+    btrc_Vector_string_push(__list_674, "gamelists");
+    btrc_Vector_string_push(__list_674, "roms");
+    btrc_Vector_string_push(__list_674, "bios");
+    return __list_674;
 }
 
 char* syncFolderLabel(char* id) {
@@ -16134,40 +16257,40 @@ SyncSettingSpec* SyncSettingsRegistry_empty(void) {
 }
 
 btrc_Vector_SyncSettingSpec* SyncSettingsRegistry_all(void) {
-    btrc_Vector_SyncSettingSpec* __list_669 = btrc_Vector_SyncSettingSpec_new();
-    btrc_Vector_SyncSettingSpec_push(__list_669, SyncSettingSpec_new("enabled", "Syncthing Enabled", "Runtime", "enabled", "bool", "true"));
-    btrc_Vector_SyncSettingSpec_push(__list_669, SyncSettingSpec_new("start_at_boot", "Start At Boot", "Runtime", "start_at_boot", "bool", "true"));
-    btrc_Vector_SyncSettingSpec_push(__list_669, SyncSettingSpec_new("tray", "Show Sync Tray", "Runtime", "tray", "bool", "true"));
-    btrc_Vector_SyncSettingSpec_push(__list_669, SyncSettingSpec_new("gui_address", "Syncthing UI Address", "Runtime", "gui_address", "string", "127.0.0.1:8384"));
-    btrc_Vector_SyncSettingSpec_push(__list_669, SyncSettingSpec_new("roms_dir", "ROM Directory", "Folders", "roms_dir", "string", "${paths.project_roms}"));
-    btrc_Vector_SyncSettingSpec_push(__list_669, SyncSettingSpec_new("sync_saves", "Sync Saves", "Folders", "sync_saves", "bool", "true"));
-    btrc_Vector_SyncSettingSpec_push(__list_669, SyncSettingSpec_new("sync_states", "Sync States", "Folders", "sync_states", "bool", "true"));
-    btrc_Vector_SyncSettingSpec_push(__list_669, SyncSettingSpec_new("sync_emulator_state", "Sync Emulator State", "Folders", "sync_emulator_state", "bool", "true"));
-    btrc_Vector_SyncSettingSpec_push(__list_669, SyncSettingSpec_new("sync_screenshots", "Sync Screenshots", "Folders", "sync_screenshots", "bool", "true"));
-    btrc_Vector_SyncSettingSpec_push(__list_669, SyncSettingSpec_new("sync_gamelists", "Sync Gamelists", "Folders", "sync_gamelists", "bool", "true"));
-    btrc_Vector_SyncSettingSpec_push(__list_669, SyncSettingSpec_new("sync_roms", "Sync ROMs", "Folders", "sync_roms", "bool", "false"));
-    btrc_Vector_SyncSettingSpec_push(__list_669, SyncSettingSpec_new("sync_bios", "Sync BIOS", "Folders", "sync_bios", "bool", "false"));
-    btrc_Vector_SyncSettingSpec_push(__list_669, SyncSettingSpec_new("watch_saves", "Watch Saves", "Watchers", "watch_saves", "bool", "true"));
-    btrc_Vector_SyncSettingSpec_push(__list_669, SyncSettingSpec_new("watch_states", "Watch States", "Watchers", "watch_states", "bool", "true"));
-    btrc_Vector_SyncSettingSpec_push(__list_669, SyncSettingSpec_new("watch_emulator_state", "Watch Emulator State", "Watchers", "watch_emulator_state", "bool", "true"));
-    btrc_Vector_SyncSettingSpec_push(__list_669, SyncSettingSpec_new("watch_screenshots", "Watch Screenshots", "Watchers", "watch_screenshots", "bool", "true"));
-    btrc_Vector_SyncSettingSpec_push(__list_669, SyncSettingSpec_new("watch_gamelists", "Watch Gamelists", "Watchers", "watch_gamelists", "bool", "true"));
-    btrc_Vector_SyncSettingSpec_push(__list_669, SyncSettingSpec_new("watch_roms", "Watch ROMs", "Watchers", "watch_roms", "bool", "true"));
-    btrc_Vector_SyncSettingSpec_push(__list_669, SyncSettingSpec_new("watch_bios", "Watch BIOS", "Watchers", "watch_bios", "bool", "true"));
-    btrc_Vector_SyncSettingSpec_push(__list_669, SyncSettingSpec_new("rescan_saves_s", "Save Rescan Seconds", "Intervals", "rescan_saves_s", "int", "900"));
-    btrc_Vector_SyncSettingSpec_push(__list_669, SyncSettingSpec_new("rescan_states_s", "State Rescan Seconds", "Intervals", "rescan_states_s", "int", "900"));
-    btrc_Vector_SyncSettingSpec_push(__list_669, SyncSettingSpec_new("rescan_emulator_state_s", "Emulator State Rescan Seconds", "Intervals", "rescan_emulator_state_s", "int", "900"));
-    btrc_Vector_SyncSettingSpec_push(__list_669, SyncSettingSpec_new("rescan_screenshots_s", "Screenshot Rescan Seconds", "Intervals", "rescan_screenshots_s", "int", "1800"));
-    btrc_Vector_SyncSettingSpec_push(__list_669, SyncSettingSpec_new("rescan_gamelists_s", "Gamelist Rescan Seconds", "Intervals", "rescan_gamelists_s", "int", "1800"));
-    btrc_Vector_SyncSettingSpec_push(__list_669, SyncSettingSpec_new("rescan_roms_s", "ROM Rescan Seconds", "Intervals", "rescan_roms_s", "int", "3600"));
-    btrc_Vector_SyncSettingSpec_push(__list_669, SyncSettingSpec_new("rescan_bios_s", "BIOS Rescan Seconds", "Intervals", "rescan_bios_s", "int", "3600"));
-    return __list_669;
+    btrc_Vector_SyncSettingSpec* __list_675 = btrc_Vector_SyncSettingSpec_new();
+    btrc_Vector_SyncSettingSpec_push(__list_675, SyncSettingSpec_new("enabled", "Syncthing Enabled", "Runtime", "enabled", "bool", "true"));
+    btrc_Vector_SyncSettingSpec_push(__list_675, SyncSettingSpec_new("start_at_boot", "Start At Boot", "Runtime", "start_at_boot", "bool", "true"));
+    btrc_Vector_SyncSettingSpec_push(__list_675, SyncSettingSpec_new("tray", "Show Sync Tray", "Runtime", "tray", "bool", "true"));
+    btrc_Vector_SyncSettingSpec_push(__list_675, SyncSettingSpec_new("gui_address", "Syncthing UI Address", "Runtime", "gui_address", "string", "127.0.0.1:8384"));
+    btrc_Vector_SyncSettingSpec_push(__list_675, SyncSettingSpec_new("roms_dir", "ROM Directory", "Folders", "roms_dir", "string", "${paths.project_roms}"));
+    btrc_Vector_SyncSettingSpec_push(__list_675, SyncSettingSpec_new("sync_saves", "Sync Saves", "Folders", "sync_saves", "bool", "true"));
+    btrc_Vector_SyncSettingSpec_push(__list_675, SyncSettingSpec_new("sync_states", "Sync States", "Folders", "sync_states", "bool", "true"));
+    btrc_Vector_SyncSettingSpec_push(__list_675, SyncSettingSpec_new("sync_emulator_state", "Sync Emulator State", "Folders", "sync_emulator_state", "bool", "true"));
+    btrc_Vector_SyncSettingSpec_push(__list_675, SyncSettingSpec_new("sync_screenshots", "Sync Screenshots", "Folders", "sync_screenshots", "bool", "true"));
+    btrc_Vector_SyncSettingSpec_push(__list_675, SyncSettingSpec_new("sync_gamelists", "Sync Gamelists", "Folders", "sync_gamelists", "bool", "true"));
+    btrc_Vector_SyncSettingSpec_push(__list_675, SyncSettingSpec_new("sync_roms", "Sync ROMs", "Folders", "sync_roms", "bool", "false"));
+    btrc_Vector_SyncSettingSpec_push(__list_675, SyncSettingSpec_new("sync_bios", "Sync BIOS", "Folders", "sync_bios", "bool", "false"));
+    btrc_Vector_SyncSettingSpec_push(__list_675, SyncSettingSpec_new("watch_saves", "Watch Saves", "Watchers", "watch_saves", "bool", "true"));
+    btrc_Vector_SyncSettingSpec_push(__list_675, SyncSettingSpec_new("watch_states", "Watch States", "Watchers", "watch_states", "bool", "true"));
+    btrc_Vector_SyncSettingSpec_push(__list_675, SyncSettingSpec_new("watch_emulator_state", "Watch Emulator State", "Watchers", "watch_emulator_state", "bool", "true"));
+    btrc_Vector_SyncSettingSpec_push(__list_675, SyncSettingSpec_new("watch_screenshots", "Watch Screenshots", "Watchers", "watch_screenshots", "bool", "true"));
+    btrc_Vector_SyncSettingSpec_push(__list_675, SyncSettingSpec_new("watch_gamelists", "Watch Gamelists", "Watchers", "watch_gamelists", "bool", "true"));
+    btrc_Vector_SyncSettingSpec_push(__list_675, SyncSettingSpec_new("watch_roms", "Watch ROMs", "Watchers", "watch_roms", "bool", "true"));
+    btrc_Vector_SyncSettingSpec_push(__list_675, SyncSettingSpec_new("watch_bios", "Watch BIOS", "Watchers", "watch_bios", "bool", "true"));
+    btrc_Vector_SyncSettingSpec_push(__list_675, SyncSettingSpec_new("rescan_saves_s", "Save Rescan Seconds", "Intervals", "rescan_saves_s", "int", "900"));
+    btrc_Vector_SyncSettingSpec_push(__list_675, SyncSettingSpec_new("rescan_states_s", "State Rescan Seconds", "Intervals", "rescan_states_s", "int", "900"));
+    btrc_Vector_SyncSettingSpec_push(__list_675, SyncSettingSpec_new("rescan_emulator_state_s", "Emulator State Rescan Seconds", "Intervals", "rescan_emulator_state_s", "int", "900"));
+    btrc_Vector_SyncSettingSpec_push(__list_675, SyncSettingSpec_new("rescan_screenshots_s", "Screenshot Rescan Seconds", "Intervals", "rescan_screenshots_s", "int", "1800"));
+    btrc_Vector_SyncSettingSpec_push(__list_675, SyncSettingSpec_new("rescan_gamelists_s", "Gamelist Rescan Seconds", "Intervals", "rescan_gamelists_s", "int", "1800"));
+    btrc_Vector_SyncSettingSpec_push(__list_675, SyncSettingSpec_new("rescan_roms_s", "ROM Rescan Seconds", "Intervals", "rescan_roms_s", "int", "3600"));
+    btrc_Vector_SyncSettingSpec_push(__list_675, SyncSettingSpec_new("rescan_bios_s", "BIOS Rescan Seconds", "Intervals", "rescan_bios_s", "int", "3600"));
+    return __list_675;
 }
 
 SyncSettingSpec* SyncSettingsRegistry_find(char* key) {
-    int __n_671 = btrc_Vector_SyncSettingSpec_iterLen(SyncSettingsRegistry_all());
-    for (int __i_670 = 0; (__i_670 < __n_671); (__i_670++)) {
-        SyncSettingSpec* spec = btrc_Vector_SyncSettingSpec_iterGet(SyncSettingsRegistry_all(), __i_670);
+    int __n_677 = btrc_Vector_SyncSettingSpec_iterLen(SyncSettingsRegistry_all());
+    for (int __i_676 = 0; (__i_676 < __n_677); (__i_676++)) {
+        SyncSettingSpec* spec = btrc_Vector_SyncSettingSpec_iterGet(SyncSettingsRegistry_all(), __i_676);
         if ((strcmp(spec->key, key) == 0) || (strcmp(spec->jsonKey, key) == 0)) {
             return spec;
         }
@@ -16238,9 +16361,9 @@ char* syncConfigTextWithOverride(char* project, char* overrideKey, char* overrid
     writeSyncDefaults(project, "");
     JsonObject* config = JsonObject_readFile(syncConfigPath(project));
     btrc_Vector_string* fields = btrc_Vector_string_new();
-    int __n_673 = btrc_Vector_SyncSettingSpec_iterLen(SyncSettingsRegistry_all());
-    for (int __i_672 = 0; (__i_672 < __n_673); (__i_672++)) {
-        SyncSettingSpec* spec = btrc_Vector_SyncSettingSpec_iterGet(SyncSettingsRegistry_all(), __i_672);
+    int __n_679 = btrc_Vector_SyncSettingSpec_iterLen(SyncSettingsRegistry_all());
+    for (int __i_678 = 0; (__i_678 < __n_679); (__i_678++)) {
+        SyncSettingSpec* spec = btrc_Vector_SyncSettingSpec_iterGet(SyncSettingsRegistry_all(), __i_678);
         btrc_Vector_string_push(fields, syncSettingJsonField(project, config, spec, overrideKey, overrideValue));
     }
     return __btrc_str_track(__btrc_strcat(jsonObject(fields), "\n"));
@@ -16249,24 +16372,24 @@ char* syncConfigTextWithOverride(char* project, char* overrideKey, char* overrid
 bool syncPutSetting(char* project, char* key, char* value) {
     SyncSettingSpec* spec = SyncSettingsRegistry_find(key);
     if (!SyncSettingSpec_known(spec)) {
-        int __fstr_676_len = snprintf(NULL, 0, "error 0:0 unknown sync setting '%s'", key);
-        char* __fstr_676_buf = __btrc_str_track(((char*)malloc((__fstr_676_len + 1))));
-        snprintf(__fstr_676_buf, (__fstr_676_len + 1), "error 0:0 unknown sync setting '%s'", key);
-        printf("%s\n", __fstr_676_buf);
+        int __fstr_682_len = snprintf(NULL, 0, "error 0:0 unknown sync setting '%s'", key);
+        char* __fstr_682_buf = __btrc_str_track(((char*)malloc((__fstr_682_len + 1))));
+        snprintf(__fstr_682_buf, (__fstr_682_len + 1), "error 0:0 unknown sync setting '%s'", key);
+        printf("%s\n", __fstr_682_buf);
         return false;
     }
     if (SyncSettingSpec_isBool(spec) && (!syncUiBoolLiteral(value))) {
-        int __fstr_679_len = snprintf(NULL, 0, "error 0:0 %s expects a boolean", spec->key);
-        char* __fstr_679_buf = __btrc_str_track(((char*)malloc((__fstr_679_len + 1))));
-        snprintf(__fstr_679_buf, (__fstr_679_len + 1), "error 0:0 %s expects a boolean", spec->key);
-        printf("%s\n", __fstr_679_buf);
+        int __fstr_685_len = snprintf(NULL, 0, "error 0:0 %s expects a boolean", spec->key);
+        char* __fstr_685_buf = __btrc_str_track(((char*)malloc((__fstr_685_len + 1))));
+        snprintf(__fstr_685_buf, (__fstr_685_len + 1), "error 0:0 %s expects a boolean", spec->key);
+        printf("%s\n", __fstr_685_buf);
         return false;
     }
     if (SyncSettingSpec_isInt(spec) && (!syncUiIntLiteral(value))) {
-        int __fstr_682_len = snprintf(NULL, 0, "error 0:0 %s expects a non-negative integer", spec->key);
-        char* __fstr_682_buf = __btrc_str_track(((char*)malloc((__fstr_682_len + 1))));
-        snprintf(__fstr_682_buf, (__fstr_682_len + 1), "error 0:0 %s expects a non-negative integer", spec->key);
-        printf("%s\n", __fstr_682_buf);
+        int __fstr_688_len = snprintf(NULL, 0, "error 0:0 %s expects a non-negative integer", spec->key);
+        char* __fstr_688_buf = __btrc_str_track(((char*)malloc((__fstr_688_len + 1))));
+        snprintf(__fstr_688_buf, (__fstr_688_len + 1), "error 0:0 %s expects a non-negative integer", spec->key);
+        printf("%s\n", __fstr_688_buf);
         return false;
     }
     SemuGeneratedFiles_writeSourceJson(project, syncConfigPath(project), syncConfigTextWithOverride(project, spec->key, value));
@@ -16295,9 +16418,9 @@ void SyncSettingsUi_render(SyncSettingsUi* self) {
     printf("%s\n", "");
     char* group = "";
     int index = 1;
-    int __n_684 = btrc_Vector_SyncSettingSpec_iterLen(SyncSettingsRegistry_all());
-    for (int __i_683 = 0; (__i_683 < __n_684); (__i_683++)) {
-        SyncSettingSpec* spec = btrc_Vector_SyncSettingSpec_iterGet(SyncSettingsRegistry_all(), __i_683);
+    int __n_690 = btrc_Vector_SyncSettingSpec_iterLen(SyncSettingsRegistry_all());
+    for (int __i_689 = 0; (__i_689 < __n_690); (__i_689++)) {
+        SyncSettingSpec* spec = btrc_Vector_SyncSettingSpec_iterGet(SyncSettingsRegistry_all(), __i_689);
         if (!(strcmp(spec->group, group) == 0)) {
             (group = spec->group);
             printf("%s\n", group);
@@ -16538,13 +16661,13 @@ void syncGenerateIfNeeded(char* project) {
 bool syncSystemctl(char* verb, char* unit) {
     UnixShell* shell = UnixShell_new();
     ExecResult* result = UnixShell_runUnchecked(shell, __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat("systemctl --user ", verb)), " ")), unit)), " >/dev/null 2>&1")));
-    bool __btrc_ret_685 = ExecResult_ok(result);
+    bool __btrc_ret_691 = ExecResult_ok(result);
     if (shell != NULL) {
         if ((--shell->__rc) <= 0) {
             UnixShell_destroy(shell);
         }
     }
-    return __btrc_ret_685;
+    return __btrc_ret_691;
     if (shell != NULL) {
         if ((--shell->__rc) <= 0) {
             UnixShell_destroy(shell);
@@ -16557,34 +16680,34 @@ bool syncWaitForApi(char* project) {
     char* url = __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat("http://", syncGuiAddress(project))), "/rest/noauth/health"));
     char* curl = syncCurlExecutable();
     if (((int)strlen(curl)) == 0) {
-        bool __btrc_ret_686 = false;
+        bool __btrc_ret_692 = false;
         if (shell != NULL) {
             if ((--shell->__rc) <= 0) {
                 UnixShell_destroy(shell);
             }
         }
-        return __btrc_ret_686;
+        return __btrc_ret_692;
     }
     for (int i = 0; (i < 20); (i++)) {
         ExecResult* result = UnixShell_runUnchecked(shell, __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(ShellWords_quote(curl), " -fsS ")), ShellWords_quote(url))), " >/dev/null 2>&1")));
         if (ExecResult_ok(result)) {
-            bool __btrc_ret_687 = true;
+            bool __btrc_ret_693 = true;
             if (shell != NULL) {
                 if ((--shell->__rc) <= 0) {
                     UnixShell_destroy(shell);
                 }
             }
-            return __btrc_ret_687;
+            return __btrc_ret_693;
         }
         UnixShell_runUnchecked(shell, "sleep 1");
     }
-    bool __btrc_ret_688 = false;
+    bool __btrc_ret_694 = false;
     if (shell != NULL) {
         if ((--shell->__rc) <= 0) {
             UnixShell_destroy(shell);
         }
     }
-    return __btrc_ret_688;
+    return __btrc_ret_694;
     if (shell != NULL) {
         if ((--shell->__rc) <= 0) {
             UnixShell_destroy(shell);
@@ -16607,26 +16730,26 @@ bool syncAddFolder(char* project, char* id) {
     char* cliPrefix = __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(syncthing, " cli -H ")), ShellWords_quote(syncthingHome(project)))), " --gui-address ")), ShellWords_quote(syncGuiAddress(project)))), " --gui-apikey ")), ShellWords_quote(apiKey)));
     ExecResult* existing = UnixShell_runUnchecked(shell, __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(cliPrefix, " config folders list | grep -Fx ")), ShellWords_quote(folderId))), " >/dev/null 2>&1")));
     if (ExecResult_ok(existing)) {
-        bool __btrc_ret_689 = true;
+        bool __btrc_ret_695 = true;
         if (shell != NULL) {
             if ((--shell->__rc) <= 0) {
                 UnixShell_destroy(shell);
             }
         }
-        return __btrc_ret_689;
+        return __btrc_ret_695;
     }
     char* command = __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(syncthing, " cli -H ")), ShellWords_quote(syncthingHome(project)))), " --gui-address ")), ShellWords_quote(syncGuiAddress(project)))), " --gui-apikey ")), ShellWords_quote(apiKey))), " config folders add")), " --id ")), ShellWords_quote(folderId))), " --label ")), ShellWords_quote(syncFolderLabel(id)))), " --path ")), ShellWords_quote(syncFolderPath(project, id)))), " --type sendreceive")), " --rescan-intervals ")), Strings_fromInt(syncFolderRescan(project, id))));
     if (syncFolderWatch(project, id)) {
         (command = __btrc_str_track(__btrc_strcat(command, " --fswatcher-enabled")));
     }
     ExecResult* result = UnixShell_runUnchecked(shell, __btrc_str_track(__btrc_strcat(command, " >/dev/null 2>&1")));
-    bool __btrc_ret_690 = ExecResult_ok(result);
+    bool __btrc_ret_696 = ExecResult_ok(result);
     if (shell != NULL) {
         if ((--shell->__rc) <= 0) {
             UnixShell_destroy(shell);
         }
     }
-    return __btrc_ret_690;
+    return __btrc_ret_696;
     if (shell != NULL) {
         if ((--shell->__rc) <= 0) {
             UnixShell_destroy(shell);
@@ -16636,9 +16759,9 @@ bool syncAddFolder(char* project, char* id) {
 
 bool syncConfigureFolders(char* project) {
     bool ok = true;
-    int __n_692 = btrc_Vector_string_iterLen(syncFolderIds());
-    for (int __i_691 = 0; (__i_691 < __n_692); (__i_691++)) {
-        char* id = btrc_Vector_string_iterGet(syncFolderIds(), __i_691);
+    int __n_698 = btrc_Vector_string_iterLen(syncFolderIds());
+    for (int __i_697 = 0; (__i_697 < __n_698); (__i_697++)) {
+        char* id = btrc_Vector_string_iterGet(syncFolderIds(), __i_697);
         if (!syncAddFolder(project, id)) {
             (ok = false);
         }
@@ -16678,15 +16801,15 @@ bool syncSetup(char* project) {
         }
     }
     if (ok) {
-        int __fstr_695_len = snprintf(NULL, 0, "OK sync setup: %s", syncConfigPath(project));
-        char* __fstr_695_buf = __btrc_str_track(((char*)malloc((__fstr_695_len + 1))));
-        snprintf(__fstr_695_buf, (__fstr_695_len + 1), "OK sync setup: %s", syncConfigPath(project));
-        printf("%s\n", __fstr_695_buf);
+        int __fstr_701_len = snprintf(NULL, 0, "OK sync setup: %s", syncConfigPath(project));
+        char* __fstr_701_buf = __btrc_str_track(((char*)malloc((__fstr_701_len + 1))));
+        snprintf(__fstr_701_buf, (__fstr_701_len + 1), "OK sync setup: %s", syncConfigPath(project));
+        printf("%s\n", __fstr_701_buf);
     } else {
-        int __fstr_698_len = snprintf(NULL, 0, "MISSING sync setup incomplete: %s", syncConfigPath(project));
-        char* __fstr_698_buf = __btrc_str_track(((char*)malloc((__fstr_698_len + 1))));
-        snprintf(__fstr_698_buf, (__fstr_698_len + 1), "MISSING sync setup incomplete: %s", syncConfigPath(project));
-        printf("%s\n", __fstr_698_buf);
+        int __fstr_704_len = snprintf(NULL, 0, "MISSING sync setup incomplete: %s", syncConfigPath(project));
+        char* __fstr_704_buf = __btrc_str_track(((char*)malloc((__fstr_704_len + 1))));
+        snprintf(__fstr_704_buf, (__fstr_704_len + 1), "MISSING sync setup incomplete: %s", syncConfigPath(project));
+        printf("%s\n", __fstr_704_buf);
     }
     return ok;
 }
@@ -16715,13 +16838,13 @@ void removePath(char* path) {
 
 void writeLifecycleState(char* project, char* action) {
     ensureDir(semuStateRoot(project));
-    btrc_Vector_string* __list_700 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_700, jsonStrField("schema_version", "1"));
-    btrc_Vector_string_push(__list_700, jsonStrField("action", action));
-    btrc_Vector_string_push(__list_700, jsonStrField("project", project));
-    btrc_Vector_string_push(__list_700, jsonStrField("roms_dir", configuredRomsRoot(project)));
-    btrc_Vector_string_push(__list_700, jsonStrField("source", "src/semu.btrc"));
-    SemuGeneratedFiles_writeAdapterState(project, lifecycleStatePath(project), __btrc_str_track(__btrc_strcat(jsonObject(__list_700), "\n")));
+    btrc_Vector_string* __list_706 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_706, jsonStrField("schema_version", "1"));
+    btrc_Vector_string_push(__list_706, jsonStrField("action", action));
+    btrc_Vector_string_push(__list_706, jsonStrField("project", project));
+    btrc_Vector_string_push(__list_706, jsonStrField("roms_dir", configuredRomsRoot(project)));
+    btrc_Vector_string_push(__list_706, jsonStrField("source", "src/semu.btrc"));
+    SemuGeneratedFiles_writeAdapterState(project, lifecycleStatePath(project), __btrc_str_track(__btrc_strcat(jsonObject(__list_706), "\n")));
 }
 
 void lifecycleReconfigure(char* project, char* romsDir) {
@@ -16777,9 +16900,9 @@ bool lifecycleChangeKeymap(char* project, char* actionId, char* command) {
     btrc_Vector_string* out = btrc_Vector_string_new();
     bool changed = false;
     char* prefix = __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat("action ", actionId)), " = "));
-    int __n_702 = btrc_Vector_string_iterLen(lines);
-    for (int __i_701 = 0; (__i_701 < __n_702); (__i_701++)) {
-        char* line = btrc_Vector_string_iterGet(lines, __i_701);
+    int __n_708 = btrc_Vector_string_iterLen(lines);
+    for (int __i_707 = 0; (__i_707 < __n_708); (__i_707++)) {
+        char* line = btrc_Vector_string_iterGet(lines, __i_707);
         if (__btrc_startsWith(line, prefix)) {
             btrc_Vector_string_push(out, __btrc_str_track(__btrc_strcat(prefix, command)));
             (changed = true);
@@ -16788,10 +16911,10 @@ bool lifecycleChangeKeymap(char* project, char* actionId, char* command) {
         }
     }
     if (!changed) {
-        int __fstr_705_len = snprintf(NULL, 0, "error 0:0 unknown keymap action '%s'", actionId);
-        char* __fstr_705_buf = __btrc_str_track(((char*)malloc((__fstr_705_len + 1))));
-        snprintf(__fstr_705_buf, (__fstr_705_len + 1), "error 0:0 unknown keymap action '%s'", actionId);
-        printf("%s\n", __fstr_705_buf);
+        int __fstr_711_len = snprintf(NULL, 0, "error 0:0 unknown keymap action '%s'", actionId);
+        char* __fstr_711_buf = __btrc_str_track(((char*)malloc((__fstr_711_len + 1))));
+        snprintf(__fstr_711_buf, (__fstr_711_len + 1), "error 0:0 unknown keymap action '%s'", actionId);
+        printf("%s\n", __fstr_711_buf);
         return false;
     }
     char* next = __btrc_str_track(__btrc_strcat(btrc_Vector_string_join(out, "\n"), "\n"));
@@ -16799,33 +16922,33 @@ bool lifecycleChangeKeymap(char* project, char* actionId, char* command) {
     compileKeymap(next, errors);
     if (KeymapErrors_count(errors) > 0) {
         for (int i = 0; (i < KeymapErrors_count(errors)); (i++)) {
-            int __fstr_708_len = snprintf(NULL, 0, "%s %d:%d %s", btrc_Vector_string_get(errors->levels, i), btrc_Vector_int_get(errors->lines, i), btrc_Vector_int_get(errors->columns, i), btrc_Vector_string_get(errors->messages, i));
-            char* __fstr_708_buf = __btrc_str_track(((char*)malloc((__fstr_708_len + 1))));
-            snprintf(__fstr_708_buf, (__fstr_708_len + 1), "%s %d:%d %s", btrc_Vector_string_get(errors->levels, i), btrc_Vector_int_get(errors->lines, i), btrc_Vector_int_get(errors->columns, i), btrc_Vector_string_get(errors->messages, i));
-            printf("%s\n", __fstr_708_buf);
+            int __fstr_714_len = snprintf(NULL, 0, "%s %d:%d %s", btrc_Vector_string_get(errors->levels, i), btrc_Vector_int_get(errors->lines, i), btrc_Vector_int_get(errors->columns, i), btrc_Vector_string_get(errors->messages, i));
+            char* __fstr_714_buf = __btrc_str_track(((char*)malloc((__fstr_714_len + 1))));
+            snprintf(__fstr_714_buf, (__fstr_714_len + 1), "%s %d:%d %s", btrc_Vector_string_get(errors->levels, i), btrc_Vector_int_get(errors->lines, i), btrc_Vector_int_get(errors->columns, i), btrc_Vector_string_get(errors->messages, i));
+            printf("%s\n", __fstr_714_buf);
         }
-        bool __btrc_ret_709 = false;
+        bool __btrc_ret_715 = false;
         if (errors != NULL) {
             if ((--errors->__rc) <= 0) {
                 KeymapErrors_destroy(errors);
             }
         }
-        return __btrc_ret_709;
+        return __btrc_ret_715;
     }
     SemuGeneratedFiles_writeSource(project, path, next);
     lifecycleReconfigure(project, "");
     writeLifecycleState(project, "change");
-    int __fstr_712_len = snprintf(NULL, 0, "OK lifecycle change: %s=%s", actionId, command);
-    char* __fstr_712_buf = __btrc_str_track(((char*)malloc((__fstr_712_len + 1))));
-    snprintf(__fstr_712_buf, (__fstr_712_len + 1), "OK lifecycle change: %s=%s", actionId, command);
-    printf("%s\n", __fstr_712_buf);
-    bool __btrc_ret_713 = true;
+    int __fstr_718_len = snprintf(NULL, 0, "OK lifecycle change: %s=%s", actionId, command);
+    char* __fstr_718_buf = __btrc_str_track(((char*)malloc((__fstr_718_len + 1))));
+    snprintf(__fstr_718_buf, (__fstr_718_len + 1), "OK lifecycle change: %s=%s", actionId, command);
+    printf("%s\n", __fstr_718_buf);
+    bool __btrc_ret_719 = true;
     if (errors != NULL) {
         if ((--errors->__rc) <= 0) {
             KeymapErrors_destroy(errors);
         }
     }
-    return __btrc_ret_713;
+    return __btrc_ret_719;
     if (errors != NULL) {
         if ((--errors->__rc) <= 0) {
             KeymapErrors_destroy(errors);
@@ -16840,10 +16963,10 @@ void lifecycleUpgrade(char* project) {
     }
     lifecycleReconfigure(project, "");
     writeLifecycleState(project, "upgrade");
-    int __fstr_716_len = snprintf(NULL, 0, "OK lifecycle upgrade: backup %s", upgradeBackupPath(project));
-    char* __fstr_716_buf = __btrc_str_track(((char*)malloc((__fstr_716_len + 1))));
-    snprintf(__fstr_716_buf, (__fstr_716_len + 1), "OK lifecycle upgrade: backup %s", upgradeBackupPath(project));
-    printf("%s\n", __fstr_716_buf);
+    int __fstr_722_len = snprintf(NULL, 0, "OK lifecycle upgrade: backup %s", upgradeBackupPath(project));
+    char* __fstr_722_buf = __btrc_str_track(((char*)malloc((__fstr_722_len + 1))));
+    snprintf(__fstr_722_buf, (__fstr_722_len + 1), "OK lifecycle upgrade: backup %s", upgradeBackupPath(project));
+    printf("%s\n", __fstr_722_buf);
 }
 
 void lifecycleStatus(char* project) {
@@ -16853,10 +16976,10 @@ void lifecycleStatus(char* project) {
     reportFile("sync_config", syncConfigPath(project));
     reportFile("desktop_entry", joinPath(applicationsDir(), "semu.desktop"));
     reportFile("systemd_service", joinPath(systemdUserDir(), "semu-syncthing.service"));
-    int __fstr_719_len = snprintf(NULL, 0, "  roms_dir: %s", configuredRomsRoot(project));
-    char* __fstr_719_buf = __btrc_str_track(((char*)malloc((__fstr_719_len + 1))));
-    snprintf(__fstr_719_buf, (__fstr_719_len + 1), "  roms_dir: %s", configuredRomsRoot(project));
-    printf("%s\n", __fstr_719_buf);
+    int __fstr_725_len = snprintf(NULL, 0, "  roms_dir: %s", configuredRomsRoot(project));
+    char* __fstr_725_buf = __btrc_str_track(((char*)malloc((__fstr_725_len + 1))));
+    snprintf(__fstr_725_buf, (__fstr_725_len + 1), "  roms_dir: %s", configuredRomsRoot(project));
+    printf("%s\n", __fstr_725_buf);
 }
 
 bool syncStart(char* project) {
@@ -16928,30 +17051,30 @@ bool syncForce(char* project, char* target) {
     char* command = __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(ShellWords_quote(curl), " -fsS -X POST -H ")), ShellWords_quote(__btrc_str_track(__btrc_strcat("X-API-Key: ", apiKey))))), " ")), ShellWords_quote(syncScanUrl(project, target))));
     ExecResult* result = UnixShell_runUnchecked(shell, command);
     if (ExecResult_ok(result)) {
-        int __fstr_722_len = snprintf(NULL, 0, "OK sync force: %s", target);
-        char* __fstr_722_buf = __btrc_str_track(((char*)malloc((__fstr_722_len + 1))));
-        snprintf(__fstr_722_buf, (__fstr_722_len + 1), "OK sync force: %s", target);
-        printf("%s\n", __fstr_722_buf);
-        bool __btrc_ret_723 = true;
+        int __fstr_728_len = snprintf(NULL, 0, "OK sync force: %s", target);
+        char* __fstr_728_buf = __btrc_str_track(((char*)malloc((__fstr_728_len + 1))));
+        snprintf(__fstr_728_buf, (__fstr_728_len + 1), "OK sync force: %s", target);
+        printf("%s\n", __fstr_728_buf);
+        bool __btrc_ret_729 = true;
         if (shell != NULL) {
             if ((--shell->__rc) <= 0) {
                 UnixShell_destroy(shell);
             }
         }
-        return __btrc_ret_723;
+        return __btrc_ret_729;
     } else {
-        int __fstr_726_len = snprintf(NULL, 0, "MISSING sync force failed: %s", target);
-        char* __fstr_726_buf = __btrc_str_track(((char*)malloc((__fstr_726_len + 1))));
-        snprintf(__fstr_726_buf, (__fstr_726_len + 1), "MISSING sync force failed: %s", target);
-        printf("%s\n", __fstr_726_buf);
+        int __fstr_732_len = snprintf(NULL, 0, "MISSING sync force failed: %s", target);
+        char* __fstr_732_buf = __btrc_str_track(((char*)malloc((__fstr_732_len + 1))));
+        snprintf(__fstr_732_buf, (__fstr_732_len + 1), "MISSING sync force failed: %s", target);
+        printf("%s\n", __fstr_732_buf);
     }
-    bool __btrc_ret_727 = false;
+    bool __btrc_ret_733 = false;
     if (shell != NULL) {
         if ((--shell->__rc) <= 0) {
             UnixShell_destroy(shell);
         }
     }
-    return __btrc_ret_727;
+    return __btrc_ret_733;
     if (shell != NULL) {
         if ((--shell->__rc) <= 0) {
             UnixShell_destroy(shell);
@@ -16968,14 +17091,14 @@ void syncStatus(char* project) {
     printf("%s\n", (syncSyncthingAvailable() ? "  OK syncthing: executable found" : "  MISSING syncthing: executable not found"));
     printf("%s\n", (commandExists("syncthingtray") ? "  OK syncthingtray: executable found" : "  optional syncthingtray: executable not found"));
     printf("%s\n", (syncCurlAvailable() ? "  OK curl: executable found" : "  MISSING curl: executable not found"));
-    int __n_729 = btrc_Vector_string_iterLen(syncFolderIds());
-    for (int __i_728 = 0; (__i_728 < __n_729); (__i_728++)) {
-        char* id = btrc_Vector_string_iterGet(syncFolderIds(), __i_728);
+    int __n_735 = btrc_Vector_string_iterLen(syncFolderIds());
+    for (int __i_734 = 0; (__i_734 < __n_735); (__i_734++)) {
+        char* id = btrc_Vector_string_iterGet(syncFolderIds(), __i_734);
         char* mark = (syncFolderEnabled(project, id) ? "OK" : "optional");
-        int __fstr_732_len = snprintf(NULL, 0, "  %s %s: %s", mark, id, syncFolderPath(project, id));
-        char* __fstr_732_buf = __btrc_str_track(((char*)malloc((__fstr_732_len + 1))));
-        snprintf(__fstr_732_buf, (__fstr_732_len + 1), "  %s %s: %s", mark, id, syncFolderPath(project, id));
-        printf("%s\n", __fstr_732_buf);
+        int __fstr_738_len = snprintf(NULL, 0, "  %s %s: %s", mark, id, syncFolderPath(project, id));
+        char* __fstr_738_buf = __btrc_str_track(((char*)malloc((__fstr_738_len + 1))));
+        snprintf(__fstr_738_buf, (__fstr_738_len + 1), "  %s %s: %s", mark, id, syncFolderPath(project, id));
+        printf("%s\n", __fstr_738_buf);
     }
 }
 
@@ -17016,16 +17139,16 @@ void doctorSync(char* project) {
     printf("%s\n", (syncCurlAvailable() ? "  OK curl: executable found" : "  MISSING curl: executable not found"));
     printf("%s\n", (syncBool(project, "start_at_boot", true) ? "  OK start_at_boot: enabled" : "  optional start_at_boot: disabled"));
     printf("%s\n", (syncBool(project, "tray", true) ? "  OK tray: enabled" : "  optional tray: disabled"));
-    int __n_734 = btrc_Vector_string_iterLen(syncFolderIds());
-    for (int __i_733 = 0; (__i_733 < __n_734); (__i_733++)) {
-        char* id = btrc_Vector_string_iterGet(syncFolderIds(), __i_733);
+    int __n_740 = btrc_Vector_string_iterLen(syncFolderIds());
+    for (int __i_739 = 0; (__i_739 < __n_740); (__i_739++)) {
+        char* id = btrc_Vector_string_iterGet(syncFolderIds(), __i_739);
         char* mark = (syncFolderEnabled(project, id) ? "OK" : "optional");
         char* watch = (syncFolderWatch(project, id) ? "watch" : "scan");
         int interval = syncFolderRescan(project, id);
-        int __fstr_737_len = snprintf(NULL, 0, "  %s %s: %s, %ds, %s", mark, id, watch, interval, syncFolderPath(project, id));
-        char* __fstr_737_buf = __btrc_str_track(((char*)malloc((__fstr_737_len + 1))));
-        snprintf(__fstr_737_buf, (__fstr_737_len + 1), "  %s %s: %s, %ds, %s", mark, id, watch, interval, syncFolderPath(project, id));
-        printf("%s\n", __fstr_737_buf);
+        int __fstr_743_len = snprintf(NULL, 0, "  %s %s: %s, %ds, %s", mark, id, watch, interval, syncFolderPath(project, id));
+        char* __fstr_743_buf = __btrc_str_track(((char*)malloc((__fstr_743_len + 1))));
+        snprintf(__fstr_743_buf, (__fstr_743_len + 1), "  %s %s: %s, %ds, %s", mark, id, watch, interval, syncFolderPath(project, id));
+        printf("%s\n", __fstr_743_buf);
     }
 }
 
@@ -17067,35 +17190,35 @@ SettingSpec* SettingsRegistry_empty(void) {
 }
 
 btrc_Vector_SettingSpec* SettingsRegistry_all(void) {
-    btrc_Vector_SettingSpec* __list_738 = btrc_Vector_SettingSpec_new();
-    btrc_Vector_SettingSpec_push(__list_738, SettingSpec_new("roms.dir", "ROM Directory", "Paths", "sync", "roms_dir", "string"));
-    btrc_Vector_SettingSpec_push(__list_738, SettingSpec_new("sync.enabled", "Syncthing Enabled", "Sync", "sync", "enabled", "bool"));
-    btrc_Vector_SettingSpec_push(__list_738, SettingSpec_new("sync.start_at_boot", "Start Sync At Boot", "Sync", "sync", "start_at_boot", "bool"));
-    btrc_Vector_SettingSpec_push(__list_738, SettingSpec_new("sync.tray", "Show Sync Tray", "Sync", "sync", "tray", "bool"));
-    btrc_Vector_SettingSpec_push(__list_738, SettingSpec_new("sync.gui_address", "Syncthing UI Address", "Sync", "sync", "gui_address", "string"));
-    btrc_Vector_SettingSpec_push(__list_738, SettingSpec_new("sync.saves", "Sync Saves", "Sync Folders", "sync", "sync_saves", "bool"));
-    btrc_Vector_SettingSpec_push(__list_738, SettingSpec_new("sync.states", "Sync States", "Sync Folders", "sync", "sync_states", "bool"));
-    btrc_Vector_SettingSpec_push(__list_738, SettingSpec_new("sync.emulator_state", "Sync Emulator State", "Sync Folders", "sync", "sync_emulator_state", "bool"));
-    btrc_Vector_SettingSpec_push(__list_738, SettingSpec_new("sync.screenshots", "Sync Screenshots", "Sync Folders", "sync", "sync_screenshots", "bool"));
-    btrc_Vector_SettingSpec_push(__list_738, SettingSpec_new("sync.gamelists", "Sync Gamelists", "Sync Folders", "sync", "sync_gamelists", "bool"));
-    btrc_Vector_SettingSpec_push(__list_738, SettingSpec_new("sync.roms", "Sync ROMs", "Sync Folders", "sync", "sync_roms", "bool"));
-    btrc_Vector_SettingSpec_push(__list_738, SettingSpec_new("sync.bios", "Sync BIOS", "Sync Folders", "sync", "sync_bios", "bool"));
-    btrc_Vector_SettingSpec_push(__list_738, SettingSpec_new("visual.integer_scaling", "Native Integer Scaling", "Visuals", "semu", "visual_integer_scaling", "bool"));
-    btrc_Vector_SettingSpec_push(__list_738, SettingSpec_new("visual.crt_shaders", "CRT Shaders", "Visuals", "semu", "visual_crt_shaders", "bool"));
-    btrc_Vector_SettingSpec_push(__list_738, SettingSpec_new("visual.bezels", "Bezels", "Visuals", "semu", "visual_bezels", "bool"));
-    btrc_Vector_SettingSpec_push(__list_738, SettingSpec_new("visual.bezel_policy", "Bezel Policy", "Visuals", "semu", "visual_bezel_policy", "string"));
-    btrc_Vector_SettingSpec_push(__list_738, SettingSpec_new("visual.retroarch_shader_preset", "RetroArch Shader Preset", "Visuals", "semu", "visual_retroarch_shader_preset", "string"));
-    btrc_Vector_SettingSpec_push(__list_738, SettingSpec_new("visual.classic_systems", "Classic Visual Systems", "Visuals", "semu", "visual_classic_systems", "string"));
-    btrc_Vector_SettingSpec_push(__list_738, SettingSpec_new("visual.modern_systems", "Modern Visual Exclusions", "Visuals", "semu", "visual_modern_systems", "string"));
-    btrc_Vector_SettingSpec_push(__list_738, SettingSpec_new("ui.theme", "ES-DE Theme", "UI", "semu", "ui_theme", "string"));
-    btrc_Vector_SettingSpec_push(__list_738, SettingSpec_new("ui.settings_entry", "Settings Entry", "UI", "semu", "ui_settings_entry", "string"));
-    return __list_738;
+    btrc_Vector_SettingSpec* __list_744 = btrc_Vector_SettingSpec_new();
+    btrc_Vector_SettingSpec_push(__list_744, SettingSpec_new("roms.dir", "ROM Directory", "Paths", "sync", "roms_dir", "string"));
+    btrc_Vector_SettingSpec_push(__list_744, SettingSpec_new("sync.enabled", "Syncthing Enabled", "Sync", "sync", "enabled", "bool"));
+    btrc_Vector_SettingSpec_push(__list_744, SettingSpec_new("sync.start_at_boot", "Start Sync At Boot", "Sync", "sync", "start_at_boot", "bool"));
+    btrc_Vector_SettingSpec_push(__list_744, SettingSpec_new("sync.tray", "Show Sync Tray", "Sync", "sync", "tray", "bool"));
+    btrc_Vector_SettingSpec_push(__list_744, SettingSpec_new("sync.gui_address", "Syncthing UI Address", "Sync", "sync", "gui_address", "string"));
+    btrc_Vector_SettingSpec_push(__list_744, SettingSpec_new("sync.saves", "Sync Saves", "Sync Folders", "sync", "sync_saves", "bool"));
+    btrc_Vector_SettingSpec_push(__list_744, SettingSpec_new("sync.states", "Sync States", "Sync Folders", "sync", "sync_states", "bool"));
+    btrc_Vector_SettingSpec_push(__list_744, SettingSpec_new("sync.emulator_state", "Sync Emulator State", "Sync Folders", "sync", "sync_emulator_state", "bool"));
+    btrc_Vector_SettingSpec_push(__list_744, SettingSpec_new("sync.screenshots", "Sync Screenshots", "Sync Folders", "sync", "sync_screenshots", "bool"));
+    btrc_Vector_SettingSpec_push(__list_744, SettingSpec_new("sync.gamelists", "Sync Gamelists", "Sync Folders", "sync", "sync_gamelists", "bool"));
+    btrc_Vector_SettingSpec_push(__list_744, SettingSpec_new("sync.roms", "Sync ROMs", "Sync Folders", "sync", "sync_roms", "bool"));
+    btrc_Vector_SettingSpec_push(__list_744, SettingSpec_new("sync.bios", "Sync BIOS", "Sync Folders", "sync", "sync_bios", "bool"));
+    btrc_Vector_SettingSpec_push(__list_744, SettingSpec_new("visual.integer_scaling", "Native Integer Scaling", "Visuals", "semu", "visual_integer_scaling", "bool"));
+    btrc_Vector_SettingSpec_push(__list_744, SettingSpec_new("visual.crt_shaders", "CRT Shaders", "Visuals", "semu", "visual_crt_shaders", "bool"));
+    btrc_Vector_SettingSpec_push(__list_744, SettingSpec_new("visual.bezels", "Bezels", "Visuals", "semu", "visual_bezels", "bool"));
+    btrc_Vector_SettingSpec_push(__list_744, SettingSpec_new("visual.bezel_policy", "Bezel Policy", "Visuals", "semu", "visual_bezel_policy", "string"));
+    btrc_Vector_SettingSpec_push(__list_744, SettingSpec_new("visual.retroarch_shader_preset", "RetroArch Shader Preset", "Visuals", "semu", "visual_retroarch_shader_preset", "string"));
+    btrc_Vector_SettingSpec_push(__list_744, SettingSpec_new("visual.classic_systems", "Classic Visual Systems", "Visuals", "semu", "visual_classic_systems", "string"));
+    btrc_Vector_SettingSpec_push(__list_744, SettingSpec_new("visual.modern_systems", "Modern Visual Exclusions", "Visuals", "semu", "visual_modern_systems", "string"));
+    btrc_Vector_SettingSpec_push(__list_744, SettingSpec_new("ui.theme", "ES-DE Theme", "UI", "semu", "ui_theme", "string"));
+    btrc_Vector_SettingSpec_push(__list_744, SettingSpec_new("ui.settings_entry", "Settings Entry", "UI", "semu", "ui_settings_entry", "string"));
+    return __list_744;
 }
 
 SettingSpec* SettingsRegistry_find(char* key) {
-    int __n_740 = btrc_Vector_SettingSpec_iterLen(SettingsRegistry_all());
-    for (int __i_739 = 0; (__i_739 < __n_740); (__i_739++)) {
-        SettingSpec* spec = btrc_Vector_SettingSpec_iterGet(SettingsRegistry_all(), __i_739);
+    int __n_746 = btrc_Vector_SettingSpec_iterLen(SettingsRegistry_all());
+    for (int __i_745 = 0; (__i_745 < __n_746); (__i_745++)) {
+        SettingSpec* spec = btrc_Vector_SettingSpec_iterGet(SettingsRegistry_all(), __i_745);
         if (strcmp(spec->key, key) == 0) {
             return spec;
         }
@@ -17150,10 +17273,10 @@ char* SettingsStore_get(SettingsStore* self, SettingSpec* spec) {
 
 bool SettingsStore_put(SettingsStore* self, SettingSpec* spec, char* value) {
     if (!SettingSpec_known(spec)) {
-        int __fstr_745_len = snprintf(NULL, 0, "error 0:0 unknown setting '%s'", spec->key);
-        char* __fstr_745_buf = __btrc_str_track(((char*)malloc((__fstr_745_len + 1))));
-        snprintf(__fstr_745_buf, (__fstr_745_len + 1), "error 0:0 unknown setting '%s'", spec->key);
-        printf("%s\n", __fstr_745_buf);
+        int __fstr_751_len = snprintf(NULL, 0, "error 0:0 unknown setting '%s'", spec->key);
+        char* __fstr_751_buf = __btrc_str_track(((char*)malloc((__fstr_751_len + 1))));
+        snprintf(__fstr_751_buf, (__fstr_751_len + 1), "error 0:0 unknown setting '%s'", spec->key);
+        printf("%s\n", __fstr_751_buf);
         return false;
     }
     if (SettingSpec_isSync(spec)) {
@@ -17169,10 +17292,10 @@ bool SettingsStore_putSync(SettingsStore* self, SettingSpec* spec, char* value) 
         JsonObject_setString(config, spec->jsonKey, normalizeRomsRoot(value));
     } else if (SettingSpec_isBool(spec)) {
         if (!settingBoolLiteral(value)) {
-            int __fstr_748_len = snprintf(NULL, 0, "error 0:0 %s expects a boolean", spec->key);
-            char* __fstr_748_buf = __btrc_str_track(((char*)malloc((__fstr_748_len + 1))));
-            snprintf(__fstr_748_buf, (__fstr_748_len + 1), "error 0:0 %s expects a boolean", spec->key);
-            printf("%s\n", __fstr_748_buf);
+            int __fstr_754_len = snprintf(NULL, 0, "error 0:0 %s expects a boolean", spec->key);
+            char* __fstr_754_buf = __btrc_str_track(((char*)malloc((__fstr_754_len + 1))));
+            snprintf(__fstr_754_buf, (__fstr_754_len + 1), "error 0:0 %s expects a boolean", spec->key);
+            printf("%s\n", __fstr_754_buf);
             return false;
         }
         JsonObject_setBool(config, spec->jsonKey, settingBoolValue(value));
@@ -17187,10 +17310,10 @@ bool SettingsStore_putSemu(SettingsStore* self, SettingSpec* spec, char* value) 
     JsonObject* config = settingsConfig(self->project);
     if (SettingSpec_isBool(spec)) {
         if (!settingBoolLiteral(value)) {
-            int __fstr_751_len = snprintf(NULL, 0, "error 0:0 %s expects a boolean", spec->key);
-            char* __fstr_751_buf = __btrc_str_track(((char*)malloc((__fstr_751_len + 1))));
-            snprintf(__fstr_751_buf, (__fstr_751_len + 1), "error 0:0 %s expects a boolean", spec->key);
-            printf("%s\n", __fstr_751_buf);
+            int __fstr_757_len = snprintf(NULL, 0, "error 0:0 %s expects a boolean", spec->key);
+            char* __fstr_757_buf = __btrc_str_track(((char*)malloc((__fstr_757_len + 1))));
+            snprintf(__fstr_757_buf, (__fstr_757_len + 1), "error 0:0 %s expects a boolean", spec->key);
+            printf("%s\n", __fstr_757_buf);
             return false;
         }
         JsonObject_setBool(config, spec->jsonKey, settingBoolValue(value));
@@ -17204,10 +17327,10 @@ bool SettingsStore_putSemu(SettingsStore* self, SettingSpec* spec, char* value) 
 bool SettingsStore_putKey(SettingsStore* self, char* key, char* value) {
     SettingSpec* spec = SettingsRegistry_find(key);
     if (!SettingSpec_known(spec)) {
-        int __fstr_754_len = snprintf(NULL, 0, "error 0:0 unknown setting '%s'", key);
-        char* __fstr_754_buf = __btrc_str_track(((char*)malloc((__fstr_754_len + 1))));
-        snprintf(__fstr_754_buf, (__fstr_754_len + 1), "error 0:0 unknown setting '%s'", key);
-        printf("%s\n", __fstr_754_buf);
+        int __fstr_760_len = snprintf(NULL, 0, "error 0:0 unknown setting '%s'", key);
+        char* __fstr_760_buf = __btrc_str_track(((char*)malloc((__fstr_760_len + 1))));
+        snprintf(__fstr_760_buf, (__fstr_760_len + 1), "error 0:0 unknown setting '%s'", key);
+        printf("%s\n", __fstr_760_buf);
         return false;
     }
     return SettingsStore_put(self, spec, value);
@@ -17236,26 +17359,26 @@ char* SettingsEntries_root(char* project) {
 }
 
 btrc_Vector_SettingsEntrySpec* SettingsEntries_all(void) {
-    btrc_Vector_SettingsEntrySpec* __list_755 = btrc_Vector_SettingsEntrySpec_new();
-    btrc_Vector_SettingsEntrySpec_push(__list_755, SettingsEntrySpec_new("Open Semu Settings.semu", "Open Settings UI", "ui"));
-    btrc_Vector_SettingsEntrySpec_push(__list_755, SettingsEntrySpec_new("Open Presentation Settings.semu", "Open Presentation Settings", "ui presentation"));
-    btrc_Vector_SettingsEntrySpec_push(__list_755, SettingsEntrySpec_new("Open Input Settings.semu", "Open Input Settings", "ui input"));
-    btrc_Vector_SettingsEntrySpec_push(__list_755, SettingsEntrySpec_new("Open Sync Settings.semu", "Open Sync Settings", "ui sync"));
-    btrc_Vector_SettingsEntrySpec_push(__list_755, SettingsEntrySpec_new("Use Steam Deck SD ROMs.semu", "Use Steam Deck SD ROMs", "put roms.dir /run/media/deck/SD apply"));
-    btrc_Vector_SettingsEntrySpec_push(__list_755, SettingsEntrySpec_new("Apply Settings.semu", "Apply Settings", "apply"));
-    btrc_Vector_SettingsEntrySpec_push(__list_755, SettingsEntrySpec_new("Toggle Integer Scaling.semu", "Toggle Integer Scaling", "toggle visual.integer_scaling apply"));
-    btrc_Vector_SettingsEntrySpec_push(__list_755, SettingsEntrySpec_new("Toggle CRT Shaders.semu", "Toggle CRT Shaders", "toggle visual.crt_shaders apply"));
-    btrc_Vector_SettingsEntrySpec_push(__list_755, SettingsEntrySpec_new("Toggle Bezels.semu", "Toggle Bezels", "toggle visual.bezels apply"));
-    btrc_Vector_SettingsEntrySpec_push(__list_755, SettingsEntrySpec_new("Toggle Syncthing.semu", "Toggle Syncthing", "toggle sync.enabled apply"));
-    btrc_Vector_SettingsEntrySpec_push(__list_755, SettingsEntrySpec_new("Open Syncthing UI.semu", "Open Syncthing UI", "sync open"));
-    return __list_755;
+    btrc_Vector_SettingsEntrySpec* __list_761 = btrc_Vector_SettingsEntrySpec_new();
+    btrc_Vector_SettingsEntrySpec_push(__list_761, SettingsEntrySpec_new("Open Semu Settings.semu", "Open Settings UI", "ui"));
+    btrc_Vector_SettingsEntrySpec_push(__list_761, SettingsEntrySpec_new("Open Presentation Settings.semu", "Open Presentation Settings", "ui presentation"));
+    btrc_Vector_SettingsEntrySpec_push(__list_761, SettingsEntrySpec_new("Open Input Settings.semu", "Open Input Settings", "ui input"));
+    btrc_Vector_SettingsEntrySpec_push(__list_761, SettingsEntrySpec_new("Open Sync Settings.semu", "Open Sync Settings", "ui sync"));
+    btrc_Vector_SettingsEntrySpec_push(__list_761, SettingsEntrySpec_new("Use Steam Deck SD ROMs.semu", "Use Steam Deck SD ROMs", "put roms.dir /run/media/deck/SD apply"));
+    btrc_Vector_SettingsEntrySpec_push(__list_761, SettingsEntrySpec_new("Apply Settings.semu", "Apply Settings", "apply"));
+    btrc_Vector_SettingsEntrySpec_push(__list_761, SettingsEntrySpec_new("Toggle Integer Scaling.semu", "Toggle Integer Scaling", "toggle visual.integer_scaling apply"));
+    btrc_Vector_SettingsEntrySpec_push(__list_761, SettingsEntrySpec_new("Toggle CRT Shaders.semu", "Toggle CRT Shaders", "toggle visual.crt_shaders apply"));
+    btrc_Vector_SettingsEntrySpec_push(__list_761, SettingsEntrySpec_new("Toggle Bezels.semu", "Toggle Bezels", "toggle visual.bezels apply"));
+    btrc_Vector_SettingsEntrySpec_push(__list_761, SettingsEntrySpec_new("Toggle Syncthing.semu", "Toggle Syncthing", "toggle sync.enabled apply"));
+    btrc_Vector_SettingsEntrySpec_push(__list_761, SettingsEntrySpec_new("Open Syncthing UI.semu", "Open Syncthing UI", "sync open"));
+    return __list_761;
 }
 
 void SettingsEntries_write(char* project) {
     ensureDir(SettingsEntries_root(project));
-    int __n_757 = btrc_Vector_SettingsEntrySpec_iterLen(SettingsEntries_all());
-    for (int __i_756 = 0; (__i_756 < __n_757); (__i_756++)) {
-        SettingsEntrySpec* entry = btrc_Vector_SettingsEntrySpec_iterGet(SettingsEntries_all(), __i_756);
+    int __n_763 = btrc_Vector_SettingsEntrySpec_iterLen(SettingsEntries_all());
+    for (int __i_762 = 0; (__i_762 < __n_763); (__i_762++)) {
+        SettingsEntrySpec* entry = btrc_Vector_SettingsEntrySpec_iterGet(SettingsEntries_all(), __i_762);
         SemuGeneratedFiles_writeProject(project, joinPath(SettingsEntries_root(project), entry->filename), __btrc_str_track(__btrc_strcat(entry->action, "\n")));
     }
 }
@@ -17548,9 +17671,9 @@ void SettingsUi_render(SettingsUi* self) {
     printf("%s\n", "");
     char* group = "";
     int index = 1;
-    int __n_759 = btrc_Vector_SettingSpec_iterLen(SettingsRegistry_all());
-    for (int __i_758 = 0; (__i_758 < __n_759); (__i_758++)) {
-        SettingSpec* spec = btrc_Vector_SettingSpec_iterGet(SettingsRegistry_all(), __i_758);
+    int __n_765 = btrc_Vector_SettingSpec_iterLen(SettingsRegistry_all());
+    for (int __i_764 = 0; (__i_764 < __n_765); (__i_764++)) {
+        SettingSpec* spec = btrc_Vector_SettingSpec_iterGet(SettingsRegistry_all(), __i_764);
         if (!(strcmp(spec->group, group) == 0)) {
             (group = spec->group);
             printf("%s\n", group);
@@ -17649,18 +17772,18 @@ char* semuSettingsPath(char* project) {
 }
 
 char* settingsDefaultConfigText(void) {
-    btrc_Vector_string* __list_760 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_760, jsonField("schema_version", "1"));
-    btrc_Vector_string_push(__list_760, jsonBoolField("visual_integer_scaling", true));
-    btrc_Vector_string_push(__list_760, jsonBoolField("visual_crt_shaders", true));
-    btrc_Vector_string_push(__list_760, jsonBoolField("visual_bezels", true));
-    btrc_Vector_string_push(__list_760, jsonStrField("visual_bezel_policy", "classic"));
-    btrc_Vector_string_push(__list_760, jsonStrField("visual_retroarch_shader_preset", "bezel/Mega_Bezel/Presets/MBZ__5__POTATO.slangp"));
-    btrc_Vector_string_push(__list_760, jsonStrField("visual_classic_systems", "gb,gbc,gba,nes,snes,genesis,n64,nds,dreamcast,psx,ps2,psp,gc,wii"));
-    btrc_Vector_string_push(__list_760, jsonStrField("visual_modern_systems", "n3ds,wiiu,switch"));
-    btrc_Vector_string_push(__list_760, jsonStrField("ui_theme", "es-de-default"));
-    btrc_Vector_string_push(__list_760, jsonStrField("ui_settings_entry", "es-de"));
-    return __btrc_str_track(__btrc_strcat(jsonObject(__list_760), "\n"));
+    btrc_Vector_string* __list_766 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_766, jsonField("schema_version", "1"));
+    btrc_Vector_string_push(__list_766, jsonBoolField("visual_integer_scaling", true));
+    btrc_Vector_string_push(__list_766, jsonBoolField("visual_crt_shaders", true));
+    btrc_Vector_string_push(__list_766, jsonBoolField("visual_bezels", true));
+    btrc_Vector_string_push(__list_766, jsonStrField("visual_bezel_policy", "classic"));
+    btrc_Vector_string_push(__list_766, jsonStrField("visual_retroarch_shader_preset", "bezel/Mega_Bezel/Presets/MBZ__5__POTATO.slangp"));
+    btrc_Vector_string_push(__list_766, jsonStrField("visual_classic_systems", "gb,gbc,gba,nes,snes,genesis,n64,nds,dreamcast,psx,ps2,psp,gc,wii"));
+    btrc_Vector_string_push(__list_766, jsonStrField("visual_modern_systems", "n3ds,wiiu,switch"));
+    btrc_Vector_string_push(__list_766, jsonStrField("ui_theme", "es-de-default"));
+    btrc_Vector_string_push(__list_766, jsonStrField("ui_settings_entry", "es-de"));
+    return __btrc_str_track(__btrc_strcat(jsonObject(__list_766), "\n"));
 }
 
 void writeSettingsDefaults(char* project) {
@@ -17709,9 +17832,9 @@ bool settingsPutValue(char* project, char* key, char* value) {
 
 void settingsList(char* project) {
     SettingsStore* store = SettingsStore_new(project);
-    int __n_762 = btrc_Vector_SettingSpec_iterLen(SettingsRegistry_all());
-    for (int __i_761 = 0; (__i_761 < __n_762); (__i_761++)) {
-        SettingSpec* spec = btrc_Vector_SettingSpec_iterGet(SettingsRegistry_all(), __i_761);
+    int __n_768 = btrc_Vector_SettingSpec_iterLen(SettingsRegistry_all());
+    for (int __i_767 = 0; (__i_767 < __n_768); (__i_767++)) {
+        SettingSpec* spec = btrc_Vector_SettingSpec_iterGet(SettingsRegistry_all(), __i_767);
         printf("%s\n", __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(spec->key, "=")), SettingsStore_get(store, spec))));
     }
     if (store != NULL) {
@@ -17756,10 +17879,10 @@ int settingsCommand(CliArgs* args, char* project) {
         }
         SettingSpec* spec = SettingsRegistry_find(CliArgs_get(args, 2));
         if (!SettingSpec_known(spec)) {
-            int __fstr_765_len = snprintf(NULL, 0, "error 0:0 unknown setting '%s'", CliArgs_get(args, 2));
-            char* __fstr_765_buf = __btrc_str_track(((char*)malloc((__fstr_765_len + 1))));
-            snprintf(__fstr_765_buf, (__fstr_765_len + 1), "error 0:0 unknown setting '%s'", CliArgs_get(args, 2));
-            printf("%s\n", __fstr_765_buf);
+            int __fstr_771_len = snprintf(NULL, 0, "error 0:0 unknown setting '%s'", CliArgs_get(args, 2));
+            char* __fstr_771_buf = __btrc_str_track(((char*)malloc((__fstr_771_len + 1))));
+            snprintf(__fstr_771_buf, (__fstr_771_len + 1), "error 0:0 unknown setting '%s'", CliArgs_get(args, 2));
+            printf("%s\n", __fstr_771_buf);
             return 1;
         }
         printf("%s\n", SettingsStore_get(SettingsStore_new(project), spec));
@@ -17772,26 +17895,26 @@ int settingsCommand(CliArgs* args, char* project) {
         }
         SettingsStore* store = SettingsStore_new(project);
         if (!SettingsStore_putKey(store, CliArgs_get(args, 2), CliArgs_get(args, 3))) {
-            int __btrc_ret_766 = 1;
+            int __btrc_ret_772 = 1;
             if (store != NULL) {
                 if ((--store->__rc) <= 0) {
                     SettingsStore_destroy(store);
                 }
             }
-            return __btrc_ret_766;
+            return __btrc_ret_772;
         }
         printf("%s\n", __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(CliArgs_get(args, 2), "=")), settingsGetValue(project, CliArgs_get(args, 2)))));
         if (CliArgs_has(args, "--apply")) {
             lifecycleReconfigure(project, "");
             printf("%s\n", "OK settings applied");
         }
-        int __btrc_ret_767 = 0;
+        int __btrc_ret_773 = 0;
         if (store != NULL) {
             if ((--store->__rc) <= 0) {
                 SettingsStore_destroy(store);
             }
         }
-        return __btrc_ret_767;
+        return __btrc_ret_773;
         if (store != NULL) {
             if ((--store->__rc) <= 0) {
                 SettingsStore_destroy(store);
@@ -17851,31 +17974,31 @@ char* PresentationStationSpec_configPath(PresentationStationSpec* self, char* pr
 }
 
 char* PresentationStationSpec_defaultConfigText(PresentationStationSpec* self) {
-    btrc_Vector_string* __list_768 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_768, jsonField("schema_version", "1"));
-    btrc_Vector_string_push(__list_768, jsonStrField("system", self->system));
-    btrc_Vector_string_push(__list_768, jsonStrField("label", self->label));
-    btrc_Vector_string_push(__list_768, jsonStrField("default_emulator", self->defaultEmulator));
-    btrc_Vector_string_push(__list_768, jsonStrField("adapter", self->adapter));
-    btrc_Vector_string_push(__list_768, jsonStrField("adapter_config", self->adapterConfig));
-    btrc_Vector_string_push(__list_768, jsonStrField("hardware_display", self->hardwareDisplay));
-    btrc_Vector_string_push(__list_768, jsonStrField("shader_backend", self->shaderBackend));
-    btrc_Vector_string_push(__list_768, jsonStrField("shader_file", self->shaderFile));
-    btrc_Vector_string_push(__list_768, jsonStrField("shader_intent", self->shaderIntent));
-    btrc_Vector_string_push(__list_768, jsonStrField("bezel_backend", self->bezelBackend));
-    btrc_Vector_string_push(__list_768, jsonStrField("bezel_file", self->bezelFile));
-    btrc_Vector_string_push(__list_768, jsonStrField("bezel_intent", self->bezelIntent));
-    btrc_Vector_string_push(__list_768, jsonStrField("runtime_preset", self->runtimePreset));
-    btrc_Vector_string_push(__list_768, jsonStrField("widescreen_shader_file", PresentationStationSpec_defaultWidescreenShaderFile(self)));
-    btrc_Vector_string_push(__list_768, jsonStrField("widescreen_bezel_file", PresentationStationSpec_defaultWidescreenBezelFile(self)));
-    btrc_Vector_string_push(__list_768, jsonStrField("widescreen_runtime_preset", PresentationStationSpec_defaultWidescreenRuntimePreset(self)));
-    btrc_Vector_string_push(__list_768, jsonStrField("layout", self->layout));
-    btrc_Vector_string_push(__list_768, jsonStrField("scale_policy", self->scalePolicy));
-    btrc_Vector_string_push(__list_768, jsonStrField("aspect_policy", self->aspectPolicy));
-    btrc_Vector_string_push(__list_768, jsonBoolField("dynamic_aspect", self->dynamicAspect));
-    btrc_Vector_string_push(__list_768, jsonStrField("profile", self->profile));
-    btrc_Vector_string_push(__list_768, jsonStrField("notes", self->notes));
-    return __btrc_str_track(__btrc_strcat(jsonObject(__list_768), "\n"));
+    btrc_Vector_string* __list_774 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_774, jsonField("schema_version", "1"));
+    btrc_Vector_string_push(__list_774, jsonStrField("system", self->system));
+    btrc_Vector_string_push(__list_774, jsonStrField("label", self->label));
+    btrc_Vector_string_push(__list_774, jsonStrField("default_emulator", self->defaultEmulator));
+    btrc_Vector_string_push(__list_774, jsonStrField("adapter", self->adapter));
+    btrc_Vector_string_push(__list_774, jsonStrField("adapter_config", self->adapterConfig));
+    btrc_Vector_string_push(__list_774, jsonStrField("hardware_display", self->hardwareDisplay));
+    btrc_Vector_string_push(__list_774, jsonStrField("shader_backend", self->shaderBackend));
+    btrc_Vector_string_push(__list_774, jsonStrField("shader_file", self->shaderFile));
+    btrc_Vector_string_push(__list_774, jsonStrField("shader_intent", self->shaderIntent));
+    btrc_Vector_string_push(__list_774, jsonStrField("bezel_backend", self->bezelBackend));
+    btrc_Vector_string_push(__list_774, jsonStrField("bezel_file", self->bezelFile));
+    btrc_Vector_string_push(__list_774, jsonStrField("bezel_intent", self->bezelIntent));
+    btrc_Vector_string_push(__list_774, jsonStrField("runtime_preset", self->runtimePreset));
+    btrc_Vector_string_push(__list_774, jsonStrField("widescreen_shader_file", PresentationStationSpec_defaultWidescreenShaderFile(self)));
+    btrc_Vector_string_push(__list_774, jsonStrField("widescreen_bezel_file", PresentationStationSpec_defaultWidescreenBezelFile(self)));
+    btrc_Vector_string_push(__list_774, jsonStrField("widescreen_runtime_preset", PresentationStationSpec_defaultWidescreenRuntimePreset(self)));
+    btrc_Vector_string_push(__list_774, jsonStrField("layout", self->layout));
+    btrc_Vector_string_push(__list_774, jsonStrField("scale_policy", self->scalePolicy));
+    btrc_Vector_string_push(__list_774, jsonStrField("aspect_policy", self->aspectPolicy));
+    btrc_Vector_string_push(__list_774, jsonBoolField("dynamic_aspect", self->dynamicAspect));
+    btrc_Vector_string_push(__list_774, jsonStrField("profile", self->profile));
+    btrc_Vector_string_push(__list_774, jsonStrField("notes", self->notes));
+    return __btrc_str_track(__btrc_strcat(jsonObject(__list_774), "\n"));
 }
 
 char* PresentationStationSpec_defaultWidescreenShaderFile(PresentationStationSpec* self) {
@@ -17954,18 +18077,18 @@ bool PresentationRuntimeState_widescreen(PresentationRuntimeState* self) {
 }
 
 char* PresentationRuntimeState_json(PresentationRuntimeState* self) {
-    btrc_Vector_string* __list_769 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_769, jsonField("schema_version", "1"));
-    btrc_Vector_string_push(__list_769, jsonStrField("system", self->system));
-    btrc_Vector_string_push(__list_769, jsonStrField("adapter", self->adapter));
-    btrc_Vector_string_push(__list_769, jsonStrField("source", self->source));
-    btrc_Vector_string_push(__list_769, jsonStrField("aspect", self->aspect));
-    btrc_Vector_string_push(__list_769, jsonStrField("layout", self->layout));
-    btrc_Vector_string_push(__list_769, jsonStrField("shader_mode", self->shaderMode));
-    btrc_Vector_string_push(__list_769, jsonStrField("bezel_mode", self->bezelMode));
-    btrc_Vector_string_push(__list_769, jsonStrField("confidence", self->confidence));
-    btrc_Vector_string_push(__list_769, jsonStrField("notes", self->notes));
-    return jsonObject(__list_769);
+    btrc_Vector_string* __list_775 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_775, jsonField("schema_version", "1"));
+    btrc_Vector_string_push(__list_775, jsonStrField("system", self->system));
+    btrc_Vector_string_push(__list_775, jsonStrField("adapter", self->adapter));
+    btrc_Vector_string_push(__list_775, jsonStrField("source", self->source));
+    btrc_Vector_string_push(__list_775, jsonStrField("aspect", self->aspect));
+    btrc_Vector_string_push(__list_775, jsonStrField("layout", self->layout));
+    btrc_Vector_string_push(__list_775, jsonStrField("shader_mode", self->shaderMode));
+    btrc_Vector_string_push(__list_775, jsonStrField("bezel_mode", self->bezelMode));
+    btrc_Vector_string_push(__list_775, jsonStrField("confidence", self->confidence));
+    btrc_Vector_string_push(__list_775, jsonStrField("notes", self->notes));
+    return jsonObject(__list_775);
 }
 
 void PresentationProbeText_init(PresentationProbeText* self, char* source, char* text) {
@@ -17993,31 +18116,31 @@ btrc_Vector_PresentationStationSpec* PresentationCatalog_all(void) {
     char* crtShader = "crt/crt-royale.slangp";
     char* crtRuntime = "bezel/Mega_Bezel/Presets/MBZ__5__POTATO.slangp";
     char* panasonic = "Mega_Bezel_Packs/Duimon-Vintage-TV/Presets/Potato/Panasonic_Panacolor_TH20-B8/TH20-B8-[POTATO].slangp";
-    btrc_Vector_PresentationStationSpec* __list_770 = btrc_Vector_PresentationStationSpec_new();
-    btrc_Vector_PresentationStationSpec_push(__list_770, PresentationStationSpec_new("gb", "Nintendo Game Boy", "RETROARCH", "retroarch", "retroarch.cfg core-options", "DMG-01 reflective STN LCD", "retroarch_slang", "handheld/gameboy.slangp", "green DMG tint, LCD matrix, slow-pixel ghosting", "retroarch_slang_or_overlay", "handheld/console-border/dmg.slangp", "classic grey Game Boy shell", "handheld/console-border/dmg.slangp", "single_lcd", "integer_native", "10:9", false, "dmg_lcd", "Prefer DMG green palette and ghosting over sharp monochrome output."));
-    btrc_Vector_PresentationStationSpec_push(__list_770, PresentationStationSpec_new("gbc", "Nintendo Game Boy Color", "RETROARCH", "retroarch", "retroarch.cfg core-options", "Game Boy Color TFT LCD", "retroarch_slang", "handheld/sameboy-lcd-gbc-color-motionblur.slangp", "GBC LCD color response with mild motion blur", "retroarch_slang_or_overlay", "handheld/console-border/gbc.slangp", "frost purple Game Boy Color shell", "handheld/console-border/gbc.slangp", "single_lcd", "integer_native", "10:9", false, "gbc_lcd", "Frost purple artwork is the desired bezel target; bundled fallback is the libretro GBC console border."));
-    btrc_Vector_PresentationStationSpec_push(__list_770, PresentationStationSpec_new("gba", "Nintendo Game Boy Advance", "RETROARCH", "retroarch", "retroarch.cfg core-options", "AGB-001 reflective TFT LCD", "retroarch_slang", "handheld/agb001-gba-color-motionblur.slangp", "original GBA color and LCD persistence", "retroarch_slang_or_overlay", "handheld/console-border/gba-agb001-color-motionblur.slangp", "purple wide Game Boy Advance shell", "handheld/console-border/gba-agb001-color-motionblur.slangp", "single_lcd", "integer_native", "3:2", false, "gba_lcd", "Use the original wide GBA target, not SP-first artwork."));
-    btrc_Vector_PresentationStationSpec_push(__list_770, PresentationStationSpec_new("nes", "Nintendo Entertainment System", "RETROARCH", "retroarch", "retroarch.cfg core-options", "consumer CRT over composite", "retroarch_slang", "ntsc/ntsc-256px-composite-scanline.slangp", "NES composite artifacting, phosphor mask, scanlines", "retroarch_mega_bezel", panasonic, "elegant Panasonic or Sony consumer CRT", crtRuntime, "single_crt", "integer_or_aspect", "4:3", false, "crt_240p", "Classic 240p TV path."));
-    btrc_Vector_PresentationStationSpec_push(__list_770, PresentationStationSpec_new("snes", "Super Nintendo", "RETROARCH", "retroarch", "retroarch.cfg core-options", "consumer CRT over S-Video/composite", "retroarch_slang", "ntsc/ntsc-256px-svideo-scanline.slangp", "SNES-era CRT scanlines and soft analog video", "retroarch_mega_bezel", panasonic, "elegant Panasonic or Sony consumer CRT", crtRuntime, "single_crt", "integer_or_aspect", "4:3", false, "crt_240p", "Prefer S-Video-like clarity unless a game profile requests composite artifacts."));
-    btrc_Vector_PresentationStationSpec_push(__list_770, PresentationStationSpec_new("genesis", "Sega Genesis", "RETROARCH", "retroarch", "retroarch.cfg core-options", "consumer CRT over composite/RGB", "retroarch_slang", "ntsc/ntsc-320px-composite-scanline.slangp", "Genesis dithering blended by analog CRT video", "retroarch_mega_bezel", panasonic, "elegant Panasonic or Sony consumer CRT", "ntsc/ntsc-320px-composite-scanline.slangp", "single_crt", "integer_or_aspect", "4:3", false, "crt_240p", "Composite blending matters for dithering-heavy art. Use the system-specific NTSC runtime preset; Genesis Plus GX is unstable with the generic Mega_Bezel runtime on Deck."));
-    btrc_Vector_PresentationStationSpec_push(__list_770, PresentationStationSpec_new("n64", "Nintendo 64", "RETROARCH", "retroarch", "retroarch.cfg core-options", "consumer CRT over composite/S-Video", "retroarch_slang", "crt/crt-royale.slangp", "late-90s CRT with N64 VI softness and scanlines", "retroarch_mega_bezel", panasonic, "elegant Panasonic or Sony consumer CRT", crtRuntime, "single_crt", "aspect_preserve", "4:3", false, "crt_240p_480i", "Do not sharpen away the hardware VI softness."));
-    btrc_Vector_PresentationStationSpec_push(__list_770, PresentationStationSpec_new("nds", "Nintendo DS", "MELONDS", "melonds", "melonDS.ini", "dual 256x192 resistive LCDs", "retroarch_or_native_lcd", "handheld/lcd-grid-v2-nds-color-motionblur.slangp", "two LCD panels with mild persistence", "universal_dual_screen", "bezels/nds/maximized-dual-screen.json", "good-looking DS bezel that maximizes top and bottom screens", "Mega_Bezel_Packs/Duimon-Mega-Bezel/Presets/Standard/Nintendo_NDS/NDS_Vertical-[STD]-[LCD-GRID]-[Integer].slangp", "dual_lcd_stacked", "integer_native", "dual:256x192", false, "nds_dual_lcd", "Layout adapter must expose both screens and support stacked/side-by-side variants."));
-    btrc_Vector_PresentationStationSpec_push(__list_770, PresentationStationSpec_new("dreamcast", "Sega Dreamcast", "FLYCAST", "flycast", "emu.cfg", "consumer CRT or VGA monitor", "native_or_wrapper_crt", crtShader, "480i/480p era CRT or VGA softness", "universal_crt_bezel", "Mega_Bezel_Packs/Soqueroeu-TV-Backgrounds_V2.0/presets/TV-Console/Sega_Dreamcast-[FLAT].slangp", "elegant Panasonic or Sony CRT unless VGA mode is detected", crtRuntime, "single_tv", "aspect_preserve", "4:3_or_16:9", true, "crt_or_vga", "Prefer 4:3 CRT; swap to 16:9/flat only when config or game profile proves widescreen."));
-    btrc_Vector_PresentationStationSpec_push(__list_770, PresentationStationSpec_new("psx", "Sony PlayStation", "RETROARCH", "retroarch", "retroarch.cfg core-options", "consumer CRT over composite/S-Video", "retroarch_slang", "crt/crt-royale.slangp", "PS1 240p/480i CRT with analog softness", "retroarch_mega_bezel", panasonic, "elegant Panasonic or Sony consumer CRT", crtRuntime, "single_crt", "aspect_preserve", "4:3", false, "crt_240p_480i", "Preserve wobble/softness instead of HD-cleaning the output."));
-    btrc_Vector_PresentationStationSpec_push(__list_770, PresentationStationSpec_new("ps2", "Sony PlayStation 2", "PCSX2", "pcsx2", "PCSX2.ini", "consumer CRT, component CRT, or early flat panel", "native_or_wrapper_crt", "crt/crt-royale.slangp", "PS2 480i CRT scanlines and deinterlacing when applicable", "universal_crt_bezel", "Mega_Bezel_Packs/Soqueroeu-TV-Backgrounds_V2.0/presets/TV-Console/Sony_Playstation(PS2)-[FLAT].slangp", "elegant Panasonic or Sony CRT for 4:3; flat 16:9 frame for widescreen", crtRuntime, "single_tv", "aspect_preserve", "4:3_or_16:9", true, "crt_480i", "Aspect should follow PCSX2/game widescreen state."));
-    btrc_Vector_PresentationStationSpec_push(__list_770, PresentationStationSpec_new("psp", "Sony PSP", "PPSSPP", "ppsspp", "ppsspp.ini", "480x272 PSP LCD", "native_or_wrapper_lcd", "handheld/lcd-grid-v2-psp-color-motionblur.slangp", "PSP LCD color, pixel grid, and mild persistence", "universal_handheld_bezel", "bezels/psp/red-god-of-war-or-original-black.json", "red God of War PSP or original black PSP shell", "handheld/console-border/psp.slangp", "single_lcd_wide", "integer_or_aspect", "16:9", false, "psp_lcd", "Prefer red God of War shell when artwork exists; original black is acceptable fallback."));
-    btrc_Vector_PresentationStationSpec_push(__list_770, PresentationStationSpec_new("n3ds", "Nintendo 3DS", "AZAHAR", "azahar", "qt-config.ini", "dual LCDs, 400x240 top and 320x240 bottom", "native_or_wrapper_lcd", "handheld/lcd-grid-v2-nds-color.slangp", "3DS LCD panels with asymmetric top/bottom geometry", "universal_dual_screen", "bezels/3ds/maximized-dual-screen.json", "good-looking 3DS bezel that maximizes top and bottom screens", "Mega_Bezel_Packs/Duimon-Vintage-TV/Presets/Potato/Sampo_9519/9519-[POTATO]-[3DS]-[Color].slangp", "dual_lcd_asymmetric", "integer_or_aspect", "dual:400x240+320x240", false, "n3ds_dual_lcd", "Azahar is only an adapter; Semu owns the dual-screen presentation contract."));
-    btrc_Vector_PresentationStationSpec_push(__list_770, PresentationStationSpec_new("gc", "Nintendo GameCube", "DOLPHIN", "dolphin", "Dolphin.ini GFX.ini", "consumer CRT or component CRT", "native_or_wrapper_crt", "crt/crt-royale.slangp", "GameCube 480i/480p CRT or component-era softness", "universal_crt_bezel", "Mega_Bezel_Packs/Soqueroeu-TV-Backgrounds_V2.0/presets/TV-Console/Nintendo_GameCube-[FLAT].slangp", "elegant Panasonic or Sony CRT for 4:3; flat frame for widescreen", crtRuntime, "single_tv", "aspect_preserve", "4:3_or_16:9", true, "crt_480i_480p", "Dolphin aspect setting should drive 4:3 vs 16:9 presentation."));
-    btrc_Vector_PresentationStationSpec_push(__list_770, PresentationStationSpec_new("wii", "Nintendo Wii", "DOLPHIN", "dolphin", "Dolphin.ini GFX.ini", "consumer CRT/component TV", "native_or_wrapper_crt", "crt/crt-royale.slangp", "Wii 480i/480p TV output with CRT/component-era behavior", "universal_crt_bezel", "Mega_Bezel_Packs/Soqueroeu-TV-Backgrounds_V2.0/presets/TV-Console/Nintendo_Wii_4x3-[FLAT].slangp", "elegant Panasonic or Sony CRT for 4:3; 16:9 frame when widescreen", crtRuntime, "single_tv", "aspect_preserve", "4:3_or_16:9", true, "crt_or_widescreen_tv", "Dolphin/game settings should drive 4:3 vs 16:9 presentation."));
-    btrc_Vector_PresentationStationSpec_push(__list_770, PresentationStationSpec_new("wiiu", "Nintendo Wii U", "CEMU", "cemu", "settings.xml", "HD TV plus optional gamepad screen", "native_or_wrapper_modern", "", "modern 16:9 output by default", "universal_modern_frame", "bezels/wiiu/tv-gamepad-or-clean-16x9.json", "clean 16:9 frame, optional gamepad layout when exposed", "", "modern_tv_optional_gamepad", "aspect_preserve", "16:9_or_dual", true, "modern_hd", "No default CRT; only use TV/gamepad bezel when the adapter sees both regions."));
-    btrc_Vector_PresentationStationSpec_push(__list_770, PresentationStationSpec_new("switch", "Nintendo Switch", "RYUJINX", "ryujinx", "Config.json", "modern 16:9 handheld/docked display", "off_by_default", "", "modern HDMI/OLED output; no era CRT treatment", "off_by_default", "", "no default bezel for modern Switch", "", "modern_fullscreen", "aspect_fill_or_preserve", "16:9", false, "modern_hd", "Modern system: fullscreen first, optional cosmetic frame only when explicitly enabled."));
-    return __list_770;
+    btrc_Vector_PresentationStationSpec* __list_776 = btrc_Vector_PresentationStationSpec_new();
+    btrc_Vector_PresentationStationSpec_push(__list_776, PresentationStationSpec_new("gb", "Nintendo Game Boy", "RETROARCH", "retroarch", "retroarch.cfg core-options", "DMG-01 reflective STN LCD", "retroarch_slang", "handheld/gameboy.slangp", "green DMG tint, LCD matrix, slow-pixel ghosting", "retroarch_slang_or_overlay", "handheld/console-border/dmg.slangp", "classic grey Game Boy shell", "handheld/console-border/dmg.slangp", "single_lcd", "integer_native", "10:9", false, "dmg_lcd", "Prefer DMG green palette and ghosting over sharp monochrome output."));
+    btrc_Vector_PresentationStationSpec_push(__list_776, PresentationStationSpec_new("gbc", "Nintendo Game Boy Color", "RETROARCH", "retroarch", "retroarch.cfg core-options", "Game Boy Color TFT LCD", "retroarch_slang", "handheld/sameboy-lcd-gbc-color-motionblur.slangp", "GBC LCD color response with mild motion blur", "retroarch_slang_or_overlay", "handheld/console-border/gbc.slangp", "frost purple Game Boy Color shell", "handheld/console-border/gbc.slangp", "single_lcd", "integer_native", "10:9", false, "gbc_lcd", "Frost purple artwork is the desired bezel target; bundled fallback is the libretro GBC console border."));
+    btrc_Vector_PresentationStationSpec_push(__list_776, PresentationStationSpec_new("gba", "Nintendo Game Boy Advance", "RETROARCH", "retroarch", "retroarch.cfg core-options", "AGB-001 reflective TFT LCD", "retroarch_slang", "handheld/agb001-gba-color-motionblur.slangp", "original GBA color and LCD persistence", "retroarch_slang_or_overlay", "handheld/console-border/gba-agb001-color-motionblur.slangp", "purple wide Game Boy Advance shell", "handheld/console-border/gba-agb001-color-motionblur.slangp", "single_lcd", "integer_native", "3:2", false, "gba_lcd", "Use the original wide GBA target, not SP-first artwork."));
+    btrc_Vector_PresentationStationSpec_push(__list_776, PresentationStationSpec_new("nes", "Nintendo Entertainment System", "RETROARCH", "retroarch", "retroarch.cfg core-options", "consumer CRT over composite", "retroarch_slang", "ntsc/ntsc-256px-composite-scanline.slangp", "NES composite artifacting, phosphor mask, scanlines", "retroarch_mega_bezel", panasonic, "elegant Panasonic or Sony consumer CRT", "ntsc/ntsc-256px-composite-scanline.slangp", "single_crt", "integer_or_aspect", "4:3", false, "crt_240p", "Classic 240p TV path. Use the system-specific NTSC runtime preset; Mesen is unstable with the generic Mega_Bezel runtime on Deck."));
+    btrc_Vector_PresentationStationSpec_push(__list_776, PresentationStationSpec_new("snes", "Super Nintendo", "RETROARCH", "retroarch", "retroarch.cfg core-options", "consumer CRT over S-Video/composite", "retroarch_slang", "ntsc/ntsc-256px-svideo-scanline.slangp", "SNES-era CRT scanlines and soft analog video", "retroarch_mega_bezel", panasonic, "elegant Panasonic or Sony consumer CRT", crtRuntime, "single_crt", "integer_or_aspect", "4:3", false, "crt_240p", "Prefer S-Video-like clarity unless a game profile requests composite artifacts."));
+    btrc_Vector_PresentationStationSpec_push(__list_776, PresentationStationSpec_new("genesis", "Sega Genesis", "RETROARCH", "retroarch", "retroarch.cfg core-options", "consumer CRT over composite/RGB", "retroarch_slang", "ntsc/ntsc-320px-composite-scanline.slangp", "Genesis dithering blended by analog CRT video", "retroarch_mega_bezel", panasonic, "elegant Panasonic or Sony consumer CRT", "ntsc/ntsc-320px-composite-scanline.slangp", "single_crt", "integer_or_aspect", "4:3", false, "crt_240p", "Composite blending matters for dithering-heavy art. Use the system-specific NTSC runtime preset; Genesis Plus GX is unstable with the generic Mega_Bezel runtime on Deck."));
+    btrc_Vector_PresentationStationSpec_push(__list_776, PresentationStationSpec_new("n64", "Nintendo 64", "RETROARCH", "retroarch", "retroarch.cfg core-options", "consumer CRT over composite/S-Video", "retroarch_slang", "crt/crt-royale.slangp", "late-90s CRT with N64 VI softness and scanlines", "retroarch_mega_bezel", panasonic, "elegant Panasonic or Sony consumer CRT", crtRuntime, "single_crt", "aspect_preserve", "4:3", false, "crt_240p_480i", "Do not sharpen away the hardware VI softness."));
+    btrc_Vector_PresentationStationSpec_push(__list_776, PresentationStationSpec_new("nds", "Nintendo DS", "MELONDS", "melonds", "melonDS.ini", "dual 256x192 resistive LCDs", "retroarch_or_native_lcd", "handheld/lcd-grid-v2-nds-color-motionblur.slangp", "two LCD panels with mild persistence", "universal_dual_screen", "bezels/nds/maximized-dual-screen.json", "good-looking DS bezel that maximizes top and bottom screens", "Mega_Bezel_Packs/Duimon-Mega-Bezel/Presets/Standard/Nintendo_NDS/NDS_Vertical-[STD]-[LCD-GRID]-[Integer].slangp", "dual_lcd_stacked", "integer_native", "dual:256x192", false, "nds_dual_lcd", "Layout adapter must expose both screens and support stacked/side-by-side variants."));
+    btrc_Vector_PresentationStationSpec_push(__list_776, PresentationStationSpec_new("dreamcast", "Sega Dreamcast", "FLYCAST", "flycast", "emu.cfg", "consumer CRT or VGA monitor", "native_or_wrapper_crt", crtShader, "480i/480p era CRT or VGA softness", "universal_crt_bezel", "Mega_Bezel_Packs/Soqueroeu-TV-Backgrounds_V2.0/presets/TV-Console/Sega_Dreamcast-[FLAT].slangp", "elegant Panasonic or Sony CRT unless VGA mode is detected", crtRuntime, "single_tv", "aspect_preserve", "4:3_or_16:9", true, "crt_or_vga", "Prefer 4:3 CRT; swap to 16:9/flat only when config or game profile proves widescreen."));
+    btrc_Vector_PresentationStationSpec_push(__list_776, PresentationStationSpec_new("psx", "Sony PlayStation", "RETROARCH", "retroarch", "retroarch.cfg core-options", "consumer CRT over composite/S-Video", "retroarch_slang", "crt/crt-royale.slangp", "PS1 240p/480i CRT with analog softness", "retroarch_mega_bezel", panasonic, "elegant Panasonic or Sony consumer CRT", crtRuntime, "single_crt", "aspect_preserve", "4:3", false, "crt_240p_480i", "Preserve wobble/softness instead of HD-cleaning the output."));
+    btrc_Vector_PresentationStationSpec_push(__list_776, PresentationStationSpec_new("ps2", "Sony PlayStation 2", "PCSX2", "pcsx2", "PCSX2.ini", "consumer CRT, component CRT, or early flat panel", "native_or_wrapper_crt", "crt/crt-royale.slangp", "PS2 480i CRT scanlines and deinterlacing when applicable", "universal_crt_bezel", "Mega_Bezel_Packs/Soqueroeu-TV-Backgrounds_V2.0/presets/TV-Console/Sony_Playstation(PS2)-[FLAT].slangp", "elegant Panasonic or Sony CRT for 4:3; flat 16:9 frame for widescreen", crtRuntime, "single_tv", "aspect_preserve", "4:3_or_16:9", true, "crt_480i", "Aspect should follow PCSX2/game widescreen state."));
+    btrc_Vector_PresentationStationSpec_push(__list_776, PresentationStationSpec_new("psp", "Sony PSP", "PPSSPP", "ppsspp", "ppsspp.ini", "480x272 PSP LCD", "native_or_wrapper_lcd", "handheld/lcd-grid-v2-psp-color-motionblur.slangp", "PSP LCD color, pixel grid, and mild persistence", "universal_handheld_bezel", "bezels/psp/red-god-of-war-or-original-black.json", "red God of War PSP or original black PSP shell", "handheld/console-border/psp.slangp", "single_lcd_wide", "integer_or_aspect", "16:9", false, "psp_lcd", "Prefer red God of War shell when artwork exists; original black is acceptable fallback."));
+    btrc_Vector_PresentationStationSpec_push(__list_776, PresentationStationSpec_new("n3ds", "Nintendo 3DS", "AZAHAR", "azahar", "qt-config.ini", "dual LCDs, 400x240 top and 320x240 bottom", "native_or_wrapper_lcd", "handheld/lcd-grid-v2-nds-color.slangp", "3DS LCD panels with asymmetric top/bottom geometry", "universal_dual_screen", "bezels/3ds/maximized-dual-screen.json", "good-looking 3DS bezel that maximizes top and bottom screens", "Mega_Bezel_Packs/Duimon-Vintage-TV/Presets/Potato/Sampo_9519/9519-[POTATO]-[3DS]-[Color].slangp", "dual_lcd_asymmetric", "integer_or_aspect", "dual:400x240+320x240", false, "n3ds_dual_lcd", "Azahar is only an adapter; Semu owns the dual-screen presentation contract."));
+    btrc_Vector_PresentationStationSpec_push(__list_776, PresentationStationSpec_new("gc", "Nintendo GameCube", "DOLPHIN", "dolphin", "Dolphin.ini GFX.ini", "consumer CRT or component CRT", "native_or_wrapper_crt", "crt/crt-royale.slangp", "GameCube 480i/480p CRT or component-era softness", "universal_crt_bezel", "Mega_Bezel_Packs/Soqueroeu-TV-Backgrounds_V2.0/presets/TV-Console/Nintendo_GameCube-[FLAT].slangp", "elegant Panasonic or Sony CRT for 4:3; flat frame for widescreen", crtRuntime, "single_tv", "aspect_preserve", "4:3_or_16:9", true, "crt_480i_480p", "Dolphin aspect setting should drive 4:3 vs 16:9 presentation."));
+    btrc_Vector_PresentationStationSpec_push(__list_776, PresentationStationSpec_new("wii", "Nintendo Wii", "DOLPHIN", "dolphin", "Dolphin.ini GFX.ini", "consumer CRT/component TV", "native_or_wrapper_crt", "crt/crt-royale.slangp", "Wii 480i/480p TV output with CRT/component-era behavior", "universal_crt_bezel", "Mega_Bezel_Packs/Soqueroeu-TV-Backgrounds_V2.0/presets/TV-Console/Nintendo_Wii_4x3-[FLAT].slangp", "elegant Panasonic or Sony CRT for 4:3; 16:9 frame when widescreen", crtRuntime, "single_tv", "aspect_preserve", "4:3_or_16:9", true, "crt_or_widescreen_tv", "Dolphin/game settings should drive 4:3 vs 16:9 presentation."));
+    btrc_Vector_PresentationStationSpec_push(__list_776, PresentationStationSpec_new("wiiu", "Nintendo Wii U", "CEMU", "cemu", "settings.xml", "HD TV plus optional gamepad screen", "native_or_wrapper_modern", "", "modern 16:9 output by default", "universal_modern_frame", "bezels/wiiu/tv-gamepad-or-clean-16x9.json", "clean 16:9 frame, optional gamepad layout when exposed", "", "modern_tv_optional_gamepad", "aspect_preserve", "16:9_or_dual", true, "modern_hd", "No default CRT; only use TV/gamepad bezel when the adapter sees both regions."));
+    btrc_Vector_PresentationStationSpec_push(__list_776, PresentationStationSpec_new("switch", "Nintendo Switch", "RYUJINX", "ryujinx", "Config.json", "modern 16:9 handheld/docked display", "off_by_default", "", "modern HDMI/OLED output; no era CRT treatment", "off_by_default", "", "no default bezel for modern Switch", "", "modern_fullscreen", "aspect_fill_or_preserve", "16:9", false, "modern_hd", "Modern system: fullscreen first, optional cosmetic frame only when explicitly enabled."));
+    return __list_776;
 }
 
 PresentationStationSpec* PresentationCatalog_find(char* system) {
-    int __n_772 = btrc_Vector_PresentationStationSpec_iterLen(PresentationCatalog_all());
-    for (int __i_771 = 0; (__i_771 < __n_772); (__i_771++)) {
-        PresentationStationSpec* spec = btrc_Vector_PresentationStationSpec_iterGet(PresentationCatalog_all(), __i_771);
+    int __n_778 = btrc_Vector_PresentationStationSpec_iterLen(PresentationCatalog_all());
+    for (int __i_777 = 0; (__i_777 < __n_778); (__i_777++)) {
+        PresentationStationSpec* spec = btrc_Vector_PresentationStationSpec_iterGet(PresentationCatalog_all(), __i_777);
         if (strcmp(spec->system, system) == 0) {
             return spec;
         }
@@ -18055,9 +18178,9 @@ bool presentationBoolField(char* field) {
 
 void writePresentationDefaults(char* project) {
     ensureDir(presentationSettingsRoot(project));
-    int __n_776 = btrc_Vector_PresentationStationSpec_iterLen(PresentationCatalog_all());
-    for (int __i_775 = 0; (__i_775 < __n_776); (__i_775++)) {
-        PresentationStationSpec* spec = btrc_Vector_PresentationStationSpec_iterGet(PresentationCatalog_all(), __i_775);
+    int __n_782 = btrc_Vector_PresentationStationSpec_iterLen(PresentationCatalog_all());
+    for (int __i_781 = 0; (__i_781 < __n_782); (__i_781++)) {
+        PresentationStationSpec* spec = btrc_Vector_PresentationStationSpec_iterGet(PresentationCatalog_all(), __i_781);
         PresentationStationSpec_writeDefault(spec, project);
     }
 }
@@ -18198,9 +18321,9 @@ bool presentationArgTakesValue(char* arg) {
 char* presentationRomArg(btrc_Vector_string* emulatorArgs) {
     char* candidate = "";
     bool skip = false;
-    int __n_778 = btrc_Vector_string_iterLen(emulatorArgs);
-    for (int __i_777 = 0; (__i_777 < __n_778); (__i_777++)) {
-        char* arg = btrc_Vector_string_iterGet(emulatorArgs, __i_777);
+    int __n_784 = btrc_Vector_string_iterLen(emulatorArgs);
+    for (int __i_783 = 0; (__i_783 < __n_784); (__i_783++)) {
+        char* arg = btrc_Vector_string_iterGet(emulatorArgs, __i_783);
         if (skip) {
             (skip = false);
             continue;
@@ -18292,51 +18415,51 @@ char* presentationSystemFromArgs(char* project, btrc_Vector_string* emulatorArgs
 }
 
 char* presentationRegionJson(char* role, char* nativeSize, char* aspect, char* priority) {
-    btrc_Vector_string* __list_779 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_779, jsonStrField("role", role));
-    btrc_Vector_string_push(__list_779, jsonStrField("native_size", nativeSize));
-    btrc_Vector_string_push(__list_779, jsonStrField("aspect", aspect));
-    btrc_Vector_string_push(__list_779, jsonStrField("priority", priority));
-    return jsonObject(__list_779);
+    btrc_Vector_string* __list_785 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_785, jsonStrField("role", role));
+    btrc_Vector_string_push(__list_785, jsonStrField("native_size", nativeSize));
+    btrc_Vector_string_push(__list_785, jsonStrField("aspect", aspect));
+    btrc_Vector_string_push(__list_785, jsonStrField("priority", priority));
+    return jsonObject(__list_785);
 }
 
 char* presentationRegionsJson(char* layout) {
     if (strcmp(layout, "dual_lcd_stacked") == 0) {
-        btrc_Vector_string* __list_780 = btrc_Vector_string_new();
-        btrc_Vector_string_push(__list_780, presentationRegionJson("top", "256x192", "4:3", "primary"));
-        btrc_Vector_string_push(__list_780, presentationRegionJson("bottom", "256x192", "4:3", "secondary"));
-        return jsonArray(__list_780);
+        btrc_Vector_string* __list_786 = btrc_Vector_string_new();
+        btrc_Vector_string_push(__list_786, presentationRegionJson("top", "256x192", "4:3", "primary"));
+        btrc_Vector_string_push(__list_786, presentationRegionJson("bottom", "256x192", "4:3", "secondary"));
+        return jsonArray(__list_786);
     }
     if (strcmp(layout, "dual_lcd_asymmetric") == 0) {
-        btrc_Vector_string* __list_781 = btrc_Vector_string_new();
-        btrc_Vector_string_push(__list_781, presentationRegionJson("top", "400x240", "5:3", "primary"));
-        btrc_Vector_string_push(__list_781, presentationRegionJson("bottom", "320x240", "4:3", "secondary"));
-        return jsonArray(__list_781);
+        btrc_Vector_string* __list_787 = btrc_Vector_string_new();
+        btrc_Vector_string_push(__list_787, presentationRegionJson("top", "400x240", "5:3", "primary"));
+        btrc_Vector_string_push(__list_787, presentationRegionJson("bottom", "320x240", "4:3", "secondary"));
+        return jsonArray(__list_787);
     }
     if (strcmp(layout, "single_lcd_wide") == 0) {
-        btrc_Vector_string* __list_782 = btrc_Vector_string_new();
-        btrc_Vector_string_push(__list_782, presentationRegionJson("screen", "480x272", "16:9", "primary"));
-        return jsonArray(__list_782);
+        btrc_Vector_string* __list_788 = btrc_Vector_string_new();
+        btrc_Vector_string_push(__list_788, presentationRegionJson("screen", "480x272", "16:9", "primary"));
+        return jsonArray(__list_788);
     }
     if ((strcmp(layout, "modern_fullscreen") == 0) || (strcmp(layout, "modern_tv_optional_gamepad") == 0)) {
-        btrc_Vector_string* __list_783 = btrc_Vector_string_new();
-        btrc_Vector_string_push(__list_783, presentationRegionJson("screen", "1280x720", "16:9", "primary"));
-        return jsonArray(__list_783);
+        btrc_Vector_string* __list_789 = btrc_Vector_string_new();
+        btrc_Vector_string_push(__list_789, presentationRegionJson("screen", "1280x720", "16:9", "primary"));
+        return jsonArray(__list_789);
     }
     if (strcmp(layout, "single_lcd") == 0) {
-        btrc_Vector_string* __list_784 = btrc_Vector_string_new();
-        btrc_Vector_string_push(__list_784, presentationRegionJson("screen", "native", "source", "primary"));
-        return jsonArray(__list_784);
+        btrc_Vector_string* __list_790 = btrc_Vector_string_new();
+        btrc_Vector_string_push(__list_790, presentationRegionJson("screen", "native", "source", "primary"));
+        return jsonArray(__list_790);
     }
-    btrc_Vector_string* __list_785 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_785, presentationRegionJson("screen", "native", "4:3", "primary"));
-    return jsonArray(__list_785);
+    btrc_Vector_string* __list_791 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_791, presentationRegionJson("screen", "native", "4:3", "primary"));
+    return jsonArray(__list_791);
 }
 
 PresentationProbeText* presentationReadFirstExisting(btrc_Vector_string* paths) {
-    int __n_787 = btrc_Vector_string_iterLen(paths);
-    for (int __i_786 = 0; (__i_786 < __n_787); (__i_786++)) {
-        char* path = btrc_Vector_string_iterGet(paths, __i_786);
+    int __n_793 = btrc_Vector_string_iterLen(paths);
+    for (int __i_792 = 0; (__i_792 < __n_793); (__i_792++)) {
+        char* path = btrc_Vector_string_iterGet(paths, __i_792);
         if (FileSystem_isFile(path)) {
             return PresentationProbeText_new(path, FileSystem_readText(path));
         }
@@ -18346,9 +18469,9 @@ PresentationProbeText* presentationReadFirstExisting(btrc_Vector_string* paths) 
 
 bool presentationTextHasAny(char* text, btrc_Vector_string* needles) {
     char* lower = __btrc_str_track(__btrc_toLower(text));
-    int __n_789 = btrc_Vector_string_iterLen(needles);
-    for (int __i_788 = 0; (__i_788 < __n_789); (__i_788++)) {
-        char* needle = btrc_Vector_string_iterGet(needles, __i_788);
+    int __n_795 = btrc_Vector_string_iterLen(needles);
+    for (int __i_794 = 0; (__i_794 < __n_795); (__i_794++)) {
+        char* needle = btrc_Vector_string_iterGet(needles, __i_794);
         if (__btrc_strContains(lower, __btrc_str_track(__btrc_toLower(needle)))) {
             return true;
         }
@@ -18419,29 +18542,29 @@ PresentationRuntimeState* presentationStaticState(char* system, char* adapter, c
 }
 
 PresentationRuntimeState* presentationDolphinState(char* project, char* system, char* adapter, char* layout, char* shaderBackend, char* bezelBackend) {
-    btrc_Vector_string* __list_790 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_790, joinPath(launcherRoutedStateRoot(project, "dolphin"), "config/dolphin-emu/Config/GFX.ini"));
-    btrc_Vector_string_push(__list_790, joinPath(launcherRoutedStateRoot(project, "dolphin"), "config/dolphin-emu/Config/Dolphin.ini"));
-    btrc_Vector_string_push(__list_790, emulatorProfilePath(project, "Dolphin/config/GFX.ini"));
-    btrc_Vector_string_push(__list_790, emulatorProfilePath(project, "Dolphin/config/Dolphin.ini"));
-    PresentationProbeText* probe = presentationReadFirstExisting(__list_790);
+    btrc_Vector_string* __list_796 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_796, joinPath(launcherRoutedStateRoot(project, "dolphin"), "config/dolphin-emu/Config/GFX.ini"));
+    btrc_Vector_string_push(__list_796, joinPath(launcherRoutedStateRoot(project, "dolphin"), "config/dolphin-emu/Config/Dolphin.ini"));
+    btrc_Vector_string_push(__list_796, emulatorProfilePath(project, "Dolphin/config/GFX.ini"));
+    btrc_Vector_string_push(__list_796, emulatorProfilePath(project, "Dolphin/config/Dolphin.ini"));
+    PresentationProbeText* probe = presentationReadFirstExisting(__list_796);
     if (PresentationProbeText_found(probe)) {
-        btrc_Vector_string* __list_792 = btrc_Vector_string_new();
-        btrc_Vector_string_push(__list_792, "aspectratio = 1");
-        btrc_Vector_string_push(__list_792, "aspectratio=1");
-        btrc_Vector_string_push(__list_792, "aspectratio = 16:9");
-        btrc_Vector_string_push(__list_792, "aspectratio=16:9");
-        btrc_Vector_string_push(__list_792, "widescreen = true");
-        btrc_Vector_string_push(__list_792, "widescreen=true");
-        if (presentationTextHasAny(probe->text, __list_792)) {
+        btrc_Vector_string* __list_798 = btrc_Vector_string_new();
+        btrc_Vector_string_push(__list_798, "aspectratio = 1");
+        btrc_Vector_string_push(__list_798, "aspectratio=1");
+        btrc_Vector_string_push(__list_798, "aspectratio = 16:9");
+        btrc_Vector_string_push(__list_798, "aspectratio=16:9");
+        btrc_Vector_string_push(__list_798, "widescreen = true");
+        btrc_Vector_string_push(__list_798, "widescreen=true");
+        if (presentationTextHasAny(probe->text, __list_798)) {
             return presentationStaticState(system, adapter, layout, "16:9", shaderBackend, bezelBackend, probe->source, "config", "Dolphin config reports widescreen output.");
         }
-        btrc_Vector_string* __list_793 = btrc_Vector_string_new();
-        btrc_Vector_string_push(__list_793, "aspectratio = 2");
-        btrc_Vector_string_push(__list_793, "aspectratio=2");
-        btrc_Vector_string_push(__list_793, "aspectratio = 4:3");
-        btrc_Vector_string_push(__list_793, "aspectratio=4:3");
-        if (presentationTextHasAny(probe->text, __list_793)) {
+        btrc_Vector_string* __list_799 = btrc_Vector_string_new();
+        btrc_Vector_string_push(__list_799, "aspectratio = 2");
+        btrc_Vector_string_push(__list_799, "aspectratio=2");
+        btrc_Vector_string_push(__list_799, "aspectratio = 4:3");
+        btrc_Vector_string_push(__list_799, "aspectratio=4:3");
+        if (presentationTextHasAny(probe->text, __list_799)) {
             return presentationStaticState(system, adapter, layout, "4:3", shaderBackend, bezelBackend, probe->source, "config", "Dolphin config reports 4:3 output.");
         }
     }
@@ -18449,24 +18572,24 @@ PresentationRuntimeState* presentationDolphinState(char* project, char* system, 
 }
 
 PresentationRuntimeState* presentationPcsx2State(char* project, char* system, char* adapter, char* layout, char* shaderBackend, char* bezelBackend) {
-    btrc_Vector_string* __list_794 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_794, joinPath(launcherRoutedStateRoot(project, "pcsx2"), "config/PCSX2/inis/PCSX2.ini"));
-    btrc_Vector_string_push(__list_794, emulatorProfilePath(project, "PCSX2/config/inis/PCSX2.ini"));
-    PresentationProbeText* probe = presentationReadFirstExisting(__list_794);
+    btrc_Vector_string* __list_800 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_800, joinPath(launcherRoutedStateRoot(project, "pcsx2"), "config/PCSX2/inis/PCSX2.ini"));
+    btrc_Vector_string_push(__list_800, emulatorProfilePath(project, "PCSX2/config/inis/PCSX2.ini"));
+    PresentationProbeText* probe = presentationReadFirstExisting(__list_800);
     if (PresentationProbeText_found(probe)) {
-        btrc_Vector_string* __list_796 = btrc_Vector_string_new();
-        btrc_Vector_string_push(__list_796, "aspectratio = 16:9");
-        btrc_Vector_string_push(__list_796, "aspectratio=16:9");
-        btrc_Vector_string_push(__list_796, "enablewidescreenpatches = true");
-        btrc_Vector_string_push(__list_796, "enablewidescreenpatches=true");
-        btrc_Vector_string_push(__list_796, "widescreenpatches = enabled");
-        if (presentationTextHasAny(probe->text, __list_796)) {
+        btrc_Vector_string* __list_802 = btrc_Vector_string_new();
+        btrc_Vector_string_push(__list_802, "aspectratio = 16:9");
+        btrc_Vector_string_push(__list_802, "aspectratio=16:9");
+        btrc_Vector_string_push(__list_802, "enablewidescreenpatches = true");
+        btrc_Vector_string_push(__list_802, "enablewidescreenpatches=true");
+        btrc_Vector_string_push(__list_802, "widescreenpatches = enabled");
+        if (presentationTextHasAny(probe->text, __list_802)) {
             return presentationStaticState(system, adapter, layout, "16:9", shaderBackend, bezelBackend, probe->source, "config", "PCSX2 config reports widescreen output.");
         }
-        btrc_Vector_string* __list_797 = btrc_Vector_string_new();
-        btrc_Vector_string_push(__list_797, "aspectratio = 4:3");
-        btrc_Vector_string_push(__list_797, "aspectratio=4:3");
-        if (presentationTextHasAny(probe->text, __list_797)) {
+        btrc_Vector_string* __list_803 = btrc_Vector_string_new();
+        btrc_Vector_string_push(__list_803, "aspectratio = 4:3");
+        btrc_Vector_string_push(__list_803, "aspectratio=4:3");
+        if (presentationTextHasAny(probe->text, __list_803)) {
             return presentationStaticState(system, adapter, layout, "4:3", shaderBackend, bezelBackend, probe->source, "config", "PCSX2 config reports 4:3 output.");
         }
     }
@@ -18474,27 +18597,27 @@ PresentationRuntimeState* presentationPcsx2State(char* project, char* system, ch
 }
 
 PresentationRuntimeState* presentationFlycastState(char* project, char* system, char* adapter, char* layout, char* shaderBackend, char* bezelBackend) {
-    btrc_Vector_string* __list_798 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_798, joinPath(launcherRoutedStateRoot(project, "flycast"), "config/flycast/emu.cfg"));
-    btrc_Vector_string_push(__list_798, emulatorProfilePath(project, "Flycast/config/emu.cfg"));
-    PresentationProbeText* probe = presentationReadFirstExisting(__list_798);
+    btrc_Vector_string* __list_804 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_804, joinPath(launcherRoutedStateRoot(project, "flycast"), "config/flycast/emu.cfg"));
+    btrc_Vector_string_push(__list_804, emulatorProfilePath(project, "Flycast/config/emu.cfg"));
+    PresentationProbeText* probe = presentationReadFirstExisting(__list_804);
     if (PresentationProbeText_found(probe)) {
-        btrc_Vector_string* __list_800 = btrc_Vector_string_new();
-        btrc_Vector_string_push(__list_800, "rend.widescreen = yes");
-        btrc_Vector_string_push(__list_800, "rend.widescreen=yes");
-        btrc_Vector_string_push(__list_800, "widescreen = yes");
-        btrc_Vector_string_push(__list_800, "widescreen=true");
-        btrc_Vector_string_push(__list_800, "widescreen = true");
-        if (presentationTextHasAny(probe->text, __list_800)) {
+        btrc_Vector_string* __list_806 = btrc_Vector_string_new();
+        btrc_Vector_string_push(__list_806, "rend.widescreen = yes");
+        btrc_Vector_string_push(__list_806, "rend.widescreen=yes");
+        btrc_Vector_string_push(__list_806, "widescreen = yes");
+        btrc_Vector_string_push(__list_806, "widescreen=true");
+        btrc_Vector_string_push(__list_806, "widescreen = true");
+        if (presentationTextHasAny(probe->text, __list_806)) {
             return presentationStaticState(system, adapter, layout, "16:9", shaderBackend, bezelBackend, probe->source, "config", "Flycast config reports widescreen output.");
         }
-        btrc_Vector_string* __list_801 = btrc_Vector_string_new();
-        btrc_Vector_string_push(__list_801, "rend.widescreen = no");
-        btrc_Vector_string_push(__list_801, "rend.widescreen=no");
-        btrc_Vector_string_push(__list_801, "widescreen = no");
-        btrc_Vector_string_push(__list_801, "widescreen=false");
-        btrc_Vector_string_push(__list_801, "widescreen = false");
-        if (presentationTextHasAny(probe->text, __list_801)) {
+        btrc_Vector_string* __list_807 = btrc_Vector_string_new();
+        btrc_Vector_string_push(__list_807, "rend.widescreen = no");
+        btrc_Vector_string_push(__list_807, "rend.widescreen=no");
+        btrc_Vector_string_push(__list_807, "widescreen = no");
+        btrc_Vector_string_push(__list_807, "widescreen=false");
+        btrc_Vector_string_push(__list_807, "widescreen = false");
+        if (presentationTextHasAny(probe->text, __list_807)) {
             return presentationStaticState(system, adapter, layout, "4:3", shaderBackend, bezelBackend, probe->source, "config", "Flycast config reports 4:3 output.");
         }
     }
@@ -18564,47 +18687,47 @@ char* presentationPlanJson(char* project, char* system, char* emulator) {
     char* selectedBezel = presentationEffectiveValue(config, spec, state, "bezel_file", spec->bezelFile, "widescreen_bezel_file", PresentationStationSpec_defaultWidescreenBezelFile(spec));
     char* selectedRuntime = presentationEffectiveValue(config, spec, state, "runtime_preset", spec->runtimePreset, "widescreen_runtime_preset", PresentationStationSpec_defaultWidescreenRuntimePreset(spec));
     char* resolved = presentationResolveSelectedShader(project, selectedRuntime, selectedShader);
-    btrc_Vector_string* __list_802 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_802, jsonField("schema_version", "1"));
-    btrc_Vector_string_push(__list_802, jsonStrField("system", system));
-    btrc_Vector_string_push(__list_802, jsonStrField("label", JsonObject_getString(config, "label", spec->label)));
-    btrc_Vector_string_push(__list_802, jsonStrField("emulator", selectedEmulator));
-    btrc_Vector_string_push(__list_802, jsonStrField("adapter", JsonObject_getString(config, "adapter", spec->adapter)));
-    btrc_Vector_string_push(__list_802, jsonStrField("adapter_config", JsonObject_getString(config, "adapter_config", spec->adapterConfig)));
-    btrc_Vector_string_push(__list_802, jsonStrField("hardware_display", JsonObject_getString(config, "hardware_display", spec->hardwareDisplay)));
-    btrc_Vector_string_push(__list_802, jsonStrField("shader_backend", JsonObject_getString(config, "shader_backend", spec->shaderBackend)));
-    btrc_Vector_string_push(__list_802, jsonStrField("shader_file", JsonObject_getString(config, "shader_file", spec->shaderFile)));
-    btrc_Vector_string_push(__list_802, jsonStrField("shader_intent", JsonObject_getString(config, "shader_intent", spec->shaderIntent)));
-    btrc_Vector_string_push(__list_802, jsonStrField("resolved_shader", resolved));
-    btrc_Vector_string_push(__list_802, jsonStrField("bezel_backend", JsonObject_getString(config, "bezel_backend", spec->bezelBackend)));
-    btrc_Vector_string_push(__list_802, jsonStrField("bezel_file", JsonObject_getString(config, "bezel_file", spec->bezelFile)));
-    btrc_Vector_string_push(__list_802, jsonStrField("bezel_intent", JsonObject_getString(config, "bezel_intent", spec->bezelIntent)));
-    btrc_Vector_string_push(__list_802, jsonStrField("runtime_preset", JsonObject_getString(config, "runtime_preset", spec->runtimePreset)));
-    btrc_Vector_string_push(__list_802, jsonStrField("widescreen_shader_file", JsonObject_getString(config, "widescreen_shader_file", PresentationStationSpec_defaultWidescreenShaderFile(spec))));
-    btrc_Vector_string_push(__list_802, jsonStrField("widescreen_bezel_file", JsonObject_getString(config, "widescreen_bezel_file", PresentationStationSpec_defaultWidescreenBezelFile(spec))));
-    btrc_Vector_string_push(__list_802, jsonStrField("widescreen_runtime_preset", JsonObject_getString(config, "widescreen_runtime_preset", PresentationStationSpec_defaultWidescreenRuntimePreset(spec))));
-    btrc_Vector_string_push(__list_802, jsonStrField("selected_shader_file", selectedShader));
-    btrc_Vector_string_push(__list_802, jsonStrField("selected_bezel_file", selectedBezel));
-    btrc_Vector_string_push(__list_802, jsonStrField("selected_runtime_preset", selectedRuntime));
-    btrc_Vector_string_push(__list_802, jsonField("runtime_state", PresentationRuntimeState_json(state)));
-    btrc_Vector_string_push(__list_802, jsonStrField("effective_aspect", state->aspect));
-    btrc_Vector_string_push(__list_802, jsonStrField("effective_layout", state->layout));
-    btrc_Vector_string_push(__list_802, jsonStrField("presentation_mode", state->bezelMode));
-    btrc_Vector_string_push(__list_802, jsonStrField("layout", layout));
-    btrc_Vector_string_push(__list_802, jsonField("regions", presentationRegionsJson(layout)));
-    btrc_Vector_string_push(__list_802, jsonStrField("scale_policy", JsonObject_getString(config, "scale_policy", spec->scalePolicy)));
-    btrc_Vector_string_push(__list_802, jsonStrField("aspect_policy", JsonObject_getString(config, "aspect_policy", spec->aspectPolicy)));
-    btrc_Vector_string_push(__list_802, jsonBoolField("dynamic_aspect", JsonObject_getBool(config, "dynamic_aspect", spec->dynamicAspect)));
-    btrc_Vector_string_push(__list_802, jsonStrField("profile", JsonObject_getString(config, "profile", spec->profile)));
-    btrc_Vector_string_push(__list_802, jsonStrField("notes", JsonObject_getString(config, "notes", spec->notes)));
-    return jsonObject(__list_802);
+    btrc_Vector_string* __list_808 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_808, jsonField("schema_version", "1"));
+    btrc_Vector_string_push(__list_808, jsonStrField("system", system));
+    btrc_Vector_string_push(__list_808, jsonStrField("label", JsonObject_getString(config, "label", spec->label)));
+    btrc_Vector_string_push(__list_808, jsonStrField("emulator", selectedEmulator));
+    btrc_Vector_string_push(__list_808, jsonStrField("adapter", JsonObject_getString(config, "adapter", spec->adapter)));
+    btrc_Vector_string_push(__list_808, jsonStrField("adapter_config", JsonObject_getString(config, "adapter_config", spec->adapterConfig)));
+    btrc_Vector_string_push(__list_808, jsonStrField("hardware_display", JsonObject_getString(config, "hardware_display", spec->hardwareDisplay)));
+    btrc_Vector_string_push(__list_808, jsonStrField("shader_backend", JsonObject_getString(config, "shader_backend", spec->shaderBackend)));
+    btrc_Vector_string_push(__list_808, jsonStrField("shader_file", JsonObject_getString(config, "shader_file", spec->shaderFile)));
+    btrc_Vector_string_push(__list_808, jsonStrField("shader_intent", JsonObject_getString(config, "shader_intent", spec->shaderIntent)));
+    btrc_Vector_string_push(__list_808, jsonStrField("resolved_shader", resolved));
+    btrc_Vector_string_push(__list_808, jsonStrField("bezel_backend", JsonObject_getString(config, "bezel_backend", spec->bezelBackend)));
+    btrc_Vector_string_push(__list_808, jsonStrField("bezel_file", JsonObject_getString(config, "bezel_file", spec->bezelFile)));
+    btrc_Vector_string_push(__list_808, jsonStrField("bezel_intent", JsonObject_getString(config, "bezel_intent", spec->bezelIntent)));
+    btrc_Vector_string_push(__list_808, jsonStrField("runtime_preset", JsonObject_getString(config, "runtime_preset", spec->runtimePreset)));
+    btrc_Vector_string_push(__list_808, jsonStrField("widescreen_shader_file", JsonObject_getString(config, "widescreen_shader_file", PresentationStationSpec_defaultWidescreenShaderFile(spec))));
+    btrc_Vector_string_push(__list_808, jsonStrField("widescreen_bezel_file", JsonObject_getString(config, "widescreen_bezel_file", PresentationStationSpec_defaultWidescreenBezelFile(spec))));
+    btrc_Vector_string_push(__list_808, jsonStrField("widescreen_runtime_preset", JsonObject_getString(config, "widescreen_runtime_preset", PresentationStationSpec_defaultWidescreenRuntimePreset(spec))));
+    btrc_Vector_string_push(__list_808, jsonStrField("selected_shader_file", selectedShader));
+    btrc_Vector_string_push(__list_808, jsonStrField("selected_bezel_file", selectedBezel));
+    btrc_Vector_string_push(__list_808, jsonStrField("selected_runtime_preset", selectedRuntime));
+    btrc_Vector_string_push(__list_808, jsonField("runtime_state", PresentationRuntimeState_json(state)));
+    btrc_Vector_string_push(__list_808, jsonStrField("effective_aspect", state->aspect));
+    btrc_Vector_string_push(__list_808, jsonStrField("effective_layout", state->layout));
+    btrc_Vector_string_push(__list_808, jsonStrField("presentation_mode", state->bezelMode));
+    btrc_Vector_string_push(__list_808, jsonStrField("layout", layout));
+    btrc_Vector_string_push(__list_808, jsonField("regions", presentationRegionsJson(layout)));
+    btrc_Vector_string_push(__list_808, jsonStrField("scale_policy", JsonObject_getString(config, "scale_policy", spec->scalePolicy)));
+    btrc_Vector_string_push(__list_808, jsonStrField("aspect_policy", JsonObject_getString(config, "aspect_policy", spec->aspectPolicy)));
+    btrc_Vector_string_push(__list_808, jsonBoolField("dynamic_aspect", JsonObject_getBool(config, "dynamic_aspect", spec->dynamicAspect)));
+    btrc_Vector_string_push(__list_808, jsonStrField("profile", JsonObject_getString(config, "profile", spec->profile)));
+    btrc_Vector_string_push(__list_808, jsonStrField("notes", JsonObject_getString(config, "notes", spec->notes)));
+    return jsonObject(__list_808);
 }
 
 void presentationList(char* project) {
     writePresentationDefaults(project);
-    int __n_804 = btrc_Vector_PresentationStationSpec_iterLen(PresentationCatalog_all());
-    for (int __i_803 = 0; (__i_803 < __n_804); (__i_803++)) {
-        PresentationStationSpec* spec = btrc_Vector_PresentationStationSpec_iterGet(PresentationCatalog_all(), __i_803);
+    int __n_810 = btrc_Vector_PresentationStationSpec_iterLen(PresentationCatalog_all());
+    for (int __i_809 = 0; (__i_809 < __n_810); (__i_809++)) {
+        PresentationStationSpec* spec = btrc_Vector_PresentationStationSpec_iterGet(PresentationCatalog_all(), __i_809);
         printf("%s\n", __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(spec->system, " ")), spec->label)), " shader=")), presentationConfigValue(project, spec->system, "shader_file"))), " bezel=")), presentationConfigValue(project, spec->system, "bezel_file"))));
     }
 }
@@ -18639,29 +18762,29 @@ PresentationUiField* PresentationUiFields_empty(void) {
 }
 
 btrc_Vector_PresentationUiField* PresentationUiFields_all(void) {
-    btrc_Vector_PresentationUiField* __list_805 = btrc_Vector_PresentationUiField_new();
-    btrc_Vector_PresentationUiField_push(__list_805, PresentationUiField_new("label", "Label"));
-    btrc_Vector_PresentationUiField_push(__list_805, PresentationUiField_new("default_emulator", "Default Emulator"));
-    btrc_Vector_PresentationUiField_push(__list_805, PresentationUiField_new("adapter", "Runtime Adapter"));
-    btrc_Vector_PresentationUiField_push(__list_805, PresentationUiField_new("adapter_config", "Adapter Config"));
-    btrc_Vector_PresentationUiField_push(__list_805, PresentationUiField_new("hardware_display", "Hardware Display"));
-    btrc_Vector_PresentationUiField_push(__list_805, PresentationUiField_new("shader_backend", "Shader Backend"));
-    btrc_Vector_PresentationUiField_push(__list_805, PresentationUiField_new("shader_file", "Shader File"));
-    btrc_Vector_PresentationUiField_push(__list_805, PresentationUiField_new("shader_intent", "Shader Intent"));
-    btrc_Vector_PresentationUiField_push(__list_805, PresentationUiField_new("bezel_backend", "Bezel Backend"));
-    btrc_Vector_PresentationUiField_push(__list_805, PresentationUiField_new("bezel_file", "Bezel File"));
-    btrc_Vector_PresentationUiField_push(__list_805, PresentationUiField_new("bezel_intent", "Bezel Intent"));
-    btrc_Vector_PresentationUiField_push(__list_805, PresentationUiField_new("runtime_preset", "Runtime Preset"));
-    btrc_Vector_PresentationUiField_push(__list_805, PresentationUiField_new("widescreen_shader_file", "Widescreen Shader File"));
-    btrc_Vector_PresentationUiField_push(__list_805, PresentationUiField_new("widescreen_bezel_file", "Widescreen Bezel File"));
-    btrc_Vector_PresentationUiField_push(__list_805, PresentationUiField_new("widescreen_runtime_preset", "Widescreen Runtime Preset"));
-    btrc_Vector_PresentationUiField_push(__list_805, PresentationUiField_new("layout", "Layout"));
-    btrc_Vector_PresentationUiField_push(__list_805, PresentationUiField_new("scale_policy", "Scale Policy"));
-    btrc_Vector_PresentationUiField_push(__list_805, PresentationUiField_new("aspect_policy", "Aspect Policy"));
-    btrc_Vector_PresentationUiField_push(__list_805, PresentationUiField_new("dynamic_aspect", "Dynamic Aspect"));
-    btrc_Vector_PresentationUiField_push(__list_805, PresentationUiField_new("profile", "Profile"));
-    btrc_Vector_PresentationUiField_push(__list_805, PresentationUiField_new("notes", "Notes"));
-    return __list_805;
+    btrc_Vector_PresentationUiField* __list_811 = btrc_Vector_PresentationUiField_new();
+    btrc_Vector_PresentationUiField_push(__list_811, PresentationUiField_new("label", "Label"));
+    btrc_Vector_PresentationUiField_push(__list_811, PresentationUiField_new("default_emulator", "Default Emulator"));
+    btrc_Vector_PresentationUiField_push(__list_811, PresentationUiField_new("adapter", "Runtime Adapter"));
+    btrc_Vector_PresentationUiField_push(__list_811, PresentationUiField_new("adapter_config", "Adapter Config"));
+    btrc_Vector_PresentationUiField_push(__list_811, PresentationUiField_new("hardware_display", "Hardware Display"));
+    btrc_Vector_PresentationUiField_push(__list_811, PresentationUiField_new("shader_backend", "Shader Backend"));
+    btrc_Vector_PresentationUiField_push(__list_811, PresentationUiField_new("shader_file", "Shader File"));
+    btrc_Vector_PresentationUiField_push(__list_811, PresentationUiField_new("shader_intent", "Shader Intent"));
+    btrc_Vector_PresentationUiField_push(__list_811, PresentationUiField_new("bezel_backend", "Bezel Backend"));
+    btrc_Vector_PresentationUiField_push(__list_811, PresentationUiField_new("bezel_file", "Bezel File"));
+    btrc_Vector_PresentationUiField_push(__list_811, PresentationUiField_new("bezel_intent", "Bezel Intent"));
+    btrc_Vector_PresentationUiField_push(__list_811, PresentationUiField_new("runtime_preset", "Runtime Preset"));
+    btrc_Vector_PresentationUiField_push(__list_811, PresentationUiField_new("widescreen_shader_file", "Widescreen Shader File"));
+    btrc_Vector_PresentationUiField_push(__list_811, PresentationUiField_new("widescreen_bezel_file", "Widescreen Bezel File"));
+    btrc_Vector_PresentationUiField_push(__list_811, PresentationUiField_new("widescreen_runtime_preset", "Widescreen Runtime Preset"));
+    btrc_Vector_PresentationUiField_push(__list_811, PresentationUiField_new("layout", "Layout"));
+    btrc_Vector_PresentationUiField_push(__list_811, PresentationUiField_new("scale_policy", "Scale Policy"));
+    btrc_Vector_PresentationUiField_push(__list_811, PresentationUiField_new("aspect_policy", "Aspect Policy"));
+    btrc_Vector_PresentationUiField_push(__list_811, PresentationUiField_new("dynamic_aspect", "Dynamic Aspect"));
+    btrc_Vector_PresentationUiField_push(__list_811, PresentationUiField_new("profile", "Profile"));
+    btrc_Vector_PresentationUiField_push(__list_811, PresentationUiField_new("notes", "Notes"));
+    return __list_811;
 }
 
 PresentationUiField* PresentationUiFields_at(int index) {
@@ -18693,9 +18816,9 @@ void PresentationUi_renderSystems(PresentationUi* self) {
     printf("%s\n", "Edits update Semu-owned JSON. Use apply to compile emulator-facing files.");
     printf("%s\n", "");
     int index = 1;
-    int __n_807 = btrc_Vector_PresentationStationSpec_iterLen(PresentationCatalog_all());
-    for (int __i_806 = 0; (__i_806 < __n_807); (__i_806++)) {
-        PresentationStationSpec* spec = btrc_Vector_PresentationStationSpec_iterGet(PresentationCatalog_all(), __i_806);
+    int __n_813 = btrc_Vector_PresentationStationSpec_iterLen(PresentationCatalog_all());
+    for (int __i_812 = 0; (__i_812 < __n_813); (__i_812++)) {
+        PresentationStationSpec* spec = btrc_Vector_PresentationStationSpec_iterGet(PresentationCatalog_all(), __i_812);
         char* label = presentationConfigValue(self->project, spec->system, "label");
         char* shader = presentationConfigValue(self->project, spec->system, "shader_file");
         char* bezel = presentationConfigValue(self->project, spec->system, "bezel_file");
@@ -18715,9 +18838,9 @@ void PresentationUi_renderSystem(PresentationUi* self, PresentationStationSpec* 
     printf("%s\n", __btrc_str_track(__btrc_strcat("Source: ", PresentationStationSpec_configPath(spec, self->project))));
     printf("%s\n", "");
     int index = 1;
-    int __n_809 = btrc_Vector_PresentationUiField_iterLen(PresentationUiFields_all());
-    for (int __i_808 = 0; (__i_808 < __n_809); (__i_808++)) {
-        PresentationUiField* field = btrc_Vector_PresentationUiField_iterGet(PresentationUiFields_all(), __i_808);
+    int __n_815 = btrc_Vector_PresentationUiField_iterLen(PresentationUiFields_all());
+    for (int __i_814 = 0; (__i_814 < __n_815); (__i_814++)) {
+        PresentationUiField* field = btrc_Vector_PresentationUiField_iterGet(PresentationUiFields_all(), __i_814);
         char* value = presentationConfigValue(self->project, spec->system, field->key);
         char* hint = (PresentationUiField_isBool(field) ? "toggle" : "edit");
         printf("%s\n", __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat("  ", Strings_fromInt(index))), ". ")), field->label)), " [")), field->key)), "] = ")), value)), " (")), hint)), ")")));
@@ -19053,10 +19176,10 @@ void SteamShortcutsParser_init(SteamShortcutsParser* self, char* path) {
             btrc_Vector_SteamShortcutRecord_free(self->records);
         }
     }
-    btrc_Vector_SteamShortcutRecord* __list_811 = btrc_Vector_SteamShortcutRecord_new();
-    (self->records = __list_811);
-    btrc_Vector_SteamShortcutRecord* __list_810 = btrc_Vector_SteamShortcutRecord_new();
-    (__list_810->__rc++);
+    btrc_Vector_SteamShortcutRecord* __list_817 = btrc_Vector_SteamShortcutRecord_new();
+    (self->records = __list_817);
+    btrc_Vector_SteamShortcutRecord* __list_816 = btrc_Vector_SteamShortcutRecord_new();
+    (__list_816->__rc++);
 }
 
 SteamShortcutsParser* SteamShortcutsParser_new(char* path) {
@@ -19231,9 +19354,9 @@ btrc_Vector_string* steamShortcutsFiles(void) {
     if (!FileSystem_isDir(userdata)) {
         return files;
     }
-    int __n_813 = btrc_Vector_string_iterLen(FileSystem_listDir(userdata));
-    for (int __i_812 = 0; (__i_812 < __n_813); (__i_812++)) {
-        char* account = btrc_Vector_string_iterGet(FileSystem_listDir(userdata), __i_812);
+    int __n_819 = btrc_Vector_string_iterLen(FileSystem_listDir(userdata));
+    for (int __i_818 = 0; (__i_818 < __n_819); (__i_818++)) {
+        char* account = btrc_Vector_string_iterGet(FileSystem_listDir(userdata), __i_818);
         char* path = joinPath(joinPath(userdata, account), "config/shortcuts.vdf");
         if (FileSystem_isFile(path)) {
             btrc_Vector_string_push(files, path);
@@ -19247,9 +19370,9 @@ btrc_Vector_SteamShortcutRecord* steamShortcutsRead(char* path) {
 }
 
 SteamShortcutRecord* steamShortcutFind(btrc_Vector_SteamShortcutRecord* records, char* appName, char* exe) {
-    int __n_815 = btrc_Vector_SteamShortcutRecord_iterLen(records);
-    for (int __i_814 = 0; (__i_814 < __n_815); (__i_814++)) {
-        SteamShortcutRecord* record = btrc_Vector_SteamShortcutRecord_iterGet(records, __i_814);
+    int __n_821 = btrc_Vector_SteamShortcutRecord_iterLen(records);
+    for (int __i_820 = 0; (__i_820 < __n_821); (__i_820++)) {
+        SteamShortcutRecord* record = btrc_Vector_SteamShortcutRecord_iterGet(records, __i_820);
         if (SteamShortcutRecord_matches(record, appName, exe)) {
             return record;
         }
@@ -19289,9 +19412,9 @@ void steamShortcutStatus(char* project, CliArgs* args) {
         printf("%s\n", __btrc_str_track(__btrc_strcat("  MISSING shortcuts: ", joinPath(steamRoot(), "userdata/*/config/shortcuts.vdf"))));
         return;
     }
-    int __n_817 = btrc_Vector_string_iterLen(files);
-    for (int __i_816 = 0; (__i_816 < __n_817); (__i_816++)) {
-        char* candidate = btrc_Vector_string_iterGet(files, __i_816);
+    int __n_823 = btrc_Vector_string_iterLen(files);
+    for (int __i_822 = 0; (__i_822 < __n_823); (__i_822++)) {
+        char* candidate = btrc_Vector_string_iterGet(files, __i_822);
         steamShortcutReportFile(candidate, appName, exe);
     }
 }
@@ -19302,111 +19425,111 @@ void e2eWriteExecutable(char* path, char* text) {
 }
 
 char* e2eFakeEsdeAppImageText(void) {
-    btrc_Vector_string* __list_818 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_818, "#!/usr/bin/env bash");
-    btrc_Vector_string_push(__list_818, "set -euo pipefail");
-    btrc_Vector_string_push(__list_818, "if [ \"${1:-}\" != \"--appimage-extract\" ]; then");
-    btrc_Vector_string_push(__list_818, "  echo \"fake ES-DE AppImage only supports --appimage-extract\" >&2");
-    btrc_Vector_string_push(__list_818, "  exit 2");
-    btrc_Vector_string_push(__list_818, "fi");
-    btrc_Vector_string_push(__list_818, "mkdir -p squashfs-root/usr/bin squashfs-root/usr/share/applications squashfs-root/usr/lib");
-    btrc_Vector_string_push(__list_818, "cat > squashfs-root/usr/bin/es-de <<'EOF'");
-    btrc_Vector_string_push(__list_818, "#!/usr/bin/env bash");
-    btrc_Vector_string_push(__list_818, "echo fake es-de \"$@\"");
-    btrc_Vector_string_push(__list_818, "EOF");
-    btrc_Vector_string_push(__list_818, "chmod +x squashfs-root/usr/bin/es-de");
-    btrc_Vector_string_push(__list_818, "printf 'fake icon\\n' > squashfs-root/semu.png");
-    return textLines(__list_818);
+    btrc_Vector_string* __list_824 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_824, "#!/usr/bin/env bash");
+    btrc_Vector_string_push(__list_824, "set -euo pipefail");
+    btrc_Vector_string_push(__list_824, "if [ \"${1:-}\" != \"--appimage-extract\" ]; then");
+    btrc_Vector_string_push(__list_824, "  echo \"fake ES-DE AppImage only supports --appimage-extract\" >&2");
+    btrc_Vector_string_push(__list_824, "  exit 2");
+    btrc_Vector_string_push(__list_824, "fi");
+    btrc_Vector_string_push(__list_824, "mkdir -p squashfs-root/usr/bin squashfs-root/usr/share/applications squashfs-root/usr/lib");
+    btrc_Vector_string_push(__list_824, "cat > squashfs-root/usr/bin/es-de <<'EOF'");
+    btrc_Vector_string_push(__list_824, "#!/usr/bin/env bash");
+    btrc_Vector_string_push(__list_824, "echo fake es-de \"$@\"");
+    btrc_Vector_string_push(__list_824, "EOF");
+    btrc_Vector_string_push(__list_824, "chmod +x squashfs-root/usr/bin/es-de");
+    btrc_Vector_string_push(__list_824, "printf 'fake icon\\n' > squashfs-root/semu.png");
+    return textLines(__list_824);
 }
 
 char* e2eFakeAppImageToolText(void) {
-    btrc_Vector_string* __list_819 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_819, "#!/usr/bin/env bash");
-    btrc_Vector_string_push(__list_819, "set -euo pipefail");
-    btrc_Vector_string_push(__list_819, "if [ \"${1:-}\" = \"--no-appstream\" ]; then shift; fi");
-    btrc_Vector_string_push(__list_819, "APPDIR=\"${1:?missing AppDir}\"");
-    btrc_Vector_string_push(__list_819, "OUTPUT=\"${2:?missing output}\"");
-    btrc_Vector_string_push(__list_819, "for required in AppRun usr/bin/es-de usr/bin/semu usr/bin/semu-quit-watch usr/bin/bwrap usr/bin/semu-retroarch usr/bin/semu-dolphin usr/bin/semu-ppsspp usr/bin/semu-flycast usr/bin/semu-melonds usr/bin/semu-pcsx2 usr/bin/semu-cemu usr/bin/semu-azahar usr/bin/semu-ryujinx usr/bin/semu-btrc usr/bin/semu-es-de usr/bin/syncthing usr/bin/syncthingtray usr/bin/curl usr/lib/retroarch/cores nix/store packaging/linux/AppRun packaging/linux/ES-DE/es_find_rules_linux.xml; do");
-    btrc_Vector_string_push(__list_819, "  test -e \"$APPDIR/$required\" || { echo \"missing AppDir path: $required\" >&2; exit 3; }");
-    btrc_Vector_string_push(__list_819, "done");
-    btrc_Vector_string_push(__list_819, "test ! -e \"$APPDIR/packaging/linux/build-appimage.sh\" || { echo \"build script shipped inside AppDir\" >&2; exit 3; }");
-    btrc_Vector_string_push(__list_819, "head -1 \"$APPDIR/AppRun\" | grep -F '#!/usr/bin/env bash' >/dev/null");
-    btrc_Vector_string_push(__list_819, "grep -F 'SEMU_NIX_STORE_MOUNTED' \"$APPDIR/AppRun\" >/dev/null");
-    btrc_Vector_string_push(__list_819, "grep -F 'HOST_PATH=' \"$APPDIR/AppRun\" >/dev/null");
-    btrc_Vector_string_push(__list_819, "grep -F 'PATH=\"$HOST_PATH\" command -v bwrap' \"$APPDIR/AppRun\" >/dev/null");
-    btrc_Vector_string_push(__list_819, "grep -F -- '--ro-bind \"$APPDIR/nix/store\" /nix/store' \"$APPDIR/AppRun\" >/dev/null");
-    btrc_Vector_string_push(__list_819, "grep -F 'unset LD_PRELOAD' \"$APPDIR/AppRun\" >/dev/null");
-    btrc_Vector_string_push(__list_819, "grep -F 'unset LD_LIBRARY_PATH' \"$APPDIR/AppRun\" >/dev/null");
-    btrc_Vector_string_push(__list_819, "grep -F 'SEMU_LAUNCHER_BIN' \"$APPDIR/AppRun\" >/dev/null");
-    btrc_Vector_string_push(__list_819, "grep -F 'SEMU_RETROARCH_CORE_DIR' \"$APPDIR/AppRun\" >/dev/null");
-    btrc_Vector_string_push(__list_819, "grep -F 'SEMU_SYNCTHING_BIN' \"$APPDIR/AppRun\" >/dev/null");
-    btrc_Vector_string_push(__list_819, "grep -F 'fake semu-btrc' \"$APPDIR/usr/bin/semu\" >/dev/null");
-    btrc_Vector_string_push(__list_819, "! grep -F 'wrapped semu' \"$APPDIR/usr/bin/semu\" >/dev/null");
-    btrc_Vector_string_push(__list_819, "! grep -F 'sync setup' \"$APPDIR/AppRun\" >/dev/null");
-    btrc_Vector_string_push(__list_819, "! grep -F 'pkexec' \"$APPDIR/AppRun\" >/dev/null");
-    btrc_Vector_string_push(__list_819, "find \"$APPDIR/usr/bin\" -maxdepth 1 -type f -perm -111 -print | sort > \"$OUTPUT\"");
-    btrc_Vector_string_push(__list_819, "grep -o 'semu-[a-z0-9-]*' \"$APPDIR/packaging/linux/ES-DE/es_find_rules_linux.xml\" | sort -u | while IFS= read -r launcher; do");
-    btrc_Vector_string_push(__list_819, "  test -x \"$APPDIR/usr/bin/$launcher\" || test -x \"$APPDIR/packaging/linux/bin/$launcher\" || { echo \"generated ES-DE launcher has no executable: $launcher\" >&2; exit 3; }");
-    btrc_Vector_string_push(__list_819, "done");
-    return textLines(__list_819);
+    btrc_Vector_string* __list_825 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_825, "#!/usr/bin/env bash");
+    btrc_Vector_string_push(__list_825, "set -euo pipefail");
+    btrc_Vector_string_push(__list_825, "if [ \"${1:-}\" = \"--no-appstream\" ]; then shift; fi");
+    btrc_Vector_string_push(__list_825, "APPDIR=\"${1:?missing AppDir}\"");
+    btrc_Vector_string_push(__list_825, "OUTPUT=\"${2:?missing output}\"");
+    btrc_Vector_string_push(__list_825, "for required in AppRun usr/bin/es-de usr/bin/semu usr/bin/semu-quit-watch usr/bin/bwrap usr/bin/semu-retroarch usr/bin/semu-dolphin usr/bin/semu-ppsspp usr/bin/semu-flycast usr/bin/semu-melonds usr/bin/semu-pcsx2 usr/bin/semu-cemu usr/bin/semu-azahar usr/bin/semu-ryujinx usr/bin/semu-btrc usr/bin/semu-es-de usr/bin/syncthing usr/bin/syncthingtray usr/bin/curl usr/lib/retroarch/cores nix/store packaging/linux/AppRun packaging/linux/ES-DE/es_find_rules_linux.xml; do");
+    btrc_Vector_string_push(__list_825, "  test -e \"$APPDIR/$required\" || { echo \"missing AppDir path: $required\" >&2; exit 3; }");
+    btrc_Vector_string_push(__list_825, "done");
+    btrc_Vector_string_push(__list_825, "test ! -e \"$APPDIR/packaging/linux/build-appimage.sh\" || { echo \"build script shipped inside AppDir\" >&2; exit 3; }");
+    btrc_Vector_string_push(__list_825, "head -1 \"$APPDIR/AppRun\" | grep -F '#!/usr/bin/env bash' >/dev/null");
+    btrc_Vector_string_push(__list_825, "grep -F 'SEMU_NIX_STORE_MOUNTED' \"$APPDIR/AppRun\" >/dev/null");
+    btrc_Vector_string_push(__list_825, "grep -F 'HOST_PATH=' \"$APPDIR/AppRun\" >/dev/null");
+    btrc_Vector_string_push(__list_825, "grep -F 'PATH=\"$HOST_PATH\" command -v bwrap' \"$APPDIR/AppRun\" >/dev/null");
+    btrc_Vector_string_push(__list_825, "grep -F -- '--ro-bind \"$APPDIR/nix/store\" /nix/store' \"$APPDIR/AppRun\" >/dev/null");
+    btrc_Vector_string_push(__list_825, "grep -F 'unset LD_PRELOAD' \"$APPDIR/AppRun\" >/dev/null");
+    btrc_Vector_string_push(__list_825, "grep -F 'unset LD_LIBRARY_PATH' \"$APPDIR/AppRun\" >/dev/null");
+    btrc_Vector_string_push(__list_825, "grep -F 'SEMU_LAUNCHER_BIN' \"$APPDIR/AppRun\" >/dev/null");
+    btrc_Vector_string_push(__list_825, "grep -F 'SEMU_RETROARCH_CORE_DIR' \"$APPDIR/AppRun\" >/dev/null");
+    btrc_Vector_string_push(__list_825, "grep -F 'SEMU_SYNCTHING_BIN' \"$APPDIR/AppRun\" >/dev/null");
+    btrc_Vector_string_push(__list_825, "grep -F 'fake semu-btrc' \"$APPDIR/usr/bin/semu\" >/dev/null");
+    btrc_Vector_string_push(__list_825, "! grep -F 'wrapped semu' \"$APPDIR/usr/bin/semu\" >/dev/null");
+    btrc_Vector_string_push(__list_825, "! grep -F 'sync setup' \"$APPDIR/AppRun\" >/dev/null");
+    btrc_Vector_string_push(__list_825, "! grep -F 'pkexec' \"$APPDIR/AppRun\" >/dev/null");
+    btrc_Vector_string_push(__list_825, "find \"$APPDIR/usr/bin\" -maxdepth 1 -type f -perm -111 -print | sort > \"$OUTPUT\"");
+    btrc_Vector_string_push(__list_825, "grep -o 'semu-[a-z0-9-]*' \"$APPDIR/packaging/linux/ES-DE/es_find_rules_linux.xml\" | sort -u | while IFS= read -r launcher; do");
+    btrc_Vector_string_push(__list_825, "  test -x \"$APPDIR/usr/bin/$launcher\" || test -x \"$APPDIR/packaging/linux/bin/$launcher\" || { echo \"generated ES-DE launcher has no executable: $launcher\" >&2; exit 3; }");
+    btrc_Vector_string_push(__list_825, "done");
+    return textLines(__list_825);
 }
 
 char* e2eFakeNixText(void) {
-    btrc_Vector_string* __list_820 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_820, "#!/usr/bin/env bash");
-    btrc_Vector_string_push(__list_820, "set -euo pipefail");
-    btrc_Vector_string_push(__list_820, "if [ \"${1:-}\" != \"copy\" ]; then echo \"fake nix only supports copy\" >&2; exit 2; fi");
-    btrc_Vector_string_push(__list_820, "ROOT=\"\"");
-    btrc_Vector_string_push(__list_820, "while [ $# -gt 0 ]; do");
-    btrc_Vector_string_push(__list_820, "  case \"$1\" in");
-    btrc_Vector_string_push(__list_820, "    --to) ROOT=\"${2#local?root=}\"; shift 2 ;;");
-    btrc_Vector_string_push(__list_820, "    *) shift ;;");
-    btrc_Vector_string_push(__list_820, "  esac");
-    btrc_Vector_string_push(__list_820, "done");
-    btrc_Vector_string_push(__list_820, "test -n \"$ROOT\" || { echo \"fake nix copy missing local root\" >&2; exit 2; }");
-    btrc_Vector_string_push(__list_820, "mkdir -p \"$ROOT/nix/store/fake-semu-closure\"");
-    btrc_Vector_string_push(__list_820, "printf 'fake closure\\n' > \"$ROOT/nix/store/fake-semu-closure/marker\"");
-    return textLines(__list_820);
+    btrc_Vector_string* __list_826 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_826, "#!/usr/bin/env bash");
+    btrc_Vector_string_push(__list_826, "set -euo pipefail");
+    btrc_Vector_string_push(__list_826, "if [ \"${1:-}\" != \"copy\" ]; then echo \"fake nix only supports copy\" >&2; exit 2; fi");
+    btrc_Vector_string_push(__list_826, "ROOT=\"\"");
+    btrc_Vector_string_push(__list_826, "while [ $# -gt 0 ]; do");
+    btrc_Vector_string_push(__list_826, "  case \"$1\" in");
+    btrc_Vector_string_push(__list_826, "    --to) ROOT=\"${2#local?root=}\"; shift 2 ;;");
+    btrc_Vector_string_push(__list_826, "    *) shift ;;");
+    btrc_Vector_string_push(__list_826, "  esac");
+    btrc_Vector_string_push(__list_826, "done");
+    btrc_Vector_string_push(__list_826, "test -n \"$ROOT\" || { echo \"fake nix copy missing local root\" >&2; exit 2; }");
+    btrc_Vector_string_push(__list_826, "mkdir -p \"$ROOT/nix/store/fake-semu-closure\"");
+    btrc_Vector_string_push(__list_826, "printf 'fake closure\\n' > \"$ROOT/nix/store/fake-semu-closure/marker\"");
+    return textLines(__list_826);
 }
 
 btrc_Vector_string* appImageExpectedBins(void) {
-    btrc_Vector_string* __list_821 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_821, "semu");
-    btrc_Vector_string_push(__list_821, "semu-quit-watch");
-    btrc_Vector_string_push(__list_821, "bwrap");
-    btrc_Vector_string_push(__list_821, "semu-retroarch");
-    btrc_Vector_string_push(__list_821, "semu-dolphin");
-    btrc_Vector_string_push(__list_821, "semu-ppsspp");
-    btrc_Vector_string_push(__list_821, "semu-flycast");
-    btrc_Vector_string_push(__list_821, "semu-melonds");
-    btrc_Vector_string_push(__list_821, "semu-pcsx2");
-    btrc_Vector_string_push(__list_821, "semu-cemu");
-    btrc_Vector_string_push(__list_821, "semu-azahar");
-    btrc_Vector_string_push(__list_821, "semu-ryujinx");
-    btrc_Vector_string_push(__list_821, "semu-es-de");
-    btrc_Vector_string_push(__list_821, "syncthing");
-    btrc_Vector_string_push(__list_821, "syncthingtray");
-    btrc_Vector_string_push(__list_821, "curl");
-    return __list_821;
+    btrc_Vector_string* __list_827 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_827, "semu");
+    btrc_Vector_string_push(__list_827, "semu-quit-watch");
+    btrc_Vector_string_push(__list_827, "bwrap");
+    btrc_Vector_string_push(__list_827, "semu-retroarch");
+    btrc_Vector_string_push(__list_827, "semu-dolphin");
+    btrc_Vector_string_push(__list_827, "semu-ppsspp");
+    btrc_Vector_string_push(__list_827, "semu-flycast");
+    btrc_Vector_string_push(__list_827, "semu-melonds");
+    btrc_Vector_string_push(__list_827, "semu-pcsx2");
+    btrc_Vector_string_push(__list_827, "semu-cemu");
+    btrc_Vector_string_push(__list_827, "semu-azahar");
+    btrc_Vector_string_push(__list_827, "semu-ryujinx");
+    btrc_Vector_string_push(__list_827, "semu-es-de");
+    btrc_Vector_string_push(__list_827, "syncthing");
+    btrc_Vector_string_push(__list_827, "syncthingtray");
+    btrc_Vector_string_push(__list_827, "curl");
+    return __list_827;
 }
 
 void e2eWriteFakeNixPackage(char* root, bool includeBwrap) {
     ensureDir(joinPath(root, "bin"));
     ensureDir(joinPath(root, "lib/semu"));
     ensureDir(joinPath(root, "lib/retroarch/cores"));
-    btrc_Vector_string* __list_823 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_823, "#!/usr/bin/env bash");
-    btrc_Vector_string_push(__list_823, "echo fake semu-btrc \"$@\"");
-    e2eWriteExecutable(joinPath(root, "lib/semu/semu-btrc"), textLines(__list_823));
+    btrc_Vector_string* __list_829 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_829, "#!/usr/bin/env bash");
+    btrc_Vector_string_push(__list_829, "echo fake semu-btrc \"$@\"");
+    e2eWriteExecutable(joinPath(root, "lib/semu/semu-btrc"), textLines(__list_829));
     FileSystem_writeText(joinPath(root, "lib/retroarch/cores/gambatte_libretro.so"), "fake core\n");
-    int __n_825 = btrc_Vector_string_iterLen(appImageExpectedBins());
-    for (int __i_824 = 0; (__i_824 < __n_825); (__i_824++)) {
-        char* bin = btrc_Vector_string_iterGet(appImageExpectedBins(), __i_824);
+    int __n_831 = btrc_Vector_string_iterLen(appImageExpectedBins());
+    for (int __i_830 = 0; (__i_830 < __n_831); (__i_830++)) {
+        char* bin = btrc_Vector_string_iterGet(appImageExpectedBins(), __i_830);
         if (includeBwrap || (!(strcmp(bin, "bwrap") == 0))) {
-            btrc_Vector_string* __list_827 = btrc_Vector_string_new();
-            btrc_Vector_string_push(__list_827, "#!/usr/bin/env bash");
-            btrc_Vector_string_push(__list_827, __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat("echo wrapped ", bin)), " \"$@\"")));
-            e2eWriteExecutable(joinPath(root, __btrc_str_track(__btrc_strcat("bin/", bin))), textLines(__list_827));
+            btrc_Vector_string* __list_833 = btrc_Vector_string_new();
+            btrc_Vector_string_push(__list_833, "#!/usr/bin/env bash");
+            btrc_Vector_string_push(__list_833, __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat("echo wrapped ", bin)), " \"$@\"")));
+            e2eWriteExecutable(joinPath(root, __btrc_str_track(__btrc_strcat("bin/", bin))), textLines(__list_833));
         }
     }
 }
@@ -19416,10 +19539,10 @@ bool e2eExpectStatus(int expected, char* command) {
     if (result->code == expected) {
         return true;
     }
-    int __fstr_830_len = snprintf(NULL, 0, "expected exit %d, got %d: %s", expected, result->code, command);
-    char* __fstr_830_buf = __btrc_str_track(((char*)malloc((__fstr_830_len + 1))));
-    snprintf(__fstr_830_buf, (__fstr_830_len + 1), "expected exit %d, got %d: %s", expected, result->code, command);
-    printf("%s\n", __fstr_830_buf);
+    int __fstr_836_len = snprintf(NULL, 0, "expected exit %d, got %d: %s", expected, result->code, command);
+    char* __fstr_836_buf = __btrc_str_track(((char*)malloc((__fstr_836_len + 1))));
+    snprintf(__fstr_836_buf, (__fstr_836_len + 1), "expected exit %d, got %d: %s", expected, result->code, command);
+    printf("%s\n", __fstr_836_buf);
     printf("%s\n", ExecResult_stdout(result));
     return false;
 }
@@ -19435,9 +19558,9 @@ bool e2eFileContains(char* path, char* expected, char* label) {
 int e2eCountArgLines(char* text, char* expected) {
     int count = 0;
     btrc_Vector_string* lines = Strings_split(text, "\n");
-    int __n_832 = btrc_Vector_string_iterLen(lines);
-    for (int __i_831 = 0; (__i_831 < __n_832); (__i_831++)) {
-        char* line = btrc_Vector_string_iterGet(lines, __i_831);
+    int __n_838 = btrc_Vector_string_iterLen(lines);
+    for (int __i_837 = 0; (__i_837 < __n_838); (__i_837++)) {
+        char* line = btrc_Vector_string_iterGet(lines, __i_837);
         if (strcmp(line, expected) == 0) {
             (count += 1);
         }
@@ -19469,9 +19592,9 @@ int e2eAppImageSmoke(CliArgs* args) {
     if (!e2eExpectStatus(0, e2eBuildAppImageCommand(project, binDir, package, fakeEsde, output))) {
         return 1;
     }
-    int __n_834 = btrc_Vector_string_iterLen(appImageExpectedBins());
-    for (int __i_833 = 0; (__i_833 < __n_834); (__i_833++)) {
-        char* bin = btrc_Vector_string_iterGet(appImageExpectedBins(), __i_833);
+    int __n_840 = btrc_Vector_string_iterLen(appImageExpectedBins());
+    for (int __i_839 = 0; (__i_839 < __n_840); (__i_839++)) {
+        char* bin = btrc_Vector_string_iterGet(appImageExpectedBins(), __i_839);
         if (!e2eFileContains(output, __btrc_str_track(__btrc_strcat("/usr/bin/", bin)), __btrc_str_track(__btrc_strcat("AppImage output ", bin)))) {
             return 1;
         }
@@ -19485,10 +19608,10 @@ int e2eAppImageSmoke(CliArgs* args) {
     copyFilePath(joinPath(project, "packaging/linux/AppRun"), joinPath(appDir, "AppRun"));
     FileSystem_chmod(joinPath(appDir, "AppRun"), 493);
     char* bwrapArgs = joinPath(tmp, "bwrap.args");
-    btrc_Vector_string* __list_836 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_836, "#!/usr/bin/env bash");
-    btrc_Vector_string_push(__list_836, __btrc_str_track(__btrc_strcat("printf '%s\\n' \"$@\" > ", ShellWords_quote(bwrapArgs))));
-    e2eWriteExecutable(joinPath(binDir, "bwrap"), textLines(__list_836));
+    btrc_Vector_string* __list_842 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_842, "#!/usr/bin/env bash");
+    btrc_Vector_string_push(__list_842, __btrc_str_track(__btrc_strcat("printf '%s\\n' \"$@\" > ", ShellWords_quote(bwrapArgs))));
+    e2eWriteExecutable(joinPath(binDir, "bwrap"), textLines(__list_842));
     if (!e2eExpectStatus(0, __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat("APPDIR=", ShellWords_quote(appDir))), " SEMU_BWRAP=")), ShellWords_quote(joinPath(binDir, "bwrap")))), " ")), ShellWords_quote(joinPath(appDir, "AppRun")))), " --probe")))) {
         return 1;
     }
@@ -19503,11 +19626,11 @@ int e2eAppImageSmoke(CliArgs* args) {
     ensureDir(joinPath(hostBwrapAppDir, "usr/bin"));
     copyFilePath(joinPath(project, "packaging/linux/AppRun"), joinPath(hostBwrapAppDir, "AppRun"));
     FileSystem_chmod(joinPath(hostBwrapAppDir, "AppRun"), 493);
-    btrc_Vector_string* __list_838 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_838, "#!/usr/bin/env bash");
-    btrc_Vector_string_push(__list_838, "echo bundled bwrap should not bootstrap the Nix store >&2");
-    btrc_Vector_string_push(__list_838, "exit 88");
-    e2eWriteExecutable(joinPath(hostBwrapAppDir, "usr/bin/bwrap"), textLines(__list_838));
+    btrc_Vector_string* __list_844 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_844, "#!/usr/bin/env bash");
+    btrc_Vector_string_push(__list_844, "echo bundled bwrap should not bootstrap the Nix store >&2");
+    btrc_Vector_string_push(__list_844, "exit 88");
+    e2eWriteExecutable(joinPath(hostBwrapAppDir, "usr/bin/bwrap"), textLines(__list_844));
     UnixShell_runRaw(UnixShell_new(), __btrc_str_track(__btrc_strcat("rm -f ", ShellWords_quote(bwrapArgs))), true, false, "");
     if (!e2eExpectStatus(0, __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat("APPDIR=", ShellWords_quote(hostBwrapAppDir))), " SEMU_BWRAP=")), ShellWords_quote(joinPath(binDir, "bwrap")))), " PATH=")), ShellWords_quote(binDir))), ":$PATH")), " ")), ShellWords_quote(joinPath(hostBwrapAppDir, "AppRun")))), " --probe")))) {
         return 1;
@@ -19551,15 +19674,15 @@ int e2eAppImageSmoke(CliArgs* args) {
     FileSystem_writeText(joinPath(cliProject, "semu.json"), "{\"schema_version\":1}\n");
     copyFilePath(joinPath(project, "packaging/linux/AppRun"), joinPath(cliAppDir, "AppRun"));
     FileSystem_chmod(joinPath(cliAppDir, "AppRun"), 493);
-    btrc_Vector_string* __list_840 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_840, "#!/usr/bin/env bash");
-    btrc_Vector_string_push(__list_840, __btrc_str_track(__btrc_strcat("printf '%s\\n' \"$@\" > ", ShellWords_quote(cliArgs))));
-    btrc_Vector_string_push(__list_840, "{");
-    btrc_Vector_string_push(__list_840, "  printf 'SEMU_BIN=%s\\n' \"${SEMU_BIN:-}\"");
-    btrc_Vector_string_push(__list_840, "  printf 'LD_LIBRARY_PATH=%s\\n' \"${LD_LIBRARY_PATH:-}\"");
-    btrc_Vector_string_push(__list_840, "  printf 'LD_PRELOAD=%s\\n' \"${LD_PRELOAD:-}\"");
-    btrc_Vector_string_push(__list_840, __btrc_str_track(__btrc_strcat("} > ", ShellWords_quote(cliEnv))));
-    e2eWriteExecutable(joinPath(cliAppDir, "usr/bin/semu"), textLines(__list_840));
+    btrc_Vector_string* __list_846 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_846, "#!/usr/bin/env bash");
+    btrc_Vector_string_push(__list_846, __btrc_str_track(__btrc_strcat("printf '%s\\n' \"$@\" > ", ShellWords_quote(cliArgs))));
+    btrc_Vector_string_push(__list_846, "{");
+    btrc_Vector_string_push(__list_846, "  printf 'SEMU_BIN=%s\\n' \"${SEMU_BIN:-}\"");
+    btrc_Vector_string_push(__list_846, "  printf 'LD_LIBRARY_PATH=%s\\n' \"${LD_LIBRARY_PATH:-}\"");
+    btrc_Vector_string_push(__list_846, "  printf 'LD_PRELOAD=%s\\n' \"${LD_PRELOAD:-}\"");
+    btrc_Vector_string_push(__list_846, __btrc_str_track(__btrc_strcat("} > ", ShellWords_quote(cliEnv))));
+    e2eWriteExecutable(joinPath(cliAppDir, "usr/bin/semu"), textLines(__list_846));
     if (!e2eExpectStatus(0, __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat("APPDIR=", ShellWords_quote(cliAppDir))), " APPIMAGE=")), ShellWords_quote(cliAppImage))), " ")), ShellWords_quote(joinPath(cliAppDir, "AppRun")))), " manifest --output ")), ShellWords_quote(joinPath(tmp, "manifest.json")))), " --project ")), ShellWords_quote(cliProject))), " --roms=")), ShellWords_quote(joinPath(tmp, "explicit-roms")))))) {
         return 1;
     }
@@ -19710,13 +19833,13 @@ int deckVerifyEmulatorsCommand(CliArgs* args, char* project) {
     KeymapErrors* errors = KeymapErrors_new();
     compileKeymap((FileSystem_exists(keymapSourcePath(project)) ? FileSystem_readText(keymapSourcePath(project)) : defaultKeymapSource()), errors);
     if (KeymapErrors_count(errors) > 0) {
-        int __btrc_ret_841 = 1;
+        int __btrc_ret_847 = 1;
         if (errors != NULL) {
             if ((--errors->__rc) <= 0) {
                 KeymapErrors_destroy(errors);
             }
         }
-        return __btrc_ret_841;
+        return __btrc_ret_847;
     }
     KeymapIr* ir = compileKeymap((FileSystem_exists(keymapSourcePath(project)) ? FileSystem_readText(keymapSourcePath(project)) : defaultKeymapSource()), KeymapErrors_new());
     FileSystem_writeText("/tmp/semu-retroarch.cfg", renderRetroArchKeymap(ir));
@@ -19747,13 +19870,13 @@ int deckVerifyEmulatorsCommand(CliArgs* args, char* project) {
     deckMaybeRun("retroarch --version | head -1");
     deckMaybeRun("flatpak list --app");
     printf("%s\n", "OK deck emulator preflight");
-    int __btrc_ret_842 = 0;
+    int __btrc_ret_848 = 0;
     if (errors != NULL) {
         if ((--errors->__rc) <= 0) {
             KeymapErrors_destroy(errors);
         }
     }
-    return __btrc_ret_842;
+    return __btrc_ret_848;
     if (errors != NULL) {
         if ((--errors->__rc) <= 0) {
             KeymapErrors_destroy(errors);
@@ -19789,23 +19912,23 @@ bool deckWaitForSyncHealth(char* project) {
     for (int i = 0; (i < 30); (i++)) {
         ExecResult* result = UnixShell_runUnchecked(shell, __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat("curl -fsS http://", syncGuiAddress(project))), "/rest/noauth/health >/dev/null 2>&1")));
         if (ExecResult_ok(result)) {
-            bool __btrc_ret_843 = true;
+            bool __btrc_ret_849 = true;
             if (shell != NULL) {
                 if ((--shell->__rc) <= 0) {
                     UnixShell_destroy(shell);
                 }
             }
-            return __btrc_ret_843;
+            return __btrc_ret_849;
         }
         UnixShell_runUnchecked(shell, "sleep 1");
     }
-    bool __btrc_ret_844 = false;
+    bool __btrc_ret_850 = false;
     if (shell != NULL) {
         if ((--shell->__rc) <= 0) {
             UnixShell_destroy(shell);
         }
     }
-    return __btrc_ret_844;
+    return __btrc_ret_850;
     if (shell != NULL) {
         if ((--shell->__rc) <= 0) {
             UnixShell_destroy(shell);
@@ -19970,10 +20093,10 @@ void SemuE2eSpec_init(SemuE2eSpec* self) {
             btrc_Vector_SemuE2eOperation_free(self->operations);
         }
     }
-    btrc_Vector_SemuE2eOperation* __list_846 = btrc_Vector_SemuE2eOperation_new();
-    (self->operations = __list_846);
-    btrc_Vector_SemuE2eOperation* __list_845 = btrc_Vector_SemuE2eOperation_new();
-    (__list_845->__rc++);
+    btrc_Vector_SemuE2eOperation* __list_852 = btrc_Vector_SemuE2eOperation_new();
+    (self->operations = __list_852);
+    btrc_Vector_SemuE2eOperation* __list_851 = btrc_Vector_SemuE2eOperation_new();
+    (__list_851->__rc++);
 }
 
 SemuE2eSpec* SemuE2eSpec_new(void) {
@@ -20028,9 +20151,9 @@ char* SemuE2eSpec_resolveParentHash(SemuE2eSpec* self) {
 
 char* SemuE2eSpec_operationsMaterial(SemuE2eSpec* self) {
     btrc_Vector_string* lines = btrc_Vector_string_new();
-    int __n_848 = btrc_Vector_SemuE2eOperation_iterLen(self->operations);
-    for (int __i_847 = 0; (__i_847 < __n_848); (__i_847++)) {
-        SemuE2eOperation* op = btrc_Vector_SemuE2eOperation_iterGet(self->operations, __i_847);
+    int __n_854 = btrc_Vector_SemuE2eOperation_iterLen(self->operations);
+    for (int __i_853 = 0; (__i_853 < __n_854); (__i_853++)) {
+        SemuE2eOperation* op = btrc_Vector_SemuE2eOperation_iterGet(self->operations, __i_853);
         btrc_Vector_string_push(lines, __btrc_str_track(__btrc_strcat("op=", op->kind)));
         btrc_Vector_string_push(lines, __btrc_str_track(__btrc_strcat("name=", op->name)));
         btrc_Vector_string_push(lines, __btrc_str_track(__btrc_strcat("command=", op->command)));
@@ -20092,9 +20215,9 @@ void SemuE2eSpec_expandArgs(SemuE2eSpec* self) {
     SemuE2eSpec_refreshDerivedArgs(self);
     SemuE2eSpec_computeStateHash(self);
     SemuE2eSpec_refreshDerivedArgs(self);
-    int __n_850 = btrc_Vector_SemuE2eOperation_iterLen(self->operations);
-    for (int __i_849 = 0; (__i_849 < __n_850); (__i_849++)) {
-        SemuE2eOperation* op = btrc_Vector_SemuE2eOperation_iterGet(self->operations, __i_849);
+    int __n_856 = btrc_Vector_SemuE2eOperation_iterLen(self->operations);
+    for (int __i_855 = 0; (__i_855 < __n_856); (__i_855++)) {
+        SemuE2eOperation* op = btrc_Vector_SemuE2eOperation_iterGet(self->operations, __i_855);
         SemuE2eOperation_expandArgs(op, self->args);
     }
 }
@@ -20102,13 +20225,13 @@ void SemuE2eSpec_expandArgs(SemuE2eSpec* self) {
 void SemuE2eSpec_recordState(SemuE2eSpec* self) {
     ensureDir(SemuE2eSpec_stateDir(self));
     FileSystem_writeText(SemuE2eSpec_stateHashFile(self), __btrc_str_track(__btrc_strcat(self->stateHash, "\n")));
-    btrc_Vector_string* __list_852 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_852, jsonStrField("state", self->state));
-    btrc_Vector_string_push(__list_852, jsonStrField("parentState", self->parentState));
-    btrc_Vector_string_push(__list_852, jsonStrField("parentHash", self->parentHash));
-    btrc_Vector_string_push(__list_852, jsonStrField("hash", self->stateHash));
-    btrc_Vector_string_push(__list_852, jsonStrField("hashShort", self->stateHashShort));
-    FileSystem_writeText(joinPath(SemuE2eSpec_stateDir(self), "metadata.json"), __btrc_str_track(__btrc_strcat(jsonObject(__list_852), "\n")));
+    btrc_Vector_string* __list_858 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_858, jsonStrField("state", self->state));
+    btrc_Vector_string_push(__list_858, jsonStrField("parentState", self->parentState));
+    btrc_Vector_string_push(__list_858, jsonStrField("parentHash", self->parentHash));
+    btrc_Vector_string_push(__list_858, jsonStrField("hash", self->stateHash));
+    btrc_Vector_string_push(__list_858, jsonStrField("hashShort", self->stateHashShort));
+    FileSystem_writeText(joinPath(SemuE2eSpec_stateDir(self), "metadata.json"), __btrc_str_track(__btrc_strcat(jsonObject(__list_858), "\n")));
 }
 
 char* SemuE2eParser_field(char* text, char* key, char* fallback) {
@@ -20148,9 +20271,9 @@ SemuE2eOperation* SemuE2eParser_operation(char* objectText) {
 
 btrc_Vector_SemuE2eOperation* SemuE2eParser_operations(char* text) {
     btrc_Vector_SemuE2eOperation* result = btrc_Vector_SemuE2eOperation_new();
-    int __n_854 = btrc_Vector_string_iterLen(SemuE2eParser_objectArray(text, "operations"));
-    for (int __i_853 = 0; (__i_853 < __n_854); (__i_853++)) {
-        char* objectText = btrc_Vector_string_iterGet(SemuE2eParser_objectArray(text, "operations"), __i_853);
+    int __n_860 = btrc_Vector_string_iterLen(SemuE2eParser_objectArray(text, "operations"));
+    for (int __i_859 = 0; (__i_859 < __n_860); (__i_859++)) {
+        char* objectText = btrc_Vector_string_iterGet(SemuE2eParser_objectArray(text, "operations"), __i_859);
         btrc_Vector_SemuE2eOperation_push(result, SemuE2eParser_operation(objectText));
     }
     return result;
@@ -20318,9 +20441,9 @@ int SemuE2eRunner_run(SemuE2eRunner* self) {
     if (btrc_Vector_SemuE2eOperation_isEmpty(self->spec->operations)) {
         e2eFatal(__btrc_str_track(__btrc_strcat("E2E spec has no operations: ", self->spec->name)));
     }
-    int __n_856 = btrc_Vector_SemuE2eOperation_iterLen(self->spec->operations);
-    for (int __i_855 = 0; (__i_855 < __n_856); (__i_855++)) {
-        SemuE2eOperation* op = btrc_Vector_SemuE2eOperation_iterGet(self->spec->operations, __i_855);
+    int __n_862 = btrc_Vector_SemuE2eOperation_iterLen(self->spec->operations);
+    for (int __i_861 = 0; (__i_861 < __n_862); (__i_861++)) {
+        SemuE2eOperation* op = btrc_Vector_SemuE2eOperation_iterGet(self->spec->operations, __i_861);
         if (self->failures > 0) {
             break;
         }
@@ -20425,16 +20548,16 @@ SemuE2eSpec* SemuE2eGraphRunner_specFor(SemuE2eGraphRunner* self, GraphNode* nod
     SemuE2eSpec_setArg(spec, "program", self->program);
     SemuE2eGraphRunner_applyStructuralOverrides(self, spec, node->args);
     SemuE2eGraphRunner_applyStructuralOverrides(self, spec, self->args);
-    int __n_858 = btrc_Map_string_string_iterLen(node->args);
-    for (int __i_857 = 0; (__i_857 < __n_858); (__i_857++)) {
-        char* key = btrc_Map_string_string_iterGet(node->args, __i_857);
-        char* value = btrc_Map_string_string_iterValueAt(node->args, __i_857);
+    int __n_864 = btrc_Map_string_string_iterLen(node->args);
+    for (int __i_863 = 0; (__i_863 < __n_864); (__i_863++)) {
+        char* key = btrc_Map_string_string_iterGet(node->args, __i_863);
+        char* value = btrc_Map_string_string_iterValueAt(node->args, __i_863);
         SemuE2eSpec_setArg(spec, key, value);
     }
-    int __n_860 = btrc_Map_string_string_iterLen(self->args);
-    for (int __i_859 = 0; (__i_859 < __n_860); (__i_859++)) {
-        char* key = btrc_Map_string_string_iterGet(self->args, __i_859);
-        char* value = btrc_Map_string_string_iterValueAt(self->args, __i_859);
+    int __n_866 = btrc_Map_string_string_iterLen(self->args);
+    for (int __i_865 = 0; (__i_865 < __n_866); (__i_865++)) {
+        char* key = btrc_Map_string_string_iterGet(self->args, __i_865);
+        char* value = btrc_Map_string_string_iterValueAt(self->args, __i_865);
         SemuE2eSpec_setArg(spec, key, value);
     }
     SemuE2eSpec_expandArgs(spec);
@@ -20457,9 +20580,9 @@ void SemuE2eGraphRunner_list(SemuE2eGraphRunner* self) {
 }
 
 void SemuE2eGraphRunner_status(SemuE2eGraphRunner* self) {
-    int __n_862 = btrc_Vector_GraphNode_iterLen(self->graph->nodes);
-    for (int __i_861 = 0; (__i_861 < __n_862); (__i_861++)) {
-        GraphNode* node = btrc_Vector_GraphNode_iterGet(self->graph->nodes, __i_861);
+    int __n_868 = btrc_Vector_GraphNode_iterLen(self->graph->nodes);
+    for (int __i_867 = 0; (__i_867 < __n_868); (__i_867++)) {
+        GraphNode* node = btrc_Vector_GraphNode_iterGet(self->graph->nodes, __i_867);
         SemuE2eSpec* spec = SemuE2eGraphRunner_specFor(self, node);
         char* recorded = "missing";
         if (FileSystem_exists(SemuE2eSpec_stateHashFile(spec))) {
@@ -20472,13 +20595,13 @@ void SemuE2eGraphRunner_status(SemuE2eGraphRunner* self) {
 
 int SemuE2eGraphRunner_operationCoverage(SemuE2eGraphRunner* self) {
     btrc_Vector_string* covered = btrc_Vector_string_new();
-    int __n_864 = btrc_Vector_GraphNode_iterLen(self->graph->nodes);
-    for (int __i_863 = 0; (__i_863 < __n_864); (__i_863++)) {
-        GraphNode* node = btrc_Vector_GraphNode_iterGet(self->graph->nodes, __i_863);
+    int __n_870 = btrc_Vector_GraphNode_iterLen(self->graph->nodes);
+    for (int __i_869 = 0; (__i_869 < __n_870); (__i_869++)) {
+        GraphNode* node = btrc_Vector_GraphNode_iterGet(self->graph->nodes, __i_869);
         SemuE2eSpec* spec = SemuE2eParser_readSpecFile(ExecutionGraph_resolvedSpecPath(self->graph, node));
-        int __n_866 = btrc_Vector_SemuE2eOperation_iterLen(spec->operations);
-        for (int __i_865 = 0; (__i_865 < __n_866); (__i_865++)) {
-            SemuE2eOperation* op = btrc_Vector_SemuE2eOperation_iterGet(spec->operations, __i_865);
+        int __n_872 = btrc_Vector_SemuE2eOperation_iterLen(spec->operations);
+        for (int __i_871 = 0; (__i_871 < __n_872); (__i_871++)) {
+            SemuE2eOperation* op = btrc_Vector_SemuE2eOperation_iterGet(spec->operations, __i_871);
             if ((((int)strlen(op->kind)) > 0) && (!btrc_Vector_string_contains(covered, op->kind))) {
                 btrc_Vector_string_push(covered, op->kind);
             }
@@ -20486,9 +20609,9 @@ int SemuE2eGraphRunner_operationCoverage(SemuE2eGraphRunner* self) {
     }
     btrc_Vector_string* missing = btrc_Vector_string_new();
     btrc_Vector_string* catalog = semuE2eOperationCatalog();
-    int __n_868 = btrc_Vector_string_iterLen(catalog);
-    for (int __i_867 = 0; (__i_867 < __n_868); (__i_867++)) {
-        char* kind = btrc_Vector_string_iterGet(catalog, __i_867);
+    int __n_874 = btrc_Vector_string_iterLen(catalog);
+    for (int __i_873 = 0; (__i_873 < __n_874); (__i_873++)) {
+        char* kind = btrc_Vector_string_iterGet(catalog, __i_873);
         if (!btrc_Vector_string_contains(covered, kind)) {
             btrc_Vector_string_push(missing, kind);
         }
@@ -20507,9 +20630,9 @@ int SemuE2eGraphRunner_run(SemuE2eGraphRunner* self, btrc_Vector_string* targets
     if (!GraphTraversal_ok(traversal)) {
         e2eFatal(traversal->error);
     }
-    int __n_870 = btrc_Vector_string_iterLen(order);
-    for (int __i_869 = 0; (__i_869 < __n_870); (__i_869++)) {
-        char* id = btrc_Vector_string_iterGet(order, __i_869);
+    int __n_876 = btrc_Vector_string_iterLen(order);
+    for (int __i_875 = 0; (__i_875 < __n_876); (__i_875++)) {
+        char* id = btrc_Vector_string_iterGet(order, __i_875);
         GraphNode* node = ExecutionGraph_node(self->graph, id);
         SemuE2eSpec* spec = SemuE2eGraphRunner_specFor(self, node);
         if ((!SemuE2eGraphRunner_force(self)) && SemuE2eGraphRunner_ready(self, spec)) {
@@ -20538,13 +20661,13 @@ int SemuE2eGraphRunner_run(SemuE2eGraphRunner* self, btrc_Vector_string* targets
             }
         }
     }
-    int __btrc_ret_871 = 0;
+    int __btrc_ret_877 = 0;
     if (traversal != NULL) {
         if ((--traversal->__rc) <= 0) {
             GraphTraversal_destroy(traversal);
         }
     }
-    return __btrc_ret_871;
+    return __btrc_ret_877;
     if (traversal != NULL) {
         if ((--traversal->__rc) <= 0) {
             GraphTraversal_destroy(traversal);
@@ -20571,50 +20694,50 @@ int e2eGraphCommand(CliArgs* args) {
     SemuE2eGraphRunner* runner = SemuE2eGraphRunner_new(graph, overrides, args->program);
     if (strcmp(action, "list") == 0) {
         SemuE2eGraphRunner_list(runner);
-        int __btrc_ret_872 = 0;
+        int __btrc_ret_878 = 0;
         if (runner != NULL) {
             if ((--runner->__rc) <= 0) {
                 SemuE2eGraphRunner_destroy(runner);
             }
         }
-        return __btrc_ret_872;
+        return __btrc_ret_878;
     }
     if (strcmp(action, "status") == 0) {
         SemuE2eGraphRunner_status(runner);
-        int __btrc_ret_873 = 0;
+        int __btrc_ret_879 = 0;
         if (runner != NULL) {
             if ((--runner->__rc) <= 0) {
                 SemuE2eGraphRunner_destroy(runner);
             }
         }
-        return __btrc_ret_873;
+        return __btrc_ret_879;
     }
     if (strcmp(action, "coverage") == 0) {
-        int __btrc_ret_874 = SemuE2eGraphRunner_operationCoverage(runner);
+        int __btrc_ret_880 = SemuE2eGraphRunner_operationCoverage(runner);
         if (runner != NULL) {
             if ((--runner->__rc) <= 0) {
                 SemuE2eGraphRunner_destroy(runner);
             }
         }
-        return __btrc_ret_874;
+        return __btrc_ret_880;
     }
     if (strcmp(action, "run") == 0) {
-        int __btrc_ret_875 = SemuE2eGraphRunner_run(runner, e2eGraphTargets(args, 4));
+        int __btrc_ret_881 = SemuE2eGraphRunner_run(runner, e2eGraphTargets(args, 4));
         if (runner != NULL) {
             if ((--runner->__rc) <= 0) {
                 SemuE2eGraphRunner_destroy(runner);
             }
         }
-        return __btrc_ret_875;
+        return __btrc_ret_881;
     }
     printf("%s\n", "Usage: semu e2e graph <graph.json> <list|status|coverage|run> [node ...] [--arg key=value]");
-    int __btrc_ret_876 = 1;
+    int __btrc_ret_882 = 1;
     if (runner != NULL) {
         if ((--runner->__rc) <= 0) {
             SemuE2eGraphRunner_destroy(runner);
         }
     }
-    return __btrc_ret_876;
+    return __btrc_ret_882;
     if (runner != NULL) {
         if ((--runner->__rc) <= 0) {
             SemuE2eGraphRunner_destroy(runner);
@@ -20700,9 +20823,9 @@ ExecResult* e2eRunLifecycleChange(char* exe, char* home, char* project, char* ac
 
 ExecResult* e2eRunLifecycleArgs(char* exe, char* home, char* project, btrc_Vector_string* lifecycleArgs) {
     Command* command = Command_check(Command_capture(Command_arg(Command_envVar(Command_envVar(Command_envVar(Command_new(exe), "SEMU_HOME", home), "SEMU_BIN", exe), "PATH", "/usr/bin:/bin"), "lifecycle"), true), false);
-    int __n_878 = btrc_Vector_string_iterLen(lifecycleArgs);
-    for (int __i_877 = 0; (__i_877 < __n_878); (__i_877++)) {
-        char* arg = btrc_Vector_string_iterGet(lifecycleArgs, __i_877);
+    int __n_884 = btrc_Vector_string_iterLen(lifecycleArgs);
+    for (int __i_883 = 0; (__i_883 < __n_884); (__i_883++)) {
+        char* arg = btrc_Vector_string_iterGet(lifecycleArgs, __i_883);
         Command_arg(command, arg);
     }
     Command_flag(command, "--project", project);
@@ -20723,9 +20846,9 @@ ExecResult* e2eRunLifecycleArgs(char* exe, char* home, char* project, btrc_Vecto
 
 ExecResult* e2eRunSync(char* exe, char* home, char* binDir, char* project, btrc_Vector_string* syncArgs) {
     Command* command = Command_check(Command_capture(Command_arg(Command_envVar(Command_envVar(Command_envVar(Command_envVar(Command_envVar(Command_envVar(Command_new(exe), "SEMU_HOME", home), "SEMU_BIN", exe), "SEMU_SYNCTHING_BIN", joinPath(binDir, "syncthing")), "SEMU_CURL_BIN", joinPath(binDir, "curl")), "PATH", __btrc_str_track(__btrc_strcat(binDir, ":/usr/bin:/bin"))), "SEMU_CAPTURE", joinPath(PathTools_dirname(binDir), "capture")), "sync"), true), false);
-    int __n_880 = btrc_Vector_string_iterLen(syncArgs);
-    for (int __i_879 = 0; (__i_879 < __n_880); (__i_879++)) {
-        char* arg = btrc_Vector_string_iterGet(syncArgs, __i_879);
+    int __n_886 = btrc_Vector_string_iterLen(syncArgs);
+    for (int __i_885 = 0; (__i_885 < __n_886); (__i_885++)) {
+        char* arg = btrc_Vector_string_iterGet(syncArgs, __i_885);
         Command_arg(command, arg);
     }
     Command_flag(command, "--project", project);
@@ -20746,9 +20869,9 @@ ExecResult* e2eRunSync(char* exe, char* home, char* binDir, char* project, btrc_
 
 ExecResult* e2eRunSteamInput(char* exe, char* home, char* project, btrc_Vector_string* steamInputArgs) {
     Command* command = Command_check(Command_capture(Command_arg(Command_envVar(Command_envVar(Command_envVar(Command_new(exe), "SEMU_HOME", home), "SEMU_BIN", exe), "PATH", "/usr/bin:/bin"), "steam-input"), true), false);
-    int __n_882 = btrc_Vector_string_iterLen(steamInputArgs);
-    for (int __i_881 = 0; (__i_881 < __n_882); (__i_881++)) {
-        char* arg = btrc_Vector_string_iterGet(steamInputArgs, __i_881);
+    int __n_888 = btrc_Vector_string_iterLen(steamInputArgs);
+    for (int __i_887 = 0; (__i_887 < __n_888); (__i_887++)) {
+        char* arg = btrc_Vector_string_iterGet(steamInputArgs, __i_887);
         Command_arg(command, arg);
     }
     Command_flag(command, "--project", project);
@@ -20772,13 +20895,13 @@ bool e2eWriteSteamShortcutFixture(char* path) {
     char* payload = "\\000shortcuts\\000\\0000\\000\\002appid\\000\\140\\152\\213\\344\\001AppName\\000Semu-x86_64.AppImage\\000\\001Exe\\000\"/home/deck/Applications/Semu/Semu-x86_64.AppImage\"\\000\\001StartDir\\000/home/deck/Applications/Semu/\\000\\001LaunchOptions\\000\\000\\010\\010";
     UnixShell* shell = UnixShell_new();
     ExecResult* result = UnixShell_runRaw(shell, __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat("printf ", ShellWords_quote(payload))), " > ")), ShellWords_quote(path))), false, false, "");
-    bool __btrc_ret_883 = e2eOk(ExecResult_ok(result), "write Steam shortcut fixture");
+    bool __btrc_ret_889 = e2eOk(ExecResult_ok(result), "write Steam shortcut fixture");
     if (shell != NULL) {
         if ((--shell->__rc) <= 0) {
             UnixShell_destroy(shell);
         }
     }
-    return __btrc_ret_883;
+    return __btrc_ret_889;
     if (shell != NULL) {
         if ((--shell->__rc) <= 0) {
             UnixShell_destroy(shell);
@@ -20788,9 +20911,9 @@ bool e2eWriteSteamShortcutFixture(char* path) {
 
 ExecResult* e2eRunSettings(char* exe, char* home, char* project, btrc_Vector_string* settingsArgs) {
     Command* command = Command_check(Command_capture(Command_arg(Command_envVar(Command_envVar(Command_envVar(Command_new(exe), "SEMU_HOME", home), "SEMU_BIN", exe), "PATH", "/usr/bin:/bin"), "settings"), true), false);
-    int __n_885 = btrc_Vector_string_iterLen(settingsArgs);
-    for (int __i_884 = 0; (__i_884 < __n_885); (__i_884++)) {
-        char* arg = btrc_Vector_string_iterGet(settingsArgs, __i_884);
+    int __n_891 = btrc_Vector_string_iterLen(settingsArgs);
+    for (int __i_890 = 0; (__i_890 < __n_891); (__i_890++)) {
+        char* arg = btrc_Vector_string_iterGet(settingsArgs, __i_890);
         Command_arg(command, arg);
     }
     Command_flag(command, "--project", project);
@@ -20811,9 +20934,9 @@ ExecResult* e2eRunSettings(char* exe, char* home, char* project, btrc_Vector_str
 
 ExecResult* e2eRunConfig(char* exe, char* home, char* project, btrc_Vector_string* configArgs) {
     Command* command = Command_check(Command_capture(Command_arg(Command_envVar(Command_envVar(Command_envVar(Command_new(exe), "SEMU_HOME", home), "SEMU_BIN", exe), "PATH", "/usr/bin:/bin"), "config"), true), false);
-    int __n_887 = btrc_Vector_string_iterLen(configArgs);
-    for (int __i_886 = 0; (__i_886 < __n_887); (__i_886++)) {
-        char* arg = btrc_Vector_string_iterGet(configArgs, __i_886);
+    int __n_893 = btrc_Vector_string_iterLen(configArgs);
+    for (int __i_892 = 0; (__i_892 < __n_893); (__i_892++)) {
+        char* arg = btrc_Vector_string_iterGet(configArgs, __i_892);
         Command_arg(command, arg);
     }
     Command_flag(command, "--project", project);
@@ -20834,9 +20957,9 @@ ExecResult* e2eRunConfig(char* exe, char* home, char* project, btrc_Vector_strin
 
 ExecResult* e2eRunPresentation(char* exe, char* home, char* project, btrc_Vector_string* presentationArgs) {
     Command* command = Command_check(Command_capture(Command_arg(Command_envVar(Command_envVar(Command_envVar(Command_new(exe), "SEMU_HOME", home), "SEMU_BIN", exe), "PATH", "/usr/bin:/bin"), "presentation"), true), false);
-    int __n_889 = btrc_Vector_string_iterLen(presentationArgs);
-    for (int __i_888 = 0; (__i_888 < __n_889); (__i_888++)) {
-        char* arg = btrc_Vector_string_iterGet(presentationArgs, __i_888);
+    int __n_895 = btrc_Vector_string_iterLen(presentationArgs);
+    for (int __i_894 = 0; (__i_894 < __n_895); (__i_894++)) {
+        char* arg = btrc_Vector_string_iterGet(presentationArgs, __i_894);
         Command_arg(command, arg);
     }
     Command_flag(command, "--project", project);
@@ -20857,9 +20980,9 @@ ExecResult* e2eRunPresentation(char* exe, char* home, char* project, btrc_Vector
 
 ExecResult* e2eRunKeymap(char* exe, char* home, char* project, btrc_Vector_string* keymapArgs) {
     Command* command = Command_check(Command_capture(Command_arg(Command_envVar(Command_envVar(Command_envVar(Command_new(exe), "SEMU_HOME", home), "SEMU_BIN", exe), "PATH", "/usr/bin:/bin"), "keymap"), true), false);
-    int __n_891 = btrc_Vector_string_iterLen(keymapArgs);
-    for (int __i_890 = 0; (__i_890 < __n_891); (__i_890++)) {
-        char* arg = btrc_Vector_string_iterGet(keymapArgs, __i_890);
+    int __n_897 = btrc_Vector_string_iterLen(keymapArgs);
+    for (int __i_896 = 0; (__i_896 < __n_897); (__i_896++)) {
+        char* arg = btrc_Vector_string_iterGet(keymapArgs, __i_896);
         Command_arg(command, arg);
     }
     Command_flag(command, "--project", project);
@@ -20885,20 +21008,20 @@ ExecResult* e2eRunSettingsUiScript(char* exe, char* home, char* project, char* s
 
 ExecResult* e2eRunSettingsUiScriptArgs(char* exe, char* home, char* project, btrc_Vector_string* uiArgs, char* script) {
     char* command = __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat("printf %s ", ShellWords_quote(script))), " | SEMU_HOME=")), ShellWords_quote(home))), " SEMU_BIN=")), ShellWords_quote(exe))), " PATH=/usr/bin:/bin ")), ShellWords_quote(exe))), " settings ui"));
-    int __n_893 = btrc_Vector_string_iterLen(uiArgs);
-    for (int __i_892 = 0; (__i_892 < __n_893); (__i_892++)) {
-        char* arg = btrc_Vector_string_iterGet(uiArgs, __i_892);
+    int __n_899 = btrc_Vector_string_iterLen(uiArgs);
+    for (int __i_898 = 0; (__i_898 < __n_899); (__i_898++)) {
+        char* arg = btrc_Vector_string_iterGet(uiArgs, __i_898);
         (command = __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(command, " ")), ShellWords_quote(arg))));
     }
     (command = __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(command, " --project ")), ShellWords_quote(project))));
     UnixShell* shell = UnixShell_new();
-    ExecResult* __btrc_ret_894 = UnixShell_runRaw(shell, command, true, false, "");
+    ExecResult* __btrc_ret_900 = UnixShell_runRaw(shell, command, true, false, "");
     if (shell != NULL) {
         if ((--shell->__rc) <= 0) {
             UnixShell_destroy(shell);
         }
     }
-    return __btrc_ret_894;
+    return __btrc_ret_900;
     if (shell != NULL) {
         if ((--shell->__rc) <= 0) {
             UnixShell_destroy(shell);
@@ -20909,13 +21032,13 @@ ExecResult* e2eRunSettingsUiScriptArgs(char* exe, char* home, char* project, btr
 ExecResult* e2eRunDoctor(char* exe, char* home, char* project) {
     Command* command = Command_check(Command_capture(Command_flag(Command_arg(Command_envVar(Command_envVar(Command_envVar(Command_new(exe), "SEMU_HOME", home), "SEMU_BIN", exe), "PATH", "/usr/bin:/bin"), "doctor"), "--project", project), true), false);
     UnixShell* shell = UnixShell_new();
-    ExecResult* __btrc_ret_895 = UnixShell_runCommand(shell, command);
+    ExecResult* __btrc_ret_901 = UnixShell_runCommand(shell, command);
     if (shell != NULL) {
         if ((--shell->__rc) <= 0) {
             UnixShell_destroy(shell);
         }
     }
-    return __btrc_ret_895;
+    return __btrc_ret_901;
     if (shell != NULL) {
         if ((--shell->__rc) <= 0) {
             UnixShell_destroy(shell);
@@ -20925,9 +21048,9 @@ ExecResult* e2eRunDoctor(char* exe, char* home, char* project) {
 
 ExecResult* e2eRunLauncher(char* exe, char* home, char* project, char* roms, char* binDir, char* captureDir, char* bwrapPath, char* emulator, btrc_Vector_string* emulatorArgs) {
     Command* command = Command_check(Command_capture(Command_arg(Command_arg(Command_envVar(Command_envVar(Command_envVar(Command_envVar(Command_envVar(Command_envVar(Command_envVar(Command_envVar(Command_envVar(Command_envVar(Command_new(exe), "SEMU_HOME", home), "SEMU_BIN", exe), "SEMU_PROJECT_DIR", project), "SEMU_ROMS_DIR", roms), "SEMU_FLATPAK_CAPTURE", captureDir), "SEMU_BWRAP", bwrapPath), "SEMU_SCREENSHOT_HOOKS", "1"), "SEMU_SCREENSHOT_DELAY_SECONDS", "0"), "PATH", __btrc_str_track(__btrc_strcat(binDir, ":/usr/bin:/bin"))), "WAYLAND_DISPLAY", "wayland-test"), "launcher"), emulator), true), false);
-    int __n_897 = btrc_Vector_string_iterLen(emulatorArgs);
-    for (int __i_896 = 0; (__i_896 < __n_897); (__i_896++)) {
-        char* arg = btrc_Vector_string_iterGet(emulatorArgs, __i_896);
+    int __n_903 = btrc_Vector_string_iterLen(emulatorArgs);
+    for (int __i_902 = 0; (__i_902 < __n_903); (__i_902++)) {
+        char* arg = btrc_Vector_string_iterGet(emulatorArgs, __i_902);
         Command_arg(command, arg);
     }
     UnixShell* shell = UnixShell_new();
@@ -20947,9 +21070,9 @@ ExecResult* e2eRunLauncher(char* exe, char* home, char* project, char* roms, cha
 
 ExecResult* e2eRunRoutedLauncher(char* exe, char* home, char* project, char* roms, char* binDir, char* captureDir, char* emulator, char* routedExe, btrc_Vector_string* emulatorArgs) {
     Command* command = Command_check(Command_capture(Command_arg(Command_arg(Command_arg(Command_arg(Command_envVar(Command_envVar(Command_envVar(Command_envVar(Command_envVar(Command_envVar(Command_envVar(Command_new(exe), "SEMU_HOME", home), "SEMU_BIN", exe), "SEMU_PROJECT_DIR", project), "SEMU_ROMS_DIR", roms), "SEMU_FLATPAK_CAPTURE", captureDir), "SEMU_SCREENSHOT_HOOKS", "0"), "PATH", __btrc_str_track(__btrc_strcat(binDir, ":/usr/bin:/bin"))), "launcher"), "routed"), emulator), routedExe), true), false);
-    int __n_899 = btrc_Vector_string_iterLen(emulatorArgs);
-    for (int __i_898 = 0; (__i_898 < __n_899); (__i_898++)) {
-        char* arg = btrc_Vector_string_iterGet(emulatorArgs, __i_898);
+    int __n_905 = btrc_Vector_string_iterLen(emulatorArgs);
+    for (int __i_904 = 0; (__i_904 < __n_905); (__i_904++)) {
+        char* arg = btrc_Vector_string_iterGet(emulatorArgs, __i_904);
         Command_arg(command, arg);
     }
     UnixShell* shell = UnixShell_new();
@@ -20979,13 +21102,13 @@ bool e2eRunOk(ExecResult* result, char* label) {
 bool e2eWaitForFile(char* path, char* label) {
     UnixShell* shell = UnixShell_new();
     ExecResult* result = UnixShell_runRaw(shell, __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat("for i in 1 2 3 4 5; do [ -f ", ShellWords_quote(path))), " ] && exit 0; sleep 0.1; done; exit 1")), false, false, "");
-    bool __btrc_ret_900 = e2eOk(ExecResult_ok(result), __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(label, ": missing ")), path)));
+    bool __btrc_ret_906 = e2eOk(ExecResult_ok(result), __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(label, ": missing ")), path)));
     if (shell != NULL) {
         if ((--shell->__rc) <= 0) {
             UnixShell_destroy(shell);
         }
     }
-    return __btrc_ret_900;
+    return __btrc_ret_906;
     if (shell != NULL) {
         if ((--shell->__rc) <= 0) {
             UnixShell_destroy(shell);
@@ -20996,16 +21119,16 @@ bool e2eWaitForFile(char* path, char* label) {
 bool e2eCatalogConsistency(char* project, char* launcherBin) {
     char* systems = FileSystem_readText(joinPath(customSystemsRoot(project), "es_systems.xml"));
     char* rules = FileSystem_readText(joinPath(customSystemsRoot(project), "es_find_rules.xml"));
-    int __n_902 = btrc_Vector_string_iterLen(declaredSystemIds());
-    for (int __i_901 = 0; (__i_901 < __n_902); (__i_901++)) {
-        char* id = btrc_Vector_string_iterGet(declaredSystemIds(), __i_901);
+    int __n_908 = btrc_Vector_string_iterLen(declaredSystemIds());
+    for (int __i_907 = 0; (__i_907 < __n_908); (__i_907++)) {
+        char* id = btrc_Vector_string_iterGet(declaredSystemIds(), __i_907);
         if (!e2eContains(systems, __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat("<name>", id)), "</name>")), __btrc_str_track(__btrc_strcat("ES-DE system catalog ", id)))) {
             return false;
         }
     }
-    int __n_904 = btrc_Vector_string_iterLen(linuxLauncherNames());
-    for (int __i_903 = 0; (__i_903 < __n_904); (__i_903++)) {
-        char* emulator = btrc_Vector_string_iterGet(linuxLauncherNames(), __i_903);
+    int __n_910 = btrc_Vector_string_iterLen(linuxLauncherNames());
+    for (int __i_909 = 0; (__i_909 < __n_910); (__i_909++)) {
+        char* emulator = btrc_Vector_string_iterGet(linuxLauncherNames(), __i_909);
         char* launcher = joinPath(launcherBin, semuLauncherName(emulator));
         if (!e2eContains(rules, __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat("<emulator name=\"", emulator)), "\">")), __btrc_str_track(__btrc_strcat("ES-DE find rule ", emulator)))) {
             return false;
@@ -21080,6 +21203,15 @@ int e2eLifecycleSmoke(CliArgs* args) {
     if (!e2eOk(SemuGeneratedFiles_isProjectGenerated(project, emulatorProfilePath(project, "RetroArch/retroarch.cfg")), "emulator profile should be classified as generated")) {
         return 1;
     }
+    if (!e2eOk(SemuGeneratedFiles_isProjectGenerated(project, emulatorProfilePath(project, "Dolphin/config/Dolphin.ini")), "Dolphin runtime config should be classified as generated")) {
+        return 1;
+    }
+    if (!e2eOk(SemuGeneratedFiles_isProjectGenerated(project, emulatorProfilePath(project, "Dolphin/config/GCPadNew.ini")), "Dolphin runtime pad config should be classified as generated")) {
+        return 1;
+    }
+    if (!e2eOk(SemuGeneratedFiles_isProjectGenerated(project, emulatorProfilePath(project, "Dolphin/config/WiimoteNew.ini")), "Dolphin runtime Wiimote config should be classified as generated")) {
+        return 1;
+    }
     if (!e2eOk(SemuGeneratedFiles_isProjectGenerated(project, joinPath(project, "input/steam-input/neptune-simple.vdf")), "Steam Input template should be classified as generated")) {
         return 1;
     }
@@ -21093,6 +21225,15 @@ int e2eLifecycleSmoke(CliArgs* args) {
         return 1;
     }
     if (!e2eOk(SemuGeneratedFiles_isProjectOwned(project, emulatorProfilePath(project, "RetroArch/retroarch.cfg")), "emulator profile should be owned generated output")) {
+        return 1;
+    }
+    if (!e2eContains(FileSystem_readText(emulatorProfilePath(project, "Dolphin/config/Dolphin.ini")), "PermissionAsked = True", "generated Dolphin analytics prompt config")) {
+        return 1;
+    }
+    if (!e2eContains(FileSystem_readText(emulatorProfilePath(project, "Dolphin/config/GCPadNew.ini")), "[GCPad1]", "generated Dolphin GameCube runtime config")) {
+        return 1;
+    }
+    if (!e2eContains(FileSystem_readText(emulatorProfilePath(project, "Dolphin/config/WiimoteNew.ini")), "Buttons/A = Return|`Click 1`|`SteamDeck/0/Steam Deck:A`", "generated Dolphin Wii runtime config")) {
         return 1;
     }
     if (!e2eOk((!SemuGeneratedFiles_isProjectGenerated(project, joinPath(romsOne, "gba"))), "external ROM root should not be generated output")) {
@@ -21129,11 +21270,11 @@ int e2eLifecycleSmoke(CliArgs* args) {
         return 1;
     }
     char* steamTemplates = joinPath(home, "steam-templates");
-    btrc_Vector_string* __list_905 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_905, "install");
-    btrc_Vector_string_push(__list_905, "--dest");
-    btrc_Vector_string_push(__list_905, steamTemplates);
-    if (!e2eRunOk(e2eRunSteamInput(exe, home, project, __list_905), "steam-input install")) {
+    btrc_Vector_string* __list_911 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_911, "install");
+    btrc_Vector_string_push(__list_911, "--dest");
+    btrc_Vector_string_push(__list_911, steamTemplates);
+    if (!e2eRunOk(e2eRunSteamInput(exe, home, project, __list_911), "steam-input install")) {
         return 1;
     }
     if (!e2eContains(FileSystem_readText(joinPath(steamTemplates, "neptune-simple.vdf")), "\"controller_type\"\t\t\"controller_neptune\"", "installed Steam Input simple template")) {
@@ -21143,15 +21284,15 @@ int e2eLifecycleSmoke(CliArgs* args) {
     if (!e2eWriteSteamShortcutFixture(shortcutsFile)) {
         return 1;
     }
-    btrc_Vector_string* __list_906 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_906, "status");
-    btrc_Vector_string_push(__list_906, "--shortcuts-file");
-    btrc_Vector_string_push(__list_906, shortcutsFile);
-    btrc_Vector_string_push(__list_906, "--app-name");
-    btrc_Vector_string_push(__list_906, "Semu-x86_64.AppImage");
-    btrc_Vector_string_push(__list_906, "--exe");
-    btrc_Vector_string_push(__list_906, "/home/deck/Applications/Semu/Semu-x86_64.AppImage");
-    ExecResult* shortcutStatus = e2eRunSteamInput(exe, home, project, __list_906);
+    btrc_Vector_string* __list_912 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_912, "status");
+    btrc_Vector_string_push(__list_912, "--shortcuts-file");
+    btrc_Vector_string_push(__list_912, shortcutsFile);
+    btrc_Vector_string_push(__list_912, "--app-name");
+    btrc_Vector_string_push(__list_912, "Semu-x86_64.AppImage");
+    btrc_Vector_string_push(__list_912, "--exe");
+    btrc_Vector_string_push(__list_912, "/home/deck/Applications/Semu/Semu-x86_64.AppImage");
+    ExecResult* shortcutStatus = e2eRunSteamInput(exe, home, project, __list_912);
     if (!e2eRunOk(shortcutStatus, "steam-input shortcut status")) {
         return 1;
     }
@@ -21218,11 +21359,11 @@ int e2eLifecycleSmoke(CliArgs* args) {
     }
     char* keymapBeforeFailure = FileSystem_readText(keymapSourcePath(project));
     char* retroarchBeforeFailure = FileSystem_readText(emulatorProfilePath(project, "RetroArch/retroarch.cfg"));
-    btrc_Vector_string* __list_908 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_908, "change");
-    btrc_Vector_string_push(__list_908, "--action");
-    btrc_Vector_string_push(__list_908, "state.save");
-    if (!e2eOk((!ExecResult_ok(e2eRunLifecycleArgs(exe, home, project, __list_908))), "lifecycle change without command unexpectedly succeeded")) {
+    btrc_Vector_string* __list_914 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_914, "change");
+    btrc_Vector_string_push(__list_914, "--action");
+    btrc_Vector_string_push(__list_914, "state.save");
+    if (!e2eOk((!ExecResult_ok(e2eRunLifecycleArgs(exe, home, project, __list_914))), "lifecycle change without command unexpectedly succeeded")) {
         return 1;
     }
     if (!e2eOk((!ExecResult_ok(e2eRunLifecycleChange(exe, home, project, "missing.action", "Ctrl+B"))), "unknown keymap action unexpectedly succeeded")) {
@@ -21231,9 +21372,9 @@ int e2eLifecycleSmoke(CliArgs* args) {
     if (!e2eOk((!ExecResult_ok(e2eRunLifecycleChange(exe, home, project, "state.save", "Ctrl"))), "invalid keymap command unexpectedly succeeded")) {
         return 1;
     }
-    btrc_Vector_string* __list_909 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_909, "definitely-not-a-mode");
-    if (!e2eOk((!ExecResult_ok(e2eRunLifecycleArgs(exe, home, project, __list_909))), "unknown lifecycle mode unexpectedly succeeded")) {
+    btrc_Vector_string* __list_915 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_915, "definitely-not-a-mode");
+    if (!e2eOk((!ExecResult_ok(e2eRunLifecycleArgs(exe, home, project, __list_915))), "unknown lifecycle mode unexpectedly succeeded")) {
         return 1;
     }
     if (!e2eOk((strcmp(FileSystem_readText(keymapSourcePath(project)), keymapBeforeFailure) == 0), "failed keymap change mutated source")) {
@@ -21282,11 +21423,11 @@ int e2eLifecycleSmoke(CliArgs* args) {
     if (!e2eContains(FileSystem_readText(keymapSourcePath(project)), "action state.save = Ctrl+V", "keymap should survive upgrade")) {
         return 1;
     }
-    btrc_Vector_string* __list_910 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_910, "uninstall");
-    btrc_Vector_string_push(__list_910, "--purge-generated");
-    btrc_Vector_string_push(__list_910, "--purge-state");
-    if (!e2eRunOk(e2eRunLifecycleArgs(exe, home, project, __list_910), "purge uninstall")) {
+    btrc_Vector_string* __list_916 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_916, "uninstall");
+    btrc_Vector_string_push(__list_916, "--purge-generated");
+    btrc_Vector_string_push(__list_916, "--purge-state");
+    if (!e2eRunOk(e2eRunLifecycleArgs(exe, home, project, __list_916), "purge uninstall")) {
         return 1;
     }
     if (!e2eOk((!FileSystem_exists(joinPath(project, "ES-DE/custom_systems"))), "custom systems should be purged")) {
@@ -21435,9 +21576,9 @@ int e2eSyncSmoke(CliArgs* args) {
     ensureDir(binDir);
     ensureDir(capture);
     e2eWriteSyncFakes(binDir);
-    btrc_Vector_string* __list_911 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_911, "setup");
-    if (!e2eRunOk(e2eRunSync(exe, home, binDir, project, __list_911), "sync setup")) {
+    btrc_Vector_string* __list_917 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_917, "setup");
+    if (!e2eRunOk(e2eRunSync(exe, home, binDir, project, __list_917), "sync setup")) {
         return 1;
     }
     char* systemctlLog = FileSystem_readText(joinPath(capture, "systemctl.log"));
@@ -21464,16 +21605,16 @@ int e2eSyncSmoke(CliArgs* args) {
     if (!e2eContains(FileSystem_readText(joinPath(capture, "syncthing.log")), "semu-emulator_state", "sync emulator state folder")) {
         return 1;
     }
-    btrc_Vector_string* __list_912 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_912, "force");
-    btrc_Vector_string_push(__list_912, "all");
-    if (!e2eRunOk(e2eRunSync(exe, home, binDir, project, __list_912), "sync force all")) {
+    btrc_Vector_string* __list_918 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_918, "force");
+    btrc_Vector_string_push(__list_918, "all");
+    if (!e2eRunOk(e2eRunSync(exe, home, binDir, project, __list_918), "sync force all")) {
         return 1;
     }
-    btrc_Vector_string* __list_913 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_913, "force");
-    btrc_Vector_string_push(__list_913, "saves");
-    if (!e2eRunOk(e2eRunSync(exe, home, binDir, project, __list_913), "sync force saves")) {
+    btrc_Vector_string* __list_919 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_919, "force");
+    btrc_Vector_string_push(__list_919, "saves");
+    if (!e2eRunOk(e2eRunSync(exe, home, binDir, project, __list_919), "sync force saves")) {
         return 1;
     }
     char* curlLog = FileSystem_readText(joinPath(capture, "curl.log"));
@@ -21486,16 +21627,16 @@ int e2eSyncSmoke(CliArgs* args) {
     if (!e2eContains(curlLog, "X-API-Key: test-key", "sync force api key")) {
         return 1;
     }
-    btrc_Vector_string* __list_914 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_914, "autostart");
-    btrc_Vector_string_push(__list_914, "disable");
-    if (!e2eRunOk(e2eRunSync(exe, home, binDir, project, __list_914), "sync autostart disable")) {
+    btrc_Vector_string* __list_920 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_920, "autostart");
+    btrc_Vector_string_push(__list_920, "disable");
+    if (!e2eRunOk(e2eRunSync(exe, home, binDir, project, __list_920), "sync autostart disable")) {
         return 1;
     }
-    btrc_Vector_string* __list_915 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_915, "autostart");
-    btrc_Vector_string_push(__list_915, "enable");
-    if (!e2eRunOk(e2eRunSync(exe, home, binDir, project, __list_915), "sync autostart enable")) {
+    btrc_Vector_string* __list_921 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_921, "autostart");
+    btrc_Vector_string_push(__list_921, "enable");
+    if (!e2eRunOk(e2eRunSync(exe, home, binDir, project, __list_921), "sync autostart enable")) {
         return 1;
     }
     (systemctlLog = FileSystem_readText(joinPath(capture, "systemctl.log")));
@@ -21505,10 +21646,10 @@ int e2eSyncSmoke(CliArgs* args) {
     if (!e2eContains(systemctlLog, "--user enable semu-syncthing.service", "sync re-enable service")) {
         return 1;
     }
-    btrc_Vector_string* __list_916 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_916, "force");
-    btrc_Vector_string_push(__list_916, "all");
-    if (!e2eOk((!ExecResult_ok(e2eRunSync(exe, home, binDir, missingProject, __list_916))), "sync force without API key unexpectedly succeeded")) {
+    btrc_Vector_string* __list_922 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_922, "force");
+    btrc_Vector_string_push(__list_922, "all");
+    if (!e2eOk((!ExecResult_ok(e2eRunSync(exe, home, binDir, missingProject, __list_922))), "sync force without API key unexpectedly succeeded")) {
         return 1;
     }
     printf("%s\n", "OK BTRC sync smoke");
@@ -21528,23 +21669,23 @@ int e2eSettingsSmoke(CliArgs* args) {
     ensureDir(home);
     ensureDir(normalizedRoms);
     ensureDir(configRoms);
-    btrc_Vector_string* __list_917 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_917, "put");
-    btrc_Vector_string_push(__list_917, "visual.integer_scaling");
-    btrc_Vector_string_push(__list_917, "true");
-    if (!e2eRunOk(e2eRunSettings(exe, home, project, __list_917), "settings put bool")) {
+    btrc_Vector_string* __list_923 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_923, "put");
+    btrc_Vector_string_push(__list_923, "visual.integer_scaling");
+    btrc_Vector_string_push(__list_923, "true");
+    if (!e2eRunOk(e2eRunSettings(exe, home, project, __list_923), "settings put bool")) {
         return 1;
     }
-    btrc_Vector_string* __list_918 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_918, "put");
-    btrc_Vector_string_push(__list_918, "ui.theme");
-    btrc_Vector_string_push(__list_918, "deck-dark");
-    if (!e2eRunOk(e2eRunSettings(exe, home, project, __list_918), "settings put string")) {
+    btrc_Vector_string* __list_924 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_924, "put");
+    btrc_Vector_string_push(__list_924, "ui.theme");
+    btrc_Vector_string_push(__list_924, "deck-dark");
+    if (!e2eRunOk(e2eRunSettings(exe, home, project, __list_924), "settings put string")) {
         return 1;
     }
-    btrc_Vector_string* __list_919 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_919, "list");
-    ExecResult* list = e2eRunSettings(exe, home, project, __list_919);
+    btrc_Vector_string* __list_925 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_925, "list");
+    ExecResult* list = e2eRunSettings(exe, home, project, __list_925);
     if (!e2eRunOk(list, "settings list")) {
         return 1;
     }
@@ -21554,17 +21695,17 @@ int e2eSettingsSmoke(CliArgs* args) {
     if (!e2eContains(ExecResult_stdout(list), "ui.theme=deck-dark", "settings list string")) {
         return 1;
     }
-    btrc_Vector_string* __list_921 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_921, "put");
-    btrc_Vector_string_push(__list_921, "visual.integer_scaling");
-    btrc_Vector_string_push(__list_921, "maybe");
-    if (!e2eOk((!ExecResult_ok(e2eRunSettings(exe, home, project, __list_921))), "invalid boolean setting unexpectedly succeeded")) {
+    btrc_Vector_string* __list_927 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_927, "put");
+    btrc_Vector_string_push(__list_927, "visual.integer_scaling");
+    btrc_Vector_string_push(__list_927, "maybe");
+    if (!e2eOk((!ExecResult_ok(e2eRunSettings(exe, home, project, __list_927))), "invalid boolean setting unexpectedly succeeded")) {
         return 1;
     }
-    btrc_Vector_string* __list_922 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_922, "set-roms");
-    btrc_Vector_string_push(__list_922, configRoot);
-    if (!e2eRunOk(e2eRunConfig(exe, home, project, __list_922), "config set-roms source-only")) {
+    btrc_Vector_string* __list_928 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_928, "set-roms");
+    btrc_Vector_string_push(__list_928, configRoot);
+    if (!e2eRunOk(e2eRunConfig(exe, home, project, __list_928), "config set-roms source-only")) {
         return 1;
     }
     if (!e2eContains(FileSystem_readText(syncConfigPath(project)), configRoms, "config set-roms persisted owned source")) {
@@ -21573,11 +21714,11 @@ int e2eSettingsSmoke(CliArgs* args) {
     if (!e2eOk((!FileSystem_exists(joinPath(project, "ES-DE/es_settings.xml"))), "config set-roms mutated generated ES-DE before apply")) {
         return 1;
     }
-    btrc_Vector_string* __list_923 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_923, "set-roms");
-    btrc_Vector_string_push(__list_923, sdRoot);
-    btrc_Vector_string_push(__list_923, "--apply");
-    if (!e2eRunOk(e2eRunConfig(exe, home, project, __list_923), "config set-roms apply")) {
+    btrc_Vector_string* __list_929 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_929, "set-roms");
+    btrc_Vector_string_push(__list_929, sdRoot);
+    btrc_Vector_string_push(__list_929, "--apply");
+    if (!e2eRunOk(e2eRunConfig(exe, home, project, __list_929), "config set-roms apply")) {
         return 1;
     }
     if (!e2eContains(FileSystem_readText(syncConfigPath(project)), normalizedRoms, "config set-roms apply persisted owned source")) {
@@ -21616,9 +21757,9 @@ int e2eSettingsSmoke(CliArgs* args) {
     if (!e2eRunOk(uiEof, "settings ui eof")) {
         return 1;
     }
-    btrc_Vector_string* __list_924 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_924, "presentation");
-    ExecResult* presentationUiEdit = e2eRunSettingsUiScriptArgs(exe, home, project, __list_924, "1\n10\nbezels/gb/ui-owned.json\nplan\nb\nq\n");
+    btrc_Vector_string* __list_930 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_930, "presentation");
+    ExecResult* presentationUiEdit = e2eRunSettingsUiScriptArgs(exe, home, project, __list_930, "1\n10\nbezels/gb/ui-owned.json\nplan\nb\nq\n");
     if (!e2eRunOk(presentationUiEdit, "presentation settings ui edit")) {
         return 1;
     }
@@ -21635,9 +21776,9 @@ int e2eSettingsSmoke(CliArgs* args) {
         return 1;
     }
     char* retroarchBeforeInputUi = FileSystem_readText(emulatorProfilePath(project, "RetroArch/retroarch.cfg"));
-    btrc_Vector_string* __list_926 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_926, "input");
-    ExecResult* inputUiEdit = e2eRunSettingsUiScriptArgs(exe, home, project, __list_926, "10\nc\nCtrl+W\nback\nq\n");
+    btrc_Vector_string* __list_932 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_932, "input");
+    ExecResult* inputUiEdit = e2eRunSettingsUiScriptArgs(exe, home, project, __list_932, "10\nc\nCtrl+W\nback\nq\n");
     if (!e2eRunOk(inputUiEdit, "input settings ui edit")) {
         return 1;
     }
@@ -21653,18 +21794,18 @@ int e2eSettingsSmoke(CliArgs* args) {
     if (!e2eOk((strcmp(FileSystem_readText(emulatorProfilePath(project, "RetroArch/retroarch.cfg")), retroarchBeforeInputUi) == 0), "input ui edit mutated generated RetroArch profile before apply")) {
         return 1;
     }
-    btrc_Vector_string* __list_928 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_928, "get");
-    btrc_Vector_string_push(__list_928, "state.save");
-    if (!e2eContains(ExecResult_stdout(e2eRunKeymap(exe, home, project, __list_928)), "state.save=Ctrl+W", "keymap get edited command")) {
+    btrc_Vector_string* __list_934 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_934, "get");
+    btrc_Vector_string_push(__list_934, "state.save");
+    if (!e2eContains(ExecResult_stdout(e2eRunKeymap(exe, home, project, __list_934)), "state.save=Ctrl+W", "keymap get edited command")) {
         return 1;
     }
-    btrc_Vector_string* __list_929 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_929, "put");
-    btrc_Vector_string_push(__list_929, "state.save");
-    btrc_Vector_string_push(__list_929, "Ctrl+W");
-    btrc_Vector_string_push(__list_929, "--apply");
-    if (!e2eRunOk(e2eRunKeymap(exe, home, project, __list_929), "keymap put apply")) {
+    btrc_Vector_string* __list_935 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_935, "put");
+    btrc_Vector_string_push(__list_935, "state.save");
+    btrc_Vector_string_push(__list_935, "Ctrl+W");
+    btrc_Vector_string_push(__list_935, "--apply");
+    if (!e2eRunOk(e2eRunKeymap(exe, home, project, __list_935), "keymap put apply")) {
         return 1;
     }
     if (!e2eContains(FileSystem_readText(emulatorProfilePath(project, "RetroArch/retroarch.cfg")), "input_save_state = \"w\"", "input apply regenerated RetroArch profile")) {
@@ -21672,9 +21813,9 @@ int e2eSettingsSmoke(CliArgs* args) {
     }
     char* syncServicePath = joinPath(home, ".config/systemd/user/semu-syncthing.service");
     char* syncServiceBeforeUi = (FileSystem_exists(syncServicePath) ? FileSystem_readText(syncServicePath) : "");
-    btrc_Vector_string* __list_930 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_930, "sync");
-    ExecResult* syncUiEdit = e2eRunSettingsUiScriptArgs(exe, home, project, __list_930, "6\nq\n");
+    btrc_Vector_string* __list_936 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_936, "sync");
+    ExecResult* syncUiEdit = e2eRunSettingsUiScriptArgs(exe, home, project, __list_936, "6\nq\n");
     if (!e2eRunOk(syncUiEdit, "sync settings ui edit")) {
         return 1;
     }
@@ -21693,18 +21834,18 @@ int e2eSettingsSmoke(CliArgs* args) {
     if (!e2eOk((strcmp(FileSystem_readText(syncServicePath), syncServiceBeforeUi) == 0), "sync ui edit mutated generated service before apply")) {
         return 1;
     }
-    btrc_Vector_string* __list_932 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_932, "get");
-    btrc_Vector_string_push(__list_932, "sync_saves");
-    if (!e2eContains(ExecResult_stdout(e2eRunSync(exe, home, "/usr/bin", project, __list_932)), "sync_saves=false", "sync get edited value")) {
+    btrc_Vector_string* __list_938 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_938, "get");
+    btrc_Vector_string_push(__list_938, "sync_saves");
+    if (!e2eContains(ExecResult_stdout(e2eRunSync(exe, home, "/usr/bin", project, __list_938)), "sync_saves=false", "sync get edited value")) {
         return 1;
     }
-    btrc_Vector_string* __list_933 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_933, "put");
-    btrc_Vector_string_push(__list_933, "sync_saves");
-    btrc_Vector_string_push(__list_933, "true");
-    btrc_Vector_string_push(__list_933, "--apply");
-    if (!e2eRunOk(e2eRunSync(exe, home, "/usr/bin", project, __list_933), "sync put apply")) {
+    btrc_Vector_string* __list_939 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_939, "put");
+    btrc_Vector_string_push(__list_939, "sync_saves");
+    btrc_Vector_string_push(__list_939, "true");
+    btrc_Vector_string_push(__list_939, "--apply");
+    if (!e2eRunOk(e2eRunSync(exe, home, "/usr/bin", project, __list_939), "sync put apply")) {
         return 1;
     }
     if (!e2eContains(FileSystem_readText(syncConfigPath(project)), "\"sync_saves\": true", "sync apply persisted owned config")) {
@@ -21726,28 +21867,28 @@ int e2eSettingsSmoke(CliArgs* args) {
     if (!e2eContains(FileSystem_readText(syncEntry), "ui sync", "sync ES-DE entry action")) {
         return 1;
     }
-    btrc_Vector_string* __list_934 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_934, "entry");
-    btrc_Vector_string_push(__list_934, syncEntry);
-    if (!e2eContains(ExecResult_stdout(e2eRunSettings(exe, home, project, __list_934)), "Semu Sync Settings", "sync settings ES-DE UI entry")) {
+    btrc_Vector_string* __list_940 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_940, "entry");
+    btrc_Vector_string_push(__list_940, syncEntry);
+    if (!e2eContains(ExecResult_stdout(e2eRunSettings(exe, home, project, __list_940)), "Semu Sync Settings", "sync settings ES-DE UI entry")) {
         return 1;
     }
     char* presentationPutEntry = joinPath(SettingsEntries_root(project), "Set GB Bezel.semu");
     FileSystem_writeText(presentationPutEntry, "presentation put gb bezel_file bezels/gb/from-entry.json\n");
-    btrc_Vector_string* __list_935 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_935, "entry");
-    btrc_Vector_string_push(__list_935, presentationPutEntry);
-    if (!e2eRunOk(e2eRunSettings(exe, home, project, __list_935), "presentation settings ES-DE put entry")) {
+    btrc_Vector_string* __list_941 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_941, "entry");
+    btrc_Vector_string_push(__list_941, presentationPutEntry);
+    if (!e2eRunOk(e2eRunSettings(exe, home, project, __list_941), "presentation settings ES-DE put entry")) {
         return 1;
     }
     if (!e2eContains(FileSystem_readText(joinPath(presentationSettingsRoot(project), "gb.json")), "from-entry", "presentation entry persisted owned config")) {
         return 1;
     }
     char* entry = joinPath(SettingsEntries_root(project), "Toggle Bezels.semu");
-    btrc_Vector_string* __list_936 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_936, "entry");
-    btrc_Vector_string_push(__list_936, entry);
-    if (!e2eRunOk(e2eRunSettings(exe, home, project, __list_936), "settings ES-DE entry")) {
+    btrc_Vector_string* __list_942 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_942, "entry");
+    btrc_Vector_string_push(__list_942, entry);
+    if (!e2eRunOk(e2eRunSettings(exe, home, project, __list_942), "settings ES-DE entry")) {
         return 1;
     }
     if (!e2eContains(FileSystem_readText(semuSettingsPath(project)), "\"visual_bezels\": false", "settings entry toggled bezel setting")) {
@@ -21771,9 +21912,9 @@ int e2ePresentationSmoke(CliArgs* args) {
     char* exe = Environment_get("SEMU_BIN", args->program);
     ensureDir(project);
     ensureDir(home);
-    btrc_Vector_string* __list_937 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_937, "defaults");
-    if (!e2eRunOk(e2eRunPresentation(exe, home, project, __list_937), "presentation defaults")) {
+    btrc_Vector_string* __list_943 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_943, "defaults");
+    if (!e2eRunOk(e2eRunPresentation(exe, home, project, __list_943), "presentation defaults")) {
         return 1;
     }
     if (!e2eOk(FileSystem_exists(joinPath(presentationSettingsRoot(project), "gb.json")), "gb presentation config missing")) {
@@ -21782,10 +21923,10 @@ int e2ePresentationSmoke(CliArgs* args) {
     if (!e2eOk(FileSystem_exists(joinPath(presentationSettingsRoot(project), "n3ds.json")), "n3ds presentation config missing")) {
         return 1;
     }
-    btrc_Vector_string* __list_938 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_938, "plan");
-    btrc_Vector_string_push(__list_938, "gb");
-    ExecResult* gb = e2eRunPresentation(exe, home, project, __list_938);
+    btrc_Vector_string* __list_944 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_944, "plan");
+    btrc_Vector_string_push(__list_944, "gb");
+    ExecResult* gb = e2eRunPresentation(exe, home, project, __list_944);
     if (!e2eRunOk(gb, "presentation gb plan")) {
         return 1;
     }
@@ -21801,42 +21942,42 @@ int e2ePresentationSmoke(CliArgs* args) {
     if (!e2eContains(ExecResult_stdout(gb), "\"scale_policy\": \"integer_native\"", "gb integer scale")) {
         return 1;
     }
-    btrc_Vector_string* __list_940 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_940, "plan");
-    btrc_Vector_string_push(__list_940, "gbc");
-    ExecResult* gbc = e2eRunPresentation(exe, home, project, __list_940);
+    btrc_Vector_string* __list_946 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_946, "plan");
+    btrc_Vector_string_push(__list_946, "gbc");
+    ExecResult* gbc = e2eRunPresentation(exe, home, project, __list_946);
     if (!e2eRunOk(gbc, "presentation gbc plan")) {
         return 1;
     }
     if (!e2eContains(ExecResult_stdout(gbc), "frost purple Game Boy Color", "gbc bezel intent")) {
         return 1;
     }
-    btrc_Vector_string* __list_942 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_942, "plan");
-    btrc_Vector_string_push(__list_942, "gba");
-    ExecResult* gba = e2eRunPresentation(exe, home, project, __list_942);
+    btrc_Vector_string* __list_948 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_948, "plan");
+    btrc_Vector_string_push(__list_948, "gba");
+    ExecResult* gba = e2eRunPresentation(exe, home, project, __list_948);
     if (!e2eRunOk(gba, "presentation gba plan")) {
         return 1;
     }
     if (!e2eContains(ExecResult_stdout(gba), "purple wide Game Boy Advance", "gba bezel intent")) {
         return 1;
     }
-    btrc_Vector_string* __list_944 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_944, "plan");
-    btrc_Vector_string_push(__list_944, "genesis");
-    ExecResult* genesis = e2eRunPresentation(exe, home, project, __list_944);
+    btrc_Vector_string* __list_950 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_950, "plan");
+    btrc_Vector_string_push(__list_950, "genesis");
+    ExecResult* genesis = e2eRunPresentation(exe, home, project, __list_950);
     if (!e2eRunOk(genesis, "presentation genesis plan")) {
         return 1;
     }
     if (!e2eContains(ExecResult_stdout(genesis), "ntsc/ntsc-320px-composite-scanline.slangp", "genesis runtime preset")) {
         return 1;
     }
-    btrc_Vector_string* __list_946 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_946, "plan");
-    btrc_Vector_string_push(__list_946, "n3ds");
-    btrc_Vector_string_push(__list_946, "--emulator");
-    btrc_Vector_string_push(__list_946, "AZAHAR");
-    ExecResult* n3ds = e2eRunPresentation(exe, home, project, __list_946);
+    btrc_Vector_string* __list_952 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_952, "plan");
+    btrc_Vector_string_push(__list_952, "n3ds");
+    btrc_Vector_string_push(__list_952, "--emulator");
+    btrc_Vector_string_push(__list_952, "AZAHAR");
+    ExecResult* n3ds = e2eRunPresentation(exe, home, project, __list_952);
     if (!e2eRunOk(n3ds, "presentation n3ds plan")) {
         return 1;
     }
@@ -21852,10 +21993,10 @@ int e2ePresentationSmoke(CliArgs* args) {
     if (!e2eContains(ExecResult_stdout(n3ds), "Azahar is only an adapter", "n3ds not overfit")) {
         return 1;
     }
-    btrc_Vector_string* __list_948 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_948, "plan");
-    btrc_Vector_string_push(__list_948, "ps2");
-    ExecResult* ps2 = e2eRunPresentation(exe, home, project, __list_948);
+    btrc_Vector_string* __list_954 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_954, "plan");
+    btrc_Vector_string_push(__list_954, "ps2");
+    ExecResult* ps2 = e2eRunPresentation(exe, home, project, __list_954);
     if (!e2eRunOk(ps2, "presentation ps2 plan")) {
         return 1;
     }
@@ -21874,10 +22015,10 @@ int e2ePresentationSmoke(CliArgs* args) {
     char* pcsx2IniPath = joinPath(launcherRoutedStateRoot(project, "pcsx2"), "config/PCSX2/inis/PCSX2.ini");
     ensureDir(PathTools_dirname(pcsx2IniPath));
     FileSystem_writeText(pcsx2IniPath, "[EmuCore/GS]\nAspectRatio = 16:9\nEnableWidescreenPatches = true\n");
-    btrc_Vector_string* __list_950 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_950, "state");
-    btrc_Vector_string_push(__list_950, "ps2");
-    ExecResult* ps2State = e2eRunPresentation(exe, home, project, __list_950);
+    btrc_Vector_string* __list_956 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_956, "state");
+    btrc_Vector_string_push(__list_956, "ps2");
+    ExecResult* ps2State = e2eRunPresentation(exe, home, project, __list_956);
     if (!e2eRunOk(ps2State, "presentation ps2 state")) {
         return 1;
     }
@@ -21887,10 +22028,10 @@ int e2ePresentationSmoke(CliArgs* args) {
     if (!e2eContains(ExecResult_stdout(ps2State), "\"confidence\": \"config\"", "ps2 state confidence")) {
         return 1;
     }
-    btrc_Vector_string* __list_952 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_952, "plan");
-    btrc_Vector_string_push(__list_952, "ps2");
-    ExecResult* ps2Wide = e2eRunPresentation(exe, home, project, __list_952);
+    btrc_Vector_string* __list_958 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_958, "plan");
+    btrc_Vector_string_push(__list_958, "ps2");
+    ExecResult* ps2Wide = e2eRunPresentation(exe, home, project, __list_958);
     if (!e2eRunOk(ps2Wide, "presentation ps2 widescreen plan")) {
         return 1;
     }
@@ -21903,44 +22044,44 @@ int e2ePresentationSmoke(CliArgs* args) {
     if (!e2eContains(ExecResult_stdout(ps2Wide), "\"selected_bezel_file\": \"bezels/tv/clean-component-16x9.json\"", "ps2 widescreen selected bezel")) {
         return 1;
     }
-    btrc_Vector_string* __list_954 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_954, "put");
-    btrc_Vector_string_push(__list_954, "ps2");
-    btrc_Vector_string_push(__list_954, "widescreen_bezel_file");
-    btrc_Vector_string_push(__list_954, "bezels/ps2/custom-wide.json");
-    if (!e2eRunOk(e2eRunPresentation(exe, home, project, __list_954), "presentation widescreen bezel put")) {
+    btrc_Vector_string* __list_960 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_960, "put");
+    btrc_Vector_string_push(__list_960, "ps2");
+    btrc_Vector_string_push(__list_960, "widescreen_bezel_file");
+    btrc_Vector_string_push(__list_960, "bezels/ps2/custom-wide.json");
+    if (!e2eRunOk(e2eRunPresentation(exe, home, project, __list_960), "presentation widescreen bezel put")) {
         return 1;
     }
-    btrc_Vector_string* __list_955 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_955, "plan");
-    btrc_Vector_string_push(__list_955, "ps2");
-    ExecResult* ps2CustomWide = e2eRunPresentation(exe, home, project, __list_955);
+    btrc_Vector_string* __list_961 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_961, "plan");
+    btrc_Vector_string_push(__list_961, "ps2");
+    ExecResult* ps2CustomWide = e2eRunPresentation(exe, home, project, __list_961);
     if (!e2eContains(ExecResult_stdout(ps2CustomWide), "\"selected_bezel_file\": \"bezels/ps2/custom-wide.json\"", "ps2 custom widescreen bezel")) {
         return 1;
     }
-    btrc_Vector_string* __list_957 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_957, "broadcast");
-    btrc_Vector_string_push(__list_957, "ps2");
-    if (!e2eRunOk(e2eRunPresentation(exe, home, project, __list_957), "presentation ps2 broadcast")) {
+    btrc_Vector_string* __list_963 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_963, "broadcast");
+    btrc_Vector_string_push(__list_963, "ps2");
+    if (!e2eRunOk(e2eRunPresentation(exe, home, project, __list_963), "presentation ps2 broadcast")) {
         return 1;
     }
     if (!e2eContains(FileSystem_readText(presentationStatePath(project, "ps2")), "\"aspect\": \"16:9\"", "presentation broadcast state")) {
         return 1;
     }
-    btrc_Vector_string* __list_958 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_958, "plan");
-    btrc_Vector_string_push(__list_958, "psp");
-    ExecResult* psp = e2eRunPresentation(exe, home, project, __list_958);
+    btrc_Vector_string* __list_964 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_964, "plan");
+    btrc_Vector_string_push(__list_964, "psp");
+    ExecResult* psp = e2eRunPresentation(exe, home, project, __list_964);
     if (!e2eRunOk(psp, "presentation psp plan")) {
         return 1;
     }
     if (!e2eContains(ExecResult_stdout(psp), "red God of War PSP or original black PSP shell", "psp bezel intent")) {
         return 1;
     }
-    btrc_Vector_string* __list_960 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_960, "plan");
-    btrc_Vector_string_push(__list_960, "switch");
-    ExecResult* switchPlan = e2eRunPresentation(exe, home, project, __list_960);
+    btrc_Vector_string* __list_966 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_966, "plan");
+    btrc_Vector_string_push(__list_966, "switch");
+    ExecResult* switchPlan = e2eRunPresentation(exe, home, project, __list_966);
     if (!e2eRunOk(switchPlan, "presentation switch plan")) {
         return 1;
     }
@@ -21950,37 +22091,37 @@ int e2ePresentationSmoke(CliArgs* args) {
     if (!e2eContains(ExecResult_stdout(switchPlan), "\"layout\": \"modern_fullscreen\"", "switch modern fullscreen")) {
         return 1;
     }
-    btrc_Vector_string* __list_962 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_962, "put");
-    btrc_Vector_string_push(__list_962, "gb");
-    btrc_Vector_string_push(__list_962, "bezel_file");
-    btrc_Vector_string_push(__list_962, "bezels/gb/classic-grey-game-boy.json");
-    if (!e2eRunOk(e2eRunPresentation(exe, home, project, __list_962), "presentation put")) {
+    btrc_Vector_string* __list_968 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_968, "put");
+    btrc_Vector_string_push(__list_968, "gb");
+    btrc_Vector_string_push(__list_968, "bezel_file");
+    btrc_Vector_string_push(__list_968, "bezels/gb/classic-grey-game-boy.json");
+    if (!e2eRunOk(e2eRunPresentation(exe, home, project, __list_968), "presentation put")) {
         return 1;
     }
     if (!e2eContains(FileSystem_readText(joinPath(presentationSettingsRoot(project), "gb.json")), "classic-grey-game-boy", "presentation put persisted")) {
         return 1;
     }
-    btrc_Vector_string* __list_963 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_963, "get");
-    btrc_Vector_string_push(__list_963, "gb");
-    btrc_Vector_string_push(__list_963, "bezel_file");
-    if (!e2eContains(ExecResult_stdout(e2eRunPresentation(exe, home, project, __list_963)), "classic-grey-game-boy", "presentation get")) {
+    btrc_Vector_string* __list_969 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_969, "get");
+    btrc_Vector_string_push(__list_969, "gb");
+    btrc_Vector_string_push(__list_969, "bezel_file");
+    if (!e2eContains(ExecResult_stdout(e2eRunPresentation(exe, home, project, __list_969)), "classic-grey-game-boy", "presentation get")) {
         return 1;
     }
-    btrc_Vector_string* __list_964 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_964, "put");
-    btrc_Vector_string_push(__list_964, "ps2");
-    btrc_Vector_string_push(__list_964, "dynamic_aspect");
-    btrc_Vector_string_push(__list_964, "false");
-    if (!e2eRunOk(e2eRunPresentation(exe, home, project, __list_964), "presentation bool put")) {
+    btrc_Vector_string* __list_970 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_970, "put");
+    btrc_Vector_string_push(__list_970, "ps2");
+    btrc_Vector_string_push(__list_970, "dynamic_aspect");
+    btrc_Vector_string_push(__list_970, "false");
+    if (!e2eRunOk(e2eRunPresentation(exe, home, project, __list_970), "presentation bool put")) {
         return 1;
     }
-    btrc_Vector_string* __list_965 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_965, "get");
-    btrc_Vector_string_push(__list_965, "ps2");
-    btrc_Vector_string_push(__list_965, "dynamic_aspect");
-    if (!e2eContains(ExecResult_stdout(e2eRunPresentation(exe, home, project, __list_965)), "false", "presentation bool get")) {
+    btrc_Vector_string* __list_971 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_971, "get");
+    btrc_Vector_string_push(__list_971, "ps2");
+    btrc_Vector_string_push(__list_971, "dynamic_aspect");
+    if (!e2eContains(ExecResult_stdout(e2eRunPresentation(exe, home, project, __list_971)), "false", "presentation bool get")) {
         return 1;
     }
     printf("%s\n", "OK BTRC presentation smoke");
@@ -22019,9 +22160,9 @@ int e2eLauncherSmoke(CliArgs* args) {
     char* fakeGrim = joinPath(binDir, "grim");
     FileSystem_writeText(fakeGrim, __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat("#!/usr/bin/env sh\n", "set -eu\n")), "out=\"${1:?}\"\n")), "mkdir -p \"$(dirname \"$out\")\"\n")), "printf 'fake screenshot %s\\n' \"$out\" > \"$out\"\n")), "printf '%s\\n' \"$out\" >> \"${SEMU_FLATPAK_CAPTURE:?}/grim.log\"\n")));
     FileSystem_chmod(fakeGrim, 493);
-    btrc_Vector_string* __list_966 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_966, "game.wua");
-    if (!e2eRunOk(e2eRunLauncher(exe, home, project, roms, binDir, capture, fakeBwrap, "cemu", __list_966), "launcher cemu")) {
+    btrc_Vector_string* __list_972 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_972, "game.wua");
+    if (!e2eRunOk(e2eRunLauncher(exe, home, project, roms, binDir, capture, fakeBwrap, "cemu", __list_972), "launcher cemu")) {
         return 1;
     }
     if (!e2eContains(FileSystem_readText(joinPath(capture, "flatpak-1.args")), "run", "cemu flatpak args")) {
@@ -22071,9 +22212,9 @@ int e2eLauncherSmoke(CliArgs* args) {
     if (!e2eContains(FileSystem_readText(joinPath(cemuScreens, "after_exit.png")), "fake screenshot", "cemu screenshot content")) {
         return 1;
     }
-    btrc_Vector_string* __list_967 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_967, "game.iso");
-    if (!e2eRunOk(e2eRunLauncher(exe, home, project, roms, binDir, capture, fakeBwrap, "dolphin", __list_967), "launcher dolphin")) {
+    btrc_Vector_string* __list_973 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_973, "game.iso");
+    if (!e2eRunOk(e2eRunLauncher(exe, home, project, roms, binDir, capture, fakeBwrap, "dolphin", __list_973), "launcher dolphin")) {
         return 1;
     }
     if (!e2eContains(FileSystem_readText(joinPath(capture, "flatpak-2.args")), "--socket=x11", "dolphin x11")) {
@@ -22094,9 +22235,9 @@ int e2eLauncherSmoke(CliArgs* args) {
     if (!e2eContains(FileSystem_readText(joinPath(capture, "flatpak-2.args")), "game.iso", "dolphin rom arg")) {
         return 1;
     }
-    btrc_Vector_string* __list_968 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_968, "game.3ds");
-    if (!e2eRunOk(e2eRunLauncher(exe, home, project, roms, binDir, capture, fakeBwrap, "azahar", __list_968), "launcher azahar")) {
+    btrc_Vector_string* __list_974 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_974, "game.3ds");
+    if (!e2eRunOk(e2eRunLauncher(exe, home, project, roms, binDir, capture, fakeBwrap, "azahar", __list_974), "launcher azahar")) {
         return 1;
     }
     if (!e2eContains(FileSystem_readText(joinPath(capture, "flatpak-3.args")), "--socket=x11", "azahar x11")) {
@@ -22125,9 +22266,9 @@ int e2eLauncherSmoke(CliArgs* args) {
     if (!e2eContains(azaharConfig, "graphics_api\\default=false", "azahar graphics api explicitly configured")) {
         return 1;
     }
-    btrc_Vector_string* __list_969 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_969, "game.iso");
-    if (!e2eRunOk(e2eRunLauncher(exe, home, project, roms, binDir, capture, fakeBwrap, "pcsx2", __list_969), "launcher pcsx2")) {
+    btrc_Vector_string* __list_975 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_975, "game.iso");
+    if (!e2eRunOk(e2eRunLauncher(exe, home, project, roms, binDir, capture, fakeBwrap, "pcsx2", __list_975), "launcher pcsx2")) {
         return 1;
     }
     if (!e2eContains(FileSystem_readText(joinPath(capture, "flatpak-4.args")), "--socket=wayland", "pcsx2 wayland")) {
@@ -22149,9 +22290,9 @@ int e2eLauncherSmoke(CliArgs* args) {
     if (!e2eOk((!__btrc_strContains(pcsx2Ini, "/Users/")), "pcsx2 config leaked host-local path")) {
         return 1;
     }
-    btrc_Vector_string* __list_970 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_970, "game.nsp");
-    if (!e2eRunOk(e2eRunLauncher(exe, home, project, roms, binDir, capture, fakeBwrap, "ryujinx", __list_970), "launcher ryujinx")) {
+    btrc_Vector_string* __list_976 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_976, "game.nsp");
+    if (!e2eRunOk(e2eRunLauncher(exe, home, project, roms, binDir, capture, fakeBwrap, "ryujinx", __list_976), "launcher ryujinx")) {
         return 1;
     }
     if (!e2eContains(FileSystem_readText(joinPath(capture, "flatpak-5.args")), "org.ryujinx.Ryujinx", "ryujinx flatpak id")) {
@@ -22160,9 +22301,9 @@ int e2eLauncherSmoke(CliArgs* args) {
     if (!e2eContains(FileSystem_readText(joinPath(capture, "flatpak-5.args")), "--fullscreen", "ryujinx fullscreen flag")) {
         return 1;
     }
-    btrc_Vector_string* __list_971 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_971, "game.iso");
-    if (!e2eRunOk(e2eRunLauncher(exe, home, project, roms, binDir, capture, fakeBwrap, "ppsspp", __list_971), "launcher ppsspp")) {
+    btrc_Vector_string* __list_977 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_977, "game.iso");
+    if (!e2eRunOk(e2eRunLauncher(exe, home, project, roms, binDir, capture, fakeBwrap, "ppsspp", __list_977), "launcher ppsspp")) {
         return 1;
     }
     if (!e2eContains(FileSystem_readText(joinPath(capture, "flatpak-6.args")), "org.ppsspp.PPSSPP", "ppsspp flatpak id")) {
@@ -22171,9 +22312,9 @@ int e2eLauncherSmoke(CliArgs* args) {
     if (!e2eContains(FileSystem_readText(joinPath(capture, "flatpak-6.args")), "--fullscreen", "ppsspp fullscreen flag")) {
         return 1;
     }
-    btrc_Vector_string* __list_972 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_972, "game.chd");
-    if (!e2eRunOk(e2eRunLauncher(exe, home, project, roms, binDir, capture, fakeBwrap, "flycast", __list_972), "launcher flycast")) {
+    btrc_Vector_string* __list_978 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_978, "game.chd");
+    if (!e2eRunOk(e2eRunLauncher(exe, home, project, roms, binDir, capture, fakeBwrap, "flycast", __list_978), "launcher flycast")) {
         return 1;
     }
     if (!e2eContains(FileSystem_readText(joinPath(capture, "flatpak-7.args")), "org.flycast.Flycast", "flycast flatpak id")) {
@@ -22185,9 +22326,9 @@ int e2eLauncherSmoke(CliArgs* args) {
     if (!e2eContains(FileSystem_readText(joinPath(capture, "flatpak-7.args")), "window:fullscreen=yes", "flycast fullscreen config")) {
         return 1;
     }
-    btrc_Vector_string* __list_973 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_973, "game.nds");
-    if (!e2eRunOk(e2eRunLauncher(exe, home, project, roms, binDir, capture, fakeBwrap, "melonds", __list_973), "launcher melonds")) {
+    btrc_Vector_string* __list_979 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_979, "game.nds");
+    if (!e2eRunOk(e2eRunLauncher(exe, home, project, roms, binDir, capture, fakeBwrap, "melonds", __list_979), "launcher melonds")) {
         return 1;
     }
     if (!e2eContains(FileSystem_readText(joinPath(capture, "flatpak-8.args")), "net.kuribo64.melonDS", "melonds flatpak id")) {
@@ -22196,9 +22337,9 @@ int e2eLauncherSmoke(CliArgs* args) {
     if (!e2eContains(FileSystem_readText(joinPath(capture, "flatpak-8.args")), "--fullscreen", "melonds fullscreen flag")) {
         return 1;
     }
-    btrc_Vector_string* __list_974 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_974, "--help");
-    if (!e2eRunOk(e2eRunLauncher(exe, home, project, roms, binDir, capture, fakeBwrap, "dolphin", __list_974), "launcher dolphin help")) {
+    btrc_Vector_string* __list_980 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_980, "--help");
+    if (!e2eRunOk(e2eRunLauncher(exe, home, project, roms, binDir, capture, fakeBwrap, "dolphin", __list_980), "launcher dolphin help")) {
         return 1;
     }
     if (!e2eOk((!__btrc_strContains(FileSystem_readText(joinPath(capture, "flatpak-9.args")), "Dolphin.Display.Fullscreen=True")), "dolphin help should not receive fullscreen defaults")) {
@@ -22206,11 +22347,11 @@ int e2eLauncherSmoke(CliArgs* args) {
     }
     e2eSeedFile(emulatorProfilePath(project, "RetroArch/config/input.cfg"));
     e2eSeedFile(emulatorProfilePath(project, "RetroArch/retroarch.cfg"));
-    btrc_Vector_string* __list_975 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_975, "-L");
-    btrc_Vector_string_push(__list_975, "core.so");
-    btrc_Vector_string_push(__list_975, "game.gba");
-    if (!e2eRunOk(e2eRunLauncher(exe, home, project, roms, binDir, capture, fakeBwrap, "retroarch", __list_975), "launcher retroarch")) {
+    btrc_Vector_string* __list_981 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_981, "-L");
+    btrc_Vector_string_push(__list_981, "core.so");
+    btrc_Vector_string_push(__list_981, "game.gba");
+    if (!e2eRunOk(e2eRunLauncher(exe, home, project, roms, binDir, capture, fakeBwrap, "retroarch", __list_981), "launcher retroarch")) {
         return 1;
     }
     if (!e2eContains(FileSystem_readText(joinPath(capture, "retroarch.args")), "/usr/bin/retroarch", "retroarch executable")) {
@@ -22260,9 +22401,9 @@ int e2eLauncherSmoke(CliArgs* args) {
     char* fakeRouted = joinPath(binDir, "fake-emulator");
     FileSystem_writeText(fakeRouted, __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat("#!/usr/bin/env sh\n", "set -eu\n")), "printf '%s\\n' \"$@\" > \"${SEMU_FLATPAK_CAPTURE:?}/routed-dolphin.args\"\n")));
     FileSystem_chmod(fakeRouted, 493);
-    btrc_Vector_string* __list_976 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_976, "game.iso");
-    if (!e2eRunOk(e2eRunRoutedLauncher(exe, home, project, roms, binDir, capture, "dolphin", fakeRouted, __list_976), "routed dolphin")) {
+    btrc_Vector_string* __list_982 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_982, "game.iso");
+    if (!e2eRunOk(e2eRunRoutedLauncher(exe, home, project, roms, binDir, capture, "dolphin", fakeRouted, __list_982), "routed dolphin")) {
         return 1;
     }
     if (!e2eContains(FileSystem_readText(joinPath(capture, "routed-dolphin.args")), "Dolphin.Display.Fullscreen=True", "routed dolphin fullscreen config")) {
@@ -22280,9 +22421,9 @@ int e2eLauncherSmoke(CliArgs* args) {
     char* fakeCemu = joinPath(binDir, "fake-cemu");
     FileSystem_writeText(fakeCemu, __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat("#!/usr/bin/env sh\n", "set -eu\n")), "printf '%s\\n' \"$@\" > \"${SEMU_FLATPAK_CAPTURE:?}/routed-cemu.args\"\n")));
     FileSystem_chmod(fakeCemu, 493);
-    btrc_Vector_string* __list_977 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_977, "game.wua");
-    if (!e2eRunOk(e2eRunRoutedLauncher(exe, home, project, roms, binDir, capture, "cemu", fakeCemu, __list_977), "routed cemu")) {
+    btrc_Vector_string* __list_983 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_983, "game.wua");
+    if (!e2eRunOk(e2eRunRoutedLauncher(exe, home, project, roms, binDir, capture, "cemu", fakeCemu, __list_983), "routed cemu")) {
         return 1;
     }
     char* routedCemuSettings = joinPath(launcherRoutedStateRoot(project, "cemu"), "config/Cemu/settings.xml");
@@ -22298,9 +22439,9 @@ int e2eLauncherSmoke(CliArgs* args) {
     char* fakeRyujinx = joinPath(binDir, "fake-ryujinx");
     FileSystem_writeText(fakeRyujinx, __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat("#!/usr/bin/env sh\n", "set -eu\n")), "printf '%s\\n' \"$@\" > \"${SEMU_FLATPAK_CAPTURE:?}/routed-ryujinx.args\"\n")));
     FileSystem_chmod(fakeRyujinx, 493);
-    btrc_Vector_string* __list_978 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_978, "game.nsp");
-    if (!e2eRunOk(e2eRunRoutedLauncher(exe, home, project, roms, binDir, capture, "ryujinx", fakeRyujinx, __list_978), "routed ryujinx")) {
+    btrc_Vector_string* __list_984 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_984, "game.nsp");
+    if (!e2eRunOk(e2eRunRoutedLauncher(exe, home, project, roms, binDir, capture, "ryujinx", fakeRyujinx, __list_984), "routed ryujinx")) {
         return 1;
     }
     char* routedRyujinxRoot = joinPath(launcherRoutedStateRoot(project, "ryujinx"), "config/Ryujinx");
@@ -22324,13 +22465,13 @@ bool e2eWriteFakeN3dsRom(char* path, bool noCrypto, bool decrypted) {
     ensureDir(PathTools_dirname(path));
     BinaryEditor* editor = BinaryEditor_new(path, "w+b");
     if (!BinaryEditor_ok(editor)) {
-        bool __btrc_ret_979 = false;
+        bool __btrc_ret_985 = false;
         if (editor != NULL) {
             if ((--editor->__rc) <= 0) {
                 BinaryEditor_destroy(editor);
             }
         }
-        return __btrc_ret_979;
+        return __btrc_ret_985;
     }
     bool ok = true;
     long partOffset = 0x200;
@@ -22361,9 +22502,9 @@ ExecResult* e2eRunN3dsNoCrypto(char* exe, char* input, char* outputDir, btrc_Vec
     if (((int)strlen(outputDir)) > 0) {
         Command_flag(command, "-o", outputDir);
     }
-    int __n_981 = btrc_Vector_string_iterLen(extraArgs);
-    for (int __i_980 = 0; (__i_980 < __n_981); (__i_980++)) {
-        char* arg = btrc_Vector_string_iterGet(extraArgs, __i_980);
+    int __n_987 = btrc_Vector_string_iterLen(extraArgs);
+    for (int __i_986 = 0; (__i_986 < __n_987); (__i_986++)) {
+        char* arg = btrc_Vector_string_iterGet(extraArgs, __i_986);
         Command_arg(command, arg);
     }
     UnixShell* shell = UnixShell_new();
@@ -22383,9 +22524,9 @@ ExecResult* e2eRunN3dsNoCrypto(char* exe, char* input, char* outputDir, btrc_Vec
 
 ExecResult* e2eRunDecrypt3dsNoCrypto(char* exe, char* input, btrc_Vector_string* extraArgs) {
     Command* command = Command_check(Command_capture(Command_arg(Command_arg(Command_arg(Command_envVar(Command_envVar(Command_new(exe), "SEMU_BIN", exe), "PATH", "/usr/bin:/bin"), "utils"), "decrypt3ds"), input), true), false);
-    int __n_983 = btrc_Vector_string_iterLen(extraArgs);
-    for (int __i_982 = 0; (__i_982 < __n_983); (__i_982++)) {
-        char* arg = btrc_Vector_string_iterGet(extraArgs, __i_982);
+    int __n_989 = btrc_Vector_string_iterLen(extraArgs);
+    for (int __i_988 = 0; (__i_988 < __n_989); (__i_988++)) {
+        char* arg = btrc_Vector_string_iterGet(extraArgs, __i_988);
         Command_arg(command, arg);
     }
     UnixShell* shell = UnixShell_new();
@@ -22428,9 +22569,9 @@ int e2eN3dsNoCryptoSmoke(CliArgs* args) {
     if (!e2eOk(e2eWriteFakeN3dsRom(externalOkPath, true, true), "fake external OK 3DS ROM")) {
         return 1;
     }
-    btrc_Vector_string* __list_984 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_984, "--check");
-    ExecResult* check = e2eRunN3dsNoCrypto(exe, input, "", __list_984);
+    btrc_Vector_string* __list_990 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_990, "--check");
+    ExecResult* check = e2eRunN3dsNoCrypto(exe, input, "", __list_990);
     if (!e2eRunOk(check, "n3ds-nocrypto check")) {
         return 1;
     }
@@ -22440,9 +22581,9 @@ int e2eN3dsNoCryptoSmoke(CliArgs* args) {
     if (!e2eContains(ExecResult_stdout(check), "OK:        already-ok.3ds", "n3ds-nocrypto OK output")) {
         return 1;
     }
-    btrc_Vector_string* __list_986 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_986, "--check");
-    if (!e2eRunOk(e2eRunDecrypt3dsNoCrypto(exe, input, __list_986), "decrypt3ds compatibility check")) {
+    btrc_Vector_string* __list_992 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_992, "--check");
+    if (!e2eRunOk(e2eRunDecrypt3dsNoCrypto(exe, input, __list_992), "decrypt3ds compatibility check")) {
         return 1;
     }
     btrc_Vector_string* noArgs = btrc_Vector_string_new();
@@ -22459,60 +22600,60 @@ int e2eN3dsNoCryptoSmoke(CliArgs* args) {
     int cryptoMethod = BinaryReader_readU8(reader, ((0x200 + 0x100) + 0x8b));
     BinaryReader_close(reader);
     if (!e2eOk(n3dsNoCryptoFlag(flags), "fixed fake ROM NoCrypto flag missing")) {
-        int __btrc_ret_987 = 1;
+        int __btrc_ret_993 = 1;
         if (reader != NULL) {
             if ((--reader->__rc) <= 0) {
                 BinaryReader_destroy(reader);
             }
         }
-        return __btrc_ret_987;
+        return __btrc_ret_993;
     }
     if (!e2eOk((cryptoMethod == 0), "fixed fake ROM crypto method not cleared")) {
-        int __btrc_ret_988 = 1;
+        int __btrc_ret_994 = 1;
         if (reader != NULL) {
             if ((--reader->__rc) <= 0) {
                 BinaryReader_destroy(reader);
             }
         }
-        return __btrc_ret_988;
+        return __btrc_ret_994;
     }
     if (!e2eOk((strcmp(checkN3dsRom(joinPath(output, "already-ok.3ds"))->status, "OK") == 0), "already OK fake ROM copy")) {
-        int __btrc_ret_989 = 1;
+        int __btrc_ret_995 = 1;
         if (reader != NULL) {
             if ((--reader->__rc) <= 0) {
                 BinaryReader_destroy(reader);
             }
         }
-        return __btrc_ret_989;
+        return __btrc_ret_995;
     }
     writeSyncDefaults(project, externalRoms);
     ExecResult* doctor = e2eRunDoctor(exe, home, project);
     if (!e2eRunOk(doctor, "doctor configured n3ds preflight")) {
-        int __btrc_ret_990 = 1;
+        int __btrc_ret_996 = 1;
         if (reader != NULL) {
             if ((--reader->__rc) <= 0) {
                 BinaryReader_destroy(reader);
             }
         }
-        return __btrc_ret_990;
+        return __btrc_ret_996;
     }
     if (!e2eContains(ExecResult_stdout(doctor), "OK n3ds/external-ok.3ds", "doctor should preflight configured external n3ds ROMs")) {
-        int __btrc_ret_991 = 1;
+        int __btrc_ret_997 = 1;
         if (reader != NULL) {
             if ((--reader->__rc) <= 0) {
                 BinaryReader_destroy(reader);
             }
         }
-        return __btrc_ret_991;
+        return __btrc_ret_997;
     }
     printf("%s\n", "OK BTRC n3ds-nocrypto smoke");
-    int __btrc_ret_992 = 0;
+    int __btrc_ret_998 = 0;
     if (reader != NULL) {
         if ((--reader->__rc) <= 0) {
             BinaryReader_destroy(reader);
         }
     }
-    return __btrc_ret_992;
+    return __btrc_ret_998;
     if (reader != NULL) {
         if ((--reader->__rc) <= 0) {
             BinaryReader_destroy(reader);
@@ -22546,10 +22687,10 @@ int keymapCommand(CliArgs* args) {
     char* source = defaultKeymapSource();
     if (((int)strlen(sourcePath)) > 0) {
         if (!FileSystem_exists(sourcePath)) {
-            int __fstr_995_len = snprintf(NULL, 0, "error 0:0 keymap source not found: %s", sourcePath);
-            char* __fstr_995_buf = __btrc_str_track(((char*)malloc((__fstr_995_len + 1))));
-            snprintf(__fstr_995_buf, (__fstr_995_len + 1), "error 0:0 keymap source not found: %s", sourcePath);
-            printf("%s\n", __fstr_995_buf);
+            int __fstr_1001_len = snprintf(NULL, 0, "error 0:0 keymap source not found: %s", sourcePath);
+            char* __fstr_1001_buf = __btrc_str_track(((char*)malloc((__fstr_1001_len + 1))));
+            snprintf(__fstr_1001_buf, (__fstr_1001_len + 1), "error 0:0 keymap source not found: %s", sourcePath);
+            printf("%s\n", __fstr_1001_buf);
             return 1;
         }
         (source = FileSystem_readText(sourcePath));
@@ -22561,57 +22702,57 @@ int keymapCommand(CliArgs* args) {
     if (strcmp(mode, "validate") == 0) {
         if (KeymapErrors_count(errors) == 0) {
             printf("%s\n", "OK keymap steam_deck");
-            int __btrc_ret_996 = 0;
+            int __btrc_ret_1002 = 0;
             if (errors != NULL) {
                 if ((--errors->__rc) <= 0) {
                     KeymapErrors_destroy(errors);
                 }
             }
-            return __btrc_ret_996;
+            return __btrc_ret_1002;
         }
         for (int i = 0; (i < KeymapErrors_count(errors)); (i++)) {
-            int __fstr_999_len = snprintf(NULL, 0, "%s %d:%d %s", btrc_Vector_string_get(errors->levels, i), btrc_Vector_int_get(errors->lines, i), btrc_Vector_int_get(errors->columns, i), btrc_Vector_string_get(errors->messages, i));
-            char* __fstr_999_buf = __btrc_str_track(((char*)malloc((__fstr_999_len + 1))));
-            snprintf(__fstr_999_buf, (__fstr_999_len + 1), "%s %d:%d %s", btrc_Vector_string_get(errors->levels, i), btrc_Vector_int_get(errors->lines, i), btrc_Vector_int_get(errors->columns, i), btrc_Vector_string_get(errors->messages, i));
-            printf("%s\n", __fstr_999_buf);
+            int __fstr_1005_len = snprintf(NULL, 0, "%s %d:%d %s", btrc_Vector_string_get(errors->levels, i), btrc_Vector_int_get(errors->lines, i), btrc_Vector_int_get(errors->columns, i), btrc_Vector_string_get(errors->messages, i));
+            char* __fstr_1005_buf = __btrc_str_track(((char*)malloc((__fstr_1005_len + 1))));
+            snprintf(__fstr_1005_buf, (__fstr_1005_len + 1), "%s %d:%d %s", btrc_Vector_string_get(errors->levels, i), btrc_Vector_int_get(errors->lines, i), btrc_Vector_int_get(errors->columns, i), btrc_Vector_string_get(errors->messages, i));
+            printf("%s\n", __fstr_1005_buf);
         }
-        int __btrc_ret_1000 = 1;
+        int __btrc_ret_1006 = 1;
         if (errors != NULL) {
             if ((--errors->__rc) <= 0) {
                 KeymapErrors_destroy(errors);
             }
         }
-        return __btrc_ret_1000;
+        return __btrc_ret_1006;
     }
     if (strcmp(mode, "render") == 0) {
         if (KeymapErrors_count(errors) > 0) {
             for (int i = 0; (i < KeymapErrors_count(errors)); (i++)) {
-                int __fstr_1003_len = snprintf(NULL, 0, "%s %d:%d %s", btrc_Vector_string_get(errors->levels, i), btrc_Vector_int_get(errors->lines, i), btrc_Vector_int_get(errors->columns, i), btrc_Vector_string_get(errors->messages, i));
-                char* __fstr_1003_buf = __btrc_str_track(((char*)malloc((__fstr_1003_len + 1))));
-                snprintf(__fstr_1003_buf, (__fstr_1003_len + 1), "%s %d:%d %s", btrc_Vector_string_get(errors->levels, i), btrc_Vector_int_get(errors->lines, i), btrc_Vector_int_get(errors->columns, i), btrc_Vector_string_get(errors->messages, i));
-                printf("%s\n", __fstr_1003_buf);
+                int __fstr_1009_len = snprintf(NULL, 0, "%s %d:%d %s", btrc_Vector_string_get(errors->levels, i), btrc_Vector_int_get(errors->lines, i), btrc_Vector_int_get(errors->columns, i), btrc_Vector_string_get(errors->messages, i));
+                char* __fstr_1009_buf = __btrc_str_track(((char*)malloc((__fstr_1009_len + 1))));
+                snprintf(__fstr_1009_buf, (__fstr_1009_len + 1), "%s %d:%d %s", btrc_Vector_string_get(errors->levels, i), btrc_Vector_int_get(errors->lines, i), btrc_Vector_int_get(errors->columns, i), btrc_Vector_string_get(errors->messages, i));
+                printf("%s\n", __fstr_1009_buf);
             }
-            int __btrc_ret_1004 = 1;
+            int __btrc_ret_1010 = 1;
             if (errors != NULL) {
                 if ((--errors->__rc) <= 0) {
                     KeymapErrors_destroy(errors);
                 }
             }
-            return __btrc_ret_1004;
+            return __btrc_ret_1010;
         }
         char* target = CliArgs_valueAfter(args, "--target", "manifest");
         if (!isKeymapTarget(target)) {
-            int __fstr_1007_len = snprintf(NULL, 0, "error 0:0 unknown keymap target '%s'", target);
-            char* __fstr_1007_buf = __btrc_str_track(((char*)malloc((__fstr_1007_len + 1))));
-            snprintf(__fstr_1007_buf, (__fstr_1007_len + 1), "error 0:0 unknown keymap target '%s'", target);
-            printf("%s\n", __fstr_1007_buf);
-            int __btrc_ret_1008 = 1;
+            int __fstr_1013_len = snprintf(NULL, 0, "error 0:0 unknown keymap target '%s'", target);
+            char* __fstr_1013_buf = __btrc_str_track(((char*)malloc((__fstr_1013_len + 1))));
+            snprintf(__fstr_1013_buf, (__fstr_1013_len + 1), "error 0:0 unknown keymap target '%s'", target);
+            printf("%s\n", __fstr_1013_buf);
+            int __btrc_ret_1014 = 1;
             if (errors != NULL) {
                 if ((--errors->__rc) <= 0) {
                     KeymapErrors_destroy(errors);
                 }
             }
-            return __btrc_ret_1008;
+            return __btrc_ret_1014;
         }
         char* rendered = renderKeymap(ir, target);
         char* output = CliArgs_valueAfter(args, "--output", "");
@@ -22620,51 +22761,16 @@ int keymapCommand(CliArgs* args) {
         } else {
             printf("%s\n", rendered);
         }
-        int __btrc_ret_1009 = 0;
+        int __btrc_ret_1015 = 0;
         if (errors != NULL) {
             if ((--errors->__rc) <= 0) {
                 KeymapErrors_destroy(errors);
             }
         }
-        return __btrc_ret_1009;
+        return __btrc_ret_1015;
     }
     if (strcmp(mode, "ui") == 0) {
-        int __btrc_ret_1010 = keymapUi(project);
-        if (errors != NULL) {
-            if ((--errors->__rc) <= 0) {
-                KeymapErrors_destroy(errors);
-            }
-        }
-        return __btrc_ret_1010;
-    }
-    if (strcmp(mode, "get") == 0) {
-        if (CliArgs_count(args) < 3) {
-            printf("%s\n", "error 0:0 keymap get needs ACTION");
-            int __btrc_ret_1011 = 1;
-            if (errors != NULL) {
-                if ((--errors->__rc) <= 0) {
-                    KeymapErrors_destroy(errors);
-                }
-            }
-            return __btrc_ret_1011;
-        }
-        char* actionId = CliArgs_get(args, 2);
-        if (!keymapIrHasAction(ir, actionId)) {
-            int __fstr_1014_len = snprintf(NULL, 0, "error 0:0 unknown keymap action '%s'", actionId);
-            char* __fstr_1014_buf = __btrc_str_track(((char*)malloc((__fstr_1014_len + 1))));
-            snprintf(__fstr_1014_buf, (__fstr_1014_len + 1), "error 0:0 unknown keymap action '%s'", actionId);
-            printf("%s\n", __fstr_1014_buf);
-            int __btrc_ret_1015 = 1;
-            if (errors != NULL) {
-                if ((--errors->__rc) <= 0) {
-                    KeymapErrors_destroy(errors);
-                }
-            }
-            return __btrc_ret_1015;
-        }
-        printf("%s\n", __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(actionId, "=")), irActionCommand(ir, actionId))));
-        printf("%s\n", __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(actionId, ".binding=")), irBindingCombo(ir, actionId))));
-        int __btrc_ret_1016 = 0;
+        int __btrc_ret_1016 = keymapUi(project);
         if (errors != NULL) {
             if ((--errors->__rc) <= 0) {
                 KeymapErrors_destroy(errors);
@@ -22672,9 +22778,9 @@ int keymapCommand(CliArgs* args) {
         }
         return __btrc_ret_1016;
     }
-    if ((strcmp(mode, "put") == 0) || (strcmp(mode, "set") == 0)) {
-        if (CliArgs_count(args) < 4) {
-            printf("%s\n", "error 0:0 keymap put needs ACTION KEYS");
+    if (strcmp(mode, "get") == 0) {
+        if (CliArgs_count(args) < 3) {
+            printf("%s\n", "error 0:0 keymap get needs ACTION");
             int __btrc_ret_1017 = 1;
             if (errors != NULL) {
                 if ((--errors->__rc) <= 0) {
@@ -22684,46 +22790,11 @@ int keymapCommand(CliArgs* args) {
             return __btrc_ret_1017;
         }
         char* actionId = CliArgs_get(args, 2);
-        char* command = CliArgs_get(args, 3);
-        if (!keymapPutActionCommand(project, actionId, command)) {
-            int __btrc_ret_1018 = 1;
-            if (errors != NULL) {
-                if ((--errors->__rc) <= 0) {
-                    KeymapErrors_destroy(errors);
-                }
-            }
-            return __btrc_ret_1018;
-        }
-        printf("%s\n", __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(actionId, "=")), irActionCommand(projectKeymapUiIr(project), actionId))));
-        if (CliArgs_has(args, "--apply")) {
-            lifecycleReconfigure(project, "");
-            printf("%s\n", "OK settings applied");
-        }
-        int __btrc_ret_1019 = 0;
-        if (errors != NULL) {
-            if ((--errors->__rc) <= 0) {
-                KeymapErrors_destroy(errors);
-            }
-        }
-        return __btrc_ret_1019;
-    }
-    if ((strcmp(mode, "bind") == 0) || (strcmp(mode, "binding") == 0)) {
-        if ((CliArgs_count(args) < 4) && (((int)strlen(CliArgs_valueAfter(args, "--combo", ""))) == 0)) {
-            printf("%s\n", "error 0:0 keymap bind needs ACTION COMBO");
-            int __btrc_ret_1020 = 1;
-            if (errors != NULL) {
-                if ((--errors->__rc) <= 0) {
-                    KeymapErrors_destroy(errors);
-                }
-            }
-            return __btrc_ret_1020;
-        }
-        char* actionId = CliArgs_get(args, 2);
-        char* combo = CliArgs_valueAfter(args, "--combo", "");
-        if (((int)strlen(combo)) == 0) {
-            (combo = CliArgs_get(args, 3));
-        }
-        if (!keymapPutBindingCombo(project, actionId, combo)) {
+        if (!keymapIrHasAction(ir, actionId)) {
+            int __fstr_1020_len = snprintf(NULL, 0, "error 0:0 unknown keymap action '%s'", actionId);
+            char* __fstr_1020_buf = __btrc_str_track(((char*)malloc((__fstr_1020_len + 1))));
+            snprintf(__fstr_1020_buf, (__fstr_1020_len + 1), "error 0:0 unknown keymap action '%s'", actionId);
+            printf("%s\n", __fstr_1020_buf);
             int __btrc_ret_1021 = 1;
             if (errors != NULL) {
                 if ((--errors->__rc) <= 0) {
@@ -22732,11 +22803,8 @@ int keymapCommand(CliArgs* args) {
             }
             return __btrc_ret_1021;
         }
-        printf("%s\n", __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(actionId, ".binding=")), irBindingCombo(projectKeymapUiIr(project), actionId))));
-        if (CliArgs_has(args, "--apply")) {
-            lifecycleReconfigure(project, "");
-            printf("%s\n", "OK settings applied");
-        }
+        printf("%s\n", __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(actionId, "=")), irActionCommand(ir, actionId))));
+        printf("%s\n", __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(actionId, ".binding=")), irBindingCombo(ir, actionId))));
         int __btrc_ret_1022 = 0;
         if (errors != NULL) {
             if ((--errors->__rc) <= 0) {
@@ -22745,14 +22813,87 @@ int keymapCommand(CliArgs* args) {
         }
         return __btrc_ret_1022;
     }
+    if ((strcmp(mode, "put") == 0) || (strcmp(mode, "set") == 0)) {
+        if (CliArgs_count(args) < 4) {
+            printf("%s\n", "error 0:0 keymap put needs ACTION KEYS");
+            int __btrc_ret_1023 = 1;
+            if (errors != NULL) {
+                if ((--errors->__rc) <= 0) {
+                    KeymapErrors_destroy(errors);
+                }
+            }
+            return __btrc_ret_1023;
+        }
+        char* actionId = CliArgs_get(args, 2);
+        char* command = CliArgs_get(args, 3);
+        if (!keymapPutActionCommand(project, actionId, command)) {
+            int __btrc_ret_1024 = 1;
+            if (errors != NULL) {
+                if ((--errors->__rc) <= 0) {
+                    KeymapErrors_destroy(errors);
+                }
+            }
+            return __btrc_ret_1024;
+        }
+        printf("%s\n", __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(actionId, "=")), irActionCommand(projectKeymapUiIr(project), actionId))));
+        if (CliArgs_has(args, "--apply")) {
+            lifecycleReconfigure(project, "");
+            printf("%s\n", "OK settings applied");
+        }
+        int __btrc_ret_1025 = 0;
+        if (errors != NULL) {
+            if ((--errors->__rc) <= 0) {
+                KeymapErrors_destroy(errors);
+            }
+        }
+        return __btrc_ret_1025;
+    }
+    if ((strcmp(mode, "bind") == 0) || (strcmp(mode, "binding") == 0)) {
+        if ((CliArgs_count(args) < 4) && (((int)strlen(CliArgs_valueAfter(args, "--combo", ""))) == 0)) {
+            printf("%s\n", "error 0:0 keymap bind needs ACTION COMBO");
+            int __btrc_ret_1026 = 1;
+            if (errors != NULL) {
+                if ((--errors->__rc) <= 0) {
+                    KeymapErrors_destroy(errors);
+                }
+            }
+            return __btrc_ret_1026;
+        }
+        char* actionId = CliArgs_get(args, 2);
+        char* combo = CliArgs_valueAfter(args, "--combo", "");
+        if (((int)strlen(combo)) == 0) {
+            (combo = CliArgs_get(args, 3));
+        }
+        if (!keymapPutBindingCombo(project, actionId, combo)) {
+            int __btrc_ret_1027 = 1;
+            if (errors != NULL) {
+                if ((--errors->__rc) <= 0) {
+                    KeymapErrors_destroy(errors);
+                }
+            }
+            return __btrc_ret_1027;
+        }
+        printf("%s\n", __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(actionId, ".binding=")), irBindingCombo(projectKeymapUiIr(project), actionId))));
+        if (CliArgs_has(args, "--apply")) {
+            lifecycleReconfigure(project, "");
+            printf("%s\n", "OK settings applied");
+        }
+        int __btrc_ret_1028 = 0;
+        if (errors != NULL) {
+            if ((--errors->__rc) <= 0) {
+                KeymapErrors_destroy(errors);
+            }
+        }
+        return __btrc_ret_1028;
+    }
     printUsage();
-    int __btrc_ret_1023 = 1;
+    int __btrc_ret_1029 = 1;
     if (errors != NULL) {
         if ((--errors->__rc) <= 0) {
             KeymapErrors_destroy(errors);
         }
     }
-    return __btrc_ret_1023;
+    return __btrc_ret_1029;
     if (errors != NULL) {
         if ((--errors->__rc) <= 0) {
             KeymapErrors_destroy(errors);
@@ -22767,10 +22908,10 @@ int screenshotCommand(CliArgs* args, char* project) {
     }
     if ((strcmp(mode, "setup") == 0) || (strcmp(mode, "defaults") == 0)) {
         writeScreenshotDefaults(project);
-        int __fstr_1026_len = snprintf(NULL, 0, "OK screenshot defaults: %s", screenshotConfigPath(project));
-        char* __fstr_1026_buf = __btrc_str_track(((char*)malloc((__fstr_1026_len + 1))));
-        snprintf(__fstr_1026_buf, (__fstr_1026_len + 1), "OK screenshot defaults: %s", screenshotConfigPath(project));
-        printf("%s\n", __fstr_1026_buf);
+        int __fstr_1032_len = snprintf(NULL, 0, "OK screenshot defaults: %s", screenshotConfigPath(project));
+        char* __fstr_1032_buf = __btrc_str_track(((char*)malloc((__fstr_1032_len + 1))));
+        snprintf(__fstr_1032_buf, (__fstr_1032_len + 1), "OK screenshot defaults: %s", screenshotConfigPath(project));
+        printf("%s\n", __fstr_1032_buf);
         return 0;
     }
     if (strcmp(mode, "status") == 0) {
@@ -22816,10 +22957,10 @@ int syncCommand(CliArgs* args, char* project) {
         }
         SyncSettingSpec* spec = SyncSettingsRegistry_find(CliArgs_get(args, 2));
         if (!SyncSettingSpec_known(spec)) {
-            int __fstr_1029_len = snprintf(NULL, 0, "error 0:0 unknown sync setting '%s'", CliArgs_get(args, 2));
-            char* __fstr_1029_buf = __btrc_str_track(((char*)malloc((__fstr_1029_len + 1))));
-            snprintf(__fstr_1029_buf, (__fstr_1029_len + 1), "error 0:0 unknown sync setting '%s'", CliArgs_get(args, 2));
-            printf("%s\n", __fstr_1029_buf);
+            int __fstr_1035_len = snprintf(NULL, 0, "error 0:0 unknown sync setting '%s'", CliArgs_get(args, 2));
+            char* __fstr_1035_buf = __btrc_str_track(((char*)malloc((__fstr_1035_len + 1))));
+            snprintf(__fstr_1035_buf, (__fstr_1035_len + 1), "error 0:0 unknown sync setting '%s'", CliArgs_get(args, 2));
+            printf("%s\n", __fstr_1035_buf);
             return 1;
         }
         printf("%s\n", __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(spec->key, "=")), syncSettingValue(project, spec))));
@@ -22933,23 +23074,23 @@ int deckLaunch(char* project) {
     char* env = __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat("SEMU_PROJECT_DIR=", ShellWords_quote(project))), " SEMU_ROMS_DIR=")), ShellWords_quote(configuredRomsRoot(project))));
     if (commandExists("es-de")) {
         UnixShell_runRaw(shell, __btrc_str_track(__btrc_strcat(env, " es-de")), false, false, "");
-        int __btrc_ret_1030 = 0;
+        int __btrc_ret_1036 = 0;
         if (shell != NULL) {
             if ((--shell->__rc) <= 0) {
                 UnixShell_destroy(shell);
             }
         }
-        return __btrc_ret_1030;
+        return __btrc_ret_1036;
     } else {
         printf("%s\n", "MISSING es-de: use the bundled AppImage or install ES-DE");
     }
-    int __btrc_ret_1031 = 127;
+    int __btrc_ret_1037 = 127;
     if (shell != NULL) {
         if ((--shell->__rc) <= 0) {
             UnixShell_destroy(shell);
         }
     }
-    return __btrc_ret_1031;
+    return __btrc_ret_1037;
     if (shell != NULL) {
         if ((--shell->__rc) <= 0) {
             UnixShell_destroy(shell);
@@ -22987,21 +23128,21 @@ int deckCommand(CliArgs* args, char* project) {
         KeymapErrors* errors = KeymapErrors_new();
         compileKeymap((FileSystem_exists(keymapSourcePath(project)) ? FileSystem_readText(keymapSourcePath(project)) : defaultKeymapSource()), errors);
         if (KeymapErrors_count(errors) > 0) {
-            int __btrc_ret_1032 = 1;
+            int __btrc_ret_1038 = 1;
             if (errors != NULL) {
                 if ((--errors->__rc) <= 0) {
                     KeymapErrors_destroy(errors);
                 }
             }
-            return __btrc_ret_1032;
+            return __btrc_ret_1038;
         }
-        int __btrc_ret_1033 = 0;
+        int __btrc_ret_1039 = 0;
         if (errors != NULL) {
             if ((--errors->__rc) <= 0) {
                 KeymapErrors_destroy(errors);
             }
         }
-        return __btrc_ret_1033;
+        return __btrc_ret_1039;
         if (errors != NULL) {
             if ((--errors->__rc) <= 0) {
                 KeymapErrors_destroy(errors);
@@ -23049,10 +23190,10 @@ int steamInputCommand(CliArgs* args, char* project) {
         ensureDir(destination);
         copySteamInputTemplate(project, destination, "neptune-simple.vdf");
         copySteamInputTemplate(project, destination, "neptune-full.vdf");
-        int __fstr_1036_len = snprintf(NULL, 0, "OK steam-input templates: %s", destination);
-        char* __fstr_1036_buf = __btrc_str_track(((char*)malloc((__fstr_1036_len + 1))));
-        snprintf(__fstr_1036_buf, (__fstr_1036_len + 1), "OK steam-input templates: %s", destination);
-        printf("%s\n", __fstr_1036_buf);
+        int __fstr_1042_len = snprintf(NULL, 0, "OK steam-input templates: %s", destination);
+        char* __fstr_1042_buf = __btrc_str_track(((char*)malloc((__fstr_1042_len + 1))));
+        snprintf(__fstr_1042_buf, (__fstr_1042_len + 1), "OK steam-input templates: %s", destination);
+        printf("%s\n", __fstr_1042_buf);
         return 0;
     }
     if ((strcmp(mode, "status") == 0) || (strcmp(mode, "validate") == 0)) {
@@ -23092,10 +23233,10 @@ int configCommand(CliArgs* args, char* project) {
         if (!settingsPutValue(project, "roms.dir", roms)) {
             return 1;
         }
-        int __fstr_1039_len = snprintf(NULL, 0, "OK owned roms_dir: %s", configuredRomsRoot(project));
-        char* __fstr_1039_buf = __btrc_str_track(((char*)malloc((__fstr_1039_len + 1))));
-        snprintf(__fstr_1039_buf, (__fstr_1039_len + 1), "OK owned roms_dir: %s", configuredRomsRoot(project));
-        printf("%s\n", __fstr_1039_buf);
+        int __fstr_1045_len = snprintf(NULL, 0, "OK owned roms_dir: %s", configuredRomsRoot(project));
+        char* __fstr_1045_buf = __btrc_str_track(((char*)malloc((__fstr_1045_len + 1))));
+        snprintf(__fstr_1045_buf, (__fstr_1045_len + 1), "OK owned roms_dir: %s", configuredRomsRoot(project));
+        printf("%s\n", __fstr_1045_buf);
         if (CliArgs_has(args, "--apply")) {
             lifecycleReconfigure(project, "");
             printf("%s\n", "OK settings applied");
@@ -23108,10 +23249,10 @@ int configCommand(CliArgs* args, char* project) {
     if (strcmp(mode, "show") == 0) {
         reportFile("sync_config", syncConfigPath(project));
         reportFile("settings_config", semuSettingsPath(project));
-        int __fstr_1042_len = snprintf(NULL, 0, "  roms_dir: %s", configuredRomsRoot(project));
-        char* __fstr_1042_buf = __btrc_str_track(((char*)malloc((__fstr_1042_len + 1))));
-        snprintf(__fstr_1042_buf, (__fstr_1042_len + 1), "  roms_dir: %s", configuredRomsRoot(project));
-        printf("%s\n", __fstr_1042_buf);
+        int __fstr_1048_len = snprintf(NULL, 0, "  roms_dir: %s", configuredRomsRoot(project));
+        char* __fstr_1048_buf = __btrc_str_track(((char*)malloc((__fstr_1048_len + 1))));
+        snprintf(__fstr_1048_buf, (__fstr_1048_len + 1), "  roms_dir: %s", configuredRomsRoot(project));
+        printf("%s\n", __fstr_1048_buf);
         return 0;
     }
     printUsage();
@@ -23135,44 +23276,44 @@ int main(int argc, char** argv) {
     char* project = CliArgs_valueAfter(args, "--project", Environment_get("SEMU_PROJECT_DIR", "."));
     char* programLauncher = launcherNameFromProgram(args->program);
     if (((int)strlen(programLauncher)) > 0) {
-        int __btrc_ret_1043 = launcherRunEmulator(project, programLauncher, launcherPassthroughArgs(args));
+        int __btrc_ret_1049 = launcherRunEmulator(project, programLauncher, launcherPassthroughArgs(args));
         if (args != NULL) {
             if ((--args->__rc) <= 0) {
                 CliArgs_destroy(args);
             }
         }
-        return __btrc_ret_1043;
+        return __btrc_ret_1049;
     }
     if ((strcmp(command, "") == 0) || (strcmp(command, "manifest") == 0)) {
         char* output = CliArgs_valueAfter(args, "--output", "semu.json");
         writeGeneratedManifest(output);
-        int __btrc_ret_1044 = 0;
+        int __btrc_ret_1050 = 0;
         if (args != NULL) {
             if ((--args->__rc) <= 0) {
                 CliArgs_destroy(args);
             }
         }
-        return __btrc_ret_1044;
+        return __btrc_ret_1050;
     }
     if (strcmp(command, "bootstrap") == 0) {
         bootstrapSteamDeck(project);
-        int __btrc_ret_1045 = 0;
+        int __btrc_ret_1051 = 0;
         if (args != NULL) {
             if ((--args->__rc) <= 0) {
                 CliArgs_destroy(args);
             }
         }
-        return __btrc_ret_1045;
+        return __btrc_ret_1051;
     }
     if (strcmp(command, "doctor") == 0) {
         doctorSteamDeck(project);
-        int __btrc_ret_1046 = 0;
+        int __btrc_ret_1052 = 0;
         if (args != NULL) {
             if ((--args->__rc) <= 0) {
                 CliArgs_destroy(args);
             }
         }
-        return __btrc_ret_1046;
+        return __btrc_ret_1052;
     }
     if (strcmp(command, "deck") == 0) {
         int status = deckCommand(args, project);
@@ -23310,13 +23451,13 @@ int main(int argc, char** argv) {
         return status;
     }
     printUsage();
-    int __btrc_ret_1047 = 1;
+    int __btrc_ret_1053 = 1;
     if (args != NULL) {
         if ((--args->__rc) <= 0) {
             CliArgs_destroy(args);
         }
     }
-    return __btrc_ret_1047;
+    return __btrc_ret_1053;
     if (args != NULL) {
         if ((--args->__rc) <= 0) {
             CliArgs_destroy(args);
