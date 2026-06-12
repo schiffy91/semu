@@ -193,6 +193,7 @@ class SettingsEntries {
     class Vector<SettingsEntrySpec> all() {
         return [
             SettingsEntrySpec("Open Semu Settings.semu", "Open Settings UI", "ui"),
+            SettingsEntrySpec("Open Presentation Settings.semu", "Open Presentation Settings", "ui presentation"),
             SettingsEntrySpec("Use Steam Deck SD ROMs.semu", "Use Steam Deck SD ROMs", "put roms.dir /run/media/deck/SD apply"),
             SettingsEntrySpec("Apply Settings.semu", "Apply Settings", "apply"),
             SettingsEntrySpec("Toggle Integer Scaling.semu", "Toggle Integer Scaling", "toggle visual.integer_scaling apply"),
@@ -320,10 +321,85 @@ class SettingsEntryAction {
         return 1;
     }
 
+    public int runUi() {
+        string section = self.word(1);
+        if (section.len() == 0 || section.equals("settings")) {
+            return SettingsUi(self.project).run();
+        }
+        if (section.equals("presentation")) {
+            return presentationUi(self.project);
+        }
+        print("error 0:0 unknown settings UI section '" + section + "'");
+        return 1;
+    }
+
+    public int runPresentation() {
+        string mode = self.word(1);
+        if (mode.equals("ui")) {
+            return presentationUi(self.project);
+        }
+        if (mode.equals("put") || mode.equals("set")) {
+            string system = self.word(2);
+            string field = self.word(3);
+            string value = self.word(4);
+            if (system.len() == 0 || field.len() == 0 || value.len() == 0) {
+                print("error 0:0 settings entry presentation put needs SYSTEM FIELD VALUE");
+                return 1;
+            }
+            if (!presentationPutValue(self.project, system, field, value)) {
+                return 1;
+            }
+            print(system + "." + field + "=" + presentationConfigValue(self.project, system, field));
+            return self.applyIfRequested(5);
+        }
+        if (mode.equals("plan")) {
+            string system = self.word(2);
+            if (system.len() == 0) {
+                print("error 0:0 settings entry presentation plan needs SYSTEM");
+                return 1;
+            }
+            string plan = presentationPlanJson(self.project, system, "");
+            if (plan.len() == 0) {
+                print("error 0:0 unknown presentation system '" + system + "'");
+                return 1;
+            }
+            print(jsonPrettyText(plan).trim());
+            return 0;
+        }
+        if (mode.equals("state")) {
+            string system = self.word(2);
+            if (system.len() == 0) {
+                print("error 0:0 settings entry presentation state needs SYSTEM");
+                return 1;
+            }
+            string state = presentationStateJson(self.project, system, "");
+            if (state.len() == 0) {
+                print("error 0:0 unknown presentation system '" + system + "'");
+                return 1;
+            }
+            print(jsonPrettyText(state).trim());
+            return 0;
+        }
+        if (mode.equals("broadcast")) {
+            string system = self.word(2);
+            if (system.len() == 0) {
+                print("error 0:0 settings entry presentation broadcast needs SYSTEM");
+                return 1;
+            }
+            if (!presentationBroadcastState(self.project, system, "")) {
+                return 1;
+            }
+            print("OK presentation state: " + presentationStatePath(self.project, system));
+            return 0;
+        }
+        print("error 0:0 unknown settings presentation action '" + mode + "'");
+        return 1;
+    }
+
     public int run() {
         string verb = self.word(0);
         if (verb.equals("ui")) {
-            return SettingsUi(self.project).run();
+            return self.runUi();
         }
         if (verb.equals("apply")) {
             lifecycleReconfigure(self.project, "");
@@ -338,6 +414,9 @@ class SettingsEntryAction {
         }
         if (verb.equals("sync")) {
             return self.runSync();
+        }
+        if (verb.equals("presentation")) {
+            return self.runPresentation();
         }
         print("error 0:0 unknown settings entry action '" + verb + "'");
         return 1;
@@ -372,7 +451,7 @@ class SettingsUi {
             index++;
         }
         print("");
-        print("Commands: number = edit/toggle, a = apply, q = quit");
+        print("Commands: number = edit/toggle, p = presentation, a = apply, q = quit");
         print("Select:");
     }
 
@@ -384,6 +463,11 @@ class SettingsUi {
             choice = choice.trim();
             if (choice.len() == 0) { continue; }
             if (choice.equals("q") || choice.equals("quit")) { return 0; }
+            if (choice.equals("p") || choice.equals("presentation")) {
+                int status = presentationUi(self.project);
+                if (status != 0) { return status; }
+                continue;
+            }
             if (choice.equals("a") || choice.equals("apply")) {
                 lifecycleReconfigure(self.project, "");
                 print("OK settings applied");
@@ -533,6 +617,9 @@ int settingsCommand(CliArgs args, string project) {
         return 0;
     }
     if (mode.equals("ui")) {
+        if (args.count() > 2 && args.get(2).equals("presentation")) {
+            return presentationUi(project);
+        }
         return SettingsUi(project).run();
     }
     if (mode.equals("entry")) {

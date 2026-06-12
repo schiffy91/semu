@@ -160,12 +160,21 @@ ExecResult e2eRunPresentation(string exe, string home, string project, Vector<st
 }
 
 ExecResult e2eRunSettingsUiScript(string exe, string home, string project, string script) {
+    Vector<string> uiArgs = [];
+    return e2eRunSettingsUiScriptArgs(exe, home, project, uiArgs, script);
+}
+
+ExecResult e2eRunSettingsUiScriptArgs(string exe, string home, string project, Vector<string> uiArgs, string script) {
     string command = "printf %s " + ShellWords.quote(script)
         + " | SEMU_HOME=" + ShellWords.quote(home)
         + " SEMU_BIN=" + ShellWords.quote(exe)
         + " PATH=/usr/bin:/bin "
         + ShellWords.quote(exe)
-        + " settings ui --project " + ShellWords.quote(project);
+        + " settings ui";
+    for arg in uiArgs {
+        command = command + " " + ShellWords.quote(arg);
+    }
+    command = command + " --project " + ShellWords.quote(project);
     UnixShell shell = UnixShell();
     return shell.runRaw(command, true, false, "");
 }
@@ -542,7 +551,20 @@ int e2eSettingsSmoke(CliArgs args) {
     ExecResult uiEof = e2eRunSettingsUiScript(exe, home, project, "");
     if (!e2eRunOk(uiEof, "settings ui eof")) { return 1; }
 
+    ExecResult presentationUiEdit = e2eRunSettingsUiScriptArgs(exe, home, project, ["presentation"], "1\n10\nbezels/gb/ui-owned.json\nplan\nb\nq\n");
+    if (!e2eRunOk(presentationUiEdit, "presentation settings ui edit")) { return 1; }
+    if (!e2eContains(presentationUiEdit.stdout(), "Semu Presentation Settings", "presentation ui title")) { return 1; }
+    if (!e2eContains(presentationUiEdit.stdout(), "Edits update Semu-owned JSON", "presentation ui owned boundary")) { return 1; }
+    if (!e2eContains(presentationUiEdit.stdout(), "\"selected_bezel_file\": \"bezels/gb/ui-owned.json\"", "presentation ui plan")) { return 1; }
+    if (!e2eContains(FileSystem.readText(joinPath(presentationSettingsRoot(project), "gb.json")), "ui-owned", "presentation ui persisted owned config")) { return 1; }
+
     SettingsEntries.write(project);
+    string presentationEntry = joinPath(SettingsEntries.root(project), "Open Presentation Settings.semu");
+    if (!e2eContains(FileSystem.readText(presentationEntry), "ui presentation", "presentation ES-DE entry action")) { return 1; }
+    string presentationPutEntry = joinPath(SettingsEntries.root(project), "Set GB Bezel.semu");
+    FileSystem.writeText(presentationPutEntry, "presentation put gb bezel_file bezels/gb/from-entry.json\n");
+    if (!e2eRunOk(e2eRunSettings(exe, home, project, ["entry", presentationPutEntry]), "presentation settings ES-DE put entry")) { return 1; }
+    if (!e2eContains(FileSystem.readText(joinPath(presentationSettingsRoot(project), "gb.json")), "from-entry", "presentation entry persisted owned config")) { return 1; }
     string entry = joinPath(SettingsEntries.root(project), "Toggle Bezels.semu");
     if (!e2eRunOk(e2eRunSettings(exe, home, project, ["entry", entry]), "settings ES-DE entry")) { return 1; }
     if (!e2eContains(FileSystem.readText(semuSettingsPath(project)), "\"visual_bezels\": false", "settings entry toggled bezel setting")) { return 1; }

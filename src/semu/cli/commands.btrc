@@ -324,7 +324,13 @@ int configCommand(CliArgs args, string project) {
         print(f"OK roms_dir: {roms}");
         return 0;
     }
-    if (mode.equals("list") || mode.equals("get") || mode.equals("put") || mode.equals("set") || mode.equals("apply")) {
+    if (mode.equals("list")
+            || mode.equals("get")
+            || mode.equals("put")
+            || mode.equals("set")
+            || mode.equals("apply")
+            || mode.equals("ui")
+            || mode.equals("entry")) {
         return settingsCommand(args, project);
     }
     if (mode.equals("show")) {
