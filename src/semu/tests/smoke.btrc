@@ -144,6 +144,23 @@ ExecResult e2eRunSettings(string exe, string home, string project, Vector<string
     return result;
 }
 
+ExecResult e2eRunConfig(string exe, string home, string project, Vector<string> configArgs) {
+    Command command = Command(exe)
+        .envVar("SEMU_HOME", home)
+        .envVar("SEMU_BIN", exe)
+        .envVar("PATH", "/usr/bin:/bin")
+        .arg("config")
+        .capture(true)
+        .check(false);
+    for arg in configArgs {
+        command.arg(arg);
+    }
+    command.flag("--project", project);
+    UnixShell shell = UnixShell();
+    ExecResult result = shell.runCommand(command);
+    return result;
+}
+
 ExecResult e2eRunPresentation(string exe, string home, string project, Vector<string> presentationArgs) {
     Command command = Command(exe)
         .envVar("SEMU_HOME", home)
@@ -542,10 +559,13 @@ int e2eSettingsSmoke(CliArgs args) {
     string home = joinPath(tmp, "home");
     string sdRoot = joinPath(tmp, "sd-card");
     string normalizedRoms = joinPath(sdRoot, "Emulation/ES-DE/ES-DE/ROMs");
+    string configRoot = joinPath(tmp, "config-card");
+    string configRoms = joinPath(configRoot, "Emulation/ES-DE/ES-DE/ROMs");
     string exe = Environment.get("SEMU_BIN", args.program);
     ensureDir(project);
     ensureDir(home);
     ensureDir(normalizedRoms);
+    ensureDir(configRoms);
 
     if (!e2eRunOk(e2eRunSettings(exe, home, project, ["put", "visual.integer_scaling", "true"]), "settings put bool")) { return 1; }
     if (!e2eRunOk(e2eRunSettings(exe, home, project, ["put", "ui.theme", "deck-dark"]), "settings put string")) { return 1; }
@@ -554,6 +574,13 @@ int e2eSettingsSmoke(CliArgs args) {
     if (!e2eContains(list.stdout(), "visual.integer_scaling=true", "settings list bool")) { return 1; }
     if (!e2eContains(list.stdout(), "ui.theme=deck-dark", "settings list string")) { return 1; }
     if (!e2eOk(!e2eRunSettings(exe, home, project, ["put", "visual.integer_scaling", "maybe"]).ok(), "invalid boolean setting unexpectedly succeeded")) { return 1; }
+
+    if (!e2eRunOk(e2eRunConfig(exe, home, project, ["set-roms", configRoot]), "config set-roms source-only")) { return 1; }
+    if (!e2eContains(FileSystem.readText(syncConfigPath(project)), configRoms, "config set-roms persisted owned source")) { return 1; }
+    if (!e2eOk(!FileSystem.exists(joinPath(project, "ES-DE/es_settings.xml")), "config set-roms mutated generated ES-DE before apply")) { return 1; }
+    if (!e2eRunOk(e2eRunConfig(exe, home, project, ["set-roms", sdRoot, "--apply"]), "config set-roms apply")) { return 1; }
+    if (!e2eContains(FileSystem.readText(syncConfigPath(project)), normalizedRoms, "config set-roms apply persisted owned source")) { return 1; }
+    if (!e2eContains(FileSystem.readText(joinPath(project, "ES-DE/es_settings.xml")), normalizedRoms, "config set-roms apply regenerated ES-DE")) { return 1; }
 
     ExecResult uiEdit = e2eRunSettingsUiScript(exe, home, project, "1\n" + sdRoot + "\na\nq\n");
     if (!e2eRunOk(uiEdit, "settings ui edit/apply")) { return 1; }

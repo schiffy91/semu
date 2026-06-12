@@ -404,10 +404,14 @@ int configCommand(CliArgs args, string project) {
             print("error 0:0 set-roms needs --roms PATH");
             return 1;
         }
-        writeSyncDefaults(project, roms);
-        ensureProjectContentDirs(project);
-        writeEsDeFiles(project);
-        print(f"OK roms_dir: {roms}");
+        if (!settingsPutValue(project, "roms.dir", roms)) {
+            return 1;
+        }
+        print(f"OK owned roms_dir: {configuredRomsRoot(project)}");
+        if (args.has("--apply")) {
+            lifecycleReconfigure(project, "");
+            print("OK settings applied");
+        }
         return 0;
     }
     if (mode.equals("list")
