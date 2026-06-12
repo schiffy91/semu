@@ -127,6 +127,14 @@ ExecResult e2eRunSteamInput(string exe, string home, string project, Vector<stri
     return result;
 }
 
+bool e2eWriteSteamShortcutFixture(string path) {
+    ensureDir(PathTools.dirname(path));
+    string payload = "\\000shortcuts\\000\\0000\\000\\002appid\\000\\140\\152\\213\\344\\001AppName\\000Semu-x86_64.AppImage\\000\\001Exe\\000\"/home/deck/Applications/Semu/Semu-x86_64.AppImage\"\\000\\001StartDir\\000/home/deck/Applications/Semu/\\000\\001LaunchOptions\\000\\000\\010\\010";
+    UnixShell shell = UnixShell();
+    ExecResult result = shell.runRaw("printf " + ShellWords.quote(payload) + " > " + ShellWords.quote(path), false, false, "");
+    return e2eOk(result.ok(), "write Steam shortcut fixture");
+}
+
 ExecResult e2eRunSettings(string exe, string home, string project, Vector<string> settingsArgs) {
     Command command = Command(exe)
         .envVar("SEMU_HOME", home)
@@ -335,6 +343,18 @@ int e2eLifecycleSmoke(CliArgs args) {
     string steamTemplates = joinPath(home, "steam-templates");
     if (!e2eRunOk(e2eRunSteamInput(exe, home, project, ["install", "--dest", steamTemplates]), "steam-input install")) { return 1; }
     if (!e2eContains(FileSystem.readText(joinPath(steamTemplates, "neptune-simple.vdf")), "\"controller_type\"\t\t\"controller_neptune\"", "installed Steam Input simple template")) { return 1; }
+    string shortcutsFile = joinPath(home, "steam-userdata/52445373/config/shortcuts.vdf");
+    if (!e2eWriteSteamShortcutFixture(shortcutsFile)) { return 1; }
+    ExecResult shortcutStatus = e2eRunSteamInput(exe, home, project, [
+        "status",
+        "--shortcuts-file", shortcutsFile,
+        "--app-name", "Semu-x86_64.AppImage",
+        "--exe", "/home/deck/Applications/Semu/Semu-x86_64.AppImage"
+    ]);
+    if (!e2eRunOk(shortcutStatus, "steam-input shortcut status")) { return 1; }
+    if (!e2eContains(shortcutStatus.stdout(), "OK shortcut: Semu-x86_64.AppImage", "Steam shortcut status")) { return 1; }
+    if (!e2eContains(shortcutStatus.stdout(), "appid: 3834341984", "Steam shortcut appid")) { return 1; }
+    if (!e2eContains(shortcutStatus.stdout(), "steam://rungameid/3834341984", "Steam shortcut URI")) { return 1; }
 
     e2eSeedFile(joinPath(contentRoot(project), "saves/gba/game.sav"));
     e2eSeedFile(joinPath(biosRoot(project), "ps2/ps2-0230a-20080220.bin"));

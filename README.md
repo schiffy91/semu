@@ -685,7 +685,13 @@ Steam Input:
 ```sh
 build/semu steam-input install --project "$PWD"
 build/semu steam-input status --project "$PWD"
+build/semu steam-input status --project "$PWD" \
+  --shortcuts-file "$HOME/.local/share/Steam/userdata/52445373/config/shortcuts.vdf"
 ```
+
+`steam-input status` renders the owned templates and parses Steam's binary
+`shortcuts.vdf` to report the Semu shortcut appid and `steam://rungameid/...`
+URI. It does not edit Steam userdata.
 
 Sync:
 
