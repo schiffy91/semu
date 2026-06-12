@@ -63,6 +63,10 @@ forAllSystems (system: let
         inherit syncthingtray bubblewrap;
       };
       semuVisualAssets = pkgs.callPackage ../visual-assets.nix {};
+      semuShaderBundle = if isFullBundleTarget then pkgs.callPackage ../shader-bundle.nix {
+        inherit semuVisualAssets;
+        inherit (pkgs) libretro-shaders-slang;
+      } else null;
       routedEmulator = args: pkgs.callPackage ../routed-emulator.nix (args // {
         inherit semuCli;
       });
@@ -121,6 +125,7 @@ forAllSystems (system: let
       # --- Individual emulators (supported desktop/Deck platforms) ---
       dolphin = pkgs.dolphin-emu;
       ares = pkgs.ares;
+      semu-shader-bundle = semuShaderBundle;
       inherit azahar es-de retroarch pcsx2 cemu;
     } // pkgs.lib.optionalAttrs (ryujinx != null && isFullBundleTarget) {
       inherit ryujinx;
@@ -132,8 +137,8 @@ forAllSystems (system: let
       default = if isFullBundleTarget then pkgs.callPackage ../semu.nix {
         inherit (pkgs) dolphin-emu ares;
         inherit azahar pcsx2 cemu ppsspp flycast melonds ryujinx es-de syncthingtray bubblewrap nixGLIntel;
-        inherit (pkgs) syncthing curl libretro-shaders-slang;
-        inherit semuCli semuVisualAssets routedEmulators;
+        inherit (pkgs) syncthing curl;
+        inherit semuCli semuShaderBundle routedEmulators;
         retroarch-bare = retroarch;
       } else semuCli;
     } // pkgs.lib.optionalAttrs isX86Linux {
