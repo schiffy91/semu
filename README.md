@@ -35,7 +35,7 @@ This repo currently provides:
 - Declarative screenshot verification config in `verification/screenshots.json`.
 - Linux launcher shims and AppRun glue under `packaging/linux/`.
 - Nix packages for the BTRC CLI, bundled emulator set, routed emulator wrappers,
-  SteamOS graphics bridge, and a NixOS module.
+  pinned visual asset packs, SteamOS graphics bridge, and a NixOS module.
 - Automated smoke coverage for bootstrap, lifecycle, launcher routing,
   screenshot hooks, sync setup, AppImage assembly wiring, and Nix routed wrappers.
 
@@ -86,7 +86,7 @@ The input, shader, bezel, and ES-DE settings rollout is specified in
 | `packaging/linux/AppRun` | AppImage entry point and bundled Nix-store mount wrapper. |
 | `packaging/linux/bin/semu-*` | Thin Linux launcher shims. |
 | `packaging/linux/ES-DE/*.xml` | Linux ES-DE systems/find-rules assets. |
-| `packaging/nix/*.nix` | Emulator packaging, routed wrappers, CLI package, NixOS module. |
+| `packaging/nix/*.nix` | Emulator packaging, routed wrappers, CLI package, visual asset pack, NixOS module. |
 | `tests/` | Local, VM, AppImage, Deck-style, and regression tests. |
 | `ES-DE/ES-DE/` | User content root for ROMs, BIOS, saves, states, media, themes. |
 | `.semu/` | Runtime state created by launcher and AppImage routes. |
@@ -425,11 +425,13 @@ Default visual policy:
 
 - Native integer scaling is enabled for classic systems.
 - CRT shaders and bezels are enabled by policy for classic systems.
-- The default modern exclusions are `n3ds`, `wiiu`, and `switch`.
+- The default modern exclusions are `wiiu` and `switch`.
 - RetroArch receives native integer-scaling config and the configured shader
   preset path.
-- The AppImage bundles `libretro-shaders-slang`; RetroArch shader/bezel
-  screenshot proof is tracked in `tests/E2E.md`.
+- The AppImage bundles `libretro-shaders-slang` plus pinned
+  `Mega_Bezel_Packs` assets for Panasonic CRT, Soqueroeu TV-console, and
+  Duimon DS/3DS presets. RetroArch shader/bezel screenshot proof is tracked in
+  `tests/E2E.md`.
 
 Commands:
 
@@ -501,6 +503,11 @@ Dynamic 4:3/16:9 systems can keep CRT defaults for 4:3 while editing
 `widescreen_runtime_preset` for widescreen output. Missing optional art packs
 stay visible as empty/unresolved fields instead of silently pretending a preset
 exists.
+
+`presentation audit --strict` verifies selected shader, bezel, runtime preset,
+launcher shader, and transitive preset dependencies such as nested
+`#reference` files and referenced images. The report is written under
+`.semu/verification`; it is evidence, not an emulator-native config file.
 
 ### `verification/screenshots.json`
 

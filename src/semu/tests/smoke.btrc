@@ -792,6 +792,28 @@ int e2ePresentationSmoke(CliArgs args) {
     if (!e2eOk(SemuGeneratedFiles.isAdapterState(project, auditReport), "presentation audit report should be adapter state")) { return 1; }
     if (!e2eContains(FileSystem.readText(auditReport), "\"system\": \"gb\"", "gb audit report system")) { return 1; }
     if (!e2eContains(FileSystem.readText(auditReport), "\"missing_asset_count\": 0", "gb audit report missing asset count")) { return 1; }
+    if (!e2eContains(FileSystem.readText(auditReport), "\"missing_dependency_count\": 0", "gb audit report missing dependency count")) { return 1; }
+
+    string shaderBundleRoot = joinPath(project, "result/share/libretro/shaders");
+    string dependencyPreset = joinPath(shaderBundleRoot, "Mega_Bezel_Packs/test/root.slangp");
+    ensureDir(joinPath(shaderBundleRoot, "Mega_Bezel_Packs/test/base"));
+    ensureDir(joinPath(shaderBundleRoot, "Mega_Bezel_Packs/test/images"));
+    FileSystem.writeText(joinPath(shaderBundleRoot, "Mega_Bezel_Packs/test/base/base.slangp"), "# fake base shader\n");
+    FileSystem.writeText(joinPath(shaderBundleRoot, "Mega_Bezel_Packs/test/images/shell.png"), "fake bezel image\n");
+    FileSystem.writeText(dependencyPreset, "#reference \"base/base.slangp\"\nBackgroundImage = \"images/shell.png\"\n");
+    if (!e2eRunOk(e2eRunPresentation(exe, home, project, ["put", "gb", "runtime_preset", "Mega_Bezel_Packs/test/root.slangp"]), "presentation dependency preset put")) { return 1; }
+    ExecResult dependencyAudit = e2eRunPresentation(exe, home, project, ["audit", "gb", "--strict"]);
+    if (!e2eRunOk(dependencyAudit, "presentation dependency audit")) { return 1; }
+    if (!e2eContains(dependencyAudit.stdout(), "deps=ok", "presentation dependency audit line")) { return 1; }
+    if (!e2eContains(FileSystem.readText(auditReport), "\"dependency_count\": 2", "presentation dependency count")) { return 1; }
+    if (!e2eContains(FileSystem.readText(auditReport), "\"missing_dependency_count\": 0", "presentation dependency missing count")) { return 1; }
+
+    FileSystem.writeText(dependencyPreset, "#reference \"base/missing.slangp\"\nBackgroundImage = \"images/shell.png\"\n");
+    ExecResult missingDependencyAudit = e2eRunPresentation(exe, home, project, ["audit", "gb", "--strict"]);
+    if (!e2eOk(!missingDependencyAudit.ok(), "presentation missing dependency audit unexpectedly succeeded")) { return 1; }
+    if (!e2eContains(missingDependencyAudit.stdout(), "deps=missing", "presentation missing dependency audit line")) { return 1; }
+    if (!e2eContains(FileSystem.readText(auditReport), "base/missing.slangp", "presentation missing dependency report")) { return 1; }
+    if (!e2eRunOk(e2eRunPresentation(exe, home, project, ["put", "gb", "runtime_preset", "handheld/console-border/dmg.slangp"]), "presentation restore gb runtime")) { return 1; }
 
     ExecResult pspAudit = e2eRunPresentation(exe, home, project, ["audit", "psp", "--strict"]);
     if (!e2eOk(!pspAudit.ok(), "presentation psp strict audit unexpectedly succeeded")) { return 1; }

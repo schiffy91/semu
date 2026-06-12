@@ -161,6 +161,13 @@ if [ -n "$NIX_PACKAGE" ]; then
     rm -rf "$APPDIR/usr/share/libretro/shaders/shaders_slang"
     cp -aL "$NIX_PACKAGE/share/libretro/shaders/shaders_slang" "$APPDIR/usr/share/libretro/shaders/shaders_slang"
   fi
+  if [ -d "$NIX_PACKAGE/share/libretro/shaders/Mega_Bezel_Packs" ]; then
+    echo "Copying RetroArch visual asset packs into AppDir..."
+    mkdir -p "$APPDIR/usr/share/libretro/shaders"
+    chmod -R u+w "$APPDIR/usr/share/libretro/shaders/Mega_Bezel_Packs" 2>/dev/null || true
+    rm -rf "$APPDIR/usr/share/libretro/shaders/Mega_Bezel_Packs"
+    cp -aL "$NIX_PACKAGE/share/libretro/shaders/Mega_Bezel_Packs" "$APPDIR/usr/share/libretro/shaders/Mega_Bezel_Packs"
+  fi
 fi
 
 # Semu packaging/linux tree.

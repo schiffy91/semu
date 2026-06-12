@@ -595,8 +595,8 @@ string settingsDefaultConfigText() {
         jsonBoolField("visual_bezels", true),
         jsonStrField("visual_bezel_policy", "classic"),
         jsonStrField("visual_retroarch_shader_preset", "bezel/Mega_Bezel/Presets/MBZ__5__POTATO.slangp"),
-        jsonStrField("visual_classic_systems", "gb,gbc,gba,nes,snes,genesis,n64,nds,dreamcast,psx,ps2,psp,gc,wii"),
-        jsonStrField("visual_modern_systems", "n3ds,wiiu,switch"),
+        jsonStrField("visual_classic_systems", "gb,gbc,gba,nes,snes,genesis,n64,nds,dreamcast,psx,ps2,psp,n3ds,gc,wii"),
+        jsonStrField("visual_modern_systems", "wiiu,switch"),
         jsonStrField("ui_theme", "es-de-default"),
         jsonStrField("ui_settings_entry", "es-de")
     ]) + "\n";

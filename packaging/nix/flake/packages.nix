@@ -62,6 +62,7 @@ forAllSystems (system: let
         inherit (pkgs) syncthing curl;
         inherit syncthingtray bubblewrap;
       };
+      semuVisualAssets = pkgs.callPackage ../visual-assets.nix {};
       routedEmulator = args: pkgs.callPackage ../routed-emulator.nix (args // {
         inherit semuCli;
       });
@@ -115,6 +116,7 @@ forAllSystems (system: let
       # --- Core Semu tooling (all platforms) ---
       inherit btrcpy;
       semu-cli = semuCli;
+      semu-visual-assets = semuVisualAssets;
     } // pkgs.lib.optionalAttrs isFullBundleTarget {
       # --- Individual emulators (supported desktop/Deck platforms) ---
       dolphin = pkgs.dolphin-emu;
@@ -131,7 +133,7 @@ forAllSystems (system: let
         inherit (pkgs) dolphin-emu ares;
         inherit azahar pcsx2 cemu ppsspp flycast melonds ryujinx es-de syncthingtray bubblewrap nixGLIntel;
         inherit (pkgs) syncthing curl libretro-shaders-slang;
-        inherit semuCli routedEmulators;
+        inherit semuCli semuVisualAssets routedEmulators;
         retroarch-bare = retroarch;
       } else semuCli;
     } // pkgs.lib.optionalAttrs isX86Linux {
