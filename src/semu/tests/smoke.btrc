@@ -159,6 +159,23 @@ ExecResult e2eRunPresentation(string exe, string home, string project, Vector<st
     return result;
 }
 
+ExecResult e2eRunKeymap(string exe, string home, string project, Vector<string> keymapArgs) {
+    Command command = Command(exe)
+        .envVar("SEMU_HOME", home)
+        .envVar("SEMU_BIN", exe)
+        .envVar("PATH", "/usr/bin:/bin")
+        .arg("keymap")
+        .capture(true)
+        .check(false);
+    for arg in keymapArgs {
+        command.arg(arg);
+    }
+    command.flag("--project", project);
+    UnixShell shell = UnixShell();
+    ExecResult result = shell.runCommand(command);
+    return result;
+}
+
 ExecResult e2eRunSettingsUiScript(string exe, string home, string project, string script) {
     Vector<string> uiArgs = [];
     return e2eRunSettingsUiScriptArgs(exe, home, project, uiArgs, script);
@@ -558,9 +575,22 @@ int e2eSettingsSmoke(CliArgs args) {
     if (!e2eContains(presentationUiEdit.stdout(), "\"selected_bezel_file\": \"bezels/gb/ui-owned.json\"", "presentation ui plan")) { return 1; }
     if (!e2eContains(FileSystem.readText(joinPath(presentationSettingsRoot(project), "gb.json")), "ui-owned", "presentation ui persisted owned config")) { return 1; }
 
+    string retroarchBeforeInputUi = FileSystem.readText(emulatorProfilePath(project, "RetroArch/retroarch.cfg"));
+    ExecResult inputUiEdit = e2eRunSettingsUiScriptArgs(exe, home, project, ["input"], "10\nc\nCtrl+W\nback\nq\n");
+    if (!e2eRunOk(inputUiEdit, "input settings ui edit")) { return 1; }
+    if (!e2eContains(inputUiEdit.stdout(), "Semu Input Settings", "input ui title")) { return 1; }
+    if (!e2eContains(inputUiEdit.stdout(), "Edits update Semu-owned keymap source", "input ui owned boundary")) { return 1; }
+    if (!e2eContains(FileSystem.readText(keymapSourcePath(project)), "action state.save = Ctrl+W", "input ui persisted owned keymap")) { return 1; }
+    if (!e2eOk(FileSystem.readText(emulatorProfilePath(project, "RetroArch/retroarch.cfg")).equals(retroarchBeforeInputUi), "input ui edit mutated generated RetroArch profile before apply")) { return 1; }
+    if (!e2eContains(e2eRunKeymap(exe, home, project, ["get", "state.save"]).stdout(), "state.save=Ctrl+W", "keymap get edited command")) { return 1; }
+    if (!e2eRunOk(e2eRunKeymap(exe, home, project, ["put", "state.save", "Ctrl+W", "--apply"]), "keymap put apply")) { return 1; }
+    if (!e2eContains(FileSystem.readText(emulatorProfilePath(project, "RetroArch/retroarch.cfg")), "input_save_state = \"w\"", "input apply regenerated RetroArch profile")) { return 1; }
+
     SettingsEntries.write(project);
     string presentationEntry = joinPath(SettingsEntries.root(project), "Open Presentation Settings.semu");
     if (!e2eContains(FileSystem.readText(presentationEntry), "ui presentation", "presentation ES-DE entry action")) { return 1; }
+    string inputEntry = joinPath(SettingsEntries.root(project), "Open Input Settings.semu");
+    if (!e2eContains(FileSystem.readText(inputEntry), "ui input", "input ES-DE entry action")) { return 1; }
     string presentationPutEntry = joinPath(SettingsEntries.root(project), "Set GB Bezel.semu");
     FileSystem.writeText(presentationPutEntry, "presentation put gb bezel_file bezels/gb/from-entry.json\n");
     if (!e2eRunOk(e2eRunSettings(exe, home, project, ["entry", presentationPutEntry]), "presentation settings ES-DE put entry")) { return 1; }
