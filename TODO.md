@@ -5,7 +5,7 @@
 - Rebuilt and installed the self-contained AppImage at
   `/home/deck/Applications/Semu/Semu-x86_64.AppImage`.
 - Installed AppImage hash
-  `8763f1bb950c908ca8a0687c18c5c961be36f7f3423f07291afcf4372da0d8ac`.
+  `4481bb59323b7ba5106dbf2639a53f1a10070036e09b74ee2be22d3d93a581fb`.
 - Ran the Desktop Mode direct AppImage Deck loop over the required routed
   emulator set with clean process startup, foreground-window wait, screenshots,
   scripted input probes, and unified quit verification. `gb`, `gbc`, `gba`,
@@ -74,6 +74,23 @@
   --prepare --allow-desktop`, `deck game-mode-evidence --allow-pending`,
   `keymap capabilities app.quit`, and `presentation plan --system gb` with
   shader, bezel, runtime preset, and launcher shader statuses all `ok`.
+- Built the clean `/home/deck/semu-latest` checkout at commit `d674470` with
+  `nix build .#default`.
+- Verified the pushed Deck result runs `presentation audit --system gb
+  --strict` with shader, bezel, runtime preset, and launcher shader statuses
+  all `ok`.
+- Verified strict PSP presentation audit fails with missing declared PSP shader
+  and bezel assets, recording the gap under
+  `.semu/verification/presentation-assets.json` instead of editing emulator
+  config.
+- Rebuilt and installed the AppImage from commit `d674470`; backup of the prior
+  install is
+  `/home/deck/Applications/Semu/Semu-x86_64.AppImage.prev-d674470-20260612-042319`.
+- Installed AppImage hash is now
+  `4481bb59323b7ba5106dbf2639a53f1a10070036e09b74ee2be22d3d93a581fb`.
+- Verified the installed `d674470` AppImage runs `presentation audit --system
+  gb --strict` with all selected GB visual assets resolved from the mounted
+  AppImage payload.
 
 ## Verified Locally
 

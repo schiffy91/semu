@@ -42,9 +42,9 @@ This repo currently provides:
 Important remaining production gaps are tracked in `TODO.md` and
 `tests/E2E.md`. The SteamOS/AppImage path has a physical Deck Desktop Mode pass
 over the routed emulator set with screenshot, input, and structured quit-watch
-evidence. The current installed Deck AppImage was rebuilt from commit `3dd0c0a`
+evidence. The current installed Deck AppImage was rebuilt from commit `d674470`
 and smoke-tested at
-`8763f1bb950c908ca8a0687c18c5c961be36f7f3423f07291afcf4372da0d8ac`.
+`4481bb59323b7ba5106dbf2639a53f1a10070036e09b74ee2be22d3d93a581fb`.
 The final production gate is still a Game Mode pass that exercises the Steam
 Input left-trackpad radial menu and representative games across the routed
 emulator set.
