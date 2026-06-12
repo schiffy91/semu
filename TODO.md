@@ -55,6 +55,10 @@
   source files can be compiled into emulator and ES-DE artifacts without
   implying that the UI directly edits emulator-native files. Smoke coverage now
   exercises the compile command and ES-DE settings entry.
+- Added input capability reporting so save/load/slot state actions are only
+  advertised for generated RetroArch, Dolphin, and PCSX2 profiles. Other
+  emulator routes are marked disabled until adapter config and physical state
+  file proof exist.
 - Local verification passed for BTRC presentation smoke, generated-C e2e,
   AppImage/Nix routing smoke, JSON formatting, and whitespace checks.
 

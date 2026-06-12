@@ -336,6 +336,7 @@ Validate and render:
 
 ```sh
 build/semu keymap validate --project "$PWD"
+build/semu keymap capabilities --project "$PWD"
 build/semu keymap render --project "$PWD" --target manifest
 build/semu keymap render --project "$PWD" --target retroarch
 build/semu keymap render --project "$PWD" --target dolphin
@@ -675,6 +676,7 @@ Keymaps:
 ```sh
 build/semu keymap validate --project "$PWD"
 build/semu keymap ui --project "$PWD"
+build/semu keymap capabilities state.save --project "$PWD"
 build/semu keymap get state.save --project "$PWD"
 build/semu keymap put state.save Ctrl+S --apply --project "$PWD"
 build/semu keymap bind app.quit left_trackpad.radial.quit --project "$PWD"

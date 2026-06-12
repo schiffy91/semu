@@ -5,7 +5,7 @@ class SemuCliCommands {
 
 // ---- config_commands.btrc ----
 void printUsage() {
-    print("semu [manifest|bootstrap|doctor|deck|lifecycle|sync|config|settings|presentation|apprun|steam-input|keymap|screenshot|sandbox|launcher|utils|e2e] [graph|payload-audit|n3ds-nocrypto|validate|render|install|setup|compile|reconfigure|change|uninstall|reinstall|upgrade|status|force|serve|capture|prepare|launch|list|get|put|entry|ui|apply|plan|state|broadcast|defaults] [--project PATH] [--roms PATH] [--source PATH] [--output PATH] [--dest PATH] [--target manifest|retroarch|dolphin|pcsx2|steam-input] [--system SYSTEM] [--emulator NAME] [--hook HOOK] [--scratch PATH] [--action ID] [--command KEYS]");
+    print("semu [manifest|bootstrap|doctor|deck|lifecycle|sync|config|settings|presentation|apprun|steam-input|keymap|screenshot|sandbox|launcher|utils|e2e] [graph|payload-audit|n3ds-nocrypto|validate|render|capabilities|install|setup|compile|reconfigure|change|uninstall|reinstall|upgrade|status|force|serve|capture|prepare|launch|list|get|put|entry|ui|apply|plan|state|broadcast|defaults] [--project PATH] [--roms PATH] [--source PATH] [--output PATH] [--dest PATH] [--target manifest|retroarch|dolphin|pcsx2|steam-input] [--system SYSTEM] [--emulator NAME] [--hook HOOK] [--scratch PATH] [--action ID] [--command KEYS]");
 }
 int keymapCommand(CliArgs args) {
     string mode = "validate";
@@ -59,6 +59,19 @@ int keymapCommand(CliArgs args) {
     }
     if (mode.equals("ui")) {
         return keymapUi(project);
+    }
+    if (mode.equals("capabilities") || mode.equals("capability")) {
+        if (errors.count() > 0) {
+            for (int i = 0; i < errors.count(); i++) {
+                print(f"{errors.levels.get(i)} {errors.lines.get(i)}:{errors.columns.get(i)} {errors.messages.get(i)}");
+            }
+            return 1;
+        }
+        string actionId = args.valueAfter("--action", "");
+        if (actionId.len() == 0 && args.count() > 2 && !args.get(2).startsWith("--")) {
+            actionId = args.get(2);
+        }
+        return keymapCapabilitiesCommand(ir, actionId);
     }
     if (mode.equals("get")) {
         if (args.count() < 3) {

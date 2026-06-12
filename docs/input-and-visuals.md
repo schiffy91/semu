@@ -67,6 +67,19 @@ The physical Game Mode pass must prove all of this from Steam Input, not from
 SSH key injection. SSH can test process behavior and screenshots, but it cannot
 prove the actual Neptune left-trackpad radial menu.
 
+Semu now exposes a capability report for these actions:
+
+```sh
+semu keymap capabilities
+semu keymap capabilities state.save
+```
+
+State save/load/slot actions are generated only for RetroArch, Dolphin, and
+PCSX2 today. Azahar, PPSSPP, Flycast, melonDS, Cemu, and Ryujinx remain marked
+disabled for Semu state actions until a generated adapter profile exists and a
+physical Game Mode pass proves that a state file is created and reloaded from
+the radial path.
+
 ## Input Hardening Gates
 
 - `doctor` verifies the generated Steam Input VDF exists and contains the
@@ -77,8 +90,8 @@ prove the actual Neptune left-trackpad radial menu.
   uses Quit to return to ES-DE.
 - Save and load are only marked production-ready for an emulator after a real
   state file is created and reloaded from the radial path.
-- Unsupported state actions are hidden or rendered as disabled settings entries
-  instead of pretending every emulator has equivalent state semantics.
+- Unsupported state actions are hidden or rendered as disabled capability
+  entries instead of pretending every emulator has equivalent state semantics.
 - Fullscreen is verified from screenshots for every emulator after launch and
   again after returning to ES-DE.
 

@@ -107,6 +107,10 @@ verify: payload-audit $(SEMU_BIN) ## Run deterministic BTRC/Steam Deck verificat
 	grep -F 'OK layers: controller_model -> emulation_backend -> emitted_input -> emulator_keymap' "$$verify_dir/doctor.txt" >/dev/null; \
 	grep -F 'OK backends: uinput, evemu, uhid, inputplumber, steam_input' "$$verify_dir/doctor.txt" >/dev/null; \
 	grep -F 'OK controller_models: steam_deck, steam_controller, xbox_xinput, dualshock4, dualsense, switch_pro' "$$verify_dir/doctor.txt" >/dev/null; \
+	grep -F 'Input capabilities' "$$verify_dir/doctor.txt" >/dev/null; \
+	grep -F 'OK app.quit: desktop_verified=retroarch,dolphin,ppsspp,flycast,melonds,pcsx2,cemu,azahar,ryujinx; physical_game_mode=pending' "$$verify_dir/doctor.txt" >/dev/null; \
+	grep -F 'pending state.save: generated=retroarch,dolphin,pcsx2; disabled=azahar,ppsspp,flycast,melonds,cemu,ryujinx; physical_state_proof=pending' "$$verify_dir/doctor.txt" >/dev/null; \
+	grep -F 'pending state.load: generated=retroarch,dolphin,pcsx2; disabled=azahar,ppsspp,flycast,melonds,cemu,ryujinx; physical_state_proof=pending' "$$verify_dir/doctor.txt" >/dev/null; \
 	grep -F 'Keymap compiler' "$$verify_dir/doctor.txt" >/dev/null; \
 	grep -F 'OK steam_deck:' "$$verify_dir/doctor.txt" >/dev/null; \
 	grep -F 'OK neptune_simple: controller_neptune, trackpads, save/load/quit' "$$verify_dir/doctor.txt" >/dev/null; \
