@@ -24,6 +24,8 @@ BAZZITE_SCREEN := $(VM_DIR)/bazzite-screen.ppm
 BAZZITE_SCREEN_TMP ?= /tmp/semu-bazzite-screen.ppm
 BAZZITE_SCREEN_WIDTH ?= 1280
 BAZZITE_SCREEN_HEIGHT ?= 800
+BAZZITE_LIVE_SCREEN_WIDTH ?= 800
+BAZZITE_LIVE_SCREEN_HEIGHT ?= 600
 BAZZITE_MIN_NONBLACK_PERCENT ?= 0.1
 BAZZITE_MEM ?= 8192
 BAZZITE_SMP ?= 4
@@ -60,6 +62,12 @@ BAZZITE_E2E_SCREEN ?= $(VM_DIR)/bazzite-e2e-screen.ppm
 BAZZITE_E2E_SSH_PORT ?= 2224
 
 .PHONY: bazzite-iso bazzite-vm-install bazzite-e2e-install bazzite-e2e-verify bazzite-vm-start bazzite-vm-start-live bazzite-vm-start-installed bazzite-vm-screenshot bazzite-vm-smoke bazzite-desktop-vm-smoke bazzite-vm-ssh bazzite-vm-wait-ssh bazzite-vm-sync bazzite-vm-verify-ssh bazzite-vm-stop bazzite-vm-clean
+
+$(VM_DIR):
+	mkdir -p "$@"
+
+$(VM_KEY): | $(VM_DIR)
+	ssh-keygen -t ed25519 -N "" -f "$@" -C semu-bazzite-e2e
 
 $(BAZZITE_ISO): | $(VM_DIR)
 	@echo "Downloading Bazzite ISO (~10GB, resumable): $(BAZZITE_ISO_URL)"
@@ -164,7 +172,7 @@ bazzite-e2e-install: ## Build a fresh graph-owned Bazzite Deck VM disk
 		BAZZITE_VNC_DISPLAY=7 \
 		BAZZITE_VNC_PORT=5907
 
-bazzite-e2e-verify: bazzite-e2e-install ## Boot the graph-owned Bazzite VM and run Semu Deck verification
+bazzite-e2e-verify: bazzite-e2e-install ## Boot the graph-owned Bazzite VM and run Semu compiler verification
 	$(MAKE) bazzite-vm-start-installed \
 		BAZZITE_DISK=$(BAZZITE_E2E_DISK) \
 		BAZZITE_PID=$(BAZZITE_E2E_PID) \
@@ -278,7 +286,9 @@ bazzite-vm-smoke: ## Boot Bazzite VM and capture a visual smoke screenshot
 	@echo "Waiting up to $(BAZZITE_BOOT_WAIT)s for a nonblank Bazzite framebuffer..."
 	@ok=0; deadline=$$((SECONDS + $(BAZZITE_BOOT_WAIT))); \
 	while [ $$SECONDS -lt $$deadline ]; do \
-		if $(MAKE) --no-print-directory bazzite-vm-screenshot; then \
+		if $(MAKE) --no-print-directory bazzite-vm-screenshot \
+			BAZZITE_SCREEN_WIDTH=$(BAZZITE_LIVE_SCREEN_WIDTH) \
+			BAZZITE_SCREEN_HEIGHT=$(BAZZITE_LIVE_SCREEN_HEIGHT); then \
 			ok=1; \
 			break; \
 		fi; \
@@ -303,6 +313,8 @@ bazzite-desktop-vm-smoke: ## Boot Bazzite Desktop ISO over VNC for no-GPU VM val
 		BAZZITE_VNC_DISPLAY=6 \
 		BAZZITE_VNC_PORT=5906 \
 		BAZZITE_SSH_PORT=2234 \
+		BAZZITE_SCREEN_WIDTH=800 \
+		BAZZITE_SCREEN_HEIGHT=600 \
 		BAZZITE_MIN_NONBLACK_PERCENT=1
 
 bazzite-vm-ssh: ## SSH into installed Bazzite VM once user/key exists
@@ -327,17 +339,11 @@ bazzite-vm-sync: bazzite-vm-wait-ssh ## Sync repo to installed Bazzite VM over S
 		-e "ssh $(BAZZITE_SSH_OPTS) -p $(BAZZITE_SSH_PORT)" \
 		. $(BAZZITE_SSH_USER)@localhost:~/semu/
 	ssh $(BAZZITE_SSH_OPTS) -p $(BAZZITE_SSH_PORT) $(BAZZITE_SSH_USER)@localhost \
-		'cd ~/semu && make generated-build'
+		'cd ~/semu && make btrc-build'
 
-bazzite-vm-verify-ssh: bazzite-vm-sync ## Run Deck checks inside installed Bazzite VM over SSH
+bazzite-vm-verify-ssh: bazzite-vm-sync ## Run compiler checks inside installed Bazzite VM over SSH
 	ssh $(BAZZITE_SSH_OPTS) -p $(BAZZITE_SSH_PORT) $(BAZZITE_SSH_USER)@localhost \
-		'cd ~/semu && build/semu deck provision --project "$$PWD"'
-	ssh $(BAZZITE_SSH_OPTS) -p $(BAZZITE_SSH_PORT) $(BAZZITE_SSH_USER)@localhost \
-		'cd ~/semu && build/semu deck verify-emulators --project "$$PWD"'
-	ssh $(BAZZITE_SSH_OPTS) -p $(BAZZITE_SSH_PORT) $(BAZZITE_SSH_USER)@localhost \
-		'cd ~/semu && build/semu deck verify-sync --project "$$PWD"'
-	ssh $(BAZZITE_SSH_OPTS) -p $(BAZZITE_SSH_PORT) $(BAZZITE_SSH_USER)@localhost \
-		'cd ~/semu && build/semu deck verify-input --project "$$PWD"'
+		'cd ~/semu && make compiler-build compiler-verify TEST_PROJECT=$$PWD'
 
 bazzite-vm-stop: ## Stop Bazzite VM
 	@if [ -f "$(BAZZITE_PID)" ] && kill -0 "$$(cat "$(BAZZITE_PID)")" 2>/dev/null; then \

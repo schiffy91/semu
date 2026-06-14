@@ -1,0 +1,56 @@
+{
+  "schema_version": 2,
+  "system": "nes",
+  "label": "Nintendo Entertainment System",
+  "default_emulator": "RETROARCH",
+  "emulator": "retroarch",
+  "emulator_config": "retroarch.cfg core-options",
+  "hardware_display": "consumer CRT over composite",
+  "display_class": "crt_tv",
+  "content_viewport": {
+    "native_size": {
+      "width": 256,
+      "height": 240
+    },
+    "content_aspect": "4:3",
+    "default_aspect": "4:3",
+    "dynamic_aspect": false,
+    "layout": {
+      "kind": "single",
+      "screens": [
+        {
+          "id": "main",
+          "native_size": {
+            "width": 256,
+            "height": 240
+          },
+          "content_aspect": "4:3",
+          "pixel_aspect": "5:4"
+        }
+      ]
+    },
+    "scale_policy": "integer"
+  },
+  "renderer": {
+    "model": "semu_source_hook_renderer",
+    "viewport_source": "content_viewport",
+    "profile": "crt_240p",
+    "shader": {
+      "family": "crt_240p",
+      "enabled_by_default": true,
+      "intent": "NES composite artifacting, phosphor mask, scanlines",
+      "source_asset": "ntsc/ntsc-256px-composite-scanline.slangp",
+      "widescreen_source_asset": null,
+      "effect_file": "semu-crt.fx"
+    },
+    "bezel": {
+      "family": "sony_or_panasonic_crt",
+      "enabled_by_default": true,
+      "intent": "elegant Panasonic or Sony consumer CRT",
+      "source_asset": "Mega_Bezel_Packs/Duimon-Vintage-TV/Presets/Potato/Panasonic_Panacolor_TH20-B8/TH20-B8-[POTATO].slangp",
+      "widescreen_source_asset": null,
+      "composition_effect_file": "semu-crt-bezel.fx"
+    }
+  },
+  "notes": "Classic 240p TV path. Use the system-specific NTSC shader reference; Mesen is unstable with the generic Mega_Bezel chain on Deck."
+}

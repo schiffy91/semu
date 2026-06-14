@@ -1,0 +1,394 @@
+#!/usr/bin/env bash
+# Semu AppImage entry point.
+#
+# Resolves $APPDIR (set by the AppImage runtime), wires ES-DE's custom_systems
+# at the user's ~/ES-DE/ to point at the bundled bwrap launchers, and launches
+# the bundled ES-DE.
+
+set -e
+
+if [ -z "${TMPDIR:-}" ] && [ -n "${HOME:-}" ] && [ -d "$HOME/.cache" ]; then
+  export TMPDIR="$HOME/.cache/semu-appimage-runtime"
+  mkdir -p "$TMPDIR"
+fi
+
+APPDIR="${APPDIR:-$(dirname "$(readlink -f "$0")")}"
+HOST_PATH="${PATH:-}"
+export PATH="$APPDIR/usr/bin:${PATH:-}"
+
+SEMU_HOST_LAUNCHER_BIN="${SEMU_HOST_LAUNCHER_BIN:-}"
+if [ -z "$SEMU_HOST_LAUNCHER_BIN" ]; then
+  for candidate in \
+      "$HOME/semu/result-full/bin" \
+      "$HOME/semu/result/bin"; do
+    if [ -x "$candidate/semu" ] && [ -x "$candidate/semu-cemu" ]; then
+      SEMU_HOST_LAUNCHER_BIN="$candidate"
+      break
+    fi
+  done
+fi
+SEMU_USE_HOST_NIX_STORE=0
+if [ "${SEMU_APPIMAGE_HOST_NIX_FALLBACK:-1}" != "0" ] && \
+   [ -n "$SEMU_HOST_LAUNCHER_BIN" ]; then
+  SEMU_USE_HOST_NIX_STORE=1
+fi
+
+if [ -d "$APPDIR/nix/store" ] && [ -z "${SEMU_NIX_STORE_MOUNTED:-}" ] && \
+   [ "$SEMU_USE_HOST_NIX_STORE" != "1" ]; then
+  BWRAP="${SEMU_BWRAP:-}"
+  if [ -z "$BWRAP" ]; then
+    for candidate in /usr/bin/bwrap /bin/bwrap; do
+      if [ -x "$candidate" ]; then
+        BWRAP="$candidate"
+        break
+      fi
+    done
+  fi
+  if [ -z "$BWRAP" ]; then
+    BWRAP="$(PATH="$HOST_PATH" command -v bwrap || true)"
+  fi
+  if [ -z "$BWRAP" ]; then
+    echo "Semu: bundled Nix store needs bubblewrap to mount /nix/store." >&2
+    echo "Install host bubblewrap or set SEMU_BWRAP to a host-executable bwrap." >&2
+    exit 127
+  fi
+  export SEMU_NIX_STORE_MOUNTED=1
+  exec "$BWRAP" \
+    --dev-bind / / \
+    --tmpfs /nix \
+    --ro-bind "$APPDIR/nix/store" /nix/store \
+    "$APPDIR/AppRun" "$@"
+fi
+
+if [ -n "${SteamAppId:-}${SteamGameId:-}${STEAM_COMPAT_CLIENT_INSTALL_PATH:-}" ]; then
+  unset LD_PRELOAD
+  unset LD_LIBRARY_PATH
+fi
+
+SEMU_LINUX="$APPDIR/packaging/linux"
+SEMU_PACKAGING_BIN="$SEMU_LINUX/bin"
+semu_is_appimage_path() {
+  case "$1" in
+    *.AppImage|*.appimage) return 0 ;;
+  esac
+  return 1
+}
+
+SEMU_CLI_CANDIDATE="${SEMU_CLI:-}"
+if semu_is_appimage_path "$SEMU_CLI_CANDIDATE"; then
+  SEMU_CLI_CANDIDATE=""
+fi
+export SEMU_CLI="${SEMU_CLI_CANDIDATE:-$APPDIR/usr/bin/semu}"
+SEMU_APP_EXEC="${APPIMAGE:-$APPDIR/AppRun}"
+export SEMU_ASSET_ROOT="${SEMU_ASSET_ROOT:-$APPDIR}"
+if [ -z "${SEMU_ACTIVE_LAUNCHER_BIN:-}" ]; then
+  if [ -n "$SEMU_HOST_LAUNCHER_BIN" ]; then
+    export SEMU_ACTIVE_LAUNCHER_BIN="$SEMU_HOST_LAUNCHER_BIN"
+  else
+    export SEMU_ACTIVE_LAUNCHER_BIN="$APPDIR/usr/bin"
+  fi
+fi
+if [ -d "$APPDIR/usr/lib/retroarch/cores" ]; then
+  export SEMU_RETROARCH_CORE_DIR="${SEMU_RETROARCH_CORE_DIR:-$APPDIR/usr/lib/retroarch/cores}"
+fi
+if [ -x "$APPDIR/usr/bin/syncthing" ]; then
+  export SEMU_SYNCTHING_BIN="${SEMU_SYNCTHING_BIN:-$APPDIR/usr/bin/syncthing}"
+fi
+
+case "${1:-}" in
+  -h|--help|help)
+    exec "$SEMU_CLI" "$@"
+    ;;
+esac
+
+arg_value() {
+  local name="$1"
+  shift
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      "$name")
+        if [ $# -gt 1 ]; then
+          printf '%s\n' "$2"
+          return
+        fi
+        ;;
+      "$name"=*)
+        printf '%s\n' "${1#*=}"
+        return
+        ;;
+    esac
+    shift
+  done
+}
+
+arg_present() {
+  local name="$1"
+  shift
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      "$name"|"$name"=*)
+        return 0
+        ;;
+    esac
+    shift
+  done
+  return 1
+}
+
+# Where the user's emulator state lives (cloud-synced via Syncthing/Google
+# Drive/whatever the user wires up). Default to a sibling of ROMs, but allow
+# explicit override.
+if [ -z "${SEMU_PROJECT_DIR:-}" ]; then
+  SEMU_ARG_PROJECT="$(arg_value --project "$@" || true)"
+  if [ -n "$SEMU_ARG_PROJECT" ]; then
+    export SEMU_PROJECT_DIR="$SEMU_ARG_PROJECT"
+  fi
+fi
+if [ -z "${SEMU_PROJECT_DIR:-}" ]; then
+  for candidate in \
+      "$HOME/.local/share/semu" \
+      "$HOME/semu" \
+      "$HOME/Documents/semu" \
+      "$HOME/Documents/Emulation" \
+      "$HOME/Emulation" \
+      "$HOME/Games/Emulation"; do
+    if [ -d "$candidate" ] && { [ -f "$candidate/semu.json" ] || \
+         [ -f "$candidate/ES-DE/custom_systems/es_systems.xml" ]; }; then
+      export SEMU_PROJECT_DIR="$candidate"
+      break
+    fi
+  done
+fi
+if [ -z "${SEMU_PROJECT_DIR:-}" ]; then
+  echo "Semu: no project dir found. Set SEMU_PROJECT_DIR to point" >&2
+  echo "  at your cloud-synced emulator directory (the one with semu.json)." >&2
+  exit 1
+fi
+export SEMU_LAUNCHER_BIN="${SEMU_LAUNCHER_BIN:-$SEMU_PROJECT_DIR/.semu/generated/bin}"
+
+normalize_roms_dir() {
+  local root="$1"
+  local candidate
+  for candidate in \
+      "$root/Emulation/ES-DE/ES-DE/ROMs" \
+      "$root/ES-DE/ES-DE/ROMs" \
+      "$root/Emulation/ROMs" \
+      "$root/ROMs"; do
+    if [ -d "$candidate" ]; then
+      printf '%s\n' "$candidate"
+      return
+    fi
+  done
+  printf '%s\n' "$root"
+}
+
+detect_roms_dir() {
+  if [ -n "${SEMU_ROMS:-}" ]; then
+    normalize_roms_dir "$SEMU_ROMS"
+    return
+  fi
+  local arg_roms
+  arg_roms="$(arg_value --roms "$@" || true)"
+  if [ -n "$arg_roms" ]; then
+    normalize_roms_dir "$arg_roms"
+    return
+  fi
+  local candidate
+  for candidate in \
+      /run/media/deck/SD/Emulation/ES-DE/ES-DE/ROMs \
+      /mnt/SD/Emulation/ES-DE/ES-DE/ROMs \
+      /run/media/deck/SD \
+      /mnt/SD \
+      /run/media/deck/*/Emulation/ROMs \
+      /run/media/deck/*/Emulation/ES-DE/ES-DE/ROMs \
+      /run/media/deck/*/ROMs \
+      "$SEMU_PROJECT_DIR/ES-DE/ES-DE/ROMs"; do
+    if [ -d "$candidate" ]; then
+      printf '%s\n' "$candidate"
+      return
+    fi
+  done
+  printf '%s\n' "$SEMU_PROJECT_DIR/ES-DE/ES-DE/ROMs"
+}
+
+export SEMU_ROMS_DIR="${SEMU_ROMS_DIR:-$(detect_roms_dir "$@")}"
+SEMU_DETECTED_ROMS_DIR="$SEMU_ROMS_DIR"
+
+if [ ! -x "$SEMU_CLI" ] && [ "${SEMU_ALLOW_PROJECT_CLI:-0}" = "1" ] && \
+   [ -x "$SEMU_PROJECT_DIR/build/out/semu" ]; then
+  SEMU_CLI="$SEMU_PROJECT_DIR/build/out/semu"
+fi
+# Commands written to desktop entries and systemd user units need a stable
+# entrypoint. The bundled CLI lives under the transient AppImage mount, so point
+# Semu-generated launchers back at the AppImage itself.
+export SEMU_BIN="$SEMU_APP_EXEC"
+
+case "${1:-}" in
+  semu-*)
+    SEMU_PACKAGED_COMMAND="$1"
+    shift
+    if [ "$SEMU_PACKAGED_COMMAND" = "semu-cemu" ] && \
+       [ "${SEMU_APPIMAGE_CEMU_HOST_FALLBACK:-1}" != "0" ] && \
+       [ -n "$SEMU_HOST_LAUNCHER_BIN" ] && \
+       [ -x "$SEMU_HOST_LAUNCHER_BIN/semu-cemu" ]; then
+      export SEMU_ACTIVE_LAUNCHER_BIN="$SEMU_HOST_LAUNCHER_BIN"
+      exec env -i \
+        HOME="${HOME:-}" \
+        USER="${USER:-deck}" \
+        LOGNAME="${LOGNAME:-${USER:-deck}}" \
+        SHELL="${SHELL:-/bin/sh}" \
+        TERM="${TERM:-xterm}" \
+        LANG="${LANG:-C.UTF-8}" \
+        TMPDIR="${TMPDIR:-/tmp}" \
+        PATH="$SEMU_HOST_LAUNCHER_BIN:$HOST_PATH" \
+        XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-}" \
+        DBUS_SESSION_BUS_ADDRESS="${DBUS_SESSION_BUS_ADDRESS:-}" \
+        WAYLAND_DISPLAY="${WAYLAND_DISPLAY:-}" \
+        DISPLAY="${DISPLAY:-}" \
+        XAUTHORITY="${XAUTHORITY:-}" \
+        SEMU_ASSET_ROOT="${SEMU_ASSET_ROOT:-}" \
+        SEMU_PROJECT_DIR="$SEMU_PROJECT_DIR" \
+        SEMU_ROMS="${SEMU_ROMS:-$SEMU_ROMS_DIR}" \
+        SEMU_ROMS_DIR="$SEMU_ROMS_DIR" \
+        SEMU_SYSTEM="${SEMU_SYSTEM:-}" \
+        SEMU_RENDER_REQUIRED="${SEMU_RENDER_REQUIRED:-}" \
+        SEMU_RENDER_HOOK_PROOF="${SEMU_RENDER_HOOK_PROOF:-}" \
+        SEMU_QUIT_WATCH_DEBUG="${SEMU_QUIT_WATCH_DEBUG:-}" \
+        SEMU_QUIT_WATCH_LOG="${SEMU_QUIT_WATCH_LOG:-}" \
+        SEMU_ACTIVE_LAUNCHER_BIN="$SEMU_HOST_LAUNCHER_BIN" \
+        "$SEMU_HOST_LAUNCHER_BIN/semu-cemu" "$@"
+    fi
+    if [ -x "$APPDIR/usr/bin/$SEMU_PACKAGED_COMMAND" ]; then
+      exec "$APPDIR/usr/bin/$SEMU_PACKAGED_COMMAND" "$@"
+    fi
+    echo "Semu: packaged command not found: $SEMU_PACKAGED_COMMAND" >&2
+    exit 127
+    ;;
+esac
+
+case "${1:-}" in
+  "" )
+    ;;
+  -h|--help|help|build|verify|run|deck|sync|config|settings|assets|doctor|bootstrap|keymap|screenshot|manifest|lifecycle|sandbox|launcher|apprun|steam-input|utils|util|n3ds-nocrypto|3ds-nocrypto|e2e)
+    if [ ! -x "$SEMU_CLI" ]; then
+      echo "Semu: BTRC CLI not found at $SEMU_CLI" >&2
+      exit 2
+    fi
+    if [ "${1:-}" = "launcher" ]; then
+      exec "$SEMU_CLI" "$@"
+    fi
+    SEMU_CLI_CONTEXT_ARGS=()
+    if ! arg_present --project "$@"; then
+      SEMU_CLI_CONTEXT_ARGS+=( --project "$SEMU_PROJECT_DIR" )
+    fi
+    if ! arg_present --roms "$@"; then
+      SEMU_CLI_CONTEXT_ARGS+=( --roms "$SEMU_ROMS_DIR" )
+    fi
+    exec "$SEMU_CLI" "$@" "${SEMU_CLI_CONTEXT_ARGS[@]}"
+    ;;
+esac
+
+if [ ! -x "$SEMU_CLI" ]; then
+  echo "Semu: bundled BTRC CLI not found at $SEMU_CLI" >&2
+  echo "Rebuild the AppImage with build/packaging/linux/build-appimage.sh or set SEMU_CLI." >&2
+  exit 2
+fi
+eval "$("$SEMU_CLI" config env --project "$SEMU_PROJECT_DIR" --roms "$SEMU_ROMS_DIR")"
+export SEMU_ROMS_DIR="$SEMU_DETECTED_ROMS_DIR"
+"$SEMU_CLI" apprun prepare --project "$SEMU_PROJECT_DIR" --roms "$SEMU_ROMS_DIR" >/dev/null
+
+# Surface the AppArmor userns gotcha early instead of letting bwrap fail.
+# Do not modify host sysctls from AppRun; setup/doctor reports the remediation.
+if [ -r /proc/sys/kernel/apparmor_restrict_unprivileged_userns ] && \
+   [ "$(cat /proc/sys/kernel/apparmor_restrict_unprivileged_userns)" = "1" ]; then
+  cat >&2 <<'WARN'
+Semu: unprivileged user namespaces are still restricted on this host.
+  bwrap (the emulator sandbox) will fail until you run:
+      sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+      echo 'kernel.apparmor_restrict_unprivileged_userns=0' | \
+          sudo tee /etc/sysctl.d/99-semu-userns.conf
+  See build/packaging/linux/README.md for the rationale.
+WARN
+fi
+
+# ES-DE needs OpenGL 3.3 Core. Under QEMU/SVM with virtio-gpu-gl-pci, the
+# guest Mesa virgl driver passes GL through ANGLE→Metal on macOS, which
+# can only expose OpenGL 2.1 *compat* (no Core profile at all — that's an
+# Apple-side restriction since macOS dropped Core GL drivers in Mojave).
+# ES-DE's context creation fails with EGL_BAD_MATCH and the AppImage
+# silently crashes the moment it runs.
+#
+# Fix: route ES-DE through Mesa's zink driver backed by Vulkan via Mesa's
+# lavapipe ICD. zink translates OpenGL → Vulkan, lavapipe provides CPU
+# Vulkan, and together they give ES-DE a real OpenGL 4.6 Core context
+# completely independent of virgl's GL stack. lavapipe is software but
+# ES-DE's frontend renders fine at 1280x800. Emulators we launch later
+# unset these vars and get hardware virgl GPU acceleration directly.
+#
+# Note: a future SVM patch could enable `venus=on` on the virtio-gpu-gl
+# device, exposing virtio-Vulkan as a real GPU-accelerated Vulkan ICD —
+# then zink would have hardware Vulkan underneath. Until then, lavapipe.
+#
+# We also force a sane resolution (1280x800 windowed) so software
+# rendering stays responsive — at the host's native retina (4112x2516)
+# llvmpipe/lavapipe crawl and the window shows black during the first
+# frame churn.
+
+# Prefer virtio-Vulkan (venus, hardware-accelerated through MoltenVK on
+# macOS hosts) when SVM has venus=on enabled. Fall back to lavapipe
+# (software Vulkan) when not.
+if [ -z "${MESA_LOADER_DRIVER_OVERRIDE:-}" ]; then
+  if [ -e /usr/share/vulkan/icd.d/virtio_icd.json ] && \
+     vulkaninfo --summary 2>/dev/null | grep -qi "virtio-gpu\|venus"; then
+    export MESA_LOADER_DRIVER_OVERRIDE=zink
+    export VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/virtio_icd.json
+  elif [ -e /usr/share/vulkan/icd.d/lvp_icd.json ]; then
+    export MESA_LOADER_DRIVER_OVERRIDE=zink
+    export VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.json
+    # zink+lavapipe sometimes hands back a single-channel swapchain
+    # format under KDE Plasma Wayland, producing greyscale output.
+    # Forcing the GL version override pushes Mesa onto a known-good
+    # state-tracker path that picks BGRA8_SRGB.
+    export MESA_GL_VERSION_OVERRIDE="${MESA_GL_VERSION_OVERRIDE:-4.6}"
+    export MESA_GLSL_VERSION_OVERRIDE="${MESA_GLSL_VERSION_OVERRIDE:-460}"
+  fi
+fi
+
+# Force ES-DE to a sane resolution if running under virgl. Skip if user
+# already passed --resolution.
+SEMU_ESDE_ARGS=()
+if [[ ! " $* " =~ " --no-splash " ]]; then
+  SEMU_ESDE_ARGS+=( --no-splash )
+fi
+if [[ ! " $* " =~ " --resolution " ]]; then
+  SEMU_ESDE_ARGS+=( --resolution 1280 800 )
+fi
+
+SEMU_ESDE_PASSTHROUGH_ARGS=()
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --project|--roms)
+      shift
+      [ "$#" -gt 0 ] && shift
+      ;;
+    --project=*|--roms=*)
+      shift
+      ;;
+    *)
+      SEMU_ESDE_PASSTHROUGH_ARGS+=( "$1" )
+      shift
+      ;;
+  esac
+done
+
+# ES-DE picks GLX (X11) when DISPLAY is set, even though it would prefer
+# Wayland. Under SVM, X11 means Xwayland → GLX which only exposes
+# GL 2.1 — the same incompatibility virgl has. Force Wayland.
+unset DISPLAY
+
+SEMU_ESDE_BIN="$APPDIR/usr/bin/es-de"
+if [ -x "$APPDIR/usr/bin/semu-es-de" ]; then
+  SEMU_ESDE_BIN="$APPDIR/usr/bin/semu-es-de"
+fi
+
+exec "$SEMU_ESDE_BIN" "${SEMU_ESDE_ARGS[@]}" "${SEMU_ESDE_PASSTHROUGH_ARGS[@]}"

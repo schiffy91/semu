@@ -1,0 +1,61 @@
+{
+  "schema_version": 2,
+  "system": "switch",
+  "label": "Nintendo Switch",
+  "default_emulator": "RYUJINX",
+  "emulator": "ryujinx",
+  "emulator_config": "Config.json",
+  "hardware_display": "modern 16:9 handheld/docked display",
+  "display_class": "modern_hd",
+  "content_viewport": {
+    "native_size": {
+      "width": 1280,
+      "height": 720
+    },
+    "alternate_native_sizes": [
+      {
+        "width": 1920,
+        "height": 1080
+      }
+    ],
+    "content_aspect": "16:9",
+    "default_aspect": "16:9",
+    "dynamic_aspect": false,
+    "layout": {
+      "kind": "handheld_wide",
+      "screens": [
+        {
+          "id": "main",
+          "native_size": {
+            "width": 1280,
+            "height": 720
+          },
+          "content_aspect": "16:9"
+        }
+      ]
+    },
+    "scale_policy": "aspect_fill_or_preserve"
+  },
+  "renderer": {
+    "model": "semu_source_hook_renderer",
+    "viewport_source": "content_viewport",
+    "profile": "modern_hd",
+    "shader": {
+      "family": "modern_native",
+      "enabled_by_default": false,
+      "intent": "modern HDMI/OLED output; no era CRT treatment",
+      "source_asset": null,
+      "widescreen_source_asset": null,
+      "effect_file": null
+    },
+    "bezel": {
+      "family": "none",
+      "enabled_by_default": false,
+      "intent": "no default bezel for modern Switch",
+      "source_asset": null,
+      "widescreen_source_asset": null,
+      "composition_effect_file": null
+    }
+  },
+  "notes": "Modern system: fullscreen first, optional cosmetic frame only when explicitly enabled."
+}

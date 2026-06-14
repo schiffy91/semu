@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "directories": [
+    "emulators/cemu/xdg/config/Cemu/controllerProfiles",
+    "emulators/cemu/xdg/data/Cemu/mlc01",
+    "emulators/cemu/xdg/cache/Cemu"
+  ],
+  "templates": [
+    {
+      "source": "settings.xml",
+      "output": "emulators/cemu/xdg/config/Cemu/settings.xml"
+    },
+    {
+      "source": "controller0.xml",
+      "output": "emulators/cemu/xdg/config/Cemu/controllerProfiles/controller0.xml"
+    },
+    {
+      "source": "SteamInput-P1.xml",
+      "output": "emulators/cemu/xdg/config/Cemu/controllerProfiles/SteamInput-P1.xml"
+    }
+  ]
+}

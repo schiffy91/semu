@@ -1,0 +1,9 @@
+{
+  "controllerProfile": "steam-deck",
+  "hotkeys": {
+    "source": "default-keymap",
+    "renderTarget": "none",
+    "stateActions": "disabled",
+    "fullscreenAction": "native"
+  }
+}

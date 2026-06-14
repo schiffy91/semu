@@ -1,18 +1,27 @@
 # Semu Utilities
 
-Utilities are implemented under `src/semu/utils/` and exposed through the
-`semu utils` command group.
+Root-level utilities are thin host entrypoints only. Compiler/runtime
+implementation lives under `src/**`; generated outputs live under `build/**`
+or the configured Semu project directory.
+
+## Steam Deck Bootstrap
+
+`utils/steam-deck-bootstrap.sh` prepares a Deck/Linux host enough to run the
+compiler target:
 
 ```sh
-build/semu utils n3ds-nocrypto ROMs/n3ds --check
-build/semu utils n3ds-nocrypto ROMs/n3ds -o ROMs/n3ds-fixed
+utils/steam-deck-bootstrap.sh install --yes
+utils/steam-deck-bootstrap.sh status
+utils/steam-deck-bootstrap.sh update --yes
 ```
 
-`n3ds-nocrypto` lives in `src/semu/utils/n3ds.btrc`. It also keeps the
-`decrypt3ds` compatibility subcommand wired to the same implementation. The
-tool sets the NoCrypto flag on already-decrypted NCSD/NCCH 3DS dumps. Use
-dumped/decrypted input files before running it.
+The script clones or updates the source checkout, optionally builds the CLI or
+flake package with Nix, then runs:
+
+```sh
+semu build target steam-deck --project "$SEMU_PROJECT"
+semu verify target steam-deck --project "$SEMU_PROJECT"
+```
 
 Steam Deck/SSH probes live under `tests/deck/` and are exposed through
-`make deck-ssh-smoke`; `utils/steam-deck-bootstrap.sh` is only the thin
-first-run shell wrapper that installs/loads Nix and delegates to the BTRC CLI.
+`make deck-ssh-smoke`.

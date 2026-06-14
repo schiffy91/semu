@@ -1,0 +1,15 @@
+{
+  "directories": [
+    "emulators/melonds/xdg/config/melonDS",
+    "emulators/melonds/xdg/data/melonDS/saves",
+    "emulators/melonds/xdg/data/melonDS/states",
+    "emulators/melonds/xdg/cache/melonDS"
+  ],
+  "schema_version": 1,
+  "templates": [
+    {
+      "output": "emulators/melonds/xdg/config/melonDS/melonDS.toml",
+      "source": "melonDS.toml"
+    }
+  ]
+}

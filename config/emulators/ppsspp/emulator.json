@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "id": "ppsspp",
+  "name": "PPSSPP",
+  "kind": "standalone",
+  "platforms": [
+    "linux"
+  ],
+  "targets": [
+    "linux",
+    "steam-deck",
+    "bazzite"
+  ],
+  "servedSystems": [
+    "psp"
+  ],
+  "package": {
+    "file": "package.nix",
+    "intent": "Use the PPSSPP package for Linux targets; macOS PSP routes through RetroArch.",
+    "source": "nixpkgs"
+  }
+}

@@ -1,0 +1,599 @@
+--- a/src/Ryujinx.Graphics.Gpu/Window.cs
++++ b/src/Ryujinx.Graphics.Gpu/Window.cs
+@@ -3,8 +3,10 @@
+ using Ryujinx.Graphics.Gpu.Memory;
+ using Ryujinx.Graphics.Texture;
+ using Ryujinx.Memory.Range;
++using Ryujinx.Common.Memory;
+ using System;
+ using System.Collections.Concurrent;
++using System.IO;
+ using System.Threading;
+ 
+ namespace Ryujinx.Graphics.Gpu
+@@ -15,6 +17,11 @@
+     public class Window
+     {
+         private readonly GpuContext _context;
++        private ITexture _semuRenderHookTexture;
++        private int _semuRenderHookTextureWidth;
++        private int _semuRenderHookTextureHeight;
++        private Format _semuRenderHookTextureFormat;
++        private static bool _semuRenderHookLogged;
+ 
+         /// <summary>
+         /// Texture presented on the window.
+@@ -102,6 +109,419 @@
+             _frameQueue = new ConcurrentQueue<PresentationTexture>();
+         }
+ 
++        private struct SemuRenderHookPlan
++        {
++            public bool Active;
++            public bool Shaders;
++            public bool Bezels;
++            public string System;
++            public string ConfigPath;
++        }
++
++        private readonly struct SemuRenderHookRect
++        {
++            public readonly int X;
++            public readonly int Y;
++            public readonly int Width;
++            public readonly int Height;
++
++            public SemuRenderHookRect(int x, int y, int width, int height)
++            {
++                X = x;
++                Y = y;
++                Width = width;
++                Height = height;
++            }
++        }
++
++        private static bool SemuRenderHookEnabled()
++        {
++            string enabled = Environment.GetEnvironmentVariable("SEMU_RENDER_HOOK");
++            return !string.IsNullOrEmpty(enabled) && enabled != "0";
++        }
++
++        private static bool SemuRenderHookEnvBool(string name, bool fallback)
++        {
++            string value = Environment.GetEnvironmentVariable(name);
++            if (string.IsNullOrEmpty(value))
++            {
++                return fallback;
++            }
++
++            char first = value[0];
++            return first != '0' && first != 'f' && first != 'F' && first != 'n' && first != 'N';
++        }
++
++        private static string SemuRenderHookReadConfig(string path)
++        {
++            if (string.IsNullOrEmpty(path))
++            {
++                return string.Empty;
++            }
++
++            try
++            {
++                return File.ReadAllText(path);
++            }
++            catch
++            {
++                return string.Empty;
++            }
++        }
++
++        private static bool SemuRenderHookConfigBoolIsFalse(string config, string key)
++        {
++            int cursor = config.IndexOf(key, StringComparison.Ordinal);
++            if (cursor < 0)
++            {
++                return false;
++            }
++
++            cursor = config.IndexOf(':', cursor);
++            if (cursor < 0)
++            {
++                return false;
++            }
++
++            cursor++;
++            while (cursor < config.Length && char.IsWhiteSpace(config[cursor]))
++            {
++                cursor++;
++            }
++
++            return cursor + 5 <= config.Length && string.Compare(config, cursor, "false", 0, 5, StringComparison.Ordinal) == 0;
++        }
++
++        private static bool SemuRenderHookConfigHasSystem(string config, string system)
++        {
++            if (string.IsNullOrEmpty(config) || string.IsNullOrEmpty(system) || system.Length > 32)
++            {
++                return true;
++            }
++
++            return config.IndexOf("\"id\": \"" + system + "\"", StringComparison.Ordinal) >= 0 ||
++                   config.IndexOf("\"id\":\"" + system + "\"", StringComparison.Ordinal) >= 0;
++        }
++
++        private static SemuRenderHookPlan SemuRenderHookPlanForFrame()
++        {
++            SemuRenderHookPlan plan = new()
++            {
++                Active = SemuRenderHookEnabled(),
++                Shaders = SemuRenderHookEnvBool("SEMU_RENDER_SHADERS", true),
++                Bezels = SemuRenderHookEnvBool("SEMU_RENDER_BEZELS", true),
++                System = Environment.GetEnvironmentVariable("SEMU_SYSTEM") ?? string.Empty,
++                ConfigPath = Environment.GetEnvironmentVariable("SEMU_RENDER_HOOK_CONFIG") ?? string.Empty,
++            };
++
++            if (!plan.Active)
++            {
++                return plan;
++            }
++
++            string config = SemuRenderHookReadConfig(plan.ConfigPath);
++            if (!string.IsNullOrEmpty(config))
++            {
++                if (!SemuRenderHookConfigHasSystem(config, plan.System))
++                {
++                    plan.Active = false;
++                    return plan;
++                }
++                if (SemuRenderHookConfigBoolIsFalse(config, "\"shaders_enabled\""))
++                {
++                    plan.Shaders = false;
++                }
++                if (SemuRenderHookConfigBoolIsFalse(config, "\"bezels_enabled\""))
++                {
++                    plan.Bezels = false;
++                }
++            }
++
++            return plan;
++        }
++
++        private static bool SemuRenderHookFormatSupported(Format format)
++        {
++            return format is Format.R8G8B8A8Unorm or Format.R8G8B8A8Srgb or Format.B8G8R8A8Unorm or Format.B8G8R8A8Srgb;
++        }
++
++        private static bool SemuRenderHookFormatIsBgra(Format format)
++        {
++            return format is Format.B8G8R8A8Unorm or Format.B8G8R8A8Srgb;
++        }
++
++        private ITexture SemuRenderHookEnsureTexture(int width, int height, Format format)
++        {
++            if (_semuRenderHookTexture != null &&
++                _semuRenderHookTextureWidth == width &&
++                _semuRenderHookTextureHeight == height &&
++                _semuRenderHookTextureFormat == format)
++            {
++                return _semuRenderHookTexture;
++            }
++
++            _semuRenderHookTexture?.Release();
++            _semuRenderHookTexture = _context.Renderer.CreateTexture(new TextureCreateInfo(
++                width,
++                height,
++                1,
++                1,
++                1,
++                1,
++                1,
++                4,
++                format,
++                DepthStencilMode.Depth,
++                Target.Texture2D,
++                SwizzleComponent.Red,
++                SwizzleComponent.Green,
++                SwizzleComponent.Blue,
++                SwizzleComponent.Alpha));
++            _semuRenderHookTextureWidth = width;
++            _semuRenderHookTextureHeight = height;
++            _semuRenderHookTextureFormat = format;
++            return _semuRenderHookTexture;
++        }
++
++        private static SemuRenderHookRect SemuRenderHookContentRect(int width, int height, bool bezels)
++        {
++            if (!bezels || width < 32 || height < 32)
++            {
++                return new SemuRenderHookRect(0, 0, width, height);
++            }
++
++            int marginX = width / 18;
++            int marginY = height / 16;
++            if (marginX <= 0 || marginY <= 0 || width - marginX * 2 < 16 || height - marginY * 2 < 16)
++            {
++                return new SemuRenderHookRect(0, 0, width, height);
++            }
++
++            return new SemuRenderHookRect(marginX, marginY, width - marginX * 2, height - marginY * 2);
++        }
++
++        private static int SemuRenderHookClamp(int value)
++        {
++            return Math.Clamp(value, 0, 255);
++        }
++
++        private static void SemuRenderHookReadPixel(ReadOnlySpan<byte> data, int index, Format format, out int r, out int g, out int b, out int a)
++        {
++            if (SemuRenderHookFormatIsBgra(format))
++            {
++                b = data[index];
++                g = data[index + 1];
++                r = data[index + 2];
++                a = data[index + 3];
++            }
++            else
++            {
++                r = data[index];
++                g = data[index + 1];
++                b = data[index + 2];
++                a = data[index + 3];
++            }
++        }
++
++        private static void SemuRenderHookWritePixel(Span<byte> data, int index, Format format, int r, int g, int b, int a)
++        {
++            r = SemuRenderHookClamp(r);
++            g = SemuRenderHookClamp(g);
++            b = SemuRenderHookClamp(b);
++            a = SemuRenderHookClamp(a);
++
++            if (SemuRenderHookFormatIsBgra(format))
++            {
++                data[index] = (byte)b;
++                data[index + 1] = (byte)g;
++                data[index + 2] = (byte)r;
++                data[index + 3] = (byte)a;
++            }
++            else
++            {
++                data[index] = (byte)r;
++                data[index + 1] = (byte)g;
++                data[index + 2] = (byte)b;
++                data[index + 3] = (byte)a;
++            }
++        }
++
++        private static void SemuRenderHookApplyShader(ref int r, ref int g, ref int b, int x, int y)
++        {
++            int luma = (r * 77 + g * 150 + b * 29) >> 8;
++            int scanline = (y & 1) == 0 ? 100 : 78;
++
++            r = (r * 92 + luma * 8) / 100;
++            g = (g * 92 + luma * 8) / 100;
++            b = (b * 92 + luma * 8) / 100;
++
++            switch (x % 3)
++            {
++                case 0:
++                    g = g * 88 / 100;
++                    b = b * 88 / 100;
++                    break;
++                case 1:
++                    r = r * 90 / 100;
++                    b = b * 90 / 100;
++                    break;
++                default:
++                    r = r * 88 / 100;
++                    g = g * 88 / 100;
++                    break;
++            }
++
++            r = r * scanline / 100;
++            g = g * scanline / 100;
++            b = b * scanline / 100;
++        }
++
++        private static void SemuRenderHookFramePixel(Span<byte> data, int index, Format format, int x, int y, int width, int height)
++        {
++            int shade = 88 + x * 12 / Math.Max(width, 1) - y * 8 / Math.Max(height, 1);
++            int r = 24 * shade / 100;
++            int g = 24 * shade / 100;
++            int b = 28 * shade / 100;
++
++            if (x < width / 32 || y < height / 32 || x + width / 32 >= width || y + height / 32 >= height)
++            {
++                r = 7;
++                g = 8;
++                b = 10;
++            }
++
++            SemuRenderHookWritePixel(data, index, format, r, g, b, 255);
++        }
++
++        private bool SemuRenderHookComposeFrame(Image.Texture texture, ImageCrop crop, out ITexture outputTexture, out ImageCrop outputCrop)
++        {
++            outputTexture = texture.HostTexture;
++            outputCrop = crop;
++
++            SemuRenderHookPlan plan = SemuRenderHookPlanForFrame();
++            Format format = texture.Info.FormatInfo.Format;
++            if (!plan.Active)
++            {
++                return false;
++            }
++            if (!plan.Shaders && !plan.Bezels)
++            {
++                return true;
++            }
++            if (texture.Info.FormatInfo.BytesPerPixel != 4 || texture.Info.FormatInfo.IsCompressed || !SemuRenderHookFormatSupported(format))
++            {
++                return false;
++            }
++
++            int width = texture.HostTexture.Width;
++            int height = texture.HostTexture.Height;
++            if (width <= 0 || height <= 0 || (long)width * height * 4 > int.MaxValue)
++            {
++                return false;
++            }
++
++            int srcX0 = crop.Left == 0 && crop.Right == 0 ? 0 : Math.Clamp(crop.Left, 0, width - 1);
++            int srcX1 = crop.Left == 0 && crop.Right == 0 ? width : Math.Clamp(crop.Right, 1, width);
++            int srcY0 = crop.Top == 0 && crop.Bottom == 0 ? 0 : Math.Clamp(crop.Top, 0, height - 1);
++            int srcY1 = crop.Top == 0 && crop.Bottom == 0 ? height : Math.Clamp(crop.Bottom, 1, height);
++            if (srcX1 <= srcX0 || srcY1 <= srcY0)
++            {
++                return false;
++            }
++
++            int size = checked(width * height * 4);
++            MemoryOwner<byte> output = null;
++
++            try
++            {
++                using (PinnedSpan<byte> sourceData = texture.HostTexture.GetData())
++                {
++                    ReadOnlySpan<byte> source = sourceData.Get();
++                    if (source.Length < size)
++                    {
++                        return false;
++                    }
++
++                    output = MemoryOwner<byte>.Rent(size);
++                    Span<byte> destination = output.Span;
++                    SemuRenderHookRect content = SemuRenderHookContentRect(width, height, plan.Bezels);
++
++                    for (int y = 0; y < height; y++)
++                    {
++                        for (int x = 0; x < width; x++)
++                        {
++                            int dstIndex = (y * width + x) * 4;
++                            if (x >= content.X && y >= content.Y && x < content.X + content.Width && y < content.Y + content.Height)
++                            {
++                                int sourceX = srcX0 + (int)((long)(x - content.X) * (srcX1 - srcX0) / content.Width);
++                                int sourceY = srcY0 + (int)((long)(y - content.Y) * (srcY1 - srcY0) / content.Height);
++                                sourceX = Math.Clamp(sourceX, srcX0, srcX1 - 1);
++                                sourceY = Math.Clamp(sourceY, srcY0, srcY1 - 1);
++
++                                SemuRenderHookReadPixel(source, (sourceY * width + sourceX) * 4, format, out int r, out int g, out int b, out int a);
++                                if (plan.Shaders)
++                                {
++                                    SemuRenderHookApplyShader(ref r, ref g, ref b, x, y);
++                                }
++                                SemuRenderHookWritePixel(destination, dstIndex, format, r, g, b, a);
++                            }
++                            else
++                            {
++                                SemuRenderHookFramePixel(destination, dstIndex, format, x, y, width, height);
++                            }
++                        }
++                    }
++                }
++
++                ITexture composedTexture = SemuRenderHookEnsureTexture(width, height, format);
++                composedTexture.SetData(output);
++                output = null;
++
++                outputTexture = composedTexture;
++                outputCrop = new ImageCrop(0, width, 0, height, crop.FlipX, crop.FlipY, crop.IsStretched, crop.AspectRatioX, crop.AspectRatioY);
++                return true;
++            }
++            catch
++            {
++                return false;
++            }
++            finally
++            {
++                output?.Dispose();
++            }
++        }
++
++        private static void SemuRenderHookProof(string emulator)
++        {
++            if (!SemuRenderHookEnabled() || _semuRenderHookLogged)
++            {
++                return;
++            }
++
++            string system = Environment.GetEnvironmentVariable("SEMU_SYSTEM");
++            string config = Environment.GetEnvironmentVariable("SEMU_RENDER_HOOK_CONFIG");
++            string shaders = Environment.GetEnvironmentVariable("SEMU_RENDER_SHADERS");
++            string bezels = Environment.GetEnvironmentVariable("SEMU_RENDER_BEZELS");
++            Console.Error.WriteLine("semu-source-hook: applied emulator={0} system={1} config={2} shaders={3} bezels={4}",
++                emulator, system ?? "", config ?? "", shaders ?? "", bezels ?? "");
++
++            string proof = Environment.GetEnvironmentVariable("SEMU_RENDER_HOOK_PROOF");
++            if (!string.IsNullOrEmpty(proof))
++            {
++                try
++                {
++                    File.AppendAllText(proof, string.Format(
++                        "semu-render-hook:{0}:game_framebuffer:config={1}{2}",
++                        emulator, config ?? "", Environment.NewLine));
++                }
++                catch
++                {
++                }
++            }
++
++            _semuRenderHookLogged = true;
++        }
++
+         /// <summary>
+         /// Enqueues a frame for presentation.
+         /// This method is thread safe and can be called from any thread.
+@@ -238,8 +658,16 @@
+                     crop = new ImageCrop(left, right, top, bottom, crop.FlipX, crop.FlipY, crop.IsStretched, crop.AspectRatioX, crop.AspectRatioY);
+                 }
+ 
+-                _context.Renderer.Window.Present(texture.HostTexture, crop, swapBuffersCallback);
++                ITexture presentedTexture = texture.HostTexture;
++                ImageCrop presentedCrop = crop;
++                bool semuRenderHookComposed = SemuRenderHookComposeFrame(texture, crop, out presentedTexture, out presentedCrop);
+ 
++                _context.Renderer.Window.Present(presentedTexture, presentedCrop, swapBuffersCallback);
++                if (semuRenderHookComposed)
++                {
++                    SemuRenderHookProof("ryujinx");
++                }
++
+                 pt.ReleaseCallback(pt.UserObj);
+             }
+         }
+--- a/src/Ryujinx.Graphics.OpenGL/Window.cs
++++ b/src/Ryujinx.Graphics.OpenGL/Window.cs
+@@ -5,6 +5,7 @@
+ using Ryujinx.Graphics.OpenGL.Effects.Smaa;
+ using Ryujinx.Graphics.OpenGL.Image;
+ using System;
++using System.IO;
+ 
+ namespace Ryujinx.Graphics.OpenGL
+ {
+@@ -28,6 +29,7 @@
+         private bool _updateScalingFilter;
+         private bool _isBgra;
+         private TextureView _upscaledTexture;
++        private static bool _semuRenderHookOpenGlLogged;
+ 
+         internal BackgroundContextWorker BackgroundContext { get; private set; }
+ 
+@@ -36,6 +38,43 @@
+         public Window(OpenGLRenderer renderer)
+         {
+             _renderer = renderer;
++        }
++
++        private static bool SemuRenderHookEnabled()
++        {
++            string enabled = Environment.GetEnvironmentVariable("SEMU_RENDER_HOOK");
++            return !string.IsNullOrEmpty(enabled) && enabled != "0";
++        }
++
++        private static void SemuRenderHookProof(string emulator)
++        {
++            if (!SemuRenderHookEnabled() || _semuRenderHookOpenGlLogged)
++            {
++                return;
++            }
++
++            string system = Environment.GetEnvironmentVariable("SEMU_SYSTEM") ?? string.Empty;
++            string config = Environment.GetEnvironmentVariable("SEMU_RENDER_HOOK_CONFIG") ?? string.Empty;
++            string shaders = Environment.GetEnvironmentVariable("SEMU_RENDER_SHADERS") ?? string.Empty;
++            string bezels = Environment.GetEnvironmentVariable("SEMU_RENDER_BEZELS") ?? string.Empty;
++            Console.Error.WriteLine("semu-source-hook: applied emulator={0} system={1} config={2} shaders={3} bezels={4}",
++                emulator, system, config, shaders, bezels);
++
++            string proof = Environment.GetEnvironmentVariable("SEMU_RENDER_HOOK_PROOF");
++            if (!string.IsNullOrEmpty(proof))
++            {
++                try
++                {
++                    File.AppendAllText(proof, string.Format(
++                        "semu-render-hook:{0}:game_framebuffer:config={1}{2}",
++                        emulator, config, Environment.NewLine));
++                }
++                catch
++                {
++                }
++            }
++
++            _semuRenderHookOpenGlLogged = true;
+         }
+ 
+         public void Present(ITexture texture, ImageCrop crop, Action swapBuffersCallback)
+@@ -45,6 +84,7 @@
+             (int oldDrawFramebufferHandle, int oldReadFramebufferHandle) = ((Pipeline)_renderer.Pipeline).GetBoundFramebuffers();
+ 
+             CopyTextureToFrameBufferRGB(0, GetCopyFramebufferHandleLazy(), (TextureView)texture, crop, swapBuffersCallback);
++            SemuRenderHookProof("ryujinx");
+ 
+             GL.BindFramebuffer(FramebufferTarget.ReadFramebuffer, oldReadFramebufferHandle);
+             GL.BindFramebuffer(FramebufferTarget.DrawFramebuffer, oldDrawFramebufferHandle);
+--- a/src/Ryujinx.Graphics.GAL/Multithreading/Commands/Window/WindowPresentCommand.cs
++++ b/src/Ryujinx.Graphics.GAL/Multithreading/Commands/Window/WindowPresentCommand.cs
+@@ -1,6 +1,7 @@
+ using Ryujinx.Graphics.GAL.Multithreading.Model;
+ using Ryujinx.Graphics.GAL.Multithreading.Resources;
+ using System;
++using System.IO;
+ 
+ namespace Ryujinx.Graphics.GAL.Multithreading.Commands.Window
+ {
+@@ -10,6 +11,7 @@
+         private TableRef<ThreadedTexture> _texture;
+         private ImageCrop _crop;
+         private TableRef<Action> _swapBuffersCallback;
++        private static bool _semuRenderHookGalLogged;
+ 
+         public void Set(TableRef<ThreadedTexture> texture, ImageCrop crop, TableRef<Action> swapBuffersCallback)
+         {
+@@ -18,9 +20,47 @@
+             _swapBuffersCallback = swapBuffersCallback;
+         }
+ 
++        private static bool SemuRenderHookEnabled()
++        {
++            string enabled = Environment.GetEnvironmentVariable("SEMU_RENDER_HOOK");
++            return !string.IsNullOrEmpty(enabled) && enabled != "0";
++        }
++
++        private static void SemuRenderHookProof(string emulator)
++        {
++            if (!SemuRenderHookEnabled() || _semuRenderHookGalLogged)
++            {
++                return;
++            }
++
++            string config = Environment.GetEnvironmentVariable("SEMU_RENDER_HOOK_CONFIG") ?? string.Empty;
++            string system = Environment.GetEnvironmentVariable("SEMU_SYSTEM") ?? string.Empty;
++            string shaders = Environment.GetEnvironmentVariable("SEMU_RENDER_SHADERS") ?? string.Empty;
++            string bezels = Environment.GetEnvironmentVariable("SEMU_RENDER_BEZELS") ?? string.Empty;
++            Console.Error.WriteLine("semu-source-hook: applied emulator={0} system={1} config={2} shaders={3} bezels={4}",
++                emulator, system, config, shaders, bezels);
++
++            string proof = Environment.GetEnvironmentVariable("SEMU_RENDER_HOOK_PROOF");
++            if (!string.IsNullOrEmpty(proof))
++            {
++                try
++                {
++                    File.AppendAllText(proof, string.Format(
++                        "semu-render-hook:{0}:game_framebuffer:config={1}{2}",
++                        emulator, config, Environment.NewLine));
++                }
++                catch
++                {
++                }
++            }
++
++            _semuRenderHookGalLogged = true;
++        }
++
+         public static void Run(ref WindowPresentCommand command, ThreadedRenderer threaded, IRenderer renderer)
+         {
+             threaded.SignalFrame();
++            SemuRenderHookProof("ryujinx");
+             renderer.Window.Present(command._texture.Get(threaded)?.Base, command._crop, command._swapBuffersCallback.Get(threaded));
+         }
+     }

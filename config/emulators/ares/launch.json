@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "romArg": "positional",
+  "fullscreenContract": {
+    "required": true,
+    "mode": "argument",
+    "verification": "argv_contains_fullscreen_flag"
+  },
+  "macos": {
+    "launcher": "package",
+    "executable": "ares",
+    "defaultArgs": [
+      "--fullscreen",
+      "--system",
+      "Nintendo 64"
+    ],
+    "fullscreenArgs": [
+      "--fullscreen"
+    ]
+  }
+}

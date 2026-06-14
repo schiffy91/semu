@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "profileRoot": "emulators/ares",
+  "stateRoots": {
+    "macos": "~/Library/Application Support/ares"
+  },
+  "configRoot": "~/Library/Application Support/ares",
+  "dataRoot": "~/Library/Application Support/ares",
+  "cacheRoot": "~/Library/Caches/ares",
+  "saveRoot": "${stateRoot}/saves",
+  "stateSaveRoot": "${stateRoot}/states",
+  "biosRoot": "bios",
+  "keysRoot": "bios",
+  "externalRomAccess": "read_only"
+}

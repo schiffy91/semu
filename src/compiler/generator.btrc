@@ -1,0 +1,483 @@
+import ./model.btrc;
+import ./parser.btrc;
+import ../lib/merge.btrc;
+import std.strings;
+import ../generators/emulators.btrc;
+import ../generators/emulator_state.btrc;
+import ../lib/owned_paths.btrc;
+import ../lib/rendering.btrc;
+import ../generators/esde.btrc;
+import ../generators/steam_input.btrc;
+import ../generators/appimage.btrc;
+import std.cli;
+import std.fs;
+import std.json;
+import std.platform;
+import std.process;
+import std.vector;
+import ./resolver.btrc;
+import ./checker.btrc;
+
+class SemuCompilerProjectWriter {
+    class void initializeHome(string project) {
+        ensureDir(project);
+        ensureDir(SemuOwnedPaths.home(project));
+        ensureDir(SemuOwnedPaths.generated(project));
+        ensureDir(SemuOwnedPaths.state(project));
+        ensureDir(SemuOwnedPaths.cache(project));
+        ensureDir(SemuOwnedPaths.overrides(project));
+        ensureDir(joinPath(SemuOwnedPaths.overrides(project), "systems"));
+        ensureDir(joinPath(SemuOwnedPaths.overrides(project), "emulators"));
+        ensureDir(joinPath(SemuOwnedPaths.overrides(project), "input"));
+        ensureDir(joinPath(SemuOwnedPaths.overrides(project), "rendering"));
+        SemuCompilerProjectWriter.ensureUserConfig(project);
+    }
+
+    class void ensureUserConfig(string project) {
+        string path = SemuOwnedPaths.semuConfig(project);
+        if (FileSystem.isFile(path)) {
+            return;
+        }
+        string source = SemuOwnedPaths.settingsDefinitionFile(project, "semu-settings.json");
+        string text = FileSystem.isFile(source) ? FileSystem.readText(source) : "{\n  \"schema_version\": 1\n}\n";
+        ensureDir(PathTools.dirname(path));
+        FileSystem.writeText(path, semuPrettyJsonObject(text));
+    }
+
+    class string launcherBin(string project) {
+        string configured = Environment.get("SEMU_LAUNCHER_BIN", "");
+        if (!configured.isEmpty()) {
+            return configured;
+        }
+        return SemuCompilerProjectWriter.stableLauncherBin(project);
+    }
+
+    class string stableLauncherBin(string project) {
+        return SemuOwnedPaths.generatedFile(project, "bin");
+    }
+
+    class string stableLauncherPreamble() {
+        return """#!/usr/bin/env sh
+set -eu
+here=\"$(CDPATH= cd -- \"$(dirname -- \"$0\")\" && pwd -P)\"
+if [ -z \"${SEMU_PROJECT_DIR:-}\" ]; then
+  project=\"$(CDPATH= cd -- \"$here/../../..\" && pwd -P)\"
+  export SEMU_PROJECT_DIR=\"$project\"
+fi
+active=\"${SEMU_ACTIVE_LAUNCHER_BIN:-}\"
+runner=\"\"
+usable_runner() {
+  [ -n \"$1\" ] && [ -x \"$1\" ] || return 1
+  case \"$1\" in
+    *.AppImage|*.appimage) return 1 ;;
+  esac
+  return 0
+}
+find_runner() {
+  for candidate in \
+      \"${SEMU_CLI:-}\" \
+      \"$here/semu\" \
+      \"$here/semu-btrc\" \
+      \"${SEMU_ASSET_ROOT:-}/result-full/bin/semu\" \
+      \"$HOME/semu/result-full/bin/semu\" \
+      \"${SEMU_ASSET_ROOT:-}/build/out/semu\" \
+      \"$project/build/out/semu\" \
+      \"$HOME/Applications/Semu/semu\" \
+      \"$(command -v semu-btrc 2>/dev/null || true)\" \
+      \"$(command -v semu 2>/dev/null || true)\"; do
+    usable_runner \"$candidate\" || continue
+    printf '%s\n' \"$candidate\"
+    return 0
+  done
+  return 1
+}
+""";
+    }
+
+    class string stableEmulatorLauncher(string emulator) {
+        return SemuCompilerProjectWriter.stableLauncherPreamble()
+            + "if [ -n \"$active\" ] && [ -x \"$active/semu-" + emulator + "\" ]; then exec \"$active/semu-" + emulator + "\" \"$@\"; fi\n"
+            + "runner=\"$(find_runner || true)\"\n"
+            + "if [ -n \"$runner\" ]; then exec \"$runner\" semu-" + emulator + " \"$@\"; fi\n"
+            + "echo \"Semu launcher: generated semu CLI not found for " + emulator + "\" >&2\n"
+            + "exit 127\n";
+    }
+
+    class string stableSettingsLauncher() {
+        return SemuEsDeGenerator.settingsLauncherScript();
+    }
+
+    class void writeStableLaunchers(SemuBuildPlan plan) {
+        string bin = SemuCompilerProjectWriter.stableLauncherBin(plan.project);
+        ensureDir(bin);
+        for emulator in plan.emulatorIds {
+            FileSystem.writeText(joinPath(bin, "semu-" + emulator), SemuCompilerProjectWriter.stableEmulatorLauncher(emulator));
+            FileSystem.chmod(joinPath(bin, "semu-" + emulator), 493);
+        }
+        FileSystem.writeText(joinPath(bin, "semu-settings"), SemuCompilerProjectWriter.stableSettingsLauncher());
+        FileSystem.chmod(joinPath(bin, "semu-settings"), 493);
+    }
+
+    class void writeTarget(SemuBuildPlan plan) {
+        SemuCompilerProjectWriter.initializeHome(plan.project);
+        SemuCompilerProjectWriter.writeEmulatorState(plan);
+        SemuCompilerProjectWriter.writeRenderAssets(plan);
+        SemuCompilerProjectWriter.writeStableLaunchers(plan);
+        SemuCompilerProjectWriter.writeEsDe(plan);
+        SemuCompilerProjectWriter.writeSteamInput(plan);
+        SemuCompilerProjectWriter.writeLauncherInventory(plan);
+    }
+
+    class void writeRenderAssets(SemuBuildPlan plan) {
+        SemuCompilerProjectWriter.copyRenderAssetDirectory(plan.project, "reshade");
+        SemuCompilerProjectWriter.copyRenderAssetDirectory(plan.project, "slang");
+        SemuOwnedPaths.writeGenerated(plan.project, "assets/rendering/host-env", SemuCompilerProjectWriter.renderHostEnv(plan));
+        SemuCompilerProjectWriter.writeRenderHookConfigs(plan);
+    }
+
+    class void copyRenderAssetDirectory(string project, string name) {
+        string source = joinPath(SemuOwnedPaths.sourceRoot(project), "assets/rendering/" + name);
+        string target = SemuOwnedPaths.generatedFile(project, "assets/rendering/" + name);
+        ensureDir(target);
+        if (FileSystem.isDir(source)) {
+            for fileName in FileSystem.listDir(source) {
+                string sourcePath = joinPath(source, fileName);
+                if (FileSystem.isFile(sourcePath)) {
+                    FileSystem.writeText(joinPath(target, fileName), FileSystem.readText(sourcePath));
+                }
+            }
+        }
+    }
+
+    class void writeRenderHookConfigs(SemuBuildPlan plan) {
+        for emulator in plan.emulatorIds {
+            SemuOwnedPaths.writeGenerated(plan.project, "assets/rendering/hooks/" + emulator + ".json",
+                SemuCompilerProjectWriter.renderHookConfig(plan, emulator));
+        }
+    }
+
+    class string renderHookConfig(SemuBuildPlan plan, string emulator) {
+        SemuEmulatorRenderingDefinition emulatorRendering = SemuEmulatorRenderingDefinition.load(plan.project, emulator);
+        string implementationStatus = emulatorRendering.field("implementation_status", "unknown");
+        string packageStatus = emulatorRendering.field("source_package_status", "unknown");
+        string scope = emulatorRendering.field("hook_scope", emulatorRendering.field("planned_hook_scope", "game_framebuffer"));
+        string hookPoint = emulatorRendering.field("hook_point", emulatorRendering.field("planned_hook_point", ""));
+        bool requiresDeckProof = emulatorRendering.boolField("requires_deck_proof", false);
+        bool shaders = SemuCompilerProjectWriter.settingBool(plan.project, "visual_crt_shaders", true);
+        bool bezels = SemuCompilerProjectWriter.settingBool(plan.project, "visual_bezels", true);
+        string scale = SemuCompilerProjectWriter.settingBool(plan.project, "visual_integer_scaling", true) ? "integer" : "stretch";
+        Vector<string> servedSystems = SemuCompilerParser.emulator(plan.project, emulator).servedSystems;
+        Vector<string> hookSystems = [];
+        for systemId in plan.systemIds {
+            if (SemuCompilerProjectWriter.stringVectorContains(servedSystems, systemId)) {
+                hookSystems.push(systemId);
+            }
+        }
+        Vector<string> lines = [
+            "{",
+            "  \"schema_version\": 1,",
+            "  \"emulator\": " + semuPrettyJsonString(emulator) + ",",
+            "  \"target\": " + semuPrettyJsonString(plan.target) + ",",
+            "  \"implementation_status\": " + semuPrettyJsonString(implementationStatus) + ",",
+            "  \"source_package_status\": " + semuPrettyJsonString(packageStatus) + ",",
+            "  \"requires_deck_proof\": " + (requiresDeckProof ? "true" : "false") + ",",
+            "  \"scope\": " + semuPrettyJsonString(scope) + ",",
+            "  \"hook_point\": " + semuPrettyJsonString(hookPoint) + ",",
+            "  \"shaders_enabled\": " + (shaders ? "true" : "false") + ",",
+            "  \"bezels_enabled\": " + (bezels ? "true" : "false") + ",",
+            "  \"scale\": " + semuPrettyJsonString(scale) + ",",
+            "  \"generated_root\": " + semuPrettyJsonString(SemuOwnedPaths.generatedFile(plan.project, "assets/rendering")) + ",",
+            "  \"systems\": ["
+        ];
+        int index = 0;
+        for systemId in hookSystems {
+            SemuRenderingDefinition rendering = SemuRenderingDefinition.load(plan.project, systemId);
+            string row = "    {"
+                + "\"id\": " + semuPrettyJsonString(systemId)
+                + ", \"shader_effect_file\": " + semuPrettyJsonString(rendering.shaderEffectFile())
+                + ", \"bezel_effect_file\": " + semuPrettyJsonString(rendering.bezelEffectFile())
+                + ", \"shader_enabled_by_default\": " + rendering.rendererField("shader", "enabled_by_default", "false")
+                + ", \"bezel_enabled_by_default\": " + rendering.rendererField("bezel", "enabled_by_default", "false")
+                + ", \"native_size\": " + semuPrettyJsonString(rendering.nativeSize())
+                + ", \"content_aspect\": " + semuPrettyJsonString(rendering.contentAspect())
+                + ", \"layout\": " + semuPrettyJsonString(rendering.layoutKind())
+                + "}";
+            index++;
+            if (index < hookSystems.len) {
+                row = row + ",";
+            }
+            lines.push(row);
+        }
+        lines.push("  ]");
+        lines.push("}");
+        return lines.join("\n") + "\n";
+    }
+
+    class bool stringVectorContains(Vector<string> values, string expected) {
+        for value in values {
+            if (value.equals(expected)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    class string renderHostEnv(SemuBuildPlan plan) {
+        bool shaders = SemuCompilerProjectWriter.settingBool(plan.project, "visual_crt_shaders", true);
+        bool bezels = SemuCompilerProjectWriter.settingBool(plan.project, "visual_bezels", true);
+        string scale = SemuCompilerProjectWriter.settingBool(plan.project, "visual_integer_scaling", true) ? "integer" : "stretch";
+        Vector<string> lines = [
+            "SEMU_HOST_RENDER_SHADERS=" + (shaders ? "1" : "0"),
+            "SEMU_HOST_RENDER_BEZELS=" + (bezels ? "1" : "0"),
+            "SEMU_HOST_RENDER_SCALE=" + ShellWords.quote(scale),
+            "semu_host_render_effect_name() {",
+            "  case \"$1:$2\" in"
+        ];
+        for systemId in plan.systemIds {
+            SemuRenderingDefinition rendering = SemuRenderingDefinition.load(plan.project, systemId);
+            string effect = rendering.bezelEffectFile();
+            string shader = rendering.shaderEffectFile();
+            if (!effect.isEmpty()) {
+                lines.push("    " + ShellWords.quote(systemId + ":bezel") + ") printf '%s\\n' " + ShellWords.quote(effect) + " ;;");
+            }
+            if (!shader.isEmpty()) {
+                lines.push("    " + ShellWords.quote(systemId + ":shader") + ") printf '%s\\n' " + ShellWords.quote(shader) + " ;;");
+            }
+        }
+        lines.push("    *) printf '%s\\n' '' ;;");
+        lines.push("  esac");
+        lines.push("}");
+        return lines.join("\n") + "\n";
+    }
+
+    class string systemAssetField(string project, string systemId, string field, string fallback) {
+        string path = SemuOwnedPaths.systemAssetFile(project, systemId);
+        if (!FileSystem.isFile(path)) {
+            return fallback;
+        }
+        return JsonText.field(FileSystem.readText(path), field, fallback);
+    }
+
+    class bool settingBool(string project, string key, bool fallback) {
+        string path = SemuOwnedPaths.semuConfig(project);
+        if (!FileSystem.isFile(path)) {
+            return fallback;
+        }
+        JsonObject object = JsonObject.parse(FileSystem.readText(path));
+        return object.getBool(key, fallback);
+    }
+
+    class void writeEmulatorState(SemuBuildPlan plan) {
+        for emulator in plan.emulatorIds {
+            SemuEmulatorStateGenerator.write(plan.project, emulator);
+        }
+    }
+
+    class void writeEsDe(SemuBuildPlan plan) {
+        Vector<SemuEsDeSystem> systems = [];
+        for systemId in plan.systemIds {
+            SemuDefinition definition = SemuCompilerParser.system(plan.project, systemId).source;
+            Vector<SemuEsDeCommand> commands = SemuCompilerProjectWriter.commandsForSystem(plan.project, definition.raw);
+            systems.push(SemuEsDeGenerator.system(
+                systemId,
+                definition.stringField("fullname", systemId),
+                definition.stringField("platform", systemId),
+                definition.stringField("theme", systemId),
+                definition.stringField("rom_dir", systemId),
+                definition.stringArray("extensions"),
+                commands
+            ));
+        }
+
+        Vector<SemuEsDeFindRule> rules = [];
+        for emulatorId in plan.emulatorIds {
+            rules.push(SemuEsDeGenerator.emulatorRule(emulatorId.toUpper(), joinPath(SemuCompilerProjectWriter.launcherBin(plan.project), "semu-" + emulatorId)));
+        }
+        rules.push(SemuEsDeGenerator.coreRule("RETROARCH", [
+            Environment.get("SEMU_RETROARCH_CORE_DIR", "/usr/lib/libretro"),
+            "/usr/lib/x86_64-linux-gnu/libretro",
+            "/usr/lib/aarch64-linux-gnu/libretro",
+            "/usr/lib/libretro"
+        ]));
+
+        string customSystems = joinPath(plan.project, "ES-DE/custom_systems");
+        ensureDir(customSystems);
+        FileSystem.writeText(joinPath(customSystems, "es_systems.xml"), SemuEsDeGenerator.systemsXml(systems));
+        FileSystem.writeText(joinPath(customSystems, "es_find_rules.xml"), SemuEsDeGenerator.findRulesXml(rules));
+        FileSystem.writeText(joinPath(plan.project, "ES-DE/es_settings.xml"), SemuEsDeGenerator.settingsXml(
+            SemuOwnedPaths.romsRoot(plan.project),
+            SemuOwnedPaths.mediaRoot(plan.project),
+            SemuOwnedPaths.themeRoot(plan.project),
+            "gb",
+            "system",
+            "linear"
+        ));
+
+        string userHome = Environment.get("HOME", "");
+        if (!userHome.isEmpty()) {
+            string userCustom = joinPath(userHome, "ES-DE/custom_systems");
+            string userSettings = joinPath(userHome, "ES-DE/settings");
+            ensureDir(userCustom);
+            ensureDir(userSettings);
+            FileSystem.writeText(joinPath(userCustom, "es_systems.xml"), SemuEsDeGenerator.systemsXml(systems));
+            FileSystem.writeText(joinPath(userCustom, "es_find_rules.xml"), SemuEsDeGenerator.findRulesXml(rules));
+            FileSystem.writeText(joinPath(userSettings, "es_settings.xml"), SemuEsDeGenerator.settingsXml(
+                SemuOwnedPaths.romsRoot(plan.project),
+                SemuOwnedPaths.mediaRoot(plan.project),
+                SemuOwnedPaths.themeRoot(plan.project),
+                "gb",
+                "system",
+                "linear"
+            ));
+        }
+    }
+
+    class Vector<SemuEsDeCommand> commandsForSystem(string project, string systemRaw) {
+        Vector<SemuEsDeCommand> commands = [];
+        string routeRoot = JsonText.objectField(systemRaw, "routes");
+        Vector<string> routes = JsonText.objectArray(routeRoot, "linux");
+        if (routes.len == 0) {
+            routes = JsonText.objectArray(routeRoot, "macos");
+        }
+        for route in routes {
+            string emulator = JsonText.field(route, "emulator", "");
+            if (emulator.isEmpty()) {
+                continue;
+            }
+            string core = JsonText.field(route, "core", "");
+            string label = SemuCompilerProjectWriter.emulatorDisplayName(project, emulator);
+            string systemId = JsonText.field(systemRaw, "id", "");
+            string command = "env SEMU_SYSTEM=" + systemId + " %EMULATOR_" + emulator.toUpper() + "%";
+            if (emulator.equals("retroarch") && !core.isEmpty()) {
+                command = command + " -f -L %CORE_RETROARCH%/" + core;
+            }
+            command = command + " %ROM%";
+            commands.push(SemuEsDeGenerator.command(label, command));
+        }
+        return commands;
+    }
+
+    class string emulatorDisplayName(string project, string emulator) {
+        string path = SemuOwnedPaths.emulatorFile(project, emulator, "emulator.json");
+        if (!FileSystem.isFile(path)) {
+            return emulator;
+        }
+        return JsonText.field(FileSystem.readText(path), "name", emulator);
+    }
+
+    class void writeSteamInput(SemuBuildPlan plan) {
+        SemuOwnedPaths.writeGenerated(plan.project, "input/steam-input/selection.json",
+            SemuSteamInputGenerator.selectionJson(plan.target, "steam-deck", "neptune-full", [
+                "save",
+                "load",
+                "quit",
+                "menu",
+                "screenshot",
+                "escape"
+            ])
+        );
+    }
+
+    class void writeLauncherInventory(SemuBuildPlan plan) {
+        Vector<SemuAppImageContent> contents = [];
+        contents.push(SemuAppImageGenerator.content("usr/bin/semu-btrc", SemuAppImageGenerator.btrcShim(), true));
+        contents.push(SemuAppImageGenerator.content("usr/bin/semu-render", "", true));
+        contents.push(SemuAppImageGenerator.content("semu.desktop", SemuAppImageGenerator.desktopEntry("Semu", "Deterministic emulation environment", "semu"), false));
+        for emulator in plan.emulatorIds {
+            contents.push(SemuAppImageGenerator.content("usr/bin/semu-" + emulator, SemuAppImageGenerator.emulatorShim(emulator), true));
+        }
+        SemuOwnedPaths.writeGenerated(plan.project, "packaging/appimage/manifest.json", SemuAppImageGenerator.manifestJson(contents));
+    }
+}
+
+class SemuCompilerGenerator {
+    class int generate(SemuBuildPlan plan) {
+        print(f"semu build {plan.mode} target={plan.target} project={plan.project}");
+        print("ownership=" + SemuMergePolicy.precedenceText());
+        print(f"systems={Strings.fromInt(plan.systemIds.len)} emulators={Strings.fromInt(plan.emulatorIds.len)}");
+        if (plan.mode.equals("emulator")) {
+            print("emulator=" + plan.emulator);
+            if (plan.emulator.equals("all")) {
+                for emulator in plan.emulatorIds {
+                    print(SemuEmulatorDefinitionGenerator.plan(plan.project, plan.target, emulator));
+                }
+            } else {
+                print(SemuEmulatorDefinitionGenerator.plan(plan.project, plan.target, plan.emulator));
+            }
+        } else if (plan.mode.equals("configs")) {
+            SemuCompilerProjectWriter.writeTarget(plan);
+            print("OK configs compiled from Semu-owned state");
+        } else {
+            SemuCompilerProjectWriter.writeTarget(plan);
+            print(SemuEsDeGenerator.plan(plan.project, plan.target));
+            print(SemuSteamInputGenerator.plan(plan.project, plan.target));
+            print(SemuAppImageGenerator.plan(plan.project, plan.target));
+        }
+        for warning in plan.warnings {
+            print("warning: " + warning);
+        }
+        for output in plan.outputs {
+            print(output);
+        }
+        return 0;
+    }
+
+    class int fail(SemuBuildPlan plan) {
+        for error in plan.errors {
+            print("error 0:0 " + error);
+        }
+        for warning in plan.warnings {
+            print("warning: " + warning);
+        }
+        return 1;
+    }
+}
+
+string semuPrettyJsonString(string value) {
+    return "\"" + JsonObject.escape(value) + "\"";
+}
+
+string semuPrettyJsonObject(string raw) {
+    JsonObject object = JsonObject.parse(raw);
+    Vector<string> lines = ["{"];
+    int index = 0;
+    for key, value in object.values {
+        string rendered = "  " + semuPrettyJsonString(key) + ": ";
+        if (object.quoted.getOrDefault(key, true)) {
+            rendered = rendered + semuPrettyJsonString(value);
+        } else {
+            rendered = rendered + value;
+        }
+        index++;
+        if (index < object.values.len) {
+            rendered = rendered + ",";
+        }
+        lines.push(rendered);
+    }
+    lines.push("}");
+    return lines.join("\n") + "\n";
+}
+
+int semuBuildCommand(CliArgs args, string project) {
+    SemuBuildPlan plan = SemuCompilerResolver.resolve(args, project);
+    SemuCompilerChecker.check(plan);
+    if (!plan.ok()) {
+        return SemuCompilerGenerator.fail(plan);
+    }
+    return SemuCompilerGenerator.generate(plan);
+}
+
+int semuVerifyCommand(CliArgs args, string project) {
+    SemuBuildPlan plan = SemuCompilerResolver.resolve(args, project);
+    SemuCompilerChecker.check(plan);
+    if (!plan.ok()) {
+        return SemuCompilerGenerator.fail(plan);
+    }
+    print(f"semu verify {plan.mode} target={plan.target} project={plan.project}");
+    print(f"systems={Strings.fromInt(plan.systemIds.len)} emulators={Strings.fromInt(plan.emulatorIds.len)}");
+    for warning in plan.warnings {
+        print("warning: " + warning);
+    }
+    print("OK compiler definitions");
+    return 0;
+}

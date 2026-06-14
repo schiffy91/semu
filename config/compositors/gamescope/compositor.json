@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "id": "gamescope",
+  "name": "gamescope",
+  "role": "generic_game_compositor",
+  "targets": [
+    "steam-deck",
+    "linux",
+    "bazzite"
+  ],
+  "rendering_contract": {
+    "scope": "launched_game_process",
+    "shader_backend": "reshade_fx",
+    "bezel_backend": "reshade_fx",
+    "content_geometry_source": "semu_compiled_viewport",
+    "settings_windows": "excluded_by_launch_scope",
+    "deck_proof_required": true
+  }
+}

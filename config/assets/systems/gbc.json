@@ -1,0 +1,55 @@
+{
+  "schema_version": 2,
+  "system": "gbc",
+  "label": "Nintendo Game Boy Color",
+  "default_emulator": "RETROARCH",
+  "emulator": "retroarch",
+  "emulator_config": "retroarch.cfg core-options",
+  "hardware_display": "Game Boy Color TFT LCD",
+  "display_class": "handheld_lcd",
+  "content_viewport": {
+    "native_size": {
+      "width": 160,
+      "height": 144
+    },
+    "content_aspect": "10:9",
+    "default_aspect": "10:9",
+    "dynamic_aspect": false,
+    "layout": {
+      "kind": "single",
+      "screens": [
+        {
+          "id": "main",
+          "native_size": {
+            "width": 160,
+            "height": 144
+          },
+          "content_aspect": "10:9"
+        }
+      ]
+    },
+    "scale_policy": "integer"
+  },
+  "renderer": {
+    "model": "semu_source_hook_renderer",
+    "viewport_source": "content_viewport",
+    "profile": "gbc_lcd",
+    "shader": {
+      "family": "gbc_lcd",
+      "enabled_by_default": true,
+      "intent": "GBC LCD color response with mild motion blur",
+      "source_asset": "handheld/sameboy-lcd-gbc-color-motionblur.slangp",
+      "widescreen_source_asset": null,
+      "effect_file": "semu-color-lcd.fx"
+    },
+    "bezel": {
+      "family": "frost_purple_game_boy_color",
+      "enabled_by_default": true,
+      "intent": "frost purple Game Boy Color shell",
+      "source_asset": "handheld/console-border/gbc.slangp",
+      "widescreen_source_asset": null,
+      "composition_effect_file": "semu-gbc.fx"
+    }
+  },
+  "notes": "Frost purple artwork is the desired bezel target; keep the existing GBC console-border asset as fallback."
+}

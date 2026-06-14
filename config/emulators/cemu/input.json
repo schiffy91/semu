@@ -1,0 +1,48 @@
+{
+  "schema_version": 1,
+  "controllerProfile": "steam-deck",
+  "device": {
+    "profile": "SteamInput-P1",
+    "emulatedController": "Wii U GamePad",
+    "primaryBackend": "SDLController",
+    "motionBackend": "DSUController",
+    "displayName": "Steam Deck Controller",
+    "sdlGuid": "0300f617de2800000512000000036800",
+    "cemuUuid": "0_0300f617de2800000512000000036800",
+    "dsuSlot": 0,
+    "dsuHost": "127.0.0.1",
+    "dsuPort": 26760
+  },
+  "hotkeys": {
+    "source": "default-keymap",
+    "renderTarget": "none",
+    "stateActions": "disabled",
+    "fullscreenAction": "native"
+  },
+  "actionMap": {
+    "quit": {
+      "handling": "launcher_or_emulator_hotkey",
+      "emittedInput": [
+        "Select+Start",
+        "Esc",
+        "Alt+F4"
+      ]
+    },
+    "menu": {
+      "handling": "native",
+      "binding": "open_menu"
+    },
+    "fullscreen": {
+      "handling": "native",
+      "binding": "toggle_fullscreen"
+    },
+    "save": {
+      "handling": "unsupported",
+      "reason": "No Semu-owned Cemu save-state hotkey contract yet."
+    },
+    "load": {
+      "handling": "unsupported",
+      "reason": "No Semu-owned Cemu load-state hotkey contract yet."
+    }
+  }
+}

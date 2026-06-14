@@ -1,0 +1,114 @@
+import std.fs;
+import std.json;
+import std.vector;
+
+string semuModelFirstRouteEmulator(string raw) {
+    string routeObject = JsonText.objectField(raw, "routes");
+    Vector<string> routes = JsonText.objectArray(routeObject, "linux");
+    if (routes.len == 0) {
+        routes = JsonText.objectArray(routeObject, "macos");
+    }
+    if (routes.len == 0) {
+        return "";
+    }
+    return JsonText.field(routes.get(0), "emulator", "");
+}
+
+class SemuDefinition {
+    public string id;
+    public string path;
+    public string raw;
+
+    public SemuDefinition(string id, string path) {
+        self.id = id;
+        self.path = path;
+        self.raw = FileSystem.isFile(path) ? FileSystem.readText(path) : "";
+    }
+
+    public bool exists() {
+        return self.raw.len() > 0;
+    }
+
+    public JsonObject json() {
+        if (!self.exists()) {
+            return JsonObject.parse("{}");
+        }
+        return JsonObject.readFile(self.path);
+    }
+
+    public string stringField(string key, string fallback) {
+        return self.json().getString(key, fallback);
+    }
+
+    public Vector<string> stringArray(string key) {
+        return JsonText.stringArray(self.raw, key);
+    }
+}
+
+class SemuSystemDefinition {
+    public SemuDefinition source;
+    public string fullname;
+    public string romDir;
+    public string primaryEmulator;
+    public Vector<string> extensions;
+    public Vector<string> bios;
+
+    public SemuSystemDefinition(SemuDefinition source) {
+        self.source = source;
+        self.fullname = source.stringField("fullname", source.id);
+        self.romDir = source.stringField("rom_dir", source.id);
+        self.extensions = source.stringArray("extensions");
+        self.bios = source.stringArray("bios");
+        self.primaryEmulator = semuModelFirstRouteEmulator(source.raw);
+    }
+}
+
+class SemuEmulatorDefinition {
+    public SemuDefinition source;
+    public Vector<string> servedSystems;
+
+    public SemuEmulatorDefinition(SemuDefinition source) {
+        self.source = source;
+        self.servedSystems = source.stringArray("servedSystems");
+    }
+}
+
+class SemuBuildPlan {
+    public string project;
+    public string mode;
+    public string target;
+    public string emulator;
+    public Vector<string> systemIds;
+    public Vector<string> emulatorIds;
+    public Vector<string> errors;
+    public Vector<string> warnings;
+    public Vector<string> outputs;
+
+    public SemuBuildPlan(string project, string mode, string target, string emulator) {
+        self.project = project;
+        self.mode = mode;
+        self.target = target;
+        self.emulator = emulator;
+        self.systemIds = [];
+        self.emulatorIds = [];
+        self.errors = [];
+        self.warnings = [];
+        self.outputs = [];
+    }
+
+    public bool ok() {
+        return self.errors.len == 0;
+    }
+
+    public void addError(string message) {
+        self.errors.push(message);
+    }
+
+    public void addWarning(string message) {
+        self.warnings.push(message);
+    }
+
+    public void addOutput(string message) {
+        self.outputs.push(message);
+    }
+}

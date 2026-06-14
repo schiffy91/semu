@@ -61,7 +61,11 @@ static int semu_ioctl(int fd, unsigned long request, int value, const char *labe
     return 0;
 }
 
-static int semu_open_uinput(bool steam_identity) {
+static void semu_enable_axis(int fd, int axis) {
+    semu_ioctl(fd, UI_SET_ABSBIT, axis, "UI_SET_ABSBIT");
+}
+
+static int semu_open_uinput(bool steam_identity, bool full_controller) {
     int fd = open("/dev/uinput", O_WRONLY | O_NONBLOCK | O_CLOEXEC);
     if (fd < 0) {
         semu_die("open /dev/uinput");
@@ -71,17 +75,42 @@ static int semu_open_uinput(bool steam_identity) {
     semu_ioctl(fd, UI_SET_EVBIT, EV_REL, "UI_SET_EVBIT EV_REL");
     semu_ioctl(fd, UI_SET_RELBIT, REL_X, "UI_SET_RELBIT REL_X");
     semu_ioctl(fd, UI_SET_RELBIT, REL_Y, "UI_SET_RELBIT REL_Y");
+    if (full_controller) {
+        semu_ioctl(fd, UI_SET_EVBIT, EV_ABS, "UI_SET_EVBIT EV_ABS");
+        semu_enable_axis(fd, ABS_X);
+        semu_enable_axis(fd, ABS_Y);
+        semu_enable_axis(fd, ABS_RX);
+        semu_enable_axis(fd, ABS_RY);
+        semu_enable_axis(fd, ABS_Z);
+        semu_enable_axis(fd, ABS_RZ);
+        semu_enable_axis(fd, ABS_HAT0X);
+        semu_enable_axis(fd, ABS_HAT0Y);
+    }
     for (size_t i = 0; i < sizeof(semu_keys) / sizeof(semu_keys[0]); i++) {
         semu_ioctl(fd, UI_SET_KEYBIT, semu_keys[i].code, "UI_SET_KEYBIT");
     }
 
     struct uinput_user_dev device;
     memset(&device, 0, sizeof(device));
-    snprintf(device.name, sizeof(device.name), "semu-test-input");
+    snprintf(device.name, sizeof(device.name), "%s", full_controller ? "Steam Deck" : (steam_identity ? "Steam Virtual Gamepad" : "semu-test-input"));
     device.id.bustype = BUS_USB;
     device.id.vendor = steam_identity ? 0x28de : 0x1209;
-    device.id.product = steam_identity ? 0x1205 : 0x5e01;
-    device.id.version = 1;
+    device.id.product = full_controller ? 0x1205 : (steam_identity ? 0x11ff : 0x5e01);
+    device.id.version = full_controller ? 0x0368 : 1;
+    if (full_controller) {
+        int centered_axes[] = { ABS_X, ABS_Y, ABS_RX, ABS_RY, ABS_Z, ABS_RZ };
+        for (size_t i = 0; i < sizeof(centered_axes) / sizeof(centered_axes[0]); i++) {
+            int axis = centered_axes[i];
+            device.absmin[axis] = -32768;
+            device.absmax[axis] = 32767;
+            device.absfuzz[axis] = 16;
+            device.absflat[axis] = 128;
+        }
+        device.absmin[ABS_HAT0X] = -1;
+        device.absmax[ABS_HAT0X] = 1;
+        device.absmin[ABS_HAT0Y] = -1;
+        device.absmax[ABS_HAT0Y] = 1;
+    }
 
     if (write(fd, &device, sizeof(device)) != sizeof(device)) {
         semu_die("write uinput_user_dev");
@@ -142,13 +171,36 @@ static bool semu_named_key(const char *name, int *code) {
     return false;
 }
 
+static int semu_run_action(int fd, const char *action) {
+    if (strcmp(action, "select-start") == 0) {
+        semu_select_start(fd);
+        return 0;
+    }
+    if (strcmp(action, "gameplay-probe") == 0) {
+        semu_tap(fd, KEY_ENTER);
+        usleep(250000);
+        semu_tap(fd, KEY_Z);
+        semu_tap(fd, KEY_RIGHT);
+        semu_tap(fd, KEY_Z);
+        return 0;
+    }
+
+    int code = 0;
+    if (!semu_named_key(action, &code)) {
+        fprintf(stderr, "semu-uinput-send: unknown action '%s'\n", action);
+        return 64;
+    }
+    semu_tap(fd, code);
+    return 0;
+}
+
 static void semu_usage(void) {
-    fprintf(stderr, "usage: semu-uinput-send ACTION...\n");
+    fprintf(stderr, "usage: semu-uinput-send [--delay-ms N] [--hold-ms N] [--fifo PATH] ACTION...\n");
     fprintf(stderr, "actions: select-start esc enter start select a steam-a b steam-b x y l1 r1 up down left right key-z key-x key-up key-down key-left key-right key-a key-s mouse-click gameplay-probe\n");
 }
 
-static bool semu_uses_steam_identity(int argc, char **argv) {
-    for (int i = 1; i < argc; i++) {
+static bool semu_uses_steam_identity(int argc, char **argv, int first_action) {
+    for (int i = first_action; i < argc; i++) {
         if (strcmp(argv[i], "select-start") == 0 || strcmp(argv[i], "start") == 0 || strcmp(argv[i], "select") == 0 || strncmp(argv[i], "steam-", 6) == 0) {
             return true;
         }
@@ -162,30 +214,78 @@ int main(int argc, char **argv) {
         return 64;
     }
 
-    int fd = semu_open_uinput(semu_uses_steam_identity(argc, argv));
-    for (int i = 1; i < argc; i++) {
-        if (strcmp(argv[i], "select-start") == 0) {
-            semu_select_start(fd);
+    int delay_ms = 0;
+    int hold_ms = 0;
+    const char *fifo_path = NULL;
+    int first_action = 1;
+    while (first_action < argc) {
+        if (strcmp(argv[first_action], "--delay-ms") == 0 && first_action + 1 < argc) {
+            delay_ms = atoi(argv[first_action + 1]);
+            first_action += 2;
             continue;
         }
-        if (strcmp(argv[i], "gameplay-probe") == 0) {
-            semu_tap(fd, KEY_ENTER);
-            usleep(250000);
-            semu_tap(fd, KEY_Z);
-            semu_tap(fd, KEY_RIGHT);
-            semu_tap(fd, KEY_Z);
+        if (strcmp(argv[first_action], "--hold-ms") == 0 && first_action + 1 < argc) {
+            hold_ms = atoi(argv[first_action + 1]);
+            first_action += 2;
             continue;
         }
+        if (strcmp(argv[first_action], "--fifo") == 0 && first_action + 1 < argc) {
+            fifo_path = argv[first_action + 1];
+            first_action += 2;
+            continue;
+        }
+        break;
+    }
+    if (first_action >= argc && fifo_path == NULL) {
+        semu_usage();
+        return 64;
+    }
 
-        int code = 0;
-        if (!semu_named_key(argv[i], &code)) {
-            fprintf(stderr, "semu-uinput-send: unknown action '%s'\n", argv[i]);
+    int fd = semu_open_uinput(fifo_path != NULL || semu_uses_steam_identity(argc, argv, first_action), fifo_path != NULL);
+    if (delay_ms > 0) {
+        usleep((useconds_t)delay_ms * 1000);
+    }
+
+    if (fifo_path != NULL) {
+        int fifo_fd = open(fifo_path, O_RDWR | O_CLOEXEC);
+        if (fifo_fd < 0) {
+            semu_die("open fifo");
+        }
+        FILE *fifo = fdopen(fifo_fd, "r");
+        if (fifo == NULL) {
+            semu_die("fdopen fifo");
+        }
+        char line[128];
+        while (fgets(line, sizeof(line), fifo) != NULL) {
+            line[strcspn(line, "\r\n")] = '\0';
+            if (line[0] == '\0') {
+                continue;
+            }
+            if (strcmp(line, "quit") == 0) {
+                break;
+            }
+            int action_status = semu_run_action(fd, line);
+            if (action_status != 0) {
+                fclose(fifo);
+                ioctl(fd, UI_DEV_DESTROY);
+                close(fd);
+                return action_status;
+            }
+        }
+        fclose(fifo);
+    }
+
+    for (int i = first_action; i < argc; i++) {
+        int action_status = semu_run_action(fd, argv[i]);
+        if (action_status != 0) {
             semu_usage();
             ioctl(fd, UI_DEV_DESTROY);
             close(fd);
-            return 64;
+            return action_status;
         }
-        semu_tap(fd, code);
+    }
+    if (hold_ms > 0) {
+        usleep((useconds_t)hold_ms * 1000);
     }
 
     if (ioctl(fd, UI_DEV_DESTROY) < 0) {

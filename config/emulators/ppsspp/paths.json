@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "profileRoot": "emulators/ppsspp",
+  "stateRoots": {
+    "linuxFlatpak": ".semu/flatpak-state/ppsspp",
+    "linuxRouted": ".semu/appimage-state/ppsspp"
+  },
+  "configRoot": "${stateRoot}/config",
+  "dataRoot": "${stateRoot}/data",
+  "cacheRoot": "${stateRoot}/cache",
+  "saveRoot": "${stateRoot}/saves",
+  "stateSaveRoot": "${stateRoot}/states",
+  "biosRoot": "bios",
+  "keysRoot": "bios",
+  "externalRomAccess": "read_only"
+}

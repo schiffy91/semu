@@ -1,0 +1,55 @@
+{
+  "schema_version": 2,
+  "system": "psp",
+  "label": "Sony PSP",
+  "default_emulator": "PPSSPP",
+  "emulator": "ppsspp",
+  "emulator_config": "ppsspp.ini",
+  "hardware_display": "480x272 PSP LCD",
+  "display_class": "handheld_lcd",
+  "content_viewport": {
+    "native_size": {
+      "width": 480,
+      "height": 272
+    },
+    "content_aspect": "16:9",
+    "default_aspect": "16:9",
+    "dynamic_aspect": false,
+    "layout": {
+      "kind": "handheld_wide",
+      "screens": [
+        {
+          "id": "main",
+          "native_size": {
+            "width": 480,
+            "height": 272
+          },
+          "content_aspect": "16:9"
+        }
+      ]
+    },
+    "scale_policy": "integer_or_aspect"
+  },
+  "renderer": {
+    "model": "semu_source_hook_renderer",
+    "viewport_source": "content_viewport",
+    "profile": "psp_lcd",
+    "shader": {
+      "family": "psp_lcd",
+      "enabled_by_default": true,
+      "intent": "PSP LCD color, pixel grid, and mild persistence",
+      "source_asset": "handheld/lcd-grid-v2-psp-color-motionblur.slangp",
+      "widescreen_source_asset": null,
+      "effect_file": "semu-color-lcd.fx"
+    },
+    "bezel": {
+      "family": "psp_shell",
+      "enabled_by_default": true,
+      "intent": "red God of War PSP or original black PSP shell",
+      "source_asset": "bezels/psp/red-god-of-war-or-original-black.json",
+      "widescreen_source_asset": null,
+      "composition_effect_file": "semu-psp.fx"
+    }
+  },
+  "notes": "Prefer red God of War shell when artwork exists; original black is acceptable fallback."
+}

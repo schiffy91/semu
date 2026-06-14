@@ -1,0 +1,73 @@
+{
+  "schema_version": 1,
+  "controllerProfile": "steam-deck",
+  "hotkeys": {
+    "source": "default-keymap",
+    "renderTarget": "retroarch",
+    "stateActions": "generated",
+    "fullscreenAction": "native"
+  },
+  "actionMap": {
+    "quit": {
+      "handling": "launcher_or_emulator_hotkey",
+      "emittedInput": [
+        "Select+Start",
+        "Esc",
+        "Ctrl+Q"
+      ]
+    },
+    "pause": {
+      "handling": "generated_config",
+      "binding": "pause_toggle"
+    },
+    "escape": {
+      "handling": "emulator_hotkey",
+      "emittedInput": [
+        "Esc"
+      ]
+    },
+    "save": {
+      "handling": "generated_config",
+      "binding": "savestate"
+    },
+    "load": {
+      "handling": "generated_config",
+      "binding": "loadstate"
+    },
+    "slot_prev": {
+      "handling": "generated_config",
+      "binding": "state_slot_decrease"
+    },
+    "slot_next": {
+      "handling": "generated_config",
+      "binding": "state_slot_increase"
+    },
+    "menu": {
+      "handling": "generated_config",
+      "binding": "menu_toggle"
+    },
+    "fullscreen": {
+      "handling": "native",
+      "binding": "fullscreen_toggle"
+    },
+    "screenshot": {
+      "handling": "generated_config",
+      "binding": "screenshot"
+    },
+    "fast": {
+      "handling": "generated_config",
+      "binding": "fast_forward"
+    },
+    "rewind": {
+      "handling": "generated_config",
+      "binding": "rewind"
+    },
+    "screen_swap": {
+      "handling": "core_option_or_hotkey",
+      "systems": [
+        "nds"
+      ],
+      "binding": "screen_swap"
+    }
+  }
+}

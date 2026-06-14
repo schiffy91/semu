@@ -1,0 +1,69 @@
+{
+  "schema_version": 1,
+  "controllerProfile": "steam-deck",
+  "hotkeys": {
+    "source": "default-keymap",
+    "renderTarget": "none",
+    "stateActions": "disabled",
+    "fullscreenAction": "native"
+  },
+  "actionMap": {
+    "quit": {
+      "handling": "launcher_or_emulator_hotkey",
+      "emittedInput": [
+        "Esc",
+        "Alt+F4"
+      ]
+    },
+    "pause": {
+      "handling": "native",
+      "binding": "pause"
+    },
+    "escape": {
+      "handling": "emulator_hotkey",
+      "emittedInput": [
+        "Esc"
+      ]
+    },
+    "save": {
+      "handling": "unsupported",
+      "reason": "No Semu-owned melonDS save-state hotkey contract yet."
+    },
+    "load": {
+      "handling": "unsupported",
+      "reason": "No Semu-owned melonDS load-state hotkey contract yet."
+    },
+    "slot_prev": {
+      "handling": "unsupported",
+      "reason": "No Semu-owned melonDS slot hotkey contract yet."
+    },
+    "slot_next": {
+      "handling": "unsupported",
+      "reason": "No Semu-owned melonDS slot hotkey contract yet."
+    },
+    "menu": {
+      "handling": "native",
+      "binding": "open_menu"
+    },
+    "fullscreen": {
+      "handling": "native",
+      "binding": "toggle_fullscreen"
+    },
+    "screenshot": {
+      "handling": "native",
+      "binding": "screenshot"
+    },
+    "fast": {
+      "handling": "unsupported",
+      "reason": "melonDS fast-forward is not part of the Semu generated contract."
+    },
+    "rewind": {
+      "handling": "unsupported",
+      "reason": "melonDS rewind is not part of the Semu generated contract."
+    },
+    "screen_swap": {
+      "handling": "native",
+      "binding": "swap_screens"
+    }
+  }
+}

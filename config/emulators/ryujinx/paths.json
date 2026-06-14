@@ -1,0 +1,11 @@
+{
+  "profileRoot": "emulators/ryujinx",
+  "stateRoots": {
+    "linuxFlatpak": ".semu/flatpak-state/ryujinx",
+    "linuxRouted": ".semu/appimage-state/ryujinx"
+  },
+  "configRoot": "${stateRoot}/config",
+  "dataRoot": "${stateRoot}/data",
+  "cacheRoot": "${stateRoot}/cache",
+  "biosRoot": "bios/switch"
+}

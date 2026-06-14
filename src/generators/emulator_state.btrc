@@ -1,0 +1,144 @@
+import std.fs;
+import std.json;
+import std.process;
+import std.vector;
+import ../lib/owned_paths.btrc;
+import ../lib/template.btrc;
+
+class SemuEmulatorStateGenerator {
+    class string stateFile(string project, string emulator) {
+        return SemuOwnedPaths.emulatorFile(project, emulator, "state.json");
+    }
+
+    class string templateFile(string project, string emulator, string name) {
+        return joinPath(PathTools.dirname(SemuEmulatorStateGenerator.stateFile(project, emulator)), joinPath("templates", name));
+    }
+
+    class void write(string project, string emulator) {
+        string statePath = SemuEmulatorStateGenerator.stateFile(project, emulator);
+        if (!FileSystem.isFile(statePath)) {
+            return;
+        }
+
+        string raw = FileSystem.readText(statePath);
+        Vector<string> directories = JsonText.stringArray(raw, "directories");
+        for directory in directories {
+            ensureDir(SemuOwnedPaths.generatedFile(project, directory));
+        }
+
+        Vector<string> cleanDirectories = JsonText.stringArray(raw, "clean_directories");
+        for directory in cleanDirectories {
+            string generatedDirectory = SemuOwnedPaths.generatedFile(project, directory);
+            if (!generatedDirectory.isEmpty() && generatedDirectory.startsWith(SemuOwnedPaths.generated(project))) {
+                UnixShell shell = UnixShell();
+                shell.run(
+                    "rm -rf " + ShellWords.quote(generatedDirectory) + " && mkdir -p " + ShellWords.quote(generatedDirectory),
+                    CommandOutput.stream(),
+                    CommandOutput.stream(),
+                    false,
+                    false,
+                    false
+                );
+            }
+        }
+
+        Vector<string> templates = JsonText.objectArray(raw, "templates");
+        for entry in templates {
+            string source = JsonText.field(entry, "source", "");
+            string output = JsonText.field(entry, "output", "");
+            if (source.isEmpty() || output.isEmpty()) {
+                continue;
+            }
+            string sourcePath = SemuEmulatorStateGenerator.templateFile(project, emulator, source);
+            if (!FileSystem.isFile(sourcePath)) {
+                continue;
+            }
+            string rendered = SemuTemplate.expandProject(project, FileSystem.readText(sourcePath));
+            SemuOwnedPaths.writeGenerated(project, output, rendered);
+        }
+
+        Vector<string> copies = JsonText.objectArray(raw, "copies");
+        for entry in copies {
+            string output = JsonText.field(entry, "output", "");
+            if (output.isEmpty()) {
+                continue;
+            }
+            Vector<string> sources = JsonText.stringArray(entry, "sources");
+            string source = JsonText.field(entry, "source", "");
+            if (!source.isEmpty()) {
+                sources.push(source);
+            }
+            for candidate in sources {
+                string sourcePath = SemuTemplate.expandProject(project, candidate);
+                if (FileSystem.isFile(sourcePath)) {
+                    SemuOwnedPaths.writeGenerated(project, output, FileSystem.readText(sourcePath));
+                    break;
+                }
+            }
+        }
+
+        Vector<string> directoryCopies = JsonText.objectArray(raw, "directory_copies");
+        for entry in directoryCopies {
+            string output = JsonText.field(entry, "output", "");
+            if (output.isEmpty()) {
+                continue;
+            }
+            Vector<string> sources = JsonText.stringArray(entry, "sources");
+            string source = JsonText.field(entry, "source", "");
+            if (!source.isEmpty()) {
+                sources.push(source);
+            }
+            for candidate in sources {
+                string sourcePath = SemuTemplate.expandProject(project, candidate);
+                if (FileSystem.isDir(sourcePath)) {
+                    string outputPath = SemuOwnedPaths.generatedFile(project, output);
+                    ensureDir(PathTools.dirname(outputPath));
+                    UnixShell shell = UnixShell();
+                    shell.run(
+                        "rm -rf " + ShellWords.quote(outputPath)
+                            + " && mkdir -p " + ShellWords.quote(PathTools.dirname(outputPath))
+                            + " && cp -a " + ShellWords.quote(sourcePath) + " " + ShellWords.quote(outputPath),
+                        CommandOutput.stream(),
+                        CommandOutput.stream(),
+                        false,
+                        false,
+                        false
+                    );
+                    break;
+                }
+            }
+        }
+
+        Vector<string> directoryLinks = JsonText.objectArray(raw, "directory_links");
+        for entry in directoryLinks {
+            string output = JsonText.field(entry, "output", "");
+            if (output.isEmpty()) {
+                continue;
+            }
+            Vector<string> sources = JsonText.stringArray(entry, "sources");
+            string source = JsonText.field(entry, "source", "");
+            if (!source.isEmpty()) {
+                sources.push(source);
+            }
+            for candidate in sources {
+                string sourcePath = SemuTemplate.expandProject(project, candidate);
+                if (FileSystem.isDir(sourcePath)) {
+                    string outputPath = SemuOwnedPaths.generatedFile(project, output);
+                    ensureDir(PathTools.dirname(outputPath));
+                    UnixShell shell = UnixShell();
+                    shell.run(
+                        "rm -rf " + ShellWords.quote(outputPath)
+                            + " && mkdir -p " + ShellWords.quote(PathTools.dirname(outputPath))
+                            + " && ln -s " + ShellWords.quote(sourcePath) + " " + ShellWords.quote(outputPath),
+                        CommandOutput.stream(),
+                        CommandOutput.stream(),
+                        false,
+                        false,
+                        false
+                    );
+                    break;
+                }
+            }
+        }
+    }
+}

@@ -1,0 +1,11 @@
+{
+  "profileRoot": "emulators/cemu",
+  "stateRoots": {
+    "linuxFlatpak": ".semu/flatpak-state/cemu",
+    "linuxRouted": ".semu/appimage-state/cemu"
+  },
+  "configRoot": "${stateRoot}/config",
+  "dataRoot": "${stateRoot}/data",
+  "cacheRoot": "${stateRoot}/cache",
+  "biosRoot": "bios/wiiu"
+}

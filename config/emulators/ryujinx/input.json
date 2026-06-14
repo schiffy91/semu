@@ -1,0 +1,44 @@
+{
+  "schema_version": 1,
+  "controllerProfile": "steam-deck",
+  "device": {
+    "name": "Steam Deck Controller",
+    "backend": "GamepadSDL2",
+    "sdlGuid": "0300f617de2800000512000000036800",
+    "ryujinxId": "0-00000003-28de-0000-0512-000000036800",
+    "controllerType": "ProController",
+    "playerIndex": "Player1"
+  },
+  "hotkeys": {
+    "source": "default-keymap",
+    "renderTarget": "none",
+    "stateActions": "disabled",
+    "fullscreenAction": "native"
+  },
+  "actionMap": {
+    "quit": {
+      "handling": "launcher_or_emulator_hotkey",
+      "emittedInput": [
+        "Select+Start",
+        "Esc",
+        "Alt+F4"
+      ]
+    },
+    "menu": {
+      "handling": "native",
+      "binding": "show_ui"
+    },
+    "fullscreen": {
+      "handling": "native",
+      "binding": "start_fullscreen"
+    },
+    "save": {
+      "handling": "unsupported",
+      "reason": "No Semu-owned Ryujinx save-state hotkey contract yet."
+    },
+    "load": {
+      "handling": "unsupported",
+      "reason": "No Semu-owned Ryujinx load-state hotkey contract yet."
+    }
+  }
+}

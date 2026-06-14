@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "directories": [
+    "emulators/dolphin/xdg/config/dolphin-emu",
+    "emulators/dolphin/xdg/config/dolphin-emu/Shaders",
+    "emulators/dolphin/xdg/data/dolphin-emu",
+    "emulators/dolphin/xdg/cache/dolphin-emu"
+  ],
+  "templates": [
+    {
+      "source": "Dolphin.ini",
+      "output": "emulators/dolphin/xdg/config/dolphin-emu/Dolphin.ini"
+    },
+    {
+      "source": "GFX.ini",
+      "output": "emulators/dolphin/xdg/config/dolphin-emu/GFX.ini"
+    },
+    {
+      "source": "GCPadNew.ini",
+      "output": "emulators/dolphin/xdg/config/dolphin-emu/GCPadNew.ini"
+    },
+    {
+      "source": "WiimoteNew.ini",
+      "output": "emulators/dolphin/xdg/config/dolphin-emu/WiimoteNew.ini"
+    },
+    {
+      "source": "semu-crt-tv.glsl",
+      "output": "emulators/dolphin/xdg/config/dolphin-emu/Shaders/semu-crt-tv.glsl"
+    }
+  ]
+}

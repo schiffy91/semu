@@ -1,0 +1,50 @@
+{
+  "schema_version": 1,
+  "id": "gbc",
+  "fullname": "Nintendo Game Boy Color",
+  "platform": "gbc",
+  "theme": "gbc",
+  "rom_dir": "gbc",
+  "extensions": [
+    ".bin",
+    ".cgb",
+    ".gb",
+    ".gbc",
+    ".7z",
+    ".zip"
+  ],
+  "routes": {
+    "linux": [
+      {
+        "role": "primary",
+        "emulator": "retroarch",
+        "label": "Gambatte",
+        "core": "gambatte_libretro.so"
+      }
+    ],
+    "macos": [
+      {
+        "role": "primary",
+        "emulator": "retroarch",
+        "label": "Gambatte",
+        "core": "gambatte_libretro.dylib"
+      }
+    ]
+  },
+  "requirements": {
+    "bios": [],
+    "keys": []
+  },
+  "rendering": {
+    "hardware_profile": "assets/hardware.json#gbc",
+    "shader": "color_lcd",
+    "bezel": "frost_purple_game_boy_color"
+  },
+  "rom_policy": {
+    "external_roots": "read_only",
+    "allow_in_place_metadata": false,
+    "generated_metadata_root": "${semu_home}/generated/systems/gbc",
+    "owned_state_root": "${semu_home}/state/systems/gbc"
+  },
+  "bios": []
+}

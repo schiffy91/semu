@@ -1,0 +1,55 @@
+{
+  "schema_version": 2,
+  "system": "gba",
+  "label": "Nintendo Game Boy Advance",
+  "default_emulator": "RETROARCH",
+  "emulator": "retroarch",
+  "emulator_config": "retroarch.cfg core-options",
+  "hardware_display": "AGB-001 reflective TFT LCD",
+  "display_class": "handheld_lcd",
+  "content_viewport": {
+    "native_size": {
+      "width": 240,
+      "height": 160
+    },
+    "content_aspect": "3:2",
+    "default_aspect": "3:2",
+    "dynamic_aspect": false,
+    "layout": {
+      "kind": "handheld_wide",
+      "screens": [
+        {
+          "id": "main",
+          "native_size": {
+            "width": 240,
+            "height": 160
+          },
+          "content_aspect": "3:2"
+        }
+      ]
+    },
+    "scale_policy": "integer"
+  },
+  "renderer": {
+    "model": "semu_source_hook_renderer",
+    "viewport_source": "content_viewport",
+    "profile": "gba_lcd",
+    "shader": {
+      "family": "gba_lcd",
+      "enabled_by_default": true,
+      "intent": "original GBA color and LCD persistence",
+      "source_asset": "handheld/agb001-gba-color-motionblur.slangp",
+      "widescreen_source_asset": null,
+      "effect_file": "semu-color-lcd.fx"
+    },
+    "bezel": {
+      "family": "purple_game_boy_advance",
+      "enabled_by_default": true,
+      "intent": "purple wide Game Boy Advance shell",
+      "source_asset": "handheld/console-border/gba-agb001-color-motionblur.slangp",
+      "widescreen_source_asset": null,
+      "composition_effect_file": "semu-gba.fx"
+    }
+  },
+  "notes": "Use the original wide GBA target, not SP-first artwork."
+}

@@ -1,0 +1,23 @@
+{
+  "directories": [
+    "emulators/pcsx2/xdg/config/PCSX2/inis",
+    "emulators/pcsx2/xdg/config/PCSX2/inputprofiles",
+    "emulators/pcsx2/xdg/data/PCSX2/bios",
+    "emulators/pcsx2/xdg/data/PCSX2/cache",
+    "emulators/pcsx2/xdg/data/PCSX2/memcards",
+    "emulators/pcsx2/xdg/data/PCSX2/snaps",
+    "emulators/pcsx2/xdg/data/PCSX2/sstates",
+    "emulators/pcsx2/xdg/cache/PCSX2"
+  ],
+  "schema_version": 1,
+  "templates": [
+    {
+      "output": "emulators/pcsx2/xdg/config/PCSX2/inis/PCSX2.ini",
+      "source": "PCSX2.ini"
+    },
+    {
+      "output": "emulators/pcsx2/xdg/config/PCSX2/inputprofiles/Steam Deck.ini",
+      "source": "Steam Deck.ini"
+    }
+  ]
+}

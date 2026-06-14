@@ -1,0 +1,48 @@
+import ./model.btrc;
+import ../lib/owned_paths.btrc;
+import std.json;
+import std.vector;
+import ./lexer.btrc;
+class SemuCompilerParser {
+    class SemuDefinition target(string project, string target) {
+        return SemuDefinition(target, SemuOwnedPaths.targetFile(project, target));
+    }
+
+    class SemuSystemDefinition system(string project, string system) {
+        return SemuSystemDefinition(SemuDefinition(system, SemuOwnedPaths.systemFile(project, system)));
+    }
+
+    class SemuEmulatorDefinition emulator(string project, string emulator) {
+        return SemuEmulatorDefinition(SemuDefinition(emulator, SemuOwnedPaths.emulatorFile(project, emulator, "emulator.json")));
+    }
+
+    class string firstRouteEmulator(string raw) {
+        string routeObject = JsonText.objectField(raw, "routes");
+        Vector<string> routes = JsonText.objectArray(routeObject, "linux");
+        if (routes.len == 0) {
+            routes = JsonText.objectArray(routeObject, "macos");
+        }
+        if (routes.len == 0) {
+            return "";
+        }
+        return JsonText.field(routes.get(0), "emulator", "");
+    }
+
+    class Vector<string> systemIds(string project) {
+        return SemuCompilerLexer.jsonIds(project, "systems");
+    }
+
+    class Vector<string> emulatorIds(string project) {
+        return SemuCompilerLexer.emulatorIds(project);
+    }
+
+    class Vector<string> targetSystemIds(string project, string target) {
+        SemuDefinition definition = SemuCompilerParser.target(project, target);
+        return JsonText.stringArray(definition.raw, "systems");
+    }
+
+    class Vector<string> targetEmulatorIds(string project, string target) {
+        SemuDefinition definition = SemuCompilerParser.target(project, target);
+        return JsonText.stringArray(definition.raw, "emulator_ids");
+    }
+}

@@ -1,0 +1,606 @@
+{
+  "schema_version": 2,
+  "hardware": {
+    "gb": {
+      "display": "160x144 DMG LCD",
+      "display_class": "handheld_lcd",
+      "content_viewport": {
+        "native_size": {
+          "width": 160,
+          "height": 144
+        },
+        "content_aspect": "10:9",
+        "default_aspect": "10:9",
+        "dynamic_aspect": false,
+        "layout": {
+          "kind": "single",
+          "screens": [
+            {
+              "id": "main",
+              "native_size": {
+                "width": 160,
+                "height": 144
+              },
+              "content_aspect": "10:9"
+            }
+          ]
+        },
+        "scale_policy": "integer"
+      },
+      "shader": "dmg_lcd",
+      "bezel": "classic_grey_game_boy"
+    },
+    "gbc": {
+      "display": "160x144 color LCD",
+      "display_class": "handheld_lcd",
+      "content_viewport": {
+        "native_size": {
+          "width": 160,
+          "height": 144
+        },
+        "content_aspect": "10:9",
+        "default_aspect": "10:9",
+        "dynamic_aspect": false,
+        "layout": {
+          "kind": "single",
+          "screens": [
+            {
+              "id": "main",
+              "native_size": {
+                "width": 160,
+                "height": 144
+              },
+              "content_aspect": "10:9"
+            }
+          ]
+        },
+        "scale_policy": "integer"
+      },
+      "shader": "gbc_lcd",
+      "bezel": "frost_purple_game_boy_color"
+    },
+    "gba": {
+      "display": "240x160 color LCD",
+      "display_class": "handheld_lcd",
+      "content_viewport": {
+        "native_size": {
+          "width": 240,
+          "height": 160
+        },
+        "content_aspect": "3:2",
+        "default_aspect": "3:2",
+        "dynamic_aspect": false,
+        "layout": {
+          "kind": "handheld_wide",
+          "screens": [
+            {
+              "id": "main",
+              "native_size": {
+                "width": 240,
+                "height": 160
+              },
+              "content_aspect": "3:2"
+            }
+          ]
+        },
+        "scale_policy": "integer"
+      },
+      "shader": "gba_lcd",
+      "bezel": "purple_game_boy_advance"
+    },
+    "nes": {
+      "display": "240p consumer CRT",
+      "display_class": "crt_tv",
+      "content_viewport": {
+        "native_size": {
+          "width": 256,
+          "height": 240
+        },
+        "content_aspect": "4:3",
+        "default_aspect": "4:3",
+        "dynamic_aspect": false,
+        "layout": {
+          "kind": "single",
+          "screens": [
+            {
+              "id": "main",
+              "native_size": {
+                "width": 256,
+                "height": 240
+              },
+              "content_aspect": "4:3",
+              "pixel_aspect": "5:4"
+            }
+          ]
+        },
+        "scale_policy": "integer"
+      },
+      "shader": "crt_240p",
+      "bezel": "sony_or_panasonic_crt"
+    },
+    "snes": {
+      "display": "240p consumer CRT",
+      "display_class": "crt_tv",
+      "content_viewport": {
+        "native_size": {
+          "width": 256,
+          "height": 224
+        },
+        "alternate_native_sizes": [
+          {
+            "width": 512,
+            "height": 448
+          }
+        ],
+        "content_aspect": "4:3",
+        "default_aspect": "4:3",
+        "dynamic_aspect": false,
+        "layout": {
+          "kind": "single",
+          "screens": [
+            {
+              "id": "main",
+              "native_size": {
+                "width": 256,
+                "height": 224
+              },
+              "content_aspect": "4:3"
+            }
+          ]
+        },
+        "scale_policy": "integer"
+      },
+      "shader": "crt_240p",
+      "bezel": "sony_or_panasonic_crt"
+    },
+    "genesis": {
+      "display": "240p consumer CRT",
+      "display_class": "crt_tv",
+      "content_viewport": {
+        "native_size": {
+          "width": 320,
+          "height": 224
+        },
+        "alternate_native_sizes": [
+          {
+            "width": 256,
+            "height": 224
+          }
+        ],
+        "content_aspect": "4:3",
+        "default_aspect": "4:3",
+        "dynamic_aspect": false,
+        "layout": {
+          "kind": "single",
+          "screens": [
+            {
+              "id": "main",
+              "native_size": {
+                "width": 320,
+                "height": 224
+              },
+              "content_aspect": "4:3"
+            }
+          ]
+        },
+        "scale_policy": "integer"
+      },
+      "shader": "crt_240p",
+      "bezel": "sony_or_panasonic_crt"
+    },
+    "n64": {
+      "display": "240p/480i consumer CRT",
+      "display_class": "crt_tv",
+      "content_viewport": {
+        "native_size": {
+          "width": 320,
+          "height": 240
+        },
+        "alternate_native_sizes": [
+          {
+            "width": 640,
+            "height": 480
+          }
+        ],
+        "content_aspect": "4:3",
+        "default_aspect": "4:3",
+        "dynamic_aspect": false,
+        "layout": {
+          "kind": "single",
+          "screens": [
+            {
+              "id": "main",
+              "native_size": {
+                "width": 320,
+                "height": 240
+              },
+              "content_aspect": "4:3"
+            }
+          ]
+        },
+        "scale_policy": "aspect_preserve"
+      },
+      "shader": "crt_240p",
+      "bezel": "sony_or_panasonic_crt"
+    },
+    "nds": {
+      "display": "dual 256x192 LCD",
+      "display_class": "dual_screen_lcd",
+      "content_viewport": {
+        "native_size": {
+          "width": 256,
+          "height": 384
+        },
+        "content_aspect": "2:3",
+        "default_aspect": "2:3",
+        "dynamic_aspect": false,
+        "layout": {
+          "kind": "dual_vertical_asymmetric",
+          "screen_order": [
+            "top",
+            "bottom"
+          ],
+          "align": "center",
+          "screens": [
+            {
+              "id": "top",
+              "native_size": {
+                "width": 256,
+                "height": 192
+              },
+              "content_aspect": "4:3"
+            },
+            {
+              "id": "bottom",
+              "native_size": {
+                "width": 256,
+                "height": 192
+              },
+              "content_aspect": "4:3"
+            }
+          ]
+        },
+        "scale_policy": "layout_integer_or_aspect"
+      },
+      "shader": "nds_lcd",
+      "bezel": "dual_screen_handheld"
+    },
+    "dreamcast": {
+      "display": "480i/480p CRT or VGA",
+      "display_class": "crt_tv_or_vga",
+      "content_viewport": {
+        "native_size": {
+          "width": 640,
+          "height": 480
+        },
+        "content_aspect": "4:3",
+        "default_aspect": "4:3",
+        "supported_aspects": [
+          "4:3",
+          "16:9"
+        ],
+        "dynamic_aspect": true,
+        "layout": {
+          "kind": "single",
+          "screens": [
+            {
+              "id": "main",
+              "native_size": {
+                "width": 640,
+                "height": 480
+              },
+              "content_aspect": "4:3"
+            }
+          ]
+        },
+        "scale_policy": "aspect_preserve"
+      },
+      "shader": "crt_480i",
+      "bezel": "sony_or_panasonic_crt"
+    },
+    "psx": {
+      "display": "240p/480i consumer CRT",
+      "display_class": "crt_tv",
+      "content_viewport": {
+        "native_size": {
+          "width": 320,
+          "height": 240
+        },
+        "alternate_native_sizes": [
+          {
+            "width": 640,
+            "height": 480
+          }
+        ],
+        "content_aspect": "4:3",
+        "default_aspect": "4:3",
+        "dynamic_aspect": false,
+        "layout": {
+          "kind": "single",
+          "screens": [
+            {
+              "id": "main",
+              "native_size": {
+                "width": 320,
+                "height": 240
+              },
+              "content_aspect": "4:3"
+            }
+          ]
+        },
+        "scale_policy": "aspect_preserve"
+      },
+      "shader": "crt_240p",
+      "bezel": "sony_or_panasonic_crt"
+    },
+    "ps2": {
+      "display": "480i/480p consumer CRT",
+      "display_class": "crt_tv_or_component",
+      "content_viewport": {
+        "native_size": {
+          "width": 640,
+          "height": 480
+        },
+        "content_aspect": "4:3",
+        "default_aspect": "4:3",
+        "supported_aspects": [
+          "4:3",
+          "16:9"
+        ],
+        "dynamic_aspect": true,
+        "layout": {
+          "kind": "single",
+          "screens": [
+            {
+              "id": "main",
+              "native_size": {
+                "width": 640,
+                "height": 480
+              },
+              "content_aspect": "4:3"
+            }
+          ]
+        },
+        "scale_policy": "aspect_preserve"
+      },
+      "shader": "crt_480i",
+      "bezel": "sony_or_panasonic_crt"
+    },
+    "psp": {
+      "display": "480x272 PSP LCD",
+      "display_class": "handheld_lcd",
+      "content_viewport": {
+        "native_size": {
+          "width": 480,
+          "height": 272
+        },
+        "content_aspect": "16:9",
+        "default_aspect": "16:9",
+        "dynamic_aspect": false,
+        "layout": {
+          "kind": "handheld_wide",
+          "screens": [
+            {
+              "id": "main",
+              "native_size": {
+                "width": 480,
+                "height": 272
+              },
+              "content_aspect": "16:9"
+            }
+          ]
+        },
+        "scale_policy": "integer_or_aspect"
+      },
+      "shader": "psp_lcd",
+      "bezel": "psp_shell"
+    },
+    "n3ds": {
+      "display": "dual stereoscopic LCD",
+      "display_class": "dual_screen_lcd",
+      "content_viewport": {
+        "native_size": {
+          "width": 400,
+          "height": 480
+        },
+        "content_aspect": "5:6",
+        "default_aspect": "5:6",
+        "dynamic_aspect": false,
+        "layout": {
+          "kind": "dual_vertical",
+          "screen_order": [
+            "top",
+            "bottom"
+          ],
+          "align": "center",
+          "screens": [
+            {
+              "id": "top",
+              "native_size": {
+                "width": 400,
+                "height": 240
+              },
+              "content_aspect": "5:3"
+            },
+            {
+              "id": "bottom",
+              "native_size": {
+                "width": 320,
+                "height": 240
+              },
+              "content_aspect": "4:3"
+            }
+          ]
+        },
+        "scale_policy": "layout_integer_or_aspect"
+      },
+      "shader": "n3ds_lcd",
+      "bezel": "dual_screen_handheld"
+    },
+    "gc": {
+      "display": "480i/480p consumer CRT",
+      "display_class": "crt_tv_or_component",
+      "content_viewport": {
+        "native_size": {
+          "width": 640,
+          "height": 480
+        },
+        "content_aspect": "4:3",
+        "default_aspect": "4:3",
+        "supported_aspects": [
+          "4:3",
+          "16:9"
+        ],
+        "dynamic_aspect": true,
+        "layout": {
+          "kind": "single",
+          "screens": [
+            {
+              "id": "main",
+              "native_size": {
+                "width": 640,
+                "height": 480
+              },
+              "content_aspect": "4:3"
+            }
+          ]
+        },
+        "scale_policy": "aspect_preserve"
+      },
+      "shader": "crt_480i",
+      "bezel": "sony_or_panasonic_crt"
+    },
+    "wii": {
+      "display": "480i/480p consumer CRT",
+      "display_class": "crt_tv_or_component",
+      "content_viewport": {
+        "native_size": {
+          "width": 640,
+          "height": 480
+        },
+        "content_aspect": "4:3",
+        "default_aspect": "4:3",
+        "supported_aspects": [
+          "4:3",
+          "16:9"
+        ],
+        "dynamic_aspect": true,
+        "layout": {
+          "kind": "single",
+          "screens": [
+            {
+              "id": "main",
+              "native_size": {
+                "width": 640,
+                "height": 480
+              },
+              "content_aspect": "4:3"
+            }
+          ]
+        },
+        "scale_policy": "aspect_preserve"
+      },
+      "shader": "crt_480i",
+      "bezel": "sony_or_panasonic_crt"
+    },
+    "wiiu": {
+      "display": "HDMI display",
+      "display_class": "modern_hd_or_dual",
+      "content_viewport": {
+        "native_size": {
+          "width": 1280,
+          "height": 720
+        },
+        "alternate_native_sizes": [
+          {
+            "width": 1920,
+            "height": 1080
+          }
+        ],
+        "content_aspect": "16:9",
+        "default_aspect": "16:9",
+        "dynamic_aspect": false,
+        "dynamic_layout": true,
+        "layout": {
+          "kind": "single",
+          "screens": [
+            {
+              "id": "tv",
+              "native_size": {
+                "width": 1280,
+                "height": 720
+              },
+              "content_aspect": "16:9"
+            }
+          ]
+        },
+        "optional_layouts": [
+          {
+            "kind": "dual_vertical",
+            "screen_order": [
+              "tv",
+              "gamepad"
+            ],
+            "align": "center",
+            "screens": [
+              {
+                "id": "tv",
+                "native_size": {
+                  "width": 1280,
+                  "height": 720
+                },
+                "content_aspect": "16:9"
+              },
+              {
+                "id": "gamepad",
+                "native_size": {
+                  "width": 854,
+                  "height": 480
+                },
+                "content_aspect": "16:9"
+              }
+            ]
+          }
+        ],
+        "scale_policy": "aspect_preserve"
+      },
+      "shader": "modern_native",
+      "bezel": "none"
+    },
+    "switch": {
+      "display": "HDMI/native LCD",
+      "display_class": "modern_hd",
+      "content_viewport": {
+        "native_size": {
+          "width": 1280,
+          "height": 720
+        },
+        "alternate_native_sizes": [
+          {
+            "width": 1920,
+            "height": 1080
+          }
+        ],
+        "content_aspect": "16:9",
+        "default_aspect": "16:9",
+        "dynamic_aspect": false,
+        "layout": {
+          "kind": "handheld_wide",
+          "screens": [
+            {
+              "id": "main",
+              "native_size": {
+                "width": 1280,
+                "height": 720
+              },
+              "content_aspect": "16:9"
+            }
+          ]
+        },
+        "scale_policy": "aspect_fill_or_preserve"
+      },
+      "shader": "modern_native",
+      "bezel": "none"
+    }
+  }
+}

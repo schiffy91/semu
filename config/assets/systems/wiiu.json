@@ -1,0 +1,90 @@
+{
+  "schema_version": 2,
+  "system": "wiiu",
+  "label": "Nintendo Wii U",
+  "default_emulator": "CEMU",
+  "emulator": "cemu",
+  "emulator_config": "settings.xml",
+  "hardware_display": "HD TV plus optional gamepad screen",
+  "display_class": "modern_hd_or_dual",
+  "content_viewport": {
+    "native_size": {
+      "width": 1280,
+      "height": 720
+    },
+    "alternate_native_sizes": [
+      {
+        "width": 1920,
+        "height": 1080
+      }
+    ],
+    "content_aspect": "16:9",
+    "default_aspect": "16:9",
+    "dynamic_aspect": false,
+    "dynamic_layout": true,
+    "layout": {
+      "kind": "single",
+      "screens": [
+        {
+          "id": "tv",
+          "native_size": {
+            "width": 1280,
+            "height": 720
+          },
+          "content_aspect": "16:9"
+        }
+      ]
+    },
+    "optional_layouts": [
+      {
+        "kind": "dual_vertical",
+        "screen_order": [
+          "tv",
+          "gamepad"
+        ],
+        "align": "center",
+        "screens": [
+          {
+            "id": "tv",
+            "native_size": {
+              "width": 1280,
+              "height": 720
+            },
+            "content_aspect": "16:9"
+          },
+          {
+            "id": "gamepad",
+            "native_size": {
+              "width": 854,
+              "height": 480
+            },
+            "content_aspect": "16:9"
+          }
+        ]
+      }
+    ],
+    "scale_policy": "aspect_preserve"
+  },
+  "renderer": {
+    "model": "semu_source_hook_renderer",
+    "viewport_source": "content_viewport",
+    "profile": "modern_hd",
+    "shader": {
+      "family": "modern_native",
+      "enabled_by_default": false,
+      "intent": "modern 16:9 output by default",
+      "source_asset": null,
+      "widescreen_source_asset": null,
+      "effect_file": null
+    },
+    "bezel": {
+      "family": "none",
+      "enabled_by_default": false,
+      "intent": "clean 16:9 frame, optional gamepad layout when exposed",
+      "source_asset": "bezels/wiiu/tv-gamepad-or-clean-16x9.json",
+      "widescreen_source_asset": "bezels/wiiu/clean-16x9.json",
+      "composition_effect_file": null
+    }
+  },
+  "notes": "No default CRT; only use TV/gamepad bezel when the emulator sees both regions."
+}

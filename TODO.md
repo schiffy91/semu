@@ -1,239 +1,93 @@
 # Semu TODO
 
-## Verified On Steam Deck
+## Steam Deck Production Gate
 
-- Rebuilt and installed the self-contained AppImage from commit `ece63b0` at
-  `/home/deck/Applications/Semu/Semu-x86_64.AppImage`.
-- Installed AppImage hash is now
-  `bf84d6afa695c893b395a651d9f66dbcc278190bc21e70a63b8d1901092b776c`;
-  prior install backup:
-  `/home/deck/Applications/Semu/Semu-x86_64.AppImage.prev-ece63b0-20260612-060433`.
-- Verified the installed `ece63b0` AppImage reports the real Steam shortcut,
-  `steam://rungameid/16468373422993309696`, and the selected Semu Neptune
-  Steam Input template in
-  `/home/deck/.local/share/Steam/steamapps/common/Steam Controller Configs/52445373/config/configset_controller_neptune.vdf`.
-- Verified `deck game-mode-ready --prepare --allow-desktop` from the installed
-  AppImage passes session, Steam process, shortcut, selected Steam Input
-  template, AppImage hash, and checklist checks; physical quit evidence remains
-  pending until the Game Mode radial pass.
-- Verified the installed AppImage runs `e2e deck-evidence` and strict
-  `presentation audit` with `ok: 15`, `missing_assets: 0`,
-  `missing_dependencies: 0`, and `disabled: 2`.
-- Verified the installed AppImage opens ES-DE in Deck Desktop Mode and captured
-  `/home/deck/semu-evidence/installed-ece63b0-launch.png` at 1280x800.
-- Rebuilt and installed the self-contained AppImage at
-  `/home/deck/Applications/Semu/Semu-x86_64.AppImage`.
-- Installed AppImage hash
-  `d00df401164f38172cabbe9657cecb779967b3fce4f06e1d8b9ef59b391c86cf`
-  from commit `04a4b79`; previous install backup:
-  `/home/deck/Applications/Semu/Semu-x86_64.AppImage.prev-04a4b79-20260612-051628`.
-- Verified the installed AppImage opens ES-DE in Deck Desktop Mode and captured
-  `/home/deck/semu-evidence/installed-launch.png` at 1280x800.
-- Verified the installed AppImage strict presentation audit against the real
-  Deck project: `ok: 15`, `missing_assets: 0`,
-  `missing_dependencies: 0`, `disabled: 2`.
-- Ran the Desktop Mode direct AppImage Deck loop over the required routed
-  emulator set with clean process startup, foreground-window wait, screenshots,
-  scripted input probes, and unified quit verification. `gb`, `gbc`, `gba`,
-  `nes`, `snes`, `genesis`, `n64-retroarch`, `psp`, `dreamcast`, `gc`, `wii`,
-  `ps2`, `nds-melonds`, `n3ds`, `wiiu`, and `switch` all passed.
-- Evidence is under `/home/deck/semu-evidence/emulator-loop-04a4b79`; every
-  required route reported `status=0`, `quit=ok`, `visual=changed`, and
-  `input_visual=changed`.
-- Copied the evidence locally to
-  `/tmp/semu-deck-evidence/emulator-loop-04a4b79` and visually inspected a
-  contact sheet at `/tmp/semu-deck-evidence/emulator-loop-contact.jpg`.
-- Confirmed the RetroArch DeSmuME DS alternate route is not production-ready on
-  the Deck loop: the earlier optional route produced a screenshot but exited
-  `status=139` before quit. The production DS route remains melonDS.
-- Verified `presentation plan` runs from the installed AppImage and resolves
-  bundled RetroArch shader paths.
-- Verified Steam can launch the installed AppImage via the generated shortcut
-  URI `steam://rungameid/16468373422993309696`; the AppImage stayed running and
-  painted ES-DE from the Steam-launched process in Desktop Mode.
-- Verified PCSX2 runtime config uses the Deck SD-card BIOS path and does not
-  bake local Mac paths into committed profiles.
-- Built the clean `/home/deck/semu-latest` checkout at commit `0f7c239` with
-  `nix build .#default`; output
-  `/nix/store/zs1iwb8ivfdzvilq8dv9kyvfkhhd2p21-semu-full`.
-- On that pushed Deck checkout, `result/bin/semu e2e deck-evidence` passed and
-  `result/bin/semu deck game-mode-evidence --prepare --allow-pending` wrote the
-  physical checklist under `.semu/verification` while correctly reporting every
-  physical Game Mode quit log as pending.
-- Built the clean `/home/deck/semu-latest` checkout at commit `cad8b59` with
-  `nix build .#default`; output
-  `/nix/store/3yf0h0sxz32w5khh0afaa02xxlynb08c-semu-full`.
-- On that pushed Deck checkout, `result/bin/semu e2e presentation` passed and
-  `presentation plan --system gb` resolved shader, bezel, runtime preset, and
-  launcher shader paths as `ok` against the bundled shader tree.
-- On that pushed Deck checkout, `result/bin/semu e2e appimage` passed against
-  the AppRun and AppImage assembly smoke path.
-- Built `/home/deck/.cache/semu-verify-cad8b59/Semu-x86_64.AppImage` from
-  that Nix result and verified the packaged AppImage itself with
-  `e2e launcher`, `e2e appimage`, `presentation plan --system gb`, bundled
-  executable extraction, and `semu-quit-watch` start/exit evidence.
-- Verified the installed AppImage CLI from `/home/deck/Applications/Semu`:
-  `presentation plan --system gb` resolves shader, bezel, runtime preset, and
-  launcher shader paths from the mounted AppImage payload, and
-  `keymap capabilities app.quit` plus the doctor input section report the
-  Desktop-verified quit set with physical Game Mode still pending.
-- Verified Linux structured quit evidence on the Deck from the Nix result:
-  `semu-quit-watch` observed an injected `/dev/uinput` Select+Start event on
-  `/dev/input/event11`, logged `reason=select+start`, terminated the
-  child process, and exited cleanly.
-- Rebuilt and installed the AppImage from commit `cad8b59`; extracted the
-  installed AppImage's bundled `usr/bin/semu-quit-watch` and verified it writes
-  durable start/exit evidence.
-- Rebuilt and installed the AppImage from commit `0f7c239`; backup of the prior
-  install is
-  `/home/deck/Applications/Semu/Semu-x86_64.AppImage.prev-0f7c239-20260612-032707`.
-- Verified the installed `0f7c239` AppImage runs `e2e deck-evidence`,
-  `deck game-mode-evidence --allow-pending`, `keymap capabilities app.quit`,
-  and `presentation plan --system gb` with shader, bezel, runtime preset, and
-  launcher shader statuses all `ok`.
-- Launched the installed AppImage in Deck Desktop Mode and captured a 1280x800
-  screenshot showing ES-DE running through the bundled AppRun/bwrap path.
-- Rebuilt and installed the AppImage from commit `3dd0c0a`; backup of the prior
-  install is
-  `/home/deck/Applications/Semu/Semu-x86_64.AppImage.prev-3dd0c0a-20260612-035730`.
-- Installed AppImage hash is now
-  `8763f1bb950c908ca8a0687c18c5c961be36f7f3423f07291afcf4372da0d8ac`.
-- Verified the installed `3dd0c0a` AppImage runs `e2e deck-evidence`,
-  `e2e appimage`, `deck game-mode-ready --prepare`, `deck game-mode-ready
-  --prepare --allow-desktop`, `deck game-mode-evidence --allow-pending`,
-  `keymap capabilities app.quit`, and `presentation plan --system gb` with
-  shader, bezel, runtime preset, and launcher shader statuses all `ok`.
-- Built the clean `/home/deck/semu-latest` checkout at commit `d674470` with
-  `nix build .#default`.
-- Verified the pushed Deck result runs `presentation audit --system gb
-  --strict` with shader, bezel, runtime preset, and launcher shader statuses
-  all `ok`.
-- Rebuilt and installed the AppImage from commit `d674470`; backup of the prior
-  install is
-  `/home/deck/Applications/Semu/Semu-x86_64.AppImage.prev-d674470-20260612-042319`.
-- Installed AppImage hash is now
-  `4481bb59323b7ba5106dbf2639a53f1a10070036e09b74ee2be22d3d93a581fb`.
-- Verified the installed `d674470` AppImage runs `presentation audit --system
-  gb --strict` with all selected GB visual assets resolved from the mounted
-  AppImage payload.
+- [x] Keep source flattened around `src/{compiler,generators,lib}`.
+- [x] Keep deleted nested runtime trees out of the architecture.
+- [x] Build the BTRC CLI with strict imports on macOS and Steam Deck.
+- [x] Rebuild the Deck AppImage enough to verify settings entries no longer
+  fail through AppImage FUSE/extract fallback.
+- [x] Prove the process-scoped compositor route is too fragile for production
+  on the Deck and pivot to emulator source render hooks.
+- [x] Move per-system compositor effect selection into
+  `config/assets/systems/*.json`.
+- [x] Document the rendering architecture as Semu-owned declarations ->
+  content viewport resolver -> emulator source hook -> generated hook/native
+  configs.
+- [x] Implement the first content-layer render proof: RetroArch GB launches on
+  the Deck with Semu-generated Slang config and visible DMG LCD tint/grid.
+- [x] Add first bezel composition proof without shading emulator UI/settings:
+  RetroArch GB compiles `semu-gb-handheld.slang` and screenshot shows a
+  prototype Game Boy shell around the LCD game viewport.
+- [ ] Replace the prototype GB shell with production-quality artwork and carry
+  the same asset model to GBC/GBA/CRT/DS/3DS/PSP systems.
+- [x] Implement first-stage source render proof hooks for emulator routes and
+  rebuild them through Nix: RetroArch, Dolphin, PPSSPP, Flycast, Azahar,
+  melonDS, PCSX2, Cemu, and Ryujinx. These prove the game-framebuffer hook
+  boundary; final shader/bezel composition still has to run through the same
+  hook contract.
+- [x] Finish the current Steam Deck full bundle rebuild with source-hook proof
+  packages and the ES-DE settings utility patch.
+- [ ] Smoke the installed AppImage: `doctor`, `apprun prepare`, generated
+  settings entry, stale RetroArch core rewrite, and bundled rendering assets.
+- [x] Verify the active Deck 3DS ROM set is updated enough to boot: Deck and
+  Mac both list 172 ROM-like files, sampled active Deck hashes match Mac, and
+  Super Mario 3D Land boots in Azahar.
+- [ ] Keep Steam Deck SD-card ROM/BIOS content read-only for remaining work; do
+  not delete, rewrite, resync, move, or otherwise mutate SD-card content.
+- [x] Launch a real ROM for every Steam Deck system route and capture
+  screenshots proving launch, fullscreen window/process presence, input-induced
+  visual change, content load, and Select+Start quit evidence.
+- [ ] Add screenshot proof of production shader/bezel visibility for every
+  non-modern system. The Deck harness now reports proof-only hooks as
+  `render=proof-only`; `render=ok` requires a promoted
+  `implemented_source_hook`.
+- [x] Re-test N64 orientation on Deck after removing compositor shader path:
+  Mupen64Plus Next screenshot is upright.
+- [x] Fix DS route ordering: melonDS is primary on Linux/Steam Deck and
+  RetroArch DeSmuME is fallback.
+- [x] Smoke DS melonDS launch on Deck: Tetris DS boots fullscreen.
+- [x] Add melonDS first-stage source-hook proof and package assertions.
+- [ ] Add melonDS shader/bezel composition and screenshot proof.
+- [x] Fix generated Semu Settings entry fallback: it finds the source-built CLI
+  via `SEMU_ASSET_ROOT`, ignores `SEMU_BIN` in the settings launcher so it does
+  not route through AppImage/FUSE, and passes SSH/no-terminal verification.
+- [x] Replace the generated pseudo-system settings integration with an actual
+  ES-DE Start/Main Menu/Utilities Semu Settings entry.
+- [x] Clean the live Deck project of old settings pseudo-system XML/find-rules
+  and generated `.semu` settings game entries.
+- [x] Verify basic input and unified Select+Start quit path for every emulator
+  route in the Deck loop.
+- [ ] Verify save/load actions where each emulator supports them.
+- [ ] Verify Game Mode Steam Input behavior for the left-trackpad radial quit
+  action after Desktop Mode evidence is clean.
 
-## Verified Locally
+## Compiler Architecture
 
-- Added `presentation state` and `presentation broadcast` so emulator adapters
-  can expose normalized runtime aspect/layout state without owning Semu policy.
-- `presentation plan` now reports effective runtime decisions:
-  `effective_aspect`, `presentation_mode`, `selected_shader_file`,
-  `selected_bezel_file`, and `selected_runtime_preset`.
-- `presentation plan` now also reports separate resolved shader, bezel,
-  runtime-preset, and launcher-effective shader paths with `ok`, `missing`, or
-  `disabled` status, so Semu can detect missing bundled assets without editing
-  emulator-native config.
-- Added `presentation audit` plus settings UI access to record per-system
-  shader, bezel, runtime preset, and launcher shader readiness under
-  `.semu/verification/presentation-assets.json`; strict mode fails when a
-  required asset is declared but not bundled.
-- `presentation audit` now checks transitive shader preset dependencies,
-  including nested `#reference` files and referenced image sidecars, and reports
-  `missing_dependency_count` separately from top-level missing assets.
-- Added the `semu-visual-assets` Nix package with pinned Duimon Vintage TV,
-  Duimon Mega Bezel, and Soqueroeu TV-console packs. The AppImage builder now
-  copies `Mega_Bezel_Packs` beside `shaders_slang`, matching upstream relative
-  reference layout.
-- Verified a strict bundled visual audit locally against combined
-  `libretro-shaders-slang` and `semu-visual-assets`: `gb`, `gbc`, `gba`, `nes`,
-  `snes`, `genesis`, `n64`, `nds`, `dreamcast`, `psx`, `ps2`, `psp`, `n3ds`,
-  `gc`, and `wii` all resolved with zero missing assets and zero missing
-  dependencies; `wiiu` and `switch` are disabled by default.
-- Dynamic 4:3/16:9 systems now have editable widescreen shader, bezel, and
-  runtime preset overrides in `settings/presentation/*.json`.
-- Added dependency-free BTRC terminal UIs for presentation, input/keymap, and
-  sync settings. These edit only Semu-owned source files:
-  `settings/presentation/*.json`, `input/keymaps/steam_deck.skm`, and
-  `sync/sync.json`.
-- Added smoke coverage that proves input and sync UI edits do not mutate
-  generated emulator or service files before an explicit apply.
-- Documented the ownership boundary: Semu-owned JSON/keymap files are source,
-  generated emulator profiles and ES-DE files are compiled artifacts, and live
-  emulator config is adapter state that Semu may read/broadcast but not treat as
-  policy source.
-- Added `SemuGeneratedFiles` so core generated writes are explicitly classified
-  as Semu project artifacts or external install artifacts. Smoke coverage now
-  rejects external ROM paths as generated output.
-- Extended the ownership boundary so source writes, generated project writes,
-  routed adapter-state writes, and documented external install writes use
-  separate APIs. Smoke coverage now classifies source, generated, adapter-state,
-  and external ROM paths explicitly.
-- Added explicit `settings compile` / `lifecycle compile` paths so Semu-owned
-  source files can be compiled into emulator and ES-DE artifacts without
-  implying that the UI directly edits emulator-native files. Smoke coverage now
-  exercises the compile command and ES-DE settings entry.
-- Added structured `semu-quit-watch` evidence logging. The Deck loop now keeps
-  per-system quit-watch logs and treats a quit-watch `reason=<chord>` event as
-  the Semu launcher-layer proof that a unified quit action was observed.
-- Routed launcher runs now default quit evidence to the Semu-owned
-  `.semu/verification/quit-watch/<emulator>.log` path when
-  `SEMU_QUIT_WATCH_LOG` is not explicitly set, so Steam/Game Mode launches can
-  be audited without mutating emulator-native config.
-- Added `deck game-mode-evidence` as the physical Game Mode evidence gate. It
-  prepares a Semu-owned checklist under `.semu/verification`, fails on missing
-  or lifecycle-only logs, and passes only when each selected emulator has
-  quit-watch evidence with a `reason=` value.
-- Added `deck game-mode-ready` as the physical pass readiness gate. It writes a
-  Semu-owned JSON report under `.semu/verification`, verifies session type,
-  Steam process state, Steam shortcut discovery, selected Steam Input template,
-  installed AppImage executability, checklist state, and can require complete
-  quit-watch evidence after the physical pass.
-- Added `deck state-evidence` for physical Save State/Load State proof. It
-  writes a Semu-owned checklist under `.semu/verification`, only accepts
-  emulators with generated state contracts, and requires matching adapter-state
-  `action=state.save result=ok` plus `action=state.load result=ok` lines.
-- Added `deck production-status` and `deck production-ready` as the composed
-  gate across owned config source files, presentation asset audit, Steam
-  shortcut/Input selection, installed AppImage, quit evidence, and generated
-  state evidence.
-- Added `steam-input select` and extended `steam-input install/status` so Semu
-  no longer treats copied templates as enough. The command now merges a
-  documented Steam config-set entry that maps the Semu non-Steam shortcut to the
-  generated Neptune template, and `deck game-mode-ready` gates on that selection.
-- Local `e2e deck-evidence` now simulates Desktop Mode, Game Mode, missing Steam,
-  Steam shortcut discovery, Steam Input selection, AppImage checks, readiness
-  JSON formatting, state evidence, and the composed production-ready gate.
-- Added input capability reporting so save/load/slot state actions are only
-  advertised for generated RetroArch, Dolphin, and PCSX2 profiles. Other
-  emulator routes are marked disabled until adapter config and physical state
-  file proof exist.
-- Local verification passed for BTRC presentation smoke, generated-C e2e,
-  AppImage/Nix routing smoke, JSON formatting, and whitespace checks.
-- AppImage assembly smoke now covers linked `result` canonicalization before
-  `nix copy`; the builder also avoids SteamOS `/tmp` space failures by using
-  `$HOME/.cache/semu-appimage-work` when `TMPDIR` is unset.
+- [x] Keep `docs/semu-compiler-refactor.md` as the source plan for the target
+  build architecture.
+- [x] Keep definitions under `config/targets/`, `config/systems/`,
+  `config/emulators/`, `config/input/`, `config/assets/`, and
+  `config/settings/`.
+- [x] Treat Semu settings and sync defaults as owned config under
+  `config/settings/`; project user edits go through `semu.json` and
+  `overrides/**`.
+- [x] Keep root `Makefile` as a thin wrapper around BTRC/Nix commands.
+- [x] Keep `settings` and `assets` commands editing only Semu-owned files.
+- [x] Keep emulator-native config as generated output, not user-edited source.
+- [ ] Remove any remaining unused generated manifests or compatibility command
+  references after Deck verification proves they are dead.
+- [ ] Add focused golden tests for generated ES-DE systems/find-rules,
+  settings entries, stable launchers, and per-system render environment.
+- [ ] Add focused verification for content viewport resolution and renderer
+  exclusion of ES-DE/settings/emulator control surfaces.
+- [ ] Keep README and docs aligned with the active `src/`, `config/`, `build/`,
+  and `tests/` layout.
 
-## Remaining Physical Gates
+## Deferred Until Deck Is Complete
 
-- Run a real Steam Deck Game Mode pass for Steam Input templates, the physical
-  left-trackpad radial quit, `deck game-mode-evidence`, and ES-DE return flow.
-- Confirm controller movement/buttons inside representative games from Game
-  Mode, not only SSH/uinput.
-- Confirm the physical left-trackpad radial Quit action returns to ES-DE for
-  RetroArch, Dolphin, PPSSPP, Flycast, melonDS, PCSX2, Cemu, Azahar, and
-  Ryujinx.
-- Verify save/load radial actions only where the emulator has production-safe
-  state support; hide or disable unsupported actions.
-
-## Remaining Visual Work
-
-- Replace packaged fallback handheld shell art with the exact requested
-  photorealistic shells where the current bundle still uses libretro fallbacks:
-  classic grey Game Boy, frost purple GBC, purple wide GBA, and red God of War
-  PSP. `presentation audit --strict` is now the gate for proving those declared
-  assets and sidecars are actually present.
-- Prototype standalone visual effects behind feature flags with gamescope
-  ReShade and vkBasalt only after the input gates pass.
-
-## Remaining Product Work
-
-- Promote `utils/steam-deck-bootstrap.sh` into BTRC Deck commands after the
-  full physical Game Mode pass.
-- Extend the dependency-free BTRC settings UI to cover screenshot hooks, BIOS
-  status, and advanced per-emulator settings.
-- Pair a second Syncthing device and verify conflict behavior.
+- [ ] Do not start Bazzite parity until every Steam Deck route is implemented
+  and verified with screenshots/loop evidence.
+- [ ] Bazzite parity harness.
+- [ ] Bazzite VM performance cleanup.
+- [ ] Bazzite/desktop-only test expansion.

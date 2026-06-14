@@ -1,0 +1,21 @@
+import std.map;
+import std.json;
+import ./owned_paths.btrc;
+class SemuTemplate {
+    class string expand(string text, Map<string, string> values) {
+        return JsonText.expand(text, values);
+    }
+
+    class string expandProject(string project, string text) {
+        Map<string, string> values = {};
+        values.put("project", project);
+        values.put("semu_home", SemuOwnedPaths.home(project));
+        values.put("generated", SemuOwnedPaths.generated(project));
+        values.put("state", SemuOwnedPaths.state(project));
+        values.put("cache", SemuOwnedPaths.cache(project));
+        values.put("roms", SemuOwnedPaths.romsRoot(project));
+        values.put("bios", SemuOwnedPaths.biosRoot(project));
+        values.put("ps2_bios", SemuOwnedPaths.ps2BiosRoot(project));
+        return SemuTemplate.expand(text, values);
+    }
+}

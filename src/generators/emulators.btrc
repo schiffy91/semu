@@ -1,0 +1,38 @@
+import ../compiler/model.btrc;
+import ../compiler/parser.btrc;
+import ../lib/owned_paths.btrc;
+import std.fs;
+import std.json;
+import std.vector;
+
+class SemuEmulatorDefinitionGenerator {
+    class string plan(string project, string target, string emulator) {
+        SemuEmulatorDefinition definition = SemuCompilerParser.emulator(project, emulator);
+        JsonObject metadata = definition.source.json();
+        string launchPath = SemuOwnedPaths.emulatorFile(project, emulator, "launch.json");
+        string launchRaw = FileSystem.isFile(launchPath) ? FileSystem.readText(launchPath) : "{}";
+        string linux = JsonText.objectField(launchRaw, "linux");
+        string launcher = JsonText.field(linux, "launcher", "");
+        string flatpak = JsonText.field(linux, "flatpakId", "");
+        string executable = JsonText.field(linux, "executable", "");
+        string romMode = JsonText.field(JsonText.objectField(launchRaw, "romArg"), "mode", "");
+
+        string result = "generate emulator=" + metadata.getString("id", emulator)
+            + " target=" + target
+            + " project=" + project
+            + " launcher=semu-" + emulator;
+        if (launcher.len() > 0) {
+            result = result + " backend=" + launcher;
+        }
+        if (flatpak.len() > 0) {
+            result = result + " flatpak=" + flatpak;
+        }
+        if (executable.len() > 0) {
+            result = result + " executable=" + executable;
+        }
+        if (romMode.len() > 0) {
+            result = result + " romArg=" + romMode;
+        }
+        return result + " systems=" + definition.servedSystems.join(",");
+    }
+}

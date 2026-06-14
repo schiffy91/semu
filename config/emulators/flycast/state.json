@@ -1,0 +1,15 @@
+{
+  "directories": [
+    "emulators/flycast/xdg/config/flycast",
+    "emulators/flycast/xdg/data/flycast/data",
+    "emulators/flycast/xdg/data/flycast/mappings",
+    "emulators/flycast/xdg/cache/flycast"
+  ],
+  "schema_version": 1,
+  "templates": [
+    {
+      "output": "emulators/flycast/xdg/config/flycast/emu.cfg",
+      "source": "emu.cfg"
+    }
+  ]
+}

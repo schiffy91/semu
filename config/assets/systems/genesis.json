@@ -1,0 +1,61 @@
+{
+  "schema_version": 2,
+  "system": "genesis",
+  "label": "Sega Genesis",
+  "default_emulator": "RETROARCH",
+  "emulator": "retroarch",
+  "emulator_config": "retroarch.cfg core-options",
+  "hardware_display": "consumer CRT over composite/RGB",
+  "display_class": "crt_tv",
+  "content_viewport": {
+    "native_size": {
+      "width": 320,
+      "height": 224
+    },
+    "alternate_native_sizes": [
+      {
+        "width": 256,
+        "height": 224
+      }
+    ],
+    "content_aspect": "4:3",
+    "default_aspect": "4:3",
+    "dynamic_aspect": false,
+    "layout": {
+      "kind": "single",
+      "screens": [
+        {
+          "id": "main",
+          "native_size": {
+            "width": 320,
+            "height": 224
+          },
+          "content_aspect": "4:3"
+        }
+      ]
+    },
+    "scale_policy": "integer"
+  },
+  "renderer": {
+    "model": "semu_source_hook_renderer",
+    "viewport_source": "content_viewport",
+    "profile": "crt_240p",
+    "shader": {
+      "family": "crt_240p",
+      "enabled_by_default": true,
+      "intent": "Genesis dithering blended by analog CRT video",
+      "source_asset": "ntsc/ntsc-320px-composite-scanline.slangp",
+      "widescreen_source_asset": null,
+      "effect_file": "semu-crt.fx"
+    },
+    "bezel": {
+      "family": "sony_or_panasonic_crt",
+      "enabled_by_default": true,
+      "intent": "elegant Panasonic or Sony consumer CRT",
+      "source_asset": "Mega_Bezel_Packs/Duimon-Vintage-TV/Presets/Potato/Panasonic_Panacolor_TH20-B8/TH20-B8-[POTATO].slangp",
+      "widescreen_source_asset": null,
+      "composition_effect_file": "semu-crt-bezel.fx"
+    }
+  },
+  "notes": "Composite blending matters for dithering-heavy art. Use the system-specific NTSC shader reference; Genesis Plus GX is unstable with the generic Mega_Bezel chain on Deck."
+}

@@ -1,0 +1,61 @@
+{
+  "schema_version": 2,
+  "system": "n64",
+  "label": "Nintendo 64",
+  "default_emulator": "RETROARCH",
+  "emulator": "retroarch",
+  "emulator_config": "retroarch.cfg core-options",
+  "hardware_display": "consumer CRT over composite/S-Video",
+  "display_class": "crt_tv",
+  "content_viewport": {
+    "native_size": {
+      "width": 320,
+      "height": 240
+    },
+    "alternate_native_sizes": [
+      {
+        "width": 640,
+        "height": 480
+      }
+    ],
+    "content_aspect": "4:3",
+    "default_aspect": "4:3",
+    "dynamic_aspect": false,
+    "layout": {
+      "kind": "single",
+      "screens": [
+        {
+          "id": "main",
+          "native_size": {
+            "width": 320,
+            "height": 240
+          },
+          "content_aspect": "4:3"
+        }
+      ]
+    },
+    "scale_policy": "aspect_preserve"
+  },
+  "renderer": {
+    "model": "semu_source_hook_renderer",
+    "viewport_source": "content_viewport",
+    "profile": "crt_240p_480i",
+    "shader": {
+      "family": "crt_240p",
+      "enabled_by_default": true,
+      "intent": "late-90s CRT with N64 VI softness and scanlines",
+      "source_asset": "crt/crt-royale.slangp",
+      "widescreen_source_asset": null,
+      "effect_file": "semu-crt.fx"
+    },
+    "bezel": {
+      "family": "sony_or_panasonic_crt",
+      "enabled_by_default": true,
+      "intent": "N64-specific consumer CRT preset with the required Mupen64Plus viewport correction",
+      "source_asset": "Mega_Bezel_Packs/Soqueroeu-TV-Backgrounds_V2.0/presets/TV-Console/Nintendo_N64-[FLAT].slangp",
+      "widescreen_source_asset": null,
+      "composition_effect_file": "semu-crt-bezel.fx"
+    }
+  },
+  "notes": "Do not sharpen away the hardware VI softness."
+}

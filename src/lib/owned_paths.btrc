@@ -1,0 +1,245 @@
+import std.fs;
+import std.json;
+import std.platform;
+import std.strings;
+import std.vector;
+
+string joinPath(string left, string right) {
+    return PathTools.join(left, right);
+}
+
+void ensureDir(string path) {
+    if (!path.isEmpty()) {
+        FileSystem.mkdirp(path);
+    }
+}
+
+class SemuOwnedPaths {
+    class string sourceRoot(string project) {
+        string configured = Environment.get("SEMU_ASSET_ROOT", "");
+        if (!configured.isEmpty() && FileSystem.isDir(configured)) {
+            return configured;
+        }
+        if (FileSystem.isDir(joinPath(project, "config"))) {
+            return project;
+        }
+        return FileSystem.currentDirectory();
+    }
+
+    class string contentRoot(string project) {
+        return project;
+    }
+
+    class string home(string project) {
+        return Environment.get("SEMU_HOME", joinPath(project, ".semu"));
+    }
+
+    class string config(string project) {
+        return joinPath(SemuOwnedPaths.sourceRoot(project), "config");
+    }
+
+    class string generated(string project) {
+        return joinPath(SemuOwnedPaths.home(project), "generated");
+    }
+
+    class string state(string project) {
+        return joinPath(SemuOwnedPaths.home(project), "state");
+    }
+
+    class string cache(string project) {
+        return joinPath(SemuOwnedPaths.home(project), "cache");
+    }
+
+    class string overrides(string project) {
+        return joinPath(SemuOwnedPaths.home(project), "overrides");
+    }
+
+    class string semuConfig(string project) {
+        return joinPath(SemuOwnedPaths.home(project), "semu.json");
+    }
+
+    class string projectSettings(string project) {
+        return joinPath(SemuOwnedPaths.home(project), "settings");
+    }
+
+    class string romsRoot(string project) {
+        string configured = Environment.get("SEMU_ROMS_DIR", Environment.get("SEMU_ROMS", ""));
+        if (!configured.isEmpty()) {
+            return configured;
+        }
+        string userConfig = SemuOwnedPaths.semuConfig(project);
+        if (FileSystem.isFile(userConfig)) {
+            string configuredRoms = JsonText.field(FileSystem.readText(userConfig), "roms_dir", "");
+            if (!configuredRoms.isEmpty()) {
+                return configuredRoms;
+            }
+        }
+        Vector<string> candidates = [
+            "/run/media/deck/SD/Emulation/ES-DE/ES-DE/ROMs",
+            "/run/media/deck/SD/Emulation/ROMs",
+            "/run/media/deck/SD/ROMs",
+            "/run/media/deck/SD",
+            "/mnt/SD/Emulation/ES-DE/ES-DE/ROMs",
+            "/mnt/SD/Emulation/ROMs",
+            "/mnt/SD/ROMs",
+            "/mnt/SD",
+            joinPath(project, "ES-DE/ES-DE/ROMs"),
+            joinPath(project, "ROMs")
+        ];
+        for candidate in candidates {
+            if (FileSystem.isDir(candidate)) {
+                return candidate;
+            }
+        }
+        return joinPath(project, "ES-DE/ES-DE/ROMs");
+    }
+
+    class string biosRoot(string project) {
+        string configured = Environment.get("SEMU_BIOS_DIR", "");
+        if (!configured.isEmpty()) {
+            return configured;
+        }
+        string roms = SemuOwnedPaths.romsRoot(project);
+        string romsParent = PathTools.dirname(roms);
+        string esdeRoot = PathTools.dirname(romsParent);
+        string emulationRoot = PathTools.dirname(esdeRoot);
+        Vector<string> candidates = [
+            joinPath(roms, "bios"),
+            joinPath(romsParent, "bios"),
+            joinPath(esdeRoot, "bios"),
+            joinPath(emulationRoot, "RetroArch/config/system"),
+            joinPath(emulationRoot, "PCSX2/config/bios"),
+            joinPath(emulationRoot, "bios"),
+            "/run/media/deck/SD/Emulation/RetroArch/config/system",
+            "/run/media/deck/SD/Emulation/PCSX2/config/bios",
+            "/mnt/SD/Emulation/RetroArch/config/system",
+            "/mnt/SD/Emulation/PCSX2/config/bios",
+            joinPath(project, "BIOS"),
+            joinPath(project, "bios")
+        ];
+        for candidate in candidates {
+            if (FileSystem.isDir(candidate)) {
+                return candidate;
+            }
+        }
+        return joinPath(roms, "bios");
+    }
+
+    class string ps2BiosRoot(string project) {
+        string configured = Environment.get("SEMU_PS2_BIOS_DIR", "");
+        if (!configured.isEmpty()) {
+            return configured;
+        }
+        string roms = SemuOwnedPaths.romsRoot(project);
+        string romsParent = PathTools.dirname(roms);
+        string esdeRoot = PathTools.dirname(romsParent);
+        string emulationRoot = PathTools.dirname(esdeRoot);
+        Vector<string> candidates = [
+            joinPath(emulationRoot, "PCSX2/config/bios"),
+            "/run/media/deck/SD/Emulation/PCSX2/config/bios",
+            "/mnt/SD/Emulation/PCSX2/config/bios",
+            joinPath(SemuOwnedPaths.biosRoot(project), "ps2"),
+            SemuOwnedPaths.biosRoot(project)
+        ];
+        for candidate in candidates {
+            if (FileSystem.isDir(candidate)) {
+                return candidate;
+            }
+        }
+        return joinPath(SemuOwnedPaths.biosRoot(project), "ps2");
+    }
+
+    class string mediaRoot(string project) {
+        return Environment.get("SEMU_MEDIA_DIR", joinPath(project, "ES-DE/downloaded_media"));
+    }
+
+    class string themeRoot(string project) {
+        return Environment.get("SEMU_THEME_DIR", joinPath(SemuOwnedPaths.generated(project), "themes"));
+    }
+
+    class string directDefinitionRoot(string root) {
+        if (FileSystem.isFile(joinPath(joinPath(root, "targets"), "steam-deck.json"))) {
+            return root;
+        }
+        return "";
+    }
+
+    class string sourceDefinitionRoot(string root) {
+        string config = joinPath(root, "config");
+        if (FileSystem.isFile(joinPath(joinPath(config, "targets"), "steam-deck.json"))) {
+            return config;
+        }
+        return "";
+    }
+
+    class string definitionRoot(string project) {
+        string configured = Environment.get("SEMU_DEFINITION_ROOT", "");
+        string configuredRoot = configured.len() > 0 ? SemuOwnedPaths.directDefinitionRoot(configured) : "";
+        if (configuredRoot.len() == 0 && configured.len() > 0) {
+            configuredRoot = SemuOwnedPaths.sourceDefinitionRoot(configured);
+        }
+        if (configuredRoot.len() > 0) {
+            return configuredRoot;
+        }
+        string projectRoot = SemuOwnedPaths.sourceDefinitionRoot(project);
+        if (projectRoot.len() > 0) {
+            return projectRoot;
+        }
+        string root = SemuOwnedPaths.sourceRoot(project);
+        string asset = SemuOwnedPaths.sourceDefinitionRoot(root);
+        if (asset.len() > 0) {
+            return asset;
+        }
+        string cwd = SemuOwnedPaths.sourceDefinitionRoot(".");
+        if (cwd.len() > 0) {
+            return cwd;
+        }
+        return joinPath(project, "config");
+    }
+
+    class string targetFile(string project, string target) {
+        return joinPath(joinPath(SemuOwnedPaths.definitionRoot(project), "targets"), target + ".json");
+    }
+
+    class string systemFile(string project, string system) {
+        return joinPath(joinPath(SemuOwnedPaths.definitionRoot(project), "systems"), system + ".json");
+    }
+
+    class string emulatorFile(string project, string emulator, string name) {
+        return joinPath(joinPath(joinPath(SemuOwnedPaths.definitionRoot(project), "emulators"), emulator), name);
+    }
+
+    class string assetFile(string project, string name) {
+        return joinPath(joinPath(SemuOwnedPaths.definitionRoot(project), "assets"), name);
+    }
+
+    class string systemAssetFile(string project, string system) {
+        return joinPath(joinPath(joinPath(SemuOwnedPaths.definitionRoot(project), "assets"), "systems"), system + ".json");
+    }
+
+    class string settingsDefinitionFile(string project, string name) {
+        return joinPath(joinPath(SemuOwnedPaths.definitionRoot(project), "settings"), name);
+    }
+
+    class string generatedFile(string project, string relative) {
+        return joinPath(SemuOwnedPaths.generated(project), relative);
+    }
+
+    class void writeGenerated(string project, string relative, string content) {
+        string path = SemuOwnedPaths.generatedFile(project, relative);
+        ensureDir(PathTools.dirname(path));
+        FileSystem.writeText(path, content);
+    }
+
+    class void writeGeneratedExecutable(string project, string relative, string content) {
+        string path = SemuOwnedPaths.generatedFile(project, relative);
+        ensureDir(PathTools.dirname(path));
+        FileSystem.writeText(path, content);
+        FileSystem.chmod(path, 493);
+    }
+
+    class bool isGeneratedPath(string project, string path) {
+        string generatedRoot = SemuOwnedPaths.generated(project);
+        return path.equals(generatedRoot) || path.startsWith(generatedRoot + "/");
+    }
+}

@@ -1,0 +1,380 @@
+diff -ruN a/GPU/Common/PresentationCommon.h b/GPU/Common/PresentationCommon.h
+--- a/GPU/Common/PresentationCommon.h
++++ b/GPU/Common/PresentationCommon.h
+@@ -150,6 +150,8 @@
+ 	Draw::DrawContext *draw_;
+ 	Draw::Pipeline *texColor_ = nullptr;
+ 	Draw::Pipeline *texColorRBSwizzle_ = nullptr;
++	Draw::Pipeline *semuColorBlend_ = nullptr;
++	Draw::Buffer *semuVdata_ = nullptr;
+ 	Draw::SamplerState *samplerNearest_ = nullptr;
+ 	Draw::SamplerState *samplerLinear_ = nullptr;
+ 	Draw::Buffer *vdata_ = nullptr;
+diff -ruN a/GPU/Common/PresentationCommon.cpp b/GPU/Common/PresentationCommon.cpp
+--- a/GPU/Common/PresentationCommon.cpp
++++ b/GPU/Common/PresentationCommon.cpp
+@@ -18,6 +18,9 @@
+ #include <algorithm>
+ #include <cmath>
+ #include <set>
++#include <cstdio>
++#include <cstdlib>
++#include <cstring>
+ #include <cstdint>
+ #include "Common/GPU/thin3d.h"
+ 
+@@ -179,6 +182,318 @@
+ 	return shaderInfo->settings[i].value;
+ }
+ 
++enum class SemuRenderHookProfile {
++	NONE,
++	PSP_LCD,
++};
++
++struct SemuRenderHookPlan {
++	bool enabled = false;
++	bool shaders = false;
++	bool bezels = false;
++	SemuRenderHookProfile profile = SemuRenderHookProfile::NONE;
++	const char *system = nullptr;
++	const char *config = nullptr;
++};
++
++static bool semuRenderHookEnabled()
++{
++	const char *enabled = std::getenv("SEMU_RENDER_HOOK");
++	return enabled != nullptr && enabled[0] != '\0' && enabled[0] != '0';
++}
++
++static bool semuRenderHookEnvBool(const char *name, bool fallback)
++{
++	const char *value = std::getenv(name);
++	if (value == nullptr || value[0] == '\0')
++		return fallback;
++	return !(value[0] == '0' || value[0] == 'f' || value[0] == 'F' || value[0] == 'n' || value[0] == 'N');
++}
++
++static size_t semuRenderHookReadConfig(const char *path, char *buffer, size_t size)
++{
++	if (path == nullptr || path[0] == '\0' || buffer == nullptr || size < 2)
++		return 0;
++
++	std::FILE *file = std::fopen(path, "rb");
++	if (file == nullptr)
++		return 0;
++
++	size_t used = std::fread(buffer, 1, size - 1, file);
++	buffer[used] = '\0';
++	std::fclose(file);
++	return used;
++}
++
++static bool semuRenderHookConfigBoolIsFalse(const char *config, const char *key)
++{
++	if (config == nullptr || key == nullptr)
++		return false;
++
++	const char *cursor = std::strstr(config, key);
++	if (cursor == nullptr)
++		return false;
++
++	cursor = std::strchr(cursor, ':');
++	if (cursor == nullptr)
++		return false;
++	cursor++;
++
++	while (*cursor == ' ' || *cursor == '\t' || *cursor == '\r' || *cursor == '\n')
++		cursor++;
++
++	return std::strncmp(cursor, "false", 5) == 0;
++}
++
++static bool semuRenderHookConfigHasSystem(const char *config, const char *system)
++{
++	if (config == nullptr || system == nullptr || system[0] == '\0' || std::strlen(system) > 32)
++		return false;
++
++	char needle[64];
++	std::snprintf(needle, sizeof(needle), "\"id\": \"%s\"", system);
++	if (std::strstr(config, needle) != nullptr)
++		return true;
++
++	std::snprintf(needle, sizeof(needle), "\"id\":\"%s\"", system);
++	return std::strstr(config, needle) != nullptr;
++}
++
++static SemuRenderHookProfile semuRenderHookProfileForSystem(const char *system)
++{
++	if (system != nullptr && std::strcmp(system, "psp") == 0)
++		return SemuRenderHookProfile::PSP_LCD;
++	return SemuRenderHookProfile::NONE;
++}
++
++static const char *semuRenderHookProfileName(SemuRenderHookProfile profile)
++{
++	switch (profile) {
++	case SemuRenderHookProfile::PSP_LCD:
++		return "psp_lcd";
++	default:
++		break;
++	}
++	return "none";
++}
++
++static SemuRenderHookPlan semuRenderHookCreatePlan()
++{
++	SemuRenderHookPlan plan;
++	if (!semuRenderHookEnabled())
++		return plan;
++
++	plan.system = std::getenv("SEMU_SYSTEM");
++	plan.config = std::getenv("SEMU_RENDER_HOOK_CONFIG");
++	plan.profile = semuRenderHookProfileForSystem(plan.system);
++	if (plan.profile == SemuRenderHookProfile::NONE)
++		return plan;
++
++	char configText[65536];
++	size_t configSize = semuRenderHookReadConfig(plan.config, configText, sizeof(configText));
++	if (configSize == 0 || !semuRenderHookConfigHasSystem(configText, plan.system))
++		return plan;
++
++	plan.shaders = semuRenderHookEnvBool("SEMU_RENDER_SHADERS", true);
++	plan.bezels = semuRenderHookEnvBool("SEMU_RENDER_BEZELS", true);
++	if (semuRenderHookConfigBoolIsFalse(configText, "\"shaders_enabled\""))
++		plan.shaders = false;
++	if (semuRenderHookConfigBoolIsFalse(configText, "\"bezels_enabled\""))
++		plan.bezels = false;
++
++	plan.enabled = plan.shaders || plan.bezels;
++	return plan;
++}
++
++static void semuRenderHookProof(const char *emulator)
++{
++	static bool logged = false;
++	SemuRenderHookPlan plan = semuRenderHookCreatePlan();
++	if (!plan.enabled || logged)
++		return;
++
++	std::fprintf(stderr, "semu-source-hook: applied emulator=%s system=%s profile=%s config=%s\n",
++		emulator, plan.system != nullptr ? plan.system : "",
++		semuRenderHookProfileName(plan.profile),
++		plan.config != nullptr ? plan.config : "");
++
++	const char *proof = std::getenv("SEMU_RENDER_HOOK_PROOF");
++	if (proof != nullptr && proof[0] != '\0')
++	{
++		std::FILE *proofFile = std::fopen(proof, "a");
++		if (proofFile != nullptr)
++		{
++			std::fprintf(proofFile, "semu-render-hook:%s:game_framebuffer:config=%s\n", emulator,
++				plan.config != nullptr ? plan.config : "");
++			std::fclose(proofFile);
++		}
++	}
++
++	logged = true;
++}
++
++static uint32_t semuRenderHookRgba(uint8_t r, uint8_t g, uint8_t b, uint8_t a)
++{
++	return (uint32_t)r | ((uint32_t)g << 8) | ((uint32_t)b << 16) | ((uint32_t)a << 24);
++}
++
++static void semuRenderHookFitRect(FRect *rc, float x, float y, float w, float h, float aspect)
++{
++	if (rc == nullptr || w <= 4.0f || h <= 4.0f || aspect <= 0.0f)
++		return;
++
++	float outW = w;
++	float outH = outW / aspect;
++	if (outH > h) {
++		outH = h;
++		outW = outH * aspect;
++	}
++
++	rc->x = std::floor(x + (w - outW) * 0.5f);
++	rc->y = std::floor(y + (h - outH) * 0.5f);
++	rc->w = std::floor(outW);
++	rc->h = std::floor(outH);
++}
++
++static void semuRenderHookAdjustContentRect(FRect *rc, int pixelWidth, int pixelHeight, const SemuRenderHookPlan &plan)
++{
++	if (!plan.enabled || !plan.bezels || rc == nullptr || g_Config.bEnableCardboardVR)
++		return;
++	if (pixelWidth < 320 || pixelHeight < 200)
++		return;
++
++	const float marginX = std::max(16.0f, pixelWidth * 0.085f);
++	const float marginY = std::max(16.0f, pixelHeight * 0.125f);
++	if (marginX * 2.0f + 32.0f >= pixelWidth || marginY * 2.0f + 32.0f >= pixelHeight)
++		return;
++
++	semuRenderHookFitRect(rc, marginX, marginY, pixelWidth - marginX * 2.0f, pixelHeight - marginY * 2.0f, 16.0f / 9.0f);
++}
++
++static Draw::Pipeline *semuRenderHookCreateColorPipeline(Draw::DrawContext *draw)
++{
++	using namespace Draw;
++
++	Semantic pos = SEM_POSITION;
++	Semantic tc = SEM_TEXCOORD0;
++	InputLayoutDesc inputDesc = {
++		sizeof(Vertex),
++		{
++			{ pos, DataFormat::R32G32B32_FLOAT, 0 },
++			{ tc, DataFormat::R32G32_FLOAT, 12 },
++			{ SEM_COLOR0, DataFormat::R8G8B8A8_UNORM, 20 },
++		},
++	};
++
++	InputLayout *inputLayout = draw->CreateInputLayout(inputDesc);
++	DepthStencilState *depth = draw->CreateDepthStencilState({ false, false, Comparison::LESS });
++	BlendState *blend = draw->CreateBlendState({
++		true,
++		0xF,
++		BlendFactor::SRC_ALPHA,
++		BlendFactor::ONE_MINUS_SRC_ALPHA,
++		BlendOp::ADD,
++		BlendFactor::ONE,
++		BlendFactor::ONE_MINUS_SRC_ALPHA,
++		BlendOp::ADD,
++		false,
++		LogicOp::LOGIC_COPY,
++	});
++	RasterState *rasterNoCull = draw->CreateRasterState({});
++
++	PipelineDesc pipelineDesc{ Primitive::TRIANGLE_STRIP, { draw->GetVshaderPreset(VS_COLOR_2D), draw->GetFshaderPreset(FS_COLOR_2D) }, inputLayout, depth, blend, rasterNoCull, &vsColBufDesc };
++	Pipeline *pipeline = draw->CreateGraphicsPipeline(pipelineDesc, "semu-render-hook");
++
++	inputLayout->Release();
++	depth->Release();
++	blend->Release();
++	rasterNoCull->Release();
++
++	return pipeline;
++}
++
++static void semuRenderHookIdentityUniform(Draw::VsColUB *ub)
++{
++	for (float &value : ub->WorldViewProj)
++		value = 0.0f;
++	ub->WorldViewProj[0] = 1.0f;
++	ub->WorldViewProj[5] = 1.0f;
++	ub->WorldViewProj[10] = 1.0f;
++	ub->WorldViewProj[15] = 1.0f;
++	ub->tint = 0.0f;
++	ub->saturation = 1.0f;
++}
++
++static void semuRenderHookDrawRect(Draw::DrawContext *draw, Draw::Buffer *vdata, int pixelWidth, int pixelHeight, float x, float y, float w, float h, uint32_t color)
++{
++	if (draw == nullptr || vdata == nullptr || pixelWidth <= 0 || pixelHeight <= 0 || w <= 0.5f || h <= 0.5f)
++		return;
++
++	float x0 = std::max(0.0f, std::floor(x));
++	float y0 = std::max(0.0f, std::floor(y));
++	float x1 = std::min((float)pixelWidth, std::ceil(x + w));
++	float y1 = std::min((float)pixelHeight, std::ceil(y + h));
++	if (x1 <= x0 || y1 <= y0)
++		return;
++
++	float invW = 2.0f / pixelWidth;
++	float invH = 2.0f / pixelHeight;
++	Vertex verts[4] = {
++		{ x0 * invW - 1.0f, y0 * invH - 1.0f, 0.0f, 0.0f, 0.0f, color },
++		{ x1 * invW - 1.0f, y0 * invH - 1.0f, 0.0f, 1.0f, 0.0f, color },
++		{ x0 * invW - 1.0f, y1 * invH - 1.0f, 0.0f, 0.0f, 1.0f, color },
++		{ x1 * invW - 1.0f, y1 * invH - 1.0f, 0.0f, 1.0f, 1.0f, color },
++	};
++
++	draw->UpdateBuffer(vdata, (const uint8_t *)verts, 0, sizeof(verts), Draw::UPDATE_DISCARD);
++	draw->BindVertexBuffer(vdata, 0);
++	draw->Draw(4, 0);
++}
++
++static bool semuRenderHookComposeFrame(Draw::DrawContext *draw, Draw::Pipeline *pipeline, Draw::Buffer *vdata, int pixelWidth, int pixelHeight, const FRect &content, const SemuRenderHookPlan &plan)
++{
++	if (!plan.enabled || draw == nullptr || pipeline == nullptr || vdata == nullptr || pixelWidth <= 0 || pixelHeight <= 0)
++		return false;
++
++	Draw::Viewport viewport{ 0.0f, 0.0f, (float)pixelWidth, (float)pixelHeight, 0.0f, 1.0f };
++	draw->SetViewport(viewport);
++	draw->SetScissorRect(0, 0, pixelWidth, pixelHeight);
++	draw->BindPipeline(pipeline);
++
++	Draw::VsColUB ub{};
++	semuRenderHookIdentityUniform(&ub);
++	draw->UpdateDynamicUniformBuffer(&ub, sizeof(ub));
++
++	bool composed = false;
++	if (plan.bezels) {
++		const uint32_t shellShade = semuRenderHookRgba(8, 9, 12, 96);
++		const uint32_t accent = semuRenderHookRgba(126, 28, 33, 180);
++
++		semuRenderHookDrawRect(draw, vdata, pixelWidth, pixelHeight, content.x, content.y, content.w, 3.0f, shellShade);
++		semuRenderHookDrawRect(draw, vdata, pixelWidth, pixelHeight, content.x, content.y + content.h - 3.0f, content.w, 3.0f, shellShade);
++		semuRenderHookDrawRect(draw, vdata, pixelWidth, pixelHeight, content.x, content.y, 3.0f, content.h, shellShade);
++		semuRenderHookDrawRect(draw, vdata, pixelWidth, pixelHeight, content.x + content.w - 3.0f, content.y, 3.0f, content.h, shellShade);
++		semuRenderHookDrawRect(draw, vdata, pixelWidth, pixelHeight, content.x + content.w * 0.02f, content.y + content.h * 0.50f, 5.0f, content.h * 0.10f, accent);
++		semuRenderHookDrawRect(draw, vdata, pixelWidth, pixelHeight, content.x + content.w * 0.98f - 5.0f, content.y + content.h * 0.50f, 5.0f, content.h * 0.10f, accent);
++		composed = true;
++	}
++
++	if (plan.shaders) {
++		const uint32_t scanline = semuRenderHookRgba(0, 0, 0, 36);
++		const uint32_t grid = semuRenderHookRgba(255, 255, 255, 15);
++		float lineStep = std::max(3.0f, content.h / 170.0f);
++		for (float y = content.y + lineStep; y < content.y + content.h; y += lineStep)
++			semuRenderHookDrawRect(draw, vdata, pixelWidth, pixelHeight, content.x, y, content.w, 1.0f, scanline);
++		float columnStep = std::max(5.0f, content.w / 160.0f);
++		for (float x = content.x + columnStep; x < content.x + content.w; x += columnStep)
++			semuRenderHookDrawRect(draw, vdata, pixelWidth, pixelHeight, x, content.y, 1.0f, content.h, grid);
++		composed = true;
++	}
++
++	draw->Invalidate(InvalidationFlags::CACHED_RENDER_STATE);
++	return composed;
++}
++
+ void PresentationCommon::CalculatePostShaderUniforms(int bufferWidth, int bufferHeight, int targetWidth, int targetHeight, const ShaderInfo *shaderInfo, PostShaderUniforms *uniforms) const {
+ 	float u_delta = 1.0f / bufferWidth;
+ 	float v_delta = 1.0f / bufferHeight;
+@@ -534,6 +866,8 @@
+ 
+ 	texColor_ = CreatePipeline({ draw_->GetVshaderPreset(VS_TEXTURE_COLOR_2D), draw_->GetFshaderPreset(FS_TEXTURE_COLOR_2D) }, false, &vsTexColBufDesc);
+ 	texColorRBSwizzle_ = CreatePipeline({ draw_->GetVshaderPreset(VS_TEXTURE_COLOR_2D), draw_->GetFshaderPreset(FS_TEXTURE_COLOR_2D_RB_SWIZZLE) }, false, &vsTexColBufDesc);
++	semuColorBlend_ = semuRenderHookCreateColorPipeline(draw_);
++	semuVdata_ = draw_->CreateBuffer(sizeof(Vertex) * 4, BufferUsageFlag::DYNAMIC | BufferUsageFlag::VERTEXDATA);
+ 
+ 	if (restorePostShader_)
+ 		UpdatePostShader();
+@@ -557,6 +891,8 @@
+ void PresentationCommon::DestroyDeviceObjects() {
+ 	DoRelease(texColor_);
+ 	DoRelease(texColorRBSwizzle_);
++	DoRelease(semuColorBlend_);
++	DoRelease(semuVdata_);
+ 	DoRelease(samplerNearest_);
+ 	DoRelease(samplerLinear_);
+ 	DoRelease(vdata_);
+@@ -690,6 +1026,8 @@
+ 		rc.y += 0.5f;
+ 	}
+ 
++	SemuRenderHookPlan semuRenderHook = semuRenderHookCreatePlan();
++
+ 	// To make buffer updates easier, we use one array of verts.
+ 	int postVertsOffset = (int)sizeof(Vertex) * 4;
+ 
+@@ -946,6 +1286,8 @@
+ 		setViewport(0.0f, 0.0f, (float)pixelWidth_, (float)pixelHeight_);
+ 		draw_->Draw(4, 0);
+ 	}
++	if (!cardboardSettings.enabled && semuRenderHookComposeFrame(draw_, semuColorBlend_, semuVdata_, pixelWidth_, pixelHeight_, rc, semuRenderHook))
++		semuRenderHookProof("ppsspp");
+ 
+ 	DoRelease(srcFramebuffer_);
+ 	DoRelease(srcTexture_);

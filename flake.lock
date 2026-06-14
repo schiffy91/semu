@@ -7,11 +7,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1780285817,
-        "narHash": "sha256-M6J6Zn5PxA9zpLZN5wneDC7xirhGll9VD8dSi8J1630=",
+        "lastModified": 1781368852,
+        "narHash": "sha256-5tlUjIbDEDbLnAR3iFLR8O2iUx9KaMUUZeSSmd5KsTg=",
         "owner": "schiffy91",
         "repo": "btrc",
-        "rev": "ca18855f74a52258fdd97a7e94e227ba489cdd25",
+        "rev": "70f52979a020e90ec754152222e4a3f12f12d1bd",
         "type": "github"
       },
       "original": {
@@ -72,6 +72,22 @@
         "type": "github"
       }
     },
+    "nixpkgsFreeimage": {
+      "locked": {
+        "lastModified": 1746378225,
+        "narHash": "sha256-OeRSuL8PUjIfL3Q0fTbNJD/fmv1R+K2JAOqWJd3Oceg=",
+        "owner": "nixos",
+        "repo": "nixpkgs",
+        "rev": "93e8cdce7afc64297cfec447c311470788131cd9",
+        "type": "github"
+      },
+      "original": {
+        "owner": "nixos",
+        "repo": "nixpkgs",
+        "rev": "93e8cdce7afc64297cfec447c311470788131cd9",
+        "type": "github"
+      }
+    },
     "nixpkgs_2": {
       "locked": {
         "lastModified": 1774709303,
@@ -92,7 +108,8 @@
       "inputs": {
         "btrc": "btrc",
         "nixGL": "nixGL",
-        "nixpkgs": "nixpkgs_2"
+        "nixpkgs": "nixpkgs_2",
+        "nixpkgsFreeimage": "nixpkgsFreeimage"
       }
     },
     "systems": {

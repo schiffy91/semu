@@ -1,0 +1,13 @@
+{
+  "name": "compiler-build",
+  "state": "compiler-build",
+  "parentState": "payload-audit",
+  "stateMaterial": "{{sourceHash}}",
+  "operations": [
+    {
+      "op": "make",
+      "command": "compiler-build",
+      "expect": "semu build target"
+    }
+  ]
+}

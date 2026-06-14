@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "romArg": "positional",
+  "fullscreenContract": {
+    "required": true,
+    "mode": "argument",
+    "verification": "argv_contains_fullscreen_flag"
+  },
+  "linux": {
+    "launcher": "flatpak",
+    "flatpakId": "net.kuribo64.melonDS",
+    "executable": "melonDS",
+    "env": {
+      "XDG_CONFIG_HOME": "${generated}/emulators/melonds/xdg/config",
+      "XDG_DATA_HOME": "${generated}/emulators/melonds/xdg/data",
+      "XDG_CACHE_HOME": "${generated}/emulators/melonds/xdg/cache"
+    },
+    "defaultArgs": [
+      "--fullscreen"
+    ],
+    "fullscreenArgs": [
+      "--fullscreen"
+    ]
+  }
+}

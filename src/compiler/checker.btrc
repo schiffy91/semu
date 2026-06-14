@@ -1,0 +1,37 @@
+import ./model.btrc;
+import std.fs;
+import ../lib/owned_paths.btrc;
+import ./parser.btrc;
+class SemuCompilerChecker {
+    class void check(SemuBuildPlan plan) {
+        if (!FileSystem.isFile(SemuOwnedPaths.targetFile(plan.project, plan.target))) {
+            plan.addError(f"target definition not found: config/targets/{plan.target}.json");
+        }
+        if (plan.mode.equals("emulator")) {
+            if (plan.emulator.len() == 0) {
+                plan.addError("build emulator requires an emulator id");
+            } else if (!plan.emulator.equals("all") && !FileSystem.isFile(SemuOwnedPaths.emulatorFile(plan.project, plan.emulator, "emulator.json"))) {
+                plan.addError(f"emulator definition not found: config/emulators/{plan.emulator}/emulator.json");
+            }
+        }
+        if (plan.systemIds.len == 0) {
+            plan.addError("no system definitions found under config/systems/");
+        }
+        if (plan.emulatorIds.len == 0) {
+            plan.addError("no emulator definitions found under config/emulators/");
+        }
+        for system in plan.systemIds {
+            SemuSystemDefinition definition = SemuCompilerParser.system(plan.project, system);
+            if (!definition.source.exists()) {
+                plan.addError(f"system definition disappeared while compiling: {system}");
+                continue;
+            }
+            if (definition.primaryEmulator.len() == 0) {
+                plan.addWarning(f"system {system} has no primary route emulator");
+            }
+            if (definition.extensions.len == 0) {
+                plan.addWarning(f"system {system} has no ROM extensions");
+            }
+        }
+    }
+}

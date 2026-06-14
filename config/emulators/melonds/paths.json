@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "profileRoot": "emulators/melonds",
+  "stateRoots": {
+    "linuxFlatpak": ".semu/flatpak-state/melonds",
+    "linuxRouted": ".semu/appimage-state/melonds"
+  },
+  "configRoot": "${stateRoot}/config",
+  "dataRoot": "${stateRoot}/data",
+  "cacheRoot": "${stateRoot}/cache",
+  "saveRoot": "${stateRoot}/saves",
+  "stateSaveRoot": "${stateRoot}/states",
+  "biosRoot": "bios/nds",
+  "keysRoot": "bios/nds",
+  "externalRomAccess": "read_only"
+}

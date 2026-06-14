@@ -1,0 +1,55 @@
+{
+  "schema_version": 2,
+  "system": "gb",
+  "label": "Nintendo Game Boy",
+  "default_emulator": "RETROARCH",
+  "emulator": "retroarch",
+  "emulator_config": "retroarch.cfg core-options",
+  "hardware_display": "DMG-01 reflective STN LCD",
+  "display_class": "handheld_lcd",
+  "content_viewport": {
+    "native_size": {
+      "width": 160,
+      "height": 144
+    },
+    "content_aspect": "10:9",
+    "default_aspect": "10:9",
+    "dynamic_aspect": false,
+    "layout": {
+      "kind": "single",
+      "screens": [
+        {
+          "id": "main",
+          "native_size": {
+            "width": 160,
+            "height": 144
+          },
+          "content_aspect": "10:9"
+        }
+      ]
+    },
+    "scale_policy": "integer"
+  },
+  "renderer": {
+    "model": "semu_source_hook_renderer",
+    "viewport_source": "content_viewport",
+    "profile": "dmg_lcd",
+    "shader": {
+      "family": "dmg_lcd",
+      "enabled_by_default": true,
+      "intent": "green DMG tint, LCD matrix, slow-pixel ghosting",
+      "source_asset": "handheld/gameboy.slangp",
+      "widescreen_source_asset": null,
+      "effect_file": "semu-dmg-lcd.fx"
+    },
+    "bezel": {
+      "family": "classic_grey_game_boy",
+      "enabled_by_default": true,
+      "intent": "classic grey Game Boy shell",
+      "source_asset": "handheld/console-border/dmg.slangp",
+      "widescreen_source_asset": null,
+      "composition_effect_file": "semu-gb.fx"
+    }
+  },
+  "notes": "Prefer DMG green palette and ghosting over sharp monochrome output."
+}

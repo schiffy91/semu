@@ -1,0 +1,101 @@
+{
+  "schema_version": 2,
+  "renderer_contract": {
+    "target_space": "content_viewport",
+    "coordinates": "native_content_pixels",
+    "aspect_source": "content_viewport.content_aspect",
+    "scale_source": "content_viewport.scale_policy",
+    "layout_source": "content_viewport.layout",
+    "asset_roles": {
+      "source_asset": "Reference shader/effect asset retained for the generic renderer.",
+      "effect_file": "Semu renderer effect loaded from defaults.renderer.effect_root."
+    }
+  },
+  "families": {
+    "dmg_lcd": {
+      "description": "Game Boy green LCD tint, grid, and ghosting",
+      "display_class": "handheld_lcd",
+      "content_space": "native_pixels",
+      "asset_hint": "assets/shaders/dmg_lcd"
+    },
+    "color_lcd": {
+      "description": "Generic handheld LCD grid and mild persistence fallback",
+      "display_class": "handheld_lcd",
+      "content_space": "native_pixels",
+      "asset_hint": "assets/shaders/color_lcd"
+    },
+    "gbc_lcd": {
+      "description": "Game Boy Color TFT color response, subpixel grid, and mild persistence",
+      "display_class": "handheld_lcd",
+      "content_space": "native_pixels",
+      "asset_hint": "assets/shaders/gbc_lcd"
+    },
+    "gba_lcd": {
+      "description": "AGB-001 reflective TFT color, dim frontlight-era response, and motion persistence",
+      "display_class": "handheld_lcd",
+      "content_space": "native_pixels",
+      "asset_hint": "assets/shaders/gba_lcd"
+    },
+    "nds_lcd": {
+      "description": "Nintendo DS dual LCD grid and light persistence",
+      "display_class": "dual_screen_lcd",
+      "content_space": "per_screen_native_pixels",
+      "asset_hint": "assets/shaders/nds_lcd"
+    },
+    "n3ds_lcd": {
+      "description": "Nintendo 3DS asymmetric dual LCD geometry and color response",
+      "display_class": "dual_screen_lcd",
+      "content_space": "per_screen_native_pixels",
+      "asset_hint": "assets/shaders/n3ds_lcd"
+    },
+    "psp_lcd": {
+      "description": "PSP 480x272 LCD grid, color response, and mild persistence",
+      "display_class": "handheld_lcd",
+      "content_space": "native_pixels",
+      "asset_hint": "assets/shaders/psp_lcd"
+    },
+    "crt_240p": {
+      "description": "Era-accurate 240p CRT scanlines and phosphor mask",
+      "display_class": "crt_tv",
+      "content_space": "content_scanlines",
+      "asset_hint": "assets/shaders/crt_240p"
+    },
+    "crt_480i": {
+      "description": "480i/480p consumer CRT softness",
+      "display_class": "crt_tv_or_component",
+      "content_space": "content_scanlines",
+      "asset_hint": "assets/shaders/crt_480i"
+    },
+    "dual_lcd": {
+      "description": "Dual-screen LCD layout and persistence",
+      "display_class": "dual_screen_lcd",
+      "content_space": "per_screen_native_pixels",
+      "asset_hint": "assets/shaders/dual_lcd"
+    },
+    "modern_native": {
+      "description": "No default shader unless explicitly enabled",
+      "display_class": "modern_hd",
+      "content_space": "native_output",
+      "asset_hint": null
+    }
+  },
+  "defaults": {
+    "gb": "dmg_lcd",
+    "gbc": "gbc_lcd",
+    "gba": "gba_lcd",
+    "nes": "crt_240p",
+    "snes": "crt_240p",
+    "genesis": "crt_240p",
+    "n64": "crt_240p",
+    "nds": "nds_lcd",
+    "dreamcast": "crt_480i",
+    "psx": "crt_240p",
+    "ps2": "crt_480i",
+    "psp": "psp_lcd",
+    "n3ds": "n3ds_lcd",
+    "gc": "crt_480i",
+    "wii": "crt_480i",
+    "wiiu": "modern_native",
+    "switch": "modern_native"
+  }
+}

@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "romArg": "positional",
+  "fullscreenContract": {
+    "required": true,
+    "mode": "argument",
+    "verification": "argv_contains_fullscreen_flag"
+  },
+  "linux": {
+    "launcher": "flatpak",
+    "flatpakId": "org.ppsspp.PPSSPP",
+    "executable": "ppsspp",
+    "env": {
+      "XDG_CONFIG_HOME": "${generated}/emulators/ppsspp/xdg/config",
+      "XDG_DATA_HOME": "${generated}/emulators/ppsspp/xdg/data",
+      "XDG_CACHE_HOME": "${generated}/emulators/ppsspp/xdg/cache"
+    },
+    "defaultArgs": [
+      "--fullscreen"
+    ],
+    "fullscreenArgs": [
+      "--fullscreen"
+    ]
+  }
+}

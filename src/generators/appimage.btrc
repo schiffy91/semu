@@ -1,0 +1,117 @@
+import std.vector;
+import std.strings;
+
+class SemuAppImageContent {
+    public string path;
+    public string text;
+    public bool executable;
+
+    public SemuAppImageContent() {
+        self.path = "";
+        self.text = "";
+        self.executable = false;
+    }
+
+}
+
+class SemuAppImageGenerator {
+    class string plan(string project, string target) {
+        return "generate appimage target=" + target
+            + " project=" + project
+            + " outputs=.semu/generated/packaging/appimage/manifest.json,build/packaging/linux/AppRun,build/packaging/linux/build-appimage.sh";
+    }
+
+    class SemuAppImageContent content(string path, string text, bool executable) {
+        SemuAppImageContent content = SemuAppImageContent();
+        content.path = path;
+        content.text = text;
+        content.executable = executable;
+        return content;
+    }
+
+    class string btrcShim() {
+        return """#!/usr/bin/env sh
+set -eu
+here=\"$(CDPATH= cd -- \"$(dirname -- \"$0\")\" && pwd -P)\"
+
+usable_cli() {
+  [ -n \"$1\" ] && [ -x \"$1\" ] || return 1
+  case \"$1\" in
+    *.AppImage|*.appimage) return 1 ;;
+  esac
+  return 0
+}
+
+find_cli() {
+  for candidate in \
+      \"${SEMU_CLI:-}\" \
+      \"$here/semu\" \
+      \"${APPDIR:-}/usr/bin/semu\" \
+      \"${SEMU_ASSET_ROOT:-}/result-full/bin/semu\" \
+      \"$HOME/semu/result-full/bin/semu\" \
+      \"${SEMU_PROJECT_DIR:-}/build/out/semu\" \
+      \"${SEMU_ASSET_ROOT:-}/build/out/semu\" \
+      \"$HOME/semu/build/out/semu\" \
+      \"$HOME/Applications/Semu/semu\" \
+      \"$(command -v semu || true)\"; do
+    usable_cli \"$candidate\" || continue
+    printf '%s\n' \"$candidate\"
+    return 0
+  done
+  return 1
+}
+
+cli=\"$(find_cli || true)\"
+
+if [ -z \"$cli\" ] || [ ! -x \"$cli\" ]; then
+  echo \"semu-btrc: compiled BTRC CLI not found\" >&2
+  exit 127
+fi
+
+exec \"$cli\" \"$@\"
+""";
+    }
+
+    class string emulatorShim(string emulatorId) {
+        return """#!/usr/bin/env sh
+exec \"$(dirname \"$0\")/semu-btrc\" launcher """ + semuAppImageShellWord(emulatorId) + """ \"$@\"
+""";
+    }
+
+    class string desktopEntry(string name, string comment, string icon) {
+        return "[Desktop Entry]\n"
+            + "Name=" + name + "\n"
+            + "Comment=" + comment + "\n"
+            + "Exec=AppRun\n"
+            + "Icon=" + icon + "\n"
+            + "Type=Application\n"
+            + "Categories=Game;Emulator;\n"
+            + "Terminal=false\n";
+    }
+
+    class string manifestJson(Vector<SemuAppImageContent> contents) {
+        Vector<string> items = [];
+        for content in contents {
+            items.push(semuAppImageContentJson(content));
+        }
+        return "{"
+            + "\"schema_version\": 1, "
+            + "\"contents\": [" + items.join(", ") + "]"
+            + "}\n";
+    }
+}
+
+string semuAppImageShellWord(string value) {
+    return "'" + Strings.replace(value, "'", "'\"'\"'") + "'";
+}
+
+string semuAppImageJsonQ(string value) {
+    return "\"" + Strings.replace(Strings.replace(value, "\\", "\\\\"), "\"", "\\\"") + "\"";
+}
+
+string semuAppImageContentJson(SemuAppImageContent content) {
+    return "{"
+        + "\"path\": " + semuAppImageJsonQ(content.path) + ", "
+        + "\"executable\": " + (content.executable ? "true" : "false")
+        + "}";
+}

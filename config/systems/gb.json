@@ -1,0 +1,50 @@
+{
+  "schema_version": 1,
+  "id": "gb",
+  "fullname": "Nintendo Game Boy",
+  "platform": "gb",
+  "theme": "gb",
+  "rom_dir": "gb",
+  "extensions": [
+    ".bin",
+    ".dmg",
+    ".gb",
+    ".gbs",
+    ".7z",
+    ".zip"
+  ],
+  "routes": {
+    "linux": [
+      {
+        "role": "primary",
+        "emulator": "retroarch",
+        "label": "Gambatte",
+        "core": "gambatte_libretro.so"
+      }
+    ],
+    "macos": [
+      {
+        "role": "primary",
+        "emulator": "retroarch",
+        "label": "Gambatte",
+        "core": "gambatte_libretro.dylib"
+      }
+    ]
+  },
+  "requirements": {
+    "bios": [],
+    "keys": []
+  },
+  "rendering": {
+    "hardware_profile": "assets/hardware.json#gb",
+    "shader": "dmg_lcd",
+    "bezel": "classic_grey_game_boy"
+  },
+  "rom_policy": {
+    "external_roots": "read_only",
+    "allow_in_place_metadata": false,
+    "generated_metadata_root": "${semu_home}/generated/systems/gb",
+    "owned_state_root": "${semu_home}/state/systems/gb"
+  },
+  "bios": []
+}

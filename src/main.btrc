@@ -1,0 +1,11 @@
+import std.cli;
+import ./cli.btrc;
+
+class SemuApp {
+    class int run(int argc, char** argv) { return main(argc, argv); }
+}
+
+int main(int argc, char** argv) {
+    CliArgs args = CliArgs(argc, argv);
+    return SemuCli.run(args);
+}

@@ -1,0 +1,66 @@
+{
+  "schema_version": 1,
+  "directories": [
+    "emulators/ryujinx/home/.config/Ryujinx/system",
+    "emulators/ryujinx/home/.config/Ryujinx/profiles/controller",
+    "emulators/ryujinx/home/.local/share/Ryujinx",
+    "emulators/ryujinx/home/.cache/Ryujinx"
+  ],
+  "clean_directories": [
+    "emulators/ryujinx/home/.config/Ryujinx/profiles/controller"
+  ],
+  "templates": [
+    {
+      "source": "Config.json",
+      "output": "emulators/ryujinx/home/.config/Ryujinx/Config.json"
+    },
+    {
+      "source": "Steam Deck Controller.json",
+      "output": "emulators/ryujinx/home/.config/Ryujinx/profiles/controller/Steam Deck Controller.json"
+    }
+  ],
+  "copies": [
+    {
+      "sources": [
+        "${roms}/../../../Ryujinx/config/system/prod.keys",
+        "${roms}/Emulation/Ryujinx/config/system/prod.keys",
+        "${roms}/Ryujinx/config/system/prod.keys",
+        "${bios}/switch/prod.keys",
+        "${bios}/prod.keys"
+      ],
+      "output": "emulators/ryujinx/home/.config/Ryujinx/system/prod.keys"
+    },
+    {
+      "sources": [
+        "${roms}/../../../Ryujinx/config/system/title.keys",
+        "${roms}/Emulation/Ryujinx/config/system/title.keys",
+        "${roms}/Ryujinx/config/system/title.keys",
+        "${bios}/switch/title.keys",
+        "${bios}/title.keys"
+      ],
+      "output": "emulators/ryujinx/home/.config/Ryujinx/system/title.keys"
+    },
+    {
+      "sources": [
+        "${roms}/../../../Ryujinx/config/system/Profiles.json",
+        "${roms}/Emulation/Ryujinx/config/system/Profiles.json",
+        "${roms}/Ryujinx/config/system/Profiles.json",
+        "${bios}/switch/Profiles.json",
+        "${bios}/Profiles.json"
+      ],
+      "output": "emulators/ryujinx/home/.config/Ryujinx/system/Profiles.json"
+    }
+  ],
+  "directory_links": [
+    {
+      "sources": [
+        "${roms}/../../../Ryujinx/config/bis",
+        "${roms}/Emulation/Ryujinx/config/bis",
+        "${roms}/Ryujinx/config/bis",
+        "${bios}/switch/ryujinx/bis",
+        "${bios}/ryujinx/bis"
+      ],
+      "output": "emulators/ryujinx/home/.config/Ryujinx/bis"
+    }
+  ]
+}

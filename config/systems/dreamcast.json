@@ -1,0 +1,70 @@
+{
+  "schema_version": 1,
+  "id": "dreamcast",
+  "fullname": "Sega Dreamcast",
+  "platform": "dreamcast",
+  "theme": "dreamcast",
+  "rom_dir": "dreamcast",
+  "extensions": [
+    ".cdi",
+    ".chd",
+    ".cue",
+    ".elf",
+    ".gdi",
+    ".iso",
+    ".lst",
+    ".m3u",
+    ".7z",
+    ".zip"
+  ],
+  "routes": {
+    "linux": [
+      {
+        "role": "primary",
+        "emulator": "flycast",
+        "label": "Flycast"
+      },
+      {
+        "role": "fallback",
+        "emulator": "retroarch",
+        "label": "Flycast",
+        "core": "flycast_libretro.so"
+      }
+    ],
+    "macos": [
+      {
+        "role": "primary",
+        "emulator": "retroarch",
+        "label": "Flycast",
+        "core": "flycast_libretro.dylib"
+      }
+    ]
+  },
+  "requirements": {
+    "bios": [
+      {
+        "id": "dreamcast_boot_flash",
+        "required": true,
+        "paths": [
+          "bios/dreamcast/dc_boot.bin",
+          "bios/dreamcast/dc_flash.bin"
+        ]
+      }
+    ],
+    "keys": []
+  },
+  "rendering": {
+    "hardware_profile": "assets/hardware.json#dreamcast",
+    "shader": "crt_480i",
+    "bezel": "sony_or_panasonic_crt"
+  },
+  "rom_policy": {
+    "external_roots": "read_only",
+    "allow_in_place_metadata": false,
+    "generated_metadata_root": "${semu_home}/generated/systems/dreamcast",
+    "owned_state_root": "${semu_home}/state/systems/dreamcast"
+  },
+  "bios": [
+    "dreamcast"
+  ]
+}

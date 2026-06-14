@@ -1,0 +1,51 @@
+#!/usr/bin/env sh
+set -eu
+
+here="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd -P)"
+if [ -z "${SEMU_PROJECT_DIR:-}" ]; then
+  project="$(CDPATH= cd -- "$here/../../.." && pwd -P)"
+  export SEMU_PROJECT_DIR="$project"
+else
+  project="$SEMU_PROJECT_DIR"
+fi
+entry="${1:-}"
+
+usable_runner() {
+  [ -n "$1" ] && [ -x "$1" ] || return 1
+  case "$1" in
+    *.AppImage|*.appimage) return 1 ;;
+  esac
+  return 0
+}
+
+find_runner() {
+  for candidate in \
+      "${SEMU_CLI:-}" \
+      "$here/semu" \
+      "$here/semu-btrc" \
+      "${SEMU_ACTIVE_LAUNCHER_BIN:-}/semu" \
+      "${SEMU_ASSET_ROOT:-}/result-full/bin/semu" \
+      "$HOME/semu/result-full/bin/semu" \
+      "${SEMU_ASSET_ROOT:-}/build/out/semu" \
+      "$project/build/out/semu" \
+      "$HOME/Applications/Semu/semu" \
+      "$(command -v semu-btrc 2>/dev/null || true)" \
+      "$(command -v semu 2>/dev/null || true)"; do
+    usable_runner "$candidate" || continue
+    printf '%s\n' "$candidate"
+    return 0
+  done
+  return 1
+}
+
+runner="$(find_runner || true)"
+if [ -z "$runner" ]; then
+  printf '%s\n' "Semu Settings: generated semu CLI not found." >&2
+  exit 127
+fi
+
+if [ -n "$entry" ] && [ -f "$entry" ]; then
+  exec "$runner" settings entry "$entry" --project "$project"
+fi
+
+exec "$runner" settings ui --project "$project"

@@ -1,0 +1,56 @@
+{
+  "schema_version": 1,
+  "id": "genesis",
+  "fullname": "Sega Genesis",
+  "platform": "genesis,megadrive",
+  "theme": "genesis",
+  "rom_dir": "genesis",
+  "extensions": [
+    ".32x",
+    ".68k",
+    ".bin",
+    ".chd",
+    ".gen",
+    ".iso",
+    ".md",
+    ".mdx",
+    ".sg",
+    ".smd",
+    ".7z",
+    ".zip"
+  ],
+  "routes": {
+    "linux": [
+      {
+        "role": "primary",
+        "emulator": "retroarch",
+        "label": "Genesis Plus GX",
+        "core": "genesis_plus_gx_libretro.so"
+      }
+    ],
+    "macos": [
+      {
+        "role": "primary",
+        "emulator": "retroarch",
+        "label": "Genesis Plus GX",
+        "core": "genesis_plus_gx_libretro.dylib"
+      }
+    ]
+  },
+  "requirements": {
+    "bios": [],
+    "keys": []
+  },
+  "rendering": {
+    "hardware_profile": "assets/hardware.json#genesis",
+    "shader": "crt_240p",
+    "bezel": "sony_or_panasonic_crt"
+  },
+  "rom_policy": {
+    "external_roots": "read_only",
+    "allow_in_place_metadata": false,
+    "generated_metadata_root": "${semu_home}/generated/systems/genesis",
+    "owned_state_root": "${semu_home}/state/systems/genesis"
+  },
+  "bios": []
+}

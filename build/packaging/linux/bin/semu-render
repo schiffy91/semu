@@ -1,0 +1,38 @@
+#!/usr/bin/env sh
+set -eu
+
+system=""
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --system)
+      system="${2:-}"
+      shift 2
+      ;;
+    --)
+      shift
+      break
+      ;;
+    *)
+      break
+      ;;
+  esac
+done
+
+if [ "$#" -eq 0 ]; then
+  echo "semu-render: missing command" >&2
+  exit 64
+fi
+
+# Semu's production rendering path is an emulator source hook. This wrapper is
+# deliberately only a host GL compatibility shim; it must not apply shaders or
+# bezels to a whole emulator window.
+nixgl_bin="${SEMU_NIXGL_BIN:-}"
+if [ -z "$nixgl_bin" ]; then
+  nixgl_bin="$(command -v nixGL || true)"
+fi
+
+if [ -n "$nixgl_bin" ]; then
+  exec "$nixgl_bin" "$@"
+fi
+
+exec "$@"

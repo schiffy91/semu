@@ -1,0 +1,272 @@
+--- a/Source/Core/VideoCommon/Present.cpp	2026-06-14 00:27:08
++++ b/Source/Core/VideoCommon/Present.cpp	2026-06-14 00:29:42
+@@ -24,10 +24,29 @@
+ #include "VideoCommon/VideoEvents.h"
+ #include "VideoCommon/Widescreen.h"
+ 
++#include <algorithm>
++#include <cstdio>
++#include <cstdlib>
++#include <cstring>
++
+ std::unique_ptr<VideoCommon::Presenter> g_presenter;
+ 
+ namespace VideoCommon
+ {
++enum class SemuRenderHookProfile
++{
++  None,
++  Crt,
++};
++
++struct SemuRenderHookFrame
++{
++  MathUtil::Rectangle<int> content_rect;
++  bool shaders = false;
++  bool bezels = false;
++  bool active = false;
++};
++
+ // Stretches the native/internal analog resolution aspect ratio from ~4:3 to ~16:9
+ static float SourceAspectRatioToWidescreen(float source_aspect)
+ {
+@@ -90,9 +109,219 @@
+   {
+     width = xfb_width;
+     height = xfb_height;
++  }
++}
++
++static bool semuRenderHookEnabled()
++{
++  const char* enabled = std::getenv("SEMU_RENDER_HOOK");
++  return enabled != nullptr && enabled[0] != '\0' && enabled[0] != '0';
++}
++
++static bool semuRenderHookEnvBool(const char* name, bool fallback)
++{
++  const char* value = std::getenv(name);
++  if (value == nullptr || value[0] == '\0')
++    return fallback;
++
++  return value[0] != '0' && value[0] != 'f' && value[0] != 'F' && value[0] != 'n' &&
++         value[0] != 'N';
++}
++
++static SemuRenderHookProfile semuRenderHookProfileForSystem(const char* system)
++{
++  if (system == nullptr || system[0] == '\0')
++    return SemuRenderHookProfile::None;
++  if (std::strcmp(system, "gc") == 0 || std::strcmp(system, "wii") == 0)
++    return SemuRenderHookProfile::Crt;
++  return SemuRenderHookProfile::None;
++}
++
++static const char* semuRenderHookProfileName(SemuRenderHookProfile profile)
++{
++  switch (profile)
++  {
++  case SemuRenderHookProfile::Crt:
++    return "crt";
++  default:
++    return "none";
++  }
++}
++
++static size_t semuRenderHookReadConfig(const char* path, char* buffer, size_t size)
++{
++  if (path == nullptr || path[0] == '\0' || buffer == nullptr || size < 2)
++    return 0;
++
++  std::FILE* file = std::fopen(path, "rb");
++  if (file == nullptr)
++    return 0;
++
++  const size_t used = std::fread(buffer, 1, size - 1, file);
++  buffer[used] = '\0';
++  std::fclose(file);
++  return used;
++}
++
++static bool semuRenderHookConfigBoolIsFalse(const char* config, const char* key)
++{
++  if (config == nullptr || key == nullptr)
++    return false;
++
++  const char* cursor = std::strstr(config, key);
++  if (cursor == nullptr)
++    return false;
++
++  cursor = std::strchr(cursor, ':');
++  if (cursor == nullptr)
++    return false;
++  cursor++;
++
++  while (*cursor == ' ' || *cursor == '\t' || *cursor == '\r' || *cursor == '\n')
++    cursor++;
++
++  return std::strncmp(cursor, "false", 5) == 0;
++}
++
++static bool semuRenderHookConfigHasSystem(const char* config, const char* system)
++{
++  if (config == nullptr || system == nullptr || system[0] == '\0' || std::strlen(system) > 32)
++    return true;
++
++  char needle[64];
++  std::snprintf(needle, sizeof(needle), "\"id\": \"%s\"", system);
++  if (std::strstr(config, needle) != nullptr)
++    return true;
++
++  std::snprintf(needle, sizeof(needle), "\"id\":\"%s\"", system);
++  return std::strstr(config, needle) != nullptr;
++}
++
++static MathUtil::Rectangle<int>
++semuRenderHookInsetContentRect(const MathUtil::Rectangle<int>& frame_rect)
++{
++  const int width = frame_rect.GetWidth();
++  const int height = frame_rect.GetHeight();
++  if (width < 32 || height < 32)
++    return frame_rect;
++
++  const int margin_x = std::max(4, width / 14);
++  const int margin_y = std::max(4, height / 12);
++  if (margin_x * 2 + 8 >= width || margin_y * 2 + 8 >= height)
++    return frame_rect;
++
++  return MathUtil::Rectangle<int>(frame_rect.left + margin_x, frame_rect.top + margin_y,
++                                  frame_rect.right - margin_x, frame_rect.bottom - margin_y);
++}
++
++static SemuRenderHookFrame semuRenderHookComposeFrame(const MathUtil::Rectangle<int>& target_rect)
++{
++  SemuRenderHookFrame frame;
++  frame.content_rect = target_rect;
++
++  if (!semuRenderHookEnabled() || target_rect.GetWidth() < 8 || target_rect.GetHeight() < 8)
++    return frame;
++
++  const char* system = std::getenv("SEMU_SYSTEM");
++  const SemuRenderHookProfile profile = semuRenderHookProfileForSystem(system);
++  if (profile == SemuRenderHookProfile::None)
++    return frame;
++
++  frame.shaders = semuRenderHookEnvBool("SEMU_RENDER_SHADERS", true);
++  frame.bezels = semuRenderHookEnvBool("SEMU_RENDER_BEZELS", true);
++
++  char config[65536];
++  const char* config_path = std::getenv("SEMU_RENDER_HOOK_CONFIG");
++  const size_t config_size = semuRenderHookReadConfig(config_path, config, sizeof(config));
++  if (config_size > 0)
++  {
++    if (!semuRenderHookConfigHasSystem(config, system))
++      return frame;
++    if (semuRenderHookConfigBoolIsFalse(config, "\"shaders_enabled\""))
++      frame.shaders = false;
++    if (semuRenderHookConfigBoolIsFalse(config, "\"bezels_enabled\""))
++      frame.bezels = false;
++  }
++
++  if (!frame.shaders && !frame.bezels)
++    return frame;
++
++  if (frame.bezels)
++    frame.content_rect = semuRenderHookInsetContentRect(target_rect);
++
++  frame.active = true;
++  return frame;
++}
++
++static void semuRenderHookProof(const char* emulator)
++{
++  static bool logged = false;
++  if (!semuRenderHookEnabled() || logged)
++    return;
++
++  const char* system = std::getenv("SEMU_SYSTEM");
++  const char* config = std::getenv("SEMU_RENDER_HOOK_CONFIG");
++  const SemuRenderHookProfile profile = semuRenderHookProfileForSystem(system);
++  std::fprintf(stderr, "semu-source-hook: applied emulator=%s system=%s profile=%s config=%s\n",
++               emulator, system != nullptr ? system : "", semuRenderHookProfileName(profile),
++               config != nullptr ? config : "");
++
++  const char* proof = std::getenv("SEMU_RENDER_HOOK_PROOF");
++  if (proof != nullptr && proof[0] != '\0')
++  {
++    std::FILE* proof_file = std::fopen(proof, "a");
++    if (proof_file != nullptr)
++    {
++      std::fprintf(proof_file, "semu-render-hook:%s:game_framebuffer:config=%s\n", emulator,
++                   config != nullptr ? config : "");
++      std::fclose(proof_file);
++    }
+   }
++
++  logged = true;
+ }
+ 
++static void semuRenderHookRenderContent(PostProcessing* post_processor,
++                                        const MathUtil::Rectangle<int>& target_rect,
++                                        const AbstractTexture* source_texture,
++                                        const MathUtil::Rectangle<int>& source_rect)
++{
++  if (target_rect.GetHeight() < 8 || source_rect.GetHeight() < 2)
++  {
++    post_processor->BlitFromTexture(target_rect, source_rect, source_texture);
++    return;
++  }
++
++  const int target_height = target_rect.GetHeight();
++  const int source_height = source_rect.GetHeight();
++  const int period = std::max(2, target_height / 240);
++  const int stripe_height = std::max(1, period - 1);
++
++  for (int y = 0; y < target_height; y += period)
++  {
++    const int stripe_bottom = std::min(target_height, y + stripe_height);
++    if (stripe_bottom <= y)
++      continue;
++
++    int source_top = source_rect.top + static_cast<int>((static_cast<long long>(y) *
++                                                        source_height) /
++                                                       target_height);
++    int source_bottom =
++        source_rect.top + static_cast<int>((static_cast<long long>(stripe_bottom) *
++                                           source_height) /
++                                          target_height);
++    source_top = std::clamp(source_top, source_rect.top, source_rect.bottom - 1);
++    source_bottom = std::clamp(source_bottom, source_top + 1, source_rect.bottom);
++
++    const MathUtil::Rectangle<int> target_stripe(target_rect.left, target_rect.top + y,
++                                                 target_rect.right,
++                                                 target_rect.top + stripe_bottom);
++    const MathUtil::Rectangle<int> source_stripe(source_rect.left, source_top, source_rect.right,
++                                                 source_bottom);
++    post_processor->BlitFromTexture(target_stripe, source_stripe, source_texture);
++  }
++}
++
+ Presenter::Presenter()
+ {
+   auto& video_events = GetVideoEvents();
+@@ -886,7 +1115,18 @@
+     auto render_source_rc = m_xfb_rect;
+     AdjustRectanglesToFitBounds(&render_target_rc, &render_source_rc, m_backbuffer_width,
+                                 m_backbuffer_height);
+-    RenderXFBToScreen(render_target_rc, m_xfb_entry->texture.get(), render_source_rc);
++    const SemuRenderHookFrame semu_frame = semuRenderHookComposeFrame(render_target_rc);
++    if (semu_frame.shaders)
++    {
++      semuRenderHookRenderContent(m_post_processor.get(), semu_frame.content_rect,
++                                  m_xfb_entry->texture.get(), render_source_rc);
++    }
++    else
++    {
++      RenderXFBToScreen(semu_frame.content_rect, m_xfb_entry->texture.get(), render_source_rc);
++    }
++    if (semu_frame.active)
++      semuRenderHookProof("dolphin");
+   }
+ 
+   if (m_onscreen_ui)

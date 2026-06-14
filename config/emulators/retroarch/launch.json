@@ -1,0 +1,36 @@
+{
+  "schema_version": 1,
+  "romArg": "positional",
+  "fullscreenContract": {
+    "required": true,
+    "mode": "argument",
+    "verification": "argv_contains_fullscreen_flag"
+  },
+  "linux": {
+    "launcher": "routed-bwrap",
+    "executable": "retroarch",
+    "env": {
+      "XDG_CONFIG_HOME": "${generated}/emulators/retroarch/xdg/config",
+      "XDG_DATA_HOME": "${generated}/emulators/retroarch/xdg/data",
+      "XDG_CACHE_HOME": "${generated}/emulators/retroarch/xdg/cache"
+    },
+    "defaultArgs": [
+      "--appendconfig",
+      "${generated}/emulators/retroarch/xdg/config/retroarch/semu-overrides.cfg",
+      "-f"
+    ],
+    "fullscreenArgs": [
+      "-f"
+    ]
+  },
+  "macos": {
+    "launcher": "package",
+    "executable": "retroarch",
+    "defaultArgs": [
+      "-f"
+    ],
+    "fullscreenArgs": [
+      "-f"
+    ]
+  }
+}

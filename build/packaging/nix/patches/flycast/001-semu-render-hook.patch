@@ -1,0 +1,330 @@
+diff -ruN a/core/rend/gles/gldraw.cpp b/core/rend/gles/gldraw.cpp
+--- a/core/rend/gles/gldraw.cpp
++++ b/core/rend/gles/gldraw.cpp
+@@ -10,8 +10,317 @@
+ #include "vmu_xhair.h"
+ #endif
+ 
++#include <cstdio>
++#include <cstdlib>
++#include <cstring>
+ #include <memory>
+ 
++enum class SemuRenderHookProfile {
++	None,
++	DreamcastCrt,
++};
++
++struct SemuRenderHookPlan {
++	bool enabled = false;
++	bool shaders = false;
++	bool bezels = false;
++	SemuRenderHookProfile profile = SemuRenderHookProfile::None;
++	const char *system = nullptr;
++	const char *config = nullptr;
++};
++
++struct SemuRenderHookRect {
++	int x = 0;
++	int y = 0;
++	int w = 0;
++	int h = 0;
++};
++
++static bool semuRenderHookEnabled()
++{
++	const char *enabled = std::getenv("SEMU_RENDER_HOOK");
++	return enabled != nullptr && enabled[0] != '\0' && enabled[0] != '0';
++}
++
++static bool semuRenderHookEnvBool(const char *name, bool fallback)
++{
++	const char *value = std::getenv(name);
++	if (value == nullptr || value[0] == '\0')
++		return fallback;
++	return !(value[0] == '0' || value[0] == 'f' || value[0] == 'F' || value[0] == 'n' || value[0] == 'N');
++}
++
++static size_t semuRenderHookReadConfig(const char *path, char *buffer, size_t size)
++{
++	if (path == nullptr || path[0] == '\0' || buffer == nullptr || size < 2)
++		return 0;
++
++	std::FILE *file = std::fopen(path, "rb");
++	if (file == nullptr)
++		return 0;
++
++	size_t used = std::fread(buffer, 1, size - 1, file);
++	buffer[used] = '\0';
++	std::fclose(file);
++	return used;
++}
++
++static bool semuRenderHookConfigBoolIsFalse(const char *config, const char *key)
++{
++	if (config == nullptr || key == nullptr)
++		return false;
++
++	const char *cursor = std::strstr(config, key);
++	if (cursor == nullptr)
++		return false;
++
++	cursor = std::strchr(cursor, ':');
++	if (cursor == nullptr)
++		return false;
++	cursor++;
++
++	while (*cursor == ' ' || *cursor == '\t' || *cursor == '\r' || *cursor == '\n')
++		cursor++;
++
++	return std::strncmp(cursor, "false", 5) == 0;
++}
++
++static bool semuRenderHookConfigHasSystem(const char *config, const char *system)
++{
++	if (config == nullptr || system == nullptr || system[0] == '\0' || std::strlen(system) > 32)
++		return false;
++
++	char needle[64];
++	std::snprintf(needle, sizeof(needle), "\"id\": \"%s\"", system);
++	if (std::strstr(config, needle) != nullptr)
++		return true;
++
++	std::snprintf(needle, sizeof(needle), "\"id\":\"%s\"", system);
++	return std::strstr(config, needle) != nullptr;
++}
++
++static SemuRenderHookProfile semuRenderHookProfileForSystem(const char *system)
++{
++	if (system != nullptr && std::strcmp(system, "dreamcast") == 0)
++		return SemuRenderHookProfile::DreamcastCrt;
++	return SemuRenderHookProfile::None;
++}
++
++static const char *semuRenderHookProfileName(SemuRenderHookProfile profile)
++{
++	switch (profile) {
++	case SemuRenderHookProfile::DreamcastCrt:
++		return "dreamcast_crt";
++	default:
++		break;
++	}
++	return "none";
++}
++
++static SemuRenderHookPlan semuRenderHookCreatePlan()
++{
++	SemuRenderHookPlan plan;
++	if (!semuRenderHookEnabled())
++		return plan;
++
++	plan.system = std::getenv("SEMU_SYSTEM");
++	plan.config = std::getenv("SEMU_RENDER_HOOK_CONFIG");
++	plan.profile = semuRenderHookProfileForSystem(plan.system);
++	if (plan.profile == SemuRenderHookProfile::None)
++		return plan;
++
++	char configText[65536];
++	size_t configSize = semuRenderHookReadConfig(plan.config, configText, sizeof(configText));
++	if (configSize == 0 || !semuRenderHookConfigHasSystem(configText, plan.system))
++		return plan;
++
++	plan.shaders = semuRenderHookEnvBool("SEMU_RENDER_SHADERS", true);
++	plan.bezels = semuRenderHookEnvBool("SEMU_RENDER_BEZELS", true);
++	if (semuRenderHookConfigBoolIsFalse(configText, "\"shaders_enabled\""))
++		plan.shaders = false;
++	if (semuRenderHookConfigBoolIsFalse(configText, "\"bezels_enabled\""))
++		plan.bezels = false;
++
++	plan.enabled = plan.shaders || plan.bezels;
++	return plan;
++}
++
++static void semuRenderHookProof(const char *emulator)
++{
++	static bool logged = false;
++	SemuRenderHookPlan plan = semuRenderHookCreatePlan();
++	if (!plan.enabled || logged)
++		return;
++
++	std::fprintf(stderr, "semu-source-hook: applied emulator=%s system=%s profile=%s config=%s\n",
++		emulator, plan.system != nullptr ? plan.system : "",
++		semuRenderHookProfileName(plan.profile),
++		plan.config != nullptr ? plan.config : "");
++
++	const char *proof = std::getenv("SEMU_RENDER_HOOK_PROOF");
++	if (proof != nullptr && proof[0] != '\0')
++	{
++		std::FILE *proofFile = std::fopen(proof, "a");
++		if (proofFile != nullptr)
++		{
++			std::fprintf(proofFile, "semu-render-hook:%s:game_framebuffer:config=%s\n",
++				emulator, plan.config != nullptr ? plan.config : "");
++			std::fclose(proofFile);
++		}
++	}
++
++	logged = true;
++}
++
++static GLuint semuRenderHookCopyTexture()
++{
++	static GLuint texture = 0;
++
++	int width = settings.display.width;
++	int height = settings.display.height;
++	if (width <= 0 || height <= 0)
++		return 0;
++
++	if (texture == 0)
++		texture = glcache.GenTexture();
++	if (texture == 0)
++		return 0;
++
++	glActiveTexture(GL_TEXTURE0);
++	glcache.BindTexture(GL_TEXTURE_2D, texture);
++	glcache.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
++	glcache.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
++	glcache.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
++	glcache.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
++
++	glCopyTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 0, 0, width, height, 0);
++	glCheck();
++	return texture;
++}
++
++static SemuRenderHookRect semuRenderHookContentRect(const SemuRenderHookPlan& plan)
++{
++	SemuRenderHookRect rect;
++	rect.w = settings.display.width;
++	rect.h = settings.display.height;
++	if (!plan.bezels || rect.w < 320 || rect.h < 240)
++		return rect;
++
++	int marginX = rect.w / 10;
++	int marginY = rect.h / 9;
++	int availW = rect.w - marginX * 2;
++	int availH = rect.h - marginY * 2;
++	if (availW < 64 || availH < 64)
++		return rect;
++
++	float aspect = gl.ofbo.aspectRatio > 0.0f ? gl.ofbo.aspectRatio : 4.0f / 3.0f;
++	int contentW = availW;
++	int contentH = (int)(contentW / aspect + 0.5f);
++	if (contentH > availH) {
++		contentH = availH;
++		contentW = (int)(contentH * aspect + 0.5f);
++	}
++	if (contentW < 64 || contentH < 64)
++		return rect;
++
++	rect.x = (rect.w - contentW) / 2;
++	rect.y = (rect.h - contentH) / 2;
++	rect.w = contentW;
++	rect.h = contentH;
++	return rect;
++}
++
++static void semuRenderHookClearRect(int x, int y, int w, int h, float r, float g, float b, float a)
++{
++	if (w <= 0 || h <= 0)
++		return;
++	glScissor(x, y, w, h);
++	glcache.ClearColor(r, g, b, a);
++	glClear(GL_COLOR_BUFFER_BIT);
++}
++
++static void semuRenderHookDrawBezel(const SemuRenderHookRect& content)
++{
++	int width = settings.display.width;
++	int height = settings.display.height;
++	semuRenderHookClearRect(0, 0, width, content.y, 0.075f, 0.068f, 0.058f, 1.0f);
++	semuRenderHookClearRect(0, content.y + content.h, width, height - (content.y + content.h), 0.075f, 0.068f, 0.058f, 1.0f);
++	semuRenderHookClearRect(0, content.y, content.x, content.h, 0.090f, 0.070f, 0.048f, 1.0f);
++	semuRenderHookClearRect(content.x + content.w, content.y, width - (content.x + content.w), content.h, 0.090f, 0.070f, 0.048f, 1.0f);
++	semuRenderHookClearRect(content.x - 5, content.y - 5, content.w + 10, 3, 0.010f, 0.010f, 0.012f, 1.0f);
++	semuRenderHookClearRect(content.x - 5, content.y + content.h + 2, content.w + 10, 3, 0.010f, 0.010f, 0.012f, 1.0f);
++	semuRenderHookClearRect(content.x + content.w + 12, content.y + content.h / 3, 18, content.h / 3, 0.018f, 0.017f, 0.016f, 1.0f);
++}
++
++static void semuRenderHookDrawCrtMask(const SemuRenderHookRect& content)
++{
++	int lineStep = content.h / 220;
++	if (lineStep < 3)
++		lineStep = 3;
++	for (int y = content.y + lineStep; y < content.y + content.h; y += lineStep)
++		semuRenderHookClearRect(content.x, y, content.w, 1, 0.0f, 0.0f, 0.0f, 1.0f);
++
++	int columnStep = content.w / 180;
++	if (columnStep < 5)
++		columnStep = 5;
++	for (int x = content.x + columnStep; x < content.x + content.w; x += columnStep)
++		semuRenderHookClearRect(x, content.y, 1, content.h, 0.015f, 0.012f, 0.010f, 1.0f);
++}
++
++static bool semuRenderHookComposeFrame()
++{
++	SemuRenderHookPlan plan = semuRenderHookCreatePlan();
++	if (!plan.enabled || settings.display.width <= 0 || settings.display.height <= 0)
++		return false;
++
++	GLint oldViewport[4] = {};
++	GLfloat oldClearColor[4] = {};
++	GLboolean scissorEnabled = glIsEnabled(GL_SCISSOR_TEST);
++	glGetIntegerv(GL_VIEWPORT, oldViewport);
++	glGetFloatv(GL_COLOR_CLEAR_VALUE, oldClearColor);
++
++	GLuint texture = semuRenderHookCopyTexture();
++	if (texture == 0) {
++		if (scissorEnabled)
++			glEnable(GL_SCISSOR_TEST);
++		else
++			glDisable(GL_SCISSOR_TEST);
++		glViewport(oldViewport[0], oldViewport[1], oldViewport[2], oldViewport[3]);
++		return false;
++	}
++
++	SemuRenderHookRect content = semuRenderHookContentRect(plan);
++	glBindFramebuffer(GL_FRAMEBUFFER, gl.ofbo.origFbo);
++	glViewport(0, 0, settings.display.width, settings.display.height);
++	glcache.Disable(GL_DEPTH_TEST);
++	glcache.Disable(GL_STENCIL_TEST);
++	glcache.Disable(GL_BLEND);
++
++	if (plan.bezels) {
++		glcache.ClearColor(0.075f, 0.068f, 0.058f, 1.0f);
++		glClear(GL_COLOR_BUFFER_BIT);
++	}
++
++	glViewport(content.x, content.y, content.w, content.h);
++	gl.quad->draw(texture, false, false);
++
++	if (plan.bezels || plan.shaders) {
++		glEnable(GL_SCISSOR_TEST);
++		if (plan.bezels)
++			semuRenderHookDrawBezel(content);
++		if (plan.shaders)
++			semuRenderHookDrawCrtMask(content);
++	}
++
++	glcache.ClearColor(oldClearColor[0], oldClearColor[1], oldClearColor[2], oldClearColor[3]);
++	if (scissorEnabled)
++		glEnable(GL_SCISSOR_TEST);
++	else
++		glDisable(GL_SCISSOR_TEST);
++	glViewport(oldViewport[0], oldViewport[1], oldViewport[2], oldViewport[3]);
++	return true;
++}
++
+ /*
+ 
+ Drawing and related state management
+@@ -686,6 +964,8 @@
+ #else
+ 	renderLastFrame();
+ #endif
++	if (semuRenderHookComposeFrame())
++		semuRenderHookProof("flycast");
+ 
+ 	drawOSD();
+ 	frameRendered = true;

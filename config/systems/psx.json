@@ -1,0 +1,71 @@
+{
+  "schema_version": 1,
+  "id": "psx",
+  "fullname": "Sony PlayStation",
+  "platform": "psx",
+  "theme": "psx",
+  "rom_dir": "psx",
+  "extensions": [
+    ".bin",
+    ".ccd",
+    ".chd",
+    ".cue",
+    ".ecm",
+    ".exe",
+    ".img",
+    ".iso",
+    ".m3u",
+    ".pbp",
+    ".psexe",
+    ".toc",
+    ".7z",
+    ".zip"
+  ],
+  "routes": {
+    "linux": [
+      {
+        "role": "primary",
+        "emulator": "retroarch",
+        "label": "Beetle PSX",
+        "core": "mednafen_psx_libretro.so"
+      }
+    ],
+    "macos": [
+      {
+        "role": "primary",
+        "emulator": "retroarch",
+        "label": "Beetle PSX HW",
+        "core": "mednafen_psx_hw_libretro.dylib"
+      }
+    ]
+  },
+  "requirements": {
+    "bios": [
+      {
+        "id": "psx_bios",
+        "required": true,
+        "one_of": [
+          "bios/psx/scph5500.bin",
+          "bios/psx/scph5501.bin",
+          "bios/psx/scph5502.bin",
+          "bios/psx/psxonpsp660.bin"
+        ]
+      }
+    ],
+    "keys": []
+  },
+  "rendering": {
+    "hardware_profile": "assets/hardware.json#psx",
+    "shader": "crt_240p",
+    "bezel": "sony_or_panasonic_crt"
+  },
+  "rom_policy": {
+    "external_roots": "read_only",
+    "allow_in_place_metadata": false,
+    "generated_metadata_root": "${semu_home}/generated/systems/psx",
+    "owned_state_root": "${semu_home}/state/systems/psx"
+  },
+  "bios": [
+    "psx"
+  ]
+}

@@ -1,0 +1,54 @@
+{
+  "schema_version": 1,
+  "id": "snes",
+  "fullname": "Super Nintendo",
+  "platform": "snes",
+  "theme": "snes",
+  "rom_dir": "snes",
+  "extensions": [
+    ".bin",
+    ".bml",
+    ".bs",
+    ".bsx",
+    ".fig",
+    ".sfc",
+    ".smc",
+    ".swc",
+    ".7z",
+    ".zip"
+  ],
+  "routes": {
+    "linux": [
+      {
+        "role": "primary",
+        "emulator": "retroarch",
+        "label": "Snes9x",
+        "core": "snes9x_libretro.so"
+      }
+    ],
+    "macos": [
+      {
+        "role": "primary",
+        "emulator": "retroarch",
+        "label": "Snes9x",
+        "core": "snes9x_libretro.dylib"
+      }
+    ]
+  },
+  "requirements": {
+    "bios": [],
+    "keys": []
+  },
+  "rendering": {
+    "hardware_profile": "assets/hardware.json#snes",
+    "shader": "crt_240p",
+    "bezel": "sony_or_panasonic_crt"
+  },
+  "rom_policy": {
+    "external_roots": "read_only",
+    "allow_in_place_metadata": false,
+    "generated_metadata_root": "${semu_home}/generated/systems/snes",
+    "owned_state_root": "${semu_home}/state/systems/snes"
+  },
+  "bios": []
+}

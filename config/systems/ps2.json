@@ -1,0 +1,72 @@
+{
+  "schema_version": 1,
+  "id": "ps2",
+  "fullname": "Sony PlayStation 2",
+  "platform": "ps2",
+  "theme": "ps2",
+  "rom_dir": "ps2",
+  "extensions": [
+    ".bin",
+    ".chd",
+    ".cso",
+    ".dump",
+    ".gz",
+    ".img",
+    ".iso",
+    ".mdf",
+    ".nrg",
+    ".7z",
+    ".zip"
+  ],
+  "routes": {
+    "linux": [
+      {
+        "role": "primary",
+        "emulator": "pcsx2",
+        "label": "PCSX2",
+        "args": [
+          "-batch",
+          "-fullscreen"
+        ]
+      }
+    ],
+    "macos": [
+      {
+        "role": "primary",
+        "emulator": "pcsx2",
+        "label": "PCSX2",
+        "args": [
+          "-batch",
+          "-fullscreen"
+        ]
+      }
+    ]
+  },
+  "requirements": {
+    "bios": [
+      {
+        "id": "ps2_bios",
+        "required": true,
+        "one_of": [
+          "bios/ps2/*.bin",
+          "bios/ps2/*.rom"
+        ]
+      }
+    ],
+    "keys": []
+  },
+  "rendering": {
+    "hardware_profile": "assets/hardware.json#ps2",
+    "shader": "crt_480i",
+    "bezel": "sony_or_panasonic_crt"
+  },
+  "rom_policy": {
+    "external_roots": "read_only",
+    "allow_in_place_metadata": false,
+    "generated_metadata_root": "${semu_home}/generated/systems/ps2",
+    "owned_state_root": "${semu_home}/state/systems/ps2"
+  },
+  "bios": [
+    "ps2"
+  ]
+}

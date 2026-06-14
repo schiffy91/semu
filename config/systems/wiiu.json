@@ -1,0 +1,65 @@
+{
+  "schema_version": 1,
+  "id": "wiiu",
+  "fullname": "Nintendo Wii U",
+  "platform": "wiiu",
+  "theme": "wiiu",
+  "rom_dir": "wiiu",
+  "controller_profile": "steam-deck",
+  "extensions": [
+    ".rpx",
+    ".wua",
+    ".wud",
+    ".wux"
+  ],
+  "routes": {
+    "linux": [
+      {
+        "role": "primary",
+        "emulator": "cemu",
+        "label": "Cemu",
+        "args": [
+          "-f",
+          "-g"
+        ]
+      }
+    ],
+    "macos": [
+      {
+        "role": "primary",
+        "emulator": "cemu",
+        "label": "Cemu",
+        "args": [
+          "-f",
+          "-g"
+        ]
+      }
+    ]
+  },
+  "requirements": {
+    "bios": [],
+    "keys": [
+      {
+        "id": "wiiu_keys",
+        "required": true,
+        "paths": [
+          "bios/wiiu/keys.txt"
+        ]
+      }
+    ]
+  },
+  "rendering": {
+    "hardware_profile": "assets/hardware.json#wiiu",
+    "shader": "modern_native",
+    "bezel": "none"
+  },
+  "rom_policy": {
+    "external_roots": "read_only",
+    "allow_in_place_metadata": false,
+    "generated_metadata_root": "${semu_home}/generated/systems/wiiu",
+    "owned_state_root": "${semu_home}/state/systems/wiiu"
+  },
+  "bios": [
+    "wiiu_keys"
+  ]
+}

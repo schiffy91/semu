@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "id": "azahar",
+  "name": "Azahar",
+  "kind": "standalone",
+  "platforms": [
+    "linux",
+    "macos"
+  ],
+  "targets": [
+    "linux",
+    "macos",
+    "steam-deck",
+    "bazzite"
+  ],
+  "servedSystems": [
+    "n3ds"
+  ],
+  "package": {
+    "file": "package.nix",
+    "intent": "Use Azahar for Nintendo 3DS on Linux, Steam Deck, Bazzite, and macOS.",
+    "source": "nixpkgs-or-local"
+  }
+}

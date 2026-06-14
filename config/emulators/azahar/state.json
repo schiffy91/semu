@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "directories": [
+    "emulators/azahar/xdg/config/azahar-emu",
+    "emulators/azahar/xdg/data/azahar-emu/nand",
+    "emulators/azahar/xdg/data/azahar-emu/sdmc",
+    "emulators/azahar/xdg/cache/azahar-emu"
+  ],
+  "templates": [
+    {
+      "source": "qt-config.ini",
+      "output": "emulators/azahar/xdg/config/azahar-emu/qt-config.ini"
+    }
+  ]
+}

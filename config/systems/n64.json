@@ -1,0 +1,63 @@
+{
+  "schema_version": 1,
+  "id": "n64",
+  "fullname": "Nintendo 64",
+  "platform": "n64",
+  "theme": "n64",
+  "rom_dir": "n64",
+  "extensions": [
+    ".bin",
+    ".d64",
+    ".n64",
+    ".ndd",
+    ".u1",
+    ".v64",
+    ".z64",
+    ".7z",
+    ".zip"
+  ],
+  "routes": {
+    "linux": [
+      {
+        "role": "primary",
+        "emulator": "retroarch",
+        "label": "Mupen64Plus-Next",
+        "core": "mupen64plus_next_libretro.so"
+      }
+    ],
+    "macos": [
+      {
+        "role": "primary",
+        "emulator": "ares",
+        "label": "ares",
+        "args": [
+          "--fullscreen",
+          "--system",
+          "Nintendo 64"
+        ]
+      },
+      {
+        "role": "fallback",
+        "emulator": "retroarch",
+        "label": "Mupen64Plus-Next",
+        "core": "mupen64plus_next_libretro.dylib"
+      }
+    ]
+  },
+  "requirements": {
+    "bios": [],
+    "keys": []
+  },
+  "rendering": {
+    "hardware_profile": "assets/hardware.json#n64",
+    "shader": "crt_240p",
+    "bezel": "sony_or_panasonic_crt"
+  },
+  "rom_policy": {
+    "external_roots": "read_only",
+    "allow_in_place_metadata": false,
+    "generated_metadata_root": "${semu_home}/generated/systems/n64",
+    "owned_state_root": "${semu_home}/state/systems/n64"
+  },
+  "bios": []
+}

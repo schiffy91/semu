@@ -1,0 +1,11 @@
+{
+  "profileRoot": "emulators/azahar",
+  "stateRoots": {
+    "linuxFlatpak": ".semu/flatpak-state/azahar",
+    "linuxRouted": ".semu/appimage-state/azahar"
+  },
+  "configRoot": "${stateRoot}/config",
+  "dataRoot": "${stateRoot}/data",
+  "cacheRoot": "${stateRoot}/cache",
+  "biosRoot": "bios"
+}

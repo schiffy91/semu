@@ -1,0 +1,42 @@
+{
+  "schema_version": 2,
+  "fullscreen_default": true,
+  "content_scaling": {
+    "integer_scaling_default": false,
+    "aspect_ratio_source": "native",
+    "scale_policy": "aspect_preserve",
+    "per_system_aspect_ratio": true,
+    "dual_screen_layout": false
+  },
+  "semu_renderer": {
+    "source_hook_enabled": false,
+    "preferred_backend": "disabled",
+    "implementation_status": "not_required",
+    "source_package_status": "not-required",
+    "fallback_backend": "native_fullscreen_only",
+    "receives_shader_assets": false,
+    "receives_bezel_assets": false,
+    "requires_deck_proof": false
+  },
+  "generated_config_contract": {
+    "owns_fullscreen": true,
+    "owns_graphics_api": true,
+    "owns_content_scaling": true,
+    "owns_input_profiles": true,
+    "owns_renderer_assets": false
+  },
+  "default_profiles": [
+    "assets/defaults.json",
+    "assets/hardware.json"
+  ],
+  "capabilities": {
+    "fullscreen": true,
+    "integer_scaling": false,
+    "per_system_aspect_ratio": true,
+    "dual_screen_layout": false,
+    "generic_renderer": false,
+    "native_shaders": false,
+    "native_bezels": false,
+    "modern_native_output": true
+  }
+}

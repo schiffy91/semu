@@ -1,0 +1,117 @@
+{
+  "schema_version": 2,
+  "renderer_contract": {
+    "target_space": "content_viewport",
+    "anchor_source": "content_viewport.layout.screens",
+    "scales_with": [
+      "window_size",
+      "monitor_size",
+      "content_aspect",
+      "scale_policy"
+    ],
+    "asset_roles": {
+      "source_asset": "Reference bezel preset or authored frame retained for the generic renderer.",
+      "widescreen_source_asset": "Optional alternate frame for dynamic widescreen content.",
+      "composition_effect_file": "Semu renderer effect that composes bezel and shader output."
+    }
+  },
+  "families": {
+    "classic_grey_game_boy": {
+      "description": "Classic grey Nintendo Game Boy shell",
+      "layout_kinds": [
+        "single"
+      ],
+      "anchor": "content_rect",
+      "asset_hint": "assets/bezels/classic_grey_game_boy"
+    },
+    "frost_purple_game_boy_color": {
+      "description": "Frost purple Game Boy Color shell",
+      "layout_kinds": [
+        "single"
+      ],
+      "anchor": "content_rect",
+      "asset_hint": "assets/bezels/frost_purple_game_boy_color"
+    },
+    "purple_game_boy_advance": {
+      "description": "Purple wide Game Boy Advance shell",
+      "layout_kinds": [
+        "handheld_wide"
+      ],
+      "anchor": "content_rect",
+      "asset_hint": "assets/bezels/purple_game_boy_advance"
+    },
+    "sony_or_panasonic_crt": {
+      "description": "Photorealistic Sony or Panasonic 4:3 CRT",
+      "layout_kinds": [
+        "single"
+      ],
+      "anchor": "content_rect",
+      "asset_hint": "assets/bezels/sony_or_panasonic_crt"
+    },
+    "dual_screen_handheld": {
+      "description": "Maximized Nintendo DS/3DS dual-screen frame",
+      "layout_kinds": [
+        "dual_vertical",
+        "dual_vertical_asymmetric"
+      ],
+      "anchor": "per_screen_content_rect",
+      "asset_hint": "assets/bezels/dual_screen_handheld"
+    },
+    "psp_shell": {
+      "description": "Red God of War PSP or original black PSP shell",
+      "layout_kinds": [
+        "handheld_wide"
+      ],
+      "anchor": "content_rect",
+      "asset_hint": "assets/bezels/psp_shell"
+    },
+    "clean_widescreen_frame": {
+      "description": "Clean 16:9 TV or component-era frame used when emulator state reports widescreen output",
+      "layout_kinds": [
+        "single",
+        "handheld_wide"
+      ],
+      "anchor": "content_rect",
+      "asset_hint": "assets/bezels/clean_widescreen_frame"
+    },
+    "wiiu_tv_gamepad_frame": {
+      "description": "Wii U TV plus optional gamepad layout, disabled until emulator state exposes both regions",
+      "layout_kinds": [
+        "single",
+        "dual_vertical",
+        "dual_vertical_asymmetric"
+      ],
+      "anchor": "per_screen_content_rect",
+      "asset_hint": "assets/bezels/wiiu_tv_gamepad_frame"
+    },
+    "none": {
+      "description": "No bezel",
+      "layout_kinds": [
+        "single",
+        "handheld_wide",
+        "dual_vertical"
+      ],
+      "anchor": null,
+      "asset_hint": null
+    }
+  },
+  "defaults": {
+    "gb": "classic_grey_game_boy",
+    "gbc": "frost_purple_game_boy_color",
+    "gba": "purple_game_boy_advance",
+    "nes": "sony_or_panasonic_crt",
+    "snes": "sony_or_panasonic_crt",
+    "genesis": "sony_or_panasonic_crt",
+    "n64": "sony_or_panasonic_crt",
+    "nds": "dual_screen_handheld",
+    "dreamcast": "sony_or_panasonic_crt",
+    "psx": "sony_or_panasonic_crt",
+    "ps2": "sony_or_panasonic_crt",
+    "psp": "psp_shell",
+    "n3ds": "dual_screen_handheld",
+    "gc": "sony_or_panasonic_crt",
+    "wii": "sony_or_panasonic_crt",
+    "wiiu": "none",
+    "switch": "none"
+  }
+}

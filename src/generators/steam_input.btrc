@@ -1,0 +1,105 @@
+import std.vector;
+import std.strings;
+
+class SemuSteamInputTemplate {
+    public string id;
+    public string title;
+    public string source;
+    public string destination;
+    public bool required;
+
+    public SemuSteamInputTemplate() {
+        self.id = "";
+        self.title = "";
+        self.source = "";
+        self.destination = "";
+        self.required = false;
+    }
+
+}
+
+class SemuSteamInputGenerator {
+    class string plan(string project, string target) {
+        return "generate steam_input target=" + target
+            + " project=" + project
+            + " outputs=config/input/steam-input";
+    }
+
+    class SemuSteamInputTemplate templateSpec(
+        string id,
+        string title,
+        string source,
+        string destination,
+        bool required
+    ) {
+        SemuSteamInputTemplate entry = SemuSteamInputTemplate();
+        entry.id = id;
+        entry.title = title;
+        entry.source = source;
+        entry.destination = destination;
+        entry.required = required;
+        return entry;
+    }
+
+    class string installPlanJson(Vector<SemuSteamInputTemplate> templates) {
+        Vector<string> items = [];
+        for entry in templates {
+            items.push(semuSteamInputTemplateJson(entry));
+        }
+        return semuSteamInputJsonObject([
+            semuSteamInputJsonField("templates", "[" + items.join(", ") + "]")
+        ]);
+    }
+
+    class string selectionJson(
+        string targetId,
+        string deviceId,
+        string templateId,
+        Vector<string> radialActions
+    ) {
+        return semuSteamInputJsonObject([
+            semuSteamInputJsonStrField("target", targetId),
+            semuSteamInputJsonStrField("device", deviceId),
+            semuSteamInputJsonStrField("template", templateId),
+            semuSteamInputJsonField("radial_actions", semuSteamInputJsonStringArray(radialActions))
+        ]);
+    }
+}
+
+string semuSteamInputJsonQ(string value) {
+    return "\"" + Strings.replace(Strings.replace(value, "\\", "\\\\"), "\"", "\\\"") + "\"";
+}
+
+string semuSteamInputJsonField(string key, string value) {
+    return semuSteamInputJsonQ(key) + ": " + value;
+}
+
+string semuSteamInputJsonStrField(string key, string value) {
+    return semuSteamInputJsonField(key, semuSteamInputJsonQ(value));
+}
+
+string semuSteamInputJsonBoolField(string key, bool value) {
+    return semuSteamInputJsonField(key, value ? "true" : "false");
+}
+
+string semuSteamInputJsonObject(Vector<string> fields) {
+    return "{" + fields.join(", ") + "}\n";
+}
+
+string semuSteamInputJsonStringArray(Vector<string> values) {
+    Vector<string> out = [];
+    for value in values {
+        out.push(semuSteamInputJsonQ(value));
+    }
+    return "[" + out.join(", ") + "]";
+}
+
+string semuSteamInputTemplateJson(SemuSteamInputTemplate entry) {
+    return semuSteamInputJsonObject([
+        semuSteamInputJsonStrField("id", entry.id),
+        semuSteamInputJsonStrField("title", entry.title),
+        semuSteamInputJsonStrField("source", entry.source),
+        semuSteamInputJsonStrField("destination", entry.destination),
+        semuSteamInputJsonBoolField("required", entry.required)
+    ]).trim();
+}

@@ -1,0 +1,78 @@
+{
+  "schema_version": 2,
+  "feature_defaults": {
+    "shader_effects": true,
+    "bezels": true,
+    "integer_scaling": true
+  },
+  "renderer": {
+    "id": "semu-source-hook",
+    "launcher": "emulator-source-hook",
+    "model": "game_framebuffer_shader_bezel",
+    "effect_root": "assets/rendering/reshade",
+    "target_space": "content_viewport",
+    "viewport_contract": {
+      "source_field": "content_viewport",
+      "native_size_field": "native_size",
+      "aspect_field": "content_aspect",
+      "default_aspect_field": "default_aspect",
+      "dynamic_aspect_field": "dynamic_aspect",
+      "layout_field": "layout",
+      "scale_policy_field": "scale_policy",
+      "fit_targets": [
+        "window",
+        "monitor"
+      ],
+      "shader_space": "native_content_pixels",
+      "bezel_anchor": "content_rect"
+    },
+    "scale_policies": {
+      "integer": "Use whole-number native pixel multiples before bezel composition.",
+      "integer_or_aspect": "Prefer integer native pixels when the declared viewport fits; otherwise preserve aspect.",
+      "layout_integer_or_aspect": "Keep each declared screen on an integer grid when the combined layout fits; otherwise preserve layout geometry.",
+      "aspect_preserve": "Preserve the declared or emulator-reported aspect without forcing integer scaling.",
+      "aspect_fill_or_preserve": "Use fullscreen output while preserving aspect unless an emulator explicitly requests fill."
+    },
+    "fallback_order": [
+      "emulator_source_hook",
+      "emulator_native_content_scaling",
+      "raw_emulator_command"
+    ],
+    "verification": {
+      "required_env": "SEMU_RENDER_REQUIRED",
+      "failure_mode": "hard_fail_when_required"
+    }
+  },
+  "profiles": {
+    "hardware": "assets/hardware.json",
+    "shaders": "assets/shaders.json",
+    "bezels": "assets/bezels.json"
+  },
+  "asset_policy": {
+    "missing_shader": "warn_and_disable_shader",
+    "missing_bezel": "warn_and_disable_bezel",
+    "missing_composition_effect": "fall_back_to_emulator_content_scaling",
+    "unverified_composition": "require_per_emulator_viewport_proof_before_default"
+  },
+  "classic_systems": [
+    "gb",
+    "gbc",
+    "gba",
+    "nes",
+    "snes",
+    "genesis",
+    "n64",
+    "nds",
+    "dreamcast",
+    "psx",
+    "ps2",
+    "psp",
+    "n3ds",
+    "gc",
+    "wii"
+  ],
+  "modern_systems": [
+    "wiiu",
+    "switch"
+  ]
+}

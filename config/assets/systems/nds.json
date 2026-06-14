@@ -1,0 +1,68 @@
+{
+  "schema_version": 2,
+  "system": "nds",
+  "label": "Nintendo DS",
+  "default_emulator": "MELONDS",
+  "emulator": "melonds",
+  "emulator_config": "melonDS.ini",
+  "hardware_display": "dual 256x192 resistive LCDs",
+  "display_class": "dual_screen_lcd",
+  "content_viewport": {
+    "native_size": {
+      "width": 256,
+      "height": 384
+    },
+    "content_aspect": "2:3",
+    "default_aspect": "2:3",
+    "dynamic_aspect": false,
+    "layout": {
+      "kind": "dual_vertical",
+      "screen_order": [
+        "top",
+        "bottom"
+      ],
+      "align": "center",
+      "screens": [
+        {
+          "id": "top",
+          "native_size": {
+            "width": 256,
+            "height": 192
+          },
+          "content_aspect": "4:3"
+        },
+        {
+          "id": "bottom",
+          "native_size": {
+            "width": 256,
+            "height": 192
+          },
+          "content_aspect": "4:3"
+        }
+      ]
+    },
+    "scale_policy": "layout_integer_or_aspect"
+  },
+  "renderer": {
+    "model": "semu_source_hook_renderer",
+    "viewport_source": "content_viewport",
+    "profile": "nds_dual_lcd",
+    "shader": {
+      "family": "nds_lcd",
+      "enabled_by_default": true,
+      "intent": "two LCD panels with mild persistence",
+      "source_asset": "handheld/lcd-grid-v2-nds-color-motionblur.slangp",
+      "widescreen_source_asset": null,
+      "effect_file": "semu-nds.fx"
+    },
+    "bezel": {
+      "family": "dual_screen_handheld",
+      "enabled_by_default": true,
+      "intent": "good-looking DS bezel that maximizes top and bottom screens",
+      "source_asset": "bezels/nds/maximized-dual-screen.json",
+      "widescreen_source_asset": null,
+      "composition_effect_file": "semu-nds.fx"
+    }
+  },
+  "notes": "Layout emulator must expose both screens and support stacked/side-by-side variants."
+}

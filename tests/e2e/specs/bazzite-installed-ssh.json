@@ -17,7 +17,7 @@
     {
       "op": "make",
       "command": "bazzite-vm-verify-ssh BAZZITE_SSH_USER={{bazziteUser}} BAZZITE_SSH_PORT={{bazziteSshPort}} BAZZITE_DISK=tests/vms/bazzite-e2e.qcow2 BAZZITE_PID=tests/vms/bazzite-e2e.pid BAZZITE_STARTED=tests/vms/bazzite-e2e.started BAZZITE_MONITOR=tests/vms/bazzite-e2e-monitor.sock BAZZITE_SERIAL=tests/vms/bazzite-e2e-serial.log BAZZITE_SCREEN=tests/vms/bazzite-e2e-screen.ppm",
-      "expect": "OK deck input preflight",
+      "expect": "OK compiler definitions",
       "timeout": 1200
     }
   ]

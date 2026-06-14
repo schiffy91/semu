@@ -1,0 +1,49 @@
+{
+  "schema_version": 1,
+  "id": "gba",
+  "fullname": "Nintendo Game Boy Advance",
+  "platform": "gba",
+  "theme": "gba",
+  "rom_dir": "gba",
+  "extensions": [
+    ".agb",
+    ".bin",
+    ".gba",
+    ".7z",
+    ".zip"
+  ],
+  "routes": {
+    "linux": [
+      {
+        "role": "primary",
+        "emulator": "retroarch",
+        "label": "mGBA",
+        "core": "mgba_libretro.so"
+      }
+    ],
+    "macos": [
+      {
+        "role": "primary",
+        "emulator": "retroarch",
+        "label": "mGBA",
+        "core": "mgba_libretro.dylib"
+      }
+    ]
+  },
+  "requirements": {
+    "bios": [],
+    "keys": []
+  },
+  "rendering": {
+    "hardware_profile": "assets/hardware.json#gba",
+    "shader": "color_lcd",
+    "bezel": "purple_game_boy_advance"
+  },
+  "rom_policy": {
+    "external_roots": "read_only",
+    "allow_in_place_metadata": false,
+    "generated_metadata_root": "${semu_home}/generated/systems/gba",
+    "owned_state_root": "${semu_home}/state/systems/gba"
+  },
+  "bios": []
+}

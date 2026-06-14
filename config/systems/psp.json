@@ -1,0 +1,57 @@
+{
+  "schema_version": 1,
+  "id": "psp",
+  "fullname": "Sony PlayStation Portable",
+  "platform": "psp",
+  "theme": "psp",
+  "rom_dir": "psp",
+  "extensions": [
+    ".chd",
+    ".cso",
+    ".elf",
+    ".iso",
+    ".pbp",
+    ".prx",
+    ".7z",
+    ".zip"
+  ],
+  "routes": {
+    "linux": [
+      {
+        "role": "primary",
+        "emulator": "ppsspp",
+        "label": "PPSSPP"
+      },
+      {
+        "role": "fallback",
+        "emulator": "retroarch",
+        "label": "PPSSPP",
+        "core": "ppsspp_libretro.so"
+      }
+    ],
+    "macos": [
+      {
+        "role": "primary",
+        "emulator": "retroarch",
+        "label": "PPSSPP",
+        "core": "ppsspp_libretro.dylib"
+      }
+    ]
+  },
+  "requirements": {
+    "bios": [],
+    "keys": []
+  },
+  "rendering": {
+    "hardware_profile": "assets/hardware.json#psp",
+    "shader": "color_lcd",
+    "bezel": "psp_shell"
+  },
+  "rom_policy": {
+    "external_roots": "read_only",
+    "allow_in_place_metadata": false,
+    "generated_metadata_root": "${semu_home}/generated/systems/psp",
+    "owned_state_root": "${semu_home}/state/systems/psp"
+  },
+  "bios": []
+}

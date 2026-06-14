@@ -1,0 +1,13 @@
+{
+  "name": "compiler-verify",
+  "state": "compiler-verify",
+  "parentState": "compiler-build",
+  "stateMaterial": "{{sourceHash}}",
+  "operations": [
+    {
+      "op": "make",
+      "command": "compiler-verify",
+      "expect": "OK compiler definitions"
+    }
+  ]
+}

@@ -1,0 +1,50 @@
+{
+  "schema_version": 1,
+  "romArg": {
+    "mode": "afterArg",
+    "arg": "-e"
+  },
+  "fullscreenContract": {
+    "required": true,
+    "mode": "argument",
+    "verification": "argv_contains_Dolphin.Display.Fullscreen=True"
+  },
+  "linux": {
+    "launcher": "flatpak",
+    "flatpakId": "org.DolphinEmu.dolphin-emu",
+    "executable": "dolphin-emu",
+    "env": {
+      "XDG_CONFIG_HOME": "${generated}/emulators/dolphin/xdg/config",
+      "XDG_DATA_HOME": "${generated}/emulators/dolphin/xdg/data",
+      "XDG_CACHE_HOME": "${generated}/emulators/dolphin/xdg/cache"
+    },
+    "defaultArgs": [
+      "--config",
+      "Dolphin.Display.Fullscreen=True",
+      "--config",
+      "Dolphin.Core.SIDevice0=6",
+      "--config",
+      "Dolphin.Core.WiimoteSource0=1",
+      "-b",
+      "-e"
+    ],
+    "fullscreenArgs": [
+      "--config",
+      "Dolphin.Display.Fullscreen=True"
+    ]
+  },
+  "macos": {
+    "launcher": "package",
+    "executable": "dolphin-emu",
+    "defaultArgs": [
+      "--config",
+      "Dolphin.Display.Fullscreen=True",
+      "-b",
+      "-e"
+    ],
+    "fullscreenArgs": [
+      "--config",
+      "Dolphin.Display.Fullscreen=True"
+    ]
+  }
+}

@@ -1,0 +1,110 @@
+{
+  "schema_version": 1,
+  "id": "steam-deck",
+  "slug": "steam-deck",
+  "name": "Steam Deck Built-in Controller",
+  "vendor": "Valve",
+  "layout": "xbox",
+  "preferred_backend": "steam_input",
+  "fallback_backend": "inputplumber",
+  "outputs": [
+    "gamepad",
+    "keyboard",
+    "mouse"
+  ],
+  "capabilities": [
+    "gamepad",
+    "left_trackpad",
+    "right_trackpad",
+    "grip_buttons",
+    "gyro",
+    "mouse_pointer",
+    "keyboard_hotkeys"
+  ],
+  "right_trackpad": {
+    "mode": "mouse_pointer"
+  },
+  "left_trackpad": {
+    "mode": "radial_menu",
+    "intent": "Semu global hotkeys that survive emulator route changes.",
+    "primary_actions": [
+      "save",
+      "load",
+      "quit",
+      "menu",
+      "screenshot"
+    ],
+    "extended_actions": [
+      "fullscreen",
+      "fast",
+      "rewind",
+      "screen_swap",
+      "slot_prev",
+      "slot_next"
+    ],
+    "current_template_actions": [
+      "save",
+      "load",
+      "quit",
+      "menu",
+      "screenshot",
+      "escape"
+    ]
+  },
+  "bindings": [
+    {
+      "input": "HKB + A",
+      "action": "pause",
+      "keymap_id": "app.pause"
+    },
+    {
+      "input": "HKB + B",
+      "action": "screenshot"
+    },
+    {
+      "input": "HKB + X",
+      "action": "fullscreen"
+    },
+    {
+      "input": "HKB + Y",
+      "action": "menu"
+    },
+    {
+      "input": "HKB + Start",
+      "action": "quit"
+    },
+    {
+      "input": "HKB + D-Pad Left",
+      "action": "slot_prev"
+    },
+    {
+      "input": "HKB + D-Pad Right",
+      "action": "slot_next"
+    },
+    {
+      "input": "HKB + L1",
+      "action": "load"
+    },
+    {
+      "input": "HKB + R1",
+      "action": "save"
+    },
+    {
+      "input": "HKB + L2",
+      "action": "rewind"
+    },
+    {
+      "input": "HKB + R2",
+      "action": "fast"
+    },
+    {
+      "input": "HKB + L3",
+      "action": "screen_swap"
+    },
+    {
+      "input": "HKB + R3",
+      "action": "escape",
+      "keymap_id": "app.escape"
+    }
+  ]
+}

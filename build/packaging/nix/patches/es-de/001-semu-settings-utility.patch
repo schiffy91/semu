@@ -1,0 +1,62 @@
+diff --git a/es-app/src/guis/GuiMenu.cpp b/es-app/src/guis/GuiMenu.cpp
+index 8bcb418..b9244ee 100644
+--- a/es-app/src/guis/GuiMenu.cpp
++++ b/es-app/src/guis/GuiMenu.cpp
+@@ -51,6 +51,7 @@
+ #endif
+ 
+ #include <SDL2/SDL_events.h>
++#include <cstdlib>
+ #include <algorithm>
+ 
+ GuiMenu::GuiMenu()
+@@ -2266,7 +2267,49 @@ void GuiMenu::openUtilities()
+         ViewController::getInstance()->goToStart(false);
+     };
+ 
++    auto semuSettingsCommand = [] {
++        const char* command {std::getenv("SEMU_ESDE_SETTINGS_COMMAND")};
++        if (command != nullptr && command[0] != '\0')
++            return std::string(command);
++
++        const char* project {std::getenv("SEMU_PROJECT_DIR")};
++        if (project != nullptr && project[0] != '\0')
++            return std::string(project) + "/.semu/generated/bin/semu-settings";
++
++        return std::string {};
++    }();
++
++    auto semuShellQuote = [](const std::string& value) {
++        std::string quoted {"'"};
++        for (const char ch : value) {
++            if (ch == '\'')
++                quoted += "'\\''";
++            else
++                quoted += ch;
++        }
++        quoted += "'";
++        return quoted;
++    };
++
+     ComponentListRow row;
++    if (!semuSettingsCommand.empty()) {
++        row.addElement(std::make_shared<TextComponent>(_("SEMU SETTINGS"),
++                                                       Font::get(FONT_SIZE_MEDIUM),
++                                                       mMenuColorPrimary),
++                       true);
++        row.addElement(mMenu.makeArrow(), false);
++        row.makeAcceptInputHandler([this, semuSettingsCommand, semuShellQuote] {
++            const int result {
++                Utils::Platform::runSystemCommand(semuShellQuote(semuSettingsCommand) + " &")};
++            if (result != 0) {
++                mWindow->pushGui(
++                    new GuiMsgBox(_("COULD NOT LAUNCH SEMU SETTINGS"), _("OK"), nullptr));
++            }
++        });
++        s->addRow(row);
++        row.elements.clear();
++    }
++
+     row.addElement(std::make_shared<TextComponent>(_("GAME IMPORTER"), Font::get(FONT_SIZE_MEDIUM),
+                                                    mMenuColorPrimary),
+                    true);

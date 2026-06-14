@@ -1,0 +1,37 @@
+{
+  "schema_version": 1,
+  "romArg": "positional",
+  "fullscreenContract": {
+    "required": true,
+    "mode": "argument",
+    "verification": "argv_contains_fullscreen_flag"
+  },
+  "linux": {
+    "launcher": "flatpak",
+    "flatpakId": "net.pcsx2.PCSX2",
+    "executable": "pcsx2-qt",
+    "env": {
+      "XDG_CONFIG_HOME": "${generated}/emulators/pcsx2/xdg/config",
+      "XDG_DATA_HOME": "${generated}/emulators/pcsx2/xdg/data",
+      "XDG_CACHE_HOME": "${generated}/emulators/pcsx2/xdg/cache"
+    },
+    "defaultArgs": [
+      "-batch",
+      "-fullscreen"
+    ],
+    "fullscreenArgs": [
+      "-fullscreen"
+    ]
+  },
+  "macos": {
+    "launcher": "package",
+    "executable": "pcsx2",
+    "defaultArgs": [
+      "-batch",
+      "-fullscreen"
+    ],
+    "fullscreenArgs": [
+      "-fullscreen"
+    ]
+  }
+}

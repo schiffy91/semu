@@ -1,0 +1,19 @@
+import ./owned_paths.btrc;
+import std.fs;
+class SemuMergePolicy {
+    class string precedenceText() {
+        return "repo defaults < target defaults < $SEMU_HOME/semu.json < $SEMU_HOME/overrides/** < CLI flags";
+    }
+
+    class string overrideRoot(string project, string domain) {
+        return joinPath(SemuOwnedPaths.overrides(project), domain);
+    }
+
+    class string overrideFile(string project, string domain, string id) {
+        return joinPath(SemuMergePolicy.overrideRoot(project, domain), id + ".json");
+    }
+
+    class bool hasOverride(string project, string domain, string id) {
+        return FileSystem.isFile(SemuMergePolicy.overrideFile(project, domain, id));
+    }
+}

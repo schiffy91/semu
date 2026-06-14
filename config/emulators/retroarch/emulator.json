@@ -1,0 +1,34 @@
+{
+  "schema_version": 1,
+  "id": "retroarch",
+  "name": "RetroArch",
+  "kind": "libretro-frontend",
+  "platforms": [
+    "linux",
+    "macos"
+  ],
+  "targets": [
+    "linux",
+    "macos",
+    "steam-deck",
+    "bazzite"
+  ],
+  "servedSystems": [
+    "gb",
+    "gbc",
+    "gba",
+    "nes",
+    "snes",
+    "genesis",
+    "n64",
+    "nds",
+    "dreamcast",
+    "psx",
+    "psp"
+  ],
+  "package": {
+    "file": "package.nix",
+    "intent": "Build RetroArch with the libretro cores required by servedSystems.",
+    "source": "nixpkgs-with-cores"
+  }
+}

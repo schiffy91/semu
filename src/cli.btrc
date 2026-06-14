@@ -1,0 +1,726 @@
+import std.cli;
+import std.fs;
+import std.json;
+import std.platform;
+import std.process;
+import std.strings;
+import std.vector;
+import ./compiler/generator.btrc;
+import ./compiler/model.btrc;
+import ./compiler/parser.btrc;
+import ./compiler/checker.btrc;
+import ./lib/owned_paths.btrc;
+import ./lib/rendering.btrc;
+import ./lib/template.btrc;
+
+class SemuCli {
+    class int run(CliArgs args) {
+        string command = args.command();
+        string project = args.valueAfter("--project", Environment.get("SEMU_PROJECT_DIR", "."));
+
+        string programLauncher = SemuCli.launcherNameFromProgram(args.program);
+        if (!programLauncher.isEmpty()) {
+            return SemuCli.launcher(args, project, programLauncher, 0);
+        }
+
+        if (command.equals("build")) {
+            return semuBuildCommand(args, project);
+        }
+        if (command.equals("verify")) {
+            return semuVerifyCommand(args, project);
+        }
+        if (command.equals("config")) {
+            return SemuCli.config(args, project);
+        }
+        if (command.equals("apprun")) {
+            return SemuCli.apprun(args, project);
+        }
+        if (command.equals("settings")) {
+            return SemuCli.settings(args, project);
+        }
+        if (command.equals("assets")) {
+            return SemuCli.assets(args, project);
+        }
+        if (command.equals("keymap")) {
+            return SemuCli.keymap(args, project);
+        }
+        if (command.equals("sync")) {
+            return SemuCli.sync(args, project);
+        }
+        if (command.equals("launcher")) {
+            if (args.count() > 1 && args.get(1).equals("routed")) {
+                return SemuCli.launcherRouted(args, project);
+            }
+            string emulator = args.count() > 1 ? args.get(1) : "";
+            return SemuCli.launcher(args, project, emulator, 2);
+        }
+        if (command.equals("doctor")) {
+            return SemuCli.doctor(project);
+        }
+        if (command.equals("bootstrap")) {
+            return SemuCli.bootstrap(project);
+        }
+        if (command.equals("deck")) {
+            return SemuCli.deck(project);
+        }
+        if (command.equals("e2e")) {
+            return SemuCli.e2e(args, project);
+        }
+        if (command.equals("manifest") || command.isEmpty()) {
+            return SemuCli.manifest(project);
+        }
+        SemuCli.usage();
+        return 1;
+    }
+
+    class string launcherNameFromProgram(string program) {
+        string base = PathTools.basename(program);
+        if (!base.startsWith("semu-")) {
+            return "";
+        }
+        if (base.equals("semu") || base.equals("semu-btrc") || base.equals("semu-flatpak") || base.equals("semu-settings")) {
+            return "";
+        }
+        return Strings.replace(base, "semu-", "");
+    }
+
+    class void usage() {
+        print("semu build target steam-deck --project PATH");
+        print("semu build configs --project PATH");
+        print("semu settings ui|get|put|toggle|apply");
+        print("semu assets get|put SYSTEM FIELD [VALUE]");
+        print("semu launcher EMULATOR [args...]");
+    }
+
+    class SemuBuildPlan configPlan(string project, string target) {
+        SemuBuildPlan plan = SemuBuildPlan(project, "configs", target, "");
+        plan.systemIds = SemuCompilerParser.targetSystemIds(project, target);
+        if (plan.systemIds.len == 0) {
+            plan.systemIds = SemuCompilerParser.systemIds(project);
+        }
+        plan.emulatorIds = SemuCompilerParser.targetEmulatorIds(project, target);
+        if (plan.emulatorIds.len == 0) {
+            plan.emulatorIds = SemuCompilerParser.emulatorIds(project);
+        }
+        return plan;
+    }
+
+    class int generateConfigs(string project, string target) {
+        SemuBuildPlan plan = SemuCli.configPlan(project, target);
+        SemuCompilerChecker.check(plan);
+        if (!plan.ok()) {
+            return SemuCompilerGenerator.fail(plan);
+        }
+        SemuCompilerProjectWriter.writeTarget(plan);
+        return 0;
+    }
+
+    class int config(CliArgs args, string project) {
+        string sub = args.count() > 1 ? args.get(1) : "";
+        if (sub.equals("env")) {
+            print("SEMU_HOME=" + ShellWords.quote(SemuOwnedPaths.home(project)));
+            print("SEMU_PROJECT_DIR=" + ShellWords.quote(project));
+            print("SEMU_ROMS_DIR=" + ShellWords.quote(args.valueAfter("--roms", SemuOwnedPaths.romsRoot(project))));
+            print("SEMU_BIOS_DIR=" + ShellWords.quote(SemuOwnedPaths.biosRoot(project)));
+            print("SEMU_GENERATED_DIR=" + ShellWords.quote(SemuOwnedPaths.generated(project)));
+            print("SEMU_ESDE_SETTINGS_COMMAND=" + ShellWords.quote(SemuOwnedPaths.generatedFile(project, "bin/semu-settings")));
+            return 0;
+        }
+        if (sub.equals("apply") || sub.equals("compile")) {
+            return SemuCli.generateConfigs(project, args.valueAfter("--target", "steam-deck"));
+        }
+        SemuCli.usage();
+        return 1;
+    }
+
+    class int apprun(CliArgs args, string project) {
+        string sub = args.count() > 1 ? args.get(1) : "";
+        if (sub.equals("prepare")) {
+            int status = SemuCli.generateConfigs(project, args.valueAfter("--target", "steam-deck"));
+            if (status == 0) {
+                print("OK apprun prepare");
+            }
+            return status;
+        }
+        return SemuCli.config(args, project);
+    }
+
+    class string settingsPath(string project) {
+        SemuCompilerProjectWriter.initializeHome(project);
+        return SemuOwnedPaths.semuConfig(project);
+    }
+
+    class JsonObject settingsObject(string project) {
+        return JsonObject.parse(FileSystem.readText(SemuCli.settingsPath(project)));
+    }
+
+    class string normalizedKey(string key) {
+        return Strings.replace(key, ".", "_");
+    }
+
+    class void writeSettingsObject(string project, JsonObject object) {
+        FileSystem.writeText(SemuCli.settingsPath(project), semuPrettyJsonObject(object.stringify()));
+    }
+
+    class int settings(CliArgs args, string project) {
+        string sub = args.count() > 1 ? args.get(1) : "ui";
+        if (sub.equals("ui")) {
+            return SemuCli.settingsUi(project);
+        }
+        if (sub.equals("entry")) {
+            if (args.count() < 3) {
+                print("error 0:0 settings entry needs PATH");
+                return 1;
+            }
+            return SemuCli.settingsAction(project, FileSystem.readText(args.get(2)).trim());
+        }
+        if (sub.equals("get")) {
+            if (args.count() < 3) {
+                print("error 0:0 settings get needs KEY");
+                return 1;
+            }
+            JsonObject object = SemuCli.settingsObject(project);
+            print(object.getString(SemuCli.normalizedKey(args.get(2)), ""));
+            return 0;
+        }
+        if (sub.equals("put")) {
+            if (args.count() < 4) {
+                print("error 0:0 settings put needs KEY VALUE");
+                return 1;
+            }
+            int status = SemuCli.settingsPut(project, args.get(2), args.get(3));
+            if (status != 0) { return status; }
+            if (SemuCli.shouldApply(args, 4)) {
+                return SemuCli.generateConfigs(project, "steam-deck");
+            }
+            return 0;
+        }
+        if (sub.equals("toggle")) {
+            if (args.count() < 3) {
+                print("error 0:0 settings toggle needs KEY");
+                return 1;
+            }
+            int status = SemuCli.settingsToggle(project, args.get(2));
+            if (status != 0) { return status; }
+            if (SemuCli.shouldApply(args, 3)) {
+                return SemuCli.generateConfigs(project, "steam-deck");
+            }
+            return 0;
+        }
+        if (sub.equals("apply") || sub.equals("compile")) {
+            return SemuCli.generateConfigs(project, "steam-deck");
+        }
+        if (sub.equals("sync")) {
+            return SemuCli.syncAction(project, args.count() > 2 ? args.get(2) : "status");
+        }
+        if (sub.equals("n3ds")) {
+            return SemuCli.n3ds(project, args.count() > 2 ? args.get(2) : "status");
+        }
+        return SemuCli.settingsAction(project, sub);
+    }
+
+    class int settingsAction(string project, string action) {
+        Vector<string> parts = Strings.split(action, " ");
+        if (parts.len == 0) {
+            print("error 0:0 empty settings action");
+            return 1;
+        }
+        string verb = parts.get(0);
+        if (verb.equals("ui")) {
+            return SemuCli.settingsUi(project);
+        }
+        if (verb.equals("apply") || verb.equals("compile")) {
+            return SemuCli.generateConfigs(project, "steam-deck");
+        }
+        if (verb.equals("put") && parts.len >= 3) {
+            int status = SemuCli.settingsPut(project, parts.get(1), parts.get(2));
+            if (status != 0) { return status; }
+            if (parts.len > 3 && parts.get(3).equals("apply")) {
+                return SemuCli.generateConfigs(project, "steam-deck");
+            }
+            return 0;
+        }
+        if (verb.equals("toggle") && parts.len >= 2) {
+            int status = SemuCli.settingsToggle(project, parts.get(1));
+            if (status != 0) { return status; }
+            if (parts.len > 2 && parts.get(2).equals("apply")) {
+                return SemuCli.generateConfigs(project, "steam-deck");
+            }
+            return 0;
+        }
+        if (verb.equals("sync")) {
+            return SemuCli.syncAction(project, parts.len > 1 ? parts.get(1) : "status");
+        }
+        if (verb.equals("n3ds")) {
+            return SemuCli.n3ds(project, parts.len > 1 ? parts.get(1) : "status");
+        }
+        print("error 0:0 unknown settings action: " + action);
+        return 1;
+    }
+
+    class bool shouldApply(CliArgs args, int start) {
+        for (int i = start; i < args.count(); i++) {
+            string arg = args.get(i);
+            if (arg.equals("apply") || arg.equals("--apply")) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    class int settingsPut(string project, string key, string value) {
+        JsonObject object = SemuCli.settingsObject(project);
+        string normalized = SemuCli.normalizedKey(key);
+        if (value.equals("true") || value.equals("false")) {
+            object.setRaw(normalized, value);
+        } else {
+            object.setString(normalized, value);
+        }
+        SemuCli.writeSettingsObject(project, object);
+        print("OK " + normalized + "=" + value);
+        return 0;
+    }
+
+    class int settingsToggle(string project, string key) {
+        JsonObject object = SemuCli.settingsObject(project);
+        string normalized = SemuCli.normalizedKey(key);
+        bool current = object.getBool(normalized, false);
+        object.setBool(normalized, !current);
+        SemuCli.writeSettingsObject(project, object);
+        print("OK " + normalized + "=" + (!current ? "true" : "false"));
+        return 0;
+    }
+
+    class int settingsUi(string project) {
+        JsonObject object = SemuCli.settingsObject(project);
+        print("Semu Settings");
+        print("Project: " + project);
+        print("ROMs: " + SemuOwnedPaths.romsRoot(project));
+        print("Integer scaling: " + object.getString("visual_integer_scaling", "true"));
+        print("Render backend: " + object.getString("visual_render_backend", "auto"));
+        print("CRT shaders: " + object.getString("visual_crt_shaders", "true"));
+        print("Bezels: " + object.getString("visual_bezels", "true"));
+        print("Syncthing: " + object.getString("sync_enabled", "false"));
+        print("");
+        print("Commands:");
+        print("  semu settings put roms.dir PATH --project " + ShellWords.quote(project));
+        print("  semu settings toggle visual.bezels apply --project " + ShellWords.quote(project));
+        print("  semu settings apply --project " + ShellWords.quote(project));
+        return 0;
+    }
+
+    class int launcher(CliArgs args, string project, string emulator, int startIndex) {
+        if (emulator.isEmpty()) {
+            print("error 0:0 launcher needs emulator id");
+            return 1;
+        }
+        string launchFile = SemuOwnedPaths.emulatorFile(project, emulator, "launch.json");
+        if (!FileSystem.isFile(launchFile)) {
+            print("error 0:0 emulator launch definition not found: " + emulator);
+            return 1;
+        }
+        string raw = FileSystem.readText(launchFile);
+        string linux = JsonText.objectField(raw, "linux");
+        string executable = JsonText.field(linux, "executable", emulator);
+        string flatpak = JsonText.field(linux, "flatpakId", "");
+        string envPrefix = SemuCli.launcherEnvPrefix(project, linux);
+        string flatpakEnv = SemuCli.launcherFlatpakEnv(project, linux);
+
+        Vector<string> passthrough = SemuCli.launcherDefaultArgs(project, emulator);
+        passthrough = SemuCli.sourceHookLauncherArgs(project, emulator, passthrough);
+        for (int i = startIndex; i < args.count(); i++) {
+            passthrough.push(args.get(i));
+        }
+        passthrough = SemuCli.normalizeRetroarchCoreArgs(emulator, passthrough);
+        string renderedArgs = SemuCli.renderLauncherArgs(passthrough);
+        string command = SemuCli.backendCommand(executable, flatpak, renderedArgs, envPrefix, flatpakEnv);
+        command = SemuCli.withVisualWrapper(project, emulator, command);
+        command = SemuCli.withQuitWatch(command);
+        UnixShell shell = UnixShell();
+        ExecResult result = shell.run(command, CommandOutput.stream(), CommandOutput.stream(), false, false, false);
+        return result.code;
+    }
+
+    class int launcherRouted(CliArgs args, string project) {
+        if (args.count() < 4) {
+            print("error 0:0 launcher routed needs EMULATOR EXECUTABLE");
+            return 1;
+        }
+        string emulator = args.get(2);
+        string executable = args.get(3);
+        Vector<string> routedArgs = SemuCli.launcherDefaultArgs(project, emulator);
+        routedArgs = SemuCli.sourceHookLauncherArgs(project, emulator, routedArgs);
+        for (int i = 4; i < args.count(); i++) {
+            routedArgs.push(args.get(i));
+        }
+        routedArgs = SemuCli.normalizeRetroarchCoreArgs(emulator, routedArgs);
+        string linux = JsonText.objectField(FileSystem.readText(SemuOwnedPaths.emulatorFile(project, emulator, "launch.json")), "linux");
+        string command = "exec " + SemuCli.launcherEnvPrefix(project, linux) + ShellWords.quote(executable) + " " + SemuCli.renderLauncherArgs(routedArgs);
+        command = SemuCli.withVisualWrapper(project, emulator, command);
+        command = SemuCli.withQuitWatch(command);
+        UnixShell shell = UnixShell();
+        ExecResult result = shell.run(command, CommandOutput.stream(), CommandOutput.stream(), false, false, false);
+        return result.code;
+    }
+
+    class string renderLauncherArgs(Vector<string> args) {
+        Vector<string> rendered = [];
+        for arg in args {
+            rendered.push(ShellWords.quote(arg));
+        }
+        return rendered.join(" ");
+    }
+
+    class Vector<string> launcherDefaultArgs(string project, string emulator) {
+        string launchFile = SemuOwnedPaths.emulatorFile(project, emulator, "launch.json");
+        if (!FileSystem.isFile(launchFile)) {
+            Vector<string> empty = [];
+            return empty;
+        }
+        string linux = JsonText.objectField(FileSystem.readText(launchFile), "linux");
+        Vector<string> rawDefaults = JsonText.stringArray(linux, "defaultArgs");
+        Vector<string> defaults = [];
+        for value in rawDefaults {
+            defaults.push(SemuTemplate.expandProject(project, value));
+        }
+        return defaults;
+    }
+
+    class string launcherEnvPrefix(string project, string linux) {
+        string raw = JsonText.objectField(linux, "env");
+        if (raw.isEmpty()) {
+            return "";
+        }
+        JsonObject object = JsonObject.parse(raw);
+        Vector<string> entries = [];
+        for key, value in object.values {
+            entries.push(ShellWords.quote(key + "=" + SemuTemplate.expandProject(project, value)));
+        }
+        if (entries.len == 0) {
+            return "";
+        }
+        return "env " + entries.join(" ") + " ";
+    }
+
+    class string launcherFlatpakEnv(string project, string linux) {
+        string raw = JsonText.objectField(linux, "env");
+        if (raw.isEmpty()) {
+            return "";
+        }
+        JsonObject object = JsonObject.parse(raw);
+        Vector<string> entries = [];
+        for key, value in object.values {
+            entries.push(ShellWords.quote("--env=" + key + "=" + SemuTemplate.expandProject(project, value)));
+        }
+        return entries.join(" ");
+    }
+
+    class Vector<string> normalizeRetroarchCoreArgs(string emulator, Vector<string> args) {
+        if (!emulator.equals("retroarch")) {
+            return args;
+        }
+        string coreDir = Environment.get("SEMU_RETROARCH_CORE_DIR", "");
+        if (coreDir.isEmpty()) {
+            return args;
+        }
+        Vector<string> normalized = [];
+        bool nextIsCore = false;
+        for arg in args {
+            if (nextIsCore) {
+                normalized.push(SemuCli.normalizedRetroarchCore(coreDir, arg));
+                nextIsCore = false;
+            } else {
+                normalized.push(arg);
+                nextIsCore = arg.equals("-L") || arg.equals("--libretro");
+            }
+        }
+        return normalized;
+    }
+
+    class string normalizedRetroarchCore(string coreDir, string core) {
+        if (core.startsWith("%CORE_RETROARCH%") || core.startsWith("/tmp/.mount_") || !FileSystem.isFile(core)) {
+            string basename = PathTools.basename(core);
+            if (!basename.isEmpty()) {
+                string replacement = joinPath(coreDir, basename);
+                if (FileSystem.isFile(replacement)) {
+                    return replacement;
+                }
+            }
+        }
+        return core;
+    }
+
+    class string backendCommand(string executable, string flatpak, string renderedArgs, string envPrefix, string flatpakEnv) {
+        string quotedExecutable = ShellWords.quote(executable);
+        string quotedFlatpak = ShellWords.quote(flatpak);
+        if (!flatpak.isEmpty()) {
+            string envArgs = flatpakEnv.isEmpty() ? "" : flatpakEnv + " ";
+            return "if command -v " + quotedExecutable + " >/dev/null 2>&1; then exec " + envPrefix + quotedExecutable + " " + renderedArgs + "; else exec flatpak run " + envArgs + quotedFlatpak + " " + renderedArgs + "; fi";
+        }
+        return "exec " + envPrefix + quotedExecutable + " " + renderedArgs;
+    }
+
+    class Vector<string> sourceHookLauncherArgs(string project, string emulator, Vector<string> args) {
+        return args;
+    }
+
+    class string withQuitWatch(string command) {
+        string helper = "";
+        if (Environment.get("SEMU_DISABLE_QUIT_WATCH", "0").equals("1")) {
+            return command;
+        }
+        helper = SemuCli.quitWatchHelper();
+        if (!helper.isEmpty()) {
+            return "exec " + ShellWords.quote(helper) + " -- sh -lc " + ShellWords.quote(command);
+        }
+        return "if command -v semu-quit-watch >/dev/null 2>&1; then exec semu-quit-watch -- sh -lc "
+            + ShellWords.quote(command)
+            + "; else echo 'semu: semu-quit-watch unavailable; set SEMU_DISABLE_QUIT_WATCH=1 to launch without Start+Select quit' >&2; exit 127; fi";
+    }
+
+    class string quitWatchHelper() {
+        string configured = Environment.get("SEMU_QUIT_WATCH_BIN", "");
+        if (!configured.isEmpty() && FileSystem.isFile(configured)) {
+            return configured;
+        }
+        string activeBin = Environment.get("SEMU_ACTIVE_LAUNCHER_BIN", "");
+        if (!activeBin.isEmpty()) {
+            string activeHelper = joinPath(activeBin, "semu-quit-watch");
+            if (FileSystem.isFile(activeHelper)) {
+                return activeHelper;
+            }
+        }
+        string cli = Environment.get("SEMU_CLI", "");
+        if (!cli.isEmpty()) {
+            string cliHelper = joinPath(PathTools.dirname(cli), "semu-quit-watch");
+            if (FileSystem.isFile(cliHelper)) {
+                return cliHelper;
+            }
+        }
+        return "";
+    }
+
+    class string withVisualWrapper(string project, string emulator, string command) {
+        string systemId = Environment.get("SEMU_SYSTEM", "");
+        if (Environment.get("SEMU_DISABLE_RENDER_WRAPPER", Environment.get("SEMU_DISABLE_GAMESCOPE_PRESENTATION", "0")).equals("1")) {
+            return command;
+        }
+        string renderBackend = SemuCli.renderBackend(project, emulator);
+        if (renderBackend.equals("none") || renderBackend.equals("disabled") || renderBackend.equals("native_fullscreen_only")) {
+            return command;
+        }
+        if (renderBackend.equals("source_hook") || renderBackend.equals("emulator_hook")) {
+            return SemuCli.withSourceHookEnv(project, emulator, systemId, command);
+        }
+        if (renderBackend.equals("nixgl_only") || renderBackend.equals("native")) {
+            return SemuCli.withNixGlOnlyWrapper(systemId, command);
+        }
+        string hostRenderMode = SemuCli.systemAssetField(project, systemId, "host_render_mode", "");
+        if (hostRenderMode.equals("none")) {
+            return command;
+        }
+        if (hostRenderMode.equals("nixgl_only")) {
+            return SemuCli.withNixGlOnlyWrapper(systemId, command);
+        }
+        bool shaders = SemuCli.settingBool(project, "visual_crt_shaders", true);
+        bool bezels = SemuCli.settingBool(project, "visual_bezels", true);
+        if (!shaders && !bezels) {
+            return SemuCli.withNixGlOnlyWrapper(systemId, command);
+        }
+        string scale = SemuCli.settingBool(project, "visual_integer_scaling", true) ? "integer" : "stretch";
+        SemuRenderingDefinition rendering = SemuRenderingDefinition.load(project, systemId);
+        string effect = rendering.bezelEffectFile();
+        string shaderEffect = rendering.shaderEffectFile();
+        string nativeSize = rendering.nativeSize();
+        string contentAspect = rendering.contentAspect();
+        string layout = rendering.layoutKind();
+        string scalePolicy = rendering.scalePolicy();
+        string aspectPolicy = rendering.viewportField("default_aspect", contentAspect);
+        string dynamicAspect = rendering.dynamicAspectFlag();
+        return "if command -v semu-render >/dev/null 2>&1; then exec env SEMU_RENDER_SHADERS="
+            + (shaders ? "1" : "0")
+            + " SEMU_RENDER_BEZELS=" + (bezels ? "1" : "0")
+            + " SEMU_RENDER_BACKEND=" + ShellWords.quote(renderBackend)
+            + " SEMU_RENDER_SCALE=" + ShellWords.quote(scale)
+            + " SEMU_RENDER_EFFECT_FILE=" + ShellWords.quote(effect)
+            + " SEMU_RENDER_SHADER_FILE=" + ShellWords.quote(shaderEffect)
+            + " SEMU_RENDER_NATIVE_SIZE=" + ShellWords.quote(nativeSize)
+            + " SEMU_RENDER_CONTENT_ASPECT=" + ShellWords.quote(contentAspect)
+            + " SEMU_RENDER_LAYOUT=" + ShellWords.quote(layout)
+            + " SEMU_RENDER_SCALE_POLICY=" + ShellWords.quote(scalePolicy)
+            + " SEMU_RENDER_ASPECT_POLICY=" + ShellWords.quote(aspectPolicy)
+            + " SEMU_RENDER_DYNAMIC_ASPECT=" + ShellWords.quote(dynamicAspect)
+            + " semu-render --system " + ShellWords.quote(systemId)
+            + " -- sh -lc " + ShellWords.quote(command) + "; else " + command + "; fi";
+    }
+
+    class string withSourceHookEnv(string project, string emulator, string systemId, string command) {
+        SemuRenderingDefinition rendering = SemuRenderingDefinition.load(project, systemId);
+        bool shaders = SemuCli.settingBool(project, "visual_crt_shaders", true)
+            && rendering.rendererField("shader", "enabled_by_default", "false").equals("true")
+            && !rendering.shaderEffectFile().isEmpty();
+        bool bezels = SemuCli.settingBool(project, "visual_bezels", true)
+            && rendering.rendererField("bezel", "enabled_by_default", "false").equals("true")
+            && !rendering.bezelEffectFile().isEmpty();
+        string scale = SemuCli.settingBool(project, "visual_integer_scaling", true) ? "integer" : "stretch";
+        string marker = SemuCli.sourceHookCurrentlyApplied(project, emulator, systemId)
+            ? "printf '%s\\n' " + ShellWords.quote("semu source hook applied emulator=" + emulator + " system=" + systemId) + " >&2; "
+            : "";
+        string hooked = marker + "env SEMU_RENDER_HOOK=1"
+            + " SEMU_RENDER_HOOK_CONFIG=" + ShellWords.quote(SemuOwnedPaths.generatedFile(project, "assets/rendering/hooks/" + emulator + ".json"))
+            + " SEMU_RENDER_HOOK_PROOF=" + ShellWords.quote(SemuOwnedPaths.generatedFile(project, "assets/rendering/hooks/" + emulator + ".proof"))
+            + " SEMU_RENDER_HOOK_ROOT=" + ShellWords.quote(SemuOwnedPaths.generatedFile(project, "assets/rendering"))
+            + " SEMU_RENDER_SHADERS=" + (shaders ? "1" : "0")
+            + " SEMU_RENDER_BEZELS=" + (bezels ? "1" : "0")
+            + " SEMU_RENDER_SCALE=" + ShellWords.quote(scale)
+            + " SEMU_SYSTEM=" + ShellWords.quote(systemId)
+            + " sh -lc " + ShellWords.quote(command);
+        return SemuCli.withNixGlOnlyWrapper(systemId, hooked);
+    }
+
+    class bool sourceHookCurrentlyApplied(string project, string emulator, string systemId) {
+        if (systemId.isEmpty()) {
+            return false;
+        }
+        if (!SemuCli.renderBackend(project, emulator).equals("source_hook")) {
+            return false;
+        }
+        return FileSystem.isFile(SemuOwnedPaths.generatedFile(project, "assets/rendering/hooks/" + emulator + ".json"));
+    }
+
+    class string withNixGlOnlyWrapper(string systemId, string command) {
+        return "if command -v semu-render >/dev/null 2>&1; then exec env SEMU_RENDER_SHADERS=0 SEMU_RENDER_BEZELS=0"
+            + " semu-render --system " + ShellWords.quote(systemId)
+            + " -- sh -lc " + ShellWords.quote(command) + "; else " + command + "; fi";
+    }
+
+    class string renderBackend(string project, string emulator) {
+        string envBackend = Environment.get("SEMU_RENDER_BACKEND", "");
+        if (!envBackend.isEmpty()) {
+            return envBackend;
+        }
+        string setting = SemuCli.settingString(project, "visual_render_backend", "auto");
+        if (!setting.isEmpty() && !setting.equals("auto")) {
+            return setting;
+        }
+        string declared = SemuEmulatorRenderingDefinition.load(project, emulator).field("preferred_backend", "");
+        return declared.isEmpty() ? "native_fullscreen_only" : declared;
+    }
+
+    class string systemAssetField(string project, string systemId, string field, string fallback) {
+        string path = SemuOwnedPaths.systemAssetFile(project, systemId);
+        if (!FileSystem.isFile(path)) {
+            return fallback;
+        }
+        return JsonText.field(FileSystem.readText(path), field, fallback);
+    }
+
+    class bool settingBool(string project, string key, bool fallback) {
+        string path = SemuCli.settingsPath(project);
+        if (!FileSystem.isFile(path)) {
+            return fallback;
+        }
+        JsonObject object = JsonObject.parse(FileSystem.readText(path));
+        return object.getBool(SemuCli.normalizedKey(key), fallback);
+    }
+
+    class string settingString(string project, string key, string fallback) {
+        string path = SemuCli.settingsPath(project);
+        if (!FileSystem.isFile(path)) {
+            return fallback;
+        }
+        JsonObject object = JsonObject.parse(FileSystem.readText(path));
+        return object.getString(SemuCli.normalizedKey(key), fallback);
+    }
+
+    class int assets(CliArgs args, string project) {
+        if (args.count() < 2) {
+            print("asset commands: get SYSTEM FIELD | put SYSTEM FIELD VALUE --apply");
+            return 0;
+        }
+        string sub = args.get(1);
+        if (sub.equals("get") && args.count() >= 4) {
+            SemuRenderingDefinition rendering = SemuRenderingDefinition.load(project, args.get(2));
+            print(rendering.pathField(args.get(3), ""));
+            return 0;
+        }
+        if (sub.equals("put") && args.count() >= 5) {
+            string system = args.get(2);
+            string field = args.get(3);
+            string value = args.get(4);
+            string overrideDir = joinPath(SemuOwnedPaths.overrides(project), "rendering");
+            ensureDir(overrideDir);
+            FileSystem.writeText(joinPath(overrideDir, system + ".json"), SemuRenderingDefinition.nestedOverrideJson(field, value));
+            if (args.has("--apply")) {
+                return SemuCli.generateConfigs(project, "steam-deck");
+            }
+            return 0;
+        }
+        return 1;
+    }
+
+    class int keymap(CliArgs args, string project) {
+        print("Semu input actions are declared in " + joinPath(SemuOwnedPaths.definitionRoot(project), "input/actions.json"));
+        return 0;
+    }
+
+    class int sync(CliArgs args, string project) {
+        return SemuCli.syncAction(project, args.count() > 1 ? args.get(1) : "status");
+    }
+
+    class int syncAction(string project, string mode) {
+        if (mode.equals("open")) {
+            print("Syncthing UI: http://127.0.0.1:8384");
+            return 0;
+        }
+        if (mode.equals("toggle")) {
+            return SemuCli.settingsToggle(project, "sync.enabled");
+        }
+        print("Syncthing config lives in " + SemuOwnedPaths.settingsDefinitionFile(project, "sync.json"));
+        print("Project: " + project);
+        return 0;
+    }
+
+    class int n3ds(string project, string mode) {
+        string root = joinPath(SemuOwnedPaths.romsRoot(project), "n3ds");
+        print("3DS ROM root: " + root);
+        print("Mode: " + mode);
+        return 0;
+    }
+
+    class int doctor(string project) {
+        print("Semu doctor");
+        print("Project: " + project);
+        print("Definition root: " + SemuOwnedPaths.definitionRoot(project));
+        print("ROM root: " + SemuOwnedPaths.romsRoot(project));
+        print("BIOS root: " + SemuOwnedPaths.biosRoot(project));
+        print("Generated root: " + SemuOwnedPaths.generated(project));
+        return 0;
+    }
+
+    class int bootstrap(string project) {
+        return SemuCli.generateConfigs(project, "steam-deck");
+    }
+
+    class int deck(string project) {
+        return SemuCli.doctor(project);
+    }
+
+    class int e2e(CliArgs args, string project) {
+        string sub = args.count() > 1 ? args.get(1) : "status";
+        if (sub.equals("status") || sub.equals("graph")) {
+            print("compiler-build");
+            print("compiler-verify");
+            return 0;
+        }
+        return SemuCli.generateConfigs(project, "steam-deck");
+    }
+
+    class int manifest(string project) {
+        SemuBuildPlan plan = SemuCli.configPlan(project, "steam-deck");
+        print("semu compiler manifest");
+        print("systems=" + Strings.fromInt(plan.systemIds.len));
+        print("emulators=" + Strings.fromInt(plan.emulatorIds.len));
+        return 0;
+    }
+}

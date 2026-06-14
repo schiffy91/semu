@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "id": "ares",
+  "name": "ares",
+  "kind": "standalone",
+  "platforms": [
+    "macos"
+  ],
+  "targets": [
+    "macos"
+  ],
+  "servedSystems": [
+    "n64"
+  ],
+  "package": {
+    "file": "package.nix",
+    "intent": "Use ares as the macOS primary Nintendo 64 emulator.",
+    "source": "nixpkgs"
+  }
+}

@@ -1,0 +1,52 @@
+{
+  "schema_version": 1,
+  "id": "steam-deck",
+  "name": "Steam Deck",
+  "platform": "linux",
+  "inherits": "linux",
+  "frontend": "ES-DE",
+  "session": "steam_game_mode",
+  "default_controller": "steam-deck",
+  "systems": [
+    "gb",
+    "gbc",
+    "gba",
+    "nes",
+    "snes",
+    "genesis",
+    "n64",
+    "nds",
+    "dreamcast",
+    "psx",
+    "ps2",
+    "psp",
+    "n3ds",
+    "gc",
+    "wii",
+    "wiiu",
+    "switch"
+  ],
+  "emulator_ids": [
+    "retroarch",
+    "dolphin",
+    "ppsspp",
+    "flycast",
+    "azahar",
+    "melonds",
+    "pcsx2",
+    "cemu",
+    "ryujinx"
+  ],
+  "rom_policy": {
+    "external_roots": "read_only",
+    "allow_in_place_metadata": false,
+    "generated_metadata_root": "${semu_home}/generated/es-de",
+    "owned_state_root": "${semu_home}/state"
+  },
+  "steam_input_template": "${project}/config/input/steam-input/neptune-full.vdf",
+  "runtime": {
+    "fullscreen": true,
+    "quit_watch": true,
+    "controller_profile": "steam-deck"
+  }
+}

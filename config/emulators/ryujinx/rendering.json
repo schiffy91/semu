@@ -1,0 +1,67 @@
+{
+  "schema_version": 2,
+  "fullscreen_default": true,
+  "content_scaling": {
+    "integer_scaling_default": false,
+    "aspect_ratio_source": "widescreen",
+    "scale_policy": "aspect_fill_or_preserve",
+    "per_system_aspect_ratio": true,
+    "dual_screen_layout": false
+  },
+  "semu_renderer": {
+    "source_hook_enabled": true,
+    "preferred_backend": "source_hook",
+    "implementation_status": "implemented_source_hook",
+    "hook_scope": "game_framebuffer",
+    "hook_point": "Ryujinx.Graphics.Gpu.Window.Present composes the guest HostTexture when that queue path is used; Ryujinx.Graphics.GAL WindowPresentCommand and Ryujinx.Graphics.OpenGL.Window.Present emit Deck proof at the threaded/backend game-present boundaries used by the OpenGL runtime path",
+    "hook_excludes_ui": true,
+    "hook_requires_source_package": true,
+    "source_package_status": "source-package-ready",
+    "fallback_backend": "native_fullscreen_only",
+    "hook_config": "assets/rendering/hooks/ryujinx.json",
+    "external_fallback_backend": "disabled",
+    "receives_shader_assets": true,
+    "receives_bezel_assets": true,
+    "requires_deck_proof": true,
+    "hook_contract": {
+      "proof_env": "SEMU_RENDER_HOOK_PROOF",
+      "config_env": "SEMU_RENDER_HOOK_CONFIG",
+      "proof_marker": "semu-render-hook:ryujinx:game_framebuffer",
+      "uses_emulator_native_shader_mechanism": false,
+      "backend_coverage": [
+        "gpu-window-present-content-texture",
+        "gal-window-present-proof",
+        "opengl-window-present-proof"
+      ],
+      "patch_files": [
+        "build/packaging/nix/patches/ryujinx/001-semu-render-hook.patch"
+      ],
+      "patched_files": [
+        "src/Ryujinx.Graphics.Gpu/Window.cs",
+        "src/Ryujinx.Graphics.GAL/Multithreading/Commands/Window/WindowPresentCommand.cs",
+        "src/Ryujinx.Graphics.OpenGL/Window.cs"
+      ]
+    }
+  },
+  "generated_config_contract": {
+    "owns_fullscreen": true,
+    "owns_graphics_api": true,
+    "owns_content_scaling": true,
+    "owns_input_profiles": true,
+    "owns_renderer_assets": false
+  },
+  "default_profiles": [
+    "assets/defaults.json",
+    "assets/hardware.json"
+  ],
+  "capabilities": {
+    "fullscreen": true,
+    "integer_scaling": false,
+    "per_system_aspect_ratio": true,
+    "dual_screen_layout": false,
+    "generic_renderer": true,
+    "native_shaders": false,
+    "native_bezels": false,
+    "modern_native_output": true
+  }
+}

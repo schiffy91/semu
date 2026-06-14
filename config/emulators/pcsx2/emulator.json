@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "id": "pcsx2",
+  "name": "PCSX2",
+  "kind": "standalone",
+  "platforms": [
+    "linux",
+    "macos"
+  ],
+  "targets": [
+    "linux",
+    "macos",
+    "steam-deck",
+    "bazzite"
+  ],
+  "servedSystems": [
+    "ps2"
+  ],
+  "package": {
+    "file": "package.nix",
+    "intent": "Use nixpkgs PCSX2 on Linux and the Semu macOS package expression on Darwin.",
+    "source": "nixpkgs-or-semu-packaging"
+  }
+}

@@ -1,0 +1,64 @@
+{
+  "schema_version": 1,
+  "id": "nds",
+  "fullname": "Nintendo DS",
+  "platform": "nds",
+  "theme": "nds",
+  "rom_dir": "nds",
+  "extensions": [
+    ".app",
+    ".bin",
+    ".nds",
+    ".7z",
+    ".zip"
+  ],
+  "routes": {
+    "linux": [
+      {
+        "role": "primary",
+        "emulator": "melonds",
+        "label": "melonDS"
+      },
+      {
+        "role": "fallback",
+        "emulator": "retroarch",
+        "label": "DeSmuME",
+        "core": "desmume_libretro.so"
+      }
+    ],
+    "macos": [
+      {
+        "role": "primary",
+        "emulator": "retroarch",
+        "label": "DeSmuME",
+        "core": "desmume_libretro.dylib"
+      }
+    ]
+  },
+  "requirements": {
+    "bios": [
+      {
+        "id": "nds_firmware",
+        "required": false,
+        "paths": [
+          "bios/nds/bios7.bin",
+          "bios/nds/bios9.bin",
+          "bios/nds/firmware.bin"
+        ]
+      }
+    ],
+    "keys": []
+  },
+  "rendering": {
+    "hardware_profile": "assets/hardware.json#nds",
+    "shader": "dual_lcd",
+    "bezel": "dual_screen_handheld"
+  },
+  "rom_policy": {
+    "external_roots": "read_only",
+    "allow_in_place_metadata": false,
+    "generated_metadata_root": "${semu_home}/generated/systems/nds",
+    "owned_state_root": "${semu_home}/state/systems/nds"
+  },
+  "bios": []
+}

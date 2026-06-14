@@ -1,0 +1,14 @@
+{
+  "visual_classic_systems": "gb,gbc,gba,nes,snes,genesis,n64,nds,dreamcast,psx,ps2,psp,n3ds,gc,wii",
+  "visual_modern_systems": "wiiu,switch",
+  "ui_theme": "es-de-default",
+  "visual_integer_scaling": true,
+  "visual_render_backend": "source_hook",
+  "ui_settings_entry": "es-de",
+  "visual_bezel_policy": "classic",
+  "visual_crt_shaders": true,
+  "visual_renderer": "semu-source-hook",
+  "visual_shader_model": "semu_hook",
+  "schema_version": 1,
+  "visual_bezels": true
+}

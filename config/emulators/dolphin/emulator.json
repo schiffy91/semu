@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "id": "dolphin",
+  "name": "Dolphin",
+  "kind": "standalone",
+  "platforms": [
+    "linux",
+    "macos"
+  ],
+  "targets": [
+    "linux",
+    "macos",
+    "steam-deck",
+    "bazzite"
+  ],
+  "servedSystems": [
+    "gc",
+    "wii"
+  ],
+  "package": {
+    "file": "package.nix",
+    "intent": "Use the Dolphin package and generate Semu-owned profiles for GameCube and Wii.",
+    "source": "nixpkgs"
+  }
+}

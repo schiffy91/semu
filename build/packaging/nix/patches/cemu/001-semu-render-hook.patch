@@ -1,0 +1,259 @@
+--- a/src/Cafe/HW/Latte/Core/LatteRenderTarget.cpp
++++ b/src/Cafe/HW/Latte/Core/LatteRenderTarget.cpp
+@@ -16,13 +16,244 @@
+ #include "input/InputManager.h"
+ #include "Cafe/OS/libs/swkbd/swkbd.h"
+ 
++#include <cstdio>
++#include <cstdlib>
++#include <cstring>
++#include <memory>
++#include <string>
++
+ uint32 prevScissorX = 0;
+ uint32 prevScissorY = 0;
+ uint32 prevScissorWidth = 0;
+ uint32 prevScissorHeight = 0;
+ 
+ bool hasValidFramebufferAttached = false;
++
++struct SemuRenderHookPlan
++{
++	bool active;
++	bool shaders;
++	bool bezels;
++	const char* system;
++	const char* configPath;
++};
++
++static bool semuRenderHookEnabled()
++{
++	const char* enabled = std::getenv("SEMU_RENDER_HOOK");
++	return enabled != nullptr && enabled[0] != '\0' && enabled[0] != '0';
++}
++
++static bool semuRenderHookEnvBool(const char* name, bool fallback)
++{
++	const char* value = std::getenv(name);
++	if (value == nullptr || value[0] == '\0')
++		return fallback;
++	return !(value[0] == '0' || value[0] == 'f' || value[0] == 'F' || value[0] == 'n' || value[0] == 'N');
++}
++
++static size_t semuRenderHookReadConfig(const char* path, char* buffer, size_t size)
++{
++	if (path == nullptr || path[0] == '\0' || buffer == nullptr || size < 2)
++		return 0;
++
++	std::FILE* file = std::fopen(path, "rb");
++	if (file == nullptr)
++		return 0;
++
++	size_t used = std::fread(buffer, 1, size - 1, file);
++	buffer[used] = '\0';
++	std::fclose(file);
++	return used;
++}
++
++static bool semuRenderHookConfigBoolIsFalse(const char* config, const char* key)
++{
++	if (config == nullptr || key == nullptr)
++		return false;
++
++	const char* cursor = std::strstr(config, key);
++	if (cursor == nullptr)
++		return false;
++
++	cursor = std::strchr(cursor, ':');
++	if (cursor == nullptr)
++		return false;
++	cursor++;
++
++	while (*cursor == ' ' || *cursor == '\t' || *cursor == '\r' || *cursor == '\n')
++		cursor++;
++
++	return std::strncmp(cursor, "false", 5) == 0;
++}
++
++static bool semuRenderHookConfigHasSystem(const char* config, const char* system)
++{
++	char needle[64];
++
++	if (config == nullptr || system == nullptr || system[0] == '\0' || std::strlen(system) > 32)
++		return true;
++
++	std::snprintf(needle, sizeof(needle), "\"id\": \"%s\"", system);
++	if (std::strstr(config, needle) != nullptr)
++		return true;
++
++	std::snprintf(needle, sizeof(needle), "\"id\":\"%s\"", system);
++	return std::strstr(config, needle) != nullptr;
++}
++
++static SemuRenderHookPlan semuRenderHookPlan()
++{
++	SemuRenderHookPlan plan{};
++	char config[65536];
++	size_t configSize;
++
++	plan.active = semuRenderHookEnabled();
++	plan.shaders = semuRenderHookEnvBool("SEMU_RENDER_SHADERS", true);
++	plan.bezels = semuRenderHookEnvBool("SEMU_RENDER_BEZELS", true);
++	plan.system = std::getenv("SEMU_SYSTEM");
++	plan.configPath = std::getenv("SEMU_RENDER_HOOK_CONFIG");
++
++	if (!plan.active)
++		return plan;
++
++	configSize = semuRenderHookReadConfig(plan.configPath, config, sizeof(config));
++	if (configSize > 0)
++	{
++		if (!semuRenderHookConfigHasSystem(config, plan.system))
++		{
++			plan.active = false;
++			return plan;
++		}
++		if (semuRenderHookConfigBoolIsFalse(config, "\"shaders_enabled\""))
++			plan.shaders = false;
++		if (semuRenderHookConfigBoolIsFalse(config, "\"bezels_enabled\""))
++			plan.bezels = false;
++	}
++
++	/* Keep the hook active for modern systems that intentionally request no visual effect. */
++	return plan;
++}
++
++static const std::string& semuRenderHookFragmentSource()
++{
++	static const std::string source =
++R"(
++vec3 semuRenderHookApply(vec3 color, vec2 uv)
++{
++	float luma = dot(color, vec3(0.299, 0.587, 0.114));
++	float scanline = mix(0.78, 1.0, step(0.5, fract(gl_FragCoord.y * 0.5)));
++	float maskPhase = mod(gl_FragCoord.x, 3.0);
++	vec3 mask = maskPhase < 1.0 ? vec3(1.0, 0.86, 0.86) : (maskPhase < 2.0 ? vec3(0.88, 1.0, 0.88) : vec3(0.86, 0.88, 1.0));
++	float vignette = smoothstep(0.0, 0.15, uv.x) * smoothstep(0.0, 0.15, uv.y) * smoothstep(0.0, 0.15, 1.0 - uv.x) * smoothstep(0.0, 0.15, 1.0 - uv.y);
++	color = mix(color, vec3(luma), 0.08);
++	color *= scanline * mask;
++	color *= mix(0.72, 1.0, vignette);
++	return clamp(color, 0.0, 1.0);
++}
+ 
++void main()
++{
++	vec3 color = texture(textureSrc, passUV).rgb;
++	colorOut0 = vec4(semuRenderHookApply(color, passUV), 1.0);
++}
++)";
++	return source;
++}
++
++static RendererOutputShader* semuRenderHookShader(bool renderUpsideDown)
++{
++	static std::unique_ptr<RendererOutputShader> normalShader;
++	static std::unique_ptr<RendererOutputShader> upsideDownShader;
++	std::unique_ptr<RendererOutputShader>& slot = renderUpsideDown ? upsideDownShader : normalShader;
++
++	if (slot)
++		return slot.get();
++
++	try
++	{
++		std::string vertexSource = g_renderer->GetType() == RendererAPI::OpenGL
++			? RendererOutputShader::GetOpenGlVertexSource(renderUpsideDown)
++			: RendererOutputShader::GetVulkanVertexSource(renderUpsideDown);
++		slot = std::make_unique<RendererOutputShader>(vertexSource, semuRenderHookFragmentSource());
++		return slot.get();
++	}
++	catch (...)
++	{
++		slot.reset();
++		return nullptr;
++	}
++}
++
++static bool semuRenderHookComposeFrame(RendererOutputShader*& shader, bool renderUpsideDown,
++	sint32& imageX, sint32& imageY, sint32& imageWidth, sint32& imageHeight,
++	sint32 fullscreenWidth, sint32 fullscreenHeight, bool& clearBackground)
++{
++	SemuRenderHookPlan plan = semuRenderHookPlan();
++	bool composed = false;
++
++	if (!plan.active)
++		return false;
++
++	if (!plan.shaders && !plan.bezels)
++		return true;
++
++	if (plan.bezels && fullscreenWidth > 32 && fullscreenHeight > 32 && imageWidth > 16 && imageHeight > 16)
++	{
++		const sint32 marginX = imageWidth / 18;
++		const sint32 marginY = imageHeight / 16;
++		if (marginX > 0 && marginY > 0 && imageWidth - marginX * 2 > 16 && imageHeight - marginY * 2 > 16)
++		{
++			imageX += marginX;
++			imageY += marginY;
++			imageWidth -= marginX * 2;
++			imageHeight -= marginY * 2;
++			clearBackground = true;
++			composed = true;
++		}
++	}
++
++	if (plan.shaders)
++	{
++		if (RendererOutputShader* semuShader = semuRenderHookShader(renderUpsideDown))
++		{
++			shader = semuShader;
++			composed = true;
++		}
++	}
++
++	return composed;
++}
++
++static void semuRenderHookProof(const char* emulator)
++{
++	static bool logged = false;
++	if (!semuRenderHookEnabled() || logged)
++		return;
++
++	const char* system = std::getenv("SEMU_SYSTEM");
++	const char* config = std::getenv("SEMU_RENDER_HOOK_CONFIG");
++	const char* shaders = std::getenv("SEMU_RENDER_SHADERS");
++	const char* bezels = std::getenv("SEMU_RENDER_BEZELS");
++	std::fprintf(stderr, "semu-source-hook: applied emulator=%s system=%s config=%s shaders=%s bezels=%s\n", emulator,
++		system != nullptr ? system : "", config != nullptr ? config : "",
++		shaders != nullptr ? shaders : "", bezels != nullptr ? bezels : "");
++
++	const char* proof = std::getenv("SEMU_RENDER_HOOK_PROOF");
++	if (proof != nullptr && proof[0] != '\0')
++	{
++		std::FILE* proofFile = std::fopen(proof, "a");
++		if (proofFile != nullptr)
++		{
++			std::fprintf(proofFile, "semu-render-hook:%s:game_framebuffer:config=%s\n", emulator,
++				config != nullptr ? config : "");
++			std::fclose(proofFile);
++		}
++	}
++
++	logged = true;
++}
++
+ struct LatteMRTQuad
+ {
+ 	sint32 width;
+@@ -971,7 +1202,11 @@
+ 		}
+ 	}
+ 	cemu_assert(shader);
++	bool semuRenderHookComposed = semuRenderHookComposeFrame(shader, renderUpsideDown, imageX, imageY, imageWidth, imageHeight,
++		fullscreenWidth, fullscreenHeight, clearBackground);
+ 	g_renderer->DrawBackbufferQuad(textureView, shader, filter==LatteTextureView::MagFilter::kLinear, imageX, imageY, imageWidth, imageHeight, isPadView, clearBackground);
++	if (semuRenderHookComposed)
++		semuRenderHookProof("cemu");
+ 	g_renderer->HandleScreenshotRequest(textureView, isPadView);
+ 	if (!g_renderer->ImguiBegin(!isPadView))
+ 		return;

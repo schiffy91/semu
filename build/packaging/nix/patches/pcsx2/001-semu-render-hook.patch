@@ -1,0 +1,309 @@
+--- a/pcsx2/GS/Renderers/Common/GSRenderer.cpp	2026-06-14 00:27:08
++++ b/pcsx2/GS/Renderers/Common/GSRenderer.cpp	2026-06-14 00:32:14
+@@ -28,6 +28,9 @@
+ #include <array>
+ #include <deque>
+ #include <thread>
++#include <cstdio>
++#include <cstdlib>
++#include <cstring>
+ #include <mutex>
+ 
+ static void DumpGSPrivRegs(const GSPrivRegSet& r, const std::string& filename);
+@@ -41,6 +44,258 @@
+ static std::deque<std::thread> s_screenshot_threads;
+ static std::mutex s_screenshot_threads_mutex;
+ 
++enum class SemuRenderHookProfile
++{
++	None,
++	Crt,
++};
++
++struct SemuRenderHookFrame
++{
++	GSVector4 content_rect;
++	bool shaders = false;
++	bool bezels = false;
++	bool active = false;
++};
++
++static bool semuRenderHookEnabled()
++{
++	const char* enabled = std::getenv("SEMU_RENDER_HOOK");
++	return enabled != nullptr && enabled[0] != '\0' && enabled[0] != '0';
++}
++
++static bool semuRenderHookEnvBool(const char* name, bool fallback)
++{
++	const char* value = std::getenv(name);
++	if (value == nullptr || value[0] == '\0')
++		return fallback;
++
++	return value[0] != '0' && value[0] != 'f' && value[0] != 'F' && value[0] != 'n' &&
++	       value[0] != 'N';
++}
++
++static SemuRenderHookProfile semuRenderHookProfileForSystem(const char* system)
++{
++	if (system == nullptr || system[0] == '\0')
++		return SemuRenderHookProfile::None;
++	if (std::strcmp(system, "ps2") == 0)
++		return SemuRenderHookProfile::Crt;
++	return SemuRenderHookProfile::None;
++}
++
++static const char* semuRenderHookProfileName(SemuRenderHookProfile profile)
++{
++	switch (profile)
++	{
++	case SemuRenderHookProfile::Crt:
++		return "crt";
++	default:
++		return "none";
++	}
++}
++
++static size_t semuRenderHookReadConfig(const char* path, char* buffer, size_t size)
++{
++	if (path == nullptr || path[0] == '\0' || buffer == nullptr || size < 2)
++		return 0;
++
++	std::FILE* file = std::fopen(path, "rb");
++	if (file == nullptr)
++		return 0;
++
++	const size_t used = std::fread(buffer, 1, size - 1, file);
++	buffer[used] = '\0';
++	std::fclose(file);
++	return used;
++}
++
++static bool semuRenderHookConfigBoolIsFalse(const char* config, const char* key)
++{
++	if (config == nullptr || key == nullptr)
++		return false;
++
++	const char* cursor = std::strstr(config, key);
++	if (cursor == nullptr)
++		return false;
++
++	cursor = std::strchr(cursor, ':');
++	if (cursor == nullptr)
++		return false;
++	cursor++;
++
++	while (*cursor == ' ' || *cursor == '\t' || *cursor == '\r' || *cursor == '\n')
++		cursor++;
++
++	return std::strncmp(cursor, "false", 5) == 0;
++}
++
++static bool semuRenderHookConfigHasSystem(const char* config, const char* system)
++{
++	if (config == nullptr || system == nullptr || system[0] == '\0' || std::strlen(system) > 32)
++		return true;
++
++	char needle[64];
++	std::snprintf(needle, sizeof(needle), "\"id\": \"%s\"", system);
++	if (std::strstr(config, needle) != nullptr)
++		return true;
++
++	std::snprintf(needle, sizeof(needle), "\"id\":\"%s\"", system);
++	return std::strstr(config, needle) != nullptr;
++}
++
++static float semuRenderHookRectWidth(const GSVector4& rect)
++{
++	return std::max(0.0f, rect.z - rect.x);
++}
++
++static float semuRenderHookRectHeight(const GSVector4& rect)
++{
++	return std::max(0.0f, rect.w - rect.y);
++}
++
++static GSVector4 semuRenderHookInsetContentRect(const GSVector4& frame_rect)
++{
++	const float width = semuRenderHookRectWidth(frame_rect);
++	const float height = semuRenderHookRectHeight(frame_rect);
++	if (width < 32.0f || height < 32.0f)
++		return frame_rect;
++
++	const float margin_x = std::max(4.0f, width / 14.0f);
++	const float margin_y = std::max(4.0f, height / 12.0f);
++	if (margin_x * 2.0f + 8.0f >= width || margin_y * 2.0f + 8.0f >= height)
++		return frame_rect;
++
++	return GSVector4(frame_rect.x + margin_x, frame_rect.y + margin_y, frame_rect.z - margin_x,
++		frame_rect.w - margin_y);
++}
++
++static SemuRenderHookFrame semuRenderHookComposeFrame(const GSVector4& draw_rect)
++{
++	SemuRenderHookFrame frame;
++	frame.content_rect = draw_rect;
++
++	if (!semuRenderHookEnabled() || semuRenderHookRectWidth(draw_rect) < 8.0f ||
++		semuRenderHookRectHeight(draw_rect) < 8.0f)
++	{
++		return frame;
++	}
++
++	const char* system = std::getenv("SEMU_SYSTEM");
++	const SemuRenderHookProfile profile = semuRenderHookProfileForSystem(system);
++	if (profile == SemuRenderHookProfile::None)
++		return frame;
++
++	frame.shaders = semuRenderHookEnvBool("SEMU_RENDER_SHADERS", true);
++	frame.bezels = semuRenderHookEnvBool("SEMU_RENDER_BEZELS", true);
++
++	char config[65536];
++	const char* config_path = std::getenv("SEMU_RENDER_HOOK_CONFIG");
++	const size_t config_size = semuRenderHookReadConfig(config_path, config, sizeof(config));
++	if (config_size > 0)
++	{
++		if (!semuRenderHookConfigHasSystem(config, system))
++			return frame;
++		if (semuRenderHookConfigBoolIsFalse(config, "\"shaders_enabled\""))
++			frame.shaders = false;
++		if (semuRenderHookConfigBoolIsFalse(config, "\"bezels_enabled\""))
++			frame.bezels = false;
++	}
++
++	if (!frame.shaders && !frame.bezels)
++		return frame;
++
++	if (frame.bezels)
++		frame.content_rect = semuRenderHookInsetContentRect(draw_rect);
++
++	frame.active = true;
++	return frame;
++}
++
++static void semuRenderHookProof(const char* emulator)
++{
++	static bool logged = false;
++	if (!semuRenderHookEnabled() || logged)
++		return;
++
++	const char* system = std::getenv("SEMU_SYSTEM");
++	const char* config = std::getenv("SEMU_RENDER_HOOK_CONFIG");
++	const SemuRenderHookProfile profile = semuRenderHookProfileForSystem(system);
++	std::fprintf(stderr, "semu-source-hook: applied emulator=%s system=%s profile=%s config=%s\n",
++		emulator, system != nullptr ? system : "", semuRenderHookProfileName(profile),
++		config != nullptr ? config : "");
++
++	const char* proof = std::getenv("SEMU_RENDER_HOOK_PROOF");
++	if (proof != nullptr && proof[0] != '\0')
++	{
++		std::FILE* proof_file = std::fopen(proof, "a");
++		if (proof_file != nullptr)
++		{
++			std::fprintf(proof_file, "semu-render-hook:%s:game_framebuffer:config=%s\n", emulator,
++				config != nullptr ? config : "");
++			std::fclose(proof_file);
++		}
++	}
++
++	logged = true;
++}
++
++static void semuRenderHookPresentContent(GSTexture* current, const GSVector4& src_uv,
++	const GSVector4& content_rect, bool linear)
++{
++	const float content_height = semuRenderHookRectHeight(content_rect);
++	if (content_height < 8.0f)
++	{
++		g_gs_device->PresentRect(current, src_uv, nullptr, content_rect, PresentShader::COPY, 0.0f,
++			linear);
++		return;
++	}
++
++	const int pixel_height = std::max(1, static_cast<int>(content_height + 0.5f));
++	const int period = std::max(2, pixel_height / 240);
++	const int stripe_height = std::max(1, period - 1);
++	const float source_height = src_uv.w - src_uv.y;
++
++	for (int y = 0; y < pixel_height; y += period)
++	{
++		const int stripe_bottom = std::min(pixel_height, y + stripe_height);
++		if (stripe_bottom <= y)
++			continue;
++
++		const float dst_y0 = content_rect.y + content_height * static_cast<float>(y) /
++			static_cast<float>(pixel_height);
++		const float dst_y1 = content_rect.y + content_height * static_cast<float>(stripe_bottom) /
++			static_cast<float>(pixel_height);
++		const float src_y0 = src_uv.y + source_height * static_cast<float>(y) /
++			static_cast<float>(pixel_height);
++		const float src_y1 = src_uv.y + source_height * static_cast<float>(stripe_bottom) /
++			static_cast<float>(pixel_height);
++
++		g_gs_device->PresentRect(current, GSVector4(src_uv.x, src_y0, src_uv.z, src_y1), nullptr,
++			GSVector4(content_rect.x, dst_y0, content_rect.z, dst_y1), PresentShader::COPY, 0.0f,
++			linear);
++	}
++}
++
++static bool semuRenderHookPresentFrame(GSTexture* current, const GSVector4& src_uv,
++	const GSVector4& draw_rect, bool linear)
++{
++	const SemuRenderHookFrame frame = semuRenderHookComposeFrame(draw_rect);
++	if (!frame.active)
++		return false;
++
++	if (frame.shaders)
++	{
++		semuRenderHookPresentContent(current, src_uv, frame.content_rect, linear);
++	}
++	else
++	{
++		g_gs_device->PresentRect(current, src_uv, nullptr, frame.content_rect, PresentShader::COPY,
++			0.0f, linear);
++	}
++
++	return true;
++}
++
+ std::unique_ptr<GSRenderer> g_gs_renderer;
+ 
+ // Since we read this on the EE thread, we can't put it in the renderer, because
+@@ -695,8 +950,16 @@
+ 				const u64 current_time = Common::Timer::GetCurrentValue();
+ 				const float shader_time = static_cast<float>(Common::Timer::ConvertValueToSeconds(current_time - m_shader_time_start));
+ 
+-				g_gs_device->PresentRect(current, src_uv, nullptr, draw_rect,
+-					s_tv_shader_indices[GSConfig.TVShader], shader_time, GSConfig.LinearPresent != GSPostBilinearMode::Off);
++				const bool linear_present = GSConfig.LinearPresent != GSPostBilinearMode::Off;
++				if (semuRenderHookPresentFrame(current, src_uv, draw_rect, linear_present))
++				{
++					semuRenderHookProof("pcsx2");
++				}
++				else
++				{
++					g_gs_device->PresentRect(current, src_uv, nullptr, draw_rect,
++						s_tv_shader_indices[GSConfig.TVShader], shader_time, linear_present);
++				}
+ 			}
+ 
+ 			EndPresentFrame();
+@@ -944,8 +1207,16 @@
+ 			const u64 current_time = Common::Timer::GetCurrentValue();
+ 			const float shader_time = static_cast<float>(Common::Timer::ConvertValueToSeconds(current_time - m_shader_time_start));
+ 
+-			g_gs_device->PresentRect(current, src_uv, nullptr, draw_rect,
+-				s_tv_shader_indices[GSConfig.TVShader], shader_time, GSConfig.LinearPresent != GSPostBilinearMode::Off);
++			const bool linear_present = GSConfig.LinearPresent != GSPostBilinearMode::Off;
++			if (semuRenderHookPresentFrame(current, src_uv, draw_rect, linear_present))
++			{
++				semuRenderHookProof("pcsx2");
++			}
++			else
++			{
++				g_gs_device->PresentRect(current, src_uv, nullptr, draw_rect,
++					s_tv_shader_indices[GSConfig.TVShader], shader_time, linear_present);
++			}
+ 		}
+ 
+ 		EndPresentFrame();

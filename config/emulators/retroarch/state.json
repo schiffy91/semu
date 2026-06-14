@@ -1,0 +1,27 @@
+{
+  "schema_version": 1,
+  "directories": [
+    "emulators/retroarch/xdg/config/retroarch",
+    "emulators/retroarch/xdg/config/retroarch/config",
+    "emulators/retroarch/xdg/config/retroarch/config/Mupen64Plus-Next",
+    "emulators/retroarch/xdg/config/retroarch/playlists/builtin",
+    "emulators/retroarch/xdg/data/retroarch/saves",
+    "emulators/retroarch/xdg/data/retroarch/states",
+    "emulators/retroarch/xdg/data/retroarch/system",
+    "emulators/retroarch/xdg/cache/retroarch"
+  ],
+  "templates": [
+    {
+      "source": "retroarch.cfg",
+      "output": "emulators/retroarch/xdg/config/retroarch/retroarch.cfg"
+    },
+    {
+      "source": "semu-overrides.cfg",
+      "output": "emulators/retroarch/xdg/config/retroarch/semu-overrides.cfg"
+    },
+    {
+      "source": "Mupen64Plus-Next.opt",
+      "output": "emulators/retroarch/xdg/config/retroarch/config/Mupen64Plus-Next/Mupen64Plus-Next.opt"
+    }
+  ]
+}

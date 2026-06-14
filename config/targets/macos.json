@@ -1,0 +1,41 @@
+{
+  "schema_version": 1,
+  "id": "macos",
+  "name": "macOS",
+  "platform": "macos",
+  "frontend": "ES-DE",
+  "systems": [
+    "gb",
+    "gbc",
+    "gba",
+    "nes",
+    "snes",
+    "genesis",
+    "n64",
+    "nds",
+    "dreamcast",
+    "psx",
+    "ps2",
+    "psp",
+    "n3ds",
+    "gc",
+    "wii",
+    "wiiu",
+    "switch"
+  ],
+  "emulator_ids": [
+    "retroarch",
+    "dolphin",
+    "azahar",
+    "pcsx2",
+    "cemu",
+    "ryujinx",
+    "ares"
+  ],
+  "rom_policy": {
+    "external_roots": "read_only",
+    "allow_in_place_metadata": false,
+    "generated_metadata_root": "${semu_home}/generated/es-de",
+    "owned_state_root": "${semu_home}/state"
+  }
+}

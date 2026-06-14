@@ -1,0 +1,35 @@
+import std.vector;
+import ../lib/owned_paths.btrc;
+import std.fs;
+class SemuCompilerLexer {
+    class Vector<string> jsonIds(string project, string directory) {
+        Vector<string> ids = [];
+        string root = joinPath(SemuOwnedPaths.definitionRoot(project), directory);
+        if (!FileSystem.isDir(root)) {
+            return ids;
+        }
+        for name in FileSystem.listDir(root) {
+            if (!name.endsWith(".json")) {
+                continue;
+            }
+            string id = name.substring(0, name.len() - 5);
+            ids.push(id);
+        }
+        return ids;
+    }
+
+    class Vector<string> emulatorIds(string project) {
+        Vector<string> ids = [];
+        string root = joinPath(SemuOwnedPaths.definitionRoot(project), "emulators");
+        if (!FileSystem.isDir(root)) {
+            return ids;
+        }
+        for name in FileSystem.listDir(root) {
+            string path = joinPath(root, name);
+            if (FileSystem.isDir(path) && FileSystem.isFile(joinPath(path, "emulator.json"))) {
+                ids.push(name);
+            }
+        }
+        return ids;
+    }
+}

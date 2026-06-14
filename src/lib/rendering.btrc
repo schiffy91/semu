@@ -1,0 +1,194 @@
+import std.fs;
+import std.json;
+import std.strings;
+import std.vector;
+import ./owned_paths.btrc;
+
+class SemuEmulatorRenderingDefinition {
+    public string raw;
+    public string renderer;
+
+    public SemuEmulatorRenderingDefinition(string raw) {
+        self.raw = raw;
+        self.renderer = JsonText.objectField(raw, "semu_renderer");
+    }
+
+    public string field(string key, string fallback) {
+        if (self.renderer.isEmpty()) {
+            return fallback;
+        }
+        string value = SemuRenderingDefinition.cleanValue(JsonText.field(self.renderer, key, fallback));
+        return value.isEmpty() ? fallback : value;
+    }
+
+    public bool boolField(string key, bool fallback) {
+        string value = self.field(key, fallback ? "true" : "false");
+        if (value.equals("true")) {
+            return true;
+        }
+        if (value.equals("false")) {
+            return false;
+        }
+        return fallback;
+    }
+
+    class SemuEmulatorRenderingDefinition load(string project, string emulator) {
+        string path = SemuOwnedPaths.emulatorFile(project, emulator, "rendering.json");
+        return SemuEmulatorRenderingDefinition(FileSystem.isFile(path) ? FileSystem.readText(path) : "{}");
+    }
+}
+
+class SemuRenderingDefinition {
+    public string raw;
+    public string overrideRaw;
+    public string viewport;
+    public string overrideViewport;
+    public string renderer;
+    public string overrideRenderer;
+
+    public SemuRenderingDefinition(string raw, string overrideRaw) {
+        self.raw = raw;
+        self.overrideRaw = overrideRaw;
+        self.viewport = JsonText.objectField(raw, "content_viewport");
+        self.overrideViewport = JsonText.objectField(overrideRaw, "content_viewport");
+        self.renderer = JsonText.objectField(raw, "renderer");
+        self.overrideRenderer = JsonText.objectField(overrideRaw, "renderer");
+    }
+
+    public string field(string key, string fallback) {
+        string value = SemuRenderingDefinition.cleanValue(JsonText.field(self.overrideRaw, key, ""));
+        return value.isEmpty() ? JsonText.field(self.raw, key, fallback) : value;
+    }
+
+    public string pathField(string path, string fallback) {
+        string value = SemuRenderingDefinition.cleanValue(SemuRenderingDefinition.pathFieldIn(self.overrideRaw, path, ""));
+        return value.isEmpty() ? SemuRenderingDefinition.pathFieldIn(self.raw, path, fallback) : value;
+    }
+
+    public string viewportField(string key, string fallback) {
+        string value = SemuRenderingDefinition.cleanValue(JsonText.field(self.overrideViewport, key, ""));
+        if (!value.isEmpty()) {
+            return value;
+        }
+        return JsonText.field(self.viewport, key, fallback);
+    }
+
+    public string rendererObject(string key) {
+        string overrideObject = JsonText.objectField(self.overrideRenderer, key);
+        if (!overrideObject.isEmpty()) {
+            return overrideObject;
+        }
+        return JsonText.objectField(self.renderer, key);
+    }
+
+    public string rendererField(string objectKey, string fieldKey, string fallback) {
+        string object = self.rendererObject(objectKey);
+        if (object.isEmpty()) {
+            return fallback;
+        }
+        return SemuRenderingDefinition.cleanValue(JsonText.field(object, fieldKey, fallback));
+    }
+
+    public string nativeSize() {
+        string native = JsonText.objectField(self.overrideViewport, "native_size");
+        if (native.isEmpty()) {
+            native = JsonText.objectField(self.viewport, "native_size");
+        }
+        string width = JsonText.field(native, "width", "");
+        string height = JsonText.field(native, "height", "");
+        if (width.isEmpty() || height.isEmpty()) {
+            return "";
+        }
+        return width + "x" + height;
+    }
+
+    public string contentAspect() {
+        return self.viewportField("content_aspect", self.viewportField("default_aspect", "4:3"));
+    }
+
+    public string layoutKind() {
+        string layout = JsonText.objectField(self.viewport, "layout");
+        return JsonText.field(layout, "kind", "single");
+    }
+
+    public string scalePolicy() {
+        return self.viewportField("scale_policy", "aspect_preserve");
+    }
+
+    public string dynamicAspectFlag() {
+        string value = self.viewportField("dynamic_aspect", "false");
+        return value.equals("true") ? "1" : "0";
+    }
+
+    public string bezelEffectFile() {
+        return self.rendererField("bezel", "composition_effect_file", "");
+    }
+
+    public string shaderEffectFile() {
+        return self.rendererField("shader", "effect_file", "");
+    }
+
+    class SemuRenderingDefinition load(string project, string systemId) {
+        string path = SemuOwnedPaths.systemAssetFile(project, systemId);
+        string overridePath = joinPath(joinPath(SemuOwnedPaths.overrides(project), "rendering"), systemId + ".json");
+        if (!FileSystem.isFile(path)) {
+            return SemuRenderingDefinition("{}", FileSystem.isFile(overridePath) ? FileSystem.readText(overridePath) : "{}");
+        }
+        return SemuRenderingDefinition(FileSystem.readText(path), FileSystem.isFile(overridePath) ? FileSystem.readText(overridePath) : "{}");
+    }
+
+    class string pathFieldIn(string raw, string path, string fallback) {
+        if (raw.isEmpty() || path.isEmpty()) {
+            return fallback;
+        }
+        Vector<string> parts = Strings.split(path, ".");
+        if (parts.len == 0) {
+            return fallback;
+        }
+        string object = raw;
+        for (int i = 0; i < parts.len - 1; i++) {
+            object = JsonText.objectField(object, parts.get(i));
+            if (object.isEmpty()) {
+                return fallback;
+            }
+        }
+        return SemuRenderingDefinition.cleanValue(JsonText.field(object, parts.get(parts.len - 1), fallback));
+    }
+
+    class string nestedOverrideJson(string path, string value) {
+        Vector<string> parts = Strings.split(path, ".");
+        if (parts.len == 0) {
+            return "{\n}\n";
+        }
+        string rendered = SemuRenderingDefinition.jsonValue(value);
+        for (int i = parts.len - 1; i >= 0; i--) {
+            rendered = "{\n  \"" + JsonObject.escape(parts.get(i)) + "\": " + SemuRenderingDefinition.indentJson(rendered) + "\n}";
+        }
+        return rendered + "\n";
+    }
+
+    class string jsonValue(string value) {
+        if (value.equals("true") || value.equals("false") || value.equals("null")) {
+            return value;
+        }
+        return "\"" + JsonObject.escape(value) + "\"";
+    }
+
+    class string cleanValue(string value) {
+        return value.equals("null") ? "" : value;
+    }
+
+    class string indentJson(string value) {
+        Vector<string> lines = Strings.split(value, "\n");
+        Vector<string> rendered = [];
+        for line in lines {
+            if (!line.isEmpty()) {
+                rendered.push(line);
+            }
+        }
+        if (rendered.len == 0) {
+            return value;
+        }
+        return rendered.join("\n  ");
+    }
+}

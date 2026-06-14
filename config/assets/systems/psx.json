@@ -1,0 +1,61 @@
+{
+  "schema_version": 2,
+  "system": "psx",
+  "label": "Sony PlayStation",
+  "default_emulator": "RETROARCH",
+  "emulator": "retroarch",
+  "emulator_config": "retroarch.cfg core-options",
+  "hardware_display": "consumer CRT over composite/S-Video",
+  "display_class": "crt_tv",
+  "content_viewport": {
+    "native_size": {
+      "width": 320,
+      "height": 240
+    },
+    "alternate_native_sizes": [
+      {
+        "width": 640,
+        "height": 480
+      }
+    ],
+    "content_aspect": "4:3",
+    "default_aspect": "4:3",
+    "dynamic_aspect": false,
+    "layout": {
+      "kind": "single",
+      "screens": [
+        {
+          "id": "main",
+          "native_size": {
+            "width": 320,
+            "height": 240
+          },
+          "content_aspect": "4:3"
+        }
+      ]
+    },
+    "scale_policy": "aspect_preserve"
+  },
+  "renderer": {
+    "model": "semu_source_hook_renderer",
+    "viewport_source": "content_viewport",
+    "profile": "crt_240p_480i",
+    "shader": {
+      "family": "crt_240p",
+      "enabled_by_default": true,
+      "intent": "PS1 240p/480i CRT with analog softness",
+      "source_asset": "crt/crt-royale.slangp",
+      "widescreen_source_asset": null,
+      "effect_file": "semu-crt.fx"
+    },
+    "bezel": {
+      "family": "sony_or_panasonic_crt",
+      "enabled_by_default": true,
+      "intent": "elegant Panasonic or Sony consumer CRT",
+      "source_asset": "Mega_Bezel_Packs/Duimon-Vintage-TV/Presets/Potato/Panasonic_Panacolor_TH20-B8/TH20-B8-[POTATO].slangp",
+      "widescreen_source_asset": null,
+      "composition_effect_file": "semu-crt-bezel.fx"
+    }
+  },
+  "notes": "Preserve wobble/softness instead of HD-cleaning the output."
+}

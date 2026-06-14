@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "id": "melonds",
+  "name": "melonDS",
+  "kind": "standalone",
+  "platforms": [
+    "linux"
+  ],
+  "targets": [
+    "linux",
+    "steam-deck",
+    "bazzite"
+  ],
+  "servedSystems": [
+    "nds"
+  ],
+  "package": {
+    "file": "package.nix",
+    "intent": "Use melonDS as the Linux primary Nintendo DS emulator; macOS DS routes through RetroArch.",
+    "source": "nixpkgs"
+  }
+}

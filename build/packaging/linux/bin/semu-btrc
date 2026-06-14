@@ -1,0 +1,42 @@
+#!/usr/bin/env sh
+set -eu
+
+here="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd -P)"
+
+usable_cli() {
+  [ -n "$1" ] && [ -x "$1" ] || return 1
+  case "$1" in
+    *.AppImage|*.appimage) return 1 ;;
+  esac
+  return 0
+}
+
+find_cli() {
+  for candidate in \
+      "${SEMU_CLI:-}" \
+      "$here/semu" \
+      "$here/../semu" \
+      "${APPDIR:-}/usr/bin/semu" \
+      "${SEMU_ASSET_ROOT:-}/result-full/bin/semu" \
+      "$HOME/semu/result-full/bin/semu" \
+      "$here/../../../build/out/semu" \
+      "${SEMU_PROJECT_DIR:-}/build/out/semu" \
+      "${SEMU_ASSET_ROOT:-}/build/out/semu" \
+      "$HOME/semu/build/out/semu" \
+      "$HOME/Applications/Semu/semu" \
+      "$(command -v semu || true)"; do
+    usable_cli "$candidate" || continue
+    printf '%s\n' "$candidate"
+    return 0
+  done
+  return 1
+}
+
+cli="$(find_cli || true)"
+
+if [ -z "$cli" ] || [ ! -x "$cli" ]; then
+  echo "semu-btrc: compiled BTRC CLI not found" >&2
+  exit 127
+fi
+
+exec "$cli" "$@"

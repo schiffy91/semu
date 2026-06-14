@@ -1,0 +1,550 @@
+--- a/src/frontend/qt_sdl/Screen.cpp
++++ b/src/frontend/qt_sdl/Screen.cpp
+@@ -18,6 +18,9 @@
+ 
+ #include <string.h>
+ 
++#include <cstdio>
++#include <cstdlib>
++#include <cstring>
+ #include <optional>
+ #include <cmath>
+ 
+@@ -45,6 +48,528 @@
+ #include "version.h"
+ 
+ using namespace melonDS;
++
++static const int SEMU_RENDER_PROFILE_NONE = 0;
++static const int SEMU_RENDER_PROFILE_NDS = 1;
++static const int SEMU_RENDER_PROFILE_N3DS = 2;
++
++struct SemuRenderHookRect
++{
++    int x;
++    int y;
++    int w;
++    int h;
++};
++
++struct SemuRenderHookPlan
++{
++    int profile;
++    int nativeWidth;
++    int nativeHeight;
++    bool shaders;
++    bool bezels;
++};
++
++struct SemuRenderHookGlResources
++{
++    GLuint program = 0;
++    GLuint texture = 0;
++    GLuint vao = 0;
++    GLuint vbo = 0;
++    bool failed = false;
++};
++
++static SemuRenderHookGlResources semuRenderHookGl;
++
++static bool semuRenderHookEnabled()
++{
++    const char* enabled = std::getenv("SEMU_RENDER_HOOK");
++    return enabled != nullptr && enabled[0] != '\0' && enabled[0] != '0';
++}
++
++static bool semuRenderHookEnvBool(const char* name, bool fallback)
++{
++    const char* value = std::getenv(name);
++    if (value == nullptr || value[0] == '\0')
++        return fallback;
++    return value[0] != '0' && value[0] != 'f' && value[0] != 'F'
++        && value[0] != 'n' && value[0] != 'N';
++}
++
++static int semuRenderHookProfileForSystem(const char* system)
++{
++    if (system == nullptr)
++        return SEMU_RENDER_PROFILE_NONE;
++    if (std::strcmp(system, "nds") == 0)
++        return SEMU_RENDER_PROFILE_NDS;
++    if (std::strcmp(system, "n3ds") == 0)
++        return SEMU_RENDER_PROFILE_N3DS;
++    return SEMU_RENDER_PROFILE_NONE;
++}
++
++static const char* semuRenderHookProfileName(int profile)
++{
++    if (profile == SEMU_RENDER_PROFILE_NDS)
++        return "nds_dual_lcd";
++    if (profile == SEMU_RENDER_PROFILE_N3DS)
++        return "n3ds_dual_lcd";
++    return "none";
++}
++
++static void semuRenderHookDefaultNativeSize(int profile, int* width, int* height)
++{
++    if (profile == SEMU_RENDER_PROFILE_N3DS)
++    {
++        *width = 400;
++        *height = 480;
++        return;
++    }
++    *width = 256;
++    *height = 384;
++}
++
++static size_t semuRenderHookReadConfig(const char* path, char* buffer, size_t size)
++{
++    if (path == nullptr || path[0] == '\0' || buffer == nullptr || size < 2)
++        return 0;
++
++    std::FILE* file = std::fopen(path, "rb");
++    if (file == nullptr)
++        return 0;
++
++    size_t used = std::fread(buffer, 1, size - 1, file);
++    buffer[used] = '\0';
++    std::fclose(file);
++    return used;
++}
++
++static bool semuRenderHookConfigBoolIsFalse(const char* config, const char* key)
++{
++    const char* cursor = config != nullptr ? std::strstr(config, key) : nullptr;
++    if (cursor == nullptr)
++        return false;
++
++    cursor = std::strchr(cursor, ':');
++    if (cursor == nullptr)
++        return false;
++    cursor++;
++
++    while (*cursor == ' ' || *cursor == '\t' || *cursor == '\r' || *cursor == '\n')
++        cursor++;
++    return std::strncmp(cursor, "false", 5) == 0;
++}
++
++static bool semuRenderHookConfigHasSystem(const char* config, const char* system)
++{
++    char needle[64];
++    if (config == nullptr || system == nullptr || system[0] == '\0' || std::strlen(system) > 32)
++        return true;
++
++    std::snprintf(needle, sizeof(needle), "\"id\": \"%s\"", system);
++    if (std::strstr(config, needle) != nullptr)
++        return true;
++
++    std::snprintf(needle, sizeof(needle), "\"id\":\"%s\"", system);
++    return std::strstr(config, needle) != nullptr;
++}
++
++static bool semuRenderHookConfigNativeSize(const char* config, int* width, int* height)
++{
++    const char* cursor = config != nullptr ? std::strstr(config, "\"native_size\"") : nullptr;
++    if (cursor == nullptr)
++        return false;
++
++    while (*cursor != '\0' && (*cursor < '0' || *cursor > '9'))
++        cursor++;
++    if (*cursor == '\0')
++        return false;
++
++    char* end = nullptr;
++    long parsedWidth = std::strtol(cursor, &end, 10);
++    if (end == cursor || (*end != 'x' && *end != 'X'))
++        return false;
++
++    cursor = end + 1;
++    long parsedHeight = std::strtol(cursor, &end, 10);
++    if (end == cursor || parsedWidth <= 0 || parsedHeight <= 0 || parsedWidth > 8192 || parsedHeight > 8192)
++        return false;
++
++    *width = static_cast<int>(parsedWidth);
++    *height = static_cast<int>(parsedHeight);
++    return true;
++}
++
++static bool semuRenderHookLoadPlan(SemuRenderHookPlan* plan)
++{
++    const char* system = std::getenv("SEMU_SYSTEM");
++    const char* configPath = std::getenv("SEMU_RENDER_HOOK_CONFIG");
++    char config[65536];
++    size_t configSize;
++
++    plan->profile = semuRenderHookProfileForSystem(system);
++    if (plan->profile == SEMU_RENDER_PROFILE_NONE)
++        return false;
++
++    semuRenderHookDefaultNativeSize(plan->profile, &plan->nativeWidth, &plan->nativeHeight);
++    plan->shaders = semuRenderHookEnvBool("SEMU_RENDER_SHADERS", true);
++    plan->bezels = semuRenderHookEnvBool("SEMU_RENDER_BEZELS", true);
++
++    configSize = semuRenderHookReadConfig(configPath, config, sizeof(config));
++    if (configSize > 0)
++    {
++        if (!semuRenderHookConfigHasSystem(config, system))
++            return false;
++        if (semuRenderHookConfigBoolIsFalse(config, "\"shaders_enabled\""))
++            plan->shaders = false;
++        if (semuRenderHookConfigBoolIsFalse(config, "\"bezels_enabled\""))
++            plan->bezels = false;
++        if (std::strstr(config, "dual_vertical_asymmetric") != nullptr)
++            plan->profile = SEMU_RENDER_PROFILE_N3DS;
++        else if (std::strstr(config, "dual_vertical") != nullptr)
++            plan->profile = SEMU_RENDER_PROFILE_NDS;
++        semuRenderHookConfigNativeSize(config, &plan->nativeWidth, &plan->nativeHeight);
++    }
++
++    return plan->shaders || plan->bezels;
++}
++
++static int semuRenderHookMaxInt(int left, int right)
++{
++    return left > right ? left : right;
++}
++
++static SemuRenderHookRect semuRenderHookFitRect(int width, int height, int nativeWidth,
++    int nativeHeight, int marginX, int marginY)
++{
++    SemuRenderHookRect rect = {0, 0, width, height};
++    int availableWidth = width - marginX * 2;
++    int availableHeight = height - marginY * 2;
++
++    if (width <= 0 || height <= 0 || nativeWidth <= 0 || nativeHeight <= 0
++        || availableWidth <= 4 || availableHeight <= 4)
++        return rect;
++
++    rect.w = availableWidth;
++    rect.h = static_cast<int>((static_cast<long long>(rect.w) * nativeHeight) / nativeWidth);
++    if (rect.h > availableHeight)
++    {
++        rect.h = availableHeight;
++        rect.w = static_cast<int>((static_cast<long long>(rect.h) * nativeWidth) / nativeHeight);
++    }
++
++    if (rect.w <= 0 || rect.h <= 0)
++        return {0, 0, width, height};
++
++    rect.x = (width - rect.w) / 2;
++    rect.y = (height - rect.h) / 2;
++    return rect;
++}
++
++static const char* semuRenderHookVertexShaderDesktop =
++    "#version 130\n"
++    "in vec2 a_pos;\n"
++    "in vec2 a_uv;\n"
++    "out vec2 v_uv;\n"
++    "void main() { v_uv = a_uv; gl_Position = vec4(a_pos, 0.0, 1.0); }\n";
++
++static const char* semuRenderHookVertexShaderGles =
++    "#version 300 es\n"
++    "in vec2 a_pos;\n"
++    "in vec2 a_uv;\n"
++    "out vec2 v_uv;\n"
++    "void main() { v_uv = a_uv; gl_Position = vec4(a_pos, 0.0, 1.0); }\n";
++
++static const char* semuRenderHookFragmentShaderDesktopPrefix =
++    "#version 130\n";
++
++static const char* semuRenderHookFragmentShaderGlesPrefix =
++    "#version 300 es\n"
++    "precision mediump float;\n";
++
++static const char* semuRenderHookFragmentShaderBody =
++    "uniform sampler2D u_frame;\n"
++    "uniform vec2 u_resolution;\n"
++    "uniform vec4 u_source_content;\n"
++    "uniform vec4 u_target_content;\n"
++    "uniform int u_profile;\n"
++    "uniform int u_shaders;\n"
++    "uniform int u_bezels;\n"
++    "in vec2 v_uv;\n"
++    "out vec4 o_color;\n"
++    "bool semuInside(vec4 r, vec2 p) { return p.x >= r.x && p.y >= r.y && p.x < r.x + r.z && p.y < r.y + r.w; }\n"
++    "vec4 semuScreenRect(vec4 content, int top, float gap) {\n"
++    "  float screen_h = floor((content.w - gap) * 0.5);\n"
++    "  float screen_w = content.z;\n"
++    "  float x = content.x;\n"
++    "  if (u_profile == 2 && top == 0) { screen_w = floor(content.z * 0.8); x = content.x + floor((content.z - screen_w) * 0.5); }\n"
++    "  float y = content.y + (top == 1 ? screen_h + gap : 0.0);\n"
++    "  return vec4(x, y, screen_w, screen_h);\n"
++    "}\n"
++    "vec3 semuFramePixel(vec2 p) {\n"
++    "  vec2 uv = p / max(u_resolution, vec2(1.0));\n"
++    "  float edge = min(min(uv.x, 1.0 - uv.x), min(uv.y, 1.0 - uv.y));\n"
++    "  vec3 base = u_profile == 2 ? vec3(0.035, 0.039, 0.045) : vec3(0.075, 0.078, 0.072);\n"
++    "  float shade = 0.92 + uv.x * 0.08 - uv.y * 0.04;\n"
++    "  base *= shade;\n"
++    "  if (abs(uv.y - 0.5) < 0.018) base *= 0.42;\n"
++    "  if (edge < 0.025) base *= 0.55;\n"
++    "  base += mod(floor(p.x * 13.0 + p.y * 7.0), 17.0) / 2600.0;\n"
++    "  return clamp(base, 0.0, 1.0);\n"
++    "}\n"
++    "vec3 semuApplyLcd(vec3 color, vec2 local) {\n"
++    "  if (u_shaders == 0) return color;\n"
++    "  float luma = dot(color, vec3(0.299, 0.587, 0.114));\n"
++    "  color = mix(vec3(luma), color, 0.94);\n"
++    "  float stripe = mod(floor(local.x), 3.0);\n"
++    "  if (stripe < 0.5) { color.g *= 0.90; color.b *= 0.88; }\n"
++    "  else if (stripe < 1.5) { color.r *= 0.91; color.b *= 0.90; }\n"
++    "  else { color.r *= 0.89; color.g *= 0.91; }\n"
++    "  color *= mod(floor(local.y), 2.0) < 0.5 ? 0.92 : 1.0;\n"
++    "  color *= u_profile == 2 ? vec3(0.98, 1.0, 1.03) : vec3(0.96, 1.02, 0.97);\n"
++    "  return clamp(color, 0.0, 1.0);\n"
++    "}\n"
++    "void main() {\n"
++    "  vec2 p = v_uv * u_resolution;\n"
++    "  float target_gap = u_bezels != 0 ? max(4.0, floor(u_target_content.w / 52.0)) : 0.0;\n"
++    "  vec4 target_top = semuScreenRect(u_target_content, 1, target_gap);\n"
++    "  vec4 target_bottom = semuScreenRect(u_target_content, 0, target_gap);\n"
++    "  vec4 source_top = semuScreenRect(u_source_content, 1, 0.0);\n"
++    "  vec4 source_bottom = semuScreenRect(u_source_content, 0, 0.0);\n"
++    "  vec4 target = target_top;\n"
++    "  vec4 source = source_top;\n"
++    "  bool in_screen = semuInside(target_top, p);\n"
++    "  if (!in_screen && semuInside(target_bottom, p)) { target = target_bottom; source = source_bottom; in_screen = true; }\n"
++    "  if (in_screen) {\n"
++    "    vec2 local = (p - target.xy) / max(target.zw, vec2(1.0));\n"
++    "    vec2 sample_px = source.xy + local * source.zw;\n"
++    "    vec2 sample_uv = clamp(sample_px / max(u_resolution, vec2(1.0)), vec2(0.0), vec2(1.0));\n"
++    "    vec3 color = texture(u_frame, sample_uv).rgb;\n"
++    "    o_color = vec4(semuApplyLcd(color, local * target.zw), 1.0);\n"
++    "  } else if (u_bezels != 0) {\n"
++    "    o_color = vec4(semuFramePixel(p), 1.0);\n"
++    "  } else {\n"
++    "    o_color = texture(u_frame, v_uv);\n"
++    "  }\n"
++    "}\n";
++
++static GLuint semuRenderHookCompileShader(GLenum type, const char* first, const char* second)
++{
++    GLuint shader = glCreateShader(type);
++    const char* sources[] = {first, second};
++    GLint status = GL_FALSE;
++    glShaderSource(shader, 2, sources, nullptr);
++    glCompileShader(shader);
++    glGetShaderiv(shader, GL_COMPILE_STATUS, &status);
++    if (status != GL_TRUE)
++    {
++        glDeleteShader(shader);
++        return 0;
++    }
++    return shader;
++}
++
++static GLuint semuRenderHookCreateProgram(const char* vertexShader, const char* fragmentPrefix)
++{
++    GLuint vertex = semuRenderHookCompileShader(GL_VERTEX_SHADER, vertexShader, "");
++    if (vertex == 0)
++        return 0;
++
++    GLuint fragment = semuRenderHookCompileShader(GL_FRAGMENT_SHADER, fragmentPrefix,
++        semuRenderHookFragmentShaderBody);
++    if (fragment == 0)
++    {
++        glDeleteShader(vertex);
++        return 0;
++    }
++
++    GLuint program = glCreateProgram();
++    GLint status = GL_FALSE;
++    glAttachShader(program, vertex);
++    glAttachShader(program, fragment);
++    glBindAttribLocation(program, 0, "a_pos");
++    glBindAttribLocation(program, 1, "a_uv");
++    glLinkProgram(program);
++    glGetProgramiv(program, GL_LINK_STATUS, &status);
++    glDeleteShader(vertex);
++    glDeleteShader(fragment);
++    if (status != GL_TRUE)
++    {
++        glDeleteProgram(program);
++        return 0;
++    }
++    return program;
++}
++
++static bool semuRenderHookEnsureGlResources()
++{
++    if (semuRenderHookGl.failed)
++        return false;
++    if (semuRenderHookGl.program != 0)
++        return true;
++
++    semuRenderHookGl.program = semuRenderHookCreateProgram(semuRenderHookVertexShaderDesktop,
++        semuRenderHookFragmentShaderDesktopPrefix);
++    if (semuRenderHookGl.program == 0)
++        semuRenderHookGl.program = semuRenderHookCreateProgram(semuRenderHookVertexShaderGles,
++            semuRenderHookFragmentShaderGlesPrefix);
++
++    if (semuRenderHookGl.program == 0)
++    {
++        semuRenderHookGl.failed = true;
++        return false;
++    }
++
++    glGenTextures(1, &semuRenderHookGl.texture);
++    glGenVertexArrays(1, &semuRenderHookGl.vao);
++    glGenBuffers(1, &semuRenderHookGl.vbo);
++    semuRenderHookGl.failed = semuRenderHookGl.texture == 0
++        || semuRenderHookGl.vao == 0 || semuRenderHookGl.vbo == 0;
++    return !semuRenderHookGl.failed;
++}
++
++static void semuRenderHookRestoreCapability(GLenum capability, GLboolean enabled)
++{
++    if (enabled)
++        glEnable(capability);
++    else
++        glDisable(capability);
++}
++
++static bool semuRenderHookComposeFrame(int framebufferWidth, int framebufferHeight)
++{
++    if (!semuRenderHookEnabled())
++        return false;
++
++    SemuRenderHookPlan plan;
++    if (!semuRenderHookLoadPlan(&plan))
++        return false;
++
++    GLint viewport[4] = {};
++    glGetIntegerv(GL_VIEWPORT, viewport);
++    if (viewport[2] <= 0 || viewport[3] <= 0)
++    {
++        viewport[0] = 0;
++        viewport[1] = 0;
++        viewport[2] = framebufferWidth;
++        viewport[3] = framebufferHeight;
++    }
++    if (viewport[2] <= 8 || viewport[3] <= 8)
++        return false;
++    if (!semuRenderHookEnsureGlResources())
++        return false;
++
++    int marginX = plan.bezels ? semuRenderHookMaxInt(8, viewport[2] / 18) : 0;
++    int marginY = plan.bezels ? semuRenderHookMaxInt(8, viewport[3] / 18) : 0;
++    SemuRenderHookRect source = semuRenderHookFitRect(viewport[2], viewport[3],
++        plan.nativeWidth, plan.nativeHeight, 0, 0);
++    SemuRenderHookRect target = semuRenderHookFitRect(viewport[2], viewport[3],
++        plan.nativeWidth, plan.nativeHeight, marginX, marginY);
++
++    GLint oldProgram = 0;
++    GLint oldActiveTexture = 0;
++    GLint oldTexture = 0;
++    GLint oldArrayBuffer = 0;
++    GLint oldVertexArray = 0;
++    GLint oldReadFramebuffer = 0;
++    GLboolean blendEnabled = glIsEnabled(GL_BLEND);
++    GLboolean depthEnabled = glIsEnabled(GL_DEPTH_TEST);
++    GLboolean scissorEnabled = glIsEnabled(GL_SCISSOR_TEST);
++    GLboolean stencilEnabled = glIsEnabled(GL_STENCIL_TEST);
++    GLboolean cullEnabled = glIsEnabled(GL_CULL_FACE);
++    const GLfloat vertices[] = {
++        -1.0f, -1.0f, 0.0f, 0.0f,
++         1.0f, -1.0f, 1.0f, 0.0f,
++        -1.0f,  1.0f, 0.0f, 1.0f,
++         1.0f,  1.0f, 1.0f, 1.0f,
++    };
++
++    glGetIntegerv(GL_CURRENT_PROGRAM, &oldProgram);
++    glGetIntegerv(GL_ACTIVE_TEXTURE, &oldActiveTexture);
++    glActiveTexture(GL_TEXTURE0);
++    glGetIntegerv(GL_TEXTURE_BINDING_2D, &oldTexture);
++    glGetIntegerv(GL_ARRAY_BUFFER_BINDING, &oldArrayBuffer);
++    glGetIntegerv(GL_VERTEX_ARRAY_BINDING, &oldVertexArray);
++    glGetIntegerv(GL_READ_FRAMEBUFFER_BINDING, &oldReadFramebuffer);
++
++    glBindFramebuffer(GL_READ_FRAMEBUFFER, 0);
++    glBindTexture(GL_TEXTURE_2D, semuRenderHookGl.texture);
++    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
++    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
++    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
++    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
++    glCopyTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, viewport[0], viewport[1], viewport[2], viewport[3], 0);
++
++    glUseProgram(semuRenderHookGl.program);
++    glUniform1i(glGetUniformLocation(semuRenderHookGl.program, "u_frame"), 0);
++    glUniform2f(glGetUniformLocation(semuRenderHookGl.program, "u_resolution"),
++        static_cast<GLfloat>(viewport[2]), static_cast<GLfloat>(viewport[3]));
++    glUniform4f(glGetUniformLocation(semuRenderHookGl.program, "u_source_content"),
++        static_cast<GLfloat>(source.x), static_cast<GLfloat>(source.y),
++        static_cast<GLfloat>(source.w), static_cast<GLfloat>(source.h));
++    glUniform4f(glGetUniformLocation(semuRenderHookGl.program, "u_target_content"),
++        static_cast<GLfloat>(target.x), static_cast<GLfloat>(target.y),
++        static_cast<GLfloat>(target.w), static_cast<GLfloat>(target.h));
++    glUniform1i(glGetUniformLocation(semuRenderHookGl.program, "u_profile"), plan.profile);
++    glUniform1i(glGetUniformLocation(semuRenderHookGl.program, "u_shaders"), plan.shaders ? 1 : 0);
++    glUniform1i(glGetUniformLocation(semuRenderHookGl.program, "u_bezels"), plan.bezels ? 1 : 0);
++
++    glDisable(GL_BLEND);
++    glDisable(GL_DEPTH_TEST);
++    glDisable(GL_SCISSOR_TEST);
++    glDisable(GL_STENCIL_TEST);
++    glDisable(GL_CULL_FACE);
++    glViewport(viewport[0], viewport[1], viewport[2], viewport[3]);
++
++    glBindVertexArray(semuRenderHookGl.vao);
++    glBindBuffer(GL_ARRAY_BUFFER, semuRenderHookGl.vbo);
++    glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STREAM_DRAW);
++    glEnableVertexAttribArray(0);
++    glEnableVertexAttribArray(1);
++    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(GLfloat), reinterpret_cast<const void*>(0));
++    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(GLfloat), reinterpret_cast<const void*>(2 * sizeof(GLfloat)));
++    glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
++
++    glBindVertexArray(static_cast<GLuint>(oldVertexArray));
++    glBindBuffer(GL_ARRAY_BUFFER, static_cast<GLuint>(oldArrayBuffer));
++    glBindTexture(GL_TEXTURE_2D, static_cast<GLuint>(oldTexture));
++    glActiveTexture(static_cast<GLenum>(oldActiveTexture));
++    glUseProgram(static_cast<GLuint>(oldProgram));
++    glBindFramebuffer(GL_READ_FRAMEBUFFER, static_cast<GLuint>(oldReadFramebuffer));
++    semuRenderHookRestoreCapability(GL_BLEND, blendEnabled);
++    semuRenderHookRestoreCapability(GL_DEPTH_TEST, depthEnabled);
++    semuRenderHookRestoreCapability(GL_SCISSOR_TEST, scissorEnabled);
++    semuRenderHookRestoreCapability(GL_STENCIL_TEST, stencilEnabled);
++    semuRenderHookRestoreCapability(GL_CULL_FACE, cullEnabled);
++    return true;
++}
++
++static void semuRenderHookProof(const char* emulator)
++{
++    static bool logged = false;
++    if (!semuRenderHookEnabled() || logged)
++        return;
++
++    const char* system = std::getenv("SEMU_SYSTEM");
++    const char* config = std::getenv("SEMU_RENDER_HOOK_CONFIG");
++    int profile = semuRenderHookProfileForSystem(system);
++    std::fprintf(stderr, "semu-source-hook: applied emulator=%s system=%s profile=%s config=%s\n",
++        emulator, system != nullptr ? system : "", semuRenderHookProfileName(profile),
++        config != nullptr ? config : "");
++
++    const char* proof = std::getenv("SEMU_RENDER_HOOK_PROOF");
++    if (proof != nullptr && proof[0] != '\0')
++    {
++        std::FILE* proofFile = std::fopen(proof, "a");
++        if (proofFile != nullptr)
++        {
++            std::fprintf(proofFile, "semu-render-hook:%s:game_framebuffer:config=%s\n",
++                emulator, config != nullptr ? config : "");
++            std::fclose(proofFile);
++        }
++    }
++
++    logged = true;
++}
+ 
+ #if !defined(_WIN32) && !defined(APPLE)
+ #if QT_VERSION >= QT_VERSION_CHECK(6, 5, 0)
+@@ -1169,6 +1694,8 @@
+         }
+ 
+         screenSettingsLock.unlock();
++        if (semuRenderHookComposeFrame(w, h))
++            semuRenderHookProof("melonds");
+     }
+ 
+     osdUpdate();

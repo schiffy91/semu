@@ -1,0 +1,5 @@
+mupen64plus-rdp-plugin = "angrylion"
+mupen64plus-rsp-plugin = "parallel"
+mupen64plus-angrylion-multithread = "all threads"
+mupen64plus-angrylion-vioverlay = "Filtered"
+mupen64plus-aspect = "4:3"

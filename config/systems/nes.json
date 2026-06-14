@@ -1,0 +1,63 @@
+{
+  "schema_version": 1,
+  "id": "nes",
+  "fullname": "Nintendo Entertainment System",
+  "platform": "nes",
+  "theme": "nes",
+  "rom_dir": "nes",
+  "extensions": [
+    ".3dsen",
+    ".bin",
+    ".fds",
+    ".nes",
+    ".unf",
+    ".unif",
+    ".7z",
+    ".zip"
+  ],
+  "routes": {
+    "linux": [
+      {
+        "role": "primary",
+        "emulator": "retroarch",
+        "label": "Mesen",
+        "core": "mesen_libretro.so"
+      }
+    ],
+    "macos": [
+      {
+        "role": "primary",
+        "emulator": "retroarch",
+        "label": "Mesen",
+        "core": "mesen_libretro.dylib"
+      }
+    ]
+  },
+  "requirements": {
+    "bios": [
+      {
+        "id": "fds_disksys",
+        "required": false,
+        "paths": [
+          "bios/disksys.rom"
+        ],
+        "applies_to_extensions": [
+          ".fds"
+        ]
+      }
+    ],
+    "keys": []
+  },
+  "rendering": {
+    "hardware_profile": "assets/hardware.json#nes",
+    "shader": "crt_240p",
+    "bezel": "sony_or_panasonic_crt"
+  },
+  "rom_policy": {
+    "external_roots": "read_only",
+    "allow_in_place_metadata": false,
+    "generated_metadata_root": "${semu_home}/generated/systems/nes",
+    "owned_state_root": "${semu_home}/state/systems/nes"
+  },
+  "bios": []
+}

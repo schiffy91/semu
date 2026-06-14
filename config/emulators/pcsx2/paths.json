@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "profileRoot": "emulators/pcsx2",
+  "stateRoots": {
+    "linuxFlatpak": ".semu/flatpak-state/pcsx2",
+    "linuxRouted": ".semu/appimage-state/pcsx2",
+    "macos": "${semu_home}/state/pcsx2"
+  },
+  "configRoot": "${stateRoot}/config",
+  "dataRoot": "${stateRoot}/data",
+  "cacheRoot": "${stateRoot}/cache",
+  "saveRoot": "${stateRoot}/saves",
+  "stateSaveRoot": "${stateRoot}/states",
+  "biosRoot": "bios/ps2",
+  "keysRoot": "bios/ps2",
+  "externalRomAccess": "read_only"
+}

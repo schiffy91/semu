@@ -1,0 +1,60 @@
+{
+  "schema_version": 1,
+  "id": "n3ds",
+  "fullname": "Nintendo 3DS",
+  "platform": "n3ds",
+  "theme": "n3ds",
+  "rom_dir": "n3ds",
+  "extensions": [
+    ".3ds",
+    ".3dsx",
+    ".app",
+    ".axf",
+    ".cci",
+    ".cxi",
+    ".elf",
+    ".7z",
+    ".zip"
+  ],
+  "routes": {
+    "linux": [
+      {
+        "role": "primary",
+        "emulator": "azahar",
+        "label": "Azahar"
+      }
+    ],
+    "macos": [
+      {
+        "role": "primary",
+        "emulator": "azahar",
+        "label": "Azahar"
+      }
+    ]
+  },
+  "requirements": {
+    "bios": [],
+    "keys": [
+      {
+        "id": "n3ds_aes_keys",
+        "required": false,
+        "paths": [
+          "bios/n3ds/aes_keys.txt",
+          "bios/n3ds/seeddb.bin"
+        ]
+      }
+    ]
+  },
+  "rendering": {
+    "hardware_profile": "assets/hardware.json#n3ds",
+    "shader": "dual_lcd",
+    "bezel": "dual_screen_handheld"
+  },
+  "rom_policy": {
+    "external_roots": "read_only",
+    "allow_in_place_metadata": false,
+    "generated_metadata_root": "${semu_home}/generated/systems/n3ds",
+    "owned_state_root": "${semu_home}/state/systems/n3ds"
+  },
+  "bios": []
+}

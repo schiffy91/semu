@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "id": "flycast",
+  "name": "Flycast",
+  "kind": "standalone",
+  "platforms": [
+    "linux"
+  ],
+  "targets": [
+    "linux",
+    "steam-deck",
+    "bazzite"
+  ],
+  "servedSystems": [
+    "dreamcast"
+  ],
+  "package": {
+    "file": "package.nix",
+    "intent": "Use the Flycast package for Linux targets; macOS Dreamcast routes through RetroArch.",
+    "source": "nixpkgs"
+  }
+}

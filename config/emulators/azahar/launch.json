@@ -1,0 +1,25 @@
+{
+  "romArg": "positional",
+  "linux": {
+    "launcher": "flatpak",
+    "flatpakId": "org.azahar_emu.Azahar",
+    "executable": "azahar",
+    "defaultArgs": [
+      "-f"
+    ],
+    "fullscreenArgs": [],
+    "fullscreenMode": "profile-config",
+    "env": {
+      "XDG_CONFIG_HOME": "${generated}/emulators/azahar/xdg/config",
+      "XDG_DATA_HOME": "${generated}/emulators/azahar/xdg/data",
+      "XDG_CACHE_HOME": "${generated}/emulators/azahar/xdg/cache"
+    }
+  },
+  "macos": {
+    "launcher": "package",
+    "executable": "azahar",
+    "defaultArgs": [],
+    "fullscreenArgs": [],
+    "fullscreenMode": "profile-config"
+  }
+}

@@ -1,0 +1,59 @@
+{
+  "schema_version": 2,
+  "system": "wii",
+  "label": "Nintendo Wii",
+  "default_emulator": "DOLPHIN",
+  "emulator": "dolphin",
+  "emulator_config": "Dolphin.ini GFX.ini",
+  "hardware_display": "consumer CRT/component TV",
+  "display_class": "crt_tv_or_component",
+  "content_viewport": {
+    "native_size": {
+      "width": 640,
+      "height": 480
+    },
+    "content_aspect": "4:3",
+    "default_aspect": "4:3",
+    "supported_aspects": [
+      "4:3",
+      "16:9"
+    ],
+    "dynamic_aspect": true,
+    "layout": {
+      "kind": "single",
+      "screens": [
+        {
+          "id": "main",
+          "native_size": {
+            "width": 640,
+            "height": 480
+          },
+          "content_aspect": "4:3"
+        }
+      ]
+    },
+    "scale_policy": "aspect_preserve"
+  },
+  "renderer": {
+    "model": "semu_source_hook_renderer",
+    "viewport_source": "content_viewport",
+    "profile": "crt_or_widescreen_tv",
+    "shader": {
+      "family": "crt_480i",
+      "enabled_by_default": true,
+      "intent": "Wii 480i/480p TV output with CRT/component-era behavior",
+      "source_asset": "crt/crt-royale.slangp",
+      "widescreen_source_asset": null,
+      "effect_file": "semu-crt.fx"
+    },
+    "bezel": {
+      "family": "sony_or_panasonic_crt",
+      "enabled_by_default": true,
+      "intent": "elegant Panasonic or Sony CRT for 4:3; 16:9 frame when widescreen",
+      "source_asset": "Mega_Bezel_Packs/Soqueroeu-TV-Backgrounds_V2.0/presets/TV-Console/Nintendo_Wii_4x3-[FLAT].slangp",
+      "widescreen_source_asset": "bezels/tv/clean-component-16x9.json",
+      "composition_effect_file": "semu-crt-bezel.fx"
+    }
+  },
+  "notes": "Dolphin/game settings should drive 4:3 vs 16:9 rendering state."
+}

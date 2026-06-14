@@ -1,0 +1,35 @@
+{
+  "romArg": {
+    "mode": "afterArg",
+    "arg": "-g"
+  },
+  "linux": {
+    "launcher": "flatpak",
+    "flatpakId": "info.cemu.Cemu",
+    "executable": "cemu",
+    "defaultArgs": [
+      "-f",
+      "-g"
+    ],
+    "fullscreenArgs": [
+      "-f"
+    ],
+    "env": {
+      "XDG_CONFIG_HOME": "${generated}/emulators/cemu/xdg/config",
+      "XDG_DATA_HOME": "${generated}/emulators/cemu/xdg/data",
+      "XDG_CACHE_HOME": "${generated}/emulators/cemu/xdg/cache",
+      "SDL_GAMECONTROLLERCONFIG": "0300f617de2800000512000000036800,Steam Deck Controller,a:b0,b:b1,back:b4,dpdown:h0.4,dpleft:h0.8,dpright:h0.2,dpup:h0.1,guide:b5,leftshoulder:b9,leftstick:b7,lefttrigger:a4,leftx:a0,lefty:a1,misc1:b11,paddle1:b12,paddle2:b13,paddle3:b14,paddle4:b15,rightshoulder:b10,rightstick:b8,righttrigger:a5,rightx:a2,righty:a3,start:b6,x:b2,y:b3,platform:Linux,"
+    }
+  },
+  "macos": {
+    "launcher": "package",
+    "executable": "cemu",
+    "defaultArgs": [
+      "-f",
+      "-g"
+    ],
+    "fullscreenArgs": [
+      "-f"
+    ]
+  }
+}

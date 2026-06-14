@@ -1,0 +1,683 @@
+--- a/gfx/video_driver.c	2026-06-14 00:12:19
++++ b/gfx/video_driver.c	2026-06-14 00:12:19
+@@ -15,6 +15,9 @@
+  */
+ 
+ #include <stdlib.h>
++#include <stdio.h>
++#include <stdint.h>
++#include <string.h>
+ #include <math.h>
+ 
+ #include <retro_inline.h>
+@@ -3729,8 +3732,631 @@
+ #endif
+ 
+    return true;
++}
++
++typedef enum semu_render_hook_profile
++{
++   SEMU_RENDER_PROFILE_NONE = 0,
++   SEMU_RENDER_PROFILE_DMG_LCD,
++   SEMU_RENDER_PROFILE_GBC_LCD,
++   SEMU_RENDER_PROFILE_GBA_LCD,
++   SEMU_RENDER_PROFILE_CRT
++} semu_render_hook_profile_t;
++
++typedef struct semu_render_hook_rgb
++{
++   unsigned r;
++   unsigned g;
++   unsigned b;
++} semu_render_hook_rgb_t;
++
++typedef struct semu_render_hook_rect
++{
++   unsigned x;
++   unsigned y;
++   unsigned w;
++   unsigned h;
++} semu_render_hook_rect_t;
++
++static bool semuRenderHookEnabled(void)
++{
++   const char *enabled = getenv("SEMU_RENDER_HOOK");
++   return enabled && enabled[0] != '\0' && enabled[0] != '0';
++}
++
++static bool semuRenderHookEnvBool(const char *name, bool fallback)
++{
++   const char *value = getenv(name);
++   if (!value || value[0] == '\0')
++      return fallback;
++   return !(value[0] == '0' || value[0] == 'f' || value[0] == 'F'
++         || value[0] == 'n' || value[0] == 'N');
++}
++
++static semu_render_hook_profile_t semuRenderHookProfileForSystem(
++      const char *system)
++{
++   if (!system || system[0] == '\0')
++      return SEMU_RENDER_PROFILE_NONE;
++   if (strcmp(system, "gb") == 0)
++      return SEMU_RENDER_PROFILE_DMG_LCD;
++   if (strcmp(system, "gbc") == 0)
++      return SEMU_RENDER_PROFILE_GBC_LCD;
++   if (strcmp(system, "gba") == 0)
++      return SEMU_RENDER_PROFILE_GBA_LCD;
++   if (strcmp(system, "nes") == 0 || strcmp(system, "snes") == 0
++         || strcmp(system, "genesis") == 0 || strcmp(system, "n64") == 0
++         || strcmp(system, "psx") == 0)
++      return SEMU_RENDER_PROFILE_CRT;
++   return SEMU_RENDER_PROFILE_NONE;
++}
++
++static const char *semuRenderHookProfileName(
++      semu_render_hook_profile_t profile)
++{
++   switch (profile)
++   {
++      case SEMU_RENDER_PROFILE_DMG_LCD:
++         return "dmg_lcd";
++      case SEMU_RENDER_PROFILE_GBC_LCD:
++         return "gbc_lcd";
++      case SEMU_RENDER_PROFILE_GBA_LCD:
++         return "gba_lcd";
++      case SEMU_RENDER_PROFILE_CRT:
++         return "crt";
++      default:
++         break;
++   }
++   return "none";
++}
++
++static size_t semuRenderHookReadConfig(
++      const char *path, char *buffer, size_t size)
++{
++   FILE *file;
++   size_t used;
++
++   if (!path || path[0] == '\0' || !buffer || size < 2)
++      return 0;
++
++   file = fopen(path, "rb");
++   if (!file)
++      return 0;
++
++   used = fread(buffer, 1, size - 1, file);
++   buffer[used] = '\0';
++   fclose(file);
++   return used;
++}
++
++static bool semuRenderHookConfigBoolIsFalse(
++      const char *config, const char *key)
++{
++   const char *cursor;
++
++   if (!config || !key)
++      return false;
++
++   cursor = strstr(config, key);
++   if (!cursor)
++      return false;
++
++   cursor = strchr(cursor, ':');
++   if (!cursor)
++      return false;
++   cursor++;
++
++   while (*cursor == ' ' || *cursor == '\t'
++         || *cursor == '\r' || *cursor == '\n')
++      cursor++;
++
++   return strncmp(cursor, "false", 5) == 0;
++}
++
++static bool semuRenderHookConfigHasSystem(
++      const char *config, const char *system)
++{
++   char needle[64];
++
++   if (!config || !system || system[0] == '\0'
++         || strlen(system) > 32)
++      return true;
++
++   snprintf(needle, sizeof(needle), "\"id\": \"%s\"", system);
++   if (strstr(config, needle))
++      return true;
++
++   snprintf(needle, sizeof(needle), "\"id\":\"%s\"", system);
++   return strstr(config, needle) != NULL;
++}
++
++static unsigned semuRenderHookClamp(unsigned value)
++{
++   return value > 255 ? 255 : value;
++}
++
++static unsigned semuRenderHookBytesPerPixel(enum retro_pixel_format pix_fmt)
++{
++   return pix_fmt == RETRO_PIXEL_FORMAT_XRGB8888
++      ? sizeof(uint32_t) : sizeof(uint16_t);
++}
++
++static semu_render_hook_rgb_t semuRenderHookReadPixel(
++      const void *data, size_t pitch, enum retro_pixel_format pix_fmt,
++      unsigned x, unsigned y)
++{
++   const uint8_t *pixel = (const uint8_t*)data
++      + (size_t)y * pitch
++      + (size_t)x * semuRenderHookBytesPerPixel(pix_fmt);
++   semu_render_hook_rgb_t color;
++
++   if (pix_fmt == RETRO_PIXEL_FORMAT_XRGB8888)
++   {
++      uint32_t packed;
++      memcpy(&packed, pixel, sizeof(packed));
++      color.r = (packed >> 16) & 0xff;
++      color.g = (packed >> 8) & 0xff;
++      color.b = packed & 0xff;
++      return color;
++   }
++
++   {
++      uint16_t packed;
++      memcpy(&packed, pixel, sizeof(packed));
++      if (pix_fmt == RETRO_PIXEL_FORMAT_RGB565)
++      {
++         color.r = ((packed >> 11) & 0x1f) * 255 / 31;
++         color.g = ((packed >> 5) & 0x3f) * 255 / 63;
++         color.b = (packed & 0x1f) * 255 / 31;
++      }
++      else
++      {
++         color.r = ((packed >> 10) & 0x1f) * 255 / 31;
++         color.g = ((packed >> 5) & 0x1f) * 255 / 31;
++         color.b = (packed & 0x1f) * 255 / 31;
++      }
++   }
++
++   return color;
++}
++
++static void semuRenderHookWritePixel(
++      void *data, size_t pitch, enum retro_pixel_format pix_fmt,
++      unsigned x, unsigned y, semu_render_hook_rgb_t color)
++{
++   uint8_t *pixel = (uint8_t*)data
++      + (size_t)y * pitch
++      + (size_t)x * semuRenderHookBytesPerPixel(pix_fmt);
++
++   color.r = semuRenderHookClamp(color.r);
++   color.g = semuRenderHookClamp(color.g);
++   color.b = semuRenderHookClamp(color.b);
++
++   if (pix_fmt == RETRO_PIXEL_FORMAT_XRGB8888)
++   {
++      uint32_t packed = 0xff000000
++         | (color.r << 16) | (color.g << 8) | color.b;
++      memcpy(pixel, &packed, sizeof(packed));
++      return;
++   }
++
++   if (pix_fmt == RETRO_PIXEL_FORMAT_RGB565)
++   {
++      uint16_t packed = (uint16_t)(((color.r * 31 / 255) << 11)
++            | ((color.g * 63 / 255) << 5)
++            | (color.b * 31 / 255));
++      memcpy(pixel, &packed, sizeof(packed));
++   }
++   else
++   {
++      uint16_t packed = (uint16_t)(((color.r * 31 / 255) << 10)
++            | ((color.g * 31 / 255) << 5)
++            | (color.b * 31 / 255));
++      memcpy(pixel, &packed, sizeof(packed));
++   }
++}
++
++static semu_render_hook_rgb_t semuRenderHookApplyDmgLcd(
++      semu_render_hook_rgb_t color, unsigned x, unsigned y)
++{
++   unsigned luma = (color.r * 77 + color.g * 150 + color.b * 29) >> 8;
++   unsigned matrix = 100;
++   semu_render_hook_rgb_t out;
++
++   if (x & 1)
++      matrix -= 10;
++   if (y & 1)
++      matrix -= 12;
++   if (((x + y) & 7) == 0)
++      matrix += 4;
++
++   luma = luma * matrix / 100;
++   out.r = 34 + (118 * luma / 255);
++   out.g = 49 + (146 * luma / 255);
++   out.b = 18 + (77 * luma / 255);
++   return out;
++}
++
++static semu_render_hook_rgb_t semuRenderHookApplyColorLcd(
++      semu_render_hook_rgb_t color, unsigned x, unsigned y)
++{
++   unsigned luma = (color.r * 54 + color.g * 183 + color.b * 19) >> 8;
++   unsigned matrix = 100;
++
++   color.r = (color.r * 94 + luma * 6) / 100;
++   color.g = (color.g * 94 + luma * 6) / 100;
++   color.b = (color.b * 94 + luma * 6) / 100;
++
++   if (x % 3 == 0)
++   {
++      color.g = color.g * 92 / 100;
++      color.b = color.b * 92 / 100;
++   }
++   else if (x % 3 == 1)
++   {
++      color.r = color.r * 92 / 100;
++      color.b = color.b * 92 / 100;
++   }
++   else
++   {
++      color.r = color.r * 92 / 100;
++      color.g = color.g * 92 / 100;
++   }
++
++   if (x & 1)
++      matrix -= 3;
++   if (y & 1)
++      matrix -= 5;
++
++   color.r = color.r * matrix / 100;
++   color.g = color.g * matrix / 100;
++   color.b = color.b * matrix / 100;
++   return color;
++}
++
++static semu_render_hook_rgb_t semuRenderHookApplyCrt(
++      const void *data, unsigned width, unsigned height, size_t pitch,
++      enum retro_pixel_format pix_fmt, unsigned x, unsigned y)
++{
++   semu_render_hook_rgb_t color =
++      semuRenderHookReadPixel(data, pitch, pix_fmt, x, y);
++   (void)height;
++
++   if (x > 0 && x + 1 < width)
++   {
++      semu_render_hook_rgb_t left =
++         semuRenderHookReadPixel(data, pitch, pix_fmt, x - 1, y);
++      semu_render_hook_rgb_t right =
++         semuRenderHookReadPixel(data, pitch, pix_fmt, x + 1, y);
++      color.r = (left.r + color.r * 2 + right.r) / 4;
++      color.g = (left.g + color.g * 2 + right.g) / 4;
++      color.b = (left.b + color.b * 2 + right.b) / 4;
++   }
++
++   {
++      unsigned scanline = (y & 1) ? 74 : 100;
++      unsigned mask = x % 3;
++      color.r = color.r * scanline / 100;
++      color.g = color.g * scanline / 100;
++      color.b = color.b * scanline / 100;
++
++      if (mask == 0)
++      {
++         color.g = color.g * 88 / 100;
++         color.b = color.b * 88 / 100;
++      }
++      else if (mask == 1)
++      {
++         color.r = color.r * 90 / 100;
++         color.b = color.b * 90 / 100;
++      }
++      else
++      {
++         color.r = color.r * 88 / 100;
++         color.g = color.g * 88 / 100;
++      }
++   }
++
++   return color;
+ }
+ 
++static semu_render_hook_rect_t semuRenderHookContentRect(
++      unsigned width, unsigned height, semu_render_hook_profile_t profile,
++      bool bezels)
++{
++   semu_render_hook_rect_t rect;
++   unsigned margin_x = 0;
++   unsigned margin_y = 0;
++   unsigned avail_w;
++   unsigned avail_h;
++
++   rect.x = 0;
++   rect.y = 0;
++   rect.w = width;
++   rect.h = height;
++
++   if (!bezels || width < 16 || height < 16)
++      return rect;
++
++   switch (profile)
++   {
++      case SEMU_RENDER_PROFILE_DMG_LCD:
++      case SEMU_RENDER_PROFILE_GBC_LCD:
++         margin_x = width / 8;
++         margin_y = height / 7;
++         break;
++      case SEMU_RENDER_PROFILE_GBA_LCD:
++         margin_x = width / 9;
++         margin_y = height / 8;
++         break;
++      case SEMU_RENDER_PROFILE_CRT:
++         margin_x = width / 10;
++         margin_y = height / 9;
++         break;
++      default:
++         return rect;
++   }
++
++   if (margin_x * 2 + 4 >= width || margin_y * 2 + 4 >= height)
++      return rect;
++
++   avail_w = width - margin_x * 2;
++   avail_h = height - margin_y * 2;
++   rect.w = avail_w;
++   rect.h = (unsigned)((uint64_t)rect.w * height / width);
++
++   if (rect.h > avail_h)
++   {
++      rect.h = avail_h;
++      rect.w = (unsigned)((uint64_t)rect.h * width / height);
++   }
++
++   if (rect.w < 4 || rect.h < 4)
++   {
++      rect.w = width;
++      rect.h = height;
++   }
++
++   rect.x = (width - rect.w) / 2;
++   rect.y = (height - rect.h) / 2;
++   return rect;
++}
++
++static bool semuRenderHookInsideRect(
++      semu_render_hook_rect_t rect, unsigned x, unsigned y)
++{
++   return x >= rect.x && y >= rect.y
++      && x < rect.x + rect.w && y < rect.y + rect.h;
++}
++
++static semu_render_hook_rgb_t semuRenderHookFramePixel(
++      semu_render_hook_profile_t profile, unsigned x, unsigned y,
++      unsigned width, unsigned height)
++{
++   unsigned shade = 100;
++   semu_render_hook_rgb_t color;
++
++   if (width > 0)
++      shade += x * 10 / width;
++   if (height > 0)
++      shade -= y * 8 / height;
++
++   switch (profile)
++   {
++      case SEMU_RENDER_PROFILE_DMG_LCD:
++         color.r = 108 * shade / 100;
++         color.g = 113 * shade / 100;
++         color.b = 95 * shade / 100;
++         if (x < width / 18 || y < height / 18
++               || x + width / 18 >= width || y + height / 18 >= height)
++            color.r = 55, color.g = 59, color.b = 53;
++         break;
++      case SEMU_RENDER_PROFILE_GBC_LCD:
++         color.r = 91 * shade / 100;
++         color.g = 80 * shade / 100;
++         color.b = 145 * shade / 100;
++         if (((x + y) & 15) == 0)
++            color.r += 16, color.g += 12, color.b += 20;
++         break;
++      case SEMU_RENDER_PROFILE_GBA_LCD:
++         color.r = 74 * shade / 100;
++         color.g = 65 * shade / 100;
++         color.b = 150 * shade / 100;
++         if (y > height * 3 / 4 && (x < width / 5 || x > width * 4 / 5))
++            color.r = 32, color.g = 31, color.b = 45;
++         break;
++      case SEMU_RENDER_PROFILE_CRT:
++         {
++            unsigned wood = 82 + (((x * 13 + y * 7) & 31) * 18 / 31);
++            color.r = 66 * wood / 100;
++            color.g = 45 * wood / 100;
++            color.b = 28 * wood / 100;
++            if (x < width / 28 || y < height / 28
++                  || x + width / 28 >= width || y + height / 28 >= height)
++               color.r = 18, color.g = 17, color.b = 15;
++            if (x > width * 4 / 5 && y > height / 4 && y < height * 3 / 4)
++               color.r = 22, color.g = 21, color.b = 19 + ((y & 3) ? 0 : 15);
++         }
++         break;
++      default:
++         color.r = 0;
++         color.g = 0;
++         color.b = 0;
++         break;
++   }
++
++   color.r = semuRenderHookClamp(color.r);
++   color.g = semuRenderHookClamp(color.g);
++   color.b = semuRenderHookClamp(color.b);
++   return color;
++}
++
++static semu_render_hook_rgb_t semuRenderHookSampleContent(
++      const void *data, unsigned width, unsigned height, size_t pitch,
++      enum retro_pixel_format pix_fmt, semu_render_hook_profile_t profile,
++      unsigned x, unsigned y, bool shaders)
++{
++   semu_render_hook_rgb_t color;
++
++   if (profile == SEMU_RENDER_PROFILE_CRT && shaders)
++      return semuRenderHookApplyCrt(data, width, height, pitch, pix_fmt, x, y);
++
++   color = semuRenderHookReadPixel(data, pitch, pix_fmt, x, y);
++   if (!shaders)
++      return color;
++
++   switch (profile)
++   {
++      case SEMU_RENDER_PROFILE_DMG_LCD:
++         return semuRenderHookApplyDmgLcd(color, x, y);
++      case SEMU_RENDER_PROFILE_GBC_LCD:
++      case SEMU_RENDER_PROFILE_GBA_LCD:
++         return semuRenderHookApplyColorLcd(color, x, y);
++      default:
++         break;
++   }
++
++   return color;
++}
++
++static bool semuRenderHookComposeFrame(
++      const void *data, unsigned width, unsigned height, size_t pitch,
++      enum retro_pixel_format pix_fmt, const void **out_data,
++      unsigned *out_width, unsigned *out_height, size_t *out_pitch)
++{
++   static uint8_t *buffer;
++   static size_t buffer_size;
++   const char *system;
++   const char *config_path;
++   char config[65536];
++   size_t config_size;
++   semu_render_hook_profile_t profile;
++   semu_render_hook_rect_t content;
++   bool shaders;
++   bool bezels;
++   unsigned bpp;
++   size_t needed;
++   unsigned y;
++
++   if (!semuRenderHookEnabled() || !data
++         || data == RETRO_HW_FRAME_BUFFER_VALID
++         || width < 8 || height < 8)
++      return false;
++
++   bpp = semuRenderHookBytesPerPixel(pix_fmt);
++   if (pitch < (size_t)width * bpp)
++      return false;
++
++   system = getenv("SEMU_SYSTEM");
++   config_path = getenv("SEMU_RENDER_HOOK_CONFIG");
++   profile = semuRenderHookProfileForSystem(system);
++   if (profile == SEMU_RENDER_PROFILE_NONE)
++      return false;
++
++   shaders = semuRenderHookEnvBool("SEMU_RENDER_SHADERS", true);
++   bezels = semuRenderHookEnvBool("SEMU_RENDER_BEZELS", true);
++
++   config_size = semuRenderHookReadConfig(config_path, config, sizeof(config));
++   if (config_size > 0)
++   {
++      if (!semuRenderHookConfigHasSystem(config, system))
++         return false;
++      if (semuRenderHookConfigBoolIsFalse(config, "\"shaders_enabled\""))
++         shaders = false;
++      if (semuRenderHookConfigBoolIsFalse(config, "\"bezels_enabled\""))
++         bezels = false;
++   }
++
++   if (!shaders && !bezels)
++      return false;
++
++   if (height != 0 && (size_t)width > (size_t)-1 / height)
++      return false;
++   needed = (size_t)width * height;
++   if (bpp != 0 && needed > (size_t)-1 / bpp)
++      return false;
++   needed *= bpp;
++   if (needed > buffer_size)
++   {
++      void *new_buffer = realloc(buffer, needed);
++      if (!new_buffer)
++         return false;
++      buffer = (uint8_t*)new_buffer;
++      buffer_size = needed;
++   }
++
++   content = semuRenderHookContentRect(width, height, profile, bezels);
++
++   for (y = 0; y < height; y++)
++   {
++      unsigned x;
++      for (x = 0; x < width; x++)
++      {
++         semu_render_hook_rgb_t color;
++         if (semuRenderHookInsideRect(content, x, y))
++         {
++            unsigned src_x = (unsigned)((uint64_t)(x - content.x)
++                  * width / content.w);
++            unsigned src_y = (unsigned)((uint64_t)(y - content.y)
++                  * height / content.h);
++            if (src_x >= width)
++               src_x = width - 1;
++            if (src_y >= height)
++               src_y = height - 1;
++            color = semuRenderHookSampleContent(data, width, height, pitch,
++                  pix_fmt, profile, src_x, src_y, shaders);
++         }
++         else
++            color = semuRenderHookFramePixel(profile, x, y, width, height);
++
++         semuRenderHookWritePixel(buffer, (size_t)width * bpp, pix_fmt,
++               x, y, color);
++      }
++   }
++
++   *out_data = buffer;
++   *out_width = width;
++   *out_height = height;
++   *out_pitch = (size_t)width * bpp;
++   return buffer != NULL;
++}
++
++static void semuRenderHookProof(const char *emulator)
++{
++   static bool logged = false;
++   const char *system;
++   const char *config;
++   semu_render_hook_profile_t profile;
++
++   if (!semuRenderHookEnabled() || logged)
++      return;
++
++   system = getenv("SEMU_SYSTEM");
++   config = getenv("SEMU_RENDER_HOOK_CONFIG");
++   profile = semuRenderHookProfileForSystem(system);
++   fprintf(stderr,
++         "semu-source-hook: applied emulator=%s system=%s profile=%s config=%s\n",
++         emulator, system ? system : "",
++         semuRenderHookProfileName(profile), config ? config : "");
++
++   {
++      const char *proof = getenv("SEMU_RENDER_HOOK_PROOF");
++      if (proof && proof[0] != '\0')
++      {
++         FILE *proof_file = fopen(proof, "a");
++         if (proof_file)
++         {
++            fprintf(proof_file,
++                  "semu-render-hook:%s:game_framebuffer:config=%s\n",
++                  emulator, config ? config : "");
++            fclose(proof_file);
++         }
++      }
++   }
++
++   logged = true;
++}
++
+ void video_driver_frame(const void *data, unsigned width,
+       unsigned height, size_t pitch)
+ {
+@@ -4325,10 +4951,36 @@
+          && video_st->current_video
+          && video_st->current_video->frame)
+    {
++      const void *semu_render_hook_data = data;
++      unsigned semu_render_hook_width = width;
++      unsigned semu_render_hook_height = height;
++      size_t semu_render_hook_pitch = pitch;
++      enum retro_pixel_format semu_render_hook_pix_fmt =
++         video_driver_pix_fmt;
++
++      if (     video_st->scaler_ptr
++            && video_driver_pix_fmt == RETRO_PIXEL_FORMAT_0RGB1555)
++         semu_render_hook_pix_fmt = RETRO_PIXEL_FORMAT_RGB565;
++#ifdef HAVE_VIDEO_FILTER
++      if (video_st->state_filter)
++         semu_render_hook_pix_fmt =
++            (video_st->flags & VIDEO_FLAG_STATE_OUT_RGB32)
++            ? RETRO_PIXEL_FORMAT_XRGB8888
++            : RETRO_PIXEL_FORMAT_RGB565;
++#endif
++
++      if (!menu_is_alive
++            && semuRenderHookComposeFrame(data, width, height, pitch,
++               semu_render_hook_pix_fmt, &semu_render_hook_data,
++               &semu_render_hook_width, &semu_render_hook_height,
++               &semu_render_hook_pitch))
++         semuRenderHookProof("retroarch");
++
+       video_info.current_subframe = 0;
+       if (video_st->current_video->frame(
+-               video_st->data, data, width, height,
+-               video_st->frame_count, (unsigned)pitch,
++               video_st->data, semu_render_hook_data, semu_render_hook_width,
++               semu_render_hook_height, video_st->frame_count,
++               (unsigned)semu_render_hook_pitch,
+ #if HAVE_MENU
+                   ((video_info.menu_st_flags & MENU_ST_FLAG_SCREENSAVER_ACTIVE) > 0)
+                || video_info.notifications_hidden

@@ -1,0 +1,72 @@
+{
+  "schema_version": 1,
+  "id": "switch",
+  "fullname": "Nintendo Switch",
+  "platform": "switch",
+  "theme": "switch",
+  "rom_dir": "switch",
+  "extensions": [
+    ".nca",
+    ".nro",
+    ".nso",
+    ".nsp",
+    ".xci",
+    ".7z",
+    ".zip"
+  ],
+  "routes": {
+    "linux": [
+      {
+        "role": "primary",
+        "emulator": "ryujinx",
+        "label": "Ryujinx",
+        "args": [
+          "--fullscreen"
+        ]
+      }
+    ],
+    "macos": [
+      {
+        "role": "primary",
+        "emulator": "ryujinx",
+        "label": "Ryujinx",
+        "args": [
+          "--fullscreen"
+        ]
+      }
+    ]
+  },
+  "requirements": {
+    "bios": [],
+    "keys": [
+      {
+        "id": "switch_prod_keys",
+        "required": true,
+        "paths": [
+          "bios/switch/prod.keys"
+        ]
+      },
+      {
+        "id": "switch_title_keys",
+        "required": false,
+        "paths": [
+          "bios/switch/title.keys"
+        ]
+      }
+    ]
+  },
+  "rendering": {
+    "hardware_profile": "assets/hardware.json#switch",
+    "shader": "modern_native",
+    "bezel": "none"
+  },
+  "rom_policy": {
+    "external_roots": "read_only",
+    "allow_in_place_metadata": false,
+    "generated_metadata_root": "${semu_home}/generated/systems/switch",
+    "owned_state_root": "${semu_home}/state/systems/switch"
+  },
+  "bios": [
+    "switch_keys"
+  ]
+}

@@ -1,0 +1,63 @@
+{
+  "schema_version": 1,
+  "id": "wii",
+  "fullname": "Nintendo Wii",
+  "platform": "wii",
+  "theme": "wii",
+  "rom_dir": "wii",
+  "controller_profile": "steam-deck",
+  "extensions": [
+    ".ciso",
+    ".dol",
+    ".elf",
+    ".gcm",
+    ".gcz",
+    ".iso",
+    ".nkit.iso",
+    ".rvz",
+    ".tgc",
+    ".wad",
+    ".wbfs",
+    ".wia",
+    ".7z",
+    ".zip"
+  ],
+  "routes": {
+    "linux": [
+      {
+        "role": "primary",
+        "emulator": "dolphin",
+        "label": "Dolphin"
+      }
+    ],
+    "macos": [
+      {
+        "role": "primary",
+        "emulator": "dolphin",
+        "label": "Dolphin",
+        "args": [
+          "--config",
+          "Dolphin.Display.Fullscreen=True",
+          "-b",
+          "-e"
+        ]
+      }
+    ]
+  },
+  "requirements": {
+    "bios": [],
+    "keys": []
+  },
+  "rendering": {
+    "hardware_profile": "assets/hardware.json#wii",
+    "shader": "crt_480i",
+    "bezel": "sony_or_panasonic_crt"
+  },
+  "rom_policy": {
+    "external_roots": "read_only",
+    "allow_in_place_metadata": false,
+    "generated_metadata_root": "${semu_home}/generated/systems/wii",
+    "owned_state_root": "${semu_home}/state/systems/wii"
+  },
+  "bios": []
+}

@@ -1,0 +1,60 @@
+{
+  "schema_version": 2,
+  "fullscreen_default": true,
+  "content_scaling": {
+    "integer_scaling_default": false,
+    "aspect_ratio_source": "native",
+    "scale_policy": "integer_or_aspect",
+    "per_system_aspect_ratio": true,
+    "dual_screen_layout": false
+  },
+  "semu_renderer": {
+    "source_hook_enabled": true,
+    "preferred_backend": "source_hook",
+    "implementation_status": "implemented_source_hook",
+    "hook_scope": "game_framebuffer",
+    "hook_point": "PresentationCommon::CopyToOutput final game blit; Semu leaves PPSSPP's game content rectangle untouched, then composes hook-owned PSP LCD/shader and shell/bezel overlays before app UI/settings draw",
+    "hook_excludes_ui": true,
+    "hook_requires_source_package": true,
+    "source_package_status": "source-package-ready",
+    "hook_contract": {
+      "proof_env": "SEMU_RENDER_HOOK_PROOF",
+      "config_env": "SEMU_RENDER_HOOK_CONFIG",
+      "proof_marker": "semu-render-hook:ppsspp:game_framebuffer",
+      "uses_emulator_native_shader_mechanism": false,
+      "backend_coverage": [
+        "common-present"
+      ],
+      "patch_files": [
+        "build/packaging/nix/patches/ppsspp/001-semu-render-hook.patch"
+      ]
+    },
+    "hook_config": "assets/rendering/hooks/ppsspp.json",
+    "external_fallback_backend": "disabled",
+    "fallback_backend": "native_fullscreen_only",
+    "receives_shader_assets": true,
+    "receives_bezel_assets": true,
+    "requires_deck_proof": true
+  },
+  "generated_config_contract": {
+    "owns_fullscreen": true,
+    "owns_graphics_api": true,
+    "owns_content_scaling": true,
+    "owns_input_profiles": true,
+    "owns_renderer_assets": false
+  },
+  "default_profiles": [
+    "assets/defaults.json",
+    "assets/hardware.json"
+  ],
+  "capabilities": {
+    "fullscreen": true,
+    "integer_scaling": false,
+    "per_system_aspect_ratio": true,
+    "dual_screen_layout": false,
+    "generic_renderer": true,
+    "native_shaders": false,
+    "native_bezels": false,
+    "modern_native_output": false
+  }
+}

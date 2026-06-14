@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "profileRoot": "emulators/retroarch",
+  "stateRoots": {
+    "linuxRouted": ".semu/appimage-state/retroarch",
+    "macos": "${semu_home}/state/retroarch"
+  },
+  "configRoot": "${stateRoot}/config",
+  "dataRoot": "${stateRoot}/data",
+  "cacheRoot": "${stateRoot}/cache",
+  "saveRoot": "${stateRoot}/saves",
+  "stateSaveRoot": "${stateRoot}/states",
+  "biosRoot": "bios",
+  "keysRoot": "bios",
+  "externalRomAccess": "read_only"
+}

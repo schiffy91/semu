@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<content>
+  <logflag>0</logflag>
+  <advanced_ppc_logging>false</advanced_ppc_logging>
+  <mlc_path>${generated}/emulators/cemu/xdg/data/Cemu/mlc01</mlc_path>
+  <permanent_storage>true</permanent_storage>
+  <play_boot_sound>false</play_boot_sound>
+  <console_language>1</console_language>
+  <GamePaths>
+    <Entry>${roms}/wiiu</Entry>
+  </GamePaths>
+  <Graphic>
+    <api>0</api>
+    <VSync>0</VSync>
+    <GX2DrawdoneSync>true</GX2DrawdoneSync>
+    <UpscaleFilter>2</UpscaleFilter>
+    <DownscaleFilter>0</DownscaleFilter>
+    <FullscreenScaling>0</FullscreenScaling>
+    <AsyncCompile>true</AsyncCompile>
+    <vkAccurateBarriers>true</vkAccurateBarriers>
+    <Overlay>
+      <Position>0</Position>
+      <FPS>false</FPS>
+      <DrawCalls>false</DrawCalls>
+      <CPUUsage>false</CPUUsage>
+      <RAMUsage>false</RAMUsage>
+    </Overlay>
+    <Notification>
+      <Position>1</Position>
+      <ControllerProfiles>true</ControllerProfiles>
+      <ControllerBattery>false</ControllerBattery>
+      <ShaderCompiling>true</ShaderCompiling>
+      <FriendService>false</FriendService>
+    </Notification>
+  </Graphic>
+  <Audio>
+    <api>0</api>
+    <TVChannels>1</TVChannels>
+    <PadChannels>1</PadChannels>
+    <InputChannels>0</InputChannels>
+    <TVVolume>20</TVVolume>
+    <PadVolume>0</PadVolume>
+    <InputVolume>20</InputVolume>
+    <PortalVolume>20</PortalVolume>
+  </Audio>
+  <Input>
+    <DSUC host="127.0.0.1" port="26760" />
+  </Input>
+  <language>1</language>
+  <fullscreen>true</fullscreen>
+  <fullscreen_menubar>false</fullscreen_menubar>
+  <check_update>false</check_update>
+  <receive_untested_updates>false</receive_untested_updates>
+  <vk_warning>true</vk_warning>
+  <gp_download>true</gp_download>
+</content>

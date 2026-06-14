@@ -1,0 +1,60 @@
+{
+  "schema_version": 2,
+  "fullscreen_default": true,
+  "content_scaling": {
+    "integer_scaling_default": false,
+    "aspect_ratio_source": "top-bottom",
+    "scale_policy": "layout_integer_or_aspect",
+    "per_system_aspect_ratio": true,
+    "dual_screen_layout": true
+  },
+  "semu_renderer": {
+    "source_hook_enabled": true,
+    "preferred_backend": "source_hook",
+    "implementation_status": "implemented_source_hook",
+    "hook_scope": "game_framebuffer",
+    "hook_point": "OpenGLRenderWidget::Present after Renderer().TryPresent and before SwapBuffers; the Semu hook copies the game render-widget viewport, composes dual-screen LCD/bezel output, and redraws the default framebuffer",
+    "hook_excludes_ui": true,
+    "hook_requires_source_package": true,
+    "source_package_status": "source-package-ready",
+    "hook_contract": {
+      "proof_env": "SEMU_RENDER_HOOK_PROOF",
+      "config_env": "SEMU_RENDER_HOOK_CONFIG",
+      "proof_marker": "semu-render-hook:azahar:game_framebuffer",
+      "uses_emulator_native_shader_mechanism": false,
+      "backend_coverage": [
+        "opengl"
+      ],
+      "patch_files": [
+        "build/packaging/nix/patches/azahar/001-semu-render-hook.patch"
+      ]
+    },
+    "hook_config": "assets/rendering/hooks/azahar.json",
+    "external_fallback_backend": "disabled",
+    "fallback_backend": "native_fullscreen_only",
+    "receives_shader_assets": true,
+    "receives_bezel_assets": true,
+    "requires_deck_proof": true
+  },
+  "generated_config_contract": {
+    "owns_fullscreen": true,
+    "owns_graphics_api": true,
+    "owns_content_scaling": true,
+    "owns_input_profiles": true,
+    "owns_renderer_assets": false
+  },
+  "default_profiles": [
+    "assets/defaults.json",
+    "assets/hardware.json"
+  ],
+  "capabilities": {
+    "fullscreen": true,
+    "integer_scaling": false,
+    "per_system_aspect_ratio": true,
+    "dual_screen_layout": true,
+    "generic_renderer": true,
+    "native_shaders": false,
+    "native_bezels": false,
+    "modern_native_output": false
+  }
+}

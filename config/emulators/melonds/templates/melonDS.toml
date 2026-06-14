@@ -1,0 +1,71 @@
+PauseLostFocus = false
+FastForwardFPS = 1000.0
+AudioSync = true
+TargetFPS = 60.0
+LimitFPS = true
+SlowmoFPS = 30.0
+
+[Instance0]
+EnableCheats = false
+SaveFilePath = "${generated}/emulators/melonds/xdg/data/melonDS/saves"
+SavestatePath = "${generated}/emulators/melonds/xdg/data/melonDS/states"
+JoystickID = 0
+
+[Instance0.Keyboard]
+HK_FastForward = -1
+HK_FullscreenToggle = -1
+HK_Pause = -1
+HK_Reset = -1
+HK_SwapScreens = -1
+HK_SwapScreenEmphasis = -1
+
+[Instance0.Joystick]
+Up = 12
+Down = 13
+Left = 14
+Right = 15
+A = 0
+B = 1
+X = 2
+Y = 3
+L = 4
+R = 5
+Select = 6
+Start = 7
+HK_FastForward = -1
+HK_FullscreenToggle = -1
+HK_Pause = -1
+HK_Reset = -1
+HK_SwapScreens = -1
+HK_SwapScreenEmphasis = -1
+
+[Instance0.Window0]
+ShowOSD = false
+ScreenLayout = 0
+ScreenRotation = 0
+ScreenAspectBot = 0
+ScreenGap = 0
+ScreenSwap = false
+ScreenSizing = 0
+IntegerScaling = true
+ScreenAspectTop = 0
+ScreenFilter = true
+
+[Emu]
+ConsoleType = 0
+ExternalBIOSEnable = false
+DirectBoot = true
+
+[3D]
+Renderer = 1
+
+[3D.GL]
+BetterPolygons = false
+HiresCoordinates = true
+ScaleFactor = 1
+
+[Screen]
+UseGL = true
+
+[JIT]
+Enable = true

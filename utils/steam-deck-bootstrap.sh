@@ -3,35 +3,38 @@ set -Eeuo pipefail
 
 SEMU_REPO="${SEMU_REPO:-https://github.com/schiffy91/semu.git}"
 SEMU_BRANCH="${SEMU_BRANCH:-main}"
-PROJECT="${SEMU_PROJECT:-$HOME/semu}"
+SOURCE="${SEMU_SOURCE:-$HOME/semu}"
+PROJECT="${SEMU_PROJECT:-$HOME/.local/share/semu}"
+TARGET="${SEMU_TARGET:-steam-deck}"
 ROMS="${SEMU_ROMS:-}"
 BUILD_MODE="${SEMU_BUILD_MODE:-full}"
 ACTION="install"
 ASSUME_YES="${SEMU_YES:-0}"
 ENABLE_SSH="${SEMU_ENABLE_SSH:-1}"
 INSTALL_NIX="${SEMU_INSTALL_NIX:-1}"
-OPEN_SYNC="${SEMU_OPEN_SYNC:-0}"
 
 usage() {
   cat <<'EOF'
-Semu Steam Deck bootstrap
+Semu Steam Deck compiler bootstrap
 
 Usage:
   steam-deck-bootstrap.sh [install|update|status|gc] [options]
 
 Options:
   --yes                 Do not prompt before host mutations.
-  --project PATH        Semu checkout/config root (default: ~/semu).
-  --roms PATH           ROM directory (default: detected SD card, else project ROMs).
+  --source PATH         Semu source checkout (default: ~/semu).
+  --project PATH        Semu project/data root (default: ~/.local/share/semu).
+  --target NAME         Compiler target to build/verify (default: steam-deck).
+  --roms PATH           ROM directory hint exported for compiler/generator use.
   --repo URL            Git repo to clone (default: https://github.com/schiffy91/semu.git).
   --branch NAME         Branch to checkout (default: main).
-  --build full|cli|none Build full emulator bundle, CLI only, or skip Nix build.
+  --build full|cli|none Build full flake, CLI only, or skip Nix build.
   --cli-only            Shortcut for --build cli.
   --no-build            Shortcut for --build none.
   --enable-ssh          Enable sshd for remote verification (default).
   --no-ssh              Do not enable sshd.
   --no-nix-install      Fail instead of installing Nix when missing.
-  --open-sync           Open Syncthing UI after setup/status.
+  --open-sync           Accepted for old invocations; no-op in compiler mode.
   --help                Show this help.
 
 Example:
@@ -57,7 +60,9 @@ parse_args() {
   while [ "$#" -gt 0 ]; do
     case "$1" in
       --yes|-y) ASSUME_YES=1 ;;
+      --source|--checkout) SOURCE="${2:?missing value for --source}"; shift ;;
       --project) PROJECT="${2:?missing value for --project}"; shift ;;
+      --target) TARGET="${2:?missing value for --target}"; shift ;;
       --roms) ROMS="${2:?missing value for --roms}"; shift ;;
       --repo) SEMU_REPO="${2:?missing value for --repo}"; shift ;;
       --branch) SEMU_BRANCH="${2:?missing value for --branch}"; shift ;;
@@ -67,7 +72,7 @@ parse_args() {
       --enable-ssh) ENABLE_SSH=1 ;;
       --no-ssh) ENABLE_SSH=0 ;;
       --no-nix-install) INSTALL_NIX=0 ;;
-      --open-sync) OPEN_SYNC=1 ;;
+      --open-sync) warn '--open-sync is ignored by the compiler bootstrap' ;;
       --help|-h) usage; exit 0 ;;
       *) die "unknown argument: $1" ;;
     esac
@@ -123,6 +128,10 @@ ensure_nix() {
   ensure_steamos_nix_mount
   load_nix_profile
   if have nix; then
+    if have systemctl; then
+      sudo systemctl daemon-reload || true
+      sudo systemctl enable --now nix-daemon.service || true
+    fi
     log "Nix: $(nix --version)"
     return 0
   fi
@@ -144,59 +153,30 @@ ensure_ssh() {
 }
 
 ensure_repo() {
-  if [ -d "$PROJECT/.git" ]; then
-    log "update repo: $PROJECT"
-    git -C "$PROJECT" fetch origin "$SEMU_BRANCH"
-    git -C "$PROJECT" checkout "$SEMU_BRANCH"
-    git -C "$PROJECT" pull --ff-only --autostash origin "$SEMU_BRANCH"
-  elif [ -e "$PROJECT" ] && [ -n "$(find "$PROJECT" -mindepth 1 -maxdepth 1 -print -quit 2>/dev/null || true)" ]; then
-    warn "$PROJECT exists and is not empty; using it as-is"
+  have git || die 'git is required'
+  if [ -d "$SOURCE/.git" ]; then
+    log "update repo: $SOURCE"
+    git -C "$SOURCE" fetch origin "$SEMU_BRANCH"
+    git -C "$SOURCE" checkout "$SEMU_BRANCH"
+    git -C "$SOURCE" pull --ff-only --autostash origin "$SEMU_BRANCH"
+  elif [ -e "$SOURCE" ] && [ -n "$(find "$SOURCE" -mindepth 1 -maxdepth 1 -print -quit 2>/dev/null || true)" ]; then
+    warn "$SOURCE exists and is not empty; using it as-is"
   else
     log "clone repo: $SEMU_REPO#$SEMU_BRANCH"
-    git clone --branch "$SEMU_BRANCH" "$SEMU_REPO" "$PROJECT"
+    git clone --branch "$SEMU_BRANCH" "$SEMU_REPO" "$SOURCE"
   fi
-}
-
-default_roms_dir() {
-  [ -n "$ROMS" ] && { normalize_roms_dir "$ROMS"; return; }
-  local candidate
-  for candidate in \
-    /run/media/deck/SD/Emulation/ES-DE/ES-DE/ROMs \
-    /mnt/SD/Emulation/ES-DE/ES-DE/ROMs \
-    /run/media/deck/SD \
-    /mnt/SD \
-    /run/media/deck/*/Emulation/ROMs \
-    /run/media/deck/*/Emulation/ES-DE/ES-DE/ROMs \
-    /run/media/deck/*/ROMs \
-    "$PROJECT/ES-DE/ES-DE/ROMs"; do
-    [ -d "$candidate" ] && { printf '%s\n' "$candidate"; return; }
-  done
-  printf '%s\n' "$PROJECT/ES-DE/ES-DE/ROMs"
-}
-
-normalize_roms_dir() {
-  local root="$1"
-  local candidate
-  for candidate in \
-    "$root/Emulation/ES-DE/ES-DE/ROMs" \
-    "$root/ES-DE/ES-DE/ROMs" \
-    "$root/Emulation/ROMs" \
-    "$root/ROMs"; do
-    [ -d "$candidate" ] && { printf '%s\n' "$candidate"; return; }
-  done
-  printf '%s\n' "$root"
 }
 
 build_semu() {
   [ "$BUILD_MODE" = "none" ] && return 0
   ensure_nix
   (
-    cd "$PROJECT"
+    cd "$SOURCE"
     log 'build BTRC CLI'
     nix develop --command make btrc-build
     if [ "$BUILD_MODE" = "full" ]; then
-      log 'build full Semu bundle'
-      nix build .#default
+      log 'build Semu flake default'
+      nix build --impure .#default
     else
       log 'build Semu CLI package'
       nix build .#semu-cli
@@ -205,31 +185,31 @@ build_semu() {
 }
 
 semu_bin() {
-  for candidate in "$PROJECT/result/bin/semu" "$PROJECT/build/semu"; do
+  for candidate in "$SOURCE/result/bin/semu" "$SOURCE/build/out/semu"; do
     [ -x "$candidate" ] && { printf '%s\n' "$candidate"; return 0; }
   done
-  die "Semu binary not found under $PROJECT; rerun with --build full or --cli-only"
+  die "Semu binary not found under $SOURCE; rerun with --build full or --cli-only"
 }
 
-run_install() {
-  local semu roms
-  semu="$(semu_bin)"
-  roms="$(default_roms_dir)"
-  log "configure Semu project: $PROJECT"
-  log "ROMs: $roms"
-  "$semu" lifecycle install --project "$PROJECT" --roms "$roms"
-  "$semu" sync setup --project "$PROJECT"
-  "$semu" sync autostart enable --project "$PROJECT" || true
-  "$semu" steam-input install --project "$PROJECT" || true
-}
-
-run_status() {
+run_semu() {
   local semu
   semu="$(semu_bin)"
-  "$semu" config show --project "$PROJECT"
-  "$semu" doctor --project "$PROJECT"
-  "$semu" sync status --project "$PROJECT"
-  [ "$OPEN_SYNC" = "1" ] && "$semu" sync open --project "$PROJECT" || true
+  SEMU_ASSET_ROOT="$SOURCE" \
+  SEMU_PROJECT_DIR="$PROJECT" \
+  SEMU_ROMS="$ROMS" \
+  SEMU_ROMS_DIR="$ROMS" \
+    "$semu" "$@"
+}
+
+run_build() {
+  mkdir -p "$PROJECT"
+  log "compiler build: target=$TARGET project=$PROJECT source=$SOURCE"
+  run_semu build target "$TARGET" --project "$PROJECT"
+}
+
+run_verify() {
+  log "compiler verify: target=$TARGET project=$PROJECT source=$SOURCE"
+  run_semu verify target "$TARGET" --project "$PROJECT"
 }
 
 main() {
@@ -238,9 +218,8 @@ main() {
   ensure_ssh
   ensure_repo
   case "$ACTION" in
-    install) build_semu; run_install; run_status ;;
-    update) build_semu; "$(semu_bin)" lifecycle upgrade --project "$PROJECT"; run_install; run_status ;;
-    status) run_status ;;
+    install|update) build_semu; run_build; run_verify ;;
+    status) run_verify ;;
     gc) ensure_nix; nix-collect-garbage -d ;;
   esac
 }

@@ -1,0 +1,71 @@
+{
+  "left_joycon_stick": {
+    "joystick": "Left",
+    "invert_stick_x": false,
+    "invert_stick_y": false,
+    "rotate90_cw": false,
+    "stick_button": "LeftStick"
+  },
+  "right_joycon_stick": {
+    "joystick": "Right",
+    "invert_stick_x": false,
+    "invert_stick_y": false,
+    "rotate90_cw": false,
+    "stick_button": "RightStick"
+  },
+  "motion": {
+    "slot": 0,
+    "alt_slot": 0,
+    "mirror_input": false,
+    "motion_backend": "CemuHook",
+    "dsu_server_host": null,
+    "dsu_server_port": 0,
+    "sensitivity": 100,
+    "gyro_deadzone": 1,
+    "enable_motion": false
+  },
+  "rumble": {
+    "strong_rumble": 1,
+    "weak_rumble": 1,
+    "enable_rumble": true
+  },
+  "led": {
+    "enable_led": false,
+    "turn_off_led": false,
+    "use_rainbow": false,
+    "led_color": 0
+  },
+  "deadzone_left": 0.1,
+  "deadzone_right": 0.1,
+  "range_left": 1,
+  "range_right": 1,
+  "trigger_threshold": 0.5,
+  "left_joycon": {
+    "button_minus": "Back",
+    "button_l": "LeftShoulder",
+    "button_zl": "LeftTrigger",
+    "button_sl": "Unbound",
+    "button_sr": "Unbound",
+    "dpad_up": "DpadUp",
+    "dpad_down": "DpadDown",
+    "dpad_left": "DpadLeft",
+    "dpad_right": "DpadRight"
+  },
+  "right_joycon": {
+    "button_plus": "Start",
+    "button_r": "RightShoulder",
+    "button_zr": "RightTrigger",
+    "button_sl": "Unbound",
+    "button_sr": "Unbound",
+    "button_x": "Y",
+    "button_b": "A",
+    "button_y": "X",
+    "button_a": "B"
+  },
+  "version": 1,
+  "backend": "GamepadSDL2",
+  "id": "0-00000003-28de-0000-0512-000000036800",
+  "name": "Steam Deck Controller",
+  "controller_type": "ProController",
+  "player_index": "Player1"
+}

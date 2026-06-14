@@ -1,0 +1,179 @@
+{
+  "schema_version": 1,
+  "actions": [
+    {
+      "id": "quit",
+      "name": "Quit",
+      "keymap_id": "app.quit",
+      "category": "app",
+      "emitted_input": [
+        "Select+Start",
+        "Esc",
+        "Ctrl+Q",
+        "Alt+F4"
+      ],
+      "radial": true
+    },
+    {
+      "id": "pause",
+      "name": "Pause",
+      "keymap_id": "app.pause",
+      "category": "app",
+      "emitted_input": [
+        "Ctrl+P"
+      ],
+      "radial": false
+    },
+    {
+      "id": "escape",
+      "name": "Escape",
+      "keymap_id": "app.escape",
+      "category": "app",
+      "emitted_input": [
+        "Esc"
+      ],
+      "radial": false
+    },
+    {
+      "id": "save",
+      "name": "Save State",
+      "keymap_id": "state.save",
+      "category": "state",
+      "emitted_input": [
+        "Ctrl+S"
+      ],
+      "supported_by": [
+        "retroarch",
+        "dolphin",
+        "pcsx2"
+      ],
+      "radial": true
+    },
+    {
+      "id": "load",
+      "name": "Load State",
+      "keymap_id": "state.load",
+      "category": "state",
+      "emitted_input": [
+        "Ctrl+A"
+      ],
+      "supported_by": [
+        "retroarch",
+        "dolphin",
+        "pcsx2"
+      ],
+      "radial": true
+    },
+    {
+      "id": "menu",
+      "name": "Menu",
+      "keymap_id": "ui.menu",
+      "category": "ui",
+      "emitted_input": [
+        "Ctrl+M"
+      ],
+      "radial": true
+    },
+    {
+      "id": "fullscreen",
+      "name": "Fullscreen",
+      "keymap_id": "ui.fullscreen",
+      "category": "ui",
+      "emitted_input": [
+        "Ctrl+Enter"
+      ],
+      "radial": true
+    },
+    {
+      "id": "screenshot",
+      "name": "Screenshot",
+      "keymap_id": "ui.screenshot",
+      "category": "ui",
+      "emitted_input": [
+        "Ctrl+X"
+      ],
+      "radial": true
+    },
+    {
+      "id": "fast",
+      "name": "Fast Forward",
+      "keymap_id": "speed.fast",
+      "category": "speed",
+      "emitted_input": [
+        "Ctrl++"
+      ],
+      "radial": true
+    },
+    {
+      "id": "rewind",
+      "name": "Rewind",
+      "keymap_id": "speed.rewind",
+      "category": "speed",
+      "emitted_input": [
+        "Ctrl+-"
+      ],
+      "radial": true
+    },
+    {
+      "id": "screen_swap",
+      "name": "Screen Swap",
+      "keymap_id": "screen.swap",
+      "category": "screen",
+      "emitted_input": [
+        "Ctrl+Tab"
+      ],
+      "radial": true
+    },
+    {
+      "id": "slot_prev",
+      "name": "Previous State Slot",
+      "keymap_id": "state.slot.prev",
+      "category": "state",
+      "emitted_input": [
+        "Ctrl+J"
+      ],
+      "supported_by": [
+        "retroarch",
+        "dolphin",
+        "pcsx2"
+      ],
+      "radial": true
+    },
+    {
+      "id": "slot_next",
+      "name": "Next State Slot",
+      "keymap_id": "state.slot.next",
+      "category": "state",
+      "emitted_input": [
+        "Ctrl+K"
+      ],
+      "supported_by": [
+        "retroarch",
+        "dolphin",
+        "pcsx2"
+      ],
+      "radial": true
+    }
+  ],
+  "radial_intent": {
+    "device": "steam-deck",
+    "surface": "left_trackpad",
+    "mode": "radial_menu",
+    "purpose": "Expose Semu actions that every routed launcher can receive.",
+    "primary_actions": [
+      "save",
+      "load",
+      "quit",
+      "menu",
+      "screenshot"
+    ],
+    "extended_actions": [
+      "fullscreen",
+      "fast",
+      "rewind",
+      "screen_swap",
+      "slot_prev",
+      "slot_next"
+    ]
+  }
+}

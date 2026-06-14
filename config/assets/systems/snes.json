@@ -1,0 +1,61 @@
+{
+  "schema_version": 2,
+  "system": "snes",
+  "label": "Super Nintendo",
+  "default_emulator": "RETROARCH",
+  "emulator": "retroarch",
+  "emulator_config": "retroarch.cfg core-options",
+  "hardware_display": "consumer CRT over S-Video/composite",
+  "display_class": "crt_tv",
+  "content_viewport": {
+    "native_size": {
+      "width": 256,
+      "height": 224
+    },
+    "alternate_native_sizes": [
+      {
+        "width": 512,
+        "height": 448
+      }
+    ],
+    "content_aspect": "4:3",
+    "default_aspect": "4:3",
+    "dynamic_aspect": false,
+    "layout": {
+      "kind": "single",
+      "screens": [
+        {
+          "id": "main",
+          "native_size": {
+            "width": 256,
+            "height": 224
+          },
+          "content_aspect": "4:3"
+        }
+      ]
+    },
+    "scale_policy": "integer"
+  },
+  "renderer": {
+    "model": "semu_source_hook_renderer",
+    "viewport_source": "content_viewport",
+    "profile": "crt_240p",
+    "shader": {
+      "family": "crt_240p",
+      "enabled_by_default": true,
+      "intent": "SNES-era CRT scanlines and soft analog video",
+      "source_asset": "ntsc/ntsc-256px-svideo-scanline.slangp",
+      "widescreen_source_asset": null,
+      "effect_file": "semu-crt.fx"
+    },
+    "bezel": {
+      "family": "sony_or_panasonic_crt",
+      "enabled_by_default": true,
+      "intent": "elegant Panasonic or Sony consumer CRT",
+      "source_asset": "Mega_Bezel_Packs/Duimon-Vintage-TV/Presets/Potato/Panasonic_Panacolor_TH20-B8/TH20-B8-[POTATO].slangp",
+      "widescreen_source_asset": null,
+      "composition_effect_file": "semu-crt-bezel.fx"
+    }
+  },
+  "notes": "Prefer S-Video-like clarity unless a game profile requests composite artifacts."
+}

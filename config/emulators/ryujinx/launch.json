@@ -1,0 +1,35 @@
+{
+  "romArg": "positional",
+  "linux": {
+    "launcher": "flatpak",
+    "flatpakId": "org.ryujinx.Ryujinx",
+    "executable": "ryujinx",
+    "env": {
+      "HOME": "${generated}/emulators/ryujinx/home",
+      "XDG_CONFIG_HOME": "${generated}/emulators/ryujinx/home/.config",
+      "XDG_DATA_HOME": "${generated}/emulators/ryujinx/home/.local/share",
+      "XDG_CACHE_HOME": "${generated}/emulators/ryujinx/home/.cache",
+      "SDL_GAMECONTROLLERCONFIG": "0300f617de2800000512000000036800,Steam Deck Controller,a:b0,b:b1,back:b4,dpdown:h0.4,dpleft:h0.8,dpright:h0.2,dpup:h0.1,guide:b5,leftshoulder:b9,leftstick:b7,lefttrigger:a4,leftx:a0,lefty:a1,misc1:b11,paddle1:b12,paddle2:b13,paddle3:b14,paddle4:b15,rightshoulder:b10,rightstick:b8,righttrigger:a5,rightx:a2,righty:a3,start:b6,x:b2,y:b3,platform:Linux,"
+    },
+    "defaultArgs": [
+      "--root-data-dir",
+      "${generated}/emulators/ryujinx/home/.config/Ryujinx",
+      "--fullscreen"
+    ],
+    "fullscreenArgs": [
+      "--root-data-dir",
+      "${generated}/emulators/ryujinx/home/.config/Ryujinx",
+      "--fullscreen"
+    ]
+  },
+  "macos": {
+    "launcher": "package",
+    "executable": "ryujinx",
+    "defaultArgs": [
+      "--fullscreen"
+    ],
+    "fullscreenArgs": [
+      "--fullscreen"
+    ]
+  }
+}

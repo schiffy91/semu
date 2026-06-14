@@ -1,0 +1,31 @@
+import ./model.btrc;
+import std.cli;
+import ./parser.btrc;
+class SemuCompilerResolver {
+    class SemuBuildPlan resolve(CliArgs args, string project) {
+        string mode = "target";
+        if (args.count() > 1 && !args.get(1).startsWith("--")) {
+            mode = args.get(1);
+        }
+
+        string target = args.valueAfter("--target", "steam-deck");
+        string emulator = args.valueAfter("--emulator", "");
+        if (mode.equals("target") && args.count() > 2 && !args.get(2).startsWith("--")) {
+            target = args.get(2);
+        }
+        if (mode.equals("emulator") && args.count() > 2 && !args.get(2).startsWith("--")) {
+            emulator = args.get(2);
+        }
+
+        SemuBuildPlan plan = SemuBuildPlan(project, mode, target, emulator);
+        plan.systemIds = SemuCompilerParser.targetSystemIds(project, target);
+        if (plan.systemIds.len == 0) {
+            plan.systemIds = SemuCompilerParser.systemIds(project);
+        }
+        plan.emulatorIds = SemuCompilerParser.targetEmulatorIds(project, target);
+        if (plan.emulatorIds.len == 0) {
+            plan.emulatorIds = SemuCompilerParser.emulatorIds(project);
+        }
+        return plan;
+    }
+}
