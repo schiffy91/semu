@@ -431,11 +431,42 @@ string presentationResolveLauncherShader(string project, string runtimePreset, s
     return retroArchShaderPresetPath(project);
 }
 
+// Deck-tuned presentation presets, generated into the bundle under
+// share/libretro/shaders/Mega_Bezel_Packs/semu-deck (see packaging/nix/visual-assets.nix).
+// Each layers the user-approved recipe on a Duimon [Night] preset: consoles in a vintage
+// CRT TV, handhelds in a flat (no-curvature) device shell, the game at the largest integer
+// scale (HSM_INT_SCALE_MODE=2, viewport-relative so it adapts to any screen), and the
+// [Night] "dark cozy room" surround for the unavoidable 16:10 margins.
+string presentationDuimonGuestBezel(string system) {
+    string base = "Mega_Bezel_Packs/semu-deck/";
+    string key = system.toLower();
+    if (key.equals("gb")) { return base + "gb.slangp"; }
+    if (key.equals("gbc")) { return base + "gbc.slangp"; }
+    if (key.equals("gba")) { return base + "gba.slangp"; }
+    if (key.equals("nes")) { return base + "nes.slangp"; }
+    if (key.equals("snes")) { return base + "snes.slangp"; }
+    if (key.equals("genesis")) { return base + "genesis.slangp"; }
+    if (key.equals("n64")) { return base + "n64.slangp"; }
+    if (key.equals("psx")) { return base + "psx.slangp"; }
+    if (key.equals("nds")) { return base + "nds.slangp"; }
+    if (key.equals("psp")) { return base + "psp.slangp"; }
+    if (key.equals("gc")) { return base + "gc.slangp"; }
+    if (key.equals("dreamcast")) { return base + "dreamcast.slangp"; }
+    return "";
+}
+
 string presentationResolvedShaderPath(string project, string system) {
     if (!presentationVisualsEnabled(project)) { return ""; }
     PresentationStationSpec spec = PresentationCatalog.find(system);
     if (!spec.known()) {
         return retroArchShaderPresetPath(project);
+    }
+    if (settingsGetValue(project, "visual.bezels").equals("true")) {
+        string duimon = presentationDuimonGuestBezel(system);
+        if (duimon.len() > 0) {
+            string resolvedDuimon = presentationResolveShaderCandidate(project, duimon);
+            if (resolvedDuimon.len() > 0) { return resolvedDuimon; }
+        }
     }
     JsonObject config = spec.config(project);
     PresentationRuntimeState state = presentationAdapterRuntimeState(project, spec, config, config.getString("default_emulator", spec.defaultEmulator));

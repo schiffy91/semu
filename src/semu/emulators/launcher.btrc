@@ -5,6 +5,7 @@ class SemuLauncher {
 
 string launcherFlatpakId(string emulator) {
     string key = emulator.toLower();
+    if (key.equals("retroarch")) { return "org.libretro.RetroArch"; }
     if (key.equals("azahar")) { return "org.azahar_emu.Azahar"; }
     if (key.equals("cemu")) { return "info.cemu.Cemu"; }
     if (key.equals("dolphin")) { return "org.DolphinEmu.dolphin-emu"; }
@@ -19,7 +20,13 @@ string launcherFlatpakId(string emulator) {
 bool launcherUsesX11(string emulator) {
     string key = emulator.toLower();
     string forceX11 = Environment.get("SEMU_FLATPAK_X11", Environment.get("SEMU_FLATPAK_X11", "0"));
-    return key.equals("azahar") || key.equals("dolphin") || forceX11.equals("1");
+    // In gamescope Game Mode WAYLAND_DISPLAY is gamescope-0 and flatpak --socket=wayland does
+    // not give these SDL2/Qt apps a usable wayland display (Ryujinx aborts: SDL2 "wayland not
+    // available"; same class of failure RA had). Xwayland (X11) is the proven path on the Deck.
+    return key.equals("azahar") || key.equals("dolphin") || key.equals("retroarch")
+        || key.equals("ryujinx") || key.equals("cemu") || key.equals("pcsx2")
+        || key.equals("melonds") || key.equals("ppsspp") || key.equals("flycast")
+        || forceX11.equals("1");
 }
 
 Vector<string> launcherPresetArgs(string emulator) {
@@ -404,6 +411,13 @@ void launcherSeedRoutedState(string project, string emulator, string configRoot,
     if (key.equals("pcsx2")) {
         launcherCopyStateDir(project, "PCSX2/config", joinPath(configRoot, "PCSX2"));
         launcherWritePcsx2Config(project, configRoot);
+        // PCSX2 ignores XDG_CONFIG_HOME and rejects -cfgpath ("Unknown parameter"); it only reads
+        // its ini from the flatpak's own ~/.var/app dir. Write the same valid ini there so
+        // SettingsVersion=1 + SetupWizardIncomplete=false + the SD BIOS path take effect
+        // (verified on-Deck: Marvel vs Capcom 2 boots full-screen).
+        string pcsx2Home = joinPath(Environment.get("HOME", ""), ".var/app/net.pcsx2.PCSX2/config/PCSX2/inis");
+        ensureDir(pcsx2Home);
+        SemuGeneratedFiles.writeAdapterState(project, joinPath(pcsx2Home, "PCSX2.ini"), pcsx2ConfigText(project));
         return;
     }
     if (key.equals("cemu")) {
@@ -414,6 +428,20 @@ void launcherSeedRoutedState(string project, string emulator, string configRoot,
             emulatorProfilePath(project, "Cemu/data/keys.txt")
         ], joinPath(dataRoot, "Cemu/keys.txt"));
         launcherWriteCemuSettings(project, configRoot, dataRoot);
+        // Cemu ignores XDG_DATA_HOME; its real user dir is ~/.var/app/info.cemu.Cemu/data/Cemu.
+        // Seed keys.txt there, and on FIRST run force Vulkan: Cemu's OpenGL backend SEGFAULTS at
+        // "Init OpenGL graphics backend" in gamescope, but Vulkan works (verified on-Deck: New
+        // Super Mario Bros U boots). Write-if-absent so the user's later Cemu settings persist.
+        string cemuHome = joinPath(Environment.get("HOME", ""), ".var/app/info.cemu.Cemu/data/Cemu");
+        ensureDir(cemuHome);
+        launcherCopyFirstExisting(project, [
+            joinPath(configuredEmulationRoot(project), "Cemu/data/keys.txt"),
+            emulatorProfilePath(project, "Cemu/data/keys.txt")
+        ], joinPath(cemuHome, "keys.txt"));
+        if (!FileSystem.exists(joinPath(cemuHome, "settings.xml"))) {
+            SemuGeneratedFiles.writeAdapterState(project, joinPath(cemuHome, "settings.xml"),
+                "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<content>\n\t<Graphic>\n\t\t<api>1</api>\n\t</Graphic>\n\t<check_update>false</check_update>\n</content>\n");
+        }
         return;
     }
     if (key.equals("azahar")) {
@@ -466,6 +494,15 @@ int launcherRunRouted(string project, string emulator, string executable, Vector
         print("launcher: project dir '" + project + "' missing");
         return 2;
     }
+    // RetroArch needs the Flatpak path on the Deck: the nix-routed source-hook RA can't
+    // run slang shaders on gamescope/glcore (crashes / grey rectangle), while the Flatpak
+    // RA gets a working glcore/slang context and renders Duimon Mega Bezel (proven on the
+    // Deck). Other emulators stay nix-routed. Escape hatch keeps the nix path if needed.
+    string routedFlatpakId = launcherFlatpakId(emulator);
+    if (routedFlatpakId.len() > 0 && emulator.toLower().equals("retroarch")
+            && !Environment.get("SEMU_FORCE_ROUTED_NIX", "0").equals("1")) {
+        return launcherRunFlatpak(project, emulator, routedFlatpakId, emulatorArgs);
+    }
     string stateRoot = launcherRoutedStateRoot(project, emulator);
     string home = joinPath(stateRoot, "home");
     string configRoot = joinPath(stateRoot, "config");
@@ -502,6 +539,64 @@ int launcherRunRouted(string project, string emulator, string executable, Vector
     return result.code;
 }
 
+// Locate the standalone-bezel overlay (binary + RGBA assets). Shipped in the bundle at
+// <SEMU_ASSET_ROOT>/share/semu-bezel; falls back to a writable per-user dir for dev deploys.
+// Returns "" when not deployed (so the wrap below is a safe no-op).
+string launcherBezelDir(string project) {
+    string assetRoot = Environment.get("SEMU_ASSET_ROOT", "");
+    if (assetRoot.len() > 0) {
+        string d = joinPath(assetRoot, "share/semu-bezel");
+        if (FileSystem.isFile(joinPath(d, "semu-bezel-overlay"))) { return d; }
+    }
+    string home = Environment.get("HOME", "");
+    if (home.len() > 0) {
+        string d2 = joinPath(home, ".local/share/semu-bezel");
+        if (FileSystem.isFile(joinPath(d2, "semu-bezel-overlay"))) { return d2; }
+    }
+    return "";
+}
+
+// Bezel cutout aspect for a standalone system (most retro consoles are 4:3; Wii/WiiU/Switch 16:9).
+string launcherBezelAspect(string emulator) {
+    string key = emulator.toLower();
+    if (key.equals("azahar")) { return "3ds"; }
+    if (key.equals("wii") || key.equals("cemu") || key.equals("ryujinx")) { return "16x9"; }
+    return "4x3";
+}
+// Reshade bezel asset dir (Bezel.fx + per-aspect wrappers + textures), shipped in the bundle at
+// share/semu-bezel/reshade or dev-deployed to ~/.local/share/semu-bezel/reshade.
+string launcherBezelReshadeDir(string project) {
+    string assetRoot = Environment.get("SEMU_ASSET_ROOT", "");
+    if (assetRoot.len() > 0) {
+        string d = joinPath(assetRoot, "share/semu-bezel/reshade");
+        if (FileSystem.isFile(joinPath(d, "Bezel.fx"))) { return d; }
+    }
+    string home = Environment.get("HOME", "");
+    if (home.len() > 0) {
+        string d2 = joinPath(home, ".local/share/semu-bezel/reshade");
+        if (FileSystem.isFile(joinPath(d2, "Bezel.fx"))) { return d2; }
+    }
+    return "";
+}
+
+// Compose a CRT bezel over a standalone emulator via a gamescope external-overlay client
+// (semu-bezel-overlay sets GAMESCOPE_EXTERNAL_OVERLAY so it draws on top, input passes through).
+// Opt-in (visual.standalone_bezels=true); no-op for RetroArch (MegaBezel handles it) and when the
+// overlay binary isn't deployed. RetroArch's own bezels are unaffected.
+string launcherStandaloneBezelWrap(string project, string emulator, string command) {
+    if (emulator.toLower().equals("retroarch")) { return command; }
+    if (!settingsGetValue(project, "visual.standalone_bezels").equals("true")) { return command; }
+    string dir = launcherBezelDir(project);
+    if (dir.len() == 0) { return command; }
+    string asset = joinPath(dir, "assets/bezel-" + launcherBezelAspect(emulator) + ".png");
+    if (!FileSystem.isFile(asset)) { return command; }
+    Vector<string> ovArgs = [joinPath(dir, "semu-bezel-overlay"), asset];
+    string overlayCmd = shellAppendAll("SDL_VIDEODRIVER=x11", ovArgs);
+    string pre = overlayCmd + " >/tmp/semu-bezel-overlay.log 2>&1 & __SEMU_BEZEL_PID=$!; ";
+    string post = "; kill $__SEMU_BEZEL_PID 2>/dev/null || true; pkill -f semu-bezel-overlay 2>/dev/null || true";
+    return pre + command + post;
+}
+
 int launcherRunFlatpak(string project, string emulator, string flatpakId, Vector<string> emulatorArgs) {
     if (!FileSystem.isDir(project)) {
         print("launcher: project dir '" + project + "' missing");
@@ -530,15 +625,55 @@ int launcherRunFlatpak(string project, string emulator, string flatpakId, Vector
     }
     command = command + "flatpak run";
     Vector<string> flatpakArgs = [
+        "--device=all",
+        "--filesystem=/nix/store:ro",
         "--filesystem=" + project,
         "--filesystem=" + roms,
         "--filesystem=" + stateRoot + ":create",
-        "--env=XDG_CONFIG_HOME=" + configRoot,
-        "--env=XDG_DATA_HOME=" + dataRoot,
-        "--env=XDG_CACHE_HOME=" + cacheRoot
+        "--env=XDG_CONFIG_HOME=" + configRoot
     ];
+    // Standalone emulators seed their firmware/saves/games/mlc as symlinks into the stateRoot
+    // that point back at the SD emulation root (Ryujinx bis/firmware, Cemu mlc, save dirs). The
+    // flatpaks ship with home:ro and no access to /run/media/deck/SD, so those symlinks would
+    // dangle in the sandbox. Grant the emulation root so they resolve (and saves can be written).
+    string emuRoot = configuredEmulationRoot(project);
+    if (emuRoot.len() > 0) {
+        flatpakArgs.push("--filesystem=" + emuRoot);
+    }
+    // RetroArch loads its assets/autoconfig/database from XDG_DATA_HOME; pointing it at the
+    // empty seeded stateRoot makes RA abort before it builds the GL context. Keep only the
+    // config isolated and let the flatpak's own data dir (which has the assets) stand. Other
+    // emulators keep full state isolation.
+    if (!emulator.toLower().equals("retroarch")) {
+        flatpakArgs.push("--env=XDG_DATA_HOME=" + dataRoot);
+        flatpakArgs.push("--env=XDG_CACHE_HOME=" + cacheRoot);
+        // Standalone-emulator bezel via vkBasalt: a Vulkan post-processing layer composites the
+        // game into a bezel cutout INSIDE the swapchain, which gamescope presents (a separate
+        // overlay window is refused by gamescope). Needs the org.freedesktop.Platform.VulkanLayer.vkBasalt
+        // runtime extension installed. ENABLE_VKBASALT is a no-op if the layer is absent.
+        // Validated in a VM: vkBasalt compiles + applies Bezel.fx to the swapchain frames.
+        string bezelDir = launcherBezelReshadeDir(project);
+        if (bezelDir.len() > 0) {
+            string vkConf = joinPath(configRoot, "vkBasalt.conf");
+            SemuGeneratedFiles.writeAdapterState(project, vkConf,
+                "reshadeTexturePath = \"" + bezelDir + "\"\n"
+                + "reshadeIncludePath = \"" + bezelDir + "\"\n"
+                + "depthCapture = off\n"
+                + "effects = bezel\n"
+                + "bezel = \"" + joinPath(bezelDir, "Bezel-" + launcherBezelAspect(emulator) + ".fx") + "\"\n");
+            flatpakArgs.push("--filesystem=" + bezelDir + ":ro");
+            flatpakArgs.push("--env=ENABLE_VKBASALT=1");
+            flatpakArgs.push("--env=VKBASALT_CONFIG_FILE=" + vkConf);
+        }
+    }
     if (launcherUsesX11(emulator)) {
         flatpakArgs.push("--socket=x11");
+        // Force X11: in gamescope Game Mode WAYLAND_DISPLAY is set, which makes the
+        // emulator prefer wayland (no wayland socket granted here) and exit. RetroArch's
+        // working glcore/slang context on the Deck is via X11 (proven).
+        flatpakArgs.push("--unset-env=WAYLAND_DISPLAY");
+        flatpakArgs.push("--env=SDL_VIDEODRIVER=x11");
+        flatpakArgs.push("--env=QT_QPA_PLATFORM=xcb");
     } else {
         flatpakArgs.push("--socket=wayland");
         flatpakArgs.push("--env=QT_QPA_PLATFORM=wayland");
@@ -550,10 +685,23 @@ int launcherRunFlatpak(string project, string emulator, string flatpakId, Vector
         flatpakArgs.push("--env=XAUTHORITY=");
     }
     flatpakArgs.push(flatpakId);
+    // Ryujinx ignores XDG_CONFIG_HOME (it resolves its base dir via the flatpak's own ~/.var/app),
+    // so the seeded keys/firmware in the stateRoot are never seen ("RYU-0001: Keys not found").
+    // Point it explicitly at the SD EmuDeck data dir (keys, firmware, installed games, saves).
+    // Verified on-Deck: Animal Crossing: New Horizons boots (keys+firmware found, shaders compiled).
+    if (emulator.toLower().equals("ryujinx") && emuRoot.len() > 0) {
+        flatpakArgs.push("--root-data-dir");
+        flatpakArgs.push(joinPath(emuRoot, "Ryujinx/config"));
+    }
     for arg in launcherArgsWithDefaults(project, emulator, emulatorArgs) {
         flatpakArgs.push(arg);
     }
     command = shellAppendAll(command, flatpakArgs);
+    // Standalone-emulator CRT bezel overlay (opt-in; no-op for RetroArch / when not deployed).
+    command = launcherStandaloneBezelWrap(project, emulator, command);
+    // Keep the radial-quit backstop (Select+Start / Esc / Ctrl+Q / Alt+F4 -> semu-quit-watch
+    // terminates the routed child) on the flatpak path too.
+    command = launcherQuitWatchCommand(project, emulator, command);
     UnixShell shell = UnixShell();
     screenshotCaptureHook(project, emulator, "before_launch");
     screenshotScheduleHook(project, emulator, "after_spawn");
@@ -571,6 +719,15 @@ int launcherRunEmulator(string project, string emulator, Vector<string> emulator
         return launcherRunFlatpak(project, "flatpak", emulatorArgs.get(0), vectorTail(emulatorArgs, 1));
     }
     if (emulator.toLower().equals("retroarch")) {
+        // es-de's generated wrapper invokes `launcher retroarch` (NOT `launcher routed
+        // retroarch`), so this is the path that must reach the Flatpak RetroArch + Duimon
+        // bezels. The old sandboxLaunch("/usr/bin/retroarch") path is the source-hook nix RA
+        // (grey rectangle / missing binary). Route to flatpak by default; SEMU_FORCE_ROUTED_NIX
+        // keeps the sandbox path for debugging.
+        string raFlatpak = launcherFlatpakId("retroarch");
+        if (raFlatpak.len() > 0 && !Environment.get("SEMU_FORCE_ROUTED_NIX", "0").equals("1")) {
+            return launcherRunFlatpak(project, "retroarch", raFlatpak, emulatorArgs);
+        }
         return sandboxLaunch(project, "retroarch", "/usr/bin/retroarch", emulatorArgs);
     }
     string flatpakId = launcherFlatpakId(emulator);
