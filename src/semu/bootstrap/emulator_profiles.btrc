@@ -433,7 +433,11 @@ string azaharConfigTextForDataRoot(string dataRoot) {
         "renderer_debug\\default=false",
         "",
         "[Renderer]",
-        "graphics_api=1",
+        // Vulkan (2), not OpenGL (1): vkBasalt only hooks the Vulkan swapchain, so the
+        // standalone CRT bezel composites only under Vulkan (verified on-Deck: Retro City
+        // Rampage renders inside the 3ds bezel with libvkbasalt loaded). Azahar's Vulkan
+        // backend works in gamescope.
+        "graphics_api=2",
         "graphics_api\\default=false",
         "",
         "[UI]",

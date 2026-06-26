@@ -448,6 +448,23 @@ void launcherSeedRoutedState(string project, string emulator, string configRoot,
         launcherCopyStateDir(project, "Azahar/config", joinPath(configRoot, "azahar-emu"));
         launcherCopyStateDir(project, "Azahar/data", joinPath(dataRoot, "azahar-emu"));
         launcherWriteAzaharConfig(project, configRoot, dataRoot);
+        // Azahar (like PCSX2/Cemu) ignores XDG_CONFIG_HOME and reads qt-config.ini from its own
+        // ~/.var/app dir. Force the Vulkan renderer there: vkBasalt only hooks the Vulkan
+        // swapchain, so the standalone CRT bezel composites only under Vulkan (OpenGL renders
+        // the game with no bezel). Verified on-Deck: with graphics_api=2 the 3ds bezel composites
+        // and libvkbasalt loads into azahar. Edit-in-place to keep the user's other settings.
+        string azaharHome = joinPath(Environment.get("HOME", ""), ".var/app/org.azahar_emu.Azahar/config/azahar-emu");
+        ensureDir(azaharHome);
+        string azaharCfg = joinPath(azaharHome, "qt-config.ini");
+        if (FileSystem.exists(azaharCfg)) {
+            string cur = FileSystem.readText(azaharCfg);
+            string upd = cur.replace("graphics_api=1", "graphics_api=2").replace("graphics_api\\default=true", "graphics_api\\default=false");
+            if (!upd.equals(cur)) {
+                SemuGeneratedFiles.writeAdapterState(project, azaharCfg, upd);
+            }
+        } else {
+            SemuGeneratedFiles.writeAdapterState(project, azaharCfg, azaharConfigTextForDataRoot(dataRoot));
+        }
         return;
     }
     if (key.equals("ppsspp")) {

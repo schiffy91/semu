@@ -1021,7 +1021,7 @@ int e2eLauncherSmoke(CliArgs args) {
     if (!e2eContains(azaharConfig, "firstStart=false", "azahar first-run prompts disabled")) { return 1; }
     if (!e2eContains(azaharConfig, "renderer_debug=false", "azahar renderer debug disabled")) { return 1; }
     if (!e2eContains(azaharConfig, "renderer_debug\\default=false", "azahar renderer debug explicitly configured")) { return 1; }
-    if (!e2eContains(azaharConfig, "graphics_api=1", "azahar uses OpenGL on Steam Deck")) { return 1; }
+    if (!e2eContains(azaharConfig, "graphics_api=2", "azahar uses Vulkan on Steam Deck (so vkBasalt can composite the bezel)")) { return 1; }
     if (!e2eContains(azaharConfig, "graphics_api\\default=false", "azahar graphics api explicitly configured")) { return 1; }
 
     if (!e2eRunOk(e2eRunLauncher(exe, home, project, roms, binDir, capture, fakeBwrap, "pcsx2", ["game.iso"]), "launcher pcsx2")) { return 1; }

@@ -112,6 +112,30 @@ static inline char* __btrc_toLower(const char* s) {
     return result;
 }
 
+static inline char* __btrc_replace(const char* s, const char* old, const char* rep) {
+    if (!s) { char* r = (char*)malloc(1); r[0] = '\0'; return r; }
+    if (!old || !old[0]) return __btrc_strdup(s);
+    if (!rep) rep = "";
+    int slen = (int)strlen(s);
+    int oldlen = (int)strlen(old);
+    int replen = (int)strlen(rep);
+    int cap = slen * 2 + 1;
+    char* result = (char*)malloc(cap);
+    int rlen = 0, i = 0;
+    while (i < slen) {
+        if (i + oldlen <= slen && strncmp(s + i, old, oldlen) == 0) {
+            while (rlen + replen >= cap) { cap *= 2; result = (char*)__btrc_safe_realloc(result, cap); }
+            memcpy(result + rlen, rep, replen);
+            rlen += replen; i += oldlen;
+        } else {
+            if (rlen + 1 >= cap) { cap *= 2; result = (char*)__btrc_safe_realloc(result, cap); }
+            result[rlen++] = s[i++];
+        }
+    }
+    result[rlen] = '\0';
+    return result;
+}
+
 static inline char* __btrc_strcat(const char* a, const char* b) {
     if (!a && !b) { char* r = (char*)malloc(1); r[0] = '\0'; return r; }
     if (!a) return __btrc_strdup(b);
@@ -13905,6 +13929,18 @@ void launcherSeedRoutedState(char* project, char* emulator, char* configRoot, ch
         launcherCopyStateDir(project, "Azahar/config", joinPath(configRoot, "azahar-emu"));
         launcherCopyStateDir(project, "Azahar/data", joinPath(dataRoot, "azahar-emu"));
         launcherWriteAzaharConfig(project, configRoot, dataRoot);
+        char* azaharHome = joinPath(Environment_get("HOME", ""), ".var/app/org.azahar_emu.Azahar/config/azahar-emu");
+        ensureDir(azaharHome);
+        char* azaharCfg = joinPath(azaharHome, "qt-config.ini");
+        if (FileSystem_exists(azaharCfg)) {
+            char* cur = FileSystem_readText(azaharCfg);
+            char* upd = __btrc_str_track(__btrc_replace(__btrc_str_track(__btrc_replace(cur, "graphics_api=1", "graphics_api=2")), "graphics_api\\default=true", "graphics_api\\default=false"));
+            if (!(strcmp(upd, cur) == 0)) {
+                SemuGeneratedFiles_writeAdapterState(project, azaharCfg, upd);
+            }
+        } else {
+            SemuGeneratedFiles_writeAdapterState(project, azaharCfg, azaharConfigTextForDataRoot(dataRoot));
+        }
         return;
     }
     if (strcmp(key, "ppsspp") == 0) {
@@ -15134,7 +15170,7 @@ char* azaharConfigTextForDataRoot(char* dataRoot) {
     btrc_Vector_string_push(__list_482, "renderer_debug\\default=false");
     btrc_Vector_string_push(__list_482, "");
     btrc_Vector_string_push(__list_482, "[Renderer]");
-    btrc_Vector_string_push(__list_482, "graphics_api=1");
+    btrc_Vector_string_push(__list_482, "graphics_api=2");
     btrc_Vector_string_push(__list_482, "graphics_api\\default=false");
     btrc_Vector_string_push(__list_482, "");
     btrc_Vector_string_push(__list_482, "[UI]");
@@ -24895,7 +24931,7 @@ int e2eLauncherSmoke(CliArgs* args) {
     if (!e2eContains(azaharConfig, "renderer_debug\\default=false", "azahar renderer debug explicitly configured")) {
         return 1;
     }
-    if (!e2eContains(azaharConfig, "graphics_api=1", "azahar uses OpenGL on Steam Deck")) {
+    if (!e2eContains(azaharConfig, "graphics_api=2", "azahar uses Vulkan on Steam Deck (so vkBasalt can composite the bezel)")) {
         return 1;
     }
     if (!e2eContains(azaharConfig, "graphics_api\\default=false", "azahar graphics api explicitly configured")) {

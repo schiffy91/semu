@@ -55,8 +55,8 @@ let
       # Standalone-emulator bezel assets (vkBasalt reshade effect + per-aspect bezels). The
       # launcher generates a per-emulator vkBasalt.conf pointing at these and enables vkBasalt.
       if [ -d packaging/standalone-bezel/reshade ]; then
-        mkdir -p $out/share/semu-bezel
-        cp -r packaging/standalone-bezel/reshade $out/share/semu-bezel/reshade
+        mkdir -p $out/lib/semu/share/semu-bezel
+        cp -r packaging/standalone-bezel/reshade $out/lib/semu/share/semu-bezel/reshade
       fi
     '';
     meta = {
