@@ -114,6 +114,7 @@ if [ -z "${SEMU_PROJECT_DIR:-}" ]; then
 fi
 if [ -z "${SEMU_PROJECT_DIR:-}" ]; then
   for candidate in \
+      "${XDG_DATA_HOME:-$HOME/.local/share}/semu" \
       "$HOME/semu" \
       "$HOME/Documents/semu" \
       "$HOME/Documents/Emulation" \
@@ -307,9 +308,9 @@ while [ "$#" -gt 0 ]; do
   esac
 done
 
-# ES-DE picks GLX (X11) when DISPLAY is set, even though it would prefer
-# Wayland. Under SVM, X11 means Xwayland → GLX which only exposes
-# GL 2.1 — the same incompatibility virgl has. Force Wayland.
-unset DISPLAY
-
+# Launch ES-DE generically: let Steam Game Mode / gamescope provide the display
+# (Xwayland, like every other game) and don't force a graphics backend. An earlier
+# version unset DISPLAY to force Wayland -- a macOS test-VM workaround -- which in
+# Game Mode left SDL with no display to present to, so gamescope never showed the
+# window even though ES-DE rendered fine (OpenGL 4.6 Core). Don't force anything.
 exec "$APPDIR/usr/bin/es-de" "${SEMU_ESDE_ARGS[@]}" "${SEMU_ESDE_PASSTHROUGH_ARGS[@]}"
