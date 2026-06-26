@@ -300,6 +300,7 @@ ExecResult e2eRunLauncher(string exe, string home, string project, string roms, 
         .envVar("SEMU_ROMS_DIR", roms)
         .envVar("SEMU_FLATPAK_CAPTURE", captureDir)
         .envVar("SEMU_BWRAP", bwrapPath)
+        .envVar("SEMU_FORCE_ROUTED_NIX", "1")
         .envVar("SEMU_SCREENSHOT_HOOKS", "1")
         .envVar("SEMU_SCREENSHOT_DELAY_SECONDS", "0")
         .envVar("PATH", binDir + ":/usr/bin:/bin")
@@ -992,7 +993,7 @@ int e2eLauncherSmoke(CliArgs args) {
     if (!e2eOk(FileSystem.isDir(joinPath(cemuState, "config")), "cemu flatpak config state missing")) { return 1; }
     if (!e2eContains(FileSystem.readText(joinPath(capture, "flatpak-1.args")), "--filesystem=" + cemuState + ":create", "cemu state grant")) { return 1; }
     if (!e2eContains(FileSystem.readText(joinPath(capture, "flatpak-1.args")), "--env=XDG_CONFIG_HOME=" + joinPath(cemuState, "config"), "cemu config env")) { return 1; }
-    if (!e2eContains(FileSystem.readText(joinPath(capture, "flatpak-1.args")), "--socket=wayland", "cemu wayland")) { return 1; }
+    if (!e2eContains(FileSystem.readText(joinPath(capture, "flatpak-1.args")), "--socket=x11", "cemu x11")) { return 1; }
     if (!e2eContains(FileSystem.readText(joinPath(capture, "flatpak-1.args")), "info.cemu.Cemu", "cemu flatpak id")) { return 1; }
     if (!e2eContains(FileSystem.readText(joinPath(capture, "flatpak-1.args")), "-f", "cemu fullscreen flag")) { return 1; }
     if (!e2eContains(FileSystem.readText(joinPath(capture, "flatpak-1.args")), "-g", "cemu game flag")) { return 1; }
@@ -1024,7 +1025,7 @@ int e2eLauncherSmoke(CliArgs args) {
     if (!e2eContains(azaharConfig, "graphics_api\\default=false", "azahar graphics api explicitly configured")) { return 1; }
 
     if (!e2eRunOk(e2eRunLauncher(exe, home, project, roms, binDir, capture, fakeBwrap, "pcsx2", ["game.iso"]), "launcher pcsx2")) { return 1; }
-    if (!e2eContains(FileSystem.readText(joinPath(capture, "flatpak-4.args")), "--socket=wayland", "pcsx2 wayland")) { return 1; }
+    if (!e2eContains(FileSystem.readText(joinPath(capture, "flatpak-4.args")), "--socket=x11", "pcsx2 x11")) { return 1; }
     if (!e2eContains(FileSystem.readText(joinPath(capture, "flatpak-4.args")), "net.pcsx2.PCSX2", "pcsx2 flatpak id")) { return 1; }
     if (!e2eContains(FileSystem.readText(joinPath(capture, "flatpak-4.args")), "-batch", "pcsx2 batch flag")) { return 1; }
     if (!e2eContains(FileSystem.readText(joinPath(capture, "flatpak-4.args")), "-fullscreen", "pcsx2 fullscreen flag")) { return 1; }

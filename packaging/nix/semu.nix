@@ -51,6 +51,13 @@ let
         mkdir -p $out/lib/semu/packaging
         cp -r packaging/linux $out/lib/semu/packaging/
       fi
+
+      # Standalone-emulator bezel assets (vkBasalt reshade effect + per-aspect bezels). The
+      # launcher generates a per-emulator vkBasalt.conf pointing at these and enables vkBasalt.
+      if [ -d packaging/standalone-bezel/reshade ]; then
+        mkdir -p $out/share/semu-bezel
+        cp -r packaging/standalone-bezel/reshade $out/share/semu-bezel/reshade
+      fi
     '';
     meta = {
       description = "Deterministic emulation environment manager";
