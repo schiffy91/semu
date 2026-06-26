@@ -45,6 +45,14 @@ stdenv.mkDerivation {
       mkdir -p $out/lib/semu/packaging
       cp -r packaging/linux $out/lib/semu/packaging/
     fi
+
+    # Standalone-emulator bezel assets (vkBasalt reshade effect + per-aspect bezels).
+    # Must live under SEMU_ASSET_ROOT ($out/lib/semu); the launcher reads
+    # share/semu-bezel/reshade and generates a per-emulator vkBasalt.conf pointing at it.
+    if [ -d packaging/standalone-bezel/reshade ]; then
+      mkdir -p $out/lib/semu/share/semu-bezel
+      cp -r packaging/standalone-bezel/reshade $out/lib/semu/share/semu-bezel/reshade
+    fi
   '';
   meta = {
     description = "Semu BTRC runtime CLI";
