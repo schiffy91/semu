@@ -947,6 +947,7 @@ void copySteamInputTemplate(char* project, char* destination, char* name);
 int steamInputCommand(CliArgs* args, char* project);
 int configCommand(CliArgs* args, char* project);
 char* launcherNameFromProgram(char* program);
+char* resolveProjectDir(CliArgs* args);
 char* Strings_copy(char* s);
 char* Strings_replace(char* s, char* old, char* replacement);
 btrc_Vector_string* Strings_split(char* s, char* delim);
@@ -26445,10 +26446,39 @@ char* launcherNameFromProgram(char* program) {
     return Strings_removePrefix(base, "semu-");
 }
 
+char* resolveProjectDir(CliArgs* args) {
+    char* explicit = CliArgs_valueAfter(args, "--project", "");
+    if (((int)strlen(explicit)) > 0) {
+        return explicit;
+    }
+    char* env = Environment_get("SEMU_PROJECT_DIR", "");
+    if (((int)strlen(env)) > 0) {
+        return env;
+    }
+    if (FileSystem_isFile("semu.json")) {
+        return ".";
+    }
+    char* xdg = Environment_get("XDG_DATA_HOME", "");
+    if (((int)strlen(xdg)) > 0) {
+        char* c1 = joinPath(xdg, "semu");
+        if (FileSystem_isFile(joinPath(c1, "semu.json"))) {
+            return c1;
+        }
+    }
+    char* home = Environment_get("HOME", "");
+    if (((int)strlen(home)) > 0) {
+        char* c2 = joinPath(home, ".local/share/semu");
+        if (FileSystem_isFile(joinPath(c2, "semu.json"))) {
+            return c2;
+        }
+    }
+    return ".";
+}
+
 int main(int argc, char** argv) {
     CliArgs* args = CliArgs_new(argc, argv);
     char* command = CliArgs_command(args);
-    char* project = CliArgs_valueAfter(args, "--project", Environment_get("SEMU_PROJECT_DIR", "."));
+    char* project = resolveProjectDir(args);
     char* programLauncher = launcherNameFromProgram(args->program);
     if (((int)strlen(programLauncher)) > 0) {
         int __btrc_ret_1205 = launcherRunEmulator(project, programLauncher, launcherPassthroughArgs(args));

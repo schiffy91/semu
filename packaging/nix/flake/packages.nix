@@ -9,8 +9,12 @@ forAllSystems (system: let
       ryujinx =
         if system == "x86_64-darwin" then null
         else pkgs.ryubing;
+      # On the Deck use the official Steam Deck ES-DE build (tuned for the gamescope/Wayland
+      # Game Mode session); the generic Linux build loads but its window isn't presented by
+      # gamescope. macOS keeps the generic (.dmg) build.
       es-de =
-        if isFullBundleTarget then pkgs.callPackage ../es-de.nix {}
+        if isX86Linux then pkgs.callPackage ../es-de.nix { steamDeck = true; }
+        else if isDarwin then pkgs.callPackage ../es-de.nix {}
         else null;
       retroarch = if isX86Linux then
         (pkgs.retroarch.withCores (cores: [
