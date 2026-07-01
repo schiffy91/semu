@@ -24225,6 +24225,9 @@ int e2eDeckEvidenceSmoke(CliArgs* args) {
     if (!e2eContains(visualManifest, "\"screenshot.game-priority.A=ok\"", "visual evidence manifest screenshot analysis token")) {
         return 1;
     }
+    if (!e2eContains(visualManifest, "\"screenshot.bezel-priority.Off=ok\"", "visual evidence manifest off screenshot analysis token")) {
+        return 1;
+    }
     char* gbRom = joinPath(roms, "gb/game.gb");
     e2eSeedFile(gbRom);
     btrc_Vector_string* __list_1002 = btrc_Vector_string_new();
@@ -24275,6 +24278,9 @@ int e2eDeckEvidenceSmoke(CliArgs* args) {
     if (!e2eContains(ExecResult_stdout(visualCapture), "OK capture gb screenshot game-priority/A", "visual capture screenshot status")) {
         return 1;
     }
+    if (!e2eContains(ExecResult_stdout(visualCapture), "OK capture gb screenshot bezel-priority/Off", "visual capture off screenshot status")) {
+        return 1;
+    }
     if (!e2eContains(ExecResult_stdout(visualCapture), "OK capture gb clip", "visual capture clip status")) {
         return 1;
     }
@@ -24287,7 +24293,7 @@ int e2eDeckEvidenceSmoke(CliArgs* args) {
     if (!e2eOk(deckEvidenceFilePresent(deckVisualScreenshotPath(project, "gb", "game-priority", "A")), "captured game-priority A screenshot missing")) {
         return 1;
     }
-    if (!e2eOk(deckEvidenceFilePresent(deckVisualScreenshotPath(project, "gb", "bezel-priority", "C")), "captured bezel-priority C screenshot missing")) {
+    if (!e2eOk(deckEvidenceFilePresent(deckVisualScreenshotPath(project, "gb", "bezel-priority", "Off")), "captured bezel-priority Off screenshot missing")) {
         return 1;
     }
     if (!e2eOk(deckEvidenceFilePresent(deckVisualClipPath(project, "gb")), "captured visual clip missing")) {
@@ -24296,10 +24302,10 @@ int e2eDeckEvidenceSmoke(CliArgs* args) {
     if (!e2eContains(FileSystem_readText(joinPath(tapStateDir, "semu-priority")), "b", "visual capture final priority state")) {
         return 1;
     }
-    if (!e2eContains(FileSystem_readText(joinPath(tapStateDir, "semu-bezel")), "2", "visual capture final bezel state")) {
+    if (!e2eContains(FileSystem_readText(joinPath(tapStateDir, "semu-bezel")), "3", "visual capture final bezel state")) {
         return 1;
     }
-    if (!e2eContains(FileSystem_readText(joinPath(tapStateDir, "semu-shader")), "2", "visual capture final shader state")) {
+    if (!e2eContains(FileSystem_readText(joinPath(tapStateDir, "semu-shader")), "3", "visual capture final shader state")) {
         return 1;
     }
     if (!e2eContains(FileSystem_readText(deckVisualLaunchLogPath(project, "gb")), "launched", "visual capture launch log")) {
@@ -24355,13 +24361,13 @@ int e2eDeckEvidenceSmoke(CliArgs* args) {
     if (!e2eContains(ExecResult_stdout(visualCaptureAll), "Capturing visual evidence batch", "visual capture-all batch status")) {
         return 1;
     }
-    if (!e2eContains(ExecResult_stdout(visualCaptureAll), "OK capture switch screenshot bezel-priority/C", "visual capture-all switch status")) {
+    if (!e2eContains(ExecResult_stdout(visualCaptureAll), "OK capture switch screenshot bezel-priority/Off", "visual capture-all switch status")) {
         return 1;
     }
     if (!e2eContains(ExecResult_stdout(visualCaptureAll), "OK capture ps2 clip", "visual capture-all ps2 clip status")) {
         return 1;
     }
-    if (!e2eOk(deckEvidenceFilePresent(deckVisualScreenshotPath(project, "switch", "bezel-priority", "C")), "capture-all switch screenshot missing")) {
+    if (!e2eOk(deckEvidenceFilePresent(deckVisualScreenshotPath(project, "switch", "bezel-priority", "Off")), "capture-all switch screenshot missing")) {
         return 1;
     }
     if (!e2eOk(deckEvidenceFilePresent(deckVisualClipPath(project, "ps2")), "capture-all ps2 clip missing")) {
@@ -24600,6 +24606,7 @@ btrc_Vector_string* deckVisualEvidenceVariants(void) {
     btrc_Vector_string_push(__list_1027, "A");
     btrc_Vector_string_push(__list_1027, "B");
     btrc_Vector_string_push(__list_1027, "C");
+    btrc_Vector_string_push(__list_1027, "Off");
     return __list_1027;
 }
 
@@ -25122,7 +25129,7 @@ char* deckVisualEvidenceChecklistText(char* project, btrc_Vector_string* systems
     btrc_Vector_string_push(__list_1058, "For each system:");
     btrc_Vector_string_push(__list_1058, "1. Launch a representative game through Semu.");
     btrc_Vector_string_push(__list_1058, "2. Capture screenshots for game-priority and bezel-priority.");
-    btrc_Vector_string_push(__list_1058, "3. Capture variants A, B, and C for each priority.");
+    btrc_Vector_string_push(__list_1058, "3. Capture variants A, B, C, and Off for each priority.");
     btrc_Vector_string_push(__list_1058, "4. Record a 30-second start-of-gameplay clip.");
     btrc_Vector_string_push(__list_1058, "5. Verify the game viewport lands exactly in the bezel cutout.");
     btrc_Vector_string_push(__list_1058, "6. Verify controller input moves/responds in game.");

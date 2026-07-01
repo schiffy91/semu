@@ -15,7 +15,7 @@ Vector<string> deckVisualEvidencePriorities() {
 }
 
 Vector<string> deckVisualEvidenceVariants() {
-    return ["A", "B", "C"];
+    return ["A", "B", "C", "Off"];
 }
 
 string deckVisualScreenshotPath(string project, string system, string priority, string variant) {
@@ -448,7 +448,7 @@ string deckVisualEvidenceChecklistText(string project, Vector<string> systems) {
         "For each system:",
         "1. Launch a representative game through Semu.",
         "2. Capture screenshots for game-priority and bezel-priority.",
-        "3. Capture variants A, B, and C for each priority.",
+        "3. Capture variants A, B, C, and Off for each priority.",
         "4. Record a 30-second start-of-gameplay clip.",
         "5. Verify the game viewport lands exactly in the bezel cutout.",
         "6. Verify controller input moves/responds in game.",
