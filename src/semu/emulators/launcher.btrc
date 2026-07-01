@@ -66,10 +66,15 @@ Vector<string> launcherPresetArgs(string emulator) {
 Vector<string> launcherPresetArgsForProject(string project, string emulator, Vector<string> emulatorArgs) {
     Vector<string> defaults = launcherPresetArgs(emulator);
     if (emulator.toLower().equals("retroarch")) {
-        string system = presentationSystemFromArgs(project, emulatorArgs);
-        string shader = system.len() > 0 ? presentationResolvedShaderPath(project, system) : retroArchShaderPresetPath(project);
-        if (shader.len() > 0) {
-            defaults.push("--set-shader=" + shader);
+        // When our GL tap is deployed it owns the bezel + shader (rendered on top each frame), so
+        // RetroArch should render the RAW game — no --set-shader. Only when the tap is absent do we
+        // fall back to the in-RetroArch MegaBezel preset.
+        if (launcherTapLib(project).len() == 0) {
+            string system = presentationSystemFromArgs(project, emulatorArgs);
+            string shader = system.len() > 0 ? presentationResolvedShaderPath(project, system) : retroArchShaderPresetPath(project);
+            if (shader.len() > 0) {
+                defaults.push("--set-shader=" + shader);
+            }
         }
     }
     return defaults;
@@ -234,6 +239,11 @@ string launcherRetroArchConfig(string project) {
         + retroArchConfigValue("input_driver", "sdl2")
         + retroArchConfigValue("input_joypad_driver", "sdl2")
         + retroArchConfigValue("input_autodetect_enable", "true")
+        // The flatpak's bundled /app autoconfig has no profile for the Steam Deck's virtual pad
+        // (Valve 28DE:11FF / "Microsoft X-Box 360 pad"), so the pad shows "not configured" and
+        // input is dead. Point at the flatpak config dir where install-ra-cores.sh drops the full
+        // libretro autoconfig pack (the sdl2 "Steam Virtual Gamepad" profile that matches it).
+        + retroArchConfigValue("joypad_autoconfig_dir", joinPath(Environment.get("HOME", ""), ".var/app/org.libretro.RetroArch/config/retroarch/autoconfig"))
         + retroArchConfigValue("input_remap_binds_enable", "true")
         + retroArchConfigValue("system_directory", launcherRetroArchSystemDir(project))
         + retroArchConfigValue("savestate_directory", joinPath(content, "states"))
@@ -401,6 +411,14 @@ void launcherSeedRoutedState(string project, string emulator, string configRoot,
         launcherCopyProfileDir(project, "RetroArch/config", joinPath(configRoot, "retroarch"));
         launcherCopyProfileFile(project, "RetroArch/retroarch.cfg", joinPath(configRoot, "retroarch/retroarch.cfg"));
         launcherWriteRetroArchConfig(project, configRoot);
+        // mupen64plus_next internal render resolution is MODE-DRIVEN (render_res.btrc). Default "1x" -> 320x240
+        // (retro, compositor upscales); "integer" -> integer-scaled display res (sharp 1:1, 960x720 on Deck);
+        // "native" -> the core's own default. The patched RA reads the GLOBAL core-options, so MERGE the keys
+        // there (non-destructively); also write the per-core .opt for per-core-options setups.
+        renderApplyRaCoreOpts(project, "n64", joinPath(configRoot, "retroarch/retroarch-core-options.cfg"));
+        string mupenOptDir = joinPath(configRoot, "retroarch/config/Mupen64Plus-Next");
+        ensureDir(mupenOptDir);
+        renderApplyRaCoreOpts(project, "n64", joinPath(mupenOptDir, "Mupen64Plus-Next.opt"));
         return;
     }
     if (key.equals("dolphin")) {
@@ -596,6 +614,251 @@ string launcherBezelReshadeDir(string project) {
     return "";
 }
 
+// GL frame TAP library (libsemutap.so): LD_PRELOAD'd into GL emulators (RetroArch glcore) so WE
+// render our bezel + CRT shader on top of every frame, gated to gameplay, independent of the
+// emulator's aspect/bezel handling. The GL analog of the vkBasalt (Vulkan) tap for standalones.
+string launcherTapLib(string project) {
+    string assetRoot = Environment.get("SEMU_ASSET_ROOT", "");
+    if (assetRoot.len() > 0) {
+        string a = joinPath(assetRoot, "lib/semu/libsemutap.so");
+        if (FileSystem.isFile(a)) { return a; }
+    }
+    string home = Environment.get("HOME", "");
+    if (home.len() > 0) {
+        string b = joinPath(home, ".local/share/semu-bezel/libsemutap.so");
+        if (FileSystem.isFile(b)) { return b; }
+    }
+    return "";
+}
+// Core native scanline height per system (drives the tap's largest-integer scaling). Default 240.
+string launcherTapNativeH(string system) {
+    string s = system.toLower();
+    if (s.equals("snes") || s.equals("superfamicom") || s.equals("sfc") || s.equals("super_nintendo")) { return "224"; }
+    if (s.equals("genesis") || s.equals("megadrive") || s.equals("megadrive-japan")) { return "224"; }
+    if (s.equals("gb") || s.equals("gbc") || s.equals("gameboy") || s.equals("gbcolor")) { return "144"; }
+    if (s.equals("gba")) { return "160"; }
+    if (s.equals("nds")) { return "384"; }  // both DS screens stacked (256x384 combined frame)
+    return "240"; // nes, n64, psx, default
+}
+// Core native PIXEL width (base render width). With video_scale_integer RetroArch renders the game at
+// native_w*N x native_h*N (square pixels); the tap remaps that into the era-accurate display rect (aspect).
+string launcherTapNativeW(string system) {
+    string s = system.toLower();
+    if (s.equals("genesis") || s.equals("megadrive") || s.equals("megadrive-japan") || s.equals("n64") || s.equals("psx") || s.equals("playstation")) { return "320"; }
+    if (s.equals("gba")) { return "240"; }
+    if (s.equals("gb") || s.equals("gbc") || s.equals("gameboy") || s.equals("gbcolor")) { return "160"; }
+    return "256"; // nes, snes, nds, default
+}
+// Era-accurate bezel STYLE: handhelds get an LCD plastic shell (no scanlines), consoles a CRT-TV.
+string launcherTapStyle(string system) {
+    string s = system.toLower();
+    if (s.equals("gb") || s.equals("gbc") || s.equals("gba") || s.equals("gameboy") || s.equals("gbcolor") || s.equals("nds")) { return "handheld"; }
+    return "console";
+}
+// Handheld shell tint (R,G,B 0..1), era colors. Default neutral grey (consoles ignore it).
+string launcherTapShell(string system) {
+    string s = system.toLower();
+    if (s.equals("gb") || s.equals("gameboy")) { return "0.60,0.64,0.55"; }
+    if (s.equals("gba")) { return "0.34,0.32,0.52"; }
+    if (s.equals("nds")) { return "0.82,0.82,0.85"; }
+    return "0.55,0.56,0.60";
+}
+// Display aspect per system (game width = height * this). Default 4:3.
+string launcherTapAspect(string system) {
+    string s = system.toLower();
+    if (s.equals("gba")) { return "1.5"; }
+    if (s.equals("gb") || s.equals("gbc") || s.equals("gameboy") || s.equals("gbcolor")) { return "1.111"; }
+    if (s.equals("nds")) { return "256:384"; }  // both screens stacked (portrait combined frame)
+    if (s.equals("switch") || s.equals("wiiu") || s.equals("psp")) { return "1.7778"; }  // 16:9 HD-era standalone
+    if (s.equals("3ds") || s.equals("n3ds")) { return "400:480"; }  // 3DS dual screen (top 400w, both 240h stacked)
+    return "1.3333";   // ps2, gc, dreamcast, psx, nes/snes/genesis/n64 (4:3)
+}
+// Default render mode for the live compositor toggle: 3D cores render high-res (sharp) and the compositor
+// shows the soft 240p look by default; 2D cores render native pixels, no downsample (the CRT shader softens).
+string launcherRetroStart(string system) {
+    string s = system.toLower();
+    if (s.equals("n64")) { return "1"; }   // mupen renders high-res; compositor shows soft 240p by default
+    return "0";                             // 2D + psx(mednafen, native) + handhelds: native pixels, no downsample
+}
+// Default geometry priority: handhelds -> BEZEL (show the whole device shell); consoles -> GAME (fill the
+// screen). The radial Home key toggles it live.
+string launcherTapPriority(string system) {
+    string s = system.toLower();
+    if (s.equals("gb") || s.equals("gbc") || s.equals("gba") || s.equals("gameboy") || s.equals("gbcolor") || s.equals("nds")) { return "bezel"; }
+    return "game";
+}
+// Dual-screen systems (nds, 3ds): the compositor splits the combined frame into two independently
+// laid-out + scaled screens (vertical/horizontal via the radial).
+string launcherTapDual(string system) {
+    string s = system.toLower();
+    if (s.equals("nds") || s.equals("3ds") || s.equals("n3ds")) { return "1"; }
+    return "0";
+}
+// System kind for the compositor's dynamically-generated per-system menu: 1 = dual-screen (nds/3ds:
+// vertical/horizontal + per-screen scale), 2 = wii/wiiu (controller layouts), 0 = generic.
+string launcherTapSysKind(string system) {
+    string s = system.toLower();
+    if (s.equals("nds") || s.equals("3ds") || s.equals("n3ds")) { return "1"; }
+    if (s.equals("wii") || s.equals("wiiu")) { return "2"; }
+    return "0";
+}
+// The tap system for an emulator: RetroArch derives it from the ROM path; the STANDALONE emulators map
+// 1:1 to their console so they get the same bezel + shader + cutout treatment as RetroArch (full parity).
+string launcherTapSystem(string project, string emulator, Vector<string> args) {
+    string e = emulator.toLower();
+    if (e.equals("retroarch")) { return presentationSystemFromArgs(project, args); }
+    if (e.equals("pcsx2")) { return "ps2"; }
+    if (e.equals("dolphin")) { return "gc"; }
+    if (e.equals("flycast")) { return "dreamcast"; }
+    if (e.equals("ppsspp")) { return "psp"; }
+    if (e.equals("azahar")) { return "3ds"; }
+    if (e.equals("ryujinx")) { return "switch"; }
+    if (e.equals("cemu")) { return "wiiu"; }
+    if (e.equals("melonds")) { return "nds"; }
+    return "";
+}
+// Standalone emulators the tap compositor drives (forced to OpenGL so libsemutap's glXSwapBuffers hook
+// fires; SEMU_TAP_STANDALONE synthesizes the content rect from the full frame). Full-parity list.
+bool launcherStandaloneTap(string project, string emulator) {
+    if (emulator.toLower().equals("retroarch")) { return false; }
+    if (launcherTapLib(project).len() == 0) { return false; }
+    Vector<string> noArgs = [];
+    string s = launcherTapSystem(project, emulator, noArgs);
+    return s.len() > 0;
+}
+// The GL tap only intercepts an OpenGL emulator (its glX/eglSwapBuffers). Most standalone emulators default
+// to Vulkan, so force each to its OpenGL backend by patching the emulator's own config (shell snippet run
+// before launch — declarative + reproducible). Extend per emulator as verified on-Deck.
+string launcherForceGLCommand(string emulator) {
+    string e = emulator.toLower();
+    string home = Environment.get("HOME", "/home/deck");
+    string va = home + "/.var/app";
+    if (e.equals("pcsx2")) {   // [EmuCore/GS] Renderer: 12 = OpenGL
+        string ini = va + "/net.pcsx2.PCSX2/config/PCSX2/inis/PCSX2.ini";
+        return "if [ -f '" + ini + "' ]; then grep -q '^Renderer = ' '" + ini + "' && sed -i 's/^Renderer = .*/Renderer = 12/' '" + ini + "' || sed -i '/^\\[EmuCore\\/GS\\]/a Renderer = 12' '" + ini + "'; fi; ";
+    }
+    if (e.equals("dolphin")) { return ""; }   // dolphin takes -v OGL on the command line (see launcherPresetArgs)
+    if (e.equals("ppsspp")) {  // [Graphics] GPUBackend: 0 = OpenGL
+        string ini = va + "/org.ppsspp.PPSSPP/config/ppsspp/PSP/SYSTEM/ppsspp.ini";
+        return "if [ -f '" + ini + "' ]; then sed -i 's/^GPUBackend = .*/GPUBackend = 0/' '" + ini + "'; fi; ";
+    }
+    if (e.equals("flycast")) {  // [config] pvr.rend: 0 = OpenGL
+        string cfg = va + "/org.flycast.Flycast/config/flycast/emu.cfg";
+        return "if [ -f '" + cfg + "' ]; then sed -i 's/^rend.renderer *= *.*/rend.renderer = 0/' '" + cfg + "'; fi; ";
+    }
+    // Best-effort schemas below (values verified/corrected on-Deck by inspecting each config).
+    if (e.equals("cemu")) {  // settings.xml <GraphicAPI>: 0 = OpenGL, 1 = Vulkan
+        string xml = va + "/info.cemu.Cemu/config/Cemu/settings.xml";
+        return "if [ -f '" + xml + "' ]; then sed -i 's|<GraphicAPI>[0-9]*</GraphicAPI>|<GraphicAPI>0</GraphicAPI>|' '" + xml + "'; fi; ";
+    }
+    if (e.equals("azahar")) {  // qt-config.ini [Renderer] graphics_api: 1 = OpenGL (0=SW, 2=Vulkan)
+        string ini = va + "/org.azahar_emu.Azahar/config/azahar/qt-config.ini";
+        return "if [ -f '" + ini + "' ]; then sed -i 's/^graphics_api=.*/graphics_api=1/' '" + ini + "'; fi; ";
+    }
+    if (e.equals("melonds")) {  // melonDS 3D renderer: 1 = OpenGL (config .ini/.toml)
+        string cfg = va + "/net.kuribo64.melonDS/config/melonDS/melonDS.ini";
+        return "if [ -f '" + cfg + "' ]; then sed -i 's/^3D_Renderer=.*/3D_Renderer=1/' '" + cfg + "'; fi; ";
+    }
+    // ryujinx: Config.json lives in the SD --root-data-dir (dynamic) -> forced on-Deck in the fan-out.
+    return "";
+}
+// Handhelds: the device shell's screen is small relative to the screen, so largest-integer scaling
+// leaves the game floating at 1x. Fill the device's screen hole at the display aspect (non-integer,
+// like Duimon's HSM_NON_INTEGER_SCALE) so the LCD area is properly filled.
+string launcherTapFill(string system) {
+    string s = system.toLower();
+    if (s.equals("gb") || s.equals("gbc") || s.equals("gba") || s.equals("gameboy") || s.equals("gbcolor")) { return "1"; }
+    return "0";
+}
+// Screen-glass layer per variant: its alpha is the EXACT screen cutout mask (real rounded-corner device
+// screen — replaces the fake corner-rounding), its rgb the glass/reflections. "" = none (CRT consoles use
+// a procedural rounded mask). variant "" = base model; "b"/"c" = the variant's model (gba b = SP clamshell).
+string launcherTapGlass(string project, string system, string variant) {
+    string s = system.toLower();
+    string rel = "";
+    if (s.equals("gb") || s.equals("gameboy"))  { rel = "semu-shells/gb-glass.png"; }
+    if (s.equals("gbc") || s.equals("gbcolor")) { rel = "semu-shells/gbc-glass.png"; }
+    if (s.equals("gba")) { rel = variant.equals("b") ? "semu-shells/gba-b-glass.png" : "semu-shells/gba-glass.png"; }
+    if (rel.len() == 0) { return ""; }
+    return launcherResolveArtRel(rel);
+}
+// Reflection/glare strength (0 disables). Handhelds get a visible glass sheen; CRT consoles a subtle glare.
+string launcherTapReflect(string system) {
+    string s = system.toLower();
+    if (s.equals("gb") || s.equals("gbc") || s.equals("gba") || s.equals("gameboy") || s.equals("gbcolor")) { return "0.55"; }
+    if (s.equals("n64") || s.equals("nes") || s.equals("famicom") || s.equals("snes") || s.equals("genesis") || s.equals("megadrive") || s.equals("psx") || s.equals("playstation")) { return "0.18"; }
+    return "0.0";
+}
+// CRT barrel curvature (0 = flat). Only force it where the bezel's screen is genuinely curved; the Soqueroeu
+// "Console-Night" CRT reads near-flat, so 0 for now (tunable per bezel).
+string launcherTapCurve(string system) { return "0.0"; }
+// Procedural screen-mask corner radius for systems WITHOUT a glass layer (CRT consoles) — a subtle round
+// matching the tube. Handhelds use the glass mask, so this is unused for them.
+string launcherTapCorner(string system) {
+    string s = system.toLower();
+    if (s.equals("gb") || s.equals("gbc") || s.equals("gba")) { return "0.0"; }
+    return "0.045";
+}
+
+// --- Mega Bezel .slangp parser (btrc port of packaging/deck-tap/mbparse.c) ---
+// Resolve a preset's #reference chain into a flat param map (outer files override referenced ones)
+// and resolve any "*.png" value to an absolute path, so the tap can sample the SAME art a MegaBezel
+// preset uses. The chain has shared/cyclic includes, so it's cycle-guarded + depth-capped.
+string launcherMbResolvePath(string base, string rel) {
+    Vector<string> parts = Strings.split(base + "/" + rel, "/");
+    Vector<string> stack = [];
+    for part in parts {
+        if (part.equals("") || part.equals(".")) {
+            continue;
+        } else if (part.equals("..")) {
+            if (stack.size() > 0) { stack.pop(); }
+        } else {
+            stack.push(part);
+        }
+    }
+    return "/" + Strings.join(stack, "/");
+}
+
+void launcherMbParse(string path, Map<string, string> params, Vector<string> visited, int depth) {
+    if (depth > 64 || visited.contains(path) || !FileSystem.isFile(path)) { return; }
+    visited.push(path);
+    string dir = PathTools.dirname(path);
+    Vector<string> lines = Strings.split(FileSystem.readText(path), "\n");
+    for raw in lines {
+        string line = raw;
+        int ci = Strings.find(line, "//", 0);
+        if (ci >= 0) { line = line.substring(0, ci); }
+        line = line.trim();
+        if (line.startsWith("#reference")) {
+            Vector<string> q = Strings.split(line, "\"");
+            if (q.size() >= 2) {
+                launcherMbParse(launcherMbResolvePath(dir, q.get(1)), params, visited, depth + 1);
+            }
+        } else if (Strings.find(line, "=", 0) >= 0 && Strings.find(line, "\"", 0) >= 0) {
+            Vector<string> q = Strings.split(line, "\"");
+            if (q.size() >= 2) {
+                string key = Strings.split(q.get(0), "=").get(0).trim();
+                string val = q.get(1);
+                if (val.endsWith(".png") || val.endsWith(".jpg")) {
+                    val = launcherMbResolvePath(dir, val);
+                }
+                params.set(key, val);
+            }
+        }
+    }
+}
+
+// Absolute path of the MegaBezel background/bezel art PNG for a system's preset, or "" if none.
+string launcherTapArt(string project, string system) {
+    string preset = presentationResolvedShaderPath(project, system);
+    if (preset.len() == 0 || !FileSystem.isFile(preset)) { return ""; }
+    Map<string, string> params = {};
+    Vector<string> visited = [];
+    launcherMbParse(preset, params, visited, 0);
+    if (params.contains("BackgroundImage")) { return params.get("BackgroundImage"); }
+    return "";
+}
+
 // Compose a CRT bezel over a standalone emulator via a gamescope external-overlay client
 // (semu-bezel-overlay sets GAMESCOPE_EXTERNAL_OVERLAY so it draws on top, input passes through).
 // Opt-in (visual.standalone_bezels=true); no-op for RetroArch (MegaBezel handles it) and when the
@@ -614,6 +877,101 @@ string launcherStandaloneBezelWrap(string project, string emulator, string comma
     return pre + command + post;
 }
 
+// Patched RetroArch built from source (reports its real content viewport via semu_tap.h). Dev-deployed
+// to ~/ra-build; bundle path ($SEMU_ASSET_ROOT/bin/retroarch-semu) later. "" -> fall back to stock flatpak.
+string launcherPatchedRA(string project) {
+    string home = Environment.get("HOME", "");
+    if (home.len() > 0) {
+        string p = joinPath(home, "ra-build/RetroArch-1.22.2/retroarch");
+        if (FileSystem.isFile(p)) { return p; }
+    }
+    string assetRoot = Environment.get("SEMU_ASSET_ROOT", "");
+    if (assetRoot.len() > 0) {
+        string b = joinPath(assetRoot, "bin/retroarch-semu");
+        if (FileSystem.isFile(b)) { return b; }
+    }
+    return "";
+}
+// Per-system screen rect (normalized, top-left x,y,w,h): where the game sits inside the bezel art.
+// The art's TV-glass rect (x,y,w,h normalized, top-left). The compositor scales the bezel art so this
+// hole lands exactly on the integer-scaled game rect. Values are AUTO-MEASURED + aspect-snapped per
+// bezel by packaging/deck-tap/gen-bezel-manifest.sh -> bezelManifestHole() (no hand-measured offsets;
+// that was the off-center bug). Regenerate that after adding/changing bezel art.
+string launcherTapScreen(string system) {
+    string s = system.toLower();
+    if (s.equals("ps2") || s.equals("dreamcast")) { return bezelManifestHole("psx"); }   // reuse the CRT-TV holes
+    if (s.equals("gc")) { return bezelManifestHole("n64"); }
+    return bezelManifestHole(system);
+}
+// Per-system era-accurate bezel art PNG (explicit). Falls back to the parsed preset art when empty.
+string launcherTapArtFile(string project, string system) {
+    string s = system.toLower();
+    string rel = "";
+    if (s.equals("n64")) { rel = "Soqueroeu-TV-Backgrounds_V2.0/img/Nintendo_N64/N64.png"; }
+    if (s.equals("nes") || s.equals("famicom")) { rel = "Soqueroeu-TV-Backgrounds_V2.0/img/Nintendo_NES/NES.png"; }
+    if (s.equals("snes") || s.equals("superfamicom") || s.equals("sfc") || s.equals("super_nintendo")) { rel = "Soqueroeu-TV-Backgrounds_V2.0/img/Nintendo_SuperNintendo/SuperNES.png"; }
+    if (s.equals("genesis") || s.equals("megadrive") || s.equals("megadrive-japan")) { rel = "Soqueroeu-TV-Backgrounds_V2.0/img/Sega_Genesis/Sega_Genesis.png"; }
+    if (s.equals("psx") || s.equals("playstation") || s.equals("ps1")) { rel = "Soqueroeu-TV-Backgrounds_V2.0/img/Sony_Playstation/PSX.png"; }
+    // Standalone 4:3 CRT-era consoles reuse the era-accurate CRT-TV bezels (same 4:3 tube).
+    if (s.equals("ps2") || s.equals("dreamcast")) { rel = "Soqueroeu-TV-Backgrounds_V2.0/img/Sony_Playstation/PSX.png"; }
+    if (s.equals("gc")) { rel = "Soqueroeu-TV-Backgrounds_V2.0/img/Nintendo_N64/N64.png"; }
+    // Handhelds: composited photoreal device shell (Duimon Device + Decal flattened) -> semu-shells/.
+    // Generated by packaging/deck-tap/gen-handheld-shells.sh; hole auto-measured from the Glass layer.
+    if (s.equals("gb") || s.equals("gameboy")) { rel = "semu-shells/gb.png"; }
+    if (s.equals("gbc") || s.equals("gbcolor")) { rel = "semu-shells/gbc.png"; }
+    if (s.equals("gba")) { rel = "semu-shells/gba.png"; }
+    if (rel.len() == 0) { return ""; }
+    return launcherResolveArtRel(rel);
+}
+// Resolve a Mega_Bezel_Packs-relative art path against the asset roots.
+string launcherResolveArtRel(string rel) {
+    if (rel.len() == 0) { return ""; }
+    string base = joinPath("share/libretro/shaders/Mega_Bezel_Packs", rel);
+    string assetRoot = Environment.get("SEMU_ASSET_ROOT", "");
+    if (assetRoot.len() > 0) { string p = joinPath(assetRoot, base); if (FileSystem.isFile(p)) { return p; } }
+    string home = Environment.get("HOME", "");
+    if (home.len() > 0) { string p2 = joinPath(home, joinPath("semu-run/usr", base)); if (FileSystem.isFile(p2)) { return p2; } }
+    return "";
+}
+// Bezel VARIANTS (toggle-bezel a/b/c). Same TV glass (same hole), different finish -> just swap the texture.
+string launcherTapArtVariant(string project, string system, string variant) {
+    string s = system.toLower();
+    string rel = "";
+    if (s.equals("nes") || s.equals("famicom")) {
+        if (variant.equals("b")) { rel = "Soqueroeu-TV-Backgrounds_V2.0/img/Nintendo_NES/NES_Black_Edition.png"; }
+    }
+    if (s.equals("snes") || s.equals("superfamicom") || s.equals("sfc") || s.equals("super_nintendo")) {
+        if (variant.equals("b")) { rel = "Soqueroeu-TV-Backgrounds_V2.0/img/Nintendo_SuperNintendo/SuperNES_Solid_A.png"; }
+        if (variant.equals("c")) { rel = "Soqueroeu-TV-Backgrounds_V2.0/img/Nintendo_SuperNintendo/SuperNES_Solid_B.png"; }
+    }
+    if (s.equals("genesis") || s.equals("megadrive") || s.equals("megadrive-japan")) {
+        if (variant.equals("b")) { rel = "Soqueroeu-TV-Backgrounds_V2.0/img/Sega_Genesis/Sega_Genesis_Solid_A.png"; }
+        if (variant.equals("c")) { rel = "Soqueroeu-TV-Backgrounds_V2.0/img/Sega_Genesis/Sega_Genesis_Solid_B.png"; }
+    }
+    // Handheld colorways/models (gen-handheld-shells.sh): gb -> Play It Loud red/green; gbc -> Berry/Grape;
+    // gba -> GBA SP clamshell (a DIFFERENT model -> its own hole, see launcherTapScreenVariant).
+    if (s.equals("gb") || s.equals("gameboy")) {
+        if (variant.equals("b")) { rel = "semu-shells/gb-b.png"; }
+        if (variant.equals("c")) { rel = "semu-shells/gb-c.png"; }
+    }
+    if (s.equals("gbc") || s.equals("gbcolor")) {
+        if (variant.equals("b")) { rel = "semu-shells/gbc-b.png"; }
+        if (variant.equals("c")) { rel = "semu-shells/gbc-c.png"; }
+    }
+    if (s.equals("gba")) {
+        if (variant.equals("b")) { rel = "semu-shells/gba-b.png"; }
+    }
+    if (rel.len() == 0) { return ""; }
+    return launcherResolveArtRel(rel);
+}
+// Per-variant screen hole, for variants that are a DIFFERENT device model than the base (so the screen
+// sits elsewhere). Empty -> the variant shares the base hole (a recolor of the same model). x,y,w,h norm.
+string launcherTapScreenVariant(string system, string variant) {
+    string s = system.toLower();
+    if (s.equals("gba") && variant.equals("b")) { return "0.2698,0.0745,0.4604,0.3352"; } // GBA SP (open clamshell)
+    return "";
+}
+
 int launcherRunFlatpak(string project, string emulator, string flatpakId, Vector<string> emulatorArgs) {
     if (!FileSystem.isDir(project)) {
         print("launcher: project dir '" + project + "' missing");
@@ -630,6 +988,7 @@ int launcherRunFlatpak(string project, string emulator, string flatpakId, Vector
     ensureDir(cacheRoot);
     launcherSeedRoutedState(project, emulator, configRoot, dataRoot);
     string command = "unset VK_ICD_FILENAMES LIBGL_ALWAYS_SOFTWARE; ";
+    if (launcherStandaloneTap(project, emulator)) { command = command + launcherForceGLCommand(emulator); }  // force the OpenGL backend so the GL tap hooks
     if (launcherUsesX11(emulator)) {
         command = command + "unset MESA_LOADER_DRIVER_OVERRIDE MESA_GL_VERSION_OVERRIDE MESA_GLSL_VERSION_OVERRIDE; "
             + "if [ -z \"${DISPLAY:-}\" ] || [ -z \"${XAUTHORITY:-}\" ]; then "
@@ -669,7 +1028,9 @@ int launcherRunFlatpak(string project, string emulator, string flatpakId, Vector
         // overlay window is refused by gamescope). Needs the org.freedesktop.Platform.VulkanLayer.vkBasalt
         // runtime extension installed. ENABLE_VKBASALT is a no-op if the layer is absent.
         // Validated in a VM: vkBasalt compiles + applies Bezel.fx to the swapchain frames.
-        string bezelDir = launcherBezelReshadeDir(project);
+        // vkBasalt is the FALLBACK only — when the tap compositor (GL) doesn't drive this emulator.
+        // The tap gives full parity (Duimon/Soqueroeu bezels + cutout + reflections), so prefer it.
+        string bezelDir = launcherStandaloneTap(project, emulator) ? "" : launcherBezelReshadeDir(project);
         if (bezelDir.len() > 0) {
             string vkConf = joinPath(configRoot, "vkBasalt.conf");
             SemuGeneratedFiles.writeAdapterState(project, vkConf,
@@ -701,6 +1062,72 @@ int launcherRunFlatpak(string project, string emulator, string flatpakId, Vector
         flatpakArgs.push("--env=DISPLAY=");
         flatpakArgs.push("--env=XAUTHORITY=");
     }
+    // Semu compositor TAP for RetroArch. Our PATCHED RA (built from source) reports its real content
+    // viewport + active/menu state via semu_tap.h; libsemutap.so (LD_PRELOAD'd) draws the bezel + CRT
+    // shader strictly from that report (no pixel inspection), and passes through in menus. When the
+    // patched RA binary is present we run it in the matching SDK runtime instead of the stock flatpak.
+    bool tapRA = emulator.toLower().equals("retroarch");
+    bool tapStandalone = launcherStandaloneTap(project, emulator);
+    if (tapRA || tapStandalone) {
+        string tapLib = launcherTapLib(project);
+        string tsys = launcherTapSystem(project, emulator, emulatorArgs);
+        if (tapLib.len() > 0 && tsys.len() > 0) {
+            flatpakArgs.push("--filesystem=" + PathTools.dirname(tapLib) + ":ro");
+            flatpakArgs.push("--env=LD_PRELOAD=" + tapLib);
+            if (tapStandalone) {
+                flatpakArgs.push("--env=SEMU_TAP_STANDALONE=1");   // synth content from the full frame
+                flatpakArgs.push("--filesystem=host");            // the tap .so + bezel art + logs live on the host (RA gets this too)
+            }
+            flatpakArgs.push("--env=SEMU_TAP_NATIVE_H=" + launcherTapNativeH(tsys));  // integer-scale base
+            flatpakArgs.push("--env=SEMU_TAP_NATIVE_W=" + launcherTapNativeW(tsys));
+            flatpakArgs.push("--env=SEMU_TAP_ASPECT=" + launcherTapAspect(tsys));    // era-accurate display aspect
+            flatpakArgs.push("--env=SEMU_TAP_PRIORITY=" + launcherTapPriority(tsys)); // bezel|game geometry default
+            flatpakArgs.push("--env=SEMU_TAP_DUAL=" + launcherTapDual(tsys));          // nds/3ds dual-screen split
+            flatpakArgs.push("--env=SEMU_TAP_SYSKIND=" + launcherTapSysKind(tsys));    // compositor menu: dynamic per-system section
+            flatpakArgs.push("--env=SEMU_TAP_MENUFONT=" + PathTools.dirname(tapLib) + "/menu-font.png");  // radial-menu font atlas
+            flatpakArgs.push("--env=SEMU_TAP_FILL=" + launcherTapFill(tsys));          // handhelds: fill screen hole at aspect
+            flatpakArgs.push("--env=SEMU_TAP_REFLECT=" + launcherTapReflect(tsys));    // glass reflection/glare strength
+            flatpakArgs.push("--env=SEMU_TAP_CURVE=" + launcherTapCurve(tsys));        // CRT barrel curvature (0 = flat)
+            flatpakArgs.push("--env=SEMU_TAP_CORNER=" + launcherTapCorner(tsys));      // procedural screen-mask corner (no-glass systems)
+            string tapGlass = launcherTapGlass(project, tsys, "");                     // screen cutout MASK + reflections
+            if (tapGlass.len() > 0 && FileSystem.isFile(tapGlass)) { flatpakArgs.push("--filesystem=" + PathTools.dirname(tapGlass) + ":ro"); flatpakArgs.push("--env=SEMU_TAP_GLASS=" + tapGlass); }
+            string tapGlassB = launcherTapGlass(project, tsys, "b");
+            if (tapGlassB.len() > 0 && FileSystem.isFile(tapGlassB)) { flatpakArgs.push("--env=SEMU_TAP_GLASS_B=" + tapGlassB); }
+            string tapGlassC = launcherTapGlass(project, tsys, "c");
+            if (tapGlassC.len() > 0 && FileSystem.isFile(tapGlassC)) { flatpakArgs.push("--env=SEMU_TAP_GLASS_C=" + tapGlassC); }
+            flatpakArgs.push("--env=SEMU_RETRO_START=" + launcherRetroStart(tsys));  // 3D: soft 240p default; 2D: native
+            flatpakArgs.push("--env=SEMU_RETRO_KEY=Insert");                          // live retro/sharp toggle key
+            flatpakArgs.push("--env=SEMU_TAP_STYLE=" + launcherTapStyle(tsys));
+            flatpakArgs.push("--env=SEMU_TAP_SHELL=" + launcherTapShell(tsys));
+            string tapArt = launcherTapArtFile(project, tsys);
+            if (tapArt.len() == 0) { tapArt = launcherTapArt(project, tsys); }
+            if (tapArt.len() > 0 && FileSystem.isFile(tapArt)) {
+                flatpakArgs.push("--filesystem=" + PathTools.dirname(tapArt) + ":ro");
+                flatpakArgs.push("--env=SEMU_TAP_ART=" + tapArt);
+            }
+            string tapArtB = launcherTapArtVariant(project, tsys, "b");
+            if (tapArtB.len() > 0 && FileSystem.isFile(tapArtB)) {
+                flatpakArgs.push("--filesystem=" + PathTools.dirname(tapArtB) + ":ro"); flatpakArgs.push("--env=SEMU_TAP_ART_B=" + tapArtB);
+                string hb = launcherTapScreenVariant(tsys, "b"); if (hb.len() > 0) { flatpakArgs.push("--env=SEMU_TAP_SCREEN_B=" + hb); }
+            }
+            string tapArtC = launcherTapArtVariant(project, tsys, "c");
+            if (tapArtC.len() > 0 && FileSystem.isFile(tapArtC)) {
+                flatpakArgs.push("--filesystem=" + PathTools.dirname(tapArtC) + ":ro"); flatpakArgs.push("--env=SEMU_TAP_ART_C=" + tapArtC);
+                string hc = launcherTapScreenVariant(tsys, "c"); if (hc.len() > 0) { flatpakArgs.push("--env=SEMU_TAP_SCREEN_C=" + hc); }
+            }
+            string tapScreen = launcherTapScreen(tsys);
+            if (tapScreen.len() > 0) { flatpakArgs.push("--env=SEMU_TAP_SCREEN=" + tapScreen); }
+        }
+        string patchedRA = tapRA ? launcherPatchedRA(project) : "";   // RA-only: standalone emulators keep their own flatpak
+        if (patchedRA.len() > 0) {
+            flatpakArgs.push("--filesystem=host");       // cores live in ~/.var/app, binary in ~/ra-build
+            flatpakArgs.push("--socket=pulseaudio");     // SDK runtime lacks the RA flatpak's audio finish-arg
+            flatpakArgs.push("--share=ipc");
+            flatpakArgs.push("--devel");
+            flatpakArgs.push("--command=" + patchedRA);
+            flatpakId = "org.kde.Sdk//6.10";             // run patched RA in the matching SDK runtime
+        }
+    }
     flatpakArgs.push(flatpakId);
     // Ryujinx ignores XDG_CONFIG_HOME (it resolves its base dir via the flatpak's own ~/.var/app),
     // so the seeded keys/firmware in the stateRoot are never seen ("RYU-0001: Keys not found").
@@ -719,6 +1146,7 @@ int launcherRunFlatpak(string project, string emulator, string flatpakId, Vector
     // Keep the radial-quit backstop (Select+Start / Esc / Ctrl+Q / Alt+F4 -> semu-quit-watch
     // terminates the routed child) on the flatpak path too.
     command = launcherQuitWatchCommand(project, emulator, command);
+    if (Environment.get("SEMU_DUMP_CMD", "").len() > 0) { FileSystem.writeText("/home/deck/semu-lastcmd.txt", command); }  // debug
     UnixShell shell = UnixShell();
     screenshotCaptureHook(project, emulator, "before_launch");
     screenshotScheduleHook(project, emulator, "after_spawn");

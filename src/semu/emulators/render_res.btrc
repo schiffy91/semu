@@ -1,0 +1,89 @@
+// Internal render-resolution interface — the per-emulator "how sharp does the core render" control.
+// STEP 1 = this clean interface; STEP 2 = the RetroArch implementation (renderRaResOpt); STEP 3 = others.
+//
+// Default mode "1x": render each game at 1x native (n64 320x240); the compositor upscales it into the
+// integer display rect -> the soft, authentic RETRO look. Override modes (the radio button -> the
+// visual.render_mode setting, or the SEMU_RENDER_MODE env):
+//   "integer" -> render at the integer-scaled display res (1:1, crisp/SHARP -- modern look)
+//   "native"  -> leave the core at its own default internal resolution (Semu writes no override)
+//
+// The compositor's DISPLAY geometry is UNCHANGED by this — it always integer-scales native to the screen
+// (SEMU_TAP_NATIVE_*). This only controls how many pixels the core RENDERS into that fixed display rect.
+
+string renderMode(string project, string system) {
+    string env = Environment.get("SEMU_RENDER_MODE", "");
+    if (env.len() > 0) { return env.toLower(); }
+    string v = settingsGetValue(project, "visual.render_mode");
+    if (v.len() > 0) { return v.toLower(); }
+    return "1x";  // RETRO by default; the radio button can switch to "integer" (sharp)
+}
+
+// Game-Mode panel size. Steam Deck internal panel = 1280x800; override per screen via SEMU_SCREEN_W/H.
+int renderScreenW() { string v = Environment.get("SEMU_SCREEN_W", ""); if (v.len() > 0) { return v.toInt(); } return 1280; }
+int renderScreenH() { string v = Environment.get("SEMU_SCREEN_H", ""); if (v.len() > 0) { return v.toInt(); } return 800; }
+
+// Largest integer scale of native (nw x nh) that fits the screen on both axes.
+int renderIntegerScale(int nw, int nh, int sw, int sh) {
+    if (nw <= 0 || nh <= 0) { return 1; }
+    int siw = sw / nw;
+    int sih = sh / nh;
+    int scale = sih < siw ? sih : siw;
+    if (scale < 1) { scale = 1; }
+    return scale;
+}
+
+// Target internal render resolution "WxH" for (system, mode); "" means "leave the core's own default".
+string renderTargetWxH(string project, string system, string mode) {
+    int nw = launcherTapNativeW(system).toInt();
+    int nh = launcherTapNativeH(system).toInt();
+    if (nw <= 0 || nh <= 0) { return ""; }
+    if (mode.equals("native")) { return ""; }
+    if (mode.equals("1x")) { return f"{nw}x{nh}"; }
+    int scale = renderIntegerScale(nw, nh, renderScreenW(), renderScreenH());
+    return f"{scale * nw}x{scale * nh}";
+}
+
+// RetroArch implementation: the per-core internal-resolution core options for (system), as "key|value"
+// pairs, based on the current render mode. NOTE: the patched RA reads the GLOBAL retroarch-core-options.cfg
+// (the per-core .opt is bypassed), so these must be MERGED there. Also force aspect=4:3 — otherwise a leaked
+// 16:9 default makes mupen use 169screensize and ignore 43screensize. Extend per core (psx beetle = a
+// multiplier option, not WxH).
+Vector<string> renderRaCoreOpts(string project, string system) {
+    Vector<string> out = [];
+    string s = system.toLower();
+    string res = renderTargetWxH(project, system, renderMode(project, system));
+    if (s.equals("n64")) {
+        out.push("mupen64plus-aspect|4:3");
+        if (res.len() > 0) {
+            out.push("mupen64plus-43screensize|" + res);
+            out.push("mupen64plus-169screensize|" + res);
+        }
+    }
+    return out;
+}
+
+// Upsert `key = "value"` into RetroArch cfg text: replace the line if the key exists at column 0, else append.
+string renderCfgUpsert(string text, string key, string value) {
+    string newline = key + " = \"" + value + "\"";
+    Vector<string> lines = Strings.split(text, "\n");
+    Vector<string> out = [];
+    bool found = false;
+    for ln in lines {
+        if (Strings.find(ln, key + " = ", 0) == 0) { out.push(newline); found = true; }
+        else { out.push(ln); }
+    }
+    if (!found) { out.push(newline); }
+    return Strings.join(out, "\n");
+}
+
+// Merge the render-mode core options into a RetroArch core-options file (global or per-core), in place.
+void renderApplyRaCoreOpts(string project, string system, string cfgPath) {
+    Vector<string> kvs = renderRaCoreOpts(project, system);
+    if (kvs.len == 0) { return; }
+    string text = FileSystem.isFile(cfgPath) ? FileSystem.readText(cfgPath) : "";
+    for kv in kvs {
+        Vector<string> parts = Strings.split(kv, "|");
+        text = renderCfgUpsert(text, parts.get(0), parts.get(1));
+    }
+    SemuGeneratedFiles.writeAdapterState(project, cfgPath, text);
+}

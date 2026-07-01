@@ -64,6 +64,21 @@ string retroArchShaderPresetPath(string project) {
 }
 
 string retroArchVisualConfigText(string project) {
+    // With our GL frame tap deployed (libsemutap.so, LD_PRELOAD'd by the launcher), RetroArch renders
+    // the GAME ONLY at its largest integer scale (centered, core 4:3 aspect); the tap draws the bezel +
+    // CRT shader on top of every frame and gates them to gameplay, so RetroArch's own shader/aspect/bezel
+    // stay out of the way entirely (it could not fill 16:10 around a 4:3 game anyway). This mirrors the
+    // launcher's --set-shader logic (launcherPresetArgsForProject): tap present => raw game, no shader.
+    if (launcherTapLib(project).len() > 0) {
+        return ""
+            + retroArchConfigValue("video_fullscreen", "true")
+            + retroArchConfigValue("video_scale_integer", "true")
+            + retroArchConfigValue("video_force_aspect", "true")
+            + retroArchConfigValue("video_aspect_ratio_auto", "true")
+            + retroArchConfigValue("video_shader_enable", "false")
+            + retroArchConfigValue("video_vsync", "true");
+    }
+    // Fallback: no tap .so on this host, so RetroArch's own MegaBezel preset fills the screen.
     string shader = retroArchShaderPresetPath(project);
     string integerScaling = settingsGetValue(project, "visual.integer_scaling").equals("false") ? "false" : "true";
     string config = ""
