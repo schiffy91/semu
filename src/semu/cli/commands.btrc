@@ -5,7 +5,7 @@ class SemuCliCommands {
 
 // ---- config_commands.btrc ----
 void printUsage() {
-    print("semu [manifest|bootstrap|doctor|deck|lifecycle|sync|config|settings|presentation|apprun|steam-input|keymap|screenshot|sandbox|launcher|utils|e2e] [graph|payload-audit|n3ds-nocrypto|validate|render|capabilities|install|setup|compile|reconfigure|change|uninstall|reinstall|upgrade|status|force|serve|capture|prepare|launch|game-mode-ready|game-mode-evidence|state-evidence|production-status|production-ready|list|get|put|entry|ui|apply|plan|state|broadcast|audit|defaults] [--project PATH] [--roms PATH] [--source PATH] [--output PATH] [--dest PATH] [--target manifest|retroarch|dolphin|pcsx2|steam-input] [--system SYSTEM] [--emulator NAME] [--hook HOOK] [--scratch PATH] [--action ID] [--command KEYS]");
+    print("semu [manifest|bootstrap|doctor|deck|lifecycle|sync|config|settings|presentation|apprun|steam-input|keymap|screenshot|sandbox|launcher|utils|e2e] [graph|payload-audit|render-options|n3ds-nocrypto|validate|render|capabilities|install|setup|compile|reconfigure|change|uninstall|reinstall|upgrade|status|force|serve|capture|prepare|launch|game-mode-ready|game-mode-evidence|state-evidence|production-status|production-ready|list|get|put|entry|ui|apply|plan|state|broadcast|audit|defaults] [--project PATH] [--roms PATH] [--source PATH] [--output PATH] [--dest PATH] [--target manifest|retroarch|dolphin|pcsx2|steam-input] [--system SYSTEM] [--emulator NAME] [--hook HOOK] [--scratch PATH] [--action ID] [--command KEYS]");
 }
 int keymapCommand(CliArgs args) {
     string mode = "validate";
@@ -312,27 +312,28 @@ int deckLaunch(string project) {
 // Enumerate every system with its bezels + all compositor options (systems × bezels × options).
 int deckEnumerateCommand(string project) {
     Vector<string> ids = declaredSystemIds();
-    print(f"SEMU - {ids.size()} systems x bezels x options");
+    print(f"SEMU - {ids.size()} systems x render options");
     print("Every system exposes, live via the compositor radial menu:");
-    print("  render : game-priority | bezel-priority   (largest-integer game scaling)");
-    print("  shader : A | B | C | Off");
-    print("  bezel  : A | B | C | Off   (per-system art listed below)");
-    print("  save   : 3 state slots (save / load)");
+    print("  render : " + renderModeOptionsText() + "   (largest-integer game scaling)");
+    print("  shader : " + renderShaderOptionsText("gb"));
+    print("  bezel  : " + renderBezelOptionsText("gb") + "   (per-system art listed below)");
+    print("  save   : " + renderSaveOptionsText());
     print("");
     for id in ids {
-        string style = launcherTapStyle(id);
-        string aspect = launcherTapAspect(id);
-        string kind = launcherTapSysKind(id);
-        string pri = launcherTapPriority(id);
-        string variants = launcherTapVariants(id);
-        string bez = variants.len() > 0 ? (variants + " + Off") : "Off (no bundled bezel art yet)";
-        string hole = bezelManifestHole(project, id);
+        RenderOptionSpec spec = RenderOptionCatalog.find(id);
+        string style = spec.known() ? spec.style : launcherTapStyle(id);
+        string aspect = spec.known() ? spec.aspect : launcherTapAspect(id);
+        string pri = spec.known() ? spec.priority : launcherTapPriority(id);
+        string bez = renderBezelOptionsText(id);
+        string shader = renderShaderOptionsText(id);
+        string hole = bezelManifestHole(project, renderBezelManifestKey(id));
+        string extra = renderDynamicOptionsText(id);
         print(f"* {id}");
         print(f"    class : {style}   aspect {aspect}   default {pri}-priority");
+        print(f"    shader: {shader}");
         print(f"    bezel : {bez}");
         if (hole.len() > 0) { print(f"    hole  : {hole}"); }
-        if (kind.equals("1")) { print("    extra : dual-screen - vertical/horizontal layout + per-screen scale (0.25/0.5/1/2/3x)"); }
-        if (kind.equals("2")) { print("    extra : controller layout - Wiimote / Wiimote+Nunchuk / Pro Controller / Classic"); }
+        if (extra.len() > 0) { print(f"    extra : {extra}"); }
     }
     print("");
     print(f"OK enumerated {ids.size()} systems");

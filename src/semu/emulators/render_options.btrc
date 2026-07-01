@@ -1,0 +1,152 @@
+class RenderOptionSpec {
+    public string system;
+    public string style;
+    public string shell;
+    public string aspect;
+    public string priority;
+    public string dual;
+    public string systemKind;
+    public string nativeW;
+    public string nativeH;
+    public string fill;
+    public string reflect;
+    public string curve;
+    public string corner;
+    public string assetProfile;
+
+    public RenderOptionSpec(
+        string system,
+        string style,
+        string shell,
+        string aspect,
+        string priority,
+        string dual,
+        string systemKind,
+        string nativeW,
+        string nativeH,
+        string fill,
+        string reflect,
+        string curve,
+        string corner,
+        string assetProfile
+    ) {
+        self.system = system;
+        self.style = style;
+        self.shell = shell;
+        self.aspect = aspect;
+        self.priority = priority;
+        self.dual = dual;
+        self.systemKind = systemKind;
+        self.nativeW = nativeW;
+        self.nativeH = nativeH;
+        self.fill = fill;
+        self.reflect = reflect;
+        self.curve = curve;
+        self.corner = corner;
+        self.assetProfile = assetProfile;
+    }
+
+    public bool known() {
+        return self.system.len() > 0;
+    }
+}
+
+class RenderOptionCatalog {
+    class RenderOptionSpec empty() {
+        return RenderOptionSpec("", "", "", "", "", "", "", "", "", "", "", "", "", "");
+    }
+
+    class Vector<RenderOptionSpec> all() {
+        string crtReflect = "0.18";
+        string noReflect = "0.0";
+        string noCurve = "0.0";
+        string crtCorner = "0.045";
+        string noCorner = "0.0";
+        return [
+            RenderOptionSpec("gb", "handheld", "0.60,0.64,0.55", "1.111", "bezel", "0", "0", "160", "144", "1", "0.55", noCurve, noCorner, "handheld"),
+            RenderOptionSpec("gbc", "handheld", "0.55,0.56,0.60", "1.111", "bezel", "0", "0", "160", "144", "1", "0.55", noCurve, noCorner, "handheld"),
+            RenderOptionSpec("gba", "handheld", "0.34,0.32,0.52", "1.5", "bezel", "0", "0", "240", "160", "1", "0.55", noCurve, noCorner, "handheld"),
+            RenderOptionSpec("nes", "console", "0.55,0.56,0.60", "1.3333", "game", "0", "0", "256", "240", "0", crtReflect, noCurve, crtCorner, "crt4x3"),
+            RenderOptionSpec("snes", "console", "0.55,0.56,0.60", "1.3333", "game", "0", "0", "256", "224", "0", crtReflect, noCurve, crtCorner, "crt4x3"),
+            RenderOptionSpec("genesis", "console", "0.55,0.56,0.60", "1.3333", "game", "0", "0", "320", "224", "0", crtReflect, noCurve, crtCorner, "crt4x3"),
+            RenderOptionSpec("n64", "console", "0.55,0.56,0.60", "1.3333", "game", "0", "0", "320", "240", "0", crtReflect, noCurve, crtCorner, "crt4x3"),
+            RenderOptionSpec("nds", "handheld", "0.82,0.82,0.85", "256:384", "bezel", "1", "1", "256", "384", "0", noReflect, noCurve, crtCorner, "dual"),
+            RenderOptionSpec("dreamcast", "console", "0.55,0.56,0.60", "1.3333", "game", "0", "0", "256", "240", "0", noReflect, noCurve, crtCorner, "crt4x3"),
+            RenderOptionSpec("psx", "console", "0.55,0.56,0.60", "1.3333", "game", "0", "0", "320", "240", "0", crtReflect, noCurve, crtCorner, "crt4x3"),
+            RenderOptionSpec("ps2", "console", "0.55,0.56,0.60", "1.3333", "game", "0", "0", "256", "240", "0", noReflect, noCurve, crtCorner, "crt4x3"),
+            RenderOptionSpec("psp", "handheld", "0.55,0.56,0.60", "1.7778", "game", "0", "0", "480", "272", "0", noReflect, noCurve, crtCorner, "wide16x9"),
+            RenderOptionSpec("n3ds", "handheld", "0.82,0.82,0.85", "400:480", "game", "1", "1", "400", "480", "0", noReflect, noCurve, crtCorner, "dual"),
+            RenderOptionSpec("gc", "console", "0.55,0.56,0.60", "1.3333", "game", "0", "0", "256", "240", "0", noReflect, noCurve, crtCorner, "crt4x3"),
+            RenderOptionSpec("wii", "console", "0.55,0.56,0.60", "1.3333", "game", "0", "2", "256", "240", "0", noReflect, noCurve, crtCorner, "crt4x3"),
+            RenderOptionSpec("wiiu", "console", "0.55,0.56,0.60", "1.7778", "game", "0", "2", "1280", "720", "0", noReflect, noCurve, crtCorner, "wide16x9"),
+            RenderOptionSpec("switch", "console", "0.55,0.56,0.60", "1.7778", "game", "0", "0", "1280", "720", "0", noReflect, noCurve, crtCorner, "wide16x9")
+        ];
+    }
+
+    class RenderOptionSpec find(string system) {
+        string wanted = renderOptionCanonicalSystem(system);
+        for spec in RenderOptionCatalog.all() {
+            if (spec.system.equals(wanted)) {
+                return spec;
+            }
+        }
+        return RenderOptionCatalog.empty();
+    }
+}
+
+string renderOptionCanonicalSystem(string system) {
+    string s = system.toLower();
+    if (s.equals("gameboy")) { return "gb"; }
+    if (s.equals("gbcolor")) { return "gbc"; }
+    if (s.equals("famicom")) { return "nes"; }
+    if (s.equals("superfamicom") || s.equals("sfc") || s.equals("super_nintendo")) { return "snes"; }
+    if (s.equals("megadrive") || s.equals("megadrive-japan")) { return "genesis"; }
+    if (s.equals("playstation") || s.equals("ps1")) { return "psx"; }
+    if (s.equals("3ds")) { return "n3ds"; }
+    return s;
+}
+
+string renderModeOptionsText() {
+    return "game-priority | bezel-priority";
+}
+
+string renderBezelVariants(string system) {
+    return RenderOptionCatalog.find(system).known() ? "A B C" : "";
+}
+
+string renderBezelOptionsText(string system) {
+    string variants = renderBezelVariants(system);
+    return variants.len() > 0 ? variants + " + Off" : "Off";
+}
+
+string renderShaderVariants(string system) {
+    return RenderOptionCatalog.find(system).known() ? "A B C" : "";
+}
+
+string renderShaderOptionsText(string system) {
+    string variants = renderShaderVariants(system);
+    return variants.len() > 0 ? variants + " + Off" : "Off";
+}
+
+int renderSaveSlotCount() {
+    return 3;
+}
+
+string renderSaveOptionsText() {
+    return Strings.fromInt(renderSaveSlotCount()) + " state slots (save / load)";
+}
+
+string renderDynamicOptionsText(string system) {
+    string kind = RenderOptionCatalog.find(system).systemKind;
+    if (kind.equals("1")) {
+        return "dual-screen - vertical/horizontal layout + per-screen scale (0.25/0.5/1/2/3x)";
+    }
+    if (kind.equals("2")) {
+        return "controller layout - Wiimote / Wiimote+Nunchuk / Pro Controller / Classic";
+    }
+    return "";
+}
+
+string renderBezelManifestKey(string system) {
+    return renderOptionCanonicalSystem(system);
+}

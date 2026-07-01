@@ -317,6 +317,16 @@ ExecResult e2eRunLauncher(string exe, string home, string project, string roms, 
     return result;
 }
 
+string e2eDeckEnumerateBlock(string output, string system) {
+    string marker = "* " + system + "\n";
+    int start = output.indexOf(marker);
+    if (start < 0) { return ""; }
+    string tail = output.substring(start, output.len() - start);
+    int next = tail.indexOf("\n* ");
+    if (next < 0) { return tail; }
+    return tail.substring(0, next);
+}
+
 ExecResult e2eRunRoutedLauncher(string exe, string home, string project, string roms, string binDir, string captureDir, string emulator, string routedExe, Vector<string> emulatorArgs) {
     Command command = Command(exe)
         .envVar("SEMU_HOME", home)
@@ -373,6 +383,37 @@ bool e2eCatalogConsistency(string project, string launcherBin) {
     if (!e2eOk(FileSystem.exists(settingsLauncher), "settings launcher missing " + settingsLauncher)) { return false; }
     if (!e2eOk(FileSystem.exists(joinPath(SettingsEntries.root(project), "Toggle Bezels.semu")), "settings entry missing")) { return false; }
     return true;
+}
+
+// ---- render_options_smoke.btrc ----
+int e2eRenderOptionsSmoke(CliArgs args) {
+    string tmp = e2eTempDir("semu-render-options-smoke");
+    string home = joinPath(tmp, "home");
+    string exe = e2eExecutable(args);
+    string project = args.valueAfter("--project", Environment.get("SEMU_PROJECT_DIR", "."));
+    ensureDir(home);
+
+    ExecResult enumerate = e2eRunDeck(exe, home, project, ["enumerate"]);
+    if (!e2eRunOk(enumerate, "deck enumerate render options")) { return 1; }
+    string output = enumerate.stdout();
+    if (!e2eContains(output, "render : " + renderModeOptionsText(), "render mode options")) { return 1; }
+    if (!e2eContains(output, "shader : A B C + Off", "global shader options")) { return 1; }
+    if (!e2eContains(output, "bezel  : A B C + Off", "global bezel options")) { return 1; }
+    if (!e2eContains(output, "save   : " + renderSaveOptionsText(), "save slot options")) { return 1; }
+
+    for id in declaredSystemIds() {
+        string block = e2eDeckEnumerateBlock(output, id);
+        if (!e2eOk(block.len() > 0, "missing deck enumerate block for " + id)) { return 1; }
+        if (!e2eContains(block, "class :", "render class for " + id)) { return 1; }
+        if (!e2eContains(block, "shader: A B C + Off", "shader options for " + id)) { return 1; }
+        if (!e2eContains(block, "bezel : A B C + Off", "bezel options for " + id)) { return 1; }
+        if (!e2eContains(block, "hole  :", "bezel hole for " + id)) { return 1; }
+        string extra = renderDynamicOptionsText(id);
+        if (extra.len() > 0 && !e2eContains(block, "extra : " + extra, "dynamic options for " + id)) { return 1; }
+    }
+
+    print("OK BTRC render options smoke");
+    return 0;
 }
 
 // ---- lifecycle_smoke.btrc ----

@@ -15,7 +15,7 @@ This runs:
 - `payload-audit`: fails if licensed payloads or VM artifacts would be
   upstreamed.
 - `generated-smoke`: builds from committed `generated/semu.c` and runs BTRC
-  smoke tests.
+  smoke tests, including the render-options contract.
 - `appimage-smoke`: assembles an AppImage with fake ES-DE, fake Nix, and fake
   appimagetool.
 
@@ -23,6 +23,12 @@ Run the fuller deterministic verification path:
 
 ```sh
 make verify
+```
+
+To run only the compositor option contract check:
+
+```sh
+generated/build/semu e2e render-options --project "$PWD"
 ```
 
 ## Graph E2E

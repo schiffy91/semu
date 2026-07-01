@@ -65,6 +65,16 @@ output size, native content size, backend/API origin, and orientation/surface
 role where needed. It should not contain shader code, bezel layout policy, asset
 parsing, or emulator-specific duplicate compositor logic.
 
+Every declared system must expose the same live compositor surface:
+
+- Render mode: game-priority or bezel-priority.
+- Shader: A, B, C, or Off.
+- Bezel: A, B, C, or Off, with an explicit screen cutout in
+  `config/assets/bezels.json`.
+- Save/load: three state slots.
+- Dynamic menus only where the system contract requires them: dual-screen layout
+  controls for DS/3DS, and controller layout controls for Wii/Wii U.
+
 ## Product Requirements
 
 1. Bootstrap
