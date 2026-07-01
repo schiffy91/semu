@@ -13,7 +13,7 @@ LOCAL_OUT="${DECK_LOCAL_OUT:-$PWD/.deck-smoke/$DECK_HOST}"
 usage() {
   cat <<'EOF'
 Usage:
-  tests/deck/ssh-smoke.sh [Semu-or-ES-DE.AppImage ...]
+  tests/steamdeck/ssh-smoke.sh [Semu-or-ES-DE.AppImage ...]
 
 Environment:
   DECK_HOST=steamdeck.local     SSH host

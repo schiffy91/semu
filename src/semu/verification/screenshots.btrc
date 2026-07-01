@@ -4,7 +4,7 @@ class SemuScreenshotVerification {
 }
 
 string verificationRoot(string project) {
-    return joinPath(project, "verification");
+    return joinPath(configRoot(project), "verification");
 }
 
 string screenshotConfigPath(string project) {

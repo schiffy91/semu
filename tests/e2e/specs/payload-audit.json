@@ -17,8 +17,8 @@
     },
     {
       "op": "host",
-      "command": "git check-ignore -q tests/vms && printf ignored",
-      "expect": "ignored"
+      "command": "git check-ignore -q generated/test/vms && ! git check-ignore -q build && ! git check-ignore -q .semu && ! git check-ignore -q deck-shots && printf generated-only",
+      "expect": "generated-only"
     },
     {
       "op": "payload-audit"

@@ -1,7 +1,9 @@
 {
     "schema_version": 1,
     "paths": {
-        "project_content_root": "${project}/.semu/content",
+        "config_root": "${project}/config",
+        "generated_root": "${project}/generated",
+        "project_content_root": "${project}/generated/runtime/content",
         "runtime_content_root": "${portable}",
         "roms": "${paths.runtime_content_root}/ROMs",
         "project_roms": "${paths.project_content_root}/ROMs",
@@ -20,14 +22,14 @@
         "themes": "${paths.runtime_content_root}/themes",
         "project_themes": "${paths.project_content_root}/themes",
         "custom_systems": "${paths.runtime_content_root}/custom_systems",
-        "project_custom_systems": "${project}/build/packaging/es-de/custom_systems",
+        "project_custom_systems": "${project}/generated/packaging/es-de/custom_systems",
         "settings": "${paths.runtime_content_root}/settings",
-        "project_settings": "${project}/build/packaging/es-de/settings",
-        "keymaps": "${project}/input/keymaps",
-        "steam_input": "${project}/input/steam-input",
-        "emulator_profiles": "${project}/build/packaging/emulators/profiles",
-        "es_de_profiles": "${project}/build/packaging/es-de",
-        "linux_packaging": "${project}/packaging/linux",
+        "project_settings": "${project}/generated/packaging/es-de/settings",
+        "keymaps": "${project}/config/input/keymaps",
+        "steam_input": "${project}/generated/packaging/input/steam-input",
+        "emulator_profiles": "${project}/generated/packaging/emulators/profiles",
+        "es_de_profiles": "${project}/generated/packaging/es-de",
+        "linux_packaging": "${project}/generated/packaging/linux",
         "retroarch_system": "${paths.bios}"
     },
     "es_de": {
@@ -532,28 +534,28 @@
                     {
                         "id": "neptune_simple",
                         "title": "Semu: Steam Deck - Neptune SIMPLE",
-                        "source": "${project}/input/steam-input/neptune-simple.vdf",
+                        "source": "${project}/generated/packaging/input/steam-input/neptune-simple.vdf",
                         "required": false,
                         "note": "Generated Steam Input template; doctor validates it and steam-input install copies it."
                     },
                     {
                         "id": "neptune_full",
                         "title": "Semu: Steam Deck - Neptune FULL",
-                        "source": "${project}/input/steam-input/neptune-full.vdf",
+                        "source": "${project}/generated/packaging/input/steam-input/neptune-full.vdf",
                         "required": false,
                         "note": "Optional full hotkey layout for users who want RetroDeck-style chords."
                     }
                 ]
             },
             "profiles": [
-                "build/packaging/emulators/profiles/RetroArch/retroarch.cfg.linux-backup",
-                "build/packaging/emulators/profiles/Dolphin/config/Profiles/GCPad/Steam Deck.ini",
-                "build/packaging/emulators/profiles/Dolphin/config/Profiles/Hotkeys/Steam Deck.ini",
-                "build/packaging/emulators/profiles/Dolphin/config/Profiles/Wiimote/Wiimote (SD).ini",
-                "build/packaging/emulators/profiles/Dolphin/config/Profiles/Wiimote/Wiimote + Classic Controller (SD).ini",
-                "build/packaging/emulators/profiles/Cemu/config/controllerProfiles/SteamInput-P1.xml",
-                "build/packaging/emulators/profiles/PCSX2/config/inputprofiles/Steam Deck.ini",
-                "build/packaging/emulators/profiles/Ryujinx/config/profiles/controller/Steam Virtual Controller.json"
+                "generated/packaging/emulators/profiles/RetroArch/retroarch.cfg.linux-backup",
+                "generated/packaging/emulators/profiles/Dolphin/config/Profiles/GCPad/Steam Deck.ini",
+                "generated/packaging/emulators/profiles/Dolphin/config/Profiles/Hotkeys/Steam Deck.ini",
+                "generated/packaging/emulators/profiles/Dolphin/config/Profiles/Wiimote/Wiimote (SD).ini",
+                "generated/packaging/emulators/profiles/Dolphin/config/Profiles/Wiimote/Wiimote + Classic Controller (SD).ini",
+                "generated/packaging/emulators/profiles/Cemu/config/controllerProfiles/SteamInput-P1.xml",
+                "generated/packaging/emulators/profiles/PCSX2/config/inputprofiles/Steam Deck.ini",
+                "generated/packaging/emulators/profiles/Ryujinx/config/profiles/controller/Steam Virtual Controller.json"
             ]
         }
     },
@@ -1265,7 +1267,7 @@
             {
                 "id": "emulator_state",
                 "label": "Emulator State",
-                "path": "${paths.project}/.semu/appimage-state",
+                "path": "${paths.project}/generated/runtime/appimage-state",
                 "enabled": true,
                 "watch": true,
                 "rescan_interval_s": 900
@@ -1348,7 +1350,7 @@
             "files": [
                 "keys.txt"
             ],
-            "target": "${project}/build/packaging/emulators/profiles/Cemu/data",
+            "target": "${project}/generated/packaging/emulators/profiles/Cemu/data",
             "note": "Cemu needs user-supplied Wii U keys for encrypted content."
         },
         {
@@ -1366,15 +1368,15 @@
     "launchers": {
         "linux": {
             "emulators": {
-                "RETROARCH": "${project}/packaging/linux/bin/semu-retroarch",
-                "DOLPHIN": "${project}/packaging/linux/bin/semu-dolphin",
-                "PPSSPP": "${project}/packaging/linux/bin/semu-ppsspp",
-                "FLYCAST": "${project}/packaging/linux/bin/semu-flycast",
-                "AZAHAR": "${project}/packaging/linux/bin/semu-azahar",
-                "MELONDS": "${project}/packaging/linux/bin/semu-melonds",
-                "PCSX2": "${project}/packaging/linux/bin/semu-pcsx2",
-                "CEMU": "${project}/packaging/linux/bin/semu-cemu",
-                "RYUJINX": "${project}/packaging/linux/bin/semu-ryujinx"
+                "RETROARCH": "${project}/generated/packaging/linux/bin/semu-retroarch",
+                "DOLPHIN": "${project}/generated/packaging/linux/bin/semu-dolphin",
+                "PPSSPP": "${project}/generated/packaging/linux/bin/semu-ppsspp",
+                "FLYCAST": "${project}/generated/packaging/linux/bin/semu-flycast",
+                "AZAHAR": "${project}/generated/packaging/linux/bin/semu-azahar",
+                "MELONDS": "${project}/generated/packaging/linux/bin/semu-melonds",
+                "PCSX2": "${project}/generated/packaging/linux/bin/semu-pcsx2",
+                "CEMU": "${project}/generated/packaging/linux/bin/semu-cemu",
+                "RYUJINX": "${project}/generated/packaging/linux/bin/semu-ryujinx"
             },
             "cores": {
                 "RETROARCH": [
@@ -1396,17 +1398,17 @@
         },
         "macos": {
             "emulators": {
-                "RETROARCH": "${project}/result/bin/retroarch",
-                "AZAHAR": "${project}/result/Applications/azahar.app/Contents/MacOS/azahar",
-                "DOLPHIN": "${project}/result/Applications/Dolphin.app/Contents/MacOS/Dolphin",
-                "PCSX2": "${project}/result/Applications/PCSX2.app/Contents/MacOS/PCSX2",
-                "CEMU": "${project}/result/Applications/Cemu.app/Contents/MacOS/Cemu",
+                "RETROARCH": "${project}/generated/nix/result/bin/retroarch",
+                "AZAHAR": "${project}/generated/nix/result/Applications/azahar.app/Contents/MacOS/azahar",
+                "DOLPHIN": "${project}/generated/nix/result/Applications/Dolphin.app/Contents/MacOS/Dolphin",
+                "PCSX2": "${project}/generated/nix/result/Applications/PCSX2.app/Contents/MacOS/PCSX2",
+                "CEMU": "${project}/generated/nix/result/Applications/Cemu.app/Contents/MacOS/Cemu",
                 "RYUJINX": "~/.local/share/ryujinx-app/Ryujinx.app/Contents/MacOS/Ryujinx",
-                "ARES": "${project}/result/Applications/ares.app/Contents/MacOS/ares"
+                "ARES": "${project}/generated/nix/result/Applications/ares.app/Contents/MacOS/ares"
             },
             "cores": {
                 "RETROARCH": [
-                    "${project}/result/cores"
+                    "${project}/generated/nix/result/cores"
                 ]
             }
         }

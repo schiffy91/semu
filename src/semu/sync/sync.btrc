@@ -217,7 +217,7 @@ class SyncSettingsUi {
         print("==================");
         print("Project: " + self.project);
         print("Source: " + syncConfigPath(self.project));
-        print("Edits update Semu-owned sync/sync.json. Use apply to compile service files and launcher state.");
+        print("Edits update Semu-owned config/settings/sync.json. Use apply to compile service files and launcher state.");
         print("");
         string group = "";
         int index = 1;
@@ -560,7 +560,7 @@ bool syncSetup(string project) {
 
 // ---- lifecycle.btrc ----
 string semuStateRoot(string project) {
-    return joinPath(project, ".semu");
+    return generatedRuntimeRoot(project);
 }
 
 string lifecycleStatePath(string project) {
@@ -637,7 +637,7 @@ void lifecycleUninstall(string project, bool purgeGenerated, bool purgeState) {
         removePath(customSystemsRoot(project));
         removePath(esDeSettingsPath(project));
         removePath(SettingsEntries.root(project));
-        removePath(joinPath(project, "semu.json"));
+        removePath(manifestPath(project));
     }
     if (purgeState) {
         removePath(semuStateRoot(project));
@@ -685,8 +685,8 @@ bool lifecycleChangeKeymap(string project, string actionId, string command) {
 
 void lifecycleUpgrade(string project) {
     ensureDir(lifecycleBackupsRoot(project));
-    if (FileSystem.exists(joinPath(project, "semu.json"))) {
-        SemuGeneratedFiles.writeAdapterState(project, upgradeBackupPath(project), FileSystem.readText(joinPath(project, "semu.json")));
+    if (FileSystem.exists(manifestPath(project))) {
+        SemuGeneratedFiles.writeAdapterState(project, upgradeBackupPath(project), FileSystem.readText(manifestPath(project)));
     }
     lifecycleReconfigure(project, "");
     writeLifecycleState(project, "upgrade");
@@ -696,7 +696,7 @@ void lifecycleUpgrade(string project) {
 void lifecycleStatus(string project) {
     print("Semu lifecycle");
     reportFile("state", lifecycleStatePath(project));
-    reportFile("manifest", joinPath(project, "semu.json"));
+    reportFile("manifest", manifestPath(project));
     reportFile("sync_config", syncConfigPath(project));
     reportFile("desktop_entry", joinPath(applicationsDir(), "semu.desktop"));
     reportFile("systemd_service", joinPath(systemdUserDir(), "semu-syncthing.service"));

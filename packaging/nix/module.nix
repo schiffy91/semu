@@ -57,10 +57,10 @@ in {
     system.activationScripts.semu = ''
       if [ -d "${cfg.configDir}" ]; then
         echo "Semu: bootstrapping from ${cfg.configDir}"
-        if [ -x "${cfg.configDir}/build/semu" ]; then
-          ${pkgs.su}/bin/su - ${cfg.user} -c 'cd "${cfg.configDir}" && ./build/semu bootstrap --project "$PWD"' || true
+        if [ -x "${cfg.configDir}/generated/build/semu" ]; then
+          ${pkgs.su}/bin/su - ${cfg.user} -c 'cd "${cfg.configDir}" && ./generated/build/semu bootstrap --project "$PWD"' || true
         else
-          echo "Semu: ${cfg.configDir}/build/semu missing; run make btrc-build first"
+          echo "Semu: ${cfg.configDir}/generated/build/semu missing; run make btrc-build first"
         fi
       else
         echo "Semu: config dir ${cfg.configDir} not found, skipping"

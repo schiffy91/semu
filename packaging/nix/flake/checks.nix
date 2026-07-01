@@ -174,7 +174,7 @@ forAllSystems (system: let
         nativeBuildInputs = [ pkgs.coreutils pkgs.gnugrep ];
       } ''
         project="$TMPDIR/project-${spec.emulatorName}"
-        profiles="$project/build/packaging/emulators/profiles"
+        profiles="$project/generated/packaging/emulators/profiles"
         capture="$TMPDIR/${spec.emulatorName}.capture"
         mkdir -p "$project"
         ${spec.seedScript}
@@ -188,10 +188,10 @@ forAllSystems (system: let
           "roms/${spec.emulatorName} game.rom" \
           "--sentinel=${spec.emulatorName}"
 
-        state="$project/.semu/appimage-state/${spec.emulatorName}"
+        state="$project/generated/runtime/appimage-state/${spec.emulatorName}"
         grep -F "COMMAND=${spec.commandName}" "$capture"
         grep -F "SEMU_PROJECT_DIR=$project" "$capture"
-        grep -F "SEMU_ROMS_DIR=$project/.semu/content/ROMs" "$capture"
+        grep -F "SEMU_ROMS_DIR=$project/generated/runtime/content/ROMs" "$capture"
         grep -F "HOME=$state/home" "$capture"
         grep -F "XDG_CONFIG_HOME=$state/config" "$capture"
         grep -F "XDG_DATA_HOME=$state/data" "$capture"

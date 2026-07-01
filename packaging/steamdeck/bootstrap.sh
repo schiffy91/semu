@@ -35,7 +35,7 @@ Options:
   --help                Show this help.
 
 Example:
-  curl -fsSL https://raw.githubusercontent.com/schiffy91/semu/refs/heads/main/utils/steam-deck-bootstrap.sh \
+  curl -fsSL https://raw.githubusercontent.com/schiffy91/semu/refs/heads/main/packaging/steamdeck/bootstrap.sh \
     | SEMU_ROMS=/run/media/deck/SD bash -s -- install --yes
 EOF
 }
@@ -168,10 +168,10 @@ default_roms_dir() {
     /run/media/deck/*/Emulation/ROMs \
     /run/media/deck/*/Emulation/ES-DE/ES-DE/ROMs \
     /run/media/deck/*/ROMs \
-    "$PROJECT/.semu/content/ROMs"; do
+    "$PROJECT/generated/runtime/content/ROMs"; do
     [ -d "$candidate" ] && { printf '%s\n' "$candidate"; return; }
   done
-  printf '%s\n' "$PROJECT/.semu/content/ROMs"
+  printf '%s\n' "$PROJECT/generated/runtime/content/ROMs"
 }
 
 normalize_roms_dir() {
@@ -194,18 +194,19 @@ build_semu() {
     cd "$PROJECT"
     log 'build BTRC CLI'
     nix develop --command make btrc-build
+    mkdir -p generated/nix
     if [ "$BUILD_MODE" = "full" ]; then
       log 'build full Semu bundle'
-      nix build .#default
+      nix build --out-link generated/nix/result .#default
     else
       log 'build Semu CLI package'
-      nix build .#semu-cli
+      nix build --out-link generated/nix/result .#semu-cli
     fi
   )
 }
 
 semu_bin() {
-  for candidate in "$PROJECT/result/bin/semu" "$PROJECT/build/semu"; do
+  for candidate in "$PROJECT/generated/build/semu" "$PROJECT/generated/nix/result/bin/semu"; do
     [ -x "$candidate" ] && { printf '%s\n' "$candidate"; return 0; }
   done
   die "Semu binary not found under $PROJECT; rerun with --build full or --cli-only"

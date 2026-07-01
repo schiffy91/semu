@@ -134,7 +134,9 @@ string esSystemSpec(
 // ---- paths_esde.btrc ----
 string manifestPaths() {
     return jsonObject([
-        jsonStrField("project_content_root", "${project}/.semu/content"),
+        jsonStrField("config_root", "${project}/config"),
+        jsonStrField("generated_root", "${project}/generated"),
+        jsonStrField("project_content_root", "${project}/generated/runtime/content"),
         jsonStrField("runtime_content_root", "${portable}"),
         jsonStrField("roms", "${paths.runtime_content_root}/ROMs"),
         jsonStrField("project_roms", "${paths.project_content_root}/ROMs"),
@@ -153,14 +155,14 @@ string manifestPaths() {
         jsonStrField("themes", "${paths.runtime_content_root}/themes"),
         jsonStrField("project_themes", "${paths.project_content_root}/themes"),
         jsonStrField("custom_systems", "${paths.runtime_content_root}/custom_systems"),
-        jsonStrField("project_custom_systems", "${project}/build/packaging/es-de/custom_systems"),
+        jsonStrField("project_custom_systems", "${project}/generated/packaging/es-de/custom_systems"),
         jsonStrField("settings", "${paths.runtime_content_root}/settings"),
-        jsonStrField("project_settings", "${project}/build/packaging/es-de/settings"),
-        jsonStrField("keymaps", "${project}/input/keymaps"),
-        jsonStrField("steam_input", "${project}/input/steam-input"),
-        jsonStrField("emulator_profiles", "${project}/build/packaging/emulators/profiles"),
-        jsonStrField("es_de_profiles", "${project}/build/packaging/es-de"),
-        jsonStrField("linux_packaging", "${project}/packaging/linux"),
+        jsonStrField("project_settings", "${project}/generated/packaging/es-de/settings"),
+        jsonStrField("keymaps", "${project}/config/input/keymaps"),
+        jsonStrField("steam_input", "${project}/generated/packaging/input/steam-input"),
+        jsonStrField("emulator_profiles", "${project}/generated/packaging/emulators/profiles"),
+        jsonStrField("es_de_profiles", "${project}/generated/packaging/es-de"),
+        jsonStrField("linux_packaging", "${project}/generated/packaging/linux"),
         jsonStrField("retroarch_system", "${paths.bios}")
     ]);
 }
@@ -495,13 +497,13 @@ string controllerProfiles() {
             steamInputTemplate(
                 "neptune_simple",
                 "Semu: Steam Deck - Neptune SIMPLE",
-                "${project}/input/steam-input/neptune-simple.vdf",
+                "${project}/generated/packaging/input/steam-input/neptune-simple.vdf",
                 "Generated Steam Input template; doctor validates it and steam-input install copies it."
             ),
             steamInputTemplate(
                 "neptune_full",
                 "Semu: Steam Deck - Neptune FULL",
-                "${project}/input/steam-input/neptune-full.vdf",
+                "${project}/generated/packaging/input/steam-input/neptune-full.vdf",
                 "Optional full hotkey layout for users who want RetroDeck-style chords."
             )
         ]))
@@ -552,7 +554,7 @@ string syncProfile() {
         jsonField("folders", jsonArray([
             syncFolderSpec("saves", "Saves", "${paths.project_saves}", true, true, 900),
             syncFolderSpec("states", "States", "${paths.project_states}", true, true, 900),
-            syncFolderSpec("emulator_state", "Emulator State", "${paths.project}/.semu/appimage-state", true, true, 900),
+            syncFolderSpec("emulator_state", "Emulator State", "${paths.project}/generated/runtime/appimage-state", true, true, 900),
             syncFolderSpec("screenshots", "Screenshots", "${paths.project_screenshots}", true, true, 1800),
             syncFolderSpec("gamelists", "Gamelists", "${paths.project_gamelists}", true, true, 1800),
             syncFolderSpec("roms", "ROMs", "${paths.project_roms}", false, true, 3600),
@@ -595,7 +597,7 @@ string biosEntries() {
             "wiiu",
             true,
             ["keys.txt"],
-            "${project}/build/packaging/emulators/profiles/Cemu/data",
+            "${project}/generated/packaging/emulators/profiles/Cemu/data",
             "",
             "Cemu needs user-supplied Wii U keys for encrypted content."
         ),

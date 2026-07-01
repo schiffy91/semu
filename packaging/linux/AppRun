@@ -120,8 +120,8 @@ if [ -z "${SEMU_PROJECT_DIR:-}" ]; then
       "$HOME/Documents/Emulation" \
       "$HOME/Emulation" \
       "$HOME/Games/Emulation"; do
-    if [ -d "$candidate" ] && { [ -f "$candidate/semu.json" ] || \
-         [ -f "$candidate/build/packaging/es-de/custom_systems/es_systems.xml" ]; }; then
+    if [ -d "$candidate" ] && { [ -f "$candidate/generated/semu.json" ] || \
+         [ -f "$candidate/generated/packaging/es-de/custom_systems/es_systems.xml" ]; }; then
       export SEMU_PROJECT_DIR="$candidate"
       break
     fi
@@ -129,7 +129,7 @@ if [ -z "${SEMU_PROJECT_DIR:-}" ]; then
 fi
 if [ -z "${SEMU_PROJECT_DIR:-}" ]; then
   echo "Semu: no project dir found. Set SEMU_PROJECT_DIR to point" >&2
-  echo "  at your cloud-synced emulator directory (the one with semu.json)." >&2
+  echo "  at your cloud-synced emulator directory (the one with generated/semu.json)." >&2
   exit 1
 fi
 
@@ -169,21 +169,21 @@ detect_roms_dir() {
       /run/media/deck/*/Emulation/ES-DE/ES-DE/ROMs \
       /run/media/deck/*/Emulation/ROMs \
       /run/media/deck/*/ROMs \
-      "$SEMU_PROJECT_DIR/.semu/content/ROMs"; do
+      "$SEMU_PROJECT_DIR/generated/runtime/content/ROMs"; do
     if [ -d "$candidate" ]; then
       printf '%s\n' "$candidate"
       return
     fi
   done
-  printf '%s\n' "$SEMU_PROJECT_DIR/.semu/content/ROMs"
+  printf '%s\n' "$SEMU_PROJECT_DIR/generated/runtime/content/ROMs"
 }
 
 export SEMU_ROMS_DIR="${SEMU_ROMS_DIR:-$(detect_roms_dir "$@")}"
 SEMU_DETECTED_ROMS_DIR="$SEMU_ROMS_DIR"
 
 if [ ! -x "$SEMU_CLI" ] && [ "${SEMU_ALLOW_PROJECT_CLI:-0}" = "1" ] && \
-   [ -x "$SEMU_PROJECT_DIR/build/semu" ]; then
-  SEMU_CLI="$SEMU_PROJECT_DIR/build/semu"
+   [ -x "$SEMU_PROJECT_DIR/generated/build/semu" ]; then
+  SEMU_CLI="$SEMU_PROJECT_DIR/generated/build/semu"
 fi
 # Commands written to desktop entries and systemd user units need a stable
 # entrypoint. The bundled CLI lives under the transient AppImage mount, so point

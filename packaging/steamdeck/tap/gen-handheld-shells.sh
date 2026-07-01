@@ -21,7 +21,8 @@ set -euo pipefail
 IM="$(command -v magick || command -v convert)"
 [ -n "$IM" ] || { echo "ERROR: ImageMagick (magick/convert) not found"; exit 1; }
 GFX="${1:?usage: gen-handheld-shells.sh <Duimon Graphics dir> [out]}"
-OUT="${2:-$(cd "$(dirname "$0")" && pwd)/semu-shells}"
+REPO="$(cd "$(dirname "$0")/../../.." && pwd)"
+OUT="${2:-$REPO/generated/assets/semu-shells}"
 mkdir -p "$OUT"
 
 # measure screen hole = bbox of the Glass layer's non-transparent pixels, normalized to the Device dims.

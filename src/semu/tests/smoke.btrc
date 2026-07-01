@@ -401,7 +401,7 @@ int e2eLifecycleSmoke(CliArgs args) {
     if (!e2eOk(SemuGeneratedFiles.isProjectGenerated(project, emulatorProfilePath(project, "Dolphin/config/Dolphin.ini")), "Dolphin runtime config should be classified as generated")) { return 1; }
     if (!e2eOk(SemuGeneratedFiles.isProjectGenerated(project, emulatorProfilePath(project, "Dolphin/config/GCPadNew.ini")), "Dolphin runtime pad config should be classified as generated")) { return 1; }
     if (!e2eOk(SemuGeneratedFiles.isProjectGenerated(project, emulatorProfilePath(project, "Dolphin/config/WiimoteNew.ini")), "Dolphin runtime Wiimote config should be classified as generated")) { return 1; }
-    if (!e2eOk(SemuGeneratedFiles.isProjectGenerated(project, joinPath(project, "input/steam-input/neptune-simple.vdf")), "Steam Input template should be classified as generated")) { return 1; }
+    if (!e2eOk(SemuGeneratedFiles.isProjectGenerated(project, joinPath(project, "generated/packaging/input/steam-input/neptune-simple.vdf")), "Steam Input template should be classified as generated")) { return 1; }
     if (!e2eOk(SemuGeneratedFiles.isAdapterState(project, lifecycleStatePath(project)), "lifecycle state should be classified as adapter state")) { return 1; }
     if (!e2eOk(SemuGeneratedFiles.isAdapterState(project, joinPath(launcherRoutedStateRoot(project, "pcsx2"), "config/PCSX2/inis/PCSX2.ini")), "routed emulator home should be classified as adapter state")) { return 1; }
     if (!e2eOk(SemuGeneratedFiles.isAdapterState(project, deckQuitEvidencePath(project, "retroarch")), "quit-watch evidence should be classified as adapter state")) { return 1; }
@@ -472,7 +472,7 @@ int e2eLifecycleSmoke(CliArgs args) {
     if (!e2eContains(FileSystem.readText(emulatorProfilePath(project, "RetroArch/retroarch.cfg")), "input_save_state = \"v\"", "RetroArch keymap after change")) { return 1; }
     if (!e2eContains(FileSystem.readText(emulatorProfilePath(project, "Dolphin/config/Profiles/Hotkeys/Steam Deck.ini")), "Save State/Save State Slot 1 = @(Ctrl+V)", "Dolphin keymap after change")) { return 1; }
     if (!e2eContains(FileSystem.readText(emulatorProfilePath(project, "PCSX2/config/inputprofiles/Steam Deck.ini")), "SaveStateToSlot = Keyboard/Control & Keyboard/V", "PCSX2 keymap after change")) { return 1; }
-    if (!e2eContains(FileSystem.readText(joinPath(project, "input/steam-input/neptune-full.vdf")), "key_press V, Save State", "Steam Input keymap after change")) { return 1; }
+    if (!e2eContains(FileSystem.readText(joinPath(project, "generated/packaging/input/steam-input/neptune-full.vdf")), "key_press V, Save State", "Steam Input keymap after change")) { return 1; }
 
     string keymapBeforeFailure = FileSystem.readText(keymapSourcePath(project));
     string retroarchBeforeFailure = FileSystem.readText(emulatorProfilePath(project, "RetroArch/retroarch.cfg"));
@@ -494,10 +494,10 @@ int e2eLifecycleSmoke(CliArgs args) {
     if (!e2eOk(FileSystem.exists(joinPath(home, ".local/share/applications/semu.desktop")), "desktop entry missing after reinstall")) { return 1; }
     if (!e2eContains(FileSystem.readText(syncConfigPath(project)), romsTwo, "sync config after reinstall")) { return 1; }
 
-    FileSystem.writeText(joinPath(project, "semu.json"), "{\"previous_manifest\": true}\n");
+    FileSystem.writeText(manifestPath(project), "{\"previous_manifest\": true}\n");
     if (!e2eRunOk(e2eRunLifecycle(exe, home, "upgrade", project, ""), "upgrade")) { return 1; }
     if (!e2eContains(FileSystem.readText(upgradeBackupPath(project)), "\"previous_manifest\": true", "upgrade backup")) { return 1; }
-    if (!e2eContains(FileSystem.readText(joinPath(project, "semu.json")), "\"schema_version\": 1", "regenerated manifest")) { return 1; }
+    if (!e2eContains(FileSystem.readText(manifestPath(project)), "\"schema_version\": 1", "regenerated manifest")) { return 1; }
     if (!e2eContains(FileSystem.readText(keymapSourcePath(project)), "action state.save = Ctrl+V", "keymap should survive upgrade")) { return 1; }
 
     if (!e2eRunOk(e2eRunLifecycleArgs(exe, home, project, ["uninstall", "--purge-generated", "--purge-state"]), "purge uninstall")) { return 1; }
@@ -641,7 +641,7 @@ int e2eSyncSmoke(CliArgs args) {
     if (!e2eRunOk(e2eRunSync(exe, home, binDir, project, ["setup"]), "sync setup")) { return 1; }
     string systemctlLog = FileSystem.readText(joinPath(capture, "systemctl.log"));
     string syncService = FileSystem.readText(joinPath(home, ".config/systemd/user/semu-syncthing.service"));
-    string syncForceScript = FileSystem.readText(joinPath(project, "sync/bin/sync-force.sh"));
+    string syncForceScript = FileSystem.readText(joinPath(project, "generated/packaging/sync/bin/sync-force.sh"));
     if (!e2eContains(syncService, " sync serve --project ", "sync service stable semu entrypoint")) { return 1; }
     if (!e2eContains(syncForceScript, " sync force all --project ", "sync force stable semu entrypoint")) { return 1; }
     if (!e2eContains(systemctlLog, "--user daemon-reload", "sync daemon-reload")) { return 1; }
@@ -748,7 +748,7 @@ int e2eSettingsSmoke(CliArgs args) {
     ExecResult syncUiEdit = e2eRunSettingsUiScriptArgs(exe, home, project, ["sync"], "6\nq\n");
     if (!e2eRunOk(syncUiEdit, "sync settings ui edit")) { return 1; }
     if (!e2eContains(syncUiEdit.stdout(), "Semu Sync Settings", "sync ui title")) { return 1; }
-    if (!e2eContains(syncUiEdit.stdout(), "Edits update Semu-owned sync/sync.json", "sync ui owned boundary")) { return 1; }
+    if (!e2eContains(syncUiEdit.stdout(), "Edits update Semu-owned config/settings/sync.json", "sync ui owned boundary")) { return 1; }
     if (!e2eContains(FileSystem.readText(syncConfigPath(project)), "\"sync_saves\": false", "sync ui persisted owned config")) { return 1; }
     if (!e2eOk(FileSystem.exists(syncServicePath), "sync service missing before sync UI boundary check")) { return 1; }
     if (!e2eOk(FileSystem.readText(syncServicePath).equals(syncServiceBeforeUi), "sync ui edit mutated generated service before apply")) { return 1; }
@@ -797,7 +797,7 @@ int e2ePresentationSmoke(CliArgs args) {
     if (!e2eRunOk(e2eRunPresentation(exe, home, project, ["defaults"]), "presentation defaults")) { return 1; }
     if (!e2eOk(FileSystem.exists(joinPath(presentationSettingsRoot(project), "gb.json")), "gb presentation config missing")) { return 1; }
     if (!e2eOk(FileSystem.exists(joinPath(presentationSettingsRoot(project), "n3ds.json")), "n3ds presentation config missing")) { return 1; }
-    string shaderRoot = joinPath(project, "result/share/libretro/shaders/shaders_slang");
+    string shaderRoot = joinPath(nixResultRoot(project), "share/libretro/shaders/shaders_slang");
     ensureDir(joinPath(shaderRoot, "handheld/console-border"));
     FileSystem.writeText(joinPath(shaderRoot, "handheld/gameboy.slangp"), "# fake gb shader\n");
     FileSystem.writeText(joinPath(shaderRoot, "handheld/console-border/dmg.slangp"), "# fake gb runtime/bezel\n");
@@ -824,7 +824,7 @@ int e2ePresentationSmoke(CliArgs args) {
     if (!e2eContains(FileSystem.readText(auditReport), "\"missing_asset_count\": 0", "gb audit report missing asset count")) { return 1; }
     if (!e2eContains(FileSystem.readText(auditReport), "\"missing_dependency_count\": 0", "gb audit report missing dependency count")) { return 1; }
 
-    string shaderBundleRoot = joinPath(project, "result/share/libretro/shaders");
+    string shaderBundleRoot = joinPath(nixResultRoot(project), "share/libretro/shaders");
     string dependencyPreset = joinPath(shaderBundleRoot, "Mega_Bezel_Packs/test/root.slangp");
     ensureDir(joinPath(shaderBundleRoot, "Mega_Bezel_Packs/test/base"));
     ensureDir(joinPath(shaderBundleRoot, "Mega_Bezel_Packs/test/images"));
@@ -944,7 +944,7 @@ int e2eLauncherSmoke(CliArgs args) {
     ensureDir(home);
     ensureDir(capture);
     ensureDir(binDir);
-    string shaderPreset = joinPath(project, "result/share/libretro/shaders/shaders_slang/bezel/Mega_Bezel/Presets/MBZ__5__POTATO.slangp");
+    string shaderPreset = joinPath(nixResultRoot(project), "share/libretro/shaders/shaders_slang/bezel/Mega_Bezel/Presets/MBZ__5__POTATO.slangp");
     e2eSeedFile(shaderPreset);
     e2eSeedFile(joinPath(emulationRoot, "Cemu/data/keys.txt"));
     e2eSeedFile(joinPath(emulationRoot, "PCSX2/config/bios/SCPH-39001.bin"));
@@ -1468,7 +1468,7 @@ int e2eShellSyntaxSmoke(string project) {
         + " packaging/linux/sandbox.sh"
         + " packaging/linux/build-appimage.sh"
         + " packaging/linux/bin/semu-*"
-        + " utils/steam-deck-bootstrap.sh";
+        + " packaging/steamdeck/bootstrap.sh";
     ExecResult result = UnixShell().runRaw(command, true, false, "");
     if (!result.ok()) {
         print(result.stdout());

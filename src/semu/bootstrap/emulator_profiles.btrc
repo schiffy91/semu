@@ -34,7 +34,7 @@ string retroArchShaderDir(string project) {
         return appImageShaders;
     }
 
-    string resultShaders = joinPath(project, "result/share/libretro/shaders/shaders_slang");
+    string resultShaders = joinPath(nixResultRoot(project), "share/libretro/shaders/shaders_slang");
     if (FileSystem.isDir(resultShaders)) {
         return resultShaders;
     }

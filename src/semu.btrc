@@ -6,7 +6,6 @@ import ./semu/paths/*;
 import ./semu/emulators/*;
 import ./semu/bootstrap/*;
 import ./semu/doctor/*;
-import ./semu/utils/*;
 import ./semu/verification/*;
 import ./semu/sync/*;
 import ./semu/settings/*;
@@ -30,7 +29,7 @@ string launcherNameFromProgram(string program) {
     return Strings.removePrefix(base, "semu-");
 }
 
-// Resolve the project dir (the one holding semu.json). Honors --project and $SEMU_PROJECT_DIR,
+// Resolve the project dir (the one holding generated/semu.json). Honors --project and $SEMU_PROJECT_DIR,
 // then the current dir, then standard install locations -- so the Game Mode AppImage finds its
 // project with no env var or cwd setup (Steam launches it with neither).
 string resolveProjectDir(CliArgs args) {
@@ -38,16 +37,16 @@ string resolveProjectDir(CliArgs args) {
     if (explicit.len() > 0) { return explicit; }
     string env = Environment.get("SEMU_PROJECT_DIR", "");
     if (env.len() > 0) { return env; }
-    if (FileSystem.isFile("semu.json")) { return "."; }
+    if (FileSystem.isFile(manifestPath("."))) { return "."; }
     string xdg = Environment.get("XDG_DATA_HOME", "");
     if (xdg.len() > 0) {
         string c1 = joinPath(xdg, "semu");
-        if (FileSystem.isFile(joinPath(c1, "semu.json"))) { return c1; }
+        if (FileSystem.isFile(manifestPath(c1))) { return c1; }
     }
     string home = Environment.get("HOME", "");
     if (home.len() > 0) {
         string c2 = joinPath(home, ".local/share/semu");
-        if (FileSystem.isFile(joinPath(c2, "semu.json"))) { return c2; }
+        if (FileSystem.isFile(manifestPath(c2))) { return c2; }
     }
     return ".";
 }
@@ -61,7 +60,7 @@ int main(int argc, char** argv) {
         return launcherRunEmulator(project, programLauncher, launcherPassthroughArgs(args));
     }
     if (command.equals("") || command.equals("manifest")) {
-        string output = args.valueAfter("--output", "semu.json");
+        string output = args.valueAfter("--output", manifestPath(project));
         writeGeneratedManifest(output);
         return 0;
     }

@@ -254,9 +254,16 @@ typedef struct GraphCli GraphCli;
 typedef struct GraphReport GraphReport;
 typedef struct GraphTraversal GraphTraversal;
 void GraphTraversal_destroy(GraphTraversal* self);
+typedef struct BinaryEditor BinaryEditor;
+void BinaryEditor_destroy(BinaryEditor* self);
+typedef struct BinaryReader BinaryReader;
+void BinaryReader_destroy(BinaryReader* self);
 typedef struct SemuJson SemuJson;
 typedef struct SemuShell SemuShell;
 typedef struct SemuManifestCompiler SemuManifestCompiler;
+typedef struct SemuN3dsTools SemuN3dsTools;
+typedef struct N3dsRomCheck N3dsRomCheck;
+void N3dsRomCheck_destroy(N3dsRomCheck* self);
 typedef struct SystemCatalog SystemCatalog;
 void SystemCatalog_destroy(SystemCatalog* self);
 typedef struct SemuKeymapLanguage SemuKeymapLanguage;
@@ -283,13 +290,6 @@ typedef struct SemuEmulatorProfiles SemuEmulatorProfiles;
 typedef struct SemuProjectBootstrap SemuProjectBootstrap;
 typedef struct SemuUpgradeCleanup SemuUpgradeCleanup;
 typedef struct SemuDoctor SemuDoctor;
-typedef struct BinaryEditor BinaryEditor;
-void BinaryEditor_destroy(BinaryEditor* self);
-typedef struct BinaryReader BinaryReader;
-void BinaryReader_destroy(BinaryReader* self);
-typedef struct SemuN3dsTools SemuN3dsTools;
-typedef struct N3dsRomCheck N3dsRomCheck;
-void N3dsRomCheck_destroy(N3dsRomCheck* self);
 typedef struct SemuScreenshotVerification SemuScreenshotVerification;
 typedef struct SemuSyncRuntime SemuSyncRuntime;
 typedef struct SyncSettingSpec SyncSettingSpec;
@@ -396,6 +396,21 @@ char* syncProfile(void);
 char* biosEntries(void);
 char* systemEntries(void);
 char* buildJson(void);
+bool n3dsRomName(char* name);
+bool n3dsArchiveName(char* name);
+bool exefsLooksDecrypted(char* text);
+N3dsRomCheck* checkN3dsRom(char* path);
+btrc_Vector_string* n3dsInputFiles(char* input);
+bool copyFilePath(char* source, char* destination);
+bool n3dsNoCryptoFlag(int flags);
+int patchN3dsNoCryptoFlags(char* path);
+bool fixN3dsNoCryptoFile(char* input, char* output);
+void reportN3dsRomPreflight(char* project);
+char* n3dsNoCryptoInputArg(CliArgs* args, int startIndex);
+void printN3dsNoCryptoCheckSummary(int total, int ok, int needsFix, int encrypted, int invalid, int unknown);
+int n3dsNoCryptoCommand(CliArgs* args, int startIndex);
+int utilitiesCommand(CliArgs* args);
+int decrypt3dsNoCryptoCommand(CliArgs* args, int startIndex);
 SystemCatalog* systemCatalog(void);
 bool isIdentChar(char c);
 bool isSpaceChar(char c);
@@ -450,6 +465,13 @@ char* semuSourceProjectScope(char* project, char* path);
 char* semuGeneratedProjectScope(char* project, char* path);
 char* semuAdapterStateScope(char* project, char* path);
 char* joinPath(char* left, char* right);
+char* configRoot(char* project);
+char* generatedRoot(char* project);
+char* generatedPackagingRoot(char* project);
+char* generatedRuntimeRoot(char* project);
+char* generatedNixRoot(char* project);
+char* manifestPath(char* project);
+char* nixResultRoot(char* project);
 char* contentRoot(char* project);
 char* romsRoot(char* project);
 char* syncRoot(char* project);
@@ -463,6 +485,7 @@ char* biosRoot(char* project);
 char* customSystemsRoot(char* project);
 char* esDeSettingsPath(char* project);
 char* esDeSettingsEntriesRoot(char* project);
+char* steamInputTemplatesRoot(char* project);
 char* emulatorProfilesRoot(char* project);
 char* emulatorProfilePath(char* project, char* relative);
 char* linuxPackagingRoot(char* project);
@@ -470,6 +493,9 @@ char* linuxLauncherBin(char* project);
 char* keymapsRoot(char* project);
 char* keymapSourcePath(char* project);
 char* homeDir(void);
+char* externalEsDeRoot(char* userHome);
+char* externalEsDeCustomSystemsRoot(char* userHome);
+char* externalEsDeSettingsRoot(char* userHome);
 char* systemdUserDir(void);
 char* applicationsDir(void);
 char* expandProjectTemplate(char* project, char* value);
@@ -486,7 +512,9 @@ btrc_Vector_string* controllerProfileFiles(void);
 char* esSettingsXmlWithPaths(char* roms, char* media, char* themes);
 char* esSettingsXmlForProject(char* project);
 void ensureDir(char* path);
-char* bezelManifestHole(char* system);
+char* bezelManifestPath(char* project);
+char* bezelManifestHoleFromText(char* text, char* system);
+char* bezelManifestHole(char* project, char* system);
 char* launcherFlatpakId(char* emulator);
 bool launcherUsesX11(char* emulator);
 btrc_Vector_string* launcherPresetArgs(char* emulator);
@@ -551,7 +579,7 @@ void launcherMbParse(char* path, btrc_Map_string_string* params, btrc_Vector_str
 char* launcherTapArt(char* project, char* system);
 char* launcherStandaloneBezelWrap(char* project, char* emulator, char* command);
 char* launcherPatchedRA(char* project);
-char* launcherTapScreen(char* system);
+char* launcherTapScreen(char* project, char* system);
 char* launcherTapArtFile(char* project, char* system);
 char* launcherResolveArtRel(char* rel);
 char* launcherTapArtVariant(char* project, char* system, char* variant);
@@ -622,9 +650,7 @@ void writeProjectManifest(char* project);
 char* bundledText(char* project, char* relative, char* fallback);
 char* renderBundledTemplate(char* project, char* relative, btrc_Map_string_string* values, char* fallback);
 char* assetRoot(char* project);
-void seedBundledFileFromRoot(char* root, char* project, char* relative, bool executable);
-void seedBundledFile(char* project, char* relative, bool executable);
-void seedBundledDirFiles(char* project, char* relative, bool executable);
+void seedLinuxSourceFile(char* project, char* relative, bool executable);
 char* portableShellHeader(void);
 void writeGeneratedExecutableText(char* project, char* path, char* text);
 btrc_Vector_string* managedLinuxLauncherFiles(void);
@@ -670,21 +696,6 @@ void reportFile(char* label, char* path);
 int braceBalance(char* text);
 void reportSteamInputTemplate(char* label, char* path);
 void doctorSteamDeck(char* project);
-bool n3dsRomName(char* name);
-bool n3dsArchiveName(char* name);
-bool exefsLooksDecrypted(char* text);
-N3dsRomCheck* checkN3dsRom(char* path);
-btrc_Vector_string* n3dsInputFiles(char* input);
-bool copyFilePath(char* source, char* destination);
-bool n3dsNoCryptoFlag(int flags);
-int patchN3dsNoCryptoFlags(char* path);
-bool fixN3dsNoCryptoFile(char* input, char* output);
-void reportN3dsRomPreflight(char* project);
-char* n3dsNoCryptoInputArg(CliArgs* args, int startIndex);
-void printN3dsNoCryptoCheckSummary(int total, int ok, int needsFix, int encrypted, int invalid, int unknown);
-int n3dsNoCryptoCommand(CliArgs* args, int startIndex);
-int utilitiesCommand(CliArgs* args);
-int decrypt3dsNoCryptoCommand(CliArgs* args, int startIndex);
 char* verificationRoot(char* project);
 char* screenshotConfigPath(char* project);
 char* screenshotDefaultConfigText(void);
@@ -1142,6 +1153,30 @@ GraphTraversal* GraphTraversal_new(ExecutionGraph* graph);
 int GraphTraversal_visit(GraphTraversal* self, char* id);
 btrc_Vector_string* GraphTraversal_order(GraphTraversal* self, btrc_Vector_string* targets);
 bool GraphTraversal_ok(GraphTraversal* self);
+void BinaryEditor_init(BinaryEditor* self, char* path, char* mode);
+BinaryEditor* BinaryEditor_new(char* path, char* mode);
+bool BinaryEditor_ok(BinaryEditor* self);
+bool BinaryEditor_seek(BinaryEditor* self, long offset);
+int BinaryEditor_readU8(BinaryEditor* self, long offset);
+long BinaryEditor_readLe32(BinaryEditor* self, long offset);
+char* BinaryEditor_readAscii(BinaryEditor* self, long offset, int count);
+bool BinaryEditor_writeU8(BinaryEditor* self, long offset, int value);
+bool BinaryEditor_writeLe32(BinaryEditor* self, long offset, long value);
+bool BinaryEditor_writeAscii(BinaryEditor* self, long offset, char* text);
+void BinaryEditor_close(BinaryEditor* self);
+void BinaryReader_init(BinaryReader* self, char* path);
+BinaryReader* BinaryReader_new(char* path);
+bool BinaryReader_ok(BinaryReader* self);
+bool BinaryReader_seek(BinaryReader* self, long offset);
+long BinaryReader_length(BinaryReader* self);
+int BinaryReader_readU8(BinaryReader* self, long offset);
+long BinaryReader_readLe32(BinaryReader* self, long offset);
+char* BinaryReader_readAscii(BinaryReader* self, long offset, int count);
+char* BinaryReader_readCString(BinaryReader* self, long offset);
+long BinaryReader_cstringEnd(BinaryReader* self, long offset);
+void BinaryReader_close(BinaryReader* self);
+void N3dsRomCheck_init(N3dsRomCheck* self);
+N3dsRomCheck* N3dsRomCheck_new(void);
 void SystemCatalog_init(SystemCatalog* self);
 SystemCatalog* SystemCatalog_new(void);
 void SystemCatalog_addSystem(SystemCatalog* self, char* id, char* fullname, char* platform, char* theme, char* romDir, btrc_Vector_string* extensions, btrc_Vector_string* linuxCommands, btrc_Vector_string* macosCommands, btrc_Vector_string* bios, char* controllerProfile);
@@ -1192,42 +1227,16 @@ bool SemuGeneratedFiles_isProjectSource(char* project, char* path);
 bool SemuGeneratedFiles_isProjectGenerated(char* project, char* path);
 bool SemuGeneratedFiles_isProjectOwned(char* project, char* path);
 bool SemuGeneratedFiles_isAdapterState(char* project, char* path);
-char* SemuGeneratedFiles_ownedScope(char* project, char* path);
 void SemuGeneratedFiles_writeSource(char* project, char* path, char* text);
 void SemuGeneratedFiles_writeSourceJson(char* project, char* path, char* text);
 void SemuGeneratedFiles_writeProject(char* project, char* path, char* text);
 void SemuGeneratedFiles_writeProjectJson(char* project, char* path, char* text);
-void SemuGeneratedFiles_writeOwnedProject(char* project, char* path, char* text);
 void SemuGeneratedFiles_writeAdapterState(char* project, char* path, char* text);
 void SemuGeneratedFiles_ensureAdapterStateDir(char* project, char* path);
 void SemuGeneratedFiles_writeExternalInstall(char* purpose, char* path, char* text);
 void SemuUpgradeCleanup_pruneLinuxLaunchers(char* project);
 void SemuUpgradeCleanup_pruneObsoleteState(char* project);
 void SemuUpgradeCleanup_beforeSeedingLinuxAssets(char* project);
-void BinaryEditor_init(BinaryEditor* self, char* path, char* mode);
-BinaryEditor* BinaryEditor_new(char* path, char* mode);
-bool BinaryEditor_ok(BinaryEditor* self);
-bool BinaryEditor_seek(BinaryEditor* self, long offset);
-int BinaryEditor_readU8(BinaryEditor* self, long offset);
-long BinaryEditor_readLe32(BinaryEditor* self, long offset);
-char* BinaryEditor_readAscii(BinaryEditor* self, long offset, int count);
-bool BinaryEditor_writeU8(BinaryEditor* self, long offset, int value);
-bool BinaryEditor_writeLe32(BinaryEditor* self, long offset, long value);
-bool BinaryEditor_writeAscii(BinaryEditor* self, long offset, char* text);
-void BinaryEditor_close(BinaryEditor* self);
-void BinaryReader_init(BinaryReader* self, char* path);
-BinaryReader* BinaryReader_new(char* path);
-bool BinaryReader_ok(BinaryReader* self);
-bool BinaryReader_seek(BinaryReader* self, long offset);
-long BinaryReader_length(BinaryReader* self);
-int BinaryReader_readU8(BinaryReader* self, long offset);
-long BinaryReader_readLe32(BinaryReader* self, long offset);
-char* BinaryReader_readAscii(BinaryReader* self, long offset, int count);
-char* BinaryReader_readCString(BinaryReader* self, long offset);
-long BinaryReader_cstringEnd(BinaryReader* self, long offset);
-void BinaryReader_close(BinaryReader* self);
-void N3dsRomCheck_init(N3dsRomCheck* self);
-N3dsRomCheck* N3dsRomCheck_new(void);
 void SyncSettingSpec_init(SyncSettingSpec* self, char* key, char* label, char* group, char* jsonKey, char* kind, char* fallback);
 SyncSettingSpec* SyncSettingSpec_new(char* key, char* label, char* group, char* jsonKey, char* kind, char* fallback);
 bool SyncSettingSpec_known(SyncSettingSpec* self);
@@ -1725,6 +1734,18 @@ struct GraphTraversal {
     char* error;
 };
 
+struct BinaryEditor {
+    int __rc;
+    FILE* handle;
+    bool opened;
+};
+
+struct BinaryReader {
+    int __rc;
+    FILE* handle;
+    bool opened;
+};
+
 struct SemuJson {
     int __rc;
 };
@@ -1735,6 +1756,17 @@ struct SemuShell {
 
 struct SemuManifestCompiler {
     int __rc;
+};
+
+struct SemuN3dsTools {
+    int __rc;
+};
+
+struct N3dsRomCheck {
+    int __rc;
+    char* status;
+    char* note;
+    int partitions;
 };
 
 struct SystemCatalog {
@@ -1838,29 +1870,6 @@ struct SemuUpgradeCleanup {
 
 struct SemuDoctor {
     int __rc;
-};
-
-struct BinaryEditor {
-    int __rc;
-    FILE* handle;
-    bool opened;
-};
-
-struct BinaryReader {
-    int __rc;
-    FILE* handle;
-    bool opened;
-};
-
-struct SemuN3dsTools {
-    int __rc;
-};
-
-struct N3dsRomCheck {
-    int __rc;
-    char* status;
-    char* note;
-    int partitions;
 };
 
 struct SemuScreenshotVerification {
@@ -10516,6 +10525,217 @@ bool GraphTraversal_ok(GraphTraversal* self) {
     return __btrc_isEmpty(self->error);
 }
 
+void BinaryEditor_init(BinaryEditor* self, char* path, char* mode) {
+    self->__rc = 1;
+    (self->handle = fopen(path, mode));
+    (self->opened = (self->handle != NULL));
+}
+
+BinaryEditor* BinaryEditor_new(char* path, char* mode) {
+    BinaryEditor* self = ((BinaryEditor*)malloc(sizeof(BinaryEditor)));
+    memset(self, 0, sizeof(BinaryEditor));
+    BinaryEditor_init(self, path, mode);
+    return self;
+}
+
+void BinaryEditor_destroy(BinaryEditor* self) {
+    BinaryEditor_close(self);
+    free(self);
+}
+
+bool BinaryEditor_ok(BinaryEditor* self) {
+    return self->opened;
+}
+
+bool BinaryEditor_seek(BinaryEditor* self, long offset) {
+    if (!self->opened) {
+        return false;
+    }
+    return (fseek(self->handle, offset, SEEK_SET) == 0);
+}
+
+int BinaryEditor_readU8(BinaryEditor* self, long offset) {
+    if (!BinaryEditor_seek(self, offset)) {
+        return (-1);
+    }
+    unsigned char buf[1];
+    size_t n = fread(buf, 1, 1, self->handle);
+    if (n != 1) {
+        return (-1);
+    }
+    return ((int)buf[0]);
+}
+
+long BinaryEditor_readLe32(BinaryEditor* self, long offset) {
+    if (!BinaryEditor_seek(self, offset)) {
+        return (-1);
+    }
+    unsigned char buf[4];
+    size_t n = fread(buf, 1, 4, self->handle);
+    if (n != 4) {
+        return (-1);
+    }
+    return (((((long)buf[0]) + (((long)buf[1]) * 256)) + (((long)buf[2]) * 65536)) + (((long)buf[3]) * 16777216));
+}
+
+char* BinaryEditor_readAscii(BinaryEditor* self, long offset, int count) {
+    if (!BinaryEditor_seek(self, offset)) {
+        return "";
+    }
+    char* buf = ((char*)malloc((count + 1)));
+    size_t n = fread(buf, 1, count, self->handle);
+    (buf[n] = '\0');
+    return buf;
+}
+
+bool BinaryEditor_writeU8(BinaryEditor* self, long offset, int value) {
+    if (!BinaryEditor_seek(self, offset)) {
+        return false;
+    }
+    unsigned char buf[1];
+    (buf[0] = ((unsigned char)value));
+    size_t n = fwrite(buf, 1, 1, self->handle);
+    return (n == 1);
+}
+
+bool BinaryEditor_writeLe32(BinaryEditor* self, long offset, long value) {
+    if (!BinaryEditor_seek(self, offset)) {
+        return false;
+    }
+    unsigned char buf[4];
+    (buf[0] = ((unsigned char)__btrc_mod_int(value, 256)));
+    (buf[1] = ((unsigned char)__btrc_mod_int(__btrc_div_int(value, 256), 256)));
+    (buf[2] = ((unsigned char)__btrc_mod_int(__btrc_div_int(value, 65536), 256)));
+    (buf[3] = ((unsigned char)__btrc_mod_int(__btrc_div_int(value, 16777216), 256)));
+    size_t n = fwrite(buf, 1, 4, self->handle);
+    return (n == 4);
+}
+
+bool BinaryEditor_writeAscii(BinaryEditor* self, long offset, char* text) {
+    if (!BinaryEditor_seek(self, offset)) {
+        return false;
+    }
+    size_t n = fwrite(text, 1, ((int)strlen(text)), self->handle);
+    return (n == ((size_t)((int)strlen(text))));
+}
+
+void BinaryEditor_close(BinaryEditor* self) {
+    if (self->opened) {
+        fclose(self->handle);
+        (self->opened = false);
+    }
+}
+
+void BinaryReader_init(BinaryReader* self, char* path) {
+    self->__rc = 1;
+    (self->handle = fopen(path, "rb"));
+    (self->opened = (self->handle != NULL));
+}
+
+BinaryReader* BinaryReader_new(char* path) {
+    BinaryReader* self = ((BinaryReader*)malloc(sizeof(BinaryReader)));
+    memset(self, 0, sizeof(BinaryReader));
+    BinaryReader_init(self, path);
+    return self;
+}
+
+void BinaryReader_destroy(BinaryReader* self) {
+    BinaryReader_close(self);
+    free(self);
+}
+
+bool BinaryReader_ok(BinaryReader* self) {
+    return self->opened;
+}
+
+bool BinaryReader_seek(BinaryReader* self, long offset) {
+    if (!self->opened) {
+        return false;
+    }
+    return (fseek(self->handle, offset, SEEK_SET) == 0);
+}
+
+long BinaryReader_length(BinaryReader* self) {
+    if (!self->opened) {
+        return 0;
+    }
+    long here = ftell(self->handle);
+    fseek(self->handle, 0, SEEK_END);
+    long end = ftell(self->handle);
+    fseek(self->handle, here, SEEK_SET);
+    return end;
+}
+
+int BinaryReader_readU8(BinaryReader* self, long offset) {
+    if (!BinaryReader_seek(self, offset)) {
+        return (-1);
+    }
+    unsigned char buf[1];
+    size_t n = fread(buf, 1, 1, self->handle);
+    if (n != 1) {
+        return (-1);
+    }
+    return ((int)buf[0]);
+}
+
+long BinaryReader_readLe32(BinaryReader* self, long offset) {
+    if (!BinaryReader_seek(self, offset)) {
+        return (-1);
+    }
+    unsigned char buf[4];
+    size_t n = fread(buf, 1, 4, self->handle);
+    if (n != 4) {
+        return (-1);
+    }
+    return (((((long)buf[0]) + (((long)buf[1]) * 256)) + (((long)buf[2]) * 65536)) + (((long)buf[3]) * 16777216));
+}
+
+char* BinaryReader_readAscii(BinaryReader* self, long offset, int count) {
+    if (!BinaryReader_seek(self, offset)) {
+        return "";
+    }
+    char* buf = ((char*)malloc((count + 1)));
+    size_t n = fread(buf, 1, count, self->handle);
+    (buf[n] = '\0');
+    return buf;
+}
+
+char* BinaryReader_readCString(BinaryReader* self, long offset) {
+    char* out = "";
+    long pos = offset;
+    while (true) {
+        int value = BinaryReader_readU8(self, pos);
+        if (value <= 0) {
+            return out;
+        }
+        (out = __btrc_str_track(__btrc_strcat(out, BinaryReader_readAscii(self, pos, 1))));
+        (pos++);
+    }
+    return out;
+}
+
+long BinaryReader_cstringEnd(BinaryReader* self, long offset) {
+    long pos = offset;
+    while (true) {
+        int value = BinaryReader_readU8(self, pos);
+        if (value < 0) {
+            return pos;
+        }
+        (pos++);
+        if (value == 0) {
+            return pos;
+        }
+    }
+    return pos;
+}
+
+void BinaryReader_close(BinaryReader* self) {
+    if (self->opened) {
+        fclose(self->handle);
+        (self->opened = false);
+    }
+}
+
 char* jsonQ(char* value) {
     return __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat("\"", JsonObject_escape(value))), "\""));
 }
@@ -10764,7 +10984,9 @@ char* esSystemSpec(char* id, char* fullname, char* platform, char* theme, char* 
 
 char* manifestPaths(void) {
     btrc_Vector_string* __list_80 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_80, jsonStrField("project_content_root", "${project}/.semu/content"));
+    btrc_Vector_string_push(__list_80, jsonStrField("config_root", "${project}/config"));
+    btrc_Vector_string_push(__list_80, jsonStrField("generated_root", "${project}/generated"));
+    btrc_Vector_string_push(__list_80, jsonStrField("project_content_root", "${project}/generated/runtime/content"));
     btrc_Vector_string_push(__list_80, jsonStrField("runtime_content_root", "${portable}"));
     btrc_Vector_string_push(__list_80, jsonStrField("roms", "${paths.runtime_content_root}/ROMs"));
     btrc_Vector_string_push(__list_80, jsonStrField("project_roms", "${paths.project_content_root}/ROMs"));
@@ -10783,14 +11005,14 @@ char* manifestPaths(void) {
     btrc_Vector_string_push(__list_80, jsonStrField("themes", "${paths.runtime_content_root}/themes"));
     btrc_Vector_string_push(__list_80, jsonStrField("project_themes", "${paths.project_content_root}/themes"));
     btrc_Vector_string_push(__list_80, jsonStrField("custom_systems", "${paths.runtime_content_root}/custom_systems"));
-    btrc_Vector_string_push(__list_80, jsonStrField("project_custom_systems", "${project}/build/packaging/es-de/custom_systems"));
+    btrc_Vector_string_push(__list_80, jsonStrField("project_custom_systems", "${project}/generated/packaging/es-de/custom_systems"));
     btrc_Vector_string_push(__list_80, jsonStrField("settings", "${paths.runtime_content_root}/settings"));
-    btrc_Vector_string_push(__list_80, jsonStrField("project_settings", "${project}/build/packaging/es-de/settings"));
-    btrc_Vector_string_push(__list_80, jsonStrField("keymaps", "${project}/input/keymaps"));
-    btrc_Vector_string_push(__list_80, jsonStrField("steam_input", "${project}/input/steam-input"));
-    btrc_Vector_string_push(__list_80, jsonStrField("emulator_profiles", "${project}/build/packaging/emulators/profiles"));
-    btrc_Vector_string_push(__list_80, jsonStrField("es_de_profiles", "${project}/build/packaging/es-de"));
-    btrc_Vector_string_push(__list_80, jsonStrField("linux_packaging", "${project}/packaging/linux"));
+    btrc_Vector_string_push(__list_80, jsonStrField("project_settings", "${project}/generated/packaging/es-de/settings"));
+    btrc_Vector_string_push(__list_80, jsonStrField("keymaps", "${project}/config/input/keymaps"));
+    btrc_Vector_string_push(__list_80, jsonStrField("steam_input", "${project}/generated/packaging/input/steam-input"));
+    btrc_Vector_string_push(__list_80, jsonStrField("emulator_profiles", "${project}/generated/packaging/emulators/profiles"));
+    btrc_Vector_string_push(__list_80, jsonStrField("es_de_profiles", "${project}/generated/packaging/es-de"));
+    btrc_Vector_string_push(__list_80, jsonStrField("linux_packaging", "${project}/generated/packaging/linux"));
     btrc_Vector_string_push(__list_80, jsonStrField("retroarch_system", "${paths.bios}"));
     return jsonObject(__list_80);
 }
@@ -11082,8 +11304,8 @@ char* controllerProfiles(void) {
     btrc_Vector_string* __list_137 = btrc_Vector_string_new();
     btrc_Vector_string_push(__list_137, jsonStrField("templates_dir", "~/.steam/steam/controller_base/templates"));
     btrc_Vector_string* __list_138 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_138, steamInputTemplate("neptune_simple", "Semu: Steam Deck - Neptune SIMPLE", "${project}/input/steam-input/neptune-simple.vdf", "Generated Steam Input template; doctor validates it and steam-input install copies it."));
-    btrc_Vector_string_push(__list_138, steamInputTemplate("neptune_full", "Semu: Steam Deck - Neptune FULL", "${project}/input/steam-input/neptune-full.vdf", "Optional full hotkey layout for users who want RetroDeck-style chords."));
+    btrc_Vector_string_push(__list_138, steamInputTemplate("neptune_simple", "Semu: Steam Deck - Neptune SIMPLE", "${project}/generated/packaging/input/steam-input/neptune-simple.vdf", "Generated Steam Input template; doctor validates it and steam-input install copies it."));
+    btrc_Vector_string_push(__list_138, steamInputTemplate("neptune_full", "Semu: Steam Deck - Neptune FULL", "${project}/generated/packaging/input/steam-input/neptune-full.vdf", "Optional full hotkey layout for users who want RetroDeck-style chords."));
     btrc_Vector_string_push(__list_137, jsonField("templates", jsonArray(__list_138)));
     char* steamInput = jsonObject(__list_137);
     btrc_Vector_string* __list_141 = btrc_Vector_string_new();
@@ -11131,7 +11353,7 @@ char* syncProfile(void) {
     btrc_Vector_string* __list_150 = btrc_Vector_string_new();
     btrc_Vector_string_push(__list_150, syncFolderSpec("saves", "Saves", "${paths.project_saves}", true, true, 900));
     btrc_Vector_string_push(__list_150, syncFolderSpec("states", "States", "${paths.project_states}", true, true, 900));
-    btrc_Vector_string_push(__list_150, syncFolderSpec("emulator_state", "Emulator State", "${paths.project}/.semu/appimage-state", true, true, 900));
+    btrc_Vector_string_push(__list_150, syncFolderSpec("emulator_state", "Emulator State", "${paths.project}/generated/runtime/appimage-state", true, true, 900));
     btrc_Vector_string_push(__list_150, syncFolderSpec("screenshots", "Screenshots", "${paths.project_screenshots}", true, true, 1800));
     btrc_Vector_string_push(__list_150, syncFolderSpec("gamelists", "Gamelists", "${paths.project_gamelists}", true, true, 1800));
     btrc_Vector_string_push(__list_150, syncFolderSpec("roms", "ROMs", "${paths.project_roms}", false, true, 3600));
@@ -11158,7 +11380,7 @@ char* biosEntries(void) {
     btrc_Vector_string_push(__list_151, biosSpec("switch_keys", "switch", true, __list_154, "${paths.bios}/switch", "", "Ryujinx needs dumped Switch keys and firmware from the user's console."));
     btrc_Vector_string* __list_155 = btrc_Vector_string_new();
     btrc_Vector_string_push(__list_155, "keys.txt");
-    btrc_Vector_string_push(__list_151, biosSpec("wiiu_keys", "wiiu", true, __list_155, "${project}/build/packaging/emulators/profiles/Cemu/data", "", "Cemu needs user-supplied Wii U keys for encrypted content."));
+    btrc_Vector_string_push(__list_151, biosSpec("wiiu_keys", "wiiu", true, __list_155, "${project}/generated/packaging/emulators/profiles/Cemu/data", "", "Cemu needs user-supplied Wii U keys for encrypted content."));
     btrc_Vector_string* __list_156 = btrc_Vector_string_new();
     btrc_Vector_string_push(__list_156, "dc_boot.bin");
     btrc_Vector_string_push(__list_156, "dc_flash.bin");
@@ -11187,6 +11409,485 @@ char* buildJson(void) {
     return jsonObject(__list_157);
 }
 
+void N3dsRomCheck_init(N3dsRomCheck* self) {
+    self->__rc = 1;
+    (self->status = "UNKNOWN");
+    (self->note = "");
+    (self->partitions = 0);
+}
+
+N3dsRomCheck* N3dsRomCheck_new(void) {
+    N3dsRomCheck* self = ((N3dsRomCheck*)malloc(sizeof(N3dsRomCheck)));
+    memset(self, 0, sizeof(N3dsRomCheck));
+    N3dsRomCheck_init(self);
+    return self;
+}
+
+void N3dsRomCheck_destroy(N3dsRomCheck* self) {
+    free(self);
+}
+
+bool n3dsRomName(char* name) {
+    char* lower = __btrc_str_track(__btrc_toLower(name));
+    return (__btrc_endsWith(lower, ".3ds") || __btrc_endsWith(lower, ".cci"));
+}
+
+bool n3dsArchiveName(char* name) {
+    char* lower = __btrc_str_track(__btrc_toLower(name));
+    return (__btrc_endsWith(lower, ".zip") || __btrc_endsWith(lower, ".7z"));
+}
+
+bool exefsLooksDecrypted(char* text) {
+    return ((__btrc_startsWith(text, ".code") || __btrc_startsWith(text, "icon")) || __btrc_startsWith(text, "banner"));
+}
+
+N3dsRomCheck* checkN3dsRom(char* path) {
+    N3dsRomCheck* result = N3dsRomCheck_new();
+    BinaryReader* reader = BinaryReader_new(path);
+    if (!BinaryReader_ok(reader)) {
+        (result->status = "INVALID");
+        (result->note = "cannot open");
+        if (reader != NULL) {
+            if ((--reader->__rc) <= 0) {
+                BinaryReader_destroy(reader);
+            }
+        }
+        return result;
+    }
+    if (!(strcmp(BinaryReader_readAscii(reader, 0x100, 4), "NCSD") == 0)) {
+        (result->status = "INVALID");
+        (result->note = "missing NCSD header");
+        if (reader != NULL) {
+            if ((--reader->__rc) <= 0) {
+                BinaryReader_destroy(reader);
+            }
+        }
+        return result;
+    }
+    bool sawNoCrypto = false;
+    bool sawNeedsFix = false;
+    bool sawEncrypted = false;
+    bool sawInvalidPartition = false;
+    for (int i = 0; (i < 8); (i++)) {
+        long entry = (0x120 + (i * 8));
+        long offsetMu = BinaryReader_readLe32(reader, entry);
+        long sizeMu = BinaryReader_readLe32(reader, (entry + 4));
+        if ((offsetMu < 0) || (sizeMu < 0)) {
+            (sawInvalidPartition = true);
+        } else if (sizeMu > 0) {
+            long partOffset = (offsetMu * 0x200);
+            if (!(strcmp(BinaryReader_readAscii(reader, (partOffset + 0x100), 4), "NCCH") == 0)) {
+                (sawInvalidPartition = true);
+            } else {
+                (result->partitions++);
+                int flags = BinaryReader_readU8(reader, ((partOffset + 0x100) + 0x8f));
+                bool noCrypto = (__btrc_mod_int(__btrc_div_int(flags, 4), 2) == 1);
+                if (noCrypto) {
+                    (sawNoCrypto = true);
+                } else {
+                    long exefsOffsetMu = BinaryReader_readLe32(reader, ((partOffset + 0x100) + 0xa0));
+                    char* exefs = ((exefsOffsetMu > 0) ? BinaryReader_readAscii(reader, (partOffset + (exefsOffsetMu * 0x200)), 8) : "");
+                    if (exefsLooksDecrypted(exefs)) {
+                        (sawNeedsFix = true);
+                    } else {
+                        (sawEncrypted = true);
+                    }
+                }
+            }
+        }
+    }
+    if (result->partitions == 0) {
+        (result->status = "INVALID");
+        (result->note = (sawInvalidPartition ? "no valid NCCH partitions" : "no NCSD partitions"));
+    } else if (sawEncrypted) {
+        (result->status = "ENCRYPTED");
+        (result->note = "Azahar will reject encrypted dumps; provide decrypted/NoCrypto content");
+    } else if (sawNeedsFix) {
+        (result->status = "NEEDS_FIX");
+        (result->note = "decrypted content is missing NoCrypto flags");
+    } else if (sawNoCrypto) {
+        (result->status = "OK");
+        int __fstr_158_len = snprintf(NULL, 0, "%d NoCrypto partition(s)", result->partitions);
+        char* __fstr_158_buf = __btrc_str_track(((char*)malloc((__fstr_158_len + 1))));
+        snprintf(__fstr_158_buf, (__fstr_158_len + 1), "%d NoCrypto partition(s)", result->partitions);
+        (result->note = __fstr_158_buf);
+    } else {
+        (result->status = "UNKNOWN");
+        (result->note = "could not classify NCCH encryption flags");
+    }
+    if (reader != NULL) {
+        if ((--reader->__rc) <= 0) {
+            BinaryReader_destroy(reader);
+        }
+    }
+    return result;
+    if (reader != NULL) {
+        if ((--reader->__rc) <= 0) {
+            BinaryReader_destroy(reader);
+        }
+    }
+    if (result != NULL) {
+        if ((--result->__rc) <= 0) {
+            N3dsRomCheck_destroy(result);
+        }
+    }
+}
+
+btrc_Vector_string* n3dsInputFiles(char* input) {
+    btrc_Vector_string* files = btrc_Vector_string_new();
+    if (FileSystem_isDir(input)) {
+        int __n_160 = btrc_Vector_string_iterLen(FileSystem_listDir(input));
+        for (int __i_159 = 0; (__i_159 < __n_160); (__i_159++)) {
+            char* name = btrc_Vector_string_iterGet(FileSystem_listDir(input), __i_159);
+            if (n3dsRomName(name)) {
+                btrc_Vector_string_push(files, joinPath(input, name));
+            }
+        }
+        btrc_Vector_string_sort(files);
+    } else if (FileSystem_isFile(input) && n3dsRomName(input)) {
+        btrc_Vector_string_push(files, input);
+    }
+    return files;
+}
+
+bool copyFilePath(char* source, char* destination) {
+    ensureDir(PathTools_dirname(destination));
+    UnixShell* shell = UnixShell_new();
+    ExecResult* result = UnixShell_runCommand(shell, Command_check(Command_arg(Command_arg(Command_arg(Command_new("cp"), "-p"), source), destination), false));
+    bool __btrc_ret_161 = ExecResult_ok(result);
+    if (shell != NULL) {
+        if ((--shell->__rc) <= 0) {
+            UnixShell_destroy(shell);
+        }
+    }
+    return __btrc_ret_161;
+    if (shell != NULL) {
+        if ((--shell->__rc) <= 0) {
+            UnixShell_destroy(shell);
+        }
+    }
+}
+
+bool n3dsNoCryptoFlag(int flags) {
+    return (__btrc_mod_int(__btrc_div_int(flags, 4), 2) == 1);
+}
+
+int patchN3dsNoCryptoFlags(char* path) {
+    BinaryEditor* editor = BinaryEditor_new(path, "r+b");
+    if (!BinaryEditor_ok(editor)) {
+        int __btrc_ret_162 = (-1);
+        if (editor != NULL) {
+            if ((--editor->__rc) <= 0) {
+                BinaryEditor_destroy(editor);
+            }
+        }
+        return __btrc_ret_162;
+    }
+    if (!(strcmp(BinaryEditor_readAscii(editor, 0x100, 4), "NCSD") == 0)) {
+        BinaryEditor_close(editor);
+        int __btrc_ret_163 = (-1);
+        if (editor != NULL) {
+            if ((--editor->__rc) <= 0) {
+                BinaryEditor_destroy(editor);
+            }
+        }
+        return __btrc_ret_163;
+    }
+    int patched = 0;
+    for (int i = 0; (i < 8); (i++)) {
+        long entry = (0x120 + (i * 8));
+        long offsetMu = BinaryEditor_readLe32(editor, entry);
+        long sizeMu = BinaryEditor_readLe32(editor, (entry + 4));
+        if ((offsetMu < 0) || (sizeMu <= 0)) {
+            continue;
+        }
+        long partOffset = (offsetMu * 0x200);
+        if (!(strcmp(BinaryEditor_readAscii(editor, (partOffset + 0x100), 4), "NCCH") == 0)) {
+            continue;
+        }
+        long flagsOffset = ((partOffset + 0x100) + 0x8f);
+        int flags = BinaryEditor_readU8(editor, flagsOffset);
+        if (flags < 0) {
+            BinaryEditor_close(editor);
+            int __btrc_ret_164 = (-1);
+            if (editor != NULL) {
+                if ((--editor->__rc) <= 0) {
+                    BinaryEditor_destroy(editor);
+                }
+            }
+            return __btrc_ret_164;
+        }
+        if (!n3dsNoCryptoFlag(flags)) {
+            if (!BinaryEditor_writeU8(editor, flagsOffset, (flags + 4))) {
+                BinaryEditor_close(editor);
+                int __btrc_ret_165 = (-1);
+                if (editor != NULL) {
+                    if ((--editor->__rc) <= 0) {
+                        BinaryEditor_destroy(editor);
+                    }
+                }
+                return __btrc_ret_165;
+            }
+            if (!BinaryEditor_writeU8(editor, ((partOffset + 0x100) + 0x8b), 0)) {
+                BinaryEditor_close(editor);
+                int __btrc_ret_166 = (-1);
+                if (editor != NULL) {
+                    if ((--editor->__rc) <= 0) {
+                        BinaryEditor_destroy(editor);
+                    }
+                }
+                return __btrc_ret_166;
+            }
+            (patched++);
+        }
+    }
+    BinaryEditor_close(editor);
+    if (editor != NULL) {
+        if ((--editor->__rc) <= 0) {
+            BinaryEditor_destroy(editor);
+        }
+    }
+    return patched;
+    if (editor != NULL) {
+        if ((--editor->__rc) <= 0) {
+            BinaryEditor_destroy(editor);
+        }
+    }
+}
+
+bool fixN3dsNoCryptoFile(char* input, char* output) {
+    if (!copyFilePath(input, output)) {
+        return false;
+    }
+    int patched = patchN3dsNoCryptoFlags(output);
+    if (patched < 0) {
+        removePath(output);
+        return false;
+    }
+    return true;
+}
+
+void reportN3dsRomPreflight(char* project) {
+    char* n3dsDir = joinPath(configuredRomsRoot(project), "n3ds");
+    if (!FileSystem_isDir(n3dsDir)) {
+        int __fstr_169_len = snprintf(NULL, 0, "  MISSING n3ds rom dir: %s", n3dsDir);
+        char* __fstr_169_buf = __btrc_str_track(((char*)malloc((__fstr_169_len + 1))));
+        snprintf(__fstr_169_buf, (__fstr_169_len + 1), "  MISSING n3ds rom dir: %s", n3dsDir);
+        printf("%s\n", __fstr_169_buf);
+        return;
+    }
+    btrc_Vector_string* entries = FileSystem_listDir(n3dsDir);
+    int checked = 0;
+    int archives = 0;
+    int __n_171 = btrc_Vector_string_iterLen(entries);
+    for (int __i_170 = 0; (__i_170 < __n_171); (__i_170++)) {
+        char* name = btrc_Vector_string_iterGet(entries, __i_170);
+        char* path = joinPath(n3dsDir, name);
+        if (FileSystem_isFile(path) && n3dsRomName(name)) {
+            (checked++);
+            N3dsRomCheck* result = checkN3dsRom(path);
+            int __fstr_174_len = snprintf(NULL, 0, "  %s n3ds/%s: %s", result->status, name, result->note);
+            char* __fstr_174_buf = __btrc_str_track(((char*)malloc((__fstr_174_len + 1))));
+            snprintf(__fstr_174_buf, (__fstr_174_len + 1), "  %s n3ds/%s: %s", result->status, name, result->note);
+            printf("%s\n", __fstr_174_buf);
+        } else if (FileSystem_isFile(path) && n3dsArchiveName(name)) {
+            (archives++);
+        }
+    }
+    if (checked == 0) {
+        printf("%s\n", "  OK n3ds: no top-level .3ds/.cci files to preflight");
+    }
+    if (archives > 0) {
+        int __fstr_177_len = snprintf(NULL, 0, "  WARN n3ds archives unchecked: %d zip/7z file(s)", archives);
+        char* __fstr_177_buf = __btrc_str_track(((char*)malloc((__fstr_177_len + 1))));
+        snprintf(__fstr_177_buf, (__fstr_177_len + 1), "  WARN n3ds archives unchecked: %d zip/7z file(s)", archives);
+        printf("%s\n", __fstr_177_buf);
+    }
+}
+
+char* n3dsNoCryptoInputArg(CliArgs* args, int startIndex) {
+    int i = startIndex;
+    while (i < CliArgs_count(args)) {
+        char* value = CliArgs_get(args, i);
+        if ((strcmp(value, "-o") == 0) || (strcmp(value, "--output") == 0)) {
+            (i = (i + 2));
+        } else if (__btrc_startsWith(value, "--")) {
+            (i = (i + 1));
+        } else {
+            return value;
+        }
+    }
+    return "";
+}
+
+void printN3dsNoCryptoCheckSummary(int total, int ok, int needsFix, int encrypted, int invalid, int unknown) {
+    printf("%s\n", "");
+    int __fstr_180_len = snprintf(NULL, 0, "Summary: %d files", total);
+    char* __fstr_180_buf = __btrc_str_track(((char*)malloc((__fstr_180_len + 1))));
+    snprintf(__fstr_180_buf, (__fstr_180_len + 1), "Summary: %d files", total);
+    printf("%s\n", __fstr_180_buf);
+    int __fstr_183_len = snprintf(NULL, 0, "  Already OK (NoCrypto set):    %d", ok);
+    char* __fstr_183_buf = __btrc_str_track(((char*)malloc((__fstr_183_len + 1))));
+    snprintf(__fstr_183_buf, (__fstr_183_len + 1), "  Already OK (NoCrypto set):    %d", ok);
+    printf("%s\n", __fstr_183_buf);
+    int __fstr_186_len = snprintf(NULL, 0, "  Needs fix (flag missing):     %d", needsFix);
+    char* __fstr_186_buf = __btrc_str_track(((char*)malloc((__fstr_186_len + 1))));
+    snprintf(__fstr_186_buf, (__fstr_186_len + 1), "  Needs fix (flag missing):     %d", needsFix);
+    printf("%s\n", __fstr_186_buf);
+    int __fstr_189_len = snprintf(NULL, 0, "  Truly encrypted (need keys):  %d", encrypted);
+    char* __fstr_189_buf = __btrc_str_track(((char*)malloc((__fstr_189_len + 1))));
+    snprintf(__fstr_189_buf, (__fstr_189_len + 1), "  Truly encrypted (need keys):  %d", encrypted);
+    printf("%s\n", __fstr_189_buf);
+    int __fstr_192_len = snprintf(NULL, 0, "  Invalid/errors:               %d", invalid);
+    char* __fstr_192_buf = __btrc_str_track(((char*)malloc((__fstr_192_len + 1))));
+    snprintf(__fstr_192_buf, (__fstr_192_len + 1), "  Invalid/errors:               %d", invalid);
+    printf("%s\n", __fstr_192_buf);
+    if (unknown > 0) {
+        int __fstr_195_len = snprintf(NULL, 0, "  Unknown:                      %d", unknown);
+        char* __fstr_195_buf = __btrc_str_track(((char*)malloc((__fstr_195_len + 1))));
+        snprintf(__fstr_195_buf, (__fstr_195_len + 1), "  Unknown:                      %d", unknown);
+        printf("%s\n", __fstr_195_buf);
+    }
+}
+
+int n3dsNoCryptoCommand(CliArgs* args, int startIndex) {
+    char* input = n3dsNoCryptoInputArg(args, startIndex);
+    if (((int)strlen(input)) == 0) {
+        printf("%s\n", "error 0:0 n3ds-nocrypto needs an input .3ds/.cci file or directory");
+        return 1;
+    }
+    btrc_Vector_string* files = n3dsInputFiles(input);
+    if (files->len == 0) {
+        printf("%s\n", "error 0:0 no .3ds/.cci files found");
+        return 1;
+    }
+    if (CliArgs_has(args, "--check")) {
+        int ok = 0;
+        int needsFix = 0;
+        int encrypted = 0;
+        int invalid = 0;
+        int unknown = 0;
+        int __n_197 = btrc_Vector_string_iterLen(files);
+        for (int __i_196 = 0; (__i_196 < __n_197); (__i_196++)) {
+            char* file = btrc_Vector_string_iterGet(files, __i_196);
+            N3dsRomCheck* result = checkN3dsRom(file);
+            char* name = PathTools_basename(file);
+            if (strcmp(result->status, "OK") == 0) {
+                int __fstr_200_len = snprintf(NULL, 0, "  OK:        %s", name);
+                char* __fstr_200_buf = __btrc_str_track(((char*)malloc((__fstr_200_len + 1))));
+                snprintf(__fstr_200_buf, (__fstr_200_len + 1), "  OK:        %s", name);
+                printf("%s\n", __fstr_200_buf);
+                (ok++);
+            } else if (strcmp(result->status, "NEEDS_FIX") == 0) {
+                int __fstr_203_len = snprintf(NULL, 0, "  NEEDS FIX: %s", name);
+                char* __fstr_203_buf = __btrc_str_track(((char*)malloc((__fstr_203_len + 1))));
+                snprintf(__fstr_203_buf, (__fstr_203_len + 1), "  NEEDS FIX: %s", name);
+                printf("%s\n", __fstr_203_buf);
+                (needsFix++);
+            } else if (strcmp(result->status, "ENCRYPTED") == 0) {
+                int __fstr_206_len = snprintf(NULL, 0, "  ENCRYPTED: %s (truly encrypted, cannot fix with flag flip)", name);
+                char* __fstr_206_buf = __btrc_str_track(((char*)malloc((__fstr_206_len + 1))));
+                snprintf(__fstr_206_buf, (__fstr_206_len + 1), "  ENCRYPTED: %s (truly encrypted, cannot fix with flag flip)", name);
+                printf("%s\n", __fstr_206_buf);
+                (encrypted++);
+            } else if (strcmp(result->status, "INVALID") == 0) {
+                int __fstr_209_len = snprintf(NULL, 0, "  ERROR:     %s: %s", name, result->note);
+                char* __fstr_209_buf = __btrc_str_track(((char*)malloc((__fstr_209_len + 1))));
+                snprintf(__fstr_209_buf, (__fstr_209_len + 1), "  ERROR:     %s: %s", name, result->note);
+                printf("%s\n", __fstr_209_buf);
+                (invalid++);
+            } else {
+                int __fstr_212_len = snprintf(NULL, 0, "  UNKNOWN:   %s: %s", name, result->note);
+                char* __fstr_212_buf = __btrc_str_track(((char*)malloc((__fstr_212_len + 1))));
+                snprintf(__fstr_212_buf, (__fstr_212_len + 1), "  UNKNOWN:   %s: %s", name, result->note);
+                printf("%s\n", __fstr_212_buf);
+                (unknown++);
+            }
+        }
+        printN3dsNoCryptoCheckSummary(files->len, ok, needsFix, encrypted, invalid, unknown);
+        return ((invalid > 0) ? 1 : 0);
+    }
+    char* outputDir = CliArgs_valueAfter(args, "--output", CliArgs_valueAfter(args, "-o", ""));
+    if (((int)strlen(outputDir)) == 0) {
+        printf("%s\n", "error 0:0 n3ds-nocrypto fix mode needs -o/--output DIR");
+        return 1;
+    }
+    ensureDir(outputDir);
+    int fixed = 0;
+    int copied = 0;
+    int failed = 0;
+    for (int i = 0; (i < files->len); (i++)) {
+        char* file = btrc_Vector_string_get(files, i);
+        char* name = PathTools_basename(file);
+        char* output = joinPath(outputDir, name);
+        int __fstr_215_len = snprintf(NULL, 0, "[%d/%d] %s", (i + 1), files->len, name);
+        char* __fstr_215_buf = __btrc_str_track(((char*)malloc((__fstr_215_len + 1))));
+        snprintf(__fstr_215_buf, (__fstr_215_len + 1), "[%d/%d] %s", (i + 1), files->len, name);
+        printf("%s\n", __fstr_215_buf);
+        N3dsRomCheck* result = checkN3dsRom(file);
+        if (strcmp(result->status, "OK") == 0) {
+            printf("%s\n", "  Already OK, copying as-is");
+            if (copyFilePath(file, output)) {
+                (copied++);
+            } else {
+                printf("%s\n", "  FAILED");
+                (failed++);
+            }
+        } else if (strcmp(result->status, "NEEDS_FIX") == 0) {
+            printf("%s\n", "  Fixing NoCrypto flag...");
+            if (fixN3dsNoCryptoFile(file, output)) {
+                printf("%s\n", "  Done");
+                (fixed++);
+            } else {
+                printf("%s\n", "  FAILED");
+                (failed++);
+            }
+        } else if (strcmp(result->status, "ENCRYPTED") == 0) {
+            printf("%s\n", "  Truly encrypted, skipping (needs full decryption)");
+            (failed++);
+        } else if (strcmp(result->status, "INVALID") == 0) {
+            int __fstr_218_len = snprintf(NULL, 0, "  ERROR: %s", result->note);
+            char* __fstr_218_buf = __btrc_str_track(((char*)malloc((__fstr_218_len + 1))));
+            snprintf(__fstr_218_buf, (__fstr_218_len + 1), "  ERROR: %s", result->note);
+            printf("%s\n", __fstr_218_buf);
+            (failed++);
+        } else {
+            printf("%s\n", "  Unknown state, copying as-is");
+            if (copyFilePath(file, output)) {
+                (copied++);
+            } else {
+                printf("%s\n", "  FAILED");
+                (failed++);
+            }
+        }
+    }
+    printf("%s\n", "");
+    int __fstr_221_len = snprintf(NULL, 0, "Done: %d fixed, %d copied as-is, %d failed", fixed, copied, failed);
+    char* __fstr_221_buf = __btrc_str_track(((char*)malloc((__fstr_221_len + 1))));
+    snprintf(__fstr_221_buf, (__fstr_221_len + 1), "Done: %d fixed, %d copied as-is, %d failed", fixed, copied, failed);
+    printf("%s\n", __fstr_221_buf);
+    return ((failed == 0) ? 0 : 1);
+}
+
+int utilitiesCommand(CliArgs* args) {
+    char* mode = "";
+    if ((CliArgs_count(args) > 1) && (!__btrc_startsWith(CliArgs_get(args, 1), "--"))) {
+        (mode = CliArgs_get(args, 1));
+    }
+    if ((strcmp(mode, "n3ds-nocrypto") == 0) || (strcmp(mode, "3ds-nocrypto") == 0)) {
+        return n3dsNoCryptoCommand(args, 2);
+    }
+    if (strcmp(mode, "decrypt3ds") == 0) {
+        return decrypt3dsNoCryptoCommand(args, 2);
+    }
+    printUsage();
+    return 1;
+}
+
+int decrypt3dsNoCryptoCommand(CliArgs* args, int startIndex) {
+    return n3dsNoCryptoCommand(args, startIndex);
+}
+
 void SystemCatalog_init(SystemCatalog* self) {
     self->__rc = 1;
     if (self->ids != NULL) {
@@ -11194,37 +11895,37 @@ void SystemCatalog_init(SystemCatalog* self) {
             btrc_Vector_string_free(self->ids);
         }
     }
-    btrc_Vector_string* __list_159 = btrc_Vector_string_new();
-    (self->ids = __list_159);
-    btrc_Vector_string* __list_158 = btrc_Vector_string_new();
-    (__list_158->__rc++);
+    btrc_Vector_string* __list_223 = btrc_Vector_string_new();
+    (self->ids = __list_223);
+    btrc_Vector_string* __list_222 = btrc_Vector_string_new();
+    (__list_222->__rc++);
     if (self->romDirs != NULL) {
         if ((--self->romDirs->__rc) <= 0) {
             btrc_Vector_string_free(self->romDirs);
         }
     }
-    btrc_Vector_string* __list_161 = btrc_Vector_string_new();
-    (self->romDirs = __list_161);
-    btrc_Vector_string* __list_160 = btrc_Vector_string_new();
-    (__list_160->__rc++);
+    btrc_Vector_string* __list_225 = btrc_Vector_string_new();
+    (self->romDirs = __list_225);
+    btrc_Vector_string* __list_224 = btrc_Vector_string_new();
+    (__list_224->__rc++);
     if (self->jsonSpecs != NULL) {
         if ((--self->jsonSpecs->__rc) <= 0) {
             btrc_Vector_string_free(self->jsonSpecs);
         }
     }
-    btrc_Vector_string* __list_163 = btrc_Vector_string_new();
-    (self->jsonSpecs = __list_163);
-    btrc_Vector_string* __list_162 = btrc_Vector_string_new();
-    (__list_162->__rc++);
+    btrc_Vector_string* __list_227 = btrc_Vector_string_new();
+    (self->jsonSpecs = __list_227);
+    btrc_Vector_string* __list_226 = btrc_Vector_string_new();
+    (__list_226->__rc++);
     if (self->esSystemSpecs != NULL) {
         if ((--self->esSystemSpecs->__rc) <= 0) {
             btrc_Vector_string_free(self->esSystemSpecs);
         }
     }
-    btrc_Vector_string* __list_165 = btrc_Vector_string_new();
-    (self->esSystemSpecs = __list_165);
-    btrc_Vector_string* __list_164 = btrc_Vector_string_new();
-    (__list_164->__rc++);
+    btrc_Vector_string* __list_229 = btrc_Vector_string_new();
+    (self->esSystemSpecs = __list_229);
+    btrc_Vector_string* __list_228 = btrc_Vector_string_new();
+    (__list_228->__rc++);
 }
 
 SystemCatalog* SystemCatalog_new(void) {
@@ -11279,274 +11980,274 @@ char* SystemCatalog_esSystemsXml(SystemCatalog* self, char* project) {
 SystemCatalog* systemCatalog(void) {
     SystemCatalog* catalog = SystemCatalog_new();
     btrc_Vector_string* noBios = btrc_Vector_string_new();
-    btrc_Vector_string* __list_169 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_169, ".bin");
-    btrc_Vector_string_push(__list_169, ".dmg");
-    btrc_Vector_string_push(__list_169, ".gb");
-    btrc_Vector_string_push(__list_169, ".gbs");
-    btrc_Vector_string_push(__list_169, ".7z");
-    btrc_Vector_string_push(__list_169, ".zip");
-    btrc_Vector_string* __list_170 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_170, commandSpec("Gambatte", "%EMULATOR_RETROARCH% -f -L %CORE_RETROARCH%/gambatte_libretro.so %ROM%"));
-    btrc_Vector_string* __list_171 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_171, commandSpec("Gambatte", "%EMULATOR_RETROARCH% -f -L %CORE_RETROARCH%/gambatte_libretro.dylib %ROM%"));
-    SystemCatalog_addSystem(catalog, "gb", "Nintendo Game Boy", "gb", "gb", "gb", __list_169, __list_170, __list_171, noBios, "");
-    btrc_Vector_string* __list_175 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_175, ".bin");
-    btrc_Vector_string_push(__list_175, ".cgb");
-    btrc_Vector_string_push(__list_175, ".gb");
-    btrc_Vector_string_push(__list_175, ".gbc");
-    btrc_Vector_string_push(__list_175, ".7z");
-    btrc_Vector_string_push(__list_175, ".zip");
-    btrc_Vector_string* __list_176 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_176, commandSpec("Gambatte", "%EMULATOR_RETROARCH% -f -L %CORE_RETROARCH%/gambatte_libretro.so %ROM%"));
-    btrc_Vector_string* __list_177 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_177, commandSpec("Gambatte", "%EMULATOR_RETROARCH% -f -L %CORE_RETROARCH%/gambatte_libretro.dylib %ROM%"));
-    SystemCatalog_addSystem(catalog, "gbc", "Nintendo Game Boy Color", "gbc", "gbc", "gbc", __list_175, __list_176, __list_177, noBios, "");
-    btrc_Vector_string* __list_181 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_181, ".agb");
-    btrc_Vector_string_push(__list_181, ".bin");
-    btrc_Vector_string_push(__list_181, ".cgb");
-    btrc_Vector_string_push(__list_181, ".gb");
-    btrc_Vector_string_push(__list_181, ".gba");
-    btrc_Vector_string_push(__list_181, ".gbc");
-    btrc_Vector_string_push(__list_181, ".7z");
-    btrc_Vector_string_push(__list_181, ".zip");
-    btrc_Vector_string* __list_182 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_182, commandSpec("mGBA", "%EMULATOR_RETROARCH% -f -L %CORE_RETROARCH%/mgba_libretro.so %ROM%"));
-    btrc_Vector_string* __list_183 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_183, commandSpec("mGBA", "%EMULATOR_RETROARCH% -f -L %CORE_RETROARCH%/mgba_libretro.dylib %ROM%"));
-    SystemCatalog_addSystem(catalog, "gba", "Nintendo Game Boy Advance", "gba", "gba", "gba", __list_181, __list_182, __list_183, noBios, "");
-    btrc_Vector_string* __list_187 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_187, ".3dsen");
-    btrc_Vector_string_push(__list_187, ".bin");
-    btrc_Vector_string_push(__list_187, ".fds");
-    btrc_Vector_string_push(__list_187, ".nes");
-    btrc_Vector_string_push(__list_187, ".unf");
-    btrc_Vector_string_push(__list_187, ".unif");
-    btrc_Vector_string_push(__list_187, ".7z");
-    btrc_Vector_string_push(__list_187, ".zip");
-    btrc_Vector_string* __list_188 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_188, commandSpec("Mesen", "%EMULATOR_RETROARCH% -f -L %CORE_RETROARCH%/mesen_libretro.so %ROM%"));
-    btrc_Vector_string* __list_189 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_189, commandSpec("Mesen", "%EMULATOR_RETROARCH% -f -L %CORE_RETROARCH%/mesen_libretro.dylib %ROM%"));
-    SystemCatalog_addSystem(catalog, "nes", "Nintendo Entertainment System", "nes", "nes", "nes", __list_187, __list_188, __list_189, noBios, "");
-    btrc_Vector_string* __list_193 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_193, ".bin");
-    btrc_Vector_string_push(__list_193, ".bml");
-    btrc_Vector_string_push(__list_193, ".bs");
-    btrc_Vector_string_push(__list_193, ".bsx");
-    btrc_Vector_string_push(__list_193, ".fig");
-    btrc_Vector_string_push(__list_193, ".sfc");
-    btrc_Vector_string_push(__list_193, ".smc");
-    btrc_Vector_string_push(__list_193, ".swc");
-    btrc_Vector_string_push(__list_193, ".7z");
-    btrc_Vector_string_push(__list_193, ".zip");
-    btrc_Vector_string* __list_194 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_194, commandSpec("Snes9x", "%EMULATOR_RETROARCH% -f -L %CORE_RETROARCH%/snes9x_libretro.so %ROM%"));
-    btrc_Vector_string* __list_195 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_195, commandSpec("Snes9x", "%EMULATOR_RETROARCH% -f -L %CORE_RETROARCH%/snes9x_libretro.dylib %ROM%"));
-    SystemCatalog_addSystem(catalog, "snes", "Super Nintendo", "snes", "snes", "snes", __list_193, __list_194, __list_195, noBios, "");
-    btrc_Vector_string* __list_199 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_199, ".32x");
-    btrc_Vector_string_push(__list_199, ".68k");
-    btrc_Vector_string_push(__list_199, ".bin");
-    btrc_Vector_string_push(__list_199, ".chd");
-    btrc_Vector_string_push(__list_199, ".gen");
-    btrc_Vector_string_push(__list_199, ".iso");
-    btrc_Vector_string_push(__list_199, ".md");
-    btrc_Vector_string_push(__list_199, ".mdx");
-    btrc_Vector_string_push(__list_199, ".sg");
-    btrc_Vector_string_push(__list_199, ".smd");
-    btrc_Vector_string_push(__list_199, ".7z");
-    btrc_Vector_string_push(__list_199, ".zip");
-    btrc_Vector_string* __list_200 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_200, commandSpec("Genesis Plus GX", "%EMULATOR_RETROARCH% -f -L %CORE_RETROARCH%/genesis_plus_gx_libretro.so %ROM%"));
-    btrc_Vector_string* __list_201 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_201, commandSpec("Genesis Plus GX", "%EMULATOR_RETROARCH% -f -L %CORE_RETROARCH%/genesis_plus_gx_libretro.dylib %ROM%"));
-    SystemCatalog_addSystem(catalog, "genesis", "Sega Genesis", "genesis,megadrive", "genesis", "genesis", __list_199, __list_200, __list_201, noBios, "");
-    btrc_Vector_string* __list_205 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_205, ".bin");
-    btrc_Vector_string_push(__list_205, ".d64");
-    btrc_Vector_string_push(__list_205, ".n64");
-    btrc_Vector_string_push(__list_205, ".ndd");
-    btrc_Vector_string_push(__list_205, ".u1");
-    btrc_Vector_string_push(__list_205, ".v64");
-    btrc_Vector_string_push(__list_205, ".z64");
-    btrc_Vector_string_push(__list_205, ".7z");
-    btrc_Vector_string_push(__list_205, ".zip");
-    btrc_Vector_string* __list_206 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_206, commandSpec("Mupen64Plus-Next", "%EMULATOR_RETROARCH% -f -L %CORE_RETROARCH%/mupen64plus_next_libretro.so %ROM%"));
-    btrc_Vector_string* __list_207 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_207, commandSpec("ares", "%EMULATOR_ARES% --fullscreen --system \"Nintendo 64\" %ROM%"));
-    SystemCatalog_addSystem(catalog, "n64", "Nintendo 64", "n64", "n64", "n64", __list_205, __list_206, __list_207, noBios, "");
-    btrc_Vector_string* __list_211 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_211, ".app");
-    btrc_Vector_string_push(__list_211, ".bin");
-    btrc_Vector_string_push(__list_211, ".nds");
-    btrc_Vector_string_push(__list_211, ".7z");
-    btrc_Vector_string_push(__list_211, ".zip");
-    btrc_Vector_string* __list_212 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_212, commandSpec("melonDS", "%EMULATOR_MELONDS% %ROM%"));
-    btrc_Vector_string_push(__list_212, commandSpec("DeSmuME", "%EMULATOR_RETROARCH% -f -L %CORE_RETROARCH%/desmume_libretro.so %ROM%"));
-    btrc_Vector_string* __list_213 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_213, commandSpec("DeSmuME", "%EMULATOR_RETROARCH% -f -L %CORE_RETROARCH%/desmume_libretro.dylib %ROM%"));
-    SystemCatalog_addSystem(catalog, "nds", "Nintendo DS", "nds", "nds", "nds", __list_211, __list_212, __list_213, noBios, "");
-    btrc_Vector_string* __list_218 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_218, ".cdi");
-    btrc_Vector_string_push(__list_218, ".chd");
-    btrc_Vector_string_push(__list_218, ".cue");
-    btrc_Vector_string_push(__list_218, ".elf");
-    btrc_Vector_string_push(__list_218, ".gdi");
-    btrc_Vector_string_push(__list_218, ".iso");
-    btrc_Vector_string_push(__list_218, ".lst");
-    btrc_Vector_string_push(__list_218, ".m3u");
-    btrc_Vector_string_push(__list_218, ".7z");
-    btrc_Vector_string_push(__list_218, ".zip");
-    btrc_Vector_string* __list_219 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_219, commandSpec("Flycast", "%EMULATOR_FLYCAST% %ROM%"));
-    btrc_Vector_string* __list_220 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_220, commandSpec("Flycast", "%EMULATOR_RETROARCH% -f -L %CORE_RETROARCH%/flycast_libretro.dylib %ROM%"));
-    btrc_Vector_string* __list_221 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_221, "dreamcast");
-    SystemCatalog_addSystem(catalog, "dreamcast", "Sega Dreamcast", "dreamcast", "dreamcast", "dreamcast", __list_218, __list_219, __list_220, __list_221, "");
-    btrc_Vector_string* __list_226 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_226, ".bin");
-    btrc_Vector_string_push(__list_226, ".ccd");
-    btrc_Vector_string_push(__list_226, ".chd");
-    btrc_Vector_string_push(__list_226, ".cue");
-    btrc_Vector_string_push(__list_226, ".ecm");
-    btrc_Vector_string_push(__list_226, ".exe");
-    btrc_Vector_string_push(__list_226, ".img");
-    btrc_Vector_string_push(__list_226, ".iso");
-    btrc_Vector_string_push(__list_226, ".m3u");
-    btrc_Vector_string_push(__list_226, ".pbp");
-    btrc_Vector_string_push(__list_226, ".psexe");
-    btrc_Vector_string_push(__list_226, ".toc");
-    btrc_Vector_string_push(__list_226, ".7z");
-    btrc_Vector_string_push(__list_226, ".zip");
-    btrc_Vector_string* __list_227 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_227, commandSpec("Beetle PSX", "%EMULATOR_RETROARCH% -f -L %CORE_RETROARCH%/mednafen_psx_libretro.so %ROM%"));
-    btrc_Vector_string* __list_228 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_228, commandSpec("Beetle PSX HW", "%EMULATOR_RETROARCH% -f -L %CORE_RETROARCH%/mednafen_psx_hw_libretro.dylib %ROM%"));
-    btrc_Vector_string* __list_229 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_229, "psx");
-    SystemCatalog_addSystem(catalog, "psx", "Sony PlayStation", "psx", "psx", "psx", __list_226, __list_227, __list_228, __list_229, "");
+    btrc_Vector_string* __list_233 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_233, ".bin");
+    btrc_Vector_string_push(__list_233, ".dmg");
+    btrc_Vector_string_push(__list_233, ".gb");
+    btrc_Vector_string_push(__list_233, ".gbs");
+    btrc_Vector_string_push(__list_233, ".7z");
+    btrc_Vector_string_push(__list_233, ".zip");
     btrc_Vector_string* __list_234 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_234, ".bin");
-    btrc_Vector_string_push(__list_234, ".chd");
-    btrc_Vector_string_push(__list_234, ".cso");
-    btrc_Vector_string_push(__list_234, ".dump");
-    btrc_Vector_string_push(__list_234, ".gz");
-    btrc_Vector_string_push(__list_234, ".img");
-    btrc_Vector_string_push(__list_234, ".iso");
-    btrc_Vector_string_push(__list_234, ".mdf");
-    btrc_Vector_string_push(__list_234, ".nrg");
-    btrc_Vector_string_push(__list_234, ".7z");
-    btrc_Vector_string_push(__list_234, ".zip");
+    btrc_Vector_string_push(__list_234, commandSpec("Gambatte", "%EMULATOR_RETROARCH% -f -L %CORE_RETROARCH%/gambatte_libretro.so %ROM%"));
     btrc_Vector_string* __list_235 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_235, commandSpec("PCSX2", "%EMULATOR_PCSX2% -batch -fullscreen %ROM%"));
-    btrc_Vector_string* __list_236 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_236, commandSpec("PCSX2", "%EMULATOR_PCSX2% -batch -fullscreen %ROM%"));
-    btrc_Vector_string* __list_237 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_237, "ps2");
-    SystemCatalog_addSystem(catalog, "ps2", "Sony PlayStation 2", "ps2", "ps2", "ps2", __list_234, __list_235, __list_236, __list_237, "");
+    btrc_Vector_string_push(__list_235, commandSpec("Gambatte", "%EMULATOR_RETROARCH% -f -L %CORE_RETROARCH%/gambatte_libretro.dylib %ROM%"));
+    SystemCatalog_addSystem(catalog, "gb", "Nintendo Game Boy", "gb", "gb", "gb", __list_233, __list_234, __list_235, noBios, "");
+    btrc_Vector_string* __list_239 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_239, ".bin");
+    btrc_Vector_string_push(__list_239, ".cgb");
+    btrc_Vector_string_push(__list_239, ".gb");
+    btrc_Vector_string_push(__list_239, ".gbc");
+    btrc_Vector_string_push(__list_239, ".7z");
+    btrc_Vector_string_push(__list_239, ".zip");
+    btrc_Vector_string* __list_240 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_240, commandSpec("Gambatte", "%EMULATOR_RETROARCH% -f -L %CORE_RETROARCH%/gambatte_libretro.so %ROM%"));
     btrc_Vector_string* __list_241 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_241, ".chd");
-    btrc_Vector_string_push(__list_241, ".cso");
-    btrc_Vector_string_push(__list_241, ".elf");
-    btrc_Vector_string_push(__list_241, ".iso");
-    btrc_Vector_string_push(__list_241, ".pbp");
-    btrc_Vector_string_push(__list_241, ".prx");
-    btrc_Vector_string_push(__list_241, ".7z");
-    btrc_Vector_string_push(__list_241, ".zip");
-    btrc_Vector_string* __list_242 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_242, commandSpec("PPSSPP", "%EMULATOR_PPSSPP% %ROM%"));
-    btrc_Vector_string* __list_243 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_243, commandSpec("PPSSPP", "%EMULATOR_RETROARCH% -f -L %CORE_RETROARCH%/ppsspp_libretro.dylib %ROM%"));
-    SystemCatalog_addSystem(catalog, "psp", "Sony PlayStation Portable", "psp", "psp", "psp", __list_241, __list_242, __list_243, noBios, "");
+    btrc_Vector_string_push(__list_241, commandSpec("Gambatte", "%EMULATOR_RETROARCH% -f -L %CORE_RETROARCH%/gambatte_libretro.dylib %ROM%"));
+    SystemCatalog_addSystem(catalog, "gbc", "Nintendo Game Boy Color", "gbc", "gbc", "gbc", __list_239, __list_240, __list_241, noBios, "");
+    btrc_Vector_string* __list_245 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_245, ".agb");
+    btrc_Vector_string_push(__list_245, ".bin");
+    btrc_Vector_string_push(__list_245, ".cgb");
+    btrc_Vector_string_push(__list_245, ".gb");
+    btrc_Vector_string_push(__list_245, ".gba");
+    btrc_Vector_string_push(__list_245, ".gbc");
+    btrc_Vector_string_push(__list_245, ".7z");
+    btrc_Vector_string_push(__list_245, ".zip");
+    btrc_Vector_string* __list_246 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_246, commandSpec("mGBA", "%EMULATOR_RETROARCH% -f -L %CORE_RETROARCH%/mgba_libretro.so %ROM%"));
     btrc_Vector_string* __list_247 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_247, ".3ds");
-    btrc_Vector_string_push(__list_247, ".3dsx");
-    btrc_Vector_string_push(__list_247, ".app");
-    btrc_Vector_string_push(__list_247, ".axf");
-    btrc_Vector_string_push(__list_247, ".cci");
-    btrc_Vector_string_push(__list_247, ".cxi");
-    btrc_Vector_string_push(__list_247, ".elf");
-    btrc_Vector_string_push(__list_247, ".7z");
-    btrc_Vector_string_push(__list_247, ".zip");
-    btrc_Vector_string* __list_248 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_248, commandSpec("Azahar", "%EMULATOR_AZAHAR% %ROM%"));
-    btrc_Vector_string* __list_249 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_249, commandSpec("Azahar", "%EMULATOR_AZAHAR% %ROM%"));
-    SystemCatalog_addSystem(catalog, "n3ds", "Nintendo 3DS", "n3ds", "n3ds", "n3ds", __list_247, __list_248, __list_249, noBios, "");
+    btrc_Vector_string_push(__list_247, commandSpec("mGBA", "%EMULATOR_RETROARCH% -f -L %CORE_RETROARCH%/mgba_libretro.dylib %ROM%"));
+    SystemCatalog_addSystem(catalog, "gba", "Nintendo Game Boy Advance", "gba", "gba", "gba", __list_245, __list_246, __list_247, noBios, "");
+    btrc_Vector_string* __list_251 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_251, ".3dsen");
+    btrc_Vector_string_push(__list_251, ".bin");
+    btrc_Vector_string_push(__list_251, ".fds");
+    btrc_Vector_string_push(__list_251, ".nes");
+    btrc_Vector_string_push(__list_251, ".unf");
+    btrc_Vector_string_push(__list_251, ".unif");
+    btrc_Vector_string_push(__list_251, ".7z");
+    btrc_Vector_string_push(__list_251, ".zip");
+    btrc_Vector_string* __list_252 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_252, commandSpec("Mesen", "%EMULATOR_RETROARCH% -f -L %CORE_RETROARCH%/mesen_libretro.so %ROM%"));
     btrc_Vector_string* __list_253 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_253, ".ciso");
-    btrc_Vector_string_push(__list_253, ".dol");
-    btrc_Vector_string_push(__list_253, ".elf");
-    btrc_Vector_string_push(__list_253, ".gcm");
-    btrc_Vector_string_push(__list_253, ".gcz");
-    btrc_Vector_string_push(__list_253, ".iso");
-    btrc_Vector_string_push(__list_253, ".nkit.iso");
-    btrc_Vector_string_push(__list_253, ".rvz");
-    btrc_Vector_string_push(__list_253, ".tgc");
-    btrc_Vector_string_push(__list_253, ".wad");
-    btrc_Vector_string_push(__list_253, ".wbfs");
-    btrc_Vector_string_push(__list_253, ".wia");
-    btrc_Vector_string_push(__list_253, ".7z");
-    btrc_Vector_string_push(__list_253, ".zip");
-    btrc_Vector_string* __list_254 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_254, commandSpec("Dolphin", "%EMULATOR_DOLPHIN% %ROM%"));
-    btrc_Vector_string* __list_255 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_255, commandSpec("Dolphin", "%EMULATOR_DOLPHIN% --config Dolphin.Display.Fullscreen=True -b -e %ROM%"));
-    SystemCatalog_addSystem(catalog, "gc", "Nintendo GameCube", "gc", "gc", "gc", __list_253, __list_254, __list_255, noBios, "steam_deck");
+    btrc_Vector_string_push(__list_253, commandSpec("Mesen", "%EMULATOR_RETROARCH% -f -L %CORE_RETROARCH%/mesen_libretro.dylib %ROM%"));
+    SystemCatalog_addSystem(catalog, "nes", "Nintendo Entertainment System", "nes", "nes", "nes", __list_251, __list_252, __list_253, noBios, "");
+    btrc_Vector_string* __list_257 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_257, ".bin");
+    btrc_Vector_string_push(__list_257, ".bml");
+    btrc_Vector_string_push(__list_257, ".bs");
+    btrc_Vector_string_push(__list_257, ".bsx");
+    btrc_Vector_string_push(__list_257, ".fig");
+    btrc_Vector_string_push(__list_257, ".sfc");
+    btrc_Vector_string_push(__list_257, ".smc");
+    btrc_Vector_string_push(__list_257, ".swc");
+    btrc_Vector_string_push(__list_257, ".7z");
+    btrc_Vector_string_push(__list_257, ".zip");
+    btrc_Vector_string* __list_258 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_258, commandSpec("Snes9x", "%EMULATOR_RETROARCH% -f -L %CORE_RETROARCH%/snes9x_libretro.so %ROM%"));
     btrc_Vector_string* __list_259 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_259, ".ciso");
-    btrc_Vector_string_push(__list_259, ".dol");
-    btrc_Vector_string_push(__list_259, ".elf");
-    btrc_Vector_string_push(__list_259, ".gcm");
-    btrc_Vector_string_push(__list_259, ".gcz");
-    btrc_Vector_string_push(__list_259, ".iso");
-    btrc_Vector_string_push(__list_259, ".nkit.iso");
-    btrc_Vector_string_push(__list_259, ".rvz");
-    btrc_Vector_string_push(__list_259, ".tgc");
-    btrc_Vector_string_push(__list_259, ".wad");
-    btrc_Vector_string_push(__list_259, ".wbfs");
-    btrc_Vector_string_push(__list_259, ".wia");
-    btrc_Vector_string_push(__list_259, ".7z");
-    btrc_Vector_string_push(__list_259, ".zip");
-    btrc_Vector_string* __list_260 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_260, commandSpec("Dolphin", "%EMULATOR_DOLPHIN% %ROM%"));
-    btrc_Vector_string* __list_261 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_261, commandSpec("Dolphin", "%EMULATOR_DOLPHIN% --config Dolphin.Display.Fullscreen=True -b -e %ROM%"));
-    SystemCatalog_addSystem(catalog, "wii", "Nintendo Wii", "wii", "wii", "wii", __list_259, __list_260, __list_261, noBios, "steam_deck");
-    btrc_Vector_string* __list_266 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_266, ".rpx");
-    btrc_Vector_string_push(__list_266, ".wua");
-    btrc_Vector_string_push(__list_266, ".wud");
-    btrc_Vector_string_push(__list_266, ".wux");
-    btrc_Vector_string* __list_267 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_267, commandSpec("Cemu", "%EMULATOR_CEMU% -f -g %ROM%"));
-    btrc_Vector_string* __list_268 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_268, commandSpec("Cemu", "%EMULATOR_CEMU% -f -g %ROM%"));
+    btrc_Vector_string_push(__list_259, commandSpec("Snes9x", "%EMULATOR_RETROARCH% -f -L %CORE_RETROARCH%/snes9x_libretro.dylib %ROM%"));
+    SystemCatalog_addSystem(catalog, "snes", "Super Nintendo", "snes", "snes", "snes", __list_257, __list_258, __list_259, noBios, "");
+    btrc_Vector_string* __list_263 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_263, ".32x");
+    btrc_Vector_string_push(__list_263, ".68k");
+    btrc_Vector_string_push(__list_263, ".bin");
+    btrc_Vector_string_push(__list_263, ".chd");
+    btrc_Vector_string_push(__list_263, ".gen");
+    btrc_Vector_string_push(__list_263, ".iso");
+    btrc_Vector_string_push(__list_263, ".md");
+    btrc_Vector_string_push(__list_263, ".mdx");
+    btrc_Vector_string_push(__list_263, ".sg");
+    btrc_Vector_string_push(__list_263, ".smd");
+    btrc_Vector_string_push(__list_263, ".7z");
+    btrc_Vector_string_push(__list_263, ".zip");
+    btrc_Vector_string* __list_264 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_264, commandSpec("Genesis Plus GX", "%EMULATOR_RETROARCH% -f -L %CORE_RETROARCH%/genesis_plus_gx_libretro.so %ROM%"));
+    btrc_Vector_string* __list_265 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_265, commandSpec("Genesis Plus GX", "%EMULATOR_RETROARCH% -f -L %CORE_RETROARCH%/genesis_plus_gx_libretro.dylib %ROM%"));
+    SystemCatalog_addSystem(catalog, "genesis", "Sega Genesis", "genesis,megadrive", "genesis", "genesis", __list_263, __list_264, __list_265, noBios, "");
     btrc_Vector_string* __list_269 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_269, "wiiu_keys");
-    SystemCatalog_addSystem(catalog, "wiiu", "Nintendo Wii U", "wiiu", "wiiu", "wiiu", __list_266, __list_267, __list_268, __list_269, "steam_deck");
-    btrc_Vector_string* __list_274 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_274, ".nca");
-    btrc_Vector_string_push(__list_274, ".nro");
-    btrc_Vector_string_push(__list_274, ".nso");
-    btrc_Vector_string_push(__list_274, ".nsp");
-    btrc_Vector_string_push(__list_274, ".xci");
-    btrc_Vector_string_push(__list_274, ".7z");
-    btrc_Vector_string_push(__list_274, ".zip");
+    btrc_Vector_string_push(__list_269, ".bin");
+    btrc_Vector_string_push(__list_269, ".d64");
+    btrc_Vector_string_push(__list_269, ".n64");
+    btrc_Vector_string_push(__list_269, ".ndd");
+    btrc_Vector_string_push(__list_269, ".u1");
+    btrc_Vector_string_push(__list_269, ".v64");
+    btrc_Vector_string_push(__list_269, ".z64");
+    btrc_Vector_string_push(__list_269, ".7z");
+    btrc_Vector_string_push(__list_269, ".zip");
+    btrc_Vector_string* __list_270 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_270, commandSpec("Mupen64Plus-Next", "%EMULATOR_RETROARCH% -f -L %CORE_RETROARCH%/mupen64plus_next_libretro.so %ROM%"));
+    btrc_Vector_string* __list_271 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_271, commandSpec("ares", "%EMULATOR_ARES% --fullscreen --system \"Nintendo 64\" %ROM%"));
+    SystemCatalog_addSystem(catalog, "n64", "Nintendo 64", "n64", "n64", "n64", __list_269, __list_270, __list_271, noBios, "");
     btrc_Vector_string* __list_275 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_275, commandSpec("Ryujinx", "%EMULATOR_RYUJINX% --fullscreen %ROM%"));
+    btrc_Vector_string_push(__list_275, ".app");
+    btrc_Vector_string_push(__list_275, ".bin");
+    btrc_Vector_string_push(__list_275, ".nds");
+    btrc_Vector_string_push(__list_275, ".7z");
+    btrc_Vector_string_push(__list_275, ".zip");
     btrc_Vector_string* __list_276 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_276, commandSpec("Ryujinx", "%EMULATOR_RYUJINX% --fullscreen %ROM%"));
+    btrc_Vector_string_push(__list_276, commandSpec("melonDS", "%EMULATOR_MELONDS% %ROM%"));
+    btrc_Vector_string_push(__list_276, commandSpec("DeSmuME", "%EMULATOR_RETROARCH% -f -L %CORE_RETROARCH%/desmume_libretro.so %ROM%"));
     btrc_Vector_string* __list_277 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_277, "switch_keys");
-    SystemCatalog_addSystem(catalog, "switch", "Nintendo Switch", "switch", "switch", "switch", __list_274, __list_275, __list_276, __list_277, "");
+    btrc_Vector_string_push(__list_277, commandSpec("DeSmuME", "%EMULATOR_RETROARCH% -f -L %CORE_RETROARCH%/desmume_libretro.dylib %ROM%"));
+    SystemCatalog_addSystem(catalog, "nds", "Nintendo DS", "nds", "nds", "nds", __list_275, __list_276, __list_277, noBios, "");
+    btrc_Vector_string* __list_282 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_282, ".cdi");
+    btrc_Vector_string_push(__list_282, ".chd");
+    btrc_Vector_string_push(__list_282, ".cue");
+    btrc_Vector_string_push(__list_282, ".elf");
+    btrc_Vector_string_push(__list_282, ".gdi");
+    btrc_Vector_string_push(__list_282, ".iso");
+    btrc_Vector_string_push(__list_282, ".lst");
+    btrc_Vector_string_push(__list_282, ".m3u");
+    btrc_Vector_string_push(__list_282, ".7z");
+    btrc_Vector_string_push(__list_282, ".zip");
+    btrc_Vector_string* __list_283 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_283, commandSpec("Flycast", "%EMULATOR_FLYCAST% %ROM%"));
+    btrc_Vector_string* __list_284 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_284, commandSpec("Flycast", "%EMULATOR_RETROARCH% -f -L %CORE_RETROARCH%/flycast_libretro.dylib %ROM%"));
+    btrc_Vector_string* __list_285 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_285, "dreamcast");
+    SystemCatalog_addSystem(catalog, "dreamcast", "Sega Dreamcast", "dreamcast", "dreamcast", "dreamcast", __list_282, __list_283, __list_284, __list_285, "");
+    btrc_Vector_string* __list_290 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_290, ".bin");
+    btrc_Vector_string_push(__list_290, ".ccd");
+    btrc_Vector_string_push(__list_290, ".chd");
+    btrc_Vector_string_push(__list_290, ".cue");
+    btrc_Vector_string_push(__list_290, ".ecm");
+    btrc_Vector_string_push(__list_290, ".exe");
+    btrc_Vector_string_push(__list_290, ".img");
+    btrc_Vector_string_push(__list_290, ".iso");
+    btrc_Vector_string_push(__list_290, ".m3u");
+    btrc_Vector_string_push(__list_290, ".pbp");
+    btrc_Vector_string_push(__list_290, ".psexe");
+    btrc_Vector_string_push(__list_290, ".toc");
+    btrc_Vector_string_push(__list_290, ".7z");
+    btrc_Vector_string_push(__list_290, ".zip");
+    btrc_Vector_string* __list_291 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_291, commandSpec("Beetle PSX", "%EMULATOR_RETROARCH% -f -L %CORE_RETROARCH%/mednafen_psx_libretro.so %ROM%"));
+    btrc_Vector_string* __list_292 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_292, commandSpec("Beetle PSX HW", "%EMULATOR_RETROARCH% -f -L %CORE_RETROARCH%/mednafen_psx_hw_libretro.dylib %ROM%"));
+    btrc_Vector_string* __list_293 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_293, "psx");
+    SystemCatalog_addSystem(catalog, "psx", "Sony PlayStation", "psx", "psx", "psx", __list_290, __list_291, __list_292, __list_293, "");
+    btrc_Vector_string* __list_298 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_298, ".bin");
+    btrc_Vector_string_push(__list_298, ".chd");
+    btrc_Vector_string_push(__list_298, ".cso");
+    btrc_Vector_string_push(__list_298, ".dump");
+    btrc_Vector_string_push(__list_298, ".gz");
+    btrc_Vector_string_push(__list_298, ".img");
+    btrc_Vector_string_push(__list_298, ".iso");
+    btrc_Vector_string_push(__list_298, ".mdf");
+    btrc_Vector_string_push(__list_298, ".nrg");
+    btrc_Vector_string_push(__list_298, ".7z");
+    btrc_Vector_string_push(__list_298, ".zip");
+    btrc_Vector_string* __list_299 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_299, commandSpec("PCSX2", "%EMULATOR_PCSX2% -batch -fullscreen %ROM%"));
+    btrc_Vector_string* __list_300 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_300, commandSpec("PCSX2", "%EMULATOR_PCSX2% -batch -fullscreen %ROM%"));
+    btrc_Vector_string* __list_301 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_301, "ps2");
+    SystemCatalog_addSystem(catalog, "ps2", "Sony PlayStation 2", "ps2", "ps2", "ps2", __list_298, __list_299, __list_300, __list_301, "");
+    btrc_Vector_string* __list_305 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_305, ".chd");
+    btrc_Vector_string_push(__list_305, ".cso");
+    btrc_Vector_string_push(__list_305, ".elf");
+    btrc_Vector_string_push(__list_305, ".iso");
+    btrc_Vector_string_push(__list_305, ".pbp");
+    btrc_Vector_string_push(__list_305, ".prx");
+    btrc_Vector_string_push(__list_305, ".7z");
+    btrc_Vector_string_push(__list_305, ".zip");
+    btrc_Vector_string* __list_306 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_306, commandSpec("PPSSPP", "%EMULATOR_PPSSPP% %ROM%"));
+    btrc_Vector_string* __list_307 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_307, commandSpec("PPSSPP", "%EMULATOR_RETROARCH% -f -L %CORE_RETROARCH%/ppsspp_libretro.dylib %ROM%"));
+    SystemCatalog_addSystem(catalog, "psp", "Sony PlayStation Portable", "psp", "psp", "psp", __list_305, __list_306, __list_307, noBios, "");
+    btrc_Vector_string* __list_311 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_311, ".3ds");
+    btrc_Vector_string_push(__list_311, ".3dsx");
+    btrc_Vector_string_push(__list_311, ".app");
+    btrc_Vector_string_push(__list_311, ".axf");
+    btrc_Vector_string_push(__list_311, ".cci");
+    btrc_Vector_string_push(__list_311, ".cxi");
+    btrc_Vector_string_push(__list_311, ".elf");
+    btrc_Vector_string_push(__list_311, ".7z");
+    btrc_Vector_string_push(__list_311, ".zip");
+    btrc_Vector_string* __list_312 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_312, commandSpec("Azahar", "%EMULATOR_AZAHAR% %ROM%"));
+    btrc_Vector_string* __list_313 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_313, commandSpec("Azahar", "%EMULATOR_AZAHAR% %ROM%"));
+    SystemCatalog_addSystem(catalog, "n3ds", "Nintendo 3DS", "n3ds", "n3ds", "n3ds", __list_311, __list_312, __list_313, noBios, "");
+    btrc_Vector_string* __list_317 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_317, ".ciso");
+    btrc_Vector_string_push(__list_317, ".dol");
+    btrc_Vector_string_push(__list_317, ".elf");
+    btrc_Vector_string_push(__list_317, ".gcm");
+    btrc_Vector_string_push(__list_317, ".gcz");
+    btrc_Vector_string_push(__list_317, ".iso");
+    btrc_Vector_string_push(__list_317, ".nkit.iso");
+    btrc_Vector_string_push(__list_317, ".rvz");
+    btrc_Vector_string_push(__list_317, ".tgc");
+    btrc_Vector_string_push(__list_317, ".wad");
+    btrc_Vector_string_push(__list_317, ".wbfs");
+    btrc_Vector_string_push(__list_317, ".wia");
+    btrc_Vector_string_push(__list_317, ".7z");
+    btrc_Vector_string_push(__list_317, ".zip");
+    btrc_Vector_string* __list_318 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_318, commandSpec("Dolphin", "%EMULATOR_DOLPHIN% %ROM%"));
+    btrc_Vector_string* __list_319 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_319, commandSpec("Dolphin", "%EMULATOR_DOLPHIN% --config Dolphin.Display.Fullscreen=True -b -e %ROM%"));
+    SystemCatalog_addSystem(catalog, "gc", "Nintendo GameCube", "gc", "gc", "gc", __list_317, __list_318, __list_319, noBios, "steam_deck");
+    btrc_Vector_string* __list_323 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_323, ".ciso");
+    btrc_Vector_string_push(__list_323, ".dol");
+    btrc_Vector_string_push(__list_323, ".elf");
+    btrc_Vector_string_push(__list_323, ".gcm");
+    btrc_Vector_string_push(__list_323, ".gcz");
+    btrc_Vector_string_push(__list_323, ".iso");
+    btrc_Vector_string_push(__list_323, ".nkit.iso");
+    btrc_Vector_string_push(__list_323, ".rvz");
+    btrc_Vector_string_push(__list_323, ".tgc");
+    btrc_Vector_string_push(__list_323, ".wad");
+    btrc_Vector_string_push(__list_323, ".wbfs");
+    btrc_Vector_string_push(__list_323, ".wia");
+    btrc_Vector_string_push(__list_323, ".7z");
+    btrc_Vector_string_push(__list_323, ".zip");
+    btrc_Vector_string* __list_324 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_324, commandSpec("Dolphin", "%EMULATOR_DOLPHIN% %ROM%"));
+    btrc_Vector_string* __list_325 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_325, commandSpec("Dolphin", "%EMULATOR_DOLPHIN% --config Dolphin.Display.Fullscreen=True -b -e %ROM%"));
+    SystemCatalog_addSystem(catalog, "wii", "Nintendo Wii", "wii", "wii", "wii", __list_323, __list_324, __list_325, noBios, "steam_deck");
+    btrc_Vector_string* __list_330 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_330, ".rpx");
+    btrc_Vector_string_push(__list_330, ".wua");
+    btrc_Vector_string_push(__list_330, ".wud");
+    btrc_Vector_string_push(__list_330, ".wux");
+    btrc_Vector_string* __list_331 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_331, commandSpec("Cemu", "%EMULATOR_CEMU% -f -g %ROM%"));
+    btrc_Vector_string* __list_332 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_332, commandSpec("Cemu", "%EMULATOR_CEMU% -f -g %ROM%"));
+    btrc_Vector_string* __list_333 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_333, "wiiu_keys");
+    SystemCatalog_addSystem(catalog, "wiiu", "Nintendo Wii U", "wiiu", "wiiu", "wiiu", __list_330, __list_331, __list_332, __list_333, "steam_deck");
+    btrc_Vector_string* __list_338 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_338, ".nca");
+    btrc_Vector_string_push(__list_338, ".nro");
+    btrc_Vector_string_push(__list_338, ".nso");
+    btrc_Vector_string_push(__list_338, ".nsp");
+    btrc_Vector_string_push(__list_338, ".xci");
+    btrc_Vector_string_push(__list_338, ".7z");
+    btrc_Vector_string_push(__list_338, ".zip");
+    btrc_Vector_string* __list_339 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_339, commandSpec("Ryujinx", "%EMULATOR_RYUJINX% --fullscreen %ROM%"));
+    btrc_Vector_string* __list_340 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_340, commandSpec("Ryujinx", "%EMULATOR_RYUJINX% --fullscreen %ROM%"));
+    btrc_Vector_string* __list_341 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_341, "switch_keys");
+    SystemCatalog_addSystem(catalog, "switch", "Nintendo Switch", "switch", "switch", "switch", __list_338, __list_339, __list_340, __list_341, "");
     return catalog;
     if (catalog != NULL) {
         if ((--catalog->__rc) <= 0) {
@@ -11738,12 +12439,12 @@ void KeymapActionCapability_destroy(KeymapActionCapability* self) {
 }
 
 char* KeymapActionCapability_json(KeymapActionCapability* self) {
-    btrc_Vector_string* __list_278 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_278, jsonStrField("emulator", self->emulator));
-    btrc_Vector_string_push(__list_278, jsonStrField("status", self->status));
-    btrc_Vector_string_push(__list_278, jsonStrField("evidence", self->evidence));
-    btrc_Vector_string_push(__list_278, jsonStrField("note", self->note));
-    return jsonObject(__list_278);
+    btrc_Vector_string* __list_342 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_342, jsonStrField("emulator", self->emulator));
+    btrc_Vector_string_push(__list_342, jsonStrField("status", self->status));
+    btrc_Vector_string_push(__list_342, jsonStrField("evidence", self->evidence));
+    btrc_Vector_string_push(__list_342, jsonStrField("note", self->note));
+    return jsonObject(__list_342);
 }
 
 char* KeymapActionCapability_line(KeymapActionCapability* self) {
@@ -11751,32 +12452,32 @@ char* KeymapActionCapability_line(KeymapActionCapability* self) {
 }
 
 btrc_Vector_KeymapActionCapability* keymapStateActionCapabilities(char* id) {
-    btrc_Vector_KeymapActionCapability* __list_279 = btrc_Vector_KeymapActionCapability_new();
-    btrc_Vector_KeymapActionCapability_push(__list_279, KeymapActionCapability_new(id, "retroarch", "generated", "renderRetroArchKeymap", "native RetroArch state hotkeys and shared states directory"));
-    btrc_Vector_KeymapActionCapability_push(__list_279, KeymapActionCapability_new(id, "dolphin", "generated", "renderDolphinKeymap", "Dolphin hotkey profile renders slot-1 state hotkeys"));
-    btrc_Vector_KeymapActionCapability_push(__list_279, KeymapActionCapability_new(id, "pcsx2", "generated", "renderPcsx2Keymap", "PCSX2 input profile renders state slot hotkeys"));
-    btrc_Vector_KeymapActionCapability_push(__list_279, KeymapActionCapability_new(id, "azahar", "disabled", "no generated state hotkey profile", "do not advertise until adapter config and state-file proof exist"));
-    btrc_Vector_KeymapActionCapability_push(__list_279, KeymapActionCapability_new(id, "ppsspp", "disabled", "no generated state hotkey profile", "do not advertise until adapter config and state-file proof exist"));
-    btrc_Vector_KeymapActionCapability_push(__list_279, KeymapActionCapability_new(id, "flycast", "disabled", "no Semu state contract", "state action remains hidden/disabled for this route"));
-    btrc_Vector_KeymapActionCapability_push(__list_279, KeymapActionCapability_new(id, "melonds", "disabled", "no Semu state contract", "state action remains hidden/disabled for this route"));
-    btrc_Vector_KeymapActionCapability_push(__list_279, KeymapActionCapability_new(id, "cemu", "disabled", "no Semu state contract", "state action remains hidden/disabled for this route"));
-    btrc_Vector_KeymapActionCapability_push(__list_279, KeymapActionCapability_new(id, "ryujinx", "disabled", "no Semu state contract", "state action remains hidden/disabled for this route"));
-    return __list_279;
+    btrc_Vector_KeymapActionCapability* __list_343 = btrc_Vector_KeymapActionCapability_new();
+    btrc_Vector_KeymapActionCapability_push(__list_343, KeymapActionCapability_new(id, "retroarch", "generated", "renderRetroArchKeymap", "native RetroArch state hotkeys and shared states directory"));
+    btrc_Vector_KeymapActionCapability_push(__list_343, KeymapActionCapability_new(id, "dolphin", "generated", "renderDolphinKeymap", "Dolphin hotkey profile renders slot-1 state hotkeys"));
+    btrc_Vector_KeymapActionCapability_push(__list_343, KeymapActionCapability_new(id, "pcsx2", "generated", "renderPcsx2Keymap", "PCSX2 input profile renders state slot hotkeys"));
+    btrc_Vector_KeymapActionCapability_push(__list_343, KeymapActionCapability_new(id, "azahar", "disabled", "no generated state hotkey profile", "do not advertise until adapter config and state-file proof exist"));
+    btrc_Vector_KeymapActionCapability_push(__list_343, KeymapActionCapability_new(id, "ppsspp", "disabled", "no generated state hotkey profile", "do not advertise until adapter config and state-file proof exist"));
+    btrc_Vector_KeymapActionCapability_push(__list_343, KeymapActionCapability_new(id, "flycast", "disabled", "no Semu state contract", "state action remains hidden/disabled for this route"));
+    btrc_Vector_KeymapActionCapability_push(__list_343, KeymapActionCapability_new(id, "melonds", "disabled", "no Semu state contract", "state action remains hidden/disabled for this route"));
+    btrc_Vector_KeymapActionCapability_push(__list_343, KeymapActionCapability_new(id, "cemu", "disabled", "no Semu state contract", "state action remains hidden/disabled for this route"));
+    btrc_Vector_KeymapActionCapability_push(__list_343, KeymapActionCapability_new(id, "ryujinx", "disabled", "no Semu state contract", "state action remains hidden/disabled for this route"));
+    return __list_343;
 }
 
 btrc_Vector_KeymapActionCapability* actionCapabilities(char* id) {
     if (strcmp(id, "app.quit") == 0) {
-        btrc_Vector_KeymapActionCapability* __list_280 = btrc_Vector_KeymapActionCapability_new();
-        btrc_Vector_KeymapActionCapability_push(__list_280, KeymapActionCapability_new(id, "retroarch", "desktop_verified", "Deck desktop loop", "physical Game Mode radial proof pending"));
-        btrc_Vector_KeymapActionCapability_push(__list_280, KeymapActionCapability_new(id, "dolphin", "desktop_verified", "Deck desktop loop", "physical Game Mode radial proof pending"));
-        btrc_Vector_KeymapActionCapability_push(__list_280, KeymapActionCapability_new(id, "ppsspp", "desktop_verified", "Deck desktop loop", "physical Game Mode radial proof pending"));
-        btrc_Vector_KeymapActionCapability_push(__list_280, KeymapActionCapability_new(id, "flycast", "desktop_verified", "Deck desktop loop", "physical Game Mode radial proof pending"));
-        btrc_Vector_KeymapActionCapability_push(__list_280, KeymapActionCapability_new(id, "melonds", "desktop_verified", "Deck desktop loop", "physical Game Mode radial proof pending"));
-        btrc_Vector_KeymapActionCapability_push(__list_280, KeymapActionCapability_new(id, "pcsx2", "desktop_verified", "Deck desktop loop", "physical Game Mode radial proof pending"));
-        btrc_Vector_KeymapActionCapability_push(__list_280, KeymapActionCapability_new(id, "cemu", "desktop_verified", "Deck desktop loop", "physical Game Mode radial proof pending"));
-        btrc_Vector_KeymapActionCapability_push(__list_280, KeymapActionCapability_new(id, "azahar", "desktop_verified", "Deck desktop loop", "physical Game Mode radial proof pending"));
-        btrc_Vector_KeymapActionCapability_push(__list_280, KeymapActionCapability_new(id, "ryujinx", "desktop_verified", "Deck desktop loop", "physical Game Mode radial proof pending"));
-        return __list_280;
+        btrc_Vector_KeymapActionCapability* __list_344 = btrc_Vector_KeymapActionCapability_new();
+        btrc_Vector_KeymapActionCapability_push(__list_344, KeymapActionCapability_new(id, "retroarch", "desktop_verified", "Deck desktop loop", "physical Game Mode radial proof pending"));
+        btrc_Vector_KeymapActionCapability_push(__list_344, KeymapActionCapability_new(id, "dolphin", "desktop_verified", "Deck desktop loop", "physical Game Mode radial proof pending"));
+        btrc_Vector_KeymapActionCapability_push(__list_344, KeymapActionCapability_new(id, "ppsspp", "desktop_verified", "Deck desktop loop", "physical Game Mode radial proof pending"));
+        btrc_Vector_KeymapActionCapability_push(__list_344, KeymapActionCapability_new(id, "flycast", "desktop_verified", "Deck desktop loop", "physical Game Mode radial proof pending"));
+        btrc_Vector_KeymapActionCapability_push(__list_344, KeymapActionCapability_new(id, "melonds", "desktop_verified", "Deck desktop loop", "physical Game Mode radial proof pending"));
+        btrc_Vector_KeymapActionCapability_push(__list_344, KeymapActionCapability_new(id, "pcsx2", "desktop_verified", "Deck desktop loop", "physical Game Mode radial proof pending"));
+        btrc_Vector_KeymapActionCapability_push(__list_344, KeymapActionCapability_new(id, "cemu", "desktop_verified", "Deck desktop loop", "physical Game Mode radial proof pending"));
+        btrc_Vector_KeymapActionCapability_push(__list_344, KeymapActionCapability_new(id, "azahar", "desktop_verified", "Deck desktop loop", "physical Game Mode radial proof pending"));
+        btrc_Vector_KeymapActionCapability_push(__list_344, KeymapActionCapability_new(id, "ryujinx", "desktop_verified", "Deck desktop loop", "physical Game Mode radial proof pending"));
+        return __list_344;
     }
     if ((((strcmp(id, "state.prev") == 0) || (strcmp(id, "state.next") == 0)) || (strcmp(id, "state.load") == 0)) || (strcmp(id, "state.save") == 0)) {
         return keymapStateActionCapabilities(id);
@@ -11787,9 +12488,9 @@ btrc_Vector_KeymapActionCapability* actionCapabilities(char* id) {
 
 btrc_Vector_string* actionCapabilityEmulators(char* id, char* status) {
     btrc_Vector_string* emulators = btrc_Vector_string_new();
-    int __n_282 = btrc_Vector_KeymapActionCapability_iterLen(actionCapabilities(id));
-    for (int __i_281 = 0; (__i_281 < __n_282); (__i_281++)) {
-        KeymapActionCapability* capability = btrc_Vector_KeymapActionCapability_iterGet(actionCapabilities(id), __i_281);
+    int __n_346 = btrc_Vector_KeymapActionCapability_iterLen(actionCapabilities(id));
+    for (int __i_345 = 0; (__i_345 < __n_346); (__i_345++)) {
+        KeymapActionCapability* capability = btrc_Vector_KeymapActionCapability_iterGet(actionCapabilities(id), __i_345);
         if (strcmp(capability->status, status) == 0) {
             btrc_Vector_string_push(emulators, capability->emulator);
         }
@@ -11799,9 +12500,9 @@ btrc_Vector_string* actionCapabilityEmulators(char* id, char* status) {
 
 char* actionCapabilitiesJson(char* id) {
     btrc_Vector_string* items = btrc_Vector_string_new();
-    int __n_284 = btrc_Vector_KeymapActionCapability_iterLen(actionCapabilities(id));
-    for (int __i_283 = 0; (__i_283 < __n_284); (__i_283++)) {
-        KeymapActionCapability* capability = btrc_Vector_KeymapActionCapability_iterGet(actionCapabilities(id), __i_283);
+    int __n_348 = btrc_Vector_KeymapActionCapability_iterLen(actionCapabilities(id));
+    for (int __i_347 = 0; (__i_347 < __n_348); (__i_347++)) {
+        KeymapActionCapability* capability = btrc_Vector_KeymapActionCapability_iterGet(actionCapabilities(id), __i_347);
         btrc_Vector_string_push(items, KeymapActionCapability_json(capability));
     }
     return jsonArray(items);
@@ -11822,10 +12523,10 @@ char* keymapCapabilitySummary(char* id) {
 
 int keymapCapabilitiesCommand(KeymapIr* ir, char* actionId) {
     if ((((int)strlen(actionId)) > 0) && (!keymapIrHasAction(ir, actionId))) {
-        int __fstr_287_len = snprintf(NULL, 0, "error 0:0 unknown keymap action '%s'", actionId);
-        char* __fstr_287_buf = __btrc_str_track(((char*)malloc((__fstr_287_len + 1))));
-        snprintf(__fstr_287_buf, (__fstr_287_len + 1), "error 0:0 unknown keymap action '%s'", actionId);
-        printf("%s\n", __fstr_287_buf);
+        int __fstr_351_len = snprintf(NULL, 0, "error 0:0 unknown keymap action '%s'", actionId);
+        char* __fstr_351_buf = __btrc_str_track(((char*)malloc((__fstr_351_len + 1))));
+        snprintf(__fstr_351_buf, (__fstr_351_len + 1), "error 0:0 unknown keymap action '%s'", actionId);
+        printf("%s\n", __fstr_351_buf);
         return 1;
     }
     btrc_Vector_string* ids = btrc_Vector_string_new();
@@ -11834,13 +12535,13 @@ int keymapCapabilitiesCommand(KeymapIr* ir, char* actionId) {
     } else {
         (ids = requiredKeymapActions());
     }
-    int __n_289 = btrc_Vector_string_iterLen(ids);
-    for (int __i_288 = 0; (__i_288 < __n_289); (__i_288++)) {
-        char* id = btrc_Vector_string_iterGet(ids, __i_288);
+    int __n_353 = btrc_Vector_string_iterLen(ids);
+    for (int __i_352 = 0; (__i_352 < __n_353); (__i_352++)) {
+        char* id = btrc_Vector_string_iterGet(ids, __i_352);
         printf("%s\n", keymapCapabilitySummary(id));
-        int __n_291 = btrc_Vector_KeymapActionCapability_iterLen(actionCapabilities(id));
-        for (int __i_290 = 0; (__i_290 < __n_291); (__i_290++)) {
-            KeymapActionCapability* capability = btrc_Vector_KeymapActionCapability_iterGet(actionCapabilities(id), __i_290);
+        int __n_355 = btrc_Vector_KeymapActionCapability_iterLen(actionCapabilities(id));
+        for (int __i_354 = 0; (__i_354 < __n_355); (__i_354++)) {
+            KeymapActionCapability* capability = btrc_Vector_KeymapActionCapability_iterGet(actionCapabilities(id), __i_354);
             printf("%s\n", __btrc_str_track(__btrc_strcat("  ", KeymapActionCapability_line(capability))));
         }
     }
@@ -11849,54 +12550,54 @@ int keymapCapabilitiesCommand(KeymapIr* ir, char* actionId) {
 
 btrc_Vector_string* actionSystems(char* id) {
     if (strcmp(id, "ui.open") == 0) {
-        btrc_Vector_string* __list_292 = btrc_Vector_string_new();
-        btrc_Vector_string_push(__list_292, "dolphin");
-        return __list_292;
+        btrc_Vector_string* __list_356 = btrc_Vector_string_new();
+        btrc_Vector_string_push(__list_356, "dolphin");
+        return __list_356;
     }
     if (strcmp(id, "ui.pause") == 0) {
-        btrc_Vector_string* __list_293 = btrc_Vector_string_new();
-        btrc_Vector_string_push(__list_293, "retroarch");
-        btrc_Vector_string_push(__list_293, "dolphin");
-        btrc_Vector_string_push(__list_293, "azahar");
-        btrc_Vector_string_push(__list_293, "melonds");
-        btrc_Vector_string_push(__list_293, "pcsx2");
-        return __list_293;
+        btrc_Vector_string* __list_357 = btrc_Vector_string_new();
+        btrc_Vector_string_push(__list_357, "retroarch");
+        btrc_Vector_string_push(__list_357, "dolphin");
+        btrc_Vector_string_push(__list_357, "azahar");
+        btrc_Vector_string_push(__list_357, "melonds");
+        btrc_Vector_string_push(__list_357, "pcsx2");
+        return __list_357;
     }
     if (strcmp(id, "ui.screenshot") == 0) {
-        btrc_Vector_string* __list_294 = btrc_Vector_string_new();
-        btrc_Vector_string_push(__list_294, "retroarch");
-        btrc_Vector_string_push(__list_294, "dolphin");
-        btrc_Vector_string_push(__list_294, "azahar");
-        btrc_Vector_string_push(__list_294, "pcsx2");
-        return __list_294;
+        btrc_Vector_string* __list_358 = btrc_Vector_string_new();
+        btrc_Vector_string_push(__list_358, "retroarch");
+        btrc_Vector_string_push(__list_358, "dolphin");
+        btrc_Vector_string_push(__list_358, "azahar");
+        btrc_Vector_string_push(__list_358, "pcsx2");
+        return __list_358;
     }
     if (strcmp(id, "ui.fullscreen") == 0) {
-        btrc_Vector_string* __list_295 = btrc_Vector_string_new();
-        btrc_Vector_string_push(__list_295, "dolphin");
-        btrc_Vector_string_push(__list_295, "azahar");
-        btrc_Vector_string_push(__list_295, "melonds");
-        btrc_Vector_string_push(__list_295, "pcsx2");
-        return __list_295;
+        btrc_Vector_string* __list_359 = btrc_Vector_string_new();
+        btrc_Vector_string_push(__list_359, "dolphin");
+        btrc_Vector_string_push(__list_359, "azahar");
+        btrc_Vector_string_push(__list_359, "melonds");
+        btrc_Vector_string_push(__list_359, "pcsx2");
+        return __list_359;
     }
     if (strcmp(id, "ui.menu") == 0) {
-        btrc_Vector_string* __list_296 = btrc_Vector_string_new();
-        btrc_Vector_string_push(__list_296, "retroarch");
-        btrc_Vector_string_push(__list_296, "pcsx2");
-        btrc_Vector_string_push(__list_296, "ppsspp");
-        return __list_296;
+        btrc_Vector_string* __list_360 = btrc_Vector_string_new();
+        btrc_Vector_string_push(__list_360, "retroarch");
+        btrc_Vector_string_push(__list_360, "pcsx2");
+        btrc_Vector_string_push(__list_360, "ppsspp");
+        return __list_360;
     }
     if (strcmp(id, "app.quit") == 0) {
-        btrc_Vector_string* __list_297 = btrc_Vector_string_new();
-        btrc_Vector_string_push(__list_297, "retroarch");
-        btrc_Vector_string_push(__list_297, "dolphin");
-        btrc_Vector_string_push(__list_297, "azahar");
-        btrc_Vector_string_push(__list_297, "pcsx2");
-        btrc_Vector_string_push(__list_297, "ppsspp");
-        btrc_Vector_string_push(__list_297, "flycast");
-        btrc_Vector_string_push(__list_297, "melonds");
-        btrc_Vector_string_push(__list_297, "cemu");
-        btrc_Vector_string_push(__list_297, "ryujinx");
-        return __list_297;
+        btrc_Vector_string* __list_361 = btrc_Vector_string_new();
+        btrc_Vector_string_push(__list_361, "retroarch");
+        btrc_Vector_string_push(__list_361, "dolphin");
+        btrc_Vector_string_push(__list_361, "azahar");
+        btrc_Vector_string_push(__list_361, "pcsx2");
+        btrc_Vector_string_push(__list_361, "ppsspp");
+        btrc_Vector_string_push(__list_361, "flycast");
+        btrc_Vector_string_push(__list_361, "melonds");
+        btrc_Vector_string_push(__list_361, "cemu");
+        btrc_Vector_string_push(__list_361, "ryujinx");
+        return __list_361;
     }
     if (strcmp(id, "state.prev") == 0) {
         return actionCapabilityEmulators(id, "generated");
@@ -11911,29 +12612,29 @@ btrc_Vector_string* actionSystems(char* id) {
         return actionCapabilityEmulators(id, "generated");
     }
     if (strcmp(id, "speed.rewind") == 0) {
-        btrc_Vector_string* __list_298 = btrc_Vector_string_new();
-        btrc_Vector_string_push(__list_298, "retroarch");
-        return __list_298;
+        btrc_Vector_string* __list_362 = btrc_Vector_string_new();
+        btrc_Vector_string_push(__list_362, "retroarch");
+        return __list_362;
     }
     if (strcmp(id, "speed.fast") == 0) {
-        btrc_Vector_string* __list_299 = btrc_Vector_string_new();
-        btrc_Vector_string_push(__list_299, "retroarch");
-        btrc_Vector_string_push(__list_299, "melonds");
-        btrc_Vector_string_push(__list_299, "pcsx2");
-        btrc_Vector_string_push(__list_299, "ppsspp");
-        return __list_299;
+        btrc_Vector_string* __list_363 = btrc_Vector_string_new();
+        btrc_Vector_string_push(__list_363, "retroarch");
+        btrc_Vector_string_push(__list_363, "melonds");
+        btrc_Vector_string_push(__list_363, "pcsx2");
+        btrc_Vector_string_push(__list_363, "ppsspp");
+        return __list_363;
     }
     if (strcmp(id, "screen.swap") == 0) {
-        btrc_Vector_string* __list_300 = btrc_Vector_string_new();
-        btrc_Vector_string_push(__list_300, "azahar");
-        btrc_Vector_string_push(__list_300, "melonds");
-        btrc_Vector_string_push(__list_300, "cemu");
-        return __list_300;
+        btrc_Vector_string* __list_364 = btrc_Vector_string_new();
+        btrc_Vector_string_push(__list_364, "azahar");
+        btrc_Vector_string_push(__list_364, "melonds");
+        btrc_Vector_string_push(__list_364, "cemu");
+        return __list_364;
     }
     if (strcmp(id, "ui.escape") == 0) {
-        btrc_Vector_string* __list_301 = btrc_Vector_string_new();
-        btrc_Vector_string_push(__list_301, "pc");
-        return __list_301;
+        btrc_Vector_string* __list_365 = btrc_Vector_string_new();
+        btrc_Vector_string_push(__list_365, "pc");
+        return __list_365;
     }
     btrc_Vector_string* empty = btrc_Vector_string_new();
     return empty;
@@ -12064,10 +12765,10 @@ KeymapTokens* lexKeymap(char* source, KeymapErrors* errors) {
             }
             KeymapTokens_push(tokens, "ident", __btrc_str_track(__btrc_substring(source, start, (i - start))), line, startColumn);
         } else {
-            int __fstr_303_len = snprintf(NULL, 0, "unexpected character '%c'", c);
-            char* __fstr_303_buf = __btrc_str_track(((char*)malloc((__fstr_303_len + 1))));
-            snprintf(__fstr_303_buf, (__fstr_303_len + 1), "unexpected character '%c'", c);
-            KeymapErrors_error(errors, line, column, __fstr_303_buf);
+            int __fstr_367_len = snprintf(NULL, 0, "unexpected character '%c'", c);
+            char* __fstr_367_buf = __btrc_str_track(((char*)malloc((__fstr_367_len + 1))));
+            snprintf(__fstr_367_buf, (__fstr_367_len + 1), "unexpected character '%c'", c);
+            KeymapErrors_error(errors, line, column, __fstr_367_buf);
             (i++);
             (column++);
         }
@@ -12082,9 +12783,9 @@ KeymapTokens* lexKeymap(char* source, KeymapErrors* errors) {
 }
 
 bool keymapIrHasAction(KeymapIr* ir, char* id) {
-    int __n_305 = btrc_Vector_string_iterLen(ir->actionIds);
-    for (int __i_304 = 0; (__i_304 < __n_305); (__i_304++)) {
-        char* action = btrc_Vector_string_iterGet(ir->actionIds, __i_304);
+    int __n_369 = btrc_Vector_string_iterLen(ir->actionIds);
+    for (int __i_368 = 0; (__i_368 < __n_369); (__i_368++)) {
+        char* action = btrc_Vector_string_iterGet(ir->actionIds, __i_368);
         if (strcmp(action, id) == 0) {
             return true;
         }
@@ -12093,22 +12794,22 @@ bool keymapIrHasAction(KeymapIr* ir, char* id) {
 }
 
 btrc_Vector_string* requiredKeymapActions(void) {
-    btrc_Vector_string* __list_306 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_306, "ui.open");
-    btrc_Vector_string_push(__list_306, "ui.pause");
-    btrc_Vector_string_push(__list_306, "ui.screenshot");
-    btrc_Vector_string_push(__list_306, "ui.fullscreen");
-    btrc_Vector_string_push(__list_306, "ui.menu");
-    btrc_Vector_string_push(__list_306, "app.quit");
-    btrc_Vector_string_push(__list_306, "state.prev");
-    btrc_Vector_string_push(__list_306, "state.next");
-    btrc_Vector_string_push(__list_306, "state.load");
-    btrc_Vector_string_push(__list_306, "state.save");
-    btrc_Vector_string_push(__list_306, "speed.rewind");
-    btrc_Vector_string_push(__list_306, "speed.fast");
-    btrc_Vector_string_push(__list_306, "screen.swap");
-    btrc_Vector_string_push(__list_306, "ui.escape");
-    return __list_306;
+    btrc_Vector_string* __list_370 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_370, "ui.open");
+    btrc_Vector_string_push(__list_370, "ui.pause");
+    btrc_Vector_string_push(__list_370, "ui.screenshot");
+    btrc_Vector_string_push(__list_370, "ui.fullscreen");
+    btrc_Vector_string_push(__list_370, "ui.menu");
+    btrc_Vector_string_push(__list_370, "app.quit");
+    btrc_Vector_string_push(__list_370, "state.prev");
+    btrc_Vector_string_push(__list_370, "state.next");
+    btrc_Vector_string_push(__list_370, "state.load");
+    btrc_Vector_string_push(__list_370, "state.save");
+    btrc_Vector_string_push(__list_370, "speed.rewind");
+    btrc_Vector_string_push(__list_370, "speed.fast");
+    btrc_Vector_string_push(__list_370, "screen.swap");
+    btrc_Vector_string_push(__list_370, "ui.escape");
+    return __list_370;
 }
 
 bool allowedModifier(char* modifier) {
@@ -12122,42 +12823,42 @@ void validateKeymapIr(KeymapIr* ir, KeymapErrors* errors) {
     if (ir->bindingCombos->len == 0) {
         KeymapErrors_error(errors, 0, 0, "keymap has no controller bindings");
     }
-    int __n_308 = btrc_Vector_string_iterLen(requiredKeymapActions());
-    for (int __i_307 = 0; (__i_307 < __n_308); (__i_307++)) {
-        char* required = btrc_Vector_string_iterGet(requiredKeymapActions(), __i_307);
+    int __n_372 = btrc_Vector_string_iterLen(requiredKeymapActions());
+    for (int __i_371 = 0; (__i_371 < __n_372); (__i_371++)) {
+        char* required = btrc_Vector_string_iterGet(requiredKeymapActions(), __i_371);
         if (!keymapIrHasAction(ir, required)) {
-            int __fstr_310_len = snprintf(NULL, 0, "missing required action '%s'", required);
-            char* __fstr_310_buf = __btrc_str_track(((char*)malloc((__fstr_310_len + 1))));
-            snprintf(__fstr_310_buf, (__fstr_310_len + 1), "missing required action '%s'", required);
-            KeymapErrors_error(errors, 0, 0, __fstr_310_buf);
+            int __fstr_374_len = snprintf(NULL, 0, "missing required action '%s'", required);
+            char* __fstr_374_buf = __btrc_str_track(((char*)malloc((__fstr_374_len + 1))));
+            snprintf(__fstr_374_buf, (__fstr_374_len + 1), "missing required action '%s'", required);
+            KeymapErrors_error(errors, 0, 0, __fstr_374_buf);
         }
     }
     for (int i = 0; (i < ir->actionIds->len); (i++)) {
         char* id = btrc_Vector_string_get(ir->actionIds, i);
         char* command = btrc_Vector_string_get(ir->actionCommands, i);
         if (((int)strlen(command)) == 0) {
-            int __fstr_312_len = snprintf(NULL, 0, "action '%s' has no key", id);
-            char* __fstr_312_buf = __btrc_str_track(((char*)malloc((__fstr_312_len + 1))));
-            snprintf(__fstr_312_buf, (__fstr_312_len + 1), "action '%s' has no key", id);
-            KeymapErrors_error(errors, 0, 0, __fstr_312_buf);
+            int __fstr_376_len = snprintf(NULL, 0, "action '%s' has no key", id);
+            char* __fstr_376_buf = __btrc_str_track(((char*)malloc((__fstr_376_len + 1))));
+            snprintf(__fstr_376_buf, (__fstr_376_len + 1), "action '%s' has no key", id);
+            KeymapErrors_error(errors, 0, 0, __fstr_376_buf);
         }
         if (allowedModifier(command)) {
-            int __fstr_314_len = snprintf(NULL, 0, "action '%s' has no key after modifier '%s'", id, command);
-            char* __fstr_314_buf = __btrc_str_track(((char*)malloc((__fstr_314_len + 1))));
-            snprintf(__fstr_314_buf, (__fstr_314_len + 1), "action '%s' has no key after modifier '%s'", id, command);
-            KeymapErrors_error(errors, 0, 0, __fstr_314_buf);
+            int __fstr_378_len = snprintf(NULL, 0, "action '%s' has no key after modifier '%s'", id, command);
+            char* __fstr_378_buf = __btrc_str_track(((char*)malloc((__fstr_378_len + 1))));
+            snprintf(__fstr_378_buf, (__fstr_378_len + 1), "action '%s' has no key after modifier '%s'", id, command);
+            KeymapErrors_error(errors, 0, 0, __fstr_378_buf);
         }
         char* modifiers = keymapCommandModifierPart(command);
         if (((int)strlen(modifiers)) > 0) {
             btrc_Vector_string* parts = Strings_split(modifiers, "+");
-            int __n_316 = btrc_Vector_string_iterLen(parts);
-            for (int __i_315 = 0; (__i_315 < __n_316); (__i_315++)) {
-                char* modifier = btrc_Vector_string_iterGet(parts, __i_315);
+            int __n_380 = btrc_Vector_string_iterLen(parts);
+            for (int __i_379 = 0; (__i_379 < __n_380); (__i_379++)) {
+                char* modifier = btrc_Vector_string_iterGet(parts, __i_379);
                 if (!allowedModifier(modifier)) {
-                    int __fstr_318_len = snprintf(NULL, 0, "action '%s' uses unsupported modifier '%s'", id, modifier);
-                    char* __fstr_318_buf = __btrc_str_track(((char*)malloc((__fstr_318_len + 1))));
-                    snprintf(__fstr_318_buf, (__fstr_318_len + 1), "action '%s' uses unsupported modifier '%s'", id, modifier);
-                    KeymapErrors_error(errors, 0, 0, __fstr_318_buf);
+                    int __fstr_382_len = snprintf(NULL, 0, "action '%s' uses unsupported modifier '%s'", id, modifier);
+                    char* __fstr_382_buf = __btrc_str_track(((char*)malloc((__fstr_382_len + 1))));
+                    snprintf(__fstr_382_buf, (__fstr_382_len + 1), "action '%s' uses unsupported modifier '%s'", id, modifier);
+                    KeymapErrors_error(errors, 0, 0, __fstr_382_buf);
                 }
             }
         }
@@ -12165,28 +12866,28 @@ void validateKeymapIr(KeymapIr* ir, KeymapErrors* errors) {
     for (int i = 0; (i < ir->actionIds->len); (i++)) {
         for (int j = (i + 1); (j < ir->actionIds->len); (j++)) {
             if (strcmp(btrc_Vector_string_get(ir->actionIds, i), btrc_Vector_string_get(ir->actionIds, j)) == 0) {
-                int __fstr_320_len = snprintf(NULL, 0, "duplicate action '%s'", btrc_Vector_string_get(ir->actionIds, i));
-                char* __fstr_320_buf = __btrc_str_track(((char*)malloc((__fstr_320_len + 1))));
-                snprintf(__fstr_320_buf, (__fstr_320_len + 1), "duplicate action '%s'", btrc_Vector_string_get(ir->actionIds, i));
-                KeymapErrors_error(errors, 0, 0, __fstr_320_buf);
+                int __fstr_384_len = snprintf(NULL, 0, "duplicate action '%s'", btrc_Vector_string_get(ir->actionIds, i));
+                char* __fstr_384_buf = __btrc_str_track(((char*)malloc((__fstr_384_len + 1))));
+                snprintf(__fstr_384_buf, (__fstr_384_len + 1), "duplicate action '%s'", btrc_Vector_string_get(ir->actionIds, i));
+                KeymapErrors_error(errors, 0, 0, __fstr_384_buf);
             }
         }
     }
     for (int i = 0; (i < ir->bindingActions->len); (i++)) {
         if (!keymapIrHasAction(ir, btrc_Vector_string_get(ir->bindingActions, i))) {
-            int __fstr_322_len = snprintf(NULL, 0, "binding '%s' references unknown action '%s'", btrc_Vector_string_get(ir->bindingCombos, i), btrc_Vector_string_get(ir->bindingActions, i));
-            char* __fstr_322_buf = __btrc_str_track(((char*)malloc((__fstr_322_len + 1))));
-            snprintf(__fstr_322_buf, (__fstr_322_len + 1), "binding '%s' references unknown action '%s'", btrc_Vector_string_get(ir->bindingCombos, i), btrc_Vector_string_get(ir->bindingActions, i));
-            KeymapErrors_error(errors, 0, 0, __fstr_322_buf);
+            int __fstr_386_len = snprintf(NULL, 0, "binding '%s' references unknown action '%s'", btrc_Vector_string_get(ir->bindingCombos, i), btrc_Vector_string_get(ir->bindingActions, i));
+            char* __fstr_386_buf = __btrc_str_track(((char*)malloc((__fstr_386_len + 1))));
+            snprintf(__fstr_386_buf, (__fstr_386_len + 1), "binding '%s' references unknown action '%s'", btrc_Vector_string_get(ir->bindingCombos, i), btrc_Vector_string_get(ir->bindingActions, i));
+            KeymapErrors_error(errors, 0, 0, __fstr_386_buf);
         }
     }
     for (int i = 0; (i < ir->bindingCombos->len); (i++)) {
         for (int j = (i + 1); (j < ir->bindingCombos->len); (j++)) {
             if (strcmp(btrc_Vector_string_get(ir->bindingCombos, i), btrc_Vector_string_get(ir->bindingCombos, j)) == 0) {
-                int __fstr_324_len = snprintf(NULL, 0, "duplicate controller combo '%s'", btrc_Vector_string_get(ir->bindingCombos, i));
-                char* __fstr_324_buf = __btrc_str_track(((char*)malloc((__fstr_324_len + 1))));
-                snprintf(__fstr_324_buf, (__fstr_324_len + 1), "duplicate controller combo '%s'", btrc_Vector_string_get(ir->bindingCombos, i));
-                KeymapErrors_error(errors, 0, 0, __fstr_324_buf);
+                int __fstr_388_len = snprintf(NULL, 0, "duplicate controller combo '%s'", btrc_Vector_string_get(ir->bindingCombos, i));
+                char* __fstr_388_buf = __btrc_str_track(((char*)malloc((__fstr_388_len + 1))));
+                snprintf(__fstr_388_buf, (__fstr_388_len + 1), "duplicate controller combo '%s'", btrc_Vector_string_get(ir->bindingCombos, i));
+                KeymapErrors_error(errors, 0, 0, __fstr_388_buf);
             }
         }
     }
@@ -12229,24 +12930,24 @@ KeymapIr* defaultKeymapIr(void) {
 
 char* keymapIrActionJson(KeymapIr* ir, int index) {
     char* id = btrc_Vector_string_get(ir->actionIds, index);
-    btrc_Vector_string* __list_325 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_325, jsonStrField("id", id));
-    btrc_Vector_string_push(__list_325, jsonStrField("alias", actionAlias(id)));
-    btrc_Vector_string_push(__list_325, jsonStrField("label", actionLabel(id)));
-    btrc_Vector_string_push(__list_325, jsonStrField("command", btrc_Vector_string_get(ir->actionCommands, index)));
-    btrc_Vector_string_push(__list_325, jsonField("systems", jsonStringArray(actionSystems(id))));
-    btrc_Vector_string_push(__list_325, jsonField("capabilities", actionCapabilitiesJson(id)));
-    btrc_Vector_string_push(__list_325, jsonStrField("note", actionNote(id)));
-    return jsonObject(__list_325);
+    btrc_Vector_string* __list_389 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_389, jsonStrField("id", id));
+    btrc_Vector_string_push(__list_389, jsonStrField("alias", actionAlias(id)));
+    btrc_Vector_string_push(__list_389, jsonStrField("label", actionLabel(id)));
+    btrc_Vector_string_push(__list_389, jsonStrField("command", btrc_Vector_string_get(ir->actionCommands, index)));
+    btrc_Vector_string_push(__list_389, jsonField("systems", jsonStringArray(actionSystems(id))));
+    btrc_Vector_string_push(__list_389, jsonField("capabilities", actionCapabilitiesJson(id)));
+    btrc_Vector_string_push(__list_389, jsonStrField("note", actionNote(id)));
+    return jsonObject(__list_389);
 }
 
 char* keymapIrBindingJson(KeymapIr* ir, int index) {
     char* action = btrc_Vector_string_get(ir->bindingActions, index);
-    btrc_Vector_string* __list_326 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_326, jsonStrField("combo", btrc_Vector_string_get(ir->bindingCombos, index)));
-    btrc_Vector_string_push(__list_326, jsonStrField("action", action));
-    btrc_Vector_string_push(__list_326, jsonStrField("action_alias", actionAlias(action)));
-    return jsonObject(__list_326);
+    btrc_Vector_string* __list_390 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_390, jsonStrField("combo", btrc_Vector_string_get(ir->bindingCombos, index)));
+    btrc_Vector_string_push(__list_390, jsonStrField("action", action));
+    btrc_Vector_string_push(__list_390, jsonStrField("action_alias", actionAlias(action)));
+    return jsonObject(__list_390);
 }
 
 char* keymapIrJson(KeymapIr* ir) {
@@ -12258,19 +12959,19 @@ char* keymapIrJson(KeymapIr* ir) {
     for (int i = 0; (i < ir->bindingCombos->len); (i++)) {
         btrc_Vector_string_push(bindings, keymapIrBindingJson(ir, i));
     }
-    btrc_Vector_string* __list_327 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_327, jsonStrField("source_language", "semu-keymap-v1"));
-    btrc_Vector_string_push(__list_327, jsonStrField("source_path", "${paths.keymaps}/steam_deck.skm"));
-    btrc_Vector_string* __list_328 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_328, "manifest");
-    btrc_Vector_string_push(__list_328, "retroarch");
-    btrc_Vector_string_push(__list_328, "dolphin");
-    btrc_Vector_string_push(__list_328, "pcsx2");
-    btrc_Vector_string_push(__list_328, "steam-input");
-    btrc_Vector_string_push(__list_327, jsonField("render_targets", jsonStringArray(__list_328)));
-    btrc_Vector_string_push(__list_327, jsonField("actions", jsonArray(actions)));
-    btrc_Vector_string_push(__list_327, jsonField("bindings", jsonArray(bindings)));
-    return jsonObject(__list_327);
+    btrc_Vector_string* __list_391 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_391, jsonStrField("source_language", "semu-keymap-v1"));
+    btrc_Vector_string_push(__list_391, jsonStrField("source_path", "${paths.keymaps}/steam_deck.skm"));
+    btrc_Vector_string* __list_392 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_392, "manifest");
+    btrc_Vector_string_push(__list_392, "retroarch");
+    btrc_Vector_string_push(__list_392, "dolphin");
+    btrc_Vector_string_push(__list_392, "pcsx2");
+    btrc_Vector_string_push(__list_392, "steam-input");
+    btrc_Vector_string_push(__list_391, jsonField("render_targets", jsonStringArray(__list_392)));
+    btrc_Vector_string_push(__list_391, jsonField("actions", jsonArray(actions)));
+    btrc_Vector_string_push(__list_391, jsonField("bindings", jsonArray(bindings)));
+    return jsonObject(__list_391);
 }
 
 char* irActionCommand(KeymapIr* ir, char* id) {
@@ -12292,9 +12993,9 @@ char* irBindingCombo(KeymapIr* ir, char* id) {
 }
 
 char* keymapsJson(void) {
-    btrc_Vector_string* __list_329 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_329, jsonField("steam_deck", keymapIrJson(defaultKeymapIr())));
-    return jsonObject(__list_329);
+    btrc_Vector_string* __list_393 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_393, jsonField("steam_deck", keymapIrJson(defaultKeymapIr())));
+    return jsonObject(__list_393);
 }
 
 char* hotkeyFromKeymapIr(KeymapIr* ir, char* actionId) {
@@ -12302,33 +13003,33 @@ char* hotkeyFromKeymapIr(KeymapIr* ir, char* actionId) {
 }
 
 char* hotkeySpec(char* id, char* label, char* combo, char* command, btrc_Vector_string* systems, char* note) {
-    btrc_Vector_string* __list_330 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_330, jsonStrField("id", id));
-    btrc_Vector_string_push(__list_330, jsonStrField("label", label));
-    btrc_Vector_string_push(__list_330, jsonStrField("combo", combo));
-    btrc_Vector_string_push(__list_330, jsonStrField("command", command));
-    btrc_Vector_string_push(__list_330, jsonField("systems", jsonStringArray(systems)));
-    btrc_Vector_string_push(__list_330, jsonStrField("note", note));
-    return jsonObject(__list_330);
+    btrc_Vector_string* __list_394 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_394, jsonStrField("id", id));
+    btrc_Vector_string_push(__list_394, jsonStrField("label", label));
+    btrc_Vector_string_push(__list_394, jsonStrField("combo", combo));
+    btrc_Vector_string_push(__list_394, jsonStrField("command", command));
+    btrc_Vector_string_push(__list_394, jsonField("systems", jsonStringArray(systems)));
+    btrc_Vector_string_push(__list_394, jsonStrField("note", note));
+    return jsonObject(__list_394);
 }
 
 char* steamDeckHotkeys(void) {
     KeymapIr* ir = defaultKeymapIr();
-    btrc_Vector_string* __list_331 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_331, hotkeyFromKeymapIr(ir, "ui.pause"));
-    btrc_Vector_string_push(__list_331, hotkeyFromKeymapIr(ir, "ui.screenshot"));
-    btrc_Vector_string_push(__list_331, hotkeyFromKeymapIr(ir, "ui.fullscreen"));
-    btrc_Vector_string_push(__list_331, hotkeyFromKeymapIr(ir, "ui.menu"));
-    btrc_Vector_string_push(__list_331, hotkeyFromKeymapIr(ir, "app.quit"));
-    btrc_Vector_string_push(__list_331, hotkeyFromKeymapIr(ir, "state.prev"));
-    btrc_Vector_string_push(__list_331, hotkeyFromKeymapIr(ir, "state.next"));
-    btrc_Vector_string_push(__list_331, hotkeyFromKeymapIr(ir, "state.load"));
-    btrc_Vector_string_push(__list_331, hotkeyFromKeymapIr(ir, "state.save"));
-    btrc_Vector_string_push(__list_331, hotkeyFromKeymapIr(ir, "speed.rewind"));
-    btrc_Vector_string_push(__list_331, hotkeyFromKeymapIr(ir, "speed.fast"));
-    btrc_Vector_string_push(__list_331, hotkeyFromKeymapIr(ir, "screen.swap"));
-    btrc_Vector_string_push(__list_331, hotkeyFromKeymapIr(ir, "ui.escape"));
-    return jsonArray(__list_331);
+    btrc_Vector_string* __list_395 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_395, hotkeyFromKeymapIr(ir, "ui.pause"));
+    btrc_Vector_string_push(__list_395, hotkeyFromKeymapIr(ir, "ui.screenshot"));
+    btrc_Vector_string_push(__list_395, hotkeyFromKeymapIr(ir, "ui.fullscreen"));
+    btrc_Vector_string_push(__list_395, hotkeyFromKeymapIr(ir, "ui.menu"));
+    btrc_Vector_string_push(__list_395, hotkeyFromKeymapIr(ir, "app.quit"));
+    btrc_Vector_string_push(__list_395, hotkeyFromKeymapIr(ir, "state.prev"));
+    btrc_Vector_string_push(__list_395, hotkeyFromKeymapIr(ir, "state.next"));
+    btrc_Vector_string_push(__list_395, hotkeyFromKeymapIr(ir, "state.load"));
+    btrc_Vector_string_push(__list_395, hotkeyFromKeymapIr(ir, "state.save"));
+    btrc_Vector_string_push(__list_395, hotkeyFromKeymapIr(ir, "speed.rewind"));
+    btrc_Vector_string_push(__list_395, hotkeyFromKeymapIr(ir, "speed.fast"));
+    btrc_Vector_string_push(__list_395, hotkeyFromKeymapIr(ir, "screen.swap"));
+    btrc_Vector_string_push(__list_395, hotkeyFromKeymapIr(ir, "ui.escape"));
+    return jsonArray(__list_395);
 }
 
 char* retroarchKeyName(char* key) {
@@ -12377,9 +13078,9 @@ char* pcsx2Chord(KeymapIr* ir, char* actionId) {
     char* modifiers = keymapCommandModifierPart(command);
     if (((int)strlen(modifiers)) > 0) {
         btrc_Vector_string* modifierParts = Strings_split(modifiers, "+");
-        int __n_333 = btrc_Vector_string_iterLen(modifierParts);
-        for (int __i_332 = 0; (__i_332 < __n_333); (__i_332++)) {
-            char* modifier = btrc_Vector_string_iterGet(modifierParts, __i_332);
+        int __n_397 = btrc_Vector_string_iterLen(modifierParts);
+        for (int __i_396 = 0; (__i_396 < __n_397); (__i_396++)) {
+            char* modifier = btrc_Vector_string_iterGet(modifierParts, __i_396);
             if (strcmp(modifier, "Ctrl") == 0) {
                 btrc_Vector_string_push(parts, "Keyboard/Control");
             } else {
@@ -12411,10 +13112,10 @@ char* renderKeymap(KeymapIr* ir, char* target) {
     if (strcmp(target, "steam-input") == 0) {
         return steamInputTemplateVdf("Semu: Steam Deck - Neptune FULL", true, ir, ".");
     }
-    int __fstr_334_len = snprintf(NULL, 0, "unknown keymap target: %s\n", target);
-    char* __fstr_334_buf = __btrc_str_track(((char*)malloc((__fstr_334_len + 1))));
-    snprintf(__fstr_334_buf, (__fstr_334_len + 1), "unknown keymap target: %s\n", target);
-    return __fstr_334_buf;
+    int __fstr_398_len = snprintf(NULL, 0, "unknown keymap target: %s\n", target);
+    char* __fstr_398_buf = __btrc_str_track(((char*)malloc((__fstr_398_len + 1))));
+    snprintf(__fstr_398_buf, (__fstr_398_len + 1), "unknown keymap target: %s\n", target);
+    return __fstr_398_buf;
 }
 
 bool isKeymapTarget(char* target) {
@@ -12428,13 +13129,13 @@ char* keymapOwnedSource(char* project) {
 
 KeymapIr* projectKeymapUiIr(char* project) {
     KeymapErrors* errors = KeymapErrors_new();
-    KeymapIr* __btrc_ret_335 = compileKeymap(keymapOwnedSource(project), errors);
+    KeymapIr* __btrc_ret_399 = compileKeymap(keymapOwnedSource(project), errors);
     if (errors != NULL) {
         if ((--errors->__rc) <= 0) {
             KeymapErrors_destroy(errors);
         }
     }
-    return __btrc_ret_335;
+    return __btrc_ret_399;
     if (errors != NULL) {
         if ((--errors->__rc) <= 0) {
             KeymapErrors_destroy(errors);
@@ -12447,27 +13148,27 @@ bool writeValidatedKeymapSource(char* project, char* source) {
     compileKeymap(source, errors);
     if (KeymapErrors_count(errors) > 0) {
         for (int i = 0; (i < KeymapErrors_count(errors)); (i++)) {
-            int __fstr_338_len = snprintf(NULL, 0, "%s %d:%d %s", btrc_Vector_string_get(errors->levels, i), btrc_Vector_int_get(errors->lines, i), btrc_Vector_int_get(errors->columns, i), btrc_Vector_string_get(errors->messages, i));
-            char* __fstr_338_buf = __btrc_str_track(((char*)malloc((__fstr_338_len + 1))));
-            snprintf(__fstr_338_buf, (__fstr_338_len + 1), "%s %d:%d %s", btrc_Vector_string_get(errors->levels, i), btrc_Vector_int_get(errors->lines, i), btrc_Vector_int_get(errors->columns, i), btrc_Vector_string_get(errors->messages, i));
-            printf("%s\n", __fstr_338_buf);
+            int __fstr_402_len = snprintf(NULL, 0, "%s %d:%d %s", btrc_Vector_string_get(errors->levels, i), btrc_Vector_int_get(errors->lines, i), btrc_Vector_int_get(errors->columns, i), btrc_Vector_string_get(errors->messages, i));
+            char* __fstr_402_buf = __btrc_str_track(((char*)malloc((__fstr_402_len + 1))));
+            snprintf(__fstr_402_buf, (__fstr_402_len + 1), "%s %d:%d %s", btrc_Vector_string_get(errors->levels, i), btrc_Vector_int_get(errors->lines, i), btrc_Vector_int_get(errors->columns, i), btrc_Vector_string_get(errors->messages, i));
+            printf("%s\n", __fstr_402_buf);
         }
-        bool __btrc_ret_339 = false;
+        bool __btrc_ret_403 = false;
         if (errors != NULL) {
             if ((--errors->__rc) <= 0) {
                 KeymapErrors_destroy(errors);
             }
         }
-        return __btrc_ret_339;
+        return __btrc_ret_403;
     }
     SemuGeneratedFiles_writeSource(project, keymapSourcePath(project), source);
-    bool __btrc_ret_340 = true;
+    bool __btrc_ret_404 = true;
     if (errors != NULL) {
         if ((--errors->__rc) <= 0) {
             KeymapErrors_destroy(errors);
         }
     }
-    return __btrc_ret_340;
+    return __btrc_ret_404;
     if (errors != NULL) {
         if ((--errors->__rc) <= 0) {
             KeymapErrors_destroy(errors);
@@ -12481,9 +13182,9 @@ bool keymapPutActionCommand(char* project, char* actionId, char* command) {
     btrc_Vector_string* out = btrc_Vector_string_new();
     bool changed = false;
     char* prefix = __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat("action ", actionId)), " = "));
-    int __n_342 = btrc_Vector_string_iterLen(lines);
-    for (int __i_341 = 0; (__i_341 < __n_342); (__i_341++)) {
-        char* line = btrc_Vector_string_iterGet(lines, __i_341);
+    int __n_406 = btrc_Vector_string_iterLen(lines);
+    for (int __i_405 = 0; (__i_405 < __n_406); (__i_405++)) {
+        char* line = btrc_Vector_string_iterGet(lines, __i_405);
         if (__btrc_startsWith(line, prefix)) {
             btrc_Vector_string_push(out, __btrc_str_track(__btrc_strcat(prefix, command)));
             (changed = true);
@@ -12492,10 +13193,10 @@ bool keymapPutActionCommand(char* project, char* actionId, char* command) {
         }
     }
     if (!changed) {
-        int __fstr_345_len = snprintf(NULL, 0, "error 0:0 unknown keymap action '%s'", actionId);
-        char* __fstr_345_buf = __btrc_str_track(((char*)malloc((__fstr_345_len + 1))));
-        snprintf(__fstr_345_buf, (__fstr_345_len + 1), "error 0:0 unknown keymap action '%s'", actionId);
-        printf("%s\n", __fstr_345_buf);
+        int __fstr_409_len = snprintf(NULL, 0, "error 0:0 unknown keymap action '%s'", actionId);
+        char* __fstr_409_buf = __btrc_str_track(((char*)malloc((__fstr_409_len + 1))));
+        snprintf(__fstr_409_buf, (__fstr_409_len + 1), "error 0:0 unknown keymap action '%s'", actionId);
+        printf("%s\n", __fstr_409_buf);
         return false;
     }
     return writeValidatedKeymapSource(project, __btrc_str_track(__btrc_strcat(btrc_Vector_string_join(out, "\n"), "\n")));
@@ -12507,9 +13208,9 @@ bool keymapPutBindingCombo(char* project, char* actionId, char* combo) {
     btrc_Vector_string* out = btrc_Vector_string_new();
     bool changed = false;
     char* suffix = __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(" -> ${", actionId)), "}"));
-    int __n_347 = btrc_Vector_string_iterLen(lines);
-    for (int __i_346 = 0; (__i_346 < __n_347); (__i_346++)) {
-        char* line = btrc_Vector_string_iterGet(lines, __i_346);
+    int __n_411 = btrc_Vector_string_iterLen(lines);
+    for (int __i_410 = 0; (__i_410 < __n_411); (__i_410++)) {
+        char* line = btrc_Vector_string_iterGet(lines, __i_410);
         if (__btrc_startsWith(line, "bind ") && __btrc_endsWith(line, suffix)) {
             btrc_Vector_string_push(out, __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat("bind ", combo)), suffix)));
             (changed = true);
@@ -12518,10 +13219,10 @@ bool keymapPutBindingCombo(char* project, char* actionId, char* combo) {
         }
     }
     if (!changed) {
-        int __fstr_350_len = snprintf(NULL, 0, "error 0:0 unknown keymap binding '%s'", actionId);
-        char* __fstr_350_buf = __btrc_str_track(((char*)malloc((__fstr_350_len + 1))));
-        snprintf(__fstr_350_buf, (__fstr_350_len + 1), "error 0:0 unknown keymap binding '%s'", actionId);
-        printf("%s\n", __fstr_350_buf);
+        int __fstr_414_len = snprintf(NULL, 0, "error 0:0 unknown keymap binding '%s'", actionId);
+        char* __fstr_414_buf = __btrc_str_track(((char*)malloc((__fstr_414_len + 1))));
+        snprintf(__fstr_414_buf, (__fstr_414_len + 1), "error 0:0 unknown keymap binding '%s'", actionId);
+        printf("%s\n", __fstr_414_buf);
         return false;
     }
     return writeValidatedKeymapSource(project, __btrc_str_track(__btrc_strcat(btrc_Vector_string_join(out, "\n"), "\n")));
@@ -12554,9 +13255,9 @@ KeymapUiAction* KeymapUiActions_empty(void) {
 
 btrc_Vector_KeymapUiAction* KeymapUiActions_all(void) {
     btrc_Vector_KeymapUiAction* actions = btrc_Vector_KeymapUiAction_new();
-    int __n_352 = btrc_Vector_string_iterLen(requiredKeymapActions());
-    for (int __i_351 = 0; (__i_351 < __n_352); (__i_351++)) {
-        char* id = btrc_Vector_string_iterGet(requiredKeymapActions(), __i_351);
+    int __n_416 = btrc_Vector_string_iterLen(requiredKeymapActions());
+    for (int __i_415 = 0; (__i_415 < __n_416); (__i_415++)) {
+        char* id = btrc_Vector_string_iterGet(requiredKeymapActions(), __i_415);
         btrc_Vector_KeymapUiAction_push(actions, KeymapUiAction_new(id, actionLabel(id)));
     }
     return actions;
@@ -12591,9 +13292,9 @@ void KeymapUi_renderActions(KeymapUi* self) {
     printf("%s\n", "Edits update Semu-owned keymap source. Use apply to compile emulator-facing files.");
     printf("%s\n", "");
     int index = 1;
-    int __n_354 = btrc_Vector_KeymapUiAction_iterLen(KeymapUiActions_all());
-    for (int __i_353 = 0; (__i_353 < __n_354); (__i_353++)) {
-        KeymapUiAction* action = btrc_Vector_KeymapUiAction_iterGet(KeymapUiActions_all(), __i_353);
+    int __n_418 = btrc_Vector_KeymapUiAction_iterLen(KeymapUiActions_all());
+    for (int __i_417 = 0; (__i_417 < __n_418); (__i_417++)) {
+        KeymapUiAction* action = btrc_Vector_KeymapUiAction_iterGet(KeymapUiActions_all(), __i_417);
         printf("%s\n", __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat("  ", Strings_fromInt(index))), ". ")), action->label)), " [")), action->id)), "] command=")), irActionCommand(ir, action->id))), " combo=")), irBindingCombo(ir, action->id))));
         (index++);
     }
@@ -12613,9 +13314,9 @@ void KeymapUi_renderAction(KeymapUi* self, KeymapUiAction* action) {
     btrc_Vector_KeymapActionCapability* capabilities = actionCapabilities(action->id);
     if (capabilities->len > 0) {
         printf("%s\n", "Capabilities:");
-        int __n_356 = btrc_Vector_KeymapActionCapability_iterLen(capabilities);
-        for (int __i_355 = 0; (__i_355 < __n_356); (__i_355++)) {
-            KeymapActionCapability* capability = btrc_Vector_KeymapActionCapability_iterGet(capabilities, __i_355);
+        int __n_420 = btrc_Vector_KeymapActionCapability_iterLen(capabilities);
+        for (int __i_419 = 0; (__i_419 < __n_420); (__i_419++)) {
+            KeymapActionCapability* capability = btrc_Vector_KeymapActionCapability_iterGet(capabilities, __i_419);
             printf("%s\n", __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat("  ", capability->status)), " ")), capability->emulator)), ": ")), capability->note)));
         }
     }
@@ -12760,37 +13461,37 @@ void KeymapErrors_init(KeymapErrors* self) {
             btrc_Vector_string_free(self->levels);
         }
     }
-    btrc_Vector_string* __list_358 = btrc_Vector_string_new();
-    (self->levels = __list_358);
-    btrc_Vector_string* __list_357 = btrc_Vector_string_new();
-    (__list_357->__rc++);
+    btrc_Vector_string* __list_422 = btrc_Vector_string_new();
+    (self->levels = __list_422);
+    btrc_Vector_string* __list_421 = btrc_Vector_string_new();
+    (__list_421->__rc++);
     if (self->lines != NULL) {
         if ((--self->lines->__rc) <= 0) {
             btrc_Vector_int_free(self->lines);
         }
     }
-    btrc_Vector_int* __list_360 = btrc_Vector_int_new();
-    (self->lines = __list_360);
-    btrc_Vector_int* __list_359 = btrc_Vector_int_new();
-    (__list_359->__rc++);
+    btrc_Vector_int* __list_424 = btrc_Vector_int_new();
+    (self->lines = __list_424);
+    btrc_Vector_int* __list_423 = btrc_Vector_int_new();
+    (__list_423->__rc++);
     if (self->columns != NULL) {
         if ((--self->columns->__rc) <= 0) {
             btrc_Vector_int_free(self->columns);
         }
     }
-    btrc_Vector_int* __list_362 = btrc_Vector_int_new();
-    (self->columns = __list_362);
-    btrc_Vector_int* __list_361 = btrc_Vector_int_new();
-    (__list_361->__rc++);
+    btrc_Vector_int* __list_426 = btrc_Vector_int_new();
+    (self->columns = __list_426);
+    btrc_Vector_int* __list_425 = btrc_Vector_int_new();
+    (__list_425->__rc++);
     if (self->messages != NULL) {
         if ((--self->messages->__rc) <= 0) {
             btrc_Vector_string_free(self->messages);
         }
     }
-    btrc_Vector_string* __list_364 = btrc_Vector_string_new();
-    (self->messages = __list_364);
-    btrc_Vector_string* __list_363 = btrc_Vector_string_new();
-    (__list_363->__rc++);
+    btrc_Vector_string* __list_428 = btrc_Vector_string_new();
+    (self->messages = __list_428);
+    btrc_Vector_string* __list_427 = btrc_Vector_string_new();
+    (__list_427->__rc++);
 }
 
 KeymapErrors* KeymapErrors_new(void) {
@@ -12845,37 +13546,37 @@ void KeymapTokens_init(KeymapTokens* self) {
             btrc_Vector_string_free(self->kinds);
         }
     }
-    btrc_Vector_string* __list_366 = btrc_Vector_string_new();
-    (self->kinds = __list_366);
-    btrc_Vector_string* __list_365 = btrc_Vector_string_new();
-    (__list_365->__rc++);
+    btrc_Vector_string* __list_430 = btrc_Vector_string_new();
+    (self->kinds = __list_430);
+    btrc_Vector_string* __list_429 = btrc_Vector_string_new();
+    (__list_429->__rc++);
     if (self->texts != NULL) {
         if ((--self->texts->__rc) <= 0) {
             btrc_Vector_string_free(self->texts);
         }
     }
-    btrc_Vector_string* __list_368 = btrc_Vector_string_new();
-    (self->texts = __list_368);
-    btrc_Vector_string* __list_367 = btrc_Vector_string_new();
-    (__list_367->__rc++);
+    btrc_Vector_string* __list_432 = btrc_Vector_string_new();
+    (self->texts = __list_432);
+    btrc_Vector_string* __list_431 = btrc_Vector_string_new();
+    (__list_431->__rc++);
     if (self->lines != NULL) {
         if ((--self->lines->__rc) <= 0) {
             btrc_Vector_int_free(self->lines);
         }
     }
-    btrc_Vector_int* __list_370 = btrc_Vector_int_new();
-    (self->lines = __list_370);
-    btrc_Vector_int* __list_369 = btrc_Vector_int_new();
-    (__list_369->__rc++);
+    btrc_Vector_int* __list_434 = btrc_Vector_int_new();
+    (self->lines = __list_434);
+    btrc_Vector_int* __list_433 = btrc_Vector_int_new();
+    (__list_433->__rc++);
     if (self->columns != NULL) {
         if ((--self->columns->__rc) <= 0) {
             btrc_Vector_int_free(self->columns);
         }
     }
-    btrc_Vector_int* __list_372 = btrc_Vector_int_new();
-    (self->columns = __list_372);
-    btrc_Vector_int* __list_371 = btrc_Vector_int_new();
-    (__list_371->__rc++);
+    btrc_Vector_int* __list_436 = btrc_Vector_int_new();
+    (self->columns = __list_436);
+    btrc_Vector_int* __list_435 = btrc_Vector_int_new();
+    (__list_435->__rc++);
 }
 
 KeymapTokens* KeymapTokens_new(void) {
@@ -12930,37 +13631,37 @@ void KeymapIr_init(KeymapIr* self) {
             btrc_Vector_string_free(self->actionIds);
         }
     }
-    btrc_Vector_string* __list_374 = btrc_Vector_string_new();
-    (self->actionIds = __list_374);
-    btrc_Vector_string* __list_373 = btrc_Vector_string_new();
-    (__list_373->__rc++);
+    btrc_Vector_string* __list_438 = btrc_Vector_string_new();
+    (self->actionIds = __list_438);
+    btrc_Vector_string* __list_437 = btrc_Vector_string_new();
+    (__list_437->__rc++);
     if (self->actionCommands != NULL) {
         if ((--self->actionCommands->__rc) <= 0) {
             btrc_Vector_string_free(self->actionCommands);
         }
     }
-    btrc_Vector_string* __list_376 = btrc_Vector_string_new();
-    (self->actionCommands = __list_376);
-    btrc_Vector_string* __list_375 = btrc_Vector_string_new();
-    (__list_375->__rc++);
+    btrc_Vector_string* __list_440 = btrc_Vector_string_new();
+    (self->actionCommands = __list_440);
+    btrc_Vector_string* __list_439 = btrc_Vector_string_new();
+    (__list_439->__rc++);
     if (self->bindingCombos != NULL) {
         if ((--self->bindingCombos->__rc) <= 0) {
             btrc_Vector_string_free(self->bindingCombos);
         }
     }
-    btrc_Vector_string* __list_378 = btrc_Vector_string_new();
-    (self->bindingCombos = __list_378);
-    btrc_Vector_string* __list_377 = btrc_Vector_string_new();
-    (__list_377->__rc++);
+    btrc_Vector_string* __list_442 = btrc_Vector_string_new();
+    (self->bindingCombos = __list_442);
+    btrc_Vector_string* __list_441 = btrc_Vector_string_new();
+    (__list_441->__rc++);
     if (self->bindingActions != NULL) {
         if ((--self->bindingActions->__rc) <= 0) {
             btrc_Vector_string_free(self->bindingActions);
         }
     }
-    btrc_Vector_string* __list_380 = btrc_Vector_string_new();
-    (self->bindingActions = __list_380);
-    btrc_Vector_string* __list_379 = btrc_Vector_string_new();
-    (__list_379->__rc++);
+    btrc_Vector_string* __list_444 = btrc_Vector_string_new();
+    (self->bindingActions = __list_444);
+    btrc_Vector_string* __list_443 = btrc_Vector_string_new();
+    (__list_443->__rc++);
 }
 
 KeymapIr* KeymapIr_new(void) {
@@ -13081,10 +13782,10 @@ void KeymapParser_skipLine(KeymapParser* self) {
 
 char* KeymapParser_valueToken(KeymapParser* self, char* expected) {
     if (self->index >= KeymapTokens_count(self->tokens)) {
-        int __fstr_382_len = snprintf(NULL, 0, "expected %s", expected);
-        char* __fstr_382_buf = __btrc_str_track(((char*)malloc((__fstr_382_len + 1))));
-        snprintf(__fstr_382_buf, (__fstr_382_len + 1), "expected %s", expected);
-        KeymapErrors_error(self->errors, 0, 0, __fstr_382_buf);
+        int __fstr_446_len = snprintf(NULL, 0, "expected %s", expected);
+        char* __fstr_446_buf = __btrc_str_track(((char*)malloc((__fstr_446_len + 1))));
+        snprintf(__fstr_446_buf, (__fstr_446_len + 1), "expected %s", expected);
+        KeymapErrors_error(self->errors, 0, 0, __fstr_446_buf);
         return "";
     }
     char* kind = KeymapParser_kind(self);
@@ -13093,10 +13794,10 @@ char* KeymapParser_valueToken(KeymapParser* self, char* expected) {
         (self->index++);
         return result;
     }
-    int __fstr_384_len = snprintf(NULL, 0, "expected %s", expected);
-    char* __fstr_384_buf = __btrc_str_track(((char*)malloc((__fstr_384_len + 1))));
-    snprintf(__fstr_384_buf, (__fstr_384_len + 1), "expected %s", expected);
-    KeymapParser_errorHere(self, __fstr_384_buf);
+    int __fstr_448_len = snprintf(NULL, 0, "expected %s", expected);
+    char* __fstr_448_buf = __btrc_str_track(((char*)malloc((__fstr_448_len + 1))));
+    snprintf(__fstr_448_buf, (__fstr_448_len + 1), "expected %s", expected);
+    KeymapParser_errorHere(self, __fstr_448_buf);
     (self->index++);
     return "";
 }
@@ -13168,10 +13869,10 @@ KeymapIr* KeymapParser_parse(KeymapParser* self) {
                 KeymapParser_skipLine(self);
             }
         } else if (((int)strlen(head)) > 0) {
-            int __fstr_386_len = snprintf(NULL, 0, "unknown statement '%s'", head);
-            char* __fstr_386_buf = __btrc_str_track(((char*)malloc((__fstr_386_len + 1))));
-            snprintf(__fstr_386_buf, (__fstr_386_len + 1), "unknown statement '%s'", head);
-            KeymapParser_errorHere(self, __fstr_386_buf);
+            int __fstr_450_len = snprintf(NULL, 0, "unknown statement '%s'", head);
+            char* __fstr_450_buf = __btrc_str_track(((char*)malloc((__fstr_450_len + 1))));
+            snprintf(__fstr_450_buf, (__fstr_450_len + 1), "unknown statement '%s'", head);
+            KeymapParser_errorHere(self, __fstr_450_buf);
             KeymapParser_skipLine(self);
         }
     }
@@ -13197,22 +13898,6 @@ bool SemuGeneratedFiles_isProjectOwned(char* project, char* path) {
 
 bool SemuGeneratedFiles_isAdapterState(char* project, char* path) {
     return (((int)strlen(semuAdapterStateScope(project, path))) > 0);
-}
-
-char* SemuGeneratedFiles_ownedScope(char* project, char* path) {
-    char* source = semuSourceProjectScope(project, path);
-    if (((int)strlen(source)) > 0) {
-        return __btrc_str_track(__btrc_strcat("source:", source));
-    }
-    char* generated = semuGeneratedProjectScope(project, path);
-    if (((int)strlen(generated)) > 0) {
-        return __btrc_str_track(__btrc_strcat("generated:", generated));
-    }
-    char* adapter = semuAdapterStateScope(project, path);
-    if (((int)strlen(adapter)) > 0) {
-        return __btrc_str_track(__btrc_strcat("adapter_state:", adapter));
-    }
-    return "";
 }
 
 void SemuGeneratedFiles_writeSource(char* project, char* path, char* text) {
@@ -13241,16 +13926,6 @@ void SemuGeneratedFiles_writeProject(char* project, char* path, char* text) {
 
 void SemuGeneratedFiles_writeProjectJson(char* project, char* path, char* text) {
     SemuGeneratedFiles_writeProject(project, path, jsonPrettyText(text));
-}
-
-void SemuGeneratedFiles_writeOwnedProject(char* project, char* path, char* text) {
-    char* scope = SemuGeneratedFiles_ownedScope(project, path);
-    if (((int)strlen(scope)) == 0) {
-        printf("%s\n", __btrc_str_track(__btrc_strcat("error 0:0 refused owned write outside Semu-owned roots: ", path)));
-        return;
-    }
-    ensureDir(PathTools_dirname(path));
-    FileSystem_writeText(path, text);
 }
 
 void SemuGeneratedFiles_writeAdapterState(char* project, char* path, char* text) {
@@ -13315,7 +13990,7 @@ char* semuSourceProjectScope(char* project, char* path) {
 }
 
 char* semuGeneratedProjectScope(char* project, char* path) {
-    if (strcmp(path, joinPath(project, "semu.json")) == 0) {
+    if (strcmp(path, manifestPath(project)) == 0) {
         return "manifest";
     }
     if (strcmp(path, esDeSettingsPath(project)) == 0) {
@@ -13324,22 +13999,25 @@ char* semuGeneratedProjectScope(char* project, char* path) {
     if (semuPathWithin(path, customSystemsRoot(project))) {
         return "es_de_custom_systems";
     }
+    if (semuPathWithin(path, joinPath(generatedPackagingRoot(project), "es-de"))) {
+        return "es_de_packaging";
+    }
     if (semuPathWithin(path, linuxPackagingRoot(project))) {
         return "linux_packaging";
     }
     if (semuPathWithin(path, emulatorProfilesRoot(project))) {
         return "emulator_profiles";
     }
-    if (semuPathWithin(path, joinPath(project, "input/steam-input"))) {
+    if (semuPathWithin(path, steamInputTemplatesRoot(project))) {
         return "steam_input_templates";
     }
     if (semuPathWithin(path, esDeSettingsEntriesRoot(project))) {
         return "settings_entries";
     }
-    if (semuPathWithin(path, joinPath(project, "settings/presentation-state"))) {
+    if (semuPathWithin(path, presentationStateRoot(project))) {
         return "presentation_state";
     }
-    if (semuPathWithin(path, joinPath(project, "sync/bin"))) {
+    if (semuPathWithin(path, syncScriptsDir(project))) {
         return "sync_scripts";
     }
     return "";
@@ -13349,13 +14027,13 @@ char* semuAdapterStateScope(char* project, char* path) {
     if (strcmp(path, lifecycleStatePath(project)) == 0) {
         return "lifecycle";
     }
-    if (semuPathWithin(path, joinPath(project, ".semu/appimage-state"))) {
+    if (semuPathWithin(path, joinPath(semuStateRoot(project), "appimage-state"))) {
         return "routed_emulator";
     }
-    if (semuPathWithin(path, joinPath(project, ".semu/flatpak-state"))) {
+    if (semuPathWithin(path, joinPath(semuStateRoot(project), "flatpak-state"))) {
         return "flatpak_emulator";
     }
-    if (semuPathWithin(path, joinPath(project, ".semu/verification"))) {
+    if (semuPathWithin(path, joinPath(semuStateRoot(project), "verification"))) {
         return "verification";
     }
     if (semuPathWithin(path, lifecycleBackupsRoot(project))) {
@@ -13368,8 +14046,36 @@ char* joinPath(char* left, char* right) {
     return PathTools_join(left, right);
 }
 
+char* configRoot(char* project) {
+    return joinPath(project, "config");
+}
+
+char* generatedRoot(char* project) {
+    return joinPath(project, "generated");
+}
+
+char* generatedPackagingRoot(char* project) {
+    return joinPath(generatedRoot(project), "packaging");
+}
+
+char* generatedRuntimeRoot(char* project) {
+    return joinPath(generatedRoot(project), "runtime");
+}
+
+char* generatedNixRoot(char* project) {
+    return joinPath(generatedRoot(project), "nix");
+}
+
+char* manifestPath(char* project) {
+    return joinPath(generatedRoot(project), "semu.json");
+}
+
+char* nixResultRoot(char* project) {
+    return joinPath(generatedNixRoot(project), "result");
+}
+
 char* contentRoot(char* project) {
-    return joinPath(project, ".semu/content");
+    return joinPath(generatedRuntimeRoot(project), "content");
 }
 
 char* romsRoot(char* project) {
@@ -13377,11 +14083,11 @@ char* romsRoot(char* project) {
 }
 
 char* syncRoot(char* project) {
-    return joinPath(project, "sync");
+    return joinPath(generatedRuntimeRoot(project), "sync");
 }
 
 char* syncConfigPath(char* project) {
-    return joinPath(syncRoot(project), "sync.json");
+    return joinPath(configRoot(project), "settings/sync.json");
 }
 
 char* syncthingHome(char* project) {
@@ -13397,11 +14103,11 @@ char* syncthingDataDir(char* project) {
 }
 
 char* syncScriptsDir(char* project) {
-    return joinPath(syncRoot(project), "bin");
+    return joinPath(generatedPackagingRoot(project), "sync/bin");
 }
 
 char* syncLogDir(char* project) {
-    return joinPath(syncRoot(project), "logs");
+    return joinPath(generatedRuntimeRoot(project), "logs/sync");
 }
 
 char* biosRoot(char* project) {
@@ -13409,19 +14115,23 @@ char* biosRoot(char* project) {
 }
 
 char* customSystemsRoot(char* project) {
-    return joinPath(project, "build/packaging/es-de/custom_systems");
+    return joinPath(generatedPackagingRoot(project), "es-de/custom_systems");
 }
 
 char* esDeSettingsPath(char* project) {
-    return joinPath(project, "build/packaging/es-de/settings/es_settings.xml");
+    return joinPath(generatedPackagingRoot(project), "es-de/settings/es_settings.xml");
 }
 
 char* esDeSettingsEntriesRoot(char* project) {
-    return joinPath(project, "build/packaging/es-de/settings-entries");
+    return joinPath(generatedPackagingRoot(project), "es-de/settings-entries");
+}
+
+char* steamInputTemplatesRoot(char* project) {
+    return joinPath(generatedPackagingRoot(project), "input/steam-input");
 }
 
 char* emulatorProfilesRoot(char* project) {
-    return joinPath(project, "build/packaging/emulators/profiles");
+    return joinPath(generatedPackagingRoot(project), "emulators/profiles");
 }
 
 char* emulatorProfilePath(char* project, char* relative) {
@@ -13429,7 +14139,7 @@ char* emulatorProfilePath(char* project, char* relative) {
 }
 
 char* linuxPackagingRoot(char* project) {
-    return joinPath(project, "packaging/linux");
+    return joinPath(generatedPackagingRoot(project), "linux");
 }
 
 char* linuxLauncherBin(char* project) {
@@ -13437,7 +14147,7 @@ char* linuxLauncherBin(char* project) {
 }
 
 char* keymapsRoot(char* project) {
-    return joinPath(project, "input/keymaps");
+    return joinPath(configRoot(project), "input/keymaps");
 }
 
 char* keymapSourcePath(char* project) {
@@ -13446,6 +14156,18 @@ char* keymapSourcePath(char* project) {
 
 char* homeDir(void) {
     return Environment_get("SEMU_HOME", Environment_get("HOME", "."));
+}
+
+char* externalEsDeRoot(char* userHome) {
+    return joinPath(userHome, "ES-DE");
+}
+
+char* externalEsDeCustomSystemsRoot(char* userHome) {
+    return joinPath(externalEsDeRoot(userHome), "custom_systems");
+}
+
+char* externalEsDeSettingsRoot(char* userHome) {
+    return joinPath(externalEsDeRoot(userHome), "settings");
 }
 
 char* systemdUserDir(void) {
@@ -13498,15 +14220,15 @@ char* normalizeRomsRoot(char* romsDir) {
     if (((int)strlen(romsDir)) == 0) {
         return "";
     }
-    btrc_Vector_string* __list_387 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_387, joinPath(romsDir, "Emulation/ES-DE/ES-DE/ROMs"));
-    btrc_Vector_string_push(__list_387, joinPath(romsDir, "ES-DE/ES-DE/ROMs"));
-    btrc_Vector_string_push(__list_387, joinPath(romsDir, "Emulation/ROMs"));
-    btrc_Vector_string_push(__list_387, joinPath(romsDir, "ROMs"));
-    btrc_Vector_string* candidates = __list_387;
-    int __n_389 = btrc_Vector_string_iterLen(candidates);
-    for (int __i_388 = 0; (__i_388 < __n_389); (__i_388++)) {
-        char* candidate = btrc_Vector_string_iterGet(candidates, __i_388);
+    btrc_Vector_string* __list_451 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_451, joinPath(romsDir, "Emulation/ES-DE/ES-DE/ROMs"));
+    btrc_Vector_string_push(__list_451, joinPath(romsDir, "ES-DE/ES-DE/ROMs"));
+    btrc_Vector_string_push(__list_451, joinPath(romsDir, "Emulation/ROMs"));
+    btrc_Vector_string_push(__list_451, joinPath(romsDir, "ROMs"));
+    btrc_Vector_string* candidates = __list_451;
+    int __n_453 = btrc_Vector_string_iterLen(candidates);
+    for (int __i_452 = 0; (__i_452 < __n_453); (__i_452++)) {
+        char* candidate = btrc_Vector_string_iterGet(candidates, __i_452);
         if (FileSystem_isDir(candidate)) {
             return candidate;
         }
@@ -13543,16 +14265,16 @@ btrc_Vector_string* declaredRomDirs(void) {
 }
 
 btrc_Vector_string* controllerProfileFiles(void) {
-    btrc_Vector_string* __list_390 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_390, "build/packaging/emulators/profiles/RetroArch/retroarch.cfg.linux-backup");
-    btrc_Vector_string_push(__list_390, "build/packaging/emulators/profiles/Dolphin/config/Profiles/GCPad/Steam Deck.ini");
-    btrc_Vector_string_push(__list_390, "build/packaging/emulators/profiles/Dolphin/config/Profiles/Hotkeys/Steam Deck.ini");
-    btrc_Vector_string_push(__list_390, "build/packaging/emulators/profiles/Dolphin/config/Profiles/Wiimote/Wiimote (SD).ini");
-    btrc_Vector_string_push(__list_390, "build/packaging/emulators/profiles/Dolphin/config/Profiles/Wiimote/Wiimote + Classic Controller (SD).ini");
-    btrc_Vector_string_push(__list_390, "build/packaging/emulators/profiles/Cemu/config/controllerProfiles/SteamInput-P1.xml");
-    btrc_Vector_string_push(__list_390, "build/packaging/emulators/profiles/PCSX2/config/inputprofiles/Steam Deck.ini");
-    btrc_Vector_string_push(__list_390, "build/packaging/emulators/profiles/Ryujinx/config/profiles/controller/Steam Virtual Controller.json");
-    return __list_390;
+    btrc_Vector_string* __list_454 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_454, "generated/packaging/emulators/profiles/RetroArch/retroarch.cfg.linux-backup");
+    btrc_Vector_string_push(__list_454, "generated/packaging/emulators/profiles/Dolphin/config/Profiles/GCPad/Steam Deck.ini");
+    btrc_Vector_string_push(__list_454, "generated/packaging/emulators/profiles/Dolphin/config/Profiles/Hotkeys/Steam Deck.ini");
+    btrc_Vector_string_push(__list_454, "generated/packaging/emulators/profiles/Dolphin/config/Profiles/Wiimote/Wiimote (SD).ini");
+    btrc_Vector_string_push(__list_454, "generated/packaging/emulators/profiles/Dolphin/config/Profiles/Wiimote/Wiimote + Classic Controller (SD).ini");
+    btrc_Vector_string_push(__list_454, "generated/packaging/emulators/profiles/Cemu/config/controllerProfiles/SteamInput-P1.xml");
+    btrc_Vector_string_push(__list_454, "generated/packaging/emulators/profiles/PCSX2/config/inputprofiles/Steam Deck.ini");
+    btrc_Vector_string_push(__list_454, "generated/packaging/emulators/profiles/Ryujinx/config/profiles/controller/Steam Virtual Controller.json");
+    return __list_454;
 }
 
 char* esSettingsXmlWithPaths(char* roms, char* media, char* themes) {
@@ -13569,31 +14291,37 @@ void ensureDir(char* path) {
     FileSystem_mkdirp(path);
 }
 
-char* bezelManifestHole(char* system) {
-    char* s = __btrc_str_track(__btrc_toLower(system));
-    if (strcmp(s, "n64") == 0) {
-        return "0.2542,0.1155,0.4917,0.6556";
+char* bezelManifestPath(char* project) {
+    return joinPath(configRoot(project), "assets/bezels.json");
+}
+
+char* bezelManifestHoleFromText(char* text, char* system) {
+    int key = __btrc_indexOf(text, __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat("\"", __btrc_str_track(__btrc_toLower(system)))), "\"")));
+    if (key < 0) {
+        return "";
     }
-    if (strcmp(s, "nes") == 0) {
-        return "0.2344,0.0669,0.5312,0.7083";
+    char* section = __btrc_str_track(__btrc_substring(text, key, (((int)strlen(text)) - key)));
+    int hole = __btrc_indexOf(section, "\"hole\"");
+    if (hole < 0) {
+        return "";
     }
-    if (strcmp(s, "snes") == 0) {
-        return "0.2542,0.0993,0.4917,0.6556";
+    char* value = __btrc_str_track(__btrc_substring(section, hole, (((int)strlen(section)) - hole)));
+    int open = __btrc_indexOf(value, "[");
+    int close = __btrc_indexOf(value, "]");
+    if (((open < 0) || (close < 0)) || (close <= open)) {
+        return "";
     }
-    if (strcmp(s, "genesis") == 0) {
-        return "0.2539,0.1057,0.4922,0.6562";
+    return __btrc_str_track(__btrc_trim(__btrc_str_track(__btrc_substring(value, (open + 1), ((close - open) - 1)))));
+}
+
+char* bezelManifestHole(char* project, char* system) {
+    char* path = bezelManifestPath(project);
+    if (!FileSystem_isFile(path)) {
+        return "";
     }
-    if (strcmp(s, "psx") == 0) {
-        return "0.2500,0.1070,0.5000,0.6667";
-    }
-    if (strcmp(s, "gb") == 0) {
-        return "0.1843,0.2128,0.6314,0.2711";
-    }
-    if (strcmp(s, "gbc") == 0) {
-        return "0.1837,0.1910,0.6326,0.2794";
-    }
-    if (strcmp(s, "gba") == 0) {
-        return "0.2441,0.1134,0.5118,0.7610";
+    char* hole = bezelManifestHoleFromText(FileSystem_readText(path), system);
+    if (((int)strlen(hole)) > 0) {
+        return hole;
     }
     return "";
 }
@@ -13639,54 +14367,54 @@ bool launcherUsesX11(char* emulator) {
 btrc_Vector_string* launcherPresetArgs(char* emulator) {
     char* key = __btrc_str_track(__btrc_toLower(emulator));
     if (strcmp(key, "dolphin") == 0) {
-        btrc_Vector_string* __list_391 = btrc_Vector_string_new();
-        btrc_Vector_string_push(__list_391, "--config");
-        btrc_Vector_string_push(__list_391, "Dolphin.Display.Fullscreen=True");
-        btrc_Vector_string_push(__list_391, "-b");
-        btrc_Vector_string_push(__list_391, "-e");
-        return __list_391;
+        btrc_Vector_string* __list_455 = btrc_Vector_string_new();
+        btrc_Vector_string_push(__list_455, "--config");
+        btrc_Vector_string_push(__list_455, "Dolphin.Display.Fullscreen=True");
+        btrc_Vector_string_push(__list_455, "-b");
+        btrc_Vector_string_push(__list_455, "-e");
+        return __list_455;
     }
     if (strcmp(key, "retroarch") == 0) {
-        btrc_Vector_string* __list_392 = btrc_Vector_string_new();
-        btrc_Vector_string_push(__list_392, "-f");
-        return __list_392;
+        btrc_Vector_string* __list_456 = btrc_Vector_string_new();
+        btrc_Vector_string_push(__list_456, "-f");
+        return __list_456;
     }
     if (strcmp(key, "ppsspp") == 0) {
-        btrc_Vector_string* __list_393 = btrc_Vector_string_new();
-        btrc_Vector_string_push(__list_393, "--fullscreen");
-        return __list_393;
+        btrc_Vector_string* __list_457 = btrc_Vector_string_new();
+        btrc_Vector_string_push(__list_457, "--fullscreen");
+        return __list_457;
     }
     if (strcmp(key, "flycast") == 0) {
-        btrc_Vector_string* __list_394 = btrc_Vector_string_new();
-        btrc_Vector_string_push(__list_394, "-config");
-        btrc_Vector_string_push(__list_394, "window:fullscreen=yes");
-        return __list_394;
+        btrc_Vector_string* __list_458 = btrc_Vector_string_new();
+        btrc_Vector_string_push(__list_458, "-config");
+        btrc_Vector_string_push(__list_458, "window:fullscreen=yes");
+        return __list_458;
     }
     if (strcmp(key, "melonds") == 0) {
-        btrc_Vector_string* __list_395 = btrc_Vector_string_new();
-        btrc_Vector_string_push(__list_395, "--fullscreen");
-        return __list_395;
+        btrc_Vector_string* __list_459 = btrc_Vector_string_new();
+        btrc_Vector_string_push(__list_459, "--fullscreen");
+        return __list_459;
     }
     if (strcmp(key, "pcsx2") == 0) {
-        btrc_Vector_string* __list_396 = btrc_Vector_string_new();
-        btrc_Vector_string_push(__list_396, "-batch");
-        btrc_Vector_string_push(__list_396, "-fullscreen");
-        return __list_396;
+        btrc_Vector_string* __list_460 = btrc_Vector_string_new();
+        btrc_Vector_string_push(__list_460, "-batch");
+        btrc_Vector_string_push(__list_460, "-fullscreen");
+        return __list_460;
     }
     if (strcmp(key, "cemu") == 0) {
-        btrc_Vector_string* __list_397 = btrc_Vector_string_new();
-        btrc_Vector_string_push(__list_397, "-f");
-        btrc_Vector_string_push(__list_397, "-g");
-        return __list_397;
+        btrc_Vector_string* __list_461 = btrc_Vector_string_new();
+        btrc_Vector_string_push(__list_461, "-f");
+        btrc_Vector_string_push(__list_461, "-g");
+        return __list_461;
     }
     if (strcmp(key, "azahar") == 0) {
         btrc_Vector_string* empty = btrc_Vector_string_new();
         return empty;
     }
     if (strcmp(key, "ryujinx") == 0) {
-        btrc_Vector_string* __list_398 = btrc_Vector_string_new();
-        btrc_Vector_string_push(__list_398, "--fullscreen");
-        return __list_398;
+        btrc_Vector_string* __list_462 = btrc_Vector_string_new();
+        btrc_Vector_string_push(__list_462, "--fullscreen");
+        return __list_462;
     }
     btrc_Vector_string* empty = btrc_Vector_string_new();
     return empty;
@@ -13711,9 +14439,9 @@ bool launcherIsUtilityArg(char* arg) {
 }
 
 bool launcherIsUtilityInvocation(btrc_Vector_string* emulatorArgs) {
-    int __n_400 = btrc_Vector_string_iterLen(emulatorArgs);
-    for (int __i_399 = 0; (__i_399 < __n_400); (__i_399++)) {
-        char* arg = btrc_Vector_string_iterGet(emulatorArgs, __i_399);
+    int __n_464 = btrc_Vector_string_iterLen(emulatorArgs);
+    for (int __i_463 = 0; (__i_463 < __n_464); (__i_463++)) {
+        char* arg = btrc_Vector_string_iterGet(emulatorArgs, __i_463);
         if (launcherIsUtilityArg(arg)) {
             return true;
         }
@@ -13722,9 +14450,9 @@ bool launcherIsUtilityInvocation(btrc_Vector_string* emulatorArgs) {
 }
 
 bool launcherHasFlag(btrc_Vector_string* emulatorArgs, char* flag) {
-    int __n_402 = btrc_Vector_string_iterLen(emulatorArgs);
-    for (int __i_401 = 0; (__i_401 < __n_402); (__i_401++)) {
-        char* arg = btrc_Vector_string_iterGet(emulatorArgs, __i_401);
+    int __n_466 = btrc_Vector_string_iterLen(emulatorArgs);
+    for (int __i_465 = 0; (__i_465 < __n_466); (__i_465++)) {
+        char* arg = btrc_Vector_string_iterGet(emulatorArgs, __i_465);
         if (strcmp(arg, flag) == 0) {
             return true;
         }
@@ -13789,20 +14517,20 @@ btrc_Vector_string* launcherArgsWithDefaults(char* project, char* emulator, btrc
             (i++);
         }
     }
-    int __n_404 = btrc_Vector_string_iterLen(emulatorArgs);
-    for (int __i_403 = 0; (__i_403 < __n_404); (__i_403++)) {
-        char* arg = btrc_Vector_string_iterGet(emulatorArgs, __i_403);
+    int __n_468 = btrc_Vector_string_iterLen(emulatorArgs);
+    for (int __i_467 = 0; (__i_467 < __n_468); (__i_467++)) {
+        char* arg = btrc_Vector_string_iterGet(emulatorArgs, __i_467);
         btrc_Vector_string_push(out, arg);
     }
     return out;
 }
 
 char* launcherFlatpakStateRoot(char* project, char* emulator) {
-    return joinPath(joinPath(project, ".semu/flatpak-state"), __btrc_str_track(__btrc_toLower(emulator)));
+    return joinPath(joinPath(semuStateRoot(project), "flatpak-state"), __btrc_str_track(__btrc_toLower(emulator)));
 }
 
 char* launcherRoutedStateRoot(char* project, char* emulator) {
-    return joinPath(joinPath(project, ".semu/appimage-state"), __btrc_str_track(__btrc_toLower(emulator)));
+    return joinPath(joinPath(semuStateRoot(project), "appimage-state"), __btrc_str_track(__btrc_toLower(emulator)));
 }
 
 void launcherCopyDirContents(char* project, char* source, char* destination) {
@@ -13836,9 +14564,9 @@ void launcherSymlinkDir(char* source, char* destination) {
 }
 
 void launcherCopyFirstExisting(char* project, btrc_Vector_string* sources, char* destination) {
-    int __n_406 = btrc_Vector_string_iterLen(sources);
-    for (int __i_405 = 0; (__i_405 < __n_406); (__i_405++)) {
-        char* source = btrc_Vector_string_iterGet(sources, __i_405);
+    int __n_470 = btrc_Vector_string_iterLen(sources);
+    for (int __i_469 = 0; (__i_469 < __n_470); (__i_469++)) {
+        char* source = btrc_Vector_string_iterGet(sources, __i_469);
         if (FileSystem_isFile(source)) {
             launcherCopyFile(project, source, destination);
             return;
@@ -13847,9 +14575,9 @@ void launcherCopyFirstExisting(char* project, btrc_Vector_string* sources, char*
 }
 
 void launcherCopyFirstExistingExternal(char* purpose, btrc_Vector_string* sources, char* destination) {
-    int __n_408 = btrc_Vector_string_iterLen(sources);
-    for (int __i_407 = 0; (__i_407 < __n_408); (__i_407++)) {
-        char* source = btrc_Vector_string_iterGet(sources, __i_407);
+    int __n_472 = btrc_Vector_string_iterLen(sources);
+    for (int __i_471 = 0; (__i_471 < __n_472); (__i_471++)) {
+        char* source = btrc_Vector_string_iterGet(sources, __i_471);
         if (FileSystem_isFile(source)) {
             SemuGeneratedFiles_writeExternalInstall(purpose, destination, FileSystem_readText(source));
             return;
@@ -13933,11 +14661,11 @@ char* launcherNixGlWrapper(char* project) {
     if (((int)strlen(path)) > 0) {
         return path;
     }
-    (path = launcherNixGlCandidate(joinPath(project, "result/bin/nixGLIntel")));
+    (path = launcherNixGlCandidate(joinPath(nixResultRoot(project), "bin/nixGLIntel")));
     if (((int)strlen(path)) > 0) {
         return path;
     }
-    return launcherNixGlCandidate(joinPath(project, "result/bin/nixGL"));
+    return launcherNixGlCandidate(joinPath(nixResultRoot(project), "bin/nixGL"));
 }
 
 char* launcherRoutedExecutableCommand(char* project, char* emulator, char* executable) {
@@ -14027,17 +14755,17 @@ void launcherSeedEmulatorState(char* project, char* emulator, char* configRoot, 
     if (strcmp(key, "cemu") == 0) {
         launcherCopyStateDir(project, "Cemu/config", joinPath(configRoot, "Cemu"));
         launcherCopyStateDir(project, "Cemu/data", joinPath(dataRoot, "Cemu"));
-        btrc_Vector_string* __list_410 = btrc_Vector_string_new();
-        btrc_Vector_string_push(__list_410, joinPath(configuredEmulationRoot(project), "Cemu/data/keys.txt"));
-        btrc_Vector_string_push(__list_410, emulatorProfilePath(project, "Cemu/data/keys.txt"));
-        launcherCopyFirstExisting(project, __list_410, joinPath(dataRoot, "Cemu/keys.txt"));
+        btrc_Vector_string* __list_474 = btrc_Vector_string_new();
+        btrc_Vector_string_push(__list_474, joinPath(configuredEmulationRoot(project), "Cemu/data/keys.txt"));
+        btrc_Vector_string_push(__list_474, emulatorProfilePath(project, "Cemu/data/keys.txt"));
+        launcherCopyFirstExisting(project, __list_474, joinPath(dataRoot, "Cemu/keys.txt"));
         launcherWriteCemuSettings(project, configRoot, dataRoot);
         if (seedFlatpakHome) {
             char* cemuHome = joinPath(Environment_get("HOME", ""), ".var/app/info.cemu.Cemu/data/Cemu");
-            btrc_Vector_string* __list_412 = btrc_Vector_string_new();
-            btrc_Vector_string_push(__list_412, joinPath(configuredEmulationRoot(project), "Cemu/data/keys.txt"));
-            btrc_Vector_string_push(__list_412, emulatorProfilePath(project, "Cemu/data/keys.txt"));
-            launcherCopyFirstExistingExternal("flatpak_home:cemu_keys", __list_412, joinPath(cemuHome, "keys.txt"));
+            btrc_Vector_string* __list_476 = btrc_Vector_string_new();
+            btrc_Vector_string_push(__list_476, joinPath(configuredEmulationRoot(project), "Cemu/data/keys.txt"));
+            btrc_Vector_string_push(__list_476, emulatorProfilePath(project, "Cemu/data/keys.txt"));
+            launcherCopyFirstExistingExternal("flatpak_home:cemu_keys", __list_476, joinPath(cemuHome, "keys.txt"));
             if (!FileSystem_exists(joinPath(cemuHome, "settings.xml"))) {
                 SemuGeneratedFiles_writeExternalInstall("flatpak_home:cemu_settings", joinPath(cemuHome, "settings.xml"), "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<content>\n\t<Graphic>\n\t\t<api>1</api>\n\t</Graphic>\n\t<check_update>false</check_update>\n</content>\n");
             }
@@ -14087,14 +14815,14 @@ void launcherSeedEmulatorState(char* project, char* emulator, char* configRoot, 
         launcherSymlinkDir(joinPath(externalConfig, "sdcard"), joinPath(configRoot, "Ryujinx/sdcard"));
         char* systemRoot = joinPath(configRoot, "Ryujinx/system");
         ensureDir(systemRoot);
-        btrc_Vector_string* __list_414 = btrc_Vector_string_new();
-        btrc_Vector_string_push(__list_414, joinPath(configuredEmulationRoot(project), "Ryujinx/config/system/prod.keys"));
-        btrc_Vector_string_push(__list_414, joinPath(biosRoot(project), "switch/prod.keys"));
-        launcherCopyFirstExisting(project, __list_414, joinPath(systemRoot, "prod.keys"));
-        btrc_Vector_string* __list_416 = btrc_Vector_string_new();
-        btrc_Vector_string_push(__list_416, joinPath(configuredEmulationRoot(project), "Ryujinx/config/system/title.keys"));
-        btrc_Vector_string_push(__list_416, joinPath(biosRoot(project), "switch/title.keys"));
-        launcherCopyFirstExisting(project, __list_416, joinPath(systemRoot, "title.keys"));
+        btrc_Vector_string* __list_478 = btrc_Vector_string_new();
+        btrc_Vector_string_push(__list_478, joinPath(configuredEmulationRoot(project), "Ryujinx/config/system/prod.keys"));
+        btrc_Vector_string_push(__list_478, joinPath(biosRoot(project), "switch/prod.keys"));
+        launcherCopyFirstExisting(project, __list_478, joinPath(systemRoot, "prod.keys"));
+        btrc_Vector_string* __list_480 = btrc_Vector_string_new();
+        btrc_Vector_string_push(__list_480, joinPath(configuredEmulationRoot(project), "Ryujinx/config/system/title.keys"));
+        btrc_Vector_string_push(__list_480, joinPath(biosRoot(project), "switch/title.keys"));
+        launcherCopyFirstExisting(project, __list_480, joinPath(systemRoot, "title.keys"));
         return;
     }
 }
@@ -14126,9 +14854,9 @@ int launcherRunRouted(char* project, char* emulator, char* executable, btrc_Vect
             btrc_Vector_string_push(finalArgs, retroarchConfig);
         }
     }
-    int __n_418 = btrc_Vector_string_iterLen(launcherArgsWithDefaults(project, emulator, emulatorArgs));
-    for (int __i_417 = 0; (__i_417 < __n_418); (__i_417++)) {
-        char* arg = btrc_Vector_string_iterGet(launcherArgsWithDefaults(project, emulator, emulatorArgs), __i_417);
+    int __n_482 = btrc_Vector_string_iterLen(launcherArgsWithDefaults(project, emulator, emulatorArgs));
+    for (int __i_481 = 0; (__i_481 < __n_482); (__i_481++)) {
+        char* arg = btrc_Vector_string_iterGet(launcherArgsWithDefaults(project, emulator, emulatorArgs), __i_481);
         btrc_Vector_string_push(finalArgs, arg);
     }
     char* childCommand = launcherRoutedExecutableCommand(project, emulator, executable);
@@ -14139,13 +14867,13 @@ int launcherRunRouted(char* project, char* emulator, char* executable, btrc_Vect
     screenshotScheduleHook(project, emulator, "after_spawn");
     ExecResult* result = UnixShell_runRaw(shell, command, false, false, "");
     screenshotCaptureHook(project, emulator, "after_exit");
-    int __btrc_ret_419 = result->code;
+    int __btrc_ret_483 = result->code;
     if (shell != NULL) {
         if ((--shell->__rc) <= 0) {
             UnixShell_destroy(shell);
         }
     }
-    return __btrc_ret_419;
+    return __btrc_ret_483;
     if (shell != NULL) {
         if ((--shell->__rc) <= 0) {
             UnixShell_destroy(shell);
@@ -14459,9 +15187,9 @@ char* launcherTapCorner(char* system) {
 char* launcherMbResolvePath(char* base, char* rel) {
     btrc_Vector_string* parts = Strings_split(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(base, "/")), rel)), "/");
     btrc_Vector_string* stack = btrc_Vector_string_new();
-    int __n_421 = btrc_Vector_string_iterLen(parts);
-    for (int __i_420 = 0; (__i_420 < __n_421); (__i_420++)) {
-        char* part = btrc_Vector_string_iterGet(parts, __i_420);
+    int __n_485 = btrc_Vector_string_iterLen(parts);
+    for (int __i_484 = 0; (__i_484 < __n_485); (__i_484++)) {
+        char* part = btrc_Vector_string_iterGet(parts, __i_484);
         if ((strcmp(part, "") == 0) || (strcmp(part, ".") == 0)) {
             continue;
         } else if (strcmp(part, "..") == 0) {
@@ -14482,9 +15210,9 @@ void launcherMbParse(char* path, btrc_Map_string_string* params, btrc_Vector_str
     btrc_Vector_string_push(visited, path);
     char* dir = PathTools_dirname(path);
     btrc_Vector_string* lines = Strings_split(FileSystem_readText(path), "\n");
-    int __n_423 = btrc_Vector_string_iterLen(lines);
-    for (int __i_422 = 0; (__i_422 < __n_423); (__i_422++)) {
-        char* raw = btrc_Vector_string_iterGet(lines, __i_422);
+    int __n_487 = btrc_Vector_string_iterLen(lines);
+    for (int __i_486 = 0; (__i_486 < __n_487); (__i_486++)) {
+        char* raw = btrc_Vector_string_iterGet(lines, __i_486);
         char* line = raw;
         int ci = Strings_find(line, "//", 0);
         if (ci >= 0) {
@@ -14539,10 +15267,10 @@ char* launcherStandaloneBezelWrap(char* project, char* emulator, char* command) 
     if (!FileSystem_isFile(asset)) {
         return command;
     }
-    btrc_Vector_string* __list_424 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_424, joinPath(dir, "semu-bezel-overlay"));
-    btrc_Vector_string_push(__list_424, asset);
-    btrc_Vector_string* ovArgs = __list_424;
+    btrc_Vector_string* __list_488 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_488, joinPath(dir, "semu-bezel-overlay"));
+    btrc_Vector_string_push(__list_488, asset);
+    btrc_Vector_string* ovArgs = __list_488;
     char* overlayCmd = shellAppendAll("SDL_VIDEODRIVER=x11", ovArgs);
     char* pre = __btrc_str_track(__btrc_strcat(overlayCmd, " >/tmp/semu-bezel-overlay.log 2>&1 & __SEMU_BEZEL_PID=$!; "));
     char* post = "; kill $__SEMU_BEZEL_PID 2>/dev/null || true; pkill -f semu-bezel-overlay 2>/dev/null || true";
@@ -14567,15 +15295,15 @@ char* launcherPatchedRA(char* project) {
     return "";
 }
 
-char* launcherTapScreen(char* system) {
+char* launcherTapScreen(char* project, char* system) {
     char* s = __btrc_str_track(__btrc_toLower(system));
     if ((strcmp(s, "ps2") == 0) || (strcmp(s, "dreamcast") == 0)) {
-        return bezelManifestHole("psx");
+        return bezelManifestHole(project, "psx");
     }
     if (strcmp(s, "gc") == 0) {
-        return bezelManifestHole("n64");
+        return bezelManifestHole(project, "n64");
     }
-    return bezelManifestHole(system);
+    return bezelManifestHole(project, system);
 }
 
 char* launcherTapArtFile(char* project, char* system) {
@@ -14741,14 +15469,14 @@ int launcherRunFlatpak(char* project, char* emulator, char* flatpakId, btrc_Vect
         (command = __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(command, "unset MESA_LOADER_DRIVER_OVERRIDE MESA_GL_VERSION_OVERRIDE MESA_GLSL_VERSION_OVERRIDE; ")), "if [ -z \"${DISPLAY:-}\" ] || [ -z \"${XAUTHORITY:-}\" ]; then ")), "p=$(pgrep -x plasmashell | head -1 || pgrep -x kwin_wayland | head -1 || true); ")), "if [ -n \"$p\" ] && [ -r \"/proc/$p/environ\" ]; then ")), "eval \"$(tr '\\0' '\\n' < /proc/$p/environ | grep -E '^(DISPLAY|XAUTHORITY)=' | sed 's/^/export /')\"; ")), "fi; fi; ")), "if [ -z \"${XAUTHORITY:-}\" ]; then for f in /run/user/")), uid)), "/xauth_*; do [ -r \"$f\" ] && export XAUTHORITY=\"$f\" && break; done; fi; ")), "export DISPLAY=\"${DISPLAY:-:1}\"; ")));
     }
     (command = __btrc_str_track(__btrc_strcat(command, "flatpak run")));
-    btrc_Vector_string* __list_425 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_425, "--device=all");
-    btrc_Vector_string_push(__list_425, "--filesystem=/nix/store:ro");
-    btrc_Vector_string_push(__list_425, __btrc_str_track(__btrc_strcat("--filesystem=", project)));
-    btrc_Vector_string_push(__list_425, __btrc_str_track(__btrc_strcat("--filesystem=", roms)));
-    btrc_Vector_string_push(__list_425, __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat("--filesystem=", stateRoot)), ":create")));
-    btrc_Vector_string_push(__list_425, __btrc_str_track(__btrc_strcat("--env=XDG_CONFIG_HOME=", configRoot)));
-    btrc_Vector_string* flatpakArgs = __list_425;
+    btrc_Vector_string* __list_489 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_489, "--device=all");
+    btrc_Vector_string_push(__list_489, "--filesystem=/nix/store:ro");
+    btrc_Vector_string_push(__list_489, __btrc_str_track(__btrc_strcat("--filesystem=", project)));
+    btrc_Vector_string_push(__list_489, __btrc_str_track(__btrc_strcat("--filesystem=", roms)));
+    btrc_Vector_string_push(__list_489, __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat("--filesystem=", stateRoot)), ":create")));
+    btrc_Vector_string_push(__list_489, __btrc_str_track(__btrc_strcat("--env=XDG_CONFIG_HOME=", configRoot)));
+    btrc_Vector_string* flatpakArgs = __list_489;
     char* emuRoot = configuredEmulationRoot(project);
     if (((int)strlen(emuRoot)) > 0) {
         btrc_Vector_string_push(flatpakArgs, __btrc_str_track(__btrc_strcat("--filesystem=", emuRoot)));
@@ -14846,7 +15574,7 @@ int launcherRunFlatpak(char* project, char* emulator, char* flatpakId, btrc_Vect
                     btrc_Vector_string_push(flatpakArgs, __btrc_str_track(__btrc_strcat("--env=SEMU_TAP_SCREEN_C=", hc)));
                 }
             }
-            char* tapScreen = launcherTapScreen(tsys);
+            char* tapScreen = launcherTapScreen(project, tsys);
             if (((int)strlen(tapScreen)) > 0) {
                 btrc_Vector_string_push(flatpakArgs, __btrc_str_track(__btrc_strcat("--env=SEMU_TAP_SCREEN=", tapScreen)));
             }
@@ -14866,9 +15594,9 @@ int launcherRunFlatpak(char* project, char* emulator, char* flatpakId, btrc_Vect
         btrc_Vector_string_push(flatpakArgs, "--root-data-dir");
         btrc_Vector_string_push(flatpakArgs, joinPath(emuRoot, "Ryujinx/config"));
     }
-    int __n_427 = btrc_Vector_string_iterLen(launcherArgsWithDefaults(project, emulator, emulatorArgs));
-    for (int __i_426 = 0; (__i_426 < __n_427); (__i_426++)) {
-        char* arg = btrc_Vector_string_iterGet(launcherArgsWithDefaults(project, emulator, emulatorArgs), __i_426);
+    int __n_491 = btrc_Vector_string_iterLen(launcherArgsWithDefaults(project, emulator, emulatorArgs));
+    for (int __i_490 = 0; (__i_490 < __n_491); (__i_490++)) {
+        char* arg = btrc_Vector_string_iterGet(launcherArgsWithDefaults(project, emulator, emulatorArgs), __i_490);
         btrc_Vector_string_push(flatpakArgs, arg);
     }
     (command = shellAppendAll(command, flatpakArgs));
@@ -14882,13 +15610,13 @@ int launcherRunFlatpak(char* project, char* emulator, char* flatpakId, btrc_Vect
     screenshotScheduleHook(project, emulator, "after_spawn");
     ExecResult* result = UnixShell_runRaw(shell, command, false, false, "");
     screenshotCaptureHook(project, emulator, "after_exit");
-    int __btrc_ret_428 = result->code;
+    int __btrc_ret_492 = result->code;
     if (shell != NULL) {
         if ((--shell->__rc) <= 0) {
             UnixShell_destroy(shell);
         }
     }
-    return __btrc_ret_428;
+    return __btrc_ret_492;
     if (shell != NULL) {
         if ((--shell->__rc) <= 0) {
             UnixShell_destroy(shell);
@@ -14936,24 +15664,24 @@ int launcherCommand(CliArgs* args, char* project) {
 }
 
 btrc_Vector_string* linuxLauncherNames(void) {
-    btrc_Vector_string* __list_429 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_429, "RETROARCH");
-    btrc_Vector_string_push(__list_429, "DOLPHIN");
-    btrc_Vector_string_push(__list_429, "PPSSPP");
-    btrc_Vector_string_push(__list_429, "FLYCAST");
-    btrc_Vector_string_push(__list_429, "AZAHAR");
-    btrc_Vector_string_push(__list_429, "MELONDS");
-    btrc_Vector_string_push(__list_429, "PCSX2");
-    btrc_Vector_string_push(__list_429, "CEMU");
-    btrc_Vector_string_push(__list_429, "RYUJINX");
-    return __list_429;
+    btrc_Vector_string* __list_493 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_493, "RETROARCH");
+    btrc_Vector_string_push(__list_493, "DOLPHIN");
+    btrc_Vector_string_push(__list_493, "PPSSPP");
+    btrc_Vector_string_push(__list_493, "FLYCAST");
+    btrc_Vector_string_push(__list_493, "AZAHAR");
+    btrc_Vector_string_push(__list_493, "MELONDS");
+    btrc_Vector_string_push(__list_493, "PCSX2");
+    btrc_Vector_string_push(__list_493, "CEMU");
+    btrc_Vector_string_push(__list_493, "RYUJINX");
+    return __list_493;
 }
 
 btrc_Vector_string* lowercaseValues(btrc_Vector_string* values) {
     btrc_Vector_string* out = btrc_Vector_string_new();
-    int __n_431 = btrc_Vector_string_iterLen(values);
-    for (int __i_430 = 0; (__i_430 < __n_431); (__i_430++)) {
-        char* value = btrc_Vector_string_iterGet(values, __i_430);
+    int __n_495 = btrc_Vector_string_iterLen(values);
+    for (int __i_494 = 0; (__i_494 < __n_495); (__i_494++)) {
+        char* value = btrc_Vector_string_iterGet(values, __i_494);
         btrc_Vector_string_push(out, __btrc_str_track(__btrc_toLower(value)));
     }
     return out;
@@ -14964,56 +15692,56 @@ char* semuLauncherName(char* emulator) {
 }
 
 btrc_Vector_string* retroarchCoreSearchPaths(void) {
-    btrc_Vector_string* __list_432 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_432, "/usr/lib/x86_64-linux-gnu/libretro");
-    btrc_Vector_string_push(__list_432, "/usr/lib/aarch64-linux-gnu/libretro");
-    btrc_Vector_string_push(__list_432, "/usr/lib/libretro");
-    return __list_432;
+    btrc_Vector_string* __list_496 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_496, "/usr/lib/x86_64-linux-gnu/libretro");
+    btrc_Vector_string_push(__list_496, "/usr/lib/aarch64-linux-gnu/libretro");
+    btrc_Vector_string_push(__list_496, "/usr/lib/libretro");
+    return __list_496;
 }
 
 char* launcherEntries(void) {
     btrc_Vector_string* linuxEmulatorFields = btrc_Vector_string_new();
-    int __n_434 = btrc_Vector_string_iterLen(linuxLauncherNames());
-    for (int __i_433 = 0; (__i_433 < __n_434); (__i_433++)) {
-        char* emulator = btrc_Vector_string_iterGet(linuxLauncherNames(), __i_433);
-        btrc_Vector_string_push(linuxEmulatorFields, jsonStrField(emulator, __btrc_str_track(__btrc_strcat("${project}/packaging/linux/bin/", semuLauncherName(emulator)))));
+    int __n_498 = btrc_Vector_string_iterLen(linuxLauncherNames());
+    for (int __i_497 = 0; (__i_497 < __n_498); (__i_497++)) {
+        char* emulator = btrc_Vector_string_iterGet(linuxLauncherNames(), __i_497);
+        btrc_Vector_string_push(linuxEmulatorFields, jsonStrField(emulator, __btrc_str_track(__btrc_strcat("${project}/generated/packaging/linux/bin/", semuLauncherName(emulator)))));
     }
-    btrc_Vector_string* __list_435 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_435, jsonField("emulators", jsonObject(linuxEmulatorFields)));
-    btrc_Vector_string* __list_436 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_436, jsonField("RETROARCH", jsonStringArray(retroarchCoreSearchPaths())));
-    btrc_Vector_string_push(__list_435, jsonField("cores", jsonObject(__list_436)));
-    btrc_Vector_string* __list_437 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_437, jsonStrField("org.DolphinEmu.dolphin-emu", "GameCube/Wii"));
-    btrc_Vector_string_push(__list_437, jsonStrField("org.ppsspp.PPSSPP", "PSP"));
-    btrc_Vector_string_push(__list_437, jsonStrField("org.flycast.Flycast", "Dreamcast"));
-    btrc_Vector_string_push(__list_437, jsonStrField("org.azahar_emu.Azahar", "Nintendo 3DS"));
-    btrc_Vector_string_push(__list_437, jsonStrField("net.kuribo64.melonDS", "Nintendo DS"));
-    btrc_Vector_string_push(__list_437, jsonStrField("net.pcsx2.PCSX2", "PlayStation 2"));
-    btrc_Vector_string_push(__list_437, jsonStrField("info.cemu.Cemu", "Wii U"));
-    btrc_Vector_string_push(__list_437, jsonStrField("org.ryujinx.Ryujinx", "Nintendo Switch"));
-    btrc_Vector_string_push(__list_435, jsonField("flatpaks", jsonObject(__list_437)));
-    char* linux = jsonObject(__list_435);
-    btrc_Vector_string* __list_441 = btrc_Vector_string_new();
-    btrc_Vector_string* __list_442 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_442, jsonStrField("RETROARCH", "${project}/result/bin/retroarch"));
-    btrc_Vector_string_push(__list_442, jsonStrField("AZAHAR", "${project}/result/Applications/azahar.app/Contents/MacOS/azahar"));
-    btrc_Vector_string_push(__list_442, jsonStrField("DOLPHIN", "${project}/result/Applications/Dolphin.app/Contents/MacOS/Dolphin"));
-    btrc_Vector_string_push(__list_442, jsonStrField("PCSX2", "${project}/result/Applications/PCSX2.app/Contents/MacOS/PCSX2"));
-    btrc_Vector_string_push(__list_442, jsonStrField("CEMU", "${project}/result/Applications/Cemu.app/Contents/MacOS/Cemu"));
-    btrc_Vector_string_push(__list_442, jsonStrField("RYUJINX", "~/.local/share/ryujinx-app/Ryujinx.app/Contents/MacOS/Ryujinx"));
-    btrc_Vector_string_push(__list_442, jsonStrField("ARES", "${project}/result/Applications/ares.app/Contents/MacOS/ares"));
-    btrc_Vector_string_push(__list_441, jsonField("emulators", jsonObject(__list_442)));
-    btrc_Vector_string* __list_443 = btrc_Vector_string_new();
-    btrc_Vector_string* __list_444 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_444, "${project}/result/cores");
-    btrc_Vector_string_push(__list_443, jsonField("RETROARCH", jsonStringArray(__list_444)));
-    btrc_Vector_string_push(__list_441, jsonField("cores", jsonObject(__list_443)));
-    char* macos = jsonObject(__list_441);
-    btrc_Vector_string* __list_449 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_449, jsonField("linux", linux));
-    btrc_Vector_string_push(__list_449, jsonField("macos", macos));
-    return jsonObject(__list_449);
+    btrc_Vector_string* __list_499 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_499, jsonField("emulators", jsonObject(linuxEmulatorFields)));
+    btrc_Vector_string* __list_500 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_500, jsonField("RETROARCH", jsonStringArray(retroarchCoreSearchPaths())));
+    btrc_Vector_string_push(__list_499, jsonField("cores", jsonObject(__list_500)));
+    btrc_Vector_string* __list_501 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_501, jsonStrField("org.DolphinEmu.dolphin-emu", "GameCube/Wii"));
+    btrc_Vector_string_push(__list_501, jsonStrField("org.ppsspp.PPSSPP", "PSP"));
+    btrc_Vector_string_push(__list_501, jsonStrField("org.flycast.Flycast", "Dreamcast"));
+    btrc_Vector_string_push(__list_501, jsonStrField("org.azahar_emu.Azahar", "Nintendo 3DS"));
+    btrc_Vector_string_push(__list_501, jsonStrField("net.kuribo64.melonDS", "Nintendo DS"));
+    btrc_Vector_string_push(__list_501, jsonStrField("net.pcsx2.PCSX2", "PlayStation 2"));
+    btrc_Vector_string_push(__list_501, jsonStrField("info.cemu.Cemu", "Wii U"));
+    btrc_Vector_string_push(__list_501, jsonStrField("org.ryujinx.Ryujinx", "Nintendo Switch"));
+    btrc_Vector_string_push(__list_499, jsonField("flatpaks", jsonObject(__list_501)));
+    char* linux = jsonObject(__list_499);
+    btrc_Vector_string* __list_505 = btrc_Vector_string_new();
+    btrc_Vector_string* __list_506 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_506, jsonStrField("RETROARCH", "${project}/generated/nix/result/bin/retroarch"));
+    btrc_Vector_string_push(__list_506, jsonStrField("AZAHAR", "${project}/generated/nix/result/Applications/azahar.app/Contents/MacOS/azahar"));
+    btrc_Vector_string_push(__list_506, jsonStrField("DOLPHIN", "${project}/generated/nix/result/Applications/Dolphin.app/Contents/MacOS/Dolphin"));
+    btrc_Vector_string_push(__list_506, jsonStrField("PCSX2", "${project}/generated/nix/result/Applications/PCSX2.app/Contents/MacOS/PCSX2"));
+    btrc_Vector_string_push(__list_506, jsonStrField("CEMU", "${project}/generated/nix/result/Applications/Cemu.app/Contents/MacOS/Cemu"));
+    btrc_Vector_string_push(__list_506, jsonStrField("RYUJINX", "~/.local/share/ryujinx-app/Ryujinx.app/Contents/MacOS/Ryujinx"));
+    btrc_Vector_string_push(__list_506, jsonStrField("ARES", "${project}/generated/nix/result/Applications/ares.app/Contents/MacOS/ares"));
+    btrc_Vector_string_push(__list_505, jsonField("emulators", jsonObject(__list_506)));
+    btrc_Vector_string* __list_507 = btrc_Vector_string_new();
+    btrc_Vector_string* __list_508 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_508, "${project}/generated/nix/result/cores");
+    btrc_Vector_string_push(__list_507, jsonField("RETROARCH", jsonStringArray(__list_508)));
+    btrc_Vector_string_push(__list_505, jsonField("cores", jsonObject(__list_507)));
+    char* macos = jsonObject(__list_505);
+    btrc_Vector_string* __list_513 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_513, jsonField("linux", linux));
+    btrc_Vector_string_push(__list_513, jsonField("macos", macos));
+    return jsonObject(__list_513);
 }
 
 char* renderMode(char* project, char* system) {
@@ -15067,16 +15795,16 @@ char* renderTargetWxH(char* project, char* system, char* mode) {
         return "";
     }
     if (strcmp(mode, "1x") == 0) {
-        int __fstr_450_len = snprintf(NULL, 0, "%dx%d", nw, nh);
-        char* __fstr_450_buf = __btrc_str_track(((char*)malloc((__fstr_450_len + 1))));
-        snprintf(__fstr_450_buf, (__fstr_450_len + 1), "%dx%d", nw, nh);
-        return __fstr_450_buf;
+        int __fstr_514_len = snprintf(NULL, 0, "%dx%d", nw, nh);
+        char* __fstr_514_buf = __btrc_str_track(((char*)malloc((__fstr_514_len + 1))));
+        snprintf(__fstr_514_buf, (__fstr_514_len + 1), "%dx%d", nw, nh);
+        return __fstr_514_buf;
     }
     int scale = renderIntegerScale(nw, nh, renderScreenW(), renderScreenH());
-    int __fstr_451_len = snprintf(NULL, 0, "%dx%d", (scale * nw), (scale * nh));
-    char* __fstr_451_buf = __btrc_str_track(((char*)malloc((__fstr_451_len + 1))));
-    snprintf(__fstr_451_buf, (__fstr_451_len + 1), "%dx%d", (scale * nw), (scale * nh));
-    return __fstr_451_buf;
+    int __fstr_515_len = snprintf(NULL, 0, "%dx%d", (scale * nw), (scale * nh));
+    char* __fstr_515_buf = __btrc_str_track(((char*)malloc((__fstr_515_len + 1))));
+    snprintf(__fstr_515_buf, (__fstr_515_len + 1), "%dx%d", (scale * nw), (scale * nh));
+    return __fstr_515_buf;
 }
 
 btrc_Vector_string* renderRaCoreOpts(char* project, char* system) {
@@ -15098,9 +15826,9 @@ char* renderCfgUpsert(char* text, char* key, char* value) {
     btrc_Vector_string* lines = Strings_split(text, "\n");
     btrc_Vector_string* out = btrc_Vector_string_new();
     bool found = false;
-    int __n_453 = btrc_Vector_string_iterLen(lines);
-    for (int __i_452 = 0; (__i_452 < __n_453); (__i_452++)) {
-        char* ln = btrc_Vector_string_iterGet(lines, __i_452);
+    int __n_517 = btrc_Vector_string_iterLen(lines);
+    for (int __i_516 = 0; (__i_516 < __n_517); (__i_516++)) {
+        char* ln = btrc_Vector_string_iterGet(lines, __i_516);
         if (Strings_find(ln, __btrc_str_track(__btrc_strcat(key, " = ")), 0) == 0) {
             btrc_Vector_string_push(out, newline);
             (found = true);
@@ -15120,9 +15848,9 @@ void renderApplyRaCoreOpts(char* project, char* system, char* cfgPath) {
         return;
     }
     char* text = (FileSystem_isFile(cfgPath) ? FileSystem_readText(cfgPath) : "");
-    int __n_455 = btrc_Vector_string_iterLen(kvs);
-    for (int __i_454 = 0; (__i_454 < __n_455); (__i_454++)) {
-        char* kv = btrc_Vector_string_iterGet(kvs, __i_454);
+    int __n_519 = btrc_Vector_string_iterLen(kvs);
+    for (int __i_518 = 0; (__i_518 < __n_519); (__i_518++)) {
+        char* kv = btrc_Vector_string_iterGet(kvs, __i_518);
         btrc_Vector_string* parts = Strings_split(kv, "|");
         (text = renderCfgUpsert(text, btrc_Vector_string_get(parts, 0), btrc_Vector_string_get(parts, 1)));
     }
@@ -15156,17 +15884,17 @@ char* sandboxProjectEmulatorDir(char* project, char* emulator) {
         return project;
     }
     char* profileRoot = emulatorProfilesRoot(project);
-    int __n_457 = btrc_Vector_string_iterLen(FileSystem_listDir(profileRoot));
-    for (int __i_456 = 0; (__i_456 < __n_457); (__i_456++)) {
-        char* name = btrc_Vector_string_iterGet(FileSystem_listDir(profileRoot), __i_456);
+    int __n_521 = btrc_Vector_string_iterLen(FileSystem_listDir(profileRoot));
+    for (int __i_520 = 0; (__i_520 < __n_521); (__i_520++)) {
+        char* name = btrc_Vector_string_iterGet(FileSystem_listDir(profileRoot), __i_520);
         char* candidate = joinPath(profileRoot, name);
         if (FileSystem_isDir(candidate) && (strcmp(__btrc_str_track(__btrc_toLower(name)), wanted) == 0)) {
             return candidate;
         }
     }
-    int __n_459 = btrc_Vector_string_iterLen(FileSystem_listDir(project));
-    for (int __i_458 = 0; (__i_458 < __n_459); (__i_458++)) {
-        char* name = btrc_Vector_string_iterGet(FileSystem_listDir(project), __i_458);
+    int __n_523 = btrc_Vector_string_iterLen(FileSystem_listDir(project));
+    for (int __i_522 = 0; (__i_522 < __n_523); (__i_522++)) {
+        char* name = btrc_Vector_string_iterGet(FileSystem_listDir(project), __i_522);
         char* candidate = joinPath(project, name);
         if (FileSystem_isDir(candidate) && (strcmp(__btrc_str_track(__btrc_toLower(name)), wanted) == 0)) {
             return candidate;
@@ -15192,9 +15920,9 @@ void sandboxSymlinkDirChildren(char* destDir, char* sourceDir) {
         return;
     }
     ensureDir(destDir);
-    int __n_461 = btrc_Vector_string_iterLen(FileSystem_listDir(sourceDir));
-    for (int __i_460 = 0; (__i_460 < __n_461); (__i_460++)) {
-        char* child = btrc_Vector_string_iterGet(FileSystem_listDir(sourceDir), __i_460);
+    int __n_525 = btrc_Vector_string_iterLen(FileSystem_listDir(sourceDir));
+    for (int __i_524 = 0; (__i_524 < __n_525); (__i_524++)) {
+        char* child = btrc_Vector_string_iterGet(FileSystem_listDir(sourceDir), __i_524);
         sandboxSymlink(joinPath(destDir, child), joinPath(sourceDir, child));
     }
 }
@@ -15207,9 +15935,9 @@ void sandboxApplyLink(char* emuDir, char* scratch, char* entry, char* linuxTarge
     char* destDir = sandboxResolveTarget(scratch, linuxTarget);
     if (FileSystem_isDir(source)) {
         ensureDir(destDir);
-        int __n_463 = btrc_Vector_string_iterLen(FileSystem_listDir(source));
-        for (int __i_462 = 0; (__i_462 < __n_463); (__i_462++)) {
-            char* child = btrc_Vector_string_iterGet(FileSystem_listDir(source), __i_462);
+        int __n_527 = btrc_Vector_string_iterLen(FileSystem_listDir(source));
+        for (int __i_526 = 0; (__i_526 < __n_527); (__i_526++)) {
+            char* child = btrc_Vector_string_iterGet(FileSystem_listDir(source), __i_526);
             sandboxSymlink(joinPath(destDir, child), joinPath(source, child));
         }
         return;
@@ -15316,9 +16044,9 @@ char* shellAppend(char* command, char* arg) {
 
 char* shellAppendAll(char* command, btrc_Vector_string* args) {
     char* out = command;
-    int __n_465 = btrc_Vector_string_iterLen(args);
-    for (int __i_464 = 0; (__i_464 < __n_465); (__i_464++)) {
-        char* arg = btrc_Vector_string_iterGet(args, __i_464);
+    int __n_529 = btrc_Vector_string_iterLen(args);
+    for (int __i_528 = 0; (__i_528 < __n_529); (__i_528++)) {
+        char* arg = btrc_Vector_string_iterGet(args, __i_528);
         (out = shellAppend(out, arg));
     }
     return out;
@@ -15338,120 +16066,120 @@ int sandboxLaunch(char* project, char* emulator, char* executable, btrc_Vector_s
     ensureDir(scratch);
     char* emuDir = sandboxProjectEmulatorDir(project, emulator);
     if (((int)strlen(emuDir)) == 0) {
-        int __fstr_468_len = snprintf(NULL, 0, "sandbox: no emulator directory for '%s' under %s", emulator, project);
-        char* __fstr_468_buf = __btrc_str_track(((char*)malloc((__fstr_468_len + 1))));
-        snprintf(__fstr_468_buf, (__fstr_468_len + 1), "sandbox: no emulator directory for '%s' under %s", emulator, project);
-        printf("%s\n", __fstr_468_buf);
+        int __fstr_532_len = snprintf(NULL, 0, "sandbox: no emulator directory for '%s' under %s", emulator, project);
+        char* __fstr_532_buf = __btrc_str_track(((char*)malloc((__fstr_532_len + 1))));
+        snprintf(__fstr_532_buf, (__fstr_532_len + 1), "sandbox: no emulator directory for '%s' under %s", emulator, project);
+        printf("%s\n", __fstr_532_buf);
         return 3;
     }
     if (!sandboxApplyKnownLinks(project, __btrc_str_track(__btrc_toLower(emulator)), emuDir, scratch)) {
-        int __fstr_471_len = snprintf(NULL, 0, "sandbox: no BTRC symlink spec for '%s'", emulator);
-        char* __fstr_471_buf = __btrc_str_track(((char*)malloc((__fstr_471_len + 1))));
-        snprintf(__fstr_471_buf, (__fstr_471_len + 1), "sandbox: no BTRC symlink spec for '%s'", emulator);
-        printf("%s\n", __fstr_471_buf);
+        int __fstr_535_len = snprintf(NULL, 0, "sandbox: no BTRC symlink spec for '%s'", emulator);
+        char* __fstr_535_buf = __btrc_str_track(((char*)malloc((__fstr_535_len + 1))));
+        snprintf(__fstr_535_buf, (__fstr_535_len + 1), "sandbox: no BTRC symlink spec for '%s'", emulator);
+        printf("%s\n", __fstr_535_buf);
         return 3;
     }
     char* home = homeDir();
     char* runDir = xdgRunDir();
     char* shareNet = Environment_get("SEMU_SHARE_NET", "1");
     char* command = ShellWords_quote(Environment_get("SEMU_BWRAP", "bwrap"));
-    btrc_Vector_string* __list_472 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_472, "--ro-bind");
-    btrc_Vector_string_push(__list_472, "/usr");
-    btrc_Vector_string_push(__list_472, "/usr");
-    btrc_Vector_string_push(__list_472, "--ro-bind");
-    btrc_Vector_string_push(__list_472, "/etc");
-    btrc_Vector_string_push(__list_472, "/etc");
-    btrc_Vector_string_push(__list_472, "--ro-bind");
-    btrc_Vector_string_push(__list_472, "/opt");
-    btrc_Vector_string_push(__list_472, "/opt");
-    btrc_Vector_string_push(__list_472, "--ro-bind");
-    btrc_Vector_string_push(__list_472, "/var");
-    btrc_Vector_string_push(__list_472, "/var");
-    btrc_Vector_string_push(__list_472, "--ro-bind-try");
-    btrc_Vector_string_push(__list_472, "/lib");
-    btrc_Vector_string_push(__list_472, "/lib");
-    btrc_Vector_string_push(__list_472, "--ro-bind-try");
-    btrc_Vector_string_push(__list_472, "/lib64");
-    btrc_Vector_string_push(__list_472, "/lib64");
-    btrc_Vector_string_push(__list_472, "--ro-bind-try");
-    btrc_Vector_string_push(__list_472, "/bin");
-    btrc_Vector_string_push(__list_472, "/bin");
-    btrc_Vector_string_push(__list_472, "--ro-bind-try");
-    btrc_Vector_string_push(__list_472, "/sbin");
-    btrc_Vector_string_push(__list_472, "/sbin");
-    btrc_Vector_string_push(__list_472, "--proc");
-    btrc_Vector_string_push(__list_472, "/proc");
-    btrc_Vector_string_push(__list_472, "--dev");
-    btrc_Vector_string_push(__list_472, "/dev");
-    btrc_Vector_string_push(__list_472, "--dev-bind");
-    btrc_Vector_string_push(__list_472, "/dev/dri");
-    btrc_Vector_string_push(__list_472, "/dev/dri");
-    btrc_Vector_string_push(__list_472, "--dev-bind-try");
-    btrc_Vector_string_push(__list_472, "/dev/snd");
-    btrc_Vector_string_push(__list_472, "/dev/snd");
-    btrc_Vector_string_push(__list_472, "--dev-bind-try");
-    btrc_Vector_string_push(__list_472, "/dev/input");
-    btrc_Vector_string_push(__list_472, "/dev/input");
-    btrc_Vector_string_push(__list_472, "--dev-bind-try");
-    btrc_Vector_string_push(__list_472, "/dev/uinput");
-    btrc_Vector_string_push(__list_472, "/dev/uinput");
-    btrc_Vector_string_push(__list_472, "--ro-bind");
-    btrc_Vector_string_push(__list_472, "/sys");
-    btrc_Vector_string_push(__list_472, "/sys");
-    btrc_Vector_string_push(__list_472, "--bind");
-    btrc_Vector_string_push(__list_472, scratch);
-    btrc_Vector_string_push(__list_472, home);
-    btrc_Vector_string_push(__list_472, "--tmpfs");
-    btrc_Vector_string_push(__list_472, "/tmp");
-    btrc_Vector_string_push(__list_472, "--bind");
-    btrc_Vector_string_push(__list_472, project);
-    btrc_Vector_string_push(__list_472, project);
-    btrc_Vector_string_push(__list_472, "--ro-bind-try");
-    btrc_Vector_string_push(__list_472, launchRomsRoot(project));
-    btrc_Vector_string_push(__list_472, launchRomsRoot(project));
-    btrc_Vector_string_push(__list_472, "--bind");
-    btrc_Vector_string_push(__list_472, runDir);
-    btrc_Vector_string_push(__list_472, runDir);
-    btrc_Vector_string_push(__list_472, "--ro-bind-try");
-    btrc_Vector_string_push(__list_472, "/tmp/.X11-unix");
-    btrc_Vector_string_push(__list_472, "/tmp/.X11-unix");
-    btrc_Vector_string_push(__list_472, "--unshare-pid");
-    btrc_Vector_string_push(__list_472, "--unshare-uts");
-    btrc_Vector_string_push(__list_472, "--unshare-ipc");
-    btrc_Vector_string_push(__list_472, "--die-with-parent");
-    btrc_Vector_string_push(__list_472, "--new-session");
-    btrc_Vector_string_push(__list_472, "--setenv");
-    btrc_Vector_string_push(__list_472, "HOME");
-    btrc_Vector_string_push(__list_472, home);
-    btrc_Vector_string_push(__list_472, "--setenv");
-    btrc_Vector_string_push(__list_472, "XDG_RUNTIME_DIR");
-    btrc_Vector_string_push(__list_472, runDir);
-    btrc_Vector_string_push(__list_472, "--setenv");
-    btrc_Vector_string_push(__list_472, "XDG_DATA_HOME");
-    btrc_Vector_string_push(__list_472, joinPath(home, ".local/share"));
-    btrc_Vector_string_push(__list_472, "--setenv");
-    btrc_Vector_string_push(__list_472, "XDG_CONFIG_HOME");
-    btrc_Vector_string_push(__list_472, joinPath(home, ".config"));
-    btrc_Vector_string_push(__list_472, "--setenv");
-    btrc_Vector_string_push(__list_472, "XDG_CACHE_HOME");
-    btrc_Vector_string_push(__list_472, joinPath(home, ".cache"));
-    btrc_Vector_string_push(__list_472, "--setenv");
-    btrc_Vector_string_push(__list_472, "XDG_SESSION_TYPE");
-    btrc_Vector_string_push(__list_472, Environment_get("XDG_SESSION_TYPE", "wayland"));
-    btrc_Vector_string_push(__list_472, "--setenv");
-    btrc_Vector_string_push(__list_472, "WAYLAND_DISPLAY");
-    btrc_Vector_string_push(__list_472, Environment_get("WAYLAND_DISPLAY", "wayland-0"));
-    btrc_Vector_string_push(__list_472, "--setenv");
-    btrc_Vector_string_push(__list_472, "DBUS_SESSION_BUS_ADDRESS");
-    btrc_Vector_string_push(__list_472, Environment_get("DBUS_SESSION_BUS_ADDRESS", __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat("unix:path=", runDir)), "/bus"))));
-    btrc_Vector_string_push(__list_472, "--setenv");
-    btrc_Vector_string_push(__list_472, "QT_QPA_PLATFORM");
-    btrc_Vector_string_push(__list_472, Environment_get("QT_QPA_PLATFORM", "wayland;xcb"));
-    btrc_Vector_string_push(__list_472, "--setenv");
-    btrc_Vector_string_push(__list_472, "SDL_VIDEODRIVER");
-    btrc_Vector_string_push(__list_472, Environment_get("SDL_VIDEODRIVER", "wayland"));
-    btrc_Vector_string* bwrapArgs = __list_472;
+    btrc_Vector_string* __list_536 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_536, "--ro-bind");
+    btrc_Vector_string_push(__list_536, "/usr");
+    btrc_Vector_string_push(__list_536, "/usr");
+    btrc_Vector_string_push(__list_536, "--ro-bind");
+    btrc_Vector_string_push(__list_536, "/etc");
+    btrc_Vector_string_push(__list_536, "/etc");
+    btrc_Vector_string_push(__list_536, "--ro-bind");
+    btrc_Vector_string_push(__list_536, "/opt");
+    btrc_Vector_string_push(__list_536, "/opt");
+    btrc_Vector_string_push(__list_536, "--ro-bind");
+    btrc_Vector_string_push(__list_536, "/var");
+    btrc_Vector_string_push(__list_536, "/var");
+    btrc_Vector_string_push(__list_536, "--ro-bind-try");
+    btrc_Vector_string_push(__list_536, "/lib");
+    btrc_Vector_string_push(__list_536, "/lib");
+    btrc_Vector_string_push(__list_536, "--ro-bind-try");
+    btrc_Vector_string_push(__list_536, "/lib64");
+    btrc_Vector_string_push(__list_536, "/lib64");
+    btrc_Vector_string_push(__list_536, "--ro-bind-try");
+    btrc_Vector_string_push(__list_536, "/bin");
+    btrc_Vector_string_push(__list_536, "/bin");
+    btrc_Vector_string_push(__list_536, "--ro-bind-try");
+    btrc_Vector_string_push(__list_536, "/sbin");
+    btrc_Vector_string_push(__list_536, "/sbin");
+    btrc_Vector_string_push(__list_536, "--proc");
+    btrc_Vector_string_push(__list_536, "/proc");
+    btrc_Vector_string_push(__list_536, "--dev");
+    btrc_Vector_string_push(__list_536, "/dev");
+    btrc_Vector_string_push(__list_536, "--dev-bind");
+    btrc_Vector_string_push(__list_536, "/dev/dri");
+    btrc_Vector_string_push(__list_536, "/dev/dri");
+    btrc_Vector_string_push(__list_536, "--dev-bind-try");
+    btrc_Vector_string_push(__list_536, "/dev/snd");
+    btrc_Vector_string_push(__list_536, "/dev/snd");
+    btrc_Vector_string_push(__list_536, "--dev-bind-try");
+    btrc_Vector_string_push(__list_536, "/dev/input");
+    btrc_Vector_string_push(__list_536, "/dev/input");
+    btrc_Vector_string_push(__list_536, "--dev-bind-try");
+    btrc_Vector_string_push(__list_536, "/dev/uinput");
+    btrc_Vector_string_push(__list_536, "/dev/uinput");
+    btrc_Vector_string_push(__list_536, "--ro-bind");
+    btrc_Vector_string_push(__list_536, "/sys");
+    btrc_Vector_string_push(__list_536, "/sys");
+    btrc_Vector_string_push(__list_536, "--bind");
+    btrc_Vector_string_push(__list_536, scratch);
+    btrc_Vector_string_push(__list_536, home);
+    btrc_Vector_string_push(__list_536, "--tmpfs");
+    btrc_Vector_string_push(__list_536, "/tmp");
+    btrc_Vector_string_push(__list_536, "--bind");
+    btrc_Vector_string_push(__list_536, project);
+    btrc_Vector_string_push(__list_536, project);
+    btrc_Vector_string_push(__list_536, "--ro-bind-try");
+    btrc_Vector_string_push(__list_536, launchRomsRoot(project));
+    btrc_Vector_string_push(__list_536, launchRomsRoot(project));
+    btrc_Vector_string_push(__list_536, "--bind");
+    btrc_Vector_string_push(__list_536, runDir);
+    btrc_Vector_string_push(__list_536, runDir);
+    btrc_Vector_string_push(__list_536, "--ro-bind-try");
+    btrc_Vector_string_push(__list_536, "/tmp/.X11-unix");
+    btrc_Vector_string_push(__list_536, "/tmp/.X11-unix");
+    btrc_Vector_string_push(__list_536, "--unshare-pid");
+    btrc_Vector_string_push(__list_536, "--unshare-uts");
+    btrc_Vector_string_push(__list_536, "--unshare-ipc");
+    btrc_Vector_string_push(__list_536, "--die-with-parent");
+    btrc_Vector_string_push(__list_536, "--new-session");
+    btrc_Vector_string_push(__list_536, "--setenv");
+    btrc_Vector_string_push(__list_536, "HOME");
+    btrc_Vector_string_push(__list_536, home);
+    btrc_Vector_string_push(__list_536, "--setenv");
+    btrc_Vector_string_push(__list_536, "XDG_RUNTIME_DIR");
+    btrc_Vector_string_push(__list_536, runDir);
+    btrc_Vector_string_push(__list_536, "--setenv");
+    btrc_Vector_string_push(__list_536, "XDG_DATA_HOME");
+    btrc_Vector_string_push(__list_536, joinPath(home, ".local/share"));
+    btrc_Vector_string_push(__list_536, "--setenv");
+    btrc_Vector_string_push(__list_536, "XDG_CONFIG_HOME");
+    btrc_Vector_string_push(__list_536, joinPath(home, ".config"));
+    btrc_Vector_string_push(__list_536, "--setenv");
+    btrc_Vector_string_push(__list_536, "XDG_CACHE_HOME");
+    btrc_Vector_string_push(__list_536, joinPath(home, ".cache"));
+    btrc_Vector_string_push(__list_536, "--setenv");
+    btrc_Vector_string_push(__list_536, "XDG_SESSION_TYPE");
+    btrc_Vector_string_push(__list_536, Environment_get("XDG_SESSION_TYPE", "wayland"));
+    btrc_Vector_string_push(__list_536, "--setenv");
+    btrc_Vector_string_push(__list_536, "WAYLAND_DISPLAY");
+    btrc_Vector_string_push(__list_536, Environment_get("WAYLAND_DISPLAY", "wayland-0"));
+    btrc_Vector_string_push(__list_536, "--setenv");
+    btrc_Vector_string_push(__list_536, "DBUS_SESSION_BUS_ADDRESS");
+    btrc_Vector_string_push(__list_536, Environment_get("DBUS_SESSION_BUS_ADDRESS", __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat("unix:path=", runDir)), "/bus"))));
+    btrc_Vector_string_push(__list_536, "--setenv");
+    btrc_Vector_string_push(__list_536, "QT_QPA_PLATFORM");
+    btrc_Vector_string_push(__list_536, Environment_get("QT_QPA_PLATFORM", "wayland;xcb"));
+    btrc_Vector_string_push(__list_536, "--setenv");
+    btrc_Vector_string_push(__list_536, "SDL_VIDEODRIVER");
+    btrc_Vector_string_push(__list_536, Environment_get("SDL_VIDEODRIVER", "wayland"));
+    btrc_Vector_string* bwrapArgs = __list_536;
     if (Environment_has("DISPLAY")) {
         btrc_Vector_string_push(bwrapArgs, "--setenv");
         btrc_Vector_string_push(bwrapArgs, "DISPLAY");
@@ -15480,9 +16208,9 @@ int sandboxLaunch(char* project, char* emulator, char* executable, btrc_Vector_s
     btrc_Vector_string_push(bwrapArgs, "VK_ICD_FILENAMES");
     btrc_Vector_string_push(bwrapArgs, "--");
     btrc_Vector_string_push(bwrapArgs, executable);
-    int __n_474 = btrc_Vector_string_iterLen(launcherArgsWithDefaults(project, emulator, emulatorArgs));
-    for (int __i_473 = 0; (__i_473 < __n_474); (__i_473++)) {
-        char* arg = btrc_Vector_string_iterGet(launcherArgsWithDefaults(project, emulator, emulatorArgs), __i_473);
+    int __n_538 = btrc_Vector_string_iterLen(launcherArgsWithDefaults(project, emulator, emulatorArgs));
+    for (int __i_537 = 0; (__i_537 < __n_538); (__i_537++)) {
+        char* arg = btrc_Vector_string_iterGet(launcherArgsWithDefaults(project, emulator, emulatorArgs), __i_537);
         btrc_Vector_string_push(bwrapArgs, arg);
     }
     (command = shellAppendAll(command, bwrapArgs));
@@ -15494,13 +16222,13 @@ int sandboxLaunch(char* project, char* emulator, char* executable, btrc_Vector_s
     screenshotScheduleHook(project, emulator, "after_spawn");
     ExecResult* result = UnixShell_runRaw(shell, command, false, false, "");
     screenshotCaptureHook(project, emulator, "after_exit");
-    int __btrc_ret_475 = result->code;
+    int __btrc_ret_539 = result->code;
     if (shell != NULL) {
         if ((--shell->__rc) <= 0) {
             UnixShell_destroy(shell);
         }
     }
-    return __btrc_ret_475;
+    return __btrc_ret_539;
     if (shell != NULL) {
         if ((--shell->__rc) <= 0) {
             UnixShell_destroy(shell);
@@ -15517,19 +16245,19 @@ int sandboxPrepareCommand(CliArgs* args, char* project) {
     }
     char* emuDir = sandboxProjectEmulatorDir(project, emulator);
     if (((int)strlen(emuDir)) == 0) {
-        int __fstr_478_len = snprintf(NULL, 0, "sandbox: no emulator directory for '%s' under %s", emulator, project);
-        char* __fstr_478_buf = __btrc_str_track(((char*)malloc((__fstr_478_len + 1))));
-        snprintf(__fstr_478_buf, (__fstr_478_len + 1), "sandbox: no emulator directory for '%s' under %s", emulator, project);
-        printf("%s\n", __fstr_478_buf);
+        int __fstr_542_len = snprintf(NULL, 0, "sandbox: no emulator directory for '%s' under %s", emulator, project);
+        char* __fstr_542_buf = __btrc_str_track(((char*)malloc((__fstr_542_len + 1))));
+        snprintf(__fstr_542_buf, (__fstr_542_len + 1), "sandbox: no emulator directory for '%s' under %s", emulator, project);
+        printf("%s\n", __fstr_542_buf);
         return 3;
     }
     ensureDir(scratch);
     bool ok = sandboxApplyKnownLinks(project, __btrc_str_track(__btrc_toLower(emulator)), emuDir, scratch);
     if (!ok) {
-        int __fstr_481_len = snprintf(NULL, 0, "sandbox: no BTRC symlink spec for '%s'", emulator);
-        char* __fstr_481_buf = __btrc_str_track(((char*)malloc((__fstr_481_len + 1))));
-        snprintf(__fstr_481_buf, (__fstr_481_len + 1), "sandbox: no BTRC symlink spec for '%s'", emulator);
-        printf("%s\n", __fstr_481_buf);
+        int __fstr_545_len = snprintf(NULL, 0, "sandbox: no BTRC symlink spec for '%s'", emulator);
+        char* __fstr_545_buf = __btrc_str_track(((char*)malloc((__fstr_545_len + 1))));
+        snprintf(__fstr_545_buf, (__fstr_545_len + 1), "sandbox: no BTRC symlink spec for '%s'", emulator);
+        printf("%s\n", __fstr_545_buf);
         return 3;
     }
     return 0;
@@ -15571,7 +16299,7 @@ KeymapIr* projectKeymapIr(char* project) {
         return ir;
     }
     KeymapErrors* fallbackErrors = KeymapErrors_new();
-    KeymapIr* __btrc_ret_482 = compileKeymap(defaultKeymapSource(), fallbackErrors);
+    KeymapIr* __btrc_ret_546 = compileKeymap(defaultKeymapSource(), fallbackErrors);
     if (fallbackErrors != NULL) {
         if ((--fallbackErrors->__rc) <= 0) {
             KeymapErrors_destroy(fallbackErrors);
@@ -15582,7 +16310,7 @@ KeymapIr* projectKeymapIr(char* project) {
             KeymapErrors_destroy(errors);
         }
     }
-    return __btrc_ret_482;
+    return __btrc_ret_546;
     if (fallbackErrors != NULL) {
         if ((--fallbackErrors->__rc) <= 0) {
             KeymapErrors_destroy(fallbackErrors);
@@ -15609,7 +16337,7 @@ char* retroArchShaderDir(char* project) {
     if ((((int)strlen(assetRoot)) > 0) && FileSystem_isDir(appImageShaders)) {
         return appImageShaders;
     }
-    char* resultShaders = joinPath(project, "result/share/libretro/shaders/shaders_slang");
+    char* resultShaders = joinPath(nixResultRoot(project), "share/libretro/shaders/shaders_slang");
     if (FileSystem_isDir(resultShaders)) {
         return resultShaders;
     }
@@ -15651,58 +16379,58 @@ char* retroArchVisualConfigText(char* project) {
 }
 
 char* retroArchProfileText(char* project, KeymapIr* ir) {
-    btrc_Vector_string* __list_483 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_483, "config_save_on_exit = \"true\"");
-    btrc_Vector_string_push(__list_483, "audio_driver = \"pulse\"");
-    btrc_Vector_string_push(__list_483, "input_driver = \"sdl2\"");
-    btrc_Vector_string_push(__list_483, "input_autodetect_enable = \"true\"");
-    btrc_Vector_string_push(__list_483, "input_remap_binds_enable = \"true\"");
-    btrc_Vector_string_push(__list_483, __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat("savestate_directory = \"", joinPath(contentRoot(project), "states"))), "\"")));
-    btrc_Vector_string_push(__list_483, __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat("savefile_directory = \"", joinPath(contentRoot(project), "saves"))), "\"")));
-    btrc_Vector_string_push(__list_483, __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat("screenshot_directory = \"", joinPath(contentRoot(project), "screenshots"))), "\"")));
-    return __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(textLines(__list_483), retroArchVisualConfigText(project))), renderRetroArchKeymap(ir)));
+    btrc_Vector_string* __list_547 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_547, "config_save_on_exit = \"true\"");
+    btrc_Vector_string_push(__list_547, "audio_driver = \"pulse\"");
+    btrc_Vector_string_push(__list_547, "input_driver = \"sdl2\"");
+    btrc_Vector_string_push(__list_547, "input_autodetect_enable = \"true\"");
+    btrc_Vector_string_push(__list_547, "input_remap_binds_enable = \"true\"");
+    btrc_Vector_string_push(__list_547, __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat("savestate_directory = \"", joinPath(contentRoot(project), "states"))), "\"")));
+    btrc_Vector_string_push(__list_547, __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat("savefile_directory = \"", joinPath(contentRoot(project), "saves"))), "\"")));
+    btrc_Vector_string_push(__list_547, __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat("screenshot_directory = \"", joinPath(contentRoot(project), "screenshots"))), "\"")));
+    return __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(textLines(__list_547), retroArchVisualConfigText(project))), renderRetroArchKeymap(ir)));
 }
 
 btrc_Vector_string* dolphinSection(char* header, btrc_Vector_string* lines) {
-    btrc_Vector_string* __list_484 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_484, header);
-    btrc_Vector_string* result = __list_484;
-    int __n_486 = btrc_Vector_string_iterLen(lines);
-    for (int __i_485 = 0; (__i_485 < __n_486); (__i_485++)) {
-        char* line = btrc_Vector_string_iterGet(lines, __i_485);
+    btrc_Vector_string* __list_548 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_548, header);
+    btrc_Vector_string* result = __list_548;
+    int __n_550 = btrc_Vector_string_iterLen(lines);
+    for (int __i_549 = 0; (__i_549 < __n_550); (__i_549++)) {
+        char* line = btrc_Vector_string_iterGet(lines, __i_549);
         btrc_Vector_string_push(result, line);
     }
     return result;
 }
 
 btrc_Vector_string* dolphinGcpadLines(void) {
-    btrc_Vector_string* __list_487 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_487, "Device = SDL/0/Steam Deck Controller");
-    btrc_Vector_string_push(__list_487, "Buttons/A = `Button S`");
-    btrc_Vector_string_push(__list_487, "Buttons/B = `Button W`");
-    btrc_Vector_string_push(__list_487, "Buttons/X = `Button E`");
-    btrc_Vector_string_push(__list_487, "Buttons/Y = `Button N`");
-    btrc_Vector_string_push(__list_487, "Buttons/Z = `Shoulder R`|Back");
-    btrc_Vector_string_push(__list_487, "Buttons/Start = Start");
-    btrc_Vector_string_push(__list_487, "Main Stick/Up = `Axis 1-`");
-    btrc_Vector_string_push(__list_487, "Main Stick/Down = `Axis 1+`");
-    btrc_Vector_string_push(__list_487, "Main Stick/Left = `Axis 0-`");
-    btrc_Vector_string_push(__list_487, "Main Stick/Right = `Axis 0+`");
-    btrc_Vector_string_push(__list_487, "C-Stick/Up = `Axis 4-`");
-    btrc_Vector_string_push(__list_487, "C-Stick/Down = `Axis 4+`");
-    btrc_Vector_string_push(__list_487, "C-Stick/Left = `Axis 3-`");
-    btrc_Vector_string_push(__list_487, "C-Stick/Right = `Axis 3+`");
-    btrc_Vector_string_push(__list_487, "Triggers/L = `Trigger L`");
-    btrc_Vector_string_push(__list_487, "Triggers/R = `Trigger R`");
-    btrc_Vector_string_push(__list_487, "Triggers/L-Analog = `Trigger L`");
-    btrc_Vector_string_push(__list_487, "Triggers/R-Analog = `Trigger R`");
-    btrc_Vector_string_push(__list_487, "D-Pad/Up = `Pad N`");
-    btrc_Vector_string_push(__list_487, "D-Pad/Down = `Pad S`");
-    btrc_Vector_string_push(__list_487, "D-Pad/Left = `Pad W`");
-    btrc_Vector_string_push(__list_487, "D-Pad/Right = `Pad E`");
-    btrc_Vector_string_push(__list_487, "Rumble/Motor = Strong");
-    btrc_Vector_string_push(__list_487, "Options/Always Connected = True");
-    return __list_487;
+    btrc_Vector_string* __list_551 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_551, "Device = SDL/0/Steam Deck Controller");
+    btrc_Vector_string_push(__list_551, "Buttons/A = `Button S`");
+    btrc_Vector_string_push(__list_551, "Buttons/B = `Button W`");
+    btrc_Vector_string_push(__list_551, "Buttons/X = `Button E`");
+    btrc_Vector_string_push(__list_551, "Buttons/Y = `Button N`");
+    btrc_Vector_string_push(__list_551, "Buttons/Z = `Shoulder R`|Back");
+    btrc_Vector_string_push(__list_551, "Buttons/Start = Start");
+    btrc_Vector_string_push(__list_551, "Main Stick/Up = `Axis 1-`");
+    btrc_Vector_string_push(__list_551, "Main Stick/Down = `Axis 1+`");
+    btrc_Vector_string_push(__list_551, "Main Stick/Left = `Axis 0-`");
+    btrc_Vector_string_push(__list_551, "Main Stick/Right = `Axis 0+`");
+    btrc_Vector_string_push(__list_551, "C-Stick/Up = `Axis 4-`");
+    btrc_Vector_string_push(__list_551, "C-Stick/Down = `Axis 4+`");
+    btrc_Vector_string_push(__list_551, "C-Stick/Left = `Axis 3-`");
+    btrc_Vector_string_push(__list_551, "C-Stick/Right = `Axis 3+`");
+    btrc_Vector_string_push(__list_551, "Triggers/L = `Trigger L`");
+    btrc_Vector_string_push(__list_551, "Triggers/R = `Trigger R`");
+    btrc_Vector_string_push(__list_551, "Triggers/L-Analog = `Trigger L`");
+    btrc_Vector_string_push(__list_551, "Triggers/R-Analog = `Trigger R`");
+    btrc_Vector_string_push(__list_551, "D-Pad/Up = `Pad N`");
+    btrc_Vector_string_push(__list_551, "D-Pad/Down = `Pad S`");
+    btrc_Vector_string_push(__list_551, "D-Pad/Left = `Pad W`");
+    btrc_Vector_string_push(__list_551, "D-Pad/Right = `Pad E`");
+    btrc_Vector_string_push(__list_551, "Rumble/Motor = Strong");
+    btrc_Vector_string_push(__list_551, "Options/Always Connected = True");
+    return __list_551;
 }
 
 char* dolphinGcpadProfileText(void) {
@@ -15710,25 +16438,25 @@ char* dolphinGcpadProfileText(void) {
 }
 
 char* dolphinConfigText(void) {
-    btrc_Vector_string* __list_488 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_488, "[Analytics]");
-    btrc_Vector_string_push(__list_488, "Enabled = False");
-    btrc_Vector_string_push(__list_488, "PermissionAsked = True");
-    btrc_Vector_string_push(__list_488, "");
-    btrc_Vector_string_push(__list_488, "[Core]");
-    btrc_Vector_string_push(__list_488, "SIDevice0 = 6");
-    btrc_Vector_string_push(__list_488, "SIDevice1 = 0");
-    btrc_Vector_string_push(__list_488, "SIDevice2 = 0");
-    btrc_Vector_string_push(__list_488, "SIDevice3 = 0");
-    btrc_Vector_string_push(__list_488, "WiimoteSource0 = 1");
-    btrc_Vector_string_push(__list_488, "WiimoteSource1 = 0");
-    btrc_Vector_string_push(__list_488, "WiimoteSource2 = 0");
-    btrc_Vector_string_push(__list_488, "WiimoteSource3 = 0");
-    btrc_Vector_string_push(__list_488, "");
-    btrc_Vector_string_push(__list_488, "[Interface]");
-    btrc_Vector_string_push(__list_488, "ConfirmStop = False");
-    btrc_Vector_string_push(__list_488, "UsePanicHandlers = False");
-    return textLines(__list_488);
+    btrc_Vector_string* __list_552 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_552, "[Analytics]");
+    btrc_Vector_string_push(__list_552, "Enabled = False");
+    btrc_Vector_string_push(__list_552, "PermissionAsked = True");
+    btrc_Vector_string_push(__list_552, "");
+    btrc_Vector_string_push(__list_552, "[Core]");
+    btrc_Vector_string_push(__list_552, "SIDevice0 = 6");
+    btrc_Vector_string_push(__list_552, "SIDevice1 = 0");
+    btrc_Vector_string_push(__list_552, "SIDevice2 = 0");
+    btrc_Vector_string_push(__list_552, "SIDevice3 = 0");
+    btrc_Vector_string_push(__list_552, "WiimoteSource0 = 1");
+    btrc_Vector_string_push(__list_552, "WiimoteSource1 = 0");
+    btrc_Vector_string_push(__list_552, "WiimoteSource2 = 0");
+    btrc_Vector_string_push(__list_552, "WiimoteSource3 = 0");
+    btrc_Vector_string_push(__list_552, "");
+    btrc_Vector_string_push(__list_552, "[Interface]");
+    btrc_Vector_string_push(__list_552, "ConfirmStop = False");
+    btrc_Vector_string_push(__list_552, "UsePanicHandlers = False");
+    return textLines(__list_552);
 }
 
 char* dolphinGcpadRuntimeText(void) {
@@ -15743,53 +16471,53 @@ char* dolphinGcpadRuntimeText(void) {
 }
 
 char* dolphinHotkeysProfileText(KeymapIr* ir) {
-    btrc_Vector_string* __list_489 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_489, "[Profile]");
-    btrc_Vector_string_push(__list_489, "Device = XInput2/0/Virtual core pointer");
-    btrc_Vector_string* __list_490 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_490, "Emulation Speed/Disable Emulation Speed Limit = Tab");
-    btrc_Vector_string_push(__list_490, "Controller Profile 1/Next Profile = @(Alt+F5)");
-    btrc_Vector_string_push(__list_490, "Other State Hotkeys/Undo Load State = F12");
-    btrc_Vector_string_push(__list_490, "Other State Hotkeys/Undo Save State = @(Shift+F12)");
-    return __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(textLines(__list_489), renderDolphinKeymap(ir))), textLines(__list_490)));
+    btrc_Vector_string* __list_553 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_553, "[Profile]");
+    btrc_Vector_string_push(__list_553, "Device = XInput2/0/Virtual core pointer");
+    btrc_Vector_string* __list_554 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_554, "Emulation Speed/Disable Emulation Speed Limit = Tab");
+    btrc_Vector_string_push(__list_554, "Controller Profile 1/Next Profile = @(Alt+F5)");
+    btrc_Vector_string_push(__list_554, "Other State Hotkeys/Undo Load State = F12");
+    btrc_Vector_string_push(__list_554, "Other State Hotkeys/Undo Save State = @(Shift+F12)");
+    return __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(textLines(__list_553), renderDolphinKeymap(ir))), textLines(__list_554)));
 }
 
 btrc_Vector_string* dolphinWiimoteLines(bool classic) {
-    btrc_Vector_string* __list_491 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_491, "Device = SteamDeck/0/Steam Deck");
-    btrc_Vector_string_push(__list_491, "Buttons/A = `A`|`XInput2/0/Virtual core pointer:Click 1`|`XInput2/0/Virtual core pointer:Return`");
-    btrc_Vector_string_push(__list_491, "Buttons/B = B|`R4`");
-    btrc_Vector_string_push(__list_491, "Buttons/1 = X");
-    btrc_Vector_string_push(__list_491, "Buttons/2 = Y");
-    btrc_Vector_string_push(__list_491, "Buttons/- = View");
-    btrc_Vector_string_push(__list_491, "Buttons/+ = Menu");
-    btrc_Vector_string_push(__list_491, "D-Pad/Up = `D-Pad Up`");
-    btrc_Vector_string_push(__list_491, "D-Pad/Down = `D-Pad Down`");
-    btrc_Vector_string_push(__list_491, "D-Pad/Left = `D-Pad Left`");
-    btrc_Vector_string_push(__list_491, "D-Pad/Right = `D-Pad Right`");
-    btrc_Vector_string_push(__list_491, "IR/Vertical Offset = 12.");
-    btrc_Vector_string_push(__list_491, "IR/Total Yaw = 19.");
-    btrc_Vector_string_push(__list_491, "IR/Total Pitch = 22.");
-    btrc_Vector_string_push(__list_491, "IR/Auto-Hide = True");
-    btrc_Vector_string_push(__list_491, "IR/Up = `XInput2/0/Virtual core pointer:Cursor Y-`");
-    btrc_Vector_string_push(__list_491, "IR/Down = `XInput2/0/Virtual core pointer:Cursor Y+`");
-    btrc_Vector_string_push(__list_491, "IR/Left = `XInput2/0/Virtual core pointer:Cursor X-`");
-    btrc_Vector_string_push(__list_491, "IR/Right = `XInput2/0/Virtual core pointer:Cursor X+`");
-    btrc_Vector_string_push(__list_491, "IR/Hide = `Thumb L`");
-    btrc_Vector_string_push(__list_491, "IMUIR/Enabled = False");
-    btrc_Vector_string_push(__list_491, "IMUAccelerometer/Up = `Accel Up`");
-    btrc_Vector_string_push(__list_491, "IMUAccelerometer/Down = `Accel Down`");
-    btrc_Vector_string_push(__list_491, "IMUAccelerometer/Left = `Accel Left`");
-    btrc_Vector_string_push(__list_491, "IMUAccelerometer/Right = `Accel Right`");
-    btrc_Vector_string_push(__list_491, "IMUAccelerometer/Forward = `Accel Forward`");
-    btrc_Vector_string_push(__list_491, "IMUAccelerometer/Backward = `Accel Backward`");
-    btrc_Vector_string_push(__list_491, "IMUGyroscope/Pitch Up = `Gyro Pitch Up`");
-    btrc_Vector_string_push(__list_491, "IMUGyroscope/Pitch Down = `Gyro Pitch Down`");
-    btrc_Vector_string_push(__list_491, "IMUGyroscope/Roll Left = `Gyro Roll Left`");
-    btrc_Vector_string_push(__list_491, "IMUGyroscope/Roll Right = `Gyro Roll Right`");
-    btrc_Vector_string_push(__list_491, "IMUGyroscope/Yaw Left = `Gyro Yaw Left`");
-    btrc_Vector_string_push(__list_491, "IMUGyroscope/Yaw Right = `Gyro Yaw Right`");
-    btrc_Vector_string* lines = __list_491;
+    btrc_Vector_string* __list_555 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_555, "Device = SteamDeck/0/Steam Deck");
+    btrc_Vector_string_push(__list_555, "Buttons/A = `A`|`XInput2/0/Virtual core pointer:Click 1`|`XInput2/0/Virtual core pointer:Return`");
+    btrc_Vector_string_push(__list_555, "Buttons/B = B|`R4`");
+    btrc_Vector_string_push(__list_555, "Buttons/1 = X");
+    btrc_Vector_string_push(__list_555, "Buttons/2 = Y");
+    btrc_Vector_string_push(__list_555, "Buttons/- = View");
+    btrc_Vector_string_push(__list_555, "Buttons/+ = Menu");
+    btrc_Vector_string_push(__list_555, "D-Pad/Up = `D-Pad Up`");
+    btrc_Vector_string_push(__list_555, "D-Pad/Down = `D-Pad Down`");
+    btrc_Vector_string_push(__list_555, "D-Pad/Left = `D-Pad Left`");
+    btrc_Vector_string_push(__list_555, "D-Pad/Right = `D-Pad Right`");
+    btrc_Vector_string_push(__list_555, "IR/Vertical Offset = 12.");
+    btrc_Vector_string_push(__list_555, "IR/Total Yaw = 19.");
+    btrc_Vector_string_push(__list_555, "IR/Total Pitch = 22.");
+    btrc_Vector_string_push(__list_555, "IR/Auto-Hide = True");
+    btrc_Vector_string_push(__list_555, "IR/Up = `XInput2/0/Virtual core pointer:Cursor Y-`");
+    btrc_Vector_string_push(__list_555, "IR/Down = `XInput2/0/Virtual core pointer:Cursor Y+`");
+    btrc_Vector_string_push(__list_555, "IR/Left = `XInput2/0/Virtual core pointer:Cursor X-`");
+    btrc_Vector_string_push(__list_555, "IR/Right = `XInput2/0/Virtual core pointer:Cursor X+`");
+    btrc_Vector_string_push(__list_555, "IR/Hide = `Thumb L`");
+    btrc_Vector_string_push(__list_555, "IMUIR/Enabled = False");
+    btrc_Vector_string_push(__list_555, "IMUAccelerometer/Up = `Accel Up`");
+    btrc_Vector_string_push(__list_555, "IMUAccelerometer/Down = `Accel Down`");
+    btrc_Vector_string_push(__list_555, "IMUAccelerometer/Left = `Accel Left`");
+    btrc_Vector_string_push(__list_555, "IMUAccelerometer/Right = `Accel Right`");
+    btrc_Vector_string_push(__list_555, "IMUAccelerometer/Forward = `Accel Forward`");
+    btrc_Vector_string_push(__list_555, "IMUAccelerometer/Backward = `Accel Backward`");
+    btrc_Vector_string_push(__list_555, "IMUGyroscope/Pitch Up = `Gyro Pitch Up`");
+    btrc_Vector_string_push(__list_555, "IMUGyroscope/Pitch Down = `Gyro Pitch Down`");
+    btrc_Vector_string_push(__list_555, "IMUGyroscope/Roll Left = `Gyro Roll Left`");
+    btrc_Vector_string_push(__list_555, "IMUGyroscope/Roll Right = `Gyro Roll Right`");
+    btrc_Vector_string_push(__list_555, "IMUGyroscope/Yaw Left = `Gyro Yaw Left`");
+    btrc_Vector_string_push(__list_555, "IMUGyroscope/Yaw Right = `Gyro Yaw Right`");
+    btrc_Vector_string* lines = __list_555;
     if (classic) {
         btrc_Vector_string_push(lines, "Extension = Classic");
         btrc_Vector_string_push(lines, "Classic/Buttons/A = B");
@@ -15832,38 +16560,38 @@ char* dolphinWiimoteProfileText(bool classic) {
 }
 
 btrc_Vector_string* dolphinWiimoteRuntimeLines(void) {
-    btrc_Vector_string* __list_492 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_492, "Device = XInput2/0/Virtual core pointer");
-    btrc_Vector_string_push(__list_492, "Buttons/A = Return|`Click 1`|`SteamDeck/0/Steam Deck:A`");
-    btrc_Vector_string_push(__list_492, "Buttons/B = B|`Click 3`|`SteamDeck/0/Steam Deck:B`|`SteamDeck/0/Steam Deck:R4`");
-    btrc_Vector_string_push(__list_492, "Buttons/1 = 1|`SteamDeck/0/Steam Deck:X`");
-    btrc_Vector_string_push(__list_492, "Buttons/2 = 2|`SteamDeck/0/Steam Deck:Y`");
-    btrc_Vector_string_push(__list_492, "Buttons/- = Q|`SteamDeck/0/Steam Deck:View`");
-    btrc_Vector_string_push(__list_492, "Buttons/+ = E|`SteamDeck/0/Steam Deck:Menu`");
-    btrc_Vector_string_push(__list_492, "Buttons/Home = Return");
-    btrc_Vector_string_push(__list_492, "D-Pad/Up = Up|`SteamDeck/0/Steam Deck:D-Pad Up`");
-    btrc_Vector_string_push(__list_492, "D-Pad/Down = Down|`SteamDeck/0/Steam Deck:D-Pad Down`");
-    btrc_Vector_string_push(__list_492, "D-Pad/Left = Left|`SteamDeck/0/Steam Deck:D-Pad Left`");
-    btrc_Vector_string_push(__list_492, "D-Pad/Right = Right|`SteamDeck/0/Steam Deck:D-Pad Right`");
-    btrc_Vector_string_push(__list_492, "IR/Vertical Offset = 12.");
-    btrc_Vector_string_push(__list_492, "IR/Total Yaw = 19.");
-    btrc_Vector_string_push(__list_492, "IR/Total Pitch = 22.");
-    btrc_Vector_string_push(__list_492, "IR/Auto-Hide = True");
-    btrc_Vector_string_push(__list_492, "IR/Up = `Cursor Y-`");
-    btrc_Vector_string_push(__list_492, "IR/Down = `Cursor Y+`");
-    btrc_Vector_string_push(__list_492, "IR/Left = `Cursor X-`");
-    btrc_Vector_string_push(__list_492, "IR/Right = `Cursor X+`");
-    btrc_Vector_string_push(__list_492, "IR/Hide = `SteamDeck/0/Steam Deck:Thumb L`");
-    btrc_Vector_string_push(__list_492, "IMUIR/Enabled = False");
-    btrc_Vector_string_push(__list_492, "Extension = Nunchuk");
-    btrc_Vector_string_push(__list_492, "Nunchuk/Buttons/C = `SteamDeck/0/Steam Deck:Shoulder R`");
-    btrc_Vector_string_push(__list_492, "Nunchuk/Buttons/Z = `SteamDeck/0/Steam Deck:Trigger R`");
-    btrc_Vector_string_push(__list_492, "Nunchuk/Stick/Up = `SteamDeck/0/Steam Deck:Left Stick Y+`");
-    btrc_Vector_string_push(__list_492, "Nunchuk/Stick/Down = `SteamDeck/0/Steam Deck:Left Stick Y-`");
-    btrc_Vector_string_push(__list_492, "Nunchuk/Stick/Left = `SteamDeck/0/Steam Deck:Left Stick X-`");
-    btrc_Vector_string_push(__list_492, "Nunchuk/Stick/Right = `SteamDeck/0/Steam Deck:Left Stick X+`");
-    btrc_Vector_string_push(__list_492, "Rumble/Motor = Strong");
-    return __list_492;
+    btrc_Vector_string* __list_556 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_556, "Device = XInput2/0/Virtual core pointer");
+    btrc_Vector_string_push(__list_556, "Buttons/A = Return|`Click 1`|`SteamDeck/0/Steam Deck:A`");
+    btrc_Vector_string_push(__list_556, "Buttons/B = B|`Click 3`|`SteamDeck/0/Steam Deck:B`|`SteamDeck/0/Steam Deck:R4`");
+    btrc_Vector_string_push(__list_556, "Buttons/1 = 1|`SteamDeck/0/Steam Deck:X`");
+    btrc_Vector_string_push(__list_556, "Buttons/2 = 2|`SteamDeck/0/Steam Deck:Y`");
+    btrc_Vector_string_push(__list_556, "Buttons/- = Q|`SteamDeck/0/Steam Deck:View`");
+    btrc_Vector_string_push(__list_556, "Buttons/+ = E|`SteamDeck/0/Steam Deck:Menu`");
+    btrc_Vector_string_push(__list_556, "Buttons/Home = Return");
+    btrc_Vector_string_push(__list_556, "D-Pad/Up = Up|`SteamDeck/0/Steam Deck:D-Pad Up`");
+    btrc_Vector_string_push(__list_556, "D-Pad/Down = Down|`SteamDeck/0/Steam Deck:D-Pad Down`");
+    btrc_Vector_string_push(__list_556, "D-Pad/Left = Left|`SteamDeck/0/Steam Deck:D-Pad Left`");
+    btrc_Vector_string_push(__list_556, "D-Pad/Right = Right|`SteamDeck/0/Steam Deck:D-Pad Right`");
+    btrc_Vector_string_push(__list_556, "IR/Vertical Offset = 12.");
+    btrc_Vector_string_push(__list_556, "IR/Total Yaw = 19.");
+    btrc_Vector_string_push(__list_556, "IR/Total Pitch = 22.");
+    btrc_Vector_string_push(__list_556, "IR/Auto-Hide = True");
+    btrc_Vector_string_push(__list_556, "IR/Up = `Cursor Y-`");
+    btrc_Vector_string_push(__list_556, "IR/Down = `Cursor Y+`");
+    btrc_Vector_string_push(__list_556, "IR/Left = `Cursor X-`");
+    btrc_Vector_string_push(__list_556, "IR/Right = `Cursor X+`");
+    btrc_Vector_string_push(__list_556, "IR/Hide = `SteamDeck/0/Steam Deck:Thumb L`");
+    btrc_Vector_string_push(__list_556, "IMUIR/Enabled = False");
+    btrc_Vector_string_push(__list_556, "Extension = Nunchuk");
+    btrc_Vector_string_push(__list_556, "Nunchuk/Buttons/C = `SteamDeck/0/Steam Deck:Shoulder R`");
+    btrc_Vector_string_push(__list_556, "Nunchuk/Buttons/Z = `SteamDeck/0/Steam Deck:Trigger R`");
+    btrc_Vector_string_push(__list_556, "Nunchuk/Stick/Up = `SteamDeck/0/Steam Deck:Left Stick Y+`");
+    btrc_Vector_string_push(__list_556, "Nunchuk/Stick/Down = `SteamDeck/0/Steam Deck:Left Stick Y-`");
+    btrc_Vector_string_push(__list_556, "Nunchuk/Stick/Left = `SteamDeck/0/Steam Deck:Left Stick X-`");
+    btrc_Vector_string_push(__list_556, "Nunchuk/Stick/Right = `SteamDeck/0/Steam Deck:Left Stick X+`");
+    btrc_Vector_string_push(__list_556, "Rumble/Motor = Strong");
+    return __list_556;
 }
 
 char* dolphinWiimoteRuntimeText(void) {
@@ -15881,55 +16609,55 @@ char* dolphinWiimoteRuntimeText(void) {
 }
 
 char* pcsx2PadBindingsText(void) {
-    btrc_Vector_string* __list_493 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_493, "[Pad]");
-    btrc_Vector_string_push(__list_493, "UseProfileHotkeyBindings = true");
-    btrc_Vector_string_push(__list_493, "MultitapPort1 = false");
-    btrc_Vector_string_push(__list_493, "MultitapPort2 = false");
-    btrc_Vector_string_push(__list_493, "");
-    btrc_Vector_string_push(__list_493, "[InputSources]");
-    btrc_Vector_string_push(__list_493, "Keyboard = true");
-    btrc_Vector_string_push(__list_493, "Mouse = true");
-    btrc_Vector_string_push(__list_493, "SDL = true");
-    btrc_Vector_string_push(__list_493, "DInput = false");
-    btrc_Vector_string_push(__list_493, "XInput = false");
-    btrc_Vector_string_push(__list_493, "");
-    btrc_Vector_string_push(__list_493, "[Pad1]");
-    btrc_Vector_string_push(__list_493, "Type = DualShock2");
-    btrc_Vector_string_push(__list_493, "Up = SDL-1/DPadUp | Keyboard/Up");
-    btrc_Vector_string_push(__list_493, "Right = SDL-1/DPadRight | Keyboard/Right");
-    btrc_Vector_string_push(__list_493, "Down = SDL-1/DPadDown | Keyboard/Down");
-    btrc_Vector_string_push(__list_493, "Left = SDL-1/DPadLeft | Keyboard/Left");
-    btrc_Vector_string_push(__list_493, "Triangle = SDL-1/Y | Keyboard/I");
-    btrc_Vector_string_push(__list_493, "Circle = SDL-1/B | Keyboard/X");
-    btrc_Vector_string_push(__list_493, "Cross = SDL-1/A | Keyboard/Z");
-    btrc_Vector_string_push(__list_493, "Square = SDL-1/X | Keyboard/A");
-    btrc_Vector_string_push(__list_493, "Select = SDL-1/Back | Keyboard/Backspace");
-    btrc_Vector_string_push(__list_493, "Start = SDL-1/Start | Keyboard/Enter");
-    btrc_Vector_string_push(__list_493, "L1 = SDL-1/LeftShoulder");
-    btrc_Vector_string_push(__list_493, "L2 = SDL-1/+LeftTrigger");
-    btrc_Vector_string_push(__list_493, "R1 = SDL-1/RightShoulder");
-    btrc_Vector_string_push(__list_493, "R2 = SDL-1/+RightTrigger");
-    btrc_Vector_string_push(__list_493, "L3 = SDL-1/LeftStick");
-    btrc_Vector_string_push(__list_493, "R3 = SDL-1/RightStick");
-    btrc_Vector_string_push(__list_493, "LUp = SDL-1/-LeftY");
-    btrc_Vector_string_push(__list_493, "LRight = SDL-1/+LeftX");
-    btrc_Vector_string_push(__list_493, "LDown = SDL-1/+LeftY");
-    btrc_Vector_string_push(__list_493, "LLeft = SDL-1/-LeftX");
-    btrc_Vector_string_push(__list_493, "RUp = SDL-1/-RightY");
-    btrc_Vector_string_push(__list_493, "RRight = SDL-1/+RightX");
-    btrc_Vector_string_push(__list_493, "RDown = SDL-1/+RightY");
-    btrc_Vector_string_push(__list_493, "RLeft = SDL-1/-RightX");
-    btrc_Vector_string_push(__list_493, "");
-    btrc_Vector_string_push(__list_493, "[Pad2]");
-    btrc_Vector_string_push(__list_493, "Type = None");
-    return textLines(__list_493);
+    btrc_Vector_string* __list_557 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_557, "[Pad]");
+    btrc_Vector_string_push(__list_557, "UseProfileHotkeyBindings = true");
+    btrc_Vector_string_push(__list_557, "MultitapPort1 = false");
+    btrc_Vector_string_push(__list_557, "MultitapPort2 = false");
+    btrc_Vector_string_push(__list_557, "");
+    btrc_Vector_string_push(__list_557, "[InputSources]");
+    btrc_Vector_string_push(__list_557, "Keyboard = true");
+    btrc_Vector_string_push(__list_557, "Mouse = true");
+    btrc_Vector_string_push(__list_557, "SDL = true");
+    btrc_Vector_string_push(__list_557, "DInput = false");
+    btrc_Vector_string_push(__list_557, "XInput = false");
+    btrc_Vector_string_push(__list_557, "");
+    btrc_Vector_string_push(__list_557, "[Pad1]");
+    btrc_Vector_string_push(__list_557, "Type = DualShock2");
+    btrc_Vector_string_push(__list_557, "Up = SDL-1/DPadUp | Keyboard/Up");
+    btrc_Vector_string_push(__list_557, "Right = SDL-1/DPadRight | Keyboard/Right");
+    btrc_Vector_string_push(__list_557, "Down = SDL-1/DPadDown | Keyboard/Down");
+    btrc_Vector_string_push(__list_557, "Left = SDL-1/DPadLeft | Keyboard/Left");
+    btrc_Vector_string_push(__list_557, "Triangle = SDL-1/Y | Keyboard/I");
+    btrc_Vector_string_push(__list_557, "Circle = SDL-1/B | Keyboard/X");
+    btrc_Vector_string_push(__list_557, "Cross = SDL-1/A | Keyboard/Z");
+    btrc_Vector_string_push(__list_557, "Square = SDL-1/X | Keyboard/A");
+    btrc_Vector_string_push(__list_557, "Select = SDL-1/Back | Keyboard/Backspace");
+    btrc_Vector_string_push(__list_557, "Start = SDL-1/Start | Keyboard/Enter");
+    btrc_Vector_string_push(__list_557, "L1 = SDL-1/LeftShoulder");
+    btrc_Vector_string_push(__list_557, "L2 = SDL-1/+LeftTrigger");
+    btrc_Vector_string_push(__list_557, "R1 = SDL-1/RightShoulder");
+    btrc_Vector_string_push(__list_557, "R2 = SDL-1/+RightTrigger");
+    btrc_Vector_string_push(__list_557, "L3 = SDL-1/LeftStick");
+    btrc_Vector_string_push(__list_557, "R3 = SDL-1/RightStick");
+    btrc_Vector_string_push(__list_557, "LUp = SDL-1/-LeftY");
+    btrc_Vector_string_push(__list_557, "LRight = SDL-1/+LeftX");
+    btrc_Vector_string_push(__list_557, "LDown = SDL-1/+LeftY");
+    btrc_Vector_string_push(__list_557, "LLeft = SDL-1/-LeftX");
+    btrc_Vector_string_push(__list_557, "RUp = SDL-1/-RightY");
+    btrc_Vector_string_push(__list_557, "RRight = SDL-1/+RightX");
+    btrc_Vector_string_push(__list_557, "RDown = SDL-1/+RightY");
+    btrc_Vector_string_push(__list_557, "RLeft = SDL-1/-RightX");
+    btrc_Vector_string_push(__list_557, "");
+    btrc_Vector_string_push(__list_557, "[Pad2]");
+    btrc_Vector_string_push(__list_557, "Type = None");
+    return textLines(__list_557);
 }
 
 char* pcsx2ProfileText(KeymapIr* ir) {
-    btrc_Vector_string* __list_494 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_494, "[Hotkeys]");
-    return __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(pcsx2PadBindingsText(), textLines(__list_494))), renderPcsx2Keymap(ir)));
+    btrc_Vector_string* __list_558 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_558, "[Hotkeys]");
+    return __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(pcsx2PadBindingsText(), textLines(__list_558))), renderPcsx2Keymap(ir)));
 }
 
 char* pcsx2BiosDir(char* project) {
@@ -15941,85 +16669,85 @@ char* pcsx2BiosDir(char* project) {
 }
 
 char* pcsx2ConfigText(char* project) {
-    btrc_Vector_string* __list_495 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_495, "[UI]");
-    btrc_Vector_string_push(__list_495, "SettingsVersion = 1");
-    btrc_Vector_string_push(__list_495, "InhibitScreensaver = true");
-    btrc_Vector_string_push(__list_495, "ConfirmShutdown = false");
-    btrc_Vector_string_push(__list_495, "StartPaused = false");
-    btrc_Vector_string_push(__list_495, "PauseOnFocusLoss = false");
-    btrc_Vector_string_push(__list_495, "StartFullscreen = true");
-    btrc_Vector_string_push(__list_495, "DoubleClickTogglesFullscreen = true");
-    btrc_Vector_string_push(__list_495, "HideMouseCursor = true");
-    btrc_Vector_string_push(__list_495, "RenderToSeparateWindow = false");
-    btrc_Vector_string_push(__list_495, "HideMainWindowWhenRunning = true");
-    btrc_Vector_string_push(__list_495, "DisableWindowResize = false");
-    btrc_Vector_string_push(__list_495, "PreferEnglishGameList = false");
-    btrc_Vector_string_push(__list_495, "Theme = darkfusionblue");
-    btrc_Vector_string_push(__list_495, "SetupWizardIncomplete = false");
-    btrc_Vector_string_push(__list_495, "");
-    btrc_Vector_string_push(__list_495, "[Folders]");
-    btrc_Vector_string_push(__list_495, __btrc_str_track(__btrc_strcat("Bios = ", pcsx2BiosDir(project))));
-    btrc_Vector_string_push(__list_495, "Snapshots = snaps");
-    btrc_Vector_string_push(__list_495, "Savestates = sstates");
-    btrc_Vector_string_push(__list_495, "MemoryCards = memcards");
-    btrc_Vector_string_push(__list_495, "Logs = logs");
-    btrc_Vector_string_push(__list_495, "Cheats = cheats");
-    btrc_Vector_string_push(__list_495, "Patches = patches");
-    btrc_Vector_string_push(__list_495, "UserResources = resources");
-    btrc_Vector_string_push(__list_495, "Cache = cache");
-    btrc_Vector_string_push(__list_495, "Textures = textures");
-    btrc_Vector_string_push(__list_495, "InputProfiles = inputprofiles");
-    btrc_Vector_string_push(__list_495, "");
-    btrc_Vector_string_push(__list_495, "[EmuCore]");
-    btrc_Vector_string_push(__list_495, "EnablePatches = true");
-    btrc_Vector_string_push(__list_495, "EnableWideScreenPatches = false");
-    btrc_Vector_string_push(__list_495, "EnableFastBoot = true");
-    btrc_Vector_string_push(__list_495, "UseSavestateSelector = true");
-    btrc_Vector_string_push(__list_495, "McdFolderAutoManage = true");
-    btrc_Vector_string_push(__list_495, "");
-    btrc_Vector_string_push(__list_495, "[EmuCore/GS]");
-    btrc_Vector_string_push(__list_495, "AspectRatio = Auto 4:3/3:2");
-    btrc_Vector_string_push(__list_495, "IntegerScaling = true");
-    btrc_Vector_string_push(__list_495, "Renderer = -1");
-    btrc_Vector_string_push(__list_495, "upscale_multiplier = 1");
-    btrc_Vector_string_push(__list_495, "filter = 0");
-    btrc_Vector_string_push(__list_495, "VsyncEnable = true");
-    btrc_Vector_string_push(__list_495, "");
-    return __btrc_str_track(__btrc_strcat(textLines(__list_495), pcsx2PadBindingsText()));
+    btrc_Vector_string* __list_559 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_559, "[UI]");
+    btrc_Vector_string_push(__list_559, "SettingsVersion = 1");
+    btrc_Vector_string_push(__list_559, "InhibitScreensaver = true");
+    btrc_Vector_string_push(__list_559, "ConfirmShutdown = false");
+    btrc_Vector_string_push(__list_559, "StartPaused = false");
+    btrc_Vector_string_push(__list_559, "PauseOnFocusLoss = false");
+    btrc_Vector_string_push(__list_559, "StartFullscreen = true");
+    btrc_Vector_string_push(__list_559, "DoubleClickTogglesFullscreen = true");
+    btrc_Vector_string_push(__list_559, "HideMouseCursor = true");
+    btrc_Vector_string_push(__list_559, "RenderToSeparateWindow = false");
+    btrc_Vector_string_push(__list_559, "HideMainWindowWhenRunning = true");
+    btrc_Vector_string_push(__list_559, "DisableWindowResize = false");
+    btrc_Vector_string_push(__list_559, "PreferEnglishGameList = false");
+    btrc_Vector_string_push(__list_559, "Theme = darkfusionblue");
+    btrc_Vector_string_push(__list_559, "SetupWizardIncomplete = false");
+    btrc_Vector_string_push(__list_559, "");
+    btrc_Vector_string_push(__list_559, "[Folders]");
+    btrc_Vector_string_push(__list_559, __btrc_str_track(__btrc_strcat("Bios = ", pcsx2BiosDir(project))));
+    btrc_Vector_string_push(__list_559, "Snapshots = snaps");
+    btrc_Vector_string_push(__list_559, "Savestates = sstates");
+    btrc_Vector_string_push(__list_559, "MemoryCards = memcards");
+    btrc_Vector_string_push(__list_559, "Logs = logs");
+    btrc_Vector_string_push(__list_559, "Cheats = cheats");
+    btrc_Vector_string_push(__list_559, "Patches = patches");
+    btrc_Vector_string_push(__list_559, "UserResources = resources");
+    btrc_Vector_string_push(__list_559, "Cache = cache");
+    btrc_Vector_string_push(__list_559, "Textures = textures");
+    btrc_Vector_string_push(__list_559, "InputProfiles = inputprofiles");
+    btrc_Vector_string_push(__list_559, "");
+    btrc_Vector_string_push(__list_559, "[EmuCore]");
+    btrc_Vector_string_push(__list_559, "EnablePatches = true");
+    btrc_Vector_string_push(__list_559, "EnableWideScreenPatches = false");
+    btrc_Vector_string_push(__list_559, "EnableFastBoot = true");
+    btrc_Vector_string_push(__list_559, "UseSavestateSelector = true");
+    btrc_Vector_string_push(__list_559, "McdFolderAutoManage = true");
+    btrc_Vector_string_push(__list_559, "");
+    btrc_Vector_string_push(__list_559, "[EmuCore/GS]");
+    btrc_Vector_string_push(__list_559, "AspectRatio = Auto 4:3/3:2");
+    btrc_Vector_string_push(__list_559, "IntegerScaling = true");
+    btrc_Vector_string_push(__list_559, "Renderer = -1");
+    btrc_Vector_string_push(__list_559, "upscale_multiplier = 1");
+    btrc_Vector_string_push(__list_559, "filter = 0");
+    btrc_Vector_string_push(__list_559, "VsyncEnable = true");
+    btrc_Vector_string_push(__list_559, "");
+    return __btrc_str_track(__btrc_strcat(textLines(__list_559), pcsx2PadBindingsText()));
 }
 
 char* azaharConfigTextForDataRoot(char* dataRoot) {
     char* azaharRoot = joinPath(dataRoot, "azahar-emu");
-    btrc_Vector_string* __list_496 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_496, "[Data%20Storage]");
-    btrc_Vector_string_push(__list_496, __btrc_str_track(__btrc_strcat("nand_directory=", joinPath(azaharRoot, "nand/"))));
-    btrc_Vector_string_push(__list_496, "nand_directory\\default=false");
-    btrc_Vector_string_push(__list_496, __btrc_str_track(__btrc_strcat("sdmc_directory=", joinPath(azaharRoot, "sdmc/"))));
-    btrc_Vector_string_push(__list_496, "sdmc_directory\\default=false");
-    btrc_Vector_string_push(__list_496, "use_custom_storage=false");
-    btrc_Vector_string_push(__list_496, "use_custom_storage\\default=true");
-    btrc_Vector_string_push(__list_496, "use_virtual_sd=true");
-    btrc_Vector_string_push(__list_496, "use_virtual_sd\\default=true");
-    btrc_Vector_string_push(__list_496, "");
-    btrc_Vector_string_push(__list_496, "[Debugging]");
-    btrc_Vector_string_push(__list_496, "renderer_debug=false");
-    btrc_Vector_string_push(__list_496, "renderer_debug\\default=false");
-    btrc_Vector_string_push(__list_496, "");
-    btrc_Vector_string_push(__list_496, "[Renderer]");
-    btrc_Vector_string_push(__list_496, "graphics_api=2");
-    btrc_Vector_string_push(__list_496, "graphics_api\\default=false");
-    btrc_Vector_string_push(__list_496, "");
-    btrc_Vector_string_push(__list_496, "[UI]");
-    btrc_Vector_string_push(__list_496, "confirmClose=false");
-    btrc_Vector_string_push(__list_496, "confirmClose\\default=false");
-    btrc_Vector_string_push(__list_496, "firstStart=false");
-    btrc_Vector_string_push(__list_496, "firstStart\\default=false");
-    btrc_Vector_string_push(__list_496, "fullscreen=true");
-    btrc_Vector_string_push(__list_496, "fullscreen\\default=false");
-    btrc_Vector_string_push(__list_496, "saveStateWarning=false");
-    btrc_Vector_string_push(__list_496, "saveStateWarning\\default=false");
-    return textLines(__list_496);
+    btrc_Vector_string* __list_560 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_560, "[Data%20Storage]");
+    btrc_Vector_string_push(__list_560, __btrc_str_track(__btrc_strcat("nand_directory=", joinPath(azaharRoot, "nand/"))));
+    btrc_Vector_string_push(__list_560, "nand_directory\\default=false");
+    btrc_Vector_string_push(__list_560, __btrc_str_track(__btrc_strcat("sdmc_directory=", joinPath(azaharRoot, "sdmc/"))));
+    btrc_Vector_string_push(__list_560, "sdmc_directory\\default=false");
+    btrc_Vector_string_push(__list_560, "use_custom_storage=false");
+    btrc_Vector_string_push(__list_560, "use_custom_storage\\default=true");
+    btrc_Vector_string_push(__list_560, "use_virtual_sd=true");
+    btrc_Vector_string_push(__list_560, "use_virtual_sd\\default=true");
+    btrc_Vector_string_push(__list_560, "");
+    btrc_Vector_string_push(__list_560, "[Debugging]");
+    btrc_Vector_string_push(__list_560, "renderer_debug=false");
+    btrc_Vector_string_push(__list_560, "renderer_debug\\default=false");
+    btrc_Vector_string_push(__list_560, "");
+    btrc_Vector_string_push(__list_560, "[Renderer]");
+    btrc_Vector_string_push(__list_560, "graphics_api=2");
+    btrc_Vector_string_push(__list_560, "graphics_api\\default=false");
+    btrc_Vector_string_push(__list_560, "");
+    btrc_Vector_string_push(__list_560, "[UI]");
+    btrc_Vector_string_push(__list_560, "confirmClose=false");
+    btrc_Vector_string_push(__list_560, "confirmClose\\default=false");
+    btrc_Vector_string_push(__list_560, "firstStart=false");
+    btrc_Vector_string_push(__list_560, "firstStart\\default=false");
+    btrc_Vector_string_push(__list_560, "fullscreen=true");
+    btrc_Vector_string_push(__list_560, "fullscreen\\default=false");
+    btrc_Vector_string_push(__list_560, "saveStateWarning=false");
+    btrc_Vector_string_push(__list_560, "saveStateWarning\\default=false");
+    return textLines(__list_560);
 }
 
 char* azaharConfigText(char* project) {
@@ -16031,57 +16759,57 @@ char* cemuProfileText(void) {
 }
 
 char* ryujinxProfileText(void) {
-    btrc_Vector_string* __list_497 = btrc_Vector_string_new();
-    btrc_Vector_string* __list_498 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_498, jsonStrField("joystick", "Left"));
-    btrc_Vector_string_push(__list_498, jsonBoolField("invert_stick_x", false));
-    btrc_Vector_string_push(__list_498, jsonBoolField("invert_stick_y", false));
-    btrc_Vector_string_push(__list_498, jsonStrField("stick_button", "LeftStick"));
-    btrc_Vector_string_push(__list_497, jsonField("left_joycon_stick", jsonObject(__list_498)));
-    btrc_Vector_string* __list_499 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_499, jsonStrField("joystick", "Right"));
-    btrc_Vector_string_push(__list_499, jsonBoolField("invert_stick_x", false));
-    btrc_Vector_string_push(__list_499, jsonBoolField("invert_stick_y", false));
-    btrc_Vector_string_push(__list_499, jsonStrField("stick_button", "RightStick"));
-    btrc_Vector_string_push(__list_497, jsonField("right_joycon_stick", jsonObject(__list_499)));
-    btrc_Vector_string* __list_500 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_500, jsonField("slot", "0"));
-    btrc_Vector_string_push(__list_500, jsonField("alt_slot", "0"));
-    btrc_Vector_string_push(__list_500, jsonBoolField("mirror_input", false));
-    btrc_Vector_string_push(__list_500, jsonStrField("motion_backend", "CemuHook"));
-    btrc_Vector_string_push(__list_500, jsonField("sensitivity", "100"));
-    btrc_Vector_string_push(__list_500, jsonField("gyro_deadzone", "1"));
-    btrc_Vector_string_push(__list_500, jsonBoolField("enable_motion", false));
-    btrc_Vector_string_push(__list_497, jsonField("motion", jsonObject(__list_500)));
-    btrc_Vector_string* __list_501 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_501, jsonField("strong_rumble", "1"));
-    btrc_Vector_string_push(__list_501, jsonField("weak_rumble", "1"));
-    btrc_Vector_string_push(__list_501, jsonBoolField("enable_rumble", true));
-    btrc_Vector_string_push(__list_497, jsonField("rumble", jsonObject(__list_501)));
-    btrc_Vector_string* __list_502 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_502, jsonStrField("button_minus", "Back"));
-    btrc_Vector_string_push(__list_502, jsonStrField("button_l", "LeftShoulder"));
-    btrc_Vector_string_push(__list_502, jsonStrField("button_zl", "LeftTrigger"));
-    btrc_Vector_string_push(__list_502, jsonStrField("dpad_up", "DpadUp"));
-    btrc_Vector_string_push(__list_502, jsonStrField("dpad_down", "DpadDown"));
-    btrc_Vector_string_push(__list_502, jsonStrField("dpad_left", "DpadLeft"));
-    btrc_Vector_string_push(__list_502, jsonStrField("dpad_right", "DpadRight"));
-    btrc_Vector_string_push(__list_497, jsonField("left_joycon", jsonObject(__list_502)));
-    btrc_Vector_string* __list_503 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_503, jsonStrField("button_plus", "Start"));
-    btrc_Vector_string_push(__list_503, jsonStrField("button_r", "RightShoulder"));
-    btrc_Vector_string_push(__list_503, jsonStrField("button_zr", "RightTrigger"));
-    btrc_Vector_string_push(__list_503, jsonStrField("button_x", "Y"));
-    btrc_Vector_string_push(__list_503, jsonStrField("button_b", "A"));
-    btrc_Vector_string_push(__list_503, jsonStrField("button_y", "X"));
-    btrc_Vector_string_push(__list_503, jsonStrField("button_a", "B"));
-    btrc_Vector_string_push(__list_497, jsonField("right_joycon", jsonObject(__list_503)));
-    btrc_Vector_string_push(__list_497, jsonField("version", "1"));
-    btrc_Vector_string_push(__list_497, jsonStrField("backend", "GamepadSDL2"));
-    btrc_Vector_string_push(__list_497, jsonStrField("id", "0-f7390003-28de-0000-ff11-000001000000"));
-    btrc_Vector_string_push(__list_497, jsonStrField("controller_type", "ProController"));
-    btrc_Vector_string_push(__list_497, jsonStrField("player_index", "Player1"));
-    return __btrc_str_track(__btrc_strcat(jsonObject(__list_497), "\n"));
+    btrc_Vector_string* __list_561 = btrc_Vector_string_new();
+    btrc_Vector_string* __list_562 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_562, jsonStrField("joystick", "Left"));
+    btrc_Vector_string_push(__list_562, jsonBoolField("invert_stick_x", false));
+    btrc_Vector_string_push(__list_562, jsonBoolField("invert_stick_y", false));
+    btrc_Vector_string_push(__list_562, jsonStrField("stick_button", "LeftStick"));
+    btrc_Vector_string_push(__list_561, jsonField("left_joycon_stick", jsonObject(__list_562)));
+    btrc_Vector_string* __list_563 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_563, jsonStrField("joystick", "Right"));
+    btrc_Vector_string_push(__list_563, jsonBoolField("invert_stick_x", false));
+    btrc_Vector_string_push(__list_563, jsonBoolField("invert_stick_y", false));
+    btrc_Vector_string_push(__list_563, jsonStrField("stick_button", "RightStick"));
+    btrc_Vector_string_push(__list_561, jsonField("right_joycon_stick", jsonObject(__list_563)));
+    btrc_Vector_string* __list_564 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_564, jsonField("slot", "0"));
+    btrc_Vector_string_push(__list_564, jsonField("alt_slot", "0"));
+    btrc_Vector_string_push(__list_564, jsonBoolField("mirror_input", false));
+    btrc_Vector_string_push(__list_564, jsonStrField("motion_backend", "CemuHook"));
+    btrc_Vector_string_push(__list_564, jsonField("sensitivity", "100"));
+    btrc_Vector_string_push(__list_564, jsonField("gyro_deadzone", "1"));
+    btrc_Vector_string_push(__list_564, jsonBoolField("enable_motion", false));
+    btrc_Vector_string_push(__list_561, jsonField("motion", jsonObject(__list_564)));
+    btrc_Vector_string* __list_565 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_565, jsonField("strong_rumble", "1"));
+    btrc_Vector_string_push(__list_565, jsonField("weak_rumble", "1"));
+    btrc_Vector_string_push(__list_565, jsonBoolField("enable_rumble", true));
+    btrc_Vector_string_push(__list_561, jsonField("rumble", jsonObject(__list_565)));
+    btrc_Vector_string* __list_566 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_566, jsonStrField("button_minus", "Back"));
+    btrc_Vector_string_push(__list_566, jsonStrField("button_l", "LeftShoulder"));
+    btrc_Vector_string_push(__list_566, jsonStrField("button_zl", "LeftTrigger"));
+    btrc_Vector_string_push(__list_566, jsonStrField("dpad_up", "DpadUp"));
+    btrc_Vector_string_push(__list_566, jsonStrField("dpad_down", "DpadDown"));
+    btrc_Vector_string_push(__list_566, jsonStrField("dpad_left", "DpadLeft"));
+    btrc_Vector_string_push(__list_566, jsonStrField("dpad_right", "DpadRight"));
+    btrc_Vector_string_push(__list_561, jsonField("left_joycon", jsonObject(__list_566)));
+    btrc_Vector_string* __list_567 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_567, jsonStrField("button_plus", "Start"));
+    btrc_Vector_string_push(__list_567, jsonStrField("button_r", "RightShoulder"));
+    btrc_Vector_string_push(__list_567, jsonStrField("button_zr", "RightTrigger"));
+    btrc_Vector_string_push(__list_567, jsonStrField("button_x", "Y"));
+    btrc_Vector_string_push(__list_567, jsonStrField("button_b", "A"));
+    btrc_Vector_string_push(__list_567, jsonStrField("button_y", "X"));
+    btrc_Vector_string_push(__list_567, jsonStrField("button_a", "B"));
+    btrc_Vector_string_push(__list_561, jsonField("right_joycon", jsonObject(__list_567)));
+    btrc_Vector_string_push(__list_561, jsonField("version", "1"));
+    btrc_Vector_string_push(__list_561, jsonStrField("backend", "GamepadSDL2"));
+    btrc_Vector_string_push(__list_561, jsonStrField("id", "0-f7390003-28de-0000-ff11-000001000000"));
+    btrc_Vector_string_push(__list_561, jsonStrField("controller_type", "ProController"));
+    btrc_Vector_string_push(__list_561, jsonStrField("player_index", "Player1"));
+    return __btrc_str_track(__btrc_strcat(jsonObject(__list_561), "\n"));
 }
 
 void writeGeneratedManifest(char* output) {
@@ -16089,7 +16817,7 @@ void writeGeneratedManifest(char* output) {
 }
 
 void writeProjectManifest(char* project) {
-    SemuGeneratedFiles_writeProjectJson(project, joinPath(project, "semu.json"), buildJson());
+    SemuGeneratedFiles_writeProjectJson(project, manifestPath(project), buildJson());
 }
 
 char* bundledText(char* project, char* relative, char* fallback) {
@@ -16126,40 +16854,16 @@ char* assetRoot(char* project) {
     return project;
 }
 
-void seedBundledFileFromRoot(char* root, char* project, char* relative, bool executable) {
-    char* source = joinPath(root, relative);
-    char* target = joinPath(project, relative);
-    if (strcmp(source, target) == 0) {
-        return;
-    }
+void seedLinuxSourceFile(char* project, char* relative, bool executable) {
+    char* root = assetRoot(project);
+    char* source = joinPath(root, joinPath("packaging/linux", relative));
+    char* target = joinPath(linuxPackagingRoot(project), relative);
     if (!FileSystem_isFile(source)) {
         return;
     }
-    ensureDir(PathTools_dirname(target));
-    SemuGeneratedFiles_writeOwnedProject(project, target, FileSystem_readText(source));
+    SemuGeneratedFiles_writeProject(project, target, FileSystem_readText(source));
     if (executable) {
         FileSystem_chmod(target, 493);
-    }
-}
-
-void seedBundledFile(char* project, char* relative, bool executable) {
-    seedBundledFileFromRoot(assetRoot(project), project, relative, executable);
-}
-
-void seedBundledDirFiles(char* project, char* relative, bool executable) {
-    char* root = assetRoot(project);
-    char* sourceDir = joinPath(root, relative);
-    if (!FileSystem_isDir(sourceDir)) {
-        return;
-    }
-    ensureDir(joinPath(project, relative));
-    int __n_505 = btrc_Vector_string_iterLen(FileSystem_listDir(sourceDir));
-    for (int __i_504 = 0; (__i_504 < __n_505); (__i_504++)) {
-        char* name = btrc_Vector_string_iterGet(FileSystem_listDir(sourceDir), __i_504);
-        char* source = joinPath(sourceDir, name);
-        if (FileSystem_isFile(source)) {
-            seedBundledFileFromRoot(root, project, joinPath(relative, name), executable);
-        }
     }
 }
 
@@ -16173,23 +16877,23 @@ void writeGeneratedExecutableText(char* project, char* path, char* text) {
 }
 
 btrc_Vector_string* managedLinuxLauncherFiles(void) {
-    btrc_Vector_string* __list_506 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_506, "semu-btrc");
-    btrc_Vector_string_push(__list_506, "semu-flatpak");
-    btrc_Vector_string_push(__list_506, "semu-settings");
-    btrc_Vector_string* files = __list_506;
-    int __n_508 = btrc_Vector_string_iterLen(linuxLauncherNames());
-    for (int __i_507 = 0; (__i_507 < __n_508); (__i_507++)) {
-        char* emulator = btrc_Vector_string_iterGet(linuxLauncherNames(), __i_507);
+    btrc_Vector_string* __list_570 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_570, "semu-btrc");
+    btrc_Vector_string_push(__list_570, "semu-flatpak");
+    btrc_Vector_string_push(__list_570, "semu-settings");
+    btrc_Vector_string* files = __list_570;
+    int __n_572 = btrc_Vector_string_iterLen(linuxLauncherNames());
+    for (int __i_571 = 0; (__i_571 < __n_572); (__i_571++)) {
+        char* emulator = btrc_Vector_string_iterGet(linuxLauncherNames(), __i_571);
         btrc_Vector_string_push(files, semuLauncherName(emulator));
     }
     return files;
 }
 
 btrc_Vector_string* obsoleteLinuxStateDirs(void) {
-    btrc_Vector_string* __list_509 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_509, "gopher64");
-    return __list_509;
+    btrc_Vector_string* __list_573 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_573, "gopher64");
+    return __list_573;
 }
 
 void SemuUpgradeCleanup_pruneLinuxLaunchers(char* project) {
@@ -16198,9 +16902,9 @@ void SemuUpgradeCleanup_pruneLinuxLaunchers(char* project) {
         return;
     }
     btrc_Vector_string* managed = managedLinuxLauncherFiles();
-    int __n_511 = btrc_Vector_string_iterLen(FileSystem_listDir(bin));
-    for (int __i_510 = 0; (__i_510 < __n_511); (__i_510++)) {
-        char* name = btrc_Vector_string_iterGet(FileSystem_listDir(bin), __i_510);
+    int __n_575 = btrc_Vector_string_iterLen(FileSystem_listDir(bin));
+    for (int __i_574 = 0; (__i_574 < __n_575); (__i_574++)) {
+        char* name = btrc_Vector_string_iterGet(FileSystem_listDir(bin), __i_574);
         if (!__btrc_startsWith(name, "semu-")) {
             continue;
         }
@@ -16213,9 +16917,9 @@ void SemuUpgradeCleanup_pruneLinuxLaunchers(char* project) {
 
 void SemuUpgradeCleanup_pruneObsoleteState(char* project) {
     char* stateRoot = joinPath(semuStateRoot(project), "appimage-state");
-    int __n_513 = btrc_Vector_string_iterLen(obsoleteLinuxStateDirs());
-    for (int __i_512 = 0; (__i_512 < __n_513); (__i_512++)) {
-        char* name = btrc_Vector_string_iterGet(obsoleteLinuxStateDirs(), __i_512);
+    int __n_577 = btrc_Vector_string_iterLen(obsoleteLinuxStateDirs());
+    for (int __i_576 = 0; (__i_576 < __n_577); (__i_576++)) {
+        char* name = btrc_Vector_string_iterGet(obsoleteLinuxStateDirs(), __i_576);
         removePath(joinPath(stateRoot, name));
     }
 }
@@ -16247,24 +16951,21 @@ char* linuxLauncherShimText(char* emulator) {
 
 void seedPortableLinuxShims(char* project) {
     SemuUpgradeCleanup_beforeSeedingLinuxAssets(project);
-    writeGeneratedExecutableText(project, joinPath(project, "packaging/linux/sandbox.sh"), linuxSandboxShimText());
-    writeGeneratedExecutableText(project, joinPath(project, "packaging/linux/bin/semu-btrc"), linuxBtrcShimText());
-    writeGeneratedExecutableText(project, joinPath(project, "packaging/linux/bin/semu-flatpak"), linuxFlatpakShimText());
-    writeGeneratedExecutableText(project, joinPath(project, "packaging/linux/bin/semu-settings"), linuxSettingsShimText());
-    int __n_515 = btrc_Vector_string_iterLen(linuxLauncherNames());
-    for (int __i_514 = 0; (__i_514 < __n_515); (__i_514++)) {
-        char* emulator = btrc_Vector_string_iterGet(linuxLauncherNames(), __i_514);
-        writeGeneratedExecutableText(project, joinPath(project, __btrc_str_track(__btrc_strcat("packaging/linux/bin/", semuLauncherName(emulator)))), linuxLauncherShimText(emulator));
+    writeGeneratedExecutableText(project, joinPath(linuxPackagingRoot(project), "sandbox.sh"), linuxSandboxShimText());
+    writeGeneratedExecutableText(project, joinPath(linuxPackagingRoot(project), "bin/semu-btrc"), linuxBtrcShimText());
+    writeGeneratedExecutableText(project, joinPath(linuxPackagingRoot(project), "bin/semu-flatpak"), linuxFlatpakShimText());
+    writeGeneratedExecutableText(project, joinPath(linuxPackagingRoot(project), "bin/semu-settings"), linuxSettingsShimText());
+    int __n_579 = btrc_Vector_string_iterLen(linuxLauncherNames());
+    for (int __i_578 = 0; (__i_578 < __n_579); (__i_578++)) {
+        char* emulator = btrc_Vector_string_iterGet(linuxLauncherNames(), __i_578);
+        writeGeneratedExecutableText(project, joinPath(linuxPackagingRoot(project), __btrc_str_track(__btrc_strcat("bin/", semuLauncherName(emulator)))), linuxLauncherShimText(emulator));
     }
 }
 
 void seedLinuxAssets(char* project) {
-    seedBundledFile(project, "packaging/linux/AppRun", true);
-    seedBundledFile(project, "packaging/linux/semu.desktop", false);
-    seedBundledFile(project, "packaging/linux/ES-DE/es_systems_linux.xml", false);
-    seedBundledFile(project, "packaging/linux/ES-DE/es_find_rules_linux.xml", false);
+    seedLinuxSourceFile(project, "AppRun", true);
+    seedLinuxSourceFile(project, "semu.desktop", false);
     seedPortableLinuxShims(project);
-    seedBundledDirFiles(project, "src/semu/bootstrap/templates", false);
 }
 
 void writeProfile(char* project, char* relative, char* text) {
@@ -16301,34 +17002,34 @@ void seedKeymapDefaults(char* project) {
 
 char* syncDefaultConfigText(char* project, char* romsDir) {
     char* roms = ((((int)strlen(romsDir)) > 0) ? normalizeRomsRoot(romsDir) : "${paths.project_roms}");
-    btrc_Vector_string* __list_516 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_516, jsonBoolField("enabled", true));
-    btrc_Vector_string_push(__list_516, jsonBoolField("start_at_boot", true));
-    btrc_Vector_string_push(__list_516, jsonBoolField("tray", true));
-    btrc_Vector_string_push(__list_516, jsonStrField("gui_address", "127.0.0.1:8384"));
-    btrc_Vector_string_push(__list_516, jsonStrField("roms_dir", roms));
-    btrc_Vector_string_push(__list_516, jsonBoolField("sync_saves", true));
-    btrc_Vector_string_push(__list_516, jsonBoolField("sync_states", true));
-    btrc_Vector_string_push(__list_516, jsonBoolField("sync_emulator_state", true));
-    btrc_Vector_string_push(__list_516, jsonBoolField("sync_screenshots", true));
-    btrc_Vector_string_push(__list_516, jsonBoolField("sync_gamelists", true));
-    btrc_Vector_string_push(__list_516, jsonBoolField("sync_roms", false));
-    btrc_Vector_string_push(__list_516, jsonBoolField("sync_bios", false));
-    btrc_Vector_string_push(__list_516, jsonField("rescan_saves_s", "900"));
-    btrc_Vector_string_push(__list_516, jsonField("rescan_states_s", "900"));
-    btrc_Vector_string_push(__list_516, jsonField("rescan_emulator_state_s", "900"));
-    btrc_Vector_string_push(__list_516, jsonField("rescan_screenshots_s", "1800"));
-    btrc_Vector_string_push(__list_516, jsonField("rescan_gamelists_s", "1800"));
-    btrc_Vector_string_push(__list_516, jsonField("rescan_roms_s", "3600"));
-    btrc_Vector_string_push(__list_516, jsonField("rescan_bios_s", "3600"));
-    btrc_Vector_string_push(__list_516, jsonBoolField("watch_saves", true));
-    btrc_Vector_string_push(__list_516, jsonBoolField("watch_states", true));
-    btrc_Vector_string_push(__list_516, jsonBoolField("watch_emulator_state", true));
-    btrc_Vector_string_push(__list_516, jsonBoolField("watch_screenshots", true));
-    btrc_Vector_string_push(__list_516, jsonBoolField("watch_gamelists", true));
-    btrc_Vector_string_push(__list_516, jsonBoolField("watch_roms", true));
-    btrc_Vector_string_push(__list_516, jsonBoolField("watch_bios", true));
-    return __btrc_str_track(__btrc_strcat(jsonObject(__list_516), "\n"));
+    btrc_Vector_string* __list_580 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_580, jsonBoolField("enabled", true));
+    btrc_Vector_string_push(__list_580, jsonBoolField("start_at_boot", true));
+    btrc_Vector_string_push(__list_580, jsonBoolField("tray", true));
+    btrc_Vector_string_push(__list_580, jsonStrField("gui_address", "127.0.0.1:8384"));
+    btrc_Vector_string_push(__list_580, jsonStrField("roms_dir", roms));
+    btrc_Vector_string_push(__list_580, jsonBoolField("sync_saves", true));
+    btrc_Vector_string_push(__list_580, jsonBoolField("sync_states", true));
+    btrc_Vector_string_push(__list_580, jsonBoolField("sync_emulator_state", true));
+    btrc_Vector_string_push(__list_580, jsonBoolField("sync_screenshots", true));
+    btrc_Vector_string_push(__list_580, jsonBoolField("sync_gamelists", true));
+    btrc_Vector_string_push(__list_580, jsonBoolField("sync_roms", false));
+    btrc_Vector_string_push(__list_580, jsonBoolField("sync_bios", false));
+    btrc_Vector_string_push(__list_580, jsonField("rescan_saves_s", "900"));
+    btrc_Vector_string_push(__list_580, jsonField("rescan_states_s", "900"));
+    btrc_Vector_string_push(__list_580, jsonField("rescan_emulator_state_s", "900"));
+    btrc_Vector_string_push(__list_580, jsonField("rescan_screenshots_s", "1800"));
+    btrc_Vector_string_push(__list_580, jsonField("rescan_gamelists_s", "1800"));
+    btrc_Vector_string_push(__list_580, jsonField("rescan_roms_s", "3600"));
+    btrc_Vector_string_push(__list_580, jsonField("rescan_bios_s", "3600"));
+    btrc_Vector_string_push(__list_580, jsonBoolField("watch_saves", true));
+    btrc_Vector_string_push(__list_580, jsonBoolField("watch_states", true));
+    btrc_Vector_string_push(__list_580, jsonBoolField("watch_emulator_state", true));
+    btrc_Vector_string_push(__list_580, jsonBoolField("watch_screenshots", true));
+    btrc_Vector_string_push(__list_580, jsonBoolField("watch_gamelists", true));
+    btrc_Vector_string_push(__list_580, jsonBoolField("watch_roms", true));
+    btrc_Vector_string_push(__list_580, jsonBoolField("watch_bios", true));
+    return __btrc_str_track(__btrc_strcat(jsonObject(__list_580), "\n"));
 }
 
 void writeSyncDefaults(char* project, char* romsDir) {
@@ -16351,9 +17052,9 @@ void writeSyncDefaults(char* project, char* romsDir) {
 
 void ensureRomDirsAt(char* root) {
     ensureDir(root);
-    int __n_518 = btrc_Vector_string_iterLen(declaredRomDirs());
-    for (int __i_517 = 0; (__i_517 < __n_518); (__i_517++)) {
-        char* rom = btrc_Vector_string_iterGet(declaredRomDirs(), __i_517);
+    int __n_582 = btrc_Vector_string_iterLen(declaredRomDirs());
+    for (int __i_581 = 0; (__i_581 < __n_582); (__i_581++)) {
+        char* rom = btrc_Vector_string_iterGet(declaredRomDirs(), __i_581);
         ensureDir(joinPath(root, rom));
     }
 }
@@ -16364,10 +17065,10 @@ void ensureProjectRomDirs(char* project) {
         ensureRomDirsAt(configured);
         return;
     }
-    int __fstr_521_len = snprintf(NULL, 0, "INFO external_roms: leaving %s untouched", configured);
-    char* __fstr_521_buf = __btrc_str_track(((char*)malloc((__fstr_521_len + 1))));
-    snprintf(__fstr_521_buf, (__fstr_521_len + 1), "INFO external_roms: leaving %s untouched", configured);
-    printf("%s\n", __fstr_521_buf);
+    int __fstr_585_len = snprintf(NULL, 0, "INFO external_roms: leaving %s untouched", configured);
+    char* __fstr_585_buf = __btrc_str_track(((char*)malloc((__fstr_585_len + 1))));
+    snprintf(__fstr_585_buf, (__fstr_585_len + 1), "INFO external_roms: leaving %s untouched", configured);
+    printf("%s\n", __fstr_585_buf);
     ensureRomDirsAt(romsRoot(project));
 }
 
@@ -16382,9 +17083,9 @@ void ensureProjectContentDirs(char* project) {
     ensureDir(joinPath(contentRoot(project), "gamelists"));
     ensureDir(joinPath(contentRoot(project), "themes"));
     btrc_Vector_string* ids = declaredSystemIds();
-    int __n_523 = btrc_Vector_string_iterLen(ids);
-    for (int __i_522 = 0; (__i_522 < __n_523); (__i_522++)) {
-        char* id = btrc_Vector_string_iterGet(ids, __i_522);
+    int __n_587 = btrc_Vector_string_iterLen(ids);
+    for (int __i_586 = 0; (__i_586 < __n_587); (__i_586++)) {
+        char* id = btrc_Vector_string_iterGet(ids, __i_586);
         ensureDir(joinPath(joinPath(contentRoot(project), "downloaded_media"), id));
         ensureDir(joinPath(joinPath(contentRoot(project), "gamelists"), id));
     }
@@ -16392,7 +17093,6 @@ void ensureProjectContentDirs(char* project) {
     ensureDir(joinPath(biosRoot(project), "switch"));
     ensureDir(joinPath(biosRoot(project), "dc"));
     ensureDir(emulatorProfilePath(project, "Cemu/data"));
-    ensureDir(joinPath(project, "input/steam-input"));
 }
 
 void bootstrapSteamDeck(char* project) {
@@ -16406,22 +17106,22 @@ void bootstrapSteamDeck(char* project) {
     writeScreenshotDefaults(project);
     writeProjectManifest(project);
     writeEsDeFiles(project);
-    int __fstr_526_len = snprintf(NULL, 0, "Bootstrapped Steam Deck/Linux content at %s", contentRoot(project));
-    char* __fstr_526_buf = __btrc_str_track(((char*)malloc((__fstr_526_len + 1))));
-    snprintf(__fstr_526_buf, (__fstr_526_len + 1), "Bootstrapped Steam Deck/Linux content at %s", contentRoot(project));
-    printf("%s\n", __fstr_526_buf);
-    int __fstr_529_len = snprintf(NULL, 0, "  roms:    %s", romsRoot(project));
-    char* __fstr_529_buf = __btrc_str_track(((char*)malloc((__fstr_529_len + 1))));
-    snprintf(__fstr_529_buf, (__fstr_529_len + 1), "  roms:    %s", romsRoot(project));
-    printf("%s\n", __fstr_529_buf);
-    int __fstr_532_len = snprintf(NULL, 0, "  bios:    %s", biosRoot(project));
-    char* __fstr_532_buf = __btrc_str_track(((char*)malloc((__fstr_532_len + 1))));
-    snprintf(__fstr_532_buf, (__fstr_532_len + 1), "  bios:    %s", biosRoot(project));
-    printf("%s\n", __fstr_532_buf);
-    int __fstr_535_len = snprintf(NULL, 0, "  systems: %s", joinPath(customSystemsRoot(project), "es_systems.xml"));
-    char* __fstr_535_buf = __btrc_str_track(((char*)malloc((__fstr_535_len + 1))));
-    snprintf(__fstr_535_buf, (__fstr_535_len + 1), "  systems: %s", joinPath(customSystemsRoot(project), "es_systems.xml"));
-    printf("%s\n", __fstr_535_buf);
+    int __fstr_590_len = snprintf(NULL, 0, "Bootstrapped Steam Deck/Linux content at %s", contentRoot(project));
+    char* __fstr_590_buf = __btrc_str_track(((char*)malloc((__fstr_590_len + 1))));
+    snprintf(__fstr_590_buf, (__fstr_590_len + 1), "Bootstrapped Steam Deck/Linux content at %s", contentRoot(project));
+    printf("%s\n", __fstr_590_buf);
+    int __fstr_593_len = snprintf(NULL, 0, "  roms:    %s", romsRoot(project));
+    char* __fstr_593_buf = __btrc_str_track(((char*)malloc((__fstr_593_len + 1))));
+    snprintf(__fstr_593_buf, (__fstr_593_len + 1), "  roms:    %s", romsRoot(project));
+    printf("%s\n", __fstr_593_buf);
+    int __fstr_596_len = snprintf(NULL, 0, "  bios:    %s", biosRoot(project));
+    char* __fstr_596_buf = __btrc_str_track(((char*)malloc((__fstr_596_len + 1))));
+    snprintf(__fstr_596_buf, (__fstr_596_len + 1), "  bios:    %s", biosRoot(project));
+    printf("%s\n", __fstr_596_buf);
+    int __fstr_599_len = snprintf(NULL, 0, "  systems: %s", joinPath(customSystemsRoot(project), "es_systems.xml"));
+    char* __fstr_599_buf = __btrc_str_track(((char*)malloc((__fstr_599_len + 1))));
+    snprintf(__fstr_599_buf, (__fstr_599_len + 1), "  systems: %s", joinPath(customSystemsRoot(project), "es_systems.xml"));
+    printf("%s\n", __fstr_599_buf);
 }
 
 char* esLauncherBin(char* project) {
@@ -16429,7 +17129,7 @@ char* esLauncherBin(char* project) {
     if (((int)strlen(configured)) > 0) {
         return configured;
     }
-    char* resultBin = joinPath(project, "result/bin");
+    char* resultBin = joinPath(nixResultRoot(project), "bin");
     if (FileSystem_exists(joinPath(resultBin, "semu-retroarch"))) {
         return resultBin;
     }
@@ -16445,22 +17145,22 @@ char* appendRetroArchCoreRule(char* rules, char* corePath) {
 
 char* esFindRulesXml(char* project, char* launcherBin) {
     char* launcherRules = "";
-    int __n_537 = btrc_Vector_string_iterLen(linuxLauncherNames());
-    for (int __i_536 = 0; (__i_536 < __n_537); (__i_536++)) {
-        char* emulator = btrc_Vector_string_iterGet(linuxLauncherNames(), __i_536);
+    int __n_601 = btrc_Vector_string_iterLen(linuxLauncherNames());
+    for (int __i_600 = 0; (__i_600 < __n_601); (__i_600++)) {
+        char* emulator = btrc_Vector_string_iterGet(linuxLauncherNames(), __i_600);
         (launcherRules = __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(launcherRules, "  <emulator name=\"")), xmlEscape(emulator))), "\">\n")), "    <rule type=\"staticpath\">\n")), "      <entry>")), xmlEscape(joinPath(launcherBin, semuLauncherName(emulator))))), "</entry>\n")), "    </rule>\n")), "  </emulator>\n")));
     }
     (launcherRules = __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(launcherRules, "  <emulator name=\"SEMU_SETTINGS\">\n")), "    <rule type=\"staticpath\">\n")), "      <entry>")), xmlEscape(joinPath(launcherBin, "semu-settings")))), "</entry>\n")), "    </rule>\n")), "  </emulator>\n")));
     char* retroarchCoreRules = "";
     char* envCorePath = Environment_get("SEMU_RETROARCH_CORE_DIR", "");
     (retroarchCoreRules = appendRetroArchCoreRule(retroarchCoreRules, envCorePath));
-    char* projectCorePath = joinPath(project, "result/lib/retroarch/cores");
+    char* projectCorePath = joinPath(nixResultRoot(project), "lib/retroarch/cores");
     if (FileSystem_isDir(projectCorePath)) {
         (retroarchCoreRules = appendRetroArchCoreRule(retroarchCoreRules, projectCorePath));
     }
-    int __n_539 = btrc_Vector_string_iterLen(retroarchCoreSearchPaths());
-    for (int __i_538 = 0; (__i_538 < __n_539); (__i_538++)) {
-        char* corePath = btrc_Vector_string_iterGet(retroarchCoreSearchPaths(), __i_538);
+    int __n_603 = btrc_Vector_string_iterLen(retroarchCoreSearchPaths());
+    for (int __i_602 = 0; (__i_602 < __n_603); (__i_602++)) {
+        char* corePath = btrc_Vector_string_iterGet(retroarchCoreSearchPaths(), __i_602);
         if ((!(strcmp(corePath, envCorePath) == 0)) && (!(strcmp(corePath, projectCorePath) == 0))) {
             (retroarchCoreRules = appendRetroArchCoreRule(retroarchCoreRules, corePath));
         }
@@ -16477,7 +17177,7 @@ void writeEsDeFiles(char* project) {
     SettingsEntries_write(project);
     char* systemsXml = SystemCatalog_esSystemsXml(catalog, project);
     SemuGeneratedFiles_writeProject(project, joinPath(customSystemsRoot(project), "es_systems.xml"), systemsXml);
-    char* packagingSystems = joinPath(linuxPackagingRoot(project), "ES-DE");
+    char* packagingSystems = joinPath(generatedPackagingRoot(project), "es-de");
     ensureDir(packagingSystems);
     SemuGeneratedFiles_writeProject(project, joinPath(packagingSystems, "es_systems_linux.xml"), SystemCatalog_esSystemsXml(catalog, "${project}"));
     SemuGeneratedFiles_writeProject(project, joinPath(packagingSystems, "es_find_rules_linux.xml"), esFindRulesXml("${project}", "@SEMU_LINUX_BIN@"));
@@ -16492,8 +17192,8 @@ char* esSettingsXmlForRuntime(char* project, char* romsDir) {
 }
 
 void writeEsDeRuntimeFiles(char* project, char* userHome) {
-    char* customRoot = joinPath(userHome, "ES-DE/custom_systems");
-    char* settingsRoot = joinPath(userHome, "ES-DE/settings");
+    char* customRoot = externalEsDeCustomSystemsRoot(userHome);
+    char* settingsRoot = externalEsDeSettingsRoot(userHome);
     ensureDir(customRoot);
     ensureDir(settingsRoot);
     SystemCatalog* catalog = systemCatalog();
@@ -16586,17 +17286,17 @@ char* steamInputKeyBindings(char* command, char* label) {
     btrc_Vector_string* keys = btrc_Vector_string_new();
     char* modifiers = keymapCommandModifierPart(command);
     if (((int)strlen(modifiers)) > 0) {
-        int __n_541 = btrc_Vector_string_iterLen(Strings_split(modifiers, "+"));
-        for (int __i_540 = 0; (__i_540 < __n_541); (__i_540++)) {
-            char* modifier = btrc_Vector_string_iterGet(Strings_split(modifiers, "+"), __i_540);
+        int __n_605 = btrc_Vector_string_iterLen(Strings_split(modifiers, "+"));
+        for (int __i_604 = 0; (__i_604 < __n_605); (__i_604++)) {
+            char* modifier = btrc_Vector_string_iterGet(Strings_split(modifiers, "+"), __i_604);
             btrc_Vector_string_push(keys, steamInputKeyName(modifier));
         }
     }
     btrc_Vector_string_push(keys, steamInputKeyName(keymapCommandKeyPart(command)));
     btrc_Vector_string* bindings = btrc_Vector_string_new();
-    int __n_543 = btrc_Vector_string_iterLen(keys);
-    for (int __i_542 = 0; (__i_542 < __n_543); (__i_542++)) {
-        char* key = btrc_Vector_string_iterGet(keys, __i_542);
+    int __n_607 = btrc_Vector_string_iterLen(keys);
+    for (int __i_606 = 0; (__i_606 < __n_607); (__i_606++)) {
+        char* key = btrc_Vector_string_iterGet(keys, __i_606);
         btrc_Vector_string_push(bindings, __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat("\"binding\" \"key_press ", key)), ", ")), label)), ", , \"")));
     }
     return btrc_Vector_string_join(bindings, " ");
@@ -16645,16 +17345,16 @@ char* steamInputTemplateVdf(char* title, bool full, KeymapIr* ir, char* project)
 }
 
 void writeSteamInputTemplates(char* project) {
-    ensureDir(joinPath(project, "input/steam-input"));
+    ensureDir(steamInputTemplatesRoot(project));
     KeymapIr* ir = projectKeymapIr(project);
-    SemuGeneratedFiles_writeProject(project, joinPath(project, "input/steam-input/neptune-simple.vdf"), steamInputTemplateVdf("Semu: Steam Deck - Neptune SIMPLE", false, ir, project));
-    SemuGeneratedFiles_writeProject(project, joinPath(project, "input/steam-input/neptune-full.vdf"), steamInputTemplateVdf("Semu: Steam Deck - Neptune FULL", true, ir, project));
+    SemuGeneratedFiles_writeProject(project, joinPath(steamInputTemplatesRoot(project), "neptune-simple.vdf"), steamInputTemplateVdf("Semu: Steam Deck - Neptune SIMPLE", false, ir, project));
+    SemuGeneratedFiles_writeProject(project, joinPath(steamInputTemplatesRoot(project), "neptune-full.vdf"), steamInputTemplateVdf("Semu: Steam Deck - Neptune FULL", true, ir, project));
 }
 
 bool allPresent(char* target, btrc_Vector_string* files) {
-    int __n_545 = btrc_Vector_string_iterLen(files);
-    for (int __i_544 = 0; (__i_544 < __n_545); (__i_544++)) {
-        char* file = btrc_Vector_string_iterGet(files, __i_544);
+    int __n_609 = btrc_Vector_string_iterLen(files);
+    for (int __i_608 = 0; (__i_608 < __n_609); (__i_608++)) {
+        char* file = btrc_Vector_string_iterGet(files, __i_608);
         if (!FileSystem_exists(joinPath(target, file))) {
             return false;
         }
@@ -16663,9 +17363,9 @@ bool allPresent(char* target, btrc_Vector_string* files) {
 }
 
 bool anyPresent(char* target, btrc_Vector_string* files) {
-    int __n_547 = btrc_Vector_string_iterLen(files);
-    for (int __i_546 = 0; (__i_546 < __n_547); (__i_546++)) {
-        char* file = btrc_Vector_string_iterGet(files, __i_546);
+    int __n_611 = btrc_Vector_string_iterLen(files);
+    for (int __i_610 = 0; (__i_610 < __n_611); (__i_610++)) {
+        char* file = btrc_Vector_string_iterGet(files, __i_610);
         if (FileSystem_exists(joinPath(target, file))) {
             return true;
         }
@@ -16675,32 +17375,32 @@ bool anyPresent(char* target, btrc_Vector_string* files) {
 
 void reportPath(char* label, char* path) {
     char* mark = (FileSystem_isDir(path) ? "OK" : "MISSING");
-    int __fstr_550_len = snprintf(NULL, 0, "  %s %s: %s", mark, label, path);
-    char* __fstr_550_buf = __btrc_str_track(((char*)malloc((__fstr_550_len + 1))));
-    snprintf(__fstr_550_buf, (__fstr_550_len + 1), "  %s %s: %s", mark, label, path);
-    printf("%s\n", __fstr_550_buf);
+    int __fstr_614_len = snprintf(NULL, 0, "  %s %s: %s", mark, label, path);
+    char* __fstr_614_buf = __btrc_str_track(((char*)malloc((__fstr_614_len + 1))));
+    snprintf(__fstr_614_buf, (__fstr_614_len + 1), "  %s %s: %s", mark, label, path);
+    printf("%s\n", __fstr_614_buf);
 }
 
 void reportBios(char* id, char* target, btrc_Vector_string* files, bool required, bool anyMatch) {
     bool ok = (anyMatch ? anyPresent(target, files) : allPresent(target, files));
     char* mark = (ok ? "OK" : (required ? "MISSING" : "optional"));
     char* requiredText = (required ? "required" : "optional");
-    int __fstr_553_len = snprintf(NULL, 0, "  %s %s (%s) -> %s", mark, id, requiredText, target);
-    char* __fstr_553_buf = __btrc_str_track(((char*)malloc((__fstr_553_len + 1))));
-    snprintf(__fstr_553_buf, (__fstr_553_len + 1), "  %s %s (%s) -> %s", mark, id, requiredText, target);
-    printf("%s\n", __fstr_553_buf);
+    int __fstr_617_len = snprintf(NULL, 0, "  %s %s (%s) -> %s", mark, id, requiredText, target);
+    char* __fstr_617_buf = __btrc_str_track(((char*)malloc((__fstr_617_len + 1))));
+    snprintf(__fstr_617_buf, (__fstr_617_len + 1), "  %s %s (%s) -> %s", mark, id, requiredText, target);
+    printf("%s\n", __fstr_617_buf);
     if ((!ok) && required) {
-        int __fstr_556_len = snprintf(NULL, 0, "       expected: %s", btrc_Vector_string_join(files, ", "));
-        char* __fstr_556_buf = __btrc_str_track(((char*)malloc((__fstr_556_len + 1))));
-        snprintf(__fstr_556_buf, (__fstr_556_len + 1), "       expected: %s", btrc_Vector_string_join(files, ", "));
-        printf("%s\n", __fstr_556_buf);
+        int __fstr_620_len = snprintf(NULL, 0, "       expected: %s", btrc_Vector_string_join(files, ", "));
+        char* __fstr_620_buf = __btrc_str_track(((char*)malloc((__fstr_620_len + 1))));
+        snprintf(__fstr_620_buf, (__fstr_620_len + 1), "       expected: %s", btrc_Vector_string_join(files, ", "));
+        printf("%s\n", __fstr_620_buf);
     }
 }
 
 bool biosOkInAnyTarget(btrc_Vector_string* targets, btrc_Vector_string* files, bool anyMatch) {
-    int __n_558 = btrc_Vector_string_iterLen(targets);
-    for (int __i_557 = 0; (__i_557 < __n_558); (__i_557++)) {
-        char* target = btrc_Vector_string_iterGet(targets, __i_557);
+    int __n_622 = btrc_Vector_string_iterLen(targets);
+    for (int __i_621 = 0; (__i_621 < __n_622); (__i_621++)) {
+        char* target = btrc_Vector_string_iterGet(targets, __i_621);
         bool ok = (anyMatch ? anyPresent(target, files) : allPresent(target, files));
         if (ok) {
             return true;
@@ -16713,32 +17413,32 @@ void reportBiosTargets(char* id, btrc_Vector_string* targets, btrc_Vector_string
     bool ok = biosOkInAnyTarget(targets, files, anyMatch);
     char* mark = (ok ? "OK" : (required ? "MISSING" : "optional"));
     char* requiredText = (required ? "required" : "optional");
-    int __fstr_561_len = snprintf(NULL, 0, "  %s %s (%s)", mark, id, requiredText);
-    char* __fstr_561_buf = __btrc_str_track(((char*)malloc((__fstr_561_len + 1))));
-    snprintf(__fstr_561_buf, (__fstr_561_len + 1), "  %s %s (%s)", mark, id, requiredText);
-    printf("%s\n", __fstr_561_buf);
-    int __n_563 = btrc_Vector_string_iterLen(targets);
-    for (int __i_562 = 0; (__i_562 < __n_563); (__i_562++)) {
-        char* target = btrc_Vector_string_iterGet(targets, __i_562);
-        int __fstr_566_len = snprintf(NULL, 0, "       path: %s", target);
-        char* __fstr_566_buf = __btrc_str_track(((char*)malloc((__fstr_566_len + 1))));
-        snprintf(__fstr_566_buf, (__fstr_566_len + 1), "       path: %s", target);
-        printf("%s\n", __fstr_566_buf);
+    int __fstr_625_len = snprintf(NULL, 0, "  %s %s (%s)", mark, id, requiredText);
+    char* __fstr_625_buf = __btrc_str_track(((char*)malloc((__fstr_625_len + 1))));
+    snprintf(__fstr_625_buf, (__fstr_625_len + 1), "  %s %s (%s)", mark, id, requiredText);
+    printf("%s\n", __fstr_625_buf);
+    int __n_627 = btrc_Vector_string_iterLen(targets);
+    for (int __i_626 = 0; (__i_626 < __n_627); (__i_626++)) {
+        char* target = btrc_Vector_string_iterGet(targets, __i_626);
+        int __fstr_630_len = snprintf(NULL, 0, "       path: %s", target);
+        char* __fstr_630_buf = __btrc_str_track(((char*)malloc((__fstr_630_len + 1))));
+        snprintf(__fstr_630_buf, (__fstr_630_len + 1), "       path: %s", target);
+        printf("%s\n", __fstr_630_buf);
     }
     if ((!ok) && required) {
-        int __fstr_569_len = snprintf(NULL, 0, "       expected: %s", btrc_Vector_string_join(files, ", "));
-        char* __fstr_569_buf = __btrc_str_track(((char*)malloc((__fstr_569_len + 1))));
-        snprintf(__fstr_569_buf, (__fstr_569_len + 1), "       expected: %s", btrc_Vector_string_join(files, ", "));
-        printf("%s\n", __fstr_569_buf);
+        int __fstr_633_len = snprintf(NULL, 0, "       expected: %s", btrc_Vector_string_join(files, ", "));
+        char* __fstr_633_buf = __btrc_str_track(((char*)malloc((__fstr_633_len + 1))));
+        snprintf(__fstr_633_buf, (__fstr_633_len + 1), "       expected: %s", btrc_Vector_string_join(files, ", "));
+        printf("%s\n", __fstr_633_buf);
     }
 }
 
 void reportFile(char* label, char* path) {
     char* mark = (FileSystem_exists(path) ? "OK" : "MISSING");
-    int __fstr_572_len = snprintf(NULL, 0, "  %s %s: %s", mark, label, path);
-    char* __fstr_572_buf = __btrc_str_track(((char*)malloc((__fstr_572_len + 1))));
-    snprintf(__fstr_572_buf, (__fstr_572_len + 1), "  %s %s: %s", mark, label, path);
-    printf("%s\n", __fstr_572_buf);
+    int __fstr_636_len = snprintf(NULL, 0, "  %s %s: %s", mark, label, path);
+    char* __fstr_636_buf = __btrc_str_track(((char*)malloc((__fstr_636_len + 1))));
+    snprintf(__fstr_636_buf, (__fstr_636_len + 1), "  %s %s: %s", mark, label, path);
+    printf("%s\n", __fstr_636_buf);
 }
 
 int braceBalance(char* text) {
@@ -16756,10 +17456,10 @@ int braceBalance(char* text) {
 
 void reportSteamInputTemplate(char* label, char* path) {
     if (!FileSystem_exists(path)) {
-        int __fstr_575_len = snprintf(NULL, 0, "  MISSING %s: %s", label, path);
-        char* __fstr_575_buf = __btrc_str_track(((char*)malloc((__fstr_575_len + 1))));
-        snprintf(__fstr_575_buf, (__fstr_575_len + 1), "  MISSING %s: %s", label, path);
-        printf("%s\n", __fstr_575_buf);
+        int __fstr_639_len = snprintf(NULL, 0, "  MISSING %s: %s", label, path);
+        char* __fstr_639_buf = __btrc_str_track(((char*)malloc((__fstr_639_len + 1))));
+        snprintf(__fstr_639_buf, (__fstr_639_len + 1), "  MISSING %s: %s", label, path);
+        printf("%s\n", __fstr_639_buf);
         return;
     }
     char* text = FileSystem_readText(path);
@@ -16802,21 +17502,21 @@ void reportSteamInputTemplate(char* label, char* path) {
     }
     int balance = braceBalance(text);
     if (balance != 0) {
-        int __fstr_577_len = snprintf(NULL, 0, "brace_balance=%d", balance);
-        char* __fstr_577_buf = __btrc_str_track(((char*)malloc((__fstr_577_len + 1))));
-        snprintf(__fstr_577_buf, (__fstr_577_len + 1), "brace_balance=%d", balance);
-        btrc_Vector_string_push(missing, __fstr_577_buf);
+        int __fstr_641_len = snprintf(NULL, 0, "brace_balance=%d", balance);
+        char* __fstr_641_buf = __btrc_str_track(((char*)malloc((__fstr_641_len + 1))));
+        snprintf(__fstr_641_buf, (__fstr_641_len + 1), "brace_balance=%d", balance);
+        btrc_Vector_string_push(missing, __fstr_641_buf);
     }
     if (missing->len == 0) {
-        int __fstr_580_len = snprintf(NULL, 0, "  OK %s: controller_neptune, trackpads, save/load/quit", label);
-        char* __fstr_580_buf = __btrc_str_track(((char*)malloc((__fstr_580_len + 1))));
-        snprintf(__fstr_580_buf, (__fstr_580_len + 1), "  OK %s: controller_neptune, trackpads, save/load/quit", label);
-        printf("%s\n", __fstr_580_buf);
+        int __fstr_644_len = snprintf(NULL, 0, "  OK %s: controller_neptune, trackpads, save/load/quit", label);
+        char* __fstr_644_buf = __btrc_str_track(((char*)malloc((__fstr_644_len + 1))));
+        snprintf(__fstr_644_buf, (__fstr_644_len + 1), "  OK %s: controller_neptune, trackpads, save/load/quit", label);
+        printf("%s\n", __fstr_644_buf);
     } else {
-        int __fstr_583_len = snprintf(NULL, 0, "  INVALID %s: %s", label, btrc_Vector_string_join(missing, ", "));
-        char* __fstr_583_buf = __btrc_str_track(((char*)malloc((__fstr_583_len + 1))));
-        snprintf(__fstr_583_buf, (__fstr_583_len + 1), "  INVALID %s: %s", label, btrc_Vector_string_join(missing, ", "));
-        printf("%s\n", __fstr_583_buf);
+        int __fstr_647_len = snprintf(NULL, 0, "  INVALID %s: %s", label, btrc_Vector_string_join(missing, ", "));
+        char* __fstr_647_buf = __btrc_str_track(((char*)malloc((__fstr_647_len + 1))));
+        snprintf(__fstr_647_buf, (__fstr_647_len + 1), "  INVALID %s: %s", label, btrc_Vector_string_join(missing, ", "));
+        printf("%s\n", __fstr_647_buf);
     }
 }
 
@@ -16834,60 +17534,60 @@ void doctorSteamDeck(char* project) {
     printf("%s\n", "");
     printf("%s\n", "BIOS / firmware");
     char* externalRoot = configuredEmulationRoot(project);
-    btrc_Vector_string* __list_586 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_586, biosRoot(project));
-    btrc_Vector_string_push(__list_586, joinPath(externalRoot, "RetroArch/config/system"));
-    btrc_Vector_string* __list_587 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_587, "scph5500.bin");
-    btrc_Vector_string_push(__list_587, "scph5501.bin");
-    btrc_Vector_string_push(__list_587, "scph5502.bin");
-    reportBiosTargets("psx", __list_586, __list_587, true, false);
-    btrc_Vector_string* __list_590 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_590, joinPath(biosRoot(project), "ps2"));
-    btrc_Vector_string_push(__list_590, joinPath(externalRoot, "PCSX2/config/bios"));
-    btrc_Vector_string* __list_591 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_591, "ps2-0230a-20080220.bin");
-    btrc_Vector_string_push(__list_591, "ps2-0230e-20080220.bin");
-    btrc_Vector_string_push(__list_591, "ps2-0230j-20080220.bin");
-    btrc_Vector_string_push(__list_591, "SCPH-10000.bin");
-    btrc_Vector_string_push(__list_591, "SCPH-30004R.bin");
-    btrc_Vector_string_push(__list_591, "SCPH-39001.bin");
-    btrc_Vector_string_push(__list_591, "SCPH-70012.bin");
-    btrc_Vector_string_push(__list_591, "SCPH-90006.bin");
-    reportBiosTargets("ps2", __list_590, __list_591, true, true);
-    btrc_Vector_string* __list_594 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_594, joinPath(biosRoot(project), "switch"));
-    btrc_Vector_string_push(__list_594, joinPath(externalRoot, "Ryujinx/config/system"));
-    btrc_Vector_string* __list_595 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_595, "prod.keys");
-    btrc_Vector_string_push(__list_595, "title.keys");
-    reportBiosTargets("switch_keys", __list_594, __list_595, true, false);
-    btrc_Vector_string* __list_598 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_598, emulatorProfilePath(project, "Cemu/data"));
-    btrc_Vector_string_push(__list_598, joinPath(externalRoot, "Cemu/data"));
-    btrc_Vector_string* __list_599 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_599, "keys.txt");
-    reportBiosTargets("wiiu_keys", __list_598, __list_599, true, false);
-    btrc_Vector_string* __list_602 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_602, joinPath(biosRoot(project), "dc"));
-    btrc_Vector_string_push(__list_602, joinPath(externalRoot, "RetroArch/config/system"));
-    btrc_Vector_string_push(__list_602, joinPath(externalRoot, "Flycast/data"));
-    btrc_Vector_string* __list_603 = btrc_Vector_string_new();
-    btrc_Vector_string_push(__list_603, "dc_boot.bin");
-    btrc_Vector_string_push(__list_603, "dc_flash.bin");
-    reportBiosTargets("dreamcast", __list_602, __list_603, false, false);
+    btrc_Vector_string* __list_650 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_650, biosRoot(project));
+    btrc_Vector_string_push(__list_650, joinPath(externalRoot, "RetroArch/config/system"));
+    btrc_Vector_string* __list_651 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_651, "scph5500.bin");
+    btrc_Vector_string_push(__list_651, "scph5501.bin");
+    btrc_Vector_string_push(__list_651, "scph5502.bin");
+    reportBiosTargets("psx", __list_650, __list_651, true, false);
+    btrc_Vector_string* __list_654 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_654, joinPath(biosRoot(project), "ps2"));
+    btrc_Vector_string_push(__list_654, joinPath(externalRoot, "PCSX2/config/bios"));
+    btrc_Vector_string* __list_655 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_655, "ps2-0230a-20080220.bin");
+    btrc_Vector_string_push(__list_655, "ps2-0230e-20080220.bin");
+    btrc_Vector_string_push(__list_655, "ps2-0230j-20080220.bin");
+    btrc_Vector_string_push(__list_655, "SCPH-10000.bin");
+    btrc_Vector_string_push(__list_655, "SCPH-30004R.bin");
+    btrc_Vector_string_push(__list_655, "SCPH-39001.bin");
+    btrc_Vector_string_push(__list_655, "SCPH-70012.bin");
+    btrc_Vector_string_push(__list_655, "SCPH-90006.bin");
+    reportBiosTargets("ps2", __list_654, __list_655, true, true);
+    btrc_Vector_string* __list_658 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_658, joinPath(biosRoot(project), "switch"));
+    btrc_Vector_string_push(__list_658, joinPath(externalRoot, "Ryujinx/config/system"));
+    btrc_Vector_string* __list_659 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_659, "prod.keys");
+    btrc_Vector_string_push(__list_659, "title.keys");
+    reportBiosTargets("switch_keys", __list_658, __list_659, true, false);
+    btrc_Vector_string* __list_662 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_662, emulatorProfilePath(project, "Cemu/data"));
+    btrc_Vector_string_push(__list_662, joinPath(externalRoot, "Cemu/data"));
+    btrc_Vector_string* __list_663 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_663, "keys.txt");
+    reportBiosTargets("wiiu_keys", __list_662, __list_663, true, false);
+    btrc_Vector_string* __list_666 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_666, joinPath(biosRoot(project), "dc"));
+    btrc_Vector_string_push(__list_666, joinPath(externalRoot, "RetroArch/config/system"));
+    btrc_Vector_string_push(__list_666, joinPath(externalRoot, "Flycast/data"));
+    btrc_Vector_string* __list_667 = btrc_Vector_string_new();
+    btrc_Vector_string_push(__list_667, "dc_boot.bin");
+    btrc_Vector_string_push(__list_667, "dc_flash.bin");
+    reportBiosTargets("dreamcast", __list_666, __list_667, false, false);
     printf("%s\n", "");
     printf("%s\n", "Controller profiles");
     bool controllersOk = true;
-    int __n_605 = btrc_Vector_string_iterLen(controllerProfileFiles());
-    for (int __i_604 = 0; (__i_604 < __n_605); (__i_604++)) {
-        char* profile = btrc_Vector_string_iterGet(controllerProfileFiles(), __i_604);
+    int __n_669 = btrc_Vector_string_iterLen(controllerProfileFiles());
+    for (int __i_668 = 0; (__i_668 < __n_669); (__i_668++)) {
+        char* profile = btrc_Vector_string_iterGet(controllerProfileFiles(), __i_668);
         if (!FileSystem_exists(joinPath(project, profile))) {
             (controllersOk = false);
-            int __fstr_608_len = snprintf(NULL, 0, "  MISSING %s", profile);
-            char* __fstr_608_buf = __btrc_str_track(((char*)malloc((__fstr_608_len + 1))));
-            snprintf(__fstr_608_buf, (__fstr_608_len + 1), "  MISSING %s", profile);
-            printf("%s\n", __fstr_608_buf);
+            int __fstr_672_len = snprintf(NULL, 0, "  MISSING %s", profile);
+            char* __fstr_672_buf = __btrc_str_track(((char*)malloc((__fstr_672_len + 1))));
+            snprintf(__fstr_672_buf, (__fstr_672_len + 1), "  MISSING %s", profile);
+            printf("%s\n", __fstr_672_buf);
         }
     }
     if (controllersOk) {
@@ -16917,22 +17617,22 @@ void doctorSteamDeck(char* project) {
     printf("%s\n", "");
     printf("%s\n", "Keymap compiler");
     if (KeymapErrors_count(errors) == 0) {
-        int __fstr_611_len = snprintf(NULL, 0, "  OK steam_deck: %s", keymapPath);
-        char* __fstr_611_buf = __btrc_str_track(((char*)malloc((__fstr_611_len + 1))));
-        snprintf(__fstr_611_buf, (__fstr_611_len + 1), "  OK steam_deck: %s", keymapPath);
-        printf("%s\n", __fstr_611_buf);
+        int __fstr_675_len = snprintf(NULL, 0, "  OK steam_deck: %s", keymapPath);
+        char* __fstr_675_buf = __btrc_str_track(((char*)malloc((__fstr_675_len + 1))));
+        snprintf(__fstr_675_buf, (__fstr_675_len + 1), "  OK steam_deck: %s", keymapPath);
+        printf("%s\n", __fstr_675_buf);
     } else {
         for (int i = 0; (i < KeymapErrors_count(errors)); (i++)) {
-            int __fstr_614_len = snprintf(NULL, 0, "  %s %d:%d %s", btrc_Vector_string_get(errors->levels, i), btrc_Vector_int_get(errors->lines, i), btrc_Vector_int_get(errors->columns, i), btrc_Vector_string_get(errors->messages, i));
-            char* __fstr_614_buf = __btrc_str_track(((char*)malloc((__fstr_614_len + 1))));
-            snprintf(__fstr_614_buf, (__fstr_614_len + 1), "  %s %d:%d %s", btrc_Vector_string_get(errors->levels, i), btrc_Vector_int_get(errors->lines, i), btrc_Vector_int_get(errors->columns, i), btrc_Vector_string_get(errors->messages, i));
-            printf("%s\n", __fstr_614_buf);
+            int __fstr_678_len = snprintf(NULL, 0, "  %s %d:%d %s", btrc_Vector_string_get(errors->levels, i), btrc_Vector_int_get(errors->lines, i), btrc_Vector_int_get(errors->columns, i), btrc_Vector_string_get(errors->messages, i));
+            char* __fstr_678_buf = __btrc_str_track(((char*)malloc((__fstr_678_len + 1))));
+            snprintf(__fstr_678_buf, (__fstr_678_len + 1), "  %s %d:%d %s", btrc_Vector_string_get(errors->levels, i), btrc_Vector_int_get(errors->lines, i), btrc_Vector_int_get(errors->columns, i), btrc_Vector_string_get(errors->messages, i));
+            printf("%s\n", __fstr_678_buf);
         }
     }
     printf("%s\n", "");
     printf("%s\n", "Steam Input templates");
-    reportSteamInputTemplate("neptune_simple", joinPath(project, "input/steam-input/neptune-simple.vdf"));
-    reportSteamInputTemplate("neptune_full", joinPath(project, "input/steam-input/neptune-full.vdf"));
+    reportSteamInputTemplate("neptune_simple", joinPath(steamInputTemplatesRoot(project), "neptune-simple.vdf"));
+    reportSteamInputTemplate("neptune_full", joinPath(steamInputTemplatesRoot(project), "neptune-full.vdf"));
     printf("%s\n", "");
     printf("%s\n", "ROM preflight");
     reportN3dsRomPreflight(project);
@@ -16940,9 +17640,9 @@ void doctorSteamDeck(char* project) {
     doctorSync(project);
     printf("%s\n", "");
     printf("%s\n", "linux launchers");
-    int __n_616 = btrc_Vector_string_iterLen(linuxLauncherNames());
-    for (int __i_615 = 0; (__i_615 < __n_616); (__i_615++)) {
-        char* emulator = btrc_Vector_string_iterGet(linuxLauncherNames(), __i_615);
+    int __n_680 = btrc_Vector_string_iterLen(linuxLauncherNames());
+    for (int __i_679 = 0; (__i_679 < __n_680); (__i_679++)) {
+        char* emulator = btrc_Vector_string_iterGet(linuxLauncherNames(), __i_679);
         reportFile(emulator, joinPath(linuxLauncherBin(project), semuLauncherName(emulator)));
     }
     if (errors != NULL) {
@@ -16952,698 +17652,8 @@ void doctorSteamDeck(char* project) {
     }
 }
 
-void BinaryEditor_init(BinaryEditor* self, char* path, char* mode) {
-    self->__rc = 1;
-    (self->handle = fopen(path, mode));
-    (self->opened = (self->handle != NULL));
-}
-
-BinaryEditor* BinaryEditor_new(char* path, char* mode) {
-    BinaryEditor* self = ((BinaryEditor*)malloc(sizeof(BinaryEditor)));
-    memset(self, 0, sizeof(BinaryEditor));
-    BinaryEditor_init(self, path, mode);
-    return self;
-}
-
-void BinaryEditor_destroy(BinaryEditor* self) {
-    BinaryEditor_close(self);
-    free(self);
-}
-
-bool BinaryEditor_ok(BinaryEditor* self) {
-    return self->opened;
-}
-
-bool BinaryEditor_seek(BinaryEditor* self, long offset) {
-    if (!self->opened) {
-        return false;
-    }
-    return (fseek(self->handle, offset, SEEK_SET) == 0);
-}
-
-int BinaryEditor_readU8(BinaryEditor* self, long offset) {
-    if (!BinaryEditor_seek(self, offset)) {
-        return (-1);
-    }
-    unsigned char buf[1];
-    size_t n = fread(buf, 1, 1, self->handle);
-    if (n != 1) {
-        return (-1);
-    }
-    return ((int)buf[0]);
-}
-
-long BinaryEditor_readLe32(BinaryEditor* self, long offset) {
-    if (!BinaryEditor_seek(self, offset)) {
-        return (-1);
-    }
-    unsigned char buf[4];
-    size_t n = fread(buf, 1, 4, self->handle);
-    if (n != 4) {
-        return (-1);
-    }
-    return (((((long)buf[0]) + (((long)buf[1]) * 256)) + (((long)buf[2]) * 65536)) + (((long)buf[3]) * 16777216));
-}
-
-char* BinaryEditor_readAscii(BinaryEditor* self, long offset, int count) {
-    if (!BinaryEditor_seek(self, offset)) {
-        return "";
-    }
-    char* buf = ((char*)malloc((count + 1)));
-    size_t n = fread(buf, 1, count, self->handle);
-    (buf[n] = '\0');
-    return buf;
-}
-
-bool BinaryEditor_writeU8(BinaryEditor* self, long offset, int value) {
-    if (!BinaryEditor_seek(self, offset)) {
-        return false;
-    }
-    unsigned char buf[1];
-    (buf[0] = ((unsigned char)value));
-    size_t n = fwrite(buf, 1, 1, self->handle);
-    return (n == 1);
-}
-
-bool BinaryEditor_writeLe32(BinaryEditor* self, long offset, long value) {
-    if (!BinaryEditor_seek(self, offset)) {
-        return false;
-    }
-    unsigned char buf[4];
-    (buf[0] = ((unsigned char)__btrc_mod_int(value, 256)));
-    (buf[1] = ((unsigned char)__btrc_mod_int(__btrc_div_int(value, 256), 256)));
-    (buf[2] = ((unsigned char)__btrc_mod_int(__btrc_div_int(value, 65536), 256)));
-    (buf[3] = ((unsigned char)__btrc_mod_int(__btrc_div_int(value, 16777216), 256)));
-    size_t n = fwrite(buf, 1, 4, self->handle);
-    return (n == 4);
-}
-
-bool BinaryEditor_writeAscii(BinaryEditor* self, long offset, char* text) {
-    if (!BinaryEditor_seek(self, offset)) {
-        return false;
-    }
-    size_t n = fwrite(text, 1, ((int)strlen(text)), self->handle);
-    return (n == ((size_t)((int)strlen(text))));
-}
-
-void BinaryEditor_close(BinaryEditor* self) {
-    if (self->opened) {
-        fclose(self->handle);
-        (self->opened = false);
-    }
-}
-
-void BinaryReader_init(BinaryReader* self, char* path) {
-    self->__rc = 1;
-    (self->handle = fopen(path, "rb"));
-    (self->opened = (self->handle != NULL));
-}
-
-BinaryReader* BinaryReader_new(char* path) {
-    BinaryReader* self = ((BinaryReader*)malloc(sizeof(BinaryReader)));
-    memset(self, 0, sizeof(BinaryReader));
-    BinaryReader_init(self, path);
-    return self;
-}
-
-void BinaryReader_destroy(BinaryReader* self) {
-    BinaryReader_close(self);
-    free(self);
-}
-
-bool BinaryReader_ok(BinaryReader* self) {
-    return self->opened;
-}
-
-bool BinaryReader_seek(BinaryReader* self, long offset) {
-    if (!self->opened) {
-        return false;
-    }
-    return (fseek(self->handle, offset, SEEK_SET) == 0);
-}
-
-long BinaryReader_length(BinaryReader* self) {
-    if (!self->opened) {
-        return 0;
-    }
-    long here = ftell(self->handle);
-    fseek(self->handle, 0, SEEK_END);
-    long end = ftell(self->handle);
-    fseek(self->handle, here, SEEK_SET);
-    return end;
-}
-
-int BinaryReader_readU8(BinaryReader* self, long offset) {
-    if (!BinaryReader_seek(self, offset)) {
-        return (-1);
-    }
-    unsigned char buf[1];
-    size_t n = fread(buf, 1, 1, self->handle);
-    if (n != 1) {
-        return (-1);
-    }
-    return ((int)buf[0]);
-}
-
-long BinaryReader_readLe32(BinaryReader* self, long offset) {
-    if (!BinaryReader_seek(self, offset)) {
-        return (-1);
-    }
-    unsigned char buf[4];
-    size_t n = fread(buf, 1, 4, self->handle);
-    if (n != 4) {
-        return (-1);
-    }
-    return (((((long)buf[0]) + (((long)buf[1]) * 256)) + (((long)buf[2]) * 65536)) + (((long)buf[3]) * 16777216));
-}
-
-char* BinaryReader_readAscii(BinaryReader* self, long offset, int count) {
-    if (!BinaryReader_seek(self, offset)) {
-        return "";
-    }
-    char* buf = ((char*)malloc((count + 1)));
-    size_t n = fread(buf, 1, count, self->handle);
-    (buf[n] = '\0');
-    return buf;
-}
-
-char* BinaryReader_readCString(BinaryReader* self, long offset) {
-    char* out = "";
-    long pos = offset;
-    while (true) {
-        int value = BinaryReader_readU8(self, pos);
-        if (value <= 0) {
-            return out;
-        }
-        (out = __btrc_str_track(__btrc_strcat(out, BinaryReader_readAscii(self, pos, 1))));
-        (pos++);
-    }
-    return out;
-}
-
-long BinaryReader_cstringEnd(BinaryReader* self, long offset) {
-    long pos = offset;
-    while (true) {
-        int value = BinaryReader_readU8(self, pos);
-        if (value < 0) {
-            return pos;
-        }
-        (pos++);
-        if (value == 0) {
-            return pos;
-        }
-    }
-    return pos;
-}
-
-void BinaryReader_close(BinaryReader* self) {
-    if (self->opened) {
-        fclose(self->handle);
-        (self->opened = false);
-    }
-}
-
-void N3dsRomCheck_init(N3dsRomCheck* self) {
-    self->__rc = 1;
-    (self->status = "UNKNOWN");
-    (self->note = "");
-    (self->partitions = 0);
-}
-
-N3dsRomCheck* N3dsRomCheck_new(void) {
-    N3dsRomCheck* self = ((N3dsRomCheck*)malloc(sizeof(N3dsRomCheck)));
-    memset(self, 0, sizeof(N3dsRomCheck));
-    N3dsRomCheck_init(self);
-    return self;
-}
-
-void N3dsRomCheck_destroy(N3dsRomCheck* self) {
-    free(self);
-}
-
-bool n3dsRomName(char* name) {
-    char* lower = __btrc_str_track(__btrc_toLower(name));
-    return (__btrc_endsWith(lower, ".3ds") || __btrc_endsWith(lower, ".cci"));
-}
-
-bool n3dsArchiveName(char* name) {
-    char* lower = __btrc_str_track(__btrc_toLower(name));
-    return (__btrc_endsWith(lower, ".zip") || __btrc_endsWith(lower, ".7z"));
-}
-
-bool exefsLooksDecrypted(char* text) {
-    return ((__btrc_startsWith(text, ".code") || __btrc_startsWith(text, "icon")) || __btrc_startsWith(text, "banner"));
-}
-
-N3dsRomCheck* checkN3dsRom(char* path) {
-    N3dsRomCheck* result = N3dsRomCheck_new();
-    BinaryReader* reader = BinaryReader_new(path);
-    if (!BinaryReader_ok(reader)) {
-        (result->status = "INVALID");
-        (result->note = "cannot open");
-        if (reader != NULL) {
-            if ((--reader->__rc) <= 0) {
-                BinaryReader_destroy(reader);
-            }
-        }
-        return result;
-    }
-    if (!(strcmp(BinaryReader_readAscii(reader, 0x100, 4), "NCSD") == 0)) {
-        (result->status = "INVALID");
-        (result->note = "missing NCSD header");
-        if (reader != NULL) {
-            if ((--reader->__rc) <= 0) {
-                BinaryReader_destroy(reader);
-            }
-        }
-        return result;
-    }
-    bool sawNoCrypto = false;
-    bool sawNeedsFix = false;
-    bool sawEncrypted = false;
-    bool sawInvalidPartition = false;
-    for (int i = 0; (i < 8); (i++)) {
-        long entry = (0x120 + (i * 8));
-        long offsetMu = BinaryReader_readLe32(reader, entry);
-        long sizeMu = BinaryReader_readLe32(reader, (entry + 4));
-        if ((offsetMu < 0) || (sizeMu < 0)) {
-            (sawInvalidPartition = true);
-        } else if (sizeMu > 0) {
-            long partOffset = (offsetMu * 0x200);
-            if (!(strcmp(BinaryReader_readAscii(reader, (partOffset + 0x100), 4), "NCCH") == 0)) {
-                (sawInvalidPartition = true);
-            } else {
-                (result->partitions++);
-                int flags = BinaryReader_readU8(reader, ((partOffset + 0x100) + 0x8f));
-                bool noCrypto = (__btrc_mod_int(__btrc_div_int(flags, 4), 2) == 1);
-                if (noCrypto) {
-                    (sawNoCrypto = true);
-                } else {
-                    long exefsOffsetMu = BinaryReader_readLe32(reader, ((partOffset + 0x100) + 0xa0));
-                    char* exefs = ((exefsOffsetMu > 0) ? BinaryReader_readAscii(reader, (partOffset + (exefsOffsetMu * 0x200)), 8) : "");
-                    if (exefsLooksDecrypted(exefs)) {
-                        (sawNeedsFix = true);
-                    } else {
-                        (sawEncrypted = true);
-                    }
-                }
-            }
-        }
-    }
-    if (result->partitions == 0) {
-        (result->status = "INVALID");
-        (result->note = (sawInvalidPartition ? "no valid NCCH partitions" : "no NCSD partitions"));
-    } else if (sawEncrypted) {
-        (result->status = "ENCRYPTED");
-        (result->note = "Azahar will reject encrypted dumps; provide decrypted/NoCrypto content");
-    } else if (sawNeedsFix) {
-        (result->status = "NEEDS_FIX");
-        (result->note = "decrypted content is missing NoCrypto flags");
-    } else if (sawNoCrypto) {
-        (result->status = "OK");
-        int __fstr_617_len = snprintf(NULL, 0, "%d NoCrypto partition(s)", result->partitions);
-        char* __fstr_617_buf = __btrc_str_track(((char*)malloc((__fstr_617_len + 1))));
-        snprintf(__fstr_617_buf, (__fstr_617_len + 1), "%d NoCrypto partition(s)", result->partitions);
-        (result->note = __fstr_617_buf);
-    } else {
-        (result->status = "UNKNOWN");
-        (result->note = "could not classify NCCH encryption flags");
-    }
-    if (reader != NULL) {
-        if ((--reader->__rc) <= 0) {
-            BinaryReader_destroy(reader);
-        }
-    }
-    return result;
-    if (reader != NULL) {
-        if ((--reader->__rc) <= 0) {
-            BinaryReader_destroy(reader);
-        }
-    }
-    if (result != NULL) {
-        if ((--result->__rc) <= 0) {
-            N3dsRomCheck_destroy(result);
-        }
-    }
-}
-
-btrc_Vector_string* n3dsInputFiles(char* input) {
-    btrc_Vector_string* files = btrc_Vector_string_new();
-    if (FileSystem_isDir(input)) {
-        int __n_619 = btrc_Vector_string_iterLen(FileSystem_listDir(input));
-        for (int __i_618 = 0; (__i_618 < __n_619); (__i_618++)) {
-            char* name = btrc_Vector_string_iterGet(FileSystem_listDir(input), __i_618);
-            if (n3dsRomName(name)) {
-                btrc_Vector_string_push(files, joinPath(input, name));
-            }
-        }
-        btrc_Vector_string_sort(files);
-    } else if (FileSystem_isFile(input) && n3dsRomName(input)) {
-        btrc_Vector_string_push(files, input);
-    }
-    return files;
-}
-
-bool copyFilePath(char* source, char* destination) {
-    ensureDir(PathTools_dirname(destination));
-    UnixShell* shell = UnixShell_new();
-    ExecResult* result = UnixShell_runCommand(shell, Command_check(Command_arg(Command_arg(Command_arg(Command_new("cp"), "-p"), source), destination), false));
-    bool __btrc_ret_620 = ExecResult_ok(result);
-    if (shell != NULL) {
-        if ((--shell->__rc) <= 0) {
-            UnixShell_destroy(shell);
-        }
-    }
-    return __btrc_ret_620;
-    if (shell != NULL) {
-        if ((--shell->__rc) <= 0) {
-            UnixShell_destroy(shell);
-        }
-    }
-}
-
-bool n3dsNoCryptoFlag(int flags) {
-    return (__btrc_mod_int(__btrc_div_int(flags, 4), 2) == 1);
-}
-
-int patchN3dsNoCryptoFlags(char* path) {
-    BinaryEditor* editor = BinaryEditor_new(path, "r+b");
-    if (!BinaryEditor_ok(editor)) {
-        int __btrc_ret_621 = (-1);
-        if (editor != NULL) {
-            if ((--editor->__rc) <= 0) {
-                BinaryEditor_destroy(editor);
-            }
-        }
-        return __btrc_ret_621;
-    }
-    if (!(strcmp(BinaryEditor_readAscii(editor, 0x100, 4), "NCSD") == 0)) {
-        BinaryEditor_close(editor);
-        int __btrc_ret_622 = (-1);
-        if (editor != NULL) {
-            if ((--editor->__rc) <= 0) {
-                BinaryEditor_destroy(editor);
-            }
-        }
-        return __btrc_ret_622;
-    }
-    int patched = 0;
-    for (int i = 0; (i < 8); (i++)) {
-        long entry = (0x120 + (i * 8));
-        long offsetMu = BinaryEditor_readLe32(editor, entry);
-        long sizeMu = BinaryEditor_readLe32(editor, (entry + 4));
-        if ((offsetMu < 0) || (sizeMu <= 0)) {
-            continue;
-        }
-        long partOffset = (offsetMu * 0x200);
-        if (!(strcmp(BinaryEditor_readAscii(editor, (partOffset + 0x100), 4), "NCCH") == 0)) {
-            continue;
-        }
-        long flagsOffset = ((partOffset + 0x100) + 0x8f);
-        int flags = BinaryEditor_readU8(editor, flagsOffset);
-        if (flags < 0) {
-            BinaryEditor_close(editor);
-            int __btrc_ret_623 = (-1);
-            if (editor != NULL) {
-                if ((--editor->__rc) <= 0) {
-                    BinaryEditor_destroy(editor);
-                }
-            }
-            return __btrc_ret_623;
-        }
-        if (!n3dsNoCryptoFlag(flags)) {
-            if (!BinaryEditor_writeU8(editor, flagsOffset, (flags + 4))) {
-                BinaryEditor_close(editor);
-                int __btrc_ret_624 = (-1);
-                if (editor != NULL) {
-                    if ((--editor->__rc) <= 0) {
-                        BinaryEditor_destroy(editor);
-                    }
-                }
-                return __btrc_ret_624;
-            }
-            if (!BinaryEditor_writeU8(editor, ((partOffset + 0x100) + 0x8b), 0)) {
-                BinaryEditor_close(editor);
-                int __btrc_ret_625 = (-1);
-                if (editor != NULL) {
-                    if ((--editor->__rc) <= 0) {
-                        BinaryEditor_destroy(editor);
-                    }
-                }
-                return __btrc_ret_625;
-            }
-            (patched++);
-        }
-    }
-    BinaryEditor_close(editor);
-    if (editor != NULL) {
-        if ((--editor->__rc) <= 0) {
-            BinaryEditor_destroy(editor);
-        }
-    }
-    return patched;
-    if (editor != NULL) {
-        if ((--editor->__rc) <= 0) {
-            BinaryEditor_destroy(editor);
-        }
-    }
-}
-
-bool fixN3dsNoCryptoFile(char* input, char* output) {
-    if (!copyFilePath(input, output)) {
-        return false;
-    }
-    int patched = patchN3dsNoCryptoFlags(output);
-    if (patched < 0) {
-        removePath(output);
-        return false;
-    }
-    return true;
-}
-
-void reportN3dsRomPreflight(char* project) {
-    char* n3dsDir = joinPath(configuredRomsRoot(project), "n3ds");
-    if (!FileSystem_isDir(n3dsDir)) {
-        int __fstr_628_len = snprintf(NULL, 0, "  MISSING n3ds rom dir: %s", n3dsDir);
-        char* __fstr_628_buf = __btrc_str_track(((char*)malloc((__fstr_628_len + 1))));
-        snprintf(__fstr_628_buf, (__fstr_628_len + 1), "  MISSING n3ds rom dir: %s", n3dsDir);
-        printf("%s\n", __fstr_628_buf);
-        return;
-    }
-    btrc_Vector_string* entries = FileSystem_listDir(n3dsDir);
-    int checked = 0;
-    int archives = 0;
-    int __n_630 = btrc_Vector_string_iterLen(entries);
-    for (int __i_629 = 0; (__i_629 < __n_630); (__i_629++)) {
-        char* name = btrc_Vector_string_iterGet(entries, __i_629);
-        char* path = joinPath(n3dsDir, name);
-        if (FileSystem_isFile(path) && n3dsRomName(name)) {
-            (checked++);
-            N3dsRomCheck* result = checkN3dsRom(path);
-            int __fstr_633_len = snprintf(NULL, 0, "  %s n3ds/%s: %s", result->status, name, result->note);
-            char* __fstr_633_buf = __btrc_str_track(((char*)malloc((__fstr_633_len + 1))));
-            snprintf(__fstr_633_buf, (__fstr_633_len + 1), "  %s n3ds/%s: %s", result->status, name, result->note);
-            printf("%s\n", __fstr_633_buf);
-        } else if (FileSystem_isFile(path) && n3dsArchiveName(name)) {
-            (archives++);
-        }
-    }
-    if (checked == 0) {
-        printf("%s\n", "  OK n3ds: no top-level .3ds/.cci files to preflight");
-    }
-    if (archives > 0) {
-        int __fstr_636_len = snprintf(NULL, 0, "  WARN n3ds archives unchecked: %d zip/7z file(s)", archives);
-        char* __fstr_636_buf = __btrc_str_track(((char*)malloc((__fstr_636_len + 1))));
-        snprintf(__fstr_636_buf, (__fstr_636_len + 1), "  WARN n3ds archives unchecked: %d zip/7z file(s)", archives);
-        printf("%s\n", __fstr_636_buf);
-    }
-}
-
-char* n3dsNoCryptoInputArg(CliArgs* args, int startIndex) {
-    int i = startIndex;
-    while (i < CliArgs_count(args)) {
-        char* value = CliArgs_get(args, i);
-        if ((strcmp(value, "-o") == 0) || (strcmp(value, "--output") == 0)) {
-            (i = (i + 2));
-        } else if (__btrc_startsWith(value, "--")) {
-            (i = (i + 1));
-        } else {
-            return value;
-        }
-    }
-    return "";
-}
-
-void printN3dsNoCryptoCheckSummary(int total, int ok, int needsFix, int encrypted, int invalid, int unknown) {
-    printf("%s\n", "");
-    int __fstr_639_len = snprintf(NULL, 0, "Summary: %d files", total);
-    char* __fstr_639_buf = __btrc_str_track(((char*)malloc((__fstr_639_len + 1))));
-    snprintf(__fstr_639_buf, (__fstr_639_len + 1), "Summary: %d files", total);
-    printf("%s\n", __fstr_639_buf);
-    int __fstr_642_len = snprintf(NULL, 0, "  Already OK (NoCrypto set):    %d", ok);
-    char* __fstr_642_buf = __btrc_str_track(((char*)malloc((__fstr_642_len + 1))));
-    snprintf(__fstr_642_buf, (__fstr_642_len + 1), "  Already OK (NoCrypto set):    %d", ok);
-    printf("%s\n", __fstr_642_buf);
-    int __fstr_645_len = snprintf(NULL, 0, "  Needs fix (flag missing):     %d", needsFix);
-    char* __fstr_645_buf = __btrc_str_track(((char*)malloc((__fstr_645_len + 1))));
-    snprintf(__fstr_645_buf, (__fstr_645_len + 1), "  Needs fix (flag missing):     %d", needsFix);
-    printf("%s\n", __fstr_645_buf);
-    int __fstr_648_len = snprintf(NULL, 0, "  Truly encrypted (need keys):  %d", encrypted);
-    char* __fstr_648_buf = __btrc_str_track(((char*)malloc((__fstr_648_len + 1))));
-    snprintf(__fstr_648_buf, (__fstr_648_len + 1), "  Truly encrypted (need keys):  %d", encrypted);
-    printf("%s\n", __fstr_648_buf);
-    int __fstr_651_len = snprintf(NULL, 0, "  Invalid/errors:               %d", invalid);
-    char* __fstr_651_buf = __btrc_str_track(((char*)malloc((__fstr_651_len + 1))));
-    snprintf(__fstr_651_buf, (__fstr_651_len + 1), "  Invalid/errors:               %d", invalid);
-    printf("%s\n", __fstr_651_buf);
-    if (unknown > 0) {
-        int __fstr_654_len = snprintf(NULL, 0, "  Unknown:                      %d", unknown);
-        char* __fstr_654_buf = __btrc_str_track(((char*)malloc((__fstr_654_len + 1))));
-        snprintf(__fstr_654_buf, (__fstr_654_len + 1), "  Unknown:                      %d", unknown);
-        printf("%s\n", __fstr_654_buf);
-    }
-}
-
-int n3dsNoCryptoCommand(CliArgs* args, int startIndex) {
-    char* input = n3dsNoCryptoInputArg(args, startIndex);
-    if (((int)strlen(input)) == 0) {
-        printf("%s\n", "error 0:0 n3ds-nocrypto needs an input .3ds/.cci file or directory");
-        return 1;
-    }
-    btrc_Vector_string* files = n3dsInputFiles(input);
-    if (files->len == 0) {
-        printf("%s\n", "error 0:0 no .3ds/.cci files found");
-        return 1;
-    }
-    if (CliArgs_has(args, "--check")) {
-        int ok = 0;
-        int needsFix = 0;
-        int encrypted = 0;
-        int invalid = 0;
-        int unknown = 0;
-        int __n_656 = btrc_Vector_string_iterLen(files);
-        for (int __i_655 = 0; (__i_655 < __n_656); (__i_655++)) {
-            char* file = btrc_Vector_string_iterGet(files, __i_655);
-            N3dsRomCheck* result = checkN3dsRom(file);
-            char* name = PathTools_basename(file);
-            if (strcmp(result->status, "OK") == 0) {
-                int __fstr_659_len = snprintf(NULL, 0, "  OK:        %s", name);
-                char* __fstr_659_buf = __btrc_str_track(((char*)malloc((__fstr_659_len + 1))));
-                snprintf(__fstr_659_buf, (__fstr_659_len + 1), "  OK:        %s", name);
-                printf("%s\n", __fstr_659_buf);
-                (ok++);
-            } else if (strcmp(result->status, "NEEDS_FIX") == 0) {
-                int __fstr_662_len = snprintf(NULL, 0, "  NEEDS FIX: %s", name);
-                char* __fstr_662_buf = __btrc_str_track(((char*)malloc((__fstr_662_len + 1))));
-                snprintf(__fstr_662_buf, (__fstr_662_len + 1), "  NEEDS FIX: %s", name);
-                printf("%s\n", __fstr_662_buf);
-                (needsFix++);
-            } else if (strcmp(result->status, "ENCRYPTED") == 0) {
-                int __fstr_665_len = snprintf(NULL, 0, "  ENCRYPTED: %s (truly encrypted, cannot fix with flag flip)", name);
-                char* __fstr_665_buf = __btrc_str_track(((char*)malloc((__fstr_665_len + 1))));
-                snprintf(__fstr_665_buf, (__fstr_665_len + 1), "  ENCRYPTED: %s (truly encrypted, cannot fix with flag flip)", name);
-                printf("%s\n", __fstr_665_buf);
-                (encrypted++);
-            } else if (strcmp(result->status, "INVALID") == 0) {
-                int __fstr_668_len = snprintf(NULL, 0, "  ERROR:     %s: %s", name, result->note);
-                char* __fstr_668_buf = __btrc_str_track(((char*)malloc((__fstr_668_len + 1))));
-                snprintf(__fstr_668_buf, (__fstr_668_len + 1), "  ERROR:     %s: %s", name, result->note);
-                printf("%s\n", __fstr_668_buf);
-                (invalid++);
-            } else {
-                int __fstr_671_len = snprintf(NULL, 0, "  UNKNOWN:   %s: %s", name, result->note);
-                char* __fstr_671_buf = __btrc_str_track(((char*)malloc((__fstr_671_len + 1))));
-                snprintf(__fstr_671_buf, (__fstr_671_len + 1), "  UNKNOWN:   %s: %s", name, result->note);
-                printf("%s\n", __fstr_671_buf);
-                (unknown++);
-            }
-        }
-        printN3dsNoCryptoCheckSummary(files->len, ok, needsFix, encrypted, invalid, unknown);
-        return ((invalid > 0) ? 1 : 0);
-    }
-    char* outputDir = CliArgs_valueAfter(args, "--output", CliArgs_valueAfter(args, "-o", ""));
-    if (((int)strlen(outputDir)) == 0) {
-        printf("%s\n", "error 0:0 n3ds-nocrypto fix mode needs -o/--output DIR");
-        return 1;
-    }
-    ensureDir(outputDir);
-    int fixed = 0;
-    int copied = 0;
-    int failed = 0;
-    for (int i = 0; (i < files->len); (i++)) {
-        char* file = btrc_Vector_string_get(files, i);
-        char* name = PathTools_basename(file);
-        char* output = joinPath(outputDir, name);
-        int __fstr_674_len = snprintf(NULL, 0, "[%d/%d] %s", (i + 1), files->len, name);
-        char* __fstr_674_buf = __btrc_str_track(((char*)malloc((__fstr_674_len + 1))));
-        snprintf(__fstr_674_buf, (__fstr_674_len + 1), "[%d/%d] %s", (i + 1), files->len, name);
-        printf("%s\n", __fstr_674_buf);
-        N3dsRomCheck* result = checkN3dsRom(file);
-        if (strcmp(result->status, "OK") == 0) {
-            printf("%s\n", "  Already OK, copying as-is");
-            if (copyFilePath(file, output)) {
-                (copied++);
-            } else {
-                printf("%s\n", "  FAILED");
-                (failed++);
-            }
-        } else if (strcmp(result->status, "NEEDS_FIX") == 0) {
-            printf("%s\n", "  Fixing NoCrypto flag...");
-            if (fixN3dsNoCryptoFile(file, output)) {
-                printf("%s\n", "  Done");
-                (fixed++);
-            } else {
-                printf("%s\n", "  FAILED");
-                (failed++);
-            }
-        } else if (strcmp(result->status, "ENCRYPTED") == 0) {
-            printf("%s\n", "  Truly encrypted, skipping (needs full decryption)");
-            (failed++);
-        } else if (strcmp(result->status, "INVALID") == 0) {
-            int __fstr_677_len = snprintf(NULL, 0, "  ERROR: %s", result->note);
-            char* __fstr_677_buf = __btrc_str_track(((char*)malloc((__fstr_677_len + 1))));
-            snprintf(__fstr_677_buf, (__fstr_677_len + 1), "  ERROR: %s", result->note);
-            printf("%s\n", __fstr_677_buf);
-            (failed++);
-        } else {
-            printf("%s\n", "  Unknown state, copying as-is");
-            if (copyFilePath(file, output)) {
-                (copied++);
-            } else {
-                printf("%s\n", "  FAILED");
-                (failed++);
-            }
-        }
-    }
-    printf("%s\n", "");
-    int __fstr_680_len = snprintf(NULL, 0, "Done: %d fixed, %d copied as-is, %d failed", fixed, copied, failed);
-    char* __fstr_680_buf = __btrc_str_track(((char*)malloc((__fstr_680_len + 1))));
-    snprintf(__fstr_680_buf, (__fstr_680_len + 1), "Done: %d fixed, %d copied as-is, %d failed", fixed, copied, failed);
-    printf("%s\n", __fstr_680_buf);
-    return ((failed == 0) ? 0 : 1);
-}
-
-int utilitiesCommand(CliArgs* args) {
-    char* mode = "";
-    if ((CliArgs_count(args) > 1) && (!__btrc_startsWith(CliArgs_get(args, 1), "--"))) {
-        (mode = CliArgs_get(args, 1));
-    }
-    if ((strcmp(mode, "n3ds-nocrypto") == 0) || (strcmp(mode, "3ds-nocrypto") == 0)) {
-        return n3dsNoCryptoCommand(args, 2);
-    }
-    if (strcmp(mode, "decrypt3ds") == 0) {
-        return decrypt3dsNoCryptoCommand(args, 2);
-    }
-    printUsage();
-    return 1;
-}
-
-int decrypt3dsNoCryptoCommand(CliArgs* args, int startIndex) {
-    return n3dsNoCryptoCommand(args, startIndex);
-}
-
 char* verificationRoot(char* project) {
-    return joinPath(project, "verification");
+    return joinPath(configRoot(project), "verification");
 }
 
 char* screenshotConfigPath(char* project) {
@@ -18182,7 +18192,7 @@ void SyncSettingsUi_render(SyncSettingsUi* self) {
     printf("%s\n", "==================");
     printf("%s\n", __btrc_str_track(__btrc_strcat("Project: ", self->project)));
     printf("%s\n", __btrc_str_track(__btrc_strcat("Source: ", syncConfigPath(self->project))));
-    printf("%s\n", "Edits update Semu-owned sync/sync.json. Use apply to compile service files and launcher state.");
+    printf("%s\n", "Edits update Semu-owned config/settings/sync.json. Use apply to compile service files and launcher state.");
     printf("%s\n", "");
     char* group = "";
     int index = 1;
@@ -18583,7 +18593,7 @@ bool syncSetup(char* project) {
 }
 
 char* semuStateRoot(char* project) {
-    return joinPath(project, ".semu");
+    return generatedRuntimeRoot(project);
 }
 
 char* lifecycleStatePath(char* project) {
@@ -18656,7 +18666,7 @@ void lifecycleUninstall(char* project, bool purgeGenerated, bool purgeState) {
         removePath(customSystemsRoot(project));
         removePath(esDeSettingsPath(project));
         removePath(SettingsEntries_root(project));
-        removePath(joinPath(project, "semu.json"));
+        removePath(manifestPath(project));
     }
     if (purgeState) {
         removePath(semuStateRoot(project));
@@ -18732,8 +18742,8 @@ bool lifecycleChangeKeymap(char* project, char* actionId, char* command) {
 
 void lifecycleUpgrade(char* project) {
     ensureDir(lifecycleBackupsRoot(project));
-    if (FileSystem_exists(joinPath(project, "semu.json"))) {
-        SemuGeneratedFiles_writeAdapterState(project, upgradeBackupPath(project), FileSystem_readText(joinPath(project, "semu.json")));
+    if (FileSystem_exists(manifestPath(project))) {
+        SemuGeneratedFiles_writeAdapterState(project, upgradeBackupPath(project), FileSystem_readText(manifestPath(project)));
     }
     lifecycleReconfigure(project, "");
     writeLifecycleState(project, "upgrade");
@@ -18746,7 +18756,7 @@ void lifecycleUpgrade(char* project) {
 void lifecycleStatus(char* project) {
     printf("%s\n", "Semu lifecycle");
     reportFile("state", lifecycleStatePath(project));
-    reportFile("manifest", joinPath(project, "semu.json"));
+    reportFile("manifest", manifestPath(project));
     reportFile("sync_config", syncConfigPath(project));
     reportFile("desktop_entry", joinPath(applicationsDir(), "semu.desktop"));
     reportFile("systemd_service", joinPath(systemdUserDir(), "semu-syncthing.service"));
@@ -19557,7 +19567,7 @@ int SettingsUi_run(SettingsUi* self) {
 }
 
 char* settingsRoot(char* project) {
-    return joinPath(project, "settings");
+    return joinPath(configRoot(project), "settings");
 }
 
 char* semuSettingsPath(char* project) {
@@ -19989,11 +19999,11 @@ PresentationStationSpec* PresentationCatalog_at(int index) {
 }
 
 char* presentationSettingsRoot(char* project) {
-    return joinPath(settingsRoot(project), "presentation");
+    return joinPath(configRoot(project), "systems");
 }
 
 char* presentationStateRoot(char* project) {
-    return joinPath(settingsRoot(project), "presentation-state");
+    return joinPath(generatedRuntimeRoot(project), "presentation-state");
 }
 
 char* presentationStatePath(char* project, char* system) {
@@ -22043,7 +22053,7 @@ char* e2eFakeAppImageToolText(void) {
     btrc_Vector_string_push(__list_887, "if [ \"${1:-}\" = \"--no-appstream\" ]; then shift; fi");
     btrc_Vector_string_push(__list_887, "APPDIR=\"${1:?missing AppDir}\"");
     btrc_Vector_string_push(__list_887, "OUTPUT=\"${2:?missing output}\"");
-    btrc_Vector_string_push(__list_887, "for required in AppRun usr/bin/es-de usr/bin/semu usr/bin/semu-quit-watch usr/bin/bwrap usr/bin/semu-retroarch usr/bin/semu-dolphin usr/bin/semu-ppsspp usr/bin/semu-flycast usr/bin/semu-melonds usr/bin/semu-pcsx2 usr/bin/semu-cemu usr/bin/semu-azahar usr/bin/semu-ryujinx usr/bin/semu-btrc usr/bin/semu-es-de usr/bin/syncthing usr/bin/syncthingtray usr/bin/curl usr/lib/retroarch/cores nix/store packaging/linux/AppRun packaging/linux/ES-DE/es_find_rules_linux.xml; do");
+    btrc_Vector_string_push(__list_887, "for required in AppRun usr/bin/es-de usr/bin/semu usr/bin/semu-quit-watch usr/bin/bwrap usr/bin/semu-retroarch usr/bin/semu-dolphin usr/bin/semu-ppsspp usr/bin/semu-flycast usr/bin/semu-melonds usr/bin/semu-pcsx2 usr/bin/semu-cemu usr/bin/semu-azahar usr/bin/semu-ryujinx usr/bin/semu-btrc usr/bin/semu-es-de usr/bin/syncthing usr/bin/syncthingtray usr/bin/curl usr/lib/retroarch/cores nix/store packaging/linux/AppRun generated/packaging/es-de/es_find_rules_linux.xml; do");
     btrc_Vector_string_push(__list_887, "  test -e \"$APPDIR/$required\" || { echo \"missing AppDir path: $required\" >&2; exit 3; }");
     btrc_Vector_string_push(__list_887, "done");
     btrc_Vector_string_push(__list_887, "test ! -e \"$APPDIR/packaging/linux/build-appimage.sh\" || { echo \"build script shipped inside AppDir\" >&2; exit 3; }");
@@ -22063,7 +22073,7 @@ char* e2eFakeAppImageToolText(void) {
     btrc_Vector_string_push(__list_887, "! grep -F 'sync setup' \"$APPDIR/AppRun\" >/dev/null");
     btrc_Vector_string_push(__list_887, "! grep -F 'pkexec' \"$APPDIR/AppRun\" >/dev/null");
     btrc_Vector_string_push(__list_887, "find \"$APPDIR/usr/bin\" -maxdepth 1 -type f -perm -111 -print | sort > \"$OUTPUT\"");
-    btrc_Vector_string_push(__list_887, "grep -o 'semu-[a-z0-9-]*' \"$APPDIR/packaging/linux/ES-DE/es_find_rules_linux.xml\" | sort -u | while IFS= read -r launcher; do");
+    btrc_Vector_string_push(__list_887, "grep -o 'semu-[a-z0-9-]*' \"$APPDIR/generated/packaging/es-de/es_find_rules_linux.xml\" | sort -u | while IFS= read -r launcher; do");
     btrc_Vector_string_push(__list_887, "  test -x \"$APPDIR/usr/bin/$launcher\" || test -x \"$APPDIR/packaging/linux/bin/$launcher\" || { echo \"generated ES-DE launcher has no executable: $launcher\" >&2; exit 3; }");
     btrc_Vector_string_push(__list_887, "done");
     return textLines(__list_887);
@@ -22186,6 +22196,8 @@ int e2eAppImageSmoke(CliArgs* args) {
     e2eWriteExecutable(fakeEsde, e2eFakeEsdeAppImageText());
     e2eWriteExecutable(joinPath(binDir, "appimagetool"), e2eFakeAppImageToolText());
     e2eWriteExecutable(joinPath(binDir, "nix"), e2eFakeNixText());
+    ensureDir(joinPath(project, "generated/packaging/es-de"));
+    FileSystem_writeText(joinPath(project, "generated/packaging/es-de/es_find_rules_linux.xml"), "<emulator name=\"RETROARCH\"><entry>semu-retroarch</entry></emulator>\n");
     char* noBwrapPackage = joinPath(tmp, "no-bwrap-nix-package");
     e2eWriteFakeNixPackage(noBwrapPackage, false);
     if (!e2eExpectStatus(4, e2eBuildAppImageCommand(project, binDir, noBwrapPackage, fakeEsde, joinPath(tmp, "no-bwrap.AppImage")))) {
@@ -22269,8 +22281,8 @@ int e2eAppImageSmoke(CliArgs* args) {
     char* missingCli = joinPath(tmp, "AppRunMissingCli.AppDir");
     char* missingProject = joinPath(tmp, "missing-cli-project");
     ensureDir(joinPath(missingCli, "usr/bin"));
-    ensureDir(missingProject);
-    FileSystem_writeText(joinPath(missingProject, "semu.json"), "{\"schema_version\":1}\n");
+    ensureDir(joinPath(missingProject, "generated"));
+    FileSystem_writeText(manifestPath(missingProject), "{\"schema_version\":1}\n");
     copyFilePath(joinPath(project, "packaging/linux/AppRun"), joinPath(missingCli, "AppRun"));
     FileSystem_chmod(joinPath(missingCli, "AppRun"), 493);
     if (!e2eExpectStatus(2, __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(e2eCleanAppRunFixtureEnv(), "APPDIR=")), ShellWords_quote(missingCli))), " SEMU_PROJECT_DIR=")), ShellWords_quote(missingProject))), " ")), ShellWords_quote(joinPath(missingCli, "AppRun")))))) {
@@ -22287,9 +22299,9 @@ int e2eAppImageSmoke(CliArgs* args) {
     char* cliAppImage = joinPath(tmp, "Semu-x86_64.AppImage");
     ensureDir(joinPath(cliAppDir, "usr/bin"));
     ensureDir(joinPath(cliAppDir, "packaging/linux/bin"));
-    ensureDir(cliProject);
+    ensureDir(joinPath(cliProject, "generated"));
     FileSystem_writeText(cliAppImage, "fake appimage\n");
-    FileSystem_writeText(joinPath(cliProject, "semu.json"), "{\"schema_version\":1}\n");
+    FileSystem_writeText(manifestPath(cliProject), "{\"schema_version\":1}\n");
     copyFilePath(joinPath(project, "packaging/linux/AppRun"), joinPath(cliAppDir, "AppRun"));
     FileSystem_chmod(joinPath(cliAppDir, "AppRun"), 493);
     btrc_Vector_string* __list_908 = btrc_Vector_string_new();
@@ -22443,9 +22455,9 @@ void deckInstallHostPackages(void) {
 }
 
 void deckBuildGeneratedCli(char* project) {
-    ensureDir(joinPath(project, "build"));
     char* generated = joinPath(project, "generated/semu.c");
-    char* output = joinPath(project, "build/semu");
+    char* output = joinPath(project, "generated/build/semu");
+    ensureDir(PathTools_dirname(output));
     if (commandExists("cc") && FileSystem_exists(generated)) {
         ExecResult* result = UnixShell_runRaw(UnixShell_new(), __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat("cc ", ShellWords_quote(generated))), " -std=c11 -o ")), ShellWords_quote(output))), " -lm")), true, false, "");
         if (!ExecResult_ok(result)) {
@@ -23281,7 +23293,7 @@ void SemuE2eSpec_init(SemuE2eSpec* self) {
     (self->name = "semu-e2e");
     (self->state = "semu-e2e");
     (self->parentState = "root");
-    (self->stateRoot = "tests/vms/e2e-state");
+    (self->stateRoot = "generated/test/vms/e2e-state");
     (self->stateMaterial = "");
     (self->parentHash = "root");
     (self->stateHash = "");
@@ -23710,7 +23722,7 @@ char* SemuE2eGraphRunner_sourceHash(SemuE2eGraphRunner* self) {
         return self->sourceHashValue;
     }
     char* root = ExecutionGraph_resolvedWorkspaceRoot(self->graph);
-    char* command = __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat("cd ", ShellWords_quote(root))), " && find . -type f")), " ! -path './.git/*'")), " ! -path './.semu/*'")), " ! -path './.venv/*'")), " ! -path './.pytest_cache/*'")), " ! -path './.stfolder/*'")), " ! -path './tests/vms/*'")), " ! -path './build/*'")), " ! -path './backups/*'")), " ! -path './result/*'")), " ! -path './result-*/*'")), " ! -path './Azahar/*'")), " ! -path './Cemu/*'")), " ! -path './Dolphin/*'")), " ! -path './ES-DE/*'")), " ! -path './Lime3DS/*'")), " ! -path './PCSX2/*'")), " ! -path './RetroArch/*'")), " ! -path './Ryujinx/*'")), " ! -path './ES-DE/ES-DE/ROMs/*'")), " ! -path './ES-DE/ES-DE/bios/*'")), " ! -path './ES-DE/ES-DE/saves/*'")), " ! -path './ES-DE/ES-DE/states/*'")), " ! -path './ES-DE/ES-DE/downloaded_media/*'")), " ! -path './ES-DE/ES-DE/screenshots/*'")), " ! -path './sync/bin/*'")), " ! -path './sync/logs/*'")), " ! -path './sync/syncthing/*'")), " ! -name '.DS_Store'")), " ! -name '._*'")), " \\( -name '*.btrc' -o -name '*.nix' -o -name '*.json' -o -name '*.sh' -o -name '*.md' -o -name '*.xml' -o -name '*.ini' -o -name '*.cfg' -o -name '*.desktop' -o -name '*.vdf' -o -name '*.skm' -o -name '*.c' -o -name 'Makefile' -o -name 'Dockerfile' -o -name 'flake.lock' \\)")), " -print0 | LC_ALL=C sort -z | xargs -0 shasum -a 256 | shasum -a 256 | awk '{print $1}'"));
+    char* command = __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat("cd ", ShellWords_quote(root))), " && find . -type f")), " ! -path './.git/*'")), " ! -path './.venv/*'")), " ! -path './.pytest_cache/*'")), " ! -path './.stfolder/*'")), " ! -path './generated/build/*'")), " ! -path './generated/packaging/*'")), " ! -path './generated/runtime/*'")), " ! -path './generated/test/*'")), " ! -path './generated/nix/*'")), " ! -name '.DS_Store'")), " ! -name '._*'")), " \\( -name '*.btrc' -o -name '*.nix' -o -name '*.json' -o -name '*.sh' -o -name '*.md' -o -name '*.xml' -o -name '*.ini' -o -name '*.cfg' -o -name '*.desktop' -o -name '*.vdf' -o -name '*.skm' -o -name '*.c' -o -name '*.fx' -o -name '*.fxh' -o -name '*.png' -o -name 'Makefile' -o -name 'Dockerfile' -o -name 'flake.lock' \\)")), " -print0 | LC_ALL=C sort -z | xargs -0 shasum -a 256 | shasum -a 256 | awk '{print $1}'"));
     ExecResult* result = UnixShell_runRaw(UnixShell_new(), command, true, false, "");
     if (!ExecResult_ok(result)) {
         e2eFatal(__btrc_str_track(__btrc_strcat("Failed to compute workspace source hash for ", root)));
@@ -24468,7 +24480,7 @@ int e2eLifecycleSmoke(CliArgs* args) {
     if (!e2eOk(SemuGeneratedFiles_isProjectGenerated(project, emulatorProfilePath(project, "Dolphin/config/WiimoteNew.ini")), "Dolphin runtime Wiimote config should be classified as generated")) {
         return 1;
     }
-    if (!e2eOk(SemuGeneratedFiles_isProjectGenerated(project, joinPath(project, "input/steam-input/neptune-simple.vdf")), "Steam Input template should be classified as generated")) {
+    if (!e2eOk(SemuGeneratedFiles_isProjectGenerated(project, joinPath(project, "generated/packaging/input/steam-input/neptune-simple.vdf")), "Steam Input template should be classified as generated")) {
         return 1;
     }
     if (!e2eOk(SemuGeneratedFiles_isAdapterState(project, lifecycleStatePath(project)), "lifecycle state should be classified as adapter state")) {
@@ -24643,7 +24655,7 @@ int e2eLifecycleSmoke(CliArgs* args) {
     if (!e2eContains(FileSystem_readText(emulatorProfilePath(project, "PCSX2/config/inputprofiles/Steam Deck.ini")), "SaveStateToSlot = Keyboard/Control & Keyboard/V", "PCSX2 keymap after change")) {
         return 1;
     }
-    if (!e2eContains(FileSystem_readText(joinPath(project, "input/steam-input/neptune-full.vdf")), "key_press V, Save State", "Steam Input keymap after change")) {
+    if (!e2eContains(FileSystem_readText(joinPath(project, "generated/packaging/input/steam-input/neptune-full.vdf")), "key_press V, Save State", "Steam Input keymap after change")) {
         return 1;
     }
     char* keymapBeforeFailure = FileSystem_readText(keymapSourcePath(project));
@@ -24699,14 +24711,14 @@ int e2eLifecycleSmoke(CliArgs* args) {
     if (!e2eContains(FileSystem_readText(syncConfigPath(project)), romsTwo, "sync config after reinstall")) {
         return 1;
     }
-    FileSystem_writeText(joinPath(project, "semu.json"), "{\"previous_manifest\": true}\n");
+    FileSystem_writeText(manifestPath(project), "{\"previous_manifest\": true}\n");
     if (!e2eRunOk(e2eRunLifecycle(exe, home, "upgrade", project, ""), "upgrade")) {
         return 1;
     }
     if (!e2eContains(FileSystem_readText(upgradeBackupPath(project)), "\"previous_manifest\": true", "upgrade backup")) {
         return 1;
     }
-    if (!e2eContains(FileSystem_readText(joinPath(project, "semu.json")), "\"schema_version\": 1", "regenerated manifest")) {
+    if (!e2eContains(FileSystem_readText(manifestPath(project)), "\"schema_version\": 1", "regenerated manifest")) {
         return 1;
     }
     if (!e2eContains(FileSystem_readText(keymapSourcePath(project)), "action state.save = Ctrl+V", "keymap should survive upgrade")) {
@@ -24872,7 +24884,7 @@ int e2eSyncSmoke(CliArgs* args) {
     }
     char* systemctlLog = FileSystem_readText(joinPath(capture, "systemctl.log"));
     char* syncService = FileSystem_readText(joinPath(home, ".config/systemd/user/semu-syncthing.service"));
-    char* syncForceScript = FileSystem_readText(joinPath(project, "sync/bin/sync-force.sh"));
+    char* syncForceScript = FileSystem_readText(joinPath(project, "generated/packaging/sync/bin/sync-force.sh"));
     if (!e2eContains(syncService, " sync serve --project ", "sync service stable semu entrypoint")) {
         return 1;
     }
@@ -25140,7 +25152,7 @@ int e2eSettingsSmoke(CliArgs* args) {
     if (!e2eContains(ExecResult_stdout(syncUiEdit), "Semu Sync Settings", "sync ui title")) {
         return 1;
     }
-    if (!e2eContains(ExecResult_stdout(syncUiEdit), "Edits update Semu-owned sync/sync.json", "sync ui owned boundary")) {
+    if (!e2eContains(ExecResult_stdout(syncUiEdit), "Edits update Semu-owned config/settings/sync.json", "sync ui owned boundary")) {
         return 1;
     }
     if (!e2eContains(FileSystem_readText(syncConfigPath(project)), "\"sync_saves\": false", "sync ui persisted owned config")) {
@@ -25259,7 +25271,7 @@ int e2ePresentationSmoke(CliArgs* args) {
     if (!e2eOk(FileSystem_exists(joinPath(presentationSettingsRoot(project), "n3ds.json")), "n3ds presentation config missing")) {
         return 1;
     }
-    char* shaderRoot = joinPath(project, "result/share/libretro/shaders/shaders_slang");
+    char* shaderRoot = joinPath(nixResultRoot(project), "share/libretro/shaders/shaders_slang");
     ensureDir(joinPath(shaderRoot, "handheld/console-border"));
     FileSystem_writeText(joinPath(shaderRoot, "handheld/gameboy.slangp"), "# fake gb shader\n");
     FileSystem_writeText(joinPath(shaderRoot, "handheld/console-border/dmg.slangp"), "# fake gb runtime/bezel\n");
@@ -25324,7 +25336,7 @@ int e2ePresentationSmoke(CliArgs* args) {
     if (!e2eContains(FileSystem_readText(auditReport), "\"missing_dependency_count\": 0", "gb audit report missing dependency count")) {
         return 1;
     }
-    char* shaderBundleRoot = joinPath(project, "result/share/libretro/shaders");
+    char* shaderBundleRoot = joinPath(nixResultRoot(project), "share/libretro/shaders");
     char* dependencyPreset = joinPath(shaderBundleRoot, "Mega_Bezel_Packs/test/root.slangp");
     ensureDir(joinPath(shaderBundleRoot, "Mega_Bezel_Packs/test/base"));
     ensureDir(joinPath(shaderBundleRoot, "Mega_Bezel_Packs/test/images"));
@@ -25652,7 +25664,7 @@ int e2eLauncherSmoke(CliArgs* args) {
     ensureDir(home);
     ensureDir(capture);
     ensureDir(binDir);
-    char* shaderPreset = joinPath(project, "result/share/libretro/shaders/shaders_slang/bezel/Mega_Bezel/Presets/MBZ__5__POTATO.slangp");
+    char* shaderPreset = joinPath(nixResultRoot(project), "share/libretro/shaders/shaders_slang/bezel/Mega_Bezel/Presets/MBZ__5__POTATO.slangp");
     e2eSeedFile(shaderPreset);
     e2eSeedFile(joinPath(emulationRoot, "Cemu/data/keys.txt"));
     e2eSeedFile(joinPath(emulationRoot, "PCSX2/config/bios/SCPH-39001.bin"));
@@ -26582,7 +26594,7 @@ int e2eDeckEvidenceSmoke(CliArgs* args) {
 
 int e2eShellSyntaxSmoke(char* project) {
     char* root = project;
-    char* command = __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat("cd ", ShellWords_quote(root))), " && bash -n")), " packaging/linux/AppRun")), " packaging/linux/sandbox.sh")), " packaging/linux/build-appimage.sh")), " packaging/linux/bin/semu-*")), " utils/steam-deck-bootstrap.sh"));
+    char* command = __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat("cd ", ShellWords_quote(root))), " && bash -n")), " packaging/linux/AppRun")), " packaging/linux/sandbox.sh")), " packaging/linux/build-appimage.sh")), " packaging/linux/bin/semu-*")), " packaging/steamdeck/bootstrap.sh"));
     ExecResult* result = UnixShell_runRaw(UnixShell_new(), command, true, false, "");
     if (!ExecResult_ok(result)) {
         printf("%s\n", ExecResult_stdout(result));
@@ -27107,7 +27119,7 @@ int deckEnumerateCommand(char* project) {
         char* pri = launcherTapPriority(id);
         char* variants = launcherTapVariants(id);
         char* bez = ((((int)strlen(variants)) > 0) ? __btrc_str_track(__btrc_strcat(variants, " + Off")) : "Off (no bundled bezel art yet)");
-        char* hole = bezelManifestHole(id);
+        char* hole = bezelManifestHole(project, id);
         int __fstr_1215_len = snprintf(NULL, 0, "* %s", id);
         char* __fstr_1215_buf = __btrc_str_track(((char*)malloc((__fstr_1215_len + 1))));
         snprintf(__fstr_1215_buf, (__fstr_1215_len + 1), "* %s", id);
@@ -27236,7 +27248,7 @@ char* steamInputTemplateDir(CliArgs* args) {
 }
 
 void copySteamInputTemplate(char* project, char* destination, char* name) {
-    char* source = joinPath(project, __btrc_str_track(__btrc_strcat("input/steam-input/", name)));
+    char* source = joinPath(steamInputTemplatesRoot(project), name);
     SemuGeneratedFiles_writeExternalInstall("steam_input_template", joinPath(destination, name), FileSystem_readText(source));
 }
 
@@ -27264,8 +27276,8 @@ int steamInputCommand(CliArgs* args, char* project) {
     }
     if ((strcmp(mode, "status") == 0) || (strcmp(mode, "validate") == 0)) {
         writeSteamInputTemplates(project);
-        reportSteamInputTemplate("neptune_simple", joinPath(project, "input/steam-input/neptune-simple.vdf"));
-        reportSteamInputTemplate("neptune_full", joinPath(project, "input/steam-input/neptune-full.vdf"));
+        reportSteamInputTemplate("neptune_simple", joinPath(steamInputTemplatesRoot(project), "neptune-simple.vdf"));
+        reportSteamInputTemplate("neptune_full", joinPath(steamInputTemplatesRoot(project), "neptune-full.vdf"));
         printf("%s\n", "");
         printf("%s\n", "Steam shortcut");
         steamShortcutStatus(project, args);
@@ -27351,20 +27363,20 @@ char* resolveProjectDir(CliArgs* args) {
     if (((int)strlen(env)) > 0) {
         return env;
     }
-    if (FileSystem_isFile("semu.json")) {
+    if (FileSystem_isFile(manifestPath("."))) {
         return ".";
     }
     char* xdg = Environment_get("XDG_DATA_HOME", "");
     if (((int)strlen(xdg)) > 0) {
         char* c1 = joinPath(xdg, "semu");
-        if (FileSystem_isFile(joinPath(c1, "semu.json"))) {
+        if (FileSystem_isFile(manifestPath(c1))) {
             return c1;
         }
     }
     char* home = Environment_get("HOME", "");
     if (((int)strlen(home)) > 0) {
         char* c2 = joinPath(home, ".local/share/semu");
-        if (FileSystem_isFile(joinPath(c2, "semu.json"))) {
+        if (FileSystem_isFile(manifestPath(c2))) {
             return c2;
         }
     }
@@ -27386,7 +27398,7 @@ int main(int argc, char** argv) {
         return __btrc_ret_1239;
     }
     if ((strcmp(command, "") == 0) || (strcmp(command, "manifest") == 0)) {
-        char* output = CliArgs_valueAfter(args, "--output", "semu.json");
+        char* output = CliArgs_valueAfter(args, "--output", manifestPath(project));
         writeGeneratedManifest(output);
         int __btrc_ret_1240 = 0;
         if (args != NULL) {

@@ -60,7 +60,7 @@ stdenvNoCC.mkDerivation {
     chmod -R u+w "$duimon"
 
     # Photoreal handheld device SHELLS (+ iconic colorway/model variants), derived from the Duimon
-    # art at build time — mirrors packaging/deck-tap/gen-handheld-shells.sh. The tap compositor
+    # art at build time — mirrors packaging/steamdeck/tap/gen-handheld-shells.sh. The tap compositor
     # (libsemutap) uses these as bezel art; each device's screen HOLE is auto-measured offline into
     # bezel_manifest.btrc (base) + launcherTapScreenVariant (gba SP). Recolor = desaturate then
     # Multiply a solid color (preserves plastic shading + alpha). gba variant b = the GBA SP clamshell

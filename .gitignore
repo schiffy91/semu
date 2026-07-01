@@ -7,31 +7,14 @@ __pycache__/
 .pytest_cache/
 .claude/
 
-# === Build / dev artifacts ===
+# === Local developer state ===
 .venv/
-build/
-result
-result-*
-result *
-.semu/
 .mcp.json
 .deck-smoke/
-deck-shots/
 
-# === VM images ===
-tests/vms/
-
-# === Backups (large zips) ===
-backups/
-
-# === Emulator runtime data (large, per-machine, generated, or copyrighted) ===
-ES-DE/
-packaging/linux/proof/
-packaging/deck-tap/*.so
-emulators/profiles/
-
-# Common licensed game/media/emulator payloads. Source/config exceptions should
-# be added explicitly rather than broadening these patterns.
+# === Licensed game/media/emulator payloads ===
+# Source/config exceptions should be added explicitly rather than broadening
+# these patterns.
 *.3ds
 *.7z
 *.app
@@ -57,43 +40,3 @@ emulators/profiles/
 *.z64
 *.zip
 *.keys
-
-# Emulator save data, BIOS, and binary blobs
-*/bios/
-*/memcards/
-*/sstates/
-*/StateSaves/
-*/ScreenShots/
-*/screenshots/
-*/states/
-*/saves/
-*/nand/
-*/sdmc/
-*/sdcard/
-*/mlc01/
-*/keys.txt
-**/keys.txt
-*/mcu.dat
-*/originals/
-
-# Emulator config/data dirs (runtime state, not source-controlled)
-Azahar/data/
-Cemu/config/
-Cemu/data/
-Dolphin/config/
-Dolphin/data/
-Lime3DS/data/
-PCSX2/config/
-RetroArch/config/
-RetroArch/retroarch.cfg
-Ryujinx/config/
-
-# Sync runtime data. Keep the editable sync profile, ignore generated service
-# helpers, logs, and Syncthing's local keys/database.
-sync/bin/
-sync/logs/
-sync/syncthing/
-!sync/sync.json
-
-# Curated/generated defaults are source-controlled under emulators/.
-# Root emulator directories are local runtime state only.

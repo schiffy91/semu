@@ -4,7 +4,7 @@ set -u
 APP="${SEMU_APPIMAGE:-/home/deck/Applications/Semu/Semu-x86_64.AppImage}"
 PROJECT="${SEMU_PROJECT:-/home/deck/semu}"
 ROMS="${SEMU_ROMS:-/run/media/deck/SD/Emulation/ES-DE/ES-DE/ROMs}"
-RESULT="${SEMU_RESULT:-/home/deck/.cache/semu-codex-src/result}"
+RESULT="${SEMU_RESULT:-/home/deck/.cache/semu-codex-src/generated/nix/result}"
 OUT="${SEMU_TEST_OUT:-/home/deck/.cache/semu-codex-emulator-loop}"
 SEND="${SEMU_UINPUT_SEND:-$OUT/uinput-send}"
 SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd -P)"
