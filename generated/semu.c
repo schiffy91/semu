@@ -554,6 +554,7 @@ char* launcherTapArtFile(char* project, char* system);
 char* launcherResolveArtRel(char* rel);
 char* launcherTapArtVariant(char* project, char* system, char* variant);
 char* launcherTapScreenVariant(char* system, char* variant);
+char* launcherTapVariants(char* system);
 int launcherRunFlatpak(char* project, char* emulator, char* flatpakId, btrc_Vector_string* emulatorArgs);
 int launcherRunEmulator(char* project, char* emulator, btrc_Vector_string* emulatorArgs);
 int launcherCommand(CliArgs* args, char* project);
@@ -976,6 +977,7 @@ int screenshotCommand(CliArgs* args, char* project);
 int syncCommand(CliArgs* args, char* project);
 int lifecycleCommand(CliArgs* args, char* project);
 int deckLaunch(char* project);
+int deckEnumerateCommand(char* project);
 int deckCommand(CliArgs* args, char* project);
 int appRunCommand(CliArgs* args, char* project);
 char* steamInputTemplateDir(CliArgs* args);
@@ -14677,6 +14679,26 @@ char* launcherTapScreenVariant(char* system, char* variant) {
     return "";
 }
 
+char* launcherTapVariants(char* system) {
+    char* s = __btrc_str_track(__btrc_toLower(system));
+    if ((((strcmp(s, "snes") == 0) || (strcmp(s, "superfamicom") == 0)) || (strcmp(s, "sfc") == 0)) || (strcmp(s, "super_nintendo") == 0)) {
+        return "A B C";
+    }
+    if (((strcmp(s, "genesis") == 0) || (strcmp(s, "megadrive") == 0)) || (strcmp(s, "megadrive-japan") == 0)) {
+        return "A B C";
+    }
+    if ((((strcmp(s, "gb") == 0) || (strcmp(s, "gameboy") == 0)) || (strcmp(s, "gbc") == 0)) || (strcmp(s, "gbcolor") == 0)) {
+        return "A B C";
+    }
+    if (((strcmp(s, "nes") == 0) || (strcmp(s, "famicom") == 0)) || (strcmp(s, "gba") == 0)) {
+        return "A B";
+    }
+    if (((((strcmp(s, "n64") == 0) || (strcmp(s, "psx") == 0)) || (strcmp(s, "ps2") == 0)) || (strcmp(s, "dreamcast") == 0)) || (strcmp(s, "gc") == 0)) {
+        return "A";
+    }
+    return "";
+}
+
 int launcherRunFlatpak(char* project, char* emulator, char* flatpakId, btrc_Vector_string* emulatorArgs) {
     if (!FileSystem_isDir(project)) {
         printf("%s\n", __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat("launcher: project dir '", project)), "' missing")));
@@ -27026,6 +27048,61 @@ int deckLaunch(char* project) {
     }
 }
 
+int deckEnumerateCommand(char* project) {
+    btrc_Vector_string* ids = declaredSystemIds();
+    int __fstr_1206_len = snprintf(NULL, 0, "SEMU - %d systems x bezels x options", btrc_Vector_string_size(ids));
+    char* __fstr_1206_buf = __btrc_str_track(((char*)malloc((__fstr_1206_len + 1))));
+    snprintf(__fstr_1206_buf, (__fstr_1206_len + 1), "SEMU - %d systems x bezels x options", btrc_Vector_string_size(ids));
+    printf("%s\n", __fstr_1206_buf);
+    printf("%s\n", "Every system exposes, live via the compositor radial menu:");
+    printf("%s\n", "  render : game-priority | bezel-priority   (largest-integer game scaling)");
+    printf("%s\n", "  shader : A | B | C | Off");
+    printf("%s\n", "  bezel  : A | B | C | Off   (per-system art listed below)");
+    printf("%s\n", "  save   : 3 state slots (save / load)");
+    printf("%s\n", "");
+    int __n_1208 = btrc_Vector_string_iterLen(ids);
+    for (int __i_1207 = 0; (__i_1207 < __n_1208); (__i_1207++)) {
+        char* id = btrc_Vector_string_iterGet(ids, __i_1207);
+        char* style = launcherTapStyle(id);
+        char* aspect = launcherTapAspect(id);
+        char* kind = launcherTapSysKind(id);
+        char* pri = launcherTapPriority(id);
+        char* variants = launcherTapVariants(id);
+        char* bez = ((((int)strlen(variants)) > 0) ? __btrc_str_track(__btrc_strcat(variants, " + Off")) : "Off (no bundled bezel art yet)");
+        char* hole = bezelManifestHole(id);
+        int __fstr_1211_len = snprintf(NULL, 0, "* %s", id);
+        char* __fstr_1211_buf = __btrc_str_track(((char*)malloc((__fstr_1211_len + 1))));
+        snprintf(__fstr_1211_buf, (__fstr_1211_len + 1), "* %s", id);
+        printf("%s\n", __fstr_1211_buf);
+        int __fstr_1214_len = snprintf(NULL, 0, "    class : %s   aspect %s   default %s-priority", style, aspect, pri);
+        char* __fstr_1214_buf = __btrc_str_track(((char*)malloc((__fstr_1214_len + 1))));
+        snprintf(__fstr_1214_buf, (__fstr_1214_len + 1), "    class : %s   aspect %s   default %s-priority", style, aspect, pri);
+        printf("%s\n", __fstr_1214_buf);
+        int __fstr_1217_len = snprintf(NULL, 0, "    bezel : %s", bez);
+        char* __fstr_1217_buf = __btrc_str_track(((char*)malloc((__fstr_1217_len + 1))));
+        snprintf(__fstr_1217_buf, (__fstr_1217_len + 1), "    bezel : %s", bez);
+        printf("%s\n", __fstr_1217_buf);
+        if (((int)strlen(hole)) > 0) {
+            int __fstr_1220_len = snprintf(NULL, 0, "    hole  : %s", hole);
+            char* __fstr_1220_buf = __btrc_str_track(((char*)malloc((__fstr_1220_len + 1))));
+            snprintf(__fstr_1220_buf, (__fstr_1220_len + 1), "    hole  : %s", hole);
+            printf("%s\n", __fstr_1220_buf);
+        }
+        if (strcmp(kind, "1") == 0) {
+            printf("%s\n", "    extra : dual-screen - vertical/horizontal layout + per-screen scale (0.25/0.5/1/2/3x)");
+        }
+        if (strcmp(kind, "2") == 0) {
+            printf("%s\n", "    extra : controller layout - Wiimote / Wiimote+Nunchuk / Pro Controller / Classic");
+        }
+    }
+    printf("%s\n", "");
+    int __fstr_1223_len = snprintf(NULL, 0, "OK enumerated %d systems", btrc_Vector_string_size(ids));
+    char* __fstr_1223_buf = __btrc_str_track(((char*)malloc((__fstr_1223_len + 1))));
+    snprintf(__fstr_1223_buf, (__fstr_1223_len + 1), "OK enumerated %d systems", btrc_Vector_string_size(ids));
+    printf("%s\n", __fstr_1223_buf);
+    return 0;
+}
+
 int deckCommand(CliArgs* args, char* project) {
     char* mode = "install";
     if ((CliArgs_count(args) > 1) && (!__btrc_startsWith(CliArgs_get(args, 1), "--"))) {
@@ -27071,21 +27148,21 @@ int deckCommand(CliArgs* args, char* project) {
         KeymapErrors* errors = KeymapErrors_new();
         compileKeymap((FileSystem_exists(keymapSourcePath(project)) ? FileSystem_readText(keymapSourcePath(project)) : defaultKeymapSource()), errors);
         if (KeymapErrors_count(errors) > 0) {
-            int __btrc_ret_1204 = 1;
+            int __btrc_ret_1224 = 1;
             if (errors != NULL) {
                 if ((--errors->__rc) <= 0) {
                     KeymapErrors_destroy(errors);
                 }
             }
-            return __btrc_ret_1204;
+            return __btrc_ret_1224;
         }
-        int __btrc_ret_1205 = 0;
+        int __btrc_ret_1225 = 0;
         if (errors != NULL) {
             if ((--errors->__rc) <= 0) {
                 KeymapErrors_destroy(errors);
             }
         }
-        return __btrc_ret_1205;
+        return __btrc_ret_1225;
         if (errors != NULL) {
             if ((--errors->__rc) <= 0) {
                 KeymapErrors_destroy(errors);
@@ -27094,6 +27171,9 @@ int deckCommand(CliArgs* args, char* project) {
     }
     if (strcmp(mode, "launch") == 0) {
         return deckLaunch(project);
+    }
+    if (((strcmp(mode, "enumerate") == 0) || (strcmp(mode, "systems") == 0)) || (strcmp(mode, "list") == 0)) {
+        return deckEnumerateCommand(project);
     }
     printUsage();
     return 1;
@@ -27133,10 +27213,10 @@ int steamInputCommand(CliArgs* args, char* project) {
         ensureDir(destination);
         copySteamInputTemplate(project, destination, "neptune-simple.vdf");
         copySteamInputTemplate(project, destination, "neptune-full.vdf");
-        int __fstr_1208_len = snprintf(NULL, 0, "OK steam-input templates: %s", destination);
-        char* __fstr_1208_buf = __btrc_str_track(((char*)malloc((__fstr_1208_len + 1))));
-        snprintf(__fstr_1208_buf, (__fstr_1208_len + 1), "OK steam-input templates: %s", destination);
-        printf("%s\n", __fstr_1208_buf);
+        int __fstr_1228_len = snprintf(NULL, 0, "OK steam-input templates: %s", destination);
+        char* __fstr_1228_buf = __btrc_str_track(((char*)malloc((__fstr_1228_len + 1))));
+        snprintf(__fstr_1228_buf, (__fstr_1228_len + 1), "OK steam-input templates: %s", destination);
+        printf("%s\n", __fstr_1228_buf);
         steamInputInstallSelection(args);
         return 0;
     }
@@ -27187,10 +27267,10 @@ int configCommand(CliArgs* args, char* project) {
         if (!settingsPutValue(project, "roms.dir", roms)) {
             return 1;
         }
-        int __fstr_1211_len = snprintf(NULL, 0, "OK owned roms_dir: %s", configuredRomsRoot(project));
-        char* __fstr_1211_buf = __btrc_str_track(((char*)malloc((__fstr_1211_len + 1))));
-        snprintf(__fstr_1211_buf, (__fstr_1211_len + 1), "OK owned roms_dir: %s", configuredRomsRoot(project));
-        printf("%s\n", __fstr_1211_buf);
+        int __fstr_1231_len = snprintf(NULL, 0, "OK owned roms_dir: %s", configuredRomsRoot(project));
+        char* __fstr_1231_buf = __btrc_str_track(((char*)malloc((__fstr_1231_len + 1))));
+        snprintf(__fstr_1231_buf, (__fstr_1231_len + 1), "OK owned roms_dir: %s", configuredRomsRoot(project));
+        printf("%s\n", __fstr_1231_buf);
         if (CliArgs_has(args, "--apply")) {
             lifecycleReconfigure(project, "");
             printf("%s\n", "OK settings applied");
@@ -27203,10 +27283,10 @@ int configCommand(CliArgs* args, char* project) {
     if (strcmp(mode, "show") == 0) {
         reportFile("sync_config", syncConfigPath(project));
         reportFile("settings_config", semuSettingsPath(project));
-        int __fstr_1214_len = snprintf(NULL, 0, "  roms_dir: %s", configuredRomsRoot(project));
-        char* __fstr_1214_buf = __btrc_str_track(((char*)malloc((__fstr_1214_len + 1))));
-        snprintf(__fstr_1214_buf, (__fstr_1214_len + 1), "  roms_dir: %s", configuredRomsRoot(project));
-        printf("%s\n", __fstr_1214_buf);
+        int __fstr_1234_len = snprintf(NULL, 0, "  roms_dir: %s", configuredRomsRoot(project));
+        char* __fstr_1234_buf = __btrc_str_track(((char*)malloc((__fstr_1234_len + 1))));
+        snprintf(__fstr_1234_buf, (__fstr_1234_len + 1), "  roms_dir: %s", configuredRomsRoot(project));
+        printf("%s\n", __fstr_1234_buf);
         return 0;
     }
     printUsage();
@@ -27259,44 +27339,44 @@ int main(int argc, char** argv) {
     char* project = resolveProjectDir(args);
     char* programLauncher = launcherNameFromProgram(args->program);
     if (((int)strlen(programLauncher)) > 0) {
-        int __btrc_ret_1215 = launcherRunEmulator(project, programLauncher, launcherPassthroughArgs(args));
+        int __btrc_ret_1235 = launcherRunEmulator(project, programLauncher, launcherPassthroughArgs(args));
         if (args != NULL) {
             if ((--args->__rc) <= 0) {
                 CliArgs_destroy(args);
             }
         }
-        return __btrc_ret_1215;
+        return __btrc_ret_1235;
     }
     if ((strcmp(command, "") == 0) || (strcmp(command, "manifest") == 0)) {
         char* output = CliArgs_valueAfter(args, "--output", "semu.json");
         writeGeneratedManifest(output);
-        int __btrc_ret_1216 = 0;
+        int __btrc_ret_1236 = 0;
         if (args != NULL) {
             if ((--args->__rc) <= 0) {
                 CliArgs_destroy(args);
             }
         }
-        return __btrc_ret_1216;
+        return __btrc_ret_1236;
     }
     if (strcmp(command, "bootstrap") == 0) {
         bootstrapSteamDeck(project);
-        int __btrc_ret_1217 = 0;
+        int __btrc_ret_1237 = 0;
         if (args != NULL) {
             if ((--args->__rc) <= 0) {
                 CliArgs_destroy(args);
             }
         }
-        return __btrc_ret_1217;
+        return __btrc_ret_1237;
     }
     if (strcmp(command, "doctor") == 0) {
         doctorSteamDeck(project);
-        int __btrc_ret_1218 = 0;
+        int __btrc_ret_1238 = 0;
         if (args != NULL) {
             if ((--args->__rc) <= 0) {
                 CliArgs_destroy(args);
             }
         }
-        return __btrc_ret_1218;
+        return __btrc_ret_1238;
     }
     if (strcmp(command, "deck") == 0) {
         int status = deckCommand(args, project);
@@ -27434,13 +27514,13 @@ int main(int argc, char** argv) {
         return status;
     }
     printUsage();
-    int __btrc_ret_1219 = 1;
+    int __btrc_ret_1239 = 1;
     if (args != NULL) {
         if ((--args->__rc) <= 0) {
             CliArgs_destroy(args);
         }
     }
-    return __btrc_ret_1219;
+    return __btrc_ret_1239;
     if (args != NULL) {
         if ((--args->__rc) <= 0) {
             CliArgs_destroy(args);

@@ -971,6 +971,17 @@ string launcherTapScreenVariant(string system, string variant) {
     if (s.equals("gba") && variant.equals("b")) { return "0.2698,0.0745,0.4604,0.3352"; } // GBA SP (open clamshell)
     return "";
 }
+// Declared bezel variants (asset-independent enumeration; keep in sync with launcherTapArtVariant above).
+// Base "A" is always present when the system has bezel art; B/C are extra finishes/models.
+string launcherTapVariants(string system) {
+    string s = system.toLower();
+    if (s.equals("snes") || s.equals("superfamicom") || s.equals("sfc") || s.equals("super_nintendo")) { return "A B C"; }
+    if (s.equals("genesis") || s.equals("megadrive") || s.equals("megadrive-japan")) { return "A B C"; }
+    if (s.equals("gb") || s.equals("gameboy") || s.equals("gbc") || s.equals("gbcolor")) { return "A B C"; }
+    if (s.equals("nes") || s.equals("famicom") || s.equals("gba")) { return "A B"; }
+    if (s.equals("n64") || s.equals("psx") || s.equals("ps2") || s.equals("dreamcast") || s.equals("gc")) { return "A"; }
+    return "";   // no bundled bezel art yet (nds/psp/n3ds/wii/wiiu/switch)
+}
 
 int launcherRunFlatpak(string project, string emulator, string flatpakId, Vector<string> emulatorArgs) {
     if (!FileSystem.isDir(project)) {
