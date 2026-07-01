@@ -16,6 +16,8 @@ This runs:
   upstreamed.
 - `tap-geometry-smoke`: compiles the Steam Deck tap geometry contract and
   checks game-priority, bezel-priority, and fill-hole cutout alignment.
+- `tap-menu-smoke`: compiles the Steam Deck tap radial menu contract and
+  checks Rendering, Save/Load, dual-screen, and Wii/Wii U controller options.
 - `generated-smoke`: builds from committed `generated/semu.c` and runs BTRC
   smoke tests, including the render-options contract.
 - `appimage-smoke`: assembles an AppImage with fake ES-DE, fake Nix, and fake
