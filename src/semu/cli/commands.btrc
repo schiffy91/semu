@@ -309,6 +309,36 @@ int deckLaunch(string project) {
     return 127;
 }
 
+// Enumerate every system with its bezels + all compositor options (systems × bezels × options).
+int deckEnumerateCommand(string project) {
+    Vector<string> ids = declaredSystemIds();
+    print(f"SEMU - {ids.size()} systems x bezels x options");
+    print("Every system exposes, live via the compositor radial menu:");
+    print("  render : game-priority | bezel-priority   (largest-integer game scaling)");
+    print("  shader : A | B | C | Off");
+    print("  bezel  : A | B | C | Off   (per-system art listed below)");
+    print("  save   : 3 state slots (save / load)");
+    print("");
+    for id in ids {
+        string style = launcherTapStyle(id);
+        string aspect = launcherTapAspect(id);
+        string kind = launcherTapSysKind(id);
+        string pri = launcherTapPriority(id);
+        string variants = launcherTapVariants(id);
+        string bez = variants.len() > 0 ? (variants + " + Off") : "Off (no bundled bezel art yet)";
+        string hole = bezelManifestHole(id);
+        print(f"* {id}");
+        print(f"    class : {style}   aspect {aspect}   default {pri}-priority");
+        print(f"    bezel : {bez}");
+        if (hole.len() > 0) { print(f"    hole  : {hole}"); }
+        if (kind.equals("1")) { print("    extra : dual-screen - vertical/horizontal layout + per-screen scale (0.25/0.5/1/2/3x)"); }
+        if (kind.equals("2")) { print("    extra : controller layout - Wiimote / Wiimote+Nunchuk / Pro Controller / Classic"); }
+    }
+    print("");
+    print(f"OK enumerated {ids.size()} systems");
+    return 0;
+}
+
 int deckCommand(CliArgs args, string project) {
     string mode = "install";
     if (args.count() > 1 && !args.get(1).startsWith("--")) {
@@ -360,6 +390,9 @@ int deckCommand(CliArgs args, string project) {
     }
     if (mode.equals("launch")) {
         return deckLaunch(project);
+    }
+    if (mode.equals("enumerate") || mode.equals("systems") || mode.equals("list")) {
+        return deckEnumerateCommand(project);
     }
     printUsage();
     return 1;
