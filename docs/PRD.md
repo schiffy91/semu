@@ -113,6 +113,9 @@ Every declared system must expose the same live compositor surface:
      an analysis note naming the routed emulator and proving alignment, cutout
      mask, bezel/shader variants, radial menu, input, and system-specific
      controls.
+   - Presentation audit must report `tap=ok` only when every required A/B/C
+     tap bezel variant resolves to a distinct artifact; duplicate fallback art
+     is missing variant coverage.
    - Visual production claims require screenshots or runtime proof from current
      artifacts.
 
