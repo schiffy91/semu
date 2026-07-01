@@ -182,7 +182,7 @@ string launcherTapGlass(string project, string system, string variant) {
     if (s.equals("gbc") || s.equals("gbcolor")) { rel = "semu-shells/gbc-glass.png"; }
     if (s.equals("gba")) { rel = variant.equals("b") ? "semu-shells/gba-b-glass.png" : "semu-shells/gba-glass.png"; }
     if (rel.len() == 0) { return ""; }
-    return launcherResolveArtRel(rel);
+    return launcherResolveProjectArtRel(project, rel);
 }
 // Reflection/glare strength (0 disables). Handhelds get a visible glass sheen; CRT consoles a subtle glare.
 string launcherTapReflect(string system) {
@@ -326,17 +326,19 @@ string launcherTapArtFile(string project, string system) {
     if (s.equals("gbc") || s.equals("gbcolor")) { rel = "semu-shells/gbc.png"; }
     if (s.equals("gba")) { rel = "semu-shells/gba.png"; }
     if (rel.len() > 0) {
-        string art = launcherResolveArtRel(rel);
+        string art = launcherResolveProjectArtRel(project, rel);
         if (art.len() > 0) { return art; }
     }
     return launcherTapGenericArt(project, s);
 }
 // Resolve a Mega_Bezel_Packs-relative art path against the asset roots.
-string launcherResolveArtRel(string rel) {
+string launcherResolveProjectArtRel(string project, string rel) {
     if (rel.len() == 0) { return ""; }
     string base = joinPath("share/libretro/shaders/Mega_Bezel_Packs", rel);
     string assetRoot = Environment.get("SEMU_ASSET_ROOT", "");
     if (assetRoot.len() > 0) { string p = joinPath(assetRoot, base); if (FileSystem.isFile(p)) { return p; } }
+    string nixPath = joinPath(nixResultRoot(project), base);
+    if (FileSystem.isFile(nixPath)) { return nixPath; }
     string home = Environment.get("HOME", "");
     if (home.len() > 0) { string p2 = joinPath(home, joinPath("semu-run/usr", base)); if (FileSystem.isFile(p2)) { return p2; } }
     return "";
@@ -402,7 +404,7 @@ string launcherTapArtVariant(string project, string system, string variant) {
         if (variant.equals("b")) { rel = "semu-shells/gba-b.png"; }
     }
     if (rel.len() > 0) {
-        string art = launcherResolveArtRel(rel);
+        string art = launcherResolveProjectArtRel(project, rel);
         if (art.len() > 0) { return art; }
     }
     return "";
