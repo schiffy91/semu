@@ -9,7 +9,7 @@ SEMU_BIN := generated/build/semu
 SEMU_MANIFEST := generated/semu.json
 NIX_RESULT := generated/nix/result
 
-.PHONY: all install setup btrc-build manifest help
+.PHONY: all install setup btrc-build manifest tap-preload-build help
 
 all: install ## Build all emulators + bootstrap content (idempotent, cached by nix)
 install: setup
@@ -27,6 +27,9 @@ $(SEMU_BIN): $(SEMU_SOURCES) flake.nix flake.lock Makefile
 manifest: $(SEMU_BIN) ## Generate generated/semu.json from semu.btrc
 	@mkdir -p "$(dir $(SEMU_MANIFEST))"
 	$(SEMU_BIN) manifest --output "$(SEMU_MANIFEST)"
+
+tap-preload-build: ## Cross-compile Steam Deck GL tap preload into generated/build
+	packaging/steamdeck/tap/build.sh
 
 setup: $(SEMU_BIN) ## Build all emulators and bootstrap Steam Deck/Linux content
 	@echo "Building semu bundle (nix handles caching)..."
