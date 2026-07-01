@@ -203,6 +203,7 @@ ExecResult e2eRunPresentation(string exe, string home, string project, Vector<st
     Command command = Command(exe)
         .envVar("SEMU_HOME", home)
         .envVar("SEMU_BIN", exe)
+        .envVar("SEMU_ASSET_ROOT", joinPath(home, "asset-root"))
         .envVar("PATH", "/usr/bin:/bin")
         .arg("presentation")
         .capture(true)
@@ -899,9 +900,13 @@ int e2ePresentationSmoke(CliArgs args) {
     if (!e2eOk(FileSystem.exists(joinPath(presentationSettingsRoot(project), "gb.json")), "gb presentation config missing")) { return 1; }
     if (!e2eOk(FileSystem.exists(joinPath(presentationSettingsRoot(project), "n3ds.json")), "n3ds presentation config missing")) { return 1; }
     string shaderRoot = joinPath(nixResultRoot(project), "share/libretro/shaders/shaders_slang");
+    string assetRoot = joinPath(home, "asset-root/share/libretro/shaders/Mega_Bezel_Packs");
     ensureDir(joinPath(shaderRoot, "handheld/console-border"));
     FileSystem.writeText(joinPath(shaderRoot, "handheld/gameboy.slangp"), "# fake gb shader\n");
     FileSystem.writeText(joinPath(shaderRoot, "handheld/console-border/dmg.slangp"), "# fake gb runtime/bezel\n");
+    e2eSeedFile(joinPath(assetRoot, "semu-shells/gb.png"));
+    e2eSeedFile(joinPath(assetRoot, "semu-shells/gb-b.png"));
+    e2eSeedFile(joinPath(assetRoot, "semu-shells/gb-c.png"));
 
     ExecResult gb = e2eRunPresentation(exe, home, project, ["plan", "gb"]);
     if (!e2eRunOk(gb, "presentation gb plan")) { return 1; }
@@ -923,6 +928,8 @@ int e2ePresentationSmoke(CliArgs args) {
     if (!e2eOk(SemuGeneratedFiles.isAdapterState(project, auditReport), "presentation audit report should be adapter state")) { return 1; }
     if (!e2eContains(FileSystem.readText(auditReport), "\"system\": \"gb\"", "gb audit report system")) { return 1; }
     if (!e2eContains(FileSystem.readText(auditReport), "\"missing_asset_count\": 0", "gb audit report missing asset count")) { return 1; }
+    if (!e2eContains(FileSystem.readText(auditReport), "\"tap_bezel_status\": \"ok\"", "gb audit report tap bezel status")) { return 1; }
+    if (!e2eContains(FileSystem.readText(auditReport), "\"tap_bezel_missing_count\": 0", "gb audit report tap bezel count")) { return 1; }
     if (!e2eContains(FileSystem.readText(auditReport), "\"missing_dependency_count\": 0", "gb audit report missing dependency count")) { return 1; }
 
     string shaderBundleRoot = joinPath(nixResultRoot(project), "share/libretro/shaders");

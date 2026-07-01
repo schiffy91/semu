@@ -847,6 +847,41 @@ class PresentationDependencyAudit {
     }
 }
 
+string presentationTapBezelVariantPath(string project, string system, string variant) {
+    string normalized = variant.toLower();
+    if (normalized.equals("a")) {
+        string art = launcherTapArtFile(project, system);
+        if (art.len() == 0) { art = launcherTapArt(project, system); }
+        return art;
+    }
+    if (normalized.equals("b")) {
+        return launcherTapArtVariant(project, system, "b");
+    }
+    if (normalized.equals("c")) {
+        return launcherTapArtVariant(project, system, "c");
+    }
+    return "";
+}
+
+Vector<string> presentationMissingTapBezelVariants(string project, string system) {
+    Vector<string> missing = [];
+    Vector<string> resolved = [];
+    string variants = renderBezelVariants(system);
+    if (variants.len() == 0) { return missing; }
+    for variant in Strings.split(variants, " ") {
+        if (variant.len() == 0) { continue; }
+        string path = presentationTapBezelVariantPath(project, system, variant);
+        if (path.len() == 0 || !FileSystem.isFile(path)) {
+            missing.push(variant);
+        } else if (resolved.contains(path)) {
+            missing.push(variant + ":duplicate");
+        } else {
+            resolved.push(path);
+        }
+    }
+    return missing;
+}
+
 class PresentationAssetAuditRow {
     public string system;
     public string label;
@@ -865,10 +900,13 @@ class PresentationAssetAuditRow {
     public string bezelStatus;
     public string runtimeStatus;
     public string launcherStatus;
+    public string tapBezelStatus;
     public bool required;
     public int missingAssetCount;
+    public int missingTapBezelCount;
     public int dependencyCount;
     public int missingDependencyCount;
+    public Vector<string> missingTapBezelVariants;
     public Vector<string> missingDependencies;
 
     public PresentationAssetAuditRow(string project, PresentationStationSpec spec, string emulator) {
@@ -900,11 +938,18 @@ class PresentationAssetAuditRow {
             && self.selectedShader.len() == 0
             && self.selectedBezel.len() == 0
             && self.selectedRuntime.len() == 0);
+        self.missingTapBezelVariants = [];
+        if (self.required) {
+            self.missingTapBezelVariants = presentationMissingTapBezelVariants(project, spec.system);
+        }
+        self.missingTapBezelCount = self.missingTapBezelVariants.len;
+        self.tapBezelStatus = self.missingTapBezelCount == 0 ? "ok" : "missing";
         self.missingAssetCount = 0;
         if (self.shaderStatus.equals("missing")) { self.missingAssetCount++; }
         if (self.bezelStatus.equals("missing")) { self.missingAssetCount++; }
         if (self.runtimeStatus.equals("missing")) { self.missingAssetCount++; }
         if (self.required && self.launcherStatus.equals("missing")) { self.missingAssetCount++; }
+        if (self.required) { self.missingAssetCount = self.missingAssetCount + self.missingTapBezelCount; }
 
         PresentationDependencyAudit dependencies = PresentationDependencyAudit();
         dependencies.scan(self.resolvedShader);
@@ -932,6 +977,9 @@ class PresentationAssetAuditRow {
             jsonStrField("status", self.status()),
             jsonBoolField("required", self.required),
             jsonField("missing_asset_count", Strings.fromInt(self.missingAssetCount)),
+            jsonStrField("tap_bezel_status", self.required ? self.tapBezelStatus : "disabled"),
+            jsonField("tap_bezel_missing_count", self.required ? Strings.fromInt(self.missingTapBezelCount) : "0"),
+            jsonField("missing_tap_bezel_variants", jsonStringArray(self.missingTapBezelVariants)),
             jsonField("dependency_count", Strings.fromInt(self.dependencyCount)),
             jsonField("missing_dependency_count", Strings.fromInt(self.missingDependencyCount)),
             jsonField("missing_dependencies", jsonStringArray(self.missingDependencies)),
@@ -959,6 +1007,7 @@ class PresentationAssetAuditRow {
             + " bezel=" + self.bezelStatus
             + " runtime=" + self.runtimeStatus
             + " launcher=" + self.launcherStatus
+            + " tap=" + (self.required ? self.tapBezelStatus : "disabled")
             + " deps=" + (self.missingDependencyCount == 0 ? "ok" : "missing")
             + " aspect=" + self.effectiveAspect;
     }

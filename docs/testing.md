@@ -85,6 +85,10 @@ tokens emitted in `generated/test/visual-evidence/VISUAL_EVIDENCE.md`,
 including emulator, alignment, cutout, input, radial-menu, bezel, shader, and
 system-specific checks.
 
+The presentation audit is also part of the visual proof. A row only reports
+`tap=ok` when required A/B/C tap bezel variants resolve to distinct artifacts;
+duplicate fallback art is reported as missing variant coverage.
+
 To cross-compile the Steam Deck GL tap preload:
 
 ```sh

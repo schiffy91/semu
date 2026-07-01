@@ -373,6 +373,7 @@ string launcherTapGenericArt(string project, string system) {
 }
 
 // Bezel VARIANTS (toggle-bezel a/b/c). Same TV glass (same hole), different finish -> just swap the texture.
+// Missing B/C variants stay missing; do not silently reuse generic fallback art as a claimed variant.
 string launcherTapArtVariant(string project, string system, string variant) {
     string s = system.toLower();
     string rel = "";
@@ -404,7 +405,7 @@ string launcherTapArtVariant(string project, string system, string variant) {
         string art = launcherResolveArtRel(rel);
         if (art.len() > 0) { return art; }
     }
-    return launcherTapGenericArt(project, s);
+    return "";
 }
 // Per-variant screen hole, for variants that are a DIFFERENT device model than the base (so the screen
 // sits elsewhere). Empty -> the variant shares the base hole (a recolor of the same model). x,y,w,h norm.
