@@ -42,6 +42,11 @@ generated/build/semu deck visual-evidence --project "$PWD" --prepare
 generated/build/semu deck visual-evidence --project "$PWD"
 ```
 
+Each system's `start-of-gameplay-analysis.txt` must include the required
+tokens emitted in `generated/test/visual-evidence/VISUAL_EVIDENCE.md`,
+including emulator, alignment, cutout, input, radial-menu, bezel, shader, and
+system-specific checks.
+
 To cross-compile the Steam Deck GL tap preload:
 
 ```sh

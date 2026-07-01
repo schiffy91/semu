@@ -1308,12 +1308,7 @@ string e2eStateEvidenceText(string emulator, bool save, bool load) {
 }
 
 string e2eVisualAnalysisText(string system) {
-    return textLines([
-        "system=" + system,
-        "visual=ok",
-        "input=ok",
-        "duration_s=30"
-    ]);
+    return textLines(deckVisualAnalysisRequiredTokens(system));
 }
 
 void e2eSeedVisualEvidence(string project, Vector<string> systems) {
@@ -1430,6 +1425,31 @@ int e2eDeckEvidenceSmoke(CliArgs args) {
     if (!e2eOk(FileSystem.exists(deckVisualEvidenceManifestPath(project)), "visual evidence manifest missing")) { return 1; }
     if (!e2eOk(SemuGeneratedFiles.isProjectGenerated(project, deckVisualEvidenceManifestPath(project)), "visual evidence manifest should be generated test output")) { return 1; }
     if (!e2eContains(FileSystem.readText(deckVisualEvidenceChecklistPath(project)), "duration_s=30", "visual evidence checklist analysis contract")) { return 1; }
+    string visualManifest = FileSystem.readText(deckVisualEvidenceManifestPath(project));
+    if (!e2eContains(visualManifest, "\"emulator\": \"retroarch\"", "visual evidence manifest emulator contract")) { return 1; }
+    if (!e2eContains(visualManifest, "\"viewport_alignment=ok\"", "visual evidence manifest analysis contract")) { return 1; }
+    if (!e2eContains(visualManifest, "\"screenshot.game-priority.A=ok\"", "visual evidence manifest screenshot analysis token")) { return 1; }
+
+    for priority in deckVisualEvidencePriorities() {
+        for variant in deckVisualEvidenceVariants() {
+            SemuGeneratedFiles.writeProject(
+                project,
+                deckVisualScreenshotPath(project, "gb", priority, variant),
+                "fake jpg gb " + priority + " " + variant + "\n"
+            );
+        }
+    }
+    SemuGeneratedFiles.writeProject(project, deckVisualClipPath(project, "gb"), "fake mp4 gb\n");
+    SemuGeneratedFiles.writeProject(project, deckVisualAnalysisPath(project, "gb"), textLines([
+        "system=gb",
+        "emulator=retroarch",
+        "visual=ok",
+        "input=ok",
+        "duration_s=30"
+    ]));
+    ExecResult visualWeakAnalysis = e2eRunDeck(exe, home, project, ["visual-evidence", "gb", "--allow-pending"]);
+    if (!e2eRunOk(visualWeakAnalysis, "weak visual evidence analysis with allow-pending")) { return 1; }
+    if (!e2eContains(visualWeakAnalysis.stdout(), "viewport_alignment=ok", "weak visual evidence should list missing alignment token")) { return 1; }
 
     e2eSeedVisualEvidence(project, ["gb"]);
     ExecResult visualGb = e2eRunDeck(exe, home, project, ["visual-evidence", "--system", "gb"]);
