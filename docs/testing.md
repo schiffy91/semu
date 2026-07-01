@@ -31,6 +31,13 @@ To run only the compositor option contract check:
 generated/build/semu e2e render-options --project "$PWD"
 ```
 
+To prepare or verify the visual proof matrix:
+
+```sh
+generated/build/semu deck visual-evidence --project "$PWD" --prepare
+generated/build/semu deck visual-evidence --project "$PWD"
+```
+
 ## Graph E2E
 
 ```sh

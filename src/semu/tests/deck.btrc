@@ -179,6 +179,228 @@ string deckProductionReadinessPath(string project) {
     return joinPath(semuStateRoot(project), "verification/production-readiness.json");
 }
 
+string deckVisualEvidenceRoot(string project) {
+    return joinPath(generatedTestRoot(project), "visual-evidence");
+}
+
+string deckVisualEvidenceChecklistPath(string project) {
+    return joinPath(deckVisualEvidenceRoot(project), "VISUAL_EVIDENCE.md");
+}
+
+string deckVisualEvidenceManifestPath(string project) {
+    return joinPath(deckVisualEvidenceRoot(project), "visual-evidence.json");
+}
+
+Vector<string> deckVisualEvidencePriorities() {
+    return ["game-priority", "bezel-priority"];
+}
+
+Vector<string> deckVisualEvidenceVariants() {
+    return ["A", "B", "C"];
+}
+
+string deckVisualScreenshotPath(string project, string system, string priority, string variant) {
+    return joinPath(deckVisualEvidenceRoot(project), joinPath(system, joinPath(priority, variant + ".jpg")));
+}
+
+string deckVisualClipPath(string project, string system) {
+    return joinPath(deckVisualEvidenceRoot(project), joinPath(system, "start-of-gameplay-30s.mp4"));
+}
+
+string deckVisualAnalysisPath(string project, string system) {
+    return joinPath(deckVisualEvidenceRoot(project), joinPath(system, "start-of-gameplay-analysis.txt"));
+}
+
+bool deckEvidenceFilePresent(string path) {
+    if (!FileSystem.isFile(path)) { return false; }
+    ExecResult result = UnixShell().runRaw("test -s " + ShellWords.quote(path), false, false, "");
+    return result.ok();
+}
+
+bool deckVisualAnalysisComplete(string path) {
+    if (!deckEvidenceFilePresent(path)) { return false; }
+    string text = FileSystem.readText(path);
+    return text.contains("visual=ok") && text.contains("input=ok") && text.contains("duration_s=30");
+}
+
+bool deckKnownVisualSystem(string system) {
+    string wanted = system.toLower();
+    for id in declaredSystemIds() {
+        if (id.equals(wanted)) { return true; }
+    }
+    return false;
+}
+
+Vector<string> deckRequestedVisualSystems(CliArgs args) {
+    string requested = args.valueAfter("--system", "");
+    if (requested.len() == 0 && args.count() > 2 && !args.get(2).startsWith("--")) {
+        requested = args.get(2);
+    }
+    if (requested.len() > 0) {
+        return [requested.toLower()];
+    }
+    return declaredSystemIds();
+}
+
+bool deckVisualEvidenceComplete(string project, Vector<string> systems) {
+    for system in systems {
+        for priority in deckVisualEvidencePriorities() {
+            for variant in deckVisualEvidenceVariants() {
+                if (!deckEvidenceFilePresent(deckVisualScreenshotPath(project, system, priority, variant))) {
+                    return false;
+                }
+            }
+        }
+        if (!deckEvidenceFilePresent(deckVisualClipPath(project, system))) {
+            return false;
+        }
+        if (!deckVisualAnalysisComplete(deckVisualAnalysisPath(project, system))) {
+            return false;
+        }
+    }
+    return true;
+}
+
+string deckVisualEvidenceChecklistText(string project, Vector<string> systems) {
+    Vector<string> lines = [
+        "Semu Visual Evidence",
+        "",
+        "Project: " + project,
+        "Visual evidence root: " + deckVisualEvidenceRoot(project),
+        "",
+        "For each system:",
+        "1. Launch a representative game through Semu.",
+        "2. Capture screenshots for game-priority and bezel-priority.",
+        "3. Capture variants A, B, and C for each priority.",
+        "4. Record a 30-second start-of-gameplay clip.",
+        "5. Verify the game viewport lands exactly in the bezel cutout.",
+        "6. Verify controller input moves/responds in game.",
+        "7. Write start-of-gameplay-analysis.txt with visual=ok, input=ok, duration_s=30.",
+        "",
+        "Expected files:"
+    ];
+    for system in systems {
+        for priority in deckVisualEvidencePriorities() {
+            for variant in deckVisualEvidenceVariants() {
+                lines.push("- " + deckVisualScreenshotPath(project, system, priority, variant));
+            }
+        }
+        lines.push("- " + deckVisualClipPath(project, system));
+        lines.push("- " + deckVisualAnalysisPath(project, system));
+    }
+    return textLines(lines);
+}
+
+string deckVisualEvidenceManifestJson(string project, Vector<string> systems) {
+    Vector<string> screenshots = [];
+    Vector<string> clips = [];
+    for system in systems {
+        for priority in deckVisualEvidencePriorities() {
+            for variant in deckVisualEvidenceVariants() {
+                screenshots.push(jsonObject([
+                    jsonStrField("system", system),
+                    jsonStrField("priority", priority),
+                    jsonStrField("variant", variant),
+                    jsonStrField("path", deckVisualScreenshotPath(project, system, priority, variant))
+                ]));
+            }
+        }
+        clips.push(jsonObject([
+            jsonStrField("system", system),
+            jsonStrField("clip", deckVisualClipPath(project, system)),
+            jsonStrField("analysis", deckVisualAnalysisPath(project, system)),
+            jsonField("duration_s", "30")
+        ]));
+    }
+    return jsonObject([
+        jsonStrField("schema_version", "1"),
+        jsonStrField("project", project),
+        jsonStrField("root", deckVisualEvidenceRoot(project)),
+        jsonField("systems", jsonStringArray(systems)),
+        jsonField("priorities", jsonStringArray(deckVisualEvidencePriorities())),
+        jsonField("variants", jsonStringArray(deckVisualEvidenceVariants())),
+        jsonField("screenshots", jsonArray(screenshots)),
+        jsonField("clips", jsonArray(clips))
+    ]);
+}
+
+int deckVisualEvidenceCommand(CliArgs args, string project) {
+    Vector<string> systems = deckRequestedVisualSystems(args);
+    for system in systems {
+        if (!deckKnownVisualSystem(system)) {
+            print("error 0:0 unknown system '" + system + "'");
+            return 1;
+        }
+    }
+
+    bool prepare = args.has("--prepare");
+    bool allowPending = args.has("--allow-pending") || prepare;
+    string root = deckVisualEvidenceRoot(project);
+    ensureDir(root);
+
+    if (prepare) {
+        SemuGeneratedFiles.writeProject(project, deckVisualEvidenceChecklistPath(project), deckVisualEvidenceChecklistText(project, systems));
+        SemuGeneratedFiles.writeProjectJson(project, deckVisualEvidenceManifestPath(project), deckVisualEvidenceManifestJson(project, systems));
+        print("OK prepared visual evidence manifest: " + deckVisualEvidenceManifestPath(project));
+    }
+
+    print("Semu visual evidence");
+    print("  root: " + root);
+
+    bool allOk = true;
+    int screenshotOk = 0;
+    int screenshotTotal = systems.len * deckVisualEvidencePriorities().len * deckVisualEvidenceVariants().len;
+    int clipOk = 0;
+    int clipTotal = systems.len;
+    int analysisOk = 0;
+
+    for system in systems {
+        bool systemOk = true;
+        for priority in deckVisualEvidencePriorities() {
+            for variant in deckVisualEvidenceVariants() {
+                string shot = deckVisualScreenshotPath(project, system, priority, variant);
+                if (deckEvidenceFilePresent(shot)) {
+                    screenshotOk++;
+                } else {
+                    print("PENDING " + system + " screenshot " + priority + "/" + variant + ": " + shot);
+                    systemOk = false;
+                    allOk = false;
+                }
+            }
+        }
+        string clip = deckVisualClipPath(project, system);
+        if (deckEvidenceFilePresent(clip)) {
+            clipOk++;
+        } else {
+            print("PENDING " + system + " clip: " + clip);
+            systemOk = false;
+            allOk = false;
+        }
+        string analysis = deckVisualAnalysisPath(project, system);
+        if (deckVisualAnalysisComplete(analysis)) {
+            analysisOk++;
+        } else {
+            print("PENDING " + system + " analysis: " + analysis + " (requires visual=ok input=ok duration_s=30)");
+            systemOk = false;
+            allOk = false;
+        }
+        if (systemOk) {
+            print("OK " + system + ": visual screenshots, 30s clip, and analysis complete");
+        }
+    }
+
+    print("  screenshots: " + Strings.fromInt(screenshotOk) + "/" + Strings.fromInt(screenshotTotal));
+    print("  clips: " + Strings.fromInt(clipOk) + "/" + Strings.fromInt(clipTotal));
+    print("  analyses: " + Strings.fromInt(analysisOk) + "/" + Strings.fromInt(clipTotal));
+
+    if (allOk) {
+        print("OK Semu visual evidence");
+        return 0;
+    }
+    print("PENDING Semu visual evidence");
+    return allowPending ? 0 : 2;
+}
+
 bool deckQuitEvidenceHasLifecycle(string text) {
     return text.contains(" start child=") && text.contains(" exit child=");
 }
@@ -583,6 +805,7 @@ string deckProductionReadinessJson(
     bool presentationOk,
     bool quitEvidenceOk,
     bool stateEvidenceOk,
+    bool visualEvidenceOk,
     bool evidenceRequired
 ) {
     return jsonObject([
@@ -604,6 +827,8 @@ string deckProductionReadinessJson(
         jsonStrField("quit_evidence_root", deckQuitEvidenceRoot(project)),
         jsonBoolField("state_evidence_ok", stateEvidenceOk),
         jsonStrField("state_evidence_root", deckStateEvidenceRoot(project)),
+        jsonBoolField("visual_evidence_ok", visualEvidenceOk),
+        jsonStrField("visual_evidence_root", deckVisualEvidenceRoot(project)),
         jsonBoolField("evidence_required", evidenceRequired)
     ]);
 }
@@ -621,6 +846,8 @@ int deckProductionReadinessCommand(CliArgs args, string project, bool statusMode
     if (args.has("--prepare")) {
         SemuGeneratedFiles.writeAdapterState(project, deckGameModeChecklistPath(project), deckGameModeChecklistText(project, quitEmulators));
         SemuGeneratedFiles.writeAdapterState(project, deckStateEvidenceChecklistPath(project), deckStateEvidenceChecklistText(project, stateEmulators));
+        SemuGeneratedFiles.writeProject(project, deckVisualEvidenceChecklistPath(project), deckVisualEvidenceChecklistText(project, declaredSystemIds()));
+        SemuGeneratedFiles.writeProjectJson(project, deckVisualEvidenceManifestPath(project), deckVisualEvidenceManifestJson(project, declaredSystemIds()));
     }
 
     bool evidenceRequired = args.has("--require-evidence") || !statusMode;
@@ -648,6 +875,7 @@ int deckProductionReadinessCommand(CliArgs args, string project, bool statusMode
 
     bool quitEvidenceOk = deckQuitEvidenceComplete(project, quitEmulators);
     bool stateEvidenceOk = deckStateEvidenceComplete(project, stateEmulators);
+    bool visualEvidenceOk = deckVisualEvidenceComplete(project, declaredSystemIds());
     string report = deckProductionReadinessJson(
         project,
         session,
@@ -663,6 +891,7 @@ int deckProductionReadinessCommand(CliArgs args, string project, bool statusMode
         presentationOk,
         quitEvidenceOk,
         stateEvidenceOk,
+        visualEvidenceOk,
         evidenceRequired
     );
     SemuGeneratedFiles.writeAdapterState(project, deckProductionReadinessPath(project), jsonPrettyText(report));
@@ -678,6 +907,7 @@ int deckProductionReadinessCommand(CliArgs args, string project, bool statusMode
     print(presentationOk ? "  OK presentation audit" : "  PENDING presentation audit: run with --audit-visuals or fix missing assets");
     print(quitEvidenceOk ? "  OK quit evidence: physical logs complete" : "  PENDING quit evidence: physical logs incomplete");
     print(stateEvidenceOk ? "  OK state evidence: physical save/load logs complete" : "  PENDING state evidence: physical save/load logs incomplete");
+    print(visualEvidenceOk ? "  OK visual evidence: screenshots and clips complete" : "  PENDING visual evidence: screenshots/clips/analysis incomplete");
     print("  report: " + deckProductionReadinessPath(project));
 
     bool ok = sessionOk
@@ -687,7 +917,7 @@ int deckProductionReadinessCommand(CliArgs args, string project, bool statusMode
         && appImageOk
         && sourceConfigOk
         && presentationOk
-        && (!evidenceRequired || (quitEvidenceOk && stateEvidenceOk));
+        && (!evidenceRequired || (quitEvidenceOk && stateEvidenceOk && visualEvidenceOk));
     return ok ? 0 : (allowPending ? 0 : 2);
 }
 

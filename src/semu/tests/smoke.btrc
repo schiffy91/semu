@@ -1307,6 +1307,31 @@ string e2eStateEvidenceText(string emulator, bool save, bool load) {
     return textLines(lines);
 }
 
+string e2eVisualAnalysisText(string system) {
+    return textLines([
+        "system=" + system,
+        "visual=ok",
+        "input=ok",
+        "duration_s=30"
+    ]);
+}
+
+void e2eSeedVisualEvidence(string project, Vector<string> systems) {
+    for system in systems {
+        for priority in deckVisualEvidencePriorities() {
+            for variant in deckVisualEvidenceVariants() {
+                SemuGeneratedFiles.writeProject(
+                    project,
+                    deckVisualScreenshotPath(project, system, priority, variant),
+                    "fake jpg " + system + " " + priority + " " + variant + "\n"
+                );
+            }
+        }
+        SemuGeneratedFiles.writeProject(project, deckVisualClipPath(project, system), "fake mp4 " + system + "\n");
+        SemuGeneratedFiles.writeProject(project, deckVisualAnalysisPath(project, system), e2eVisualAnalysisText(system));
+    }
+}
+
 string e2ePresentationAuditOkText(string project) {
     return jsonPrettyText(jsonObject([
         jsonField("schema_version", "1"),
@@ -1394,6 +1419,22 @@ int e2eDeckEvidenceSmoke(CliArgs args) {
     ExecResult stateAll = e2eRunDeck(exe, home, project, ["state-evidence"]);
     if (!e2eRunOk(stateAll, "all generated state evidence")) { return 1; }
     if (!e2eContains(stateAll.stdout(), "OK Game Mode state evidence", "all state evidence status")) { return 1; }
+
+    ExecResult visualMissing = e2eRunDeck(exe, home, project, ["visual-evidence", "gb"]);
+    if (!e2eOk(!visualMissing.ok(), "missing visual evidence unexpectedly succeeded")) { return 1; }
+    if (!e2eContains(visualMissing.stdout(), "PENDING gb screenshot game-priority/A", "missing visual evidence screenshot status")) { return 1; }
+
+    ExecResult visualPrepare = e2eRunDeck(exe, home, project, ["visual-evidence", "gb", "--prepare"]);
+    if (!e2eRunOk(visualPrepare, "visual evidence prepare")) { return 1; }
+    if (!e2eOk(FileSystem.exists(deckVisualEvidenceChecklistPath(project)), "visual evidence checklist missing")) { return 1; }
+    if (!e2eOk(FileSystem.exists(deckVisualEvidenceManifestPath(project)), "visual evidence manifest missing")) { return 1; }
+    if (!e2eOk(SemuGeneratedFiles.isProjectGenerated(project, deckVisualEvidenceManifestPath(project)), "visual evidence manifest should be generated test output")) { return 1; }
+    if (!e2eContains(FileSystem.readText(deckVisualEvidenceChecklistPath(project)), "duration_s=30", "visual evidence checklist analysis contract")) { return 1; }
+
+    e2eSeedVisualEvidence(project, ["gb"]);
+    ExecResult visualGb = e2eRunDeck(exe, home, project, ["visual-evidence", "--system", "gb"]);
+    if (!e2eRunOk(visualGb, "gb visual evidence")) { return 1; }
+    if (!e2eContains(visualGb.stdout(), "OK gb: visual screenshots, 30s clip, and analysis complete", "gb visual evidence status")) { return 1; }
 
     string appImage = joinPath(tmp, "Semu-x86_64.AppImage");
     e2eSeedFile(appImage);
@@ -1484,17 +1525,28 @@ int e2eDeckEvidenceSmoke(CliArgs args) {
     if (!e2eContains(productionMissingAudit.stdout(), "PENDING presentation audit", "production missing presentation audit")) { return 1; }
 
     SemuGeneratedFiles.writeAdapterState(project, presentationAssetAuditPath(project), e2ePresentationAuditOkText(project));
+    ExecResult productionMissingVisual = e2eRunDeckEnv(exe, home, project, productionArgs, "game_mode", "1");
+    if (!e2eOk(!productionMissingVisual.ok(), "production readiness unexpectedly succeeded without visual evidence")) { return 1; }
+    if (!e2eContains(productionMissingVisual.stdout(), "PENDING visual evidence", "production missing visual evidence")) { return 1; }
+
+    e2eSeedVisualEvidence(project, declaredSystemIds());
+    ExecResult visualAll = e2eRunDeck(exe, home, project, ["visual-evidence"]);
+    if (!e2eRunOk(visualAll, "all visual evidence")) { return 1; }
+    if (!e2eContains(visualAll.stdout(), "OK Semu visual evidence", "all visual evidence status")) { return 1; }
+
     ExecResult productionReady = e2eRunDeckEnv(exe, home, project, productionArgs, "game_mode", "1");
     if (!e2eRunOk(productionReady, "production readiness with physical evidence")) { return 1; }
     if (!e2eContains(productionReady.stdout(), "OK owned config sources", "production source boundary")) { return 1; }
     if (!e2eContains(productionReady.stdout(), "OK presentation audit", "production presentation audit")) { return 1; }
     if (!e2eContains(productionReady.stdout(), "OK state evidence: physical save/load logs complete", "production state evidence")) { return 1; }
+    if (!e2eContains(productionReady.stdout(), "OK visual evidence: screenshots and clips complete", "production visual evidence")) { return 1; }
     string productionReport = deckProductionReadinessPath(project);
     if (!e2eOk(FileSystem.exists(productionReport), "production readiness report missing")) { return 1; }
     if (!e2eOk(SemuGeneratedFiles.isAdapterState(project, productionReport), "production readiness report should be adapter state")) { return 1; }
     string productionJson = FileSystem.readText(productionReport);
     if (!e2eContains(productionJson, "\n    \"source_config_ok\": true", "production report should be pretty JSON")) { return 1; }
     if (!e2eContains(productionJson, "\"state_evidence_ok\": true", "production report state evidence flag")) { return 1; }
+    if (!e2eContains(productionJson, "\"visual_evidence_ok\": true", "production report visual evidence flag")) { return 1; }
 
     print("OK BTRC Deck evidence smoke");
     return 0;

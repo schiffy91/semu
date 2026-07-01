@@ -5,7 +5,7 @@ class SemuCliCommands {
 
 // ---- config_commands.btrc ----
 void printUsage() {
-    print("semu [manifest|bootstrap|doctor|deck|lifecycle|sync|config|settings|presentation|apprun|steam-input|keymap|screenshot|sandbox|launcher|utils|e2e] [graph|payload-audit|render-options|n3ds-nocrypto|validate|render|capabilities|install|setup|compile|reconfigure|change|uninstall|reinstall|upgrade|status|force|serve|capture|prepare|launch|game-mode-ready|game-mode-evidence|state-evidence|production-status|production-ready|list|get|put|entry|ui|apply|plan|state|broadcast|audit|defaults] [--project PATH] [--roms PATH] [--source PATH] [--output PATH] [--dest PATH] [--target manifest|retroarch|dolphin|pcsx2|steam-input] [--system SYSTEM] [--emulator NAME] [--hook HOOK] [--scratch PATH] [--action ID] [--command KEYS]");
+    print("semu [manifest|bootstrap|doctor|deck|lifecycle|sync|config|settings|presentation|apprun|steam-input|keymap|screenshot|sandbox|launcher|utils|e2e] [graph|payload-audit|render-options|n3ds-nocrypto|validate|render|capabilities|install|setup|compile|reconfigure|change|uninstall|reinstall|upgrade|status|force|serve|capture|prepare|launch|game-mode-ready|game-mode-evidence|state-evidence|visual-evidence|production-status|production-ready|list|get|put|entry|ui|apply|plan|state|broadcast|audit|defaults] [--project PATH] [--roms PATH] [--source PATH] [--output PATH] [--dest PATH] [--target manifest|retroarch|dolphin|pcsx2|steam-input] [--system SYSTEM] [--emulator NAME] [--hook HOOK] [--scratch PATH] [--action ID] [--command KEYS]");
 }
 int keymapCommand(CliArgs args) {
     string mode = "validate";
@@ -367,6 +367,9 @@ int deckCommand(CliArgs args, string project) {
     }
     if (mode.equals("state-evidence") || mode.equals("verify-state")) {
         return deckStateEvidenceCommand(args, project);
+    }
+    if (mode.equals("visual-evidence") || mode.equals("verify-visuals")) {
+        return deckVisualEvidenceCommand(args, project);
     }
     if (mode.equals("game-mode-ready") || mode.equals("game-mode-readiness") || mode.equals("verify-game-mode-ready")) {
         return deckGameModeReadinessCommand(args, project);

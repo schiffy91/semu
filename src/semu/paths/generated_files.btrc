@@ -162,6 +162,9 @@ string semuGeneratedProjectScope(string project, string path) {
     if (semuPathWithin(path, syncScriptsDir(project))) {
         return "sync_scripts";
     }
+    if (semuPathWithin(path, generatedTestRoot(project))) {
+        return "test_artifact";
+    }
     return "";
 }
 
