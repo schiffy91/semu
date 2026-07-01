@@ -27,6 +27,7 @@
 #define SEMU_TAP_NO_HELPER
 #include "semu_tap.h"
 #include "tap_geometry.h"
+#include "tap_menu.h"
 
 static SemuTapState g_state; static int g_have; static int win_w, win_h;
 __attribute__((visibility("default"), used))
@@ -309,7 +310,7 @@ static void gl_init(void) {
             logf_("art%u w=%u tex=%u\n",(GLuint)bi,(GLuint)aw,(GLuint)bezel_texs[bi]);
         } else { logf_("art%u load FAILED\n",(GLuint)bi,0,0); }
       }
-      bezel_count = loaded; if(loaded>0) has_art=1.0f; p_active(GL_TEXTURE0);
+      bezel_count = loaded>3 ? 3 : loaded; if(loaded>0) has_art=1.0f; p_active(GL_TEXTURE0);
     }
     for(int gi=0; gi<4; gi++){   // per-variant screen-glass layer (unit 2): .a = exact screen cutout mask, .rgb = glass/reflections
         if(!glass_paths[gi][0]) continue;
@@ -353,27 +354,30 @@ static void mb_disc(int cx,int cy,int rad,int r,int g,int b,int a){ if(!menu_buf
     for(int j=-rad;j<=rad;j++){int yy=cy+j;if(yy<0||yy>=MENU_H)continue; for(int i=-rad;i<=rad;i++){ if(i*i+j*j>rad*rad)continue; int xx=cx+i;if(xx<0||xx>=MENU_W)continue;
         unsigned char*p=menu_buf+((size_t)yy*MENU_W+xx)*4;float af=a/255.0f,ia=1.0f-af;
         p[0]=(unsigned char)(r*af+p[0]*ia);p[1]=(unsigned char)(g*af+p[1]*ia);p[2]=(unsigned char)(b*af+p[2]*ia);p[3]=(unsigned char)(a+p[3]*ia);}}}
+static SemuTapMenuState menu_state(void){
+    SemuTapMenuState s; memset(&s,0,sizeof(s));
+    s.level=menu_lvl; s.selected=menu_sel; s.system_kind=sys_kind;
+    s.priority_bezel=priority_bezel; s.bezel_index=bezel_idx; s.bezel_count=bezel_count; s.shader_index=shader_idx;
+    s.save_slot=save_slot; s.nds_layout=nds_layout; s.nds_primary_scale=nds_pri; s.nds_secondary_scale=nds_sec; s.wii_controller=wii_ctrl;
+    semu_tap_menu_normalize(&s);
+    return s;
+}
+static void menu_apply_state(const SemuTapMenuState *s){
+    if(!s)return;
+    menu_lvl=s->level; menu_sel=s->selected; priority_bezel=s->priority_bezel; bezel_idx=s->bezel_index; shader_idx=s->shader_index;
+    save_slot=s->save_slot; nds_layout=s->nds_layout; nds_pri=s->nds_primary_scale; nds_sec=s->nds_secondary_scale; wii_ctrl=s->wii_controller;
+}
 static int menu_count(void){   // number of wedges at the current level
-    if(menu_lvl==0) return 2 + ((sys_kind==1||sys_kind==2)?1:0);
-    if(menu_lvl==1) return 4; if(menu_lvl==2) return 4;
-    if(menu_lvl==3) return (sys_kind==1?4:sys_kind==2?2:1);
-    return 1;
+    SemuTapMenuState s=menu_state();
+    return semu_tap_menu_count(&s);
 }
 static void menu_short(int i,char*o){ o[0]=0;
-    if(menu_lvl==0){ const char*a[3]={"Rendering","Save/Load",(sys_kind==2?"Controls":"Screens")}; if(i<3)strcpy(o,a[i]); }
-    else if(menu_lvl==1){ const char*a[4]={"Aspect","Bezel","Shader","Back"}; if(i<4)strcpy(o,a[i]); }
-    else if(menu_lvl==2){ const char*a[4]={"Slot","Save","Load","Back"}; if(i<4)strcpy(o,a[i]); }
-    else if(menu_lvl==3){ if(sys_kind==1){const char*a[4]={"Layout","Top","Bottom","Back"};if(i<4)strcpy(o,a[i]);}
-        else if(sys_kind==2){const char*a[2]={"Pad","Back"};if(i<2)strcpy(o,a[i]);} else strcpy(o,"Back"); }
+    SemuTapMenuState s=menu_state();
+    semu_tap_menu_short(&s,i,o,48);
 }
 static void menu_val(int i,char*o){ o[0]=0;
-    if(menu_lvl==1){ if(i==0)strcpy(o,priority_bezel?"Bezel-priority":"Game-priority");
-        else if(i==1)strcpy(o,bezel_idx>=bezel_count?"Off":bezel_idx==0?"A":bezel_idx==1?"B":"C");
-        else if(i==2)strcpy(o,shader_idx==3?"Off":shader_idx==0?"A":shader_idx==1?"B":"C"); }
-    else if(menu_lvl==2){ if(i==0)snprintf(o,16,"%d",save_slot+1); }
-    else if(menu_lvl==3){ const char*sc[5]={"0.25x","0.5x","1x","2x","3x"};
-        if(sys_kind==1){ if(i==0)strcpy(o,nds_layout?"Horizontal":"Vertical"); else if(i==1)strcpy(o,sc[nds_pri>4?4:nds_pri]); else if(i==2)strcpy(o,sc[nds_sec>4?4:nds_sec]); }
-        else if(sys_kind==2){ const char*wc[4]={"Wiimote","Wiimote+Nunchuk","Pro Controller","Classic"}; if(i==0)strcpy(o,wc[wii_ctrl>3?3:wii_ctrl]); } }
+    SemuTapMenuState s=menu_state();
+    semu_tap_menu_value(&s,i,o,48);
 }
 static void menu_persist(void){   // menu state IS the override files (single source of truth; compositor re-reads them each frame)
     FILE*f; if((f=fopen("/home/deck/semu-priority","w"))){fputc(priority_bezel?'b':'g',f);fclose(f);}
@@ -395,7 +399,7 @@ static void menu_build(void){   // RADIAL: wedges (short labels) around a hub; h
         if(i==menu_sel) mb_disc(ix,iy,48, 60,140,220,255);
         mb_text(ix-tw/2, iy-GLY_H/2, s, i==menu_sel?255:205, i==menu_sel?255:205, i==menu_sel?255:205); }
     mb_disc(cx,cy,86, 26,72,132,255);                   // center hub
-    const char*titles[4]={"SEMU","RENDER","SAVE","SYSTEM"}; char tt[48]; strcpy(tt,titles[menu_lvl<4?menu_lvl:0]);
+    SemuTapMenuState ms=menu_state(); char tt[48]; snprintf(tt,48,"%s",semu_tap_menu_title(&ms));
     mb_text(cx-(int)strlen(tt)*cw/2, cy-GLY_H, tt, 255,255,255);
     char sn[48],sv[48]; menu_short(menu_sel,sn); menu_val(menu_sel,sv);
     char line[64]; snprintf(line,64,"%s", sv[0]?sv:sn);
@@ -403,17 +407,13 @@ static void menu_build(void){   // RADIAL: wedges (short labels) around a hub; h
     menu_dirty=0;
 }
 static void menu_activate(void){
-    if(menu_lvl==0){ menu_lvl=(menu_sel==0)?1:(menu_sel==1)?2:3; menu_sel=0; }
-    else if(menu_lvl==1){ if(menu_sel==0)priority_bezel=!priority_bezel; else if(menu_sel==1)bezel_idx=(bezel_idx+1)%(bezel_count+1);
-        else if(menu_sel==2)shader_idx=(shader_idx+1)%4; else {menu_lvl=0;menu_sel=0;} }
-    else if(menu_lvl==2){ if(menu_sel==0)save_slot=(save_slot+1)%3;
-        else if(menu_sel==1){FILE*f=fopen("/home/deck/semu-savestate","w");if(f){fprintf(f,"save:%d",save_slot+1);fclose(f);}}
-        else if(menu_sel==2){FILE*f=fopen("/home/deck/semu-savestate","w");if(f){fprintf(f,"load:%d",save_slot+1);fclose(f);}}
-        else {menu_lvl=0;menu_sel=0;} }
-    else if(menu_lvl==3){ if(sys_kind==1){ if(menu_sel==0)nds_layout=!nds_layout; else if(menu_sel==1)nds_pri=(nds_pri+1)%5;
-            else if(menu_sel==2)nds_sec=(nds_sec+1)%5; else {menu_lvl=0;menu_sel=0;} }
-        else if(sys_kind==2){ if(menu_sel==0)wii_ctrl=(wii_ctrl+1)%4; else {menu_lvl=0;menu_sel=0;} }
-        else {menu_lvl=0;menu_sel=0;} }
+    SemuTapMenuState s=menu_state();
+    semu_tap_menu_activate(&s);
+    if(s.action==SEMU_TAP_MENU_ACTION_SAVE||s.action==SEMU_TAP_MENU_ACTION_LOAD){
+        FILE*f=fopen("/home/deck/semu-savestate","w");
+        if(f){fprintf(f,"%s:%d",s.action==SEMU_TAP_MENU_ACTION_SAVE?"save":"load",s.action_slot);fclose(f);}
+    }
+    menu_apply_state(&s);
     menu_persist(); menu_dirty=1;
 }
 // dlsym interposition: SDL/emulators resolve glXSwapBuffers/eglSwapBuffers via dlopen+dlsym, which bypasses
