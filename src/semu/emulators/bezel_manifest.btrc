@@ -3,9 +3,8 @@ string bezelManifestPath(string project) {
 }
 
 string bezelManifestHoleFromText(string text, string system) {
-    int key = text.indexOf("\"" + system.toLower() + "\"");
-    if (key < 0) { return ""; }
-    string section = text.substring(key, text.len() - key);
+    string section = JsonText.objectField(text, system.toLower());
+    if (section.len() == 0) { return ""; }
     int hole = section.indexOf("\"hole\"");
     if (hole < 0) { return ""; }
     string value = section.substring(hole, section.len() - hole);

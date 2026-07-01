@@ -60,6 +60,16 @@ generated/build/semu deck visual-evidence gb --capture --allow-pending \
   --launch-wait-seconds 10 --project "$PWD"
 ```
 
+When `--rom` is supplied, Semu can derive the launch command from the system
+catalog. Use `--print-launch-command` to inspect the resolved command without
+starting the emulator:
+
+```sh
+generated/build/semu deck visual-evidence gb \
+  --rom "$PWD/generated/runtime/content/ROMs/gb/game.gb" \
+  --print-launch-command --project "$PWD"
+```
+
 Each system's `start-of-gameplay-analysis.txt` must include the required
 tokens emitted in `generated/test/visual-evidence/VISUAL_EVIDENCE.md`,
 including emulator, alignment, cutout, input, radial-menu, bezel, shader, and
