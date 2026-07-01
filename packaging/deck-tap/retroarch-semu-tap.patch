@@ -1,0 +1,41 @@
+--- a/gfx/video_driver.c
++++ b/gfx/video_driver.c
+@@ -3731,6 +3731,9 @@
+    return true;
+ }
+ 
++#ifdef HAVE_SEMU_TAP
++#include "semu_tap.h"
++#endif
+ void video_driver_frame(const void *data, unsigned width,
+       unsigned height, size_t pitch)
+ {
+@@ -3804,6 +3807,28 @@
+    menu_is_alive = (video_info.menu_st_flags & MENU_ST_FLAG_ALIVE) ? true : false;
+ #endif
+ 
++#ifdef HAVE_SEMU_TAP
++   /* Semu compositor tap: forward the real content viewport + active state. */
++   {
++      struct video_viewport semu_vp;
++      SemuTapState          semu_s;
++      video_driver_get_viewport_info(&semu_vp);
++      memset(&semu_s, 0, sizeof(semu_s));
++      semu_s.abi       = SEMU_TAP_ABI;
++      semu_s.active    = !menu_is_alive;
++      semu_s.fb_width  = (int)semu_vp.full_width;
++      semu_s.fb_height = (int)semu_vp.full_height;
++      semu_s.content_x = (int)semu_vp.x;
++      semu_s.content_y = (int)semu_vp.y;
++      semu_s.content_w = (int)semu_vp.width;
++      semu_s.content_h = (int)semu_vp.height;
++      semu_s.native_w  = (int)video_st->av_info.geometry.base_width;
++      semu_s.native_h  = (int)video_st->av_info.geometry.base_height;
++      semu_s.origin    = SEMU_TAP_ORIGIN_BOTTOM_LEFT;
++      semu_tap_report_safe(&semu_s);
++   }
++#endif
++
+    /* Take target refresh rate as initial FPS value instead of 0.00 */
+    if (!last_fps)
+       last_fps = video_info.refresh_rate;

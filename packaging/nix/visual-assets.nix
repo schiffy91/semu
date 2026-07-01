@@ -1,4 +1,4 @@
-{ lib, stdenvNoCC, fetchFromGitHub }:
+{ lib, stdenvNoCC, fetchFromGitHub, imagemagick }:
 
 let
   duimonMega = fetchFromGitHub {
@@ -27,6 +27,8 @@ stdenvNoCC.mkDerivation {
   version = "2026-06-12";
 
   dontUnpack = true;
+
+  nativeBuildInputs = [ imagemagick ];
 
   installPhase = ''
     runHook preInstall
@@ -57,6 +59,34 @@ stdenvNoCC.mkDerivation {
     done
     chmod -R u+w "$duimon"
 
+    # Photoreal handheld device SHELLS (+ iconic colorway/model variants), derived from the Duimon
+    # art at build time — mirrors packaging/deck-tap/gen-handheld-shells.sh. The tap compositor
+    # (libsemutap) uses these as bezel art; each device's screen HOLE is auto-measured offline into
+    # bezel_manifest.btrc (base) + launcherTapScreenVariant (gba SP). Recolor = desaturate then
+    # Multiply a solid color (preserves plastic shading + alpha). gba variant b = the GBA SP clamshell
+    # (a different model -> its own hole). Game fills the hole at the display aspect (SEMU_TAP_FILL).
+    shells="$packs/semu-shells"; mkdir -p "$shells"
+    gfx="$duimon/Graphics"
+    # flat <out> <layers...> — -flatten the whole device LAYER STACK (not pairwise -composite, which only
+    # merges the last two). Top adds the molded button definition; GBC's d-pad+A/B buttons are on a separate
+    # Device_LED layer. Glass (screen) + the standalone LED layer are excluded.
+    flat(){ out="$1"; shift; magick "$@" -background none -flatten -resize '2048x2048>' "$out"; }
+    colorway(){ magick "$1" -modulate 100,0,100 \( +clone -fill "$3" -colorize 100% \) -compose Multiply -composite -alpha on "PNG32:$2"; }
+    flat "$shells/gb.png"    "$gfx/Nintendo_Game_Boy/Gameboy_DMG01_Device.png" "$gfx/Nintendo_Game_Boy/Gameboy_DMG01_Decal.png" "$gfx/Nintendo_Game_Boy/Gameboy_DMG01_Top.png"
+    flat "$shells/gbc.png"   "$gfx/Nintendo_Game_Boy_Color/GBC_Device.png" "$gfx/Nintendo_Game_Boy_Color/GBC_Device_LED.png" "$gfx/Nintendo_Game_Boy_Color/GBC_Decal.png" "$gfx/Nintendo_Game_Boy_Color/GBC_Top.png"
+    flat "$shells/gba.png"   "$gfx/Nintendo_GBA/GBA_Device.png" "$gfx/Nintendo_GBA/GBA_Decal.png" "$gfx/Nintendo_GBA/GBA_Top.png"
+    flat "$shells/gba-b.png" "$gfx/Nintendo_GBA_SP/GBA_SP_Device.png" "$gfx/Nintendo_GBA_SP/GBA_SP_Decal.png" "$gfx/Nintendo_GBA_SP/GBA_SP_Top.png"
+    # screen-glass layers (live cutout MASK in .a + reflections in .rgb), downscaled, RGBA preserved
+    glass(){ magick "$1" -resize '2048x2048>' "PNG32:$2"; }
+    glass "$gfx/Nintendo_Game_Boy/Gameboy_DMG01_Glass.png" "$shells/gb-glass.png"
+    glass "$gfx/Nintendo_Game_Boy_Color/GBC_Glass.png"     "$shells/gbc-glass.png"
+    glass "$gfx/Nintendo_GBA/GBA_Glass.png"                "$shells/gba-glass.png"
+    glass "$gfx/Nintendo_GBA_SP/GBA_SP_Glass.png"          "$shells/gba-b-glass.png"
+    colorway "$shells/gb.png"  "$shells/gb-b.png"  '#d23440'   # Play It Loud red
+    colorway "$shells/gb.png"  "$shells/gb-c.png"  '#2f9e4f'   # Play It Loud green
+    colorway "$shells/gbc.png" "$shells/gbc-b.png" '#c0294b'   # Berry
+    colorway "$shells/gbc.png" "$shells/gbc-c.png" '#7a3fb0'   # Grape
+
     # Deck-tuned presentation presets (measured on physical Steam Deck 2026-06-24).
     #
     # Consoles: a cozy Soqueroeu entertainment-center scene — a curved CRT TV in a dim living
@@ -78,10 +108,15 @@ stdenvNoCC.mkDerivation {
     printf '#reference "%s/Nintendo_NES.slangp"\nHSM_INT_SCALE_MODE = "1"\n' "$sq" > "$semudeck/nes.slangp"
     printf '#reference "%s/Nintendo_SuperNintendo-[Special_Grey].slangp"\nHSM_INT_SCALE_MODE = "1"\n' "$sq" > "$semudeck/snes.slangp"
     printf '#reference "%s/Sega_Genesis.slangp"\nHSM_INT_SCALE_MODE = "1"\n' "$sq" > "$semudeck/genesis.slangp"
-    # n64 (mupen64plus_next) renders at a high internal resolution; integer mode over-scales the
-    # tube off-screen (game fills the display, bezel lost). Use art-driven fit-to-TV (the
-    # 00_Generic_02 default scale mode) so the game sits framed in the CRT. Verified on-Deck.
-    printf '#reference "%s/00_Generic_02.slangp"\n' "$sq" > "$semudeck/n64.slangp"
+    # n64 (mupen64plus_next): the launcher forces the core to native 320x240 (Mupen64Plus-Next.opt,
+    # see launcherSeedRoutedState). MAX_HEIGHT=100 references the FULL screen (not the scene's tube),
+    # so ShortAxis integer scaling picks floor(screenH / 240) — the largest integer that fits the
+    # screen with ZERO buffer (3x = 720px on the Deck's 800px panel; auto-recomputes for any res/DPI).
+    # HSM_BG_FILL_MODE=2 (STRETCH) makes the generic room background COVER the full 16:10 viewport —
+    # the default (0=KEEP TEXTURE ASPECT) letterboxes the 16:9 scene, leaving black side bars. The
+    # game/tube is a separate layer so the bg stretch doesn't touch it. (Native 240p required: at
+    # mupen's ~480p+ default, integer mode over-scales past the screen.) Measured 960x720 on-Deck.
+    printf '#reference "%s/00_Generic_02.slangp"\nHSM_INT_SCALE_MODE = "1"\nHSM_INT_SCALE_MAX_HEIGHT = "100"\nHSM_BG_FILL_MODE = "2"\n' "$sq" > "$semudeck/n64.slangp"
     printf '#reference "%s/00_Generic_02.slangp"\nHSM_INT_SCALE_MODE = "1"\n' "$sq" > "$semudeck/psx.slangp"
     dmb="../Duimon-Mega-Bezel/Presets/Advanced"
     printf '#reference "%s/Nintendo_Game_Boy/Gameboy-[ADV]-[Guest]-[Bezel]-[Night].slangp"\nHSM_INT_SCALE_MODE = "1"\nHSM_INT_SCALE_MAX_HEIGHT = "60.57"\nHSM_CURVATURE_MODE = "0"\n' "$dmb" > "$semudeck/gb.slangp"

@@ -58,6 +58,7 @@ class SettingsRegistry {
             SettingSpec("visual.crt_shaders", "CRT Shaders", "Visuals", "semu", "visual_crt_shaders", "bool"),
             SettingSpec("visual.bezels", "Bezels", "Visuals", "semu", "visual_bezels", "bool"),
             SettingSpec("visual.bezel_policy", "Bezel Policy", "Visuals", "semu", "visual_bezel_policy", "string"),
+            SettingSpec("visual.render_mode", "Render Resolution", "Visuals", "semu", "visual_render_mode", "string"),
             SettingSpec("visual.retroarch_shader_preset", "RetroArch Shader Preset", "Visuals", "semu", "visual_retroarch_shader_preset", "string"),
             SettingSpec("visual.classic_systems", "Classic Visual Systems", "Visuals", "semu", "visual_classic_systems", "string"),
             SettingSpec("visual.modern_systems", "Modern Visual Exclusions", "Visuals", "semu", "visual_modern_systems", "string"),
@@ -202,6 +203,9 @@ class SettingsEntries {
             SettingsEntrySpec("Toggle Integer Scaling.semu", "Toggle Integer Scaling", "toggle visual.integer_scaling apply"),
             SettingsEntrySpec("Toggle CRT Shaders.semu", "Toggle CRT Shaders", "toggle visual.crt_shaders apply"),
             SettingsEntrySpec("Toggle Bezels.semu", "Toggle Bezels", "toggle visual.bezels apply"),
+            SettingsEntrySpec("Render - Retro Native 1x.semu", "Render: Retro / Native 1x (default)", "put visual.render_mode 1x"),
+            SettingsEntrySpec("Render - Sharp Integer.semu", "Render: Sharp / Integer Scale", "put visual.render_mode integer"),
+            SettingsEntrySpec("Render - Core Default.semu", "Render: Core Default", "put visual.render_mode native"),
             SettingsEntrySpec("Toggle Syncthing.semu", "Toggle Syncthing", "toggle sync.enabled apply"),
             SettingsEntrySpec("Open Syncthing UI.semu", "Open Syncthing UI", "sync open")
         ];
