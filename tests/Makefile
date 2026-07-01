@@ -2,7 +2,7 @@ E2E_GRAPH := tests/e2e/graph.json
 E2E_GRAPH_NODES ?=
 E2E_GRAPH_ARGS ?=
 
-.PHONY: tree-audit payload-audit generated-build generated-smoke test ftux-test e2e-smoke e2e-graph-list e2e-graph-status e2e-graph-coverage e2e-graph-run lifecycle-smoke sandbox-smoke launcher-smoke appimage-smoke deck-ssh-smoke nix-e2e verify
+.PHONY: tree-audit payload-audit tap-geometry-smoke generated-build generated-smoke test ftux-test e2e-smoke e2e-graph-list e2e-graph-status e2e-graph-coverage e2e-graph-run lifecycle-smoke sandbox-smoke launcher-smoke appimage-smoke deck-ssh-smoke nix-e2e verify
 
 tree-audit: ## Fail if repo-local output roots or stale tracked layout paths exist
 	@set -euo pipefail; \
@@ -41,7 +41,12 @@ generated-smoke: generated-build ## Run BTRC-native smoke tests from generated C
 payload-audit: $(SEMU_BIN) ## Fail if tracked licensed payloads or VM artifacts would be upstreamed
 	$(SEMU_BIN) e2e payload-audit --project "$(CURDIR)"
 
-test: tree-audit payload-audit generated-smoke appimage-smoke ## Run native BTRC/runtime tests locally
+tap-geometry-smoke: ## Validate tap compositor priority geometry and cutout alignment
+	@mkdir -p generated/test
+	$(CC) packaging/steamdeck/tap/tap_geometry_check.c -std=c11 -o generated/test/tap-geometry-check -lm
+	generated/test/tap-geometry-check
+
+test: tree-audit payload-audit tap-geometry-smoke generated-smoke appimage-smoke ## Run native BTRC/runtime tests locally
 
 ftux-test: generated-smoke ## Validate Steam Deck/Linux first-run bootstrap path
 
@@ -86,7 +91,7 @@ nix-e2e: ## Validate flake routed-emulator shape and mock wrapper behavior
 	nix build --out-link generated/nix/result ".#checks.$$host_system.routed-emulator-mock" --print-build-logs; \
 	echo "OK Nix routed-emulator smoke ($$host_system)"
 
-verify: tree-audit payload-audit $(SEMU_BIN) ## Run deterministic BTRC/Steam Deck verification
+verify: tree-audit payload-audit tap-geometry-smoke $(SEMU_BIN) ## Run deterministic BTRC/Steam Deck verification
 	@set -euo pipefail; \
 	verify_dir="$(CURDIR)/generated/test/verification"; \
 	rm -rf "$$verify_dir"; \

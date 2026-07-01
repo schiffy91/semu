@@ -26,6 +26,7 @@
 #include "vendor/stb_image.h"
 #define SEMU_TAP_NO_HELPER
 #include "semu_tap.h"
+#include "tap_geometry.h"
 
 static SemuTapState g_state; static int g_have; static int win_w, win_h;
 __attribute__((visibility("default"), used))
@@ -583,42 +584,16 @@ static void tap_frame(void *dpy, unsigned long drawable, int is_egl) {
                 sx+=dl; sw-=(dl+dr); sy+=db; sh-=(dt+db);
                 if(sw<1)sw=1; if(sh<1)sh=1;
             }
-            // GEOMETRY: width follows the DISPLAY aspect (era-accurate). uRect=game rect, bdRect=bezel display
-            // rect (the whole art maps to it). Two priority modes:
-            float asp = disp_aspect>0.01f ? disp_aspect : (float)nw/(float)nh;
-            int gx,gy,gw,gh; float bdx_gl, bdy_gl, bdw, bdh;
-            int useBezelPri = (priority_bezel && eff_has_art>0.5f && awv>0 && ahv>0);
-            if(!useBezelPri){
-                // GAME-PRIORITY: largest integer height that fits the SCREEN, centered; bezel scaled so hole==game.
-                int scale = h/nh; if(scale<1)scale=1;
-                gh = scale*nh; gw = (int)((float)gh*asp+0.5f);
-                if(gw>w){ int s2=(int)((float)w/((float)nh*asp)); if(s2<1)s2=1; scale=s2; gh=scale*nh; gw=(int)((float)gh*asp+0.5f); }
-                gx=(w-gw)/2; gy=(h-gh)/2;
-                bdw = (swn>0.001f)?(float)gw/swn:(float)gw;  bdh = (shn>0.001f)?(float)gh/shn:(float)gh;
-                float game_top=(float)(h-gy-gh), bd_left=(float)gx-sxn*bdw, bd_top=game_top-syn*bdh;
-                bdx_gl=bd_left; bdy_gl=(float)h-bd_top-bdh;
-            } else {
-                // BEZEL-PRIORITY: fit the WHOLE bezel art to the screen (centered, no crop); game = largest
-                // integer that fits the bezel's hole. Device/TV fully visible.
-                float bar=(float)awv/(float)ahv;
-                if((float)w/(float)h > bar){ bdh=(float)h; bdw=(float)h*bar; } else { bdw=(float)w; bdh=(float)w/bar; }
-                float bdx=((float)w-bdw)*0.5f, bdy=((float)h-bdh)*0.5f;
-                float hrx=bdx+sxn*bdw, hrtop=bdy+syn*bdh, hrw=swn*bdw, hrh=shn*bdh;
-                if(fill_hole){
-                    // HANDHELD fill: the device screen is tiny relative to native, so largest-integer would
-                    // leave the game floating at 1x. Fill the hole at the display aspect (non-integer) like
-                    // Duimon's HSM_NON_INTEGER_SCALE — the soft retro LOD hides the fractional upscale.
-                    if(hrw/hrh > asp){ gh=(int)(hrh+0.5f); gw=(int)((float)gh*asp+0.5f); }
-                    else             { gw=(int)(hrw+0.5f); gh=(int)((float)gw/asp+0.5f); }
-                } else {
-                    int gs=(int)(hrh/(float)nh); if(gs<1)gs=1;
-                    gh=gs*nh; gw=(int)((float)gh*asp+0.5f);
-                    if((float)gw>hrw){ int s2=(int)(hrw/((float)nh*asp)); if(s2<1)s2=1; gs=s2; gh=gs*nh; gw=(int)((float)gh*asp+0.5f); }
-                }
-                float gleft=hrx+(hrw-(float)gw)*0.5f, gtop=hrtop+(hrh-(float)gh)*0.5f;
-                gx=(int)(gleft+0.5f); gy=(int)((float)h-gtop-(float)gh+0.5f);
-                bdx_gl=bdx; bdy_gl=(float)h-bdy-bdh;
-            }
+            SemuTapGeometryInput geom_in; memset(&geom_in,0,sizeof(geom_in));
+            geom_in.win_w=w; geom_in.win_h=h; geom_in.native_w=nw; geom_in.native_h=nh;
+            geom_in.display_aspect=disp_aspect>0.01f ? disp_aspect : (float)nw/(float)nh;
+            geom_in.priority_bezel=priority_bezel; geom_in.fill_hole=fill_hole;
+            geom_in.has_art=eff_has_art>0.5f; geom_in.art_w=awv; geom_in.art_h=ahv;
+            geom_in.hole_x=sxn; geom_in.hole_y=syn; geom_in.hole_w=swn; geom_in.hole_h=shn;
+            SemuTapGeometry geom;
+            if(!semu_tap_compute_geometry(&geom_in,&geom)) return;
+            int gx=geom.game_x, gy=geom.game_y, gw=geom.game_w, gh=geom.game_h;
+            float bdx_gl=geom.bezel_x, bdy_gl=geom.bezel_y, bdw=geom.bezel_w, bdh=geom.bezel_h;
             // DUAL (nds/3ds): split the combined content into two screens; layout + per-screen scale.
             int r1x=gx,r1y=gy,r1w=gw,r1h=gh, r2x=0,r2y=0,r2w=0,r2h=0;
             int s1x=sx,s1y=sy,s1w=sw,s1h=sh, s2x=sx,s2y=sy,s2w=sw,s2h=sh;

@@ -14,6 +14,8 @@ This runs:
   files outside approved snapshots exist.
 - `payload-audit`: fails if licensed payloads or VM artifacts would be
   upstreamed.
+- `tap-geometry-smoke`: compiles the Steam Deck tap geometry contract and
+  checks game-priority, bezel-priority, and fill-hole cutout alignment.
 - `generated-smoke`: builds from committed `generated/semu.c` and runs BTRC
   smoke tests, including the render-options contract.
 - `appimage-smoke`: assembles an AppImage with fake ES-DE, fake Nix, and fake
@@ -36,6 +38,12 @@ To prepare or verify the visual proof matrix:
 ```sh
 generated/build/semu deck visual-evidence --project "$PWD" --prepare
 generated/build/semu deck visual-evidence --project "$PWD"
+```
+
+To cross-compile the Steam Deck GL tap preload:
+
+```sh
+make tap-preload-build
 ```
 
 ## Graph E2E
