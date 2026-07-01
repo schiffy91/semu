@@ -217,10 +217,79 @@ bool deckEvidenceFilePresent(string path) {
     return result.ok();
 }
 
-bool deckVisualAnalysisComplete(string path) {
-    if (!deckEvidenceFilePresent(path)) { return false; }
+string deckVisualExpectedEmulator(string system) {
+    string s = renderOptionCanonicalSystem(system);
+    if (s.equals("nds")) { return "melonds"; }
+    if (s.equals("dreamcast")) { return "flycast"; }
+    if (s.equals("ps2")) { return "pcsx2"; }
+    if (s.equals("psp")) { return "ppsspp"; }
+    if (s.equals("n3ds")) { return "azahar"; }
+    if (s.equals("gc") || s.equals("wii")) { return "dolphin"; }
+    if (s.equals("wiiu")) { return "cemu"; }
+    if (s.equals("switch")) { return "ryujinx"; }
+    return "retroarch";
+}
+
+Vector<string> deckVisualAnalysisRequiredTokens(string system) {
+    string s = renderOptionCanonicalSystem(system);
+    Vector<string> tokens = [
+        "system=" + s,
+        "emulator=" + deckVisualExpectedEmulator(s),
+        "visual=ok",
+        "input=ok",
+        "duration_s=30",
+        "viewport_alignment=ok",
+        "cutout_mask=ok",
+        "controller_input=ok",
+        "radial_menu=ok",
+        "clip.start_of_gameplay=ok",
+        "bezel.A=ok",
+        "bezel.B=ok",
+        "bezel.C=ok",
+        "bezel.Off=ok",
+        "shader.A=ok",
+        "shader.B=ok",
+        "shader.C=ok",
+        "shader.Off=ok"
+    ];
+    for priority in deckVisualEvidencePriorities() {
+        for variant in deckVisualEvidenceVariants() {
+            tokens.push("screenshot." + priority + "." + variant + "=ok");
+        }
+    }
+    string kind = RenderOptionCatalog.find(s).systemKind;
+    if (kind.equals("1")) {
+        tokens.push("dual.layout.vertical=ok");
+        tokens.push("dual.layout.horizontal=ok");
+        tokens.push("dual.primary_scale=ok");
+        tokens.push("dual.secondary_scale=ok");
+    }
+    if (kind.equals("2")) {
+        tokens.push("controller_layout.wiimote=ok");
+        tokens.push("controller_layout.wiimote_nunchuk=ok");
+        tokens.push("controller_layout.pro_controller=ok");
+        tokens.push("controller_layout.classic=ok");
+    }
+    return tokens;
+}
+
+Vector<string> deckVisualAnalysisMissingTokens(string path, string system) {
+    Vector<string> missing = [];
+    Vector<string> required = deckVisualAnalysisRequiredTokens(system);
+    if (!deckEvidenceFilePresent(path)) {
+        return required;
+    }
     string text = FileSystem.readText(path);
-    return text.contains("visual=ok") && text.contains("input=ok") && text.contains("duration_s=30");
+    for token in required {
+        if (!text.contains(token)) {
+            missing.push(token);
+        }
+    }
+    return missing;
+}
+
+bool deckVisualAnalysisComplete(string path, string system) {
+    return deckVisualAnalysisMissingTokens(path, system).len == 0;
 }
 
 bool deckKnownVisualSystem(string system) {
@@ -254,7 +323,7 @@ bool deckVisualEvidenceComplete(string project, Vector<string> systems) {
         if (!deckEvidenceFilePresent(deckVisualClipPath(project, system))) {
             return false;
         }
-        if (!deckVisualAnalysisComplete(deckVisualAnalysisPath(project, system))) {
+        if (!deckVisualAnalysisComplete(deckVisualAnalysisPath(project, system), system)) {
             return false;
         }
     }
@@ -275,11 +344,16 @@ string deckVisualEvidenceChecklistText(string project, Vector<string> systems) {
         "4. Record a 30-second start-of-gameplay clip.",
         "5. Verify the game viewport lands exactly in the bezel cutout.",
         "6. Verify controller input moves/responds in game.",
-        "7. Write start-of-gameplay-analysis.txt with visual=ok, input=ok, duration_s=30.",
+        "7. Write start-of-gameplay-analysis.txt with the required analysis tokens.",
         "",
         "Expected files:"
     ];
     for system in systems {
+        lines.push("");
+        lines.push(system + " analysis must include:");
+        for token in deckVisualAnalysisRequiredTokens(system) {
+            lines.push("  - " + token);
+        }
         for priority in deckVisualEvidencePriorities() {
             for variant in deckVisualEvidenceVariants() {
                 lines.push("- " + deckVisualScreenshotPath(project, system, priority, variant));
@@ -307,9 +381,11 @@ string deckVisualEvidenceManifestJson(string project, Vector<string> systems) {
         }
         clips.push(jsonObject([
             jsonStrField("system", system),
+            jsonStrField("emulator", deckVisualExpectedEmulator(system)),
             jsonStrField("clip", deckVisualClipPath(project, system)),
             jsonStrField("analysis", deckVisualAnalysisPath(project, system)),
-            jsonField("duration_s", "30")
+            jsonField("duration_s", "30"),
+            jsonField("required_analysis", jsonStringArray(deckVisualAnalysisRequiredTokens(system)))
         ]));
     }
     return jsonObject([
@@ -377,10 +453,11 @@ int deckVisualEvidenceCommand(CliArgs args, string project) {
             allOk = false;
         }
         string analysis = deckVisualAnalysisPath(project, system);
-        if (deckVisualAnalysisComplete(analysis)) {
+        Vector<string> missingAnalysis = deckVisualAnalysisMissingTokens(analysis, system);
+        if (missingAnalysis.len == 0) {
             analysisOk++;
         } else {
-            print("PENDING " + system + " analysis: " + analysis + " (requires visual=ok input=ok duration_s=30)");
+            print("PENDING " + system + " analysis: " + analysis + " (missing " + missingAnalysis.join(", ") + ")");
             systemOk = false;
             allOk = false;
         }
