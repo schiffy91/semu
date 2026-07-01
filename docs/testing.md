@@ -53,6 +53,14 @@ To cross-compile the Steam Deck GL tap preload:
 make tap-preload-build
 ```
 
+The tap compositor reads and writes its live override files from `/home/deck`
+on the device. Local and VM evidence runs can redirect those files into the
+generated test tree:
+
+```sh
+SEMU_TAP_STATE_DIR="$PWD/generated/test/tap-state" generated/build/semu deck visual-evidence --project "$PWD"
+```
+
 ## Graph E2E
 
 ```sh

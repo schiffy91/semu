@@ -96,6 +96,8 @@ Every declared system must expose the same live compositor surface:
 
 4. Runtime Data
    - Default local content root is `generated/runtime/content`.
+   - Steam Deck tap control files default to `/home/deck`; local and VM runs
+     may redirect them with `SEMU_TAP_STATE_DIR` under `generated/test/`.
    - External SD-card layouts remain supported.
    - Semu must not mutate external ROM roots except through explicit sync or
      settings operations.
