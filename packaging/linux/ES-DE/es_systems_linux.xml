@@ -158,7 +158,7 @@
   <system>
     <name>semu-settings</name>
     <fullname>Semu Settings</fullname>
-    <path>${project}/settings/es-de</path>
+    <path>${project}/build/packaging/es-de/settings-entries</path>
     <extension>.semu .SEMU</extension>
     <command label="Semu Settings">%EMULATOR_SEMU_SETTINGS% %ROM%</command>
     <platform>pc</platform>

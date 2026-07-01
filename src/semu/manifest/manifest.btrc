@@ -134,7 +134,7 @@ string esSystemSpec(
 // ---- paths_esde.btrc ----
 string manifestPaths() {
     return jsonObject([
-        jsonStrField("project_content_root", "${project}/ES-DE/ES-DE"),
+        jsonStrField("project_content_root", "${project}/.semu/content"),
         jsonStrField("runtime_content_root", "${portable}"),
         jsonStrField("roms", "${paths.runtime_content_root}/ROMs"),
         jsonStrField("project_roms", "${paths.project_content_root}/ROMs"),
@@ -153,13 +153,13 @@ string manifestPaths() {
         jsonStrField("themes", "${paths.runtime_content_root}/themes"),
         jsonStrField("project_themes", "${paths.project_content_root}/themes"),
         jsonStrField("custom_systems", "${paths.runtime_content_root}/custom_systems"),
-        jsonStrField("project_custom_systems", "${project}/ES-DE/custom_systems"),
+        jsonStrField("project_custom_systems", "${project}/build/packaging/es-de/custom_systems"),
         jsonStrField("settings", "${paths.runtime_content_root}/settings"),
-        jsonStrField("project_settings", "${project}/ES-DE"),
+        jsonStrField("project_settings", "${project}/build/packaging/es-de/settings"),
         jsonStrField("keymaps", "${project}/input/keymaps"),
         jsonStrField("steam_input", "${project}/input/steam-input"),
-        jsonStrField("emulator_profiles", "${project}/emulators/profiles"),
-        jsonStrField("es_de_profiles", "${project}/emulators/es-de"),
+        jsonStrField("emulator_profiles", "${project}/build/packaging/emulators/profiles"),
+        jsonStrField("es_de_profiles", "${project}/build/packaging/es-de"),
         jsonStrField("linux_packaging", "${project}/packaging/linux"),
         jsonStrField("retroarch_system", "${paths.bios}")
     ]);
@@ -595,7 +595,7 @@ string biosEntries() {
             "wiiu",
             true,
             ["keys.txt"],
-            "${project}/emulators/profiles/Cemu/data",
+            "${project}/build/packaging/emulators/profiles/Cemu/data",
             "",
             "Cemu needs user-supplied Wii U keys for encrypted content."
         ),

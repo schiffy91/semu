@@ -52,7 +52,7 @@ void deckBuildGeneratedCli(string project) {
 }
 
 int deckProvisionCommand(CliArgs args, string project) {
-    string roms = args.valueAfter("--roms", Environment.get("SEMU_ROMS_DIR", joinPath(project, "ES-DE/ES-DE/ROMs")));
+    string roms = args.valueAfter("--roms", Environment.get("SEMU_ROMS_DIR", romsRoot(project)));
     deckInstallHostPackages();
     deckBuildGeneratedCli(project);
     lifecycleInstall(project, roms);

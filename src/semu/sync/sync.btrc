@@ -634,8 +634,9 @@ void lifecycleUninstall(string project, bool purgeGenerated, bool purgeState) {
     removePath(joinPath(syncScriptsDir(project), "sync-force.sh"));
     removePath(joinPath(semuStateRoot(project), "appimage-state"));
     if (purgeGenerated) {
-        removePath(joinPath(project, "ES-DE/custom_systems"));
-        removePath(joinPath(project, "ES-DE/es_settings.xml"));
+        removePath(customSystemsRoot(project));
+        removePath(esDeSettingsPath(project));
+        removePath(SettingsEntries.root(project));
         removePath(joinPath(project, "semu.json"));
     }
     if (purgeState) {

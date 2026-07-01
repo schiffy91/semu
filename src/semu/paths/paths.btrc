@@ -8,7 +8,7 @@ string joinPath(string left, string right) {
 }
 
 string contentRoot(string project) {
-    return joinPath(project, "ES-DE/ES-DE");
+    return joinPath(project, ".semu/content");
 }
 
 string romsRoot(string project) {
@@ -48,15 +48,19 @@ string biosRoot(string project) {
 }
 
 string customSystemsRoot(string project) {
-    return joinPath(project, "ES-DE/custom_systems");
+    return joinPath(project, "build/packaging/es-de/custom_systems");
 }
 
-string esDeProfileCustomSystemsRoot(string project) {
-    return joinPath(project, "emulators/es-de/custom_systems");
+string esDeSettingsPath(string project) {
+    return joinPath(project, "build/packaging/es-de/settings/es_settings.xml");
+}
+
+string esDeSettingsEntriesRoot(string project) {
+    return joinPath(project, "build/packaging/es-de/settings-entries");
 }
 
 string emulatorProfilesRoot(string project) {
-    return joinPath(project, "emulators/profiles");
+    return joinPath(project, "build/packaging/emulators/profiles");
 }
 
 string emulatorProfilePath(string project, string relative) {
@@ -172,14 +176,14 @@ Vector<string> declaredRomDirs() {
 
 Vector<string> controllerProfileFiles() {
     return [
-        "emulators/profiles/RetroArch/retroarch.cfg.linux-backup",
-        "emulators/profiles/Dolphin/config/Profiles/GCPad/Steam Deck.ini",
-        "emulators/profiles/Dolphin/config/Profiles/Hotkeys/Steam Deck.ini",
-        "emulators/profiles/Dolphin/config/Profiles/Wiimote/Wiimote (SD).ini",
-        "emulators/profiles/Dolphin/config/Profiles/Wiimote/Wiimote + Classic Controller (SD).ini",
-        "emulators/profiles/Cemu/config/controllerProfiles/SteamInput-P1.xml",
-        "emulators/profiles/PCSX2/config/inputprofiles/Steam Deck.ini",
-        "emulators/profiles/Ryujinx/config/profiles/controller/Steam Virtual Controller.json"
+        "build/packaging/emulators/profiles/RetroArch/retroarch.cfg.linux-backup",
+        "build/packaging/emulators/profiles/Dolphin/config/Profiles/GCPad/Steam Deck.ini",
+        "build/packaging/emulators/profiles/Dolphin/config/Profiles/Hotkeys/Steam Deck.ini",
+        "build/packaging/emulators/profiles/Dolphin/config/Profiles/Wiimote/Wiimote (SD).ini",
+        "build/packaging/emulators/profiles/Dolphin/config/Profiles/Wiimote/Wiimote + Classic Controller (SD).ini",
+        "build/packaging/emulators/profiles/Cemu/config/controllerProfiles/SteamInput-P1.xml",
+        "build/packaging/emulators/profiles/PCSX2/config/inputprofiles/Steam Deck.ini",
+        "build/packaging/emulators/profiles/Ryujinx/config/profiles/controller/Steam Virtual Controller.json"
     ];
 }
 

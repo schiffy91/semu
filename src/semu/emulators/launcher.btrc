@@ -207,6 +207,15 @@ void launcherCopyFirstExisting(string project, Vector<string> sources, string de
     }
 }
 
+void launcherCopyFirstExistingExternal(string purpose, Vector<string> sources, string destination) {
+    for source in sources {
+        if (FileSystem.isFile(source)) {
+            SemuGeneratedFiles.writeExternalInstall(purpose, destination, FileSystem.readText(source));
+            return;
+        }
+    }
+}
+
 void launcherCopyProfileDir(string project, string relative, string destination) {
     launcherCopyDirContents(project, emulatorProfilePath(project, relative), destination);
 }
@@ -405,7 +414,7 @@ void launcherWriteAzaharConfig(string project, string configRoot, string dataRoo
     SemuGeneratedFiles.writeAdapterState(project, joinPath(azaharRoot, "qt-config.ini"), azaharConfigTextForDataRoot(dataRoot));
 }
 
-void launcherSeedRoutedState(string project, string emulator, string configRoot, string dataRoot) {
+void launcherSeedEmulatorState(string project, string emulator, string configRoot, string dataRoot, bool seedFlatpakHome) {
     string key = emulator.toLower();
     if (key.equals("retroarch")) {
         launcherCopyProfileDir(project, "RetroArch/config", joinPath(configRoot, "retroarch"));
@@ -429,13 +438,15 @@ void launcherSeedRoutedState(string project, string emulator, string configRoot,
     if (key.equals("pcsx2")) {
         launcherCopyStateDir(project, "PCSX2/config", joinPath(configRoot, "PCSX2"));
         launcherWritePcsx2Config(project, configRoot);
-        // PCSX2 ignores XDG_CONFIG_HOME and rejects -cfgpath ("Unknown parameter"); it only reads
-        // its ini from the flatpak's own ~/.var/app dir. Write the same valid ini there so
-        // SettingsVersion=1 + SetupWizardIncomplete=false + the SD BIOS path take effect
-        // (verified on-Deck: Marvel vs Capcom 2 boots full-screen).
-        string pcsx2Home = joinPath(Environment.get("HOME", ""), ".var/app/net.pcsx2.PCSX2/config/PCSX2/inis");
-        ensureDir(pcsx2Home);
-        SemuGeneratedFiles.writeAdapterState(project, joinPath(pcsx2Home, "PCSX2.ini"), pcsx2ConfigText(project));
+        if (seedFlatpakHome) {
+            // PCSX2 ignores XDG_CONFIG_HOME and rejects -cfgpath ("Unknown parameter").
+            string pcsx2Home = joinPath(Environment.get("HOME", ""), ".var/app/net.pcsx2.PCSX2/config/PCSX2/inis");
+            SemuGeneratedFiles.writeExternalInstall(
+                "flatpak_home:pcsx2",
+                joinPath(pcsx2Home, "PCSX2.ini"),
+                pcsx2ConfigText(project)
+            );
+        }
         return;
     }
     if (key.equals("cemu")) {
@@ -446,19 +457,20 @@ void launcherSeedRoutedState(string project, string emulator, string configRoot,
             emulatorProfilePath(project, "Cemu/data/keys.txt")
         ], joinPath(dataRoot, "Cemu/keys.txt"));
         launcherWriteCemuSettings(project, configRoot, dataRoot);
-        // Cemu ignores XDG_DATA_HOME; its real user dir is ~/.var/app/info.cemu.Cemu/data/Cemu.
-        // Seed keys.txt there, and on FIRST run force Vulkan: Cemu's OpenGL backend SEGFAULTS at
-        // "Init OpenGL graphics backend" in gamescope, but Vulkan works (verified on-Deck: New
-        // Super Mario Bros U boots). Write-if-absent so the user's later Cemu settings persist.
-        string cemuHome = joinPath(Environment.get("HOME", ""), ".var/app/info.cemu.Cemu/data/Cemu");
-        ensureDir(cemuHome);
-        launcherCopyFirstExisting(project, [
-            joinPath(configuredEmulationRoot(project), "Cemu/data/keys.txt"),
-            emulatorProfilePath(project, "Cemu/data/keys.txt")
-        ], joinPath(cemuHome, "keys.txt"));
-        if (!FileSystem.exists(joinPath(cemuHome, "settings.xml"))) {
-            SemuGeneratedFiles.writeAdapterState(project, joinPath(cemuHome, "settings.xml"),
-                "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<content>\n\t<Graphic>\n\t\t<api>1</api>\n\t</Graphic>\n\t<check_update>false</check_update>\n</content>\n");
+        if (seedFlatpakHome) {
+            // Cemu ignores XDG_DATA_HOME; seed the Flatpak home only for real Flatpak launches.
+            string cemuHome = joinPath(Environment.get("HOME", ""), ".var/app/info.cemu.Cemu/data/Cemu");
+            launcherCopyFirstExistingExternal("flatpak_home:cemu_keys", [
+                joinPath(configuredEmulationRoot(project), "Cemu/data/keys.txt"),
+                emulatorProfilePath(project, "Cemu/data/keys.txt")
+            ], joinPath(cemuHome, "keys.txt"));
+            if (!FileSystem.exists(joinPath(cemuHome, "settings.xml"))) {
+                SemuGeneratedFiles.writeExternalInstall(
+                    "flatpak_home:cemu_settings",
+                    joinPath(cemuHome, "settings.xml"),
+                    "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<content>\n\t<Graphic>\n\t\t<api>1</api>\n\t</Graphic>\n\t<check_update>false</check_update>\n</content>\n"
+                );
+            }
         }
         return;
     }
@@ -466,22 +478,19 @@ void launcherSeedRoutedState(string project, string emulator, string configRoot,
         launcherCopyStateDir(project, "Azahar/config", joinPath(configRoot, "azahar-emu"));
         launcherCopyStateDir(project, "Azahar/data", joinPath(dataRoot, "azahar-emu"));
         launcherWriteAzaharConfig(project, configRoot, dataRoot);
-        // Azahar (like PCSX2/Cemu) ignores XDG_CONFIG_HOME and reads qt-config.ini from its own
-        // ~/.var/app dir. Force the Vulkan renderer there: vkBasalt only hooks the Vulkan
-        // swapchain, so the standalone CRT bezel composites only under Vulkan (OpenGL renders
-        // the game with no bezel). Verified on-Deck: with graphics_api=2 the 3ds bezel composites
-        // and libvkbasalt loads into azahar. Edit-in-place to keep the user's other settings.
-        string azaharHome = joinPath(Environment.get("HOME", ""), ".var/app/org.azahar_emu.Azahar/config/azahar-emu");
-        ensureDir(azaharHome);
-        string azaharCfg = joinPath(azaharHome, "qt-config.ini");
-        if (FileSystem.exists(azaharCfg)) {
-            string cur = FileSystem.readText(azaharCfg);
-            string upd = cur.replace("graphics_api=1", "graphics_api=2").replace("graphics_api\\default=true", "graphics_api\\default=false");
-            if (!upd.equals(cur)) {
-                SemuGeneratedFiles.writeAdapterState(project, azaharCfg, upd);
+        if (seedFlatpakHome) {
+            // Azahar also reads qt-config.ini from its Flatpak home; force Vulkan for vkBasalt.
+            string azaharHome = joinPath(Environment.get("HOME", ""), ".var/app/org.azahar_emu.Azahar/config/azahar-emu");
+            string azaharCfg = joinPath(azaharHome, "qt-config.ini");
+            if (FileSystem.exists(azaharCfg)) {
+                string cur = FileSystem.readText(azaharCfg);
+                string upd = cur.replace("graphics_api=1", "graphics_api=2").replace("graphics_api\\default=true", "graphics_api\\default=false");
+                if (!upd.equals(cur)) {
+                    SemuGeneratedFiles.writeExternalInstall("flatpak_home:azahar_config", azaharCfg, upd);
+                }
+            } else {
+                SemuGeneratedFiles.writeExternalInstall("flatpak_home:azahar_config", azaharCfg, azaharConfigTextForDataRoot(dataRoot));
             }
-        } else {
-            SemuGeneratedFiles.writeAdapterState(project, azaharCfg, azaharConfigTextForDataRoot(dataRoot));
         }
         return;
     }
@@ -547,7 +556,7 @@ int launcherRunRouted(string project, string emulator, string executable, Vector
     ensureDir(configRoot);
     ensureDir(dataRoot);
     ensureDir(cacheRoot);
-    launcherSeedRoutedState(project, emulator, configRoot, dataRoot);
+    launcherSeedEmulatorState(project, emulator, configRoot, dataRoot, false);
 
     Vector<string> finalArgs = [];
     if (emulator.toLower().equals("retroarch")) {
@@ -997,7 +1006,7 @@ int launcherRunFlatpak(string project, string emulator, string flatpakId, Vector
     ensureDir(configRoot);
     ensureDir(dataRoot);
     ensureDir(cacheRoot);
-    launcherSeedRoutedState(project, emulator, configRoot, dataRoot);
+    launcherSeedEmulatorState(project, emulator, configRoot, dataRoot, true);
     string command = "unset VK_ICD_FILENAMES LIBGL_ALWAYS_SOFTWARE; ";
     if (launcherStandaloneTap(project, emulator)) { command = command + launcherForceGLCommand(emulator); }  // force the OpenGL backend so the GL tap hooks
     if (launcherUsesX11(emulator)) {

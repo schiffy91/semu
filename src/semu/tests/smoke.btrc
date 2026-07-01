@@ -396,7 +396,7 @@ int e2eLifecycleSmoke(CliArgs args) {
     if (!e2eOk(SemuGeneratedFiles.isProjectSource(project, keymapSourcePath(project)), "keymap should be classified as owned source")) { return 1; }
     if (!e2eOk(SemuGeneratedFiles.isProjectSource(project, screenshotConfigPath(project)), "screenshot config should be classified as owned source")) { return 1; }
     if (!e2eOk(SemuGeneratedFiles.isProjectSource(project, joinPath(presentationSettingsRoot(project), "gb.json")), "presentation config should be classified as owned source")) { return 1; }
-    if (!e2eOk(SemuGeneratedFiles.isProjectGenerated(project, joinPath(project, "ES-DE/es_settings.xml")), "ES-DE settings should be classified as generated")) { return 1; }
+    if (!e2eOk(SemuGeneratedFiles.isProjectGenerated(project, esDeSettingsPath(project)), "ES-DE settings should be classified as generated")) { return 1; }
     if (!e2eOk(SemuGeneratedFiles.isProjectGenerated(project, emulatorProfilePath(project, "RetroArch/retroarch.cfg")), "emulator profile should be classified as generated")) { return 1; }
     if (!e2eOk(SemuGeneratedFiles.isProjectGenerated(project, emulatorProfilePath(project, "Dolphin/config/Dolphin.ini")), "Dolphin runtime config should be classified as generated")) { return 1; }
     if (!e2eOk(SemuGeneratedFiles.isProjectGenerated(project, emulatorProfilePath(project, "Dolphin/config/GCPadNew.ini")), "Dolphin runtime pad config should be classified as generated")) { return 1; }
@@ -459,7 +459,7 @@ int e2eLifecycleSmoke(CliArgs args) {
     e2eSeedFile(joinPath(joinPath(semuStateRoot(project), "appimage-state"), "gopher64/config/sentinel"));
     if (!e2eRunOk(e2eRunLifecycle(exe, home, "reconfigure", project, romsTwo), "reconfigure")) { return 1; }
     if (!e2eContains(FileSystem.readText(syncConfigPath(project)), romsTwo, "sync config after reconfigure")) { return 1; }
-    if (!e2eContains(FileSystem.readText(joinPath(project, "ES-DE/es_settings.xml")), romsTwo, "ES-DE settings after reconfigure")) { return 1; }
+    if (!e2eContains(FileSystem.readText(esDeSettingsPath(project)), romsTwo, "ES-DE settings after reconfigure")) { return 1; }
     if (!e2eOk(FileSystem.exists(joinPath(romsOne, "existing")), "original ROM root sentinel missing")) { return 1; }
     if (!e2eOk(!FileSystem.exists(joinPath(romsTwo, "gba")), "reconfigure mutated external ROM dirs")) { return 1; }
     if (!e2eOk(FileSystem.exists(joinPath(contentRoot(project), "saves/gba/game.sav")), "save should survive reconfigure")) { return 1; }
@@ -501,7 +501,7 @@ int e2eLifecycleSmoke(CliArgs args) {
     if (!e2eContains(FileSystem.readText(keymapSourcePath(project)), "action state.save = Ctrl+V", "keymap should survive upgrade")) { return 1; }
 
     if (!e2eRunOk(e2eRunLifecycleArgs(exe, home, project, ["uninstall", "--purge-generated", "--purge-state"]), "purge uninstall")) { return 1; }
-    if (!e2eOk(!FileSystem.exists(joinPath(project, "ES-DE/custom_systems")), "custom systems should be purged")) { return 1; }
+    if (!e2eOk(!FileSystem.exists(customSystemsRoot(project)), "custom systems should be purged")) { return 1; }
     if (!e2eOk(!FileSystem.exists(lifecycleStatePath(project)), "lifecycle state should be purged")) { return 1; }
 
     print("OK BTRC lifecycle smoke");
@@ -517,10 +517,10 @@ bool e2ePrepareSandbox(string project, string scratchRoot, string emulator) {
         return false;
     }
     ensureDir(scratch);
-    if (!e2eOk(sandboxApplyKnownLinks(emulator.toLower(), emuDir, scratch), "missing sandbox spec " + emulator)) {
+    if (!e2eOk(sandboxApplyKnownLinks(project, emulator.toLower(), emuDir, scratch), "missing sandbox spec " + emulator)) {
         return false;
     }
-    if (!e2eOk(sandboxApplyKnownLinks(emulator.toLower(), emuDir, scratch), "sandbox idempotency failed " + emulator)) {
+    if (!e2eOk(sandboxApplyKnownLinks(project, emulator.toLower(), emuDir, scratch), "sandbox idempotency failed " + emulator)) {
         return false;
     }
     return true;
@@ -549,13 +549,13 @@ int e2eSandboxSmoke() {
     if (!e2eAssertLink(joinPath(scratchRoot, "dolphin/.config/dolphin-emu/Dolphin.ini"), emulatorProfilePath(project, "Dolphin/config/Dolphin.ini"))) { return 1; }
     if (!e2eAssertLink(joinPath(scratchRoot, "dolphin/.local/share/dolphin-emu/Wii"), emulatorProfilePath(project, "Dolphin/data/Wii"))) { return 1; }
 
-    e2eSeedFile(joinPath(project, "ES-DE/ES-DE/ROMs/.keep"));
-    e2eSeedFile(joinPath(project, "ES-DE/es_settings.xml"));
-    e2eSeedFile(joinPath(project, "ES-DE/custom_systems/es_find_rules.xml"));
+    e2eSeedFile(joinPath(romsRoot(project), ".keep"));
+    e2eSeedFile(esDeSettingsPath(project));
+    e2eSeedFile(joinPath(customSystemsRoot(project), "es_find_rules.xml"));
     if (!e2ePrepareSandbox(project, scratchRoot, "es-de")) { return 1; }
-    if (!e2eAssertLink(joinPath(scratchRoot, "es-de/ES-DE/ROMs"), joinPath(project, "ES-DE/ES-DE/ROMs"))) { return 1; }
-    if (!e2eAssertLink(joinPath(scratchRoot, "es-de/ES-DE/settings/es_settings.xml"), joinPath(project, "ES-DE/es_settings.xml"))) { return 1; }
-    if (!e2eAssertLink(joinPath(scratchRoot, "es-de/ES-DE/custom_systems/es_find_rules.xml"), joinPath(project, "ES-DE/custom_systems/es_find_rules.xml"))) { return 1; }
+    if (!e2eAssertLink(joinPath(scratchRoot, "es-de/ES-DE/ROMs"), romsRoot(project))) { return 1; }
+    if (!e2eAssertLink(joinPath(scratchRoot, "es-de/ES-DE/settings/es_settings.xml"), esDeSettingsPath(project))) { return 1; }
+    if (!e2eAssertLink(joinPath(scratchRoot, "es-de/ES-DE/custom_systems/es_find_rules.xml"), joinPath(customSystemsRoot(project), "es_find_rules.xml"))) { return 1; }
 
     e2eSeedFile(emulatorProfilePath(project, "Lime3DS/data/qt-config.ini"));
     if (!e2ePrepareSandbox(project, scratchRoot, "lime3ds")) { return 1; }
@@ -577,7 +577,7 @@ int e2eSandboxSmoke() {
 
     if (!e2eOk(sandboxProjectEmulatorDir(project, "missing").len() == 0, "missing emulator unexpectedly resolved")) { return 1; }
     ensureDir(joinPath(project, "Foo"));
-    if (!e2eOk(!sandboxApplyKnownLinks("foo", joinPath(project, "Foo"), joinPath(scratchRoot, "foo")), "unknown emulator spec unexpectedly succeeded")) { return 1; }
+    if (!e2eOk(!sandboxApplyKnownLinks(project, "foo", joinPath(project, "Foo"), joinPath(scratchRoot, "foo")), "unknown emulator spec unexpectedly succeeded")) { return 1; }
 
     print("OK BTRC sandbox smoke");
     return 0;
@@ -694,10 +694,10 @@ int e2eSettingsSmoke(CliArgs args) {
 
     if (!e2eRunOk(e2eRunConfig(exe, home, project, ["set-roms", configRoot]), "config set-roms source-only")) { return 1; }
     if (!e2eContains(FileSystem.readText(syncConfigPath(project)), configRoms, "config set-roms persisted owned source")) { return 1; }
-    if (!e2eOk(!FileSystem.exists(joinPath(project, "ES-DE/es_settings.xml")), "config set-roms mutated generated ES-DE before apply")) { return 1; }
+    if (!e2eOk(!FileSystem.exists(esDeSettingsPath(project)), "config set-roms mutated generated ES-DE before apply")) { return 1; }
     if (!e2eRunOk(e2eRunConfig(exe, home, project, ["set-roms", sdRoot, "--apply"]), "config set-roms apply")) { return 1; }
     if (!e2eContains(FileSystem.readText(syncConfigPath(project)), normalizedRoms, "config set-roms apply persisted owned source")) { return 1; }
-    if (!e2eContains(FileSystem.readText(joinPath(project, "ES-DE/es_settings.xml")), normalizedRoms, "config set-roms apply regenerated ES-DE")) { return 1; }
+    if (!e2eContains(FileSystem.readText(esDeSettingsPath(project)), normalizedRoms, "config set-roms apply regenerated ES-DE")) { return 1; }
 
     ExecResult uiEdit = e2eRunSettingsUiScript(exe, home, project, "1\n" + sdRoot + "\na\nq\n");
     if (!e2eRunOk(uiEdit, "settings ui edit/apply")) { return 1; }
@@ -705,7 +705,7 @@ int e2eSettingsSmoke(CliArgs args) {
     if (!e2eContains(uiEdit.stdout(), "Edits update Semu-owned JSON", "settings ui owned boundary")) { return 1; }
     if (!e2eContains(uiEdit.stdout(), "ROM Directory", "settings ui rom row")) { return 1; }
     if (!e2eContains(FileSystem.readText(syncConfigPath(project)), normalizedRoms, "settings ui normalized ROM path")) { return 1; }
-    if (!e2eOk(FileSystem.exists(joinPath(project, "ES-DE/es_settings.xml")), "settings ui apply did not reconfigure ES-DE")) { return 1; }
+    if (!e2eOk(FileSystem.exists(esDeSettingsPath(project)), "settings ui apply did not reconfigure ES-DE")) { return 1; }
 
     ExecResult uiToggle = e2eRunSettingsUiScript(exe, home, project, "13\nq\n");
     if (!e2eRunOk(uiToggle, "settings ui toggle")) { return 1; }
@@ -755,7 +755,7 @@ int e2eSettingsSmoke(CliArgs args) {
     if (!e2eContains(e2eRunSync(exe, home, "/usr/bin", project, ["get", "sync_saves"]).stdout(), "sync_saves=false", "sync get edited value")) { return 1; }
     if (!e2eRunOk(e2eRunSync(exe, home, "/usr/bin", project, ["put", "sync_saves", "true", "--apply"]), "sync put apply")) { return 1; }
     if (!e2eContains(FileSystem.readText(syncConfigPath(project)), "\"sync_saves\": true", "sync apply persisted owned config")) { return 1; }
-    if (!e2eOk(FileSystem.exists(joinPath(project, "ES-DE/es_settings.xml")), "sync apply did not reconfigure ES-DE")) { return 1; }
+    if (!e2eOk(FileSystem.exists(esDeSettingsPath(project)), "sync apply did not reconfigure ES-DE")) { return 1; }
     if (!e2eRunOk(e2eRunSettings(exe, home, project, ["compile"]), "settings compile")) { return 1; }
     if (!e2eContains(FileSystem.readText(lifecycleStatePath(project)), "\"action\": \"compile\"", "settings compile lifecycle state")) { return 1; }
 

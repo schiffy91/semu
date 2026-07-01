@@ -1,7 +1,7 @@
 {
     "schema_version": 1,
     "paths": {
-        "project_content_root": "${project}/ES-DE/ES-DE",
+        "project_content_root": "${project}/.semu/content",
         "runtime_content_root": "${portable}",
         "roms": "${paths.runtime_content_root}/ROMs",
         "project_roms": "${paths.project_content_root}/ROMs",
@@ -20,13 +20,13 @@
         "themes": "${paths.runtime_content_root}/themes",
         "project_themes": "${paths.project_content_root}/themes",
         "custom_systems": "${paths.runtime_content_root}/custom_systems",
-        "project_custom_systems": "${project}/ES-DE/custom_systems",
+        "project_custom_systems": "${project}/build/packaging/es-de/custom_systems",
         "settings": "${paths.runtime_content_root}/settings",
-        "project_settings": "${project}/ES-DE",
+        "project_settings": "${project}/build/packaging/es-de/settings",
         "keymaps": "${project}/input/keymaps",
         "steam_input": "${project}/input/steam-input",
-        "emulator_profiles": "${project}/emulators/profiles",
-        "es_de_profiles": "${project}/emulators/es-de",
+        "emulator_profiles": "${project}/build/packaging/emulators/profiles",
+        "es_de_profiles": "${project}/build/packaging/es-de",
         "linux_packaging": "${project}/packaging/linux",
         "retroarch_system": "${paths.bios}"
     },
@@ -546,14 +546,14 @@
                 ]
             },
             "profiles": [
-                "emulators/profiles/RetroArch/retroarch.cfg.linux-backup",
-                "emulators/profiles/Dolphin/config/Profiles/GCPad/Steam Deck.ini",
-                "emulators/profiles/Dolphin/config/Profiles/Hotkeys/Steam Deck.ini",
-                "emulators/profiles/Dolphin/config/Profiles/Wiimote/Wiimote (SD).ini",
-                "emulators/profiles/Dolphin/config/Profiles/Wiimote/Wiimote + Classic Controller (SD).ini",
-                "emulators/profiles/Cemu/config/controllerProfiles/SteamInput-P1.xml",
-                "emulators/profiles/PCSX2/config/inputprofiles/Steam Deck.ini",
-                "emulators/profiles/Ryujinx/config/profiles/controller/Steam Virtual Controller.json"
+                "build/packaging/emulators/profiles/RetroArch/retroarch.cfg.linux-backup",
+                "build/packaging/emulators/profiles/Dolphin/config/Profiles/GCPad/Steam Deck.ini",
+                "build/packaging/emulators/profiles/Dolphin/config/Profiles/Hotkeys/Steam Deck.ini",
+                "build/packaging/emulators/profiles/Dolphin/config/Profiles/Wiimote/Wiimote (SD).ini",
+                "build/packaging/emulators/profiles/Dolphin/config/Profiles/Wiimote/Wiimote + Classic Controller (SD).ini",
+                "build/packaging/emulators/profiles/Cemu/config/controllerProfiles/SteamInput-P1.xml",
+                "build/packaging/emulators/profiles/PCSX2/config/inputprofiles/Steam Deck.ini",
+                "build/packaging/emulators/profiles/Ryujinx/config/profiles/controller/Steam Virtual Controller.json"
             ]
         }
     },
@@ -1348,7 +1348,7 @@
             "files": [
                 "keys.txt"
             ],
-            "target": "${project}/emulators/profiles/Cemu/data",
+            "target": "${project}/build/packaging/emulators/profiles/Cemu/data",
             "note": "Cemu needs user-supplied Wii U keys for encrypted content."
         },
         {

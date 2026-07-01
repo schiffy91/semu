@@ -324,7 +324,6 @@ void ensureProjectContentDirs(string project) {
     ensureDir(joinPath(contentRoot(project), "downloaded_media"));
     ensureDir(joinPath(contentRoot(project), "gamelists"));
     ensureDir(joinPath(contentRoot(project), "themes"));
-    ensureDir(customSystemsRoot(project));
 
     Vector<string> ids = declaredSystemIds();
     for id in ids {
@@ -421,9 +420,6 @@ void writeEsDeFiles(string project) {
     string systemsXml = catalog.esSystemsXml(project);
     SemuGeneratedFiles.writeProject(project, joinPath(customSystemsRoot(project), "es_systems.xml"), systemsXml);
 
-    ensureDir(esDeProfileCustomSystemsRoot(project));
-    SemuGeneratedFiles.writeProject(project, joinPath(esDeProfileCustomSystemsRoot(project), "es_systems.xml"), systemsXml);
-
     string packagingSystems = joinPath(linuxPackagingRoot(project), "ES-DE");
     ensureDir(packagingSystems);
     SemuGeneratedFiles.writeProject(project, joinPath(packagingSystems, "es_systems_linux.xml"), catalog.esSystemsXml("${project}"));
@@ -432,7 +428,7 @@ void writeEsDeFiles(string project) {
     string launcherBin = esLauncherBin(project);
     SemuGeneratedFiles.writeProject(project, joinPath(customSystemsRoot(project), "es_find_rules.xml"), esFindRulesXml(project, launcherBin));
 
-    SemuGeneratedFiles.writeProject(project, joinPath(project, "ES-DE/es_settings.xml"), esSettingsXmlForProject(project));
+    SemuGeneratedFiles.writeProject(project, esDeSettingsPath(project), esSettingsXmlForProject(project));
 }
 
 string esSettingsXmlForRuntime(string project, string romsDir) {

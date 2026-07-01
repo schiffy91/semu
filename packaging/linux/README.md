@@ -19,13 +19,14 @@ This tree is the Steam Deck-first runtime path for Semu.
   through `verification/screenshots.json`. When
   `SEMU_SCREENSHOT_HOOKS=1` is set, emulator launchers capture
   `before_launch`, delayed `after_spawn`, and `after_exit` images under
-  `ES-DE/ES-DE/screenshots/verification`.
+  `.semu/content/screenshots/verification` unless an external ROM/content root
+  is configured.
 
 Typical project setup:
 
 ```sh
 make btrc-build
-build/semu deck install --project "$PWD" --roms "$PWD/ES-DE/ES-DE/ROMs"
+build/semu deck install --project "$PWD" --roms "$PWD/.semu/content/ROMs"
 build/semu doctor --project "$PWD"
 build/semu screenshot status --project "$PWD"
 ```
