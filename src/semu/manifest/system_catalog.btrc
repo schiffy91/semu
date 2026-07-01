@@ -1,6 +1,7 @@
 class SystemCatalog {
     public Vector<string> ids;
     public Vector<string> romDirs;
+    public Vector<string> romExtensionSpecs;
     public Vector<string> linuxPrimaryCommands;
     public Vector<string> jsonSpecs;
     public Vector<string> esSystemSpecs;
@@ -8,6 +9,7 @@ class SystemCatalog {
     public SystemCatalog() {
         self.ids = [];
         self.romDirs = [];
+        self.romExtensionSpecs = [];
         self.linuxPrimaryCommands = [];
         self.jsonSpecs = [];
         self.esSystemSpecs = [];
@@ -27,6 +29,7 @@ class SystemCatalog {
     ) {
         self.ids.push(id);
         self.romDirs.push(romDir);
+        self.romExtensionSpecs.push(extensions.join("\n"));
         self.linuxPrimaryCommands.push(linuxCommands.len > 0 ? linuxCommands.get(0) : commandSpec("", ""));
         self.jsonSpecs.push(systemSpec(
             id,
@@ -74,6 +77,33 @@ string systemPrimaryLinuxCommand(string system) {
         }
     }
     return "";
+}
+
+string systemRomDir(string system) {
+    string wanted = systemCatalogCanonicalId(system);
+    SystemCatalog catalog = systemCatalog();
+    for (int i = 0; i < catalog.ids.len; i++) {
+        if (catalog.ids.get(i).equals(wanted)) {
+            return catalog.romDirs.get(i);
+        }
+    }
+    return wanted;
+}
+
+Vector<string> systemRomExtensions(string system) {
+    string wanted = systemCatalogCanonicalId(system);
+    SystemCatalog catalog = systemCatalog();
+    for (int i = 0; i < catalog.ids.len; i++) {
+        if (catalog.ids.get(i).equals(wanted)) {
+            Vector<string> values = [];
+            for extension in Strings.split(catalog.romExtensionSpecs.get(i), "\n") {
+                if (extension.len() > 0) { values.push(extension); }
+            }
+            return values;
+        }
+    }
+    Vector<string> empty = [];
+    return empty;
 }
 
 SystemCatalog systemCatalog() {

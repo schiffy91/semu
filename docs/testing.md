@@ -70,6 +70,16 @@ generated/build/semu deck visual-evidence gb \
   --print-launch-command --project "$PWD"
 ```
 
+To capture every declared system in one run, put representative ROMs under the
+normal ES-DE system folders and use `--capture-all`:
+
+```sh
+SEMU_TAP_STATE_DIR="$PWD/generated/test/tap-state" \
+  generated/build/semu deck visual-evidence --capture-all --allow-pending \
+  --rom-root "$PWD/generated/runtime/content/ROMs" \
+  --project "$PWD" --tap-state-dir "$PWD/generated/test/tap-state"
+```
+
 Each system's `start-of-gameplay-analysis.txt` must include the required
 tokens emitted in `generated/test/visual-evidence/VISUAL_EVIDENCE.md`,
 including emulator, alignment, cutout, input, radial-menu, bezel, shader, and
