@@ -108,9 +108,9 @@ Every declared system must expose the same live compositor surface:
    - Deck/VM/runtime tests prove launch, input, visual output, quit, and return
      to ES-DE.
    - Visual evidence lives under `generated/test/visual-evidence/` and must
-     include every system's `game-priority/A|B|C.jpg`,
-     `bezel-priority/A|B|C.jpg`, a 30-second start-of-gameplay clip, and an
-     analysis note naming the routed emulator and proving alignment, cutout
+     include every system's `game-priority/A|B|C|Off.jpg`,
+     `bezel-priority/A|B|C|Off.jpg`, a 30-second start-of-gameplay clip, and
+     an analysis note naming the routed emulator and proving alignment, cutout
      mask, bezel/shader variants, radial menu, input, and system-specific
      controls.
    - Visual production claims require screenshots or runtime proof from current

@@ -149,6 +149,7 @@ int e2eDeckEvidenceSmoke(CliArgs args) {
     if (!e2eContains(visualManifest, "\"emulator\": \"retroarch\"", "visual evidence manifest emulator contract")) { return 1; }
     if (!e2eContains(visualManifest, "\"viewport_alignment=ok\"", "visual evidence manifest analysis contract")) { return 1; }
     if (!e2eContains(visualManifest, "\"screenshot.game-priority.A=ok\"", "visual evidence manifest screenshot analysis token")) { return 1; }
+    if (!e2eContains(visualManifest, "\"screenshot.bezel-priority.Off=ok\"", "visual evidence manifest off screenshot analysis token")) { return 1; }
 
     string gbRom = joinPath(roms, "gb/game.gb");
     e2eSeedFile(gbRom);
@@ -170,15 +171,16 @@ int e2eDeckEvidenceSmoke(CliArgs args) {
     ExecResult visualCapture = e2eRunDeckVisualCapture(exe, home, project, tapStateDir);
     if (!e2eRunOk(visualCapture, "visual evidence capture with fake tools")) { return 1; }
     if (!e2eContains(visualCapture.stdout(), "OK capture gb screenshot game-priority/A", "visual capture screenshot status")) { return 1; }
+    if (!e2eContains(visualCapture.stdout(), "OK capture gb screenshot bezel-priority/Off", "visual capture off screenshot status")) { return 1; }
     if (!e2eContains(visualCapture.stdout(), "OK capture gb clip", "visual capture clip status")) { return 1; }
     if (!e2eContains(visualCapture.stdout(), "OK launch gb", "visual capture launch status")) { return 1; }
     if (!e2eContains(visualCapture.stdout(), "PENDING gb analysis", "visual capture keeps analysis human-owned")) { return 1; }
     if (!e2eOk(deckEvidenceFilePresent(deckVisualScreenshotPath(project, "gb", "game-priority", "A")), "captured game-priority A screenshot missing")) { return 1; }
-    if (!e2eOk(deckEvidenceFilePresent(deckVisualScreenshotPath(project, "gb", "bezel-priority", "C")), "captured bezel-priority C screenshot missing")) { return 1; }
+    if (!e2eOk(deckEvidenceFilePresent(deckVisualScreenshotPath(project, "gb", "bezel-priority", "Off")), "captured bezel-priority Off screenshot missing")) { return 1; }
     if (!e2eOk(deckEvidenceFilePresent(deckVisualClipPath(project, "gb")), "captured visual clip missing")) { return 1; }
     if (!e2eContains(FileSystem.readText(joinPath(tapStateDir, "semu-priority")), "b", "visual capture final priority state")) { return 1; }
-    if (!e2eContains(FileSystem.readText(joinPath(tapStateDir, "semu-bezel")), "2", "visual capture final bezel state")) { return 1; }
-    if (!e2eContains(FileSystem.readText(joinPath(tapStateDir, "semu-shader")), "2", "visual capture final shader state")) { return 1; }
+    if (!e2eContains(FileSystem.readText(joinPath(tapStateDir, "semu-bezel")), "3", "visual capture final bezel state")) { return 1; }
+    if (!e2eContains(FileSystem.readText(joinPath(tapStateDir, "semu-shader")), "3", "visual capture final shader state")) { return 1; }
     if (!e2eContains(FileSystem.readText(deckVisualLaunchLogPath(project, "gb")), "launched", "visual capture launch log")) { return 1; }
 
     for priority in deckVisualEvidencePriorities() {
@@ -211,9 +213,9 @@ int e2eDeckEvidenceSmoke(CliArgs args) {
     ExecResult visualCaptureAll = e2eRunDeckVisualCaptureAll(exe, home, project, roms, tapStateDir);
     if (!e2eRunOk(visualCaptureAll, "visual evidence capture-all with fake tools")) { return 1; }
     if (!e2eContains(visualCaptureAll.stdout(), "Capturing visual evidence batch", "visual capture-all batch status")) { return 1; }
-    if (!e2eContains(visualCaptureAll.stdout(), "OK capture switch screenshot bezel-priority/C", "visual capture-all switch status")) { return 1; }
+    if (!e2eContains(visualCaptureAll.stdout(), "OK capture switch screenshot bezel-priority/Off", "visual capture-all switch status")) { return 1; }
     if (!e2eContains(visualCaptureAll.stdout(), "OK capture ps2 clip", "visual capture-all ps2 clip status")) { return 1; }
-    if (!e2eOk(deckEvidenceFilePresent(deckVisualScreenshotPath(project, "switch", "bezel-priority", "C")), "capture-all switch screenshot missing")) { return 1; }
+    if (!e2eOk(deckEvidenceFilePresent(deckVisualScreenshotPath(project, "switch", "bezel-priority", "Off")), "capture-all switch screenshot missing")) { return 1; }
     if (!e2eOk(deckEvidenceFilePresent(deckVisualClipPath(project, "ps2")), "capture-all ps2 clip missing")) { return 1; }
     if (!e2eContains(FileSystem.readText(deckVisualLaunchLogPath(project, "n3ds")), "launched n3ds", "capture-all n3ds launch log")) { return 1; }
 
