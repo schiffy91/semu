@@ -350,13 +350,18 @@ string launcherRoutedExecutableCommand(string project, string emulator, string e
 
 string launcherRoutedEnvironment(string project, string emulator, string home, string configRoot, string dataRoot, string cacheRoot) {
     string roms = launchRomsRoot(project);
-    return "SEMU_PROJECT_DIR=" + ShellWords.quote(project)
+    string result = "SEMU_PROJECT_DIR=" + ShellWords.quote(project)
         + " SEMU_ROMS_DIR=" + ShellWords.quote(roms)
         + " SEMU_EMULATOR=" + ShellWords.quote(emulator)
         + " HOME=" + ShellWords.quote(home)
         + " XDG_CONFIG_HOME=" + ShellWords.quote(configRoot)
         + " XDG_DATA_HOME=" + ShellWords.quote(dataRoot)
         + " XDG_CACHE_HOME=" + ShellWords.quote(cacheRoot);
+    string tapStateDir = Environment.get("SEMU_TAP_STATE_DIR", "");
+    if (tapStateDir.len() > 0) {
+        result = result + " SEMU_TAP_STATE_DIR=" + ShellWords.quote(tapStateDir);
+    }
+    return result;
 }
 
 string launcherRoutedDisplaySetup() {
@@ -1104,6 +1109,11 @@ int launcherRunFlatpak(string project, string emulator, string flatpakId, Vector
         string tapLib = launcherTapLib(project);
         string tsys = launcherTapSystem(project, emulator, emulatorArgs);
         if (tapLib.len() > 0 && tsys.len() > 0) {
+            string tapStateDir = Environment.get("SEMU_TAP_STATE_DIR", "");
+            if (tapStateDir.len() > 0) {
+                flatpakArgs.push("--filesystem=" + tapStateDir + ":create");
+                flatpakArgs.push("--env=SEMU_TAP_STATE_DIR=" + tapStateDir);
+            }
             flatpakArgs.push("--filesystem=" + PathTools.dirname(tapLib) + ":ro");
             flatpakArgs.push("--env=LD_PRELOAD=" + tapLib);
             if (tapStandalone) {

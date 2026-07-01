@@ -292,6 +292,28 @@ ExecResult e2eRunDeckEnv(string exe, string home, string project, Vector<string>
     return shell.runCommand(command);
 }
 
+ExecResult e2eRunDeckVisualCapture(string exe, string home, string project, string tapStateDir) {
+    Command command = Command(exe)
+        .envVar("SEMU_HOME", home)
+        .envVar("SEMU_BIN", exe)
+        .envVar("PATH", "/usr/bin:/bin")
+        .envVar("SEMU_SCREENSHOT_CMD", "printf screenshot > ${output}")
+        .envVar("SEMU_VISUAL_CLIP_CMD", "printf clip > ${output}")
+        .arg("deck")
+        .arg("visual-evidence")
+        .arg("gb")
+        .arg("--capture")
+        .arg("--allow-pending")
+        .arg("--settle-seconds")
+        .arg("0")
+        .flag("--tap-state-dir", tapStateDir)
+        .flag("--project", project)
+        .capture(true)
+        .check(false);
+    UnixShell shell = UnixShell();
+    return shell.runCommand(command);
+}
+
 ExecResult e2eRunLauncher(string exe, string home, string project, string roms, string binDir, string captureDir, string bwrapPath, string emulator, Vector<string> emulatorArgs) {
     Command command = Command(exe)
         .envVar("SEMU_HOME", home)
@@ -1429,6 +1451,19 @@ int e2eDeckEvidenceSmoke(CliArgs args) {
     if (!e2eContains(visualManifest, "\"emulator\": \"retroarch\"", "visual evidence manifest emulator contract")) { return 1; }
     if (!e2eContains(visualManifest, "\"viewport_alignment=ok\"", "visual evidence manifest analysis contract")) { return 1; }
     if (!e2eContains(visualManifest, "\"screenshot.game-priority.A=ok\"", "visual evidence manifest screenshot analysis token")) { return 1; }
+
+    string tapStateDir = joinPath(generatedTestRoot(project), "tap-state");
+    ExecResult visualCapture = e2eRunDeckVisualCapture(exe, home, project, tapStateDir);
+    if (!e2eRunOk(visualCapture, "visual evidence capture with fake tools")) { return 1; }
+    if (!e2eContains(visualCapture.stdout(), "OK capture gb screenshot game-priority/A", "visual capture screenshot status")) { return 1; }
+    if (!e2eContains(visualCapture.stdout(), "OK capture gb clip", "visual capture clip status")) { return 1; }
+    if (!e2eContains(visualCapture.stdout(), "PENDING gb analysis", "visual capture keeps analysis human-owned")) { return 1; }
+    if (!e2eOk(deckEvidenceFilePresent(deckVisualScreenshotPath(project, "gb", "game-priority", "A")), "captured game-priority A screenshot missing")) { return 1; }
+    if (!e2eOk(deckEvidenceFilePresent(deckVisualScreenshotPath(project, "gb", "bezel-priority", "C")), "captured bezel-priority C screenshot missing")) { return 1; }
+    if (!e2eOk(deckEvidenceFilePresent(deckVisualClipPath(project, "gb")), "captured visual clip missing")) { return 1; }
+    if (!e2eContains(FileSystem.readText(joinPath(tapStateDir, "semu-priority")), "b", "visual capture final priority state")) { return 1; }
+    if (!e2eContains(FileSystem.readText(joinPath(tapStateDir, "semu-bezel")), "2", "visual capture final bezel state")) { return 1; }
+    if (!e2eContains(FileSystem.readText(joinPath(tapStateDir, "semu-shader")), "2", "visual capture final shader state")) { return 1; }
 
     for priority in deckVisualEvidencePriorities() {
         for variant in deckVisualEvidenceVariants() {
