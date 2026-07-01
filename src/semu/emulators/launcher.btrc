@@ -641,46 +641,29 @@ string launcherTapLib(string project) {
 }
 // Core native scanline height per system (drives the tap's largest-integer scaling). Default 240.
 string launcherTapNativeH(string system) {
-    string s = system.toLower();
-    if (s.equals("snes") || s.equals("superfamicom") || s.equals("sfc") || s.equals("super_nintendo")) { return "224"; }
-    if (s.equals("genesis") || s.equals("megadrive") || s.equals("megadrive-japan")) { return "224"; }
-    if (s.equals("gb") || s.equals("gbc") || s.equals("gameboy") || s.equals("gbcolor")) { return "144"; }
-    if (s.equals("gba")) { return "160"; }
-    if (s.equals("nds")) { return "384"; }  // both DS screens stacked (256x384 combined frame)
-    return "240"; // nes, n64, psx, default
+    RenderOptionSpec spec = RenderOptionCatalog.find(system);
+    return spec.known() ? spec.nativeH : "240";
 }
 // Core native PIXEL width (base render width). With video_scale_integer RetroArch renders the game at
 // native_w*N x native_h*N (square pixels); the tap remaps that into the era-accurate display rect (aspect).
 string launcherTapNativeW(string system) {
-    string s = system.toLower();
-    if (s.equals("genesis") || s.equals("megadrive") || s.equals("megadrive-japan") || s.equals("n64") || s.equals("psx") || s.equals("playstation")) { return "320"; }
-    if (s.equals("gba")) { return "240"; }
-    if (s.equals("gb") || s.equals("gbc") || s.equals("gameboy") || s.equals("gbcolor")) { return "160"; }
-    return "256"; // nes, snes, nds, default
+    RenderOptionSpec spec = RenderOptionCatalog.find(system);
+    return spec.known() ? spec.nativeW : "256";
 }
 // Era-accurate bezel STYLE: handhelds get an LCD plastic shell (no scanlines), consoles a CRT-TV.
 string launcherTapStyle(string system) {
-    string s = system.toLower();
-    if (s.equals("gb") || s.equals("gbc") || s.equals("gba") || s.equals("gameboy") || s.equals("gbcolor") || s.equals("nds")) { return "handheld"; }
-    return "console";
+    RenderOptionSpec spec = RenderOptionCatalog.find(system);
+    return spec.known() ? spec.style : "console";
 }
 // Handheld shell tint (R,G,B 0..1), era colors. Default neutral grey (consoles ignore it).
 string launcherTapShell(string system) {
-    string s = system.toLower();
-    if (s.equals("gb") || s.equals("gameboy")) { return "0.60,0.64,0.55"; }
-    if (s.equals("gba")) { return "0.34,0.32,0.52"; }
-    if (s.equals("nds")) { return "0.82,0.82,0.85"; }
-    return "0.55,0.56,0.60";
+    RenderOptionSpec spec = RenderOptionCatalog.find(system);
+    return spec.known() ? spec.shell : "0.55,0.56,0.60";
 }
 // Display aspect per system (game width = height * this). Default 4:3.
 string launcherTapAspect(string system) {
-    string s = system.toLower();
-    if (s.equals("gba")) { return "1.5"; }
-    if (s.equals("gb") || s.equals("gbc") || s.equals("gameboy") || s.equals("gbcolor")) { return "1.111"; }
-    if (s.equals("nds")) { return "256:384"; }  // both screens stacked (portrait combined frame)
-    if (s.equals("switch") || s.equals("wiiu") || s.equals("psp")) { return "1.7778"; }  // 16:9 HD-era standalone
-    if (s.equals("3ds") || s.equals("n3ds")) { return "400:480"; }  // 3DS dual screen (top 400w, both 240h stacked)
-    return "1.3333";   // ps2, gc, dreamcast, psx, nes/snes/genesis/n64 (4:3)
+    RenderOptionSpec spec = RenderOptionCatalog.find(system);
+    return spec.known() ? spec.aspect : "1.3333";
 }
 // Default render mode for the live compositor toggle: 3D cores render high-res (sharp) and the compositor
 // shows the soft 240p look by default; 2D cores render native pixels, no downsample (the CRT shader softens).
@@ -692,24 +675,20 @@ string launcherRetroStart(string system) {
 // Default geometry priority: handhelds -> BEZEL (show the whole device shell); consoles -> GAME (fill the
 // screen). The radial Home key toggles it live.
 string launcherTapPriority(string system) {
-    string s = system.toLower();
-    if (s.equals("gb") || s.equals("gbc") || s.equals("gba") || s.equals("gameboy") || s.equals("gbcolor") || s.equals("nds")) { return "bezel"; }
-    return "game";
+    RenderOptionSpec spec = RenderOptionCatalog.find(system);
+    return spec.known() ? spec.priority : "game";
 }
 // Dual-screen systems (nds, 3ds): the compositor splits the combined frame into two independently
 // laid-out + scaled screens (vertical/horizontal via the radial).
 string launcherTapDual(string system) {
-    string s = system.toLower();
-    if (s.equals("nds") || s.equals("3ds") || s.equals("n3ds")) { return "1"; }
-    return "0";
+    RenderOptionSpec spec = RenderOptionCatalog.find(system);
+    return spec.known() ? spec.dual : "0";
 }
 // System kind for the compositor's dynamically-generated per-system menu: 1 = dual-screen (nds/3ds:
 // vertical/horizontal + per-screen scale), 2 = wii/wiiu (controller layouts), 0 = generic.
 string launcherTapSysKind(string system) {
-    string s = system.toLower();
-    if (s.equals("nds") || s.equals("3ds") || s.equals("n3ds")) { return "1"; }
-    if (s.equals("wii") || s.equals("wiiu")) { return "2"; }
-    return "0";
+    RenderOptionSpec spec = RenderOptionCatalog.find(system);
+    return spec.known() ? spec.systemKind : "0";
 }
 // The tap system for an emulator: RetroArch derives it from the ROM path; the STANDALONE emulators map
 // 1:1 to their console so they get the same bezel + shader + cutout treatment as RetroArch (full parity).
@@ -775,9 +754,8 @@ string launcherForceGLCommand(string emulator) {
 // leaves the game floating at 1x. Fill the device's screen hole at the display aspect (non-integer,
 // like Duimon's HSM_NON_INTEGER_SCALE) so the LCD area is properly filled.
 string launcherTapFill(string system) {
-    string s = system.toLower();
-    if (s.equals("gb") || s.equals("gbc") || s.equals("gba") || s.equals("gameboy") || s.equals("gbcolor")) { return "1"; }
-    return "0";
+    RenderOptionSpec spec = RenderOptionCatalog.find(system);
+    return spec.known() ? spec.fill : "0";
 }
 // Screen-glass layer per variant: its alpha is the EXACT screen cutout mask (real rounded-corner device
 // screen — replaces the fake corner-rounding), its rgb the glass/reflections. "" = none (CRT consoles use
@@ -793,20 +771,20 @@ string launcherTapGlass(string project, string system, string variant) {
 }
 // Reflection/glare strength (0 disables). Handhelds get a visible glass sheen; CRT consoles a subtle glare.
 string launcherTapReflect(string system) {
-    string s = system.toLower();
-    if (s.equals("gb") || s.equals("gbc") || s.equals("gba") || s.equals("gameboy") || s.equals("gbcolor")) { return "0.55"; }
-    if (s.equals("n64") || s.equals("nes") || s.equals("famicom") || s.equals("snes") || s.equals("genesis") || s.equals("megadrive") || s.equals("psx") || s.equals("playstation")) { return "0.18"; }
-    return "0.0";
+    RenderOptionSpec spec = RenderOptionCatalog.find(system);
+    return spec.known() ? spec.reflect : "0.0";
 }
 // CRT barrel curvature (0 = flat). Only force it where the bezel's screen is genuinely curved; the Soqueroeu
 // "Console-Night" CRT reads near-flat, so 0 for now (tunable per bezel).
-string launcherTapCurve(string system) { return "0.0"; }
+string launcherTapCurve(string system) {
+    RenderOptionSpec spec = RenderOptionCatalog.find(system);
+    return spec.known() ? spec.curve : "0.0";
+}
 // Procedural screen-mask corner radius for systems WITHOUT a glass layer (CRT consoles) — a subtle round
 // matching the tube. Handhelds use the glass mask, so this is unused for them.
 string launcherTapCorner(string system) {
-    string s = system.toLower();
-    if (s.equals("gb") || s.equals("gbc") || s.equals("gba")) { return "0.0"; }
-    return "0.045";
+    RenderOptionSpec spec = RenderOptionCatalog.find(system);
+    return spec.known() ? spec.corner : "0.045";
 }
 
 // --- Mega Bezel .slangp parser (btrc port of packaging/steamdeck/tap/mbparse.c) ---
@@ -907,8 +885,11 @@ string launcherPatchedRA(string project) {
 // bezel by packaging/steamdeck/tap/gen-bezel-manifest.sh -> config/assets/bezels.json (no hand-measured offsets;
 // that was the off-center bug). Regenerate that after adding/changing bezel art.
 string launcherTapScreen(string project, string system) {
+    string key = renderBezelManifestKey(system);
+    string hole = bezelManifestHole(project, key);
+    if (hole.len() > 0) { return hole; }
     string s = system.toLower();
-    if (s.equals("ps2") || s.equals("dreamcast")) { return bezelManifestHole(project, "psx"); }   // reuse the CRT-TV holes
+    if (s.equals("ps2") || s.equals("dreamcast")) { return bezelManifestHole(project, "psx"); }
     if (s.equals("gc")) { return bezelManifestHole(project, "n64"); }
     return bezelManifestHole(project, system);
 }
@@ -929,8 +910,11 @@ string launcherTapArtFile(string project, string system) {
     if (s.equals("gb") || s.equals("gameboy")) { rel = "semu-shells/gb.png"; }
     if (s.equals("gbc") || s.equals("gbcolor")) { rel = "semu-shells/gbc.png"; }
     if (s.equals("gba")) { rel = "semu-shells/gba.png"; }
-    if (rel.len() == 0) { return ""; }
-    return launcherResolveArtRel(rel);
+    if (rel.len() > 0) {
+        string art = launcherResolveArtRel(rel);
+        if (art.len() > 0) { return art; }
+    }
+    return launcherTapGenericArt(project, s);
 }
 // Resolve a Mega_Bezel_Packs-relative art path against the asset roots.
 string launcherResolveArtRel(string rel) {
@@ -942,6 +926,37 @@ string launcherResolveArtRel(string rel) {
     if (home.len() > 0) { string p2 = joinPath(home, joinPath("semu-run/usr", base)); if (FileSystem.isFile(p2)) { return p2; } }
     return "";
 }
+
+string launcherResolveConfigAsset(string project, string rel) {
+    if (rel.len() == 0) { return ""; }
+    string fromProject = joinPath(configRoot(project), joinPath("assets", rel));
+    if (FileSystem.isFile(fromProject)) { return fromProject; }
+
+    string assetRoot = Environment.get("SEMU_ASSET_ROOT", "");
+    if (assetRoot.len() > 0) {
+        string bundled = joinPath(assetRoot, joinPath("share/semu-bezel", rel));
+        if (FileSystem.isFile(bundled)) { return bundled; }
+    }
+
+    string home = Environment.get("HOME", "");
+    if (home.len() > 0) {
+        string local = joinPath(home, joinPath(".local/share/semu-bezel", rel));
+        if (FileSystem.isFile(local)) { return local; }
+    }
+    return "";
+}
+
+string launcherTapGenericArt(string project, string system) {
+    string profile = RenderOptionCatalog.find(system).assetProfile;
+    if (profile.equals("wide16x9")) {
+        return launcherResolveConfigAsset(project, "reshade/bezel-16x9.png");
+    }
+    if (profile.equals("dual")) {
+        return launcherResolveConfigAsset(project, "reshade/bezel-3ds.png");
+    }
+    return launcherResolveConfigAsset(project, "reshade/bezel-4x3.png");
+}
+
 // Bezel VARIANTS (toggle-bezel a/b/c). Same TV glass (same hole), different finish -> just swap the texture.
 string launcherTapArtVariant(string project, string system, string variant) {
     string s = system.toLower();
@@ -970,8 +985,11 @@ string launcherTapArtVariant(string project, string system, string variant) {
     if (s.equals("gba")) {
         if (variant.equals("b")) { rel = "semu-shells/gba-b.png"; }
     }
-    if (rel.len() == 0) { return ""; }
-    return launcherResolveArtRel(rel);
+    if (rel.len() > 0) {
+        string art = launcherResolveArtRel(rel);
+        if (art.len() > 0) { return art; }
+    }
+    return launcherTapGenericArt(project, s);
 }
 // Per-variant screen hole, for variants that are a DIFFERENT device model than the base (so the screen
 // sits elsewhere). Empty -> the variant shares the base hole (a recolor of the same model). x,y,w,h norm.
@@ -983,13 +1001,7 @@ string launcherTapScreenVariant(string system, string variant) {
 // Declared bezel variants (asset-independent enumeration; keep in sync with launcherTapArtVariant above).
 // Base "A" is always present when the system has bezel art; B/C are extra finishes/models.
 string launcherTapVariants(string system) {
-    string s = system.toLower();
-    if (s.equals("snes") || s.equals("superfamicom") || s.equals("sfc") || s.equals("super_nintendo")) { return "A B C"; }
-    if (s.equals("genesis") || s.equals("megadrive") || s.equals("megadrive-japan")) { return "A B C"; }
-    if (s.equals("gb") || s.equals("gameboy") || s.equals("gbc") || s.equals("gbcolor")) { return "A B C"; }
-    if (s.equals("nes") || s.equals("famicom") || s.equals("gba")) { return "A B"; }
-    if (s.equals("n64") || s.equals("psx") || s.equals("ps2") || s.equals("dreamcast") || s.equals("gc")) { return "A"; }
-    return "";   // no bundled bezel art yet (nds/psp/n3ds/wii/wiiu/switch)
+    return renderBezelVariants(system);
 }
 
 int launcherRunFlatpak(string project, string emulator, string flatpakId, Vector<string> emulatorArgs) {

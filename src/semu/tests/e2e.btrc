@@ -37,6 +37,9 @@ int e2eCommand(CliArgs args) {
     if (mode.equals("settings")) {
         return e2eSettingsSmoke(args);
     }
+    if (mode.equals("render-options")) {
+        return e2eRenderOptionsSmoke(args);
+    }
     if (mode.equals("deck-evidence") || mode.equals("game-mode-evidence")) {
         return e2eDeckEvidenceSmoke(args);
     }
@@ -57,6 +60,8 @@ int e2eCommand(CliArgs args) {
         if (settingsStatus != 0) { return settingsStatus; }
         int presentationStatus = e2ePresentationSmoke(args);
         if (presentationStatus != 0) { return presentationStatus; }
+        int renderOptionsStatus = e2eRenderOptionsSmoke(args);
+        if (renderOptionsStatus != 0) { return renderOptionsStatus; }
         int deckEvidenceStatus = e2eDeckEvidenceSmoke(args);
         if (deckEvidenceStatus != 0) { return deckEvidenceStatus; }
         int n3dsStatus = e2eN3dsNoCryptoSmoke(args);
