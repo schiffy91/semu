@@ -105,6 +105,10 @@ Every declared system must expose the same live compositor surface:
    - AppImage smoke proves package assembly with fakes.
    - Deck/VM/runtime tests prove launch, input, visual output, quit, and return
      to ES-DE.
+   - Visual evidence lives under `generated/test/visual-evidence/` and must
+     include every system's `game-priority/A|B|C.jpg`,
+     `bezel-priority/A|B|C.jpg`, a 30-second start-of-gameplay clip, and an
+     analysis note proving visual and input checks.
    - Visual production claims require screenshots or runtime proof from current
      artifacts.
 
