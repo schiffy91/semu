@@ -16,6 +16,7 @@ result *
 .semu/
 .mcp.json
 .deck-smoke/
+deck-shots/
 
 # === VM images ===
 tests/vms/
@@ -23,15 +24,11 @@ tests/vms/
 # === Backups (large zips) ===
 backups/
 
-# === Emulator runtime data (large, per-machine, or copyrighted) ===
-# ROMs and scraped media
-ES-DE/ES-DE/ROMs/
-ES-DE/ES-DE/bios/
-ES-DE/ES-DE/downloaded_media/
-ES-DE/ES-DE/saves/
-ES-DE/ES-DE/states/
-ES-DE/ES-DE/screenshots/
+# === Emulator runtime data (large, per-machine, generated, or copyrighted) ===
+ES-DE/
 packaging/linux/proof/
+packaging/deck-tap/*.so
+emulators/profiles/
 
 # Common licensed game/media/emulator payloads. Source/config exceptions should
 # be added explicitly rather than broadening these patterns.
@@ -85,18 +82,11 @@ Cemu/config/
 Cemu/data/
 Dolphin/config/
 Dolphin/data/
-ES-DE/ES-DE/gamelists/
-ES-DE/ES-DE/themes/
 Lime3DS/data/
 PCSX2/config/
 RetroArch/config/
 RetroArch/retroarch.cfg
-emulators/profiles/RetroArch/retroarch.cfg
 Ryujinx/config/
-
-# ES-DE settings (written by ES-DE at runtime)
-ES-DE/es_settings.xml
-ES-DE/custom_systems/
 
 # Sync runtime data. Keep the editable sync profile, ignore generated service
 # helpers, logs, and Syncthing's local keys/database.

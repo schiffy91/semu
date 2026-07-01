@@ -15,9 +15,9 @@ forAllSystems (system: let
           commandName = "retroarch";
           executableName = "retroarch";
           seedScript = ''
-            mkdir -p "$project/emulators/profiles/RetroArch/config"
-            printf 'seed input\n' > "$project/emulators/profiles/RetroArch/config/input.cfg"
-            printf 'seed retroarch\n' > "$project/emulators/profiles/RetroArch/retroarch.cfg"
+            mkdir -p "$profiles/RetroArch/config"
+            printf 'seed input\n' > "$profiles/RetroArch/config/input.cfg"
+            printf 'seed retroarch\n' > "$profiles/RetroArch/retroarch.cfg"
           '';
           stateAssertions = ''
             grep -F 'ARG=--config' "$capture"
@@ -33,9 +33,9 @@ forAllSystems (system: let
           commandName = "dolphin-emu";
           executableName = "dolphin-emu";
           seedScript = ''
-            mkdir -p "$project/emulators/profiles/Dolphin/config" "$project/emulators/profiles/Dolphin/data"
-            printf 'seed dolphin config\n' > "$project/emulators/profiles/Dolphin/config/settings.ini"
-            printf 'seed dolphin data\n' > "$project/emulators/profiles/Dolphin/data/memory-card.raw"
+            mkdir -p "$profiles/Dolphin/config" "$profiles/Dolphin/data"
+            printf 'seed dolphin config\n' > "$profiles/Dolphin/config/settings.ini"
+            printf 'seed dolphin data\n' > "$profiles/Dolphin/data/memory-card.raw"
           '';
           stateAssertions = ''
             test -f "$state/config/dolphin-emu/settings.ini"
@@ -48,9 +48,9 @@ forAllSystems (system: let
           emulatorName = "ppsspp";
           commandName = "ppsspp";
           seedScript = ''
-            mkdir -p "$project/emulators/profiles/PPSSPP/config" "$project/emulators/profiles/PPSSPP/data"
-            printf 'seed ppsspp config\n' > "$project/emulators/profiles/PPSSPP/config/ppsspp.ini"
-            printf 'seed ppsspp data\n' > "$project/emulators/profiles/PPSSPP/data/save.bin"
+            mkdir -p "$profiles/PPSSPP/config" "$profiles/PPSSPP/data"
+            printf 'seed ppsspp config\n' > "$profiles/PPSSPP/config/ppsspp.ini"
+            printf 'seed ppsspp data\n' > "$profiles/PPSSPP/data/save.bin"
           '';
           stateAssertions = ''
             test -f "$state/config/ppsspp/ppsspp.ini"
@@ -63,9 +63,9 @@ forAllSystems (system: let
           emulatorName = "flycast";
           commandName = "flycast";
           seedScript = ''
-            mkdir -p "$project/emulators/profiles/Flycast/config" "$project/emulators/profiles/Flycast/data"
-            printf 'seed flycast config\n' > "$project/emulators/profiles/Flycast/config/emu.cfg"
-            printf 'seed flycast data\n' > "$project/emulators/profiles/Flycast/data/flash.bin"
+            mkdir -p "$profiles/Flycast/config" "$profiles/Flycast/data"
+            printf 'seed flycast config\n' > "$profiles/Flycast/config/emu.cfg"
+            printf 'seed flycast data\n' > "$profiles/Flycast/data/flash.bin"
           '';
           stateAssertions = ''
             test -f "$state/config/flycast/emu.cfg"
@@ -79,9 +79,9 @@ forAllSystems (system: let
           commandName = "melonDS";
           executableName = "melonDS";
           seedScript = ''
-            mkdir -p "$project/emulators/profiles/melonDS/config" "$project/emulators/profiles/melonDS/data"
-            printf 'seed melonds config\n' > "$project/emulators/profiles/melonDS/config/melonDS.ini"
-            printf 'seed melonds data\n' > "$project/emulators/profiles/melonDS/data/firmware.bin"
+            mkdir -p "$profiles/melonDS/config" "$profiles/melonDS/data"
+            printf 'seed melonds config\n' > "$profiles/melonDS/config/melonDS.ini"
+            printf 'seed melonds data\n' > "$profiles/melonDS/data/firmware.bin"
           '';
           stateAssertions = ''
             test -f "$state/config/melonDS/melonDS.ini"
@@ -94,8 +94,8 @@ forAllSystems (system: let
           emulatorName = "pcsx2";
           commandName = "pcsx2-qt";
           seedScript = ''
-            mkdir -p "$project/emulators/profiles/PCSX2/config"
-            printf 'seed pcsx2 config\n' > "$project/emulators/profiles/PCSX2/config/PCSX2.ini"
+            mkdir -p "$profiles/PCSX2/config"
+            printf 'seed pcsx2 config\n' > "$profiles/PCSX2/config/PCSX2.ini"
           '';
           stateAssertions = ''
             test -f "$state/config/PCSX2/PCSX2.ini"
@@ -106,9 +106,9 @@ forAllSystems (system: let
           emulatorName = "cemu";
           commandName = "cemu";
           seedScript = ''
-            mkdir -p "$project/emulators/profiles/Cemu/config" "$project/emulators/profiles/Cemu/data"
-            printf 'seed cemu config\n' > "$project/emulators/profiles/Cemu/config/settings.xml"
-            printf 'seed cemu data\n' > "$project/emulators/profiles/Cemu/data/mlc.bin"
+            mkdir -p "$profiles/Cemu/config" "$profiles/Cemu/data"
+            printf 'seed cemu config\n' > "$profiles/Cemu/config/settings.xml"
+            printf 'seed cemu data\n' > "$profiles/Cemu/data/mlc.bin"
           '';
           stateAssertions = ''
             test -f "$state/config/Cemu/settings.xml"
@@ -121,8 +121,8 @@ forAllSystems (system: let
           emulatorName = "azahar";
           commandName = "azahar";
           seedScript = ''
-            mkdir -p "$project/emulators/profiles/Azahar/data"
-            printf 'seed azahar data\n' > "$project/emulators/profiles/Azahar/data/qt-config.ini"
+            mkdir -p "$profiles/Azahar/data"
+            printf 'seed azahar data\n' > "$profiles/Azahar/data/qt-config.ini"
           '';
           stateAssertions = ''
             test -f "$state/data/azahar-emu/qt-config.ini"
@@ -133,8 +133,8 @@ forAllSystems (system: let
           emulatorName = "ryujinx";
           commandName = "Ryujinx";
           seedScript = ''
-            mkdir -p "$project/emulators/profiles/Ryujinx/config"
-            printf 'seed ryujinx config\n' > "$project/emulators/profiles/Ryujinx/config/Config.json"
+            mkdir -p "$profiles/Ryujinx/config"
+            printf 'seed ryujinx config\n' > "$profiles/Ryujinx/config/Config.json"
           '';
           stateAssertions = ''
             test -f "$state/config/Ryujinx/Config.json"
@@ -174,12 +174,16 @@ forAllSystems (system: let
         nativeBuildInputs = [ pkgs.coreutils pkgs.gnugrep ];
       } ''
         project="$TMPDIR/project-${spec.emulatorName}"
+        profiles="$project/build/packaging/emulators/profiles"
         capture="$TMPDIR/${spec.emulatorName}.capture"
         mkdir -p "$project"
         ${spec.seedScript}
 
+        HOME="$project/home" \
+        SEMU_HOME="$project/home" \
         SEMU_PROJECT_DIR="$project" \
         SEMU_CAPTURE="$capture" \
+        SEMU_FORCE_ROUTED_NIX=1 \
         ${mockRoutedEmulator}/bin/semu-${spec.emulatorName} \
           "roms/${spec.emulatorName} game.rom" \
           "--sentinel=${spec.emulatorName}"
@@ -187,7 +191,7 @@ forAllSystems (system: let
         state="$project/.semu/appimage-state/${spec.emulatorName}"
         grep -F "COMMAND=${spec.commandName}" "$capture"
         grep -F "SEMU_PROJECT_DIR=$project" "$capture"
-        grep -F "SEMU_ROMS_DIR=$project/ES-DE/ES-DE/ROMs" "$capture"
+        grep -F "SEMU_ROMS_DIR=$project/.semu/content/ROMs" "$capture"
         grep -F "HOME=$state/home" "$capture"
         grep -F "XDG_CONFIG_HOME=$state/config" "$capture"
         grep -F "XDG_DATA_HOME=$state/data" "$capture"

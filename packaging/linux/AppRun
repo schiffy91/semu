@@ -121,7 +121,7 @@ if [ -z "${SEMU_PROJECT_DIR:-}" ]; then
       "$HOME/Emulation" \
       "$HOME/Games/Emulation"; do
     if [ -d "$candidate" ] && { [ -f "$candidate/semu.json" ] || \
-         [ -f "$candidate/ES-DE/custom_systems/es_systems.xml" ]; }; then
+         [ -f "$candidate/build/packaging/es-de/custom_systems/es_systems.xml" ]; }; then
       export SEMU_PROJECT_DIR="$candidate"
       break
     fi
@@ -166,16 +166,16 @@ detect_roms_dir() {
       /mnt/SD/Emulation/ES-DE/ES-DE/ROMs \
       /run/media/deck/SD \
       /mnt/SD \
-      /run/media/deck/*/Emulation/ROMs \
       /run/media/deck/*/Emulation/ES-DE/ES-DE/ROMs \
+      /run/media/deck/*/Emulation/ROMs \
       /run/media/deck/*/ROMs \
-      "$SEMU_PROJECT_DIR/ES-DE/ES-DE/ROMs"; do
+      "$SEMU_PROJECT_DIR/.semu/content/ROMs"; do
     if [ -d "$candidate" ]; then
       printf '%s\n' "$candidate"
       return
     fi
   done
-  printf '%s\n' "$SEMU_PROJECT_DIR/ES-DE/ES-DE/ROMs"
+  printf '%s\n' "$SEMU_PROJECT_DIR/.semu/content/ROMs"
 }
 
 export SEMU_ROMS_DIR="${SEMU_ROMS_DIR:-$(detect_roms_dir "$@")}"

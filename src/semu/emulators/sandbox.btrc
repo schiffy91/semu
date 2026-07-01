@@ -27,6 +27,9 @@ string sandboxResolveTarget(string scratch, string target) {
 
 string sandboxProjectEmulatorDir(string project, string emulator) {
     string wanted = emulator.toLower();
+    if (wanted.equals("es-de")) {
+        return project;
+    }
     string profileRoot = emulatorProfilesRoot(project);
     for name in FileSystem.listDir(profileRoot) {
         string candidate = joinPath(profileRoot, name);
@@ -49,6 +52,22 @@ void sandboxSymlink(string linkPath, string sourcePath) {
     FileSystem.symlink(sourcePath, linkPath);
 }
 
+void sandboxSymlinkIfExists(string linkPath, string sourcePath) {
+    if (FileSystem.exists(sourcePath)) {
+        sandboxSymlink(linkPath, sourcePath);
+    }
+}
+
+void sandboxSymlinkDirChildren(string destDir, string sourceDir) {
+    if (!FileSystem.isDir(sourceDir)) {
+        return;
+    }
+    ensureDir(destDir);
+    for child in FileSystem.listDir(sourceDir) {
+        sandboxSymlink(joinPath(destDir, child), joinPath(sourceDir, child));
+    }
+}
+
 void sandboxApplyLink(string emuDir, string scratch, string entry, string linuxTarget) {
     string source = joinPath(emuDir, entry);
     if (!FileSystem.exists(source)) {
@@ -65,7 +84,7 @@ void sandboxApplyLink(string emuDir, string scratch, string entry, string linuxT
     sandboxSymlink(joinPath(destDir, PathTools.basename(source)), source);
 }
 
-bool sandboxApplyKnownLinks(string key, string emuDir, string scratch) {
+bool sandboxApplyKnownLinks(string project, string key, string emuDir, string scratch) {
     if (key.equals("azahar")) {
         sandboxApplyLink(emuDir, scratch, "data", "~/.local/share/azahar-emu/");
         return true;
@@ -81,9 +100,9 @@ bool sandboxApplyKnownLinks(string key, string emuDir, string scratch) {
         return true;
     }
     if (key.equals("es-de")) {
-        sandboxApplyLink(emuDir, scratch, "ES-DE", "${portable}/");
-        sandboxApplyLink(emuDir, scratch, "es_settings.xml", "${portable}/settings/");
-        sandboxApplyLink(emuDir, scratch, "custom_systems", "${portable}/custom_systems/");
+        sandboxSymlinkIfExists(joinPath(scratch, "ES-DE/ROMs"), romsRoot(project));
+        sandboxSymlinkIfExists(joinPath(scratch, "ES-DE/settings/es_settings.xml"), esDeSettingsPath(project));
+        sandboxSymlinkDirChildren(joinPath(scratch, "ES-DE/custom_systems"), customSystemsRoot(project));
         return true;
     }
     if (key.equals("lime3ds")) {
@@ -188,7 +207,7 @@ int sandboxLaunch(string project, string emulator, string executable, Vector<str
         print(f"sandbox: no emulator directory for '{emulator}' under {project}");
         return 3;
     }
-    if (!sandboxApplyKnownLinks(emulator.toLower(), emuDir, scratch)) {
+    if (!sandboxApplyKnownLinks(project, emulator.toLower(), emuDir, scratch)) {
         print(f"sandbox: no BTRC symlink spec for '{emulator}'");
         return 3;
     }
@@ -292,7 +311,7 @@ int sandboxPrepareCommand(CliArgs args, string project) {
         return 3;
     }
     ensureDir(scratch);
-    bool ok = sandboxApplyKnownLinks(emulator.toLower(), emuDir, scratch);
+    bool ok = sandboxApplyKnownLinks(project, emulator.toLower(), emuDir, scratch);
     if (!ok) {
         print(f"sandbox: no BTRC symlink spec for '{emulator}'");
         return 3;

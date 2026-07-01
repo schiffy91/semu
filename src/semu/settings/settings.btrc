@@ -188,7 +188,7 @@ class SettingsEntrySpec {
 
 class SettingsEntries {
     class string root(string project) {
-        return joinPath(settingsRoot(project), "es-de");
+        return esDeSettingsEntriesRoot(project);
     }
 
     class Vector<SettingsEntrySpec> all() {

@@ -135,14 +135,11 @@ string semuGeneratedProjectScope(string project, string path) {
     if (path.equals(joinPath(project, "semu.json"))) {
         return "manifest";
     }
-    if (path.equals(joinPath(project, "ES-DE/es_settings.xml"))) {
+    if (path.equals(esDeSettingsPath(project))) {
         return "es_de_settings";
     }
     if (semuPathWithin(path, customSystemsRoot(project))) {
         return "es_de_custom_systems";
-    }
-    if (semuPathWithin(path, esDeProfileCustomSystemsRoot(project))) {
-        return "es_de_profile";
     }
     if (semuPathWithin(path, linuxPackagingRoot(project))) {
         return "linux_packaging";
@@ -153,7 +150,7 @@ string semuGeneratedProjectScope(string project, string path) {
     if (semuPathWithin(path, joinPath(project, "input/steam-input"))) {
         return "steam_input_templates";
     }
-    if (semuPathWithin(path, joinPath(project, "settings/es-de"))) {
+    if (semuPathWithin(path, esDeSettingsEntriesRoot(project))) {
         return "settings_entries";
     }
     if (semuPathWithin(path, joinPath(project, "settings/presentation-state"))) {

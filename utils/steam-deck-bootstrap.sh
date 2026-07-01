@@ -168,10 +168,10 @@ default_roms_dir() {
     /run/media/deck/*/Emulation/ROMs \
     /run/media/deck/*/Emulation/ES-DE/ES-DE/ROMs \
     /run/media/deck/*/ROMs \
-    "$PROJECT/ES-DE/ES-DE/ROMs"; do
+    "$PROJECT/.semu/content/ROMs"; do
     [ -d "$candidate" ] && { printf '%s\n' "$candidate"; return; }
   done
-  printf '%s\n' "$PROJECT/ES-DE/ES-DE/ROMs"
+  printf '%s\n' "$PROJECT/.semu/content/ROMs"
 }
 
 normalize_roms_dir() {

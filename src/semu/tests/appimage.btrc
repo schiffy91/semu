@@ -380,7 +380,7 @@ int e2eAppImageSmoke(CliArgs args) {
         print(bootstrap.stdout());
         return bootstrap.code;
     }
-    if (!e2eFileContains(joinPath(bootstrapProject, "ES-DE/custom_systems/es_find_rules.xml"), joinPath(launcherBin, "semu-retroarch"), "bootstrap launcher bin")) { return 1; }
+    if (!e2eFileContains(joinPath(customSystemsRoot(bootstrapProject), "es_find_rules.xml"), joinPath(launcherBin, "semu-retroarch"), "bootstrap launcher bin")) { return 1; }
 
     FileSystem.removeRecursive(tmp);
     print("OK AppImage assembly smoke");

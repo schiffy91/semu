@@ -17,7 +17,7 @@
 #
 # Usage: gen-bezel-manifest.sh [ASSET_ROOT]
 #   ASSET_ROOT = dir holding share/libretro/shaders/Mega_Bezel_Packs/... (the staged bundle assets).
-#   If a PNG isn't found there, falls back to deck-shots/asset-<system>.png for local dev.
+#   PNGs must come from ASSET_ROOT or from the checked-in handheld shell assets.
 set -euo pipefail
 
 REPO="$(cd "$(dirname "$0")/../.." && pwd)"
@@ -44,7 +44,6 @@ resolve_png() {  # $1=system $2=relpath -> echoes a readable path or empty
     p="$ROOT/share/libretro/shaders/Mega_Bezel_Packs/$rel"; [ -f "$p" ] && { echo "$p"; return; }
     p="$ROOT/$rel";                                          [ -f "$p" ] && { echo "$p"; return; }
   fi
-  p="$REPO/deck-shots/asset-${sys}.png"; [ -f "$p" ] && { echo "$p"; return; }   # dev fallback
   echo ""
 }
 
@@ -98,7 +97,7 @@ for row in "${TABLE[@]}"; do
     echo "OVERRIDE $sys: hole=$hx,$hy,$hw,$hh ($aspect)"
   else
     png="$(resolve_png "$sys" "$rel")"
-    if [ -z "$png" ]; then echo "WARN: $sys: no PNG found (looked under ROOT + deck-shots/asset-$sys.png) — skipped"; continue; fi
+    if [ -z "$png" ]; then echo "WARN: $sys: no PNG found under ASSET_ROOT for $rel — skipped"; continue; fi
     if ! read -r W H gx gy gw gh < <(measure_glass "$png"); then
       echo "WARN: $sys: glass auto-detect failed for $png — skipped (add a manual override)"; continue
     fi
