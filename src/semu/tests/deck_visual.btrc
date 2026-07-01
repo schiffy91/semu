@@ -119,11 +119,11 @@ string deckVisualLaunchPidPath(string project, string system) {
     return joinPath(deckVisualEvidenceRoot(project), joinPath(system, "launch.pid"));
 }
 
-string deckVisualExpandLaunchCommandTemplate(CliArgs args, string project, string value, string system) {
+string deckVisualExpandLaunchCommandTemplate(CliArgs args, string project, string value, string system, string rom) {
     string result = Strings.replace(value, "${project}", ShellWords.quote(project));
     result = Strings.replace(result, "${system}", ShellWords.quote(system));
     result = Strings.replace(result, "${emulator}", ShellWords.quote(deckVisualExpectedEmulator(system)));
-    result = Strings.replace(result, "${rom}", ShellWords.quote(args.valueAfter("--rom", "")));
+    result = Strings.replace(result, "${rom}", ShellWords.quote(rom));
     return result;
 }
 
@@ -164,12 +164,54 @@ string deckVisualCatalogLaunchCommand(string project, string system, string rom)
     return result;
 }
 
-string deckVisualLaunchCommand(CliArgs args, string project, string system) {
+string deckVisualLaunchCommandForRom(CliArgs args, string project, string system, string rom) {
     string command = args.valueAfter("--launch-command", "");
     if (command.len() > 0) {
-        return deckVisualExpandLaunchCommandTemplate(args, project, command, system);
+        return deckVisualExpandLaunchCommandTemplate(args, project, command, system, rom);
     }
-    return deckVisualCatalogLaunchCommand(project, system, args.valueAfter("--rom", ""));
+    return deckVisualCatalogLaunchCommand(project, system, rom);
+}
+
+string deckVisualLaunchCommand(CliArgs args, string project, string system) {
+    return deckVisualLaunchCommandForRom(args, project, system, args.valueAfter("--rom", ""));
+}
+
+string deckVisualRomRoot(CliArgs args, string project) {
+    string explicit = args.valueAfter("--rom-root", args.valueAfter("--roms", ""));
+    if (explicit.len() > 0) { return explicit; }
+    return configuredRomsRoot(project);
+}
+
+string deckVisualFindRomInDir(string dir, Vector<string> extensions, int depth) {
+    if (!FileSystem.isDir(dir)) { return ""; }
+    Vector<string> entries = FileSystem.listDir(dir);
+    for extension in extensions {
+        string lowerExt = extension.toLower();
+        for name in entries {
+            string path = joinPath(dir, name);
+            if (FileSystem.isFile(path) && name.toLower().endsWith(lowerExt)) {
+                return path;
+            }
+        }
+    }
+    if (depth <= 0) { return ""; }
+    for name in entries {
+        if (name.startsWith(".")) { continue; }
+        string path = joinPath(dir, name);
+        if (FileSystem.isDir(path)) {
+            string found = deckVisualFindRomInDir(path, extensions, depth - 1);
+            if (found.len() > 0) { return found; }
+        }
+    }
+    return "";
+}
+
+string deckVisualRepresentativeRom(CliArgs args, string project, string system) {
+    string explicit = args.valueAfter("--rom", "");
+    if (explicit.len() > 0) { return explicit; }
+    string root = deckVisualRomRoot(args, project);
+    string dir = joinPath(root, systemRomDir(system));
+    return deckVisualFindRomInDir(dir, systemRomExtensions(system), 3);
 }
 
 bool deckVisualStartLaunchCommand(CliArgs args, string project, string system, string command) {
@@ -210,15 +252,18 @@ void deckVisualStopLaunchCommand(string project, string system) {
     );
 }
 
-bool deckVisualCaptureSystem(CliArgs args, string project, string system) {
+bool deckVisualCaptureSystemWithRom(CliArgs args, string project, string system, string rom) {
     string stateDir = deckVisualCaptureTapStateDir(args, project);
     string settle = deckVisualCaptureSettleSeconds(args);
     string emulator = deckVisualExpectedEmulator(system);
     bool ok = true;
     print("Capturing visual evidence for " + system);
     print("  tap_state_dir: " + stateDir);
+    if (rom.len() > 0) {
+        print("  rom: " + rom);
+    }
 
-    string launchCommand = deckVisualLaunchCommand(args, project, system);
+    string launchCommand = deckVisualLaunchCommandForRom(args, project, system, rom);
     bool launched = false;
     if (launchCommand.len() > 0) {
         launched = deckVisualStartLaunchCommand(args, project, system, launchCommand);
@@ -247,6 +292,29 @@ bool deckVisualCaptureSystem(CliArgs args, string project, string system) {
     }
     if (launched && !args.has("--leave-running")) {
         deckVisualStopLaunchCommand(project, system);
+    }
+    return ok;
+}
+
+bool deckVisualCaptureSystem(CliArgs args, string project, string system) {
+    return deckVisualCaptureSystemWithRom(args, project, system, args.valueAfter("--rom", ""));
+}
+
+bool deckVisualCaptureAll(CliArgs args, string project, Vector<string> systems) {
+    bool ok = true;
+    string romRoot = deckVisualRomRoot(args, project);
+    print("Capturing visual evidence batch");
+    print("  rom_root: " + romRoot);
+    for system in systems {
+        string rom = deckVisualRepresentativeRom(args, project, system);
+        if (rom.len() == 0) {
+            print("PENDING " + system + " representative ROM under " + joinPath(romRoot, systemRomDir(system)));
+            ok = false;
+            continue;
+        }
+        if (!deckVisualCaptureSystemWithRom(args, project, system, rom)) {
+            ok = false;
+        }
     }
     return ok;
 }
@@ -451,6 +519,11 @@ int deckVisualEvidenceCommand(CliArgs args, string project) {
 
     bool prepare = args.has("--prepare");
     bool capture = args.has("--capture");
+    bool captureAll = args.has("--capture-all");
+    if (capture && captureAll) {
+        print("error 0:0 pass only one of --capture or --capture-all");
+        return 1;
+    }
     if (capture && systems.len != 1) {
         print("error 0:0 --capture requires exactly one visual system; pass --system <id> or a positional system");
         return 1;
@@ -472,7 +545,7 @@ int deckVisualEvidenceCommand(CliArgs args, string project) {
     string root = deckVisualEvidenceRoot(project);
     ensureDir(root);
 
-    if (prepare || capture) {
+    if (prepare || capture || captureAll) {
         SemuGeneratedFiles.writeProject(project, deckVisualEvidenceChecklistPath(project), deckVisualEvidenceChecklistText(project, systems));
         SemuGeneratedFiles.writeProjectJson(project, deckVisualEvidenceManifestPath(project), deckVisualEvidenceManifestJson(project, systems));
         print("OK prepared visual evidence manifest: " + deckVisualEvidenceManifestPath(project));
@@ -481,6 +554,10 @@ int deckVisualEvidenceCommand(CliArgs args, string project) {
     if (capture && !deckVisualCaptureSystem(args, project, systems.get(0))) {
         print("PENDING Semu visual evidence capture");
         return 2;
+    }
+    bool captureAllOk = true;
+    if (captureAll) {
+        captureAllOk = deckVisualCaptureAll(args, project, systems);
     }
 
     print("Semu visual evidence");
@@ -538,5 +615,5 @@ int deckVisualEvidenceCommand(CliArgs args, string project) {
         return 0;
     }
     print("PENDING Semu visual evidence");
-    return allowPending ? 0 : 2;
+    return (allowPending && (!captureAll || captureAllOk)) ? 0 : 2;
 }

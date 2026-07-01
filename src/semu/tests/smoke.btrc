@@ -318,6 +318,40 @@ ExecResult e2eRunDeckVisualCapture(string exe, string home, string project, stri
     return shell.runCommand(command);
 }
 
+void e2eSeedRepresentativeVisualRoms(string romRoot) {
+    for system in declaredSystemIds() {
+        Vector<string> extensions = systemRomExtensions(system);
+        string extension = extensions.len > 0 ? extensions.get(0) : ".rom";
+        e2eSeedFile(joinPath(romRoot, joinPath(systemRomDir(system), "visual-proof" + extension)));
+    }
+}
+
+ExecResult e2eRunDeckVisualCaptureAll(string exe, string home, string project, string romRoot, string tapStateDir) {
+    Command command = Command(exe)
+        .envVar("SEMU_HOME", home)
+        .envVar("SEMU_BIN", exe)
+        .envVar("PATH", "/usr/bin:/bin")
+        .envVar("SEMU_SCREENSHOT_CMD", "printf screenshot > ${output}")
+        .envVar("SEMU_VISUAL_CLIP_CMD", "printf clip > ${output}")
+        .arg("deck")
+        .arg("visual-evidence")
+        .arg("--capture-all")
+        .arg("--allow-pending")
+        .arg("--settle-seconds")
+        .arg("0")
+        .arg("--launch-command")
+        .arg("printf 'launched '; printf ${system}; printf ' '; printf ${rom}; printf '\\n'; sleep 5")
+        .arg("--launch-wait-seconds")
+        .arg("0")
+        .flag("--rom-root", romRoot)
+        .flag("--tap-state-dir", tapStateDir)
+        .flag("--project", project)
+        .capture(true)
+        .check(false);
+    UnixShell shell = UnixShell();
+    return shell.runCommand(command);
+}
+
 ExecResult e2eRunLauncher(string exe, string home, string project, string roms, string binDir, string captureDir, string bwrapPath, string emulator, Vector<string> emulatorArgs) {
     Command command = Command(exe)
         .envVar("SEMU_HOME", home)
