@@ -51,6 +51,15 @@ SEMU_TAP_STATE_DIR="$PWD/generated/test/tap-state" \
   --project "$PWD" --tap-state-dir "$PWD/generated/test/tap-state"
 ```
 
+The capture command can also own the launch lifecycle when given an explicit
+command template:
+
+```sh
+generated/build/semu deck visual-evidence gb --capture --allow-pending \
+  --launch-command 'generated/build/semu launcher retroarch -L "$CORE" "$ROM"' \
+  --launch-wait-seconds 10 --project "$PWD"
+```
+
 Each system's `start-of-gameplay-analysis.txt` must include the required
 tokens emitted in `generated/test/visual-evidence/VISUAL_EVIDENCE.md`,
 including emulator, alignment, cutout, input, radial-menu, bezel, shader, and
