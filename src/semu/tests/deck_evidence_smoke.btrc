@@ -1,0 +1,324 @@
+// ---- deck_evidence_smoke.btrc ----
+string e2eQuitEvidenceText(string emulator, bool quit) {
+    Vector<string> lines = [
+        "time=1 start child=100 command=" + emulator,
+        "time=2 exit child=100 status=0 quit_requested=0"
+    ];
+    if (quit) {
+        lines = [
+            "time=1 start child=100 command=" + emulator,
+            "time=2 terminate child=100 reason=select+start",
+            "time=3 exit child=100 status=143 quit_requested=1"
+        ];
+    }
+    return textLines(lines);
+}
+
+string e2eStateEvidenceText(string emulator, bool save, bool load) {
+    Vector<string> lines = [
+        "time=1 emulator=" + emulator + " action=launch result=ok"
+    ];
+    if (save) {
+        lines.push("time=2 emulator=" + emulator + " action=state.save result=ok slot=1");
+    }
+    if (load) {
+        lines.push("time=3 emulator=" + emulator + " action=state.load result=ok slot=1");
+    }
+    return textLines(lines);
+}
+
+string e2eVisualAnalysisText(string system) {
+    return textLines(deckVisualAnalysisRequiredTokens(system));
+}
+
+void e2eSeedVisualEvidence(string project, Vector<string> systems) {
+    for system in systems {
+        for priority in deckVisualEvidencePriorities() {
+            for variant in deckVisualEvidenceVariants() {
+                SemuGeneratedFiles.writeProject(
+                    project,
+                    deckVisualScreenshotPath(project, system, priority, variant),
+                    "fake jpg " + system + " " + priority + " " + variant + "\n"
+                );
+            }
+        }
+        SemuGeneratedFiles.writeProject(project, deckVisualClipPath(project, system), "fake mp4 " + system + "\n");
+        SemuGeneratedFiles.writeProject(project, deckVisualAnalysisPath(project, system), e2eVisualAnalysisText(system));
+    }
+}
+
+string e2ePresentationAuditOkText(string project) {
+    return jsonPrettyText(jsonObject([
+        jsonField("schema_version", "1"),
+        jsonStrField("project", project),
+        jsonStrField("system", ""),
+        jsonBoolField("strict", true),
+        jsonField("ok_count", "0"),
+        jsonField("missing_system_count", "0"),
+        jsonField("missing_asset_count", "0"),
+        jsonField("missing_dependency_count", "0"),
+        jsonField("disabled_count", "0"),
+        jsonField("systems", "[]")
+    ]));
+}
+
+int e2eDeckEvidenceSmoke(CliArgs args) {
+    string tmp = e2eTempDir("semu-deck-evidence-smoke");
+    string project = joinPath(tmp, "project");
+    string home = joinPath(tmp, "home");
+    string roms = joinPath(tmp, "roms");
+    string exe = e2eExecutable(args);
+    ensureDir(project);
+    ensureDir(home);
+    ensureDir(roms);
+    if (!e2eRunOk(e2eRunLifecycle(exe, home, "install", project, roms), "deck evidence lifecycle install")) { return 1; }
+
+    ExecResult missing = e2eRunDeck(exe, home, project, ["game-mode-evidence", "retroarch"]);
+    if (!e2eOk(!missing.ok(), "missing Game Mode evidence unexpectedly succeeded")) { return 1; }
+    if (!e2eContains(missing.stdout(), "PENDING retroarch", "missing evidence status")) { return 1; }
+
+    ExecResult prepare = e2eRunDeck(exe, home, project, ["game-mode-evidence", "retroarch", "--prepare"]);
+    if (!e2eRunOk(prepare, "game-mode evidence prepare")) { return 1; }
+    string checklist = joinPath(semuStateRoot(project), "verification/game-mode-checklist.txt");
+    if (!e2eOk(FileSystem.exists(checklist), "Game Mode checklist missing")) { return 1; }
+    if (!e2eContains(FileSystem.readText(checklist), "physical left-trackpad radial menu", "Game Mode checklist physical input")) { return 1; }
+    if (!e2eOk(SemuGeneratedFiles.isAdapterState(project, checklist), "Game Mode checklist should be adapter state")) { return 1; }
+
+    string retroarchLog = deckQuitEvidencePath(project, "retroarch");
+    SemuGeneratedFiles.writeAdapterState(project, retroarchLog, e2eQuitEvidenceText("retroarch", false));
+    ExecResult partial = e2eRunDeck(exe, home, project, ["game-mode-evidence", "retroarch", "--allow-pending"]);
+    if (!e2eRunOk(partial, "partial Game Mode evidence with allow-pending")) { return 1; }
+    if (!e2eContains(partial.stdout(), "PARTIAL retroarch", "partial evidence status")) { return 1; }
+    if (!e2eOk(!e2eRunDeck(exe, home, project, ["game-mode-evidence", "retroarch"]).ok(), "partial Game Mode evidence unexpectedly succeeded")) { return 1; }
+
+    SemuGeneratedFiles.writeAdapterState(project, retroarchLog, e2eQuitEvidenceText("retroarch", true));
+    ExecResult ok = e2eRunDeck(exe, home, project, ["game-mode-evidence", "--emulator", "retroarch"]);
+    if (!e2eRunOk(ok, "complete Game Mode evidence")) { return 1; }
+    if (!e2eContains(ok.stdout(), "OK retroarch", "complete evidence status")) { return 1; }
+
+    for emulator in lowercaseValues(linuxLauncherNames()) {
+        SemuGeneratedFiles.writeAdapterState(project, deckQuitEvidencePath(project, emulator), e2eQuitEvidenceText(emulator, true));
+    }
+    ExecResult all = e2eRunDeck(exe, home, project, ["game-mode-evidence"]);
+    if (!e2eRunOk(all, "all Game Mode evidence")) { return 1; }
+    if (!e2eContains(all.stdout(), "OK Game Mode quit evidence", "all evidence status")) { return 1; }
+    if (!e2eOk(!e2eRunDeck(exe, home, project, ["game-mode-evidence", "gopher64"]).ok(), "unknown evidence emulator unexpectedly succeeded")) { return 1; }
+
+    ExecResult stateMissing = e2eRunDeck(exe, home, project, ["state-evidence", "retroarch"]);
+    if (!e2eOk(!stateMissing.ok(), "missing state evidence unexpectedly succeeded")) { return 1; }
+    if (!e2eContains(stateMissing.stdout(), "PENDING retroarch", "missing state evidence status")) { return 1; }
+
+    ExecResult statePrepare = e2eRunDeck(exe, home, project, ["state-evidence", "retroarch", "--prepare"]);
+    if (!e2eRunOk(statePrepare, "state evidence prepare")) { return 1; }
+    string stateChecklist = deckStateEvidenceChecklistPath(project);
+    if (!e2eOk(FileSystem.exists(stateChecklist), "state evidence checklist missing")) { return 1; }
+    if (!e2eContains(FileSystem.readText(stateChecklist), "physical left-trackpad radial Save State", "state checklist physical save")) { return 1; }
+    if (!e2eOk(SemuGeneratedFiles.isAdapterState(project, stateChecklist), "state checklist should be adapter state")) { return 1; }
+
+    string stateLog = deckStateEvidencePath(project, "retroarch");
+    SemuGeneratedFiles.writeAdapterState(project, stateLog, e2eStateEvidenceText("retroarch", true, false));
+    ExecResult statePartial = e2eRunDeck(exe, home, project, ["state-evidence", "retroarch", "--allow-pending"]);
+    if (!e2eRunOk(statePartial, "partial state evidence with allow-pending")) { return 1; }
+    if (!e2eContains(statePartial.stdout(), "save=ok load=missing", "partial state evidence status")) { return 1; }
+    if (!e2eOk(!e2eRunDeck(exe, home, project, ["state-evidence", "retroarch"]).ok(), "partial state evidence unexpectedly succeeded")) { return 1; }
+
+    SemuGeneratedFiles.writeAdapterState(project, stateLog, e2eStateEvidenceText("retroarch", true, true));
+    ExecResult stateOk = e2eRunDeck(exe, home, project, ["state-evidence", "--emulator", "retroarch"]);
+    if (!e2eRunOk(stateOk, "complete state evidence")) { return 1; }
+    if (!e2eContains(stateOk.stdout(), "OK retroarch", "complete state evidence status")) { return 1; }
+    if (!e2eOk(!e2eRunDeck(exe, home, project, ["state-evidence", "ppsspp"]).ok(), "disabled state evidence emulator unexpectedly succeeded")) { return 1; }
+
+    for emulator in deckStateEvidenceEmulators() {
+        SemuGeneratedFiles.writeAdapterState(project, deckStateEvidencePath(project, emulator), e2eStateEvidenceText(emulator, true, true));
+    }
+    ExecResult stateAll = e2eRunDeck(exe, home, project, ["state-evidence"]);
+    if (!e2eRunOk(stateAll, "all generated state evidence")) { return 1; }
+    if (!e2eContains(stateAll.stdout(), "OK Game Mode state evidence", "all state evidence status")) { return 1; }
+
+    ExecResult visualMissing = e2eRunDeck(exe, home, project, ["visual-evidence", "gb"]);
+    if (!e2eOk(!visualMissing.ok(), "missing visual evidence unexpectedly succeeded")) { return 1; }
+    if (!e2eContains(visualMissing.stdout(), "PENDING gb screenshot game-priority/A", "missing visual evidence screenshot status")) { return 1; }
+
+    ExecResult visualPrepare = e2eRunDeck(exe, home, project, ["visual-evidence", "gb", "--prepare"]);
+    if (!e2eRunOk(visualPrepare, "visual evidence prepare")) { return 1; }
+    if (!e2eOk(FileSystem.exists(deckVisualEvidenceChecklistPath(project)), "visual evidence checklist missing")) { return 1; }
+    if (!e2eOk(FileSystem.exists(deckVisualEvidenceManifestPath(project)), "visual evidence manifest missing")) { return 1; }
+    if (!e2eOk(SemuGeneratedFiles.isProjectGenerated(project, deckVisualEvidenceManifestPath(project)), "visual evidence manifest should be generated test output")) { return 1; }
+    if (!e2eContains(FileSystem.readText(deckVisualEvidenceChecklistPath(project)), "duration_s=30", "visual evidence checklist analysis contract")) { return 1; }
+    string visualManifest = FileSystem.readText(deckVisualEvidenceManifestPath(project));
+    if (!e2eContains(visualManifest, "\"emulator\": \"retroarch\"", "visual evidence manifest emulator contract")) { return 1; }
+    if (!e2eContains(visualManifest, "\"viewport_alignment=ok\"", "visual evidence manifest analysis contract")) { return 1; }
+    if (!e2eContains(visualManifest, "\"screenshot.game-priority.A=ok\"", "visual evidence manifest screenshot analysis token")) { return 1; }
+
+    string gbRom = joinPath(roms, "gb/game.gb");
+    e2eSeedFile(gbRom);
+    ExecResult gbLaunchPlan = e2eRunDeck(exe, home, project, ["visual-evidence", "gb", "--rom", gbRom, "--print-launch-command"]);
+    if (!e2eRunOk(gbLaunchPlan, "visual launch plan for retroarch system")) { return 1; }
+    if (!e2eContains(gbLaunchPlan.stdout(), " launcher retroarch", "visual launch plan retroarch route")) { return 1; }
+    if (!e2eContains(gbLaunchPlan.stdout(), "gambatte_libretro.so", "visual launch plan core")) { return 1; }
+    if (!e2eContains(gbLaunchPlan.stdout(), gbRom, "visual launch plan ROM path")) { return 1; }
+
+    string ps2Rom = joinPath(roms, "ps2/game.iso");
+    e2eSeedFile(ps2Rom);
+    ExecResult ps2LaunchPlan = e2eRunDeck(exe, home, project, ["visual-evidence", "ps2", "--rom", ps2Rom, "--print-launch-command"]);
+    if (!e2eRunOk(ps2LaunchPlan, "visual launch plan for standalone system")) { return 1; }
+    if (!e2eContains(ps2LaunchPlan.stdout(), " launcher pcsx2", "visual launch plan standalone route")) { return 1; }
+    if (!e2eContains(ps2LaunchPlan.stdout(), "-batch -fullscreen", "visual launch plan standalone flags")) { return 1; }
+    if (!e2eContains(ps2LaunchPlan.stdout(), ps2Rom, "visual launch plan standalone ROM path")) { return 1; }
+
+    string tapStateDir = joinPath(generatedTestRoot(project), "tap-state");
+    ExecResult visualCapture = e2eRunDeckVisualCapture(exe, home, project, tapStateDir);
+    if (!e2eRunOk(visualCapture, "visual evidence capture with fake tools")) { return 1; }
+    if (!e2eContains(visualCapture.stdout(), "OK capture gb screenshot game-priority/A", "visual capture screenshot status")) { return 1; }
+    if (!e2eContains(visualCapture.stdout(), "OK capture gb clip", "visual capture clip status")) { return 1; }
+    if (!e2eContains(visualCapture.stdout(), "OK launch gb", "visual capture launch status")) { return 1; }
+    if (!e2eContains(visualCapture.stdout(), "PENDING gb analysis", "visual capture keeps analysis human-owned")) { return 1; }
+    if (!e2eOk(deckEvidenceFilePresent(deckVisualScreenshotPath(project, "gb", "game-priority", "A")), "captured game-priority A screenshot missing")) { return 1; }
+    if (!e2eOk(deckEvidenceFilePresent(deckVisualScreenshotPath(project, "gb", "bezel-priority", "C")), "captured bezel-priority C screenshot missing")) { return 1; }
+    if (!e2eOk(deckEvidenceFilePresent(deckVisualClipPath(project, "gb")), "captured visual clip missing")) { return 1; }
+    if (!e2eContains(FileSystem.readText(joinPath(tapStateDir, "semu-priority")), "b", "visual capture final priority state")) { return 1; }
+    if (!e2eContains(FileSystem.readText(joinPath(tapStateDir, "semu-bezel")), "2", "visual capture final bezel state")) { return 1; }
+    if (!e2eContains(FileSystem.readText(joinPath(tapStateDir, "semu-shader")), "2", "visual capture final shader state")) { return 1; }
+    if (!e2eContains(FileSystem.readText(deckVisualLaunchLogPath(project, "gb")), "launched", "visual capture launch log")) { return 1; }
+
+    for priority in deckVisualEvidencePriorities() {
+        for variant in deckVisualEvidenceVariants() {
+            SemuGeneratedFiles.writeProject(
+                project,
+                deckVisualScreenshotPath(project, "gb", priority, variant),
+                "fake jpg gb " + priority + " " + variant + "\n"
+            );
+        }
+    }
+    SemuGeneratedFiles.writeProject(project, deckVisualClipPath(project, "gb"), "fake mp4 gb\n");
+    SemuGeneratedFiles.writeProject(project, deckVisualAnalysisPath(project, "gb"), textLines([
+        "system=gb",
+        "emulator=retroarch",
+        "visual=ok",
+        "input=ok",
+        "duration_s=30"
+    ]));
+    ExecResult visualWeakAnalysis = e2eRunDeck(exe, home, project, ["visual-evidence", "gb", "--allow-pending"]);
+    if (!e2eRunOk(visualWeakAnalysis, "weak visual evidence analysis with allow-pending")) { return 1; }
+    if (!e2eContains(visualWeakAnalysis.stdout(), "viewport_alignment=ok", "weak visual evidence should list missing alignment token")) { return 1; }
+
+    e2eSeedVisualEvidence(project, ["gb"]);
+    ExecResult visualGb = e2eRunDeck(exe, home, project, ["visual-evidence", "--system", "gb"]);
+    if (!e2eRunOk(visualGb, "gb visual evidence")) { return 1; }
+    if (!e2eContains(visualGb.stdout(), "OK gb: visual screenshots, 30s clip, and analysis complete", "gb visual evidence status")) { return 1; }
+
+    string appImage = joinPath(tmp, "Semu-x86_64.AppImage");
+    e2eSeedFile(appImage);
+    FileSystem.chmod(appImage, 493);
+    string shortcutsFile = joinPath(home, "steam-userdata/52445373/config/shortcuts.vdf");
+    if (!e2eWriteSteamShortcutFixtureFor(shortcutsFile, appImage)) { return 1; }
+    string configSetFile = joinPath(home, "controller-configs/52445373/config/configset_controller_neptune.vdf");
+    if (!e2eWriteSteamConfigSetFixture(configSetFile)) { return 1; }
+    ExecResult selection = e2eRunSteamInput(exe, home, project, [
+        "select",
+        "--shortcuts-file", shortcutsFile,
+        "--configset-file", configSetFile,
+        "--exe", appImage,
+        "--app-name", "Semu-x86_64.AppImage"
+    ]);
+    if (!e2eRunOk(selection, "Game Mode Steam Input selection")) { return 1; }
+    Vector<string> readyArgs = [
+        "game-mode-ready",
+        "--shortcuts-file", shortcutsFile,
+        "--configset-file", configSetFile,
+        "--exe", appImage,
+        "--appimage", appImage,
+        "--prepare"
+    ];
+    ExecResult desktop = e2eRunDeckEnv(exe, home, project, readyArgs, "desktop_mode", "1");
+    if (!e2eOk(!desktop.ok(), "Desktop Mode readiness unexpectedly succeeded without --allow-desktop")) { return 1; }
+    if (!e2eContains(desktop.stdout(), "PENDING session: desktop_mode", "Desktop Mode readiness status")) { return 1; }
+
+    Vector<string> desktopAllowedArgs = [
+        "game-mode-ready",
+        "--shortcuts-file", shortcutsFile,
+        "--configset-file", configSetFile,
+        "--exe", appImage,
+        "--appimage", appImage,
+        "--prepare",
+        "--allow-desktop"
+    ];
+    ExecResult desktopAllowed = e2eRunDeckEnv(exe, home, project, desktopAllowedArgs, "desktop_mode", "1");
+    if (!e2eRunOk(desktopAllowed, "Desktop readiness with explicit override")) { return 1; }
+    if (!e2eContains(desktopAllowed.stdout(), "OK session: desktop_mode", "Desktop override status")) { return 1; }
+    if (!e2eContains(desktopAllowed.stdout(), "OK shortcut: Semu-x86_64.AppImage", "readiness shortcut status")) { return 1; }
+    if (!e2eContains(desktopAllowed.stdout(), "OK appimage: " + appImage, "readiness AppImage status")) { return 1; }
+
+    ExecResult mixedAllowed = e2eRunDeckEnv(exe, home, project, desktopAllowedArgs, "mixed_gamescope_desktop", "1");
+    if (!e2eRunOk(mixedAllowed, "mixed Desktop/Gamescope readiness with explicit override")) { return 1; }
+    if (!e2eContains(mixedAllowed.stdout(), "OK session: mixed_gamescope_desktop", "mixed Desktop override status")) { return 1; }
+
+    ExecResult missingSteam = e2eRunDeckEnv(exe, home, project, readyArgs, "game_mode", "0");
+    if (!e2eOk(!missingSteam.ok(), "readiness unexpectedly succeeded without Steam")) { return 1; }
+    if (!e2eContains(missingSteam.stdout(), "MISSING steam: not running", "missing Steam readiness status")) { return 1; }
+
+    ExecResult gameReady = e2eRunDeckEnv(exe, home, project, readyArgs, "game_mode", "1");
+    if (!e2eRunOk(gameReady, "Game Mode readiness")) { return 1; }
+    if (!e2eContains(gameReady.stdout(), "OK session: game_mode", "Game Mode readiness status")) { return 1; }
+    if (!e2eContains(gameReady.stdout(), "steam://rungameid/", "Game Mode launch URI")) { return 1; }
+
+    Vector<string> requireEvidenceArgs = [
+        "game-mode-ready",
+        "--shortcuts-file", shortcutsFile,
+        "--configset-file", configSetFile,
+        "--exe", appImage,
+        "--appimage", appImage,
+        "--prepare",
+        "--require-evidence"
+    ];
+    ExecResult requireEvidence = e2eRunDeckEnv(exe, home, project, requireEvidenceArgs, "game_mode", "1");
+    if (!e2eRunOk(requireEvidence, "Game Mode readiness with required evidence")) { return 1; }
+    if (!e2eContains(requireEvidence.stdout(), "OK evidence: physical quit logs complete", "required evidence readiness status")) { return 1; }
+    string readinessReport = deckGameModeReadinessPath(project);
+    if (!e2eOk(FileSystem.exists(readinessReport), "Game Mode readiness report missing")) { return 1; }
+    if (!e2eOk(SemuGeneratedFiles.isAdapterState(project, readinessReport), "Game Mode readiness report should be adapter state")) { return 1; }
+    string readinessJson = FileSystem.readText(readinessReport);
+    if (!e2eContains(readinessJson, "\n    \"session\": \"game_mode\"", "readiness report should be pretty JSON")) { return 1; }
+    if (!e2eContains(readinessJson, "\"shortcut_found\": true", "readiness report shortcut flag")) { return 1; }
+    if (!e2eContains(readinessJson, "\"evidence_required\": true", "readiness report evidence gate")) { return 1; }
+
+    Vector<string> productionArgs = [
+        "production-ready",
+        "--shortcuts-file", shortcutsFile,
+        "--configset-file", configSetFile,
+        "--exe", appImage,
+        "--appimage", appImage,
+        "--prepare",
+        "--allow-desktop"
+    ];
+    ExecResult productionMissingAudit = e2eRunDeckEnv(exe, home, project, productionArgs, "game_mode", "1");
+    if (!e2eOk(!productionMissingAudit.ok(), "production readiness unexpectedly succeeded without presentation audit")) { return 1; }
+    if (!e2eContains(productionMissingAudit.stdout(), "PENDING presentation audit", "production missing presentation audit")) { return 1; }
+
+    SemuGeneratedFiles.writeAdapterState(project, presentationAssetAuditPath(project), e2ePresentationAuditOkText(project));
+    ExecResult productionMissingVisual = e2eRunDeckEnv(exe, home, project, productionArgs, "game_mode", "1");
+    if (!e2eOk(!productionMissingVisual.ok(), "production readiness unexpectedly succeeded without visual evidence")) { return 1; }
+    if (!e2eContains(productionMissingVisual.stdout(), "PENDING visual evidence", "production missing visual evidence")) { return 1; }
+
+    e2eSeedVisualEvidence(project, declaredSystemIds());
+    ExecResult visualAll = e2eRunDeck(exe, home, project, ["visual-evidence"]);
+    if (!e2eRunOk(visualAll, "all visual evidence")) { return 1; }
+    if (!e2eContains(visualAll.stdout(), "OK Semu visual evidence", "all visual evidence status")) { return 1; }
+
+    ExecResult productionReady = e2eRunDeckEnv(exe, home, project, productionArgs, "game_mode", "1");
+    if (!e2eRunOk(productionReady, "production readiness with physical evidence")) { return 1; }
+    if (!e2eContains(productionReady.stdout(), "OK owned config sources", "production source boundary")) { return 1; }
+    if (!e2eContains(productionReady.stdout(), "OK presentation audit", "production presentation audit")) { return 1; }
+    if (!e2eContains(productionReady.stdout(), "OK state evidence: physical save/load logs complete", "production state evidence")) { return 1; }
+    if (!e2eContains(productionReady.stdout(), "OK visual evidence: screenshots and clips complete", "production visual evidence")) { return 1; }
+    string productionReport = deckProductionReadinessPath(project);
+    if (!e2eOk(FileSystem.exists(productionReport), "production readiness report missing")) { return 1; }
+    if (!e2eOk(SemuGeneratedFiles.isAdapterState(project, productionReport), "production readiness report should be adapter state")) { return 1; }
+    string productionJson = FileSystem.readText(productionReport);
+    if (!e2eContains(productionJson, "\n    \"source_config_ok\": true", "production report should be pretty JSON")) { return 1; }
+    if (!e2eContains(productionJson, "\"state_evidence_ok\": true", "production report state evidence flag")) { return 1; }
+    if (!e2eContains(productionJson, "\"visual_evidence_ok\": true", "production report visual evidence flag")) { return 1; }
+
+    print("OK BTRC Deck evidence smoke");
+    return 0;
+}

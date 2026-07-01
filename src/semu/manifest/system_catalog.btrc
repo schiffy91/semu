@@ -1,12 +1,14 @@
 class SystemCatalog {
     public Vector<string> ids;
     public Vector<string> romDirs;
+    public Vector<string> linuxPrimaryCommands;
     public Vector<string> jsonSpecs;
     public Vector<string> esSystemSpecs;
 
     public SystemCatalog() {
         self.ids = [];
         self.romDirs = [];
+        self.linuxPrimaryCommands = [];
         self.jsonSpecs = [];
         self.esSystemSpecs = [];
     }
@@ -25,6 +27,7 @@ class SystemCatalog {
     ) {
         self.ids.push(id);
         self.romDirs.push(romDir);
+        self.linuxPrimaryCommands.push(linuxCommands.len > 0 ? linuxCommands.get(0) : commandSpec("", ""));
         self.jsonSpecs.push(systemSpec(
             id,
             fullname,
@@ -52,6 +55,25 @@ class SystemCatalog {
             + SettingsEntries.esSystemXml(project)
             + "</systemList>\n";
     }
+}
+
+string systemCatalogCanonicalId(string system) {
+    string id = system.toLower();
+    if (id.equals("3ds")) { return "n3ds"; }
+    return id;
+}
+
+string systemPrimaryLinuxCommand(string system) {
+    string wanted = systemCatalogCanonicalId(system);
+    SystemCatalog catalog = systemCatalog();
+    for (int i = 0; i < catalog.ids.len; i++) {
+        if (catalog.ids.get(i).equals(wanted)) {
+            string spec = catalog.linuxPrimaryCommands.get(i);
+            if (spec.len() == 0) { return ""; }
+            return JsonObject.parse(spec).getString("command", "");
+        }
+    }
+    return "";
 }
 
 SystemCatalog systemCatalog() {
