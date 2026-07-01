@@ -42,6 +42,15 @@ generated/build/semu deck visual-evidence --project "$PWD" --prepare
 generated/build/semu deck visual-evidence --project "$PWD"
 ```
 
+To capture the current live emulator surface for one system, launch that system
+with the same `SEMU_TAP_STATE_DIR`, then run:
+
+```sh
+SEMU_TAP_STATE_DIR="$PWD/generated/test/tap-state" \
+  generated/build/semu deck visual-evidence gb --capture --allow-pending \
+  --project "$PWD" --tap-state-dir "$PWD/generated/test/tap-state"
+```
+
 Each system's `start-of-gameplay-analysis.txt` must include the required
 tokens emitted in `generated/test/visual-evidence/VISUAL_EVIDENCE.md`,
 including emulator, alignment, cutout, input, radial-menu, bezel, shader, and
@@ -55,7 +64,9 @@ make tap-preload-build
 
 The tap compositor reads and writes its live override files from `/home/deck`
 on the device. Local and VM evidence runs can redirect those files into the
-generated test tree:
+generated test tree. Set `SEMU_SCREENSHOT_CMD` or `SEMU_VISUAL_CLIP_CMD` when
+the host lacks `grim`/`spectacle`/`wf-recorder`/`ffmpeg` or needs a specific
+capture tool:
 
 ```sh
 SEMU_TAP_STATE_DIR="$PWD/generated/test/tap-state" generated/build/semu deck visual-evidence --project "$PWD"

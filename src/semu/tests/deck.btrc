@@ -211,6 +211,118 @@ string deckVisualAnalysisPath(string project, string system) {
     return joinPath(deckVisualEvidenceRoot(project), joinPath(system, "start-of-gameplay-analysis.txt"));
 }
 
+string deckVisualCaptureTapStateDir(CliArgs args, string project) {
+    string explicit = args.valueAfter("--tap-state-dir", "");
+    if (explicit.len() > 0) { return explicit; }
+    string env = Environment.get("SEMU_TAP_STATE_DIR", "");
+    if (env.len() > 0) { return env; }
+    return "/home/deck";
+}
+
+string deckVisualCaptureSettleSeconds(CliArgs args) {
+    return args.valueAfter("--settle-seconds", Environment.get("SEMU_VISUAL_CAPTURE_SETTLE_SECONDS", "1"));
+}
+
+void deckVisualWriteTapState(string stateDir, string name, string value) {
+    ensureDir(stateDir);
+    FileSystem.writeText(joinPath(stateDir, name), value);
+}
+
+string deckVisualPriorityState(string priority) {
+    return priority.equals("bezel-priority") ? "b" : "g";
+}
+
+string deckVisualVariantIndex(string variant) {
+    string v = variant.toLower();
+    if (v.equals("b")) { return "1"; }
+    if (v.equals("c")) { return "2"; }
+    if (v.equals("off")) { return "3"; }
+    return "0";
+}
+
+void deckVisualApplyTapState(string stateDir, string priority, string variant) {
+    string index = deckVisualVariantIndex(variant);
+    deckVisualWriteTapState(stateDir, "semu-priority", deckVisualPriorityState(priority));
+    deckVisualWriteTapState(stateDir, "semu-bezel", index);
+    deckVisualWriteTapState(stateDir, "semu-shader", index);
+}
+
+string deckVisualExpandClipCommandTemplate(string project, string value, string system, string output, string duration) {
+    string result = Strings.replace(value, "${project}", ShellWords.quote(project));
+    result = Strings.replace(result, "${system}", ShellWords.quote(system));
+    result = Strings.replace(result, "${emulator}", ShellWords.quote(deckVisualExpectedEmulator(system)));
+    result = Strings.replace(result, "${duration}", ShellWords.quote(duration));
+    result = Strings.replace(result, "${output}", ShellWords.quote(output));
+    return result;
+}
+
+string deckVisualClipCommand(string project, string system, string output, string duration) {
+    string template = Environment.get("SEMU_VISUAL_CLIP_CMD", "");
+    if (template.len() > 0) {
+        if (template.contains("${output}")) {
+            return deckVisualExpandClipCommandTemplate(project, template, system, output, duration);
+        }
+        return shellAppend(ShellWords.quote(template), output);
+    }
+    if (commandExists("wf-recorder")) {
+        return shellAppendAll("wf-recorder", ["-d", duration, "-f", output]);
+    }
+    if (commandExists("ffmpeg") && Environment.get("DISPLAY", "").len() > 0) {
+        string display = Environment.get("DISPLAY", ":0");
+        string size = Environment.get("SEMU_VISUAL_CLIP_SIZE", "1280x800");
+        return shellAppendAll("ffmpeg", ["-y", "-f", "x11grab", "-video_size", size, "-i", display + ".0", "-t", duration, "-pix_fmt", "yuv420p", output]);
+    }
+    return "";
+}
+
+bool deckVisualCaptureClip(string project, string system, string duration) {
+    string output = deckVisualClipPath(project, system);
+    ensureDir(PathTools.dirname(output));
+    string command = deckVisualClipCommand(project, system, output, duration);
+    if (command.len() == 0) {
+        print("MISSING visual_clip_tool: install wf-recorder/ffmpeg or set SEMU_VISUAL_CLIP_CMD");
+        return false;
+    }
+    ExecResult result = UnixShell().runRaw(command, false, false, "");
+    if (result.ok() && deckEvidenceFilePresent(output)) {
+        print("OK capture " + system + " clip: " + output);
+        return true;
+    }
+    print("MISSING capture " + system + " clip: " + output);
+    return false;
+}
+
+bool deckVisualCaptureSystem(CliArgs args, string project, string system) {
+    string stateDir = deckVisualCaptureTapStateDir(args, project);
+    string settle = deckVisualCaptureSettleSeconds(args);
+    string emulator = deckVisualExpectedEmulator(system);
+    bool ok = true;
+    print("Capturing visual evidence for " + system);
+    print("  tap_state_dir: " + stateDir);
+
+    for priority in deckVisualEvidencePriorities() {
+        for variant in deckVisualEvidenceVariants() {
+            deckVisualApplyTapState(stateDir, priority, variant);
+            if (!settle.equals("0")) {
+                UnixShell().runRaw("sleep " + ShellWords.quote(settle), false, false, "");
+            }
+            string output = deckVisualScreenshotPath(project, system, priority, variant);
+            string hook = "visual_" + priority + "_" + variant;
+            if (screenshotCaptureTo(project, emulator, hook, output)) {
+                print("OK capture " + system + " screenshot " + priority + "/" + variant + ": " + output);
+            } else {
+                ok = false;
+            }
+        }
+    }
+
+    string duration = args.valueAfter("--duration-seconds", "30");
+    if (!deckVisualCaptureClip(project, system, duration)) {
+        ok = false;
+    }
+    return ok;
+}
+
 bool deckEvidenceFilePresent(string path) {
     if (!FileSystem.isFile(path)) { return false; }
     ExecResult result = UnixShell().runRaw("test -s " + ShellWords.quote(path), false, false, "");
@@ -410,14 +522,24 @@ int deckVisualEvidenceCommand(CliArgs args, string project) {
     }
 
     bool prepare = args.has("--prepare");
+    bool capture = args.has("--capture");
+    if (capture && systems.len != 1) {
+        print("error 0:0 --capture requires exactly one visual system; pass --system <id> or a positional system");
+        return 1;
+    }
     bool allowPending = args.has("--allow-pending") || prepare;
     string root = deckVisualEvidenceRoot(project);
     ensureDir(root);
 
-    if (prepare) {
+    if (prepare || capture) {
         SemuGeneratedFiles.writeProject(project, deckVisualEvidenceChecklistPath(project), deckVisualEvidenceChecklistText(project, systems));
         SemuGeneratedFiles.writeProjectJson(project, deckVisualEvidenceManifestPath(project), deckVisualEvidenceManifestJson(project, systems));
         print("OK prepared visual evidence manifest: " + deckVisualEvidenceManifestPath(project));
+    }
+
+    if (capture && !deckVisualCaptureSystem(args, project, systems.get(0))) {
+        print("PENDING Semu visual evidence capture");
+        return 2;
     }
 
     print("Semu visual evidence");
