@@ -595,7 +595,7 @@ char* launcherStandaloneBezelWrap(char* project, char* emulator, char* command);
 char* launcherPatchedRA(char* project);
 char* launcherTapScreen(char* project, char* system);
 char* launcherTapArtFile(char* project, char* system);
-char* launcherResolveArtRel(char* rel);
+char* launcherResolveProjectArtRel(char* project, char* rel);
 char* launcherResolveConfigAsset(char* project, char* rel);
 char* launcherTapGenericArt(char* project, char* system);
 char* launcherTapArtVariant(char* project, char* system, char* variant);
@@ -15999,7 +15999,7 @@ char* launcherTapGlass(char* project, char* system, char* variant) {
     if (((int)strlen(rel)) == 0) {
         return "";
     }
-    return launcherResolveArtRel(rel);
+    return launcherResolveProjectArtRel(project, rel);
 }
 
 char* launcherTapReflect(char* system) {
@@ -16178,7 +16178,7 @@ char* launcherTapArtFile(char* project, char* system) {
         (rel = "semu-shells/gba.png");
     }
     if (((int)strlen(rel)) > 0) {
-        char* art = launcherResolveArtRel(rel);
+        char* art = launcherResolveProjectArtRel(project, rel);
         if (((int)strlen(art)) > 0) {
             return art;
         }
@@ -16186,7 +16186,7 @@ char* launcherTapArtFile(char* project, char* system) {
     return launcherTapGenericArt(project, s);
 }
 
-char* launcherResolveArtRel(char* rel) {
+char* launcherResolveProjectArtRel(char* project, char* rel) {
     if (((int)strlen(rel)) == 0) {
         return "";
     }
@@ -16197,6 +16197,10 @@ char* launcherResolveArtRel(char* rel) {
         if (FileSystem_isFile(p)) {
             return p;
         }
+    }
+    char* nixPath = joinPath(nixResultRoot(project), base);
+    if (FileSystem_isFile(nixPath)) {
+        return nixPath;
     }
     char* home = Environment_get("HOME", "");
     if (((int)strlen(home)) > 0) {
@@ -16290,7 +16294,7 @@ char* launcherTapArtVariant(char* project, char* system, char* variant) {
         }
     }
     if (((int)strlen(rel)) > 0) {
-        char* art = launcherResolveArtRel(rel);
+        char* art = launcherResolveProjectArtRel(project, rel);
         if (((int)strlen(art)) > 0) {
             return art;
         }
