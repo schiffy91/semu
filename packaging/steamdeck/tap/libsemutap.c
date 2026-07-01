@@ -153,9 +153,43 @@ static GLuint prog, vao, game_tex, bezel_texs[4], glass_texs[4];
 static GLint uWin, uRect, uSrc, uBezelRect, uNative, uStyle, uShell, uTV, uRef, uHasArt, uDebug, uRetro, uShaderMode;
 static GLint uRect2, uSrc2, uDual, uAlign, uHole, uGlass, uHasGlass, uReflect, uCurve, uScreenCorner, uMenuRect, uMenuOn;
 static long frames;
+static char tap_state_dir_buf[1024] = "/home/deck";
+static int tap_state_dir_ready = 0;
+
+static const char *tap_state_dir(void) {
+    if (!tap_state_dir_ready) {
+        const char *dir = getenv("SEMU_TAP_STATE_DIR");
+        if (dir && dir[0]) {
+            strncpy(tap_state_dir_buf, dir, sizeof(tap_state_dir_buf) - 1);
+            tap_state_dir_buf[sizeof(tap_state_dir_buf) - 1] = 0;
+            size_t len = strlen(tap_state_dir_buf);
+            while (len > 1 && tap_state_dir_buf[len - 1] == '/') {
+                tap_state_dir_buf[--len] = 0;
+            }
+        }
+        tap_state_dir_ready = 1;
+    }
+    return tap_state_dir_buf;
+}
+
+static void tap_state_path(char *out, size_t cap, const char *name) {
+    snprintf(out, cap, "%s/%s", tap_state_dir(), name);
+}
+
+static FILE *tap_fopen(const char *name, const char *mode) {
+    char path[1200];
+    tap_state_path(path, sizeof(path), name);
+    return fopen(path, mode);
+}
+
+static int tap_remove(const char *name) {
+    char path[1200];
+    tap_state_path(path, sizeof(path), name);
+    return remove(path);
+}
 
 static void logf_(const char *fmt, GLuint a, GLuint b, GLuint c) {
-    FILE *f = fopen("/home/deck/semutap.log", "a"); if (f) { fprintf(f, fmt, a, b, c); fclose(f); }
+    FILE *f = tap_fopen("semutap.log", "a"); if (f) { fprintf(f, fmt, a, b, c); fclose(f); }
 }
 
 static const char *VS =
@@ -265,7 +299,7 @@ static const char *FS =
 static GLuint mkshader(GLenum type, const char *src) {
     GLuint s = p_createsh(type); p_shsrc(s, 1, &src, 0); p_compsh(s);
     GLint ok = 0; p_shiv(s, GL_COMPILE_STATUS, &ok);
-    if (!ok) { char buf[1024]={0}; if(p_shlog) p_shlog(s,1024,0,buf); FILE *f=fopen("/home/deck/semutap.log","a"); if(f){fprintf(f,"SHADER %u FAIL: %s\n",(unsigned)type,buf); fclose(f);} }
+    if (!ok) { char buf[1024]={0}; if(p_shlog) p_shlog(s,1024,0,buf); FILE *f=tap_fopen("semutap.log","a"); if(f){fprintf(f,"SHADER %u FAIL: %s\n",(unsigned)type,buf); fclose(f);} }
     return s;
 }
 
@@ -380,13 +414,13 @@ static void menu_val(int i,char*o){ o[0]=0;
     semu_tap_menu_value(&s,i,o,48);
 }
 static void menu_persist(void){   // menu state IS the override files (single source of truth; compositor re-reads them each frame)
-    FILE*f; if((f=fopen("/home/deck/semu-priority","w"))){fputc(priority_bezel?'b':'g',f);fclose(f);}
-    if((f=fopen("/home/deck/semu-bezel","w"))){fprintf(f,"%d",bezel_idx);fclose(f);}
-    if((f=fopen("/home/deck/semu-shader","w"))){fprintf(f,"%d",shader_idx);fclose(f);}
-    if((f=fopen("/home/deck/semu-ndslayout","w"))){fputc(nds_layout?'1':'0',f);fclose(f);}
-    if((f=fopen("/home/deck/semu-ndspri","w"))){fprintf(f,"%d",nds_pri);fclose(f);}
-    if((f=fopen("/home/deck/semu-ndssec","w"))){fprintf(f,"%d",nds_sec);fclose(f);}
-    if((f=fopen("/home/deck/semu-wiictrl","w"))){fprintf(f,"%d",wii_ctrl);fclose(f);}
+    FILE*f; if((f=tap_fopen("semu-priority","w"))){fputc(priority_bezel?'b':'g',f);fclose(f);}
+    if((f=tap_fopen("semu-bezel","w"))){fprintf(f,"%d",bezel_idx);fclose(f);}
+    if((f=tap_fopen("semu-shader","w"))){fprintf(f,"%d",shader_idx);fclose(f);}
+    if((f=tap_fopen("semu-ndslayout","w"))){fputc(nds_layout?'1':'0',f);fclose(f);}
+    if((f=tap_fopen("semu-ndspri","w"))){fprintf(f,"%d",nds_pri);fclose(f);}
+    if((f=tap_fopen("semu-ndssec","w"))){fprintf(f,"%d",nds_sec);fclose(f);}
+    if((f=tap_fopen("semu-wiictrl","w"))){fprintf(f,"%d",wii_ctrl);fclose(f);}
 }
 static void menu_build(void){   // RADIAL: wedges (short labels) around a hub; hub shows level + selected value
     if(!menu_buf) menu_buf=(unsigned char*)calloc((size_t)MENU_W*MENU_H,4);
@@ -410,7 +444,7 @@ static void menu_activate(void){
     SemuTapMenuState s=menu_state();
     semu_tap_menu_activate(&s);
     if(s.action==SEMU_TAP_MENU_ACTION_SAVE||s.action==SEMU_TAP_MENU_ACTION_LOAD){
-        FILE*f=fopen("/home/deck/semu-savestate","w");
+        FILE*f=tap_fopen("semu-savestate","w");
         if(f){fprintf(f,"%s:%d",s.action==SEMU_TAP_MENU_ACTION_SAVE?"save":"load",s.action_slot);fclose(f);}
     }
     menu_apply_state(&s);
@@ -431,10 +465,8 @@ static void ensure_real_dlsym(void){
 }
 void *dlsym(void *handle, const char *name){
     ensure_real_dlsym();
-    if(name){
-        if(!strcmp(name,"glXSwapBuffers")){ if(!real_swap)     real_swap=(PFN_swap)real_dlsym(handle,name);     return (void*)glXSwapBuffers; }
-        if(!strcmp(name,"eglSwapBuffers")){ if(!real_egl_swap) real_egl_swap=(PFN_eglswap)real_dlsym(handle,name); return (void*)eglSwapBuffers; }
-    }
+    if(!strcmp(name,"glXSwapBuffers")){ if(!real_swap)     real_swap=(PFN_swap)real_dlsym(handle,name);     return (void*)glXSwapBuffers; }
+    if(!strcmp(name,"eglSwapBuffers")){ if(!real_egl_swap) real_egl_swap=(PFN_eglswap)real_dlsym(handle,name); return (void*)eglSwapBuffers; }
     return real_dlsym ? real_dlsym(handle,name) : 0;
 }
 #define LD(v,n) do{ ensure_real_dlsym(); v=(void*)(real_dlsym?real_dlsym(RTLD_NEXT,n):0); }while(0)
@@ -493,14 +525,14 @@ static void tap_init(void) {
     const char *skd=getenv("SEMU_TAP_SYSKIND"); if(skd) sys_kind=atoi(skd);   // 0 generic, 1 dual-screen, 2 wii
     const char *mfp=getenv("SEMU_TAP_MENUFONT"); if(mfp&&mfp[0]){ strncpy(menu_font_path,mfp,1023); menu_font_path[1023]=0; }
     { int aw=0,ah=0,an=0; unsigned char*ab=stbi_load(menu_font_path,&aw,&ah,&an,4); if(ab){ atlas_buf=ab; atlas_w=aw; atlas_h=ah; if(GLY_COLS>0)GLY_W=aw/GLY_COLS; if(GLY_ROWS>0)GLY_H=ah/GLY_ROWS; } }
-    FILE *f=fopen("/home/deck/semutap.log","w");
+    FILE *f=tap_fopen("semutap.log","w");
     if(f){ fprintf(f,"semutap v8 envNative=%dx%d art=%s hole=%.3f,%.3f,%.3f,%.3f\n",env_nw,env_nh,art_paths[0][0]?art_paths[0]:"(none)",scr_x,scr_y,scr_w,scr_h); fclose(f); }
 }
 
 static void tap_frame(void *dpy, unsigned long drawable, int is_egl) {
     tap_init();
     static int swaptype_logged=0;
-    if(!swaptype_logged && !disabled){ swaptype_logged=1; FILE *st=fopen("/home/deck/semu-swaptype.log","a"); if(st){ fprintf(st,"%s swap first-call standalone=%d\n", is_egl?"EGL":"GLX", standalone); fclose(st);} }
+    if(!swaptype_logged && !disabled){ swaptype_logged=1; FILE *st=tap_fopen("semu-swaptype.log","a"); if(st){ fprintf(st,"%s swap first-call standalone=%d\n", is_egl?"EGL":"GLX", standalone); fclose(st);} }
     if (standalone && !disabled) {   // synth a tap report from the live framebuffer (the standalone emulator renders the game full-screen)
         unsigned int W=0,H=0;
         if(!is_egl && p_query){ p_query(dpy,drawable,GLX_WIDTH,&W); p_query(dpy,drawable,GLX_HEIGHT,&H); }
@@ -549,22 +581,22 @@ static void tap_frame(void *dpy, unsigned long drawable, int is_egl) {
                             else if(i==4) nds_layout=!nds_layout;
                             else if(i==5) nds_pri=(nds_pri+1)%5;
                         }
-                        { FILE *kf=fopen("/home/deck/semutap.log","a"); if(kf){ fprintf(kf,"KEY EDGE %d menu=%d lvl=%d sel=%d\n",i,menu_on,menu_lvl,menu_sel); fclose(kf);} }
+                        { FILE *kf=tap_fopen("semutap.log","a"); if(kf){ fprintf(kf,"KEY EDGE %d menu=%d lvl=%d sel=%d\n",i,menu_on,menu_lvl,menu_sel); fclose(kf);} }
                     }
                 }
             }
-            { FILE *rf=fopen("/home/deck/semu-retro","r"); if(rf){ int ch=fgetc(rf); fclose(rf); retro_on=(ch=='0')?0:1; } }
-            { FILE *pf=fopen("/home/deck/semu-priority","r"); if(pf){ int ch=fgetc(pf); fclose(pf); priority_bezel=(ch=='b'||ch=='1')?1:0; } }
-            { FILE *sf=fopen("/home/deck/semu-shader","r"); if(sf){ int ch=fgetc(sf); fclose(sf); if(ch>='0'&&ch<='3') shader_idx=ch-'0'; } }
-            { FILE *bf=fopen("/home/deck/semu-bezel","r"); if(bf){ int ch=fgetc(bf); fclose(bf); if(ch>='0'&&ch<='9') bezel_idx=ch-'0'; } }
-            { FILE *nl=fopen("/home/deck/semu-ndslayout","r"); if(nl){ int ch=fgetc(nl); fclose(nl); nds_layout=(ch=='1')?1:0; } }
-            { FILE *np=fopen("/home/deck/semu-ndspri","r"); if(np){ int ch=fgetc(np); fclose(np); if(ch>='0'&&ch<='4') nds_pri=ch-'0'; } }
-            { FILE *ns=fopen("/home/deck/semu-ndssec","r"); if(ns){ int ch=fgetc(ns); fclose(ns); if(ch>='0'&&ch<='4') nds_sec=ch-'0'; } }
-            { FILE *af=fopen("/home/deck/semu-align","r"); if(af){ int ch=fgetc(af); fclose(af); align_on=(ch=='1'); } }   // alignment diag
+            { FILE *rf=tap_fopen("semu-retro","r"); if(rf){ int ch=fgetc(rf); fclose(rf); retro_on=(ch=='0')?0:1; } }
+            { FILE *pf=tap_fopen("semu-priority","r"); if(pf){ int ch=fgetc(pf); fclose(pf); priority_bezel=(ch=='b'||ch=='1')?1:0; } }
+            { FILE *sf=tap_fopen("semu-shader","r"); if(sf){ int ch=fgetc(sf); fclose(sf); if(ch>='0'&&ch<='3') shader_idx=ch-'0'; } }
+            { FILE *bf=tap_fopen("semu-bezel","r"); if(bf){ int ch=fgetc(bf); fclose(bf); if(ch>='0'&&ch<='9') bezel_idx=ch-'0'; } }
+            { FILE *nl=tap_fopen("semu-ndslayout","r"); if(nl){ int ch=fgetc(nl); fclose(nl); nds_layout=(ch=='1')?1:0; } }
+            { FILE *np=tap_fopen("semu-ndspri","r"); if(np){ int ch=fgetc(np); fclose(np); if(ch>='0'&&ch<='4') nds_pri=ch-'0'; } }
+            { FILE *ns=tap_fopen("semu-ndssec","r"); if(ns){ int ch=fgetc(ns); fclose(ns); if(ch>='0'&&ch<='4') nds_sec=ch-'0'; } }
+            { FILE *af=tap_fopen("semu-align","r"); if(af){ int ch=fgetc(af); fclose(af); align_on=(ch=='1'); } }   // alignment diag
             // menu test overrides (no Steam-Input keys needed): semu-menu = 0/1 (closed/open at level);
             // semu-menu-nav = u/d/s/b (up/down/select/back) then auto-cleared.
-            { FILE *mf=fopen("/home/deck/semu-menu","r"); if(mf){ int ch=fgetc(mf); fclose(mf); int nm=(ch=='1'); if(nm&&!menu_on){menu_lvl=0;menu_sel=0;} if(nm!=menu_on){menu_on=nm; menu_dirty=1;} } }
-            { FILE *nf=fopen("/home/deck/semu-menu-nav","r"); if(nf){ int ch=fgetc(nf); fclose(nf); remove("/home/deck/semu-menu-nav"); if(menu_on){ int N=menu_count(); if(N<1)N=1;
+            { FILE *mf=tap_fopen("semu-menu","r"); if(mf){ int ch=fgetc(mf); fclose(mf); int nm=(ch=='1'); if(nm&&!menu_on){menu_lvl=0;menu_sel=0;} if(nm!=menu_on){menu_on=nm; menu_dirty=1;} } }
+            { FILE *nf=tap_fopen("semu-menu-nav","r"); if(nf){ int ch=fgetc(nf); fclose(nf); tap_remove("semu-menu-nav"); if(menu_on){ int N=menu_count(); if(N<1)N=1;
                 if(ch=='u'){menu_sel=(menu_sel-1+N)%N;menu_dirty=1;} else if(ch=='d'){menu_sel=(menu_sel+1)%N;menu_dirty=1;}
                 else if(ch=='s') menu_activate(); else if(ch=='b'){ if(menu_lvl!=0){menu_lvl=0;menu_sel=0;menu_dirty=1;} else {menu_on=0;} } } } }
             float eff_has_art = (bezel_idx < bezel_count) ? has_art : 0.0f;   // bezel OFF when idx past the last art
@@ -656,7 +688,7 @@ static void tap_frame(void *dpy, unsigned long drawable, int is_egl) {
             if(uMenuOn>=0)p_u1f(uMenuOn, menu_on?1.0f:0.0f);
             if(uMenuRect>=0){ float mw=(float)MENU_W,mh=(float)MENU_H,sc=1.0f; if(mh>(float)h*0.92f)sc=(float)h*0.92f/mh; mw*=sc; mh*=sc; p_u4f(uMenuRect,((float)w-mw)*0.5f,((float)h-mh)*0.5f,mw,mh); }
             p_draw(GL_TRIANGLES,0,3);
-            if(++frames<=2 || (menu_on && (frames%30)==0)){ FILE *lf=fopen("/home/deck/semutap.log","a"); if(lf){ fprintf(lf,"frame%ld: fb=%dx%d native=%dx%d content=(%d,%d,%d,%d) pri=%d game=(%d,%d,%d,%d) bd=(%d,%d,%d,%d) menu_on=%d effArt=%.1f bidx=%d bcnt=%d uMenuOn=%d uHasArt=%d\n",frames,w,h,nw,nh,g_state.content_x,g_state.content_y,g_state.content_w,g_state.content_h,priority_bezel,gx,gy,gw,gh,(int)bdx_gl,(int)bdy_gl,(int)bdw,(int)bdh,menu_on,eff_has_art,bezel_idx,bezel_count,(int)(uMenuOn>=0),(int)(uHasArt>=0)); fclose(lf);} }
+            if(++frames<=2 || (menu_on && (frames%30)==0)){ FILE *lf=tap_fopen("semutap.log","a"); if(lf){ fprintf(lf,"frame%ld: fb=%dx%d native=%dx%d content=(%d,%d,%d,%d) pri=%d game=(%d,%d,%d,%d) bd=(%d,%d,%d,%d) menu_on=%d effArt=%.1f bidx=%d bcnt=%d uMenuOn=%d uHasArt=%d\n",frames,w,h,nw,nh,g_state.content_x,g_state.content_y,g_state.content_w,g_state.content_h,priority_bezel,gx,gy,gw,gh,(int)bdx_gl,(int)bdy_gl,(int)bdw,(int)bdh,menu_on,eff_has_art,bezel_idx,bezel_count,(int)(uMenuOn>=0),(int)(uHasArt>=0)); fclose(lf);} }
         }
     }
 }
@@ -665,7 +697,7 @@ static void tap_frame(void *dpy, unsigned long drawable, int is_egl) {
 // so we hook BOTH — the compositing is identical (all GL calls); only the framebuffer-size query + the X
 // keymap differ (handled via is_egl).
 __attribute__((constructor)) static void semu_loaded(void) {   // proves LD_PRELOAD applied (fires even if no swap is hooked)
-    FILE *f=fopen("/home/deck/semu-loaded.log","a"); if(f){ fprintf(f,"libsemutap loaded pid=%d ppid=%d\n",(int)getpid(),(int)getppid()); fclose(f);} }
+    FILE *f=tap_fopen("semu-loaded.log","a"); if(f){ fprintf(f,"libsemutap loaded pid=%d ppid=%d\n",(int)getpid(),(int)getppid()); fclose(f);} }
 void glXSwapBuffers(void *dpy, unsigned long drawable) {
     tap_frame(dpy, drawable, 0);
     if (real_swap) real_swap(dpy, drawable);
