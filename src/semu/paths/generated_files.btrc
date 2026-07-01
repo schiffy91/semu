@@ -132,7 +132,7 @@ string semuSourceProjectScope(string project, string path) {
 }
 
 string semuGeneratedProjectScope(string project, string path) {
-    if (path.equals(joinPath(project, "semu.json"))) {
+    if (path.equals(manifestPath(project))) {
         return "manifest";
     }
     if (path.equals(esDeSettingsPath(project))) {
@@ -141,22 +141,25 @@ string semuGeneratedProjectScope(string project, string path) {
     if (semuPathWithin(path, customSystemsRoot(project))) {
         return "es_de_custom_systems";
     }
+    if (semuPathWithin(path, joinPath(generatedPackagingRoot(project), "es-de"))) {
+        return "es_de_packaging";
+    }
     if (semuPathWithin(path, linuxPackagingRoot(project))) {
         return "linux_packaging";
     }
     if (semuPathWithin(path, emulatorProfilesRoot(project))) {
         return "emulator_profiles";
     }
-    if (semuPathWithin(path, joinPath(project, "input/steam-input"))) {
+    if (semuPathWithin(path, steamInputTemplatesRoot(project))) {
         return "steam_input_templates";
     }
     if (semuPathWithin(path, esDeSettingsEntriesRoot(project))) {
         return "settings_entries";
     }
-    if (semuPathWithin(path, joinPath(project, "settings/presentation-state"))) {
+    if (semuPathWithin(path, presentationStateRoot(project))) {
         return "presentation_state";
     }
-    if (semuPathWithin(path, joinPath(project, "sync/bin"))) {
+    if (semuPathWithin(path, syncScriptsDir(project))) {
         return "sync_scripts";
     }
     return "";
@@ -166,13 +169,13 @@ string semuAdapterStateScope(string project, string path) {
     if (path.equals(lifecycleStatePath(project))) {
         return "lifecycle";
     }
-    if (semuPathWithin(path, joinPath(project, ".semu/appimage-state"))) {
+    if (semuPathWithin(path, joinPath(semuStateRoot(project), "appimage-state"))) {
         return "routed_emulator";
     }
-    if (semuPathWithin(path, joinPath(project, ".semu/flatpak-state"))) {
+    if (semuPathWithin(path, joinPath(semuStateRoot(project), "flatpak-state"))) {
         return "flatpak_emulator";
     }
-    if (semuPathWithin(path, joinPath(project, ".semu/verification"))) {
+    if (semuPathWithin(path, joinPath(semuStateRoot(project), "verification"))) {
         return "verification";
     }
     if (semuPathWithin(path, lifecycleBackupsRoot(project))) {

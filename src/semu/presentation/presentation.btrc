@@ -296,11 +296,11 @@ class PresentationCatalog {
 }
 
 string presentationSettingsRoot(string project) {
-    return joinPath(settingsRoot(project), "presentation");
+    return joinPath(configRoot(project), "systems");
 }
 
 string presentationStateRoot(string project) {
-    return joinPath(settingsRoot(project), "presentation-state");
+    return joinPath(generatedRuntimeRoot(project), "presentation-state");
 }
 
 string presentationStatePath(string project, string system) {

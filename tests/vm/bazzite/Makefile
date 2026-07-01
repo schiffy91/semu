@@ -1,4 +1,4 @@
-VM_DIR ?= tests/vms
+VM_DIR ?= generated/test/vms
 XORRISO ?= nix shell nixpkgs\#xorriso -c xorriso
 VM_KEY ?= $(VM_DIR)/id_ed25519
 BAZZITE_ISO_URL ?= https://download.bazzite.gg/bazzite-deck-stable-live-amd64.iso
@@ -45,10 +45,10 @@ BAZZITE_SSH_WAIT ?= 1800
 BAZZITE_SSH_POLL ?= 10
 BAZZITE_SSH_OPTS := -o "StrictHostKeyChecking=no" -o "UserKnownHostsFile=/dev/null" -o "LogLevel=ERROR" -o "BatchMode=yes" -o "ConnectTimeout=5" -o "ConnectionAttempts=1" -i "$(VM_KEY)"
 BAZZITE_INSTALL_ISO ?= $(VM_DIR)/bazzite-e2e-install.iso
-BAZZITE_INSTALL_GRUB ?= tests/bazzite/grub.cfg
-BAZZITE_INSTALL_KS_TEMPLATE ?= tests/bazzite/ks.cfg.in
+BAZZITE_INSTALL_GRUB ?= tests/vm/bazzite/grub.cfg
+BAZZITE_INSTALL_KS_TEMPLATE ?= tests/vm/bazzite/ks.cfg.in
 BAZZITE_INSTALL_KS ?= $(VM_DIR)/bazzite-e2e.ks
-BAZZITE_INSTALL_ENTRYPOINT ?= tests/bazzite/semu-e2e-install
+BAZZITE_INSTALL_ENTRYPOINT ?= tests/vm/bazzite/semu-e2e-install
 BAZZITE_INSTALL_TIMEOUT ?= 14400
 BAZZITE_INSTALL_MIN_ACTUAL_SIZE ?= 1073741824
 BAZZITE_E2E_DISK ?= $(VM_DIR)/bazzite-e2e.qcow2
@@ -331,13 +331,13 @@ bazzite-vm-sync: bazzite-vm-wait-ssh ## Sync repo to installed Bazzite VM over S
 
 bazzite-vm-verify-ssh: bazzite-vm-sync ## Run Deck checks inside installed Bazzite VM over SSH
 	ssh $(BAZZITE_SSH_OPTS) -p $(BAZZITE_SSH_PORT) $(BAZZITE_SSH_USER)@localhost \
-		'cd ~/semu && build/semu deck provision --project "$$PWD"'
+		'cd ~/semu && generated/build/semu deck provision --project "$$PWD"'
 	ssh $(BAZZITE_SSH_OPTS) -p $(BAZZITE_SSH_PORT) $(BAZZITE_SSH_USER)@localhost \
-		'cd ~/semu && build/semu deck verify-emulators --project "$$PWD"'
+		'cd ~/semu && generated/build/semu deck verify-emulators --project "$$PWD"'
 	ssh $(BAZZITE_SSH_OPTS) -p $(BAZZITE_SSH_PORT) $(BAZZITE_SSH_USER)@localhost \
-		'cd ~/semu && build/semu deck verify-sync --project "$$PWD"'
+		'cd ~/semu && generated/build/semu deck verify-sync --project "$$PWD"'
 	ssh $(BAZZITE_SSH_OPTS) -p $(BAZZITE_SSH_PORT) $(BAZZITE_SSH_USER)@localhost \
-		'cd ~/semu && build/semu deck verify-input --project "$$PWD"'
+		'cd ~/semu && generated/build/semu deck verify-input --project "$$PWD"'
 
 bazzite-vm-stop: ## Stop Bazzite VM
 	@if [ -f "$(BAZZITE_PID)" ] && kill -0 "$$(cat "$(BAZZITE_PID)")" 2>/dev/null; then \

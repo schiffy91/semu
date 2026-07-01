@@ -7,8 +7,56 @@ string joinPath(string left, string right) {
     return PathTools.join(left, right);
 }
 
+string configRoot(string project) {
+    return joinPath(project, "config");
+}
+
+string generatedRoot(string project) {
+    return joinPath(project, "generated");
+}
+
+string generatedBuildRoot(string project) {
+    return joinPath(generatedRoot(project), "build");
+}
+
+string generatedPackagingRoot(string project) {
+    return joinPath(generatedRoot(project), "packaging");
+}
+
+string generatedRuntimeRoot(string project) {
+    return joinPath(generatedRoot(project), "runtime");
+}
+
+string generatedTestRoot(string project) {
+    return joinPath(generatedRoot(project), "test");
+}
+
+string generatedNixRoot(string project) {
+    return joinPath(generatedRoot(project), "nix");
+}
+
+string generatedBinaryPath(string project) {
+    return joinPath(generatedBuildRoot(project), "semu");
+}
+
+string generatedCPath(string project) {
+    return joinPath(generatedBuildRoot(project), "semu.c");
+}
+
+string generatedSnapshotCPath(string project) {
+    return joinPath(generatedRoot(project), "semu.c");
+}
+
+string manifestPath(string project) {
+    return joinPath(generatedRoot(project), "semu.json");
+}
+
+string nixResultRoot(string project) {
+    return joinPath(generatedNixRoot(project), "result");
+}
+
 string contentRoot(string project) {
-    return joinPath(project, ".semu/content");
+    return joinPath(generatedRuntimeRoot(project), "content");
 }
 
 string romsRoot(string project) {
@@ -16,11 +64,11 @@ string romsRoot(string project) {
 }
 
 string syncRoot(string project) {
-    return joinPath(project, "sync");
+    return joinPath(generatedRuntimeRoot(project), "sync");
 }
 
 string syncConfigPath(string project) {
-    return joinPath(syncRoot(project), "sync.json");
+    return joinPath(configRoot(project), "settings/sync.json");
 }
 
 string syncthingHome(string project) {
@@ -36,11 +84,11 @@ string syncthingDataDir(string project) {
 }
 
 string syncScriptsDir(string project) {
-    return joinPath(syncRoot(project), "bin");
+    return joinPath(generatedPackagingRoot(project), "sync/bin");
 }
 
 string syncLogDir(string project) {
-    return joinPath(syncRoot(project), "logs");
+    return joinPath(generatedRuntimeRoot(project), "logs/sync");
 }
 
 string biosRoot(string project) {
@@ -48,19 +96,23 @@ string biosRoot(string project) {
 }
 
 string customSystemsRoot(string project) {
-    return joinPath(project, "build/packaging/es-de/custom_systems");
+    return joinPath(generatedPackagingRoot(project), "es-de/custom_systems");
 }
 
 string esDeSettingsPath(string project) {
-    return joinPath(project, "build/packaging/es-de/settings/es_settings.xml");
+    return joinPath(generatedPackagingRoot(project), "es-de/settings/es_settings.xml");
 }
 
 string esDeSettingsEntriesRoot(string project) {
-    return joinPath(project, "build/packaging/es-de/settings-entries");
+    return joinPath(generatedPackagingRoot(project), "es-de/settings-entries");
+}
+
+string steamInputTemplatesRoot(string project) {
+    return joinPath(generatedPackagingRoot(project), "input/steam-input");
 }
 
 string emulatorProfilesRoot(string project) {
-    return joinPath(project, "build/packaging/emulators/profiles");
+    return joinPath(generatedPackagingRoot(project), "emulators/profiles");
 }
 
 string emulatorProfilePath(string project, string relative) {
@@ -68,6 +120,10 @@ string emulatorProfilePath(string project, string relative) {
 }
 
 string linuxPackagingRoot(string project) {
+    return joinPath(generatedPackagingRoot(project), "linux");
+}
+
+string linuxPackagingSourceRoot(string project) {
     return joinPath(project, "packaging/linux");
 }
 
@@ -76,7 +132,7 @@ string linuxLauncherBin(string project) {
 }
 
 string keymapsRoot(string project) {
-    return joinPath(project, "input/keymaps");
+    return joinPath(configRoot(project), "input/keymaps");
 }
 
 string keymapSourcePath(string project) {
@@ -85,6 +141,18 @@ string keymapSourcePath(string project) {
 
 string homeDir() {
     return Environment.get("SEMU_HOME", Environment.get("HOME", "."));
+}
+
+string externalEsDeRoot(string userHome) {
+    return joinPath(userHome, "ES-DE");
+}
+
+string externalEsDeCustomSystemsRoot(string userHome) {
+    return joinPath(externalEsDeRoot(userHome), "custom_systems");
+}
+
+string externalEsDeSettingsRoot(string userHome) {
+    return joinPath(externalEsDeRoot(userHome), "settings");
 }
 
 string systemdUserDir() {
@@ -176,14 +244,14 @@ Vector<string> declaredRomDirs() {
 
 Vector<string> controllerProfileFiles() {
     return [
-        "build/packaging/emulators/profiles/RetroArch/retroarch.cfg.linux-backup",
-        "build/packaging/emulators/profiles/Dolphin/config/Profiles/GCPad/Steam Deck.ini",
-        "build/packaging/emulators/profiles/Dolphin/config/Profiles/Hotkeys/Steam Deck.ini",
-        "build/packaging/emulators/profiles/Dolphin/config/Profiles/Wiimote/Wiimote (SD).ini",
-        "build/packaging/emulators/profiles/Dolphin/config/Profiles/Wiimote/Wiimote + Classic Controller (SD).ini",
-        "build/packaging/emulators/profiles/Cemu/config/controllerProfiles/SteamInput-P1.xml",
-        "build/packaging/emulators/profiles/PCSX2/config/inputprofiles/Steam Deck.ini",
-        "build/packaging/emulators/profiles/Ryujinx/config/profiles/controller/Steam Virtual Controller.json"
+        "generated/packaging/emulators/profiles/RetroArch/retroarch.cfg.linux-backup",
+        "generated/packaging/emulators/profiles/Dolphin/config/Profiles/GCPad/Steam Deck.ini",
+        "generated/packaging/emulators/profiles/Dolphin/config/Profiles/Hotkeys/Steam Deck.ini",
+        "generated/packaging/emulators/profiles/Dolphin/config/Profiles/Wiimote/Wiimote (SD).ini",
+        "generated/packaging/emulators/profiles/Dolphin/config/Profiles/Wiimote/Wiimote + Classic Controller (SD).ini",
+        "generated/packaging/emulators/profiles/Cemu/config/controllerProfiles/SteamInput-P1.xml",
+        "generated/packaging/emulators/profiles/PCSX2/config/inputprofiles/Steam Deck.ini",
+        "generated/packaging/emulators/profiles/Ryujinx/config/profiles/controller/Steam Virtual Controller.json"
     ];
 }
 

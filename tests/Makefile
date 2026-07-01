@@ -2,10 +2,36 @@ E2E_GRAPH := tests/e2e/graph.json
 E2E_GRAPH_NODES ?=
 E2E_GRAPH_ARGS ?=
 
-.PHONY: payload-audit generated-build generated-smoke test ftux-test e2e-smoke e2e-graph-list e2e-graph-status e2e-graph-coverage e2e-graph-run lifecycle-smoke sandbox-smoke launcher-smoke appimage-smoke deck-ssh-smoke nix-e2e verify
+.PHONY: tree-audit payload-audit generated-build generated-smoke test ftux-test e2e-smoke e2e-graph-list e2e-graph-status e2e-graph-coverage e2e-graph-run lifecycle-smoke sandbox-smoke launcher-smoke appimage-smoke deck-ssh-smoke nix-e2e verify
+
+tree-audit: ## Fail if repo-local output roots or stale tracked layout paths exist
+	@set -euo pipefail; \
+	for path in build .semu ES-DE deck-shots result input settings sync verification utils emulators tests/vms; do \
+		if [ -e "$$path" ]; then \
+			echo "unexpected repo-local output or stale root path: $$path" >&2; \
+			exit 1; \
+		fi; \
+	done; \
+	if find . -maxdepth 1 -name 'result-*' -print -quit | grep -q .; then \
+		echo "unexpected root Nix result-* out-link" >&2; \
+		exit 1; \
+	fi; \
+	bad_generated="$$(git ls-files generated | grep -Ev '^generated/(\.gitignore|semu\.(c|json))$$' || true)"; \
+	if [ -n "$$bad_generated" ]; then \
+		echo "tracked generated file outside approved snapshots:" >&2; \
+		printf '%s\n' "$$bad_generated" >&2; \
+		exit 1; \
+	fi; \
+	bad_stale="$$(git ls-files | grep -E '^(semu\.json|input/|settings/|sync/|verification/|utils/|emulators/|packaging/linux/ES-DE/|packaging/deck-tap/|packaging/standalone-bezel/|tests/deck/|tests/bazzite/|tests/vms/)' || true)"; \
+	if [ -n "$$bad_stale" ]; then \
+		echo "tracked stale layout path:" >&2; \
+		printf '%s\n' "$$bad_stale" >&2; \
+		exit 1; \
+	fi; \
+	echo "OK tree layout audit"
 
 generated-build: generated/semu.c ## Build committed generated C without invoking BTRC
-	@mkdir -p build
+	@mkdir -p "$(dir $(SEMU_BIN))"
 	$(CC) generated/semu.c -std=c11 -o "$(SEMU_BIN)" -lm
 
 generated-smoke: generated-build ## Run BTRC-native smoke tests from generated C
@@ -15,7 +41,7 @@ generated-smoke: generated-build ## Run BTRC-native smoke tests from generated C
 payload-audit: $(SEMU_BIN) ## Fail if tracked licensed payloads or VM artifacts would be upstreamed
 	$(SEMU_BIN) e2e payload-audit --project "$(CURDIR)"
 
-test: payload-audit generated-smoke appimage-smoke ## Run native BTRC/runtime tests locally
+test: tree-audit payload-audit generated-smoke appimage-smoke ## Run native BTRC/runtime tests locally
 
 ftux-test: generated-smoke ## Validate Steam Deck/Linux first-run bootstrap path
 
@@ -47,7 +73,7 @@ appimage-smoke: generated-build ## Validate AppImage assembly and Nix-store moun
 	$(SEMU_BIN) e2e appimage --project "$(CURDIR)"
 
 deck-ssh-smoke: ## Probe a physical Steam Deck over SSH and capture a baseline screenshot
-	tests/deck/ssh-smoke.sh
+	tests/steamdeck/ssh-smoke.sh
 
 nix-e2e: ## Validate flake routed-emulator shape and mock wrapper behavior
 	@set -euo pipefail; \
@@ -56,17 +82,18 @@ nix-e2e: ## Validate flake routed-emulator shape and mock wrapper behavior
 	nix eval .#packages.x86_64-linux.default.name >/dev/null; \
 	nix eval --raw .#apps.x86_64-linux.semu-retroarch.program | grep -F '/bin/semu-retroarch' >/dev/null; \
 	nix eval --raw .#apps.x86_64-linux.semu-es-de.program | grep -F '/bin/semu-es-de' >/dev/null; \
-	nix build ".#checks.$$host_system.routed-emulator-mock" --print-build-logs; \
+	mkdir -p generated/nix; \
+	nix build --out-link generated/nix/result ".#checks.$$host_system.routed-emulator-mock" --print-build-logs; \
 	echo "OK Nix routed-emulator smoke ($$host_system)"
 
-verify: payload-audit $(SEMU_BIN) ## Run deterministic BTRC/Steam Deck verification
+verify: tree-audit payload-audit $(SEMU_BIN) ## Run deterministic BTRC/Steam Deck verification
 	@set -euo pipefail; \
-	verify_dir="$(CURDIR)/build/verification"; \
+	verify_dir="$(CURDIR)/generated/test/verification"; \
 	rm -rf "$$verify_dir"; \
 	mkdir -p "$$verify_dir"; \
 	echo "== Manifest determinism =="; \
 	"$(SEMU_BIN)" manifest --output "$$verify_dir/semu.json"; \
-	cmp -s "$$verify_dir/semu.json" "semu.json"; \
+	cmp -s "$$verify_dir/semu.json" "generated/semu.json"; \
 	grep -F '"source_language": "semu-keymap-v1"' "$$verify_dir/semu.json" >/dev/null; \
 		grep -F '"source_path": "$${paths.keymaps}/steam_deck.skm"' "$$verify_dir/semu.json" >/dev/null; \
 		grep -F '"screenshot_verification"' "$$verify_dir/semu.json" >/dev/null; \
@@ -75,7 +102,10 @@ verify: payload-audit $(SEMU_BIN) ## Run deterministic BTRC/Steam Deck verificat
 		grep -F '"engine": "syncthing"' "$$verify_dir/semu.json" >/dev/null; \
 		grep -F '"tray_app": "syncthingtray"' "$$verify_dir/semu.json" >/dev/null; \
 	cmp -s "$(SEMU_C)" "generated/semu.c"; \
-	echo "OK manifest generated from BTRC matches semu.json"; \
+	echo "OK manifest generated from BTRC matches generated/semu.json"; \
+	echo "== Bootstrap generated project outputs =="; \
+	"$(SEMU_BIN)" bootstrap --project "$(CURDIR)"; \
+	echo "OK bootstrap generated outputs"; \
 	echo "== Keymap compiler and renderers =="; \
 	"$(SEMU_BIN)" keymap validate --project "$(CURDIR)" | tee "$$verify_dir/keymap-validate.txt"; \
 	"$(SEMU_BIN)" keymap render --project "$(CURDIR)" --target manifest --output "$$verify_dir/keymap.json"; \
@@ -149,4 +179,4 @@ verify: payload-audit $(SEMU_BIN) ## Run deterministic BTRC/Steam Deck verificat
 	echo "Verification artifacts: $$verify_dir"
 
 include tests/vm/Makefile
-include tests/bazzite/Makefile
+include tests/vm/bazzite/Makefile

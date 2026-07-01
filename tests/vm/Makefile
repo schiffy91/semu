@@ -1,4 +1,4 @@
-VM_DIR := tests/vms
+VM_DIR := generated/test/vms
 CLOUD_INIT := tests/vm/cloud-init
 SSH_PORT_LINUX := 2222
 VM_KEY := $(VM_DIR)/id_ed25519
@@ -97,23 +97,23 @@ deck-vm-sync: deck-vm-start ## Sync project and build the guest BTRC binary in V
 
 deck-vm-provision: deck-vm-sync ## Provision VM with Deck-style services/config
 	ssh $(SSH_OPTS) -p $(SSH_PORT_LINUX) arch@localhost \
-		'cd ~/semu && SEMU_BIN=$$PWD/build/semu build/semu deck provision --project "$$PWD"'
+		'cd ~/semu && SEMU_BIN=$$PWD/generated/build/semu generated/build/semu deck provision --project "$$PWD"'
 
 deck-vm-verify: deck-vm-provision ## Run Deck-style emulator/input/sync checks in VM
 	ssh $(SSH_OPTS) -p $(SSH_PORT_LINUX) arch@localhost \
-		'cd ~/semu && SEMU_BIN=$$PWD/build/semu build/semu deck verify-emulators --project "$$PWD"'
+		'cd ~/semu && SEMU_BIN=$$PWD/generated/build/semu generated/build/semu deck verify-emulators --project "$$PWD"'
 	ssh $(SSH_OPTS) -p $(SSH_PORT_LINUX) arch@localhost \
-		'cd ~/semu && SEMU_BIN=$$PWD/build/semu build/semu deck verify-sync --project "$$PWD"'
+		'cd ~/semu && SEMU_BIN=$$PWD/generated/build/semu generated/build/semu deck verify-sync --project "$$PWD"'
 	ssh $(SSH_OPTS) -p $(SSH_PORT_LINUX) arch@localhost \
-		'cd ~/semu && SEMU_BIN=$$PWD/build/semu build/semu deck verify-input --project "$$PWD"'
+		'cd ~/semu && SEMU_BIN=$$PWD/generated/build/semu generated/build/semu deck verify-input --project "$$PWD"'
 
 deck-vm-verify-strict: deck-vm-provision ## Run Deck VM checks and fail if input devices/services are missing
 	ssh $(SSH_OPTS) -p $(SSH_PORT_LINUX) arch@localhost \
-		'cd ~/semu && SEMU_BIN=$$PWD/build/semu build/semu deck verify-emulators --project "$$PWD"'
+		'cd ~/semu && SEMU_BIN=$$PWD/generated/build/semu generated/build/semu deck verify-emulators --project "$$PWD"'
 	ssh $(SSH_OPTS) -p $(SSH_PORT_LINUX) arch@localhost \
-		'cd ~/semu && SEMU_BIN=$$PWD/build/semu build/semu deck verify-sync --project "$$PWD"'
+		'cd ~/semu && SEMU_BIN=$$PWD/generated/build/semu generated/build/semu deck verify-sync --project "$$PWD"'
 	ssh $(SSH_OPTS) -p $(SSH_PORT_LINUX) arch@localhost \
-		'cd ~/semu && SEMU_BIN=$$PWD/build/semu build/semu deck verify-input --strict --project "$$PWD"'
+		'cd ~/semu && SEMU_BIN=$$PWD/generated/build/semu generated/build/semu deck verify-input --strict --project "$$PWD"'
 
 deck-vm-stop: linux-stop ## Stop Deck-like Linux VM
 

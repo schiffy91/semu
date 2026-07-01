@@ -32,7 +32,7 @@ string e2eFakeAppImageToolText() {
         "if [ \"${1:-}\" = \"--no-appstream\" ]; then shift; fi",
         "APPDIR=\"${1:?missing AppDir}\"",
         "OUTPUT=\"${2:?missing output}\"",
-        "for required in AppRun usr/bin/es-de usr/bin/semu usr/bin/semu-quit-watch usr/bin/bwrap usr/bin/semu-retroarch usr/bin/semu-dolphin usr/bin/semu-ppsspp usr/bin/semu-flycast usr/bin/semu-melonds usr/bin/semu-pcsx2 usr/bin/semu-cemu usr/bin/semu-azahar usr/bin/semu-ryujinx usr/bin/semu-btrc usr/bin/semu-es-de usr/bin/syncthing usr/bin/syncthingtray usr/bin/curl usr/lib/retroarch/cores nix/store packaging/linux/AppRun packaging/linux/ES-DE/es_find_rules_linux.xml; do",
+        "for required in AppRun usr/bin/es-de usr/bin/semu usr/bin/semu-quit-watch usr/bin/bwrap usr/bin/semu-retroarch usr/bin/semu-dolphin usr/bin/semu-ppsspp usr/bin/semu-flycast usr/bin/semu-melonds usr/bin/semu-pcsx2 usr/bin/semu-cemu usr/bin/semu-azahar usr/bin/semu-ryujinx usr/bin/semu-btrc usr/bin/semu-es-de usr/bin/syncthing usr/bin/syncthingtray usr/bin/curl usr/lib/retroarch/cores nix/store packaging/linux/AppRun generated/packaging/es-de/es_find_rules_linux.xml; do",
         "  test -e \"$APPDIR/$required\" || { echo \"missing AppDir path: $required\" >&2; exit 3; }",
         "done",
         "test ! -e \"$APPDIR/packaging/linux/build-appimage.sh\" || { echo \"build script shipped inside AppDir\" >&2; exit 3; }",
@@ -52,7 +52,7 @@ string e2eFakeAppImageToolText() {
         "! grep -F 'sync setup' \"$APPDIR/AppRun\" >/dev/null",
         "! grep -F 'pkexec' \"$APPDIR/AppRun\" >/dev/null",
         "find \"$APPDIR/usr/bin\" -maxdepth 1 -type f -perm -111 -print | sort > \"$OUTPUT\"",
-        "grep -o 'semu-[a-z0-9-]*' \"$APPDIR/packaging/linux/ES-DE/es_find_rules_linux.xml\" | sort -u | while IFS= read -r launcher; do",
+        "grep -o 'semu-[a-z0-9-]*' \"$APPDIR/generated/packaging/es-de/es_find_rules_linux.xml\" | sort -u | while IFS= read -r launcher; do",
         "  test -x \"$APPDIR/usr/bin/$launcher\" || test -x \"$APPDIR/packaging/linux/bin/$launcher\" || { echo \"generated ES-DE launcher has no executable: $launcher\" >&2; exit 3; }",
         "done"
     ]);
@@ -172,6 +172,8 @@ int e2eAppImageSmoke(CliArgs args) {
     e2eWriteExecutable(fakeEsde, e2eFakeEsdeAppImageText());
     e2eWriteExecutable(joinPath(binDir, "appimagetool"), e2eFakeAppImageToolText());
     e2eWriteExecutable(joinPath(binDir, "nix"), e2eFakeNixText());
+    ensureDir(joinPath(project, "generated/packaging/es-de"));
+    FileSystem.writeText(joinPath(project, "generated/packaging/es-de/es_find_rules_linux.xml"), "<emulator name=\"RETROARCH\"><entry>semu-retroarch</entry></emulator>\n");
 
     string noBwrapPackage = joinPath(tmp, "no-bwrap-nix-package");
     e2eWriteFakeNixPackage(noBwrapPackage, false);
@@ -248,8 +250,8 @@ int e2eAppImageSmoke(CliArgs args) {
     string missingCli = joinPath(tmp, "AppRunMissingCli.AppDir");
     string missingProject = joinPath(tmp, "missing-cli-project");
     ensureDir(joinPath(missingCli, "usr/bin"));
-    ensureDir(missingProject);
-    FileSystem.writeText(joinPath(missingProject, "semu.json"), "{\"schema_version\":1}\n");
+    ensureDir(joinPath(missingProject, "generated"));
+    FileSystem.writeText(manifestPath(missingProject), "{\"schema_version\":1}\n");
     copyFilePath(joinPath(project, "packaging/linux/AppRun"), joinPath(missingCli, "AppRun"));
     FileSystem.chmod(joinPath(missingCli, "AppRun"), 493);
     if (!e2eExpectStatus(2, e2eCleanAppRunFixtureEnv()
@@ -267,9 +269,9 @@ int e2eAppImageSmoke(CliArgs args) {
     string cliAppImage = joinPath(tmp, "Semu-x86_64.AppImage");
     ensureDir(joinPath(cliAppDir, "usr/bin"));
     ensureDir(joinPath(cliAppDir, "packaging/linux/bin"));
-    ensureDir(cliProject);
+    ensureDir(joinPath(cliProject, "generated"));
     FileSystem.writeText(cliAppImage, "fake appimage\n");
-    FileSystem.writeText(joinPath(cliProject, "semu.json"), "{\"schema_version\":1}\n");
+    FileSystem.writeText(manifestPath(cliProject), "{\"schema_version\":1}\n");
     copyFilePath(joinPath(project, "packaging/linux/AppRun"), joinPath(cliAppDir, "AppRun"));
     FileSystem.chmod(joinPath(cliAppDir, "AppRun"), 493);
     e2eWriteExecutable(joinPath(cliAppDir, "usr/bin/semu"), textLines([

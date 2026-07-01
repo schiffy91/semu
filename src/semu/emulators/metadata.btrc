@@ -40,7 +40,7 @@ Vector<string> retroarchCoreSearchPaths() {
 string launcherEntries() {
     Vector<string> linuxEmulatorFields = [];
     for emulator in linuxLauncherNames() {
-        linuxEmulatorFields.push(jsonStrField(emulator, "${project}/packaging/linux/bin/" + semuLauncherName(emulator)));
+        linuxEmulatorFields.push(jsonStrField(emulator, "${project}/generated/packaging/linux/bin/" + semuLauncherName(emulator)));
     }
     string linux = jsonObject([
         jsonField("emulators", jsonObject(linuxEmulatorFields)),
@@ -60,16 +60,16 @@ string launcherEntries() {
     ]);
     string macos = jsonObject([
         jsonField("emulators", jsonObject([
-            jsonStrField("RETROARCH", "${project}/result/bin/retroarch"),
-            jsonStrField("AZAHAR", "${project}/result/Applications/azahar.app/Contents/MacOS/azahar"),
-            jsonStrField("DOLPHIN", "${project}/result/Applications/Dolphin.app/Contents/MacOS/Dolphin"),
-            jsonStrField("PCSX2", "${project}/result/Applications/PCSX2.app/Contents/MacOS/PCSX2"),
-            jsonStrField("CEMU", "${project}/result/Applications/Cemu.app/Contents/MacOS/Cemu"),
+            jsonStrField("RETROARCH", "${project}/generated/nix/result/bin/retroarch"),
+            jsonStrField("AZAHAR", "${project}/generated/nix/result/Applications/azahar.app/Contents/MacOS/azahar"),
+            jsonStrField("DOLPHIN", "${project}/generated/nix/result/Applications/Dolphin.app/Contents/MacOS/Dolphin"),
+            jsonStrField("PCSX2", "${project}/generated/nix/result/Applications/PCSX2.app/Contents/MacOS/PCSX2"),
+            jsonStrField("CEMU", "${project}/generated/nix/result/Applications/Cemu.app/Contents/MacOS/Cemu"),
             jsonStrField("RYUJINX", "~/.local/share/ryujinx-app/Ryujinx.app/Contents/MacOS/Ryujinx"),
-            jsonStrField("ARES", "${project}/result/Applications/ares.app/Contents/MacOS/ares")
+            jsonStrField("ARES", "${project}/generated/nix/result/Applications/ares.app/Contents/MacOS/ares")
         ])),
         jsonField("cores", jsonObject([
-            jsonField("RETROARCH", jsonStringArray(["${project}/result/cores"]))
+            jsonField("RETROARCH", jsonStringArray(["${project}/generated/nix/result/cores"]))
         ]))
     ]);
     return jsonObject([

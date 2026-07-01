@@ -9,7 +9,7 @@ void writeGeneratedManifest(string output) {
 }
 
 void writeProjectManifest(string project) {
-    SemuGeneratedFiles.writeProjectJson(project, joinPath(project, "semu.json"), buildJson());
+    SemuGeneratedFiles.writeProjectJson(project, manifestPath(project), buildJson());
 }
 
 string bundledText(string project, string relative, string fallback) {
@@ -64,6 +64,19 @@ void seedBundledFileFromRoot(string root, string project, string relative, bool 
 
 void seedBundledFile(string project, string relative, bool executable) {
     seedBundledFileFromRoot(assetRoot(project), project, relative, executable);
+}
+
+void seedLinuxSourceFile(string project, string relative, bool executable) {
+    string root = assetRoot(project);
+    string source = joinPath(root, joinPath("packaging/linux", relative));
+    string target = joinPath(linuxPackagingRoot(project), relative);
+    if (!FileSystem.isFile(source)) {
+        return;
+    }
+    SemuGeneratedFiles.writeProject(project, target, FileSystem.readText(source));
+    if (executable) {
+        FileSystem.chmod(target, 493);
+    }
 }
 
 void seedBundledDirFiles(string project, string relative, bool executable) {
@@ -192,26 +205,23 @@ string linuxLauncherShimText(string emulator) {
 
 void seedPortableLinuxShims(string project) {
     SemuUpgradeCleanup.beforeSeedingLinuxAssets(project);
-    writeGeneratedExecutableText(project, joinPath(project, "packaging/linux/sandbox.sh"), linuxSandboxShimText());
-    writeGeneratedExecutableText(project, joinPath(project, "packaging/linux/bin/semu-btrc"), linuxBtrcShimText());
-    writeGeneratedExecutableText(project, joinPath(project, "packaging/linux/bin/semu-flatpak"), linuxFlatpakShimText());
-    writeGeneratedExecutableText(project, joinPath(project, "packaging/linux/bin/semu-settings"), linuxSettingsShimText());
+    writeGeneratedExecutableText(project, joinPath(linuxPackagingRoot(project), "sandbox.sh"), linuxSandboxShimText());
+    writeGeneratedExecutableText(project, joinPath(linuxPackagingRoot(project), "bin/semu-btrc"), linuxBtrcShimText());
+    writeGeneratedExecutableText(project, joinPath(linuxPackagingRoot(project), "bin/semu-flatpak"), linuxFlatpakShimText());
+    writeGeneratedExecutableText(project, joinPath(linuxPackagingRoot(project), "bin/semu-settings"), linuxSettingsShimText());
     for emulator in linuxLauncherNames() {
         writeGeneratedExecutableText(
             project,
-            joinPath(project, "packaging/linux/bin/" + semuLauncherName(emulator)),
+            joinPath(linuxPackagingRoot(project), "bin/" + semuLauncherName(emulator)),
             linuxLauncherShimText(emulator)
         );
     }
 }
 
 void seedLinuxAssets(string project) {
-    seedBundledFile(project, "packaging/linux/AppRun", true);
-    seedBundledFile(project, "packaging/linux/semu.desktop", false);
-    seedBundledFile(project, "packaging/linux/ES-DE/es_systems_linux.xml", false);
-    seedBundledFile(project, "packaging/linux/ES-DE/es_find_rules_linux.xml", false);
+    seedLinuxSourceFile(project, "AppRun", true);
+    seedLinuxSourceFile(project, "semu.desktop", false);
     seedPortableLinuxShims(project);
-    seedBundledDirFiles(project, "src/semu/bootstrap/templates", false);
 }
 
 // ---- project_defaults.btrc ----
@@ -335,7 +345,6 @@ void ensureProjectContentDirs(string project) {
     ensureDir(joinPath(biosRoot(project), "switch"));
     ensureDir(joinPath(biosRoot(project), "dc"));
     ensureDir(emulatorProfilePath(project, "Cemu/data"));
-    ensureDir(joinPath(project, "input/steam-input"));
 }
 
 // ---- deck_bootstrap.btrc ----
@@ -364,7 +373,7 @@ string esLauncherBin(string project) {
     if (configured.len() > 0) {
         return configured;
     }
-    string resultBin = joinPath(project, "result/bin");
+    string resultBin = joinPath(nixResultRoot(project), "bin");
     if (FileSystem.exists(joinPath(resultBin, "semu-retroarch"))) {
         return resultBin;
     }
@@ -397,7 +406,7 @@ string esFindRulesXml(string project, string launcherBin) {
     string retroarchCoreRules = "";
     string envCorePath = Environment.get("SEMU_RETROARCH_CORE_DIR", "");
     retroarchCoreRules = appendRetroArchCoreRule(retroarchCoreRules, envCorePath);
-    string projectCorePath = joinPath(project, "result/lib/retroarch/cores");
+    string projectCorePath = joinPath(nixResultRoot(project), "lib/retroarch/cores");
     if (FileSystem.isDir(projectCorePath)) {
         retroarchCoreRules = appendRetroArchCoreRule(retroarchCoreRules, projectCorePath);
     }
@@ -420,7 +429,7 @@ void writeEsDeFiles(string project) {
     string systemsXml = catalog.esSystemsXml(project);
     SemuGeneratedFiles.writeProject(project, joinPath(customSystemsRoot(project), "es_systems.xml"), systemsXml);
 
-    string packagingSystems = joinPath(linuxPackagingRoot(project), "ES-DE");
+    string packagingSystems = joinPath(generatedPackagingRoot(project), "es-de");
     ensureDir(packagingSystems);
     SemuGeneratedFiles.writeProject(project, joinPath(packagingSystems, "es_systems_linux.xml"), catalog.esSystemsXml("${project}"));
     SemuGeneratedFiles.writeProject(project, joinPath(packagingSystems, "es_find_rules_linux.xml"), esFindRulesXml("${project}", "@SEMU_LINUX_BIN@"));
@@ -441,8 +450,8 @@ string esSettingsXmlForRuntime(string project, string romsDir) {
 }
 
 void writeEsDeRuntimeFiles(string project, string userHome) {
-    string customRoot = joinPath(userHome, "ES-DE/custom_systems");
-    string settingsRoot = joinPath(userHome, "ES-DE/settings");
+    string customRoot = externalEsDeCustomSystemsRoot(userHome);
+    string settingsRoot = externalEsDeSettingsRoot(userHome);
     ensureDir(customRoot);
     ensureDir(settingsRoot);
 
@@ -553,16 +562,16 @@ string steamInputTemplateVdf(string title, bool full, KeymapIr ir, string projec
 }
 
 void writeSteamInputTemplates(string project) {
-    ensureDir(joinPath(project, "input/steam-input"));
+    ensureDir(steamInputTemplatesRoot(project));
     KeymapIr ir = projectKeymapIr(project);
     SemuGeneratedFiles.writeProject(
         project,
-        joinPath(project, "input/steam-input/neptune-simple.vdf"),
+        joinPath(steamInputTemplatesRoot(project), "neptune-simple.vdf"),
         steamInputTemplateVdf("Semu: Steam Deck - Neptune SIMPLE", false, ir, project)
     );
     SemuGeneratedFiles.writeProject(
         project,
-        joinPath(project, "input/steam-input/neptune-full.vdf"),
+        joinPath(steamInputTemplatesRoot(project), "neptune-full.vdf"),
         steamInputTemplateVdf("Semu: Steam Deck - Neptune FULL", true, ir, project)
     );
 }

@@ -49,7 +49,7 @@ class SemuE2eSpec {
         self.name = "semu-e2e";
         self.state = "semu-e2e";
         self.parentState = "root";
-        self.stateRoot = "tests/vms/e2e-state";
+        self.stateRoot = "generated/test/vms/e2e-state";
         self.stateMaterial = "";
         self.parentHash = "root";
         self.stateHash = "";

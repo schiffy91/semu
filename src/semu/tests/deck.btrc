@@ -35,9 +35,9 @@ void deckInstallHostPackages() {
 }
 
 void deckBuildGeneratedCli(string project) {
-    ensureDir(joinPath(project, "build"));
     string generated = joinPath(project, "generated/semu.c");
-    string output = joinPath(project, "build/semu");
+    string output = joinPath(project, "generated/build/semu");
+    ensureDir(PathTools.dirname(output));
     if (commandExists("cc") && FileSystem.exists(generated)) {
         ExecResult result = UnixShell().runRaw(
             "cc " + ShellWords.quote(generated) + " -std=c11 -o " + ShellWords.quote(output) + " -lm",

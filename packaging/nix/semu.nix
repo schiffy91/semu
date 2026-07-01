@@ -25,7 +25,6 @@ let
 
       # Copy BTRC runtime sources and generated manifest.
       cp src/semu.btrc $out/lib/semu/semu.btrc
-      cp semu.json $out/lib/semu/
       cp -r generated $out/lib/semu/
       if [ -d src/semu/bootstrap/templates ]; then
         mkdir -p $out/lib/semu/src/semu/bootstrap
@@ -54,9 +53,9 @@ let
 
       # Standalone-emulator bezel assets (vkBasalt reshade effect + per-aspect bezels). The
       # launcher generates a per-emulator vkBasalt.conf pointing at these and enables vkBasalt.
-      if [ -d packaging/standalone-bezel/reshade ]; then
+      if [ -d config/assets/reshade ]; then
         mkdir -p $out/lib/semu/share/semu-bezel
-        cp -r packaging/standalone-bezel/reshade $out/lib/semu/share/semu-bezel/reshade
+        cp -r config/assets/reshade $out/lib/semu/share/semu-bezel/reshade
       fi
     '';
     meta = {

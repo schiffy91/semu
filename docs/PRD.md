@@ -2,98 +2,90 @@
 
 ## Goal
 
-Semu should make a Steam Deck behave like a clean, console-style emulation
+Semu should make a Steam Deck behave like a clean console-style emulation
 appliance:
 
 - Launch ES-DE from Steam/Game Mode.
-- Route every supported system to the right emulator.
-- Keep ROMs, BIOS, saves, states, screenshots, and scraped media outside Git.
+- Route each supported system to the right emulator.
+- Keep ROMs, BIOS, saves, states, screenshots, scraped media, VM disks, and
+  generated package output outside source-controlled roots.
 - Compile source policy into emulator profiles, ES-DE config, Steam Input
-  templates, sync units, and package assets.
+  templates, sync units, package assets, and runtime settings.
 - Apply Semu-owned shaders and bezels to game content only, never emulator UI.
-- Provide a controller-reachable Semu Settings entry in ES-DE.
+- Provide controller-reachable Semu Settings entries in ES-DE.
 - Quit any emulator immediately and return to ES-DE.
 
 ## Non-Goals
 
-- Do not store copyrighted content, BIOS, keys, saves, VM disks, screenshots, or
-  generated Deck captures in the repository.
-- Do not make each emulator patch a renderer.
-- Do not use ES-DE's root directory as Semu's source or generated-output tree.
-- Do not claim production readiness from static config alone.
+- Store copyrighted content, BIOS, keys, saves, VM disks, screenshots, or Deck
+  captures in Git.
+- Let each emulator patch become its own renderer.
+- Use ES-DE's root directory as Semu's source or generated-output tree.
+- Treat static config as production readiness proof.
+- Add top-level directories for narrow implementation details.
 
-## Architecture
-
-Semu is a compiler plus runtime launcher.
+## Source Layout
 
 Source inputs:
 
 - BTRC code in `src/semu/**`.
-- Editable settings under `settings/**`, `sync/sync.json`,
-  `input/keymaps/**`, and `verification/screenshots.json`.
-- Packaging and native helper source under `packaging/**`.
+- Editable policy under `config/**`.
+- Package source under `packaging/**`.
+- Test entrypoints under `tests/**`.
 
 Generated outputs:
 
-- `generated/semu.c` and `semu.json` are committed build snapshots for current
-  Nix/package compatibility.
-- Project-local generated ES-DE files go under `build/packaging/es-de/**`.
-- Project-local generated emulator profiles go under
-  `build/packaging/emulators/profiles/**`.
-- Local fallback content goes under `.semu/content/**`.
-- Runtime ES-DE install files may be written to the user's ES-DE home during
-  install, but that is an external install target, not repository source.
+- `generated/build/` for local BTRC/C build products.
+- `generated/semu.c` and `generated/semu.json` as temporary committed
+  snapshots for current Nix/package compatibility.
+- `generated/packaging/` for rendered ES-DE XML, emulator profiles, Steam Input
+  VDFs, sync scripts, AppImage output, and generated packaging material.
+- `generated/runtime/` for local content, launcher state, Syncthing state, logs,
+  and fallback ROM tree.
+- `generated/test/` for verification artifacts, screenshots, VM disks, and e2e
+  state.
+- `generated/nix/result` for Nix out-links.
+
+External install targets are still allowed when explicit, for example the
+user's ES-DE home or SD card. Repo-local generation is constrained to
+`generated/`.
 
 ## Rendering Contract
 
 The elegant end state is a small tap ABI plus one renderer:
 
 - Tap-in: the emulator reports game-frame metadata at the game-content boundary.
-- Tap-out: Semu's compositor uses that metadata to apply shader and bezel policy.
-- Proof: runtime output must prove the tap excludes menu/settings UI and uses the
+- Tap-out: Semu's compositor uses that metadata to apply shader and bezel
+  policy.
+- Proof: runtime output must prove the tap excludes menu/settings UI and uses
   generated Semu config.
 
-The tap payload should contain:
-
-- active/content-loaded flag
-- content rectangle
-- output size
-- native content size
-- backend/API origin
-- orientation/surface role where needed
-
-The tap payload should not contain:
-
-- shader code
-- bezel layout policy
-- asset parsing
-- emulator-specific duplicate compositor logic
-
-If an emulator integration needs hundreds or thousands of lines to draw shaders
-and bezels, the code belongs in the shared compositor or asset compiler instead.
+The tap payload should contain active/content-loaded flag, content rectangle,
+output size, native content size, backend/API origin, and orientation/surface
+role where needed. It should not contain shader code, bezel layout policy, asset
+parsing, or emulator-specific duplicate compositor logic.
 
 ## Product Requirements
 
 1. Bootstrap
-   - `build/semu bootstrap --project "$PWD"` creates `.semu/content/**` and
-     `build/packaging/es-de/**`.
-   - It must not create a top-level `ES-DE/` tree.
+   - `generated/build/semu bootstrap --project "$PWD"` creates
+     `generated/runtime/**` and `generated/packaging/**`.
+   - It must not create root `build/`, `.semu/`, `ES-DE/`, or `result*`.
 
 2. Build
-   - `make btrc-build` compiles the BTRC CLI.
-   - `make manifest` refreshes `semu.json`.
-   - `make test` passes on the host without ROMs, BIOS, or Deck hardware.
-   - Bootstrap-generated emulator profiles must not dirty root source
-     directories.
+   - `make btrc-build` compiles the BTRC CLI to `generated/build/semu`.
+   - `make manifest` refreshes `generated/semu.json`.
+   - Nix builds use `--out-link generated/nix/result`.
+   - Bootstrap-generated emulator profiles must not dirty source directories.
 
 3. ES-DE
-   - Generated ES-DE custom systems and settings entries live in
-     `build/packaging/es-de/**`.
-   - External runtime install may still write to `~/ES-DE/custom_systems` and
+   - Generated ES-DE custom systems and settings entries live under
+     `generated/packaging/es-de/**`.
+   - Runtime install may still write to `~/ES-DE/custom_systems` and
      `~/ES-DE/settings`.
 
 4. Runtime Data
-   - Default local content root is `.semu/content`.
+   - Default local content root is `generated/runtime/content`.
    - External SD-card layouts remain supported.
    - Semu must not mutate external ROM roots except through explicit sync or
      settings operations.
@@ -109,6 +101,8 @@ and bezels, the code belongs in the shared compositor or asset compiler instead.
 ## Current Risks
 
 - `generated/semu.c` is still committed because Nix packages compile it
-  directly. A future cleanup should make Nix run the BTRC compiler instead.
-- The old production-refactor branch should be mined only in small pieces after
-  current `main` contracts exist for each piece.
+  directly. Future cleanup should make Nix run the BTRC compiler instead.
+- `generated/semu.json` is still committed as a manifest snapshot. Future
+  cleanup should remove it once package/build consumers compile it directly.
+- Old production-refactor branches should be mined only in small pieces after
+  current `main` has explicit contracts for each piece.

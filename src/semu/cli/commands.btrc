@@ -326,7 +326,7 @@ int deckEnumerateCommand(string project) {
         string pri = launcherTapPriority(id);
         string variants = launcherTapVariants(id);
         string bez = variants.len() > 0 ? (variants + " + Off") : "Off (no bundled bezel art yet)";
-        string hole = bezelManifestHole(id);
+        string hole = bezelManifestHole(project, id);
         print(f"* {id}");
         print(f"    class : {style}   aspect {aspect}   default {pri}-priority");
         print(f"    bezel : {bez}");
@@ -421,7 +421,7 @@ string steamInputTemplateDir(CliArgs args) {
 }
 
 void copySteamInputTemplate(string project, string destination, string name) {
-    string source = joinPath(project, "input/steam-input/" + name);
+    string source = joinPath(steamInputTemplatesRoot(project), name);
     SemuGeneratedFiles.writeExternalInstall("steam_input_template", joinPath(destination, name), FileSystem.readText(source));
 }
 
@@ -446,8 +446,8 @@ int steamInputCommand(CliArgs args, string project) {
     }
     if (mode.equals("status") || mode.equals("validate")) {
         writeSteamInputTemplates(project);
-        reportSteamInputTemplate("neptune_simple", joinPath(project, "input/steam-input/neptune-simple.vdf"));
-        reportSteamInputTemplate("neptune_full", joinPath(project, "input/steam-input/neptune-full.vdf"));
+        reportSteamInputTemplate("neptune_simple", joinPath(steamInputTemplatesRoot(project), "neptune-simple.vdf"));
+        reportSteamInputTemplate("neptune_full", joinPath(steamInputTemplatesRoot(project), "neptune-full.vdf"));
         print("");
         print("Steam shortcut");
         steamShortcutStatus(project, args);

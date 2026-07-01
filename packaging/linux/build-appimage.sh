@@ -30,12 +30,13 @@ done
 
 HERE="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)"
 REPO_ROOT="$(cd "$HERE/../.." && pwd)"
-[ -z "$ESDE_APPIMAGE" ] && ESDE_APPIMAGE="$REPO_ROOT/ES-DE.AppImage"
-[ -z "$OUTPUT" ] && OUTPUT="$REPO_ROOT/Semu-${ARCH}.AppImage"
+[ -z "$ESDE_APPIMAGE" ] && ESDE_APPIMAGE="$REPO_ROOT/generated/packaging/es-de/ES-DE.AppImage"
+[ -z "$OUTPUT" ] && OUTPUT="$REPO_ROOT/generated/packaging/linux/Semu-${ARCH}.AppImage"
+mkdir -p "$(dirname "$OUTPUT")"
 
 if [ ! -f "$ESDE_APPIMAGE" ]; then
   echo "ES-DE AppImage not found at $ESDE_APPIMAGE" >&2
-  echo "Pass --esde-appimage <path> or place one at the repository root." >&2
+  echo "Pass --esde-appimage <path> or place one at generated/packaging/es-de/ES-DE.AppImage." >&2
   exit 2
 fi
 
@@ -108,8 +109,8 @@ cp -r "$SQ/usr/bin/." "$APPDIR/usr/bin/"
 cp -r "$SQ/usr/share/." "$APPDIR/usr/share/" 2>/dev/null || true
 cp -r "$SQ/usr/lib/." "$APPDIR/usr/lib/" 2>/dev/null || true
 
-if [ -z "$NIX_PACKAGE" ] && [ -e "$REPO_ROOT/result" ]; then
-  NIX_PACKAGE="$REPO_ROOT/result"
+if [ -z "$NIX_PACKAGE" ] && [ -e "$REPO_ROOT/generated/nix/result" ]; then
+  NIX_PACKAGE="$REPO_ROOT/generated/nix/result"
 fi
 
 if [ -n "$NIX_PACKAGE" ]; then
@@ -176,6 +177,11 @@ cp -r "$HERE/." "$APPDIR/packaging/linux/"
 # Don't ship the build script itself inside.
 rm -f "$APPDIR/packaging/linux/build-appimage.sh"
 
+if [ -d "$REPO_ROOT/generated/packaging/es-de" ]; then
+  mkdir -p "$APPDIR/generated/packaging"
+  cp -r "$REPO_ROOT/generated/packaging/es-de" "$APPDIR/generated/packaging/"
+fi
+
 if [ -d "$REPO_ROOT/src/semu/bootstrap/templates" ]; then
   mkdir -p "$APPDIR/src/semu/bootstrap"
   cp -r "$REPO_ROOT/src/semu/bootstrap/templates" "$APPDIR/src/semu/bootstrap/"
@@ -190,8 +196,8 @@ done
 
 # BTRC CLI. Source of truth is src/semu.btrc; this is the compiled runtime
 # entry used by AppRun for deck/sync/config commands.
-if [ ! -x "$APPDIR/usr/bin/semu" ] && [ -x "$REPO_ROOT/build/semu" ]; then
-  cp "$REPO_ROOT/build/semu" "$APPDIR/usr/bin/semu"
+if [ ! -x "$APPDIR/usr/bin/semu" ] && [ -x "$REPO_ROOT/generated/build/semu" ]; then
+  cp "$REPO_ROOT/generated/build/semu" "$APPDIR/usr/bin/semu"
   chmod +x "$APPDIR/usr/bin/semu"
 elif [ ! -x "$APPDIR/usr/bin/semu" ]; then
   echo "compiled BTRC CLI not found; run 'make btrc-build' or pass --nix-package" >&2

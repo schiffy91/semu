@@ -584,7 +584,7 @@ class SettingsUi {
 }
 
 string settingsRoot(string project) {
-    return joinPath(project, "settings");
+    return joinPath(configRoot(project), "settings");
 }
 
 string semuSettingsPath(string project) {

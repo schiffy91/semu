@@ -23,7 +23,7 @@
 #include <math.h>
 #define STB_IMAGE_IMPLEMENTATION
 #define STBI_ONLY_PNG
-#include "stb_image.h"
+#include "vendor/stb_image.h"
 #define SEMU_TAP_NO_HELPER
 #include "semu_tap.h"
 

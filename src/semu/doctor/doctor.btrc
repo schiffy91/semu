@@ -196,8 +196,8 @@ void doctorSteamDeck(string project) {
 
     print("");
     print("Steam Input templates");
-    reportSteamInputTemplate("neptune_simple", joinPath(project, "input/steam-input/neptune-simple.vdf"));
-    reportSteamInputTemplate("neptune_full", joinPath(project, "input/steam-input/neptune-full.vdf"));
+    reportSteamInputTemplate("neptune_simple", joinPath(steamInputTemplatesRoot(project), "neptune-simple.vdf"));
+    reportSteamInputTemplate("neptune_full", joinPath(steamInputTemplatesRoot(project), "neptune-full.vdf"));
 
     print("");
     print("ROM preflight");
