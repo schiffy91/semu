@@ -306,6 +306,10 @@ ExecResult e2eRunDeckVisualCapture(string exe, string home, string project, stri
         .arg("--allow-pending")
         .arg("--settle-seconds")
         .arg("0")
+        .arg("--launch-command")
+        .arg("printf launched; sleep 5")
+        .arg("--launch-wait-seconds")
+        .arg("0")
         .flag("--tap-state-dir", tapStateDir)
         .flag("--project", project)
         .capture(true)
@@ -1457,6 +1461,7 @@ int e2eDeckEvidenceSmoke(CliArgs args) {
     if (!e2eRunOk(visualCapture, "visual evidence capture with fake tools")) { return 1; }
     if (!e2eContains(visualCapture.stdout(), "OK capture gb screenshot game-priority/A", "visual capture screenshot status")) { return 1; }
     if (!e2eContains(visualCapture.stdout(), "OK capture gb clip", "visual capture clip status")) { return 1; }
+    if (!e2eContains(visualCapture.stdout(), "OK launch gb", "visual capture launch status")) { return 1; }
     if (!e2eContains(visualCapture.stdout(), "PENDING gb analysis", "visual capture keeps analysis human-owned")) { return 1; }
     if (!e2eOk(deckEvidenceFilePresent(deckVisualScreenshotPath(project, "gb", "game-priority", "A")), "captured game-priority A screenshot missing")) { return 1; }
     if (!e2eOk(deckEvidenceFilePresent(deckVisualScreenshotPath(project, "gb", "bezel-priority", "C")), "captured bezel-priority C screenshot missing")) { return 1; }
@@ -1464,6 +1469,7 @@ int e2eDeckEvidenceSmoke(CliArgs args) {
     if (!e2eContains(FileSystem.readText(joinPath(tapStateDir, "semu-priority")), "b", "visual capture final priority state")) { return 1; }
     if (!e2eContains(FileSystem.readText(joinPath(tapStateDir, "semu-bezel")), "2", "visual capture final bezel state")) { return 1; }
     if (!e2eContains(FileSystem.readText(joinPath(tapStateDir, "semu-shader")), "2", "visual capture final shader state")) { return 1; }
+    if (!e2eContains(FileSystem.readText(deckVisualLaunchLogPath(project, "gb")), "launched", "visual capture launch log")) { return 1; }
 
     for priority in deckVisualEvidencePriorities() {
         for variant in deckVisualEvidenceVariants() {

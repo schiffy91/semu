@@ -940,6 +940,12 @@ void deckVisualApplyTapState(char* stateDir, char* priority, char* variant);
 char* deckVisualExpandClipCommandTemplate(char* project, char* value, char* system, char* output, char* duration);
 char* deckVisualClipCommand(char* project, char* system, char* output, char* duration);
 bool deckVisualCaptureClip(char* project, char* system, char* duration);
+char* deckVisualLaunchLogPath(char* project, char* system);
+char* deckVisualLaunchPidPath(char* project, char* system);
+char* deckVisualExpandLaunchCommandTemplate(CliArgs* args, char* project, char* value, char* system);
+char* deckVisualLaunchCommand(CliArgs* args, char* project, char* system);
+bool deckVisualStartLaunchCommand(CliArgs* args, char* project, char* system, char* command);
+void deckVisualStopLaunchCommand(char* project, char* system);
 bool deckVisualCaptureSystem(CliArgs* args, char* project, char* system);
 bool deckEvidenceFilePresent(char* path);
 char* deckVisualExpectedEmulator(char* system);
@@ -23455,6 +23461,63 @@ bool deckVisualCaptureClip(char* project, char* system, char* duration) {
     return false;
 }
 
+char* deckVisualLaunchLogPath(char* project, char* system) {
+    return joinPath(deckVisualEvidenceRoot(project), joinPath(system, "launch.log"));
+}
+
+char* deckVisualLaunchPidPath(char* project, char* system) {
+    return joinPath(deckVisualEvidenceRoot(project), joinPath(system, "launch.pid"));
+}
+
+char* deckVisualExpandLaunchCommandTemplate(CliArgs* args, char* project, char* value, char* system) {
+    char* result = Strings_replace(value, "${project}", ShellWords_quote(project));
+    (result = Strings_replace(result, "${system}", ShellWords_quote(system)));
+    (result = Strings_replace(result, "${emulator}", ShellWords_quote(deckVisualExpectedEmulator(system))));
+    (result = Strings_replace(result, "${rom}", ShellWords_quote(CliArgs_valueAfter(args, "--rom", ""))));
+    return result;
+}
+
+char* deckVisualLaunchCommand(CliArgs* args, char* project, char* system) {
+    char* command = CliArgs_valueAfter(args, "--launch-command", "");
+    if (((int)strlen(command)) == 0) {
+        return "";
+    }
+    return deckVisualExpandLaunchCommandTemplate(args, project, command, system);
+}
+
+bool deckVisualStartLaunchCommand(CliArgs* args, char* project, char* system, char* command) {
+    char* log = deckVisualLaunchLogPath(project, system);
+    char* pid = deckVisualLaunchPidPath(project, system);
+    ensureDir(PathTools_dirname(log));
+    FileSystem_removeRecursive(pid);
+    FileSystem_removeRecursive(log);
+    char* launcher = (commandExists("setsid") ? "setsid sh -c " : "sh -c ");
+    char* shellCommand = __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(launcher, ShellWords_quote(command))), " > ")), ShellWords_quote(log))), " 2>&1 < /dev/null & echo $! > ")), ShellWords_quote(pid)));
+    ExecResult* result = UnixShell_runRaw(UnixShell_new(), shellCommand, false, false, "");
+    if ((!ExecResult_ok(result)) || (!FileSystem_isFile(pid))) {
+        printf("%s\n", __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat("MISSING launch ", system)), ": ")), log)));
+        return false;
+    }
+    char* waitSeconds = CliArgs_valueAfter(args, "--launch-wait-seconds", Environment_get("SEMU_VISUAL_LAUNCH_WAIT_SECONDS", "10"));
+    if (!(strcmp(waitSeconds, "0") == 0)) {
+        UnixShell_runRaw(UnixShell_new(), __btrc_str_track(__btrc_strcat("sleep ", ShellWords_quote(waitSeconds))), false, false, "");
+    }
+    printf("%s\n", __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat("OK launch ", system)), ": ")), log)));
+    return true;
+}
+
+void deckVisualStopLaunchCommand(char* project, char* system) {
+    char* pidPath = deckVisualLaunchPidPath(project, system);
+    if (!FileSystem_isFile(pidPath)) {
+        return;
+    }
+    char* pid = __btrc_str_track(__btrc_trim(FileSystem_readText(pidPath)));
+    if (((int)strlen(pid)) == 0) {
+        return;
+    }
+    UnixShell_runRaw(UnixShell_new(), __btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat(__btrc_str_track(__btrc_strcat("kill -- -", ShellWords_quote(pid))), " >/dev/null 2>&1 || kill ")), ShellWords_quote(pid))), " >/dev/null 2>&1 || true; ")), "sleep 1; ")), "kill -9 -- -")), ShellWords_quote(pid))), " >/dev/null 2>&1 || kill -9 ")), ShellWords_quote(pid))), " >/dev/null 2>&1 || true")), false, false, "");
+}
+
 bool deckVisualCaptureSystem(CliArgs* args, char* project, char* system) {
     char* stateDir = deckVisualCaptureTapStateDir(args, project);
     char* settle = deckVisualCaptureSettleSeconds(args);
@@ -23462,6 +23525,14 @@ bool deckVisualCaptureSystem(CliArgs* args, char* project, char* system) {
     bool ok = true;
     printf("%s\n", __btrc_str_track(__btrc_strcat("Capturing visual evidence for ", system)));
     printf("%s\n", __btrc_str_track(__btrc_strcat("  tap_state_dir: ", stateDir)));
+    char* launchCommand = deckVisualLaunchCommand(args, project, system);
+    bool launched = false;
+    if (((int)strlen(launchCommand)) > 0) {
+        (launched = deckVisualStartLaunchCommand(args, project, system, launchCommand));
+        if (!launched) {
+            return false;
+        }
+    }
     int __n_923 = btrc_Vector_string_iterLen(deckVisualEvidencePriorities());
     for (int __i_922 = 0; (__i_922 < __n_923); (__i_922++)) {
         char* priority = btrc_Vector_string_iterGet(deckVisualEvidencePriorities(), __i_922);
@@ -23484,6 +23555,9 @@ bool deckVisualCaptureSystem(CliArgs* args, char* project, char* system) {
     char* duration = CliArgs_valueAfter(args, "--duration-seconds", "30");
     if (!deckVisualCaptureClip(project, system, duration)) {
         (ok = false);
+    }
+    if (launched && (!CliArgs_has(args, "--leave-running"))) {
+        deckVisualStopLaunchCommand(project, system);
     }
     return ok;
 }
@@ -25505,7 +25579,7 @@ ExecResult* e2eRunDeckEnv(char* exe, char* home, char* project, btrc_Vector_stri
 }
 
 ExecResult* e2eRunDeckVisualCapture(char* exe, char* home, char* project, char* tapStateDir) {
-    Command* command = Command_check(Command_capture(Command_flag(Command_flag(Command_arg(Command_arg(Command_arg(Command_arg(Command_arg(Command_arg(Command_arg(Command_envVar(Command_envVar(Command_envVar(Command_envVar(Command_envVar(Command_new(exe), "SEMU_HOME", home), "SEMU_BIN", exe), "PATH", "/usr/bin:/bin"), "SEMU_SCREENSHOT_CMD", "printf screenshot > ${output}"), "SEMU_VISUAL_CLIP_CMD", "printf clip > ${output}"), "deck"), "visual-evidence"), "gb"), "--capture"), "--allow-pending"), "--settle-seconds"), "0"), "--tap-state-dir", tapStateDir), "--project", project), true), false);
+    Command* command = Command_check(Command_capture(Command_flag(Command_flag(Command_arg(Command_arg(Command_arg(Command_arg(Command_arg(Command_arg(Command_arg(Command_arg(Command_arg(Command_arg(Command_arg(Command_envVar(Command_envVar(Command_envVar(Command_envVar(Command_envVar(Command_new(exe), "SEMU_HOME", home), "SEMU_BIN", exe), "PATH", "/usr/bin:/bin"), "SEMU_SCREENSHOT_CMD", "printf screenshot > ${output}"), "SEMU_VISUAL_CLIP_CMD", "printf clip > ${output}"), "deck"), "visual-evidence"), "gb"), "--capture"), "--allow-pending"), "--settle-seconds"), "0"), "--launch-command"), "printf launched; sleep 5"), "--launch-wait-seconds"), "0"), "--tap-state-dir", tapStateDir), "--project", project), true), false);
     UnixShell* shell = UnixShell_new();
     ExecResult* __btrc_ret_1060 = UnixShell_runCommand(shell, command);
     if (shell != NULL) {
@@ -27756,6 +27830,9 @@ int e2eDeckEvidenceSmoke(CliArgs* args) {
     if (!e2eContains(ExecResult_stdout(visualCapture), "OK capture gb clip", "visual capture clip status")) {
         return 1;
     }
+    if (!e2eContains(ExecResult_stdout(visualCapture), "OK launch gb", "visual capture launch status")) {
+        return 1;
+    }
     if (!e2eContains(ExecResult_stdout(visualCapture), "PENDING gb analysis", "visual capture keeps analysis human-owned")) {
         return 1;
     }
@@ -27775,6 +27852,9 @@ int e2eDeckEvidenceSmoke(CliArgs* args) {
         return 1;
     }
     if (!e2eContains(FileSystem_readText(joinPath(tapStateDir, "semu-shader")), "2", "visual capture final shader state")) {
+        return 1;
+    }
+    if (!e2eContains(FileSystem_readText(deckVisualLaunchLogPath(project, "gb")), "launched", "visual capture launch log")) {
         return 1;
     }
     int __n_1229 = btrc_Vector_string_iterLen(deckVisualEvidencePriorities());

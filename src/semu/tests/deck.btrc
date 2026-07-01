@@ -292,6 +292,66 @@ bool deckVisualCaptureClip(string project, string system, string duration) {
     return false;
 }
 
+string deckVisualLaunchLogPath(string project, string system) {
+    return joinPath(deckVisualEvidenceRoot(project), joinPath(system, "launch.log"));
+}
+
+string deckVisualLaunchPidPath(string project, string system) {
+    return joinPath(deckVisualEvidenceRoot(project), joinPath(system, "launch.pid"));
+}
+
+string deckVisualExpandLaunchCommandTemplate(CliArgs args, string project, string value, string system) {
+    string result = Strings.replace(value, "${project}", ShellWords.quote(project));
+    result = Strings.replace(result, "${system}", ShellWords.quote(system));
+    result = Strings.replace(result, "${emulator}", ShellWords.quote(deckVisualExpectedEmulator(system)));
+    result = Strings.replace(result, "${rom}", ShellWords.quote(args.valueAfter("--rom", "")));
+    return result;
+}
+
+string deckVisualLaunchCommand(CliArgs args, string project, string system) {
+    string command = args.valueAfter("--launch-command", "");
+    if (command.len() == 0) { return ""; }
+    return deckVisualExpandLaunchCommandTemplate(args, project, command, system);
+}
+
+bool deckVisualStartLaunchCommand(CliArgs args, string project, string system, string command) {
+    string log = deckVisualLaunchLogPath(project, system);
+    string pid = deckVisualLaunchPidPath(project, system);
+    ensureDir(PathTools.dirname(log));
+    FileSystem.removeRecursive(pid);
+    FileSystem.removeRecursive(log);
+    string launcher = commandExists("setsid") ? "setsid sh -c " : "sh -c ";
+    string shellCommand = launcher + ShellWords.quote(command)
+        + " > " + ShellWords.quote(log)
+        + " 2>&1 < /dev/null & echo $! > " + ShellWords.quote(pid);
+    ExecResult result = UnixShell().runRaw(shellCommand, false, false, "");
+    if (!result.ok() || !FileSystem.isFile(pid)) {
+        print("MISSING launch " + system + ": " + log);
+        return false;
+    }
+    string waitSeconds = args.valueAfter("--launch-wait-seconds", Environment.get("SEMU_VISUAL_LAUNCH_WAIT_SECONDS", "10"));
+    if (!waitSeconds.equals("0")) {
+        UnixShell().runRaw("sleep " + ShellWords.quote(waitSeconds), false, false, "");
+    }
+    print("OK launch " + system + ": " + log);
+    return true;
+}
+
+void deckVisualStopLaunchCommand(string project, string system) {
+    string pidPath = deckVisualLaunchPidPath(project, system);
+    if (!FileSystem.isFile(pidPath)) { return; }
+    string pid = FileSystem.readText(pidPath).trim();
+    if (pid.len() == 0) { return; }
+    UnixShell().runRaw(
+        "kill -- -" + ShellWords.quote(pid) + " >/dev/null 2>&1 || kill " + ShellWords.quote(pid) + " >/dev/null 2>&1 || true; "
+            + "sleep 1; "
+            + "kill -9 -- -" + ShellWords.quote(pid) + " >/dev/null 2>&1 || kill -9 " + ShellWords.quote(pid) + " >/dev/null 2>&1 || true",
+        false,
+        false,
+        ""
+    );
+}
+
 bool deckVisualCaptureSystem(CliArgs args, string project, string system) {
     string stateDir = deckVisualCaptureTapStateDir(args, project);
     string settle = deckVisualCaptureSettleSeconds(args);
@@ -299,6 +359,13 @@ bool deckVisualCaptureSystem(CliArgs args, string project, string system) {
     bool ok = true;
     print("Capturing visual evidence for " + system);
     print("  tap_state_dir: " + stateDir);
+
+    string launchCommand = deckVisualLaunchCommand(args, project, system);
+    bool launched = false;
+    if (launchCommand.len() > 0) {
+        launched = deckVisualStartLaunchCommand(args, project, system, launchCommand);
+        if (!launched) { return false; }
+    }
 
     for priority in deckVisualEvidencePriorities() {
         for variant in deckVisualEvidenceVariants() {
@@ -319,6 +386,9 @@ bool deckVisualCaptureSystem(CliArgs args, string project, string system) {
     string duration = args.valueAfter("--duration-seconds", "30");
     if (!deckVisualCaptureClip(project, system, duration)) {
         ok = false;
+    }
+    if (launched && !args.has("--leave-running")) {
+        deckVisualStopLaunchCommand(project, system);
     }
     return ok;
 }
