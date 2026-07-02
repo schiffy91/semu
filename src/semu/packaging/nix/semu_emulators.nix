@@ -210,7 +210,9 @@ let
     pname = "ryujinx";
     version = "1.3.3";
     src = fetchurl {
-      url = "https://git.ryujinx.app/api/v4/projects/1/packages/generic/Ryubing/${version}/ryujinx-${version}-macos_universal.app.tar.gz";
+      # Canonical Ryubing asset path (nonstandard /projects/... route; the
+      # GitLab generic-packages path this once pinned no longer serves it).
+      url = "https://git.ryujinx.app/projects/Ryubing/releases/download/${version}/ryujinx-${version}-macos_universal.app.tar.gz";
       hash = "sha256-5IGLuEyY4NMSBpGCHpB3IJnkYQEnPT8UX/2xDu4sDbs=";
     };
     dontUnpack = true;
@@ -235,10 +237,6 @@ let
       homepage = "https://git.ryujinx.app/ryubing/ryujinx";
       platforms = lib.platforms.darwin;
       license = lib.licenses.mit;
-      # The pinned artifact URL 404s (post-takedown registry reshuffle) and the
-      # GitHub mirror is legally blocked (HTTP 451). Re-pin against a trusted
-      # mirror before shipping Switch on macOS; the hash must keep matching.
-      broken = true;
     };
   };
 
