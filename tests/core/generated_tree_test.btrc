@@ -49,6 +49,16 @@ class GeneratedTreeTest {
 
     class int checkTreeAudit(string repoRoot) {
         UnixShell shell = UnixShell();
+        ExecResult makeAvailable = shell.run("command -v make",
+            CommandOutput.collect(), CommandOutput.combine(), false, true, false,
+            "", "", repoRoot);
+        if (makeAvailable.code != 0) {
+            // Target devices (immutable SteamOS/Bazzite) ship no make; the
+            // tree audit is a development-host gate and already ran before
+            // the tree was synced here.
+            print("  SKIP tree-audit (no make on this host)");
+            return 0;
+        }
         ExecResult audit = shell.run("make -f tests/Makefile tree-audit",
             CommandOutput.collect(), CommandOutput.combine(), false, true, false,
             "", "", repoRoot);

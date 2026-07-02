@@ -22,6 +22,7 @@ test: ## Run the Deck verification chain on the physical device (skips when offl
 			$(SEMU_DECK_HOST):~/semu/src/generated/build/semu; \
 		ssh $(SEMU_DECK_SSH_OPTS) $(SEMU_DECK_HOST) 'chmod +x ~/semu/src/generated/build/semu \
 			&& cd ~/semu && src/generated/build/semu test core \
+			&& src/generated/build/semu bootstrap \
 			&& src/generated/build/semu deck provision \
 			&& src/generated/build/semu deck verify-emulators \
 			&& src/generated/build/semu deck verify-sync \
