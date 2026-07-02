@@ -10,7 +10,7 @@ import std.{vector, fs}
 import ../model/emulator_definition.btrc
 import ../model/state_policy.btrc
 import ../model/firmware_policy.btrc
-import ../../input/steam_input_parser.btrc
+import ../../input/targets/steamdeck/steam_input.btrc
 
 class CemuEmitter {
     // The staged profile layout marker: emulator.json seed sources and

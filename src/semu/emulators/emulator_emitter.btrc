@@ -1,7 +1,7 @@
 // emulator_emitter.btrc — generic ES-DE command strings + launcher shims.
 //
-// The es_systems <command> grammar mirrors the golden configs that worked on
-// the Deck (garbage/generated/packaging/es-de/es_systems_linux.xml):
+// The es_systems <command> grammar mirrors the golden es-de configs that
+// worked on the Deck (garbage/generated/packaging/es-de/):
 //   %EMULATOR_<UPPER(id)>% + platform args + binding args
 //   + concrete commandFragments (via the registry) + %ROM%
 // Core-selector syntax never appears here: it is produced by the concrete

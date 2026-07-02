@@ -5,12 +5,17 @@
 // the patched-RA runtime/command tap override, nix/native argument vectors on
 // macos, the verbatim ES-DE tail with add-only-when-absent platform
 // defaults), the ES-DE command grammar against the golden es_systems
-// strings, and PCSX2 profile emission against the golden Deck inis. Returns
+// strings, PCSX2 profile emission against the golden Deck inis, and the
+// platform contract: the macos axis validation (now routed through the
+// platform classes) still rejects display_server and its sibling linux-only
+// concepts, and the registry rejects unknown platforms keys. Returns
 // the violation count (0 = pass); no main() — the CLI routes
 // `semu test core` here.
 
 import std.{vector, strings, platform, fs}
 import ../../src/semu/core/parse_log.btrc
+import ../../src/semu/platforms/platform_registry.btrc
+import ../../src/semu/emulators/emulator_parser.btrc
 import ../../src/semu/systems/system_parser.btrc
 import ../../src/semu/systems/model/semu_contracts.btrc
 import ../../src/semu/systems/model/system_definition.btrc
@@ -20,8 +25,8 @@ import ../../src/semu/emulators/model/launch_plan.btrc
 import ../../src/semu/emulators/emulator_process.btrc
 import ../../src/semu/emulators/emulator_emitter.btrc
 import ../../src/semu/emulators/emulator_registry.btrc
-import ../../src/semu/input/keymap_parser.btrc
-import ../../src/semu/input/steam_input_parser.btrc
+import ../../src/semu/input/input_parser.btrc
+import ../../src/semu/input/targets/steamdeck/steam_input.btrc
 
 class EmulatorContractTest {
     class int fail(string message) {
@@ -336,6 +341,111 @@ class EmulatorContractTest {
         return failures;
     }
 
+    class bool logContains(ParseLog log, string fragment) {
+        for error in log.errors {
+            if (error.contains(fragment)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    class int requireLogError(ParseLog log, string fragment, string what) {
+        if (!EmulatorContractTest.logContains(log, fragment)) {
+            return EmulatorContractTest.fail(what + " — no log entry contains '"
+                + fragment + "'");
+        }
+        return 0;
+    }
+
+    class string platformProbeDirectory() {
+        return PathTools.join(Environment.get("SEMU_TEST_TMP", "/tmp/semu-core-tests"),
+            "platform-probe");
+    }
+
+    // The platform axis contract, now routed through platforms/: a macos
+    // block carrying linux-only concepts (display_server, sessions,
+    // flatpak_id, a flatpak backend, sandbox runtime, a ${flatpak_home}
+    // executable) is rejected field by field — the same assertions the
+    // generic parser used to own.
+    class int checkPlatformAxisValidation() {
+        string probeDirectory = EmulatorContractTest.platformProbeDirectory();
+        UnixFileSystem.mkdirp(probeDirectory);
+        string probeFile = PathTools.join(probeDirectory, "emulator.json");
+        string probeJson = "{\n"
+            + "  \"schema_version\": 1,\n"
+            + "  \"name\": \"Probe\",\n"
+            + "  \"kind\": \"standalone\",\n"
+            + "  \"default_system\": \"gb\",\n"
+            + "  \"input\": { \"actions\": [\"app.quit\"] },\n"
+            + "  \"platforms\": {\n"
+            + "    \"macos\": {\n"
+            + "      \"backend\": \"flatpak\",\n"
+            + "      \"flatpak_id\": \"org.probe.Probe\",\n"
+            + "      \"display_server\": \"x11\",\n"
+            + "      \"sessions\": { \"gamescope\": { \"display_server\": \"x11\" } },\n"
+            + "      \"executable\": \"${flatpak_home}/bin/probe\",\n"
+            + "      \"sandbox\": { \"runtime\": \"org.probe.Sdk\" }\n"
+            + "    }\n"
+            + "  }\n"
+            + "}\n";
+        Path.writeAll(probeFile, probeJson);
+        ParseLog log = ParseLog();
+        EmulatorParser.parseFile("probe", probeFile, log);
+        int failures = 0;
+        failures = failures + EmulatorContractTest.requireLogError(log,
+            "'flatpak' is a linux-only backend", "macos block must reject the flatpak backend");
+        failures = failures + EmulatorContractTest.requireLogError(log,
+            "platforms.macos.flatpak_id: linux-only field",
+            "macos block must reject flatpak_id");
+        failures = failures + EmulatorContractTest.requireLogError(log,
+            "platforms.macos.display_server: linux-only field",
+            "macos block must reject display_server");
+        failures = failures + EmulatorContractTest.requireLogError(log,
+            "platforms.macos.sessions: linux-only field", "macos block must reject sessions");
+        failures = failures + EmulatorContractTest.requireLogError(log,
+            "runtime/command are linux-only (flatpak) fields",
+            "macos block must reject sandbox runtime/command");
+        failures = failures + EmulatorContractTest.requireLogError(log,
+            "template token '${flatpak_home}' is not a macos concept",
+            "macos block must reject the flatpak_home token");
+        return failures;
+    }
+
+    // PlatformRegistry owns the platforms-key whitelist: an unknown key like
+    // "windows" in a platforms object is a hard contract error.
+    class int checkUnknownPlatformRejection() {
+        int failures = 0;
+        if (PlatformRegistry.isRegistered("windows")) {
+            failures = failures + EmulatorContractTest.fail(
+                "PlatformRegistry must not register 'windows'");
+        }
+        if (!PlatformRegistry.isRegistered("linux") || !PlatformRegistry.isRegistered("macos")) {
+            failures = failures + EmulatorContractTest.fail(
+                "PlatformRegistry must register linux and macos");
+        }
+        string probeDirectory = EmulatorContractTest.platformProbeDirectory();
+        UnixFileSystem.mkdirp(probeDirectory);
+        string probeFile = PathTools.join(probeDirectory, "unknown-os-emulator.json");
+        string probeJson = "{\n"
+            + "  \"schema_version\": 1,\n"
+            + "  \"name\": \"Probe\",\n"
+            + "  \"kind\": \"standalone\",\n"
+            + "  \"default_system\": \"gb\",\n"
+            + "  \"input\": { \"actions\": [\"app.quit\"] },\n"
+            + "  \"platforms\": {\n"
+            + "    \"windows\": { \"backend\": \"native\", \"executable\": \"probe.exe\" }\n"
+            + "  }\n"
+            + "}\n";
+        Path.writeAll(probeFile, probeJson);
+        ParseLog log = ParseLog();
+        EmulatorParser.parseFile("probe", probeFile, log);
+        failures = failures + EmulatorContractTest.requireLogError(log,
+            "platforms.windows: unknown platform (allowed: linux, macos)",
+            "platforms.windows must be rejected");
+        return failures;
+    }
+
     class int run(string repoRoot) {
         string sourceRoot = PathTools.join(repoRoot, "src/semu");
         int failures = 0;
@@ -366,6 +476,8 @@ class EmulatorContractTest {
         failures = failures + EmulatorContractTest.checkAresPlans(contracts);
         failures = failures + EmulatorContractTest.checkEsDeCommands(contracts);
         failures = failures + EmulatorContractTest.checkPcsx2Profiles(contracts, repoRoot);
+        failures = failures + EmulatorContractTest.checkPlatformAxisValidation();
+        failures = failures + EmulatorContractTest.checkUnknownPlatformRejection();
 
         EmulatorDefinition dolphin = EmulatorContractTest.findEmulator(contracts, "dolphin");
         string shim = EmulatorEmitter.shimScript(dolphin);

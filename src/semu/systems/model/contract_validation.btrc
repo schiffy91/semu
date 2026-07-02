@@ -10,6 +10,7 @@ import ../../core/json_contract.btrc
 import ./semu_contracts.btrc
 import ./system_definition.btrc
 import ./bezel_collection.btrc
+import ../../platforms/platform_registry.btrc
 import ../../emulators/model/emulator_definition.btrc
 
 class ContractValidation {
@@ -59,7 +60,7 @@ class ContractValidation {
                         contracts, binding.emulator);
                     Vector<string> claimedPlatforms = binding.platforms;
                     if (claimedPlatforms.size() == 0) {
-                        claimedPlatforms = ["linux", "macos"];
+                        claimedPlatforms = PlatformRegistry.registeredIds();
                     }
                     for operatingSystemName in claimedPlatforms {
                         if (!emulatorDefinition.hasOperatingSystem(operatingSystemName)) {

@@ -1,17 +1,18 @@
 // generated_tree_test.btrc — end-to-end emission into src/generated/.
 //
-// Runs the real emission pass (SystemEmitter.emitAll + the AppImage/shim
-// emission) into <repoRoot>/src/generated, asserts the expected artifact
-// tree exists, then runs `make -f tests/Makefile tree-audit` to prove the
-// emission never escapes the approved repository shape. Returns the
-// violation count (0 = pass); no main() — the entry composes it.
+// Runs the real emission pass (SystemEmitter.emitAll + the per-platform
+// launcher emission via PlatformRegistry) into <repoRoot>/src/generated,
+// asserts the expected artifact tree exists, then runs
+// `make -f tests/Makefile tree-audit` to prove the emission never escapes
+// the approved repository shape. Returns the violation count (0 = pass);
+// no main() — the entry composes it.
 
 import std.{vector, process, fs}
 import ../../src/semu/core/parse_log.btrc
 import ../../src/semu/systems/system_parser.btrc
 import ../../src/semu/systems/model/semu_contracts.btrc
 import ../../src/semu/systems/system_emitter.btrc
-import ../../src/semu/packaging/appimage_package.btrc
+import ../../src/semu/platforms/platform_registry.btrc
 
 class GeneratedTreeTest {
     class int fail(string message) {
@@ -71,7 +72,10 @@ class GeneratedTreeTest {
 
         string generatedRoot = PathTools.join(repoRoot, "src/generated");
         SystemEmitter.emitAll(contracts, generatedRoot);
-        AppImagePackage.emitForEmulators(contracts.emulators, repoRoot, generatedRoot);
+        for platformId in PlatformRegistry.registeredIds() {
+            string launcherSummary = PlatformRegistry.emitLaunchers(platformId,
+                contracts.emulators, repoRoot, generatedRoot);
+        }
 
         failures = failures + GeneratedTreeTest.checkArtifactTree(contracts, generatedRoot);
         failures = failures + GeneratedTreeTest.checkTreeAudit(repoRoot);

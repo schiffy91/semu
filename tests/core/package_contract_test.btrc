@@ -18,7 +18,7 @@ import ../../src/semu/core/parse_log.btrc
 import ../../src/semu/systems/system_parser.btrc
 import ../../src/semu/systems/model/semu_contracts.btrc
 import ../../src/semu/systems/system_emitter.btrc
-import ../../src/semu/packaging/appimage_package.btrc
+import ../../src/semu/platforms/platform_registry.btrc
 import ../../src/semu/packaging/nix_package.btrc
 
 class PackageContractTest {
@@ -150,7 +150,10 @@ class PackageContractTest {
 
     class int checkAppImage(SemuContracts contracts, string repoRoot, string outputRoot) {
         int failures = 0;
-        AppImagePackage.emitForEmulators(contracts.emulators, repoRoot, outputRoot);
+        for platformId in PlatformRegistry.registeredIds() {
+            string launcherSummary = PlatformRegistry.emitLaunchers(platformId,
+                contracts.emulators, repoRoot, outputRoot);
+        }
         string appRunPath = PathTools.join(outputRoot, "packaging/linux/AppRun");
         if (!FileSystem.isFile(appRunPath)) {
             failures = failures + PackageContractTest.fail("AppRun not emitted at " + appRunPath);

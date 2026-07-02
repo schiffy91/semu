@@ -11,15 +11,9 @@
 // (STATE_DIR, STANDALONE, MENUFONT, LD_PRELOAD plumbing) are not emitted
 // here — they depend on runtime paths, not contracts.
 //
-// RenderPlanner.targetResolution is the "how sharp does the core render"
-// control:
-//   "1x"      -> native WxH (soft, authentic retro look; the compositor
-//                integer-upscales into the fixed display rect)
-//   "integer" -> max integer multiple of native fitting the screen (sharp)
-//   "native"  -> "" (leave the core's own default; no override written)
-// The compositor's DISPLAY geometry (SEMU_TAP_NATIVE_*) is unchanged by the
-// mode — it only controls rendered pixel density, mirroring the proven
-// render_resolution semantics.
+// The render-resolution control (target internal resolution + integer-scale
+// math) lives in the sibling render_resolution.btrc (class RenderResolution),
+// built on RenderPlanner.combinedNativeSize below.
 
 import std.{vector, strings}
 import ../../core/geometry.btrc
@@ -152,30 +146,5 @@ class RenderPlanner {
                 + RenderPlanner.wireFloat(bezel.hole.h));
         }
         return environment;
-    }
-
-    // Target internal render resolution "WxH" for (system, mode, screen);
-    // "" means "leave the core's own default" (mode "native").
-    class string targetResolution(SystemDefinition system, string renderMode,
-                                  int screenWidth, int screenHeight) {
-        PixelSize nativeSize = RenderPlanner.combinedNativeSize(system);
-        if (nativeSize.w < 1 || nativeSize.h < 1) {
-            return "";
-        }
-        string mode = renderMode.toLower();
-        if (mode.equals("native")) {
-            return "";
-        }
-        if (mode.equals("integer")) {
-            int widthScale = screenWidth / nativeSize.w;
-            int heightScale = screenHeight / nativeSize.h;
-            int scale = heightScale < widthScale ? heightScale : widthScale;
-            if (scale < 1) {
-                scale = 1;
-            }
-            return f"{scale * nativeSize.w}x{scale * nativeSize.h}";
-        }
-        // Default (and explicit "1x"): 1x native — the RETRO look.
-        return f"{nativeSize.w}x{nativeSize.h}";
     }
 }

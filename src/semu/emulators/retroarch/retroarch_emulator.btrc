@@ -8,11 +8,12 @@ import std.{vector, json}
 import ../../core/parse_log.btrc
 import ../../core/json_contract.btrc
 import ../../core/template_tokens.btrc
+import ../../platforms/platform_registry.btrc
 import ../model/emulator_platform.btrc
 import ../model/emulator_definition.btrc
 import ../../systems/model/emulator_binding.btrc
-import ../../input/keymap_parser.btrc
-import ../../input/steam_input_parser.btrc
+import ../../input/input_parser.btrc
+import ../../input/targets/steamdeck/steam_input.btrc
 import ../semu_emulator.btrc
 import ./retroarch_emitter.btrc
 
@@ -190,15 +191,10 @@ class RetroArchEmulator extends SemuEmulator {
     }
 
     // The platform whose extension block feeds the emitted profile: the
-    // linux (Deck) block when declared, else the first declared platform.
+    // deployment target's block when declared (the registry routes there),
+    // else the first declared platform.
     public EmulatorPlatform profilePlatform(EmulatorDefinition definition) {
-        if (definition.hasOperatingSystem("linux")) {
-            return definition.platformFor("linux");
-        }
-        if (definition.platforms.size() > 0) {
-            return definition.platforms.get(0);
-        }
-        return EmulatorPlatform();
+        return PlatformRegistry.profileEmissionPlatform(definition);
     }
 
     // RetroArch's audio driver, derived from the sandbox grant: the

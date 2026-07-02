@@ -1,9 +1,11 @@
-// appimage_package.btrc — Linux/AppImage packaging emission.
+// appimage_package.btrc — AppImage packaging emission.
 //
 // Emits the AppImage entry files from the checked-in templates
 // (src/semu/packaging/appimage/{AppRun,semu.desktop}.template) plus the
-// per-emulator launcher shims, mirroring the Deck-proven layout under
-// garbage/generated/packaging/linux/ (AppRun, semu.desktop, bin/semu-<id>).
+// per-emulator launcher shims, mirroring the Deck-proven layout (AppRun,
+// semu.desktop, bin/semu-<id>). The entry directory is supplied by the
+// owning platform class (PlatformRegistry.emitLaunchers routes there) —
+// this module never decides which operating system it packages for.
 //
 // Template policy: rendering is a verbatim copy — renderTemplate stays the
 // single substitution hook should tokens ever be introduced. The AppRun
@@ -16,9 +18,7 @@
 // EmulatorEmitter.
 
 import std.{vector, fs, process}
-import ../core/parse_log.btrc
 import ../emulators/model/emulator_definition.btrc
-import ../emulators/emulator_parser.btrc
 import ../emulators/emulator_emitter.btrc
 
 class AppImagePackage {
@@ -70,31 +70,18 @@ class AppImagePackage {
         FileSystem.chmod(stagedCli, 493); // 0755
     }
 
-    // Emits <outputRoot>/packaging/linux/{AppRun,semu.desktop,bin/semu-<id>,
-    // bin/semu} for an already-parsed emulator set (the CLI and the tests
-    // reuse their loaded contracts through this entry point).
+    // Emits <entryDirectory>/{AppRun,semu.desktop,bin/semu-<id>,bin/semu}
+    // for an already-parsed emulator set. entryDirectory is the platform's
+    // packaging entry root (<generated>/packaging/<platform id>).
     class void emitForEmulators(Vector<EmulatorDefinition> emulators, string repoRoot,
-                                string outputRoot) {
-        string linuxRoot = PathTools.join(outputRoot, "packaging/linux");
-        UnixFileSystem.mkdirp(linuxRoot);
+                                string entryDirectory) {
+        UnixFileSystem.mkdirp(entryDirectory);
         AppImagePackage.emitTemplate(repoRoot, "AppRun",
-            PathTools.join(linuxRoot, "AppRun"), true);
+            PathTools.join(entryDirectory, "AppRun"), true);
         AppImagePackage.emitTemplate(repoRoot, "semu.desktop",
-            PathTools.join(linuxRoot, "semu.desktop"), false);
-        string binDirectory = PathTools.join(linuxRoot, "bin");
+            PathTools.join(entryDirectory, "semu.desktop"), false);
+        string binDirectory = PathTools.join(entryDirectory, "bin");
         EmulatorEmitter.emitShims(emulators, binDirectory);
         AppImagePackage.stageCliBinary(repoRoot, binDirectory);
-    }
-
-    // Standalone emission: parses the emulator contracts itself and emits the
-    // full AppImage packaging layer.
-    class void emit(string repoRoot, string outputRoot) {
-        ParseLog log = ParseLog();
-        Vector<EmulatorDefinition> emulators = EmulatorParser.parseAll(
-            PathTools.join(repoRoot, "src/semu"), log);
-        for error in log.errors {
-            print("appimage: contract error: " + error);
-        }
-        AppImagePackage.emitForEmulators(emulators, repoRoot, outputRoot);
     }
 }

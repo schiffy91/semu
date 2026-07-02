@@ -15,6 +15,7 @@ import ../../src/semu/systems/model/system_definition.btrc
 import ../../src/semu/emulators/rendering/semu_bezel.btrc
 import ../../src/semu/emulators/rendering/semu_shader.btrc
 import ../../src/semu/emulators/rendering/semu_rendering.btrc
+import ../../src/semu/emulators/rendering/render_resolution.btrc
 
 class RenderingContractTest {
     class int fail(string message) {
@@ -181,17 +182,17 @@ class RenderingContractTest {
     class int checkTargetResolution(SystemDefinition gameBoy, SystemDefinition dualScreenSystem,
                                     string assetRoot) {
         int failures = 0;
-        string oneTimesResolution = RenderPlanner.targetResolution(gameBoy, "1x", 1280, 800);
+        string oneTimesResolution = RenderResolution.targetResolution(gameBoy, "1x", 1280, 800);
         if (!oneTimesResolution.equals("160x144")) {
             failures = failures + RenderingContractTest.fail(
                 "gb 1x resolution: want 160x144, got '" + oneTimesResolution + "'");
         }
-        string integerResolution = RenderPlanner.targetResolution(gameBoy, "integer", 1280, 800);
+        string integerResolution = RenderResolution.targetResolution(gameBoy, "integer", 1280, 800);
         if (!integerResolution.equals("800x720")) {
             failures = failures + RenderingContractTest.fail(
                 "gb integer resolution: want 800x720, got '" + integerResolution + "'");
         }
-        if (!RenderPlanner.targetResolution(gameBoy, "native", 1280, 800).isEmpty()) {
+        if (!RenderResolution.targetResolution(gameBoy, "native", 1280, 800).isEmpty()) {
             failures = failures + RenderingContractTest.fail("gb native mode must return ''");
         }
 

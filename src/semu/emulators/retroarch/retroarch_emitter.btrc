@@ -12,7 +12,7 @@
 // exists in no semu contract.
 
 import std.{vector, fs}
-import ../../input/keymap_parser.btrc
+import ../../input/input_parser.btrc
 import ../../input/input_emitter.btrc
 
 class RetroArchEmitter {

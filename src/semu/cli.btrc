@@ -15,8 +15,9 @@
 // where repoRoot defaults to the current directory (overridable via
 // --project).
 
-import std.{vector, fs, platform, cli}
+import std.{vector, fs, cli}
 import ./core/parse_log.btrc
+import ./platforms/platform_registry.btrc
 import ./systems/system_parser.btrc
 import ./systems/system_emitter.btrc
 import ./systems/model/semu_contracts.btrc
@@ -25,10 +26,9 @@ import ./emulators/model/launch_plan.btrc
 import ./emulators/emulator_process.btrc
 import ./emulators/emulator_execution.btrc
 import ./emulators/emulator_registry.btrc
-import ./input/keymap_parser.btrc
-import ./input/steam_input_parser.btrc
+import ./input/input_parser.btrc
+import ./input/targets/steamdeck/steam_input.btrc
 import ./input/targets/steamdeck/steamdeck_input_emitter.btrc
-import ./packaging/appimage_package.btrc
 import ../../tests/core/system_contract_test.btrc
 import ../../tests/core/emulator_contract_test.btrc
 import ../../tests/core/rendering_contract_test.btrc
@@ -47,30 +47,6 @@ class SemuCli {
 
     class string generatedRoot(string project) {
         return PathTools.join(project, "src/generated");
-    }
-
-    // Host OS for launcher planning: contract enum "linux"|"macos".
-    class string detectOperatingSystem() {
-        string forced = Environment.get("SEMU_OS", "");
-        if (!forced.isEmpty()) {
-            return forced;
-        }
-        if (FileSystem.isDir("/System/Library/CoreServices")) {
-            return "macos";
-        }
-        return "linux";
-    }
-
-    // Session for launcher planning: contract enum "gamescope"|"desktop".
-    class string detectSession() {
-        string forced = Environment.get("SEMU_SESSION", "");
-        if (!forced.isEmpty()) {
-            return forced;
-        }
-        if (Environment.get("XDG_CURRENT_DESKTOP", "").toLower().equals("gamescope")) {
-            return "gamescope";
-        }
-        return "desktop";
     }
 
     class SemuContracts loadContracts(string project, ParseLog log) {
@@ -135,9 +111,13 @@ class SemuCli {
         SystemEmitter.emitAll(contracts, generatedRoot);
         print("emitted manifest + es-de configuration -> " + generatedRoot);
 
-        AppImagePackage.emitForEmulators(contracts.emulators, project, generatedRoot);
-        print("emitted appimage entry + launcher shims -> "
-            + PathTools.join(packagingRoot, "linux"));
+        for platformId in PlatformRegistry.registeredIds() {
+            string launcherSummary = PlatformRegistry.emitLaunchers(platformId,
+                contracts.emulators, project, generatedRoot);
+            if (!launcherSummary.isEmpty()) {
+                print(launcherSummary);
+            }
+        }
 
         string steamInputDirectory = PathTools.join(packagingRoot, "input/steam-input");
         SteamdeckInputEmitter.emitTemplates(steamInput, keymap, steamInputDirectory);
@@ -213,9 +193,9 @@ class SemuCli {
             print("launcher: unknown emulator '" + emulatorId + "'");
             return 1;
         }
-        string operatingSystem = SemuCli.detectOperatingSystem();
+        string operatingSystem = PlatformRegistry.currentId();
         LaunchPlan launchPlan = EmulatorLauncher.plan(emulatorDefinition, operatingSystem,
-            SemuCli.detectSession(), "", systemArguments);
+            PlatformRegistry.detectSession(operatingSystem), "", systemArguments);
         if (launchPlan.argumentVector.size() == 0) {
             print("launcher: " + launchPlan.note);
             return 1;

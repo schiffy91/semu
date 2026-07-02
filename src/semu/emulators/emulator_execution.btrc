@@ -30,6 +30,7 @@ class EmulatorExecution {
                                      string project) {
         TemplateContext context = TemplateContext();
         context.project = project;
+        context.platformId = platform.operatingSystem;
         context.emulatorId = emulator.id;
         context.backend = platform.backend;
         context.flatpakId = platform.flatpakId;

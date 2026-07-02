@@ -12,8 +12,8 @@
 // translateChord — never here.
 
 import std.{vector, strings}
-import ./keymap_parser.btrc
-import ./steam_input_parser.btrc
+import ./input_parser.btrc
+import ./targets/steamdeck/steam_input.btrc
 
 class ChordTranslator {
     // "Ctrl+P" -> "P"; "Ctrl+-" -> "-"; "Ctrl++" -> "+"; "Esc" -> "Esc".

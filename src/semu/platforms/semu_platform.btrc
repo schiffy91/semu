@@ -1,0 +1,72 @@
+// semu_platform.btrc — THE abstract operating-system platform interface.
+// Shared code asks through this surface; concrete classes in platforms/<id>/
+// answer. No operating-system-conditional logic exists anywhere else — the
+// only file allowed to name the concrete platform classes is
+// platforms/platform_registry.btrc (the composition root).
+//
+// btrc dispatches method calls by declared type (no virtual dispatch), so
+// shared code never calls through a SemuPlatform-typed value: it routes via
+// PlatformRegistry, which forwards to the concrete class. This abstract class
+// is the compile-checked contract every concrete class must implement.
+
+import std.{vector, json}
+import ../core/parse_log.btrc
+import ../core/template_paths.btrc
+import ../emulators/model/emulator_platform.btrc
+import ../emulators/model/emulator_definition.btrc
+import ../emulators/model/launch_plan.btrc
+
+abstract class SemuPlatform {
+    // The contract key (emulator.json platforms.<id>, system.json binding
+    // platforms entries) and the host-detection identity.
+    public abstract string id();
+
+    // Launch backends this platform can execute. The generic parser checks
+    // the contract enum against the union over all registered platforms;
+    // platform-foreign backends are rejected by validatePlatformBlock.
+    public abstract Vector<string> allowedBackends();
+
+    // Whether emitted packaging (ES-DE configuration, launcher entries,
+    // controller profiles, steam-input templates) targets this platform.
+    // The Deck deployment is the only packaging target today.
+    public abstract bool isDeploymentTarget();
+
+    // The session this process runs under: "gamescope"|"desktop" where
+    // compositor sessions exist (SEMU_SESSION override), "" where the
+    // concept does not apply.
+    public abstract string detectSession();
+
+    // Platform-axis validation of one emulator.json platforms.<id()> block:
+    // the raw JSON (for field-presence rules) plus the generically parsed
+    // EmulatorPlatform (for value rules). Generic grammar checks stay in
+    // EmulatorParser; everything platform-conditional lives here.
+    public abstract void validatePlatformBlock(JsonValue platformJson,
+                                               EmulatorPlatform platform, string emulatorId,
+                                               string file, string context, ParseLog log);
+
+    // Compile one launch into a pure-data plan: backend argument vector,
+    // display/session environment bundles, state isolation env and the
+    // verbatim invocation tail. Template tokens stay unresolved.
+    public abstract LaunchPlan assembleLaunch(EmulatorDefinition emulator,
+                                              EmulatorPlatform platform, SessionOverride session,
+                                              string romPath,
+                                              Vector<string> invocationArguments);
+
+    // Whether a template token from the closed TemplateTokens vocabulary is
+    // meaningful on this platform (e.g. flatpak_home exists nowhere flatpak
+    // does not).
+    public abstract bool allowsTemplateToken(string token);
+
+    // The per-emulator isolated state root for ${state_root} resolution and
+    // exec-edge state preparation.
+    public abstract string stateRoot(TemplateContext context);
+
+    // The ${flatpak_home} token derivation ("" where flatpak does not exist).
+    public abstract string flatpakHome(string flatpakId);
+
+    // Emit this platform's launcher artifacts (entry files + per-emulator
+    // shims) under <outputRoot>/packaging/<id()>. Returns a one-line summary
+    // for the bootstrap log, "" when the platform emits nothing.
+    public abstract string emitLaunchers(Vector<EmulatorDefinition> emulators,
+                                         string repoRoot, string outputRoot);
+}

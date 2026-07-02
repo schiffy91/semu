@@ -1,10 +1,10 @@
-// keymap_parser.btrc — the semu-keymap-v1 compiler: chord token splitting
+// input_parser.btrc — the semu-keymap-v1 compiler: chord token splitting
 // (ChordSyntax), the keymap data classes, and KeymapParser.
 //
 // semu-keymap-v1 grammar: '#' comment lines, "action <id> = <chord>" and
 // "bind <button tokens> -> " followed by a dollar-brace-wrapped action id.
-// The sibling steam-input vocabulary contract lives in
-// steam_input_parser.btrc.
+// The steam-input vocabulary contract lives with its target in
+// targets/steamdeck/steam_input.btrc.
 
 import std.{vector, strings}
 import ../core/parse_log.btrc

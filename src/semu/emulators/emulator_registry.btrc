@@ -13,8 +13,8 @@ import ../core/parse_log.btrc
 import ./model/emulator_platform.btrc
 import ./model/emulator_definition.btrc
 import ../systems/model/emulator_binding.btrc
-import ../input/keymap_parser.btrc
-import ../input/steam_input_parser.btrc
+import ../input/input_parser.btrc
+import ../input/targets/steamdeck/steam_input.btrc
 import ./retroarch/retroarch_emulator.btrc
 import ./dolphin/dolphin_emulator.btrc
 import ./pcsx2/pcsx2_emulator.btrc

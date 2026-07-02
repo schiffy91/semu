@@ -1,0 +1,114 @@
+// macos_platform.btrc — the macos concrete platform class. macos launches
+// are plain nix/native argument vectors: no display-server axis, no
+// compositor sessions, no flatpak identity, no sandbox runtime/command —
+// its validatePlatformBlock FORBIDS every one of those linux concepts.
+// State isolation lives under the user's Library/Application Support.
+//
+// Recorded no-op: the pre-platforms bootstrap emitted no macos launcher
+// artifacts, so emitLaunchers answers "" (a .app launcher form is a future
+// phase); macos is likewise not a packaging deployment target.
+
+import std.{vector, json}
+import ../../core/parse_log.btrc
+import ../../core/template_paths.btrc
+import ../../core/template_tokens.btrc
+import ../../emulators/model/emulator_platform.btrc
+import ../../emulators/model/emulator_definition.btrc
+import ../../emulators/model/launch_plan.btrc
+import ../../emulators/emulator_process.btrc
+import ../semu_platform.btrc
+
+class MacosPlatform extends SemuPlatform {
+    public string id() {
+        return "macos";
+    }
+
+    public Vector<string> allowedBackends() {
+        Vector<string> backends = ["nix", "native"];
+        return backends;
+    }
+
+    public bool isDeploymentTarget() {
+        return false;
+    }
+
+    // Compositor sessions are not a macos concept.
+    public string detectSession() {
+        return "";
+    }
+
+    // The macos platform axis: every sandbox/display concept the linux
+    // platform owns is rejected here, field by field, with the messages the
+    // generic parser used to emit.
+    public void validatePlatformBlock(JsonValue platformJson, EmulatorPlatform platform,
+                                      string emulatorId, string file, string context,
+                                      ParseLog log) {
+        if (platform.backend.equals("flatpak") || platform.backend.equals("bwrap")) {
+            log.add(file, context + ".backend",
+                "'" + platform.backend + "' is a linux-only backend");
+        }
+        if (platformJson.has("flatpak_id")) {
+            log.add(file, context + ".flatpak_id", "linux-only field");
+        }
+        if (platformJson.has("display_server")) {
+            log.add(file, context + ".display_server",
+                "linux-only field (display server is not a macos concept)");
+        }
+        if (platformJson.has("sessions")) {
+            log.add(file, context + ".sessions", "linux-only field");
+        }
+        if (platformJson.has("sandbox")) {
+            JsonValue sandbox = platformJson.get("sandbox");
+            if (sandbox.isObject() && (sandbox.has("runtime") || sandbox.has("command"))) {
+                log.add(file, context + ".sandbox",
+                    "runtime/command are linux-only (flatpak) fields");
+            }
+        }
+        for token in TemplateTokens.tokensIn(platform.executable) {
+            if (!self.allowsTemplateToken(token)) {
+                log.add(file, context + ".executable",
+                    "template token '${" + token + "}' is not a macos concept");
+            }
+        }
+    }
+
+    // Plain nix/native assembly: executable + state/contract environment +
+    // the verbatim invocation tail. No display-server environment exists.
+    public LaunchPlan assembleLaunch(EmulatorDefinition emulator, EmulatorPlatform platform,
+                                     SessionOverride session, string romPath,
+                                     Vector<string> invocationArguments) {
+        LaunchPlan launchPlan = LaunchPlan();
+        launchPlan.backend = platform.backend;
+        if (platform.glWrapper.equals("nixgl")) {
+            launchPlan.argumentVector.push("nixGL");
+        }
+        launchPlan.argumentVector.push(platform.executable);
+        EmulatorLauncher.applyStateEnvironment(launchPlan, platform.state);
+        EmulatorLauncher.applyContractEnvironment(launchPlan, platform);
+        EmulatorLauncher.pushTailArguments(launchPlan, platform, invocationArguments, romPath);
+        return launchPlan;
+    }
+
+    // flatpak_home resolves nowhere flatpak does not exist.
+    public bool allowsTemplateToken(string token) {
+        return !token.equals("flatpak_home");
+    }
+
+    // Per-emulator isolated state root under the user's Application Support
+    // tree (the macos convention replacing the linux runtime-root split).
+    public string stateRoot(TemplateContext context) {
+        return PathTools.join(PathTools.join(TemplatePaths.home(),
+            "Library/Application Support/semu"), context.emulatorId.toLower());
+    }
+
+    public string flatpakHome(string flatpakId) {
+        return "";
+    }
+
+    // Recorded no-op: the pre-platforms bootstrap emitted no macos launcher
+    // artifacts; a .app launcher form is a future phase.
+    public string emitLaunchers(Vector<EmulatorDefinition> emulators, string repoRoot,
+                                string outputRoot) {
+        return "";
+    }
+}
