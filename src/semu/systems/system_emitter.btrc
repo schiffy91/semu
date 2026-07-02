@@ -19,6 +19,7 @@ import std.{vector, fs}
 import ./model/system_definition.btrc
 import ./model/semu_contracts.btrc
 import ./model/emulator_binding.btrc
+import ../platforms/platform_registry.btrc
 import ../emulators/model/emulator_definition.btrc
 import ../emulators/model/emulator_platform.btrc
 import ../emulators/emulator_emitter.btrc
@@ -279,7 +280,9 @@ class SystemEmitter {
 
     // Emits <generatedRoot>/{semu.json,packaging/es-de/custom_systems/*.xml}.
     // The find rules are portable (shim names + %ESPATH% entries), so the
-    // same emitted tree works on the bootstrap machine and the Deck.
+    // same emitted tree works on the bootstrap machine and the Deck. The
+    // ES-DE configuration is written for each packaging deployment target
+    // the registry declares (exactly the Deck platform today).
     class void emitAll(SemuContracts contracts, string generatedRoot) {
         UnixFileSystem.mkdirp(generatedRoot);
         Path.writeAll(PathTools.join(generatedRoot, "semu.json"),
@@ -287,9 +290,11 @@ class SystemEmitter {
         string customSystemsDirectory = PathTools.join(generatedRoot,
             "packaging/es-de/custom_systems");
         UnixFileSystem.mkdirp(customSystemsDirectory);
-        Path.writeAll(PathTools.join(customSystemsDirectory, "es_systems.xml"),
-            SystemEmitter.esSystemsXml(contracts, "linux"));
-        Path.writeAll(PathTools.join(customSystemsDirectory, "es_find_rules.xml"),
-            SystemEmitter.esFindRulesXml(contracts.emulators, "linux"));
+        for platformId in PlatformRegistry.deploymentTargetIds() {
+            Path.writeAll(PathTools.join(customSystemsDirectory, "es_systems.xml"),
+                SystemEmitter.esSystemsXml(contracts, platformId));
+            Path.writeAll(PathTools.join(customSystemsDirectory, "es_find_rules.xml"),
+                SystemEmitter.esFindRulesXml(contracts.emulators, platformId));
+        }
     }
 }

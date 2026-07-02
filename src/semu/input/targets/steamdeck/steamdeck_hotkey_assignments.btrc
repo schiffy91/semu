@@ -4,7 +4,7 @@
 // binds; SteamdeckInputEmitter renders the result into the neptune VDF.
 
 import std.{vector}
-import ../../keymap_parser.btrc
+import ../../input_parser.btrc
 
 class SteamdeckHotkeyAssignments {
     public Vector<string> buttons;

@@ -9,8 +9,8 @@
 // emulators/melonds/emulator.json, applied by the generic launcher machinery.
 
 import ../model/emulator_definition.btrc
-import ../../input/keymap_parser.btrc
-import ../../input/steam_input_parser.btrc
+import ../../input/input_parser.btrc
+import ../../input/targets/steamdeck/steam_input.btrc
 
 class MelonDsEmitter {
     // Deliberate no-op (see the file header). If melonDS ever grows a proven

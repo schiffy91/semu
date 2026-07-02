@@ -105,8 +105,7 @@ class SandboxPolicyParser {
         }
     }
 
-    class SandboxPolicy parse(JsonValue jsonValue, string operatingSystemName,
-                              string file, string context, ParseLog log) {
+    class SandboxPolicy parse(JsonValue jsonValue, string file, string context, ParseLog log) {
         SandboxPolicy sandbox = SandboxPolicy();
         if (!jsonValue.isObject()) {
             log.add(file, context, "expected object");
@@ -123,10 +122,9 @@ class SandboxPolicyParser {
         sandbox.share = JsonContract.stringArray(jsonValue, "share", false, file, context, log);
         sandbox.extraArguments = JsonContract.stringArray(jsonValue, "extra_args", false,
             file, context, log);
-        if (operatingSystemName.equals("macos")
-            && (jsonValue.has("runtime") || jsonValue.has("command"))) {
-            log.add(file, context, "runtime/command are linux-only (flatpak) fields");
-        }
+        // Whether runtime/command are allowed at all is a platform-axis rule:
+        // the owning platform's validatePlatformBlock rejects them where
+        // flatpak does not exist.
         sandbox.command = JsonContract.optionalString(jsonValue, "command", "",
             file, context, log);
         TemplateTokens.check(sandbox.command, file, context + ".command", log, false);

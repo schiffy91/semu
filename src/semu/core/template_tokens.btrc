@@ -24,6 +24,24 @@ class TemplateTokens {
         return false;
     }
 
+    // Every well-formed ${...} token name in the value, in order (unterminated
+    // tails are dropped — check() reports those).
+    class Vector<string> tokensIn(string value) {
+        Vector<string> tokens = [];
+        string rest = value;
+        while (rest.contains("${")) {
+            int openIndex = rest.indexOf("${");
+            string after = rest.substring(openIndex + 2, rest.len());
+            int closeIndex = after.indexOf("}");
+            if (closeIndex < 0) {
+                return tokens;
+            }
+            tokens.push(after.substring(0, closeIndex));
+            rest = after.substring(closeIndex + 1, after.len());
+        }
+        return tokens;
+    }
+
     class void check(string value, string file, string context, ParseLog log,
                      bool allowHostPortable) {
         string rest = value;

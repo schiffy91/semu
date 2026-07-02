@@ -1,14 +1,13 @@
-// emulator_process.btrc — generic launch-plan assembly + the exec edge.
+// emulator_process.btrc — the thin generic launch orchestrator + exec edge.
 //
 // Everything here is pure data transformation except EmulatorLauncher.execute:
-// an EmulatorPlatform block (JSON-supplied choices) compiles into a LaunchPlan
-// (argument vector + environment deltas), and only execute touches the OS.
-//
-// The display-server env fan-out is the one code-owned table in this module:
-// the JSON supplies the "x11"|"wayland" enum + display fallbacks, the code
-// supplies the plumbing that made those choices work on the Deck (flatpak
-// --socket forcing, WAYLAND_DISPLAY unset under gamescope, SDL/Qt backend
-// pins — mirrors the proven logic in the garbage launcher).
+// plan() resolves the emulator's platform block and effective session, then
+// delegates the actual argument-vector/display assembly to the owning
+// platform class via PlatformRegistry — no operating-system conditional
+// exists here. What stays generic: the environment delta helpers (with the
+// flatpak-backend --env bundling), the state/contract environment policies,
+// and the add-only-when-absent platform-argument tail logic every backend
+// shares.
 //
 // Template tokens (${asset_root}, ${state_root}, ${nix_result}, ...) are kept
 // verbatim in the plan; EmulatorExecution (emulator_execution.btrc) resolves
@@ -16,6 +15,7 @@
 // precedence rules — at the exec edge. execute below runs a plan verbatim.
 
 import std.{vector, process}
+import ../platforms/platform_registry.btrc
 import ./model/emulator_platform.btrc
 import ./model/emulator_definition.btrc
 import ./model/state_policy.btrc
@@ -54,47 +54,6 @@ class EmulatorLauncher {
         EmulatorLauncher.unsetEnvironment(launchPlan, key);
         if (launchPlan.backend.equals("flatpak")) {
             launchPlan.argumentVector.push("--unset-env=" + key);
-        }
-    }
-
-    // The code-owned display-server env fan-out, keyed by the "x11"|"wayland"
-    // contract enum. x11 is the proven Deck Game Mode path: gamescope exports
-    // WAYLAND_DISPLAY=gamescope-0 which makes SDL2/Qt apps prefer a wayland
-    // socket they were never granted (aborts and lost GL contexts) — so
-    // wayland is scrubbed and everything is pinned to Xwayland.
-    // displayFallback supplies DISPLAY (":1" under gamescope). The plan bakes
-    // the fallback as pure data; EmulatorExecution downgrades DISPLAY /
-    // WAYLAND_DISPLAY to host-value-first form at the exec edge.
-    class void applyDisplayServer(LaunchPlan launchPlan, string displayServer,
-                                  string displayFallback) {
-        if (displayServer.equals("x11")) {
-            if (launchPlan.backend.equals("flatpak")) {
-                launchPlan.argumentVector.push("--socket=x11");
-            }
-            EmulatorLauncher.bundleUnsetEnvironment(launchPlan, "WAYLAND_DISPLAY");
-            EmulatorLauncher.bundleEnvironment(launchPlan, "SDL_VIDEODRIVER", "x11");
-            EmulatorLauncher.bundleEnvironment(launchPlan, "QT_QPA_PLATFORM", "xcb");
-            EmulatorLauncher.setEnvironment(launchPlan, "DISPLAY",
-                displayFallback.isEmpty() ? ":0" : displayFallback);
-            // nixGL/mesa pollution breaks the flatpak's own GL stack (Deck-proven).
-            EmulatorLauncher.unsetEnvironment(launchPlan, "MESA_LOADER_DRIVER_OVERRIDE");
-            EmulatorLauncher.unsetEnvironment(launchPlan, "MESA_GL_VERSION_OVERRIDE");
-            EmulatorLauncher.unsetEnvironment(launchPlan, "MESA_GLSL_VERSION_OVERRIDE");
-        }
-        if (displayServer.equals("wayland")) {
-            if (launchPlan.backend.equals("flatpak")) {
-                launchPlan.argumentVector.push("--socket=wayland");
-                // Proven wayland hygiene: scrub any inherited X11 identity so
-                // SDL/Qt cannot fall back to a socket the sandbox lacks.
-                launchPlan.argumentVector.push("--env=DISPLAY=");
-                launchPlan.argumentVector.push("--env=XAUTHORITY=");
-            }
-            EmulatorLauncher.bundleEnvironment(launchPlan, "SDL_VIDEODRIVER", "wayland");
-            EmulatorLauncher.bundleEnvironment(launchPlan, "QT_QPA_PLATFORM", "wayland");
-            EmulatorLauncher.bundleEnvironment(launchPlan, "GDK_BACKEND", "wayland");
-            EmulatorLauncher.bundleEnvironment(launchPlan, "XDG_SESSION_TYPE", "wayland");
-            EmulatorLauncher.bundleEnvironment(launchPlan, "WAYLAND_DISPLAY",
-                displayFallback.isEmpty() ? "wayland-0" : displayFallback);
         }
     }
 
@@ -170,150 +129,23 @@ class EmulatorLauncher {
         }
     }
 
-    class void assembleFlatpak(LaunchPlan launchPlan, EmulatorPlatform platform,
-                               SessionOverride effectiveSession,
-                               Vector<string> systemArguments, string romPath) {
-        launchPlan.argumentVector.push("flatpak");
-        launchPlan.argumentVector.push("run");
-        for device in platform.sandbox.devices {
-            launchPlan.argumentVector.push("--device=" + device);
-        }
-        for filesystemGrant in platform.sandbox.filesystems {
-            string grant = "--filesystem=" + filesystemGrant.path;
-            if (filesystemGrant.mode.equals("ro") || filesystemGrant.mode.equals("create")) {
-                grant = grant + ":" + filesystemGrant.mode;
-            }
-            launchPlan.argumentVector.push(grant);
-        }
-        for socket in platform.sandbox.sockets {
-            launchPlan.argumentVector.push("--socket=" + socket);
-        }
-        for shareGrant in platform.sandbox.share {
-            launchPlan.argumentVector.push("--share=" + shareGrant);
-        }
-        EmulatorLauncher.applyStateEnvironment(launchPlan, platform.state);
-        EmulatorLauncher.applyContractEnvironment(launchPlan, platform);
-        EmulatorLauncher.applyDisplayServer(launchPlan, effectiveSession.displayServer,
-            effectiveSession.displayFallback);
-        EmulatorLauncher.pushAllArguments(launchPlan, platform.sandbox.extraArguments);
-        // Host env hygiene that must not leak into any flatpak GL/Vulkan stack.
-        EmulatorLauncher.unsetEnvironment(launchPlan, "VK_ICD_FILENAMES");
-        EmulatorLauncher.unsetEnvironment(launchPlan, "LIBGL_ALWAYS_SOFTWARE");
-        // The generic runtime/command override: when the contract routes to a
-        // custom binary (sandbox.command), run it inside the declared runtime
-        // instead of the stock flatpak app.
-        string applicationId = platform.flatpakId;
-        if (!platform.sandbox.command.isEmpty()) {
-            launchPlan.argumentVector.push("--command=" + platform.sandbox.command);
-        }
-        if (!platform.sandbox.runtime.isEmpty()) {
-            applicationId = platform.sandbox.runtime;
-        }
-        launchPlan.argumentVector.push(applicationId);
-        EmulatorLauncher.pushTailArguments(launchPlan, platform, systemArguments, romPath);
-    }
-
-    class void assembleExecutable(LaunchPlan launchPlan, EmulatorPlatform platform,
-                                  SessionOverride effectiveSession,
-                                  Vector<string> systemArguments, string romPath) {
-        if (platform.glWrapper.equals("nixgl")) {
-            // PATH-resolved at the exec edge (nixGLIntel/nixGL); recorded as
-            // argv[0] so the plan stays pure data.
-            launchPlan.argumentVector.push("nixGL");
-        }
-        launchPlan.argumentVector.push(platform.executable);
-        EmulatorLauncher.applyStateEnvironment(launchPlan, platform.state);
-        EmulatorLauncher.applyContractEnvironment(launchPlan, platform);
-        EmulatorLauncher.applyDisplayServer(launchPlan, effectiveSession.displayServer,
-            effectiveSession.displayFallback);
-        EmulatorLauncher.pushTailArguments(launchPlan, platform, systemArguments, romPath);
-    }
-
-    class void assembleBwrap(LaunchPlan launchPlan, EmulatorPlatform platform,
-                             SessionOverride effectiveSession,
-                             Vector<string> systemArguments, string romPath) {
-        // Code-owned base sandbox mirroring the proven bwrap profile:
-        // read-only system, scratch HOME, private /tmp with the X11 socket
-        // directory re-bound AFTER the tmpfs (ordering is load-bearing), the
-        // XDG runtime dir (wayland/pulse sockets), GPU + input devices,
-        // pid/uts/ipc unshared. Template tokens resolve at the exec edge.
-        Vector<string> baseArguments = ["bwrap",
-            "--ro-bind", "/usr", "/usr",
-            "--ro-bind", "/etc", "/etc",
-            "--ro-bind-try", "/opt", "/opt",
-            "--ro-bind-try", "/var", "/var",
-            "--ro-bind-try", "/lib", "/lib",
-            "--ro-bind-try", "/lib64", "/lib64",
-            "--ro-bind-try", "/bin", "/bin",
-            "--ro-bind-try", "/sbin", "/sbin",
-            "--proc", "/proc",
-            "--dev", "/dev",
-            "--dev-bind", "/dev/dri", "/dev/dri",
-            "--dev-bind-try", "/dev/snd", "/dev/snd",
-            "--dev-bind-try", "/dev/input", "/dev/input",
-            "--dev-bind-try", "/dev/uinput", "/dev/uinput",
-            "--ro-bind", "/sys", "/sys",
-            "--bind", "${state_root}/home", "${home}",
-            "--tmpfs", "/tmp",
-            "--ro-bind-try", "/tmp/.X11-unix", "/tmp/.X11-unix",
-            "--bind-try", "${env:XDG_RUNTIME_DIR}", "${env:XDG_RUNTIME_DIR}",
-            "--unshare-pid",
-            "--unshare-uts",
-            "--unshare-ipc",
-            "--share-net",
-            "--die-with-parent",
-            "--new-session",
-            "--setenv", "HOME", "${home}",
-            "--setenv", "XDG_RUNTIME_DIR", "${env:XDG_RUNTIME_DIR}"];
-        EmulatorLauncher.pushAllArguments(launchPlan, baseArguments);
-        for filesystemGrant in platform.sandbox.filesystems {
-            if (filesystemGrant.mode.equals("ro")) {
-                launchPlan.argumentVector.push("--ro-bind-try");
-            } else {
-                launchPlan.argumentVector.push("--bind-try");
-            }
-            launchPlan.argumentVector.push(filesystemGrant.path);
-            launchPlan.argumentVector.push(filesystemGrant.path);
-        }
-        launchPlan.argumentVector.push("--");
-        launchPlan.argumentVector.push(platform.executable);
-        EmulatorLauncher.applyStateEnvironment(launchPlan, platform.state);
-        EmulatorLauncher.applyContractEnvironment(launchPlan, platform);
-        EmulatorLauncher.applyDisplayServer(launchPlan, effectiveSession.displayServer,
-            effectiveSession.displayFallback);
-        EmulatorLauncher.pushTailArguments(launchPlan, platform, systemArguments, romPath);
-        if (platform.sandbox.symlinkLinks.size() > 0) {
-            launchPlan.note = "sandbox symlinks are materialized at the exec edge"
-                + " (emulator.json sandbox.symlinks via EmulatorExecution)";
-        }
-    }
-
     // Compile one launch into a pure-data plan. operatingSystem selects the
     // platform block, session ("gamescope"|"desktop"|"") resolves the
-    // effective display values.
+    // effective display values, and the owning platform class assembles the
+    // backend argument vector (via the PlatformRegistry dispatcher).
     class LaunchPlan plan(EmulatorDefinition emulator, string operatingSystem, string session,
                           string romPath, Vector<string> systemArguments) {
-        LaunchPlan launchPlan = LaunchPlan();
         EmulatorPlatform platform = emulator.platformFor(operatingSystem);
         if (platform.operatingSystem.isEmpty()) {
+            LaunchPlan launchPlan = LaunchPlan();
             launchPlan.note = "emulator '" + emulator.id + "' declares no '"
                 + operatingSystem + "' platform";
             return launchPlan;
         }
-        launchPlan.backend = platform.backend;
         SessionOverride effectiveSession = EmulatorSessions.effective(platform, session);
-        if (platform.backend.equals("flatpak")) {
-            EmulatorLauncher.assembleFlatpak(launchPlan, platform, effectiveSession,
-                systemArguments, romPath);
-        } else if (platform.backend.equals("bwrap")) {
-            EmulatorLauncher.assembleBwrap(launchPlan, platform, effectiveSession,
-                systemArguments, romPath);
-        } else {
-            // nix + native share the plain-argument-vector shape.
-            EmulatorLauncher.assembleExecutable(launchPlan, platform, effectiveSession,
-                systemArguments, romPath);
-        }
-        return launchPlan;
+        LaunchPlan assembledPlan = PlatformRegistry.assembleLaunch(operatingSystem, emulator,
+            platform, effectiveSession, romPath, systemArguments);
+        return assembledPlan;
     }
 
     // Render the plan as a single shell command (unsets + env prefix + quoted

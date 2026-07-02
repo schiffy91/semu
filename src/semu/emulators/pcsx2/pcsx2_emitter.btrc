@@ -10,10 +10,11 @@
 
 import std.{vector, fs}
 import ../../core/template_paths.btrc
+import ../../platforms/platform_registry.btrc
 import ../model/emulator_platform.btrc
 import ../model/emulator_definition.btrc
-import ../../input/keymap_parser.btrc
-import ../../input/steam_input_parser.btrc
+import ../../input/input_parser.btrc
+import ../../input/targets/steamdeck/steam_input.btrc
 import ../../input/input_emitter.btrc
 import ./pcsx2_rendering.btrc
 
@@ -200,16 +201,11 @@ class Pcsx2Emitter {
         return TemplatePaths.biosRoot(context.project);
     }
 
-    // The platform whose contract feeds the emitted profile: the linux
-    // (Deck) block when declared, else the first declared platform.
+    // The platform whose contract feeds the emitted profile: the deployment
+    // target's block when declared (the registry routes there), else the
+    // first declared platform.
     class EmulatorPlatform profilePlatform(EmulatorDefinition definition) {
-        if (definition.hasOperatingSystem("linux")) {
-            return definition.platformFor("linux");
-        }
-        if (definition.platforms.size() > 0) {
-            return definition.platforms.get(0);
-        }
-        return EmulatorPlatform();
+        return PlatformRegistry.profileEmissionPlatform(definition);
     }
 
     // config/inis/PCSX2.ini — the seeded base configuration.

@@ -12,8 +12,8 @@ import ../../core/parse_log.btrc
 import ../model/emulator_platform.btrc
 import ../model/emulator_definition.btrc
 import ../../systems/model/emulator_binding.btrc
-import ../../input/keymap_parser.btrc
-import ../../input/steam_input_parser.btrc
+import ../../input/input_parser.btrc
+import ../../input/targets/steamdeck/steam_input.btrc
 import ../semu_emulator.btrc
 import ./azahar_emitter.btrc
 
@@ -45,7 +45,7 @@ class AzaharEmulator extends SemuEmulator {
     }
 
     // One seeded qt-config.ini per platform that forces graphics through a
-    // config file; platforms without a graphics contract (macos) emit nothing.
+    // config file; platforms without a graphics contract emit nothing.
     public void emitProfiles(EmulatorDefinition definition, SteamInputTarget steamInput,
                              Keymap keymap, string outputRoot) {
         for platform in definition.platforms {

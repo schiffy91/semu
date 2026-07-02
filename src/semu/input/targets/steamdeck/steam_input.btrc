@@ -1,4 +1,5 @@
-// steam_input_parser.btrc — the steam-input target contract loader.
+// steam_input.btrc — the steam-input target contract loader (the
+// steamdeck-target-owned model + parser).
 //
 // steam_input.json supplies the actions vocabulary, controller policy, radial
 // slots, templates, key-name and device-identity tables; the sibling keymap
@@ -6,10 +7,11 @@
 // directions.
 
 import std.{vector, fs, json}
-import ../core/parse_log.btrc
-import ../core/json_contract.btrc
-import ../core/template_tokens.btrc
-import ./keymap_parser.btrc
+import ../../../core/parse_log.btrc
+import ../../../core/json_contract.btrc
+import ../../../core/template_tokens.btrc
+import ../../../platforms/platform_registry.btrc
+import ../../input_parser.btrc
 
 class SteamInputTarget {
     public string file;
@@ -40,7 +42,8 @@ class SteamInputTarget {
     // Target-owned physical-device identity constants (parallel by index).
     public Vector<string> deviceIdentityKeys;
     public Vector<string> deviceIdentityValues;
-    // Steam controller template install destination (linux block).
+    // Steam controller template install destination (the deployment-target
+    // platform block wins).
     public string templatesDirectory;
 
     public SteamInputTarget() {
@@ -291,7 +294,7 @@ class SteamInputParser {
             log.add(path, "platforms", "expected object keyed by os");
             return;
         }
-        Vector<string> operatingSystems = ["linux", "macos"];
+        Vector<string> operatingSystems = PlatformRegistry.registeredIds();
         for operatingSystemName in platforms.keys() {
             if (!operatingSystemName.equals("doc")) {
                 JsonContract.checkEnum(operatingSystemName, operatingSystems,
@@ -306,7 +309,8 @@ class SteamInputParser {
                     string directory = JsonContract.requiredString(block, "templates_dir",
                         path, context, log);
                     TemplateTokens.check(directory, path, context + ".templates_dir", log, false);
-                    if (operatingSystemName.equals("linux") || target.templatesDirectory.isEmpty()) {
+                    if (PlatformRegistry.deploymentTargetIds().contains(operatingSystemName)
+                        || target.templatesDirectory.isEmpty()) {
                         target.templatesDirectory = directory;
                     }
                 }

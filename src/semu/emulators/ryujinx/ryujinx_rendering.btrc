@@ -1,7 +1,7 @@
 // ryujinx_rendering.btrc — Ryujinx rendering/graphics glue.
 //
 // Ryujinx's graphics contract is method "dynamic" (emulator.json
-// platforms.linux.graphics): there is no static config path to patch at
+// the platform block's graphics contract): there is no static config path to patch at
 // bootstrap because Config.json lives inside the --root-data-dir the state
 // contract routes to the emulation root. The launcher applies the graphics
 // force at launch time; this class owns the Ryujinx-specific knowledge it
@@ -28,7 +28,7 @@ class RyujinxRendering {
     // The directory Config.json resolves against, read from the platform's
     // state extra arguments (template tokens stay verbatim; resolution is an
     // exec-edge concern). Empty when the platform declares no root data dir
-    // (e.g. macos, where Ryujinx uses its default base directory).
+    // (platforms where Ryujinx keeps its default base directory).
     class string rootDataDirectory(EmulatorPlatform platform) {
         StatePolicy statePolicy = platform.state;
         Vector<string> stateArguments = statePolicy.extraArguments;

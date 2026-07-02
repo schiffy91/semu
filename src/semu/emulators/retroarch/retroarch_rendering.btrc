@@ -4,7 +4,7 @@
 //
 // Everything RetroArch-specific about presentation lives here; the decisions
 // themselves are generic and delegated: WHICH preset via ShaderSelector,
-// WHICH resolution via RenderPlanner.targetResolution. All keys and values
+// WHICH resolution via RenderResolution.targetResolution. All keys and values
 // come from the platform's "retroarch" extension block (RetroArchConfiguration)
 // — the only literals below are RetroArch's own grammar: the --set-shader
 // flag, the cfg 'key = "value"' line shape, and the extension's role
@@ -13,7 +13,7 @@
 import std.{vector, strings}
 import ../../systems/model/system_definition.btrc
 import ../rendering/semu_shader.btrc
-import ../rendering/semu_rendering.btrc
+import ../rendering/render_resolution.btrc
 import ./retroarch_emulator.btrc
 
 // One resolved libretro core option: key = "value" in the core's .opt file.
@@ -104,14 +104,14 @@ class RetroArchRendering {
     //                   pin, split on its first '='
     //   res_*        -> the row's key field names the option receiving the
     //                   session's target render resolution (res_4x3 and
-    //                   res_16x9 both receive it; RenderPlanner owns the
+    //                   res_16x9 both receive it; RenderResolution owns the
     //                   math); nothing is emitted in "native" mode
     class Vector<RetroArchCoreOption> coreOptions(RetroArchConfiguration configuration,
                                                   string coreName, SystemDefinition system,
                                                   string renderMode, int screenWidth,
                                                   int screenHeight) {
         Vector<RetroArchCoreOption> options = [];
-        string targetResolution = RenderPlanner.targetResolution(system, renderMode,
+        string targetResolution = RenderResolution.targetResolution(system, renderMode,
             screenWidth, screenHeight);
         for entry in configuration.coreOptionEntries {
             Vector<string> entryParts = Strings.split(entry, "|");

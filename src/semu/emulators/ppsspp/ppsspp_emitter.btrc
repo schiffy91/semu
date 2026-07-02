@@ -9,8 +9,8 @@
 // the golden absence: writing any file here would be a regression.
 
 import ../model/emulator_definition.btrc
-import ../../input/keymap_parser.btrc
-import ../../input/steam_input_parser.btrc
+import ../../input/input_parser.btrc
+import ../../input/targets/steamdeck/steam_input.btrc
 
 class PpssppEmitter {
     // Writes nothing and creates no directories — the golden tree has no

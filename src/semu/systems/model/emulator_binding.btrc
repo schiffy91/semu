@@ -7,6 +7,7 @@
 import std.{vector, json}
 import ../../core/parse_log.btrc
 import ../../core/json_contract.btrc
+import ../../platforms/platform_registry.btrc
 
 class EmulatorBinding {
     public string emulator;
@@ -42,7 +43,7 @@ class EmulatorBindingParser {
         }
         binding.platforms = JsonContract.stringArray(jsonValue, "platforms", false,
             file, context, log);
-        Vector<string> operatingSystems = ["linux", "macos"];
+        Vector<string> operatingSystems = PlatformRegistry.registeredIds();
         for operatingSystemName in binding.platforms {
             JsonContract.checkEnum(operatingSystemName, operatingSystems,
                 file, context + ".platforms", log);

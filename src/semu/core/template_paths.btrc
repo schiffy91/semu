@@ -5,21 +5,30 @@
 // overrides for the roots the AppImage/installer relocate (SEMU_ROMS_DIR,
 // SEMU_EMULATION_ROOT, SEMU_ASSET_ROOT, SEMU_HOME).
 //
-// TemplateContext carries the per-launch identity (project root, emulator id,
-// backend, flatpak id) so the resolver stays a stateless service. Unknown
-// tokens (${host}/${portable} symlink mode markers) pass through unresolved —
-// callers skip values that still carry '${' after resolution.
+// TemplateContext carries the per-launch identity (project root, platform id,
+// emulator id, backend, flatpak id) so the resolver stays a stateless
+// service. Unknown tokens (${host}/${portable} symlink mode markers) pass
+// through unresolved — callers skip values that still carry '${' after
+// resolution.
+//
+// The operating-system-keyed derivations (${state_root}, ${flatpak_home})
+// are platform-owned: TemplatePaths keeps the generic token walk and asks
+// PlatformRegistry, keyed by the context's platform id (falling back to the
+// host platform when the context carries none).
 
 import std.{vector, fs, platform}
+import ../platforms/platform_registry.btrc
 
 class TemplateContext {
     public string project;
+    public string platformId;
     public string emulatorId;
     public string backend;
     public string flatpakId;
 
     public TemplateContext() {
         self.project = "";
+        self.platformId = "";
         self.emulatorId = "";
         self.backend = "";
         self.flatpakId = "";
@@ -71,13 +80,21 @@ class TemplatePaths {
         return PathTools.join(TemplatePaths.contentRoot(project), "ROMs");
     }
 
-    // Per-emulator isolated state root (mirrors the proven flatpak-state /
-    // appimage-state split keyed by launch backend).
+    // The platform id the context resolves against: the declared one, else
+    // the host platform (PlatformRegistry.currentId is the single decision
+    // point for host detection).
+    class string platformIdFor(TemplateContext context) {
+        if (!context.platformId.isEmpty()) {
+            return context.platformId;
+        }
+        return PlatformRegistry.currentId();
+    }
+
+    // Per-emulator isolated state root — a platform-owned derivation
+    // (each platform picks its own convention: the backend-keyed runtime
+    // split or the user-library tree).
     class string stateRoot(TemplateContext context) {
-        string stateKind = context.backend.equals("flatpak")
-            ? "flatpak-state" : "appimage-state";
-        return PathTools.join(PathTools.join(TemplatePaths.runtimeRoot(context.project),
-            stateKind), context.emulatorId.toLower());
+        return PlatformRegistry.stateRoot(TemplatePaths.platformIdFor(context), context);
     }
 
     // The on-device emulator library (SD card layout on the Deck). Empty when
@@ -98,13 +115,6 @@ class TemplatePaths {
             }
         }
         return "";
-    }
-
-    class string flatpakHome(string flatpakId) {
-        if (flatpakId.isEmpty()) {
-            return "";
-        }
-        return PathTools.join(PathTools.join(TemplatePaths.home(), ".var/app"), flatpakId);
     }
 
     class string nixResult(string project) {
@@ -145,7 +155,8 @@ class TemplatePaths {
         result = result.replace("${emulation_root}",
             TemplatePaths.emulationRoot(context.project));
         result = result.replace("${flatpak_home}",
-            TemplatePaths.flatpakHome(context.flatpakId));
+            PlatformRegistry.flatpakHome(TemplatePaths.platformIdFor(context),
+                context.flatpakId));
         result = result.replace("${nix_result}",
             TemplatePaths.nixResult(context.project));
         result = result.replace("${asset_root}",

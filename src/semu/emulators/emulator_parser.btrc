@@ -6,8 +6,9 @@
 //
 // Load-bearing generic invariants:
 //   - input.actions must include "app.quit" (every emulator must be quittable)
-//   - macos axis rules: flatpak/bwrap backends, flatpak_id, display_server,
-//     sessions and sandbox runtime/command are linux-only concepts
+//   - platform-axis rules (which backends, display and sandbox concepts a
+//     platforms.<key> block may carry) belong to the platform classes: the
+//     parser delegates through PlatformRegistry.validatePlatformBlock
 //   - template tokens in path-shaped fields come from the closed token set
 //   - closed enums + unknown keys are hard errors (the emulator-id extension
 //     key is the single allowed extra)
@@ -17,6 +18,7 @@ import ../core/parse_log.btrc
 import ../core/json_contract.btrc
 import ../core/template_tokens.btrc
 import ../core/source_directories.btrc
+import ../platforms/platform_registry.btrc
 import ./model/emulator_platform.btrc
 import ./model/emulator_definition.btrc
 import ./model/sandbox_policy.btrc
@@ -27,11 +29,8 @@ import ./model/firmware_policy.btrc
 import ./emulator_registry.btrc
 
 class EmulatorParser {
-    class void parseSessions(EmulatorPlatform platform, JsonValue jsonValue, bool isLinux,
+    class void parseSessions(EmulatorPlatform platform, JsonValue jsonValue,
                              string file, string context, ParseLog log) {
-        if (!isLinux) {
-            log.add(file, context + ".sessions", "linux-only field");
-        }
         JsonValue sessions = jsonValue.get("sessions");
         if (!sessions.isObject()) {
             log.add(file, context + ".sessions", "expected object");
@@ -94,28 +93,14 @@ class EmulatorParser {
             file, context + ".env", log);
     }
 
-    class void checkPlatformAxes(EmulatorPlatform platform, JsonValue jsonValue, bool isLinux,
+    // The one platform-agnostic axis rule: executable-shaped backends need an
+    // executable. Everything platform-conditional lives in the platform
+    // classes' validatePlatformBlock (routed via PlatformRegistry).
+    class void checkPlatformAxes(EmulatorPlatform platform, JsonValue jsonValue,
                                  string file, string context, ParseLog log) {
-        if (!isLinux && (platform.backend.equals("flatpak") || platform.backend.equals("bwrap"))) {
-            log.add(file, context + ".backend",
-                "'" + platform.backend + "' is a linux-only backend");
-        }
-        if (!isLinux && jsonValue.has("flatpak_id")) {
-            log.add(file, context + ".flatpak_id", "linux-only field");
-        }
-        if (isLinux && platform.backend.equals("flatpak") && platform.flatpakId.isEmpty()) {
-            log.add(file, context + ".flatpak_id", "required when backend is 'flatpak'");
-        }
         if ((platform.backend.equals("nix") || platform.backend.equals("native"))
             && platform.executable.isEmpty()) {
             log.add(file, context + ".executable", "required for nix/native backends");
-        }
-        if (isLinux && platform.displayServer.isEmpty()) {
-            log.add(file, context + ".display_server", "required on linux ('x11' or 'wayland')");
-        }
-        if (!isLinux && jsonValue.has("display_server")) {
-            log.add(file, context + ".display_server",
-                "linux-only field (display server is not a macos concept)");
         }
     }
 
@@ -136,7 +121,7 @@ class EmulatorParser {
         JsonContract.checkKeys(jsonValue, allowedKeys, file, context, log);
 
         platform.backend = JsonContract.requiredString(jsonValue, "backend", file, context, log);
-        Vector<string> backends = ["flatpak", "nix", "bwrap", "native"];
+        Vector<string> backends = PlatformRegistry.knownBackends();
         JsonContract.checkEnum(platform.backend, backends, file, context + ".backend", log);
         platform.flatpakId = JsonContract.optionalString(jsonValue, "flatpak_id", "",
             file, context, log);
@@ -151,11 +136,12 @@ class EmulatorParser {
         platform.displayFallback = JsonContract.optionalString(jsonValue, "display_default", "",
             file, context, log);
 
-        bool isLinux = operatingSystemName.equals("linux");
-        EmulatorParser.checkPlatformAxes(platform, jsonValue, isLinux, file, context, log);
+        EmulatorParser.checkPlatformAxes(platform, jsonValue, file, context, log);
+        PlatformRegistry.validatePlatformBlock(operatingSystemName, jsonValue, platform,
+            emulatorId, file, context, log);
 
         if (jsonValue.has("sessions")) {
-            EmulatorParser.parseSessions(platform, jsonValue, isLinux, file, context, log);
+            EmulatorParser.parseSessions(platform, jsonValue, file, context, log);
         }
         platform.arguments = JsonContract.stringArray(jsonValue, "args", false,
             file, context, log);
@@ -168,7 +154,7 @@ class EmulatorParser {
         }
         if (jsonValue.has("sandbox")) {
             platform.sandbox = SandboxPolicyParser.parse(jsonValue.get("sandbox"),
-                operatingSystemName, file, context + ".sandbox", log);
+                file, context + ".sandbox", log);
         }
         if (jsonValue.has("graphics")) {
             platform.graphics = GraphicsPolicyParser.parse(jsonValue.get("graphics"),
@@ -259,14 +245,15 @@ class EmulatorParser {
             log.add(filePath, "default_system", "only valid for standalone emulators");
         }
         if (!root.has("platforms") || !root.get("platforms").isObject()) {
-            log.add(filePath, "platforms", "expected object with linux and/or macos blocks");
+            log.add(filePath, "platforms", "expected object with per-platform blocks ("
+                + PlatformRegistry.registeredIds().join(", ") + ")");
         } else {
             JsonValue platforms = root.get("platforms");
-            Vector<string> operatingSystems = ["linux", "macos"];
             for operatingSystemName in platforms.keys() {
-                if (!operatingSystems.contains(operatingSystemName)) {
+                if (!PlatformRegistry.isRegistered(operatingSystemName)) {
                     log.add(filePath, "platforms." + operatingSystemName,
-                        "unknown platform (allowed: linux, macos)");
+                        "unknown platform (allowed: "
+                        + PlatformRegistry.registeredIds().join(", ") + ")");
                 } else {
                     emulatorDefinition.platforms.push(EmulatorParser.parsePlatform(
                         platforms.get(operatingSystemName), operatingSystemName,

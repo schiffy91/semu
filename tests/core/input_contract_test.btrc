@@ -13,8 +13,8 @@
 
 import std.{vector, strings, platform, fs}
 import ../../src/semu/core/parse_log.btrc
-import ../../src/semu/input/keymap_parser.btrc
-import ../../src/semu/input/steam_input_parser.btrc
+import ../../src/semu/input/input_parser.btrc
+import ../../src/semu/input/targets/steamdeck/steam_input.btrc
 import ../../src/semu/input/input_emitter.btrc
 import ../../src/semu/input/targets/steamdeck/steamdeck_input_emitter.btrc
 

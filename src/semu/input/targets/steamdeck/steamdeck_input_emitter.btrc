@@ -17,8 +17,8 @@
 // to their passthrough groups in the hotkey preset.
 
 import std.{vector, strings, fs}
-import ../../keymap_parser.btrc
-import ../../steam_input_parser.btrc
+import ../../input_parser.btrc
+import ./steam_input.btrc
 import ./steamdeck_hotkey_assignments.btrc
 import ../../input_emitter.btrc
 
