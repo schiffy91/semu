@@ -1,0 +1,32 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: DeterminateSystems/nix-installer-action@v16
+
+      - uses: DeterminateSystems/magic-nix-cache-action@v8
+
+      - name: Build semu (nix-pinned btrc toolchain)
+        run: make btrc-build
+
+      - name: Tree audit
+        run: make -f tests/Makefile tree-audit
+
+      - name: Contract suites
+        run: src/generated/build/semu test core
+
+      - name: Manifest smoke
+        run: make -f tests/Makefile manifest-smoke
+
+      - name: Flake checks
+        run: nix flake check

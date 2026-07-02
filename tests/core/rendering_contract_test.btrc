@@ -215,6 +215,64 @@ class RenderingContractTest {
         return failures;
     }
 
+    // Whole-replacement widescreen semantics: when a shader collection carries
+    // a widescreen block, the pair replaces the base pair entirely — an
+    // omitted widescreen composite means NO composite in wide, never a
+    // fallback to the base composite. No shipped system declares one yet, so
+    // this asserts against a synthesized collection.
+    class int checkWidescreenReplacement(SystemDefinition gameBoy) {
+        int violations = 0;
+        SystemDefinition wideSystem = gameBoy;
+        wideSystem.shaders.hasWidescreen = true;
+        wideSystem.shaders.widescreenScreen = "assets/shaders/synthetic/wide-screen.slangp";
+        wideSystem.shaders.widescreenComposite = "";
+        string tapSelection = ShaderSelector.select(wideSystem, true, true, true, true, true);
+        if (!tapSelection.equals("assets/shaders/synthetic/wide-screen.slangp")) {
+            violations = violations + RenderingContractTest.fail(
+                "widescreen tap selection must use the widescreen screen preset, got "
+                + tapSelection);
+        }
+        string compositeSelection = ShaderSelector.select(wideSystem, true, false, true, true, true);
+        if (!compositeSelection.equals("assets/shaders/synthetic/wide-screen.slangp")) {
+            violations = violations + RenderingContractTest.fail(
+                "an omitted widescreen composite must NOT fall back to the base composite, got "
+                + compositeSelection);
+        }
+        string standardSelection = ShaderSelector.select(wideSystem, true, false, true, true, false);
+        if (!standardSelection.equals(gameBoy.shaders.composite)) {
+            violations = violations + RenderingContractTest.fail(
+                "standard-aspect selection must be untouched by the widescreen block");
+        }
+        wideSystem.shaders.hasWidescreen = false;
+        wideSystem.shaders.widescreenScreen = "";
+        return violations;
+    }
+
+    // Dual-screen systems must carry their per-screen holes through bezel
+    // resolution (the tap's future per-screen compositing input).
+    class int checkDualScreenHoles(SystemDefinition dualScreenSystem, string assetRoot) {
+        int violations = 0;
+        ResolvedBezel resolved = BezelResolver.resolve(dualScreenSystem, "", assetRoot);
+        if (resolved.screenHoleIds.size() != 2) {
+            return violations + RenderingContractTest.fail(
+                f"n3ds resolved bezel must carry 2 screen holes, got {resolved.screenHoleIds.size()}");
+        }
+        for (int holeIndex = 0; holeIndex < resolved.screenHoleIds.size(); holeIndex++) {
+            NormalizedRect screenHole = resolved.screenHoleRects.get(holeIndex);
+            NormalizedRect combinedHole = resolved.hole;
+            bool contained = screenHole.x >= combinedHole.x - 0.0001
+                && screenHole.y >= combinedHole.y - 0.0001
+                && screenHole.x + screenHole.w <= combinedHole.x + combinedHole.w + 0.0001
+                && screenHole.y + screenHole.h <= combinedHole.y + combinedHole.h + 0.0001;
+            if (!contained) {
+                violations = violations + RenderingContractTest.fail(
+                    "screen hole '" + resolved.screenHoleIds.get(holeIndex)
+                    + "' escapes the combined hole");
+            }
+        }
+        return violations;
+    }
+
     class int run(string repoRoot) {
         string sourceRoot = Environment.get("SEMU_SRC_ROOT",
             PathTools.join(repoRoot, "src/semu"));
@@ -248,6 +306,9 @@ class RenderingContractTest {
         violations = violations + RenderingContractTest.checkShaderMatrix(gameBoy, gameCube);
         violations = violations + RenderingContractTest.checkTargetResolution(gameBoy,
             dualScreenSystem, assetRoot);
+        violations = violations + RenderingContractTest.checkWidescreenReplacement(gameBoy);
+        violations = violations + RenderingContractTest.checkDualScreenHoles(dualScreenSystem,
+            assetRoot);
 
         if (violations == 0) {
             print("  OK bezel resolution (gb variants, gc geometry_from, switch fallback)");
