@@ -17,6 +17,8 @@
 
 import std.{vector, fs, cli}
 import ./core/parse_log.btrc
+import ./core/settings.btrc
+import ./core/settings_parser.btrc
 import ./platforms/platform_registry.btrc
 import ./systems/system_parser.btrc
 import ./systems/system_emitter.btrc
@@ -228,11 +230,29 @@ class SemuCli {
         return 0;
     }
 
+    class int runSettings(string project) {
+        ParseLog log = ParseLog();
+        SettingsParser.materialize(project, log);
+        SemuSettings settings = SettingsParser.load(project, log);
+        if (SemuCli.reportErrors(log)) {
+            return 1;
+        }
+        print("store: " + settings.file);
+        print(f"visual: crt_shaders={settings.visual.crtShaders} bezels={settings.visual.bezels}"
+            + f" integer_scaling={settings.visual.integerScaling} render_mode={settings.visual.renderMode}");
+        print("ui: theme=" + settings.ui.theme);
+        print(f"sync: enabled={settings.sync.runtime.enabled} folders={settings.sync.folders.size()}");
+        print(f"screenshots: enabled={settings.screenshots.enabled} tool={settings.screenshots.tool}"
+            + f" probes={settings.screenshots.tools.size()}");
+        return 0;
+    }
+
     class int printUsage() {
         print("usage: semu <command>");
         print("  manifest  [--output <path>]                  write src/generated/semu.json");
         print("  bootstrap [--project <path>]                 emit src/generated/packaging/**");
         print("  launcher  <emulator> [--print-plan] [args...] [rom]  plan/exec a launch");
+        print("  settings                                     materialize + print the store");
         print("  test core                                    run the contract test suites");
         return 1;
     }
@@ -247,6 +267,9 @@ class SemuCli {
         }
         if (command.equals("launcher")) {
             return SemuCli.runLauncher(arguments, repoRoot);
+        }
+        if (command.equals("settings")) {
+            return SemuCli.runSettings(repoRoot);
         }
         if (command.equals("test")) {
             if (arguments.count() > 1 && arguments.get(1).equals("core")) {

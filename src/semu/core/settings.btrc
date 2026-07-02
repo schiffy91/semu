@@ -1,0 +1,141 @@
+// settings.btrc — the runtime-settings model (parsed from src/semu/settings.json
+// defaults or the materialized runtime store). Parsing lives in
+// core/settings_parser.btrc; this file holds only the data classes.
+
+import std.{vector}
+
+class VisualSettings {
+    public bool crtShaders;
+    public bool bezels;
+    public bool standaloneBezels;
+    public bool integerScaling;
+    public string renderMode;
+    public string fallbackPreset;
+
+    public VisualSettings() {
+        self.crtShaders = true;
+        self.bezels = true;
+        self.standaloneBezels = false;
+        self.integerScaling = true;
+        self.renderMode = "1x";
+        self.fallbackPreset = "";
+    }
+}
+
+class UiSettings {
+    public string theme;
+
+    public UiSettings() {
+        self.theme = "";
+    }
+}
+
+class SyncRuntimeSettings {
+    public bool enabled;
+    public bool startAtBoot;
+    public bool tray;
+    public string guiAddress;
+
+    public SyncRuntimeSettings() {
+        self.enabled = false;
+        self.startAtBoot = false;
+        self.tray = false;
+        self.guiAddress = "";
+    }
+}
+
+class SyncFolderSettings {
+    public string folderId;
+    public bool sync;
+    public bool watch;
+    public int rescanSeconds;
+
+    public SyncFolderSettings() {
+        self.folderId = "";
+        self.sync = false;
+        self.watch = false;
+        self.rescanSeconds = 0;
+    }
+}
+
+class SyncSettings {
+    public SyncRuntimeSettings runtime;
+    public string romsDirectory;
+    public Vector<SyncFolderSettings> folders;
+
+    public SyncSettings() {
+        SyncRuntimeSettings runtimeSettings = SyncRuntimeSettings();
+        self.runtime = runtimeSettings;
+        self.romsDirectory = "";
+        Vector<SyncFolderSettings> folderSettings = [];
+        self.folders = folderSettings;
+    }
+
+    public bool hasFolder(string folderId) {
+        for folder in self.folders {
+            if (folder.folderId.equals(folderId)) {
+                return true;
+            }
+        }
+        return false;
+    }
+}
+
+class ScreenshotTool {
+    public string id;
+    public Vector<string> requires;
+    public Vector<string> arguments;
+
+    public ScreenshotTool() {
+        self.id = "";
+        Vector<string> requiresList = [];
+        self.requires = requiresList;
+        Vector<string> argumentList = [];
+        self.arguments = argumentList;
+    }
+}
+
+class ScreenshotSettings {
+    public bool enabled;
+    public string tool;
+    public string customCommand;
+    public int delaySeconds;
+    public bool hookBeforeLaunch;
+    public bool hookAfterSpawn;
+    public bool hookAfterExit;
+    public string outputPattern;
+    public Vector<ScreenshotTool> tools;
+
+    public ScreenshotSettings() {
+        self.enabled = false;
+        self.tool = "auto";
+        self.customCommand = "";
+        self.delaySeconds = 0;
+        self.hookBeforeLaunch = false;
+        self.hookAfterSpawn = false;
+        self.hookAfterExit = false;
+        self.outputPattern = "";
+        Vector<ScreenshotTool> toolList = [];
+        self.tools = toolList;
+    }
+}
+
+class SemuSettings {
+    public string file;
+    public VisualSettings visual;
+    public UiSettings ui;
+    public SyncSettings sync;
+    public ScreenshotSettings screenshots;
+
+    public SemuSettings() {
+        self.file = "";
+        VisualSettings visualSettings = VisualSettings();
+        self.visual = visualSettings;
+        UiSettings uiSettings = UiSettings();
+        self.ui = uiSettings;
+        SyncSettings syncSettings = SyncSettings();
+        self.sync = syncSettings;
+        ScreenshotSettings screenshotSettings = ScreenshotSettings();
+        self.screenshots = screenshotSettings;
+    }
+}

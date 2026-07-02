@@ -177,7 +177,9 @@ class NixPackage {
         return issues;
     }
 
-    // -- 3. pins vs semu_bezels.nix (warnings only) ---------------------------
+    // -- 3. semu_bezels.nix must be a sources.json interpreter -----------------
+    // Pins live ONLY in sources.json; the nix side reads it via fromJSON. A
+    // rev or hash duplicated into the nix file is drift waiting to happen.
     class void crossCheckBezelsNix(string repoRoot, Vector<GithubPin> pins, ParseLog log) {
         string nixPath = NixPackage.bezelsNixPath(repoRoot);
         if (!FileSystem.isFile(nixPath)) {
@@ -185,19 +187,15 @@ class NixPackage {
             return;
         }
         string nixText = Path.readAll(nixPath);
+        if (!nixText.contains("sources.json")) {
+            log.add(nixPath, "pins",
+                "warning: semu_bezels.nix does not read sources.json (pins must not live in nix)");
+            return;
+        }
         for pin in pins {
-            if (!nixText.contains("repo = \"" + pin.repository + "\"")) {
-                log.add(nixPath, "pins." + pin.key, "warning: repo '" + pin.repository
-                    + "' is not fetched by semu_bezels.nix");
-            } else {
-                if (!nixText.contains("rev = \"" + pin.revision + "\"")) {
-                    log.add(nixPath, "pins." + pin.key,
-                        "warning: rev pin differs from sources.json (" + pin.revision + ")");
-                }
-                if (!nixText.contains("hash = \"" + pin.narHash + "\"")) {
-                    log.add(nixPath, "pins." + pin.key,
-                        "warning: hash pin differs from sources.json (" + pin.narHash + ")");
-                }
+            if (nixText.contains(pin.revision) || nixText.contains(pin.narHash)) {
+                log.add(nixPath, "pins." + pin.key,
+                    "warning: pin duplicated in semu_bezels.nix (sources.json is the only pin store)");
             }
         }
     }

@@ -9,6 +9,8 @@
 
 import std.{vector, process, fs}
 import ../../src/semu/core/parse_log.btrc
+import ../../src/semu/core/settings.btrc
+import ../../src/semu/core/settings_parser.btrc
 import ../../src/semu/systems/system_parser.btrc
 import ../../src/semu/systems/model/semu_contracts.btrc
 import ../../src/semu/systems/system_emitter.btrc
@@ -58,6 +60,38 @@ class GeneratedTreeTest {
         return 0;
     }
 
+    // The settings contract round-trip: defaults parse strictly, materialize
+    // into the runtime store, and the reloaded store matches the defaults.
+    class int checkSettings(string repoRoot) {
+        int failures = 0;
+        ParseLog log = ParseLog();
+        SettingsParser.materialize(repoRoot, log);
+        SemuSettings settings = SettingsParser.load(repoRoot, log);
+        if (!log.ok()) {
+            for error in log.errors {
+                failures = failures + GeneratedTreeTest.fail("settings: " + error);
+            }
+            return failures;
+        }
+        if (!settings.file.endsWith("src/generated/runtime/settings.json")) {
+            failures = failures + GeneratedTreeTest.fail(
+                "settings store was not materialized: " + settings.file);
+        }
+        if (!settings.visual.renderMode.equals("1x") && Environment.get("SEMU_RENDER_MODE", "").isEmpty()) {
+            failures = failures + GeneratedTreeTest.fail(
+                "settings default render_mode expected '1x', got " + settings.visual.renderMode);
+        }
+        if (settings.sync.folders.size() != 7) {
+            failures = failures + GeneratedTreeTest.fail(
+                f"settings expected 7 sync folders, got {settings.sync.folders.size()}");
+        }
+        if (settings.screenshots.tools.size() != 4) {
+            failures = failures + GeneratedTreeTest.fail(
+                f"settings expected 4 screenshot tools, got {settings.screenshots.tools.size()}");
+        }
+        return failures;
+    }
+
     class int run(string repoRoot) {
         int failures = 0;
         ParseLog log = ParseLog();
@@ -78,6 +112,7 @@ class GeneratedTreeTest {
         }
 
         failures = failures + GeneratedTreeTest.checkArtifactTree(contracts, generatedRoot);
+        failures = failures + GeneratedTreeTest.checkSettings(repoRoot);
         failures = failures + GeneratedTreeTest.checkTreeAudit(repoRoot);
 
         if (failures > 0) {

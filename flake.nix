@@ -10,14 +10,8 @@
     nixGL.url = "github:nix-community/nixGL";
   };
 
-  # Wired directly against the approved packaging recipes under
-  # src/semu/packaging/nix/ (semu_cli, semu_app, semu_emulators, semu_shaders,
-  # semu_bezels — the tree contract's whitelist). The full emulator-bundle
-  # outputs (per-emulator routed launchers, shader/bezel asset packs, the
-  # Deck AppImage payload) are wired by the packaging phase on top of those
-  # recipes; today the flake exposes the pieces the build gates need:
-  # the btrcpy transpiler (make btrc-build runs `nix run .#btrcpy`) and the
-  # semu CLI package.
+  # All recipes live in src/semu/packaging/nix/; this file only wires inputs
+  # into the flake/ helper functions.
   outputs = { self, nixpkgs, btrc, nixGL }: let
     systems = [ "aarch64-darwin" "x86_64-darwin" "x86_64-linux" "aarch64-linux" ];
     forAllSystems = f: nixpkgs.lib.genAttrs systems (system: f system);
@@ -26,37 +20,12 @@
       config.allowUnfreePredicate = pkg:
         nixpkgs.lib.hasPrefix "libretro-" (nixpkgs.lib.getName pkg);
     };
+    shared = { inherit self nixpkgs btrc nixGL systems forAllSystems mkPkgs; };
   in {
-    packages = forAllSystems (system: let
-      pkgs = mkPkgs system;
-      isLinux = pkgs.stdenv.hostPlatform.isLinux;
-      btrcpy = btrc.packages.${system}.btrcpy;
-    in {
-      inherit btrcpy;
-      default = pkgs.callPackage ./src/semu/packaging/nix/semu_cli.nix {
-        inherit btrcpy;
-        syncthingtray = if isLinux then pkgs.syncthingtray else null;
-        bubblewrap = if isLinux then pkgs.bubblewrap else null;
-      };
-    });
-
-    apps = forAllSystems (system: {
-      btrcpy = {
-        type = "app";
-        program = "${self.packages.${system}.btrcpy}/bin/btrcpy";
-      };
-      default = {
-        type = "app";
-        program = "${self.packages.${system}.default}/bin/semu";
-      };
-    });
-
-    devShells = forAllSystems (system: let
-      pkgs = mkPkgs system;
-    in {
-      default = pkgs.mkShell {
-        packages = [ self.packages.${system}.btrcpy ];
-      };
-    });
+    packages = import ./src/semu/packaging/nix/flake/packages.nix shared;
+    apps = import ./src/semu/packaging/nix/flake/apps.nix shared;
+    checks = import ./src/semu/packaging/nix/flake/checks.nix shared;
+    devShells = import ./src/semu/packaging/nix/flake/dev-shells.nix shared;
+    nixosModules.default = import ./src/semu/packaging/nix/module.nix;
   };
 }
