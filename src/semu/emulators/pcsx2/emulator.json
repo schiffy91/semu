@@ -106,6 +106,22 @@
     "macos": {
       "backend": "native",
       "executable": "${nix_result}/Applications/PCSX2.app/Contents/MacOS/PCSX2",
+      "sandbox": {
+        "filesystems": [
+          {
+            "path": "${project}",
+            "mode": "rw"
+          },
+          {
+            "path": "${state_root}",
+            "mode": "create"
+          },
+          {
+            "path": "${home}/Library/Application Support/PCSX2",
+            "mode": "create"
+          }
+        ]
+      },
       "args": [
         "-batch",
         "-fullscreen"
@@ -133,6 +149,7 @@
   "doc": {
     "state": "PCSX2 ignores XDG_CONFIG_HOME and rejects -cfgpath, so its config is written into the flatpak home (launcher.btrc:446-454).",
     "graphics": "[EmuCore/GS] Renderer: 12 = OpenGL (launcher_tap.btrc:139-142).",
-    "firmware": "Bios folder resolution and doctor probe order from emulator_profiles.btrc:378-382 and doctor.btrc:124-137."
+    "firmware": "Bios folder resolution and doctor probe order from emulator_profiles.btrc:378-382 and doctor.btrc:124-137.",
+    "sandbox_macos": "macos launches run under sandbox-exec write confinement: these grants (plus the platform baseline) are the only writable paths."
   }
 }

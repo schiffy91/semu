@@ -91,6 +91,22 @@
     "macos": {
       "backend": "native",
       "executable": "${nix_result}/Applications/Cemu.app/Contents/MacOS/Cemu",
+      "sandbox": {
+        "filesystems": [
+          {
+            "path": "${project}",
+            "mode": "rw"
+          },
+          {
+            "path": "${state_root}",
+            "mode": "create"
+          },
+          {
+            "path": "${home}/Library/Application Support/Cemu",
+            "mode": "create"
+          }
+        ]
+      },
       "args": [
         "-f",
         "-g"
@@ -99,6 +115,7 @@
   },
   "doc": {
     "state": "Cemu ignores XDG_DATA_HOME, so keys.txt (and a generated settings.xml) are seeded into the flatpak home data dir (launcher.btrc:458-481); the code-side seeder also mirrors keys.txt into ${state_root}/data/Cemu/keys.txt.",
-    "graphics": "settings.xml GraphicAPI: 0 = OpenGL, 1 = Vulkan (launcher_tap.btrc:155-158)."
+    "graphics": "settings.xml GraphicAPI: 0 = OpenGL, 1 = Vulkan (launcher_tap.btrc:155-158).",
+    "sandbox_macos": "macos launches run under sandbox-exec write confinement: these grants (plus the platform baseline) are the only writable paths."
   }
 }

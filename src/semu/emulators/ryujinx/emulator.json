@@ -94,6 +94,26 @@
     "macos": {
       "backend": "native",
       "executable": "${home}/.local/share/ryujinx-app/Ryujinx.app/Contents/MacOS/Ryujinx",
+      "sandbox": {
+        "filesystems": [
+          {
+            "path": "${project}",
+            "mode": "rw"
+          },
+          {
+            "path": "${state_root}",
+            "mode": "create"
+          },
+          {
+            "path": "${home}/.local/share/ryujinx-app",
+            "mode": "create"
+          },
+          {
+            "path": "${home}/Library/Application Support/Ryujinx",
+            "mode": "create"
+          }
+        ]
+      },
       "args": [
         "--fullscreen"
       ]
@@ -102,6 +122,7 @@
   "doc": {
     "state": "Ryujinx resolves its base dir via the flatpak's own home and ignores XDG_CONFIG_HOME, so --root-data-dir points it at the SD EmuDeck data dir (keys, firmware, games, saves) \u2014 launcher.btrc:754-761.",
     "graphics": "method=dynamic: Config.json lives in the --root-data-dir, so the GL force is applied at launch, not via a static config path (launcher_tap.btrc:166).",
-    "macos": "The macos app is extracted to ~/.local/share/ryujinx-app on first launch by the nix wrapper (packaging/nix/ryujinx.nix:22-47; metadata.btrc:66)."
+    "macos": "The macos app is extracted to ~/.local/share/ryujinx-app on first launch by the nix wrapper (packaging/nix/ryujinx.nix:22-47; metadata.btrc:66).",
+    "sandbox_macos": "macos launches run under sandbox-exec write confinement: these grants (plus the platform baseline) are the only writable paths."
   }
 }

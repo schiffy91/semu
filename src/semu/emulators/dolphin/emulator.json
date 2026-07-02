@@ -101,6 +101,22 @@
     "macos": {
       "backend": "native",
       "executable": "${nix_result}/Applications/Dolphin.app/Contents/MacOS/Dolphin",
+      "sandbox": {
+        "filesystems": [
+          {
+            "path": "${project}",
+            "mode": "rw"
+          },
+          {
+            "path": "${state_root}",
+            "mode": "create"
+          },
+          {
+            "path": "${home}/Library/Application Support/Dolphin",
+            "mode": "create"
+          }
+        ]
+      },
       "args": [
         "--config",
         "Dolphin.Display.Fullscreen=True",
@@ -132,6 +148,7 @@
   },
   "doc": {
     "aspect_probe": "Files and marker literals migrated verbatim from presentationDolphinState (presentation.btrc:654-670); markers are matched case-insensitively against the probed text.",
-    "aspect_probe_macos": "Verified live 2026-07-01: Dolphin on macOS writes ~/Library/Application Support/Dolphin/Config/ (not the XDG paths the first draft copied from the linux block)."
+    "aspect_probe_macos": "Verified live 2026-07-01: Dolphin on macOS writes ~/Library/Application Support/Dolphin/Config/ (not the XDG paths the first draft copied from the linux block).",
+    "sandbox_macos": "macos launches run under sandbox-exec write confinement: these grants (plus the platform baseline) are the only writable paths."
   }
 }

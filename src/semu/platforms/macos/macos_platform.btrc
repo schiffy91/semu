@@ -17,6 +17,7 @@ import ../../emulators/model/emulator_definition.btrc
 import ../../emulators/model/launch_plan.btrc
 import ../../emulators/emulator_process.btrc
 import ../semu_platform.btrc
+import ./macos_sandbox.btrc
 
 class MacosPlatform extends SemuPlatform {
     public string id() {
@@ -59,9 +60,19 @@ class MacosPlatform extends SemuPlatform {
         }
         if (platformJson.has("sandbox")) {
             JsonValue sandbox = platformJson.get("sandbox");
-            if (sandbox.isObject() && (sandbox.has("runtime") || sandbox.has("command"))) {
-                log.add(file, context + ".sandbox",
-                    "runtime/command are linux-only (flatpak) fields");
+            if (sandbox.isObject()) {
+                // The macos sandbox (sandbox-exec) understands filesystem
+                // grants only; every other sandbox field is a flatpak/bwrap
+                // concept.
+                Vector<string> linuxOnlyFields = ["runtime", "command", "sockets",
+                                                  "devices", "share", "extra_args",
+                                                  "symlinks"];
+                for linuxOnlyField in linuxOnlyFields {
+                    if (sandbox.has(linuxOnlyField)) {
+                        log.add(file, context + ".sandbox." + linuxOnlyField,
+                            "linux-only sandbox field (macos sandbox-exec takes filesystems grants only)");
+                    }
+                }
             }
         }
         for token in TemplateTokens.tokensIn(platform.executable) {
@@ -86,6 +97,7 @@ class MacosPlatform extends SemuPlatform {
         EmulatorLauncher.applyStateEnvironment(launchPlan, platform.state);
         EmulatorLauncher.applyContractEnvironment(launchPlan, platform);
         EmulatorLauncher.pushTailArguments(launchPlan, platform, invocationArguments, romPath);
+        MacosSandbox.wrap(launchPlan, platform.sandbox);
         return launchPlan;
     }
 
