@@ -3,7 +3,7 @@ SHELL := /bin/bash
 BTRC_TRANSPILE := nix run .\#btrcpy --
 
 SEMU_SOURCE := src/semu.btrc
-SEMU_SOURCES := $(SEMU_SOURCE) $(shell find src/semu tests -path src/semu/garbage -prune -o -name '*.btrc' -print 2>/dev/null)
+SEMU_SOURCES := $(SEMU_SOURCE) $(shell find src/semu tests -name '*.btrc' -print 2>/dev/null)
 SEMU_C := src/generated/build/semu.c
 SEMU_BIN := src/generated/build/semu
 SEMU_MANIFEST := src/generated/semu.json

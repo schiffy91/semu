@@ -1,5 +1,0 @@
-class SteamdeckInputEmitter {
-    class string render(KeymapIr ir) {
-        return renderKeymap(ir, "steam-input");
-    }
-}
