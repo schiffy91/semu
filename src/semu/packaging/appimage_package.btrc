@@ -1,0 +1,100 @@
+// appimage_package.btrc — Linux/AppImage packaging emission.
+//
+// Emits the AppImage entry files from the checked-in templates
+// (src/semu/packaging/appimage/{AppRun,semu.desktop}.template) plus the
+// per-emulator launcher shims, mirroring the Deck-proven layout under
+// garbage/generated/packaging/linux/ (AppRun, semu.desktop, bin/semu-<id>).
+//
+// Template policy: rendering is a verbatim copy — renderTemplate stays the
+// single substitution hook should tokens ever be introduced. The AppRun
+// template deviates from the golden AppRun deliberately: the golden depended
+// on retired CLI subcommands ('config env', 'apprun prepare', sync/deck/...)
+// that the rewrite does not implement; the template routes exactly the
+// implemented surface (manifest/bootstrap/launcher/test) and relies on
+// portable es_find_rules instead of on-device rewriting. AppRun is made
+// executable (0755); shim emission and its 0755 bit belong to
+// EmulatorEmitter.
+
+import std.{vector, fs, process}
+import ../core/parse_log.btrc
+import ../emulators/model/emulator_definition.btrc
+import ../emulators/emulator_parser.btrc
+import ../emulators/emulator_emitter.btrc
+
+class AppImagePackage {
+    class string templateDirectory(string repoRoot) {
+        return PathTools.join(repoRoot, "src/semu/packaging/appimage");
+    }
+
+    // Reads a template ("AppRun" / "semu.desktop") and returns the rendered
+    // text; "" when the template is missing so callers can report instead of
+    // shipping empty artifacts.
+    class string renderTemplate(string repoRoot, string templateName) {
+        string templatePath = PathTools.join(AppImagePackage.templateDirectory(repoRoot),
+            templateName + ".template");
+        if (!FileSystem.isFile(templatePath)) {
+            return "";
+        }
+        return Path.readAll(templatePath);
+    }
+
+    class bool emitTemplate(string repoRoot, string templateName, string outputPath,
+                            bool executable) {
+        string rendered = AppImagePackage.renderTemplate(repoRoot, templateName);
+        if (rendered.isEmpty()) {
+            print("appimage: missing template " + templateName + ".template under "
+                + AppImagePackage.templateDirectory(repoRoot));
+            return false;
+        }
+        Path.writeAll(outputPath, rendered);
+        if (executable) {
+            FileSystem.chmod(outputPath, 493); // 0755
+        }
+        return true;
+    }
+
+    // The shims exec "$(dirname $0)/semu" and AppRun falls back to
+    // $APPDIR/bin/semu, so a bootstrapped tree must carry the CLI binary
+    // beside the shims. Stage the freshly built binary when it exists (the
+    // AppImage build additionally stages it as usr/bin/semu); binary-safe
+    // copy via cp, not string IO.
+    class void stageCliBinary(string repoRoot, string binDirectory) {
+        string builtCli = PathTools.join(repoRoot, "src/generated/build/semu");
+        if (!FileSystem.isFile(builtCli)) {
+            return;
+        }
+        string stagedCli = PathTools.join(binDirectory, "semu");
+        UnixShell shell = UnixShell();
+        shell.run("cp -f " + ShellWords.quote(builtCli) + " " + ShellWords.quote(stagedCli),
+            CommandOutput.stream(), CommandOutput.stream());
+        FileSystem.chmod(stagedCli, 493); // 0755
+    }
+
+    // Emits <outputRoot>/packaging/linux/{AppRun,semu.desktop,bin/semu-<id>,
+    // bin/semu} for an already-parsed emulator set (the CLI and the tests
+    // reuse their loaded contracts through this entry point).
+    class void emitForEmulators(Vector<EmulatorDefinition> emulators, string repoRoot,
+                                string outputRoot) {
+        string linuxRoot = PathTools.join(outputRoot, "packaging/linux");
+        UnixFileSystem.mkdirp(linuxRoot);
+        AppImagePackage.emitTemplate(repoRoot, "AppRun",
+            PathTools.join(linuxRoot, "AppRun"), true);
+        AppImagePackage.emitTemplate(repoRoot, "semu.desktop",
+            PathTools.join(linuxRoot, "semu.desktop"), false);
+        string binDirectory = PathTools.join(linuxRoot, "bin");
+        EmulatorEmitter.emitShims(emulators, binDirectory);
+        AppImagePackage.stageCliBinary(repoRoot, binDirectory);
+    }
+
+    // Standalone emission: parses the emulator contracts itself and emits the
+    // full AppImage packaging layer.
+    class void emit(string repoRoot, string outputRoot) {
+        ParseLog log = ParseLog();
+        Vector<EmulatorDefinition> emulators = EmulatorParser.parseAll(
+            PathTools.join(repoRoot, "src/semu"), log);
+        for error in log.errors {
+            print("appimage: contract error: " + error);
+        }
+        AppImagePackage.emitForEmulators(emulators, repoRoot, outputRoot);
+    }
+}

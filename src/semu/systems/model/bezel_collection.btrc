@@ -1,0 +1,232 @@
+// bezel_collection.btrc — the bezels.json contract: per-system bezel variants
+// (art, glass, screen holes, shell effects) plus the file-level defaults.
+// The parser is clustered with the data classes it fills; geometry_from
+// resolution is a cross-file concern handled by contract_validation.btrc.
+
+import std.{vector, json, fs}
+import ../../core/parse_log.btrc
+import ../../core/geometry.btrc
+import ../../core/json_contract.btrc
+
+class ScreenHole {
+    public string screenId;
+    public NormalizedRect hole;
+
+    public ScreenHole() {
+        self.screenId = "";
+        self.hole = NormalizedRect();
+    }
+}
+
+class BezelVariant {
+    public string id;
+    public string label;
+    public string art;
+    public string glass;
+    public NormalizedRect hole;
+    public Vector<ScreenHole> screenHoles;
+    public bool hasGeometryFrom;
+    public string geometrySystem;
+    public string geometryVariant;
+    public RgbColor shellTint;
+    public bool hasReflect;
+    public double reflect;
+    public bool hasCurvature;
+    public double curvature;
+    public bool hasCornerRadius;
+    public double cornerRadius;
+
+    public BezelVariant() {
+        self.id = "";
+        self.label = "";
+        self.art = "";
+        self.glass = "";
+        self.hole = NormalizedRect();
+        self.screenHoles = [];
+        self.hasGeometryFrom = false;
+        self.geometrySystem = "";
+        self.geometryVariant = "";
+        self.shellTint = RgbColor();
+        self.hasReflect = false;
+        self.reflect = 0.0;
+        self.hasCurvature = false;
+        self.curvature = 0.0;
+        self.hasCornerRadius = false;
+        self.cornerRadius = 0.0;
+    }
+}
+
+class BezelCollection {
+    public bool present;
+    public string file;
+    public bool enabled;
+    public string defaultVariant;
+    public string widescreenVariant;
+    public NormalizedRect hole;
+    public Vector<ScreenHole> screenHoles;
+    public Vector<BezelVariant> variants;
+
+    public BezelCollection() {
+        self.present = false;
+        self.file = "";
+        self.enabled = false;
+        self.defaultVariant = "";
+        self.widescreenVariant = "";
+        self.hole = NormalizedRect();
+        self.screenHoles = [];
+        self.variants = [];
+    }
+}
+
+class BezelCollectionParser {
+    class Vector<ScreenHole> parseScreenHoles(JsonValue jsonValue, Vector<string> screenIds,
+                                              string file, string context, ParseLog log) {
+        Vector<ScreenHole> holes = [];
+        if (!jsonValue.isObject()) {
+            log.add(file, context, "expected object keyed by screen id");
+            return holes;
+        }
+        for key in jsonValue.keys() {
+            if (!screenIds.contains(key)) {
+                log.add(file, context + "." + key,
+                    "unknown screen id (must match display.screens[].id)");
+            }
+            ScreenHole screenHole = ScreenHole();
+            screenHole.screenId = key;
+            screenHole.hole = JsonContract.rect(jsonValue.get(key), file,
+                context + "." + key, log);
+            holes.push(screenHole);
+        }
+        return holes;
+    }
+
+    class BezelVariant parseVariant(JsonValue jsonValue, Vector<string> screenIds,
+                                    string file, string context, ParseLog log) {
+        BezelVariant variant = BezelVariant();
+        if (!jsonValue.isObject()) {
+            log.add(file, context, "expected object");
+            return variant;
+        }
+        Vector<string> allowedKeys = ["id", "label", "art", "glass", "hole", "screen_holes",
+                                      "shell_tint", "reflect", "curvature", "corner_radius",
+                                      "geometry_from"];
+        JsonContract.checkKeys(jsonValue, allowedKeys, file, context, log);
+        variant.id = JsonContract.requiredString(jsonValue, "id", file, context, log);
+        variant.label = JsonContract.requiredString(jsonValue, "label", file, context, log);
+        variant.art = JsonContract.optionalString(jsonValue, "art", "", file, context, log);
+        JsonContract.checkAssetPath(variant.art, file, context + ".art", log);
+        variant.glass = JsonContract.optionalString(jsonValue, "glass", "", file, context, log);
+        JsonContract.checkAssetPath(variant.glass, file, context + ".glass", log);
+        if (jsonValue.has("hole")) {
+            variant.hole = JsonContract.rect(jsonValue.get("hole"), file, context + ".hole", log);
+        }
+        if (jsonValue.has("screen_holes")) {
+            variant.screenHoles = BezelCollectionParser.parseScreenHoles(
+                jsonValue.get("screen_holes"), screenIds, file, context + ".screen_holes", log);
+        }
+        if (jsonValue.has("shell_tint")) {
+            variant.shellTint = JsonContract.rgbColor(jsonValue.get("shell_tint"), file,
+                context + ".shell_tint", log);
+        }
+        if (jsonValue.has("reflect")) {
+            variant.hasReflect = true;
+            variant.reflect = JsonContract.requiredNumber(jsonValue, "reflect",
+                file, context, log);
+        }
+        if (jsonValue.has("curvature")) {
+            variant.hasCurvature = true;
+            variant.curvature = JsonContract.requiredNumber(jsonValue, "curvature",
+                file, context, log);
+        }
+        if (jsonValue.has("corner_radius")) {
+            variant.hasCornerRadius = true;
+            variant.cornerRadius = JsonContract.requiredNumber(jsonValue, "corner_radius",
+                file, context, log);
+        }
+        if (jsonValue.has("geometry_from")) {
+            JsonValue geometryFrom = jsonValue.get("geometry_from");
+            if (!geometryFrom.isObject()) {
+                log.add(file, context + ".geometry_from", "expected object {system?, variant}");
+            } else {
+                Vector<string> geometryKeys = ["system", "variant"];
+                JsonContract.checkKeys(geometryFrom, geometryKeys, file,
+                    context + ".geometry_from", log);
+                variant.hasGeometryFrom = true;
+                variant.geometrySystem = JsonContract.optionalString(geometryFrom, "system", "",
+                    file, context + ".geometry_from", log);
+                variant.geometryVariant = JsonContract.requiredString(geometryFrom, "variant",
+                    file, context + ".geometry_from", log);
+            }
+        }
+        if (variant.art.isEmpty() && !variant.hasGeometryFrom) {
+            log.add(file, context + ".art", "missing (required unless geometry_from supplies it)");
+        }
+        return variant;
+    }
+
+    class void parseVariants(BezelCollection bezelCollection, JsonValue root,
+                             Vector<string> screenIds, string path, ParseLog log) {
+        if (!root.has("variants") || !root.get("variants").isArray()
+            || root.get("variants").size() < 1) {
+            log.add(path, "variants", "expected non-empty array");
+            return;
+        }
+        JsonValue variants = root.get("variants");
+        Vector<string> seenVariantIds = [];
+        for (int variantIndex = 0; variantIndex < variants.size(); variantIndex++) {
+            BezelVariant variant = BezelCollectionParser.parseVariant(variants.at(variantIndex),
+                screenIds, path, f"variants[{variantIndex}]", log);
+            if (seenVariantIds.contains(variant.id)) {
+                log.add(path, f"variants[{variantIndex}].id",
+                    "duplicate variant id '" + variant.id + "'");
+            }
+            seenVariantIds.push(variant.id);
+            bezelCollection.variants.push(variant);
+        }
+        if (!bezelCollection.defaultVariant.isEmpty()
+            && !seenVariantIds.contains(bezelCollection.defaultVariant)) {
+            log.add(path, "default_variant", "references undeclared variant '"
+                + bezelCollection.defaultVariant + "'");
+        }
+        if (!bezelCollection.widescreenVariant.isEmpty()
+            && !seenVariantIds.contains(bezelCollection.widescreenVariant)) {
+            log.add(path, "widescreen_variant", "references undeclared variant '"
+                + bezelCollection.widescreenVariant + "'");
+        }
+    }
+
+    class BezelCollection parseFile(string path, Vector<string> screenIds, ParseLog log) {
+        BezelCollection bezelCollection = BezelCollection();
+        bezelCollection.file = path;
+        if (!FileSystem.isFile(path)) {
+            return bezelCollection;
+        }
+        bezelCollection.present = true;
+        JsonValue root = JsonValue.readFile(path);
+        if (root.isError()) {
+            log.add(path, "(root)", "invalid JSON");
+            return bezelCollection;
+        }
+        JsonContract.checkSchemaVersion(root, 1, path, log);
+        Vector<string> allowedKeys = ["schema_version", "enabled", "default_variant",
+                                      "widescreen_variant", "hole", "screen_holes", "variants"];
+        JsonContract.checkKeys(root, allowedKeys, path, "", log);
+        bezelCollection.enabled = JsonContract.requiredBool(root, "enabled", path, "", log);
+        if (!bezelCollection.enabled) {
+            return bezelCollection;
+        }
+        bezelCollection.defaultVariant = JsonContract.requiredString(root, "default_variant",
+            path, "", log);
+        bezelCollection.widescreenVariant = JsonContract.optionalString(root,
+            "widescreen_variant", "", path, "", log);
+        if (root.has("hole")) {
+            bezelCollection.hole = JsonContract.rect(root.get("hole"), path, "hole", log);
+        }
+        if (root.has("screen_holes")) {
+            bezelCollection.screenHoles = BezelCollectionParser.parseScreenHoles(
+                root.get("screen_holes"), screenIds, path, "screen_holes", log);
+        }
+        BezelCollectionParser.parseVariants(bezelCollection, root, screenIds, path, log);
+        return bezelCollection;
+    }
+}

@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "enabled": true,
+  "default_variant": "dual",
+  "hole": { "x": 0.3300, "y": 0.0400, "w": 0.3400, "h": 0.9200 },
+  "variants": [
+    {
+      "id": "dual",
+      "label": "Dual Screen",
+      "art": "assets/bezels/generic/dual.png"
+    }
+  ],
+  "doc": { "screen_holes": "Omitted: only the combined hole has been measured for nds. Add per-screen rects via gen-bezel-manifest when per-screen compositing lands." }
+}

@@ -1,0 +1,142 @@
+// emulator_registry.btrc — the composition root: the ONLY file outside
+// emulators/<id>/ allowed to name the concrete emulator classes.
+//
+// btrc dispatches method calls by DECLARED type (no virtual dispatch), so a
+// SemuEmulator-typed value cannot answer through its runtime class. The
+// registry therefore owns the id -> concrete-class routing a vtable would
+// otherwise provide: shared code calls the class-level dispatchers below,
+// which forward to the matching concrete class. This is wiring, not
+// behavior — every branch is a pure id -> class lookup.
+
+import std.{vector}
+import ../core/parse_log.btrc
+import ./model/emulator_platform.btrc
+import ./model/emulator_definition.btrc
+import ../systems/model/emulator_binding.btrc
+import ../input/keymap_parser.btrc
+import ../input/steam_input_parser.btrc
+import ./retroarch/retroarch_emulator.btrc
+import ./dolphin/dolphin_emulator.btrc
+import ./pcsx2/pcsx2_emulator.btrc
+import ./cemu/cemu_emulator.btrc
+import ./ryujinx/ryujinx_emulator.btrc
+import ./ppsspp/ppsspp_emulator.btrc
+import ./flycast/flycast_emulator.btrc
+import ./azahar/azahar_emulator.btrc
+import ./melonds/melonds_emulator.btrc
+
+class EmulatorRegistry {
+    class Vector<string> registeredIds() {
+        Vector<string> ids = [AzaharEmulator().id(), CemuEmulator().id(),
+                              DolphinEmulator().id(), FlycastEmulator().id(),
+                              MelonDsEmulator().id(), Pcsx2Emulator().id(),
+                              PpssppEmulator().id(), RetroArchEmulator().id(),
+                              RyujinxEmulator().id()];
+        return ids;
+    }
+
+    class bool isRegistered(string emulatorId) {
+        return EmulatorRegistry.registeredIds().contains(emulatorId);
+    }
+
+    // Route the platform's extension block to the concrete class for
+    // validation. Emulators without a registered class accept no extension.
+    class void parseExtension(string emulatorId, EmulatorPlatform platform, ParseLog log) {
+        if (emulatorId.equals(RetroArchEmulator().id())) {
+            RetroArchEmulator().parseExtension(platform, log);
+        } else if (emulatorId.equals(DolphinEmulator().id())) {
+            DolphinEmulator().parseExtension(platform, log);
+        } else if (emulatorId.equals(Pcsx2Emulator().id())) {
+            Pcsx2Emulator().parseExtension(platform, log);
+        } else if (emulatorId.equals(CemuEmulator().id())) {
+            CemuEmulator().parseExtension(platform, log);
+        } else if (emulatorId.equals(RyujinxEmulator().id())) {
+            RyujinxEmulator().parseExtension(platform, log);
+        } else if (emulatorId.equals(PpssppEmulator().id())) {
+            PpssppEmulator().parseExtension(platform, log);
+        } else if (emulatorId.equals(FlycastEmulator().id())) {
+            FlycastEmulator().parseExtension(platform, log);
+        } else if (emulatorId.equals(AzaharEmulator().id())) {
+            AzaharEmulator().parseExtension(platform, log);
+        } else if (emulatorId.equals(MelonDsEmulator().id())) {
+            MelonDsEmulator().parseExtension(platform, log);
+        } else if (platform.hasExtension()) {
+            log.add("emulators/" + emulatorId + "/emulator.json",
+                "platforms." + platform.operatingSystem + "." + emulatorId,
+                "no emulator class is registered to validate this extension block");
+        }
+    }
+
+    // ES-DE command fragments from the concrete class (empty for emulators
+    // with no registered class or no fragment grammar).
+    class Vector<string> commandFragments(string emulatorId, EmulatorBinding binding,
+                                          EmulatorPlatform platform) {
+        if (emulatorId.equals(RetroArchEmulator().id())) {
+            return RetroArchEmulator().commandFragments(binding, platform);
+        }
+        if (emulatorId.equals(DolphinEmulator().id())) {
+            return DolphinEmulator().commandFragments(binding, platform);
+        }
+        if (emulatorId.equals(Pcsx2Emulator().id())) {
+            return Pcsx2Emulator().commandFragments(binding, platform);
+        }
+        if (emulatorId.equals(CemuEmulator().id())) {
+            return CemuEmulator().commandFragments(binding, platform);
+        }
+        if (emulatorId.equals(RyujinxEmulator().id())) {
+            return RyujinxEmulator().commandFragments(binding, platform);
+        }
+        if (emulatorId.equals(PpssppEmulator().id())) {
+            return PpssppEmulator().commandFragments(binding, platform);
+        }
+        if (emulatorId.equals(FlycastEmulator().id())) {
+            return FlycastEmulator().commandFragments(binding, platform);
+        }
+        if (emulatorId.equals(AzaharEmulator().id())) {
+            return AzaharEmulator().commandFragments(binding, platform);
+        }
+        if (emulatorId.equals(MelonDsEmulator().id())) {
+            return MelonDsEmulator().commandFragments(binding, platform);
+        }
+        Vector<string> fragments = [];
+        return fragments;
+    }
+
+    // Emit the emulator's controller/settings profiles under the shared
+    // profiles root (<generated>/packaging/emulators/profiles). Emulators
+    // without a registered class — or whose class emits no profiles — no-op.
+    class void emitProfiles(string emulatorId, EmulatorDefinition definition,
+                            SteamInputTarget steamInput, Keymap keymap, string outputRoot) {
+        if (emulatorId.equals(RetroArchEmulator().id())) {
+            RetroArchEmulator().emitProfiles(definition, steamInput, keymap, outputRoot);
+        } else if (emulatorId.equals(DolphinEmulator().id())) {
+            DolphinEmulator().emitProfiles(definition, steamInput, keymap, outputRoot);
+        } else if (emulatorId.equals(Pcsx2Emulator().id())) {
+            Pcsx2Emulator().emitProfiles(definition, steamInput, keymap, outputRoot);
+        } else if (emulatorId.equals(CemuEmulator().id())) {
+            CemuEmulator().emitProfiles(definition, steamInput, keymap, outputRoot);
+        } else if (emulatorId.equals(RyujinxEmulator().id())) {
+            RyujinxEmulator().emitProfiles(definition, steamInput, keymap, outputRoot);
+        } else if (emulatorId.equals(PpssppEmulator().id())) {
+            PpssppEmulator().emitProfiles(definition, steamInput, keymap, outputRoot);
+        } else if (emulatorId.equals(FlycastEmulator().id())) {
+            FlycastEmulator().emitProfiles(definition, steamInput, keymap, outputRoot);
+        } else if (emulatorId.equals(AzaharEmulator().id())) {
+            AzaharEmulator().emitProfiles(definition, steamInput, keymap, outputRoot);
+        } else if (emulatorId.equals(MelonDsEmulator().id())) {
+            MelonDsEmulator().emitProfiles(definition, steamInput, keymap, outputRoot);
+        }
+    }
+
+    // ES-DE find-rules corepath directories from the concrete class (empty
+    // for emulators with no core-directory grammar). RetroArch — the sole
+    // libretro frontend — is the only class that answers today; the routing
+    // stays id -> class wiring like every other dispatcher here.
+    class Vector<string> esDeCorePathDirectories(string emulatorId, EmulatorPlatform platform) {
+        if (emulatorId.equals(RetroArchEmulator().id())) {
+            return RetroArchEmulator().esDeCorePathDirectories(platform);
+        }
+        Vector<string> directories = [];
+        return directories;
+    }
+}

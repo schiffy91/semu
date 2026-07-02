@@ -1,0 +1,7 @@
+{
+  "schema_version": 1,
+  "enabled": true,
+  "screen": "assets/shaders/gb/screen.slangp",
+  "composite": "assets/shaders/gb/composite.slangp",
+  "doc": { "intent": "green DMG tint, LCD matrix, slow-pixel ghosting" }
+}

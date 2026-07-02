@@ -1,0 +1,7 @@
+{
+  "schema_version": 1,
+  "enabled": true,
+  "screen": "assets/shaders/gbc/screen.slangp",
+  "composite": "assets/shaders/gbc/composite.slangp",
+  "doc": { "intent": "GBC LCD color response with mild motion blur" }
+}

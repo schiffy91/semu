@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "enabled": true,
+  "default_variant": "classic",
+  "hole": { "x": 0.2441, "y": 0.1134, "w": 0.5118, "h": 0.7610 },
+  "variants": [
+    {
+      "id": "classic",
+      "label": "Classic",
+      "art": "assets/bezels/gba/classic.png",
+      "glass": "assets/bezels/gba/classic-glass.png"
+    },
+    {
+      "id": "sp",
+      "label": "Game Boy Advance SP",
+      "art": "assets/bezels/gba/sp.png",
+      "glass": "assets/bezels/gba/sp-glass.png",
+      "hole": { "x": 0.2698, "y": 0.0745, "w": 0.4604, "h": 0.3352 },
+      "doc": { "provenance": "Different device model (open clamshell), so its own glass and hole." }
+    }
+  ]
+}

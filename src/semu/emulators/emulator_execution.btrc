@@ -1,0 +1,207 @@
+// emulator_execution.btrc — the exec edge for launch plans.
+//
+// EmulatorLauncher.plan stays pure data with ${...} tokens verbatim (that is
+// what --print-plan shows); EmulatorExecution turns a plan into a running
+// process:
+//   1. resolve every template token against the concrete project layout
+//      (TemplatePaths), in argv and environment values alike;
+//   2. create the per-emulator state root (config/data/cache — and the
+//      scratch home for the bwrap backend) and apply StatePolicy.seeds as
+//      first-run copies (Ryujinx prod/title keys, Cemu keys.txt);
+//   3. materialize emulator.json sandbox.symlinks (ln -sfn);
+//   4. apply the proven host-display precedence: DISPLAY/XAUTHORITY are
+//      discovered from a running compositor when the launching environment
+//      lacks them (Game Mode), the contract display_default is a FALLBACK
+//      (${DISPLAY:-:1}), never an override, and bundled wayland displays
+//      re-read the live WAYLAND_DISPLAY.
+// Everything here is generic: driven by the plan, the platform contract and
+// the environment — no emulator identifiers.
+
+import std.{vector, fs, platform, process}
+import ../core/template_paths.btrc
+import ./model/emulator_platform.btrc
+import ./model/emulator_definition.btrc
+import ./model/state_policy.btrc
+import ./model/launch_plan.btrc
+import ./emulator_process.btrc
+
+class EmulatorExecution {
+    class TemplateContext contextFor(EmulatorDefinition emulator, EmulatorPlatform platform,
+                                     string project) {
+        TemplateContext context = TemplateContext();
+        context.project = project;
+        context.emulatorId = emulator.id;
+        context.backend = platform.backend;
+        context.flatpakId = platform.flatpakId;
+        return context;
+    }
+
+    class void prepareStateRoot(EmulatorPlatform platform, TemplateContext context) {
+        string stateRoot = TemplatePaths.stateRoot(context);
+        UnixFileSystem.mkdirp(PathTools.join(stateRoot, "config"));
+        UnixFileSystem.mkdirp(PathTools.join(stateRoot, "data"));
+        UnixFileSystem.mkdirp(PathTools.join(stateRoot, "cache"));
+        if (platform.backend.equals("bwrap")) {
+            UnixFileSystem.mkdirp(PathTools.join(stateRoot, "home"));
+        }
+    }
+
+    class void copyFile(string sourcePath, string targetPath) {
+        UnixFileSystem.mkdirp(PathTools.dirname(targetPath));
+        UnixShell shell = UnixShell();
+        shell.run("cp -a " + ShellWords.quote(sourcePath) + " "
+            + ShellWords.quote(targetPath), CommandOutput.stream(), CommandOutput.stream());
+    }
+
+    // First-run seed copies: the first existing source wins; existing targets
+    // are the user's state and never overwritten.
+    class void applySeeds(EmulatorPlatform platform, TemplateContext context) {
+        for seed in platform.state.seeds {
+            string targetPath = TemplatePaths.resolve(seed.target, context);
+            if (!targetPath.contains("${") && !FileSystem.isFile(targetPath)) {
+                bool seeded = false;
+                for source in seed.sources {
+                    string sourcePath = TemplatePaths.resolve(source, context);
+                    if (!seeded && !sourcePath.contains("${")
+                        && FileSystem.isFile(sourcePath)) {
+                        EmulatorExecution.copyFile(sourcePath, targetPath);
+                        seeded = true;
+                    }
+                }
+            }
+        }
+    }
+
+    // emulator.json sandbox.symlinks: link -> target, refreshed every launch
+    // (ln -sfn). Entries whose resolution still carries a mode marker
+    // (${host}/${portable}) or an empty side are skipped.
+    class void materializeSymlinks(EmulatorPlatform platform, TemplateContext context) {
+        for (int linkIndex = 0; linkIndex < platform.sandbox.symlinkLinks.size(); linkIndex++) {
+            string linkPath = TemplatePaths.resolve(
+                platform.sandbox.symlinkLinks.get(linkIndex), context);
+            string targetPath = TemplatePaths.resolve(
+                platform.sandbox.symlinkTargets.get(linkIndex), context);
+            if (!linkPath.isEmpty() && !targetPath.isEmpty()
+                && !linkPath.contains("${") && !targetPath.contains("${")) {
+                UnixFileSystem.mkdirp(PathTools.dirname(linkPath));
+                UnixShell shell = UnixShell();
+                shell.run("ln -sfn " + ShellWords.quote(targetPath) + " "
+                    + ShellWords.quote(linkPath), CommandOutput.stream(),
+                    CommandOutput.stream());
+            }
+        }
+    }
+
+    class string environmentValueFor(LaunchPlan launchPlan, string key) {
+        for (int keyIndex = 0; keyIndex < launchPlan.environmentSetKeys.size(); keyIndex++) {
+            if (launchPlan.environmentSetKeys.get(keyIndex).equals(key)) {
+                return launchPlan.environmentSetValues.get(keyIndex);
+            }
+        }
+        return "";
+    }
+
+    // The plan with every template token resolved; display entries handled
+    // separately by displayPreamble/applyHostDisplayPrecedence.
+    class LaunchPlan resolvePlan(LaunchPlan launchPlan, TemplateContext context) {
+        LaunchPlan resolvedPlan = LaunchPlan();
+        resolvedPlan.backend = launchPlan.backend;
+        resolvedPlan.note = launchPlan.note;
+        Vector<string> resolvedArguments = TemplatePaths.resolveAll(
+            launchPlan.argumentVector, context);
+        resolvedPlan.argumentVector = resolvedArguments;
+        for key in launchPlan.environmentUnset {
+            resolvedPlan.environmentUnset.push(key);
+        }
+        for (int keyIndex = 0; keyIndex < launchPlan.environmentSetKeys.size(); keyIndex++) {
+            resolvedPlan.environmentSetKeys.push(launchPlan.environmentSetKeys.get(keyIndex));
+            resolvedPlan.environmentSetValues.push(TemplatePaths.resolve(
+                launchPlan.environmentSetValues.get(keyIndex), context));
+        }
+        return resolvedPlan;
+    }
+
+    class void removeEnvironmentKey(LaunchPlan launchPlan, string key) {
+        Vector<string> keptKeys = [];
+        Vector<string> keptValues = [];
+        for (int keyIndex = 0; keyIndex < launchPlan.environmentSetKeys.size(); keyIndex++) {
+            if (!launchPlan.environmentSetKeys.get(keyIndex).equals(key)) {
+                keptKeys.push(launchPlan.environmentSetKeys.get(keyIndex));
+                keptValues.push(launchPlan.environmentSetValues.get(keyIndex));
+            }
+        }
+        launchPlan.environmentSetKeys = keptKeys;
+        launchPlan.environmentSetValues = keptValues;
+    }
+
+    // Proven x11 preamble: harvest DISPLAY/XAUTHORITY from a running
+    // compositor's /proc environ when the launching environment lacks them,
+    // fall back to /run/user/<uid>/xauth_*, and export the contract display
+    // as a shell default (${DISPLAY:-:1}) so a live host value always wins.
+    class string x11DisplayPreamble(string displayFallback) {
+        string fallback = displayFallback.isEmpty() ? ":0" : displayFallback;
+        return "if [ -z \"${DISPLAY:-}\" ] || [ -z \"${XAUTHORITY:-}\" ]; then "
+            + "p=$(pgrep -x plasmashell | head -1 || pgrep -x kwin_wayland | head -1 || true); "
+            + "if [ -n \"$p\" ] && [ -r \"/proc/$p/environ\" ]; then "
+            + "eval \"$(tr '\\0' '\\n' < /proc/$p/environ"
+            + " | grep -E '^(DISPLAY|XAUTHORITY)=' | sed 's/^/export /')\"; "
+            + "fi; fi; "
+            + "if [ -z \"${XAUTHORITY:-}\" ]; then "
+            + "for xauthFile in /run/user/$(id -u)/xauth_*; do "
+            + "[ -r \"$xauthFile\" ] && export XAUTHORITY=\"$xauthFile\" && break; done; fi; "
+            + "export DISPLAY=\"${DISPLAY:-" + fallback + "}\"; ";
+    }
+
+    // Host-value precedence for the display environment: the x11 DISPLAY
+    // moves out of the env prefix into the discovery preamble; wayland
+    // displays (env prefix and bundled --env args) re-read the live value.
+    class string applyHostDisplayPrecedence(LaunchPlan resolvedPlan) {
+        string preamble = "";
+        string displayFallback = EmulatorExecution.environmentValueFor(resolvedPlan, "DISPLAY");
+        if (!displayFallback.isEmpty()) {
+            preamble = EmulatorExecution.x11DisplayPreamble(displayFallback);
+            EmulatorExecution.removeEnvironmentKey(resolvedPlan, "DISPLAY");
+        }
+        string waylandFallback = EmulatorExecution.environmentValueFor(resolvedPlan,
+            "WAYLAND_DISPLAY");
+        if (!waylandFallback.isEmpty()) {
+            string liveDisplay = Environment.get("WAYLAND_DISPLAY", waylandFallback);
+            for (int keyIndex = 0; keyIndex < resolvedPlan.environmentSetKeys.size();
+                 keyIndex++) {
+                if (resolvedPlan.environmentSetKeys.get(keyIndex).equals("WAYLAND_DISPLAY")) {
+                    resolvedPlan.environmentSetValues.set(keyIndex, liveDisplay);
+                }
+            }
+            string bundledPrefix = "--env=WAYLAND_DISPLAY=";
+            for (int argumentIndex = 0; argumentIndex < resolvedPlan.argumentVector.size();
+                 argumentIndex++) {
+                if (resolvedPlan.argumentVector.get(argumentIndex).startsWith(bundledPrefix)) {
+                    resolvedPlan.argumentVector.set(argumentIndex,
+                        bundledPrefix + liveDisplay);
+                }
+            }
+        }
+        return preamble;
+    }
+
+    // Resolve, prepare state, materialize symlinks and run. Returns the
+    // emulator's exit code (nonzero when the plan is empty).
+    class int run(EmulatorDefinition emulator, string operatingSystem, LaunchPlan launchPlan,
+                  string project) {
+        if (launchPlan.argumentVector.size() == 0) {
+            print("launcher: nothing to exec (" + launchPlan.note + ")");
+            return 1;
+        }
+        EmulatorPlatform platform = emulator.platformFor(operatingSystem);
+        TemplateContext context = EmulatorExecution.contextFor(emulator, platform, project);
+        EmulatorExecution.prepareStateRoot(platform, context);
+        EmulatorExecution.applySeeds(platform, context);
+        EmulatorExecution.materializeSymlinks(platform, context);
+        LaunchPlan resolvedPlan = EmulatorExecution.resolvePlan(launchPlan, context);
+        string preamble = EmulatorExecution.applyHostDisplayPrecedence(resolvedPlan);
+        UnixShell shell = UnixShell();
+        ExecResult result = shell.run(preamble + EmulatorLauncher.shellCommand(resolvedPlan),
+            CommandOutput.stream(), CommandOutput.stream());
+        return result.code;
+    }
+}

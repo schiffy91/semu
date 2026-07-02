@@ -1,0 +1,35 @@
+// semu_contracts.btrc — the fully parsed contract set: every system and every
+// emulator definition. Pure data; SystemParser.loadAll composes it and
+// ContractValidation checks the cross-file invariants.
+
+import std.{vector}
+import ./system_definition.btrc
+import ../../emulators/model/emulator_definition.btrc
+
+class SemuContracts {
+    public Vector<SystemDefinition> systems;
+    public Vector<EmulatorDefinition> emulators;
+
+    public SemuContracts() {
+        self.systems = [];
+        self.emulators = [];
+    }
+
+    public bool hasSystem(string id) {
+        for systemDefinition in self.systems {
+            if (systemDefinition.id.equals(id)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    public bool hasEmulator(string id) {
+        for emulatorDefinition in self.emulators {
+            if (emulatorDefinition.id.equals(id)) {
+                return true;
+            }
+        }
+        return false;
+    }
+}

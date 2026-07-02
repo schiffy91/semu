@@ -1,0 +1,23 @@
+// launch_plan.btrc — the pure-data result of launch planning: the argument
+// vector plus environment deltas that EmulatorLauncher.execute (the only
+// side-effectful step) applies. Template tokens stay verbatim in the plan.
+
+import std.{vector}
+
+class LaunchPlan {
+    public Vector<string> argumentVector;
+    public Vector<string> environmentSetKeys;
+    public Vector<string> environmentSetValues;
+    public Vector<string> environmentUnset;
+    public string backend;
+    public string note;
+
+    public LaunchPlan() {
+        self.argumentVector = [];
+        self.environmentSetKeys = [];
+        self.environmentSetValues = [];
+        self.environmentUnset = [];
+        self.backend = "";
+        self.note = "";
+    }
+}

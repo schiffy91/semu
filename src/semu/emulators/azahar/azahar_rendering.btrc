@@ -1,0 +1,68 @@
+// azahar_rendering.btrc — Azahar's graphics-api routing glue. Azahar selects
+// its renderer through a qt_ini config file (GraphicsPolicy method
+// 'config_file'): the contract maps 'opengl'/'vulkan' onto Azahar's numeric
+// graphics_api values, the GL tap rides the tap_api value and the vkBasalt
+// bezel overlay rides the overlay_api value. AzaharRendering owns the value
+// lookups plus the qt_ini patch that flips an existing config between the
+// two — the Deck-proven seed patch generalized (the old launcher rewrote
+// 'graphics_api=1' -> 'graphics_api=2' and pinned '\default=false').
+
+import std.{vector, strings}
+import ../model/graphics_policy.btrc
+
+class AzaharRendering {
+    // The config-file value for a contract graphics api ('opengl'/'vulkan');
+    // "" when the api is unknown or the contract declares no value for it.
+    class string graphicsApiValue(GraphicsPolicy graphics, string graphicsApi) {
+        if (graphicsApi.equals("opengl")) {
+            return graphics.valueOpenGl;
+        }
+        if (graphicsApi.equals("vulkan")) {
+            return graphics.valueVulkan;
+        }
+        return "";
+    }
+
+    // The value the GL tap path pins (graphics.tap_api).
+    class string tapGraphicsValue(GraphicsPolicy graphics) {
+        return AzaharRendering.graphicsApiValue(graphics, graphics.tapApi);
+    }
+
+    // The value the overlay path pins (graphics.overlay_api). The seeded
+    // profile carries this one: the overlay renderer is the safe baseline and
+    // the launcher patches the tap api in only when the GL tap engages.
+    class string overlayGraphicsValue(GraphicsPolicy graphics) {
+        return AzaharRendering.graphicsApiValue(graphics, graphics.overlayApi);
+    }
+
+    // Patch an existing qt_ini configuration onto the given graphics api:
+    // every '<key>=...' line is rewritten to the api's value and every
+    // '<key>\default=...' line is pinned to false so Azahar keeps the choice.
+    // Unknown apis (no contract value) leave the text untouched.
+    class string patchGraphicsApi(string configurationText, GraphicsPolicy graphics,
+                                  string graphicsApi) {
+        string value = AzaharRendering.graphicsApiValue(graphics, graphicsApi);
+        if (value.isEmpty() || graphics.key.isEmpty()) {
+            return configurationText;
+        }
+        string valueMatch = graphics.key + "=";
+        string defaultMatch = graphics.key + "\\default=";
+        Vector<string> lines = Strings.split(configurationText, "\n");
+        Vector<string> patched = [];
+        for line in lines {
+            if (line.startsWith(valueMatch)) {
+                patched.push(valueMatch + value);
+            } else if (line.startsWith(defaultMatch)) {
+                patched.push(defaultMatch + "false");
+            } else {
+                patched.push(line);
+            }
+        }
+        string patchedText = patched.join("\n");
+        // Strings.split drops a trailing delimiter; keep the final newline.
+        if (configurationText.endsWith("\n")) {
+            return patchedText + "\n";
+        }
+        return patchedText;
+    }
+}

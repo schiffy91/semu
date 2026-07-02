@@ -1,0 +1,7 @@
+{
+  "schema_version": 1,
+  "enabled": true,
+  "screen": "assets/shaders/dreamcast/screen.slangp",
+  "composite": "assets/shaders/dreamcast/composite.slangp",
+  "doc": { "intent": "480i/480p era CRT or VGA softness" }
+}

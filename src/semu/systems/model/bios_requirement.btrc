@@ -1,0 +1,73 @@
+// bios_requirement.btrc — the system.json "bios" contract: which firmware
+// files a system needs, whether they are mandatory, and where they live.
+
+import std.{vector, json}
+import ../../core/parse_log.btrc
+import ../../core/json_contract.btrc
+
+class BiosFile {
+    public string name;
+    public string note;
+
+    public BiosFile() {
+        self.name = "";
+        self.note = "";
+    }
+}
+
+class BiosRequirement {
+    public bool present;
+    public bool required;
+    public string match;
+    public Vector<BiosFile> files;
+    public string directory;
+
+    public BiosRequirement() {
+        self.present = false;
+        self.required = false;
+        self.match = "";
+        self.files = [];
+        self.directory = "";
+    }
+}
+
+class BiosRequirementParser {
+    class BiosRequirement parse(JsonValue jsonValue, string file, ParseLog log) {
+        BiosRequirement biosRequirement = BiosRequirement();
+        if (!jsonValue.isObject()) {
+            log.add(file, "bios", "expected object");
+            return biosRequirement;
+        }
+        biosRequirement.present = true;
+        Vector<string> allowedKeys = ["required", "match", "files", "dir"];
+        JsonContract.checkKeys(jsonValue, allowedKeys, file, "bios", log);
+        biosRequirement.required = JsonContract.requiredBool(jsonValue, "required",
+            file, "bios", log);
+        biosRequirement.match = JsonContract.requiredString(jsonValue, "match", file, "bios", log);
+        Vector<string> matchModes = ["all", "any"];
+        JsonContract.checkEnum(biosRequirement.match, matchModes, file, "bios.match", log);
+        biosRequirement.directory = JsonContract.requiredString(jsonValue, "dir",
+            file, "bios", log);
+        if (!jsonValue.has("files") || !jsonValue.get("files").isArray()
+            || jsonValue.get("files").size() < 1) {
+            log.add(file, "bios.files", "expected non-empty array");
+            return biosRequirement;
+        }
+        JsonValue files = jsonValue.get("files");
+        for (int fileIndex = 0; fileIndex < files.size(); fileIndex++) {
+            JsonValue entry = files.at(fileIndex);
+            string context = f"bios.files[{fileIndex}]";
+            BiosFile biosFile = BiosFile();
+            if (!entry.isObject()) {
+                log.add(file, context, "expected object {name, note?}");
+            } else {
+                Vector<string> fileKeys = ["name", "note"];
+                JsonContract.checkKeys(entry, fileKeys, file, context, log);
+                biosFile.name = JsonContract.requiredString(entry, "name", file, context, log);
+                biosFile.note = JsonContract.optionalString(entry, "note", "", file, context, log);
+            }
+            biosRequirement.files.push(biosFile);
+        }
+        return biosRequirement;
+    }
+}

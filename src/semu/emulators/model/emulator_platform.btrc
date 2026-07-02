@@ -1,0 +1,104 @@
+// emulator_platform.btrc — one emulator.json platforms.<os> block: backend,
+// executable/flatpak identity, display-server choice with per-session
+// overrides, launch arguments, environment deltas and the policy sub-objects.
+//
+// Field values that came from the JSON keep their template tokens (${home},
+// ${nix_result}, ...) verbatim — resolution is an exec-edge concern.
+// extensionJson carries the raw emulator-specific extension block (the
+// platform key equal to the emulator id) uninterpreted; only the concrete
+// emulator class reads it.
+
+import std.{vector, json}
+import ./sandbox_policy.btrc
+import ./graphics_policy.btrc
+import ./aspect_probe.btrc
+import ./state_policy.btrc
+import ./firmware_policy.btrc
+
+class SessionOverride {
+    public string id;
+    public string displayServer;
+    public string displayFallback;
+    public string overlay;
+
+    public SessionOverride() {
+        self.id = "";
+        self.displayServer = "";
+        self.displayFallback = "";
+        self.overlay = "";
+    }
+}
+
+class EmulatorPlatform {
+    public string operatingSystem;
+    public string backend;
+    public string flatpakId;
+    public string executable;
+    public string displayServer;
+    public string displayFallback;
+    public Vector<SessionOverride> sessions;
+    public Vector<string> arguments;
+    public string glWrapper;
+    public Vector<string> environmentSetKeys;
+    public Vector<string> environmentSetValues;
+    public Vector<string> environmentUnset;
+    public SandboxPolicy sandbox;
+    public GraphicsPolicy graphics;
+    public string overlayAspect;
+    public AspectProbe aspectProbe;
+    public StatePolicy state;
+    public FirmwarePolicy firmware;
+    public JsonValue extensionJson;
+
+    public EmulatorPlatform() {
+        self.operatingSystem = "";
+        self.backend = "";
+        self.flatpakId = "";
+        self.executable = "";
+        self.displayServer = "";
+        self.displayFallback = "";
+        self.sessions = [];
+        self.arguments = [];
+        self.glWrapper = "none";
+        self.environmentSetKeys = [];
+        self.environmentSetValues = [];
+        self.environmentUnset = [];
+        self.sandbox = SandboxPolicy();
+        self.graphics = GraphicsPolicy();
+        self.overlayAspect = "";
+        self.aspectProbe = AspectProbe();
+        self.state = StatePolicy();
+        self.firmware = FirmwarePolicy();
+        self.extensionJson = JsonValue.makeNull();
+    }
+
+    public bool hasExtension() {
+        return !self.extensionJson.isNull();
+    }
+}
+
+// Session resolution: platform base values overridden by the matching
+// sessions[] entry (only the fields that entry declares).
+class EmulatorSessions {
+    class SessionOverride effective(EmulatorPlatform platform, string session) {
+        SessionOverride effectiveSession = SessionOverride();
+        effectiveSession.id = session;
+        effectiveSession.displayServer = platform.displayServer;
+        effectiveSession.displayFallback = platform.displayFallback;
+        effectiveSession.overlay = "";
+        for sessionOverride in platform.sessions {
+            if (sessionOverride.id.equals(session)) {
+                if (!sessionOverride.displayServer.isEmpty()) {
+                    effectiveSession.displayServer = sessionOverride.displayServer;
+                }
+                if (!sessionOverride.displayFallback.isEmpty()) {
+                    effectiveSession.displayFallback = sessionOverride.displayFallback;
+                }
+                if (!sessionOverride.overlay.isEmpty()) {
+                    effectiveSession.overlay = sessionOverride.overlay;
+                }
+            }
+        }
+        return effectiveSession;
+    }
+}

@@ -1,0 +1,73 @@
+// cemu_rendering.btrc — rendering glue for the Cemu concrete emulator
+// class. Cemu's graphics backend is forced through its settings.xml (the
+// contract's graphics.method is config_file, so there are no cli force
+// arguments), and the compositor tap attaches through the api the contract
+// pins. The wire values (file, key, 0/1 api codes, tap api) all come from
+// the platform's parsed GraphicsPolicy — only the settings.xml document
+// shape is Cemu-native grammar owned here.
+
+import ../model/emulator_platform.btrc
+import ../model/graphics_policy.btrc
+
+class CemuRendering {
+    // The graphics-api wire value ("0"/"1" in the frozen contract) for the
+    // requested api; "" when the platform declares none.
+    class string graphicsApiValue(EmulatorPlatform platform, string graphicsApi) {
+        GraphicsPolicy graphics = platform.graphics;
+        if (!graphics.present) {
+            return "";
+        }
+        if (graphicsApi.equals("opengl")) {
+            return graphics.valueOpenGl;
+        }
+        if (graphicsApi.equals("vulkan")) {
+            return graphics.valueVulkan;
+        }
+        return "";
+    }
+
+    // The minimal settings.xml document that pins Cemu onto the requested
+    // graphics api — mirrors the Deck-proven flatpak-home seed (a
+    // <Graphic><api> element plus the update check pinned off). "" when the
+    // platform has no config-file graphics policy or no value for the api.
+    class string graphicsSettingsDocument(EmulatorPlatform platform, string graphicsApi) {
+        GraphicsPolicy graphics = platform.graphics;
+        if (!graphics.present) {
+            return "";
+        }
+        if (!graphics.method.equals("config_file")) {
+            return "";
+        }
+        string apiValue = CemuRendering.graphicsApiValue(platform, graphicsApi);
+        if (apiValue.isEmpty()) {
+            return "";
+        }
+        return "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
+            + "<content>\n"
+            + "\t<Graphic>\n"
+            + "\t\t<api>" + apiValue + "</api>\n"
+            + "\t</Graphic>\n"
+            + "\t<check_update>false</check_update>\n"
+            + "</content>\n";
+    }
+
+    // The settings file the launcher writes the document into (a
+    // ${flatpak_home}-rooted template path in the frozen contract).
+    class string graphicsSettingsFile(EmulatorPlatform platform) {
+        GraphicsPolicy graphics = platform.graphics;
+        if (!graphics.present) {
+            return "";
+        }
+        return graphics.file;
+    }
+
+    // Which api the compositor tap attaches through (the contract pins
+    // opengl so the generic GL tap can interpose).
+    class string tapGraphicsApi(EmulatorPlatform platform) {
+        GraphicsPolicy graphics = platform.graphics;
+        if (!graphics.present) {
+            return "";
+        }
+        return graphics.tapApi;
+    }
+}

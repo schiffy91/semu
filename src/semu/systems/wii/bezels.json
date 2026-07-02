@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "enabled": true,
+  "default_variant": "tv",
+  "hole": { "x": 0.1250, "y": 0.0500, "w": 0.7500, "h": 0.9000 },
+  "variants": [
+    {
+      "id": "tv",
+      "label": "Generic 4:3 Frame",
+      "art": "assets/bezels/generic/4x3.png"
+    }
+  ]
+}

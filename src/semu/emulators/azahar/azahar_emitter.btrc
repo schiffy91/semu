@@ -1,0 +1,102 @@
+// azahar_emitter.btrc — builders for Azahar's bootstrap profile: the seeded
+// qt-config.ini (golden: garbage/generated/packaging/emulators/profiles/
+// Azahar/config/qt-config.ini). Every Azahar identity is looked up from the
+// contract: the profile directory is the emulator's name, the config file
+// name and Azahar's config-directory name come from graphics.file, and the
+// seeded renderer value comes from the graphics values table. The remaining
+// literals are Azahar's own qt-config vocabulary (section/key names) and the
+// semu profile-tree convention (profiles/<Name>/config + the routed
+// runtime state layout), neither of which exists in the JSON contracts.
+
+import std.{vector, fs}
+import ../model/graphics_policy.btrc
+import ../model/emulator_platform.btrc
+import ../model/emulator_definition.btrc
+import ./azahar_rendering.btrc
+
+class AzaharEmitter {
+    // graphics.file is '${flatpak_home}/config/<directory>/<file>' — the
+    // basename is the config file name Azahar reads back.
+    class string configurationFileName(GraphicsPolicy graphics) {
+        return PathTools.basename(graphics.file);
+    }
+
+    // The directory holding the config file names Azahar's config/data
+    // subtrees (the flatpak keeps them under config/ and data/ homes).
+    class string configurationDirectoryName(GraphicsPolicy graphics) {
+        return PathTools.basename(PathTools.dirname(graphics.file));
+    }
+
+    // Profile-tree location: profiles/<Name>/config/<config file>. The
+    // launcher seeds profiles/<Name>/config into the emulator's config home.
+    class string profileRelativePath(EmulatorDefinition definition, EmulatorPlatform platform) {
+        string configDirectory = PathTools.join(definition.name, "config");
+        return PathTools.join(configDirectory,
+            AzaharEmitter.configurationFileName(platform.graphics));
+    }
+
+    // The launcher-routed data home baked into the seeded profile. The
+    // profile root sits at <generated>/packaging/emulators/profiles, and the
+    // routed state lives beside it at <generated>/runtime/appimage-state/
+    // <emulator id>/data (mirrors the proven launcher state routing).
+    class string runtimeDataRoot(string outputRoot, string emulatorId) {
+        string packagingRoot = PathTools.dirname(PathTools.dirname(outputRoot));
+        string generatedRoot = PathTools.dirname(packagingRoot);
+        string stateRoot = PathTools.join(generatedRoot, "runtime/appimage-state");
+        return PathTools.join(PathTools.join(stateRoot, emulatorId), "data");
+    }
+
+    // One qt_ini setting: 'key=value' plus the 'key\default=' marker Qt uses
+    // to remember whether the value matches its built-in default.
+    class void pushSetting(Vector<string> lines, string key, string value,
+                           bool valueIsQtDefault) {
+        lines.push(key + "=" + value);
+        if (valueIsQtDefault) {
+            lines.push(key + "\\default=true");
+        } else {
+            lines.push(key + "\\default=false");
+        }
+    }
+
+    // The seeded qt-config.ini: storage routed into the launcher's data root,
+    // the renderer pinned to the overlay graphics api (the launcher patches
+    // the tap api in when the GL tap engages — see AzaharRendering), and the
+    // first-run/confirmation dialogs silenced so launches are unattended.
+    class string qtConfigurationText(string dataRoot, GraphicsPolicy graphics) {
+        string azaharRoot = PathTools.join(dataRoot,
+            AzaharEmitter.configurationDirectoryName(graphics));
+        Vector<string> lines = [];
+        lines.push("[Data%20Storage]");
+        AzaharEmitter.pushSetting(lines, "nand_directory",
+            PathTools.join(azaharRoot, "nand/"), false);
+        AzaharEmitter.pushSetting(lines, "sdmc_directory",
+            PathTools.join(azaharRoot, "sdmc/"), false);
+        AzaharEmitter.pushSetting(lines, "use_custom_storage", "false", true);
+        AzaharEmitter.pushSetting(lines, "use_virtual_sd", "true", true);
+        lines.push("");
+        lines.push("[Debugging]");
+        AzaharEmitter.pushSetting(lines, "renderer_debug", "false", false);
+        lines.push("");
+        lines.push("[Renderer]");
+        AzaharEmitter.pushSetting(lines, graphics.key,
+            AzaharRendering.overlayGraphicsValue(graphics), false);
+        lines.push("");
+        lines.push("[UI]");
+        AzaharEmitter.pushSetting(lines, "confirmClose", "false", false);
+        AzaharEmitter.pushSetting(lines, "firstStart", "false", false);
+        AzaharEmitter.pushSetting(lines, "fullscreen", "true", false);
+        AzaharEmitter.pushSetting(lines, "saveStateWarning", "false", false);
+        return lines.join("\n") + "\n";
+    }
+
+    // Write the platform's profile under outputRoot; true on success.
+    class bool emitPlatformProfile(EmulatorDefinition definition, EmulatorPlatform platform,
+                                   string outputRoot) {
+        string profilePath = PathTools.join(outputRoot,
+            AzaharEmitter.profileRelativePath(definition, platform));
+        string dataRoot = AzaharEmitter.runtimeDataRoot(outputRoot, definition.id);
+        UnixFileSystem.mkdirp(PathTools.dirname(profilePath));
+        return Path.writeAll(profilePath,
+            AzaharEmitter.qtConfigurationText(dataRoot, platform.graphics));
+    }
+}

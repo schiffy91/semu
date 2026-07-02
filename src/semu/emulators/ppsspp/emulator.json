@@ -1,0 +1,79 @@
+{
+  "schema_version": 1,
+  "name": "PPSSPP",
+  "kind": "standalone",
+  "default_system": "psp",
+  "input": {
+    "actions": [
+      "ui.menu",
+      "app.quit",
+      "speed.fast"
+    ]
+  },
+  "platforms": {
+    "linux": {
+      "backend": "flatpak",
+      "flatpak_id": "org.ppsspp.PPSSPP",
+      "display_server": "x11",
+      "display_default": ":0",
+      "sessions": {
+        "gamescope": {
+          "display_default": ":1"
+        },
+        "desktop": {
+          "display_default": ":0"
+        }
+      },
+      "args": [
+        "--fullscreen"
+      ],
+      "gl_wrapper": "nixgl",
+      "sandbox": {
+        "devices": [
+          "all"
+        ],
+        "filesystems": [
+          {
+            "path": "/nix/store",
+            "mode": "ro"
+          },
+          {
+            "path": "${project}",
+            "mode": "rw"
+          },
+          {
+            "path": "${roms}",
+            "mode": "rw"
+          },
+          {
+            "path": "${state_root}",
+            "mode": "create"
+          },
+          {
+            "path": "${emulation_root}",
+            "mode": "rw"
+          }
+        ]
+      },
+      "graphics": {
+        "method": "config_file",
+        "file": "${flatpak_home}/config/ppsspp/PSP/SYSTEM/ppsspp.ini",
+        "format": "ini",
+        "key": "GPUBackend",
+        "values": {
+          "opengl": "0"
+        },
+        "tap_api": "opengl"
+      },
+      "overlay_aspect": "4x3",
+      "state": {
+        "config_home": "xdg",
+        "data_home": "xdg"
+      }
+    }
+  },
+  "doc": {
+    "graphics": "[Graphics] GPUBackend: 0 = OpenGL (launcher_tap.btrc:143-146).",
+    "platforms": "No macos block: ppsspp is packaged for x86_64-linux only (packaging/nix/flake/packages.nix:41); psp on macos runs through the RetroArch ppsspp core."
+  }
+}

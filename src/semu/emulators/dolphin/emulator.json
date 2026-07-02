@@ -1,0 +1,138 @@
+{
+  "schema_version": 1,
+  "name": "Dolphin",
+  "kind": "standalone",
+  "default_system": "gc",
+  "input": {
+    "actions": [
+      "ui.open",
+      "ui.pause",
+      "ui.screenshot",
+      "ui.fullscreen",
+      "app.quit",
+      "state.prev",
+      "state.next",
+      "state.load",
+      "state.save"
+    ]
+  },
+  "platforms": {
+    "linux": {
+      "backend": "flatpak",
+      "flatpak_id": "org.DolphinEmu.dolphin-emu",
+      "display_server": "x11",
+      "display_default": ":0",
+      "sessions": {
+        "gamescope": {
+          "display_server": "x11",
+          "display_default": ":1"
+        },
+        "desktop": {
+          "display_default": ":0"
+        }
+      },
+      "args": [
+        "--config",
+        "Dolphin.Display.Fullscreen=True",
+        "-b",
+        "-e"
+      ],
+      "gl_wrapper": "nixgl",
+      "sandbox": {
+        "devices": [
+          "all"
+        ],
+        "filesystems": [
+          {
+            "path": "/nix/store",
+            "mode": "ro"
+          },
+          {
+            "path": "${project}",
+            "mode": "rw"
+          },
+          {
+            "path": "${roms}",
+            "mode": "rw"
+          },
+          {
+            "path": "${state_root}",
+            "mode": "create"
+          },
+          {
+            "path": "${emulation_root}",
+            "mode": "rw"
+          }
+        ]
+      },
+      "graphics": {
+        "method": "cli",
+        "tap_api": "opengl"
+      },
+      "overlay_aspect": "4x3",
+      "aspect_probe": {
+        "files": [
+          "${state_root}/config/dolphin-emu/Config/GFX.ini",
+          "${state_root}/config/dolphin-emu/Config/Dolphin.ini",
+          "${project}/generated/packaging/emulators/profiles/Dolphin/config/GFX.ini",
+          "${project}/generated/packaging/emulators/profiles/Dolphin/config/Dolphin.ini"
+        ],
+        "widescreen_markers": [
+          "aspectratio = 1",
+          "aspectratio=1",
+          "aspectratio = 16:9",
+          "aspectratio=16:9",
+          "widescreen = true",
+          "widescreen=true"
+        ],
+        "standard_markers": [
+          "aspectratio = 2",
+          "aspectratio=2",
+          "aspectratio = 4:3",
+          "aspectratio=4:3"
+        ],
+        "fallback": "standard"
+      },
+      "state": {
+        "config_home": "xdg",
+        "data_home": "xdg"
+      }
+    },
+    "macos": {
+      "backend": "native",
+      "executable": "${nix_result}/Applications/Dolphin.app/Contents/MacOS/Dolphin",
+      "args": [
+        "--config",
+        "Dolphin.Display.Fullscreen=True",
+        "-b",
+        "-e"
+      ],
+      "aspect_probe": {
+        "files": [
+          "${state_root}/config/dolphin-emu/Config/GFX.ini",
+          "${state_root}/config/dolphin-emu/Config/Dolphin.ini",
+          "${project}/generated/packaging/emulators/profiles/Dolphin/config/GFX.ini",
+          "${project}/generated/packaging/emulators/profiles/Dolphin/config/Dolphin.ini"
+        ],
+        "widescreen_markers": [
+          "aspectratio = 1",
+          "aspectratio=1",
+          "aspectratio = 16:9",
+          "aspectratio=16:9",
+          "widescreen = true",
+          "widescreen=true"
+        ],
+        "standard_markers": [
+          "aspectratio = 2",
+          "aspectratio=2",
+          "aspectratio = 4:3",
+          "aspectratio=4:3"
+        ],
+        "fallback": "standard"
+      }
+    }
+  },
+  "doc": {
+    "aspect_probe": "Files and marker literals migrated verbatim from presentationDolphinState (presentation.btrc:654-670); markers are matched case-insensitively against the probed text."
+  }
+}

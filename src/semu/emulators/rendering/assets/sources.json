@@ -1,0 +1,607 @@
+{
+  "schema_version": 1,
+  "doc": {
+    "purpose": "Canonical asset -> upstream origin/recipe manifest. The ONLY file allowed to name Mega_Bezel_Packs, shaders_slang, Duimon, or Soqueroeu.",
+    "provenance": "Upstream pins, flatten layer stacks, recolor hexes, and slang_wrapper params are migrated verbatim from packaging/nix/visual-assets.nix and packaging/steamdeck/tap/gen-handheld-shells.sh; local sources from config/assets and packaging/steamdeck/tap.",
+    "params_note": "Wrapper params use the exact HSM keys the shipped semu-deck presets set (HSM_INT_SCALE_MODE / HSM_INT_SCALE_MAX_HEIGHT / HSM_CURVATURE_MODE / HSM_BG_FILL_MODE)."
+  },
+  "upstreams": {
+    "duimon_mega_bezel": {
+      "kind": "github",
+      "owner": "Duimon",
+      "repo": "Duimon-Mega-Bezel",
+      "rev": "d03dabf6e6b190dbf9b692efd492d8edd21abbb9",
+      "nar_hash": "sha256-EvWkMiw5ne0Im43404NVTJiQO5mWhMVNEk7fdpgb5rY="
+    },
+    "duimon_vintage_tv": {
+      "kind": "github",
+      "owner": "Duimon",
+      "repo": "Duimon-Vintage-TV",
+      "rev": "28478a2bcb21416c619dd2fa2d67d70d91c715dc",
+      "nar_hash": "sha256-tGyIaMM169zIRD9tgmzLy+LthdWEjYtE0e+PmAuIR+4="
+    },
+    "soqueroeu_tv": {
+      "kind": "github",
+      "owner": "soqueroeu",
+      "repo": "Soqueroeu-TV-Backgrounds_V2.0",
+      "rev": "52bc4588d88c7bd319f922659d3ba74ed81ce959",
+      "nar_hash": "sha256-8IoaMLw7i4TttFR08Ycji6COuaxaeNeBwPCLyfyTD90="
+    },
+    "libretro_slang": {
+      "kind": "nixpkgs",
+      "attr": "libretro-shaders-slang"
+    }
+  },
+  "trees": {
+    "shaders_slang": {
+      "from": "libretro_slang",
+      "stage": "shaders_slang"
+    },
+    "duimon_mega_bezel": {
+      "from": "duimon_mega_bezel",
+      "stage": "Mega_Bezel_Packs/Duimon-Mega-Bezel",
+      "paths": [
+        "Presets",
+        "res",
+        "zzz_global_params",
+        "Graphics"
+      ],
+      "doc": {
+        "why_graphics": "per-system presets reference Graphics LUTs; omitting yields 'Failed to load LUT'"
+      }
+    },
+    "duimon_vintage_tv": {
+      "from": "duimon_vintage_tv",
+      "stage": "Mega_Bezel_Packs/Duimon-Vintage-TV"
+    },
+    "soqueroeu_tv": {
+      "from": "soqueroeu_tv",
+      "stage": "Mega_Bezel_Packs/Soqueroeu-TV-Backgrounds_V2.0"
+    }
+  },
+  "assets": {
+    "assets/bezels/generic/4x3.png": {
+      "type": "local",
+      "path": "src/semu/emulators/rendering/assets/reshade/bezel-4x3.png"
+    },
+    "assets/bezels/generic/16x9.png": {
+      "type": "local",
+      "path": "src/semu/emulators/rendering/assets/reshade/bezel-16x9.png"
+    },
+    "assets/bezels/generic/dual.png": {
+      "type": "local",
+      "path": "src/semu/emulators/rendering/assets/reshade/bezel-3ds.png"
+    },
+    "assets/bezels/gb/classic.png": {
+      "type": "flatten",
+      "from": "duimon_mega_bezel",
+      "layers": [
+        "Graphics/Nintendo_Game_Boy/Gameboy_DMG01_Device.png",
+        "Graphics/Nintendo_Game_Boy/Gameboy_DMG01_Decal.png",
+        "Graphics/Nintendo_Game_Boy/Gameboy_DMG01_Top.png"
+      ]
+    },
+    "assets/bezels/gb/classic-glass.png": {
+      "type": "glass",
+      "from": "duimon_mega_bezel",
+      "path": "Graphics/Nintendo_Game_Boy/Gameboy_DMG01_Glass.png"
+    },
+    "assets/bezels/gb/red.png": {
+      "type": "recolor",
+      "base": "assets/bezels/gb/classic.png",
+      "color": "#d23440"
+    },
+    "assets/bezels/gb/green.png": {
+      "type": "recolor",
+      "base": "assets/bezels/gb/classic.png",
+      "color": "#2f9e4f"
+    },
+    "assets/bezels/gbc/classic.png": {
+      "type": "flatten",
+      "from": "duimon_mega_bezel",
+      "layers": [
+        "Graphics/Nintendo_Game_Boy_Color/GBC_Device.png",
+        "Graphics/Nintendo_Game_Boy_Color/GBC_Device_LED.png",
+        "Graphics/Nintendo_Game_Boy_Color/GBC_Decal.png",
+        "Graphics/Nintendo_Game_Boy_Color/GBC_Top.png"
+      ]
+    },
+    "assets/bezels/gbc/classic-glass.png": {
+      "type": "glass",
+      "from": "duimon_mega_bezel",
+      "path": "Graphics/Nintendo_Game_Boy_Color/GBC_Glass.png"
+    },
+    "assets/bezels/gbc/berry.png": {
+      "type": "recolor",
+      "base": "assets/bezels/gbc/classic.png",
+      "color": "#c0294b"
+    },
+    "assets/bezels/gbc/grape.png": {
+      "type": "recolor",
+      "base": "assets/bezels/gbc/classic.png",
+      "color": "#7a3fb0"
+    },
+    "assets/bezels/gba/classic.png": {
+      "type": "flatten",
+      "from": "duimon_mega_bezel",
+      "layers": [
+        "Graphics/Nintendo_GBA/GBA_Device.png",
+        "Graphics/Nintendo_GBA/GBA_Decal.png",
+        "Graphics/Nintendo_GBA/GBA_Top.png"
+      ]
+    },
+    "assets/bezels/gba/classic-glass.png": {
+      "type": "glass",
+      "from": "duimon_mega_bezel",
+      "path": "Graphics/Nintendo_GBA/GBA_Glass.png"
+    },
+    "assets/bezels/gba/sp.png": {
+      "type": "flatten",
+      "from": "duimon_mega_bezel",
+      "layers": [
+        "Graphics/Nintendo_GBA_SP/GBA_SP_Device.png",
+        "Graphics/Nintendo_GBA_SP/GBA_SP_Decal.png",
+        "Graphics/Nintendo_GBA_SP/GBA_SP_Top.png"
+      ]
+    },
+    "assets/bezels/gba/sp-glass.png": {
+      "type": "glass",
+      "from": "duimon_mega_bezel",
+      "path": "Graphics/Nintendo_GBA_SP/GBA_SP_Glass.png"
+    },
+    "assets/bezels/nes/tv.png": {
+      "type": "copy",
+      "from": "soqueroeu_tv",
+      "path": "img/Nintendo_NES/NES.png"
+    },
+    "assets/bezels/nes/tv-black.png": {
+      "type": "copy",
+      "from": "soqueroeu_tv",
+      "path": "img/Nintendo_NES/NES_Black_Edition.png"
+    },
+    "assets/bezels/snes/tv.png": {
+      "type": "copy",
+      "from": "soqueroeu_tv",
+      "path": "img/Nintendo_SuperNintendo/SuperNES.png"
+    },
+    "assets/bezels/snes/solid-a.png": {
+      "type": "copy",
+      "from": "soqueroeu_tv",
+      "path": "img/Nintendo_SuperNintendo/SuperNES_Solid_A.png"
+    },
+    "assets/bezels/snes/solid-b.png": {
+      "type": "copy",
+      "from": "soqueroeu_tv",
+      "path": "img/Nintendo_SuperNintendo/SuperNES_Solid_B.png"
+    },
+    "assets/bezels/genesis/tv.png": {
+      "type": "copy",
+      "from": "soqueroeu_tv",
+      "path": "img/Sega_Genesis/Sega_Genesis.png"
+    },
+    "assets/bezels/genesis/solid-a.png": {
+      "type": "copy",
+      "from": "soqueroeu_tv",
+      "path": "img/Sega_Genesis/Sega_Genesis_Solid_A.png"
+    },
+    "assets/bezels/genesis/solid-b.png": {
+      "type": "copy",
+      "from": "soqueroeu_tv",
+      "path": "img/Sega_Genesis/Sega_Genesis_Solid_B.png"
+    },
+    "assets/bezels/n64/tv.png": {
+      "type": "copy",
+      "from": "soqueroeu_tv",
+      "path": "img/Nintendo_N64/N64.png"
+    },
+    "assets/bezels/psx/tv.png": {
+      "type": "copy",
+      "from": "soqueroeu_tv",
+      "path": "img/Sony_Playstation/PSX.png"
+    },
+    "assets/shaders/fallback/crt.slangp": {
+      "type": "slang_wrapper",
+      "reference": {
+        "tree": "shaders_slang",
+        "path": "bezel/Mega_Bezel/Presets/MBZ__5__POTATO.slangp"
+      },
+      "requires": [
+        "shaders_slang"
+      ]
+    },
+    "assets/shaders/gb/screen.slangp": {
+      "type": "slang_wrapper",
+      "reference": {
+        "tree": "shaders_slang",
+        "path": "handheld/gameboy.slangp"
+      },
+      "requires": [
+        "shaders_slang"
+      ]
+    },
+    "assets/shaders/gb/composite.slangp": {
+      "type": "slang_wrapper",
+      "reference": {
+        "tree": "duimon_mega_bezel",
+        "path": "Presets/Advanced/Nintendo_Game_Boy/Gameboy-[ADV]-[Guest]-[Bezel]-[Night].slangp"
+      },
+      "params": {
+        "HSM_INT_SCALE_MODE": 1,
+        "HSM_INT_SCALE_MAX_HEIGHT": 60.57,
+        "HSM_CURVATURE_MODE": 0
+      },
+      "requires": [
+        "duimon_mega_bezel",
+        "shaders_slang"
+      ]
+    },
+    "assets/shaders/gbc/screen.slangp": {
+      "type": "slang_wrapper",
+      "reference": {
+        "tree": "shaders_slang",
+        "path": "handheld/sameboy-lcd-gbc-color-motionblur.slangp"
+      },
+      "requires": [
+        "shaders_slang"
+      ]
+    },
+    "assets/shaders/gbc/composite.slangp": {
+      "type": "slang_wrapper",
+      "reference": {
+        "tree": "duimon_mega_bezel",
+        "path": "Presets/Advanced/Nintendo_Game_Boy_Color/GBC-[ADV]-[Guest]-[Bezel]-[Night].slangp"
+      },
+      "params": {
+        "HSM_INT_SCALE_MODE": 1,
+        "HSM_INT_SCALE_MAX_HEIGHT": 60.57,
+        "HSM_CURVATURE_MODE": 0
+      },
+      "requires": [
+        "duimon_mega_bezel",
+        "shaders_slang"
+      ]
+    },
+    "assets/shaders/gba/screen.slangp": {
+      "type": "slang_wrapper",
+      "reference": {
+        "tree": "shaders_slang",
+        "path": "handheld/agb001-gba-color-motionblur.slangp"
+      },
+      "requires": [
+        "shaders_slang"
+      ]
+    },
+    "assets/shaders/gba/composite.slangp": {
+      "type": "slang_wrapper",
+      "reference": {
+        "tree": "duimon_mega_bezel",
+        "path": "Presets/Advanced/Nintendo_GBA/GBA-[ADV]-[Guest]-[Bezel]-[Night].slangp"
+      },
+      "params": {
+        "HSM_INT_SCALE_MODE": 1,
+        "HSM_INT_SCALE_MAX_HEIGHT": 59.77,
+        "HSM_CURVATURE_MODE": 0
+      },
+      "requires": [
+        "duimon_mega_bezel",
+        "shaders_slang"
+      ]
+    },
+    "assets/shaders/nes/screen.slangp": {
+      "type": "slang_wrapper",
+      "reference": {
+        "tree": "shaders_slang",
+        "path": "ntsc/ntsc-256px-composite-scanline.slangp"
+      },
+      "requires": [
+        "shaders_slang"
+      ]
+    },
+    "assets/shaders/nes/composite.slangp": {
+      "type": "slang_wrapper",
+      "reference": {
+        "tree": "soqueroeu_tv",
+        "path": "presets/TV-Console-Night/Nintendo_NES.slangp"
+      },
+      "params": {
+        "HSM_INT_SCALE_MODE": 1
+      },
+      "requires": [
+        "soqueroeu_tv",
+        "shaders_slang"
+      ]
+    },
+    "assets/shaders/snes/screen.slangp": {
+      "type": "slang_wrapper",
+      "reference": {
+        "tree": "shaders_slang",
+        "path": "ntsc/ntsc-256px-svideo-scanline.slangp"
+      },
+      "requires": [
+        "shaders_slang"
+      ]
+    },
+    "assets/shaders/snes/composite.slangp": {
+      "type": "slang_wrapper",
+      "reference": {
+        "tree": "soqueroeu_tv",
+        "path": "presets/TV-Console-Night/Nintendo_SuperNintendo-[Special_Grey].slangp"
+      },
+      "params": {
+        "HSM_INT_SCALE_MODE": 1
+      },
+      "requires": [
+        "soqueroeu_tv",
+        "shaders_slang"
+      ]
+    },
+    "assets/shaders/genesis/screen.slangp": {
+      "type": "slang_wrapper",
+      "reference": {
+        "tree": "shaders_slang",
+        "path": "ntsc/ntsc-320px-composite-scanline.slangp"
+      },
+      "requires": [
+        "shaders_slang"
+      ]
+    },
+    "assets/shaders/genesis/composite.slangp": {
+      "type": "slang_wrapper",
+      "reference": {
+        "tree": "soqueroeu_tv",
+        "path": "presets/TV-Console-Night/Sega_Genesis.slangp"
+      },
+      "params": {
+        "HSM_INT_SCALE_MODE": 1
+      },
+      "requires": [
+        "soqueroeu_tv",
+        "shaders_slang"
+      ]
+    },
+    "assets/shaders/n64/screen.slangp": {
+      "type": "slang_wrapper",
+      "reference": {
+        "tree": "shaders_slang",
+        "path": "crt/crt-royale.slangp"
+      },
+      "requires": [
+        "shaders_slang"
+      ]
+    },
+    "assets/shaders/n64/composite.slangp": {
+      "type": "slang_wrapper",
+      "reference": {
+        "tree": "soqueroeu_tv",
+        "path": "presets/TV-Console-Night/00_Generic_02.slangp"
+      },
+      "params": {
+        "HSM_INT_SCALE_MODE": 1,
+        "HSM_INT_SCALE_MAX_HEIGHT": 100,
+        "HSM_BG_FILL_MODE": 2
+      },
+      "requires": [
+        "soqueroeu_tv",
+        "shaders_slang"
+      ],
+      "doc": {
+        "max_height": "MAX_HEIGHT=100 references the full screen so ShortAxis integer scaling picks floor(screenH/240); requires the launcher forcing mupen64plus_next to native 320x240.",
+        "bg_fill": "HSM_BG_FILL_MODE=2 stretches the 16:9 room scene to cover the 16:10 viewport; the game/tube layer is unaffected."
+      }
+    },
+    "assets/shaders/psx/screen.slangp": {
+      "type": "slang_wrapper",
+      "reference": {
+        "tree": "shaders_slang",
+        "path": "crt/crt-royale.slangp"
+      },
+      "requires": [
+        "shaders_slang"
+      ]
+    },
+    "assets/shaders/psx/composite.slangp": {
+      "type": "slang_wrapper",
+      "reference": {
+        "tree": "soqueroeu_tv",
+        "path": "presets/TV-Console-Night/00_Generic_02.slangp"
+      },
+      "params": {
+        "HSM_INT_SCALE_MODE": 1
+      },
+      "requires": [
+        "soqueroeu_tv",
+        "shaders_slang"
+      ]
+    },
+    "assets/shaders/nds/screen.slangp": {
+      "type": "slang_wrapper",
+      "reference": {
+        "tree": "shaders_slang",
+        "path": "handheld/lcd-grid-v2-nds-color-motionblur.slangp"
+      },
+      "requires": [
+        "shaders_slang"
+      ]
+    },
+    "assets/shaders/nds/composite.slangp": {
+      "type": "slang_wrapper",
+      "reference": {
+        "tree": "duimon_mega_bezel",
+        "path": "Presets/Advanced/Nintendo_NDS/NDS-[ADV]-[Guest]-[Night].slangp"
+      },
+      "params": {
+        "HSM_INT_SCALE_MODE": 1,
+        "HSM_INT_SCALE_MAX_HEIGHT": 117.17,
+        "HSM_CURVATURE_MODE": 0
+      },
+      "requires": [
+        "duimon_mega_bezel",
+        "shaders_slang"
+      ]
+    },
+    "assets/shaders/psp/screen.slangp": {
+      "type": "slang_wrapper",
+      "reference": {
+        "tree": "shaders_slang",
+        "path": "handheld/lcd-grid-v2-psp-color-motionblur.slangp"
+      },
+      "requires": [
+        "shaders_slang"
+      ]
+    },
+    "assets/shaders/psp/composite.slangp": {
+      "type": "slang_wrapper",
+      "reference": {
+        "tree": "duimon_mega_bezel",
+        "path": "Presets/Advanced/SONY_PSP/PSP-[ADV]-[Guest]-[Night].slangp"
+      },
+      "params": {
+        "HSM_INT_SCALE_MODE": 1,
+        "HSM_INT_SCALE_MAX_HEIGHT": 69.17,
+        "HSM_CURVATURE_MODE": 0
+      },
+      "requires": [
+        "duimon_mega_bezel",
+        "shaders_slang"
+      ]
+    },
+    "assets/shaders/dreamcast/screen.slangp": {
+      "type": "slang_wrapper",
+      "reference": {
+        "tree": "shaders_slang",
+        "path": "crt/crt-royale.slangp"
+      },
+      "requires": [
+        "shaders_slang"
+      ]
+    },
+    "assets/shaders/dreamcast/composite.slangp": {
+      "type": "slang_wrapper",
+      "reference": {
+        "tree": "soqueroeu_tv",
+        "path": "presets/TV-Console-Night/00_Generic_02.slangp"
+      },
+      "params": {
+        "HSM_INT_SCALE_MODE": 1
+      },
+      "requires": [
+        "soqueroeu_tv",
+        "shaders_slang"
+      ]
+    },
+    "assets/reshade/Bezel.fx": {
+      "type": "local",
+      "path": "src/semu/emulators/rendering/assets/reshade/Bezel.fx"
+    },
+    "assets/reshade/Bezel-4x3.fx": {
+      "type": "local",
+      "path": "src/semu/emulators/rendering/assets/reshade/Bezel-4x3.fx"
+    },
+    "assets/reshade/Bezel-16x9.fx": {
+      "type": "local",
+      "path": "src/semu/emulators/rendering/assets/reshade/Bezel-16x9.fx"
+    },
+    "assets/reshade/Bezel-3ds.fx": {
+      "type": "local",
+      "path": "src/semu/emulators/rendering/assets/reshade/Bezel-3ds.fx"
+    },
+    "assets/reshade/ReShade.fxh": {
+      "type": "local",
+      "path": "src/semu/emulators/rendering/assets/reshade/ReShade.fxh"
+    },
+    "assets/reshade/ReShadeUI.fxh": {
+      "type": "local",
+      "path": "src/semu/emulators/rendering/assets/reshade/ReShadeUI.fxh"
+    },
+    "assets/reshade/vkBasalt.conf": {
+      "type": "local",
+      "path": "src/semu/emulators/rendering/assets/reshade/vkBasalt.conf"
+    },
+    "assets/reshade/vkBasalt-4x3.conf": {
+      "type": "local",
+      "path": "src/semu/emulators/rendering/assets/reshade/vkBasalt-4x3.conf"
+    },
+    "assets/reshade/vkBasalt-16x9.conf": {
+      "type": "local",
+      "path": "src/semu/emulators/rendering/assets/reshade/vkBasalt-16x9.conf"
+    },
+    "assets/reshade/vkBasalt-3ds.conf": {
+      "type": "local",
+      "path": "src/semu/emulators/rendering/assets/reshade/vkBasalt-3ds.conf"
+    },
+    "assets/reshade/cutouts.conf": {
+      "type": "local",
+      "path": "src/semu/emulators/rendering/assets/reshade/cutouts.conf"
+    },
+    "assets/reshade/bezel-4x3.png": {
+      "type": "local",
+      "path": "src/semu/emulators/rendering/assets/reshade/bezel-4x3.png",
+      "doc": {
+        "why": "Bezel-4x3.fx defines SEMU_BEZEL_TEXTURE \"bezel-4x3.png\" and vkBasalt reshadeTexturePath points at the reshade dir, so the texture must ship inside the staged reshade pack."
+      }
+    },
+    "assets/reshade/bezel-16x9.png": {
+      "type": "local",
+      "path": "src/semu/emulators/rendering/assets/reshade/bezel-16x9.png",
+      "doc": {
+        "why": "Texture named by Bezel-16x9.fx; must sit beside the .fx in the staged reshade pack."
+      }
+    },
+    "assets/reshade/bezel-3ds.png": {
+      "type": "local",
+      "path": "src/semu/emulators/rendering/assets/reshade/bezel-3ds.png",
+      "doc": {
+        "why": "Texture named by Bezel-3ds.fx; must sit beside the .fx in the staged reshade pack."
+      }
+    },
+    "assets/overlay/bezel-4x3.png": {
+      "type": "local",
+      "path": "src/semu/emulators/rendering/assets/overlay/bezel-4x3.png"
+    },
+    "assets/overlay/bezel-16x9.png": {
+      "type": "local",
+      "path": "src/semu/emulators/rendering/assets/overlay/bezel-16x9.png"
+    },
+    "assets/fonts/menu-font.png": {
+      "type": "local",
+      "path": "src/semu/emulators/rendering/assets/fonts/menu-font.png"
+    }
+  },
+  "staging": [
+    {
+      "id": "reshade_pack",
+      "files": [
+        {
+          "src": "assets/reshade",
+          "dest": "share/semu-bezel/reshade"
+        }
+      ]
+    },
+    {
+      "id": "standalone_overlay",
+      "files": [
+        {
+          "src": "assets/overlay/bezel-4x3.png",
+          "dest": "share/semu-bezel/assets/bezel-4x3.png"
+        },
+        {
+          "src": "assets/overlay/bezel-16x9.png",
+          "dest": "share/semu-bezel/assets/bezel-16x9.png"
+        }
+      ]
+    },
+    {
+      "id": "tap_runtime",
+      "files": [
+        {
+          "src": "generated/build/steamdeck/tap/libsemutap.so",
+          "dest": "lib/semu/libsemutap.so"
+        },
+        {
+          "src": "assets/fonts/menu-font.png",
+          "dest": "lib/semu/menu-font.png"
+        }
+      ]
+    }
+  ]
+}

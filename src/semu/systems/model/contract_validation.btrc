@@ -1,0 +1,220 @@
+// contract_validation.btrc — cross-file invariants over the parsed contract
+// set: global id/alias uniqueness, binding -> emulator reachability, the
+// kind-based core rule, widescreen substitution preconditions, and the
+// geometry_from bezel resolution. Runs after every per-file parse succeeded
+// structurally; all violations accumulate in the shared ParseLog.
+
+import std.{vector}
+import ../../core/parse_log.btrc
+import ../../core/json_contract.btrc
+import ./semu_contracts.btrc
+import ./system_definition.btrc
+import ./bezel_collection.btrc
+import ../../emulators/model/emulator_definition.btrc
+
+class ContractValidation {
+    class void checkUniqueIdentity(SemuContracts contracts, ParseLog log) {
+        Vector<string> seenIds = [];
+        for systemDefinition in contracts.systems {
+            if (seenIds.contains(systemDefinition.id)) {
+                log.add(systemDefinition.file, "(id)",
+                    "duplicate system id '" + systemDefinition.id + "'");
+            }
+            seenIds.push(systemDefinition.id);
+        }
+        for systemDefinition in contracts.systems {
+            for alias in systemDefinition.aliases {
+                if (seenIds.contains(alias)) {
+                    log.add(systemDefinition.file, "aliases",
+                        "'" + alias + "' collides with another system id or alias");
+                }
+                seenIds.push(alias);
+            }
+        }
+    }
+
+    class EmulatorDefinition findEmulator(SemuContracts contracts, string emulatorId) {
+        for emulatorDefinition in contracts.emulators {
+            if (emulatorDefinition.id.equals(emulatorId)) {
+                return emulatorDefinition;
+            }
+        }
+        return EmulatorDefinition();
+    }
+
+    // Bindings must reference real emulators, available on every platform the
+    // binding claims. The 'core' field is kind-based: only a bound emulator of
+    // kind "libretro_frontend" may carry one (never an id comparison).
+    class void checkBindings(SemuContracts contracts, ParseLog log) {
+        for systemDefinition in contracts.systems {
+            for binding in systemDefinition.emulators {
+                if (binding.emulator.isEmpty()) {
+                    // already reported by the field parser
+                } else if (!contracts.hasEmulator(binding.emulator)) {
+                    log.add(systemDefinition.file, "emulators",
+                        "unknown emulator '" + binding.emulator
+                        + "' (no src/semu/emulators/" + binding.emulator + "/emulator.json)");
+                } else {
+                    EmulatorDefinition emulatorDefinition = ContractValidation.findEmulator(
+                        contracts, binding.emulator);
+                    Vector<string> claimedPlatforms = binding.platforms;
+                    if (claimedPlatforms.size() == 0) {
+                        claimedPlatforms = ["linux", "macos"];
+                    }
+                    for operatingSystemName in claimedPlatforms {
+                        if (!emulatorDefinition.hasOperatingSystem(operatingSystemName)) {
+                            log.add(systemDefinition.file, "emulators",
+                                "binding '" + binding.emulator + "' claims platform '"
+                                + operatingSystemName
+                                + "' but the emulator declares no such block");
+                        }
+                    }
+                    if (!binding.core.isEmpty()
+                        && !emulatorDefinition.kind.equals("libretro_frontend")) {
+                        log.add(systemDefinition.file, "emulators",
+                            "binding '" + binding.emulator + "' carries a core but the emulator"
+                            + " kind is '" + emulatorDefinition.kind
+                            + "' (core requires kind 'libretro_frontend')");
+                    }
+                }
+            }
+        }
+    }
+
+    class void checkDefaultSystems(SemuContracts contracts, ParseLog log) {
+        for emulatorDefinition in contracts.emulators {
+            if (!emulatorDefinition.defaultSystem.isEmpty()
+                && !contracts.hasSystem(emulatorDefinition.defaultSystem)) {
+                log.add(emulatorDefinition.file, "default_system",
+                    "unknown system '" + emulatorDefinition.defaultSystem + "'");
+            }
+        }
+    }
+
+    // Widescreen substitutions only mean something when display.widescreen
+    // exists to trigger them.
+    class void checkWidescreenSubstitutions(SemuContracts contracts, ParseLog log) {
+        for systemDefinition in contracts.systems {
+            if (!systemDefinition.display.widescreen.set) {
+                if (!systemDefinition.bezels.widescreenVariant.isEmpty()) {
+                    log.add(systemDefinition.bezels.file, "widescreen_variant",
+                        "system declares no display.widescreen to trigger the substitution");
+                }
+                if (systemDefinition.shaders.hasWidescreen) {
+                    log.add(systemDefinition.shaders.file, "widescreen",
+                        "system declares no display.widescreen to trigger the substitution");
+                }
+            }
+        }
+    }
+
+    // Copy the geometry-bearing fields of the named variant into destination.
+    // Returns false (destination untouched) when the variant does not exist.
+    class bool copyVariantInto(BezelCollection bezels, string variantId,
+                               BezelVariant destination) {
+        for variant in bezels.variants {
+            if (variant.id.equals(variantId)) {
+                destination.id = variant.id;
+                destination.art = variant.art;
+                destination.glass = variant.glass;
+                destination.hole = variant.hole;
+                destination.screenHoles = variant.screenHoles;
+                destination.hasGeometryFrom = variant.hasGeometryFrom;
+                return true;
+            }
+        }
+        return false;
+    }
+
+    class SystemDefinition findSystem(SemuContracts contracts, string systemId,
+                                      SystemDefinition fallback) {
+        for systemDefinition in contracts.systems {
+            if (systemDefinition.id.equals(systemId)) {
+                return systemDefinition;
+            }
+        }
+        return fallback;
+    }
+
+    class void resolveVariantGeometry(SemuContracts contracts, SystemDefinition systemDefinition,
+                                      BezelVariant variant, ParseLog log) {
+        BezelCollection bezels = systemDefinition.bezels;
+        SystemDefinition geometrySourceSystem = systemDefinition;
+        if (!variant.geometrySystem.isEmpty()) {
+            if (!contracts.hasSystem(variant.geometrySystem)) {
+                log.add(bezels.file, "geometry_from.system",
+                    "unknown system '" + variant.geometrySystem + "'");
+            } else {
+                geometrySourceSystem = ContractValidation.findSystem(contracts,
+                    variant.geometrySystem, systemDefinition);
+            }
+        }
+        BezelVariant target = BezelVariant();
+        if (!ContractValidation.copyVariantInto(geometrySourceSystem.bezels,
+                variant.geometryVariant, target)) {
+            log.add(bezels.file, "geometry_from.variant",
+                "unknown variant '" + variant.geometryVariant + "' in system '"
+                + geometrySourceSystem.id + "'");
+            return;
+        }
+        if (target.hasGeometryFrom) {
+            log.add(bezels.file, "geometry_from", "target variant '" + target.id
+                + "' uses geometry_from itself (single level only)");
+        }
+        if (variant.art.isEmpty()) {
+            if (target.art.isEmpty()) {
+                log.add(bezels.file, "geometry_from", "target variant supplies no art");
+            }
+            variant.art = target.art;
+        }
+        if (variant.glass.isEmpty()) {
+            variant.glass = target.glass;
+        }
+        if (!variant.hole.set) {
+            variant.hole = target.hole.set ? target.hole : geometrySourceSystem.bezels.hole;
+        }
+        if (variant.screenHoles.size() == 0) {
+            variant.screenHoles = target.screenHoles.size() > 0
+                ? target.screenHoles : geometrySourceSystem.bezels.screenHoles;
+        }
+    }
+
+    // geometry_from resolution + the file-level hole rule (spec §3.2): the
+    // collection hole materializes from the default variant when omitted.
+    class void resolveGeometry(SemuContracts contracts, ParseLog log) {
+        for systemDefinition in contracts.systems {
+            BezelCollection bezels = systemDefinition.bezels;
+            if (bezels.enabled) {
+                for variant in bezels.variants {
+                    if (variant.hasGeometryFrom) {
+                        ContractValidation.resolveVariantGeometry(contracts, systemDefinition,
+                            variant, log);
+                    }
+                }
+                if (!bezels.hole.set) {
+                    for variant in bezels.variants {
+                        if (variant.id.equals(bezels.defaultVariant) && variant.hole.set) {
+                            bezels.hole = variant.hole;
+                        }
+                    }
+                    if (!bezels.hole.set) {
+                        log.add(bezels.file, "hole",
+                            "missing and the default variant supplies no geometry");
+                    }
+                }
+                for screenHole in bezels.screenHoles {
+                    JsonContract.checkContainedRect(screenHole.hole, bezels.hole, bezels.file,
+                        "screen_holes." + screenHole.screenId, log);
+                }
+            }
+        }
+    }
+
+    class void crossValidate(SemuContracts contracts, ParseLog log) {
+        ContractValidation.checkUniqueIdentity(contracts, log);
+        ContractValidation.checkBindings(contracts, log);
+        ContractValidation.checkDefaultSystems(contracts, log);
+        ContractValidation.checkWidescreenSubstitutions(contracts, log);
+        ContractValidation.resolveGeometry(contracts, log);
+    }
+}

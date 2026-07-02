@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "enabled": true,
+  "default_variant": "tv",
+  "variants": [
+    {
+      "id": "tv",
+      "label": "Living-Room CRT",
+      "geometry_from": { "system": "psx", "variant": "tv" },
+      "doc": { "provenance": "Shares psx art and its measured hole (same 4:3 tube); was the dreamcast->psx runtime alias." }
+    }
+  ]
+}

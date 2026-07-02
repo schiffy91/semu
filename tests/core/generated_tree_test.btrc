@@ -1,0 +1,86 @@
+// generated_tree_test.btrc — end-to-end emission into src/generated/.
+//
+// Runs the real emission pass (SystemEmitter.emitAll + the AppImage/shim
+// emission) into <repoRoot>/src/generated, asserts the expected artifact
+// tree exists, then runs `make -f tests/Makefile tree-audit` to prove the
+// emission never escapes the approved repository shape. Returns the
+// violation count (0 = pass); no main() — the entry composes it.
+
+import std.{vector, process, fs}
+import ../../src/semu/core/parse_log.btrc
+import ../../src/semu/systems/system_parser.btrc
+import ../../src/semu/systems/model/semu_contracts.btrc
+import ../../src/semu/systems/system_emitter.btrc
+import ../../src/semu/packaging/appimage_package.btrc
+
+class GeneratedTreeTest {
+    class int fail(string message) {
+        print("  FAIL " + message);
+        return 1;
+    }
+
+    class int requireFile(string root, string relativePath) {
+        if (!FileSystem.isFile(PathTools.join(root, relativePath))) {
+            return GeneratedTreeTest.fail("expected generated file missing: " + relativePath);
+        }
+        return 0;
+    }
+
+    class int checkArtifactTree(SemuContracts contracts, string generatedRoot) {
+        int failures = 0;
+        failures = failures + GeneratedTreeTest.requireFile(generatedRoot, "semu.json");
+        failures = failures + GeneratedTreeTest.requireFile(generatedRoot,
+            "packaging/es-de/custom_systems/es_systems.xml");
+        failures = failures + GeneratedTreeTest.requireFile(generatedRoot,
+            "packaging/es-de/custom_systems/es_find_rules.xml");
+        failures = failures + GeneratedTreeTest.requireFile(generatedRoot,
+            "packaging/linux/AppRun");
+        failures = failures + GeneratedTreeTest.requireFile(generatedRoot,
+            "packaging/linux/semu.desktop");
+        for emulatorDefinition in contracts.emulators {
+            failures = failures + GeneratedTreeTest.requireFile(generatedRoot,
+                "packaging/linux/bin/semu-" + emulatorDefinition.id);
+        }
+        return failures;
+    }
+
+    class int checkTreeAudit(string repoRoot) {
+        UnixShell shell = UnixShell();
+        ExecResult audit = shell.run("make -f tests/Makefile tree-audit",
+            CommandOutput.collect(), CommandOutput.combine(), false, true, false,
+            "", "", repoRoot);
+        if (audit.code != 0) {
+            int failures = GeneratedTreeTest.fail(f"tree-audit failed (exit {audit.code}):");
+            print(audit.out);
+            return failures;
+        }
+        return 0;
+    }
+
+    class int run(string repoRoot) {
+        int failures = 0;
+        ParseLog log = ParseLog();
+        SemuContracts contracts = SystemParser.loadAll(PathTools.join(repoRoot, "src/semu"),
+            log);
+        if (!log.ok()) {
+            for error in log.errors {
+                failures = failures + GeneratedTreeTest.fail("parse: " + error);
+            }
+            return failures;
+        }
+
+        string generatedRoot = PathTools.join(repoRoot, "src/generated");
+        SystemEmitter.emitAll(contracts, generatedRoot);
+        AppImagePackage.emitForEmulators(contracts.emulators, repoRoot, generatedRoot);
+
+        failures = failures + GeneratedTreeTest.checkArtifactTree(contracts, generatedRoot);
+        failures = failures + GeneratedTreeTest.checkTreeAudit(repoRoot);
+
+        if (failures > 0) {
+            print(f"generated tree: FAIL ({failures} violations)");
+            return failures;
+        }
+        print("generated tree: emission + tree-audit clean");
+        return 0;
+    }
+}

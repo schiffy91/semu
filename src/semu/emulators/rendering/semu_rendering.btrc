@@ -1,0 +1,181 @@
+// semu_rendering.btrc — the tap environment bundle + render-resolution math.
+//
+// RenderPlanner.tapEnvironment produces the SEMU_TAP_* key/value pairs the GL
+// tap (libsemutap.so) consumes — key names verified against the Deck-proven
+// launcher emission and `strings libsemutap.so` (garbage/generated/semu.c
+// launcherRunFlatpak): NATIVE_W/H, ASPECT, STYLE, PRIORITY, DUAL, SYSKIND,
+// FILL, REFLECT, CURVE, CORNER, SHELL, ART, GLASS, SCREEN. Values follow the
+// proven wire grammar: booleans "0"/"1", floats with trailing zeros trimmed,
+// SHELL "r,g,b", SCREEN "x,y,w,h" (normalized 0..1), dual-screen ASPECT
+// "W:H" over the combined native canvas. Exec-edge keys the launcher owns
+// (STATE_DIR, STANDALONE, MENUFONT, LD_PRELOAD plumbing) are not emitted
+// here — they depend on runtime paths, not contracts.
+//
+// RenderPlanner.targetResolution is the "how sharp does the core render"
+// control:
+//   "1x"      -> native WxH (soft, authentic retro look; the compositor
+//                integer-upscales into the fixed display rect)
+//   "integer" -> max integer multiple of native fitting the screen (sharp)
+//   "native"  -> "" (leave the core's own default; no override written)
+// The compositor's DISPLAY geometry (SEMU_TAP_NATIVE_*) is unchanged by the
+// mode — it only controls rendered pixel density, mirroring the proven
+// render_resolution semantics.
+
+import std.{vector, strings}
+import ../../core/geometry.btrc
+import ../../systems/model/system_definition.btrc
+import ./semu_bezel.btrc
+
+class TapEnvironment {
+    public Vector<string> keys;
+    public Vector<string> values;
+
+    public TapEnvironment() {
+        self.keys = [];
+        self.values = [];
+    }
+
+    public void put(string key, string value) {
+        self.keys.push(key);
+        self.values.push(value);
+    }
+
+    public string valueOf(string key) {
+        for (int keyIndex = 0; keyIndex < self.keys.size(); keyIndex++) {
+            if (self.keys.get(keyIndex).equals(key)) {
+                return self.values.get(keyIndex);
+            }
+        }
+        return "";
+    }
+}
+
+class RenderPlanner {
+    // Wire-protocol int mapping (code-owned, mission contract):
+    // tap system kind standard=0 dual=1 pointer=2.
+    class int systemKindWireValue(string kind) {
+        if (kind.equals("dual")) {
+            return 1;
+        }
+        if (kind.equals("pointer")) {
+            return 2;
+        }
+        return 0;
+    }
+
+    // Float -> wire string with trailing zeros trimmed ("0.55", "0.045", "0.0").
+    class string wireFloat(double value) {
+        string formatted = f"{value}";
+        if (!formatted.contains(".")) {
+            return formatted;
+        }
+        // NOTE: string.substring is (start, LENGTH) in btrc.
+        int keptLength = formatted.len();
+        while (keptLength > 1 && formatted.substring(keptLength - 1, 1).equals("0")) {
+            keptLength = keptLength - 1;
+        }
+        if (formatted.substring(keptLength - 1, 1).equals(".")) {
+            keptLength = keptLength + 1;
+        }
+        return formatted.substring(0, keptLength);
+    }
+
+    // Combined native canvas: single screen -> its native size; dual screens
+    // -> stacked per display.arrangement (vertical: max width x summed
+    // height; horizontal: summed width x max height).
+    class PixelSize combinedNativeSize(SystemDefinition system) {
+        PixelSize combined = PixelSize();
+        bool horizontal = system.display.arrangement.equals("horizontal");
+        for screen in system.display.screens {
+            if (horizontal) {
+                combined.w = combined.w + screen.native.w;
+                combined.h = screen.native.h > combined.h ? screen.native.h : combined.h;
+            } else {
+                combined.w = screen.native.w > combined.w ? screen.native.w : combined.w;
+                combined.h = combined.h + screen.native.h;
+            }
+        }
+        return combined;
+    }
+
+    // SEMU_TAP_ASPECT wire value: dual systems send the combined canvas as
+    // "W:H"; single-screen systems send the declared display aspect as a
+    // float (falling back to the native pixel ratio when no aspect is
+    // declared).
+    class string aspectWireValue(SystemDefinition system, PixelSize nativeSize) {
+        if (system.display.screens.size() > 1) {
+            return f"{nativeSize.w}:{nativeSize.h}";
+        }
+        double aspectRatio = 0.0;
+        if (system.display.aspect.set && system.display.aspect.h > 0) {
+            aspectRatio = (0.0 + system.display.aspect.w) / (0.0 + system.display.aspect.h);
+        } else if (nativeSize.h > 0) {
+            aspectRatio = (0.0 + nativeSize.w) / (0.0 + nativeSize.h);
+        }
+        return RenderPlanner.wireFloat(aspectRatio);
+    }
+
+    // The contract-derived tap environment for one session. renderMode does
+    // not alter the bundle: display geometry is always the integer-scaled
+    // native canvas; the mode only drives targetResolution (emulator-side).
+    class TapEnvironment tapEnvironment(SystemDefinition system, ResolvedBezel bezel,
+                                        string renderMode) {
+        TapEnvironment environment = TapEnvironment();
+        PixelSize nativeSize = RenderPlanner.combinedNativeSize(system);
+        bool dual = system.render.kind.equals("dual");
+
+        environment.put("SEMU_TAP_NATIVE_W", f"{nativeSize.w}");
+        environment.put("SEMU_TAP_NATIVE_H", f"{nativeSize.h}");
+        environment.put("SEMU_TAP_ASPECT", RenderPlanner.aspectWireValue(system, nativeSize));
+        environment.put("SEMU_TAP_STYLE", system.render.style);
+        environment.put("SEMU_TAP_PRIORITY", system.render.priority);
+        environment.put("SEMU_TAP_DUAL", dual ? "1" : "0");
+        environment.put("SEMU_TAP_SYSKIND",
+            f"{RenderPlanner.systemKindWireValue(system.render.kind)}");
+        environment.put("SEMU_TAP_FILL", bezel.fill ? "1" : "0");
+        environment.put("SEMU_TAP_REFLECT", RenderPlanner.wireFloat(bezel.reflect));
+        environment.put("SEMU_TAP_CURVE", RenderPlanner.wireFloat(bezel.curvature));
+        environment.put("SEMU_TAP_CORNER", RenderPlanner.wireFloat(bezel.cornerRadius));
+        environment.put("SEMU_TAP_SHELL", RenderPlanner.wireFloat(bezel.shellTint.r) + ","
+            + RenderPlanner.wireFloat(bezel.shellTint.g) + ","
+            + RenderPlanner.wireFloat(bezel.shellTint.b));
+        if (!bezel.art.isEmpty()) {
+            environment.put("SEMU_TAP_ART", bezel.art);
+        }
+        if (!bezel.glass.isEmpty()) {
+            environment.put("SEMU_TAP_GLASS", bezel.glass);
+        }
+        if (bezel.hole.set) {
+            environment.put("SEMU_TAP_SCREEN", RenderPlanner.wireFloat(bezel.hole.x) + ","
+                + RenderPlanner.wireFloat(bezel.hole.y) + ","
+                + RenderPlanner.wireFloat(bezel.hole.w) + ","
+                + RenderPlanner.wireFloat(bezel.hole.h));
+        }
+        return environment;
+    }
+
+    // Target internal render resolution "WxH" for (system, mode, screen);
+    // "" means "leave the core's own default" (mode "native").
+    class string targetResolution(SystemDefinition system, string renderMode,
+                                  int screenWidth, int screenHeight) {
+        PixelSize nativeSize = RenderPlanner.combinedNativeSize(system);
+        if (nativeSize.w < 1 || nativeSize.h < 1) {
+            return "";
+        }
+        string mode = renderMode.toLower();
+        if (mode.equals("native")) {
+            return "";
+        }
+        if (mode.equals("integer")) {
+            int widthScale = screenWidth / nativeSize.w;
+            int heightScale = screenHeight / nativeSize.h;
+            int scale = heightScale < widthScale ? heightScale : widthScale;
+            if (scale < 1) {
+                scale = 1;
+            }
+            return f"{scale * nativeSize.w}x{scale * nativeSize.h}";
+        }
+        // Default (and explicit "1x"): 1x native — the RETRO look.
+        return f"{nativeSize.w}x{nativeSize.h}";
+    }
+}

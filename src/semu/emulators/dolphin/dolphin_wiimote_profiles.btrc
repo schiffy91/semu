@@ -1,0 +1,175 @@
+// dolphin_wiimote_profiles.btrc — DolphinWiimoteProfiles: the Wiimote-side
+// ini builders of the Dolphin profile tree (WiimoteNew.ini plus the Nunchuk
+// and Classic Controller profile files). Split out of DolphinEmitter by
+// responsibility: everything here concerns the emulated Wiimote wiring — the
+// SteamDeck native device for buttons/motion, the virtual pointer for IR —
+// with every device identity supplied by the caller (steam_input.json
+// device_identities). Dolphin's control-expression grammar (backtick
+// controls, device-qualified references) is the code-owned wire format.
+
+import std.{vector}
+
+class DolphinWiimoteProfiles {
+    class void pushAll(Vector<string> lines, Vector<string> additions) {
+        for addition in additions {
+            lines.push(addition);
+        }
+    }
+
+    // A control reference qualified with another device's identity, e.g.
+    // "`XInput2/0/Virtual core pointer:Click 1`".
+    class string qualifiedControl(string deviceIdentity, string control) {
+        return "`" + deviceIdentity + ":" + control + "`";
+    }
+
+    // The shared head of both Wiimote profiles: the Deck's native SteamDeck
+    // device drives buttons and motion while the virtual pointer drives IR.
+    class Vector<string> wiimoteProfileCommon(string wiimoteIdentity, string pointerIdentity) {
+        Vector<string> lines = [
+            "Device = " + wiimoteIdentity,
+            "Buttons/A = `A`|" + DolphinWiimoteProfiles.qualifiedControl(pointerIdentity, "Click 1")
+                + "|" + DolphinWiimoteProfiles.qualifiedControl(pointerIdentity, "Return"),
+            "Buttons/B = B|`R4`",
+            "Buttons/1 = X",
+            "Buttons/2 = Y",
+            "Buttons/- = View",
+            "Buttons/+ = Menu",
+            "D-Pad/Up = `D-Pad Up`",
+            "D-Pad/Down = `D-Pad Down`",
+            "D-Pad/Left = `D-Pad Left`",
+            "D-Pad/Right = `D-Pad Right`",
+            "IR/Vertical Offset = 12.",
+            "IR/Total Yaw = 19.",
+            "IR/Total Pitch = 22.",
+            "IR/Auto-Hide = True",
+            "IR/Up = " + DolphinWiimoteProfiles.qualifiedControl(pointerIdentity, "Cursor Y-"),
+            "IR/Down = " + DolphinWiimoteProfiles.qualifiedControl(pointerIdentity, "Cursor Y+"),
+            "IR/Left = " + DolphinWiimoteProfiles.qualifiedControl(pointerIdentity, "Cursor X-"),
+            "IR/Right = " + DolphinWiimoteProfiles.qualifiedControl(pointerIdentity, "Cursor X+"),
+            "IR/Hide = `Thumb L`",
+            "IMUIR/Enabled = False",
+            "IMUAccelerometer/Up = `Accel Up`",
+            "IMUAccelerometer/Down = `Accel Down`",
+            "IMUAccelerometer/Left = `Accel Left`",
+            "IMUAccelerometer/Right = `Accel Right`",
+            "IMUAccelerometer/Forward = `Accel Forward`",
+            "IMUAccelerometer/Backward = `Accel Backward`",
+            "IMUGyroscope/Pitch Up = `Gyro Pitch Up`",
+            "IMUGyroscope/Pitch Down = `Gyro Pitch Down`",
+            "IMUGyroscope/Roll Left = `Gyro Roll Left`",
+            "IMUGyroscope/Roll Right = `Gyro Roll Right`",
+            "IMUGyroscope/Yaw Left = `Gyro Yaw Left`",
+            "IMUGyroscope/Yaw Right = `Gyro Yaw Right`"];
+        return lines;
+    }
+
+    // Profiles/Wiimote/Wiimote (SD).ini — Wiimote + Nunchuk.
+    class string wiimoteNunchukProfile(string wiimoteIdentity, string pointerIdentity) {
+        Vector<string> lines = ["[Profile]"];
+        DolphinWiimoteProfiles.pushAll(lines,
+            DolphinWiimoteProfiles.wiimoteProfileCommon(wiimoteIdentity, pointerIdentity));
+        Vector<string> nunchukBindings = [
+            "Extension = Nunchuk",
+            "Nunchuk/Buttons/C = `Shoulder R`",
+            "Nunchuk/Buttons/Z = `Trigger R`",
+            "Nunchuk/Stick/Up = `Left Stick Y+`",
+            "Nunchuk/Stick/Down = `Left Stick Y-`",
+            "Nunchuk/Stick/Left = `Left Stick X-`",
+            "Nunchuk/Stick/Right = `Left Stick X+`",
+            "Rumble/Motor = Strong"];
+        DolphinWiimoteProfiles.pushAll(lines, nunchukBindings);
+        return lines.join("\n") + "\n";
+    }
+
+    // Profiles/Wiimote/Wiimote + Classic Controller (SD).ini.
+    class string wiimoteClassicProfile(string wiimoteIdentity, string pointerIdentity) {
+        Vector<string> lines = ["[Profile]"];
+        DolphinWiimoteProfiles.pushAll(lines,
+            DolphinWiimoteProfiles.wiimoteProfileCommon(wiimoteIdentity, pointerIdentity));
+        Vector<string> classicBindings = [
+            "Extension = Classic",
+            "Classic/Buttons/A = B",
+            "Classic/Buttons/B = A",
+            "Classic/Buttons/X = Y",
+            "Classic/Buttons/Y = X",
+            "Classic/Buttons/ZL = `L1`",
+            "Classic/Buttons/ZR = `R1`",
+            "Classic/Buttons/- = View",
+            "Classic/Buttons/+ = Menu",
+            "Classic/Left Stick/Up = `Left Stick Y+`",
+            "Classic/Left Stick/Down = `Left Stick Y-`",
+            "Classic/Left Stick/Left = `Left Stick X-`",
+            "Classic/Left Stick/Right = `Left Stick X+`",
+            "Classic/Right Stick/Up = `Right Stick Y+`",
+            "Classic/Right Stick/Down = `Right Stick Y-`",
+            "Classic/Right Stick/Left = `Right Stick X-`",
+            "Classic/Right Stick/Right = `Right Stick X+`",
+            "Classic/Triggers/L = `L2`",
+            "Classic/Triggers/R = `R2`",
+            "Classic/D-Pad/Up = `D-Pad Up`",
+            "Classic/D-Pad/Down = `D-Pad Down`",
+            "Classic/D-Pad/Left = `D-Pad Left`",
+            "Classic/D-Pad/Right = `D-Pad Right`",
+            "Rumble/Motor = Strong"];
+        DolphinWiimoteProfiles.pushAll(lines, classicBindings);
+        return lines.join("\n") + "\n";
+    }
+
+    // WiimoteNew.ini: emulated Wiimote 1 is driven by the pointer device (IR
+    // from the mouse cursor plus keyboard fallbacks) with the native
+    // SteamDeck device qualified in; the other slots park on the SteamDeck
+    // device so Dolphin never grabs a second physical controller.
+    class string wiimoteNewFile(string wiimoteIdentity, string pointerIdentity) {
+        Vector<string> lines = [
+            "[Wiimote1]",
+            "Device = " + pointerIdentity,
+            "Buttons/A = Return|`Click 1`|"
+                + DolphinWiimoteProfiles.qualifiedControl(wiimoteIdentity, "A"),
+            "Buttons/B = B|`Click 3`|" + DolphinWiimoteProfiles.qualifiedControl(wiimoteIdentity, "B")
+                + "|" + DolphinWiimoteProfiles.qualifiedControl(wiimoteIdentity, "R4"),
+            "Buttons/1 = 1|" + DolphinWiimoteProfiles.qualifiedControl(wiimoteIdentity, "X"),
+            "Buttons/2 = 2|" + DolphinWiimoteProfiles.qualifiedControl(wiimoteIdentity, "Y"),
+            "Buttons/- = Q|" + DolphinWiimoteProfiles.qualifiedControl(wiimoteIdentity, "View"),
+            "Buttons/+ = E|" + DolphinWiimoteProfiles.qualifiedControl(wiimoteIdentity, "Menu"),
+            "Buttons/Home = Return",
+            "D-Pad/Up = Up|" + DolphinWiimoteProfiles.qualifiedControl(wiimoteIdentity, "D-Pad Up"),
+            "D-Pad/Down = Down|"
+                + DolphinWiimoteProfiles.qualifiedControl(wiimoteIdentity, "D-Pad Down"),
+            "D-Pad/Left = Left|"
+                + DolphinWiimoteProfiles.qualifiedControl(wiimoteIdentity, "D-Pad Left"),
+            "D-Pad/Right = Right|"
+                + DolphinWiimoteProfiles.qualifiedControl(wiimoteIdentity, "D-Pad Right"),
+            "IR/Vertical Offset = 12.",
+            "IR/Total Yaw = 19.",
+            "IR/Total Pitch = 22.",
+            "IR/Auto-Hide = True",
+            "IR/Up = `Cursor Y-`",
+            "IR/Down = `Cursor Y+`",
+            "IR/Left = `Cursor X-`",
+            "IR/Right = `Cursor X+`",
+            "IR/Hide = " + DolphinWiimoteProfiles.qualifiedControl(wiimoteIdentity, "Thumb L"),
+            "IMUIR/Enabled = False",
+            "Extension = Nunchuk",
+            "Nunchuk/Buttons/C = "
+                + DolphinWiimoteProfiles.qualifiedControl(wiimoteIdentity, "Shoulder R"),
+            "Nunchuk/Buttons/Z = "
+                + DolphinWiimoteProfiles.qualifiedControl(wiimoteIdentity, "Trigger R"),
+            "Nunchuk/Stick/Up = "
+                + DolphinWiimoteProfiles.qualifiedControl(wiimoteIdentity, "Left Stick Y+"),
+            "Nunchuk/Stick/Down = "
+                + DolphinWiimoteProfiles.qualifiedControl(wiimoteIdentity, "Left Stick Y-"),
+            "Nunchuk/Stick/Left = "
+                + DolphinWiimoteProfiles.qualifiedControl(wiimoteIdentity, "Left Stick X-"),
+            "Nunchuk/Stick/Right = "
+                + DolphinWiimoteProfiles.qualifiedControl(wiimoteIdentity, "Left Stick X+"),
+            "Rumble/Motor = Strong",
+            "Source = 1"];
+        Vector<string> parkedSections = ["[Wiimote2]", "[Wiimote3]", "[Wiimote4]",
+                                         "[BalanceBoard]"];
+        for parkedSection in parkedSections {
+            lines.push(parkedSection);
+            lines.push("Device = " + wiimoteIdentity);
+        }
+        return lines.join("\n") + "\n";
+    }
+}

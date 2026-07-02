@@ -1,0 +1,143 @@
+// sandbox_policy.btrc — the emulator.json platform "sandbox" contract:
+// flatpak/bwrap grants (sockets, devices, share, filesystems), extra
+// arguments, the runtime/command override pair (the patched-binary tap
+// launch) and symlink materialization. The parser is clustered with the data
+// classes it fills.
+
+import std.{vector, json}
+import ../../core/parse_log.btrc
+import ../../core/json_contract.btrc
+import ../../core/template_tokens.btrc
+
+class SandboxFilesystem {
+    public string path;
+    public string mode;
+
+    public SandboxFilesystem() {
+        self.path = "";
+        self.mode = "";
+    }
+}
+
+class SandboxPolicy {
+    public bool present;
+    public Vector<string> sockets;
+    public Vector<string> devices;
+    public Vector<string> share;
+    public Vector<SandboxFilesystem> filesystems;
+    public Vector<string> extraArguments;
+    public string runtime;
+    public string command;
+    public Vector<string> symlinkLinks;
+    public Vector<string> symlinkTargets;
+
+    public SandboxPolicy() {
+        self.present = false;
+        self.sockets = [];
+        self.devices = [];
+        self.share = [];
+        self.filesystems = [];
+        self.extraArguments = [];
+        self.runtime = "";
+        self.command = "";
+        self.symlinkLinks = [];
+        self.symlinkTargets = [];
+    }
+}
+
+class SandboxPolicyParser {
+    class void parseFilesystems(SandboxPolicy sandbox, JsonValue jsonValue,
+                                string file, string context, ParseLog log) {
+        JsonValue filesystems = jsonValue.get("filesystems");
+        if (!filesystems.isArray()) {
+            log.add(file, context + ".filesystems", "expected array");
+            return;
+        }
+        for (int entryIndex = 0; entryIndex < filesystems.size(); entryIndex++) {
+            JsonValue entry = filesystems.at(entryIndex);
+            string entryContext = f"{context}.filesystems[{entryIndex}]";
+            SandboxFilesystem filesystemGrant = SandboxFilesystem();
+            if (!entry.isObject()) {
+                log.add(file, entryContext, "expected object {path, mode}");
+            } else {
+                Vector<string> filesystemKeys = ["path", "mode"];
+                JsonContract.checkKeys(entry, filesystemKeys, file, entryContext, log);
+                filesystemGrant.path = JsonContract.requiredString(entry, "path",
+                    file, entryContext, log);
+                if (!filesystemGrant.path.equals("host")) {
+                    TemplateTokens.check(filesystemGrant.path, file,
+                        entryContext + ".path", log, false);
+                }
+                filesystemGrant.mode = JsonContract.requiredString(entry, "mode",
+                    file, entryContext, log);
+                Vector<string> modes = ["ro", "rw", "create"];
+                JsonContract.checkEnum(filesystemGrant.mode, modes, file,
+                    entryContext + ".mode", log);
+            }
+            sandbox.filesystems.push(filesystemGrant);
+        }
+    }
+
+    class void parseSymlinks(SandboxPolicy sandbox, JsonValue jsonValue,
+                             string file, string context, ParseLog log) {
+        JsonValue symlinks = jsonValue.get("symlinks");
+        if (!symlinks.isArray()) {
+            log.add(file, context + ".symlinks", "expected array");
+            return;
+        }
+        for (int entryIndex = 0; entryIndex < symlinks.size(); entryIndex++) {
+            JsonValue entry = symlinks.at(entryIndex);
+            string entryContext = f"{context}.symlinks[{entryIndex}]";
+            if (!entry.isObject()) {
+                log.add(file, entryContext, "expected object {link, target}");
+            } else {
+                Vector<string> symlinkKeys = ["link", "target"];
+                JsonContract.checkKeys(entry, symlinkKeys, file, entryContext, log);
+                string link = JsonContract.requiredString(entry, "link",
+                    file, entryContext, log);
+                string target = JsonContract.requiredString(entry, "target",
+                    file, entryContext, log);
+                TemplateTokens.check(link, file, entryContext + ".link", log, true);
+                TemplateTokens.check(target, file, entryContext + ".target", log, true);
+                sandbox.symlinkLinks.push(link);
+                sandbox.symlinkTargets.push(target);
+            }
+        }
+    }
+
+    class SandboxPolicy parse(JsonValue jsonValue, string operatingSystemName,
+                              string file, string context, ParseLog log) {
+        SandboxPolicy sandbox = SandboxPolicy();
+        if (!jsonValue.isObject()) {
+            log.add(file, context, "expected object");
+            return sandbox;
+        }
+        sandbox.present = true;
+        Vector<string> allowedKeys = ["sockets", "devices", "share", "filesystems", "extra_args",
+                                      "runtime", "command", "symlinks"];
+        JsonContract.checkKeys(jsonValue, allowedKeys, file, context, log);
+        sandbox.sockets = JsonContract.stringArray(jsonValue, "sockets", false,
+            file, context, log);
+        sandbox.devices = JsonContract.stringArray(jsonValue, "devices", false,
+            file, context, log);
+        sandbox.share = JsonContract.stringArray(jsonValue, "share", false, file, context, log);
+        sandbox.extraArguments = JsonContract.stringArray(jsonValue, "extra_args", false,
+            file, context, log);
+        if (operatingSystemName.equals("macos")
+            && (jsonValue.has("runtime") || jsonValue.has("command"))) {
+            log.add(file, context, "runtime/command are linux-only (flatpak) fields");
+        }
+        sandbox.command = JsonContract.optionalString(jsonValue, "command", "",
+            file, context, log);
+        TemplateTokens.check(sandbox.command, file, context + ".command", log, false);
+        sandbox.runtime = JsonContract.optionalString(jsonValue, "runtime", "",
+            file, context, log);
+        if (jsonValue.has("filesystems")) {
+            SandboxPolicyParser.parseFilesystems(sandbox, jsonValue, file, context, log);
+        }
+        if (jsonValue.has("symlinks")) {
+            SandboxPolicyParser.parseSymlinks(sandbox, jsonValue, file, context, log);
+        }
+        return sandbox;
+    }
+}

@@ -1,0 +1,93 @@
+// state_policy.btrc — the emulator.json platform "state" contract: where the
+// emulator's config/data homes route (xdg isolation vs flatpak_home vs
+// preserve), extra state arguments, and first-run seed copies.
+
+import std.{vector, json}
+import ../../core/parse_log.btrc
+import ../../core/json_contract.btrc
+import ../../core/template_tokens.btrc
+
+class StateSeed {
+    public string purpose;
+    public string target;
+    public Vector<string> sources;
+
+    public StateSeed() {
+        self.purpose = "";
+        self.target = "";
+        self.sources = [];
+    }
+}
+
+class StatePolicy {
+    public bool present;
+    public string configHome;
+    public string dataHome;
+    public Vector<string> extraArguments;
+    public Vector<StateSeed> seeds;
+
+    public StatePolicy() {
+        self.present = false;
+        self.configHome = "";
+        self.dataHome = "";
+        self.extraArguments = [];
+        self.seeds = [];
+    }
+}
+
+class StatePolicyParser {
+    class void parseSeeds(StatePolicy state, JsonValue jsonValue,
+                          string file, string context, ParseLog log) {
+        JsonValue seeds = jsonValue.get("seeds");
+        if (!seeds.isArray()) {
+            log.add(file, context + ".seeds", "expected array");
+            return;
+        }
+        for (int seedIndex = 0; seedIndex < seeds.size(); seedIndex++) {
+            JsonValue entry = seeds.at(seedIndex);
+            string entryContext = f"{context}.seeds[{seedIndex}]";
+            StateSeed seed = StateSeed();
+            if (!entry.isObject()) {
+                log.add(file, entryContext, "expected object {purpose, target, sources}");
+            } else {
+                Vector<string> seedKeys = ["purpose", "target", "sources"];
+                JsonContract.checkKeys(entry, seedKeys, file, entryContext, log);
+                seed.purpose = JsonContract.requiredString(entry, "purpose",
+                    file, entryContext, log);
+                seed.target = JsonContract.requiredString(entry, "target",
+                    file, entryContext, log);
+                TemplateTokens.check(seed.target, file, entryContext + ".target", log, false);
+                seed.sources = JsonContract.stringArray(entry, "sources", true,
+                    file, entryContext, log);
+                for source in seed.sources {
+                    TemplateTokens.check(source, file, entryContext + ".sources", log, false);
+                }
+            }
+            state.seeds.push(seed);
+        }
+    }
+
+    class StatePolicy parse(JsonValue jsonValue, string file, string context, ParseLog log) {
+        StatePolicy state = StatePolicy();
+        if (!jsonValue.isObject()) {
+            log.add(file, context, "expected object");
+            return state;
+        }
+        state.present = true;
+        Vector<string> allowedKeys = ["config_home", "data_home", "extra_args", "seeds"];
+        JsonContract.checkKeys(jsonValue, allowedKeys, file, context, log);
+        Vector<string> homeModes = ["xdg", "flatpak_home", "preserve"];
+        state.configHome = JsonContract.optionalString(jsonValue, "config_home", "",
+            file, context, log);
+        JsonContract.checkEnum(state.configHome, homeModes, file, context + ".config_home", log);
+        state.dataHome = JsonContract.optionalString(jsonValue, "data_home", "",
+            file, context, log);
+        JsonContract.checkEnum(state.dataHome, homeModes, file, context + ".data_home", log);
+        state.extraArguments = JsonContract.stringArray(jsonValue, "extra_args", false,
+            file, context, log);
+        if (jsonValue.has("seeds")) {
+            StatePolicyParser.parseSeeds(state, jsonValue, file, context, log);
+        }
+        return state;
+    }
+}

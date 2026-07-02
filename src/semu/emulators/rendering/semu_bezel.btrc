@@ -1,0 +1,217 @@
+// semu_bezel.btrc — bezel resolution over the parsed contract set.
+//
+// BezelResolver.resolve flattens a system's BezelCollection (selected variant
+// + render-block defaults) into the single ResolvedBezel bundle the
+// tap/compositor consumes. geometry_from indirection is already materialized
+// by ContractValidation, so this module only performs the
+// variant-over-file-over-render override cascade.
+//
+// Asset-root resolution: canonical "assets/..." paths are joined onto the
+// caller-supplied asset root (a directory that CONTAINS the assets/ tree).
+// BezelResolver.assetRoot picks that root: $SEMU_ASSET_ROOT/share/semu when
+// the staged tree exists, else the checked-in
+// <repo>/src/semu/emulators/rendering. No per-file existence gating: bezel
+// PNGs are staged by the nix asset pipeline and may be absent at plan time.
+//
+// The 3-row generic fallback table in genericFallback is one of the few
+// code-owned tables the rewrite allows (mission contract); everything else
+// comes from JSON. It is generic presentation data — no system names.
+
+import std.{vector, fs, platform}
+import ../../core/geometry.btrc
+import ../../systems/model/system_definition.btrc
+import ../../systems/model/bezel_collection.btrc
+
+class ResolvedBezel {
+    public string art;
+    public string glass;
+    public NormalizedRect hole;
+    public Vector<string> screenHoleIds;
+    public Vector<NormalizedRect> screenHoleRects;
+    public double reflect;
+    public double curvature;
+    public double cornerRadius;
+    public RgbColor shellTint;
+    public bool fill;
+
+    public ResolvedBezel() {
+        self.art = "";
+        self.glass = "";
+        self.hole = NormalizedRect();
+        self.screenHoleIds = [];
+        self.screenHoleRects = [];
+        self.reflect = 0.0;
+        self.curvature = 0.0;
+        self.cornerRadius = 0.0;
+        self.shellTint = RgbColor();
+        self.fill = false;
+    }
+}
+
+class BezelResolver {
+    // Pick the directory containing the assets/ tree: the staged
+    // $SEMU_ASSET_ROOT/share/semu install first, then the checked-in repo tree.
+    class string assetRoot(string repoRoot) {
+        string environmentRoot = Environment.get("SEMU_ASSET_ROOT", "");
+        if (!environmentRoot.isEmpty()) {
+            string stagedRoot = PathTools.join(environmentRoot, "share/semu");
+            if (FileSystem.isDir(PathTools.join(stagedRoot, "assets"))) {
+                return stagedRoot;
+            }
+        }
+        return PathTools.join(repoRoot, "src/semu/emulators/rendering");
+    }
+
+    // Join a canonical "assets/..." path onto the resolved asset root.
+    // Empty canonical stays empty; empty root leaves the path canonical.
+    class string resolveAssetPath(string canonicalPath, string assetRoot) {
+        if (canonicalPath.isEmpty() || assetRoot.isEmpty()) {
+            return canonicalPath;
+        }
+        return PathTools.join(assetRoot, canonicalPath);
+    }
+
+    // Derive the generic-fallback profile for systems that do not declare
+    // render.asset_profile: dual layouts get the dual frame, wide displays
+    // (ratio >= 1.6, the 16:9/16:10 class) the wide frame, handhelds the
+    // handheld frame, everything else the 4:3 CRT frame.
+    class string fallbackProfile(SystemDefinition system) {
+        if (!system.render.assetProfile.isEmpty()) {
+            return system.render.assetProfile;
+        }
+        if (system.render.kind.equals("dual") || system.display.screens.size() > 1) {
+            return "dual";
+        }
+        if (system.display.aspect.set && system.display.aspect.h > 0) {
+            double aspectRatio = (0.0 + system.display.aspect.w)
+                / (0.0 + system.display.aspect.h);
+            if (aspectRatio >= 1.6) {
+                return "wide16x9";
+            }
+        }
+        if (system.render.style.equals("handheld")) {
+            return "handheld";
+        }
+        return "crt4x3";
+    }
+
+    // The code-owned 3-row generic bezel table (mission contract):
+    //   crt4x3/handheld -> assets/bezels/generic/4x3.png  hole {0.1250,0.0500,0.7500,0.9000}
+    //   wide16x9        -> assets/bezels/generic/16x9.png hole {0.0300,0.0800,0.9400,0.8400}
+    //   dual            -> assets/bezels/generic/dual.png hole {0.3300,0.0400,0.3400,0.9200}
+    // Art stays canonical here; resolve joins it onto the asset root.
+    class ResolvedBezel genericFallback(string assetProfile) {
+        ResolvedBezel resolved = ResolvedBezel();
+        resolved.hole.set = true;
+        if (assetProfile.equals("wide16x9")) {
+            resolved.art = "assets/bezels/generic/16x9.png";
+            resolved.hole.x = 0.0300;
+            resolved.hole.y = 0.0800;
+            resolved.hole.w = 0.9400;
+            resolved.hole.h = 0.8400;
+            return resolved;
+        }
+        if (assetProfile.equals("dual")) {
+            resolved.art = "assets/bezels/generic/dual.png";
+            resolved.hole.x = 0.3300;
+            resolved.hole.y = 0.0400;
+            resolved.hole.w = 0.3400;
+            resolved.hole.h = 0.9200;
+            return resolved;
+        }
+        resolved.art = "assets/bezels/generic/4x3.png";
+        resolved.hole.x = 0.1250;
+        resolved.hole.y = 0.0500;
+        resolved.hole.w = 0.7500;
+        resolved.hole.h = 0.9000;
+        return resolved;
+    }
+
+    // Index of the variant with the given id, -1 if absent.
+    class int variantIndex(BezelCollection bezels, string variantId) {
+        for (int candidateIndex = 0; candidateIndex < bezels.variants.size();
+             candidateIndex++) {
+            if (bezels.variants.get(candidateIndex).id.equals(variantId)) {
+                return candidateIndex;
+            }
+        }
+        return -1;
+    }
+
+    // render-block presentation defaults shared by both resolution paths.
+    class void applyRenderDefaults(ResolvedBezel resolved, SystemDefinition system) {
+        resolved.fill = system.render.fill;
+        resolved.reflect = system.render.reflect;
+        resolved.curvature = system.render.curvature;
+        resolved.cornerRadius = system.render.cornerRadius;
+        if (system.render.shellTint.set) {
+            resolved.shellTint = system.render.shellTint;
+        }
+    }
+
+    class ResolvedBezel resolveFallback(SystemDefinition system, string assetRoot) {
+        ResolvedBezel resolved = BezelResolver.genericFallback(
+            BezelResolver.fallbackProfile(system));
+        resolved.art = BezelResolver.resolveAssetPath(resolved.art, assetRoot);
+        BezelResolver.applyRenderDefaults(resolved, system);
+        return resolved;
+    }
+
+    class void applyVariantOverrides(ResolvedBezel resolved, BezelVariant variant) {
+        if (variant.hasReflect) {
+            resolved.reflect = variant.reflect;
+        }
+        if (variant.hasCurvature) {
+            resolved.curvature = variant.curvature;
+        }
+        if (variant.hasCornerRadius) {
+            resolved.cornerRadius = variant.cornerRadius;
+        }
+        if (variant.shellTint.set) {
+            resolved.shellTint = variant.shellTint;
+        }
+    }
+
+    // Resolve the bezel presentation for (system, variant). Empty variantId
+    // picks the contract's default_variant; an unknown id also falls back to
+    // the default (the radial menu only offers declared ids, so this is
+    // belt+braces). Disabled/absent bezels.json resolves to the generic
+    // fallback profile.
+    class ResolvedBezel resolve(SystemDefinition system, string variantId, string assetRoot) {
+        BezelCollection bezels = system.bezels;
+        if (!bezels.present || !bezels.enabled) {
+            return BezelResolver.resolveFallback(system, assetRoot);
+        }
+
+        string requestedVariantId = variantId.isEmpty() ? bezels.defaultVariant : variantId;
+        int selectedIndex = BezelResolver.variantIndex(bezels, requestedVariantId);
+        if (selectedIndex < 0) {
+            selectedIndex = BezelResolver.variantIndex(bezels, bezels.defaultVariant);
+        }
+        if (selectedIndex < 0 && bezels.variants.size() > 0) {
+            selectedIndex = 0;
+        }
+        if (selectedIndex < 0) {
+            // enabled but no variants parsed (already a contract violation);
+            // degrade to the generic profile rather than an artless bezel.
+            return BezelResolver.resolveFallback(system, assetRoot);
+        }
+
+        ResolvedBezel resolved = ResolvedBezel();
+        BezelResolver.applyRenderDefaults(resolved, system);
+        BezelVariant variant = bezels.variants.get(selectedIndex);
+        resolved.art = BezelResolver.resolveAssetPath(variant.art, assetRoot);
+        resolved.glass = BezelResolver.resolveAssetPath(variant.glass, assetRoot);
+        resolved.hole = variant.hole.set ? variant.hole : bezels.hole;
+
+        Vector<ScreenHole> screenHoles = variant.screenHoles.size() > 0
+            ? variant.screenHoles : bezels.screenHoles;
+        for screenHole in screenHoles {
+            resolved.screenHoleIds.push(screenHole.screenId);
+            resolved.screenHoleRects.push(screenHole.hole);
+        }
+
+        BezelResolver.applyVariantOverrides(resolved, variant);
+        return resolved;
+    }
+}

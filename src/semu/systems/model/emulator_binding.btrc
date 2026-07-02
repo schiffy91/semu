@@ -1,0 +1,57 @@
+// emulator_binding.btrc — one system.json "emulators" entry: which emulator
+// runs the system, on which platforms, with which extra arguments, and (for
+// libretro frontends) which core. The core stays an opaque bare name here;
+// whether the bound emulator may carry one at all is a kind-based cross-file
+// check in systems/model/contract_validation.btrc.
+
+import std.{vector, json}
+import ../../core/parse_log.btrc
+import ../../core/json_contract.btrc
+
+class EmulatorBinding {
+    public string emulator;
+    public string label;
+    public string core;
+    public Vector<string> platforms;
+    public Vector<string> arguments;
+
+    public EmulatorBinding() {
+        self.emulator = "";
+        self.label = "";
+        self.core = "";
+        self.platforms = [];
+        self.arguments = [];
+    }
+}
+
+class EmulatorBindingParser {
+    class EmulatorBinding parse(JsonValue jsonValue, string file, string context, ParseLog log) {
+        EmulatorBinding binding = EmulatorBinding();
+        if (!jsonValue.isObject()) {
+            log.add(file, context, "expected object");
+            return binding;
+        }
+        Vector<string> allowedKeys = ["emulator", "label", "core", "platforms", "args"];
+        JsonContract.checkKeys(jsonValue, allowedKeys, file, context, log);
+        binding.emulator = JsonContract.requiredString(jsonValue, "emulator", file, context, log);
+        binding.label = JsonContract.optionalString(jsonValue, "label", "", file, context, log);
+        binding.core = JsonContract.optionalString(jsonValue, "core", "", file, context, log);
+        if (!binding.core.isEmpty() && binding.core.contains("libretro")) {
+            log.add(file, context + ".core",
+                "must be a bare core name (no _libretro suffix; the suffix is a platform rule)");
+        }
+        binding.platforms = JsonContract.stringArray(jsonValue, "platforms", false,
+            file, context, log);
+        Vector<string> operatingSystems = ["linux", "macos"];
+        for operatingSystemName in binding.platforms {
+            JsonContract.checkEnum(operatingSystemName, operatingSystems,
+                file, context + ".platforms", log);
+        }
+        if (jsonValue.has("platforms") && binding.platforms.size() == 0) {
+            log.add(file, context + ".platforms",
+                "must be non-empty when present (omit for all platforms)");
+        }
+        binding.arguments = JsonContract.stringArray(jsonValue, "args", false, file, context, log);
+        return binding;
+    }
+}

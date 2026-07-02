@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "enabled": true,
+  "default_variant": "frame",
+  "hole": { "x": 0.0300, "y": 0.0800, "w": 0.9400, "h": 0.8400 },
+  "variants": [
+    {
+      "id": "frame",
+      "label": "Widescreen Frame",
+      "art": "assets/bezels/generic/16x9.png"
+    }
+  ]
+}

@@ -1,0 +1,93 @@
+// render_policy.btrc — the system.json "render" contract: presentation style,
+// game/bezel priority, render kind, screen effects and the generic asset
+// profile. The parser is clustered with the data class it fills.
+
+import std.{vector, json}
+import ../../core/parse_log.btrc
+import ../../core/geometry.btrc
+import ../../core/json_contract.btrc
+
+class RenderPolicy {
+    public string style;
+    public string priority;
+    public string kind;
+    public bool fill;
+    public double reflect;
+    public double curvature;
+    public double cornerRadius;
+    public RgbColor shellTint;
+    public bool retroDefault;
+    public string assetProfile;
+
+    public RenderPolicy() {
+        self.style = "";
+        self.priority = "";
+        self.kind = "standard";
+        self.fill = false;
+        self.reflect = 0.0;
+        self.curvature = 0.0;
+        self.cornerRadius = 0.0;
+        self.shellTint = RgbColor();
+        self.retroDefault = false;
+        self.assetProfile = "";
+    }
+}
+
+class RenderPolicyParser {
+    class RenderPolicy parse(JsonValue jsonValue, string file, int screenCount, ParseLog log) {
+        RenderPolicy renderPolicy = RenderPolicy();
+        if (!jsonValue.isObject()) {
+            log.add(file, "render", "expected object");
+            return renderPolicy;
+        }
+        Vector<string> allowedKeys = ["style", "priority", "kind", "fill", "reflect", "curvature",
+                                      "corner_radius", "shell_tint", "retro_default",
+                                      "asset_profile"];
+        JsonContract.checkKeys(jsonValue, allowedKeys, file, "render", log);
+
+        renderPolicy.style = JsonContract.requiredString(jsonValue, "style", file, "render", log);
+        Vector<string> styles = ["console", "handheld"];
+        JsonContract.checkEnum(renderPolicy.style, styles, file, "render.style", log);
+
+        renderPolicy.priority = JsonContract.requiredString(jsonValue, "priority",
+            file, "render", log);
+        Vector<string> priorities = ["game", "bezel"];
+        JsonContract.checkEnum(renderPolicy.priority, priorities, file, "render.priority", log);
+
+        renderPolicy.kind = JsonContract.optionalString(jsonValue, "kind", "standard",
+            file, "render", log);
+        Vector<string> kinds = ["standard", "dual", "pointer"];
+        JsonContract.checkEnum(renderPolicy.kind, kinds, file, "render.kind", log);
+        bool multiScreen = screenCount > 1;
+        if (renderPolicy.kind.equals("dual") && !multiScreen) {
+            log.add(file, "render.kind", "'dual' requires more than one display screen");
+        }
+        if (multiScreen && !renderPolicy.kind.equals("dual")) {
+            log.add(file, "render.kind", "multi-screen systems must declare kind 'dual'");
+        }
+
+        renderPolicy.fill = JsonContract.optionalBool(jsonValue, "fill", false,
+            file, "render", log);
+        renderPolicy.reflect = JsonContract.optionalNumber(jsonValue, "reflect", 0.0,
+            file, "render", log);
+        if (renderPolicy.reflect < 0.0 || renderPolicy.reflect > 1.0) {
+            log.add(file, "render.reflect", "must be 0..1");
+        }
+        renderPolicy.curvature = JsonContract.optionalNumber(jsonValue, "curvature", 0.0,
+            file, "render", log);
+        renderPolicy.cornerRadius = JsonContract.optionalNumber(jsonValue, "corner_radius", 0.0,
+            file, "render", log);
+        if (jsonValue.has("shell_tint")) {
+            renderPolicy.shellTint = JsonContract.rgbColor(jsonValue.get("shell_tint"),
+                file, "render.shell_tint", log);
+        }
+        renderPolicy.retroDefault = JsonContract.optionalBool(jsonValue, "retro_default", false,
+            file, "render", log);
+        renderPolicy.assetProfile = JsonContract.optionalString(jsonValue, "asset_profile", "",
+            file, "render", log);
+        Vector<string> assetProfiles = ["handheld", "crt4x3", "wide16x9", "dual"];
+        JsonContract.checkEnum(renderPolicy.assetProfile, assetProfiles,
+            file, "render.asset_profile", log);
+        return renderPolicy;
+    }
+}

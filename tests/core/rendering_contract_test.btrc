@@ -1,0 +1,260 @@
+// rendering_contract_test.btrc — proof harness for the rendering stack.
+//
+// Covers: BezelResolver.resolve over the real contracts (gb variant cascade,
+// gc's geometry_from indirection into n64, switch's generic wide16x9
+// fallback), the tap environment bundle (fill/reflect/art/hole wire values),
+// the shader selection matrix, the system-kind wire ints, and the
+// render-resolution math. Returns the violation count (0 = pass); no main()
+// — the CLI routes `semu test core` here.
+
+import std.{vector, platform, fs}
+import ../../src/semu/core/parse_log.btrc
+import ../../src/semu/systems/system_parser.btrc
+import ../../src/semu/systems/model/semu_contracts.btrc
+import ../../src/semu/systems/model/system_definition.btrc
+import ../../src/semu/emulators/rendering/semu_bezel.btrc
+import ../../src/semu/emulators/rendering/semu_shader.btrc
+import ../../src/semu/emulators/rendering/semu_rendering.btrc
+
+class RenderingContractTest {
+    class int fail(string message) {
+        print("  FAIL " + message);
+        return 1;
+    }
+
+    class bool nearlyEqual(double actualValue, double expectedValue) {
+        double difference = actualValue - expectedValue;
+        if (difference < 0.0) {
+            difference = 0.0 - difference;
+        }
+        return difference < 0.0001;
+    }
+
+    class SystemDefinition findSystem(SemuContracts contracts, string systemId) {
+        for systemDefinition in contracts.systems {
+            if (systemDefinition.id.equals(systemId)) {
+                return systemDefinition;
+            }
+        }
+        return SystemDefinition();
+    }
+
+    // gb: default variant + render defaults -> tap environment wire values;
+    // the named colorway variant keeps the classic geometry and swaps art.
+    class int checkHandheldBezel(SystemDefinition gameBoy, string assetRoot) {
+        int failures = 0;
+        ResolvedBezel bezel = BezelResolver.resolve(gameBoy, "", assetRoot);
+        TapEnvironment environment = RenderPlanner.tapEnvironment(gameBoy, bezel, "1x");
+        if (!environment.valueOf("SEMU_TAP_FILL").equals("1")) {
+            failures = failures + RenderingContractTest.fail("gb SEMU_TAP_FILL: want 1, got '"
+                + environment.valueOf("SEMU_TAP_FILL") + "'");
+        }
+        if (!environment.valueOf("SEMU_TAP_REFLECT").equals("0.55")) {
+            failures = failures + RenderingContractTest.fail(
+                "gb SEMU_TAP_REFLECT: want 0.55, got '"
+                + environment.valueOf("SEMU_TAP_REFLECT") + "'");
+        }
+        if (!bezel.art.endsWith("assets/bezels/gb/classic.png")) {
+            failures = failures + RenderingContractTest.fail(
+                "gb art: want ...assets/bezels/gb/classic.png, got '" + bezel.art + "'");
+        }
+        if (!environment.valueOf("SEMU_TAP_ART").equals(bezel.art)) {
+            failures = failures + RenderingContractTest.fail(
+                "gb SEMU_TAP_ART does not match the resolved art");
+        }
+        if (!RenderingContractTest.nearlyEqual(bezel.hole.x, 0.1843)) {
+            failures = failures + RenderingContractTest.fail(
+                f"gb hole.x: want 0.1843, got {bezel.hole.x}");
+        }
+        if (!environment.valueOf("SEMU_TAP_SCREEN").startsWith("0.1843,")) {
+            failures = failures + RenderingContractTest.fail(
+                "gb SEMU_TAP_SCREEN: want 0.1843,... got '"
+                + environment.valueOf("SEMU_TAP_SCREEN") + "'");
+        }
+
+        ResolvedBezel colorwayBezel = BezelResolver.resolve(gameBoy, "play_it_loud_red",
+            assetRoot);
+        if (!colorwayBezel.art.endsWith("assets/bezels/gb/red.png")) {
+            failures = failures + RenderingContractTest.fail(
+                "gb red variant art: got '" + colorwayBezel.art + "'");
+        }
+        if (!RenderingContractTest.nearlyEqual(colorwayBezel.hole.x, 0.1843)) {
+            failures = failures + RenderingContractTest.fail(
+                "gb red variant must inherit the classic hole");
+        }
+        return failures;
+    }
+
+    // gc: geometry_from(n64, tv) supplies both the art and the measured hole.
+    class int checkGeometryIndirection(SystemDefinition gameCube, string assetRoot) {
+        int failures = 0;
+        ResolvedBezel bezel = BezelResolver.resolve(gameCube, "", assetRoot);
+        if (!bezel.art.endsWith("assets/bezels/n64/tv.png")) {
+            failures = failures + RenderingContractTest.fail(
+                "gc art via geometry_from: want ...assets/bezels/n64/tv.png, got '"
+                + bezel.art + "'");
+        }
+        if (!RenderingContractTest.nearlyEqual(bezel.hole.x, 0.2542)
+            || !RenderingContractTest.nearlyEqual(bezel.hole.y, 0.1155)
+            || !RenderingContractTest.nearlyEqual(bezel.hole.w, 0.4917)
+            || !RenderingContractTest.nearlyEqual(bezel.hole.h, 0.6556)) {
+            failures = failures + RenderingContractTest.fail(
+                f"gc hole: want 0.2542,0.1155,0.4917,0.6556 got {bezel.hole.x},{bezel.hole.y},{bezel.hole.w},{bezel.hole.h}");
+        }
+        return failures;
+    }
+
+    // switch: bezels disabled -> the generic wide16x9 fallback table row.
+    class int checkGenericFallback(SystemDefinition switchSystem, string assetRoot) {
+        int failures = 0;
+        ResolvedBezel bezel = BezelResolver.resolve(switchSystem, "", assetRoot);
+        if (!bezel.art.endsWith("assets/bezels/generic/16x9.png")) {
+            failures = failures + RenderingContractTest.fail(
+                "switch fallback art: want ...assets/bezels/generic/16x9.png, got '"
+                + bezel.art + "'");
+        }
+        if (!RenderingContractTest.nearlyEqual(bezel.hole.x, 0.0300)
+            || !RenderingContractTest.nearlyEqual(bezel.hole.y, 0.0800)
+            || !RenderingContractTest.nearlyEqual(bezel.hole.w, 0.9400)
+            || !RenderingContractTest.nearlyEqual(bezel.hole.h, 0.8400)) {
+            failures = failures + RenderingContractTest.fail(
+                "switch fallback hole: want the wide16x9 table row");
+        }
+        return failures;
+    }
+
+    class int checkSystemKindWire(SystemDefinition dualScreenSystem) {
+        int failures = 0;
+        if (RenderPlanner.systemKindWireValue(dualScreenSystem.render.kind) != 1) {
+            failures = failures + RenderingContractTest.fail(
+                f"n3ds system-kind wire: want 1, got {RenderPlanner.systemKindWireValue(dualScreenSystem.render.kind)}");
+        }
+        if (RenderPlanner.systemKindWireValue("standard") != 0
+            || RenderPlanner.systemKindWireValue("pointer") != 2) {
+            failures = failures + RenderingContractTest.fail(
+                "system-kind wire table: standard=0 pointer=2");
+        }
+        return failures;
+    }
+
+    class int checkShaderMatrix(SystemDefinition gameBoy, SystemDefinition gameCube) {
+        int failures = 0;
+        string tapPreset = ShaderSelector.select(gameBoy, true, true, true, true, false);
+        if (!tapPreset.equals("assets/shaders/gb/screen.slangp")) {
+            failures = failures + RenderingContractTest.fail(
+                "gb tap shader: want the screen preset, got '" + tapPreset + "'");
+        }
+        string compositePreset = ShaderSelector.select(gameBoy, true, false, true, true, false);
+        if (!compositePreset.equals("assets/shaders/gb/composite.slangp")) {
+            failures = failures + RenderingContractTest.fail(
+                "gb no-tap+bezels shader: want the composite preset, got '"
+                + compositePreset + "'");
+        }
+        string crtPreset = ShaderSelector.select(gameBoy, true, false, false, true, false);
+        if (!crtPreset.equals("assets/shaders/gb/screen.slangp")) {
+            failures = failures + RenderingContractTest.fail(
+                "gb no-tap no-bezel crt shader: want the screen preset");
+        }
+        if (!ShaderSelector.select(gameBoy, false, true, true, true, false).isEmpty()) {
+            failures = failures + RenderingContractTest.fail(
+                "visuals off must select no shader");
+        }
+        if (!ShaderSelector.select(gameBoy, true, false, false, false, false).isEmpty()) {
+            failures = failures + RenderingContractTest.fail(
+                "no tap/bezels/crt must select no shader");
+        }
+        if (!ShaderSelector.select(gameCube, true, true, true, true, false).isEmpty()
+            || !ShaderSelector.select(gameCube, true, false, true, true, false).isEmpty()
+            || !ShaderSelector.select(gameCube, true, false, false, true, true).isEmpty()) {
+            failures = failures + RenderingContractTest.fail(
+                "gc (shaders disabled) must always select ''");
+        }
+        string resolvedPath = ShaderSelector.resolvePath("assets/shaders/gb/screen.slangp",
+            "/tmp/shaders");
+        if (!resolvedPath.equals("/tmp/shaders/semu/gb/screen.slangp")) {
+            failures = failures + RenderingContractTest.fail(
+                "ShaderSelector.resolvePath: got '" + resolvedPath + "'");
+        }
+        return failures;
+    }
+
+    class int checkTargetResolution(SystemDefinition gameBoy, SystemDefinition dualScreenSystem,
+                                    string assetRoot) {
+        int failures = 0;
+        string oneTimesResolution = RenderPlanner.targetResolution(gameBoy, "1x", 1280, 800);
+        if (!oneTimesResolution.equals("160x144")) {
+            failures = failures + RenderingContractTest.fail(
+                "gb 1x resolution: want 160x144, got '" + oneTimesResolution + "'");
+        }
+        string integerResolution = RenderPlanner.targetResolution(gameBoy, "integer", 1280, 800);
+        if (!integerResolution.equals("800x720")) {
+            failures = failures + RenderingContractTest.fail(
+                "gb integer resolution: want 800x720, got '" + integerResolution + "'");
+        }
+        if (!RenderPlanner.targetResolution(gameBoy, "native", 1280, 800).isEmpty()) {
+            failures = failures + RenderingContractTest.fail("gb native mode must return ''");
+        }
+
+        // dual combined canvas sanity: 400x240 over 320x240 stacks to 400x480.
+        ResolvedBezel dualBezel = BezelResolver.resolve(dualScreenSystem, "", assetRoot);
+        TapEnvironment environment = RenderPlanner.tapEnvironment(dualScreenSystem,
+            dualBezel, "1x");
+        if (!environment.valueOf("SEMU_TAP_NATIVE_W").equals("400")
+            || !environment.valueOf("SEMU_TAP_NATIVE_H").equals("480")) {
+            failures = failures + RenderingContractTest.fail(
+                "n3ds combined native: want 400x480, got "
+                + environment.valueOf("SEMU_TAP_NATIVE_W") + "x"
+                + environment.valueOf("SEMU_TAP_NATIVE_H"));
+        }
+        if (!environment.valueOf("SEMU_TAP_DUAL").equals("1")
+            || !environment.valueOf("SEMU_TAP_ASPECT").equals("400:480")) {
+            failures = failures + RenderingContractTest.fail(
+                "n3ds dual wire values: DUAL=1 ASPECT=400:480");
+        }
+        return failures;
+    }
+
+    class int run(string repoRoot) {
+        string sourceRoot = Environment.get("SEMU_SRC_ROOT",
+            PathTools.join(repoRoot, "src/semu"));
+        ParseLog log = ParseLog();
+        SemuContracts contracts = SystemParser.loadAll(sourceRoot, log);
+
+        print("rendering contract test");
+        if (!log.ok()) {
+            print("  FAIL contract set does not parse cleanly (see the system suite)");
+            return 1;
+        }
+
+        SystemDefinition gameBoy = RenderingContractTest.findSystem(contracts, "gb");
+        SystemDefinition gameCube = RenderingContractTest.findSystem(contracts, "gc");
+        SystemDefinition switchSystem = RenderingContractTest.findSystem(contracts, "switch");
+        SystemDefinition dualScreenSystem = RenderingContractTest.findSystem(contracts, "n3ds");
+        if (gameBoy.id.isEmpty() || gameCube.id.isEmpty() || switchSystem.id.isEmpty()
+            || dualScreenSystem.id.isEmpty()) {
+            print("  FAIL expected systems gb/gc/switch/n3ds in the contract set");
+            return 1;
+        }
+
+        string assetRoot = BezelResolver.assetRoot(repoRoot);
+        int violations = 0;
+        violations = violations + RenderingContractTest.checkHandheldBezel(gameBoy, assetRoot);
+        violations = violations + RenderingContractTest.checkGeometryIndirection(gameCube,
+            assetRoot);
+        violations = violations + RenderingContractTest.checkGenericFallback(switchSystem,
+            assetRoot);
+        violations = violations + RenderingContractTest.checkSystemKindWire(dualScreenSystem);
+        violations = violations + RenderingContractTest.checkShaderMatrix(gameBoy, gameCube);
+        violations = violations + RenderingContractTest.checkTargetResolution(gameBoy,
+            dualScreenSystem, assetRoot);
+
+        if (violations == 0) {
+            print("  OK bezel resolution (gb variants, gc geometry_from, switch fallback)");
+            print("  OK tap environment wire values + system-kind mapping");
+            print("  OK shader selection matrix + path resolution");
+            print("  OK render target resolution (1x/integer/native)");
+        }
+        print(f"rendering contract test: {violations} violation(s)");
+        return violations;
+    }
+}

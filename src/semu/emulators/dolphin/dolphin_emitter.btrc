@@ -1,0 +1,182 @@
+// dolphin_emitter.btrc — DolphinEmitter: the Dolphin ini/profile builders and
+// the emitProfiles file layout. Content mirrors the Deck-proven goldens
+// (garbage/generated/packaging/emulators/profiles/Dolphin/config/**): every
+// physical-device identity comes from steam_input.json device_identities
+// (dolphin_pad / dolphin_wiimote / dolphin_pointer) and every hotkey chord
+// from the keymap; only Dolphin's own wire grammar (section names, SDL button
+// tokens, the "@(...)" chord wrapper and expression operators) is code-owned
+// here.
+
+import std.{vector, fs}
+import ../model/emulator_definition.btrc
+import ../../input/keymap_parser.btrc
+import ../../input/steam_input_parser.btrc
+import ./dolphin_wiimote_profiles.btrc
+
+class DolphinEmitter {
+    class void pushAll(Vector<string> lines, Vector<string> additions) {
+        for addition in additions {
+            lines.push(addition);
+        }
+    }
+
+    // Dolphin's native hotkey grammar (Deck-proven): modifier chords wrap as
+    // "@(Ctrl+P)"; the bare "Esc" chord renders as plain "Escape".
+    class string nativeChord(string chord) {
+        if (chord.equals("Esc")) {
+            return "Escape";
+        }
+        return "@(" + chord + ")";
+    }
+
+    // Dolphin.ini: base emulator policy — GC port 1 is a standard controller
+    // (SIDevice0 = 6), Wiimote 1 is emulated (WiimoteSource0 = 1), stop
+    // confirmations / panic dialogs / analytics all off for kiosk launches.
+    class string dolphinIni() {
+        Vector<string> lines = [
+            "[Analytics]", "Enabled = False", "PermissionAsked = True", "",
+            "[Core]", "SIDevice0 = 6", "SIDevice1 = 0", "SIDevice2 = 0", "SIDevice3 = 0",
+            "WiimoteSource0 = 1", "WiimoteSource1 = 0", "WiimoteSource2 = 0",
+            "WiimoteSource3 = 0", "",
+            "[Interface]", "ConfirmStop = False", "UsePanicHandlers = False"];
+        return lines.join("\n") + "\n";
+    }
+
+    // The GC pad binding body shared by GCPadNew.ini [GCPad1] and the GCPad
+    // profile: the pad device identity followed by Dolphin's SDL tokens.
+    class Vector<string> gamecubePadBody(string padIdentity) {
+        Vector<string> lines = [
+            "Device = " + padIdentity,
+            "Buttons/A = `Button S`",
+            "Buttons/B = `Button W`",
+            "Buttons/X = `Button E`",
+            "Buttons/Y = `Button N`",
+            "Buttons/Z = `Shoulder R`|Back",
+            "Buttons/Start = Start",
+            "Main Stick/Up = `Axis 1-`",
+            "Main Stick/Down = `Axis 1+`",
+            "Main Stick/Left = `Axis 0-`",
+            "Main Stick/Right = `Axis 0+`",
+            "C-Stick/Up = `Axis 4-`",
+            "C-Stick/Down = `Axis 4+`",
+            "C-Stick/Left = `Axis 3-`",
+            "C-Stick/Right = `Axis 3+`",
+            "Triggers/L = `Trigger L`",
+            "Triggers/R = `Trigger R`",
+            "Triggers/L-Analog = `Trigger L`",
+            "Triggers/R-Analog = `Trigger R`",
+            "D-Pad/Up = `Pad N`",
+            "D-Pad/Down = `Pad S`",
+            "D-Pad/Left = `Pad W`",
+            "D-Pad/Right = `Pad E`",
+            "Rumble/Motor = Strong",
+            "Options/Always Connected = True"];
+        return lines;
+    }
+
+    class string gamecubePadFile(string padIdentity) {
+        Vector<string> lines = ["[GCPad1]"];
+        DolphinEmitter.pushAll(lines, DolphinEmitter.gamecubePadBody(padIdentity));
+        Vector<string> extraPortSections = ["[GCPad2]", "[GCPad3]", "[GCPad4]"];
+        for portSection in extraPortSections {
+            lines.push(portSection);
+            lines.push("Device = " + padIdentity);
+        }
+        return lines.join("\n") + "\n";
+    }
+
+    class string gamecubePadProfile(string padIdentity) {
+        Vector<string> lines = ["[Profile]"];
+        DolphinEmitter.pushAll(lines, DolphinEmitter.gamecubePadBody(padIdentity));
+        return lines.join("\n") + "\n";
+    }
+
+    // One keymap-driven hotkey line, emitted only when the emulator contract
+    // declares the action and the keymap carries a chord for it.
+    class void pushHotkeyLine(Vector<string> lines, EmulatorDefinition definition,
+                              Keymap keymap, string settingName, string actionId) {
+        if (definition.input.actions.contains(actionId)) {
+            string chord = keymap.chordFor(actionId);
+            if (!chord.isEmpty()) {
+                lines.push(settingName + " = " + DolphinEmitter.nativeChord(chord));
+            }
+        }
+    }
+
+    // Dolphin's fixed speed-limit hotkey rides bare Tab, and Dolphin's bare
+    // expression fires even with modifiers held — so every keymap chord that
+    // also ends on Tab (screen.swap = Ctrl+Tab fired by the hotkey layer) is
+    // excluded via Dolphin's expression operators: "Tab & !@(Ctrl+Tab)".
+    class string speedLimitExpression(Keymap keymap) {
+        string expression = "Tab";
+        for action in keymap.actions {
+            if (ChordSyntax.keyPart(action.chord).equals("Tab")
+                && !ChordSyntax.modifierPart(action.chord).isEmpty()) {
+                expression = expression + " & !@(" + action.chord + ")";
+            }
+        }
+        return expression;
+    }
+
+    // Profiles/Hotkeys/Steam Deck.ini: keymap-driven chords for the actions
+    // the emulator.json declares, plus Dolphin-native fixed hotkeys (speed
+    // limit hold, profile cycling, undo state) outside the keymap vocabulary.
+    class string hotkeysProfile(EmulatorDefinition definition, Keymap keymap,
+                                string pointerIdentity) {
+        Vector<string> lines = ["[Profile]"];
+        lines.push("Device = " + pointerIdentity);
+        DolphinEmitter.pushHotkeyLine(lines, definition, keymap, "General/Open", "ui.open");
+        DolphinEmitter.pushHotkeyLine(lines, definition, keymap,
+            "General/Toggle Pause", "ui.pause");
+        DolphinEmitter.pushHotkeyLine(lines, definition, keymap, "General/Stop", "app.quit");
+        DolphinEmitter.pushHotkeyLine(lines, definition, keymap,
+            "General/Toggle Fullscreen", "ui.fullscreen");
+        DolphinEmitter.pushHotkeyLine(lines, definition, keymap,
+            "General/Take Screenshot", "ui.screenshot");
+        DolphinEmitter.pushHotkeyLine(lines, definition, keymap,
+            "Load State/Load State Slot 1", "state.load");
+        DolphinEmitter.pushHotkeyLine(lines, definition, keymap,
+            "Save State/Save State Slot 1", "state.save");
+        Vector<string> fixedHotkeys = [
+            "Emulation Speed/Disable Emulation Speed Limit = "
+                + DolphinEmitter.speedLimitExpression(keymap),
+            "Controller Profile 1/Next Profile = @(Alt+F5)",
+            "Other State Hotkeys/Undo Load State = F12",
+            "Other State Hotkeys/Undo Save State = @(Shift+F12)"];
+        DolphinEmitter.pushAll(lines, fixedHotkeys);
+        return lines.join("\n") + "\n";
+    }
+
+    // Write the full Dolphin profile tree under <outputRoot>/<name>/config/
+    // (the golden layout: Dolphin.ini, GCPadNew.ini, WiimoteNew.ini plus the
+    // GCPad / Hotkeys / Wiimote profile inis).
+    class void emitProfiles(EmulatorDefinition definition, SteamInputTarget steamInput,
+                            Keymap keymap, string outputRoot) {
+        string padIdentity = steamInput.deviceIdentity("dolphin_pad");
+        string wiimoteIdentity = steamInput.deviceIdentity("dolphin_wiimote");
+        string pointerIdentity = steamInput.deviceIdentity("dolphin_pointer");
+        string configRoot = PathTools.join(PathTools.join(outputRoot, definition.name),
+            "config");
+        string gamecubeProfileDirectory = PathTools.join(configRoot, "Profiles/GCPad");
+        string hotkeysProfileDirectory = PathTools.join(configRoot, "Profiles/Hotkeys");
+        string wiimoteProfileDirectory = PathTools.join(configRoot, "Profiles/Wiimote");
+        UnixFileSystem.mkdirp(gamecubeProfileDirectory);
+        UnixFileSystem.mkdirp(hotkeysProfileDirectory);
+        UnixFileSystem.mkdirp(wiimoteProfileDirectory);
+        Path.writeAll(PathTools.join(configRoot, "Dolphin.ini"),
+            DolphinEmitter.dolphinIni());
+        Path.writeAll(PathTools.join(configRoot, "GCPadNew.ini"),
+            DolphinEmitter.gamecubePadFile(padIdentity));
+        Path.writeAll(PathTools.join(configRoot, "WiimoteNew.ini"),
+            DolphinWiimoteProfiles.wiimoteNewFile(wiimoteIdentity, pointerIdentity));
+        Path.writeAll(PathTools.join(gamecubeProfileDirectory, "Steam Deck.ini"),
+            DolphinEmitter.gamecubePadProfile(padIdentity));
+        Path.writeAll(PathTools.join(hotkeysProfileDirectory, "Steam Deck.ini"),
+            DolphinEmitter.hotkeysProfile(definition, keymap, pointerIdentity));
+        Path.writeAll(PathTools.join(wiimoteProfileDirectory, "Wiimote (SD).ini"),
+            DolphinWiimoteProfiles.wiimoteNunchukProfile(wiimoteIdentity, pointerIdentity));
+        Path.writeAll(PathTools.join(wiimoteProfileDirectory,
+            "Wiimote + Classic Controller (SD).ini"),
+            DolphinWiimoteProfiles.wiimoteClassicProfile(wiimoteIdentity, pointerIdentity));
+    }
+}

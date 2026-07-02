@@ -1,0 +1,76 @@
+// flycast_emulator.btrc — the Flycast concrete emulator class. Flycast is a
+// data-only standalone: every Deck-proven launch fact lives in
+// emulators/flycast/emulator.json and is executed by the generic machinery —
+// the flatpak identity, the x11 display pinning with per-session defaults,
+// the "-config window:fullscreen=yes" launch arguments, the sandbox grants,
+// the config_file graphics pin (rend.renderer in emu.cfg), the emu.cfg
+// widescreen aspect probe, the xdg state isolation and the Dreamcast
+// firmware fallback chain. This class supplies identity, contract validation
+// (Flycast declares no extension-block grammar), and the documented answers
+// delegated to FlycastEmitter / FlycastRendering — most deliberately empty.
+
+import std.{vector}
+import ../../core/parse_log.btrc
+import ../model/emulator_platform.btrc
+import ../model/emulator_definition.btrc
+import ../../systems/model/emulator_binding.btrc
+import ../../input/keymap_parser.btrc
+import ../../input/steam_input_parser.btrc
+import ../semu_emulator.btrc
+import ./flycast_emitter.btrc
+import ./flycast_rendering.btrc
+
+class FlycastEmulator extends SemuEmulator {
+    public FlycastEmulator() {}
+
+    public string id() {
+        return "flycast";
+    }
+
+    public string contractFile() {
+        return "emulators/flycast/emulator.json";
+    }
+
+    // Flycast declares no extension-block grammar: every knob it needs fits
+    // the shared platform schema, so a platforms.<os>.flycast sub-object is a
+    // contract mistake to report, not data awaiting interpretation.
+    public void parseExtension(EmulatorPlatform platform, ParseLog log) {
+        if (platform.hasExtension()) {
+            log.add(self.contractFile(),
+                "platforms." + platform.operatingSystem + "." + self.id(),
+                "flycast declares no extension block grammar; remove it or "
+                    + "teach FlycastEmulator.parseExtension its schema");
+        }
+    }
+
+    // The golden ES-DE command is the emulator token, the platform's
+    // fullscreen switch and the rom: the "-config window:fullscreen=yes" pair
+    // travels in the contract's platform argument list, and Flycast has no
+    // core selector or per-binding grammar, so this class appends nothing.
+    public Vector<string> commandFragments(EmulatorBinding binding, EmulatorPlatform platform) {
+        Vector<string> fragments = [];
+        return fragments;
+    }
+
+    // Profile emission is a verified no-op: the golden packaging tree carries
+    // no Flycast profile directory (details in flycast_emitter.btrc).
+    public void emitProfiles(EmulatorDefinition definition, SteamInputTarget steamInput,
+                             Keymap keymap, string outputRoot) {
+        FlycastEmitter.emitProfiles(definition, steamInput, keymap, outputRoot);
+    }
+
+    public Vector<string> graphicsForceArguments(EmulatorPlatform platform, string graphicsApi) {
+        return FlycastRendering.graphicsForceArguments(platform, graphicsApi);
+    }
+
+    public string overlayConfiguration(EmulatorPlatform platform) {
+        return FlycastRendering.overlayConfiguration(platform);
+    }
+
+    // Flycast has no proven native hotkey grammar (no golden hotkey
+    // configuration exists for it); chords pass through verbatim so Steam
+    // Input's keyboard emission stays the single hotkey path.
+    public string translateChord(string chord) {
+        return chord;
+    }
+}

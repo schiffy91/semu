@@ -1,0 +1,138 @@
+{
+  "schema_version": 1,
+  "name": "PCSX2",
+  "kind": "standalone",
+  "default_system": "ps2",
+  "input": {
+    "actions": [
+      "ui.pause",
+      "ui.screenshot",
+      "ui.fullscreen",
+      "ui.menu",
+      "app.quit",
+      "state.prev",
+      "state.next",
+      "state.load",
+      "state.save",
+      "speed.fast"
+    ]
+  },
+  "platforms": {
+    "linux": {
+      "backend": "flatpak",
+      "flatpak_id": "net.pcsx2.PCSX2",
+      "display_server": "x11",
+      "display_default": ":0",
+      "sessions": {
+        "gamescope": {
+          "display_default": ":1"
+        },
+        "desktop": {
+          "display_default": ":0"
+        }
+      },
+      "args": [
+        "-batch",
+        "-fullscreen"
+      ],
+      "gl_wrapper": "nixgl",
+      "sandbox": {
+        "devices": [
+          "all"
+        ],
+        "filesystems": [
+          {
+            "path": "/nix/store",
+            "mode": "ro"
+          },
+          {
+            "path": "${project}",
+            "mode": "rw"
+          },
+          {
+            "path": "${roms}",
+            "mode": "rw"
+          },
+          {
+            "path": "${state_root}",
+            "mode": "create"
+          },
+          {
+            "path": "${emulation_root}",
+            "mode": "rw"
+          }
+        ]
+      },
+      "graphics": {
+        "method": "config_file",
+        "file": "${flatpak_home}/config/PCSX2/inis/PCSX2.ini",
+        "format": "ini",
+        "key": "Renderer",
+        "values": {
+          "opengl": "12"
+        },
+        "tap_api": "opengl"
+      },
+      "overlay_aspect": "4x3",
+      "aspect_probe": {
+        "files": [
+          "${state_root}/config/PCSX2/inis/PCSX2.ini",
+          "${project}/generated/packaging/emulators/profiles/PCSX2/config/inis/PCSX2.ini"
+        ],
+        "widescreen_markers": [
+          "aspectratio = 16:9",
+          "aspectratio=16:9",
+          "enablewidescreenpatches = true",
+          "enablewidescreenpatches=true",
+          "widescreenpatches = enabled"
+        ],
+        "standard_markers": [
+          "aspectratio = 4:3",
+          "aspectratio=4:3"
+        ],
+        "fallback": "standard"
+      },
+      "state": {
+        "config_home": "flatpak_home",
+        "data_home": "xdg"
+      },
+      "firmware": {
+        "dir": "${emulation_root}/PCSX2/config/bios",
+        "fallback_dirs": [
+          "${paths.project_bios}/ps2"
+        ]
+      }
+    },
+    "macos": {
+      "backend": "native",
+      "executable": "${nix_result}/Applications/PCSX2.app/Contents/MacOS/PCSX2",
+      "args": [
+        "-batch",
+        "-fullscreen"
+      ],
+      "aspect_probe": {
+        "files": [
+          "${state_root}/config/PCSX2/inis/PCSX2.ini",
+          "${project}/generated/packaging/emulators/profiles/PCSX2/config/inis/PCSX2.ini"
+        ],
+        "widescreen_markers": [
+          "aspectratio = 16:9",
+          "aspectratio=16:9",
+          "enablewidescreenpatches = true",
+          "enablewidescreenpatches=true",
+          "widescreenpatches = enabled"
+        ],
+        "standard_markers": [
+          "aspectratio = 4:3",
+          "aspectratio=4:3"
+        ],
+        "fallback": "standard"
+      }
+    }
+  },
+  "doc": {
+    "state": "PCSX2 ignores XDG_CONFIG_HOME and rejects -cfgpath, so its config is written into the flatpak home (launcher.btrc:446-454).",
+    "graphics": "[EmuCore/GS] Renderer: 12 = OpenGL (launcher_tap.btrc:139-142).",
+    "firmware": "Bios folder resolution and doctor probe order from emulator_profiles.btrc:378-382 and doctor.btrc:124-137."
+  }
+}

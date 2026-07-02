@@ -1,0 +1,27 @@
+{
+  "schema_version": 1,
+  "name": "Nintendo 64",
+  "aliases": [],
+  "es_de": { "platforms": ["n64"], "theme": "n64" },
+  "rom": { "dir": "n64", "extensions": [".bin", ".d64", ".n64", ".ndd", ".u1", ".v64", ".z64", ".7z", ".zip"] },
+  "emulators": [
+    { "emulator": "retroarch", "label": "Mupen64Plus-Next", "core": "mupen64plus_next", "platforms": ["linux"] },
+    { "emulator": "ares", "label": "ares", "platforms": ["macos"], "args": ["--system", "Nintendo 64"] }
+  ],
+  "display": {
+    "screens": [ { "id": "main", "native": { "w": 320, "h": 240 } } ],
+    "aspect": { "w": 4, "h": 3 }
+  },
+  "render": {
+    "style": "console",
+    "priority": "game",
+    "reflect": 0.18,
+    "corner_radius": 0.045,
+    "retro_default": true
+  },
+  "doc": {
+    "hardware": "consumer CRT over composite/S-Video",
+    "intent": "Do not sharpen away the hardware VI softness.",
+    "retro_default": "Mupen renders high-res; the compositor shows the soft 240p look by default."
+  }
+}
