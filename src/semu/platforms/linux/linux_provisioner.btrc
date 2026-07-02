@@ -1,0 +1,156 @@
+// linux_provisioner.btrc — the deck-target provisioning and verification
+// verbs (`semu deck ...`), everything driven by the JSON contracts:
+// which flatpaks to install comes from each emulator.json linux block,
+// sync expectations from settings.json, input expectations from the
+// steamdeck target files. Nothing emulator-specific is hardcoded here.
+
+import std.{vector, fs, process}
+import ../../core/parse_log.btrc
+import ../../core/settings.btrc
+import ../../core/settings_parser.btrc
+import ../../systems/model/semu_contracts.btrc
+import ../../emulators/model/emulator_definition.btrc
+import ../../emulators/model/emulator_platform.btrc
+import ../../emulators/model/launch_plan.btrc
+import ../../emulators/emulator_process.btrc
+import ../../input/targets/steamdeck/steam_input.btrc
+
+class LinuxProvisioner {
+    class ExecResult runCommand(string command, string workingDirectory) {
+        UnixShell shell = UnixShell();
+        return shell.run(command, CommandOutput.collect(), CommandOutput.combine(),
+            false, true, false, "", "", workingDirectory);
+    }
+
+    class Vector<EmulatorDefinition> flatpakEmulators(SemuContracts contracts) {
+        Vector<EmulatorDefinition> selected = [];
+        for emulatorDefinition in contracts.emulators {
+            EmulatorPlatform linuxPlatform = emulatorDefinition.platformFor("linux");
+            if (linuxPlatform.backend.equals("flatpak") && !linuxPlatform.flatpakId.isEmpty()) {
+                selected.push(emulatorDefinition);
+            }
+        }
+        return selected;
+    }
+
+    // Install every contract-declared flatpak emulator (idempotent).
+    class int provision(SemuContracts contracts, string project) {
+        ExecResult remote = LinuxProvisioner.runCommand(
+            "flatpak remote-add --user --if-not-exists flathub "
+            + "https://dl.flathub.org/repo/flathub.flatpakrepo", project);
+        if (remote.code != 0) {
+            print("FAIL flathub remote: " + remote.out);
+            return 1;
+        }
+        int failures = 0;
+        for emulatorDefinition in LinuxProvisioner.flatpakEmulators(contracts) {
+            string flatpakId = emulatorDefinition.platformFor("linux").flatpakId;
+            print("provisioning " + emulatorDefinition.id + " (" + flatpakId + ")...");
+            ExecResult install = LinuxProvisioner.runCommand(
+                "flatpak install --user -y --noninteractive flathub "
+                + ShellWords.quote(flatpakId), project);
+            if (install.code != 0) {
+                print("  FAIL " + flatpakId);
+                print(install.out);
+                failures = failures + 1;
+            } else {
+                print("  OK " + flatpakId);
+            }
+        }
+        print(failures == 0 ? "deck provision: OK" : f"deck provision: {failures} failures");
+        return failures == 0 ? 0 : 1;
+    }
+
+    // Every declared emulator must be installed and must produce a launch plan.
+    class int verifyEmulators(SemuContracts contracts, string project) {
+        int failures = 0;
+        for emulatorDefinition in contracts.emulators {
+            EmulatorPlatform linuxPlatform = emulatorDefinition.platformFor("linux");
+            if (linuxPlatform.operatingSystem.isEmpty()) {
+                print("  SKIP " + emulatorDefinition.id + " (no linux block)");
+            } else {
+                bool installed = true;
+                if (linuxPlatform.backend.equals("flatpak")) {
+                    ExecResult info = LinuxProvisioner.runCommand(
+                        "flatpak info --user " + ShellWords.quote(linuxPlatform.flatpakId),
+                        project);
+                    installed = info.code == 0;
+                }
+                Vector<string> noArguments = [];
+                LaunchPlan plan = EmulatorLauncher.plan(emulatorDefinition, "linux",
+                    "desktop", "", noArguments);
+                bool planned = plan.argumentVector.size() > 0;
+                if (installed && planned) {
+                    print("  OK " + emulatorDefinition.id);
+                } else {
+                    print("  FAIL " + emulatorDefinition.id
+                        + (installed ? "" : " [not installed]")
+                        + (planned ? "" : " [empty launch plan]"));
+                    failures = failures + 1;
+                }
+            }
+        }
+        print(failures == 0 ? "deck verify-emulators: OK"
+            : f"deck verify-emulators: {failures} failures");
+        return failures == 0 ? 0 : 1;
+    }
+
+    // Sync expectations come from settings.json; syncthing itself may live in
+    // the bundle or on the host path.
+    class int verifySync(string project) {
+        ParseLog log = ParseLog();
+        SemuSettings settings = SettingsParser.load(project, log);
+        if (!log.ok()) {
+            for error in log.errors {
+                print("  FAIL settings: " + error);
+            }
+            return 1;
+        }
+        if (!settings.sync.runtime.enabled) {
+            print("deck verify-sync: OK (sync disabled by settings)");
+            return 0;
+        }
+        int failures = 0;
+        if (settings.sync.folders.size() != 7) {
+            print(f"  FAIL expected 7 sync folders, settings declare {settings.sync.folders.size()}");
+            failures = failures + 1;
+        }
+        ExecResult bundled = LinuxProvisioner.runCommand(
+            "src/generated/nix/result/bin/syncthing --version 2>/dev/null"
+            + " || syncthing --version", project);
+        if (bundled.code != 0) {
+            print("  FAIL syncthing binary not reachable (bundle or PATH)");
+            failures = failures + 1;
+        }
+        print(failures == 0 ? "deck verify-sync: OK" : f"deck verify-sync: {failures} failures");
+        return failures == 0 ? 0 : 1;
+    }
+
+    // Input expectations: every template the steamdeck target declares must
+    // have been emitted.
+    class int verifyInput(string project) {
+        ParseLog log = ParseLog();
+        SteamInputTarget target = SteamInputParser.parse(PathTools.join(project,
+            "src/semu/input/targets/steamdeck/steam_input.json"), log);
+        if (!log.ok()) {
+            for error in log.errors {
+                print("  FAIL steam_input contract: " + error);
+            }
+            return 1;
+        }
+        string templatesRoot = PathTools.join(project,
+            "src/generated/packaging/input/steam-input");
+        int failures = 0;
+        for templateOutput in target.templateOutputs {
+            string templatePath = PathTools.join(templatesRoot, templateOutput);
+            if (FileSystem.isFile(templatePath)) {
+                print("  OK " + templateOutput);
+            } else {
+                print("  FAIL missing emitted template: " + templatePath);
+                failures = failures + 1;
+            }
+        }
+        print(failures == 0 ? "deck verify-input: OK" : f"deck verify-input: {failures} failures");
+        return failures == 0 ? 0 : 1;
+    }
+}
