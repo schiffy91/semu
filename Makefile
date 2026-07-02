@@ -9,7 +9,7 @@ SEMU_BIN := src/generated/build/semu
 SEMU_MANIFEST := src/generated/semu.json
 NIX_RESULT := src/generated/nix/result
 
-.PHONY: all install setup btrc-build manifest help
+.PHONY: all install setup btrc-build cross-linux manifest help
 
 all: install ## Build all emulators + bootstrap content (idempotent, cached by nix)
 install: setup
@@ -23,6 +23,14 @@ $(SEMU_BIN): $(SEMU_SOURCES) flake.nix flake.lock Makefile
 	$(CC) "$(SEMU_C)" -std=c11 -o "$@" -lm
 	@mkdir -p src/generated
 	cp "$(SEMU_C)" src/generated/semu.c
+
+# Static x86_64-linux CLI for immutable targets (Bazzite VM, the Deck) that
+# ship no compiler: same transpiled C, zig cc as the cross toolchain.
+cross-linux: $(SEMU_BIN) ## Cross-build src/generated/build/semu-linux-x64 (static musl)
+	nix shell nixpkgs\#zig --command zig cc -target x86_64-linux-musl -std=c11 \
+		"$(SEMU_C)" -o src/generated/build/semu-linux-x64 -lm
+	@file src/generated/build/semu-linux-x64 | grep -q "ELF 64-bit" || \
+		{ echo "cross-linux did not produce an x86_64 ELF"; exit 2; }
 
 manifest: $(SEMU_BIN) ## Generate src/generated/semu.json from semu.btrc
 	@mkdir -p "$(dir $(SEMU_MANIFEST))"

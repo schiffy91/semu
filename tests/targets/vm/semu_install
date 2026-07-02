@@ -1,0 +1,43 @@
+#!/bin/bash
+# semu_install — kickstart entrypoint for the Bazzite E2E VM install.
+#
+# grub.cfg boots the live image with systemd.run pointing here; this script
+# hands the mapped kickstart (/ks.cfg on the ISO, visible at
+# /run/initramfs/live/ks.cfg) to anaconda in fully non-interactive mode (the
+# kickstart's own `cmdline` directive suppresses every prompt and its
+# `shutdown` directive powers the VM off on success). Failure powers off via
+# systemd.run_failure_action so the harness never hangs.
+
+set -uo pipefail
+
+exec > /dev/ttyS0 2>&1 || true
+echo "semu_install: starting kickstart install"
+
+KICKSTART=/run/initramfs/live/ks.cfg
+if [ ! -f "$KICKSTART" ]; then
+    echo "semu_install: kickstart missing at $KICKSTART"
+    exit 1
+fi
+
+# Give the live environment a moment to settle (udev, storage).
+sleep 10
+
+if command -v anaconda >/dev/null 2>&1; then
+    anaconda --kickstart "$KICKSTART"
+    status=$?
+elif command -v liveinst >/dev/null 2>&1; then
+    liveinst --kickstart "$KICKSTART"
+    status=$?
+else
+    echo "semu_install: no anaconda/liveinst on live media"
+    exit 1
+fi
+
+echo "semu_install: installer exited with status $status"
+if [ "$status" -ne 0 ]; then
+    exit "$status"
+fi
+
+# The kickstart's `shutdown` directive normally powers off before this line;
+# force the point if anaconda returned without honoring it.
+poweroff -f

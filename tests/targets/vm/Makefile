@@ -30,7 +30,7 @@ BAZZITE_SMP ?= 4
 BAZZITE_VNC_DISPLAY ?= 5
 BAZZITE_VNC_PORT ?= $(shell expr 5900 + $(BAZZITE_VNC_DISPLAY))
 BAZZITE_SSH_PORT ?= 2223
-BAZZITE_OVMF ?= /opt/homebrew/share/qemu/edk2-x86_64-code.fd
+BAZZITE_OVMF ?= $(shell candidate="$$(dirname "$$(readlink -f "$$(command -v qemu-system-x86_64)")")/../share/qemu/edk2-x86_64-code.fd"; if [ -f "$$candidate" ]; then echo "$$candidate"; else echo /opt/homebrew/share/qemu/edk2-x86_64-code.fd; fi)
 BAZZITE_OVMF_VARS ?= $(VM_DIR)/bazzite-ovmf-vars.fd
 BAZZITE_OVMF_VARS_TEMPLATE ?=
 BAZZITE_SSH_USER ?= bazzite
@@ -59,7 +59,16 @@ BAZZITE_E2E_SERIAL ?= $(VM_DIR)/bazzite-e2e-serial.log
 BAZZITE_E2E_SCREEN ?= $(VM_DIR)/bazzite-e2e-screen.ppm
 BAZZITE_E2E_SSH_PORT ?= 2224
 
-.PHONY: bazzite-iso bazzite-vm-install bazzite-e2e-install bazzite-e2e-verify bazzite-vm-start bazzite-vm-start-live bazzite-vm-start-installed bazzite-vm-screenshot bazzite-vm-smoke bazzite-desktop-vm-smoke bazzite-vm-ssh bazzite-vm-wait-ssh bazzite-vm-sync bazzite-vm-verify-ssh bazzite-vm-stop bazzite-vm-clean
+.PHONY: test bazzite-iso bazzite-vm-install bazzite-e2e-install bazzite-e2e-verify bazzite-vm-start bazzite-vm-start-live bazzite-vm-start-installed bazzite-vm-screenshot bazzite-vm-smoke bazzite-desktop-vm-smoke bazzite-vm-ssh bazzite-vm-wait-ssh bazzite-vm-sync bazzite-vm-verify-ssh bazzite-vm-stop bazzite-vm-clean
+
+$(VM_DIR):
+	mkdir -p "$@"
+
+$(VM_KEY): | $(VM_DIR)
+	ssh-keygen -t ed25519 -N "" -f "$@"
+
+test: ## Full Bazzite VM end-to-end: install + boot + deck verification over SSH
+	$(MAKE) bazzite-e2e-verify
 
 $(BAZZITE_ISO): | $(VM_DIR)
 	@echo "Downloading Bazzite ISO (~10GB, resumable): $(BAZZITE_ISO_URL)"
@@ -322,12 +331,18 @@ bazzite-vm-wait-ssh: ## Wait for installed Bazzite VM SSH readiness
 	tail -n 160 "$(BAZZITE_SERIAL)" 2>/dev/null || true; \
 	exit 2
 
-bazzite-vm-sync: bazzite-vm-wait-ssh ## Sync repo to installed Bazzite VM over SSH
+bazzite-vm-sync: bazzite-vm-wait-ssh ## Sync repo + cross-built semu to installed Bazzite VM over SSH
+	$(MAKE) cross-linux
 	git ls-files -co --exclude-standard -z | rsync -az --files-from=- --from0 \
 		-e "ssh $(BAZZITE_SSH_OPTS) -p $(BAZZITE_SSH_PORT)" \
 		. $(BAZZITE_SSH_USER)@localhost:~/semu/
 	ssh $(BAZZITE_SSH_OPTS) -p $(BAZZITE_SSH_PORT) $(BAZZITE_SSH_USER)@localhost \
-		'cd ~/semu && make generated-build'
+		'mkdir -p ~/semu/src/generated/build'
+	rsync -az -e "ssh $(BAZZITE_SSH_OPTS) -p $(BAZZITE_SSH_PORT)" \
+		src/generated/build/semu-linux-x64 \
+		$(BAZZITE_SSH_USER)@localhost:~/semu/src/generated/build/semu
+	ssh $(BAZZITE_SSH_OPTS) -p $(BAZZITE_SSH_PORT) $(BAZZITE_SSH_USER)@localhost \
+		'chmod +x ~/semu/src/generated/build/semu && cd ~/semu && src/generated/build/semu test core'
 
 bazzite-vm-verify-ssh: bazzite-vm-sync ## Run Deck checks inside installed Bazzite VM over SSH
 	ssh $(BAZZITE_SSH_OPTS) -p $(BAZZITE_SSH_PORT) $(BAZZITE_SSH_USER)@localhost \

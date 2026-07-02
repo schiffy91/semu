@@ -12,7 +12,7 @@ tree-audit: ## Check that source/test files match the approved refactor shape
 		cat /tmp/semu-tree-audit.txt >&2; \
 		exit 1; \
 	fi; \
-	if find tests -type f | grep -Ev '^tests/(Makefile|core/(emulator_contract_test\.btrc|system_contract_test\.btrc|rendering_contract_test\.btrc|input_contract_test\.btrc|package_contract_test\.btrc|generated_tree_test\.btrc)|targets/steamdeck/(Makefile|input_test\.btrc|visual_evidence_test\.btrc|emulator_loop_test\.btrc)|targets/vm/(Makefile|image_test\.btrc|install_test\.btrc|visual_evidence_test\.btrc|grub\.cfg|kickstart\.ks\.in))$$' >/tmp/semu-test-tree-audit.txt; then \
+	if find tests -type f | grep -Ev '^tests/(Makefile|core/(emulator_contract_test\.btrc|system_contract_test\.btrc|rendering_contract_test\.btrc|input_contract_test\.btrc|package_contract_test\.btrc|generated_tree_test\.btrc)|targets/steamdeck/(Makefile|input_test\.btrc|visual_evidence_test\.btrc|emulator_loop_test\.btrc)|targets/vm/(Makefile|image_test\.btrc|install_test\.btrc|visual_evidence_test\.btrc|grub\.cfg|kickstart\.ks\.in|semu_install))$$' >/tmp/semu-test-tree-audit.txt; then \
 		echo "unexpected tests files outside approved tree:" >&2; \
 		cat /tmp/semu-test-tree-audit.txt >&2; \
 		exit 1; \
@@ -27,9 +27,10 @@ manifest-smoke: $(SEMU_BIN)
 core-tests: $(SEMU_BIN)
 	$(SEMU_BIN) test core
 
+# Target Makefiles assume repo-root cwd (their asset paths are root-relative).
 target-tests: $(SEMU_BIN)
-	$(MAKE) -C tests/targets/steamdeck test
-	$(MAKE) -C tests/targets/vm test
+	$(MAKE) -f tests/targets/steamdeck/Makefile test
+	$(MAKE) -f tests/targets/vm/Makefile test
 
 test: tree-audit $(SEMU_BIN) manifest-smoke core-tests
 

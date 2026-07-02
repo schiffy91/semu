@@ -20,6 +20,7 @@ import ./core/parse_log.btrc
 import ./core/settings.btrc
 import ./core/settings_parser.btrc
 import ./platforms/platform_registry.btrc
+import ./platforms/linux/linux_provisioner.btrc
 import ./systems/system_parser.btrc
 import ./systems/system_emitter.btrc
 import ./systems/model/semu_contracts.btrc
@@ -230,6 +231,34 @@ class SemuCli {
         return 0;
     }
 
+    class int runDeck(CliArgs arguments, string project) {
+        if (!PlatformRegistry.currentId().equals("linux")) {
+            print("deck commands require a linux host (current: "
+                + PlatformRegistry.currentId() + ")");
+            return 1;
+        }
+        string verb = arguments.count() > 1 ? arguments.get(1) : "";
+        ParseLog log = ParseLog();
+        SemuContracts contracts = SemuCli.loadContracts(project, log);
+        if (SemuCli.reportErrors(log)) {
+            return 1;
+        }
+        if (verb.equals("provision")) {
+            return LinuxProvisioner.provision(contracts, project);
+        }
+        if (verb.equals("verify-emulators")) {
+            return LinuxProvisioner.verifyEmulators(contracts, project);
+        }
+        if (verb.equals("verify-sync")) {
+            return LinuxProvisioner.verifySync(project);
+        }
+        if (verb.equals("verify-input")) {
+            return LinuxProvisioner.verifyInput(project);
+        }
+        print("usage: semu deck provision|verify-emulators|verify-sync|verify-input");
+        return 1;
+    }
+
     class int runSettings(string project) {
         ParseLog log = ParseLog();
         SettingsParser.materialize(project, log);
@@ -253,6 +282,7 @@ class SemuCli {
         print("  bootstrap [--project <path>]                 emit src/generated/packaging/**");
         print("  launcher  <emulator> [--print-plan] [args...] [rom]  plan/exec a launch");
         print("  settings                                     materialize + print the store");
+        print("  deck provision|verify-emulators|verify-sync|verify-input  linux target ops");
         print("  test core                                    run the contract test suites");
         return 1;
     }
@@ -270,6 +300,9 @@ class SemuCli {
         }
         if (command.equals("settings")) {
             return SemuCli.runSettings(repoRoot);
+        }
+        if (command.equals("deck")) {
+            return SemuCli.runDeck(arguments, repoRoot);
         }
         if (command.equals("test")) {
             if (arguments.count() > 1 && arguments.get(1).equals("core")) {
