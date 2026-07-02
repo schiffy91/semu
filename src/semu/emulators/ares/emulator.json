@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "name": "ares",
+  "kind": "standalone",
+  "default_system": "n64",
+  "input": {
+    "actions": [
+      "app.quit"
+    ]
+  },
+  "platforms": {
+    "macos": {
+      "backend": "native",
+      "executable": "${nix_result}/Applications/ares.app/Contents/MacOS/ares",
+      "args": [
+        "--fullscreen"
+      ]
+    }
+  },
+  "doc": {
+    "provenance": "macOS-only N64 standalone; was the %EMULATOR_ARES% macos command in system_catalog.btrc and the ARES launcher entry in metadata.btrc. The per-system '--system \"Nintendo 64\"' argument lives on the n64 binding."
+  }
+}

@@ -1,0 +1,51 @@
+// input_emitter.btrc — the generic chord translator (ChordTranslator).
+//
+// A semu-keymap-v1 chord ("Ctrl+P", "Ctrl+-", "Esc") renders into Steam VDF
+// key names through the steam_input.json key_names table: modifiers first,
+// key last, unlisted tokens upper-cased verbatim ("Ctrl+P" ->
+// "LEFT_CONTROL P", "Ctrl+-" -> "LEFT_CONTROL KEYPAD_DASH").
+//
+// This class owns ONLY the target-agnostic pieces: VDF token rendering plus
+// the chord-normalization helpers (key part, modifier parts). Emulator-native
+// hotkey grammars (RetroArch token names, Dolphin's "@(Ctrl+P)", PCSX2's
+// "Keyboard/Control & Keyboard/P") live in each concrete emulator class's
+// translateChord — never here.
+
+import std.{vector, strings}
+import ./keymap_parser.btrc
+import ./steam_input_parser.btrc
+
+class ChordTranslator {
+    // "Ctrl+P" -> "P"; "Ctrl+-" -> "-"; "Ctrl++" -> "+"; "Esc" -> "Esc".
+    class string keyPart(string chord) {
+        return ChordSyntax.keyPart(chord);
+    }
+
+    // "Ctrl+Alt+P" -> "Ctrl+Alt"; "Esc" -> "".
+    class string modifierPart(string chord) {
+        return ChordSyntax.modifierPart(chord);
+    }
+
+    // "Ctrl+Alt+P" -> ["Ctrl", "Alt"]; "Esc" -> [].
+    class Vector<string> modifierList(string chord) {
+        Vector<string> modifiers = [];
+        string joinedModifiers = ChordSyntax.modifierPart(chord);
+        if (!joinedModifiers.isEmpty()) {
+            for modifier in Strings.split(joinedModifiers, "+") {
+                modifiers.push(modifier);
+            }
+        }
+        return modifiers;
+    }
+
+    // Chord -> space-separated Steam VDF key names (modifiers first, key
+    // last), each resolved through the target's key_names table.
+    class string vdfTokens(string chord, SteamInputTarget target) {
+        Vector<string> keyNames = [];
+        for modifier in ChordTranslator.modifierList(chord) {
+            keyNames.push(target.keyName(modifier));
+        }
+        keyNames.push(target.keyName(ChordTranslator.keyPart(chord)));
+        return keyNames.join(" ");
+    }
+}

@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<emulated_controller>
+	<type>Wii U GamePad</type>
+	<profile>SteamInput-P1</profile>
+	<controller>
+		<api>SDLController</api>
+		<display_name>Steam Virtual Gamepad</display_name>
+		<rumble>0</rumble>
+	</controller>
+</emulated_controller>

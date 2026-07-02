@@ -1,0 +1,50 @@
+// aspect_probe.btrc — the emulator.json platform "aspect_probe" contract:
+// which config files to inspect for widescreen/standard markers and the
+// fallback verdict when no marker matches.
+
+import std.{vector, json}
+import ../../core/parse_log.btrc
+import ../../core/json_contract.btrc
+import ../../core/template_tokens.btrc
+
+class AspectProbe {
+    public bool present;
+    public Vector<string> files;
+    public Vector<string> widescreenMarkers;
+    public Vector<string> standardMarkers;
+    public string fallback;
+
+    public AspectProbe() {
+        self.present = false;
+        self.files = [];
+        self.widescreenMarkers = [];
+        self.standardMarkers = [];
+        self.fallback = "";
+    }
+}
+
+class AspectProbeParser {
+    class AspectProbe parse(JsonValue jsonValue, string file, string context, ParseLog log) {
+        AspectProbe probe = AspectProbe();
+        if (!jsonValue.isObject()) {
+            log.add(file, context, "expected object");
+            return probe;
+        }
+        probe.present = true;
+        Vector<string> allowedKeys = ["files", "widescreen_markers", "standard_markers",
+                                      "fallback"];
+        JsonContract.checkKeys(jsonValue, allowedKeys, file, context, log);
+        probe.files = JsonContract.stringArray(jsonValue, "files", true, file, context, log);
+        for probeFile in probe.files {
+            TemplateTokens.check(probeFile, file, context + ".files", log, false);
+        }
+        probe.widescreenMarkers = JsonContract.stringArray(jsonValue, "widescreen_markers", true,
+            file, context, log);
+        probe.standardMarkers = JsonContract.stringArray(jsonValue, "standard_markers", true,
+            file, context, log);
+        probe.fallback = JsonContract.requiredString(jsonValue, "fallback", file, context, log);
+        Vector<string> fallbacks = ["standard", "widescreen"];
+        JsonContract.checkEnum(probe.fallback, fallbacks, file, context + ".fallback", log);
+        return probe;
+    }
+}

@@ -1,0 +1,145 @@
+{
+  "schema_version": 1,
+  "keymap": "steamdeck.skm",
+  "modifiers": [
+    "ctrl",
+    "alt",
+    "shift",
+    "meta"
+  ],
+  "actions": {
+    "ui.open": {
+      "alias": "open",
+      "label": "Open"
+    },
+    "ui.pause": {
+      "alias": "pause",
+      "label": "Pause / Resume"
+    },
+    "ui.screenshot": {
+      "alias": "screenshot",
+      "label": "Take Screenshot"
+    },
+    "ui.fullscreen": {
+      "alias": "fullscreen",
+      "label": "Toggle Fullscreen"
+    },
+    "ui.menu": {
+      "alias": "menu",
+      "label": "Open Menu"
+    },
+    "app.quit": {
+      "alias": "quit",
+      "label": "Quit Emulator"
+    },
+    "state.prev": {
+      "alias": "previous_state_slot",
+      "label": "Previous State Slot"
+    },
+    "state.next": {
+      "alias": "next_state_slot",
+      "label": "Next State Slot"
+    },
+    "state.load": {
+      "alias": "load_state",
+      "label": "Load State"
+    },
+    "state.save": {
+      "alias": "save_state",
+      "label": "Save State"
+    },
+    "speed.rewind": {
+      "alias": "rewind",
+      "label": "Rewind"
+    },
+    "speed.fast": {
+      "alias": "fast_forward",
+      "label": "Fast Forward"
+    },
+    "screen.swap": {
+      "alias": "swap_screens",
+      "label": "Swap Screens"
+    },
+    "ui.escape": {
+      "alias": "escape",
+      "label": "Escape"
+    }
+  },
+  "controller": {
+    "model": "steam_deck",
+    "gyro": false,
+    "trackpads": {
+      "left": "radial_hotkeys",
+      "right": "mouse"
+    },
+    "hotkey_button": "view_long_press"
+  },
+  "radial": {
+    "slots": [
+      "state.save",
+      "state.load",
+      "app.quit",
+      "ui.menu",
+      "ui.screenshot",
+      "ui.escape"
+    ]
+  },
+  "quit_extra_bindings": [
+    "xinput_select",
+    "xinput_start",
+    "escape",
+    "alt_f4"
+  ],
+  "templates": [
+    {
+      "id": "neptune_simple",
+      "title": "Semu: Steam Deck - Neptune SIMPLE",
+      "radial_name": "Semu Simple Radial",
+      "output": "neptune-simple.vdf"
+    },
+    {
+      "id": "neptune_full",
+      "title": "Semu: Steam Deck - Neptune FULL",
+      "radial_name": "Semu Full Radial",
+      "output": "neptune-full.vdf",
+      "default": true
+    }
+  ],
+  "key_names": {
+    "ctrl": "LEFT_CONTROL",
+    "alt": "LEFT_ALT",
+    "shift": "LEFT_SHIFT",
+    "meta": "LEFT_GUI",
+    "enter": "RETURN",
+    "esc": "ESCAPE",
+    "tab": "TAB",
+    "+": "KEYPAD_PLUS",
+    "-": "KEYPAD_DASH"
+  },
+  "device_identities": {
+    "retroarch_input_driver": "sdl2",
+    "dolphin_pad": "SDL/0/Steam Deck Controller",
+    "dolphin_wiimote": "SteamDeck/0/Steam Deck",
+    "dolphin_pointer": "XInput2/0/Virtual core pointer",
+    "pcsx2_pad": "SDL-1",
+    "cemu_api": "SDLController",
+    "cemu_display_name": "Steam Virtual Gamepad",
+    "cemu_profile": "SteamInput-P1",
+    "ryujinx_controller_id": "0-f7390003-28de-0000-ff11-000001000000"
+  },
+  "platforms": {
+    "linux": {
+      "templates_dir": "${home}/.steam/steam/controller_base/templates"
+    }
+  },
+  "doc": {
+    "controller": "Deck policy the doctor asserts: no gyro, both trackpads active, hotkeys entered via View long-press; the generated VDF also maps the L4/R4 back grips to the same preset switch.",
+    "radial": "Ordered action ids for left-trackpad radial slots touch_menu_button_0..5 (group 20 in src/semu/bootstrap/templates/steam_input_template.vdf); every id must exist in the actions vocabulary above.",
+    "quit_extra_bindings": "app.quit always emits these bindings in addition to its keymap chord: xinput SELECT, xinput START, plain Esc, and Alt+F4 (was steamInputActionBindings in project_bootstrap.btrc).",
+    "templates": "Exactly one template carries default:true; it replaces the hardcoded neptune-full.vdf default while SEMU_STEAM_INPUT_TEMPLATE remains an env override. Outputs land in generated/packaging/input/steam-input/.",
+    "key_names": "semu-keymap-v1 key token to Steam VDF key-name lookup (was steamInputKeyName); unlisted keys upper-case verbatim in the emitter.",
+    "device_identities": "Target-owned physical-device identity constants formerly baked into emulator_profiles.btrc; a macos target ships different values with no btrc changes.",
+    "platforms": "templates_dir is the Steam controller template install destination; SEMU_STEAM_INPUT_DIR overrides it, and the installer prefers ${home}/.local/share/Steam when that root exists (steamRoot() in src/semu/steam/steam.btrc).",
+    "actions": "The semu-keymap-v1 action vocabulary (id -> alias for ${..._BINDINGS} tokens, label for radial/template text). Every action here must be bound in steamdeck.skm. Which emulators honor each action is declared per emulator in src/semu/emulators/<emu>/emulator.json input.actions; ui.escape is desktop-only and appears in no emulator list."
+  }
+}

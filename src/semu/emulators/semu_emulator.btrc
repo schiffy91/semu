@@ -1,0 +1,51 @@
+// semu_emulator.btrc — THE abstract emulator interface. Shared code asks
+// through this surface; concrete classes in emulators/<id>/ answer. No
+// emulator-conditional logic exists anywhere else — the only file outside
+// emulators/<id>/ allowed to name the concrete classes is
+// emulators/emulator_registry.btrc (the composition root).
+//
+// btrc dispatches method calls by declared type (no virtual dispatch), so
+// shared code never calls through a SemuEmulator-typed value: it routes via
+// EmulatorRegistry, which forwards to the concrete class. This abstract class
+// is the compile-checked contract every concrete class must implement.
+
+import std.{vector}
+import ../core/parse_log.btrc
+import ./model/emulator_platform.btrc
+import ./model/emulator_definition.btrc
+import ../systems/model/emulator_binding.btrc
+import ../input/keymap_parser.btrc
+import ../input/steam_input_parser.btrc
+
+abstract class SemuEmulator {
+    // The contract directory name (src/semu/emulators/<id>/).
+    public abstract string id();
+
+    // Validate (and semantically own) the platform's extension block —
+    // the raw JSON stored on EmulatorPlatform.extensionJson under the key
+    // equal to id(). The generic parser never interprets it.
+    public abstract void parseExtension(EmulatorPlatform platform, ParseLog log);
+
+    // ES-DE command fragments appended after platform + binding arguments
+    // (e.g. the libretro '-L <core path>' pair). Empty when the emulator
+    // adds nothing.
+    public abstract Vector<string> commandFragments(EmulatorBinding binding,
+                                                    EmulatorPlatform platform);
+
+    // Emit the emulator's per-title input/config profiles under outputRoot.
+    public abstract void emitProfiles(EmulatorDefinition definition,
+                                      SteamInputTarget steamInput, Keymap keymap,
+                                      string outputRoot);
+
+    // Arguments that force the emulator onto the given graphics api when its
+    // graphics.method is 'cli'. Empty when not applicable.
+    public abstract Vector<string> graphicsForceArguments(EmulatorPlatform platform,
+                                                          string graphicsApi);
+
+    // Emulator-native overlay configuration text ("" when none).
+    public abstract string overlayConfiguration(EmulatorPlatform platform);
+
+    // Translate a semu-keymap-v1 chord into the emulator's native hotkey
+    // syntax ("" when the emulator has no native hotkey grammar).
+    public abstract string translateChord(string chord);
+}

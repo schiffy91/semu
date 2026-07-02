@@ -1,0 +1,384 @@
+// emulator_contract_test.btrc — proof harness for the emulator stack.
+//
+// Covers: full-fidelity parse of all 10 emulator.json contracts, launch-plan
+// assembly for the Deck-proven paths (flatpak x11 forcing under gamescope,
+// the patched-RA runtime/command tap override, nix/native argument vectors on
+// macos, the verbatim ES-DE tail with add-only-when-absent platform
+// defaults), the ES-DE command grammar against the golden es_systems
+// strings, and PCSX2 profile emission against the golden Deck inis. Returns
+// the violation count (0 = pass); no main() — the CLI routes
+// `semu test core` here.
+
+import std.{vector, strings, platform, fs}
+import ../../src/semu/core/parse_log.btrc
+import ../../src/semu/systems/system_parser.btrc
+import ../../src/semu/systems/model/semu_contracts.btrc
+import ../../src/semu/systems/model/system_definition.btrc
+import ../../src/semu/systems/model/emulator_binding.btrc
+import ../../src/semu/emulators/model/emulator_definition.btrc
+import ../../src/semu/emulators/model/launch_plan.btrc
+import ../../src/semu/emulators/emulator_process.btrc
+import ../../src/semu/emulators/emulator_emitter.btrc
+import ../../src/semu/emulators/emulator_registry.btrc
+import ../../src/semu/input/keymap_parser.btrc
+import ../../src/semu/input/steam_input_parser.btrc
+
+class EmulatorContractTest {
+    class int fail(string message) {
+        print("  FAIL " + message);
+        return 1;
+    }
+
+    class bool argumentVectorHas(LaunchPlan launchPlan, string expected) {
+        return launchPlan.argumentVector.contains(expected);
+    }
+
+    class string environmentValue(LaunchPlan launchPlan, string key) {
+        for (int keyIndex = 0; keyIndex < launchPlan.environmentSetKeys.size(); keyIndex++) {
+            if (launchPlan.environmentSetKeys.get(keyIndex).equals(key)) {
+                return launchPlan.environmentSetValues.get(keyIndex);
+            }
+        }
+        return "";
+    }
+
+    class EmulatorDefinition findEmulator(SemuContracts contracts, string emulatorId) {
+        for emulatorDefinition in contracts.emulators {
+            if (emulatorDefinition.id.equals(emulatorId)) {
+                return emulatorDefinition;
+            }
+        }
+        return EmulatorDefinition();
+    }
+
+    class SystemDefinition findSystem(SemuContracts contracts, string systemId) {
+        for systemDefinition in contracts.systems {
+            if (systemDefinition.id.equals(systemId)) {
+                return systemDefinition;
+            }
+        }
+        return SystemDefinition();
+    }
+
+    class EmulatorBinding findBinding(SystemDefinition systemDefinition, string emulatorId) {
+        for binding in systemDefinition.emulators {
+            if (binding.emulator.equals(emulatorId)) {
+                return binding;
+            }
+        }
+        return EmulatorBinding();
+    }
+
+    class int checkDolphinPlan(SemuContracts contracts) {
+        int failures = 0;
+        EmulatorDefinition dolphin = EmulatorContractTest.findEmulator(contracts, "dolphin");
+        Vector<string> noArguments = [];
+        LaunchPlan dolphinPlan = EmulatorLauncher.plan(dolphin, "linux", "gamescope",
+            "/roms/gc/game.iso", noArguments);
+        if (!dolphinPlan.backend.equals("flatpak")) {
+            failures = failures + EmulatorContractTest.fail(
+                "dolphin linux backend: got '" + dolphinPlan.backend + "'");
+        }
+        if (!EmulatorContractTest.argumentVectorHas(dolphinPlan, "--socket=x11")) {
+            failures = failures + EmulatorContractTest.fail(
+                "dolphin gamescope plan lacks --socket=x11");
+        }
+        if (!dolphinPlan.environmentUnset.contains("WAYLAND_DISPLAY")) {
+            failures = failures + EmulatorContractTest.fail(
+                "dolphin gamescope plan does not unset WAYLAND_DISPLAY");
+        }
+        if (!EmulatorContractTest.argumentVectorHas(dolphinPlan, "--unset-env=WAYLAND_DISPLAY")) {
+            failures = failures + EmulatorContractTest.fail(
+                "dolphin gamescope plan lacks --unset-env=WAYLAND_DISPLAY");
+        }
+        if (!EmulatorContractTest.environmentValue(dolphinPlan, "DISPLAY").equals(":1")) {
+            failures = failures + EmulatorContractTest.fail("dolphin gamescope DISPLAY: got '"
+                + EmulatorContractTest.environmentValue(dolphinPlan, "DISPLAY")
+                + "' (want ':1')");
+        }
+        if (!EmulatorContractTest.argumentVectorHas(dolphinPlan, "org.DolphinEmu.dolphin-emu")) {
+            failures = failures + EmulatorContractTest.fail(
+                "dolphin plan lacks the flatpak app id");
+        }
+        if (!EmulatorContractTest.argumentVectorHas(dolphinPlan, "/roms/gc/game.iso")) {
+            failures = failures + EmulatorContractTest.fail("dolphin plan lacks the rom path");
+        }
+        return failures;
+    }
+
+    class int countInArgumentVector(LaunchPlan launchPlan, string expected) {
+        int count = 0;
+        for argument in launchPlan.argumentVector {
+            if (argument.equals(expected)) {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    // The ES-DE shim path: the emitted es_systems command already carries the
+    // platform arguments, so a plan built from that verbatim tail must not
+    // re-apply them — args appear exactly once and the ROM stays last.
+    class int checkDolphinEsDeTailPlan(SemuContracts contracts) {
+        int failures = 0;
+        EmulatorDefinition dolphin = EmulatorContractTest.findEmulator(contracts, "dolphin");
+        Vector<string> esDeTail = ["--config", "Dolphin.Display.Fullscreen=True",
+                                   "-b", "-e", "/roms/wii/game.rvz"];
+        LaunchPlan tailPlan = EmulatorLauncher.plan(dolphin, "linux", "gamescope",
+            "", esDeTail);
+        if (EmulatorContractTest.countInArgumentVector(tailPlan, "--config") != 1
+            || EmulatorContractTest.countInArgumentVector(tailPlan, "-b") != 1
+            || EmulatorContractTest.countInArgumentVector(tailPlan, "-e") != 1) {
+            failures = failures + EmulatorContractTest.fail(
+                "dolphin es-de tail plan duplicated platform arguments");
+        }
+        int lastIndex = tailPlan.argumentVector.size() - 1;
+        if (lastIndex < 0
+            || !tailPlan.argumentVector.get(lastIndex).equals("/roms/wii/game.rvz")) {
+            failures = failures + EmulatorContractTest.fail(
+                "dolphin es-de tail plan must keep the rom as the final argument");
+        }
+        if (EmulatorContractTest.countInArgumentVector(tailPlan,
+                "Dolphin.Display.Fullscreen=True") != 1) {
+            failures = failures + EmulatorContractTest.fail(
+                "dolphin es-de tail plan duplicated the --config value");
+        }
+        return failures;
+    }
+
+    class int checkRetroArchLinuxPlan(SemuContracts contracts) {
+        int failures = 0;
+        EmulatorDefinition retroArch = EmulatorContractTest.findEmulator(contracts, "retroarch");
+        Vector<string> noArguments = [];
+        LaunchPlan retroArchPlan = EmulatorLauncher.plan(retroArch, "linux", "gamescope",
+            "", noArguments);
+        if (!EmulatorContractTest.argumentVectorHas(retroArchPlan,
+                "--command=${asset_root}/bin/retroarch-semu")) {
+            failures = failures + EmulatorContractTest.fail(
+                "retroarch linux plan lacks the tap --command override");
+        }
+        if (!EmulatorContractTest.argumentVectorHas(retroArchPlan, "org.kde.Sdk//6.10")) {
+            failures = failures + EmulatorContractTest.fail(
+                "retroarch linux plan does not run in the SDK runtime");
+        }
+        if (EmulatorContractTest.argumentVectorHas(retroArchPlan, "org.libretro.RetroArch")) {
+            failures = failures + EmulatorContractTest.fail(
+                "retroarch linux plan must replace the stock app id with the runtime");
+        }
+        if (!EmulatorContractTest.argumentVectorHas(retroArchPlan, "--devel")
+            || !EmulatorContractTest.argumentVectorHas(retroArchPlan, "--socket=pulseaudio")
+            || !EmulatorContractTest.argumentVectorHas(retroArchPlan, "--share=ipc")
+            || !EmulatorContractTest.argumentVectorHas(retroArchPlan, "--filesystem=host")) {
+            failures = failures + EmulatorContractTest.fail(
+                "retroarch linux plan lacks the sandbox grants (devel/pulseaudio/ipc/host)");
+        }
+        if (!EmulatorContractTest.environmentValue(retroArchPlan, "DISPLAY").equals(":1")) {
+            failures = failures + EmulatorContractTest.fail("retroarch gamescope DISPLAY: got '"
+                + EmulatorContractTest.environmentValue(retroArchPlan, "DISPLAY")
+                + "' (want ':1')");
+        }
+        return failures;
+    }
+
+    class int checkRetroArchMacosPlan(SemuContracts contracts) {
+        int failures = 0;
+        EmulatorDefinition retroArch = EmulatorContractTest.findEmulator(contracts, "retroarch");
+        Vector<string> noArguments = [];
+        LaunchPlan retroArchMacPlan = EmulatorLauncher.plan(retroArch, "macos", "",
+            "/roms/gb/game.gb", noArguments);
+        if (!retroArchMacPlan.backend.equals("nix")) {
+            failures = failures + EmulatorContractTest.fail(
+                "retroarch macos backend: got '" + retroArchMacPlan.backend + "'");
+        }
+        if (retroArchMacPlan.argumentVector.size() == 0
+            || !retroArchMacPlan.argumentVector.get(0).equals("${nix_result}/bin/retroarch")) {
+            failures = failures + EmulatorContractTest.fail(
+                "retroarch macos argv[0] must be the nix executable");
+        }
+        if (!EmulatorContractTest.argumentVectorHas(retroArchMacPlan, "-f")) {
+            failures = failures + EmulatorContractTest.fail(
+                "retroarch macos plan lacks the -f platform arg");
+        }
+        if (retroArchMacPlan.argumentVector.size() == 0
+            || !retroArchMacPlan.argumentVector.get(retroArchMacPlan.argumentVector.size() - 1)
+                .equals("/roms/gb/game.gb")) {
+            failures = failures + EmulatorContractTest.fail(
+                "retroarch macos plan must end with the rom path");
+        }
+        if (EmulatorContractTest.argumentVectorHas(retroArchMacPlan, "--socket=x11")) {
+            failures = failures + EmulatorContractTest.fail(
+                "retroarch macos plan must not carry linux display sockets");
+        }
+        return failures;
+    }
+
+    class int checkAresPlans(SemuContracts contracts) {
+        int failures = 0;
+        EmulatorDefinition ares = EmulatorContractTest.findEmulator(contracts, "ares");
+        Vector<string> noArguments = [];
+        LaunchPlan aresPlan = EmulatorLauncher.plan(ares, "macos", "",
+            "/roms/n64/game.z64", noArguments);
+        if (!aresPlan.backend.equals("native")) {
+            failures = failures + EmulatorContractTest.fail(
+                "ares macos backend: got '" + aresPlan.backend + "'");
+        }
+        if (aresPlan.argumentVector.size() == 0
+            || !aresPlan.argumentVector.get(0)
+                .equals("${nix_result}/Applications/ares.app/Contents/MacOS/ares")) {
+            failures = failures + EmulatorContractTest.fail(
+                "ares macos argv[0] must be the app executable");
+        }
+        if (!EmulatorContractTest.argumentVectorHas(aresPlan, "--fullscreen")) {
+            failures = failures + EmulatorContractTest.fail("ares macos plan lacks --fullscreen");
+        }
+        LaunchPlan aresLinuxPlan = EmulatorLauncher.plan(ares, "linux", "desktop",
+            "", noArguments);
+        if (aresLinuxPlan.argumentVector.size() != 0) {
+            failures = failures + EmulatorContractTest.fail(
+                "ares must produce an empty plan on linux (no platform block)");
+        }
+        return failures;
+    }
+
+    class int checkEsDeCommands(SemuContracts contracts) {
+        int failures = 0;
+        EmulatorDefinition retroArch = EmulatorContractTest.findEmulator(contracts, "retroarch");
+        SystemDefinition gameBoy = EmulatorContractTest.findSystem(contracts, "gb");
+        EmulatorBinding gameBoyBinding = EmulatorContractTest.findBinding(gameBoy, "retroarch");
+        string gameBoyCommand = EmulatorEmitter.esDeCommand(gameBoyBinding, retroArch, "linux");
+        string gameBoyExpected =
+            "%EMULATOR_RETROARCH% -f -L %CORE_RETROARCH%/gambatte_libretro.so %ROM%";
+        if (!gameBoyCommand.equals(gameBoyExpected)) {
+            failures = failures + EmulatorContractTest.fail("gb esde command: got '"
+                + gameBoyCommand + "' want '" + gameBoyExpected + "'");
+        }
+
+        EmulatorDefinition ares = EmulatorContractTest.findEmulator(contracts, "ares");
+        SystemDefinition nintendo64 = EmulatorContractTest.findSystem(contracts, "n64");
+        EmulatorBinding nintendo64Binding = EmulatorContractTest.findBinding(nintendo64, "ares");
+        string nintendo64Command = EmulatorEmitter.esDeCommand(nintendo64Binding, ares, "macos");
+        string nintendo64Expected =
+            "%EMULATOR_ARES% --fullscreen --system \"Nintendo 64\" %ROM%";
+        if (!nintendo64Command.equals(nintendo64Expected)) {
+            failures = failures + EmulatorContractTest.fail("n64 esde command: got '"
+                + nintendo64Command + "' want '" + nintendo64Expected + "'");
+        }
+        return failures;
+    }
+
+    // Golden-parity comparison for one emitted PCSX2 ini: byte-per-line
+    // against the Deck-proven golden, with two principled exceptions — the
+    // golden Bios line carries the golden machine's absolute project path
+    // (the emitted line must carry the same project-relative tail), and the
+    // ToggleSlowMotion hotkey renders only when the frozen contract declares
+    // speed.rewind.
+    class int comparePcsx2GoldenFile(string emittedPath, string goldenPath,
+                                     EmulatorDefinition pcsx2, string name) {
+        if (!FileSystem.isFile(emittedPath)) {
+            return EmulatorContractTest.fail(name + " was not emitted: " + emittedPath);
+        }
+        if (!FileSystem.isFile(goldenPath)) {
+            return EmulatorContractTest.fail(name + " golden missing: " + goldenPath);
+        }
+        int failures = 0;
+        Vector<string> emittedLines = Strings.split(Path.readAll(emittedPath), "\n");
+        int emittedIndex = 0;
+        for goldenLine in Strings.split(Path.readAll(goldenPath), "\n") {
+            bool slowMotionGated = goldenLine.startsWith("ToggleSlowMotion")
+                && !pcsx2.input.actions.contains("speed.rewind");
+            if (!slowMotionGated) {
+                string emittedLine = emittedIndex < emittedLines.size()
+                    ? emittedLines.get(emittedIndex) : "(missing)";
+                emittedIndex++;
+                if (goldenLine.startsWith("Bios = ")) {
+                    if (!emittedLine.startsWith("Bios = ")
+                        || !emittedLine.endsWith("src/generated/runtime/content/bios/ps2")) {
+                        failures = failures + EmulatorContractTest.fail(
+                            name + " bios folder line: got '" + emittedLine + "'");
+                    }
+                } else if (!emittedLine.equals(goldenLine)) {
+                    failures = failures + EmulatorContractTest.fail(name + " line "
+                        + f"{emittedIndex}" + ": got '" + emittedLine + "' want '"
+                        + goldenLine + "'");
+                }
+            }
+        }
+        if (emittedIndex != emittedLines.size()) {
+            failures = failures + EmulatorContractTest.fail(
+                name + f" carries {emittedLines.size() - emittedIndex} extra lines");
+        }
+        return failures;
+    }
+
+    // PCSX2 profile emission vs the Deck goldens — a silent no-op emitter
+    // (the gap that dropped the PS2 input fix) can never pass again.
+    class int checkPcsx2Profiles(SemuContracts contracts, string repoRoot) {
+        ParseLog log = ParseLog();
+        string targetDirectory = PathTools.join(repoRoot,
+            "src/semu/input/targets/steamdeck");
+        Keymap keymap = KeymapParser.parse(
+            Path.readAll(PathTools.join(targetDirectory, "steamdeck.skm")), log);
+        SteamInputTarget steamInput = SteamInputParser.parse(
+            PathTools.join(targetDirectory, "steam_input.json"), log);
+        EmulatorDefinition pcsx2 = EmulatorContractTest.findEmulator(contracts, "pcsx2");
+        string outputRoot = PathTools.join(
+            Environment.get("SEMU_TEST_TMP", "/tmp/semu-core-tests"), "pcsx2-profiles");
+        EmulatorRegistry.emitProfiles(pcsx2.id, pcsx2, steamInput, keymap, outputRoot);
+        string goldenRoot = PathTools.join(repoRoot,
+            "garbage/generated/packaging/emulators/profiles/PCSX2/config");
+        int failures = EmulatorContractTest.comparePcsx2GoldenFile(
+            PathTools.join(outputRoot, "PCSX2/config/inis/PCSX2.ini"),
+            PathTools.join(goldenRoot, "inis/PCSX2.ini"), pcsx2, "pcsx2 base ini");
+        failures = failures + EmulatorContractTest.comparePcsx2GoldenFile(
+            PathTools.join(outputRoot, "PCSX2/config/inputprofiles/Steam Deck.ini"),
+            PathTools.join(goldenRoot, "inputprofiles/Steam Deck.ini"), pcsx2,
+            "pcsx2 input profile");
+        return failures;
+    }
+
+    class int run(string repoRoot) {
+        string sourceRoot = PathTools.join(repoRoot, "src/semu");
+        int failures = 0;
+        ParseLog log = ParseLog();
+        SemuContracts contracts = SystemParser.loadAll(sourceRoot, log);
+        if (!log.ok()) {
+            for error in log.errors {
+                failures = failures + EmulatorContractTest.fail("parse: " + error);
+            }
+        }
+        if (contracts.emulators.size() != 10) {
+            failures = failures + EmulatorContractTest.fail(
+                f"expected 10 emulator contracts, got {contracts.emulators.size()}");
+        }
+        Vector<string> expectedIds = ["ares", "azahar", "cemu", "dolphin", "flycast",
+                                      "melonds", "pcsx2", "ppsspp", "retroarch", "ryujinx"];
+        for emulatorId in expectedIds {
+            if (!contracts.hasEmulator(emulatorId)) {
+                failures = failures + EmulatorContractTest.fail(
+                    "missing emulator contract '" + emulatorId + "'");
+            }
+        }
+
+        failures = failures + EmulatorContractTest.checkDolphinPlan(contracts);
+        failures = failures + EmulatorContractTest.checkDolphinEsDeTailPlan(contracts);
+        failures = failures + EmulatorContractTest.checkRetroArchLinuxPlan(contracts);
+        failures = failures + EmulatorContractTest.checkRetroArchMacosPlan(contracts);
+        failures = failures + EmulatorContractTest.checkAresPlans(contracts);
+        failures = failures + EmulatorContractTest.checkEsDeCommands(contracts);
+        failures = failures + EmulatorContractTest.checkPcsx2Profiles(contracts, repoRoot);
+
+        EmulatorDefinition dolphin = EmulatorContractTest.findEmulator(contracts, "dolphin");
+        string shim = EmulatorEmitter.shimScript(dolphin);
+        if (!shim.startsWith("#!/usr/bin/env sh\n") || !shim.contains("launcher dolphin")) {
+            failures = failures + EmulatorContractTest.fail(
+                "dolphin shim script malformed: " + shim);
+        }
+
+        if (failures > 0) {
+            print(f"emulator contract: FAIL ({failures} violations)");
+            return failures;
+        }
+        print("emulator contract: parse + launch plans + esde commands valid");
+        return 0;
+    }
+}

@@ -1,0 +1,60 @@
+// steamdeck_hotkey_assignments.btrc — which action each hotkey-layer
+// controller button fires (keymap button token -> action id; buttons without
+// an HKB bind are absent). Collected from the keymap's "HKB + <button>"
+// binds; SteamdeckInputEmitter renders the result into the neptune VDF.
+
+import std.{vector}
+import ../../keymap_parser.btrc
+
+class SteamdeckHotkeyAssignments {
+    public Vector<string> buttons;
+    public Vector<string> actionIds;
+
+    public SteamdeckHotkeyAssignments() {
+        self.buttons = [];
+        self.actionIds = [];
+    }
+
+    // "HKB + D-Pad Left" -> "D-Pad Left"; non-HKB combos return "" (the
+    // hotkey layer only carries HKB-prefixed binds).
+    class string hotkeyButtonToken(string combo) {
+        int plusIndex = combo.indexOf("+");
+        if (plusIndex < 0) {
+            return "";
+        }
+        if (!combo.substring(0, plusIndex).trim().equals("HKB")) {
+            return "";
+        }
+        return combo.substring(plusIndex + 1, combo.len() - plusIndex - 1).trim();
+    }
+
+    class SteamdeckHotkeyAssignments collect(Keymap keymap) {
+        SteamdeckHotkeyAssignments assignments = SteamdeckHotkeyAssignments();
+        for binding in keymap.bindings {
+            string button = SteamdeckHotkeyAssignments.hotkeyButtonToken(binding.button);
+            if (!button.isEmpty()) {
+                assignments.buttons.push(button);
+                assignments.actionIds.push(binding.actionId);
+            }
+        }
+        return assignments;
+    }
+
+    public string actionFor(string button) {
+        for (int buttonIndex = 0; buttonIndex < self.buttons.size(); buttonIndex++) {
+            if (self.buttons.get(buttonIndex).equals(button)) {
+                return self.actionIds.get(buttonIndex);
+            }
+        }
+        return "";
+    }
+
+    public bool anyBound(Vector<string> candidateButtons) {
+        for candidate in candidateButtons {
+            if (!self.actionFor(candidate).isEmpty()) {
+                return true;
+            }
+        }
+        return false;
+    }
+}

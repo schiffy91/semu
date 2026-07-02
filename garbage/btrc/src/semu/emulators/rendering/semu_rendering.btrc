@@ -1,0 +1,44 @@
+class SemuRenderResolution {
+    public int width;
+    public int height;
+
+    public SemuRenderResolution(int width, int height) {
+        self.width = width;
+        self.height = height;
+    }
+
+    public bool known() {
+        return self.width > 0 && self.height > 0;
+    }
+
+    public string text() {
+        if (!self.known()) { return ""; }
+        return f"{self.width}x{self.height}";
+    }
+}
+
+class SemuRendering {
+    public string emulator;
+    public string backend;
+    public bool tapCapable;
+
+    public SemuRendering(string emulator, string backend, bool tapCapable) {
+        self.emulator = emulator;
+        self.backend = backend;
+        self.tapCapable = tapCapable;
+    }
+
+    public SemuRenderResolution targetResolution(SemuRenderResolution nativeResolution, SemuRenderResolution display, string mode) {
+        if (!nativeResolution.known() || mode.equals("native")) {
+            return SemuRenderResolution(0, 0);
+        }
+        if (mode.equals("1x") || !display.known()) {
+            return nativeResolution;
+        }
+        int widthScale = display.width / nativeResolution.width;
+        int heightScale = display.height / nativeResolution.height;
+        int scale = widthScale < heightScale ? widthScale : heightScale;
+        if (scale < 1) { scale = 1; }
+        return SemuRenderResolution(nativeResolution.width * scale, nativeResolution.height * scale);
+    }
+}

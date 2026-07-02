@@ -1,0 +1,7 @@
+{
+  "schema_version": 1,
+  "enabled": true,
+  "screen": "assets/shaders/nes/screen.slangp",
+  "composite": "assets/shaders/nes/composite.slangp",
+  "doc": { "intent": "NES composite artifacting, phosphor mask, scanlines" }
+}

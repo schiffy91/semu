@@ -1,0 +1,40 @@
+// firmware_policy.btrc — the emulator.json platform "firmware" contract: the
+// directory the emulator reads firmware/BIOS from, plus fallback locations.
+
+import std.{vector, json}
+import ../../core/parse_log.btrc
+import ../../core/json_contract.btrc
+import ../../core/template_tokens.btrc
+
+class FirmwarePolicy {
+    public bool present;
+    public string directory;
+    public Vector<string> fallbackDirectories;
+
+    public FirmwarePolicy() {
+        self.present = false;
+        self.directory = "";
+        self.fallbackDirectories = [];
+    }
+}
+
+class FirmwarePolicyParser {
+    class FirmwarePolicy parse(JsonValue jsonValue, string file, string context, ParseLog log) {
+        FirmwarePolicy firmware = FirmwarePolicy();
+        if (!jsonValue.isObject()) {
+            log.add(file, context, "expected object");
+            return firmware;
+        }
+        firmware.present = true;
+        Vector<string> allowedKeys = ["dir", "fallback_dirs"];
+        JsonContract.checkKeys(jsonValue, allowedKeys, file, context, log);
+        firmware.directory = JsonContract.requiredString(jsonValue, "dir", file, context, log);
+        TemplateTokens.check(firmware.directory, file, context + ".dir", log, false);
+        firmware.fallbackDirectories = JsonContract.stringArray(jsonValue, "fallback_dirs", false,
+            file, context, log);
+        for fallbackDirectory in firmware.fallbackDirectories {
+            TemplateTokens.check(fallbackDirectory, file, context + ".fallback_dirs", log, false);
+        }
+        return firmware;
+    }
+}

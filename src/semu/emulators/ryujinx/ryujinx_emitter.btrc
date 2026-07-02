@@ -1,0 +1,134 @@
+// ryujinx_emitter.btrc — text builders for the Ryujinx controller profile.
+//
+// RyujinxEmulator.emitProfiles writes exactly one file, the SDL2 controller
+// profile Ryujinx loads for the Steam virtual gamepad:
+//   <outputRoot>/<Name>/config/profiles/controller/Steam Virtual Controller.json
+// (outputRoot is the shared emulator-profiles root, e.g.
+// generated/packaging/emulators/profiles — mirrors the Deck-proven golden at
+// garbage/generated/packaging/emulators/profiles/Ryujinx/...).
+//
+// The button/stick wire grammar (joycon section names, SDL button tokens,
+// ProController identity) is Ryujinx's own profile schema and is owned here;
+// the physical controller identity is contract data and arrives as an
+// argument (steam_input.json device_identities.ryujinx_controller_id).
+
+import std.{vector}
+
+class RyujinxEmitter {
+    // "key": "value"  (quoted string field)
+    class string textField(string fieldKey, string fieldValue) {
+        return "\"" + fieldKey + "\": \"" + fieldValue + "\"";
+    }
+
+    // "key": value  (unquoted literal — numbers)
+    class string literalField(string fieldKey, string literalValue) {
+        return "\"" + fieldKey + "\": " + literalValue;
+    }
+
+    class string booleanField(string fieldKey, bool fieldValue) {
+        if (fieldValue) {
+            return RyujinxEmitter.literalField(fieldKey, "true");
+        }
+        return RyujinxEmitter.literalField(fieldKey, "false");
+    }
+
+    class string objectText(Vector<string> fields) {
+        return "{" + fields.join(", ") + "}";
+    }
+
+    class string objectField(string fieldKey, Vector<string> fields) {
+        return RyujinxEmitter.literalField(fieldKey, RyujinxEmitter.objectText(fields));
+    }
+
+    class Vector<string> leftJoyconStickFields() {
+        Vector<string> fields = [RyujinxEmitter.textField("joystick", "Left"),
+                                 RyujinxEmitter.booleanField("invert_stick_x", false),
+                                 RyujinxEmitter.booleanField("invert_stick_y", false),
+                                 RyujinxEmitter.textField("stick_button", "LeftStick")];
+        return fields;
+    }
+
+    class Vector<string> rightJoyconStickFields() {
+        Vector<string> fields = [RyujinxEmitter.textField("joystick", "Right"),
+                                 RyujinxEmitter.booleanField("invert_stick_x", false),
+                                 RyujinxEmitter.booleanField("invert_stick_y", false),
+                                 RyujinxEmitter.textField("stick_button", "RightStick")];
+        return fields;
+    }
+
+    // Deck policy: motion stays off (steam_input.json controller doc — no gyro).
+    class Vector<string> motionFields() {
+        Vector<string> fields = [RyujinxEmitter.literalField("slot", "0"),
+                                 RyujinxEmitter.literalField("alt_slot", "0"),
+                                 RyujinxEmitter.booleanField("mirror_input", false),
+                                 RyujinxEmitter.textField("motion_backend", "CemuHook"),
+                                 RyujinxEmitter.literalField("sensitivity", "100"),
+                                 RyujinxEmitter.literalField("gyro_deadzone", "1"),
+                                 RyujinxEmitter.booleanField("enable_motion", false)];
+        return fields;
+    }
+
+    class Vector<string> rumbleFields() {
+        Vector<string> fields = [RyujinxEmitter.literalField("strong_rumble", "1"),
+                                 RyujinxEmitter.literalField("weak_rumble", "1"),
+                                 RyujinxEmitter.booleanField("enable_rumble", true)];
+        return fields;
+    }
+
+    class Vector<string> leftJoyconFields() {
+        Vector<string> fields = [RyujinxEmitter.textField("button_minus", "Back"),
+                                 RyujinxEmitter.textField("button_l", "LeftShoulder"),
+                                 RyujinxEmitter.textField("button_zl", "LeftTrigger"),
+                                 RyujinxEmitter.textField("dpad_up", "DpadUp"),
+                                 RyujinxEmitter.textField("dpad_down", "DpadDown"),
+                                 RyujinxEmitter.textField("dpad_left", "DpadLeft"),
+                                 RyujinxEmitter.textField("dpad_right", "DpadRight")];
+        return fields;
+    }
+
+    // Switch face-button positions differ from the SDL/Xbox layout, so the
+    // letters cross over on purpose: Switch X = SDL Y, Switch B = SDL A, ...
+    class Vector<string> rightJoyconFields() {
+        Vector<string> fields = [RyujinxEmitter.textField("button_plus", "Start"),
+                                 RyujinxEmitter.textField("button_r", "RightShoulder"),
+                                 RyujinxEmitter.textField("button_zr", "RightTrigger"),
+                                 RyujinxEmitter.textField("button_x", "Y"),
+                                 RyujinxEmitter.textField("button_b", "A"),
+                                 RyujinxEmitter.textField("button_y", "X"),
+                                 RyujinxEmitter.textField("button_a", "B")];
+        return fields;
+    }
+
+    // The full profile document (golden byte-for-byte, identity injected).
+    class string controllerProfileText(string controllerIdentity) {
+        Vector<string> fields = [];
+        fields.push(RyujinxEmitter.objectField("left_joycon_stick",
+            RyujinxEmitter.leftJoyconStickFields()));
+        fields.push(RyujinxEmitter.objectField("right_joycon_stick",
+            RyujinxEmitter.rightJoyconStickFields()));
+        fields.push(RyujinxEmitter.objectField("motion", RyujinxEmitter.motionFields()));
+        fields.push(RyujinxEmitter.objectField("rumble", RyujinxEmitter.rumbleFields()));
+        fields.push(RyujinxEmitter.objectField("left_joycon",
+            RyujinxEmitter.leftJoyconFields()));
+        fields.push(RyujinxEmitter.objectField("right_joycon",
+            RyujinxEmitter.rightJoyconFields()));
+        fields.push(RyujinxEmitter.literalField("version", "1"));
+        fields.push(RyujinxEmitter.textField("backend", "GamepadSDL2"));
+        fields.push(RyujinxEmitter.textField("id", controllerIdentity));
+        fields.push(RyujinxEmitter.textField("controller_type", "ProController"));
+        fields.push(RyujinxEmitter.textField("player_index", "Player1"));
+        return RyujinxEmitter.objectText(fields) + "\n";
+    }
+
+    // steam_input.json device_identities key carrying the SDL2 controller id.
+    class string controllerIdentityKey(string emulatorId) {
+        return emulatorId + "_controller_id";
+    }
+
+    // Profile path under the shared profiles root. The file name is the
+    // display name Steam's SDL2 virtual gamepad reports inside the flatpak;
+    // Ryujinx binds profiles to controllers by that name.
+    class string controllerProfileRelativePath(string emulatorName) {
+        return emulatorName + "/config/profiles/controller/Steam Virtual Controller.json";
+    }
+}

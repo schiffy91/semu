@@ -1,0 +1,127 @@
+// retroarch_emitter.btrc — RetroArch profile emission (retroarch.cfg) plus
+// the RetroArch-native hotkey token grammar.
+//
+// Golden reference: garbage/generated/packaging/emulators/profiles/RetroArch/
+// retroarch.cfg (Deck-proven). Every value that exists in a frozen contract
+// is looked up, never hardcoded: the input driver arrives from the caller
+// (steam_input.json device identity with the emulator.json extension block as
+// fallback), the audio driver is derived from the sandbox socket grant, and
+// every hotkey key name is translated from the Keymap chords. The only
+// literals here are RetroArch's own configuration grammar (cfg key names,
+// key-token names, the quit-combo enum) — RetroArch-native vocabulary that
+// exists in no semu contract.
+
+import std.{vector, fs}
+import ../../input/keymap_parser.btrc
+import ../../input/input_emitter.btrc
+
+class RetroArchEmitter {
+    // RetroArch's native hotkey key-token grammar (Deck-proven): the bare
+    // key part of the chord, lowercased (RetroArch has no per-hotkey
+    // modifier syntax; the proven configs bind the bare key); '+' -> "add",
+    // '-' -> "subtract", "Esc" -> RetroArch's "escape" token.
+    class string hotkeyToken(string chord) {
+        string keyName = ChordTranslator.keyPart(chord);
+        if (keyName.equals("+")) {
+            return "add";
+        }
+        if (keyName.equals("-")) {
+            return "subtract";
+        }
+        string loweredKeyName = keyName.toLower();
+        if (loweredKeyName.equals("esc")) {
+            return "escape";
+        }
+        return loweredKeyName;
+    }
+
+    // One retroarch.cfg assignment line: key = "value".
+    class string configurationLine(string key, string value) {
+        return key + " = \"" + value + "\"";
+    }
+
+    // The runtime content root shared with the launcher: outputRoot is the
+    // shared profiles root (<generated>/packaging/emulators/profiles),
+    // content lives at <generated>/runtime/content (mirrors the golden
+    // savestate/savefile/screenshot directories).
+    class string runtimeContentRoot(string outputRoot) {
+        string generatedRoot = PathTools.dirname(PathTools.dirname(
+            PathTools.dirname(outputRoot)));
+        return PathTools.join(generatedRoot, "runtime/content");
+    }
+
+    // The hotkey block, golden order. Each line binds a RetroArch hotkey to
+    // the key token of the matching Keymap chord; actions absent from the
+    // keymap emit nothing. input_exit_emulator rides the ui.escape chord
+    // (the Steam Input quit path sends Esc); input_quit_gamepad_combo 4 is
+    // RetroArch's hold-Start combo enum, its gamepad-side quit companion.
+    class Vector<string> hotkeyLines(Keymap keymap) {
+        Vector<string> lines = [];
+        if (keymap.hasAction("ui.escape")) {
+            lines.push(RetroArchEmitter.configurationLine("input_exit_emulator",
+                RetroArchEmitter.hotkeyToken(keymap.chordFor("ui.escape"))));
+            lines.push(RetroArchEmitter.configurationLine("input_quit_gamepad_combo", "4"));
+        }
+        Vector<string> hotkeyKeys = ["input_load_state", "input_menu_toggle",
+                                     "input_save_state", "input_screenshot",
+                                     "input_state_slot_decrease", "input_state_slot_increase",
+                                     "input_toggle_fast_forward", "input_toggle_fullscreen"];
+        Vector<string> hotkeyActionIds = ["state.load", "ui.menu",
+                                          "state.save", "ui.screenshot",
+                                          "state.prev", "state.next",
+                                          "speed.fast", "ui.fullscreen"];
+        for (int hotkeyIndex = 0; hotkeyIndex < hotkeyKeys.size(); hotkeyIndex++) {
+            string actionId = hotkeyActionIds.get(hotkeyIndex);
+            if (keymap.hasAction(actionId)) {
+                lines.push(RetroArchEmitter.configurationLine(hotkeyKeys.get(hotkeyIndex),
+                    RetroArchEmitter.hotkeyToken(keymap.chordFor(actionId))));
+            }
+        }
+        return lines;
+    }
+
+    // The full profile text (golden line order). The visual block is the
+    // profile default: fullscreen integer scaling with shaders off — the
+    // session-specific shader/driver pins are runtime upserts owned by
+    // RetroArchRendering, not baked into the profile.
+    class string profileText(string inputDriver, string audioDriver, string contentRoot,
+                             Keymap keymap) {
+        Vector<string> lines = [];
+        lines.push(RetroArchEmitter.configurationLine("config_save_on_exit", "true"));
+        if (!audioDriver.isEmpty()) {
+            lines.push(RetroArchEmitter.configurationLine("audio_driver", audioDriver));
+        }
+        if (!inputDriver.isEmpty()) {
+            lines.push(RetroArchEmitter.configurationLine("input_driver", inputDriver));
+        }
+        lines.push(RetroArchEmitter.configurationLine("input_autodetect_enable", "true"));
+        lines.push(RetroArchEmitter.configurationLine("input_remap_binds_enable", "true"));
+        lines.push(RetroArchEmitter.configurationLine("savestate_directory",
+            PathTools.join(contentRoot, "states")));
+        lines.push(RetroArchEmitter.configurationLine("savefile_directory",
+            PathTools.join(contentRoot, "saves")));
+        lines.push(RetroArchEmitter.configurationLine("screenshot_directory",
+            PathTools.join(contentRoot, "screenshots")));
+        lines.push(RetroArchEmitter.configurationLine("video_fullscreen", "true"));
+        lines.push(RetroArchEmitter.configurationLine("video_scale_integer", "true"));
+        lines.push(RetroArchEmitter.configurationLine("video_force_aspect", "true"));
+        lines.push(RetroArchEmitter.configurationLine("video_vsync", "true"));
+        lines.push(RetroArchEmitter.configurationLine("video_shader_enable", "false"));
+        Vector<string> hotkeys = RetroArchEmitter.hotkeyLines(keymap);
+        for hotkeyLine in hotkeys {
+            lines.push(hotkeyLine);
+        }
+        return lines.join("\n") + "\n";
+    }
+
+    // Write <outputRoot>/<profileName>/retroarch.cfg (outputRoot is the
+    // shared profiles root every emulator receives from bootstrap).
+    class void emitProfile(string profileName, string inputDriver, string audioDriver,
+                           Keymap keymap, string outputRoot) {
+        string profileDirectory = PathTools.join(outputRoot, profileName);
+        UnixFileSystem.mkdirp(profileDirectory);
+        string contentRoot = RetroArchEmitter.runtimeContentRoot(outputRoot);
+        Path.writeAll(PathTools.join(profileDirectory, "retroarch.cfg"),
+            RetroArchEmitter.profileText(inputDriver, audioDriver, contentRoot, keymap));
+    }
+}

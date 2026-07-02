@@ -1,0 +1,636 @@
+class SemuManifestCompiler {
+    class string build() { return buildJson(); }
+    class string systems() { return systemEntries(); }
+}
+
+// ---- spec_helpers.btrc ----
+string commandSpec(string label, string command) {
+    return jsonObject([
+        jsonStrField("label", label),
+        jsonStrField("command", command)
+    ]);
+}
+
+string platformCommands(string platform, Vector<string> commands) {
+    return jsonField(platform, jsonArray(commands));
+}
+
+string systemSpec(
+    string id,
+    string fullname,
+    string platform,
+    string theme,
+    string romDir,
+    Vector<string> extensions,
+    Vector<string> linuxCommands,
+    Vector<string> macosCommands,
+    Vector<string> bios,
+    string controllerProfile
+) {
+    Vector<string> commandPlatforms = [
+        platformCommands("linux", linuxCommands),
+        platformCommands("macos", macosCommands)
+    ];
+    Vector<string> fields = [
+        jsonStrField("id", id),
+        jsonStrField("fullname", fullname),
+        jsonStrField("platform", platform),
+        jsonStrField("theme", theme),
+        jsonStrField("rom_dir", romDir),
+        jsonField("extensions", jsonStringArray(extensions)),
+        jsonField("commands", jsonObject(commandPlatforms))
+    ];
+    if (bios.len > 0) {
+        fields.push(jsonField("bios", jsonStringArray(bios)));
+    }
+    if (controllerProfile.len() > 0) {
+        fields.push(jsonStrField("controller_profile", controllerProfile));
+    }
+    return jsonObject(fields);
+}
+
+string biosSpec(
+    string id,
+    string system,
+    bool required,
+    Vector<string> files,
+    string target,
+    string match,
+    string note
+) {
+    Vector<string> fields = [
+        jsonStrField("id", id),
+        jsonStrField("system", system),
+        jsonBoolField("required", required),
+        jsonField("files", jsonStringArray(files)),
+        jsonStrField("target", target),
+        jsonStrField("note", note)
+    ];
+    if (match.len() > 0) {
+        fields.push(jsonStrField("match", match));
+    }
+    return jsonObject(fields);
+}
+
+string steamInputTemplate(string id, string title, string source, string note) {
+    return jsonObject([
+        jsonStrField("id", id),
+        jsonStrField("title", title),
+        jsonStrField("source", source),
+        jsonBoolField("required", false),
+        jsonStrField("note", note)
+    ]);
+}
+
+// ---- es_xml.btrc ----
+string xmlEscape(string value) {
+    string result = Strings.replace(value, "&", "&amp;");
+    result = Strings.replace(result, "\"", "&quot;");
+    result = Strings.replace(result, "<", "&lt;");
+    result = Strings.replace(result, ">", "&gt;");
+    return result;
+}
+
+string esExtensionList(Vector<string> extensions) {
+    Vector<string> values = [];
+    for extension in extensions {
+        values.push(extension);
+        values.push(extension.toUpper());
+    }
+    return values.join(" ");
+}
+
+string esCommandXml(string commandJson) {
+    JsonObject command = JsonObject.parse(commandJson);
+    return "    <command label=\"" + xmlEscape(command.getString("label", "")) + "\">"
+        + xmlEscape(command.getString("command", ""))
+        + "</command>\n";
+}
+
+string esSystemSpec(
+    string id,
+    string fullname,
+    string platform,
+    string theme,
+    string romDir,
+    Vector<string> extensions,
+    Vector<string> linuxCommands
+) {
+    string result = "  <system>\n"
+        + "    <name>" + xmlEscape(id) + "</name>\n"
+        + "    <fullname>" + xmlEscape(fullname) + "</fullname>\n"
+        + "    <path>%ROMPATH%/" + xmlEscape(romDir) + "</path>\n"
+        + "    <extension>" + xmlEscape(esExtensionList(extensions)) + "</extension>\n";
+    for command in linuxCommands {
+        result = result + esCommandXml(command);
+    }
+    result = result
+        + "    <platform>" + xmlEscape(platform) + "</platform>\n"
+        + "    <theme>" + xmlEscape(theme) + "</theme>\n"
+        + "  </system>\n";
+    return result;
+}
+
+// ---- paths_esde.btrc ----
+string manifestPaths() {
+    return jsonObject([
+        jsonStrField("config_root", "${project}/src/semu"),
+        jsonStrField("generated_root", "${project}/src/generated"),
+        jsonStrField("project_content_root", "${project}/src/generated/runtime/content"),
+        jsonStrField("runtime_content_root", "${portable}"),
+        jsonStrField("roms", "${paths.runtime_content_root}/ROMs"),
+        jsonStrField("project_roms", "${paths.project_content_root}/ROMs"),
+        jsonStrField("bios", "${paths.runtime_content_root}/bios"),
+        jsonStrField("project_bios", "${paths.project_content_root}/bios"),
+        jsonStrField("saves", "${paths.runtime_content_root}/saves"),
+        jsonStrField("project_saves", "${paths.project_content_root}/saves"),
+        jsonStrField("states", "${paths.runtime_content_root}/states"),
+        jsonStrField("project_states", "${paths.project_content_root}/states"),
+        jsonStrField("screenshots", "${paths.runtime_content_root}/screenshots"),
+        jsonStrField("project_screenshots", "${paths.project_content_root}/screenshots"),
+        jsonStrField("media", "${paths.runtime_content_root}/downloaded_media"),
+        jsonStrField("project_media", "${paths.project_content_root}/downloaded_media"),
+        jsonStrField("gamelists", "${paths.runtime_content_root}/gamelists"),
+        jsonStrField("project_gamelists", "${paths.project_content_root}/gamelists"),
+        jsonStrField("themes", "${paths.runtime_content_root}/themes"),
+        jsonStrField("project_themes", "${paths.project_content_root}/themes"),
+        jsonStrField("custom_systems", "${paths.runtime_content_root}/custom_systems"),
+        jsonStrField("project_custom_systems", "${project}/src/generated/packaging/es-de/custom_systems"),
+        jsonStrField("settings", "${paths.runtime_content_root}/settings"),
+        jsonStrField("project_settings", "${project}/src/generated/packaging/es-de/settings"),
+        jsonStrField("keymaps", "${project}/src/semu/input/targets/steamdeck"),
+        jsonStrField("steam_input", "${project}/src/generated/packaging/input/steam-input"),
+        jsonStrField("emulator_profiles", "${project}/src/generated/packaging/emulators/profiles"),
+        jsonStrField("es_de_profiles", "${project}/src/generated/packaging/es-de"),
+        jsonStrField("linux_packaging", "${project}/src/generated/packaging/linux"),
+        jsonStrField("retroarch_system", "${paths.bios}")
+    ]);
+}
+
+string esDe() {
+	    string settings = jsonObject([
+	        jsonStrField("ROMDirectory", "~/ES-DE/ROMs"),
+	        jsonStrField("MediaDirectory", "~/ES-DE/downloaded_media"),
+	        jsonStrField("UserThemeDirectory", "~/ES-DE/themes"),
+	        jsonStrField("ApplicationUpdaterFrequency", "never"),
+	        jsonStrField("SaveGamelistsMode", "always"),
+	        jsonStrField("CreatePlaceholderSystemDirectories", "false"),
+	        jsonStrField("InputControllerType", "xbox"),
+	        jsonStrField("StartupSystem", "${env.SEMU_STARTUP_SYSTEM}"),
+	        jsonStrField("StartupView", "system")
+	    ]);
+    return jsonObject([jsonField("settings", settings)]);
+}
+
+// ---- input_metadata.btrc ----
+string controllerModel(
+    string id,
+    string label,
+    string vendor,
+    string layout,
+    Vector<string> capabilities,
+    Vector<string> defaultOutputs,
+    string preferredBackend,
+    string gyroPolicy,
+    string note
+) {
+    return jsonObject([
+        jsonStrField("id", id),
+        jsonStrField("label", label),
+        jsonStrField("vendor", vendor),
+        jsonStrField("layout", layout),
+        jsonField("capabilities", jsonStringArray(capabilities)),
+        jsonField("default_outputs", jsonStringArray(defaultOutputs)),
+        jsonStrField("preferred_backend", preferredBackend),
+        jsonStrField("gyro_policy", gyroPolicy),
+        jsonStrField("note", note)
+    ]);
+}
+
+string emulationBackend(
+    string id,
+    string label,
+    string layer,
+    Vector<string> emits,
+    Vector<string> requires,
+    bool automated,
+    bool visual,
+    string note
+) {
+    return jsonObject([
+        jsonStrField("id", id),
+        jsonStrField("label", label),
+        jsonStrField("layer", layer),
+        jsonField("emits", jsonStringArray(emits)),
+        jsonField("requires", jsonStringArray(requires)),
+        jsonBoolField("automated", automated),
+        jsonBoolField("requires_visual", visual),
+        jsonStrField("note", note)
+    ]);
+}
+
+string verificationProfile(
+    string id,
+    string label,
+    string backend,
+    Vector<string> controllers,
+    Vector<string> checks,
+    bool automated,
+    bool visual
+) {
+    return jsonObject([
+        jsonStrField("id", id),
+        jsonStrField("label", label),
+        jsonStrField("backend", backend),
+        jsonField("controllers", jsonStringArray(controllers)),
+        jsonField("checks", jsonStringArray(checks)),
+        jsonBoolField("automated", automated),
+        jsonBoolField("requires_visual", visual)
+    ]);
+}
+
+string screenshotToolSpec(
+    string id,
+    string command,
+    Vector<string> args,
+    Vector<string> requires,
+    string note
+) {
+    return jsonObject([
+        jsonStrField("id", id),
+        jsonStrField("command", command),
+        jsonField("args", jsonStringArray(args)),
+        jsonField("requires", jsonStringArray(requires)),
+        jsonStrField("note", note)
+    ]);
+}
+
+string screenshotHookSpec(
+    string id,
+    string lifecycle,
+    string output,
+    string enabledBy,
+    int delayMs,
+    Vector<string> emulators,
+    string note
+) {
+    return jsonObject([
+        jsonStrField("id", id),
+        jsonStrField("lifecycle", lifecycle),
+        jsonStrField("output", output),
+        jsonStrField("enabled_by", enabledBy),
+        jsonField("delay_ms", f"{delayMs}"),
+        jsonField("emulators", jsonStringArray(emulators)),
+        jsonStrField("note", note)
+    ]);
+}
+
+string screenshotVerificationProfile() {
+    Vector<string> emulators = lowercaseValues(linuxLauncherNames());
+    string output = "${paths.project_screenshots}/verification/${emulator}/${hook}.png";
+    string enabledBy = "SEMU_SCREENSHOT_HOOKS=1";
+    return jsonObject([
+        jsonBoolField("enabled_by_default", false),
+        jsonStrField("enable_env", enabledBy),
+        jsonStrField("delay_env", "SEMU_SCREENSHOT_DELAY_SECONDS"),
+        jsonStrField("output_root", "${paths.project_screenshots}/verification"),
+        jsonField("tools", jsonArray([
+            screenshotToolSpec("grim", "grim", ["${output}"], ["WAYLAND_DISPLAY"], "SteamOS/KDE Wayland screenshot path."),
+            screenshotToolSpec("spectacle", "spectacle", ["-b", "-n", "-o", "${output}"], ["WAYLAND_DISPLAY"], "KDE fallback when grim is not installed."),
+            screenshotToolSpec("gnome_screenshot", "gnome-screenshot", ["-f", "${output}"], ["WAYLAND_DISPLAY", "DISPLAY"], "Generic desktop fallback."),
+            screenshotToolSpec("imagemagick_import", "import", ["-window", "root", "${output}"], ["DISPLAY"], "X11 fallback for emulator windows that require XWayland.")
+        ])),
+        jsonField("hooks", jsonArray([
+            screenshotHookSpec("before_launch", "launcher.before_exec", output, enabledBy, 0, emulators, "Captures the desktop state immediately before launching an emulator."),
+            screenshotHookSpec("after_spawn", "launcher.after_spawn", output, enabledBy, 2000, emulators, "Captures the emulator after the process has had time to present its first frame."),
+            screenshotHookSpec("after_exit", "launcher.after_exit", output, enabledBy, 0, emulators, "Captures the return path after the emulator exits, usually back to ES-DE."),
+            screenshotHookSpec("manual_visual_checkpoint", "operator.manual", output, "semu screenshot capture", 0, emulators, "CLI hook for VM/Deck verification scripts when a process is already running.")
+        ]))
+    ]);
+}
+
+// ---- input_stack.btrc ----
+string inputStack() {
+    Vector<string> controllerIds = ["steam_deck", "steam_controller", "xbox_xinput", "dualshock4", "dualsense", "switch_pro"];
+    return jsonObject([
+        jsonField("layers", jsonStringArray([
+            "controller_model",
+            "emulation_backend",
+            "emitted_input",
+            "emulator_keymap"
+        ])),
+        jsonField("controller_models", jsonArray([
+            controllerModel(
+                "steam_deck",
+                "Steam Deck Built-in Controller",
+                "Valve",
+                "xbox",
+                ["gamepad", "left_trackpad", "right_trackpad", "grip_buttons", "gyro", "mouse_pointer", "keyboard_hotkeys"],
+                ["gamepad", "keyboard", "mouse"],
+                "inputplumber",
+                "opt_in",
+                "Primary target: right trackpad mouse, left trackpad radial hotkeys, gyro opt-in."
+            ),
+            controllerModel(
+                "steam_controller",
+                "Steam Controller",
+                "Valve",
+                "steam",
+                ["gamepad", "left_trackpad", "right_trackpad", "dual_stage_triggers", "gyro", "keyboard_hotkeys"],
+                ["gamepad", "keyboard", "mouse"],
+                "inputplumber",
+                "opt_in",
+                "Same abstraction as Deck controls, but with external Steam Controller hardware."
+            ),
+            controllerModel(
+                "xbox_xinput",
+                "Xbox / XInput Controller",
+                "Microsoft",
+                "xbox",
+                ["gamepad", "analog_triggers", "rumble"],
+                ["gamepad", "keyboard"],
+                "uinput",
+                "hardware_absent",
+                "Baseline portable gamepad model for SDL/XInput-style controllers."
+            ),
+            controllerModel(
+                "dualshock4",
+                "DualShock 4",
+                "Sony",
+                "playstation",
+                ["gamepad", "touchpad", "gyro", "rumble"],
+                ["gamepad", "keyboard", "mouse"],
+                "uinput",
+                "opt_in",
+                "PlayStation layout with touchpad available for mouse or menu bindings."
+            ),
+            controllerModel(
+                "dualsense",
+                "DualSense",
+                "Sony",
+                "playstation",
+                ["gamepad", "touchpad", "gyro", "adaptive_triggers", "rumble"],
+                ["gamepad", "keyboard", "mouse"],
+                "uinput",
+                "opt_in",
+                "DualShock-family mapping plus DualSense-specific trigger capability metadata."
+            ),
+            controllerModel(
+                "switch_pro",
+                "Nintendo Switch Pro Controller",
+                "Nintendo",
+                "nintendo",
+                ["gamepad", "gyro", "rumble"],
+                ["gamepad", "keyboard"],
+                "uinput",
+                "opt_in",
+                "Nintendo layout model; face-button labeling can be handled above emulator keymaps."
+            )
+        ])),
+        jsonField("emulation_backends", jsonArray([
+            emulationBackend(
+                "uinput",
+                "Linux uinput",
+                "kernel_virtual_input",
+                ["gamepad", "keyboard", "mouse"],
+                ["/dev/uinput"],
+                true,
+                false,
+                "Fast automated Linux smoke tests for emitted key/button events."
+            ),
+            emulationBackend(
+                "evemu",
+                "evemu record/replay",
+                "evdev_replay",
+                ["recorded_evdev"],
+                ["evemu", "/dev/input"],
+                true,
+                false,
+                "Replay captured physical controller events into the same keymap pipeline."
+            ),
+            emulationBackend(
+                "uhid",
+                "Linux UHID",
+                "userspace_hid",
+                ["hid_device"],
+                ["/dev/uhid"],
+                true,
+                false,
+                "Use when Steam needs a HID-shaped device instead of a generic uinput pad."
+            ),
+            emulationBackend(
+                "inputplumber",
+                "InputPlumber",
+                "routing_daemon",
+                ["gamepad", "keyboard", "mouse"],
+                ["inputplumber", "/dev/uinput"],
+                true,
+                false,
+                "Preferred route for Deck-style trackpad/radial/keyboard composition."
+            ),
+            emulationBackend(
+                "steam_input",
+                "Steam Input / Game Mode",
+                "steam_client",
+                ["steam_virtual_gamepad", "keyboard", "mouse"],
+                ["steam", "gamescope_or_game_mode"],
+                false,
+                true,
+                "Final integration layer; requires visual/live Steam verification."
+            )
+        ])),
+        jsonField("verification_profiles", jsonArray([
+            verificationProfile(
+                "linux_virtual_input",
+                "Linux virtual input smoke test",
+                "uinput",
+                controllerIds,
+                ["device_created", "save_load_quit_events", "mouse_motion_optional", "no_gyro_events_when_disabled"],
+                true,
+                false
+            ),
+            verificationProfile(
+                "evdev_replay",
+                "Recorded controller replay",
+                "evemu",
+                controllerIds,
+                ["descriptor_replay", "button_event_order", "axis_ranges"],
+                true,
+                false
+            ),
+            verificationProfile(
+                "steam_hid_shape",
+                "Steam HID shape test",
+                "uhid",
+                ["steam_deck", "steam_controller"],
+                ["steam_detects_device", "hid_identity_stable"],
+                true,
+                false
+            ),
+            verificationProfile(
+                "deck_route",
+                "Deck-style route test",
+                "inputplumber",
+                ["steam_deck", "steam_controller"],
+                ["right_trackpad_mouse", "left_radial_hotkeys", "keyboard_chords"],
+                true,
+                false
+            ),
+            verificationProfile(
+                "steam_deck_game_mode",
+                "Steam Deck Game Mode final pass",
+                "steam_input",
+                ["steam_deck"],
+                ["template_visible", "radial_menu_visual", "hotkeys_work_in_emulators", "quit_returns_to_es_de"],
+                false,
+                true
+            )
+        ]))
+    ]);
+}
+
+// ---- profiles_sync_bios.btrc ----
+string controllerProfiles() {
+    string steamInput = jsonObject([
+        jsonStrField("templates_dir", "~/.steam/steam/controller_base/templates"),
+        jsonField("templates", jsonArray([
+            steamInputTemplate(
+                "neptune_simple",
+                "Semu: Steam Deck - Neptune SIMPLE",
+                "${project}/src/generated/packaging/input/steam-input/neptune-simple.vdf",
+                "Generated Steam Input template; doctor validates it and steam-input install copies it."
+            ),
+            steamInputTemplate(
+                "neptune_full",
+                "Semu: Steam Deck - Neptune FULL",
+                "${project}/src/generated/packaging/input/steam-input/neptune-full.vdf",
+                "Optional full hotkey layout for users who want RetroDeck-style chords."
+            )
+        ]))
+    ]);
+    string steamDeck = jsonObject([
+        jsonStrField("controller_model", "steam_deck"),
+        jsonField("verification_profiles", jsonStringArray(["linux_virtual_input", "deck_route", "steam_deck_game_mode"])),
+        jsonStrField("description", "Steam Deck built-in controls with gyro opt-in, right trackpad as mouse, and left trackpad radial hotkeys."),
+        jsonBoolField("gyro_enabled", false),
+        jsonStrField("hotkey_button", "View; L4/R4 optional in Steam Input templates"),
+        jsonField("trackpads", jsonObject([
+            jsonStrField("left", "radial_hotkeys"),
+            jsonStrField("right", "mouse")
+        ])),
+        jsonField("hotkeys", steamDeckHotkeys()),
+        jsonField("steam_input", steamInput),
+        jsonField("profiles", jsonStringArray(controllerProfileFiles()))
+    ]);
+    return jsonObject([jsonField("steam_deck", steamDeck)]);
+}
+
+string syncFolderSpec(
+    string id,
+    string label,
+    string path,
+    bool enabled,
+    bool watch,
+    int rescanSeconds
+) {
+    return jsonObject([
+        jsonStrField("id", id),
+        jsonStrField("label", label),
+        jsonStrField("path", path),
+        jsonBoolField("enabled", enabled),
+        jsonBoolField("watch", watch),
+        jsonField("rescan_interval_s", Strings.fromInt(rescanSeconds))
+    ]);
+}
+
+string syncProfile() {
+    return jsonObject([
+        jsonBoolField("enabled", true),
+        jsonBoolField("start_at_boot", true),
+        jsonBoolField("tray", true),
+        jsonStrField("engine", "syncthing"),
+        jsonStrField("tray_app", "syncthingtray"),
+        jsonStrField("gui_address", "127.0.0.1:8384"),
+        jsonField("folders", jsonArray([
+            syncFolderSpec("saves", "Saves", "${paths.project_saves}", true, true, 900),
+            syncFolderSpec("states", "States", "${paths.project_states}", true, true, 900),
+            syncFolderSpec("emulator_state", "Emulator State", "${paths.project}/src/generated/runtime/appimage-state", true, true, 900),
+            syncFolderSpec("screenshots", "Screenshots", "${paths.project_screenshots}", true, true, 1800),
+            syncFolderSpec("gamelists", "Gamelists", "${paths.project_gamelists}", true, true, 1800),
+            syncFolderSpec("roms", "ROMs", "${paths.project_roms}", false, true, 3600),
+            syncFolderSpec("bios", "BIOS", "${paths.project_bios}", false, true, 3600)
+        ]))
+    ]);
+}
+
+string biosEntries() {
+    return jsonArray([
+        biosSpec(
+            "psx",
+            "psx",
+            true,
+            ["scph5500.bin", "scph5501.bin", "scph5502.bin"],
+            "${paths.bios}",
+            "",
+            "Beetle PSX expects user-supplied PlayStation BIOS dumps."
+        ),
+        biosSpec(
+            "ps2",
+            "ps2",
+            true,
+            ["ps2-0230a-20080220.bin", "ps2-0230e-20080220.bin", "ps2-0230j-20080220.bin"],
+            "${paths.bios}/ps2",
+            "any",
+            "PCSX2 needs at least one legally dumped PS2 BIOS image."
+        ),
+        biosSpec(
+            "switch_keys",
+            "switch",
+            true,
+            ["prod.keys", "title.keys"],
+            "${paths.bios}/switch",
+            "",
+            "Ryujinx needs dumped Switch keys and firmware from the user's console."
+        ),
+        biosSpec(
+            "wiiu_keys",
+            "wiiu",
+            true,
+            ["keys.txt"],
+            "${project}/src/generated/packaging/emulators/profiles/Cemu/data",
+            "",
+            "Cemu needs user-supplied Wii U keys for encrypted content."
+        ),
+        biosSpec(
+            "dreamcast",
+            "dreamcast",
+            false,
+            ["dc_boot.bin", "dc_flash.bin"],
+            "${paths.bios}/dc",
+            "",
+            "Flycast can use HLE for many games, but original BIOS files improve compatibility."
+        )
+    ]);
+}
+
+// ---- build_json.btrc ----
+string systemEntries() {
+    SystemCatalog catalog = systemCatalog();
+    return catalog.systemsJson();
+}
+
+string buildJson() {
+    return jsonObject([
+        jsonField("schema_version", "1"),
+        jsonField("paths", manifestPaths()),
+        jsonField("es_de", esDe()),
+        jsonField("input", inputStack()),
+        jsonField("controller_profiles", controllerProfiles()),
+        jsonField("keymaps", keymapsJson()),
+        jsonField("screenshot_verification", screenshotVerificationProfile()),
+        jsonField("sync", syncProfile()),
+        jsonField("bios", biosEntries()),
+        jsonField("launchers", launcherEntries()),
+        jsonField("systems", systemEntries())
+    ]);
+}

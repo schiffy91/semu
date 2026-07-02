@@ -1,0 +1,28 @@
+#!/usr/bin/env sh
+set -eu
+
+here="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd -P)"
+cli="${SEMU_RUNTIME_CLI:-${SEMU_CLI:-${SEMU_BIN:-}}}"
+
+if [ -z "$cli" ] && [ -x "$here/semu" ]; then
+  cli="$here/semu"
+fi
+if [ -z "$cli" ] && [ -x "$here/../semu" ]; then
+  cli="$here/../semu"
+fi
+if [ -z "$cli" ] && [ -x "$here/../../../build/semu" ]; then
+  cli="$here/../../../build/semu"
+fi
+if [ -z "$cli" ] && [ -n "${APPDIR:-}" ] && [ -x "$APPDIR/usr/bin/semu" ]; then
+  cli="$APPDIR/usr/bin/semu"
+fi
+if [ -z "$cli" ]; then
+  cli="$(command -v semu || true)"
+fi
+
+if [ -z "$cli" ] || [ ! -x "$cli" ]; then
+  echo "semu-btrc: compiled BTRC CLI not found" >&2
+  exit 127
+fi
+
+exec "$cli" "$@"

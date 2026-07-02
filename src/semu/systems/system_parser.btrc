@@ -1,0 +1,168 @@
+// system_parser.btrc — the slim orchestrator for the JSON contract set v1.
+//
+// loadAll composes both sides of the contract set (emulator.json via
+// EmulatorParser, system/bezels/shaders.json via the per-file methods below)
+// and runs the cross-file validation. Identity comes from the directory
+// name: there is no "id"/"system" key inside any file. Field-group parsing
+// lives beside the data classes in systems/model/.
+
+import std.{vector, fs, json}
+import ../core/parse_log.btrc
+import ../core/json_contract.btrc
+import ../core/source_directories.btrc
+import ./model/display_policy.btrc
+import ./model/render_policy.btrc
+import ./model/emulator_binding.btrc
+import ./model/bios_requirement.btrc
+import ./model/bezel_collection.btrc
+import ./model/shader_collection.btrc
+import ./model/system_definition.btrc
+import ./model/semu_contracts.btrc
+import ./model/contract_validation.btrc
+import ../emulators/emulator_parser.btrc
+
+class SystemParser {
+    class void parseEsDe(SystemDefinition systemDefinition, JsonValue root,
+                         string path, ParseLog log) {
+        if (!root.has("es_de")) {
+            log.add(path, "es_de", "missing required field");
+            return;
+        }
+        JsonValue esDe = root.get("es_de");
+        if (!esDe.isObject()) {
+            log.add(path, "es_de", "expected object");
+            return;
+        }
+        Vector<string> esDeKeys = ["platforms", "theme"];
+        JsonContract.checkKeys(esDe, esDeKeys, path, "es_de", log);
+        systemDefinition.esDePlatforms = JsonContract.stringArray(esDe, "platforms", true,
+            path, "es_de", log);
+        if (systemDefinition.esDePlatforms.size() == 0) {
+            log.add(path, "es_de.platforms", "must be non-empty");
+        }
+        systemDefinition.esDeTheme = JsonContract.requiredString(esDe, "theme",
+            path, "es_de", log);
+    }
+
+    class void parseRom(SystemDefinition systemDefinition, JsonValue root,
+                        string path, ParseLog log) {
+        if (!root.has("rom")) {
+            log.add(path, "rom", "missing required field");
+            return;
+        }
+        JsonValue rom = root.get("rom");
+        if (!rom.isObject()) {
+            log.add(path, "rom", "expected object");
+            return;
+        }
+        Vector<string> romKeys = ["dir", "extensions"];
+        JsonContract.checkKeys(rom, romKeys, path, "rom", log);
+        systemDefinition.romDirectory = JsonContract.requiredString(rom, "dir",
+            path, "rom", log);
+        systemDefinition.extensions = JsonContract.stringArray(rom, "extensions", true,
+            path, "rom", log);
+        for extension in systemDefinition.extensions {
+            if (!extension.startsWith(".")) {
+                log.add(path, "rom.extensions", "'" + extension + "' must start with '.'");
+            }
+            if (!extension.toLower().equals(extension)) {
+                log.add(path, "rom.extensions", "'" + extension
+                    + "' must be lowercase (uppercase variants are derived)");
+            }
+        }
+    }
+
+    class void parseBindings(SystemDefinition systemDefinition, JsonValue root,
+                             string path, ParseLog log) {
+        if (!root.has("emulators") || !root.get("emulators").isArray()
+            || root.get("emulators").size() < 1) {
+            log.add(path, "emulators", "expected non-empty array");
+            return;
+        }
+        JsonValue bindings = root.get("emulators");
+        for (int bindingIndex = 0; bindingIndex < bindings.size(); bindingIndex++) {
+            systemDefinition.emulators.push(EmulatorBindingParser.parse(
+                bindings.at(bindingIndex), path, f"emulators[{bindingIndex}]", log));
+        }
+    }
+
+    // Parse one system.json. Identity comes from the directory name.
+    class SystemDefinition parseSystemFile(string systemId, string path, ParseLog log) {
+        SystemDefinition systemDefinition = SystemDefinition();
+        systemDefinition.id = systemId;
+        systemDefinition.file = path;
+        JsonValue root = JsonValue.readFile(path);
+        if (root.isError()) {
+            log.add(path, "(root)", "invalid JSON");
+            return systemDefinition;
+        }
+        JsonContract.checkSchemaVersion(root, 1, path, log);
+        Vector<string> allowedKeys = ["schema_version", "name", "aliases", "es_de", "rom",
+                                      "emulators", "bios", "controller_profile", "display",
+                                      "render"];
+        JsonContract.checkKeys(root, allowedKeys, path, "", log);
+
+        systemDefinition.name = JsonContract.requiredString(root, "name", path, "", log);
+        systemDefinition.aliases = JsonContract.stringArray(root, "aliases", false, path, "", log);
+        SystemParser.parseEsDe(systemDefinition, root, path, log);
+        SystemParser.parseRom(systemDefinition, root, path, log);
+        SystemParser.parseBindings(systemDefinition, root, path, log);
+
+        if (root.has("bios")) {
+            systemDefinition.bios = BiosRequirementParser.parse(root.get("bios"), path, log);
+        }
+
+        systemDefinition.controllerProfile = JsonContract.optionalString(root,
+            "controller_profile", "", path, "", log);
+        Vector<string> controllerProfiles = ["steam_deck"];
+        JsonContract.checkEnum(systemDefinition.controllerProfile, controllerProfiles,
+            path, "controller_profile", log);
+
+        if (root.has("display")) {
+            systemDefinition.display = DisplayPolicyParser.parse(root.get("display"), path, log);
+        } else {
+            log.add(path, "display", "missing required field");
+        }
+
+        if (root.has("render")) {
+            systemDefinition.render = RenderPolicyParser.parse(root.get("render"), path,
+                systemDefinition.display.screens.size(), log);
+        } else {
+            log.add(path, "render", "missing required field");
+        }
+        return systemDefinition;
+    }
+
+    class BezelCollection parseBezelsFile(string path, Vector<string> screenIds, ParseLog log) {
+        return BezelCollectionParser.parseFile(path, screenIds, log);
+    }
+
+    class ShaderCollection parseShadersFile(string path, ParseLog log) {
+        return ShaderCollectionParser.parseFile(path, log);
+    }
+
+    // Load and validate the full contract set from <sourceRoot> (".../src/semu").
+    class SemuContracts loadAll(string sourceRoot, ParseLog log) {
+        SemuContracts contracts = SemuContracts();
+        contracts.emulators = EmulatorParser.parseAll(sourceRoot, log);
+
+        string systemsRoot = PathTools.join(sourceRoot, "systems");
+        for systemId in SourceDirectories.sortedChildDirectories(systemsRoot) {
+            string systemDirectory = PathTools.join(systemsRoot, systemId);
+            string systemFile = PathTools.join(systemDirectory, "system.json");
+            if (FileSystem.isFile(systemFile)) {
+                SystemDefinition systemDefinition = SystemParser.parseSystemFile(systemId,
+                    systemFile, log);
+                systemDefinition.bezels = SystemParser.parseBezelsFile(
+                    PathTools.join(systemDirectory, "bezels.json"),
+                    systemDefinition.screenIds(), log);
+                systemDefinition.shaders = SystemParser.parseShadersFile(
+                    PathTools.join(systemDirectory, "shaders.json"), log);
+                contracts.systems.push(systemDefinition);
+            }
+        }
+
+        ContractValidation.crossValidate(contracts, log);
+        return contracts;
+    }
+}

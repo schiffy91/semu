@@ -1,0 +1,81 @@
+{
+  "schema_version": 1,
+  "name": "melonDS",
+  "kind": "standalone",
+  "default_system": "nds",
+  "input": {
+    "actions": [
+      "ui.pause",
+      "ui.fullscreen",
+      "app.quit",
+      "speed.fast",
+      "screen.swap"
+    ]
+  },
+  "platforms": {
+    "linux": {
+      "backend": "flatpak",
+      "flatpak_id": "net.kuribo64.melonDS",
+      "display_server": "x11",
+      "display_default": ":0",
+      "sessions": {
+        "gamescope": {
+          "display_default": ":1"
+        },
+        "desktop": {
+          "display_default": ":0"
+        }
+      },
+      "args": [
+        "--fullscreen"
+      ],
+      "gl_wrapper": "nixgl",
+      "sandbox": {
+        "devices": [
+          "all"
+        ],
+        "filesystems": [
+          {
+            "path": "/nix/store",
+            "mode": "ro"
+          },
+          {
+            "path": "${project}",
+            "mode": "rw"
+          },
+          {
+            "path": "${roms}",
+            "mode": "rw"
+          },
+          {
+            "path": "${state_root}",
+            "mode": "create"
+          },
+          {
+            "path": "${emulation_root}",
+            "mode": "rw"
+          }
+        ]
+      },
+      "graphics": {
+        "method": "config_file",
+        "file": "${flatpak_home}/config/melonDS/melonDS.ini",
+        "format": "ini",
+        "key": "3D_Renderer",
+        "values": {
+          "opengl": "1"
+        },
+        "tap_api": "opengl"
+      },
+      "overlay_aspect": "4x3",
+      "state": {
+        "config_home": "xdg",
+        "data_home": "xdg"
+      }
+    }
+  },
+  "doc": {
+    "graphics": "melonDS 3D renderer: 1 = OpenGL (launcher_tap.btrc:163-166).",
+    "platforms": "No macos block: melonds is packaged for x86_64-linux only (packaging/nix/flake/packages.nix:49); nds on macos runs through the RetroArch desmume core."
+  }
+}

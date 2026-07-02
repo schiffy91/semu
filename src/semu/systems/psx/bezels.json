@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "enabled": true,
+  "default_variant": "tv",
+  "hole": { "x": 0.2500, "y": 0.1070, "w": 0.5000, "h": 0.6667 },
+  "variants": [
+    {
+      "id": "tv",
+      "label": "Living-Room CRT",
+      "art": "assets/bezels/psx/tv.png"
+    }
+  ]
+}

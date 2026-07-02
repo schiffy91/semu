@@ -1,0 +1,12 @@
+{
+    "schema_version": 1,
+    "visual_integer_scaling": true,
+    "visual_crt_shaders": true,
+    "visual_bezels": true,
+    "visual_bezel_policy": "classic",
+    "visual_retroarch_shader_preset": "bezel/Mega_Bezel/Presets/MBZ__5__POTATO.slangp",
+    "visual_classic_systems": "gb,gbc,gba,nes,snes,genesis,n64,nds,dreamcast,psx,ps2,psp,n3ds,gc,wii",
+    "visual_modern_systems": "wiiu,switch",
+    "ui_theme": "es-de-default",
+    "ui_settings_entry": "es-de"
+}

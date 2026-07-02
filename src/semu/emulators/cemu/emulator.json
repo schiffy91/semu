@@ -1,0 +1,104 @@
+{
+  "schema_version": 1,
+  "name": "Cemu",
+  "kind": "standalone",
+  "default_system": "wiiu",
+  "input": {
+    "actions": [
+      "app.quit",
+      "screen.swap"
+    ]
+  },
+  "platforms": {
+    "linux": {
+      "backend": "flatpak",
+      "flatpak_id": "info.cemu.Cemu",
+      "display_server": "x11",
+      "display_default": ":0",
+      "sessions": {
+        "gamescope": {
+          "display_default": ":1"
+        },
+        "desktop": {
+          "display_default": ":0"
+        }
+      },
+      "args": [
+        "-f",
+        "-g"
+      ],
+      "gl_wrapper": "nixgl",
+      "sandbox": {
+        "devices": [
+          "all"
+        ],
+        "filesystems": [
+          {
+            "path": "/nix/store",
+            "mode": "ro"
+          },
+          {
+            "path": "${project}",
+            "mode": "rw"
+          },
+          {
+            "path": "${roms}",
+            "mode": "rw"
+          },
+          {
+            "path": "${state_root}",
+            "mode": "create"
+          },
+          {
+            "path": "${emulation_root}",
+            "mode": "rw"
+          }
+        ]
+      },
+      "graphics": {
+        "method": "config_file",
+        "file": "${flatpak_home}/config/Cemu/settings.xml",
+        "format": "xml",
+        "key": "GraphicAPI",
+        "values": {
+          "opengl": "0",
+          "vulkan": "1"
+        },
+        "tap_api": "opengl"
+      },
+      "overlay_aspect": "16x9",
+      "state": {
+        "config_home": "xdg",
+        "data_home": "flatpak_home",
+        "seeds": [
+          {
+            "purpose": "wiiu_keys",
+            "target": "${flatpak_home}/data/Cemu/keys.txt",
+            "sources": [
+              "${emulation_root}/Cemu/data/keys.txt",
+              "${project}/generated/packaging/emulators/profiles/Cemu/data/keys.txt"
+            ]
+          }
+        ]
+      },
+      "firmware": {
+        "dir": "${emulation_root}/Cemu/data",
+        "fallback_dirs": [
+          "${project}/generated/packaging/emulators/profiles/Cemu/data"
+        ]
+      }
+    },
+    "macos": {
+      "backend": "native",
+      "executable": "${nix_result}/Applications/Cemu.app/Contents/MacOS/Cemu",
+      "args": [
+        "-f",
+        "-g"
+      ]
+    }
+  },
+  "doc": {
+    "state": "Cemu ignores XDG_DATA_HOME, so keys.txt (and a generated settings.xml) are seeded into the flatpak home data dir (launcher.btrc:458-481); the code-side seeder also mirrors keys.txt into ${state_root}/data/Cemu/keys.txt.",
+    "graphics": "settings.xml GraphicAPI: 0 = OpenGL, 1 = Vulkan (launcher_tap.btrc:155-158)."
+  }
+}

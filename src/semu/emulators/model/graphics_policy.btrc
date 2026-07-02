@@ -1,0 +1,88 @@
+// graphics_policy.btrc — the emulator.json platform "graphics" contract: how
+// the emulator's graphics backend is forced (config file edit vs cli vs
+// dynamic), and which graphics APIs the tap/overlay integrations use.
+
+import std.{vector, json}
+import ../../core/parse_log.btrc
+import ../../core/json_contract.btrc
+import ../../core/template_tokens.btrc
+
+class GraphicsPolicy {
+    public bool present;
+    public string method;
+    public string file;
+    public string format;
+    public string key;
+    public string valueOpenGl;
+    public string valueVulkan;
+    public string tapApi;
+    public string overlayApi;
+
+    public GraphicsPolicy() {
+        self.present = false;
+        self.method = "";
+        self.file = "";
+        self.format = "";
+        self.key = "";
+        self.valueOpenGl = "";
+        self.valueVulkan = "";
+        self.tapApi = "";
+        self.overlayApi = "";
+    }
+}
+
+class GraphicsPolicyParser {
+    class void parseConfigFileFields(GraphicsPolicy graphics, JsonValue jsonValue,
+                                     string file, string context, ParseLog log) {
+        graphics.file = JsonContract.requiredString(jsonValue, "file", file, context, log);
+        TemplateTokens.check(graphics.file, file, context + ".file", log, false);
+        graphics.format = JsonContract.requiredString(jsonValue, "format", file, context, log);
+        Vector<string> formats = ["ini", "xml", "toml", "qt_ini"];
+        JsonContract.checkEnum(graphics.format, formats, file, context + ".format", log);
+        graphics.key = JsonContract.requiredString(jsonValue, "key", file, context, log);
+        if (!jsonValue.has("values") || !jsonValue.get("values").isObject()) {
+            log.add(file, context + ".values", "expected object {opengl?, vulkan?}");
+            return;
+        }
+        JsonValue values = jsonValue.get("values");
+        Vector<string> valueKeys = ["opengl", "vulkan"];
+        JsonContract.checkKeys(values, valueKeys, file, context + ".values", log);
+        graphics.valueOpenGl = JsonContract.optionalString(values, "opengl", "",
+            file, context + ".values", log);
+        graphics.valueVulkan = JsonContract.optionalString(values, "vulkan", "",
+            file, context + ".values", log);
+    }
+
+    class GraphicsPolicy parse(JsonValue jsonValue, string file, string context, ParseLog log) {
+        GraphicsPolicy graphics = GraphicsPolicy();
+        if (!jsonValue.isObject()) {
+            log.add(file, context, "expected object");
+            return graphics;
+        }
+        graphics.present = true;
+        Vector<string> allowedKeys = ["method", "file", "format", "key", "values", "tap_api",
+                                      "overlay_api"];
+        JsonContract.checkKeys(jsonValue, allowedKeys, file, context, log);
+        graphics.method = JsonContract.requiredString(jsonValue, "method", file, context, log);
+        Vector<string> methods = ["config_file", "cli", "dynamic", "none"];
+        JsonContract.checkEnum(graphics.method, methods, file, context + ".method", log);
+        if (graphics.method.equals("config_file")) {
+            GraphicsPolicyParser.parseConfigFileFields(graphics, jsonValue, file, context, log);
+        } else {
+            if (jsonValue.has("file") || jsonValue.has("format") || jsonValue.has("key")
+                || jsonValue.has("values")) {
+                log.add(file, context,
+                    "file/format/key/values only valid with method 'config_file'");
+            }
+        }
+        Vector<string> graphicsApis = ["opengl", "vulkan"];
+        graphics.tapApi = JsonContract.optionalString(jsonValue, "tap_api", "",
+            file, context, log);
+        JsonContract.checkEnum(graphics.tapApi, graphicsApis, file, context + ".tap_api", log);
+        graphics.overlayApi = JsonContract.optionalString(jsonValue, "overlay_api", "",
+            file, context, log);
+        JsonContract.checkEnum(graphics.overlayApi, graphicsApis, file,
+            context + ".overlay_api", log);
+        return graphics;
+    }
+}

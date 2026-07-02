@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "enabled": true,
+  "default_variant": "tv",
+  "hole": { "x": 0.2539, "y": 0.1057, "w": 0.4922, "h": 0.6562 },
+  "variants": [
+    {
+      "id": "tv",
+      "label": "Living-Room CRT",
+      "art": "assets/bezels/genesis/tv.png"
+    },
+    {
+      "id": "solid_a",
+      "label": "Solid A",
+      "art": "assets/bezels/genesis/solid-a.png"
+    },
+    {
+      "id": "solid_b",
+      "label": "Solid B",
+      "art": "assets/bezels/genesis/solid-b.png"
+    }
+  ]
+}

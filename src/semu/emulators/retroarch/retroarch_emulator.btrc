@@ -1,0 +1,245 @@
+// retroarch_emulator.btrc — the RetroArch concrete emulator class plus its
+// extension-block configuration. Everything RetroArch-specific (the video/
+// input driver pins, the core suffix + directories, settings overrides,
+// core-option routing, tap binaries, the '-L %CORE_RETROARCH%/...' command
+// grammar) lives HERE — none of it exists in the shared model.
+
+import std.{vector, json}
+import ../../core/parse_log.btrc
+import ../../core/json_contract.btrc
+import ../../core/template_tokens.btrc
+import ../model/emulator_platform.btrc
+import ../model/emulator_definition.btrc
+import ../../systems/model/emulator_binding.btrc
+import ../../input/keymap_parser.btrc
+import ../../input/steam_input_parser.btrc
+import ../semu_emulator.btrc
+import ./retroarch_emitter.btrc
+
+// The parsed platforms.<os>.retroarch extension block.
+class RetroArchConfiguration {
+    public bool present;
+    public string videoDriver;
+    public string inputDriver;
+    public string coreSuffix;
+    public Vector<string> coreDirectories;
+    public Vector<string> settingsOverrideKeys;
+    public Vector<string> settingsOverrideValues;
+    // Flattened core_options rows: "core|role|key".
+    public Vector<string> coreOptionEntries;
+    public Vector<string> tapBinaries;
+
+    public RetroArchConfiguration() {
+        self.present = false;
+        self.videoDriver = "";
+        self.inputDriver = "";
+        self.coreSuffix = "";
+        self.coreDirectories = [];
+        self.settingsOverrideKeys = [];
+        self.settingsOverrideValues = [];
+        self.coreOptionEntries = [];
+        self.tapBinaries = [];
+    }
+}
+
+class RetroArchEmulator extends SemuEmulator {
+    public RetroArchEmulator() {}
+
+    public string id() {
+        return "retroarch";
+    }
+
+    public string contractFile() {
+        return "emulators/retroarch/emulator.json";
+    }
+
+    public RetroArchConfiguration parseConfiguration(EmulatorPlatform platform, ParseLog log) {
+        RetroArchConfiguration configuration = RetroArchConfiguration();
+        string file = self.contractFile();
+        string context = "platforms." + platform.operatingSystem + ".retroarch";
+        if (!platform.hasExtension()) {
+            log.add(file, context, "missing required retroarch extension block");
+            return configuration;
+        }
+        JsonValue jsonValue = platform.extensionJson;
+        if (!jsonValue.isObject()) {
+            log.add(file, context, "expected object");
+            return configuration;
+        }
+        configuration.present = true;
+        Vector<string> allowedKeys = ["video_driver", "input_driver", "core_suffix", "core_dirs",
+                                      "settings_overrides", "core_options", "tap_binary"];
+        JsonContract.checkKeys(jsonValue, allowedKeys, file, context, log);
+        configuration.videoDriver = JsonContract.requiredString(jsonValue, "video_driver",
+            file, context, log);
+        configuration.inputDriver = JsonContract.optionalString(jsonValue, "input_driver", "",
+            file, context, log);
+        configuration.coreSuffix = JsonContract.requiredString(jsonValue, "core_suffix",
+            file, context, log);
+        Vector<string> coreSuffixes = [".so", ".dylib"];
+        JsonContract.checkEnum(configuration.coreSuffix, coreSuffixes, file,
+            context + ".core_suffix", log);
+        configuration.coreDirectories = JsonContract.stringArray(jsonValue, "core_dirs", true,
+            file, context, log);
+        for coreDirectory in configuration.coreDirectories {
+            if (!coreDirectory.startsWith("/")) {
+                TemplateTokens.check(coreDirectory, file, context + ".core_dirs", log, false);
+            }
+        }
+        self.parseSettingsOverrides(configuration, jsonValue, file, context, log);
+        self.parseCoreOptions(configuration, jsonValue, file, context, log);
+        configuration.tapBinaries = JsonContract.stringArray(jsonValue, "tap_binary", false,
+            file, context, log);
+        for tapBinary in configuration.tapBinaries {
+            TemplateTokens.check(tapBinary, file, context + ".tap_binary", log, false);
+        }
+        return configuration;
+    }
+
+    public void parseSettingsOverrides(RetroArchConfiguration configuration, JsonValue jsonValue,
+                                       string file, string context, ParseLog log) {
+        if (!jsonValue.has("settings_overrides")) {
+            return;
+        }
+        JsonValue settingsOverrides = jsonValue.get("settings_overrides");
+        if (!settingsOverrides.isObject()) {
+            log.add(file, context + ".settings_overrides", "expected object");
+            return;
+        }
+        for key in settingsOverrides.keys() {
+            string value = JsonContract.requiredString(settingsOverrides, key,
+                file, context + ".settings_overrides", log);
+            configuration.settingsOverrideKeys.push(key);
+            configuration.settingsOverrideValues.push(value);
+        }
+    }
+
+    public void parseCoreOptions(RetroArchConfiguration configuration, JsonValue jsonValue,
+                                 string file, string context, ParseLog log) {
+        if (!jsonValue.has("core_options")) {
+            return;
+        }
+        JsonValue coreOptions = jsonValue.get("core_options");
+        if (!coreOptions.isObject()) {
+            log.add(file, context + ".core_options", "expected object keyed by core name");
+            return;
+        }
+        for coreName in coreOptions.keys() {
+            JsonValue roles = coreOptions.get(coreName);
+            if (!roles.isObject()) {
+                log.add(file, context + ".core_options." + coreName,
+                    "expected object of role -> option key");
+            } else {
+                for role in roles.keys() {
+                    string optionKey = JsonContract.requiredString(roles, role, file,
+                        context + ".core_options." + coreName, log);
+                    configuration.coreOptionEntries.push(coreName + "|" + role + "|" + optionKey);
+                }
+            }
+        }
+    }
+
+    public void parseExtension(EmulatorPlatform platform, ParseLog log) {
+        self.parseConfiguration(platform, log);
+    }
+
+    // The libretro core selector: '-L %CORE_RETROARCH%/<core>_libretro<suffix>'.
+    // Bindings keep bare core names; the '_libretro' + suffix expansion is the
+    // platform rule owned here.
+    public Vector<string> commandFragments(EmulatorBinding binding, EmulatorPlatform platform) {
+        Vector<string> fragments = [];
+        if (binding.core.isEmpty()) {
+            return fragments;
+        }
+        ParseLog scratchLog = ParseLog();
+        RetroArchConfiguration configuration = self.parseConfiguration(platform, scratchLog);
+        if (!configuration.present) {
+            return fragments;
+        }
+        fragments.push("-L");
+        fragments.push("%CORE_RETROARCH%/" + binding.core + "_libretro"
+            + configuration.coreSuffix);
+        return fragments;
+    }
+
+    // ES-DE find-rules corepath entries. ES-DE cannot expand semu template
+    // or environment tokens, so ${env:...}/${nix_result} core_dirs stay
+    // launcher-side; their ES-DE-visible equivalent is the bundled AppImage
+    // core directory expressed relative to the es-de binary (%ESPATH% =
+    // $APPDIR/usr/bin, cores at $APPDIR/usr/lib/retroarch/cores — the same
+    // directory AppRun exports as SEMU_RETROARCH_CORE_DIR). Host-literal
+    // /usr/lib fallbacks follow verbatim.
+    public string bundledCorePathEntry() {
+        return "%ESPATH%/../lib/retroarch/cores";
+    }
+
+    public Vector<string> esDeCorePathDirectories(EmulatorPlatform platform) {
+        Vector<string> directories = [];
+        ParseLog scratchLog = ParseLog();
+        RetroArchConfiguration configuration = self.parseConfiguration(platform, scratchLog);
+        if (!configuration.present) {
+            return directories;
+        }
+        directories.push(self.bundledCorePathEntry());
+        for coreDirectory in configuration.coreDirectories {
+            if (coreDirectory.startsWith("/")) {
+                directories.push(coreDirectory);
+            }
+        }
+        return directories;
+    }
+
+    // The platform whose extension block feeds the emitted profile: the
+    // linux (Deck) block when declared, else the first declared platform.
+    public EmulatorPlatform profilePlatform(EmulatorDefinition definition) {
+        if (definition.hasOperatingSystem("linux")) {
+            return definition.platformFor("linux");
+        }
+        if (definition.platforms.size() > 0) {
+            return definition.platforms.get(0);
+        }
+        return EmulatorPlatform();
+    }
+
+    // RetroArch's audio driver, derived from the sandbox grant: the
+    // pulseaudio socket means RetroArch runs its "pulse" driver. No socket,
+    // no pin (RetroArch keeps its own default).
+    public string audioDriver(EmulatorPlatform platform) {
+        if (platform.sandbox.present && platform.sandbox.sockets.contains("pulseaudio")) {
+            return "pulse";
+        }
+        return "";
+    }
+
+    // Emit <name>/retroarch.cfg under outputRoot (the shared profiles root,
+    // <generated>/packaging/emulators/profiles). The input driver is the input
+    // target's device-identity pin for this emulator, falling back to the
+    // extension block's input_driver; hotkeys render from the Keymap chords.
+    public void emitProfiles(EmulatorDefinition definition, SteamInputTarget steamInput,
+                             Keymap keymap, string outputRoot) {
+        EmulatorPlatform platform = self.profilePlatform(definition);
+        ParseLog scratchLog = ParseLog();
+        RetroArchConfiguration configuration = self.parseConfiguration(platform, scratchLog);
+        string inputDriver = steamInput.deviceIdentity(self.id() + "_input_driver");
+        if (inputDriver.isEmpty()) {
+            inputDriver = configuration.inputDriver;
+        }
+        RetroArchEmitter.emitProfile(definition.name, inputDriver,
+            self.audioDriver(platform), keymap, outputRoot);
+    }
+
+    public Vector<string> graphicsForceArguments(EmulatorPlatform platform, string graphicsApi) {
+        Vector<string> arguments = [];
+        return arguments;
+    }
+
+    public string overlayConfiguration(EmulatorPlatform platform) {
+        return "";
+    }
+
+    // RetroArch's native hotkey token grammar lives in RetroArchEmitter
+    // (single owner for profile emission and chord translation).
+    public string translateChord(string chord) {
+        return RetroArchEmitter.hotkeyToken(chord);
+    }
+}

@@ -1,0 +1,64 @@
+// semu_shader.btrc — shader preset selection + path resolution.
+//
+// ShaderSelector.select is the single decision point for which canonical
+// shader preset a session uses. The rule ladder (mission contract):
+//   visuals off                      -> "" (no preset at all)
+//   shaders.json absent/disabled     -> "" (presentation is the tap's job)
+//   tap active                       -> screen preset (the tap composites the
+//                                       bezel itself; only the game screen is shaded)
+//   no tap + bezels on               -> composite preset (shader draws the frame),
+//                                       falling back to screen when none declared
+//   no tap + bezels off + crt on     -> screen preset
+//   otherwise                        -> ""
+// Widescreen is a WHOLE-block replacement: when active and the contract
+// declares a widescreen block, its screen/composite pair replaces the base
+// pair entirely (a missing member means "no preset", not "inherit").
+//
+// ShaderSelector.resolvePath maps canonical "assets/shaders/<relative>" onto
+// the staged shader tree: <shaderRoot>/semu/<relative> (the nix pipeline
+// stages semu presets under a "semu/" namespace next to shaders_slang etc.).
+
+import std.{fs}
+import ../../systems/model/system_definition.btrc
+
+class ShaderSelector {
+    class string select(SystemDefinition system, bool visualsEnabled, bool tapActive,
+                        bool bezelsEnabled, bool crtShadersEnabled, bool widescreenActive) {
+        if (!visualsEnabled) {
+            return "";
+        }
+        if (!system.shaders.present || !system.shaders.enabled) {
+            return "";
+        }
+        string screenPreset = system.shaders.screen;
+        string compositePreset = system.shaders.composite;
+        if (widescreenActive && system.shaders.hasWidescreen) {
+            screenPreset = system.shaders.widescreenScreen;
+            compositePreset = system.shaders.widescreenComposite;
+        }
+        if (tapActive) {
+            return screenPreset;
+        }
+        if (bezelsEnabled) {
+            return compositePreset.isEmpty() ? screenPreset : compositePreset;
+        }
+        if (crtShadersEnabled) {
+            return screenPreset;
+        }
+        return "";
+    }
+
+    class string resolvePath(string canonicalPath, string shaderRoot) {
+        if (canonicalPath.isEmpty()) {
+            return "";
+        }
+        string canonicalPrefix = "assets/shaders/";
+        if (!canonicalPath.startsWith(canonicalPrefix) || shaderRoot.isEmpty()) {
+            return canonicalPath;
+        }
+        // substring is (start, LENGTH); over-length clamps to the tail.
+        string relativePath = canonicalPath.substring(canonicalPrefix.len(),
+            canonicalPath.len() - canonicalPrefix.len());
+        return PathTools.join(shaderRoot, PathTools.join("semu", relativePath));
+    }
+}

@@ -1,0 +1,7 @@
+{
+  "schema_version": 1,
+  "enabled": true,
+  "screen": "assets/shaders/psp/screen.slangp",
+  "composite": "assets/shaders/psp/composite.slangp",
+  "doc": { "intent": "PSP LCD color, pixel grid, and mild persistence" }
+}

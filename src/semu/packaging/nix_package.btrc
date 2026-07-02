@@ -1,0 +1,229 @@
+// nix_package.btrc — declarative consistency check for the Nix asset layer.
+//
+// Verifies that the single source of truth for visual assets
+// (src/semu/emulators/rendering/assets/sources.json) is complete and in sync:
+//   1. every "github" upstream pin carries rev + nar_hash (nixpkgs pins
+//      carry attr),
+//   2. every canonical assets/ path referenced by any system's bezels.json /
+//      shaders.json — plus the code-owned generic fallback bezel arts — has a
+//      recipe in sources.json "assets",
+//   3. the pins match the fetchFromGitHub blocks hardcoded in
+//      src/semu/packaging/nix/semu_bezels.nix. Mismatches there are WARNINGS
+//      (logged with a "warning:" prefix, not counted as issues): the nix file
+//      is the derived artifact to regenerate, not a second source of truth.
+//
+// verify returns the number of hard issues (0 = pass); every message —
+// issues and warnings alike — is appended to the caller's ParseLog.
+
+import std.{vector, fs, json}
+import ../core/parse_log.btrc
+import ../systems/system_parser.btrc
+import ../systems/model/semu_contracts.btrc
+import ../systems/model/system_definition.btrc
+
+// One "github"-kind upstream pin from sources.json, kept for the nix
+// cross-check after its own completeness validation passed.
+class GithubPin {
+    public string key;
+    public string owner;
+    public string repository;
+    public string revision;
+    public string narHash;
+
+    public GithubPin() {
+        self.key = "";
+        self.owner = "";
+        self.repository = "";
+        self.revision = "";
+        self.narHash = "";
+    }
+}
+
+class NixPackage {
+    class string sourcesPath(string repoRoot) {
+        return PathTools.join(repoRoot, "src/semu/emulators/rendering/assets/sources.json");
+    }
+
+    class string bezelsNixPath(string repoRoot) {
+        return PathTools.join(repoRoot, "src/semu/packaging/nix/semu_bezels.nix");
+    }
+
+    class string stringField(JsonValue objectValue, string key) {
+        JsonValue value = objectValue.get(key);
+        if (value.isString()) {
+            return value.asString();
+        }
+        return "";
+    }
+
+    // -- 1. upstream pins ----------------------------------------------------
+    class int checkUpstreamPins(JsonValue root, string file, Vector<GithubPin> pins,
+                                ParseLog log) {
+        JsonValue upstreams = root.get("upstreams");
+        if (!upstreams.isObject()) {
+            log.add(file, "upstreams", "missing or not an object");
+            return 1;
+        }
+        int issues = 0;
+        for pinKey in upstreams.keys() {
+            JsonValue pinValue = upstreams.get(pinKey);
+            string kind = NixPackage.stringField(pinValue, "kind");
+            if (kind.equals("github")) {
+                string revision = NixPackage.stringField(pinValue, "rev");
+                string narHash = NixPackage.stringField(pinValue, "nar_hash");
+                if (revision.isEmpty()) {
+                    log.add(file, "upstreams." + pinKey, "github pin missing rev");
+                    issues = issues + 1;
+                }
+                if (narHash.isEmpty()) {
+                    log.add(file, "upstreams." + pinKey, "github pin missing nar_hash");
+                    issues = issues + 1;
+                }
+                if (!revision.isEmpty() && !narHash.isEmpty()) {
+                    GithubPin pin = GithubPin();
+                    pin.key = pinKey;
+                    pin.owner = NixPackage.stringField(pinValue, "owner");
+                    pin.repository = NixPackage.stringField(pinValue, "repo");
+                    pin.revision = revision;
+                    pin.narHash = narHash;
+                    pins.push(pin);
+                }
+            } else if (kind.equals("nixpkgs")) {
+                if (NixPackage.stringField(pinValue, "attr").isEmpty()) {
+                    log.add(file, "upstreams." + pinKey, "nixpkgs pin missing attr");
+                    issues = issues + 1;
+                }
+            } else {
+                log.add(file, "upstreams." + pinKey, "unknown pin kind '" + kind + "'");
+                issues = issues + 1;
+            }
+        }
+        return issues;
+    }
+
+    // -- 2. every referenced canonical asset has a recipe ---------------------
+    class int checkAssetRecipe(string assetPath, Vector<string> recipeKeys, string file,
+                               string context, ParseLog log) {
+        if (assetPath.isEmpty()) {
+            return 0;
+        }
+        if (!assetPath.startsWith("assets/")) {
+            // Canonical form is enforced by the contract parser; anything
+            // else surfacing here is a contract break worth reporting.
+            log.add(file, context, "asset path is not canonical (assets/...): " + assetPath);
+            return 1;
+        }
+        if (!recipeKeys.contains(assetPath)) {
+            log.add(file, context, "no recipe in sources.json assets for " + assetPath);
+            return 1;
+        }
+        return 0;
+    }
+
+    class int checkSystemAssets(SystemDefinition systemDefinition, Vector<string> recipeKeys,
+                                ParseLog log) {
+        int issues = 0;
+        if (systemDefinition.bezels.present) {
+            for variant in systemDefinition.bezels.variants {
+                string context = "bezels.variants." + variant.id;
+                issues = issues + NixPackage.checkAssetRecipe(variant.art, recipeKeys,
+                    systemDefinition.bezels.file, context + ".art", log);
+                issues = issues + NixPackage.checkAssetRecipe(variant.glass, recipeKeys,
+                    systemDefinition.bezels.file, context + ".glass", log);
+            }
+        }
+        if (systemDefinition.shaders.present) {
+            string shadersFile = systemDefinition.shaders.file;
+            issues = issues + NixPackage.checkAssetRecipe(systemDefinition.shaders.screen,
+                recipeKeys, shadersFile, "shaders.screen", log);
+            issues = issues + NixPackage.checkAssetRecipe(systemDefinition.shaders.composite,
+                recipeKeys, shadersFile, "shaders.composite", log);
+            if (systemDefinition.shaders.hasWidescreen) {
+                issues = issues + NixPackage.checkAssetRecipe(
+                    systemDefinition.shaders.widescreenScreen, recipeKeys, shadersFile,
+                    "shaders.widescreen.screen", log);
+                issues = issues + NixPackage.checkAssetRecipe(
+                    systemDefinition.shaders.widescreenComposite, recipeKeys, shadersFile,
+                    "shaders.widescreen.composite", log);
+            }
+        }
+        return issues;
+    }
+
+    class int checkReferencedAssets(string repoRoot, Vector<string> recipeKeys,
+                                    string sourcesFile, ParseLog log) {
+        int issues = 0;
+        ParseLog contractLog = ParseLog();
+        SemuContracts contracts = SystemParser.loadAll(PathTools.join(repoRoot, "src/semu"),
+            contractLog);
+        if (!contractLog.ok()) {
+            for error in contractLog.errors {
+                log.add("nix_package", "contracts", error);
+                issues = issues + 1;
+            }
+        }
+        for systemDefinition in contracts.systems {
+            issues = issues + NixPackage.checkSystemAssets(systemDefinition, recipeKeys, log);
+        }
+        // The code-owned generic fallback table (BezelResolver.genericFallback)
+        // must stay buildable too.
+        Vector<string> genericFallbackArts = ["assets/bezels/generic/4x3.png",
+                                              "assets/bezels/generic/16x9.png",
+                                              "assets/bezels/generic/dual.png"];
+        for genericArt in genericFallbackArts {
+            issues = issues + NixPackage.checkAssetRecipe(genericArt, recipeKeys,
+                sourcesFile, "generic_fallback", log);
+        }
+        return issues;
+    }
+
+    // -- 3. pins vs semu_bezels.nix (warnings only) ---------------------------
+    class void crossCheckBezelsNix(string repoRoot, Vector<GithubPin> pins, ParseLog log) {
+        string nixPath = NixPackage.bezelsNixPath(repoRoot);
+        if (!FileSystem.isFile(nixPath)) {
+            log.add(nixPath, "pins", "warning: semu_bezels.nix not found; pin cross-check skipped");
+            return;
+        }
+        string nixText = Path.readAll(nixPath);
+        for pin in pins {
+            if (!nixText.contains("repo = \"" + pin.repository + "\"")) {
+                log.add(nixPath, "pins." + pin.key, "warning: repo '" + pin.repository
+                    + "' is not fetched by semu_bezels.nix");
+            } else {
+                if (!nixText.contains("rev = \"" + pin.revision + "\"")) {
+                    log.add(nixPath, "pins." + pin.key,
+                        "warning: rev pin differs from sources.json (" + pin.revision + ")");
+                }
+                if (!nixText.contains("hash = \"" + pin.narHash + "\"")) {
+                    log.add(nixPath, "pins." + pin.key,
+                        "warning: hash pin differs from sources.json (" + pin.narHash + ")");
+                }
+            }
+        }
+    }
+
+    class int verify(string repoRoot, ParseLog log) {
+        string sourcesFile = NixPackage.sourcesPath(repoRoot);
+        JsonValue root = JsonValue.readFile(sourcesFile);
+        if (root.isError() || !root.isObject()) {
+            log.add(sourcesFile, "(root)", "missing or invalid JSON");
+            return 1;
+        }
+        Vector<GithubPin> pins = [];
+        int issues = NixPackage.checkUpstreamPins(root, sourcesFile, pins, log);
+        Vector<string> recipeKeys = [];
+        JsonValue assets = root.get("assets");
+        if (!assets.isObject()) {
+            log.add(sourcesFile, "assets", "missing or not an object");
+            issues = issues + 1;
+        } else {
+            for recipeKey in assets.keys() {
+                recipeKeys.push(recipeKey);
+            }
+        }
+        issues = issues + NixPackage.checkReferencedAssets(repoRoot, recipeKeys,
+            sourcesFile, log);
+        NixPackage.crossCheckBezelsNix(repoRoot, pins, log);
+        return issues;
+    }
+}

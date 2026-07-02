@@ -1,192 +1,36 @@
-E2E_GRAPH := tests/e2e/graph.json
-E2E_GRAPH_NODES ?=
-E2E_GRAPH_ARGS ?=
+.PHONY: tree-audit test verify manifest-smoke core-tests target-tests
 
-.PHONY: tree-audit payload-audit tap-geometry-smoke tap-menu-smoke generated-build generated-smoke test ftux-test e2e-smoke e2e-graph-list e2e-graph-status e2e-graph-coverage e2e-graph-run lifecycle-smoke sandbox-smoke launcher-smoke appimage-smoke deck-ssh-smoke nix-e2e verify
+APPROVED_TOP_LEVEL := .git .claude .gitignore Makefile flake.lock flake.nix src tests garbage
 
-tree-audit: ## Fail if repo-local output roots or stale tracked layout paths exist
+tree-audit: ## Check that source/test files match the approved refactor shape
 	@set -euo pipefail; \
-	for path in build .semu ES-DE deck-shots result input settings sync verification utils emulators tests/vms; do \
-		if [ -e "$$path" ]; then \
-			echo "unexpected repo-local output or stale root path: $$path" >&2; \
-			exit 1; \
-		fi; \
+	for path in $$(find . -maxdepth 1 -mindepth 1 -printf '%f\n' 2>/dev/null || find . -maxdepth 1 -mindepth 1 -exec basename {} \;); do \
+		case " $(APPROVED_TOP_LEVEL) " in *" $$path "*) ;; *) echo "unexpected top-level path: $$path" >&2; exit 1 ;; esac; \
 	done; \
-	if find . -maxdepth 1 -name 'result-*' -print -quit | grep -q .; then \
-		echo "unexpected root Nix result-* out-link" >&2; \
+	if find src/semu -path src/semu/garbage -prune -o -type f | grep -Ev '^src/semu/(cli\.btrc|settings\.json|core/[a-z0-9_]+\.btrc|platforms/(semu_platform\.btrc|platform_registry\.btrc|linux/[a-z0-9_]+\.btrc|macos/[a-z0-9_]+\.btrc)|emulators/(semu_emulator\.btrc|emulator_registry\.btrc|emulator_parser\.btrc|emulator_emitter\.btrc|emulator_process\.btrc|emulator_execution\.btrc|model/[a-z0-9_]+\.btrc|rendering/(semu_bezel\.btrc|semu_shader\.btrc|semu_rendering\.btrc|render_resolution\.btrc|assets/(sources\.json|reshade/[^/]+|overlay/[^/]+|fonts/[^/]+))|retroarch/(retroarch_emulator\.btrc|retroarch_emitter\.btrc|retroarch_rendering\.btrc|retroarch\.patch|emulator\.json)|dolphin/(dolphin_emulator\.btrc|dolphin_emitter\.btrc|dolphin_wiimote_profiles\.btrc|dolphin_rendering\.btrc|emulator\.json)|pcsx2/(pcsx2_emulator\.btrc|pcsx2_emitter\.btrc|pcsx2_rendering\.btrc|emulator\.json)|cemu/(cemu_emulator\.btrc|cemu_emitter\.btrc|cemu_rendering\.btrc|emulator\.json)|ryujinx/(ryujinx_emulator\.btrc|ryujinx_emitter\.btrc|ryujinx_rendering\.btrc|emulator\.json)|ppsspp/(ppsspp_emulator\.btrc|ppsspp_emitter\.btrc|ppsspp_rendering\.btrc|emulator\.json)|flycast/(flycast_emulator\.btrc|flycast_emitter\.btrc|flycast_rendering\.btrc|emulator\.json)|azahar/(azahar_emulator\.btrc|azahar_emitter\.btrc|azahar_rendering\.btrc|emulator\.json)|melonds/(melonds_emulator\.btrc|melonds_emitter\.btrc|melonds_rendering\.btrc|emulator\.json)|ares/emulator\.json)|systems/(system_parser\.btrc|system_emitter\.btrc|model/[a-z0-9_]+\.btrc|[^/]+/(system\.json|bezels\.json|shaders\.json))|input/(keymap_parser\.btrc|steam_input_parser\.btrc|input_emitter\.btrc|targets/steamdeck/(steamdeck\.skm|steam_input\.json|steam_input\.btrc|steamdeck_input_emitter\.btrc|steamdeck_hotkey_assignments\.btrc))|packaging/(appimage_package\.btrc|nix_package\.btrc|installer\.sh|appimage/(AppRun\.template|semu\.desktop\.template)|nix/(semu_app\.nix|semu_cli\.nix|semu_emulators\.nix|semu_shaders\.nix|semu_bezels\.nix|es_de\.nix|module\.nix|flake/(apps\.nix|checks\.nix|dev-shells\.nix|packages\.nix))))$$' >/tmp/semu-tree-audit.txt; then \
+		echo "unexpected src/semu files outside approved tree:" >&2; \
+		cat /tmp/semu-tree-audit.txt >&2; \
 		exit 1; \
 	fi; \
-	bad_generated="$$(git ls-files generated | grep -Ev '^generated/(\.gitignore|semu\.(c|json))$$' || true)"; \
-	if [ -n "$$bad_generated" ]; then \
-		echo "tracked generated file outside approved snapshots:" >&2; \
-		printf '%s\n' "$$bad_generated" >&2; \
+	if find tests -type f | grep -Ev '^tests/(Makefile|core/(emulator_contract_test\.btrc|system_contract_test\.btrc|rendering_contract_test\.btrc|input_contract_test\.btrc|package_contract_test\.btrc|generated_tree_test\.btrc)|targets/steamdeck/(Makefile|input_test\.btrc|visual_evidence_test\.btrc|emulator_loop_test\.btrc)|targets/vm/(Makefile|image_test\.btrc|install_test\.btrc|visual_evidence_test\.btrc|grub\.cfg|kickstart\.ks\.in))$$' >/tmp/semu-test-tree-audit.txt; then \
+		echo "unexpected tests files outside approved tree:" >&2; \
+		cat /tmp/semu-test-tree-audit.txt >&2; \
 		exit 1; \
 	fi; \
-	bad_stale="$$(git ls-files | grep -E '^(semu\.json|input/|settings/|sync/|verification/|utils/|emulators/|packaging/linux/ES-DE/|packaging/deck-tap/|packaging/standalone-bezel/|tests/deck/|tests/bazzite/|tests/vms/)' || true)"; \
-	if [ -n "$$bad_stale" ]; then \
-		echo "tracked stale layout path:" >&2; \
-		printf '%s\n' "$$bad_stale" >&2; \
-		exit 1; \
-	fi; \
-	echo "OK tree layout audit"
+	echo "OK approved tree"
 
-generated-build: generated/semu.c ## Build committed generated C without invoking BTRC
-	@mkdir -p "$(dir $(SEMU_BIN))"
-	$(CC) generated/semu.c -std=c11 -o "$(SEMU_BIN)" -lm
+manifest-smoke: $(SEMU_BIN)
+	@mkdir -p src/generated/test
+	$(SEMU_BIN) manifest --output src/generated/test/semu.json
+	@test -f src/generated/test/semu.json
 
-generated-smoke: generated-build ## Run BTRC-native smoke tests from generated C
-	$(SEMU_BIN) e2e all
-	$(SEMU_BIN) e2e shell-syntax --project "$(CURDIR)"
+core-tests: $(SEMU_BIN)
+	$(SEMU_BIN) test core
 
-payload-audit: $(SEMU_BIN) ## Fail if tracked licensed payloads or VM artifacts would be upstreamed
-	$(SEMU_BIN) e2e payload-audit --project "$(CURDIR)"
+target-tests: $(SEMU_BIN)
+	$(MAKE) -C tests/targets/steamdeck test
+	$(MAKE) -C tests/targets/vm test
 
-tap-geometry-smoke: ## Validate tap compositor priority geometry and cutout alignment
-	@mkdir -p generated/test
-	$(CC) packaging/steamdeck/tap/tap_geometry_check.c -std=c11 -o generated/test/tap-geometry-check -lm
-	generated/test/tap-geometry-check
+test: tree-audit $(SEMU_BIN) manifest-smoke core-tests
 
-tap-menu-smoke: ## Validate tap radial menu shape, cycling, and dynamic system options
-	@mkdir -p generated/test
-	$(CC) packaging/steamdeck/tap/tap_menu_check.c -std=c11 -o generated/test/tap-menu-check
-	generated/test/tap-menu-check
-
-test: tree-audit payload-audit tap-geometry-smoke tap-menu-smoke generated-smoke appimage-smoke ## Run native BTRC/runtime tests locally
-
-ftux-test: generated-smoke ## Validate Steam Deck/Linux first-run bootstrap path
-
-e2e-smoke: $(SEMU_BIN) ## Run BTRC-native sandbox and lifecycle smoke tests
-	$(SEMU_BIN) e2e all
-
-e2e-graph-list: $(SEMU_BIN) ## List declarative E2E graph nodes
-	$(SEMU_BIN) e2e graph "$(E2E_GRAPH)" list
-
-e2e-graph-status: $(SEMU_BIN) ## Show cached/stale E2E graph node state
-	$(SEMU_BIN) e2e graph "$(E2E_GRAPH)" status $(E2E_GRAPH_ARGS)
-
-e2e-graph-coverage: $(SEMU_BIN) ## Check declared E2E operation coverage
-	$(SEMU_BIN) e2e graph "$(E2E_GRAPH)" coverage
-
-e2e-graph-run: $(SEMU_BIN) ## Run E2E graph defaults or E2E_GRAPH_NODES="node ..."
-	$(SEMU_BIN) e2e graph "$(E2E_GRAPH)" run $(E2E_GRAPH_NODES) $(E2E_GRAPH_ARGS)
-
-lifecycle-smoke: $(SEMU_BIN) ## Validate install/reconfigure/change/uninstall/reinstall/upgrade lifecycle
-	$(SEMU_BIN) e2e lifecycle
-
-sandbox-smoke: $(SEMU_BIN) ## Validate all BTRC sandbox prepare routes
-	$(SEMU_BIN) e2e sandbox
-
-launcher-smoke: $(SEMU_BIN) ## Validate BTRC Linux launcher routing with fake flatpak/bwrap
-	$(SEMU_BIN) e2e launcher
-
-appimage-smoke: generated-build ## Validate AppImage assembly and Nix-store mount wiring with BTRC fakes
-	$(SEMU_BIN) e2e appimage --project "$(CURDIR)"
-
-deck-ssh-smoke: ## Probe a physical Steam Deck over SSH and capture a baseline screenshot
-	tests/steamdeck/ssh-smoke.sh
-
-nix-e2e: ## Validate flake routed-emulator shape and mock wrapper behavior
-	@set -euo pipefail; \
-	host_system="$$(nix eval --impure --raw --expr builtins.currentSystem)"; \
-	nix eval .#packages.x86_64-linux.semu-routed-emulators.name >/dev/null; \
-	nix eval .#packages.x86_64-linux.default.name >/dev/null; \
-	nix eval --raw .#apps.x86_64-linux.semu-retroarch.program | grep -F '/bin/semu-retroarch' >/dev/null; \
-	nix eval --raw .#apps.x86_64-linux.semu-es-de.program | grep -F '/bin/semu-es-de' >/dev/null; \
-	mkdir -p generated/nix; \
-	nix build --out-link generated/nix/result ".#checks.$$host_system.routed-emulator-mock" --print-build-logs; \
-	echo "OK Nix routed-emulator smoke ($$host_system)"
-
-verify: tree-audit payload-audit tap-geometry-smoke tap-menu-smoke $(SEMU_BIN) ## Run deterministic BTRC/Steam Deck verification
-	@set -euo pipefail; \
-	verify_dir="$(CURDIR)/generated/test/verification"; \
-	rm -rf "$$verify_dir"; \
-	mkdir -p "$$verify_dir"; \
-	echo "== Manifest determinism =="; \
-	"$(SEMU_BIN)" manifest --output "$$verify_dir/semu.json"; \
-	cmp -s "$$verify_dir/semu.json" "generated/semu.json"; \
-	grep -F '"source_language": "semu-keymap-v1"' "$$verify_dir/semu.json" >/dev/null; \
-		grep -F '"source_path": "$${paths.keymaps}/steam_deck.skm"' "$$verify_dir/semu.json" >/dev/null; \
-		grep -F '"screenshot_verification"' "$$verify_dir/semu.json" >/dev/null; \
-		grep -F '"before_launch"' "$$verify_dir/semu.json" >/dev/null; \
-		grep -F '"after_spawn"' "$$verify_dir/semu.json" >/dev/null; \
-		grep -F '"engine": "syncthing"' "$$verify_dir/semu.json" >/dev/null; \
-		grep -F '"tray_app": "syncthingtray"' "$$verify_dir/semu.json" >/dev/null; \
-	cmp -s "$(SEMU_C)" "generated/semu.c"; \
-	echo "OK manifest generated from BTRC matches generated/semu.json"; \
-	echo "== Bootstrap generated project outputs =="; \
-	"$(SEMU_BIN)" bootstrap --project "$(CURDIR)"; \
-	echo "OK bootstrap generated outputs"; \
-	echo "== Keymap compiler and renderers =="; \
-	"$(SEMU_BIN)" keymap validate --project "$(CURDIR)" | tee "$$verify_dir/keymap-validate.txt"; \
-	"$(SEMU_BIN)" keymap render --project "$(CURDIR)" --target manifest --output "$$verify_dir/keymap.json"; \
-	"$(SEMU_BIN)" keymap render --project "$(CURDIR)" --target retroarch --output "$$verify_dir/retroarch.cfg"; \
-	"$(SEMU_BIN)" keymap render --project "$(CURDIR)" --target dolphin --output "$$verify_dir/dolphin.ini"; \
-	"$(SEMU_BIN)" keymap render --project "$(CURDIR)" --target pcsx2 --output "$$verify_dir/pcsx2.ini"; \
-	"$(SEMU_BIN)" keymap render --project "$(CURDIR)" --target steam-input --output "$$verify_dir/steam-input.vdf"; \
-	grep -F 'input_exit_emulator = "escape"' "$$verify_dir/retroarch.cfg" >/dev/null; \
-	grep -F 'input_quit_gamepad_combo = "4"' "$$verify_dir/retroarch.cfg" >/dev/null; \
-	grep -F 'input_load_state = "a"' "$$verify_dir/retroarch.cfg" >/dev/null; \
-	grep -F 'input_save_state = "s"' "$$verify_dir/retroarch.cfg" >/dev/null; \
-	grep -F 'General/Stop = @(Ctrl+Q)' "$$verify_dir/dolphin.ini" >/dev/null; \
-	grep -F 'Save State/Save State Slot 1 = @(Ctrl+S)' "$$verify_dir/dolphin.ini" >/dev/null; \
-	grep -F 'SaveStateToSlot = Keyboard/Control & Keyboard/S' "$$verify_dir/pcsx2.ini" >/dev/null; \
-	grep -F 'LoadStateFromSlot = Keyboard/Control & Keyboard/A' "$$verify_dir/pcsx2.ini" >/dev/null; \
-	grep -F 'key_press S, Save State' "$$verify_dir/steam-input.vdf" >/dev/null; \
-	grep -F 'xinput_button SELECT, Quit' "$$verify_dir/steam-input.vdf" >/dev/null; \
-	grep -F 'xinput_button START, Quit' "$$verify_dir/steam-input.vdf" >/dev/null; \
-	grep -F 'key_press ESCAPE, Quit' "$$verify_dir/steam-input.vdf" >/dev/null; \
-	grep -F 'key_press LEFT_ALT, Quit' "$$verify_dir/steam-input.vdf" >/dev/null; \
-	grep -F 'key_press F4, Quit' "$$verify_dir/steam-input.vdf" >/dev/null; \
-	echo "OK keymap render targets"; \
-	echo "== Doctor invariants =="; \
-	"$(SEMU_BIN)" doctor --project "$(CURDIR)" | tee "$$verify_dir/doctor.txt"; \
-	grep -F 'OK gyro: disabled' "$$verify_dir/doctor.txt" >/dev/null; \
-	grep -F 'OK right_trackpad: mouse' "$$verify_dir/doctor.txt" >/dev/null; \
-	grep -F 'OK left_trackpad: radial_hotkeys' "$$verify_dir/doctor.txt" >/dev/null; \
-	grep -F 'OK hotkeys: HKB+L1 load, HKB+R1 save, HKB+Start quit' "$$verify_dir/doctor.txt" >/dev/null; \
-	grep -F 'OK layers: controller_model -> emulation_backend -> emitted_input -> emulator_keymap' "$$verify_dir/doctor.txt" >/dev/null; \
-	grep -F 'OK backends: uinput, evemu, uhid, inputplumber, steam_input' "$$verify_dir/doctor.txt" >/dev/null; \
-	grep -F 'OK controller_models: steam_deck, steam_controller, xbox_xinput, dualshock4, dualsense, switch_pro' "$$verify_dir/doctor.txt" >/dev/null; \
-	grep -F 'Input capabilities' "$$verify_dir/doctor.txt" >/dev/null; \
-	grep -F 'OK app.quit: desktop_verified=retroarch,dolphin,ppsspp,flycast,melonds,pcsx2,cemu,azahar,ryujinx; physical_game_mode=pending' "$$verify_dir/doctor.txt" >/dev/null; \
-	grep -F 'pending state.save: generated=retroarch,dolphin,pcsx2; disabled=azahar,ppsspp,flycast,melonds,cemu,ryujinx; physical_state_proof=pending' "$$verify_dir/doctor.txt" >/dev/null; \
-	grep -F 'pending state.load: generated=retroarch,dolphin,pcsx2; disabled=azahar,ppsspp,flycast,melonds,cemu,ryujinx; physical_state_proof=pending' "$$verify_dir/doctor.txt" >/dev/null; \
-	grep -F 'Keymap compiler' "$$verify_dir/doctor.txt" >/dev/null; \
-	grep -F 'OK steam_deck:' "$$verify_dir/doctor.txt" >/dev/null; \
-	grep -F 'OK neptune_simple: controller_neptune, trackpads, save/load/quit' "$$verify_dir/doctor.txt" >/dev/null; \
-		grep -F 'OK neptune_full: controller_neptune, trackpads, save/load/quit' "$$verify_dir/doctor.txt" >/dev/null; \
-		grep -F 'ROM preflight' "$$verify_dir/doctor.txt" >/dev/null; \
-		grep -F 'Screenshot verification hooks' "$$verify_dir/doctor.txt" >/dev/null; \
-		grep -F 'OK hooks: before_launch, after_spawn, after_exit, manual_visual_checkpoint' "$$verify_dir/doctor.txt" >/dev/null; \
-		grep -E 'OK screenshot_tool|MISSING screenshot_tool' "$$verify_dir/doctor.txt" >/dev/null; \
-		grep -F 'Sync' "$$verify_dir/doctor.txt" >/dev/null; \
-	grep -F 'OK start_at_boot: enabled' "$$verify_dir/doctor.txt" >/dev/null; \
-	grep -F 'OK saves: watch, 900s' "$$verify_dir/doctor.txt" >/dev/null; \
-	grep -F 'optional roms: watch, 3600s' "$$verify_dir/doctor.txt" >/dev/null; \
-	echo "OK doctor invariants"; \
-	echo "== Shell artifact syntax =="; \
-	"$(SEMU_BIN)" e2e shell-syntax --project "$(CURDIR)"; \
-	echo "== BTRC lifecycle/sandbox smoke =="; \
-	"$(SEMU_BIN)" e2e all; \
-	echo "OK BTRC lifecycle/sandbox smoke"; \
-	echo "== AppImage/Nix routing smoke =="; \
-	"$(SEMU_BIN)" e2e appimage --project "$(CURDIR)"; \
-	$(MAKE) --no-print-directory nix-e2e; \
-	echo "OK AppImage/Nix routing smoke"; \
-	echo "== BTRC runtime source boundary =="; \
-	test -f src/semu.btrc; \
-	test -d src/semu; \
-	echo "OK BTRC runtime source boundary"; \
-	sandbox_dir="$$verify_dir/sandbox-retroarch"; \
-	rm -rf "$$sandbox_dir"; \
-	"$(SEMU_BIN)" sandbox prepare --project "$(CURDIR)" --emulator retroarch --scratch "$$sandbox_dir"; \
-	test -L "$$sandbox_dir/.config/retroarch/retroarch.cfg"; \
-	echo "OK runtime is BTRC-backed"; \
-	echo "== Generated-C smoke =="; \
-	$(MAKE) --no-print-directory generated-smoke; \
-	echo "== Whitespace check =="; \
-	git diff --check; \
-	echo "Verification artifacts: $$verify_dir"
-
-include tests/vm/Makefile
-include tests/vm/bazzite/Makefile
+verify: test

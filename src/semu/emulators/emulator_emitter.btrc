@@ -1,0 +1,62 @@
+// emulator_emitter.btrc — generic ES-DE command strings + launcher shims.
+//
+// The es_systems <command> grammar mirrors the golden configs that worked on
+// the Deck (garbage/generated/packaging/es-de/es_systems_linux.xml):
+//   %EMULATOR_<UPPER(id)>% + platform args + binding args
+//   + concrete commandFragments (via the registry) + %ROM%
+// Core-selector syntax never appears here: it is produced by the concrete
+// emulator class's commandFragments.
+
+import std.{vector, fs}
+import ./model/emulator_platform.btrc
+import ./model/emulator_definition.btrc
+import ../systems/model/emulator_binding.btrc
+import ./emulator_registry.btrc
+
+class EmulatorEmitter {
+    class string quoteArgument(string argument) {
+        if (argument.contains(" ")) {
+            return "\"" + argument + "\"";
+        }
+        return argument;
+    }
+
+    // ES-DE command for one system binding on one operating system.
+    class string esDeCommand(EmulatorBinding binding, EmulatorDefinition emulator,
+                             string operatingSystem) {
+        EmulatorPlatform platform = emulator.platformFor(operatingSystem);
+        string command = "%EMULATOR_" + emulator.id.toUpper() + "%";
+        for argument in platform.arguments {
+            command = command + " " + EmulatorEmitter.quoteArgument(argument);
+        }
+        for argument in binding.arguments {
+            command = command + " " + EmulatorEmitter.quoteArgument(argument);
+        }
+        for fragment in EmulatorRegistry.commandFragments(emulator.id, binding, platform) {
+            command = command + " " + EmulatorEmitter.quoteArgument(fragment);
+        }
+        return command + " %ROM%";
+    }
+
+    // Launcher shim: a stable sh entry point per emulator so ES-DE find-rules
+    // can point at plain executables while all launch logic stays in the semu
+    // CLI.
+    class string shimScript(EmulatorDefinition emulator) {
+        return "#!/usr/bin/env sh\n"
+            + "exec \"$(dirname \"$0\")/semu\" launcher " + emulator.id + " \"$@\"\n";
+    }
+
+    class string shimName(EmulatorDefinition emulator) {
+        return "semu-" + emulator.id;
+    }
+
+    class void emitShims(Vector<EmulatorDefinition> emulators, string outputDirectory) {
+        UnixFileSystem.mkdirp(outputDirectory);
+        for emulator in emulators {
+            string shimPath = PathTools.join(outputDirectory,
+                EmulatorEmitter.shimName(emulator));
+            Path.writeAll(shimPath, EmulatorEmitter.shimScript(emulator));
+            FileSystem.chmod(shimPath, 493); // 0755
+        }
+    }
+}

@@ -1,0 +1,24 @@
+{
+  "name": "bazzite-installed-ssh",
+  "state": "bazzite-installed-ssh",
+  "parentState": "bazzite-installed-vm",
+  "stateMaterial": "{{sourceHash}}:{{bazziteUser}}:{{bazziteSshPort}}",
+  "args": {
+    "bazziteUser": "bazzite",
+    "bazziteSshPort": "2224"
+  },
+  "operations": [
+    {
+      "op": "make",
+      "command": "bazzite-vm-start-installed BAZZITE_DISK=src/generated/test/vms/bazzite-e2e.qcow2 BAZZITE_PID=src/generated/test/vms/bazzite-e2e.pid BAZZITE_STARTED=src/generated/test/vms/bazzite-e2e.started BAZZITE_MONITOR=src/generated/test/vms/bazzite-e2e-monitor.sock BAZZITE_SERIAL=src/generated/test/vms/bazzite-e2e-serial.log BAZZITE_SCREEN=src/generated/test/vms/bazzite-e2e-screen.ppm BAZZITE_SSH_PORT={{bazziteSshPort}} BAZZITE_VNC_DISPLAY=7 BAZZITE_VNC_PORT=5907",
+      "expect": "Bazzite VM VNC",
+      "timeout": 1200
+    },
+    {
+      "op": "make",
+      "command": "bazzite-vm-verify-ssh BAZZITE_SSH_USER={{bazziteUser}} BAZZITE_SSH_PORT={{bazziteSshPort}} BAZZITE_DISK=src/generated/test/vms/bazzite-e2e.qcow2 BAZZITE_PID=src/generated/test/vms/bazzite-e2e.pid BAZZITE_STARTED=src/generated/test/vms/bazzite-e2e.started BAZZITE_MONITOR=src/generated/test/vms/bazzite-e2e-monitor.sock BAZZITE_SERIAL=src/generated/test/vms/bazzite-e2e-serial.log BAZZITE_SCREEN=src/generated/test/vms/bazzite-e2e-screen.ppm",
+      "expect": "OK deck input preflight",
+      "timeout": 1200
+    }
+  ]
+}

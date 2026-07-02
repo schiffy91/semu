@@ -1,0 +1,273 @@
+// json_contract.btrc — static JSON field helpers shared by every contract
+// parser. Strictness posture (spec §1/§10): unknown keys outside "doc",
+// unknown enum values, empty strings in typed fields and a wrong
+// schema_version are hard errors, accumulated into the shared ParseLog.
+
+import std.{vector, json}
+import ./parse_log.btrc
+import ./geometry.btrc
+
+class JsonContract {
+    class string fieldLabel(string context, string key) {
+        return context.isEmpty() ? key : context + "." + key;
+    }
+
+    class void checkKeys(JsonValue jsonObject, Vector<string> allowedKeys,
+                         string file, string context, ParseLog log) {
+        if (!jsonObject.isObject()) {
+            return;
+        }
+        for key in jsonObject.keys() {
+            if (!key.equals("doc") && !allowedKeys.contains(key)) {
+                log.add(file, JsonContract.fieldLabel(context, key), "unknown key");
+            }
+        }
+        if (jsonObject.has("doc") && !jsonObject.get("doc").isObject()) {
+            log.add(file, JsonContract.fieldLabel(context, "doc"), "doc must be an object");
+        }
+    }
+
+    class void checkSchemaVersion(JsonValue root, int expectedVersion, string file, ParseLog log) {
+        if (!root.isObject()) {
+            log.add(file, "(root)", "expected a JSON object");
+            return;
+        }
+        if (!root.has("schema_version")) {
+            log.add(file, "schema_version", "missing required field");
+            return;
+        }
+        JsonValue declaredVersion = root.get("schema_version");
+        if (!declaredVersion.isInt()) {
+            log.add(file, "schema_version", "expected integer");
+            return;
+        }
+        if (declaredVersion.asInt() != expectedVersion) {
+            log.add(file, "schema_version",
+                f"version {declaredVersion.asInt()} unsupported (want {expectedVersion})");
+        }
+        Vector<string> keys = root.keys();
+        if (keys.size() > 0 && !keys.get(0).equals("schema_version")) {
+            log.add(file, "schema_version", "must be the first key");
+        }
+    }
+
+    class string requiredString(JsonValue jsonObject, string key,
+                                string file, string context, ParseLog log) {
+        string label = JsonContract.fieldLabel(context, key);
+        if (!jsonObject.has(key)) {
+            log.add(file, label, "missing required field");
+            return "";
+        }
+        JsonValue jsonValue = jsonObject.get(key);
+        if (!jsonValue.isString()) {
+            log.add(file, label, "expected string");
+            return "";
+        }
+        string value = jsonValue.asString();
+        if (value.isEmpty()) {
+            log.add(file, label, "empty string not allowed (omit the field instead)");
+        }
+        return value;
+    }
+
+    class string optionalString(JsonValue jsonObject, string key, string fallback,
+                                string file, string context, ParseLog log) {
+        if (!jsonObject.has(key)) {
+            return fallback;
+        }
+        return JsonContract.requiredString(jsonObject, key, file, context, log);
+    }
+
+    class bool requiredBool(JsonValue jsonObject, string key,
+                            string file, string context, ParseLog log) {
+        string label = JsonContract.fieldLabel(context, key);
+        if (!jsonObject.has(key)) {
+            log.add(file, label, "missing required field");
+            return false;
+        }
+        JsonValue jsonValue = jsonObject.get(key);
+        if (!jsonValue.isBool()) {
+            log.add(file, label, "expected boolean");
+            return false;
+        }
+        return jsonValue.asBool();
+    }
+
+    class bool optionalBool(JsonValue jsonObject, string key, bool fallback,
+                            string file, string context, ParseLog log) {
+        if (!jsonObject.has(key)) {
+            return fallback;
+        }
+        return JsonContract.requiredBool(jsonObject, key, file, context, log);
+    }
+
+    class double requiredNumber(JsonValue jsonObject, string key,
+                                string file, string context, ParseLog log) {
+        string label = JsonContract.fieldLabel(context, key);
+        if (!jsonObject.has(key)) {
+            log.add(file, label, "missing required field");
+            return 0.0;
+        }
+        JsonValue jsonValue = jsonObject.get(key);
+        if (!jsonValue.isNumber()) {
+            log.add(file, label, "expected number");
+            return 0.0;
+        }
+        return jsonValue.asFloat();
+    }
+
+    class double optionalNumber(JsonValue jsonObject, string key, double fallback,
+                                string file, string context, ParseLog log) {
+        if (!jsonObject.has(key)) {
+            return fallback;
+        }
+        return JsonContract.requiredNumber(jsonObject, key, file, context, log);
+    }
+
+    class int requiredInt(JsonValue jsonObject, string key,
+                          string file, string context, ParseLog log) {
+        string label = JsonContract.fieldLabel(context, key);
+        if (!jsonObject.has(key)) {
+            log.add(file, label, "missing required field");
+            return 0;
+        }
+        JsonValue jsonValue = jsonObject.get(key);
+        if (!jsonValue.isInt()) {
+            log.add(file, label, "expected integer");
+            return 0;
+        }
+        return jsonValue.asInt();
+    }
+
+    class void checkEnum(string value, Vector<string> allowedValues,
+                         string file, string context, ParseLog log) {
+        if (value.isEmpty()) {
+            return;
+        }
+        if (!allowedValues.contains(value)) {
+            log.add(file, context,
+                "invalid value '" + value + "' (allowed: " + allowedValues.join(", ") + ")");
+        }
+    }
+
+    class Vector<string> stringArray(JsonValue jsonObject, string key, bool required,
+                                     string file, string context, ParseLog log) {
+        string label = JsonContract.fieldLabel(context, key);
+        Vector<string> result = [];
+        if (!jsonObject.has(key)) {
+            if (required) {
+                log.add(file, label, "missing required field");
+            }
+            return result;
+        }
+        JsonValue jsonValue = jsonObject.get(key);
+        if (!jsonValue.isArray()) {
+            log.add(file, label, "expected array of strings");
+            return result;
+        }
+        for (int entryIndex = 0; entryIndex < jsonValue.size(); entryIndex++) {
+            JsonValue entry = jsonValue.at(entryIndex);
+            if (!entry.isString() || entry.asString().isEmpty()) {
+                log.add(file, f"{label}[{entryIndex}]", "expected non-empty string");
+            } else {
+                result.push(entry.asString());
+            }
+        }
+        return result;
+    }
+
+    class void checkAssetPath(string path, string file, string context, ParseLog log) {
+        if (!path.isEmpty() && !path.startsWith("assets/")) {
+            log.add(file, context, "must be a canonical asset path starting with 'assets/'"
+                + " (upstream pack paths live only in assets/sources.json)");
+        }
+    }
+
+    class NormalizedRect rect(JsonValue jsonValue, string file, string context, ParseLog log) {
+        NormalizedRect normalizedRect = NormalizedRect();
+        if (!jsonValue.isObject()) {
+            log.add(file, context, "expected rect object {x, y, w, h}");
+            return normalizedRect;
+        }
+        Vector<string> allowedKeys = ["x", "y", "w", "h"];
+        JsonContract.checkKeys(jsonValue, allowedKeys, file, context, log);
+        normalizedRect.x = JsonContract.requiredNumber(jsonValue, "x", file, context, log);
+        normalizedRect.y = JsonContract.requiredNumber(jsonValue, "y", file, context, log);
+        normalizedRect.w = JsonContract.requiredNumber(jsonValue, "w", file, context, log);
+        normalizedRect.h = JsonContract.requiredNumber(jsonValue, "h", file, context, log);
+        if (normalizedRect.x < 0.0 || normalizedRect.x > 1.0
+            || normalizedRect.y < 0.0 || normalizedRect.y > 1.0
+            || normalizedRect.w <= 0.0 || normalizedRect.w > 1.0
+            || normalizedRect.h <= 0.0 || normalizedRect.h > 1.0) {
+            log.add(file, context, "rect values must be normalized to 0..1 with positive w/h");
+        }
+        normalizedRect.set = true;
+        return normalizedRect;
+    }
+
+    class PixelSize pixelSize(JsonValue jsonValue, string file, string context, ParseLog log) {
+        PixelSize parsedSize = PixelSize();
+        if (!jsonValue.isObject()) {
+            log.add(file, context, "expected size object {w, h}");
+            return parsedSize;
+        }
+        Vector<string> allowedKeys = ["w", "h"];
+        JsonContract.checkKeys(jsonValue, allowedKeys, file, context, log);
+        parsedSize.w = JsonContract.requiredInt(jsonValue, "w", file, context, log);
+        parsedSize.h = JsonContract.requiredInt(jsonValue, "h", file, context, log);
+        if (parsedSize.w < 1 || parsedSize.h < 1) {
+            log.add(file, context, "size values must be positive integers");
+        }
+        return parsedSize;
+    }
+
+    class AspectRatio aspectRatio(JsonValue jsonValue, string file, string context, ParseLog log) {
+        AspectRatio parsedAspect = AspectRatio();
+        if (!jsonValue.isObject()) {
+            log.add(file, context, "expected aspect object {w, h}");
+            return parsedAspect;
+        }
+        Vector<string> allowedKeys = ["w", "h"];
+        JsonContract.checkKeys(jsonValue, allowedKeys, file, context, log);
+        parsedAspect.w = JsonContract.requiredInt(jsonValue, "w", file, context, log);
+        parsedAspect.h = JsonContract.requiredInt(jsonValue, "h", file, context, log);
+        if (parsedAspect.w < 1 || parsedAspect.h < 1) {
+            log.add(file, context, "aspect values must be positive integers");
+        }
+        parsedAspect.set = true;
+        return parsedAspect;
+    }
+
+    class RgbColor rgbColor(JsonValue jsonValue, string file, string context, ParseLog log) {
+        RgbColor parsedColor = RgbColor();
+        if (!jsonValue.isObject()) {
+            log.add(file, context, "expected color object {r, g, b}");
+            return parsedColor;
+        }
+        Vector<string> allowedKeys = ["r", "g", "b"];
+        JsonContract.checkKeys(jsonValue, allowedKeys, file, context, log);
+        parsedColor.r = JsonContract.requiredNumber(jsonValue, "r", file, context, log);
+        parsedColor.g = JsonContract.requiredNumber(jsonValue, "g", file, context, log);
+        parsedColor.b = JsonContract.requiredNumber(jsonValue, "b", file, context, log);
+        if (parsedColor.r < 0.0 || parsedColor.r > 1.0
+            || parsedColor.g < 0.0 || parsedColor.g > 1.0
+            || parsedColor.b < 0.0 || parsedColor.b > 1.0) {
+            log.add(file, context, "color values must be 0..1 floats");
+        }
+        parsedColor.set = true;
+        return parsedColor;
+    }
+
+    class void checkContainedRect(NormalizedRect inner, NormalizedRect outer,
+                                  string file, string context, ParseLog log) {
+        if (!inner.set || !outer.set) {
+            return;
+        }
+        double epsilon = 0.0001;
+        if (inner.x + epsilon < outer.x || inner.y + epsilon < outer.y
+            || inner.x + inner.w > outer.x + outer.w + epsilon
+            || inner.y + inner.h > outer.y + outer.h + epsilon) {
+            log.add(file, context, "screen hole must lie within the combined hole");
+        }
+    }
+}

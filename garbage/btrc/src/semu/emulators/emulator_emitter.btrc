@@ -1,0 +1,23 @@
+import std.json;
+import std.vector;
+import ./emulator_parser.btrc;
+import ./semu_emulator.btrc;
+
+class SemuEmulatorEmitter {
+    class JsonValue emit(SemuEmulator emulator) {
+        JsonValue out = JsonValue.makeObject();
+        out.set("name", JsonValue.makeString(emulator.name));
+        out.set("label", JsonValue.makeString(emulator.label));
+        out.set("flatpak_id", JsonValue.makeString(emulator.flatpakId));
+        return out;
+    }
+
+    class JsonValue manifest(string root) {
+        JsonValue out = JsonValue.makeArray();
+        Vector<SemuEmulator> emulators = SemuEmulatorParser.discover(root);
+        for emulator in emulators {
+            out.push(SemuEmulatorEmitter.emit(emulator));
+        }
+        return out;
+    }
+}

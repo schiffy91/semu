@@ -1,0 +1,34 @@
+{
+  "schema_version": 1,
+  "name": "Nintendo Wii U",
+  "aliases": [],
+  "es_de": { "platforms": ["wiiu"], "theme": "wiiu" },
+  "rom": { "dir": "wiiu", "extensions": [".rpx", ".wua", ".wud", ".wux"] },
+  "emulators": [
+    { "emulator": "cemu" }
+  ],
+  "bios": {
+    "required": true,
+    "match": "all",
+    "files": [
+      { "name": "keys.txt" }
+    ],
+    "dir": "generated/packaging/emulators/profiles/Cemu/data"
+  },
+  "controller_profile": "steam_deck",
+  "display": {
+    "screens": [ { "id": "main", "native": { "w": 1280, "h": 720 } } ],
+    "aspect": { "w": 16, "h": 9 }
+  },
+  "render": {
+    "style": "console",
+    "priority": "game",
+    "kind": "pointer",
+    "corner_radius": 0.045
+  },
+  "doc": {
+    "hardware": "HD TV plus optional gamepad screen",
+    "intent": "No default CRT; only use TV/gamepad bezel when both regions are exposed.",
+    "bios": "Cemu needs user-supplied Wii U keys for encrypted content. The dir mirrors the manifest/doctor Cemu profile location (manifest.btrc:601, doctor.btrc Cemu/data); there is no bios/wiiu drop dir today."
+  }
+}

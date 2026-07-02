@@ -1,0 +1,71 @@
+// ppsspp_emulator.btrc — the PPSSPP concrete emulator class. PPSSPP is a
+// data-only standalone: every launch fact (the flatpak application id, the
+// fullscreen argument, the x11 display pinning, the sandbox grants, the
+// config_file graphics forcing, the xdg state isolation) lives in
+// emulators/ppsspp/emulator.json and is executed by the generic parser and
+// launcher. The class supplies identity, contract validation (PPSSPP has no
+// extension-block grammar), and the documented empty answers delegated to
+// PpssppEmitter / PpssppRendering.
+
+import std.{vector}
+import ../../core/parse_log.btrc
+import ../model/emulator_platform.btrc
+import ../model/emulator_definition.btrc
+import ../../systems/model/emulator_binding.btrc
+import ../../input/keymap_parser.btrc
+import ../../input/steam_input_parser.btrc
+import ../semu_emulator.btrc
+import ./ppsspp_emitter.btrc
+import ./ppsspp_rendering.btrc
+
+class PpssppEmulator extends SemuEmulator {
+    public PpssppEmulator() {}
+
+    public string id() {
+        return "ppsspp";
+    }
+
+    public string contractFile() {
+        return "emulators/ppsspp/emulator.json";
+    }
+
+    // PPSSPP declares no extension-block grammar: a platforms.<os>.ppsspp
+    // object in the contract is a mistake to report, not data awaiting
+    // support.
+    public void parseExtension(EmulatorPlatform platform, ParseLog log) {
+        if (platform.hasExtension()) {
+            log.add(self.contractFile(),
+                "platforms." + platform.operatingSystem + "." + self.id(),
+                "ppsspp declares no extension block grammar");
+        }
+    }
+
+    // Standalone launch: the ES-DE command is fully composed by the generic
+    // emitter from the contract's platform and binding arguments; PPSSPP
+    // owns no additional command syntax.
+    public Vector<string> commandFragments(EmulatorBinding binding, EmulatorPlatform platform) {
+        Vector<string> fragments = [];
+        return fragments;
+    }
+
+    public void emitProfiles(EmulatorDefinition definition, SteamInputTarget steamInput,
+                             Keymap keymap, string outputRoot) {
+        PpssppEmitter.emitProfiles(definition, steamInput, keymap, outputRoot);
+    }
+
+    public Vector<string> graphicsForceArguments(EmulatorPlatform platform, string graphicsApi) {
+        return PpssppRendering.graphicsForceArguments(platform, graphicsApi);
+    }
+
+    public string overlayConfiguration(EmulatorPlatform platform) {
+        return PpssppRendering.overlayConfiguration(platform);
+    }
+
+    // No native hotkey grammar is proven for PPSSPP: the contract's hotkey
+    // actions reach it as the literal keyboard chords Steam Input
+    // synthesizes, handled by PPSSPP's stock desktop key bindings — so the
+    // chord passes through verbatim.
+    public string translateChord(string chord) {
+        return chord;
+    }
+}

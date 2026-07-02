@@ -1,0 +1,73 @@
+// melonds_emulator.btrc — the melonDS concrete emulator class. melonDS is a
+// near-pure-data emulator: its flatpak identity, fullscreen argument, x11
+// session policy, sandbox, OpenGL config-file pin and xdg state all live in
+// emulators/melonds/emulator.json and are executed by the generic machinery.
+// This class answers the SemuEmulator surface with melonDS's proven,
+// documented answers — most of them deliberately empty (see each method) —
+// and delegates profile building to MelonDsEmitter and rendering glue to
+// MelonDsRendering.
+
+import std.{vector}
+import ../../core/parse_log.btrc
+import ../model/emulator_platform.btrc
+import ../model/emulator_definition.btrc
+import ../../systems/model/emulator_binding.btrc
+import ../../input/keymap_parser.btrc
+import ../../input/steam_input_parser.btrc
+import ../semu_emulator.btrc
+import ./melonds_emitter.btrc
+import ./melonds_rendering.btrc
+
+class MelonDsEmulator extends SemuEmulator {
+    public MelonDsEmulator() {}
+
+    public string id() {
+        return "melonds";
+    }
+
+    public string contractFile() {
+        return "emulators/melonds/emulator.json";
+    }
+
+    // melonDS's contract defines no emulator-specific extension block — every
+    // knob it needs fits the shared platform schema — so a sub-object under
+    // the melonds key is a contract violation, not data to interpret.
+    public void parseExtension(EmulatorPlatform platform, ParseLog log) {
+        if (platform.hasExtension()) {
+            log.add(self.contractFile(),
+                "platforms." + platform.operatingSystem + "." + self.id(),
+                "melonds defines no extension block; remove it or teach "
+                    + "MelonDsEmulator.parseExtension its schema");
+        }
+    }
+
+    // The golden ES-DE command is the bare emulator token plus the rom: the
+    // fullscreen switch travels in the platform argument list, and melonDS has
+    // no core-selector or per-binding grammar, so this class appends nothing.
+    public Vector<string> commandFragments(EmulatorBinding binding, EmulatorPlatform platform) {
+        Vector<string> fragments = [];
+        return fragments;
+    }
+
+    // Profile emission is a verified no-op: the golden packaging tree carries
+    // no melonDS profile directory (details in melonds_emitter.btrc).
+    public void emitProfiles(EmulatorDefinition definition, SteamInputTarget steamInput,
+                             Keymap keymap, string outputRoot) {
+        MelonDsEmitter.emitProfiles(definition, steamInput, keymap, outputRoot);
+    }
+
+    public Vector<string> graphicsForceArguments(EmulatorPlatform platform, string graphicsApi) {
+        return MelonDsRendering.graphicsForceArguments(platform, graphicsApi);
+    }
+
+    public string overlayConfiguration(EmulatorPlatform platform) {
+        return MelonDsRendering.overlayConfiguration(platform);
+    }
+
+    // melonDS has no proven native hotkey grammar (no golden hotkey
+    // configuration exists for it); chords pass through verbatim so Steam
+    // Input's keyboard emission stays the single hotkey path.
+    public string translateChord(string chord) {
+        return chord;
+    }
+}

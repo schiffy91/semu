@@ -1,0 +1,41 @@
+{
+  "schema_version": 1,
+  "name": "Sony PlayStation 2",
+  "aliases": [],
+  "es_de": { "platforms": ["ps2"], "theme": "ps2" },
+  "rom": { "dir": "ps2", "extensions": [".bin", ".chd", ".cso", ".dump", ".gz", ".img", ".iso", ".mdf", ".nrg", ".7z", ".zip"] },
+  "emulators": [
+    { "emulator": "pcsx2" }
+  ],
+  "bios": {
+    "required": true,
+    "match": "any",
+    "files": [
+      { "name": "ps2-0230a-20080220.bin" },
+      { "name": "ps2-0230e-20080220.bin" },
+      { "name": "ps2-0230j-20080220.bin" },
+      { "name": "SCPH-10000.bin" },
+      { "name": "SCPH-30004R.bin" },
+      { "name": "SCPH-39001.bin" },
+      { "name": "SCPH-70012.bin" },
+      { "name": "SCPH-90006.bin" }
+    ],
+    "dir": "bios/ps2"
+  },
+  "display": {
+    "screens": [ { "id": "main", "native": { "w": 256, "h": 240 } } ],
+    "aspect": { "w": 4, "h": 3 },
+    "widescreen": { "aspect": { "w": 16, "h": 9 }, "detect": "emulator_config" }
+  },
+  "render": {
+    "style": "console",
+    "priority": "game",
+    "corner_radius": 0.045
+  },
+  "doc": {
+    "hardware": "consumer CRT, component CRT, or early flat panel",
+    "intent": "Aspect should follow PCSX2/game widescreen state.",
+    "native_note": "256x240 carried over from RenderOptionCatalog (the tap's integer-scale base today), not true PS2 output res. Change deliberately, not as a migration side effect.",
+    "bios": "PCSX2 needs at least one legally dumped PS2 BIOS image."
+  }
+}

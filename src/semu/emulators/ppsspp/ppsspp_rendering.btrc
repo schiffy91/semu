@@ -1,0 +1,30 @@
+// ppsspp_rendering.btrc — PPSSPP rendering glue. PPSSPP contributes no
+// rendering behavior of its own: the graphics backend is forced through the
+// contract's config_file policy (emulator.json graphics.file/key/values,
+// written by the generic launcher edge), and presentation (bezel, cutout,
+// reflections, shaders) comes from the shared GL tap selected by the
+// contract's graphics.tap_api. Both interface surfaces therefore answer
+// empty; this class exists so that reasoning lives beside the emulator
+// instead of leaking into shared code.
+
+import std.{vector}
+import ../model/emulator_platform.btrc
+
+class PpssppRendering {
+    // No CLI graphics grammar: the frozen contract declares graphics.method
+    // "config_file", and PPSSPP exposes no command-line switch that would
+    // pin the backend for a single launch. The generic launcher performs the
+    // config-file edit from the contract data, so nothing is emulator-owned.
+    class Vector<string> graphicsForceArguments(EmulatorPlatform platform, string graphicsApi) {
+        Vector<string> arguments = [];
+        return arguments;
+    }
+
+    // No emulator-native overlay configuration text: the GL tap draws the
+    // bezel directly over PPSSPP's swap chain (the contract's overlay_aspect
+    // and tap_api drive the shared render planner), so there is no PPSSPP
+    // overlay file to write.
+    class string overlayConfiguration(EmulatorPlatform platform) {
+        return "";
+    }
+}

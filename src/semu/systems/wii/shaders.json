@@ -1,0 +1,5 @@
+{
+  "schema_version": 1,
+  "enabled": false,
+  "doc": { "note": "Standalone Dolphin: presentation comes from the GL tap + bezels.json; vkBasalt fallback uses the reshade pack via dolphin's overlay_aspect." }
+}

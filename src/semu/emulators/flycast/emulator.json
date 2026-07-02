@@ -1,0 +1,107 @@
+{
+  "schema_version": 1,
+  "name": "Flycast",
+  "kind": "standalone",
+  "default_system": "dreamcast",
+  "input": {
+    "actions": [
+      "app.quit"
+    ]
+  },
+  "platforms": {
+    "linux": {
+      "backend": "flatpak",
+      "flatpak_id": "org.flycast.Flycast",
+      "display_server": "x11",
+      "display_default": ":0",
+      "sessions": {
+        "gamescope": {
+          "display_default": ":1"
+        },
+        "desktop": {
+          "display_default": ":0"
+        }
+      },
+      "args": [
+        "-config",
+        "window:fullscreen=yes"
+      ],
+      "gl_wrapper": "nixgl",
+      "sandbox": {
+        "devices": [
+          "all"
+        ],
+        "filesystems": [
+          {
+            "path": "/nix/store",
+            "mode": "ro"
+          },
+          {
+            "path": "${project}",
+            "mode": "rw"
+          },
+          {
+            "path": "${roms}",
+            "mode": "rw"
+          },
+          {
+            "path": "${state_root}",
+            "mode": "create"
+          },
+          {
+            "path": "${emulation_root}",
+            "mode": "rw"
+          }
+        ]
+      },
+      "graphics": {
+        "method": "config_file",
+        "file": "${flatpak_home}/config/flycast/emu.cfg",
+        "format": "ini",
+        "key": "rend.renderer",
+        "values": {
+          "opengl": "0"
+        },
+        "tap_api": "opengl"
+      },
+      "overlay_aspect": "4x3",
+      "aspect_probe": {
+        "files": [
+          "${state_root}/config/flycast/emu.cfg",
+          "${project}/generated/packaging/emulators/profiles/Flycast/config/emu.cfg"
+        ],
+        "widescreen_markers": [
+          "rend.widescreen = yes",
+          "rend.widescreen=yes",
+          "widescreen = yes",
+          "widescreen=true",
+          "widescreen = true"
+        ],
+        "standard_markers": [
+          "rend.widescreen = no",
+          "rend.widescreen=no",
+          "widescreen = no",
+          "widescreen=false",
+          "widescreen = false"
+        ],
+        "fallback": "standard"
+      },
+      "state": {
+        "config_home": "xdg",
+        "data_home": "xdg"
+      },
+      "firmware": {
+        "dir": "${emulation_root}/Flycast/data",
+        "fallback_dirs": [
+          "${paths.project_bios}/dc",
+          "${emulation_root}/RetroArch/config/system"
+        ]
+      }
+    }
+  },
+  "doc": {
+    "graphics": "[config] rend.renderer: 0 = OpenGL (launcher_tap.btrc:147-150).",
+    "firmware": "Doctor probes bios/dc, the RetroArch system dir, and Flycast/data for dc_boot.bin/dc_flash.bin (doctor.btrc:146-150).",
+    "platforms": "No macos block: flycast is packaged for x86_64-linux only (packaging/nix/flake/packages.nix:42-48); dreamcast on macos runs through the RetroArch flycast core."
+  }
+}

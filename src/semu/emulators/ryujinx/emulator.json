@@ -1,0 +1,107 @@
+{
+  "schema_version": 1,
+  "name": "Ryujinx",
+  "kind": "standalone",
+  "default_system": "switch",
+  "input": {
+    "actions": [
+      "app.quit"
+    ]
+  },
+  "platforms": {
+    "linux": {
+      "backend": "flatpak",
+      "flatpak_id": "org.ryujinx.Ryujinx",
+      "display_server": "x11",
+      "display_default": ":0",
+      "sessions": {
+        "gamescope": {
+          "display_default": ":1"
+        },
+        "desktop": {
+          "display_default": ":0"
+        }
+      },
+      "args": [
+        "--fullscreen"
+      ],
+      "gl_wrapper": "nixgl",
+      "sandbox": {
+        "devices": [
+          "all"
+        ],
+        "filesystems": [
+          {
+            "path": "/nix/store",
+            "mode": "ro"
+          },
+          {
+            "path": "${project}",
+            "mode": "rw"
+          },
+          {
+            "path": "${roms}",
+            "mode": "rw"
+          },
+          {
+            "path": "${state_root}",
+            "mode": "create"
+          },
+          {
+            "path": "${emulation_root}",
+            "mode": "rw"
+          }
+        ]
+      },
+      "graphics": {
+        "method": "dynamic",
+        "tap_api": "opengl"
+      },
+      "overlay_aspect": "16x9",
+      "state": {
+        "config_home": "xdg",
+        "data_home": "xdg",
+        "extra_args": [
+          "--root-data-dir",
+          "${emulation_root}/Ryujinx/config"
+        ],
+        "seeds": [
+          {
+            "purpose": "prod_keys",
+            "target": "${state_root}/config/Ryujinx/system/prod.keys",
+            "sources": [
+              "${emulation_root}/Ryujinx/config/system/prod.keys",
+              "${paths.project_bios}/switch/prod.keys"
+            ]
+          },
+          {
+            "purpose": "title_keys",
+            "target": "${state_root}/config/Ryujinx/system/title.keys",
+            "sources": [
+              "${emulation_root}/Ryujinx/config/system/title.keys",
+              "${paths.project_bios}/switch/title.keys"
+            ]
+          }
+        ]
+      },
+      "firmware": {
+        "dir": "${emulation_root}/Ryujinx/config/system",
+        "fallback_dirs": [
+          "${paths.project_bios}/switch"
+        ]
+      }
+    },
+    "macos": {
+      "backend": "native",
+      "executable": "${home}/.local/share/ryujinx-app/Ryujinx.app/Contents/MacOS/Ryujinx",
+      "args": [
+        "--fullscreen"
+      ]
+    }
+  },
+  "doc": {
+    "state": "Ryujinx resolves its base dir via the flatpak's own home and ignores XDG_CONFIG_HOME, so --root-data-dir points it at the SD EmuDeck data dir (keys, firmware, games, saves) \u2014 launcher.btrc:754-761.",
+    "graphics": "method=dynamic: Config.json lives in the --root-data-dir, so the GL force is applied at launch, not via a static config path (launcher_tap.btrc:166).",
+    "macos": "The macos app is extracted to ~/.local/share/ryujinx-app on first launch by the nix wrapper (packaging/nix/ryujinx.nix:22-47; metadata.btrc:66)."
+  }
+}

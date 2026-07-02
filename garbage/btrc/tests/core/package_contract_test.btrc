@@ -1,0 +1,391 @@
+class SemuAppImageSmoke {
+    class int run(CliArgs args) { return e2eAppImageSmoke(args); }
+}
+
+void e2eWriteExecutable(string path, string text) {
+    FileSystem.writeText(path, text);
+    FileSystem.chmod(path, 493);
+}
+
+string e2eFakeEsdeAppImageText() {
+    return textLines([
+        "#!/usr/bin/env bash",
+        "set -euo pipefail",
+        "if [ \"${1:-}\" != \"--appimage-extract\" ]; then",
+        "  echo \"fake ES-DE AppImage only supports --appimage-extract\" >&2",
+        "  exit 2",
+        "fi",
+        "mkdir -p squashfs-root/usr/bin squashfs-root/usr/share/applications squashfs-root/usr/lib",
+        "cat > squashfs-root/usr/bin/es-de <<'EOF'",
+        "#!/usr/bin/env bash",
+        "echo fake es-de \"$@\"",
+        "EOF",
+        "chmod +x squashfs-root/usr/bin/es-de",
+        "printf 'fake icon\\n' > squashfs-root/semu.png"
+    ]);
+}
+
+string e2eFakeAppImageToolText() {
+    return textLines([
+        "#!/usr/bin/env bash",
+        "set -euo pipefail",
+        "if [ \"${1:-}\" = \"--no-appstream\" ]; then shift; fi",
+        "APPDIR=\"${1:?missing AppDir}\"",
+        "OUTPUT=\"${2:?missing output}\"",
+        "for required in AppRun usr/bin/es-de usr/bin/semu usr/bin/semu-quit-watch usr/bin/bwrap usr/bin/semu-retroarch usr/bin/semu-dolphin usr/bin/semu-ppsspp usr/bin/semu-flycast usr/bin/semu-melonds usr/bin/semu-pcsx2 usr/bin/semu-cemu usr/bin/semu-azahar usr/bin/semu-ryujinx usr/bin/semu-es-de usr/bin/syncthing usr/bin/syncthingtray usr/bin/curl usr/lib/retroarch/cores nix/store src/semu/packaging/appimage/AppRun.template src/generated/packaging/es-de/es_find_rules_linux.xml; do",
+        "  test -e \"$APPDIR/$required\" || { echo \"missing AppDir path: $required\" >&2; exit 3; }",
+        "done",
+        "test ! -e \"$APPDIR/src/semu/packaging/appimage/build_appimage.sh\" || { echo \"build script shipped inside AppDir\" >&2; exit 3; }",
+        "head -1 \"$APPDIR/AppRun\" | grep -F '#!/usr/bin/env bash' >/dev/null",
+        "grep -F 'SEMU_NIX_STORE_MOUNTED' \"$APPDIR/AppRun\" >/dev/null",
+        "grep -F 'HOST_PATH=' \"$APPDIR/AppRun\" >/dev/null",
+        "grep -F 'PATH=\"$HOST_PATH\" command -v bwrap' \"$APPDIR/AppRun\" >/dev/null",
+        "grep -F -- '--ro-bind \"$APPDIR/nix/store\" /nix/store' \"$APPDIR/AppRun\" >/dev/null",
+        "grep -F 'unset LD_PRELOAD' \"$APPDIR/AppRun\" >/dev/null",
+        "grep -F 'unset LD_LIBRARY_PATH' \"$APPDIR/AppRun\" >/dev/null",
+        "grep -F 'SEMU_LAUNCHER_BIN' \"$APPDIR/AppRun\" >/dev/null",
+        "grep -F 'SEMU_RUNTIME_CLI' \"$APPDIR/AppRun\" >/dev/null",
+        "grep -F 'SEMU_RETROARCH_CORE_DIR' \"$APPDIR/AppRun\" >/dev/null",
+        "grep -F 'SEMU_SYNCTHING_BIN' \"$APPDIR/AppRun\" >/dev/null",
+        "grep -F 'fake semu-btrc' \"$APPDIR/usr/bin/semu\" >/dev/null",
+        "! grep -F 'wrapped semu' \"$APPDIR/usr/bin/semu\" >/dev/null",
+        "! grep -F 'sync setup' \"$APPDIR/AppRun\" >/dev/null",
+        "! grep -F 'pkexec' \"$APPDIR/AppRun\" >/dev/null",
+        "find \"$APPDIR/usr/bin\" -maxdepth 1 -type f -perm -111 -print | sort > \"$OUTPUT\"",
+        "grep -o 'semu-[a-z0-9-]*' \"$APPDIR/src/generated/packaging/es-de/es_find_rules_linux.xml\" | sort -u | while IFS= read -r launcher; do",
+        "  test -x \"$APPDIR/usr/bin/$launcher\" || { echo \"generated ES-DE launcher has no executable: $launcher\" >&2; exit 3; }",
+        "done"
+    ]);
+}
+
+string e2eFakeNixText() {
+    return textLines([
+        "#!/usr/bin/env bash",
+        "set -euo pipefail",
+        "if [ \"${1:-}\" != \"copy\" ]; then echo \"fake nix only supports copy\" >&2; exit 2; fi",
+        "if [ -n \"${SEMU_FAKE_NIX_ARGS:-}\" ]; then printf '%s\\n' \"$@\" > \"$SEMU_FAKE_NIX_ARGS\"; fi",
+        "ROOT=\"\"",
+        "while [ $# -gt 0 ]; do",
+        "  case \"$1\" in",
+        "    --to) ROOT=\"${2#local?root=}\"; shift 2 ;;",
+        "    *) shift ;;",
+        "  esac",
+        "done",
+        "test -n \"$ROOT\" || { echo \"fake nix copy missing local root\" >&2; exit 2; }",
+        "mkdir -p \"$ROOT/nix/store/fake-semu-closure\"",
+        "printf 'fake closure\\n' > \"$ROOT/nix/store/fake-semu-closure/marker\""
+    ]);
+}
+
+Vector<string> appImageExpectedBins() {
+    return [
+        "semu",
+        "semu-quit-watch",
+        "bwrap",
+        "semu-retroarch",
+        "semu-dolphin",
+        "semu-ppsspp",
+        "semu-flycast",
+        "semu-melonds",
+        "semu-pcsx2",
+        "semu-cemu",
+        "semu-azahar",
+        "semu-ryujinx",
+        "semu-es-de",
+        "syncthing",
+        "syncthingtray",
+        "curl"
+    ];
+}
+
+void e2eWriteFakeNixPackage(string root, bool includeBwrap) {
+    ensureDir(joinPath(root, "bin"));
+    ensureDir(joinPath(root, "lib/semu"));
+    ensureDir(joinPath(root, "lib/retroarch/cores"));
+    e2eWriteExecutable(joinPath(root, "lib/semu/semu-btrc"), textLines([
+        "#!/usr/bin/env bash",
+        "echo fake semu-btrc \"$@\""
+    ]));
+    FileSystem.writeText(joinPath(root, "lib/retroarch/cores/gambatte_libretro.so"), "fake core\n");
+    for bin in appImageExpectedBins() {
+        if (includeBwrap || !bin.equals("bwrap")) {
+            e2eWriteExecutable(joinPath(root, "bin/" + bin), textLines([
+                "#!/usr/bin/env bash",
+                "echo wrapped " + bin + " \"$@\""
+            ]));
+        }
+    }
+}
+
+bool e2eExpectStatus(int expected, string command) {
+    ExecResult result = UnixShell().runRaw(command, true, false, "");
+    if (result.code == expected) { return true; }
+    print(f"expected exit {expected}, got {result.code}: {command}");
+    print(result.stdout());
+    return false;
+}
+
+string e2eCleanAppRunFixtureEnv() {
+    return "SEMU_NIX_STORE_MOUNTED= APPIMAGE= SEMU_PROJECT_DIR= SEMU_ROMS= SEMU_ROMS_DIR= SEMU_CLI= SEMU_RUNTIME_CLI= SEMU_BIN= ";
+}
+
+bool e2eFileContains(string path, string expected, string label) {
+    if (!FileSystem.exists(path)) {
+        print("missing " + label + ": " + path);
+        return false;
+    }
+    return e2eContains(FileSystem.readText(path), expected, label);
+}
+
+int e2eCountArgLines(string text, string expected) {
+    int count = 0;
+    Vector<string> lines = Strings.split(text, "\n");
+    for line in lines {
+        if (line.equals(expected)) { count += 1; }
+    }
+    return count;
+}
+
+string e2eBuildAppImageCommand(string project, string binDir, string nixPackage, string esde, string output) {
+    return e2eBuildAppImageCommandWithEnv(project, binDir, nixPackage, esde, output, "");
+}
+
+string e2eBuildAppImageCommandWithEnv(string project, string binDir, string nixPackage, string esde, string output, string extraEnv) {
+    string env = extraEnv.len() > 0 ? extraEnv + " " : "";
+    return "cd " + ShellWords.quote(project)
+        + " && " + env
+        + "PATH=" + ShellWords.quote(binDir) + ":$PATH"
+        + " APPIMAGETOOL=" + ShellWords.quote(joinPath(binDir, "appimagetool"))
+        + " src/semu/packaging/appimage/build_appimage.sh"
+        + " --nix-package " + ShellWords.quote(nixPackage)
+        + " --esde-appimage " + ShellWords.quote(esde)
+        + " --output " + ShellWords.quote(output)
+        + " --arch x86_64";
+}
+
+int e2eAppImageSmoke(CliArgs args) {
+    string project = args.valueAfter("--project", Environment.get("SEMU_PROJECT_DIR", "."));
+    string tmp = e2eTempDir("semu-appimage-smoke");
+    string binDir = joinPath(tmp, "bin");
+    ensureDir(binDir);
+    string fakeEsde = joinPath(tmp, "fake-esde.AppImage");
+    e2eWriteExecutable(fakeEsde, e2eFakeEsdeAppImageText());
+    e2eWriteExecutable(joinPath(binDir, "appimagetool"), e2eFakeAppImageToolText());
+    e2eWriteExecutable(joinPath(binDir, "nix"), e2eFakeNixText());
+    ensureDir(joinPath(project, "src/generated/packaging/es-de"));
+    FileSystem.writeText(joinPath(project, "src/generated/packaging/es-de/es_find_rules_linux.xml"), "<emulator name=\"RETROARCH\"><entry>semu-retroarch</entry></emulator>\n");
+
+    string noBwrapPackage = joinPath(tmp, "no-bwrap-nix-package");
+    e2eWriteFakeNixPackage(noBwrapPackage, false);
+    if (!e2eExpectStatus(4, e2eBuildAppImageCommand(project, binDir, noBwrapPackage, fakeEsde, joinPath(tmp, "no-bwrap.AppImage")))) { return 1; }
+
+    string package = joinPath(tmp, "nix-package");
+    e2eWriteFakeNixPackage(package, true);
+    string output = joinPath(tmp, "Semu-test.AppImage");
+    if (!e2eExpectStatus(0, e2eBuildAppImageCommand(project, binDir, package, fakeEsde, output))) { return 1; }
+    for bin in appImageExpectedBins() {
+        if (!e2eFileContains(output, "/usr/bin/" + bin, "AppImage output " + bin)) { return 1; }
+    }
+    if (!e2eFileContains(output, "/usr/bin/es-de", "AppImage output es-de")) { return 1; }
+
+    string packageLink = joinPath(tmp, "result");
+    UnixShell().runRaw("ln -s " + ShellWords.quote(package) + " " + ShellWords.quote(packageLink), true, false, "");
+    string nixArgs = joinPath(tmp, "nix.args");
+    if (!e2eExpectStatus(0, e2eBuildAppImageCommandWithEnv(
+            project,
+            binDir,
+            packageLink,
+            fakeEsde,
+            joinPath(tmp, "Semu-link.AppImage"),
+            "SEMU_FAKE_NIX_ARGS=" + ShellWords.quote(nixArgs)))) { return 1; }
+    string nixArgText = FileSystem.readText(nixArgs);
+    if (!e2eOk(nixArgText.contains(package), "AppImage build canonicalizes linked Nix package before nix copy")) { return 1; }
+    if (!e2eOk(!nixArgText.contains(packageLink), "AppImage build does not pass linked result path to nix copy")) { return 1; }
+
+    string appDir = joinPath(tmp, "AppRunProbe.AppDir");
+    ensureDir(joinPath(appDir, "nix/store"));
+    ensureDir(joinPath(appDir, "usr/bin"));
+    copyFilePath(joinPath(project, "src/semu/packaging/appimage/AppRun.template"), joinPath(appDir, "AppRun"));
+    FileSystem.chmod(joinPath(appDir, "AppRun"), 493);
+    string bwrapArgs = joinPath(tmp, "bwrap.args");
+    e2eWriteExecutable(joinPath(binDir, "bwrap"), textLines([
+        "#!/usr/bin/env bash",
+        "printf '%s\\n' \"$@\" > " + ShellWords.quote(bwrapArgs)
+    ]));
+    if (!e2eExpectStatus(0, e2eCleanAppRunFixtureEnv()
+        + "APPDIR=" + ShellWords.quote(appDir)
+        + " SEMU_BWRAP=" + ShellWords.quote(joinPath(binDir, "bwrap"))
+        + " " + ShellWords.quote(joinPath(appDir, "AppRun")) + " --probe")) { return 1; }
+    if (!e2eFileContains(bwrapArgs, "--tmpfs", "bwrap args tmpfs")) { return 1; }
+    if (!e2eFileContains(bwrapArgs, "/nix/store", "bwrap args nix store")) { return 1; }
+
+    string hostBwrapAppDir = joinPath(tmp, "AppRunHostBwrap.AppDir");
+    ensureDir(joinPath(hostBwrapAppDir, "nix/store"));
+    ensureDir(joinPath(hostBwrapAppDir, "usr/bin"));
+    copyFilePath(joinPath(project, "src/semu/packaging/appimage/AppRun.template"), joinPath(hostBwrapAppDir, "AppRun"));
+    FileSystem.chmod(joinPath(hostBwrapAppDir, "AppRun"), 493);
+    e2eWriteExecutable(joinPath(hostBwrapAppDir, "usr/bin/bwrap"), textLines([
+        "#!/usr/bin/env bash",
+        "echo bundled bwrap should not bootstrap the Nix store >&2",
+        "exit 88"
+    ]));
+    UnixShell().runRaw("rm -f " + ShellWords.quote(bwrapArgs), true, false, "");
+    if (!e2eExpectStatus(0, e2eCleanAppRunFixtureEnv()
+        + "APPDIR=" + ShellWords.quote(hostBwrapAppDir)
+        + " SEMU_BWRAP=" + ShellWords.quote(joinPath(binDir, "bwrap"))
+        + " PATH=" + ShellWords.quote(binDir) + ":$PATH"
+        + " " + ShellWords.quote(joinPath(hostBwrapAppDir, "AppRun")) + " --probe")) { return 1; }
+    if (!e2eFileContains(bwrapArgs, "--tmpfs", "host bwrap args tmpfs")) { return 1; }
+    if (!e2eFileContains(bwrapArgs, "/nix/store", "host bwrap args nix store")) { return 1; }
+
+    string noProject = joinPath(tmp, "AppRunNoProject.AppDir");
+    ensureDir(joinPath(noProject, "usr/bin"));
+    copyFilePath(joinPath(project, "src/semu/packaging/appimage/AppRun.template"), joinPath(noProject, "AppRun"));
+    FileSystem.chmod(joinPath(noProject, "AppRun"), 493);
+    if (!e2eExpectStatus(1, e2eCleanAppRunFixtureEnv()
+        + "APPDIR=" + ShellWords.quote(noProject)
+        + " HOME=" + ShellWords.quote(joinPath(tmp, "no-project-home"))
+        + " " + ShellWords.quote(joinPath(noProject, "AppRun")))) { return 1; }
+
+    string missingCli = joinPath(tmp, "AppRunMissingCli.AppDir");
+    string missingProject = joinPath(tmp, "missing-cli-project");
+    ensureDir(joinPath(missingCli, "usr/bin"));
+    ensureDir(joinPath(missingProject, "src/generated"));
+    FileSystem.writeText(manifestPath(missingProject), "{\"schema_version\":1}\n");
+    copyFilePath(joinPath(project, "src/semu/packaging/appimage/AppRun.template"), joinPath(missingCli, "AppRun"));
+    FileSystem.chmod(joinPath(missingCli, "AppRun"), 493);
+    if (!e2eExpectStatus(2, e2eCleanAppRunFixtureEnv()
+        + "APPDIR=" + ShellWords.quote(missingCli)
+        + " SEMU_PROJECT_DIR=" + ShellWords.quote(missingProject)
+        + " " + ShellWords.quote(joinPath(missingCli, "AppRun")))) { return 1; }
+
+    string missingPackage = joinPath(tmp, "missing-nix-package");
+    if (!e2eExpectStatus(4, e2eBuildAppImageCommand(project, binDir, missingPackage, fakeEsde, joinPath(tmp, "missing-nix.AppImage")))) { return 1; }
+
+    string cliAppDir = joinPath(tmp, "AppRunCli.AppDir");
+    string cliProject = joinPath(tmp, "cli-project");
+    string cliArgs = joinPath(tmp, "cli.args");
+    string cliEnv = joinPath(tmp, "cli.env");
+    string cliAppImage = joinPath(tmp, "Semu-x86_64.AppImage");
+    ensureDir(joinPath(cliAppDir, "usr/bin"));
+    ensureDir(joinPath(cliProject, "src/generated"));
+    FileSystem.writeText(cliAppImage, "fake appimage\n");
+    FileSystem.writeText(manifestPath(cliProject), "{\"schema_version\":1}\n");
+    copyFilePath(joinPath(project, "src/semu/packaging/appimage/AppRun.template"), joinPath(cliAppDir, "AppRun"));
+    FileSystem.chmod(joinPath(cliAppDir, "AppRun"), 493);
+    e2eWriteExecutable(joinPath(cliAppDir, "usr/bin/semu"), textLines([
+        "#!/usr/bin/env bash",
+        "printf '%s\\n' \"$@\" > " + ShellWords.quote(cliArgs),
+        "{",
+        "  printf 'SEMU_BIN=%s\\n' \"${SEMU_BIN:-}\"",
+        "  printf 'SEMU_RUNTIME_CLI=%s\\n' \"${SEMU_RUNTIME_CLI:-}\"",
+        "  printf 'LD_LIBRARY_PATH=%s\\n' \"${LD_LIBRARY_PATH:-}\"",
+        "  printf 'LD_PRELOAD=%s\\n' \"${LD_PRELOAD:-}\"",
+        "} > " + ShellWords.quote(cliEnv)
+    ]));
+    if (!e2eExpectStatus(0, e2eCleanAppRunFixtureEnv()
+        + "APPDIR=" + ShellWords.quote(cliAppDir)
+        + " APPIMAGE=" + ShellWords.quote(cliAppImage)
+        + " " + ShellWords.quote(joinPath(cliAppDir, "AppRun"))
+        + " manifest --output " + ShellWords.quote(joinPath(tmp, "manifest.json"))
+        + " --project " + ShellWords.quote(cliProject)
+        + " --roms=" + ShellWords.quote(joinPath(tmp, "explicit-roms")))) { return 1; }
+    if (!e2eFileContains(cliArgs, "manifest", "AppRun CLI passthrough")) { return 1; }
+    if (!e2eFileContains(cliArgs, "--project", "AppRun project arg")) { return 1; }
+    if (!e2eFileContains(cliArgs, "--roms", "AppRun roms arg")) { return 1; }
+    string manifestArgs = FileSystem.readText(cliArgs);
+    if (e2eCountArgLines(manifestArgs, "--project") != 1) {
+        print("AppRun duplicated --project:");
+        print(manifestArgs);
+        return 1;
+    }
+    if (e2eCountArgLines(manifestArgs, "--roms") != 0) {
+        print("AppRun appended duplicate --roms after explicit --roms=...");
+        print(manifestArgs);
+        return 1;
+    }
+    if (!e2eFileContains(cliEnv, cliAppImage, "AppRun stable SEMU_BIN")) { return 1; }
+    if (!e2eFileContains(cliEnv, joinPath(cliAppDir, "usr/bin/semu"), "AppRun runtime CLI")) { return 1; }
+    string shimDir = joinPath(tmp, "btrc-shim");
+    string shimRuntime = joinPath(tmp, "runtime-cli");
+    string shimStable = joinPath(tmp, "stable-appimage");
+    string shimArgs = joinPath(tmp, "btrc-shim.args");
+    ensureDir(shimDir);
+    e2eWriteExecutable(joinPath(shimDir, "semu-btrc"), textLines([
+        "#!/usr/bin/env bash",
+        "exec \"${SEMU_RUNTIME_CLI:?}\" \"$@\""
+    ]));
+    e2eWriteExecutable(shimRuntime, textLines([
+        "#!/usr/bin/env bash",
+        "printf '%s\\n' \"$@\" > " + ShellWords.quote(shimArgs)
+    ]));
+    e2eWriteExecutable(shimStable, textLines([
+        "#!/usr/bin/env bash",
+        "echo stable AppImage should not run >&2",
+        "exit 91"
+    ]));
+    if (!e2eExpectStatus(0, "SEMU_RUNTIME_CLI=" + ShellWords.quote(shimRuntime)
+        + " SEMU_BIN=" + ShellWords.quote(shimStable)
+        + " " + ShellWords.quote(joinPath(shimDir, "semu-btrc"))
+        + " launcher retroarch game.rom")) { return 1; }
+    if (!e2eFileContains(shimArgs, "launcher", "semu-btrc runtime CLI")) { return 1; }
+    if (!e2eExpectStatus(0, e2eCleanAppRunFixtureEnv()
+        + "APPDIR=" + ShellWords.quote(cliAppDir)
+        + " APPIMAGE=" + ShellWords.quote(cliAppImage)
+        + " SEMU_PROJECT_DIR=" + ShellWords.quote(cliProject)
+        + " SteamAppId=3834341984"
+        + " LD_LIBRARY_PATH=/steam/runtime"
+        + " LD_PRELOAD=/steam/overlay.so"
+        + " " + ShellWords.quote(joinPath(cliAppDir, "AppRun"))
+        + " doctor")) { return 1; }
+    if (!e2eFileContains(cliEnv, "LD_LIBRARY_PATH=", "AppRun clears Steam LD_LIBRARY_PATH")) { return 1; }
+    if (!e2eFileContains(cliEnv, "LD_PRELOAD=", "AppRun clears Steam LD_PRELOAD")) { return 1; }
+    if (!e2eExpectStatus(0, e2eCleanAppRunFixtureEnv()
+        + "APPDIR=" + ShellWords.quote(cliAppDir)
+        + " APPIMAGE=" + ShellWords.quote(cliAppImage)
+        + " SEMU_PROJECT_DIR=" + ShellWords.quote(cliProject)
+        + " SEMU_ROMS=" + ShellWords.quote(joinPath(tmp, "roms-root"))
+        + " " + ShellWords.quote(joinPath(cliAppDir, "AppRun"))
+        + " presentation plan --system gb")) { return 1; }
+    string presentationArgs = FileSystem.readText(cliArgs);
+    if (!e2eContains(presentationArgs, "presentation", "AppRun presentation command")) { return 1; }
+    if (!e2eContains(presentationArgs, "--system", "AppRun presentation system arg")) { return 1; }
+    if (!e2eContains(presentationArgs, "--project", "AppRun presentation project arg")) { return 1; }
+    if (!e2eContains(presentationArgs, "--roms", "AppRun presentation roms arg")) { return 1; }
+    if (!e2eExpectStatus(0, e2eCleanAppRunFixtureEnv()
+        + "APPDIR=" + ShellWords.quote(cliAppDir)
+        + " APPIMAGE=" + ShellWords.quote(cliAppImage)
+        + " SEMU_PROJECT_DIR=" + ShellWords.quote(cliProject)
+        + " SEMU_ROMS=" + ShellWords.quote(joinPath(tmp, "roms"))
+        + " " + ShellWords.quote(joinPath(cliAppDir, "AppRun"))
+        + " launcher routed retroarch /bin/retroarch game.rom --sentinel")) { return 1; }
+    string launcherArgs = FileSystem.readText(cliArgs);
+    if (!e2eContains(launcherArgs, "launcher", "AppRun launcher passthrough")) { return 1; }
+    if (!e2eContains(launcherArgs, "--sentinel", "AppRun launcher emulator arg")) { return 1; }
+    if (launcherArgs.contains("--project") || launcherArgs.contains("--roms")) {
+        print("launcher AppRun passthrough leaked context args:");
+        print(launcherArgs);
+        return 1;
+    }
+
+    string bootstrapProject = joinPath(tmp, "bootstrap-project");
+    ensureDir(bootstrapProject);
+    string launcherBin = joinPath(appDir, "usr/bin");
+    ExecResult bootstrap = UnixShell().runRaw(
+        "SEMU_LAUNCHER_BIN=" + ShellWords.quote(launcherBin)
+        + " " + ShellWords.quote(args.program)
+        + " bootstrap --project " + ShellWords.quote(bootstrapProject),
+        true,
+        false,
+        ""
+    );
+    if (!bootstrap.ok()) {
+        print(bootstrap.stdout());
+        return bootstrap.code;
+    }
+    if (!e2eFileContains(joinPath(customSystemsRoot(bootstrapProject), "es_find_rules.xml"), joinPath(launcherBin, "semu-retroarch"), "bootstrap launcher bin")) { return 1; }
+
+    FileSystem.removeRecursive(tmp);
+    print("OK AppImage assembly smoke");
+    return 0;
+}

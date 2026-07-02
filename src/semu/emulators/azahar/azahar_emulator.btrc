@@ -1,0 +1,77 @@
+// azahar_emulator.btrc — the Azahar (3DS) concrete emulator class. Azahar is
+// a plain standalone: no ES-DE command fragments beyond the ROM, no extension
+// block, no CLI graphics switch (the renderer is forced through its qt_ini
+// config — AzaharRendering) and no emulator-native overlay or hotkey grammar
+// (the bezel overlay is the generic vkBasalt path over graphics.overlay_api,
+// and the Steam Input chords land on Azahar's stock Qt shortcuts verbatim).
+// Profile building lives in AzaharEmitter; this class is the SemuEmulator
+// surface wiring.
+
+import std.{vector}
+import ../../core/parse_log.btrc
+import ../model/emulator_platform.btrc
+import ../model/emulator_definition.btrc
+import ../../systems/model/emulator_binding.btrc
+import ../../input/keymap_parser.btrc
+import ../../input/steam_input_parser.btrc
+import ../semu_emulator.btrc
+import ./azahar_emitter.btrc
+
+class AzaharEmulator extends SemuEmulator {
+    public AzaharEmulator() {}
+
+    public string id() {
+        return "azahar";
+    }
+
+    public string contractFile() {
+        return "emulators/azahar/emulator.json";
+    }
+
+    // Azahar declares no extension grammar: any platform block carrying an
+    // 'azahar' sub-object is a contract error, not silently ignored data.
+    public void parseExtension(EmulatorPlatform platform, ParseLog log) {
+        if (platform.hasExtension()) {
+            log.add(self.contractFile(),
+                "platforms." + platform.operatingSystem + "." + self.id(),
+                "azahar declares no extension block");
+        }
+    }
+
+    // The ES-DE command is '%EMULATOR_AZAHAR% %ROM%' — nothing to add.
+    public Vector<string> commandFragments(EmulatorBinding binding, EmulatorPlatform platform) {
+        Vector<string> fragments = [];
+        return fragments;
+    }
+
+    // One seeded qt-config.ini per platform that forces graphics through a
+    // config file; platforms without a graphics contract (macos) emit nothing.
+    public void emitProfiles(EmulatorDefinition definition, SteamInputTarget steamInput,
+                             Keymap keymap, string outputRoot) {
+        for platform in definition.platforms {
+            if (platform.graphics.present && platform.graphics.method.equals("config_file")) {
+                AzaharEmitter.emitPlatformProfile(definition, platform, outputRoot);
+            }
+        }
+    }
+
+    // Azahar has no graphics CLI switch: graphics.method is 'config_file',
+    // handled by AzaharRendering.patchGraphicsApi on the seeded profile.
+    public Vector<string> graphicsForceArguments(EmulatorPlatform platform, string graphicsApi) {
+        Vector<string> arguments = [];
+        return arguments;
+    }
+
+    // No emulator-native overlay config: the bezel overlay is the generic
+    // vkBasalt integration selected by graphics.overlay_api + overlay_aspect.
+    public string overlayConfiguration(EmulatorPlatform platform) {
+        return "";
+    }
+
+    // No native hotkey grammar: the Deck-proven path delivers the Steam Input
+    // keyboard chords straight to Azahar's stock Qt shortcuts, so the chord
+    // passes through verbatim.
+    public string translateChord(string chord) {
+        return chord;
+    }
+}

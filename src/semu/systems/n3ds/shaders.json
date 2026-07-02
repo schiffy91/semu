@@ -1,0 +1,5 @@
+{
+  "schema_version": 1,
+  "enabled": false,
+  "doc": { "note": "Azahar standalone; dual-screen presentation is the tap's job. The old Sampo 9519 runtime_preset was RA-only and unreachable." }
+}

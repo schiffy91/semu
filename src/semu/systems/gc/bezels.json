@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "enabled": true,
+  "default_variant": "tv",
+  "variants": [
+    {
+      "id": "tv",
+      "label": "Living-Room CRT",
+      "geometry_from": { "system": "n64", "variant": "tv" },
+      "doc": { "provenance": "Shares n64 art and its measured hole; was the gc->n64 runtime alias." }
+    }
+  ]
+}

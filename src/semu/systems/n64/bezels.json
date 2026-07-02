@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "enabled": true,
+  "default_variant": "tv",
+  "hole": { "x": 0.2542, "y": 0.1155, "w": 0.4917, "h": 0.6556 },
+  "variants": [
+    {
+      "id": "tv",
+      "label": "Living-Room CRT",
+      "art": "assets/bezels/n64/tv.png"
+    }
+  ]
+}

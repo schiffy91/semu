@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "enabled": true,
+  "default_variant": "classic",
+  "hole": { "x": 0.1843, "y": 0.2128, "w": 0.6314, "h": 0.2711 },
+  "variants": [
+    {
+      "id": "classic",
+      "label": "Classic Grey",
+      "art": "assets/bezels/gb/classic.png",
+      "glass": "assets/bezels/gb/classic-glass.png"
+    },
+    {
+      "id": "play_it_loud_red",
+      "label": "Play It Loud Red",
+      "art": "assets/bezels/gb/red.png",
+      "geometry_from": { "variant": "classic" }
+    },
+    {
+      "id": "play_it_loud_green",
+      "label": "Play It Loud Green",
+      "art": "assets/bezels/gb/green.png",
+      "geometry_from": { "variant": "classic" }
+    }
+  ]
+}

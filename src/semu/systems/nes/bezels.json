@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "enabled": true,
+  "default_variant": "tv",
+  "hole": { "x": 0.2344, "y": 0.0669, "w": 0.5312, "h": 0.7083 },
+  "variants": [
+    {
+      "id": "tv",
+      "label": "Living-Room CRT",
+      "art": "assets/bezels/nes/tv.png"
+    },
+    {
+      "id": "black_edition",
+      "label": "Black Edition",
+      "art": "assets/bezels/nes/tv-black.png"
+    }
+  ]
+}

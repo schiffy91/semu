@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "enabled": true,
+  "default_variant": "dual",
+  "hole": { "x": 0.3300, "y": 0.0400, "w": 0.3400, "h": 0.9200 },
+  "screen_holes": {
+    "top":    { "x": 0.3300, "y": 0.0500, "w": 0.3400, "h": 0.4400 },
+    "bottom": { "x": 0.3640, "y": 0.5100, "w": 0.2720, "h": 0.4400 }
+  },
+  "variants": [
+    { "id": "dual", "label": "Dual Screen", "art": "assets/bezels/generic/dual.png" }
+  ],
+  "doc": { "screen_holes": "Illustrative pending per-screen measurement; the tap consumes the combined hole today. Re-measure via gen-bezel-manifest against staged art." }
+}

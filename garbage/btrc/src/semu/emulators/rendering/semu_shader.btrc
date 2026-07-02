@@ -1,0 +1,31 @@
+import std.json;
+
+class SemuShader {
+    public string backend;
+    public string file;
+    public string runtimePreset;
+
+    public SemuShader(string backend, string file, string runtimePreset) {
+        self.backend = backend;
+        self.file = file;
+        self.runtimePreset = runtimePreset;
+    }
+
+    public bool valid() {
+        return self.backend.len() > 0 && self.file.len() > 0;
+    }
+
+    class SemuShader parse(JsonValue json) {
+        if (json.isError() || !json.isObject()) {
+            return SemuShader("", "", "");
+        }
+        if (!json.has("shader_backend") || !json.has("shader_file")) {
+            return SemuShader("", "", "");
+        }
+        return SemuShader(
+            json.get("shader_backend").asString(),
+            json.get("shader_file").asString(),
+            json.get("runtime_preset").asString()
+        );
+    }
+}

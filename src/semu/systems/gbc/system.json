@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "name": "Nintendo Game Boy Color",
+  "aliases": ["gbcolor"],
+  "es_de": { "platforms": ["gbc"], "theme": "gbc" },
+  "rom": { "dir": "gbc", "extensions": [".bin", ".cgb", ".gb", ".gbc", ".7z", ".zip"] },
+  "emulators": [
+    { "emulator": "retroarch", "label": "Gambatte", "core": "gambatte" }
+  ],
+  "display": {
+    "screens": [ { "id": "main", "native": { "w": 160, "h": 144 } } ],
+    "aspect": { "w": 10, "h": 9 }
+  },
+  "render": {
+    "style": "handheld",
+    "priority": "bezel",
+    "fill": true,
+    "reflect": 0.55
+  },
+  "doc": {
+    "hardware": "Game Boy Color TFT LCD",
+    "intent": "GBC LCD color response with mild motion blur; frost purple shell is the desired bezel target."
+  }
+}

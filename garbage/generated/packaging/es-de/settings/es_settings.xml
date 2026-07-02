@@ -1,0 +1,11 @@
+<?xml version="1.0"?>
+<string name="ROMDirectory" value="/Users/alexanderschiffhauer/Library/CloudStorage/GoogleDrive-alexander.schiffhauer@gmail.com/My Drive/dev/semu/src/generated/runtime/content/ROMs" />
+<string name="MediaDirectory" value="/Users/alexanderschiffhauer/Library/CloudStorage/GoogleDrive-alexander.schiffhauer@gmail.com/My Drive/dev/semu/src/generated/runtime/content/downloaded_media" />
+<string name="UserThemeDirectory" value="/Users/alexanderschiffhauer/Library/CloudStorage/GoogleDrive-alexander.schiffhauer@gmail.com/My Drive/dev/semu/src/generated/runtime/content/themes" />
+<string name="ApplicationUpdaterFrequency" value="never" />
+<string name="SaveGamelistsMode" value="always" />
+<string name="CreatePlaceholderSystemDirectories" value="false" />
+<string name="InputControllerType" value="xbox" />
+<string name="StartupSystem" value="" />
+<string name="StartupView" value="system" />
+<string name="Theme" value="slate-es-de" />

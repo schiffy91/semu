@@ -1,0 +1,56 @@
+// emulator_definition.btrc — the fully parsed identity of one emulator: the
+// typed form of src/semu/emulators/<id>/emulator.json. Pure data;
+// EmulatorParser fills it.
+
+import std.{vector}
+import ./emulator_platform.btrc
+
+class EmulatorInput {
+    public bool present;
+    public Vector<string> actions;
+
+    public EmulatorInput() {
+        self.present = false;
+        self.actions = [];
+    }
+}
+
+class EmulatorDefinition {
+    public string id;
+    public string file;
+    public string name;
+    public string kind;
+    public string defaultSystem;
+    public EmulatorInput input;
+    public Vector<EmulatorPlatform> platforms;
+
+    public EmulatorDefinition() {
+        self.id = "";
+        self.file = "";
+        self.name = "";
+        self.kind = "";
+        self.defaultSystem = "";
+        self.input = EmulatorInput();
+        self.platforms = [];
+    }
+
+    public bool hasOperatingSystem(string name) {
+        for platform in self.platforms {
+            if (platform.operatingSystem.equals(name)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    // First platform block matching the operating system; an empty block
+    // (operatingSystem == "") when none is declared.
+    public EmulatorPlatform platformFor(string name) {
+        for platform in self.platforms {
+            if (platform.operatingSystem.equals(name)) {
+                return platform;
+            }
+        }
+        return EmulatorPlatform();
+    }
+}

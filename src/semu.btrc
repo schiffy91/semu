@@ -1,137 +1,16 @@
-import std.{iterable, vector, map, strings, io, platform, process, fs, json, cli, graph}
-import ./semu/core/*;
-import ./semu/manifest/*;
-import ./semu/input/*;
-import ./semu/paths/*;
-import ./semu/emulators/*;
-import ./semu/bootstrap/*;
-import ./semu/doctor/*;
-import ./semu/verification/*;
-import ./semu/sync/*;
-import ./semu/settings/*;
-import ./semu/presentation/*;
-import ./semu/steam/*;
-import ./semu/tests/*;
-import ./semu/cli/*;
+// semu.btrc — the single transpile entry for the semu CLI.
+//
+// Build:
+//   btrcpy src/semu.btrc -o /tmp/semu.c --strict-imports --no-stdlib
+//   gcc /tmp/semu.c -std=c11 -o /tmp/semu -lm
+//
+// Every module declares its own minimal imports; this entry only wires the
+// command surface.
 
-class SemuApp {
-    class int run(int argc, char** argv) { return main(argc, argv); }
-}
-
-string launcherNameFromProgram(string program) {
-    string base = PathTools.basename(program);
-    if (!base.startsWith("semu-")) {
-        return "";
-    }
-    if (base.equals("semu-btrc") || base.equals("semu-flatpak") || base.equals("semu")) {
-        return "";
-    }
-    return Strings.removePrefix(base, "semu-");
-}
-
-// Resolve the project dir (the one holding generated/semu.json). Honors --project and $SEMU_PROJECT_DIR,
-// then the current dir, then standard install locations -- so the Game Mode AppImage finds its
-// project with no env var or cwd setup (Steam launches it with neither).
-string resolveProjectDir(CliArgs args) {
-    string explicit = args.valueAfter("--project", "");
-    if (explicit.len() > 0) { return explicit; }
-    string env = Environment.get("SEMU_PROJECT_DIR", "");
-    if (env.len() > 0) { return env; }
-    if (FileSystem.isFile(manifestPath("."))) { return "."; }
-    string xdg = Environment.get("XDG_DATA_HOME", "");
-    if (xdg.len() > 0) {
-        string c1 = joinPath(xdg, "semu");
-        if (FileSystem.isFile(manifestPath(c1))) { return c1; }
-    }
-    string home = Environment.get("HOME", "");
-    if (home.len() > 0) {
-        string c2 = joinPath(home, ".local/share/semu");
-        if (FileSystem.isFile(manifestPath(c2))) { return c2; }
-    }
-    return ".";
-}
+import std.{cli}
+import ./semu/cli.btrc
 
 int main(int argc, char** argv) {
-    CliArgs args = CliArgs(argc, argv);
-    string command = args.command();
-    string project = resolveProjectDir(args);
-    string programLauncher = launcherNameFromProgram(args.program);
-    if (programLauncher.len() > 0) {
-        return launcherRunEmulator(project, programLauncher, launcherPassthroughArgs(args));
-    }
-    if (command.equals("") || command.equals("manifest")) {
-        string output = args.valueAfter("--output", manifestPath(project));
-        writeGeneratedManifest(output);
-        return 0;
-    }
-    if (command.equals("bootstrap")) {
-        bootstrapSteamDeck(project);
-        return 0;
-    }
-    if (command.equals("doctor")) {
-        doctorSteamDeck(project);
-        return 0;
-    }
-    if (command.equals("deck")) {
-        int status = deckCommand(args, project);
-        return status;
-    }
-    if (command.equals("lifecycle")) {
-        int status = lifecycleCommand(args, project);
-        return status;
-    }
-    if (command.equals("sync")) {
-        int status = syncCommand(args, project);
-        return status;
-    }
-    if (command.equals("config")) {
-        int status = configCommand(args, project);
-        return status;
-    }
-    if (command.equals("settings")) {
-        int status = settingsCommand(args, project);
-        return status;
-    }
-    if (command.equals("presentation")) {
-        int status = presentationCommand(args, project);
-        return status;
-    }
-    if (command.equals("apprun")) {
-        int status = appRunCommand(args, project);
-        return status;
-    }
-    if (command.equals("steam-input")) {
-        int status = steamInputCommand(args, project);
-        return status;
-    }
-    if (command.equals("keymap")) {
-        int status = keymapCommand(args);
-        return status;
-    }
-    if (command.equals("screenshot")) {
-        int status = screenshotCommand(args, project);
-        return status;
-    }
-    if (command.equals("sandbox")) {
-        int status = sandboxCommand(args, project);
-        return status;
-    }
-    if (command.equals("launcher")) {
-        int status = launcherCommand(args, project);
-        return status;
-    }
-    if (command.equals("utils") || command.equals("util")) {
-        int status = utilitiesCommand(args);
-        return status;
-    }
-    if (command.equals("n3ds-nocrypto") || command.equals("3ds-nocrypto")) {
-        int status = n3dsNoCryptoCommand(args, 1);
-        return status;
-    }
-    if (command.equals("e2e")) {
-        int status = e2eCommand(args);
-        return status;
-    }
-    printUsage();
-    return 1;
+    CliArgs arguments = CliArgs(argc, argv);
+    return SemuCli.run(arguments, SemuCli.projectRoot(arguments));
 }

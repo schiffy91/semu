@@ -1,0 +1,1270 @@
+class SemuPresentation {
+    class int command(CliArgs args, string project) { return presentationCommand(args, project); }
+    class string shader(string project, string system) { return presentationResolvedShaderPath(project, system); }
+}
+
+class PresentationStationSpec {
+    public string system;
+    public string label;
+    public string defaultEmulator;
+    public string adapter;
+    public string adapterConfig;
+    public string hardwareDisplay;
+    public string shaderBackend;
+    public string shaderFile;
+    public string shaderIntent;
+    public string bezelBackend;
+    public string bezelFile;
+    public string bezelIntent;
+    public string runtimePreset;
+    public string layout;
+    public string scalePolicy;
+    public string aspectPolicy;
+    public bool dynamicAspect;
+    public string profile;
+    public string notes;
+
+    public PresentationStationSpec(
+        string system,
+        string label,
+        string defaultEmulator,
+        string adapter,
+        string adapterConfig,
+        string hardwareDisplay,
+        string shaderBackend,
+        string shaderFile,
+        string shaderIntent,
+        string bezelBackend,
+        string bezelFile,
+        string bezelIntent,
+        string runtimePreset,
+        string layout,
+        string scalePolicy,
+        string aspectPolicy,
+        bool dynamicAspect,
+        string profile,
+        string notes
+    ) {
+        self.system = system;
+        self.label = label;
+        self.defaultEmulator = defaultEmulator;
+        self.adapter = adapter;
+        self.adapterConfig = adapterConfig;
+        self.hardwareDisplay = hardwareDisplay;
+        self.shaderBackend = shaderBackend;
+        self.shaderFile = shaderFile;
+        self.shaderIntent = shaderIntent;
+        self.bezelBackend = bezelBackend;
+        self.bezelFile = bezelFile;
+        self.bezelIntent = bezelIntent;
+        self.runtimePreset = runtimePreset;
+        self.layout = layout;
+        self.scalePolicy = scalePolicy;
+        self.aspectPolicy = aspectPolicy;
+        self.dynamicAspect = dynamicAspect;
+        self.profile = profile;
+        self.notes = notes;
+    }
+
+    public bool known() {
+        return self.system.len() > 0;
+    }
+
+    public string configPath(string project) {
+        return presentationSystemConfigPath(project, self.system);
+    }
+
+    public string defaultConfigText() {
+        return jsonObject([
+            jsonField("schema_version", "1"),
+            jsonStrField("system", self.system),
+            jsonStrField("label", self.label),
+            jsonStrField("default_emulator", self.defaultEmulator),
+            jsonStrField("adapter", self.adapter),
+            jsonStrField("adapter_config", self.adapterConfig),
+            jsonStrField("hardware_display", self.hardwareDisplay),
+            jsonStrField("shader_backend", self.shaderBackend),
+            jsonStrField("shader_file", self.shaderFile),
+            jsonStrField("shader_intent", self.shaderIntent),
+            jsonStrField("bezel_backend", self.bezelBackend),
+            jsonStrField("bezel_file", self.bezelFile),
+            jsonStrField("bezel_intent", self.bezelIntent),
+            jsonStrField("runtime_preset", self.runtimePreset),
+            jsonStrField("widescreen_shader_file", self.defaultWidescreenShaderFile()),
+            jsonStrField("widescreen_bezel_file", self.defaultWidescreenBezelFile()),
+            jsonStrField("widescreen_runtime_preset", self.defaultWidescreenRuntimePreset()),
+            jsonStrField("layout", self.layout),
+            jsonStrField("scale_policy", self.scalePolicy),
+            jsonStrField("aspect_policy", self.aspectPolicy),
+            jsonBoolField("dynamic_aspect", self.dynamicAspect),
+            jsonStrField("profile", self.profile),
+            jsonStrField("notes", self.notes)
+        ]) + "\n";
+    }
+
+    public string defaultWidescreenShaderFile() {
+        return "";
+    }
+
+    public string defaultWidescreenBezelFile() {
+        if (!self.dynamicAspect) { return ""; }
+        if (self.system.equals("dreamcast")) { return "bezels/tv/clean-vga-or-16x9.json"; }
+        if (self.system.equals("gc")) { return "bezels/tv/clean-component-16x9.json"; }
+        if (self.system.equals("wii")) { return "bezels/tv/clean-component-16x9.json"; }
+        if (self.system.equals("ps2")) { return "bezels/tv/clean-component-16x9.json"; }
+        if (self.system.equals("wiiu")) { return ""; }
+        return "bezels/tv/clean-16x9.json";
+    }
+
+    public string defaultWidescreenRuntimePreset() {
+        return "";
+    }
+
+    public void writeDefault(string project) {
+        ensureDir(presentationSettingsRoot(project));
+        string path = self.configPath(project);
+        if (!FileSystem.exists(path)) {
+            SemuGeneratedFiles.writeSourceJson(project, path, self.defaultConfigText());
+        }
+    }
+
+    public JsonObject config(string project) {
+        self.writeDefault(project);
+        return JsonObject.readFile(self.configPath(project));
+    }
+
+    public string stringValue(string project, string key, string fallback) {
+        return self.config(project).getString(key, fallback);
+    }
+
+    public bool boolValue(string project, string key, bool fallback) {
+        return self.config(project).getBool(key, fallback);
+    }
+}
+
+class PresentationRuntimeState {
+    public string system;
+    public string adapter;
+    public string source;
+    public string aspect;
+    public string layout;
+    public string shaderMode;
+    public string bezelMode;
+    public string confidence;
+    public string notes;
+
+    public PresentationRuntimeState(
+        string system,
+        string adapter,
+        string source,
+        string aspect,
+        string layout,
+        string shaderMode,
+        string bezelMode,
+        string confidence,
+        string notes
+    ) {
+        self.system = system;
+        self.adapter = adapter;
+        self.source = source;
+        self.aspect = aspect;
+        self.layout = layout;
+        self.shaderMode = shaderMode;
+        self.bezelMode = bezelMode;
+        self.confidence = confidence;
+        self.notes = notes;
+    }
+
+    public bool widescreen() {
+        return self.aspect.equals("16:9");
+    }
+
+    public string json() {
+        return jsonObject([
+            jsonField("schema_version", "1"),
+            jsonStrField("system", self.system),
+            jsonStrField("adapter", self.adapter),
+            jsonStrField("source", self.source),
+            jsonStrField("aspect", self.aspect),
+            jsonStrField("layout", self.layout),
+            jsonStrField("shader_mode", self.shaderMode),
+            jsonStrField("bezel_mode", self.bezelMode),
+            jsonStrField("confidence", self.confidence),
+            jsonStrField("notes", self.notes)
+        ]);
+    }
+}
+
+class PresentationProbeText {
+    public string source;
+    public string text;
+
+    public PresentationProbeText(string source, string text) {
+        self.source = source;
+        self.text = text;
+    }
+
+    public bool found() {
+        return self.source.len() > 0;
+    }
+}
+
+class PresentationResolvedAssets {
+    public string shaderFile;
+    public string bezelFile;
+    public string runtimePreset;
+    public string launcherShader;
+
+    public PresentationResolvedAssets(
+        string project,
+        string selectedShaderFile,
+        string selectedBezelFile,
+        string selectedRuntimePreset,
+        string selectedLauncherShader
+    ) {
+        self.shaderFile = presentationResolveAssetCandidate(project, selectedShaderFile);
+        self.bezelFile = presentationResolveAssetCandidate(project, selectedBezelFile);
+        self.runtimePreset = presentationResolveAssetCandidate(project, selectedRuntimePreset);
+        self.launcherShader = selectedLauncherShader;
+    }
+
+    public string status(string candidate, string resolved) {
+        if (candidate.len() == 0) { return "disabled"; }
+        return resolved.len() > 0 ? "ok" : "missing";
+    }
+
+    public string launcherStatus(bool visualsEnabled) {
+        if (!visualsEnabled) { return "disabled"; }
+        return self.launcherShader.len() > 0 ? "ok" : "missing";
+    }
+}
+
+class PresentationCatalog {
+    class PresentationStationSpec empty() {
+        return PresentationStationSpec("", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", false, "", "");
+    }
+
+    class Vector<PresentationStationSpec> all() {
+        string crtShader = "crt/crt-royale.slangp";
+        string crtRuntime = "bezel/Mega_Bezel/Presets/MBZ__5__POTATO.slangp";
+        string panasonic = "Mega_Bezel_Packs/Duimon-Vintage-TV/Presets/Potato/Panasonic_Panacolor_TH20-B8/TH20-B8-[POTATO].slangp";
+        return [
+            PresentationStationSpec("gb", "Nintendo Game Boy", "RETROARCH", "retroarch", "retroarch.cfg core-options", "DMG-01 reflective STN LCD", "retroarch_slang", "handheld/gameboy.slangp", "green DMG tint, LCD matrix, slow-pixel ghosting", "retroarch_slang_or_overlay", "handheld/console-border/dmg.slangp", "classic grey Game Boy shell", "handheld/console-border/dmg.slangp", "single_lcd", "integer_native", "10:9", false, "dmg_lcd", "Prefer DMG green palette and ghosting over sharp monochrome output."),
+            PresentationStationSpec("gbc", "Nintendo Game Boy Color", "RETROARCH", "retroarch", "retroarch.cfg core-options", "Game Boy Color TFT LCD", "retroarch_slang", "handheld/authentic_gbc.slangp", "GBC LCD color response with mild motion blur", "retroarch_slang_or_overlay", "handheld/console-border/gbc.slangp", "frost purple Game Boy Color shell", "handheld/console-border/gbc.slangp", "single_lcd", "integer_native", "10:9", false, "gbc_lcd", "Frost purple artwork is the desired bezel target; bundled fallback is the libretro GBC console border."),
+            PresentationStationSpec("gba", "Nintendo Game Boy Advance", "RETROARCH", "retroarch", "retroarch.cfg core-options", "AGB-001 reflective TFT LCD", "retroarch_slang", "handheld/agb001.slangp", "original GBA color and LCD persistence", "retroarch_slang_or_overlay", "handheld/console-border/gba-agb001-color-motionblur.slangp", "purple wide Game Boy Advance shell", "handheld/console-border/gba-agb001-color-motionblur.slangp", "single_lcd", "integer_native", "3:2", false, "gba_lcd", "Use the original wide GBA target, not SP-first artwork."),
+            PresentationStationSpec("nes", "Nintendo Entertainment System", "RETROARCH", "retroarch", "retroarch.cfg core-options", "consumer CRT over composite", "retroarch_slang", "ntsc/ntsc-256px-composite-scanline.slangp", "NES composite artifacting, phosphor mask, scanlines", "retroarch_mega_bezel", panasonic, "elegant Panasonic or Sony consumer CRT", "ntsc/ntsc-256px-composite-scanline.slangp", "single_crt", "integer_or_aspect", "4:3", false, "crt_240p", "Classic 240p TV path. Use the system-specific NTSC runtime preset; Mesen is unstable with the generic Mega_Bezel runtime on Deck."),
+            PresentationStationSpec("snes", "Super Nintendo", "RETROARCH", "retroarch", "retroarch.cfg core-options", "consumer CRT over S-Video/composite", "retroarch_slang", "ntsc/ntsc-256px-svideo-scanline.slangp", "SNES-era CRT scanlines and soft analog video", "retroarch_mega_bezel", panasonic, "elegant Panasonic or Sony consumer CRT", crtRuntime, "single_crt", "integer_or_aspect", "4:3", false, "crt_240p", "Prefer S-Video-like clarity unless a game profile requests composite artifacts."),
+            PresentationStationSpec("genesis", "Sega Genesis", "RETROARCH", "retroarch", "retroarch.cfg core-options", "consumer CRT over composite/RGB", "retroarch_slang", "ntsc/ntsc-320px-composite-scanline.slangp", "Genesis dithering blended by analog CRT video", "retroarch_mega_bezel", panasonic, "elegant Panasonic or Sony consumer CRT", "ntsc/ntsc-320px-composite-scanline.slangp", "single_crt", "integer_or_aspect", "4:3", false, "crt_240p", "Composite blending matters for dithering-heavy art. Use the system-specific NTSC runtime preset; Genesis Plus GX is unstable with the generic Mega_Bezel runtime on Deck."),
+            PresentationStationSpec("n64", "Nintendo 64", "RETROARCH", "retroarch", "retroarch.cfg core-options", "consumer CRT over composite/S-Video", "retroarch_slang", "crt/crt-royale.slangp", "late-90s CRT with N64 VI softness and scanlines", "retroarch_mega_bezel", panasonic, "elegant Panasonic or Sony consumer CRT", crtRuntime, "single_crt", "aspect_preserve", "4:3", false, "crt_240p_480i", "Do not sharpen away the hardware VI softness."),
+            PresentationStationSpec("nds", "Nintendo DS", "MELONDS", "melonds", "melonDS.ini", "dual 256x192 resistive LCDs", "retroarch_or_native_lcd", "handheld/lcd1x_nds.slangp", "two LCD panels with mild persistence", "universal_dual_screen", "Mega_Bezel_Packs/Duimon-Mega-Bezel/Presets/Standard/Nintendo_NDS/NDS_Vertical-[STD]-[LCD-GRID]-[Integer].slangp", "good-looking DS bezel that maximizes top and bottom screens", "Mega_Bezel_Packs/Duimon-Mega-Bezel/Presets/Standard/Nintendo_NDS/NDS_Vertical-[STD]-[LCD-GRID]-[Integer].slangp", "dual_lcd_stacked", "integer_native", "dual:256x192", false, "nds_dual_lcd", "Layout adapter must expose both screens and support stacked/side-by-side variants."),
+            PresentationStationSpec("dreamcast", "Sega Dreamcast", "FLYCAST", "flycast", "emu.cfg", "consumer CRT or VGA monitor", "native_or_wrapper_crt", crtShader, "480i/480p era CRT or VGA softness", "universal_crt_bezel", "Mega_Bezel_Packs/Soqueroeu-TV-Backgrounds_V2.0/presets/TV-Console/Sega_Dreamcast-[FLAT].slangp", "elegant Panasonic or Sony CRT unless VGA mode is detected", crtRuntime, "single_tv", "aspect_preserve", "4:3_or_16:9", true, "crt_or_vga", "Prefer 4:3 CRT; swap to 16:9/flat only when config or game profile proves widescreen."),
+            PresentationStationSpec("psx", "Sony PlayStation", "RETROARCH", "retroarch", "retroarch.cfg core-options", "consumer CRT over composite/S-Video", "retroarch_slang", "crt/crt-royale.slangp", "PS1 240p/480i CRT with analog softness", "retroarch_mega_bezel", panasonic, "elegant Panasonic or Sony consumer CRT", crtRuntime, "single_crt", "aspect_preserve", "4:3", false, "crt_240p_480i", "Preserve wobble/softness instead of HD-cleaning the output."),
+            PresentationStationSpec("ps2", "Sony PlayStation 2", "PCSX2", "pcsx2", "PCSX2.ini", "consumer CRT, component CRT, or early flat panel", "native_or_wrapper_crt", "crt/crt-royale.slangp", "PS2 480i CRT scanlines and deinterlacing when applicable", "universal_crt_bezel", "Mega_Bezel_Packs/Soqueroeu-TV-Backgrounds_V2.0/presets/TV-Console/Sony_Playstation(PS2)-[FLAT].slangp", "elegant Panasonic or Sony CRT for 4:3; flat 16:9 frame for widescreen", crtRuntime, "single_tv", "aspect_preserve", "4:3_or_16:9", true, "crt_480i", "Aspect should follow PCSX2/game widescreen state."),
+            PresentationStationSpec("psp", "Sony PSP", "PPSSPP", "ppsspp", "ppsspp.ini", "480x272 PSP LCD", "native_or_wrapper_lcd", "handheld/lcd1x_psp.slangp", "PSP LCD color, pixel grid, and mild persistence", "universal_handheld_bezel", "handheld/console-border/psp.slangp", "red God of War PSP or original black PSP shell", "handheld/console-border/psp.slangp", "single_lcd_wide", "integer_or_aspect", "16:9", false, "psp_lcd", "Prefer red God of War shell when artwork exists; bundled fallback is the original black PSP-style libretro border."),
+            PresentationStationSpec("n3ds", "Nintendo 3DS", "AZAHAR", "azahar", "qt-config.ini", "dual LCDs, 400x240 top and 320x240 bottom", "native_or_wrapper_lcd", "handheld/lcd-grid-v2.slangp", "3DS LCD panels with asymmetric top/bottom geometry", "universal_dual_screen", "Mega_Bezel_Packs/Duimon-Vintage-TV/Presets/Potato/Sampo_9519/9519-[POTATO]-[3DS]-[Color].slangp", "good-looking 3DS bezel that maximizes top and bottom screens", "Mega_Bezel_Packs/Duimon-Vintage-TV/Presets/Potato/Sampo_9519/9519-[POTATO]-[3DS]-[Color].slangp", "dual_lcd_asymmetric", "integer_or_aspect", "dual:400x240+320x240", false, "n3ds_dual_lcd", "Azahar is only an adapter; Semu owns the dual-screen presentation contract."),
+            PresentationStationSpec("gc", "Nintendo GameCube", "DOLPHIN", "dolphin", "Dolphin.ini GFX.ini", "consumer CRT or component CRT", "native_or_wrapper_crt", "crt/crt-royale.slangp", "GameCube 480i/480p CRT or component-era softness", "universal_crt_bezel", "Mega_Bezel_Packs/Soqueroeu-TV-Backgrounds_V2.0/presets/TV-Console/Nintendo_GameCube-[FLAT].slangp", "elegant Panasonic or Sony CRT for 4:3; flat frame for widescreen", crtRuntime, "single_tv", "aspect_preserve", "4:3_or_16:9", true, "crt_480i_480p", "Dolphin aspect setting should drive 4:3 vs 16:9 presentation."),
+            PresentationStationSpec("wii", "Nintendo Wii", "DOLPHIN", "dolphin", "Dolphin.ini GFX.ini", "consumer CRT/component TV", "native_or_wrapper_crt", "crt/crt-royale.slangp", "Wii 480i/480p TV output with CRT/component-era behavior", "universal_crt_bezel", "Mega_Bezel_Packs/Soqueroeu-TV-Backgrounds_V2.0/presets/TV-Console/Nintendo_Wii_4x3-[FLAT].slangp", "elegant Panasonic or Sony CRT for 4:3; 16:9 frame when widescreen", crtRuntime, "single_tv", "aspect_preserve", "4:3_or_16:9", true, "crt_or_widescreen_tv", "Dolphin/game settings should drive 4:3 vs 16:9 presentation."),
+            PresentationStationSpec("wiiu", "Nintendo Wii U", "CEMU", "cemu", "settings.xml", "HD TV plus optional gamepad screen", "off_by_default", "", "modern 16:9 output by default", "off_by_default", "", "clean 16:9 frame, optional gamepad layout when exposed", "", "modern_tv_optional_gamepad", "aspect_preserve", "16:9_or_dual", true, "modern_hd", "Modern HD system: no default CRT or bezel; only enable a TV/gamepad frame when the adapter sees both regions."),
+            PresentationStationSpec("switch", "Nintendo Switch", "RYUJINX", "ryujinx", "Config.json", "modern 16:9 handheld/docked display", "off_by_default", "", "modern HDMI/OLED output; no era CRT treatment", "off_by_default", "", "no default bezel for modern Switch", "", "modern_fullscreen", "aspect_fill_or_preserve", "16:9", false, "modern_hd", "Modern system: fullscreen first, optional cosmetic frame only when explicitly enabled.")
+        ];
+    }
+
+    class PresentationStationSpec find(string system) {
+        for spec in PresentationCatalog.all() {
+            if (spec.system.equals(system)) {
+                return spec;
+            }
+        }
+        return PresentationCatalog.empty();
+    }
+
+    class PresentationStationSpec at(int index) {
+        Vector<PresentationStationSpec> specs = PresentationCatalog.all();
+        if (index < 0 || index >= specs.len) {
+            return PresentationCatalog.empty();
+        }
+        return specs.get(index);
+    }
+
+    class Vector<string> ids() {
+        Vector<string> out = [];
+        for spec in PresentationCatalog.all() {
+            out.push(spec.system);
+        }
+        return out;
+    }
+}
+
+string presentationSettingsRoot(string project) {
+    return joinPath(configRoot(project), "systems");
+}
+
+string presentationSystemRoot(string project, string system) {
+    return joinPath(presentationSettingsRoot(project), systemCatalogCanonicalId(system));
+}
+
+string presentationSystemConfigPath(string project, string system) {
+    return joinPath(presentationSystemRoot(project, system), "system.json");
+}
+
+string presentationStateRoot(string project) {
+    return joinPath(generatedRuntimeRoot(project), "presentation-state");
+}
+
+string presentationStatePath(string project, string system) {
+    return joinPath(presentationStateRoot(project), system + ".json");
+}
+
+string presentationAssetAuditPath(string project) {
+    return joinPath(semuStateRoot(project), "verification/presentation-assets.json");
+}
+
+bool presentationKnownField(string field) {
+    return field.equals("label")
+        || field.equals("default_emulator")
+        || field.equals("adapter")
+        || field.equals("adapter_config")
+        || field.equals("hardware_display")
+        || field.equals("shader_file")
+        || field.equals("bezel_file")
+        || field.equals("runtime_preset")
+        || field.equals("widescreen_shader_file")
+        || field.equals("widescreen_bezel_file")
+        || field.equals("widescreen_runtime_preset")
+        || field.equals("shader_backend")
+        || field.equals("shader_intent")
+        || field.equals("bezel_backend")
+        || field.equals("bezel_intent")
+        || field.equals("layout")
+        || field.equals("scale_policy")
+        || field.equals("aspect_policy")
+        || field.equals("dynamic_aspect")
+        || field.equals("profile")
+        || field.equals("notes");
+}
+
+bool presentationBoolField(string field) {
+    return field.equals("dynamic_aspect");
+}
+
+void writePresentationDefaults(string project) {
+    ensureDir(presentationSettingsRoot(project));
+    for spec in PresentationCatalog.all() {
+        spec.writeDefault(project);
+    }
+}
+
+string presentationConfigValue(string project, string system, string field) {
+    PresentationStationSpec spec = PresentationCatalog.find(system);
+    if (!spec.known()) { return ""; }
+    if (field.equals("label")) { return spec.stringValue(project, field, spec.label); }
+    if (field.equals("default_emulator")) { return spec.stringValue(project, field, spec.defaultEmulator); }
+    if (field.equals("adapter")) { return spec.stringValue(project, field, spec.adapter); }
+    if (field.equals("adapter_config")) { return spec.stringValue(project, field, spec.adapterConfig); }
+    if (field.equals("hardware_display")) { return spec.stringValue(project, field, spec.hardwareDisplay); }
+    if (field.equals("shader_file")) { return spec.stringValue(project, field, spec.shaderFile); }
+    if (field.equals("bezel_file")) { return spec.stringValue(project, field, spec.bezelFile); }
+    if (field.equals("runtime_preset")) { return spec.stringValue(project, field, spec.runtimePreset); }
+    if (field.equals("widescreen_shader_file")) { return spec.stringValue(project, field, spec.defaultWidescreenShaderFile()); }
+    if (field.equals("widescreen_bezel_file")) { return spec.stringValue(project, field, spec.defaultWidescreenBezelFile()); }
+    if (field.equals("widescreen_runtime_preset")) { return spec.stringValue(project, field, spec.defaultWidescreenRuntimePreset()); }
+    if (field.equals("shader_backend")) { return spec.stringValue(project, field, spec.shaderBackend); }
+    if (field.equals("shader_intent")) { return spec.stringValue(project, field, spec.shaderIntent); }
+    if (field.equals("bezel_backend")) { return spec.stringValue(project, field, spec.bezelBackend); }
+    if (field.equals("bezel_intent")) { return spec.stringValue(project, field, spec.bezelIntent); }
+    if (field.equals("layout")) { return spec.stringValue(project, field, spec.layout); }
+    if (field.equals("scale_policy")) { return spec.stringValue(project, field, spec.scalePolicy); }
+    if (field.equals("aspect_policy")) { return spec.stringValue(project, field, spec.aspectPolicy); }
+    if (field.equals("dynamic_aspect")) { return spec.boolValue(project, field, spec.dynamicAspect) ? "true" : "false"; }
+    if (field.equals("profile")) { return spec.stringValue(project, field, spec.profile); }
+    if (field.equals("notes")) { return spec.stringValue(project, field, spec.notes); }
+    return "";
+}
+
+bool presentationPutValue(string project, string system, string field, string value) {
+    PresentationStationSpec spec = PresentationCatalog.find(system);
+    if (!spec.known()) {
+        print("error 0:0 unknown presentation system '" + system + "'");
+        return false;
+    }
+    if (!presentationKnownField(field)) {
+        print("error 0:0 unknown presentation field '" + field + "'");
+        return false;
+    }
+    JsonObject config = spec.config(project);
+    if (presentationBoolField(field)) {
+        if (!settingBoolLiteral(value)) {
+            print("error 0:0 presentation field '" + field + "' expects a boolean");
+            return false;
+        }
+        config.setBool(field, settingBoolValue(value));
+    } else {
+        config.setString(field, value);
+    }
+    SemuGeneratedFiles.writeSourceJson(project, spec.configPath(project), config.stringify());
+    return true;
+}
+
+bool presentationVisualsEnabled(string project) {
+    return settingsGetValue(project, "visual.crt_shaders").equals("true")
+        || settingsGetValue(project, "visual.bezels").equals("true");
+}
+
+string presentationResolveAssetCandidate(string project, string candidate) {
+    if (candidate.len() == 0) { return ""; }
+    if (candidate.startsWith("/")) {
+        return FileSystem.exists(candidate) ? candidate : "";
+    }
+    string shaderDir = retroArchShaderDir(project);
+    if (shaderDir.len() > 0) {
+        string shaderPath = joinPath(shaderDir, candidate);
+        if (FileSystem.exists(shaderPath)) { return shaderPath; }
+        string shaderBundlePath = joinPath(PathTools.dirname(shaderDir), candidate);
+        if (FileSystem.exists(shaderBundlePath)) { return shaderBundlePath; }
+    }
+    string projectPath = joinPath(project, candidate);
+    return FileSystem.exists(projectPath) ? projectPath : "";
+}
+
+string presentationResolveShaderCandidate(string project, string candidate) {
+    return presentationResolveAssetCandidate(project, candidate);
+}
+
+string presentationResolveLauncherShader(string project, string runtimePreset, string shaderFile) {
+    if (!presentationVisualsEnabled(project)) { return ""; }
+    string runtime = presentationResolveShaderCandidate(project, runtimePreset);
+    if (runtime.len() > 0) { return runtime; }
+    string shader = presentationResolveShaderCandidate(project, shaderFile);
+    if (shader.len() > 0) { return shader; }
+    return retroArchShaderPresetPath(project);
+}
+
+// Deck-tuned presentation presets, generated into the bundle under
+// share/libretro/shaders/Mega_Bezel_Packs/semu-deck (see semu_bezels.nix).
+// Each layers the user-approved recipe on a Duimon [Night] preset: consoles in a vintage
+// CRT TV, handhelds in a flat (no-curvature) device shell, the game at the largest integer
+// scale (HSM_INT_SCALE_MODE=2, viewport-relative so it adapts to any screen), and the
+// [Night] "dark cozy room" surround for the unavoidable 16:10 margins.
+string presentationDuimonGuestBezel(string system) {
+    string base = "Mega_Bezel_Packs/semu-deck/";
+    string key = system.toLower();
+    if (key.equals("gb")) { return base + "gb.slangp"; }
+    if (key.equals("gbc")) { return base + "gbc.slangp"; }
+    if (key.equals("gba")) { return base + "gba.slangp"; }
+    if (key.equals("nes")) { return base + "nes.slangp"; }
+    if (key.equals("snes")) { return base + "snes.slangp"; }
+    if (key.equals("genesis")) { return base + "genesis.slangp"; }
+    if (key.equals("n64")) { return base + "n64.slangp"; }
+    if (key.equals("psx")) { return base + "psx.slangp"; }
+    if (key.equals("nds")) { return base + "nds.slangp"; }
+    if (key.equals("psp")) { return base + "psp.slangp"; }
+    if (key.equals("gc")) { return base + "gc.slangp"; }
+    if (key.equals("dreamcast")) { return base + "dreamcast.slangp"; }
+    return "";
+}
+
+string presentationResolvedShaderPath(string project, string system) {
+    if (!presentationVisualsEnabled(project)) { return ""; }
+    PresentationStationSpec spec = PresentationCatalog.find(system);
+    if (!spec.known()) {
+        return retroArchShaderPresetPath(project);
+    }
+    if (settingsGetValue(project, "visual.bezels").equals("true")) {
+        string duimon = presentationDuimonGuestBezel(system);
+        if (duimon.len() > 0) {
+            string resolvedDuimon = presentationResolveShaderCandidate(project, duimon);
+            if (resolvedDuimon.len() > 0) { return resolvedDuimon; }
+        }
+    }
+    JsonObject config = spec.config(project);
+    PresentationRuntimeState state = presentationAdapterRuntimeState(project, spec, config, config.getString("default_emulator", spec.defaultEmulator));
+    string selectedShader = presentationEffectiveValue(config, spec, state, "shader_file", spec.shaderFile, "widescreen_shader_file", spec.defaultWidescreenShaderFile());
+    string selectedRuntime = presentationEffectiveValue(config, spec, state, "runtime_preset", spec.runtimePreset, "widescreen_runtime_preset", spec.defaultWidescreenRuntimePreset());
+    return presentationResolveLauncherShader(project, selectedRuntime, selectedShader);
+}
+
+bool presentationArgTakesValue(string arg) {
+    return arg.equals("-L")
+        || arg.equals("--libretro")
+        || arg.equals("--config")
+        || arg.equals("-c")
+        || arg.equals("--appendconfig")
+        || arg.equals("--set-shader");
+}
+
+string presentationRomArg(Vector<string> emulatorArgs) {
+    string candidate = "";
+    bool skip = false;
+    for arg in emulatorArgs {
+        if (skip) {
+            skip = false;
+            continue;
+        }
+        if (presentationArgTakesValue(arg)) {
+            skip = true;
+            continue;
+        }
+        if (arg.startsWith("-")) {
+            continue;
+        }
+        candidate = arg;
+    }
+    return candidate;
+}
+
+string presentationSystemFromExtension(string path) {
+    string name = PathTools.basename(path).toLower();
+    if (name.endsWith(".gb")) { return "gb"; }
+    if (name.endsWith(".gbc") || name.endsWith(".cgb")) { return "gbc"; }
+    if (name.endsWith(".gba") || name.endsWith(".agb")) { return "gba"; }
+    if (name.endsWith(".nes") || name.endsWith(".fds")) { return "nes"; }
+    if (name.endsWith(".sfc") || name.endsWith(".smc") || name.endsWith(".bs")) { return "snes"; }
+    if (name.endsWith(".gen") || name.endsWith(".md") || name.endsWith(".smd") || name.endsWith(".32x")) { return "genesis"; }
+    if (name.endsWith(".n64") || name.endsWith(".z64") || name.endsWith(".v64")) { return "n64"; }
+    if (name.endsWith(".nds")) { return "nds"; }
+    if (name.endsWith(".3ds") || name.endsWith(".3dsx") || name.endsWith(".cci") || name.endsWith(".cxi")) { return "n3ds"; }
+    if (name.endsWith(".cdi") || name.endsWith(".gdi")) { return "dreamcast"; }
+    if (name.endsWith(".pbp") || name.endsWith(".psexe")) { return "psx"; }
+    if (name.endsWith(".iso") || name.endsWith(".chd")) { return ""; }
+    if (name.endsWith(".cso")) { return "psp"; }
+    if (name.endsWith(".wua") || name.endsWith(".wud") || name.endsWith(".wux")) { return "wiiu"; }
+    if (name.endsWith(".nsp") || name.endsWith(".xci") || name.endsWith(".nro")) { return "switch"; }
+    return "";
+}
+
+string presentationSystemFromRomPath(string project, string path) {
+    string roms = launchRomsRoot(project);
+    string prefix = roms.endsWith("/") ? roms : roms + "/";
+    if (path.startsWith(prefix)) {
+        string rest = Strings.removePrefix(path, prefix);
+        Vector<string> parts = Strings.split(rest, "/");
+        if (parts.len > 0) {
+            string system = parts.get(0);
+            if (PresentationCatalog.find(system).known()) {
+                return system;
+            }
+        }
+    }
+    return presentationSystemFromExtension(path);
+}
+
+string presentationSystemFromArgs(string project, Vector<string> emulatorArgs) {
+    string rom = presentationRomArg(emulatorArgs);
+    if (rom.len() == 0) { return ""; }
+    return presentationSystemFromRomPath(project, rom);
+}
+
+string presentationRegionJson(string role, string nativeSize, string aspect, string priority) {
+    return jsonObject([
+        jsonStrField("role", role),
+        jsonStrField("native_size", nativeSize),
+        jsonStrField("aspect", aspect),
+        jsonStrField("priority", priority)
+    ]);
+}
+
+string presentationRegionsJson(string layout) {
+    if (layout.equals("dual_lcd_stacked")) {
+        return jsonArray([
+            presentationRegionJson("top", "256x192", "4:3", "primary"),
+            presentationRegionJson("bottom", "256x192", "4:3", "secondary")
+        ]);
+    }
+    if (layout.equals("dual_lcd_asymmetric")) {
+        return jsonArray([
+            presentationRegionJson("top", "400x240", "5:3", "primary"),
+            presentationRegionJson("bottom", "320x240", "4:3", "secondary")
+        ]);
+    }
+    if (layout.equals("single_lcd_wide")) {
+        return jsonArray([presentationRegionJson("screen", "480x272", "16:9", "primary")]);
+    }
+    if (layout.equals("modern_fullscreen") || layout.equals("modern_tv_optional_gamepad")) {
+        return jsonArray([presentationRegionJson("screen", "1280x720", "16:9", "primary")]);
+    }
+    if (layout.equals("single_lcd")) {
+        return jsonArray([presentationRegionJson("screen", "native", "source", "primary")]);
+    }
+    return jsonArray([presentationRegionJson("screen", "native", "4:3", "primary")]);
+}
+
+PresentationProbeText presentationReadFirstExisting(Vector<string> paths) {
+    for path in paths {
+        if (FileSystem.isFile(path)) {
+            return PresentationProbeText(path, FileSystem.readText(path));
+        }
+    }
+    return PresentationProbeText("", "");
+}
+
+bool presentationTextHasAny(string text, Vector<string> needles) {
+    string lower = text.toLower();
+    for needle in needles {
+        if (lower.contains(needle.toLower())) {
+            return true;
+        }
+    }
+    return false;
+}
+
+string presentationDefaultAspect(string layout, string aspectPolicy) {
+    if (aspectPolicy.startsWith("dual:")) { return aspectPolicy; }
+    if (aspectPolicy.equals("4:3_or_16:9")) { return "4:3"; }
+    if (aspectPolicy.equals("16:9_or_dual")) { return "16:9"; }
+    if (layout.equals("modern_fullscreen")) { return "16:9"; }
+    if (layout.equals("single_lcd_wide")) { return "16:9"; }
+    return aspectPolicy;
+}
+
+string presentationShaderMode(string shaderBackend, string layout, string aspect) {
+    if (shaderBackend.equals("off_by_default")) { return "off"; }
+    if (aspect.startsWith("dual:")) { return "dual_lcd"; }
+    if (layout.contains("lcd")) { return "lcd"; }
+    if (aspect.equals("16:9")) { return "widescreen"; }
+    if (aspect.equals("4:3")) { return "crt"; }
+    return shaderBackend;
+}
+
+string presentationBezelMode(string bezelBackend, string layout, string aspect) {
+    if (bezelBackend.equals("off_by_default")) { return "off"; }
+    if (aspect.startsWith("dual:")) { return "dual_screen"; }
+    if (layout.contains("lcd")) { return "handheld_lcd"; }
+    if (aspect.equals("16:9")) { return "widescreen_frame"; }
+    if (aspect.equals("4:3")) { return "crt_4x3"; }
+    return bezelBackend;
+}
+
+PresentationRuntimeState presentationStaticState(
+    string system,
+    string adapter,
+    string layout,
+    string aspectPolicy,
+    string shaderBackend,
+    string bezelBackend,
+    string source,
+    string confidence,
+    string notes
+) {
+    string aspect = presentationDefaultAspect(layout, aspectPolicy);
+    return PresentationRuntimeState(
+        system,
+        adapter,
+        source,
+        aspect,
+        layout,
+        presentationShaderMode(shaderBackend, layout, aspect),
+        presentationBezelMode(bezelBackend, layout, aspect),
+        confidence,
+        notes
+    );
+}
+
+PresentationRuntimeState presentationDolphinState(string project, string system, string adapter, string layout, string shaderBackend, string bezelBackend) {
+    PresentationProbeText probe = presentationReadFirstExisting([
+        joinPath(launcherRoutedStateRoot(project, "dolphin"), "config/dolphin-emu/Config/GFX.ini"),
+        joinPath(launcherRoutedStateRoot(project, "dolphin"), "config/dolphin-emu/Config/Dolphin.ini"),
+        emulatorProfilePath(project, "Dolphin/config/GFX.ini"),
+        emulatorProfilePath(project, "Dolphin/config/Dolphin.ini")
+    ]);
+    if (probe.found()) {
+        if (presentationTextHasAny(probe.text, ["aspectratio = 1", "aspectratio=1", "aspectratio = 16:9", "aspectratio=16:9", "widescreen = true", "widescreen=true"])) {
+            return presentationStaticState(system, adapter, layout, "16:9", shaderBackend, bezelBackend, probe.source, "config", "Dolphin config reports widescreen output.");
+        }
+        if (presentationTextHasAny(probe.text, ["aspectratio = 2", "aspectratio=2", "aspectratio = 4:3", "aspectratio=4:3"])) {
+            return presentationStaticState(system, adapter, layout, "4:3", shaderBackend, bezelBackend, probe.source, "config", "Dolphin config reports 4:3 output.");
+        }
+    }
+    return presentationStaticState(system, adapter, layout, "4:3", shaderBackend, bezelBackend, probe.found() ? probe.source : "station-default", "default", "Dolphin aspect was not explicit; using 4:3 CRT station default.");
+}
+
+PresentationRuntimeState presentationPcsx2State(string project, string system, string adapter, string layout, string shaderBackend, string bezelBackend) {
+    PresentationProbeText probe = presentationReadFirstExisting([
+        joinPath(launcherRoutedStateRoot(project, "pcsx2"), "config/PCSX2/inis/PCSX2.ini"),
+        emulatorProfilePath(project, "PCSX2/config/inis/PCSX2.ini")
+    ]);
+    if (probe.found()) {
+        if (presentationTextHasAny(probe.text, ["aspectratio = 16:9", "aspectratio=16:9", "enablewidescreenpatches = true", "enablewidescreenpatches=true", "widescreenpatches = enabled"])) {
+            return presentationStaticState(system, adapter, layout, "16:9", shaderBackend, bezelBackend, probe.source, "config", "PCSX2 config reports widescreen output.");
+        }
+        if (presentationTextHasAny(probe.text, ["aspectratio = 4:3", "aspectratio=4:3"])) {
+            return presentationStaticState(system, adapter, layout, "4:3", shaderBackend, bezelBackend, probe.source, "config", "PCSX2 config reports 4:3 output.");
+        }
+    }
+    return presentationStaticState(system, adapter, layout, "4:3", shaderBackend, bezelBackend, probe.found() ? probe.source : "station-default", "default", "PCSX2 aspect was not explicit; using 4:3 CRT station default.");
+}
+
+PresentationRuntimeState presentationFlycastState(string project, string system, string adapter, string layout, string shaderBackend, string bezelBackend) {
+    PresentationProbeText probe = presentationReadFirstExisting([
+        joinPath(launcherRoutedStateRoot(project, "flycast"), "config/flycast/emu.cfg"),
+        emulatorProfilePath(project, "Flycast/config/emu.cfg")
+    ]);
+    if (probe.found()) {
+        if (presentationTextHasAny(probe.text, ["rend.widescreen = yes", "rend.widescreen=yes", "widescreen = yes", "widescreen=true", "widescreen = true"])) {
+            return presentationStaticState(system, adapter, layout, "16:9", shaderBackend, bezelBackend, probe.source, "config", "Flycast config reports widescreen output.");
+        }
+        if (presentationTextHasAny(probe.text, ["rend.widescreen = no", "rend.widescreen=no", "widescreen = no", "widescreen=false", "widescreen = false"])) {
+            return presentationStaticState(system, adapter, layout, "4:3", shaderBackend, bezelBackend, probe.source, "config", "Flycast config reports 4:3 output.");
+        }
+    }
+    return presentationStaticState(system, adapter, layout, "4:3", shaderBackend, bezelBackend, probe.found() ? probe.source : "station-default", "default", "Flycast aspect was not explicit; using 4:3 CRT station default.");
+}
+
+PresentationRuntimeState presentationAdapterRuntimeState(string project, PresentationStationSpec spec, JsonObject config, string emulator) {
+    string adapter = config.getString("adapter", spec.adapter);
+    string layout = config.getString("layout", spec.layout);
+    string aspectPolicy = config.getString("aspect_policy", spec.aspectPolicy);
+    string shaderBackend = config.getString("shader_backend", spec.shaderBackend);
+    string bezelBackend = config.getString("bezel_backend", spec.bezelBackend);
+    bool dynamic = config.getBool("dynamic_aspect", spec.dynamicAspect);
+    if (!dynamic) {
+        return presentationStaticState(spec.system, adapter, layout, aspectPolicy, shaderBackend, bezelBackend, "station-default", "static", "Station aspect is fixed.");
+    }
+    string key = adapter.toLower();
+    if (key.equals("dolphin")) {
+        return presentationDolphinState(project, spec.system, adapter, layout, shaderBackend, bezelBackend);
+    }
+    if (key.equals("pcsx2")) {
+        return presentationPcsx2State(project, spec.system, adapter, layout, shaderBackend, bezelBackend);
+    }
+    if (key.equals("flycast")) {
+        return presentationFlycastState(project, spec.system, adapter, layout, shaderBackend, bezelBackend);
+    }
+    if (key.equals("cemu")) {
+        return presentationStaticState(spec.system, adapter, layout, "16:9", shaderBackend, bezelBackend, "station-default", "adapter-default", "Cemu/Wii U output is treated as 16:9 unless a future gamepad adapter reports dual regions.");
+    }
+    if (key.equals("ryujinx")) {
+        return presentationStaticState(spec.system, adapter, layout, "16:9", shaderBackend, bezelBackend, "station-default", "adapter-default", "Switch output is modern 16:9 by default.");
+    }
+    return presentationStaticState(spec.system, adapter, layout, presentationDefaultAspect(layout, aspectPolicy), shaderBackend, bezelBackend, "station-default", "default", "No adapter-specific runtime probe exists yet.");
+}
+
+string presentationEffectiveValue(JsonObject config, PresentationStationSpec spec, PresentationRuntimeState state, string normalField, string normalDefault, string widescreenField, string widescreenDefault) {
+    string normal = config.getString(normalField, normalDefault);
+    if (!state.widescreen()) {
+        return normal;
+    }
+    string widescreen = config.getString(widescreenField, widescreenDefault);
+    return widescreen.len() > 0 ? widescreen : normal;
+}
+
+string presentationResolveSelectedShader(string project, string runtimePreset, string shaderFile) {
+    return presentationResolveLauncherShader(project, runtimePreset, shaderFile);
+}
+
+bool presentationDependencyTextFile(string path) {
+    string lower = path.toLower();
+    return lower.endsWith(".slangp")
+        || lower.endsWith(".slang")
+        || lower.endsWith(".params");
+}
+
+string presentationFirstQuotedValue(string text) {
+    int start = -1;
+    for (int i = 0; i < text.len(); i++) {
+        if (text.charAt(i) == '"') {
+            if (start < 0) {
+                start = i + 1;
+            } else {
+                return text.substring(start, i - start);
+            }
+        }
+    }
+    return "";
+}
+
+string presentationUnquotedValue(string text) {
+    string value = text.trim();
+    if (value.len() >= 2 && value.charAt(0) == '"' && value.charAt(value.len() - 1) == '"') {
+        return value.substring(1, value.len() - 2);
+    }
+    return value;
+}
+
+string presentationDependencyAfter(string line, string marker) {
+    int position = line.indexOf(marker);
+    if (position < 0) { return ""; }
+    string remainder = line.substring(position + marker.len(), line.len() - position - marker.len()).trim();
+    string quoted = presentationFirstQuotedValue(remainder);
+    if (quoted.len() > 0) { return quoted; }
+    return presentationUnquotedValue(remainder);
+}
+
+string presentationDependencyFromLine(string line) {
+    string trimmed = line.trim();
+    if (trimmed.len() == 0 || trimmed.startsWith("//")) { return ""; }
+    if (trimmed.startsWith("#reference")) {
+        return presentationDependencyAfter(trimmed, "#reference");
+    }
+    if (!trimmed.contains("Image")) { return ""; }
+    int equals = trimmed.indexOf("=");
+    if (equals < 0) { return ""; }
+    string key = trimmed.substring(0, equals).trim();
+    if (!key.endsWith("Image")) { return ""; }
+    string value = trimmed.substring(equals + 1, trimmed.len() - equals - 1);
+    string quoted = presentationFirstQuotedValue(value);
+    if (quoted.len() > 0) { return quoted; }
+    return presentationUnquotedValue(value);
+}
+
+string presentationDependencyPath(string source, string dependency) {
+    if (dependency.len() == 0) { return ""; }
+    if (dependency.startsWith("http://") || dependency.startsWith("https://")) { return ""; }
+    if (dependency.startsWith("/")) { return dependency; }
+    return joinPath(PathTools.dirname(source), dependency);
+}
+
+class PresentationDependencyAudit {
+    public Vector<string> visited;
+    public Vector<string> missing;
+    public int dependencyCount;
+    public int missingDependencyCount;
+
+    public PresentationDependencyAudit() {
+        self.visited = [];
+        self.missing = [];
+        self.dependencyCount = 0;
+        self.missingDependencyCount = 0;
+    }
+
+    public void scan(string path) {
+        self.scanDepth(path, 0);
+    }
+
+    public void scanDepth(string path, int depth) {
+        if (path.len() == 0 || depth > 32) { return; }
+        if (!FileSystem.isFile(path)) { return; }
+        if (self.visited.contains(path)) { return; }
+        self.visited.push(path);
+        if (!presentationDependencyTextFile(path)) { return; }
+
+        Vector<string> lines = Strings.split(FileSystem.readText(path), "\n");
+        for line in lines {
+            string dependency = presentationDependencyFromLine(line);
+            string dependencyPath = presentationDependencyPath(path, dependency);
+            if (dependencyPath.len() == 0) { continue; }
+            self.dependencyCount++;
+            if (FileSystem.exists(dependencyPath)) {
+                if (presentationDependencyTextFile(dependencyPath)) {
+                    self.scanDepth(dependencyPath, depth + 1);
+                }
+            } else {
+                self.missingDependencyCount++;
+                self.missing.push(path + " -> " + dependency);
+            }
+        }
+    }
+}
+
+string presentationTapBezelVariantPath(string project, string system, string variant) {
+    string normalized = variant.toLower();
+    if (normalized.equals("a")) {
+        string art = launcherTapArtFile(project, system);
+        if (art.len() == 0) { art = launcherTapArt(project, system); }
+        return art;
+    }
+    if (normalized.equals("b")) {
+        return launcherTapArtVariant(project, system, "b");
+    }
+    if (normalized.equals("c")) {
+        return launcherTapArtVariant(project, system, "c");
+    }
+    return "";
+}
+
+Vector<string> presentationMissingTapBezelVariants(string project, string system) {
+    Vector<string> missing = [];
+    Vector<string> resolved = [];
+    string variants = renderBezelVariants(system);
+    if (variants.len() == 0) { return missing; }
+    for variant in Strings.split(variants, " ") {
+        if (variant.len() == 0) { continue; }
+        string path = presentationTapBezelVariantPath(project, system, variant);
+        if (path.len() == 0 || !FileSystem.isFile(path)) {
+            missing.push(variant);
+        } else if (resolved.contains(path)) {
+            missing.push(variant + ":duplicate");
+        } else {
+            resolved.push(path);
+        }
+    }
+    return missing;
+}
+
+class PresentationAssetAuditRow {
+    public string system;
+    public string label;
+    public string effectiveAspect;
+    public string presentationMode;
+    public string shaderBackend;
+    public string bezelBackend;
+    public string selectedShader;
+    public string selectedBezel;
+    public string selectedRuntime;
+    public string resolvedShader;
+    public string resolvedBezel;
+    public string resolvedRuntime;
+    public string resolvedLauncher;
+    public string shaderStatus;
+    public string bezelStatus;
+    public string runtimeStatus;
+    public string launcherStatus;
+    public string tapBezelStatus;
+    public bool required;
+    public int missingAssetCount;
+    public int missingTapBezelCount;
+    public int dependencyCount;
+    public int missingDependencyCount;
+    public Vector<string> missingTapBezelVariants;
+    public Vector<string> missingDependencies;
+
+    public PresentationAssetAuditRow(string project, PresentationStationSpec spec, string emulator) {
+        JsonObject config = spec.config(project);
+        string selectedEmulator = emulator.len() > 0 ? emulator : config.getString("default_emulator", spec.defaultEmulator);
+        PresentationRuntimeState state = presentationAdapterRuntimeState(project, spec, config, selectedEmulator);
+        self.system = spec.system;
+        self.label = config.getString("label", spec.label);
+        self.effectiveAspect = state.aspect;
+        self.presentationMode = state.bezelMode;
+        self.shaderBackend = config.getString("shader_backend", spec.shaderBackend);
+        self.bezelBackend = config.getString("bezel_backend", spec.bezelBackend);
+        self.selectedShader = presentationEffectiveValue(config, spec, state, "shader_file", spec.shaderFile, "widescreen_shader_file", spec.defaultWidescreenShaderFile());
+        self.selectedBezel = presentationEffectiveValue(config, spec, state, "bezel_file", spec.bezelFile, "widescreen_bezel_file", spec.defaultWidescreenBezelFile());
+        self.selectedRuntime = presentationEffectiveValue(config, spec, state, "runtime_preset", spec.runtimePreset, "widescreen_runtime_preset", spec.defaultWidescreenRuntimePreset());
+        string launcher = presentationResolveSelectedShader(project, self.selectedRuntime, self.selectedShader);
+        bool visualsEnabled = presentationVisualsEnabled(project);
+        PresentationResolvedAssets assets = PresentationResolvedAssets(project, self.selectedShader, self.selectedBezel, self.selectedRuntime, launcher);
+        self.resolvedShader = assets.shaderFile;
+        self.resolvedBezel = assets.bezelFile;
+        self.resolvedRuntime = assets.runtimePreset;
+        self.resolvedLauncher = assets.launcherShader;
+        self.shaderStatus = assets.status(self.selectedShader, self.resolvedShader);
+        self.bezelStatus = assets.status(self.selectedBezel, self.resolvedBezel);
+        self.runtimeStatus = assets.status(self.selectedRuntime, self.resolvedRuntime);
+        self.launcherStatus = assets.launcherStatus(visualsEnabled);
+        self.required = !(self.shaderBackend.equals("off_by_default")
+            && self.bezelBackend.equals("off_by_default")
+            && self.selectedShader.len() == 0
+            && self.selectedBezel.len() == 0
+            && self.selectedRuntime.len() == 0);
+        self.missingTapBezelVariants = [];
+        if (self.required) {
+            self.missingTapBezelVariants = presentationMissingTapBezelVariants(project, spec.system);
+        }
+        self.missingTapBezelCount = self.missingTapBezelVariants.len;
+        self.tapBezelStatus = self.missingTapBezelCount == 0 ? "ok" : "missing";
+        self.missingAssetCount = 0;
+        if (self.shaderStatus.equals("missing")) { self.missingAssetCount++; }
+        if (self.bezelStatus.equals("missing")) { self.missingAssetCount++; }
+        if (self.runtimeStatus.equals("missing")) { self.missingAssetCount++; }
+        if (self.required && self.launcherStatus.equals("missing")) { self.missingAssetCount++; }
+        if (self.required) { self.missingAssetCount = self.missingAssetCount + self.missingTapBezelCount; }
+
+        PresentationDependencyAudit dependencies = PresentationDependencyAudit();
+        dependencies.scan(self.resolvedShader);
+        dependencies.scan(self.resolvedBezel);
+        dependencies.scan(self.resolvedRuntime);
+        dependencies.scan(self.resolvedLauncher);
+        self.dependencyCount = dependencies.dependencyCount;
+        self.missingDependencyCount = dependencies.missingDependencyCount;
+        self.missingDependencies = dependencies.missing;
+    }
+
+    public bool ok() {
+        return self.missingAssetCount == 0 && self.missingDependencyCount == 0;
+    }
+
+    public string status() {
+        if (!self.required) { return "disabled"; }
+        return self.ok() ? "ok" : "missing";
+    }
+
+    public string json() {
+        return jsonObject([
+            jsonStrField("system", self.system),
+            jsonStrField("label", self.label),
+            jsonStrField("status", self.status()),
+            jsonBoolField("required", self.required),
+            jsonField("missing_asset_count", Strings.fromInt(self.missingAssetCount)),
+            jsonStrField("tap_bezel_status", self.required ? self.tapBezelStatus : "disabled"),
+            jsonField("tap_bezel_missing_count", self.required ? Strings.fromInt(self.missingTapBezelCount) : "0"),
+            jsonField("missing_tap_bezel_variants", jsonStringArray(self.missingTapBezelVariants)),
+            jsonField("dependency_count", Strings.fromInt(self.dependencyCount)),
+            jsonField("missing_dependency_count", Strings.fromInt(self.missingDependencyCount)),
+            jsonField("missing_dependencies", jsonStringArray(self.missingDependencies)),
+            jsonStrField("effective_aspect", self.effectiveAspect),
+            jsonStrField("presentation_mode", self.presentationMode),
+            jsonStrField("shader_backend", self.shaderBackend),
+            jsonStrField("selected_shader_file", self.selectedShader),
+            jsonStrField("resolved_shader_file", self.resolvedShader),
+            jsonStrField("shader_file_status", self.shaderStatus),
+            jsonStrField("bezel_backend", self.bezelBackend),
+            jsonStrField("selected_bezel_file", self.selectedBezel),
+            jsonStrField("resolved_bezel_file", self.resolvedBezel),
+            jsonStrField("bezel_file_status", self.bezelStatus),
+            jsonStrField("selected_runtime_preset", self.selectedRuntime),
+            jsonStrField("resolved_runtime_preset", self.resolvedRuntime),
+            jsonStrField("runtime_preset_status", self.runtimeStatus),
+            jsonStrField("resolved_launcher_shader", self.resolvedLauncher),
+            jsonStrField("launcher_shader_status", self.launcherStatus)
+        ]);
+    }
+
+    public string line() {
+        return self.status().toUpper() + " " + self.system
+            + " shader=" + self.shaderStatus
+            + " bezel=" + self.bezelStatus
+            + " runtime=" + self.runtimeStatus
+            + " launcher=" + self.launcherStatus
+            + " tap=" + (self.required ? self.tapBezelStatus : "disabled")
+            + " deps=" + (self.missingDependencyCount == 0 ? "ok" : "missing")
+            + " aspect=" + self.effectiveAspect;
+    }
+}
+
+string presentationPlanJson(string project, string system, string emulator) {
+    PresentationStationSpec spec = PresentationCatalog.find(system);
+    if (!spec.known()) { return ""; }
+    JsonObject config = spec.config(project);
+    string selectedEmulator = emulator.len() > 0 ? emulator : config.getString("default_emulator", spec.defaultEmulator);
+    string layout = config.getString("layout", spec.layout);
+    PresentationRuntimeState state = presentationAdapterRuntimeState(project, spec, config, selectedEmulator);
+    string selectedShader = presentationEffectiveValue(config, spec, state, "shader_file", spec.shaderFile, "widescreen_shader_file", spec.defaultWidescreenShaderFile());
+    string selectedBezel = presentationEffectiveValue(config, spec, state, "bezel_file", spec.bezelFile, "widescreen_bezel_file", spec.defaultWidescreenBezelFile());
+    string selectedRuntime = presentationEffectiveValue(config, spec, state, "runtime_preset", spec.runtimePreset, "widescreen_runtime_preset", spec.defaultWidescreenRuntimePreset());
+    string resolved = presentationResolveSelectedShader(project, selectedRuntime, selectedShader);
+    bool visualsEnabled = presentationVisualsEnabled(project);
+    PresentationResolvedAssets assets = PresentationResolvedAssets(project, selectedShader, selectedBezel, selectedRuntime, resolved);
+    return jsonObject([
+        jsonField("schema_version", "1"),
+        jsonStrField("system", system),
+        jsonStrField("label", config.getString("label", spec.label)),
+        jsonStrField("emulator", selectedEmulator),
+        jsonStrField("adapter", config.getString("adapter", spec.adapter)),
+        jsonStrField("adapter_config", config.getString("adapter_config", spec.adapterConfig)),
+        jsonStrField("hardware_display", config.getString("hardware_display", spec.hardwareDisplay)),
+        jsonStrField("shader_backend", config.getString("shader_backend", spec.shaderBackend)),
+        jsonStrField("shader_file", config.getString("shader_file", spec.shaderFile)),
+        jsonStrField("shader_intent", config.getString("shader_intent", spec.shaderIntent)),
+        jsonStrField("resolved_shader", resolved),
+        jsonStrField("resolved_shader_file", assets.shaderFile),
+        jsonStrField("shader_file_status", assets.status(selectedShader, assets.shaderFile)),
+        jsonStrField("bezel_backend", config.getString("bezel_backend", spec.bezelBackend)),
+        jsonStrField("bezel_file", config.getString("bezel_file", spec.bezelFile)),
+        jsonStrField("bezel_intent", config.getString("bezel_intent", spec.bezelIntent)),
+        jsonStrField("resolved_bezel_file", assets.bezelFile),
+        jsonStrField("bezel_file_status", assets.status(selectedBezel, assets.bezelFile)),
+        jsonStrField("runtime_preset", config.getString("runtime_preset", spec.runtimePreset)),
+        jsonStrField("resolved_runtime_preset", assets.runtimePreset),
+        jsonStrField("runtime_preset_status", assets.status(selectedRuntime, assets.runtimePreset)),
+        jsonStrField("widescreen_shader_file", config.getString("widescreen_shader_file", spec.defaultWidescreenShaderFile())),
+        jsonStrField("widescreen_bezel_file", config.getString("widescreen_bezel_file", spec.defaultWidescreenBezelFile())),
+        jsonStrField("widescreen_runtime_preset", config.getString("widescreen_runtime_preset", spec.defaultWidescreenRuntimePreset())),
+        jsonStrField("selected_shader_file", selectedShader),
+        jsonStrField("selected_bezel_file", selectedBezel),
+        jsonStrField("selected_runtime_preset", selectedRuntime),
+        jsonBoolField("launcher_visuals_enabled", visualsEnabled),
+        jsonStrField("resolved_launcher_shader", assets.launcherShader),
+        jsonStrField("launcher_shader_status", assets.launcherStatus(visualsEnabled)),
+        jsonField("runtime_state", state.json()),
+        jsonStrField("effective_aspect", state.aspect),
+        jsonStrField("effective_layout", state.layout),
+        jsonStrField("presentation_mode", state.bezelMode),
+        jsonStrField("layout", layout),
+        jsonField("regions", presentationRegionsJson(layout)),
+        jsonStrField("scale_policy", config.getString("scale_policy", spec.scalePolicy)),
+        jsonStrField("aspect_policy", config.getString("aspect_policy", spec.aspectPolicy)),
+        jsonBoolField("dynamic_aspect", config.getBool("dynamic_aspect", spec.dynamicAspect)),
+        jsonStrField("profile", config.getString("profile", spec.profile)),
+        jsonStrField("notes", config.getString("notes", spec.notes))
+    ]);
+}
+
+void presentationList(string project) {
+    writePresentationDefaults(project);
+    for spec in PresentationCatalog.all() {
+        print(spec.system + " " + spec.label + " shader=" + presentationConfigValue(project, spec.system, "shader_file") + " bezel=" + presentationConfigValue(project, spec.system, "bezel_file"));
+    }
+}
+
+Vector<PresentationStationSpec> presentationAuditSpecs(string system) {
+    Vector<PresentationStationSpec> specs = [];
+    if (system.len() > 0) {
+        PresentationStationSpec spec = PresentationCatalog.find(system);
+        if (spec.known()) {
+            specs.push(spec);
+        }
+        return specs;
+    }
+    return PresentationCatalog.all();
+}
+
+int presentationAudit(string project, string system, string emulator, bool strict) {
+    writePresentationDefaults(project);
+    Vector<PresentationStationSpec> specs = presentationAuditSpecs(system);
+    if (specs.len == 0) {
+        print("error 0:0 unknown presentation system '" + system + "'");
+        return 1;
+    }
+
+    Vector<string> rowsJson = [];
+    int okCount = 0;
+    int missingSystemCount = 0;
+    int missingAssetCount = 0;
+    int missingDependencyCount = 0;
+    int disabledCount = 0;
+    print("Presentation asset audit");
+    for spec in specs {
+        PresentationAssetAuditRow row = PresentationAssetAuditRow(project, spec, emulator);
+        rowsJson.push(row.json());
+        print("  " + row.line());
+        missingAssetCount = missingAssetCount + row.missingAssetCount;
+        missingDependencyCount = missingDependencyCount + row.missingDependencyCount;
+        if (row.status().equals("ok")) {
+            okCount++;
+        } else if (row.status().equals("disabled")) {
+            disabledCount++;
+        } else {
+            missingSystemCount++;
+        }
+    }
+
+    string report = jsonObject([
+        jsonField("schema_version", "1"),
+        jsonStrField("project", project),
+        jsonStrField("system", system),
+        jsonBoolField("strict", strict),
+        jsonField("ok_count", Strings.fromInt(okCount)),
+        jsonField("missing_system_count", Strings.fromInt(missingSystemCount)),
+        jsonField("missing_asset_count", Strings.fromInt(missingAssetCount)),
+        jsonField("missing_dependency_count", Strings.fromInt(missingDependencyCount)),
+        jsonField("disabled_count", Strings.fromInt(disabledCount)),
+        jsonField("systems", jsonArray(rowsJson))
+    ]);
+    SemuGeneratedFiles.writeAdapterState(project, presentationAssetAuditPath(project), jsonPrettyText(report));
+    print("  ok: " + Strings.fromInt(okCount) + " missing: " + Strings.fromInt(missingSystemCount) + " missing_assets: " + Strings.fromInt(missingAssetCount) + " missing_dependencies: " + Strings.fromInt(missingDependencyCount) + " disabled: " + Strings.fromInt(disabledCount));
+    print("  report: " + presentationAssetAuditPath(project));
+    if (strict && missingSystemCount > 0) {
+        return 2;
+    }
+    return 0;
+}
+
+
+string presentationStateJson(string project, string system, string emulator) {
+    PresentationStationSpec spec = PresentationCatalog.find(system);
+    if (!spec.known()) { return ""; }
+    JsonObject config = spec.config(project);
+    string selectedEmulator = emulator.len() > 0 ? emulator : config.getString("default_emulator", spec.defaultEmulator);
+    return presentationAdapterRuntimeState(project, spec, config, selectedEmulator).json();
+}
+
+bool presentationBroadcastState(string project, string system, string emulator) {
+    string state = presentationStateJson(project, system, emulator);
+    if (state.len() == 0) {
+        print("error 0:0 unknown presentation system '" + system + "'");
+        return false;
+    }
+    ensureDir(presentationStateRoot(project));
+    SemuGeneratedFiles.writeProjectJson(project, presentationStatePath(project, system), state);
+    return true;
+}
+
+string presentationSystemArg(CliArgs args, int positionalIndex) {
+    string system = args.valueAfter("--system", "");
+    if (system.len() == 0 && args.count() > positionalIndex && !args.get(positionalIndex).startsWith("--")) {
+        system = args.get(positionalIndex);
+    }
+    return system;
+}
+
+int presentationCommand(CliArgs args, string project) {
+    string mode = "plan";
+    if (args.count() > 1 && !args.get(1).startsWith("--")) {
+        mode = args.get(1);
+    }
+    if (mode.equals("defaults") || mode.equals("setup")) {
+        writePresentationDefaults(project);
+        print("OK presentation defaults: " + presentationSettingsRoot(project));
+        return 0;
+    }
+    if (mode.equals("list")) {
+        presentationList(project);
+        return 0;
+    }
+    if (mode.equals("audit") || mode.equals("assets")) {
+        string system = presentationSystemArg(args, 2);
+        return presentationAudit(project, system, args.valueAfter("--emulator", ""), args.has("--strict"));
+    }
+    if (mode.equals("ui")) {
+        return presentationUi(project);
+    }
+    if (mode.equals("get")) {
+        if (args.count() < 4) {
+            print("error 0:0 presentation get needs SYSTEM FIELD");
+            return 1;
+        }
+        if (!PresentationCatalog.find(args.get(2)).known()) {
+            print("error 0:0 unknown presentation system '" + args.get(2) + "'");
+            return 1;
+        }
+        if (!presentationKnownField(args.get(3))) {
+            print("error 0:0 unknown presentation value");
+            return 1;
+        }
+        print(presentationConfigValue(project, args.get(2), args.get(3)));
+        return 0;
+    }
+    if (mode.equals("put") || mode.equals("set")) {
+        if (args.count() < 5) {
+            print("error 0:0 presentation put needs SYSTEM FIELD VALUE");
+            return 1;
+        }
+        if (!presentationPutValue(project, args.get(2), args.get(3), args.get(4))) {
+            return 1;
+        }
+        print(args.get(2) + "." + args.get(3) + "=" + presentationConfigValue(project, args.get(2), args.get(3)));
+        return 0;
+    }
+    if (mode.equals("state")) {
+        string system = presentationSystemArg(args, 2);
+        if (system.len() == 0) {
+            print("error 0:0 presentation state needs --system SYSTEM");
+            return 1;
+        }
+        string state = presentationStateJson(project, system, args.valueAfter("--emulator", ""));
+        if (state.len() == 0) {
+            print("error 0:0 unknown presentation system '" + system + "'");
+            return 1;
+        }
+        print(jsonPrettyText(state).trim());
+        return 0;
+    }
+    if (mode.equals("broadcast")) {
+        string system = presentationSystemArg(args, 2);
+        if (system.len() == 0) {
+            print("error 0:0 presentation broadcast needs --system SYSTEM");
+            return 1;
+        }
+        if (!presentationBroadcastState(project, system, args.valueAfter("--emulator", ""))) {
+            return 1;
+        }
+        print("OK presentation state: " + presentationStatePath(project, system));
+        return 0;
+    }
+    if (mode.equals("plan")) {
+        string system = presentationSystemArg(args, 2);
+        if (system.len() == 0) {
+            print("error 0:0 presentation plan needs --system SYSTEM");
+            return 1;
+        }
+        string plan = presentationPlanJson(project, system, args.valueAfter("--emulator", ""));
+        if (plan.len() == 0) {
+            print("error 0:0 unknown presentation system '" + system + "'");
+            return 1;
+        }
+        print(jsonPrettyText(plan).trim());
+        return 0;
+    }
+    printUsage();
+    return 1;
+}

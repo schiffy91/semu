@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "name": "Nintendo Game Boy Advance",
+  "aliases": [],
+  "es_de": { "platforms": ["gba"], "theme": "gba" },
+  "rom": { "dir": "gba", "extensions": [".agb", ".bin", ".cgb", ".gb", ".gba", ".gbc", ".7z", ".zip"] },
+  "emulators": [
+    { "emulator": "retroarch", "label": "mGBA", "core": "mgba" }
+  ],
+  "display": {
+    "screens": [ { "id": "main", "native": { "w": 240, "h": 160 } } ],
+    "aspect": { "w": 3, "h": 2 }
+  },
+  "render": {
+    "style": "handheld",
+    "priority": "bezel",
+    "fill": true,
+    "reflect": 0.55,
+    "shell_tint": { "r": 0.34, "g": 0.32, "b": 0.52 }
+  },
+  "doc": {
+    "hardware": "AGB-001 reflective TFT LCD",
+    "intent": "Use the original wide GBA target, not SP-first artwork."
+  }
+}
