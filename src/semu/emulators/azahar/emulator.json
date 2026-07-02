@@ -74,13 +74,30 @@
     },
     "macos": {
       "backend": "native",
-      "executable": "${nix_result}/Applications/azahar.app/Contents/MacOS/azahar"
+      "executable": "${nix_result}/Applications/azahar.app/Contents/MacOS/azahar",
+      "sandbox": {
+        "filesystems": [
+          {
+            "path": "${project}",
+            "mode": "rw"
+          },
+          {
+            "path": "${state_root}",
+            "mode": "create"
+          },
+          {
+            "path": "${home}/Library/Application Support/azahar-emu",
+            "mode": "create"
+          }
+        ]
+      }
     }
   },
   "doc": {
     "args": "Azahar takes no preset args (launcher.btrc:53-56).",
     "graphics": "qt-config.ini graphics_api: 1 = OpenGL (GL tap), 2 = Vulkan (vkBasalt overlay fallback) \u2014 launcher_tap.btrc:159-162 and launcher.btrc:486-499.",
     "graphics_file_conflict": "Old code disagreed on the config dir: launcher_tap.btrc:158 wrote config/azahar/qt-config.ini, launcher.btrc:488 used config/azahar-emu/. azahar-emu chosen here (matches the flatpak id org.azahar_emu.Azahar); verify on the Deck before trusting the force-GL path.",
-    "state": "Azahar re-reads qt-config.ini from its flatpak home, so the seeded config is mirrored there (launcher.btrc:486-499)."
+    "state": "Azahar re-reads qt-config.ini from its flatpak home, so the seeded config is mirrored there (launcher.btrc:486-499).",
+    "sandbox_macos": "macos launches run under sandbox-exec write confinement: these grants (plus the platform baseline) are the only writable paths."
   }
 }

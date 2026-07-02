@@ -45,6 +45,14 @@ class EmulatorExecution {
         if (platform.backend.equals("bwrap")) {
             UnixFileSystem.mkdirp(PathTools.join(stateRoot, "home"));
         }
+        // Sandbox "create" grants are pre-created here: inside a confined
+        // launch the parent directory is not writable, so the emulator
+        // cannot make its own directory on first run.
+        for grant in platform.sandbox.filesystems {
+            if (grant.mode.equals("create")) {
+                UnixFileSystem.mkdirp(TemplatePaths.resolve(grant.path, context));
+            }
+        }
     }
 
     class void copyFile(string sourcePath, string targetPath) {

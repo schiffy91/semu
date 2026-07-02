@@ -195,10 +195,22 @@ class EmulatorContractTest {
             failures = failures + EmulatorContractTest.fail(
                 "retroarch macos backend: got '" + retroArchMacPlan.backend + "'");
         }
-        if (retroArchMacPlan.argumentVector.size() == 0
-            || !retroArchMacPlan.argumentVector.get(0).equals("${nix_result}/bin/retroarch")) {
+        if (retroArchMacPlan.argumentVector.size() < 4
+            || !retroArchMacPlan.argumentVector.get(0).equals("sandbox-exec")
+            || !retroArchMacPlan.argumentVector.get(1).equals("-p")) {
             failures = failures + EmulatorContractTest.fail(
-                "retroarch macos argv[0] must be the nix executable");
+                "retroarch macos plan must be wrapped in sandbox-exec -p <profile>");
+        } else {
+            string sandboxProfile = retroArchMacPlan.argumentVector.get(2);
+            if (!sandboxProfile.contains("(deny file-write*)")
+                || !sandboxProfile.contains("${home}/.config/retroarch")) {
+                failures = failures + EmulatorContractTest.fail(
+                    "retroarch macos sandbox profile must deny writes and carry the declared grants");
+            }
+            if (!retroArchMacPlan.argumentVector.get(3).equals("${nix_result}/bin/retroarch")) {
+                failures = failures + EmulatorContractTest.fail(
+                    "retroarch macos argv after the sandbox wrap must be the nix executable");
+            }
         }
         if (!EmulatorContractTest.argumentVectorHas(retroArchMacPlan, "-f")) {
             failures = failures + EmulatorContractTest.fail(
@@ -227,11 +239,12 @@ class EmulatorContractTest {
             failures = failures + EmulatorContractTest.fail(
                 "ares macos backend: got '" + aresPlan.backend + "'");
         }
-        if (aresPlan.argumentVector.size() == 0
-            || !aresPlan.argumentVector.get(0)
+        if (aresPlan.argumentVector.size() < 4
+            || !aresPlan.argumentVector.get(0).equals("sandbox-exec")
+            || !aresPlan.argumentVector.get(3)
                 .equals("${nix_result}/Applications/ares.app/Contents/MacOS/ares")) {
             failures = failures + EmulatorContractTest.fail(
-                "ares macos argv[0] must be the app executable");
+                "ares macos plan must be sandbox-exec-wrapped with the app executable after the wrap");
         }
         if (!EmulatorContractTest.argumentVectorHas(aresPlan, "--fullscreen")) {
             failures = failures + EmulatorContractTest.fail("ares macos plan lacks --fullscreen");
@@ -404,8 +417,8 @@ class EmulatorContractTest {
         failures = failures + EmulatorContractTest.requireLogError(log,
             "platforms.macos.sessions: linux-only field", "macos block must reject sessions");
         failures = failures + EmulatorContractTest.requireLogError(log,
-            "runtime/command are linux-only (flatpak) fields",
-            "macos block must reject sandbox runtime/command");
+            "linux-only sandbox field (macos sandbox-exec takes filesystems grants only)",
+            "macos block must reject linux-only sandbox fields");
         failures = failures + EmulatorContractTest.requireLogError(log,
             "template token '${flatpak_home}' is not a macos concept",
             "macos block must reject the flatpak_home token");
