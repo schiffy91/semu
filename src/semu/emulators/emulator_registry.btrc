@@ -139,4 +139,37 @@ class EmulatorRegistry {
         Vector<string> directories = [];
         return directories;
     }
+
+    // The emulator's native hotkey chord grammar; emulators without one
+    // answer the chord unchanged via their class default.
+    class string translateChord(string emulatorId, string chord) {
+        if (emulatorId.equals(RetroArchEmulator().id())) {
+            return RetroArchEmulator().translateChord(chord);
+        }
+        if (emulatorId.equals(DolphinEmulator().id())) {
+            return DolphinEmulator().translateChord(chord);
+        }
+        if (emulatorId.equals(Pcsx2Emulator().id())) {
+            return Pcsx2Emulator().translateChord(chord);
+        }
+        if (emulatorId.equals(CemuEmulator().id())) {
+            return CemuEmulator().translateChord(chord);
+        }
+        if (emulatorId.equals(RyujinxEmulator().id())) {
+            return RyujinxEmulator().translateChord(chord);
+        }
+        if (emulatorId.equals(PpssppEmulator().id())) {
+            return PpssppEmulator().translateChord(chord);
+        }
+        if (emulatorId.equals(FlycastEmulator().id())) {
+            return FlycastEmulator().translateChord(chord);
+        }
+        if (emulatorId.equals(AzaharEmulator().id())) {
+            return AzaharEmulator().translateChord(chord);
+        }
+        if (emulatorId.equals(MelonDsEmulator().id())) {
+            return MelonDsEmulator().translateChord(chord);
+        }
+        return chord;
+    }
 }
