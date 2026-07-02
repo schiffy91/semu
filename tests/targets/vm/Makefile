@@ -1,3 +1,9 @@
+# Recursive invocations must carry this makefile explicitly: the harness is
+# always invoked from the repo root via -f, so a bare $(VM_MAKE) would resolve
+# against the root Makefile. $(MAKE) cross-linux does exactly that on purpose.
+VM_SELF := $(lastword $(MAKEFILE_LIST))
+VM_MAKE := $(MAKE) -f $(VM_SELF)
+
 VM_DIR ?= src/generated/test/vms
 XORRISO ?= nix shell nixpkgs\#xorriso -c xorriso
 VM_KEY ?= $(VM_DIR)/id_ed25519
@@ -68,7 +74,7 @@ $(VM_KEY): | $(VM_DIR)
 	ssh-keygen -t ed25519 -N "" -f "$@"
 
 test: ## Full Bazzite VM end-to-end: install + boot + deck verification over SSH
-	$(MAKE) bazzite-e2e-verify
+	$(VM_MAKE) bazzite-e2e-verify
 
 $(BAZZITE_ISO): | $(VM_DIR)
 	@echo "Downloading Bazzite ISO (~10GB, resumable): $(BAZZITE_ISO_URL)"
@@ -111,7 +117,7 @@ bazzite-iso: $(BAZZITE_ISO) ## Download current Bazzite Deck live ISO
 	fi
 
 bazzite-vm-install: $(BAZZITE_INSTALL_ISO) $(VM_KEY) ## Install Bazzite into a disposable VM disk
-	@$(MAKE) --no-print-directory bazzite-vm-stop || true
+	@$(VM_MAKE) --no-print-directory bazzite-vm-stop || true
 	@rm -f "$(BAZZITE_DISK)" "$(BAZZITE_PID)" "$(BAZZITE_STARTED)" "$(BAZZITE_MONITOR)" "$(BAZZITE_SERIAL)" "$(BAZZITE_SCREEN)"
 	qemu-img create -f qcow2 "$(BAZZITE_DISK)" "$(BAZZITE_DISK_SIZE)"
 	qemu-system-x86_64 \
@@ -157,12 +163,12 @@ bazzite-vm-install: $(BAZZITE_INSTALL_ISO) $(VM_KEY) ## Install Bazzite into a d
 	echo "OK Bazzite installed VM ($(BAZZITE_DISK), disk size $$actual, actual bytes $$actual_bytes)"
 
 bazzite-e2e-install: ## Build a fresh graph-owned Bazzite Deck VM disk
-	$(MAKE) bazzite-vm-stop
-	$(MAKE) bazzite-vm-stop \
+	$(VM_MAKE) bazzite-vm-stop
+	$(VM_MAKE) bazzite-vm-stop \
 		BAZZITE_PID=$(BAZZITE_DESKTOP_PID) \
 		BAZZITE_STARTED=$(BAZZITE_DESKTOP_STARTED) \
 		BAZZITE_MONITOR=$(BAZZITE_DESKTOP_MONITOR)
-	$(MAKE) bazzite-vm-install \
+	$(VM_MAKE) bazzite-vm-install \
 		BAZZITE_DISK=$(BAZZITE_E2E_DISK) \
 		BAZZITE_PID=$(BAZZITE_E2E_PID) \
 		BAZZITE_STARTED=$(BAZZITE_E2E_STARTED) \
@@ -174,7 +180,7 @@ bazzite-e2e-install: ## Build a fresh graph-owned Bazzite Deck VM disk
 		BAZZITE_VNC_PORT=5907
 
 bazzite-e2e-verify: bazzite-e2e-install ## Boot the graph-owned Bazzite VM and run Semu Deck verification
-	$(MAKE) bazzite-vm-start-installed \
+	$(VM_MAKE) bazzite-vm-start-installed \
 		BAZZITE_DISK=$(BAZZITE_E2E_DISK) \
 		BAZZITE_PID=$(BAZZITE_E2E_PID) \
 		BAZZITE_STARTED=$(BAZZITE_E2E_STARTED) \
@@ -184,7 +190,7 @@ bazzite-e2e-verify: bazzite-e2e-install ## Boot the graph-owned Bazzite VM and r
 		BAZZITE_SSH_PORT=$(BAZZITE_E2E_SSH_PORT) \
 		BAZZITE_VNC_DISPLAY=7 \
 		BAZZITE_VNC_PORT=5907
-	$(MAKE) bazzite-vm-verify-ssh \
+	$(VM_MAKE) bazzite-vm-verify-ssh \
 		BAZZITE_DISK=$(BAZZITE_E2E_DISK) \
 		BAZZITE_PID=$(BAZZITE_E2E_PID) \
 		BAZZITE_STARTED=$(BAZZITE_E2E_STARTED) \
@@ -194,10 +200,10 @@ bazzite-e2e-verify: bazzite-e2e-install ## Boot the graph-owned Bazzite VM and r
 		BAZZITE_SSH_PORT=$(BAZZITE_E2E_SSH_PORT)
 
 bazzite-vm-start-live: ## Boot Bazzite live ISO over VNC
-	$(MAKE) bazzite-vm-start BAZZITE_BOOT_MODE=live
+	$(VM_MAKE) bazzite-vm-start BAZZITE_BOOT_MODE=live
 
 bazzite-vm-start-installed: ## Boot installed Bazzite disk over VNC without attaching the ISO
-	$(MAKE) bazzite-vm-start BAZZITE_BOOT_MODE=installed BAZZITE_BASIC_GRAPHICS=0
+	$(VM_MAKE) bazzite-vm-start BAZZITE_BOOT_MODE=installed BAZZITE_BASIC_GRAPHICS=0
 
 bazzite-vm-start: $(BAZZITE_DISK) $(VM_KEY) ## Boot Bazzite VM over VNC
 	@if [ "$(BAZZITE_BOOT_MODE)" != "live" ] && [ "$(BAZZITE_BOOT_MODE)" != "installed" ]; then \
@@ -205,7 +211,7 @@ bazzite-vm-start: $(BAZZITE_DISK) $(VM_KEY) ## Boot Bazzite VM over VNC
 		exit 2; \
 	fi
 	@if [ "$(BAZZITE_BOOT_MODE)" = "live" ]; then \
-		$(MAKE) bazzite-iso; \
+		$(VM_MAKE) bazzite-iso; \
 	fi
 	@if [ ! -f "$(BAZZITE_OVMF)" ]; then \
 		echo "Missing OVMF firmware: $(BAZZITE_OVMF)"; \
@@ -281,13 +287,13 @@ bazzite-vm-screenshot: ## Capture current Bazzite VM framebuffer to PPM
 	@ls -lh "$(BAZZITE_SCREEN)"
 
 bazzite-vm-smoke: ## Boot Bazzite VM and capture a visual smoke screenshot
-	$(MAKE) bazzite-vm-start-live BAZZITE_BASIC_GRAPHICS=1
+	$(VM_MAKE) bazzite-vm-start-live BAZZITE_BASIC_GRAPHICS=1
 	@echo "Waiting $(BAZZITE_MIN_BOOT_WAIT)s for firmware/GRUB to hand off..."
 	@sleep $(BAZZITE_MIN_BOOT_WAIT)
 	@echo "Waiting up to $(BAZZITE_BOOT_WAIT)s for a nonblank Bazzite framebuffer..."
 	@ok=0; deadline=$$((SECONDS + $(BAZZITE_BOOT_WAIT))); \
 	while [ $$SECONDS -lt $$deadline ]; do \
-		if $(MAKE) --no-print-directory bazzite-vm-screenshot; then \
+		if $(VM_MAKE) --no-print-directory bazzite-vm-screenshot; then \
 			ok=1; \
 			break; \
 		fi; \
@@ -300,7 +306,7 @@ bazzite-vm-smoke: ## Boot Bazzite VM and capture a visual smoke screenshot
 	@echo "Open the VNC display at 127.0.0.1:$(BAZZITE_VNC_PORT) for manual install/Game Mode checks."
 
 bazzite-desktop-vm-smoke: ## Boot Bazzite Desktop ISO over VNC for no-GPU VM validation
-	$(MAKE) bazzite-vm-smoke \
+	$(VM_MAKE) bazzite-vm-smoke \
 		BAZZITE_ISO_URL=$(BAZZITE_DESKTOP_ISO_URL) \
 		BAZZITE_ISO=$(BAZZITE_DESKTOP_ISO) \
 		BAZZITE_DISK=$(BAZZITE_DESKTOP_DISK) \
