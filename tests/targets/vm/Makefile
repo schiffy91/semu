@@ -1,5 +1,5 @@
 # Recursive invocations must carry this makefile explicitly: the harness is
-# always invoked from the repo root via -f, so a bare $(VM_MAKE) would resolve
+# always invoked from the repo root via -f, so a bare MAKE call would resolve
 # against the root Makefile. $(MAKE) cross-linux does exactly that on purpose.
 VM_SELF := $(lastword $(MAKEFILE_LIST))
 VM_MAKE := $(MAKE) -f $(VM_SELF)
@@ -76,9 +76,12 @@ $(VM_KEY): | $(VM_DIR)
 test: ## Full Bazzite VM end-to-end: install + boot + deck verification over SSH
 	$(VM_MAKE) bazzite-e2e-verify
 
+# A partially downloaded file must never satisfy this target: the recipe
+# always resumes (a no-op when complete) and the checksum in bazzite-iso is
+# the real completeness gate.
 $(BAZZITE_ISO): | $(VM_DIR)
 	@echo "Downloading Bazzite ISO (~10GB, resumable): $(BAZZITE_ISO_URL)"
-	curl -L --fail -C - -o "$@" "$(BAZZITE_ISO_URL)"
+	curl -L --fail -C - -o "$@" "$(BAZZITE_ISO_URL)" || [ -f "$@" ]
 
 $(BAZZITE_DISK): | $(VM_DIR)
 	qemu-img create -f qcow2 "$@" "$(BAZZITE_DISK_SIZE)"
@@ -86,7 +89,8 @@ $(BAZZITE_DISK): | $(VM_DIR)
 $(BAZZITE_INSTALL_KS): $(BAZZITE_INSTALL_KS_TEMPLATE) $(VM_KEY) | $(VM_DIR)
 	@sed "s|@SEMU_VM_SSH_PUBKEY@|$$(cat $(VM_KEY).pub)|" "$(BAZZITE_INSTALL_KS_TEMPLATE)" > "$@"
 
-$(BAZZITE_INSTALL_ISO): $(BAZZITE_ISO) $(BAZZITE_INSTALL_KS) $(BAZZITE_INSTALL_GRUB) $(BAZZITE_INSTALL_ENTRYPOINT) | $(VM_DIR)
+$(BAZZITE_INSTALL_ISO): $(BAZZITE_INSTALL_KS) $(BAZZITE_INSTALL_GRUB) $(BAZZITE_INSTALL_ENTRYPOINT) | $(VM_DIR)
+	$(VM_MAKE) bazzite-iso
 	@rm -f "$@"
 	$(XORRISO) -indev "$(BAZZITE_ISO)" -outdev "$@" -boot_image any replay \
 		-map "$(BAZZITE_INSTALL_KS)" /ks.cfg \
@@ -95,7 +99,10 @@ $(BAZZITE_INSTALL_ISO): $(BAZZITE_ISO) $(BAZZITE_INSTALL_KS) $(BAZZITE_INSTALL_G
 		-map "$(BAZZITE_INSTALL_GRUB)" /EFI/BOOT/grub.cfg \
 		-map "$(BAZZITE_INSTALL_GRUB)" /boot/grub2/grub.cfg
 
-bazzite-iso: $(BAZZITE_ISO) ## Download current Bazzite Deck live ISO
+bazzite-iso: | $(VM_DIR) ## Download (resume) + checksum-verify the Bazzite live ISO
+	@echo "Ensuring Bazzite ISO is complete (resumable): $(BAZZITE_ISO_URL)"
+	@curl -L --fail -C - -o "$(BAZZITE_ISO)" "$(BAZZITE_ISO_URL)" || true
+	@test -f "$(BAZZITE_ISO)"
 	@if [ "$(BAZZITE_VERIFY_ISO)" = "1" ]; then \
 		actual="$$(shasum -a 256 "$(BAZZITE_ISO)" | awk '{print $$1}')"; \
 		if [ -n "$(BAZZITE_ISO_SHA256)" ]; then \
