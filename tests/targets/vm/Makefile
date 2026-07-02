@@ -81,7 +81,7 @@ test: ## Full Bazzite VM end-to-end: install + boot + deck verification over SSH
 # the real completeness gate.
 $(BAZZITE_ISO): | $(VM_DIR)
 	@echo "Downloading Bazzite ISO (~10GB, resumable): $(BAZZITE_ISO_URL)"
-	curl -L --fail -C - -o "$@" "$(BAZZITE_ISO_URL)" || [ -f "$@" ]
+	curl -L --fail --retry 12 --retry-delay 5 --retry-all-errors -C - -o "$@" "$(BAZZITE_ISO_URL)" || [ -f "$@" ]
 
 $(BAZZITE_DISK): | $(VM_DIR)
 	qemu-img create -f qcow2 "$@" "$(BAZZITE_DISK_SIZE)"
@@ -101,7 +101,7 @@ $(BAZZITE_INSTALL_ISO): $(BAZZITE_INSTALL_KS) $(BAZZITE_INSTALL_GRUB) $(BAZZITE_
 
 bazzite-iso: | $(VM_DIR) ## Download (resume) + checksum-verify the Bazzite live ISO
 	@echo "Ensuring Bazzite ISO is complete (resumable): $(BAZZITE_ISO_URL)"
-	@curl -L --fail -C - -o "$(BAZZITE_ISO)" "$(BAZZITE_ISO_URL)" || true
+	@curl -L --fail --retry 12 --retry-delay 5 --retry-all-errors -C - -o "$(BAZZITE_ISO)" "$(BAZZITE_ISO_URL)" || true
 	@test -f "$(BAZZITE_ISO)"
 	@if [ "$(BAZZITE_VERIFY_ISO)" = "1" ]; then \
 		actual="$$(shasum -a 256 "$(BAZZITE_ISO)" | awk '{print $$1}')"; \
