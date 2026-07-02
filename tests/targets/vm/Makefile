@@ -65,7 +65,7 @@ BAZZITE_E2E_SERIAL ?= $(VM_DIR)/bazzite-e2e-serial.log
 BAZZITE_E2E_SCREEN ?= $(VM_DIR)/bazzite-e2e-screen.ppm
 BAZZITE_E2E_SSH_PORT ?= 2224
 
-.PHONY: test bazzite-iso bazzite-vm-install bazzite-e2e-install bazzite-e2e-verify bazzite-vm-start bazzite-vm-start-live bazzite-vm-start-installed bazzite-vm-screenshot bazzite-vm-smoke bazzite-desktop-vm-smoke bazzite-vm-ssh bazzite-vm-wait-ssh bazzite-vm-sync bazzite-vm-verify-ssh bazzite-vm-stop bazzite-vm-clean
+.PHONY: test bazzite-iso bazzite-vm-install bazzite-e2e-install bazzite-e2e-verify bazzite-e2e-verify-only bazzite-vm-start bazzite-vm-start-live bazzite-vm-start-installed bazzite-vm-screenshot bazzite-vm-smoke bazzite-desktop-vm-smoke bazzite-vm-ssh bazzite-vm-wait-ssh bazzite-vm-sync bazzite-vm-verify-ssh bazzite-vm-stop bazzite-vm-clean
 
 $(VM_DIR):
 	mkdir -p "$@"
@@ -176,6 +176,31 @@ bazzite-e2e-install: ## Build a fresh graph-owned Bazzite Deck VM disk
 		BAZZITE_STARTED=$(BAZZITE_DESKTOP_STARTED) \
 		BAZZITE_MONITOR=$(BAZZITE_DESKTOP_MONITOR)
 	$(VM_MAKE) bazzite-vm-install \
+		BAZZITE_DISK=$(BAZZITE_E2E_DISK) \
+		BAZZITE_PID=$(BAZZITE_E2E_PID) \
+		BAZZITE_STARTED=$(BAZZITE_E2E_STARTED) \
+		BAZZITE_MONITOR=$(BAZZITE_E2E_MONITOR) \
+		BAZZITE_SERIAL=$(BAZZITE_E2E_SERIAL) \
+		BAZZITE_SCREEN=$(BAZZITE_E2E_SCREEN) \
+		BAZZITE_SSH_PORT=$(BAZZITE_E2E_SSH_PORT) \
+		BAZZITE_VNC_DISPLAY=7 \
+		BAZZITE_VNC_PORT=5907
+
+# Verify an ALREADY-INSTALLED graph-owned VM without wiping it. Top-level
+# command-line overrides do not survive MAKEFLAGS recursion under the Xcode
+# make, so every recursive call passes its variables explicitly.
+bazzite-e2e-verify-only: ## Boot + verify the existing Bazzite e2e disk (no reinstall)
+	$(VM_MAKE) bazzite-vm-start-installed \
+		BAZZITE_DISK=$(BAZZITE_E2E_DISK) \
+		BAZZITE_PID=$(BAZZITE_E2E_PID) \
+		BAZZITE_STARTED=$(BAZZITE_E2E_STARTED) \
+		BAZZITE_MONITOR=$(BAZZITE_E2E_MONITOR) \
+		BAZZITE_SERIAL=$(BAZZITE_E2E_SERIAL) \
+		BAZZITE_SCREEN=$(BAZZITE_E2E_SCREEN) \
+		BAZZITE_SSH_PORT=$(BAZZITE_E2E_SSH_PORT) \
+		BAZZITE_VNC_DISPLAY=7 \
+		BAZZITE_VNC_PORT=5907
+	$(VM_MAKE) bazzite-vm-verify-ssh \
 		BAZZITE_DISK=$(BAZZITE_E2E_DISK) \
 		BAZZITE_PID=$(BAZZITE_E2E_PID) \
 		BAZZITE_STARTED=$(BAZZITE_E2E_STARTED) \
