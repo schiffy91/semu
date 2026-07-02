@@ -109,10 +109,8 @@
       ],
       "aspect_probe": {
         "files": [
-          "${state_root}/config/dolphin-emu/Config/GFX.ini",
-          "${state_root}/config/dolphin-emu/Config/Dolphin.ini",
-          "${project}/generated/packaging/emulators/profiles/Dolphin/config/GFX.ini",
-          "${project}/generated/packaging/emulators/profiles/Dolphin/config/Dolphin.ini"
+          "${home}/Library/Application Support/Dolphin/Config/GFX.ini",
+          "${home}/Library/Application Support/Dolphin/Config/Dolphin.ini"
         ],
         "widescreen_markers": [
           "aspectratio = 1",
@@ -133,6 +131,7 @@
     }
   },
   "doc": {
-    "aspect_probe": "Files and marker literals migrated verbatim from presentationDolphinState (presentation.btrc:654-670); markers are matched case-insensitively against the probed text."
+    "aspect_probe": "Files and marker literals migrated verbatim from presentationDolphinState (presentation.btrc:654-670); markers are matched case-insensitively against the probed text.",
+    "aspect_probe_macos": "Verified live 2026-07-01: Dolphin on macOS writes ~/Library/Application Support/Dolphin/Config/ (not the XDG paths the first draft copied from the linux block)."
   }
 }
