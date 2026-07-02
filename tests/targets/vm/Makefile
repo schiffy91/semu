@@ -384,6 +384,8 @@ bazzite-vm-sync: bazzite-vm-wait-ssh ## Sync repo + cross-built semu to installe
 
 bazzite-vm-verify-ssh: bazzite-vm-sync ## Run Deck checks inside installed Bazzite VM over SSH
 	ssh $(BAZZITE_SSH_OPTS) -p $(BAZZITE_SSH_PORT) $(BAZZITE_SSH_USER)@localhost \
+		'cd ~/semu && src/generated/build/semu bootstrap'
+	ssh $(BAZZITE_SSH_OPTS) -p $(BAZZITE_SSH_PORT) $(BAZZITE_SSH_USER)@localhost \
 		'cd ~/semu && src/generated/build/semu deck provision --project "$$PWD"'
 	ssh $(BAZZITE_SSH_OPTS) -p $(BAZZITE_SSH_PORT) $(BAZZITE_SSH_USER)@localhost \
 		'cd ~/semu && src/generated/build/semu deck verify-emulators --project "$$PWD"'
