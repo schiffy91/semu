@@ -11,7 +11,7 @@ forAllSystems (system: let
   lib = pkgs.lib;
 
   semuRoot = ../../..;
-  sourcesJson = lib.importJSON (semuRoot + "/emulators/rendering/assets/sources.json");
+  sourcesJson = lib.importJSON (semuRoot + "/assets/sources.json");
   recipeKeys = lib.attrNames sourcesJson.assets;
 
   systemsDir = semuRoot + "/systems";

@@ -62,15 +62,15 @@
   "assets": {
     "assets/bezels/generic/4x3.png": {
       "type": "local",
-      "path": "src/semu/emulators/rendering/assets/reshade/bezel-4x3.png"
+      "path": "src/semu/assets/reshade/bezel-4x3.png"
     },
     "assets/bezels/generic/16x9.png": {
       "type": "local",
-      "path": "src/semu/emulators/rendering/assets/reshade/bezel-16x9.png"
+      "path": "src/semu/assets/reshade/bezel-16x9.png"
     },
     "assets/bezels/generic/dual.png": {
       "type": "local",
-      "path": "src/semu/emulators/rendering/assets/reshade/bezel-3ds.png"
+      "path": "src/semu/assets/reshade/bezel-3ds.png"
     },
     "assets/bezels/gb/classic.png": {
       "type": "flatten",
@@ -491,80 +491,80 @@
     },
     "assets/reshade/Bezel.fx": {
       "type": "local",
-      "path": "src/semu/emulators/rendering/assets/reshade/Bezel.fx"
+      "path": "src/semu/assets/reshade/Bezel.fx"
     },
     "assets/reshade/Bezel-4x3.fx": {
       "type": "local",
-      "path": "src/semu/emulators/rendering/assets/reshade/Bezel-4x3.fx"
+      "path": "src/semu/assets/reshade/Bezel-4x3.fx"
     },
     "assets/reshade/Bezel-16x9.fx": {
       "type": "local",
-      "path": "src/semu/emulators/rendering/assets/reshade/Bezel-16x9.fx"
+      "path": "src/semu/assets/reshade/Bezel-16x9.fx"
     },
     "assets/reshade/Bezel-3ds.fx": {
       "type": "local",
-      "path": "src/semu/emulators/rendering/assets/reshade/Bezel-3ds.fx"
+      "path": "src/semu/assets/reshade/Bezel-3ds.fx"
     },
     "assets/reshade/ReShade.fxh": {
       "type": "local",
-      "path": "src/semu/emulators/rendering/assets/reshade/ReShade.fxh"
+      "path": "src/semu/assets/reshade/ReShade.fxh"
     },
     "assets/reshade/ReShadeUI.fxh": {
       "type": "local",
-      "path": "src/semu/emulators/rendering/assets/reshade/ReShadeUI.fxh"
+      "path": "src/semu/assets/reshade/ReShadeUI.fxh"
     },
     "assets/reshade/vkBasalt.conf": {
       "type": "local",
-      "path": "src/semu/emulators/rendering/assets/reshade/vkBasalt.conf"
+      "path": "src/semu/assets/reshade/vkBasalt.conf"
     },
     "assets/reshade/vkBasalt-4x3.conf": {
       "type": "local",
-      "path": "src/semu/emulators/rendering/assets/reshade/vkBasalt-4x3.conf"
+      "path": "src/semu/assets/reshade/vkBasalt-4x3.conf"
     },
     "assets/reshade/vkBasalt-16x9.conf": {
       "type": "local",
-      "path": "src/semu/emulators/rendering/assets/reshade/vkBasalt-16x9.conf"
+      "path": "src/semu/assets/reshade/vkBasalt-16x9.conf"
     },
     "assets/reshade/vkBasalt-3ds.conf": {
       "type": "local",
-      "path": "src/semu/emulators/rendering/assets/reshade/vkBasalt-3ds.conf"
+      "path": "src/semu/assets/reshade/vkBasalt-3ds.conf"
     },
     "assets/reshade/cutouts.conf": {
       "type": "local",
-      "path": "src/semu/emulators/rendering/assets/reshade/cutouts.conf"
+      "path": "src/semu/assets/reshade/cutouts.conf"
     },
     "assets/reshade/bezel-4x3.png": {
       "type": "local",
-      "path": "src/semu/emulators/rendering/assets/reshade/bezel-4x3.png",
+      "path": "src/semu/assets/reshade/bezel-4x3.png",
       "doc": {
         "why": "Bezel-4x3.fx defines SEMU_BEZEL_TEXTURE \"bezel-4x3.png\" and vkBasalt reshadeTexturePath points at the reshade dir, so the texture must ship inside the staged reshade pack."
       }
     },
     "assets/reshade/bezel-16x9.png": {
       "type": "local",
-      "path": "src/semu/emulators/rendering/assets/reshade/bezel-16x9.png",
+      "path": "src/semu/assets/reshade/bezel-16x9.png",
       "doc": {
         "why": "Texture named by Bezel-16x9.fx; must sit beside the .fx in the staged reshade pack."
       }
     },
     "assets/reshade/bezel-3ds.png": {
       "type": "local",
-      "path": "src/semu/emulators/rendering/assets/reshade/bezel-3ds.png",
+      "path": "src/semu/assets/reshade/bezel-3ds.png",
       "doc": {
         "why": "Texture named by Bezel-3ds.fx; must sit beside the .fx in the staged reshade pack."
       }
     },
     "assets/overlay/bezel-4x3.png": {
       "type": "local",
-      "path": "src/semu/emulators/rendering/assets/overlay/bezel-4x3.png"
+      "path": "src/semu/assets/overlay/bezel-4x3.png"
     },
     "assets/overlay/bezel-16x9.png": {
       "type": "local",
-      "path": "src/semu/emulators/rendering/assets/overlay/bezel-16x9.png"
+      "path": "src/semu/assets/overlay/bezel-16x9.png"
     },
     "assets/fonts/menu-font.png": {
       "type": "local",
-      "path": "src/semu/emulators/rendering/assets/fonts/menu-font.png"
+      "path": "src/semu/assets/fonts/menu-font.png"
     }
   },
   "staging": [

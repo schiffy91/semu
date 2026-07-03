@@ -58,7 +58,7 @@ class BezelResolver {
                 return stagedRoot;
             }
         }
-        return PathTools.join(repoRoot, "src/semu/emulators/rendering");
+        return PathTools.join(repoRoot, "src/semu");
     }
 
     // Join a canonical "assets/..." path onto the resolved asset root.
