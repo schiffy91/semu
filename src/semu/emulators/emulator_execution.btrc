@@ -127,6 +127,41 @@ class EmulatorExecution {
         return resolvedPlan;
     }
 
+    // The app.quit contract's platform mechanism on linux: semu-quit-watch
+    // (platforms/linux/quit_watch.c) watches evdev directly — Esc, Ctrl+Q,
+    // Alt+F4 and Select+Start — and terminates the child's process group.
+    // Watching the kernel input layer is what makes quit UNIFORM across
+    // every emulator (RetroArch's own hotkeys work only where a frontend
+    // implements them, and Game Mode's Steam Input gates synthetic events
+    // away from the app). The wrap is a plain argv prefix; a missing binary
+    // degrades to the unwrapped launch, and SEMU_QUIT_WATCH=0 bypasses at
+    // runtime. Generic: no emulator identifiers, resolved like the staged
+    // tap library.
+    class string quitWatchBinaryPath(string project) {
+        Vector<string> candidates = [];
+        string environmentAssetRoot = Environment.get("SEMU_ASSET_ROOT", "");
+        if (!environmentAssetRoot.isEmpty()) {
+            candidates.push(PathTools.join(environmentAssetRoot,
+                "lib/semu/semu-quit-watch"));
+        }
+        candidates.push(PathTools.join(project,
+            "src/generated/build/steamdeck/tap/semu-quit-watch"));
+        for candidate in candidates {
+            if (FileSystem.isFile(candidate)) {
+                return candidate;
+            }
+        }
+        return "";
+    }
+
+    class void wrapWithQuitWatch(LaunchPlan resolvedPlan, string quitWatchBinary) {
+        if (quitWatchBinary.isEmpty() || resolvedPlan.argumentVector.size() == 0) {
+            return;
+        }
+        resolvedPlan.argumentVector.insert(0, "--");
+        resolvedPlan.argumentVector.insert(0, quitWatchBinary);
+    }
+
     class void removeEnvironmentKey(LaunchPlan launchPlan, string key) {
         Vector<string> keptKeys = [];
         Vector<string> keptValues = [];
@@ -204,6 +239,10 @@ class EmulatorExecution {
         EmulatorExecution.applySeeds(platform, context);
         EmulatorExecution.materializeSymlinks(platform, context);
         LaunchPlan resolvedPlan = EmulatorExecution.resolvePlan(launchPlan, context);
+        if (operatingSystem.equals("linux")) {
+            EmulatorExecution.wrapWithQuitWatch(resolvedPlan,
+                EmulatorExecution.quitWatchBinaryPath(project));
+        }
         string preamble = EmulatorExecution.applyHostDisplayPrecedence(resolvedPlan);
         UnixShell shell = UnixShell();
         ExecResult result = shell.run(preamble + EmulatorLauncher.shellCommand(resolvedPlan),
