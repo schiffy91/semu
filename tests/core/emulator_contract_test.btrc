@@ -5,7 +5,9 @@
 // the patched-RA runtime/command tap override, nix/native argument vectors on
 // macos, the verbatim ES-DE tail with add-only-when-absent platform
 // defaults), the ES-DE command grammar against the golden es_systems
-// strings, PCSX2 profile emission against the golden Deck inis, and the
+// strings, PCSX2 profile emission against the golden Deck inis, the GL-tap
+// launch wiring (rom-path system inference + LinuxTap environment merging
+// with the flatpak --env grants and LD_PRELOAD), and the
 // platform contract: the macos axis validation (now routed through the
 // platform classes) still rejects display_server and its sibling linux-only
 // concepts, and the registry rejects unknown platforms keys. Returns
@@ -14,6 +16,7 @@
 
 import std.{vector, strings, platform, fs}
 import ../../src/semu/core/parse_log.btrc
+import ../../src/semu/core/settings.btrc
 import ../../src/semu/platforms/platform_registry.btrc
 import ../../src/semu/emulators/emulator_parser.btrc
 import ../../src/semu/systems/system_parser.btrc
@@ -21,6 +24,7 @@ import ../../src/semu/emulators/semu_emulator.btrc
 import ../../src/semu/emulators/emulator_process.btrc
 import ../../src/semu/emulators/emulator_emitter.btrc
 import ../../src/semu/emulators/emulator_registry.btrc
+import ../../src/semu/platforms/linux/linux_tap.btrc
 import ../../src/semu/input/input_parser.btrc
 import ../../src/semu/input/targets/steamdeck/steam_input.btrc
 
@@ -387,6 +391,167 @@ class EmulatorContractTest {
         return failures;
     }
 
+    class int argumentPosition(LaunchPlan launchPlan, string expected) {
+        for (int argumentIndex = 0; argumentIndex < launchPlan.argumentVector.size();
+             argumentIndex++) {
+            if (launchPlan.argumentVector.get(argumentIndex).equals(expected)) {
+                return argumentIndex;
+            }
+        }
+        return -1;
+    }
+
+    class bool carriesTapEnvironment(LaunchPlan launchPlan) {
+        for key in launchPlan.environmentSetKeys {
+            if (key.startsWith("SEMU_TAP_") || key.equals("SEMU_RETRO_START")
+                || key.equals("LD_PRELOAD")) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    // System inference from the rom path is pure contract data: rom.dir
+    // segments infer, flag values and rom-less tails never do.
+    class int checkSystemInference(SemuContracts contracts) {
+        int failures = 0;
+        if (!contracts.systemForRomPath("/roms/gc/game.iso").equals("gc")) {
+            failures = failures + EmulatorContractTest.fail(
+                "systemForRomPath(/roms/gc/game.iso): got '"
+                + contracts.systemForRomPath("/roms/gc/game.iso") + "' (want 'gc')");
+        }
+        if (!contracts.systemForRomPath("/library/gb/nested/gbc/game.gbc").equals("gbc")) {
+            failures = failures + EmulatorContractTest.fail(
+                "systemForRomPath must prefer the deepest matching segment, got '"
+                + contracts.systemForRomPath("/library/gb/nested/gbc/game.gbc") + "'");
+        }
+        if (!contracts.systemForRomPath("Dolphin.Display.Fullscreen=True").isEmpty()) {
+            failures = failures + EmulatorContractTest.fail(
+                "systemForRomPath must not infer a system from a flag value");
+        }
+        if (!contracts.systemForRomPath("").isEmpty()
+            || !contracts.systemForRomPath("game.iso").isEmpty()) {
+            failures = failures + EmulatorContractTest.fail(
+                "systemForRomPath must return '' for empty/bare tails");
+        }
+        return failures;
+    }
+
+    // The GL-tap launch wiring: a dolphin linux plan for a gc rom gains the
+    // contract SEMU_TAP_* bundle, the exec-edge keys and LD_PRELOAD (with
+    // the flatpak --env grant BEFORE the app id) when a tap library exists
+    // under a SEMU_TEST_TMP-staged asset root; disabled visuals skip
+    // everything; a missing library degrades to a plan note; macos plans
+    // never carry tap environment.
+    class int checkLinuxTapWiring(SemuContracts contracts, string repoRoot) {
+        int failures = 0;
+        EmulatorDefinition dolphin = EmulatorContractTest.findEmulator(contracts, "dolphin");
+        SystemDefinition gameCube = EmulatorContractTest.findSystem(contracts, "gc");
+        Vector<string> noArguments = [];
+        SemuSettings settings = SemuSettings();
+
+        string fakeAssetRoot = PathTools.join(
+            Environment.get("SEMU_TEST_TMP", "/tmp/semu-core-tests"), "tap-asset-root");
+        string fakeLibraryPath = PathTools.join(fakeAssetRoot, "lib/semu/libsemutap.so");
+        UnixFileSystem.mkdirp(PathTools.dirname(fakeLibraryPath));
+        Path.writeAll(fakeLibraryPath, "fake tap library");
+
+        LaunchPlan dolphinPlan = EmulatorLauncher.plan(dolphin, "linux", "gamescope",
+            "/roms/gc/game.iso", noArguments);
+        if (EmulatorContractTest.carriesTapEnvironment(dolphinPlan)) {
+            failures = failures + EmulatorContractTest.fail(
+                "an assembled plan must carry no tap environment before LinuxTap.apply");
+        }
+        LinuxTap.applyWithAssetRoot(dolphinPlan, dolphin, gameCube, settings, repoRoot,
+            fakeAssetRoot);
+        if (!EmulatorContractTest.environmentValue(dolphinPlan, "SEMU_TAP_ART")
+                .endsWith("assets/bezels/n64/tv.png")) {
+            failures = failures + EmulatorContractTest.fail(
+                "tap plan SEMU_TAP_ART: got '"
+                + EmulatorContractTest.environmentValue(dolphinPlan, "SEMU_TAP_ART")
+                + "' (want the gc geometry_from n64 tv art)");
+        }
+        if (!EmulatorContractTest.environmentValue(dolphinPlan, "SEMU_TAP_STYLE")
+                .equals("console")
+            || !EmulatorContractTest.environmentValue(dolphinPlan, "SEMU_TAP_NATIVE_W")
+                .equals("256")
+            || !EmulatorContractTest.environmentValue(dolphinPlan, "SEMU_TAP_NATIVE_H")
+                .equals("240")) {
+            failures = failures + EmulatorContractTest.fail(
+                "tap plan lacks the gc contract wire values (STYLE/NATIVE_W/NATIVE_H)");
+        }
+        if (!EmulatorContractTest.environmentValue(dolphinPlan, "SEMU_RETRO_START")
+                .equals("0")) {
+            failures = failures + EmulatorContractTest.fail(
+                "tap plan SEMU_RETRO_START: gc declares no retro_default, want '0'");
+        }
+        if (!EmulatorContractTest.environmentValue(dolphinPlan, "SEMU_TAP_STANDALONE")
+                .equals("1")) {
+            failures = failures + EmulatorContractTest.fail(
+                "tap plan SEMU_TAP_STANDALONE: dolphin is kind standalone, want '1'");
+        }
+        if (!EmulatorContractTest.environmentValue(dolphinPlan, "SEMU_TAP_STATE_DIR")
+                .equals("${state_root}")) {
+            failures = failures + EmulatorContractTest.fail(
+                "tap plan SEMU_TAP_STATE_DIR must be the ${state_root} template token");
+        }
+        if (!EmulatorContractTest.environmentValue(dolphinPlan, "SEMU_TAP_MENUFONT")
+                .endsWith("assets/fonts/menu-font.png")) {
+            failures = failures + EmulatorContractTest.fail(
+                "tap plan SEMU_TAP_MENUFONT must resolve the canonical menu font");
+        }
+        if (!EmulatorContractTest.environmentValue(dolphinPlan, "LD_PRELOAD")
+                .equals(fakeLibraryPath)) {
+            failures = failures + EmulatorContractTest.fail(
+                "tap plan LD_PRELOAD: got '"
+                + EmulatorContractTest.environmentValue(dolphinPlan, "LD_PRELOAD")
+                + "' (want the staged fake library)");
+        }
+        int preloadGrantPosition = EmulatorContractTest.argumentPosition(dolphinPlan,
+            "--env=LD_PRELOAD=" + fakeLibraryPath);
+        int applicationIdPosition = EmulatorContractTest.argumentPosition(dolphinPlan,
+            "org.DolphinEmu.dolphin-emu");
+        if (preloadGrantPosition < 2 || applicationIdPosition < 0
+            || preloadGrantPosition > applicationIdPosition) {
+            failures = failures + EmulatorContractTest.fail(
+                "flatpak tap plan must bundle --env=LD_PRELOAD before the app id");
+        }
+
+        LaunchPlan disabledPlan = EmulatorLauncher.plan(dolphin, "linux", "gamescope",
+            "/roms/gc/game.iso", noArguments);
+        SemuSettings disabledSettings = SemuSettings();
+        disabledSettings.visual.bezels = false;
+        disabledSettings.visual.crtShaders = false;
+        LinuxTap.applyWithAssetRoot(disabledPlan, dolphin, gameCube, disabledSettings,
+            repoRoot, fakeAssetRoot);
+        if (EmulatorContractTest.carriesTapEnvironment(disabledPlan)) {
+            failures = failures + EmulatorContractTest.fail(
+                "bezels+crt_shaders off must skip the tap entirely");
+        }
+
+        LaunchPlan notePlan = EmulatorLauncher.plan(dolphin, "linux", "gamescope",
+            "/roms/gc/game.iso", noArguments);
+        LinuxTap.applyWithAssetRoot(notePlan, dolphin, gameCube, settings,
+            "/nonexistent-semu-project", PathTools.join(fakeAssetRoot, "missing"));
+        if (!EmulatorContractTest.environmentValue(notePlan, "LD_PRELOAD").isEmpty()
+            || !notePlan.note.contains("tap library not found")) {
+            failures = failures + EmulatorContractTest.fail(
+                "a missing tap library must skip LD_PRELOAD and note the plan");
+        }
+        if (EmulatorContractTest.environmentValue(notePlan, "SEMU_TAP_ART").isEmpty()) {
+            failures = failures + EmulatorContractTest.fail(
+                "a missing tap library must still merge the tap environment");
+        }
+
+        LaunchPlan macosPlan = EmulatorLauncher.plan(dolphin, "macos", "",
+            "/roms/gc/game.iso", noArguments);
+        if (EmulatorContractTest.carriesTapEnvironment(macosPlan)) {
+            failures = failures + EmulatorContractTest.fail(
+                "macos plans must never carry tap environment");
+        }
+        return failures;
+    }
+
     class bool logContains(ParseLog log, string fragment) {
         for error in log.errors {
             if (error.contains(fragment)) {
@@ -522,6 +687,8 @@ class EmulatorContractTest {
         failures = failures + EmulatorContractTest.checkAresPlans(contracts);
         failures = failures + EmulatorContractTest.checkEsDeCommands(contracts);
         failures = failures + EmulatorContractTest.checkPcsx2Profiles(contracts, repoRoot);
+        failures = failures + EmulatorContractTest.checkSystemInference(contracts);
+        failures = failures + EmulatorContractTest.checkLinuxTapWiring(contracts, repoRoot);
         failures = failures + EmulatorContractTest.checkPlatformAxisValidation();
         failures = failures + EmulatorContractTest.checkUnknownPlatformRejection();
 

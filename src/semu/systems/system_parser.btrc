@@ -306,6 +306,32 @@ class SemuContracts {
         }
         return false;
     }
+
+    // Infer the owning system from a rom path by matching the path's
+    // directory segments against each system's rom.dir contract —
+    // data-driven, no system name appears in code. The deepest (rightmost)
+    // matching segment wins so nested library layouts resolve to the
+    // directory closest to the file; "" when nothing matches (flag values
+    // and bare filenames never infer a system).
+    public string systemForRomPath(string romPath) {
+        if (romPath.isEmpty() || !romPath.contains("/")) {
+            return "";
+        }
+        string paddedDirectory = "/" + PathTools.dirname(romPath) + "/";
+        string matchedSystemId = "";
+        int matchedPosition = -1;
+        for systemDefinition in self.systems {
+            if (!systemDefinition.romDirectory.isEmpty()) {
+                string paddedSegment = "/" + systemDefinition.romDirectory + "/";
+                int segmentPosition = paddedDirectory.lastIndexOf(paddedSegment);
+                if (segmentPosition > matchedPosition) {
+                    matchedPosition = segmentPosition;
+                    matchedSystemId = systemDefinition.id;
+                }
+            }
+        }
+        return matchedSystemId;
+    }
 }
 
 class DisplayPolicyParser {

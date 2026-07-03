@@ -2,18 +2,21 @@
 //
 // Runs the real emission pass (SystemEmitter.emitAll + the per-platform
 // launcher emission via PlatformRegistry) into <repoRoot>/src/generated,
-// asserts the expected artifact tree exists, then runs
-// `make -f tests/Makefile tree-audit` to prove the emission never escapes
-// the approved repository shape. Returns the violation count (0 = pass);
-// no main() — the entry composes it.
+// asserts the expected artifact tree exists, proves 'semu run --prepare-only'
+// installs the ES-DE runtime configuration (against a scratch frontend home
+// under $SEMU_TEST_TMP) with the current platform's resolved roms root in
+// ROMDirectory, then runs `make -f tests/Makefile tree-audit` to prove the
+// emission never escapes the approved repository shape. Returns the
+// violation count (0 = pass); no main() — the entry composes it.
 
-import std.{vector, process, fs}
+import std.{vector, process, fs, platform}
 import ../../src/semu/core/parse_log.btrc
 import ../../src/semu/core/settings.btrc
 import ../../src/semu/core/settings_parser.btrc
 import ../../src/semu/systems/system_parser.btrc
 import ../../src/semu/systems/system_emitter.btrc
 import ../../src/semu/platforms/platform_registry.btrc
+import ../../src/semu/packaging/es_de_runtime.btrc
 
 class GeneratedTreeTest {
     class int fail(string message) {
@@ -101,6 +104,63 @@ class GeneratedTreeTest {
         return failures;
     }
 
+    // The run-prepare contract: EsDeRuntime.prepare against a scratch
+    // frontend home installs the custom_systems pair + es_settings.xml, the
+    // ROMDirectory value is the current platform's fully resolved roms root,
+    // and no ${...} template token survives into the installed find rules.
+    class int checkRunPrepare(SemuContracts contracts, string repoRoot) {
+        int failures = 0;
+        ParseLog log = ParseLog();
+        SemuSettings settings = SettingsParser.load(repoRoot, log);
+        if (!log.ok()) {
+            for error in log.errors {
+                failures = failures + GeneratedTreeTest.fail("run-prepare settings: " + error);
+            }
+            return failures;
+        }
+        string platformId = PlatformRegistry.currentId();
+        string esDeHome = PathTools.join(
+            Environment.get("SEMU_TEST_TMP", "/tmp/semu-core-tests"), "es-de-home");
+        int prepareResult = EsDeRuntime.prepare(contracts, settings, repoRoot,
+            platformId, esDeHome);
+        if (prepareResult != 0) {
+            return GeneratedTreeTest.fail(f"run-prepare returned {prepareResult}");
+        }
+        failures = failures + GeneratedTreeTest.requireFile(esDeHome,
+            "custom_systems/es_systems.xml");
+        failures = failures + GeneratedTreeTest.requireFile(esDeHome,
+            "custom_systems/es_find_rules.xml");
+        failures = failures + GeneratedTreeTest.requireFile(esDeHome,
+            "settings/es_settings.xml");
+        if (failures > 0) {
+            return failures;
+        }
+        string expectedRomsRoot = EsDeRuntime.resolvedRomsRoot(settings, repoRoot, platformId);
+        if (expectedRomsRoot.isEmpty() || expectedRomsRoot.contains("${")) {
+            failures = failures + GeneratedTreeTest.fail(
+                "run-prepare roms root did not resolve: '" + expectedRomsRoot + "'");
+        }
+        string settingsXml = Path.readAll(PathTools.join(esDeHome,
+            "settings/es_settings.xml"));
+        if (!settingsXml.contains("<string name=\"ROMDirectory\" value=\""
+            + expectedRomsRoot + "\" />")) {
+            failures = failures + GeneratedTreeTest.fail(
+                "es_settings.xml ROMDirectory is not the resolved '" + platformId
+                + "' roms root " + expectedRomsRoot);
+        }
+        string findRules = Path.readAll(PathTools.join(esDeHome,
+            "custom_systems/es_find_rules.xml"));
+        if (findRules.contains("${")) {
+            failures = failures + GeneratedTreeTest.fail(
+                "installed es_find_rules.xml carries unresolved template tokens");
+        }
+        if (failures == 0) {
+            print("  OK run-prepare installed es-de runtime (ROMDirectory "
+                + expectedRomsRoot + ")");
+        }
+        return failures;
+    }
+
     class int run(string repoRoot) {
         int failures = 0;
         ParseLog log = ParseLog();
@@ -122,6 +182,7 @@ class GeneratedTreeTest {
 
         failures = failures + GeneratedTreeTest.checkArtifactTree(contracts, generatedRoot);
         failures = failures + GeneratedTreeTest.checkSettings(repoRoot);
+        failures = failures + GeneratedTreeTest.checkRunPrepare(contracts, repoRoot);
         failures = failures + GeneratedTreeTest.checkTreeAudit(repoRoot);
 
         if (failures > 0) {

@@ -53,6 +53,8 @@ typedef char GLchar; typedef long GLsizeiptr; typedef long GLintptr;
 #define GL_UNPACK_ROW_LENGTH 0x0CF2
 #define GL_UNPACK_SKIP_ROWS 0x0CF3
 #define GL_UNPACK_SKIP_PIXELS 0x0CF4
+#define GL_PIXEL_UNPACK_BUFFER 0x88EC
+#define GL_PIXEL_UNPACK_BUFFER_BINDING 0x88EF
 #define GL_TEXTURE0 0x84C0
 #define GL_TEXTURE1 0x84C1
 #define GL_TEXTURE2 0x84C2
@@ -101,6 +103,7 @@ typedef void (*PFN_viewport)(GLint,GLint,GLsizei,GLsizei);
 typedef void (*PFN_disable)(GLenum);
 typedef void (*PFN_genmip)(GLenum);
 typedef void (*PFN_pixstore)(GLenum, GLint);          // glPixelStorei
+typedef void (*PFN_bindbuf)(GLenum, GLuint);          // glBindBuffer (unpack-PBO guard around CPU uploads)
 typedef int (*PFN_qkm)(void*, char*);                 // XQueryKeymap(Display*, char[32])
 typedef unsigned char (*PFN_k2kc)(void*, unsigned long); // XKeysymToKeycode(Display*, KeySym)
 typedef unsigned long (*PFN_s2ks)(const char*);       // XStringToKeysym(const char*)
@@ -113,7 +116,7 @@ static PFN_shsrc p_shsrc; static PFN_compsh p_compsh; static PFN_shiv p_shiv; st
 static PFN_createpr p_createpr; static PFN_attach p_attach; static PFN_link p_link; static PFN_priv p_priv;
 static PFN_use p_use; static PFN_uloc p_uloc; static PFN_u1i p_u1i; static PFN_u2f p_u2f;
 static PFN_u4f p_u4f; static PFN_u3f p_u3f; static PFN_u1f p_u1f; static PFN_draw p_draw; static PFN_viewport p_viewport;
-static PFN_disable p_disable; static PFN_genmip p_genmip; static PFN_pixstore p_pixstore;
+static PFN_disable p_disable; static PFN_genmip p_genmip; static PFN_pixstore p_pixstore; static PFN_bindbuf p_bindbuf;
 static PFN_qkm p_qkm; static PFN_k2kc p_k2kc; static PFN_s2ks p_s2ks;
 
 static int inited, disabled, gl_ready, tap_style = 0, env_nw = 0, env_nh = 0, debug_on = 0;
@@ -296,6 +299,13 @@ static const char *FS =
  "  frag=vec4(menuComposite(outc,px),1.0);\n"
  "}\n";
 
+// A PBO the emulator leaves bound to GL_PIXEL_UNPACK_BUFFER would make our client-pointer glTexImage2D
+// uploads read a bogus buffer offset (garbage art / crash). Save + unbind before, restore after. When no
+// PBO is bound (the proven RA path) this is a pure no-op.
+static GLint saved_unpack_pbo = 0;
+static void unpack_pbo_guard(void){ saved_unpack_pbo=0; if(p_bindbuf&&p_getiv){ p_getiv(GL_PIXEL_UNPACK_BUFFER_BINDING,&saved_unpack_pbo); if(saved_unpack_pbo) p_bindbuf(GL_PIXEL_UNPACK_BUFFER,0); } }
+static void unpack_pbo_restore(void){ if(p_bindbuf&&saved_unpack_pbo) p_bindbuf(GL_PIXEL_UNPACK_BUFFER,(GLuint)saved_unpack_pbo); }
+
 static GLuint mkshader(GLenum type, const char *src) {
     GLuint s = p_createsh(type); p_shsrc(s, 1, &src, 0); p_compsh(s);
     GLint ok = 0; p_shiv(s, GL_COMPILE_STATUS, &ok);
@@ -336,7 +346,9 @@ static void gl_init(void) {
             // RetroArch leaves GL_UNPACK_* state set; without resetting it, our CPU->GPU upload reads the
             // image buffer with the wrong stride -> sheared/striped texture. Reset to tightly-packed rows.
             if(p_pixstore){ p_pixstore(GL_UNPACK_ALIGNMENT,1); p_pixstore(GL_UNPACK_ROW_LENGTH,0); p_pixstore(GL_UNPACK_SKIP_PIXELS,0); p_pixstore(GL_UNPACK_SKIP_ROWS,0); }
+            unpack_pbo_guard();   // an emulator-bound unpack PBO would turn img into a bogus offset
             p_teximg(GL_TEXTURE_2D,0,GL_RGBA,aw,ah,0,GL_RGBA,GL_UNSIGNED_BYTE,img);
+            unpack_pbo_restore();
             if(p_genmip) p_genmip(GL_TEXTURE_2D);   // clean minification (portrait shells downscale ~2.5x)
             p_texpar(GL_TEXTURE_2D,GL_TEXTURE_MIN_FILTER,p_genmip?GL_LINEAR_MIPMAP_LINEAR:GL_LINEAR); p_texpar(GL_TEXTURE_2D,GL_TEXTURE_MAG_FILTER,GL_LINEAR);
             p_texpar(GL_TEXTURE_2D,GL_TEXTURE_WRAP_S,GL_CLAMP_TO_EDGE); p_texpar(GL_TEXTURE_2D,GL_TEXTURE_WRAP_T,GL_CLAMP_TO_EDGE);
@@ -352,7 +364,9 @@ static void gl_init(void) {
         if(gimg){
             p_gentex(1,&glass_texs[gi]); p_active(GL_TEXTURE2); p_bindtex(GL_TEXTURE_2D,glass_texs[gi]);
             if(p_pixstore){ p_pixstore(GL_UNPACK_ALIGNMENT,1); p_pixstore(GL_UNPACK_ROW_LENGTH,0); p_pixstore(GL_UNPACK_SKIP_PIXELS,0); p_pixstore(GL_UNPACK_SKIP_ROWS,0); }
+            unpack_pbo_guard();   // an emulator-bound unpack PBO would turn gimg into a bogus offset
             p_teximg(GL_TEXTURE_2D,0,GL_RGBA,gw,gh,0,GL_RGBA,GL_UNSIGNED_BYTE,gimg);
+            unpack_pbo_restore();
             if(p_genmip) p_genmip(GL_TEXTURE_2D);
             p_texpar(GL_TEXTURE_2D,GL_TEXTURE_MIN_FILTER,p_genmip?GL_LINEAR_MIPMAP_LINEAR:GL_LINEAR); p_texpar(GL_TEXTURE_2D,GL_TEXTURE_MAG_FILTER,GL_LINEAR);
             p_texpar(GL_TEXTURE_2D,GL_TEXTURE_WRAP_S,GL_CLAMP_TO_EDGE); p_texpar(GL_TEXTURE_2D,GL_TEXTURE_WRAP_T,GL_CLAMP_TO_EDGE);
@@ -470,8 +484,15 @@ static void ensure_real_dlsym(void){
 }
 void *dlsym(void *handle, const char *name){
     ensure_real_dlsym();
-    if(!strcmp(name,"glXSwapBuffers")){ if(!real_swap)     real_swap=(PFN_swap)real_dlsym(handle,name);     return (void*)glXSwapBuffers; }
-    if(!strcmp(name,"eglSwapBuffers")){ if(!real_egl_swap) real_egl_swap=(PFN_eglswap)real_dlsym(handle,name); return (void*)eglSwapBuffers; }
+    // Self-resolution guard: with handle=RTLD_DEFAULT (or dlopen(NULL)) the global scope finds OUR
+    // preloaded export first, so real_swap would become this hook itself -> infinite recursion at swap.
+    // Detect the self-pointer and re-resolve past this library (RTLD_NEXT); NULL stays NULL (retried later).
+    if(!strcmp(name,"glXSwapBuffers")){
+        if(!real_swap){ void *found=real_dlsym(handle,name); if(found==(void*)glXSwapBuffers) found=real_dlsym(RTLD_NEXT,name); real_swap=(PFN_swap)found; }
+        return (void*)glXSwapBuffers; }
+    if(!strcmp(name,"eglSwapBuffers")){
+        if(!real_egl_swap){ void *found=real_dlsym(handle,name); if(found==(void*)eglSwapBuffers) found=real_dlsym(RTLD_NEXT,name); real_egl_swap=(PFN_eglswap)found; }
+        return (void*)eglSwapBuffers; }
     return real_dlsym ? real_dlsym(handle,name) : 0;
 }
 /* Never replace a non-NULL pointer: the dlsym hook above may already have
@@ -490,7 +511,7 @@ static void tap_init(void) {
     LD(p_createpr,"glCreateProgram"); LD(p_attach,"glAttachShader"); LD(p_link,"glLinkProgram"); LD(p_priv,"glGetProgramiv");
     LD(p_use,"glUseProgram"); LD(p_uloc,"glGetUniformLocation"); LD(p_u1i,"glUniform1i"); LD(p_u2f,"glUniform2f");
     LD(p_u4f,"glUniform4f"); LD(p_u3f,"glUniform3f"); LD(p_u1f,"glUniform1f"); LD(p_draw,"glDrawArrays"); LD(p_viewport,"glViewport");
-    LD(p_disable,"glDisable"); LD(p_genmip,"glGenerateMipmap"); LD(p_pixstore,"glPixelStorei");
+    LD(p_disable,"glDisable"); LD(p_genmip,"glGenerateMipmap"); LD(p_pixstore,"glPixelStorei"); LD(p_bindbuf,"glBindBuffer");
     p_qkm=(PFN_qkm)dlsym(RTLD_DEFAULT,"XQueryKeymap");          // RA has libX11 loaded
     p_k2kc=(PFN_k2kc)dlsym(RTLD_DEFAULT,"XKeysymToKeycode");
     p_s2ks=(PFN_s2ks)dlsym(RTLD_DEFAULT,"XStringToKeysym");
@@ -530,8 +551,10 @@ static void tap_init(void) {
     const char *as=getenv("SEMU_TAP_ASPECT"); if(as){ float aw=0,ah=0; if(sscanf(as,"%f:%f",&aw,&ah)==2&&ah>0.0f) disp_aspect=aw/ah; else { float v=(float)atof(as); if(v>0.01f) disp_aspect=v; } }
     const char *dbg=getenv("SEMU_TAP_DEBUG"); if(dbg){ float v=(float)atof(dbg); if(v>0.0f){ debug_on=1; debug_thresh=(v>=1.0f)?0.10f:v; } }
     const char *ov=getenv("SEMU_TAP_OVERSCAN"); if(ov){ sscanf(ov,"%d,%d,%d,%d",&ov_l,&ov_r,&ov_t,&ov_b); }  // native px L,R,T,B
-    if (getenv("SEMU_TAP_DISABLE")) disabled=1;
-    if (getenv("SEMU_TAP_STANDALONE")) standalone=1;   // full-frame mode for non-RA emulators
+    // Value-aware booleans (wire grammar is "0"/"1"): a presence-only check made DISABLE=0 kill the tap
+    // and STANDALONE=0 enable full-frame synth (which clobbers a real tap report every frame).
+    const char *disable_env=getenv("SEMU_TAP_DISABLE"); if(disable_env&&disable_env[0]&&disable_env[0]!='0') disabled=1;
+    const char *standalone_env=getenv("SEMU_TAP_STANDALONE"); if(standalone_env&&standalone_env[0]&&standalone_env[0]!='0') standalone=1;   // full-frame mode for non-RA emulators
     const char *skd=getenv("SEMU_TAP_SYSKIND"); if(skd) sys_kind=atoi(skd);   // 0 generic, 1 dual-screen, 2 wii
     const char *mfp=getenv("SEMU_TAP_MENUFONT"); if(mfp&&mfp[0]){ strncpy(menu_font_path,mfp,1023); menu_font_path[1023]=0; }
     { int aw=0,ah=0,an=0; unsigned char*ab=stbi_load(menu_font_path,&aw,&ah,&an,4); if(ab){ atlas_buf=ab; atlas_w=aw; atlas_h=ah; if(GLY_COLS>0)GLY_W=aw/GLY_COLS; if(GLY_ROWS>0)GLY_H=ah/GLY_ROWS; } }
@@ -667,7 +690,9 @@ static void tap_frame(void *dpy, unsigned long drawable, int is_egl) {
                 if(menu_buf){ p_active(GL_TEXTURE3); p_bindtex(GL_TEXTURE_2D,menu_tex);   // BIND EVERY FRAME: RA clobbers texture units between our swaps,
                     if(need_upload){                                                      // so unit 3 must be re-pointed at menu_tex or uMenu samples an
                         if(p_pixstore){ p_pixstore(GL_UNPACK_ALIGNMENT,1); p_pixstore(GL_UNPACK_ROW_LENGTH,0); p_pixstore(GL_UNPACK_SKIP_PIXELS,0); p_pixstore(GL_UNPACK_SKIP_ROWS,0); }
+                        unpack_pbo_guard();   // an emulator-bound unpack PBO would turn menu_buf into a bogus offset
                         p_teximg(GL_TEXTURE_2D,0,GL_RGBA,MENU_W,MENU_H,0,GL_RGBA,GL_UNSIGNED_BYTE,menu_buf);   // incomplete texture -> whole draw corrupts on RADV
+                        unpack_pbo_restore();
                     }
                     p_active(GL_TEXTURE0); } }
             if(p_disable){ p_disable(GL_DEPTH_TEST); p_disable(GL_BLEND); p_disable(GL_SCISSOR_TEST); }
@@ -710,9 +735,12 @@ __attribute__((constructor)) static void semu_loaded(void) {   // proves LD_PREL
     FILE *f=tap_fopen("semu-loaded.log","a"); if(f){ fprintf(f,"libsemutap loaded pid=%d ppid=%d\n",(int)getpid(),(int)getppid()); fclose(f);} }
 void glXSwapBuffers(void *dpy, unsigned long drawable) {
     tap_frame(dpy, drawable, 0);
-    if (real_swap) real_swap(dpy, drawable);
+    if (real_swap) { real_swap(dpy, drawable); return; }
+    { static int null_swap_logged; if(!null_swap_logged){ null_swap_logged=1; logf_("glXSwapBuffers real pointer NULL - present dropped\n",0,0,0); } }   // otherwise a silent permanent black screen
 }
 unsigned int eglSwapBuffers(void *dpy, void *surface) {
     tap_frame(dpy, (unsigned long)surface, 1);
-    return real_egl_swap ? real_egl_swap(dpy, surface) : 1;
+    if (real_egl_swap) return real_egl_swap(dpy, surface);
+    { static int null_swap_logged; if(!null_swap_logged){ null_swap_logged=1; logf_("eglSwapBuffers real pointer NULL - present dropped\n",0,0,0); } }
+    return 0;   // EGL_FALSE: returning EGL_TRUE here faked success and hid the black screen from the emulator
 }

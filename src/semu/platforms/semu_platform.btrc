@@ -68,4 +68,19 @@ abstract class SemuPlatform {
     // for the bootstrap log, "" when the platform emits nothing.
     public abstract string emitLaunchers(Vector<EmulatorDefinition> emulators,
                                          string repoRoot, string outputRoot);
+
+    // The ES-DE frontend home this platform installs runtime configuration
+    // into (custom_systems/ + settings/). Each platform owns its convention
+    // (<home>/ES-DE everywhere today).
+    public abstract string esDeHome();
+
+    // The ES-DE executable inside the composed bundle (the nix result root):
+    // the .app payload on macos, the wrapped AppImage binary on linux.
+    public abstract string esDeExecutable(string bundleRoot);
+
+    // The directory carrying this platform's per-emulator launcher wrappers
+    // for RUNTIME find rules — template tokens allowed (${project} resolves
+    // at the install edge). "" when the platform's portable rules (systempath
+    // + %ESPATH%) already resolve without an absolute entry.
+    public abstract string esDeLauncherDirectory();
 }

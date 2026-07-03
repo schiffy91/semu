@@ -2,14 +2,16 @@
 // settings contract (src/semu/settings.json defaults; effective store at
 // <repo>/src/generated/runtime/settings.json).
 //
-// SEMU_RENDER_MODE is the one declared environment override; it is applied at
-// load time on top of whichever store was read.
+// SEMU_RENDER_MODE and SEMU_ROMS_ROOT are the declared environment
+// overrides; both are applied at load time on top of whichever store was
+// read.
 
 import std.{vector, fs, io, json, platform}
 import ./parse_log.btrc
 import ./json_contract.btrc
 import ./template_tokens.btrc
 import ./settings.btrc
+import ../platforms/platform_registry.btrc
 
 class SettingsParser {
     class string defaultsPath(string repositoryRoot) {
@@ -51,6 +53,7 @@ class SettingsParser {
                     "SEMU_RENDER_MODE override '" + renderModeOverride + "' is not a known mode");
             }
         }
+        settings.paths.romsRootOverride = Environment.get("SEMU_ROMS_ROOT", "");
         return settings;
     }
 
@@ -63,8 +66,14 @@ class SettingsParser {
             return settings;
         }
         JsonContract.checkSchemaVersion(root, 1, filePath, log);
-        Vector<string> allowedKeys = ["schema_version", "visual", "ui", "sync", "screenshots"];
+        Vector<string> allowedKeys = ["schema_version", "paths", "visual", "ui", "sync",
+                                      "screenshots"];
         JsonContract.checkKeys(root, allowedKeys, filePath, "", log);
+        if (root.has("paths")) {
+            SettingsParser.parsePaths(root.get("paths"), settings, filePath, log);
+        } else {
+            log.add(filePath, "paths", "missing required field");
+        }
         if (root.has("visual")) {
             SettingsParser.parseVisual(root.get("visual"), settings, filePath, log);
         }
@@ -78,6 +87,41 @@ class SettingsParser {
             SettingsParser.parseScreenshots(root.get("screenshots"), settings, filePath, log);
         }
         return settings;
+    }
+
+    // The paths contract: roms_root is an object keyed by REGISTERED platform
+    // id (PlatformRegistry.registeredIds is the vocabulary), every registered
+    // platform must declare its entry, and values may carry template tokens
+    // (resolved at the install edge, never here).
+    class void parsePaths(JsonValue pathsJson, SemuSettings settings, string filePath, ParseLog log) {
+        Vector<string> allowedKeys = ["roms_root"];
+        JsonContract.checkKeys(pathsJson, allowedKeys, filePath, "paths", log);
+        if (!pathsJson.has("roms_root") || !pathsJson.get("roms_root").isObject()) {
+            log.add(filePath, "paths.roms_root", "expected object keyed by platform id");
+            return;
+        }
+        JsonValue romsRootJson = pathsJson.get("roms_root");
+        for platformId in romsRootJson.keys() {
+            if (!platformId.equals("doc")) {
+                if (!PlatformRegistry.isRegistered(platformId)) {
+                    log.add(filePath, "paths.roms_root." + platformId,
+                        "unknown platform (registered: "
+                        + PlatformRegistry.registeredIds().join(", ") + ")");
+                }
+                string romsRoot = JsonContract.requiredString(romsRootJson, platformId,
+                    filePath, "paths.roms_root", log);
+                TemplateTokens.check(romsRoot, filePath, "paths.roms_root." + platformId,
+                    log, false);
+                settings.paths.romsRootPlatformIds.push(platformId);
+                settings.paths.romsRootValues.push(romsRoot);
+            }
+        }
+        for registeredId in PlatformRegistry.registeredIds() {
+            if (!settings.paths.romsRootPlatformIds.contains(registeredId)) {
+                log.add(filePath, "paths.roms_root." + registeredId,
+                    "missing required platform entry");
+            }
+        }
     }
 
     class void parseVisual(JsonValue visualJson, SemuSettings settings, string filePath, ParseLog log) {

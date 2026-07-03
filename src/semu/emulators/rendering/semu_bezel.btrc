@@ -48,10 +48,12 @@ class ResolvedBezel {
 }
 
 class BezelResolver {
-    // Pick the directory containing the assets/ tree: the staged
-    // $SEMU_ASSET_ROOT/share/semu install first, then the checked-in repo tree.
-    class string assetRoot(string repoRoot) {
-        string environmentRoot = Environment.get("SEMU_ASSET_ROOT", "");
+    // Pick the directory containing the assets/ tree from an explicit
+    // SEMU_ASSET_ROOT-style prefix: the staged <prefix>/share/semu install
+    // when it exists, else the checked-in repo tree. Parameterized so launch
+    // wiring and tests can inject the prefix without touching the process
+    // environment.
+    class string assetRootFrom(string environmentRoot, string repoRoot) {
         if (!environmentRoot.isEmpty()) {
             string stagedRoot = PathTools.join(environmentRoot, "share/semu");
             if (FileSystem.isDir(PathTools.join(stagedRoot, "assets"))) {
@@ -59,6 +61,11 @@ class BezelResolver {
             }
         }
         return PathTools.join(repoRoot, "src/semu");
+    }
+
+    // The environment-driven form: $SEMU_ASSET_ROOT first, then the repo.
+    class string assetRoot(string repoRoot) {
+        return BezelResolver.assetRootFrom(Environment.get("SEMU_ASSET_ROOT", ""), repoRoot);
     }
 
     // Join a canonical "assets/..." path onto the resolved asset root.

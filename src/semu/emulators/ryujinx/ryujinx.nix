@@ -62,6 +62,57 @@ buildDotnetModule rec {
   # recipe carries)
   enableParallelBuilding = false;
 
+  # The pinned tag's auto-updater packages (Ryujinx.UpdateClient /
+  # Ryujinx.Systems.Update.Common) restore from a git.ryujinx.app NuGet feed
+  # upstream has since deleted (projects/71 → 404), and this build disables
+  # the updater outright (DISABLE_UPDATER makes CanUpdate() constant-false).
+  # Drop the dead feed + package references and stub the one partial-class
+  # file that consumed them so restore and compile both work again.
+  postPatch = ''
+    sed -i \
+      -e '/<add key="Ryujinx.UpdateClient"/d' \
+      -e '/<packageSource key="Ryujinx.UpdateClient">/,/<\/packageSource>/d' \
+      NuGet.config
+    sed -i \
+      -e '/PackageReference Include="Ryujinx.UpdateClient"/d' \
+      -e '/PackageReference Include="Ryujinx.Systems.Update.Common"/d' \
+      src/Ryujinx/Ryujinx.csproj
+    sed -i \
+      -e '/PackageVersion Include="Ryujinx.UpdateClient"/d' \
+      -e '/PackageVersion Include="Ryujinx.Systems.Update.Common"/d' \
+      Directory.Packages.props
+    cat > src/Ryujinx/Systems/Updater/Updater.GitLab.cs <<'STUB'
+    using Gommon;
+    using System;
+    using System.Threading.Tasks;
+
+    namespace Ryujinx.Ava.Systems
+    {
+        // Semu build: the upstream update-client packages came from a NuGet
+        // feed that no longer exists, and this build compiles with
+        // DISABLE_UPDATER (CanUpdate() is constant-false). This stub keeps
+        // the Updater partial class compiling without those packages.
+        internal sealed class SemuStubVersionResponse
+        {
+            public string Version => string.Empty;
+            public string ArtifactUrl => string.Empty;
+            public string ReleaseUrlFormat => string.Empty;
+        }
+
+        internal static partial class Updater
+        {
+            private static SemuStubVersionResponse _versionResponse;
+
+            public static Task<Optional<(Version Current, Version Incoming)>> CheckVersionAsync(bool showVersionUpToDate = false)
+            {
+                _versionResponse = null;
+                return Task.FromResult<Optional<(Version Current, Version Incoming)>>(default);
+            }
+        }
+    }
+    STUB
+  '';
+
   dotnet-sdk = dotnetCorePackages.sdk_9_0;
   dotnet-runtime = dotnetCorePackages.runtime_9_0;
 
@@ -118,6 +169,12 @@ buildDotnetModule rec {
   ];
 
   postFixup = lib.optionalString stdenv.hostPlatform.isDarwin ''
+    # The store is case-insensitive on macOS, so bin/Ryujinx (the dotnet env
+    # wrapper) and the staging wrapper bin/ryujinx below would collide; park
+    # the dotnet wrapper under libexec first.
+    mkdir -p $out/libexec
+    mv $out/bin/Ryujinx $out/libexec/ryujinx-launch
+
     bundle=$out/Applications/Ryujinx.app
     mkdir -p $bundle/Contents/MacOS $bundle/Contents/Resources
     cp ${src}/distribution/macos/Info.plist $bundle/Contents/
@@ -125,7 +182,7 @@ buildDotnetModule rec {
     echo -n "APPL????" > $bundle/Contents/PkgInfo
     cat > $bundle/Contents/MacOS/Ryujinx <<SHIM
     #!/bin/bash
-    exec "$out/bin/Ryujinx" "\$@"
+    exec "$out/libexec/ryujinx-launch" "\$@"
     SHIM
     chmod +x $bundle/Contents/MacOS/Ryujinx
 
@@ -151,6 +208,8 @@ buildDotnetModule rec {
     changelog = "https://git.ryujinx.app/ryubing/ryujinx/-/blob/${version}/CHANGELOG.md";
     platforms = [ "aarch64-darwin" "x86_64-darwin" "x86_64-linux" "aarch64-linux" ];
     license = lib.licenses.mit;
-    mainProgram = "Ryujinx";
+    # on darwin the dotnet wrapper moves to libexec/ryujinx-launch and
+    # bin/ryujinx is the staging wrapper the launch contract addresses
+    mainProgram = if stdenv.hostPlatform.isDarwin then "ryujinx" else "Ryujinx";
   };
 }
