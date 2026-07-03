@@ -15,7 +15,7 @@
 
 import ../semu_emulator.btrc
 import ../../input/input_parser.btrc
-import ../../input/targets/steamdeck/steam_input.btrc
+import ../../input/controllers/steamdeck/steam_input.btrc
 
 class FlycastEmitter {
     // Writes nothing and creates no directories — the golden tree has no

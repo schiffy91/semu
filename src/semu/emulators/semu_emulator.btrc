@@ -20,7 +20,7 @@ import ../core/parse_log.btrc
 import ../core/json_contract.btrc
 import ../core/template_tokens.btrc
 import ../input/input_parser.btrc
-import ../input/targets/steamdeck/steam_input.btrc
+import ../input/controllers/steamdeck/steam_input.btrc
 
 // The emulator.json platform "aspect_probe" contract: which config files to
 // inspect for widescreen/standard markers and the fallback verdict when no

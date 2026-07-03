@@ -13,7 +13,7 @@ import std.{vector}
 import ../../core/parse_log.btrc
 import ../../systems/system_parser.btrc
 import ../../input/input_parser.btrc
-import ../../input/targets/steamdeck/steam_input.btrc
+import ../../input/controllers/steamdeck/steam_input.btrc
 import ../semu_emulator.btrc
 import ./flycast_emitter.btrc
 import ./flycast_rendering.btrc

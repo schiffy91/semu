@@ -4,7 +4,7 @@
 // semu-keymap-v1 grammar: '#' comment lines, "action <id> = <chord>" and
 // "bind <button tokens> -> " followed by a dollar-brace-wrapped action id.
 // The steam-input vocabulary contract lives with its target in
-// targets/steamdeck/steam_input.btrc.
+// controllers/steamdeck/steam_input.btrc.
 
 import std.{vector, strings}
 import ../core/parse_log.btrc

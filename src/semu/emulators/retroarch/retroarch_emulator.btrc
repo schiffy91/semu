@@ -11,7 +11,7 @@ import ../../core/template_tokens.btrc
 import ../../platforms/platform_registry.btrc
 import ../../systems/system_parser.btrc
 import ../../input/input_parser.btrc
-import ../../input/targets/steamdeck/steam_input.btrc
+import ../../input/controllers/steamdeck/steam_input.btrc
 import ../semu_emulator.btrc
 import ./retroarch_emitter.btrc
 

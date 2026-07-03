@@ -13,7 +13,7 @@ import ../../core/template_paths.btrc
 import ../../platforms/platform_registry.btrc
 import ../semu_emulator.btrc
 import ../../input/input_parser.btrc
-import ../../input/targets/steamdeck/steam_input.btrc
+import ../../input/controllers/steamdeck/steam_input.btrc
 import ../../input/input_emitter.btrc
 import ./pcsx2_rendering.btrc
 
