@@ -31,6 +31,10 @@ cross-linux: $(SEMU_BIN) ## Cross-build src/generated/build/semu-linux-x64 (stat
 		"$(SEMU_C)" -o src/generated/build/semu-linux-x64 -lm
 	@file src/generated/build/semu-linux-x64 | grep -q "ELF 64-bit" || \
 		{ echo "cross-linux did not produce an x86_64 ELF"; exit 2; }
+	@mkdir -p src/generated/build/steamdeck/tap
+	nix shell nixpkgs\#zig --command zig cc -target x86_64-linux-gnu -O2 -std=c11 \
+		src/semu/platforms/linux/quit_watch.c \
+		-o src/generated/build/steamdeck/tap/semu-quit-watch
 
 manifest: $(SEMU_BIN) ## Generate src/generated/semu.json from semu.btrc
 	@mkdir -p "$(dir $(SEMU_MANIFEST))"
@@ -65,6 +69,7 @@ appimage: cross-linux ## Assemble src/generated/build/Semu-x86_64.AppImage (cros
 	cp -R "$$workdir/esde-root/usr/." "$$appdir/usr/"; \
 	cp src/generated/build/semu-linux-x64 "$$appdir/usr/bin/semu"; chmod 755 "$$appdir/usr/bin/semu"; \
 	cp src/generated/build/steamdeck/tap/libsemutap.so "$$appdir/lib/semu/"; \
+	cp src/generated/build/steamdeck/tap/semu-quit-watch "$$appdir/lib/semu/"; \
 	visualAssets=$$(nix build .\#visualAssets --no-link --print-out-paths); \
 	rsync -rltL "$$visualAssets/share/" "$$appdir/share/"; \
 	cp -L "$$visualAssets/lib/semu/"* "$$appdir/lib/semu/" 2>/dev/null || true; \
