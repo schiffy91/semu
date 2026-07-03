@@ -116,6 +116,47 @@ class EsDeRuntime {
         return text;
     }
 
+    // Pull the ROMDirectory value out of existing es_settings.xml text
+    // ("" when the file carries none).
+    class string existingRomDirectory(string existingText) {
+        if (existingText.isEmpty()) {
+            return "";
+        }
+        for line in Strings.split(existingText, "\n") {
+            if (line.contains("name=\"ROMDirectory\"")) {
+                int valueIndex = line.indexOf("value=\"");
+                if (valueIndex < 0) {
+                    return "";
+                }
+                string remainder = line.substring(valueIndex + 7,
+                    line.len() - valueIndex - 7);
+                int closingIndex = remainder.indexOf("\"");
+                if (closingIndex <= 0) {
+                    return "";
+                }
+                return remainder.substring(0, closingIndex);
+            }
+        }
+        return "";
+    }
+
+    // Never re-point a configured frontend at a different library: when the
+    // frontend home already carries a ROMDirectory that exists on disk, keep
+    // it (the user set it — in ES-DE's own menu or by hand). The configured
+    // settings.json default is a FIRST-RUN seed, not a standing override;
+    // SEMU_ROMS_ROOT stays the explicit escape hatch that always wins.
+    class string adoptedRomsRoot(string configuredRoot, string existingEsSettingsText,
+                                 bool overrideActive) {
+        if (overrideActive) {
+            return configuredRoot;
+        }
+        string existingRoot = EsDeRuntime.existingRomDirectory(existingEsSettingsText);
+        if (!existingRoot.isEmpty() && FileSystem.isDir(existingRoot)) {
+            return existingRoot;
+        }
+        return configuredRoot;
+    }
+
     // Preserve the user's pre-semu file exactly once. The first time semu
     // would overwrite an existing file it copies it to <path>.semu-backup;
     // later runs keep that first backup, so semu's own output never buries the
@@ -180,6 +221,19 @@ class EsDeRuntime {
                 + platformId + "'");
             return 1;
         }
+        string esSettingsPath = PathTools.join(
+            EsDeRuntime.settingsDirectory(esDeHome), "es_settings.xml");
+        string existingEsSettings = "";
+        if (FileSystem.isFile(esSettingsPath)) {
+            existingEsSettings = Path.readAll(esSettingsPath);
+        }
+        string adoptedRoot = EsDeRuntime.adoptedRomsRoot(romsRoot, existingEsSettings,
+            !settings.paths.romsRootOverride.isEmpty());
+        if (!adoptedRoot.equals(romsRoot)) {
+            print("run: adopting existing ROMDirectory " + adoptedRoot
+                + " (settings default " + romsRoot + " left as first-run seed)");
+            romsRoot = adoptedRoot;
+        }
 
         TemplateContext context = EsDeRuntime.installContext(project, platformId);
         string customSystems = EsDeRuntime.customSystemsDirectory(esDeHome);
@@ -197,12 +251,6 @@ class EsDeRuntime {
         string themesDirectory = PathTools.join(contentRoot, "themes");
         UnixFileSystem.mkdirp(mediaDirectory);
         UnixFileSystem.mkdirp(themesDirectory);
-        string esSettingsPath = PathTools.join(
-            EsDeRuntime.settingsDirectory(esDeHome), "es_settings.xml");
-        string existingEsSettings = "";
-        if (FileSystem.isFile(esSettingsPath)) {
-            existingEsSettings = Path.readAll(esSettingsPath);
-        }
         failures = failures + EsDeRuntime.installFile(esSettingsPath,
             EsDeRuntime.mergedEsSettingsXml(existingEsSettings, romsRoot, mediaDirectory,
                 themesDirectory, settings.ui.theme));

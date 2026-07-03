@@ -161,6 +161,42 @@ class GeneratedTreeTest {
         return failures;
     }
 
+    // The adoption contract: a frontend home whose es_settings.xml already
+    // points at an on-disk library keeps that library; the configured
+    // settings.json value is only a first-run seed, and SEMU_ROMS_ROOT
+    // always wins. Pure-method checks — no environment dependence.
+    class int checkRomsRootAdoption(string repoRoot) {
+        int failures = 0;
+        string existingDirectory = repoRoot;
+        string settingsText = "<?xml version=\"1.0\"?>\n"
+            + "<string name=\"ROMDirectory\" value=\"" + existingDirectory + "\" />\n";
+        if (!EsDeRuntime.adoptedRomsRoot("/configured/default", settingsText, false)
+                .equals(existingDirectory)) {
+            failures = failures + GeneratedTreeTest.fail(
+                "adoption: existing on-disk ROMDirectory was not adopted");
+        }
+        if (!EsDeRuntime.adoptedRomsRoot("/configured/default", settingsText, true)
+                .equals("/configured/default")) {
+            failures = failures + GeneratedTreeTest.fail(
+                "adoption: SEMU_ROMS_ROOT override must beat the existing value");
+        }
+        string vanishedText = "<string name=\"ROMDirectory\" value=\"/vanished/library\" />\n";
+        if (!EsDeRuntime.adoptedRomsRoot("/configured/default", vanishedText, false)
+                .equals("/configured/default")) {
+            failures = failures + GeneratedTreeTest.fail(
+                "adoption: a vanished ROMDirectory must fall back to the seed");
+        }
+        if (!EsDeRuntime.adoptedRomsRoot("/configured/default", "", false)
+                .equals("/configured/default")) {
+            failures = failures + GeneratedTreeTest.fail(
+                "adoption: an absent es_settings.xml must install the seed");
+        }
+        if (failures == 0) {
+            print("  OK roms-root adoption (existing kept, override wins, seed on absence)");
+        }
+        return failures;
+    }
+
     class int run(string repoRoot) {
         int failures = 0;
         ParseLog log = ParseLog();
@@ -183,6 +219,7 @@ class GeneratedTreeTest {
         failures = failures + GeneratedTreeTest.checkArtifactTree(contracts, generatedRoot);
         failures = failures + GeneratedTreeTest.checkSettings(repoRoot);
         failures = failures + GeneratedTreeTest.checkRunPrepare(contracts, repoRoot);
+        failures = failures + GeneratedTreeTest.checkRomsRootAdoption(repoRoot);
         failures = failures + GeneratedTreeTest.checkTreeAudit(repoRoot);
 
         if (failures > 0) {
