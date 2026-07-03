@@ -82,7 +82,9 @@
               "${project}/generated/packaging/emulators/profiles/Cemu/data/keys.txt"
             ]
           }
-        ]
+        ],
+        "config_subdir": "Cemu",
+        "data_subdir": "Cemu"
       },
       "firmware": {
         "dir": "${emulation_root}/Cemu/data",

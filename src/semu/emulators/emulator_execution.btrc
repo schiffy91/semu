@@ -78,6 +78,51 @@ class EmulatorExecution {
         }
     }
 
+    // Install the bootstrap-emitted profile into the sandbox state root so
+    // the emulator launches CONFIGURED (controller profiles, the
+    // fullscreen/analytics-skip policy) instead of first-run defaults. The
+    // emitted <profiles>/<Name>/{config,data} subtrees map onto
+    // <stateRoot>/{config,data}/<state.config_subdir|data_subdir>/ — the app's
+    // own directory name, the one per-emulator fact, declared in the
+    // contract. Copy is no-clobber: first run installs, later runs keep
+    // whatever the user changed. Emulators that own their install (RetroArch
+    // merges its cfg) or ship no profile declare no subdir and are skipped.
+    class void installProfileTree(EmulatorDefinition emulator, EmulatorPlatform platform,
+                                  TemplateContext context, string project) {
+        if (platform.state.configSubdir.isEmpty() && platform.state.dataSubdir.isEmpty()) {
+            return;
+        }
+        string profileDirectory = PathTools.join(project,
+            "src/generated/packaging/emulators/profiles");
+        profileDirectory = PathTools.join(profileDirectory, emulator.name);
+        string stateRoot = TemplatePaths.stateRoot(context);
+        if (!platform.state.configSubdir.isEmpty()) {
+            EmulatorExecution.mergeProfileSubtree(
+                PathTools.join(profileDirectory, "config"),
+                PathTools.join(PathTools.join(stateRoot, "config"),
+                    platform.state.configSubdir));
+        }
+        if (!platform.state.dataSubdir.isEmpty()) {
+            EmulatorExecution.mergeProfileSubtree(
+                PathTools.join(profileDirectory, "data"),
+                PathTools.join(PathTools.join(stateRoot, "data"),
+                    platform.state.dataSubdir));
+        }
+    }
+
+    class void mergeProfileSubtree(string sourceDirectory, string targetDirectory) {
+        if (!FileSystem.isDir(sourceDirectory)) {
+            return;
+        }
+        UnixFileSystem.mkdirp(targetDirectory);
+        UnixShell shell = UnixShell();
+        // -R recursive, -n no-clobber: the '/.' copies the directory contents
+        // (not the directory itself) into the target.
+        shell.run("cp -Rn " + ShellWords.quote(sourceDirectory) + "/. "
+            + ShellWords.quote(targetDirectory) + "/",
+            CommandOutput.suppress(), CommandOutput.suppress());
+    }
+
     // emulator.json sandbox.symlinks: link -> target, refreshed every launch
     // (ln -sfn). Entries whose resolution still carries a mode marker
     // (${host}/${portable}) or an empty side are skipped.
@@ -259,6 +304,7 @@ class EmulatorExecution {
         TemplateContext context = EmulatorExecution.contextFor(emulator, platform, project);
         EmulatorExecution.prepareStateRoot(platform, context);
         EmulatorExecution.applySeeds(platform, context);
+        EmulatorExecution.installProfileTree(emulator, platform, context, project);
         EmulatorExecution.materializeSymlinks(platform, context);
         LaunchPlan resolvedPlan = EmulatorExecution.resolvePlan(launchPlan, context);
         if (resolvedPlan.backend.equals("flatpak")) {

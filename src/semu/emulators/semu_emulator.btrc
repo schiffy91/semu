@@ -145,6 +145,14 @@ class StatePolicy {
     public bool present;
     public string configHome;
     public string dataHome;
+    // The app's own directory NAME under XDG_CONFIG_HOME / XDG_DATA_HOME
+    // (e.g. "dolphin-emu", "Cemu", "PCSX2"). The emitted profile's config/
+    // and data/ subtrees install into <state>/config/<configSubdir>/ and
+    // <state>/data/<dataSubdir>/ — the one per-emulator fact a generic
+    // profile installer needs. Empty means the emulator either ships no
+    // profile or owns its own install (RetroArch merges its cfg).
+    public string configSubdir;
+    public string dataSubdir;
     public Vector<string> extraArguments;
     public Vector<StateSeed> seeds;
 
@@ -152,6 +160,8 @@ class StatePolicy {
         self.present = false;
         self.configHome = "";
         self.dataHome = "";
+        self.configSubdir = "";
+        self.dataSubdir = "";
         self.extraArguments = [];
         self.seeds = [];
     }
@@ -514,7 +524,8 @@ class StatePolicyParser {
             return state;
         }
         state.present = true;
-        Vector<string> allowedKeys = ["config_home", "data_home", "extra_args", "seeds"];
+        Vector<string> allowedKeys = ["config_home", "data_home", "config_subdir",
+                                      "data_subdir", "extra_args", "seeds"];
         JsonContract.checkKeys(jsonValue, allowedKeys, file, context, log);
         Vector<string> homeModes = ["xdg", "flatpak_home", "preserve"];
         state.configHome = JsonContract.optionalString(jsonValue, "config_home", "",
@@ -523,6 +534,10 @@ class StatePolicyParser {
         state.dataHome = JsonContract.optionalString(jsonValue, "data_home", "",
             file, context, log);
         JsonContract.checkEnum(state.dataHome, homeModes, file, context + ".data_home", log);
+        state.configSubdir = JsonContract.optionalString(jsonValue, "config_subdir", "",
+            file, context, log);
+        state.dataSubdir = JsonContract.optionalString(jsonValue, "data_subdir", "",
+            file, context, log);
         state.extraArguments = JsonContract.stringArray(jsonValue, "extra_args", false,
             file, context, log);
         if (jsonValue.has("seeds")) {

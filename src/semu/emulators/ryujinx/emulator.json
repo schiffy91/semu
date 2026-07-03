@@ -85,7 +85,8 @@
               "${paths.project_bios}/switch/title.keys"
             ]
           }
-        ]
+        ],
+        "config_subdir": "Ryujinx"
       },
       "firmware": {
         "dir": "${emulation_root}/Ryujinx/config/system",

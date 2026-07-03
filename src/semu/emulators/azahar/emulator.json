@@ -72,7 +72,9 @@
       "overlay_aspect": "3ds",
       "state": {
         "config_home": "flatpak_home",
-        "data_home": "xdg"
+        "data_home": "xdg",
+        "config_subdir": "azahar-emu",
+        "data_subdir": "azahar-emu"
       }
     },
     "macos": {

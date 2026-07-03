@@ -91,7 +91,8 @@
       },
       "state": {
         "config_home": "xdg",
-        "data_home": "xdg"
+        "data_home": "xdg",
+        "config_subdir": "flycast"
       },
       "firmware": {
         "dir": "${emulation_root}/Flycast/data",
