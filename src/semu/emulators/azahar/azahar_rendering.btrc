@@ -8,7 +8,7 @@
 // 'graphics_api=1' -> 'graphics_api=2' and pinned '\default=false').
 
 import std.{vector, strings}
-import ../model/graphics_policy.btrc
+import ../semu_emulator.btrc
 
 class AzaharRendering {
     // The config-file value for a contract graphics api ('opengl'/'vulkan');

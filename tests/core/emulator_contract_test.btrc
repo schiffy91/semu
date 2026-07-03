@@ -17,11 +17,7 @@ import ../../src/semu/core/parse_log.btrc
 import ../../src/semu/platforms/platform_registry.btrc
 import ../../src/semu/emulators/emulator_parser.btrc
 import ../../src/semu/systems/system_parser.btrc
-import ../../src/semu/systems/model/semu_contracts.btrc
-import ../../src/semu/systems/model/system_definition.btrc
-import ../../src/semu/systems/model/emulator_binding.btrc
-import ../../src/semu/emulators/model/emulator_definition.btrc
-import ../../src/semu/emulators/model/launch_plan.btrc
+import ../../src/semu/emulators/semu_emulator.btrc
 import ../../src/semu/emulators/emulator_process.btrc
 import ../../src/semu/emulators/emulator_emitter.btrc
 import ../../src/semu/emulators/emulator_registry.btrc

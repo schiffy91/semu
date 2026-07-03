@@ -12,9 +12,7 @@ import std.{vector, json}
 import ../../core/parse_log.btrc
 import ../../core/template_paths.btrc
 import ../../core/template_tokens.btrc
-import ../../emulators/model/emulator_platform.btrc
-import ../../emulators/model/emulator_definition.btrc
-import ../../emulators/model/launch_plan.btrc
+import ../../emulators/semu_emulator.btrc
 import ../../emulators/emulator_process.btrc
 import ../semu_platform.btrc
 import ./macos_sandbox.btrc

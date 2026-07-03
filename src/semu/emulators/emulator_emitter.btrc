@@ -8,9 +8,8 @@
 // emulator class's commandFragments.
 
 import std.{vector, fs}
-import ./model/emulator_platform.btrc
-import ./model/emulator_definition.btrc
-import ../systems/model/emulator_binding.btrc
+import ./semu_emulator.btrc
+import ../systems/system_parser.btrc
 import ./emulator_registry.btrc
 
 class EmulatorEmitter {

@@ -11,7 +11,7 @@
 // vocabulary (aspect_force / res_*).
 
 import std.{vector, strings}
-import ../../systems/model/system_definition.btrc
+import ../../systems/system_parser.btrc
 import ../rendering/semu_shader.btrc
 import ../rendering/render_resolution.btrc
 import ./retroarch_emulator.btrc

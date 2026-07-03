@@ -11,7 +11,7 @@
 // render_resolution semantics.
 
 import ../../core/geometry.btrc
-import ../../systems/model/system_definition.btrc
+import ../../systems/system_parser.btrc
 import ./semu_rendering.btrc
 
 class RenderResolution {

@@ -1,4 +1,5 @@
-// emulator_process.btrc — the thin generic launch orchestrator + exec edge.
+// emulator_process.btrc — the launch domain: the pure-data LaunchPlan plus
+// the thin generic launch orchestrator + exec edge.
 //
 // Everything here is pure data transformation except EmulatorLauncher.execute:
 // plan() resolves the emulator's platform block and effective session, then
@@ -16,10 +17,28 @@
 
 import std.{vector, process}
 import ../platforms/platform_registry.btrc
-import ./model/emulator_platform.btrc
-import ./model/emulator_definition.btrc
-import ./model/state_policy.btrc
-import ./model/launch_plan.btrc
+import ./semu_emulator.btrc
+
+// The pure-data result of launch planning: the argument vector plus
+// environment deltas that EmulatorLauncher.execute (the only side-effectful
+// step) applies. Template tokens stay verbatim in the plan.
+class LaunchPlan {
+    public Vector<string> argumentVector;
+    public Vector<string> environmentSetKeys;
+    public Vector<string> environmentSetValues;
+    public Vector<string> environmentUnset;
+    public string backend;
+    public string note;
+
+    public LaunchPlan() {
+        self.argumentVector = [];
+        self.environmentSetKeys = [];
+        self.environmentSetValues = [];
+        self.environmentUnset = [];
+        self.backend = "";
+        self.note = "";
+    }
+}
 
 class EmulatorLauncher {
     class void setEnvironment(LaunchPlan launchPlan, string key, string value) {

@@ -9,7 +9,7 @@
 // no native overlay configuration text.
 
 import std.{vector}
-import ../model/graphics_policy.btrc
+import ../semu_emulator.btrc
 
 class Pcsx2Rendering {
     // PCSX2's "automatic" renderer selector: the emitted default, so the

@@ -17,7 +17,7 @@
 
 import std.{vector, strings}
 import ../../core/geometry.btrc
-import ../../systems/model/system_definition.btrc
+import ../../systems/system_parser.btrc
 import ./semu_bezel.btrc
 
 class TapEnvironment {

@@ -13,7 +13,7 @@
 // Emission is an explicit, documented no-op that must keep matching the
 // golden absence: writing any file here would be a regression.
 
-import ../model/emulator_definition.btrc
+import ../semu_emulator.btrc
 import ../../input/input_parser.btrc
 import ../../input/targets/steamdeck/steam_input.btrc
 

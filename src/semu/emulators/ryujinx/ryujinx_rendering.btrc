@@ -10,8 +10,7 @@
 // enum as "OpenGl"/"Vulkan" under the "graphics_backend" key).
 
 import std.{vector, fs}
-import ../model/emulator_platform.btrc
-import ../model/state_policy.btrc
+import ../semu_emulator.btrc
 
 class RyujinxRendering {
     class string configurationFileName() {

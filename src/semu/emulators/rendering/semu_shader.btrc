@@ -19,7 +19,7 @@
 // stages semu presets under a "semu/" namespace next to shaders_slang etc.).
 
 import std.{fs}
-import ../../systems/model/system_definition.btrc
+import ../../systems/system_parser.btrc
 
 class ShaderSelector {
     class string select(SystemDefinition system, bool visualsEnabled, bool tapActive,

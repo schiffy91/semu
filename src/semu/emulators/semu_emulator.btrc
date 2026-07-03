@@ -1,21 +1,566 @@
-// semu_emulator.btrc — THE abstract emulator interface. Shared code asks
-// through this surface; concrete classes in emulators/<id>/ answer. No
+// semu_emulator.btrc — the emulator model: the typed form of
+// src/semu/emulators/<id>/emulator.json (policy data classes + their
+// field-group parsers, the platform block, the parsed definition) together
+// with THE abstract emulator interface. Shared code asks through that
+// surface; concrete classes in emulators/<id>/ answer. No
 // emulator-conditional logic exists anywhere else — the only file outside
 // emulators/<id>/ allowed to name the concrete classes is
 // emulators/emulator_registry.btrc (the composition root).
 //
+// Field values that came from the JSON keep their template tokens (${home},
+// ${nix_result}, ...) verbatim — resolution is an exec-edge concern.
+//
 // btrc dispatches method calls by declared type (no virtual dispatch), so
 // shared code never calls through a SemuEmulator-typed value: it routes via
-// EmulatorRegistry, which forwards to the concrete class. This abstract class
+// EmulatorRegistry, which forwards to the concrete class. The abstract class
 // is the compile-checked contract every concrete class must implement.
 
-import std.{vector}
+import std.{vector, json}
 import ../core/parse_log.btrc
-import ./model/emulator_platform.btrc
-import ./model/emulator_definition.btrc
-import ../systems/model/emulator_binding.btrc
+import ../core/json_contract.btrc
+import ../core/template_tokens.btrc
 import ../input/input_parser.btrc
 import ../input/targets/steamdeck/steam_input.btrc
+
+// The emulator.json platform "aspect_probe" contract: which config files to
+// inspect for widescreen/standard markers and the fallback verdict when no
+// marker matches.
+class AspectProbe {
+    public bool present;
+    public Vector<string> files;
+    public Vector<string> widescreenMarkers;
+    public Vector<string> standardMarkers;
+    public string fallback;
+
+    public AspectProbe() {
+        self.present = false;
+        self.files = [];
+        self.widescreenMarkers = [];
+        self.standardMarkers = [];
+        self.fallback = "";
+    }
+}
+
+// The emulator.json platform "firmware" contract: the directory the emulator
+// reads firmware/BIOS from, plus fallback locations.
+class FirmwarePolicy {
+    public bool present;
+    public string directory;
+    public Vector<string> fallbackDirectories;
+
+    public FirmwarePolicy() {
+        self.present = false;
+        self.directory = "";
+        self.fallbackDirectories = [];
+    }
+}
+
+// The emulator.json platform "graphics" contract: how the emulator's graphics
+// backend is forced (config file edit vs cli vs dynamic), and which graphics
+// APIs the tap/overlay integrations use.
+class GraphicsPolicy {
+    public bool present;
+    public string method;
+    public string file;
+    public string format;
+    public string key;
+    public string valueOpenGl;
+    public string valueVulkan;
+    public string tapApi;
+    public string overlayApi;
+
+    public GraphicsPolicy() {
+        self.present = false;
+        self.method = "";
+        self.file = "";
+        self.format = "";
+        self.key = "";
+        self.valueOpenGl = "";
+        self.valueVulkan = "";
+        self.tapApi = "";
+        self.overlayApi = "";
+    }
+}
+
+class SandboxFilesystem {
+    public string path;
+    public string mode;
+
+    public SandboxFilesystem() {
+        self.path = "";
+        self.mode = "";
+    }
+}
+
+// The emulator.json platform "sandbox" contract: flatpak/bwrap grants
+// (sockets, devices, share, filesystems), extra arguments, the
+// runtime/command override pair (the patched-binary tap launch) and symlink
+// materialization.
+class SandboxPolicy {
+    public bool present;
+    public Vector<string> sockets;
+    public Vector<string> devices;
+    public Vector<string> share;
+    public Vector<SandboxFilesystem> filesystems;
+    public Vector<string> extraArguments;
+    public string runtime;
+    public string command;
+    public Vector<string> symlinkLinks;
+    public Vector<string> symlinkTargets;
+
+    public SandboxPolicy() {
+        self.present = false;
+        self.sockets = [];
+        self.devices = [];
+        self.share = [];
+        self.filesystems = [];
+        self.extraArguments = [];
+        self.runtime = "";
+        self.command = "";
+        self.symlinkLinks = [];
+        self.symlinkTargets = [];
+    }
+}
+
+class StateSeed {
+    public string purpose;
+    public string target;
+    public Vector<string> sources;
+
+    public StateSeed() {
+        self.purpose = "";
+        self.target = "";
+        self.sources = [];
+    }
+}
+
+// The emulator.json platform "state" contract: where the emulator's
+// config/data homes route (xdg isolation vs flatpak_home vs preserve), extra
+// state arguments, and first-run seed copies.
+class StatePolicy {
+    public bool present;
+    public string configHome;
+    public string dataHome;
+    public Vector<string> extraArguments;
+    public Vector<StateSeed> seeds;
+
+    public StatePolicy() {
+        self.present = false;
+        self.configHome = "";
+        self.dataHome = "";
+        self.extraArguments = [];
+        self.seeds = [];
+    }
+}
+
+class SessionOverride {
+    public string id;
+    public string displayServer;
+    public string displayFallback;
+    public string overlay;
+
+    public SessionOverride() {
+        self.id = "";
+        self.displayServer = "";
+        self.displayFallback = "";
+        self.overlay = "";
+    }
+}
+
+// One emulator.json platforms.<os> block: backend, executable/flatpak
+// identity, display-server choice with per-session overrides, launch
+// arguments, environment deltas and the policy sub-objects. extensionJson
+// carries the raw emulator-specific extension block (the platform key equal
+// to the emulator id) uninterpreted; only the concrete emulator class
+// reads it.
+class EmulatorPlatform {
+    public string operatingSystem;
+    public string backend;
+    public string flatpakId;
+    public string executable;
+    public string displayServer;
+    public string displayFallback;
+    public Vector<SessionOverride> sessions;
+    public Vector<string> arguments;
+    public string glWrapper;
+    public Vector<string> environmentSetKeys;
+    public Vector<string> environmentSetValues;
+    public Vector<string> environmentUnset;
+    public SandboxPolicy sandbox;
+    public GraphicsPolicy graphics;
+    public string overlayAspect;
+    public AspectProbe aspectProbe;
+    public StatePolicy state;
+    public FirmwarePolicy firmware;
+    public JsonValue extensionJson;
+
+    public EmulatorPlatform() {
+        self.operatingSystem = "";
+        self.backend = "";
+        self.flatpakId = "";
+        self.executable = "";
+        self.displayServer = "";
+        self.displayFallback = "";
+        self.sessions = [];
+        self.arguments = [];
+        self.glWrapper = "none";
+        self.environmentSetKeys = [];
+        self.environmentSetValues = [];
+        self.environmentUnset = [];
+        self.sandbox = SandboxPolicy();
+        self.graphics = GraphicsPolicy();
+        self.overlayAspect = "";
+        self.aspectProbe = AspectProbe();
+        self.state = StatePolicy();
+        self.firmware = FirmwarePolicy();
+        self.extensionJson = JsonValue.makeNull();
+    }
+
+    public bool hasExtension() {
+        return !self.extensionJson.isNull();
+    }
+}
+
+class EmulatorInput {
+    public bool present;
+    public Vector<string> actions;
+
+    public EmulatorInput() {
+        self.present = false;
+        self.actions = [];
+    }
+}
+
+// The fully parsed identity of one emulator: the typed form of
+// src/semu/emulators/<id>/emulator.json. Pure data; EmulatorParser fills it.
+class EmulatorDefinition {
+    public string id;
+    public string file;
+    public string name;
+    public string kind;
+    public string defaultSystem;
+    public EmulatorInput input;
+    public Vector<EmulatorPlatform> platforms;
+
+    public EmulatorDefinition() {
+        self.id = "";
+        self.file = "";
+        self.name = "";
+        self.kind = "";
+        self.defaultSystem = "";
+        self.input = EmulatorInput();
+        self.platforms = [];
+    }
+
+    public bool hasOperatingSystem(string name) {
+        for platform in self.platforms {
+            if (platform.operatingSystem.equals(name)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    // First platform block matching the operating system; an empty block
+    // (operatingSystem == "") when none is declared.
+    public EmulatorPlatform platformFor(string name) {
+        for platform in self.platforms {
+            if (platform.operatingSystem.equals(name)) {
+                return platform;
+            }
+        }
+        return EmulatorPlatform();
+    }
+}
+
+class AspectProbeParser {
+    class AspectProbe parse(JsonValue jsonValue, string file, string context, ParseLog log) {
+        AspectProbe probe = AspectProbe();
+        if (!jsonValue.isObject()) {
+            log.add(file, context, "expected object");
+            return probe;
+        }
+        probe.present = true;
+        Vector<string> allowedKeys = ["files", "widescreen_markers", "standard_markers",
+                                      "fallback"];
+        JsonContract.checkKeys(jsonValue, allowedKeys, file, context, log);
+        probe.files = JsonContract.stringArray(jsonValue, "files", true, file, context, log);
+        for probeFile in probe.files {
+            TemplateTokens.check(probeFile, file, context + ".files", log, false);
+        }
+        probe.widescreenMarkers = JsonContract.stringArray(jsonValue, "widescreen_markers", true,
+            file, context, log);
+        probe.standardMarkers = JsonContract.stringArray(jsonValue, "standard_markers", true,
+            file, context, log);
+        probe.fallback = JsonContract.requiredString(jsonValue, "fallback", file, context, log);
+        Vector<string> fallbacks = ["standard", "widescreen"];
+        JsonContract.checkEnum(probe.fallback, fallbacks, file, context + ".fallback", log);
+        return probe;
+    }
+}
+
+class FirmwarePolicyParser {
+    class FirmwarePolicy parse(JsonValue jsonValue, string file, string context, ParseLog log) {
+        FirmwarePolicy firmware = FirmwarePolicy();
+        if (!jsonValue.isObject()) {
+            log.add(file, context, "expected object");
+            return firmware;
+        }
+        firmware.present = true;
+        Vector<string> allowedKeys = ["dir", "fallback_dirs"];
+        JsonContract.checkKeys(jsonValue, allowedKeys, file, context, log);
+        firmware.directory = JsonContract.requiredString(jsonValue, "dir", file, context, log);
+        TemplateTokens.check(firmware.directory, file, context + ".dir", log, false);
+        firmware.fallbackDirectories = JsonContract.stringArray(jsonValue, "fallback_dirs", false,
+            file, context, log);
+        for fallbackDirectory in firmware.fallbackDirectories {
+            TemplateTokens.check(fallbackDirectory, file, context + ".fallback_dirs", log, false);
+        }
+        return firmware;
+    }
+}
+
+class GraphicsPolicyParser {
+    class void parseConfigFileFields(GraphicsPolicy graphics, JsonValue jsonValue,
+                                     string file, string context, ParseLog log) {
+        graphics.file = JsonContract.requiredString(jsonValue, "file", file, context, log);
+        TemplateTokens.check(graphics.file, file, context + ".file", log, false);
+        graphics.format = JsonContract.requiredString(jsonValue, "format", file, context, log);
+        Vector<string> formats = ["ini", "xml", "toml", "qt_ini"];
+        JsonContract.checkEnum(graphics.format, formats, file, context + ".format", log);
+        graphics.key = JsonContract.requiredString(jsonValue, "key", file, context, log);
+        if (!jsonValue.has("values") || !jsonValue.get("values").isObject()) {
+            log.add(file, context + ".values", "expected object {opengl?, vulkan?}");
+            return;
+        }
+        JsonValue values = jsonValue.get("values");
+        Vector<string> valueKeys = ["opengl", "vulkan"];
+        JsonContract.checkKeys(values, valueKeys, file, context + ".values", log);
+        graphics.valueOpenGl = JsonContract.optionalString(values, "opengl", "",
+            file, context + ".values", log);
+        graphics.valueVulkan = JsonContract.optionalString(values, "vulkan", "",
+            file, context + ".values", log);
+    }
+
+    class GraphicsPolicy parse(JsonValue jsonValue, string file, string context, ParseLog log) {
+        GraphicsPolicy graphics = GraphicsPolicy();
+        if (!jsonValue.isObject()) {
+            log.add(file, context, "expected object");
+            return graphics;
+        }
+        graphics.present = true;
+        Vector<string> allowedKeys = ["method", "file", "format", "key", "values", "tap_api",
+                                      "overlay_api"];
+        JsonContract.checkKeys(jsonValue, allowedKeys, file, context, log);
+        graphics.method = JsonContract.requiredString(jsonValue, "method", file, context, log);
+        Vector<string> methods = ["config_file", "cli", "dynamic", "none"];
+        JsonContract.checkEnum(graphics.method, methods, file, context + ".method", log);
+        if (graphics.method.equals("config_file")) {
+            GraphicsPolicyParser.parseConfigFileFields(graphics, jsonValue, file, context, log);
+        } else {
+            if (jsonValue.has("file") || jsonValue.has("format") || jsonValue.has("key")
+                || jsonValue.has("values")) {
+                log.add(file, context,
+                    "file/format/key/values only valid with method 'config_file'");
+            }
+        }
+        Vector<string> graphicsApis = ["opengl", "vulkan"];
+        graphics.tapApi = JsonContract.optionalString(jsonValue, "tap_api", "",
+            file, context, log);
+        JsonContract.checkEnum(graphics.tapApi, graphicsApis, file, context + ".tap_api", log);
+        graphics.overlayApi = JsonContract.optionalString(jsonValue, "overlay_api", "",
+            file, context, log);
+        JsonContract.checkEnum(graphics.overlayApi, graphicsApis, file,
+            context + ".overlay_api", log);
+        return graphics;
+    }
+}
+
+class SandboxPolicyParser {
+    class void parseFilesystems(SandboxPolicy sandbox, JsonValue jsonValue,
+                                string file, string context, ParseLog log) {
+        JsonValue filesystems = jsonValue.get("filesystems");
+        if (!filesystems.isArray()) {
+            log.add(file, context + ".filesystems", "expected array");
+            return;
+        }
+        for (int entryIndex = 0; entryIndex < filesystems.size(); entryIndex++) {
+            JsonValue entry = filesystems.at(entryIndex);
+            string entryContext = f"{context}.filesystems[{entryIndex}]";
+            SandboxFilesystem filesystemGrant = SandboxFilesystem();
+            if (!entry.isObject()) {
+                log.add(file, entryContext, "expected object {path, mode}");
+            } else {
+                Vector<string> filesystemKeys = ["path", "mode"];
+                JsonContract.checkKeys(entry, filesystemKeys, file, entryContext, log);
+                filesystemGrant.path = JsonContract.requiredString(entry, "path",
+                    file, entryContext, log);
+                if (!filesystemGrant.path.equals("host")) {
+                    TemplateTokens.check(filesystemGrant.path, file,
+                        entryContext + ".path", log, false);
+                }
+                filesystemGrant.mode = JsonContract.requiredString(entry, "mode",
+                    file, entryContext, log);
+                Vector<string> modes = ["ro", "rw", "create"];
+                JsonContract.checkEnum(filesystemGrant.mode, modes, file,
+                    entryContext + ".mode", log);
+            }
+            sandbox.filesystems.push(filesystemGrant);
+        }
+    }
+
+    class void parseSymlinks(SandboxPolicy sandbox, JsonValue jsonValue,
+                             string file, string context, ParseLog log) {
+        JsonValue symlinks = jsonValue.get("symlinks");
+        if (!symlinks.isArray()) {
+            log.add(file, context + ".symlinks", "expected array");
+            return;
+        }
+        for (int entryIndex = 0; entryIndex < symlinks.size(); entryIndex++) {
+            JsonValue entry = symlinks.at(entryIndex);
+            string entryContext = f"{context}.symlinks[{entryIndex}]";
+            if (!entry.isObject()) {
+                log.add(file, entryContext, "expected object {link, target}");
+            } else {
+                Vector<string> symlinkKeys = ["link", "target"];
+                JsonContract.checkKeys(entry, symlinkKeys, file, entryContext, log);
+                string link = JsonContract.requiredString(entry, "link",
+                    file, entryContext, log);
+                string target = JsonContract.requiredString(entry, "target",
+                    file, entryContext, log);
+                TemplateTokens.check(link, file, entryContext + ".link", log, true);
+                TemplateTokens.check(target, file, entryContext + ".target", log, true);
+                sandbox.symlinkLinks.push(link);
+                sandbox.symlinkTargets.push(target);
+            }
+        }
+    }
+
+    class SandboxPolicy parse(JsonValue jsonValue, string file, string context, ParseLog log) {
+        SandboxPolicy sandbox = SandboxPolicy();
+        if (!jsonValue.isObject()) {
+            log.add(file, context, "expected object");
+            return sandbox;
+        }
+        sandbox.present = true;
+        Vector<string> allowedKeys = ["sockets", "devices", "share", "filesystems", "extra_args",
+                                      "runtime", "command", "symlinks"];
+        JsonContract.checkKeys(jsonValue, allowedKeys, file, context, log);
+        sandbox.sockets = JsonContract.stringArray(jsonValue, "sockets", false,
+            file, context, log);
+        sandbox.devices = JsonContract.stringArray(jsonValue, "devices", false,
+            file, context, log);
+        sandbox.share = JsonContract.stringArray(jsonValue, "share", false, file, context, log);
+        sandbox.extraArguments = JsonContract.stringArray(jsonValue, "extra_args", false,
+            file, context, log);
+        // Whether runtime/command are allowed at all is a platform-axis rule:
+        // the owning platform's validatePlatformBlock rejects them where
+        // flatpak does not exist.
+        sandbox.command = JsonContract.optionalString(jsonValue, "command", "",
+            file, context, log);
+        TemplateTokens.check(sandbox.command, file, context + ".command", log, false);
+        sandbox.runtime = JsonContract.optionalString(jsonValue, "runtime", "",
+            file, context, log);
+        if (jsonValue.has("filesystems")) {
+            SandboxPolicyParser.parseFilesystems(sandbox, jsonValue, file, context, log);
+        }
+        if (jsonValue.has("symlinks")) {
+            SandboxPolicyParser.parseSymlinks(sandbox, jsonValue, file, context, log);
+        }
+        return sandbox;
+    }
+}
+
+class StatePolicyParser {
+    class void parseSeeds(StatePolicy state, JsonValue jsonValue,
+                          string file, string context, ParseLog log) {
+        JsonValue seeds = jsonValue.get("seeds");
+        if (!seeds.isArray()) {
+            log.add(file, context + ".seeds", "expected array");
+            return;
+        }
+        for (int seedIndex = 0; seedIndex < seeds.size(); seedIndex++) {
+            JsonValue entry = seeds.at(seedIndex);
+            string entryContext = f"{context}.seeds[{seedIndex}]";
+            StateSeed seed = StateSeed();
+            if (!entry.isObject()) {
+                log.add(file, entryContext, "expected object {purpose, target, sources}");
+            } else {
+                Vector<string> seedKeys = ["purpose", "target", "sources"];
+                JsonContract.checkKeys(entry, seedKeys, file, entryContext, log);
+                seed.purpose = JsonContract.requiredString(entry, "purpose",
+                    file, entryContext, log);
+                seed.target = JsonContract.requiredString(entry, "target",
+                    file, entryContext, log);
+                TemplateTokens.check(seed.target, file, entryContext + ".target", log, false);
+                seed.sources = JsonContract.stringArray(entry, "sources", true,
+                    file, entryContext, log);
+                for source in seed.sources {
+                    TemplateTokens.check(source, file, entryContext + ".sources", log, false);
+                }
+            }
+            state.seeds.push(seed);
+        }
+    }
+
+    class StatePolicy parse(JsonValue jsonValue, string file, string context, ParseLog log) {
+        StatePolicy state = StatePolicy();
+        if (!jsonValue.isObject()) {
+            log.add(file, context, "expected object");
+            return state;
+        }
+        state.present = true;
+        Vector<string> allowedKeys = ["config_home", "data_home", "extra_args", "seeds"];
+        JsonContract.checkKeys(jsonValue, allowedKeys, file, context, log);
+        Vector<string> homeModes = ["xdg", "flatpak_home", "preserve"];
+        state.configHome = JsonContract.optionalString(jsonValue, "config_home", "",
+            file, context, log);
+        JsonContract.checkEnum(state.configHome, homeModes, file, context + ".config_home", log);
+        state.dataHome = JsonContract.optionalString(jsonValue, "data_home", "",
+            file, context, log);
+        JsonContract.checkEnum(state.dataHome, homeModes, file, context + ".data_home", log);
+        state.extraArguments = JsonContract.stringArray(jsonValue, "extra_args", false,
+            file, context, log);
+        if (jsonValue.has("seeds")) {
+            StatePolicyParser.parseSeeds(state, jsonValue, file, context, log);
+        }
+        return state;
+    }
+}
+
+// Session resolution: platform base values overridden by the matching
+// sessions[] entry (only the fields that entry declares).
+class EmulatorSessions {
+    class SessionOverride effective(EmulatorPlatform platform, string session) {
+        SessionOverride effectiveSession = SessionOverride();
+        effectiveSession.id = session;
+        effectiveSession.displayServer = platform.displayServer;
+        effectiveSession.displayFallback = platform.displayFallback;
+        effectiveSession.overlay = "";
+        for sessionOverride in platform.sessions {
+            if (sessionOverride.id.equals(session)) {
+                if (!sessionOverride.displayServer.isEmpty()) {
+                    effectiveSession.displayServer = sessionOverride.displayServer;
+                }
+                if (!sessionOverride.displayFallback.isEmpty()) {
+                    effectiveSession.displayFallback = sessionOverride.displayFallback;
+                }
+                if (!sessionOverride.overlay.isEmpty()) {
+                    effectiveSession.overlay = sessionOverride.overlay;
+                }
+            }
+        }
+        return effectiveSession;
+    }
+}
+
+// This import sits between the emulator model above and the abstract base
+// below on purpose: btrc splices imports in place, and resolving member
+// types requires define-before-use across the merged stream. The system
+// model (which EmulatorBinding below belongs to) itself holds
+// Vector<EmulatorDefinition>, so the emulator model must already be spliced
+// when it arrives — and the abstract base must follow it.
+import ../systems/system_parser.btrc
 
 abstract class SemuEmulator {
     // The contract directory name (src/semu/emulators/<id>/).

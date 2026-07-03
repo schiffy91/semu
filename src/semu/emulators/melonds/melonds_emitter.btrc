@@ -8,7 +8,7 @@
 // is not a profile: it is the platform's graphics config-file policy in
 // emulators/melonds/emulator.json, applied by the generic launcher machinery.
 
-import ../model/emulator_definition.btrc
+import ../semu_emulator.btrc
 import ../../input/input_parser.btrc
 import ../../input/targets/steamdeck/steam_input.btrc
 

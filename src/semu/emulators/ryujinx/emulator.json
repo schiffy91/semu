@@ -122,7 +122,7 @@
   "doc": {
     "state": "Ryujinx resolves its base dir via the flatpak's own home and ignores XDG_CONFIG_HOME, so --root-data-dir points it at the SD EmuDeck data dir (keys, firmware, games, saves) \u2014 launcher.btrc:754-761.",
     "graphics": "method=dynamic: Config.json lives in the --root-data-dir, so the GL force is applied at launch, not via a static config path (launcher_tap.btrc:166).",
-    "macos": "The macos app is extracted to ~/.local/share/ryujinx-app on first launch by the nix wrapper (packaging/nix/ryujinx.nix:22-47; metadata.btrc:66).",
+    "macos": "The macos app is staged into ~/.local/share/ryujinx-app by the nix wrapper's first run (emulators/ryujinx/ryujinx.nix, built from Ryubing source), and re-staged whenever the store path changes.",
     "sandbox_macos": "macos launches run under sandbox-exec write confinement: these grants (plus the platform baseline) are the only writable paths."
   }
 }

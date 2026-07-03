@@ -9,9 +9,7 @@
 // runtime state layout), neither of which exists in the JSON contracts.
 
 import std.{vector, fs}
-import ../model/graphics_policy.btrc
-import ../model/emulator_platform.btrc
-import ../model/emulator_definition.btrc
+import ../semu_emulator.btrc
 import ./azahar_rendering.btrc
 
 class AzaharEmitter {

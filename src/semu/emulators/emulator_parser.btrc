@@ -19,13 +19,7 @@ import ../core/json_contract.btrc
 import ../core/template_tokens.btrc
 import ../core/source_directories.btrc
 import ../platforms/platform_registry.btrc
-import ./model/emulator_platform.btrc
-import ./model/emulator_definition.btrc
-import ./model/sandbox_policy.btrc
-import ./model/graphics_policy.btrc
-import ./model/aspect_probe.btrc
-import ./model/state_policy.btrc
-import ./model/firmware_policy.btrc
+import ./semu_emulator.btrc
 import ./emulator_registry.btrc
 
 class EmulatorParser {

@@ -8,7 +8,7 @@
 // here.
 
 import std.{vector, fs}
-import ../model/emulator_definition.btrc
+import ../semu_emulator.btrc
 import ../../input/input_parser.btrc
 import ../../input/targets/steamdeck/steam_input.btrc
 import ./dolphin_wiimote_profiles.btrc

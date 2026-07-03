@@ -16,8 +16,8 @@
 // replacement CLI ever appears.
 
 import std.{vector, platform}
-import ../../emulators/model/sandbox_policy.btrc
-import ../../emulators/model/launch_plan.btrc
+import ../../emulators/semu_emulator.btrc
+import ../../emulators/emulator_process.btrc
 
 class MacosSandbox {
     class bool bypassRequested() {

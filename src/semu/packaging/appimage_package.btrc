@@ -18,7 +18,7 @@
 // EmulatorEmitter.
 
 import std.{vector, fs, process}
-import ../emulators/model/emulator_definition.btrc
+import ../emulators/semu_emulator.btrc
 import ../emulators/emulator_emitter.btrc
 
 class AppImagePackage {

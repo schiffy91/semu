@@ -10,7 +10,7 @@
 // shared code.
 
 import std.{vector}
-import ../model/emulator_platform.btrc
+import ../semu_emulator.btrc
 
 class FlycastRendering {
     // No CLI graphics grammar: the frozen contract declares graphics.method

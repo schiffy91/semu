@@ -16,12 +16,9 @@
 //     old hand-curated order — ES-DE presents systems sorted regardless.
 
 import std.{vector, fs}
-import ./model/system_definition.btrc
-import ./model/semu_contracts.btrc
-import ./model/emulator_binding.btrc
+import ./system_parser.btrc
 import ../platforms/platform_registry.btrc
-import ../emulators/model/emulator_definition.btrc
-import ../emulators/model/emulator_platform.btrc
+import ../emulators/semu_emulator.btrc
 import ../emulators/emulator_emitter.btrc
 import ../emulators/emulator_registry.btrc
 
