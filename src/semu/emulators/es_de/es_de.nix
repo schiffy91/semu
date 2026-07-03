@@ -2,7 +2,7 @@
 # macOS, AppImage on x86_64 Linux. steamDeck picks the Steam Deck AppImage,
 # tuned for the gamescope/Game Mode session (the generic Linux build loads
 # but its window is not presented by gamescope).
-{ lib, stdenv, fetchurl, appimageTools ? null, undmg ? null, steamDeck ? false }:
+{ lib, stdenv, fetchurl, appimageTools ? null, undmg ? null, python3 ? null, steamDeck ? false }:
 
 let
   version = "3.4.0";
@@ -38,8 +38,29 @@ if stdenv.hostPlatform.isDarwin then
     inherit version;
     src = fetchurl (sources.${system} or unsupported);
     sourceRoot = ".";
-    nativeBuildInputs = [ undmg ];
+    nativeBuildInputs = [ undmg python3 ];
+    # Bluetooth-usage safety net. Upstream 3.4.0 DOES carry
+    # NSBluetoothAlwaysUsageDescription, but its CFBundleIdentifier is the
+    # malformed literal "3.4.0", and a copy run straight off the mounted DMG
+    # died with __TCC_CRASHING_DUE_TO_PRIVACY_VIOLATION__ claiming the key
+    # was absent (TCC attribution fails for that id/path combination; the
+    # nix-store bundle launches fine). setdefault keeps upstream's own
+    # strings when present and only fills genuinely missing keys in future
+    # artifacts — it never rewrites the plist of a healthy bundle. The
+    # bundle id itself stays untouched: it is bound into the code-signature
+    # seal, and rewriting it would invalidate the signature.
     installPhase = ''
+      python3 - <<'PLIST'
+      import plistlib
+      path = "ES-DE.app/Contents/Info.plist"
+      with open(path, "rb") as handle:
+          info = plistlib.load(handle)
+      usage = "ES-DE scans for Bluetooth game controllers."
+      info.setdefault("NSBluetoothAlwaysUsageDescription", usage)
+      info.setdefault("NSBluetoothPeripheralUsageDescription", usage)
+      with open(path, "wb") as handle:
+          plistlib.dump(info, handle)
+      PLIST
       mkdir -p $out/Applications
       cp -r "ES-DE.app" $out/Applications/
     '';
