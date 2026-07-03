@@ -474,7 +474,12 @@ void *dlsym(void *handle, const char *name){
     if(!strcmp(name,"eglSwapBuffers")){ if(!real_egl_swap) real_egl_swap=(PFN_eglswap)real_dlsym(handle,name); return (void*)eglSwapBuffers; }
     return real_dlsym ? real_dlsym(handle,name) : 0;
 }
-#define LD(v,n) do{ ensure_real_dlsym(); v=(void*)(real_dlsym?real_dlsym(RTLD_NEXT,n):0); }while(0)
+/* Never replace a non-NULL pointer: the dlsym hook above may already have
+ * captured the real entry point from the emulator's own dlopen handle
+ * (SDL loads GL with RTLD_LOCAL, invisible to RTLD_NEXT) — an unconditional
+ * assignment here would clobber it with NULL and turn every "successful"
+ * swap into a permanent black screen. */
+#define LD(v,n) do{ ensure_real_dlsym(); if(!(v)) v=(void*)(real_dlsym?real_dlsym(RTLD_NEXT,n):0); }while(0)
 static void tap_init(void) {
     if (inited) return; inited = 1;
     LD(real_swap,"glXSwapBuffers"); LD(real_egl_swap,"eglSwapBuffers"); LD(p_query,"glXQueryDrawable"); LD(p_getiv,"glGetIntegerv");
