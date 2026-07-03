@@ -72,7 +72,11 @@ else stdenv.mkDerivation {
   inherit version;
   src = source;
 
-  # Semu patches hook in here.
+  # Semu patches hook in here — none are needed today: Azahar's contract pins
+  # OpenGL (qt-config graphics_api=1), so on linux the LD_PRELOAD interposition
+  # tap composites bezels externally (SEMU_TAP_STANDALONE full-frame mode)
+  # without touching the source, and this darwin build presents via the
+  # external macOS overlay.
   patches = [ ];
 
   postPatch = ''

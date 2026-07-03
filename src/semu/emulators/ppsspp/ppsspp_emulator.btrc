@@ -4,8 +4,7 @@
 // config_file graphics forcing, the xdg state isolation) lives in
 // emulators/ppsspp/emulator.json and is executed by the generic parser and
 // launcher. The class supplies identity, contract validation (PPSSPP has no
-// extension-block grammar), and the documented empty answers delegated to
-// PpssppEmitter / PpssppRendering.
+// extension-block grammar), and the documented empty answers below.
 
 import std.{vector}
 import ../../core/parse_log.btrc
@@ -13,8 +12,6 @@ import ../../systems/system_parser.btrc
 import ../../input/input_parser.btrc
 import ../../input/controllers/steamdeck/steam_input.btrc
 import ../semu_emulator.btrc
-import ./ppsspp_emitter.btrc
-import ./ppsspp_rendering.btrc
 
 class PpssppEmulator extends SemuEmulator {
     public PpssppEmulator() {}
@@ -46,17 +43,31 @@ class PpssppEmulator extends SemuEmulator {
         return fragments;
     }
 
+    // Deliberate no-op, and that is contract, not omission: the Deck-proven
+    // golden tree (garbage/generated/packaging/emulators/profiles/) carries no
+    // PPSSPP directory. Controller input reaches PPSSPP as the Steam virtual
+    // gamepad through SDL, and the contract's hotkey actions arrive as the
+    // keyboard chords Steam Input synthesizes, handled by PPSSPP's stock
+    // desktop key bindings — writing any file here would be a regression.
     public void emitProfiles(EmulatorDefinition definition, SteamInputTarget steamInput,
                              Keymap keymap, string outputRoot) {
-        PpssppEmitter.emitProfiles(definition, steamInput, keymap, outputRoot);
     }
 
+    // No CLI graphics grammar: the frozen contract declares graphics.method
+    // "config_file", and PPSSPP exposes no command-line switch that would pin
+    // the backend for a single launch. The generic launcher performs the
+    // config-file edit from the contract data, so nothing is emulator-owned.
     public Vector<string> graphicsForceArguments(EmulatorPlatform platform, string graphicsApi) {
-        return PpssppRendering.graphicsForceArguments(platform, graphicsApi);
+        Vector<string> arguments = [];
+        return arguments;
     }
 
+    // No emulator-native overlay configuration text: the GL tap draws the
+    // bezel directly over PPSSPP's swap chain (the contract's overlay_aspect
+    // and tap_api drive the shared render planner), so there is no PPSSPP
+    // overlay file to write.
     public string overlayConfiguration(EmulatorPlatform platform) {
-        return PpssppRendering.overlayConfiguration(platform);
+        return "";
     }
 
     // No native hotkey grammar is proven for PPSSPP: the contract's hotkey

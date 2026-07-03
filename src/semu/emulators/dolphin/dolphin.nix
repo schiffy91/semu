@@ -33,7 +33,10 @@ let
     hash = "sha256-+3/JtjKFsTEkKQa0LjycqNmDz0M8o2FndWQtw5R5/jQ=";
   };
 
-  # Semu patches hook in here.
+  # Semu patches hook in here — none are needed today: Dolphin presents
+  # through OpenGL, so on linux the LD_PRELOAD interposition tap composites
+  # bezels externally (SEMU_TAP_STANDALONE full-frame mode) without touching
+  # the source, and this darwin build presents via the external macOS overlay.
   patches = [ ];
 
   sourceBuild = dolphin-emu.overrideAttrs (previous: {
