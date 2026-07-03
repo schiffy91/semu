@@ -167,6 +167,36 @@ class PlatformRegistry {
         return "";
     }
 
+    class string esDeHome(string platformId) {
+        if (platformId.equals(LinuxPlatform().id())) {
+            return LinuxPlatform().esDeHome();
+        }
+        if (platformId.equals(MacosPlatform().id())) {
+            return MacosPlatform().esDeHome();
+        }
+        return "";
+    }
+
+    class string esDeExecutable(string platformId, string bundleRoot) {
+        if (platformId.equals(LinuxPlatform().id())) {
+            return LinuxPlatform().esDeExecutable(bundleRoot);
+        }
+        if (platformId.equals(MacosPlatform().id())) {
+            return MacosPlatform().esDeExecutable(bundleRoot);
+        }
+        return "";
+    }
+
+    class string esDeLauncherDirectory(string platformId) {
+        if (platformId.equals(LinuxPlatform().id())) {
+            return LinuxPlatform().esDeLauncherDirectory();
+        }
+        if (platformId.equals(MacosPlatform().id())) {
+            return MacosPlatform().esDeLauncherDirectory();
+        }
+        return "";
+    }
+
     // The platform block feeding emitted profile/config artifacts: the first
     // deployment-target block the emulator declares (the golden profiles are
     // Deck artifacts), else the first declared block.

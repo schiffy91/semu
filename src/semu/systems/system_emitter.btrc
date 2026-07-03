@@ -140,16 +140,28 @@ class SystemEmitter {
     // and the %ESPATH% staticpath covers ES-DE launched directly from the
     // AppImage (the shims sit beside the es-de binary in usr/bin). No
     // bootstrap-machine absolute path may appear here — the tree is
-    // bootstrapped on one machine and deployed on another.
-    class string launcherRuleXml(EmulatorDefinition emulatorDefinition) {
+    // bootstrapped on one machine and deployed on another. Platforms whose
+    // portable rules cannot resolve (macos has no AppRun) declare a launcher
+    // directory (esDeLauncherDirectory, ${project} token verbatim) that gains
+    // an extra staticpath entry — the runtime install resolves the token.
+    class string launcherRuleXml(EmulatorDefinition emulatorDefinition,
+                                 string operatingSystem) {
         string shimName = EmulatorEmitter.shimName(emulatorDefinition);
+        string staticEntries = "      <entry>%ESPATH%/" + SystemEmitter.xmlEscape(shimName)
+            + "</entry>\n";
+        string launcherDirectory = PlatformRegistry.esDeLauncherDirectory(operatingSystem);
+        if (!launcherDirectory.isEmpty()) {
+            staticEntries = staticEntries + "      <entry>"
+                + SystemEmitter.xmlEscape(PathTools.join(launcherDirectory, shimName))
+                + "</entry>\n";
+        }
         return "  <emulator name=\"" + SystemEmitter.xmlEscape(emulatorDefinition.id.toUpper())
             + "\">\n"
             + "    <rule type=\"systempath\">\n"
             + "      <entry>" + SystemEmitter.xmlEscape(shimName) + "</entry>\n"
             + "    </rule>\n"
             + "    <rule type=\"staticpath\">\n"
-            + "      <entry>%ESPATH%/" + SystemEmitter.xmlEscape(shimName) + "</entry>\n"
+            + staticEntries
             + "    </rule>\n"
             + "  </emulator>\n";
     }
@@ -183,7 +195,7 @@ class SystemEmitter {
             + "<ruleList>\n";
         for emulatorDefinition in emulators {
             if (emulatorDefinition.hasOperatingSystem(operatingSystem)) {
-                xml = xml + SystemEmitter.launcherRuleXml(emulatorDefinition);
+                xml = xml + SystemEmitter.launcherRuleXml(emulatorDefinition, operatingSystem);
             }
         }
         for emulatorDefinition in emulators {

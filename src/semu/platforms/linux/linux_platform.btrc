@@ -5,7 +5,7 @@
 // sessions, the flatpak_home token, the flatpak-state/appimage-state root
 // split, and the AppImage entry + launcher-shim emission for the Deck.
 
-import std.{vector, json, platform}
+import std.{vector, fs, json, platform}
 import ../../core/parse_log.btrc
 import ../../core/template_paths.btrc
 import ../../emulators/semu_emulator.btrc
@@ -105,5 +105,30 @@ class LinuxPlatform extends SemuPlatform {
             self.id());
         AppImagePackage.emitForEmulators(emulators, repoRoot, entryDirectory);
         return "emitted appimage entry + launcher shims -> " + entryDirectory;
+    }
+
+    public string esDeHome() {
+        return PathTools.join(TemplatePaths.home(), "ES-DE");
+    }
+
+    // The wrapped AppImage binary in the composed bundle: es_de.nix names it
+    // by pname — es-de for the generic build, es-de-steamdeck for the Deck
+    // build the flake composes on x86_64-linux. Prefer whichever exists;
+    // answer the generic name for reporting when neither does.
+    public string esDeExecutable(string bundleRoot) {
+        Vector<string> candidates = ["bin/es-de", "bin/es-de-steamdeck"];
+        for candidate in candidates {
+            string executablePath = PathTools.join(bundleRoot, candidate);
+            if (FileSystem.isFile(executablePath)) {
+                return executablePath;
+            }
+        }
+        return PathTools.join(bundleRoot, "bin/es-de");
+    }
+
+    // The portable rules (systempath shim names + %ESPATH% staticpath)
+    // already resolve on linux — no absolute runtime entry is added.
+    public string esDeLauncherDirectory() {
+        return "";
     }
 }

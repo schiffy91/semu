@@ -4,6 +4,24 @@
 
 import std.{vector}
 
+// The platform-keyed path contract (settings.json "paths"): the ES-DE roms
+// root per registered platform, template tokens verbatim (the install edge
+// resolves them). romsRootOverride carries the declared SEMU_ROMS_ROOT
+// environment override, captured at load time.
+class PathsSettings {
+    public Vector<string> romsRootPlatformIds;
+    public Vector<string> romsRootValues;
+    public string romsRootOverride;
+
+    public PathsSettings() {
+        Vector<string> platformIds = [];
+        self.romsRootPlatformIds = platformIds;
+        Vector<string> romsRoots = [];
+        self.romsRootValues = romsRoots;
+        self.romsRootOverride = "";
+    }
+}
+
 class VisualSettings {
     public bool crtShaders;
     public bool bezels;
@@ -122,6 +140,7 @@ class ScreenshotSettings {
 
 class SemuSettings {
     public string file;
+    public PathsSettings paths;
     public VisualSettings visual;
     public UiSettings ui;
     public SyncSettings sync;
@@ -129,6 +148,8 @@ class SemuSettings {
 
     public SemuSettings() {
         self.file = "";
+        PathsSettings pathsSettings = PathsSettings();
+        self.paths = pathsSettings;
         VisualSettings visualSettings = VisualSettings();
         self.visual = visualSettings;
         UiSettings uiSettings = UiSettings();
@@ -137,5 +158,21 @@ class SemuSettings {
         self.sync = syncSettings;
         ScreenshotSettings screenshotSettings = ScreenshotSettings();
         self.screenshots = screenshotSettings;
+    }
+
+    // The configured roms root for one platform id, template tokens verbatim
+    // (callers resolve at the install edge). The declared SEMU_ROMS_ROOT
+    // override wins on every platform; "" when nothing is configured.
+    public string romsRootFor(string platformId) {
+        if (!self.paths.romsRootOverride.isEmpty()) {
+            return self.paths.romsRootOverride;
+        }
+        for (int entryIndex = 0; entryIndex < self.paths.romsRootPlatformIds.size();
+             entryIndex++) {
+            if (self.paths.romsRootPlatformIds.get(entryIndex).equals(platformId)) {
+                return self.paths.romsRootValues.get(entryIndex);
+            }
+        }
+        return "";
     }
 }

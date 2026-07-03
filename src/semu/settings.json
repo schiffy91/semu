@@ -1,5 +1,11 @@
 {
   "schema_version": 1,
+  "paths": {
+    "roms_root": {
+      "linux": "/run/media/deck/SD/Emulation/roms",
+      "macos": "${home}/Drive/media/Emulation"
+    }
+  },
   "visual": {
     "crt_shaders": true,
     "bezels": true,
@@ -46,6 +52,7 @@
   },
   "doc": {
     "purpose": "Declarative defaults for every runtime setting. At runtime the effective store is <repo>/src/generated/runtime/settings.json (materialized from this file on first use); this file is the contract and the reset state.",
+    "paths": "roms_root is keyed by registered platform id and template tokens are allowed (SEMU_ROMS_ROOT env overrides every platform).",
     "visual": "render_mode: 1x | integer | native (SEMU_RENDER_MODE env overrides). fallback_preset is a canonical asset path.",
     "sync": "Folder ids are the closed seven-key set; folder paths derive from code, not data.",
     "screenshots": "tools[] is the single probe registry (order = probe order); tool 'custom' requires custom_command."

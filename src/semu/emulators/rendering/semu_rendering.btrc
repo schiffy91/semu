@@ -8,8 +8,10 @@
 // proven wire grammar: booleans "0"/"1", floats with trailing zeros trimmed,
 // SHELL "r,g,b", SCREEN "x,y,w,h" (normalized 0..1), dual-screen ASPECT
 // "W:H" over the combined native canvas. Exec-edge keys the launcher owns
-// (STATE_DIR, STANDALONE, MENUFONT, LD_PRELOAD plumbing) are not emitted
-// here — they depend on runtime paths, not contracts.
+// (SEMU_RETRO_START, STATE_DIR, STANDALONE, MENUFONT, LD_PRELOAD plumbing)
+// are not emitted here — they depend on runtime paths, not contracts;
+// platforms/linux/linux_tap.btrc owns them and merges this bundle into
+// real launch plans.
 //
 // The render-resolution control (target internal resolution + integer-scale
 // math) lives in the sibling render_resolution.btrc (class RenderResolution),

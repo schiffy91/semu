@@ -1,5 +1,7 @@
 // cli.btrc — the semu command surface.
 //
+//   semu run       [--prepare-only]          install the ES-DE runtime + launch
+//                                            (also the default with no command)
 //   semu manifest  [--output <path>]        write the generated manifest
 //   semu bootstrap [--project <path>]       emit src/generated/packaging/**
 //   semu launcher <emulator> [--print-plan] [args...] [rom]
@@ -15,7 +17,7 @@
 // where repoRoot defaults to the current directory (overridable via
 // --project).
 
-import std.{vector, fs, cli}
+import std.{vector, fs, cli, platform}
 import ./core/parse_log.btrc
 import ./core/settings.btrc
 import ./core/settings_parser.btrc
@@ -23,10 +25,12 @@ import ./platforms/platform_registry.btrc
 import ./platforms/linux/linux_provisioner.btrc
 import ./systems/system_parser.btrc
 import ./systems/system_emitter.btrc
+import ./packaging/es_de_runtime.btrc
 import ./emulators/semu_emulator.btrc
 import ./emulators/emulator_process.btrc
 import ./emulators/emulator_execution.btrc
 import ./emulators/emulator_registry.btrc
+import ./platforms/linux/linux_tap.btrc
 import ./input/input_parser.btrc
 import ./input/targets/steamdeck/steam_input.btrc
 import ./input/targets/steamdeck/steamdeck_input_emitter.btrc
@@ -142,6 +146,39 @@ class SemuCli {
         return EmulatorDefinition();
     }
 
+    class SystemDefinition systemForId(SemuContracts contracts, string systemId) {
+        for systemDefinition in contracts.systems {
+            if (systemDefinition.id.equals(systemId)) {
+                return systemDefinition;
+            }
+        }
+        return SystemDefinition();
+    }
+
+    // The linux GL-tap wiring: when the verbatim tail ends in a rom whose
+    // system infers from its directory (SemuContracts.systemForRomPath, pure
+    // contract data), the assembled plan gains the SEMU_TAP_* environment +
+    // LD_PRELOAD via LinuxTap. macos plans stay untouched — the overlay
+    // compositor is future work (emulators/rendering/tap/readme.md). Settings
+    // parse problems fall back to the built-in visual defaults rather than
+    // blocking the launch.
+    class void applyLinuxTap(LaunchPlan launchPlan, SemuContracts contracts,
+                             EmulatorDefinition emulatorDefinition,
+                             Vector<string> systemArguments, string project) {
+        if (systemArguments.size() == 0) {
+            return;
+        }
+        string romCandidate = systemArguments.get(systemArguments.size() - 1);
+        string inferredSystemId = contracts.systemForRomPath(romCandidate);
+        if (inferredSystemId.isEmpty()) {
+            return;
+        }
+        ParseLog settingsLog = ParseLog();
+        SemuSettings settings = SettingsParser.load(project, settingsLog);
+        LinuxTap.apply(launchPlan, emulatorDefinition,
+            SemuCli.systemForId(contracts, inferredSystemId), settings, project);
+    }
+
     class int printPlan(LaunchPlan launchPlan) {
         print("backend: " + launchPlan.backend);
         for argument in launchPlan.argumentVector {
@@ -201,10 +238,48 @@ class SemuCli {
             print("launcher: " + launchPlan.note);
             return 1;
         }
+        if (operatingSystem.equals("linux")) {
+            SemuCli.applyLinuxTap(launchPlan, contracts, emulatorDefinition,
+                systemArguments, project);
+        }
         if (printPlanRequested) {
             return SemuCli.printPlan(launchPlan);
         }
         return EmulatorExecution.run(emulatorDefinition, operatingSystem, launchPlan, project);
+    }
+
+    // 'semu run' — the zero-setup default: load the contracts, refresh the
+    // generated emission, install the ES-DE runtime configuration
+    // (custom_systems pair + es_settings.xml carrying the current platform's
+    // resolved roms root and theme), ensure the per-system rom directories
+    // exist, then launch ES-DE from the composed bundle (frontend runs
+    // unsandboxed; the PID is printed). '--prepare-only' stops before the
+    // launch; SEMU_ES_DE_HOME overrides the frontend home.
+    class int runRun(CliArgs arguments, string project) {
+        ParseLog log = ParseLog();
+        SemuContracts contracts = SemuCli.loadContracts(project, log);
+        if (SemuCli.reportErrors(log)) {
+            return 1;
+        }
+        ParseLog settingsLog = ParseLog();
+        SettingsParser.materialize(project, settingsLog);
+        SemuSettings settings = SettingsParser.load(project, settingsLog);
+        if (SemuCli.reportErrors(settingsLog)) {
+            return 1;
+        }
+        string platformId = PlatformRegistry.currentId();
+        string esDeHome = Environment.get("SEMU_ES_DE_HOME",
+            PlatformRegistry.esDeHome(platformId));
+        int prepareFailures = EsDeRuntime.prepare(contracts, settings, project,
+            platformId, esDeHome);
+        if (prepareFailures != 0) {
+            return prepareFailures;
+        }
+        if (arguments.has("--prepare-only")) {
+            print("prepare-only: skipping the es-de launch");
+            return 0;
+        }
+        return EsDeRuntime.launch(project, platformId);
     }
 
     class int runTestCore(string project) {
@@ -276,6 +351,7 @@ class SemuCli {
 
     class int printUsage() {
         print("usage: semu <command>");
+        print("  run       [--prepare-only]                   install the es-de runtime + launch (default)");
         print("  manifest  [--output <path>]                  write src/generated/semu.json");
         print("  bootstrap [--project <path>]                 emit src/generated/packaging/**");
         print("  launcher  <emulator> [--print-plan] [args...] [rom]  plan/exec a launch");
@@ -287,6 +363,11 @@ class SemuCli {
 
     class int run(CliArgs arguments, string repoRoot) {
         string command = arguments.command();
+        // 'semu run' is the default: no command (or a leading flag such as
+        // --prepare-only/--project) routes to the zero-setup frontend path.
+        if (command.isEmpty() || command.equals("run") || command.startsWith("--")) {
+            return SemuCli.runRun(arguments, repoRoot);
+        }
         if (command.equals("manifest")) {
             return SemuCli.runManifest(arguments, repoRoot);
         }
