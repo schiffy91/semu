@@ -162,6 +162,28 @@ class EmulatorExecution {
         resolvedPlan.argumentVector.insert(0, quitWatchBinary);
     }
 
+    // XDG_* redirections are meant for the APP inside the sandbox and ride
+    // the --env grants in argv. Exporting them to the OUTER flatpak client
+    // process relocates flatpak's own user-installation lookup
+    // ($XDG_DATA_HOME/flatpak — an empty state directory) so '--user'
+    // resolves nothing and bare refs fall back to uninstalled branches
+    // ("app/.../master not installed", observed live with dolphin on the
+    // Deck). The client keeps the host XDG view; the sandbox keeps the
+    // contract's.
+    class void dropClientXdgEnvironment(LaunchPlan resolvedPlan) {
+        Vector<string> keptKeys = [];
+        Vector<string> keptValues = [];
+        for (int keyIndex = 0; keyIndex < resolvedPlan.environmentSetKeys.size();
+             keyIndex++) {
+            if (!resolvedPlan.environmentSetKeys.get(keyIndex).startsWith("XDG_")) {
+                keptKeys.push(resolvedPlan.environmentSetKeys.get(keyIndex));
+                keptValues.push(resolvedPlan.environmentSetValues.get(keyIndex));
+            }
+        }
+        resolvedPlan.environmentSetKeys = keptKeys;
+        resolvedPlan.environmentSetValues = keptValues;
+    }
+
     class void removeEnvironmentKey(LaunchPlan launchPlan, string key) {
         Vector<string> keptKeys = [];
         Vector<string> keptValues = [];
@@ -239,6 +261,9 @@ class EmulatorExecution {
         EmulatorExecution.applySeeds(platform, context);
         EmulatorExecution.materializeSymlinks(platform, context);
         LaunchPlan resolvedPlan = EmulatorExecution.resolvePlan(launchPlan, context);
+        if (resolvedPlan.backend.equals("flatpak")) {
+            EmulatorExecution.dropClientXdgEnvironment(resolvedPlan);
+        }
         if (operatingSystem.equals("linux")) {
             EmulatorExecution.wrapWithQuitWatch(resolvedPlan,
                 EmulatorExecution.quitWatchBinaryPath(project));

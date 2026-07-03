@@ -55,6 +55,9 @@
             "path": "${emulation_root}",
             "mode": "rw"
           }
+        ],
+        "extra_args": [
+          "--user"
         ]
       },
       "graphics": {
