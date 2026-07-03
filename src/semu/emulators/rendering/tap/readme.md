@@ -34,7 +34,9 @@ wire formats.
 | `libsemutap.c` | the OpenGL compositor: glXSwapBuffers/EGL hook (tap-out) |
 | `tap_geometry.h` | pure geometry contract (integer scale, hole mapping) |
 | `tap_menu.h` | radial menu contract: states, navigation, font-atlas text |
-| `tap_geometry_check.c` / `tap_menu_check.c` | host-runnable contract checks |
+| `tap_geometry_check.c` / `tap_menu_check.c` | host-runnable contract checks (`build.sh`) |
+| `macos_overlay.m` | the macOS compositor: overlay window above the emulator (tap-out, injection-free) |
+| `build.sh` | host build path: run the contract checks, compile `semu-overlay` on darwin |
 | `tube.frag` | readable source of the fragment shader embedded in `libsemutap.c` |
 | `mbparse.c` | offline Mega Bezel `.slangp` resolver (learn art + geometry params) |
 | `gen_bezel_manifest.sh` | offline: auto-measure bezel screen holes into a manifest |
@@ -57,22 +59,23 @@ It went there rather than into `semu_shaders.nix` because that derivation is a
 `stdenvNoCC` interpreter for the `sources.json` asset manifest; the tap is
 compiled code that needs a real toolchain.
 
-## macOS plan (future work, not built)
+## macOS: the overlay window (built, no injection)
 
-On darwin the tap is not built. The equivalent interposition story is:
+On darwin the emulators present via Metal, so the GL tap does not apply and
+nothing is injected. The macOS tap is `macos_overlay.m` (`build.sh` compiles
+it to `src/generated/build/macos/tap/semu-overlay`): a standalone process
+holding a transparent, click-through, non-activating window one level above
+the emulator's, drawing the bezel art around the shared `tap_geometry.h`
+content rect with the screen hole cleared back to transparency. It reads the
+same `SEMU_TAP_*` environment plus `SEMU_TAP_TARGET_PID` (the emulator pid to
+shadow, minted by the launch wrapper in
+`src/semu/platforms/macos/macos_tap.btrc`), tracks the pid's largest window
+via `CGWindowListCopyWindowInfo`, and exits when the pid dies.
 
-- `DYLD_INSERT_LIBRARIES` instead of `LD_PRELOAD`, with a
-  `__DATA,__interpose` section (or `dlsym(RTLD_NEXT, ...)` wrappers) to hook
-  the present call — `CGLFlushDrawable` for OpenGL emulators, or a
-  `MTLCommandBuffer presentDrawable:` swizzle for Metal ones.
-- SIP constraints: dyld ignores `DYLD_INSERT_LIBRARIES` for platform binaries
-  and for hardened-runtime binaries lacking the
-  `com.apple.security.cs.allow-dyld-environment-variables` entitlement. Since
-  Semu builds its emulators from source, they can be signed ad-hoc without the
-  hardened runtime (or with that entitlement), which keeps insertion legal
-  without touching SIP itself.
-- The reporting side (`semu_tap.h`) is already OS-agnostic: `dlsym(RTLD_DEFAULT,
-  "semu_tap_report")` works unchanged under dyld.
+The dyld interposition route (`DYLD_INSERT_LIBRARIES` + ad-hoc signing to
+stay legal under SIP; `semu_tap.h` is already OS-agnostic) remains on the
+table if per-frame compositing is ever needed on macOS — the overlay draws
+around the content, it never touches the frames themselves.
 
 Vulkan on the Deck (a `vkQueuePresentKHR` layer) remains a compositor back end
 with the same tap input, not a per-emulator renderer.

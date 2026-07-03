@@ -71,6 +71,21 @@ class LinuxTap {
         }
     }
 
+    // The tap's read-side paths (bezel art under the asset root, the
+    // preloaded library itself) live OUTSIDE the emulator contract's
+    // sandbox.filesystems — they are launch-time facts, not contract facts.
+    // The flatpak backend therefore gets a read-only --filesystem grant for
+    // each, inserted with the same mechanism as the --env pairs. Other
+    // backends inherit host filesystem visibility and need nothing.
+    class void mergeReadOnlyFilesystemGrant(LaunchPlan launchPlan, string path) {
+        if (path.isEmpty()) {
+            return;
+        }
+        if (launchPlan.backend.equals("flatpak") && launchPlan.argumentVector.size() >= 2) {
+            launchPlan.argumentVector.insert(2, "--filesystem=" + path + ":ro");
+        }
+    }
+
     class void appendNote(LaunchPlan launchPlan, string note) {
         if (launchPlan.note.isEmpty()) {
             launchPlan.note = note;
@@ -99,6 +114,7 @@ class LinuxTap {
             return;
         }
         string assetRoot = BezelResolver.assetRootFrom(environmentAssetRoot, project);
+        LinuxTap.mergeReadOnlyFilesystemGrant(launchPlan, assetRoot);
         ResolvedBezel bezel = BezelResolver.resolve(system, "", assetRoot);
         TapEnvironment tapEnvironment = RenderPlanner.tapEnvironment(system, bezel,
             settings.visual.renderMode);
@@ -120,6 +136,8 @@ class LinuxTap {
                 + " no staged lib/semu/libsemutap.so and no steamdeck build tree");
         } else {
             LinuxTap.mergeEnvironment(launchPlan, "LD_PRELOAD", tapLibrary);
+            LinuxTap.mergeReadOnlyFilesystemGrant(launchPlan,
+                PathTools.dirname(tapLibrary));
         }
     }
 }

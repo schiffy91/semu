@@ -15,6 +15,7 @@ import ../systems/system_parser.btrc
 import ../input/input_parser.btrc
 import ../input/controllers/steamdeck/steam_input.btrc
 import ./retroarch/retroarch_emulator.btrc
+import ./retroarch/retroarch_rendering.btrc
 import ./dolphin/dolphin_emulator.btrc
 import ./pcsx2/pcsx2_emulator.btrc
 import ./cemu/cemu_emulator.btrc
@@ -124,6 +125,20 @@ class EmulatorRegistry {
             AzaharEmulator().emitProfiles(definition, steamInput, keymap, outputRoot);
         } else if (emulatorId.equals(MelonDsEmulator().id())) {
             MelonDsEmulator().emitProfiles(definition, steamInput, keymap, outputRoot);
+        }
+    }
+
+    // Launch-time plan refinement from the concrete class — filesystem-
+    // dependent work (which tap-patched binary exists on THIS host, the
+    // live-configuration install carrying the app.quit binding) that the
+    // pure plan assembly must not do. RetroArch is the only answerer today;
+    // emulators without a registered refinement no-op.
+    class void refineLaunchPlan(string emulatorId, LaunchPlan launchPlan,
+                                EmulatorDefinition definition, EmulatorPlatform platform,
+                                string project) {
+        if (emulatorId.equals(RetroArchEmulator().id())) {
+            RetroArchRendering.refineLaunchPlan(launchPlan, definition, platform,
+                project);
         }
     }
 

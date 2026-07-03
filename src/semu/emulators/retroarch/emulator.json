@@ -51,9 +51,10 @@
           }
         ],
         "extra_args": [
-          "--devel"
+          "--devel",
+          "--user"
         ],
-        "runtime": "org.kde.Sdk//6.10",
+        "runtime": "org.kde.Platform//6.10",
         "command": "${asset_root}/bin/retroarch-semu"
       },
       "state": {
