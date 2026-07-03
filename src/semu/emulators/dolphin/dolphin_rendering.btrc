@@ -7,7 +7,7 @@
 // bezel, so overlayConfiguration is empty.
 
 import std.{vector}
-import ../model/emulator_platform.btrc
+import ../semu_emulator.btrc
 
 class DolphinRendering {
     // Dolphin's Dolphin.ini [Core] GFXBackend wire values.

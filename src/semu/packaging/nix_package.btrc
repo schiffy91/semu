@@ -18,8 +18,6 @@
 import std.{vector, fs, json}
 import ../core/parse_log.btrc
 import ../systems/system_parser.btrc
-import ../systems/model/semu_contracts.btrc
-import ../systems/model/system_definition.btrc
 
 // One "github"-kind upstream pin from sources.json, kept for the nix
 // cross-check after its own completeness validation passed.

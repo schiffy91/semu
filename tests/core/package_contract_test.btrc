@@ -16,7 +16,6 @@
 import std.{vector, strings, platform, process, fs, json}
 import ../../src/semu/core/parse_log.btrc
 import ../../src/semu/systems/system_parser.btrc
-import ../../src/semu/systems/model/semu_contracts.btrc
 import ../../src/semu/systems/system_emitter.btrc
 import ../../src/semu/platforms/platform_registry.btrc
 import ../../src/semu/packaging/nix_package.btrc

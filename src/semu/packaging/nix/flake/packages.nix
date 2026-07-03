@@ -43,6 +43,36 @@ forAllSystems (system: let
       };
     };
 
+  # libsemutap — the GL tap compositor (sources: src/semu/emulators/rendering/tap).
+  # Judgment call: a stanza here instead of semu_shaders.nix, because that file is a
+  # stdenvNoCC interpreter for the sources.json asset manifest while the tap is
+  # compiled code needing a real toolchain. x86_64-linux only (the Deck: LD_PRELOAD
+  # into the emulator process); the darwin plan is documented in rendering/tap/readme.md.
+  semuTap =
+    if isX86Linux then
+      pkgs.stdenv.mkDerivation {
+        pname = "libsemutap";
+        version = "1";
+        src = ../../../emulators/rendering/tap;
+        dontConfigure = true;
+        buildPhase = ''
+          runHook preBuild
+          $CC -shared -fPIC -O2 -o libsemutap.so libsemutap.c -ldl -lm
+          runHook postBuild
+        '';
+        installPhase = ''
+          runHook preInstall
+          mkdir -p "$out/lib"
+          cp libsemutap.so "$out/lib/"
+          runHook postInstall
+        '';
+        meta = {
+          description = "Semu GL tap compositor loaded into emulator processes";
+          platforms = [ "x86_64-linux" ];
+        };
+      }
+    else null;
+
   semuEmulators = pkgs.callPackage ../semu_emulators.nix { };
   # meta.broken marks emulators whose upstream artifact is currently
   # unfetchable (dead pin); they stay addressable as .#<id> but drop out of
@@ -74,6 +104,7 @@ in
   default = if isBundleTarget then semuApp else semuCli;
 }
 // lib.optionalAttrs (esDe != null) { es-de = esDe; }
+// lib.optionalAttrs (semuTap != null) { semu-tap = semuTap; }
 // lib.optionalAttrs (semuEmulators.retroarchCores != null) {
   retroarch-cores = semuEmulators.retroarchCores;
 }

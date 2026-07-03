@@ -10,8 +10,6 @@
 import std.{vector, platform, fs}
 import ../../src/semu/core/parse_log.btrc
 import ../../src/semu/systems/system_parser.btrc
-import ../../src/semu/systems/model/semu_contracts.btrc
-import ../../src/semu/systems/model/system_definition.btrc
 import ../../src/semu/emulators/rendering/semu_bezel.btrc
 import ../../src/semu/emulators/rendering/semu_shader.btrc
 import ../../src/semu/emulators/rendering/semu_rendering.btrc

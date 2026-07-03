@@ -19,10 +19,7 @@
 
 import std.{vector, fs, platform, process}
 import ../core/template_paths.btrc
-import ./model/emulator_platform.btrc
-import ./model/emulator_definition.btrc
-import ./model/state_policy.btrc
-import ./model/launch_plan.btrc
+import ./semu_emulator.btrc
 import ./emulator_process.btrc
 
 class EmulatorExecution {

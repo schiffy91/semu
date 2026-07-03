@@ -8,9 +8,8 @@
 import std.{vector, json, platform}
 import ../../core/parse_log.btrc
 import ../../core/template_paths.btrc
-import ../../emulators/model/emulator_platform.btrc
-import ../../emulators/model/emulator_definition.btrc
-import ../../emulators/model/launch_plan.btrc
+import ../../emulators/semu_emulator.btrc
+import ../../emulators/emulator_process.btrc
 import ../../packaging/appimage_package.btrc
 import ../semu_platform.btrc
 import ./linux_launch_assembly.btrc

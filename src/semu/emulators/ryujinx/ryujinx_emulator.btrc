@@ -11,9 +11,7 @@
 
 import std.{vector, fs}
 import ../../core/parse_log.btrc
-import ../model/emulator_platform.btrc
-import ../model/emulator_definition.btrc
-import ../../systems/model/emulator_binding.btrc
+import ../../systems/system_parser.btrc
 import ../../input/input_parser.btrc
 import ../../input/targets/steamdeck/steam_input.btrc
 import ../semu_emulator.btrc

@@ -12,8 +12,7 @@
 // verbatim in the plan; EmulatorExecution resolves them at the exec edge.
 
 import std.{vector}
-import ../../emulators/model/emulator_platform.btrc
-import ../../emulators/model/launch_plan.btrc
+import ../../emulators/semu_emulator.btrc
 import ../../emulators/emulator_process.btrc
 
 class LinuxLaunchAssembly {

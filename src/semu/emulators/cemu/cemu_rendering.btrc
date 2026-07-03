@@ -6,8 +6,7 @@
 // the platform's parsed GraphicsPolicy — only the settings.xml document
 // shape is Cemu-native grammar owned here.
 
-import ../model/emulator_platform.btrc
-import ../model/graphics_policy.btrc
+import ../semu_emulator.btrc
 
 class CemuRendering {
     // The graphics-api wire value ("0"/"1" in the frozen contract) for the

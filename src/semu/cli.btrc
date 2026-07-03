@@ -23,9 +23,7 @@ import ./platforms/platform_registry.btrc
 import ./platforms/linux/linux_provisioner.btrc
 import ./systems/system_parser.btrc
 import ./systems/system_emitter.btrc
-import ./systems/model/semu_contracts.btrc
-import ./emulators/model/emulator_definition.btrc
-import ./emulators/model/launch_plan.btrc
+import ./emulators/semu_emulator.btrc
 import ./emulators/emulator_process.btrc
 import ./emulators/emulator_execution.btrc
 import ./emulators/emulator_registry.btrc

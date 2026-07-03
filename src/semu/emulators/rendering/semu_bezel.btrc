@@ -19,8 +19,7 @@
 
 import std.{vector, fs, platform}
 import ../../core/geometry.btrc
-import ../../systems/model/system_definition.btrc
-import ../../systems/model/bezel_collection.btrc
+import ../../systems/system_parser.btrc
 
 class ResolvedBezel {
     public string art;

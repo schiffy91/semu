@@ -8,10 +8,8 @@ import std.{vector, fs, process}
 import ../../core/parse_log.btrc
 import ../../core/settings.btrc
 import ../../core/settings_parser.btrc
-import ../../systems/model/semu_contracts.btrc
-import ../../emulators/model/emulator_definition.btrc
-import ../../emulators/model/emulator_platform.btrc
-import ../../emulators/model/launch_plan.btrc
+import ../../systems/system_parser.btrc
+import ../../emulators/semu_emulator.btrc
 import ../../emulators/emulator_process.btrc
 import ../../input/targets/steamdeck/steam_input.btrc
 

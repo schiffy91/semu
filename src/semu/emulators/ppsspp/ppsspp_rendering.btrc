@@ -8,7 +8,7 @@
 // instead of leaking into shared code.
 
 import std.{vector}
-import ../model/emulator_platform.btrc
+import ../semu_emulator.btrc
 
 class PpssppRendering {
     // No CLI graphics grammar: the frozen contract declares graphics.method

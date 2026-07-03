@@ -14,9 +14,8 @@
 import std.{vector, fs, json, platform}
 import ../core/parse_log.btrc
 import ../core/template_paths.btrc
-import ../emulators/model/emulator_platform.btrc
-import ../emulators/model/emulator_definition.btrc
-import ../emulators/model/launch_plan.btrc
+import ../emulators/semu_emulator.btrc
+import ../emulators/emulator_process.btrc
 import ./linux/linux_platform.btrc
 import ./macos/macos_platform.btrc
 

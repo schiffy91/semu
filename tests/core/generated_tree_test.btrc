@@ -12,7 +12,6 @@ import ../../src/semu/core/parse_log.btrc
 import ../../src/semu/core/settings.btrc
 import ../../src/semu/core/settings_parser.btrc
 import ../../src/semu/systems/system_parser.btrc
-import ../../src/semu/systems/model/semu_contracts.btrc
 import ../../src/semu/systems/system_emitter.btrc
 import ../../src/semu/platforms/platform_registry.btrc
 
