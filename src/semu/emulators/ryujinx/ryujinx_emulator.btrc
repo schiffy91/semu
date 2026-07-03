@@ -18,7 +18,7 @@ import ../semu_emulator.btrc
 import ./ryujinx_emitter.btrc
 import ./ryujinx_rendering.btrc
 
-class RyujinxEmulator extends SemuEmulator {
+class RyujinxEmulator extends SemuEmulator implements SemuEmitter, SemuRenderer {
     public RyujinxEmulator() {}
 
     public string id() {

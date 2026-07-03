@@ -16,7 +16,7 @@ import ../../input/input_parser.btrc
 import ../../input/controllers/steamdeck/steam_input.btrc
 import ../semu_emulator.btrc
 
-class FlycastEmulator extends SemuEmulator {
+class FlycastEmulator extends SemuEmulator implements SemuEmitter, SemuRenderer {
     public FlycastEmulator() {}
 
     public string id() {

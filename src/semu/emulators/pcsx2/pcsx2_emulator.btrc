@@ -11,7 +11,7 @@ import ../../input/controllers/steamdeck/steam_input.btrc
 import ../semu_emulator.btrc
 import ./pcsx2_emitter.btrc
 
-class Pcsx2Emulator extends SemuEmulator {
+class Pcsx2Emulator extends SemuEmulator implements SemuEmitter, SemuRenderer {
     public Pcsx2Emulator() {}
 
     public string id() {

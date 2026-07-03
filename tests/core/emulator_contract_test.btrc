@@ -9,7 +9,9 @@
 // launch wiring (rom-path system inference + LinuxTap environment merging
 // with the flatpak --env grants and LD_PRELOAD), the macos overlay-tap
 // wiring (MacosTap environment merging + the /bin/sh overlay spawn wrap,
-// never an injection), and the
+// never an injection), the SemuEmitter/SemuRenderer duty contract (every
+// registered emulator id answers both duties; profile directories appear at
+// write time only), and the
 // platform contract: the macos axis validation (now routed through the
 // platform classes) still rejects display_server and its sibling linux-only
 // concepts, and the registry rejects unknown platforms keys. Returns
@@ -395,6 +397,199 @@ class EmulatorContractTest {
                         + " (" + chordToken + ")");
                 }
             }
+        }
+        return failures;
+    }
+
+    // Empty directories in an emitted profile tree are litter: directories
+    // are created at write time only, so a no-op emitter leaves nothing.
+    class int countEmptyDirectories(string root) {
+        if (!FileSystem.isDir(root)) {
+            return 0;
+        }
+        int emptyCount = 0;
+        int entryCount = 0;
+        for entry in Directory(root).entries() {
+            entryCount++;
+            string childPath = PathTools.join(root, entry);
+            if (FileSystem.isDir(childPath)) {
+                emptyCount = emptyCount
+                    + EmulatorContractTest.countEmptyDirectories(childPath);
+            }
+        }
+        if (entryCount == 0) {
+            emptyCount++;
+        }
+        return emptyCount;
+    }
+
+    class EmulatorPlatform probePlatform(SemuContracts contracts, string emulatorId) {
+        EmulatorDefinition definition = EmulatorContractTest.findEmulator(contracts,
+            emulatorId);
+        if (definition.platforms.size() > 0) {
+            return definition.platforms.get(0);
+        }
+        return EmulatorPlatform();
+    }
+
+    // One renderer-duty answer: recording it proves the concrete class
+    // computed both surfaces; the invariant checked here holds for every
+    // emulator — graphics force arguments exist only where the contract
+    // declares a cli graphics method.
+    class int recordRendererAnswer(Vector<string> answeredIds, string emulatorId,
+                                   EmulatorPlatform probePlatform,
+                                   Vector<string> forceArguments, string overlayText) {
+        answeredIds.push(emulatorId);
+        bool declaresCliGraphics = probePlatform.graphics.present
+            && probePlatform.graphics.method.equals("cli");
+        if (!declaresCliGraphics && forceArguments.size() != 0) {
+            return EmulatorContractTest.fail(emulatorId
+                + " answers graphics force arguments without a cli graphics contract");
+        }
+        return 0;
+    }
+
+    // Both SemuEmulator duties across the whole registry. Enforcement is at
+    // COMPILE time: every concrete emulator class declares
+    // `extends SemuEmulator implements SemuEmitter, SemuRenderer`
+    // (semu_emulator.btrc), so a class that forgets emitProfiles or
+    // graphicsForceArguments/overlayConfiguration fails the BUILD via the
+    // interface-satisfaction and abstract-method checks — a new emulator can
+    // never reach this test as a silent no-op. What runtime adds on top:
+    // every registered id ANSWERS the emitter duty through the registry (the
+    // one shared-code route) creating directories at write time only — the
+    // deliberate no-op emitters leave NO directory, the emitting ones leave
+    // no empty one — and every registered id answers the renderer duty
+    // (btrc dispatch is static, so the concrete classes answer through
+    // their own declared types; tests may name them).
+    class int checkEmulatorDutyContract(SemuContracts contracts, string repoRoot) {
+        int failures = 0;
+        ParseLog log = ParseLog();
+        string targetDirectory = PathTools.join(repoRoot,
+            "src/semu/input/controllers/steamdeck");
+        Keymap keymap = KeymapParser.parse(
+            Path.readAll(PathTools.join(targetDirectory, "steamdeck.skm")), log);
+        SteamInputTarget steamInput = SteamInputParser.parse(
+            PathTools.join(targetDirectory, "steam_input.json"), log);
+        string dutyRoot = PathTools.join(
+            Environment.get("SEMU_TEST_TMP", "/tmp/semu-core-tests"), "duty-contract");
+
+        int emittingCount = 0;
+        for emulatorId in EmulatorRegistry.registeredIds() {
+            EmulatorDefinition definition = EmulatorContractTest.findEmulator(contracts,
+                emulatorId);
+            if (definition.id.isEmpty()) {
+                failures = failures + EmulatorContractTest.fail("registered emulator '"
+                    + emulatorId + "' has no parsed contract");
+            } else {
+                string outputRoot = PathTools.join(dutyRoot, emulatorId);
+                EmulatorRegistry.emitProfiles(emulatorId, definition, steamInput, keymap,
+                    outputRoot);
+                if (EmulatorContractTest.countEmptyDirectories(outputRoot) != 0) {
+                    failures = failures + EmulatorContractTest.fail("emitter duty for '"
+                        + emulatorId + "' littered an empty profile directory under "
+                        + outputRoot);
+                }
+                if (FileSystem.isDir(outputRoot)) {
+                    emittingCount++;
+                }
+            }
+        }
+        if (emittingCount == 0) {
+            failures = failures + EmulatorContractTest.fail(
+                "no registered emulator emitted a profile — the emitter routing is dead");
+        }
+
+        Vector<string> rendererAnsweredIds = [];
+        EmulatorPlatform aresPlatform = EmulatorContractTest.probePlatform(contracts,
+            AresEmulator().id());
+        failures = failures + EmulatorContractTest.recordRendererAnswer(rendererAnsweredIds,
+            AresEmulator().id(), aresPlatform,
+            AresEmulator().graphicsForceArguments(aresPlatform, "opengl"),
+            AresEmulator().overlayConfiguration(aresPlatform));
+        EmulatorPlatform azaharPlatform = EmulatorContractTest.probePlatform(contracts,
+            AzaharEmulator().id());
+        failures = failures + EmulatorContractTest.recordRendererAnswer(rendererAnsweredIds,
+            AzaharEmulator().id(), azaharPlatform,
+            AzaharEmulator().graphicsForceArguments(azaharPlatform, "opengl"),
+            AzaharEmulator().overlayConfiguration(azaharPlatform));
+        EmulatorPlatform cemuPlatform = EmulatorContractTest.probePlatform(contracts,
+            CemuEmulator().id());
+        failures = failures + EmulatorContractTest.recordRendererAnswer(rendererAnsweredIds,
+            CemuEmulator().id(), cemuPlatform,
+            CemuEmulator().graphicsForceArguments(cemuPlatform, "opengl"),
+            CemuEmulator().overlayConfiguration(cemuPlatform));
+        EmulatorPlatform dolphinPlatform = EmulatorContractTest.probePlatform(contracts,
+            DolphinEmulator().id());
+        failures = failures + EmulatorContractTest.recordRendererAnswer(rendererAnsweredIds,
+            DolphinEmulator().id(), dolphinPlatform,
+            DolphinEmulator().graphicsForceArguments(dolphinPlatform, "opengl"),
+            DolphinEmulator().overlayConfiguration(dolphinPlatform));
+        EmulatorPlatform flycastPlatform = EmulatorContractTest.probePlatform(contracts,
+            FlycastEmulator().id());
+        failures = failures + EmulatorContractTest.recordRendererAnswer(rendererAnsweredIds,
+            FlycastEmulator().id(), flycastPlatform,
+            FlycastEmulator().graphicsForceArguments(flycastPlatform, "opengl"),
+            FlycastEmulator().overlayConfiguration(flycastPlatform));
+        EmulatorPlatform melonDsPlatform = EmulatorContractTest.probePlatform(contracts,
+            MelonDsEmulator().id());
+        failures = failures + EmulatorContractTest.recordRendererAnswer(rendererAnsweredIds,
+            MelonDsEmulator().id(), melonDsPlatform,
+            MelonDsEmulator().graphicsForceArguments(melonDsPlatform, "opengl"),
+            MelonDsEmulator().overlayConfiguration(melonDsPlatform));
+        EmulatorPlatform pcsx2Platform = EmulatorContractTest.probePlatform(contracts,
+            Pcsx2Emulator().id());
+        failures = failures + EmulatorContractTest.recordRendererAnswer(rendererAnsweredIds,
+            Pcsx2Emulator().id(), pcsx2Platform,
+            Pcsx2Emulator().graphicsForceArguments(pcsx2Platform, "opengl"),
+            Pcsx2Emulator().overlayConfiguration(pcsx2Platform));
+        EmulatorPlatform ppssppPlatform = EmulatorContractTest.probePlatform(contracts,
+            PpssppEmulator().id());
+        failures = failures + EmulatorContractTest.recordRendererAnswer(rendererAnsweredIds,
+            PpssppEmulator().id(), ppssppPlatform,
+            PpssppEmulator().graphicsForceArguments(ppssppPlatform, "opengl"),
+            PpssppEmulator().overlayConfiguration(ppssppPlatform));
+        EmulatorPlatform retroArchPlatform = EmulatorContractTest.probePlatform(contracts,
+            RetroArchEmulator().id());
+        failures = failures + EmulatorContractTest.recordRendererAnswer(rendererAnsweredIds,
+            RetroArchEmulator().id(), retroArchPlatform,
+            RetroArchEmulator().graphicsForceArguments(retroArchPlatform, "opengl"),
+            RetroArchEmulator().overlayConfiguration(retroArchPlatform));
+        EmulatorPlatform ryujinxPlatform = EmulatorContractTest.probePlatform(contracts,
+            RyujinxEmulator().id());
+        failures = failures + EmulatorContractTest.recordRendererAnswer(rendererAnsweredIds,
+            RyujinxEmulator().id(), ryujinxPlatform,
+            RyujinxEmulator().graphicsForceArguments(ryujinxPlatform, "opengl"),
+            RyujinxEmulator().overlayConfiguration(ryujinxPlatform));
+
+        for registeredId in EmulatorRegistry.registeredIds() {
+            if (!rendererAnsweredIds.contains(registeredId)) {
+                failures = failures + EmulatorContractTest.fail(
+                    "renderer duty unanswered for registered emulator '"
+                    + registeredId + "'");
+            }
+        }
+        if (rendererAnsweredIds.size() != EmulatorRegistry.registeredIds().size()) {
+            failures = failures + EmulatorContractTest.fail(
+                "renderer duty answered by a class the registry does not route");
+        }
+
+        // The one contract-declared cli graphics grammar today: dolphin's
+        // linux block pins method 'cli', so its force arguments must carry
+        // the --config backend pair.
+        EmulatorDefinition dolphin = EmulatorContractTest.findEmulator(contracts,
+            DolphinEmulator().id());
+        EmulatorPlatform dolphinLinux = dolphin.platformFor("linux");
+        Vector<string> dolphinForceArguments = DolphinEmulator().graphicsForceArguments(
+            dolphinLinux, "opengl");
+        if (dolphinForceArguments.size() != 2
+            || !dolphinForceArguments.contains("--config")) {
+            failures = failures + EmulatorContractTest.fail(
+                "dolphin's cli graphics contract must answer the --config backend pair");
+        }
+
+        if (failures == 0) {
+            print("  OK emulator duty contract (emitter + renderer across the registry)");
         }
         return failures;
     }
@@ -892,6 +1087,8 @@ class EmulatorContractTest {
         failures = failures + EmulatorContractTest.checkAresPlans(contracts);
         failures = failures + EmulatorContractTest.checkEsDeCommands(contracts);
         failures = failures + EmulatorContractTest.checkPcsx2Profiles(contracts, repoRoot);
+        failures = failures + EmulatorContractTest.checkEmulatorDutyContract(contracts,
+            repoRoot);
         failures = failures + EmulatorContractTest.checkSystemInference(contracts);
         failures = failures + EmulatorContractTest.checkLinuxTapWiring(contracts, repoRoot);
         failures = failures + EmulatorContractTest.checkMacosTapWiring(contracts, repoRoot);
