@@ -1,4 +1,4 @@
-# semu_emulators.nix — emulator inventory derived from the JSON contracts.
+# emulators.nix — emulator inventory derived from the JSON contracts.
 #
 # WHICH emulators need a Nix package comes from
 # src/semu/emulators/<id>/emulator.json: a macos platform with backend
@@ -13,8 +13,8 @@
 { lib, stdenv, callPackage, symlinkJoin, libretro }:
 
 let
-  emulatorsDir = ../../emulators;
-  systemsDir = ../../systems;
+  emulatorsDir = ./.;
+  systemsDir = ../systems;
 
   contractIds = dir: fileName: lib.attrNames (lib.filterAttrs
     (name: type: type == "directory"

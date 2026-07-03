@@ -1,5 +1,5 @@
 # semu_shaders.nix — generic interpreter for the shader half of
-# src/semu/emulators/rendering/assets/sources.json: stages every "trees"
+# src/semu/assets/sources.json: stages every "trees"
 # entry under share/libretro/shaders/<stage> and emits every slang_wrapper
 # asset at share/libretro/shaders/semu/<relative> — the "semu/" namespace
 # ShaderSelector.resolvePath maps "assets/shaders/..." onto. No pins or
@@ -7,7 +7,7 @@
 { lib, stdenvNoCC, fetchFromGitHub, pkgs }:
 
 let
-  sources = lib.importJSON ../../emulators/rendering/assets/sources.json;
+  sources = lib.importJSON ./sources.json;
 
   upstreamSource = name: spec:
     if spec.kind == "github" then

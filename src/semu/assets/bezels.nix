@@ -1,5 +1,5 @@
 # semu_bezels.nix — generic interpreter for the image half of
-# src/semu/emulators/rendering/assets/sources.json (recipe types copy /
+# src/semu/assets/sources.json (recipe types copy /
 # local / flatten / recolor / glass) plus its "staging" section. sources.json
 # is the only place upstream pins and asset names live; a new entry there is
 # picked up here with zero nix edits.
@@ -15,8 +15,8 @@
 { lib, stdenvNoCC, fetchFromGitHub, imagemagick }:
 
 let
-  sources = lib.importJSON ../../emulators/rendering/assets/sources.json;
-  repoRoot = ../../../..;
+  sources = lib.importJSON ./sources.json;
+  repoRoot = ../../..;
 
   githubTrees = lib.mapAttrs
     (_: spec: fetchFromGitHub {

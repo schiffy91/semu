@@ -1,14 +1,14 @@
 // nix_package.btrc — declarative consistency check for the Nix asset layer.
 //
 // Verifies that the single source of truth for visual assets
-// (src/semu/emulators/rendering/assets/sources.json) is complete and in sync:
+// (src/semu/assets/sources.json) is complete and in sync:
 //   1. every "github" upstream pin carries rev + nar_hash (nixpkgs pins
 //      carry attr),
 //   2. every canonical assets/ path referenced by any system's bezels.json /
 //      shaders.json — plus the code-owned generic fallback bezel arts — has a
 //      recipe in sources.json "assets",
 //   3. the pins match the fetchFromGitHub blocks hardcoded in
-//      src/semu/packaging/nix/semu_bezels.nix. Mismatches there are WARNINGS
+//      src/semu/assets/bezels.nix. Mismatches there are WARNINGS
 //      (logged with a "warning:" prefix, not counted as issues): the nix file
 //      is the derived artifact to regenerate, not a second source of truth.
 //
@@ -39,11 +39,11 @@ class GithubPin {
 
 class NixPackage {
     class string sourcesPath(string repoRoot) {
-        return PathTools.join(repoRoot, "src/semu/emulators/rendering/assets/sources.json");
+        return PathTools.join(repoRoot, "src/semu/assets/sources.json");
     }
 
     class string bezelsNixPath(string repoRoot) {
-        return PathTools.join(repoRoot, "src/semu/packaging/nix/semu_bezels.nix");
+        return PathTools.join(repoRoot, "src/semu/assets/bezels.nix");
     }
 
     class string stringField(JsonValue objectValue, string key) {
@@ -175,25 +175,25 @@ class NixPackage {
         return issues;
     }
 
-    // -- 3. semu_bezels.nix must be a sources.json interpreter -----------------
+    // -- 3. assets/bezels.nix must be a sources.json interpreter -----------------
     // Pins live ONLY in sources.json; the nix side reads it via fromJSON. A
     // rev or hash duplicated into the nix file is drift waiting to happen.
     class void crossCheckBezelsNix(string repoRoot, Vector<GithubPin> pins, ParseLog log) {
         string nixPath = NixPackage.bezelsNixPath(repoRoot);
         if (!FileSystem.isFile(nixPath)) {
-            log.add(nixPath, "pins", "warning: semu_bezels.nix not found; pin cross-check skipped");
+            log.add(nixPath, "pins", "warning: assets/bezels.nix not found; pin cross-check skipped");
             return;
         }
         string nixText = Path.readAll(nixPath);
         if (!nixText.contains("sources.json")) {
             log.add(nixPath, "pins",
-                "warning: semu_bezels.nix does not read sources.json (pins must not live in nix)");
+                "warning: assets/bezels.nix does not read sources.json (pins must not live in nix)");
             return;
         }
         for pin in pins {
             if (nixText.contains(pin.revision) || nixText.contains(pin.narHash)) {
                 log.add(nixPath, "pins." + pin.key,
-                    "warning: pin duplicated in semu_bezels.nix (sources.json is the only pin store)");
+                    "warning: pin duplicated in assets/bezels.nix (sources.json is the only pin store)");
             }
         }
     }

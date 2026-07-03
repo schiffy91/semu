@@ -21,12 +21,12 @@ forAllSystems (system: let
     bubblewrap = if isLinux then pkgs.bubblewrap else null;
   };
 
-  semuBezels = pkgs.callPackage ../semu_bezels.nix { };
-  semuShaders = pkgs.callPackage ../semu_shaders.nix { };
+  semuBezels = pkgs.callPackage ../../../assets/bezels.nix { };
+  semuShaders = pkgs.callPackage ../../../assets/shaders.nix { };
 
   # Coverage invariant of the two sources.json interpreters: every asset
   # entry must be claimed by exactly one of them.
-  sourceManifest = lib.importJSON ../../../emulators/rendering/assets/sources.json;
+  sourceManifest = lib.importJSON ../../../assets/sources.json;
   assetNames = lib.attrNames sourceManifest.assets;
   coveredNames = semuBezels.imageAssetNames ++ semuShaders.shaderAssetNames;
   uncovered = lib.filter (name: !(lib.elem name coveredNames)) assetNames;
@@ -44,7 +44,7 @@ forAllSystems (system: let
     };
 
   # libsemutap — the GL tap compositor (sources: src/semu/emulators/rendering/tap).
-  # Judgment call: a stanza here instead of semu_shaders.nix, because that file is a
+  # Judgment call: a stanza here instead of assets/shaders.nix, because that file is a
   # stdenvNoCC interpreter for the sources.json asset manifest while the tap is
   # compiled code needing a real toolchain. x86_64-linux only (the Deck: LD_PRELOAD
   # into the emulator process); the darwin plan is documented in rendering/tap/readme.md.
@@ -73,7 +73,7 @@ forAllSystems (system: let
       }
     else null;
 
-  semuEmulators = pkgs.callPackage ../semu_emulators.nix { };
+  semuEmulators = pkgs.callPackage ../../../emulators/emulators.nix { };
   # meta.broken marks emulators whose upstream artifact is currently
   # unfetchable (dead pin); they stay addressable as .#<id> but drop out of
   # the composed bundle until re-pinned.
@@ -83,8 +83,8 @@ forAllSystems (system: let
       semuEmulators.retroarchCores;
 
   esDe =
-    if isX86Linux then pkgs.callPackage ../es_de.nix { steamDeck = true; }
-    else if isDarwin then pkgs.callPackage ../es_de.nix { }
+    if isX86Linux then pkgs.callPackage ../../../emulators/es_de/es_de.nix { steamDeck = true; }
+    else if isDarwin then pkgs.callPackage ../../../emulators/es_de/es_de.nix { }
     else null;
 
   nixGLIntel = if isX86Linux then nixGL.packages.${system}.nixGLIntel else null;
