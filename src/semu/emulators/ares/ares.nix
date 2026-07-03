@@ -4,6 +4,10 @@
 # (Applications/ares.app + bin/ares), so this is a passthrough kept only so
 # every emulator's recipe lives at emulators/<id>/<id>.nix; the source pin
 # is flake.lock's nixpkgs.
+#
+# No patches hook: nixpkgs already builds ares from source, and macOS
+# composites bezels via the external overlay, so no Semu build
+# customization is needed.
 { ares }:
 
 ares

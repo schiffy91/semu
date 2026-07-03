@@ -1,0 +1,76 @@
+// ares_emulator.btrc — the ares concrete emulator class. ares is a pure-data
+// standalone: the macOS-only native backend, the --fullscreen argument, the
+// sandbox-exec write grants and the Application Support state grant all live
+// in emulators/ares/emulator.json and are executed by the generic machinery
+// (the per-system '--system "Nintendo 64"' selector travels on the n64
+// binding, not here). This class supplies identity, contract validation
+// (ares declares no extension-block grammar), and the documented answers
+// below — all deliberately empty.
+
+import std.{vector}
+import ../../core/parse_log.btrc
+import ../../systems/system_parser.btrc
+import ../../input/input_parser.btrc
+import ../../input/controllers/steamdeck/steam_input.btrc
+import ../semu_emulator.btrc
+
+class AresEmulator extends SemuEmulator {
+    public AresEmulator() {}
+
+    public string id() {
+        return "ares";
+    }
+
+    public string contractFile() {
+        return "emulators/ares/emulator.json";
+    }
+
+    // ares declares no extension-block grammar: every knob it needs fits the
+    // shared platform schema, so a platforms.<os>.ares sub-object is a
+    // contract mistake to report, not data awaiting interpretation.
+    public void parseExtension(EmulatorPlatform platform, ParseLog log) {
+        if (platform.hasExtension()) {
+            log.add(self.contractFile(),
+                "platforms." + platform.operatingSystem + "." + self.id(),
+                "ares declares no extension block grammar; remove it or "
+                    + "teach AresEmulator.parseExtension its schema");
+        }
+    }
+
+    // The golden command is the emulator token, the platform's --fullscreen
+    // switch and the rom: the '--system "Nintendo 64"' selector is binding
+    // data (emulator.json doc.provenance), so this class appends nothing.
+    public Vector<string> commandFragments(EmulatorBinding binding, EmulatorPlatform platform) {
+        Vector<string> fragments = [];
+        return fragments;
+    }
+
+    // Deliberate no-op: ares ships no profile surface — no golden profile
+    // directory exists for it, and its input contract carries only app.quit,
+    // which Steam Input synthesizes as a keyboard chord.
+    public void emitProfiles(EmulatorDefinition definition, SteamInputTarget steamInput,
+                             Keymap keymap, string outputRoot) {
+    }
+
+    // No CLI graphics grammar: the macOS contract declares no graphics block —
+    // presentation is the external macOS overlay, not an injected tap — so no
+    // force arguments exist for any graphics api.
+    public Vector<string> graphicsForceArguments(EmulatorPlatform platform, string graphicsApi) {
+        Vector<string> arguments = [];
+        return arguments;
+    }
+
+    // No emulator-native overlay configuration text: bezels on macOS come
+    // from the external overlay process, so there is no ares overlay file to
+    // write.
+    public string overlayConfiguration(EmulatorPlatform platform) {
+        return "";
+    }
+
+    // ares has no proven native hotkey grammar (its input contract is the
+    // single app.quit action); chords pass through verbatim so Steam Input's
+    // keyboard emission stays the single hotkey path.
+    public string translateChord(string chord) {
+        return chord;
+    }
+}

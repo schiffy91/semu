@@ -3,9 +3,7 @@
 // session policy, sandbox, OpenGL config-file pin and xdg state all live in
 // emulators/melonds/emulator.json and are executed by the generic machinery.
 // This class answers the SemuEmulator surface with melonDS's proven,
-// documented answers — most of them deliberately empty (see each method) —
-// and delegates profile building to MelonDsEmitter and rendering glue to
-// MelonDsRendering.
+// documented answers — most of them deliberately empty (see each method).
 
 import std.{vector}
 import ../../core/parse_log.btrc
@@ -13,8 +11,6 @@ import ../../systems/system_parser.btrc
 import ../../input/input_parser.btrc
 import ../../input/controllers/steamdeck/steam_input.btrc
 import ../semu_emulator.btrc
-import ./melonds_emitter.btrc
-import ./melonds_rendering.btrc
 
 class MelonDsEmulator extends SemuEmulator {
     public MelonDsEmulator() {}
@@ -47,19 +43,32 @@ class MelonDsEmulator extends SemuEmulator {
         return fragments;
     }
 
-    // Profile emission is a verified no-op: the golden packaging tree carries
-    // no melonDS profile directory (details in melonds_emitter.btrc).
+    // Deliberate no-op: melonDS ships NO profile surface. The proven Deck
+    // deployment ran the stock flatpak configuration and the golden tree
+    // (garbage/generated/packaging/emulators/profiles/) carries no melonDS
+    // directory to reproduce. The one melonDS config edit that exists (the
+    // 3D_Renderer OpenGL pin in melonDS.ini) is not a profile: it is the
+    // platform's graphics config-file policy in emulators/melonds/emulator.json,
+    // applied by the generic launcher machinery. If melonDS ever grows a proven
+    // per-title profile, its builders belong here.
     public void emitProfiles(EmulatorDefinition definition, SteamInputTarget steamInput,
                              Keymap keymap, string outputRoot) {
-        MelonDsEmitter.emitProfiles(definition, steamInput, keymap, outputRoot);
     }
 
+    // No CLI graphics grammar: melonDS forces its renderer through the graphics
+    // config-file policy, never through command-line switches — the contract
+    // pins graphics.method to "config_file" — so no arguments exist for any
+    // graphics api.
     public Vector<string> graphicsForceArguments(EmulatorPlatform platform, string graphicsApi) {
-        return MelonDsRendering.graphicsForceArguments(platform, graphicsApi);
+        Vector<string> arguments = [];
+        return arguments;
     }
 
+    // melonDS has no native overlay system (the contract declares no
+    // graphics.overlay_api); the OpenGL tap draws the bezel shell, so there is
+    // no overlay configuration text to hand the emulator.
     public string overlayConfiguration(EmulatorPlatform platform) {
-        return MelonDsRendering.overlayConfiguration(platform);
+        return "";
     }
 
     // melonDS has no proven native hotkey grammar (no golden hotkey

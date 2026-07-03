@@ -59,7 +59,11 @@ let
     hash = "sha256-85PZ7ZDoannmwoFeKM7hm7fQS1X2MPxAwm6k+Sa+bGc=";
   };
 
-  # Semu patches hook in here once the source build is the active variant.
+  # Semu patches hook in here once the source build is the active variant —
+  # none are needed today: PCSX2's contract can force OpenGL ([EmuCore/GS]
+  # Renderer), so on linux the LD_PRELOAD interposition tap composites bezels
+  # externally (SEMU_TAP_STANDALONE full-frame mode) without touching the
+  # source, and macOS presents via the external overlay.
   patches = [ ];
 
   sourceBuild = stdenv.mkDerivation {
