@@ -31,6 +31,7 @@ import ./emulators/emulator_process.btrc
 import ./emulators/emulator_execution.btrc
 import ./emulators/emulator_registry.btrc
 import ./platforms/linux/linux_tap.btrc
+import ./platforms/macos/macos_tap.btrc
 import ./input/input_parser.btrc
 import ./input/controllers/steamdeck/steam_input.btrc
 import ./input/controllers/steamdeck/steamdeck_input_emitter.btrc
@@ -155,21 +156,25 @@ class SemuCli {
         return SystemDefinition();
     }
 
-    // The linux GL-tap wiring: when the verbatim tail ends in a rom whose
-    // system infers from its directory (SemuContracts.systemForRomPath, pure
-    // contract data), the assembled plan gains the SEMU_TAP_* environment +
-    // LD_PRELOAD via LinuxTap. macos plans stay untouched — the overlay
-    // compositor is future work (emulators/rendering/tap/readme.md). Settings
-    // parse problems fall back to the built-in visual defaults rather than
-    // blocking the launch.
+    // The tap gate shared by both platforms: the verbatim tail's last token
+    // must be a rom whose system infers from its directory
+    // (SemuContracts.systemForRomPath, pure contract data). "" = no tap.
+    class string inferredSystemForTail(SemuContracts contracts,
+                                       Vector<string> systemArguments) {
+        if (systemArguments.size() == 0) {
+            return "";
+        }
+        return contracts.systemForRomPath(
+            systemArguments.get(systemArguments.size() - 1));
+    }
+
+    // The linux GL-tap wiring: an inferring rom tail gains the SEMU_TAP_*
+    // environment + LD_PRELOAD via LinuxTap. Settings parse problems fall
+    // back to the built-in visual defaults rather than blocking the launch.
     class void applyLinuxTap(LaunchPlan launchPlan, SemuContracts contracts,
                              EmulatorDefinition emulatorDefinition,
                              Vector<string> systemArguments, string project) {
-        if (systemArguments.size() == 0) {
-            return;
-        }
-        string romCandidate = systemArguments.get(systemArguments.size() - 1);
-        string inferredSystemId = contracts.systemForRomPath(romCandidate);
+        string inferredSystemId = SemuCli.inferredSystemForTail(contracts, systemArguments);
         if (inferredSystemId.isEmpty()) {
             return;
         }
@@ -177,6 +182,23 @@ class SemuCli {
         SemuSettings settings = SettingsParser.load(project, settingsLog);
         LinuxTap.apply(launchPlan, emulatorDefinition,
             SemuCli.systemForId(contracts, inferredSystemId), settings, project);
+    }
+
+    // The macos overlay wiring: same gate, but macos emulators present via
+    // Metal so nothing is injected — MacosTap merges the same SEMU_TAP_*
+    // environment and wraps the assembled vector so the overlay compositor
+    // (platforms/macos/macos_tap.btrc) spawns alongside the emulator with
+    // its pid.
+    class void applyMacosTap(LaunchPlan launchPlan, SemuContracts contracts,
+                             Vector<string> systemArguments, string project) {
+        string inferredSystemId = SemuCli.inferredSystemForTail(contracts, systemArguments);
+        if (inferredSystemId.isEmpty()) {
+            return;
+        }
+        ParseLog settingsLog = ParseLog();
+        SemuSettings settings = SettingsParser.load(project, settingsLog);
+        MacosTap.apply(launchPlan, SemuCli.systemForId(contracts, inferredSystemId),
+            settings, project);
     }
 
     class int printPlan(LaunchPlan launchPlan) {
@@ -242,6 +264,11 @@ class SemuCli {
             SemuCli.applyLinuxTap(launchPlan, contracts, emulatorDefinition,
                 systemArguments, project);
         }
+        if (operatingSystem.equals("macos")) {
+            SemuCli.applyMacosTap(launchPlan, contracts, systemArguments, project);
+        }
+        EmulatorRegistry.refineLaunchPlan(emulatorDefinition.id, launchPlan,
+            emulatorDefinition, emulatorDefinition.platformFor(operatingSystem), project);
         if (printPlanRequested) {
             return SemuCli.printPlan(launchPlan);
         }

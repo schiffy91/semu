@@ -7,7 +7,9 @@
 // defaults), the ES-DE command grammar against the golden es_systems
 // strings, PCSX2 profile emission against the golden Deck inis, the GL-tap
 // launch wiring (rom-path system inference + LinuxTap environment merging
-// with the flatpak --env grants and LD_PRELOAD), and the
+// with the flatpak --env grants and LD_PRELOAD), the macos overlay-tap
+// wiring (MacosTap environment merging + the /bin/sh overlay spawn wrap,
+// never an injection), and the
 // platform contract: the macos axis validation (now routed through the
 // platform classes) still rejects display_server and its sibling linux-only
 // concepts, and the registry rejects unknown platforms keys. Returns
@@ -24,7 +26,9 @@ import ../../src/semu/emulators/semu_emulator.btrc
 import ../../src/semu/emulators/emulator_process.btrc
 import ../../src/semu/emulators/emulator_emitter.btrc
 import ../../src/semu/emulators/emulator_registry.btrc
+import ../../src/semu/emulators/retroarch/retroarch_rendering.btrc
 import ../../src/semu/platforms/linux/linux_tap.btrc
+import ../../src/semu/platforms/macos/macos_tap.btrc
 import ../../src/semu/input/input_parser.btrc
 import ../../src/semu/input/controllers/steamdeck/steam_input.btrc
 
@@ -162,9 +166,13 @@ class EmulatorContractTest {
             failures = failures + EmulatorContractTest.fail(
                 "retroarch linux plan lacks the tap --command override");
         }
-        if (!EmulatorContractTest.argumentVectorHas(retroArchPlan, "org.kde.Sdk//6.10")) {
+        // The KDE Application PLATFORM runtime (not the Sdk): it carries the
+        // Qt 6.10 the tap-patched build links against, it is what semu's own
+        // provisioning installs, and it is proven on the Deck.
+        if (!EmulatorContractTest.argumentVectorHas(retroArchPlan,
+                "org.kde.Platform//6.10")) {
             failures = failures + EmulatorContractTest.fail(
-                "retroarch linux plan does not run in the SDK runtime");
+                "retroarch linux plan does not run in the KDE Platform runtime");
         }
         if (EmulatorContractTest.argumentVectorHas(retroArchPlan, "org.libretro.RetroArch")) {
             failures = failures + EmulatorContractTest.fail(
@@ -437,12 +445,102 @@ class EmulatorContractTest {
         return failures;
     }
 
+    // The launch-time tap-binary refinement: the first tap_binary candidate
+    // that exists on disk replaces the plan's --command= argument; with no
+    // candidate on disk the plan keeps the contract default. Hermetic: a
+    // synthetic platform carries literal candidate paths under the test
+    // scratch, so no environment or host state participates.
+    class int checkRetroArchTapBinaryRefinement() {
+        int failures = 0;
+        string scratchRoot = PathTools.join(
+            Environment.get("SEMU_TEST_TMP", "/tmp/semu-core-tests"), "tap-binary");
+        string stagedBinary = PathTools.join(scratchRoot, "bin/retroarch-semu");
+        string missingBinary = PathTools.join(scratchRoot, "bin/absent-retroarch");
+        UnixFileSystem.mkdirp(PathTools.dirname(stagedBinary));
+        Path.writeAll(stagedBinary, "fake patched retroarch");
+
+        EmulatorPlatform syntheticPlatform = EmulatorPlatform();
+        syntheticPlatform.operatingSystem = "linux";
+        syntheticPlatform.backend = "flatpak";
+        syntheticPlatform.extensionJson = JsonValue.parse("{\"tap_binary\": [\""
+            + missingBinary + "\", \"" + stagedBinary + "\"]}");
+        TemplateContext refinementContext = TemplateContext();
+        refinementContext.project = scratchRoot;
+        refinementContext.platformId = "linux";
+        refinementContext.emulatorId = "retroarch";
+        refinementContext.backend = "flatpak";
+
+        LaunchPlan refinablePlan = LaunchPlan();
+        refinablePlan.backend = "flatpak";
+        refinablePlan.argumentVector.push("flatpak");
+        refinablePlan.argumentVector.push("run");
+        refinablePlan.argumentVector.push("--command=/contract/default");
+        refinablePlan.argumentVector.push("org.kde.Platform//6.10");
+        RetroArchRendering.refineLaunchPlanWithContext(refinablePlan, syntheticPlatform,
+            refinementContext);
+        if (EmulatorContractTest.argumentPosition(refinablePlan,
+                "--command=" + stagedBinary) != 2) {
+            failures = failures + EmulatorContractTest.fail(
+                "tap-binary refinement must rewrite --command= to the first"
+                + " on-disk candidate (missing candidates are skipped)");
+        }
+
+        LaunchPlan untouchedPlan = LaunchPlan();
+        untouchedPlan.backend = "flatpak";
+        untouchedPlan.argumentVector.push("flatpak");
+        untouchedPlan.argumentVector.push("run");
+        untouchedPlan.argumentVector.push("--command=/contract/default");
+        untouchedPlan.argumentVector.push("org.kde.Platform//6.10");
+        EmulatorPlatform absentPlatform = EmulatorPlatform();
+        absentPlatform.operatingSystem = "linux";
+        absentPlatform.backend = "flatpak";
+        absentPlatform.extensionJson = JsonValue.parse("{\"tap_binary\": [\""
+            + missingBinary + "\"]}");
+        RetroArchRendering.refineLaunchPlanWithContext(untouchedPlan, absentPlatform,
+            refinementContext);
+        if (EmulatorContractTest.argumentPosition(untouchedPlan,
+                "--command=/contract/default") != 2) {
+            failures = failures + EmulatorContractTest.fail(
+                "tap-binary refinement must keep the contract default when no"
+                + " candidate exists on disk");
+        }
+
+        // The live-configuration install: a bootstrap-emitted profile under
+        // the scratch project lands in the state root's retroarch.cfg with
+        // upsert semantics — the app.quit combo pin is the proof key.
+        string profilePath = PathTools.join(scratchRoot,
+            "src/generated/packaging/emulators/profiles/RetroArch/retroarch.cfg");
+        UnixFileSystem.mkdirp(PathTools.dirname(profilePath));
+        Path.writeAll(profilePath, "input_quit_gamepad_combo = \"4\"\n"
+            + "input_driver = \"sdl2\"\n");
+        string livePath = RetroArchRendering.liveConfigurationPath(refinementContext);
+        UnixFileSystem.mkdirp(PathTools.dirname(livePath));
+        Path.writeAll(livePath, "input_quit_gamepad_combo = \"0\"\n"
+            + "user_kept_setting = \"yes\"\n");
+        ParseLog installLog = ParseLog();
+        RetroArchRendering.installLiveConfiguration(
+            RetroArchEmulator().parseConfiguration(syntheticPlatform, installLog),
+            refinementContext);
+        string liveText = Path.readAll(livePath);
+        if (!liveText.contains("input_quit_gamepad_combo = \"4\"")) {
+            failures = failures + EmulatorContractTest.fail(
+                "live-configuration install must upsert the emitted app.quit combo");
+        }
+        if (!liveText.contains("user_kept_setting = \"yes\"")) {
+            failures = failures + EmulatorContractTest.fail(
+                "live-configuration install must preserve settings it does not own");
+        }
+        if (failures == 0) {
+            print("  OK retroarch launch refinement (tap binary + live configuration)");
+        }
+        return failures;
+    }
+
     // The GL-tap launch wiring: a dolphin linux plan for a gc rom gains the
     // contract SEMU_TAP_* bundle, the exec-edge keys and LD_PRELOAD (with
     // the flatpak --env grant BEFORE the app id) when a tap library exists
     // under a SEMU_TEST_TMP-staged asset root; disabled visuals skip
-    // everything; a missing library degrades to a plan note; macos plans
-    // never carry tap environment.
+    // everything; a missing library degrades to a plan note.
     class int checkLinuxTapWiring(SemuContracts contracts, string repoRoot) {
         int failures = 0;
         EmulatorDefinition dolphin = EmulatorContractTest.findEmulator(contracts, "dolphin");
@@ -516,6 +614,21 @@ class EmulatorContractTest {
             failures = failures + EmulatorContractTest.fail(
                 "flatpak tap plan must bundle --env=LD_PRELOAD before the app id");
         }
+        int libraryGrantPosition = EmulatorContractTest.argumentPosition(dolphinPlan,
+            "--filesystem=" + PathTools.dirname(fakeLibraryPath) + ":ro");
+        if (libraryGrantPosition < 2 || libraryGrantPosition > applicationIdPosition) {
+            failures = failures + EmulatorContractTest.fail(
+                "flatpak tap plan must grant the tap library directory read-only");
+        }
+        string expectedAssetGrant = "--filesystem="
+            + BezelResolver.assetRootFrom(fakeAssetRoot, repoRoot) + ":ro";
+        int assetGrantPosition = EmulatorContractTest.argumentPosition(dolphinPlan,
+            expectedAssetGrant);
+        if (assetGrantPosition < 2 || assetGrantPosition > applicationIdPosition) {
+            failures = failures + EmulatorContractTest.fail(
+                "flatpak tap plan must grant the asset root read-only ("
+                + expectedAssetGrant + ")");
+        }
 
         LaunchPlan disabledPlan = EmulatorLauncher.plan(dolphin, "linux", "gamescope",
             "/roms/gc/game.iso", noArguments);
@@ -543,11 +656,103 @@ class EmulatorContractTest {
                 "a missing tap library must still merge the tap environment");
         }
 
+        return failures;
+    }
+
+    // The macos overlay-tap wiring: an assembled macos plan carries no tap
+    // environment until MacosTap.apply; with bezels on it gains the contract
+    // SEMU_TAP_* bundle (never LD_PRELOAD — nothing is injected on macos)
+    // and the vector is wrapped /bin/sh -c <script> <vector...> so the
+    // overlay compositor spawns alongside the emulator with its pid; bezels
+    // off skips everything; a missing overlay binary degrades to a plan note
+    // with the environment still merged.
+    class int checkMacosTapWiring(SemuContracts contracts, string repoRoot) {
+        int failures = 0;
+        EmulatorDefinition dolphin = EmulatorContractTest.findEmulator(contracts, "dolphin");
+        SystemDefinition gameCube = EmulatorContractTest.findSystem(contracts, "gc");
+        Vector<string> noArguments = [];
+        SemuSettings settings = SemuSettings();
+
+        string fakeAssetRoot = PathTools.join(
+            Environment.get("SEMU_TEST_TMP", "/tmp/semu-core-tests"), "overlay-asset-root");
+        string fakeOverlayPath = PathTools.join(fakeAssetRoot, "lib/semu/semu-overlay");
+        UnixFileSystem.mkdirp(PathTools.dirname(fakeOverlayPath));
+        Path.writeAll(fakeOverlayPath, "fake overlay binary");
+
         LaunchPlan macosPlan = EmulatorLauncher.plan(dolphin, "macos", "",
             "/roms/gc/game.iso", noArguments);
         if (EmulatorContractTest.carriesTapEnvironment(macosPlan)) {
             failures = failures + EmulatorContractTest.fail(
-                "macos plans must never carry tap environment");
+                "an assembled macos plan must carry no tap environment before"
+                + " MacosTap.apply");
+        }
+        int argumentCountBefore = macosPlan.argumentVector.size();
+        MacosTap.applyWithAssetRoot(macosPlan, gameCube, settings, repoRoot, fakeAssetRoot);
+        if (!EmulatorContractTest.environmentValue(macosPlan, "SEMU_TAP_ART")
+                .endsWith("assets/bezels/n64/tv.png")) {
+            failures = failures + EmulatorContractTest.fail(
+                "macos tap plan SEMU_TAP_ART: got '"
+                + EmulatorContractTest.environmentValue(macosPlan, "SEMU_TAP_ART")
+                + "' (want the gc geometry_from n64 tv art)");
+        }
+        if (!EmulatorContractTest.environmentValue(macosPlan, "SEMU_TAP_STYLE")
+                .equals("console")
+            || !EmulatorContractTest.environmentValue(macosPlan, "SEMU_TAP_NATIVE_W")
+                .equals("256")
+            || !EmulatorContractTest.environmentValue(macosPlan, "SEMU_TAP_NATIVE_H")
+                .equals("240")) {
+            failures = failures + EmulatorContractTest.fail(
+                "macos tap plan lacks the gc contract wire values (STYLE/NATIVE_W/NATIVE_H)");
+        }
+        if (!EmulatorContractTest.environmentValue(macosPlan, "LD_PRELOAD").isEmpty()) {
+            failures = failures + EmulatorContractTest.fail(
+                "macos tap plans must never carry LD_PRELOAD");
+        }
+        if (macosPlan.argumentVector.size() != argumentCountBefore + 3
+            || !macosPlan.argumentVector.get(0).equals("/bin/sh")
+            || !macosPlan.argumentVector.get(1).equals("-c")) {
+            failures = failures + EmulatorContractTest.fail(
+                "macos tap plan must wrap the vector as /bin/sh -c <script> <vector...>");
+        } else {
+            string wrapperScript = macosPlan.argumentVector.get(2);
+            if (!wrapperScript.contains("SEMU_TAP_TARGET_PID")
+                || !wrapperScript.contains(fakeOverlayPath)) {
+                failures = failures + EmulatorContractTest.fail(
+                    "the overlay wrapper script must hand the emulator pid to the"
+                    + " staged overlay binary");
+            }
+        }
+        if (!macosPlan.note.contains("macos overlay: " + fakeOverlayPath)) {
+            failures = failures + EmulatorContractTest.fail(
+                "macos tap plan note must record the resolved overlay binary");
+        }
+
+        LaunchPlan disabledPlan = EmulatorLauncher.plan(dolphin, "macos", "",
+            "/roms/gc/game.iso", noArguments);
+        int disabledArgumentCount = disabledPlan.argumentVector.size();
+        SemuSettings disabledSettings = SemuSettings();
+        disabledSettings.visual.bezels = false;
+        MacosTap.applyWithAssetRoot(disabledPlan, gameCube, disabledSettings,
+            repoRoot, fakeAssetRoot);
+        if (EmulatorContractTest.carriesTapEnvironment(disabledPlan)
+            || disabledPlan.argumentVector.size() != disabledArgumentCount) {
+            failures = failures + EmulatorContractTest.fail(
+                "bezels off must skip the macos overlay entirely");
+        }
+
+        LaunchPlan notePlan = EmulatorLauncher.plan(dolphin, "macos", "",
+            "/roms/gc/game.iso", noArguments);
+        int noteArgumentCount = notePlan.argumentVector.size();
+        MacosTap.applyWithAssetRoot(notePlan, gameCube, settings,
+            "/nonexistent-semu-project", PathTools.join(fakeAssetRoot, "missing"));
+        if (notePlan.argumentVector.size() != noteArgumentCount
+            || !notePlan.note.contains("overlay binary not found")) {
+            failures = failures + EmulatorContractTest.fail(
+                "a missing overlay binary must skip the spawn wrap and note the plan");
+        }
+        if (EmulatorContractTest.environmentValue(notePlan, "SEMU_TAP_ART").isEmpty()) {
+            failures = failures + EmulatorContractTest.fail(
+                "a missing overlay binary must still merge the tap environment");
         }
         return failures;
     }
@@ -689,6 +894,7 @@ class EmulatorContractTest {
         failures = failures + EmulatorContractTest.checkPcsx2Profiles(contracts, repoRoot);
         failures = failures + EmulatorContractTest.checkSystemInference(contracts);
         failures = failures + EmulatorContractTest.checkLinuxTapWiring(contracts, repoRoot);
+        failures = failures + EmulatorContractTest.checkMacosTapWiring(contracts, repoRoot);
         failures = failures + EmulatorContractTest.checkPlatformAxisValidation();
         failures = failures + EmulatorContractTest.checkUnknownPlatformRejection();
 

@@ -1,0 +1,121 @@
+// macos_tap.btrc — wires the overlay compositor (semu-overlay) into real
+// macos launches. macos emulators present via Metal, so the linux GL tap
+// (LD_PRELOAD into the emulator process) has no injection-free darwin
+// equivalent; the macos tap is instead a SIBLING PROCESS — a transparent,
+// click-through overlay window (rendering/tap/macos_overlay.m) that shadows
+// the emulator's window and draws the bezel art around the shared
+// tap_geometry.h content rect. Applied by the CLI to an ASSEMBLED plan when
+// the launch tail carries a rom whose system infers, mirroring
+// platforms/linux/linux_tap.btrc: resolve the system's bezel (BezelResolver)
+// and the contract tap bundle (RenderPlanner.tapEnvironment), merge the pairs
+// into the plan environment, and wrap the argument vector so the overlay
+// spawns alongside the emulator.
+//
+// Exec-edge keys: the linux set (SEMU_RETRO_START, SEMU_TAP_STANDALONE,
+// SEMU_TAP_STATE_DIR, SEMU_TAP_MENUFONT) is read by the in-process GL tap
+// only — the overlay reads none of them, so none are emitted here. The single
+// overlay-only exec-edge key is SEMU_TAP_TARGET_PID (the emulator process
+// id), and it is minted by the wrapper script at spawn time — the pid does
+// not exist at plan time.
+//
+// The wrapper (overlayWrapperScript) backgrounds the assembled vector,
+// hands its pid to the overlay, mirrors the emulator's exit status, and
+// reaps the overlay BY PID on the way out (the overlay also self-exits when
+// the target pid dies, so neither side can leak).
+
+import std.{vector, fs, platform, process}
+import ../../core/settings.btrc
+import ../../systems/system_parser.btrc
+import ../../emulators/emulator_process.btrc
+import ../../emulators/rendering/semu_bezel.btrc
+import ../../emulators/rendering/semu_rendering.btrc
+
+class MacosTap {
+    // First existing overlay binary: the staged $SEMU_ASSET_ROOT install,
+    // then the project's macos build tree (rendering/tap/build.sh output).
+    // "" when neither exists (the caller degrades to a no-op with a plan
+    // note).
+    class string overlayBinaryPath(string environmentAssetRoot, string project) {
+        Vector<string> candidates = [];
+        if (!environmentAssetRoot.isEmpty()) {
+            candidates.push(PathTools.join(environmentAssetRoot, "lib/semu/semu-overlay"));
+        }
+        candidates.push(PathTools.join(project,
+            "src/generated/build/macos/tap/semu-overlay"));
+        for candidate in candidates {
+            if (FileSystem.isFile(candidate)) {
+                return candidate;
+            }
+        }
+        return "";
+    }
+
+    class void appendNote(LaunchPlan launchPlan, string note) {
+        if (launchPlan.note.isEmpty()) {
+            launchPlan.note = note;
+        } else {
+            launchPlan.note = launchPlan.note + "; " + note;
+        }
+    }
+
+    // The overlay spawn wrapper, run as /bin/sh -c <script> <vector...>:
+    // "$0" "$@" is the assembled emulator vector, backgrounded so its pid
+    // can cross into the overlay as SEMU_TAP_TARGET_PID; the emulator's exit
+    // status is preserved and the overlay is reaped by pid on the way out.
+    class string overlayWrapperScript(string overlayBinary) {
+        return "\"$0\" \"$@\" & semuEmulatorPid=$!; "
+            + "SEMU_TAP_TARGET_PID=\"$semuEmulatorPid\" "
+            + ShellWords.quote(overlayBinary) + " & semuOverlayPid=$!; "
+            + "wait \"$semuEmulatorPid\"; semuExitStatus=$?; "
+            + "kill \"$semuOverlayPid\" 2>/dev/null; "
+            + "wait \"$semuOverlayPid\" 2>/dev/null; "
+            + "exit \"$semuExitStatus\"";
+    }
+
+    class void wrapWithOverlay(LaunchPlan launchPlan, string overlayBinary) {
+        Vector<string> wrappedArguments = ["/bin/sh", "-c",
+            MacosTap.overlayWrapperScript(overlayBinary)];
+        for argument in launchPlan.argumentVector {
+            wrappedArguments.push(argument);
+        }
+        launchPlan.argumentVector = wrappedArguments;
+    }
+
+    // Wire the overlay into one assembled macos plan. Skips entirely when
+    // bezels are off (the overlay draws bezel art and nothing else — CRT
+    // shading stays an emulator-side concern on macos); a missing overlay
+    // binary still merges the environment (harmless without the spawn) and
+    // records why the spawn was skipped in the plan note.
+    class void apply(LaunchPlan launchPlan, SystemDefinition system,
+                     SemuSettings settings, string project) {
+        MacosTap.applyWithAssetRoot(launchPlan, system, settings, project,
+            Environment.get("SEMU_ASSET_ROOT", ""));
+    }
+
+    // The parameterized core: environmentAssetRoot is the raw
+    // SEMU_ASSET_ROOT prefix ("" when unset) so tests inject a scratch
+    // install without touching the process environment.
+    class void applyWithAssetRoot(LaunchPlan launchPlan, SystemDefinition system,
+                                  SemuSettings settings, string project,
+                                  string environmentAssetRoot) {
+        if (!settings.visual.bezels) {
+            return;
+        }
+        string assetRoot = BezelResolver.assetRootFrom(environmentAssetRoot, project);
+        ResolvedBezel bezel = BezelResolver.resolve(system, "", assetRoot);
+        TapEnvironment tapEnvironment = RenderPlanner.tapEnvironment(system, bezel,
+            settings.visual.renderMode);
+        for (int keyIndex = 0; keyIndex < tapEnvironment.keys.size(); keyIndex++) {
+            EmulatorLauncher.setEnvironment(launchPlan, tapEnvironment.keys.get(keyIndex),
+                tapEnvironment.values.get(keyIndex));
+        }
+        string overlayBinary = MacosTap.overlayBinaryPath(environmentAssetRoot, project);
+        if (overlayBinary.isEmpty()) {
+            MacosTap.appendNote(launchPlan, "overlay binary not found (overlay spawn"
+                + " skipped): no staged lib/semu/semu-overlay and no macos build tree");
+        } else {
+            MacosTap.wrapWithOverlay(launchPlan, overlayBinary);
+            MacosTap.appendNote(launchPlan, "macos overlay: " + overlayBinary);
+        }
+    }
+}

@@ -1,6 +1,7 @@
 // retroarch_rendering.btrc — RetroArch's rendering glue: the --set-shader
 // command-line assembly, settings-override upserts into a live retroarch.cfg,
-// and core-option emission into a core .opt file.
+// core-option emission into a core .opt file, and the LAUNCH-TIME plan
+// refinement (tap-binary command rewrite + live-configuration install).
 //
 // Everything RetroArch-specific about presentation lives here; the decisions
 // themselves are generic and delegated: WHICH preset via ShaderSelector,
@@ -10,7 +11,8 @@
 // flag, the cfg 'key = "value"' line shape, and the extension's role
 // vocabulary (aspect_force / res_*).
 
-import std.{vector, strings}
+import std.{vector, strings, fs}
+import ../../core/template_paths.btrc
 import ../../systems/system_parser.btrc
 import ../rendering/semu_shader.btrc
 import ../rendering/render_resolution.btrc
@@ -96,6 +98,123 @@ class RetroArchRendering {
                 configuration.settingsOverrideValues.get(overrideIndex));
         }
         return text;
+    }
+
+    // Launch-time refinement the pure assembly cannot make. Two duties:
+    //   1. tap_binary declares preferred TAP-PATCHED RetroArch builds in
+    //      priority order (the Deck-local ra-build, then the staged bundle
+    //      binary); the first candidate that resolves token-free AND exists
+    //      on disk replaces the plan's --command= argument.
+    //   2. the bootstrap-emitted profile (fullscreen, sdl2 input, the
+    //      input_quit_gamepad_combo app.quit binding, state directories) plus
+    //      the contract settings_overrides are upserted into the LIVE
+    //      retroarch.cfg under the state root — without this the launched
+    //      RetroArch runs its own defaults and semu's quit contract is dead.
+    // The context is injectable so tests stage everything under a scratch
+    // project instead of the process environment.
+    class void refineLaunchPlan(LaunchPlan launchPlan, EmulatorDefinition emulator,
+                                EmulatorPlatform platform, string project) {
+        TemplateContext context = TemplateContext();
+        context.project = project;
+        context.platformId = platform.operatingSystem;
+        context.emulatorId = emulator.id;
+        context.backend = platform.backend;
+        context.flatpakId = platform.flatpakId;
+        RetroArchRendering.refineLaunchPlanWithContext(launchPlan, platform, context);
+    }
+
+    class void refineLaunchPlanWithContext(LaunchPlan launchPlan, EmulatorPlatform platform,
+                                           TemplateContext context) {
+        ParseLog scratchLog = ParseLog();
+        RetroArchConfiguration configuration = RetroArchEmulator().parseConfiguration(
+            platform, scratchLog);
+        RetroArchRendering.rewriteTapCommand(launchPlan, configuration, context);
+        RetroArchRendering.installLiveConfiguration(configuration, context);
+    }
+
+    class void rewriteTapCommand(LaunchPlan launchPlan, RetroArchConfiguration configuration,
+                                 TemplateContext context) {
+        if (configuration.tapBinaries.size() == 0) {
+            return;
+        }
+        string resolvedBinary = "";
+        for candidate in configuration.tapBinaries {
+            string resolvedCandidate = TemplatePaths.resolve(candidate, context);
+            if (resolvedBinary.isEmpty() && !resolvedCandidate.contains("${")
+                && FileSystem.isFile(resolvedCandidate)) {
+                resolvedBinary = resolvedCandidate;
+            }
+        }
+        if (resolvedBinary.isEmpty()) {
+            return;
+        }
+        for (int argumentIndex = 0; argumentIndex < launchPlan.argumentVector.size();
+             argumentIndex++) {
+            if (launchPlan.argumentVector.get(argumentIndex).startsWith("--command=")) {
+                launchPlan.argumentVector.set(argumentIndex,
+                    "--command=" + resolvedBinary);
+            }
+        }
+    }
+
+    // The bootstrap-emitted profile for RetroArch, "" when bootstrap has not
+    // run in this project yet.
+    class string emittedProfileText(TemplateContext context) {
+        string profilePath = PathTools.join(context.project,
+            "src/generated/packaging/emulators/profiles/RetroArch/retroarch.cfg");
+        if (!FileSystem.isFile(profilePath)) {
+            return "";
+        }
+        return Path.readAll(profilePath);
+    }
+
+    class string liveConfigurationPath(TemplateContext context) {
+        return PathTools.join(TemplatePaths.stateRoot(context),
+            "config/retroarch/retroarch.cfg");
+    }
+
+    // Merge the emitted profile, then the contract settings_overrides
+    // (template tokens resolved at this exec edge), onto whatever live
+    // configuration exists. Upsert semantics throughout: RetroArch's own
+    // additions survive, semu-owned keys converge on the contract.
+    class void installLiveConfiguration(RetroArchConfiguration configuration,
+                                        TemplateContext context) {
+        string profileText = RetroArchRendering.emittedProfileText(context);
+        if (profileText.isEmpty()) {
+            return;
+        }
+        string livePath = RetroArchRendering.liveConfigurationPath(context);
+        string liveText = "";
+        if (FileSystem.isFile(livePath)) {
+            liveText = Path.readAll(livePath);
+        }
+        for profileLine in Strings.split(profileText, "\n") {
+            int separatorIndex = profileLine.indexOf(" = \"");
+            if (separatorIndex > 0 && profileLine.trim().endsWith("\"")) {
+                string configurationKey = profileLine.substring(0, separatorIndex);
+                int valueStart = separatorIndex + 4;
+                string valueTail = profileLine.substring(valueStart,
+                    profileLine.len() - valueStart);
+                int closingIndex = valueTail.indexOf("\"");
+                if (closingIndex >= 0) {
+                    liveText = RetroArchRendering.upsertConfigurationValue(liveText,
+                        configurationKey, valueTail.substring(0, closingIndex));
+                }
+            }
+        }
+        if (!configuration.videoDriver.isEmpty()) {
+            liveText = RetroArchRendering.upsertConfigurationValue(liveText,
+                "video_driver", configuration.videoDriver);
+        }
+        for (int overrideIndex = 0; overrideIndex < configuration.settingsOverrideKeys.size();
+             overrideIndex++) {
+            liveText = RetroArchRendering.upsertConfigurationValue(liveText,
+                configuration.settingsOverrideKeys.get(overrideIndex),
+                TemplatePaths.resolve(
+                    configuration.settingsOverrideValues.get(overrideIndex), context));
+        }
+        UnixFileSystem.mkdirp(PathTools.dirname(livePath));
+        Path.writeAll(livePath, liveText);
     }
 
     // Resolve the extension block's core_options rows ("core|role|key") for
