@@ -104,8 +104,16 @@ class EsDeRuntime {
             text = "<?xml version=\"1.0\"?>\n";
         }
         text = EsDeRuntime.upsertSetting(text, "string", "ROMDirectory", romsRoot);
-        text = EsDeRuntime.upsertSetting(text, "string", "MediaDirectory", mediaDirectory);
-        text = EsDeRuntime.upsertSetting(text, "string", "UserThemeDirectory", themesDirectory);
+        // Media and theme directories follow the same adoption rule as
+        // ROMDirectory: an existing on-disk value is the user's (scraped art,
+        // installed themes) and is never re-pointed; the semu defaults are
+        // first-run seeds.
+        text = EsDeRuntime.upsertSetting(text, "string", "MediaDirectory",
+            EsDeRuntime.adoptedPathSetting(existingContent, "MediaDirectory",
+                mediaDirectory));
+        text = EsDeRuntime.upsertSetting(text, "string", "UserThemeDirectory",
+            EsDeRuntime.adoptedPathSetting(existingContent, "UserThemeDirectory",
+                themesDirectory));
         text = EsDeRuntime.upsertSetting(text, "string", "ApplicationUpdaterFrequency", "never");
         text = EsDeRuntime.upsertSetting(text, "string", "SaveGamelistsMode", "always");
         text = EsDeRuntime.upsertSetting(text, "bool", "CreatePlaceholderSystemDirectories",
@@ -116,14 +124,31 @@ class EsDeRuntime {
         return text;
     }
 
+    // An existing on-disk directory value for the named setting wins over
+    // the seed; otherwise the seed installs.
+    class string adoptedPathSetting(string existingText, string settingName,
+                                    string seedValue) {
+        string existingValue = EsDeRuntime.existingSettingValue(existingText, settingName);
+        if (!existingValue.isEmpty() && FileSystem.isDir(existingValue)) {
+            return existingValue;
+        }
+        return seedValue;
+    }
+
     // Pull the ROMDirectory value out of existing es_settings.xml text
     // ("" when the file carries none).
     class string existingRomDirectory(string existingText) {
+        return EsDeRuntime.existingSettingValue(existingText, "ROMDirectory");
+    }
+
+    // Pull the named setting's value attribute out of existing
+    // es_settings.xml text ("" when the file carries none).
+    class string existingSettingValue(string existingText, string settingName) {
         if (existingText.isEmpty()) {
             return "";
         }
         for line in Strings.split(existingText, "\n") {
-            if (line.contains("name=\"ROMDirectory\"")) {
+            if (line.contains("name=\"" + settingName + "\"")) {
                 int valueIndex = line.indexOf("value=\"");
                 if (valueIndex < 0) {
                     return "";
@@ -246,9 +271,12 @@ class EsDeRuntime {
             TemplatePaths.resolve(SystemEmitter.esFindRulesXml(contracts.emulators,
                 platformId), context));
 
-        string contentRoot = TemplatePaths.contentRoot(project);
-        string mediaDirectory = PathTools.join(contentRoot, "downloaded_media");
-        string themesDirectory = PathTools.join(contentRoot, "themes");
+        // Media and themes seed at the frontend home's OWN directories —
+        // ES-DE's default layout, and on real installs those are the user's
+        // symlinks into their cloud/SD library (the adoption rule keeps any
+        // explicit existing value regardless).
+        string mediaDirectory = PathTools.join(esDeHome, "downloaded_media");
+        string themesDirectory = PathTools.join(esDeHome, "themes");
         UnixFileSystem.mkdirp(mediaDirectory);
         UnixFileSystem.mkdirp(themesDirectory);
         failures = failures + EsDeRuntime.installFile(esSettingsPath,

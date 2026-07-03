@@ -36,6 +36,52 @@ manifest: $(SEMU_BIN) ## Generate src/generated/semu.json from semu.btrc
 	@mkdir -p "$(dir $(SEMU_MANIFEST))"
 	$(SEMU_BIN) manifest --output "$(SEMU_MANIFEST)"
 
+# The shippable x86_64 AppImage, assembled ON THIS MACHINE (no linux builder):
+# emitted AppRun/desktop/shims + the cross CLI + the cross tap library + the
+# dereferenced visualAssets tree + the contract-pinned ES-DE AppImage's usr/
+# (hash verified against es_de.nix — the single pin store) + the contract
+# cores from the libretro buildbot, squashed and concatenated onto the
+# AppImage type2 runtime. Output: src/generated/build/Semu-x86_64.AppImage.
+APPIMAGE_WORK := src/generated/build/appimage
+appimage: cross-linux ## Assemble src/generated/build/Semu-x86_64.AppImage (cross, on macOS)
+	$(SEMU_BIN) bootstrap --project "$$(pwd)"
+	nix shell nixpkgs\#zig --command zig cc -target x86_64-linux-gnu -shared -fPIC -O2 \
+		src/semu/emulators/rendering/tap/libsemutap.c \
+		-o src/generated/build/steamdeck/tap/libsemutap.so -lm -ldl
+	@set -euo pipefail; \
+	workdir="$(APPIMAGE_WORK)"; rm -rf "$$workdir"; mkdir -p "$$workdir"; \
+	esdeUrl=$$(grep -A3 'x86_64-linux = {' src/semu/emulators/es_de/es_de.nix | grep -o 'https[^"]*' | head -1); \
+	esdeHash=$$(grep -A3 'x86_64-linux = {' src/semu/emulators/es_de/es_de.nix | grep -o 'sha256-[^"]*' | head -1); \
+	echo "fetching es-de: $$esdeUrl"; \
+	curl -sL -o "$$workdir/es-de.AppImage" "$$esdeUrl"; \
+	gotHash=$$(nix hash file --sri --type sha256 "$$workdir/es-de.AppImage"); \
+	[ "$$gotHash" = "$$esdeHash" ] || { echo "es-de hash mismatch: $$gotHash != $$esdeHash"; exit 2; }; \
+	offset=$$(python3 -c 'import struct,sys;h=open(sys.argv[1],"rb").read(64);print(struct.unpack_from("<Q",h,0x28)[0]+struct.unpack_from("<H",h,0x3A)[0]*struct.unpack_from("<H",h,0x3C)[0])' "$$workdir/es-de.AppImage"); \
+	nix shell nixpkgs\#squashfsTools --command unsquashfs -q -offset "$$offset" -d "$$workdir/esde-root" "$$workdir/es-de.AppImage"; \
+	appdir="$$workdir/AppDir"; mkdir -p "$$appdir/usr/bin" "$$appdir/usr/lib/retroarch/cores" "$$appdir/lib/semu"; \
+	cp src/generated/packaging/linux/AppRun "$$appdir/AppRun"; chmod 755 "$$appdir/AppRun"; \
+	cp src/generated/packaging/linux/semu.desktop "$$appdir/semu.desktop"; \
+	cp src/generated/packaging/linux/bin/* "$$appdir/usr/bin/" 2>/dev/null || true; \
+	cp -R "$$workdir/esde-root/usr/." "$$appdir/usr/"; \
+	cp src/generated/build/semu-linux-x64 "$$appdir/usr/bin/semu"; chmod 755 "$$appdir/usr/bin/semu"; \
+	cp src/generated/build/steamdeck/tap/libsemutap.so "$$appdir/lib/semu/"; \
+	visualAssets=$$(nix build .\#visualAssets --no-link --print-out-paths); \
+	rsync -rltL "$$visualAssets/share/" "$$appdir/share/"; \
+	cp -L "$$visualAssets/lib/semu/"* "$$appdir/lib/semu/" 2>/dev/null || true; \
+	for core in gambatte mgba mesen snes9x genesis_plus_gx mupen64plus_next mednafen_psx desmume; do \
+		curl -sL -o "$$workdir/$$core.zip" "https://buildbot.libretro.com/nightly/linux/x86_64/latest/$${core}_libretro.so.zip"; \
+		unzip -oq "$$workdir/$$core.zip" -d "$$appdir/usr/lib/retroarch/cores/"; \
+	done; \
+	cp "$$appdir/usr/share/pixmaps/org.es_de.frontend.svg" "$$appdir/semu.svg"; \
+	cp "$$appdir/usr/share/pixmaps/org.es_de.frontend.svg" "$$appdir/.DirIcon"; \
+	nix shell nixpkgs\#squashfsTools --command mksquashfs "$$appdir" "$$workdir/semu.squashfs" \
+		-comp zstd -Xcompression-level 15 -root-owned -noappend -quiet; \
+	curl -sL -o "$$workdir/runtime-x86_64" \
+		"https://github.com/AppImage/type2-runtime/releases/download/continuous/runtime-x86_64"; \
+	cat "$$workdir/runtime-x86_64" "$$workdir/semu.squashfs" > src/generated/build/Semu-x86_64.AppImage; \
+	chmod 755 src/generated/build/Semu-x86_64.AppImage; \
+	ls -la src/generated/build/Semu-x86_64.AppImage
+
 setup: $(SEMU_BIN) ## Build all emulators and bootstrap Steam Deck/Linux content
 	@echo "Building semu bundle (nix handles caching)..."
 	@mkdir -p "$(dir $(NIX_RESULT))"
