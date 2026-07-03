@@ -12,7 +12,7 @@ import ./dolphin_emitter.btrc
 import ./dolphin_rendering.btrc
 import ../semu_emulator.btrc
 
-class DolphinEmulator extends SemuEmulator {
+class DolphinEmulator extends SemuEmulator implements SemuEmitter, SemuRenderer {
     public DolphinEmulator() {}
 
     public string id() {

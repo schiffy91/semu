@@ -13,7 +13,7 @@ import ../../input/input_parser.btrc
 import ../../input/controllers/steamdeck/steam_input.btrc
 import ../semu_emulator.btrc
 
-class PpssppEmulator extends SemuEmulator {
+class PpssppEmulator extends SemuEmulator implements SemuEmitter, SemuRenderer {
     public PpssppEmulator() {}
 
     public string id() {

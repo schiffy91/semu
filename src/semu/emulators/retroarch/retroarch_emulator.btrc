@@ -41,7 +41,7 @@ class RetroArchConfiguration {
     }
 }
 
-class RetroArchEmulator extends SemuEmulator {
+class RetroArchEmulator extends SemuEmulator implements SemuEmitter, SemuRenderer {
     public RetroArchEmulator() {}
 
     public string id() {

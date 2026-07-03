@@ -6,7 +6,10 @@
 // registry therefore owns the id -> concrete-class routing a vtable would
 // otherwise provide: shared code calls the class-level dispatchers below,
 // which forward to the matching concrete class. This is wiring, not
-// behavior — every branch is a pure id -> class lookup.
+// behavior — every branch is a pure id -> class lookup. The duties routed
+// here are compile-enforced on every concrete class by the SemuEmitter and
+// SemuRenderer interfaces plus the SemuEmulator abstract methods
+// (semu_emulator.btrc): forgetting one fails the build, never this routing.
 
 import std.{vector}
 import ../core/parse_log.btrc

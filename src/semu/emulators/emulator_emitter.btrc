@@ -49,11 +49,13 @@ class EmulatorEmitter {
         return "semu-" + emulator.id;
     }
 
+    // Directories are created at write time only: an empty emulator list
+    // must leave no directory behind.
     class void emitShims(Vector<EmulatorDefinition> emulators, string outputDirectory) {
-        UnixFileSystem.mkdirp(outputDirectory);
         for emulator in emulators {
             string shimPath = PathTools.join(outputDirectory,
                 EmulatorEmitter.shimName(emulator));
+            UnixFileSystem.mkdirp(PathTools.dirname(shimPath));
             Path.writeAll(shimPath, EmulatorEmitter.shimScript(emulator));
             FileSystem.chmod(shimPath, 493); // 0755
         }

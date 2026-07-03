@@ -2,66 +2,18 @@
 // emulator class. Cemu reads controller mappings from an XML profile under
 // its config home; the Deck-proven profile pins the Steam Virtual Gamepad
 // through SDL. Every identity value (api, display name, profile name) comes
-// from the steam_input.json device_identities table, and the staged seed
-// directories come from the emulator.json state/firmware declarations —
-// nothing target-specific is hardcoded here.
+// from the steam_input.json device_identities table — nothing
+// target-specific is hardcoded here. The emulator.json seed sources and
+// firmware fallback directories that point into the staged tree are NOT
+// pre-created here: the launcher's seed copies tolerate absent sources
+// (EmulatorExecution.applySeeds guards on FileSystem.isFile), so directories
+// exist only where a file is actually written.
 
 import std.{vector, fs}
 import ../semu_emulator.btrc
 import ../../input/controllers/steamdeck/steam_input.btrc
 
 class CemuEmitter {
-    // The staged profile layout marker: emulator.json seed sources and
-    // firmware fallback directories declare their staged copies under this
-    // project-relative prefix; the remainder is the path below the
-    // outputRoot that emitProfiles receives.
-    class string stagedRootMarker() {
-        return "generated/packaging/emulators/profiles/";
-    }
-
-    class string stagedRelativePath(string declaredPath) {
-        string marker = CemuEmitter.stagedRootMarker();
-        int markerIndex = declaredPath.indexOf(marker);
-        if (markerIndex < 0) {
-            return "";
-        }
-        return declaredPath.substring(markerIndex + marker.len(), declaredPath.len());
-    }
-
-    // Directories the emulator.json contract expects under the staged
-    // profile root: the state seed sources (the keys.txt drop) and the
-    // firmware fallback directories both point into the staged tree, and the
-    // launcher seeds from them at run time — emission only guarantees the
-    // directories exist.
-    class Vector<string> stagedSeedDirectories(EmulatorDefinition definition) {
-        Vector<string> directories = [];
-        for platform in definition.platforms {
-            StatePolicy state = platform.state;
-            for seed in state.seeds {
-                Vector<string> sources = seed.sources;
-                for source in sources {
-                    string relativeFile = CemuEmitter.stagedRelativePath(source);
-                    if (!relativeFile.isEmpty()) {
-                        string relativeDirectory = PathTools.dirname(relativeFile);
-                        if (!directories.contains(relativeDirectory)) {
-                            directories.push(relativeDirectory);
-                        }
-                    }
-                }
-            }
-            FirmwarePolicy firmware = platform.firmware;
-            for fallbackDirectory in firmware.fallbackDirectories {
-                string relativeDirectory = CemuEmitter.stagedRelativePath(fallbackDirectory);
-                if (!relativeDirectory.isEmpty()) {
-                    if (!directories.contains(relativeDirectory)) {
-                        directories.push(relativeDirectory);
-                    }
-                }
-            }
-        }
-        return directories;
-    }
-
     // The Deck-proven emulated-controller profile. 'Wii U GamePad' and the
     // rumble strength are Cemu-native profile grammar; the controller api,
     // display name and profile name are target-owned device identities.
@@ -97,9 +49,5 @@ class CemuEmitter {
             outputRoot);
         UnixFileSystem.mkdirp(PathTools.dirname(profilePath));
         Path.writeAll(profilePath, CemuEmitter.controllerProfileXml(steamInput));
-        Vector<string> seedDirectories = CemuEmitter.stagedSeedDirectories(definition);
-        for seedDirectory in seedDirectories {
-            UnixFileSystem.mkdirp(PathTools.join(outputRoot, seedDirectory));
-        }
     }
 }
