@@ -97,7 +97,8 @@
       },
       "state": {
         "config_home": "flatpak_home",
-        "data_home": "xdg"
+        "data_home": "xdg",
+        "config_subdir": "PCSX2"
       },
       "firmware": {
         "dir": "${emulation_root}/PCSX2/config/bios",

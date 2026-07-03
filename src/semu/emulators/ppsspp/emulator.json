@@ -71,7 +71,8 @@
       "overlay_aspect": "4x3",
       "state": {
         "config_home": "xdg",
-        "data_home": "xdg"
+        "data_home": "xdg",
+        "config_subdir": "ppsspp"
       }
     }
   },

@@ -98,7 +98,9 @@
       },
       "state": {
         "config_home": "xdg",
-        "data_home": "xdg"
+        "data_home": "xdg",
+        "config_subdir": "dolphin-emu",
+        "data_subdir": "dolphin-emu"
       }
     },
     "macos": {
