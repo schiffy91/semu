@@ -13,7 +13,7 @@
 
 import std.{vector, strings}
 import ./input_parser.btrc
-import ./targets/steamdeck/steam_input.btrc
+import ./controllers/steamdeck/steam_input.btrc
 
 class ChordTranslator {
     // "Ctrl+P" -> "P"; "Ctrl+-" -> "-"; "Ctrl++" -> "+"; "Esc" -> "Esc".

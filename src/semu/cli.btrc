@@ -32,8 +32,8 @@ import ./emulators/emulator_execution.btrc
 import ./emulators/emulator_registry.btrc
 import ./platforms/linux/linux_tap.btrc
 import ./input/input_parser.btrc
-import ./input/targets/steamdeck/steam_input.btrc
-import ./input/targets/steamdeck/steamdeck_input_emitter.btrc
+import ./input/controllers/steamdeck/steam_input.btrc
+import ./input/controllers/steamdeck/steamdeck_input_emitter.btrc
 import ../../tests/core/system_contract_test.btrc
 import ../../tests/core/emulator_contract_test.btrc
 import ../../tests/core/rendering_contract_test.btrc
@@ -89,7 +89,7 @@ class SemuCli {
     // The steamdeck input-target contract directory (keymap + steam-input
     // vocabulary) — the source the bootstrap emission reads.
     class string inputTargetDirectory(string project) {
-        return PathTools.join(SemuCli.sourceRoot(project), "input/targets/steamdeck");
+        return PathTools.join(SemuCli.sourceRoot(project), "input/controllers/steamdeck");
     }
 
     class int runBootstrap(CliArgs arguments, string project) {
@@ -101,7 +101,7 @@ class SemuCli {
         string targetDirectory = SemuCli.inputTargetDirectory(project);
         string keymapPath = PathTools.join(targetDirectory, "steamdeck.skm");
         if (!FileSystem.isFile(keymapPath)) {
-            log.add("input/targets/steamdeck/steamdeck.skm", "file",
+            log.add("input/controllers/steamdeck/steamdeck.skm", "file",
                 "missing keymap contract");
         }
         Keymap keymap = KeymapParser.parse(Path.readAll(keymapPath), log);

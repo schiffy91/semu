@@ -10,7 +10,7 @@
 
 import ../semu_emulator.btrc
 import ../../input/input_parser.btrc
-import ../../input/targets/steamdeck/steam_input.btrc
+import ../../input/controllers/steamdeck/steam_input.btrc
 
 class MelonDsEmitter {
     // Deliberate no-op (see the file header). If melonDS ever grows a proven

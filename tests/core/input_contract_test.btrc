@@ -14,9 +14,9 @@
 import std.{vector, strings, platform, fs}
 import ../../src/semu/core/parse_log.btrc
 import ../../src/semu/input/input_parser.btrc
-import ../../src/semu/input/targets/steamdeck/steam_input.btrc
+import ../../src/semu/input/controllers/steamdeck/steam_input.btrc
 import ../../src/semu/input/input_emitter.btrc
-import ../../src/semu/input/targets/steamdeck/steamdeck_input_emitter.btrc
+import ../../src/semu/input/controllers/steamdeck/steamdeck_input_emitter.btrc
 
 class InputContractTest {
     class int check(bool condition, string what) {
@@ -224,7 +224,7 @@ class InputContractTest {
     class int run(string repoRoot) {
         string sourceRoot = Environment.get("SEMU_SRC_ROOT",
             PathTools.join(repoRoot, "src/semu"));
-        string targetDirectory = PathTools.join(sourceRoot, "input/targets/steamdeck");
+        string targetDirectory = PathTools.join(sourceRoot, "input/controllers/steamdeck");
         string goldenDirectory = PathTools.join(repoRoot,
             "garbage/generated/packaging/input/steam-input");
         ParseLog log = ParseLog();

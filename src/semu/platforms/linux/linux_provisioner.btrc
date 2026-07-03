@@ -11,7 +11,7 @@ import ../../core/settings_parser.btrc
 import ../../systems/system_parser.btrc
 import ../../emulators/semu_emulator.btrc
 import ../../emulators/emulator_process.btrc
-import ../../input/targets/steamdeck/steam_input.btrc
+import ../../input/controllers/steamdeck/steam_input.btrc
 
 class LinuxProvisioner {
     class ExecResult runCommand(string command, string workingDirectory) {
@@ -138,7 +138,7 @@ class LinuxProvisioner {
     class int verifyInput(string project) {
         ParseLog log = ParseLog();
         SteamInputTarget target = SteamInputParser.parse(PathTools.join(project,
-            "src/semu/input/targets/steamdeck/steam_input.json"), log);
+            "src/semu/input/controllers/steamdeck/steam_input.json"), log);
         if (!log.ok()) {
             for error in log.errors {
                 print("  FAIL steam_input contract: " + error);

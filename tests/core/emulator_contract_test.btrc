@@ -26,7 +26,7 @@ import ../../src/semu/emulators/emulator_emitter.btrc
 import ../../src/semu/emulators/emulator_registry.btrc
 import ../../src/semu/platforms/linux/linux_tap.btrc
 import ../../src/semu/input/input_parser.btrc
-import ../../src/semu/input/targets/steamdeck/steam_input.btrc
+import ../../src/semu/input/controllers/steamdeck/steam_input.btrc
 
 class EmulatorContractTest {
     class int fail(string message) {
@@ -337,7 +337,7 @@ class EmulatorContractTest {
     class int checkPcsx2Profiles(SemuContracts contracts, string repoRoot) {
         ParseLog log = ParseLog();
         string targetDirectory = PathTools.join(repoRoot,
-            "src/semu/input/targets/steamdeck");
+            "src/semu/input/controllers/steamdeck");
         Keymap keymap = KeymapParser.parse(
             Path.readAll(PathTools.join(targetDirectory, "steamdeck.skm")), log);
         SteamInputTarget steamInput = SteamInputParser.parse(
