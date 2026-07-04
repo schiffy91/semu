@@ -185,12 +185,26 @@ class Pcsx2Emitter {
         return PathTools.dirname(PathTools.dirname(generatedRoot));
     }
 
-    // The seeded BIOS folder: the first firmware fallback directory that
-    // resolves deterministically (the project bios staging area — the
-    // golden's <project>/src/generated/runtime/content/bios/ps2).
+    // The seeded BIOS folder. The contract's PRIMARY firmware.dir is the
+    // user's real BIOS location (${emulation_root}/PCSX2/config/bios — the SD
+    // library on the Deck, where their SCPH-*.bin actually lives); the
+    // fallbacks are the project staging area. Prefer the primary when it
+    // resolves, so PCSX2 finds the BIOS instead of popping its "requires a
+    // PlayStation 2 BIOS" dialog (observed live on the Deck when the fallback
+    // empty staging path was seeded).
     class string biosDirectory(EmulatorPlatform platform, string outputRoot) {
         TemplateContext context = TemplateContext();
         context.project = Pcsx2Emitter.projectRootFor(outputRoot);
+        if (!platform.firmware.directory.isEmpty()) {
+            string resolvedPrimary = TemplatePaths.resolve(platform.firmware.directory, context);
+            // Only adopt the primary when it resolves to a real directory on
+            // THIS host (the SD library on the Deck). Off-device — the golden
+            // test and the macOS build — ${emulation_root} does not resolve to
+            // a populated BIOS tree, so fall through to the staging fallback.
+            if (!resolvedPrimary.contains("${") && FileSystem.isDir(resolvedPrimary)) {
+                return resolvedPrimary;
+            }
+        }
         for fallbackDirectory in platform.firmware.fallbackDirectories {
             string resolved = TemplatePaths.resolve(fallbackDirectory, context);
             if (!resolved.contains("${")) {
