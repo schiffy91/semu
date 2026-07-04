@@ -90,7 +90,7 @@ class PackageContractTest {
         }
         string macosXml = SystemEmitter.esSystemsXml(contracts, "macos");
         failures = failures + PackageContractTest.require(macosXml,
-            "<command label=\"ares\">%EMULATOR_ARES% --fullscreen --system &quot;Nintendo 64&quot; %ROM%</command>",
+            "<command label=\"ares\">%EMULATOR_ARES% --system &quot;Nintendo 64&quot; %ROM%</command>",
             "n64 macos ares command");
         return failures;
     }

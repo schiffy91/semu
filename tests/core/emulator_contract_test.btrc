@@ -256,8 +256,11 @@ class EmulatorContractTest {
             failures = failures + EmulatorContractTest.fail(
                 "ares macos plan must be sandbox-exec-wrapped with the app executable after the wrap");
         }
-        if (!EmulatorContractTest.argumentVectorHas(aresPlan, "--fullscreen")) {
-            failures = failures + EmulatorContractTest.fail("ares macos plan lacks --fullscreen");
+        // macOS launches WINDOWED (owner decision: no Space takeover; the
+        // overlay compositor tracks the window frame).
+        if (EmulatorContractTest.argumentVectorHas(aresPlan, "--fullscreen")) {
+            failures = failures + EmulatorContractTest.fail(
+                "ares macos plan must launch windowed (no --fullscreen)");
         }
         LaunchPlan aresLinuxPlan = EmulatorLauncher.plan(ares, "linux", "desktop",
             "", noArguments);
@@ -286,7 +289,7 @@ class EmulatorContractTest {
         EmulatorBinding nintendo64Binding = EmulatorContractTest.findBinding(nintendo64, "ares");
         string nintendo64Command = EmulatorEmitter.esDeCommand(nintendo64Binding, ares, "macos");
         string nintendo64Expected =
-            "%EMULATOR_ARES% --fullscreen --system \"Nintendo 64\" %ROM%";
+            "%EMULATOR_ARES% --system \"Nintendo 64\" %ROM%";
         if (!nintendo64Command.equals(nintendo64Expected)) {
             failures = failures + EmulatorContractTest.fail("n64 esde command: got '"
                 + nintendo64Command + "' want '" + nintendo64Expected + "'");
