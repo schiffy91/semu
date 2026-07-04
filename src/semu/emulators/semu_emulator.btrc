@@ -68,6 +68,10 @@ class GraphicsPolicy {
     public string file;
     public string format;
     public string key;
+    // The ini section the key lives under ("EmuCore/GS" for PCSX2's
+    // Renderer): a section-aware upsert must land the key INSIDE it or the
+    // emulator never reads the pin. Empty for sectionless formats.
+    public string section;
     public string valueOpenGl;
     public string valueVulkan;
     public string tapApi;
@@ -79,6 +83,7 @@ class GraphicsPolicy {
         self.file = "";
         self.format = "";
         self.key = "";
+        self.section = "";
         self.valueOpenGl = "";
         self.valueVulkan = "";
         self.tapApi = "";
@@ -343,6 +348,8 @@ class GraphicsPolicyParser {
         Vector<string> formats = ["ini", "xml", "toml", "qt_ini"];
         JsonContract.checkEnum(graphics.format, formats, file, context + ".format", log);
         graphics.key = JsonContract.requiredString(jsonValue, "key", file, context, log);
+        graphics.section = JsonContract.optionalString(jsonValue, "section", "",
+            file, context, log);
         if (!jsonValue.has("values") || !jsonValue.get("values").isObject()) {
             log.add(file, context + ".values", "expected object {opengl?, vulkan?}");
             return;
@@ -363,7 +370,7 @@ class GraphicsPolicyParser {
             return graphics;
         }
         graphics.present = true;
-        Vector<string> allowedKeys = ["method", "file", "format", "key", "values", "tap_api",
+        Vector<string> allowedKeys = ["method", "file", "format", "key", "section", "values", "tap_api",
                                       "overlay_api"];
         JsonContract.checkKeys(jsonValue, allowedKeys, file, context, log);
         graphics.method = JsonContract.requiredString(jsonValue, "method", file, context, log);

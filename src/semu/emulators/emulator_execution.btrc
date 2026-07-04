@@ -119,6 +119,88 @@ class EmulatorExecution {
         }
     }
 
+    // Force the emulator onto the tap's graphics api, from contract data
+    // alone: graphics.method "config_file" declares WHERE (file), HOW
+    // (format + section) and WHAT (key = values[tap_api]). Applied only when
+    // the resolved plan actually carries the tap (LD_PRELOAD present) — with
+    // bezels off the emulator keeps its own renderer choice. Runs AFTER the
+    // profile install so the pin wins over the seeded default.
+    class void applyGraphicsForce(EmulatorPlatform platform, LaunchPlan resolvedPlan,
+                                  TemplateContext context) {
+        if (!platform.graphics.present || !platform.graphics.method.equals("config_file")) {
+            return;
+        }
+        if (!platform.graphics.format.equals("ini")) {
+            return; // xml/toml writers are future work; contracts stay honest
+        }
+        if (EmulatorExecution.environmentValueFor(resolvedPlan, "LD_PRELOAD").isEmpty()) {
+            return;
+        }
+        string forcedValue = "";
+        if (platform.graphics.tapApi.equals("opengl")) {
+            forcedValue = platform.graphics.valueOpenGl;
+        } else if (platform.graphics.tapApi.equals("vulkan")) {
+            forcedValue = platform.graphics.valueVulkan;
+        }
+        if (forcedValue.isEmpty()) {
+            return;
+        }
+        string configurationPath = TemplatePaths.resolve(platform.graphics.file, context);
+        if (configurationPath.contains("${")) {
+            return;
+        }
+        string updated = EmulatorExecution.upsertIniValue(
+            FileSystem.isFile(configurationPath) ? Path.readAll(configurationPath) : "",
+            platform.graphics.section, platform.graphics.key, forcedValue);
+        UnixFileSystem.mkdirp(PathTools.dirname(configurationPath));
+        Path.writeAll(configurationPath, updated);
+    }
+
+    // Section-aware ini upsert: replace the key's line inside its section,
+    // insert it right under the section header when absent, append the
+    // section itself when the file lacks it. Sectionless keys (empty
+    // section) upsert at file scope.
+    class string upsertIniValue(string existingText, string sectionName, string key,
+                                string value) {
+        string renderedLine = key + " = " + value;
+        string sectionHeader = "[" + sectionName + "]";
+        Vector<string> keptLines = [];
+        bool insideSection = sectionName.isEmpty();
+        bool replaced = false;
+        bool sectionSeen = sectionName.isEmpty();
+        for line in Strings.split(existingText, "\n") {
+            string trimmedLine = line.trim();
+            if (trimmedLine.startsWith("[")) {
+                if (insideSection && !replaced && !sectionName.isEmpty()) {
+                    keptLines.push(renderedLine);
+                    replaced = true;
+                }
+                insideSection = trimmedLine.equals(sectionHeader);
+                if (insideSection) {
+                    sectionSeen = true;
+                }
+            } else if (insideSection && !replaced
+                       && (trimmedLine.startsWith(key + " =")
+                           || trimmedLine.startsWith(key + "="))) {
+                keptLines.push(renderedLine);
+                replaced = true;
+                line = "";
+            }
+            if (!replaced || !line.isEmpty() || !trimmedLine.startsWith(key)) {
+                keptLines.push(line);
+            }
+        }
+        string result = keptLines.join("\n");
+        if (!replaced) {
+            if (!sectionSeen) {
+                result = result + "\n" + sectionHeader + "\n" + renderedLine + "\n";
+            } else {
+                result = result + "\n" + renderedLine + "\n";
+            }
+        }
+        return result;
+    }
+
     class void mergeProfileSubtree(string sourceDirectory, string targetDirectory) {
         if (!FileSystem.isDir(sourceDirectory)) {
             return;
@@ -319,6 +401,7 @@ class EmulatorExecution {
         if (resolvedPlan.backend.equals("flatpak")) {
             EmulatorExecution.dropClientXdgEnvironment(resolvedPlan);
         }
+        EmulatorExecution.applyGraphicsForce(platform, resolvedPlan, context);
         if (operatingSystem.equals("linux")) {
             EmulatorExecution.wrapWithQuitWatch(resolvedPlan,
                 EmulatorExecution.quitWatchBinaryPath(project));
