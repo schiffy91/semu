@@ -1,5 +1,5 @@
 // ares_emulator.btrc — the ares concrete emulator class. ares is a pure-data
-// standalone: the macOS-only native backend, the --fullscreen argument, the
+// standalone: the macOS-only native backend, the WINDOWED launch (macOS product decision: no Space takeover; the overlay tracks the window), the
 // sandbox-exec write grants and the Application Support state grant all live
 // in emulators/ares/emulator.json and are executed by the generic machinery
 // (the per-system '--system "Nintendo 64"' selector travels on the n64
@@ -37,7 +37,7 @@ class AresEmulator extends SemuEmulator implements SemuEmitter, SemuRenderer {
         }
     }
 
-    // The golden command is the emulator token, the platform's --fullscreen
+    // The golden command is the emulator token, the platform arguments
     // switch and the rom: the '--system "Nintendo 64"' selector is binding
     // data (emulator.json doc.provenance), so this class appends nothing.
     public Vector<string> commandFragments(EmulatorBinding binding, EmulatorPlatform platform) {

@@ -125,38 +125,21 @@ static CGImageRef load_art_image(const char *path) {
     CGContextClearRect(context, NSRectToCGRect(self.bounds));
     if (!art_image) { return; }
 
-    SemuTapGeometryInput geometry_input;
-    memset(&geometry_input, 0, sizeof(geometry_input));
-    geometry_input.win_w = (int)self.bounds.size.width;
-    geometry_input.win_h = (int)self.bounds.size.height;
-    geometry_input.native_w = env_nw;
-    geometry_input.native_h = env_nh;
-    geometry_input.display_aspect = disp_aspect;
-    geometry_input.priority_bezel = priority_bezel;
-    geometry_input.fill_hole = fill_hole;
-    geometry_input.has_art = 1;
-    geometry_input.art_w = art_w;
-    geometry_input.art_h = art_h;
-    geometry_input.hole_x = scr_x;
-    geometry_input.hole_y = scr_y;
-    geometry_input.hole_w = scr_w;
-    geometry_input.hole_h = scr_h;
-
-    SemuTapGeometry geometry;
-    if (!semu_tap_compute_geometry(&geometry_input, &geometry)) { return; }
-
-    // tap_geometry emits GL coordinates (origin bottom-left) — exactly the
-    // default non-flipped NSView space, so the rects map through verbatim.
+    // The window frame is ALREADY the art's geometry: poll_target expands the
+    // overlay around the emulator window by the hole fractions, so the art
+    // stretches to the full bounds and the hole sits at exactly those
+    // fractions. (SEMU_TAP_SCREEN is top-left normalized; this view is
+    // bottom-left, so the hole's vertical origin is 1 - y - h.)
     CGContextSetInterpolationQuality(context, kCGInterpolationHigh);
-    CGContextDrawImage(context, CGRectMake(geometry.bezel_x, geometry.bezel_y,
-        geometry.bezel_w, geometry.bezel_h), art_image);
+    CGContextDrawImage(context, NSRectToCGRect(self.bounds), art_image);
 
-    // The content cutout: clear the art's mapped screen hole back to full
-    // transparency — the emulator's own window shows through untouched.
-    float hole_left = 0, hole_bottom = 0, hole_width = 0, hole_height = 0;
-    semu_tap_hole_rect_gl(&geometry_input, &geometry,
-        &hole_left, &hole_bottom, &hole_width, &hole_height);
-    CGContextClearRect(context, CGRectMake(hole_left, hole_bottom, hole_width, hole_height));
+    // The content cutout: clear the hole back to full transparency — the
+    // emulator's own window shows through untouched.
+    CGFloat bounds_width = self.bounds.size.width;
+    CGFloat bounds_height = self.bounds.size.height;
+    CGContextClearRect(context, CGRectMake(bounds_width * scr_x,
+        bounds_height * (1.0f - scr_y - scr_h),
+        bounds_width * scr_w, bounds_height * scr_h));
 }
 
 @end
@@ -247,7 +230,37 @@ static void poll_target(void) {
         [overlay_window orderOut:nil];   // emulator minimized/hidden: follow it
         return;
     }
+    // Only over the GAME: when the emulator's app is not frontmost (the user
+    // switched to another window, or the emulator shows a settings dialog in
+    // front), the bezel hides instead of floating over foreign windows.
+    NSRunningApplication *frontmost_application =
+        [[NSWorkspace sharedWorkspace] frontmostApplication];
+    if (frontmost_application == nil
+        || (pid_t)frontmost_application.processIdentifier != target_pid) {
+        [overlay_window orderOut:nil];
+        return;
+    }
     NSRect target_frame = cocoa_frame_from_quartz(quartz_bounds);
+    // The overlay cannot rescale the emulator's pixels the way the GL tap
+    // does, so the bezel lives OUTSIDE the emulator window: expand the frame
+    // by the art's hole fractions (SEMU_TAP_SCREEN) so the transparent hole
+    // lands exactly on the window and the art surrounds it. Mirroring 1:1
+    // left the hole covering the whole frame — observed live as a bezel
+    // reduced to thin edges. Recomputed every poll, so window resizes and
+    // moves track dynamically. Clamped to the visible screen; the hole stays
+    // glued to the window even when the ring crops at an edge.
+    if (scr_w > 0.05f && scr_h > 0.05f && scr_w < 1.0f && scr_h < 1.0f) {
+        CGFloat expanded_width = target_frame.size.width / scr_w;
+        CGFloat expanded_height = target_frame.size.height / scr_h;
+        CGFloat hole_left = expanded_width * scr_x;
+        // SEMU_TAP_SCREEN is top-left normalized; Cocoa origins are
+        // bottom-left, so the offset below the hole is (1 - y - h).
+        CGFloat hole_bottom = expanded_height * (1.0f - scr_y - scr_h);
+        target_frame = NSMakeRect(target_frame.origin.x - hole_left,
+            target_frame.origin.y - hole_bottom, expanded_width, expanded_height);
+        target_frame = NSIntersectionRect(target_frame,
+            [[NSScreen mainScreen] visibleFrame]);
+    }
     if (!NSEqualRects(overlay_window.frame, target_frame)) {
         [overlay_window setFrame:target_frame display:YES];
         [overlay_window.contentView setNeedsDisplay:YES];

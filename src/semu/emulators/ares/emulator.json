@@ -28,9 +28,7 @@
           }
         ]
       },
-      "args": [
-        "--fullscreen"
-      ]
+      "args": []
     }
   },
   "doc": {
