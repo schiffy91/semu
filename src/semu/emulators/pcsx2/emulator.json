@@ -74,7 +74,8 @@
         "values": {
           "opengl": "12"
         },
-        "tap_api": "opengl"
+        "tap_api": "opengl",
+        "section": "EmuCore/GS"
       },
       "overlay_aspect": "4x3",
       "aspect_probe": {

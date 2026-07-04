@@ -27,6 +27,7 @@ import ../../src/semu/systems/system_parser.btrc
 import ../../src/semu/emulators/semu_emulator.btrc
 import ../../src/semu/emulators/emulator_process.btrc
 import ../../src/semu/emulators/emulator_emitter.btrc
+import ../../src/semu/emulators/emulator_execution.btrc
 import ../../src/semu/emulators/emulator_registry.btrc
 import ../../src/semu/emulators/retroarch/retroarch_rendering.btrc
 import ../../src/semu/platforms/linux/linux_tap.btrc
@@ -739,6 +740,40 @@ class EmulatorContractTest {
     // the flatpak --env grant BEFORE the app id) when a tap library exists
     // under a SEMU_TEST_TMP-staged asset root; disabled visuals skip
     // everything; a missing library degrades to a plan note.
+    // The graphics-force ini upsert (pure): replace inside the declared
+    // section, insert under an existing header, create the section when the
+    // file lacks it — the emulator only reads the pin INSIDE its section.
+    class int checkGraphicsForceUpsert() {
+        int failures = 0;
+        string replaced = EmulatorExecution.upsertIniValue(
+            "[UI]\nConfirmShutdown = false\n[EmuCore/GS]\nRenderer = -1\nfilter = 0\n",
+            "EmuCore/GS", "Renderer", "12");
+        if (!replaced.contains("[EmuCore/GS]\nRenderer = 12")
+            || replaced.contains("Renderer = -1")) {
+            failures = failures + EmulatorContractTest.fail(
+                "graphics-force upsert must replace the key inside its section");
+        }
+        string inserted = EmulatorExecution.upsertIniValue(
+            "[Graphics]\nFullScreen = True\n[Sound]\nEnable = True\n",
+            "Graphics", "GPUBackend", "0");
+        int graphicsIndex = inserted.indexOf("[Graphics]");
+        int soundIndex = inserted.indexOf("[Sound]");
+        int keyIndex = inserted.indexOf("GPUBackend = 0");
+        if (keyIndex < graphicsIndex || keyIndex > soundIndex) {
+            failures = failures + EmulatorContractTest.fail(
+                "graphics-force upsert must insert the key inside the existing section");
+        }
+        string created = EmulatorExecution.upsertIniValue("", "EmuCore/GS", "Renderer", "12");
+        if (!created.contains("[EmuCore/GS]\nRenderer = 12")) {
+            failures = failures + EmulatorContractTest.fail(
+                "graphics-force upsert must create the missing section");
+        }
+        if (failures == 0) {
+            print("  OK graphics-force section-aware ini upsert");
+        }
+        return failures;
+    }
+
     class int checkLinuxTapWiring(SemuContracts contracts, string repoRoot) {
         int failures = 0;
         EmulatorDefinition dolphin = EmulatorContractTest.findEmulator(contracts, "dolphin");
@@ -1093,6 +1128,7 @@ class EmulatorContractTest {
         failures = failures + EmulatorContractTest.checkEmulatorDutyContract(contracts,
             repoRoot);
         failures = failures + EmulatorContractTest.checkSystemInference(contracts);
+        failures = failures + EmulatorContractTest.checkGraphicsForceUpsert();
         failures = failures + EmulatorContractTest.checkLinuxTapWiring(contracts, repoRoot);
         failures = failures + EmulatorContractTest.checkMacosTapWiring(contracts, repoRoot);
         failures = failures + EmulatorContractTest.checkPlatformAxisValidation();
