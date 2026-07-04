@@ -78,15 +78,21 @@ class EmulatorExecution {
         }
     }
 
-    // Install the bootstrap-emitted profile into the sandbox state root so
-    // the emulator launches CONFIGURED (controller profiles, the
-    // fullscreen/analytics-skip policy) instead of first-run defaults. The
-    // emitted <profiles>/<Name>/{config,data} subtrees map onto
-    // <stateRoot>/{config,data}/<state.config_subdir|data_subdir>/ — the app's
-    // own directory name, the one per-emulator fact, declared in the
-    // contract. Copy is no-clobber: first run installs, later runs keep
-    // whatever the user changed. Emulators that own their install (RetroArch
-    // merges its cfg) or ship no profile declare no subdir and are skipped.
+    // Install the bootstrap-emitted profile where the emulator ACTUALLY
+    // reads its configuration, so it launches CONFIGURED (controller
+    // profiles, the fullscreen/analytics-skip policy) instead of first-run
+    // defaults. VERIFIED on the Deck: flatpak emulators read config from
+    // ~/.var/app/<id>/{config,data} and IGNORE the XDG_CONFIG_HOME
+    // redirection entirely (Dolphin wrote its own ~/.var/app config and kept
+    // popping the analytics consent dialog until the profile landed there).
+    // So the flatpak backend installs into ${flatpak_home}; other backends
+    // (the isolated bwrap/native state root) install there. The emitted
+    // <profiles>/<Name>/{config,data} subtrees map onto
+    // <base>/{config,data}/<state.config_subdir|data_subdir>/ — the app's own
+    // directory name, the one per-emulator fact, declared in the contract.
+    // Copy is no-clobber: first run installs, later runs keep the user's
+    // changes. Emulators that own their install (RetroArch merges its cfg) or
+    // ship no profile declare no subdir and are skipped.
     class void installProfileTree(EmulatorDefinition emulator, EmulatorPlatform platform,
                                   TemplateContext context, string project) {
         if (platform.state.configSubdir.isEmpty() && platform.state.dataSubdir.isEmpty()) {
@@ -95,17 +101,20 @@ class EmulatorExecution {
         string profileDirectory = PathTools.join(project,
             "src/generated/packaging/emulators/profiles");
         profileDirectory = PathTools.join(profileDirectory, emulator.name);
-        string stateRoot = TemplatePaths.stateRoot(context);
+        string installBase = TemplatePaths.stateRoot(context);
+        if (platform.backend.equals("flatpak")) {
+            installBase = TemplatePaths.resolve("${flatpak_home}", context);
+        }
         if (!platform.state.configSubdir.isEmpty()) {
             EmulatorExecution.mergeProfileSubtree(
                 PathTools.join(profileDirectory, "config"),
-                PathTools.join(PathTools.join(stateRoot, "config"),
+                PathTools.join(PathTools.join(installBase, "config"),
                     platform.state.configSubdir));
         }
         if (!platform.state.dataSubdir.isEmpty()) {
             EmulatorExecution.mergeProfileSubtree(
                 PathTools.join(profileDirectory, "data"),
-                PathTools.join(PathTools.join(stateRoot, "data"),
+                PathTools.join(PathTools.join(installBase, "data"),
                     platform.state.dataSubdir));
         }
     }
