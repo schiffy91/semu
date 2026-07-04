@@ -55,6 +55,7 @@ static pid_t target_pid;
 static int env_nw, env_nh;                       // SEMU_TAP_NATIVE_W/H
 static float disp_aspect;                        // display aspect (0 = native square nw/nh)
 static int priority_bezel, fill_hole;            // SEMU_TAP_PRIORITY / SEMU_TAP_FILL
+static int retro_scanlines = 1;
 static float scr_x, scr_y, scr_w, scr_h;         // the art's screen HOLE (norm, top-left)
 static CGImageRef art_image;                     // bezel art, loaded once via stb
 static int art_w, art_h;
@@ -72,6 +73,10 @@ static void read_environment(void) {
     const char *pri = getenv("SEMU_TAP_PRIORITY"); if (pri && (pri[0] == 'b' || pri[0] == 'B')) priority_bezel = 1;
     const char *fh = getenv("SEMU_TAP_FILL"); if (fh && fh[0] == '1') fill_hole = 1;
     const char *sc = getenv("SEMU_TAP_SCREEN"); if (sc) { sscanf(sc, "%f,%f,%f,%f", &scr_x, &scr_y, &scr_w, &scr_h); }
+    // Value-tested like the GL tap: the retro look defaults ON there and a
+    // leading '0' disables — mirror that grammar for the overlay scanlines.
+    const char *retro_env = getenv("SEMU_RETRO_START");
+    retro_scanlines = (retro_env == NULL || retro_env[0] != '0') ? 1 : 0;
     const char *as = getenv("SEMU_TAP_ASPECT");
     if (as) {
         float aw = 0, ah = 0;
@@ -137,9 +142,23 @@ static CGImageRef load_art_image(const char *path) {
     // emulator's own window shows through untouched.
     CGFloat bounds_width = self.bounds.size.width;
     CGFloat bounds_height = self.bounds.size.height;
-    CGContextClearRect(context, CGRectMake(bounds_width * scr_x,
+    CGRect hole_rect = CGRectMake(bounds_width * scr_x,
         bounds_height * (1.0f - scr_y - scr_h),
-        bounds_width * scr_w, bounds_height * scr_h));
+        bounds_width * scr_w, bounds_height * scr_h);
+    CGContextClearRect(context, hole_rect);
+
+    // The shader look, overlay-style: the GL tap shades the game through
+    // tube.frag; without pixel access the overlay draws classic scanlines —
+    // 1pt lines every 3pt at low alpha over the hole, recomputed with the
+    // bounds so resizes stay crisp. SEMU_RETRO_START-gated per system.
+    if (retro_scanlines) {
+        CGContextSetRGBFillColor(context, 0.0f, 0.0f, 0.0f, 0.18f);
+        for (CGFloat line_y = hole_rect.origin.y;
+             line_y < hole_rect.origin.y + hole_rect.size.height; line_y += 3.0f) {
+            CGContextFillRect(context, CGRectMake(hole_rect.origin.x, line_y,
+                hole_rect.size.width, 1.0f));
+        }
+    }
 }
 
 @end
