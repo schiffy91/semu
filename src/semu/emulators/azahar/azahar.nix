@@ -23,6 +23,7 @@
 # Keep this expression as the target; the fixes above are real progress.
 { lib
 , stdenv
+, azahar
 , fetchFromGitHub
 , cmake
 , git
@@ -67,7 +68,9 @@ let
 in
 if !stdenv.hostPlatform.isDarwin then
   throw "azahar.nix: unsupported platform ${stdenv.hostPlatform.system} (the linux contract routes Azahar through flatpak, never nix)"
-else stdenv.mkDerivation {
+else
+let
+  semuSourceBuild = stdenv.mkDerivation {
   pname = "azahar";
   inherit version;
   src = source;
@@ -164,4 +167,12 @@ else stdenv.mkDerivation {
     license = lib.licenses.gpl2Plus;
     mainProgram = "azahar";
   };
-}
+};
+in
+# The ACTIVE package is the maintained nixpkgs azahar (source-built there,
+# darwin, no Semu patch needed — the macOS tap composites externally). The
+# Semu source expression above stays the target, reachable as
+# .#azahar.semuSourceBuild, until the dynarmic probe blocker clears.
+azahar.overrideAttrs (previousAttrs: {
+  passthru = (previousAttrs.passthru or { }) // { inherit semuSourceBuild; };
+})

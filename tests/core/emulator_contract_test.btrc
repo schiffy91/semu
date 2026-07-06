@@ -381,9 +381,13 @@ class EmulatorContractTest {
             failures = failures + EmulatorContractTest.fail(
                 "pcsx2 input profile lacks the contract pad identity");
         }
-        if (!baseIni.contains("src/generated/runtime/content/bios/ps2")) {
+        // The Bios folder must be RESOLVED (no template tokens) — the
+        // concrete path is environment truth: the SD firmware dir when the
+        // contract's ${emulation_root} exists (the Deck), the project's
+        // runtime content fallback otherwise (CI, the Mac).
+        if (!baseIni.contains("Bios = /") || baseIni.contains("Bios = ${")) {
             failures = failures + EmulatorContractTest.fail(
-                "pcsx2 base ini lacks the runtime bios folder");
+                "pcsx2 base ini lacks a resolved bios folder");
         }
         // Hotkey chords live in the input profile ([Hotkeys] section; the
         // base ini delegates via UseProfileHotkeyBindings). app.quit is the

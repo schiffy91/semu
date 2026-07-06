@@ -53,7 +53,7 @@ appimage: cross-linux ## Assemble src/generated/build/Semu-x86_64.AppImage (cros
 		src/semu/emulators/rendering/tap/libsemutap.c \
 		-o src/generated/build/steamdeck/tap/libsemutap.so -lm -ldl
 	@set -euo pipefail; \
-	workdir="$(APPIMAGE_WORK)"; rm -rf "$$workdir"; mkdir -p "$$workdir"; \
+	workdir="$(APPIMAGE_WORK)"; chmod -R u+w "$$workdir" 2>/dev/null || true; rm -rf "$$workdir"; mkdir -p "$$workdir"; \
 	esdeUrl=$$(grep -A3 'x86_64-linux = {' src/semu/emulators/es_de/es_de.nix | grep -o 'https[^"]*' | head -1); \
 	esdeHash=$$(grep -A3 'x86_64-linux = {' src/semu/emulators/es_de/es_de.nix | grep -o 'sha256-[^"]*' | head -1); \
 	echo "fetching es-de: $$esdeUrl"; \
@@ -71,7 +71,7 @@ appimage: cross-linux ## Assemble src/generated/build/Semu-x86_64.AppImage (cros
 	cp src/generated/build/steamdeck/tap/libsemutap.so "$$appdir/lib/semu/"; \
 	cp src/generated/build/steamdeck/tap/semu-quit-watch "$$appdir/lib/semu/"; \
 	visualAssets=$$(nix build .\#visualAssets --no-link --print-out-paths); \
-	rsync -rltL "$$visualAssets/share/" "$$appdir/share/"; \
+	rsync -rltL "$$visualAssets/share/" "$$appdir/share/"; chmod -R u+w "$$appdir/share"; \
 	cp -L "$$visualAssets/lib/semu/"* "$$appdir/lib/semu/" 2>/dev/null || true; \
 	for core in gambatte mgba mesen snes9x genesis_plus_gx mupen64plus_next mednafen_psx desmume; do \
 		curl -sL -o "$$workdir/$$core.zip" "https://buildbot.libretro.com/nightly/linux/x86_64/latest/$${core}_libretro.so.zip"; \
