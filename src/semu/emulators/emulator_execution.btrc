@@ -156,6 +156,13 @@ class EmulatorExecution {
         string updated = EmulatorExecution.upsertIniValue(
             FileSystem.isFile(configurationPath) ? Path.readAll(configurationPath) : "",
             platform.graphics.section, platform.graphics.key, forcedValue);
+        for (int pinIndex = 0; pinIndex < platform.graphics.extraPinKeys.size();
+             pinIndex++) {
+            updated = EmulatorExecution.upsertIniValue(updated,
+                platform.graphics.extraPinSections.get(pinIndex),
+                platform.graphics.extraPinKeys.get(pinIndex),
+                platform.graphics.extraPinValues.get(pinIndex));
+        }
         UnixFileSystem.mkdirp(PathTools.dirname(configurationPath));
         Path.writeAll(configurationPath, updated);
     }

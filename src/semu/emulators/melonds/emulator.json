@@ -69,7 +69,14 @@
           "opengl": "1"
         },
         "tap_api": "opengl",
-        "section": "3D"
+        "section": "3D",
+        "extra_pins": [
+          {
+            "section": "Screen",
+            "key": "UseGL",
+            "value": "true"
+          }
+        ]
       },
       "overlay_aspect": "4x3",
       "state": {
