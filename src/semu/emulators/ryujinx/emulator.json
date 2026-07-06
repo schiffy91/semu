@@ -58,7 +58,8 @@
       },
       "graphics": {
         "method": "dynamic",
-        "tap_api": "opengl"
+        "tap_api": "opengl",
+        "overlay_api": "vulkan"
       },
       "overlay_aspect": "16x9",
       "state": {
