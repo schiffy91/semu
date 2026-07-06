@@ -76,7 +76,8 @@
             "key": "UseGL",
             "value": "true"
           }
-        ]
+        ],
+        "overlay_api": "vulkan"
       },
       "overlay_aspect": "4x3",
       "state": {

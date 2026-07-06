@@ -119,6 +119,27 @@ class EmulatorExecution {
         }
     }
 
+    // Materialize the Vulkan-overlay configuration: LinuxTap points
+    // VKBASALT_CONFIG_FILE at the state root and names the aspect-matched
+    // template (SEMU_OVERLAY_CONF_TEMPLATE, @DIR@ tokens); once the plan is
+    // resolved this writes the concrete conf beside the emulator's state so
+    // the vkBasalt layer inside the sandbox finds effects and art by
+    // absolute, granted paths.
+    class void materializeOverlayConfiguration(LaunchPlan resolvedPlan) {
+        string templatePath = EmulatorExecution.environmentValueFor(resolvedPlan,
+            "SEMU_OVERLAY_CONF_TEMPLATE");
+        string configurationPath = EmulatorExecution.environmentValueFor(resolvedPlan,
+            "VKBASALT_CONFIG_FILE");
+        if (templatePath.isEmpty() || configurationPath.isEmpty()
+            || !FileSystem.isFile(templatePath) || configurationPath.contains("${")) {
+            return;
+        }
+        string materialized = Path.readAll(templatePath)
+            .replace("@DIR@", PathTools.dirname(templatePath));
+        UnixFileSystem.mkdirp(PathTools.dirname(configurationPath));
+        Path.writeAll(configurationPath, materialized);
+    }
+
     // Force the emulator onto the tap's graphics api, from contract data
     // alone: graphics.method "config_file" declares WHERE (file), HOW
     // (format + section) and WHAT (key = values[tap_api]). Applied only when
@@ -128,6 +149,12 @@ class EmulatorExecution {
     class void applyGraphicsForce(EmulatorPlatform platform, LaunchPlan resolvedPlan,
                                   TemplateContext context) {
         if (!platform.graphics.present || !platform.graphics.method.equals("config_file")) {
+            return;
+        }
+        // Vulkan-overlay emulators keep their native presentation: the
+        // vkBasalt layer composites there, and forcing the GL config would
+        // fight it (ppsspp tried GL, failed under gamescope, and lost both).
+        if (platform.graphics.overlayApi.equals("vulkan")) {
             return;
         }
         // TOML's [Section] + key = value surface is textually identical to
@@ -413,6 +440,7 @@ class EmulatorExecution {
             EmulatorExecution.dropClientXdgEnvironment(resolvedPlan);
         }
         EmulatorExecution.applyGraphicsForce(platform, resolvedPlan, context);
+        EmulatorExecution.materializeOverlayConfiguration(resolvedPlan);
         if (operatingSystem.equals("linux")) {
             EmulatorExecution.wrapWithQuitWatch(resolvedPlan,
                 EmulatorExecution.quitWatchBinaryPath(project));

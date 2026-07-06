@@ -67,7 +67,8 @@
           "opengl": "0"
         },
         "tap_api": "opengl",
-        "section": "Graphics"
+        "section": "Graphics",
+        "overlay_api": "vulkan"
       },
       "overlay_aspect": "4x3",
       "state": {
