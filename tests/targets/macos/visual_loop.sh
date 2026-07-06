@@ -56,7 +56,9 @@ PY
       # Art from the composed bundle (the wrapper's own baked asset root) —
       # no nix flake call: refs cannot carry the repo path's spaces.
       ASSET_ROOT="$PROJECT/src/generated/nix/result/lib/semu"
-      SEMU_TAP_TARGET_PID="$emulatorPid" SEMU_TAP_ART="$ASSET_ROOT/share/semu/$ART" \
+      alignFlag=""; [ "${SEMU_LOOP_ALIGN:-0}" = "1" ] && alignFlag=1
+      SEMU_TAP_ALIGN="$alignFlag" \
+        SEMU_TAP_TARGET_PID="$emulatorPid" SEMU_TAP_ART="$ASSET_ROOT/share/semu/$ART" \
         SEMU_TAP_SCREEN="$HOLE" SEMU_RETRO_START="$shader" SEMU_TAP_SNAPSHOT="$shot" \
         "$OVERLAY" >/dev/null 2>&1 &
       overlayPid=$!

@@ -56,6 +56,7 @@ static int env_nw, env_nh;                       // SEMU_TAP_NATIVE_W/H
 static float disp_aspect;                        // display aspect (0 = native square nw/nh)
 static int priority_bezel, fill_hole;            // SEMU_TAP_PRIORITY / SEMU_TAP_FILL
 static int retro_scanlines = 1;
+static int align_outline;      // SEMU_TAP_ALIGN: stroke the hole (debug parity with the GL tap's semu-align)
 static float scr_x, scr_y, scr_w, scr_h;         // the art's screen HOLE (norm, top-left)
 static CGImageRef art_image;                     // bezel art, loaded once via stb
 static int art_w, art_h;
@@ -84,6 +85,8 @@ static void read_environment(void) {
         else { float v = (float)atof(as); if (v > 0.01f) disp_aspect = v; }
     }
     const char *tp = getenv("SEMU_TAP_TARGET_PID"); if (tp) target_pid = (pid_t)atoi(tp);
+    const char *al = getenv("SEMU_TAP_ALIGN");
+    if (al && al[0] == '1') align_outline = 1;
     const char *sp = getenv("SEMU_TAP_SNAPSHOT");
     if (sp && sp[0]) { strncpy(snapshot_path, sp, sizeof(snapshot_path) - 1); snapshot_path[sizeof(snapshot_path) - 1] = 0; }
 }
@@ -151,6 +154,15 @@ static CGImageRef load_art_image(const char *path) {
     // tube.frag; without pixel access the overlay draws classic scanlines —
     // 1pt lines every 3pt at low alpha over the hole, recomputed with the
     // bounds so resizes stay crisp. SEMU_RETRO_START-gated per system.
+    // Alignment diagnostic (SEMU_TAP_ALIGN=1): a magenta stroke exactly on
+    // the hole boundary — the pixel-perfect check is "the emulator window's
+    // edge sits under this line", same intent as the GL tap's semu-align
+    // purple frame.
+    if (align_outline) {
+        CGContextSetRGBStrokeColor(context, 1.0f, 0.0f, 1.0f, 0.9f);
+        CGContextSetLineWidth(context, 2.0f);
+        CGContextStrokeRect(context, hole_rect);
+    }
     if (retro_scanlines) {
         CGContextSetRGBFillColor(context, 0.0f, 0.0f, 0.0f, 0.18f);
         for (CGFloat line_y = hole_rect.origin.y;
