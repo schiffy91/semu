@@ -23,8 +23,17 @@ for row in nes:mesen snes:snes9x gb:gambatte gba:mgba genesis:genesis_plus_gx n6
       printf '%s' "$variant" > "$state/semu-bezel"
       printf '%s' "$shader"  > "$state/semu-shader"
       [ "${SEMU_LOOP_ALIGN:-0}" = "1" ] && printf 1 > "$state/semu-align" || rm -f "$state/semu-align"
-      "$MOUNT/usr/bin/semu-retroarch" -f -L "$MOUNT/usr/lib/retroarch/cores/${core}_libretro.so" "$ROMS/$system/$rom" >/dev/null 2>&1 &
-      sleep 22
+      # Through the STEAM SHORTCUT so gamescope PRESENTS the game — the
+      # portal captures what is on screen; ssh-spawned windows never show.
+      # The ${env:...} core token resolves at the exec edge inside AppRun,
+      # where SEMU_RETROARCH_CORE_DIR points into the live mount.
+      cat > /home/deck/semu-test-cmd <<CMD
+#!/usr/bin/env bash
+exec $APP launcher retroarch -f -L "\${env:SEMU_RETROARCH_CORE_DIR}/${core}_libretro.so" "$ROMS/$system/$rom" >> /tmp/visual-loop-launch.log 2>&1
+CMD
+      chmod +x /home/deck/semu-test-cmd
+      steam steam://rungameid/9855531406849998848 >/dev/null 2>&1 &
+      sleep 30
       frame=$(grep "game=(" "$state/semutap.log" 2>/dev/null | tail -1)
       shot="$OUT/${system}-v${variant}-s${shader}.png"
       timeout 12 busctl --user call org.freedesktop.portal.Desktop /org/freedesktop/portal/desktop org.freedesktop.portal.Screenshot Screenshot "sa{sv}" "" 1 interactive b false >/dev/null 2>&1
