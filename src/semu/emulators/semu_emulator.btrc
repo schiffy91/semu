@@ -74,6 +74,12 @@ class GraphicsPolicy {
     public string section;
     public string valueOpenGl;
     public string valueVulkan;
+    // Companion pins applied verbatim whenever the force applies — some
+    // emulators split rendering from presentation (melonDS: [3D] Renderer
+    // AND [Screen] UseGL); one key cannot express that.
+    public Vector<string> extraPinSections;
+    public Vector<string> extraPinKeys;
+    public Vector<string> extraPinValues;
     public string tapApi;
     public string overlayApi;
 
@@ -86,6 +92,9 @@ class GraphicsPolicy {
         self.section = "";
         self.valueOpenGl = "";
         self.valueVulkan = "";
+        self.extraPinSections = [];
+        self.extraPinKeys = [];
+        self.extraPinValues = [];
         self.tapApi = "";
         self.overlayApi = "";
     }
@@ -361,6 +370,24 @@ class GraphicsPolicyParser {
             file, context + ".values", log);
         graphics.valueVulkan = JsonContract.optionalString(values, "vulkan", "",
             file, context + ".values", log);
+        if (jsonValue.has("extra_pins")) {
+            JsonValue extraPins = jsonValue.get("extra_pins");
+            if (!extraPins.isArray()) {
+                log.add(file, context + ".extra_pins", "expected array");
+            } else {
+                for (int pinIndex = 0; pinIndex < extraPins.size(); pinIndex++) {
+                    JsonValue pin = extraPins.at(pinIndex);
+                    Vector<string> pinKeys = ["section", "key", "value"];
+                    JsonContract.checkKeys(pin, pinKeys, file, context + ".extra_pins", log);
+                    graphics.extraPinSections.push(JsonContract.optionalString(pin,
+                        "section", "", file, context + ".extra_pins", log));
+                    graphics.extraPinKeys.push(JsonContract.requiredString(pin, "key",
+                        file, context + ".extra_pins", log));
+                    graphics.extraPinValues.push(JsonContract.requiredString(pin, "value",
+                        file, context + ".extra_pins", log));
+                }
+            }
+        }
     }
 
     class GraphicsPolicy parse(JsonValue jsonValue, string file, string context, ParseLog log) {
@@ -370,7 +397,7 @@ class GraphicsPolicyParser {
             return graphics;
         }
         graphics.present = true;
-        Vector<string> allowedKeys = ["method", "file", "format", "key", "section", "values", "tap_api",
+        Vector<string> allowedKeys = ["method", "file", "format", "key", "section", "values", "extra_pins", "tap_api",
                                       "overlay_api"];
         JsonContract.checkKeys(jsonValue, allowedKeys, file, context, log);
         graphics.method = JsonContract.requiredString(jsonValue, "method", file, context, log);
