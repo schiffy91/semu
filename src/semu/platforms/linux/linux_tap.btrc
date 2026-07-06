@@ -130,6 +130,7 @@ class LinuxTap {
         LinuxTap.mergeEnvironment(launchPlan, "SEMU_TAP_STATE_DIR", "${state_root}");
         LinuxTap.mergeEnvironment(launchPlan, "SEMU_TAP_MENUFONT",
             BezelResolver.resolveAssetPath(LinuxTap.menuFontCanonicalPath(), assetRoot));
+        LinuxTap.mergeVariantEnvironment(launchPlan, system, assetRoot);
         string tapLibrary = LinuxTap.tapLibraryPath(environmentAssetRoot, project);
         if (tapLibrary.isEmpty()) {
             LinuxTap.appendNote(launchPlan, "tap library not found (LD_PRELOAD skipped):"
@@ -187,6 +188,43 @@ class LinuxTap {
             return "vkBasalt-16x9.conf";
         }
         return "vkBasalt-4x3.conf";
+    }
+
+    // The contract's EXTRA bezel variants (b/c/d — the radial menu and the
+    // semu-bezel state file cycle through them): each resolves like the base
+    // variant (geometry_from included) and rides the tap's variant key
+    // grammar (SEMU_TAP_ART_B/_C/_D + SEMU_TAP_SCREEN_B/_C/_D, glass
+    // alike). Without these keys the tap reports bcnt=1 and variant cycling
+    // is a no-op — caught live by the visual loop.
+    class void mergeVariantEnvironment(LaunchPlan launchPlan, SystemDefinition system,
+                                       string assetRoot) {
+        if (!system.bezels.present) {
+            return;
+        }
+        Vector<string> keySuffixes = ["_B", "_C", "_D"];
+        for (int variantIndex = 1; variantIndex < system.bezels.variants.size()
+             && variantIndex <= keySuffixes.size(); variantIndex++) {
+            BezelVariant variant = system.bezels.variants.get(variantIndex);
+            ResolvedBezel resolvedVariant = BezelResolver.resolve(system, variant.id,
+                assetRoot);
+            if (resolvedVariant.art.isEmpty()) {
+                LinuxTap.appendNote(launchPlan, "bezel variant '" + variant.id
+                    + "' resolved no art (skipped)");
+            } else {
+                string keySuffix = keySuffixes.get(variantIndex - 1);
+                LinuxTap.mergeEnvironment(launchPlan, "SEMU_TAP_ART" + keySuffix,
+                    resolvedVariant.art);
+                LinuxTap.mergeEnvironment(launchPlan, "SEMU_TAP_SCREEN" + keySuffix,
+                    RenderPlanner.wireFloat(resolvedVariant.hole.x) + ","
+                    + RenderPlanner.wireFloat(resolvedVariant.hole.y) + ","
+                    + RenderPlanner.wireFloat(resolvedVariant.hole.w) + ","
+                    + RenderPlanner.wireFloat(resolvedVariant.hole.h));
+                if (!resolvedVariant.glass.isEmpty()) {
+                    LinuxTap.mergeEnvironment(launchPlan, "SEMU_TAP_GLASS" + keySuffix,
+                        resolvedVariant.glass);
+                }
+            }
+        }
     }
 
     class void applyVulkanOverlay(LaunchPlan launchPlan, EmulatorDefinition emulator,

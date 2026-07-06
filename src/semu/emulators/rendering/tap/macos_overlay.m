@@ -254,8 +254,13 @@ static void poll_target(void) {
     // front), the bezel hides instead of floating over foreign windows.
     NSRunningApplication *frontmost_application =
         [[NSWorkspace sharedWorkspace] frontmostApplication];
-    if (frontmost_application == nil
-        || (pid_t)frontmost_application.processIdentifier != target_pid) {
+    // The snapshot diagnostic must compose at least once even when the
+    // emulator is not frontmost (headless verification loops drive the
+    // overlay from a script) — the gate resumes after the proof is written.
+    int snapshot_pending = (snapshot_path[0] != 0 && !snapshot_written);
+    if (!snapshot_pending
+        && (frontmost_application == nil
+            || (pid_t)frontmost_application.processIdentifier != target_pid)) {
         [overlay_window orderOut:nil];
         return;
     }
