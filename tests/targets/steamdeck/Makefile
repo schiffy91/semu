@@ -30,3 +30,11 @@ test: ## Run the Deck verification chain on the physical device (skips when offl
 	else \
 		echo "SKIP steamdeck target tests: $(SEMU_DECK_HOST) unreachable (deck offline)"; \
 	fi
+
+# The closed visual loop: every bezel-declaring system x variant(a/b/c/off)
+# x shader(on/off), launched through the REAL shim context on the Deck,
+# geometry read back from the tap's own frame log, portal screenshot per
+# combination into src/generated/verification/loop/. SEMU_LOOP_ALIGN=1 adds
+# the tap's purple alignment outline to every capture for pixel debugging.
+visual-loop:
+	@ssh $(SEMU_DECK_SSH_OPTS) $(SEMU_DECK_HOST) 'bash -s' < tests/targets/steamdeck/visual_loop.sh
