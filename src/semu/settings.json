@@ -3,7 +3,7 @@
   "paths": {
     "roms_root": {
       "linux": "/run/media/deck/SD/Emulation/roms",
-      "macos": "${home}/Drive/media/Emulation"
+      "macos": "${home}/ES-DE/ROMs"
     }
   },
   "visual": {
@@ -28,26 +28,97 @@
       "roms_dir": "${paths.project_roms}"
     },
     "folders": {
-      "saves": { "sync": true, "watch": true, "rescan_s": 900 },
-      "states": { "sync": true, "watch": true, "rescan_s": 900 },
-      "emulator_state": { "sync": true, "watch": true, "rescan_s": 900 },
-      "screenshots": { "sync": true, "watch": true, "rescan_s": 1800 },
-      "gamelists": { "sync": true, "watch": true, "rescan_s": 1800 },
-      "roms": { "sync": false, "watch": true, "rescan_s": 3600 },
-      "bios": { "sync": false, "watch": true, "rescan_s": 3600 }
+      "saves": {
+        "sync": true,
+        "watch": true,
+        "rescan_s": 900
+      },
+      "states": {
+        "sync": true,
+        "watch": true,
+        "rescan_s": 900
+      },
+      "emulator_state": {
+        "sync": true,
+        "watch": true,
+        "rescan_s": 900
+      },
+      "screenshots": {
+        "sync": true,
+        "watch": true,
+        "rescan_s": 1800
+      },
+      "gamelists": {
+        "sync": true,
+        "watch": true,
+        "rescan_s": 1800
+      },
+      "roms": {
+        "sync": false,
+        "watch": true,
+        "rescan_s": 3600
+      },
+      "bios": {
+        "sync": false,
+        "watch": true,
+        "rescan_s": 3600
+      }
     }
   },
   "screenshots": {
     "enabled": false,
     "tool": "auto",
     "delay_s": 2,
-    "hooks": { "before_launch": true, "after_spawn": true, "after_exit": true },
+    "hooks": {
+      "before_launch": true,
+      "after_spawn": true,
+      "after_exit": true
+    },
     "output_pattern": "${paths.project_screenshots}/verification/${emulator}/${hook}.png",
     "tools": [
-      { "id": "grim", "requires": ["wayland_display"], "args": ["${output}"] },
-      { "id": "spectacle", "requires": ["wayland_display"], "args": ["-b", "-n", "-o", "${output}"] },
-      { "id": "gnome-screenshot", "requires": ["wayland_display", "display"], "args": ["-f", "${output}"] },
-      { "id": "import", "requires": ["display"], "args": ["-window", "root", "${output}"] }
+      {
+        "id": "grim",
+        "requires": [
+          "wayland_display"
+        ],
+        "args": [
+          "${output}"
+        ]
+      },
+      {
+        "id": "spectacle",
+        "requires": [
+          "wayland_display"
+        ],
+        "args": [
+          "-b",
+          "-n",
+          "-o",
+          "${output}"
+        ]
+      },
+      {
+        "id": "gnome-screenshot",
+        "requires": [
+          "wayland_display",
+          "display"
+        ],
+        "args": [
+          "-f",
+          "${output}"
+        ]
+      },
+      {
+        "id": "import",
+        "requires": [
+          "display"
+        ],
+        "args": [
+          "-window",
+          "root",
+          "${output}"
+        ]
+      }
     ]
   },
   "doc": {

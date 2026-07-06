@@ -119,6 +119,30 @@ class EmulatorExecution {
         }
     }
 
+    // Flatpak's sandbox mounts its OWN /tmp: an argv path under the host's
+    // /tmp (the AppImage's fuse mount, where the bundled libretro cores
+    // live) exists for the launcher but is INVISIBLE to the emulator — Roms
+    // ride the host grant, but /tmp is excluded from --filesystem=host, so
+    // RetroArch exited instantly on every ES-DE launch from the AppImage.
+    // Grant the parent directory read-only for every host-/tmp argv file.
+    class void grantSandboxInvisibleArgumentPaths(LaunchPlan resolvedPlan) {
+        if (!resolvedPlan.backend.equals("flatpak")) {
+            return;
+        }
+        Vector<string> grantedDirectories = [];
+        for argument in resolvedPlan.argumentVector {
+            if (argument.startsWith("/tmp/") && FileSystem.isFile(argument)) {
+                string parentDirectory = PathTools.dirname(argument);
+                if (!grantedDirectories.contains(parentDirectory)
+                    && resolvedPlan.argumentVector.size() >= 2) {
+                    resolvedPlan.argumentVector.insert(2,
+                        "--filesystem=" + parentDirectory + ":ro");
+                    grantedDirectories.push(parentDirectory);
+                }
+            }
+        }
+    }
+
     // Materialize the Vulkan-overlay configuration: LinuxTap points
     // VKBASALT_CONFIG_FILE at the state root and names the aspect-matched
     // template (SEMU_OVERLAY_CONF_TEMPLATE, @DIR@ tokens); once the plan is
@@ -441,6 +465,7 @@ class EmulatorExecution {
         }
         EmulatorExecution.applyGraphicsForce(platform, resolvedPlan, context);
         EmulatorExecution.materializeOverlayConfiguration(resolvedPlan);
+        EmulatorExecution.grantSandboxInvisibleArgumentPaths(resolvedPlan);
         if (operatingSystem.equals("linux")) {
             EmulatorExecution.wrapWithQuitWatch(resolvedPlan,
                 EmulatorExecution.quitWatchBinaryPath(project));

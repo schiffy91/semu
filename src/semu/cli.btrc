@@ -43,8 +43,16 @@ import ../../tests/core/package_contract_test.btrc
 import ../../tests/core/generated_tree_test.btrc
 
 class SemuCli {
+    // Project resolution precedence: the explicit --project flag, then the
+    // SEMU_PROJECT_DIR environment (the AppImage's AppRun exports it — ES-DE
+    // spawns the launcher shims from an arbitrary cwd, so cwd MUST be the
+    // last resort; this exact gap made every ES-DE game launch die with
+    // "unknown emulator" on the Deck), then the current directory.
     class string projectRoot(CliArgs arguments) {
-        return arguments.valueAfter("--project", FileSystem.currentDirectory());
+        string environmentProject = Environment.get("SEMU_PROJECT_DIR", "");
+        string fallback = environmentProject.isEmpty()
+            ? FileSystem.currentDirectory() : environmentProject;
+        return arguments.valueAfter("--project", fallback);
     }
 
     class string sourceRoot(string project) {
