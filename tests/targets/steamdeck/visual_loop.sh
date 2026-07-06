@@ -29,7 +29,7 @@ for row in nes:mesen snes:snes9x gb:gambatte gba:mgba genesis:genesis_plus_gx n6
       # where SEMU_RETROARCH_CORE_DIR points into the live mount.
       cat > /home/deck/semu-test-cmd <<CMD
 #!/usr/bin/env bash
-exec $APP launcher retroarch -f -L "\${env:SEMU_RETROARCH_CORE_DIR}/${core}_libretro.so" "$ROMS/$system/$rom" >> /tmp/visual-loop-launch.log 2>&1
+exec $APP launcher retroarch -f -L "$MOUNT/usr/lib/retroarch/cores/${core}_libretro.so" "$ROMS/$system/$rom" >> /tmp/visual-loop-launch.log 2>&1
 CMD
       chmod +x /home/deck/semu-test-cmd
       steam steam://rungameid/9855531406849998848 >/dev/null 2>&1 &
