@@ -62,13 +62,14 @@
       },
       "graphics": {
         "method": "config_file",
-        "file": "${flatpak_home}/config/melonDS/melonDS.ini",
-        "format": "ini",
-        "key": "3D_Renderer",
+        "file": "${flatpak_home}/config/melonDS/melonDS.toml",
+        "format": "toml",
+        "key": "Renderer",
         "values": {
           "opengl": "1"
         },
-        "tap_api": "opengl"
+        "tap_api": "opengl",
+        "section": "3D"
       },
       "overlay_aspect": "4x3",
       "state": {

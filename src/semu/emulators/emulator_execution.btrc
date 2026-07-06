@@ -130,8 +130,12 @@ class EmulatorExecution {
         if (!platform.graphics.present || !platform.graphics.method.equals("config_file")) {
             return;
         }
-        if (!platform.graphics.format.equals("ini")) {
-            return; // xml/toml writers are future work; contracts stay honest
+        // TOML's [Section] + key = value surface is textually identical to
+        // ini for this purpose (observed live: melonDS.toml [3D] Renderer),
+        // so both formats share the section-aware upsert. xml stays future.
+        if (!platform.graphics.format.equals("ini")
+            && !platform.graphics.format.equals("toml")) {
+            return;
         }
         if (EmulatorExecution.environmentValueFor(resolvedPlan, "LD_PRELOAD").isEmpty()) {
             return;

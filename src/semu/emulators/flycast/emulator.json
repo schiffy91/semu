@@ -65,7 +65,8 @@
         "values": {
           "opengl": "0"
         },
-        "tap_api": "opengl"
+        "tap_api": "opengl",
+        "section": "config"
       },
       "overlay_aspect": "4x3",
       "aspect_probe": {
