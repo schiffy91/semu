@@ -60,7 +60,7 @@ PY
       SEMU_TAP_ALIGN="$alignFlag" \
         SEMU_TAP_TARGET_PID="$emulatorPid" SEMU_TAP_ART="$ASSET_ROOT/share/semu/$ART" \
         SEMU_TAP_SCREEN="$HOLE" SEMU_RETRO_START="$shader" SEMU_TAP_SNAPSHOT="$shot" \
-        "$OVERLAY" >/dev/null 2>&1 &
+        "$OVERLAY" >>/tmp/mac-loop-overlay.log 2>&1 &
       overlayPid=$!
       sleep 6
       kill "$overlayPid" 2>/dev/null; sleep 1
