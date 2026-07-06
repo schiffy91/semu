@@ -303,6 +303,35 @@ static const char *FS =
 // uploads read a bogus buffer offset (garbage art / crash). Save + unbind before, restore after. When no
 // PBO is bound (the proven RA path) this is a pure no-op.
 static GLint saved_unpack_pbo = 0;
+#define GL_CURRENT_PROGRAM 0x8B8D
+#define GL_VERTEX_ARRAY_BINDING 0x85B5
+#define GL_ACTIVE_TEXTURE 0x84E0
+#define GL_TEXTURE_BINDING_2D 0x8069
+// PCSX2's GS (and any strict renderer) assumes its GL state survives its own
+// present: the compositor leaking bindings SIGABRTed GSRendererHW::GetOutput
+// live on the Deck (control run without the tap was clean). Save EVERYTHING
+// the composite touches before gl_init, restore in reverse after the draw.
+typedef unsigned char (*PFN_isenab)(GLenum); typedef void (*PFN_enable)(GLenum);
+static PFN_isenab p_isenab; static PFN_enable p_enable;
+static GLint sv_prog, sv_vao, sv_active, sv_tex[4], sv_view[4], sv_unpack[4];
+static unsigned char sv_depth, sv_blend, sv_scissor;
+static void gl_state_save(void){ if(!p_getiv||!p_active) return;
+    p_getiv(GL_CURRENT_PROGRAM,&sv_prog); p_getiv(GL_VERTEX_ARRAY_BINDING,&sv_vao);
+    p_getiv(GL_ACTIVE_TEXTURE,&sv_active);
+    for(int unit=0;unit<4;unit++){ p_active(GL_TEXTURE0+unit); p_getiv(GL_TEXTURE_BINDING_2D,&sv_tex[unit]); }
+    p_getiv(GL_VIEWPORT,sv_view);
+    p_getiv(GL_UNPACK_ALIGNMENT,&sv_unpack[0]); p_getiv(GL_UNPACK_ROW_LENGTH,&sv_unpack[1]);
+    p_getiv(GL_UNPACK_SKIP_PIXELS,&sv_unpack[2]); p_getiv(GL_UNPACK_SKIP_ROWS,&sv_unpack[3]);
+    if(p_isenab){ sv_depth=p_isenab(GL_DEPTH_TEST); sv_blend=p_isenab(GL_BLEND); sv_scissor=p_isenab(GL_SCISSOR_TEST); }
+}
+static void gl_state_restore(void){ if(!p_getiv||!p_active) return;
+    if(p_pixstore){ p_pixstore(GL_UNPACK_ALIGNMENT,sv_unpack[0]); p_pixstore(GL_UNPACK_ROW_LENGTH,sv_unpack[1]); p_pixstore(GL_UNPACK_SKIP_PIXELS,sv_unpack[2]); p_pixstore(GL_UNPACK_SKIP_ROWS,sv_unpack[3]); }
+    for(int unit=0;unit<4;unit++){ p_active(GL_TEXTURE0+unit); p_bindtex(GL_TEXTURE_2D,(GLuint)sv_tex[unit]); }
+    p_active((GLenum)sv_active);
+    if(p_use) p_use((GLuint)sv_prog); if(p_bindva) p_bindva((GLuint)sv_vao);
+    if(p_viewport) p_viewport(sv_view[0],sv_view[1],sv_view[2],sv_view[3]);
+    if(p_enable){ if(sv_depth)p_enable(GL_DEPTH_TEST); if(sv_blend)p_enable(GL_BLEND); if(sv_scissor)p_enable(GL_SCISSOR_TEST); }
+}
 static void unpack_pbo_guard(void){ saved_unpack_pbo=0; if(p_bindbuf&&p_getiv){ p_getiv(GL_PIXEL_UNPACK_BUFFER_BINDING,&saved_unpack_pbo); if(saved_unpack_pbo) p_bindbuf(GL_PIXEL_UNPACK_BUFFER,0); } }
 static void unpack_pbo_restore(void){ if(p_bindbuf&&saved_unpack_pbo) p_bindbuf(GL_PIXEL_UNPACK_BUFFER,(GLuint)saved_unpack_pbo); }
 
@@ -509,7 +538,7 @@ static void tap_init(void) {
     LD(p_genva,"glGenVertexArrays"); LD(p_bindva,"glBindVertexArray"); LD(p_createsh,"glCreateShader");
     LD(p_shsrc,"glShaderSource"); LD(p_compsh,"glCompileShader"); LD(p_shiv,"glGetShaderiv"); LD(p_shlog,"glGetShaderInfoLog");
     LD(p_createpr,"glCreateProgram"); LD(p_attach,"glAttachShader"); LD(p_link,"glLinkProgram"); LD(p_priv,"glGetProgramiv");
-    LD(p_use,"glUseProgram"); LD(p_uloc,"glGetUniformLocation"); LD(p_u1i,"glUniform1i"); LD(p_u2f,"glUniform2f");
+    LD(p_use,"glUseProgram"); LD(p_isenab,"glIsEnabled"); LD(p_enable,"glEnable"); LD(p_uloc,"glGetUniformLocation"); LD(p_u1i,"glUniform1i"); LD(p_u2f,"glUniform2f");
     LD(p_u4f,"glUniform4f"); LD(p_u3f,"glUniform3f"); LD(p_u1f,"glUniform1f"); LD(p_draw,"glDrawArrays"); LD(p_viewport,"glViewport");
     LD(p_disable,"glDisable"); LD(p_genmip,"glGenerateMipmap"); LD(p_pixstore,"glPixelStorei"); LD(p_bindbuf,"glBindBuffer");
     p_qkm=(PFN_qkm)dlsym(RTLD_DEFAULT,"XQueryKeymap");          // RA has libX11 loaded
@@ -678,6 +707,7 @@ static void tap_frame(void *dpy, unsigned long drawable, int is_egl) {
                     r2x=left+pw+gap; r2y=(h-qh)/2; r2w=qw; r2h=qh;
                 }
             }
+            gl_state_save();
             gl_init();
             p_active(GL_TEXTURE0); p_bindtex(GL_TEXTURE_2D,game_tex);
             p_copytex(GL_TEXTURE_2D,0,GL_RGB,0,0,w,h,0);
@@ -724,6 +754,7 @@ static void tap_frame(void *dpy, unsigned long drawable, int is_egl) {
             if(uMenuRect>=0){ float mw=(float)MENU_W,mh=(float)MENU_H,sc=1.0f; if(mh>(float)h*0.92f)sc=(float)h*0.92f/mh; mw*=sc; mh*=sc; p_u4f(uMenuRect,((float)w-mw)*0.5f,((float)h-mh)*0.5f,mw,mh); }
             p_draw(GL_TRIANGLES,0,3);
             if(++frames<=2 || (menu_on && (frames%30)==0)){ FILE *lf=tap_fopen("semutap.log","a"); if(lf){ fprintf(lf,"frame%ld: fb=%dx%d native=%dx%d content=(%d,%d,%d,%d) pri=%d game=(%d,%d,%d,%d) bd=(%d,%d,%d,%d) menu_on=%d effArt=%.1f bidx=%d bcnt=%d uMenuOn=%d uHasArt=%d\n",frames,w,h,nw,nh,g_state.content_x,g_state.content_y,g_state.content_w,g_state.content_h,priority_bezel,gx,gy,gw,gh,(int)bdx_gl,(int)bdy_gl,(int)bdw,(int)bdh,menu_on,eff_has_art,bezel_idx,bezel_count,(int)(uMenuOn>=0),(int)(uHasArt>=0)); fclose(lf);} }
+            gl_state_restore();
         }
     }
 }
