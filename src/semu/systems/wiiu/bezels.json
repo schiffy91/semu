@@ -1,21 +1,9 @@
 {
   "schema_version": 1,
-  "enabled": true,
+  "enabled": false,
   "default_variant": "gamepad",
-  "hole": {
-    "x": 0.2275,
-    "y": 0.1937,
-    "w": 0.545,
-    "h": 0.565
-  },
-  "variants": [
-    {
-      "id": "gamepad",
-      "label": "GamePad",
-      "art": "assets/bezels/wiiu/gamepad.png"
-    }
-  ],
+  "variants": [],
   "doc": {
-    "hole": "Measured from the photo: flood-fill of the off-screen gray panel from image center (see bezels.json photo recipes)."
+    "why": "No authentic shell art exists (Wii U GamePad: Duimon has none; photo bezels were tried and rejected 2026-07-07 'these look weird'). Bezel off = pure black borders per the standing ruling."
   }
 }

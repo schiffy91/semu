@@ -19,20 +19,6 @@
       "repo": "Soqueroeu-TV-Backgrounds_V2.0",
       "rev": "52bc4588d88c7bd319f922659d3ba74ed81ce959",
       "nar_hash": "sha256-8IoaMLw7i4TttFR08Ycji6COuaxaeNeBwPCLyfyTD90="
-    },
-    "switch_photo": {
-      "kind": "url",
-      "name": "Nintendo-Switch-wJoyCons-BlRd-Standing-FL.png",
-      "url": "https://upload.wikimedia.org/wikipedia/commons/b/bc/Nintendo-Switch-wJoyCons-BlRd-Standing-FL.png",
-      "sha256_base32": "1pbkg9y2rgnjd53dbj8d71z1y16dp178p71in208vbrjbd4nwm2w",
-      "doc": "Public domain (photo Evan-Amos, background removal Gunnar.offel), Wikimedia Commons."
-    },
-    "wiiu_photo": {
-      "kind": "url",
-      "name": "Wii_U_Gamepad_schwarz_transparent.png",
-      "url": "https://upload.wikimedia.org/wikipedia/commons/a/ac/Wii_U_Gamepad_schwarz_transparent.png",
-      "sha256_base32": "1wvsv4h7ifssnzki9f1hy3qn271qr8y7mq6m0arbljc4441b9any",
-      "doc": "CC BY-SA 4.0, Mariofan13, Wikimedia Commons; derived bezel art stays BY-SA with attribution."
     }
   },
   "generic": {
@@ -324,21 +310,6 @@
       "type": "copy",
       "from": "soqueroeu_tv",
       "path": "img/Nintendo_Wii/Wii_4x3.png"
-    },
-    "assets/bezels/switch/handheld.png": {
-      "type": "photo",
-      "from": "switch_photo",
-      "rotate": -7.53,
-      "doc": {
-        "provenance": "Photoreal Switch (neon joy-cons, screen off); deskewed by the measured 7.53-degree screen-edge tilt, trimmed to silhouette."
-      }
-    },
-    "assets/bezels/wiiu/gamepad.png": {
-      "type": "photo",
-      "from": "wiiu_photo",
-      "doc": {
-        "provenance": "Photoreal Wii U GamePad (screen off), straight-on shot, trimmed to silhouette. CC BY-SA 4.0 Mariofan13."
-      }
     },
     "assets/bezels/n3ds/horizontal.png": {
       "type": "local",
