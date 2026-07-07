@@ -240,38 +240,6 @@ class EmulatorContractTest {
         return failures;
     }
 
-    class int checkAresPlans(SemuContracts contracts) {
-        int failures = 0;
-        EmulatorDefinition ares = EmulatorContractTest.findEmulator(contracts, "ares");
-        Vector<string> noArguments = [];
-        LaunchPlan aresPlan = EmulatorLauncher.plan(ares, "macos", "",
-            "/roms/n64/game.z64", noArguments);
-        if (!aresPlan.backend.equals("native")) {
-            failures = failures + EmulatorContractTest.fail(
-                "ares macos backend: got '" + aresPlan.backend + "'");
-        }
-        if (aresPlan.argumentVector.size() < 4
-            || !aresPlan.argumentVector.get(0).equals("sandbox-exec")
-            || !aresPlan.argumentVector.get(3)
-                .equals("${nix_result}/Applications/ares.app/Contents/MacOS/ares")) {
-            failures = failures + EmulatorContractTest.fail(
-                "ares macos plan must be sandbox-exec-wrapped with the app executable after the wrap");
-        }
-        // macOS launches WINDOWED (owner decision: no Space takeover; the
-        // overlay compositor tracks the window frame).
-        if (EmulatorContractTest.argumentVectorHas(aresPlan, "--fullscreen")) {
-            failures = failures + EmulatorContractTest.fail(
-                "ares macos plan must launch windowed (no --fullscreen)");
-        }
-        LaunchPlan aresLinuxPlan = EmulatorLauncher.plan(ares, "linux", "desktop",
-            "", noArguments);
-        if (aresLinuxPlan.argumentVector.size() != 0) {
-            failures = failures + EmulatorContractTest.fail(
-                "ares must produce an empty plan on linux (no platform block)");
-        }
-        return failures;
-    }
-
     class int checkEsDeCommands(SemuContracts contracts) {
         int failures = 0;
         EmulatorDefinition retroArch = EmulatorContractTest.findEmulator(contracts, "retroarch");
@@ -285,12 +253,11 @@ class EmulatorContractTest {
                 + gameBoyCommand + "' want '" + gameBoyExpected + "'");
         }
 
-        EmulatorDefinition ares = EmulatorContractTest.findEmulator(contracts, "ares");
         SystemDefinition nintendo64 = EmulatorContractTest.findSystem(contracts, "n64");
-        EmulatorBinding nintendo64Binding = EmulatorContractTest.findBinding(nintendo64, "ares");
-        string nintendo64Command = EmulatorEmitter.esDeCommand(nintendo64Binding, ares, "macos");
+        EmulatorBinding nintendo64Binding = EmulatorContractTest.findBinding(nintendo64, "retroarch");
+        string nintendo64Command = EmulatorEmitter.esDeCommand(nintendo64Binding, retroArch, "macos");
         string nintendo64Expected =
-            "%EMULATOR_ARES% --system \"Nintendo 64\" %ROM%";
+            "%EMULATOR_RETROARCH% -f -L %CORE_RETROARCH%/mupen64plus_next_libretro.dylib %ROM%";
         if (!nintendo64Command.equals(nintendo64Expected)) {
             failures = failures + EmulatorContractTest.fail("n64 esde command: got '"
                 + nintendo64Command + "' want '" + nintendo64Expected + "'");
@@ -509,18 +476,6 @@ class EmulatorContractTest {
         }
 
         Vector<string> rendererAnsweredIds = [];
-        EmulatorPlatform aresPlatform = EmulatorContractTest.probePlatform(contracts,
-            AresEmulator().id());
-        failures = failures + EmulatorContractTest.recordRendererAnswer(rendererAnsweredIds,
-            AresEmulator().id(), aresPlatform,
-            AresEmulator().graphicsForceArguments(aresPlatform, "opengl"),
-            AresEmulator().overlayConfiguration(aresPlatform));
-        EmulatorPlatform azaharPlatform = EmulatorContractTest.probePlatform(contracts,
-            AzaharEmulator().id());
-        failures = failures + EmulatorContractTest.recordRendererAnswer(rendererAnsweredIds,
-            AzaharEmulator().id(), azaharPlatform,
-            AzaharEmulator().graphicsForceArguments(azaharPlatform, "opengl"),
-            AzaharEmulator().overlayConfiguration(azaharPlatform));
         EmulatorPlatform cemuPlatform = EmulatorContractTest.probePlatform(contracts,
             CemuEmulator().id());
         failures = failures + EmulatorContractTest.recordRendererAnswer(rendererAnsweredIds,
@@ -533,30 +488,12 @@ class EmulatorContractTest {
             DolphinEmulator().id(), dolphinPlatform,
             DolphinEmulator().graphicsForceArguments(dolphinPlatform, "opengl"),
             DolphinEmulator().overlayConfiguration(dolphinPlatform));
-        EmulatorPlatform flycastPlatform = EmulatorContractTest.probePlatform(contracts,
-            FlycastEmulator().id());
-        failures = failures + EmulatorContractTest.recordRendererAnswer(rendererAnsweredIds,
-            FlycastEmulator().id(), flycastPlatform,
-            FlycastEmulator().graphicsForceArguments(flycastPlatform, "opengl"),
-            FlycastEmulator().overlayConfiguration(flycastPlatform));
-        EmulatorPlatform melonDsPlatform = EmulatorContractTest.probePlatform(contracts,
-            MelonDsEmulator().id());
-        failures = failures + EmulatorContractTest.recordRendererAnswer(rendererAnsweredIds,
-            MelonDsEmulator().id(), melonDsPlatform,
-            MelonDsEmulator().graphicsForceArguments(melonDsPlatform, "opengl"),
-            MelonDsEmulator().overlayConfiguration(melonDsPlatform));
         EmulatorPlatform pcsx2Platform = EmulatorContractTest.probePlatform(contracts,
             Pcsx2Emulator().id());
         failures = failures + EmulatorContractTest.recordRendererAnswer(rendererAnsweredIds,
             Pcsx2Emulator().id(), pcsx2Platform,
             Pcsx2Emulator().graphicsForceArguments(pcsx2Platform, "opengl"),
             Pcsx2Emulator().overlayConfiguration(pcsx2Platform));
-        EmulatorPlatform ppssppPlatform = EmulatorContractTest.probePlatform(contracts,
-            PpssppEmulator().id());
-        failures = failures + EmulatorContractTest.recordRendererAnswer(rendererAnsweredIds,
-            PpssppEmulator().id(), ppssppPlatform,
-            PpssppEmulator().graphicsForceArguments(ppssppPlatform, "opengl"),
-            PpssppEmulator().overlayConfiguration(ppssppPlatform));
         EmulatorPlatform retroArchPlatform = EmulatorContractTest.probePlatform(contracts,
             RetroArchEmulator().id());
         failures = failures + EmulatorContractTest.recordRendererAnswer(rendererAnsweredIds,
@@ -1109,12 +1046,12 @@ class EmulatorContractTest {
                 failures = failures + EmulatorContractTest.fail("parse: " + error);
             }
         }
-        if (contracts.emulators.size() != 10) {
+        if (contracts.emulators.size() != 5) {
             failures = failures + EmulatorContractTest.fail(
-                f"expected 10 emulator contracts, got {contracts.emulators.size()}");
+                f"expected 5 emulator contracts, got {contracts.emulators.size()}");
         }
-        Vector<string> expectedIds = ["ares", "azahar", "cemu", "dolphin", "flycast",
-                                      "melonds", "pcsx2", "ppsspp", "retroarch", "ryujinx"];
+        Vector<string> expectedIds = ["cemu", "dolphin", "pcsx2", "retroarch",
+                                      "ryujinx"];
         for emulatorId in expectedIds {
             if (!contracts.hasEmulator(emulatorId)) {
                 failures = failures + EmulatorContractTest.fail(
@@ -1126,7 +1063,6 @@ class EmulatorContractTest {
         failures = failures + EmulatorContractTest.checkDolphinEsDeTailPlan(contracts);
         failures = failures + EmulatorContractTest.checkRetroArchLinuxPlan(contracts);
         failures = failures + EmulatorContractTest.checkRetroArchMacosPlan(contracts);
-        failures = failures + EmulatorContractTest.checkAresPlans(contracts);
         failures = failures + EmulatorContractTest.checkEsDeCommands(contracts);
         failures = failures + EmulatorContractTest.checkPcsx2Profiles(contracts, repoRoot);
         failures = failures + EmulatorContractTest.checkEmulatorDutyContract(contracts,

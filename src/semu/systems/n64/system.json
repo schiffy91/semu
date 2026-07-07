@@ -2,15 +2,47 @@
   "schema_version": 1,
   "name": "Nintendo 64",
   "aliases": [],
-  "es_de": { "platforms": ["n64"], "theme": "n64" },
-  "rom": { "dir": "n64", "extensions": [".bin", ".d64", ".n64", ".ndd", ".u1", ".v64", ".z64", ".7z", ".zip"] },
+  "es_de": {
+    "platforms": [
+      "n64"
+    ],
+    "theme": "n64"
+  },
+  "rom": {
+    "dir": "n64",
+    "extensions": [
+      ".bin",
+      ".d64",
+      ".n64",
+      ".ndd",
+      ".u1",
+      ".v64",
+      ".z64",
+      ".7z",
+      ".zip"
+    ]
+  },
   "emulators": [
-    { "emulator": "retroarch", "label": "Mupen64Plus-Next", "core": "mupen64plus_next", "platforms": ["linux"] },
-    { "emulator": "ares", "label": "ares", "platforms": ["macos"], "args": ["--system", "Nintendo 64"] }
+    {
+      "emulator": "retroarch",
+      "label": "Mupen64Plus-Next",
+      "core": "mupen64plus_next"
+    }
   ],
   "display": {
-    "screens": [ { "id": "main", "native": { "w": 320, "h": 240 } } ],
-    "aspect": { "w": 4, "h": 3 }
+    "screens": [
+      {
+        "id": "main",
+        "native": {
+          "w": 320,
+          "h": 240
+        }
+      }
+    ],
+    "aspect": {
+      "w": 4,
+      "h": 3
+    }
   },
   "render": {
     "style": "console",

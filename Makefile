@@ -73,7 +73,7 @@ appimage: cross-linux ## Assemble src/generated/build/Semu-x86_64.AppImage (cros
 	visualAssets=$$(nix build .\#visualAssets --no-link --print-out-paths); \
 	rsync -rltL "$$visualAssets/share/" "$$appdir/share/"; chmod -R u+w "$$appdir/share"; \
 	cp -L "$$visualAssets/lib/semu/"* "$$appdir/lib/semu/" 2>/dev/null || true; \
-	for core in gambatte mgba mesen snes9x genesis_plus_gx mupen64plus_next mednafen_psx desmume; do \
+	for core in gambatte mgba mesen snes9x genesis_plus_gx mupen64plus_next mednafen_psx desmume flycast ppsspp azahar; do \
 		curl -sL -o "$$workdir/$$core.zip" "https://buildbot.libretro.com/nightly/linux/x86_64/latest/$${core}_libretro.so.zip"; \
 		unzip -oq "$$workdir/$$core.zip" -d "$$appdir/usr/lib/retroarch/cores/"; \
 	done; \

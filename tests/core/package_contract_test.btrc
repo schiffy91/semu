@@ -69,7 +69,7 @@ class PackageContractTest {
             "<command label=\"Mupen64Plus-Next\">%EMULATOR_RETROARCH% -f -L %CORE_RETROARCH%/mupen64plus_next_libretro.so %ROM%</command>",
             "n64 linux command");
         failures = failures + PackageContractTest.require(xml,
-            "<command label=\"Flycast\">%EMULATOR_FLYCAST% -config window:fullscreen=yes %ROM%</command>",
+            "<command label=\"Flycast\">%EMULATOR_RETROARCH% -f -L %CORE_RETROARCH%/flycast_libretro.so %ROM%</command>",
             "dreamcast linux command");
         failures = failures + PackageContractTest.require(xml,
             "<name>gb</name>", "gb system entry");
@@ -90,8 +90,8 @@ class PackageContractTest {
         }
         string macosXml = SystemEmitter.esSystemsXml(contracts, "macos");
         failures = failures + PackageContractTest.require(macosXml,
-            "<command label=\"ares\">%EMULATOR_ARES% --system &quot;Nintendo 64&quot; %ROM%</command>",
-            "n64 macos ares command");
+            "<command label=\"Mupen64Plus-Next\">%EMULATOR_RETROARCH% -f -L %CORE_RETROARCH%/mupen64plus_next_libretro.dylib %ROM%</command>",
+            "n64 macos core command");
         return failures;
     }
 
@@ -118,9 +118,9 @@ class PackageContractTest {
                     emulatorDefinition.id + " %ESPATH% staticpath entry");
             }
         }
-        if (linuxEmulatorCount != 9) {
+        if (linuxEmulatorCount != 5) {
             failures = failures + PackageContractTest.fail(
-                f"expected 9 linux emulators, got {linuxEmulatorCount}");
+                f"expected 5 linux emulators, got {linuxEmulatorCount}");
         }
         if (rules.contains("<emulator name=\"ARES\">")) {
             failures = failures + PackageContractTest.fail(

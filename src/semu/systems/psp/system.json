@@ -2,15 +2,46 @@
   "schema_version": 1,
   "name": "Sony PlayStation Portable",
   "aliases": [],
-  "es_de": { "platforms": ["psp"], "theme": "psp" },
-  "rom": { "dir": "psp", "extensions": [".chd", ".cso", ".elf", ".iso", ".pbp", ".prx", ".7z", ".zip"] },
+  "es_de": {
+    "platforms": [
+      "psp"
+    ],
+    "theme": "psp"
+  },
+  "rom": {
+    "dir": "psp",
+    "extensions": [
+      ".chd",
+      ".cso",
+      ".elf",
+      ".iso",
+      ".pbp",
+      ".prx",
+      ".7z",
+      ".zip"
+    ]
+  },
   "emulators": [
-    { "emulator": "ppsspp", "platforms": ["linux"] },
-    { "emulator": "retroarch", "label": "PPSSPP", "core": "ppsspp", "platforms": ["macos"] }
+    {
+      "emulator": "retroarch",
+      "label": "PPSSPP",
+      "core": "ppsspp"
+    }
   ],
   "display": {
-    "screens": [ { "id": "main", "native": { "w": 480, "h": 272 } } ],
-    "aspect": { "w": 16, "h": 9 }
+    "screens": [
+      {
+        "id": "main",
+        "native": {
+          "w": 480,
+          "h": 272
+        }
+      }
+    ],
+    "aspect": {
+      "w": 16,
+      "h": 9
+    }
   },
   "render": {
     "style": "handheld",

@@ -17,25 +17,18 @@ import ./semu_emulator.btrc
 import ../systems/system_parser.btrc
 import ../input/input_parser.btrc
 import ../input/controllers/steamdeck/steam_input.btrc
-import ./ares/ares_emulator.btrc
 import ./retroarch/retroarch_emulator.btrc
 import ./retroarch/retroarch_rendering.btrc
 import ./dolphin/dolphin_emulator.btrc
 import ./pcsx2/pcsx2_emulator.btrc
 import ./cemu/cemu_emulator.btrc
 import ./ryujinx/ryujinx_emulator.btrc
-import ./ppsspp/ppsspp_emulator.btrc
-import ./flycast/flycast_emulator.btrc
-import ./azahar/azahar_emulator.btrc
-import ./melonds/melonds_emulator.btrc
 
 class EmulatorRegistry {
     class Vector<string> registeredIds() {
-        Vector<string> ids = [AresEmulator().id(), AzaharEmulator().id(),
-                              CemuEmulator().id(), DolphinEmulator().id(),
-                              FlycastEmulator().id(), MelonDsEmulator().id(),
-                              Pcsx2Emulator().id(), PpssppEmulator().id(),
-                              RetroArchEmulator().id(), RyujinxEmulator().id()];
+        Vector<string> ids = [CemuEmulator().id(), DolphinEmulator().id(),
+                              Pcsx2Emulator().id(), RetroArchEmulator().id(),
+                              RyujinxEmulator().id()];
         return ids;
     }
 
@@ -56,16 +49,6 @@ class EmulatorRegistry {
             CemuEmulator().parseExtension(platform, log);
         } else if (emulatorId.equals(RyujinxEmulator().id())) {
             RyujinxEmulator().parseExtension(platform, log);
-        } else if (emulatorId.equals(PpssppEmulator().id())) {
-            PpssppEmulator().parseExtension(platform, log);
-        } else if (emulatorId.equals(FlycastEmulator().id())) {
-            FlycastEmulator().parseExtension(platform, log);
-        } else if (emulatorId.equals(AzaharEmulator().id())) {
-            AzaharEmulator().parseExtension(platform, log);
-        } else if (emulatorId.equals(MelonDsEmulator().id())) {
-            MelonDsEmulator().parseExtension(platform, log);
-        } else if (emulatorId.equals(AresEmulator().id())) {
-            AresEmulator().parseExtension(platform, log);
         } else if (platform.hasExtension()) {
             log.add("emulators/" + emulatorId + "/emulator.json",
                 "platforms." + platform.operatingSystem + "." + emulatorId,
@@ -92,21 +75,6 @@ class EmulatorRegistry {
         if (emulatorId.equals(RyujinxEmulator().id())) {
             return RyujinxEmulator().commandFragments(binding, platform);
         }
-        if (emulatorId.equals(PpssppEmulator().id())) {
-            return PpssppEmulator().commandFragments(binding, platform);
-        }
-        if (emulatorId.equals(FlycastEmulator().id())) {
-            return FlycastEmulator().commandFragments(binding, platform);
-        }
-        if (emulatorId.equals(AzaharEmulator().id())) {
-            return AzaharEmulator().commandFragments(binding, platform);
-        }
-        if (emulatorId.equals(MelonDsEmulator().id())) {
-            return MelonDsEmulator().commandFragments(binding, platform);
-        }
-        if (emulatorId.equals(AresEmulator().id())) {
-            return AresEmulator().commandFragments(binding, platform);
-        }
         Vector<string> fragments = [];
         return fragments;
     }
@@ -126,16 +94,6 @@ class EmulatorRegistry {
             CemuEmulator().emitProfiles(definition, steamInput, keymap, outputRoot);
         } else if (emulatorId.equals(RyujinxEmulator().id())) {
             RyujinxEmulator().emitProfiles(definition, steamInput, keymap, outputRoot);
-        } else if (emulatorId.equals(PpssppEmulator().id())) {
-            PpssppEmulator().emitProfiles(definition, steamInput, keymap, outputRoot);
-        } else if (emulatorId.equals(FlycastEmulator().id())) {
-            FlycastEmulator().emitProfiles(definition, steamInput, keymap, outputRoot);
-        } else if (emulatorId.equals(AzaharEmulator().id())) {
-            AzaharEmulator().emitProfiles(definition, steamInput, keymap, outputRoot);
-        } else if (emulatorId.equals(MelonDsEmulator().id())) {
-            MelonDsEmulator().emitProfiles(definition, steamInput, keymap, outputRoot);
-        } else if (emulatorId.equals(AresEmulator().id())) {
-            AresEmulator().emitProfiles(definition, steamInput, keymap, outputRoot);
         }
     }
 
@@ -182,21 +140,6 @@ class EmulatorRegistry {
         }
         if (emulatorId.equals(RyujinxEmulator().id())) {
             return RyujinxEmulator().translateChord(chord);
-        }
-        if (emulatorId.equals(PpssppEmulator().id())) {
-            return PpssppEmulator().translateChord(chord);
-        }
-        if (emulatorId.equals(FlycastEmulator().id())) {
-            return FlycastEmulator().translateChord(chord);
-        }
-        if (emulatorId.equals(AzaharEmulator().id())) {
-            return AzaharEmulator().translateChord(chord);
-        }
-        if (emulatorId.equals(MelonDsEmulator().id())) {
-            return MelonDsEmulator().translateChord(chord);
-        }
-        if (emulatorId.equals(AresEmulator().id())) {
-            return AresEmulator().translateChord(chord);
         }
         return chord;
     }
