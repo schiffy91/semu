@@ -15,9 +15,9 @@
       "art": "assets/bezels/snes/tv.png"
     },
     {
-      "id": "retro_gray",
-      "label": "Retro Gray",
-      "art": "assets/bezels/snes/retro-gray.png"
+      "id": "retro_black",
+      "label": "Retro Black",
+      "art": "assets/bezels/snes/retro-black.png"
     },
     {
       "id": "retro_purple",
@@ -26,6 +26,6 @@
     }
   ],
   "doc": {
-    "variants": "SuperNES_V2/V3 tubes measured within ~0.5% of the shared hole."
+    "variants": "SuperNES_V2 reads charcoal (named honestly retro_black), V3 purple; tubes measured within ~0.5% of the shared hole."
   }
 }

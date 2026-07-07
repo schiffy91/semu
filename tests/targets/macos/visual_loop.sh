@@ -34,7 +34,7 @@ emulatorPid=$(pgrep -f "MacOS/ares" | head -1)
 [ -z "$emulatorPid" ] && { echo "FAIL target window did not launch"; exit 1; }
 for bezelsFile in "$PROJECT"/src/semu/systems/*/bezels.json; do
   system=$(basename "$(dirname "$bezelsFile")")
-  variants=$(python3 -c "import json;print(' '.join(v['id'] for v in json.load(open('$bezelsFile'))['variants']))")
+  variants=$(python3 -c "import json;print(' '.join(v['id'] for v in json.load(open('$bezelsFile')).get('variants', [])))")
   for variant in $variants off; do
     for shader in 1 0; do
       shot="$OUT/${system}-${variant}-s${shader}.png"
