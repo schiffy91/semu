@@ -38,9 +38,8 @@
         }
       }
     ],
-    "aspect": {
-      "w": 16,
-      "h": 9
+    "doc": {
+      "aspect": "No aspect override: the PSP LCD is square-pixel 480x272 (16:9 is a lie by 0.83% that forces fractional horizontal scaling and moire on the 1px LCD grid \u2014 judge-caught)."
     }
   },
   "render": {
