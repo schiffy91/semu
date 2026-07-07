@@ -2,12 +2,20 @@
   "schema_version": 1,
   "enabled": true,
   "default_variant": "tv",
+  "hole": {
+    "x": 0.2547,
+    "y": 0.1278,
+    "w": 0.4906,
+    "h": 0.6583
+  },
   "variants": [
     {
       "id": "tv",
       "label": "Living-Room CRT",
-      "geometry_from": { "system": "n64", "variant": "tv" },
-      "doc": { "provenance": "Shares n64 art and its measured hole; was the gc->n64 runtime alias." }
+      "art": "assets/bezels/gc/tv.png"
     }
-  ]
+  ],
+  "doc": {
+    "hole": "Tube measured from the art (dark-region probe at 640px, fractions)."
+  }
 }

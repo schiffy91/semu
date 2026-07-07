@@ -1,8 +1,8 @@
 // rendering_contract_test.btrc — proof harness for the rendering stack.
 //
 // Covers: BezelResolver.resolve over the real contracts (gb variant cascade,
-// gc's geometry_from indirection into n64, switch's generic wide16x9
-// fallback), the tap environment bundle (fill/reflect/art/hole wire values),
+// gc's own measured tv art, the generic wide16x9 fallback via a synthetic
+// bezel-less system), the tap environment bundle (fill/reflect/art/hole wire values),
 // the shader selection matrix, the system-kind wire ints, and the
 // render-resolution math. Returns the violation count (0 = pass); no main()
 // — the CLI routes `semu test core` here.
@@ -84,32 +84,37 @@ class RenderingContractTest {
         return failures;
     }
 
-    // gc: geometry_from(n64, tv) supplies both the art and the measured hole.
+    // gc: its own Soqueroeu GameCube frame with the tube-probe hole.
     class int checkGeometryIndirection(SystemDefinition gameCube, string assetRoot) {
         int failures = 0;
         ResolvedBezel bezel = BezelResolver.resolve(gameCube, "", assetRoot);
-        if (!bezel.art.endsWith("assets/bezels/n64/tv.png")) {
+        if (!bezel.art.endsWith("assets/bezels/gc/tv.png")) {
             failures = failures + RenderingContractTest.fail(
-                "gc art via geometry_from: want ...assets/bezels/n64/tv.png, got '"
-                + bezel.art + "'");
+                "gc art: want ...assets/bezels/gc/tv.png, got '" + bezel.art + "'");
         }
-        if (!RenderingContractTest.nearlyEqual(bezel.hole.x, 0.2542)
-            || !RenderingContractTest.nearlyEqual(bezel.hole.y, 0.1155)
-            || !RenderingContractTest.nearlyEqual(bezel.hole.w, 0.4917)
-            || !RenderingContractTest.nearlyEqual(bezel.hole.h, 0.6556)) {
+        if (!RenderingContractTest.nearlyEqual(bezel.hole.x, 0.2547)
+            || !RenderingContractTest.nearlyEqual(bezel.hole.y, 0.1278)
+            || !RenderingContractTest.nearlyEqual(bezel.hole.w, 0.4906)
+            || !RenderingContractTest.nearlyEqual(bezel.hole.h, 0.6583)) {
             failures = failures + RenderingContractTest.fail(
-                f"gc hole: want 0.2542,0.1155,0.4917,0.6556 got {bezel.hole.x},{bezel.hole.y},{bezel.hole.w},{bezel.hole.h}");
+                f"gc hole: want 0.2547,0.1278,0.4906,0.6583 got {bezel.hole.x},{bezel.hole.y},{bezel.hole.w},{bezel.hole.h}");
         }
         return failures;
     }
 
-    // switch: bezels disabled -> the generic wide16x9 fallback table row.
-    class int checkGenericFallback(SystemDefinition switchSystem, string assetRoot) {
+    // Every real system now declares bezels, so the generic wide16x9
+    // fallback table row is proven with a synthetic bezel-less system.
+    class int checkGenericFallback(SystemDefinition ignoredSystem, string assetRoot) {
         int failures = 0;
-        ResolvedBezel bezel = BezelResolver.resolve(switchSystem, "", assetRoot);
+        SystemDefinition syntheticSystem = SystemDefinition();
+        syntheticSystem.id = "synthetic-wide";
+        syntheticSystem.display.aspect.set = true;
+        syntheticSystem.display.aspect.w = 16;
+        syntheticSystem.display.aspect.h = 9;
+        ResolvedBezel bezel = BezelResolver.resolve(syntheticSystem, "", assetRoot);
         if (!bezel.art.endsWith("assets/bezels/generic/16x9.png")) {
             failures = failures + RenderingContractTest.fail(
-                "switch fallback art: want ...assets/bezels/generic/16x9.png, got '"
+                "generic fallback art: want ...assets/bezels/generic/16x9.png, got '"
                 + bezel.art + "'");
         }
         if (!RenderingContractTest.nearlyEqual(bezel.hole.x, 0.0300)
@@ -117,7 +122,7 @@ class RenderingContractTest {
             || !RenderingContractTest.nearlyEqual(bezel.hole.w, 0.9400)
             || !RenderingContractTest.nearlyEqual(bezel.hole.h, 0.8400)) {
             failures = failures + RenderingContractTest.fail(
-                "switch fallback hole: want the wide16x9 table row");
+                "generic fallback hole: want the wide16x9 table row");
         }
         return failures;
     }

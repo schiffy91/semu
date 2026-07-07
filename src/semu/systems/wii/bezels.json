@@ -2,12 +2,20 @@
   "schema_version": 1,
   "enabled": true,
   "default_variant": "tv",
-  "hole": { "x": 0.1250, "y": 0.0500, "w": 0.7500, "h": 0.9000 },
+  "hole": {
+    "x": 0.1734,
+    "y": 0.1139,
+    "w": 0.6531,
+    "h": 0.6611
+  },
   "variants": [
     {
       "id": "tv",
-      "label": "Generic 4:3 Frame",
-      "art": "assets/bezels/generic/4x3.png"
+      "label": "Living-Room CRT 16:9",
+      "art": "assets/bezels/wii/tv.png"
     }
-  ]
+  ],
+  "doc": {
+    "hole": "Tube measured from the art (dark-region probe at 640px, fractions)."
+  }
 }

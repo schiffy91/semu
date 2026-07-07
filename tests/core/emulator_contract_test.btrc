@@ -800,11 +800,11 @@ class EmulatorContractTest {
         LinuxTap.applyWithAssetRoot(dolphinPlan, dolphin, gameCube, settings, repoRoot,
             fakeAssetRoot);
         if (!EmulatorContractTest.environmentValue(dolphinPlan, "SEMU_TAP_ART")
-                .endsWith("assets/bezels/n64/tv.png")) {
+                .endsWith("assets/bezels/gc/tv.png")) {
             failures = failures + EmulatorContractTest.fail(
                 "tap plan SEMU_TAP_ART: got '"
                 + EmulatorContractTest.environmentValue(dolphinPlan, "SEMU_TAP_ART")
-                + "' (want the gc geometry_from n64 tv art)");
+                + "' (want the gc tv art)");
         }
         if (!EmulatorContractTest.environmentValue(dolphinPlan, "SEMU_TAP_STYLE")
                 .equals("console")
@@ -926,11 +926,11 @@ class EmulatorContractTest {
         int argumentCountBefore = macosPlan.argumentVector.size();
         MacosTap.applyWithAssetRoot(macosPlan, gameCube, settings, repoRoot, fakeAssetRoot);
         if (!EmulatorContractTest.environmentValue(macosPlan, "SEMU_TAP_ART")
-                .endsWith("assets/bezels/n64/tv.png")) {
+                .endsWith("assets/bezels/gc/tv.png")) {
             failures = failures + EmulatorContractTest.fail(
                 "macos tap plan SEMU_TAP_ART: got '"
                 + EmulatorContractTest.environmentValue(macosPlan, "SEMU_TAP_ART")
-                + "' (want the gc geometry_from n64 tv art)");
+                + "' (want the gc tv art)");
         }
         if (!EmulatorContractTest.environmentValue(macosPlan, "SEMU_TAP_STYLE")
                 .equals("console")
