@@ -604,9 +604,9 @@
         {
           "kind": "round_rect",
           "x": 0.243,
-          "y": 0.2,
+          "y": 0.263,
           "w": 0.514,
-          "h": 0.6,
+          "h": 0.474,
           "radius": 10,
           "fill": "#08090c"
         },
@@ -702,11 +702,6 @@
       "doc": {
         "why": "No upstream Wii U art; drawn GamePad shell. Screen hole is exact 16:9."
       }
-    },
-    "assets/bezels/wii/tv-wide.png": {
-      "type": "copy",
-      "from": "soqueroeu_tv",
-      "path": "img/Nintendo_Wii/Wii_16x9.png"
     }
   },
   "staging": [
