@@ -98,8 +98,21 @@ for bezels_file in sorted(glob.glob(f"{project}/src/semu/systems/*/bezels.json")
             art_rect = rounded([game[0] - hole["x"] * art_rect_w,
                                 game[1] - hole["y"] * art_rect_h, art_rect_w, art_rect_h])
             cards.append(rounded(game))
+        hole_rects = []
+        if dual:
+            screen_holes = variant.get("screen_holes") or bezels.get("screen_holes") or {}
+            for screen in screens:
+                screen_hole = screen_holes.get(screen["id"])
+                if screen_hole:
+                    hole_rects.append(rounded([screen_hole["x"] * WIDTH, screen_hole["y"] * HEIGHT,
+                                               screen_hole["w"] * WIDTH, screen_hole["h"] * HEIGHT]))
+        else:
+            hole_rects.append(rounded([art_rect[0] + hole["x"] * art_rect[2],
+                                       art_rect[1] + hole["y"] * art_rect[3],
+                                       hole["w"] * art_rect[2], hole["h"] * art_rect[3]]))
         jobs.append({"art": art_file, "glass": glass_file, "art_rect": art_rect,
-                     "out": f"{out}/{system}-{variant['id']}.png", "cards": cards})
+                     "out": f"{out}/{system}-{variant['id']}.png", "cards": cards,
+                     "holes": hole_rects})
 print(json.dumps({"width": WIDTH, "height": HEIGHT, "jobs": jobs, "missing": missing}))
 PY
 
@@ -148,6 +161,20 @@ for job in manifest["jobs"] as! [[String: Any]] {
             start: CGPoint(x: rect.midX, y: rect.maxY),
             end: CGPoint(x: rect.midX, y: rect.minY), options: [])
         context.restoreGState()
+    }
+    if ProcessInfo.processInfo.environment["SEMU_PREVIEW_EDGES"] == "1" {
+        let holes = job["holes"] as! [[Int]]
+        context.setLineWidth(4)
+        context.setStrokeColor(CGColor(red: 0, green: 1, blue: 0.25, alpha: 0.5))
+        for hole in holes {
+            context.stroke(CGRect(x: hole[0], y: height - hole[1] - hole[3],
+                                  width: hole[2], height: hole[3]))
+        }
+        context.setStrokeColor(CGColor(red: 1, green: 1, blue: 1, alpha: 0.5))
+        for card in cards {
+            context.stroke(CGRect(x: card[0], y: height - card[1] - card[3],
+                                  width: card[2], height: card[3]))
+        }
     }
     let image = context.makeImage()!
     let destination = CGImageDestinationCreateWithURL(

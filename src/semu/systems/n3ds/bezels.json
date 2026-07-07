@@ -47,6 +47,31 @@
         "w": 0.2917,
         "h": 0.754
       }
+    },
+    {
+      "id": "horizontal",
+      "label": "Side by Side",
+      "art": "assets/bezels/n3ds/horizontal.png",
+      "hole": {
+        "x": 0.02,
+        "y": 0.218,
+        "w": 0.935,
+        "h": 0.444
+      },
+      "screen_holes": {
+        "top": {
+          "x": 0.02,
+          "y": 0.2288,
+          "w": 0.44,
+          "h": 0.4224
+        },
+        "bottom": {
+          "x": 0.585,
+          "y": 0.218,
+          "w": 0.37,
+          "h": 0.444
+        }
+      }
     }
   ],
   "doc": {

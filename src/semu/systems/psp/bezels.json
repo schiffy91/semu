@@ -3,9 +3,9 @@
   "enabled": true,
   "default_variant": "classic",
   "hole": {
-    "x": 0.1538,
+    "x": 0.1559,
     "y": 0.115,
-    "w": 0.6925,
+    "w": 0.6883,
     "h": 0.6925
   },
   "variants": [
