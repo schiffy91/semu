@@ -9,7 +9,7 @@
 # src/generated/verification/preview-matrix/.
 set -euo pipefail
 PROJECT="${1:-$(pwd)}"
-BUNDLE="$PROJECT/src/generated/nix/result/lib/semu/share/semu"
+BUNDLE="${2:-$PROJECT/src/generated/nix/result/lib/semu/share/semu}"
 OUT="$PROJECT/src/generated/verification/preview-matrix"
 mkdir -p "$OUT"
 
