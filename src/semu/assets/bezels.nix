@@ -108,7 +108,10 @@ let
       # transparent canvas — the manifest entry IS the drawing, no upstream.
       panel = ''
         magick -size ${toString recipe.size.w}x${toString recipe.size.h} canvas:none \
-          ${lib.concatMapStrings (drawPlateFor recipe.size.w recipe.size.h) recipe.plates} "PNG32:$out/share/semu/${key}"
+          ${lib.concatMapStrings (drawPlateFor recipe.size.w recipe.size.h) recipe.plates}${
+            lib.optionalString (recipe ? grain)
+              " -channel RGB -attenuate ${toString recipe.grain} +noise Gaussian +channel"
+          } "PNG32:$out/share/semu/${key}"
       '';
     }.${recipe.type};
 
