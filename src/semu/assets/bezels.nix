@@ -99,19 +99,21 @@ let
         magick ${layer recipe.silhouette} -fill "${recipe.color}" -colorize 100 \( -size "$shellDims" gradient:"${recipe.light or "#ffffff-#7e7e7e"}" \) -compose Multiply -composite${cut}${overLayer "decal"}${overLayer "glass_markings"}${overLayer "top"}${
           lib.optionalString (recipe ? led)
             " \\( ${layer recipe.led} -alpha off \\) -compose Screen -composite"
-        }${cut}${lib.optionalString (recipe ? plates) (" -compose Over " + lib.concatMapStrings (drawPlateFor recipe.size.w recipe.size.h) recipe.plates)}${
-          lib.optionalString (recipe ? grain)
-            " -channel RGB -attenuate ${toString recipe.grain} +noise Gaussian +channel"
-        }${cut} -resize '2048x2048>' "PNG32:$out/share/semu/${key}"
+        }${cut}${lib.optionalString (recipe ? plates) (" -compose Over " + lib.concatMapStrings (drawPlateFor recipe.size.w recipe.size.h) recipe.plates)}${cut} -resize '2048x2048>' "PNG32:$out/share/semu/${key}"${
+          lib.optionalString (recipe ? grain) ''
+
+        magick ${outFile key} -channel RGB -attenuate ${toString recipe.grain} +noise Gaussian +channel "PNG32:$out/share/semu/${key}"''
+        }
       '';
       # declarative drawn bezel: ordered plates (round_rect / circle) on a
       # transparent canvas — the manifest entry IS the drawing, no upstream.
       panel = ''
         magick -size ${toString recipe.size.w}x${toString recipe.size.h} canvas:none \
-          ${lib.concatMapStrings (drawPlateFor recipe.size.w recipe.size.h) recipe.plates}${
-            lib.optionalString (recipe ? grain)
-              " -channel RGB -attenuate ${toString recipe.grain} +noise Gaussian +channel"
-          } "PNG32:$out/share/semu/${key}"
+          ${lib.concatMapStrings (drawPlateFor recipe.size.w recipe.size.h) recipe.plates} "PNG32:$out/share/semu/${key}"${
+            lib.optionalString (recipe ? grain) ''
+
+        magick ${outFile key} -channel RGB -attenuate ${toString recipe.grain} +noise Gaussian +channel "PNG32:$out/share/semu/${key}"''
+          }
       '';
     }.${recipe.type};
 

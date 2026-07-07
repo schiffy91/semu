@@ -319,7 +319,7 @@
           "fill": "#0a0b0e"
         }
       ],
-      "grain": 0.35
+      "grain": 0.4
     },
     "assets/bezels/nds/horizontal.png": {
       "type": "shell",
@@ -354,7 +354,7 @@
           "fill": "#0a0b0e"
         }
       ],
-      "grain": 0.35
+      "grain": 0.4
     },
     "assets/bezels/nds/big-screen.png": {
       "type": "panel",
@@ -418,7 +418,7 @@
           "fill": "#0a0b0e"
         }
       ],
-      "grain": 0.35
+      "grain": 0.4
     },
     "assets/bezels/dreamcast/tv.png": {
       "type": "copy",
@@ -613,7 +613,7 @@
       "doc": {
         "why": "No upstream Switch art exists; drawn handheld with joy-con colorways. Screen hole is exact 16:9."
       },
-      "grain": 0.25
+      "grain": 0.4
     },
     "assets/bezels/wiiu/gamepad.png": {
       "type": "panel",
@@ -742,7 +742,41 @@
       "doc": {
         "why": "No upstream Wii U art; drawn GamePad shell. Screen hole is exact 16:9."
       },
-      "grain": 0.25
+      "grain": 0.4
+    },
+    "assets/bezels/n3ds/horizontal.png": {
+      "type": "shell",
+      "from": "duimon_mega_bezel",
+      "silhouette": "Graphics/Nintendo_3DS/3DS.png",
+      "decal": "Graphics/Nintendo_3DS/3DS_Decal.png",
+      "glass_markings": "Graphics/Nintendo_3DS/3DS_Glass.png",
+      "led": "Graphics/Nintendo_3DS/3DS_LED.png",
+      "color": "#454b56",
+      "grain": 0.4,
+      "size": {
+        "w": 3840,
+        "h": 2160
+      },
+      "plates": [
+        {
+          "kind": "round_rect",
+          "x": 0.006,
+          "y": 0.2064,
+          "w": 0.468,
+          "h": 0.4672,
+          "radius": 20,
+          "fill": "#0a0b0e"
+        },
+        {
+          "kind": "round_rect",
+          "x": 0.571,
+          "y": 0.1956,
+          "w": 0.398,
+          "h": 0.4888,
+          "radius": 20,
+          "fill": "#0a0b0e"
+        }
+      ]
     }
   },
   "staging": [

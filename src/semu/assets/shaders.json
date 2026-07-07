@@ -89,7 +89,8 @@
       "params": {
         "HSM_INT_SCALE_MODE": 1,
         "HSM_INT_SCALE_MAX_HEIGHT": 60.57,
-        "HSM_CURVATURE_MODE": 0
+        "HSM_CURVATURE_MODE": 0,
+        "HSM_INTRO_WHEN_TO_SHOW": 0.0
       },
       "requires": [
         "duimon_mega_bezel",
@@ -118,7 +119,8 @@
       "params": {
         "HSM_INT_SCALE_MODE": 1,
         "HSM_INT_SCALE_MAX_HEIGHT": 60.57,
-        "HSM_CURVATURE_MODE": 0
+        "HSM_CURVATURE_MODE": 0,
+        "HSM_INTRO_WHEN_TO_SHOW": 0.0
       },
       "requires": [
         "duimon_mega_bezel",
@@ -147,7 +149,8 @@
       "params": {
         "HSM_INT_SCALE_MODE": 1,
         "HSM_INT_SCALE_MAX_HEIGHT": 59.77,
-        "HSM_CURVATURE_MODE": 0
+        "HSM_CURVATURE_MODE": 0,
+        "HSM_INTRO_WHEN_TO_SHOW": 0.0
       },
       "requires": [
         "duimon_mega_bezel",
@@ -171,7 +174,8 @@
         "path": "presets/TV-Console-Night/Nintendo_NES.slangp"
       },
       "params": {
-        "HSM_INT_SCALE_MODE": 1
+        "HSM_INT_SCALE_MODE": 1,
+        "HSM_INTRO_WHEN_TO_SHOW": 0.0
       },
       "requires": [
         "soqueroeu_tv",
@@ -195,7 +199,8 @@
         "path": "presets/TV-Console-Night/Nintendo_SuperNintendo-[Special_Grey].slangp"
       },
       "params": {
-        "HSM_INT_SCALE_MODE": 1
+        "HSM_INT_SCALE_MODE": 1,
+        "HSM_INTRO_WHEN_TO_SHOW": 0.0
       },
       "requires": [
         "soqueroeu_tv",
@@ -219,7 +224,8 @@
         "path": "presets/TV-Console-Night/Sega_Genesis.slangp"
       },
       "params": {
-        "HSM_INT_SCALE_MODE": 1
+        "HSM_INT_SCALE_MODE": 1,
+        "HSM_INTRO_WHEN_TO_SHOW": 0.0
       },
       "requires": [
         "soqueroeu_tv",
@@ -230,11 +236,14 @@
       "type": "slang_wrapper",
       "reference": {
         "tree": "shaders_slang",
-        "path": "crt/crt-royale.slangp"
+        "path": "crt/crt-hyllian.slangp"
       },
       "requires": [
         "shaders_slang"
-      ]
+      ],
+      "doc": {
+        "why": "crt-hyllian's soft bright glow approximates the N64 VI filter and is a genuinely different chain from psx's crt-royale (royale's beam params are compile-time constants \u2014 overriding them in a preset is silently ignored, critic-proven byte-identical)."
+      }
     },
     "assets/shaders/n64/composite.slangp": {
       "type": "slang_wrapper",
@@ -244,8 +253,9 @@
       },
       "params": {
         "HSM_INT_SCALE_MODE": 1,
-        "HSM_INT_SCALE_MAX_HEIGHT": 100,
-        "HSM_BG_FILL_MODE": 2
+        "HSM_INT_SCALE_MAX_HEIGHT": 60.0,
+        "HSM_BG_FILL_MODE": 2,
+        "HSM_INTRO_WHEN_TO_SHOW": 0.0
       },
       "requires": [
         "soqueroeu_tv",
@@ -253,7 +263,8 @@
       ],
       "doc": {
         "max_height": "MAX_HEIGHT=100 references the full screen so ShortAxis integer scaling picks floor(screenH/240); requires the launcher forcing mupen64plus_next to native 320x240.",
-        "bg_fill": "HSM_BG_FILL_MODE=2 stretches the 16:9 room scene to cover the 16:10 viewport; the game/tube layer is unaffected."
+        "bg_fill": "HSM_BG_FILL_MODE=2 stretches the 16:9 room scene to cover the 16:10 viewport; the game/tube layer is unaffected.",
+        "frame_fit": "Cap the tube height so the CRT frame stays in-picture at 1280x800 (uncapped 100% overflowed the canvas \u2014 critic-verified)."
       }
     },
     "assets/shaders/psx/screen.slangp": {
@@ -273,12 +284,17 @@
         "path": "presets/TV-Console-Night/00_Generic_02.slangp"
       },
       "params": {
-        "HSM_INT_SCALE_MODE": 1
+        "HSM_INT_SCALE_MODE": 1,
+        "HSM_INT_SCALE_MAX_HEIGHT": 60.0,
+        "HSM_INTRO_WHEN_TO_SHOW": 0.0
       },
       "requires": [
         "soqueroeu_tv",
         "shaders_slang"
-      ]
+      ],
+      "doc": {
+        "frame_fit": "Cap the tube height so the CRT frame stays in-picture at 1280x800 (uncapped 100% overflowed the canvas \u2014 critic-verified)."
+      }
     },
     "assets/shaders/nds/screen.slangp": {
       "type": "slang_wrapper",
@@ -300,14 +316,17 @@
         "path": "Presets/Advanced/Nintendo_NDS/NDS-[ADV]-[Guest]-[Night].slangp"
       },
       "params": {
-        "HSM_INT_SCALE_MODE": 1,
-        "HSM_INT_SCALE_MAX_HEIGHT": 117.17,
-        "HSM_CURVATURE_MODE": 0
+        "HSM_CURVATURE_MODE": 0,
+        "HSM_INTRO_WHEN_TO_SHOW": 0.0,
+        "HSM_VIEWPORT_ZOOM": 70.0
       },
       "requires": [
         "duimon_mega_bezel",
         "shaders_slang"
-      ]
+      ],
+      "doc": {
+        "scale": "Keep Duimon's non-integer dual-screen scale (int-scale forced 4x and cropped the shell); VIEWPORT_ZOOM=70 fits the full side-by-side DS at 16:10 (librashader-verified)."
+      }
     },
     "assets/shaders/psp/screen.slangp": {
       "type": "slang_wrapper",
@@ -331,7 +350,8 @@
       "params": {
         "HSM_INT_SCALE_MODE": 1,
         "HSM_INT_SCALE_MAX_HEIGHT": 69.17,
-        "HSM_CURVATURE_MODE": 0
+        "HSM_CURVATURE_MODE": 0,
+        "HSM_INTRO_WHEN_TO_SHOW": 0.0
       },
       "requires": [
         "duimon_mega_bezel",
@@ -355,12 +375,17 @@
         "path": "presets/TV-Console-Night/00_Generic_02.slangp"
       },
       "params": {
-        "HSM_INT_SCALE_MODE": 1
+        "HSM_INT_SCALE_MODE": 1,
+        "HSM_INT_SCALE_MAX_HEIGHT": 60.0,
+        "HSM_INTRO_WHEN_TO_SHOW": 0.0
       },
       "requires": [
         "soqueroeu_tv",
         "shaders_slang"
-      ]
+      ],
+      "doc": {
+        "frame_fit": "Cap the tube height so the CRT frame stays in-picture at 1280x800 (uncapped 100% overflowed the canvas \u2014 critic-verified)."
+      }
     }
   }
 }
