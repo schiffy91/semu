@@ -18,11 +18,6 @@
       "id": "retro_black",
       "label": "Retro Black",
       "art": "assets/bezels/snes/retro-black.png"
-    },
-    {
-      "id": "retro_purple",
-      "label": "Retro Purple",
-      "art": "assets/bezels/snes/retro-purple.png"
     }
   ],
   "doc": {

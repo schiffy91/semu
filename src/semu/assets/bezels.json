@@ -94,12 +94,14 @@
     "assets/bezels/gb/red.png": {
       "type": "recolor",
       "base": "assets/bezels/gb/classic.png",
-      "color": "#d23440"
+      "color": "#d23440",
+      "brightness": 135
     },
     "assets/bezels/gb/green.png": {
       "type": "recolor",
       "base": "assets/bezels/gb/classic.png",
-      "color": "#2f9e4f"
+      "color": "#2f9e4f",
+      "brightness": 135
     },
     "assets/bezels/gbc/classic.png": {
       "type": "flatten",
@@ -178,11 +180,6 @@
       "type": "copy",
       "from": "soqueroeu_tv",
       "path": "img/Nintendo_SuperNintendo/SuperNES_V2.png"
-    },
-    "assets/bezels/snes/retro-purple.png": {
-      "type": "copy",
-      "from": "soqueroeu_tv",
-      "path": "img/Nintendo_SuperNintendo/SuperNES_V3.png"
     },
     "assets/bezels/genesis/tv.png": {
       "type": "copy",
@@ -377,109 +374,123 @@
       "plates": [
         {
           "kind": "round_rect",
-          "x": 0.005,
+          "x": 0.035,
           "y": 0.075,
-          "w": 0.105,
+          "w": 0.115,
           "h": 0.85,
           "radius": 34,
           "fill": "#1798c8"
         },
         {
           "kind": "round_rect",
-          "x": 0.89,
+          "x": 0.85,
           "y": 0.075,
-          "w": 0.105,
+          "w": 0.115,
           "h": 0.85,
           "radius": 34,
           "fill": "#e6284c"
         },
         {
           "kind": "round_rect",
-          "x": 0.075,
-          "y": 0.055,
-          "w": 0.85,
-          "h": 0.89,
-          "radius": 22,
+          "x": 0.145,
+          "y": 0.075,
+          "w": 0.71,
+          "h": 0.85,
+          "radius": 6,
           "fill": "#17181d",
           "stroke": "#33353d"
         },
         {
           "kind": "round_rect",
-          "x": 0.098,
-          "y": 0.128,
-          "w": 0.804,
-          "h": 0.744,
-          "radius": 10,
+          "x": 0.168,
+          "y": 0.19,
+          "w": 0.664,
+          "h": 0.62,
+          "radius": 8,
           "fill": "#08090c"
         },
         {
           "kind": "circle",
-          "cx": 0.052,
-          "cy": 0.315,
-          "radius": 15,
+          "cx": 0.0925,
+          "cy": 0.28,
+          "radius": 17,
           "fill": "#0e0f12"
         },
         {
           "kind": "circle",
-          "cx": 0.948,
-          "cy": 0.6,
-          "radius": 15,
+          "cx": 0.0925,
+          "cy": 0.52,
+          "radius": 7,
           "fill": "#0e0f12"
         },
         {
           "kind": "circle",
-          "cx": 0.948,
-          "cy": 0.295,
-          "radius": 6,
+          "cx": 0.073,
+          "cy": 0.565,
+          "radius": 7,
           "fill": "#0e0f12"
         },
         {
           "kind": "circle",
-          "cx": 0.928,
-          "cy": 0.345,
-          "radius": 6,
+          "cx": 0.112,
+          "cy": 0.565,
+          "radius": 7,
           "fill": "#0e0f12"
         },
         {
           "kind": "circle",
-          "cx": 0.968,
-          "cy": 0.345,
-          "radius": 6,
+          "cx": 0.0925,
+          "cy": 0.61,
+          "radius": 7,
           "fill": "#0e0f12"
         },
         {
           "kind": "circle",
-          "cx": 0.948,
-          "cy": 0.395,
-          "radius": 6,
+          "cx": 0.9075,
+          "cy": 0.28,
+          "radius": 7,
           "fill": "#0e0f12"
         },
         {
           "kind": "circle",
-          "cx": 0.032,
-          "cy": 0.53,
-          "radius": 6,
+          "cx": 0.888,
+          "cy": 0.325,
+          "radius": 7,
           "fill": "#0e0f12"
         },
         {
           "kind": "circle",
-          "cx": 0.052,
-          "cy": 0.48,
-          "radius": 6,
+          "cx": 0.927,
+          "cy": 0.325,
+          "radius": 7,
           "fill": "#0e0f12"
         },
         {
           "kind": "circle",
-          "cx": 0.072,
-          "cy": 0.53,
-          "radius": 6,
+          "cx": 0.9075,
+          "cy": 0.37,
+          "radius": 7,
           "fill": "#0e0f12"
         },
         {
           "kind": "circle",
-          "cx": 0.052,
-          "cy": 0.58,
-          "radius": 6,
+          "cx": 0.9075,
+          "cy": 0.55,
+          "radius": 17,
+          "fill": "#0e0f12"
+        },
+        {
+          "kind": "circle",
+          "cx": 0.128,
+          "cy": 0.115,
+          "radius": 5,
+          "fill": "#0e0f12"
+        },
+        {
+          "kind": "circle",
+          "cx": 0.872,
+          "cy": 0.115,
+          "radius": 5,
           "fill": "#0e0f12"
         }
       ],
@@ -506,31 +517,31 @@
         },
         {
           "kind": "round_rect",
-          "x": 0.16,
-          "y": 0.115,
-          "w": 0.68,
-          "h": 0.77,
-          "radius": 12,
+          "x": 0.163,
+          "y": 0.178,
+          "w": 0.674,
+          "h": 0.644,
+          "radius": 10,
           "fill": "#08090c"
         },
         {
           "kind": "circle",
           "cx": 0.085,
-          "cy": 0.26,
+          "cy": 0.22,
           "radius": 16,
           "fill": "#101116"
         },
         {
           "kind": "circle",
           "cx": 0.915,
-          "cy": 0.26,
+          "cy": 0.22,
           "radius": 16,
           "fill": "#101116"
         },
         {
           "kind": "round_rect",
           "x": 0.062,
-          "y": 0.52,
+          "y": 0.5,
           "w": 0.046,
           "h": 0.02,
           "radius": 4,
@@ -539,7 +550,7 @@
         {
           "kind": "round_rect",
           "x": 0.0795,
-          "y": 0.49,
+          "y": 0.47,
           "w": 0.011,
           "h": 0.08,
           "radius": 4,
@@ -548,29 +559,50 @@
         {
           "kind": "circle",
           "cx": 0.915,
-          "cy": 0.5,
+          "cy": 0.47,
           "radius": 8,
           "fill": "#101116"
         },
         {
           "kind": "circle",
           "cx": 0.895,
-          "cy": 0.55,
+          "cy": 0.52,
           "radius": 8,
           "fill": "#101116"
         },
         {
           "kind": "circle",
           "cx": 0.935,
-          "cy": 0.55,
+          "cy": 0.52,
           "radius": 8,
           "fill": "#101116"
         },
         {
           "kind": "circle",
           "cx": 0.915,
-          "cy": 0.6,
+          "cy": 0.57,
           "radius": 8,
+          "fill": "#101116"
+        },
+        {
+          "kind": "circle",
+          "cx": 0.44,
+          "cy": 0.895,
+          "radius": 6,
+          "fill": "#101116"
+        },
+        {
+          "kind": "circle",
+          "cx": 0.5,
+          "cy": 0.895,
+          "radius": 6,
+          "fill": "#101116"
+        },
+        {
+          "kind": "circle",
+          "cx": 0.56,
+          "cy": 0.895,
+          "radius": 6,
           "fill": "#101116"
         }
       ],
