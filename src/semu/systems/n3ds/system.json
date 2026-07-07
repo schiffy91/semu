@@ -1,17 +1,52 @@
 {
   "schema_version": 1,
   "name": "Nintendo 3DS",
-  "aliases": ["3ds"],
-  "es_de": { "platforms": ["n3ds"], "theme": "n3ds" },
+  "aliases": [
+    "3ds"
+  ],
+  "es_de": {
+    "platforms": [
+      "n3ds"
+    ],
+    "theme": "n3ds"
+  },
   "rom": {
     "dir": "n3ds",
-    "extensions": [".3ds", ".3dsx", ".app", ".axf", ".cci", ".cxi", ".elf", ".7z", ".zip"]
+    "extensions": [
+      ".3ds",
+      ".3dsx",
+      ".app",
+      ".axf",
+      ".cci",
+      ".cxi",
+      ".elf",
+      ".7z",
+      ".zip"
+    ]
   },
-  "emulators": [ { "emulator": "azahar" } ],
+  "emulators": [
+    {
+      "emulator": "retroarch",
+      "label": "Azahar",
+      "core": "azahar"
+    }
+  ],
   "display": {
     "screens": [
-      { "id": "top",    "native": { "w": 400, "h": 240 } },
-      { "id": "bottom", "native": { "w": 320, "h": 240 } }
+      {
+        "id": "top",
+        "native": {
+          "w": 400,
+          "h": 240
+        }
+      },
+      {
+        "id": "bottom",
+        "native": {
+          "w": 320,
+          "h": 240
+        }
+      }
     ],
     "arrangement": "vertical"
   },
@@ -20,7 +55,11 @@
     "priority": "game",
     "kind": "dual",
     "corner_radius": 0.045,
-    "shell_tint": { "r": 0.82, "g": 0.82, "b": 0.85 }
+    "shell_tint": {
+      "r": 0.82,
+      "g": 0.82,
+      "b": 0.85
+    }
   },
   "doc": {
     "hardware": "dual LCDs, 400x240 top and 320x240 bottom",

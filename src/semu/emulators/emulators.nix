@@ -10,7 +10,7 @@
 # src/semu/emulators/<id>/<id>.nix; this file only discovers the inventory
 # and callPackages those recipes, so zero pins live here. A contract entry
 # with no recipe file fails evaluation loudly.
-{ lib, stdenv, callPackage, symlinkJoin, libretro }:
+{ lib, stdenv, callPackage, symlinkJoin, libretro, fetchzip }:
 
 let
   emulatorsDir = ./.;
@@ -70,8 +70,26 @@ let
     ppsspp = "ppsspp";
     flycast = "flycast";
   };
-  linuxCore = core: libretro.${linuxCoreAttr.${core} or (throw
-    "semu_emulators.nix: no nixpkgs libretro mapping for core '${core}'")};
+  # Azahar's official first-party core is not in nixpkgs' libretro set yet;
+  # pin the release asset directly (same tag family the standalone used).
+  azaharCore = stdenv.mkDerivation {
+    pname = "azahar-libretro";
+    version = "2125.1.3";
+    src = fetchzip {
+      url = "https://github.com/azahar-emu/azahar/releases/download/2125.1.3/azahar-libretro-linux-x86_64-2125.1.3.zip";
+      hash = "sha256-HZ+rOsKbLpO2v46bL/oqIOhaJ4j5FM2HOgwygK2pyK4=";
+      stripRoot = false;
+    };
+    installPhase = ''
+      mkdir -p $out/lib/retroarch/cores
+      find . -name "*_libretro.so" -exec cp {} $out/lib/retroarch/cores/ \;
+    '';
+    meta.platforms = [ "x86_64-linux" ];
+  };
+  linuxCore = core:
+    if core == "azahar" then azaharCore
+    else libretro.${linuxCoreAttr.${core} or (throw
+      "semu_emulators.nix: no nixpkgs libretro mapping for core '${core}'")};
   linuxCores = coresFor "linux";
 in
 {

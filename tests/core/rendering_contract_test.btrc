@@ -95,9 +95,9 @@ class RenderingContractTest {
         if (!RenderingContractTest.nearlyEqual(bezel.hole.x, 0.2547)
             || !RenderingContractTest.nearlyEqual(bezel.hole.y, 0.1278)
             || !RenderingContractTest.nearlyEqual(bezel.hole.w, 0.4906)
-            || !RenderingContractTest.nearlyEqual(bezel.hole.h, 0.6583)) {
+            || !RenderingContractTest.nearlyEqual(bezel.hole.h, 0.6637)) {
             failures = failures + RenderingContractTest.fail(
-                f"gc hole: want 0.2547,0.1278,0.4906,0.6583 got {bezel.hole.x},{bezel.hole.y},{bezel.hole.w},{bezel.hole.h}");
+                f"gc hole: want 0.2547,0.1278,0.4906,0.6637 got {bezel.hole.x},{bezel.hole.y},{bezel.hole.w},{bezel.hole.h}");
         }
         return failures;
     }

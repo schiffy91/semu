@@ -25,7 +25,7 @@ in {
 
     emulators = lib.mkOption {
       type = lib.types.listOf lib.types.str;
-      default = [ "dolphin" "azahar" "pcsx2" "cemu" "retroarch" ];
+      default = [ "dolphin" "pcsx2" "cemu" "retroarch" ];
       description = "Which emulators to install (only nixpkgs-available ones)";
     };
 
@@ -46,7 +46,6 @@ in {
     environment.systemPackages = let
       emulatorPackages = {
         dolphin = pkgs.dolphin-emu;
-        azahar = pkgs.azahar;
         pcsx2 = pkgs.pcsx2;
         cemu = pkgs.cemu;
         retroarch = pkgs.retroarch-bare;

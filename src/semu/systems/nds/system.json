@@ -2,16 +2,45 @@
   "schema_version": 1,
   "name": "Nintendo DS",
   "aliases": [],
-  "es_de": { "platforms": ["nds"], "theme": "nds" },
-  "rom": { "dir": "nds", "extensions": [".app", ".bin", ".nds", ".7z", ".zip"] },
+  "es_de": {
+    "platforms": [
+      "nds"
+    ],
+    "theme": "nds"
+  },
+  "rom": {
+    "dir": "nds",
+    "extensions": [
+      ".app",
+      ".bin",
+      ".nds",
+      ".7z",
+      ".zip"
+    ]
+  },
   "emulators": [
-    { "emulator": "melonds", "platforms": ["linux"] },
-    { "emulator": "retroarch", "label": "DeSmuME", "core": "desmume" }
+    {
+      "emulator": "retroarch",
+      "label": "DeSmuME",
+      "core": "desmume"
+    }
   ],
   "display": {
     "screens": [
-      { "id": "top",    "native": { "w": 256, "h": 192 } },
-      { "id": "bottom", "native": { "w": 256, "h": 192 } }
+      {
+        "id": "top",
+        "native": {
+          "w": 256,
+          "h": 192
+        }
+      },
+      {
+        "id": "bottom",
+        "native": {
+          "w": 256,
+          "h": 192
+        }
+      }
     ],
     "arrangement": "vertical"
   },
@@ -20,7 +49,11 @@
     "priority": "bezel",
     "kind": "dual",
     "corner_radius": 0.045,
-    "shell_tint": { "r": 0.82, "g": 0.82, "b": 0.85 }
+    "shell_tint": {
+      "r": 0.82,
+      "g": 0.82,
+      "b": 0.85
+    }
   },
   "doc": {
     "hardware": "dual 256x192 resistive LCDs",
