@@ -318,7 +318,7 @@
       "params": {
         "HSM_CURVATURE_MODE": 0,
         "HSM_INTRO_WHEN_TO_SHOW": 0.0,
-        "HSM_VIEWPORT_ZOOM": 70.0
+        "HSM_VIEWPORT_ZOOM": 88.0
       },
       "requires": [
         "duimon_mega_bezel",
@@ -385,6 +385,40 @@
       ],
       "doc": {
         "frame_fit": "Cap the tube height so the CRT frame stays in-picture at 1280x800 (uncapped 100% overflowed the canvas \u2014 critic-verified)."
+      }
+    },
+    "assets/shaders/n3ds/screen.slangp": {
+      "type": "slang_wrapper",
+      "reference": {
+        "tree": "shaders_slang",
+        "path": "handheld/lcd1x.slangp"
+      },
+      "requires": [
+        "shaders_slang"
+      ],
+      "doc": {
+        "why": "Generic LCD grid for the 3DS panels (no 3DS-tuned edition upstream; lcd1x matches the nds/psp family)."
+      }
+    },
+    "assets/shaders/n3ds/composite.slangp": {
+      "type": "slang_wrapper",
+      "reference": {
+        "tree": "duimon_mega_bezel",
+        "path": "Presets/Advanced/Nintendo_3DS/3DS-[ADV]-[Guest]-[Night].slangp"
+      },
+      "params": {
+        "HSM_CURVATURE_MODE": 0,
+        "HSM_INTRO_WHEN_TO_SHOW": 0.0,
+        "HSM_FLIP_VIEWPORT_VERTICAL": 0.0,
+        "HSM_VIEWPORT_ZOOM": 88.0
+      },
+      "requires": [
+        "duimon_mega_bezel",
+        "shaders_slang"
+      ],
+      "doc": {
+        "why": "Side-by-side New 3DS scene; FLIP_VIEWPORT off (Duimon compensates for citra's inverted FBO \u2014 azahar renders upright), zoom 88 maximizes the screens at 16:10.",
+        "scale": "Duimon's PAR params render the main screen 5:3 and touch 4:3 (10% crops eat azahar's bottom padding)."
       }
     }
   }

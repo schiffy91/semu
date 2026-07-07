@@ -119,9 +119,9 @@ def render(preset_path, card, out, zoom, extra_params=None):
 report = []
 bake_filter = os.environ.get("BAKE_ONLY", "")
 for bake in manifest["bakes"]:
-    if bake_filter and bake["system"] != bake_filter:
-        continue
     tag = f'{bake["system"]}-{bake["variant"]}'
+    if bake_filter and bake_filter not in (bake["system"], tag):
+        continue
     input_size = bake["input"]
     screens = bake["screens"]
 

@@ -69,7 +69,7 @@
       "variant": "horizontal",
       "art_key": "assets/bezels/nds/horizontal.png",
       "preset": "Presets/Advanced/Nintendo_NDS/NDS-[ADV]-[Guest].slangp",
-      "zoom": 70,
+      "zoom": 88,
       "input": {
         "w": 256,
         "h": 384
@@ -165,7 +165,7 @@
       "variant": "horizontal",
       "art_key": "assets/bezels/n3ds/horizontal.png",
       "preset": "Presets/Advanced/Nintendo_3DS/3DS-[ADV]-[Guest].slangp",
-      "zoom": 70,
+      "zoom": 88,
       "input": {
         "w": 400,
         "h": 480

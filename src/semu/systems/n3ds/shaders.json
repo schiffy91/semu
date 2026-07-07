@@ -1,5 +1,10 @@
 {
   "schema_version": 1,
-  "enabled": false,
-  "doc": { "note": "Azahar standalone; dual-screen presentation is the tap's job. The old Sampo 9519 runtime_preset was RA-only and unreachable." }
+  "enabled": true,
+  "screen": "assets/shaders/n3ds/screen.slangp",
+  "composite": "assets/shaders/n3ds/composite.slangp",
+  "doc": {
+    "intent": "two LCD panels; composite = Duimon side-by-side New 3DS scene",
+    "history": "Was disabled in the azahar-standalone era; n3ds now runs the azahar libretro core so slang chains apply."
+  }
 }
