@@ -74,11 +74,15 @@ for bezels_file in sorted(glob.glob(f"{project}/src/semu/systems/*/bezels.json")
                     cards.append(rounded(aspect_fit_rect(
                         container, screen["native"]["w"] / screen["native"]["h"])))
         elif handheld:
-            # tap fill mode: art contain-fits the framebuffer, the game fills the hole
+            # tap handheld mode: art contain-fits the framebuffer; the game
+            # aspect-fits its NATIVE frame inside the hole (deck-proven: gba
+            # renders exact 3:2 inside the lens hole, masked by the glass)
             fitted = aspect_fit_rect([0, 0, WIDTH, HEIGHT], art_aspect)
-            cards.append(rounded([fitted[0] + hole["x"] * fitted[2],
-                                  fitted[1] + hole["y"] * fitted[3],
-                                  hole["w"] * fitted[2], hole["h"] * fitted[3]]))
+            hole_rect = [fitted[0] + hole["x"] * fitted[2],
+                         fitted[1] + hole["y"] * fitted[3],
+                         hole["w"] * fitted[2], hole["h"] * fitted[3]]
+            native = screens[0]["native"] if screens else {"w": 4, "h": 3}
+            cards.append(rounded(aspect_fit_rect(hole_rect, native["w"] / native["h"])))
             art_rect = rounded(fitted)
         else:
             # tap console mode: integer-height scale of the native canvas
@@ -127,6 +131,11 @@ for job in manifest["jobs"] as! [[String: Any]] {
         context.draw(art, in: artBox)
     }
     let glassPath = job["glass"] as! String
+    if !glassPath.isEmpty,
+       let glassSource = CGImageSourceCreateWithURL(URL(fileURLWithPath: glassPath) as CFURL, nil),
+       let glass = CGImageSourceCreateImageAtIndex(glassSource, 0, nil) {
+        context.draw(glass, in: artBox)
+    }
     for card in cards {
         let rect = CGRect(x: card[0], y: height - card[1] - card[3], width: card[2], height: card[3])
         let gradient = CGGradient(colorsSpace: space, colors: [
@@ -139,11 +148,6 @@ for job in manifest["jobs"] as! [[String: Any]] {
             start: CGPoint(x: rect.midX, y: rect.maxY),
             end: CGPoint(x: rect.midX, y: rect.minY), options: [])
         context.restoreGState()
-    }
-    if !glassPath.isEmpty,
-       let glassSource = CGImageSourceCreateWithURL(URL(fileURLWithPath: glassPath) as CFURL, nil),
-       let glass = CGImageSourceCreateImageAtIndex(glassSource, 0, nil) {
-        context.draw(glass, in: artBox)
     }
     let image = context.makeImage()!
     let destination = CGImageDestinationCreateWithURL(

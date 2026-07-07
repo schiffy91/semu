@@ -294,7 +294,31 @@
       "decal": "Graphics/Nintendo_NDS/NDS_Vertical_Decal.png",
       "glass_markings": "Graphics/Nintendo_NDS/NDS_Vertical_Glass.png",
       "led": "Graphics/Nintendo_NDS/NDS_Vertical_LED.png",
-      "color": "#9aa0ab"
+      "color": "#9aa0ab",
+      "size": {
+        "w": 3840,
+        "h": 2160
+      },
+      "plates": [
+        {
+          "kind": "round_rect",
+          "x": 0.3412,
+          "y": 0.0497,
+          "w": 0.3177,
+          "h": 0.4266,
+          "radius": 18,
+          "fill": "#0a0b0e"
+        },
+        {
+          "kind": "round_rect",
+          "x": 0.3412,
+          "y": 0.5237,
+          "w": 0.3177,
+          "h": 0.4266,
+          "radius": 18,
+          "fill": "#0a0b0e"
+        }
+      ]
     },
     "assets/bezels/nds/horizontal.png": {
       "type": "shell",
@@ -304,7 +328,31 @@
       "glass_markings": "Graphics/Nintendo_NDS/NDS_Glass.png",
       "led": "Graphics/Nintendo_NDS/NDS_LED.png",
       "color": "#9aa0ab",
-      "top": "Graphics/Nintendo_NDS/NDS_Top.png"
+      "top": "Graphics/Nintendo_NDS/NDS_Top.png",
+      "size": {
+        "w": 3840,
+        "h": 2160
+      },
+      "plates": [
+        {
+          "kind": "round_rect",
+          "x": 0.017,
+          "y": 0.113,
+          "w": 0.476,
+          "h": 0.664,
+          "radius": 22,
+          "fill": "#0a0b0e"
+        },
+        {
+          "kind": "round_rect",
+          "x": 0.507,
+          "y": 0.113,
+          "w": 0.476,
+          "h": 0.664,
+          "radius": 22,
+          "fill": "#0a0b0e"
+        }
+      ]
     },
     "assets/bezels/nds/big-screen.png": {
       "type": "panel",
@@ -343,7 +391,31 @@
       "decal": "Graphics/Nintendo_3DS/3DS_Vertical_Decal.png",
       "glass_markings": "Graphics/Nintendo_3DS/3DS_Vertical_Glass.png",
       "led": "Graphics/Nintendo_3DS/3DS_Vertical_LED.png",
-      "color": "#454b56"
+      "color": "#454b56",
+      "size": {
+        "w": 3840,
+        "h": 2160
+      },
+      "plates": [
+        {
+          "kind": "round_rect",
+          "x": 0.3242,
+          "y": 0.0497,
+          "w": 0.3517,
+          "h": 0.4266,
+          "radius": 18,
+          "fill": "#0a0b0e"
+        },
+        {
+          "kind": "round_rect",
+          "x": 0.3704,
+          "y": 0.5237,
+          "w": 0.2593,
+          "h": 0.4266,
+          "radius": 18,
+          "fill": "#0a0b0e"
+        }
+      ]
     },
     "assets/bezels/dreamcast/tv.png": {
       "type": "copy",
@@ -363,7 +435,7 @@
     "assets/bezels/wii/tv.png": {
       "type": "copy",
       "from": "soqueroeu_tv",
-      "path": "img/Nintendo_Wii/Wii_16x9.png"
+      "path": "img/Nintendo_Wii/Wii_4x3.png"
     },
     "assets/bezels/switch/handheld.png": {
       "type": "panel",
@@ -374,124 +446,138 @@
       "plates": [
         {
           "kind": "round_rect",
-          "x": 0.035,
-          "y": 0.075,
-          "w": 0.115,
-          "h": 0.85,
-          "radius": 34,
-          "fill": "#1798c8"
+          "x": 0.055,
+          "y": 0.185,
+          "w": 0.105,
+          "h": 0.63,
+          "radius": 30,
+          "fill": "#0ab9e6"
         },
         {
           "kind": "round_rect",
-          "x": 0.85,
-          "y": 0.075,
-          "w": 0.115,
-          "h": 0.85,
-          "radius": 34,
-          "fill": "#e6284c"
+          "x": 0.84,
+          "y": 0.185,
+          "w": 0.105,
+          "h": 0.63,
+          "radius": 30,
+          "fill": "#ff3c28"
         },
         {
           "kind": "round_rect",
-          "x": 0.145,
-          "y": 0.075,
-          "w": 0.71,
-          "h": 0.85,
-          "radius": 6,
+          "x": 0.15,
+          "y": 0.185,
+          "w": 0.7,
+          "h": 0.63,
+          "radius": 8,
           "fill": "#17181d",
           "stroke": "#33353d"
         },
         {
           "kind": "round_rect",
-          "x": 0.168,
-          "y": 0.19,
-          "w": 0.664,
-          "h": 0.62,
+          "x": 0.172,
+          "y": 0.215,
+          "w": 0.656,
+          "h": 0.57,
           "radius": 8,
           "fill": "#08090c"
         },
         {
           "kind": "circle",
-          "cx": 0.0925,
-          "cy": 0.28,
-          "radius": 17,
-          "fill": "#0e0f12"
+          "cx": 0.1075,
+          "cy": 0.36,
+          "radius": 16,
+          "fill": "#0b0c0f"
         },
         {
           "kind": "circle",
-          "cx": 0.0925,
-          "cy": 0.52,
+          "cx": 0.1075,
+          "cy": 0.6,
           "radius": 7,
-          "fill": "#0e0f12"
+          "fill": "#0b0c0f"
         },
         {
           "kind": "circle",
-          "cx": 0.073,
-          "cy": 0.565,
+          "cx": 0.088,
+          "cy": 0.645,
           "radius": 7,
-          "fill": "#0e0f12"
+          "fill": "#0b0c0f"
         },
         {
           "kind": "circle",
-          "cx": 0.112,
-          "cy": 0.565,
+          "cx": 0.127,
+          "cy": 0.645,
           "radius": 7,
-          "fill": "#0e0f12"
+          "fill": "#0b0c0f"
         },
         {
           "kind": "circle",
-          "cx": 0.0925,
-          "cy": 0.61,
+          "cx": 0.1075,
+          "cy": 0.69,
           "radius": 7,
-          "fill": "#0e0f12"
+          "fill": "#0b0c0f"
         },
         {
           "kind": "circle",
-          "cx": 0.9075,
-          "cy": 0.28,
-          "radius": 7,
-          "fill": "#0e0f12"
+          "cx": 0.143,
+          "cy": 0.22,
+          "radius": 4,
+          "fill": "#0b0c0f"
         },
         {
           "kind": "circle",
-          "cx": 0.888,
-          "cy": 0.325,
-          "radius": 7,
-          "fill": "#0e0f12"
-        },
-        {
-          "kind": "circle",
-          "cx": 0.927,
-          "cy": 0.325,
-          "radius": 7,
-          "fill": "#0e0f12"
-        },
-        {
-          "kind": "circle",
-          "cx": 0.9075,
-          "cy": 0.37,
-          "radius": 7,
-          "fill": "#0e0f12"
-        },
-        {
-          "kind": "circle",
-          "cx": 0.9075,
-          "cy": 0.55,
-          "radius": 17,
-          "fill": "#0e0f12"
-        },
-        {
-          "kind": "circle",
-          "cx": 0.128,
-          "cy": 0.115,
+          "cx": 0.143,
+          "cy": 0.765,
           "radius": 5,
-          "fill": "#0e0f12"
+          "fill": "#0b0c0f"
         },
         {
           "kind": "circle",
-          "cx": 0.872,
-          "cy": 0.115,
+          "cx": 0.8925,
+          "cy": 0.335,
+          "radius": 7,
+          "fill": "#0b0c0f"
+        },
+        {
+          "kind": "circle",
+          "cx": 0.873,
+          "cy": 0.38,
+          "radius": 7,
+          "fill": "#0b0c0f"
+        },
+        {
+          "kind": "circle",
+          "cx": 0.912,
+          "cy": 0.38,
+          "radius": 7,
+          "fill": "#0b0c0f"
+        },
+        {
+          "kind": "circle",
+          "cx": 0.8925,
+          "cy": 0.425,
+          "radius": 7,
+          "fill": "#0b0c0f"
+        },
+        {
+          "kind": "circle",
+          "cx": 0.8925,
+          "cy": 0.6,
+          "radius": 16,
+          "fill": "#0b0c0f"
+        },
+        {
+          "kind": "circle",
+          "cx": 0.857,
+          "cy": 0.22,
+          "radius": 4,
+          "fill": "#0b0c0f"
+        },
+        {
+          "kind": "circle",
+          "cx": 0.857,
+          "cy": 0.765,
           "radius": 5,
-          "fill": "#0e0f12"
+          "fill": "#0b0c0f"
         }
       ],
       "doc": {
@@ -507,108 +593,120 @@
       "plates": [
         {
           "kind": "round_rect",
-          "x": 0.02,
-          "y": 0.03,
-          "w": 0.96,
-          "h": 0.94,
-          "radius": 46,
-          "fill": "#24262c",
-          "stroke": "#3a3d47"
+          "x": 0.03,
+          "y": 0.155,
+          "w": 0.94,
+          "h": 0.69,
+          "radius": 52,
+          "fill": "#1b1c21",
+          "stroke": "#33353d"
         },
         {
           "kind": "round_rect",
-          "x": 0.163,
-          "y": 0.178,
-          "w": 0.674,
-          "h": 0.644,
+          "x": 0.243,
+          "y": 0.2,
+          "w": 0.514,
+          "h": 0.6,
           "radius": 10,
           "fill": "#08090c"
         },
         {
           "kind": "circle",
-          "cx": 0.085,
-          "cy": 0.22,
-          "radius": 16,
-          "fill": "#101116"
+          "cx": 0.5,
+          "cy": 0.18,
+          "radius": 4,
+          "fill": "#0b0c0f"
         },
         {
           "kind": "circle",
-          "cx": 0.915,
-          "cy": 0.22,
+          "cx": 0.12,
+          "cy": 0.31,
           "radius": 16,
-          "fill": "#101116"
+          "fill": "#0b0c0f"
+        },
+        {
+          "kind": "circle",
+          "cx": 0.88,
+          "cy": 0.31,
+          "radius": 16,
+          "fill": "#0b0c0f"
         },
         {
           "kind": "round_rect",
-          "x": 0.062,
-          "y": 0.5,
-          "w": 0.046,
-          "h": 0.02,
+          "x": 0.096,
+          "y": 0.545,
+          "w": 0.048,
+          "h": 0.022,
           "radius": 4,
-          "fill": "#101116"
+          "fill": "#0b0c0f"
         },
         {
           "kind": "round_rect",
-          "x": 0.0795,
-          "y": 0.47,
+          "x": 0.1145,
+          "y": 0.512,
           "w": 0.011,
-          "h": 0.08,
+          "h": 0.088,
           "radius": 4,
-          "fill": "#101116"
+          "fill": "#0b0c0f"
         },
         {
           "kind": "circle",
-          "cx": 0.915,
-          "cy": 0.47,
+          "cx": 0.88,
+          "cy": 0.525,
           "radius": 8,
-          "fill": "#101116"
+          "fill": "#0b0c0f"
         },
         {
           "kind": "circle",
-          "cx": 0.895,
-          "cy": 0.52,
+          "cx": 0.86,
+          "cy": 0.575,
           "radius": 8,
-          "fill": "#101116"
+          "fill": "#0b0c0f"
         },
         {
           "kind": "circle",
-          "cx": 0.935,
-          "cy": 0.52,
+          "cx": 0.9,
+          "cy": 0.575,
           "radius": 8,
-          "fill": "#101116"
+          "fill": "#0b0c0f"
         },
         {
           "kind": "circle",
-          "cx": 0.915,
-          "cy": 0.57,
+          "cx": 0.88,
+          "cy": 0.625,
           "radius": 8,
-          "fill": "#101116"
+          "fill": "#0b0c0f"
         },
         {
           "kind": "circle",
-          "cx": 0.44,
-          "cy": 0.895,
-          "radius": 6,
-          "fill": "#101116"
+          "cx": 0.46,
+          "cy": 0.795,
+          "radius": 5,
+          "fill": "#0b0c0f"
         },
         {
           "kind": "circle",
           "cx": 0.5,
-          "cy": 0.895,
-          "radius": 6,
-          "fill": "#101116"
+          "cy": 0.795,
+          "radius": 5,
+          "fill": "#0b0c0f"
         },
         {
           "kind": "circle",
-          "cx": 0.56,
-          "cy": 0.895,
-          "radius": 6,
-          "fill": "#101116"
+          "cx": 0.54,
+          "cy": 0.795,
+          "radius": 5,
+          "fill": "#0b0c0f"
         }
       ],
       "doc": {
         "why": "No upstream Wii U art; drawn GamePad shell. Screen hole is exact 16:9."
       }
+    },
+    "assets/bezels/wii/tv-wide.png": {
+      "type": "copy",
+      "from": "soqueroeu_tv",
+      "path": "img/Nintendo_Wii/Wii_16x9.png"
     }
   },
   "staging": [
