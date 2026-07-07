@@ -3,5 +3,8 @@
   "enabled": true,
   "screen": "assets/shaders/gb/screen.slangp",
   "composite": "assets/shaders/gb/composite.slangp",
-  "doc": { "intent": "green DMG tint, LCD matrix, slow-pixel ghosting" }
+  "doc": {
+    "intent": "green DMG tint, LCD matrix, slow-pixel ghosting",
+    "known_gap": "Critic finding 2026-07-07: the DMG green tint is texture-driven inside gameboy.slangp and applies only on the RetroArch slang path; the tap shader renders an untinted LCD grid. Remediation options: gambatte core-option palette (dmg green) in the RetroArch profile, or a per-system screen tint in the tap."
+  }
 }
