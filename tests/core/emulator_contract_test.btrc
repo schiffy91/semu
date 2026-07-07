@@ -746,9 +746,9 @@ class EmulatorContractTest {
         if (!EmulatorContractTest.environmentValue(dolphinPlan, "SEMU_TAP_STYLE")
                 .equals("console")
             || !EmulatorContractTest.environmentValue(dolphinPlan, "SEMU_TAP_NATIVE_W")
-                .equals("256")
+                .equals("640")
             || !EmulatorContractTest.environmentValue(dolphinPlan, "SEMU_TAP_NATIVE_H")
-                .equals("240")) {
+                .equals("480")) {
             failures = failures + EmulatorContractTest.fail(
                 "tap plan lacks the gc contract wire values (STYLE/NATIVE_W/NATIVE_H)");
         }
@@ -872,9 +872,9 @@ class EmulatorContractTest {
         if (!EmulatorContractTest.environmentValue(macosPlan, "SEMU_TAP_STYLE")
                 .equals("console")
             || !EmulatorContractTest.environmentValue(macosPlan, "SEMU_TAP_NATIVE_W")
-                .equals("256")
+                .equals("640")
             || !EmulatorContractTest.environmentValue(macosPlan, "SEMU_TAP_NATIVE_H")
-                .equals("240")) {
+                .equals("480")) {
             failures = failures + EmulatorContractTest.fail(
                 "macos tap plan lacks the gc contract wire values (STYLE/NATIVE_W/NATIVE_H)");
         }

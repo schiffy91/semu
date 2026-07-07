@@ -418,9 +418,11 @@ class DisplayPolicyParser {
             }
             displayPolicy.aspect = JsonContract.aspectRatio(jsonValue.get("aspect"),
                 file, "display.aspect", log);
-        } else if (!multiScreen) {
-            log.add(file, "display.aspect", "missing required field for single-screen systems");
         }
+        // A single-screen system MAY omit aspect: omission means square-pixel
+        // native (correct for LCD handhelds like gb/gbc/gba/psp whose pixels
+        // are square). The tap falls back to native_w/native_h when aspect is
+        // unset. CRT-era consoles declare their anamorphic 4:3.
 
         if (jsonValue.has("widescreen")) {
             DisplayPolicyParser.parseWidescreen(displayPolicy, jsonValue, file, log);

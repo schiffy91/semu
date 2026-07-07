@@ -2,12 +2,20 @@
   "schema_version": 1,
   "enabled": true,
   "default_variant": "tv",
-  "hole": { "x": 0.2542, "y": 0.1155, "w": 0.4917, "h": 0.6556 },
+  "hole": {
+    "x": 0.2492,
+    "y": 0.1037,
+    "w": 0.5017,
+    "h": 0.6711
+  },
   "variants": [
     {
       "id": "tv",
       "label": "Living-Room CRT",
       "art": "assets/bezels/n64/tv.png"
     }
-  ]
+  ],
+  "doc": {
+    "hole": "Painted tube measured by center-flood probe on the staged art (2026-07-07); n64's previous hole was borrowed from snes and cost it the 2x bezel-priority TV."
+  }
 }

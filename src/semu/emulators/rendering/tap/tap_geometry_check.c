@@ -107,6 +107,47 @@ static void check_bezel_priority_centers_when_integer_scale_leaves_margin(void) 
     if (g.game_h % in.native_h != 0) { fail_("integer-margin height not native integer"); }
 }
 
+static void check_bezel_scale_is_uniform_no_distortion(void) {
+    /* gb-class shells: the lens hole (1.6:1) is much wider than the game
+     * (10:9); the art must scale UNIFORMLY (no squish) with the game flush
+     * on the limiting axis and glass letterbox on the other. */
+    SemuTapGeometryInput in = base_input();
+    SemuTapGeometry g;
+    in.native_w = 160;
+    in.native_h = 144;
+    in.display_aspect = 160.0f / 144.0f;
+    in.art_w = 1152;
+    in.art_h = 2048;
+    in.hole_x = 0.1843f;
+    in.hole_y = 0.2328f;
+    in.hole_w = 0.6314f;
+    in.hole_h = 0.2211f;
+    in.priority_bezel = 1;
+    if (!semu_tap_compute_geometry(&in, &g)) { fail_("uniform compute"); }
+    float art_aspect = (float)in.art_w / (float)in.art_h;
+    float bezel_aspect = g.bezel_w / g.bezel_h;
+    expect_close("uniform bezel aspect == art aspect", bezel_aspect, art_aspect, 0.005f);
+    if (g.game_h % in.native_h != 0) { fail_("uniform game height not integer"); }
+    /* game must fit inside the hole */
+    float hx, hy, hw, hh;
+    semu_tap_hole_rect_gl(&in, &g, &hx, &hy, &hw, &hh);
+    if ((float)g.game_w > hw + 1.0f || (float)g.game_h > hh + 1.0f) { fail_("uniform game exceeds hole"); }
+}
+
+static void check_fit_mode_fills_hole_fractionally(void) {
+    SemuTapGeometryInput in = base_input();
+    SemuTapGeometry g;
+    in.priority_bezel = 1;
+    in.fill_hole = 1;
+    if (!semu_tap_compute_geometry(&in, &g)) { fail_("fit compute"); }
+    /* art contain-fit: 1600x1000 in 1280x800 -> 1280x800 */
+    expect_close("fit art w", g.bezel_w, 1280.0f, 0.6f);
+    expect_close("fit art h", g.bezel_h, 800.0f, 0.6f);
+    /* hole 640x480 at that scale; game aspect 4:3 fills it exactly */
+    expect_close("fit game w", (float)g.game_w, 640.0f, 1.0f);
+    expect_close("fit game h", (float)g.game_h, 480.0f, 1.0f);
+}
+
 static void check_game_priority_fills_when_integer_degenerate(void) {
     /* 640x480-class output on a 1280x800 deck: 2x does not fit, and 1x would
      * waste half the screen - game priority falls back to aspect fill. */
@@ -206,6 +247,8 @@ int main(void) {
     check_bezel_priority_fits_art_and_centers_game();
     check_bezel_priority_centers_when_integer_scale_leaves_margin();
     check_priority_falls_back_without_art();
+    check_bezel_scale_is_uniform_no_distortion();
+    check_fit_mode_fills_hole_fractionally();
     check_game_priority_fills_when_integer_degenerate();
     check_bezel_priority_is_flush_dreamcast();
     check_bezel_priority_is_flush_psp();
