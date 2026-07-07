@@ -5,8 +5,8 @@
   "hole": {
     "x": 0.2516,
     "y": 0.1083,
-    "w": 0.4969,
-    "h": 0.6625
+    "w": 0.4988,
+    "h": 0.6666
   },
   "variants": [
     {
@@ -17,6 +17,7 @@
   ],
   "doc": {
     "holes": "Tubes probe-measured; heights clamped to the tube aspect on the 16:9 canvas (probe bleeds ~1% into the dark panel).",
-    "tv_wide": "Removed: variant-level game aspect is not modeled, so the 16:9 tube would letterbox a 4:3 game against its own frame. Revisit with widescreen-aware variants."
+    "tv_wide": "Removed: variant-level game aspect is not modeled, so the 16:9 tube would letterbox a 4:3 game against its own frame. Revisit with widescreen-aware variants.",
+    "hole_correction": "Painted tube measured 2.4px wider / 3px taller than the probed hole at bezel-priority scale (judge-measured 2026-07-07); nudged so the opening sits flush on the integer game."
   }
 }

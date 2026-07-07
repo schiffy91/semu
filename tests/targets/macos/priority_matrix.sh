@@ -56,6 +56,13 @@ def compute_geometry(win_w, win_h, native_w, native_h, display_aspect,
             scale = scale2
             game_h = scale * native_h
             game_w = round_px(game_h * aspect)
+        if scale < 2:
+            # integer scaling is degenerate here: fill the window instead
+            game_h = win_h
+            game_w = round_px(win_h * aspect)
+            if game_w > win_w:
+                game_w = win_w
+                game_h = round_px(win_w / aspect)
         game_x = (win_w - game_w) // 2
         game_y_top = (win_h - game_h) // 2
         bezel_w = game_w / hole_w
@@ -65,30 +72,44 @@ def compute_geometry(win_w, win_h, native_w, native_h, display_aspect,
         return {"game": [game_x, game_y_top, game_w, game_h], "scale": scale,
                 "art": [bezel_left, bezel_top, bezel_w, bezel_h], "bezel_priority": False}
 
-    art_aspect = art_w / art_h
-    if win_w / win_h > art_aspect:
-        bezel_h = float(win_h); bezel_w = win_h * art_aspect
-    else:
-        bezel_w = float(win_w); bezel_h = win_w / art_aspect
-    bezel_left = (win_w - bezel_w) * 0.5
-    bezel_top = (win_h - bezel_h) * 0.5
-    hole_left = bezel_left + hole_x * bezel_w
-    hole_top = bezel_top + hole_y * bezel_h
-    hole_px_w = hole_w * bezel_w
-    hole_px_h = hole_h * bezel_h
-    scale = int(hole_px_h / native_h)
-    if scale < 1: scale = 1
-    game_h = scale * native_h
-    game_w = round_px(game_h * aspect)
-    if game_w > hole_px_w:
-        scale2 = int(hole_px_w / (native_h * aspect))
-        if scale2 < 1: scale2 = 1
-        scale = scale2
+    # BEZEL priority: integer game, bezel grown around it (hole == game, flush),
+    # maximize k while the bezel stays fully inside the window.
+    scale = 0
+    candidate = 1
+    while True:
+        game_h = candidate * native_h
+        game_w = round_px(game_h * aspect)
+        bezel_w = game_w / hole_w
+        bezel_h = game_h / hole_h
+        # <=1% overflow allowed: a sliver of art off-screen beats losing integer
+        if bezel_w <= win_w * 1.01 + 0.5 and bezel_h <= win_h * 1.01 + 0.5:
+            scale = candidate
+            candidate += 1
+        else:
+            break
+    if scale >= 1:
         game_h = scale * native_h
         game_w = round_px(game_h * aspect)
-    game_x = round_px(hole_left + (hole_px_w - game_w) * 0.5)
-    game_y_top = round_px(hole_top + (hole_px_h - game_h) * 0.5)
-    return {"game": [game_x, game_y_top, game_w, game_h], "scale": scale,
+    else:
+        # not even 1x keeps the bezel uncut: contain the art, fill its hole
+        art_aspect = art_w / art_h
+        if win_w / win_h > art_aspect:
+            contain_h = float(win_h); contain_w = contain_h * art_aspect
+        else:
+            contain_w = float(win_w); contain_h = contain_w / art_aspect
+        hole_px_w = hole_w * contain_w
+        hole_px_h = hole_h * contain_h
+        if hole_px_w / hole_px_h > aspect:
+            game_h = round_px(hole_px_h); game_w = round_px(game_h * aspect)
+        else:
+            game_w = round_px(hole_px_w); game_h = round_px(game_w / aspect)
+    bezel_w = game_w / hole_w
+    bezel_h = game_h / hole_h
+    bezel_left = (win_w - bezel_w) * 0.5
+    bezel_top = (win_h - bezel_h) * 0.5
+    game_x = round_px(bezel_left + hole_x * bezel_w)
+    game_y_top = round_px(bezel_top + hole_y * bezel_h)
+    return {"game": [game_x, game_y_top, game_w, game_h], "scale": max(scale, 0),
             "art": [bezel_left, bezel_top, bezel_w, bezel_h], "bezel_priority": True}
 
 def dual_screen_rect(art, hole, native_w, native_half_h):
@@ -187,30 +208,52 @@ for system_dir in sorted(glob.glob(f"{project}/src/semu/systems/*/")):
             if os.path.exists(staged):
                 screen_chain = staged
 
-    for mode in ("game", "bezel"):
+    for mode in (("game", "top", "bezel") if dual else ("game", "bezel")):
         priority_bezel = 1 if mode == "bezel" else 0
         geometry = compute_geometry(CANVAS_W, CANVAS_H, native_w, native_h, display_aspect,
                                     priority_bezel, art_path is not None, art_w, art_h,
                                     hole["x"] if hole else 0, hole["y"] if hole else 0,
                                     hole["w"] if hole else 1, hole["h"] if hole else 1)
-        # integer-scale invariant (the whole point)
-        if geometry["game"][3] % native_h != 0:
+        # integer-scale invariant; scale 0 marks the documented fractional
+        # fallbacks (sub-2x fill / bezel-uncut hole fill) which are exempt
+        if geometry["scale"] >= 2 and geometry["game"][3] % native_h != 0:
             failures.append(f"{system}-{mode}: game_h {geometry['game'][3]} not an integer multiple of {native_h}")
 
         cards = []
-        if dual and mode == "game":
+        if dual and mode in ("game", "top"):
             # Mirror libsemutap.c dual game-priority: no art, both screens at the
             # largest EQUAL integer scale that fits the vertical stack + 8px gap.
             gap = 8
-            k = min((CANVAS_H - gap) // (2 * native_half_h), CANVAS_W // native_w)
-            if k < 1: k = 1
-            frame_w, frame_h = k * native_w, k * native_half_h
-            total_h = 2 * frame_h + gap
-            top = (CANVAS_H - total_h) // 2
+            if mode == "game":
+                k = min((CANVAS_H - gap) // (2 * native_half_h), CANVAS_W // native_w)
+                if k < 1: k = 1
+                rects = []
+                total_h = 2 * (k * native_half_h) + gap
+                start = (CANVAS_H - total_h) // 2
+                for index in range(2):
+                    rects.append([(CANVAS_W - k * native_w) // 2,
+                                  start + index * (k * native_half_h + gap),
+                                  k * native_w, k * native_half_h])
+            else:
+                # GAME (TOP SCREEN): top at the largest integer scale that leaves
+                # ~20% of the axis; bottom aspect-fits the remainder (fractional ok)
+                k = min(int(CANVAS_H * 0.8) // native_half_h, CANVAS_W // native_w)
+                if k < 1: k = 1
+                top_w, top_h = k * native_w, k * native_half_h
+                rest = CANVAS_H - top_h - gap
+                bottom_h = max(rest, native_half_h // 4)
+                bottom_w = round_px(bottom_h * (native_w / native_half_h))
+                if bottom_w > CANVAS_W:
+                    bottom_w = CANVAS_W
+                    bottom_h = round_px(bottom_w * (native_half_h / native_w))
+                total_h = top_h + gap + bottom_h
+                start = (CANVAS_H - total_h) // 2
+                rects = [[(CANVAS_W - top_w) // 2, start, top_w, top_h],
+                         [(CANVAS_W - bottom_w) // 2, start + top_h + gap, bottom_w, bottom_h]]
             geometry["art"] = [0, 0, 0, 0]
             geometry["scale"] = k
             for index, hole_id in enumerate(("top", "bottom")):
-                rect = [(CANVAS_W - frame_w) // 2, top + index * (frame_h + gap), frame_w, frame_h]
+                rect = rects[index]
                 card = f"{work}/{system}-{hole_id}-card.png"
                 if not os.path.exists(card):
                     write_card(card, native_w, native_half_h, region=(0, index * native_half_h))
@@ -227,6 +270,23 @@ for system_dir in sorted(glob.glob(f"{project}/src/semu/systems/*/")):
             print(f"JOB {system}-{mode}: scale={k} dual game-priority (no art)")
             continue
         if dual and screen_holes:
+            # art from the PRIMARY hole with art aspect preserved (union hole
+            # spans the hinge gap and would distort) - largest uncut integer k
+            art_aspect_ratio = art_w / art_h
+            primary = screen_holes.get("top") or list(screen_holes.values())[0]
+            k_art, candidate = 0, 1
+            while True:
+                cand_w = (candidate * native_w) / primary["w"]
+                cand_h = cand_w / art_aspect_ratio
+                if cand_w <= CANVAS_W * 1.01 + 0.5 and cand_h <= CANVAS_H * 1.01 + 0.5:
+                    k_art = candidate; candidate += 1
+                else:
+                    break
+            if k_art >= 1:
+                new_w = (k_art * native_w) / primary["w"]
+                new_h = new_w / art_aspect_ratio
+                geometry["art"] = [(CANVAS_W - new_w) * 0.5, (CANVAS_H - new_h) * 0.5, new_w, new_h]
+                geometry["scale"] = k_art
             hole_ids = list(screen_holes.keys())
             for index, hole_id in enumerate(hole_ids[:2]):
                 rect, k = dual_screen_rect(geometry["art"], screen_holes[hole_id], native_w, native_half_h)
