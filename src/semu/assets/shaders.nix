@@ -50,6 +50,12 @@ let
       cp -R "${src}" ${dest}
     '') + ''
       chmod -R u+w ${dest}
+      # Repair two upstream preset typos that strict slang parsers reject
+      # (RetroArch skips them silently): 'KEY =  = "x"' double-equals in
+      # Duimon layer params, and a trailing extra quote in Soqueroeu's
+      # Sega_Genesis preset ('"60.000000""').
+      find ${dest} -type f \( -name '*.params' -o -name '*.slangp' \) \
+        -exec sed -i 's/=  = /= /; s/""$/"/' {} +
     '';
 
   slangAssets = lib.filterAttrs (_: recipe: recipe.type == "slang_wrapper")

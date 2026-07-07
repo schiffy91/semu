@@ -6,11 +6,15 @@
 # the failure classes that actually break shaders on-device (dangling
 # references, missing LUTs, bad relative paths). Emits a machine-readable
 # report for the critic pass. Visual captures ride the Deck's tap loop; this
-# harness proves the declarative layer end-to-end without a GPU.
+# harness proves the declarative layer end-to-end without a GPU. When
+# LIBRASHADER_CLI names a librashader-cli binary, every chain is ALSO
+# rendered over a native-resolution test card (Metal) into
+# verification/shader-renders — real pixels for the visual critique pass.
 set -euo pipefail
 PROJECT="${1:-$(pwd)}"
 SHADER_ROOT="${2:-$PROJECT/src/generated/nix/result/lib/semu/share/libretro/shaders}"
 OUT="$PROJECT/src/generated/verification/shader-matrix"
+RENDER_OUT="$PROJECT/src/generated/verification/shader-renders"
 mkdir -p "$OUT"
 python3 - "$PROJECT" "$SHADER_ROOT" "$OUT" <<'PY'
 import json, glob, os, re, sys
@@ -105,3 +109,63 @@ print(f"SHADER MATRIX: {len(checked)} chains PASS, {len(failures)} FAIL, "
       f"{len([e for e in report if e['status'] == 'SKIP'])} systems delegate to the tap/vkBasalt path")
 sys.exit(1 if failures else 0)
 PY
+
+if [ -n "${LIBRASHADER_CLI:-}" ] && [ -x "${LIBRASHADER_CLI}" ]; then
+  mkdir -p "$RENDER_OUT" /tmp/shader-cards
+  python3 - "$PROJECT" "$SHADER_ROOT" "$RENDER_OUT" "$LIBRASHADER_CLI" <<'PY'
+import json, glob, os, struct, subprocess, sys, zlib
+
+project, shader_root, render_out, cli = sys.argv[1:5]
+
+def write_card(path, width, height):
+    rows = []
+    for y in range(height):
+        row = bytearray()
+        for x in range(width):
+            r = round(40 + 180 * x / width)
+            g = round(200 - 160 * y / height)
+            b = round(60 + 170 * y / height)
+            if x % 8 == 0 or y % 8 == 0:
+                r, g, b = 250, 250, 250
+            row += bytes((r, g, b))
+        rows.append(b'\x00' + bytes(row))
+    raw = b''.join(rows)
+    def chunk(tag, payload):
+        return struct.pack('>I', len(payload)) + tag + payload + struct.pack('>I', zlib.crc32(tag + payload) & 0xffffffff)
+    png = (b'\x89PNG\r\n\x1a\n'
+           + chunk(b'IHDR', struct.pack('>IIBBBBB', width, height, 8, 2, 0, 0, 0))
+           + chunk(b'IDAT', zlib.compress(raw)) + chunk(b'IEND', b''))
+    with open(path, 'wb') as handle:
+        handle.write(png)
+
+rendered, failed = 0, 0
+for shaders_file in sorted(glob.glob(f"{project}/src/semu/systems/*/shaders.json")):
+    system = os.path.basename(os.path.dirname(shaders_file))
+    contract = json.load(open(shaders_file))
+    if not contract.get("enabled", True):
+        continue
+    system_json = json.load(open(os.path.join(os.path.dirname(shaders_file), "system.json")))
+    screens = system_json.get("display", {}).get("screens", [])
+    native = screens[0].get("native", {"w": 320, "h": 240}) if screens else {"w": 320, "h": 240}
+    height = native["h"] if len(screens) < 2 else sum(s["native"]["h"] for s in screens)
+    card = f"/tmp/shader-cards/{system}.png"
+    if not os.path.exists(card):
+        write_card(card, native["w"], height)
+    for kind in ("screen", "composite"):
+        canonical = contract.get(kind)
+        if not canonical:
+            continue
+        preset = os.path.join(shader_root, "semu", canonical[len("assets/shaders/"):])
+        target = f"{render_out}/{system}-{kind}.png"
+        dimensions = "1280x800" if kind == "composite" else "400%"
+        run = subprocess.run([cli, "render", "-p", preset, "--image", card,
+                              "--out", target, "--runtime", "metal",
+                              "--frame", "60", "-d", dimensions],
+                             capture_output=True, text=True, timeout=300)
+        ok = run.returncode == 0 and os.path.exists(target)
+        rendered += ok; failed += (not ok)
+        print(f"{'RENDER' if ok else 'RENDER-FAIL'} {system} {kind}")
+print(f"RENDERS: {rendered} ok, {failed} failed -> {render_out}")
+sys.exit(1 if failed else 0)
+PY
+fi
