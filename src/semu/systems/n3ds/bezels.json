@@ -1,14 +1,49 @@
 {
   "schema_version": 1,
   "enabled": true,
-  "default_variant": "dual",
-  "hole": { "x": 0.3300, "y": 0.0400, "w": 0.3400, "h": 0.9200 },
+  "default_variant": "vertical",
+  "hole": {
+    "x": 0.3542,
+    "y": 0.0667,
+    "w": 0.2917,
+    "h": 0.8666
+  },
   "screen_holes": {
-    "top":    { "x": 0.3300, "y": 0.0500, "w": 0.3400, "h": 0.4400 },
-    "bottom": { "x": 0.3640, "y": 0.5100, "w": 0.2720, "h": 0.4400 }
+    "top": {
+      "x": 0.3542,
+      "y": 0.0667,
+      "w": 0.2917,
+      "h": 0.3926
+    },
+    "bottom": {
+      "x": 0.3542,
+      "y": 0.5407,
+      "w": 0.2917,
+      "h": 0.3926
+    }
   },
   "variants": [
-    { "id": "dual", "label": "Dual Screen", "art": "assets/bezels/generic/dual.png" }
+    {
+      "id": "vertical",
+      "label": "3DS Vertical",
+      "art": "assets/bezels/n3ds/vertical.png",
+      "screen_holes": {
+        "top": {
+          "x": 0.3542,
+          "y": 0.0667,
+          "w": 0.2917,
+          "h": 0.3926
+        },
+        "bottom": {
+          "x": 0.3542,
+          "y": 0.5407,
+          "w": 0.2917,
+          "h": 0.3926
+        }
+      }
+    }
   ],
-  "doc": { "screen_holes": "Illustrative pending per-screen measurement; the tap consumes the combined hole today. Re-measure via gen-bezel-manifest against staged art." }
+  "doc": {
+    "note": "Duimon 3DS clamshell shell render; holes mirror the NDS vertical geometry (Duimon keeps device placement consistent). Verify with SEMU_TAP_ALIGN on-device; the 3DS top screen is 5:3 while the tap aspect-fits with the combined-native split \u2014 known approximation."
+  }
 }

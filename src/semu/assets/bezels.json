@@ -291,97 +291,23 @@
       }
     },
     "assets/bezels/nds/vertical.png": {
-      "type": "panel",
-      "size": {
-        "w": 1280,
-        "h": 800
-      },
-      "plates": [
-        {
-          "kind": "round_rect",
-          "x": 0.285,
-          "y": 0.005,
-          "w": 0.43,
-          "h": 0.99,
-          "radius": 30,
-          "fill": "#23252c",
-          "stroke": "#3a3d47"
-        },
-        {
-          "kind": "round_rect",
-          "x": 0.311,
-          "y": 0.03,
-          "w": 0.378,
-          "h": 0.452,
-          "radius": 14,
-          "fill": "#0b0c10"
-        },
-        {
-          "kind": "round_rect",
-          "x": 0.311,
-          "y": 0.518,
-          "w": 0.378,
-          "h": 0.452,
-          "radius": 14,
-          "fill": "#0b0c10"
-        },
-        {
-          "kind": "round_rect",
-          "x": 0.285,
-          "y": 0.487,
-          "w": 0.43,
-          "h": 0.026,
-          "radius": 6,
-          "fill": "#16181d"
-        },
-        {
-          "kind": "circle",
-          "cx": 0.699,
-          "cy": 0.5,
-          "radius": 4,
-          "fill": "#57d688"
-        }
-      ],
-      "doc": {
-        "why": "Clean DS clamshell: shell, two recessed screens, hinge, LED. Drawn controls were tried and rejected by the user."
-      }
+      "type": "shell",
+      "from": "duimon_mega_bezel",
+      "silhouette": "Graphics/Nintendo_NDS/NDS_Vertical.png",
+      "decal": "Graphics/Nintendo_NDS/NDS_Vertical_Decal.png",
+      "glass_markings": "Graphics/Nintendo_NDS/NDS_Vertical_Glass.png",
+      "led": "Graphics/Nintendo_NDS/NDS_Vertical_LED.png",
+      "color": "#9aa0ab"
     },
     "assets/bezels/nds/horizontal.png": {
-      "type": "panel",
-      "size": {
-        "w": 1280,
-        "h": 800
-      },
-      "plates": [
-        {
-          "kind": "round_rect",
-          "x": 0.0,
-          "y": 0.185,
-          "w": 1.0,
-          "h": 0.63,
-          "radius": 26,
-          "fill": "#23252c",
-          "stroke": "#3a3d47"
-        },
-        {
-          "kind": "round_rect",
-          "x": 0.005,
-          "y": 0.202,
-          "w": 0.487,
-          "h": 0.596,
-          "radius": 14,
-          "fill": "#0b0c10"
-        },
-        {
-          "kind": "round_rect",
-          "x": 0.508,
-          "y": 0.202,
-          "w": 0.487,
-          "h": 0.596,
-          "radius": 14,
-          "fill": "#0b0c10"
-        }
-      ]
+      "type": "shell",
+      "from": "duimon_mega_bezel",
+      "silhouette": "Graphics/Nintendo_NDS/NDS.png",
+      "decal": "Graphics/Nintendo_NDS/NDS_Decal.png",
+      "glass_markings": "Graphics/Nintendo_NDS/NDS_Glass.png",
+      "led": "Graphics/Nintendo_NDS/NDS_LED.png",
+      "color": "#9aa0ab",
+      "top": "Graphics/Nintendo_NDS/NDS_Top.png"
     },
     "assets/bezels/nds/big-screen.png": {
       "type": "panel",
@@ -412,6 +338,15 @@
       "doc": {
         "why": "Max-immersion layout: the main screen area stays untouched black; only the secondary column gets a subtle plate + recess."
       }
+    },
+    "assets/bezels/n3ds/vertical.png": {
+      "type": "shell",
+      "from": "duimon_mega_bezel",
+      "silhouette": "Graphics/Nintendo_3DS/3DS_Vertical.png",
+      "decal": "Graphics/Nintendo_3DS/3DS_Vertical_Decal.png",
+      "glass_markings": "Graphics/Nintendo_3DS/3DS_Vertical_Glass.png",
+      "led": "Graphics/Nintendo_3DS/3DS_Vertical_LED.png",
+      "color": "#454b56"
     }
   },
   "staging": [
