@@ -1,0 +1,137 @@
+// profile_template.btrc — declarative profile emission. Each emulator's
+// profile.json (beside its emulator.json) carries the literal profile file
+// bodies, so profile content updates without a binary change; emitters supply
+// only what code must compute: the ${name} variable values (device
+// identities, translated hotkey chords, path roots) and keymap-conditional
+// line groups. Wire grammar stays in the emitter, content in the contract.
+//
+// Template grammar (inside "files"[].lines and "blocks" entries):
+//   "${name}"            replaced with the emitter-supplied variable value
+//   "@block:<name>"      spliced with the named "blocks" entry, substituted
+//   "@lines:<name>"      spliced with the emitter-computed group; the whole
+//                        line is dropped when the group is empty or absent
+//   {"if": "<name>",     the "line" string is emitted (substituted) only
+//    "line": "..."}      when variable <name> has a non-empty value
+// File "path" values take ${name} substitution too.
+//
+// "hotkeys" holds named tables of {"setting", "action"} rows: the emitter
+// walks a table with its own chord grammar (via hotkeyTable) and passes the
+// resulting lines back as a line group.
+
+import std.{vector, fs, json}
+
+class TemplateBindings {
+    public Vector<string> names;
+    public Vector<string> values;
+
+    public TemplateBindings() {
+        self.names = [];
+        self.values = [];
+    }
+
+    public void add(string name, string value) {
+        self.names.push(name);
+        self.values.push(value);
+    }
+
+    public string valueOf(string name) {
+        for (int bindingIndex = 0; bindingIndex < self.names.size(); bindingIndex++) {
+            if (self.names.get(bindingIndex).equals(name)) {
+                return self.values.get(bindingIndex);
+            }
+        }
+        return "";
+    }
+}
+
+class ProfileTemplate {
+    public string file;
+    public JsonValue root;
+    public TemplateBindings variables;
+    public TemplateBindings lineGroups;
+
+    public ProfileTemplate() {
+        self.file = "";
+        self.root = JsonValue.makeNull();
+        self.variables = TemplateBindings();
+        self.lineGroups = TemplateBindings();
+    }
+
+    // The template beside the emulator contract: <emulator dir>/profile.json.
+    class ProfileTemplate forEmulator(string emulatorContractFile) {
+        ProfileTemplate template = ProfileTemplate();
+        template.file = PathTools.join(PathTools.dirname(emulatorContractFile),
+            "profile.json");
+        template.root = JsonValue.readFile(template.file);
+        return template;
+    }
+
+    public bool ok() {
+        return !self.root.isError() && self.root.isObject();
+    }
+
+    // A named keymap-conditional table under "hotkeys":
+    // [{"setting": ..., "action": ...}, ...].
+    public JsonValue hotkeyTable(string groupName) {
+        return self.root.get("hotkeys").get(groupName);
+    }
+
+    public string substitute(string line) {
+        string result = line;
+        for (int variableIndex = 0; variableIndex < self.variables.names.size();
+             variableIndex++) {
+            result = result.replace(
+                "${" + self.variables.names.get(variableIndex) + "}",
+                self.variables.values.get(variableIndex));
+        }
+        return result;
+    }
+
+    public void renderInto(Vector<string> rendered, JsonValue lineValue) {
+        if (lineValue.isObject()) {
+            string condition = lineValue.get("if").asString();
+            if (!self.variables.valueOf(condition).isEmpty()) {
+                rendered.push(self.substitute(lineValue.get("line").asString()));
+            }
+            return;
+        }
+        string line = lineValue.asString();
+        if (line.startsWith("@block:")) {
+            JsonValue block = self.root.get("blocks").get(line.replace("@block:", ""));
+            for (int blockIndex = 0; blockIndex < block.size(); blockIndex++) {
+                self.renderInto(rendered, block.at(blockIndex));
+            }
+            return;
+        }
+        if (line.startsWith("@lines:")) {
+            string group = self.lineGroups.valueOf(line.replace("@lines:", ""));
+            if (!group.isEmpty()) {
+                rendered.push(group);
+            }
+            return;
+        }
+        rendered.push(self.substitute(line));
+    }
+
+    public string renderFile(JsonValue fileEntry) {
+        Vector<string> rendered = [];
+        JsonValue lines = fileEntry.get("lines");
+        for (int lineIndex = 0; lineIndex < lines.size(); lineIndex++) {
+            self.renderInto(rendered, lines.at(lineIndex));
+        }
+        return rendered.join("\n") + "\n";
+    }
+
+    // Write every "files" entry under outputRoot. Directories are created at
+    // write time only, so an empty template leaves no tree behind.
+    public void emit(string outputRoot) {
+        JsonValue files = self.root.get("files");
+        for (int fileIndex = 0; fileIndex < files.size(); fileIndex++) {
+            JsonValue fileEntry = files.at(fileIndex);
+            string profilePath = PathTools.join(outputRoot,
+                self.substitute(fileEntry.get("path").asString()));
+            UnixFileSystem.mkdirp(PathTools.dirname(profilePath));
+            Path.writeAll(profilePath, self.renderFile(fileEntry));
+        }
+    }
+}

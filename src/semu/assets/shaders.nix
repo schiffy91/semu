@@ -1,13 +1,13 @@
 # semu_shaders.nix — generic interpreter for the shader half of
-# src/semu/assets/sources.json: stages every "trees"
+# src/semu/assets/shaders.json: stages every "trees"
 # entry under share/libretro/shaders/<stage> and emits every slang_wrapper
 # asset at share/libretro/shaders/semu/<relative> — the "semu/" namespace
 # ShaderSelector.resolvePath maps "assets/shaders/..." onto. No pins or
-# preset names live here; sources.json additions need zero nix edits.
+# preset names live here; shaders.json additions need zero nix edits.
 { lib, stdenvNoCC, fetchFromGitHub, pkgs }:
 
 let
-  sources = lib.importJSON ./sources.json;
+  sources = lib.importJSON ./shaders.json;
 
   upstreamSource = name: spec:
     if spec.kind == "github" then
@@ -79,7 +79,7 @@ let
             (recipe.params or { }));
     in
     assert lib.assertMsg (missingRequires == [ ])
-      "slang_wrapper ${key} requires trees missing from sources.json: ${toString missingRequires}";
+      "slang_wrapper ${key} requires trees missing from shaders.json: ${toString missingRequires}";
     ''
       mkdir -p "$out/${root}/${wrapperDir}"
       printf '%s' '${text}' > "$out/${root}/semu/${relative}"
@@ -104,7 +104,7 @@ stdenvNoCC.mkDerivation {
   };
 
   meta = {
-    description = "Semu RetroArch shader tree rendered from the sources.json manifest";
+    description = "Semu RetroArch shader tree rendered from the shaders.json manifest";
     platforms = lib.platforms.all;
   };
 }

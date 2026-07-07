@@ -1,0 +1,308 @@
+{
+  "schema_version": 1,
+  "doc": {
+    "purpose": "Global bezel manifest: the generic fallback table BezelResolver reads, every bezel-art recipe (flatten/recolor/glass over the upstream packs), and the staged vkBasalt pack (bezels-as-ReShade-FX for Vulkan-presenting emulators).",
+    "provenance": "Upstream pins, flatten layer stacks, recolor hexes, and slang_wrapper params are migrated verbatim from packaging/nix/visual-assets.nix and packaging/steamdeck/tap/gen-handheld-shells.sh; local sources from config/assets and packaging/steamdeck/tap.",
+    "shared_pins": "Upstreams named in both this file and shaders.json must carry identical rev/nar_hash pins; NixPackageContract enforces agreement."
+  },
+  "upstreams": {
+    "duimon_mega_bezel": {
+      "kind": "github",
+      "owner": "Duimon",
+      "repo": "Duimon-Mega-Bezel",
+      "rev": "d03dabf6e6b190dbf9b692efd492d8edd21abbb9",
+      "nar_hash": "sha256-EvWkMiw5ne0Im43404NVTJiQO5mWhMVNEk7fdpgb5rY="
+    },
+    "soqueroeu_tv": {
+      "kind": "github",
+      "owner": "soqueroeu",
+      "repo": "Soqueroeu-TV-Backgrounds_V2.0",
+      "rev": "52bc4588d88c7bd319f922659d3ba74ed81ce959",
+      "nar_hash": "sha256-8IoaMLw7i4TttFR08Ycji6COuaxaeNeBwPCLyfyTD90="
+    }
+  },
+  "generic": {
+    "doc": {
+      "note": "The generic fallback table for systems without bezels.json: asset_profile -> art + hole. Unknown profiles resolve as crt4x3."
+    },
+    "profiles": {
+      "crt4x3": {
+        "art": "assets/bezels/generic/4x3.png",
+        "hole": {
+          "x": 0.125,
+          "y": 0.05,
+          "w": 0.75,
+          "h": 0.9
+        }
+      },
+      "handheld": {
+        "art": "assets/bezels/generic/4x3.png",
+        "hole": {
+          "x": 0.125,
+          "y": 0.05,
+          "w": 0.75,
+          "h": 0.9
+        }
+      },
+      "wide16x9": {
+        "art": "assets/bezels/generic/16x9.png",
+        "hole": {
+          "x": 0.03,
+          "y": 0.08,
+          "w": 0.94,
+          "h": 0.84
+        }
+      },
+      "dual": {
+        "art": "assets/bezels/generic/dual.png",
+        "hole": {
+          "x": 0.33,
+          "y": 0.04,
+          "w": 0.34,
+          "h": 0.92
+        }
+      }
+    }
+  },
+  "assets": {
+    "assets/bezels/generic/4x3.png": {
+      "type": "local",
+      "path": "src/semu/assets/vkbasalt/bezel-4x3.png"
+    },
+    "assets/bezels/generic/16x9.png": {
+      "type": "local",
+      "path": "src/semu/assets/vkbasalt/bezel-16x9.png"
+    },
+    "assets/bezels/generic/dual.png": {
+      "type": "local",
+      "path": "src/semu/assets/vkbasalt/bezel-3ds.png"
+    },
+    "assets/bezels/gb/classic.png": {
+      "type": "flatten",
+      "from": "duimon_mega_bezel",
+      "layers": [
+        "Graphics/Nintendo_Game_Boy/Gameboy_DMG01_Device.png",
+        "Graphics/Nintendo_Game_Boy/Gameboy_DMG01_Decal.png",
+        "Graphics/Nintendo_Game_Boy/Gameboy_DMG01_Top.png"
+      ]
+    },
+    "assets/bezels/gb/classic-glass.png": {
+      "type": "glass",
+      "from": "duimon_mega_bezel",
+      "path": "Graphics/Nintendo_Game_Boy/Gameboy_DMG01_Glass.png"
+    },
+    "assets/bezels/gb/red.png": {
+      "type": "recolor",
+      "base": "assets/bezels/gb/classic.png",
+      "color": "#d23440"
+    },
+    "assets/bezels/gb/green.png": {
+      "type": "recolor",
+      "base": "assets/bezels/gb/classic.png",
+      "color": "#2f9e4f"
+    },
+    "assets/bezels/gbc/classic.png": {
+      "type": "flatten",
+      "from": "duimon_mega_bezel",
+      "layers": [
+        "Graphics/Nintendo_Game_Boy_Color/GBC_Device.png",
+        "Graphics/Nintendo_Game_Boy_Color/GBC_Device_LED.png",
+        "Graphics/Nintendo_Game_Boy_Color/GBC_Decal.png",
+        "Graphics/Nintendo_Game_Boy_Color/GBC_Top.png"
+      ]
+    },
+    "assets/bezels/gbc/classic-glass.png": {
+      "type": "glass",
+      "from": "duimon_mega_bezel",
+      "path": "Graphics/Nintendo_Game_Boy_Color/GBC_Glass.png"
+    },
+    "assets/bezels/gbc/berry.png": {
+      "type": "recolor",
+      "base": "assets/bezels/gbc/classic.png",
+      "color": "#c0294b"
+    },
+    "assets/bezels/gbc/grape.png": {
+      "type": "recolor",
+      "base": "assets/bezels/gbc/classic.png",
+      "color": "#7a3fb0"
+    },
+    "assets/bezels/gba/classic.png": {
+      "type": "flatten",
+      "from": "duimon_mega_bezel",
+      "layers": [
+        "Graphics/Nintendo_GBA/GBA_Device.png",
+        "Graphics/Nintendo_GBA/GBA_Decal.png",
+        "Graphics/Nintendo_GBA/GBA_Top.png"
+      ]
+    },
+    "assets/bezels/gba/classic-glass.png": {
+      "type": "glass",
+      "from": "duimon_mega_bezel",
+      "path": "Graphics/Nintendo_GBA/GBA_Glass.png"
+    },
+    "assets/bezels/gba/sp.png": {
+      "type": "flatten",
+      "from": "duimon_mega_bezel",
+      "layers": [
+        "Graphics/Nintendo_GBA_SP/GBA_SP_Device.png",
+        "Graphics/Nintendo_GBA_SP/GBA_SP_Decal.png",
+        "Graphics/Nintendo_GBA_SP/GBA_SP_Top.png"
+      ]
+    },
+    "assets/bezels/gba/sp-glass.png": {
+      "type": "glass",
+      "from": "duimon_mega_bezel",
+      "path": "Graphics/Nintendo_GBA_SP/GBA_SP_Glass.png"
+    },
+    "assets/bezels/nes/tv.png": {
+      "type": "copy",
+      "from": "soqueroeu_tv",
+      "path": "img/Nintendo_NES/NES.png"
+    },
+    "assets/bezels/nes/tv-black.png": {
+      "type": "copy",
+      "from": "soqueroeu_tv",
+      "path": "img/Nintendo_NES/NES_Black_Edition.png"
+    },
+    "assets/bezels/snes/tv.png": {
+      "type": "copy",
+      "from": "soqueroeu_tv",
+      "path": "img/Nintendo_SuperNintendo/SuperNES.png"
+    },
+    "assets/bezels/snes/solid-a.png": {
+      "type": "copy",
+      "from": "soqueroeu_tv",
+      "path": "img/Nintendo_SuperNintendo/SuperNES_Solid_A.png"
+    },
+    "assets/bezels/snes/solid-b.png": {
+      "type": "copy",
+      "from": "soqueroeu_tv",
+      "path": "img/Nintendo_SuperNintendo/SuperNES_Solid_B.png"
+    },
+    "assets/bezels/genesis/tv.png": {
+      "type": "copy",
+      "from": "soqueroeu_tv",
+      "path": "img/Sega_Genesis/Sega_Genesis.png"
+    },
+    "assets/bezels/genesis/solid-a.png": {
+      "type": "copy",
+      "from": "soqueroeu_tv",
+      "path": "img/Sega_Genesis/Sega_Genesis_Solid_A.png"
+    },
+    "assets/bezels/genesis/solid-b.png": {
+      "type": "copy",
+      "from": "soqueroeu_tv",
+      "path": "img/Sega_Genesis/Sega_Genesis_Solid_B.png"
+    },
+    "assets/bezels/n64/tv.png": {
+      "type": "copy",
+      "from": "soqueroeu_tv",
+      "path": "img/Nintendo_N64/N64.png"
+    },
+    "assets/bezels/psx/tv.png": {
+      "type": "copy",
+      "from": "soqueroeu_tv",
+      "path": "img/Sony_Playstation/PSX.png"
+    },
+    "assets/vkbasalt/Bezel.fx": {
+      "type": "local",
+      "path": "src/semu/assets/vkbasalt/Bezel.fx"
+    },
+    "assets/vkbasalt/Bezel-4x3.fx": {
+      "type": "local",
+      "path": "src/semu/assets/vkbasalt/Bezel-4x3.fx"
+    },
+    "assets/vkbasalt/Bezel-16x9.fx": {
+      "type": "local",
+      "path": "src/semu/assets/vkbasalt/Bezel-16x9.fx"
+    },
+    "assets/vkbasalt/Bezel-3ds.fx": {
+      "type": "local",
+      "path": "src/semu/assets/vkbasalt/Bezel-3ds.fx"
+    },
+    "assets/vkbasalt/ReShade.fxh": {
+      "type": "local",
+      "path": "src/semu/assets/vkbasalt/ReShade.fxh"
+    },
+    "assets/vkbasalt/ReShadeUI.fxh": {
+      "type": "local",
+      "path": "src/semu/assets/vkbasalt/ReShadeUI.fxh"
+    },
+    "assets/vkbasalt/vkBasalt.conf": {
+      "type": "local",
+      "path": "src/semu/assets/vkbasalt/vkBasalt.conf"
+    },
+    "assets/vkbasalt/vkBasalt-4x3.conf": {
+      "type": "local",
+      "path": "src/semu/assets/vkbasalt/vkBasalt-4x3.conf"
+    },
+    "assets/vkbasalt/vkBasalt-16x9.conf": {
+      "type": "local",
+      "path": "src/semu/assets/vkbasalt/vkBasalt-16x9.conf"
+    },
+    "assets/vkbasalt/vkBasalt-3ds.conf": {
+      "type": "local",
+      "path": "src/semu/assets/vkbasalt/vkBasalt-3ds.conf"
+    },
+    "assets/vkbasalt/cutouts.conf": {
+      "type": "local",
+      "path": "src/semu/assets/vkbasalt/cutouts.conf"
+    },
+    "assets/vkbasalt/bezel-4x3.png": {
+      "type": "local",
+      "path": "src/semu/assets/vkbasalt/bezel-4x3.png",
+      "doc": {
+        "why": "Bezel-4x3.fx defines SEMU_BEZEL_TEXTURE \"bezel-4x3.png\" and vkBasalt reshadeTexturePath points at the reshade dir, so the texture must ship inside the staged reshade pack."
+      }
+    },
+    "assets/vkbasalt/bezel-16x9.png": {
+      "type": "local",
+      "path": "src/semu/assets/vkbasalt/bezel-16x9.png",
+      "doc": {
+        "why": "Texture named by Bezel-16x9.fx; must sit beside the .fx in the staged reshade pack."
+      }
+    },
+    "assets/vkbasalt/bezel-3ds.png": {
+      "type": "local",
+      "path": "src/semu/assets/vkbasalt/bezel-3ds.png",
+      "doc": {
+        "why": "Texture named by Bezel-3ds.fx; must sit beside the .fx in the staged reshade pack."
+      }
+    },
+    "assets/fonts/menu-font.png": {
+      "type": "local",
+      "path": "src/semu/assets/fonts/menu-font.png"
+    },
+    "assets/bezels.json": {
+      "type": "local",
+      "path": "src/semu/assets/bezels.json",
+      "doc": {
+        "why": "BezelResolver reads the generic table from the staged tree at $SEMU_ASSET_ROOT/share/semu/assets/bezels.json."
+      }
+    }
+  },
+  "staging": [
+    {
+      "id": "vkbasalt_pack",
+      "files": [
+        {
+          "src": "assets/vkbasalt",
+          "dest": "share/semu-bezel/vkbasalt"
+        }
+      ]
+    },
+    {
+      "id": "tap_runtime",
+      "files": [
+        {
+          "src": "generated/build/steamdeck/tap/libsemutap.so",
+          "dest": "lib/semu/libsemutap.so"
+        },
+        {
+          "src": "assets/fonts/menu-font.png",
+          "dest": "lib/semu/menu-font.png"
+        }
+      ]
+    }
+  ]
+}

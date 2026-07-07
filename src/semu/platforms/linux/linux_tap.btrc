@@ -151,13 +151,13 @@ class LinuxTap {
     // onto the game's own swapchain (the surface gamescope presents). The
     // template conf ships in the assets (@DIR@ tokens); the exec edge
     // materializes it into the state root once paths resolve.
-    class string overlayReshadeDirectory(string environmentAssetRoot, string project) {
+    class string overlayVkbasaltDirectory(string environmentAssetRoot, string project) {
         Vector<string> candidates = [];
         if (!environmentAssetRoot.isEmpty()) {
             candidates.push(PathTools.join(environmentAssetRoot,
-                "share/semu-bezel/reshade"));
+                "share/semu-bezel/vkbasalt"));
         }
-        candidates.push(PathTools.join(project, "src/semu/assets/reshade"));
+        candidates.push(PathTools.join(project, "src/semu/assets/vkbasalt"));
         for candidate in candidates {
             if (FileSystem.isDir(candidate)) {
                 return candidate;
@@ -234,19 +234,19 @@ class LinuxTap {
         if (!platform.graphics.present || !platform.graphics.overlayApi.equals("vulkan")) {
             return;
         }
-        string reshadeDirectory = LinuxTap.overlayReshadeDirectory(environmentAssetRoot,
+        string vkbasaltDirectory = LinuxTap.overlayVkbasaltDirectory(environmentAssetRoot,
             project);
-        if (reshadeDirectory.isEmpty()) {
+        if (vkbasaltDirectory.isEmpty()) {
             LinuxTap.appendNote(launchPlan, "vulkan overlay skipped: no staged"
-                + " share/semu-bezel/reshade assets");
+                + " share/semu-bezel/vkbasalt assets");
             return;
         }
         LinuxTap.mergeEnvironment(launchPlan, "SEMU_OVERLAY_CONF_TEMPLATE",
-            PathTools.join(reshadeDirectory,
+            PathTools.join(vkbasaltDirectory,
                 LinuxTap.overlayConfigurationName(tapEnvironment)));
         LinuxTap.mergeEnvironment(launchPlan, "VKBASALT_CONFIG_FILE",
             "${state_root}/vkBasalt.conf");
         LinuxTap.mergeEnvironment(launchPlan, "ENABLE_VKBASALT", "1");
-        LinuxTap.mergeReadOnlyFilesystemGrant(launchPlan, reshadeDirectory);
+        LinuxTap.mergeReadOnlyFilesystemGrant(launchPlan, vkbasaltDirectory);
     }
 }

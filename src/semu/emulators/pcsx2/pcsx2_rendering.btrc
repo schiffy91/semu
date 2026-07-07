@@ -1,14 +1,14 @@
-// pcsx2_rendering.btrc — PCSX2 rendering glue: the [EmuCore/GS] profile
-// section and the graphics-policy plumbing behind it.
+// pcsx2_rendering.btrc — PCSX2 rendering glue: the renderer key/value
+// plumbing behind the [EmuCore/GS] profile section (whose literal body lives
+// in ./profile.json, wired by Pcsx2Emitter).
 //
 // PCSX2 selects its renderer through a config-file key (emulator.json
 // platforms.<os>.graphics: method "config_file", an ini key with numeric
 // values per graphics api), so there are no CLI force arguments — the exec
-// edge rewrites the same key this module emits with the automatic sentinel
+// edge rewrites the same key this module seeds with the automatic sentinel
 // into the default profile. The bezel/overlay is tap-composited; PCSX2 ships
 // no native overlay configuration text.
 
-import std.{vector}
 import ../semu_emulator.btrc
 
 class Pcsx2Rendering {
@@ -52,23 +52,5 @@ class Pcsx2Rendering {
             return "";
         }
         return Pcsx2Rendering.rendererKey(graphics) + " = " + value;
-    }
-
-    // The [EmuCore/GS] block of the emitted default profile: automatic
-    // renderer via the contract's key, auto aspect with integer scaling at
-    // the native multiplier, nearest filtering, vsync — the Deck-proven
-    // baseline the tap composites bezels over.
-    class Vector<string> graphicsSectionLines(GraphicsPolicy graphics) {
-        Vector<string> lines = [
-            "[EmuCore/GS]",
-            "AspectRatio = Auto 4:3/3:2",
-            "IntegerScaling = true",
-            Pcsx2Rendering.rendererKey(graphics) + " = "
-                + Pcsx2Rendering.automaticRendererValue(),
-            "upscale_multiplier = 1",
-            "filter = 0",
-            "VsyncEnable = true"
-        ];
-        return lines;
     }
 }

@@ -179,7 +179,7 @@ class JsonContract {
     class void checkAssetPath(string path, string file, string context, ParseLog log) {
         if (!path.isEmpty() && !path.startsWith("assets/")) {
             log.add(file, context, "must be a canonical asset path starting with 'assets/'"
-                + " (upstream pack paths live only in assets/sources.json)");
+                + " (upstream pack paths live only in assets/bezels.json / shaders.json)");
         }
     }
 

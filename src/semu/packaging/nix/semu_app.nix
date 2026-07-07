@@ -1,11 +1,11 @@
 # semu_app.nix — the composed bundle `make setup` links at
 # src/generated/nix/result: the CLI, every contract-required emulator
-# package, ES-DE, the sources.json visual assets, and the runtime tools.
+# package, ES-DE, the bezels.json/shaders.json visual assets, and the runtime tools.
 #
 # lib/semu is materialized (symlinkJoin would link it wholesale to the CLI
 # store path) so the staged asset trees land under it, and bin/semu is
 # re-wrapped with SEMU_ASSET_ROOT pointing there — that is the root the
-# runtime resolves share/semu (bezels) and share/semu-bezel (reshade pack)
+# runtime resolves share/semu (bezels) and share/semu-bezel (vkbasalt pack)
 # against.
 { lib, symlinkJoin, makeWrapper
 , semuCli
