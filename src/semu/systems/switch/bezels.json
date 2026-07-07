@@ -1,21 +1,9 @@
 {
   "schema_version": 1,
-  "enabled": true,
+  "enabled": false,
   "default_variant": "handheld",
-  "hole": {
-    "x": 0.2025,
-    "y": 0.1386,
-    "w": 0.5717,
-    "h": 0.7266
-  },
-  "variants": [
-    {
-      "id": "handheld",
-      "label": "Handheld",
-      "art": "assets/bezels/switch/handheld.png"
-    }
-  ],
+  "variants": [],
   "doc": {
-    "hole": "Measured from the photo: flood-fill of the off-screen gray panel from image center (see bezels.json photo recipes)."
+    "why": "No authentic shell art exists (Switch: Duimon has none; photo bezels were tried and rejected 2026-07-07 'these look weird'). Bezel off = pure black borders per the standing ruling."
   }
 }

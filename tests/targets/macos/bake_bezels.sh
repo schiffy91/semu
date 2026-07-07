@@ -103,11 +103,13 @@ def is_magenta(red, green, blue):
 def is_cyan(red, green, blue):
     return green > 120 and blue > 120 and red < green * 0.6
 
-def render(preset_path, card, out, zoom):
+def render(preset_path, card, out, zoom, extra_params=None):
     wrapper = f"{work}/wrapper.slangp"
     lines = [f'#reference "{preset_path}"', 'HSM_INTRO_WHEN_TO_SHOW = "0.0"']
     if zoom:
         lines.append(f'HSM_VIEWPORT_ZOOM = "{zoom}"')
+    for name, value in (extra_params or {}).items():
+        lines.append(f'{name} = "{value}"')
     open(wrapper, "w").write("\n".join(lines) + "\n")
     subprocess.run([librashader, "render", "-p", wrapper, "--image", card,
                     "--out", out, "--runtime", "metal", "--frame", "60",
@@ -115,7 +117,10 @@ def render(preset_path, card, out, zoom):
                    check=True, capture_output=True)
 
 report = []
+bake_filter = os.environ.get("BAKE_ONLY", "")
 for bake in manifest["bakes"]:
+    if bake_filter and bake["system"] != bake_filter:
+        continue
     tag = f'{bake["system"]}-{bake["variant"]}'
     input_size = bake["input"]
     screens = bake["screens"]
@@ -133,7 +138,7 @@ for bake in manifest["bakes"]:
     write_png(black_card, input_size["w"], input_size["h"], lambda col_x, row_y: BLACK)
 
     probe_render = f"{work}/{tag}-probe.png"
-    render(f'{duimon}/{bake["preset"]}', probe_card, probe_render, bake.get("zoom"))
+    render(f'{duimon}/{bake["preset"]}', probe_card, probe_render, bake.get("zoom"), bake.get("params"))
     width, height, channels, rows = read_png_rgb(probe_render)
     boxes = [detect_box(rows, width, height, channels, is_magenta)]
     if len(screens) > 1:
@@ -159,7 +164,7 @@ for bake in manifest["bakes"]:
     baked_relative = f'src/semu/assets/baked/{bake["system"]}/{bake["variant"]}.png'
     baked_absolute = f"{project}/{baked_relative}"
     os.makedirs(os.path.dirname(baked_absolute), exist_ok=True)
-    render(f'{duimon}/{bake["preset"]}', black_card, baked_absolute, bake.get("zoom"))
+    render(f'{duimon}/{bake["preset"]}', black_card, baked_absolute, bake.get("zoom"), bake.get("params"))
 
     def fractions(box):
         return {"x": round(box[0] / width, 4), "y": round(box[1] / height, 4),
