@@ -13,20 +13,10 @@
       "id": "tv",
       "label": "Living-Room CRT",
       "art": "assets/bezels/wii/tv.png"
-    },
-    {
-      "id": "tv_wide",
-      "label": "Widescreen CRT",
-      "art": "assets/bezels/wii/tv-wide.png",
-      "hole": {
-        "x": 0.1734,
-        "y": 0.1139,
-        "w": 0.6531,
-        "h": 0.6531
-      }
     }
   ],
   "doc": {
-    "holes": "Tubes probe-measured; heights clamped to the tube aspect on the 16:9 canvas (probe bleeds ~1% into the dark panel)."
+    "holes": "Tubes probe-measured; heights clamped to the tube aspect on the 16:9 canvas (probe bleeds ~1% into the dark panel).",
+    "tv_wide": "Removed: variant-level game aspect is not modeled, so the 16:9 tube would letterbox a 4:3 game against its own frame. Revisit with widescreen-aware variants."
   }
 }
