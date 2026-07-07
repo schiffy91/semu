@@ -122,8 +122,65 @@
       ],
       "crop": "878x1442+137+305",
       "doc": {
-        "crop": "Trim the Duimon canvas to the device silhouette (43% was transparent padding, which made every contain-fit and art-rect computation see a mostly-empty bezel)."
-      }
+        "crop": "Trim the Duimon canvas to the device silhouette (43% was transparent padding, which made every contain-fit and art-rect computation see a mostly-empty bezel).",
+        "labels": "Duimon's GBC art omits the 'GAME BOY color' wordmark; drawn here (rainbow per the console logo). Recolor variants (grape/berry) inherit it."
+      },
+      "labels": [
+        {
+          "text": "GAMEBOY",
+          "fill": "#dcdcdc",
+          "x": 0.14,
+          "y": 0.448,
+          "size": 0.03,
+          "skew": -10,
+          "weight": 800
+        },
+        {
+          "text": "c",
+          "fill": "#25a6e6",
+          "x": 0.475,
+          "y": 0.446,
+          "size": 0.036,
+          "skew": -10,
+          "weight": 800
+        },
+        {
+          "text": "o",
+          "fill": "#f6c81b",
+          "x": 0.512,
+          "y": 0.446,
+          "size": 0.036,
+          "skew": -10,
+          "weight": 800
+        },
+        {
+          "text": "l",
+          "fill": "#4cbf52",
+          "x": 0.549,
+          "y": 0.446,
+          "size": 0.036,
+          "skew": -10,
+          "weight": 800
+        },
+        {
+          "text": "o",
+          "fill": "#f5831f",
+          "x": 0.575,
+          "y": 0.446,
+          "size": 0.036,
+          "skew": -10,
+          "weight": 800
+        },
+        {
+          "text": "r",
+          "fill": "#ee4433",
+          "x": 0.612,
+          "y": 0.446,
+          "size": 0.036,
+          "skew": -10,
+          "weight": 800
+        }
+      ]
     },
     "assets/bezels/gbc/classic-glass.png": {
       "type": "glass",
@@ -138,13 +195,139 @@
       "type": "recolor",
       "base": "assets/bezels/gbc/classic.png",
       "color": "#e05578",
-      "brightness": 145
+      "brightness": 145,
+      "labels": [
+        {
+          "text": "GAMEBOY",
+          "fill": "#dcdcdc",
+          "x": 0.14,
+          "y": 0.448,
+          "size": 0.03,
+          "skew": -10,
+          "weight": 800
+        },
+        {
+          "text": "c",
+          "fill": "#25a6e6",
+          "x": 0.475,
+          "y": 0.446,
+          "size": 0.036,
+          "skew": -10,
+          "weight": 800
+        },
+        {
+          "text": "o",
+          "fill": "#f6c81b",
+          "x": 0.512,
+          "y": 0.446,
+          "size": 0.036,
+          "skew": -10,
+          "weight": 800
+        },
+        {
+          "text": "l",
+          "fill": "#4cbf52",
+          "x": 0.549,
+          "y": 0.446,
+          "size": 0.036,
+          "skew": -10,
+          "weight": 800
+        },
+        {
+          "text": "o",
+          "fill": "#f5831f",
+          "x": 0.575,
+          "y": 0.446,
+          "size": 0.036,
+          "skew": -10,
+          "weight": 800
+        },
+        {
+          "text": "r",
+          "fill": "#ee4433",
+          "x": 0.612,
+          "y": 0.446,
+          "size": 0.036,
+          "skew": -10,
+          "weight": 800
+        }
+      ],
+      "label_canvas": [
+        878,
+        1442
+      ],
+      "doc": {
+        "labels": "Wordmark drawn after the recolor tint so the rainbow survives."
+      }
     },
     "assets/bezels/gbc/grape.png": {
       "type": "recolor",
       "base": "assets/bezels/gbc/classic.png",
       "color": "#a76fe3",
-      "brightness": 145
+      "brightness": 145,
+      "labels": [
+        {
+          "text": "GAMEBOY",
+          "fill": "#dcdcdc",
+          "x": 0.14,
+          "y": 0.448,
+          "size": 0.03,
+          "skew": -10,
+          "weight": 800
+        },
+        {
+          "text": "c",
+          "fill": "#25a6e6",
+          "x": 0.475,
+          "y": 0.446,
+          "size": 0.036,
+          "skew": -10,
+          "weight": 800
+        },
+        {
+          "text": "o",
+          "fill": "#f6c81b",
+          "x": 0.512,
+          "y": 0.446,
+          "size": 0.036,
+          "skew": -10,
+          "weight": 800
+        },
+        {
+          "text": "l",
+          "fill": "#4cbf52",
+          "x": 0.549,
+          "y": 0.446,
+          "size": 0.036,
+          "skew": -10,
+          "weight": 800
+        },
+        {
+          "text": "o",
+          "fill": "#f5831f",
+          "x": 0.575,
+          "y": 0.446,
+          "size": 0.036,
+          "skew": -10,
+          "weight": 800
+        },
+        {
+          "text": "r",
+          "fill": "#ee4433",
+          "x": 0.612,
+          "y": 0.446,
+          "size": 0.036,
+          "skew": -10,
+          "weight": 800
+        }
+      ],
+      "label_canvas": [
+        878,
+        1442
+      ],
+      "doc": {
+        "labels": "Wordmark drawn after the recolor tint so the rainbow survives."
+      }
     },
     "assets/bezels/gba/classic.png": {
       "type": "local",

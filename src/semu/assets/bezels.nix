@@ -12,7 +12,7 @@
 #                            srcs (runtime build products such as the Deck tap
 #                            .so under generated/) are skipped — their own
 #                            pipelines stage them.
-{ lib, stdenvNoCC, fetchFromGitHub, fetchurl, imagemagick }:
+{ lib, stdenvNoCC, fetchFromGitHub, fetchurl, imagemagick, dejavu_fonts }:
 
 let
   sources = lib.importJSON ./bezels.json;
@@ -58,6 +58,24 @@ let
         pixelX (plate.x + plate.w)},${pixelY (plate.y + plate.h)} ${
         toString plate.radius},${toString plate.radius}" '';
 
+  # Draw wordmark "labels" the upstream art omits (e.g. GBC "GAME BOY color").
+  # Coordinates are fractions of the given canvas; applied as the LAST step so
+  # colors survive any prior recolor tint. Shared by flatten and recolor.
+  labelPassFor = recipe: width: height:
+    let
+      drawLabel = label:
+        ''-fill "${label.fill}" -pointsize ${
+          toString (builtins.floor (label.size * height + 0.5))} ${
+          lib.optionalString (label ? weight) "-weight ${toString label.weight} "}-annotate ${
+          lib.optionalString (label ? skew) "${toString label.skew}x0"}+${
+          toString (builtins.floor (label.x * width + 0.5))}+${
+          toString (builtins.floor (label.y * height + 0.5))} "${label.text}" '';
+    in
+    lib.optionalString (recipe ? labels)
+      (" -gravity NorthWest -font ${
+        dejavu_fonts}/share/fonts/truetype/DejaVuSans-Bold.ttf "
+       + lib.concatMapStrings drawLabel recipe.labels);
+
   render = key: recipe:
     ''
       mkdir -p "$(dirname "$out/share/semu/${key}")"
@@ -76,12 +94,24 @@ let
           -trim +repage -resize '2560x2560>' "PNG32:$out/share/semu/${key}"
       '';
       # -flatten merges the whole layer stack; pairwise -composite would only
-      # merge the last two layers (the GBC LED-layer regression).
-      flatten = ''
-        magick ${lib.concatMapStringsSep " " (layer: treeFile recipe layer) recipe.layers} \
-          -background none -flatten -resize '2048x2048>' \
-          ${lib.optionalString (recipe ? crop) "-crop ${recipe.crop} +repage "}${outFile key}
-      '';
+      # merge the last two layers (the GBC LED-layer regression). Optional
+      # "labels" draw wordmark text (fractions of the post-crop canvas) that
+      # the upstream art omits, e.g. the GBC "GAME BOY color" logo.
+      flatten =
+        if recipe ? crop then
+          let
+            parts = builtins.match "([0-9]+)x([0-9]+).*" recipe.crop;
+            cw = lib.toInt (builtins.elemAt parts 0);
+            ch = lib.toInt (builtins.elemAt parts 1);
+          in ''
+            magick ${lib.concatMapStringsSep " " (layer: treeFile recipe layer) recipe.layers} \
+              -background none -flatten -resize '2048x2048>' \
+              -crop ${recipe.crop} +repage ${labelPassFor recipe cw ch}${outFile key}
+          ''
+        else ''
+          magick ${lib.concatMapStringsSep " " (layer: treeFile recipe layer) recipe.layers} \
+            -background none -flatten -resize '2048x2048>' ${outFile key}
+        '';
       # glass keeps the live cutout mask in .a and reflections in .rgb;
       # PNG32 forces RGBA to survive the downscale.
       glass = ''
@@ -95,7 +125,13 @@ let
       recolor = ''
         magick ${outFile recipe.base} -modulate ${toString (recipe.brightness or 100)},0,100 \
           \( +clone -fill "${recipe.color}" -colorize 100% \) \
-          -compose Multiply -composite -alpha on "PNG32:$out/share/semu/${key}"
+          -compose Multiply -composite -alpha on ${
+            lib.optionalString (recipe ? labels)
+              ("-compose Over "
+               + labelPassFor recipe
+                   (builtins.elemAt recipe.label_canvas 0)
+                   (builtins.elemAt recipe.label_canvas 1))
+          }"PNG32:$out/share/semu/${key}"
       '';
       # photoreal device shell from a Duimon layer set. Their device base is
       # black RGB with the shape in alpha, so: colorize + top-down light the

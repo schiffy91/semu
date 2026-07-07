@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "enabled": true,
-  "default_variant": "classic",
+  "default_variant": "grape",
   "hole": {
     "x": 0.085,
     "y": 0.0863,
@@ -10,9 +10,12 @@
   },
   "variants": [
     {
-      "id": "classic",
-      "label": "Classic",
-      "art": "assets/bezels/gbc/classic.png",
+      "id": "grape",
+      "label": "Atomic Purple",
+      "art": "assets/bezels/gbc/grape.png",
+      "geometry_from": {
+        "variant": "classic"
+      },
       "glass": "assets/bezels/gbc/classic-glass.png"
     },
     {
@@ -25,12 +28,9 @@
       "glass": "assets/bezels/gbc/classic-glass.png"
     },
     {
-      "id": "grape",
-      "label": "Grape",
-      "art": "assets/bezels/gbc/grape.png",
-      "geometry_from": {
-        "variant": "classic"
-      },
+      "id": "classic",
+      "label": "Teal",
+      "art": "assets/bezels/gbc/classic.png",
       "glass": "assets/bezels/gbc/classic-glass.png"
     }
   ],
