@@ -21,7 +21,7 @@ typedef struct SemuTapMenuState {
     int level;
     int selected;
     int system_kind;
-    int priority_mode;   /* 0 Game Priority, 1 Game (Top Screen) - dual only, 2 Bezel Priority */
+    int priority_mode;   /* 0 Game Priority, 1 Game (Top Screen) - dual only, 2 Bezel Priority, 3 Fit */
     int bezel_index;
     int bezel_count;
     int shader_index;
@@ -57,7 +57,7 @@ static void semu_tap_menu_normalize(SemuTapMenuState *state) {
     if (state->system_kind != SEMU_TAP_SYSTEM_DUAL_SCREEN && state->system_kind != SEMU_TAP_SYSTEM_WII) {
         state->system_kind = SEMU_TAP_SYSTEM_GENERIC;
     }
-    state->priority_mode = semu_tap_menu_clamp(state->priority_mode, 0, 2);
+    state->priority_mode = semu_tap_menu_clamp(state->priority_mode, 0, 3);
     if (state->system_kind != SEMU_TAP_SYSTEM_DUAL_SCREEN && state->priority_mode == 1) {
         state->priority_mode = 2;
     }
@@ -160,8 +160,8 @@ static void semu_tap_menu_value(const SemuTapMenuState *state, int index, char *
     }
     if (state->level == SEMU_TAP_MENU_RENDERING) {
         if (index == 0) {
-            const char *modes[3] = { "Game Priority", "Game (Top Screen)", "Bezel Priority" };
-            semu_tap_menu_copy(out, out_len, modes[semu_tap_menu_clamp(state->priority_mode, 0, 2)]);
+            const char *modes[4] = { "Game Priority", "Game (Top Screen)", "Bezel Priority", "Fit" };
+            semu_tap_menu_copy(out, out_len, modes[semu_tap_menu_clamp(state->priority_mode, 0, 3)]);
             return;
         }
         if (index == 1) { semu_tap_menu_copy(out, out_len, semu_tap_menu_bezel_value(state)); return; }
@@ -198,9 +198,11 @@ static void semu_tap_menu_activate(SemuTapMenuState *state) {
     } else if (state->level == SEMU_TAP_MENU_RENDERING) {
         if (state->selected == 0) {
             if (state->system_kind == SEMU_TAP_SYSTEM_DUAL_SCREEN) {
-                state->priority_mode = (state->priority_mode + 1) % 3;
+                state->priority_mode = (state->priority_mode + 1) % 4;
             } else {
-                state->priority_mode = state->priority_mode == 0 ? 2 : 0;
+                /* single-screen cycle skips the dual-only top mode */
+                state->priority_mode = state->priority_mode == 0 ? 2
+                    : state->priority_mode == 2 ? 3 : 0;
             }
         } else if (state->selected == 1) {
             int count = semu_tap_menu_visible_bezel_count(state->bezel_count);

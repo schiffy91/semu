@@ -84,12 +84,20 @@
         "Graphics/Nintendo_Game_Boy/Gameboy_DMG01_Device.png",
         "Graphics/Nintendo_Game_Boy/Gameboy_DMG01_Decal.png",
         "Graphics/Nintendo_Game_Boy/Gameboy_DMG01_Top.png"
-      ]
+      ],
+      "crop": "874x1425+139+313",
+      "doc": {
+        "crop": "Trim the Duimon canvas to the device silhouette (43% was transparent padding, which made every contain-fit and art-rect computation see a mostly-empty bezel)."
+      }
     },
     "assets/bezels/gb/classic-glass.png": {
       "type": "glass",
       "from": "duimon_mega_bezel",
-      "path": "Graphics/Nintendo_Game_Boy/Gameboy_DMG01_Glass.png"
+      "path": "Graphics/Nintendo_Game_Boy/Gameboy_DMG01_Glass.png",
+      "crop": "874x1425+139+313",
+      "doc": {
+        "crop": "Trim the Duimon canvas to the device silhouette (43% was transparent padding, which made every contain-fit and art-rect computation see a mostly-empty bezel)."
+      }
     },
     "assets/bezels/gb/red.png": {
       "type": "recolor",
@@ -111,12 +119,20 @@
         "Graphics/Nintendo_Game_Boy_Color/GBC_Device_LED.png",
         "Graphics/Nintendo_Game_Boy_Color/GBC_Decal.png",
         "Graphics/Nintendo_Game_Boy_Color/GBC_Top.png"
-      ]
+      ],
+      "crop": "878x1442+137+305",
+      "doc": {
+        "crop": "Trim the Duimon canvas to the device silhouette (43% was transparent padding, which made every contain-fit and art-rect computation see a mostly-empty bezel)."
+      }
     },
     "assets/bezels/gbc/classic-glass.png": {
       "type": "glass",
       "from": "duimon_mega_bezel",
-      "path": "Graphics/Nintendo_Game_Boy_Color/GBC_Glass.png"
+      "path": "Graphics/Nintendo_Game_Boy_Color/GBC_Glass.png",
+      "crop": "878x1442+137+305",
+      "doc": {
+        "crop": "Trim the Duimon canvas to the device silhouette (43% was transparent padding, which made every contain-fit and art-rect computation see a mostly-empty bezel)."
+      }
     },
     "assets/bezels/gbc/berry.png": {
       "type": "recolor",

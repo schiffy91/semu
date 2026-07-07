@@ -61,13 +61,13 @@ class RenderingContractTest {
             failures = failures + RenderingContractTest.fail(
                 "gb SEMU_TAP_ART does not match the resolved art");
         }
-        if (!RenderingContractTest.nearlyEqual(bezel.hole.x, 0.1843)) {
+        if (!RenderingContractTest.nearlyEqual(bezel.hole.x, 0.0839)) {
             failures = failures + RenderingContractTest.fail(
-                f"gb hole.x: want 0.1843, got {bezel.hole.x}");
+                f"gb hole.x: want 0.0839, got {bezel.hole.x}");
         }
-        if (!environment.valueOf("SEMU_TAP_SCREEN").startsWith("0.1843,")) {
+        if (!environment.valueOf("SEMU_TAP_SCREEN").startsWith("0.0839,")) {
             failures = failures + RenderingContractTest.fail(
-                "gb SEMU_TAP_SCREEN: want 0.1843,... got '"
+                "gb SEMU_TAP_SCREEN: want 0.0839,... got '"
                 + environment.valueOf("SEMU_TAP_SCREEN") + "'");
         }
 
@@ -77,7 +77,7 @@ class RenderingContractTest {
             failures = failures + RenderingContractTest.fail(
                 "gb red variant art: got '" + colorwayBezel.art + "'");
         }
-        if (!RenderingContractTest.nearlyEqual(colorwayBezel.hole.x, 0.1843)) {
+        if (!RenderingContractTest.nearlyEqual(colorwayBezel.hole.x, 0.0839)) {
             failures = failures + RenderingContractTest.fail(
                 "gb red variant must inherit the classic hole");
         }

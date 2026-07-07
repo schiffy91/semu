@@ -79,13 +79,14 @@ let
       # merge the last two layers (the GBC LED-layer regression).
       flatten = ''
         magick ${lib.concatMapStringsSep " " (layer: treeFile recipe layer) recipe.layers} \
-          -background none -flatten -resize '2048x2048>' ${outFile key}
+          -background none -flatten -resize '2048x2048>' \
+          ${lib.optionalString (recipe ? crop) "-crop ${recipe.crop} +repage "}${outFile key}
       '';
       # glass keeps the live cutout mask in .a and reflections in .rgb;
       # PNG32 forces RGBA to survive the downscale.
       glass = ''
         magick ${treeFile recipe recipe.path} -resize '2048x2048>' \
-          "PNG32:$out/share/semu/${key}"
+          ${lib.optionalString (recipe ? crop) "-crop ${recipe.crop} +repage "}"PNG32:$out/share/semu/${key}"
       '';
       # desaturate then Multiply a solid tint: preserves plastic shading + alpha.
       # Optional "brightness" (percent, default 100) lifts the base first —
