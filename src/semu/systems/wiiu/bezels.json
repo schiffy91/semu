@@ -1,4 +1,21 @@
 {
   "schema_version": 1,
-  "enabled": false
+  "enabled": true,
+  "default_variant": "gamepad",
+  "hole": {
+    "x": 0.175,
+    "y": 0.2,
+    "w": 0.65,
+    "h": 0.585
+  },
+  "variants": [
+    {
+      "id": "gamepad",
+      "label": "GamePad",
+      "art": "assets/bezels/wiiu/gamepad.png"
+    }
+  ],
+  "doc": {
+    "hole": "Exact 16:9 (832x468 at 1280x800) inside the drawn GamePad shell."
+  }
 }

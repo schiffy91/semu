@@ -2,12 +2,20 @@
   "schema_version": 1,
   "enabled": true,
   "default_variant": "tv",
+  "hole": {
+    "x": 0.2484,
+    "y": 0.1194,
+    "w": 0.5031,
+    "h": 0.6722
+  },
   "variants": [
     {
       "id": "tv",
       "label": "Living-Room CRT",
-      "geometry_from": { "system": "psx", "variant": "tv" },
-      "doc": { "provenance": "Shares psx art and its measured hole (same 4:3 tube); was the ps2->psx runtime alias." }
+      "art": "assets/bezels/ps2/tv.png"
     }
-  ]
+  ],
+  "doc": {
+    "hole": "Tube measured from the art (dark-region probe at 640px, fractions)."
+  }
 }

@@ -347,6 +347,236 @@
       "glass_markings": "Graphics/Nintendo_3DS/3DS_Vertical_Glass.png",
       "led": "Graphics/Nintendo_3DS/3DS_Vertical_LED.png",
       "color": "#454b56"
+    },
+    "assets/bezels/dreamcast/tv.png": {
+      "type": "copy",
+      "from": "soqueroeu_tv",
+      "path": "img/Sega_Dreamcast/Dreamcast.png"
+    },
+    "assets/bezels/gc/tv.png": {
+      "type": "copy",
+      "from": "soqueroeu_tv",
+      "path": "img/Nintendo_GameCube/GameCube.png"
+    },
+    "assets/bezels/ps2/tv.png": {
+      "type": "copy",
+      "from": "soqueroeu_tv",
+      "path": "img/Sony_Playstation2/PS2.png"
+    },
+    "assets/bezels/wii/tv.png": {
+      "type": "copy",
+      "from": "soqueroeu_tv",
+      "path": "img/Nintendo_Wii/Wii_16x9.png"
+    },
+    "assets/bezels/switch/handheld.png": {
+      "type": "panel",
+      "size": {
+        "w": 1280,
+        "h": 800
+      },
+      "plates": [
+        {
+          "kind": "round_rect",
+          "x": 0.005,
+          "y": 0.075,
+          "w": 0.105,
+          "h": 0.85,
+          "radius": 34,
+          "fill": "#1798c8"
+        },
+        {
+          "kind": "round_rect",
+          "x": 0.89,
+          "y": 0.075,
+          "w": 0.105,
+          "h": 0.85,
+          "radius": 34,
+          "fill": "#e6284c"
+        },
+        {
+          "kind": "round_rect",
+          "x": 0.075,
+          "y": 0.055,
+          "w": 0.85,
+          "h": 0.89,
+          "radius": 22,
+          "fill": "#17181d",
+          "stroke": "#33353d"
+        },
+        {
+          "kind": "round_rect",
+          "x": 0.098,
+          "y": 0.128,
+          "w": 0.804,
+          "h": 0.744,
+          "radius": 10,
+          "fill": "#08090c"
+        },
+        {
+          "kind": "circle",
+          "cx": 0.052,
+          "cy": 0.315,
+          "radius": 15,
+          "fill": "#0e0f12"
+        },
+        {
+          "kind": "circle",
+          "cx": 0.948,
+          "cy": 0.6,
+          "radius": 15,
+          "fill": "#0e0f12"
+        },
+        {
+          "kind": "circle",
+          "cx": 0.948,
+          "cy": 0.295,
+          "radius": 6,
+          "fill": "#0e0f12"
+        },
+        {
+          "kind": "circle",
+          "cx": 0.928,
+          "cy": 0.345,
+          "radius": 6,
+          "fill": "#0e0f12"
+        },
+        {
+          "kind": "circle",
+          "cx": 0.968,
+          "cy": 0.345,
+          "radius": 6,
+          "fill": "#0e0f12"
+        },
+        {
+          "kind": "circle",
+          "cx": 0.948,
+          "cy": 0.395,
+          "radius": 6,
+          "fill": "#0e0f12"
+        },
+        {
+          "kind": "circle",
+          "cx": 0.032,
+          "cy": 0.53,
+          "radius": 6,
+          "fill": "#0e0f12"
+        },
+        {
+          "kind": "circle",
+          "cx": 0.052,
+          "cy": 0.48,
+          "radius": 6,
+          "fill": "#0e0f12"
+        },
+        {
+          "kind": "circle",
+          "cx": 0.072,
+          "cy": 0.53,
+          "radius": 6,
+          "fill": "#0e0f12"
+        },
+        {
+          "kind": "circle",
+          "cx": 0.052,
+          "cy": 0.58,
+          "radius": 6,
+          "fill": "#0e0f12"
+        }
+      ],
+      "doc": {
+        "why": "No upstream Switch art exists; drawn handheld with joy-con colorways. Screen hole is exact 16:9."
+      }
+    },
+    "assets/bezels/wiiu/gamepad.png": {
+      "type": "panel",
+      "size": {
+        "w": 1280,
+        "h": 800
+      },
+      "plates": [
+        {
+          "kind": "round_rect",
+          "x": 0.02,
+          "y": 0.03,
+          "w": 0.96,
+          "h": 0.94,
+          "radius": 46,
+          "fill": "#24262c",
+          "stroke": "#3a3d47"
+        },
+        {
+          "kind": "round_rect",
+          "x": 0.16,
+          "y": 0.115,
+          "w": 0.68,
+          "h": 0.77,
+          "radius": 12,
+          "fill": "#08090c"
+        },
+        {
+          "kind": "circle",
+          "cx": 0.085,
+          "cy": 0.26,
+          "radius": 16,
+          "fill": "#101116"
+        },
+        {
+          "kind": "circle",
+          "cx": 0.915,
+          "cy": 0.26,
+          "radius": 16,
+          "fill": "#101116"
+        },
+        {
+          "kind": "round_rect",
+          "x": 0.062,
+          "y": 0.52,
+          "w": 0.046,
+          "h": 0.02,
+          "radius": 4,
+          "fill": "#101116"
+        },
+        {
+          "kind": "round_rect",
+          "x": 0.0795,
+          "y": 0.49,
+          "w": 0.011,
+          "h": 0.08,
+          "radius": 4,
+          "fill": "#101116"
+        },
+        {
+          "kind": "circle",
+          "cx": 0.915,
+          "cy": 0.5,
+          "radius": 8,
+          "fill": "#101116"
+        },
+        {
+          "kind": "circle",
+          "cx": 0.895,
+          "cy": 0.55,
+          "radius": 8,
+          "fill": "#101116"
+        },
+        {
+          "kind": "circle",
+          "cx": 0.935,
+          "cy": 0.55,
+          "radius": 8,
+          "fill": "#101116"
+        },
+        {
+          "kind": "circle",
+          "cx": 0.915,
+          "cy": 0.6,
+          "radius": 8,
+          "fill": "#101116"
+        }
+      ],
+      "doc": {
+        "why": "No upstream Wii U art; drawn GamePad shell. Screen hole is exact 16:9."
+      }
     }
   },
   "staging": [
