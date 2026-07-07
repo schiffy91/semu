@@ -3,10 +3,10 @@
   "enabled": true,
   "default_variant": "gamepad",
   "hole": {
-    "x": 0.175,
-    "y": 0.2,
-    "w": 0.65,
-    "h": 0.585
+    "x": 0.173,
+    "y": 0.2056,
+    "w": 0.654,
+    "h": 0.5888
   },
   "variants": [
     {

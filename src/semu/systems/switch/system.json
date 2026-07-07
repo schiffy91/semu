@@ -2,28 +2,62 @@
   "schema_version": 1,
   "name": "Nintendo Switch",
   "aliases": [],
-  "es_de": { "platforms": ["switch"], "theme": "switch" },
-  "rom": { "dir": "switch", "extensions": [".nca", ".nro", ".nso", ".nsp", ".xci", ".7z", ".zip"] },
+  "es_de": {
+    "platforms": [
+      "switch"
+    ],
+    "theme": "switch"
+  },
+  "rom": {
+    "dir": "switch",
+    "extensions": [
+      ".nca",
+      ".nro",
+      ".nso",
+      ".nsp",
+      ".xci",
+      ".7z",
+      ".zip"
+    ]
+  },
   "emulators": [
-    { "emulator": "ryujinx" }
+    {
+      "emulator": "ryujinx"
+    }
   ],
   "bios": {
     "required": true,
     "match": "all",
     "files": [
-      { "name": "prod.keys" },
-      { "name": "title.keys" }
+      {
+        "name": "prod.keys"
+      },
+      {
+        "name": "title.keys"
+      }
     ],
     "dir": "bios/switch"
   },
   "display": {
-    "screens": [ { "id": "main", "native": { "w": 1280, "h": 720 } } ],
-    "aspect": { "w": 16, "h": 9 }
+    "screens": [
+      {
+        "id": "main",
+        "native": {
+          "w": 1280,
+          "h": 720
+        }
+      }
+    ],
+    "aspect": {
+      "w": 16,
+      "h": 9
+    }
   },
   "render": {
-    "style": "console",
-    "priority": "game",
-    "corner_radius": 0.045
+    "style": "handheld",
+    "priority": "bezel",
+    "corner_radius": 0.045,
+    "fill": true
   },
   "doc": {
     "hardware": "modern 16:9 handheld/docked display",

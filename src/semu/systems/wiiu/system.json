@@ -2,29 +2,58 @@
   "schema_version": 1,
   "name": "Nintendo Wii U",
   "aliases": [],
-  "es_de": { "platforms": ["wiiu"], "theme": "wiiu" },
-  "rom": { "dir": "wiiu", "extensions": [".rpx", ".wua", ".wud", ".wux"] },
+  "es_de": {
+    "platforms": [
+      "wiiu"
+    ],
+    "theme": "wiiu"
+  },
+  "rom": {
+    "dir": "wiiu",
+    "extensions": [
+      ".rpx",
+      ".wua",
+      ".wud",
+      ".wux"
+    ]
+  },
   "emulators": [
-    { "emulator": "cemu" }
+    {
+      "emulator": "cemu"
+    }
   ],
   "bios": {
     "required": true,
     "match": "all",
     "files": [
-      { "name": "keys.txt" }
+      {
+        "name": "keys.txt"
+      }
     ],
     "dir": "generated/packaging/emulators/profiles/Cemu/data"
   },
   "controller_profile": "steam_deck",
   "display": {
-    "screens": [ { "id": "main", "native": { "w": 1280, "h": 720 } } ],
-    "aspect": { "w": 16, "h": 9 }
+    "screens": [
+      {
+        "id": "main",
+        "native": {
+          "w": 1280,
+          "h": 720
+        }
+      }
+    ],
+    "aspect": {
+      "w": 16,
+      "h": 9
+    }
   },
   "render": {
-    "style": "console",
-    "priority": "game",
+    "style": "handheld",
+    "priority": "bezel",
     "kind": "pointer",
-    "corner_radius": 0.045
+    "corner_radius": 0.045,
+    "fill": true
   },
   "doc": {
     "hardware": "HD TV plus optional gamepad screen",
