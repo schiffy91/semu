@@ -3,10 +3,10 @@
   "enabled": true,
   "default_variant": "handheld",
   "hole": {
-    "x": 0.178,
-    "y": 0.2104,
-    "w": 0.644,
-    "h": 0.5793
+    "x": 0.182,
+    "y": 0.2138,
+    "w": 0.636,
+    "h": 0.5725
   },
   "variants": [
     {

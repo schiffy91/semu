@@ -32,6 +32,24 @@ let
   outFile = key: ''"$out/share/semu/${key}"'';
   treeFile = recipe: path: ''"${githubTrees.${recipe.from}}/${path}"'';
 
+  # Shared plate renderer for "panel" (whole drawing) and "shell" (overlay
+  # plates on a device render): ordered round_rect / circle in canvas
+  # fractions of the given size.
+  drawPlateFor = canvasWidth: canvasHeight: plate:
+    let
+      pixelX = fraction: toString (builtins.floor (fraction * canvasWidth + 0.5));
+      pixelY = fraction: toString (builtins.floor (fraction * canvasHeight + 0.5));
+    in
+    if plate.kind == "circle" then
+      ''-draw "fill ${plate.fill} circle ${pixelX plate.cx},${pixelY plate.cy} ${
+        toString (builtins.floor (plate.cx * canvasWidth + 0.5) + plate.radius)},${pixelY plate.cy}" ''
+    else
+      ''-draw "${lib.optionalString (plate ? stroke)
+          "stroke ${plate.stroke} stroke-width 2 "}fill ${plate.fill} roundrectangle ${
+        pixelX plate.x},${pixelY plate.y} ${
+        pixelX (plate.x + plate.w)},${pixelY (plate.y + plate.h)} ${
+        toString plate.radius},${toString plate.radius}" '';
+
   render = key: recipe:
     ''
       mkdir -p "$(dirname "$out/share/semu/${key}")"
@@ -81,28 +99,13 @@ let
         magick ${layer recipe.silhouette} -fill "${recipe.color}" -colorize 100 \( -size "$shellDims" gradient:"${recipe.light or "#ffffff-#7e7e7e"}" \) -compose Multiply -composite${cut}${overLayer "decal"}${overLayer "glass_markings"}${overLayer "top"}${
           lib.optionalString (recipe ? led)
             " \\( ${layer recipe.led} -alpha off \\) -compose Screen -composite"
-        }${cut} -resize '2048x2048>' "PNG32:$out/share/semu/${key}"
+        }${cut}${lib.optionalString (recipe ? plates) (" -compose Over " + lib.concatMapStrings (drawPlateFor recipe.size.w recipe.size.h) recipe.plates)}${cut} -resize '2048x2048>' "PNG32:$out/share/semu/${key}"
       '';
       # declarative drawn bezel: ordered plates (round_rect / circle) on a
       # transparent canvas — the manifest entry IS the drawing, no upstream.
-      panel = let
-        canvasWidth = recipe.size.w;
-        canvasHeight = recipe.size.h;
-        pixelX = fraction: toString (builtins.floor (fraction * canvasWidth + 0.5));
-        pixelY = fraction: toString (builtins.floor (fraction * canvasHeight + 0.5));
-        drawPlate = plate:
-          if plate.kind == "circle" then
-            ''-draw "fill ${plate.fill} circle ${pixelX plate.cx},${pixelY plate.cy} ${
-              toString (builtins.floor (plate.cx * canvasWidth + 0.5) + plate.radius)},${pixelY plate.cy}" ''
-          else
-            ''-draw "${lib.optionalString (plate ? stroke)
-                "stroke ${plate.stroke} stroke-width 2 "}fill ${plate.fill} roundrectangle ${
-              pixelX plate.x},${pixelY plate.y} ${
-              pixelX (plate.x + plate.w)},${pixelY (plate.y + plate.h)} ${
-              toString plate.radius},${toString plate.radius}" '';
-      in ''
-        magick -size ${toString canvasWidth}x${toString canvasHeight} canvas:none \
-          ${lib.concatMapStrings drawPlate recipe.plates} "PNG32:$out/share/semu/${key}"
+      panel = ''
+        magick -size ${toString recipe.size.w}x${toString recipe.size.h} canvas:none \
+          ${lib.concatMapStrings (drawPlateFor recipe.size.w recipe.size.h) recipe.plates} "PNG32:$out/share/semu/${key}"
       '';
     }.${recipe.type};
 

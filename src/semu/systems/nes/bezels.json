@@ -2,7 +2,12 @@
   "schema_version": 1,
   "enabled": true,
   "default_variant": "tv",
-  "hole": { "x": 0.2344, "y": 0.0669, "w": 0.5312, "h": 0.7083 },
+  "hole": {
+    "x": 0.2344,
+    "y": 0.0669,
+    "w": 0.5312,
+    "h": 0.6733
+  },
   "variants": [
     {
       "id": "tv",

@@ -3,19 +3,30 @@
   "enabled": true,
   "default_variant": "tv",
   "hole": {
-    "x": 0.1734,
-    "y": 0.1139,
-    "w": 0.6531,
-    "h": 0.6611
+    "x": 0.2516,
+    "y": 0.1083,
+    "w": 0.4969,
+    "h": 0.6625
   },
   "variants": [
     {
       "id": "tv",
-      "label": "Living-Room CRT 16:9",
+      "label": "Living-Room CRT",
       "art": "assets/bezels/wii/tv.png"
+    },
+    {
+      "id": "tv_wide",
+      "label": "Widescreen CRT",
+      "art": "assets/bezels/wii/tv-wide.png",
+      "hole": {
+        "x": 0.1734,
+        "y": 0.1139,
+        "w": 0.6531,
+        "h": 0.6531
+      }
     }
   ],
   "doc": {
-    "hole": "Tube measured from the art (dark-region probe at 640px, fractions)."
+    "holes": "Tubes probe-measured; heights clamped to the tube aspect on the 16:9 canvas (probe bleeds ~1% into the dark panel)."
   }
 }
