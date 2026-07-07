@@ -332,6 +332,49 @@ static void gl_state_restore(void){ if(!p_getiv||!p_active) return;
     if(p_viewport) p_viewport(sv_view[0],sv_view[1],sv_view[2],sv_view[3]);
     if(p_enable){ if(sv_depth)p_enable(GL_DEPTH_TEST); if(sv_blend)p_enable(GL_BLEND); if(sv_scissor)p_enable(GL_SCISSOR_TEST); }
 }
+// The tap IS the tap-in point: on the 'semu-shot' trigger file it reads back
+// the COMPOSITED framebuffer (game + bezel + shader + menu, the exact final
+// image, pre-swap) and writes semu-shot.bmp to the state dir — no portal, no
+// focus, no sleep-guessing. BMP: zero-dependency, bottom-up like glReadPixels.
+typedef void (*PFN_readpix)(GLint,GLint,GLsizei,GLsizei,GLenum,GLenum,void*);
+static PFN_readpix p_readpix;
+#define GL_PACK_ALIGNMENT 0x0D05
+static void write_composited_shot(int width, int height) {
+    if (!p_readpix || width <= 0 || height <= 0) return;
+    size_t row_bytes = (size_t)width * 3u;
+    size_t padded = (row_bytes + 3u) & ~3u;
+    unsigned char *pixels = (unsigned char*)malloc(padded * (size_t)height);
+    if (!pixels) return;
+    if (p_pixstore) p_pixstore(GL_PACK_ALIGNMENT, 1);
+    p_readpix(0, 0, width, height, GL_RGB, GL_UNSIGNED_BYTE, pixels);
+    char shot_path[1200]; tap_state_path(shot_path, sizeof shot_path, "semu-shot.bmp");
+    FILE *out = fopen(shot_path, "wb");
+    if (out) {
+        unsigned int image_bytes = (unsigned int)(padded * (size_t)height);
+        unsigned int file_bytes = 54u + image_bytes;
+        unsigned char header[54] = {0};
+        header[0]='B'; header[1]='M';
+        memcpy(header+2, &file_bytes, 4); header[10]=54;
+        header[14]=40; memcpy(header+18, &width, 4); memcpy(header+22, &height, 4);
+        header[26]=1; header[28]=24; memcpy(header+34, &image_bytes, 4);
+        fwrite(header, 1, 54, out);
+        unsigned char *row = (unsigned char*)malloc(padded);
+        if (row) {
+            memset(row, 0, padded);
+            for (int y = 0; y < height; y++) {
+                unsigned char *src = pixels + (size_t)y * row_bytes;
+                for (int x = 0; x < width; x++) {           // RGB -> BGR
+                    row[x*3+0]=src[x*3+2]; row[x*3+1]=src[x*3+1]; row[x*3+2]=src[x*3+0];
+                }
+                fwrite(row, 1, padded, out);
+            }
+            free(row);
+        }
+        fclose(out);
+        logf_("shot written %dx%d\n", (GLuint)width, (GLuint)height, 0);
+    }
+    free(pixels);
+}
 static void unpack_pbo_guard(void){ saved_unpack_pbo=0; if(p_bindbuf&&p_getiv){ p_getiv(GL_PIXEL_UNPACK_BUFFER_BINDING,&saved_unpack_pbo); if(saved_unpack_pbo) p_bindbuf(GL_PIXEL_UNPACK_BUFFER,0); } }
 static void unpack_pbo_restore(void){ if(p_bindbuf&&saved_unpack_pbo) p_bindbuf(GL_PIXEL_UNPACK_BUFFER,(GLuint)saved_unpack_pbo); }
 
@@ -532,7 +575,7 @@ void *dlsym(void *handle, const char *name){
 #define LD(v,n) do{ ensure_real_dlsym(); if(!(v)) v=(void*)(real_dlsym?real_dlsym(RTLD_NEXT,n):0); }while(0)
 static void tap_init(void) {
     if (inited) return; inited = 1;
-    LD(real_swap,"glXSwapBuffers"); LD(real_egl_swap,"eglSwapBuffers"); LD(p_query,"glXQueryDrawable"); LD(p_getiv,"glGetIntegerv");
+    LD(real_swap,"glXSwapBuffers"); LD(real_egl_swap,"eglSwapBuffers"); LD(p_query,"glXQueryDrawable"); LD(p_getiv,"glGetIntegerv"); LD(p_readpix,"glReadPixels");
     LD(p_gentex,"glGenTextures"); LD(p_bindtex,"glBindTexture"); LD(p_teximg,"glTexImage2D");
     LD(p_copytex,"glCopyTexImage2D"); LD(p_texpar,"glTexParameteri"); LD(p_active,"glActiveTexture");
     LD(p_genva,"glGenVertexArrays"); LD(p_bindva,"glBindVertexArray"); LD(p_createsh,"glCreateShader");
@@ -754,6 +797,9 @@ static void tap_frame(void *dpy, unsigned long drawable, int is_egl) {
             if(uMenuRect>=0){ float mw=(float)MENU_W,mh=(float)MENU_H,sc=1.0f; if(mh>(float)h*0.92f)sc=(float)h*0.92f/mh; mw*=sc; mh*=sc; p_u4f(uMenuRect,((float)w-mw)*0.5f,((float)h-mh)*0.5f,mw,mh); }
             p_draw(GL_TRIANGLES,0,3);
             if(++frames<=2 || (menu_on && (frames%30)==0)){ FILE *lf=tap_fopen("semutap.log","a"); if(lf){ fprintf(lf,"frame%ld: fb=%dx%d native=%dx%d content=(%d,%d,%d,%d) pri=%d game=(%d,%d,%d,%d) bd=(%d,%d,%d,%d) menu_on=%d effArt=%.1f bidx=%d bcnt=%d uMenuOn=%d uHasArt=%d\n",frames,w,h,nw,nh,g_state.content_x,g_state.content_y,g_state.content_w,g_state.content_h,priority_bezel,gx,gy,gw,gh,(int)bdx_gl,(int)bdy_gl,(int)bdw,(int)bdh,menu_on,eff_has_art,bezel_idx,bezel_count,(int)(uMenuOn>=0),(int)(uHasArt>=0)); fclose(lf);} }
+            { FILE *shotTrigger = tap_fopen("semu-shot", "r");
+              if (shotTrigger) { fclose(shotTrigger); tap_remove("semu-shot");
+                                 write_composited_shot(w, h); } }
             gl_state_restore();
         }
     }
