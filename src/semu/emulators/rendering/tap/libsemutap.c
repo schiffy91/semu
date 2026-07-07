@@ -123,7 +123,7 @@ static int inited, disabled, gl_ready, tap_style = 0, env_nw = 0, env_nh = 0, de
 static int standalone = 0;   // standalone emulators (PCSX2/Cemu/Azahar/Ryujinx): no tap report -> synth state from the live frame
 static int ov_l = 0, ov_r = 0, ov_t = 0, ov_b = 0;   // declared overscan crop, native px (L,R,T,B)
 // Radial-driven live state (XQueryKeymap edge-detect). retro_on: soft(1)/sharp(0);
-// priority_mode: 0 Game Priority, 1 Game (Top Screen) - dual only, 2 Bezel Priority, 3 Fit.
+// priority_mode: 0 Game, 1 Game(Top Screen) dual, 2 Bezel, 3 Fit, 4 Game(Top+Corner) dual.
 static int retro_on = 1, priority_mode = 0;
 static int bezel_idx = 0, shader_idx = 0, bezel_count = 1; // Phase 2: bezel cycle (idx==count -> OFF), shader 0..3
 static int nds_layout = 0, nds_pri = 3, nds_sec = 3, dual_mode = 0; // Phase 3: layout(0=vert,1=horiz) + scale idx (def 2x)
@@ -505,7 +505,7 @@ static void menu_val(int i,char*o){ o[0]=0;
     semu_tap_menu_value(&s,i,o,48);
 }
 static void menu_persist(void){   // menu state IS the override files (single source of truth; compositor re-reads them each frame)
-    FILE*f; if((f=tap_fopen("semu-priority","w"))){fputc(priority_mode==3?'f':priority_mode==2?'b':priority_mode==1?'t':'g',f);fclose(f);}
+    FILE*f; if((f=tap_fopen("semu-priority","w"))){fputc(priority_mode==4?'c':priority_mode==3?'f':priority_mode==2?'b':priority_mode==1?'t':'g',f);fclose(f);}
     if((f=tap_fopen("semu-bezel","w"))){fprintf(f,"%d",bezel_idx);fclose(f);}
     if((f=tap_fopen("semu-shader","w"))){fprintf(f,"%d",shader_idx);fclose(f);}
     if((f=tap_fopen("semu-ndslayout","w"))){fputc(nds_layout?'1':'0',f);fclose(f);}
@@ -595,7 +595,7 @@ static void tap_init(void) {
     const char *rl=getenv("SEMU_RETRO_LOD"); if(rl) retro_lod=(float)atof(rl);
     const char *rk=getenv("SEMU_RETRO_KEY"); if(rk&&rk[0]){ strncpy(retro_key,rk,31); retro_key[31]=0; }
     const char *rstart=getenv("SEMU_RETRO_START"); if(rstart&&rstart[0]=='0') retro_on=0;   // default 1 (retro/soft)
-    const char *pri=getenv("SEMU_TAP_PRIORITY"); if(pri&&(pri[0]=='b'||pri[0]=='B')) priority_mode=2; else if(pri&&(pri[0]=='t'||pri[0]=='T')) priority_mode=1; else if(pri&&(pri[0]=='f'||pri[0]=='F')) priority_mode=3; // bezel|top|fit|game
+    const char *pri=getenv("SEMU_TAP_PRIORITY"); if(pri&&(pri[0]=='b'||pri[0]=='B')) priority_mode=2; else if(pri&&(pri[0]=='t'||pri[0]=='T')) priority_mode=1; else if(pri&&(pri[0]=='f'||pri[0]=='F')) priority_mode=3; else if(pri&&(pri[0]=='c'||pri[0]=='C')) priority_mode=4; // bezel|top|fit|corner|game
     const char *dl=getenv("SEMU_TAP_DUAL"); if(dl&&dl[0]=='1') dual_mode=1;   // nds/3ds: split into two screens
     const char *fh=getenv("SEMU_TAP_FILL"); if(fh&&fh[0]=='1') fill_hole=1;   // handhelds: fill screen hole at aspect
     const char *aln=getenv("SEMU_TAP_ALIGN"); if(aln&&aln[0]=='1') align_on=1; // alignment diagnostic overlay
@@ -693,7 +693,7 @@ static void tap_frame(void *dpy, unsigned long drawable, int is_egl) {
                         } else {       // MENU closed: Menu opens it; 0-5 keep the direct toggles (backward compat)
                             if(i==6) { menu_on=1; menu_lvl=0; menu_sel=0; menu_dirty=1; }
                             else if(i==0) retro_on=!retro_on;
-                            else if(i==1) priority_mode=dual_mode?(priority_mode+1)%4:(priority_mode==0?2:priority_mode==2?3:0);   // dual: game/top/bezel/fit; single: game/bezel/fit
+                            else if(i==1) priority_mode=dual_mode?(priority_mode+1)%5:(priority_mode==0?2:priority_mode==2?3:0);   // dual: game/top/bezel/fit/corner; single: game/bezel/fit
                             else if(i==2) bezel_idx=(bezel_idx+1)%(bezel_count+1);
                             else if(i==3) shader_idx=(shader_idx+1)%4;
                             else if(i==4) nds_layout=!nds_layout;
@@ -704,7 +704,7 @@ static void tap_frame(void *dpy, unsigned long drawable, int is_egl) {
                 }
             }
             { FILE *rf=tap_fopen("semu-retro","r"); if(rf){ int ch=fgetc(rf); fclose(rf); retro_on=(ch=='0')?0:1; } }
-            { FILE *pf=tap_fopen("semu-priority","r"); if(pf){ int ch=fgetc(pf); fclose(pf); priority_mode=(ch=='f'||ch=='3')?3:(ch=='b'||ch=='2')?2:(ch=='t'||ch=='1')?1:0; } }
+            { FILE *pf=tap_fopen("semu-priority","r"); if(pf){ int ch=fgetc(pf); fclose(pf); priority_mode=(ch=='c'||ch=='4')?4:(ch=='f'||ch=='3')?3:(ch=='b'||ch=='2')?2:(ch=='t'||ch=='1')?1:0; } }
             { FILE *sf=tap_fopen("semu-shader","r"); if(sf){ int ch=fgetc(sf); fclose(sf); if(ch>='0'&&ch<='3') shader_idx=ch-'0'; } }
             { FILE *bf=tap_fopen("semu-bezel","r"); if(bf){ int ch=fgetc(bf); fclose(bf); if(ch>='0'&&ch<='9') bezel_idx=ch-'0'; } }
             { FILE *nl=tap_fopen("semu-ndslayout","r"); if(nl){ int ch=fgetc(nl); fclose(nl); nds_layout=(ch=='1')?1:0; } }
@@ -718,7 +718,7 @@ static void tap_frame(void *dpy, unsigned long drawable, int is_egl) {
                 if(ch=='u'){menu_sel=(menu_sel-1+N)%N;menu_dirty=1;} else if(ch=='d'){menu_sel=(menu_sel+1)%N;menu_dirty=1;}
                 else if(ch=='s') menu_activate(); else if(ch=='b'){ if(menu_lvl!=0){menu_lvl=0;menu_sel=0;menu_dirty=1;} else {menu_on=0;} } } } }
             float eff_has_art = (bezel_idx < bezel_count) ? has_art : 0.0f;   // bezel OFF when idx past the last art
-            if(dual_mode && priority_mode!=2 && priority_mode!=3) eff_has_art = 0.0f;   // dual game modes: screens win, no art (art holes would cap the integer scale)
+            if(dual_mode && priority_mode!=2 && priority_mode!=3) eff_has_art = 0.0f;   // dual game modes (0/1/4): screens win, no art
             // active variant -> its hole + art dims (variant b/c/d may be a different device model)
             int avar = bezel_idx; if(avar>=bezel_count) avar=(bezel_count>0?bezel_count-1:0); if(avar<0)avar=0;
             float sxn=scr_rects[avar][0], syn=scr_rects[avar][1], swn=scr_rects[avar][2], shn=scr_rects[avar][3];
@@ -778,10 +778,23 @@ static void tap_frame(void *dpy, unsigned long drawable, int is_egl) {
                         qw=rest; qh=(int)((float)qw*((float)nhp/(float)nw)); if(qh>h){ qh=h; qw=(int)((float)qh*((float)nw/(float)nhp)); }
                     }
                 }
+                else if(priority_mode==4){
+                    // GAME (TOP + CORNER): top screen as large as possible (non-integer,
+                    // aspect preserved, fills the canvas); bottom screen small in the
+                    // bottom-right corner as a picture-in-picture (~22%% canvas width).
+                    float ta=(float)nw/(float)nhp;
+                    if((float)w/(float)h>ta){ ph=h; pw=(int)((float)h*ta); }
+                    else { pw=w; ph=(int)((float)w/ta); }
+                    qw=(int)((float)w*0.22f); qh=(int)((float)qw/ta); if(qh<1)qh=1;
+                }
                 int half=sh/2;
                 s1x=sx; s1y=sy+half; s1w=sw; s1h=half;   // primary = top screen (upper half, GL high y)
                 s2x=sx; s2y=sy;      s2w=sw; s2h=half;   // secondary = bottom screen
-                if(nds_layout==0){ int gap=8,total=ph+qh+gap,top=(h-total)/2;   // VERTICAL: primary above secondary
+                if(priority_mode==4){                                          // TOP + CORNER: top centered fill, bottom PiP bottom-right
+                    int margin=12;
+                    r1x=(w-pw)/2; r1y=(h-ph)/2; r1w=pw; r1h=ph;
+                    r2x=w-qw-margin; r2y=margin; r2w=qw; r2h=qh;                 // GL origin: y=margin is the BOTTOM edge
+                } else if(nds_layout==0){ int gap=8,total=ph+qh+gap,top=(h-total)/2;   // VERTICAL: primary above secondary
                     r1x=(w-pw)/2; r1y=h-top-ph; r1w=pw; r1h=ph;
                     r2x=(w-qw)/2; r2y=h-(top+ph+gap)-qh; r2w=qw; r2h=qh;
                 } else { int gap=8,total=pw+qw+gap,left=(w-total)/2;            // HORIZONTAL: primary left of secondary

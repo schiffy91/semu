@@ -220,9 +220,9 @@ for system_dir in sorted(glob.glob(f"{project}/src/semu/systems/*/")):
             if os.path.exists(staged):
                 screen_chain = staged
 
-    modes = ["game", "top", "bezel", "fit"] if dual else ["game", "bezel", "fit"]
+    modes = ["game", "top", "topcorner", "bezel", "fit"] if dual else ["game", "bezel", "fit"]
     for mode in modes:
-        if dual and mode in ("game", "top"):
+        if dual and mode in ("game", "top", "topcorner"):
             gap = 8
             if mode == "game":
                 k = min((CANVAS_H - gap) // (2 * native_half_h), CANVAS_W // native_w)
@@ -245,6 +245,18 @@ for system_dir in sorted(glob.glob(f"{project}/src/semu/systems/*/")):
                 start = (CANVAS_H - total_h) // 2
                 rects = [[(CANVAS_W - top_w) // 2, start, top_w, top_h],
                          [(CANVAS_W - bottom_w) // 2, start + top_h + gap, bottom_w, bottom_h]]
+            if mode == "topcorner":
+                # top: aspect-fit fills the canvas (non-integer); bottom: small PiP
+                # in the bottom-right corner (~22% canvas width), native aspect.
+                ta = native_w / native_half_h
+                if CANVAS_W / CANVAS_H > ta:
+                    top_h = CANVAS_H; top_w = round_px(CANVAS_H * ta)
+                else:
+                    top_w = CANVAS_W; top_h = round_px(CANVAS_W / ta)
+                bw = round_px(CANVAS_W * 0.22); bh = round_px(bw / ta)
+                margin = 12
+                rects = [[(CANVAS_W - top_w) // 2, (CANVAS_H - top_h) // 2, top_w, top_h],
+                         [CANVAS_W - bw - margin, CANVAS_H - bh - margin, bw, bh]]
             cards = []
             for index, hole_id in enumerate(("top", "bottom")):
                 rect = rects[index]

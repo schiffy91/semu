@@ -3,10 +3,10 @@
   "enabled": true,
   "default_variant": "classic",
   "hole": {
-    "x": 0.1559,
-    "y": 0.115,
-    "w": 0.6883,
-    "h": 0.6925
+    "x": 0.205,
+    "y": 0.159,
+    "w": 0.59,
+    "h": 0.607
   },
   "variants": [
     {
@@ -16,6 +16,6 @@
     }
   ],
   "doc": {
-    "hole": "Derived from Duimon preset params (HSM screen/device placement, 16:9 aspect); confirm on-device with SEMU_TAP_ALIGN before shipping."
+    "hole": "Duimon magenta-probe screen region inset ~10% to the visible LCD (Duimon draws a black bezel frame around the game; the raw probe region includes it)."
   }
 }
