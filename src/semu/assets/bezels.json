@@ -126,7 +126,7 @@
       "base": "assets/bezels/gbc/classic.png",
       "color": "#7a3fb0"
     },
-    "assets/bezels/gba/classic.png": {
+    "assets/bezels/gba/charcoal.png": {
       "type": "flatten",
       "from": "duimon_mega_bezel",
       "layers": [
@@ -136,6 +136,14 @@
       ],
       "doc": {
         "layer_order": "GBA_Decal.png is the grip/shoulder plate; Duimon renders it UNDER the device shell (HSM_DECAL_LAYER_ORDER=2 < HSM_DEVICE_LAYER_ORDER=3). GBA_SP inverts this; do not copy this order to sp."
+      }
+    },
+    "assets/bezels/gba/classic.png": {
+      "type": "recolor",
+      "base": "assets/bezels/gba/charcoal.png",
+      "color": "#7a7ce0",
+      "doc": {
+        "why": "AGB-001 indigo colorway over the corrected layer stack (same recolor pipeline as the gb shells); charcoal ships as its own variant."
       }
     },
     "assets/bezels/gba/classic-glass.png": {
@@ -286,6 +294,129 @@
       "path": "src/semu/assets/bezels/black.png",
       "doc": {
         "why": "Pure-black slab for bezel-less layouts (nds big_screen); art stretches to the bezel rect so a tiny PNG suffices."
+      }
+    },
+    "assets/bezels/nds/vertical.png": {
+      "type": "panel",
+      "size": {
+        "w": 1280,
+        "h": 800
+      },
+      "plates": [
+        {
+          "kind": "round_rect",
+          "x": 0.285,
+          "y": 0.005,
+          "w": 0.43,
+          "h": 0.99,
+          "radius": 30,
+          "fill": "#23252c",
+          "stroke": "#3a3d47"
+        },
+        {
+          "kind": "round_rect",
+          "x": 0.311,
+          "y": 0.03,
+          "w": 0.378,
+          "h": 0.452,
+          "radius": 14,
+          "fill": "#0b0c10"
+        },
+        {
+          "kind": "round_rect",
+          "x": 0.311,
+          "y": 0.518,
+          "w": 0.378,
+          "h": 0.452,
+          "radius": 14,
+          "fill": "#0b0c10"
+        },
+        {
+          "kind": "round_rect",
+          "x": 0.285,
+          "y": 0.487,
+          "w": 0.43,
+          "h": 0.026,
+          "radius": 6,
+          "fill": "#16181d"
+        },
+        {
+          "kind": "circle",
+          "cx": 0.699,
+          "cy": 0.5,
+          "radius": 4,
+          "fill": "#57d688"
+        }
+      ],
+      "doc": {
+        "why": "DS clamshell plate: shell + two screen recesses + hinge + LED; screens land inside the recesses per the contract holes."
+      }
+    },
+    "assets/bezels/nds/horizontal.png": {
+      "type": "panel",
+      "size": {
+        "w": 1280,
+        "h": 800
+      },
+      "plates": [
+        {
+          "kind": "round_rect",
+          "x": 0.0,
+          "y": 0.185,
+          "w": 1.0,
+          "h": 0.63,
+          "radius": 26,
+          "fill": "#23252c",
+          "stroke": "#3a3d47"
+        },
+        {
+          "kind": "round_rect",
+          "x": 0.005,
+          "y": 0.202,
+          "w": 0.487,
+          "h": 0.596,
+          "radius": 14,
+          "fill": "#0b0c10"
+        },
+        {
+          "kind": "round_rect",
+          "x": 0.508,
+          "y": 0.202,
+          "w": 0.487,
+          "h": 0.596,
+          "radius": 14,
+          "fill": "#0b0c10"
+        }
+      ]
+    },
+    "assets/bezels/nds/big-screen.png": {
+      "type": "panel",
+      "size": {
+        "w": 1280,
+        "h": 800
+      },
+      "plates": [
+        {
+          "kind": "round_rect",
+          "x": 0.797,
+          "y": 0.0,
+          "w": 0.203,
+          "h": 1.0,
+          "radius": 0,
+          "fill": "#1b1d24"
+        },
+        {
+          "kind": "round_rect",
+          "x": 0.803,
+          "y": 0.368,
+          "w": 0.191,
+          "h": 0.264,
+          "radius": 12,
+          "fill": "#0b0c10"
+        }
+      ],
+      "doc": {
+        "why": "Max-immersion layout: the main screen area stays untouched black; only the secondary column gets a subtle plate + recess."
       }
     }
   },

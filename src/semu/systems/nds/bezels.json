@@ -26,7 +26,7 @@
     {
       "id": "vertical",
       "label": "DS Vertical",
-      "art": "assets/bezels/generic/black.png",
+      "art": "assets/bezels/nds/vertical.png",
       "hole": {
         "x": 0.325,
         "y": 0.05,
@@ -51,7 +51,7 @@
     {
       "id": "horizontal",
       "label": "Side by Side",
-      "art": "assets/bezels/generic/black.png",
+      "art": "assets/bezels/nds/horizontal.png",
       "hole": {
         "x": 0.0125,
         "y": 0.215,
@@ -76,7 +76,7 @@
     {
       "id": "big_screen",
       "label": "Big Screen",
-      "art": "assets/bezels/generic/black.png",
+      "art": "assets/bezels/nds/big-screen.png",
       "hole": {
         "x": 0.0,
         "y": 0.02,
@@ -100,6 +100,6 @@
     }
   ],
   "doc": {
-    "layouts": "All three variants are clean layouts on black (the tap aspect-fits each 256x192 screen inside its hole; screens land 4:3-exact at 1280x800). Duimon's DS device art was evaluated and rejected: the device is near-black and invisible on the black ground. big_screen = 4x integer primary + 20%-width secondary."
+    "layouts": "Panel arts (declarative 'panel' recipes) frame each layout: clamshell for vertical, wide plate for horizontal, minimal side plate for big_screen. The tap aspect-fits each 256x192 screen inside its hole."
   }
 }

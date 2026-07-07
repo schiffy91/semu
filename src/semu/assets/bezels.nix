@@ -25,7 +25,7 @@ let
     })
     (lib.filterAttrs (_: spec: spec.kind == "github") sources.upstreams);
 
-  imageTypes = [ "copy" "local" "flatten" "recolor" "glass" ];
+  imageTypes = [ "copy" "local" "flatten" "recolor" "glass" "panel" ];
   imageAssets = lib.filterAttrs (_: recipe: lib.elem recipe.type imageTypes)
     sources.assets;
 
@@ -59,6 +59,27 @@ let
         magick ${outFile recipe.base} -modulate 100,0,100 \
           \( +clone -fill "${recipe.color}" -colorize 100% \) \
           -compose Multiply -composite -alpha on "PNG32:$out/share/semu/${key}"
+      '';
+      # declarative drawn bezel: ordered plates (round_rect / circle) on a
+      # transparent canvas — the manifest entry IS the drawing, no upstream.
+      panel = let
+        canvasWidth = recipe.size.w;
+        canvasHeight = recipe.size.h;
+        pixelX = fraction: toString (builtins.floor (fraction * canvasWidth + 0.5));
+        pixelY = fraction: toString (builtins.floor (fraction * canvasHeight + 0.5));
+        drawPlate = plate:
+          if plate.kind == "circle" then
+            ''-draw "fill ${plate.fill} circle ${pixelX plate.cx},${pixelY plate.cy} ${
+              toString (builtins.floor (plate.cx * canvasWidth + 0.5) + plate.radius)},${pixelY plate.cy}" ''
+          else
+            ''-draw "${lib.optionalString (plate ? stroke)
+                "stroke ${plate.stroke} stroke-width 2 "}fill ${plate.fill} roundrectangle ${
+              pixelX plate.x},${pixelY plate.y} ${
+              pixelX (plate.x + plate.w)},${pixelY (plate.y + plate.h)} ${
+              toString plate.radius},${toString plate.radius}" '';
+      in ''
+        magick -size ${toString canvasWidth}x${toString canvasHeight} canvas:none \
+          ${lib.concatMapStrings drawPlate recipe.plates} "PNG32:$out/share/semu/${key}"
       '';
     }.${recipe.type};
 
