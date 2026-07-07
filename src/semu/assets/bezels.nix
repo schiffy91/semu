@@ -25,7 +25,7 @@ let
     })
     (lib.filterAttrs (_: spec: spec.kind == "github") sources.upstreams);
 
-  imageTypes = [ "copy" "local" "flatten" "recolor" "glass" "panel" ];
+  imageTypes = [ "copy" "local" "flatten" "recolor" "glass" "panel" "shell" ];
   imageAssets = lib.filterAttrs (_: recipe: lib.elem recipe.type imageTypes)
     sources.assets;
 
@@ -62,6 +62,26 @@ let
         magick ${outFile recipe.base} -modulate ${toString (recipe.brightness or 100)},0,100 \
           \( +clone -fill "${recipe.color}" -colorize 100% \) \
           -compose Multiply -composite -alpha on "PNG32:$out/share/semu/${key}"
+      '';
+      # photoreal device shell from a Duimon layer set. Their device base is
+      # black RGB with the shape in alpha, so: colorize + top-down light the
+      # silhouette, cut with its own alpha, lay the decal (modeled buttons),
+      # glass (control markings) and top (branding) Over, blend the LED plate
+      # additively (Screen — it is an opaque black plate with lit diodes),
+      # then cut again with the silhouette alpha.
+      shell = let
+        layer = path: treeFile recipe path;
+        overLayer = attribute:
+          lib.optionalString (recipe ? ${attribute})
+            " ${layer recipe.${attribute}} -compose Over -composite";
+        cut = " \\( ${layer recipe.silhouette} -alpha extract \\)"
+          + " -alpha off -compose CopyOpacity -composite";
+      in ''
+        shellDims=$(magick identify -format "%wx%h" ${layer recipe.silhouette})
+        magick ${layer recipe.silhouette} -fill "${recipe.color}" -colorize 100 \( -size "$shellDims" gradient:"${recipe.light or "#ffffff-#7e7e7e"}" \) -compose Multiply -composite${cut}${overLayer "decal"}${overLayer "glass_markings"}${overLayer "top"}${
+          lib.optionalString (recipe ? led)
+            " \\( ${layer recipe.led} -alpha off \\) -compose Screen -composite"
+        }${cut} -resize '2048x2048>' "PNG32:$out/share/semu/${key}"
       '';
       # declarative drawn bezel: ordered plates (round_rect / circle) on a
       # transparent canvas — the manifest entry IS the drawing, no upstream.

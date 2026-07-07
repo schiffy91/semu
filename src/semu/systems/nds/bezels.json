@@ -3,23 +3,23 @@
   "enabled": true,
   "default_variant": "vertical",
   "hole": {
-    "x": 0.325,
-    "y": 0.05,
-    "w": 0.35,
-    "h": 0.9
+    "x": 0.3542,
+    "y": 0.0667,
+    "w": 0.2917,
+    "h": 0.8666
   },
   "screen_holes": {
     "top": {
-      "x": 0.325,
-      "y": 0.05,
-      "w": 0.35,
-      "h": 0.42
+      "x": 0.3542,
+      "y": 0.0667,
+      "w": 0.2917,
+      "h": 0.3926
     },
     "bottom": {
-      "x": 0.325,
-      "y": 0.53,
-      "w": 0.35,
-      "h": 0.42
+      "x": 0.3542,
+      "y": 0.5407,
+      "w": 0.2917,
+      "h": 0.3926
     }
   },
   "variants": [
@@ -28,23 +28,23 @@
       "label": "DS Vertical",
       "art": "assets/bezels/nds/vertical.png",
       "hole": {
-        "x": 0.325,
-        "y": 0.05,
-        "w": 0.35,
-        "h": 0.9
+        "x": 0.3542,
+        "y": 0.0667,
+        "w": 0.2917,
+        "h": 0.8666
       },
       "screen_holes": {
         "top": {
-          "x": 0.325,
-          "y": 0.05,
-          "w": 0.35,
-          "h": 0.42
+          "x": 0.3542,
+          "y": 0.0667,
+          "w": 0.2917,
+          "h": 0.3926
         },
         "bottom": {
-          "x": 0.325,
-          "y": 0.53,
-          "w": 0.35,
-          "h": 0.42
+          "x": 0.3542,
+          "y": 0.5407,
+          "w": 0.2917,
+          "h": 0.3926
         }
       }
     },
@@ -53,30 +53,30 @@
       "label": "Side by Side",
       "art": "assets/bezels/nds/horizontal.png",
       "hole": {
-        "x": 0.0125,
-        "y": 0.215,
-        "w": 0.975,
-        "h": 0.57
+        "x": 0.03,
+        "y": 0.13,
+        "w": 0.94,
+        "h": 0.63
       },
       "screen_holes": {
         "top": {
-          "x": 0.0125,
-          "y": 0.215,
-          "w": 0.475,
-          "h": 0.57
+          "x": 0.03,
+          "y": 0.13,
+          "w": 0.45,
+          "h": 0.63
         },
         "bottom": {
-          "x": 0.5125,
-          "y": 0.215,
-          "w": 0.475,
-          "h": 0.57
+          "x": 0.52,
+          "y": 0.13,
+          "w": 0.45,
+          "h": 0.63
         }
       }
     },
     {
       "id": "big_screen",
       "label": "Big Screen",
-      "art": "assets/bezels/nds/big-screen.png",
+      "art": "assets/bezels/generic/black.png",
       "hole": {
         "x": 0.0,
         "y": 0.02,
@@ -100,6 +100,6 @@
     }
   ],
   "doc": {
-    "layouts": "Panel arts (declarative 'panel' recipes) frame each layout: clamshell for vertical, wide plate for horizontal, minimal side plate for big_screen. The tap aspect-fits each 256x192 screen inside its hole."
+    "layouts": "vertical/horizontal are Duimon shell renders (colorized silhouette + real modeled controls; holes art-relative from Duimon preset math); big_screen keeps the minimal panel (4x integer primary + native secondary)."
   }
 }
