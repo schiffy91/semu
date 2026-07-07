@@ -130,10 +130,13 @@
       "type": "flatten",
       "from": "duimon_mega_bezel",
       "layers": [
-        "Graphics/Nintendo_GBA/GBA_Device.png",
         "Graphics/Nintendo_GBA/GBA_Decal.png",
+        "Graphics/Nintendo_GBA/GBA_Device.png",
         "Graphics/Nintendo_GBA/GBA_Top.png"
-      ]
+      ],
+      "doc": {
+        "layer_order": "GBA_Decal.png is the grip/shoulder plate; Duimon renders it UNDER the device shell (HSM_DECAL_LAYER_ORDER=2 < HSM_DEVICE_LAYER_ORDER=3). GBA_SP inverts this; do not copy this order to sp."
+      }
     },
     "assets/bezels/gba/classic-glass.png": {
       "type": "glass",
@@ -169,30 +172,20 @@
       "from": "soqueroeu_tv",
       "path": "img/Nintendo_SuperNintendo/SuperNES.png"
     },
-    "assets/bezels/snes/solid-a.png": {
+    "assets/bezels/snes/retro-gray.png": {
       "type": "copy",
       "from": "soqueroeu_tv",
-      "path": "img/Nintendo_SuperNintendo/SuperNES_Solid_A.png"
+      "path": "img/Nintendo_SuperNintendo/SuperNES_V2.png"
     },
-    "assets/bezels/snes/solid-b.png": {
+    "assets/bezels/snes/retro-purple.png": {
       "type": "copy",
       "from": "soqueroeu_tv",
-      "path": "img/Nintendo_SuperNintendo/SuperNES_Solid_B.png"
+      "path": "img/Nintendo_SuperNintendo/SuperNES_V3.png"
     },
     "assets/bezels/genesis/tv.png": {
       "type": "copy",
       "from": "soqueroeu_tv",
       "path": "img/Sega_Genesis/Sega_Genesis.png"
-    },
-    "assets/bezels/genesis/solid-a.png": {
-      "type": "copy",
-      "from": "soqueroeu_tv",
-      "path": "img/Sega_Genesis/Sega_Genesis_Solid_A.png"
-    },
-    "assets/bezels/genesis/solid-b.png": {
-      "type": "copy",
-      "from": "soqueroeu_tv",
-      "path": "img/Sega_Genesis/Sega_Genesis_Solid_B.png"
     },
     "assets/bezels/n64/tv.png": {
       "type": "copy",
@@ -278,6 +271,21 @@
       "path": "src/semu/assets/bezels.json",
       "doc": {
         "why": "BezelResolver reads the generic table from the staged tree at $SEMU_ASSET_ROOT/share/semu/assets/bezels.json."
+      }
+    },
+    "assets/bezels/psp/classic.png": {
+      "type": "copy",
+      "from": "duimon_mega_bezel",
+      "path": "Graphics/SONY_PSP/PSP.png",
+      "doc": {
+        "provenance": "Duimon's pre-composed 16:9 PSP-E1000 render; PSP has no Device/Decal/Top stack and no Glass file, so this is a single-file copy."
+      }
+    },
+    "assets/bezels/generic/black.png": {
+      "type": "local",
+      "path": "src/semu/assets/bezels/black.png",
+      "doc": {
+        "why": "Pure-black slab for bezel-less layouts (nds big_screen); art stretches to the bezel rect so a tiny PNG suffices."
       }
     }
   },

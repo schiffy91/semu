@@ -1,14 +1,105 @@
 {
   "schema_version": 1,
   "enabled": true,
-  "default_variant": "dual",
-  "hole": { "x": 0.3300, "y": 0.0400, "w": 0.3400, "h": 0.9200 },
+  "default_variant": "vertical",
+  "hole": {
+    "x": 0.325,
+    "y": 0.05,
+    "w": 0.35,
+    "h": 0.9
+  },
+  "screen_holes": {
+    "top": {
+      "x": 0.325,
+      "y": 0.05,
+      "w": 0.35,
+      "h": 0.42
+    },
+    "bottom": {
+      "x": 0.325,
+      "y": 0.53,
+      "w": 0.35,
+      "h": 0.42
+    }
+  },
   "variants": [
     {
-      "id": "dual",
-      "label": "Dual Screen",
-      "art": "assets/bezels/generic/dual.png"
+      "id": "vertical",
+      "label": "DS Vertical",
+      "art": "assets/bezels/generic/black.png",
+      "hole": {
+        "x": 0.325,
+        "y": 0.05,
+        "w": 0.35,
+        "h": 0.9
+      },
+      "screen_holes": {
+        "top": {
+          "x": 0.325,
+          "y": 0.05,
+          "w": 0.35,
+          "h": 0.42
+        },
+        "bottom": {
+          "x": 0.325,
+          "y": 0.53,
+          "w": 0.35,
+          "h": 0.42
+        }
+      }
+    },
+    {
+      "id": "horizontal",
+      "label": "Side by Side",
+      "art": "assets/bezels/generic/black.png",
+      "hole": {
+        "x": 0.0125,
+        "y": 0.215,
+        "w": 0.975,
+        "h": 0.57
+      },
+      "screen_holes": {
+        "top": {
+          "x": 0.0125,
+          "y": 0.215,
+          "w": 0.475,
+          "h": 0.57
+        },
+        "bottom": {
+          "x": 0.5125,
+          "y": 0.215,
+          "w": 0.475,
+          "h": 0.57
+        }
+      }
+    },
+    {
+      "id": "big_screen",
+      "label": "Big Screen",
+      "art": "assets/bezels/generic/black.png",
+      "hole": {
+        "x": 0.0,
+        "y": 0.02,
+        "w": 1.0,
+        "h": 0.96
+      },
+      "screen_holes": {
+        "top": {
+          "x": 0.0,
+          "y": 0.02,
+          "w": 0.8,
+          "h": 0.96
+        },
+        "bottom": {
+          "x": 0.8,
+          "y": 0.38,
+          "w": 0.2,
+          "h": 0.24
+        }
+      }
     }
   ],
-  "doc": { "screen_holes": "Omitted: only the combined hole has been measured for nds. Add per-screen rects via gen-bezel-manifest when per-screen compositing lands." }
+  "doc": {
+    "layouts": "All three variants are clean layouts on black (the tap aspect-fits each 256x192 screen inside its hole; screens land 4:3-exact at 1280x800). Duimon's DS device art was evaluated and rejected: the device is near-black and invisible on the black ground. big_screen = 4x integer primary + 20%-width secondary."
+  }
 }

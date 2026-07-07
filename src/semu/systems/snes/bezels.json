@@ -2,7 +2,12 @@
   "schema_version": 1,
   "enabled": true,
   "default_variant": "tv",
-  "hole": { "x": 0.2542, "y": 0.0993, "w": 0.4917, "h": 0.6556 },
+  "hole": {
+    "x": 0.2542,
+    "y": 0.0993,
+    "w": 0.4917,
+    "h": 0.6556
+  },
   "variants": [
     {
       "id": "tv",
@@ -10,14 +15,17 @@
       "art": "assets/bezels/snes/tv.png"
     },
     {
-      "id": "solid_a",
-      "label": "Solid A",
-      "art": "assets/bezels/snes/solid-a.png"
+      "id": "retro_gray",
+      "label": "Retro Gray",
+      "art": "assets/bezels/snes/retro-gray.png"
     },
     {
-      "id": "solid_b",
-      "label": "Solid B",
-      "art": "assets/bezels/snes/solid-b.png"
+      "id": "retro_purple",
+      "label": "Retro Purple",
+      "art": "assets/bezels/snes/retro-purple.png"
     }
-  ]
+  ],
+  "doc": {
+    "variants": "SuperNES_V2/V3 tubes measured within ~0.5% of the shared hole."
+  }
 }

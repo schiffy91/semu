@@ -1,13 +1,21 @@
 {
   "schema_version": 1,
   "enabled": true,
-  "default_variant": "frame",
-  "hole": { "x": 0.0300, "y": 0.0800, "w": 0.9400, "h": 0.8400 },
+  "default_variant": "classic",
+  "hole": {
+    "x": 0.1538,
+    "y": 0.115,
+    "w": 0.6925,
+    "h": 0.6925
+  },
   "variants": [
     {
-      "id": "frame",
-      "label": "Widescreen Frame",
-      "art": "assets/bezels/generic/16x9.png"
+      "id": "classic",
+      "label": "Classic",
+      "art": "assets/bezels/psp/classic.png"
     }
-  ]
+  ],
+  "doc": {
+    "hole": "Derived from Duimon preset params (HSM screen/device placement, 16:9 aspect); confirm on-device with SEMU_TAP_ALIGN before shipping."
+  }
 }

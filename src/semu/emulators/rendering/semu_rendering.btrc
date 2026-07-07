@@ -147,6 +147,33 @@ class RenderPlanner {
                 + RenderPlanner.wireFloat(bezel.hole.w) + ","
                 + RenderPlanner.wireFloat(bezel.hole.h));
         }
+        if (dual && system.display.screens.size() >= 2) {
+            string primaryHole = RenderPlanner.screenHoleWireValue(bezel,
+                system.display.screens.get(0).id);
+            string secondaryHole = RenderPlanner.screenHoleWireValue(bezel,
+                system.display.screens.get(1).id);
+            if (!primaryHole.isEmpty() && !secondaryHole.isEmpty()) {
+                environment.put("SEMU_TAP_SCREEN_PRI", primaryHole);
+                environment.put("SEMU_TAP_SCREEN_SEC", secondaryHole);
+            }
+        }
         return environment;
+    }
+
+    // Wire value of the resolved per-screen hole for one display screen id;
+    // empty when the bezel declares no hole for that screen. Selection is by
+    // id — JSON key order is not display order, so callers pass
+    // display.screens[n].id, never a vector index.
+    class string screenHoleWireValue(ResolvedBezel bezel, string screenId) {
+        for (int holeIndex = 0; holeIndex < bezel.screenHoleIds.size(); holeIndex++) {
+            if (bezel.screenHoleIds.get(holeIndex).equals(screenId)) {
+                NormalizedRect hole = bezel.screenHoleRects.get(holeIndex);
+                return RenderPlanner.wireFloat(hole.x) + ","
+                    + RenderPlanner.wireFloat(hole.y) + ","
+                    + RenderPlanner.wireFloat(hole.w) + ","
+                    + RenderPlanner.wireFloat(hole.h);
+            }
+        }
+        return "";
     }
 }
