@@ -19,6 +19,20 @@
       "repo": "Soqueroeu-TV-Backgrounds_V2.0",
       "rev": "52bc4588d88c7bd319f922659d3ba74ed81ce959",
       "nar_hash": "sha256-8IoaMLw7i4TttFR08Ycji6COuaxaeNeBwPCLyfyTD90="
+    },
+    "switch_photo": {
+      "kind": "url",
+      "name": "Nintendo-Switch-wJoyCons-BlRd-Standing-FL.png",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/b/bc/Nintendo-Switch-wJoyCons-BlRd-Standing-FL.png",
+      "sha256_base32": "1pbkg9y2rgnjd53dbj8d71z1y16dp178p71in208vbrjbd4nwm2w",
+      "doc": "Public domain (photo Evan-Amos, background removal Gunnar.offel), Wikimedia Commons."
+    },
+    "wiiu_photo": {
+      "kind": "url",
+      "name": "Wii_U_Gamepad_schwarz_transparent.png",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/a/ac/Wii_U_Gamepad_schwarz_transparent.png",
+      "sha256_base32": "1wvsv4h7ifssnzki9f1hy3qn271qr8y7mq6m0arbljc4441b9any",
+      "doc": "CC BY-SA 4.0, Mariofan13, Wikimedia Commons; derived bezel art stays BY-SA with attribution."
     }
   },
   "generic": {
@@ -131,21 +145,11 @@
       "brightness": 145
     },
     "assets/bezels/gba/classic.png": {
-      "type": "flatten",
-      "from": "duimon_mega_bezel",
-      "layers": [
-        "Graphics/Nintendo_GBA/GBA_Decal.png",
-        "Graphics/Nintendo_GBA/GBA_Device.png",
-        "Graphics/Nintendo_GBA/GBA_Top.png"
-      ],
+      "type": "local",
+      "path": "src/semu/assets/baked/gba/classic.png",
       "doc": {
-        "layer_order": "GBA_Decal.png is the grip/shoulder plate; Duimon renders it UNDER the device shell (HSM_DECAL_LAYER_ORDER=2 < HSM_DEVICE_LAYER_ORDER=3). GBA_SP inverts this; do not copy this order to sp."
+        "provenance": "Baked from Duimon GBA-[ADV]-[LCD-GRID].slangp via bake_bezels.sh (librashader, day variant, intro off)."
       }
-    },
-    "assets/bezels/gba/classic-glass.png": {
-      "type": "glass",
-      "from": "duimon_mega_bezel",
-      "path": "Graphics/Nintendo_GBA/GBA_Glass.png"
     },
     "assets/bezels/gba/sp.png": {
       "type": "flatten",
@@ -280,145 +284,26 @@
         "provenance": "Duimon's pre-composed 16:9 PSP-E1000 render; PSP has no Device/Decal/Top stack and no Glass file, so this is a single-file copy."
       }
     },
-    "assets/bezels/generic/black.png": {
+    "assets/bezels/nds/vertical.png": {
       "type": "local",
-      "path": "src/semu/assets/bezels/black.png",
+      "path": "src/semu/assets/baked/nds/vertical.png",
       "doc": {
-        "why": "Pure-black slab for bezel-less layouts (nds big_screen); art stretches to the bezel rect so a tiny PNG suffices."
+        "provenance": "Baked from Duimon NDS_Vertical_Alt-[ADV]-[Guest].slangp via bake_bezels.sh (librashader, day variant, intro off)."
       }
     },
-    "assets/bezels/nds/vertical.png": {
-      "type": "shell",
-      "from": "duimon_mega_bezel",
-      "silhouette": "Graphics/Nintendo_NDS/NDS_Vertical.png",
-      "decal": "Graphics/Nintendo_NDS/NDS_Vertical_Decal.png",
-      "glass_markings": "Graphics/Nintendo_NDS/NDS_Vertical_Glass.png",
-      "led": "Graphics/Nintendo_NDS/NDS_Vertical_LED.png",
-      "color": "#9aa0ab",
-      "size": {
-        "w": 3840,
-        "h": 2160
-      },
-      "plates": [
-        {
-          "kind": "round_rect",
-          "x": 0.3402,
-          "y": 0.0656,
-          "w": 0.3197,
-          "h": 0.3948,
-          "radius": 18,
-          "fill": "#0a0b0e"
-        },
-        {
-          "kind": "round_rect",
-          "x": 0.3402,
-          "y": 0.5396,
-          "w": 0.3197,
-          "h": 0.3948,
-          "radius": 18,
-          "fill": "#0a0b0e"
-        }
-      ],
-      "grain": 0.4
-    },
     "assets/bezels/nds/horizontal.png": {
-      "type": "shell",
-      "from": "duimon_mega_bezel",
-      "silhouette": "Graphics/Nintendo_NDS/NDS.png",
-      "decal": "Graphics/Nintendo_NDS/NDS_Decal.png",
-      "glass_markings": "Graphics/Nintendo_NDS/NDS_Glass.png",
-      "led": "Graphics/Nintendo_NDS/NDS_LED.png",
-      "color": "#9aa0ab",
-      "top": "Graphics/Nintendo_NDS/NDS_Top.png",
-      "size": {
-        "w": 3840,
-        "h": 2160
-      },
-      "plates": [
-        {
-          "kind": "round_rect",
-          "x": 0.016,
-          "y": 0.1526,
-          "w": 0.478,
-          "h": 0.5848,
-          "radius": 22,
-          "fill": "#0a0b0e"
-        },
-        {
-          "kind": "round_rect",
-          "x": 0.506,
-          "y": 0.1526,
-          "w": 0.478,
-          "h": 0.5848,
-          "radius": 22,
-          "fill": "#0a0b0e"
-        }
-      ],
-      "grain": 0.4
-    },
-    "assets/bezels/nds/big-screen.png": {
-      "type": "panel",
-      "size": {
-        "w": 1280,
-        "h": 800
-      },
-      "plates": [
-        {
-          "kind": "round_rect",
-          "x": 0.797,
-          "y": 0.0,
-          "w": 0.203,
-          "h": 1.0,
-          "radius": 0,
-          "fill": "#1b1d24"
-        },
-        {
-          "kind": "round_rect",
-          "x": 0.803,
-          "y": 0.368,
-          "w": 0.191,
-          "h": 0.264,
-          "radius": 12,
-          "fill": "#0b0c10"
-        }
-      ],
+      "type": "local",
+      "path": "src/semu/assets/baked/nds/horizontal.png",
       "doc": {
-        "why": "Max-immersion layout: the main screen area stays untouched black; only the secondary column gets a subtle plate + recess."
+        "provenance": "Baked from Duimon NDS-[ADV]-[Guest].slangp via bake_bezels.sh (librashader, day variant, intro off)."
       }
     },
     "assets/bezels/n3ds/vertical.png": {
-      "type": "shell",
-      "from": "duimon_mega_bezel",
-      "silhouette": "Graphics/Nintendo_3DS/3DS_Vertical.png",
-      "decal": "Graphics/Nintendo_3DS/3DS_Vertical_Decal.png",
-      "glass_markings": "Graphics/Nintendo_3DS/3DS_Vertical_Glass.png",
-      "led": "Graphics/Nintendo_3DS/3DS_Vertical_LED.png",
-      "color": "#454b56",
-      "size": {
-        "w": 3840,
-        "h": 2160
-      },
-      "plates": [
-        {
-          "kind": "round_rect",
-          "x": 0.3242,
-          "y": 0.1006,
-          "w": 0.3517,
-          "h": 0.3248,
-          "radius": 18,
-          "fill": "#0a0b0e"
-        },
-        {
-          "kind": "round_rect",
-          "x": 0.3694,
-          "y": 0.5746,
-          "w": 0.2613,
-          "h": 0.3248,
-          "radius": 18,
-          "fill": "#0a0b0e"
-        }
-      ],
-      "grain": 0.4
+      "type": "local",
+      "path": "src/semu/assets/baked/n3ds/vertical.png",
+      "doc": {
+        "provenance": "Baked from Duimon 3DS_Vertical_Alt-[ADV]-[Guest].slangp via bake_bezels.sh (librashader, day variant, intro off)."
+      }
     },
     "assets/bezels/dreamcast/tv.png": {
       "type": "copy",
@@ -441,342 +326,33 @@
       "path": "img/Nintendo_Wii/Wii_4x3.png"
     },
     "assets/bezels/switch/handheld.png": {
-      "type": "panel",
-      "size": {
-        "w": 1280,
-        "h": 800
-      },
-      "plates": [
-        {
-          "kind": "round_rect",
-          "x": 0.055,
-          "y": 0.185,
-          "w": 0.105,
-          "h": 0.63,
-          "radius": 30,
-          "fill": "#0ab9e6"
-        },
-        {
-          "kind": "round_rect",
-          "x": 0.055,
-          "y": 0.185,
-          "w": 0.105,
-          "h": 0.315,
-          "radius": 30,
-          "fill": "rgba(255,255,255,0.10)"
-        },
-        {
-          "kind": "round_rect",
-          "x": 0.84,
-          "y": 0.185,
-          "w": 0.105,
-          "h": 0.63,
-          "radius": 30,
-          "fill": "#ff3c28"
-        },
-        {
-          "kind": "round_rect",
-          "x": 0.84,
-          "y": 0.185,
-          "w": 0.105,
-          "h": 0.315,
-          "radius": 30,
-          "fill": "rgba(255,255,255,0.10)"
-        },
-        {
-          "kind": "round_rect",
-          "x": 0.15,
-          "y": 0.185,
-          "w": 0.7,
-          "h": 0.63,
-          "radius": 8,
-          "fill": "#17181d",
-          "stroke": "#33353d"
-        },
-        {
-          "kind": "round_rect",
-          "x": 0.15,
-          "y": 0.185,
-          "w": 0.7,
-          "h": 0.09,
-          "radius": 8,
-          "fill": "rgba(255,255,255,0.05)"
-        },
-        {
-          "kind": "round_rect",
-          "x": 0.176,
-          "y": 0.208,
-          "w": 0.648,
-          "h": 0.584,
-          "radius": 8,
-          "fill": "#08090c"
-        },
-        {
-          "kind": "circle",
-          "cx": 0.1075,
-          "cy": 0.36,
-          "radius": 16,
-          "fill": "#0b0c0f"
-        },
-        {
-          "kind": "circle",
-          "cx": 0.1075,
-          "cy": 0.6,
-          "radius": 7,
-          "fill": "#0b0c0f"
-        },
-        {
-          "kind": "circle",
-          "cx": 0.088,
-          "cy": 0.645,
-          "radius": 7,
-          "fill": "#0b0c0f"
-        },
-        {
-          "kind": "circle",
-          "cx": 0.127,
-          "cy": 0.645,
-          "radius": 7,
-          "fill": "#0b0c0f"
-        },
-        {
-          "kind": "circle",
-          "cx": 0.1075,
-          "cy": 0.69,
-          "radius": 7,
-          "fill": "#0b0c0f"
-        },
-        {
-          "kind": "circle",
-          "cx": 0.143,
-          "cy": 0.22,
-          "radius": 4,
-          "fill": "#0b0c0f"
-        },
-        {
-          "kind": "circle",
-          "cx": 0.143,
-          "cy": 0.765,
-          "radius": 5,
-          "fill": "#0b0c0f"
-        },
-        {
-          "kind": "circle",
-          "cx": 0.8925,
-          "cy": 0.335,
-          "radius": 7,
-          "fill": "#0b0c0f"
-        },
-        {
-          "kind": "circle",
-          "cx": 0.873,
-          "cy": 0.38,
-          "radius": 7,
-          "fill": "#0b0c0f"
-        },
-        {
-          "kind": "circle",
-          "cx": 0.912,
-          "cy": 0.38,
-          "radius": 7,
-          "fill": "#0b0c0f"
-        },
-        {
-          "kind": "circle",
-          "cx": 0.8925,
-          "cy": 0.425,
-          "radius": 7,
-          "fill": "#0b0c0f"
-        },
-        {
-          "kind": "circle",
-          "cx": 0.8925,
-          "cy": 0.6,
-          "radius": 16,
-          "fill": "#0b0c0f"
-        },
-        {
-          "kind": "circle",
-          "cx": 0.857,
-          "cy": 0.22,
-          "radius": 4,
-          "fill": "#0b0c0f"
-        },
-        {
-          "kind": "circle",
-          "cx": 0.857,
-          "cy": 0.765,
-          "radius": 5,
-          "fill": "#0b0c0f"
-        }
-      ],
+      "type": "photo",
+      "from": "switch_photo",
+      "rotate": -7.53,
       "doc": {
-        "why": "No upstream Switch art exists; drawn handheld with joy-con colorways. Screen hole is exact 16:9."
-      },
-      "grain": 0.4
+        "provenance": "Photoreal Switch (neon joy-cons, screen off); deskewed by the measured 7.53-degree screen-edge tilt, trimmed to silhouette."
+      }
     },
     "assets/bezels/wiiu/gamepad.png": {
-      "type": "panel",
-      "size": {
-        "w": 1280,
-        "h": 800
-      },
-      "plates": [
-        {
-          "kind": "round_rect",
-          "x": 0.03,
-          "y": 0.155,
-          "w": 0.94,
-          "h": 0.69,
-          "radius": 52,
-          "fill": "#1b1c21",
-          "stroke": "#33353d"
-        },
-        {
-          "kind": "round_rect",
-          "x": 0.03,
-          "y": 0.155,
-          "w": 0.94,
-          "h": 0.12,
-          "radius": 52,
-          "fill": "rgba(255,255,255,0.05)"
-        },
-        {
-          "kind": "round_rect",
-          "x": 0.247,
-          "y": 0.2528,
-          "w": 0.506,
-          "h": 0.4944,
-          "radius": 10,
-          "fill": "#08090c"
-        },
-        {
-          "kind": "circle",
-          "cx": 0.5,
-          "cy": 0.18,
-          "radius": 4,
-          "fill": "#0b0c0f"
-        },
-        {
-          "kind": "circle",
-          "cx": 0.12,
-          "cy": 0.31,
-          "radius": 16,
-          "fill": "#0b0c0f"
-        },
-        {
-          "kind": "circle",
-          "cx": 0.88,
-          "cy": 0.31,
-          "radius": 16,
-          "fill": "#0b0c0f"
-        },
-        {
-          "kind": "round_rect",
-          "x": 0.096,
-          "y": 0.545,
-          "w": 0.048,
-          "h": 0.022,
-          "radius": 4,
-          "fill": "#0b0c0f"
-        },
-        {
-          "kind": "round_rect",
-          "x": 0.1145,
-          "y": 0.512,
-          "w": 0.011,
-          "h": 0.088,
-          "radius": 4,
-          "fill": "#0b0c0f"
-        },
-        {
-          "kind": "circle",
-          "cx": 0.88,
-          "cy": 0.525,
-          "radius": 8,
-          "fill": "#0b0c0f"
-        },
-        {
-          "kind": "circle",
-          "cx": 0.86,
-          "cy": 0.575,
-          "radius": 8,
-          "fill": "#0b0c0f"
-        },
-        {
-          "kind": "circle",
-          "cx": 0.9,
-          "cy": 0.575,
-          "radius": 8,
-          "fill": "#0b0c0f"
-        },
-        {
-          "kind": "circle",
-          "cx": 0.88,
-          "cy": 0.625,
-          "radius": 8,
-          "fill": "#0b0c0f"
-        },
-        {
-          "kind": "circle",
-          "cx": 0.46,
-          "cy": 0.795,
-          "radius": 5,
-          "fill": "#0b0c0f"
-        },
-        {
-          "kind": "circle",
-          "cx": 0.5,
-          "cy": 0.795,
-          "radius": 5,
-          "fill": "#0b0c0f"
-        },
-        {
-          "kind": "circle",
-          "cx": 0.54,
-          "cy": 0.795,
-          "radius": 5,
-          "fill": "#0b0c0f"
-        }
-      ],
+      "type": "photo",
+      "from": "wiiu_photo",
       "doc": {
-        "why": "No upstream Wii U art; drawn GamePad shell. Screen hole is exact 16:9."
-      },
-      "grain": 0.4
+        "provenance": "Photoreal Wii U GamePad (screen off), straight-on shot, trimmed to silhouette. CC BY-SA 4.0 Mariofan13."
+      }
     },
     "assets/bezels/n3ds/horizontal.png": {
-      "type": "shell",
-      "from": "duimon_mega_bezel",
-      "silhouette": "Graphics/Nintendo_3DS/3DS.png",
-      "decal": "Graphics/Nintendo_3DS/3DS_Decal.png",
-      "glass_markings": "Graphics/Nintendo_3DS/3DS_Glass.png",
-      "led": "Graphics/Nintendo_3DS/3DS_LED.png",
-      "color": "#454b56",
-      "grain": 0.4,
-      "size": {
-        "w": 3840,
-        "h": 2160
-      },
-      "plates": [
-        {
-          "kind": "round_rect",
-          "x": 0.006,
-          "y": 0.2064,
-          "w": 0.468,
-          "h": 0.4672,
-          "radius": 20,
-          "fill": "#0a0b0e"
-        },
-        {
-          "kind": "round_rect",
-          "x": 0.571,
-          "y": 0.1956,
-          "w": 0.398,
-          "h": 0.4888,
-          "radius": 20,
-          "fill": "#0a0b0e"
-        }
-      ]
+      "type": "local",
+      "path": "src/semu/assets/baked/n3ds/horizontal.png",
+      "doc": {
+        "provenance": "Baked from Duimon 3DS-[ADV]-[Guest].slangp via bake_bezels.sh (librashader, day variant, intro off)."
+      }
+    },
+    "assets/bezels/nds/big_screen.png": {
+      "type": "local",
+      "path": "src/semu/assets/baked/nds/big_screen.png",
+      "doc": {
+        "provenance": "Baked from Duimon NDS_Hybrid-[ADV]-[Guest].slangp via bake_bezels.sh (librashader, day variant, intro off)."
+      }
     }
   },
   "staging": [

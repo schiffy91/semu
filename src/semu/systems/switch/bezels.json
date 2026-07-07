@@ -3,10 +3,10 @@
   "enabled": true,
   "default_variant": "handheld",
   "hole": {
-    "x": 0.182,
-    "y": 0.2138,
-    "w": 0.636,
-    "h": 0.5725
+    "x": 0.2025,
+    "y": 0.1386,
+    "w": 0.5717,
+    "h": 0.7266
   },
   "variants": [
     {
@@ -16,6 +16,6 @@
     }
   ],
   "doc": {
-    "hole": "Exact 16:9 (998x562 at 1280x800) inside the drawn joy-con shell."
+    "hole": "Measured from the photo: flood-fill of the off-screen gray panel from image center (see bezels.json photo recipes)."
   }
 }

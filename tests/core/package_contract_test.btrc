@@ -2,7 +2,7 @@
 //
 // Covers: es_systems.xml structural comparison against the golden Deck
 // config (system count + exact command lines for gb/n64/dreamcast on linux
-// and the ares n64 command on macos), portable es_find_rules coverage
+// and the retroarch n64 command on macos), portable es_find_rules coverage
 // (systempath shim names + %ESPATH% entries, no bootstrap-machine paths) for
 // every linux emulator plus the RetroArch corepath rules, AppRun /
 // semu.desktop template emission (content + exec bit), the semu.json
@@ -80,10 +80,6 @@ class PackageContractTest {
             "gb both-case extension list");
         failures = failures + PackageContractTest.require(xml,
             "<platform>genesis,megadrive</platform>", "genesis multi-platform join");
-        if (xml.contains("%EMULATOR_ARES%")) {
-            failures = failures + PackageContractTest.fail(
-                "macos-only ares binding leaked into linux es_systems");
-        }
         if (xml.contains("semu-settings")) {
             failures = failures + PackageContractTest.fail(
                 "retired semu-settings synthetic system was emitted");
@@ -121,10 +117,6 @@ class PackageContractTest {
         if (linuxEmulatorCount != 5) {
             failures = failures + PackageContractTest.fail(
                 f"expected 5 linux emulators, got {linuxEmulatorCount}");
-        }
-        if (rules.contains("<emulator name=\"ARES\">")) {
-            failures = failures + PackageContractTest.fail(
-                "macos-only ares got a linux find rule");
         }
         if (rules.contains(repoRoot)) {
             failures = failures + PackageContractTest.fail(
