@@ -107,6 +107,68 @@ static void check_bezel_priority_centers_when_integer_scale_leaves_margin(void) 
     if (g.game_h % in.native_h != 0) { fail_("integer-margin height not native integer"); }
 }
 
+static void check_game_priority_fills_when_integer_degenerate(void) {
+    /* 640x480-class output on a 1280x800 deck: 2x does not fit, and 1x would
+     * waste half the screen - game priority falls back to aspect fill. */
+    SemuTapGeometryInput in = base_input();
+    SemuTapGeometry g;
+    in.native_w = 640;
+    in.native_h = 480;
+    in.priority_bezel = 0;
+    if (!semu_tap_compute_geometry(&in, &g)) { fail_("degenerate-fill compute"); }
+    expect_close("degenerate-fill h", (float)g.game_h, 800.0f, 0.01f);
+    expect_close("degenerate-fill w", (float)g.game_w, 1067.0f, 0.01f);
+}
+
+static void check_bezel_priority_is_flush_dreamcast(void) {
+    /* Integer game, bezel grown around it uncut: the hole must equal the
+     * game exactly (flush), never a slack ring. */
+    SemuTapGeometryInput in = base_input();
+    SemuTapGeometry g;
+    float hx, hy, hw, hh;
+    in.native_w = 640;
+    in.native_h = 480;
+    in.art_w = 2048;
+    in.art_h = 1152;
+    in.hole_x = 0.249f;
+    in.hole_y = 0.1047f;
+    in.hole_w = 0.5015f;
+    in.hole_h = 0.6683f;
+    in.priority_bezel = 1;
+    if (!semu_tap_compute_geometry(&in, &g)) { fail_("flush-dc compute"); }
+    semu_tap_hole_rect_gl(&in, &g, &hx, &hy, &hw, &hh);
+    expect_close("flush-dc game w", (float)g.game_w, 640.0f, 0.01f);
+    expect_close("flush-dc game h", (float)g.game_h, 480.0f, 0.01f);
+    expect_close("flush-dc hole w", hw, 640.0f, 0.75f);
+    expect_close("flush-dc hole h", hh, 480.0f, 0.75f);
+    if (g.bezel_w > 1280.5f || g.bezel_h > 800.5f) { fail_("flush-dc bezel cut off"); }
+}
+
+static void check_bezel_priority_is_flush_psp(void) {
+    /* Small-hole handheld: the bezel shrinks so 1x sits flush - no floating
+     * game inside an oversized opening. */
+    SemuTapGeometryInput in = base_input();
+    SemuTapGeometry g;
+    float hx, hy, hw, hh;
+    in.native_w = 480;
+    in.native_h = 272;
+    in.display_aspect = 480.0f / 272.0f;
+    in.art_w = 2048;
+    in.art_h = 1152;
+    in.hole_x = 0.1559f;
+    in.hole_y = 0.115f;
+    in.hole_w = 0.6883f;
+    in.hole_h = 0.6925f;
+    in.priority_bezel = 1;
+    if (!semu_tap_compute_geometry(&in, &g)) { fail_("flush-psp compute"); }
+    semu_tap_hole_rect_gl(&in, &g, &hx, &hy, &hw, &hh);
+    expect_close("flush-psp game w", (float)g.game_w, 480.0f, 0.01f);
+    expect_close("flush-psp game h", (float)g.game_h, 272.0f, 0.01f);
+    expect_close("flush-psp hole w", hw, 480.0f, 0.75f);
+    expect_close("flush-psp hole h", hh, 272.0f, 0.75f);
+    expect_close("flush-psp bezel w", g.bezel_w, 480.0f / 0.6883f, 1.0f);
+}
+
 static void check_priority_falls_back_without_art(void) {
     SemuTapGeometryInput in = base_input();
     SemuTapGeometry g;
@@ -144,6 +206,9 @@ int main(void) {
     check_bezel_priority_fits_art_and_centers_game();
     check_bezel_priority_centers_when_integer_scale_leaves_margin();
     check_priority_falls_back_without_art();
+    check_game_priority_fills_when_integer_degenerate();
+    check_bezel_priority_is_flush_dreamcast();
+    check_bezel_priority_is_flush_psp();
     check_fill_hole_uses_full_cutout();
     printf("OK tap geometry smoke\n");
     return 0;

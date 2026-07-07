@@ -2,18 +2,61 @@
   "schema_version": 1,
   "name": "Nintendo Wii",
   "aliases": [],
-  "es_de": { "platforms": ["wii"], "theme": "wii" },
+  "es_de": {
+    "platforms": [
+      "wii"
+    ],
+    "theme": "wii"
+  },
   "rom": {
     "dir": "wii",
-    "extensions": [".ciso", ".dol", ".elf", ".gcm", ".gcz", ".iso", ".nkit.iso",
-                   ".rvz", ".tgc", ".wad", ".wbfs", ".wia", ".7z", ".zip"]
+    "extensions": [
+      ".ciso",
+      ".dol",
+      ".elf",
+      ".gcm",
+      ".gcz",
+      ".iso",
+      ".nkit.iso",
+      ".rvz",
+      ".tgc",
+      ".wad",
+      ".wbfs",
+      ".wia",
+      ".7z",
+      ".zip"
+    ]
   },
-  "emulators": [ { "emulator": "dolphin" } ],
+  "emulators": [
+    {
+      "emulator": "dolphin"
+    }
+  ],
   "controller_profile": "steam_deck",
   "display": {
-    "screens": [ { "id": "main", "native": { "w": 256, "h": 240 } } ],
-    "aspect": { "w": 4, "h": 3 },
-    "widescreen": { "aspect": { "w": 16, "h": 9 }, "detect": "emulator_config" }
+    "screens": [
+      {
+        "id": "main",
+        "native": {
+          "w": 640,
+          "h": 480
+        }
+      }
+    ],
+    "aspect": {
+      "w": 4,
+      "h": 3
+    },
+    "widescreen": {
+      "aspect": {
+        "w": 16,
+        "h": 9
+      },
+      "detect": "emulator_config"
+    },
+    "doc": {
+      "native": "Real 1x emulator output (was a 256x240 placeholder that corrupted integer placement)."
+    }
   },
   "render": {
     "style": "console",

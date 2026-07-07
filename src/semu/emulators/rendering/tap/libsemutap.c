@@ -122,8 +122,9 @@ static PFN_qkm p_qkm; static PFN_k2kc p_k2kc; static PFN_s2ks p_s2ks;
 static int inited, disabled, gl_ready, tap_style = 0, env_nw = 0, env_nh = 0, debug_on = 0;
 static int standalone = 0;   // standalone emulators (PCSX2/Cemu/Azahar/Ryujinx): no tap report -> synth state from the live frame
 static int ov_l = 0, ov_r = 0, ov_t = 0, ov_b = 0;   // declared overscan crop, native px (L,R,T,B)
-// Radial-driven live state (XQueryKeymap edge-detect). retro_on: soft(1)/sharp(0); priority_bezel: bezel(1)/game(0).
-static int retro_on = 1, priority_bezel = 0;
+// Radial-driven live state (XQueryKeymap edge-detect). retro_on: soft(1)/sharp(0);
+// priority_mode: 0 Game Priority, 1 Game (Top Screen) - dual only, 2 Bezel Priority.
+static int retro_on = 1, priority_mode = 0;
 static int bezel_idx = 0, shader_idx = 0, bezel_count = 1; // Phase 2: bezel cycle (idx==count -> OFF), shader 0..3
 static int nds_layout = 0, nds_pri = 3, nds_sec = 3, dual_mode = 0; // Phase 3: layout(0=vert,1=horiz) + scale idx (def 2x)
 static int fill_hole = 0;   // handhelds: fill the device's screen hole at display aspect (non-integer, Duimon HSM_NON_INTEGER_SCALE) instead of largest-integer
@@ -481,14 +482,14 @@ static void mb_disc(int cx,int cy,int rad,int r,int g,int b,int a){ if(!menu_buf
 static SemuTapMenuState menu_state(void){
     SemuTapMenuState s; memset(&s,0,sizeof(s));
     s.level=menu_lvl; s.selected=menu_sel; s.system_kind=sys_kind;
-    s.priority_bezel=priority_bezel; s.bezel_index=bezel_idx; s.bezel_count=bezel_count; s.shader_index=shader_idx;
+    s.priority_mode=priority_mode; s.bezel_index=bezel_idx; s.bezel_count=bezel_count; s.shader_index=shader_idx;
     s.save_slot=save_slot; s.nds_layout=nds_layout; s.nds_primary_scale=nds_pri; s.nds_secondary_scale=nds_sec; s.wii_controller=wii_ctrl;
     semu_tap_menu_normalize(&s);
     return s;
 }
 static void menu_apply_state(const SemuTapMenuState *s){
     if(!s)return;
-    menu_lvl=s->level; menu_sel=s->selected; priority_bezel=s->priority_bezel; bezel_idx=s->bezel_index; shader_idx=s->shader_index;
+    menu_lvl=s->level; menu_sel=s->selected; priority_mode=s->priority_mode; bezel_idx=s->bezel_index; shader_idx=s->shader_index;
     save_slot=s->save_slot; nds_layout=s->nds_layout; nds_pri=s->nds_primary_scale; nds_sec=s->nds_secondary_scale; wii_ctrl=s->wii_controller;
 }
 static int menu_count(void){   // number of wedges at the current level
@@ -504,7 +505,7 @@ static void menu_val(int i,char*o){ o[0]=0;
     semu_tap_menu_value(&s,i,o,48);
 }
 static void menu_persist(void){   // menu state IS the override files (single source of truth; compositor re-reads them each frame)
-    FILE*f; if((f=tap_fopen("semu-priority","w"))){fputc(priority_bezel?'b':'g',f);fclose(f);}
+    FILE*f; if((f=tap_fopen("semu-priority","w"))){fputc(priority_mode==2?'b':priority_mode==1?'t':'g',f);fclose(f);}
     if((f=tap_fopen("semu-bezel","w"))){fprintf(f,"%d",bezel_idx);fclose(f);}
     if((f=tap_fopen("semu-shader","w"))){fprintf(f,"%d",shader_idx);fclose(f);}
     if((f=tap_fopen("semu-ndslayout","w"))){fputc(nds_layout?'1':'0',f);fclose(f);}
@@ -594,7 +595,7 @@ static void tap_init(void) {
     const char *rl=getenv("SEMU_RETRO_LOD"); if(rl) retro_lod=(float)atof(rl);
     const char *rk=getenv("SEMU_RETRO_KEY"); if(rk&&rk[0]){ strncpy(retro_key,rk,31); retro_key[31]=0; }
     const char *rstart=getenv("SEMU_RETRO_START"); if(rstart&&rstart[0]=='0') retro_on=0;   // default 1 (retro/soft)
-    const char *pri=getenv("SEMU_TAP_PRIORITY"); if(pri&&(pri[0]=='b'||pri[0]=='B')) priority_bezel=1; // bezel|game
+    const char *pri=getenv("SEMU_TAP_PRIORITY"); if(pri&&(pri[0]=='b'||pri[0]=='B')) priority_mode=2; else if(pri&&(pri[0]=='t'||pri[0]=='T')) priority_mode=1; // bezel|top|game
     const char *dl=getenv("SEMU_TAP_DUAL"); if(dl&&dl[0]=='1') dual_mode=1;   // nds/3ds: split into two screens
     const char *fh=getenv("SEMU_TAP_FILL"); if(fh&&fh[0]=='1') fill_hole=1;   // handhelds: fill screen hole at aspect
     const char *aln=getenv("SEMU_TAP_ALIGN"); if(aln&&aln[0]=='1') align_on=1; // alignment diagnostic overlay
@@ -692,7 +693,7 @@ static void tap_frame(void *dpy, unsigned long drawable, int is_egl) {
                         } else {       // MENU closed: Menu opens it; 0-5 keep the direct toggles (backward compat)
                             if(i==6) { menu_on=1; menu_lvl=0; menu_sel=0; menu_dirty=1; }
                             else if(i==0) retro_on=!retro_on;
-                            else if(i==1) priority_bezel=!priority_bezel;
+                            else if(i==1) priority_mode=(priority_mode+(dual_mode?1:2))%3;   // dual cycles game/top/bezel; single toggles game/bezel
                             else if(i==2) bezel_idx=(bezel_idx+1)%(bezel_count+1);
                             else if(i==3) shader_idx=(shader_idx+1)%4;
                             else if(i==4) nds_layout=!nds_layout;
@@ -703,7 +704,7 @@ static void tap_frame(void *dpy, unsigned long drawable, int is_egl) {
                 }
             }
             { FILE *rf=tap_fopen("semu-retro","r"); if(rf){ int ch=fgetc(rf); fclose(rf); retro_on=(ch=='0')?0:1; } }
-            { FILE *pf=tap_fopen("semu-priority","r"); if(pf){ int ch=fgetc(pf); fclose(pf); priority_bezel=(ch=='b'||ch=='1')?1:0; } }
+            { FILE *pf=tap_fopen("semu-priority","r"); if(pf){ int ch=fgetc(pf); fclose(pf); priority_mode=(ch=='b'||ch=='2')?2:(ch=='t'||ch=='1')?1:0; } }
             { FILE *sf=tap_fopen("semu-shader","r"); if(sf){ int ch=fgetc(sf); fclose(sf); if(ch>='0'&&ch<='3') shader_idx=ch-'0'; } }
             { FILE *bf=tap_fopen("semu-bezel","r"); if(bf){ int ch=fgetc(bf); fclose(bf); if(ch>='0'&&ch<='9') bezel_idx=ch-'0'; } }
             { FILE *nl=tap_fopen("semu-ndslayout","r"); if(nl){ int ch=fgetc(nl); fclose(nl); nds_layout=(ch=='1')?1:0; } }
@@ -717,7 +718,7 @@ static void tap_frame(void *dpy, unsigned long drawable, int is_egl) {
                 if(ch=='u'){menu_sel=(menu_sel-1+N)%N;menu_dirty=1;} else if(ch=='d'){menu_sel=(menu_sel+1)%N;menu_dirty=1;}
                 else if(ch=='s') menu_activate(); else if(ch=='b'){ if(menu_lvl!=0){menu_lvl=0;menu_sel=0;menu_dirty=1;} else {menu_on=0;} } } } }
             float eff_has_art = (bezel_idx < bezel_count) ? has_art : 0.0f;   // bezel OFF when idx past the last art
-            if(dual_mode && !priority_bezel) eff_has_art = 0.0f;   // dual game-priority: screens win, no art (art holes would cap the integer scale)
+            if(dual_mode && priority_mode!=2) eff_has_art = 0.0f;   // dual game modes: screens win, no art (art holes would cap the integer scale)
             // active variant -> its hole + art dims (variant b/c/d may be a different device model)
             int avar = bezel_idx; if(avar>=bezel_count) avar=(bezel_count>0?bezel_count-1:0); if(avar<0)avar=0;
             float sxn=scr_rects[avar][0], syn=scr_rects[avar][1], swn=scr_rects[avar][2], shn=scr_rects[avar][3];
@@ -737,7 +738,7 @@ static void tap_frame(void *dpy, unsigned long drawable, int is_egl) {
             SemuTapGeometryInput geom_in; memset(&geom_in,0,sizeof(geom_in));
             geom_in.win_w=w; geom_in.win_h=h; geom_in.native_w=nw; geom_in.native_h=nh;
             geom_in.display_aspect=disp_aspect>0.01f ? disp_aspect : (float)nw/(float)nh;
-            geom_in.priority_bezel=priority_bezel; geom_in.fill_hole=fill_hole;
+            geom_in.priority_bezel=(priority_mode==2); geom_in.fill_hole=fill_hole;
             geom_in.has_art=eff_has_art>0.5f; geom_in.art_w=awv; geom_in.art_h=ahv;
             geom_in.hole_x=sxn; geom_in.hole_y=syn; geom_in.hole_w=swn; geom_in.hole_h=shn;
             SemuTapGeometry geom;
@@ -752,7 +753,7 @@ static void tap_frame(void *dpy, unsigned long drawable, int is_egl) {
                 int pi=nds_pri<0?0:(nds_pri>4?4:nds_pri), si=nds_sec<0?0:(nds_sec>4?4:nds_sec);
                 int nhp=(nh>=288)?nh/2:nh;   // per-screen native height (split the combined nds/3ds frame)
                 int pw=(int)(scl[pi]*nw), ph=(int)(scl[pi]*nhp), qw=(int)(scl[si]*nw), qh=(int)(scl[si]*nhp);
-                if(!priority_bezel){
+                if(priority_mode==0){
                     // GAME PRIORITY: both screens at the largest EQUAL integer scale that
                     // fits the layout (stack or side-by-side with the 8px gap) on screen.
                     int gap=8,k;
@@ -760,6 +761,22 @@ static void tap_frame(void *dpy, unsigned long drawable, int is_egl) {
                     else { k=(w-gap)/(2*nw); int kh=h/nhp; if(kh<k)k=kh; }
                     if(k<1)k=1;
                     pw=k*nw; ph=k*nhp; qw=k*nw; qh=k*nhp;
+                } else if(priority_mode==1){
+                    // GAME (TOP SCREEN) PRIORITY: the top screen takes the largest integer
+                    // scale that still leaves ~20%% of the axis for the bottom screen; the
+                    // bottom aspect-fits whatever remains (fractional is fine there).
+                    int gap=8,k;
+                    if(nds_layout==0){
+                        k=(int)((h*0.8f)/nhp); int kw=w/nw; if(kw<k)k=kw; if(k<1)k=1;
+                        pw=k*nw; ph=k*nhp;
+                        int rest=h-ph-gap; if(rest<nhp/4) rest=nhp/4;
+                        qh=rest; qw=(int)((float)qh*((float)nw/(float)nhp)); if(qw>w){ qw=w; qh=(int)((float)qw*((float)nhp/(float)nw)); }
+                    } else {
+                        k=(int)((w*0.8f)/nw); int kh=h/nhp; if(kh<k)k=kh; if(k<1)k=1;
+                        pw=k*nw; ph=k*nhp;
+                        int rest=w-pw-gap; if(rest<nw/4) rest=nw/4;
+                        qw=rest; qh=(int)((float)qw*((float)nhp/(float)nw)); if(qh>h){ qh=h; qw=(int)((float)qh*((float)nw/(float)nhp)); }
+                    }
                 }
                 int half=sh/2;
                 s1x=sx; s1y=sy+half; s1w=sw; s1h=half;   // primary = top screen (upper half, GL high y)
@@ -775,10 +792,18 @@ static void tap_frame(void *dpy, unsigned long drawable, int is_egl) {
                 // through the bezel rect (contract top-left -> GL flip, same math as semu_tap_hole_rect_gl)
                 // and aspect-fit the per-screen native frame inside it. Source split (s1/s2) is unchanged.
                 { int hv=bezel_idx; if(hv>=bezel_count) hv=(bezel_count>0?bezel_count-1:0); if(hv<0) hv=0;
-                  if(priority_bezel && dual_hole_set[hv]){
+                  if(priority_mode==2 && dual_hole_set[hv]){
+                    int nhp=(nh>=288)?nh/2:nh;
+                    // BEZEL priority, dual: size the ART from the PRIMARY hole with the art
+                    // aspect preserved (the union hole spans the hinge gap and would distort
+                    // it): largest integer k where primary == k x native and the art is uncut.
+                    { float art_aspect=(ahv>0)?((float)awv/(float)ahv):1.6f; int kk=1,best=0;
+                      for(;;){ float cand_w=(float)(kk*nw)/pri_rects[hv][2]; float cand_h=cand_w/art_aspect;
+                               if(cand_w<=(float)w*1.01f+0.5f && cand_h<=(float)h*1.01f+0.5f){ best=kk; kk++; } else break; }
+                      if(best>=1){ bdw=(float)(best*nw)/pri_rects[hv][2]; bdh=bdw/art_aspect;
+                                   bdx_gl=((float)w-bdw)*0.5f; bdy_gl=((float)h-bdh)*0.5f; } }
                     // Largest INTEGER scale of the per-screen native frame that fits each hole
                     // (same convention as semu_tap_compute_geometry: floor, clamped to >=1).
-                    int nhp=(nh>=288)?nh/2:nh;
                     float hx=bdx_gl+pri_rects[hv][0]*bdw, hw2=pri_rects[hv][2]*bdw;
                     float hh2=pri_rects[hv][3]*bdh, hy=bdy_gl+(1.0f-pri_rects[hv][1]-pri_rects[hv][3])*bdh;
                     int k=(int)(hw2/(float)nw); int kh=(int)(hh2/(float)nhp); if(kh<k) k=kh; if(k<1) k=1;
@@ -837,7 +862,7 @@ static void tap_frame(void *dpy, unsigned long drawable, int is_egl) {
             if(uMenuOn>=0)p_u1f(uMenuOn, menu_on?1.0f:0.0f);
             if(uMenuRect>=0){ float mw=(float)MENU_W,mh=(float)MENU_H,sc=1.0f; if(mh>(float)h*0.92f)sc=(float)h*0.92f/mh; mw*=sc; mh*=sc; p_u4f(uMenuRect,((float)w-mw)*0.5f,((float)h-mh)*0.5f,mw,mh); }
             p_draw(GL_TRIANGLES,0,3);
-            if(++frames<=2 || (menu_on && (frames%30)==0)){ FILE *lf=tap_fopen("semutap.log","a"); if(lf){ fprintf(lf,"frame%ld: fb=%dx%d native=%dx%d content=(%d,%d,%d,%d) pri=%d game=(%d,%d,%d,%d) bd=(%d,%d,%d,%d) menu_on=%d effArt=%.1f bidx=%d bcnt=%d uMenuOn=%d uHasArt=%d\n",frames,w,h,nw,nh,g_state.content_x,g_state.content_y,g_state.content_w,g_state.content_h,priority_bezel,gx,gy,gw,gh,(int)bdx_gl,(int)bdy_gl,(int)bdw,(int)bdh,menu_on,eff_has_art,bezel_idx,bezel_count,(int)(uMenuOn>=0),(int)(uHasArt>=0)); fclose(lf);} }
+            if(++frames<=2 || (menu_on && (frames%30)==0)){ FILE *lf=tap_fopen("semutap.log","a"); if(lf){ fprintf(lf,"frame%ld: fb=%dx%d native=%dx%d content=(%d,%d,%d,%d) pri=%d game=(%d,%d,%d,%d) bd=(%d,%d,%d,%d) menu_on=%d effArt=%.1f bidx=%d bcnt=%d uMenuOn=%d uHasArt=%d\n",frames,w,h,nw,nh,g_state.content_x,g_state.content_y,g_state.content_w,g_state.content_h,priority_mode,gx,gy,gw,gh,(int)bdx_gl,(int)bdy_gl,(int)bdw,(int)bdh,menu_on,eff_has_art,bezel_idx,bezel_count,(int)(uMenuOn>=0),(int)(uHasArt>=0)); fclose(lf);} }
             { FILE *shotTrigger = tap_fopen("semu-shot", "r");
               if (shotTrigger) { fclose(shotTrigger); tap_remove("semu-shot");
                                  write_composited_shot(w, h); } }
