@@ -37,13 +37,15 @@ for y in range(height // 3, 2 * height // 3, 4):
 sys.exit(0 if count and total / count > 12 else 1)
 PYEOF
 }
-stop_emulator() { # SIGTERM the emulator leaf; escalate only if it lingers (never touch the sandbox)
+stop_emulator() { # SIGTERM the emulator leaf ONLY: anchored argv[0] match — a plain grep also
+  # matches bwrap/flatpak supervisors that carry the binary path in their argv (killing those
+  # wedges gamescope; learned the hard way).
   local pids waited
-  pids=$(ps aux | grep "[r]a-build/RetroArch" | awk '{print $2}')
+  pids=$(pgrep -f '^/home/deck/ra-build/RetroArch-1.22.2/retroarch')
   for pid in $pids; do kill "$pid" 2>/dev/null; done
   waited=0
-  while [ "$waited" -lt 5 ] && ps aux | grep -q "[r]a-build/RetroArch"; do sleep 1; waited=$((waited+1)); done
-  pids=$(ps aux | grep "[r]a-build/RetroArch" | awk '{print $2}')
+  while [ "$waited" -lt 5 ] && pgrep -f '^/home/deck/ra-build/RetroArch-1.22.2/retroarch' >/dev/null; do sleep 1; waited=$((waited+1)); done
+  pids=$(pgrep -f '^/home/deck/ra-build/RetroArch-1.22.2/retroarch')
   for pid in $pids; do kill -9 "$pid" 2>/dev/null; done
 }
 for row in nes:mesen snes:snes9x gb:gambatte gba:mgba genesis:genesis_plus_gx n64:mupen64plus_next psx:mednafen_psx nds:desmume; do

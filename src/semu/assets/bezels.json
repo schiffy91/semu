@@ -305,9 +305,9 @@
       "plates": [
         {
           "kind": "round_rect",
-          "x": 0.285,
+          "x": 0.22,
           "y": 0.005,
-          "w": 0.43,
+          "w": 0.56,
           "h": 0.99,
           "radius": 30,
           "fill": "#23252c",
@@ -333,23 +333,87 @@
         },
         {
           "kind": "round_rect",
-          "x": 0.285,
+          "x": 0.22,
           "y": 0.487,
-          "w": 0.43,
+          "w": 0.56,
           "h": 0.026,
           "radius": 6,
           "fill": "#16181d"
         },
         {
           "kind": "circle",
-          "cx": 0.699,
+          "cx": 0.745,
           "cy": 0.5,
           "radius": 4,
           "fill": "#57d688"
+        },
+        {
+          "kind": "round_rect",
+          "x": 0.2375,
+          "y": 0.709,
+          "w": 0.056,
+          "h": 0.022,
+          "radius": 4,
+          "fill": "#15171c"
+        },
+        {
+          "kind": "round_rect",
+          "x": 0.2585,
+          "y": 0.676,
+          "w": 0.014,
+          "h": 0.088,
+          "radius": 4,
+          "fill": "#15171c"
+        },
+        {
+          "kind": "circle",
+          "cx": 0.7345,
+          "cy": 0.675,
+          "radius": 11,
+          "fill": "#15171c"
+        },
+        {
+          "kind": "circle",
+          "cx": 0.75,
+          "cy": 0.72,
+          "radius": 11,
+          "fill": "#15171c"
+        },
+        {
+          "kind": "circle",
+          "cx": 0.7345,
+          "cy": 0.765,
+          "radius": 11,
+          "fill": "#15171c"
+        },
+        {
+          "kind": "circle",
+          "cx": 0.719,
+          "cy": 0.72,
+          "radius": 11,
+          "fill": "#15171c"
+        },
+        {
+          "kind": "round_rect",
+          "x": 0.245,
+          "y": 0.798,
+          "w": 0.028,
+          "h": 0.014,
+          "radius": 5,
+          "fill": "#15171c"
+        },
+        {
+          "kind": "round_rect",
+          "x": 0.283,
+          "y": 0.798,
+          "w": 0.028,
+          "h": 0.014,
+          "radius": 5,
+          "fill": "#15171c"
         }
       ],
       "doc": {
-        "why": "DS clamshell plate: shell + two screen recesses + hinge + LED; screens land inside the recesses per the contract holes."
+        "why": "DS clamshell: shell, two recessed screens, hinge, LED, and the controls (dpad / ABXY / start+select) flanking the lower screen."
       }
     },
     "assets/bezels/nds/horizontal.png": {
