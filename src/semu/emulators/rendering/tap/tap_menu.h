@@ -95,7 +95,7 @@ static int semu_tap_menu_count(const SemuTapMenuState *state) {
 
 static const char *semu_tap_menu_title(const SemuTapMenuState *state) {
     if (!state) { return "SEMU"; }
-    if (state->level == SEMU_TAP_MENU_RENDERING) { return "RENDER"; }
+    if (state->level == SEMU_TAP_MENU_RENDERING) { return "DISPLAY"; }
     if (state->level == SEMU_TAP_MENU_SAVE_LOAD) { return "SAVE"; }
     if (state->level == SEMU_TAP_MENU_SYSTEM) { return "SYSTEM"; }
     return "SEMU";
@@ -107,12 +107,12 @@ static void semu_tap_menu_short(const SemuTapMenuState *state, int index, char *
         return;
     }
     if (state->level == SEMU_TAP_MENU_ROOT) {
-        if (index == 0) { semu_tap_menu_copy(out, out_len, "Rendering"); return; }
+        if (index == 0) { semu_tap_menu_copy(out, out_len, "Display"); return; }
         if (index == 1) { semu_tap_menu_copy(out, out_len, "Save/Load"); return; }
         if (index == 2 && state->system_kind == SEMU_TAP_SYSTEM_DUAL_SCREEN) { semu_tap_menu_copy(out, out_len, "Screens"); return; }
         if (index == 2 && state->system_kind == SEMU_TAP_SYSTEM_WII) { semu_tap_menu_copy(out, out_len, "Controls"); return; }
     } else if (state->level == SEMU_TAP_MENU_RENDERING) {
-        const char *labels[4] = { "Aspect", "Bezel", "Shader", "Back" };
+        const char *labels[4] = { "Priority", "Next Bezel", "Next Shader", "Back" };
         if (index >= 0 && index < 4) { semu_tap_menu_copy(out, out_len, labels[index]); return; }
     } else if (state->level == SEMU_TAP_MENU_SAVE_LOAD) {
         const char *labels[4] = { "Slot", "Save", "Load", "Back" };
@@ -155,7 +155,7 @@ static void semu_tap_menu_value(const SemuTapMenuState *state, int index, char *
         return;
     }
     if (state->level == SEMU_TAP_MENU_RENDERING) {
-        if (index == 0) { semu_tap_menu_copy(out, out_len, state->priority_bezel ? "Bezel-priority" : "Game-priority"); return; }
+        if (index == 0) { semu_tap_menu_copy(out, out_len, state->priority_bezel ? "Bezel Priority" : "Game Priority"); return; }
         if (index == 1) { semu_tap_menu_copy(out, out_len, semu_tap_menu_bezel_value(state)); return; }
         if (index == 2) { semu_tap_menu_copy(out, out_len, semu_tap_menu_shader_value(state)); return; }
     } else if (state->level == SEMU_TAP_MENU_SAVE_LOAD) {

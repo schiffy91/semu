@@ -45,7 +45,7 @@ static SemuTapMenuState base_state(void) {
 static void check_root_menu_shape(void) {
     SemuTapMenuState generic = base_state();
     expect_int("generic root count", semu_tap_menu_count(&generic), 2);
-    expect_short("generic root rendering", &generic, 0, "Rendering");
+    expect_short("generic root display", &generic, 0, "Display");
     expect_short("generic root save/load", &generic, 1, "Save/Load");
 
     SemuTapMenuState dual = base_state();
@@ -68,14 +68,14 @@ static void check_rendering_menu(void) {
     semu_tap_menu_normalize(&state);
 
     expect_int("rendering count", semu_tap_menu_count(&state), 4);
-    expect_short("rendering aspect label", &state, 0, "Aspect");
-    expect_short("rendering bezel label", &state, 1, "Bezel");
-    expect_short("rendering shader label", &state, 2, "Shader");
+    expect_short("display priority label", &state, 0, "Priority");
+    expect_short("rendering bezel label", &state, 1, "Next Bezel");
+    expect_short("rendering shader label", &state, 2, "Next Shader");
     expect_short("rendering back label", &state, 3, "Back");
-    expect_value("default priority value", &state, 0, "Game-priority");
+    expect_value("default priority value", &state, 0, "Game Priority");
 
     semu_tap_menu_activate(&state);
-    expect_value("toggled priority value", &state, 0, "Bezel-priority");
+    expect_value("toggled priority value", &state, 0, "Bezel Priority");
 
     state.selected = 1;
     expect_value("bezel A", &state, 1, "A");

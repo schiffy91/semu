@@ -717,6 +717,7 @@ static void tap_frame(void *dpy, unsigned long drawable, int is_egl) {
                 if(ch=='u'){menu_sel=(menu_sel-1+N)%N;menu_dirty=1;} else if(ch=='d'){menu_sel=(menu_sel+1)%N;menu_dirty=1;}
                 else if(ch=='s') menu_activate(); else if(ch=='b'){ if(menu_lvl!=0){menu_lvl=0;menu_sel=0;menu_dirty=1;} else {menu_on=0;} } } } }
             float eff_has_art = (bezel_idx < bezel_count) ? has_art : 0.0f;   // bezel OFF when idx past the last art
+            if(dual_mode && !priority_bezel) eff_has_art = 0.0f;   // dual game-priority: screens win, no art (art holes would cap the integer scale)
             // active variant -> its hole + art dims (variant b/c/d may be a different device model)
             int avar = bezel_idx; if(avar>=bezel_count) avar=(bezel_count>0?bezel_count-1:0); if(avar<0)avar=0;
             float sxn=scr_rects[avar][0], syn=scr_rects[avar][1], swn=scr_rects[avar][2], shn=scr_rects[avar][3];
@@ -751,6 +752,15 @@ static void tap_frame(void *dpy, unsigned long drawable, int is_egl) {
                 int pi=nds_pri<0?0:(nds_pri>4?4:nds_pri), si=nds_sec<0?0:(nds_sec>4?4:nds_sec);
                 int nhp=(nh>=288)?nh/2:nh;   // per-screen native height (split the combined nds/3ds frame)
                 int pw=(int)(scl[pi]*nw), ph=(int)(scl[pi]*nhp), qw=(int)(scl[si]*nw), qh=(int)(scl[si]*nhp);
+                if(!priority_bezel){
+                    // GAME PRIORITY: both screens at the largest EQUAL integer scale that
+                    // fits the layout (stack or side-by-side with the 8px gap) on screen.
+                    int gap=8,k;
+                    if(nds_layout==0){ k=(h-gap)/(2*nhp); int kw=w/nw; if(kw<k)k=kw; }
+                    else { k=(w-gap)/(2*nw); int kh=h/nhp; if(kh<k)k=kh; }
+                    if(k<1)k=1;
+                    pw=k*nw; ph=k*nhp; qw=k*nw; qh=k*nhp;
+                }
                 int half=sh/2;
                 s1x=sx; s1y=sy+half; s1w=sw; s1h=half;   // primary = top screen (upper half, GL high y)
                 s2x=sx; s2y=sy;      s2w=sw; s2h=half;   // secondary = bottom screen
@@ -765,15 +775,19 @@ static void tap_frame(void *dpy, unsigned long drawable, int is_egl) {
                 // through the bezel rect (contract top-left -> GL flip, same math as semu_tap_hole_rect_gl)
                 // and aspect-fit the per-screen native frame inside it. Source split (s1/s2) is unchanged.
                 { int hv=bezel_idx; if(hv>=bezel_count) hv=(bezel_count>0?bezel_count-1:0); if(hv<0) hv=0;
-                  if(dual_hole_set[hv]){
-                    int nhp=(nh>=288)?nh/2:nh; float sa=(float)nw/(float)nhp;
+                  if(priority_bezel && dual_hole_set[hv]){
+                    // Largest INTEGER scale of the per-screen native frame that fits each hole
+                    // (same convention as semu_tap_compute_geometry: floor, clamped to >=1).
+                    int nhp=(nh>=288)?nh/2:nh;
                     float hx=bdx_gl+pri_rects[hv][0]*bdw, hw2=pri_rects[hv][2]*bdw;
                     float hh2=pri_rects[hv][3]*bdh, hy=bdy_gl+(1.0f-pri_rects[hv][1]-pri_rects[hv][3])*bdh;
-                    float fw=hw2, fh=fw/sa; if(fh>hh2){ fh=hh2; fw=fh*sa; }
+                    int k=(int)(hw2/(float)nw); int kh=(int)(hh2/(float)nhp); if(kh<k) k=kh; if(k<1) k=1;
+                    float fw=(float)(k*nw), fh=(float)(k*nhp);
                     r1x=(int)(hx+(hw2-fw)*0.5f); r1y=(int)(hy+(hh2-fh)*0.5f); r1w=(int)fw; r1h=(int)fh;
                     hx=bdx_gl+sec_rects[hv][0]*bdw; hw2=sec_rects[hv][2]*bdw;
                     hh2=sec_rects[hv][3]*bdh; hy=bdy_gl+(1.0f-sec_rects[hv][1]-sec_rects[hv][3])*bdh;
-                    fw=hw2; fh=fw/sa; if(fh>hh2){ fh=hh2; fw=fh*sa; }
+                    k=(int)(hw2/(float)nw); kh=(int)(hh2/(float)nhp); if(kh<k) k=kh; if(k<1) k=1;
+                    fw=(float)(k*nw); fh=(float)(k*nhp);
                     r2x=(int)(hx+(hw2-fw)*0.5f); r2y=(int)(hy+(hh2-fh)*0.5f); r2w=(int)fw; r2h=(int)fh;
                 } }
             }
