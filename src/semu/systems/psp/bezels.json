@@ -3,10 +3,10 @@
   "enabled": true,
   "default_variant": "classic",
   "hole": {
-    "x": 0.205,
-    "y": 0.159,
-    "w": 0.59,
-    "h": 0.607
+    "x": 0.14,
+    "y": 0.0924,
+    "w": 0.72,
+    "h": 0.7407
   },
   "variants": [
     {
@@ -16,6 +16,6 @@
     }
   ],
   "doc": {
-    "hole": "Duimon magenta-probe screen region inset ~10% to the visible LCD (Duimon draws a black bezel frame around the game; the raw probe region includes it)."
+    "hole": "Duimon magenta-probe screen region (authoritative Duimon placement); the PSP screen is flush with the plastic so this is the true LCD extent."
   }
 }

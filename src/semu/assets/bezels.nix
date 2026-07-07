@@ -58,23 +58,29 @@ let
         pixelX (plate.x + plate.w)},${pixelY (plate.y + plate.h)} ${
         toString plate.radius},${toString plate.radius}" '';
 
-  # Draw wordmark "labels" the upstream art omits (e.g. GBC "GAME BOY color").
-  # Coordinates are fractions of the given canvas; applied as the LAST step so
-  # colors survive any prior recolor tint. Shared by flatten and recolor.
-  labelPassFor = recipe: width: height:
-    let
-      drawLabel = label:
-        ''-fill "${label.fill}" -pointsize ${
-          toString (builtins.floor (label.size * height + 0.5))} ${
-          lib.optionalString (label ? weight) "-weight ${toString label.weight} "}-annotate ${
-          lib.optionalString (label ? skew) "${toString label.skew}x0"}+${
-          toString (builtins.floor (label.x * width + 0.5))}+${
-          toString (builtins.floor (label.y * height + 0.5))} "${label.text}" '';
-    in
-    lib.optionalString (recipe ? labels)
-      (" -gravity NorthWest -font ${
-        dejavu_fonts}/share/fonts/truetype/DejaVuSans-Bold.ttf "
-       + lib.concatMapStrings drawLabel recipe.labels);
+  wordmarkFont = "${dejavu_fonts}/share/fonts/truetype/DejaVuSans-Bold.ttf";
+
+  # Generate a wordmark PNG the upstream art omits (e.g. the GBC "GAME BOY
+  # color" logo). Each segment is one label; +append concatenates them by
+  # real glyph width (no manual per-letter x-guessing, no overlaps). Written
+  # once to $wordmarks so every variant composites the identical logo.
+  wordmarkScript = lib.concatStrings (lib.mapAttrsToList (name: spec: ''
+    magick ${lib.concatMapStringsSep " " (seg:
+      ''\( -background none -font ${wordmarkFont} -pointsize 200 -fill "${seg.fill}" label:"${seg.text}" \)''
+    ) spec.segments} \
+      +append ${lib.optionalString (spec ? shear) "-background none -shear ${toString spec.shear}x0 "}-trim +repage "$wordmarks/${name}.png"
+  '') (sources.wordmarks or { }));
+
+  # Composite a generated wordmark onto a rendered device (last step, so it
+  # survives any recolor). "overlay" = { wordmark, x (center), y (top), width }
+  # in fractions of the canvas.
+  overlayPass = recipe: width: height:
+    lib.optionalString (recipe ? overlay)
+      (let o = recipe.overlay; in
+        '' \( "$wordmarks/${o.wordmark}.png" -resize ${
+          toString (builtins.floor (o.width * width + 0.5))}x \) -gravity NorthWest -geometry +${
+          toString (builtins.floor ((o.x - o.width * 0.5) * width + 0.5))}+${
+          toString (builtins.floor (o.y * height + 0.5))} -compose Over -composite '');
 
   render = key: recipe:
     ''
@@ -106,7 +112,7 @@ let
           in ''
             magick ${lib.concatMapStringsSep " " (layer: treeFile recipe layer) recipe.layers} \
               -background none -flatten -resize '2048x2048>' \
-              -crop ${recipe.crop} +repage ${labelPassFor recipe cw ch}${outFile key}
+              -crop ${recipe.crop} +repage ${overlayPass recipe cw ch}${outFile key}
           ''
         else ''
           magick ${lib.concatMapStringsSep " " (layer: treeFile recipe layer) recipe.layers} \
@@ -126,11 +132,10 @@ let
         magick ${outFile recipe.base} -modulate ${toString (recipe.brightness or 100)},0,100 \
           \( +clone -fill "${recipe.color}" -colorize 100% \) \
           -compose Multiply -composite -alpha on ${
-            lib.optionalString (recipe ? labels)
-              ("-compose Over "
-               + labelPassFor recipe
-                   (builtins.elemAt recipe.label_canvas 0)
-                   (builtins.elemAt recipe.label_canvas 1))
+            lib.optionalString (recipe ? overlay)
+              (overlayPass recipe
+                (builtins.elemAt recipe.overlay_canvas 0)
+                (builtins.elemAt recipe.overlay_canvas 1))
           }"PNG32:$out/share/semu/${key}"
       '';
       # photoreal device shell from a Duimon layer set. Their device base is
@@ -201,6 +206,9 @@ stdenvNoCC.mkDerivation {
 
   installPhase = ''
     runHook preInstall
+    wordmarks="$TMPDIR/wordmarks"
+    mkdir -p "$wordmarks"
+    ${wordmarkScript}
     ${renderScript}
     ${stagingScript}
     runHook postInstall

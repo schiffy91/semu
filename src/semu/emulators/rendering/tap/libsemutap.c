@@ -21,6 +21,8 @@
 #include <string.h>
 #include <unistd.h>
 #include <math.h>
+#include <time.h>
+#include <sys/stat.h>
 #define STB_IMAGE_IMPLEMENTATION
 #define STBI_ONLY_PNG
 #include "stb_image.h"
@@ -127,6 +129,17 @@ static int ov_l = 0, ov_r = 0, ov_t = 0, ov_b = 0;   // declared overscan crop, 
 static int retro_on = 1, priority_mode = 0;
 static int bezel_idx = 0, shader_idx = 0, bezel_count = 1; // Phase 2: bezel cycle (idx==count -> OFF), shader 0..3
 static int nds_layout = 0, nds_pri = 3, nds_sec = 3, dual_mode = 0; // Phase 3: layout(0=vert,1=horiz) + scale idx (def 2x)
+// Game (Top + Corner) picture-in-picture: the bottom screen rests small
+// (fits in the black bezel) and expands to pip_expand for pip_seconds when
+// the touchscreen is touched, then eases back. All adjustable in settings.
+static float pip_rest = 0.12f, pip_expand = 0.25f, pip_seconds = 7.0f;
+static float pip_current = 0.12f;          // eased size actually rendered
+static double pip_expand_until = 0.0;      // monotonic deadline; 0 = resting
+static double pip_touch_seen = 0.0;        // last observed semu-pip-touch mtime
+static double semu_now(void){
+    struct timespec ts; clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (double)ts.tv_sec + (double)ts.tv_nsec * 1e-9;
+}
 static int fill_hole = 0;   // handhelds: fill the device's screen hole at display aspect (non-integer, Duimon HSM_NON_INTEGER_SCALE) instead of largest-integer
 static int align_on = 0;    // alignment diagnostic: purple frame at the declared hole + translucent game, to check the game-vs-bezel fit
 static char glass_paths[4][1024] = {{0}};           // per-variant screen-glass layer: .a = exact screen cutout mask, .rgb = glass/reflections
@@ -180,6 +193,19 @@ static const char *tap_state_dir(void) {
 
 static void tap_state_path(char *out, size_t cap, const char *name) {
     snprintf(out, cap, "%s/%s", tap_state_dir(), name);
+}
+
+static int tap_stat_mtime(const char *name, struct timespec *out) {
+    char path[1200];
+    tap_state_path(path, sizeof(path), name);
+    struct stat st;
+    if (stat(path, &st) != 0) { return 0; }
+#if defined(__APPLE__)
+    *out = st.st_mtimespec;
+#else
+    *out = st.st_mtim;
+#endif
+    return 1;
 }
 
 static FILE *tap_fopen(const char *name, const char *mode) {
@@ -597,6 +623,10 @@ static void tap_init(void) {
     const char *rstart=getenv("SEMU_RETRO_START"); if(rstart&&rstart[0]=='0') retro_on=0;   // default 1 (retro/soft)
     const char *pri=getenv("SEMU_TAP_PRIORITY"); if(pri&&(pri[0]=='b'||pri[0]=='B')) priority_mode=2; else if(pri&&(pri[0]=='t'||pri[0]=='T')) priority_mode=1; else if(pri&&(pri[0]=='f'||pri[0]=='F')) priority_mode=3; else if(pri&&(pri[0]=='c'||pri[0]=='C')) priority_mode=4; // bezel|top|fit|corner|game
     const char *dl=getenv("SEMU_TAP_DUAL"); if(dl&&dl[0]=='1') dual_mode=1;   // nds/3ds: split into two screens
+    const char *pr=getenv("SEMU_TAP_PIP_REST");    if(pr&&pr[0]) pip_rest=(float)atof(pr);     // resting PiP size (frac of width)
+    const char *pe=getenv("SEMU_TAP_PIP_EXPAND");  if(pe&&pe[0]) pip_expand=(float)atof(pe);   // touched/expanded PiP size
+    const char *ps=getenv("SEMU_TAP_PIP_SECONDS"); if(ps&&ps[0]) pip_seconds=(float)atof(ps); // expand hold seconds
+    pip_current=pip_rest;
     const char *fh=getenv("SEMU_TAP_FILL"); if(fh&&fh[0]=='1') fill_hole=1;   // handhelds: fill screen hole at aspect
     const char *aln=getenv("SEMU_TAP_ALIGN"); if(aln&&aln[0]=='1') align_on=1; // alignment diagnostic overlay
     const char *gp=getenv("SEMU_TAP_GLASS");   if(gp&&gp[0]){  strncpy(glass_paths[0],gp,1023);  glass_paths[0][1023]=0; }   // per-variant screen mask + reflections
@@ -710,6 +740,16 @@ static void tap_frame(void *dpy, unsigned long drawable, int is_egl) {
             { FILE *nl=tap_fopen("semu-ndslayout","r"); if(nl){ int ch=fgetc(nl); fclose(nl); nds_layout=(ch=='1')?1:0; } }
             { FILE *np=tap_fopen("semu-ndspri","r"); if(np){ int ch=fgetc(np); fclose(np); if(ch>='0'&&ch<='4') nds_pri=ch-'0'; } }
             { FILE *ns=tap_fopen("semu-ndssec","r"); if(ns){ int ch=fgetc(ns); fclose(ns); if(ch>='0'&&ch<='4') nds_sec=ch-'0'; } }
+            { FILE *pf=tap_fopen("semu-pip","r"); if(pf){ float a=0,b=0,c=0; if(fscanf(pf,"%f %f %f",&a,&b,&c)>=2){ if(a>0)pip_rest=a; if(b>0)pip_expand=b; if(c>0)pip_seconds=c; } fclose(pf); } }
+            // Top+Corner PiP expand trigger: the input layer touches
+            // "semu-pip-touch" on a bottom-screen tap; a fresh mtime arms the
+            // expand for pip_seconds. File-based so it works under GLX and EGL.
+            if(priority_mode==4){
+                struct timespec tt; if(tap_stat_mtime("semu-pip-touch",&tt)){
+                    double m=(double)tt.tv_sec + (double)tt.tv_nsec*1e-9;
+                    if(m>pip_touch_seen){ pip_touch_seen=m; pip_expand_until=semu_now()+(double)pip_seconds; }
+                }
+            }
             { FILE *af=tap_fopen("semu-align","r"); if(af){ int ch=fgetc(af); fclose(af); align_on=(ch=='1'); } }   // alignment diag
             // menu test overrides (no Steam-Input keys needed): semu-menu = 0/1 (closed/open at level);
             // semu-menu-nav = u/d/s/b (up/down/select/back) then auto-cleared.
@@ -780,12 +820,16 @@ static void tap_frame(void *dpy, unsigned long drawable, int is_egl) {
                 }
                 else if(priority_mode==4){
                     // GAME (TOP + CORNER): top screen as large as possible (non-integer,
-                    // aspect preserved, fills the canvas); bottom screen small in the
-                    // bottom-right corner as a picture-in-picture (~22%% canvas width).
+                    // aspect preserved, fills the canvas); bottom screen a small PiP in
+                    // the bottom-right corner. The PiP rests at pip_rest (tucked in the
+                    // black bezel) and eases to pip_expand for pip_seconds on a touch.
                     float ta=(float)nw/(float)nhp;
                     if((float)w/(float)h>ta){ ph=h; pw=(int)((float)h*ta); }
                     else { pw=w; ph=(int)((float)w/ta); }
-                    qw=(int)((float)w*0.22f); qh=(int)((float)qw/ta); if(qh<1)qh=1;
+                    float target = (semu_now() < pip_expand_until) ? pip_expand : pip_rest;
+                    pip_current += (target - pip_current) * 0.18f;   // ~0.3s ease at 60fps
+                    if(pip_current < 0.02f) pip_current = 0.02f;
+                    qw=(int)((float)w*pip_current); qh=(int)((float)qw/ta); if(qh<1)qh=1;
                 }
                 int half=sh/2;
                 s1x=sx; s1y=sy+half; s1w=sw; s1h=half;   // primary = top screen (upper half, GL high y)
