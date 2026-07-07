@@ -100,11 +100,14 @@
       "type": "slang_wrapper",
       "reference": {
         "tree": "shaders_slang",
-        "path": "handheld/sameboy-lcd-gbc-color-motionblur.slangp"
+        "path": "handheld/authentic_gbc.slangp"
       },
       "requires": [
         "shaders_slang"
-      ]
+      ],
+      "doc": {
+        "why": "Authentic GBC subpixel LCD; replaces the missing sameboy motionblur edition"
+      }
     },
     "assets/shaders/gbc/composite.slangp": {
       "type": "slang_wrapper",
@@ -126,11 +129,14 @@
       "type": "slang_wrapper",
       "reference": {
         "tree": "shaders_slang",
-        "path": "handheld/agb001-gba-color-motionblur.slangp"
+        "path": "handheld/agb001.slangp"
       },
       "requires": [
         "shaders_slang"
-      ]
+      ],
+      "doc": {
+        "why": "AGB-001 LCD response; the -color-motionblur edition is absent from the staged shaders_slang tree"
+      }
     },
     "assets/shaders/gba/composite.slangp": {
       "type": "slang_wrapper",
@@ -278,11 +284,14 @@
       "type": "slang_wrapper",
       "reference": {
         "tree": "shaders_slang",
-        "path": "handheld/lcd-grid-v2-nds-color-motionblur.slangp"
+        "path": "handheld/lcd1x_nds.slangp"
       },
       "requires": [
         "shaders_slang"
-      ]
+      ],
+      "doc": {
+        "why": "NDS-tuned LCD grid; replaces the missing lcd-grid-v2 motionblur edition"
+      }
     },
     "assets/shaders/nds/composite.slangp": {
       "type": "slang_wrapper",
@@ -304,11 +313,14 @@
       "type": "slang_wrapper",
       "reference": {
         "tree": "shaders_slang",
-        "path": "handheld/lcd-grid-v2-psp-color-motionblur.slangp"
+        "path": "handheld/lcd1x_psp.slangp"
       },
       "requires": [
         "shaders_slang"
-      ]
+      ],
+      "doc": {
+        "why": "PSP-tuned LCD grid; replaces the missing lcd-grid-v2 motionblur edition"
+      }
     },
     "assets/shaders/psp/composite.slangp": {
       "type": "slang_wrapper",
