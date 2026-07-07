@@ -55,8 +55,11 @@ let
           "PNG32:$out/share/semu/${key}"
       '';
       # desaturate then Multiply a solid tint: preserves plastic shading + alpha.
+      # Optional "brightness" (percent, default 100) lifts the base first —
+      # multiply can only darken, so dark shells need the lift to hit
+      # saturated colorway hues.
       recolor = ''
-        magick ${outFile recipe.base} -modulate 100,0,100 \
+        magick ${outFile recipe.base} -modulate ${toString (recipe.brightness or 100)},0,100 \
           \( +clone -fill "${recipe.color}" -colorize 100% \) \
           -compose Multiply -composite -alpha on "PNG32:$out/share/semu/${key}"
       '';

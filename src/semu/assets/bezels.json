@@ -119,14 +119,16 @@
     "assets/bezels/gbc/berry.png": {
       "type": "recolor",
       "base": "assets/bezels/gbc/classic.png",
-      "color": "#c0294b"
+      "color": "#e05578",
+      "brightness": 145
     },
     "assets/bezels/gbc/grape.png": {
       "type": "recolor",
       "base": "assets/bezels/gbc/classic.png",
-      "color": "#7a3fb0"
+      "color": "#a76fe3",
+      "brightness": 145
     },
-    "assets/bezels/gba/charcoal.png": {
+    "assets/bezels/gba/classic.png": {
       "type": "flatten",
       "from": "duimon_mega_bezel",
       "layers": [
@@ -136,14 +138,6 @@
       ],
       "doc": {
         "layer_order": "GBA_Decal.png is the grip/shoulder plate; Duimon renders it UNDER the device shell (HSM_DECAL_LAYER_ORDER=2 < HSM_DEVICE_LAYER_ORDER=3). GBA_SP inverts this; do not copy this order to sp."
-      }
-    },
-    "assets/bezels/gba/classic.png": {
-      "type": "recolor",
-      "base": "assets/bezels/gba/charcoal.png",
-      "color": "#7a7ce0",
-      "doc": {
-        "why": "AGB-001 indigo colorway over the corrected layer stack (same recolor pipeline as the gb shells); charcoal ships as its own variant."
       }
     },
     "assets/bezels/gba/classic-glass.png": {
@@ -180,7 +174,7 @@
       "from": "soqueroeu_tv",
       "path": "img/Nintendo_SuperNintendo/SuperNES.png"
     },
-    "assets/bezels/snes/retro-gray.png": {
+    "assets/bezels/snes/retro-black.png": {
       "type": "copy",
       "from": "soqueroeu_tv",
       "path": "img/Nintendo_SuperNintendo/SuperNES_V2.png"
@@ -305,9 +299,9 @@
       "plates": [
         {
           "kind": "round_rect",
-          "x": 0.22,
+          "x": 0.285,
           "y": 0.005,
-          "w": 0.56,
+          "w": 0.43,
           "h": 0.99,
           "radius": 30,
           "fill": "#23252c",
@@ -333,87 +327,23 @@
         },
         {
           "kind": "round_rect",
-          "x": 0.22,
+          "x": 0.285,
           "y": 0.487,
-          "w": 0.56,
+          "w": 0.43,
           "h": 0.026,
           "radius": 6,
           "fill": "#16181d"
         },
         {
           "kind": "circle",
-          "cx": 0.745,
+          "cx": 0.699,
           "cy": 0.5,
           "radius": 4,
           "fill": "#57d688"
-        },
-        {
-          "kind": "round_rect",
-          "x": 0.2375,
-          "y": 0.709,
-          "w": 0.056,
-          "h": 0.022,
-          "radius": 4,
-          "fill": "#15171c"
-        },
-        {
-          "kind": "round_rect",
-          "x": 0.2585,
-          "y": 0.676,
-          "w": 0.014,
-          "h": 0.088,
-          "radius": 4,
-          "fill": "#15171c"
-        },
-        {
-          "kind": "circle",
-          "cx": 0.7345,
-          "cy": 0.675,
-          "radius": 11,
-          "fill": "#15171c"
-        },
-        {
-          "kind": "circle",
-          "cx": 0.75,
-          "cy": 0.72,
-          "radius": 11,
-          "fill": "#15171c"
-        },
-        {
-          "kind": "circle",
-          "cx": 0.7345,
-          "cy": 0.765,
-          "radius": 11,
-          "fill": "#15171c"
-        },
-        {
-          "kind": "circle",
-          "cx": 0.719,
-          "cy": 0.72,
-          "radius": 11,
-          "fill": "#15171c"
-        },
-        {
-          "kind": "round_rect",
-          "x": 0.245,
-          "y": 0.798,
-          "w": 0.028,
-          "h": 0.014,
-          "radius": 5,
-          "fill": "#15171c"
-        },
-        {
-          "kind": "round_rect",
-          "x": 0.283,
-          "y": 0.798,
-          "w": 0.028,
-          "h": 0.014,
-          "radius": 5,
-          "fill": "#15171c"
         }
       ],
       "doc": {
-        "why": "DS clamshell: shell, two recessed screens, hinge, LED, and the controls (dpad / ABXY / start+select) flanking the lower screen."
+        "why": "Clean DS clamshell: shell, two recessed screens, hinge, LED. Drawn controls were tried and rejected by the user."
       }
     },
     "assets/bezels/nds/horizontal.png": {

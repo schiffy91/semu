@@ -29,12 +29,6 @@
       "doc": {
         "provenance": "Different device model (open clamshell), so its own glass and hole."
       }
-    },
-    {
-      "id": "charcoal",
-      "label": "Charcoal",
-      "art": "assets/bezels/gba/charcoal.png",
-      "glass": "assets/bezels/gba/classic-glass.png"
     }
   ]
 }
