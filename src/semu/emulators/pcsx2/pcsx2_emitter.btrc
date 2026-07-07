@@ -1,29 +1,23 @@
-// pcsx2_emitter.btrc — Pcsx2Emitter: the PCSX2 ini builders and the
-// emitProfiles file layout. Content mirrors the Deck-proven goldens
-// (garbage/generated/packaging/emulators/profiles/PCSX2/config/**): the pad
-// device identity comes from steam_input.json device_identities (pcsx2_pad),
-// every hotkey chord from the keymap (via the PCSX2-native grammar below),
-// the BIOS folder from the emulator.json firmware fallback directories and
-// the [EmuCore/GS] block from Pcsx2Rendering. Only PCSX2's own wire grammar
-// (section/key names, SDL pad tokens, "Keyboard/Control & Keyboard/P"
-// chords, the 'Plus'/'Minus' key names) is code-owned here.
+// pcsx2_emitter.btrc — Pcsx2Emitter: substitution wiring for the PCSX2
+// profile tree. Every ini body lives in ./profile.json (rendered by
+// ProfileTemplate, mirroring the Deck-proven goldens); this file owns only
+// what code must compute — the pad device identity from steam_input.json
+// (pcsx2_pad), the resolved BIOS folder from the emulator.json firmware
+// block, the renderer line from the contract graphics policy
+// (Pcsx2Rendering), and PCSX2's own hotkey chord grammar
+// ("Keyboard/Control & Keyboard/P", the 'Plus'/'Minus' key names).
 
-import std.{vector, fs}
+import std.{vector, fs, json}
 import ../../core/template_paths.btrc
 import ../../platforms/platform_registry.btrc
 import ../semu_emulator.btrc
+import ../profile_template.btrc
 import ../../input/input_parser.btrc
 import ../../input/controllers/steamdeck/steam_input.btrc
 import ../../input/input_emitter.btrc
 import ./pcsx2_rendering.btrc
 
 class Pcsx2Emitter {
-    class void pushAll(Vector<string> lines, Vector<string> additions) {
-        for addition in additions {
-            lines.push(addition);
-        }
-    }
-
     // PCSX2's native hotkey grammar (Deck-proven): "Ctrl+P" ->
     // "Keyboard/Control & Keyboard/P"; the '+'/'-' keys render as
     // "Plus"/"Minus".
@@ -47,135 +41,28 @@ class Pcsx2Emitter {
         return parts.join(" & ");
     }
 
-    // [UI]: kiosk launches — fullscreen, no confirmations, no wizard.
-    class Vector<string> userInterfaceSectionLines() {
-        Vector<string> lines = ["[UI]",
-            "SettingsVersion = 1",
-            "InhibitScreensaver = true",
-            "ConfirmShutdown = false",
-            "StartPaused = false",
-            "PauseOnFocusLoss = false",
-            "StartFullscreen = true",
-            "DoubleClickTogglesFullscreen = true",
-            "HideMouseCursor = true",
-            "RenderToSeparateWindow = false",
-            "HideMainWindowWhenRunning = true",
-            "DisableWindowResize = false",
-            "PreferEnglishGameList = false",
-            "Theme = darkfusionblue",
-            "SetupWizardIncomplete = false"];
-        return lines;
-    }
-
-    // [Folders]: everything relative to the config home except the BIOS
-    // directory, which points at the project firmware staging area.
-    class Vector<string> foldersSectionLines(string biosDirectory) {
-        Vector<string> lines = ["[Folders]",
-            "Bios = " + biosDirectory,
-            "Snapshots = snaps",
-            "Savestates = sstates",
-            "MemoryCards = memcards",
-            "Logs = logs",
-            "Cheats = cheats",
-            "Patches = patches",
-            "UserResources = resources",
-            "Cache = cache",
-            "Textures = textures",
-            "InputProfiles = inputprofiles"];
-        return lines;
-    }
-
-    class Vector<string> coreSectionLines() {
-        Vector<string> lines = ["[EmuCore]",
-            "EnablePatches = true",
-            "EnableWideScreenPatches = false",
-            "EnableFastBoot = true",
-            "UseSavestateSelector = true",
-            "McdFolderAutoManage = true"];
-        return lines;
-    }
-
-    // The [Pad]/[InputSources]/[Pad1]/[Pad2] block shared by PCSX2.ini and
-    // the input profile: DualShock2 on port 1 driven by the pad identity's
-    // SDL tokens (keyboard fallbacks on the face buttons), port 2 empty.
-    class Vector<string> padSectionsLines(string padIdentity) {
-        Vector<string> lines = ["[Pad]",
-            "UseProfileHotkeyBindings = true",
-            "MultitapPort1 = false",
-            "MultitapPort2 = false",
-            "",
-            "[InputSources]",
-            "Keyboard = true",
-            "Mouse = true",
-            "SDL = true",
-            "DInput = false",
-            "XInput = false",
-            "",
-            "[Pad1]",
-            "Type = DualShock2",
-            "Up = " + padIdentity + "/DPadUp | Keyboard/Up",
-            "Right = " + padIdentity + "/DPadRight | Keyboard/Right",
-            "Down = " + padIdentity + "/DPadDown | Keyboard/Down",
-            "Left = " + padIdentity + "/DPadLeft | Keyboard/Left",
-            "Triangle = " + padIdentity + "/Y | Keyboard/I",
-            "Circle = " + padIdentity + "/B | Keyboard/X",
-            "Cross = " + padIdentity + "/A | Keyboard/Z",
-            "Square = " + padIdentity + "/X | Keyboard/A",
-            "Select = " + padIdentity + "/Back | Keyboard/Backspace",
-            "Start = " + padIdentity + "/Start | Keyboard/Enter",
-            "L1 = " + padIdentity + "/LeftShoulder",
-            "L2 = " + padIdentity + "/+LeftTrigger",
-            "R1 = " + padIdentity + "/RightShoulder",
-            "R2 = " + padIdentity + "/+RightTrigger",
-            "L3 = " + padIdentity + "/LeftStick",
-            "R3 = " + padIdentity + "/RightStick",
-            "LUp = " + padIdentity + "/-LeftY",
-            "LRight = " + padIdentity + "/+LeftX",
-            "LDown = " + padIdentity + "/+LeftY",
-            "LLeft = " + padIdentity + "/-LeftX",
-            "RUp = " + padIdentity + "/-RightY",
-            "RRight = " + padIdentity + "/+RightX",
-            "RDown = " + padIdentity + "/+RightY",
-            "RLeft = " + padIdentity + "/-RightX",
-            "",
-            "[Pad2]",
-            "Type = None"];
-        return lines;
-    }
-
-    // One keymap-driven hotkey line, emitted only when the emulator contract
-    // declares the action and the keymap carries a chord for it.
-    class void pushHotkeyLine(Vector<string> lines, EmulatorDefinition definition,
-                              Keymap keymap, string settingName, string actionId) {
-        if (definition.input.actions.contains(actionId)) {
+    // The template's "keymap" hotkey table joined against the contract and
+    // the keymap: a setting line appears only when the emulator.json declares
+    // the action and the keymap carries a chord for it. The golden
+    // ToggleSlowMotion row renders only if a speed.rewind action ever joins
+    // the pcsx2 contract (the frozen contract omits it today).
+    class string keymapHotkeyLines(ProfileTemplate template,
+                                   EmulatorDefinition definition, Keymap keymap) {
+        Vector<string> lines = [];
+        JsonValue table = template.hotkeyTable("keymap");
+        for (int rowIndex = 0; rowIndex < table.size(); rowIndex++) {
+            JsonValue row = table.at(rowIndex);
+            string actionId = row.get("action").asString();
+            if (!definition.input.actions.contains(actionId)) {
+                continue;
+            }
             string chord = keymap.chordFor(actionId);
             if (!chord.isEmpty()) {
-                lines.push(settingName + " = " + Pcsx2Emitter.hotkeyChord(chord));
+                lines.push(row.get("setting").asString() + " = "
+                    + Pcsx2Emitter.hotkeyChord(chord));
             }
         }
-    }
-
-    // [Hotkeys] (input profile only): the golden Deck set, driven by the
-    // keymap chords for the actions the emulator.json declares. The golden
-    // ToggleSlowMotion line renders only if a speed.rewind action ever joins
-    // the pcsx2 contract (the frozen contract omits it today).
-    class Vector<string> hotkeysSectionLines(EmulatorDefinition definition, Keymap keymap) {
-        Vector<string> lines = ["[Hotkeys]"];
-        Pcsx2Emitter.pushHotkeyLine(lines, definition, keymap, "OpenPauseMenu", "ui.menu");
-        Pcsx2Emitter.pushHotkeyLine(lines, definition, keymap, "TogglePause", "ui.pause");
-        Pcsx2Emitter.pushHotkeyLine(lines, definition, keymap,
-            "ToggleFullscreen", "ui.fullscreen");
-        Pcsx2Emitter.pushHotkeyLine(lines, definition, keymap,
-            "PreviousSaveStateSlot", "state.prev");
-        Pcsx2Emitter.pushHotkeyLine(lines, definition, keymap,
-            "NextSaveStateSlot", "state.next");
-        Pcsx2Emitter.pushHotkeyLine(lines, definition, keymap, "SaveStateToSlot", "state.save");
-        Pcsx2Emitter.pushHotkeyLine(lines, definition, keymap, "LoadStateFromSlot", "state.load");
-        Pcsx2Emitter.pushHotkeyLine(lines, definition, keymap, "Screenshot", "ui.screenshot");
-        Pcsx2Emitter.pushHotkeyLine(lines, definition, keymap, "ToggleTurbo", "speed.fast");
-        Pcsx2Emitter.pushHotkeyLine(lines, definition, keymap,
-            "ToggleSlowMotion", "speed.rewind");
-        return lines;
+        return lines.join("\n");
     }
 
     // outputRoot = <project>/src/generated/packaging/emulators/profiles.
@@ -221,47 +108,26 @@ class Pcsx2Emitter {
         return PlatformRegistry.profileEmissionPlatform(definition);
     }
 
-    // config/inis/PCSX2.ini — the seeded base configuration.
-    class string baseConfigurationText(EmulatorPlatform platform, string padIdentity,
-                                       string biosDirectory) {
-        Vector<string> lines = [];
-        Pcsx2Emitter.pushAll(lines, Pcsx2Emitter.userInterfaceSectionLines());
-        lines.push("");
-        Pcsx2Emitter.pushAll(lines, Pcsx2Emitter.foldersSectionLines(biosDirectory));
-        lines.push("");
-        Pcsx2Emitter.pushAll(lines, Pcsx2Emitter.coreSectionLines());
-        lines.push("");
-        Pcsx2Emitter.pushAll(lines, Pcsx2Rendering.graphicsSectionLines(platform.graphics));
-        lines.push("");
-        Pcsx2Emitter.pushAll(lines, Pcsx2Emitter.padSectionsLines(padIdentity));
-        return lines.join("\n") + "\n";
-    }
-
-    // config/inputprofiles/Steam Deck.ini — the pad block plus [Hotkeys]
-    // (the golden appends [Hotkeys] directly after the pad sections).
-    class string inputProfileText(EmulatorDefinition definition, Keymap keymap,
-                                  string padIdentity) {
-        Vector<string> lines = [];
-        Pcsx2Emitter.pushAll(lines, Pcsx2Emitter.padSectionsLines(padIdentity));
-        Pcsx2Emitter.pushAll(lines, Pcsx2Emitter.hotkeysSectionLines(definition, keymap));
-        return lines.join("\n") + "\n";
-    }
-
-    // Write the golden profile tree under <outputRoot>/<name>/config/.
+    // Render the golden profile tree (config/inis/PCSX2.ini plus the
+    // config/inputprofiles/Steam Deck.ini pad-and-hotkeys profile) from
+    // ./profile.json under <outputRoot>/<name>/config/.
     class void emitProfiles(EmulatorDefinition definition, SteamInputTarget steamInput,
                             Keymap keymap, string outputRoot) {
+        ProfileTemplate template = ProfileTemplate.forEmulator(definition.file);
+        if (!template.ok()) {
+            return;
+        }
         EmulatorPlatform platform = Pcsx2Emitter.profilePlatform(definition);
-        string padIdentity = steamInput.deviceIdentity("pcsx2_pad");
-        string configRoot = PathTools.join(PathTools.join(outputRoot, definition.name),
-            "config");
-        string configurationDirectory = PathTools.join(configRoot, "inis");
-        string inputProfileDirectory = PathTools.join(configRoot, "inputprofiles");
-        UnixFileSystem.mkdirp(configurationDirectory);
-        UnixFileSystem.mkdirp(inputProfileDirectory);
-        Path.writeAll(PathTools.join(configurationDirectory, "PCSX2.ini"),
-            Pcsx2Emitter.baseConfigurationText(platform, padIdentity,
-                Pcsx2Emitter.biosDirectory(platform, outputRoot)));
-        Path.writeAll(PathTools.join(inputProfileDirectory, "Steam Deck.ini"),
-            Pcsx2Emitter.inputProfileText(definition, keymap, padIdentity));
+        template.variables.add("emulator_name", definition.name);
+        template.variables.add("pad", steamInput.deviceIdentity("pcsx2_pad"));
+        template.variables.add("bios_directory",
+            Pcsx2Emitter.biosDirectory(platform, outputRoot));
+        template.variables.add("renderer_key",
+            Pcsx2Rendering.rendererKey(platform.graphics));
+        template.variables.add("automatic_renderer",
+            Pcsx2Rendering.automaticRendererValue());
+        template.lineGroups.add("keymap_hotkeys",
+            Pcsx2Emitter.keymapHotkeyLines(template, definition, keymap));
+        template.emit(outputRoot);
     }
 }

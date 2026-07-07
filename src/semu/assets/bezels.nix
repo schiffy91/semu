@@ -1,13 +1,13 @@
-# semu_bezels.nix — generic interpreter for the image half of
-# src/semu/assets/sources.json (recipe types copy /
-# local / flatten / recolor / glass) plus its "staging" section. sources.json
-# is the only place upstream pins and asset names live; a new entry there is
-# picked up here with zero nix edits.
+# semu_bezels.nix — generic interpreter for the global bezel manifest
+# src/semu/assets/bezels.json (recipe types copy / local / flatten / recolor /
+# glass) plus its "staging" section. bezels.json is the only place bezel
+# upstream pins, art recipes, and the generic fallback table live; a new entry
+# there is picked up here with zero nix edits.
 #
 # Output layout:
 #   share/semu/<asset key>   canonical tree ($SEMU_ASSET_ROOT/share/semu is
 #                            what BezelResolver joins "assets/..." onto)
-#   <staging dest>           every staging file whose src names a sources.json
+#   <staging dest>           every staging file whose src names a bezels.json
 #                            asset (or an asset directory prefix); non-asset
 #                            srcs (runtime build products such as the Deck tap
 #                            .so under generated/) are skipped — their own
@@ -15,7 +15,7 @@
 { lib, stdenvNoCC, fetchFromGitHub, imagemagick }:
 
 let
-  sources = lib.importJSON ./sources.json;
+  sources = lib.importJSON ./bezels.json;
   repoRoot = ../../..;
 
   githubTrees = lib.mapAttrs
@@ -79,7 +79,7 @@ let
       mkdir -p "$(dirname "$out/${file.dest}")"
       cp -R "$out/share/semu/${file.src}" "$out/${file.dest}"
     '' else ''
-      echo "semu-bezels: skipping staging ${unitId}: ${file.src} (not a sources.json asset)"
+      echo "semu-bezels: skipping staging ${unitId}: ${file.src} (not a bezels.json asset)"
     '';
   stagingScript = lib.concatMapStrings
     (unit: lib.concatMapStrings (stageFile unit.id) unit.files)
@@ -104,7 +104,7 @@ stdenvNoCC.mkDerivation {
   };
 
   meta = {
-    description = "Semu bezel art rendered from the sources.json manifest";
+    description = "Semu bezel art rendered from the bezels.json manifest";
     platforms = lib.platforms.all;
   };
 }

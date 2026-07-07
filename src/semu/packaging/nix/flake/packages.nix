@@ -24,16 +24,18 @@ forAllSystems (system: let
   semuBezels = pkgs.callPackage ../../../assets/bezels.nix { };
   semuShaders = pkgs.callPackage ../../../assets/shaders.nix { };
 
-  # Coverage invariant of the two sources.json interpreters: every asset
-  # entry must be claimed by exactly one of them.
-  sourceManifest = lib.importJSON ../../../assets/sources.json;
-  assetNames = lib.attrNames sourceManifest.assets;
+  # Coverage invariant of the two manifest interpreters: every asset entry in
+  # bezels.json and shaders.json must be claimed by its interpreter.
+  bezelManifest = lib.importJSON ../../../assets/bezels.json;
+  shaderManifest = lib.importJSON ../../../assets/shaders.json;
+  assetNames = lib.attrNames bezelManifest.assets
+    ++ lib.attrNames shaderManifest.assets;
   coveredNames = semuBezels.imageAssetNames ++ semuShaders.shaderAssetNames;
   uncovered = lib.filter (name: !(lib.elem name coveredNames)) assetNames;
 
   visualAssets =
     assert lib.assertMsg (uncovered == [ ])
-      "sources.json assets with no nix interpreter: ${toString uncovered}";
+      "manifest assets with no nix interpreter: ${toString uncovered}";
     pkgs.symlinkJoin {
       name = "semu-visual-assets";
       paths = [ semuBezels semuShaders ];
@@ -45,7 +47,7 @@ forAllSystems (system: let
 
   # libsemutap — the GL tap compositor (sources: src/semu/emulators/rendering/tap).
   # Judgment call: a stanza here instead of assets/shaders.nix, because that file is a
-  # stdenvNoCC interpreter for the sources.json asset manifest while the tap is
+  # stdenvNoCC interpreter for the shaders.json asset manifest while the tap is
   # compiled code needing a real toolchain. x86_64-linux only (the Deck: LD_PRELOAD
   # into the emulator process); the darwin plan is documented in rendering/tap/readme.md.
   semuTap =

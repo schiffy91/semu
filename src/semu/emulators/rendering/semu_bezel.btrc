@@ -13,11 +13,12 @@
 // <repo>/src/semu/emulators/rendering. No per-file existence gating: bezel
 // PNGs are staged by the nix asset pipeline and may be absent at plan time.
 //
-// The 3-row generic fallback table in genericFallback is one of the few
-// code-owned tables the rewrite allows (mission contract); everything else
-// comes from JSON. It is generic presentation data — no system names.
+// The generic fallback table is NOT code-owned: it lives in the global bezel
+// manifest (src/semu/assets/bezels.json, "generic"."profiles") and is read
+// through the same asset root as the art it names — staged trees carry the
+// manifest at share/semu/assets/bezels.json.
 
-import std.{vector, fs, platform}
+import std.{vector, fs, platform, json}
 import ../../core/geometry.btrc
 import ../../systems/system_parser.btrc
 
@@ -101,35 +102,40 @@ class BezelResolver {
         return "crt4x3";
     }
 
-    // The code-owned 3-row generic bezel table (mission contract):
-    //   crt4x3/handheld -> assets/bezels/generic/4x3.png  hole {0.1250,0.0500,0.7500,0.9000}
-    //   wide16x9        -> assets/bezels/generic/16x9.png hole {0.0300,0.0800,0.9400,0.8400}
-    //   dual            -> assets/bezels/generic/dual.png hole {0.3300,0.0400,0.3400,0.9200}
-    // Art stays canonical here; resolve joins it onto the asset root.
-    class ResolvedBezel genericFallback(string assetProfile) {
+    // The generic bezel table, read from the global manifest's
+    // "generic"."profiles" (assets/bezels.json under the asset root). Unknown
+    // profiles resolve as crt4x3, matching the table's own fallback row. Art
+    // stays canonical here; resolve joins it onto the asset root. A missing
+    // or unreadable manifest degrades to an artless full-frame hole rather
+    // than failing the launch — NixPackage.verify guards the manifest itself.
+    class ResolvedBezel genericFallback(string assetProfile, string assetRoot) {
         ResolvedBezel resolved = ResolvedBezel();
         resolved.hole.set = true;
-        if (assetProfile.equals("wide16x9")) {
-            resolved.art = "assets/bezels/generic/16x9.png";
-            resolved.hole.x = 0.0300;
-            resolved.hole.y = 0.0800;
-            resolved.hole.w = 0.9400;
-            resolved.hole.h = 0.8400;
+        resolved.hole.x = 0.0;
+        resolved.hole.y = 0.0;
+        resolved.hole.w = 1.0;
+        resolved.hole.h = 1.0;
+        JsonValue manifest = JsonValue.readFile(
+            BezelResolver.resolveAssetPath("assets/bezels.json", assetRoot));
+        JsonValue profiles = manifest.get("generic").get("profiles");
+        JsonValue profile = profiles.get(assetProfile);
+        if (!profile.isObject()) {
+            profile = profiles.get("crt4x3");
+        }
+        if (!profile.isObject()) {
             return resolved;
         }
-        if (assetProfile.equals("dual")) {
-            resolved.art = "assets/bezels/generic/dual.png";
-            resolved.hole.x = 0.3300;
-            resolved.hole.y = 0.0400;
-            resolved.hole.w = 0.3400;
-            resolved.hole.h = 0.9200;
-            return resolved;
+        if (profile.get("art").isString()) {
+            resolved.art = profile.get("art").asString();
         }
-        resolved.art = "assets/bezels/generic/4x3.png";
-        resolved.hole.x = 0.1250;
-        resolved.hole.y = 0.0500;
-        resolved.hole.w = 0.7500;
-        resolved.hole.h = 0.9000;
+        JsonValue hole = profile.get("hole");
+        if (hole.get("x").isNumber() && hole.get("y").isNumber()
+            && hole.get("w").isNumber() && hole.get("h").isNumber()) {
+            resolved.hole.x = hole.get("x").asFloat();
+            resolved.hole.y = hole.get("y").asFloat();
+            resolved.hole.w = hole.get("w").asFloat();
+            resolved.hole.h = hole.get("h").asFloat();
+        }
         return resolved;
     }
 
@@ -157,7 +163,7 @@ class BezelResolver {
 
     class ResolvedBezel resolveFallback(SystemDefinition system, string assetRoot) {
         ResolvedBezel resolved = BezelResolver.genericFallback(
-            BezelResolver.fallbackProfile(system));
+            BezelResolver.fallbackProfile(system), assetRoot);
         resolved.art = BezelResolver.resolveAssetPath(resolved.art, assetRoot);
         BezelResolver.applyRenderDefaults(resolved, system);
         return resolved;

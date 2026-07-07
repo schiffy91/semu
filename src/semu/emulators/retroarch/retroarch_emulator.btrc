@@ -218,7 +218,7 @@ class RetroArchEmulator extends SemuEmulator implements SemuEmitter, SemuRendere
         if (inputDriver.isEmpty()) {
             inputDriver = configuration.inputDriver;
         }
-        RetroArchEmitter.emitProfile(definition.name, inputDriver,
+        RetroArchEmitter.emitProfile(definition, inputDriver,
             self.audioDriver(platform), keymap, outputRoot);
     }
 

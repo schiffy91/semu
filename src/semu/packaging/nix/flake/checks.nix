@@ -1,9 +1,9 @@
 # flake/checks.nix — fast, network-free gates:
 #   tree-audit    the repo's own approved-shape audit (tests/Makefile), run
 #                 against the flake source
-#   assets-verify pure-eval walk of every bezels.json/shaders.json asset
-#                 reference (plus the code-owned generic fallback trio)
-#                 against the sources.json recipe set
+#   assets-verify pure-eval walk of every per-system bezels.json/shaders.json
+#                 asset reference (plus the global generic fallback table)
+#                 against the bezels.json + shaders.json recipe sets
 { self, forAllSystems, mkPkgs, ... }:
 
 forAllSystems (system: let
@@ -11,8 +11,10 @@ forAllSystems (system: let
   lib = pkgs.lib;
 
   semuRoot = ../../..;
-  sourcesJson = lib.importJSON (semuRoot + "/assets/sources.json");
-  recipeKeys = lib.attrNames sourcesJson.assets;
+  bezelManifest = lib.importJSON (semuRoot + "/assets/bezels.json");
+  shaderManifest = lib.importJSON (semuRoot + "/assets/shaders.json");
+  recipeKeys = lib.attrNames bezelManifest.assets
+    ++ lib.attrNames shaderManifest.assets;
 
   systemsDir = semuRoot + "/systems";
   systemIds = lib.attrNames (lib.filterAttrs
@@ -35,12 +37,10 @@ forAllSystems (system: let
     ];
   in lib.filter (ref: ref != "") (variantRefs ++ shaderRefs);
 
-  # BezelResolver.genericFallback's code-owned art must stay buildable too.
-  genericFallback = [
-    "assets/bezels/generic/4x3.png"
-    "assets/bezels/generic/16x9.png"
-    "assets/bezels/generic/dual.png"
-  ];
+  # The generic fallback table's art (bezels.json "generic"."profiles") must
+  # stay buildable too — derived from the manifest, never listed here.
+  genericFallback = lib.unique (lib.mapAttrsToList (_: profile: profile.art)
+    ((bezelManifest.generic or { }).profiles or { }));
 
   referenced = lib.unique (genericFallback ++ lib.concatMap referencesOf systemIds);
   missing = lib.filter (ref: !(lib.elem ref recipeKeys)) referenced;
@@ -53,7 +53,7 @@ in {
   } ''
     status=0
     if [ -n "$missing" ]; then
-      echo "references without a sources.json recipe: $missing" >&2
+      echo "references without a bezels.json/shaders.json recipe: $missing" >&2
       status=1
     fi
     if [ -n "$notCanonical" ]; then
@@ -61,7 +61,7 @@ in {
       status=1
     fi
     [ "$status" = 0 ] || exit "$status"
-    echo "OK: $referencedCount referenced assets all have sources.json recipes" > $out
+    echo "OK: $referencedCount referenced assets all have manifest recipes" > $out
   '';
 
   tree-audit = pkgs.runCommand "semu-tree-audit" {

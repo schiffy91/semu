@@ -1,53 +1,34 @@
-// cemu_emitter.btrc — profile emission builders for the Cemu concrete
-// emulator class. Cemu reads controller mappings from an XML profile under
-// its config home; the Deck-proven profile pins the Steam Virtual Gamepad
-// through SDL. Every identity value (api, display name, profile name) comes
-// from the steam_input.json device_identities table — nothing
-// target-specific is hardcoded here. The emulator.json seed sources and
-// firmware fallback directories that point into the staged tree are NOT
-// pre-created here: the launcher's seed copies tolerate absent sources
-// (EmulatorExecution.applySeeds guards on FileSystem.isFile), so directories
-// exist only where a file is actually written.
+// cemu_emitter.btrc — CemuEmitter: substitution wiring for Cemu's
+// emulated-controller profile. The Deck-proven XML body lives in
+// ./profile.json (rendered by ProfileTemplate); this file owns only what
+// code must compute — the steam_input.json device identities (controller
+// api, display name, profile name) that pin the Steam Virtual Gamepad
+// through SDL. Nothing target-specific is hardcoded here. The emulator.json
+// seed sources and firmware fallback directories that point into the staged
+// tree are NOT pre-created here: the launcher's seed copies tolerate absent
+// sources (EmulatorExecution.applySeeds guards on FileSystem.isFile), so
+// directories exist only where a file is actually written.
 
-import std.{vector, fs}
 import ../semu_emulator.btrc
+import ../profile_template.btrc
 import ../../input/controllers/steamdeck/steam_input.btrc
 
 class CemuEmitter {
-    // The Deck-proven emulated-controller profile. 'Wii U GamePad' and the
-    // rumble strength are Cemu-native profile grammar; the controller api,
-    // display name and profile name are target-owned device identities.
-    class string controllerProfileXml(SteamInputTarget steamInput) {
-        string controllerApi = steamInput.deviceIdentity("cemu_api");
-        string controllerDisplayName = steamInput.deviceIdentity("cemu_display_name");
-        string profileName = steamInput.deviceIdentity("cemu_profile");
-        return "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
-            + "<emulated_controller>\n"
-            + "\t<type>Wii U GamePad</type>\n"
-            + "\t<profile>" + profileName + "</profile>\n"
-            + "\t<controller>\n"
-            + "\t\t<api>" + controllerApi + "</api>\n"
-            + "\t\t<display_name>" + controllerDisplayName + "</display_name>\n"
-            + "\t\t<rumble>0</rumble>\n"
-            + "\t</controller>\n"
-            + "</emulated_controller>\n";
-    }
-
-    // <outputRoot>/<Name>/config/controllerProfiles/<profile>.xml — Cemu
-    // resolves controllerProfiles/ relative to its config home, and the
-    // profile file name must equal the <profile> element inside it.
-    class string controllerProfilePath(EmulatorDefinition definition,
-                                       SteamInputTarget steamInput, string outputRoot) {
-        string profileName = steamInput.deviceIdentity("cemu_profile");
-        return PathTools.join(outputRoot,
-            definition.name + "/config/controllerProfiles/" + profileName + ".xml");
-    }
-
+    // Render <outputRoot>/<Name>/config/controllerProfiles/<profile>.xml from
+    // ./profile.json — Cemu resolves controllerProfiles/ relative to its
+    // config home, and the profile file name must equal the <profile>
+    // element inside it (both render from ${profile_name}).
     class void emit(EmulatorDefinition definition, SteamInputTarget steamInput,
                     string outputRoot) {
-        string profilePath = CemuEmitter.controllerProfilePath(definition, steamInput,
-            outputRoot);
-        UnixFileSystem.mkdirp(PathTools.dirname(profilePath));
-        Path.writeAll(profilePath, CemuEmitter.controllerProfileXml(steamInput));
+        ProfileTemplate template = ProfileTemplate.forEmulator(definition.file);
+        if (!template.ok()) {
+            return;
+        }
+        template.variables.add("emulator_name", definition.name);
+        template.variables.add("profile_name", steamInput.deviceIdentity("cemu_profile"));
+        template.variables.add("controller_api", steamInput.deviceIdentity("cemu_api"));
+        template.variables.add("controller_display_name",
+            steamInput.deviceIdentity("cemu_display_name"));
+        template.emit(outputRoot);
     }
 }

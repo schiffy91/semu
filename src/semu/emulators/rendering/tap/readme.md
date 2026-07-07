@@ -56,7 +56,7 @@ Deck target):
     cc -shared -fPIC -O2 -o libsemutap.so libsemutap.c -ldl -lm
 
 It went there rather than into `semu_shaders.nix` because that derivation is a
-`stdenvNoCC` interpreter for the `sources.json` asset manifest; the tap is
+`stdenvNoCC` interpreter for the `shaders.json` asset manifest; the tap is
 compiled code that needs a real toolchain.
 
 ## macOS: the overlay window (built, no injection)

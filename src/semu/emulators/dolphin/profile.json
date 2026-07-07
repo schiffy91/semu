@@ -1,0 +1,229 @@
+{
+  "schema_version": 1,
+  "doc": {
+    "purpose": "Dolphin profile tree content (the Deck-proven goldens) as data: every ini body lives here, substituted by DolphinEmitter. Variables: ${pad} / ${wiimote} / ${pointer} are steam_input.json device identities, ${speed_limit_expression} is the keymap-derived Tab exclusion expression, ${emulator_name} the contract name.",
+    "grammar": "Dolphin's control-expression wire format: backtick controls, `<device>:<control>` qualified references, @(...) hotkey chords."
+  },
+  "blocks": {
+    "gamecube_pad_body": [
+      "Device = ${pad}",
+      "Buttons/A = `Button S`",
+      "Buttons/B = `Button W`",
+      "Buttons/X = `Button E`",
+      "Buttons/Y = `Button N`",
+      "Buttons/Z = `Shoulder R`|Back",
+      "Buttons/Start = Start",
+      "Main Stick/Up = `Axis 1-`",
+      "Main Stick/Down = `Axis 1+`",
+      "Main Stick/Left = `Axis 0-`",
+      "Main Stick/Right = `Axis 0+`",
+      "C-Stick/Up = `Axis 4-`",
+      "C-Stick/Down = `Axis 4+`",
+      "C-Stick/Left = `Axis 3-`",
+      "C-Stick/Right = `Axis 3+`",
+      "Triggers/L = `Trigger L`",
+      "Triggers/R = `Trigger R`",
+      "Triggers/L-Analog = `Trigger L`",
+      "Triggers/R-Analog = `Trigger R`",
+      "D-Pad/Up = `Pad N`",
+      "D-Pad/Down = `Pad S`",
+      "D-Pad/Left = `Pad W`",
+      "D-Pad/Right = `Pad E`",
+      "Rumble/Motor = Strong",
+      "Options/Always Connected = True"
+    ],
+    "wiimote_profile_common": [
+      "Device = ${wiimote}",
+      "Buttons/A = `A`|`${pointer}:Click 1`|`${pointer}:Return`",
+      "Buttons/B = B|`R4`",
+      "Buttons/1 = X",
+      "Buttons/2 = Y",
+      "Buttons/- = View",
+      "Buttons/+ = Menu",
+      "D-Pad/Up = `D-Pad Up`",
+      "D-Pad/Down = `D-Pad Down`",
+      "D-Pad/Left = `D-Pad Left`",
+      "D-Pad/Right = `D-Pad Right`",
+      "IR/Vertical Offset = 12.",
+      "IR/Total Yaw = 19.",
+      "IR/Total Pitch = 22.",
+      "IR/Auto-Hide = True",
+      "IR/Up = `${pointer}:Cursor Y-`",
+      "IR/Down = `${pointer}:Cursor Y+`",
+      "IR/Left = `${pointer}:Cursor X-`",
+      "IR/Right = `${pointer}:Cursor X+`",
+      "IR/Hide = `Thumb L`",
+      "IMUIR/Enabled = False",
+      "IMUAccelerometer/Up = `Accel Up`",
+      "IMUAccelerometer/Down = `Accel Down`",
+      "IMUAccelerometer/Left = `Accel Left`",
+      "IMUAccelerometer/Right = `Accel Right`",
+      "IMUAccelerometer/Forward = `Accel Forward`",
+      "IMUAccelerometer/Backward = `Accel Backward`",
+      "IMUGyroscope/Pitch Up = `Gyro Pitch Up`",
+      "IMUGyroscope/Pitch Down = `Gyro Pitch Down`",
+      "IMUGyroscope/Roll Left = `Gyro Roll Left`",
+      "IMUGyroscope/Roll Right = `Gyro Roll Right`",
+      "IMUGyroscope/Yaw Left = `Gyro Yaw Left`",
+      "IMUGyroscope/Yaw Right = `Gyro Yaw Right`"
+    ]
+  },
+  "hotkeys": {
+    "keymap": [
+      { "setting": "General/Open", "action": "ui.open" },
+      { "setting": "General/Toggle Pause", "action": "ui.pause" },
+      { "setting": "General/Stop", "action": "app.quit" },
+      { "setting": "General/Toggle Fullscreen", "action": "ui.fullscreen" },
+      { "setting": "General/Take Screenshot", "action": "ui.screenshot" },
+      { "setting": "Load State/Load State Slot 1", "action": "state.load" },
+      { "setting": "Save State/Save State Slot 1", "action": "state.save" }
+    ]
+  },
+  "files": [
+    {
+      "path": "${emulator_name}/config/Dolphin.ini",
+      "lines": [
+        "[Analytics]",
+        "Enabled = False",
+        "PermissionAsked = True",
+        "",
+        "[Core]",
+        "SIDevice0 = 6",
+        "SIDevice1 = 0",
+        "SIDevice2 = 0",
+        "SIDevice3 = 0",
+        "WiimoteSource0 = 1",
+        "WiimoteSource1 = 0",
+        "WiimoteSource2 = 0",
+        "WiimoteSource3 = 0",
+        "",
+        "[Interface]",
+        "ConfirmStop = False",
+        "UsePanicHandlers = False"
+      ]
+    },
+    {
+      "path": "${emulator_name}/config/GCPadNew.ini",
+      "lines": [
+        "[GCPad1]",
+        "@block:gamecube_pad_body",
+        "[GCPad2]",
+        "Device = ${pad}",
+        "[GCPad3]",
+        "Device = ${pad}",
+        "[GCPad4]",
+        "Device = ${pad}"
+      ]
+    },
+    {
+      "path": "${emulator_name}/config/WiimoteNew.ini",
+      "lines": [
+        "[Wiimote1]",
+        "Device = ${pointer}",
+        "Buttons/A = Return|`Click 1`|`${wiimote}:A`",
+        "Buttons/B = B|`Click 3`|`${wiimote}:B`|`${wiimote}:R4`",
+        "Buttons/1 = 1|`${wiimote}:X`",
+        "Buttons/2 = 2|`${wiimote}:Y`",
+        "Buttons/- = Q|`${wiimote}:View`",
+        "Buttons/+ = E|`${wiimote}:Menu`",
+        "Buttons/Home = Return",
+        "D-Pad/Up = Up|`${wiimote}:D-Pad Up`",
+        "D-Pad/Down = Down|`${wiimote}:D-Pad Down`",
+        "D-Pad/Left = Left|`${wiimote}:D-Pad Left`",
+        "D-Pad/Right = Right|`${wiimote}:D-Pad Right`",
+        "IR/Vertical Offset = 12.",
+        "IR/Total Yaw = 19.",
+        "IR/Total Pitch = 22.",
+        "IR/Auto-Hide = True",
+        "IR/Up = `Cursor Y-`",
+        "IR/Down = `Cursor Y+`",
+        "IR/Left = `Cursor X-`",
+        "IR/Right = `Cursor X+`",
+        "IR/Hide = `${wiimote}:Thumb L`",
+        "IMUIR/Enabled = False",
+        "Extension = Nunchuk",
+        "Nunchuk/Buttons/C = `${wiimote}:Shoulder R`",
+        "Nunchuk/Buttons/Z = `${wiimote}:Trigger R`",
+        "Nunchuk/Stick/Up = `${wiimote}:Left Stick Y+`",
+        "Nunchuk/Stick/Down = `${wiimote}:Left Stick Y-`",
+        "Nunchuk/Stick/Left = `${wiimote}:Left Stick X-`",
+        "Nunchuk/Stick/Right = `${wiimote}:Left Stick X+`",
+        "Rumble/Motor = Strong",
+        "Source = 1",
+        "[Wiimote2]",
+        "Device = ${wiimote}",
+        "[Wiimote3]",
+        "Device = ${wiimote}",
+        "[Wiimote4]",
+        "Device = ${wiimote}",
+        "[BalanceBoard]",
+        "Device = ${wiimote}"
+      ]
+    },
+    {
+      "path": "${emulator_name}/config/Profiles/GCPad/Steam Deck.ini",
+      "lines": [
+        "[Profile]",
+        "@block:gamecube_pad_body"
+      ]
+    },
+    {
+      "path": "${emulator_name}/config/Profiles/Hotkeys/Steam Deck.ini",
+      "lines": [
+        "[Profile]",
+        "Device = ${pointer}",
+        "@lines:keymap_hotkeys",
+        "Emulation Speed/Disable Emulation Speed Limit = ${speed_limit_expression}",
+        "Controller Profile 1/Next Profile = @(Alt+F5)",
+        "Other State Hotkeys/Undo Load State = F12",
+        "Other State Hotkeys/Undo Save State = @(Shift+F12)"
+      ]
+    },
+    {
+      "path": "${emulator_name}/config/Profiles/Wiimote/Wiimote (SD).ini",
+      "lines": [
+        "[Profile]",
+        "@block:wiimote_profile_common",
+        "Extension = Nunchuk",
+        "Nunchuk/Buttons/C = `Shoulder R`",
+        "Nunchuk/Buttons/Z = `Trigger R`",
+        "Nunchuk/Stick/Up = `Left Stick Y+`",
+        "Nunchuk/Stick/Down = `Left Stick Y-`",
+        "Nunchuk/Stick/Left = `Left Stick X-`",
+        "Nunchuk/Stick/Right = `Left Stick X+`",
+        "Rumble/Motor = Strong"
+      ]
+    },
+    {
+      "path": "${emulator_name}/config/Profiles/Wiimote/Wiimote + Classic Controller (SD).ini",
+      "lines": [
+        "[Profile]",
+        "@block:wiimote_profile_common",
+        "Extension = Classic",
+        "Classic/Buttons/A = B",
+        "Classic/Buttons/B = A",
+        "Classic/Buttons/X = Y",
+        "Classic/Buttons/Y = X",
+        "Classic/Buttons/ZL = `L1`",
+        "Classic/Buttons/ZR = `R1`",
+        "Classic/Buttons/- = View",
+        "Classic/Buttons/+ = Menu",
+        "Classic/Left Stick/Up = `Left Stick Y+`",
+        "Classic/Left Stick/Down = `Left Stick Y-`",
+        "Classic/Left Stick/Left = `Left Stick X-`",
+        "Classic/Left Stick/Right = `Left Stick X+`",
+        "Classic/Right Stick/Up = `Right Stick Y+`",
+        "Classic/Right Stick/Down = `Right Stick Y-`",
+        "Classic/Right Stick/Left = `Right Stick X-`",
+        "Classic/Right Stick/Right = `Right Stick X+`",
+        "Classic/Triggers/L = `L2`",
+        "Classic/Triggers/R = `R2`",
+        "Classic/D-Pad/Up = `D-Pad Up`",
+        "Classic/D-Pad/Down = `D-Pad Down`",
+        "Classic/D-Pad/Left = `D-Pad Left`",
+        "Classic/D-Pad/Right = `D-Pad Right`",
+        "Rumble/Motor = Strong"
+      ]
+    }
+  ]
+}
