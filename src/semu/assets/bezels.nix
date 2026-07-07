@@ -12,7 +12,7 @@
 #                            srcs (runtime build products such as the Deck tap
 #                            .so under generated/) are skipped — their own
 #                            pipelines stage them.
-{ lib, stdenvNoCC, fetchFromGitHub, imagemagick }:
+{ lib, stdenvNoCC, fetchFromGitHub, fetchurl, imagemagick }:
 
 let
   sources = lib.importJSON ./bezels.json;
@@ -25,12 +25,20 @@ let
     })
     (lib.filterAttrs (_: spec: spec.kind == "github") sources.upstreams);
 
-  imageTypes = [ "copy" "local" "flatten" "recolor" "glass" "panel" "shell" ];
+  urlFiles = lib.mapAttrs
+    (_: spec: fetchurl {
+      inherit (spec) url name;
+      sha256 = spec.sha256_base32;
+    })
+    (lib.filterAttrs (_: spec: spec.kind == "url") sources.upstreams);
+
+  imageTypes = [ "copy" "local" "flatten" "recolor" "glass" "panel" "shell" "photo" ];
   imageAssets = lib.filterAttrs (_: recipe: lib.elem recipe.type imageTypes)
     sources.assets;
 
   outFile = key: ''"$out/share/semu/${key}"'';
   treeFile = recipe: path: ''"${githubTrees.${recipe.from}}/${path}"'';
+  urlFile = recipe: ''"${urlFiles.${recipe.from}}"'';
 
   # Shared plate renderer for "panel" (whole drawing) and "shell" (overlay
   # plates on a device render): ordered round_rect / circle in canvas
@@ -59,6 +67,13 @@ let
       '';
       local = ''
         cp "${repoRoot + "/${recipe.path}"}" ${outFile key}
+      '';
+      # Photoreal device photograph (fetchurl-pinned, e.g. Wikimedia Commons):
+      # optional deskew rotation, trim to the device silhouette, cap size.
+      photo = ''
+        magick ${urlFile recipe} -background none \
+          ${lib.optionalString (recipe ? rotate) "-rotate ${toString recipe.rotate} "} \
+          -trim +repage -resize '2560x2560>' "PNG32:$out/share/semu/${key}"
       '';
       # -flatten merges the whole layer stack; pairwise -composite would only
       # merge the last two layers (the GBC LED-layer regression).

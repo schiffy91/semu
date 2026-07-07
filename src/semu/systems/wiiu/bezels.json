@@ -3,10 +3,10 @@
   "enabled": true,
   "default_variant": "gamepad",
   "hole": {
-    "x": 0.253,
-    "y": 0.2778,
-    "w": 0.494,
-    "h": 0.4444
+    "x": 0.2275,
+    "y": 0.1937,
+    "w": 0.545,
+    "h": 0.565
   },
   "variants": [
     {
@@ -16,6 +16,6 @@
     }
   ],
   "doc": {
-    "hole": "Exact 16:9 (832x468 at 1280x800) inside the drawn GamePad shell."
+    "hole": "Measured from the photo: flood-fill of the off-screen gray panel from image center (see bezels.json photo recipes)."
   }
 }

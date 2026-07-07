@@ -3,17 +3,22 @@
   "enabled": true,
   "default_variant": "classic",
   "hole": {
-    "x": 0.2727,
-    "y": 0.1245,
-    "w": 0.4539,
-    "h": 0.7415
+    "x": 0.2781,
+    "y": 0.2633,
+    "w": 0.4437,
+    "h": 0.4733
   },
   "variants": [
     {
       "id": "classic",
       "label": "Classic",
       "art": "assets/bezels/gba/classic.png",
-      "glass": "assets/bezels/gba/classic-glass.png"
+      "hole": {
+        "x": 0.2781,
+        "y": 0.2633,
+        "w": 0.4437,
+        "h": 0.4733
+      }
     },
     {
       "id": "sp",

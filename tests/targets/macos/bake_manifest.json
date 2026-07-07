@@ -1,0 +1,80 @@
+{
+  "schema_version": 1,
+  "viewport": { "w": 2560, "h": 1600 },
+  "doc": {
+    "intent": "Bake photoreal bezel art by rendering Duimon Mega Bezel presets headlessly (librashader, Metal) and detecting exact screen holes with color-keyed probe cards. The baked PNG ships as the static bezel; holes are measured, never hand-tuned.",
+    "probe": "Screen 1 renders solid magenta, screen 2 solid cyan; threshold bounding boxes give hole fractions in the same render that produces the art, so geometry is consistent by construction.",
+    "day_variants": "Day ([Guest]/[LCD-GRID] without [Night]) keeps shell detail legible next to the pure-black bezel-off mode."
+  },
+  "bakes": [
+    {
+      "system": "gba",
+      "variant": "classic",
+      "art_key": "assets/bezels/gba/classic.png",
+      "preset": "Presets/Advanced/Nintendo_GBA/GBA-[ADV]-[LCD-GRID].slangp",
+      "zoom": 80,
+      "input": { "w": 240, "h": 160 },
+      "screens": [ { "id": "single", "rect": [0, 0, 240, 160] } ]
+    },
+    {
+      "system": "nds",
+      "variant": "vertical",
+      "art_key": "assets/bezels/nds/vertical.png",
+      "preset": "Presets/Advanced/Nintendo_NDS/NDS_Vertical_Alt-[ADV]-[Guest].slangp",
+      "zoom": null,
+      "input": { "w": 256, "h": 384 },
+      "screens": [
+        { "id": "top", "rect": [0, 0, 256, 192] },
+        { "id": "bottom", "rect": [0, 192, 256, 192] }
+      ]
+    },
+    {
+      "system": "nds",
+      "variant": "horizontal",
+      "art_key": "assets/bezels/nds/horizontal.png",
+      "preset": "Presets/Advanced/Nintendo_NDS/NDS-[ADV]-[Guest].slangp",
+      "zoom": 70,
+      "input": { "w": 256, "h": 384 },
+      "screens": [
+        { "id": "top", "rect": [0, 0, 256, 192] },
+        { "id": "bottom", "rect": [0, 192, 256, 192] }
+      ]
+    },
+    {
+      "system": "nds",
+      "variant": "big_screen",
+      "art_key": "assets/bezels/nds/big_screen.png",
+      "preset": "Presets/Advanced/Nintendo_NDS/NDS_Hybrid-[ADV]-[Guest].slangp",
+      "zoom": 70,
+      "input": { "w": 256, "h": 384 },
+      "screens": [
+        { "id": "top", "rect": [0, 0, 256, 192] },
+        { "id": "bottom", "rect": [0, 192, 256, 192] }
+      ]
+    },
+    {
+      "system": "n3ds",
+      "variant": "vertical",
+      "art_key": "assets/bezels/n3ds/vertical.png",
+      "preset": "Presets/Advanced/Nintendo_3DS/3DS_Vertical_Alt-[ADV]-[Guest].slangp",
+      "zoom": null,
+      "input": { "w": 400, "h": 480 },
+      "screens": [
+        { "id": "top", "rect": [0, 0, 400, 240] },
+        { "id": "bottom", "rect": [40, 240, 320, 240] }
+      ]
+    },
+    {
+      "system": "n3ds",
+      "variant": "horizontal",
+      "art_key": "assets/bezels/n3ds/horizontal.png",
+      "preset": "Presets/Advanced/Nintendo_3DS/3DS-[ADV]-[Guest].slangp",
+      "zoom": 70,
+      "input": { "w": 400, "h": 480 },
+      "screens": [
+        { "id": "top", "rect": [0, 0, 400, 240] },
+        { "id": "bottom", "rect": [40, 240, 320, 240] }
+      ]
+    }
+  ]
+}

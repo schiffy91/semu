@@ -93,6 +93,19 @@ class NixPackage {
                     log.add(file, "upstreams." + pinKey, "nixpkgs pin missing attr");
                     issues = issues + 1;
                 }
+            } else if (kind.equals("url")) {
+                if (NixPackage.stringField(pinValue, "url").isEmpty()) {
+                    log.add(file, "upstreams." + pinKey, "url pin missing url");
+                    issues = issues + 1;
+                }
+                if (NixPackage.stringField(pinValue, "sha256_base32").isEmpty()) {
+                    log.add(file, "upstreams." + pinKey, "url pin missing sha256_base32");
+                    issues = issues + 1;
+                }
+                if (NixPackage.stringField(pinValue, "name").isEmpty()) {
+                    log.add(file, "upstreams." + pinKey, "url pin missing name");
+                    issues = issues + 1;
+                }
             } else {
                 log.add(file, "upstreams." + pinKey, "unknown pin kind '" + kind + "'");
                 issues = issues + 1;
