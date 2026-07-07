@@ -193,9 +193,10 @@ class LinuxTap {
     // The contract's EXTRA bezel variants (b/c/d — the radial menu and the
     // semu-bezel state file cycle through them): each resolves like the base
     // variant (geometry_from included) and rides the tap's variant key
-    // grammar (SEMU_TAP_ART_B/_C/_D + SEMU_TAP_SCREEN_B/_C/_D, glass
-    // alike). Without these keys the tap reports bcnt=1 and variant cycling
-    // is a no-op — caught live by the visual loop.
+    // grammar (SEMU_TAP_ART_B/_C/_D + SEMU_TAP_SCREEN_B/_C/_D, glass and
+    // the dual-screen SEMU_TAP_SCREEN_PRI/_SEC holes alike). Without these
+    // keys the tap reports bcnt=1 and variant cycling is a no-op — caught
+    // live by the visual loop.
     class void mergeVariantEnvironment(LaunchPlan launchPlan, SystemDefinition system,
                                        string assetRoot) {
         if (!system.bezels.present) {
@@ -222,6 +223,18 @@ class LinuxTap {
                 if (!resolvedVariant.glass.isEmpty()) {
                     LinuxTap.mergeEnvironment(launchPlan, "SEMU_TAP_GLASS" + keySuffix,
                         resolvedVariant.glass);
+                }
+                if (system.display.screens.size() >= 2) {
+                    string primaryHole = RenderPlanner.screenHoleWireValue(resolvedVariant,
+                        system.display.screens.get(0).id);
+                    string secondaryHole = RenderPlanner.screenHoleWireValue(resolvedVariant,
+                        system.display.screens.get(1).id);
+                    if (!primaryHole.isEmpty() && !secondaryHole.isEmpty()) {
+                        LinuxTap.mergeEnvironment(launchPlan,
+                            "SEMU_TAP_SCREEN_PRI" + keySuffix, primaryHole);
+                        LinuxTap.mergeEnvironment(launchPlan,
+                            "SEMU_TAP_SCREEN_SEC" + keySuffix, secondaryHole);
+                    }
                 }
             }
         }

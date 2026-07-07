@@ -151,6 +151,8 @@ static float has_art = 0.0f; static char art_paths[4][1024]; static int art_w, a
 static int art_ws[4] = {0}, art_hs[4] = {0};  // per-variant device-art dims (variants can be different models -> diff aspect)
 static float scr_x, scr_y, scr_w, scr_h;     // the art's screen HOLE (norm, top-left); variant 0
 static float scr_rects[4][4];                // per-variant screen HOLE (variant b/c/d can be a different device model)
+static float pri_rects[4][4], sec_rects[4][4]; // per-variant DUAL screen holes (norm, top-left; nds layouts)
+static int dual_hole_set[4];                 // 1 when a variant carries BOTH pri+sec holes (else legacy layout math)
 static float disp_aspect = 0.0f;             // display aspect (0 = use native square nw/nh)
 static GLuint prog, vao, game_tex, bezel_texs[4], glass_texs[4];
 static GLint uWin, uRect, uSrc, uBezelRect, uNative, uStyle, uShell, uTV, uRef, uHasArt, uDebug, uRetro, uShaderMode;
@@ -237,7 +239,7 @@ static const char *FS =
  "    frag=vec4(outc,1.0); return;\n"
  "  }\n"
  "  if(uDual>0.5){\n"                                              // nds/3ds: two independent screens
- "    vec3 oc = uHasArt>0.5 ? artAt(px) : vec3(0.02);\n"
+ "    vec3 oc = uHasArt>0.5 ? artAt(px) : vec3(0.0);\n"            // bezel off -> pure black around the screens
  "    for(int s=0;s<2;s++){\n"
  "      vec4 R=(s==0)?uRect:uRect2; vec4 S=(s==0)?uSrc:uSrc2;\n"
  "      if(px.x>=R.x&&px.x<=R.x+R.z&&px.y>=R.y&&px.y<=R.y+R.w){\n"
@@ -256,9 +258,11 @@ static const char *FS =
  // SCREEN CUTOUT MASK: the real screen shape, NOT a hardcoded round. Handhelds use the Glass layer's alpha
  // (exact rounded-corner device screen); CRTs use a rounded-rect SDF matching the tube. Anti-aliased.
  "  vec4 gl = uHasGlass>0.5 ? glassAt(px) : vec4(0.0);\n"
- "  float mask = uHasGlass>0.5 ? gl.a : (1.0 - smoothstep(-0.012,0.012, sdRound(cc, vec2(1.0), clamp(uScreenCorner,0.0,0.5))));\n"
+ // Bezel off (uHasArt<0.5) is pure black passthrough: full mask (no rounded
+ // cutout), no procedural shell — everything outside the game rect stays
+ // vec3(0.0). The in-game shader paths below are untouched.
+ "  float mask = uHasArt<0.5 ? 1.0 : (uHasGlass>0.5 ? gl.a : (1.0 - smoothstep(-0.012,0.012, sdRound(cc, vec2(1.0), clamp(uScreenCorner,0.0,0.5)))));\n"
  "  vec3 bez = uHasArt>0.5 ? artAt(px) : vec3(0.0);\n"
- "  if(uHasArt<0.5){ vec2 outd=max(abs(c)-1.0,vec2(0.0)); float d=length(outd); float bevel=1.0-clamp(d/uTV.w,0.0,1.0); bez=(uStyle<0.5)?mix(vec3(0.04),vec3(0.14),bevel*bevel):uShell*mix(0.78,1.06,bevel); }\n"
  "  vec3 outc = bez;\n"
  "  if(inRect && mask>0.003){\n"
  "    vec3 g=gameAt(uv,uRetro);\n"
@@ -620,6 +624,14 @@ static void tap_init(void) {
     const char *scb=getenv("SEMU_TAP_SCREEN_B"); if(scb) sscanf(scb,"%f,%f,%f,%f",&scr_rects[1][0],&scr_rects[1][1],&scr_rects[1][2],&scr_rects[1][3]);
     const char *scc=getenv("SEMU_TAP_SCREEN_C"); if(scc) sscanf(scc,"%f,%f,%f,%f",&scr_rects[2][0],&scr_rects[2][1],&scr_rects[2][2],&scr_rects[2][3]);
     const char *scd=getenv("SEMU_TAP_SCREEN_D"); if(scd) sscanf(scd,"%f,%f,%f,%f",&scr_rects[3][0],&scr_rects[3][1],&scr_rects[3][2],&scr_rects[3][3]);
+    // Per-variant DUAL screen holes (nds layouts: vertical / side-by-side / big+small). A variant drives
+    // hole-based placement only when BOTH its holes parse; otherwise it keeps the legacy nds_layout math.
+    { const char *prik[4]={"SEMU_TAP_SCREEN_PRI","SEMU_TAP_SCREEN_PRI_B","SEMU_TAP_SCREEN_PRI_C","SEMU_TAP_SCREEN_PRI_D"};
+      const char *seck[4]={"SEMU_TAP_SCREEN_SEC","SEMU_TAP_SCREEN_SEC_B","SEMU_TAP_SCREEN_SEC_C","SEMU_TAP_SCREEN_SEC_D"};
+      for(int v=0;v<4;v++){ const char *pv=getenv(prik[v]), *sv=getenv(seck[v]);
+        if(pv&&sv&&sscanf(pv,"%f,%f,%f,%f",&pri_rects[v][0],&pri_rects[v][1],&pri_rects[v][2],&pri_rects[v][3])==4
+               &&sscanf(sv,"%f,%f,%f,%f",&sec_rects[v][0],&sec_rects[v][1],&sec_rects[v][2],&sec_rects[v][3])==4)
+          dual_hole_set[v]=1; } }
     const char *as=getenv("SEMU_TAP_ASPECT"); if(as){ float aw=0,ah=0; if(sscanf(as,"%f:%f",&aw,&ah)==2&&ah>0.0f) disp_aspect=aw/ah; else { float v=(float)atof(as); if(v>0.01f) disp_aspect=v; } }
     const char *dbg=getenv("SEMU_TAP_DEBUG"); if(dbg){ float v=(float)atof(dbg); if(v>0.0f){ debug_on=1; debug_thresh=(v>=1.0f)?0.10f:v; } }
     const char *ov=getenv("SEMU_TAP_OVERSCAN"); if(ov){ sscanf(ov,"%d,%d,%d,%d",&ov_l,&ov_r,&ov_t,&ov_b); }  // native px L,R,T,B
@@ -749,6 +761,21 @@ static void tap_frame(void *dpy, unsigned long drawable, int is_egl) {
                     r1x=left; r1y=(h-ph)/2; r1w=pw; r1h=ph;
                     r2x=left+pw+gap; r2y=(h-qh)/2; r2w=qw; r2h=qh;
                 }
+                // HOLE-DRIVEN layout: when the active variant declares per-screen holes, map each hole
+                // through the bezel rect (contract top-left -> GL flip, same math as semu_tap_hole_rect_gl)
+                // and aspect-fit the per-screen native frame inside it. Source split (s1/s2) is unchanged.
+                { int hv=bezel_idx; if(hv>=bezel_count) hv=(bezel_count>0?bezel_count-1:0); if(hv<0) hv=0;
+                  if(dual_hole_set[hv]){
+                    int nhp=(nh>=288)?nh/2:nh; float sa=(float)nw/(float)nhp;
+                    float hx=bdx_gl+pri_rects[hv][0]*bdw, hw2=pri_rects[hv][2]*bdw;
+                    float hh2=pri_rects[hv][3]*bdh, hy=bdy_gl+(1.0f-pri_rects[hv][1]-pri_rects[hv][3])*bdh;
+                    float fw=hw2, fh=fw/sa; if(fh>hh2){ fh=hh2; fw=fh*sa; }
+                    r1x=(int)(hx+(hw2-fw)*0.5f); r1y=(int)(hy+(hh2-fh)*0.5f); r1w=(int)fw; r1h=(int)fh;
+                    hx=bdx_gl+sec_rects[hv][0]*bdw; hw2=sec_rects[hv][2]*bdw;
+                    hh2=sec_rects[hv][3]*bdh; hy=bdy_gl+(1.0f-sec_rects[hv][1]-sec_rects[hv][3])*bdh;
+                    fw=hw2; fh=fw/sa; if(fh>hh2){ fh=hh2; fw=fh*sa; }
+                    r2x=(int)(hx+(hw2-fw)*0.5f); r2y=(int)(hy+(hh2-fh)*0.5f); r2w=(int)fw; r2h=(int)fh;
+                } }
             }
             gl_state_save();
             gl_init();
@@ -757,7 +784,7 @@ static void tap_frame(void *dpy, unsigned long drawable, int is_egl) {
             if(p_genmip) p_genmip(GL_TEXTURE_2D);
             int active = bezel_idx; if(active>=bezel_count) active=(bezel_count>0?bezel_count-1:0); if(active<0)active=0;
             if(eff_has_art>0.5f){ p_active(GL_TEXTURE1); p_bindtex(GL_TEXTURE_2D,bezel_texs[active]); p_active(GL_TEXTURE0); }
-            GLuint gtex = glass_texs[active]; float hg = gtex ? 1.0f : 0.0f;   // per-variant screen glass
+            GLuint gtex = glass_texs[active]; float hg = (gtex && eff_has_art>0.5f) ? 1.0f : 0.0f;   // glass only while a bezel variant is active
             if(hg>0.5f){ p_active(GL_TEXTURE2); p_bindtex(GL_TEXTURE_2D,gtex); p_active(GL_TEXTURE0); }
             if(menu_on){ int need_upload = menu_dirty; if(menu_dirty) menu_build();   // rebuild menu_buf on state change (clears menu_dirty)
                 if(menu_buf){ p_active(GL_TEXTURE3); p_bindtex(GL_TEXTURE_2D,menu_tex);   // BIND EVERY FRAME: RA clobbers texture units between our swaps,
@@ -790,7 +817,7 @@ static void tap_frame(void *dpy, unsigned long drawable, int is_egl) {
             if(uRetro>=0)p_u1f(uRetro, retro_on?retro_lod:0.0f);   // 0=sharp, retro_lod=soft
             if(uShaderMode>=0)p_u1f(uShaderMode,(float)shader_idx);
             if(uHasGlass>=0)p_u1f(uHasGlass,hg);
-            if(uReflect>=0)p_u1f(uReflect,reflect_amt);
+            if(uReflect>=0)p_u1f(uReflect, eff_has_art>0.5f ? reflect_amt : 0.0f);   // no glare when bezel off
             if(uCurve>=0)p_u1f(uCurve,curve_amt);
             if(uScreenCorner>=0)p_u1f(uScreenCorner,screen_corner);
             if(uMenuOn>=0)p_u1f(uMenuOn, menu_on?1.0f:0.0f);
