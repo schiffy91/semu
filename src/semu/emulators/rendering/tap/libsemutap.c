@@ -299,36 +299,42 @@ static const char *FS =
  // Screen-blend so it only lifts the bezel, never darkens. CRT + art only.
  "  if(uTV.x>0.001 && uStyle<0.5 && uHasArt>0.5){\n"
  "    vec2 nuv=clamp(uv,0.0,1.0); vec3 spill=gameAt(nuv,5.0);\n"
- "    float fall=exp(-length(uv-nuv)*7.0);\n"
- "    bez = 1.0-(1.0-bez)*(1.0-spill*fall*uTV.x);\n"
+ "    float sl=dot(spill,vec3(0.299,0.587,0.114)); spill*=1.0/(1.0+max(sl-0.72,0.0)*1.3);\n"   // tonemap the source so the wash carries colour, not white
+ "    float fall=exp(-length(uv-nuv)*3.2);\n"                                                    // wide, soft falloff that melts into the frame (was a tight halo)
+ "    bez = 1.0-(1.0-bez)*(1.0-spill*fall*uTV.x*1.05);\n"
  "  }\n"
  "  vec3 outc = bez;\n"
  "  if(inRect && mask>0.003){\n"
  "    vec3 g=gameAt(uv,uRetro);\n"
  "    if(uShaderMode<2.5){\n"                                       // 3 = OFF (raw, no shader)
  "      if(uStyle<0.5){\n"                                          // CRT
- // BEAM-WIDTH scanlines: brighter cells keep a wider beam (less darkening),
- // so highlights bloom open and shadows stay crisp (guest-style).
- "        if(uShaderMode<1.5){ float lum=dot(g,vec3(0.299,0.587,0.114)); float sl=uTV.z*(1.0-abs(cos(uv.y*uNative*3.14159265))); g*=1.0-sl*(1.0-0.6*lum); }\n"   // scanlines: modes 0,1
- "        if(uShaderMode<0.5||uShaderMode>1.5){ float m=mod(px.x,3.0); vec3 cmask=(m<1.0)?vec3(1.0,0.7,0.7):(m<2.0)?vec3(0.7,1.0,0.7):vec3(0.7,0.7,1.0); g*=mix(vec3(1.0),cmask,uTV.y); }\n" // mask: 0,2
- "        if(uShaderMode<0.5){\n"
- "          g+=gameAt(uv,3.0)*uRef.z;\n"                            // halation
- "          vec3 bloomc=gameAt(uv,2.0); g+=bloomc*dot(bloomc,vec3(0.299,0.587,0.114))*uRef.x*1.8;\n"   // BLOOM (uRef.x): bright-area phosphor diffusion
- "          g*=clamp(1.0-uRef.y*dot(cc,cc)*0.5,0.0,1.0);\n"        // VIGNETTE (uRef.y): tube brightness falloff toward the curved corners
- "          float edge=min(min(uv.x,1.0-uv.x),min(uv.y,1.0-uv.y)); g*=mix(0.45,1.0,smoothstep(0.0,0.025,edge));\n"   // INNER SHADOW: the bezel's shadow on the recessed glass edge
+ // Order matters (the critique's #1 finding): emissive terms are added, then a
+ // soft-shoulder tonemap rolls highlights off so nothing clips to white; the
+ // mask/vignette/glass all modulate the tonemapped image, not a blown slab.
+ "        if(uShaderMode<1.5){ float lum=dot(g,vec3(0.299,0.587,0.114)); float sl=uTV.z*(1.0-abs(cos(uv.y*uNative*3.14159265))); g*=1.0-sl*(1.0-0.6*lum); }\n"   // BEAM scanlines (pre-tonemap): 0,1
+ "        if(uShaderMode>1.5){ float m=mod(px.x,3.0); vec3 cmask=(m<1.0)?vec3(1.0,0.72,0.72):(m<2.0)?vec3(0.72,1.0,0.72):vec3(0.72,0.72,1.0); g*=mix(vec3(1.0),cmask,uTV.y); }\n"   // mask-only: mode 2
+ "        if(uShaderMode<0.5){\n"                                   // FULL tube
+ "          vec3 bl=gameAt(uv,2.0); g += gameAt(uv,3.0)*uRef.z + bl*dot(bl,vec3(0.299,0.587,0.114))*uRef.x*2.2;\n"   // emissive halation + BLOOM
+ "          float L=dot(g,vec3(0.299,0.587,0.114)); g *= 1.0/(1.0+max(L-0.72,0.0)*1.3);\n"                          // TONEMAP: luma soft-shoulder (hue-preserving, no white crush)
+ "          float m=mod(px.x,3.0); vec3 cmask=(m<1.0)?vec3(1.0,0.72,0.72):(m<2.0)?vec3(0.72,1.0,0.72):vec3(0.72,0.72,1.0); g*=mix(vec3(1.0),cmask,uTV.y);\n"   // MASK (after tonemap so triads survive)
+ "          g *= exp(-uRef.y*dot(cc,cc)*1.4);\n"                    // VIGNETTE (uRef.y): exponential tube falloff
+ "          g = clamp(mix(vec3(dot(g,vec3(0.299,0.587,0.114))), g, 1.22), 0.0, 1.0);\n"   // SATURATION punch (the tonemap desaturates highlights)
+ "          if(uReflect>0.001){\n"                                  // GLASS: curvature normal -> fresnel bezel reflection + soft specular
+ "            vec3 N=normalize(vec3(c*max(uCurve,0.02)*6.0,1.0)); float fres=pow(1.0-N.z,2.4);\n"
+ "            vec3 refl=artAt(cen+(px-cen)*1.13);\n"                // bezel just outside the screen, reflected inward on the glass
+ "            g=mix(g, refl*0.42, clamp(fres*uReflect*3.2,0.0,0.6));\n"
+ "            vec3 H=normalize(vec3(-0.35,0.42,1.0)); float spec=pow(max(dot(N,H),0.0),5.0);\n"
+ "            g=1.0-(1.0-g)*(1.0-spec*uReflect*0.7);\n"             // soft specular sheen (screen blend)
+ "          }\n"
+ "          float edge=min(min(uv.x,1.0-uv.x),min(uv.y,1.0-uv.y)); g*=mix(0.5,1.0,smoothstep(0.0,0.02,edge));\n"   // INNER SHADOW
  "        }\n"
  "      } else {\n"                                                 // LCD
  "        if(uShaderMode<1.5){ float nx=uNative*uRect.z/uRect.w; g*=0.90+0.10*sqrt(abs(cos(uv.x*nx*3.14159265))*abs(cos(uv.y*uNative*3.14159265))); }\n" // grid: 0,1
  "      }\n"
  "    }\n"
- // REFLECTIONS: the glass layer's own tint/sheen (screen-blend = highlight, never darkens),
- // a soft diagonal glare, plus a broad specular hotspot on the curved glass. Strength = uReflect.
- "    if(uReflect>0.001){\n"
- "      if(uHasGlass>0.5) g = 1.0-(1.0-g)*(1.0-gl.rgb*gl.a*uReflect);\n"
- "      float glare = smoothstep(0.45,1.0, (1.0-uv.y)*0.7 + uv.x*0.45) * smoothstep(0.0,0.35,uv.y);\n"
- "      float spec = exp(-(pow((uv.x-0.42)*1.3,2.0)+pow((uv.y-0.74)*2.0,2.0))*2.5);\n"   // upper-left glass hotspot
- "      g += glare*uReflect*0.07 + spec*uReflect*0.16;\n"
- "    }\n"
+ // Handheld glass sheen: the glass layer's own tint/reflections (screen-blend,
+ // never darkens). CRT glass reflection/specular is handled in the tube block.
+ "    if(uReflect>0.001 && uHasGlass>0.5) g = 1.0-(1.0-g)*(1.0-gl.rgb*gl.a*uReflect);\n"
  "    outc = mix(bez, g, clamp(mask,0.0,1.0));\n"                   // anti-aliased screen cutout (mask edges)
  "  }\n"
  "  if(uDebug>0.0005){\n"                                           // DEBUG overlay
