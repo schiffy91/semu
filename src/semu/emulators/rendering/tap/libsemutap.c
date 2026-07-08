@@ -164,7 +164,7 @@ static const char *knames[7] = { "Insert", "Home", "Prior", "Next", "End", "Paus
 static int kcode[7] = {0}, kprev[7] = {0}, kready = 0;
 static float debug_thresh = 0.10f;
 static float shell_r = 0.55f, shell_g = 0.56f, shell_b = 0.60f;
-static float tv_mask = 0.30f, tv_scan = 0.22f, tv_corner = 0.05f, tv_bzlw = 0.55f;
+static float tv_mask = 0.42f, tv_scan = 0.30f, tv_corner = 0.05f, tv_bzlw = 0.55f;
 static float has_art = 0.0f; static char art_paths[4][1024]; static int art_w, art_h;  // up to 4 bezel variants (a,b,c,d)
 static int art_ws[4] = {0}, art_hs[4] = {0};  // per-variant device-art dims (variants can be different models -> diff aspect)
 static float scr_x, scr_y, scr_w, scr_h;     // the art's screen HOLE (norm, top-left); variant 0
@@ -311,14 +311,17 @@ static const char *FS =
  // Order matters (the critique's #1 finding): emissive terms are added, then a
  // soft-shoulder tonemap rolls highlights off so nothing clips to white; the
  // mask/vignette/glass all modulate the tonemapped image, not a blown slab.
- "        if(uShaderMode<1.5){ float lum=dot(g,vec3(0.299,0.587,0.114)); float sl=uTV.z*(1.0-abs(cos(uv.y*uNative*3.14159265))); g*=1.0-sl*(1.0-0.6*lum); }\n"   // BEAM scanlines (pre-tonemap): 0,1
+ "        if(uShaderMode<1.5){ float lum=dot(g,vec3(0.299,0.587,0.114)); float sl=uTV.z*(1.0-abs(cos(uv.y*uNative*3.14159265))); g*=1.0-sl*(1.0-0.3*lum); }\n"   // BEAM scanlines (pre-tonemap): 0,1
  "        if(uShaderMode>1.5){ float m=mod(px.x,3.0); vec3 cmask=(m<1.0)?vec3(1.0,0.72,0.72):(m<2.0)?vec3(0.72,1.0,0.72):vec3(0.72,0.72,1.0); g*=mix(vec3(1.0),cmask,uTV.y); }\n"   // mask-only: mode 2
  "        if(uShaderMode<0.5){\n"                                   // FULL tube
- "          vec3 bl=gameAt(uv,2.0); g += gameAt(uv,3.0)*uRef.z + bl*dot(bl,vec3(0.299,0.587,0.114))*uRef.x*2.2;\n"   // emissive halation + BLOOM
+ "          vec3 bl=gameAt(uv,2.0); float bsat=max(bl.r,max(bl.g,bl.b))-min(bl.r,min(bl.g,bl.b));\n"
+ "          g += gameAt(uv,3.0)*uRef.z*0.6 + bl*bsat*uRef.x*2.8;\n"   // emissive halation + SATURATION-WEIGHTED BLOOM: colours glow, the white centre/gridlines stay crisp (no haze)
  "          float L=dot(g,vec3(0.299,0.587,0.114)); g *= 1.0/(1.0+max(L-0.72,0.0)*1.3);\n"                          // TONEMAP: luma soft-shoulder (hue-preserving, no white crush)
- "          float m=mod(px.x,3.0); vec3 cmask=(m<1.0)?vec3(1.0,0.72,0.72):(m<2.0)?vec3(0.72,1.0,0.72):vec3(0.72,0.72,1.0); g*=mix(vec3(1.0),cmask,uTV.y);\n"   // MASK (after tonemap so triads survive)
+ "          float m=mod(px.x,3.0); vec3 cmask=(m<1.0)?vec3(1.0,0.68,0.68):(m<2.0)?vec3(0.68,1.0,0.68):vec3(0.68,0.68,1.0); g*=mix(vec3(1.0),cmask,uTV.y);\n"   // MASK (after tonemap) — lighter so white gridlines read bright, stripes don't dominate
  "          g *= exp(-uRef.y*dot(cc,cc)*1.4);\n"                    // VIGNETTE (uRef.y): exponential tube falloff
- "          g = clamp(mix(vec3(dot(g,vec3(0.299,0.587,0.114))), g, 1.22), 0.0, 1.0);\n"   // SATURATION punch (the tonemap desaturates highlights)
+ "          g = clamp(mix(vec3(dot(g,vec3(0.299,0.587,0.114))), g, 1.75), 0.0, 1.0);\n"   // SATURATION punch (the tonemap desaturates highlights)
+ "          g = mix(g, g*g*(3.0-2.0*g), 0.85);\n"                   // CONTRAST S-curve: deepen blacks + open highlights
+ "          g = clamp((g-0.05)*1.20, 0.0, 1.0);\n"                  // BLACK-FLOOR removal + gain: kill the milky raised-black haze, keep the tube luminous
  "          if(uReflect>0.001){\n"                                  // GLASS: curvature normal -> fresnel bezel reflection + soft specular
  "            vec3 N=normalize(vec3(c*max(uCurve,0.02)*6.0,1.0)); float fres=pow(1.0-N.z,2.4);\n"
  "            vec3 refl=artAt(cen+(px-cen)*1.13);\n"                // bezel just outside the screen, reflected inward on the glass
