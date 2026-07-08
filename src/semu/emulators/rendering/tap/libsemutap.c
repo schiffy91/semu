@@ -147,6 +147,7 @@ static int fill_hole = 0;   // handhelds: fill the device's screen hole at displ
 static int align_on = 0;    // alignment diagnostic: purple frame at the declared hole + translucent game, to check the game-vs-bezel fit
 static char glass_paths[4][1024] = {{0}};           // per-variant screen-glass layer: .a = exact screen cutout mask, .rgb = glass/reflections
 static float reflect_amt = 0.0f, curve_amt = 0.0f, screen_corner = 0.06f;  // reflection/curvature/CRT-corner params
+static float glow_amt = 0.0f, bloom_amt = 0.0f, vignette_amt = 0.0f;      // CRT tube depth: screen-glow spill onto bezel, phosphor bloom, corner vignette
 // ---- Radial/overlay MENU (compositor-rendered; mirrors Steam Input). Fully isolated: only drawn when
 // menu_on; the normal compositing path is untouched when closed. Text via a CPU-blitted font atlas. ----
 static int menu_on = 0, menu_lvl = 0, menu_sel = 0;     // lvl: 0=root 1=rendering 2=save/load 3=per-system
@@ -293,24 +294,40 @@ static const char *FS =
  // vec3(0.0). The in-game shader paths below are untouched.
  "  float mask = uHasArt<0.5 ? 1.0 : (uHasGlass>0.5 ? gl.a : (1.0 - smoothstep(-0.012,0.012, sdRound(cc, vec2(1.0), clamp(uScreenCorner,0.0,0.5)))));\n"
  "  vec3 bez = uHasArt>0.5 ? artAt(px) : vec3(0.0);\n"
+ // AMBIENT SCREEN-GLOW (uTV.x): light the bezel with the screen's own colours,
+ // sampled (heavily blurred) at the nearest screen edge and faded with distance.
+ // Screen-blend so it only lifts the bezel, never darkens. CRT + art only.
+ "  if(uTV.x>0.001 && uStyle<0.5 && uHasArt>0.5){\n"
+ "    vec2 nuv=clamp(uv,0.0,1.0); vec3 spill=gameAt(nuv,5.0);\n"
+ "    float fall=exp(-length(uv-nuv)*7.0);\n"
+ "    bez = 1.0-(1.0-bez)*(1.0-spill*fall*uTV.x);\n"
+ "  }\n"
  "  vec3 outc = bez;\n"
  "  if(inRect && mask>0.003){\n"
  "    vec3 g=gameAt(uv,uRetro);\n"
  "    if(uShaderMode<2.5){\n"                                       // 3 = OFF (raw, no shader)
  "      if(uStyle<0.5){\n"                                          // CRT
- "        if(uShaderMode<1.5) g*=1.0-uTV.z*(1.0-abs(cos(uv.y*uNative*3.14159265)));\n"   // scanlines: modes 0,1
+ // BEAM-WIDTH scanlines: brighter cells keep a wider beam (less darkening),
+ // so highlights bloom open and shadows stay crisp (guest-style).
+ "        if(uShaderMode<1.5){ float lum=dot(g,vec3(0.299,0.587,0.114)); float sl=uTV.z*(1.0-abs(cos(uv.y*uNative*3.14159265))); g*=1.0-sl*(1.0-0.6*lum); }\n"   // scanlines: modes 0,1
  "        if(uShaderMode<0.5||uShaderMode>1.5){ float m=mod(px.x,3.0); vec3 cmask=(m<1.0)?vec3(1.0,0.7,0.7):(m<2.0)?vec3(0.7,1.0,0.7):vec3(0.7,0.7,1.0); g*=mix(vec3(1.0),cmask,uTV.y); }\n" // mask: 0,2
- "        if(uShaderMode<0.5) g+=gameAt(uv,3.0)*uRef.z;\n"          // halation: mode 0
+ "        if(uShaderMode<0.5){\n"
+ "          g+=gameAt(uv,3.0)*uRef.z;\n"                            // halation
+ "          vec3 bloomc=gameAt(uv,2.0); g+=bloomc*dot(bloomc,vec3(0.299,0.587,0.114))*uRef.x*1.8;\n"   // BLOOM (uRef.x): bright-area phosphor diffusion
+ "          g*=clamp(1.0-uRef.y*dot(cc,cc)*0.5,0.0,1.0);\n"        // VIGNETTE (uRef.y): tube brightness falloff toward the curved corners
+ "          float edge=min(min(uv.x,1.0-uv.x),min(uv.y,1.0-uv.y)); g*=mix(0.45,1.0,smoothstep(0.0,0.025,edge));\n"   // INNER SHADOW: the bezel's shadow on the recessed glass edge
+ "        }\n"
  "      } else {\n"                                                 // LCD
  "        if(uShaderMode<1.5){ float nx=uNative*uRect.z/uRect.w; g*=0.90+0.10*sqrt(abs(cos(uv.x*nx*3.14159265))*abs(cos(uv.y*uNative*3.14159265))); }\n" // grid: 0,1
  "      }\n"
  "    }\n"
- // REFLECTIONS: the glass layer's own glass tint/sheen (screen-blend = highlight, never darkens) + a soft
- // diagonal glare across the screen. Strength = uReflect (0 disables).
+ // REFLECTIONS: the glass layer's own tint/sheen (screen-blend = highlight, never darkens),
+ // a soft diagonal glare, plus a broad specular hotspot on the curved glass. Strength = uReflect.
  "    if(uReflect>0.001){\n"
  "      if(uHasGlass>0.5) g = 1.0-(1.0-g)*(1.0-gl.rgb*gl.a*uReflect);\n"
  "      float glare = smoothstep(0.45,1.0, (1.0-uv.y)*0.7 + uv.x*0.45) * smoothstep(0.0,0.35,uv.y);\n"
- "      g += glare*uReflect*0.12;\n"
+ "      float spec = exp(-(pow((uv.x-0.42)*1.3,2.0)+pow((uv.y-0.74)*2.0,2.0))*2.5);\n"   // upper-left glass hotspot
+ "      g += glare*uReflect*0.07 + spec*uReflect*0.16;\n"
  "    }\n"
  "    outc = mix(bez, g, clamp(mask,0.0,1.0));\n"                   // anti-aliased screen cutout (mask edges)
  "  }\n"
@@ -637,6 +654,9 @@ static void tap_init(void) {
     const char *rf=getenv("SEMU_TAP_REFLECT"); if(rf) reflect_amt=(float)atof(rf);                                // glass reflection/glare strength
     const char *cv=getenv("SEMU_TAP_CURVE");   if(cv) curve_amt=(float)atof(cv);                                  // CRT barrel curvature (0 = flat)
     const char *cn=getenv("SEMU_TAP_CORNER");  if(cn) screen_corner=(float)atof(cn);                              // CRT procedural-mask corner radius (non-integer)
+    const char *gw=getenv("SEMU_TAP_GLOW");    if(gw) glow_amt=(float)atof(gw);                                  // ambient screen-glow spill onto the bezel
+    const char *bl=getenv("SEMU_TAP_BLOOM");   if(bl) bloom_amt=(float)atof(bl);                                 // phosphor bloom (bright-area diffusion)
+    const char *vg=getenv("SEMU_TAP_VIGNETTE");if(vg) vignette_amt=(float)atof(vg);                              // CRT corner vignette (tube brightness falloff)
     const char *enh=getenv("SEMU_TAP_NATIVE_H"); if(enh&&atoi(enh)>0) env_nh=atoi(enh);
     const char *enw=getenv("SEMU_TAP_NATIVE_W"); if(enw&&atoi(enw)>0) env_nw=atoi(enw);
     const char *es=getenv("SEMU_TAP_STYLE"); if(es&&(es[0]=='h'||es[0]=='H'||es[0]=='1')) tap_style=1;
@@ -922,8 +942,8 @@ static void tap_frame(void *dpy, unsigned long drawable, int is_egl) {
             if(uNative>=0)p_u1f(uNative,(float)nh);
             if(uStyle>=0)p_u1f(uStyle,(float)tap_style);
             if(uShell>=0&&p_u3f)p_u3f(uShell,shell_r,shell_g,shell_b);
-            if(uTV>=0)   p_u4f(uTV,0.0f,tv_mask,tv_scan,tv_bzlw);
-            if(uRef>=0)  p_u4f(uRef,0.0f,5.0f,0.12f,tv_corner);
+            if(uTV>=0)   p_u4f(uTV,glow_amt,tv_mask,tv_scan,tv_bzlw);          // x = screen-glow spill onto the bezel
+            if(uRef>=0)  p_u4f(uRef,bloom_amt,vignette_amt,0.12f,tv_corner);   // x = bloom, y = vignette, z = halation
             if(uHasArt>=0)p_u1f(uHasArt,eff_has_art);
             if(uDebug>=0)p_u1f(uDebug, debug_on?debug_thresh:0.0f);
             if(uRetro>=0)p_u1f(uRetro, retro_on?retro_lod:0.0f);   // 0=sharp, retro_lod=soft

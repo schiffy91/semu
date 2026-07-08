@@ -31,6 +31,9 @@ class ResolvedBezel {
     public double reflect;
     public double curvature;
     public double cornerRadius;
+    public double glow;
+    public double bloom;
+    public double vignette;
     public RgbColor shellTint;
     public bool fill;
 
@@ -43,6 +46,9 @@ class ResolvedBezel {
         self.reflect = 0.0;
         self.curvature = 0.0;
         self.cornerRadius = 0.0;
+        self.glow = 0.0;
+        self.bloom = 0.0;
+        self.vignette = 0.0;
         self.shellTint = RgbColor();
         self.fill = false;
     }
@@ -156,6 +162,9 @@ class BezelResolver {
         resolved.reflect = system.render.reflect;
         resolved.curvature = system.render.curvature;
         resolved.cornerRadius = system.render.cornerRadius;
+        resolved.glow = system.render.glow;
+        resolved.bloom = system.render.bloom;
+        resolved.vignette = system.render.vignette;
         if (system.render.shellTint.set) {
             resolved.shellTint = system.render.shellTint;
         }

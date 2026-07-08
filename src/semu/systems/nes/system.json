@@ -50,7 +50,10 @@
     "priority": "game",
     "reflect": 0.18,
     "corner_radius": 0.045,
-    "curvature": 0.04
+    "curvature": 0.04,
+    "glow": 0.5,
+    "bloom": 0.4,
+    "vignette": 0.22
   },
   "doc": {
     "hardware": "consumer CRT over composite",
