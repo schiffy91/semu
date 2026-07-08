@@ -129,11 +129,14 @@ static int ov_l = 0, ov_r = 0, ov_t = 0, ov_b = 0;   // declared overscan crop, 
 static int retro_on = 1, priority_mode = 0;
 static int bezel_idx = 0, shader_idx = 0, bezel_count = 1; // Phase 2: bezel cycle (idx==count -> OFF), shader 0..3
 static int nds_layout = 0, nds_pri = 3, nds_sec = 3, dual_mode = 0; // Phase 3: layout(0=vert,1=horiz) + scale idx (def 2x)
-// Game (Top + Corner) picture-in-picture: the bottom screen rests small
-// (fits in the black bezel) and expands to pip_expand for pip_seconds when
-// the touchscreen is touched, then eases back. All adjustable in settings.
-static float pip_rest = 0.12f, pip_expand = 0.25f, pip_seconds = 7.0f;
-static float pip_current = 0.12f;          // eased size actually rendered
+// Game (Top + Corner) picture-in-picture: the bottom screen rests filling the
+// black bezel margin left by the aspect-filled top screen (a size derived from
+// the canvas geometry, NOT a baked fraction), and on a touch expands to the
+// largest INTEGER scale of its native resolution that fits pip_expand_budget of
+// the width, then eases back. Only the budget cap + hold are settings; the
+// rendered sizes are computed from the screen like every other mode.
+static float pip_expand_budget = 0.30f, pip_seconds = 7.0f;
+static float pip_w_current = -1.0f;        // eased PiP width in px (<0 = uninit)
 static double pip_expand_until = 0.0;      // monotonic deadline; 0 = resting
 static double pip_touch_seen = 0.0;        // last observed semu-pip-touch mtime
 static double semu_now(void){
@@ -623,10 +626,8 @@ static void tap_init(void) {
     const char *rstart=getenv("SEMU_RETRO_START"); if(rstart&&rstart[0]=='0') retro_on=0;   // default 1 (retro/soft)
     const char *pri=getenv("SEMU_TAP_PRIORITY"); if(pri&&(pri[0]=='b'||pri[0]=='B')) priority_mode=2; else if(pri&&(pri[0]=='t'||pri[0]=='T')) priority_mode=1; else if(pri&&(pri[0]=='f'||pri[0]=='F')) priority_mode=3; else if(pri&&(pri[0]=='c'||pri[0]=='C')) priority_mode=4; // bezel|top|fit|corner|game
     const char *dl=getenv("SEMU_TAP_DUAL"); if(dl&&dl[0]=='1') dual_mode=1;   // nds/3ds: split into two screens
-    const char *pr=getenv("SEMU_TAP_PIP_REST");    if(pr&&pr[0]) pip_rest=(float)atof(pr);     // resting PiP size (frac of width)
-    const char *pe=getenv("SEMU_TAP_PIP_EXPAND");  if(pe&&pe[0]) pip_expand=(float)atof(pe);   // touched/expanded PiP size
+    const char *pb=getenv("SEMU_TAP_PIP_BUDGET");  if(pb&&pb[0]) pip_expand_budget=(float)atof(pb); // touched PiP width cap (frac of width); size snaps to largest integer native scale within it
     const char *ps=getenv("SEMU_TAP_PIP_SECONDS"); if(ps&&ps[0]) pip_seconds=(float)atof(ps); // expand hold seconds
-    pip_current=pip_rest;
     const char *fh=getenv("SEMU_TAP_FILL"); if(fh&&fh[0]=='1') fill_hole=1;   // handhelds: fill screen hole at aspect
     const char *aln=getenv("SEMU_TAP_ALIGN"); if(aln&&aln[0]=='1') align_on=1; // alignment diagnostic overlay
     const char *gp=getenv("SEMU_TAP_GLASS");   if(gp&&gp[0]){  strncpy(glass_paths[0],gp,1023);  glass_paths[0][1023]=0; }   // per-variant screen mask + reflections
@@ -740,7 +741,7 @@ static void tap_frame(void *dpy, unsigned long drawable, int is_egl) {
             { FILE *nl=tap_fopen("semu-ndslayout","r"); if(nl){ int ch=fgetc(nl); fclose(nl); nds_layout=(ch=='1')?1:0; } }
             { FILE *np=tap_fopen("semu-ndspri","r"); if(np){ int ch=fgetc(np); fclose(np); if(ch>='0'&&ch<='4') nds_pri=ch-'0'; } }
             { FILE *ns=tap_fopen("semu-ndssec","r"); if(ns){ int ch=fgetc(ns); fclose(ns); if(ch>='0'&&ch<='4') nds_sec=ch-'0'; } }
-            { FILE *pf=tap_fopen("semu-pip","r"); if(pf){ float a=0,b=0,c=0; if(fscanf(pf,"%f %f %f",&a,&b,&c)>=2){ if(a>0)pip_rest=a; if(b>0)pip_expand=b; if(c>0)pip_seconds=c; } fclose(pf); } }
+            { FILE *pf=tap_fopen("semu-pip","r"); if(pf){ float a=0,b=0; if(fscanf(pf,"%f %f",&a,&b)>=1){ if(a>0)pip_expand_budget=a; if(b>0)pip_seconds=b; } fclose(pf); } }
             // Top+Corner PiP expand trigger: the input layer touches
             // "semu-pip-touch" on a bottom-screen tap; a fresh mtime arms the
             // expand for pip_seconds. File-based so it works under GLX and EGL.
@@ -819,25 +820,35 @@ static void tap_frame(void *dpy, unsigned long drawable, int is_egl) {
                     }
                 }
                 else if(priority_mode==4){
-                    // GAME (TOP + CORNER): top screen as large as possible (non-integer,
-                    // aspect preserved, fills the canvas); bottom screen a small PiP in
-                    // the bottom-right corner. The PiP rests at pip_rest (tucked in the
-                    // black bezel) and eases to pip_expand for pip_seconds on a touch.
+                    // GAME (TOP + CORNER): top screen aspect-fills the canvas
+                    // (contain, so a black bezel margin is left on one axis);
+                    // bottom screen a corner PiP. REST size = that black bezel
+                    // margin (derived from the geometry, no baked fraction) so it
+                    // tucks into the bezel; EXPAND size = the largest INTEGER
+                    // scale of the bottom native that fits pip_expand_budget of
+                    // the width (crisp, and it grows with the screen). The eased
+                    // width slides between the two on a touch.
                     float ta=(float)nw/(float)nhp;
                     if((float)w/(float)h>ta){ ph=h; pw=(int)((float)h*ta); }
                     else { pw=w; ph=(int)((float)w/ta); }
-                    float target = (semu_now() < pip_expand_until) ? pip_expand : pip_rest;
-                    pip_current += (target - pip_current) * 0.18f;   // ~0.3s ease at 60fps
-                    if(pip_current < 0.02f) pip_current = 0.02f;
-                    qw=(int)((float)w*pip_current); qh=(int)((float)qw/ta); if(qh<1)qh=1;
+                    float mx=((float)w-(float)pw)*0.5f;   // pillarbox side-bar width
+                    float my=((float)h-(float)ph)*0.5f;   // letterbox top/bottom-bar height
+                    float rest_w = (mx>=my) ? mx : my*ta;             // fill the larger black-bezel margin
+                    int ke=(int)(pip_expand_budget*(float)w/(float)nw); if(ke<1) ke=1;  // largest integer native scale within the budget
+                    float exp_w=(float)(ke*nw);
+                    if(exp_w<rest_w) exp_w=rest_w;                    // touched view is never smaller than resting
+                    if(rest_w<8.0f){ rest_w=exp_w; }                  // aspect-matched screen: no bezel to tuck into -> always expanded size
+                    if(pip_w_current<0.0f) pip_w_current=rest_w;      // first frame: start at rest (no ease-in from 0)
+                    float target = (semu_now() < pip_expand_until) ? exp_w : rest_w;
+                    pip_w_current += (target - pip_w_current) * 0.18f;   // ~0.3s ease at 60fps
+                    qw=(int)(pip_w_current+0.5f); qh=(int)((float)qw/ta+0.5f); if(qh<1)qh=1;
                 }
                 int half=sh/2;
                 s1x=sx; s1y=sy+half; s1w=sw; s1h=half;   // primary = top screen (upper half, GL high y)
                 s2x=sx; s2y=sy;      s2w=sw; s2h=half;   // secondary = bottom screen
-                if(priority_mode==4){                                          // TOP + CORNER: top centered fill, bottom PiP bottom-right
-                    int margin=12;
+                if(priority_mode==4){                                          // TOP + CORNER: top centered fill, bottom PiP flush bottom-right
                     r1x=(w-pw)/2; r1y=(h-ph)/2; r1w=pw; r1h=ph;
-                    r2x=w-qw-margin; r2y=margin; r2w=qw; r2h=qh;                 // GL origin: y=margin is the BOTTOM edge
+                    r2x=w-qw; r2y=0; r2w=qw; r2h=qh;                            // flush to the corner: at rest it fills the black-bezel bar (GL origin: y=0 is the BOTTOM edge)
                 } else if(nds_layout==0){ int gap=8,total=ph+qh+gap,top=(h-total)/2;   // VERTICAL: primary above secondary
                     r1x=(w-pw)/2; r1y=h-top-ph; r1w=pw; r1h=ph;
                     r2x=(w-qw)/2; r2y=h-(top+ph+gap)-qh; r2w=qw; r2h=qh;

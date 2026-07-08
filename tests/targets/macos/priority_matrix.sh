@@ -21,7 +21,7 @@ PROJECT="${1:-$(pwd)}"
 BUNDLE="${2:-$PROJECT/src/generated/nix/result/lib/semu/share/semu}"
 SHADERS="${3:-$PROJECT/src/generated/nix/result/lib/semu/share/libretro/shaders}"
 LIBRASHADER="${LIBRASHADER_CLI:-/tmp/librashader-root/bin/librashader-cli}"
-OUT="$PROJECT/src/generated/verification/priority-matrix"
+OUT="${SEMU_OUT:-$PROJECT/src/generated/verification/priority-matrix}"
 WORK="$(mktemp -d /tmp/priority-matrix.XXXXXX)"
 mkdir -p "$OUT"
 
@@ -29,7 +29,14 @@ python3 - "$PROJECT" "$BUNDLE" "$SHADERS" "$LIBRASHADER" "$WORK" "$OUT" <<'PYJOB
 import glob, json, os, struct, subprocess, sys, zlib
 
 project, bundle, shader_root, librashader, work, out_dir = sys.argv[1:7]
+# Canvas defaults to the Steam Deck panel; override via SEMU_CANVAS=WxH to prove
+# the runtime placement is computed from the screen size (Deck / 1080p / 4K).
 CANVAS_W, CANVAS_H = 1280, 800
+if os.environ.get("SEMU_CANVAS"):
+    CANVAS_W, CANVAS_H = (int(v) for v in os.environ["SEMU_CANVAS"].lower().split("x"))
+# Top+Corner touched-PiP width cap (fraction of width); the rendered size snaps
+# to the largest integer native scale within it. Mirrors pip_expand_budget.
+PIP_EXPAND_BUDGET = float(os.environ.get("SEMU_PIP_BUDGET", "0.30"))
 
 def round_px(value):
     return int(value + 0.5)
@@ -246,19 +253,27 @@ for system_dir in sorted(glob.glob(f"{project}/src/semu/systems/*/")):
                 rects = [[(CANVAS_W - top_w) // 2, start, top_w, top_h],
                          [(CANVAS_W - bottom_w) // 2, start + top_h + gap, bottom_w, bottom_h]]
             if mode in ("topcorner", "topcornerexp"):
-                # top: aspect-fit fills the canvas (non-integer); bottom: PiP in the
-                # bottom-right corner. Resting size pip_rest (0.12, tucked in the
-                # black bezel) vs the touched/expanded pip_expand (0.25).
-                pip = 0.25 if mode == "topcornerexp" else 0.12
+                # Mirror of the libsemutap.c mode-4 block. Top aspect-fills the
+                # canvas (contain), leaving a black bezel margin on one axis.
+                # REST size = that margin (derived from geometry, no baked %);
+                # EXPAND size = largest integer native scale within the budget.
                 ta = native_w / native_half_h
                 if CANVAS_W / CANVAS_H > ta:
                     top_h = CANVAS_H; top_w = round_px(CANVAS_H * ta)
                 else:
                     top_w = CANVAS_W; top_h = round_px(CANVAS_W / ta)
-                bw = round_px(CANVAS_W * pip); bh = round_px(bw / ta)
-                margin = 12
+                mx = (CANVAS_W - top_w) / 2.0   # pillarbox side-bar width
+                my = (CANVAS_H - top_h) / 2.0   # letterbox top/bottom-bar height
+                rest_w = mx if mx >= my else my * ta
+                ke = int(PIP_EXPAND_BUDGET * CANVAS_W / native_w)
+                if ke < 1: ke = 1
+                exp_w = ke * native_w
+                if exp_w < rest_w: exp_w = rest_w
+                if rest_w < 8: rest_w = exp_w
+                bw = round_px(exp_w if mode == "topcornerexp" else rest_w)
+                bh = round_px(bw / ta)
                 rects = [[(CANVAS_W - top_w) // 2, (CANVAS_H - top_h) // 2, top_w, top_h],
-                         [CANVAS_W - bw - margin, CANVAS_H - bh - margin, bw, bh]]
+                         [CANVAS_W - bw, CANVAS_H - bh, bw, bh]]   # flush bottom-right corner
             cards = []
             for index, hole_id in enumerate(("top", "bottom")):
                 rect = rects[index]
