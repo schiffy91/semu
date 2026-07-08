@@ -21,37 +21,6 @@
       "nar_hash": "sha256-8IoaMLw7i4TttFR08Ycji6COuaxaeNeBwPCLyfyTD90="
     }
   },
-  "wordmarks": {
-    "gbc": {
-      "segments": [
-        {
-          "text": "GAMEBOY ",
-          "fill": "#dcdcdc"
-        },
-        {
-          "text": "c",
-          "fill": "#1f9fe0"
-        },
-        {
-          "text": "o",
-          "fill": "#f4c216"
-        },
-        {
-          "text": "l",
-          "fill": "#46bd4e"
-        },
-        {
-          "text": "o",
-          "fill": "#f2811d"
-        },
-        {
-          "text": "r",
-          "fill": "#ec3f2f"
-        }
-      ],
-      "shear": -9
-    }
-  },
   "generic": {
     "doc": {
       "note": "The generic fallback table for systems without bezels.json: asset_profile -> art + hole. Unknown profiles resolve as crt4x3."
@@ -142,7 +111,7 @@
       "color": "#2f9e4f",
       "brightness": 135
     },
-    "assets/bezels/gbc/classic.png": {
+    "assets/bezels/gbc/base.png": {
       "type": "flatten",
       "from": "duimon_mega_bezel",
       "layers": [
@@ -153,19 +122,24 @@
       ],
       "crop": "878x1442+137+305",
       "doc": {
-        "crop": "Trim the Duimon canvas to the device silhouette (43% was transparent padding, which made every contain-fit and art-rect computation see a mostly-empty bezel).",
-        "labels": "Duimon's GBC art omits the 'GAME BOY color' wordmark; drawn here (rainbow per the console logo). Recolor variants (grape/berry) inherit it."
-      },
-      "overlay": {
-        "wordmark": "gbc",
-        "x": 0.5,
-        "y": 0.435,
-        "width": 0.52
-      },
-      "overlay_canvas": [
-        878,
-        1442
-      ]
+        "note": "Un-tinted, un-logo device shell — the recolor base for grape/berry. classic/grape/berry composite the authentic GBC_Glass logo on top."
+      }
+    },
+    "assets/bezels/gbc/classic.png": {
+      "type": "flatten",
+      "from": "duimon_mega_bezel",
+      "layers": [
+        "Graphics/Nintendo_Game_Boy_Color/GBC_Device.png",
+        "Graphics/Nintendo_Game_Boy_Color/GBC_Device_LED.png",
+        "Graphics/Nintendo_Game_Boy_Color/GBC_Decal.png",
+        "Graphics/Nintendo_Game_Boy_Color/GBC_Top.png",
+        "Graphics/Nintendo_Game_Boy_Color/GBC_Glass.png"
+      ],
+      "crop": "878x1442+137+305",
+      "doc": {
+        "crop": "Trim the Duimon canvas to the device silhouette.",
+        "logo": "GBC_Glass.png (top layer) carries the authentic silver-GAME BOY + rainbow-COLOR wordmark, the POWER label and red LED — Duimon's own art, pixel-aligned to the shell."
+      }
     },
     "assets/bezels/gbc/classic-glass.png": {
       "type": "glass",
@@ -178,41 +152,23 @@
     },
     "assets/bezels/gbc/berry.png": {
       "type": "recolor",
-      "base": "assets/bezels/gbc/classic.png",
+      "base": "assets/bezels/gbc/base.png",
       "color": "#e05578",
       "brightness": 145,
       "doc": {
-        "labels": "Wordmark drawn after the recolor tint so the rainbow survives."
+        "logo": "Authentic GBC_Glass logo composited AFTER the recolor tint so the rainbow survives."
       },
-      "overlay": {
-        "wordmark": "gbc",
-        "x": 0.5,
-        "y": 0.435,
-        "width": 0.52
-      },
-      "overlay_canvas": [
-        878,
-        1442
-      ]
+      "overlay_asset": "assets/bezels/gbc/classic-glass.png"
     },
     "assets/bezels/gbc/grape.png": {
       "type": "recolor",
-      "base": "assets/bezels/gbc/classic.png",
+      "base": "assets/bezels/gbc/base.png",
       "color": "#a76fe3",
       "brightness": 145,
       "doc": {
-        "labels": "Wordmark drawn after the recolor tint so the rainbow survives."
+        "logo": "Authentic GBC_Glass logo composited AFTER the recolor tint so the rainbow survives."
       },
-      "overlay": {
-        "wordmark": "gbc",
-        "x": 0.5,
-        "y": 0.435,
-        "width": 0.52
-      },
-      "overlay_canvas": [
-        878,
-        1442
-      ]
+      "overlay_asset": "assets/bezels/gbc/classic-glass.png"
     },
     "assets/bezels/gba/classic.png": {
       "type": "local",
@@ -349,9 +305,9 @@
     "assets/bezels/psp/classic.png": {
       "type": "copy",
       "from": "duimon_mega_bezel",
-      "path": "Graphics/SONY_PSP/PSP.png",
+      "path": "Graphics/SONY_PSP/PSP_Wide.png",
       "doc": {
-        "provenance": "Duimon's pre-composed 16:9 PSP-E1000 render; PSP has no Device/Decal/Top stack and no Glass file, so this is a single-file copy."
+        "provenance": "Duimon PSP_Wide.png — the FULL-DEVICE PSP-E1000 render (both L/R shoulders, full d-pad, complete face-button diamond inside the frame). PSP.png is the clipped 16:9 variant that cut off the controls."
       }
     },
     "assets/bezels/nds/vertical.png": {
