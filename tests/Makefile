@@ -1,6 +1,6 @@
 .PHONY: tree-audit test verify manifest-smoke core-tests target-tests
 
-APPROVED_TOP_LEVEL := .git .github .claude .gitignore Makefile flake.lock flake.nix src tests
+APPROVED_TOP_LEVEL := .git .claude .gitignore Makefile flake.lock flake.nix src tests
 
 tree-audit: ## Check that source/test files match the approved refactor shape
 	@set -euo pipefail; \
