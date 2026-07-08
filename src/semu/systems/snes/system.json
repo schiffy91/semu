@@ -1,21 +1,60 @@
 {
   "schema_version": 1,
   "name": "Super Nintendo",
-  "aliases": ["superfamicom", "sfc", "super_nintendo"],
-  "es_de": { "platforms": ["snes"], "theme": "snes" },
-  "rom": { "dir": "snes", "extensions": [".bin", ".bml", ".bs", ".bsx", ".fig", ".sfc", ".smc", ".swc", ".7z", ".zip"] },
+  "aliases": [
+    "superfamicom",
+    "sfc",
+    "super_nintendo"
+  ],
+  "es_de": {
+    "platforms": [
+      "snes"
+    ],
+    "theme": "snes"
+  },
+  "rom": {
+    "dir": "snes",
+    "extensions": [
+      ".bin",
+      ".bml",
+      ".bs",
+      ".bsx",
+      ".fig",
+      ".sfc",
+      ".smc",
+      ".swc",
+      ".7z",
+      ".zip"
+    ]
+  },
   "emulators": [
-    { "emulator": "retroarch", "label": "Snes9x", "core": "snes9x" }
+    {
+      "emulator": "retroarch",
+      "label": "Snes9x",
+      "core": "snes9x"
+    }
   ],
   "display": {
-    "screens": [ { "id": "main", "native": { "w": 256, "h": 224 } } ],
-    "aspect": { "w": 4, "h": 3 }
+    "screens": [
+      {
+        "id": "main",
+        "native": {
+          "w": 256,
+          "h": 224
+        }
+      }
+    ],
+    "aspect": {
+      "w": 4,
+      "h": 3
+    }
   },
   "render": {
     "style": "console",
     "priority": "game",
     "reflect": 0.18,
-    "corner_radius": 0.045
+    "corner_radius": 0.045,
+    "curvature": 0.04
   },
   "doc": {
     "hardware": "consumer CRT over S-Video/composite",

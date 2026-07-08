@@ -1,21 +1,56 @@
 {
   "schema_version": 1,
   "name": "Nintendo Entertainment System",
-  "aliases": ["famicom"],
-  "es_de": { "platforms": ["nes"], "theme": "nes" },
-  "rom": { "dir": "nes", "extensions": [".3dsen", ".bin", ".fds", ".nes", ".unf", ".unif", ".7z", ".zip"] },
+  "aliases": [
+    "famicom"
+  ],
+  "es_de": {
+    "platforms": [
+      "nes"
+    ],
+    "theme": "nes"
+  },
+  "rom": {
+    "dir": "nes",
+    "extensions": [
+      ".3dsen",
+      ".bin",
+      ".fds",
+      ".nes",
+      ".unf",
+      ".unif",
+      ".7z",
+      ".zip"
+    ]
+  },
   "emulators": [
-    { "emulator": "retroarch", "label": "Mesen", "core": "mesen" }
+    {
+      "emulator": "retroarch",
+      "label": "Mesen",
+      "core": "mesen"
+    }
   ],
   "display": {
-    "screens": [ { "id": "main", "native": { "w": 256, "h": 240 } } ],
-    "aspect": { "w": 4, "h": 3 }
+    "screens": [
+      {
+        "id": "main",
+        "native": {
+          "w": 256,
+          "h": 240
+        }
+      }
+    ],
+    "aspect": {
+      "w": 4,
+      "h": 3
+    }
   },
   "render": {
     "style": "console",
     "priority": "game",
     "reflect": 0.18,
-    "corner_radius": 0.045
+    "corner_radius": 0.045,
+    "curvature": 0.04
   },
   "doc": {
     "hardware": "consumer CRT over composite",
