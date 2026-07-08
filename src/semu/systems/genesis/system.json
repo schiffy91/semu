@@ -1,21 +1,62 @@
 {
   "schema_version": 1,
   "name": "Sega Genesis",
-  "aliases": ["megadrive", "megadrive-japan"],
-  "es_de": { "platforms": ["genesis", "megadrive"], "theme": "genesis" },
-  "rom": { "dir": "genesis", "extensions": [".32x", ".68k", ".bin", ".chd", ".gen", ".iso", ".md", ".mdx", ".sg", ".smd", ".7z", ".zip"] },
+  "aliases": [
+    "megadrive",
+    "megadrive-japan"
+  ],
+  "es_de": {
+    "platforms": [
+      "genesis",
+      "megadrive"
+    ],
+    "theme": "genesis"
+  },
+  "rom": {
+    "dir": "genesis",
+    "extensions": [
+      ".32x",
+      ".68k",
+      ".bin",
+      ".chd",
+      ".gen",
+      ".iso",
+      ".md",
+      ".mdx",
+      ".sg",
+      ".smd",
+      ".7z",
+      ".zip"
+    ]
+  },
   "emulators": [
-    { "emulator": "retroarch", "label": "Genesis Plus GX", "core": "genesis_plus_gx" }
+    {
+      "emulator": "retroarch",
+      "label": "Genesis Plus GX",
+      "core": "genesis_plus_gx"
+    }
   ],
   "display": {
-    "screens": [ { "id": "main", "native": { "w": 320, "h": 224 } } ],
-    "aspect": { "w": 4, "h": 3 }
+    "screens": [
+      {
+        "id": "main",
+        "native": {
+          "w": 320,
+          "h": 224
+        }
+      }
+    ],
+    "aspect": {
+      "w": 4,
+      "h": 3
+    }
   },
   "render": {
     "style": "console",
     "priority": "game",
     "reflect": 0.18,
-    "corner_radius": 0.045
+    "corner_radius": 0.045,
+    "curvature": 0.04
   },
   "doc": {
     "hardware": "consumer CRT over composite/RGB",

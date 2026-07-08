@@ -68,7 +68,9 @@
   "render": {
     "style": "console",
     "priority": "game",
-    "corner_radius": 0.045
+    "corner_radius": 0.045,
+    "curvature": 0.04,
+    "reflect": 0.18
   },
   "doc": {
     "hardware": "consumer CRT or VGA monitor",

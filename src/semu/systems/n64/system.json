@@ -49,7 +49,8 @@
     "priority": "game",
     "reflect": 0.18,
     "corner_radius": 0.045,
-    "retro_default": true
+    "retro_default": true,
+    "curvature": 0.04
   },
   "doc": {
     "hardware": "consumer CRT over composite/S-Video",
