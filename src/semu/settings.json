@@ -13,8 +13,7 @@
     "integer_scaling": true,
     "render_mode": "1x",
     "fallback_preset": "assets/shaders/fallback/crt.slangp",
-    "pip_rest_size": 0.12,
-    "pip_expand_size": 0.25,
+    "pip_expand_budget": 0.30,
     "pip_expand_seconds": 7
   },
   "ui": {

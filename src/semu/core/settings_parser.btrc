@@ -126,7 +126,8 @@ class SettingsParser {
 
     class void parseVisual(JsonValue visualJson, SemuSettings settings, string filePath, ParseLog log) {
         Vector<string> allowedKeys = ["crt_shaders", "bezels", "standalone_bezels",
-                                      "integer_scaling", "render_mode", "fallback_preset"];
+                                      "integer_scaling", "render_mode", "fallback_preset",
+                                      "pip_expand_budget", "pip_expand_seconds"];
         JsonContract.checkKeys(visualJson, allowedKeys, filePath, "visual", log);
         settings.visual.crtShaders = JsonContract.requiredBool(visualJson, "crt_shaders", filePath, "visual", log);
         settings.visual.bezels = JsonContract.requiredBool(visualJson, "bezels", filePath, "visual", log);
@@ -137,6 +138,8 @@ class SettingsParser {
         JsonContract.checkEnum(settings.visual.renderMode, renderModes, filePath, "visual.render_mode", log);
         settings.visual.fallbackPreset = JsonContract.requiredString(visualJson, "fallback_preset", filePath, "visual", log);
         JsonContract.checkAssetPath(settings.visual.fallbackPreset, filePath, "visual.fallback_preset", log);
+        settings.visual.pipExpandBudget = JsonContract.optionalNumber(visualJson, "pip_expand_budget", 0.30, filePath, "visual", log);
+        settings.visual.pipExpandSeconds = JsonContract.optionalNumber(visualJson, "pip_expand_seconds", 7.0, filePath, "visual", log);
     }
 
     class void parseUi(JsonValue uiJson, SemuSettings settings, string filePath, ParseLog log) {

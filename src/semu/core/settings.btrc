@@ -29,6 +29,12 @@ class VisualSettings {
     public bool integerScaling;
     public string renderMode;
     public string fallbackPreset;
+    // Game (Top + Corner) dual-screen PiP: the touched-expand width cap (fraction
+    // of the display width; the rendered size snaps to the largest integer native
+    // scale within it) and how long the expand holds after a touch. The resting
+    // size is derived from the screen geometry, not stored.
+    public double pipExpandBudget;
+    public double pipExpandSeconds;
 
     public VisualSettings() {
         self.crtShaders = true;
@@ -37,6 +43,8 @@ class VisualSettings {
         self.integerScaling = true;
         self.renderMode = "1x";
         self.fallbackPreset = "";
+        self.pipExpandBudget = 0.30;
+        self.pipExpandSeconds = 7.0;
     }
 }
 
