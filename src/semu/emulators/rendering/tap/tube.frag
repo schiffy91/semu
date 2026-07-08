@@ -58,8 +58,9 @@ void main(){
   vec3 bez = uHasArt>0.5 ? artAt(px) : vec3(0.0);
   if(uTV.x>0.001 && uStyle<0.5 && uHasArt>0.5){
     vec2 nuv=clamp(uv,0.0,1.0); vec3 spill=gameAt(nuv,5.0);
-    float fall=exp(-length(uv-nuv)*7.0);
-    bez = 1.0-(1.0-bez)*(1.0-spill*fall*uTV.x);
+    float sl=dot(spill,vec3(0.299,0.587,0.114)); spill*=1.0/(1.0+max(sl-0.72,0.0)*1.3);
+    float fall=exp(-length(uv-nuv)*3.2);
+    bez = 1.0-(1.0-bez)*(1.0-spill*fall*uTV.x*1.05);
   }
   vec3 outc = bez;
   if(inRect && mask>0.003){
@@ -67,23 +68,27 @@ void main(){
     if(uShaderMode<2.5){
       if(uStyle<0.5){
         if(uShaderMode<1.5){ float lum=dot(g,vec3(0.299,0.587,0.114)); float sl=uTV.z*(1.0-abs(cos(uv.y*uNative*3.14159265))); g*=1.0-sl*(1.0-0.6*lum); }
-        if(uShaderMode<0.5||uShaderMode>1.5){ float m=mod(px.x,3.0); vec3 cmask=(m<1.0)?vec3(1.0,0.7,0.7):(m<2.0)?vec3(0.7,1.0,0.7):vec3(0.7,0.7,1.0); g*=mix(vec3(1.0),cmask,uTV.y); }
+        if(uShaderMode>1.5){ float m=mod(px.x,3.0); vec3 cmask=(m<1.0)?vec3(1.0,0.72,0.72):(m<2.0)?vec3(0.72,1.0,0.72):vec3(0.72,0.72,1.0); g*=mix(vec3(1.0),cmask,uTV.y); }
         if(uShaderMode<0.5){
-          g+=gameAt(uv,3.0)*uRef.z;
-          vec3 bloomc=gameAt(uv,2.0); g+=bloomc*dot(bloomc,vec3(0.299,0.587,0.114))*uRef.x*1.8;
-          g*=clamp(1.0-uRef.y*dot(cc,cc)*0.5,0.0,1.0);
-          float edge=min(min(uv.x,1.0-uv.x),min(uv.y,1.0-uv.y)); g*=mix(0.45,1.0,smoothstep(0.0,0.025,edge));
+          vec3 bl=gameAt(uv,2.0); g += gameAt(uv,3.0)*uRef.z + bl*dot(bl,vec3(0.299,0.587,0.114))*uRef.x*2.2;
+          float L=dot(g,vec3(0.299,0.587,0.114)); g *= 1.0/(1.0+max(L-0.72,0.0)*1.3);
+          float m=mod(px.x,3.0); vec3 cmask=(m<1.0)?vec3(1.0,0.72,0.72):(m<2.0)?vec3(0.72,1.0,0.72):vec3(0.72,0.72,1.0); g*=mix(vec3(1.0),cmask,uTV.y);
+          g *= exp(-uRef.y*dot(cc,cc)*1.4);
+          g = clamp(mix(vec3(dot(g,vec3(0.299,0.587,0.114))), g, 1.22), 0.0, 1.0);
+          if(uReflect>0.001){
+            vec3 N=normalize(vec3(c*max(uCurve,0.02)*6.0,1.0)); float fres=pow(1.0-N.z,2.4);
+            vec3 refl=artAt(cen+(px-cen)*1.13);
+            g=mix(g, refl*0.42, clamp(fres*uReflect*3.2,0.0,0.6));
+            vec3 H=normalize(vec3(-0.35,0.42,1.0)); float spec=pow(max(dot(N,H),0.0),5.0);
+            g=1.0-(1.0-g)*(1.0-spec*uReflect*0.7);
+          }
+          float edge=min(min(uv.x,1.0-uv.x),min(uv.y,1.0-uv.y)); g*=mix(0.5,1.0,smoothstep(0.0,0.02,edge));
         }
       } else {
         if(uShaderMode<1.5){ float nx=uNative*uRect.z/uRect.w; g*=0.90+0.10*sqrt(abs(cos(uv.x*nx*3.14159265))*abs(cos(uv.y*uNative*3.14159265))); }
       }
     }
-    if(uReflect>0.001){
-      if(uHasGlass>0.5) g = 1.0-(1.0-g)*(1.0-gl.rgb*gl.a*uReflect);
-      float glare = smoothstep(0.45,1.0, (1.0-uv.y)*0.7 + uv.x*0.45) * smoothstep(0.0,0.35,uv.y);
-      float spec = exp(-(pow((uv.x-0.42)*1.3,2.0)+pow((uv.y-0.74)*2.0,2.0))*2.5);
-      g += glare*uReflect*0.07 + spec*uReflect*0.16;
-    }
+    if(uReflect>0.001 && uHasGlass>0.5) g = 1.0-(1.0-g)*(1.0-gl.rgb*gl.a*uReflect);
     outc = mix(bez, g, clamp(mask,0.0,1.0));
   }
   if(uDebug>0.0005){
