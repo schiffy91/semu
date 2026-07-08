@@ -70,7 +70,10 @@
     "priority": "game",
     "corner_radius": 0.045,
     "curvature": 0.04,
-    "reflect": 0.18
+    "reflect": 0.18,
+    "glow": 0.5,
+    "bloom": 0.4,
+    "vignette": 0.22
   },
   "doc": {
     "hardware": "consumer CRT or VGA monitor",

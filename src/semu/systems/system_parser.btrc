@@ -66,6 +66,11 @@ class RenderPolicy {
     public double reflect;
     public double curvature;
     public double cornerRadius;
+    // CRT tube depth: ambient screen-glow spill onto the bezel, phosphor bloom,
+    // and corner vignette. 0 disables (flat handheld LCDs leave these at 0).
+    public double glow;
+    public double bloom;
+    public double vignette;
     public RgbColor shellTint;
     public bool retroDefault;
     public string assetProfile;
@@ -78,6 +83,9 @@ class RenderPolicy {
         self.reflect = 0.0;
         self.curvature = 0.0;
         self.cornerRadius = 0.0;
+        self.glow = 0.0;
+        self.bloom = 0.0;
+        self.vignette = 0.0;
         self.shellTint = RgbColor();
         self.retroDefault = false;
         self.assetProfile = "";
@@ -439,8 +447,8 @@ class RenderPolicyParser {
             return renderPolicy;
         }
         Vector<string> allowedKeys = ["style", "priority", "kind", "fill", "reflect", "curvature",
-                                      "corner_radius", "shell_tint", "retro_default",
-                                      "asset_profile"];
+                                      "corner_radius", "glow", "bloom", "vignette", "shell_tint",
+                                      "retro_default", "asset_profile"];
         JsonContract.checkKeys(jsonValue, allowedKeys, file, "render", log);
 
         renderPolicy.style = JsonContract.requiredString(jsonValue, "style", file, "render", log);
@@ -475,6 +483,18 @@ class RenderPolicyParser {
             file, "render", log);
         renderPolicy.cornerRadius = JsonContract.optionalNumber(jsonValue, "corner_radius", 0.0,
             file, "render", log);
+        renderPolicy.glow = JsonContract.optionalNumber(jsonValue, "glow", 0.0, file, "render", log);
+        if (renderPolicy.glow < 0.0 || renderPolicy.glow > 1.0) {
+            log.add(file, "render.glow", "must be 0..1");
+        }
+        renderPolicy.bloom = JsonContract.optionalNumber(jsonValue, "bloom", 0.0, file, "render", log);
+        if (renderPolicy.bloom < 0.0 || renderPolicy.bloom > 1.0) {
+            log.add(file, "render.bloom", "must be 0..1");
+        }
+        renderPolicy.vignette = JsonContract.optionalNumber(jsonValue, "vignette", 0.0, file, "render", log);
+        if (renderPolicy.vignette < 0.0 || renderPolicy.vignette > 1.0) {
+            log.add(file, "render.vignette", "must be 0..1");
+        }
         if (jsonValue.has("shell_tint")) {
             renderPolicy.shellTint = JsonContract.rgbColor(jsonValue.get("shell_tint"),
                 file, "render.shell_tint", log);
