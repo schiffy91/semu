@@ -12,7 +12,7 @@
 #                            srcs (runtime build products such as the Deck tap
 #                            .so under generated/) are skipped — their own
 #                            pipelines stage them.
-{ lib, stdenvNoCC, fetchFromGitHub, fetchurl, imagemagick, dejavu_fonts }:
+{ lib, stdenvNoCC, fetchFromGitHub, fetchurl, imagemagick }:
 
 let
   sources = lib.importJSON ./bezels.json;
@@ -58,29 +58,13 @@ let
         pixelX (plate.x + plate.w)},${pixelY (plate.y + plate.h)} ${
         toString plate.radius},${toString plate.radius}" '';
 
-  wordmarkFont = "${dejavu_fonts}/share/fonts/truetype/DejaVuSans-Bold.ttf";
-
-  # Generate a wordmark PNG the upstream art omits (e.g. the GBC "GAME BOY
-  # color" logo). Each segment is one label; +append concatenates them by
-  # real glyph width (no manual per-letter x-guessing, no overlaps). Written
-  # once to $wordmarks so every variant composites the identical logo.
-  wordmarkScript = lib.concatStrings (lib.mapAttrsToList (name: spec: ''
-    magick ${lib.concatMapStringsSep " " (seg:
-      ''\( -background none -font ${wordmarkFont} -pointsize 200 -fill "${seg.fill}" label:"${seg.text}" \)''
-    ) spec.segments} \
-      +append ${lib.optionalString (spec ? shear) "-background none -shear ${toString spec.shear}x0 "}-trim +repage "$wordmarks/${name}.png"
-  '') (sources.wordmarks or { }));
-
-  # Composite a generated wordmark onto a rendered device (last step, so it
-  # survives any recolor). "overlay" = { wordmark, x (center), y (top), width }
-  # in fractions of the canvas.
-  overlayPass = recipe: width: height:
-    lib.optionalString (recipe ? overlay)
-      (let o = recipe.overlay; in
-        '' \( "$wordmarks/${o.wordmark}.png" -resize ${
-          toString (builtins.floor (o.width * width + 0.5))}x \) -gravity NorthWest -geometry +${
-          toString (builtins.floor ((o.x - o.width * 0.5) * width + 0.5))}+${
-          toString (builtins.floor (o.y * height + 0.5))} -compose Over -composite '');
+  # Composite an already-baked, pixel-aligned asset (e.g. the GBC glass layer,
+  # which carries Duimon's authentic rainbow "GAME BOY COLOR" wordmark) over a
+  # rendered device as the LAST step, so it survives any recolor tint. The
+  # overlay asset shares the shell's crop, so no resize/placement is needed.
+  overlayAssetPass = recipe:
+    lib.optionalString (recipe ? overlay_asset)
+      '' \( ${outFile recipe.overlay_asset} \) -compose Over -composite '';
 
   render = key: recipe:
     ''
@@ -100,20 +84,15 @@ let
           -trim +repage -resize '2560x2560>' "PNG32:$out/share/semu/${key}"
       '';
       # -flatten merges the whole layer stack; pairwise -composite would only
-      # merge the last two layers (the GBC LED-layer regression). Optional
-      # "labels" draw wordmark text (fractions of the post-crop canvas) that
-      # the upstream art omits, e.g. the GBC "GAME BOY color" logo.
+      # merge the last two layers (the GBC LED-layer regression). A layer set
+      # may include its own screen-lens/glass layer (e.g. GBC_Glass with the
+      # authentic wordmark) as the topmost entry so the logo bakes in aligned.
       flatten =
-        if recipe ? crop then
-          let
-            parts = builtins.match "([0-9]+)x([0-9]+).*" recipe.crop;
-            cw = lib.toInt (builtins.elemAt parts 0);
-            ch = lib.toInt (builtins.elemAt parts 1);
-          in ''
-            magick ${lib.concatMapStringsSep " " (layer: treeFile recipe layer) recipe.layers} \
-              -background none -flatten -resize '2048x2048>' \
-              -crop ${recipe.crop} +repage ${overlayPass recipe cw ch}${outFile key}
-          ''
+        if recipe ? crop then ''
+          magick ${lib.concatMapStringsSep " " (layer: treeFile recipe layer) recipe.layers} \
+            -background none -flatten -resize '2048x2048>' \
+            -crop ${recipe.crop} +repage ${outFile key}
+        ''
         else ''
           magick ${lib.concatMapStringsSep " " (layer: treeFile recipe layer) recipe.layers} \
             -background none -flatten -resize '2048x2048>' ${outFile key}
@@ -131,12 +110,7 @@ let
       recolor = ''
         magick ${outFile recipe.base} -modulate ${toString (recipe.brightness or 100)},0,100 \
           \( +clone -fill "${recipe.color}" -colorize 100% \) \
-          -compose Multiply -composite -alpha on ${
-            lib.optionalString (recipe ? overlay)
-              (overlayPass recipe
-                (builtins.elemAt recipe.overlay_canvas 0)
-                (builtins.elemAt recipe.overlay_canvas 1))
-          }"PNG32:$out/share/semu/${key}"
+          -compose Multiply -composite -alpha on ${overlayAssetPass recipe}"PNG32:$out/share/semu/${key}"
       '';
       # photoreal device shell from a Duimon layer set. Their device base is
       # black RGB with the shape in alpha, so: colorize + top-down light the
@@ -206,9 +180,6 @@ stdenvNoCC.mkDerivation {
 
   installPhase = ''
     runHook preInstall
-    wordmarks="$TMPDIR/wordmarks"
-    mkdir -p "$wordmarks"
-    ${wordmarkScript}
     ${renderScript}
     ${stagingScript}
     runHook postInstall
