@@ -71,8 +71,8 @@
     "corner_radius": 0.045,
     "curvature": 0.04,
     "reflect": 0.18,
-    "glow": 0.5,
-    "bloom": 0.4,
+    "glow": 0.3,
+    "bloom": 0.26,
     "vignette": 0.22
   },
   "doc": {

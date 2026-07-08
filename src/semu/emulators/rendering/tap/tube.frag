@@ -67,14 +67,17 @@ void main(){
     vec3 g=gameAt(uv,uRetro);
     if(uShaderMode<2.5){
       if(uStyle<0.5){
-        if(uShaderMode<1.5){ float lum=dot(g,vec3(0.299,0.587,0.114)); float sl=uTV.z*(1.0-abs(cos(uv.y*uNative*3.14159265))); g*=1.0-sl*(1.0-0.6*lum); }
+        if(uShaderMode<1.5){ float lum=dot(g,vec3(0.299,0.587,0.114)); float sl=uTV.z*(1.0-abs(cos(uv.y*uNative*3.14159265))); g*=1.0-sl*(1.0-0.3*lum); }
         if(uShaderMode>1.5){ float m=mod(px.x,3.0); vec3 cmask=(m<1.0)?vec3(1.0,0.72,0.72):(m<2.0)?vec3(0.72,1.0,0.72):vec3(0.72,0.72,1.0); g*=mix(vec3(1.0),cmask,uTV.y); }
         if(uShaderMode<0.5){
-          vec3 bl=gameAt(uv,2.0); g += gameAt(uv,3.0)*uRef.z + bl*dot(bl,vec3(0.299,0.587,0.114))*uRef.x*2.2;
+          vec3 bl=gameAt(uv,2.0); float bsat=max(bl.r,max(bl.g,bl.b))-min(bl.r,min(bl.g,bl.b));
+          g += gameAt(uv,3.0)*uRef.z*0.6 + bl*bsat*uRef.x*2.8;
           float L=dot(g,vec3(0.299,0.587,0.114)); g *= 1.0/(1.0+max(L-0.72,0.0)*1.3);
-          float m=mod(px.x,3.0); vec3 cmask=(m<1.0)?vec3(1.0,0.72,0.72):(m<2.0)?vec3(0.72,1.0,0.72):vec3(0.72,0.72,1.0); g*=mix(vec3(1.0),cmask,uTV.y);
+          float m=mod(px.x,3.0); vec3 cmask=(m<1.0)?vec3(1.0,0.68,0.68):(m<2.0)?vec3(0.68,1.0,0.68):vec3(0.68,0.68,1.0); g*=mix(vec3(1.0),cmask,uTV.y);
           g *= exp(-uRef.y*dot(cc,cc)*1.4);
-          g = clamp(mix(vec3(dot(g,vec3(0.299,0.587,0.114))), g, 1.22), 0.0, 1.0);
+          g = clamp(mix(vec3(dot(g,vec3(0.299,0.587,0.114))), g, 1.75), 0.0, 1.0);
+          g = mix(g, g*g*(3.0-2.0*g), 0.85);
+          g = clamp((g-0.05)*1.20, 0.0, 1.0);
           if(uReflect>0.001){
             vec3 N=normalize(vec3(c*max(uCurve,0.02)*6.0,1.0)); float fres=pow(1.0-N.z,2.4);
             vec3 refl=artAt(cen+(px-cen)*1.13);
