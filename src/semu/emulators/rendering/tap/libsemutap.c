@@ -317,10 +317,11 @@ static const char *FS =
  "          vec3 bl=gameAt(uv,2.0); float bsat=max(bl.r,max(bl.g,bl.b))-min(bl.r,min(bl.g,bl.b));\n"
  "          g += gameAt(uv,3.0)*uRef.z*0.6 + bl*bsat*uRef.x*2.8;\n"   // emissive halation + SATURATION-WEIGHTED BLOOM: colours glow, the white centre/gridlines stay crisp (no haze)
  "          float L=dot(g,vec3(0.299,0.587,0.114)); g *= 1.0/(1.0+max(L-0.72,0.0)*1.3);\n"                          // TONEMAP: luma soft-shoulder (hue-preserving, no white crush)
- "          float m=mod(px.x,3.0); vec3 cmask=(m<1.0)?vec3(1.0,0.68,0.68):(m<2.0)?vec3(0.68,1.0,0.68):vec3(0.68,0.68,1.0); g*=mix(vec3(1.0),cmask,uTV.y);\n"   // MASK (after tonemap) — lighter so white gridlines read bright, stripes don't dominate
+ "          float m=mod(px.x,3.0); vec3 cmask=(m<1.0)?vec3(1.0,0.72,0.72):(m<2.0)?vec3(0.72,1.0,0.72):vec3(0.72,0.72,1.0); g*=mix(vec3(1.0),cmask,uTV.y);\n"   // MASK (after tonemap) — lighter/smoother, white gridlines read bright
+ "          g += gameAt(uv,1.0)*0.10;\n"                            // fine soft phosphor bleed: smooth the hard cross-hatch toward Duimon's finer mask
  "          g *= exp(-uRef.y*dot(cc,cc)*1.4);\n"                    // VIGNETTE (uRef.y): exponential tube falloff
- "          g = clamp(mix(vec3(dot(g,vec3(0.299,0.587,0.114))), g, 1.75), 0.0, 1.0);\n"   // SATURATION punch (the tonemap desaturates highlights)
- "          g = mix(g, g*g*(3.0-2.0*g), 0.85);\n"                   // CONTRAST S-curve: deepen blacks + open highlights
+ "          g = clamp(mix(vec3(dot(g,vec3(0.299,0.587,0.114))), g, 1.6), 0.0, 1.0);\n"    // SATURATION punch (the tonemap desaturates highlights)
+ "          g = mix(g, g*g*(3.0-2.0*g), 0.68);\n"                   // CONTRAST S-curve: deepen blacks + open highlights (softened so it isn't neon/harsh)
  "          g = clamp((g-0.05)*1.20, 0.0, 1.0);\n"                  // BLACK-FLOOR removal + gain: kill the milky raised-black haze, keep the tube luminous
  "          if(uReflect>0.001){\n"                                  // GLASS: curvature normal -> fresnel bezel reflection + soft specular
  "            vec3 N=normalize(vec3(c*max(uCurve,0.02)*6.0,1.0)); float fres=pow(1.0-N.z,2.4);\n"
