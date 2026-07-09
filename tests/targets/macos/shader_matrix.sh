@@ -106,7 +106,7 @@ with open(os.path.join(out, "report.json"), "w") as handle:
 failures = [entry for entry in report if entry["status"] == "FAIL"]
 checked = [entry for entry in report if entry["status"] == "PASS"]
 print(f"SHADER MATRIX: {len(checked)} chains PASS, {len(failures)} FAIL, "
-      f"{len([e for e in report if e['status'] == 'SKIP'])} systems delegate to the tap/vkBasalt path")
+      f"{len([e for e in report if e['status'] == 'SKIP'])} systems delegate to the tap path")
 sys.exit(1 if failures else 0)
 PY
 

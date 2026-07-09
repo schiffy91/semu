@@ -140,54 +140,6 @@ class LinuxTap {
             LinuxTap.mergeReadOnlyFilesystemGrant(launchPlan,
                 PathTools.dirname(tapLibrary));
         }
-        LinuxTap.applyVulkanOverlay(launchPlan, emulator, tapEnvironment,
-            environmentAssetRoot, project);
-    }
-
-    // Vulkan-presenting emulators (contract: graphics.overlay_api "vulkan")
-    // cannot be composited by the GL interposition — their bezel rides the
-    // vkBasalt layer instead: the flatpak runtime's VulkanLayer extension
-    // reads VKBASALT_CONFIG_FILE and draws the aspect-matched bezel effect
-    // onto the game's own swapchain (the surface gamescope presents). The
-    // template conf ships in the assets (@DIR@ tokens); the exec edge
-    // materializes it into the state root once paths resolve.
-    class string overlayVkbasaltDirectory(string environmentAssetRoot, string project) {
-        Vector<string> candidates = [];
-        if (!environmentAssetRoot.isEmpty()) {
-            candidates.push(PathTools.join(environmentAssetRoot,
-                "share/semu-bezel/vkbasalt"));
-        }
-        candidates.push(PathTools.join(project, "src/semu/assets/vkbasalt"));
-        for candidate in candidates {
-            if (FileSystem.isDir(candidate)) {
-                return candidate;
-            }
-        }
-        return "";
-    }
-
-    // The aspect-matched template: dual-screen systems take the 3ds layout,
-    // wide systems 16:9, everything else 4:3 — read from the SAME tap bundle
-    // the GL path uses, so the two mechanisms cannot disagree.
-    class string overlayConfigurationName(TapEnvironment tapEnvironment) {
-        bool dualScreen = false;
-        float displayAspect = 0.0;
-        for (int keyIndex = 0; keyIndex < tapEnvironment.keys.size(); keyIndex++) {
-            if (tapEnvironment.keys.get(keyIndex).equals("SEMU_TAP_DUAL")
-                && !tapEnvironment.values.get(keyIndex).equals("0")) {
-                dualScreen = true;
-            }
-            if (tapEnvironment.keys.get(keyIndex).equals("SEMU_TAP_ASPECT")) {
-                displayAspect = tapEnvironment.values.get(keyIndex).toFloat();
-            }
-        }
-        if (dualScreen) {
-            return "vkBasalt-3ds.conf";
-        }
-        if (displayAspect >= 1.6) {
-            return "vkBasalt-16x9.conf";
-        }
-        return "vkBasalt-4x3.conf";
     }
 
     // The contract's EXTRA bezel variants (b/c/d — the radial menu and the
@@ -238,28 +190,5 @@ class LinuxTap {
                 }
             }
         }
-    }
-
-    class void applyVulkanOverlay(LaunchPlan launchPlan, EmulatorDefinition emulator,
-                                  TapEnvironment tapEnvironment,
-                                  string environmentAssetRoot, string project) {
-        EmulatorPlatform platform = emulator.platformFor("linux");
-        if (!platform.graphics.present || !platform.graphics.overlayApi.equals("vulkan")) {
-            return;
-        }
-        string vkbasaltDirectory = LinuxTap.overlayVkbasaltDirectory(environmentAssetRoot,
-            project);
-        if (vkbasaltDirectory.isEmpty()) {
-            LinuxTap.appendNote(launchPlan, "vulkan overlay skipped: no staged"
-                + " share/semu-bezel/vkbasalt assets");
-            return;
-        }
-        LinuxTap.mergeEnvironment(launchPlan, "SEMU_OVERLAY_CONF_TEMPLATE",
-            PathTools.join(vkbasaltDirectory,
-                LinuxTap.overlayConfigurationName(tapEnvironment)));
-        LinuxTap.mergeEnvironment(launchPlan, "VKBASALT_CONFIG_FILE",
-            "${state_root}/vkBasalt.conf");
-        LinuxTap.mergeEnvironment(launchPlan, "ENABLE_VKBASALT", "1");
-        LinuxTap.mergeReadOnlyFilesystemGrant(launchPlan, vkbasaltDirectory);
     }
 }

@@ -77,7 +77,6 @@
         "tap_api": "opengl",
         "section": "EmuCore/GS"
       },
-      "overlay_aspect": "4x3",
       "aspect_probe": {
         "files": [
           "${state_root}/config/PCSX2/inis/PCSX2.ini",

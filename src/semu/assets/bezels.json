@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "doc": {
-    "purpose": "Global bezel manifest: the generic fallback table BezelResolver reads, every bezel-art recipe (flatten/recolor/glass over the upstream packs), and the staged vkBasalt pack (bezels-as-ReShade-FX for Vulkan-presenting emulators).",
+    "purpose": "Global bezel manifest: the generic fallback table BezelResolver reads and every bezel-art recipe (flatten/recolor/glass over the upstream packs).",
     "provenance": "Upstream pins, flatten layer stacks, recolor hexes, and slang_wrapper params are migrated verbatim from packaging/nix/visual-assets.nix and packaging/steamdeck/tap/gen-handheld-shells.sh; local sources from config/assets and packaging/steamdeck/tap.",
     "shared_pins": "Upstreams named in both this file and shaders.json must carry identical rev/nar_hash pins; NixPackageContract enforces agreement."
   },
@@ -27,7 +27,7 @@
     },
     "profiles": {
       "crt4x3": {
-        "art": "assets/bezels/generic/4x3.png",
+        "art": "assets/generic/bezel-4x3.png",
         "hole": {
           "x": 0.125,
           "y": 0.05,
@@ -36,7 +36,7 @@
         }
       },
       "handheld": {
-        "art": "assets/bezels/generic/4x3.png",
+        "art": "assets/generic/bezel-4x3.png",
         "hole": {
           "x": 0.125,
           "y": 0.05,
@@ -45,7 +45,7 @@
         }
       },
       "wide16x9": {
-        "art": "assets/bezels/generic/16x9.png",
+        "art": "assets/generic/bezel-16x9.png",
         "hole": {
           "x": 0.03,
           "y": 0.08,
@@ -54,7 +54,7 @@
         }
       },
       "dual": {
-        "art": "assets/bezels/generic/dual.png",
+        "art": "assets/generic/bezel-3ds.png",
         "hole": {
           "x": 0.33,
           "y": 0.04,
@@ -65,17 +65,17 @@
     }
   },
   "assets": {
-    "assets/bezels/generic/4x3.png": {
+    "assets/generic/bezel-4x3.png": {
       "type": "local",
-      "path": "src/semu/assets/vkbasalt/bezel-4x3.png"
+      "path": "src/semu/assets/generic/bezel-4x3.png"
     },
-    "assets/bezels/generic/16x9.png": {
+    "assets/generic/bezel-16x9.png": {
       "type": "local",
-      "path": "src/semu/assets/vkbasalt/bezel-16x9.png"
+      "path": "src/semu/assets/generic/bezel-16x9.png"
     },
-    "assets/bezels/generic/dual.png": {
+    "assets/generic/bezel-3ds.png": {
       "type": "local",
-      "path": "src/semu/assets/vkbasalt/bezel-3ds.png"
+      "path": "src/semu/assets/generic/bezel-3ds.png"
     },
     "assets/bezels/gb/classic.png": {
       "type": "flatten",
@@ -226,71 +226,6 @@
       "from": "soqueroeu_tv",
       "path": "img/Sony_Playstation/PSX.png"
     },
-    "assets/vkbasalt/Bezel.fx": {
-      "type": "local",
-      "path": "src/semu/assets/vkbasalt/Bezel.fx"
-    },
-    "assets/vkbasalt/Bezel-4x3.fx": {
-      "type": "local",
-      "path": "src/semu/assets/vkbasalt/Bezel-4x3.fx"
-    },
-    "assets/vkbasalt/Bezel-16x9.fx": {
-      "type": "local",
-      "path": "src/semu/assets/vkbasalt/Bezel-16x9.fx"
-    },
-    "assets/vkbasalt/Bezel-3ds.fx": {
-      "type": "local",
-      "path": "src/semu/assets/vkbasalt/Bezel-3ds.fx"
-    },
-    "assets/vkbasalt/ReShade.fxh": {
-      "type": "local",
-      "path": "src/semu/assets/vkbasalt/ReShade.fxh"
-    },
-    "assets/vkbasalt/ReShadeUI.fxh": {
-      "type": "local",
-      "path": "src/semu/assets/vkbasalt/ReShadeUI.fxh"
-    },
-    "assets/vkbasalt/vkBasalt.conf": {
-      "type": "local",
-      "path": "src/semu/assets/vkbasalt/vkBasalt.conf"
-    },
-    "assets/vkbasalt/vkBasalt-4x3.conf": {
-      "type": "local",
-      "path": "src/semu/assets/vkbasalt/vkBasalt-4x3.conf"
-    },
-    "assets/vkbasalt/vkBasalt-16x9.conf": {
-      "type": "local",
-      "path": "src/semu/assets/vkbasalt/vkBasalt-16x9.conf"
-    },
-    "assets/vkbasalt/vkBasalt-3ds.conf": {
-      "type": "local",
-      "path": "src/semu/assets/vkbasalt/vkBasalt-3ds.conf"
-    },
-    "assets/vkbasalt/cutouts.conf": {
-      "type": "local",
-      "path": "src/semu/assets/vkbasalt/cutouts.conf"
-    },
-    "assets/vkbasalt/bezel-4x3.png": {
-      "type": "local",
-      "path": "src/semu/assets/vkbasalt/bezel-4x3.png",
-      "doc": {
-        "why": "Bezel-4x3.fx defines SEMU_BEZEL_TEXTURE \"bezel-4x3.png\" and vkBasalt reshadeTexturePath points at the reshade dir, so the texture must ship inside the staged reshade pack."
-      }
-    },
-    "assets/vkbasalt/bezel-16x9.png": {
-      "type": "local",
-      "path": "src/semu/assets/vkbasalt/bezel-16x9.png",
-      "doc": {
-        "why": "Texture named by Bezel-16x9.fx; must sit beside the .fx in the staged reshade pack."
-      }
-    },
-    "assets/vkbasalt/bezel-3ds.png": {
-      "type": "local",
-      "path": "src/semu/assets/vkbasalt/bezel-3ds.png",
-      "doc": {
-        "why": "Texture named by Bezel-3ds.fx; must sit beside the .fx in the staged reshade pack."
-      }
-    },
     "assets/fonts/menu-font.png": {
       "type": "local",
       "path": "src/semu/assets/fonts/menu-font.png"
@@ -367,15 +302,6 @@
     }
   },
   "staging": [
-    {
-      "id": "vkbasalt_pack",
-      "files": [
-        {
-          "src": "assets/vkbasalt",
-          "dest": "share/semu-bezel/vkbasalt"
-        }
-      ]
-    },
     {
       "id": "tap_runtime",
       "files": [

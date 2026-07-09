@@ -58,10 +58,8 @@
       },
       "graphics": {
         "method": "dynamic",
-        "tap_api": "opengl",
-        "overlay_api": "vulkan"
+        "tap_api": "opengl"
       },
-      "overlay_aspect": "16x9",
       "state": {
         "config_home": "xdg",
         "data_home": "xdg",

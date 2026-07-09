@@ -4,7 +4,7 @@
 // cemu_rendering.btrc. Cemu declares no extension block, adds no ES-DE
 // command fragments (fullscreen/game flags are plain platform args in the
 // contract), forces graphics by config file rather than cli, and has no
-// emulator-native overlay configuration or hotkey grammar.
+// native hotkey grammar.
 
 import std.{vector}
 import ../../core/parse_log.btrc
@@ -53,12 +53,6 @@ class CemuEmulator extends SemuEmulator implements SemuEmitter, SemuRenderer {
     public Vector<string> graphicsForceArguments(EmulatorPlatform platform, string graphicsApi) {
         Vector<string> arguments = [];
         return arguments;
-    }
-
-    // The compositor's generic GL tap draws the overlay; Cemu has no
-    // emulator-native overlay configuration text.
-    public string overlayConfiguration(EmulatorPlatform platform) {
-        return "";
     }
 
     // Cemu has no native hotkey grammar in the proven Deck setup: chords

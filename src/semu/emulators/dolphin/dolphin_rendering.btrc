@@ -2,9 +2,8 @@
 // graphics.method = "cli" contract. Dolphin is forced onto a graphics backend
 // through its own --config grammar (the same one the frozen platform args use
 // for "Dolphin.Display.Fullscreen=True"): "Dolphin.Core.GFXBackend=OGL" for
-// the OpenGL tap path, "Dolphin.Core.GFXBackend=Vulkan" for Vulkan. Dolphin
-// has no emulator-native overlay configuration — the semu tap composites the
-// bezel, so overlayConfiguration is empty.
+// the OpenGL tap path, "Dolphin.Core.GFXBackend=Vulkan" for Vulkan. The semu
+// tap composites the bezel, so Dolphin carries no presentation glue of its own.
 
 import std.{vector}
 import ../semu_emulator.btrc
@@ -33,9 +32,5 @@ class DolphinRendering {
         arguments.push("--config");
         arguments.push("Dolphin.Core.GFXBackend=" + backend);
         return arguments;
-    }
-
-    class string overlayConfiguration(EmulatorPlatform platform) {
-        return "";
     }
 }

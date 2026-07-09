@@ -227,10 +227,6 @@ class RetroArchEmulator extends SemuEmulator implements SemuEmitter, SemuRendere
         return arguments;
     }
 
-    public string overlayConfiguration(EmulatorPlatform platform) {
-        return "";
-    }
-
     // RetroArch's native hotkey token grammar lives in RetroArchEmitter
     // (single owner for profile emission and chord translation).
     public string translateChord(string chord) {

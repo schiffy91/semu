@@ -413,7 +413,7 @@ class EmulatorContractTest {
     // declares a cli graphics method.
     class int recordRendererAnswer(Vector<string> answeredIds, string emulatorId,
                                    EmulatorPlatform probePlatform,
-                                   Vector<string> forceArguments, string overlayText) {
+                                   Vector<string> forceArguments) {
         answeredIds.push(emulatorId);
         bool declaresCliGraphics = probePlatform.graphics.present
             && probePlatform.graphics.method.equals("cli");
@@ -428,7 +428,7 @@ class EmulatorContractTest {
     // COMPILE time: every concrete emulator class declares
     // `extends SemuEmulator implements SemuEmitter, SemuRenderer`
     // (semu_emulator.btrc), so a class that forgets emitProfiles or
-    // graphicsForceArguments/overlayConfiguration fails the BUILD via the
+    // graphicsForceArguments fails the BUILD via the
     // interface-satisfaction and abstract-method checks — a new emulator can
     // never reach this test as a silent no-op. What runtime adds on top:
     // every registered id ANSWERS the emitter duty through the registry (the
@@ -480,32 +480,27 @@ class EmulatorContractTest {
             CemuEmulator().id());
         failures = failures + EmulatorContractTest.recordRendererAnswer(rendererAnsweredIds,
             CemuEmulator().id(), cemuPlatform,
-            CemuEmulator().graphicsForceArguments(cemuPlatform, "opengl"),
-            CemuEmulator().overlayConfiguration(cemuPlatform));
+            CemuEmulator().graphicsForceArguments(cemuPlatform, "opengl"));
         EmulatorPlatform dolphinPlatform = EmulatorContractTest.probePlatform(contracts,
             DolphinEmulator().id());
         failures = failures + EmulatorContractTest.recordRendererAnswer(rendererAnsweredIds,
             DolphinEmulator().id(), dolphinPlatform,
-            DolphinEmulator().graphicsForceArguments(dolphinPlatform, "opengl"),
-            DolphinEmulator().overlayConfiguration(dolphinPlatform));
+            DolphinEmulator().graphicsForceArguments(dolphinPlatform, "opengl"));
         EmulatorPlatform pcsx2Platform = EmulatorContractTest.probePlatform(contracts,
             Pcsx2Emulator().id());
         failures = failures + EmulatorContractTest.recordRendererAnswer(rendererAnsweredIds,
             Pcsx2Emulator().id(), pcsx2Platform,
-            Pcsx2Emulator().graphicsForceArguments(pcsx2Platform, "opengl"),
-            Pcsx2Emulator().overlayConfiguration(pcsx2Platform));
+            Pcsx2Emulator().graphicsForceArguments(pcsx2Platform, "opengl"));
         EmulatorPlatform retroArchPlatform = EmulatorContractTest.probePlatform(contracts,
             RetroArchEmulator().id());
         failures = failures + EmulatorContractTest.recordRendererAnswer(rendererAnsweredIds,
             RetroArchEmulator().id(), retroArchPlatform,
-            RetroArchEmulator().graphicsForceArguments(retroArchPlatform, "opengl"),
-            RetroArchEmulator().overlayConfiguration(retroArchPlatform));
+            RetroArchEmulator().graphicsForceArguments(retroArchPlatform, "opengl"));
         EmulatorPlatform ryujinxPlatform = EmulatorContractTest.probePlatform(contracts,
             RyujinxEmulator().id());
         failures = failures + EmulatorContractTest.recordRendererAnswer(rendererAnsweredIds,
             RyujinxEmulator().id(), ryujinxPlatform,
-            RyujinxEmulator().graphicsForceArguments(ryujinxPlatform, "opengl"),
-            RyujinxEmulator().overlayConfiguration(ryujinxPlatform));
+            RyujinxEmulator().graphicsForceArguments(ryujinxPlatform, "opengl"));
 
         for registeredId in EmulatorRegistry.registeredIds() {
             if (!rendererAnsweredIds.contains(registeredId)) {

@@ -3,8 +3,8 @@
 // Ryujinx is a plain standalone: the ES-DE command is fully covered by the
 // contract's platform arguments (--fullscreen), so commandFragments adds
 // nothing; graphics forcing is method "dynamic" (applied at launch via
-// Config.json — RyujinxRendering owns that knowledge), so the cli-force and
-// overlay surfaces stay empty; and Ryujinx has no native hotkey grammar
+// Config.json — RyujinxRendering owns that knowledge), so the cli-force
+// surface stays empty; and Ryujinx has no native hotkey grammar
 // (app.quit is delivered through Steam Input), so chords pass through
 // untranslated. The one real emission is the SDL2 controller profile
 // rendered by RyujinxEmitter from ./profile.json with the steam_input.json
@@ -64,10 +64,6 @@ class RyujinxEmulator extends SemuEmulator implements SemuEmitter, SemuRenderer 
     // platform ("" when the platform declares no root data dir).
     public string dynamicGraphicsConfigurationPath(EmulatorPlatform platform) {
         return RyujinxRendering.configurationFilePath(platform);
-    }
-
-    public string overlayConfiguration(EmulatorPlatform platform) {
-        return "";
     }
 
     // No native hotkey grammar; the chord passes through untranslated.
