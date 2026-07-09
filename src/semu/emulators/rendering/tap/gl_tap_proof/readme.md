@@ -33,3 +33,22 @@ are OpenGL-forced (pcsx2 `Renderer=12`, dolphin, cemu `GraphicAPI=0`, ryujinx GL
 Prints `GL-TAP PROOF: PASS` and writes `out_bezel.ppm` (the composited TV bezel with the
 game in the tube) + `out_bare.ppm` to the work dir. No GPU, no Deck, no X server on the
 host required — everything runs in the container.
+
+## Two paths, two proofs
+
+There are two ways the tap learns the game geometry, and each has a proof:
+
+- **Reporting path** (`run.sh` → `glx_emu.c`): the RetroArch case. A tap-patched
+  emulator calls `semu_tap_report(&SemuTapState)` at its present point; the tap
+  composites from that report. `glx_emu` is a faithful stand-in that reports.
+- **Standalone path** (`run_standalone.sh` → `xcap.c`): the Cemu/Dolphin/PCSX2 case.
+  The flatpak standalones are NOT patched, so `SEMU_TAP_STANDALONE=1` makes the tap
+  synthesize the content rect from the live framebuffer (aspect-fit center) at swap.
+  This proof runs **real, uninstrumented `glxgears`** (from mesa-utils) under the tap
+  and captures the X root: the spinning gears land inside the bezel's screen hole with
+  the CRT shader applied, and `xcap` asserts the outer frame is the bezel art. Prints
+  `STANDALONE GL-TAP PROOF: PASS`. This is the same code path a real flatpak emulator
+  hits — only the drawn content differs (a game vs gears).
+
+Between them, both tap geometry paths are exercised over real/faithful GL programs
+entirely in-container, standing in for the offline Deck.
