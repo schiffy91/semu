@@ -79,6 +79,7 @@ void main(){
           g = clamp(mix(vec3(dot(g,vec3(0.299,0.587,0.114))), g, 1.6), 0.0, 1.0);
           g = mix(g, g*g*(3.0-2.0*g), 0.68);
           g = clamp((g-0.05)*1.20, 0.0, 1.0);
+          if(uReflect>0.001){ float d=abs((uv.x*0.8+uv.y)-1.05); float gloss=smoothstep(0.5,0.04,d); g=1.0-(1.0-g)*(1.0-gloss*uReflect*0.85); }
           float edge=min(min(uv.x,1.0-uv.x),min(uv.y,1.0-uv.y)); g*=mix(0.5,1.0,smoothstep(0.0,0.02,edge));
         }
       } else {
