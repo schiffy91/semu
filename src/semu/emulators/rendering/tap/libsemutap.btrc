@@ -1,0 +1,1587 @@
+// libsemutap.btrc — Semu compositor OpenGL back end (the GL "tap"), ported from
+// libsemutap.c (1016 lines) to btrc. Faithful transliteration.
+//
+// SAME EXPORTED C SYMBOLS as the C build: semu_tap_report, dlsym, glXSwapBuffers,
+// eglSwapBuffers. btrc preserves top-level function names verbatim as C symbols,
+// so the LD_PRELOAD/dlsym interposition works identically. Build MUST use
+// --no-dce (a library has no main(); DCE would drop the exports).
+//
+// WHY A COMPANION HEADER (semutap_glue.h): btrc today cannot express a few C
+// constructs this tap needs — (a) function-pointer typedefs, (b) C structs with
+// multi-dimensional fixed arrays ([4][1024], [4][4]), (c) casting a bare void*
+// through a named fn-ptr type, (d) casting a function name to void*. All of those
+// live in semutap_glue.h as raw C: the GL enum #defines, the fn-ptr typedefs, the
+// contract + state structs, the single global `G`, and thin `gl_*`/`x_*` wrappers
+// that take a void* entry point + primitives so the btrc side calls them with only
+// void*/int/float/char* arguments. This file holds ALL the logic.
+//
+// CONSTRUCTOR -> LAZY INIT: the C had __attribute__((constructor)) semu_loaded
+// (writes semu-loaded.log to prove LD_PRELOAD applied) AND a lazy `inited` guard
+// in tap_init. btrc has no constructor attribute, so the load-log is folded into
+// tap_init (first-hook-call), guarded by G.inited exactly like the C. This is the
+// one behavioral change: semu-loaded.log is written on the FIRST swap instead of
+// at library load. If no swap is ever hooked, the log is not written (the C wrote
+// it at load unconditionally) — see the migration notes.
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+#include <math.h>
+#include <time.h>
+#include <sys/stat.h>
+#include "semutap_glue.h"
+
+// ---- externs resolved at runtime (glibc dlvsym) / linked (stb_image) ----
+void* dlvsym(void* handle, char* symbol, char* version);
+unsigned char* stbi_load(char* path, int* w, int* h, int* n, int desired);
+void stbi_image_free(void* p);
+
+// ---- forward declarations of the exported hooks + a few internal fns ----
+void glXSwapBuffers(void* dpy, unsigned long drawable);
+unsigned int eglSwapBuffers(void* dpy, void* surface);
+void* dlsym(void* handle, const char* name);
+void semu_tap_report(void* state);
+void tap_init();
+void tap_frame(void* dpy, unsigned long drawable, int is_egl);
+void gl_init();
+void menu_build();
+void menu_activate();
+int menu_count();
+float scale_factor(int i);
+char* scale_label(int i);
+char* wii_label(int i);
+char* pri_env_key(int v);
+char* sec_env_key(int v);
+char* kname(int i);
+void tap_defaults();
+char* tap_state_dir();
+void tap_state_path(char* out, int cap, char* name);
+void* tap_fopen(char* name, char* mode);
+int tap_remove(char* name);
+void logf_(char* fmt, unsigned int a, unsigned int b, unsigned int c);
+double semu_now();
+double tap_stat_mtime_d(char* name);
+SemuTapMenuState menu_state();
+void menu_apply_state(SemuTapMenuState* s);
+void menu_short(int i, char* o);
+void menu_val(int i, char* o);
+void menu_persist();
+void mb_disc(int cx, int cy, int rad, int r, int g, int b, int a);
+void mb_text(int x, int y, char* s, int r, int g, int b);
+void gl_state_save();
+void gl_state_restore();
+void unpack_pbo_guard();
+void unpack_pbo_restore();
+void write_composited_shot(int width, int height);
+unsigned int mkshader(unsigned int type, const char* src);
+void ensure_real_dlsym();
+void* ld_resolve(void* current, char* name);
+int semu_tap_menu_visible_bezel_count(int bezel_count);
+int semu_tap_menu_clamp(int value, int lo, int hi);
+void semu_tap_menu_copy(char* out, int out_len, char* value);
+void semu_tap_menu_normalize(SemuTapMenuState* state);
+int semu_tap_menu_count_s(SemuTapMenuState* state);
+char* semu_tap_menu_title(SemuTapMenuState* state);
+void semu_tap_menu_short(SemuTapMenuState* state, int index, char* out, int out_len);
+char* semu_tap_menu_bezel_value(SemuTapMenuState* state);
+char* semu_tap_menu_shader_value(SemuTapMenuState* state);
+void semu_tap_menu_value(SemuTapMenuState* state, int index, char* out, int out_len);
+void semu_tap_menu_activate(SemuTapMenuState* state);
+int semu_tap_round_px(float value);
+float semu_tap_art_scale_for_game(SemuTapGeometryInput* gin, float hole_w, float hole_h, float game_w, float game_h);
+int semu_tap_compute_geometry(SemuTapGeometryInput* gin, SemuTapGeometry* out);
+
+// menu geometry constants (the C had static const int MENU_W/MENU_H, GLY_COLS/GLY_ROWS)
+int MENU_W = 560;
+int MENU_H = 720;
+int GLY_COLS = 16;
+int GLY_ROWS = 6;
+
+// ============================ GLSL shader sources ============================
+const char* VS_SRC = """#version 330 core
+void main(){ vec2 p=vec2((gl_VertexID==1)?3.0:-1.0,(gl_VertexID==2)?3.0:-1.0); gl_Position=vec4(p,0.0,1.0); }""";
+const char* FS_SRC = """#version 330 core
+out vec4 frag;
+uniform sampler2D uGame; uniform sampler2D uBezel;
+uniform vec2 uWin; uniform vec4 uRect; uniform vec4 uSrc; uniform vec4 uBezelRect;
+uniform float uNative; uniform float uStyle; uniform float uHasArt; uniform vec3 uShell;
+uniform vec4 uTV;  /* y=mask z=scanlineDepth w=bezelWidthFrac */
+uniform vec4 uRef; /* z=halation w=cornerRadius */
+uniform float uDebug; /* 0=off; else luma threshold for glass-edge detect */
+uniform float uRetro; /* game-sample LOD: 0=sharp(native render), ~1.6=soft RETRO (downsample to ~240p) */
+uniform float uShaderMode; /* 0=full(scan+mask+halation) 1=scanline-only 2=mask-only/sharp 3=OFF(raw) */
+uniform vec4 uRect2; uniform vec4 uSrc2; uniform float uDual; /* nds/3ds: second screen rect+src; uDual>0.5 = dual */
+uniform float uAlign; uniform vec4 uHole; /* alignment diag: uHole = declared screen hole (norm within bezel art) */
+uniform sampler2D uGlass; uniform float uHasGlass; /* screen-glass layer: .a = screen MASK (real cutout shape), .rgb = glass */
+uniform float uReflect; /* reflection/glare strength */ uniform float uCurve; /* CRT barrel curvature (0 = flat) */ uniform float uScreenCorner; /* CRT rounded-mask corner radius */
+uniform float uLcdGrid; uniform float uLcdSub; /* handheld LCD: inter-pixel grid depth + RGB subpixel-stripe depth (0..1) */
+uniform float uLcdMono; uniform float uLcdWash; /* LCD: monochrome DMG green ramp + reflective wash (desaturate/dim/soften), 0..1 */
+float sdRound(vec2 p, vec2 b, float r){ vec2 d=abs(p)-b+r; return length(max(d,vec2(0.0)))+min(max(d.x,d.y),0.0)-r; }
+vec3 gameAt(vec2 uv, float lod){ return textureLod(uGame,(uSrc.xy+uv*uSrc.zw)/uWin,lod).rgb; }
+vec3 artAt(vec2 sp){ vec2 auv=vec2((sp.x-uBezelRect.x)/uBezelRect.z, 1.0-(sp.y-uBezelRect.y)/uBezelRect.w); return texture(uBezel,auv).rgb; }
+vec3 bezelAt(vec2 sp){ vec2 auv=vec2((sp.x-uBezelRect.x)/uBezelRect.z, 1.0-(sp.y-uBezelRect.y)/uBezelRect.w); vec4 a=texture(uBezel,auv); return a.rgb*a.a; }
+vec4 glassAt(vec2 sp){ vec2 auv=vec2((sp.x-uBezelRect.x)/uBezelRect.z, 1.0-(sp.y-uBezelRect.y)/uBezelRect.w); return texture(uGlass,auv); }
+uniform sampler2D uMenu; uniform vec4 uMenuRect; uniform float uMenuOn; /* overlay menu (screen-px rect, GL y-up) */
+vec3 menuComposite(vec3 c, vec2 px){ if(uMenuOn>0.5 && px.x>=uMenuRect.x&&px.x<=uMenuRect.x+uMenuRect.z&&px.y>=uMenuRect.y&&px.y<=uMenuRect.y+uMenuRect.w){ vec2 muv=vec2((px.x-uMenuRect.x)/uMenuRect.z, 1.0-(px.y-uMenuRect.y)/uMenuRect.w); vec4 m=texture(uMenu,muv); return mix(c,m.rgb,m.a);} return c; }
+
+
+vec3 lcdPanel(vec3 g, vec2 uv, float nv, float aspect){
+  vec2 cells=vec2(nv*aspect,nv); vec2 cuv=fract(uv*cells); vec2 fw=fwidth(uv*cells)+1e-6;
+  vec2 din=min(cuv,1.0-cuv); vec2 inc=smoothstep(vec2(0.0),fw*1.5,din); float gf=inc.x*inc.y;
+  gf=mix(1.0,mix(0.45,1.0,gf),uLcdGrid);
+  float sx=cuv.x*3.0; float sfw=fwidth(sx)+1e-6; vec3 lane;
+  lane.r=1.0-smoothstep(1.0-sfw,1.0+sfw,sx); lane.b=smoothstep(2.0-sfw,2.0+sfw,sx); lane.g=clamp(1.0-lane.r-lane.b,0.0,1.0);
+  float fl=mix(1.0,0.18,uLcdSub); vec3 sub=mix(vec3(fl),vec3(1.0),lane); sub*=3.0/(1.0+2.0*fl);
+  if(uLcdMono>0.001){ float l=dot(g,vec3(0.299,0.587,0.114)); vec3 dmg=mix(vec3(0.055,0.212,0.055),vec3(0.608,0.737,0.055),l); g=mix(g,dmg,uLcdMono); }
+  if(uLcdWash>0.001){ float l=dot(g,vec3(0.299,0.587,0.114)); g=mix(g,vec3(l),uLcdWash*0.5); g=mix(g,vec3(0.5)+(g-0.5)*0.80,uLcdWash); g*=mix(1.0,0.80,uLcdWash); }
+  vec3 c=g; c=c*0.94+0.06;
+  c=mix(c,c*c*(3.0-2.0*c),0.25);
+  c=c*sub; c=c*gf; c=c+0.04*(1.0-c);
+  return clamp(c,0.0,1.0);
+}
+void main(){
+  vec2 px=gl_FragCoord.xy;
+  if(uAlign>0.5){
+    vec3 bz = uHasArt>0.5 ? artAt(px) : vec3(0.05);
+    vec3 outc = bz;
+    if(px.x>=uRect.x&&px.x<=uRect.x+uRect.z&&px.y>=uRect.y&&px.y<=uRect.y+uRect.w){
+      vec2 uv=(px-uRect.xy)/uRect.zw; vec3 g=textureLod(uGame,(uSrc.xy+uv*uSrc.zw)/uWin,0.0).rgb; outc=mix(bz,g,0.40);
+    }
+    float L=uBezelRect.x+uHole.x*uBezelRect.z, hw=uHole.z*uBezelRect.z;
+    float B=uBezelRect.y+(1.0-uHole.y-uHole.w)*uBezelRect.w, hh=uHole.w*uBezelRect.w;
+    float R=L+hw, T=B+hh, n=3.0;
+    bool fv=(abs(px.x-L)<n||abs(px.x-R)<n)&&px.y>=B-n&&px.y<=T+n;
+    bool fh=(abs(px.y-B)<n||abs(px.y-T)<n)&&px.x>=L-n&&px.x<=R+n;
+    if(fv||fh) outc=vec3(0.78,0.0,1.0);
+    frag=vec4(outc,1.0); return;
+  }
+  if(uDual>0.5){
+    vec3 oc = uHasArt>0.5 ? bezelAt(px) : vec3(0.0);
+    for(int s=0;s<2;s++){
+      vec4 R=(s==0)?uRect:uRect2; vec4 S=(s==0)?uSrc:uSrc2;
+      if(px.x>=R.x-1.0&&px.x<=R.x+R.z+1.0&&px.y>=R.y-1.0&&px.y<=R.y+R.w+1.0){
+        vec2 uv=(px-R.xy)/R.zw; vec3 g=textureLod(uGame,(S.xy+uv*S.zw)/uWin,uRetro).rgb;
+        if(uShaderMode<1.5){ g = lcdPanel(g, uv, uNative, R.z/R.w); }
+        vec2 cc=uv*2.0-1.0; float m=1.0-smoothstep(-0.012,0.012, sdRound(cc, vec2(1.0), clamp(uScreenCorner,0.0,0.5)));
+        oc=mix(oc,g,m);
+      }
+    }
+    frag=vec4(menuComposite(oc,px),1.0); return;
+  }
+  vec2 cen=uRect.xy+uRect.zw*0.5; vec2 hf=uRect.zw*0.5;
+  vec2 c=(px-cen)/hf;
+  vec2 cc = c*(1.0 + (uStyle<0.5?uCurve:0.0)*dot(c.yx,c.yx));
+  vec2 uv = cc*0.5+0.5;
+  bool inRect = uv.x>=0.0&&uv.x<=1.0&&uv.y>=0.0&&uv.y<=1.0;
+
+
+  vec4 gl = uHasGlass>0.5 ? glassAt(px) : vec4(0.0);
+
+
+
+  float mask = uHasArt<0.5 ? 1.0 : (uHasGlass>0.5 ? gl.a : (1.0 - smoothstep(-0.012,0.012, sdRound(cc, vec2(1.0), clamp(uScreenCorner,0.0,0.5)))));
+  vec3 bez = uHasArt>0.5 ? bezelAt(px) : vec3(0.0);
+  if(uStyle<0.5 && uHasArt>0.5) bez *= 0.5;
+
+
+
+  if(uTV.x>0.001 && uStyle<0.5 && uHasArt>0.5){
+    vec2 nuv=clamp(uv,0.0,1.0); vec3 spill=gameAt(nuv,5.0);
+    float sl=dot(spill,vec3(0.299,0.587,0.114)); spill*=1.0/(1.0+max(sl-0.72,0.0)*1.3);
+    float fall=exp(-length(uv-nuv)*3.2);
+    bez = 1.0-(1.0-bez)*(1.0-spill*fall*uTV.x*1.05);
+  }
+  vec3 outc = bez;
+  if(inRect && mask>0.003){
+    vec3 g=gameAt(uv,uRetro);
+    if(uShaderMode<2.5){
+      if(uStyle<0.5){
+
+
+
+        if(uShaderMode<1.5){ float lum=dot(g,vec3(0.299,0.587,0.114)); float sl=uTV.z*(1.0-abs(cos(uv.y*uNative*3.14159265))); g*=1.0-sl*(1.0-0.3*lum); }
+        if(uShaderMode>1.5){ float m=mod(px.x,3.0); vec3 cmask=(m<1.0)?vec3(1.0,0.72,0.72):(m<2.0)?vec3(0.72,1.0,0.72):vec3(0.72,0.72,1.0); g*=mix(vec3(1.0),cmask,uTV.y); }
+        if(uShaderMode<0.5){
+          vec3 bl=gameAt(uv,2.0); float bsat=max(bl.r,max(bl.g,bl.b))-min(bl.r,min(bl.g,bl.b));
+          g += gameAt(uv,3.0)*uRef.z*0.3 + bl*bsat*uRef.x*1.2;
+          float L=dot(g,vec3(0.299,0.587,0.114)); g *= 1.0/(1.0+max(L-0.72,0.0)*1.3);
+          float m=mod(px.x,3.0); vec3 cmask=(m<1.0)?vec3(1.0,0.72,0.72):(m<2.0)?vec3(0.72,1.0,0.72):vec3(0.72,0.72,1.0); g*=mix(vec3(1.0),cmask,uTV.y);
+          g *= exp(-uRef.y*dot(cc,cc)*1.4);
+          g = clamp(mix(vec3(dot(g,vec3(0.299,0.587,0.114))), g, 1.6), 0.0, 1.0);
+          g = mix(g, g*g*(3.0-2.0*g), 0.68);
+          g = clamp((g-0.05)*1.20, 0.0, 1.0);
+          if(uReflect>0.001){ float d=abs((uv.x*0.8+uv.y)-1.05); float gloss=smoothstep(0.5,0.04,d); g=1.0-(1.0-g)*(1.0-gloss*uReflect*0.85); }
+          float edge=min(min(uv.x,1.0-uv.x),min(uv.y,1.0-uv.y)); g*=mix(0.5,1.0,smoothstep(0.0,0.02,edge));
+        }
+      } else {
+        if(uShaderMode<1.5){ g = lcdPanel(g, uv, uNative, uRect.z/uRect.w); }
+      }
+    }
+
+
+    if(uReflect>0.001 && uHasGlass>0.5) g = 1.0-(1.0-g)*(1.0-gl.rgb*gl.a*uReflect);
+    outc = mix(bez, g, clamp(mask,0.0,1.0));
+  }
+  if(uDebug>0.0005){
+    float bw=2.5;
+    float L=uRect.x, R=uRect.x+uRect.z, B=uRect.y, T=uRect.y+uRect.w;
+    bool inF = px.x>=L-bw&&px.x<=R+bw&&px.y>=B-bw&&px.y<=T+bw;
+    bool inI = px.x>=L+bw&&px.x<=R-bw&&px.y>=B+bw&&px.y<=T-bw;
+    bool green = inF&&!inI;
+    bool purple=false;
+    if(uHasArt>0.5){
+      vec3 wv=vec3(0.299,0.587,0.114);
+      float l0=dot(artAt(px),wv), lx=dot(artAt(px+vec2(2.0,0.0)),wv), ly=dot(artAt(px+vec2(0.0,2.0)),wv);
+      bool g0=l0<uDebug, gx=lx<uDebug, gy=ly<uDebug;
+      purple=(g0!=gx)||(g0!=gy);
+    }
+    if(purple) outc=vec3(0.80,0.0,1.0);
+    if(green)  outc=vec3(0.0,1.0,0.0);
+  }
+  frag=vec4(menuComposite(outc,px),1.0);
+}""";
+
+// ================= report entry point (exported) =================
+void semu_tap_report(void* state) {
+    SemuTapState* s = (SemuTapState*)state;
+    if (s != null && s->abi == SEMU_TAP_ABI) { G.g_state = *s; G.g_have = 1; }
+}
+
+// ================= state-dir + file helpers =================
+char* tap_state_dir() {
+    if (G.tap_state_dir_ready == 0) {
+        char* dir = getenv("SEMU_TAP_STATE_DIR");
+        if (dir != null && dir[0] != 0) {
+            strncpy(G.tap_state_dir_buf, dir, 1023);
+            G.tap_state_dir_buf[1023] = 0;
+            int len = (int)strlen(G.tap_state_dir_buf);
+            while (len > 1 && G.tap_state_dir_buf[len - 1] == '/') {
+                len = len - 1;
+                G.tap_state_dir_buf[len] = 0;
+            }
+        }
+        G.tap_state_dir_ready = 1;
+    }
+    return G.tap_state_dir_buf;
+}
+void tap_state_path(char* out, int cap, char* name) {
+    snprintf(out, cap, "%s/%s", tap_state_dir(), name);
+}
+void* tap_fopen(char* name, char* mode) {
+    char path[1200];
+    tap_state_path(path, 1200, name);
+    return (void*)fopen(path, mode);
+}
+int tap_remove(char* name) {
+    char path[1200];
+    tap_state_path(path, 1200, name);
+    return remove(path);
+}
+void logf_(char* fmt, unsigned int a, unsigned int b, unsigned int c) {
+    FILE* f = (FILE*)tap_fopen("semutap.log", "a");
+    if (f != null) { fprintf(f, fmt, a, b, c); fclose(f); }
+}
+double semu_now() {
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (double)ts.tv_sec + (double)ts.tv_nsec * 1e-9;
+}
+// returns mtime as a double (0 if the file is absent). Mirrors tap_stat_mtime;
+// the platform st_mtim/st_mtimespec split is handled in the glue header.
+double stat_mtime_d(const char* path);
+double tap_stat_mtime_d(char* name) {
+    char path[1200];
+    tap_state_path(path, 1200, name);
+    return stat_mtime_d(path);
+}
+
+// ================= geometry (ported from tap_geometry.h) =================
+int semu_tap_round_px(float value) { return (int)(value + 0.5f); }
+
+float semu_tap_art_scale_for_game(SemuTapGeometryInput* gin, float hole_w, float hole_h, float game_w, float game_h) {
+    float hole_px_w = hole_w * (float)gin->art_w;
+    float hole_px_h = hole_h * (float)gin->art_h;
+    float scale_w = game_w / hole_px_w;
+    float scale_h = game_h / hole_px_h;
+    return scale_w > scale_h ? scale_w : scale_h;
+}
+
+int semu_tap_compute_geometry(SemuTapGeometryInput* gin, SemuTapGeometry* out) {
+    if (gin == null || out == null || gin->win_w <= 0 || gin->win_h <= 0 || gin->native_w <= 0 || gin->native_h <= 0) {
+        return 0;
+    }
+    float aspect = gin->display_aspect > 0.01f ? gin->display_aspect : (float)gin->native_w / (float)gin->native_h;
+    float hole_x = gin->hole_x;
+    float hole_y = gin->hole_y;
+    float hole_w = gin->hole_w;
+    float hole_h = gin->hole_h;
+    if (hole_w <= 0.001f) { hole_w = 1.0f; }
+    if (hole_h <= 0.001f) { hole_h = 1.0f; }
+
+    int has_art = (gin->has_art != 0 && gin->art_w > 0 && gin->art_h > 0) ? 1 : 0;
+    int use_bezel_priority = (gin->priority_bezel != 0 && has_art != 0) ? 1 : 0;
+    out->bezel_priority = use_bezel_priority != 0 ? 1 : 0;
+
+    float art_scale = 0.0f;
+
+    if (use_bezel_priority == 0) {
+        int scale = gin->win_h / gin->native_h;
+        if (scale < 1) { scale = 1; }
+        out->game_h = scale * gin->native_h;
+        out->game_w = semu_tap_round_px((float)out->game_h * aspect);
+        if (out->game_w > gin->win_w) {
+            int scale2 = (int)((float)gin->win_w / ((float)gin->native_h * aspect));
+            if (scale2 < 1) { scale2 = 1; }
+            scale = scale2;
+            out->game_h = scale * gin->native_h;
+            out->game_w = semu_tap_round_px((float)out->game_h * aspect);
+        }
+        if (scale < 2 || gin->fill_hole != 0) {
+            out->game_h = gin->win_h;
+            out->game_w = semu_tap_round_px((float)gin->win_h * aspect);
+            if (out->game_w > gin->win_w) {
+                out->game_w = gin->win_w;
+                out->game_h = semu_tap_round_px((float)gin->win_w / aspect);
+            }
+        }
+        if (has_art != 0) {
+            art_scale = semu_tap_art_scale_for_game(gin, hole_w, hole_h, (float)out->game_w, (float)out->game_h);
+        }
+    } else if (gin->fill_hole == 0) {
+        int scale = 0;
+        int candidate = 1;
+        while (true) {
+            float game_h = (float)(candidate * gin->native_h);
+            float game_w = (float)semu_tap_round_px(game_h * aspect);
+            float trial = semu_tap_art_scale_for_game(gin, hole_w, hole_h, game_w, game_h);
+            if (trial * (float)gin->art_w <= (float)gin->win_w * 1.01f + 0.5f
+                && trial * (float)gin->art_h <= (float)gin->win_h * 1.01f + 0.5f) {
+                scale = candidate;
+                candidate = candidate + 1;
+            } else {
+                break;
+            }
+        }
+        if (scale >= 1) {
+            out->game_h = scale * gin->native_h;
+            out->game_w = semu_tap_round_px((float)out->game_h * aspect);
+            art_scale = semu_tap_art_scale_for_game(gin, hole_w, hole_h, (float)out->game_w, (float)out->game_h);
+        }
+    }
+
+    if (use_bezel_priority != 0 && art_scale <= 0.0f) {
+        float contain_w = (float)gin->win_w / (float)gin->art_w;
+        float contain_h = (float)gin->win_h / (float)gin->art_h;
+        art_scale = contain_w < contain_h ? contain_w : contain_h;
+        float hole_px_w = hole_w * (float)gin->art_w * art_scale;
+        float hole_px_h = hole_h * (float)gin->art_h * art_scale;
+        if (hole_px_w / hole_px_h > aspect) {
+            out->game_h = semu_tap_round_px(hole_px_h);
+            out->game_w = semu_tap_round_px((float)out->game_h * aspect);
+        } else {
+            out->game_w = semu_tap_round_px(hole_px_w);
+            out->game_h = semu_tap_round_px((float)out->game_w / aspect);
+        }
+    }
+
+    if (has_art != 0) {
+        out->bezel_w = art_scale * (float)gin->art_w;
+        out->bezel_h = art_scale * (float)gin->art_h;
+    } else {
+        out->bezel_w = 0.0f;
+        out->bezel_h = 0.0f;
+    }
+
+    if (use_bezel_priority == 0) {
+        out->game_x = (gin->win_w - out->game_w) / 2;
+        out->game_y = (gin->win_h - out->game_h) / 2;
+        if (has_art != 0) {
+            float game_center_x = (float)out->game_x + (float)out->game_w * 0.5f;
+            float game_center_y_top = (float)out->game_y + (float)out->game_h * 0.5f;
+            float bezel_left = game_center_x - (hole_x + hole_w * 0.5f) * out->bezel_w;
+            float bezel_top = game_center_y_top - (hole_y + hole_h * 0.5f) * out->bezel_h;
+            out->bezel_x = bezel_left;
+            out->bezel_y = (float)gin->win_h - bezel_top - out->bezel_h;
+        } else {
+            out->bezel_x = 0.0f;
+            out->bezel_y = 0.0f;
+        }
+        return 1;
+    }
+
+    float bezel_left = ((float)gin->win_w - out->bezel_w) * 0.5f;
+    float bezel_top = ((float)gin->win_h - out->bezel_h) * 0.5f;
+    float hole_left = bezel_left + hole_x * out->bezel_w;
+    float hole_top = bezel_top + hole_y * out->bezel_h;
+    float hole_px_w = hole_w * out->bezel_w;
+    float hole_px_h = hole_h * out->bezel_h;
+    out->game_x = semu_tap_round_px(hole_left + (hole_px_w - (float)out->game_w) * 0.5f);
+    out->game_y = semu_tap_round_px((float)gin->win_h - (hole_top + (hole_px_h - (float)out->game_h) * 0.5f) - (float)out->game_h);
+    out->bezel_x = bezel_left;
+    out->bezel_y = (float)gin->win_h - bezel_top - out->bezel_h;
+    return 1;
+}
+
+// ================= menu logic (ported from tap_menu.h) =================
+int semu_tap_menu_visible_bezel_count(int bezel_count) {
+    if (bezel_count < 0) { return 0; }
+    if (bezel_count > 3) { return 3; }
+    return bezel_count;
+}
+int semu_tap_menu_clamp(int value, int lo, int hi) {
+    if (value < lo) { return lo; }
+    if (value > hi) { return hi; }
+    return value;
+}
+void semu_tap_menu_copy(char* out, int out_len, char* value) {
+    if (out == null || out_len == 0) { return; }
+    snprintf(out, out_len, "%s", value != null ? value : "");
+}
+void semu_tap_menu_normalize(SemuTapMenuState* state) {
+    if (state == null) { return; }
+    state->level = semu_tap_menu_clamp(state->level, 0, 3);
+    if (state->system_kind != 1 && state->system_kind != 2) { state->system_kind = 0; }
+    state->priority_mode = semu_tap_menu_clamp(state->priority_mode, 0, 4);
+    if (state->system_kind != 1 && (state->priority_mode == 1 || state->priority_mode == 4)) {
+        state->priority_mode = 2;
+    }
+    int bezel_count = semu_tap_menu_visible_bezel_count(state->bezel_count);
+    state->bezel_count = bezel_count;
+    state->bezel_index = semu_tap_menu_clamp(state->bezel_index, 0, bezel_count);
+    state->shader_index = semu_tap_menu_clamp(state->shader_index, 0, 3);
+    state->save_slot = semu_tap_menu_clamp(state->save_slot, 0, 2);
+    state->nds_layout = state->nds_layout != 0 ? 1 : 0;
+    state->nds_primary_scale = semu_tap_menu_clamp(state->nds_primary_scale, 0, 4);
+    state->nds_secondary_scale = semu_tap_menu_clamp(state->nds_secondary_scale, 0, 4);
+    state->wii_controller = semu_tap_menu_clamp(state->wii_controller, 0, 3);
+    int count = 1;
+    if (state->level == 0) {
+        count = 2 + ((state->system_kind == 1 || state->system_kind == 2) ? 1 : 0);
+    } else if (state->level == 1 || state->level == 2) {
+        count = 4;
+    } else if (state->level == 3) {
+        count = state->system_kind == 1 ? 4 : (state->system_kind == 2 ? 2 : 1);
+    }
+    if (state->selected < 0) { state->selected = 0; }
+    if (state->selected >= count) { state->selected = count - 1; }
+}
+int semu_tap_menu_count_s(SemuTapMenuState* state) {
+    if (state == null) { return 1; }
+    if (state->level == 0) {
+        return 2 + ((state->system_kind == 1 || state->system_kind == 2) ? 1 : 0);
+    }
+    if (state->level == 1 || state->level == 2) { return 4; }
+    if (state->level == 3) {
+        if (state->system_kind == 1) { return 4; }
+        if (state->system_kind == 2) { return 2; }
+    }
+    return 1;
+}
+char* semu_tap_menu_title(SemuTapMenuState* state) {
+    if (state == null) { return "SEMU"; }
+    if (state->level == 1) { return "DISPLAY"; }
+    if (state->level == 2) { return "SAVE"; }
+    if (state->level == 3) { return "SYSTEM"; }
+    return "SEMU";
+}
+void semu_tap_menu_short(SemuTapMenuState* state, int index, char* out, int out_len) {
+    if (state == null) { semu_tap_menu_copy(out, out_len, ""); return; }
+    if (state->level == 0) {
+        if (index == 0) { semu_tap_menu_copy(out, out_len, "Display"); return; }
+        if (index == 1) { semu_tap_menu_copy(out, out_len, "Save/Load"); return; }
+        if (index == 2 && state->system_kind == 1) { semu_tap_menu_copy(out, out_len, "Screens"); return; }
+        if (index == 2 && state->system_kind == 2) { semu_tap_menu_copy(out, out_len, "Controls"); return; }
+    } else if (state->level == 1) {
+        if (index == 0) { semu_tap_menu_copy(out, out_len, "Priority"); return; }
+        if (index == 1) { semu_tap_menu_copy(out, out_len, "Next Bezel"); return; }
+        if (index == 2) { semu_tap_menu_copy(out, out_len, "Next Shader"); return; }
+        if (index == 3) { semu_tap_menu_copy(out, out_len, "Back"); return; }
+    } else if (state->level == 2) {
+        if (index == 0) { semu_tap_menu_copy(out, out_len, "Slot"); return; }
+        if (index == 1) { semu_tap_menu_copy(out, out_len, "Save"); return; }
+        if (index == 2) { semu_tap_menu_copy(out, out_len, "Load"); return; }
+        if (index == 3) { semu_tap_menu_copy(out, out_len, "Back"); return; }
+    } else if (state->level == 3) {
+        if (state->system_kind == 1) {
+            if (index == 0) { semu_tap_menu_copy(out, out_len, "Layout"); return; }
+            if (index == 1) { semu_tap_menu_copy(out, out_len, "Top"); return; }
+            if (index == 2) { semu_tap_menu_copy(out, out_len, "Bottom"); return; }
+            if (index == 3) { semu_tap_menu_copy(out, out_len, "Back"); return; }
+        } else if (state->system_kind == 2) {
+            if (index == 0) { semu_tap_menu_copy(out, out_len, "Pad"); return; }
+            if (index == 1) { semu_tap_menu_copy(out, out_len, "Back"); return; }
+        } else if (index == 0) {
+            semu_tap_menu_copy(out, out_len, "Back");
+            return;
+        }
+    }
+    semu_tap_menu_copy(out, out_len, "");
+}
+char* semu_tap_menu_bezel_value(SemuTapMenuState* state) {
+    int count = state != null ? semu_tap_menu_visible_bezel_count(state->bezel_count) : 0;
+    int index = state != null ? state->bezel_index : 0;
+    if (index >= count) { return "Off"; }
+    if (index == 0) { return "A"; }
+    if (index == 1) { return "B"; }
+    return "C";
+}
+char* semu_tap_menu_shader_value(SemuTapMenuState* state) {
+    int index = state != null ? state->shader_index : 3;
+    if (index == 0) { return "A"; }
+    if (index == 1) { return "B"; }
+    if (index == 2) { return "C"; }
+    return "Off";
+}
+void semu_tap_menu_value(SemuTapMenuState* state, int index, char* out, int out_len) {
+    if (state == null) { semu_tap_menu_copy(out, out_len, ""); return; }
+    if (state->level == 1) {
+        if (index == 0) {
+            int pm = semu_tap_menu_clamp(state->priority_mode, 0, 4);
+            if (pm == 0) { semu_tap_menu_copy(out, out_len, "Game Priority"); }
+            else if (pm == 1) { semu_tap_menu_copy(out, out_len, "Game (Top Screen)"); }
+            else if (pm == 2) { semu_tap_menu_copy(out, out_len, "Bezel Priority"); }
+            else if (pm == 3) { semu_tap_menu_copy(out, out_len, "Fit"); }
+            else { semu_tap_menu_copy(out, out_len, "Game (Top + Corner)"); }
+            return;
+        }
+        if (index == 1) { semu_tap_menu_copy(out, out_len, semu_tap_menu_bezel_value(state)); return; }
+        if (index == 2) { semu_tap_menu_copy(out, out_len, semu_tap_menu_shader_value(state)); return; }
+    } else if (state->level == 2) {
+        if (index == 0) {
+            char slot[8];
+            snprintf(slot, 8, "%d", state->save_slot + 1);
+            semu_tap_menu_copy(out, out_len, slot);
+            return;
+        }
+    } else if (state->level == 3) {
+        if (state->system_kind == 1) {
+            int pi = semu_tap_menu_clamp(state->nds_primary_scale, 0, 4);
+            int si = semu_tap_menu_clamp(state->nds_secondary_scale, 0, 4);
+            if (index == 0) { semu_tap_menu_copy(out, out_len, state->nds_layout != 0 ? "Horizontal" : "Vertical"); return; }
+            if (index == 1) { semu_tap_menu_copy(out, out_len, scale_label(pi)); return; }
+            if (index == 2) { semu_tap_menu_copy(out, out_len, scale_label(si)); return; }
+        } else if (state->system_kind == 2) {
+            int wc = semu_tap_menu_clamp(state->wii_controller, 0, 3);
+            if (index == 0) { semu_tap_menu_copy(out, out_len, wii_label(wc)); return; }
+        }
+    }
+    semu_tap_menu_copy(out, out_len, "");
+}
+void semu_tap_menu_activate(SemuTapMenuState* state) {
+    if (state == null) { return; }
+    semu_tap_menu_normalize(state);
+    state->action = 0;
+    state->action_slot = 0;
+    if (state->level == 0) {
+        state->level = state->selected == 0 ? 1 : (state->selected == 1 ? 2 : 3);
+        state->selected = 0;
+    } else if (state->level == 1) {
+        if (state->selected == 0) {
+            if (state->system_kind == 1) {
+                state->priority_mode = (state->priority_mode + 1) % 5;
+            } else {
+                state->priority_mode = state->priority_mode == 0 ? 2 : (state->priority_mode == 2 ? 3 : 0);
+            }
+        } else if (state->selected == 1) {
+            int count = semu_tap_menu_visible_bezel_count(state->bezel_count);
+            state->bezel_index = (state->bezel_index + 1) % (count + 1);
+        } else if (state->selected == 2) {
+            state->shader_index = (state->shader_index + 1) % 4;
+        } else {
+            state->level = 0;
+            state->selected = 0;
+        }
+    } else if (state->level == 2) {
+        if (state->selected == 0) {
+            state->save_slot = (state->save_slot + 1) % 3;
+        } else if (state->selected == 1) {
+            state->action = 1;
+            state->action_slot = state->save_slot + 1;
+        } else if (state->selected == 2) {
+            state->action = 2;
+            state->action_slot = state->save_slot + 1;
+        } else {
+            state->level = 0;
+            state->selected = 0;
+        }
+    } else if (state->level == 3) {
+        if (state->system_kind == 1) {
+            if (state->selected == 0) {
+                state->nds_layout = state->nds_layout != 0 ? 0 : 1;
+            } else if (state->selected == 1) {
+                state->nds_primary_scale = (state->nds_primary_scale + 1) % 5;
+            } else if (state->selected == 2) {
+                state->nds_secondary_scale = (state->nds_secondary_scale + 1) % 5;
+            } else {
+                state->level = 0;
+                state->selected = 0;
+            }
+        } else if (state->system_kind == 2) {
+            if (state->selected == 0) {
+                state->wii_controller = (state->wii_controller + 1) % 4;
+            } else {
+                state->level = 0;
+                state->selected = 0;
+            }
+        } else {
+            state->level = 0;
+            state->selected = 0;
+        }
+    }
+    semu_tap_menu_normalize(state);
+}
+
+// nds/wii label tables (the C used local string arrays; btrc lacks string-array locals)
+char* scale_label(int i) {
+    if (i == 0) { return "0.25x"; }
+    if (i == 1) { return "0.5x"; }
+    if (i == 2) { return "1x"; }
+    if (i == 3) { return "2x"; }
+    return "3x";
+}
+char* wii_label(int i) {
+    if (i == 0) { return "Wiimote"; }
+    if (i == 1) { return "Wiimote+Nunchuk"; }
+    if (i == 2) { return "Pro Controller"; }
+    return "Classic";
+}
+
+// ================= menu state bridge (mirrors the C's menu_state/apply/etc.) =================
+SemuTapMenuState menu_state() {
+    SemuTapMenuState s;
+    memset(&s, 0, sizeof(SemuTapMenuState));
+    s.level = G.menu_lvl; s.selected = G.menu_sel; s.system_kind = G.sys_kind;
+    s.priority_mode = G.priority_mode; s.bezel_index = G.bezel_idx; s.bezel_count = G.bezel_count; s.shader_index = G.shader_idx;
+    s.save_slot = G.save_slot; s.nds_layout = G.nds_layout; s.nds_primary_scale = G.nds_pri; s.nds_secondary_scale = G.nds_sec; s.wii_controller = G.wii_ctrl;
+    semu_tap_menu_normalize(&s);
+    return s;
+}
+void menu_apply_state(SemuTapMenuState* s) {
+    if (s == null) { return; }
+    G.menu_lvl = s->level; G.menu_sel = s->selected; G.priority_mode = s->priority_mode; G.bezel_idx = s->bezel_index; G.shader_idx = s->shader_index;
+    G.save_slot = s->save_slot; G.nds_layout = s->nds_layout; G.nds_pri = s->nds_primary_scale; G.nds_sec = s->nds_secondary_scale; G.wii_ctrl = s->wii_controller;
+}
+int menu_count() {
+    SemuTapMenuState s = menu_state();
+    return semu_tap_menu_count_s(&s);
+}
+void menu_short(int i, char* o) {
+    o[0] = 0;
+    SemuTapMenuState s = menu_state();
+    semu_tap_menu_short(&s, i, o, 48);
+}
+void menu_val(int i, char* o) {
+    o[0] = 0;
+    SemuTapMenuState s = menu_state();
+    semu_tap_menu_value(&s, i, o, 48);
+}
+void menu_persist() {
+    FILE* f;
+    f = (FILE*)tap_fopen("semu-priority", "w");
+    if (f != null) { fputc(G.priority_mode == 4 ? 'c' : (G.priority_mode == 3 ? 'f' : (G.priority_mode == 2 ? 'b' : (G.priority_mode == 1 ? 't' : 'g'))), f); fclose(f); }
+    f = (FILE*)tap_fopen("semu-bezel", "w"); if (f != null) { fprintf(f, "%d", G.bezel_idx); fclose(f); }
+    f = (FILE*)tap_fopen("semu-shader", "w"); if (f != null) { fprintf(f, "%d", G.shader_idx); fclose(f); }
+    f = (FILE*)tap_fopen("semu-ndslayout", "w"); if (f != null) { fputc(G.nds_layout != 0 ? '1' : '0', f); fclose(f); }
+    f = (FILE*)tap_fopen("semu-ndspri", "w"); if (f != null) { fprintf(f, "%d", G.nds_pri); fclose(f); }
+    f = (FILE*)tap_fopen("semu-ndssec", "w"); if (f != null) { fprintf(f, "%d", G.nds_sec); fclose(f); }
+    f = (FILE*)tap_fopen("semu-wiictrl", "w"); if (f != null) { fprintf(f, "%d", G.wii_ctrl); fclose(f); }
+}
+void menu_activate() {
+    SemuTapMenuState s = menu_state();
+    semu_tap_menu_activate(&s);
+    if (s.action == 1 || s.action == 2) {
+        FILE* f = (FILE*)tap_fopen("semu-savestate", "w");
+        if (f != null) { fprintf(f, "%s:%d", s.action == 1 ? "save" : "load", s.action_slot); fclose(f); }
+    }
+    menu_apply_state(&s);
+    menu_persist();
+    G.menu_dirty = 1;
+}
+
+// ================= CPU menu blitter (no GL; writes G.menu_buf) =================
+void mb_fill(int x, int y, int w, int h, int r, int g, int b, int a) {
+    if (G.menu_buf == null) { return; }
+    for (int j = 0; j < h; j++) {
+        int yy = y + j;
+        if (yy < 0 || yy >= MENU_H) { continue; }
+        for (int i = 0; i < w; i++) {
+            int xx = x + i;
+            if (xx < 0 || xx >= MENU_W) { continue; }
+            unsigned char* p = G.menu_buf + ((yy * MENU_W + xx) * 4);
+            float af = a / 255.0f;
+            float ia = 1.0f - af;
+            p[0] = (unsigned char)(r * af + p[0] * ia);
+            p[1] = (unsigned char)(g * af + p[1] * ia);
+            p[2] = (unsigned char)(b * af + p[2] * ia);
+            p[3] = (unsigned char)(a + p[3] * ia);
+        }
+    }
+}
+void mb_glyph(int x, int y, char c, int r, int g, int b) {
+    if (G.menu_buf == null || G.atlas_buf == null) { return; }
+    if (c < 32 || c > 127) { c = '?'; }
+    int idx = c - 32;
+    int col = idx % GLY_COLS;
+    int row = idx / GLY_COLS;
+    int sx = col * G.GLY_W;
+    int sy = row * G.GLY_H;
+    for (int j = 0; j < G.GLY_H; j++) {
+        int yy = y + j;
+        if (yy < 0 || yy >= MENU_H) { continue; }
+        int ay = sy + j;
+        if (ay >= G.atlas_h) { continue; }
+        for (int i = 0; i < G.GLY_W; i++) {
+            int xx = x + i;
+            if (xx < 0 || xx >= MENU_W) { continue; }
+            int ax = sx + i;
+            if (ax >= G.atlas_w) { continue; }
+            int lum = G.atlas_buf[((ay * G.atlas_w + ax) * 4) + 3];
+            if (lum < 16) { continue; }
+            float af = lum / 255.0f;
+            float ia = 1.0f - af;
+            unsigned char* p = G.menu_buf + ((yy * MENU_W + xx) * 4);
+            p[0] = (unsigned char)(r * af + p[0] * ia);
+            p[1] = (unsigned char)(g * af + p[1] * ia);
+            p[2] = (unsigned char)(b * af + p[2] * ia);
+            p[3] = (unsigned char)(255 * af + p[3] * ia);
+        }
+    }
+}
+void mb_text(int x, int y, char* s, int r, int g, int b) {
+    int cx = x;
+    while (s[0] != 0) {
+        mb_glyph(cx, y, s[0], r, g, b);
+        cx = cx + (G.GLY_W - 6);
+        s = s + 1;
+    }
+}
+void mb_disc(int cx, int cy, int rad, int r, int g, int b, int a) {
+    if (G.menu_buf == null) { return; }
+    for (int j = -rad; j <= rad; j++) {
+        int yy = cy + j;
+        if (yy < 0 || yy >= MENU_H) { continue; }
+        for (int i = -rad; i <= rad; i++) {
+            if (i * i + j * j > rad * rad) { continue; }
+            int xx = cx + i;
+            if (xx < 0 || xx >= MENU_W) { continue; }
+            unsigned char* p = G.menu_buf + ((yy * MENU_W + xx) * 4);
+            float af = a / 255.0f;
+            float ia = 1.0f - af;
+            p[0] = (unsigned char)(r * af + p[0] * ia);
+            p[1] = (unsigned char)(g * af + p[1] * ia);
+            p[2] = (unsigned char)(b * af + p[2] * ia);
+            p[3] = (unsigned char)(a + p[3] * ia);
+        }
+    }
+}
+void menu_build() {
+    if (G.menu_buf == null) { G.menu_buf = (unsigned char*)calloc(MENU_W * MENU_H, 4); }
+    if (G.menu_buf == null) { return; }
+    memset(G.menu_buf, 0, MENU_W * MENU_H * 4);
+    int cx = MENU_W / 2;
+    int cy = MENU_H / 2;
+    int R = (int)(((MENU_W < MENU_H) ? MENU_W : MENU_H) * 0.34);
+    mb_disc(cx, cy, R + 72, 10, 12, 18, 232);
+    int n = menu_count();
+    int cw = G.GLY_W - 6;
+    for (int i = 0; i < n; i++) {
+        double ang = -1.5707963 + i * 6.2831853 / (double)n;
+        int ix = cx + (int)(R * cos(ang));
+        int iy = cy + (int)(R * sin(ang));
+        char s[48];
+        menu_short(i, s);
+        int tw = (int)strlen(s) * cw;
+        if (i == G.menu_sel) { mb_disc(ix, iy, 48, 60, 140, 220, 255); }
+        int shade = i == G.menu_sel ? 255 : 205;
+        mb_text(ix - tw / 2, iy - G.GLY_H / 2, s, shade, shade, shade);
+    }
+    mb_disc(cx, cy, 86, 26, 72, 132, 255);
+    SemuTapMenuState ms = menu_state();
+    char tt[48];
+    snprintf(tt, 48, "%s", semu_tap_menu_title(&ms));
+    mb_text(cx - (int)strlen(tt) * cw / 2, cy - G.GLY_H, tt, 255, 255, 255);
+    char sn[48];
+    char sv[48];
+    menu_short(G.menu_sel, sn);
+    menu_val(G.menu_sel, sv);
+    char line[64];
+    snprintf(line, 64, "%s", sv[0] != 0 ? sv : sn);
+    mb_text(cx - (int)strlen(line) * cw / 2, cy + 4, line, 255, 228, 120);
+    G.menu_dirty = 0;
+}
+
+// ================= GL state save/restore (protect the emulator's GL state) =================
+void gl_state_save() {
+    if (G.p_getiv == null || G.p_active == null) { return; }
+    G.sv_prog = gl_getiv1(G.p_getiv, GL_CURRENT_PROGRAM);
+    G.sv_vao = gl_getiv1(G.p_getiv, GL_VERTEX_ARRAY_BINDING);
+    G.sv_active = gl_getiv1(G.p_getiv, GL_ACTIVE_TEXTURE);
+    for (int unit = 0; unit < 4; unit++) {
+        gl_active(G.p_active, GL_TEXTURE0 + unit);
+        G.sv_tex[unit] = gl_getiv1(G.p_getiv, GL_TEXTURE_BINDING_2D);
+    }
+    gl_getviewport(G.p_getiv, G.sv_view);
+    G.sv_unpack[0] = gl_getiv1(G.p_getiv, GL_UNPACK_ALIGNMENT);
+    G.sv_unpack[1] = gl_getiv1(G.p_getiv, GL_UNPACK_ROW_LENGTH);
+    G.sv_unpack[2] = gl_getiv1(G.p_getiv, GL_UNPACK_SKIP_PIXELS);
+    G.sv_unpack[3] = gl_getiv1(G.p_getiv, GL_UNPACK_SKIP_ROWS);
+    if (G.p_isenab != null) {
+        G.sv_depth = gl_isenab(G.p_isenab, GL_DEPTH_TEST);
+        G.sv_blend = gl_isenab(G.p_isenab, GL_BLEND);
+        G.sv_scissor = gl_isenab(G.p_isenab, GL_SCISSOR_TEST);
+    }
+}
+void gl_state_restore() {
+    if (G.p_getiv == null || G.p_active == null) { return; }
+    if (G.p_pixstore != null) {
+        gl_pixstore(G.p_pixstore, GL_UNPACK_ALIGNMENT, G.sv_unpack[0]);
+        gl_pixstore(G.p_pixstore, GL_UNPACK_ROW_LENGTH, G.sv_unpack[1]);
+        gl_pixstore(G.p_pixstore, GL_UNPACK_SKIP_PIXELS, G.sv_unpack[2]);
+        gl_pixstore(G.p_pixstore, GL_UNPACK_SKIP_ROWS, G.sv_unpack[3]);
+    }
+    for (int unit = 0; unit < 4; unit++) {
+        gl_active(G.p_active, GL_TEXTURE0 + unit);
+        gl_bindtex(G.p_bindtex, GL_TEXTURE_2D, (unsigned int)G.sv_tex[unit]);
+    }
+    gl_active(G.p_active, (unsigned int)G.sv_active);
+    if (G.p_use != null) { gl_use(G.p_use, (unsigned int)G.sv_prog); }
+    if (G.p_bindva != null) { gl_bindva(G.p_bindva, (unsigned int)G.sv_vao); }
+    if (G.p_viewport != null) { gl_viewport(G.p_viewport, G.sv_view[0], G.sv_view[1], G.sv_view[2], G.sv_view[3]); }
+    if (G.p_enable != null) {
+        if (G.sv_depth != 0) { gl_enable(G.p_enable, GL_DEPTH_TEST); }
+        if (G.sv_blend != 0) { gl_enable(G.p_enable, GL_BLEND); }
+        if (G.sv_scissor != 0) { gl_enable(G.p_enable, GL_SCISSOR_TEST); }
+    }
+}
+void unpack_pbo_guard() {
+    G.saved_unpack_pbo = 0;
+    if (G.p_bindbuf != null && G.p_getiv != null) {
+        G.saved_unpack_pbo = gl_getiv1(G.p_getiv, GL_PIXEL_UNPACK_BUFFER_BINDING);
+        if (G.saved_unpack_pbo != 0) { gl_bindbuf(G.p_bindbuf, GL_PIXEL_UNPACK_BUFFER, 0); }
+    }
+}
+void unpack_pbo_restore() {
+    if (G.p_bindbuf != null && G.saved_unpack_pbo != 0) { gl_bindbuf(G.p_bindbuf, GL_PIXEL_UNPACK_BUFFER, (unsigned int)G.saved_unpack_pbo); }
+}
+
+// ================= composited screenshot (semu-shot trigger) =================
+void write_composited_shot(int width, int height) {
+    if (G.p_readpix == null || width <= 0 || height <= 0) { return; }
+    int row_bytes = width * 3;
+    int padded = (row_bytes + 3) & (~3);
+    unsigned char* pixels = (unsigned char*)malloc(padded * height);
+    if (pixels == null) { return; }
+    if (G.p_pixstore != null) { gl_pixstore(G.p_pixstore, GL_PACK_ALIGNMENT, 1); }
+    gl_readpix(G.p_readpix, 0, 0, width, height, GL_RGB, GL_UNSIGNED_BYTE, (void*)pixels);
+    char shot_path[1200];
+    tap_state_path(shot_path, 1200, "semu-shot.bmp");
+    FILE* out = fopen(shot_path, "wb");
+    if (out != null) {
+        unsigned int image_bytes = (unsigned int)(padded * height);
+        unsigned int file_bytes = 54 + image_bytes;
+        unsigned char header[54];
+        memset(header, 0, 54);
+        header[0] = 'B'; header[1] = 'M';
+        memcpy(header + 2, &file_bytes, 4); header[10] = 54;
+        header[14] = 40; memcpy(header + 18, &width, 4); memcpy(header + 22, &height, 4);
+        header[26] = 1; header[28] = 24; memcpy(header + 34, &image_bytes, 4);
+        fwrite(header, 1, 54, out);
+        unsigned char* row = (unsigned char*)malloc(padded);
+        if (row != null) {
+            memset(row, 0, padded);
+            for (int y = 0; y < height; y++) {
+                unsigned char* src = pixels + (y * row_bytes);
+                for (int x = 0; x < width; x++) {
+                    row[x * 3 + 0] = src[x * 3 + 2];
+                    row[x * 3 + 1] = src[x * 3 + 1];
+                    row[x * 3 + 2] = src[x * 3 + 0];
+                }
+                fwrite(row, 1, padded, out);
+            }
+            free((void*)row);
+        }
+        fclose(out);
+        logf_("shot written %dx%d\n", (unsigned int)width, (unsigned int)height, 0);
+    }
+    free((void*)pixels);
+}
+
+// ================= shader build + gl_init =================
+unsigned int mkshader(unsigned int type, const char* src) {
+    unsigned int s = gl_createsh(G.p_createsh, type);
+    gl_shsrc(G.p_shsrc, s, src);
+    gl_compsh(G.p_compsh, s);
+    int ok = 0;
+    gl_shiv(G.p_shiv, s, GL_COMPILE_STATUS, &ok);
+    if (ok == 0) {
+        char buf[1024];
+        memset(buf, 0, 1024);
+        if (G.p_shlog != null) { gl_shlog(G.p_shlog, s, 1024, buf); }
+        FILE* f = (FILE*)tap_fopen("semutap.log", "a");
+        if (f != null) { fprintf(f, "SHADER %u FAIL: %s\n", (unsigned int)type, buf); fclose(f); }
+    }
+    return s;
+}
+
+void gl_init() {
+    if (G.gl_ready != 0) { return; }
+    gl_active(G.p_active, GL_TEXTURE0);
+    gl_gentex(G.p_gentex, 1, &G.game_tex); gl_bindtex(G.p_bindtex, GL_TEXTURE_2D, G.game_tex);
+    gl_texpar(G.p_texpar, GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+    gl_texpar(G.p_texpar, GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    gl_texpar(G.p_texpar, GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    gl_texpar(G.p_texpar, GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    if (G.p_genva != null) { gl_genva(G.p_genva, 1, &G.vao); }
+    unsigned int vs = mkshader(GL_VERTEX_SHADER, VS_SRC);
+    unsigned int fs = mkshader(GL_FRAGMENT_SHADER, FS_SRC);
+    G.prog = gl_createpr(G.p_createpr);
+    gl_attach(G.p_attach, G.prog, vs); gl_attach(G.p_attach, G.prog, fs); gl_link(G.p_link, G.prog);
+    int ok = 0;
+    gl_priv(G.p_priv, G.prog, GL_LINK_STATUS, &ok);
+    G.uWin = gl_uloc(G.p_uloc, G.prog, "uWin"); G.uRect = gl_uloc(G.p_uloc, G.prog, "uRect"); G.uSrc = gl_uloc(G.p_uloc, G.prog, "uSrc"); G.uBezelRect = gl_uloc(G.p_uloc, G.prog, "uBezelRect");
+    G.uNative = gl_uloc(G.p_uloc, G.prog, "uNative"); G.uStyle = gl_uloc(G.p_uloc, G.prog, "uStyle"); G.uShell = gl_uloc(G.p_uloc, G.prog, "uShell");
+    G.uTV = gl_uloc(G.p_uloc, G.prog, "uTV"); G.uRef = gl_uloc(G.p_uloc, G.prog, "uRef"); G.uHasArt = gl_uloc(G.p_uloc, G.prog, "uHasArt"); G.uDebug = gl_uloc(G.p_uloc, G.prog, "uDebug"); G.uRetro = gl_uloc(G.p_uloc, G.prog, "uRetro"); G.uShaderMode = gl_uloc(G.p_uloc, G.prog, "uShaderMode");
+    G.uRect2 = gl_uloc(G.p_uloc, G.prog, "uRect2"); G.uSrc2 = gl_uloc(G.p_uloc, G.prog, "uSrc2"); G.uDual = gl_uloc(G.p_uloc, G.prog, "uDual");
+    G.uAlign = gl_uloc(G.p_uloc, G.prog, "uAlign"); G.uHole = gl_uloc(G.p_uloc, G.prog, "uHole");
+    G.uGlass = gl_uloc(G.p_uloc, G.prog, "uGlass"); G.uHasGlass = gl_uloc(G.p_uloc, G.prog, "uHasGlass"); G.uReflect = gl_uloc(G.p_uloc, G.prog, "uReflect"); G.uCurve = gl_uloc(G.p_uloc, G.prog, "uCurve"); G.uScreenCorner = gl_uloc(G.p_uloc, G.prog, "uScreenCorner"); G.uLcdGrid = gl_uloc(G.p_uloc, G.prog, "uLcdGrid"); G.uLcdSub = gl_uloc(G.p_uloc, G.prog, "uLcdSub"); G.uLcdMono = gl_uloc(G.p_uloc, G.prog, "uLcdMono"); G.uLcdWash = gl_uloc(G.p_uloc, G.prog, "uLcdWash");
+    G.uMenuRect = gl_uloc(G.p_uloc, G.prog, "uMenuRect"); G.uMenuOn = gl_uloc(G.p_uloc, G.prog, "uMenuOn");
+    int muni = gl_uloc(G.p_uloc, G.prog, "uMenu");
+    gl_gentex(G.p_gentex, 1, &G.menu_tex); gl_active(G.p_active, GL_TEXTURE3); gl_bindtex(G.p_bindtex, GL_TEXTURE_2D, G.menu_tex);
+    gl_texpar(G.p_texpar, GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR); gl_texpar(G.p_texpar, GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    gl_texpar(G.p_texpar, GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE); gl_texpar(G.p_texpar, GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE); gl_active(G.p_active, GL_TEXTURE0);
+    int guni = gl_uloc(G.p_uloc, G.prog, "uGame");
+    int buni = gl_uloc(G.p_uloc, G.prog, "uBezel");
+    gl_use(G.p_use, G.prog);
+    if (guni >= 0) { gl_u1i(G.p_u1i, guni, 0); }
+    if (muni >= 0) { gl_u1i(G.p_u1i, muni, 3); }
+    int loaded = 0;
+    for (int bi = 0; bi < 4; bi++) {
+        if (G.art_paths[bi].v[0] == 0) { continue; }
+        int aw = 0;
+        int ah = 0;
+        int nch = 0;
+        unsigned char* img = stbi_load(G.art_paths[bi].v, &aw, &ah, &nch, 4);
+        if (img != null) {
+            gl_gentex(G.p_gentex, 1, &G.bezel_texs[bi]); gl_active(G.p_active, GL_TEXTURE1); gl_bindtex(G.p_bindtex, GL_TEXTURE_2D, G.bezel_texs[bi]);
+            if (G.p_pixstore != null) { gl_pixstore(G.p_pixstore, GL_UNPACK_ALIGNMENT, 1); gl_pixstore(G.p_pixstore, GL_UNPACK_ROW_LENGTH, 0); gl_pixstore(G.p_pixstore, GL_UNPACK_SKIP_PIXELS, 0); gl_pixstore(G.p_pixstore, GL_UNPACK_SKIP_ROWS, 0); }
+            unpack_pbo_guard();
+            gl_teximg(G.p_teximg, GL_TEXTURE_2D, 0, GL_RGBA, aw, ah, 0, GL_RGBA, GL_UNSIGNED_BYTE, (void*)img);
+            unpack_pbo_restore();
+            if (G.p_genmip != null) { gl_genmip(G.p_genmip, GL_TEXTURE_2D); }
+            gl_texpar(G.p_texpar, GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, G.p_genmip != null ? GL_LINEAR_MIPMAP_LINEAR : GL_LINEAR); gl_texpar(G.p_texpar, GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+            gl_texpar(G.p_texpar, GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE); gl_texpar(G.p_texpar, GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+            stbi_image_free((void*)img); G.art_ws[bi] = aw; G.art_hs[bi] = ah;
+            if (bi == 0) { G.art_w = aw; G.art_h = ah; }
+            loaded = loaded + 1;
+            logf_("art%u w=%u tex=%u\n", (unsigned int)bi, (unsigned int)aw, (unsigned int)G.bezel_texs[bi]);
+        } else {
+            logf_("art%u load FAILED\n", (unsigned int)bi, 0, 0);
+        }
+    }
+    G.bezel_count = loaded > 3 ? 3 : loaded;
+    if (loaded > 0) { G.has_art = 1.0f; }
+    gl_active(G.p_active, GL_TEXTURE0);
+    for (int gi = 0; gi < 4; gi++) {
+        if (G.glass_paths[gi].v[0] == 0) { continue; }
+        int gw = 0;
+        int gh = 0;
+        int gn = 0;
+        unsigned char* gimg = stbi_load(G.glass_paths[gi].v, &gw, &gh, &gn, 4);
+        if (gimg != null) {
+            gl_gentex(G.p_gentex, 1, &G.glass_texs[gi]); gl_active(G.p_active, GL_TEXTURE2); gl_bindtex(G.p_bindtex, GL_TEXTURE_2D, G.glass_texs[gi]);
+            if (G.p_pixstore != null) { gl_pixstore(G.p_pixstore, GL_UNPACK_ALIGNMENT, 1); gl_pixstore(G.p_pixstore, GL_UNPACK_ROW_LENGTH, 0); gl_pixstore(G.p_pixstore, GL_UNPACK_SKIP_PIXELS, 0); gl_pixstore(G.p_pixstore, GL_UNPACK_SKIP_ROWS, 0); }
+            unpack_pbo_guard();
+            gl_teximg(G.p_teximg, GL_TEXTURE_2D, 0, GL_RGBA, gw, gh, 0, GL_RGBA, GL_UNSIGNED_BYTE, (void*)gimg);
+            unpack_pbo_restore();
+            if (G.p_genmip != null) { gl_genmip(G.p_genmip, GL_TEXTURE_2D); }
+            gl_texpar(G.p_texpar, GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, G.p_genmip != null ? GL_LINEAR_MIPMAP_LINEAR : GL_LINEAR); gl_texpar(G.p_texpar, GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+            gl_texpar(G.p_texpar, GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE); gl_texpar(G.p_texpar, GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+            stbi_image_free((void*)gimg); gl_active(G.p_active, GL_TEXTURE0);
+            logf_("glass%u %ux%u tex=%u\n", (unsigned int)gi, (unsigned int)gw, (unsigned int)G.glass_texs[gi]);
+        } else {
+            logf_("glass%u load FAILED\n", (unsigned int)gi, 0, 0);
+        }
+    }
+    int gluni = gl_uloc(G.p_uloc, G.prog, "uGlass");
+    if (gluni >= 0) { gl_u1i(G.p_u1i, gluni, 2); }
+    if (buni >= 0) { gl_u1i(G.p_u1i, buni, G.has_art > 0.5f ? 1 : 0); }
+    logf_("gl_init prog=%u link=%u hasArt=%u\n", G.prog, (unsigned int)ok, (unsigned int)(G.has_art > 0.5f ? 1 : 0));
+    G.gl_ready = 1;
+}
+
+// ================= dlsym interposition (exported) =================
+void ensure_real_dlsym() {
+    if (G.real_dlsym != null) { return; }
+    G.real_dlsym = dlvsym(rtld_next(), "dlsym", "GLIBC_2.34");
+    if (G.real_dlsym == null) { G.real_dlsym = dlvsym(rtld_next(), "dlsym", "GLIBC_2.2.5"); }
+}
+void* dlsym(void* handle, const char* name) {
+    ensure_real_dlsym();
+    if (strcmp(name, "glXSwapBuffers") == 0) {
+        if (G.real_swap == null) {
+            void* found = null;
+            if (G.real_dlsym != null) { found = call_real_dlsym(G.real_dlsym, handle, name); }
+            if (found == addr_glx_hook()) {
+                if (G.real_dlsym != null) { found = call_real_dlsym(G.real_dlsym, rtld_next(), name); } else { found = null; }
+            }
+            G.real_swap = found;
+        }
+        return addr_glx_hook();
+    }
+    if (strcmp(name, "eglSwapBuffers") == 0) {
+        if (G.real_egl_swap == null) {
+            void* found = null;
+            if (G.real_dlsym != null) { found = call_real_dlsym(G.real_dlsym, handle, name); }
+            if (found == addr_egl_hook()) {
+                if (G.real_dlsym != null) { found = call_real_dlsym(G.real_dlsym, rtld_next(), name); } else { found = null; }
+            }
+            G.real_egl_swap = found;
+        }
+        return addr_egl_hook();
+    }
+    return G.real_dlsym != null ? call_real_dlsym(G.real_dlsym, handle, name) : null;
+}
+
+// LD(): the C macro that only fills a pointer if still NULL (never clobber a hit
+// the dlsym hook already captured). Returns the value to store.
+void* ld_resolve(void* current, char* name) {
+    ensure_real_dlsym();
+    if (current != null) { return current; }
+    return G.real_dlsym != null ? call_real_dlsym(G.real_dlsym, rtld_next(), name) : null;
+}
+
+// per-variant dual-hole env key tables (the C used local const char* arrays)
+char* pri_env_key(int v) {
+    if (v == 0) { return "SEMU_TAP_SCREEN_PRI"; }
+    if (v == 1) { return "SEMU_TAP_SCREEN_PRI_B"; }
+    if (v == 2) { return "SEMU_TAP_SCREEN_PRI_C"; }
+    return "SEMU_TAP_SCREEN_PRI_D";
+}
+char* sec_env_key(int v) {
+    if (v == 0) { return "SEMU_TAP_SCREEN_SEC"; }
+    if (v == 1) { return "SEMU_TAP_SCREEN_SEC_B"; }
+    if (v == 2) { return "SEMU_TAP_SCREEN_SEC_C"; }
+    return "SEMU_TAP_SCREEN_SEC_D";
+}
+// radial key-name table (index -> action). knames[0] is overridden by SEMU_RETRO_KEY.
+char* kname(int i) {
+    if (i == 0) { return "Insert"; }
+    if (i == 1) { return "Home"; }
+    if (i == 2) { return "Prior"; }
+    if (i == 3) { return "Next"; }
+    if (i == 4) { return "End"; }
+    if (i == 5) { return "Pause"; }
+    return "Menu";
+}
+
+// The C initialized many statics with non-zero defaults; btrc's global G is
+// zero-initialized, so set them explicitly (before env parsing, so env wins).
+void tap_defaults() {
+    G.retro_on = 1;
+    G.bezel_count = 1;
+    G.nds_pri = 3;
+    G.nds_sec = 3;
+    G.pip_expand_budget = 0.30f;
+    G.pip_seconds = 7.0f;
+    G.pip_w_current = -1.0f;
+    G.screen_corner = 0.06f;
+    G.menu_dirty = 1;
+    G.GLY_W = 24;
+    G.GLY_H = 48;
+    strncpy(G.menu_font_path_s.v, "/home/deck/.local/share/semu-bezel/menu-font.png", 1023);
+    G.retro_lod = 1.6f;
+    strncpy(G.retro_key, "Insert", 31);
+    G.debug_thresh = 0.10f;
+    G.shell_r = 0.55f; G.shell_g = 0.56f; G.shell_b = 0.60f;
+    G.tv_mask = 0.42f; G.tv_scan = 0.30f; G.tv_corner = 0.05f; G.tv_bzlw = 0.55f;
+    strncpy(G.tap_state_dir_buf, "/home/deck", 1023);
+}
+
+// ================= tap_init (lazy; replaces the C constructor + inited guard) =================
+void tap_init() {
+    if (G.inited != 0) { return; }
+    G.inited = 1;
+    tap_defaults();
+    G.real_swap = ld_resolve(G.real_swap, "glXSwapBuffers");
+    G.real_egl_swap = ld_resolve(G.real_egl_swap, "eglSwapBuffers");
+    G.p_query = ld_resolve(G.p_query, "glXQueryDrawable");
+    G.p_getiv = ld_resolve(G.p_getiv, "glGetIntegerv");
+    G.p_readpix = ld_resolve(G.p_readpix, "glReadPixels");
+    G.p_gentex = ld_resolve(G.p_gentex, "glGenTextures");
+    G.p_bindtex = ld_resolve(G.p_bindtex, "glBindTexture");
+    G.p_teximg = ld_resolve(G.p_teximg, "glTexImage2D");
+    G.p_copytex = ld_resolve(G.p_copytex, "glCopyTexImage2D");
+    G.p_texpar = ld_resolve(G.p_texpar, "glTexParameteri");
+    G.p_active = ld_resolve(G.p_active, "glActiveTexture");
+    G.p_genva = ld_resolve(G.p_genva, "glGenVertexArrays");
+    G.p_bindva = ld_resolve(G.p_bindva, "glBindVertexArray");
+    G.p_createsh = ld_resolve(G.p_createsh, "glCreateShader");
+    G.p_shsrc = ld_resolve(G.p_shsrc, "glShaderSource");
+    G.p_compsh = ld_resolve(G.p_compsh, "glCompileShader");
+    G.p_shiv = ld_resolve(G.p_shiv, "glGetShaderiv");
+    G.p_shlog = ld_resolve(G.p_shlog, "glGetShaderInfoLog");
+    G.p_createpr = ld_resolve(G.p_createpr, "glCreateProgram");
+    G.p_attach = ld_resolve(G.p_attach, "glAttachShader");
+    G.p_link = ld_resolve(G.p_link, "glLinkProgram");
+    G.p_priv = ld_resolve(G.p_priv, "glGetProgramiv");
+    G.p_use = ld_resolve(G.p_use, "glUseProgram");
+    G.p_isenab = ld_resolve(G.p_isenab, "glIsEnabled");
+    G.p_enable = ld_resolve(G.p_enable, "glEnable");
+    G.p_uloc = ld_resolve(G.p_uloc, "glGetUniformLocation");
+    G.p_u1i = ld_resolve(G.p_u1i, "glUniform1i");
+    G.p_u2f = ld_resolve(G.p_u2f, "glUniform2f");
+    G.p_u4f = ld_resolve(G.p_u4f, "glUniform4f");
+    G.p_u3f = ld_resolve(G.p_u3f, "glUniform3f");
+    G.p_u1f = ld_resolve(G.p_u1f, "glUniform1f");
+    G.p_draw = ld_resolve(G.p_draw, "glDrawArrays");
+    G.p_viewport = ld_resolve(G.p_viewport, "glViewport");
+    G.p_disable = ld_resolve(G.p_disable, "glDisable");
+    G.p_genmip = ld_resolve(G.p_genmip, "glGenerateMipmap");
+    G.p_pixstore = ld_resolve(G.p_pixstore, "glPixelStorei");
+    G.p_bindbuf = ld_resolve(G.p_bindbuf, "glBindBuffer");
+    G.p_qkm = dlsym(rtld_default(), "XQueryKeymap");
+    G.p_k2kc = dlsym(rtld_default(), "XKeysymToKeycode");
+    G.p_s2ks = dlsym(rtld_default(), "XStringToKeysym");
+    char* rl = getenv("SEMU_RETRO_LOD"); if (rl != null) { G.retro_lod = (float)atof(rl); }
+    char* rk = getenv("SEMU_RETRO_KEY"); if (rk != null && rk[0] != 0) { strncpy(G.retro_key, rk, 31); G.retro_key[31] = 0; }
+    char* rstart = getenv("SEMU_RETRO_START"); if (rstart != null && rstart[0] == '0') { G.retro_on = 0; }
+    char* pri = getenv("SEMU_TAP_PRIORITY");
+    if (pri != null && (pri[0] == 'b' || pri[0] == 'B')) { G.priority_mode = 2; }
+    else if (pri != null && (pri[0] == 't' || pri[0] == 'T')) { G.priority_mode = 1; }
+    else if (pri != null && (pri[0] == 'f' || pri[0] == 'F')) { G.priority_mode = 3; }
+    else if (pri != null && (pri[0] == 'c' || pri[0] == 'C')) { G.priority_mode = 4; }
+    char* dl = getenv("SEMU_TAP_DUAL"); if (dl != null && dl[0] == '1') { G.dual_mode = 1; }
+    char* pb = getenv("SEMU_TAP_PIP_BUDGET"); if (pb != null && pb[0] != 0) { G.pip_expand_budget = (float)atof(pb); }
+    char* ps = getenv("SEMU_TAP_PIP_SECONDS"); if (ps != null && ps[0] != 0) { G.pip_seconds = (float)atof(ps); }
+    char* fh = getenv("SEMU_TAP_FILL"); if (fh != null && fh[0] == '1') { G.fill_hole = 1; }
+    char* aln = getenv("SEMU_TAP_ALIGN"); if (aln != null && aln[0] == '1') { G.align_on = 1; }
+    char* gp = getenv("SEMU_TAP_GLASS"); if (gp != null && gp[0] != 0) { strncpy(G.glass_paths[0].v, gp, 1023); G.glass_paths[0].v[1023] = 0; }
+    char* gpb = getenv("SEMU_TAP_GLASS_B"); if (gpb != null && gpb[0] != 0) { strncpy(G.glass_paths[1].v, gpb, 1023); G.glass_paths[1].v[1023] = 0; }
+    char* gpc = getenv("SEMU_TAP_GLASS_C"); if (gpc != null && gpc[0] != 0) { strncpy(G.glass_paths[2].v, gpc, 1023); G.glass_paths[2].v[1023] = 0; }
+    char* gpd = getenv("SEMU_TAP_GLASS_D"); if (gpd != null && gpd[0] != 0) { strncpy(G.glass_paths[3].v, gpd, 1023); G.glass_paths[3].v[1023] = 0; }
+    char* rf = getenv("SEMU_TAP_REFLECT"); if (rf != null) { G.reflect_amt = (float)atof(rf); }
+    char* cv = getenv("SEMU_TAP_CURVE"); if (cv != null) { G.curve_amt = (float)atof(cv); }
+    char* cn = getenv("SEMU_TAP_CORNER"); if (cn != null) { G.screen_corner = (float)atof(cn); }
+    char* gw = getenv("SEMU_TAP_GLOW"); if (gw != null) { G.glow_amt = (float)atof(gw); }
+    char* bl = getenv("SEMU_TAP_BLOOM"); if (bl != null) { G.bloom_amt = (float)atof(bl); }
+    char* vg = getenv("SEMU_TAP_VIGNETTE"); if (vg != null) { G.vignette_amt = (float)atof(vg); }
+    char* lg = getenv("SEMU_TAP_LCD_GRID"); if (lg != null) { G.lcd_grid_amt = (float)atof(lg); }
+    char* lsp = getenv("SEMU_TAP_LCD_SUBPIXEL"); if (lsp != null) { G.lcd_subpixel_amt = (float)atof(lsp); }
+    char* lm = getenv("SEMU_TAP_LCD_MONO"); if (lm != null) { G.lcd_mono_amt = (float)atof(lm); }
+    char* lw = getenv("SEMU_TAP_LCD_WASH"); if (lw != null) { G.lcd_wash_amt = (float)atof(lw); }
+    char* enh = getenv("SEMU_TAP_NATIVE_H"); if (enh != null && atoi(enh) > 0) { G.env_nh = atoi(enh); }
+    char* enw = getenv("SEMU_TAP_NATIVE_W"); if (enw != null && atoi(enw) > 0) { G.env_nw = atoi(enw); }
+    char* es = getenv("SEMU_TAP_STYLE"); if (es != null && (es[0] == 'h' || es[0] == 'H' || es[0] == '1')) { G.tap_style = 1; }
+    char* esh = getenv("SEMU_TAP_SHELL");
+    if (esh != null) { float r = 0.0f; float g = 0.0f; float b = 0.0f; if (sscanf(esh, "%f,%f,%f", &r, &g, &b) == 3) { G.shell_r = r; G.shell_g = g; G.shell_b = b; } }
+    char* gv;
+    gv = getenv("SEMU_TAP_MASK"); if (gv != null) { G.tv_mask = (float)atof(gv); }
+    gv = getenv("SEMU_TAP_SCAN"); if (gv != null) { G.tv_scan = (float)atof(gv); }
+    gv = getenv("SEMU_TAP_CORNER"); if (gv != null) { G.tv_corner = (float)atof(gv); }
+    char* ar = getenv("SEMU_TAP_ART"); if (ar != null && ar[0] != 0) { strncpy(G.art_paths[0].v, ar, 1023); G.art_paths[0].v[1023] = 0; }
+    char* arb = getenv("SEMU_TAP_ART_B"); if (arb != null && arb[0] != 0) { strncpy(G.art_paths[1].v, arb, 1023); G.art_paths[1].v[1023] = 0; }
+    char* arc = getenv("SEMU_TAP_ART_C"); if (arc != null && arc[0] != 0) { strncpy(G.art_paths[2].v, arc, 1023); G.art_paths[2].v[1023] = 0; }
+    char* ard = getenv("SEMU_TAP_ART_D"); if (ard != null && ard[0] != 0) { strncpy(G.art_paths[3].v, ard, 1023); G.art_paths[3].v[1023] = 0; }
+    char* sc = getenv("SEMU_TAP_SCREEN"); if (sc != null) { sscanf(sc, "%f,%f,%f,%f", &G.scr_x, &G.scr_y, &G.scr_w, &G.scr_h); }
+    for (int v = 0; v < 4; v++) { G.scr_rects[v].v[0] = G.scr_x; G.scr_rects[v].v[1] = G.scr_y; G.scr_rects[v].v[2] = G.scr_w; G.scr_rects[v].v[3] = G.scr_h; }
+    char* scb = getenv("SEMU_TAP_SCREEN_B"); if (scb != null) { sscanf(scb, "%f,%f,%f,%f", &G.scr_rects[1].v[0], &G.scr_rects[1].v[1], &G.scr_rects[1].v[2], &G.scr_rects[1].v[3]); }
+    char* scc = getenv("SEMU_TAP_SCREEN_C"); if (scc != null) { sscanf(scc, "%f,%f,%f,%f", &G.scr_rects[2].v[0], &G.scr_rects[2].v[1], &G.scr_rects[2].v[2], &G.scr_rects[2].v[3]); }
+    char* scd = getenv("SEMU_TAP_SCREEN_D"); if (scd != null) { sscanf(scd, "%f,%f,%f,%f", &G.scr_rects[3].v[0], &G.scr_rects[3].v[1], &G.scr_rects[3].v[2], &G.scr_rects[3].v[3]); }
+    for (int v = 0; v < 4; v++) {
+        char* pv = getenv(pri_env_key(v));
+        char* sv = getenv(sec_env_key(v));
+        if (pv != null && sv != null
+            && sscanf(pv, "%f,%f,%f,%f", &G.pri_rects[v].v[0], &G.pri_rects[v].v[1], &G.pri_rects[v].v[2], &G.pri_rects[v].v[3]) == 4
+            && sscanf(sv, "%f,%f,%f,%f", &G.sec_rects[v].v[0], &G.sec_rects[v].v[1], &G.sec_rects[v].v[2], &G.sec_rects[v].v[3]) == 4) {
+            G.dual_hole_set[v] = 1;
+        }
+    }
+    char* as = getenv("SEMU_TAP_ASPECT");
+    if (as != null) {
+        float aw = 0.0f; float ah = 0.0f;
+        if (sscanf(as, "%f:%f", &aw, &ah) == 2 && ah > 0.0f) { G.disp_aspect = aw / ah; }
+        else { float v = (float)atof(as); if (v > 0.01f) { G.disp_aspect = v; } }
+    }
+    char* dbg = getenv("SEMU_TAP_DEBUG");
+    if (dbg != null) { float v = (float)atof(dbg); if (v > 0.0f) { G.debug_on = 1; G.debug_thresh = (v >= 1.0f) ? 0.10f : v; } }
+    char* ov = getenv("SEMU_TAP_OVERSCAN"); if (ov != null) { sscanf(ov, "%d,%d,%d,%d", &G.ov_l, &G.ov_r, &G.ov_t, &G.ov_b); }
+    char* disable_env = getenv("SEMU_TAP_DISABLE"); if (disable_env != null && disable_env[0] != 0 && disable_env[0] != '0') { G.disabled = 1; }
+    char* standalone_env = getenv("SEMU_TAP_STANDALONE"); if (standalone_env != null && standalone_env[0] != 0 && standalone_env[0] != '0') { G.standalone = 1; }
+    char* skd = getenv("SEMU_TAP_SYSKIND"); if (skd != null) { G.sys_kind = atoi(skd); }
+    char* mfp = getenv("SEMU_TAP_MENUFONT"); if (mfp != null && mfp[0] != 0) { strncpy(G.menu_font_path_s.v, mfp, 1023); G.menu_font_path_s.v[1023] = 0; }
+    {
+        int aw = 0; int ah = 0; int an = 0;
+        unsigned char* ab = stbi_load(G.menu_font_path_s.v, &aw, &ah, &an, 4);
+        if (ab != null) { G.atlas_buf = ab; G.atlas_w = aw; G.atlas_h = ah; if (GLY_COLS > 0) { G.GLY_W = aw / GLY_COLS; } if (GLY_ROWS > 0) { G.GLY_H = ah / GLY_ROWS; } }
+    }
+    FILE* f = (FILE*)tap_fopen("semutap.log", "w");
+    if (f != null) { fprintf(f, "semutap v8 envNative=%dx%d art=%s hole=%.3f,%.3f,%.3f,%.3f\n", G.env_nw, G.env_nh, G.art_paths[0].v[0] != 0 ? G.art_paths[0].v : "(none)", G.scr_x, G.scr_y, G.scr_w, G.scr_h); fclose(f); }
+    // The C constructor semu_loaded wrote this at library load; folded into
+    // lazy init here (first swap). Proves LD_PRELOAD applied.
+    if (G.loaded_logged == 0) {
+        G.loaded_logged = 1;
+        FILE* lf = (FILE*)tap_fopen("semu-loaded.log", "a");
+        if (lf != null) { fprintf(lf, "libsemutap loaded pid=%d ppid=%d\n", (int)getpid(), (int)getppid()); fclose(lf); }
+    }
+}
+
+// override-file readers (btrc strips bare {} blocks -> locals hoist into function
+// scope and collide, so each read is a helper instead of an inline block).
+int read_state_char(char* name) {
+    FILE* f = (FILE*)tap_fopen(name, "r");
+    if (f == null) { return -1; }
+    int ch = fgetc(f);
+    fclose(f);
+    return ch;
+}
+void read_pip_override() {
+    FILE* f = (FILE*)tap_fopen("semu-pip", "r");
+    if (f == null) { return; }
+    float a = 0.0f;
+    float b = 0.0f;
+    if (fscanf(f, "%f %f", &a, &b) >= 1) { if (a > 0.0f) { G.pip_expand_budget = a; } if (b > 0.0f) { G.pip_seconds = b; } }
+    fclose(f);
+}
+
+// ================= tap_frame (per-swap compositor) =================
+void tap_frame(void* dpy, unsigned long drawable, int is_egl) {
+    tap_init();
+    if (G.swaptype_logged == 0 && G.disabled == 0) {
+        G.swaptype_logged = 1;
+        FILE* st = (FILE*)tap_fopen("semu-swaptype.log", "a");
+        if (st != null) { fprintf(st, "%s swap first-call standalone=%d\n", is_egl != 0 ? "EGL" : "GLX", G.standalone); fclose(st); }
+    }
+    if (G.standalone != 0 && G.disabled == 0) {
+        unsigned int W = 0;
+        unsigned int H = 0;
+        if (is_egl == 0 && G.p_query != null) { W = gl_query(G.p_query, dpy, drawable, GLX_WIDTH); H = gl_query(G.p_query, dpy, drawable, GLX_HEIGHT); }
+        if ((W == 0 || H == 0) && G.p_getiv != null) { int vp[4]; vp[0] = 0; vp[1] = 0; vp[2] = 0; vp[3] = 0; gl_getviewport(G.p_getiv, vp); W = (unsigned int)vp[2]; H = (unsigned int)vp[3]; }
+        if (W > 0 && H > 0) {
+            float asp = G.disp_aspect > 0.01f ? G.disp_aspect : (float)W / (float)H;
+            int cw = (int)W;
+            int ch = (int)H;
+            if ((float)W / (float)H > asp) { ch = (int)H; cw = (int)((float)ch * asp + 0.5f); }
+            else { cw = (int)W; ch = (int)((float)cw / asp + 0.5f); }
+            G.g_state.abi = SEMU_TAP_ABI; G.g_state.active = 1; G.g_state.rotation = 0;
+            G.g_state.fb_width = (int)W; G.g_state.fb_height = (int)H;
+            G.g_state.content_x = ((int)W - cw) / 2; G.g_state.content_y = ((int)H - ch) / 2; G.g_state.content_w = cw; G.g_state.content_h = ch;
+            G.g_state.native_w = G.env_nw > 0 ? G.env_nw : cw; G.g_state.native_h = G.env_nh > 0 ? G.env_nh : ch;
+            G.g_state.origin = SEMU_TAP_ORIGIN_TOP_LEFT; G.g_have = 1;
+        }
+    }
+    if (G.disabled == 0 && G.p_copytex != null && G.p_createsh != null && G.p_draw != null && G.p_use != null && G.g_have != 0 && G.g_state.active != 0 && G.g_state.abi == SEMU_TAP_ABI) {
+        int w = G.g_state.fb_width;
+        int h = G.g_state.fb_height;
+        if (w <= 0 || h <= 0) {
+            unsigned int W = 0;
+            unsigned int H = 0;
+            if (is_egl == 0 && G.p_query != null) { W = gl_query(G.p_query, dpy, drawable, GLX_WIDTH); H = gl_query(G.p_query, dpy, drawable, GLX_HEIGHT); }
+            if ((W == 0 || H == 0) && G.p_getiv != null) { int vp[4]; vp[0] = 0; vp[1] = 0; vp[2] = 0; vp[3] = 0; gl_getviewport(G.p_getiv, vp); W = (unsigned int)vp[2]; H = (unsigned int)vp[3]; }
+            w = (int)W; h = (int)H;
+        }
+        if (w > 0 && h > 0) {
+            G.win_w = w; G.win_h = h;
+            if (is_egl == 0 && G.p_qkm != null && G.p_s2ks != null && G.p_k2kc != null) {
+                if (G.kready == 0) {
+                    for (int i = 0; i < 7; i++) {
+                        char* nm = (i == 0) ? G.retro_key : kname(i);
+                        unsigned long ks = x_string2keysym(G.p_s2ks, nm);
+                        G.kcode[i] = ks != 0 ? (int)x_keysym2keycode(G.p_k2kc, dpy, ks) : 0;
+                    }
+                    G.kready = 1;
+                    logf_("radial keys kc0=%u kc1=%u kc2=%u\n", (unsigned int)G.kcode[0], (unsigned int)G.kcode[1], (unsigned int)G.kcode[2]);
+                }
+                char keys[32];
+                x_querykeymap(G.p_qkm, dpy, keys);
+                for (int i = 0; i < 7; i++) {
+                    int down = G.kcode[i] > 0 ? ((keys[G.kcode[i] >> 3] >> (G.kcode[i] & 7)) & 1) : 0;
+                    int edge = (down != 0 && G.kprev[i] == 0) ? 1 : 0;
+                    G.kprev[i] = down;
+                    if (edge != 0) {
+                        if (G.menu_on != 0) {
+                            int N = menu_count(); if (N < 1) { N = 1; }
+                            if (i == 6) { G.menu_on = 0; }
+                            else if (i == 2) { G.menu_sel = (G.menu_sel - 1 + N) % N; G.menu_dirty = 1; }
+                            else if (i == 3) { G.menu_sel = (G.menu_sel + 1) % N; G.menu_dirty = 1; }
+                            else if (i == 0 || i == 4) { menu_activate(); }
+                            else if (i == 1) { if (G.menu_lvl != 0) { G.menu_lvl = 0; G.menu_sel = 0; G.menu_dirty = 1; } else { G.menu_on = 0; } }
+                        } else {
+                            if (i == 6) { G.menu_on = 1; G.menu_lvl = 0; G.menu_sel = 0; G.menu_dirty = 1; }
+                            else if (i == 0) { G.retro_on = G.retro_on != 0 ? 0 : 1; }
+                            else if (i == 1) { G.priority_mode = G.dual_mode != 0 ? (G.priority_mode + 1) % 5 : (G.priority_mode == 0 ? 2 : (G.priority_mode == 2 ? 3 : 0)); }
+                            else if (i == 2) { G.bezel_idx = (G.bezel_idx + 1) % (G.bezel_count + 1); }
+                            else if (i == 3) { G.shader_idx = (G.shader_idx + 1) % 4; }
+                            else if (i == 4) { G.nds_layout = G.nds_layout != 0 ? 0 : 1; }
+                            else if (i == 5) { G.nds_pri = (G.nds_pri + 1) % 5; }
+                        }
+                        FILE* kf = (FILE*)tap_fopen("semutap.log", "a");
+                        if (kf != null) { fprintf(kf, "KEY EDGE %d menu=%d lvl=%d sel=%d\n", i, G.menu_on, G.menu_lvl, G.menu_sel); fclose(kf); }
+                    }
+                }
+            }
+            int cr = read_state_char("semu-retro"); if (cr >= 0) { G.retro_on = (cr == '0') ? 0 : 1; }
+            int cp = read_state_char("semu-priority"); if (cp >= 0) { G.priority_mode = (cp == 'c' || cp == '4') ? 4 : ((cp == 'f' || cp == '3') ? 3 : ((cp == 'b' || cp == '2') ? 2 : ((cp == 't' || cp == '1') ? 1 : 0))); }
+            int cs = read_state_char("semu-shader"); if (cs >= '0' && cs <= '3') { G.shader_idx = cs - '0'; }
+            int cb = read_state_char("semu-bezel"); if (cb >= '0' && cb <= '9') { G.bezel_idx = cb - '0'; }
+            int cnl = read_state_char("semu-ndslayout"); if (cnl >= 0) { G.nds_layout = (cnl == '1') ? 1 : 0; }
+            int cnp = read_state_char("semu-ndspri"); if (cnp >= '0' && cnp <= '4') { G.nds_pri = cnp - '0'; }
+            int cns = read_state_char("semu-ndssec"); if (cns >= '0' && cns <= '4') { G.nds_sec = cns - '0'; }
+            read_pip_override();
+            if (G.priority_mode == 4) {
+                double m = tap_stat_mtime_d("semu-pip-touch");
+                if (m > 0.0 && m > G.pip_touch_seen) { G.pip_touch_seen = m; G.pip_expand_until = semu_now() + (double)G.pip_seconds; }
+            }
+            int cal = read_state_char("semu-align"); if (cal >= 0) { G.align_on = (cal == '1') ? 1 : 0; }
+            int cm = read_state_char("semu-menu");
+            if (cm >= 0) { int nm = (cm == '1') ? 1 : 0; if (nm != 0 && G.menu_on == 0) { G.menu_lvl = 0; G.menu_sel = 0; } if (nm != G.menu_on) { G.menu_on = nm; G.menu_dirty = 1; } }
+            int cnav = read_state_char("semu-menu-nav");
+            if (cnav >= 0) {
+                tap_remove("semu-menu-nav");
+                if (G.menu_on != 0) {
+                    int Nn = menu_count(); if (Nn < 1) { Nn = 1; }
+                    if (cnav == 'u') { G.menu_sel = (G.menu_sel - 1 + Nn) % Nn; G.menu_dirty = 1; }
+                    else if (cnav == 'd') { G.menu_sel = (G.menu_sel + 1) % Nn; G.menu_dirty = 1; }
+                    else if (cnav == 's') { menu_activate(); }
+                    else if (cnav == 'b') { if (G.menu_lvl != 0) { G.menu_lvl = 0; G.menu_sel = 0; G.menu_dirty = 1; } else { G.menu_on = 0; } }
+                }
+            }
+            float eff_has_art = (G.bezel_idx < G.bezel_count) ? G.has_art : 0.0f;
+            if (G.dual_mode != 0 && G.priority_mode != 2 && G.priority_mode != 3) { eff_has_art = 0.0f; }
+            int avar = G.bezel_idx; if (avar >= G.bezel_count) { avar = (G.bezel_count > 0 ? G.bezel_count - 1 : 0); } if (avar < 0) { avar = 0; }
+            float sxn = G.scr_rects[avar].v[0];
+            float syn = G.scr_rects[avar].v[1];
+            float swn = G.scr_rects[avar].v[2];
+            float shn = G.scr_rects[avar].v[3];
+            int awv = G.art_ws[avar] > 0 ? G.art_ws[avar] : G.art_w;
+            int ahv = G.art_hs[avar] > 0 ? G.art_hs[avar] : G.art_h;
+            int sx = G.g_state.content_x;
+            int sy = G.g_state.content_y;
+            int sw = G.g_state.content_w;
+            int sh = G.g_state.content_h;
+            if (G.g_state.origin == SEMU_TAP_ORIGIN_TOP_LEFT) { sy = h - sy - sh; }
+            int nh = G.env_nh > 0 ? G.env_nh : (G.g_state.native_h > 0 ? G.g_state.native_h : (sh > 0 ? sh : 240));
+            int nw = G.env_nw > 0 ? G.env_nw : (G.g_state.native_w > 0 ? G.g_state.native_w : (sw > 0 ? sw : 320));
+            if ((G.ov_l | G.ov_r | G.ov_t | G.ov_b) != 0 && nw > 0 && nh > 0) {
+                float scx = (float)sw / (float)nw;
+                float scy = (float)sh / (float)nh;
+                int dl = (int)(G.ov_l * scx);
+                int dr = (int)(G.ov_r * scx);
+                int dt = (int)(G.ov_t * scy);
+                int db = (int)(G.ov_b * scy);
+                sx = sx + dl; sw = sw - (dl + dr); sy = sy + db; sh = sh - (dt + db);
+                if (sw < 1) { sw = 1; } if (sh < 1) { sh = 1; }
+            }
+            SemuTapGeometryInput geom_in;
+            memset(&geom_in, 0, sizeof(SemuTapGeometryInput));
+            geom_in.win_w = w; geom_in.win_h = h; geom_in.native_w = nw; geom_in.native_h = nh;
+            geom_in.display_aspect = G.disp_aspect > 0.01f ? G.disp_aspect : (float)nw / (float)nh;
+            geom_in.priority_bezel = (G.priority_mode == 2 || G.priority_mode == 3) ? 1 : 0;
+            geom_in.fill_hole = (G.fill_hole != 0 || G.priority_mode == 3) ? 1 : 0;
+            geom_in.has_art = eff_has_art > 0.5f ? 1 : 0; geom_in.art_w = awv; geom_in.art_h = ahv;
+            geom_in.hole_x = sxn; geom_in.hole_y = syn; geom_in.hole_w = swn; geom_in.hole_h = shn;
+            SemuTapGeometry geom;
+            if (semu_tap_compute_geometry(&geom_in, &geom) == 0) { return; }
+            int gx = geom.game_x;
+            int gy = geom.game_y;
+            int gw2 = geom.game_w;
+            int gh2 = geom.game_h;
+            float bdx_gl = geom.bezel_x;
+            float bdy_gl = geom.bezel_y;
+            float bdw = geom.bezel_w;
+            float bdh = geom.bezel_h;
+            int r1x = gx; int r1y = gy; int r1w = gw2; int r1h = gh2;
+            int r2x = 0; int r2y = 0; int r2w = 0; int r2h = 0;
+            int s1x = sx; int s1y = sy; int s1w = sw; int s1h = sh;
+            int s2x = sx; int s2y = sy; int s2w = sw; int s2h = sh;
+            if (G.dual_mode != 0) {
+                int pi = G.nds_pri < 0 ? 0 : (G.nds_pri > 4 ? 4 : G.nds_pri);
+                int si = G.nds_sec < 0 ? 0 : (G.nds_sec > 4 ? 4 : G.nds_sec);
+                int nhp = (nh >= 288) ? nh / 2 : nh;
+                int pw = (int)(scale_factor(pi) * nw);
+                int ph = (int)(scale_factor(pi) * nhp);
+                int qw = (int)(scale_factor(si) * nw);
+                int qh = (int)(scale_factor(si) * nhp);
+                if (G.priority_mode == 0) {
+                    int gap = 8;
+                    int k = 0;
+                    if (G.nds_layout == 0) { k = (h - gap) / (2 * nhp); int kw = w / nw; if (kw < k) { k = kw; } }
+                    else { k = (w - gap) / (2 * nw); int kh = h / nhp; if (kh < k) { k = kh; } }
+                    if (k < 1) { k = 1; }
+                    pw = k * nw; ph = k * nhp; qw = k * nw; qh = k * nhp;
+                } else if (G.priority_mode == 1) {
+                    int gap = 8;
+                    int k = 0;
+                    if (G.nds_layout == 0) {
+                        k = (int)((h * 0.8f) / nhp); int kw = w / nw; if (kw < k) { k = kw; } if (k < 1) { k = 1; }
+                        pw = k * nw; ph = k * nhp;
+                        int rest = h - ph - gap; if (rest < nhp / 4) { rest = nhp / 4; }
+                        qh = rest; qw = (int)((float)qh * ((float)nw / (float)nhp)); if (qw > w) { qw = w; qh = (int)((float)qw * ((float)nhp / (float)nw)); }
+                    } else {
+                        k = (int)((w * 0.8f) / nw); int kh = h / nhp; if (kh < k) { k = kh; } if (k < 1) { k = 1; }
+                        pw = k * nw; ph = k * nhp;
+                        int rest = w - pw - gap; if (rest < nw / 4) { rest = nw / 4; }
+                        qw = rest; qh = (int)((float)qw * ((float)nhp / (float)nw)); if (qh > h) { qh = h; qw = (int)((float)qh * ((float)nw / (float)nhp)); }
+                    }
+                } else if (G.priority_mode == 4) {
+                    float ta = (float)nw / (float)nhp;
+                    if ((float)w / (float)h > ta) { ph = h; pw = (int)((float)h * ta); }
+                    else { pw = w; ph = (int)((float)w / ta); }
+                    float mx = ((float)w - (float)pw) * 0.5f;
+                    float my = ((float)h - (float)ph) * 0.5f;
+                    float rest_w = (mx >= my) ? mx : my * ta;
+                    int ke = (int)(G.pip_expand_budget * (float)w / (float)nw); if (ke < 1) { ke = 1; }
+                    float exp_w = (float)(ke * nw);
+                    if (exp_w < rest_w) { exp_w = rest_w; }
+                    if (rest_w < 8.0f) { rest_w = exp_w; }
+                    if (G.pip_w_current < 0.0f) { G.pip_w_current = rest_w; }
+                    float target = (semu_now() < G.pip_expand_until) ? exp_w : rest_w;
+                    G.pip_w_current = G.pip_w_current + (target - G.pip_w_current) * 0.18f;
+                    qw = (int)(G.pip_w_current + 0.5f); qh = (int)((float)qw / ta + 0.5f); if (qh < 1) { qh = 1; }
+                }
+                int half = sh / 2;
+                s1x = sx; s1y = sy + half; s1w = sw; s1h = half;
+                s2x = sx; s2y = sy; s2w = sw; s2h = half;
+                if (G.priority_mode == 4) {
+                    r1x = (w - pw) / 2; r1y = (h - ph) / 2; r1w = pw; r1h = ph;
+                    r2x = w - qw; r2y = 0; r2w = qw; r2h = qh;
+                } else if (G.nds_layout == 0) {
+                    int gap = 8;
+                    int total = ph + qh + gap;
+                    int top = (h - total) / 2;
+                    r1x = (w - pw) / 2; r1y = h - top - ph; r1w = pw; r1h = ph;
+                    r2x = (w - qw) / 2; r2y = h - (top + ph + gap) - qh; r2w = qw; r2h = qh;
+                } else {
+                    int gap = 8;
+                    int total = pw + qw + gap;
+                    int left = (w - total) / 2;
+                    r1x = left; r1y = (h - ph) / 2; r1w = pw; r1h = ph;
+                    r2x = left + pw + gap; r2y = (h - qh) / 2; r2w = qw; r2h = qh;
+                }
+                int hv = G.bezel_idx; if (hv >= G.bezel_count) { hv = (G.bezel_count > 0 ? G.bezel_count - 1 : 0); } if (hv < 0) { hv = 0; }
+                if ((G.priority_mode == 2 || G.priority_mode == 3) && G.dual_hole_set[hv] != 0) {
+                    int nhp2 = (nh >= 288) ? nh / 2 : nh;
+                    float art_aspect = (ahv > 0) ? ((float)awv / (float)ahv) : 1.6f;
+                    int kk = 1;
+                    int best = 0;
+                    while (true) {
+                        float cand_w = (float)(kk * nw) / G.pri_rects[hv].v[2];
+                        float cand_h = cand_w / art_aspect;
+                        if (cand_w <= (float)w * 1.01f + 0.5f && cand_h <= (float)h * 1.01f + 0.5f) { best = kk; kk = kk + 1; } else { break; }
+                    }
+                    if (best >= 1) {
+                        bdw = (float)(best * nw) / G.pri_rects[hv].v[2]; bdh = bdw / art_aspect;
+                        bdx_gl = ((float)w - bdw) * 0.5f; bdy_gl = ((float)h - bdh) * 0.5f;
+                    }
+                    float hx = bdx_gl + G.pri_rects[hv].v[0] * bdw;
+                    float hw2 = G.pri_rects[hv].v[2] * bdw;
+                    float hh2 = G.pri_rects[hv].v[3] * bdh;
+                    float hy = bdy_gl + (1.0f - G.pri_rects[hv].v[1] - G.pri_rects[hv].v[3]) * bdh;
+                    float fw = 0.0f;
+                    float fh = 0.0f;
+                    if (G.priority_mode == 3) { fw = hw2; fh = hh2; }
+                    else { int k = (int)(hw2 / (float)nw); int kh = (int)(hh2 / (float)nhp2); if (kh < k) { k = kh; } if (k < 1) { k = 1; } fw = (float)(k * nw); fh = (float)(k * nhp2); }
+                    r1x = (int)(hx + (hw2 - fw) * 0.5f); r1y = (int)(hy + (hh2 - fh) * 0.5f); r1w = (int)fw; r1h = (int)fh;
+                    hx = bdx_gl + G.sec_rects[hv].v[0] * bdw; hw2 = G.sec_rects[hv].v[2] * bdw;
+                    hh2 = G.sec_rects[hv].v[3] * bdh; hy = bdy_gl + (1.0f - G.sec_rects[hv].v[1] - G.sec_rects[hv].v[3]) * bdh;
+                    if (G.priority_mode == 3) { fw = hw2; fh = hh2; }
+                    else { int k = (int)(hw2 / (float)nw); int kh = (int)(hh2 / (float)nhp2); if (kh < k) { k = kh; } if (k < 1) { k = 1; } fw = (float)(k * nw); fh = (float)(k * nhp2); }
+                    r2x = (int)(hx + (hw2 - fw) * 0.5f); r2y = (int)(hy + (hh2 - fh) * 0.5f); r2w = (int)fw; r2h = (int)fh;
+                }
+            }
+            gl_state_save();
+            gl_init();
+            gl_active(G.p_active, GL_TEXTURE0); gl_bindtex(G.p_bindtex, GL_TEXTURE_2D, G.game_tex);
+            gl_copytex(G.p_copytex, GL_TEXTURE_2D, 0, GL_RGB, 0, 0, w, h, 0);
+            if (G.p_genmip != null) { gl_genmip(G.p_genmip, GL_TEXTURE_2D); }
+            int active = G.bezel_idx; if (active >= G.bezel_count) { active = (G.bezel_count > 0 ? G.bezel_count - 1 : 0); } if (active < 0) { active = 0; }
+            if (eff_has_art > 0.5f) { gl_active(G.p_active, GL_TEXTURE1); gl_bindtex(G.p_bindtex, GL_TEXTURE_2D, G.bezel_texs[active]); gl_active(G.p_active, GL_TEXTURE0); }
+            unsigned int gtex = G.glass_texs[active];
+            float hg = (gtex != 0 && eff_has_art > 0.5f) ? 1.0f : 0.0f;
+            if (hg > 0.5f) { gl_active(G.p_active, GL_TEXTURE2); gl_bindtex(G.p_bindtex, GL_TEXTURE_2D, gtex); gl_active(G.p_active, GL_TEXTURE0); }
+            if (G.menu_on != 0) {
+                int need_upload = G.menu_dirty;
+                if (G.menu_dirty != 0) { menu_build(); }
+                if (G.menu_buf != null) {
+                    gl_active(G.p_active, GL_TEXTURE3); gl_bindtex(G.p_bindtex, GL_TEXTURE_2D, G.menu_tex);
+                    if (need_upload != 0) {
+                        if (G.p_pixstore != null) { gl_pixstore(G.p_pixstore, GL_UNPACK_ALIGNMENT, 1); gl_pixstore(G.p_pixstore, GL_UNPACK_ROW_LENGTH, 0); gl_pixstore(G.p_pixstore, GL_UNPACK_SKIP_PIXELS, 0); gl_pixstore(G.p_pixstore, GL_UNPACK_SKIP_ROWS, 0); }
+                        unpack_pbo_guard();
+                        gl_teximg(G.p_teximg, GL_TEXTURE_2D, 0, GL_RGBA, MENU_W, MENU_H, 0, GL_RGBA, GL_UNSIGNED_BYTE, (void*)G.menu_buf);
+                        unpack_pbo_restore();
+                    }
+                    gl_active(G.p_active, GL_TEXTURE0);
+                }
+            }
+            if (G.p_disable != null) { gl_disable(G.p_disable, GL_DEPTH_TEST); gl_disable(G.p_disable, GL_BLEND); gl_disable(G.p_disable, GL_SCISSOR_TEST); }
+            gl_viewport(G.p_viewport, 0, 0, w, h);
+            gl_use(G.p_use, G.prog); if (G.p_bindva != null && G.vao != 0) { gl_bindva(G.p_bindva, G.vao); }
+            if (G.uWin >= 0) { gl_u2f(G.p_u2f, G.uWin, (float)w, (float)h); }
+            if (G.uRect >= 0) { gl_u4f(G.p_u4f, G.uRect, (float)r1x, (float)r1y, (float)r1w, (float)r1h); }
+            if (G.uSrc >= 0) { gl_u4f(G.p_u4f, G.uSrc, (float)s1x, (float)s1y, (float)s1w, (float)s1h); }
+            if (G.uRect2 >= 0) { gl_u4f(G.p_u4f, G.uRect2, (float)r2x, (float)r2y, (float)r2w, (float)r2h); }
+            if (G.uSrc2 >= 0) { gl_u4f(G.p_u4f, G.uSrc2, (float)s2x, (float)s2y, (float)s2w, (float)s2h); }
+            if (G.uDual >= 0) { gl_u1f(G.p_u1f, G.uDual, (float)G.dual_mode); }
+            if (G.uAlign >= 0) { gl_u1f(G.p_u1f, G.uAlign, (float)G.align_on); }
+            if (G.uHole >= 0) { gl_u4f(G.p_u4f, G.uHole, sxn, syn, swn, shn); }
+            if (G.uBezelRect >= 0) { gl_u4f(G.p_u4f, G.uBezelRect, bdx_gl, bdy_gl, bdw, bdh); }
+            if (G.uNative >= 0) { gl_u1f(G.p_u1f, G.uNative, (float)nh); }
+            if (G.uStyle >= 0) { gl_u1f(G.p_u1f, G.uStyle, (float)G.tap_style); }
+            if (G.uShell >= 0 && G.p_u3f != null) { gl_u3f(G.p_u3f, G.uShell, G.shell_r, G.shell_g, G.shell_b); }
+            if (G.uTV >= 0) { gl_u4f(G.p_u4f, G.uTV, G.glow_amt, G.tv_mask, G.tv_scan, G.tv_bzlw); }
+            if (G.uRef >= 0) { gl_u4f(G.p_u4f, G.uRef, G.bloom_amt, G.vignette_amt, 0.12f, G.tv_corner); }
+            if (G.uHasArt >= 0) { gl_u1f(G.p_u1f, G.uHasArt, eff_has_art); }
+            if (G.uDebug >= 0) { gl_u1f(G.p_u1f, G.uDebug, G.debug_on != 0 ? G.debug_thresh : 0.0f); }
+            if (G.uRetro >= 0) { gl_u1f(G.p_u1f, G.uRetro, G.retro_on != 0 ? G.retro_lod : 0.0f); }
+            if (G.uShaderMode >= 0) { gl_u1f(G.p_u1f, G.uShaderMode, (float)G.shader_idx); }
+            if (G.uHasGlass >= 0) { gl_u1f(G.p_u1f, G.uHasGlass, hg); }
+            if (G.uReflect >= 0) { gl_u1f(G.p_u1f, G.uReflect, eff_has_art > 0.5f ? G.reflect_amt : 0.0f); }
+            if (G.uCurve >= 0) { gl_u1f(G.p_u1f, G.uCurve, G.curve_amt); }
+            if (G.uScreenCorner >= 0) { gl_u1f(G.p_u1f, G.uScreenCorner, G.screen_corner); }
+            if (G.uLcdGrid >= 0) { gl_u1f(G.p_u1f, G.uLcdGrid, G.lcd_grid_amt); }
+            if (G.uLcdSub >= 0) { gl_u1f(G.p_u1f, G.uLcdSub, G.lcd_subpixel_amt); }
+            if (G.uLcdMono >= 0) { gl_u1f(G.p_u1f, G.uLcdMono, G.lcd_mono_amt); }
+            if (G.uLcdWash >= 0) { gl_u1f(G.p_u1f, G.uLcdWash, G.lcd_wash_amt); }
+            if (G.uMenuOn >= 0) { gl_u1f(G.p_u1f, G.uMenuOn, G.menu_on != 0 ? 1.0f : 0.0f); }
+            if (G.uMenuRect >= 0) {
+                float mw = (float)MENU_W;
+                float mh = (float)MENU_H;
+                float scl = 1.0f;
+                if (mh > (float)h * 0.92f) { scl = (float)h * 0.92f / mh; }
+                mw = mw * scl; mh = mh * scl;
+                gl_u4f(G.p_u4f, G.uMenuRect, ((float)w - mw) * 0.5f, ((float)h - mh) * 0.5f, mw, mh);
+            }
+            gl_draw(G.p_draw, GL_TRIANGLES, 0, 3);
+            G.frames = G.frames + 1;
+            if (G.frames <= 2 || (G.menu_on != 0 && (G.frames % 30) == 0)) {
+                FILE* lf = (FILE*)tap_fopen("semutap.log", "a");
+                if (lf != null) { fprintf(lf, "frame%ld: fb=%dx%d native=%dx%d content=(%d,%d,%d,%d) pri=%d game=(%d,%d,%d,%d) bd=(%d,%d,%d,%d) menu_on=%d effArt=%.1f bidx=%d bcnt=%d uMenuOn=%d uHasArt=%d\n", G.frames, w, h, nw, nh, G.g_state.content_x, G.g_state.content_y, G.g_state.content_w, G.g_state.content_h, G.priority_mode, gx, gy, gw2, gh2, (int)bdx_gl, (int)bdy_gl, (int)bdw, (int)bdh, G.menu_on, eff_has_art, G.bezel_idx, G.bezel_count, (G.uMenuOn >= 0) ? 1 : 0, (G.uHasArt >= 0) ? 1 : 0); fclose(lf); }
+            }
+            { FILE* shotTrigger = (FILE*)tap_fopen("semu-shot", "r");
+              if (shotTrigger != null) { fclose(shotTrigger); tap_remove("semu-shot"); write_composited_shot(w, h); } }
+            gl_state_restore();
+        }
+    }
+}
+
+// nds/wii per-screen integer scale factor (the C used a local float[5])
+float scale_factor(int i) {
+    if (i == 0) { return 0.25f; }
+    if (i == 1) { return 0.5f; }
+    if (i == 2) { return 1.0f; }
+    if (i == 3) { return 2.0f; }
+    return 3.0f;
+}
+
+// ================= public present hooks (exported) =================
+void glXSwapBuffers(void* dpy, unsigned long drawable) {
+    tap_frame(dpy, drawable, 0);
+    if (G.real_swap != null) { call_real_swap(G.real_swap, dpy, drawable); return; }
+    if (G.null_swap_logged_glx == 0) { G.null_swap_logged_glx = 1; logf_("glXSwapBuffers real pointer NULL - present dropped\n", 0, 0, 0); }
+}
+unsigned int eglSwapBuffers(void* dpy, void* surface) {
+    tap_frame(dpy, (unsigned long)surface, 1);
+    if (G.real_egl_swap != null) { return call_real_eglswap(G.real_egl_swap, dpy, surface); }
+    if (G.null_swap_logged_egl == 0) { G.null_swap_logged_egl = 1; logf_("eglSwapBuffers real pointer NULL - present dropped\n", 0, 0, 0); }
+    return 0;
+}
