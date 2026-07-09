@@ -114,6 +114,10 @@ in
   inherit btrcpy visualAssets;
   semu-cli = semuCli;
   semu-bezels = semuBezels;
+  # The regenerator behind `nix run .#bake-bezels`: fetches upstreams + renders
+  # bezels.json with imagemagick. Independently buildable for debugging; a
+  # normal app/asset build never forces it (it hangs off semuBezels.passthru).
+  semu-bezels-generate = semuBezels.generate;
   semu-shaders = semuShaders;
   default = if isBundleTarget then semuApp else semuCli;
 }
