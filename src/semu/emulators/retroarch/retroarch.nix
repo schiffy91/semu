@@ -147,26 +147,30 @@ let
   macArch = if stdenv.hostPlatform.isAarch64 then "arm64" else "x86_64";
   macCoreHashes = {
     arm64 = {
-      gambatte = "sha256-i1LZ58cF3blG0vqwK3RkkBc3REU5tTEh5rMaQJonte4=";
-      mgba = "sha256-p/YKT5dcZhoXtP4qEkD87/FIBbsaXPjV+lWj8KoIocY=";
-      genesis_plus_gx = "sha256-tbkfsiJNh8zN+VTUHmXgF/iAFqP7JGg96XIVMewCcSo=";
-      snes9x = "sha256-HF7Q+lblEHy2qGGlrvc62YCL0VF8miAouno/31sziuU=";
-      mesen = "sha256-suOxgCRBFdduyHR1rxD2pgy96G2Ye2qf6shlc2Sj1nM=";
-      desmume = "sha256-ixjCY8kaFjDOuoi+hGggvYtrjYhz5UDyXULIpgLQcs8=";
-      ppsspp = "sha256-2EehMYawCTxEdI5nJIMrlq4ZZLUoKb+oLCDcIpFnVmM=";
-      flycast = "sha256-HG22yjl4TSLXm9dHUBJEfzjsqKM7DWQg34QeUXdNsWo=";
-      mednafen_psx_hw = "sha256-ev03pEiVlK8Yc2FKbRC88Ge44co/FtkBQM54huqzDng=";
+      gambatte = "sha256-PgWveksmEl8m23RfGe0TUASD1sF8NCU2ahD7rQxLcOc=";
+      mgba = "sha256-V7wXwP8NCw5OSo7V9uMbT4oNcVGMnxAuGgzmfdvAq7Q=";
+      genesis_plus_gx = "sha256-x1LzTLrQpBO2xGOCyt4QwDynhCS1YK7JAGZ/3PTat44=";
+      snes9x = "sha256-1+hLHACkd7b8ymtGEgbzkbnNTxLaa+wtvnhldAHFuS0=";
+      mesen = "sha256-y5qjFuwrh8UHrK1KS5hp57GXVg7o1sEzM9oOw34AyBw=";
+      desmume = "sha256-TdvYhw6sPquqR69wV+y4Im5kyKI70JuoRL2p1acoc94=";
+      ppsspp = "sha256-ozmQ8SXcDj5hQys30C2iVneyEzKXQuy6m7c3leh+ygM=";
+      flycast = "sha256-TuTvmuGizfJOWZsHQlxz94MEPwyuJRYFRYbA0AzR6dk=";
+      mednafen_psx_hw = "sha256-kYNxIhDc4bX5dQGqPWQGrZnbkjSWekMU4Osx1+pCF40=";
+      mupen64plus_next = "sha256-NxGrZz9yKm7xZZi7CSSLp8KlXKTGaYYZ4865iqH6eyQ=";
+      azahar = "sha256-3tazyoi57gQjUiwnzlxtSksWcaMZEiqbU4fd1kfJvoM=";
     };
     x86_64 = {
-      gambatte = "sha256-9gXMqq+3rai3KeTAfPyuf8upKUH7a/hbfeInK/3mWRM=";
-      mgba = "sha256-dGZGqhXLTn2FEsdHJzBeKm2cPYeygVbje3aJ5SyNm5A=";
-      genesis_plus_gx = "sha256-3jDrz1lobNmsoieklRpH3a1Y1Fqt8MNSh/GSCK1IjXo=";
-      snes9x = "sha256-OkNdZfnh2V/RIvbonXPqd0jeyoYkVvXWaTDutwIc/Hw=";
-      mesen = "sha256-2Wf8AZ1pPP/eMSAGITuEDq8z7n7n6PS1ZfZ1xNMONSA=";
-      desmume = "sha256-r2L3tLvVPxN312fw7kgCQhPP4XCS0b4M/vGt1mWfCrE=";
-      ppsspp = "sha256-Ly9O4Zp0sQtWNU30hDwW/tCVWM0+imbrubBND1KTT00=";
-      flycast = "sha256-oMml323FE7KDmw8JpdUJCgo/r4xnpKl9FLJ6q0R6I8M=";
-      mednafen_psx_hw = "sha256-f5oG3PiKA7Qct/oa/wtR5+nlmSOURNCllul9lI1i5qs=";
+      gambatte = "sha256-xmUVaSVKjCipHBdlfPanQvT5LsBMh/RwDN5Kf4u6vRU=";
+      mgba = "sha256-G2IVABRf4l05IDiLXD6WzPUAZkuiElCG/ZlF6hmzTKk=";
+      genesis_plus_gx = "sha256-FgUkWQlbBYD4azOk+dpLIsZuTGm/QL4A+BTYlQJHqx4=";
+      snes9x = "sha256-PeDlLkHfCFx0yNrd8mwds1N5q0QZnDcAZwz7LGBhjs0=";
+      mesen = "sha256-gxC64F+vQxKMBSxV40XTSVhQUPWcTVT81AHvOIFlfOs=";
+      desmume = "sha256-3m6ffxS8jVmlpEE/Wzc1zkhRE82pZHTCqIjghpZga1Y=";
+      ppsspp = "sha256-UC9bTtDXEE24SI3XBMuvbGcAZNF/SDkxlDPyt7Hyxg4=";
+      flycast = "sha256-gkfOWwTl5B8Ht1g2V11GBLp3JqjECm8OFzGbZ3Cdahk=";
+      mednafen_psx_hw = "sha256-N0CsujMVWaFWMLRwtT0TdEoO+e/NgIUHkZVCq1i8rIs=";
+      mupen64plus_next = "sha256-xK5HW0Oox1giR23ePSBF7Pj4bVPQJWw0UOOmIWpH3A4=";
+      azahar = "sha256-sdHtFNVpfO9ri3NcFkx720IRcD8uX6V0gyQV2L0saBM=";
     };
   };
   macCoreZip = core: fetchurl {
