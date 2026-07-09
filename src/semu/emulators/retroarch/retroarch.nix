@@ -14,7 +14,7 @@
 # CORES stay buildbot binary artifacts for now — libretro has no unified
 # per-core source build story, and the zips come from the buildbot's
 # rolling "latest" nightly directory, so those hashes go stale when the
-# buildbot rotates; re-prefetch on mismatch (2026-07-01 pins).
+# buildbot rotates; re-prefetch on mismatch (2026-07-09 pins).
 #
 # Linux: the Semu tap build of the same pinned source. The sibling
 # retroarch.patch makes video_driver_frame report the real content viewport
