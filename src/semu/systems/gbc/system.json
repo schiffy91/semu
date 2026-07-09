@@ -15,7 +15,9 @@
     "style": "handheld",
     "priority": "bezel",
     "fill": true,
-    "reflect": 0.55
+    "reflect": 0.55,
+    "lcd_grid": 0.45,
+    "lcd_subpixel": 0.35
   },
   "doc": {
     "hardware": "Game Boy Color TFT LCD",

@@ -34,6 +34,8 @@ class ResolvedBezel {
     public double glow;
     public double bloom;
     public double vignette;
+    public double lcdGrid;
+    public double lcdSubpixel;
     public RgbColor shellTint;
     public bool fill;
 
@@ -49,6 +51,8 @@ class ResolvedBezel {
         self.glow = 0.0;
         self.bloom = 0.0;
         self.vignette = 0.0;
+        self.lcdGrid = 0.0;
+        self.lcdSubpixel = 0.0;
         self.shellTint = RgbColor();
         self.fill = false;
     }
@@ -165,6 +169,8 @@ class BezelResolver {
         resolved.glow = system.render.glow;
         resolved.bloom = system.render.bloom;
         resolved.vignette = system.render.vignette;
+        resolved.lcdGrid = system.render.lcdGrid;
+        resolved.lcdSubpixel = system.render.lcdSubpixel;
         if (system.render.shellTint.set) {
             resolved.shellTint = system.render.shellTint;
         }

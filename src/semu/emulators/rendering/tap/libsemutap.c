@@ -148,6 +148,7 @@ static int align_on = 0;    // alignment diagnostic: purple frame at the declare
 static char glass_paths[4][1024] = {{0}};           // per-variant screen-glass layer: .a = exact screen cutout mask, .rgb = glass/reflections
 static float reflect_amt = 0.0f, curve_amt = 0.0f, screen_corner = 0.06f;  // reflection/curvature/CRT-corner params
 static float glow_amt = 0.0f, bloom_amt = 0.0f, vignette_amt = 0.0f;      // CRT tube depth: screen-glow spill onto bezel, phosphor bloom, corner vignette
+static float lcd_grid_amt = 0.0f, lcd_subpixel_amt = 0.0f;                // handheld LCD: inter-pixel grid depth + RGB subpixel-stripe depth
 // ---- Radial/overlay MENU (compositor-rendered; mirrors Steam Input). Fully isolated: only drawn when
 // menu_on; the normal compositing path is untouched when closed. Text via a CPU-blitted font atlas. ----
 static int menu_on = 0, menu_lvl = 0, menu_sel = 0;     // lvl: 0=root 1=rendering 2=save/load 3=per-system
@@ -174,7 +175,7 @@ static int dual_hole_set[4];                 // 1 when a variant carries BOTH pr
 static float disp_aspect = 0.0f;             // display aspect (0 = use native square nw/nh)
 static GLuint prog, vao, game_tex, bezel_texs[4], glass_texs[4];
 static GLint uWin, uRect, uSrc, uBezelRect, uNative, uStyle, uShell, uTV, uRef, uHasArt, uDebug, uRetro, uShaderMode;
-static GLint uRect2, uSrc2, uDual, uAlign, uHole, uGlass, uHasGlass, uReflect, uCurve, uScreenCorner, uMenuRect, uMenuOn;
+static GLint uRect2, uSrc2, uDual, uAlign, uHole, uGlass, uHasGlass, uReflect, uCurve, uScreenCorner, uLcdGrid, uLcdSub, uMenuRect, uMenuOn;
 static long frames;
 static char tap_state_dir_buf[1024] = "/home/deck";
 static int tap_state_dir_ready = 0;
@@ -247,12 +248,27 @@ static const char *FS =
  "uniform float uAlign; uniform vec4 uHole; /* alignment diag: uHole = declared screen hole (norm within bezel art) */\n"
  "uniform sampler2D uGlass; uniform float uHasGlass; /* screen-glass layer: .a = screen MASK (real cutout shape), .rgb = glass */\n"
  "uniform float uReflect; /* reflection/glare strength */ uniform float uCurve; /* CRT barrel curvature (0 = flat) */ uniform float uScreenCorner; /* CRT rounded-mask corner radius */\n"
+ "uniform float uLcdGrid; uniform float uLcdSub; /* handheld LCD: inter-pixel grid depth + RGB subpixel-stripe depth (0..1) */\n"
  "float sdRound(vec2 p, vec2 b, float r){ vec2 d=abs(p)-b+r; return length(max(d,vec2(0.0)))+min(max(d.x,d.y),0.0)-r; }\n"
  "vec3 gameAt(vec2 uv, float lod){ return textureLod(uGame,(uSrc.xy+uv*uSrc.zw)/uWin,lod).rgb; }\n"
  "vec3 artAt(vec2 sp){ vec2 auv=vec2((sp.x-uBezelRect.x)/uBezelRect.z, 1.0-(sp.y-uBezelRect.y)/uBezelRect.w); return texture(uBezel,auv).rgb; }\n"
  "vec4 glassAt(vec2 sp){ vec2 auv=vec2((sp.x-uBezelRect.x)/uBezelRect.z, 1.0-(sp.y-uBezelRect.y)/uBezelRect.w); return texture(uGlass,auv); }\n"
  "uniform sampler2D uMenu; uniform vec4 uMenuRect; uniform float uMenuOn; /* overlay menu (screen-px rect, GL y-up) */\n"
  "vec3 menuComposite(vec3 c, vec2 px){ if(uMenuOn>0.5 && px.x>=uMenuRect.x&&px.x<=uMenuRect.x+uMenuRect.z&&px.y>=uMenuRect.y&&px.y<=uMenuRect.y+uMenuRect.w){ vec2 muv=vec2((px.x-uMenuRect.x)/uMenuRect.z, 1.0-(px.y-uMenuRect.y)/uMenuRect.w); vec4 m=texture(uMenu,muv); return mix(c,m.rgb,m.a);} return c; }\n"
+ // REALISTIC HANDHELD LCD: native-pixel lattice (dark inter-pixel gaps) + per-pixel vertical RGB subpixel stripe + LCD black-lift/backlight.
+ // Every soft edge sized by fwidth() (~1 output px) so it stays crisp at any zoom. No scanlines, no curvature. Shared by single + dual-screen paths.
+ "vec3 lcdPanel(vec3 g, vec2 uv, float nv, float aspect){\n"
+ "  vec2 cells=vec2(nv*aspect,nv); vec2 cuv=fract(uv*cells); vec2 fw=fwidth(uv*cells)+1e-6;\n"
+ "  vec2 din=min(cuv,1.0-cuv); vec2 inc=smoothstep(vec2(0.0),fw*1.5,din); float gf=inc.x*inc.y;\n"          // 1 inside a pixel, ->0 in the gaps
+ "  gf=mix(1.0,mix(0.45,1.0,gf),uLcdGrid);\n"                                                                // grid off -> flat 1.0; gap floor 0.45
+ "  float sx=cuv.x*3.0; float sfw=fwidth(sx)+1e-6; vec3 lane;\n"                                             // 3 subpixel lanes across each game pixel
+ "  lane.r=1.0-smoothstep(1.0-sfw,1.0+sfw,sx); lane.b=smoothstep(2.0-sfw,2.0+sfw,sx); lane.g=clamp(1.0-lane.r-lane.b,0.0,1.0);\n"
+ "  float fl=mix(1.0,0.18,uLcdSub); vec3 sub=mix(vec3(fl),vec3(1.0),lane); sub*=3.0/(1.0+2.0*fl);\n"         // energy-normalize: whites stay bright+neutral
+ "  vec3 c=g; c=c*0.94+0.06;\n"                                                                              // LCD black lift (blacks are dark grey, not 0)
+ "  c=mix(c,c*c*(3.0-2.0*c),0.25);\n"                                                                        // gentle S-curve for a little panel punch
+ "  c=c*sub; c=c*gf; c=c+0.04*(1.0-c);\n"                                                                    // triad tint, inter-pixel gaps, uniform backlight
+ "  return clamp(c,0.0,1.0);\n"
+ "}\n"
  "void main(){\n"
  "  vec2 px=gl_FragCoord.xy;\n"
  "  if(uAlign>0.5){\n"                                            // ALIGNMENT DIAG: bezel + translucent game + purple hole frame
@@ -275,7 +291,7 @@ static const char *FS =
  "      vec4 R=(s==0)?uRect:uRect2; vec4 S=(s==0)?uSrc:uSrc2;\n"
  "      if(px.x>=R.x&&px.x<=R.x+R.z&&px.y>=R.y&&px.y<=R.y+R.w){\n"
  "        vec2 uv=(px-R.xy)/R.zw; vec3 g=textureLod(uGame,(S.xy+uv*S.zw)/uWin,uRetro).rgb;\n"
- "        if(uShaderMode<1.5){ float nx=uNative*R.z/R.w; g*=0.90+0.10*sqrt(abs(cos(uv.x*nx*3.14159265))*abs(cos(uv.y*uNative*3.14159265))); }\n"
+ "        if(uShaderMode<1.5){ g = lcdPanel(g, uv, uNative, R.z/R.w); }\n"
  "        oc=g;\n"
  "      }\n"
  "    }\n"
@@ -327,7 +343,7 @@ static const char *FS =
  "          float edge=min(min(uv.x,1.0-uv.x),min(uv.y,1.0-uv.y)); g*=mix(0.5,1.0,smoothstep(0.0,0.02,edge));\n"   // INNER SHADOW (recessed glass edge)
  "        }\n"
  "      } else {\n"                                                 // LCD
- "        if(uShaderMode<1.5){ float nx=uNative*uRect.z/uRect.w; g*=0.90+0.10*sqrt(abs(cos(uv.x*nx*3.14159265))*abs(cos(uv.y*uNative*3.14159265))); }\n" // grid: 0,1
+ "        if(uShaderMode<1.5){ g = lcdPanel(g, uv, uNative, uRect.z/uRect.w); }\n"  // realistic LCD: grid + subpixel + panel response
  "      }\n"
  "    }\n"
  // Handheld glass sheen: the glass layer's own tint/reflections (screen-blend,
@@ -456,7 +472,7 @@ static void gl_init(void) {
     uTV=p_uloc(prog,"uTV"); uRef=p_uloc(prog,"uRef"); uHasArt=p_uloc(prog,"uHasArt"); uDebug=p_uloc(prog,"uDebug"); uRetro=p_uloc(prog,"uRetro"); uShaderMode=p_uloc(prog,"uShaderMode");
     uRect2=p_uloc(prog,"uRect2"); uSrc2=p_uloc(prog,"uSrc2"); uDual=p_uloc(prog,"uDual");
     uAlign=p_uloc(prog,"uAlign"); uHole=p_uloc(prog,"uHole");
-    uGlass=p_uloc(prog,"uGlass"); uHasGlass=p_uloc(prog,"uHasGlass"); uReflect=p_uloc(prog,"uReflect"); uCurve=p_uloc(prog,"uCurve"); uScreenCorner=p_uloc(prog,"uScreenCorner");
+    uGlass=p_uloc(prog,"uGlass"); uHasGlass=p_uloc(prog,"uHasGlass"); uReflect=p_uloc(prog,"uReflect"); uCurve=p_uloc(prog,"uCurve"); uScreenCorner=p_uloc(prog,"uScreenCorner"); uLcdGrid=p_uloc(prog,"uLcdGrid"); uLcdSub=p_uloc(prog,"uLcdSub");
     uMenuRect=p_uloc(prog,"uMenuRect"); uMenuOn=p_uloc(prog,"uMenuOn");
     GLint muni=p_uloc(prog,"uMenu");   // uMenu sampler -> unit 3 (set AFTER p_use below; glUniform needs the program active)
     p_gentex(1,&menu_tex); p_active(GL_TEXTURE3); p_bindtex(GL_TEXTURE_2D,menu_tex);   // menu texture (uploaded per state change)
@@ -661,6 +677,8 @@ static void tap_init(void) {
     const char *gw=getenv("SEMU_TAP_GLOW");    if(gw) glow_amt=(float)atof(gw);                                  // ambient screen-glow spill onto the bezel
     const char *bl=getenv("SEMU_TAP_BLOOM");   if(bl) bloom_amt=(float)atof(bl);                                 // phosphor bloom (bright-area diffusion)
     const char *vg=getenv("SEMU_TAP_VIGNETTE");if(vg) vignette_amt=(float)atof(vg);                              // CRT corner vignette (tube brightness falloff)
+    const char *lg=getenv("SEMU_TAP_LCD_GRID");     if(lg) lcd_grid_amt=(float)atof(lg);                          // handheld LCD inter-pixel grid depth
+    const char *lsp=getenv("SEMU_TAP_LCD_SUBPIXEL");if(lsp) lcd_subpixel_amt=(float)atof(lsp);                    // handheld LCD RGB subpixel-stripe depth
     const char *enh=getenv("SEMU_TAP_NATIVE_H"); if(enh&&atoi(enh)>0) env_nh=atoi(enh);
     const char *enw=getenv("SEMU_TAP_NATIVE_W"); if(enw&&atoi(enw)>0) env_nw=atoi(enw);
     const char *es=getenv("SEMU_TAP_STYLE"); if(es&&(es[0]=='h'||es[0]=='H'||es[0]=='1')) tap_style=1;
@@ -956,6 +974,8 @@ static void tap_frame(void *dpy, unsigned long drawable, int is_egl) {
             if(uReflect>=0)p_u1f(uReflect, eff_has_art>0.5f ? reflect_amt : 0.0f);   // no glare when bezel off
             if(uCurve>=0)p_u1f(uCurve,curve_amt);
             if(uScreenCorner>=0)p_u1f(uScreenCorner,screen_corner);
+            if(uLcdGrid>=0)p_u1f(uLcdGrid,lcd_grid_amt);
+            if(uLcdSub>=0)p_u1f(uLcdSub,lcd_subpixel_amt);
             if(uMenuOn>=0)p_u1f(uMenuOn, menu_on?1.0f:0.0f);
             if(uMenuRect>=0){ float mw=(float)MENU_W,mh=(float)MENU_H,sc=1.0f; if(mh>(float)h*0.92f)sc=(float)h*0.92f/mh; mw*=sc; mh*=sc; p_u4f(uMenuRect,((float)w-mw)*0.5f,((float)h-mh)*0.5f,mw,mh); }
             p_draw(GL_TRIANGLES,0,3);

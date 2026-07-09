@@ -71,6 +71,9 @@ class RenderPolicy {
     public double glow;
     public double bloom;
     public double vignette;
+    // Handheld LCD realism: inter-pixel grid depth + RGB subpixel-stripe depth. 0 for CRT tubes.
+    public double lcdGrid;
+    public double lcdSubpixel;
     public RgbColor shellTint;
     public bool retroDefault;
     public string assetProfile;
@@ -86,6 +89,8 @@ class RenderPolicy {
         self.glow = 0.0;
         self.bloom = 0.0;
         self.vignette = 0.0;
+        self.lcdGrid = 0.0;
+        self.lcdSubpixel = 0.0;
         self.shellTint = RgbColor();
         self.retroDefault = false;
         self.assetProfile = "";
@@ -447,8 +452,8 @@ class RenderPolicyParser {
             return renderPolicy;
         }
         Vector<string> allowedKeys = ["style", "priority", "kind", "fill", "reflect", "curvature",
-                                      "corner_radius", "glow", "bloom", "vignette", "shell_tint",
-                                      "retro_default", "asset_profile"];
+                                      "corner_radius", "glow", "bloom", "vignette", "lcd_grid",
+                                      "lcd_subpixel", "shell_tint", "retro_default", "asset_profile"];
         JsonContract.checkKeys(jsonValue, allowedKeys, file, "render", log);
 
         renderPolicy.style = JsonContract.requiredString(jsonValue, "style", file, "render", log);
@@ -494,6 +499,14 @@ class RenderPolicyParser {
         renderPolicy.vignette = JsonContract.optionalNumber(jsonValue, "vignette", 0.0, file, "render", log);
         if (renderPolicy.vignette < 0.0 || renderPolicy.vignette > 1.0) {
             log.add(file, "render.vignette", "must be 0..1");
+        }
+        renderPolicy.lcdGrid = JsonContract.optionalNumber(jsonValue, "lcd_grid", 0.0, file, "render", log);
+        if (renderPolicy.lcdGrid < 0.0 || renderPolicy.lcdGrid > 1.0) {
+            log.add(file, "render.lcd_grid", "must be 0..1");
+        }
+        renderPolicy.lcdSubpixel = JsonContract.optionalNumber(jsonValue, "lcd_subpixel", 0.0, file, "render", log);
+        if (renderPolicy.lcdSubpixel < 0.0 || renderPolicy.lcdSubpixel > 1.0) {
+            log.add(file, "render.lcd_subpixel", "must be 0..1");
         }
         if (jsonValue.has("shell_tint")) {
             renderPolicy.shellTint = JsonContract.rgbColor(jsonValue.get("shell_tint"),

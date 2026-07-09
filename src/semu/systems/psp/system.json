@@ -45,7 +45,9 @@
   "render": {
     "style": "handheld",
     "priority": "game",
-    "corner_radius": 0.045
+    "corner_radius": 0.045,
+    "lcd_grid": 0.15,
+    "lcd_subpixel": 0.20
   },
   "doc": {
     "hardware": "480x272 PSP LCD",
