@@ -137,6 +137,8 @@ class RenderPlanner {
         environment.put("SEMU_TAP_VIGNETTE", RenderPlanner.wireFloat(bezel.vignette));
         environment.put("SEMU_TAP_LCD_GRID", RenderPlanner.wireFloat(bezel.lcdGrid));
         environment.put("SEMU_TAP_LCD_SUBPIXEL", RenderPlanner.wireFloat(bezel.lcdSubpixel));
+        environment.put("SEMU_TAP_LCD_MONO", RenderPlanner.wireFloat(bezel.lcdMono));
+        environment.put("SEMU_TAP_LCD_WASH", RenderPlanner.wireFloat(bezel.lcdWash));
         environment.put("SEMU_TAP_SHELL", RenderPlanner.wireFloat(bezel.shellTint.r) + ","
             + RenderPlanner.wireFloat(bezel.shellTint.g) + ","
             + RenderPlanner.wireFloat(bezel.shellTint.b));

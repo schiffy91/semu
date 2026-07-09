@@ -48,9 +48,10 @@
     "style": "handheld",
     "priority": "bezel",
     "kind": "dual",
-    "corner_radius": 0.045,
+    "corner_radius": 0.05,
     "lcd_grid": 0.20,
     "lcd_subpixel": 0.25,
+    "lcd_wash": 0.10,
     "shell_tint": {
       "r": 0.82,
       "g": 0.82,

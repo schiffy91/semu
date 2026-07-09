@@ -54,7 +54,7 @@
     "style": "handheld",
     "priority": "game",
     "kind": "dual",
-    "corner_radius": 0.045,
+    "corner_radius": 0.09,
     "lcd_grid": 0.12,
     "lcd_subpixel": 0.20,
     "shell_tint": {

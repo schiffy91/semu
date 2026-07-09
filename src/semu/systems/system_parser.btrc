@@ -74,6 +74,9 @@ class RenderPolicy {
     // Handheld LCD realism: inter-pixel grid depth + RGB subpixel-stripe depth. 0 for CRT tubes.
     public double lcdGrid;
     public double lcdSubpixel;
+    // DMG monochrome green ramp (Game Boy) + reflective panel wash (desaturate/dim/soften).
+    public double lcdMono;
+    public double lcdWash;
     public RgbColor shellTint;
     public bool retroDefault;
     public string assetProfile;
@@ -91,6 +94,8 @@ class RenderPolicy {
         self.vignette = 0.0;
         self.lcdGrid = 0.0;
         self.lcdSubpixel = 0.0;
+        self.lcdMono = 0.0;
+        self.lcdWash = 0.0;
         self.shellTint = RgbColor();
         self.retroDefault = false;
         self.assetProfile = "";
@@ -453,7 +458,8 @@ class RenderPolicyParser {
         }
         Vector<string> allowedKeys = ["style", "priority", "kind", "fill", "reflect", "curvature",
                                       "corner_radius", "glow", "bloom", "vignette", "lcd_grid",
-                                      "lcd_subpixel", "shell_tint", "retro_default", "asset_profile"];
+                                      "lcd_subpixel", "lcd_mono", "lcd_wash", "shell_tint",
+                                      "retro_default", "asset_profile"];
         JsonContract.checkKeys(jsonValue, allowedKeys, file, "render", log);
 
         renderPolicy.style = JsonContract.requiredString(jsonValue, "style", file, "render", log);
@@ -507,6 +513,14 @@ class RenderPolicyParser {
         renderPolicy.lcdSubpixel = JsonContract.optionalNumber(jsonValue, "lcd_subpixel", 0.0, file, "render", log);
         if (renderPolicy.lcdSubpixel < 0.0 || renderPolicy.lcdSubpixel > 1.0) {
             log.add(file, "render.lcd_subpixel", "must be 0..1");
+        }
+        renderPolicy.lcdMono = JsonContract.optionalNumber(jsonValue, "lcd_mono", 0.0, file, "render", log);
+        if (renderPolicy.lcdMono < 0.0 || renderPolicy.lcdMono > 1.0) {
+            log.add(file, "render.lcd_mono", "must be 0..1");
+        }
+        renderPolicy.lcdWash = JsonContract.optionalNumber(jsonValue, "lcd_wash", 0.0, file, "render", log);
+        if (renderPolicy.lcdWash < 0.0 || renderPolicy.lcdWash > 1.0) {
+            log.add(file, "render.lcd_wash", "must be 0..1");
         }
         if (jsonValue.has("shell_tint")) {
             renderPolicy.shellTint = JsonContract.rgbColor(jsonValue.get("shell_tint"),

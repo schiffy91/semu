@@ -15,9 +15,11 @@ uniform float uAlign; uniform vec4 uHole; /* alignment diag: uHole = declared sc
 uniform sampler2D uGlass; uniform float uHasGlass; /* screen-glass layer: .a = screen MASK (real cutout shape), .rgb = glass */
 uniform float uReflect; /* reflection/glare strength */ uniform float uCurve; /* CRT barrel curvature (0 = flat) */ uniform float uScreenCorner; /* CRT rounded-mask corner radius */
 uniform float uLcdGrid; uniform float uLcdSub; /* handheld LCD: inter-pixel grid depth + RGB subpixel-stripe depth (0..1) */
+uniform float uLcdMono; uniform float uLcdWash; /* LCD: monochrome DMG green ramp + reflective wash (desaturate/dim/soften), 0..1 */
 float sdRound(vec2 p, vec2 b, float r){ vec2 d=abs(p)-b+r; return length(max(d,vec2(0.0)))+min(max(d.x,d.y),0.0)-r; }
 vec3 gameAt(vec2 uv, float lod){ return textureLod(uGame,(uSrc.xy+uv*uSrc.zw)/uWin,lod).rgb; }
 vec3 artAt(vec2 sp){ vec2 auv=vec2((sp.x-uBezelRect.x)/uBezelRect.z, 1.0-(sp.y-uBezelRect.y)/uBezelRect.w); return texture(uBezel,auv).rgb; }
+vec3 bezelAt(vec2 sp){ vec2 auv=vec2((sp.x-uBezelRect.x)/uBezelRect.z, 1.0-(sp.y-uBezelRect.y)/uBezelRect.w); vec4 a=texture(uBezel,auv); return a.rgb*a.a; }
 vec4 glassAt(vec2 sp){ vec2 auv=vec2((sp.x-uBezelRect.x)/uBezelRect.z, 1.0-(sp.y-uBezelRect.y)/uBezelRect.w); return texture(uGlass,auv); }
 uniform sampler2D uMenu; uniform vec4 uMenuRect; uniform float uMenuOn; /* overlay menu (screen-px rect, GL y-up) */
 vec3 menuComposite(vec3 c, vec2 px){ if(uMenuOn>0.5 && px.x>=uMenuRect.x&&px.x<=uMenuRect.x+uMenuRect.z&&px.y>=uMenuRect.y&&px.y<=uMenuRect.y+uMenuRect.w){ vec2 muv=vec2((px.x-uMenuRect.x)/uMenuRect.z, 1.0-(px.y-uMenuRect.y)/uMenuRect.w); vec4 m=texture(uMenu,muv); return mix(c,m.rgb,m.a);} return c; }
@@ -28,6 +30,8 @@ vec3 lcdPanel(vec3 g, vec2 uv, float nv, float aspect){
   float sx=cuv.x*3.0; float sfw=fwidth(sx)+1e-6; vec3 lane;
   lane.r=1.0-smoothstep(1.0-sfw,1.0+sfw,sx); lane.b=smoothstep(2.0-sfw,2.0+sfw,sx); lane.g=clamp(1.0-lane.r-lane.b,0.0,1.0);
   float fl=mix(1.0,0.18,uLcdSub); vec3 sub=mix(vec3(fl),vec3(1.0),lane); sub*=3.0/(1.0+2.0*fl);
+  if(uLcdMono>0.001){ float l=dot(g,vec3(0.299,0.587,0.114)); vec3 dmg=mix(vec3(0.055,0.212,0.055),vec3(0.608,0.737,0.055),l); g=mix(g,dmg,uLcdMono); }
+  if(uLcdWash>0.001){ float l=dot(g,vec3(0.299,0.587,0.114)); g=mix(g,vec3(l),uLcdWash*0.5); g=mix(g,vec3(0.5)+(g-0.5)*0.80,uLcdWash); g*=mix(1.0,0.80,uLcdWash); }
   vec3 c=g; c=c*0.94+0.06;
   c=mix(c,c*c*(3.0-2.0*c),0.25);
   c=c*sub; c=c*gf; c=c+0.04*(1.0-c);
@@ -50,13 +54,14 @@ void main(){
     frag=vec4(outc,1.0); return;
   }
   if(uDual>0.5){
-    vec3 oc = uHasArt>0.5 ? artAt(px) : vec3(0.0);
+    vec3 oc = uHasArt>0.5 ? bezelAt(px) : vec3(0.0);
     for(int s=0;s<2;s++){
       vec4 R=(s==0)?uRect:uRect2; vec4 S=(s==0)?uSrc:uSrc2;
-      if(px.x>=R.x&&px.x<=R.x+R.z&&px.y>=R.y&&px.y<=R.y+R.w){
+      if(px.x>=R.x-1.0&&px.x<=R.x+R.z+1.0&&px.y>=R.y-1.0&&px.y<=R.y+R.w+1.0){
         vec2 uv=(px-R.xy)/R.zw; vec3 g=textureLod(uGame,(S.xy+uv*S.zw)/uWin,uRetro).rgb;
         if(uShaderMode<1.5){ g = lcdPanel(g, uv, uNative, R.z/R.w); }
-        oc=g;
+        vec2 cc=uv*2.0-1.0; float m=1.0-smoothstep(-0.012,0.012, sdRound(cc, vec2(1.0), clamp(uScreenCorner,0.0,0.5)));
+        oc=mix(oc,g,m);
       }
     }
     frag=vec4(menuComposite(oc,px),1.0); return;
@@ -68,7 +73,7 @@ void main(){
   bool inRect = uv.x>=0.0&&uv.x<=1.0&&uv.y>=0.0&&uv.y<=1.0;
   vec4 gl = uHasGlass>0.5 ? glassAt(px) : vec4(0.0);
   float mask = uHasArt<0.5 ? 1.0 : (uHasGlass>0.5 ? gl.a : (1.0 - smoothstep(-0.012,0.012, sdRound(cc, vec2(1.0), clamp(uScreenCorner,0.0,0.5)))));
-  vec3 bez = uHasArt>0.5 ? artAt(px) : vec3(0.0);
+  vec3 bez = uHasArt>0.5 ? bezelAt(px) : vec3(0.0);
   if(uStyle<0.5 && uHasArt>0.5) bez *= 0.5;
   if(uTV.x>0.001 && uStyle<0.5 && uHasArt>0.5){
     vec2 nuv=clamp(uv,0.0,1.0); vec3 spill=gameAt(nuv,5.0);
