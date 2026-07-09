@@ -156,11 +156,14 @@ class EmulatorExecution {
         }
         // TOML's [Section] + key = value surface is textually identical to
         // ini for this purpose (observed live: melonDS.toml [3D] Renderer),
-        // so both formats share the section-aware upsert. xml stays future.
+        // so both formats share the section-aware upsert. xml (Cemu
+        // settings.xml GraphicAPI) uses the flat-element upsert below.
         if (!platform.graphics.format.equals("ini")
-            && !platform.graphics.format.equals("toml")) {
+            && !platform.graphics.format.equals("toml")
+            && !platform.graphics.format.equals("xml")) {
             return;
         }
+        bool isXml = platform.graphics.format.equals("xml");
         if (EmulatorExecution.environmentValueFor(resolvedPlan, "LD_PRELOAD").isEmpty()) {
             return;
         }
@@ -177,15 +180,23 @@ class EmulatorExecution {
         if (configurationPath.contains("${")) {
             return;
         }
-        string updated = EmulatorExecution.upsertIniValue(
-            FileSystem.isFile(configurationPath) ? Path.readAll(configurationPath) : "",
-            platform.graphics.section, platform.graphics.key, forcedValue);
+        string existingText = FileSystem.isFile(configurationPath)
+            ? Path.readAll(configurationPath) : "";
+        string updated = isXml
+            ? EmulatorExecution.upsertXmlValue(existingText,
+                platform.graphics.key, forcedValue)
+            : EmulatorExecution.upsertIniValue(existingText,
+                platform.graphics.section, platform.graphics.key, forcedValue);
         for (int pinIndex = 0; pinIndex < platform.graphics.extraPinKeys.size();
              pinIndex++) {
-            updated = EmulatorExecution.upsertIniValue(updated,
-                platform.graphics.extraPinSections.get(pinIndex),
-                platform.graphics.extraPinKeys.get(pinIndex),
-                platform.graphics.extraPinValues.get(pinIndex));
+            updated = isXml
+                ? EmulatorExecution.upsertXmlValue(updated,
+                    platform.graphics.extraPinKeys.get(pinIndex),
+                    platform.graphics.extraPinValues.get(pinIndex))
+                : EmulatorExecution.upsertIniValue(updated,
+                    platform.graphics.extraPinSections.get(pinIndex),
+                    platform.graphics.extraPinKeys.get(pinIndex),
+                    platform.graphics.extraPinValues.get(pinIndex));
         }
         UnixFileSystem.mkdirp(PathTools.dirname(configurationPath));
         Path.writeAll(configurationPath, updated);
@@ -234,6 +245,36 @@ class EmulatorExecution {
             }
         }
         return result;
+    }
+
+    // Flat XML element upsert: replace the inner text of the first
+    // <elementName>...</elementName> with value, preserving the rest of the
+    // document (indentation, siblings) byte-for-byte. When the element is
+    // absent, insert it just before the document's final closing tag (or
+    // append). Cemu's settings.xml GraphicAPI is exactly this scalar element.
+    class string upsertXmlValue(string existingText, string elementName, string value) {
+        string openTag = "<" + elementName + ">";
+        string closeTag = "</" + elementName + ">";
+        int openIndex = existingText.indexOf(openTag);
+        if (openIndex >= 0) {
+            int contentStart = openIndex + openTag.len();
+            string tail = existingText.substring(contentStart, existingText.len());
+            int closeRelative = tail.indexOf(closeTag);
+            if (closeRelative >= 0) {
+                return existingText.substring(0, contentStart) + value
+                    + tail.substring(closeRelative, tail.len());
+            }
+        }
+        string element = openTag + value + closeTag;
+        if (existingText.isEmpty()) {
+            return element + "\n";
+        }
+        int lastClose = existingText.lastIndexOf("</");
+        if (lastClose >= 0) {
+            return existingText.substring(0, lastClose) + element + "\n"
+                + existingText.substring(lastClose, existingText.len());
+        }
+        return existingText + "\n" + element + "\n";
     }
 
     class void mergeProfileSubtree(string sourceDirectory, string targetDirectory) {

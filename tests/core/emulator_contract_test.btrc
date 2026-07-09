@@ -704,8 +704,29 @@ class EmulatorContractTest {
             failures = failures + EmulatorContractTest.fail(
                 "graphics-force upsert must create the missing section");
         }
+        // XML (Cemu settings.xml GraphicAPI 0=OpenGL): replace the scalar
+        // element's inner text, preserving indentation + siblings; insert
+        // before the document's final closing tag when the element is absent.
+        string xmlReplaced = EmulatorExecution.upsertXmlValue(
+            "<content>\n\t<GraphicAPI>1</GraphicAPI>\n\t<Fullscreen>true</Fullscreen>\n</content>\n",
+            "GraphicAPI", "0");
+        if (!xmlReplaced.contains("\t<GraphicAPI>0</GraphicAPI>")
+            || xmlReplaced.contains("<GraphicAPI>1</GraphicAPI>")
+            || !xmlReplaced.contains("\t<Fullscreen>true</Fullscreen>")) {
+            failures = failures + EmulatorContractTest.fail(
+                "graphics-force xml upsert must replace the element text and keep siblings");
+        }
+        string xmlInserted = EmulatorExecution.upsertXmlValue(
+            "<content>\n\t<Fullscreen>true</Fullscreen>\n</content>\n",
+            "GraphicAPI", "0");
+        if (!xmlInserted.contains("<GraphicAPI>0</GraphicAPI>")
+            || xmlInserted.indexOf("<GraphicAPI>0</GraphicAPI>")
+               > xmlInserted.indexOf("</content>")) {
+            failures = failures + EmulatorContractTest.fail(
+                "graphics-force xml upsert must insert the element before the closing tag");
+        }
         if (failures == 0) {
-            print("  OK graphics-force section-aware ini upsert");
+            print("  OK graphics-force section-aware ini/toml + xml upsert");
         }
         return failures;
     }
