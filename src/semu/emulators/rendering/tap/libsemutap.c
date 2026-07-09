@@ -283,7 +283,7 @@ static const char *FS =
  "  }\n"
  "  vec2 cen=uRect.xy+uRect.zw*0.5; vec2 hf=uRect.zw*0.5;\n"
  "  vec2 c=(px-cen)/hf;\n"                                          // -1..1 across the game rect
- "  vec2 cc = c*(1.0 + uCurve*dot(c.yx,c.yx));\n"                   // CRT barrel curvature (uCurve=0 -> flat)
+ "  vec2 cc = c*(1.0 + (uStyle<0.5?uCurve:0.0)*dot(c.yx,c.yx));\n"  // CRT barrel curvature — CRT only; handheld LCDs are flat
  "  vec2 uv = cc*0.5+0.5;\n"
  "  bool inRect = uv.x>=0.0&&uv.x<=1.0&&uv.y>=0.0&&uv.y<=1.0;\n"    // off the (curved) screen -> bezel
  // SCREEN CUTOUT MASK: the real screen shape, NOT a hardcoded round. Handhelds use the Glass layer's alpha
@@ -315,22 +315,14 @@ static const char *FS =
  "        if(uShaderMode>1.5){ float m=mod(px.x,3.0); vec3 cmask=(m<1.0)?vec3(1.0,0.72,0.72):(m<2.0)?vec3(0.72,1.0,0.72):vec3(0.72,0.72,1.0); g*=mix(vec3(1.0),cmask,uTV.y); }\n"   // mask-only: mode 2
  "        if(uShaderMode<0.5){\n"                                   // FULL tube
  "          vec3 bl=gameAt(uv,2.0); float bsat=max(bl.r,max(bl.g,bl.b))-min(bl.r,min(bl.g,bl.b));\n"
- "          g += gameAt(uv,3.0)*uRef.z*0.6 + bl*bsat*uRef.x*2.8;\n"   // emissive halation + SATURATION-WEIGHTED BLOOM: colours glow, the white centre/gridlines stay crisp (no haze)
+ "          g += gameAt(uv,3.0)*uRef.z*0.3 + bl*bsat*uRef.x*1.2;\n"   // emissive halation + restrained SATURATION-WEIGHTED BLOOM (low diffusion)
  "          float L=dot(g,vec3(0.299,0.587,0.114)); g *= 1.0/(1.0+max(L-0.72,0.0)*1.3);\n"                          // TONEMAP: luma soft-shoulder (hue-preserving, no white crush)
  "          float m=mod(px.x,3.0); vec3 cmask=(m<1.0)?vec3(1.0,0.72,0.72):(m<2.0)?vec3(0.72,1.0,0.72):vec3(0.72,0.72,1.0); g*=mix(vec3(1.0),cmask,uTV.y);\n"   // MASK (after tonemap) — lighter/smoother, white gridlines read bright
- "          g += gameAt(uv,1.0)*0.10;\n"                            // fine soft phosphor bleed: smooth the hard cross-hatch toward Duimon's finer mask
  "          g *= exp(-uRef.y*dot(cc,cc)*1.4);\n"                    // VIGNETTE (uRef.y): exponential tube falloff
  "          g = clamp(mix(vec3(dot(g,vec3(0.299,0.587,0.114))), g, 1.6), 0.0, 1.0);\n"    // SATURATION punch (the tonemap desaturates highlights)
  "          g = mix(g, g*g*(3.0-2.0*g), 0.68);\n"                   // CONTRAST S-curve: deepen blacks + open highlights (softened so it isn't neon/harsh)
  "          g = clamp((g-0.05)*1.20, 0.0, 1.0);\n"                  // BLACK-FLOOR removal + gain: kill the milky raised-black haze, keep the tube luminous
- "          if(uReflect>0.001){\n"                                  // GLASS: curvature normal -> fresnel bezel reflection + soft specular
- "            vec3 N=normalize(vec3(c*max(uCurve,0.02)*6.0,1.0)); float fres=pow(1.0-N.z,2.4);\n"
- "            vec3 refl=artAt(cen+(px-cen)*1.13);\n"                // bezel just outside the screen, reflected inward on the glass
- "            g=mix(g, refl*0.42, clamp(fres*uReflect*3.2,0.0,0.6));\n"
- "            vec3 H=normalize(vec3(-0.35,0.42,1.0)); float spec=pow(max(dot(N,H),0.0),5.0);\n"
- "            g=1.0-(1.0-g)*(1.0-spec*uReflect*0.7);\n"             // soft specular sheen (screen blend)
- "          }\n"
- "          float edge=min(min(uv.x,1.0-uv.x),min(uv.y,1.0-uv.y)); g*=mix(0.5,1.0,smoothstep(0.0,0.02,edge));\n"   // INNER SHADOW
+ "          float edge=min(min(uv.x,1.0-uv.x),min(uv.y,1.0-uv.y)); g*=mix(0.5,1.0,smoothstep(0.0,0.02,edge));\n"   // INNER SHADOW (recessed glass edge)
  "        }\n"
  "      } else {\n"                                                 // LCD
  "        if(uShaderMode<1.5){ float nx=uNative*uRect.z/uRect.w; g*=0.90+0.10*sqrt(abs(cos(uv.x*nx*3.14159265))*abs(cos(uv.y*uNative*3.14159265))); }\n" // grid: 0,1

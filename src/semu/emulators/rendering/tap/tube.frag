@@ -50,7 +50,7 @@ void main(){
   }
   vec2 cen=uRect.xy+uRect.zw*0.5; vec2 hf=uRect.zw*0.5;
   vec2 c=(px-cen)/hf;
-  vec2 cc = c*(1.0 + uCurve*dot(c.yx,c.yx));
+  vec2 cc = c*(1.0 + (uStyle<0.5?uCurve:0.0)*dot(c.yx,c.yx));
   vec2 uv = cc*0.5+0.5;
   bool inRect = uv.x>=0.0&&uv.x<=1.0&&uv.y>=0.0&&uv.y<=1.0;
   vec4 gl = uHasGlass>0.5 ? glassAt(px) : vec4(0.0);
@@ -71,21 +71,13 @@ void main(){
         if(uShaderMode>1.5){ float m=mod(px.x,3.0); vec3 cmask=(m<1.0)?vec3(1.0,0.72,0.72):(m<2.0)?vec3(0.72,1.0,0.72):vec3(0.72,0.72,1.0); g*=mix(vec3(1.0),cmask,uTV.y); }
         if(uShaderMode<0.5){
           vec3 bl=gameAt(uv,2.0); float bsat=max(bl.r,max(bl.g,bl.b))-min(bl.r,min(bl.g,bl.b));
-          g += gameAt(uv,3.0)*uRef.z*0.6 + bl*bsat*uRef.x*2.8;
+          g += gameAt(uv,3.0)*uRef.z*0.3 + bl*bsat*uRef.x*1.2;
           float L=dot(g,vec3(0.299,0.587,0.114)); g *= 1.0/(1.0+max(L-0.72,0.0)*1.3);
           float m=mod(px.x,3.0); vec3 cmask=(m<1.0)?vec3(1.0,0.72,0.72):(m<2.0)?vec3(0.72,1.0,0.72):vec3(0.72,0.72,1.0); g*=mix(vec3(1.0),cmask,uTV.y);
-          g += gameAt(uv,1.0)*0.10;
           g *= exp(-uRef.y*dot(cc,cc)*1.4);
           g = clamp(mix(vec3(dot(g,vec3(0.299,0.587,0.114))), g, 1.6), 0.0, 1.0);
           g = mix(g, g*g*(3.0-2.0*g), 0.68);
           g = clamp((g-0.05)*1.20, 0.0, 1.0);
-          if(uReflect>0.001){
-            vec3 N=normalize(vec3(c*max(uCurve,0.02)*6.0,1.0)); float fres=pow(1.0-N.z,2.4);
-            vec3 refl=artAt(cen+(px-cen)*1.13);
-            g=mix(g, refl*0.42, clamp(fres*uReflect*3.2,0.0,0.6));
-            vec3 H=normalize(vec3(-0.35,0.42,1.0)); float spec=pow(max(dot(N,H),0.0),5.0);
-            g=1.0-(1.0-g)*(1.0-spec*uReflect*0.7);
-          }
           float edge=min(min(uv.x,1.0-uv.x),min(uv.y,1.0-uv.y)); g*=mix(0.5,1.0,smoothstep(0.0,0.02,edge));
         }
       } else {
