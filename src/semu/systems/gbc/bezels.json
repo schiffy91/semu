@@ -4,9 +4,9 @@
   "default_variant": "grape",
   "hole": {
     "x": 0.085,
-    "y": 0.0863,
+    "y": 0.09,
     "w": 0.83,
-    "h": 0.3329
+    "h": 0.28
   },
   "variants": [
     {

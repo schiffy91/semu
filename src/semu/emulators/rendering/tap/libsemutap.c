@@ -323,6 +323,7 @@ static const char *FS =
  "          g = clamp(mix(vec3(dot(g,vec3(0.299,0.587,0.114))), g, 1.6), 0.0, 1.0);\n"    // SATURATION punch (the tonemap desaturates highlights)
  "          g = mix(g, g*g*(3.0-2.0*g), 0.68);\n"                   // CONTRAST S-curve: deepen blacks + open highlights (softened so it isn't neon/harsh)
  "          g = clamp((g-0.05)*1.20, 0.0, 1.0);\n"                  // BLACK-FLOOR removal + gain: kill the milky raised-black haze, keep the tube luminous
+ "          if(uReflect>0.001){ float d=abs((uv.x*0.8+uv.y)-1.05); float gloss=smoothstep(0.5,0.04,d); g=1.0-(1.0-g)*(1.0-gloss*uReflect*0.85); }\n"   // GLASS REFLECTION: one soft diagonal window sheen across the tube (screen-blend, subtle)
  "          float edge=min(min(uv.x,1.0-uv.x),min(uv.y,1.0-uv.y)); g*=mix(0.5,1.0,smoothstep(0.0,0.02,edge));\n"   // INNER SHADOW (recessed glass edge)
  "        }\n"
  "      } else {\n"                                                 // LCD
