@@ -3,23 +3,23 @@
   "enabled": true,
   "default_variant": "vertical",
   "hole": {
-    "x": 0.2828,
-    "y": 0.0406,
-    "w": 0.4344,
-    "h": 0.9249
+    "x": 0.2892,
+    "y": 0.0464,
+    "w": 0.4212,
+    "h": 0.9096
   },
   "screen_holes": {
     "top": {
-      "x": 0.2828,
-      "y": 0.0406,
-      "w": 0.4344,
-      "h": 0.417
+      "x": 0.2892,
+      "y": 0.0464,
+      "w": 0.4212,
+      "h": 0.4043
     },
     "bottom": {
-      "x": 0.3277,
-      "y": 0.552,
-      "w": 0.3445,
-      "h": 0.4134
+      "x": 0.3339,
+      "y": 0.5511,
+      "w": 0.3317,
+      "h": 0.4049
     }
   },
   "variants": [
@@ -29,23 +29,23 @@
       "art": "assets/bezels/n3ds/vertical.png",
       "screen_holes": {
         "top": {
-          "x": 0.2828,
-          "y": 0.0406,
-          "w": 0.4344,
-          "h": 0.417
+          "x": 0.2892,
+          "y": 0.0464,
+          "w": 0.4212,
+          "h": 0.4043
         },
         "bottom": {
-          "x": 0.3277,
-          "y": 0.552,
-          "w": 0.3445,
-          "h": 0.4134
+          "x": 0.3339,
+          "y": 0.5511,
+          "w": 0.3317,
+          "h": 0.4049
         }
       },
       "hole": {
-        "x": 0.2828,
-        "y": 0.0406,
-        "w": 0.4344,
-        "h": 0.9249
+        "x": 0.2892,
+        "y": 0.0464,
+        "w": 0.4212,
+        "h": 0.9096
       }
     },
     {
@@ -75,6 +75,6 @@
     }
   ],
   "doc": {
-    "note": "Duimon 3DS clamshell shell render; holes mirror the NDS vertical geometry (Duimon keeps device placement consistent). Verify with SEMU_TAP_ALIGN on-device; the 3DS top screen is 5:3 while the tap aspect-fits with the combined-native split \u2014 known approximation."
+    "note": "Duimon 3DS clamshell shell render. vertical screen_holes are deterministically probed from the art openings (bezel_probe, sub-pixel 50%-luma crossing); top 5:3 / bottom 4:3 are cover-fit from the combined-native split. Verify with SEMU_TAP_ALIGN on-device."
   }
 }

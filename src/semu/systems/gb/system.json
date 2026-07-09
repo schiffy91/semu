@@ -18,6 +18,8 @@
     "reflect": 0.55,
     "lcd_grid": 0.55,
     "lcd_subpixel": 0.0,
+    "lcd_mono": 1.0,
+    "lcd_wash": 0.12,
     "shell_tint": { "r": 0.60, "g": 0.64, "b": 0.55 }
   },
   "doc": {

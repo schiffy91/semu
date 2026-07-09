@@ -3,23 +3,23 @@
   "enabled": true,
   "default_variant": "vertical",
   "hole": {
-    "x": 0.334,
-    "y": 0.0323,
-    "w": 0.332,
-    "h": 0.9272
+    "x": 0.3399,
+    "y": 0.0299,
+    "w": 0.3199,
+    "h": 0.9218
   },
   "screen_holes": {
     "top": {
-      "x": 0.334,
-      "y": 0.0323,
-      "w": 0.332,
-      "h": 0.3984
+      "x": 0.3399,
+      "y": 0.0299,
+      "w": 0.3197,
+      "h": 0.3927
     },
     "bottom": {
-      "x": 0.334,
-      "y": 0.5611,
-      "w": 0.332,
-      "h": 0.3984
+      "x": 0.3399,
+      "y": 0.5591,
+      "w": 0.3199,
+      "h": 0.3926
     }
   },
   "variants": [
@@ -28,23 +28,23 @@
       "label": "DS Vertical",
       "art": "assets/bezels/nds/vertical.png",
       "hole": {
-        "x": 0.334,
-        "y": 0.0323,
-        "w": 0.332,
-        "h": 0.9272
+        "x": 0.3399,
+        "y": 0.0299,
+        "w": 0.3199,
+        "h": 0.9218
       },
       "screen_holes": {
         "top": {
-          "x": 0.334,
-          "y": 0.0323,
-          "w": 0.332,
-          "h": 0.3984
+          "x": 0.3399,
+          "y": 0.0299,
+          "w": 0.3197,
+          "h": 0.3927
         },
         "bottom": {
-          "x": 0.334,
-          "y": 0.5611,
-          "w": 0.332,
-          "h": 0.3984
+          "x": 0.3399,
+          "y": 0.5591,
+          "w": 0.3199,
+          "h": 0.3926
         }
       }
     },
@@ -100,6 +100,6 @@
     }
   ],
   "doc": {
-    "layouts": "vertical/horizontal are Duimon shell renders (colorized silhouette + real modeled controls; holes art-relative from Duimon preset math); big_screen keeps the minimal panel (4x integer primary + native secondary)."
+    "layouts": "vertical/horizontal are Duimon shell renders (colorized silhouette + real modeled controls; holes art-relative from Duimon preset math); big_screen keeps the minimal panel (4x integer primary + native secondary). vertical screen_holes are deterministically probed from the art's screen openings (bezel_probe, sub-pixel 50%-luma crossing)."
   }
 }
