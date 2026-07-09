@@ -1,0 +1,8 @@
+FROM docker.io/library/debian:bookworm-slim
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential clang pkg-config ca-certificates \
+    libegl1-mesa-dev libgles2-mesa-dev libgl1-mesa-dev libglvnd-dev \
+    libgbm-dev mesa-utils libosmesa6 libgl1-mesa-dri \
+    xvfb xauth x11-utils libx11-dev libxext-dev \
+ && rm -rf /var/lib/apt/lists/*
+ENV LIBGL_ALWAYS_SOFTWARE=1 GALLIUM_DRIVER=llvmpipe
