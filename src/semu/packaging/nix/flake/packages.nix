@@ -59,7 +59,19 @@ forAllSystems (system: let
         dontConfigure = true;
         buildPhase = ''
           runHook preBuild
-          $CC -shared -fPIC -O2 -o libsemutap.so libsemutap.c -ldl -lm
+          # Ship the btrc tap: transpile libsemutap.btrc -> C (--no-dce so the
+          # library's exported hooks survive dead-code elimination), then link the
+          # stb_image TU, restricting exports to the 4 contract symbols (else
+          # btrc's external-linkage default leaks ~53 helper globals into the
+          # LD_PRELOAD namespace). The C source (libsemutap.c) is retained in the
+          # tree as an instant revert until this is Deck-smoke-tested at runtime.
+          ${btrcpy}/bin/btrcpy libsemutap.btrc -o libsemutap_gen.c --no-dce --no-stdlib
+          $CC -c -O2 stb_impl.c -o stb_impl.o
+          cat > exports.map <<'MAP'
+{ global: semu_tap_report; dlsym; glXSwapBuffers; eglSwapBuffers; local: *; };
+MAP
+          $CC -shared -fPIC -O2 -I. libsemutap_gen.c stb_impl.o \
+            -Wl,--version-script=exports.map -ldl -lm -o libsemutap.so
           runHook postBuild
         '';
         installPhase = ''
