@@ -72,7 +72,6 @@
         "method": "cli",
         "tap_api": "opengl"
       },
-      "overlay_aspect": "4x3",
       "aspect_probe": {
         "files": [
           "${state_root}/config/dolphin-emu/Config/GFX.ini",

@@ -43,10 +43,6 @@ class Pcsx2Emulator extends SemuEmulator implements SemuEmitter, SemuRenderer {
         return arguments;
     }
 
-    public string overlayConfiguration(EmulatorPlatform platform) {
-        return "";
-    }
-
     // PCSX2's native hotkey grammar lives in Pcsx2Emitter (single owner for
     // profile emission and chord translation).
     public string translateChord(string chord) {

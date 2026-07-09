@@ -81,7 +81,6 @@ class GraphicsPolicy {
     public Vector<string> extraPinKeys;
     public Vector<string> extraPinValues;
     public string tapApi;
-    public string overlayApi;
 
     public GraphicsPolicy() {
         self.present = false;
@@ -96,7 +95,6 @@ class GraphicsPolicy {
         self.extraPinKeys = [];
         self.extraPinValues = [];
         self.tapApi = "";
-        self.overlayApi = "";
     }
 }
 
@@ -216,7 +214,6 @@ class EmulatorPlatform {
     public Vector<string> environmentUnset;
     public SandboxPolicy sandbox;
     public GraphicsPolicy graphics;
-    public string overlayAspect;
     public AspectProbe aspectProbe;
     public StatePolicy state;
     public FirmwarePolicy firmware;
@@ -237,7 +234,6 @@ class EmulatorPlatform {
         self.environmentUnset = [];
         self.sandbox = SandboxPolicy();
         self.graphics = GraphicsPolicy();
-        self.overlayAspect = "";
         self.aspectProbe = AspectProbe();
         self.state = StatePolicy();
         self.firmware = FirmwarePolicy();
@@ -397,8 +393,7 @@ class GraphicsPolicyParser {
             return graphics;
         }
         graphics.present = true;
-        Vector<string> allowedKeys = ["method", "file", "format", "key", "section", "values", "extra_pins", "tap_api",
-                                      "overlay_api"];
+        Vector<string> allowedKeys = ["method", "file", "format", "key", "section", "values", "extra_pins", "tap_api"];
         JsonContract.checkKeys(jsonValue, allowedKeys, file, context, log);
         graphics.method = JsonContract.requiredString(jsonValue, "method", file, context, log);
         Vector<string> methods = ["config_file", "cli", "dynamic", "none"];
@@ -416,10 +411,6 @@ class GraphicsPolicyParser {
         graphics.tapApi = JsonContract.optionalString(jsonValue, "tap_api", "",
             file, context, log);
         JsonContract.checkEnum(graphics.tapApi, graphicsApis, file, context + ".tap_api", log);
-        graphics.overlayApi = JsonContract.optionalString(jsonValue, "overlay_api", "",
-            file, context, log);
-        JsonContract.checkEnum(graphics.overlayApi, graphicsApis, file,
-            context + ".overlay_api", log);
         return graphics;
     }
 }
@@ -627,12 +618,9 @@ interface SemuEmitter {
 
 // SemuRenderer — the rendering/configuration duty. Every emulator class must
 // answer how its graphics backend is forced from the command line (empty
-// when graphics.method is not 'cli') and what emulator-native overlay
-// configuration text it wants written ("" when the shared tap/overlay
-// machinery owns presentation).
+// when graphics.method is not 'cli').
 interface SemuRenderer {
     Vector<string> graphicsForceArguments(EmulatorPlatform platform, string graphicsApi);
-    string overlayConfiguration(EmulatorPlatform platform);
 }
 
 abstract class SemuEmulator implements SemuEmitter, SemuRenderer {
@@ -658,7 +646,6 @@ abstract class SemuEmulator implements SemuEmitter, SemuRenderer {
     // The SemuRenderer duty (see the interface above).
     public abstract Vector<string> graphicsForceArguments(EmulatorPlatform platform,
                                                           string graphicsApi);
-    public abstract string overlayConfiguration(EmulatorPlatform platform);
 
     // Translate a semu-keymap-v1 chord into the emulator's native hotkey
     // syntax ("" when the emulator has no native hotkey grammar).

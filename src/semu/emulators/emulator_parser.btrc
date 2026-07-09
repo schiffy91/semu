@@ -110,7 +110,7 @@ class EmulatorParser {
         // The single allowed extra key is the emulator-id extension block.
         Vector<string> allowedKeys = ["backend", "flatpak_id", "executable", "display_server",
                                       "display_default", "sessions", "args", "gl_wrapper", "env",
-                                      "sandbox", "graphics", "overlay_aspect", "aspect_probe",
+                                      "sandbox", "graphics", "aspect_probe",
                                       "state", "firmware", emulatorId];
         JsonContract.checkKeys(jsonValue, allowedKeys, file, context, log);
 
@@ -154,11 +154,6 @@ class EmulatorParser {
             platform.graphics = GraphicsPolicyParser.parse(jsonValue.get("graphics"),
                 file, context + ".graphics", log);
         }
-        platform.overlayAspect = JsonContract.optionalString(jsonValue, "overlay_aspect", "",
-            file, context, log);
-        Vector<string> overlayAspects = ["4x3", "16x9", "3ds"];
-        JsonContract.checkEnum(platform.overlayAspect, overlayAspects, file,
-            context + ".overlay_aspect", log);
         if (jsonValue.has("aspect_probe")) {
             platform.aspectProbe = AspectProbeParser.parse(jsonValue.get("aspect_probe"),
                 file, context + ".aspect_probe", log);

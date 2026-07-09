@@ -122,9 +122,9 @@ buildDotnetModule rec {
 
   # Rendering note (the contract JSON rejects unknown keys, so it lives
   # here): Ryujinx presents through Vulkan, which the LD_PRELOAD GL
-  # interposition cannot see — linux bezels ride the vkBasalt assets
-  # (assets/vkbasalt) until a Vulkan layer exists; macOS presents via the
-  # external overlay. No Semu source patch is carried for it.
+  # interposition cannot see — linux bezels await a Vulkan-side compositor;
+  # macOS presents via the external overlay. No Semu source patch is carried
+  # for it.
   #
   # the set nixpkgs' ryubing recipe proved out: audio backends, Vulkan, and
   # the Avalonia UI's windowing libraries

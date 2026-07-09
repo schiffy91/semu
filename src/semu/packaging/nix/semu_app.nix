@@ -5,8 +5,7 @@
 # lib/semu is materialized (symlinkJoin would link it wholesale to the CLI
 # store path) so the staged asset trees land under it, and bin/semu is
 # re-wrapped with SEMU_ASSET_ROOT pointing there — that is the root the
-# runtime resolves share/semu (bezels) and share/semu-bezel (vkbasalt pack)
-# against.
+# runtime resolves share/semu (bezels) against.
 { lib, symlinkJoin, makeWrapper
 , semuCli
 , emulatorPackages ? [ ]

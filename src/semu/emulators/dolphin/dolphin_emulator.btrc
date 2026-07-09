@@ -1,7 +1,7 @@
 // dolphin_emulator.btrc — the Dolphin concrete emulator class: identity,
 // extension-block rejection (Dolphin's contract declares none), profile
-// emission (DolphinEmitter), graphics forcing + overlay glue
-// (DolphinRendering), and the native "@(Ctrl+X)" hotkey grammar.
+// emission (DolphinEmitter), graphics forcing (DolphinRendering), and the
+// native "@(Ctrl+X)" hotkey grammar.
 
 import std.{vector}
 import ../../core/parse_log.btrc
@@ -39,10 +39,6 @@ class DolphinEmulator extends SemuEmulator implements SemuEmitter, SemuRenderer 
 
     public Vector<string> graphicsForceArguments(EmulatorPlatform platform, string graphicsApi) {
         return DolphinRendering.graphicsForceArguments(platform, graphicsApi);
-    }
-
-    public string overlayConfiguration(EmulatorPlatform platform) {
-        return DolphinRendering.overlayConfiguration(platform);
     }
 
     // Dolphin's native hotkey grammar (Deck-proven): "@(Ctrl+P)"; the bare

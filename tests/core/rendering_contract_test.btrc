@@ -112,9 +112,9 @@ class RenderingContractTest {
         syntheticSystem.display.aspect.w = 16;
         syntheticSystem.display.aspect.h = 9;
         ResolvedBezel bezel = BezelResolver.resolve(syntheticSystem, "", assetRoot);
-        if (!bezel.art.endsWith("assets/bezels/generic/16x9.png")) {
+        if (!bezel.art.endsWith("assets/generic/bezel-16x9.png")) {
             failures = failures + RenderingContractTest.fail(
-                "generic fallback art: want ...assets/bezels/generic/16x9.png, got '"
+                "generic fallback art: want ...assets/generic/bezel-16x9.png, got '"
                 + bezel.art + "'");
         }
         if (!RenderingContractTest.nearlyEqual(bezel.hole.x, 0.0300)

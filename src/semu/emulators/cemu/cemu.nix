@@ -66,8 +66,7 @@ let
   # Semu patches hook in here once the source build is the active variant —
   # none are needed today, and none would buy bezels: Cemu presents through
   # Vulkan, which the LD_PRELOAD GL interposition cannot see, so linux bezels
-  # ride the vkBasalt assets (assets/vkbasalt) until a Vulkan layer exists;
-  # macOS presents via the external overlay.
+  # await a Vulkan-side compositor; macOS presents via the external overlay.
   patches = [ ];
 
   sourceBuild = stdenv.mkDerivation {
