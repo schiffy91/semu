@@ -21,6 +21,11 @@ echo "== transpile (btrc -> C), --no-dce so library exports survive DCE =="
 echo "== compile stb_image implementation object =="
 cc -c -O2 "$HERE/stb_impl.c" -o "$OUT/stb_impl.o"
 
+# The btrc port is now fully standalone: semutap_glue.h is gone, so the -I"$HERE"
+# below only serves stb_impl.c (stb_image.h). stat_mtime_d uses the Linux st_mtim
+# member (the .so is Linux-only); on macOS the syntax-gate build maps it to
+# st_mtimespec so the verification dylib still compiles (the shipped macOS tap is
+# libsemutap.c, which keeps the platform #ifdef).
 echo "== macOS shared lib (verification build; undefined dynamic_lookup for the"
 echo "   runtime-resolved GL/dlvsym symbols; restrict exports to the tap contract) =="
 cat > "$OUT/exports.txt" <<'EOF'
@@ -29,7 +34,9 @@ _dlsym
 _glXSwapBuffers
 _eglSwapBuffers
 EOF
-cc -shared -fPIC -undefined dynamic_lookup -O2 -I"$HERE" \
+MACOS_COMPAT=""
+if [ "$(uname)" = "Darwin" ]; then MACOS_COMPAT="-Dst_mtim=st_mtimespec"; fi
+cc -shared -fPIC -undefined dynamic_lookup -O2 $MACOS_COMPAT -I"$HERE" \
    -Wl,-exported_symbols_list,"$OUT/exports.txt" \
    "$OUT/libsemutap.c" "$OUT/stb_impl.o" -o "$OUT/libsemutap.dylib" || true
 
@@ -44,6 +51,8 @@ EOF
       -Wl,--version-script="$OUT/exports.map" \
       -o "$OUT/libsemutap.so"
   echo "built $OUT/libsemutap.so"
+  echo "== exported-symbol parity check (must be exactly the 4 tap-contract syms) =="
+  nm -D --defined-only "$OUT/libsemutap.so" | grep -viE 'stbi|GLIBC|^_' || true
 else
   echo "zig not on PATH; skipping Linux cross-build (run under 'nix develop')."
 fi
