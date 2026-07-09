@@ -76,13 +76,45 @@ MAP
         '';
         installPhase = ''
           runHook preInstall
-          mkdir -p "$out/lib"
-          cp libsemutap.so "$out/lib/"
+          mkdir -p "$out/lib/semu"
+          cp libsemutap.so "$out/lib/semu/"
           runHook postInstall
         '';
         meta = {
           description = "Semu GL tap compositor loaded into emulator processes";
           platforms = [ "x86_64-linux" ];
+        };
+      }
+    else null;
+
+  # semu-overlay — the macOS compositor back end (macos_overlay.m). darwin
+  # presents via Metal, so there is no injection-free GL tap; this standalone
+  # process floats a transparent click-through window above the emulator and
+  # draws the bezel around the shared tap_geometry.h content rect (readme.md
+  # "macOS: the overlay window"). Staged into the app at lib/semu/semu-overlay,
+  # the exact path platforms/macos/macos_tap.btrc's overlayBinaryPath resolves.
+  semuOverlay =
+    if isDarwin then
+      pkgs.stdenv.mkDerivation {
+        pname = "semu-overlay";
+        version = "1";
+        src = ../../../emulators/rendering/tap;
+        dontConfigure = true;
+        buildPhase = ''
+          runHook preBuild
+          clang -fobjc-arc -Wall -O2 -framework Cocoa -framework CoreGraphics \
+            -o semu-overlay macos_overlay.m
+          runHook postBuild
+        '';
+        installPhase = ''
+          runHook preInstall
+          mkdir -p "$out/lib/semu"
+          cp semu-overlay "$out/lib/semu/"
+          runHook postInstall
+        '';
+        meta = {
+          description = "Semu macOS overlay compositor (bezel window above the emulator)";
+          platforms = [ "aarch64-darwin" "x86_64-darwin" ];
         };
       }
     else null;
@@ -108,6 +140,9 @@ MAP
 
   semuApp = pkgs.callPackage ../semu_app.nix {
     inherit semuCli esDe semuBezels semuShaders emulatorPackages runtimeTools;
+    # The compositor binary for this platform, staged into lib/semu where the
+    # launch wrappers (linux_tap.btrc / macos_tap.btrc) resolve it.
+    compositor = if semuTap != null then semuTap else semuOverlay;
   };
 in
 {
@@ -123,6 +158,7 @@ in
 }
 // lib.optionalAttrs (esDe != null) { es-de = esDe; }
 // lib.optionalAttrs (semuTap != null) { semu-tap = semuTap; }
+// lib.optionalAttrs (semuOverlay != null) { semu-overlay = semuOverlay; }
 // lib.optionalAttrs (semuEmulators.retroarchCores != null) {
   retroarch-cores = semuEmulators.retroarchCores;
 }
