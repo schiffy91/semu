@@ -56,6 +56,7 @@ void main(){
   vec4 gl = uHasGlass>0.5 ? glassAt(px) : vec4(0.0);
   float mask = uHasArt<0.5 ? 1.0 : (uHasGlass>0.5 ? gl.a : (1.0 - smoothstep(-0.012,0.012, sdRound(cc, vec2(1.0), clamp(uScreenCorner,0.0,0.5)))));
   vec3 bez = uHasArt>0.5 ? artAt(px) : vec3(0.0);
+  if(uStyle<0.5 && uHasArt>0.5) bez *= 0.5;
   if(uTV.x>0.001 && uStyle<0.5 && uHasArt>0.5){
     vec2 nuv=clamp(uv,0.0,1.0); vec3 spill=gameAt(nuv,5.0);
     float sl=dot(spill,vec3(0.299,0.587,0.114)); spill*=1.0/(1.0+max(sl-0.72,0.0)*1.3);

@@ -294,6 +294,7 @@ static const char *FS =
  // vec3(0.0). The in-game shader paths below are untouched.
  "  float mask = uHasArt<0.5 ? 1.0 : (uHasGlass>0.5 ? gl.a : (1.0 - smoothstep(-0.012,0.012, sdRound(cc, vec2(1.0), clamp(uScreenCorner,0.0,0.5)))));\n"
  "  vec3 bez = uHasArt>0.5 ? artAt(px) : vec3(0.0);\n"
+ "  if(uStyle<0.5 && uHasArt>0.5) bez *= 0.5;\n"                    // DARK ROOM (night): dim the CRT surround; the screen-glow below lights it back up
  // AMBIENT SCREEN-GLOW (uTV.x): light the bezel with the screen's own colours,
  // sampled (heavily blurred) at the nearest screen edge and faded with distance.
  // Screen-blend so it only lifts the bezel, never darkens. CRT + art only.
