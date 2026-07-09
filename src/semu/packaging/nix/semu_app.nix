@@ -13,6 +13,7 @@
 , semuBezels ? null
 , semuShaders ? null
 , runtimeTools ? [ ]
+, compositor ? null   # semu-tap (linux) or semu-overlay (darwin): its lib/semu/<bin> is staged into the asset root
 }:
 
 let
@@ -54,6 +55,18 @@ symlinkJoin {
       --set SEMU_ASSET_ROOT "$out/lib/semu" \
       --set SEMU_BIN "$out/bin/semu" \
       --prefix PATH : ${lib.escapeShellArg runtimePath}
+  '' + lib.optionalString (compositor != null) ''
+    # Stage the platform compositor binary (libsemutap.so / semu-overlay) into
+    # the asset root at lib/semu/<bin>, where linux_tap.btrc / macos_tap.btrc
+    # resolve it. Materialize lib/semu first if a bezel-less build left it a
+    # symlink to the CLI store path.
+    if [ -L "$out/lib/semu" ]; then
+      cliLib="$(readlink "$out/lib/semu")"
+      rm "$out/lib/semu"; mkdir -p "$out/lib/semu"; cp -RL "$cliLib/." "$out/lib/semu/"
+    fi
+    chmod -R u+w "$out/lib/semu"
+    cp -RL ${compositor}/lib/semu/. "$out/lib/semu/"
+    chmod -R u+w "$out/lib/semu"
   '';
   meta.description = "Semu with all contract-required emulators and assets bundled";
 }
