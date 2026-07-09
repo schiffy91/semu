@@ -1,10 +1,24 @@
-# semu_bezels.nix — generic interpreter for the global bezel manifest
-# src/semu/assets/bezels.json (recipe types copy / local / flatten / recolor /
-# glass) plus its "staging" section. bezels.json is the only place bezel
-# upstream pins, art recipes, and the generic fallback table live; a new entry
-# there is picked up here with zero nix edits.
+# semu_bezels.nix — the bezel-art asset trees for Semu, driven by the global
+# manifest src/semu/assets/bezels.json (recipe types copy / local / flatten /
+# recolor / glass / panel / shell / photo, the generic fallback table, and the
+# "staging" section). bezels.json is the only place upstream pins, art recipes,
+# and the generic fallback table live.
 #
-# Output layout:
+# Two derivations come out of the one manifest:
+#
+#   (default / `semu-bezels`) — the COPIER. Stages the committed, on-disk final
+#     art (src/semu/assets/{bezels,generic,fonts}/… + bezels.json) into
+#     share/semu/<asset key>. No fetch, no imagemagick: the bytes it ships are
+#     exactly the committed source. semu_app.nix consumes this, so a normal app
+#     build never touches the network for bezels.
+#
+#   (passthru.generate / `semu-bezels-generate`) — the REGENERATOR. Fetches the
+#     Duimon/soqueroeu upstreams and re-renders every recipe with imagemagick.
+#     `nix run .#bake-bezels` copies its share/semu/assets/bezels/ back over the
+#     committed tree, keeping the committed PNGs byte-identical to what the
+#     recipes produce (the copier then ships those same bytes).
+#
+# Output layout (both derivations):
 #   share/semu/<asset key>   canonical tree ($SEMU_ASSET_ROOT/share/semu is
 #                            what BezelResolver joins "assets/..." onto)
 #   <staging dest>           every staging file whose src names a bezels.json
@@ -154,6 +168,16 @@ let
   renderScript = lib.concatMapStrings (entry: render entry.key entry.recipe)
     (phases.right ++ phases.wrong);
 
+  # Copier: every asset key's final bytes live committed in-tree at
+  # src/semu/<asset key> (the asset key is, by construction, the path under both
+  # src/semu/ and share/semu/). Materialize each into the canonical tree —
+  # no upstream fetch, no imagemagick.
+  copyFile = key: ''
+    mkdir -p "$(dirname "$out/share/semu/${key}")"
+    cp "${repoRoot + "/src/semu/${key}"}" ${outFile key}
+  '';
+  copyScript = lib.concatMapStrings copyFile (lib.attrNames imageAssets);
+
   assetKeys = lib.attrNames sources.assets;
   isAssetDir = src: lib.any (key: lib.hasPrefix "${src}/" key) assetKeys;
 
@@ -170,27 +194,57 @@ let
   stagingScript = lib.concatMapStrings
     (unit: lib.concatMapStrings (stageFile unit.id) unit.files)
     sources.staging;
+
+  imageAssetNames = lib.attrNames imageAssets;
+
+  # The regenerator: fetch upstreams + render every recipe with imagemagick.
+  # `nix run .#bake-bezels` copies its share/semu/assets/bezels/ back over the
+  # committed tree. Kept as passthru.generate (and re-exported as the
+  # `semu-bezels-generate` package) so a plain app/asset build never forces the
+  # fetch/render path.
+  generate = stdenvNoCC.mkDerivation {
+    pname = "semu-bezels-generate";
+    version = toString sources.schema_version;
+
+    dontUnpack = true;
+    nativeBuildInputs = [ imagemagick ];
+
+    installPhase = ''
+      runHook preInstall
+      ${renderScript}
+      ${stagingScript}
+      runHook postInstall
+    '';
+
+    passthru = {
+      inherit imageAssetNames;
+    };
+
+    meta = {
+      description = "Regenerator for the Semu bezel art (fetches upstreams + imagemagick renders bezels.json)";
+      platforms = lib.platforms.all;
+    };
+  };
 in
 stdenvNoCC.mkDerivation {
   pname = "semu-bezels";
   version = toString sources.schema_version;
 
   dontUnpack = true;
-  nativeBuildInputs = [ imagemagick ];
 
   installPhase = ''
     runHook preInstall
-    ${renderScript}
+    ${copyScript}
     ${stagingScript}
     runHook postInstall
   '';
 
   passthru = {
-    imageAssetNames = lib.attrNames imageAssets;
+    inherit imageAssetNames generate;
   };
 
   meta = {
-    description = "Semu bezel art rendered from the bezels.json manifest";
+    description = "Semu bezel art staged from the committed on-disk tree (bezels.json manifest)";
     platforms = lib.platforms.all;
   };
 }

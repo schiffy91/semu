@@ -172,9 +172,9 @@
     },
     "assets/bezels/gba/classic.png": {
       "type": "local",
-      "path": "src/semu/assets/baked/gba/classic.png",
+      "path": "src/semu/assets/bezels/gba/classic.png",
       "doc": {
-        "provenance": "Baked from Duimon GBA-[ADV]-[LCD-GRID].slangp via bake_bezels.sh (librashader, day variant, intro off)."
+        "provenance": "Committed source (un-fetchable): originally baked from Duimon GBA-[ADV]-[LCD-GRID].slangp via bake_bezels.sh (librashader, day variant, intro off). Lives in-tree at its final bezels/ path; bake-bezels round-trips it identically."
       }
     },
     "assets/bezels/gba/sp.png": {
@@ -247,23 +247,23 @@
     },
     "assets/bezels/nds/vertical.png": {
       "type": "local",
-      "path": "src/semu/assets/baked/nds/vertical.png",
+      "path": "src/semu/assets/bezels/nds/vertical.png",
       "doc": {
-        "provenance": "Baked from Duimon NDS_Vertical_Alt-[ADV]-[Guest].slangp via bake_bezels.sh (librashader, day variant, intro off)."
+        "provenance": "Committed source (un-fetchable): originally baked from Duimon NDS_Vertical_Alt-[ADV]-[Guest].slangp via bake_bezels.sh (librashader, day variant, intro off). Lives in-tree at its final bezels/ path; bake-bezels round-trips it identically."
       }
     },
     "assets/bezels/nds/horizontal.png": {
       "type": "local",
-      "path": "src/semu/assets/baked/nds/horizontal.png",
+      "path": "src/semu/assets/bezels/nds/horizontal.png",
       "doc": {
-        "provenance": "Baked from Duimon NDS-[ADV]-[Guest].slangp via bake_bezels.sh (librashader, day variant, intro off)."
+        "provenance": "Committed source (un-fetchable): originally baked from Duimon NDS-[ADV]-[Guest].slangp via bake_bezels.sh (librashader, day variant, intro off). Lives in-tree at its final bezels/ path; bake-bezels round-trips it identically."
       }
     },
     "assets/bezels/n3ds/vertical.png": {
       "type": "local",
-      "path": "src/semu/assets/baked/n3ds/vertical.png",
+      "path": "src/semu/assets/bezels/n3ds/vertical.png",
       "doc": {
-        "provenance": "Baked from Duimon 3DS_Vertical_Alt-[ADV]-[Guest].slangp via bake_bezels.sh (librashader, day variant, intro off)."
+        "provenance": "Committed source (un-fetchable): originally baked from Duimon 3DS_Vertical_Alt-[ADV]-[Guest].slangp via bake_bezels.sh (librashader, day variant, intro off). Lives in-tree at its final bezels/ path; bake-bezels round-trips it identically."
       }
     },
     "assets/bezels/dreamcast/tv.png": {
@@ -288,16 +288,16 @@
     },
     "assets/bezels/n3ds/horizontal.png": {
       "type": "local",
-      "path": "src/semu/assets/baked/n3ds/horizontal.png",
+      "path": "src/semu/assets/bezels/n3ds/horizontal.png",
       "doc": {
-        "provenance": "Baked from Duimon 3DS-[ADV]-[Guest].slangp via bake_bezels.sh (librashader, day variant, intro off)."
+        "provenance": "Committed source (un-fetchable): originally baked from Duimon 3DS-[ADV]-[Guest].slangp via bake_bezels.sh (librashader, day variant, intro off). Lives in-tree at its final bezels/ path; bake-bezels round-trips it identically."
       }
     },
     "assets/bezels/nds/big_screen.png": {
       "type": "local",
-      "path": "src/semu/assets/baked/nds/big_screen.png",
+      "path": "src/semu/assets/bezels/nds/big_screen.png",
       "doc": {
-        "provenance": "Baked from Duimon NDS_Hybrid-[ADV]-[Guest].slangp via bake_bezels.sh (librashader, day variant, intro off)."
+        "provenance": "Committed source (un-fetchable): originally baked from Duimon NDS_Hybrid-[ADV]-[Guest].slangp via bake_bezels.sh (librashader, day variant, intro off). Lives in-tree at its final bezels/ path; bake-bezels round-trips it identically."
       }
     }
   },
