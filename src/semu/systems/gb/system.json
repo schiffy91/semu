@@ -16,6 +16,8 @@
     "priority": "bezel",
     "fill": true,
     "reflect": 0.55,
+    "lcd_grid": 0.55,
+    "lcd_subpixel": 0.0,
     "shell_tint": { "r": 0.60, "g": 0.64, "b": 0.55 }
   },
   "doc": {
