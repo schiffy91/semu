@@ -1,12 +1,12 @@
 # flake/apps.nix — runnable entry points: the semu CLI, the btrcpy transpiler
-# (make btrc-build runs `nix run path:.#btrcpy`), and bake-bezels (regenerate the
+# (make btrc-build runs `nix run .#btrcpy`), and bake-bezels (regenerate the
 # committed bezel art from the bezels.json recipes).
 { self, mkPkgs, forAllSystems, ... }:
 
 forAllSystems (system: let
   pkgs = mkPkgs system;
 
-  # `nix run path:.#bake-bezels` — build the regenerator (fetches Duimon/soqueroeu
+  # `nix run .#bake-bezels` — build the regenerator (fetches Duimon/soqueroeu
   # upstreams + imagemagick-renders every bezels.json recipe), then overwrite
   # the committed config/assets/bezels/ tree with its output so the in-tree
   # PNGs stay byte-identical to what the recipes produce. Idempotent: a second

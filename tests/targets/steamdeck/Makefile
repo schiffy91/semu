@@ -1,7 +1,7 @@
 SHELL := /bin/bash
 
 ROOT ?= $(CURDIR)
-BTRC_TRANSPILE ?= nix run path:.\#btrcpy --
+BTRC_TRANSPILE ?= nix run .\#btrcpy --
 CC ?= cc
 ZIG_CC := nix shell nixpkgs\#zig --command zig cc
 

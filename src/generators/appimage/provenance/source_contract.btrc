@@ -190,7 +190,7 @@ class AppImageSourceProvenance {
             return AppImageProvenanceInternalJson.failure(
                 "selected-core package attribute/system is invalid");
         }
-        string reference = "path:.#packages." + nixSystem + "."
+        string reference = ".#packages." + nixSystem + "."
             + packageAttribute.asString() + ".coreContract";
         ExecResult result = AppImageProvenanceSupport.process("nix", [
             "--extra-experimental-features", "nix-command flakes",

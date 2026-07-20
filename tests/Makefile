@@ -3,7 +3,7 @@ SHELL := /bin/bash
 .PHONY: compiler-tests tree-audit tree-audit-contracts configs-smoke \
 	steamdeck-contracts test verify verify-production
 
-BTRC_TRANSPILE ?= nix run path:.\#btrcpy --
+BTRC_TRANSPILE ?= nix run .\#btrcpy --
 TARGET ?= steam-deck
 
 ifeq ($(strip $(SEMU_BIN)),)
