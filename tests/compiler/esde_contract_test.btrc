@@ -16,6 +16,48 @@ class EsDeContractTest {
         return 1;
     }
 
+    class int addedLineCount(string header) {
+        int plus = header.indexOf("+");
+        if (plus < 0) { return -1; }
+        string rangeAndSuffix = header.substring(
+            plus + 1, header.len() - plus - 1);
+        int space = rangeAndSuffix.indexOf(" ");
+        if (space < 0) { return -1; }
+        string range = rangeAndSuffix.substring(0, space);
+        int comma = range.indexOf(",");
+        return comma < 0 ? 1 : range.substring(
+            comma + 1, range.len() - comma - 1).toInt();
+    }
+
+    class bool addedHunksMatch(string patch) {
+        bool active = false;
+        bool found = false;
+        int expected = 0;
+        int actual = 0;
+        for line in Strings.split(patch, "\n") {
+            if (line.startsWith("@@ ")) {
+                if (active && actual != expected) { return false; }
+                expected = EsDeContractTest.addedLineCount(line);
+                if (expected < 1) { return false; }
+                actual = 0;
+                active = true;
+                found = true;
+                continue;
+            }
+            if (line.startsWith("diff --git ")) {
+                if (active && actual != expected) { return false; }
+                active = false;
+                continue;
+            }
+            if (active && (line.startsWith(" ")
+                    || (line.startsWith("+")
+                        && !line.startsWith("+++")))) {
+                actual++;
+            }
+        }
+        return found && (!active || actual == expected);
+    }
+
     class bool validXml(string file) {
         UnixShell shell = UnixShell();
         ExecResult available = shell.run("command -v xmllint",
@@ -429,6 +471,11 @@ class EsDeContractTest {
                     "index + 1 == pending->changes.size()")
                 || !settingsPatch.contains("semu-settings-v2")
                 || settingsPatch.contains("semu-settings-v1")
+                || !EsDeContractTest.addedHunksMatch(settingsPatch)
+                || !EsDeContractTest.addedHunksMatch(
+                    "@@ -0,0 +1,2 @@\n+one\n+two\n")
+                || EsDeContractTest.addedHunksMatch(
+                    "@@ -0,0 +1,1 @@\n+one\n+two\n")
                 || !esDePackage.contains(
                     "settingsProtocol = \"semu-settings-v2\";")
                 || !EsDeContractTest.settingsProtocolV2(
