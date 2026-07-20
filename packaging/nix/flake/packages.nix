@@ -20,9 +20,16 @@ forAllSystems (
     repositoryRoot = ../../..;
     btrcpy = btrc.packages.${system}.btrcpy;
 
-    semuProgram = pkgs.callPackage ../semu_program.nix {
-      inherit btrcpy;
-    };
+    semuProgram =
+      if isSteamDeckBuild then
+        pkgs.pkgsStatic.callPackage ../semu_program.nix {
+          inherit btrcpy;
+          requireStaticBootstrap = true;
+        }
+      else
+        pkgs.callPackage ../semu_program.nix {
+          inherit btrcpy;
+        };
     semuProgramLinux =
       if isSteamDeckBuild then
         semuProgram

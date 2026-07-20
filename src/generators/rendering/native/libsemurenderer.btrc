@@ -101,10 +101,19 @@ class SemuRendererCalls {
 }
 
 int semu_render_game_gl(struct SemuRenderFrameGl* frame) {
-    if (frame != null) {
-        RendererPointerContract.clearMap(&frame->pointer_map);
-        frame->map_pointer = semu_render_map_pointer_abi2;
+    SemuRendererCalls.initialize();
+    if (!RendererFrameContract.compatible(frame)) {
+        RendererPhaseOwnership.clear(&SemuRenderer.pending);
+        if (SemuRendererReceipts.failureTransition(SEMU_RENDER_INVALID_FRAME,
+                &SemuRenderer.game_failure_status)) {
+            RendererStateFiles.appendReceipt("game", null, null, 0,
+                SEMU_RENDER_INVALID_FRAME, 0, 0ULL, -1,
+                null, null, null, null);
+        }
+        return SEMU_RENDER_INVALID_FRAME;
     }
+    RendererPointerContract.clearMap(&frame->pointer_map);
+    frame->map_pointer = semu_render_map_pointer_abi2;
     void* context = null;
     int prepared = SemuRendererCalls.prepare(frame, &context);
     if (prepared != SEMU_RENDER_APPLIED) {

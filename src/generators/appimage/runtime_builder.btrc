@@ -110,6 +110,7 @@ class AppImageRuntimeBuildPlan {
     public string cacheRoot;
     public string output;
     public string snapshot;
+    public string generationsRoot;
     public string exportRoot;
     public string metadataRoot;
     public string image;
@@ -122,6 +123,7 @@ class AppImageRuntimeBuildPlan {
         self.cacheRoot = "";
         self.output = "";
         self.snapshot = "";
+        self.generationsRoot = "";
         self.exportRoot = "";
         self.metadataRoot = "";
         self.image = "docker.io/nixos/nix@sha256:29fc5fe207f159ceb0143c25c19c774062fee02ce5eda118f3067547b3054894";
@@ -156,10 +158,10 @@ class AppImageRuntimeBuildPlan {
             stdout=CommandOutput.collect(),
             stderr=CommandOutput.collect());
         plan.macos = system.ok() && system.stdout().trim().equals("Darwin");
-        plan.exportRoot = plan.macos
+        plan.generationsRoot = plan.macos
             ? PathTools.join(plan.cacheRoot,
-                "linux-case-sensitive/runtime")
-            : PathTools.join(plan.cacheRoot, "export");
+                "linux-case-sensitive/generations")
+            : PathTools.join(plan.cacheRoot, "generations");
         plan.metadataRoot = PathTools.join(plan.cacheRoot, "metadata");
         FileStatus repository = FileStatus(plan.repoRoot);
         if (plan.repoRoot.isEmpty() || !repository.isDir()
@@ -173,7 +175,7 @@ class AppImageRuntimeBuildPlan {
         AppImageRuntimeBuildResult claimed = AppImageRuntimeCache.claim(
             plan.cacheRoot, plan.repoRoot, home);
         if (!claimed.ok()) { return claimed; }
-        for path in [plan.snapshot, plan.exportRoot, plan.metadataRoot,
+        for path in [plan.snapshot, plan.generationsRoot, plan.metadataRoot,
                 plan.lock, plan.output] {
             if (!AppImageRuntimeCache.derived(plan.cacheRoot, path)) {
                 return AppImageRuntimeBuildResult.failure(
@@ -182,11 +184,16 @@ class AppImageRuntimeBuildPlan {
         }
         FileStatus output = FileStatus(plan.output);
         if (output.linkFound) {
-            string export = UnixFileSystem.realPath(plan.exportRoot);
-            if (!output.isSymlink() || export.isEmpty()
-                    || !UnixFileSystem.realPath(plan.output).equals(export)) {
+            string published = UnixFileSystem.realPath(plan.output);
+            if (!output.isSymlink() || published.isEmpty()
+                    || !FileStatus(published).isDir()
+                    || !SemuOwnedPaths.inside(published, plan.cacheRoot)
+                    || published.equals(plan.cacheRoot)
+                    || published.equals(plan.generationsRoot)
+                    || SemuOwnedPaths.inside(published, plan.snapshot)
+                    || SemuOwnedPaths.inside(published, plan.metadataRoot)) {
                 return AppImageRuntimeBuildResult.failure(
-                    "runtime output is not the owned export link");
+                    "runtime output does not resolve to a safe cached runtime");
             }
         }
         return AppImageRuntimeBuildResult.success();
@@ -256,11 +263,11 @@ class AppImageMacRuntimeVolume {
                 "cannot create owned runtime metadata root");
         }
         if (!plan.macos) {
-            if (!SemuOwnedPaths.prepareDirectory(plan.exportRoot)) {
+            if (!SemuOwnedPaths.prepareDirectory(plan.generationsRoot)) {
                 return AppImageRuntimeBuildResult.failure(
-                    "cannot create runtime export root");
+                    "cannot create runtime generations root");
             }
-            return AppImageRuntimeBuildResult.success(plan.exportRoot);
+            return AppImageRuntimeBuildResult.success(plan.generationsRoot);
         }
         AppImageRuntimeBuildResult hdiutil =
             AppImageRuntimeBuildCommand.prerequisite(
@@ -335,11 +342,11 @@ class AppImageMacRuntimeVolume {
             return AppImageRuntimeBuildResult.failure(
                 "APFS build volume is not case-sensitive");
         }
-        if (!SemuOwnedPaths.prepareDirectory(plan.exportRoot)) {
+        if (!SemuOwnedPaths.prepareDirectory(plan.generationsRoot)) {
             return AppImageRuntimeBuildResult.failure(
-                "cannot create case-sensitive runtime export root");
+                "cannot create case-sensitive runtime generations root");
         }
-        return AppImageRuntimeBuildResult.success(plan.exportRoot);
+        return AppImageRuntimeBuildResult.success(plan.generationsRoot);
     }
 }
 
@@ -406,26 +413,139 @@ class AppImageRuntimeSnapshot {
                 "source snapshot must be a real directory");
         }
         if (!SemuOwnedPaths.prepareDirectory(plan.snapshot)
-                || !SemuOwnedPaths.prepareDirectory(plan.exportRoot)
                 || SemuOwnedPaths.containedPath(
-                    plan.cacheRoot, plan.snapshot).isEmpty()
-                || SemuOwnedPaths.containedPath(
-                    plan.cacheRoot, plan.exportRoot).isEmpty()) {
+                    plan.cacheRoot, plan.snapshot).isEmpty()) {
             return AppImageRuntimeBuildResult.failure(
                 "cannot create cached runtime directories");
         }
         AppImageRuntimeBuildResult writableSnapshot =
             AppImageRuntimeBuildCommand.chmodWritable(plan.snapshot);
-        AppImageRuntimeBuildResult writableExport =
-            AppImageRuntimeBuildCommand.chmodWritable(plan.exportRoot);
         if (!writableSnapshot.ok()) { return writableSnapshot; }
-        if (!writableExport.ok()) { return writableExport; }
         return AppImageRuntimeBuildCommand.checked(
             AppImageRuntimeBuildCommand.capture("rsync", [
                 "-a", "--delete", "--exclude", "/.git/",
                 "--exclude", "/build/", plan.repoRoot + "/",
                 plan.snapshot + "/"
             ], "", 1800000), "refresh stable-inode source snapshot");
+    }
+}
+
+class AppImageRuntimeGeneration {
+    class string markerName() {
+        return ".semu-appimage-runtime-generation-v1";
+    }
+
+    class string marker(string generation) {
+        return PathTools.join(
+            generation, AppImageRuntimeGeneration.markerName());
+    }
+
+    class string document(AppImageRuntimeBuildPlan plan, string generation) {
+        return "version=1\ncache=" + plan.cacheRoot + "\ngeneration="
+            + generation + "\nrepository=" + plan.repoRoot + "\n";
+    }
+
+    class bool directChild(AppImageRuntimeBuildPlan plan, string generation) {
+        return !generation.isEmpty()
+            && PathTools.dirname(generation).equals(plan.generationsRoot)
+            && SemuOwnedPaths.inside(generation, plan.generationsRoot)
+            && !generation.equals(plan.generationsRoot);
+    }
+
+    class bool owned(AppImageRuntimeBuildPlan plan, string generation) {
+        if (!AppImageRuntimeGeneration.directChild(plan, generation)) {
+            return false;
+        }
+        FileStatus root = FileStatus(generation);
+        FileStatus marker = FileStatus(
+            AppImageRuntimeGeneration.marker(generation));
+        return root.isDir() && !root.isSymlink()
+            && UnixFileSystem.realPath(generation).equals(generation)
+            && marker.isFile() && !marker.isSymlink()
+            && FileSystem.readText(
+                AppImageRuntimeGeneration.marker(generation)).equals(
+                    AppImageRuntimeGeneration.document(plan, generation));
+    }
+
+    class AppImageRuntimeBuildResult create(
+            AppImageRuntimeBuildPlan plan) {
+        AppImageRuntimeBuildResult cache = AppImageRuntimeCache.validate(
+            plan.cacheRoot, plan.repoRoot);
+        FileStatus root = FileStatus(plan.generationsRoot);
+        if (!cache.ok() || !root.isDir() || root.isSymlink()
+                || !UnixFileSystem.realPath(plan.generationsRoot).equals(
+                    plan.generationsRoot)) {
+            return cache.ok()
+                ? AppImageRuntimeBuildResult.failure(
+                    "runtime generations root is not a real owned directory")
+                : cache;
+        }
+        string templatePath = PathTools.join(
+            plan.generationsRoot, "runtime.XXXXXX");
+        char* raw = Strings.copy(templatePath);
+        if (raw == NULL) {
+            return AppImageRuntimeBuildResult.failure(
+                "cannot allocate runtime generation path");
+        }
+        char* created = mkdtemp(raw);
+        if (created == NULL) {
+            return AppImageRuntimeBuildResult.failure(
+                "cannot create fresh runtime generation");
+        }
+        string generation = Strings.copy(created);
+        string marker = AppImageRuntimeGeneration.marker(generation);
+        if (!AppImageRuntimeGeneration.directChild(plan, generation)
+                || !SemuOwnedPaths.writeText(generation, marker,
+                    AppImageRuntimeGeneration.document(plan, generation))
+                || FileSystem.chmod(marker, 384) != 0
+                || !AppImageRuntimeGeneration.owned(plan, generation)) {
+            FileSystem.removeRecursive(generation);
+            return AppImageRuntimeBuildResult.failure(
+                "cannot claim fresh runtime generation");
+        }
+        return AppImageRuntimeBuildResult.success(generation);
+    }
+
+    class AppImageRuntimeBuildResult discard(
+            AppImageRuntimeBuildPlan plan, string generation) {
+        if (!AppImageRuntimeGeneration.owned(plan, generation)) {
+            return AppImageRuntimeBuildResult.failure(
+                "refusing to discard an unowned runtime generation");
+        }
+        string published = UnixFileSystem.realPath(plan.output);
+        if (!published.isEmpty() && published.equals(generation)) {
+            return AppImageRuntimeBuildResult.failure(
+                "refusing to discard the published runtime generation");
+        }
+        AppImageRuntimeBuildResult writable =
+            AppImageRuntimeBuildCommand.chmodWritable(generation);
+        if (!writable.ok() || FileSystem.removeRecursive(generation) != 0
+                || FileStatus(generation).linkFound) {
+            return writable.ok()
+                ? AppImageRuntimeBuildResult.failure(
+                    "cannot discard failed runtime generation")
+                : writable;
+        }
+        return AppImageRuntimeBuildResult.success();
+    }
+
+    class AppImageRuntimeBuildResult prune(
+            AppImageRuntimeBuildPlan plan, string current) {
+        if (!AppImageRuntimeGeneration.owned(plan, current)) {
+            return AppImageRuntimeBuildResult.failure(
+                "current runtime generation is not owned");
+        }
+        for name in Directory(plan.generationsRoot).entries() {
+            string generation = PathTools.join(plan.generationsRoot, name);
+            if (generation.equals(current)
+                    || !AppImageRuntimeGeneration.owned(plan, generation)) {
+                continue;
+            }
+            AppImageRuntimeBuildResult removed =
+                AppImageRuntimeGeneration.discard(plan, generation);
+            if (!removed.ok()) { return removed; }
+        }
+        return AppImageRuntimeBuildResult.success();
     }
 }
 
@@ -576,12 +696,11 @@ printf \"%s\\n\" \"$actual_source_identity\" > /metadata/source-snapshot-identit
         AppImageRuntimeBuildResult owned = AppImageRuntimeCache.validate(
             plan.cacheRoot, plan.repoRoot);
         if (!owned.ok()) { return owned; }
-        string export = UnixFileSystem.realPath(plan.exportRoot);
-        if (export.isEmpty() || !SemuOwnedPaths.inside(export, plan.cacheRoot)
+        if (!AppImageRuntimeGeneration.owned(plan, plan.exportRoot)
                 || !AppImageRuntimeCache.derived(
                     plan.cacheRoot, plan.output)) {
             return AppImageRuntimeBuildResult.failure(
-                "runtime export is outside its marked cache root");
+                "runtime export is not a fresh owned generation");
         }
         FileStatus output = FileStatus(plan.output);
         if (output.linkFound && !output.isSymlink()) {
@@ -603,10 +722,37 @@ printf \"%s\\n\" \"$actual_source_identity\" > /metadata/source-snapshot-identit
             return AppImageRuntimeBuildResult.failure(
                 "cannot atomically publish runtime output link");
         }
-        return UnixFileSystem.realPath(plan.output).equals(export)
-            ? AppImageRuntimeBuildResult.success(plan.output)
-            : AppImageRuntimeBuildResult.failure(
-                "published runtime output does not resolve to its export");
+        if (!UnixFileSystem.realPath(plan.output).equals(plan.exportRoot)) {
+            return AppImageRuntimeBuildResult.failure(
+                "published runtime output does not resolve to its generation");
+        }
+        AppImageRuntimeBuildResult pruned =
+            AppImageRuntimeGeneration.prune(plan, plan.exportRoot);
+        return pruned.ok()
+            ? AppImageRuntimeBuildResult.success(plan.output) : pruned;
+    }
+
+    class AppImageRuntimeBuildResult finish(
+            AppImageRuntimeBuildPlan plan,
+            AppImageRuntimeBuildResult validation) {
+        if (validation.ok()) {
+            AppImageRuntimeBuildResult published =
+                AppImageRuntimeExporter.publish(plan);
+            if (published.ok()
+                    || UnixFileSystem.realPath(plan.output).equals(
+                        plan.exportRoot)) {
+                return published;
+            }
+            AppImageRuntimeBuildResult discarded =
+                AppImageRuntimeGeneration.discard(plan, plan.exportRoot);
+            return discarded.ok() ? published
+                : AppImageRuntimeBuildResult.failure(
+                    published.error + "; " + discarded.error);
+        }
+        AppImageRuntimeBuildResult discarded =
+            AppImageRuntimeGeneration.discard(plan, plan.exportRoot);
+        return discarded.ok() ? validation : AppImageRuntimeBuildResult.failure(
+            validation.error + "; " + discarded.error);
     }
 }
 
@@ -669,12 +815,16 @@ class AppImageRuntimeBuilder {
             ? AppImageRuntimeSnapshot.refresh(self.plan) : volume;
         AppImageRuntimeBuildResult program = snapshot.ok()
             ? AppImageRuntimeExporter.crossBuildProgram(self.plan) : snapshot;
-        AppImageRuntimeBuildResult runtime = program.ok()
-            ? AppImageRuntimeExporter.exportRuntime(self.plan) : program;
+        AppImageRuntimeBuildResult generation = program.ok()
+            ? AppImageRuntimeGeneration.create(self.plan) : program;
+        if (generation.ok()) { self.plan.exportRoot = generation.value; }
+        AppImageRuntimeBuildResult runtime = generation.ok()
+            ? AppImageRuntimeExporter.exportRuntime(self.plan) : generation;
         AppImageRuntimeBuildResult provenance = runtime.ok()
             ? AppImageRuntimeExporter.recordProvenance(self.plan) : runtime;
-        AppImageRuntimeBuildResult published = provenance.ok()
-            ? AppImageRuntimeExporter.publish(self.plan) : provenance;
+        AppImageRuntimeBuildResult published = generation.ok()
+            ? AppImageRuntimeExporter.finish(self.plan, provenance)
+            : provenance;
         AppImageRuntimeBuildResult unlocked = self.unlock();
         if (published.ok()) { return unlocked.ok() ? published : unlocked; }
         return unlocked.ok() ? published : AppImageRuntimeBuildResult.failure(
