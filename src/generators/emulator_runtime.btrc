@@ -1,6 +1,6 @@
 // emulator_runtime.btrc - semantic emulator launch planning and execution.
 
-import std.{fs, json, platform, process, vector}
+import std.{fs, json, platform, process, strings, vector}
 import ../compiler/model.btrc
 import ../lib/owned_paths.btrc
 import ./emulator_profiles.btrc
@@ -109,6 +109,64 @@ class SemuLaunchPlan {
     }
 }
 
+class SemuInputSupervisorEnvironment {
+    class Vector<string> admissionKeys() {
+        return [
+            "SEMU_INPUT_GAMEPAD_SOURCE",
+            "SEMU_INPUT_GAMEPAD_VENDOR",
+            "SEMU_INPUT_GAMEPAD_PRODUCT",
+            "SEMU_INPUT_GAMEPAD_PHYSICAL",
+            "SEMU_INPUT_COMMAND_SOURCE",
+            "SEMU_INPUT_COMMAND_VENDOR",
+            "SEMU_INPUT_COMMAND_PRODUCT",
+            "SEMU_INPUT_COMMAND_PHYSICAL_PREFIX",
+            "SEMU_INPUT_COMMAND_PHYSICAL_SUFFIX"
+        ];
+    }
+
+    class string file(string outputRoot) {
+        return SemuOwnedPaths.relativeFile(outputRoot,
+            "steam-input/semu-input-supervisor.env");
+    }
+
+    class JsonValue loadOwned(string outputRoot) {
+        string declared = SemuInputSupervisorEnvironment.file(outputRoot);
+        string owned = declared.isEmpty() ? ""
+            : SemuOwnedPaths.containedPath(outputRoot, declared);
+        FileStatus status = FileStatus(owned);
+        if (owned.isEmpty() || !status.linkFound || status.isSymlink()
+                || !status.isFile()) {
+            return JsonValue.makeNull();
+        }
+
+        string document = FileSystem.readText(owned);
+        if (document.isEmpty() || document.len() > 16384) {
+            return JsonValue.makeNull();
+        }
+        Vector<string> allowed =
+            SemuInputSupervisorEnvironment.admissionKeys();
+        JsonValue environment = JsonValue.makeObject();
+        for line in Strings.split(document, "\n") {
+            if (line.isEmpty()) { continue; }
+            int separator = line.indexOf("=");
+            if (separator <= 0) { return JsonValue.makeNull(); }
+            string key = line.substring(0, separator);
+            if (!allowed.contains(key)) { continue; }
+            string value = line.substring(
+                separator + 1, line.len() - separator - 1);
+            if (environment.has(key) || value.isEmpty()
+                    || SemuOwnedPaths.hasControl(value)) {
+                return JsonValue.makeNull();
+            }
+            environment.set(key, JsonValue.makeString(value));
+        }
+        for key in allowed {
+            if (!environment.has(key)) { return JsonValue.makeNull(); }
+        }
+        return environment;
+    }
+}
+
 class SemuEmulatorRuntime {
     class int minimumQuitChordWindowMilliseconds() { return 50; }
     class int maximumQuitChordWindowMilliseconds() { return 1000; }
@@ -202,6 +260,17 @@ class SemuEmulatorRuntime {
         plan.environment("SEMU_INPUT_QUICK_MARKERS", SemuJsonPath.csv(quick));
         plan.environment("SEMU_INPUT_MENU_MARKERS", SemuJsonPath.csv(menu));
         plan.environment("SEMU_INPUT_ACTION_BINDINGS", bindings);
+        return true;
+    }
+
+    class bool configureInputSupervisorAdmission(
+            SemuLaunchPlan plan, string outputRoot) {
+        JsonValue generated =
+            SemuInputSupervisorEnvironment.loadOwned(outputRoot);
+        if (!generated.isObject()) { return false; }
+        for key in SemuInputSupervisorEnvironment.admissionKeys() {
+            plan.environment(key, generated.get(key).asString());
+        }
         return true;
     }
 
@@ -454,7 +523,9 @@ class SemuEmulatorRuntime {
             return plan;
         }
         if (build.platform.equals("linux")) {
-            if (!SemuEmulatorRuntime.configureInputSupervisor(plan, input)) {
+            if (!SemuEmulatorRuntime.configureInputSupervisor(plan, input)
+                    || !SemuEmulatorRuntime.configureInputSupervisorAdmission(
+                        plan, build.outputRoot)) {
                 plan.error = "Linux input supervisor configuration is invalid";
                 return plan;
             }
