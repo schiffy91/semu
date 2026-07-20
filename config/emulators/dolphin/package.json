@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "id": "dolphin-emu",
+  "version": "2603a",
+  "build_kind": "source",
+  "source": {
+    "kind": "github",
+    "owner": "dolphin-emu",
+    "repo": "dolphin",
+    "revision": "5e7cc91d8c9a43ca189b288937f65c9763af9c22",
+    "sha256": "sha256-+3/JtjKFsTEkKQa0LjycqNmDz0M8o2FndWQtw5R5/jQ=",
+    "fetch_submodules": true
+  },
+  "platforms": [
+    "x86_64-linux",
+    "aarch64-darwin",
+    "x86_64-darwin"
+  ],
+  "graphics_apis": [
+    "opengl"
+  ],
+  "controller_modes": [
+    "wiimote",
+    "nunchuk",
+    "classic",
+    "gamecube"
+  ],
+  "outputs": {
+    "linux_main_program": "bin/dolphin-emu",
+    "macos_main_program": "Applications/Dolphin.app/Contents/MacOS/Dolphin",
+    "build_contract": "share/semu/dolphin-build-contract.json"
+  },
+  "fallbacks": {
+    "linux_host_executable": false,
+    "linux_flatpak": false,
+    "linux_prebuilt_binary": false,
+    "macos_host_executable": false,
+    "macos_prebuilt_binary": false
+  },
+  "doc": {
+    "rendering": "Every presented XFB reports current output/native geometry and the live VI/XFB presentation aspect. Dolphin's frame-updated WidescreenManager selects the 4:3 default or 16:9 variant; no launch-time aspect probe controls renderer layout."
+  }
+}

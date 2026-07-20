@@ -1,0 +1,251 @@
+--- a/src/Common/GLInclude/glFunctions.h
++++ b/src/Common/GLInclude/glFunctions.h
+@@ -1,4 +1,11 @@
+ // OpenGL 1.1 - 2.0
++GLFUNC(PFNGLBLITFRAMEBUFFERPROC, glBlitFramebuffer)
++GLFUNC(PFNGLCOLORMASKPROC, glColorMask)
++GLFUNC(PFNGLGETBOOLEANVPROC, glGetBooleanv)
++GLFUNC(PFNGLREADBUFFERPROC, glReadBuffer)
++GLFUNC(PFNGLREADPIXELSPROC, glReadPixels)
++GLFUNC(PFNGLUNIFORM1FPROC, glUniform1f)
++GLFUNC(PFNGLUNIFORM4FPROC, glUniform4f)
+ GLFUNC(PFNGLDRAWBUFFERPROC, glDrawBuffer)
+ GLFUNC(PFNGLGENTEXTURESPROC, glGenTextures)
+ GLFUNC(PFNGLDELETETEXTURESPROC, glDeleteTextures)
+--- a/src/input/InputManager.cpp
++++ b/src/input/InputManager.cpp
+@@ -763,5 +763,9 @@
+ void InputManager::apply_game_profile()
+ {
++#ifdef SEMU_CEMU_OWNED_INPUT_PROFILE
++	return;
++#endif
++
+ 	const auto& profiles = g_current_game_profile->GetControllerProfile();
+ 	for (int i = 0; i < kMaxController; ++i)
+ 	{
+--- a/src/gui/MainWindow.cpp
++++ b/src/gui/MainWindow.cpp
+@@ -4,6 +4,7 @@
+ 
+ #include <wx/mstream.h>
+ #include <wx/clipbrd.h>
++#include <cstdio>
+ 
+ #include "gui/GameUpdateWindow.h"
+ #include "gui/PadViewFrame.h"
+@@ -68,6 +69,22 @@
+ extern WindowInfo g_window_info;
+ extern std::shared_mutex g_mutex;
+ 
++static bool SemuReportLaunchFailure(const wxString& message,
++	const wxString& title, wxLaunchGameEvent::INITIATED_BY initiatedBy)
++{
++	if (initiatedBy == wxLaunchGameEvent::INITIATED_BY::COMMAND_LINE)
++	{
++		const std::string text = message.utf8_string();
++		cemuLog_log(LogType::Force, "SEMU_CEMU_LAUNCH_FAILURE: {}", text);
++		std::fprintf(stderr, "SEMU_CEMU_LAUNCH_FAILURE: %s\n", text.c_str());
++		std::fflush(stderr);
++		exit(74);
++	}
++
++	wxMessageBox(message, title, wxOK | wxCENTRE | wxICON_ERROR);
++	return false;
++}
++
+ enum
+ {
+ 	// ui elements
+@@ -480,8 +497,7 @@
+ 		if (!CafeTitleList::FindBaseTitleId(launchTitle.GetAppTitleId(), baseTitleId))
+ 		{
+ 			wxString t = _("Unable to launch game because the base files were not found.");
+-			wxMessageBox(t, _("Error"), wxOK | wxCENTRE | wxICON_ERROR);
+-			return false;
++			return SemuReportLaunchFailure(t, _("Error"), initiatedBy);
+ 		}
+ 		CafeSystem::PREPARE_STATUS_CODE r = CafeSystem::PrepareForegroundTitle(baseTitleId);
+ 		if (r == CafeSystem::PREPARE_STATUS_CODE::INVALID_RPX)
+@@ -493,15 +509,13 @@
+ 		{
+ 			wxString t = _("Unable to mount title.\nMake sure the configured game paths are still valid and refresh the game list.\n\nFile which failed to load:\n");
+ 			t.append(_pathToUtf8(launchPath));
+-			wxMessageBox(t, _("Error"), wxOK | wxCENTRE | wxICON_ERROR);
+-			return false;
++			return SemuReportLaunchFailure(t, _("Error"), initiatedBy);
+ 		}
+ 		else if (r != CafeSystem::PREPARE_STATUS_CODE::SUCCESS)
+ 		{
+ 			wxString t = _("Failed to launch game.");
+ 			t.append(_pathToUtf8(launchPath));
+-			wxMessageBox(t, _("Error"), wxOK | wxCENTRE | wxICON_ERROR);
+-			return false;
++			return SemuReportLaunchFailure(t, _("Error"), initiatedBy);
+ 		}
+ 	}
+ 	else //if (launchTitle.GetFormat() == TitleInfo::TitleDataFormat::INVALID_STRUCTURE )
+@@ -517,16 +531,14 @@
+ 				cemu_assert_debug(false); // todo
+ 				wxString t = _("Failed to launch executable. Path: ");
+ 				t.append(_pathToUtf8(launchPath));
+-				wxMessageBox(t, _("Error"), wxOK | wxCENTRE | wxICON_ERROR);
+-				return false;
++				return SemuReportLaunchFailure(t, _("Error"), initiatedBy);
+ 			}
+ 		}
+ 		else if (initiatedBy == wxLaunchGameEvent::INITIATED_BY::GAME_LIST)
+ 		{
+ 			wxString t = _("Unable to launch title.\nMake sure the configured game paths are still valid and refresh the game list.\n\nPath which failed to load:\n");
+ 			t.append(_pathToUtf8(launchPath));
+-			wxMessageBox(t, _("Error"), wxOK | wxCENTRE | wxICON_ERROR);
+-			return false;
++			return SemuReportLaunchFailure(t, _("Error"), initiatedBy);
+ 		}
+ 		else if (initiatedBy == wxLaunchGameEvent::INITIATED_BY::MENU ||
+ 			initiatedBy == wxLaunchGameEvent::INITIATED_BY::COMMAND_LINE)
+@@ -543,15 +555,13 @@
+ 				t.append("\n\n");
+ 				t.append(_("Could not decrypt title because title.tik is missing."));
+ 			}
+-			wxMessageBox(t, _("Error"), wxOK | wxCENTRE | wxICON_ERROR);
+-			return false;
++			return SemuReportLaunchFailure(t, _("Error"), initiatedBy);
+ 		}
+ 		else
+ 		{
+ 			wxString t = _("Unable to launch game\nPath:\n");
+ 			t.append(_pathToUtf8(launchPath));
+-			wxMessageBox(t, _("Error"), wxOK | wxCENTRE | wxICON_ERROR);
+-			return false;
++			return SemuReportLaunchFailure(t, _("Error"), initiatedBy);
+ 		}
+ 	}
+ 
+--- a/src/Cafe/HW/Latte/Core/LatteRenderTarget.cpp
++++ b/src/Cafe/HW/Latte/Core/LatteRenderTarget.cpp
+@@ -18,0 +19,5 @@
++#ifdef HAVE_SEMU_RENDERER
++#include "Cafe/CafeSystem.h"
++#include "Cafe/HW/Latte/Renderer/OpenGL/OpenGLRenderer.h"
++#endif
++
+@@ -974,0 +980,9 @@
++#ifdef HAVE_SEMU_RENDERER
++	if (!isPadView && CafeSystem::IsTitleRunning() &&
++		g_renderer->GetType() == RendererAPI::OpenGL)
++	{
++		static_cast<OpenGLRenderer*>(g_renderer.get())->SemuRenderGame(
++			fullscreenWidth, fullscreenHeight, imageX, imageY,
++			imageWidth, imageHeight, effectiveWidth, effectiveHeight);
++	}
++#endif
+--- a/src/Cafe/HW/Latte/Renderer/OpenGL/OpenGLRenderer.cpp
++++ b/src/Cafe/HW/Latte/Renderer/OpenGL/OpenGLRenderer.cpp
+@@ -23,0 +24,5 @@
++#ifdef HAVE_SEMU_RENDERER
++#include <semu_renderer.h>
++#include <cstring>
++#endif
++
+@@ -196,0 +202,6 @@
++#ifdef HAVE_SEMU_RENDERER
++static OpenGLRenderer* s_semu_renderer_context = nullptr;
++static SemuRenderFrameGl s_semu_frame = {};
++static uint64 s_semu_frame_id = 0;
++#endif
++
+@@ -219,0 +231,26 @@
++#ifdef HAVE_SEMU_RENDERER
++static void* SemuGlProc(const char* name)
++{
++	if (!name)
++		return nullptr;
++#define GLFUNC(type, function) \
++	if (std::strcmp(name, STRINGIFY(function)) == 0) \
++		return reinterpret_cast<void*>(function);
++#define EGLFUNC(type, function)
++#include "Common/GLInclude/glFunctions.h"
++#undef EGLFUNC
++#undef GLFUNC
++	return nullptr;
++}
++
++static void* SemuCurrentContext()
++{
++	return s_semu_renderer_context;
++}
++
++static void SemuClearFrame()
++{
++	std::memset(&s_semu_frame, 0, sizeof(s_semu_frame));
++}
++#endif
++
+@@ -447,0 +496,5 @@
++#ifdef HAVE_SEMU_RENDERER
++	if (swapTV)
++		SemuRenderPostUi();
++#endif
++
+@@ -453,0 +507,50 @@
++#ifdef HAVE_SEMU_RENDERER
++void OpenGLRenderer::SemuRenderGame(sint32 framebufferWidth, sint32 framebufferHeight,
++	sint32 contentX, sint32 contentY, sint32 contentWidth, sint32 contentHeight,
++	sint32 nativeWidth, sint32 nativeHeight)
++{
++	SemuClearFrame();
++	if (framebufferWidth <= 0 || framebufferHeight <= 0 ||
++		contentWidth <= 0 || contentHeight <= 0 ||
++		nativeWidth <= 0 || nativeHeight <= 0)
++	{
++		return;
++	}
++
++	s_semu_renderer_context = this;
++	if (++s_semu_frame_id == 0)
++		s_semu_frame_id = 1;
++
++	s_semu_frame.abi = SEMU_RENDER_ABI_GL;
++	s_semu_frame.struct_size = sizeof(s_semu_frame);
++	s_semu_frame.frame_id = s_semu_frame_id;
++	s_semu_frame.framebuffer = 0;
++	s_semu_frame.color_buffer = GL_BACK;
++	s_semu_frame.framebuffer_width = framebufferWidth;
++	s_semu_frame.framebuffer_height = framebufferHeight;
++	s_semu_frame.presentation_aspect = static_cast<float>(contentWidth) /
++		static_cast<float>(contentHeight);
++	s_semu_frame.layout_variant = s_semu_frame.presentation_aspect >= 1.5f ?
++		SEMU_RENDER_LAYOUT_VARIANT_B : SEMU_RENDER_LAYOUT_DEFAULT;
++	s_semu_frame.surface_count = 1;
++	s_semu_frame.surfaces[0].x = contentX;
++	s_semu_frame.surfaces[0].y = contentY;
++	s_semu_frame.surfaces[0].width = contentWidth;
++	s_semu_frame.surfaces[0].height = contentHeight;
++	s_semu_frame.surfaces[0].native_width = nativeWidth;
++	s_semu_frame.surfaces[0].native_height = nativeHeight;
++	s_semu_frame.surfaces[0].rotation = 0;
++	s_semu_frame.surfaces[0].origin = SEMU_RENDER_ORIGIN_BOTTOM_LEFT;
++	s_semu_frame.get_proc = SemuGlProc;
++	s_semu_frame.current_context = SemuCurrentContext;
++	semu_render_game_gl(&s_semu_frame);
++}
++
++void OpenGLRenderer::SemuRenderPostUi()
++{
++	if (s_semu_frame.frame_id != 0 && s_semu_renderer_context == this)
++		semu_render_post_ui_gl(&s_semu_frame);
++	SemuClearFrame();
++}
++#endif
++
+--- a/src/Cafe/HW/Latte/Renderer/OpenGL/OpenGLRenderer.h
++++ b/src/Cafe/HW/Latte/Renderer/OpenGL/OpenGLRenderer.h
+@@ -35,0 +36,7 @@
++#ifdef HAVE_SEMU_RENDERER
++	void SemuRenderGame(sint32 framebufferWidth, sint32 framebufferHeight,
++		sint32 contentX, sint32 contentY, sint32 contentWidth,
++		sint32 contentHeight, sint32 nativeWidth, sint32 nativeHeight);
++	void SemuRenderPostUi();
++#endif
++

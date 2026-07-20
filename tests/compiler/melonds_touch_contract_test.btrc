@@ -1,0 +1,354 @@
+// Focused source/package contract for the melonDS ABI 2 touch consumer.
+
+import std.{fs, json, strings, vector}
+import ../../src/generators/rendering/native/renderer_abi.btrc
+
+class MelonDsTouchContractTest {
+    class int fail(string message) {
+        print("  FAIL melonDS touch: " + message);
+        return 1;
+    }
+
+    class string file(string project, string relative) {
+        return PathTools.join(project, relative);
+    }
+
+    class int occurrences(string text, string needle) {
+        int total = 0;
+        string remaining = text;
+        while (remaining.contains(needle)) {
+            int index = remaining.indexOf(needle);
+            total++;
+            remaining = remaining.substring(
+                index + needle.len(), remaining.len());
+        }
+        return total;
+    }
+
+    class string additions(string patch) {
+        string result = "";
+        for line in Strings.split(patch, "\n") {
+            if (line.startsWith("+") && !line.startsWith("+++")) {
+                result += line.substring(1, line.len()) + "\n";
+            }
+        }
+        return result;
+    }
+
+    class bool exactEvents(JsonValue events) {
+        Vector<string> expected = [
+            "mouse_press", "mouse_move", "tablet", "touch"
+        ];
+        if (!events.isArray() || events.size() != expected.size()) {
+            return false;
+        }
+        for (int index = 0; index < events.size(); index++) {
+            if (!events.at(index).isString()
+                    || !events.at(index).asString().equals(
+                        expected.get(index))) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    class bool fallbacksDisabled(JsonValue fallbacks) {
+        Vector<string> names = fallbacks.keys();
+        if (!fallbacks.isObject() || names.isEmpty()) { return false; }
+        for name in names {
+            if (!fallbacks.get(name).isBool()
+                    || fallbacks.get(name).asBool()) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    class bool declaredAction(JsonValue emulator, string expected) {
+        JsonValue actions = emulator.get("input").get("actions");
+        if (!actions.isArray()) { return false; }
+        for (int index = 0; index < actions.size(); index++) {
+            if (actions.at(index).isString()
+                    && actions.at(index).asString().equals(expected)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    class bool externalStateAction(JsonValue profile, string action,
+                                   string chord, string consumer) {
+        JsonValue actions = profile.get("actions").get("external");
+        if (!actions.isArray()) { return false; }
+        for (int index = 0; index < actions.size(); index++) {
+            JsonValue entry = actions.at(index);
+            if (entry.get("action").isString()
+                    && entry.get("action").asString().equals(action)
+                    && entry.get("chord").isString()
+                    && entry.get("chord").asString().equals(chord)
+                    && entry.get("keyboard_consumer").isString()
+                    && entry.get("keyboard_consumer").asString()
+                        .equals(consumer)
+                    && entry.get("native_slot").isInt()
+                    && entry.get("native_slot").asInt() == 1) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    class bool forbiddenMechanism(string patch) {
+        Vector<string> forbidden = [
+            "gamescope", "LD_PRELOAD", "glXSwapBuffers", "eglSwapBuffers",
+            "XGetImage", "wl_display", "wlr_screencopy", "window capture"
+        ];
+        for marker in forbidden {
+            if (patch.contains(marker)) { return true; }
+        }
+        return false;
+    }
+
+    class void pointerSurface(struct SemuRenderPointerSurface* surface,
+                              int x, int y, int width, int height) {
+        surface->x = x;
+        surface->y = y;
+        surface->width = width;
+        surface->height = height;
+        surface->native_width = 256;
+        surface->native_height = 192;
+        surface->rotation = 0;
+        surface->origin = SEMU_RENDER_ORIGIN_TOP_LEFT;
+    }
+
+    class bool inversePointerBehavior() {
+        struct SemuRenderPointerMap map;
+        RendererPointerContract.clearMap(&map);
+        map.frame_id = 91ULL;
+        map.framebuffer_width = 1280;
+        map.framebuffer_height = 800;
+        map.surface_count = 2;
+        MelonDsTouchContractTest.pointerSurface(
+            &map.surfaces[0], 100, 450, 400, 300);
+        MelonDsTouchContractTest.pointerSurface(
+            &map.surfaces[1], 700, 100, 400, 300);
+
+        struct SemuRenderPointerQuery query;
+        query.abi = (unsigned int)SEMU_RENDER_ABI_GL;
+        query.struct_size =
+            (unsigned int)sizeof(struct SemuRenderPointerQuery);
+        query.frame_id = map.frame_id;
+        query.x = 900.0f;
+        query.y = 550.0f;
+        query.viewport_width = 1280;
+        query.viewport_height = 800;
+        query.origin = SEMU_RENDER_ORIGIN_TOP_LEFT;
+        query.surface_index = 1;
+        query.clamp = 0;
+        struct SemuRenderPointerResult center;
+        if (RendererPointerContract.map(&map, &query, &center)
+                != SEMU_RENDER_POINTER_MAPPED
+                || center.surface_index != 1
+                || center.native_x < 127.49f || center.native_x > 127.51f
+                || center.native_y < 95.49f || center.native_y > 95.51f) {
+            return false;
+        }
+
+        query.x = 600.0f;
+        struct SemuRenderPointerResult rejected;
+        if (RendererPointerContract.map(&map, &query, &rejected)
+                != SEMU_RENDER_POINTER_OUTSIDE) {
+            return false;
+        }
+        query.clamp = 1;
+        struct SemuRenderPointerResult captured;
+        return RendererPointerContract.map(&map, &query, &captured)
+                == SEMU_RENDER_POINTER_MAPPED
+            && captured.surface_index == 1
+            && captured.clamped == 1
+            && captured.native_x == 0.0f;
+    }
+
+    class int run(string project) {
+        string directory = "config/emulators/melonds";
+        JsonValue emulator = JsonValue.readFile(
+            MelonDsTouchContractTest.file(
+                project, directory + "/emulator.json"));
+        JsonValue package = JsonValue.readFile(
+            MelonDsTouchContractTest.file(
+                project, directory + "/package.json"));
+        JsonValue profile = JsonValue.readFile(
+            MelonDsTouchContractTest.file(
+                project, directory + "/profile.json"));
+        JsonValue rendering = JsonValue.readFile(
+            MelonDsTouchContractTest.file(
+                project, directory + "/rendering.json"));
+        string patch = FileSystem.readText(
+            MelonDsTouchContractTest.file(
+                project, directory + "/melonds.patch"));
+        string added = MelonDsTouchContractTest.additions(patch);
+        string packageNix = FileSystem.readText(
+            MelonDsTouchContractTest.file(
+                project, directory + "/package.nix"));
+        JsonValue source = package.get("source");
+        JsonValue nativeActions = package.get("native_actions");
+        JsonValue pointer = rendering.get("integration")
+            .get("pointer_mapping");
+        int failures = 0;
+
+        JsonValue filesystems = emulator.get("platforms").get("linux")
+            .get("sandbox").get("filesystems");
+        bool biosReadOnly = false;
+        for (int index = 0; index < filesystems.size(); index++) {
+            JsonValue filesystem = filesystems.at(index);
+            if (filesystem.get("path").isString()
+                    && filesystem.get("mode").isString()
+                    && filesystem.get("path").asString().equals("${bios}")
+                    && filesystem.get("mode").asString().equals("ro")) {
+                biosReadOnly = true;
+            }
+        }
+        if (!biosReadOnly
+                || FileSystem.readText(MelonDsTouchContractTest.file(
+                    project, directory + "/emulator.json"))
+                    .contains("${paths.project_bios}")) {
+            failures += MelonDsTouchContractTest.fail(
+                "DS BIOS inputs do not use the read-only ${bios} contract");
+        }
+
+        if (!package.get("build_kind").isString()
+                || !package.get("build_kind").asString().equals("source")
+                || !source.get("revision").isString()
+                || source.get("revision").asString().len() != 40
+                || !source.get("sha256").isString()
+                || !source.get("sha256").asString().startsWith("sha256-")
+                || !MelonDsTouchContractTest.fallbacksDisabled(
+                    package.get("fallbacks"))) {
+            failures += MelonDsTouchContractTest.fail(
+                "source identity or no-fallback package policy is incomplete");
+        }
+
+        JsonValue loadAction = nativeActions.get("state.load");
+        JsonValue saveAction = nativeActions.get("state.save");
+        if (!MelonDsTouchContractTest.declaredAction(
+                    emulator, "state.load")
+                || !MelonDsTouchContractTest.declaredAction(
+                    emulator, "state.save")
+                || !MelonDsTouchContractTest.externalStateAction(
+                    profile, "state.load", "Ctrl+A",
+                    "MainWindow::actLoadState[1]")
+                || !MelonDsTouchContractTest.externalStateAction(
+                    profile, "state.save", "Ctrl+S",
+                    "MainWindow::actSaveState[1]")
+                || loadAction.get("slot").asInt() != 1
+                || saveAction.get("slot").asInt() != 1
+                || !loadAction.get("source_marker").isString()
+                || !saveAction.get("source_marker").isString()
+                || MelonDsTouchContractTest.occurrences(
+                    added, loadAction.get("source_marker").asString()) != 1
+                || MelonDsTouchContractTest.occurrences(
+                    added, saveAction.get("source_marker").asString()) != 1
+                || !patch.contains(
+                    loadAction.get("source_consumer_marker").asString())
+                || !patch.contains(
+                    saveAction.get("source_consumer_marker").asString())
+                || !packageNix.contains(
+                    "native_actions = nativeActions")
+                || !packageNix.contains(
+                    "nativeActions.\"state.load\".source_marker")
+                || !packageNix.contains(
+                    "nativeActions.\"state.save\".source_marker")) {
+            failures += MelonDsTouchContractTest.fail(
+                "slot-1 save/load actions are not source-backed and declarative");
+        }
+
+        if (!pointer.get("map").isString()
+                || !pointer.get("map").asString().equals("frame.pointer_map")
+                || !pointer.get("callback").asString().equals(
+                    "frame.map_pointer")
+                || !pointer.get("snapshot").asString().equals(
+                    "last_successful_post_ui_frame")
+                || pointer.get("surface_index").asInt() != 1
+                || !pointer.get("surface_id").asString().equals("bottom")
+                || !pointer.get("viewport").asString().equals(
+                    "qt_logical_widget")
+                || !pointer.get("origin").asString().equals("top_left")
+                || !pointer.get("press_clamp").isBool()
+                || pointer.get("press_clamp").asBool()
+                || !pointer.get("captured_motion_clamp").isBool()
+                || !pointer.get("captured_motion_clamp").asBool()
+                || !MelonDsTouchContractTest.exactEvents(
+                    pointer.get("events"))
+                || !pointer.get("consumer").asString().equals(
+                    "EmuInstance::touchScreen")
+                || !pointer.get("coordinates").asString().equals(
+                    "abi_native_pixels")) {
+            failures += MelonDsTouchContractTest.fail(
+                "declarative ABI pointer policy is not exact");
+        }
+
+        int game = patch.indexOf("semu_render_game_gl(&semuFrame);");
+        int postUi = patch.indexOf(
+            "semu_render_post_ui_gl(&semuFrame);");
+        int store = patch.indexOf(
+            "storeSemuPointerMap(semuGameApplied && semuPostUiApplied");
+        int present = patch.indexOf("glContext->SwapBuffers();");
+        if (game < 0 || postUi <= game || store <= postUi || present <= store
+                || !added.contains(
+                    "semuPointerMap = frame->pointer_map;")
+                || !added.contains(
+                    "semuMapPointer = frame->map_pointer;")
+                || !added.contains(
+                    "query.frame_id = pointerMap.frame_id;")
+                || !added.contains(
+                    "query.origin = SEMU_RENDER_ORIGIN_TOP_LEFT;")
+                || !added.contains("query.surface_index = 1;")
+                || !added.contains("query.clamp = capture ? 1 : 0;")) {
+            failures += MelonDsTouchContractTest.fail(
+                "immutable map publication or post-UI ordering is missing");
+        }
+
+        if (MelonDsTouchContractTest.occurrences(
+                    added, "mapSemuTouch(x, y, false, x, y)") != 1
+                || MelonDsTouchContractTest.occurrences(
+                    added, "mapSemuTouch(x, y, true, x, y)") != 1
+                || MelonDsTouchContractTest.occurrences(
+                    added, "&& mapSemuTouch(x, y, capture, x, y)") != 2
+                || MelonDsTouchContractTest.occurrences(
+                    patch, "emuInstance->touchScreen(x, y);") != 4
+                || MelonDsTouchContractTest.occurrences(
+                    added, "(!capture || touching)") != 2
+                || added.contains("layout.GetTouchCoords")
+                || added.contains("lastPosition")
+                || added.contains("lastPos()")
+                || !added.contains(
+                    "nativeX = static_cast<int>(std::lround(result.native_x));")
+                || !added.contains(
+                    "nativeY = static_cast<int>(std::lround(result.native_y));")) {
+            failures += MelonDsTouchContractTest.fail(
+                "Qt event consumers do not implement press/capture semantics");
+        }
+
+        if (MelonDsTouchContractTest.forbiddenMechanism(added)
+                || !packageNix.contains("--fuzz=0")
+                || !packageNix.contains(
+                    "pointerMapping.surface_index == 1")
+                || !packageNix.contains(
+                    "test \"$game_line\" -lt \"$osd_line\"")
+                || !packageNix.contains(
+                    "test \"$osd_line\" -lt \"$post_line\"")
+                || !packageNix.contains(
+                    "! grep -Fq 'layout.GetTouchCoords'")) {
+            failures += MelonDsTouchContractTest.fail(
+                "package lacks exact source guards or contains interception");
+        }
+
+        if (!MelonDsTouchContractTest.inversePointerBehavior()) {
+            failures += MelonDsTouchContractTest.fail(
+                "ABI 2 bottom-surface mapping behavior regressed");
+        }
+        if (failures == 0) {
+            print("melonDS touch contract: ABI 2 bottom surface consumer valid");
+        }
+        return failures;
+    }
+}

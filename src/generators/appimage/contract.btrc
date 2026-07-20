@@ -1,0 +1,804 @@
+// contract.btrc - AppImage assembly inputs and payload validation.
+
+import std.{bytes, fs, io, json, process, strings, vector}
+import ./esde_startup.btrc
+import ./provenance.btrc
+import ./runtime_inventory.btrc
+
+#include <fcntl.h>
+#include <limits.h>
+
+class AppImageContractResult {
+    public bool valid;
+    public string error;
+
+    public AppImageContractResult(bool valid, string error) {
+        self.valid = valid;
+        self.error = error;
+    }
+
+    class AppImageContractResult success() {
+        return AppImageContractResult(true, "");
+    }
+
+    class AppImageContractResult failure(string error) {
+        return AppImageContractResult(false, error);
+    }
+
+    public bool ok() { return self.valid; }
+}
+
+class AppImagePathPlan {
+    public bool valid;
+    public string repoRoot;
+    public string sourceRoot;
+    public string runtimeRoot;
+    public string packagingRoot;
+    public string buildRoot;
+    public string workBase;
+    public string workRoot;
+    public string outputPath;
+    public string error;
+
+    public AppImagePathPlan() {
+        self.valid = false;
+        self.repoRoot = "";
+        self.sourceRoot = "";
+        self.runtimeRoot = "";
+        self.packagingRoot = "";
+        self.buildRoot = "";
+        self.workBase = "";
+        self.workRoot = "";
+        self.outputPath = "";
+        self.error = "";
+    }
+
+    public bool ok() { return self.valid; }
+}
+
+class AppImagePathContract {
+    class bool realDirectory(string path) {
+        FileStatus status = FileStatus(path);
+        return status.isDir() && !status.isSymlink()
+            && UnixFileSystem.realPath(path).equals(path);
+    }
+
+    class bool within(string parent, string path) {
+        return path.equals(parent) || path.startsWith(parent + "/");
+    }
+
+    class bool overlap(string left, string right) {
+        return AppImagePathContract.within(left, right)
+            || AppImagePathContract.within(right, left);
+    }
+
+    class string lexicalAbsolute(string path) {
+        if (path == null || path.isEmpty()) { return ""; }
+        if (path[0] == '/') { return Strings.copy(path); }
+        string current = UnixFileSystem.currentDirectory();
+        return current.isEmpty() ? "" : PathTools.join(current, path);
+    }
+
+    class bool safeOptionalDirectory(string path) {
+        FileStatus status = FileStatus(path);
+        if (!status.linkFound) { return true; }
+        return status.isDir() && !status.isSymlink()
+            && UnixFileSystem.realPath(path).equals(path);
+    }
+
+    class bool safeOptionalOutput(string path) {
+        FileStatus status = FileStatus(path);
+        if (!status.linkFound) { return true; }
+        return status.isFile() && !status.isSymlink()
+            && UnixFileSystem.realPath(path).equals(path);
+    }
+
+    // A successful probe creates two case-distinct files in one fresh private
+    // directory. Failure to create, distinguish, or clean either name is a
+    // failed filesystem proof, never an assumed capability.
+    class bool caseSensitiveDirectory(string path) {
+        if (!AppImagePathContract.realDirectory(path)) { return false; }
+        string templatePath = PathTools.join(path, ".semu-case-probe.XXXXXX");
+        char* raw = Strings.copy(templatePath);
+        if (raw == NULL) { return false; }
+        char* created = mkdtemp(raw);
+        if (created == NULL) { return false; }
+        string probe = Strings.copy(created);
+        string lower = PathTools.join(probe, "case");
+        string upper = PathTools.join(probe, "CASE");
+        int lowerDescriptor = open(lower,
+            (int)O_CREAT | (int)O_EXCL | (int)O_WRONLY | (int)O_CLOEXEC | (int)O_NOFOLLOW, 384); // 0600
+        int upperDescriptor = open(upper,
+            (int)O_CREAT | (int)O_EXCL | (int)O_WRONLY | (int)O_CLOEXEC | (int)O_NOFOLLOW, 384); // 0600
+        bool distinct = lowerDescriptor >= 0 && upperDescriptor >= 0;
+        if (upperDescriptor >= 0) {
+            close(upperDescriptor);
+            unlink(upper);
+        }
+        if (lowerDescriptor >= 0) {
+            close(lowerDescriptor);
+            unlink(lower);
+        }
+        bool cleaned = rmdir(probe) == 0;
+        return distinct && cleaned;
+    }
+
+    class string derivedWorkRoot(string workBase, string runtimeRoot) {
+        return PathTools.join(workBase,
+            ".semu-appimage-work-" + PathTools.basename(runtimeRoot));
+    }
+
+    class bool ownsWorkRoot(AppImagePathPlan plan) {
+        return plan.ok()
+            && !plan.workBase.isEmpty()
+            && plan.workRoot.equals(AppImagePathContract.derivedWorkRoot(
+                plan.workBase, plan.runtimeRoot));
+    }
+
+    class AppImagePathPlan invalid(string error) {
+        AppImagePathPlan plan = AppImagePathPlan();
+        plan.error = error;
+        return plan;
+    }
+
+    class AppImagePathPlan plan(string repoPath, string runtimePath,
+                                string requestedOutput,
+                                string requestedWorkBase = "") {
+        string repo = UnixFileSystem.realPath(repoPath);
+        if (repo.isEmpty() || !AppImagePathContract.realDirectory(repo)) {
+            return AppImagePathContract.invalid(
+                "project root is absent or traverses a symlink: " + repoPath);
+        }
+
+        string source = PathTools.join(repo, "config");
+        string packaging = PathTools.join(repo, "build/packaging/linux");
+        string build = PathTools.join(repo, "build");
+        if (!AppImagePathContract.realDirectory(source)) {
+            return AppImagePathContract.invalid(
+                "Semu config root is absent or traverses a symlink: " + source);
+        }
+        if (!AppImagePathContract.realDirectory(packaging)) {
+            return AppImagePathContract.invalid(
+                "generated Linux packaging is absent or traverses a symlink: "
+                + packaging);
+        }
+        if (!AppImagePathContract.realDirectory(build)) {
+            return AppImagePathContract.invalid(
+                "generated build root is absent or traverses a symlink: " + build);
+        }
+
+        string runtime = UnixFileSystem.realPath(runtimePath);
+        if (runtime.isEmpty() || !AppImagePathContract.realDirectory(runtime)) {
+            return AppImagePathContract.invalid(
+                "runtime root does not resolve to a real directory: " + runtimePath);
+        }
+        if (!AppImagePathContract.caseSensitiveDirectory(runtime)) {
+            return AppImagePathContract.invalid(
+                "runtime root filesystem is not proven case-sensitive: " + runtime);
+        }
+
+        string requested = AppImagePathContract.lexicalAbsolute(requestedOutput);
+        if (requested.isEmpty() || PathTools.basename(requested).isEmpty()) {
+            return AppImagePathContract.invalid("AppImage output path is empty");
+        }
+        FileStatus requestedStatus = FileStatus(requested);
+        if (requestedStatus.isSymlink()) {
+            return AppImagePathContract.invalid(
+                "AppImage output may not be a symlink: " + requested);
+        }
+        string requestedParent = PathTools.dirname(requested);
+        string outputParent = UnixFileSystem.realPath(requestedParent);
+        if (outputParent.isEmpty()
+            || !AppImagePathContract.realDirectory(outputParent)
+            || !requestedParent.equals(outputParent)) {
+            return AppImagePathContract.invalid(
+                "AppImage output directory is absent or traverses a symlink: "
+                + requestedParent);
+        }
+        string output = PathTools.join(outputParent, PathTools.basename(requested));
+        if (!AppImagePathContract.within(build, output)) {
+            return AppImagePathContract.invalid(
+                "AppImage output must stay under the generated build root: " + output);
+        }
+        if (!AppImagePathContract.safeOptionalOutput(output)) {
+            return AppImagePathContract.invalid(
+                "AppImage output is not a regular owned file: " + output);
+        }
+
+        string workBase = PathTools.dirname(runtime);
+        if (!requestedWorkBase.isEmpty()) {
+            string requestedBase = AppImagePathContract.lexicalAbsolute(requestedWorkBase);
+            string canonicalBase = UnixFileSystem.realPath(requestedBase);
+            if (canonicalBase.isEmpty() || !requestedBase.equals(canonicalBase)
+                || !AppImagePathContract.realDirectory(canonicalBase)) {
+                return AppImagePathContract.invalid(
+                    "explicit AppImage work root must be an existing real directory: "
+                    + requestedWorkBase);
+            }
+            workBase = canonicalBase;
+        }
+        if (!AppImagePathContract.caseSensitiveDirectory(workBase)) {
+            return AppImagePathContract.invalid(
+                "AppImage work filesystem is not proven case-sensitive: " + workBase);
+        }
+        string work = AppImagePathContract.derivedWorkRoot(workBase, runtime);
+        if (!AppImagePathContract.safeOptionalDirectory(work)) {
+            return AppImagePathContract.invalid(
+                "AppImage work root is a symlink or non-directory");
+        }
+        Vector<string> protectedPaths = [repo, source, packaging, runtime, output];
+        for protectedPath in protectedPaths {
+            if (AppImagePathContract.overlap(work, protectedPath)) {
+                return AppImagePathContract.invalid(
+                    "AppImage work root overlaps a source, runtime, or output path");
+            }
+        }
+        if (AppImagePathContract.overlap(runtime, source)
+            || AppImagePathContract.overlap(runtime, packaging)
+            || AppImagePathContract.overlap(runtime, output)) {
+            return AppImagePathContract.invalid(
+                "AppImage source, runtime, work, and output paths must be disjoint");
+        }
+
+        // Payload validation owns diagnostics for incomplete roots. Any root
+        // carrying the mandatory frontend is an assembly candidate and must
+        // prove that it was built from this exact live source snapshot.
+        if (AppImageRuntimeProvenance.runtimeLooksPopulated(runtime)) {
+            AppImageProvenanceResult provenance =
+                AppImageRuntimeProvenance.validate(repo, runtime);
+            if (!provenance.ok()) {
+                return AppImagePathContract.invalid(
+                    "AppImage runtime provenance rejected: " + provenance.error);
+            }
+        }
+
+        AppImagePathPlan plan = AppImagePathPlan();
+        plan.repoRoot = repo;
+        plan.sourceRoot = source;
+        plan.runtimeRoot = runtime;
+        plan.packagingRoot = packaging;
+        plan.buildRoot = build;
+        plan.workBase = workBase;
+        plan.workRoot = work;
+        plan.outputPath = output;
+        plan.valid = true;
+        return plan;
+    }
+}
+
+class Type2AppImageOffset {
+    public bool valid;
+    public long long offset;
+    public string error;
+
+    public Type2AppImageOffset(bool valid, long long offset, string error) {
+        self.valid = valid;
+        self.offset = offset;
+        self.error = error;
+    }
+
+    class Type2AppImageOffset success(long long offset) {
+        return Type2AppImageOffset(true, offset, "");
+    }
+
+    class Type2AppImageOffset failure(string error) {
+        return Type2AppImageOffset(false, 0LL, error);
+    }
+
+    public bool ok() { return self.valid; }
+}
+
+class Type2AppImage {
+    class long long maximumSectionCount() { return 4096LL; }
+
+    class long long u16(Bytes bytes, int offset) {
+        return (long long)bytes.get(offset)
+            + (long long)bytes.get(offset + 1) * 256LL;
+    }
+
+    class long long u64(Bytes bytes, int offset) {
+        if (bytes.get(offset + 7) >= 128) { return -1LL; }
+        long long value = 0LL;
+        for (int index = 7; index >= 0; index--) {
+            value = value * 256LL + (long long)bytes.get(offset + index);
+        }
+        return value;
+    }
+
+    class bool squashfsMagic(Bytes bytes, long long offset) {
+        if (bytes == null || offset < 0LL
+            || bytes.length() < 4
+            || offset > (long long)bytes.length() - 4LL) {
+            return false;
+        }
+        int start = (int)offset;
+        return bytes.get(start) == 104 && bytes.get(start + 1) == 115
+            && bytes.get(start + 2) == 113 && bytes.get(start + 3) == 115;
+    }
+
+    class Type2AppImageOffset parseHeader(Bytes bytes) {
+        if (bytes == null || bytes.length() < 64) {
+            return Type2AppImageOffset.failure("AppImage ELF header is truncated");
+        }
+        bool elf64LittleEndian = bytes.get(0) == 127 && bytes.get(1) == 69
+            && bytes.get(2) == 76 && bytes.get(3) == 70
+            && bytes.get(4) == 2 && bytes.get(5) == 1 && bytes.get(6) == 1;
+        bool type2 = bytes.get(8) == 65 && bytes.get(9) == 73
+            && bytes.get(10) == 2;
+        long long elfType = Type2AppImage.u16(bytes, 16);
+        long long machine = Type2AppImage.u16(bytes, 18);
+        long long headerSize = Type2AppImage.u16(bytes, 52);
+        if (!elf64LittleEndian || !type2 || (elfType != 2LL && elfType != 3LL)
+            || machine != 62LL || headerSize != 64LL) {
+            return Type2AppImageOffset.failure(
+                "AppImage is not a type-2 little-endian x86_64 ELF");
+        }
+
+        long long sectionTable = Type2AppImage.u64(bytes, 40);
+        long long sectionEntrySize = Type2AppImage.u16(bytes, 58);
+        long long sectionCount = Type2AppImage.u16(bytes, 60);
+        if (sectionTable < 64LL || sectionEntrySize != 64LL) {
+            return Type2AppImageOffset.failure(
+                "AppImage ELF section table does not describe a type-2 runtime prefix");
+        }
+        if (sectionCount == 0LL) {
+            return Type2AppImageOffset.failure(
+                "AppImage ELF extended section counts are not accepted");
+        }
+        if (sectionCount > Type2AppImage.maximumSectionCount()) {
+            return Type2AppImageOffset.failure(
+                "AppImage ELF section count is unreasonable");
+        }
+        if (sectionCount > (long long)LLONG_MAX / sectionEntrySize) {
+            return Type2AppImageOffset.failure("AppImage ELF section table size overflows");
+        }
+        long long tableBytes = sectionEntrySize * sectionCount;
+        if (sectionTable > (long long)LLONG_MAX - tableBytes) {
+            return Type2AppImageOffset.failure("AppImage ELF runtime offset overflows");
+        }
+        return Type2AppImageOffset.success(sectionTable + tableBytes);
+    }
+
+    class Type2AppImageOffset parse(Bytes bytes) {
+        Type2AppImageOffset parsed = Type2AppImage.parseHeader(bytes);
+        if (!parsed.ok()) { return parsed; }
+        if (!Type2AppImage.squashfsMagic(bytes, parsed.offset)) {
+            return Type2AppImageOffset.failure(
+                "AppImage ELF runtime prefix is not followed by SquashFS");
+        }
+        return parsed;
+    }
+
+    class Bytes preadBounded(int descriptor, long long offset, int count) {
+        char buffer[64];
+        if (count < 0 || count > 64 || offset < 0LL) { return Bytes(); }
+        ssize_t received = pread(
+            descriptor, buffer, (size_t)count, (off_t)offset);
+        while (received < (ssize_t)0 && errno == EINTR) {
+            received = pread(descriptor, buffer, (size_t)count, (off_t)offset);
+        }
+        return received > (ssize_t)0
+            ? Bytes.fromRaw(buffer, (int)received) : Bytes();
+    }
+
+    class Type2AppImageOffset parseFileMode(
+            string path, bool bareRuntime) {
+        struct stat pathStatus;
+        if (lstat(path, &pathStatus) != 0 || !S_ISREG(pathStatus.st_mode)) {
+            return Type2AppImageOffset.failure(
+                "AppImage source is not a regular file: " + path);
+        }
+        int descriptor = open(
+            path, (int)O_RDONLY | (int)O_CLOEXEC | (int)O_NOFOLLOW | (int)O_NONBLOCK);
+        if (descriptor < 0) {
+            return Type2AppImageOffset.failure("cannot open AppImage source: " + path);
+        }
+        struct stat status;
+        if (fstat(descriptor, &status) != 0 || !S_ISREG(status.st_mode)
+            || status.st_dev != pathStatus.st_dev
+            || status.st_ino != pathStatus.st_ino) {
+            close(descriptor);
+            return Type2AppImageOffset.failure(
+                "AppImage source is not a regular file: " + path);
+        }
+        if (status.st_size < (off_t)64) {
+            close(descriptor);
+            return Type2AppImageOffset.failure("AppImage ELF header is truncated");
+        }
+        Bytes header = Type2AppImage.preadBounded(descriptor, 0LL, 64);
+        if (header.length() != 64) {
+            close(descriptor);
+            return Type2AppImageOffset.failure("AppImage ELF header is truncated");
+        }
+        Type2AppImageOffset parsed = Type2AppImage.parseHeader(header);
+        if (!parsed.ok()) {
+            close(descriptor);
+            return parsed;
+        }
+        long long fileSize = (long long)status.st_size;
+        if (bareRuntime) {
+            close(descriptor);
+            if (parsed.offset != fileSize) {
+                return Type2AppImageOffset.failure(
+                    "bare AppImage runtime size differs from its ELF section-table end");
+            }
+            return parsed;
+        }
+        if (fileSize < 4LL || parsed.offset < 64LL
+            || parsed.offset > fileSize - 4LL) {
+            close(descriptor);
+            return Type2AppImageOffset.failure(
+                "AppImage ELF runtime offset exceeds the artifact size");
+        }
+        Bytes magic = Type2AppImage.preadBounded(descriptor, parsed.offset, 4);
+        close(descriptor);
+        if (magic.length() != 4 || !Type2AppImage.squashfsMagic(magic, 0LL)) {
+            return Type2AppImageOffset.failure(
+                "AppImage ELF runtime prefix is not followed by SquashFS");
+        }
+        return parsed;
+    }
+
+    class Type2AppImageOffset parseBareRuntimeFile(string path) {
+        return Type2AppImage.parseFileMode(path, true);
+    }
+
+    class Type2AppImageOffset parseFile(string path) {
+        return Type2AppImage.parseFileMode(path, false);
+    }
+}
+
+class AppImagePayloadContract {
+    class bool realDirectory(string path) {
+        FileStatus status = FileStatus(path);
+        return status.isDir() && !status.isSymlink();
+    }
+
+    class bool nonEmptyFile(string path) {
+        struct stat status;
+        FileStatus fileStatus = FileStatus(path);
+        return fileStatus.isFile() && !fileStatus.isSymlink()
+            && stat(path, &status) == 0
+            && status.st_size > 0;
+    }
+
+    class bool noSymlinkComponents(string root, string relative) {
+        if (!AppImagePayloadContract.realDirectory(root)
+            || relative.isEmpty() || relative.startsWith("/")) {
+            return false;
+        }
+        string current = root;
+        for component in Strings.split(relative, "/") {
+            if (component.isEmpty() || component.equals(".")
+                || component.equals("..")) {
+                return false;
+            }
+            current = PathTools.join(current, component);
+            FileStatus status = FileStatus(current);
+            if (!status.linkFound || status.isSymlink()) { return false; }
+        }
+        return true;
+    }
+
+    class bool safeNonEmptyFile(string root, string relative) {
+        return AppImagePayloadContract.noSymlinkComponents(root, relative)
+            && AppImagePayloadContract.nonEmptyFile(PathTools.join(root, relative));
+    }
+
+    class bool safeDirectory(string root, string relative) {
+        return AppImagePayloadContract.noSymlinkComponents(root, relative)
+            && AppImagePayloadContract.realDirectory(PathTools.join(root, relative));
+    }
+
+    class bool executableFile(string path) {
+        struct stat status;
+        return AppImagePayloadContract.nonEmptyFile(path)
+            && stat(path, &status) == 0 && (status.st_mode & 73) != 0; // 0111
+    }
+
+    class bool fileContains(string path, string marker) {
+        if (!AppImagePayloadContract.nonEmptyFile(path)
+                || marker.isEmpty()) {
+            return false;
+        }
+        Command command = Command("grep").args(
+            ["-a", "-F", "-q", "--", marker, path]);
+        UnixShell shell = UnixShell();
+        ExecResult result = shell.run(command.render(),
+            CommandOutput.suppress(), CommandOutput.suppress(), false, false);
+        return result.ok();
+    }
+
+    class bool lowerHex(string value, int expectedLength) {
+        if (value.len() != expectedLength) { return false; }
+        for character in value {
+            bool decimal = character >= '0' && character <= '9';
+            bool hexadecimal = character >= 'a' && character <= 'f';
+            if (!decimal && !hexadecimal) { return false; }
+        }
+        return true;
+    }
+
+    class bool exactKeys(JsonValue objectValue, Vector<string> expected) {
+        if (!objectValue.isObject()
+                || objectValue.keys().size() != expected.size()) {
+            return false;
+        }
+        for key in objectValue.keys() {
+            if (!expected.contains(key)) { return false; }
+        }
+        return true;
+    }
+
+    class bool sriSha256(string value) {
+        if (value.len() != 51 || !value.startsWith("sha256-")
+                || value.charAt(value.len() - 1) != '=') {
+            return false;
+        }
+        for (int index = 7; index < value.len() - 1; index++) {
+            char character = value.charAt(index);
+            bool alphaNumeric = (character >= 'a' && character <= 'z')
+                || (character >= 'A' && character <= 'Z')
+                || (character >= '0' && character <= '9');
+            if (!alphaNumeric && character != '+' && character != '/') {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    class bool sourceBuiltEsDe(string root, string executableRelative) {
+        string executable = PathTools.join(root, executableRelative);
+        string contractRelative = "share/semu/es-de-build-contract.json";
+        if (!AppImagePayloadContract.safeNonEmptyFile(root, executableRelative)
+            || !AppImagePayloadContract.executableFile(executable)
+            || !AppImagePayloadContract.fileContains(
+                executable, "semu-settings-v2")
+            || !AppImagePayloadContract.fileContains(
+                executable, "semu_settings.json")
+            || !AppImagePayloadContract.safeNonEmptyFile(root, contractRelative)) {
+            return false;
+        }
+        JsonValue contract = JsonValue.readFile(
+            PathTools.join(root, contractRelative));
+        if (contract.isError() || !AppImagePayloadContract.exactKeys(contract,
+                ["schema_version", "source_revision", "source_sha256",
+                 "patch_sha256", "settings_protocol", "program_data_root",
+                 "splash"])) {
+            return false;
+        }
+        JsonValue schemaVersion = contract.get("schema_version");
+        JsonValue sourceRevision = contract.get("source_revision");
+        JsonValue sourceHash = contract.get("source_sha256");
+        JsonValue patchHash = contract.get("patch_sha256");
+        JsonValue protocol = contract.get("settings_protocol");
+        return schemaVersion.isInt() && schemaVersion.asInt() == 2
+            && sourceRevision.isString()
+            && AppImagePayloadContract.lowerHex(sourceRevision.asString(), 40)
+            && sourceHash.isString()
+            && AppImagePayloadContract.sriSha256(sourceHash.asString())
+            && patchHash.isString()
+            && AppImagePayloadContract.lowerHex(patchHash.asString(), 64)
+            && protocol.isString()
+            && protocol.asString().equals("semu-settings-v2")
+            && SemuEsDeStartupContract.validate(root).isEmpty();
+    }
+
+    class bool exactRendererAbi(
+            string root, Vector<AppImageRuntimeSlice> slices) {
+        string contractFile = PathTools.join(
+            root, "share/semu/renderer-contract.json");
+        JsonValue contract = JsonValue.readFile(contractFile);
+        JsonValue libraryValue = contract.get("library");
+        JsonValue exports = contract.get("exports");
+        if (!contract.isObject()
+                || !contract.get("schema_version").isInt()
+                || contract.get("schema_version").asInt() != 1
+                || !contract.get("abi").isInt()
+                || contract.get("abi").asInt() != 2
+                || !libraryValue.isString()
+                || !AppImageRuntimeInventory.safeRelative(
+                    libraryValue.asString())
+                || !exports.isArray() || exports.size() == 0
+                || !AppImagePayloadContract.safeNonEmptyFile(
+                    root, libraryValue.asString())) {
+            return false;
+        }
+        string library = PathTools.join(root, libraryValue.asString());
+        Vector<string> exportedSymbols = [];
+        for (int index = 0; index < exports.size(); index++) {
+            JsonValue symbol = exports.at(index);
+            if (!symbol.isString() || symbol.asString().isEmpty()
+                    || exportedSymbols.contains(symbol.asString())
+                    || !AppImagePayloadContract.fileContains(
+                        library, symbol.asString())) {
+                return false;
+            }
+            exportedSymbols.push(symbol.asString());
+        }
+        for slice in slices {
+            for symbol in slice.hookSymbols {
+                if (!exportedSymbols.contains(symbol)) { return false; }
+                bool carried = false;
+                for executable in slice.packagedExecutables {
+                    string path = PathTools.join(root, executable);
+                    if (AppImagePayloadContract.safeNonEmptyFile(root, executable)
+                            && AppImagePayloadContract.fileContains(path, symbol)) {
+                        carried = true;
+                    }
+                }
+                if (!carried) { return false; }
+            }
+        }
+        return slices.size() != 0;
+    }
+
+    class JsonValue provenanceDocument(string root) {
+        string relative = AppImageRuntimeProvenance.relativePath();
+        if (!AppImagePayloadContract.safeNonEmptyFile(root, relative)) {
+            return JsonValue.makeNull();
+        }
+        JsonValue document = JsonValue.readFile(PathTools.join(root, relative));
+        return document.isObject() ? document : JsonValue.makeNull();
+    }
+
+    class string coreDirectory(string root) {
+        JsonValue document = AppImagePayloadContract.provenanceDocument(root);
+        JsonValue directory = document.get("source")
+            .get("core_runtime").get("directory");
+        return directory.isString()
+                && AppImageRuntimeInventory.safeRelative(directory.asString())
+            ? directory.asString() : "";
+    }
+
+    class AppImageContractResult validateCoreInventory(
+            string root, string destinationPrefix) {
+        JsonValue document = AppImagePayloadContract.provenanceDocument(root);
+        JsonValue sourceRuntime = document.get("source").get("core_runtime");
+        JsonValue runtimeInventory =
+            document.get("runtime").get("selected_cores");
+        JsonValue sourceProvider = sourceRuntime.get("provider");
+        JsonValue runtimeProvider = runtimeInventory.get("provider");
+        JsonValue directoryValue = sourceRuntime.get("directory");
+        JsonValue libraries = runtimeInventory.get("libraries");
+        if (!sourceProvider.isString() || !runtimeProvider.isString()
+                || !sourceProvider.asString().equals(
+                    runtimeProvider.asString())
+                || !directoryValue.isString()
+                || !AppImageRuntimeInventory.safeRelative(
+                    directoryValue.asString())
+                || !libraries.isArray() || libraries.size() == 0) {
+            return AppImageContractResult.failure(
+                "selected-core provenance is absent or malformed");
+        }
+        string sourceDirectory = directoryValue.asString();
+        string destinationDirectory = destinationPrefix.isEmpty()
+            ? sourceDirectory : destinationPrefix + "/" + sourceDirectory;
+        if (!AppImagePayloadContract.safeDirectory(root, destinationDirectory)) {
+            return AppImageContractResult.failure(
+                "selected-core destination directory is absent: "
+                + destinationDirectory);
+        }
+        Vector<string> expectedNames = [];
+        for (int index = 0; index < libraries.size(); index++) {
+            JsonValue sourcePath = libraries.at(index).get("path");
+            if (!sourcePath.isString()
+                    || !PathTools.dirname(sourcePath.asString())
+                        .equals(sourceDirectory)) {
+                return AppImageContractResult.failure(
+                    "selected-core library escaped its declared directory");
+            }
+            string name = PathTools.basename(sourcePath.asString());
+            string destination = destinationDirectory + "/" + name;
+            if (!PathTools.basename(name).equals(name)
+                    || expectedNames.contains(name)
+                    || !AppImagePayloadContract.safeNonEmptyFile(
+                        root, destination)) {
+                return AppImageContractResult.failure(
+                    "selected-core library is absent or duplicated: " + name);
+            }
+            expectedNames.push(name);
+        }
+        Vector<string> actualNames = FileSystem.listDir(
+            PathTools.join(root, destinationDirectory));
+        if (actualNames.size() != expectedNames.size()) {
+            return AppImageContractResult.failure(
+                "selected-core directory contains an omitted or unknown library");
+        }
+        for name in actualNames {
+            if (!expectedNames.contains(name)) {
+                return AppImageContractResult.failure(
+                    "selected-core directory contains an unknown library: " + name);
+            }
+        }
+        return AppImageContractResult.success();
+    }
+
+    class AppImageContractResult validateRuntime(
+            string root, string sourceRoot) {
+        AppImageRuntimeInventoryResult inventory =
+            AppImageRuntimeInventory.validate(sourceRoot, root);
+        if (!inventory.ok()) {
+            return AppImageContractResult.failure(inventory.error);
+        }
+        Vector<string> executableFiles = ["bin/bash", "bin/bwrap", "bin/es-de",
+            "bin/nixGL", "bin/semu-input-supervisor",
+            "lib/semu/semu-btrc"];
+        for relative in executableFiles {
+            string path = PathTools.join(root, relative);
+            if (!AppImagePayloadContract.safeNonEmptyFile(root, relative)
+                || !AppImagePayloadContract.executableFile(path)) {
+                return AppImageContractResult.failure(
+                    "runtime lacks executable " + relative);
+            }
+        }
+        Vector<string> payloadFiles = ["lib/libsemurenderer.so",
+            "share/semu/renderer-contract.json",
+            "share/semu/appimage/runtime-x86_64"];
+        for relative in payloadFiles {
+            if (!AppImagePayloadContract.safeNonEmptyFile(root, relative)) {
+                return AppImageContractResult.failure("runtime lacks " + relative);
+            }
+        }
+        if (!AppImagePayloadContract.safeDirectory(root, "nix/store")) {
+            return AppImageContractResult.failure(
+                "runtime lacks its exported nix/store closure");
+        }
+        AppImageContractResult cores =
+            AppImagePayloadContract.validateCoreInventory(root, "");
+        if (!cores.ok()) { return cores; }
+        if (!AppImagePayloadContract.exactRendererAbi(
+                root, inventory.slices)) {
+            return AppImageContractResult.failure(
+                "an emulator or libsemurenderer lacks the exact direct-linked ABI 2 contract");
+        }
+        if (!AppImagePayloadContract.sourceBuiltEsDe(root, "bin/es-de")) {
+            return AppImageContractResult.failure(
+                "runtime ES-DE lacks the source-build settings protocol contract");
+        }
+        return AppImageContractResult.success();
+    }
+
+    class AppImageContractResult validateAppDir(
+            string root, string sourceRoot) {
+        AppImageRuntimeInventoryResult inventory =
+            AppImageRuntimeInventory.validate(sourceRoot, root);
+        if (!inventory.ok()) {
+            return AppImageContractResult.failure(inventory.error);
+        }
+        Vector<string> executableFiles = ["AppRun", "bin/bash", "bin/nixGL",
+            "usr/bin/es-de", "usr/bin/semu",
+            "share/semu/appimage/semu-launcher"];
+        for relative in executableFiles {
+            if (!AppImagePayloadContract.safeNonEmptyFile(root, relative)
+                || !AppImagePayloadContract.executableFile(
+                    PathTools.join(root, relative))) {
+                return AppImageContractResult.failure(
+                    "AppDir lacks executable " + relative);
+            }
+        }
+        Vector<string> payloadFiles = ["semu.desktop", "semu.svg", ".DirIcon",
+            "lib/libsemurenderer.so", "share/semu/renderer-contract.json"];
+        for relative in payloadFiles {
+            if (!AppImagePayloadContract.safeNonEmptyFile(root, relative)) {
+                return AppImageContractResult.failure("AppDir lacks " + relative);
+            }
+        }
+        if (!AppImagePayloadContract.safeDirectory(root, "nix/store")) {
+            return AppImageContractResult.failure("AppDir lacks embedded nix/store");
+        }
+        AppImageContractResult cores =
+            AppImagePayloadContract.validateCoreInventory(root, "usr");
+        if (!cores.ok()) { return cores; }
+        if (!AppImagePayloadContract.exactRendererAbi(
+                root, inventory.slices)) {
+            return AppImageContractResult.failure(
+                "AppDir lacks the exact direct-linked renderer ABI 2 contract");
+        }
+        if (!AppImagePayloadContract.sourceBuiltEsDe(root, "usr/bin/es-de")) {
+            return AppImageContractResult.failure(
+                "AppDir ES-DE is not the source-built Semu settings binary");
+        }
+        return AppImageContractResult.success();
+    }
+}

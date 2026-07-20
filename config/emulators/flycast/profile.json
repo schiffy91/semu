@@ -1,0 +1,128 @@
+{
+  "schema_version": 1,
+  "compiler": {
+    "bindings": {
+      "emulator_name": {
+        "source": "emulator.name"
+      },
+      "renderer_value": {
+        "source": "platform.graphics.values.opengl"
+      }
+    },
+    "line_groups": {
+      "keymap_actions": {
+        "rows": "hotkeys.keymap",
+        "format": "bind${index} = ${scancodes_csv}:${native}:0"
+      }
+    }
+  },
+  "controller": {
+    "ownership": "emulator_native",
+    "source": "SDL GameController port zero",
+    "consumer": "Flycast SDL GameController backend"
+  },
+  "hotkeys": {
+    "keymap": [
+      {
+        "action": "app.quit",
+        "chord": "Ctrl+Q",
+        "native": "btn_escape",
+        "scancodes": [
+          224,
+          20
+        ]
+      },
+      {
+        "action": "state.load",
+        "chord": "Ctrl+A",
+        "native": "btn_jump_state",
+        "scancodes": [
+          224,
+          4
+        ]
+      },
+      {
+        "action": "state.save",
+        "chord": "Ctrl+S",
+        "native": "btn_quick_save",
+        "scancodes": [
+          224,
+          22
+        ]
+      },
+      {
+        "action": "ui.menu",
+        "chord": "Ctrl+M",
+        "native": "btn_menu",
+        "scancodes": [
+          224,
+          16
+        ]
+      },
+      {
+        "action": "ui.screenshot",
+        "chord": "Ctrl+X",
+        "native": "btn_screenshot",
+        "scancodes": [
+          224,
+          27
+        ]
+      }
+    ]
+  },
+  "files": [
+    {
+      "path": "${emulator_name}/config/emu.cfg",
+      "lines": [
+        "[config]",
+        "PerGameVmu = yes",
+        "",
+        "[Dreamcast]",
+        "AutoLoadState = no",
+        "AutoSaveState = no",
+        "",
+        "[input]",
+        "enable_x11_keyboard = no",
+        "",
+        "[rend]",
+        "RendererType = ${renderer_value}",
+        "EmulateFramebuffer = no",
+        "Rotate90 = no",
+        "ShowFPS = no",
+        "FloatVMUs = no",
+        "ScreenStretching = 100",
+        "WideScreen = no",
+        "WidescreenGameHacks = yes",
+        "",
+        "[window]",
+        "fullscreen = yes",
+        "maximized = yes"
+      ]
+    },
+    {
+      "path": "${emulator_name}/config/mappings/SDL_Keyboard.cfg",
+      "lines": [
+        "[emulator]",
+        "mapping_name = Semu Steam Deck Actions",
+        "dead_zone = 10",
+        "saturation = 100",
+        "rumble_power = 100",
+        "version = 4",
+        "triggers =",
+        "",
+        "[digital]",
+        "",
+        "[analog]",
+        "",
+        "[combo]",
+        "@lines:keymap_actions"
+      ]
+    }
+  ],
+  "doc": {
+    "ownership": "Every emitted Flycast config line, native action name, and SDL scancode lives in this declaration. The emitter only validates the rows against emulator.json, steam_input.json, and steamdeck.skm before rendering them.",
+    "gameplay": "The generated keyboard mapping is action-only. Flycast's upstream SDL GameController mapping remains responsible for Dreamcast gameplay, analog triggers, Start, D-pad, and rumble.",
+    "hotkeys": "Flycast version-4 combo rows use simultaneous SDL scancodes (sequential=0): Left Ctrl is 224; Q/A/S/M/X are 20/4/22/16/27. They invoke Flycast's native exit/load/save/menu/screenshot actions.",
+    "state": "No external save path is configured. Flycast therefore stores per-game VMUs and save states in the isolated XDG_DATA_HOME/flycast tree declared by emulator.json."
+  }
+}

@@ -1,0 +1,139 @@
+{
+  "schema_version": 1,
+  "compiler": {
+    "bindings": {
+      "emulator_name": {
+        "source": "emulator.name"
+      },
+      "controller_guid": {
+        "source": "profile.controller.guid",
+        "transform": "lower"
+      }
+    },
+    "line_groups": {
+      "keymap_hotkeys": {
+        "rows": "hotkeys.keymap",
+        "format": "  ${setting}: 0x1/0/${input_id}"
+      }
+    }
+  },
+  "controller": {
+    "ownership": "semu_generated",
+    "source": "profile.controller.guid",
+    "consumer": "ares VirtualPad1 SDL bindings",
+    "guid": "03000000de280000ff11000001000000",
+    "slot": 0
+  },
+  "hotkeys": {
+    "keymap": [
+      {
+        "setting": "PauseEmulation",
+        "action": "ui.pause",
+        "chord": "Ctrl+P",
+        "input_id": 55
+      },
+      {
+        "setting": "CaptureScreenshot",
+        "action": "ui.screenshot",
+        "chord": "Ctrl+X",
+        "input_id": 63
+      },
+      {
+        "setting": "ToggleFullscreen",
+        "action": "ui.fullscreen",
+        "chord": "Ctrl+Enter",
+        "input_id": 97
+      },
+      {
+        "setting": "QuitEmulator",
+        "action": "app.quit",
+        "chord": "Ctrl+Q",
+        "input_id": 56
+      },
+      {
+        "setting": "DecrementStateSlot",
+        "action": "state.prev",
+        "chord": "Ctrl+J",
+        "input_id": 49
+      },
+      {
+        "setting": "IncrementStateSlot",
+        "action": "state.next",
+        "chord": "Ctrl+K",
+        "input_id": 50
+      },
+      {
+        "setting": "LoadState",
+        "action": "state.load",
+        "chord": "Ctrl+A",
+        "input_id": 40
+      },
+      {
+        "setting": "SaveState",
+        "action": "state.save",
+        "chord": "Ctrl+S",
+        "input_id": 58
+      },
+      {
+        "setting": "ToggleFastForward",
+        "action": "speed.fast",
+        "chord": "Ctrl++",
+        "input_id": 89
+      }
+    ]
+  },
+  "files": [
+    {
+      "path": "${emulator_name}/config/settings.bml",
+      "lines": [
+        "Video",
+        "  Driver: OpenGL 3.2",
+        "  Output: Integer",
+        "  Shader: None",
+        "  Blocking: true",
+        "  NativeFullScreen: false",
+        "Input",
+        "  Driver: SDL",
+        "  Defocus: Allow",
+        "General",
+        "  NoFilePrompt: true",
+        "  AutoSaveMemory: true",
+        "Nintendo64",
+        "  ExpansionPak: true",
+        "VirtualPad1",
+        "  Pad.Up: ${controller_guid}/0/3/11;0x1/0/92",
+        "  Pad.Down: ${controller_guid}/0/3/12;0x1/0/93",
+        "  Pad.Left: ${controller_guid}/0/3/13;0x1/0/94",
+        "  Pad.Right: ${controller_guid}/0/3/14;0x1/0/95",
+        "  Select: ${controller_guid}/0/3/4;0x1/0/34",
+        "  Start: ${controller_guid}/0/3/6;0x1/0/96",
+        "  A..South: ${controller_guid}/0/3/0;0x1/0/65",
+        "  B..East: ${controller_guid}/0/3/1;0x1/0/42",
+        "  X..West: ${controller_guid}/0/3/2;0x1/0/61",
+        "  Y..North: ${controller_guid}/0/3/3;0x1/0/41",
+        "  L-Bumper: ${controller_guid}/0/3/9;0x1/0/53",
+        "  R-Bumper: ${controller_guid}/0/3/10;0x1/0/60",
+        "  L-Trigger: ${controller_guid}/0/0/4/Hi;0x1/0/64",
+        "  R-Trigger: ${controller_guid}/0/0/5/Hi;0x1/0/51",
+        "  L-Stick..Click: ${controller_guid}/0/3/7;0x1/0/59",
+        "  R-Stick..Click: ${controller_guid}/0/3/8;0x1/0/46",
+        "  L-Up: ${controller_guid}/0/0/1/Lo;0x1/0/81",
+        "  L-Down: ${controller_guid}/0/0/1/Hi;0x1/0/75",
+        "  L-Left: ${controller_guid}/0/0/0/Lo;0x1/0/77",
+        "  L-Right: ${controller_guid}/0/0/0/Hi;0x1/0/79",
+        "  R-Up: ${controller_guid}/0/0/3/Lo;0x1/0/44",
+        "  R-Down: ${controller_guid}/0/0/3/Hi;0x1/0/43",
+        "  R-Left: ${controller_guid}/0/0/2/Lo;0x1/0/45",
+        "  R-Right: ${controller_guid}/0/0/2/Hi;0x1/0/57",
+        "  Rumble: ${controller_guid}/0/3/5/Rumble",
+        "Hotkey",
+        "@lines:keymap_hotkeys"
+      ]
+    }
+  ],
+  "doc": {
+    "controller": "The SDL GUID is Valve's Steam Virtual Gamepad. Group 0 is SDL axes, group 3 is SDL buttons, and slot zero is ares' stable identifier suffix. Every VirtualPad1 digital, analog, trigger, click, and rumble lane is declared; Quartz keyboard assignments are a deterministic macOS verification fallback. Quit is a normal declared hotkey, not an emulator-source chord.",
+    "hotkeys": "ares treats multiple assignments as alternatives rather than modifiers. Each Semu chord therefore binds its non-gameplay key in ares while Steam Input may still emit the full chord; gameplay keyboard fallbacks deliberately avoid those keys.",
+    "ownership": "This is the complete Semu-owned ares settings source. The emitter only validates closed joins and substitutes the declared controller identity; it does not invent emulator policy."
+  }
+}

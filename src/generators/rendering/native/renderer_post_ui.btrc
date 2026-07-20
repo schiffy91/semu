@@ -1,0 +1,667 @@
+// Matched post-UI action consumption, Semu menu composition, and final-frame
+// evidence. This phase reads only the supervisor journal; it never polls input.
+
+#include <errno.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+
+import ./renderer_abi.btrc
+import ./renderer_gl_api.btrc
+import ./renderer_compositor.btrc
+import ../../input/action_abi.btrc
+
+int SEMU_RENDER_MENU_WIDTH = 384;
+int SEMU_RENDER_MENU_HEIGHT = 320;
+int SEMU_RENDER_MAX_CAPTURE_FRAME = 900;
+int SEMU_RENDER_MAX_CAPTURE_ATTEMPTS = 8;
+int SEMU_RENDER_ACTION_POLL_INTERVAL = 2;
+int SEMU_RENDER_CAPTURE_NONE = 0;
+int SEMU_RENDER_CAPTURE_READBACK_FAILED = 1;
+int SEMU_RENDER_CAPTURE_BLANK = 2;
+int SEMU_RENDER_CAPTURE_WRITTEN = 3;
+int SEMU_RENDER_CAPTURE_WRITE_FAILED = 4;
+
+struct RendererPostUiState {
+    int initialized;
+    int visible;
+    int selected;
+    int slot;
+    int screenshot_requested;
+    int capture_count;
+    int capture_target;
+    int capture_attempts;
+    int capture_exhausted;
+    int capture_outcome;
+    unsigned long long capture_frame_id;
+    unsigned long long next_action_frame;
+    long journal_offset;
+    unsigned long long last_sequence;
+    unsigned char* menu_pixels;
+};
+
+class RendererEvidencePolicy {
+    class int configuredFrame() {
+        char* configured = getenv("SEMU_RENDER_CAPTURE_FRAME");
+        if (configured == null || configured[0] == 0) { return 0; }
+        char* end = null;
+        long target = strtol(configured, &end, 10);
+        return end != null && *end == 0 && target >= 1L
+                && target <= (long)SEMU_RENDER_MAX_CAPTURE_FRAME
+            ? (int)target : 0;
+    }
+
+    class void request(struct RendererPostUiState* state) {
+        if (state == null) { return; }
+        state->screenshot_requested = 1;
+        state->capture_attempts = 0;
+        state->capture_exhausted = 0;
+        state->capture_outcome = SEMU_RENDER_CAPTURE_NONE;
+    }
+
+    class bool due(struct RendererPostUiState* state,
+                   struct SemuRenderFrameGl* frame) {
+        return state != null && frame != null
+            && RendererEvidenceContract.due(state->capture_target,
+                state->capture_count, state->screenshot_requested,
+                state->capture_exhausted, frame->frame_id);
+    }
+
+    class bool needsGl(struct RendererPostUiState* state,
+                       struct SemuRenderFrameGl* frame) {
+        return state != null && frame != null
+            && RendererEvidenceContract.needsGl(state->visible,
+                state->capture_target, state->capture_count,
+                state->screenshot_requested, state->capture_exhausted,
+                frame->frame_id);
+    }
+
+    class char* outcomeName(int outcome) {
+        if (outcome == SEMU_RENDER_CAPTURE_READBACK_FAILED) {
+            return "readback_failed";
+        }
+        if (outcome == SEMU_RENDER_CAPTURE_BLANK) { return "blank"; }
+        if (outcome == SEMU_RENDER_CAPTURE_WRITTEN) { return "written"; }
+        if (outcome == SEMU_RENDER_CAPTURE_WRITE_FAILED) {
+            return "write_failed";
+        }
+        return "none";
+    }
+}
+
+class RendererStateFiles {
+    class char* root() {
+        char* root = getenv("SEMU_RENDER_STATE_DIR");
+        return root == null || root[0] == 0 ? null : root;
+    }
+
+    class bool path(char* output, size_t capacity, string fileName) {
+        char* root = RendererStateFiles.root();
+        if (output == null || capacity == (size_t)0 || root == null
+            || fileName == null || fileName[0] == 0) { return false; }
+        int written = snprintf(output, capacity, "%s/%s", root, fileName);
+        return written >= 0 && (size_t)written < capacity;
+    }
+
+    class void writeValue(FILE* file, char* value) {
+        if (value == null || value[0] == 0) {
+            fputs("none", file);
+            return;
+        }
+        char digits[17] = "0123456789ABCDEF";
+        for (size_t index = 0; value[index] != 0; index++) {
+            unsigned char byte = (unsigned char)value[index];
+            if (byte <= 32u || byte == (unsigned char)'%'
+                    || byte == (unsigned char)'=') {
+                fputc('%', file);
+                fputc(digits[byte >> 4], file);
+                fputc(digits[byte & 15u], file);
+            } else {
+                fputc((int)byte, file);
+            }
+        }
+    }
+
+    class char* originName(unsigned int origin) {
+        if (origin == (unsigned int)SEMU_RENDER_ORIGIN_TOP_LEFT) {
+            return "top_left";
+        }
+        return "bottom_left";
+    }
+
+    class void appendReceipt(char* phase, struct SemuRenderFrameGl* frame,
+                             void* context, int matched, int status,
+                             int actions, unsigned long long hash,
+                             int nonblank, struct RendererConfig* config,
+                             struct RendererGlResources* resources,
+                             struct RendererCompositionGeometry* geometry,
+                             struct RendererPostUiState* evidence) {
+        char path[8192];
+        if (!RendererStateFiles.path(path, sizeof(path),
+                "semu-render-evidence.log")) { return; }
+        FILE* file = fopen(path, "a");
+        if (file == null) { return; }
+        fprintf(file,
+            "schema=2 phase=%s frame_id=%llu context=%p framebuffer=%u color_buffer=%u matched=%d status=%d actions=%d frame_hash=%016llx nonblank=%d",
+            phase == null ? "unknown" : phase,
+            frame == null ? 0ULL : frame->frame_id, context,
+            frame == null ? 0u : frame->framebuffer,
+            frame == null ? 0u : frame->color_buffer,
+            matched, status, actions, hash, nonblank);
+        if (frame != null) {
+            fprintf(file,
+                " framebuffer_size=%dx%d presentation_aspect=%.6f layout_variant=%u surface_count=%d",
+                frame->framebuffer_width, frame->framebuffer_height,
+                frame->presentation_aspect, frame->layout_variant,
+                frame->surface_count);
+        }
+        if (evidence != null) {
+            fprintf(file,
+                " capture_target=%d capture_attempts=%d capture_count=%d capture_exhausted=%d capture_frame_id=%llu capture_result=%s",
+                evidence->capture_target, evidence->capture_attempts,
+                evidence->capture_count, evidence->capture_exhausted,
+                evidence->capture_frame_id,
+                RendererEvidencePolicy.outcomeName(evidence->capture_outcome));
+        }
+        if (config != null && resources != null) {
+            struct RendererVariantConfig* variant = RendererConfiguration.active(config);
+            fprintf(file, " system_id=");
+            RendererStateFiles.writeValue(file, config->system_id.value);
+            fprintf(file, " emulator_id=");
+            RendererStateFiles.writeValue(file, config->emulator_id.value);
+            fprintf(file,
+                " selected_variant=%d integer_policy=%s aspect_policy=%s shader_preset=",
+                config->active_variant + 1,
+                config->integer_scaling != 0 ? "integer" : "fractional",
+                frame != null && frame->presentation_aspect > 0.01f
+                    ? "live" : (config->display_aspect > 0.01f
+                        ? "configured" : "native"));
+            RendererStateFiles.writeValue(file,
+                RendererConfiguration.shaderPreset(config));
+            fprintf(file, " shader_preset_sha256=");
+            RendererStateFiles.writeValue(file,
+                RendererConfiguration.shaderHash(config));
+            fprintf(file, " bezel_art=");
+            RendererStateFiles.writeValue(file, variant->art.value);
+            fprintf(file, " bezel_art_sha256=");
+            RendererStateFiles.writeValue(file, variant->art_sha256);
+            fprintf(file, " glass_art=");
+            RendererStateFiles.writeValue(file, variant->glass.value);
+            fprintf(file, " glass_art_sha256=");
+            RendererStateFiles.writeValue(file, variant->glass_sha256);
+            fprintf(file, " shader_actual=%d bezel_actual=%d",
+                resources->shader_actual, resources->bezel_actual);
+            fprintf(file, " failure_reason=");
+            RendererStateFiles.writeValue(file, resources->failure_reason);
+        }
+        if (geometry != null) {
+            fprintf(file, " bezel_rect=%.3f,%.3f,%.3f,%.3f",
+                geometry->bezel_x, geometry->bezel_y,
+                geometry->bezel_width, geometry->bezel_height);
+            for (int index = 0; index < geometry->lane_count; index++) {
+                struct RendererLaneGeometry* lane = &geometry->lanes[index];
+                unsigned int origin = frame == null ? 0u
+                    : (unsigned int)frame->surfaces[index].origin;
+                fprintf(file,
+                    " surface%d_origin=%s surface%d_rotation=%d surface%d_native=%dx%d surface%d_source=%d,%d,%d,%d surface%d_content=%d,%d,%d,%d",
+                    index, RendererStateFiles.originName(origin),
+                    index, lane->rotation,
+                    index, lane->native_width, lane->native_height,
+                    index, lane->source_x, lane->source_y,
+                    lane->source_width, lane->source_height,
+                    index, lane->output_x, lane->output_y,
+                    lane->output_width, lane->output_height);
+            }
+        }
+        fputc('\n', file);
+        fclose(file);
+    }
+
+}
+
+class RendererMenuModel {
+    class int itemCount() { return 3; }
+
+    class void initialize(struct RendererPostUiState* state) {
+        if (state == null || state->initialized != 0) { return; }
+        state->initialized = 1;
+        state->visible = 0;
+        state->selected = 0;
+        state->slot = 1;
+        state->capture_target = RendererEvidencePolicy.configuredFrame();
+        state->next_action_frame = 0ULL;
+        state->journal_offset = 0;
+    }
+
+    class void observeSavestate(struct RendererPostUiState* state,
+                                int requestedSlot) {
+        int slot = requestedSlot >= 1 && requestedSlot <= 3
+            ? requestedSlot : state->slot;
+        state->slot = slot;
+    }
+
+    class void confirm(struct RendererPostUiState* state) {
+        if (state->selected == 0 || state->selected == 2) {
+            state->visible = 0;
+        } else if (state->selected == 1) {
+            RendererEvidencePolicy.request(state);
+        }
+    }
+
+    class void apply(struct RendererPostUiState* state,
+                     struct SemuActionRecord* record) {
+        if (state == null || record == null) { return; }
+        int action = record->action;
+        if (action == SemuActions.menuToggle()) {
+            state->visible = state->visible == 0 ? 1 : 0;
+        } else if (action == SemuActions.menuBack()) {
+            state->visible = 0;
+        } else if (action == SemuActions.menuUp() && state->visible != 0) {
+            state->selected = (state->selected + RendererMenuModel.itemCount() - 1)
+                % RendererMenuModel.itemCount();
+        } else if (action == SemuActions.menuDown() && state->visible != 0) {
+            state->selected = (state->selected + 1)
+                % RendererMenuModel.itemCount();
+        } else if (action == SemuActions.menuConfirm() && state->visible != 0) {
+            RendererMenuModel.confirm(state);
+        } else if (action == SemuActions.stateSave()
+                || action == SemuActions.stateLoad()) {
+            RendererMenuModel.observeSavestate(state, record->slot);
+        } else if (action == SemuActions.screenshot()) {
+            RendererEvidencePolicy.request(state);
+        }
+    }
+}
+
+class RendererActionConsumer {
+    class int consume(struct RendererPostUiState* state) {
+        if (state == null) { return 0; }
+        char path[8192];
+        if (!RendererStateFiles.path(path, sizeof(path),
+                RendererActionJournal.fileName())) { return 0; }
+        FILE* file = fopen(path, "rb");
+        if (file == null) { return 0; }
+
+        if (fseek(file, 0L, SEEK_END) != 0) { fclose(file); return 0; }
+        long length = ftell(file);
+        if (length < 0L) { fclose(file); return 0; }
+        if (state->journal_offset > length) {
+            state->journal_offset = 0L;
+            state->last_sequence = 0ULL;
+        }
+        if (fseek(file, state->journal_offset, SEEK_SET) != 0) {
+            fclose(file);
+            return 0;
+        }
+
+        int consumed = 0;
+        struct SemuActionRecord record;
+        long recordOffset = ftell(file);
+        size_t count = fread(&record, sizeof(struct SemuActionRecord), 1, file);
+        while (count == (size_t)1) {
+            state->journal_offset = ftell(file);
+            bool valid = record.abi == (unsigned int)RendererActionJournal.abi()
+                && record.size == (unsigned int)sizeof(struct SemuActionRecord)
+                && record.sequence > state->last_sequence
+                && SemuActions.rendererOwned(record.action);
+            if (valid) {
+                state->last_sequence = record.sequence;
+                RendererMenuModel.apply(state, &record);
+                consumed++;
+            }
+            recordOffset = ftell(file);
+            count = fread(&record, sizeof(struct SemuActionRecord), 1, file);
+        }
+        if (!feof(file) && recordOffset >= 0L) {
+            state->journal_offset = recordOffset;
+        }
+        fclose(file);
+        return consumed;
+    }
+}
+
+class RendererMenuRaster {
+    class const char* glyph(char value) {
+        if (value == 'A') { return "011101000111111100011000110001"; }
+        if (value == 'C') { return "011111000010000100001000001111"; }
+        if (value == 'E') { return "111111000011110100001000011111"; }
+        if (value == 'L') { return "100001000010000100001000011111"; }
+        if (value == 'M') { return "100011101110101100011000110001"; }
+        if (value == 'N') { return "100011100110101100111000110001"; }
+        if (value == 'O') { return "011101000110001100011000101110"; }
+        if (value == 'P') { return "111101000111110100001000010000"; }
+        if (value == 'R') { return "111101000111110101001001010001"; }
+        if (value == 'S') { return "011111000001110000011000111110"; }
+        if (value == 'T') { return "111110010000100001000010000100"; }
+        if (value == 'U') { return "100011000110001100011000101110"; }
+        if (value == 'V') { return "100011000110001100010101000100"; }
+        if (value == '1') { return "001000110000100001000010001110"; }
+        if (value == '2') { return "011101000100010001000100011111"; }
+        if (value == '3') { return "111100000100110000011000101110"; }
+        return "00000000000000000000000000000000000";
+    }
+
+    class void pixel(unsigned char* pixels, int x, int y,
+                     unsigned char red, unsigned char green,
+                     unsigned char blue, unsigned char alpha) {
+        if (pixels == null || x < 0 || y < 0 || x >= SEMU_RENDER_MENU_WIDTH
+            || y >= SEMU_RENDER_MENU_HEIGHT) { return; }
+        int offset = (y * SEMU_RENDER_MENU_WIDTH + x) * 4;
+        pixels[offset] = red;
+        pixels[offset + 1] = green;
+        pixels[offset + 2] = blue;
+        pixels[offset + 3] = alpha;
+    }
+
+    class void rectangle(unsigned char* pixels, int x, int y,
+                         int width, int height, unsigned char red,
+                         unsigned char green, unsigned char blue,
+                         unsigned char alpha) {
+        for (int row = y; row < y + height; row++) {
+            for (int column = x; column < x + width; column++) {
+                RendererMenuRaster.pixel(pixels, column, row,
+                    red, green, blue, alpha);
+            }
+        }
+    }
+
+    class void text(unsigned char* pixels, const char* value, int x, int y,
+                    int scale, unsigned char red, unsigned char green,
+                    unsigned char blue) {
+        if (value == null) { return; }
+        for (int character = 0; value[character] != 0; character++) {
+            const char* glyph = RendererMenuRaster.glyph(value[character]);
+            for (int row = 0; row < 7; row++) {
+                for (int column = 0; column < 5; column++) {
+                    if (glyph[row * 5 + column] == '1') {
+                        RendererMenuRaster.rectangle(pixels,
+                            x + character * 6 * scale + column * scale,
+                            y + row * scale, scale, scale,
+                            red, green, blue, 255);
+                    }
+                }
+            }
+        }
+    }
+
+    class bool render(struct RendererPostUiState* state) {
+        if (state == null) { return false; }
+        size_t bytes = (size_t)SEMU_RENDER_MENU_WIDTH
+            * (size_t)SEMU_RENDER_MENU_HEIGHT * (size_t)4;
+        if (state->menu_pixels == null) {
+            state->menu_pixels = (unsigned char*)malloc(bytes);
+        }
+        if (state->menu_pixels == null) { return false; }
+        memset(state->menu_pixels, 0, bytes);
+        RendererMenuRaster.rectangle(state->menu_pixels, 0, 0,
+            SEMU_RENDER_MENU_WIDTH, SEMU_RENDER_MENU_HEIGHT,
+            14, 18, 22, 242);
+        RendererMenuRaster.rectangle(state->menu_pixels, 0, 0,
+            SEMU_RENDER_MENU_WIDTH, 58, 18, 112, 120, 255);
+        RendererMenuRaster.text(state->menu_pixels, "SEMU", 24, 16, 4,
+            245, 249, 250);
+
+        const char* labels[3] = {
+            "RESUME", "SCREENSHOT", "CLOSE"
+        };
+        for (int item = 0; item < RendererMenuModel.itemCount(); item++) {
+            int y = 72 + item * 43;
+            if (item == state->selected) {
+                RendererMenuRaster.rectangle(state->menu_pixels, 16, y,
+                    SEMU_RENDER_MENU_WIDTH - 32, 35, 32, 134, 142, 255);
+            } else {
+                RendererMenuRaster.rectangle(state->menu_pixels, 16, y,
+                    SEMU_RENDER_MENU_WIDTH - 32, 35, 29, 35, 40, 232);
+            }
+            RendererMenuRaster.text(state->menu_pixels, labels[item],
+                30, y + 8, 2, 238, 242, 244);
+        }
+        char slotText[7] = {'S', 'L', 'O', 'T', ' ',
+            (char)('0' + state->slot), 0};
+        RendererMenuRaster.text(state->menu_pixels, slotText, 268, 298, 2,
+            164, 180, 184);
+        return true;
+    }
+}
+
+class RendererPostUiCompositor {
+    class bool draw(struct RendererGlApi* gl,
+                    struct RendererGlResources* resources,
+                    struct SemuRenderFrameGl* frame,
+                    struct RendererPostUiState* state) {
+        if (state->visible == 0) { return true; }
+        if (!RendererMenuRaster.render(state)) { return false; }
+
+        gl->active_texture((unsigned int)(RGL_TEXTURE0 + 3));
+        gl->bind_sampler(3, 0);
+        RendererResources.configureTexture(gl, resources->menu_texture, RGL_LINEAR);
+        RendererResources.normalizeUnpack(gl);
+        RendererGlErrors.clear(gl);
+        gl->texture_image_2d((unsigned int)RGL_TEXTURE_2D, 0, RGL_RGBA8,
+            SEMU_RENDER_MENU_WIDTH, SEMU_RENDER_MENU_HEIGHT, 0,
+            (unsigned int)RGL_RGBA, (unsigned int)RGL_UNSIGNED_BYTE,
+            state->menu_pixels);
+        if (!RendererGlErrors.none(gl)) { return false; }
+        gl->bind_framebuffer((unsigned int)RGL_DRAW_FRAMEBUFFER,
+            frame->framebuffer);
+        gl->draw_buffer(frame->color_buffer);
+        gl->disable((unsigned int)RGL_DEPTH_TEST);
+        gl->disable((unsigned int)RGL_SCISSOR_TEST);
+        gl->disable((unsigned int)RGL_CULL_FACE);
+        gl->disable((unsigned int)RGL_STENCIL_TEST);
+        gl->disable((unsigned int)RGL_MULTISAMPLE);
+        gl->disable((unsigned int)RGL_FRAMEBUFFER_SRGB);
+        gl->color_mask(1, 1, 1, 1);
+        gl->depth_mask(0);
+        gl->viewport(0, 0, frame->framebuffer_width, frame->framebuffer_height);
+        gl->use_program(resources->program);
+        gl->bind_vertex_array(resources->vertex_array);
+        int width = frame->framebuffer_width * 2 / 5;
+        if (width < 320) { width = frame->framebuffer_width - 32; }
+        if (width > 520) { width = 520; }
+        int height = width * SEMU_RENDER_MENU_HEIGHT / SEMU_RENDER_MENU_WIDTH;
+        if (height > frame->framebuffer_height - 32) {
+            height = frame->framebuffer_height - 32;
+            width = height * SEMU_RENDER_MENU_WIDTH / SEMU_RENDER_MENU_HEIGHT;
+        }
+        int x = (frame->framebuffer_width - width) / 2;
+        int y = (frame->framebuffer_height - height) / 2;
+        if (resources->uniform_menu_rect >= 0) {
+            gl->uniform_4f(resources->uniform_menu_rect,
+                (float)x, (float)y, (float)width, (float)height);
+        }
+        if (resources->uniform_menu_on >= 0) {
+            gl->uniform_1f(resources->uniform_menu_on, 1.0f);
+        }
+        RendererCompositor.drawPass(gl, resources,
+            SEMU_RENDER_PASS_MENU, true);
+        return true;
+    }
+}
+
+class RendererFinalEvidence {
+    class bool writePpm(char* path, unsigned char* pixels,
+                        int width, int height) {
+        FILE* file = fopen(path, "wb");
+        if (file == null) { return false; }
+        bool ok = fprintf(file, "P6\n%d %d\n255\n", width, height) > 0;
+        for (int y = height - 1; ok && y >= 0; y--) {
+            for (int x = 0; x < width; x++) {
+                unsigned char* pixel = pixels + ((size_t)y * (size_t)width
+                    + (size_t)x) * (size_t)4;
+                ok = fwrite(pixel, 1, 3, file) == (size_t)3;
+                if (!ok) { break; }
+            }
+        }
+        if (fclose(file) != 0) { ok = false; }
+        return ok;
+    }
+
+    class bool meaningfulGamePixels(unsigned char* rgba, int framebufferWidth,
+                                    struct RendererCompositionGeometry* geometry) {
+        if (rgba == null || framebufferWidth < 1 || geometry == null
+                || geometry->lane_count < 1) { return false; }
+        size_t sampled = (size_t)0;
+        size_t lit = (size_t)0;
+        int minimum = 765;
+        int maximum = 0;
+        for (int laneIndex = 0; laneIndex < geometry->lane_count; laneIndex++) {
+            struct RendererLaneGeometry* lane = &geometry->lanes[laneIndex];
+            for (int y = lane->output_y;
+                    y < lane->output_y + lane->output_height; y++) {
+                for (int x = lane->output_x;
+                        x < lane->output_x + lane->output_width; x++) {
+                    unsigned char* pixel = rgba + ((size_t)y
+                        * (size_t)framebufferWidth + (size_t)x) * (size_t)4;
+                    int level = (int)pixel[0] + (int)pixel[1] + (int)pixel[2];
+                    sampled++;
+                    if (level >= 12) { lit++; }
+                    if (level < minimum) { minimum = level; }
+                    if (level > maximum) { maximum = level; }
+                }
+            }
+        }
+        size_t requiredLit = sampled / (size_t)1000;
+        if (requiredLit < (size_t)64) { requiredLit = (size_t)64; }
+        if (requiredLit > sampled) { requiredLit = sampled; }
+        return sampled > (size_t)0 && lit >= requiredLit
+            && maximum - minimum >= 16;
+    }
+
+    class bool capture(struct RendererGlApi* gl,
+                       struct SemuRenderFrameGl* frame,
+                       struct RendererPostUiState* state,
+                       struct RendererCompositionGeometry* geometry,
+                       unsigned long long* hash, int* nonblank) {
+        if (gl == null || frame == null || state == null
+            || geometry == null || hash == null || nonblank == null) {
+            return false;
+        }
+        *hash = 0ULL;
+        *nonblank = -1;
+        state->capture_outcome = SEMU_RENDER_CAPTURE_NONE;
+        if (!RendererEvidencePolicy.due(state, frame)) { return true; }
+        if (frame->framebuffer_width > 16384 || frame->framebuffer_height > 16384) {
+            return false;
+        }
+        size_t pixels = (size_t)frame->framebuffer_width
+            * (size_t)frame->framebuffer_height;
+        if (pixels == (size_t)0 || pixels > (size_t)134217728) { return false; }
+        size_t bytes = pixels * (size_t)4;
+        unsigned char* rgba = (unsigned char*)malloc(bytes);
+        if (rgba == null) { return false; }
+        RendererReadbackContract.prepare(rgba, bytes);
+        gl->bind_framebuffer((unsigned int)RGL_READ_FRAMEBUFFER,
+            frame->framebuffer);
+        gl->read_buffer(frame->color_buffer);
+        gl->bind_buffer((unsigned int)RGL_PIXEL_PACK_BUFFER, 0);
+        gl->pixel_store((unsigned int)RGL_PACK_SWAP_BYTES, 0);
+        gl->pixel_store((unsigned int)RGL_PACK_LSB_FIRST, 0);
+        gl->pixel_store((unsigned int)RGL_PACK_ROW_LENGTH, 0);
+        gl->pixel_store((unsigned int)RGL_PACK_IMAGE_HEIGHT, 0);
+        gl->pixel_store((unsigned int)RGL_PACK_SKIP_PIXELS, 0);
+        gl->pixel_store((unsigned int)RGL_PACK_SKIP_ROWS, 0);
+        gl->pixel_store((unsigned int)RGL_PACK_SKIP_IMAGES, 0);
+        gl->pixel_store((unsigned int)RGL_PACK_ALIGNMENT, 1);
+        RendererGlErrors.clear(gl);
+        gl->read_pixels(0, 0, frame->framebuffer_width,
+            frame->framebuffer_height, (unsigned int)RGL_RGBA,
+            (unsigned int)RGL_UNSIGNED_BYTE, rgba);
+        state->capture_attempts = state->capture_attempts + 1;
+        bool errorFree = RendererGlErrors.none(gl);
+        bool overwritten = errorFree
+            && RendererReadbackContract.overwritten(rgba, bytes);
+        if (!errorFree || !overwritten) {
+            state->capture_outcome = SEMU_RENDER_CAPTURE_READBACK_FAILED;
+            if (state->capture_attempts >= SEMU_RENDER_MAX_CAPTURE_ATTEMPTS) {
+                state->capture_exhausted = 1;
+                state->screenshot_requested = 0;
+            }
+            free(rgba);
+            return false;
+        }
+
+        unsigned long long value = 1469598103934665603ULL;
+        for (size_t index = 0; index < bytes; index++) {
+            value = (value ^ (unsigned long long)rgba[index])
+                * 1099511628211ULL;
+        }
+        int visible = RendererFinalEvidence.meaningfulGamePixels(rgba,
+            frame->framebuffer_width, geometry) ? 1 : 0;
+        *hash = value;
+        *nonblank = visible;
+        if (visible == 0) {
+            state->capture_outcome = SEMU_RENDER_CAPTURE_BLANK;
+            free(rgba);
+            if (state->capture_attempts >= SEMU_RENDER_MAX_CAPTURE_ATTEMPTS) {
+                state->capture_exhausted = 1;
+                state->screenshot_requested = 0;
+            }
+            return false;
+        }
+        char path[8192];
+        char temporary[8192];
+        bool safePath = RendererStateFiles.path(path, sizeof(path),
+            "semu-render-final.ppm");
+        int temporaryLength = safePath ? snprintf(temporary, sizeof(temporary),
+            "%s.tmp.%ld", path, (long)getpid()) : -1;
+        bool wrote = temporaryLength >= 0
+            && (size_t)temporaryLength < sizeof(temporary)
+            && RendererFinalEvidence.writePpm(temporary, rgba,
+                frame->framebuffer_width, frame->framebuffer_height)
+            && rename(temporary, path) == 0;
+        if (!wrote && temporaryLength >= 0
+                && (size_t)temporaryLength < sizeof(temporary)) {
+            unlink(temporary);
+        }
+        free(rgba);
+        if (wrote) {
+            state->capture_outcome = SEMU_RENDER_CAPTURE_WRITTEN;
+            state->capture_count = state->capture_count + 1;
+            state->capture_frame_id = frame->frame_id;
+            state->screenshot_requested = 0;
+        } else {
+            state->capture_outcome = SEMU_RENDER_CAPTURE_WRITE_FAILED;
+            if (state->capture_attempts >= SEMU_RENDER_MAX_CAPTURE_ATTEMPTS) {
+                state->capture_exhausted = 1;
+                state->screenshot_requested = 0;
+            }
+        }
+        return RendererReadbackContract.proven(
+            errorFree, overwritten, visible, wrote);
+    }
+}
+
+class RendererPostUiPhase {
+    class bool prepare(struct RendererPostUiState* state,
+                       struct SemuRenderFrameGl* frame, int* consumed) {
+        if (state == null || frame == null || consumed == null) { return false; }
+        RendererMenuModel.initialize(state);
+        *consumed = 0;
+        // Keep alternate ordinary frames off the filesystem with bounded
+        // two-frame polling latency; an open menu remains immediate.
+        if (RendererFrameSchedule.due(frame->frame_id,
+                state->next_action_frame, state->visible)) {
+            *consumed = RendererActionConsumer.consume(state);
+            state->next_action_frame = RendererFrameSchedule.after(
+                frame->frame_id,
+                (unsigned long long)SEMU_RENDER_ACTION_POLL_INTERVAL);
+        }
+        state->capture_outcome = SEMU_RENDER_CAPTURE_NONE;
+        return RendererEvidencePolicy.needsGl(state, frame);
+    }
+
+    class bool apply(struct RendererGlApi* gl,
+                     struct RendererGlResources* resources,
+                     struct SemuRenderFrameGl* frame,
+                     struct RendererPostUiState* state,
+                     struct RendererCompositionGeometry* geometry,
+                     unsigned long long* hash, int* nonblank) {
+        if (!RendererPostUiCompositor.draw(gl, resources, frame, state)) {
+            return false;
+        }
+        return RendererFinalEvidence.capture(gl, frame, state, geometry,
+            hash, nonblank);
+    }
+}

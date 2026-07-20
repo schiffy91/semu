@@ -1,0 +1,434 @@
+--- a/src/frontend/qt_sdl/EmuInstance.cpp
++++ b/src/frontend/qt_sdl/EmuInstance.cpp
+@@ -29,6 +29,7 @@
+ #include <fstream>
+ 
+ #include <QDateTime>
++#include <QDir>
+ 
+ #include <zstd.h>
+ #ifdef ARCHIVE_SUPPORT_ENABLED
+@@ -450,7 +451,15 @@
+     if (configpath.empty())
+         result = gba ? baseGBAROMDir : baseROMDir;
+     else
++    {
+         result = configpath;
++        QDir configured(QString::fromStdString(result));
++        if (configured.isRelative())
++            result = Platform::GetLocalFilePath(result);
++
++        result = QDir::cleanPath(QString::fromStdString(result)).toStdString();
++        QDir().mkpath(QString::fromStdString(result));
++    }
+ 
+     // cut off trailing slashes
+     for (;;)
+@@ -679,11 +688,11 @@
+     }
+     if (consoleType == 1)
+     {
+-        return globalCfg.GetString("DSi.FirmwarePath");
++        return GetLocalFilePath(globalCfg.GetString("DSi.FirmwarePath"));
+     }
+     else
+     {
+-        return globalCfg.GetString("DS.FirmwarePath");
++        return GetLocalFilePath(globalCfg.GetString("DS.FirmwarePath"));
+     }
+ }
+ 
+@@ -1890,6 +1899,7 @@
+     std::string savname = getAssetPath(false, localCfg.GetString("SaveFilePath"), ".sav");
+     std::string origsav = savname;
+     savname += instanceFileSuffix();
++    std::string externalSavename = getAssetPath(false, "", ".sav");
+ 
+     FileHandle* sav = Platform::OpenFile(savname, FileMode::Read);
+     if (!sav)
+@@ -1901,6 +1911,8 @@
+         }
+ 
+         sav = Platform::OpenFile(origsav, FileMode::Read);
++        if (!sav && externalSavename != origsav)
++            sav = Platform::OpenFile(externalSavename, FileMode::Read);
+     }
+     else if (!Platform::CheckFileWritable(savname))
+     {
+--- a/src/frontend/qt_sdl/Screen.cpp
++++ b/src/frontend/qt_sdl/Screen.cpp
+@@ -18,6 +18,7 @@
+ 
+ #include <string.h>
+ 
++#include <algorithm>
+ #include <optional>
+ #include <cmath>
+ 
+@@ -44,6 +45,8 @@
+ #include "font.h"
+ #include "version.h"
+ 
++#include <semu_renderer.h>
++
+ using namespace melonDS;
+ 
+ #if !defined(_WIN32) && !defined(APPLE)
+@@ -59,6 +62,191 @@
+ const int kLogoWidth = 192;
+ 
+ 
++namespace {
++
++thread_local GL::Context* semuGlContext = nullptr;
++
++void* SemuGetProcAddress(const char* name)
++{
++    return semuGlContext ? semuGlContext->GetProcAddress(name) : nullptr;
++}
++
++void* SemuCurrentContext()
++{
++    return semuGlContext;
++}
++
++bool FillSemuRenderSurface(SemuRenderSurfaceGl& surface, const float* transform,
++                           int framebufferWidth, int framebufferHeight,
++                           float scale)
++{
++    if (!transform || framebufferWidth <= 0 || framebufferHeight <= 0
++        || !std::isfinite(scale)
++        || scale <= 0.0f)
++        return false;
++
++    const float sourceX[4] = {0.0f, 256.0f, 0.0f, 256.0f};
++    const float sourceY[4] = {0.0f, 0.0f, 192.0f, 192.0f};
++    float minX = 0.0f;
++    float minY = 0.0f;
++    float maxX = 0.0f;
++    float maxY = 0.0f;
++
++    for (int corner = 0; corner < 4; corner++)
++    {
++        float x = sourceX[corner] * transform[0]
++            + sourceY[corner] * transform[2] + transform[4];
++        float y = sourceX[corner] * transform[1]
++            + sourceY[corner] * transform[3] + transform[5];
++        if (!std::isfinite(x) || !std::isfinite(y))
++            return false;
++
++        if (corner == 0)
++        {
++            minX = maxX = x;
++            minY = maxY = y;
++        }
++        else
++        {
++            minX = std::min(minX, x);
++            minY = std::min(minY, y);
++            maxX = std::max(maxX, x);
++            maxY = std::max(maxY, y);
++        }
++    }
++
++    int left = std::max(0, std::min(framebufferWidth,
++        static_cast<int>(std::floor(minX * scale))));
++    int top = std::max(0, std::min(framebufferHeight,
++        static_cast<int>(std::floor(minY * scale))));
++    int right = std::max(0, std::min(framebufferWidth,
++        static_cast<int>(std::ceil(maxX * scale))));
++    int bottom = std::max(0, std::min(framebufferHeight,
++        static_cast<int>(std::ceil(maxY * scale))));
++    if (right <= left || bottom <= top)
++        return false;
++
++    surface.x = left;
++    surface.y = top;
++    surface.width = right - left;
++    surface.height = bottom - top;
++    surface.native_width = 256;
++    surface.native_height = 192;
++    surface.rotation = 0;
++    surface.origin = SEMU_RENDER_ORIGIN_TOP_LEFT;
++    return true;
++}
++
++bool BuildSemuRenderFrame(SemuRenderFrameGl& frame, unsigned long long frameId,
++                          int framebufferWidth, int framebufferHeight,
++                          float scale, int numScreens,
++                          const float screenMatrix[][6],
++                          const int screenKind[])
++{
++    frame = {};
++    frame.abi = SEMU_RENDER_ABI_GL;
++    frame.struct_size = sizeof(frame);
++    frame.frame_id = frameId;
++    frame.framebuffer = 0;
++    frame.color_buffer = GL_BACK;
++    frame.framebuffer_width = framebufferWidth;
++    frame.framebuffer_height = framebufferHeight;
++    frame.get_proc = SemuGetProcAddress;
++    frame.current_context = SemuCurrentContext;
++
++    bool seen[2] = {false, false};
++    bool valid = frameId != 0 && numScreens == 2 && screenMatrix && screenKind;
++    for (int screen = 0; valid && screen < numScreens; screen++)
++    {
++        int screenKindValue = screenKind[screen];
++        if (screenKindValue < 0 || screenKindValue > 1 || seen[screenKindValue]
++            || !FillSemuRenderSurface(frame.surfaces[screenKindValue],
++                screenMatrix[screen], framebufferWidth, framebufferHeight,
++                scale))
++        {
++            valid = false;
++            break;
++        }
++        seen[screenKindValue] = true;
++    }
++
++    frame.surface_count = valid && seen[0] && seen[1] ? 2 : 0;
++    return frame.surface_count == 2;
++}
++
++} // namespace
++
++
++void ScreenPanel::storeSemuPointerMap(const SemuRenderFrameGl* frame)
++{
++    semuPointerMapLock.lock();
++    if (frame && frame->map_pointer
++        && frame->pointer_map.abi == SEMU_RENDER_ABI_GL
++        && frame->pointer_map.surface_count > 1)
++    {
++        semuPointerMap = frame->pointer_map;
++        semuMapPointer = frame->map_pointer;
++    }
++    else
++    {
++        semuPointerMap = {};
++        semuMapPointer = nullptr;
++    }
++    semuPointerMapLock.unlock();
++}
++
++bool ScreenPanel::mapSemuTouch(int viewportX, int viewportY, bool capture,
++                               int& nativeX, int& nativeY)
++{
++    SemuRenderPointerMap pointerMap{};
++    SemuRenderMapPointer mapPointer = nullptr;
++    semuPointerMapLock.lock();
++    pointerMap = semuPointerMap;
++    mapPointer = semuMapPointer;
++    semuPointerMapLock.unlock();
++
++    const int viewportWidth = width();
++    const int viewportHeight = height();
++    if (!mapPointer || pointerMap.surface_count <= 1
++        || viewportWidth <= 0 || viewportHeight <= 0)
++        return false;
++
++    float pointerX = static_cast<float>(viewportX);
++    float pointerY = static_cast<float>(viewportY);
++    if (capture)
++    {
++        pointerX = std::clamp(pointerX, 0.0f,
++            static_cast<float>(viewportWidth));
++        pointerY = std::clamp(pointerY, 0.0f,
++            static_cast<float>(viewportHeight));
++    }
++
++    SemuRenderPointerQuery query{};
++    query.abi = SEMU_RENDER_ABI_GL;
++    query.struct_size = sizeof(query);
++    query.frame_id = pointerMap.frame_id;
++    query.x = pointerX;
++    query.y = pointerY;
++    query.viewport_width = viewportWidth;
++    query.viewport_height = viewportHeight;
++    query.origin = SEMU_RENDER_ORIGIN_TOP_LEFT;
++    query.surface_index = 1;
++    query.clamp = capture ? 1 : 0;
++
++    SemuRenderPointerResult result{};
++    if (mapPointer(&pointerMap, &query, &result)
++            != SEMU_RENDER_POINTER_MAPPED
++        || result.surface_index != 1
++        || !std::isfinite(result.native_x)
++        || !std::isfinite(result.native_y))
++        return false;
++
++    nativeX = static_cast<int>(std::lround(result.native_x));
++    nativeY = static_cast<int>(std::lround(result.native_y));
++    return true;
++}
++
++
+ ScreenPanel::ScreenPanel(QWidget* parent) : QWidget(parent)
+ {
+     setMouseTracking(true);
+@@ -259,7 +447,7 @@
+     int x = event->pos().x();
+     int y = event->pos().y();
+ 
+-    if (layout.GetTouchCoords(x, y, false))
++    if (mapSemuTouch(x, y, false, x, y))
+     {
+         touching = true;
+         emuInstance->touchScreen(x, y);
+@@ -292,7 +480,7 @@
+     int x = event->pos().x();
+     int y = event->pos().y();
+ 
+-    if (layout.GetTouchCoords(x, y, true))
++    if (mapSemuTouch(x, y, true, x, y))
+     {
+         emuInstance->touchScreen(x, y);
+     }
+@@ -316,7 +504,9 @@
+             int y = event->y();
+ #endif
+ 
+-            if (layout.GetTouchCoords(x, y, event->type()==QEvent::TabletMove))
++            bool capture = event->type() == QEvent::TabletMove;
++            if ((!capture || touching)
++                && mapSemuTouch(x, y, capture, x, y))
+             {
+                 touching = true;
+                 emuInstance->touchScreen(x, y);
+@@ -352,16 +542,18 @@
+ #if QT_VERSION_MAJOR == 6
+         if (event->points().length() > 0)
+         {
+-            QPointF lastPosition = event->points().first().lastPosition();
++            QPointF position = event->points().first().position();
+ #else
+         if (event->touchPoints().length() > 0)
+         {
+-            QPointF lastPosition = event->touchPoints().first().lastPos();
+-#endif
+-            int x = (int)lastPosition.x();
+-            int y = (int)lastPosition.y();
++            QPointF position = event->touchPoints().first().pos();
++#endif
++            int x = (int)position.x();
++            int y = (int)position.y();
+ 
+-            if (layout.GetTouchCoords(x, y, event->type()==QEvent::TouchUpdate))
++            bool capture = event->type() == QEvent::TouchUpdate;
++            if ((!capture || touching)
++                && mapSemuTouch(x, y, capture, x, y))
+             {
+                 touching = true;
+                 emuInstance->touchScreen(x, y);
+@@ -1123,6 +1315,10 @@
+     glClear(GL_COLOR_BUFFER_BIT);
+ 
+     glViewport(0, 0, w, h);
++
++    SemuRenderFrameGl semuFrame{};
++    bool semuFrameBuilt = false;
++    bool semuGameApplied = false;
+ 
+     if (emuThread->emuIsActive())
+     {
+@@ -1168,6 +1364,19 @@
+             glDrawArrays(GL_TRIANGLES, screenKind[i] == 0 ? 0 : 2 * 3, 2 * 3);
+         }
+ 
++        if (mainWindow->getWindowID() == 0)
++        {
++            semuGlContext = glContext.get();
++            semuFrameBuilt = BuildSemuRenderFrame(semuFrame,
++                static_cast<unsigned long long>(nds->NumFrames) + 1, w, h,
++                factor, numScreens, screenMatrix, screenKind);
++            if (semuFrameBuilt)
++            {
++                int semuGameStatus = semu_render_game_gl(&semuFrame);
++                semuGameApplied = semuGameStatus == SEMU_RENDER_APPLIED;
++            }
++        }
++
+         screenSettingsLock.unlock();
+     }
+ 
+@@ -1260,6 +1469,12 @@
+         osdMutex.unlock();
+     }
+ 
++    int semuPostUiStatus = SEMU_RENDER_PASSTHROUGH;
++    if (semuFrameBuilt)
++        semuPostUiStatus = semu_render_post_ui_gl(&semuFrame);
++    bool semuPostUiApplied = semuPostUiStatus == SEMU_RENDER_APPLIED;
++    storeSemuPointerMap(semuGameApplied && semuPostUiApplied
++        ? &semuFrame : nullptr);
+     glContext->SwapBuffers();
+ }
+ 
+--- a/src/frontend/qt_sdl/Screen.h
++++ b/src/frontend/qt_sdl/Screen.h
+@@ -33,6 +33,7 @@
+ #include "glad/glad.h"
+ #include "ScreenLayout.h"
+ #include "duckstation/gl/context.h"
++#include <semu_renderer.h>
+ 
+ 
+ class MainWindow;
+@@ -98,7 +99,14 @@
+     int numScreens;
+ 
+     bool touching = false;
++    QMutex semuPointerMapLock;
++    SemuRenderPointerMap semuPointerMap{};
++    SemuRenderMapPointer semuMapPointer = nullptr;
+ 
++    bool mapSemuTouch(int viewportX, int viewportY, bool capture,
++                      int& nativeX, int& nativeY);
++    void storeSemuPointerMap(const SemuRenderFrameGl* frame);
++
+     bool mouseHide;
+     int mouseHideDelay;
+ 
+@@ -244,4 +252,3 @@
+ };
+ 
+ #endif // SCREEN_H
+-
+--- a/src/frontend/qt_sdl/Window.cpp
++++ b/src/frontend/qt_sdl/Window.cpp
+@@ -353,13 +353,16 @@
+             {
+                 QMenu * submenu = menu->addMenu("Save state");
+ 
+                 for (int i = 1; i < 9; i++)
+                 {
+                     actSaveState[i] = submenu->addAction(QString("%1").arg(i));
+-                    actSaveState[i]->setShortcut(QKeySequence(Qt::ShiftModifier | (Qt::Key_F1 + i - 1)));
++                    if (i == 1)
++                        actSaveState[i]->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_S));
++                    else
++                        actSaveState[i]->setShortcut(QKeySequence(Qt::ShiftModifier | (Qt::Key_F1 + i - 1)));
+                     actSaveState[i]->setData(QVariant(i));
+                     connect(actSaveState[i], &QAction::triggered, this, &MainWindow::onSaveState);
+                 }
+ 
+                 actSaveState[0] = submenu->addAction("File...");
+                 actSaveState[0]->setShortcut(QKeySequence(Qt::ShiftModifier | Qt::Key_F9));
+@@ -369,13 +372,16 @@
+             {
+                 QMenu * submenu = menu->addMenu("Load state");
+ 
+                 for (int i = 1; i < 9; i++)
+                 {
+                     actLoadState[i] = submenu->addAction(QString("%1").arg(i));
+-                    actLoadState[i]->setShortcut(QKeySequence(Qt::Key_F1 + i - 1));
++                    if (i == 1)
++                        actLoadState[i]->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_A));
++                    else
++                        actLoadState[i]->setShortcut(QKeySequence(Qt::Key_F1 + i - 1));
+                     actLoadState[i]->setData(QVariant(i));
+                     connect(actLoadState[i], &QAction::triggered, this, &MainWindow::onLoadState);
+                 }
+ 
+                 actLoadState[0] = submenu->addAction("File...");
+                 actLoadState[0]->setShortcut(QKeySequence(Qt::Key_F9));

@@ -1,0 +1,103 @@
+{
+  "schema_version": 1,
+  "activation": {
+    "mode": "source_patched_direct_link",
+    "package_ready": true,
+    "runtime_proven": false,
+    "physical_proven": false
+  },
+  "integration": {
+    "abi": 2,
+    "api": "semu-renderer",
+    "linkage": "direct",
+    "header": "semu_renderer.h",
+    "library": "semurenderer",
+    "backend": "opengl",
+    "callbacks": [
+      "get_proc_address",
+      "current_context"
+    ],
+    "inactive_reports": false,
+    "framebuffer": "default_opengl_draw_framebuffer",
+    "geometry": "PresentationCommon final output rectangle",
+    "surface_order": [
+      {
+        "id": "game",
+        "native_w": 480,
+        "native_h": 272
+      }
+    ],
+    "origin": "top_left",
+    "orientation": "upright",
+    "rotation": 0,
+    "patch": "ppsspp.patch"
+  },
+  "phases": [
+    {
+      "id": "game",
+      "symbol": "semu_render_game_gl",
+      "source": "GPU/Common/PresentationCommon.cpp",
+      "function": "PresentationCommon::CopyToOutput",
+      "after": "final draw_->Draw(4, 0)",
+      "before": "PPSSPP UI render steps"
+    },
+    {
+      "id": "post_ui",
+      "symbol": "semu_render_post_ui_gl",
+      "source": "Common/GPU/OpenGL/GLRenderManager.cpp",
+      "function": "GLRenderManager::Present",
+      "after": "all submitted PPSSPP UI render steps",
+      "before": "GLRRunType::PRESENT real swap task"
+    }
+  ],
+  "surfaces": [
+    {
+      "index": 0,
+      "id": "game",
+      "geometry": "clipped final PresentationCommon output rectangle",
+      "native": {
+        "w": 480,
+        "h": 272
+      },
+      "origin": "top_left",
+      "orientation": "upright",
+      "rotation": 0
+    }
+  ],
+  "orientation_contract": {
+    "sampled_pixels": "final_default_framebuffer_psp_rectangle",
+    "source_y_rule": "framebuffer_height - (surface_y + surface_height)",
+    "asymmetric_probe": {
+      "framebuffer": {
+        "w": 1280,
+        "h": 800
+      },
+      "surface": {
+        "x": 73,
+        "y": 41,
+        "w": 960,
+        "h": 544,
+        "source_y": 215
+      },
+      "corner_order": [
+        "top_left_red",
+        "top_right_green",
+        "bottom_left_blue",
+        "bottom_right_yellow"
+      ],
+      "expected_rotation": 0
+    }
+  },
+  "composition": {
+    "owner": "semurenderer",
+    "shader": "renderer_owned",
+    "bezel": "renderer_owned",
+    "semu_menu": "renderer_owned",
+    "ppsspp_ui": "between_game_and_post_ui_phases"
+  },
+  "doc": {
+    "boundary": "CopyToOutput queues the completed PSP image as an explicit render step. PPSSPP then draws its normal UI, and Present queues the post-UI step immediately before the real swap task.",
+    "geometry": "PPSSPP supplies only ABI, frame identity, default-framebuffer geometry, its final PSP rectangle, and current-context callbacks. The directly linked renderer owns all composition behavior.",
+    "evidence": "Package linkage, patch application, phase order, and forbidden-symbol absence are source gates. Runtime pixels and physical composition remain separate acceptance gates."
+  }
+}

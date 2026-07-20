@@ -1,0 +1,73 @@
+{
+  "schema_version": 1,
+  "activation": {
+    "mode": "source_patched_direct_link",
+    "package_ready": true,
+    "runtime_proven": false,
+    "physical_proven": false
+  },
+  "integration": {
+    "abi": 2,
+    "api": "semu-renderer",
+    "patch": "dolphin.patch",
+    "linkage": "direct",
+    "header": "semu_renderer.h",
+    "library": "semurenderer",
+    "compile_define": "HAVE_SEMU_RENDERER",
+    "backend": "opengl",
+    "callbacks": [
+      "get_proc_address",
+      "current_context"
+    ],
+    "inactive_reports": false,
+    "framebuffer": "backbuffer",
+    "content": "clipped_target_rectangle",
+    "native": "xfb",
+    "presentation_aspect": "Presenter::CalculateDrawAspectRatio(false) for the active VI/XFB frame",
+    "layout_variant": "DEFAULT for active 4:3 and VARIANT_B for active 16:9 from WidescreenManager",
+    "rotation_degrees": 0,
+    "origin": "top_left",
+    "orientation": "upright",
+    "platforms": [
+      "x86_64-linux",
+      "aarch64-darwin",
+      "x86_64-darwin"
+    ]
+  },
+  "phases": [
+    {
+      "id": "game",
+      "symbol": "semu_render_game_gl",
+      "after": "RenderXFBToScreen",
+      "before": "OnScreenUI Finalize and DrawImGui"
+    },
+    {
+      "id": "post_ui",
+      "symbol": "semu_render_post_ui_gl",
+      "after": "OnScreenUI Finalize and DrawImGui",
+      "before": "PresentBackbuffer"
+    }
+  ],
+  "surfaces": [
+    {
+      "index": 0,
+      "id": "game",
+      "geometry": "clipped live XFB target rectangle",
+      "native": "current XFB dimensions",
+      "origin": "top_left",
+      "orientation": "upright",
+      "rotation": 0
+    }
+  ],
+  "composition": {
+    "owner": "semurenderer",
+    "shader": "renderer_owned",
+    "bezel": "renderer_owned",
+    "semu_menu": "renderer_owned",
+    "dolphin_ui": "between_game_and_post_ui_phases"
+  },
+  "doc": {
+    "boundary": "Presenter::Present submits the valid rendered XFB to the game phase with current output/native geometry, active VI/XFB presentation aspect, and live 4:3 or 16:9 layout. Dolphin then finalizes and draws its onscreen UI and submits the same frame to the post-UI phase immediately before PresentBackbuffer. The OpenGL backend supplies resolver and current-context callbacks.",
+    "evidence": "Package linkage, patch application, exact phase order, and forbidden-symbol absence are source gates. GameCube and Wii physical composition remain runtime gates."
+  }
+}

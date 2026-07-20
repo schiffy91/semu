@@ -1,0 +1,1077 @@
+// source_contract.btrc - exact source, package, config, and asset contract.
+
+import std.{fs, json, process, strings, vector}
+import ../../../lib/json_format.btrc
+import ../runtime_inventory.btrc
+import ./render_hooks.btrc
+import ./support.btrc
+
+class AppImageSourceProvenance {
+    class AppImageProvenanceInternalJson productionSourceFiles(string repoRoot) {
+        Vector<string> files = ["flake.nix", "flake.lock"];
+        Vector<string> errors = [];
+        for root in ["src", "config", "packaging"] {
+            AppImageProvenanceSupport.collectRegularFiles(
+                repoRoot, root, files, errors);
+        }
+        if (!errors.isEmpty()) {
+            return AppImageProvenanceInternalJson.failure(errors.join("; "));
+        }
+        return AppImageProvenanceSupport.hashedFiles(repoRoot, files);
+    }
+
+    class AppImageProvenanceInternalDigest targetOutputStorePath(
+            string repoRoot, JsonValue target) {
+        JsonValue systems = target.get("nix_systems");
+        if (!systems.isArray() || systems.size() != 1
+                || !systems.at(0).isString()) {
+            return AppImageProvenanceInternalDigest.failure(
+                "deployment target does not select one exact Nix system");
+        }
+        string reference = ".#packages."
+            + systems.at(0).asString() + ".default.outPath";
+        ExecResult result = AppImageProvenanceSupport.process("nix", [
+            "--extra-experimental-features", "nix-command flakes",
+            "eval", "--raw", reference
+        ], repoRoot);
+        string output = result.trimmed();
+        if (!result.ok() || !AppImageProvenanceSupport.validStorePath(output)) {
+            return AppImageProvenanceInternalDigest.failure(
+                "cannot evaluate deployment target output: "
+                + AppImageProvenanceSupport.processError(result));
+        }
+        return AppImageProvenanceInternalDigest.success(output);
+    }
+
+    class string buildContractPath(string repoRoot) {
+        string relative = "packaging/appimage/provenance-contract.nix";
+        if (!AppImageProvenanceSupport.safeRegularFile(repoRoot, relative)) {
+            return "";
+        }
+        return PathTools.join(repoRoot, relative);
+    }
+
+    class bool validBuildPackage(JsonValue package, bool esDe) {
+        Vector<string> keys = ["patches", "recipe_sha256", "source_revision",
+            "source_sha256"];
+        if (esDe) {
+            keys.push("settings_protocol");
+        } else {
+            keys.push("package_store_path");
+        }
+        if (!AppImageProvenanceSupport.exactKeys(package, keys)) { return false; }
+        JsonValue recipeHash = package.get("recipe_sha256");
+        JsonValue revision = package.get("source_revision");
+        JsonValue sourceHash = package.get("source_sha256");
+        JsonValue patches = package.get("patches");
+        if (!recipeHash.isString()
+            || !AppImageProvenanceSupport.lowerHex(recipeHash.asString(), 64)
+            || !revision.isString()
+            || !AppImageProvenanceSupport.lowerHex(revision.asString(), 40)
+            || !sourceHash.isString()
+            || !AppImageProvenanceSupport.sriSha256(sourceHash.asString())
+            || !patches.isArray() || (esDe && patches.size() == 0)) {
+            return false;
+        }
+        Vector<string> patchNames = [];
+        for (int index = 0; index < patches.size(); index++) {
+            JsonValue patch = patches.at(index);
+            JsonValue name = patch.get("name");
+            if (!AppImageRenderHookProvenance.validPatch(patch)
+                    || patchNames.contains(name.asString())) {
+                return false;
+            }
+            patchNames.push(name.asString());
+        }
+        if (esDe) {
+            return package.get("settings_protocol").isString()
+                && package.get("settings_protocol").asString()
+                    .equals("semu-settings-v2");
+        }
+        JsonValue storePath = package.get("package_store_path");
+        return storePath.isString()
+            && AppImageProvenanceSupport.validStorePath(
+                storePath.asString());
+    }
+
+    class AppImageProvenanceInternalJson buildContracts(string repoRoot) {
+        string contractPath =
+            AppImageSourceProvenance.buildContractPath(repoRoot);
+        if (contractPath.isEmpty()) {
+            return AppImageProvenanceInternalJson.failure(
+                "AppImage provenance Nix contract is absent or unsafe");
+        }
+        ExecResult result = AppImageProvenanceSupport.process("nix", [
+            "--extra-experimental-features",
+            "nix-command flakes", "eval", "--json", "--impure", "--file",
+            contractPath], repoRoot);
+        if (!result.ok()) {
+            return AppImageProvenanceInternalJson.failure(
+                "cannot evaluate AppImage build contracts: "
+                + AppImageProvenanceSupport.processError(result));
+        }
+        JsonValue contracts = JsonValue.parse(result.stdout());
+        AppImageProvenanceInternalDigest esDeRecipe =
+            AppImageProvenanceSupport.hashFile(
+                repoRoot, "packaging/esde/package.nix");
+        AppImageProvenanceInternalDigest esDePatch =
+            AppImageProvenanceSupport.hashFile(
+                repoRoot, "packaging/esde/settings-menu.patch");
+        if (!AppImageProvenanceSupport.exactKeys(
+                contracts, ["emulators", "es_de"])
+            || !AppImageSourceProvenance.validBuildPackage(
+                contracts.get("es_de"), true)
+            || !AppImageRenderHookProvenance.hasPatch(
+                contracts.get("es_de"), "settings-menu.patch")
+            || !esDeRecipe.ok() || !esDePatch.ok()
+            || !contracts.get("es_de").get("recipe_sha256").asString()
+                .equals(esDeRecipe.value)
+            || !AppImageRenderHookProvenance.patchDigest(
+                contracts.get("es_de"), "settings-menu.patch")
+                .equals(esDePatch.value)) {
+            return AppImageProvenanceInternalJson.failure(
+                "evaluated ES-DE source/patch contract is malformed");
+        }
+
+        AppImageRuntimeInventoryResult inventory =
+            AppImageRuntimeInventory.load(PathTools.join(repoRoot, "config"));
+        JsonValue emulators = contracts.get("emulators");
+        if (!inventory.ok() || !emulators.isObject()
+                || emulators.keys().size() != inventory.slices.size()) {
+            return AppImageProvenanceInternalJson.failure(inventory.ok()
+                ? "evaluated emulator build contracts are incomplete"
+                : inventory.error);
+        }
+        for slice in inventory.slices {
+            JsonValue package = emulators.get(slice.id);
+            AppImageProvenanceInternalDigest recipe =
+                AppImageProvenanceSupport.hashFile(
+                    PathTools.join(repoRoot, "config"), slice.recipe);
+            bool packageValid = AppImageSourceProvenance.validBuildPackage(
+                package, false);
+            bool hookValid = AppImageRenderHookProvenance.hookContractMatches(
+                slice.renderHook, slice);
+            bool revisionValid = package.get("source_revision").isString()
+                && package.get("source_revision").asString()
+                    .equals(slice.sourceRevision);
+            bool sourceValid = package.get("source_sha256").isString()
+                && package.get("source_sha256").asString()
+                    .equals(slice.sourceSha256);
+            bool recipeValid = recipe.ok()
+                && package.get("recipe_sha256").isString()
+                && package.get("recipe_sha256").asString()
+                    .equals(recipe.value);
+            if (!packageValid || !hookValid || !revisionValid
+                    || !sourceValid || !recipeValid) {
+                return AppImageProvenanceInternalJson.failure(
+                    "emulator source/recipe contract is malformed: " + slice.id
+                    + f" package={packageValid} hook={hookValid}"
+                    + f" revision={revisionValid} source={sourceValid}"
+                    + f" recipe={recipeValid}");
+            }
+            AppImageProvenanceInternalResult localPatches =
+                AppImageRenderHookProvenance.exactLocalPatches(
+                    PathTools.join(repoRoot, "config"), slice, package);
+            if (!localPatches.ok()) {
+                return AppImageProvenanceInternalJson.failure(localPatches.error);
+            }
+        }
+        return AppImageProvenanceInternalJson.success(contracts);
+    }
+
+    class AppImageProvenanceInternalJson coreBuildContracts(
+            string repoRoot, JsonValue selectedCores,
+            JsonValue coreRuntime, string nixSystem) {
+        JsonValue packageAttribute = coreRuntime.get("package_attribute");
+        if (!packageAttribute.isString()
+                || !AppImageRuntimeInventory.identifier(
+                    packageAttribute.asString())
+                || !AppImageSourceProvenance.nixSystemIdentifier(nixSystem)) {
+            return AppImageProvenanceInternalJson.failure(
+                "selected-core package attribute/system is invalid");
+        }
+        string reference = "path:.#packages." + nixSystem + "."
+            + packageAttribute.asString() + ".coreContract";
+        ExecResult result = AppImageProvenanceSupport.process("nix", [
+            "--extra-experimental-features", "nix-command flakes",
+            "eval", "--json", reference
+        ], repoRoot);
+        if (!result.ok()) {
+            return AppImageProvenanceInternalJson.failure(
+                "cannot evaluate selected-core build contracts: "
+                + AppImageProvenanceSupport.processError(result));
+        }
+        JsonValue contract = JsonValue.parse(result.stdout());
+        bool keysValid = AppImageProvenanceSupport.exactKeys(
+            contract, ["cores", "host", "platform", "schema_version",
+                "selected_core_ids"]);
+        bool schemaValid = contract.get("schema_version").isInt()
+            && contract.get("schema_version").asInt() == 1;
+        bool hostValid = contract.get("host").isString()
+            && coreRuntime.get("provider").isString()
+            && contract.get("host").asString().equals(
+                coreRuntime.get("provider").asString());
+        bool platformValid = contract.get("platform").isString()
+            && contract.get("platform").asString().equals(nixSystem);
+        if (contract.isError() || !keysValid || !schemaValid
+                || !hostValid || !platformValid) {
+            return AppImageProvenanceInternalJson.failure(
+                "selected-core build contract is malformed"
+                    + f" keys={keysValid} schema={schemaValid}"
+                    + f" host={hostValid} platform={platformValid}"
+                    + " actual_keys=" + contract.keys().join(",")
+                    + " actual_host="
+                    + (contract.get("host").isString()
+                        ? contract.get("host").asString() : "<invalid>")
+                    + " provider="
+                    + (coreRuntime.get("provider").isString()
+                        ? coreRuntime.get("provider").asString() : "<invalid>"));
+        }
+        AppImageProvenanceInternalResult exact =
+            AppImageProvenanceSupport.exactInventory(
+                "selected-core source", selectedCores,
+                contract.get("selected_core_ids"));
+        if (!exact.ok()) {
+            return AppImageProvenanceInternalJson.failure(exact.error);
+        }
+        JsonValue cores = contract.get("cores");
+        if (!cores.isArray() || cores.size() != selectedCores.size()) {
+            return AppImageProvenanceInternalJson.failure(
+                "selected-core package metadata is incomplete");
+        }
+        for (int index = 0; index < cores.size(); index++) {
+            JsonValue core = cores.at(index);
+            JsonValue name = core.get("name");
+            JsonValue revision = core.get("source_revision");
+            JsonValue sourceHash = core.get("source_sha256");
+            JsonValue sourceUrl = core.get("source_url");
+            JsonValue storePath = core.get("nix_store_path");
+            JsonValue library = core.get("library");
+            if (!AppImageProvenanceSupport.exactKeys(core, [
+                        "build_kind", "library", "name", "nix_store_path",
+                        "package_name", "source_revision", "source_sha256",
+                        "source_url", "version"])
+                    || !core.get("build_kind").isString()
+                    || core.get("build_kind").asString().isEmpty()
+                    || !core.get("package_name").isString()
+                    || core.get("package_name").asString().isEmpty()
+                    || !core.get("version").isString()
+                    || core.get("version").asString().isEmpty()
+                    || !name.isString()
+                    || !name.asString().equals(
+                        selectedCores.at(index).asString())
+                    || !revision.isString()
+                    || !AppImageProvenanceSupport.lowerHex(
+                        revision.asString(), 40)
+                    || !sourceHash.isString()
+                    || !AppImageProvenanceSupport.sriSha256(
+                        sourceHash.asString())
+                    || !sourceUrl.isString()
+                    || !sourceUrl.asString().startsWith("https://")
+                    || !storePath.isString()
+                    || !storePath.asString().startsWith("/nix/store/")
+                    || !library.isString()
+                    || !AppImageRuntimeInventory.safeRelative(
+                        library.asString())) {
+                return AppImageProvenanceInternalJson.failure(
+                    "selected-core source identity is incomplete at index "
+                    + index.toString());
+            }
+        }
+        return AppImageProvenanceInternalJson.success(contract);
+    }
+
+    class AppImageProvenanceInternalDigest btrcRevision(string repoRoot) {
+        string relative = "flake.lock";
+        if (!AppImageProvenanceSupport.safeRegularFile(repoRoot, relative)) {
+            return AppImageProvenanceInternalDigest.failure("flake.lock is absent or unsafe");
+        }
+        JsonValue lock = JsonValue.readFile(PathTools.join(repoRoot, relative));
+        JsonValue nodes = lock.get("nodes");
+        JsonValue rootName = lock.get("root");
+        if (lock.isError() || !nodes.isObject() || !rootName.isString()) {
+            return AppImageProvenanceInternalDigest.failure("flake.lock is malformed");
+        }
+        JsonValue rootNode = nodes.get(rootName.asString());
+        JsonValue btrcName = rootNode.get("inputs").get("btrc");
+        if (!btrcName.isString()) {
+            return AppImageProvenanceInternalDigest.failure(
+                "flake.lock root has no direct BTRC input");
+        }
+        JsonValue revision = nodes.get(btrcName.asString()).get("locked").get("rev");
+        if (!revision.isString()
+            || !AppImageProvenanceSupport.lowerHex(revision.asString(), 40)) {
+            return AppImageProvenanceInternalDigest.failure(
+                "flake.lock BTRC input has no exact revision");
+        }
+        return AppImageProvenanceInternalDigest.success(revision.asString());
+    }
+
+    class AppImageProvenanceInternalJson flakeInputs(string repoRoot) {
+        JsonValue lock = JsonValue.readFile(PathTools.join(repoRoot, "flake.lock"));
+        JsonValue nodes = lock.get("nodes");
+        JsonValue rootName = lock.get("root");
+        if (lock.isError() || !nodes.isObject() || !rootName.isString()) {
+            return AppImageProvenanceInternalJson.failure(
+                "flake.lock has no nodes object or root identity");
+        }
+        JsonValue inputs = JsonValue.makeArray();
+        for name in AppImageRuntimeInventory.sorted(nodes.keys()) {
+            if (name.equals(rootName.asString())) { continue; }
+            JsonValue locked = nodes.get(name).get("locked");
+            JsonValue narHash = locked.get("narHash");
+            if (!locked.isObject() || !narHash.isString()
+                    || !AppImageProvenanceSupport.sriSha256(
+                        narHash.asString())) {
+                return AppImageProvenanceInternalJson.failure(
+                    "flake input lacks an immutable locked identity: " + name);
+            }
+            JsonValue entry = JsonValue.makeObject();
+            entry.set("name", JsonValue.makeString(name));
+            entry.set("locked", locked);
+            inputs.push(entry);
+        }
+        if (inputs.size() == 0) {
+            return AppImageProvenanceInternalJson.failure(
+                "flake.lock contains no immutable input identities");
+        }
+        return AppImageProvenanceInternalJson.success(inputs);
+    }
+
+    class AppImageProvenanceInternalJson deploymentTarget(
+            string repoRoot, JsonValue sourceFiles) {
+        string targetsRoot = PathTools.join(repoRoot, "config/targets");
+        JsonValue targets = JsonValue.makeArray();
+        JsonValue selected = JsonValue.makeNull();
+        for name in AppImageRuntimeInventory.sorted(
+                FileSystem.listDir(targetsRoot)) {
+            if (!name.endsWith(".json")) { continue; }
+            string relative = "config/targets/" + name;
+            JsonValue definition = JsonValue.readFile(
+                PathTools.join(repoRoot, relative));
+            string digest = AppImageProvenanceSupport.digestForPath(
+                sourceFiles, relative);
+            if (definition.isError() || !definition.isObject()
+                    || !AppImageProvenanceSupport.lowerHex(digest, 64)) {
+                return AppImageProvenanceInternalJson.failure(
+                    "target definition is malformed or unhashed: " + relative);
+            }
+            JsonValue entry = JsonValue.makeObject();
+            entry.set("path", JsonValue.makeString(relative));
+            entry.set("sha256", JsonValue.makeString(digest));
+            entry.set("definition", definition);
+            targets.push(entry);
+            JsonValue artifact = definition.get("artifact");
+            JsonValue deployment = definition.get("deployment_target");
+            if (artifact.isString() && artifact.asString().equals("appimage")
+                    && deployment.isBool() && deployment.asBool()) {
+                if (!selected.isNull()) {
+                    return AppImageProvenanceInternalJson.failure(
+                        "multiple deployment targets claim the AppImage artifact");
+                }
+                selected = entry;
+            }
+        }
+        if (selected.isNull()) {
+            return AppImageProvenanceInternalJson.failure(
+                "no declarative deployment target claims the AppImage artifact");
+        }
+        JsonValue contract = JsonValue.makeObject();
+        contract.set("selected", selected);
+        contract.set("definitions", targets);
+        return AppImageProvenanceInternalJson.success(contract);
+    }
+
+    class AppImageProvenanceInternalJson packageDefinitions(
+            string repoRoot, JsonValue sourceFiles) {
+        string root = PathTools.join(repoRoot, "config/emulators");
+        JsonValue packages = JsonValue.makeArray();
+        Vector<string> packageIds = [];
+        for id in AppImageRuntimeInventory.sorted(FileSystem.listDir(root)) {
+            string directory = PathTools.join(root, id);
+            FileStatus status = FileStatus(directory);
+            if (!status.isDir() || status.isSymlink()) {
+                return AppImageProvenanceInternalJson.failure(
+                    "emulator package entry is not a real directory: " + directory);
+            }
+            string prefix = "config/emulators/" + id + "/";
+            JsonValue package = JsonValue.readFile(
+                PathTools.join(directory, "package.json"));
+            JsonValue emulator = JsonValue.readFile(
+                PathTools.join(directory, "emulator.json"));
+            JsonValue source = package.get("source");
+            JsonValue packageId = package.get("id");
+            JsonValue revision = source.get("revision");
+            JsonValue sha256 = source.get("sha256");
+            string recipePath = prefix + "package.nix";
+            string recipeDigest = AppImageProvenanceSupport.digestForPath(
+                sourceFiles, recipePath);
+            if (package.isError() || emulator.isError()
+                    || !package.isObject() || !emulator.isObject()
+                    || !AppImageRuntimeInventory.identifier(id)
+                    || !source.isObject() || !packageId.isString()
+                    || packageId.asString().isEmpty()
+                    || packageIds.contains(packageId.asString())
+                    || !package.get("build_kind").isString()
+                    || !package.get("outputs").isObject()
+                    || !revision.isString()
+                    || !AppImageProvenanceSupport.lowerHex(
+                        revision.asString(), 40)
+                    || !sha256.isString()
+                    || !AppImageProvenanceSupport.sriSha256(
+                        sha256.asString())
+                    || !AppImageProvenanceSupport.lowerHex(
+                        recipeDigest, 64)) {
+                return AppImageProvenanceInternalJson.failure(
+                    "package definition is incomplete: " + id);
+            }
+            packageIds.push(packageId.asString());
+            JsonValue files = AppImageProvenanceSupport.filesBelow(
+                sourceFiles, prefix);
+            JsonValue patches = JsonValue.makeArray();
+            for (int index = 0; index < files.size(); index++) {
+                JsonValue file = files.at(index);
+                if (file.get("path").asString().endsWith(".patch")) {
+                    patches.push(file);
+                }
+            }
+            JsonValue entry = JsonValue.makeObject();
+            entry.set("id", JsonValue.makeString(id));
+            entry.set("package_id", packageId);
+            entry.set("build_kind", package.get("build_kind"));
+            entry.set("platforms", package.get("platforms"));
+            entry.set("source", source);
+            entry.set("outputs", package.get("outputs"));
+            if (package.get("core_runtime").isObject()) {
+                entry.set("core_runtime", package.get("core_runtime"));
+            }
+            entry.set("recipe", AppImageProvenanceSupport.digestEntry(
+                recipePath, recipeDigest));
+            entry.set("local_patches", patches);
+            entry.set("files", files);
+            packages.push(entry);
+        }
+        if (packages.size() == 0) {
+            return AppImageProvenanceInternalJson.failure(
+                "no declarative emulator packages were inventoried");
+        }
+        return AppImageProvenanceInternalJson.success(packages);
+    }
+
+    class AppImageProvenanceInternalJson packageRecipes(JsonValue sourceFiles) {
+        JsonValue recipes = JsonValue.makeArray();
+        for (int index = 0; index < sourceFiles.size(); index++) {
+            JsonValue entry = sourceFiles.at(index);
+            JsonValue path = entry.get("path");
+            if (path.isString()
+                    && path.asString().startsWith("packaging/")
+                    && path.asString().endsWith(".nix")) {
+                recipes.push(entry);
+            }
+        }
+        if (recipes.size() == 0) {
+            return AppImageProvenanceInternalJson.failure(
+                "production source identity contains no package recipes");
+        }
+        return AppImageProvenanceInternalJson.success(recipes);
+    }
+
+    class AppImageProvenanceInternalJson coreRuntime(
+            JsonValue packages, string nixSystem) {
+        JsonValue matches = JsonValue.makeArray();
+        for (int index = 0; index < packages.size(); index++) {
+            JsonValue package = packages.at(index);
+            JsonValue runtime = package.get("core_runtime");
+            if (!runtime.isObject()) { continue; }
+            JsonValue platforms = package.get("platforms");
+            if (platforms.isArray()
+                    && !AppImageRuntimeInventory.arrayContains(
+                        platforms, nixSystem)) {
+                continue;
+            }
+            Vector<string> keys = ["directory", "environment_search",
+                "exact_selection", "host_search", "selection_source"];
+            JsonValue provider = package.get("id");
+            JsonValue directory = runtime.get("directory");
+            JsonValue selectionSource = runtime.get("selection_source");
+            if (!AppImageProvenanceSupport.exactKeys(runtime, keys)
+                    || !provider.isString()
+                    || !AppImageRuntimeInventory.identifier(
+                        provider.asString())
+                    || !directory.isString()
+                    || !AppImageRuntimeInventory.safeRelative(
+                        directory.asString())
+                    || !selectionSource.isString()
+                    || !selectionSource.asString()
+                        .equals("config/systems/*/system.json")
+                    || !runtime.get("exact_selection").isBool()
+                    || !runtime.get("exact_selection").asBool()
+                    || !runtime.get("environment_search").isBool()
+                    || runtime.get("environment_search").asBool()
+                    || !runtime.get("host_search").isBool()
+                    || runtime.get("host_search").asBool()) {
+                return AppImageProvenanceInternalJson.failure(
+                    "declarative selected-core runtime is malformed");
+            }
+            JsonValue entry = JsonValue.makeObject();
+            entry.set("provider", provider);
+            entry.set("directory", directory);
+            entry.set("package_attribute", JsonValue.makeString(
+                provider.asString() + "-cores"));
+            entry.set("selection_source", selectionSource);
+            matches.push(entry);
+        }
+        if (matches.size() != 1) {
+            return AppImageProvenanceInternalJson.failure(
+                f"deployment target must declare exactly one selected-core runtime; found {matches.size()}");
+        }
+        return AppImageProvenanceInternalJson.success(matches.at(0));
+    }
+
+    class bool nixSystemIdentifier(string value) {
+        if (value.isEmpty()) { return false; }
+        for character in value {
+            bool alphaNumeric = (character >= 'a' && character <= 'z')
+                || (character >= '0' && character <= '9');
+            if (!alphaNumeric && character != '-' && character != '_') {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    class AppImageProvenanceInternalJson appImageRuntimeSource(
+            string repoRoot, JsonValue sourceFiles, string nixSystem) {
+        string recipePath = "packaging/nix/appimage_runtime.nix";
+        string recipeDigest =
+            AppImageProvenanceSupport.digestForPath(sourceFiles, recipePath);
+        if (!AppImageProvenanceSupport.lowerHex(recipeDigest, 64)
+                || !AppImageSourceProvenance.nixSystemIdentifier(nixSystem)) {
+            return AppImageProvenanceInternalJson.failure(
+                "dedicated AppImage runtime recipe/system identity is invalid");
+        }
+
+        string expression =
+            "let flake = builtins.getFlake (toString ./.); "
+            + "pkgs = builtins.getAttr \"" + nixSystem
+            + "\" flake.inputs.nixpkgs.legacyPackages; "
+            + "package = pkgs.callPackage "
+            + "(flake.outPath + \"/packaging/nix/appimage_runtime.nix\") { }; "
+            + "source = package.src; in { "
+            + "package_name = package.pname; "
+            + "package_store_path = toString package; "
+            + "source_name = source.name; "
+            + "source_sha256 = source.outputHash; "
+            + "source_store_path = toString source; "
+            + "source_urls = source.urls; "
+            + "version = package.version; }";
+        ExecResult result = AppImageProvenanceSupport.process("nix", [
+            "--extra-experimental-features", "nix-command flakes",
+            "eval", "--impure", "--json", "--expr", expression
+        ], repoRoot);
+        JsonValue evaluated = JsonValue.parse(result.stdout());
+        Vector<string> keys = ["package_name", "package_store_path",
+            "source_name", "source_sha256", "source_store_path",
+            "source_urls", "version"];
+        if (!result.ok() || evaluated.isError()
+                || !AppImageProvenanceSupport.exactKeys(evaluated, keys)) {
+            string detail = result.stderr().trim();
+            if (detail.isEmpty()) { detail = result.stdout().trim(); }
+            return AppImageProvenanceInternalJson.failure(
+                "cannot evaluate dedicated AppImage runtime source: " + detail);
+        }
+        JsonValue packageName = evaluated.get("package_name");
+        JsonValue packageStorePath = evaluated.get("package_store_path");
+        JsonValue sourceName = evaluated.get("source_name");
+        JsonValue sourceHash = evaluated.get("source_sha256");
+        JsonValue sourceStorePath = evaluated.get("source_store_path");
+        JsonValue sourceUrls = evaluated.get("source_urls");
+        JsonValue version = evaluated.get("version");
+        if (!packageName.isString()
+                || !packageName.asString().equals("semu-appimage-runtime")
+                || !packageStorePath.isString()
+                || !AppImageProvenanceSupport.validStorePath(
+                    packageStorePath.asString())
+                || !sourceName.isString()
+                || !sourceName.asString().equals("runtime-x86_64")
+                || !sourceHash.isString()
+                || !AppImageProvenanceSupport.sriSha256(sourceHash.asString())
+                || !sourceStorePath.isString()
+                || !AppImageProvenanceSupport.validStorePath(
+                    sourceStorePath.asString())
+                || !sourceUrls.isArray() || sourceUrls.size() == 0
+                || !version.isString() || version.asString().isEmpty()) {
+            return AppImageProvenanceInternalJson.failure(
+                "dedicated AppImage runtime source contract is malformed");
+        }
+        for (int index = 0; index < sourceUrls.size(); index++) {
+            JsonValue url = sourceUrls.at(index);
+            if (!url.isString() || !url.asString().startsWith("https://")) {
+                return AppImageProvenanceInternalJson.failure(
+                    "dedicated AppImage runtime source URL is not pinned HTTPS");
+            }
+        }
+
+        JsonValue contract = JsonValue.makeObject();
+        contract.set("id", JsonValue.makeString("appimage-type2-runtime"));
+        contract.set("kind", JsonValue.makeString("fixed-output"));
+        contract.set("package_name", packageName);
+        contract.set("package_store_path", packageStorePath);
+        contract.set("recipe", AppImageProvenanceSupport.digestEntry(
+            recipePath, recipeDigest));
+        contract.set("runtime_path", JsonValue.makeString(
+            "share/semu/appimage/runtime-x86_64"));
+        contract.set("source_name", sourceName);
+        contract.set("source_sha256", sourceHash);
+        contract.set("source_store_path", sourceStorePath);
+        contract.set("source_urls", sourceUrls);
+        contract.set("version", version);
+        return AppImageProvenanceInternalJson.success(contract);
+    }
+
+    class AppImageProvenanceInternalJson assetBinding(
+            JsonValue declarations, string sourcePath) {
+        JsonValue matches = JsonValue.makeArray();
+        for (int index = 0; index < declarations.size(); index++) {
+            JsonValue entry = declarations.at(index);
+            if (entry.get("source_path").isString()
+                    && entry.get("source_path").asString()
+                        .equals(sourcePath)) {
+                matches.push(entry);
+            }
+        }
+        if (matches.size() == 0) {
+            return AppImageProvenanceInternalJson.failure(
+                "system references an undeclared rendering asset: "
+                + sourcePath);
+        }
+        return AppImageProvenanceInternalJson.success(matches);
+    }
+
+    class AppImageProvenanceInternalJson systemBindings(
+            string repoRoot, JsonValue sourceFiles,
+            JsonValue assetDeclarations) {
+        string systemsRoot = PathTools.join(repoRoot, "config/systems");
+        JsonValue systems = JsonValue.makeArray();
+        for id in AppImageRuntimeInventory.sorted(
+                FileSystem.listDir(systemsRoot)) {
+            string directory = PathTools.join(systemsRoot, id);
+            FileStatus status = FileStatus(directory);
+            if (!status.isDir() || status.isSymlink()) {
+                return AppImageProvenanceInternalJson.failure(
+                    "system entry is not a real directory: " + directory);
+            }
+            Vector<string> names = ["system.json", "shaders.json", "bezels.json"];
+            JsonValue manifests = JsonValue.makeArray();
+            for name in names {
+                string relative = "config/systems/" + id + "/" + name;
+                string digest = AppImageProvenanceSupport.digestForPath(
+                    sourceFiles, relative);
+                if (!AppImageProvenanceSupport.lowerHex(digest, 64)) {
+                    return AppImageProvenanceInternalJson.failure(
+                        "system manifest is absent from source identity: "
+                        + relative);
+                }
+                manifests.push(AppImageProvenanceSupport.digestEntry(
+                    relative, digest));
+            }
+            JsonValue system = JsonValue.readFile(
+                PathTools.join(directory, "system.json"));
+            JsonValue shaders = JsonValue.readFile(
+                PathTools.join(directory, "shaders.json"));
+            JsonValue bezels = JsonValue.readFile(
+                PathTools.join(directory, "bezels.json"));
+            if (system.isError() || shaders.isError() || bezels.isError()
+                    || !system.get("emulators").isArray()
+                    || !shaders.get("enabled").isBool()
+                    || !bezels.get("enabled").isBool()) {
+                return AppImageProvenanceInternalJson.failure(
+                    "system manifests are malformed: " + id);
+            }
+            JsonValue shaderBinding = JsonValue.makeArray();
+            if (shaders.get("enabled").asBool()) {
+                JsonValue screen = shaders.get("screen");
+                if (!screen.isString()) {
+                    return AppImageProvenanceInternalJson.failure(
+                        "enabled system shader has no asset path: " + id);
+                }
+                AppImageProvenanceInternalJson binding =
+                    AppImageSourceProvenance.assetBinding(
+                        assetDeclarations, screen.asString());
+                if (!binding.ok()) { return binding; }
+                shaderBinding = binding.value;
+            }
+            JsonValue bezelBindings = JsonValue.makeArray();
+            JsonValue variants = bezels.get("variants");
+            if (bezels.get("enabled").asBool()) {
+                if (!variants.isArray() || variants.size() == 0) {
+                    return AppImageProvenanceInternalJson.failure(
+                        "enabled system bezel has no variants: " + id);
+                }
+                for (int index = 0; index < variants.size(); index++) {
+                    JsonValue variant = variants.at(index);
+                    JsonValue art = variant.get("art");
+                    if (!art.isString()) {
+                        return AppImageProvenanceInternalJson.failure(
+                            "system bezel variant has no art path: " + id);
+                    }
+                    AppImageProvenanceInternalJson binding =
+                        AppImageSourceProvenance.assetBinding(
+                            assetDeclarations, art.asString());
+                    if (!binding.ok()) { return binding; }
+                    JsonValue entry = JsonValue.makeObject();
+                    entry.set("id", variant.get("id"));
+                    entry.set("assets", binding.value);
+                    bezelBindings.push(entry);
+                }
+            } else if (variants.isArray() && variants.size() != 0) {
+                return AppImageProvenanceInternalJson.failure(
+                    "disabled system bezel declares active variants: " + id);
+            }
+            JsonValue entry = JsonValue.makeObject();
+            entry.set("id", JsonValue.makeString(id));
+            entry.set("manifests", manifests);
+            entry.set("emulator_bindings", system.get("emulators"));
+            entry.set("shader_assets", shaderBinding);
+            entry.set("bezel_assets", bezelBindings);
+            systems.push(entry);
+        }
+        if (systems.size() == 0) {
+            return AppImageProvenanceInternalJson.failure(
+                "production system inventory is empty");
+        }
+        return AppImageProvenanceInternalJson.success(systems);
+    }
+
+    class AppImageProvenanceInternalJson settingsContract(
+            string repoRoot, JsonValue sourceFiles) {
+        string relative = "config/settings/defaults.json";
+        JsonValue settings = JsonValue.readFile(PathTools.join(repoRoot, relative));
+        string digest = AppImageProvenanceSupport.digestForPath(
+            sourceFiles, relative);
+        JsonValue schema = settings.get("schema_version");
+        if (settings.isError() || !schema.isInt()
+                || !AppImageProvenanceSupport.lowerHex(digest, 64)) {
+            return AppImageProvenanceInternalJson.failure(
+                "settings schema is malformed or unhashed");
+        }
+        JsonValue result = JsonValue.makeObject();
+        result.set("schema_version", schema);
+        result.set("file", AppImageProvenanceSupport.digestEntry(
+            relative, digest));
+        return AppImageProvenanceInternalJson.success(result);
+    }
+
+    class bool bindingApplies(JsonValue binding, string platform) {
+        JsonValue platforms = binding.get("platforms");
+        return !platforms.isArray()
+            || AppImageRuntimeInventory.arrayContains(platforms, platform);
+    }
+
+    class AppImageProvenanceInternalJson selectedCores(
+            JsonValue systems, string platform, string provider) {
+        Vector<string> names = [];
+        for (int systemIndex = 0; systemIndex < systems.size(); systemIndex++) {
+            JsonValue bindings =
+                systems.at(systemIndex).get("emulator_bindings");
+            if (!bindings.isArray()) {
+                return AppImageProvenanceInternalJson.failure(
+                    "system provenance has no emulator bindings");
+            }
+            for (int index = 0; index < bindings.size(); index++) {
+                JsonValue binding = bindings.at(index);
+                JsonValue core = binding.get("core");
+                JsonValue emulator = binding.get("emulator");
+                if (core.isString()
+                        && emulator.isString()
+                        && emulator.asString().equals(provider)
+                        && AppImageSourceProvenance.bindingApplies(
+                            binding, platform)
+                        && !names.contains(core.asString())) {
+                    names.push(core.asString());
+                }
+            }
+        }
+        names = AppImageRuntimeInventory.sorted(names);
+        if (names.size() == 0) {
+            return AppImageProvenanceInternalJson.failure(
+                "target resolves no selected emulator cores");
+        }
+        JsonValue result = JsonValue.makeArray();
+        for name in names { result.push(JsonValue.makeString(name)); }
+        return AppImageProvenanceInternalJson.success(result);
+    }
+
+    class JsonValue declaredAsset(
+            string sourcePath, string runtimePath, string digest) {
+        JsonValue entry = JsonValue.makeObject();
+        entry.set("source_path", JsonValue.makeString(sourcePath));
+        entry.set("runtime_path", JsonValue.makeString(runtimePath));
+        entry.set("sha256", JsonValue.makeString(digest));
+        return entry;
+    }
+
+    class string declaredDigest(JsonValue declarations, string sourcePath) {
+        for (int index = 0; index < declarations.size(); index++) {
+            JsonValue entry = declarations.at(index);
+            if (entry.get("source_path").isString()
+                    && entry.get("source_path").asString().equals(sourcePath)
+                    && entry.get("sha256").isString()) {
+                return entry.get("sha256").asString();
+            }
+        }
+        return "";
+    }
+
+    class bool hasRuntimePath(JsonValue declarations, string runtimePath) {
+        for (int index = 0; index < declarations.size(); index++) {
+            JsonValue entry = declarations.at(index);
+            if (entry.get("runtime_path").isString()
+                    && entry.get("runtime_path").asString()
+                        .equals(runtimePath)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    class AppImageProvenanceInternalJson declaredAssets(string repoRoot) {
+        string sourceRoot = PathTools.join(repoRoot, "config");
+        JsonValue declarations = JsonValue.makeArray();
+        Vector<string> manifests = ["assets/shaders.json",
+            "assets/bezels.json"];
+        for manifestPath in manifests {
+            JsonValue manifest = JsonValue.readFile(
+                PathTools.join(sourceRoot, manifestPath));
+            JsonValue assets = manifest.get("assets");
+            if (manifest.isError() || !assets.isObject()) {
+                return AppImageProvenanceInternalJson.failure(
+                    "asset manifest is malformed: " + manifestPath);
+            }
+            bool shaderManifest = manifestPath.equals("assets/shaders.json");
+            for sourcePath in AppImageRuntimeInventory.sorted(assets.keys()) {
+                if (!AppImageProvenanceSupport.safeRelative(sourcePath)) {
+                    return AppImageProvenanceInternalJson.failure(
+                        "asset path is not relative and normalized: " + sourcePath);
+                }
+                if (shaderManifest
+                        && !sourcePath.startsWith("assets/shaders/")) {
+                    return AppImageProvenanceInternalJson.failure(
+                        "shader asset is outside assets/shaders: " + sourcePath);
+                }
+                string runtimePath = shaderManifest
+                    ? "share/libretro/shaders/semu/"
+                        + sourcePath.substring("assets/shaders/".len(),
+                            sourcePath.len() - "assets/shaders/".len())
+                    : "share/semu/" + sourcePath;
+                JsonValue output = assets.get(sourcePath).get("output");
+                JsonValue declaredHash = output.get("sha256");
+                string digest = declaredHash.isString()
+                    ? declaredHash.asString() : "";
+                if (digest.isEmpty() && sourcePath.equals("assets/bezels.json")) {
+                    AppImageProvenanceInternalDigest sourceDigest =
+                        AppImageProvenanceSupport.hashFile(
+                            sourceRoot, "assets/bezels.json");
+                    if (!sourceDigest.ok()) {
+                        return AppImageProvenanceInternalJson.failure(sourceDigest.error);
+                    }
+                    digest = sourceDigest.value;
+                }
+                if (!AppImageProvenanceSupport.lowerHex(digest, 64)
+                        || AppImageSourceProvenance.hasRuntimePath(
+                            declarations, runtimePath)) {
+                    return AppImageProvenanceInternalJson.failure(
+                        "asset lacks a unique exact output digest: " + sourcePath);
+                }
+                FileStatus committed = FileStatus(
+                    PathTools.join(sourceRoot, sourcePath));
+                if (committed.linkFound) {
+                    AppImageProvenanceInternalDigest committedDigest =
+                        AppImageProvenanceSupport.hashFile(
+                            sourceRoot, sourcePath);
+                    if (!committedDigest.ok()
+                            || !committedDigest.value.equals(digest)) {
+                        return AppImageProvenanceInternalJson.failure(
+                            "committed asset disagrees with its declared output digest: "
+                            + sourcePath);
+                    }
+                }
+                declarations.push(AppImageSourceProvenance.declaredAsset(
+                    sourcePath, runtimePath, digest));
+            }
+
+            if (!shaderManifest) {
+                JsonValue staging = manifest.get("staging");
+                if (!staging.isArray()) {
+                    return AppImageProvenanceInternalJson.failure(
+                        "bezel manifest has no staging array");
+                }
+                for (int stageIndex = 0; stageIndex < staging.size(); stageIndex++) {
+                    JsonValue files = staging.at(stageIndex).get("files");
+                    if (!files.isArray()) {
+                        return AppImageProvenanceInternalJson.failure(
+                            "bezel staging entry has no files array");
+                    }
+                    for (int fileIndex = 0; fileIndex < files.size(); fileIndex++) {
+                        JsonValue file = files.at(fileIndex);
+                        JsonValue source = file.get("src");
+                        JsonValue destination = file.get("dest");
+                        if (!source.isString() || !destination.isString()
+                                || !AppImageProvenanceSupport.safeRelative(
+                                    destination.asString())) {
+                            return AppImageProvenanceInternalJson.failure(
+                                "bezel staging path is malformed");
+                        }
+                        string digest = AppImageSourceProvenance.declaredDigest(
+                            declarations, source.asString());
+                        if (!AppImageProvenanceSupport.lowerHex(digest, 64)
+                                || AppImageSourceProvenance.hasRuntimePath(
+                                    declarations, destination.asString())) {
+                            return AppImageProvenanceInternalJson.failure(
+                                "bezel staging source is undeclared or duplicated: "
+                                + source.asString());
+                        }
+                        declarations.push(AppImageSourceProvenance.declaredAsset(
+                            source.asString(), destination.asString(), digest));
+                    }
+                }
+            }
+        }
+        return AppImageProvenanceInternalJson.success(declarations);
+    }
+
+    class AppImageProvenanceInternalJson sourceContract(string repoRoot) {
+        string sourceRoot = PathTools.join(repoRoot, "config");
+        AppImageProvenanceInternalJson sourceFiles =
+            AppImageSourceProvenance.productionSourceFiles(repoRoot);
+        if (!sourceFiles.ok()) { return sourceFiles; }
+        JsonValue roots = JsonValue.makeArray();
+        for relative in ["src", "config", "packaging"] {
+            AppImageProvenanceInternalDigest digest =
+                AppImageProvenanceSupport.hashDirectory(
+                    PathTools.join(repoRoot, relative));
+            if (!digest.ok()) {
+                return AppImageProvenanceInternalJson.failure(digest.error);
+            }
+            roots.push(AppImageProvenanceSupport.digestEntry(
+                relative, digest.value));
+        }
+        AppImageProvenanceInternalDigest btrc =
+            AppImageSourceProvenance.btrcRevision(repoRoot);
+        if (!btrc.ok()) { return AppImageProvenanceInternalJson.failure(btrc.error); }
+        AppImageProvenanceInternalJson flakeInputs =
+            AppImageSourceProvenance.flakeInputs(repoRoot);
+        if (!flakeInputs.ok()) { return flakeInputs; }
+        AppImageProvenanceInternalJson builds =
+            AppImageSourceProvenance.buildContracts(repoRoot);
+        if (!builds.ok()) { return builds; }
+        AppImageProvenanceInternalJson assets =
+            AppImageSourceProvenance.declaredAssets(repoRoot);
+        if (!assets.ok()) { return assets; }
+        AppImageProvenanceInternalJson target =
+            AppImageSourceProvenance.deploymentTarget(
+                repoRoot, sourceFiles.value);
+        if (!target.ok()) { return target; }
+        JsonValue targetDefinition =
+            target.value.get("selected").get("definition");
+        AppImageProvenanceInternalDigest targetOutput =
+            AppImageSourceProvenance.targetOutputStorePath(
+                repoRoot, targetDefinition);
+        if (!targetOutput.ok()) {
+            return AppImageProvenanceInternalJson.failure(targetOutput.error);
+        }
+        JsonValue platform = targetDefinition.get("platform");
+        JsonValue nixSystems = targetDefinition.get("nix_systems");
+        if (!platform.isString() || !nixSystems.isArray()
+                || nixSystems.size() != 1
+                || !nixSystems.at(0).isString()) {
+            return AppImageProvenanceInternalJson.failure(
+                "AppImage deployment target has no exact platform/system");
+        }
+        AppImageRuntimeInventoryResult inventory =
+            AppImageRuntimeInventory.loadForTarget(sourceRoot,
+                platform.asString(), nixSystems.at(0).asString());
+        if (!inventory.ok()) {
+            return AppImageProvenanceInternalJson.failure(inventory.error);
+        }
+        AppImageProvenanceInternalJson packages =
+            AppImageSourceProvenance.packageDefinitions(
+                repoRoot, sourceFiles.value);
+        if (!packages.ok()) { return packages; }
+        AppImageProvenanceInternalJson coreRuntime =
+            AppImageSourceProvenance.coreRuntime(
+                packages.value, nixSystems.at(0).asString());
+        if (!coreRuntime.ok()) { return coreRuntime; }
+        AppImageProvenanceInternalJson recipes =
+            AppImageSourceProvenance.packageRecipes(sourceFiles.value);
+        if (!recipes.ok()) { return recipes; }
+        AppImageProvenanceInternalJson appImageRuntime =
+            AppImageSourceProvenance.appImageRuntimeSource(
+                repoRoot, sourceFiles.value, nixSystems.at(0).asString());
+        if (!appImageRuntime.ok()) { return appImageRuntime; }
+        AppImageProvenanceInternalJson systems =
+            AppImageSourceProvenance.systemBindings(
+                repoRoot, sourceFiles.value, assets.value);
+        if (!systems.ok()) { return systems; }
+        AppImageProvenanceInternalJson cores =
+            AppImageSourceProvenance.selectedCores(
+                systems.value, platform.asString(),
+                coreRuntime.value.get("provider").asString());
+        if (!cores.ok()) { return cores; }
+        JsonValue inventoryCores = JsonValue.makeArray();
+        for core in inventory.cores {
+            inventoryCores.push(JsonValue.makeString(core));
+        }
+        AppImageProvenanceInternalResult exactCores =
+            AppImageProvenanceSupport.exactInventory(
+                "target core", inventoryCores, cores.value);
+        if (!exactCores.ok()) {
+            return AppImageProvenanceInternalJson.failure(exactCores.error);
+        }
+        AppImageProvenanceInternalJson coreBuilds =
+            AppImageSourceProvenance.coreBuildContracts(
+                repoRoot, cores.value, coreRuntime.value,
+                nixSystems.at(0).asString());
+        if (!coreBuilds.ok()) { return coreBuilds; }
+        AppImageProvenanceInternalJson settings =
+            AppImageSourceProvenance.settingsContract(
+                repoRoot, sourceFiles.value);
+        if (!settings.ok()) { return settings; }
+        JsonValue inputFiles = AppImageProvenanceSupport.filesBelow(
+            sourceFiles.value, "config/input/");
+        if (inputFiles.size() == 0) {
+            return AppImageProvenanceInternalJson.failure(
+                "production source identity contains no input definitions");
+        }
+
+        JsonValue contract = JsonValue.makeObject();
+        contract.set("production_source_roots", roots);
+        contract.set("production_source_files", sourceFiles.value);
+        contract.set("flake_nix_sha256", JsonValue.makeString(
+            AppImageProvenanceSupport.digestForPath(
+                sourceFiles.value, "flake.nix")));
+        contract.set("flake_lock_sha256", JsonValue.makeString(
+            AppImageProvenanceSupport.digestForPath(
+                sourceFiles.value, "flake.lock")));
+        contract.set("btrc_revision", JsonValue.makeString(btrc.value));
+        contract.set("flake_inputs", flakeInputs.value);
+        contract.set("deployment_target", target.value);
+        contract.set("target_output_store_path",
+            JsonValue.makeString(targetOutput.value));
+        contract.set("package_definitions", packages.value);
+        contract.set("package_recipes", recipes.value);
+        contract.set("appimage_runtime", appImageRuntime.value);
+        contract.set("build_contracts", builds.value);
+        contract.set("runtime_slices",
+            AppImageRuntimeInventory.manifest(inventory.slices));
+        contract.set("core_runtime", coreRuntime.value);
+        contract.set("systems", systems.value);
+        contract.set("selected_cores", cores.value);
+        contract.set("selected_core_builds", coreBuilds.value);
+        contract.set("rendering_assets", assets.value);
+        contract.set("input_files", inputFiles);
+        contract.set("settings", settings.value);
+        return AppImageProvenanceInternalJson.success(contract);
+    }
+
+}

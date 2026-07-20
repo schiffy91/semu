@@ -1,0 +1,271 @@
+// emulators.btrc - shared declarative emulator values and runtime layout.
+
+import std.{fs, json, platform, strings, vector}
+import ../lib/owned_paths.btrc
+
+class SemuJsonPath {
+    class bool numeric(string value) {
+        if (value.isEmpty()) { return false; }
+        for (int index = 0; index < value.len(); index++) {
+            char digit = value.charAt(index);
+            if (digit < '0' || digit > '9') { return false; }
+        }
+        return true;
+    }
+
+    class JsonValue get(JsonValue root, string path) {
+        JsonValue current = root;
+        if (path.isEmpty()) { return current; }
+        for part in Strings.split(path, ".") {
+            if (current.isObject() && current.has(part)) {
+                current = current.get(part);
+            } else if (current.isArray() && SemuJsonPath.numeric(part)) {
+                int index = part.toInt();
+                if (index < 0 || index >= current.size()) {
+                    return JsonValue.makeNull();
+                }
+                current = current.at(index);
+            } else {
+                return JsonValue.makeNull();
+            }
+        }
+        return current;
+    }
+
+    class string text(JsonValue value) {
+        if (value.isString()) { return value.asString(); }
+        if (value.isInt()) { return f"{value.asInt()}"; }
+        if (value.isBool()) { return value.asBool() ? "true" : "false"; }
+        return "";
+    }
+
+    class string csv(JsonValue value) {
+        if (!value.isArray()) { return ""; }
+        Vector<string> values = [];
+        for (int index = 0; index < value.size(); index++) {
+            values.push(SemuJsonPath.text(value.at(index)));
+        }
+        return values.join(",");
+    }
+}
+
+class SemuRuntimeMediaLayout {
+    public string romsRoot;
+    public string emulationRoot;
+
+    public SemuRuntimeMediaLayout(string roms, string emulation) {
+        self.romsRoot = roms;
+        self.emulationRoot = emulation;
+    }
+}
+
+class SemuRuntimeLayout {
+    class string runtimeRoot(string project) {
+        return Environment.get("SEMU_RUNTIME_ROOT",
+            PathTools.join(project, "build/runtime"));
+    }
+
+    class string stateRoot(string project, string emulator) {
+        return PathTools.join(
+            PathTools.join(SemuRuntimeLayout.runtimeRoot(project), "state"),
+            emulator);
+    }
+
+    class string contentRoot(string project) {
+        return PathTools.join(SemuRuntimeLayout.runtimeRoot(project), "content");
+    }
+
+    class string semuHome(string project, string explicitHome) {
+        string configured = explicitHome.isEmpty()
+            ? Environment.get("SEMU_HOME", "") : explicitHome;
+        return SemuOwnedPaths.normalized(configured.isEmpty()
+            ? PathTools.join(project, "settings") : configured);
+    }
+
+    class string assetRoot(string project) {
+        return Environment.get("SEMU_ASSET_ROOT", project);
+    }
+
+    class string configuredPath(string project, string value) {
+        string resolved = value
+            .replace("${home}", Environment.get("HOME", "."))
+            .replace("${project}", project);
+        if (resolved.isEmpty() || resolved.contains("${")) { return ""; }
+        string absolute = PathTools.isAbsolute(resolved)
+            ? resolved : PathTools.join(project, resolved);
+        string lexical = SemuOwnedPaths.normalized(absolute);
+        if (lexical.isEmpty()) { return ""; }
+        string canonical = FileSystem.isDir(lexical)
+            ? UnixFileSystem.realPath(lexical) : "";
+        return canonical.isEmpty() ? lexical : canonical;
+    }
+
+    class string resolveBiosRoot(string project, string platformId,
+                                 JsonValue settings,
+                                 string environmentRoot) {
+        string configured = environmentRoot;
+        if (configured.isEmpty()) {
+            JsonValue setting = SemuJsonPath.get(
+                settings, "paths.bios_root." + platformId);
+            if (setting.isString()) { configured = setting.asString(); }
+        }
+        return SemuRuntimeLayout.configuredPath(project, configured);
+    }
+
+    class string biosRoot(string project, string platformId,
+                          JsonValue settings) {
+        return SemuRuntimeLayout.resolveBiosRoot(
+            project, platformId, settings,
+            Environment.get("SEMU_BIOS_ROOT", ""));
+    }
+
+    class string emulationRoot(string base, string relativePath) {
+        string configured = Environment.get("SEMU_EMULATION_ROOT", "");
+        if (!configured.isEmpty()) { return configured; }
+        return relativePath.isEmpty() ? base
+            : PathTools.join(base, relativePath);
+    }
+
+    class SemuRuntimeMediaLayout discover(string root, string platformId,
+                                           JsonValue settings) {
+        JsonValue candidates = SemuJsonPath.get(
+            settings, "paths.roms_candidates." + platformId);
+        if (candidates.isArray()) {
+            for (int index = 0; index < candidates.size(); index++) {
+                JsonValue candidate = candidates.at(index);
+                if (!candidate.isObject()
+                        || !candidate.get("roms_path").isString()
+                        || !candidate.get("emulation_path").isString()) {
+                    continue;
+                }
+                string romsPath = candidate.get("roms_path").asString();
+                string emulationPath = candidate.get(
+                    "emulation_path").asString();
+                if (!SemuOwnedPaths.safeRelativePath(romsPath, false)
+                        || !SemuOwnedPaths.safeRelativePath(
+                            emulationPath, true)) {
+                    continue;
+                }
+                string suffix = "/" + romsPath;
+                if (root.endsWith(suffix)) {
+                    string base = root.substring(0, root.len() - suffix.len());
+                    if (base.isEmpty()) { base = "/"; }
+                    return SemuRuntimeMediaLayout(root,
+                        SemuRuntimeLayout.emulationRoot(base, emulationPath));
+                }
+                string discovered = PathTools.join(root, romsPath);
+                if (FileSystem.isDir(discovered)) {
+                    return SemuRuntimeMediaLayout(discovered,
+                        SemuRuntimeLayout.emulationRoot(root, emulationPath));
+                }
+            }
+        }
+        return SemuRuntimeMediaLayout(root,
+            SemuRuntimeLayout.emulationRoot(PathTools.dirname(root), ""));
+    }
+
+    class SemuRuntimeMediaLayout media(string project, string platformId,
+                                       JsonValue settings) {
+        string environment = Environment.get("SEMU_ROMS_ROOT",
+            Environment.get("SEMU_ROMS_DIR", ""));
+        if (!environment.isEmpty()) {
+            return SemuRuntimeLayout.discover(
+                environment, platformId, settings);
+        }
+        JsonValue configured = SemuJsonPath.get(
+            settings, "paths.roms_root." + platformId);
+        if (configured.isString() && !configured.asString().isEmpty()) {
+            string value = configured.asString().replace(
+                "${home}", Environment.get("HOME", "."));
+            return SemuRuntimeLayout.discover(value, platformId, settings);
+        }
+        string fallback = PathTools.join(
+            SemuRuntimeLayout.contentRoot(project), "ROMs");
+        return SemuRuntimeMediaLayout(fallback,
+            SemuRuntimeLayout.emulationRoot(
+                SemuRuntimeLayout.contentRoot(project), ""));
+    }
+
+    class string romsRoot(string project, string platformId,
+                          JsonValue settings) {
+        return SemuRuntimeLayout.media(
+            project, platformId, settings).romsRoot;
+    }
+}
+
+class SemuRuntimeContext {
+    public string project;
+    public string platformId;
+    public string emulatorId;
+    public string semuHome;
+    public string stateRoot;
+    public string contentRoot;
+    public string assetRoot;
+    public string romsRoot;
+    public string biosRoot;
+    public string emulationRoot;
+    public JsonValue settings;
+
+    public SemuRuntimeContext(string projectRoot, string platformName,
+                              string emulator, JsonValue resolvedSettings,
+                              string ownedHome) {
+        self.project = FileSystem.absolutePath(projectRoot);
+        self.platformId = platformName;
+        self.emulatorId = emulator;
+        self.semuHome = SemuRuntimeLayout.semuHome(
+            self.project, ownedHome);
+        self.stateRoot = SemuRuntimeLayout.stateRoot(self.project, emulator);
+        self.contentRoot = SemuRuntimeLayout.contentRoot(self.project);
+        self.assetRoot = SemuRuntimeLayout.assetRoot(self.project);
+        SemuRuntimeMediaLayout media = SemuRuntimeLayout.media(
+            self.project, self.platformId, resolvedSettings);
+        self.romsRoot = media.romsRoot;
+        self.biosRoot = SemuRuntimeLayout.biosRoot(
+            self.project, self.platformId, resolvedSettings);
+        self.emulationRoot = media.emulationRoot;
+        self.settings = resolvedSettings;
+    }
+}
+
+class SemuTokenResolver {
+    class string environmentTokens(string value) {
+        string result = value;
+        int remaining = 64;
+        while (remaining > 0 && result.contains("${env:")) {
+            int opening = result.indexOf("${env:");
+            string suffix = result.substring(opening + 6, result.len());
+            int closing = suffix.indexOf("}");
+            if (closing < 0) { return result; }
+            string name = suffix.substring(0, closing);
+            string expanded = result.substring(0, opening)
+                + Environment.get(name, "")
+                + suffix.substring(closing + 1, suffix.len());
+            if (expanded.equals(result)) { return result; }
+            result = expanded;
+            remaining--;
+        }
+        return result;
+    }
+
+    class string resolve(string value, SemuRuntimeContext context) {
+        string result = SemuTokenResolver.environmentTokens(value);
+        result = result.replace("${home}", Environment.get("HOME", "."));
+        result = result.replace("${project}", context.project);
+        result = result.replace("${semu_home}", context.semuHome);
+        result = result.replace("${asset_root}", context.assetRoot);
+        result = result.replace("${roms}", context.romsRoot);
+        result = result.replace("${bios}", context.biosRoot);
+        result = result.replace("${state_root}", context.stateRoot);
+        result = result.replace("${emulation_root}", context.emulationRoot);
+        result = result.replace("${paths.project_roms}", context.romsRoot);
+        result = result.replace("${paths.project_saves}",
+            PathTools.join(context.contentRoot, "saves"));
+        result = result.replace("${paths.project_states}",
+            PathTools.join(context.contentRoot, "states"));
+        result = result.replace("${paths.project_screenshots}",
+            PathTools.join(context.contentRoot, "screenshots"));
+        result = result.replace("${paths.project_gamelists}",
+            PathTools.join(context.contentRoot, "gamelists"));
+        return result;
+    }
+}

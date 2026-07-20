@@ -1,0 +1,17 @@
+// Strict focused entrypoint for native compositor and pointer geometry.
+
+import std.{cli, fs}
+import ./rendering_compositor_contract_test.btrc
+import ./rendering_contract_test.btrc
+
+int main(int argc, char** argv) {
+    CliArgs arguments = CliArgs(argc, argv);
+    string project = arguments.valueAfter(
+        "--project", FileSystem.currentDirectory());
+    int failures = arguments.has("--compositor-only")
+        ? 0 : RenderingContractTest.run(project);
+    if (!arguments.has("--declarations-only")) {
+        failures += RenderingCompositorContractTest.run(project);
+    }
+    return failures == 0 ? 0 : 1;
+}

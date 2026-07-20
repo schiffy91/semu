@@ -1,0 +1,60 @@
+{
+  "schema_version": 1,
+  "id": "melonds",
+  "version": "1.1-unstable-2026-02-02",
+  "build_kind": "source",
+  "source": {
+    "kind": "github",
+    "owner": "melonDS-emu",
+    "repo": "melonDS",
+    "revision": "8104a20be1d8370499667da32a5196939e5af584",
+    "url": "https://github.com/melonDS-emu/melonDS/archive/8104a20be1d8370499667da32a5196939e5af584.tar.gz",
+    "sha256": "sha256-8taczrHnez2lW++grMF/nfONZcGmq1Qg/QiuhXYHbms="
+  },
+  "platforms": [
+    "x86_64-linux"
+  ],
+  "graphics_apis": [
+    "opengl"
+  ],
+  "outputs": {
+    "main_program": "bin/melonDS",
+    "main_program_name": "melonDS",
+    "linked_program": "bin/.melonDS-wrapped",
+    "build_contract": "share/semu/melonds-build-contract.json"
+  },
+  "fallbacks": {
+    "host_executable": false,
+    "flatpak": false,
+    "libretro": false,
+    "prebuilt_binary": false
+  },
+  "native_actions": {
+    "state.load": {
+      "chord": "Ctrl+A",
+      "consumer": "MainWindow::actLoadState[1]",
+      "slot": 1,
+      "source_marker": "actLoadState[i]->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_A));",
+      "source_consumer_marker": "connect(actLoadState[i], &QAction::triggered, this, &MainWindow::onLoadState);"
+    },
+    "state.save": {
+      "chord": "Ctrl+S",
+      "consumer": "MainWindow::actSaveState[1]",
+      "slot": 1,
+      "source_marker": "actSaveState[i]->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_S));",
+      "source_consumer_marker": "connect(actSaveState[i], &QAction::triggered, this, &MainWindow::onSaveState);"
+    }
+  },
+  "metadata": {
+    "description": "Accurate open-source Nintendo DS emulator",
+    "homepage": "https://melonds.kuribo64.net/",
+    "license": "gpl3Plus"
+  },
+  "doc": {
+    "source": "The immutable GitHub revision and NAR hash are the exact source identity packaged by Semu and match the repository's locked nixpkgs melonDS dependency graph.",
+    "state_patch": "The same upstream patch anchors configured relative assets in melonDS's XDG config directory, anchors writable external firmware copies there, and reads a ROM-adjacent .sav only when isolated state has no save yet.",
+    "rendering": "The directly linked game phase preserves semantic top/bottom lane identity after both LCD draws. The post-UI phase runs after splash and OSD drawing and immediately before SwapBuffers. No inactive or teardown report exists.",
+    "touch": "The Qt input consumer snapshots ABI 2 pointer geometry only after both phases succeed, maps mouse/tablet/touch input through semantic bottom surface 1, rejects bezel presses, clamps captured motion, and sends returned native pixels directly to melonDS.",
+    "states": "The pinned frontend supports native savestate slots. Semu remaps only slot 1 to its global Ctrl+S and Ctrl+A action ABI while preserving the upstream shortcuts for slots 2 through 8."
+  }
+}

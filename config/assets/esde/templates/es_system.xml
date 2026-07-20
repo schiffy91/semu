@@ -1,0 +1,8 @@
+  <system>
+    <name>${NAME}</name>
+    <fullname>${FULLNAME}</fullname>
+    <path>%ROMPATH%/${ROM_DIRECTORY}</path>
+    <extension>${EXTENSIONS}</extension>
+${COMMANDS}    <platform>${PLATFORMS}</platform>
+    <theme>${THEME}</theme>
+  </system>

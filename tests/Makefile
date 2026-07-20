@@ -1,42 +1,64 @@
-.PHONY: tree-audit test verify manifest-smoke core-tests target-tests
+SHELL := /bin/bash
 
-APPROVED_TOP_LEVEL := .git .claude .gitignore Makefile flake.lock flake.nix src tests
+.PHONY: compiler-tests tree-audit tree-audit-contracts configs-smoke \
+	steamdeck-contracts test verify verify-production
 
-tree-audit: ## Check that source/test files match the approved refactor shape
-	@set -euo pipefail; \
-	for path in $$(find . -maxdepth 1 -mindepth 1 -printf '%f\n' 2>/dev/null || find . -maxdepth 1 -mindepth 1 -exec basename {} \;); do \
-		case " $(APPROVED_TOP_LEVEL) " in *" $$path "*) ;; *) echo "unexpected top-level path: $$path" >&2; exit 1 ;; esac; \
-	done; \
-	if find src/semu -type f | grep -Ev '^src/semu/(cli\.btrc|settings\.json|core/[a-z0-9_]+\.btrc|assets/(bezels\.json|shaders\.json|bezels\.nix|shaders\.nix|generic/[^/]+|bezels/[a-z0-9]+/[a-z0-9_-]+\.png|fonts/[^/]+)|platforms/(semu_platform\.btrc|platform_registry\.btrc|linux/([a-z0-9_]+\.btrc|quit_watch\.c)|macos/[a-z0-9_]+\.btrc)|emulators/(semu_emulator\.btrc|emulators\.nix|es_de/es_de\.nix|emulator_registry\.btrc|emulator_parser\.btrc|emulator_emitter\.btrc|profile_template\.btrc|emulator_process\.btrc|emulator_execution\.btrc|rendering/(semu_bezel\.btrc|semu_shader\.btrc|semu_rendering\.btrc|render_resolution\.btrc|tap/([a-z0-9_.]+|gl_tap_proof/[A-Za-z0-9_.]+))|retroarch/(retroarch_emulator\.btrc|retroarch_emitter\.btrc|profile\.json|retroarch_rendering\.btrc|retroarch\.patch|retroarch_darwin\.patch|retroarch\.nix|emulator\.json)|dolphin/(dolphin_emulator\.btrc|dolphin_emitter\.btrc|dolphin_rendering\.btrc|profile\.json|dolphin\.nix|emulator\.json)|pcsx2/(pcsx2_emulator\.btrc|pcsx2_emitter\.btrc|pcsx2_rendering\.btrc|profile\.json|pcsx2\.nix|emulator\.json)|cemu/(cemu_emulator\.btrc|cemu_emitter\.btrc|cemu_rendering\.btrc|profile\.json|cemu\.nix|emulator\.json)|ryujinx/(ryujinx_emulator\.btrc|ryujinx_emitter\.btrc|ryujinx_rendering\.btrc|profile\.json|ryujinx\.nix|deps\.json|emulator\.json))|systems/(system_parser\.btrc|system_emitter\.btrc|[^/]+/(system\.json|bezels\.json|shaders\.json))|input/(input_parser\.btrc|input_emitter\.btrc|controllers/steamdeck/(steamdeck\.skm|steam_input\.json|steam_input\.btrc|steamdeck_input_emitter\.btrc|steamdeck_hotkey_assignments\.btrc))|packaging/(appimage_package\.btrc|es_de_runtime\.btrc|nix_package\.btrc|installer\.sh|appimage/(AppRun\.template|semu\.desktop\.template)|nix/(semu_app\.nix|semu_cli\.nix|module\.nix|flake/(apps\.nix|checks\.nix|dev-shells\.nix|packages\.nix))))$$' >/tmp/semu-tree-audit.txt; then \
-		echo "unexpected src/semu files outside approved tree:" >&2; \
-		cat /tmp/semu-tree-audit.txt >&2; \
-		exit 1; \
-	fi; \
-	if find tests -type f | grep -Ev '^tests/(Makefile|core/(emulator_contract_test\.btrc|system_contract_test\.btrc|rendering_contract_test\.btrc|input_contract_test\.btrc|package_contract_test\.btrc|generated_tree_test\.btrc)|targets/macos/(visual_loop\.sh|preview_matrix\.sh|shader_matrix\.sh|corner_crops\.sh|bake_bezels\.sh|bake_manifest\.json|priority_matrix\.sh)|targets/steamdeck/(Makefile|visual_loop\.sh|input_test\.btrc|visual_evidence_test\.btrc|emulator_loop_test\.btrc)|targets/vm/(Makefile|image_test\.btrc|install_test\.btrc|visual_evidence_test\.btrc|grub\.cfg|kickstart\.ks\.in|semu_install))$$' >/tmp/semu-test-tree-audit.txt; then \
-		echo "unexpected tests files outside approved tree:" >&2; \
-		cat /tmp/semu-test-tree-audit.txt >&2; \
-		exit 1; \
-	fi; \
-	if find src/semu -type d -empty | grep -q .; then \
-		echo "empty directories under src/semu (nothing may create these):" >&2; \
-		find src/semu -type d -empty >&2; \
-		exit 1; \
-	fi; \
-	echo "OK approved tree"
+BTRC_TRANSPILE ?= nix run path:.\#btrcpy --
+TARGET ?= steam-deck
 
-manifest-smoke: $(SEMU_BIN)
-	@mkdir -p src/generated/test
-	$(SEMU_BIN) manifest --output src/generated/test/semu.json
-	@test -f src/generated/test/semu.json
+ifeq ($(strip $(SEMU_BIN)),)
+SEMU_BIN := build/semu
+endif
 
-core-tests: $(SEMU_BIN)
-	$(SEMU_BIN) test core
+SEMU_COMPILER_TEST_SOURCE := tests/compiler/main.btrc
+SEMU_COMPILER_TEST_SOURCES := $(shell find tests/compiler src/compiler src/generators src/lib -name '*.btrc' -print 2>/dev/null) tests/core/compiler_contract_test.btrc
+SEMU_COMPILER_TEST_C := build/tests/semu-compiler-tests.c
+SEMU_COMPILER_TEST_BIN := build/tests/semu-compiler-tests
+SEMU_CONFIG := $(shell find config -type f -print 2>/dev/null)
 
-# Target Makefiles assume repo-root cwd (their asset paths are root-relative).
-target-tests: $(SEMU_BIN)
-	$(MAKE) -f tests/targets/steamdeck/Makefile test
-	$(MAKE) -f tests/targets/vm/Makefile test
+TREE_AUDIT_SOURCE := tests/core/tree_audit/main.btrc
+TREE_AUDIT_SOURCES := $(shell find tests/core/tree_audit -name '*.btrc' -print 2>/dev/null)
+TREE_AUDIT_C := build/tests/tree-audit.c
+TREE_AUDIT_BIN := build/tests/tree-audit
+STEAMDECK_HARNESS := tests/targets/steamdeck/Makefile
 
-test: tree-audit $(SEMU_BIN) manifest-smoke core-tests
+tree-audit: $(TREE_AUDIT_BIN) tree-audit-contracts ## Check the approved refactor shape
+	$(TREE_AUDIT_BIN) --project "$(CURDIR)"
 
-verify: test
+tree-audit-contracts: $(TREE_AUDIT_BIN) ## Exercise tree-policy rejection cases
+	$(TREE_AUDIT_BIN) --self-test
+
+$(TREE_AUDIT_BIN): $(TREE_AUDIT_SOURCES) flake.nix flake.lock tests/Makefile
+	@mkdir -p "$(dir $(TREE_AUDIT_C))" "$(dir $(TREE_AUDIT_BIN))"
+	$(BTRC_TRANSPILE) "$(CURDIR)/$(TREE_AUDIT_SOURCE)" \
+		-o "$(CURDIR)/$(TREE_AUDIT_C)" \
+		--strict-imports --no-cache --no-stdlib
+	perl -0pi -e 's/\n+\z/\n/' "$(TREE_AUDIT_C)"
+	$(CC) "$(TREE_AUDIT_C)" -std=c11 -o "$@" -lm
+
+compiler-tests: $(SEMU_COMPILER_TEST_BIN) ## Run the focused strict-import compiler contracts
+	$(SEMU_COMPILER_TEST_BIN) --project "$(CURDIR)"
+
+$(SEMU_COMPILER_TEST_BIN): $(SEMU_COMPILER_TEST_SOURCES) $(SEMU_CONFIG) flake.nix flake.lock tests/Makefile
+	@mkdir -p "$(dir $(SEMU_COMPILER_TEST_C))" "$(dir $(SEMU_COMPILER_TEST_BIN))"
+	$(BTRC_TRANSPILE) "$(CURDIR)/$(SEMU_COMPILER_TEST_SOURCE)" \
+		-o "$(CURDIR)/$(SEMU_COMPILER_TEST_C)" \
+		--strict-imports --no-cache --no-stdlib
+	perl -0pi -e 's/\n+\z/\n/' "$(SEMU_COMPILER_TEST_C)"
+	$(CC) "$(SEMU_COMPILER_TEST_C)" -std=c11 -o "$@" -lm
+
+configs-smoke: $(SEMU_BIN) ## Smoke-test generated configs without a device
+	$(SEMU_BIN) build configs --target steam-deck --project "$(CURDIR)" \
+		--output build/test/configs/steam-deck
+	@test -f build/test/configs/steam-deck/build-plan.json
+
+steamdeck-contracts: ## Run local Steam Deck contracts without SSH or a device
+	$(MAKE) -f "$(STEAMDECK_HARNESS)" test installer-contract
+
+test: tree-audit compiler-tests configs-smoke steamdeck-contracts ## Run all device-free contracts
+
+verify: $(SEMU_BIN) compiler-tests ## Verify TARGET plan (default: steam-deck)
+	"$(SEMU_BIN)" verify target "$(TARGET)" --project "$(CURDIR)" \
+		--output "build/test/verify/$(TARGET)"
+
+verify-production: compiler-tests appimage-verify ## Compiler contracts + exact production AppImage verification

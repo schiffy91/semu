@@ -1,0 +1,741 @@
+// install_policy.btrc - typed, declarative AppImage installation policy.
+
+import std.{cli, fs, json, platform, strings, vector}
+
+class SemuInstallResult {
+    public bool valid;
+    public string error;
+    public string document;
+
+    public SemuInstallResult(bool valid, string error = "",
+                             string document = "") {
+        self.valid = valid;
+        self.error = error;
+        self.document = document;
+    }
+
+    class SemuInstallResult success(string document = "") {
+        return SemuInstallResult(true, "", document);
+    }
+
+    class SemuInstallResult failure(string error) {
+        return SemuInstallResult(false, error, "");
+    }
+
+    public bool ok() { return self.valid; }
+}
+
+class SemuOwnedExternalPaths {
+    class SemuInstallResult configured(
+            string semuHome, string key, string label, string platform) {
+        string path = PathTools.join(semuHome, "semu.json");
+        FileStatus status = FileStatus(path);
+        if (!status.linkFound) { return SemuInstallResult.success(); }
+        if (!status.isFile() || status.isSymlink()) {
+            return SemuInstallResult.failure(
+                "Semu-owned " + label + " settings are not a regular file: "
+                + path);
+        }
+        JsonValue document = JsonValue.readFile(path);
+        JsonValue root = document.get("paths").get(key).get(platform);
+        if (document.isError() || !document.isObject()) {
+            return SemuInstallResult.failure(
+                "Semu-owned " + label + " settings are malformed: " + path);
+        }
+        if (root.isNull()) { return SemuInstallResult.success(); }
+        if (!root.isString() || root.asString().isEmpty()) {
+            return SemuInstallResult.failure(
+                "Semu-owned " + label + " root is invalid for " + platform);
+        }
+        string configured = root.asString().replace(
+            "${home}", Environment.get("HOME", "."));
+        if (!PathTools.isAbsolute(configured)) {
+            return SemuInstallResult.failure(
+                "Semu-owned " + label + " root must be absolute for "
+                + platform);
+        }
+        return SemuInstallResult.success(configured);
+    }
+}
+
+class SemuTargetPolicy {
+    class bool identifier(string value) {
+        if (value.isEmpty()) { return false; }
+        for character in value {
+            bool alphaNumeric = (character >= 'a' && character <= 'z')
+                || (character >= '0' && character <= '9');
+            if (!alphaNumeric && character != '-') { return false; }
+        }
+        return true;
+    }
+
+    class SemuInstallResult load(
+            string sourceRoot, string expectedPlatform = "") {
+        JsonValue install = JsonValue.readFile(PathTools.join(
+            sourceRoot, "settings/install.json"));
+        JsonValue targetValue = install.get("target");
+        string target = targetValue.isString()
+            ? targetValue.asString() : "";
+        if (install.isError() || !install.isObject()
+                || !SemuTargetPolicy.identifier(target)) {
+            return SemuInstallResult.failure(
+                "bundled install policy has no valid target identifier");
+        }
+        string definitionPath = PathTools.join(
+            sourceRoot, "targets/" + target + ".json");
+        JsonValue definition = JsonValue.readFile(definitionPath);
+        JsonValue id = definition.get("id");
+        JsonValue platform = definition.get("platform");
+        if (definition.isError() || !definition.isObject()
+                || !definition.get("schema_version").isInt()
+                || definition.get("schema_version").asInt() != 1
+                || !id.isString() || !id.asString().equals(target)
+                || !platform.isString()
+                || !SemuTargetPolicy.identifier(platform.asString())
+                || (!expectedPlatform.isEmpty()
+                    && !platform.asString().equals(expectedPlatform))) {
+            return SemuInstallResult.failure(
+                "bundled target definition disagrees with install policy: "
+                + target);
+        }
+        return SemuInstallResult.success(target);
+    }
+}
+
+class SemuRomsPolicy {
+    public string defaultRoot;
+    public Vector<string> candidates;
+
+    public SemuRomsPolicy() {
+        self.defaultRoot = "";
+        self.candidates = [];
+    }
+
+    class bool realDirectory(string path) {
+        string absolute = FileSystem.absolutePath(path);
+        string canonical = UnixFileSystem.realPath(absolute);
+        return !canonical.isEmpty() && canonical.equals(absolute)
+            && FileSystem.isDir(absolute) && !FileSystem.isSymlink(absolute);
+    }
+
+    class SemuInstallResult load(string sourceRoot, string platform,
+                                 SemuRomsPolicy policy) {
+        JsonValue defaults = JsonValue.readFile(
+            PathTools.join(sourceRoot, "settings/defaults.json"));
+        JsonValue paths = defaults.get("paths");
+        JsonValue roots = paths.get("roms_root");
+        JsonValue layouts = paths.get("roms_candidates").get(platform);
+        JsonValue root = roots.get(platform);
+        if (defaults.isError()) {
+            return SemuInstallResult.failure(
+                "cannot read declarative ROM path policy: "
+                + PathTools.join(sourceRoot, "settings/defaults.json"));
+        }
+        if (!paths.isObject() || !roots.isObject()) {
+            return SemuInstallResult.failure(
+                "declarative ROM path policy has no paths object");
+        }
+        if (!root.isString() || root.asString().isEmpty()) {
+            return SemuInstallResult.failure(
+                "declarative ROM root is missing for " + platform);
+        }
+        if (!layouts.isArray() || layouts.size() == 0) {
+            return SemuInstallResult.failure(
+                "declarative ROM candidates are missing for " + platform);
+        }
+        policy.defaultRoot = root.asString();
+        for (int index = 0; index < layouts.size(); index++) {
+            JsonValue layout = layouts.at(index);
+            string candidate = SemuInstallPolicy.scalar(layout, "roms_path");
+            if (!layout.isObject()
+                    || !SemuInstallPolicy.safeRelative(candidate)) {
+                return SemuInstallResult.failure(
+                    "declarative ROM candidate is unsafe for " + platform);
+            }
+            policy.candidates.push(candidate);
+        }
+        bool homeRelative = policy.defaultRoot.startsWith("${home}/")
+            && SemuInstallPolicy.safeRelative(policy.defaultRoot.substring(
+                8, policy.defaultRoot.len() - 8));
+        if (!PathTools.isAbsolute(policy.defaultRoot) && !homeRelative) {
+            return SemuInstallResult.failure(
+                "declarative default ROM root is unsafe");
+        }
+        return SemuInstallResult.success();
+    }
+
+    public SemuInstallResult under(string supplied) {
+        string root = FileSystem.absolutePath(supplied);
+        for relative in self.candidates {
+            string candidate = UnixFileSystem.realPath(
+                PathTools.join(root, relative));
+            if (!candidate.isEmpty()
+                    && SemuRomsPolicy.realDirectory(candidate)) {
+                return SemuInstallResult.success(candidate);
+            }
+        }
+        string canonical = UnixFileSystem.realPath(root);
+        return !canonical.isEmpty() && SemuRomsPolicy.realDirectory(canonical)
+            ? SemuInstallResult.success(canonical)
+            : SemuInstallResult.failure(
+                "ROM root has no safe declared layout: " + root);
+    }
+
+    public SemuInstallResult configured(string semuHome, string platform) {
+        return SemuOwnedExternalPaths.configured(
+            semuHome, "roms_root", "ROM", platform);
+    }
+
+    public SemuInstallResult resolve(Vector<string> explicitRoots,
+                                     string projectRoot,
+                                     string ownedFallback) {
+        for supplied in explicitRoots {
+            if (!supplied.isEmpty()) {
+                SemuInstallResult candidate = self.under(supplied);
+                if (candidate.ok()) { return candidate; }
+            }
+        }
+        string configured = self.defaultRoot.replace(
+            "${home}", Environment.get("HOME", "."));
+        SemuInstallResult found = self.under(configured);
+        if (found.ok()) { return found; }
+        return SemuInstallResult.success(
+            PathTools.join(projectRoot, ownedFallback));
+    }
+
+    public SemuInstallResult runtime(
+            string commandLine, Vector<string> environmentRoots,
+            string semuHome, string platform, string projectRoot,
+            string ownedFallback) {
+        if (!commandLine.isEmpty()) { return self.under(commandLine); }
+        SemuInstallResult setting = self.configured(semuHome, platform);
+        if (!setting.ok()) { return setting; }
+        Vector<string> candidates = [];
+        for root in environmentRoots { candidates.push(root); }
+        if (!setting.document.isEmpty()) {
+            candidates.push(setting.document);
+        }
+        return self.resolve(candidates, projectRoot, ownedFallback);
+    }
+}
+
+class SemuBiosPolicy {
+    public string defaultRoot;
+
+    public SemuBiosPolicy() { self.defaultRoot = ""; }
+
+    class SemuInstallResult load(string sourceRoot, string platform,
+                                 SemuBiosPolicy policy) {
+        JsonValue defaults = JsonValue.readFile(
+            PathTools.join(sourceRoot, "settings/defaults.json"));
+        JsonValue root = defaults.get("paths").get("bios_root").get(platform);
+        if (defaults.isError() || !root.isString()
+                || root.asString().isEmpty()) {
+            return SemuInstallResult.failure(
+                "declarative BIOS root is missing for " + platform);
+        }
+        policy.defaultRoot = root.asString();
+        bool homeRelative = policy.defaultRoot.startsWith("${home}/")
+            && SemuInstallPolicy.safeRelative(policy.defaultRoot.substring(
+                8, policy.defaultRoot.len() - 8));
+        if (!PathTools.isAbsolute(policy.defaultRoot) && !homeRelative) {
+            return SemuInstallResult.failure(
+                "declarative BIOS root is unsafe for " + platform);
+        }
+        return SemuInstallResult.success();
+    }
+
+    public SemuInstallResult resolve(
+            string environmentRoot, string semuHome, string platform) {
+        string selected = environmentRoot;
+        if (selected.isEmpty()) {
+            SemuInstallResult configured =
+                SemuOwnedExternalPaths.configured(
+                    semuHome, "bios_root", "BIOS", platform);
+            if (!configured.ok()) { return configured; }
+            selected = configured.document.isEmpty()
+                ? self.defaultRoot.replace(
+                    "${home}", Environment.get("HOME", "."))
+                : configured.document;
+        }
+        string absolute = FileSystem.absolutePath(selected);
+        string canonical = UnixFileSystem.realPath(absolute);
+        return !canonical.isEmpty() && canonical.equals(absolute)
+                && FileSystem.isDir(canonical)
+                && !FileSystem.isSymlink(canonical)
+            ? SemuInstallResult.success(canonical)
+            : SemuInstallResult.failure(
+                "external BIOS root does not exist or is unsafe: "
+                + absolute);
+    }
+}
+
+class SemuSteamLegacyRule {
+    public string name;
+    public string executable;
+
+    public SemuSteamLegacyRule(string name = "", string executable = "") {
+        self.name = name;
+        self.executable = executable;
+    }
+}
+
+class SemuSteamMigrationPolicy {
+    public string serviceUnit;
+    public string processName;
+    public Vector<SemuSteamLegacyRule> rules;
+
+    public SemuSteamMigrationPolicy() {
+        self.serviceUnit = "";
+        self.processName = "";
+        self.rules = [];
+    }
+
+    class bool exactKeys(JsonValue value, Vector<string> expected) {
+        if (!value.isObject() || value.keys().size() != expected.size()) {
+            return false;
+        }
+        for key in value.keys() {
+            if (!expected.contains(key)) { return false; }
+        }
+        return true;
+    }
+
+    class bool plain(string value) {
+        if (value.isEmpty()) { return false; }
+        for character in value {
+            if (character < 32 || character == 127) { return false; }
+        }
+        return true;
+    }
+
+    class bool serviceIdentifier(string value) {
+        if (!value.endsWith(".service")) { return false; }
+        for character in value {
+            bool allowed = (character >= 'a' && character <= 'z')
+                || (character >= '0' && character <= '9')
+                || character == '-' || character == '_' || character == '.';
+            if (!allowed) { return false; }
+        }
+        return true;
+    }
+
+    class bool processIdentifier(string value) {
+        if (value.isEmpty()) { return false; }
+        for character in value {
+            bool allowed = (character >= 'a' && character <= 'z')
+                || (character >= '0' && character <= '9')
+                || character == '-' || character == '_';
+            if (!allowed) { return false; }
+        }
+        return true;
+    }
+
+    class SemuInstallResult load(
+            string sourceRoot, SemuSteamMigrationPolicy policy) {
+        string path = PathTools.join(
+            sourceRoot, "settings/legacy_shortcuts.json");
+        JsonValue root = JsonValue.readFile(path);
+        JsonValue service = root.get("service");
+        JsonValue records = root.get("records");
+        if (root.isError()
+                || !SemuSteamMigrationPolicy.exactKeys(
+                    root, ["schema_version", "service", "records"])
+                || !root.get("schema_version").isInt()
+                || root.get("schema_version").asInt() != 1
+                || !SemuSteamMigrationPolicy.exactKeys(
+                    service, ["unit", "process"])
+                || !records.isArray() || records.size() == 0) {
+            return SemuInstallResult.failure(
+                "legacy Steam shortcut policy is malformed: " + path);
+        }
+        JsonValue unit = service.get("unit");
+        JsonValue process = service.get("process");
+        policy.serviceUnit = unit.isString() ? unit.asString() : "";
+        policy.processName = process.isString() ? process.asString() : "";
+        if (!SemuSteamMigrationPolicy.serviceIdentifier(policy.serviceUnit)
+                || !SemuSteamMigrationPolicy.processIdentifier(
+                    policy.processName)) {
+            return SemuInstallResult.failure(
+                "legacy Steam shortcut service policy is unsafe");
+        }
+        for (int index = 0; index < records.size(); index++) {
+            JsonValue record = records.at(index);
+            JsonValue name = record.get("name");
+            JsonValue executable = record.get("executable");
+            string nameText = name.isString() ? name.asString() : "";
+            string executableText = executable.isString()
+                ? executable.asString() : "";
+            string relative = executableText.startsWith("${home}/")
+                ? executableText.substring(8, executableText.len() - 8) : "";
+            if (!SemuSteamMigrationPolicy.exactKeys(
+                    record, ["name", "executable"])
+                    || !SemuSteamMigrationPolicy.plain(nameText)
+                    || !SemuInstallPolicy.safeRelative(relative)) {
+                return SemuInstallResult.failure(
+                    f"legacy Steam shortcut rule {index} is unsafe");
+            }
+            for existing in policy.rules {
+                if (existing.name.equals(nameText)
+                        && existing.executable.equals(executableText)) {
+                    return SemuInstallResult.failure(
+                        "legacy Steam shortcut policy contains a duplicate rule");
+                }
+            }
+            policy.rules.push(SemuSteamLegacyRule(nameText, executableText));
+        }
+        return SemuInstallResult.success();
+    }
+}
+
+class SemuInstallOptions {
+    public string action;
+    public string target;
+    public string artifact;
+    public string expectedSha256;
+    public string installRoot;
+    public string projectRoot;
+    public string romsRoot;
+    public bool romsExplicit;
+    public string sourceRoot;
+    public string bootstrapRoot;
+    public string bootstrapTemporary;
+    public Vector<string> launchArguments;
+
+    public SemuInstallOptions() {
+        self.action = "";
+        self.target = "";
+        self.artifact = "";
+        self.expectedSha256 = "";
+        self.installRoot = "";
+        self.projectRoot = "";
+        self.romsRoot = "";
+        self.romsExplicit = false;
+        self.sourceRoot = "";
+        self.bootstrapRoot = "";
+        self.bootstrapTemporary = "";
+        self.launchArguments = [];
+    }
+
+    class SemuInstallOptions parse(CliCommandLine command) {
+        SemuInstallOptions options = SemuInstallOptions();
+        options.action = command.operand(0);
+        options.target = command.option("--target",
+            Environment.get("SEMU_TARGET", ""));
+        options.artifact = command.option("--artifact",
+            Environment.get("SEMU_ARTIFACT", ""));
+        options.expectedSha256 = command.option("--sha256",
+            Environment.get("SEMU_SHA256", "")).toLower();
+        options.installRoot = command.option("--install-root",
+            Environment.get("SEMU_INSTALL_ROOT", ""));
+        options.projectRoot = command.option("--project",
+            Environment.get("SEMU_PROJECT", ""));
+        string explicitRoms = command.option("--roms", "");
+        options.romsExplicit = !explicitRoms.isEmpty();
+        options.romsRoot = options.romsExplicit
+            ? explicitRoms : Environment.get("SEMU_ROMS", "");
+        options.sourceRoot = command.option("--source-root", "");
+        options.bootstrapRoot = command.option("--bootstrap-root", "");
+        options.bootstrapTemporary = command.option("--bootstrap-temporary", "");
+        for (int index = 1; index < command.operands.size(); index++) {
+            options.launchArguments.push(command.operands.get(index));
+        }
+        return options;
+    }
+}
+
+class SemuInstallPolicy {
+    public string file;
+    public string sourceRoot;
+    public string target;
+    public string applicationName;
+    public string applicationComment;
+    public string applicationIcon;
+    public string applicationCategories;
+    public string defaultInstallRoot;
+    public string defaultProjectRoot;
+    public string defaultApplicationsRoot;
+    public string artifactName;
+    public string artifactStore;
+    public string desktopEntryName;
+    public string stableLauncher;
+    public string runtimeCli;
+    public string launcherPayload;
+    public int retainedReleases;
+    public Vector<string> requiredExecutables;
+    public string bubblewrap;
+    public string steamAddUtility;
+    public Vector<string> legacyArtifacts;
+    public string settingsPlatform;
+    public string ownedRomsFallback;
+    public Vector<string> postInstallCommand;
+    public SemuRomsPolicy roms;
+    public SemuBiosPolicy bios;
+    public SemuSteamMigrationPolicy steamMigration;
+
+    public SemuInstallPolicy() {
+        self.file = "";
+        self.sourceRoot = "";
+        self.target = "";
+        self.applicationName = "";
+        self.applicationComment = "";
+        self.applicationIcon = "";
+        self.applicationCategories = "";
+        self.defaultInstallRoot = "";
+        self.defaultProjectRoot = "";
+        self.defaultApplicationsRoot = "";
+        self.artifactName = "";
+        self.artifactStore = "";
+        self.desktopEntryName = "";
+        self.stableLauncher = "";
+        self.runtimeCli = "";
+        self.launcherPayload = "";
+        self.retainedReleases = 0;
+        self.requiredExecutables = [];
+        self.bubblewrap = "";
+        self.steamAddUtility = "";
+        self.legacyArtifacts = [];
+        self.settingsPlatform = "";
+        self.ownedRomsFallback = "";
+        self.postInstallCommand = [];
+        self.roms = SemuRomsPolicy();
+        self.bios = SemuBiosPolicy();
+        self.steamMigration = SemuSteamMigrationPolicy();
+    }
+
+    class string scalar(JsonValue object, string name) {
+        JsonValue value = object.get(name);
+        return value.isString() ? value.asString() : "";
+    }
+
+    class Vector<string> strings(JsonValue object, string name) {
+        Vector<string> result = [];
+        JsonValue values = object.get(name);
+        if (!values.isArray()) { return result; }
+        for (int index = 0; index < values.size(); index++) {
+            JsonValue value = values.at(index);
+            if (!value.isString() || value.asString().isEmpty()) {
+                Vector<string> invalid = [];
+                return invalid;
+            }
+            result.push(value.asString());
+        }
+        return result;
+    }
+
+    class bool safeRelative(string path) {
+        if (path.isEmpty() || PathTools.isAbsolute(path)) { return false; }
+        for component in Strings.split(path, "/") {
+            if (component.isEmpty() || component.equals(".")
+                    || component.equals("..")) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    class string configuredSourceRoot(SemuInstallOptions options) {
+        string source = options.sourceRoot;
+        if (!source.isEmpty()) { return FileSystem.absolutePath(source); }
+        if (options.installRoot.isEmpty()) { return ""; }
+        string current = PathTools.join(options.installRoot, "state/current");
+        if (!FileSystem.isFile(current) || FileSystem.isSymlink(current)) {
+            return "";
+        }
+        string digest = FileSystem.readText(current).trim();
+        if (!SemuInstallPolicy.validDigest(digest)) { return ""; }
+        return PathTools.join(options.installRoot,
+            "releases/" + digest + "/share/semu/config");
+    }
+
+    class bool validDigest(string digest) {
+        if (digest.len() != 64) { return false; }
+        for value in digest {
+            bool decimal = value >= '0' && value <= '9';
+            bool hexadecimal = value >= 'a' && value <= 'f';
+            if (!decimal && !hexadecimal) { return false; }
+        }
+        return true;
+    }
+
+    class SemuInstallResult load(SemuInstallOptions options,
+                                 SemuInstallPolicy policy) {
+        policy.sourceRoot = SemuInstallPolicy.configuredSourceRoot(options);
+        if (policy.sourceRoot.isEmpty() || !FileSystem.isDir(policy.sourceRoot)
+                || FileSystem.isSymlink(policy.sourceRoot)) {
+            return SemuInstallResult.failure(
+                "installation policy source is absent or unsafe");
+        }
+        policy.file = PathTools.join(
+            policy.sourceRoot, "settings/install.json");
+        JsonValue root = JsonValue.readFile(policy.file);
+        if (root.isError() || !root.isObject()
+                || !root.get("schema_version").isInt()
+                || root.get("schema_version").asInt() != 1) {
+            return SemuInstallResult.failure(
+                "installation policy is not canonical schema version 1: "
+                + policy.file);
+        }
+        policy.target = SemuInstallPolicy.scalar(root, "target");
+        JsonValue application = root.get("application");
+        JsonValue paths = root.get("paths");
+        JsonValue releasePolicy = root.get("release");
+        JsonValue platform = root.get("platform");
+        JsonValue runtime = root.get("runtime");
+        JsonValue steam = root.get("steam");
+        if (!application.isObject() || !paths.isObject()
+                || !releasePolicy.isObject()
+                || !platform.isObject() || !runtime.isObject()
+                || !steam.isObject()) {
+            return SemuInstallResult.failure(
+                "installation policy is missing a required object");
+        }
+        policy.applicationName = SemuInstallPolicy.scalar(application, "name");
+        policy.applicationComment = SemuInstallPolicy.scalar(
+            application, "comment");
+        policy.applicationIcon = SemuInstallPolicy.scalar(application, "icon");
+        policy.applicationCategories = SemuInstallPolicy.scalar(
+            application, "categories");
+        policy.defaultInstallRoot = SemuInstallPolicy.scalar(
+            paths, "install_root");
+        policy.defaultProjectRoot = SemuInstallPolicy.scalar(
+            paths, "project_root");
+        policy.defaultApplicationsRoot = SemuInstallPolicy.scalar(
+            paths, "applications_root");
+        policy.artifactName = SemuInstallPolicy.scalar(paths, "artifact");
+        policy.artifactStore = SemuInstallPolicy.scalar(
+            paths, "artifact_store");
+        policy.desktopEntryName = SemuInstallPolicy.scalar(
+            paths, "desktop_entry");
+        policy.stableLauncher = SemuInstallPolicy.scalar(
+            paths, "stable_launcher");
+        policy.runtimeCli = SemuInstallPolicy.scalar(paths, "runtime_cli");
+        policy.launcherPayload = SemuInstallPolicy.scalar(
+            releasePolicy, "launcher_payload");
+        policy.retainedReleases = releasePolicy.get("retained").isInt()
+            ? releasePolicy.get("retained").asInt() : 0;
+        policy.requiredExecutables = SemuInstallPolicy.strings(
+            platform, "required_executables");
+        policy.bubblewrap = SemuInstallPolicy.scalar(platform, "bubblewrap");
+        policy.steamAddUtility = SemuInstallPolicy.scalar(
+            steam, "add_utility");
+        policy.legacyArtifacts = SemuInstallPolicy.strings(
+            steam, "legacy_artifacts");
+        policy.settingsPlatform = SemuInstallPolicy.scalar(
+            runtime, "settings_platform");
+        policy.ownedRomsFallback = SemuInstallPolicy.scalar(
+            runtime, "owned_roms_fallback");
+        policy.postInstallCommand = SemuInstallPolicy.strings(
+            runtime, "post_install_command");
+        SemuInstallResult romsLoaded = SemuRomsPolicy.load(
+            policy.sourceRoot, policy.settingsPlatform, policy.roms);
+        SemuInstallResult biosLoaded = SemuBiosPolicy.load(
+            policy.sourceRoot, policy.settingsPlatform, policy.bios);
+        SemuInstallResult targetLoaded = SemuTargetPolicy.load(
+            policy.sourceRoot, policy.settingsPlatform);
+        SemuInstallResult steamMigrationLoaded =
+            SemuSteamMigrationPolicy.load(
+                policy.sourceRoot, policy.steamMigration);
+
+        string inputReference = SemuInstallPolicy.scalar(
+            steam, "input_definition");
+        JsonValue input = JsonValue.readFile(
+            PathTools.join(policy.sourceRoot, inputReference));
+        string inputIdentity = input.isObject()
+            && input.get("application").isObject()
+            ? SemuInstallPolicy.scalar(
+                input.get("application"), "shortcut_name") : "";
+        bool safe = targetLoaded.ok()
+            && policy.target.equals(targetLoaded.document)
+            && (options.target.isEmpty()
+                || policy.target.equals(options.target))
+            && policy.applicationName.equals("Semu")
+            && policy.applicationName.equals(inputIdentity)
+            && policy.retainedReleases == 2
+            && !policy.requiredExecutables.isEmpty()
+            && policy.requiredExecutables.contains(policy.bubblewrap)
+            && !policy.legacyArtifacts.isEmpty()
+            && !policy.settingsPlatform.isEmpty()
+            && SemuInstallPolicy.safeRelative(policy.ownedRomsFallback)
+            && policy.postInstallCommand.size() == 2
+            && policy.postInstallCommand.get(0).equals("sync")
+            && policy.postInstallCommand.get(1).equals("apply")
+            && romsLoaded.ok()
+            && biosLoaded.ok()
+            && steamMigrationLoaded.ok()
+            && SemuInstallPolicy.safeRelative(policy.defaultInstallRoot)
+            && SemuInstallPolicy.safeRelative(policy.defaultProjectRoot)
+            && SemuInstallPolicy.safeRelative(policy.defaultApplicationsRoot)
+            && SemuInstallPolicy.safeRelative(policy.artifactName)
+            && SemuInstallPolicy.safeRelative(policy.artifactStore)
+            && SemuInstallPolicy.safeRelative(policy.desktopEntryName)
+            && SemuInstallPolicy.safeRelative(policy.stableLauncher)
+            && SemuInstallPolicy.safeRelative(policy.runtimeCli)
+            && SemuInstallPolicy.safeRelative(policy.launcherPayload);
+        if (!safe) {
+            if (!romsLoaded.ok()) { return romsLoaded; }
+            if (!biosLoaded.ok()) { return biosLoaded; }
+            if (!targetLoaded.ok()) { return targetLoaded; }
+            if (!steamMigrationLoaded.ok()) { return steamMigrationLoaded; }
+            return SemuInstallResult.failure(
+                "installation policy or Steam Input identity is invalid");
+        }
+        return SemuInstallResult.success();
+    }
+}
+
+class SemuInstallPaths {
+    public string home;
+    public string installRoot;
+    public string projectRoot;
+    public string applicationsRoot;
+    public string releases;
+    public string artifacts;
+    public string state;
+    public string trees;
+    public string stableLauncher;
+    public string runtimeCli;
+    public string desktopEntry;
+    public string canonicalArtifact;
+    public string artifactDigest;
+    public string steamReceipt;
+    public string targetIdentity;
+    public string lock;
+
+    public SemuInstallPaths(SemuInstallPolicy policy,
+                            SemuInstallOptions options) {
+        self.home = FileSystem.absolutePath(Environment.get("HOME", "."));
+        self.installRoot = FileSystem.absolutePath(options.installRoot.isEmpty()
+            ? PathTools.join(self.home, policy.defaultInstallRoot)
+            : options.installRoot);
+        self.projectRoot = FileSystem.absolutePath(options.projectRoot.isEmpty()
+            ? PathTools.join(self.home, policy.defaultProjectRoot)
+            : options.projectRoot);
+        string applicationsOverride = Environment.get(
+            "SEMU_APPLICATIONS_DIR", "");
+        string applications = applicationsOverride.isEmpty()
+            ? PathTools.join(Environment.get("XDG_DATA_HOME", self.home),
+                applicationsOverride.isEmpty()
+                    && Environment.get("XDG_DATA_HOME", "").isEmpty()
+                    ? policy.defaultApplicationsRoot
+                    : "applications")
+            : applicationsOverride;
+        self.applicationsRoot = FileSystem.absolutePath(applications);
+        self.releases = PathTools.join(self.installRoot, "releases");
+        self.artifacts = PathTools.join(
+            self.installRoot, policy.artifactStore);
+        self.state = PathTools.join(self.installRoot, "state");
+        self.trees = PathTools.join(self.state, "trees");
+        self.stableLauncher = PathTools.join(
+            self.installRoot, policy.stableLauncher);
+        self.runtimeCli = PathTools.join(self.installRoot, policy.runtimeCli);
+        self.desktopEntry = PathTools.join(
+            self.applicationsRoot, policy.desktopEntryName);
+        self.canonicalArtifact = PathTools.join(
+            self.installRoot, policy.artifactName);
+        self.artifactDigest = self.canonicalArtifact + ".sha256";
+        self.steamReceipt = PathTools.join(self.state, "steam-shortcut");
+        self.targetIdentity = PathTools.join(self.state, "target");
+        self.lock = PathTools.join(self.installRoot, ".install.lock");
+    }
+}

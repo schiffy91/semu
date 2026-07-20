@@ -1,7 +1,0 @@
-{
-  "schema_version": 1,
-  "enabled": true,
-  "screen": "assets/shaders/snes/screen.slangp",
-  "composite": "assets/shaders/snes/composite.slangp",
-  "doc": { "intent": "SNES-era CRT scanlines and soft analog video" }
-}

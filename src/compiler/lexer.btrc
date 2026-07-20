@@ -1,0 +1,120 @@
+// lexer.btrc - deterministic lexical inventory of Semu definition units.
+
+import std.{fs, vector}
+import ./model.btrc
+
+class SemuDefinitionLexer {
+    class Vector<string> sortedEntries(string root) {
+        Vector<string> entries = [];
+        if (!FileSystem.isDir(root)) { return entries; }
+        for entry in Directory(root).entries() { entries.push(entry); }
+        entries.sort();
+        return entries;
+    }
+
+    class SemuDefinitionUnit unit(string kind, string id, string path) {
+        SemuDefinitionUnit result = SemuDefinitionUnit();
+        result.kind = kind;
+        result.id = id;
+        result.path = path;
+        return result;
+    }
+
+    class void directoryUnits(Vector<SemuDefinitionUnit> units, string configRoot,
+                              string kind, string directory,
+                              CompilerDiagnostics diagnostics) {
+        string root = PathTools.join(configRoot, directory);
+        FileStatus rootStatus = FileStatus(root);
+        if (rootStatus.isSymlink()) {
+            diagnostics.add(root, "(root)",
+                "definition root must not be a symlink");
+            return;
+        }
+        if (!rootStatus.isDir()) {
+            diagnostics.add(root, "(root)", "missing definition directory");
+            return;
+        }
+        for id in SemuDefinitionLexer.sortedEntries(root) {
+            string path = PathTools.join(root, id);
+            FileStatus status = FileStatus(path);
+            if (!status.linkFound) { continue; }
+            if (status.isSymlink()) {
+                diagnostics.add(path, "(root)",
+                    "definition directories must not be symlinks");
+            } else if (!status.isDir()) {
+                continue;
+            } else if (!SemuDefinitionId.valid(id)) {
+                diagnostics.add(path, "id",
+                    "directory name must be a lowercase identifier");
+            } else {
+                units.push(SemuDefinitionLexer.unit(kind, id, path));
+            }
+        }
+    }
+
+    class Vector<SemuDefinitionUnit> lex(string configRoot,
+                                         CompilerDiagnostics diagnostics) {
+        Vector<SemuDefinitionUnit> units = [];
+        if (!FileSystem.isDir(configRoot)) {
+            diagnostics.add(configRoot, "(root)", "config root is absent");
+            return units;
+        }
+
+        string targetsRoot = PathTools.join(configRoot, "targets");
+        FileStatus targetsStatus = FileStatus(targetsRoot);
+        if (targetsStatus.isSymlink()) {
+            diagnostics.add(targetsRoot, "(root)",
+                "target root must not be a symlink");
+        } else if (!targetsStatus.isDir()) {
+            diagnostics.add(targetsRoot, "(root)", "missing target definitions");
+        } else {
+            for name in SemuDefinitionLexer.sortedEntries(targetsRoot) {
+                if (!name.endsWith(".json")) { continue; }
+                string id = name.substring(0, name.len() - 5);
+                string path = PathTools.join(targetsRoot, name);
+                FileStatus status = FileStatus(path);
+                if (status.isSymlink()) {
+                    diagnostics.add(path, "(root)",
+                        "target definition must not be a symlink");
+                } else if (!SemuDefinitionId.valid(id)) {
+                    diagnostics.add(path, "id",
+                        "filename must be a lowercase target identifier");
+                } else if (!status.isFile()) {
+                    diagnostics.add(path, "(root)",
+                        "target definition must be a regular file");
+                } else {
+                    units.push(SemuDefinitionLexer.unit("target", id, path));
+                }
+            }
+        }
+
+        SemuDefinitionLexer.directoryUnits(
+            units, configRoot, "system", "systems", diagnostics);
+        SemuDefinitionLexer.directoryUnits(
+            units, configRoot, "emulator", "emulators", diagnostics);
+        SemuDefinitionLexer.directoryUnits(
+            units, configRoot, "input", "input", diagnostics);
+
+        string settings = PathTools.join(configRoot, "settings/defaults.json");
+        FileStatus settingsStatus = FileStatus(settings);
+        if (settingsStatus.isSymlink()) {
+            diagnostics.add(settings, "(root)",
+                "settings definition must not be a symlink");
+        } else if (settingsStatus.isFile()) {
+            units.push(SemuDefinitionLexer.unit("settings", "defaults", settings));
+        } else {
+            diagnostics.add(settings, "(root)", "missing settings definition");
+        }
+        string assets = PathTools.join(configRoot, "assets");
+        FileStatus assetsStatus = FileStatus(assets);
+        if (assetsStatus.isSymlink()) {
+            diagnostics.add(assets, "(root)",
+                "asset definitions must not be a symlink");
+        } else if (assetsStatus.isDir()) {
+            units.push(SemuDefinitionLexer.unit("assets", "assets", assets));
+        } else {
+            diagnostics.add(assets, "(root)", "missing asset definitions");
+        }
+        return units;
+    }
+}

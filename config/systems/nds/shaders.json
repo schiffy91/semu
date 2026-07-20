@@ -1,0 +1,9 @@
+{
+  "schema_version": 2,
+  "enabled": true,
+  "renderer": true,
+  "screen": "assets/shaders/nds/screen.slangp",
+  "doc": {
+    "intent": "Nintendo DS LCD pixel structure and panel color response; each screen receives an independent shader instance"
+  }
+}

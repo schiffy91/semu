@@ -1,0 +1,76 @@
+{
+  "schema_version": 1,
+  "id": "retroarch-semu",
+  "version": "1.22.2",
+  "build_kind": "source",
+  "source": {
+    "kind": "github",
+    "owner": "libretro",
+    "repo": "RetroArch",
+    "revision": "69a4f0ea1e8aaf442ae4858f2e7f2b31a1776576",
+    "sha256": "sha256-+3jgoh6OVbPzW5/nCvpB1CRgkMTBxLkYMm6UV16/cfU="
+  },
+  "platforms": [
+    "x86_64-linux",
+    "aarch64-darwin",
+    "x86_64-darwin"
+  ],
+  "outputs": {
+    "linux_main_program": "bin/retroarch-semu",
+    "linux_real_program": "bin/retroarch",
+    "macos_main_program": "bin/retroarch",
+    "macos_bundle_program": "Applications/RetroArch.app/Contents/MacOS/RetroArch",
+    "build_contract": "share/semu/retroarch-build-contract.json"
+  },
+  "fallbacks": {
+    "linux_host_executable": false,
+    "linux_flatpak": false,
+    "linux_prebuilt_binary": false,
+    "macos_host_executable": false,
+    "macos_prebuilt_binary": false
+  },
+  "auxiliary_patches": {
+    "network_commands": {
+      "file": "retroarch_commands.patch",
+      "kind": "local_exact",
+      "sha256": "sha256-T6Q12aEYcrYuz2tbRGU8r5kDjYmmpZYM5KhYoqTSp1g="
+    },
+    "status_null_safety": {
+      "kind": "url_exact",
+      "sha256": "sha256-dXlaIwU8L2XPJtTRq6BFuzsWooSvRJ8isPL4W4Cw/nY=",
+      "url": "https://github.com/libretro/RetroArch/commit/68e8274a31bce913950cfb0fa5f82646d3661015.patch"
+    }
+  },
+  "core_runtime": {
+    "selection_source": "config/systems/*/system.json",
+    "directory": "lib/retroarch/cores",
+    "exact_selection": true,
+    "environment_search": false,
+    "host_search": false
+  },
+  "core_host": {
+    "enabled": true,
+    "selector_field": "core",
+    "implementation_manifest": "cores.json"
+  },
+  "runtime_extras": {
+    "selected_cores": {
+      "kind": "core_host_bundle",
+      "platforms": [
+        "x86_64-linux"
+      ]
+    },
+    "input_autoconfig": {
+      "kind": "merged_input_autoconfig",
+      "manifest": "../../input/steam-deck/retroarch_autoconfig.json",
+      "destination": "share/libretro/autoconfig/sdl2",
+      "platforms": [
+        "x86_64-linux"
+      ]
+    }
+  },
+  "doc": {
+    "macos": "The macOS source build uses Metal and is outside this OpenGL renderer integration.",
+    "rendering": "The Linux GL2 and GL3 drivers call the directly linked renderer after the upright game viewport is complete and again after all RetroArch UI immediately before swap. No menu state suppresses either boundary and no inactive report exists."
+  }
+}

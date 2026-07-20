@@ -1,0 +1,411 @@
+// source_architecture_contract_test.btrc - enforce compiler source boundaries.
+
+import std.{fs, strings, vector}
+
+class SourceArchitectureContractTest {
+    class int fail(string message) {
+        print("  FAIL source architecture: " + message);
+        return 1;
+    }
+
+    class void collectBtrc(string root, Vector<string> files) {
+        if (!FileSystem.isDir(root)) { return; }
+        Vector<string> names = Directory(root).entries();
+        names.sort();
+        for name in names {
+            string path = PathTools.join(root, name);
+            FileStatus status = FileStatus(path);
+            if (status.isSymlink()) { continue; }
+            if (status.isDir()) {
+                SourceArchitectureContractTest.collectBtrc(path, files);
+            } else if (status.isFile() && name.endsWith(".btrc")) {
+                string canonical = UnixFileSystem.realPath(path);
+                files.push(canonical.isEmpty() ? path : canonical);
+            }
+        }
+    }
+
+    class Vector<string> localImports(string file) {
+        Vector<string> imports = [];
+        for sourceLine in Strings.split(Path.readAll(file), "\n") {
+            string line = sourceLine.trim();
+            if (!line.startsWith("import .")) { continue; }
+            string relative = line.substring(7, line.len() - 7);
+            if (relative.endsWith(";")) {
+                relative = relative.substring(0, relative.len() - 1);
+            }
+            string target = UnixFileSystem.realPath(
+                PathTools.join(PathTools.dirname(file), relative));
+            if (!target.isEmpty() && !imports.contains(target)) {
+                imports.push(target);
+            }
+        }
+        imports.sort();
+        return imports;
+    }
+
+    class void visit(string file, Vector<string> reached) {
+        if (file.isEmpty() || reached.contains(file)) { return; }
+        reached.push(file);
+        for imported in SourceArchitectureContractTest.localImports(file) {
+            SourceArchitectureContractTest.visit(imported, reached);
+        }
+    }
+
+    class Vector<string> directoryIds(string root) {
+        Vector<string> ids = [];
+        if (!FileSystem.isDir(root)) { return ids; }
+        Vector<string> names = Directory(root).entries();
+        names.sort();
+        for name in names {
+            FileStatus status = FileStatus(PathTools.join(root, name));
+            if (status.isDir() && !status.isSymlink()) { ids.push(name); }
+        }
+        return ids;
+    }
+
+    class string compilerAndEmulatorSources(string project) {
+        Vector<string> files = [];
+        SourceArchitectureContractTest.collectBtrc(
+            PathTools.join(project, "src/compiler"), files);
+        files.push(PathTools.join(project, "src/generators/emulators.btrc"));
+        files.push(PathTools.join(
+            project, "src/generators/emulator_profiles.btrc"));
+        files.push(PathTools.join(
+            project, "src/generators/emulator_runtime.btrc"));
+        string source = "";
+        for file in files { source = source + Path.readAll(file) + "\n"; }
+        return source;
+    }
+
+    class bool imports(string source, string dependency) {
+        string canonicalSource = UnixFileSystem.realPath(source);
+        string canonicalDependency = UnixFileSystem.realPath(dependency);
+        return !canonicalSource.isEmpty() && !canonicalDependency.isEmpty()
+            && SourceArchitectureContractTest.localImports(
+                canonicalSource).contains(canonicalDependency);
+    }
+
+    class string importCycle(string file, Vector<string> path,
+                             Vector<string> completed) {
+        if (path.contains(file)) {
+            Vector<string> cycle = [];
+            bool collecting = false;
+            for node in path {
+                if (node.equals(file)) { collecting = true; }
+                if (collecting) { cycle.push(node); }
+            }
+            cycle.push(file);
+            return cycle.join(" -> ");
+        }
+        if (completed.contains(file)) { return ""; }
+        Vector<string> next = [];
+        next.extend(path);
+        next.push(file);
+        for imported in SourceArchitectureContractTest.localImports(file) {
+            string cycle = SourceArchitectureContractTest.importCycle(
+                imported, next, completed);
+            if (!cycle.isEmpty()) { return cycle; }
+        }
+        completed.push(file);
+        return "";
+    }
+
+    class int checkReachability(string project) {
+        string sourceRoot = PathTools.join(project, "src");
+        Vector<string> files = [];
+        SourceArchitectureContractTest.collectBtrc(sourceRoot, files);
+        Vector<string> reached = [];
+        Vector<string> roots = [
+            PathTools.join(sourceRoot, "main.btrc"),
+            PathTools.join(sourceRoot,
+                "generators/appimage/runtime_builder_main.btrc"),
+            PathTools.join(sourceRoot,
+                "generators/input/linux_supervisor.btrc"),
+            PathTools.join(sourceRoot,
+                "generators/rendering/native/libsemurenderer.btrc")
+        ];
+        for root in roots {
+            SourceArchitectureContractTest.visit(
+                UnixFileSystem.realPath(root), reached);
+        }
+        Vector<string> unreachable = [];
+        for file in files {
+            if (!reached.contains(file)) { unreachable.push(file); }
+        }
+        if (!unreachable.isEmpty()) {
+            return SourceArchitectureContractTest.fail(
+                "unreachable BTRC modules: " + unreachable.join(", "));
+        }
+        Vector<string> mainImports = SourceArchitectureContractTest.localImports(
+            UnixFileSystem.realPath(PathTools.join(sourceRoot, "main.btrc")));
+        string cli = UnixFileSystem.realPath(
+            PathTools.join(sourceRoot, "cli.btrc"));
+        if (mainImports.size() != 1 || !mainImports.get(0).equals(cli)) {
+            return SourceArchitectureContractTest.fail(
+                "main.btrc must import only the CLI orchestration module");
+        }
+        return 0;
+    }
+
+    class int checkImports(string project) {
+        Vector<string> files = [];
+        SourceArchitectureContractTest.collectBtrc(
+            PathTools.join(project, "src"), files);
+        for file in files {
+            for sourceLine in Strings.split(Path.readAll(file), "\n") {
+                string line = sourceLine.trim();
+                if (line.startsWith("import ") && line.contains("*")) {
+                    return SourceArchitectureContractTest.fail(
+                        "wildcard import in " + file);
+                }
+                if (line.startsWith("import .")) {
+                    string relative = line.substring(7, line.len() - 7);
+                    if (relative.endsWith(";")) {
+                        relative = relative.substring(0, relative.len() - 1);
+                    }
+                    if (UnixFileSystem.realPath(PathTools.join(
+                            PathTools.dirname(file), relative)).isEmpty()) {
+                        return SourceArchitectureContractTest.fail(
+                            "unresolved local import in " + file + ": " + line);
+                    }
+                }
+            }
+        }
+        return 0;
+    }
+
+    class int checkImportCycles(string project) {
+        Vector<string> files = [];
+        SourceArchitectureContractTest.collectBtrc(
+            PathTools.join(project, "src"), files);
+        Vector<string> completed = [];
+        for file in files {
+            Vector<string> path = [];
+            string cycle = SourceArchitectureContractTest.importCycle(
+                file, path, completed);
+            if (!cycle.isEmpty()) {
+                return SourceArchitectureContractTest.fail(
+                    "local import cycle: " + cycle);
+            }
+        }
+        return 0;
+    }
+
+    class int checkEmulatorBoundaries(string project) {
+        string generators = PathTools.join(project, "src/generators");
+        string layout = PathTools.join(generators, "emulators.btrc");
+        string profiles = PathTools.join(
+            generators, "emulator_profiles.btrc");
+        string runtime = PathTools.join(
+            generators, "emulator_runtime.btrc");
+        string sync = PathTools.join(generators, "sync.btrc");
+        string cli = PathTools.join(project, "src/cli.btrc");
+        string runtimeTest = PathTools.join(
+            project, "tests/compiler/emulator_runtime_contract_test.btrc");
+        string jsonTest = PathTools.join(
+            project, "tests/compiler/json_format_contract_test.btrc");
+
+        if (SourceArchitectureContractTest.imports(layout, profiles)
+                || SourceArchitectureContractTest.imports(layout, runtime)
+                || !SourceArchitectureContractTest.imports(profiles, layout)
+                || SourceArchitectureContractTest.imports(profiles, runtime)
+                || !SourceArchitectureContractTest.imports(runtime, layout)
+                || !SourceArchitectureContractTest.imports(runtime, profiles)) {
+            return SourceArchitectureContractTest.fail(
+                "emulator modules do not form layout -> profiles -> runtime");
+        }
+        if (!SourceArchitectureContractTest.imports(sync, layout)
+                || SourceArchitectureContractTest.imports(sync, profiles)
+                || SourceArchitectureContractTest.imports(sync, runtime)) {
+            return SourceArchitectureContractTest.fail(
+                "sync must depend only on emulator runtime layout values");
+        }
+        if (SourceArchitectureContractTest.imports(cli, layout)
+                || !SourceArchitectureContractTest.imports(cli, profiles)
+                || !SourceArchitectureContractTest.imports(cli, runtime)
+                || !SourceArchitectureContractTest.imports(
+                    runtimeTest, layout)
+                || !SourceArchitectureContractTest.imports(
+                    runtimeTest, profiles)
+                || !SourceArchitectureContractTest.imports(
+                    runtimeTest, runtime)
+                || SourceArchitectureContractTest.imports(jsonTest, layout)
+                || !SourceArchitectureContractTest.imports(jsonTest, profiles)
+                || SourceArchitectureContractTest.imports(jsonTest, runtime)) {
+            return SourceArchitectureContractTest.fail(
+                "emulator call sites do not import their direct owners");
+        }
+
+        string layoutSource = Path.readAll(layout);
+        string profileSource = Path.readAll(profiles);
+        string runtimeSource = Path.readAll(runtime);
+        if (!layoutSource.contains("class SemuRuntimeLayout")
+                || !layoutSource.contains("class SemuRuntimeContext")
+                || !layoutSource.contains("class SemuTokenResolver")
+                || layoutSource.contains("class SemuProfileCompiler")
+                || layoutSource.contains("class SemuLaunchPlan")
+                || layoutSource.contains("ChildProcess.run")) {
+            return SourceArchitectureContractTest.fail(
+                "emulators.btrc owns behavior outside values/layout/context");
+        }
+        if (!profileSource.contains("class SemuProfileCompiler")
+                || !profileSource.contains("class SemuEmulatorGenerator")
+                || profileSource.contains("class SemuLaunchPlan")
+                || profileSource.contains("ChildProcess.run")) {
+            return SourceArchitectureContractTest.fail(
+                "emulator profile module has an incoherent responsibility");
+        }
+        if (!runtimeSource.contains("class SemuLaunchPlan")
+                || !runtimeSource.contains("class SemuEmulatorRuntime")
+                || !runtimeSource.contains("SemuProfileCompiler.emit")
+                || !runtimeSource.contains("ChildProcess.run")) {
+            return SourceArchitectureContractTest.fail(
+                "emulator runtime module does not own launch execution");
+        }
+        return 0;
+    }
+
+    class int checkStageDirection(string project) {
+        string compilerRoot = PathTools.join(project, "src/compiler");
+        string checkerPath = PathTools.join(compilerRoot, "checker.btrc");
+        string generatorPath = PathTools.join(compilerRoot, "generator.btrc");
+        string lexerPath = PathTools.join(compilerRoot, "lexer.btrc");
+        string parserPath = PathTools.join(compilerRoot, "parser.btrc");
+        string pipelinePath = PathTools.join(compilerRoot, "pipeline.btrc");
+        string resolverPath = PathTools.join(compilerRoot, "resolver.btrc");
+        string cliPath = PathTools.join(project, "src/cli.btrc");
+        string checker = Path.readAll(checkerPath);
+        string resolver = Path.readAll(resolverPath);
+        if (checker.contains("import ../generators/")) {
+            return SourceArchitectureContractTest.fail(
+                "checker depends on a generator");
+        }
+        if (resolver.contains("import ./lexer.btrc")) {
+            return SourceArchitectureContractTest.fail(
+                "resolver depends on lexer implementation helpers");
+        }
+        if (!SourceArchitectureContractTest.imports(cliPath, pipelinePath)
+                || SourceArchitectureContractTest.imports(cliPath, checkerPath)
+                || SourceArchitectureContractTest.imports(cliPath, generatorPath)
+                || SourceArchitectureContractTest.imports(cliPath, lexerPath)
+                || SourceArchitectureContractTest.imports(cliPath, parserPath)
+                || SourceArchitectureContractTest.imports(cliPath, resolverPath)) {
+            return SourceArchitectureContractTest.fail(
+                "CLI bypasses the compiler pipeline boundary");
+        }
+        for stage in [checkerPath, generatorPath, lexerPath,
+                      parserPath, resolverPath] {
+            if (!SourceArchitectureContractTest.imports(
+                    pipelinePath, stage)) {
+                return SourceArchitectureContractTest.fail(
+                    "compiler pipeline omits stage " + stage);
+            }
+        }
+        return 0;
+    }
+
+    class int checkDeclarativeIds(string project) {
+        string source = SourceArchitectureContractTest
+            .compilerAndEmulatorSources(project);
+        Vector<string> ids = SourceArchitectureContractTest.directoryIds(
+            PathTools.join(project, "config/emulators"));
+        ids.extend(SourceArchitectureContractTest.directoryIds(
+            PathTools.join(project, "config/systems")));
+        for id in ids {
+            if (source.contains("\"" + id + "\"")) {
+                return SourceArchitectureContractTest.fail(
+                    "generic compiler source embeds declarative id '" + id + "'");
+            }
+        }
+        return 0;
+    }
+
+    class int checkDisplayAgnostic(string project) {
+        Vector<string> files = [];
+        SourceArchitectureContractTest.collectBtrc(
+            PathTools.join(project, "src"), files);
+        Vector<string> forbidden = [
+            "gamescope", "LD_PRELOAD", "RTLD_NEXT", "glXSwapBuffers",
+            "eglSwapBuffers", "XOpenDisplay", "wl_display", "WAYLAND_DISPLAY"
+        ];
+        for file in files {
+            string source = Path.readAll(file);
+            for token in forbidden {
+                if (source.contains(token)) {
+                    return SourceArchitectureContractTest.fail(
+                        "display interposition token '" + token + "' in " + file);
+                }
+            }
+        }
+        return 0;
+    }
+
+    class int checkAppImageProcessBoundary(string project) {
+        for relative in [
+                "src/generators/appimage/assembler.btrc",
+                "src/generators/appimage/no_fuse_verifier.btrc"] {
+            string source = Path.readAll(PathTools.join(project, relative));
+            if (!source.contains("ChildProcess.run")
+                    || source.contains("fork(")
+                    || source.contains("execvp(")
+                    || source.contains("waitpid(")
+                    || source.contains("pipe(")) {
+                return SourceArchitectureContractTest.fail(
+                    "AppImage process boundary bypasses bounded stdlib APIs: "
+                    + relative);
+            }
+        }
+        string cli = Path.readAll(PathTools.join(project, "src/cli.btrc"));
+        if (cli.contains("configAlias")
+                || cli.contains("command.equals(\"config\")")) {
+            return SourceArchitectureContractTest.fail(
+                "CLI retains the retired config compatibility alias");
+        }
+        return 0;
+    }
+
+    class int checkRetiredCompilerSurface(string project) {
+        string source = SourceArchitectureContractTest
+            .compilerAndEmulatorSources(project)
+            + Path.readAll(PathTools.join(project, "src/cli.btrc"));
+        for token in [
+                "${paths.project_bios}",
+                "quit_extra_bindings",
+                "configAlias",
+                "command.equals(\"config\")"] {
+            if (source.contains(token)) {
+                return SourceArchitectureContractTest.fail(
+                    "retired compiler surface remains: " + token);
+            }
+        }
+        string emulatorRoot = PathTools.join(project, "config/emulators");
+        for id in SourceArchitectureContractTest.directoryIds(emulatorRoot) {
+            string definition = Path.readAll(PathTools.join(
+                emulatorRoot, id + "/emulator.json"));
+            if (definition.contains("${paths.project_bios}")) {
+                return SourceArchitectureContractTest.fail(
+                    "emulator definition retains retired BIOS token: " + id);
+            }
+        }
+        return 0;
+    }
+
+    class int run(string project) {
+        int failures = SourceArchitectureContractTest.checkReachability(project);
+        failures += SourceArchitectureContractTest.checkImports(project);
+        failures += SourceArchitectureContractTest.checkImportCycles(project);
+        failures += SourceArchitectureContractTest.checkEmulatorBoundaries(project);
+        failures += SourceArchitectureContractTest.checkStageDirection(project);
+        failures += SourceArchitectureContractTest.checkDeclarativeIds(project);
+        failures += SourceArchitectureContractTest.checkDisplayAgnostic(project);
+        failures += SourceArchitectureContractTest.checkAppImageProcessBoundary(
+            project);
+        failures += SourceArchitectureContractTest.checkRetiredCompilerSurface(
+            project);
+        if (failures == 0) {
+            print("source architecture contract: reachable + staged + declarative");
+        }
+        return failures;
+    }
+}

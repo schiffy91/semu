@@ -1,0 +1,49 @@
+{
+  "schema_version": 1,
+  "id": "ares",
+  "version": "148",
+  "build_kind": "source",
+  "source": {
+    "kind": "upstream_release_archive",
+    "owner": "ares-emulator",
+    "repo": "ares",
+    "tag": "v148",
+    "revision": "0aafd85789215e84e1e43415c07d4c88461b7899",
+    "revision_short": "0aafd85",
+    "url": "https://github.com/ares-emulator/ares/releases/download/v148/ares-source.tar.gz",
+    "sha256": "sha256-LXLt4hYjpnLrzu+0dLfXr4lEF7drZwSRjgaCAaD79+g=",
+    "identity_file": "cmake/common/.archive-version.json"
+  },
+  "platforms": [
+    "aarch64-darwin",
+    "x86_64-darwin"
+  ],
+  "cores": [
+    "n64"
+  ],
+  "graphics_apis": [
+    "opengl"
+  ],
+  "outputs": {
+    "main_program": "Applications/ares.app/Contents/MacOS/ares",
+    "main_program_name": "ares",
+    "build_contract": "share/semu/ares-build-contract.json"
+  },
+  "fallbacks": {
+    "host_executable": false,
+    "flatpak": false,
+    "libretro": false,
+    "prebuilt_binary": false
+  },
+  "metadata": {
+    "description": "Accuracy-focused multi-system emulator used by Semu for macOS Nintendo 64",
+    "homepage": "https://github.com/ares-emulator/ares",
+    "license": "isc"
+  },
+  "doc": {
+    "source": "The v148 release archive, full 40-character tag revision, recursive archive hash, and archive identity file are all pinned. Nix verifies the embedded tag and revision prefix before configuration.",
+    "input": "The source patch contains no Semu-specific Start+Select handling. Quit remains a normal declared ares hotkey; platform-level chord supervision is outside the emulator ABI integration.",
+    "platforms": "This slice is macOS-only and compiles only the upstream n64 core. Linux and Steam Deck N64 continue to use the separately accepted RetroArch path.",
+    "rendering": "The OpenGL output path calls the directly linked renderer game phase after the final game texture reaches the default framebuffer. VideoCGL calls the post-UI phase on the same frame immediately before flushBuffer. Native hiro settings and menus are separate views, no inactive report exists, and ares owns no Semu composition policy."
+  }
+}

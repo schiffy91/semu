@@ -1,0 +1,8 @@
+  <emulator name="${NAME}">
+    <rule type="systempath">
+      <entry>${SHIM}</entry>
+    </rule>
+    <rule type="staticpath">
+      <entry>%ESPATH%/${SHIM}</entry>
+    </rule>
+  </emulator>

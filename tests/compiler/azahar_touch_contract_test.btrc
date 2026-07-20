@@ -1,0 +1,327 @@
+// Focused strict contract for Azahar's Semu ABI 2 touch consumer.
+
+import std.{fs, json, strings}
+import ../../src/generators/rendering/native/renderer_abi.btrc
+
+class AzaharTouchContractTest {
+    class int fail(string message) {
+        print("  FAIL azahar touch: " + message);
+        return 1;
+    }
+
+    class string file(string project, string relative) {
+        return PathTools.join(project, relative);
+    }
+
+    class string additions(string patch) {
+        string result = "";
+        for line in Strings.split(patch, "\n") {
+            if (line.startsWith("+") && !line.startsWith("+++")) {
+                result += line.substring(1, line.len()) + "\n";
+            }
+        }
+        return result;
+    }
+
+    class int occurrences(string text, string needle) {
+        int total = 0;
+        string remaining = text;
+        while (remaining.contains(needle)) {
+            int index = remaining.indexOf(needle);
+            total++;
+            remaining = remaining.substring(index + needle.len(), remaining.len());
+        }
+        return total;
+    }
+
+    class bool disabledFallbacks(JsonValue fallbacks) {
+        return fallbacks.isObject()
+            && fallbacks.get("host_executable").isBool()
+            && !fallbacks.get("host_executable").asBool()
+            && fallbacks.get("flatpak").isBool()
+            && !fallbacks.get("flatpak").asBool()
+            && fallbacks.get("libretro").isBool()
+            && !fallbacks.get("libretro").asBool()
+            && fallbacks.get("prebuilt_binary").isBool()
+            && !fallbacks.get("prebuilt_binary").asBool();
+    }
+
+    class bool close(float actual, float expected) {
+        float difference = actual - expected;
+        if (difference < 0.0f) { difference = -difference; }
+        return difference < 0.001f;
+    }
+
+    class void surface(struct SemuRenderPointerSurface* surface, int x, int y,
+                       int width, int height, int nativeWidth, int nativeHeight) {
+        surface->x = x;
+        surface->y = y;
+        surface->width = width;
+        surface->height = height;
+        surface->native_width = nativeWidth;
+        surface->native_height = nativeHeight;
+        surface->rotation = 0;
+        surface->origin = SEMU_RENDER_ORIGIN_TOP_LEFT;
+    }
+
+    class bool pointerBehavior() {
+        struct SemuRenderPointerMap map;
+        RendererPointerContract.clearMap(&map);
+        map.frame_id = 73ULL;
+        map.framebuffer_width = 1280;
+        map.framebuffer_height = 800;
+        map.surface_count = 2;
+        AzaharTouchContractTest.surface(
+            &map.surfaces[0], 440, 560, 400, 240, 400, 240);
+        AzaharTouchContractTest.surface(
+            &map.surfaces[1], 420, 80, 640, 480, 320, 240);
+
+        struct SemuRenderPointerQuery query;
+        query.abi = (unsigned int)SEMU_RENDER_ABI_GL;
+        query.struct_size =
+            (unsigned int)sizeof(struct SemuRenderPointerQuery);
+        query.frame_id = map.frame_id;
+        query.x = 740.0f;
+        query.y = 480.0f;
+        query.viewport_width = 1280;
+        query.viewport_height = 800;
+        query.origin = SEMU_RENDER_ORIGIN_TOP_LEFT;
+        query.surface_index = 1;
+        query.clamp = 0;
+        struct SemuRenderPointerResult center;
+        if (RendererPointerContract.map(&map, &query, &center)
+                    != SEMU_RENDER_POINTER_MAPPED
+                || center.surface_index != 1 || center.frame_id != map.frame_id
+                || center.native_width != 320 || center.native_height != 240
+                || !AzaharTouchContractTest.close(center.native_x, 159.5f)
+                || !AzaharTouchContractTest.close(center.native_y, 119.5f)) {
+            return false;
+        }
+
+        query.x = 640.0f;
+        query.y = 120.0f;
+        struct SemuRenderPointerResult topScreen;
+        if (RendererPointerContract.map(&map, &query, &topScreen)
+                != SEMU_RENDER_POINTER_OUTSIDE) {
+            return false;
+        }
+
+        query.x = 100.0f;
+        query.y = 480.0f;
+        query.clamp = 1;
+        struct SemuRenderPointerResult dragged;
+        if (RendererPointerContract.map(&map, &query, &dragged)
+                    != SEMU_RENDER_POINTER_MAPPED
+                || dragged.surface_index != 1 || dragged.clamped != 1
+                || !AzaharTouchContractTest.close(dragged.native_x, 0.0f)
+                || !AzaharTouchContractTest.close(dragged.native_y, 119.5f)) {
+            return false;
+        }
+
+        query.x = 1110.0f;
+        query.y = 720.0f;
+        query.viewport_width = 1920;
+        query.viewport_height = 1200;
+        query.clamp = 0;
+        struct SemuRenderPointerResult scaled;
+        if (RendererPointerContract.map(&map, &query, &scaled)
+                    != SEMU_RENDER_POINTER_MAPPED
+                || !AzaharTouchContractTest.close(scaled.native_x, 159.5f)
+                || !AzaharTouchContractTest.close(scaled.native_y, 119.5f)) {
+            return false;
+        }
+
+        query.frame_id = 72ULL;
+        struct SemuRenderPointerResult stale;
+        return RendererPointerContract.map(&map, &query, &stale)
+            == SEMU_RENDER_POINTER_STALE;
+    }
+
+    class int run(string project) {
+        string directory = "config/emulators/azahar";
+        JsonValue emulator = JsonValue.readFile(
+            AzaharTouchContractTest.file(project, directory + "/emulator.json"));
+        JsonValue package = JsonValue.readFile(
+            AzaharTouchContractTest.file(project, directory + "/package.json"));
+        JsonValue rendering = JsonValue.readFile(
+            AzaharTouchContractTest.file(project, directory + "/rendering.json"));
+        string patch = FileSystem.readText(
+            AzaharTouchContractTest.file(project, directory + "/azahar.patch"));
+        string added = AzaharTouchContractTest.additions(patch);
+        string packageNix = FileSystem.readText(
+            AzaharTouchContractTest.file(project, directory + "/package.nix"));
+        int failures = 0;
+
+        JsonValue filesystems = emulator.get("platforms").get("linux")
+            .get("sandbox").get("filesystems");
+        bool biosReadOnly = false;
+        for (int index = 0; index < filesystems.size(); index++) {
+            JsonValue filesystem = filesystems.at(index);
+            if (filesystem.get("path").isString()
+                    && filesystem.get("mode").isString()
+                    && filesystem.get("path").asString().equals("${bios}")
+                    && filesystem.get("mode").asString().equals("ro")) {
+                biosReadOnly = true;
+            }
+        }
+        if (!biosReadOnly
+                || FileSystem.readText(AzaharTouchContractTest.file(
+                    project, directory + "/emulator.json"))
+                    .contains("${paths.project_bios}")) {
+            failures += AzaharTouchContractTest.fail(
+                "3DS BIOS inputs do not use the read-only ${bios} contract");
+        }
+
+        if (!AzaharTouchContractTest.pointerBehavior()) {
+            failures += AzaharTouchContractTest.fail(
+                "ABI behavior does not preserve bottom-surface touch semantics");
+        }
+
+        JsonValue source = package.get("source");
+        if (!package.get("build_kind").isString()
+                || !package.get("build_kind").asString().equals("source")
+                || !source.get("revision").isString()
+                || source.get("revision").asString().len() != 40
+                || !source.get("sha256").isString()
+                || !source.get("sha256").asString().startsWith("sha256-")
+                || !source.get("url").isString()
+                || !source.get("url").asString().startsWith(
+                    "https://github.com/azahar-emu/azahar/releases/download/")
+                || !AzaharTouchContractTest.disabledFallbacks(
+                    package.get("fallbacks"))) {
+            failures += AzaharTouchContractTest.fail(
+                "package is not an exact source-pinned, fallback-free slice");
+        }
+
+        JsonValue pointer = rendering.get("integration")
+            .get("pointer_mapping");
+        JsonValue surfaces = rendering.get("surfaces");
+        if (rendering.has("pointer_input") || !pointer.isObject()
+                || !rendering.get("integration").get("abi").isInt()
+                || rendering.get("integration").get("abi").asInt() != 2
+                || !surfaces.isArray() || surfaces.size() != 2
+                || !surfaces.at(1).get("id").asString().equals("bottom")
+                || !pointer.get("map").asString().equals(
+                    "frame.pointer_map")
+                || !pointer.get("callback").asString().equals(
+                    "frame.map_pointer")
+                || !pointer.get("snapshot").asString().equals(
+                    "copy_by_value_after_game_phase")
+                || !pointer.get("surface_id").asString().equals("bottom")
+                || pointer.get("surface_index").asInt() != 1
+                || !pointer.get("viewport").asString().equals(
+                    "qt_logical_widget")
+                || !pointer.get("origin").asString().equals("top_left")
+                || pointer.get("press_clamp").asBool()
+                || !pointer.get("captured_motion_clamp").asBool()
+                || !pointer.get("events").isArray()
+                || pointer.get("events").size() != 4
+                || !pointer.get("events").at(0).asString().equals(
+                    "mouse_press")
+                || !pointer.get("events").at(1).asString().equals(
+                    "mouse_move")
+                || !pointer.get("events").at(2).asString().equals(
+                    "touch_begin")
+                || !pointer.get("events").at(3).asString().equals(
+                    "touch_update")
+                || !pointer.get("consumer").asString().equals("GRenderWindow")
+                || !pointer.get("coordinates").asString().equals(
+                    "abi_native_pixels")
+                || !pointer.get("delivery").get("capture").asString().equals(
+                    "successful_press")
+                || !pointer.get("delivery").get("press").asString().equals(
+                    "TouchPressedNative")
+                || !pointer.get("delivery").get("captured_motion").asString()
+                    .equals("TouchMovedNative")
+                || pointer.get("delivery")
+                    .get("legacy_framebuffer_transform").asBool()) {
+            failures += AzaharTouchContractTest.fail(
+                "declarative bottom-surface capture policy is incomplete");
+        }
+
+        int present = patch.indexOf(
+            "system.GPU().Renderer().TryPresent(100, is_secondary);");
+        int publish = patch.indexOf("render_window.PublishSemuPointerFrame(frame);");
+        int postUi = patch.indexOf("semu_render_post_ui_gl(frame);");
+        int swap = patch.indexOf("context->SwapBuffers();");
+        if (present < 0 || publish <= present || postUi <= publish || swap < 0
+                || patch.indexOf("render_window.PublishSemuPointerFrame(frame);")
+                    >= patch.indexOf("semu_render_post_ui_gl(frame);")) {
+            failures += AzaharTouchContractTest.fail(
+                "pointer snapshot is not published between game and post-UI phases");
+        }
+
+        if (!added.contains("semu_pointer_state->map = frame->pointer_map;")
+                || !added.contains(
+                    "semu_pointer_state->map_pointer = frame->map_pointer;")
+                || !added.contains("pointer_map = semu_pointer_state->map;")
+                || !added.contains(
+                    "map_pointer = semu_pointer_state->map_pointer;")
+                || !added.contains("query.frame_id = pointer_map.frame_id;")
+                || !added.contains("result.frame_id != pointer_map.frame_id")
+                || !added.contains("query.origin = SEMU_RENDER_ORIGIN_TOP_LEFT;")
+                || !added.contains("query.surface_index = 1;")
+                || !added.contains("query.clamp = clamp ? 1 : 0;")) {
+            failures += AzaharTouchContractTest.fail(
+                "immutable ABI map copy or stale-frame query validation is missing");
+        }
+
+        if (AzaharTouchContractTest.occurrences(
+                    added, "ScaleTouch(pos, false)") != 1
+                || AzaharTouchContractTest.occurrences(
+                    added, "ScaleTouch(pos, true)") != 2
+                || AzaharTouchContractTest.occurrences(added,
+                    "ScaleTouch(event->points().first().position(), false)") != 1
+                || AzaharTouchContractTest.occurrences(added,
+                    "semu_touch_captured = this->TouchPressedNative(") != 2
+                || AzaharTouchContractTest.occurrences(added,
+                    "this->TouchMovedNative(") != 2
+                || !added.contains("if (!semu_touch_captured)")
+                || !added.contains("this->TouchReleased();")) {
+            failures += AzaharTouchContractTest.fail(
+                "mouse/touch press, captured movement, or release flow regressed");
+        }
+
+        int nativeStart = added.indexOf("bool EmuWindow::SetTouchNative");
+        int nativeEnd = added.indexOf("bool EmuWindow::TouchPressedNative");
+        string nativeBody = nativeStart >= 0 && nativeEnd > nativeStart
+            ? added.substring(nativeStart, nativeEnd) : "";
+        if (nativeBody.isEmpty()
+                || !nativeBody.contains("touch_state->touch_x = native_x")
+                || !nativeBody.contains("touch_state->touch_y = native_y")
+                || nativeBody.contains("framebuffer_layout")
+                || nativeBody.contains("is_rotated")
+                || nativeBody.contains("TouchPressed(")) {
+            failures += AzaharTouchContractTest.fail(
+                "native coordinates still enter Azahar's framebuffer-layout transform");
+        }
+
+        if (added.contains("gamescope") || added.contains("LD_PRELOAD")
+                || added.contains("XGetImage") || added.contains("glXSwapBuffers")
+                || added.contains("eglSwapBuffers") || added.contains("wl_shm")
+                || added.contains("dlopen") || added.contains("dlsym")) {
+            failures += AzaharTouchContractTest.fail(
+                "patch introduced a display-server, swap, or symbol interposition path");
+        }
+
+        if (!rendering.get("composition").get("azahar_ui").asString().equals(
+                    "between_game_and_post_ui_phases")
+                || rendering.get("activation").get("runtime_proven").asBool()
+                || rendering.get("activation").get("physical_proven").asBool()
+                || !packageNix.contains("--fuzz=0")
+                || !packageNix.contains(
+                    "render_window.PublishSemuPointerFrame(frame);")
+                || !packageNix.contains("test \"$publish_line\" -lt \"$post_line\"")
+                || !packageNix.contains("query.surface_index = 1;")
+                || !packageNix.contains("TouchPressedNative(")
+                || !packageNix.contains("! grep -Fq 'framebuffer_layout'")) {
+            failures += AzaharTouchContractTest.fail(
+                "package assertions do not bind UI ordering and touch consumption");
+        }
+
+        if (failures == 0) {
+            print("azahar touch contract: ABI 2 bottom-surface mapping valid");
+        }
+        return failures;
+    }
+}

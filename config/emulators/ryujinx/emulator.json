@@ -1,0 +1,202 @@
+{
+  "schema_version": 1,
+  "name": "Ryujinx",
+  "default_system": "switch",
+  "input": {
+    "actions": [
+      "app.quit"
+    ]
+  },
+  "platforms": {
+    "linux": {
+      "backend": "bwrap",
+      "executable": "${asset_root}/bin/Ryujinx",
+      "args": [
+        "--fullscreen",
+        "--graphics-backend",
+        "opengl"
+      ],
+      "gl_wrapper": "${asset_root}/bin/nixGL",
+      "sandbox": {
+        "devices": [
+          "all"
+        ],
+        "filesystems": [
+          {
+            "path": "${project}",
+            "mode": "ro"
+          },
+          {
+            "path": "${asset_root}",
+            "mode": "ro"
+          },
+          {
+            "path": "${roms}",
+            "mode": "ro"
+          },
+          {
+            "path": "${bios}",
+            "mode": "ro"
+          },
+          {
+            "path": "${emulation_root}",
+            "mode": "ro"
+          },
+          {
+            "path": "${state_root}",
+            "mode": "create"
+          }
+        ]
+      },
+      "graphics": {
+        "method": "cli"
+      },
+      "state": {
+        "config_home": "xdg",
+        "data_home": "xdg",
+        "extra_args": [
+          "--root-data-dir",
+          "${state_root}/config/Ryujinx"
+        ],
+        "config_subdir": "Ryujinx",
+        "managed_profile_files": [
+          "config/Config.json"
+        ],
+        "seeds": [
+          {
+            "purpose": "prod_keys",
+            "target": "${state_root}/config/Ryujinx/system/prod.keys",
+            "copy": "once_if_target_absent",
+            "source_access": "read_only",
+            "overwrite": false,
+            "sources": [
+              "${semu_home}/firmware/ryujinx/prod.keys",
+              "${emulation_root}/Ryujinx/config/system/prod.keys",
+              "${bios}/switch/prod.keys"
+            ]
+          },
+          {
+            "purpose": "title_keys",
+            "target": "${state_root}/config/Ryujinx/system/title.keys",
+            "copy": "once_if_target_absent",
+            "source_access": "read_only",
+            "overwrite": false,
+            "sources": [
+              "${semu_home}/firmware/ryujinx/title.keys",
+              "${emulation_root}/Ryujinx/config/system/title.keys",
+              "${bios}/switch/title.keys"
+            ]
+          }
+        ]
+      },
+      "firmware": {
+        "dir": "${state_root}/config/Ryujinx/system",
+        "fallback_dirs": [
+          "${emulation_root}/Ryujinx/config/system",
+          "${bios}/switch"
+        ],
+        "content_dirs": [
+          "${state_root}/config/Ryujinx/bis/system/Contents/registered",
+          "${emulation_root}/Ryujinx/config/bis/system/Contents/registered"
+        ]
+      }
+    },
+    "macos": {
+      "backend": "native",
+      "executable": "${asset_root}/Applications/Ryujinx.app/Contents/MacOS/Ryujinx",
+      "sandbox": {
+        "filesystems": [
+          {
+            "path": "${project}",
+            "mode": "ro"
+          },
+          {
+            "path": "${asset_root}",
+            "mode": "ro"
+          },
+          {
+            "path": "${roms}",
+            "mode": "ro"
+          },
+          {
+            "path": "${bios}",
+            "mode": "ro"
+          },
+          {
+            "path": "${emulation_root}",
+            "mode": "ro"
+          },
+          {
+            "path": "${state_root}",
+            "mode": "create"
+          }
+        ]
+      },
+      "graphics": {
+        "method": "cli"
+      },
+      "state": {
+        "config_home": "preserve",
+        "data_home": "preserve",
+        "extra_args": [
+          "--root-data-dir",
+          "${state_root}/config/Ryujinx"
+        ],
+        "config_subdir": "Ryujinx",
+        "managed_profile_files": [
+          "config/Config.json"
+        ],
+        "seeds": [
+          {
+            "purpose": "prod_keys",
+            "target": "${state_root}/config/Ryujinx/system/prod.keys",
+            "copy": "once_if_target_absent",
+            "source_access": "read_only",
+            "overwrite": false,
+            "sources": [
+              "${semu_home}/firmware/ryujinx/prod.keys",
+              "${emulation_root}/Ryujinx/config/system/prod.keys",
+              "${bios}/switch/prod.keys"
+            ]
+          },
+          {
+            "purpose": "title_keys",
+            "target": "${state_root}/config/Ryujinx/system/title.keys",
+            "copy": "once_if_target_absent",
+            "source_access": "read_only",
+            "overwrite": false,
+            "sources": [
+              "${semu_home}/firmware/ryujinx/title.keys",
+              "${emulation_root}/Ryujinx/config/system/title.keys",
+              "${bios}/switch/title.keys"
+            ]
+          }
+        ]
+      },
+      "firmware": {
+        "dir": "${state_root}/config/Ryujinx/system",
+        "fallback_dirs": [
+          "${emulation_root}/Ryujinx/config/system",
+          "${bios}/switch"
+        ],
+        "content_dirs": [
+          "${state_root}/config/Ryujinx/bis/system/Contents/registered",
+          "${emulation_root}/Ryujinx/config/bis/system/Contents/registered"
+        ]
+      },
+      "args": [
+        "--fullscreen",
+        "--graphics-backend",
+        "vulkan"
+      ]
+    }
+  },
+  "doc": {
+    "package": "Linux executes only the bundled source-built ${asset_root}/bin/Ryujinx under bwrap. There is no Flatpak, host binary, or prebuilt Linux fallback.",
+    "fullscreen": "The pinned desktop parser consumes --fullscreen before the final ROM argument. Linux also consumes --graphics-backend opengl, which is required by the direct renderer hook.",
+    "input": "The managed Config.json contains the active Player1 GamepadSDL2 binding for the target Steam virtual controller. Ryujinx has no native save-state contract; app.quit remains process-group owned.",
+    "keys": "prod.keys and title.keys are copied into the isolated root-data system directory from read-only external/project sources without modifying those sources.",
+    "saves": "Native Switch game saves are emulator-owned at ${state_root}/config/Ryujinx/bis/user/save. Profile convergence owns only Config.json, so save data and installed firmware remain untouched.",
+    "rendering": "Linux is forced to OpenGL and statically P/Invokes the shared ABI 2 renderer at the final guest blit and immediately before the embedded window swap. macOS uses Vulkan and compiles without the OpenGL hook; loading and settings views never create a renderer frame."
+  }
+}

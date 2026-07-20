@@ -1,0 +1,334 @@
+// Strict-BTRC ownership adapter for librashader's ABI-2 OpenGL C API.
+// The caller supplies emulator-owned GL and current-context callbacks.
+
+#define LIBRA_RUNTIME_OPENGL 1
+#include <librashader/librashader.h>
+#include <string.h>
+
+int SEMU_LIBRASHADER_PASSTHROUGH = 0;
+int SEMU_LIBRASHADER_RENDERED = 1;
+
+int SEMU_LIBRASHADER_FAILURE_NONE = 0;
+int SEMU_LIBRASHADER_FAILURE_INVALID_ARGUMENT = 1;
+int SEMU_LIBRASHADER_FAILURE_NO_CURRENT_CONTEXT = 2;
+int SEMU_LIBRASHADER_FAILURE_WRONG_CONTEXT = 3;
+int SEMU_LIBRASHADER_FAILURE_ALREADY_ACTIVE = 4;
+int SEMU_LIBRASHADER_FAILURE_NOT_ACTIVE = 5;
+int SEMU_LIBRASHADER_FAILURE_LIBRARY = 6;
+
+class SemuLibrashaderError {
+    private libra_error_t handle;
+
+    public SemuLibrashaderError() {
+        self.handle = (libra_error_t)0;
+    }
+
+    public bool capture(libra_error_t error) {
+        self.clear();
+        self.handle = error;
+        return (void*)self.handle == (void*)0;
+    }
+
+    public void clear() {
+        if ((void*)self.handle != (void*)0) {
+            libra_error_free(&self.handle);
+        }
+    }
+
+    public bool failed() {
+        return (void*)self.handle != (void*)0;
+    }
+
+    public int code() {
+        return (void*)self.handle != (void*)0
+            ? (int)libra_error_errno(self.handle) : -1;
+    }
+
+    public void print() {
+        if ((void*)self.handle != (void*)0) {
+            libra_error_print(self.handle);
+        }
+    }
+
+    public void __del__() {
+        self.clear();
+    }
+}
+
+class SemuLibrashaderPreset {
+    private libra_shader_preset_t handle;
+
+    public SemuLibrashaderPreset() {
+        self.handle = (libra_shader_preset_t)0;
+    }
+
+    public bool load(const char* path, bool originalAspectUniforms,
+                     bool frametimeUniforms, SemuLibrashaderError error) {
+        if ((void*)self.handle != (void*)0) {
+            libra_error_t closeError = libra_preset_free(&self.handle);
+            if ((void*)closeError != (void*)0) {
+                libra_error_free(&closeError);
+            }
+        }
+
+        struct libra_preset_opt_t options;
+        memset(&options, 0, sizeof(struct libra_preset_opt_t));
+        options.version = LIBRASHADER_CURRENT_VERSION;
+        options.original_aspect_uniforms = originalAspectUniforms;
+        options.frametime_uniforms = frametimeUniforms;
+        return error.capture(libra_preset_create_with_options(
+            path, (libra_preset_ctx_t*)0, &options, &self.handle));
+    }
+
+    public bool consumeIntoOpenGL(
+        void* loader,
+        struct filter_chain_gl_opt_t* options,
+        libra_gl_filter_chain_t* chain,
+        SemuLibrashaderError error) {
+        libra_gl_loader_t glLoader = (libra_gl_loader_t)loader;
+        libra_error_t createError = libra_gl_filter_chain_create(
+            &self.handle, glLoader, options, chain);
+        // ABI 2 consumes the preset even when filter-chain creation fails.
+        self.handle = (libra_shader_preset_t)0;
+        return error.capture(createError);
+    }
+
+    public void __del__() {
+        if ((void*)self.handle != (void*)0) {
+            libra_error_t closeError = libra_preset_free(&self.handle);
+            if ((void*)closeError != (void*)0) {
+                libra_error_free(&closeError);
+            }
+        }
+    }
+}
+
+void* semuLibrashaderCurrentContext(void* callback) {
+    __fn_ptr<void*> currentContext = (__fn_ptr<void*>)callback;
+    return currentContext();
+}
+
+// One object owns one filter chain and therefore one temporal-history lane.
+// A failed render returns PASSTHROUGH and leaves presentation to the caller.
+class SemuLibrashaderOpenGLChain {
+    private libra_gl_filter_chain_t handle;
+    private void* loader;
+    private void* currentContext;
+    private void* ownerContext;
+    private SemuLibrashaderError error;
+    private int failure;
+
+    public SemuLibrashaderOpenGLChain(
+        void* loader, void* currentContext) {
+        self.handle = (libra_gl_filter_chain_t)0;
+        self.loader = loader;
+        self.currentContext = currentContext;
+        self.ownerContext = (void*)0;
+        self.error = new SemuLibrashaderError();
+        self.failure = SEMU_LIBRASHADER_FAILURE_NONE;
+    }
+
+    private void beginCall() {
+        self.error.clear();
+        self.failure = SEMU_LIBRASHADER_FAILURE_NONE;
+    }
+
+    private bool onOwnerContext() {
+        return self.currentContext != (void*)0
+            && self.ownerContext != (void*)0
+            && semuLibrashaderCurrentContext(self.currentContext) == self.ownerContext;
+    }
+
+    public bool create(const char* presetPath, unsigned int glslVersion,
+                       bool useDsa, bool forceNoMipmaps, bool disableCache,
+                       bool originalAspectUniforms, bool frametimeUniforms) {
+        self.beginCall();
+        if ((void*)self.handle != (void*)0) {
+            self.failure = SEMU_LIBRASHADER_FAILURE_ALREADY_ACTIVE;
+            return false;
+        }
+        if (presetPath == (const char*)0 || self.loader == (void*)0
+            || self.currentContext == (void*)0) {
+            self.failure = SEMU_LIBRASHADER_FAILURE_INVALID_ARGUMENT;
+            return false;
+        }
+
+        self.ownerContext = semuLibrashaderCurrentContext(self.currentContext);
+        if (self.ownerContext == (void*)0) {
+            self.failure = SEMU_LIBRASHADER_FAILURE_NO_CURRENT_CONTEXT;
+            return false;
+        }
+
+        SemuLibrashaderPreset preset = new SemuLibrashaderPreset();
+        if (!preset.load(presetPath, originalAspectUniforms,
+                         frametimeUniforms, self.error)) {
+            self.ownerContext = (void*)0;
+            self.failure = SEMU_LIBRASHADER_FAILURE_LIBRARY;
+            delete preset;
+            return false;
+        }
+        if (!self.onOwnerContext()) {
+            self.ownerContext = (void*)0;
+            self.failure = SEMU_LIBRASHADER_FAILURE_WRONG_CONTEXT;
+            delete preset;
+            return false;
+        }
+
+        struct filter_chain_gl_opt_t options;
+        memset(&options, 0, sizeof(struct filter_chain_gl_opt_t));
+        options.version = LIBRASHADER_CURRENT_VERSION;
+        options.glsl_version = glslVersion;
+        options.use_dsa = useDsa;
+        options.force_no_mipmaps = forceNoMipmaps;
+        options.disable_cache = disableCache;
+
+        bool created = preset.consumeIntoOpenGL(
+            self.loader, &options, &self.handle, self.error);
+        delete preset;
+        if (!created) {
+            self.ownerContext = (void*)0;
+            self.failure = SEMU_LIBRASHADER_FAILURE_LIBRARY;
+            return false;
+        }
+        return true;
+    }
+
+    public int render(unsigned int inputTexture, unsigned int inputFormat,
+                      unsigned int inputWidth, unsigned int inputHeight,
+                      unsigned int outputTexture, unsigned int outputFormat,
+                      unsigned int outputWidth, unsigned int outputHeight,
+                      size_t frameCount, bool clearHistory, int frameDirection,
+                      unsigned int rotation, float aspectRatio,
+                      float framesPerSecond, unsigned int frametimeDeltaMs) {
+        self.beginCall();
+        if ((void*)self.handle == (void*)0) {
+            self.failure = SEMU_LIBRASHADER_FAILURE_NOT_ACTIVE;
+            return SEMU_LIBRASHADER_PASSTHROUGH;
+        }
+        if (!self.onOwnerContext()) {
+            self.failure = SEMU_LIBRASHADER_FAILURE_WRONG_CONTEXT;
+            return SEMU_LIBRASHADER_PASSTHROUGH;
+        }
+        if (inputTexture == 0 || outputTexture == 0
+            || inputWidth == 0 || inputHeight == 0
+            || outputWidth == 0 || outputHeight == 0) {
+            self.failure = SEMU_LIBRASHADER_FAILURE_INVALID_ARGUMENT;
+            return SEMU_LIBRASHADER_PASSTHROUGH;
+        }
+
+        struct libra_image_gl_t input;
+        memset(&input, 0, sizeof(struct libra_image_gl_t));
+        input.handle = inputTexture;
+        input.format = inputFormat;
+        input.width = inputWidth;
+        input.height = inputHeight;
+
+        // ABI 2 takes an output texture, not an FBO. A null viewport spans it.
+        struct libra_image_gl_t output;
+        memset(&output, 0, sizeof(struct libra_image_gl_t));
+        output.handle = outputTexture;
+        output.format = outputFormat;
+        output.width = outputWidth;
+        output.height = outputHeight;
+
+        struct frame_gl_opt_t options;
+        memset(&options, 0, sizeof(struct frame_gl_opt_t));
+        options.version = LIBRASHADER_CURRENT_VERSION;
+        options.clear_history = clearHistory;
+        options.frame_direction = frameDirection;
+        options.rotation = rotation;
+        options.total_subframes = 1;
+        options.current_subframe = 1;
+        options.aspect_ratio = aspectRatio;
+        options.frames_per_second = framesPerSecond;
+        options.frametime_delta = frametimeDeltaMs;
+
+        if (!self.error.capture(libra_gl_filter_chain_frame(
+                &self.handle, frameCount, input, output,
+                (const struct libra_viewport_t*)0, (const float*)0,
+                &options))) {
+            self.failure = SEMU_LIBRASHADER_FAILURE_LIBRARY;
+            return SEMU_LIBRASHADER_PASSTHROUGH;
+        }
+        return SEMU_LIBRASHADER_RENDERED;
+    }
+
+    // ABI 2 explicitly permits parameter updates from any thread/context.
+    public bool setParameter(const char* name, float value) {
+        self.beginCall();
+        if ((void*)self.handle == (void*)0) {
+            self.failure = SEMU_LIBRASHADER_FAILURE_NOT_ACTIVE;
+            return false;
+        }
+        if (name == (const char*)0) {
+            self.failure = SEMU_LIBRASHADER_FAILURE_INVALID_ARGUMENT;
+            return false;
+        }
+        if (!self.error.capture(
+                libra_gl_filter_chain_set_param(&self.handle, name, value))) {
+            self.failure = SEMU_LIBRASHADER_FAILURE_LIBRARY;
+            return false;
+        }
+        return true;
+    }
+
+    // A wrong-context call is non-destructive: the owner can restore its GL
+    // context and retry. The destructor obeys the same guard.
+    public bool close() {
+        self.beginCall();
+        if ((void*)self.handle == (void*)0) {
+            self.ownerContext = (void*)0;
+            return true;
+        }
+        if (!self.onOwnerContext()) {
+            self.failure = SEMU_LIBRASHADER_FAILURE_WRONG_CONTEXT;
+            return false;
+        }
+        if (!self.error.capture(libra_gl_filter_chain_free(&self.handle))) {
+            self.failure = SEMU_LIBRASHADER_FAILURE_LIBRARY;
+            return false;
+        }
+        self.ownerContext = (void*)0;
+        return true;
+    }
+
+    // A destroyed GL context cannot legally free its filter chain. Forget the
+    // opaque handle before deleting this wrapper so a replacement context can
+    // start cleanly without issuing GL work against the dead owner.
+    public void abandonDestroyedContext() {
+        self.error.clear();
+        self.handle = (libra_gl_filter_chain_t)0;
+        self.loader = (void*)0;
+        self.currentContext = (void*)0;
+        self.ownerContext = (void*)0;
+        self.failure = SEMU_LIBRASHADER_FAILURE_NONE;
+    }
+
+    public bool active() {
+        return (void*)self.handle != (void*)0;
+    }
+
+    public bool ownsCurrentContext() {
+        return self.onOwnerContext();
+    }
+
+    public int lastFailure() {
+        return self.failure;
+    }
+
+    public bool hasLibraryError() {
+        return self.error.failed();
+    }
+
+    public int lastLibraryErrorCode() {
+        return self.error.code();
+    }
+
+    public void printLibraryError() {
+        self.error.print();
+    }
+
+    public void __del__() {
+        self.close();
+    }
+}

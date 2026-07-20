@@ -1,0 +1,57 @@
+// pipeline.btrc - the ordered parse, resolve, check, and generate cascade.
+
+import std.{vector}
+import ../lib/owned_paths.btrc
+import ./checker.btrc
+import ./generator.btrc
+import ./lexer.btrc
+import ./model.btrc
+import ./parser.btrc
+import ./resolver.btrc
+
+class SemuCompilation {
+    public SemuCompilerModel model;
+    public SemuBuildPlan plan;
+    public string output;
+
+    public SemuCompilation() {
+        self.model = SemuCompilerModel();
+        self.plan = SemuBuildPlan();
+        self.output = "";
+    }
+}
+
+class SemuCompiler {
+    class SemuCompilation check(SemuBuildRequest request,
+                                CompilerDiagnostics diagnostics) {
+        SemuCompilation result = SemuCompilation();
+        result.model = SemuCompilerParser.parse(
+            request.projectRoot, request.target, diagnostics);
+        result.plan = SemuBuildResolver.resolve(
+            result.model, request, diagnostics);
+        SemuCompilerChecker.check(
+            result.model, request, result.plan, diagnostics);
+        return result;
+    }
+
+    class SemuCompilation compile(SemuBuildRequest request,
+                                  CompilerDiagnostics diagnostics) {
+        SemuCompilation result = SemuCompiler.check(request, diagnostics);
+        if (diagnostics.ok()) {
+            result.output = SemuCompilerGenerator.emit(
+                result.plan, diagnostics);
+        }
+        return result;
+    }
+
+    class Vector<string> targetIds(string projectRoot,
+                                   CompilerDiagnostics diagnostics) {
+        Vector<string> result = [];
+        for unit in SemuDefinitionLexer.lex(
+                SemuOwnedPaths.configRoot(projectRoot), diagnostics) {
+            if (unit.kind.equals("target")) { result.push(unit.id); }
+        }
+        result.sort();
+        return result;
+    }
+}

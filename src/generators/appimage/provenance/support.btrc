@@ -1,0 +1,644 @@
+// support.btrc - shared bounded path, hashing, process, and JSON evidence.
+
+import std.{fs, json, process, strings, vector}
+import ../../../lib/json_format.btrc
+import ../runtime_inventory.btrc
+
+#include <fcntl.h>
+#include <string.h>
+
+class AppImageProvenanceInternalResult {
+    public bool valid;
+    public string error;
+
+    public AppImageProvenanceInternalResult(bool valid, string error) {
+        self.valid = valid;
+        self.error = error;
+    }
+
+    class AppImageProvenanceInternalResult success() {
+        return AppImageProvenanceInternalResult(true, "");
+    }
+
+    class AppImageProvenanceInternalResult failure(string error) {
+        return AppImageProvenanceInternalResult(false, error);
+    }
+
+    public bool ok() { return self.valid; }
+}
+
+class AppImageProvenanceInternalDigest {
+    public bool valid;
+    public string value;
+    public string error;
+
+    public AppImageProvenanceInternalDigest(bool valid, string value, string error) {
+        self.valid = valid;
+        self.value = value;
+        self.error = error;
+    }
+
+    class AppImageProvenanceInternalDigest success(string value) {
+        return AppImageProvenanceInternalDigest(true, value, "");
+    }
+
+    class AppImageProvenanceInternalDigest failure(string error) {
+        return AppImageProvenanceInternalDigest(false, "", error);
+    }
+
+    public bool ok() { return self.valid; }
+}
+
+class AppImageProvenanceInternalPath {
+    public bool valid;
+    public string value;
+    public string error;
+
+    public AppImageProvenanceInternalPath(bool valid, string value, string error) {
+        self.valid = valid;
+        self.value = value;
+        self.error = error;
+    }
+
+    class AppImageProvenanceInternalPath success(string value) {
+        return AppImageProvenanceInternalPath(true, value, "");
+    }
+
+    class AppImageProvenanceInternalPath failure(string error) {
+        return AppImageProvenanceInternalPath(false, "", error);
+    }
+
+    public bool ok() { return self.valid; }
+}
+
+class AppImageProvenanceInternalJson {
+    public bool valid;
+    public JsonValue value;
+    public string error;
+
+    public AppImageProvenanceInternalJson() {
+        self.valid = false;
+        self.value = JsonValue.makeNull();
+        self.error = "";
+    }
+
+    class AppImageProvenanceInternalJson success(JsonValue value) {
+        AppImageProvenanceInternalJson result = AppImageProvenanceInternalJson();
+        result.valid = true;
+        result.value = value;
+        return result;
+    }
+
+    class AppImageProvenanceInternalJson failure(string error) {
+        AppImageProvenanceInternalJson result = AppImageProvenanceInternalJson();
+        result.error = error;
+        return result;
+    }
+
+    public bool ok() { return self.valid; }
+}
+
+class AppImageProvenanceSupport {
+    class ExecResult process(
+            string executable, Vector<string> arguments,
+            string workingDirectory = "", int timeoutMilliseconds = 300000,
+            int maxStdoutBytes = 8388608,
+            int maxStderrBytes = 1048576, string input = "") {
+        return ChildProcess.run(executable, arguments, workingDirectory,
+            CommandEnvironment.empty(), CommandEnvironment.empty(),
+            timeoutMilliseconds, maxStdoutBytes, maxStderrBytes, input);
+    }
+
+    class string processError(ExecResult result) {
+        string detail = result.stderr().trim();
+        if (detail.isEmpty()) { detail = result.stdout().trim(); }
+        return detail.isEmpty() ? f"process exited {result.code}" : detail;
+    }
+
+    class string relativePath() {
+        return "share/semu/appimage-runtime-provenance.json";
+    }
+
+    class string path(string runtimeRoot) {
+        return PathTools.join(runtimeRoot,
+            AppImageProvenanceSupport.relativePath());
+    }
+
+    class bool runtimeLooksPopulated(string runtimeRoot) {
+        return FileStatus(PathTools.join(runtimeRoot, "bin/es-de")).linkFound;
+    }
+
+    class bool lowerHex(string value, int expectedLength) {
+        if (value.len() != expectedLength) { return false; }
+        for character in value {
+            bool decimal = character >= '0' && character <= '9';
+            bool hexadecimal = character >= 'a' && character <= 'f';
+            if (!decimal && !hexadecimal) { return false; }
+        }
+        return true;
+    }
+
+    class bool sriSha256(string value) {
+        if (value.len() != 51 || !value.startsWith("sha256-")
+            || value[value.len() - 1] != '=') {
+            return false;
+        }
+        for (int index = 7; index < value.len() - 1; index++) {
+            char character = value[index];
+            bool alphaNumeric = (character >= 'a' && character <= 'z')
+                || (character >= 'A' && character <= 'Z')
+                || (character >= '0' && character <= '9');
+            if (!alphaNumeric && character != '+' && character != '/') {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    class bool exactKeys(JsonValue objectValue, Vector<string> expected) {
+        if (!objectValue.isObject() || objectValue.keys().size() != expected.size()) {
+            return false;
+        }
+        for key in objectValue.keys() {
+            if (!expected.contains(key)) { return false; }
+        }
+        return true;
+    }
+
+    class bool safeRelative(string relative) {
+        if (relative.isEmpty() || relative.startsWith("/")) { return false; }
+        for component in Strings.split(relative, "/") {
+            if (component.isEmpty() || component.equals(".")
+                || component.equals("..")) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    class bool validStorePath(string value) {
+        string prefix = "/nix/store/";
+        if (!value.startsWith(prefix)) { return false; }
+        string name = value.substring(prefix.len(), value.len() - prefix.len());
+        return AppImageProvenanceSupport.safeRelative(name)
+            && !name.contains("/") && name.len() > 33 && name[32] == '-';
+    }
+
+    class bool safeRegularFile(string root, string relative) {
+        if (!AppImageProvenanceSupport.safeRelative(relative)) { return false; }
+        FileStatus rootStatus = FileStatus(root);
+        if (!rootStatus.isDir() || rootStatus.isSymlink()) { return false; }
+        string current = root;
+        for component in Strings.split(relative, "/") {
+            current = PathTools.join(current, component);
+            FileStatus status = FileStatus(current);
+            if (!status.linkFound || status.isSymlink()) { return false; }
+        }
+        FileStatus fileStatus = FileStatus(current);
+        return fileStatus.isFile() && !fileStatus.isSymlink();
+    }
+
+    class AppImageProvenanceInternalDigest nixHash(string kind, string path) {
+        if (!kind.equals("file") && !kind.equals("path")) {
+            return AppImageProvenanceInternalDigest.failure(
+                "unsupported provenance hash kind: " + kind);
+        }
+        ExecResult result = AppImageProvenanceSupport.process("nix", [
+            "--extra-experimental-features",
+            "nix-command flakes", "hash", kind, "--type", "sha256",
+            "--base16", path]);
+        string digest = result.trimmed();
+        if (!result.ok() || !AppImageProvenanceSupport.lowerHex(digest, 64)) {
+            return AppImageProvenanceInternalDigest.failure(
+                "cannot hash provenance " + kind + " " + path + ": "
+                + AppImageProvenanceSupport.processError(result));
+        }
+        return AppImageProvenanceInternalDigest.success(digest);
+    }
+
+    class AppImageProvenanceInternalDigest hashFile(string root, string relative) {
+        if (!AppImageProvenanceSupport.safeRegularFile(root, relative)) {
+            return AppImageProvenanceInternalDigest.failure(
+                "provenance input is absent or traverses a symlink: "
+                + PathTools.join(root, relative));
+        }
+        return AppImageProvenanceSupport.nixHash(
+            "file", PathTools.join(root, relative));
+    }
+
+    class AppImageProvenanceInternalDigest hashDirectory(string path) {
+        FileStatus status = FileStatus(path);
+        if (!status.isDir() || status.isSymlink()
+            || !UnixFileSystem.realPath(path).equals(path)) {
+            return AppImageProvenanceInternalDigest.failure(
+                "provenance directory is absent or traverses a symlink: " + path);
+        }
+        return AppImageProvenanceSupport.nixHash("path", path);
+    }
+
+    class void collectRegularFiles(
+            string root, string relative, Vector<string> files,
+            Vector<string> errors) {
+        string path = relative.isEmpty() ? root : PathTools.join(root, relative);
+        FileStatus status = FileStatus(path);
+        if (!status.linkFound || status.isSymlink()) {
+            errors.push("production source path is absent or symlinked: " + path);
+            return;
+        }
+        if (status.isFile()) {
+            if (relative.isEmpty()) {
+                errors.push("production source file has no relative path: " + path);
+            } else {
+                files.push(relative);
+            }
+            return;
+        }
+        if (!status.isDir()) {
+            errors.push("production source path is not a file or directory: " + path);
+            return;
+        }
+        for name in AppImageRuntimeInventory.sorted(FileSystem.listDir(path)) {
+            string child = relative.isEmpty() ? name : relative + "/" + name;
+            AppImageProvenanceSupport.collectRegularFiles(
+                root, child, files, errors);
+        }
+    }
+
+    class AppImageProvenanceInternalJson hashedFiles(
+            string root, Vector<string> relatives) {
+        Vector<string> ordered = AppImageRuntimeInventory.sorted(relatives);
+        Vector<string> arguments = ["--extra-experimental-features",
+            "nix-command flakes", "hash", "file", "--type", "sha256",
+            "--base16"];
+        for relative in ordered {
+            if (!AppImageProvenanceSupport.safeRegularFile(root, relative)) {
+                return AppImageProvenanceInternalJson.failure(
+                    "provenance source is absent or unsafe: "
+                    + PathTools.join(root, relative));
+            }
+            arguments.push(PathTools.join(root, relative));
+        }
+        if (ordered.size() == 0) {
+            return AppImageProvenanceInternalJson.success(JsonValue.makeArray());
+        }
+        ExecResult result = AppImageProvenanceSupport.process(
+            "nix", arguments);
+        if (!result.ok()) {
+            return AppImageProvenanceInternalJson.failure(
+                "cannot hash production source files: "
+                + AppImageProvenanceSupport.processError(result));
+        }
+        Vector<string> digests = [];
+        for line in Strings.split(result.stdout(), "\n") {
+            string digest = line.trim();
+            if (!digest.isEmpty()) { digests.push(digest); }
+        }
+        if (digests.size() != ordered.size()) {
+            return AppImageProvenanceInternalJson.failure(
+                "production source hash count does not match file count");
+        }
+        JsonValue entries = JsonValue.makeArray();
+        for (int index = 0; index < ordered.size(); index++) {
+            if (!AppImageProvenanceSupport.lowerHex(
+                    digests.get(index), 64)) {
+                return AppImageProvenanceInternalJson.failure(
+                    "production source hash is malformed: "
+                    + ordered.get(index));
+            }
+            entries.push(AppImageProvenanceSupport.digestEntry(
+                ordered.get(index), digests.get(index)));
+        }
+        return AppImageProvenanceInternalJson.success(entries);
+    }
+
+    class AppImageProvenanceInternalPath normalizedStoreLink(
+            Vector<string> parent, string target, Vector<string> suffix) {
+        Vector<string> components = [];
+        if (target.startsWith("/")) {
+            string prefix = "/nix/store/";
+            if (!target.startsWith(prefix)) {
+                return AppImageProvenanceInternalPath.failure(
+                    "Nix output link escaped the staged store: " + target);
+            }
+            components = ["nix", "store"];
+            for component in Strings.split(target.substring(
+                    prefix.len(), target.len() - prefix.len()), "/") {
+                components.push(component);
+            }
+        } else {
+            for component in parent { components.push(component); }
+            for component in Strings.split(target, "/") {
+                components.push(component);
+            }
+        }
+
+        Vector<string> normalized = [];
+        for component in components {
+            if (component.isEmpty() || component.equals(".")) { continue; }
+            if (component.equals("..")) {
+                if (normalized.size() <= 2) {
+                    return AppImageProvenanceInternalPath.failure(
+                        "Nix output link escaped the staged store: " + target);
+                }
+                normalized = normalized.slice(0, normalized.size() - 1);
+                continue;
+            }
+            normalized.push(component);
+        }
+        for component in suffix { normalized.push(component); }
+        if (normalized.size() < 4
+                || !normalized.get(0).equals("nix")
+                || !normalized.get(1).equals("store")) {
+            return AppImageProvenanceInternalPath.failure(
+                "Nix output link did not resolve to a store file: " + target);
+        }
+        return AppImageProvenanceInternalPath.success(normalized.join("/"));
+    }
+
+    class AppImageProvenanceInternalPath resolveStorePath(
+            string runtimeRoot, string storePath, string relative) {
+        if (!AppImageProvenanceSupport.validStorePath(storePath)
+                || !AppImageProvenanceSupport.safeRelative(relative)) {
+            return AppImageProvenanceInternalPath.failure(
+                "invalid staged Nix output path: " + storePath + "/" + relative);
+        }
+        Vector<string> pending = ["nix", "store",
+            PathTools.basename(storePath)];
+        for component in Strings.split(relative, "/") {
+            pending.push(component);
+        }
+        Vector<string> resolved = [];
+        Vector<string> visited = [];
+        int links = 0;
+        while (pending.size() > 0) {
+            string component = pending.get(0);
+            pending = pending.slice(1, pending.size());
+            if (component.isEmpty() || component.equals(".")
+                    || component.equals("..")) {
+                return AppImageProvenanceInternalPath.failure(
+                    "invalid staged Nix output component: " + component);
+            }
+            Vector<string> candidateComponents = [];
+            for existing in resolved { candidateComponents.push(existing); }
+            candidateComponents.push(component);
+            string candidateRelative = candidateComponents.join("/");
+            string candidate = PathTools.join(runtimeRoot, candidateRelative);
+            FileStatus status = FileStatus(candidate);
+            if (!status.linkFound) {
+                return AppImageProvenanceInternalPath.failure(
+                    "staged Nix output path is absent: " + candidateRelative);
+            }
+            if (status.isSymlink()) {
+                if (links >= 64 || visited.contains(candidateRelative)) {
+                    return AppImageProvenanceInternalPath.failure(
+                        "staged Nix output contains a link cycle: "
+                        + candidateRelative);
+                }
+                visited.push(candidateRelative);
+                links++;
+                AppImageProvenanceInternalPath expanded =
+                    AppImageProvenanceSupport.normalizedStoreLink(
+                        resolved, FileSystem.readLink(candidate), pending);
+                if (!expanded.ok()) { return expanded; }
+                pending = Strings.split(expanded.value, "/");
+                resolved = [];
+                continue;
+            }
+            resolved.push(component);
+        }
+        string relativeResult = resolved.join("/");
+        string result = PathTools.join(runtimeRoot, relativeResult);
+        FileStatus resultStatus = FileStatus(result);
+        if ((!resultStatus.isFile() && !resultStatus.isDir())
+                || resultStatus.isSymlink()
+                || !relativeResult.startsWith("nix/store/")) {
+            return AppImageProvenanceInternalPath.failure(
+                "staged Nix output did not resolve to a regular path: "
+                + relativeResult);
+        }
+        return AppImageProvenanceInternalPath.success(result);
+    }
+
+    class AppImageProvenanceInternalJson verifiedRuntimePath(
+            string runtimeRoot, string storePath, string relative) {
+        if (!AppImageProvenanceSupport.safeRelative(relative)) {
+            return AppImageProvenanceInternalJson.failure(
+                "invalid staged runtime path: " + relative);
+        }
+        string stagedPath = PathTools.join(runtimeRoot, relative);
+        FileStatus stagedStatus = FileStatus(stagedPath);
+        bool stagedFile = stagedStatus.isFile() && !stagedStatus.isSymlink();
+        bool stagedDirectory = stagedStatus.isDir()
+            && !stagedStatus.isSymlink();
+        if (!stagedFile && !stagedDirectory) {
+            return AppImageProvenanceInternalJson.failure(
+                "staged runtime path is absent or unsafe: " + relative);
+        }
+        AppImageProvenanceInternalPath source =
+            AppImageProvenanceSupport.resolveStorePath(
+                runtimeRoot, storePath, relative);
+        if (!source.ok()) {
+            return AppImageProvenanceInternalJson.failure(source.error);
+        }
+        FileStatus sourceStatus = FileStatus(source.value);
+        bool sourceFile = sourceStatus.isFile() && !sourceStatus.isSymlink();
+        bool sourceDirectory = sourceStatus.isDir()
+            && !sourceStatus.isSymlink();
+        if (stagedFile != sourceFile || stagedDirectory != sourceDirectory) {
+            return AppImageProvenanceInternalJson.failure(
+                "staged runtime path type differs from its Nix output: "
+                + relative);
+        }
+        AppImageProvenanceInternalDigest stagedDigest = stagedFile
+            ? AppImageProvenanceSupport.hashFile(runtimeRoot, relative)
+            : AppImageProvenanceSupport.hashDirectory(stagedPath);
+        AppImageProvenanceInternalDigest sourceDigest = sourceFile
+            ? AppImageProvenanceSupport.nixHash("file", source.value)
+            : AppImageProvenanceSupport.hashDirectory(source.value);
+        if (!stagedDigest.ok()) {
+            return AppImageProvenanceInternalJson.failure(stagedDigest.error);
+        }
+        if (!sourceDigest.ok()) {
+            return AppImageProvenanceInternalJson.failure(sourceDigest.error);
+        }
+        if (!stagedDigest.value.equals(sourceDigest.value)) {
+            return AppImageProvenanceInternalJson.failure(
+                "staged runtime path differs from its Nix output: " + relative);
+        }
+        string sourceRelative = source.value.substring(
+            runtimeRoot.len() + 1,
+            source.value.len() - runtimeRoot.len() - 1);
+        JsonValue evidence = AppImageProvenanceSupport.digestEntry(
+            relative, stagedDigest.value);
+        evidence.set("kind", JsonValue.makeString(
+            stagedFile ? "file" : "path"));
+        evidence.set("declared_store_path", JsonValue.makeString(
+            storePath + "/" + relative));
+        evidence.set("resolved_store_path", JsonValue.makeString(
+            "/" + sourceRelative));
+        evidence.set("store_sha256", JsonValue.makeString(sourceDigest.value));
+        return AppImageProvenanceInternalJson.success(evidence);
+    }
+
+    class AppImageProvenanceInternalJson verifiedRuntimeFiles(
+            string runtimeRoot, string storePath, Vector<string> relatives) {
+        JsonValue files = JsonValue.makeArray();
+        for relative in AppImageRuntimeInventory.sorted(relatives) {
+            AppImageProvenanceInternalJson verified =
+                AppImageProvenanceSupport.verifiedRuntimePath(
+                    runtimeRoot, storePath, relative);
+            if (!verified.ok()) { return verified; }
+            files.push(verified.value);
+        }
+        return AppImageProvenanceInternalJson.success(files);
+    }
+
+    class bool filesEqual(string first, string second) {
+        FILE* left = fopen(first, "rb");
+        FILE* right = fopen(second, "rb");
+        if (left == NULL || right == NULL) {
+            if (left != NULL) { fclose(left); }
+            if (right != NULL) { fclose(right); }
+            return false;
+        }
+        unsigned char leftBuffer[65536];
+        unsigned char rightBuffer[65536];
+        bool equal = true;
+        while (equal) {
+            size_t leftCount = fread(leftBuffer, 1, 65536, left);
+            size_t rightCount = fread(rightBuffer, 1, 65536, right);
+            if (leftCount != rightCount
+                    || (leftCount > (size_t)0
+                        && memcmp(leftBuffer, rightBuffer, leftCount) != 0)) {
+                equal = false;
+                break;
+            }
+            if (leftCount < (size_t)65536) {
+                equal = feof(left) != 0 && feof(right) != 0
+                    && ferror(left) == 0 && ferror(right) == 0;
+                break;
+            }
+        }
+        fclose(left);
+        fclose(right);
+        return equal;
+    }
+
+    class string digestForPath(JsonValue entries, string path) {
+        for (int index = 0; index < entries.size(); index++) {
+            JsonValue entry = entries.at(index);
+            if (entry.get("path").isString()
+                    && entry.get("path").asString().equals(path)
+                    && entry.get("sha256").isString()) {
+                return entry.get("sha256").asString();
+            }
+        }
+        return "";
+    }
+
+    class JsonValue filesBelow(JsonValue entries, string prefix) {
+        JsonValue result = JsonValue.makeArray();
+        for (int index = 0; index < entries.size(); index++) {
+            JsonValue entry = entries.at(index);
+            JsonValue path = entry.get("path");
+            if (path.isString() && path.asString().startsWith(prefix)) {
+                result.push(entry);
+            }
+        }
+        return result;
+    }
+
+    class AppImageProvenanceInternalDigest hashText(
+            string directory, string content) {
+        string templatePath = PathTools.join(
+            directory, ".semu-release-identity.XXXXXX");
+        char* raw = Strings.copy(templatePath);
+        if (raw == NULL) {
+            return AppImageProvenanceInternalDigest.failure(
+                "cannot allocate release-identity temporary path");
+        }
+        int descriptor = mkstemp(raw);
+        if (descriptor < 0) {
+            return AppImageProvenanceInternalDigest.failure(
+                "cannot create release-identity temporary file");
+        }
+        string path = Strings.copy(raw);
+        close(descriptor);
+        bool written = Path.writeAll(path, content);
+        AppImageProvenanceInternalDigest digest = written
+            ? AppImageProvenanceSupport.nixHash("file", path)
+            : AppImageProvenanceInternalDigest.failure(
+                "cannot write release-identity temporary file");
+        if (unlink(path) != 0 && digest.ok()) {
+            return AppImageProvenanceInternalDigest.failure(
+                "cannot remove release-identity temporary file");
+        }
+        return digest;
+    }
+
+    class AppImageProvenanceInternalResult exactInventory(
+            string label, JsonValue expected, JsonValue actual) {
+        if (!expected.isArray() || !actual.isArray()) {
+            return AppImageProvenanceInternalResult.failure(
+                label + " inventory must be an array");
+        }
+        if (!SemuJsonFormat.document(expected).equals(
+                SemuJsonFormat.document(actual))) {
+            return AppImageProvenanceInternalResult.failure(
+                label + " inventory differs by omission, addition, order, or content");
+        }
+        return AppImageProvenanceInternalResult.success();
+    }
+
+    class JsonValue digestEntry(string path, string digest) {
+        JsonValue entry = JsonValue.makeObject();
+        entry.set("path", JsonValue.makeString(path));
+        entry.set("sha256", JsonValue.makeString(digest));
+        return entry;
+    }
+
+    class string canonicalJson(JsonValue value) {
+        if (value.isObject()) {
+            Vector<string> fields = [];
+            for key in AppImageRuntimeInventory.sorted(value.keys()) {
+                fields.push("\"" + JsonValue.encodeString(key) + "\":"
+                    + AppImageProvenanceSupport.canonicalJson(
+                        value.get(key)));
+            }
+            return "{" + fields.join(",") + "}";
+        }
+        if (value.isArray()) {
+            Vector<string> elements = [];
+            for (int index = 0; index < value.size(); index++) {
+                elements.push(AppImageProvenanceSupport.canonicalJson(
+                    value.at(index)));
+            }
+            return "[" + elements.join(",") + "]";
+        }
+        return value.stringify();
+    }
+
+    class bool artifactContains(string path, string value) {
+        ExecResult result = AppImageProvenanceSupport.process(
+            "grep", ["-a", "-F", "-q", "--", value, path],
+            "", 30000, 4096, 4096);
+        return result.ok();
+    }
+
+    class string normalizedToolOutput(string value) {
+        string normalized = value.replace("\t", " ")
+            .replace("\n", " ").replace("\r", " ");
+        while (normalized.contains("  ")) {
+            normalized = normalized.replace("  ", " ");
+        }
+        return " " + normalized.trim() + " ";
+    }
+
+    class ExecResult readElf(string mode, string path) {
+        return AppImageProvenanceSupport.process("nix", [
+            "shell", "nixpkgs#binutils", "--command", "readelf",
+            mode, "--wide", path
+        ]);
+    }
+
+}

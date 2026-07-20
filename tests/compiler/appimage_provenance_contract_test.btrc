@@ -1,0 +1,833 @@
+// appimage_provenance_contract_test.btrc - exact production release identity.
+
+import std.{fs, json, process, vector}
+import ../../src/generators/appimage/provenance.btrc
+import ../../src/generators/appimage/runtime_inventory.btrc
+
+#include <stdio.h>
+
+class AppImageProvenanceContractTest {
+    class int fail(string message) {
+        print("  FAIL AppImage provenance: " + message);
+        return 1;
+    }
+
+    class JsonValue entry(string path, string digest) {
+        JsonValue value = JsonValue.makeObject();
+        value.set("path", JsonValue.makeString(path));
+        value.set("sha256", JsonValue.makeString(digest));
+        return value;
+    }
+
+    class JsonValue array(JsonValue first, JsonValue second) {
+        JsonValue values = JsonValue.makeArray();
+        values.push(first);
+        values.push(second);
+        return values;
+    }
+
+    class bool link(string target, string path) {
+        return ChildProcess.run("ln", ["-s", target, path],
+            timeoutMilliseconds=5000,
+            maxStdoutBytes=4096,
+            maxStderrBytes=4096).ok();
+    }
+
+    class int stagedStoreBinding() {
+        string scratch = FileSystem.tempDir("semu-provenance-store-binding");
+        if (scratch.isEmpty()) {
+            return AppImageProvenanceContractTest.fail(
+                "could not create staged-store binding fixture");
+        }
+        string targetName =
+            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-target";
+        string packageName =
+            "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb-package";
+        string targetPath = "/nix/store/" + targetName;
+        string targetBin = PathTools.join(
+            scratch, "nix/store/" + targetName + "/bin");
+        string packageBin = PathTools.join(
+            scratch, "nix/store/" + packageName + "/bin");
+        string runtimeBin = PathTools.join(scratch, "bin");
+        bool prepared = FileSystem.mkdirp(targetBin) == 0
+            && FileSystem.mkdirp(packageBin) == 0
+            && FileSystem.mkdirp(runtimeBin) == 0
+            && FileSystem.writeText(
+                PathTools.join(packageBin, "program"), "payload\n")
+            && FileSystem.writeText(
+                PathTools.join(runtimeBin, "program"), "payload\n")
+            && AppImageProvenanceContractTest.link(
+                "program", PathTools.join(packageBin, "alias"))
+            && AppImageProvenanceContractTest.link(
+                "/nix/store/" + packageName + "/bin/alias",
+                PathTools.join(targetBin, "program"));
+        if (!prepared) {
+            FileSystem.removeRecursive(scratch);
+            return AppImageProvenanceContractTest.fail(
+                "could not prepare staged-store binding fixture");
+        }
+
+        AppImageProvenanceJson matching =
+            AppImageRuntimeProvenance.verifiedRuntimePath(
+                scratch, targetPath, "bin/program");
+        bool exact = matching.ok()
+            && matching.value.get("resolved_store_path").isString()
+            && matching.value.get("resolved_store_path").asString().equals(
+                "/nix/store/" + packageName + "/bin/program")
+            && matching.value.get("sha256").isString()
+            && matching.value.get("sha256").asString().equals(
+                matching.value.get("store_sha256").asString());
+        FileSystem.writeText(
+            PathTools.join(runtimeBin, "program"), "mutated\n");
+        AppImageProvenanceJson mutated =
+            AppImageRuntimeProvenance.verifiedRuntimePath(
+                scratch, targetPath, "bin/program");
+        bool rejectedMutation = !mutated.ok()
+            && mutated.error.contains("differs from its Nix output");
+
+        bool escapePrepared = AppImageProvenanceContractTest.link(
+            "../../../../outside", PathTools.join(targetBin, "escape"));
+        AppImageProvenancePath escaped =
+            AppImageRuntimeProvenance.resolveStorePath(
+                scratch, targetPath, "bin/escape");
+        FileSystem.removeRecursive(scratch);
+        if (!exact || !rejectedMutation || !escapePrepared || escaped.ok()) {
+            return AppImageProvenanceContractTest.fail(
+                "staged bytes, store links, or store-boundary rejection regressed");
+        }
+        return 0;
+    }
+
+    class JsonValue localPatch(string name, string digest) {
+        JsonValue patch = JsonValue.makeObject();
+        patch.set("kind", JsonValue.makeString("local"));
+        patch.set("name", JsonValue.makeString(name));
+        patch.set("sha256", JsonValue.makeString(digest));
+        patch.set("urls", JsonValue.makeArray());
+        return patch;
+    }
+
+    class JsonValue packageWithPatch(string name, string digest) {
+        JsonValue patches = JsonValue.makeArray();
+        patches.push(AppImageProvenanceContractTest.localPatch(name, digest));
+        JsonValue package = JsonValue.makeObject();
+        package.set("patches", patches);
+        return package;
+    }
+
+    class AppImageRuntimeSlice hookSlice(
+            string patch, string linkage = "direct") {
+        AppImageRuntimeSlice slice = AppImageRuntimeSlice();
+        slice.id = "fixture";
+        slice.localPatches = ["emulators/fixture/" + patch];
+        slice.hookSymbols = [
+            "semu_render_game_gl", "semu_render_post_ui_gl"
+        ];
+        slice.hookLinkage = linkage;
+        slice.hookLibrary = "semurenderer";
+        slice.hookPatch = patch;
+        JsonValue hook = JsonValue.makeObject();
+        hook.set("abi", JsonValue.makeInt(2));
+        hook.set("api", JsonValue.makeString("semu-renderer"));
+        hook.set("linkage", JsonValue.makeString(linkage));
+        hook.set("header", JsonValue.makeString("semu_renderer.h"));
+        hook.set("library", JsonValue.makeString("semurenderer"));
+        hook.set("backend", JsonValue.makeString("opengl"));
+        JsonValue callbacks = JsonValue.makeArray();
+        callbacks.push(JsonValue.makeString("get_proc_address"));
+        hook.set("callbacks", callbacks);
+        hook.set("inactive_reports", JsonValue.makeBool(false));
+        hook.set("framebuffer", JsonValue.makeString("default"));
+        hook.set("patch", JsonValue.makeString(patch));
+        JsonValue phases = JsonValue.makeArray();
+        Vector<string> ids = ["game", "post_ui"];
+        for (int index = 0; index < ids.size(); index++) {
+            JsonValue phase = JsonValue.makeObject();
+            phase.set("id", JsonValue.makeString(ids.get(index)));
+            phase.set("symbol", JsonValue.makeString(
+                slice.hookSymbols.get(index)));
+            phase.set("source", JsonValue.makeString("fixture.cpp"));
+            phase.set("function", JsonValue.makeString("Fixture::render"));
+            phase.set("after", JsonValue.makeString("game frame"));
+            phase.set("before", JsonValue.makeString("presentation"));
+            phases.push(phase);
+        }
+        hook.set("phases", phases);
+        slice.renderHook = hook;
+        return slice;
+    }
+
+    class JsonValue buildPackage(string patchDigest) {
+        JsonValue package = AppImageProvenanceContractTest.packageWithPatch(
+            "render.patch", patchDigest);
+        package.set("recipe_sha256", JsonValue.makeString(
+            "1111111111111111111111111111111111111111111111111111111111111111"));
+        package.set("source_revision", JsonValue.makeString(
+            "2222222222222222222222222222222222222222"));
+        package.set("source_sha256", JsonValue.makeString(
+            "sha256-4mUCsD4XyKJh3LSAnUGCVQiycHPCtA+RvoP+NZQkXeA="));
+        package.set("package_store_path", JsonValue.makeString(
+            "/nix/store/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-fixture"));
+        return package;
+    }
+
+    class int exactIdentityContracts() {
+        string patchDigest =
+            "3333333333333333333333333333333333333333333333333333333333333333";
+        JsonValue exact = AppImageProvenanceContractTest.buildPackage(
+            patchDigest);
+        JsonValue emptySource = JsonValue.parse(exact.stringify());
+        emptySource.set("source_sha256", JsonValue.makeString(""));
+        JsonValue emptyRevision = JsonValue.parse(exact.stringify());
+        emptyRevision.set("source_revision", JsonValue.makeString(""));
+        JsonValue emptyPatch = JsonValue.parse(exact.stringify());
+        JsonValue patches = emptyPatch.get("patches");
+        JsonValue patch = patches.at(0);
+        patch.set("sha256", JsonValue.makeString(""));
+        JsonValue replaced = JsonValue.makeArray();
+        replaced.push(patch);
+        emptyPatch.set("patches", replaced);
+        if (!AppImageRuntimeProvenance.validBuildPackage(exact, false)
+                || AppImageRuntimeProvenance.validBuildPackage(
+                    emptySource, false)
+                || AppImageRuntimeProvenance.validBuildPackage(
+                    emptyRevision, false)
+                || AppImageRuntimeProvenance.validBuildPackage(
+                    emptyPatch, false)) {
+            return AppImageProvenanceContractTest.fail(
+                "empty source, revision, or patch identity was accepted");
+        }
+
+        AppImageRuntimeSlice slice =
+            AppImageProvenanceContractTest.hookSlice("render.patch");
+        slice.sourceRevision = exact.get("source_revision").asString();
+        slice.sourceSha256 = exact.get("source_sha256").asString();
+        JsonValue runtime = JsonValue.makeObject();
+        runtime.set("source_revision", exact.get("source_revision"));
+        runtime.set("source_sha256", exact.get("source_sha256"));
+        runtime.set("patch_sha256", JsonValue.makeString(patchDigest));
+        runtime.set("render_hook", slice.renderHook);
+        bool matched = AppImageRuntimeProvenance.runtimeBuildContractMatches(
+            runtime, slice, exact);
+        JsonValue wrongHook = JsonValue.parse(runtime.stringify());
+        JsonValue hook = wrongHook.get("render_hook");
+        JsonValue phasesValue = hook.get("phases");
+        JsonValue first = phasesValue.at(0);
+        first.set("after", JsonValue.makeString("wrong frame boundary"));
+        JsonValue changedPhases = JsonValue.makeArray();
+        changedPhases.push(first);
+        changedPhases.push(phasesValue.at(1));
+        hook.set("phases", changedPhases);
+        wrongHook.set("render_hook", hook);
+        JsonValue emptyRuntimePatch = JsonValue.parse(runtime.stringify());
+        emptyRuntimePatch.set("patch_sha256", JsonValue.makeString(""));
+        if (!matched
+                || AppImageRuntimeProvenance.runtimeBuildContractMatches(
+                    wrongHook, slice, exact)
+                || AppImageRuntimeProvenance.runtimeBuildContractMatches(
+                    emptyRuntimePatch, slice, exact)) {
+            return AppImageProvenanceContractTest.fail(
+                "runtime source/patch/hook semantics are not exact");
+        }
+        return 0;
+    }
+
+    class int patchAndHookContracts() {
+        string scratch = FileSystem.tempDir("semu-provenance-hook-contract");
+        if (scratch.isEmpty()) {
+            return AppImageProvenanceContractTest.fail(
+                "could not create renderer-hook fixture");
+        }
+        string configRoot = PathTools.join(scratch, "config");
+        string patch = PathTools.join(
+            configRoot, "emulators/fixture/render.patch");
+        FileSystem.mkdirp(PathTools.dirname(patch));
+        bool wrote = FileSystem.writeText(patch,
+            "+semu_render_game_gl(frame);\n"
+            + "+semu_render_post_ui_gl(frame);\n");
+        AppImageProvenanceDigest digest =
+            AppImageRuntimeProvenance.hashFile(
+                configRoot, "emulators/fixture/render.patch");
+        if (!wrote || !digest.ok()) {
+            FileSystem.removeRecursive(scratch);
+            return AppImageProvenanceContractTest.fail(
+                "could not hash renderer-hook fixture");
+        }
+        AppImageRuntimeSlice slice =
+            AppImageProvenanceContractTest.hookSlice("render.patch");
+        JsonValue exactPackage =
+            AppImageProvenanceContractTest.packageWithPatch(
+                "render.patch", digest.value);
+        JsonValue missingPackage = JsonValue.makeObject();
+        missingPackage.set("patches", JsonValue.makeArray());
+        bool exact = AppImageRuntimeProvenance.exactLocalPatches(
+            configRoot, slice, exactPackage).ok();
+        bool omitted = !AppImageRuntimeProvenance.exactLocalPatches(
+            configRoot, slice, missingPackage).ok();
+        bool wrongDigest = !AppImageRuntimeProvenance.exactLocalPatches(
+            configRoot, slice,
+            AppImageProvenanceContractTest.packageWithPatch(
+                "render.patch",
+                "0000000000000000000000000000000000000000000000000000000000000000"
+            )).ok();
+        bool calls = AppImageRuntimeProvenance.hookPatchEvidence(
+            scratch, slice, exactPackage).ok();
+
+        FileSystem.writeText(patch, "+semu_render_game_gl(frame);\n");
+        AppImageProvenanceDigest incompleteDigest =
+            AppImageRuntimeProvenance.hashFile(
+                configRoot, "emulators/fixture/render.patch");
+        JsonValue incompletePackage =
+            AppImageProvenanceContractTest.packageWithPatch(
+                "render.patch", incompleteDigest.value);
+        bool missingCall = incompleteDigest.ok()
+            && !AppImageRuntimeProvenance.hookPatchEvidence(
+                scratch, slice, incompletePackage).ok();
+
+        FileSystem.writeText(patch,
+            "+/* semu_render_game_gl(frame);\n"
+            + "+   semu_render_post_ui_gl(frame); */\n");
+        AppImageProvenanceDigest commentDigest =
+            AppImageRuntimeProvenance.hashFile(
+                configRoot, "emulators/fixture/render.patch");
+        bool commentsRejected = commentDigest.ok()
+            && !AppImageRuntimeProvenance.hookPatchEvidence(
+                scratch, slice,
+                AppImageProvenanceContractTest.packageWithPatch(
+                    "render.patch", commentDigest.value)).ok();
+        FileSystem.writeText(patch,
+            "+extern int semu_render_game_gl(Frame* frame);\n"
+            + "+extern int semu_render_post_ui_gl(Frame* frame);\n");
+        AppImageProvenanceDigest directDeclarationDigest =
+            AppImageRuntimeProvenance.hashFile(
+                configRoot, "emulators/fixture/render.patch");
+        bool directDeclarationsRejected = directDeclarationDigest.ok()
+            && !AppImageRuntimeProvenance.hookPatchEvidence(
+                scratch, slice,
+                AppImageProvenanceContractTest.packageWithPatch(
+                    "render.patch", directDeclarationDigest.value)).ok();
+
+        FileSystem.writeText(patch,
+            "+[DllImport(\"semurenderer\", EntryPoint = "
+            + "\"semu_render_game_gl\")]\n"
+            + "+private static extern int RenderGameNative(ref Frame frame);\n"
+            + "+[DllImport(\"semurenderer\", EntryPoint = "
+            + "\"semu_render_post_ui_gl\")]\n"
+            + "+private static extern int RenderPostUiNative(ref Frame frame);\n"
+            + "+RenderGameNative(ref frame);\n"
+            + "+RenderPostUiNative(ref frame);\n");
+        AppImageProvenanceDigest pinvokeDigest =
+            AppImageRuntimeProvenance.hashFile(
+                configRoot, "emulators/fixture/render.patch");
+        AppImageRuntimeSlice pinvoke =
+            AppImageProvenanceContractTest.hookSlice(
+                "render.patch", "direct_pinvoke");
+        bool pinvokeBoundary = pinvokeDigest.ok()
+            && AppImageRuntimeProvenance.hookPatchEvidence(
+                scratch, pinvoke,
+                AppImageProvenanceContractTest.packageWithPatch(
+                    "render.patch", pinvokeDigest.value)).ok();
+        FileSystem.writeText(patch,
+            "+[DllImport(\"semurenderer\", EntryPoint = "
+            + "\"semu_render_game_gl\")]\n"
+            + "+private static extern int RenderGameNative(ref Frame frame);\n"
+            + "+[DllImport(\"semurenderer\", EntryPoint = "
+            + "\"semu_render_post_ui_gl\")]\n"
+            + "+private static extern int RenderPostUiNative(ref Frame frame);\n");
+        AppImageProvenanceDigest declarationDigest =
+            AppImageRuntimeProvenance.hashFile(
+                configRoot, "emulators/fixture/render.patch");
+        bool declarationRejected = declarationDigest.ok()
+            && !AppImageRuntimeProvenance.hookPatchEvidence(
+                scratch, pinvoke,
+                AppImageProvenanceContractTest.packageWithPatch(
+                    "render.patch", declarationDigest.value)).ok();
+        FileSystem.removeRecursive(scratch);
+        if (!exact || !omitted || !wrongDigest || !calls
+                || !missingCall || !commentsRejected
+                || !directDeclarationsRejected || !pinvokeBoundary
+                || !declarationRejected) {
+            return AppImageProvenanceContractTest.fail(
+                "local patch or static hook-call contract accepted an omission");
+        }
+        return 0;
+    }
+
+    class bool binaryFixture(
+            string path, string linkage, string content) {
+        FILE* output = fopen(path, "wb");
+        if (output == NULL) { return false; }
+        if (linkage.equals("direct")) {
+            fputc(0x7f, output);
+            fputc('E', output);
+            fputc('L', output);
+            fputc('F', output);
+        } else {
+            fputc('M', output);
+            fputc('Z', output);
+            fputc(0, output);
+            fputc(0, output);
+        }
+        for character in content { fputc((unsigned char)character, output); }
+        return fclose(output) == 0;
+    }
+
+    class int binaryHookContract() {
+        string scratch = FileSystem.tempDir("semu-provenance-hook-binary");
+        string packageRelative =
+            "nix/store/cccccccccccccccccccccccccccccccc-package";
+        string package = PathTools.join(scratch, packageRelative);
+        string executable = PathTools.join(package, "bin/emulator");
+        if (scratch.isEmpty()
+                || FileSystem.mkdirp(PathTools.dirname(executable)) != 0
+                || !AppImageProvenanceContractTest.binaryFixture(
+                    executable, "direct",
+                    "semu_render_game_gl\nsemu_render_post_ui_gl\n"
+                    + "libsemurenderer.so\n")) {
+            FileSystem.removeRecursive(scratch);
+            return AppImageProvenanceContractTest.fail(
+                "could not create static hook binary fixture");
+        }
+        AppImageRuntimeSlice direct =
+            AppImageProvenanceContractTest.hookSlice("render.patch");
+        bool rawElfRejected = !AppImageRuntimeProvenance.hookCarriers(
+            scratch, packageRelative, direct).ok();
+        string dynamic =
+            " 0x0000000000000001 (NEEDED) Shared library: [libsemurenderer.so]\n";
+        string symbols =
+            " 1: 0 0 FUNC GLOBAL DEFAULT UND semu_render_game_gl\n"
+            + " 2: 0 0 FUNC GLOBAL DEFAULT UND semu_render_post_ui_gl\n";
+        string relocations =
+            "R_X86_64_JUMP_SLOT semu_render_game_gl + 0\n"
+            + "R_X86_64_JUMP_SLOT semu_render_post_ui_gl + 0\n";
+        bool directSemantics = AppImageRuntimeProvenance.directHookEvidence(
+            dynamic, symbols, relocations, direct);
+        bool relocationRequired = !AppImageRuntimeProvenance.directHookEvidence(
+            dynamic, symbols, "R_X86_64_JUMP_SLOT semu_render_game_gl + 0\n",
+            direct);
+
+        string assembly = PathTools.join(package, "lib/emulator.dll");
+        FileSystem.mkdirp(PathTools.dirname(assembly));
+        AppImageProvenanceContractTest.binaryFixture(
+            assembly, "direct_pinvoke",
+            "semu_render_game_gl\nsemu_render_post_ui_gl\nsemurenderer\n");
+        AppImageRuntimeSlice pinvoke =
+            AppImageProvenanceContractTest.hookSlice(
+                "render.patch", "direct_pinvoke");
+        bool rawManagedRejected = !AppImageRuntimeProvenance.hookCarriers(
+            scratch, packageRelative, pinvoke).ok();
+        FileSystem.removeRecursive(scratch);
+        if (!rawElfRejected || !directSemantics || !relocationRequired
+                || !rawManagedRejected) {
+            return AppImageProvenanceContractTest.fail(
+                "binary hook evidence accepted raw strings without linkage semantics");
+        }
+        return 0;
+    }
+
+    class JsonValue closureEntry(string path, Vector<string> references) {
+        JsonValue refs = JsonValue.makeArray();
+        for reference in references {
+            refs.push(JsonValue.makeString(reference));
+        }
+        JsonValue entry = JsonValue.makeObject();
+        entry.set("path", JsonValue.makeString(path));
+        entry.set("nar_sha256", JsonValue.makeString("sha256-fixture"));
+        entry.set("nar_size", JsonValue.makeInt(1));
+        entry.set("references", refs);
+        return entry;
+    }
+
+    class int declarativeComponentContract() {
+        string target = "/nix/store/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-target";
+        string first = "/nix/store/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb-first";
+        string second = "/nix/store/cccccccccccccccccccccccccccccccc-second";
+        Vector<string> noReferences = [];
+        JsonValue paths = JsonValue.makeArray();
+        paths.push(AppImageProvenanceContractTest.closureEntry(
+            target, [second, first]));
+        paths.push(AppImageProvenanceContractTest.closureEntry(
+            first, noReferences));
+        paths.push(AppImageProvenanceContractTest.closureEntry(
+            second, noReferences));
+        JsonValue store = JsonValue.makeObject();
+        store.set("target_store_path", JsonValue.makeString(target));
+        store.set("paths", paths);
+        AppImageProvenanceJson components =
+            AppImageRuntimeProvenance.runtimeComponents(store);
+        JsonValue unknownPaths = JsonValue.makeArray();
+        unknownPaths.push(AppImageProvenanceContractTest.closureEntry(
+            target, [first,
+                "/nix/store/dddddddddddddddddddddddddddddddd-unknown"]));
+        unknownPaths.push(
+            AppImageProvenanceContractTest.closureEntry(
+                first, noReferences));
+        JsonValue unknown = JsonValue.makeObject();
+        unknown.set("target_store_path", JsonValue.makeString(target));
+        unknown.set("paths", unknownPaths);
+        if (!components.ok() || components.value.size() != 3
+                || AppImageRuntimeProvenance.runtimeComponents(unknown).ok()) {
+            return AppImageProvenanceContractTest.fail(
+                "runtime components are not derived exactly from Nix references");
+        }
+        return 0;
+    }
+
+    class int mutationContracts() {
+        string firstHash =
+            "1111111111111111111111111111111111111111111111111111111111111111";
+        string secondHash =
+            "2222222222222222222222222222222222222222222222222222222222222222";
+        string changedHash =
+            "3333333333333333333333333333333333333333333333333333333333333333";
+        JsonValue first = AppImageProvenanceContractTest.entry(
+            "packages/first", firstHash);
+        JsonValue second = AppImageProvenanceContractTest.entry(
+            "packages/second", secondHash);
+        JsonValue expected = AppImageProvenanceContractTest.array(first, second);
+        if (!AppImageRuntimeProvenance.exactInventory(
+                "sample", expected, expected).ok()) {
+            return AppImageProvenanceContractTest.fail(
+                "identical canonical inventory was rejected");
+        }
+
+        JsonValue omitted = JsonValue.makeArray();
+        omitted.push(first);
+        if (AppImageRuntimeProvenance.exactInventory(
+                "sample", expected, omitted).ok()) {
+            return AppImageProvenanceContractTest.fail(
+                "an omitted production slice was accepted");
+        }
+
+        JsonValue extra = AppImageProvenanceContractTest.array(first, second);
+        extra.push(AppImageProvenanceContractTest.entry(
+            "packages/unknown", changedHash));
+        if (AppImageRuntimeProvenance.exactInventory(
+                "sample", expected, extra).ok()) {
+            return AppImageProvenanceContractTest.fail(
+                "an unknown production slice was accepted");
+        }
+
+        JsonValue reordered =
+            AppImageProvenanceContractTest.array(second, first);
+        if (AppImageRuntimeProvenance.exactInventory(
+                "sample", expected, reordered).ok()) {
+            return AppImageProvenanceContractTest.fail(
+                "a reordered inventory was accepted");
+        }
+
+        JsonValue mutated = AppImageProvenanceContractTest.array(
+            first, AppImageProvenanceContractTest.entry(
+                "packages/second", changedHash));
+        if (AppImageRuntimeProvenance.exactInventory(
+                "sample", expected, mutated).ok()) {
+            return AppImageProvenanceContractTest.fail(
+                "a source or asset hash mutation was accepted");
+        }
+
+        JsonValue staleTree = JsonValue.makeArray();
+        JsonValue currentTree = JsonValue.makeArray();
+        JsonValue current = JsonValue.makeObject();
+        current.set("source_tree", JsonValue.makeString(firstHash));
+        JsonValue stale = JsonValue.makeObject();
+        stale.set("source_tree", JsonValue.makeString(changedHash));
+        currentTree.push(current);
+        staleTree.push(stale);
+        if (AppImageRuntimeProvenance.exactInventory(
+                "release source", currentTree, staleTree).ok()) {
+            return AppImageProvenanceContractTest.fail(
+                "an artifact from a different source tree was accepted");
+        }
+
+        return 0;
+    }
+
+    class bool orderedFiles(JsonValue files) {
+        string previous = "";
+        for (int index = 0; index < files.size(); index++) {
+            JsonValue path = files.at(index).get("path");
+            JsonValue digest = files.at(index).get("sha256");
+            if (!path.isString() || !digest.isString()
+                    || !AppImageRuntimeProvenance.lowerHex(
+                        digest.asString(), 64)
+                    || (!previous.isEmpty()
+                        && previous >= path.asString())) {
+                return false;
+            }
+            previous = path.asString();
+        }
+        return true;
+    }
+
+    class bool hasPackage(JsonValue packages, string id) {
+        for (int index = 0; index < packages.size(); index++) {
+            JsonValue value = packages.at(index).get("id");
+            if (value.isString() && value.asString().equals(id)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    class bool hasPath(JsonValue entries, string expected) {
+        for (int index = 0; index < entries.size(); index++) {
+            JsonValue path = entries.at(index).get("path");
+            if (path.isString() && path.asString().equals(expected)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    class int productionContract(string project) {
+        AppImageProvenanceJson source =
+            AppImageRuntimeProvenance.sourceContract(project);
+        if (!source.ok()) {
+            return AppImageProvenanceContractTest.fail(source.error);
+        }
+        JsonValue files = source.value.get("production_source_files");
+        JsonValue systems = source.value.get("systems");
+        JsonValue packages = source.value.get("package_definitions");
+        JsonValue recipes = source.value.get("package_recipes");
+        JsonValue slices = source.value.get("runtime_slices");
+        JsonValue builds = source.value.get("build_contracts")
+            .get("emulators");
+        JsonValue assets = source.value.get("rendering_assets");
+        JsonValue inputs = source.value.get("input_files");
+        JsonValue settings = source.value.get("settings");
+        JsonValue cores = source.value.get("selected_cores");
+        JsonValue coreBuilds = source.value.get("selected_core_builds");
+        JsonValue coreRuntime = source.value.get("core_runtime");
+        JsonValue targetOutput = source.value.get("target_output_store_path");
+        JsonValue appImageRuntime = source.value.get("appimage_runtime");
+        if (!files.isArray() || files.size() == 0
+                || !AppImageProvenanceContractTest.orderedFiles(files)) {
+            return AppImageProvenanceContractTest.fail(
+                "production source files are absent, unhashed, or unordered");
+        }
+        Vector<string> declaredSystems = AppImageRuntimeInventory.sorted(
+            FileSystem.listDir(PathTools.join(project, "config/systems")));
+        if (!systems.isArray()
+                || systems.size() != declaredSystems.size()
+                || systems.size() == 0) {
+            return AppImageProvenanceContractTest.fail(
+                "release identity does not equal the declared system inventory");
+        }
+        for (int index = 0; index < systems.size(); index++) {
+            JsonValue id = systems.at(index).get("id");
+            if (!id.isString()
+                    || !id.asString().equals(declaredSystems.get(index))) {
+                return AppImageProvenanceContractTest.fail(
+                    "system identity/order is not derived from config");
+            }
+        }
+        if (!packages.isArray() || packages.size() < slices.size()
+                || !AppImageProvenanceContractTest.hasPackage(
+                    packages, "ares")) {
+            return AppImageProvenanceContractTest.fail(
+                "target package definitions omit a source-built slice");
+        }
+        Vector<string> requiredRecipes = [
+            "packaging/nix/semu_program.nix",
+            "packaging/nix/renderer.nix",
+            "packaging/nix/appimage_runtime.nix",
+            "packaging/esde/package.nix",
+            "packaging/sync/package.nix",
+            "packaging/nix/flake/steam-deck-package.nix",
+            "packaging/nix/emulators.nix",
+            "packaging/appimage/provenance-contract.nix"
+        ];
+        if (!recipes.isArray()) {
+            return AppImageProvenanceContractTest.fail(
+                "release identity contains no package recipe inventory");
+        }
+        for recipe in requiredRecipes {
+            if (!AppImageProvenanceContractTest.hasPath(recipes, recipe)) {
+                return AppImageProvenanceContractTest.fail(
+                    "release identity omits package recipe " + recipe);
+            }
+        }
+        if (!slices.isArray() || slices.size() == 0
+                || !builds.isObject()
+                || builds.keys().size() != slices.size()) {
+            return AppImageProvenanceContractTest.fail(
+                "realized Linux package contracts do not equal runtime slices");
+        }
+        for (int index = 0; index < slices.size(); index++) {
+            JsonValue slice = slices.at(index);
+            JsonValue patches = slice.get("local_patches");
+            JsonValue hookPatch = slice.get("hook_patch");
+            if (!patches.isArray() || patches.size() != 1
+                    || !patches.at(0).isString()
+                    || !hookPatch.isString()
+                    || !PathTools.basename(patches.at(0).asString())
+                        .equals(hookPatch.asString())) {
+                return AppImageProvenanceContractTest.fail(
+                    "runtime slice patch is not target/declaration-derived");
+            }
+        }
+        if (!assets.isArray() || assets.size() == 0
+                || !inputs.isArray() || inputs.size() == 0
+                || !settings.get("schema_version").isInt()
+                || !cores.isArray() || cores.size() == 0
+                || !targetOutput.isString()
+                || !AppImageRuntimeProvenance.validStorePath(
+                    targetOutput.asString())) {
+            return AppImageProvenanceContractTest.fail(
+                "target, asset, input, settings, or selected-core identity is incomplete");
+        }
+        Vector<string> expectedCores = [
+            "desmume", "gambatte", "genesis_plus_gx", "mednafen_psx",
+            "mesen", "mgba", "mupen64plus_next", "snes9x"
+        ];
+        if (cores.size() != expectedCores.size()) {
+            return AppImageProvenanceContractTest.fail(
+                "release identity does not contain every declared Linux core");
+        }
+        for (int index = 0; index < expectedCores.size(); index++) {
+            if (!cores.at(index).isString()
+                    || !cores.at(index).asString().equals(
+                        expectedCores.get(index))) {
+                return AppImageProvenanceContractTest.fail(
+                    "release identity core inventory is incomplete or unordered");
+            }
+        }
+        if (!coreRuntime.get("provider").isString()
+                || !coreRuntime.get("directory").isString()
+                || !AppImageRuntimeInventory.safeRelative(
+                    coreRuntime.get("directory").asString())
+                || !coreRuntime.get("package_attribute").isString()
+                || !coreRuntime.get("package_attribute").asString().equals(
+                    coreRuntime.get("provider").asString() + "-cores")
+                || !AppImageRuntimeProvenance.exactInventory(
+                    "test selected-core", cores,
+                    coreBuilds.get("selected_core_ids")).ok()) {
+            return AppImageProvenanceContractTest.fail(
+                "selected-core provider/path/set is not declaration-derived and exact");
+        }
+        if (!appImageRuntime.get("id").isString()
+                || !appImageRuntime.get("id").asString()
+                    .equals("appimage-type2-runtime")
+                || !appImageRuntime.get("kind").isString()
+                || !appImageRuntime.get("kind").asString()
+                    .equals("fixed-output")
+                || !appImageRuntime.get("package_name").isString()
+                || !appImageRuntime.get("package_name").asString()
+                    .equals("semu-appimage-runtime")
+                || !appImageRuntime.get("package_store_path").isString()
+                || !AppImageRuntimeProvenance.validStorePath(
+                    appImageRuntime.get("package_store_path").asString())
+                || !appImageRuntime.get("source_name").isString()
+                || !appImageRuntime.get("source_name").asString()
+                    .equals("runtime-x86_64")
+                || !appImageRuntime.get("source_sha256").isString()
+                || !AppImageRuntimeProvenance.sriSha256(
+                    appImageRuntime.get("source_sha256").asString())
+                || !appImageRuntime.get("runtime_path").isString()
+                || !appImageRuntime.get("runtime_path").asString()
+                    .equals("share/semu/appimage/runtime-x86_64")
+                || !appImageRuntime.get("recipe").get("path").isString()
+                || !appImageRuntime.get("recipe").get("path").asString()
+                    .equals("packaging/nix/appimage_runtime.nix")) {
+            return AppImageProvenanceContractTest.fail(
+                "dedicated Type-2 runtime source identity is incomplete");
+        }
+        Vector<string> retiredDonorSymbols = ["EsDeAppImageCache",
+            "EsDeSteamDeckArtifact", "ES-DE_x64_SteamDeck.AppImage"];
+        for relative in ["src/generators/appimage/assembler.btrc",
+                "src/generators/appimage/contract.btrc",
+                "src/generators/appimage/provenance.btrc",
+                "packaging/nix/appimage_runtime.nix"] {
+            string content = Path.readAll(PathTools.join(project, relative));
+            for symbol in retiredDonorSymbols {
+                if (content.contains(symbol)) {
+                    return AppImageProvenanceContractTest.fail(
+                        "official ES-DE remains coupled to the runtime prefix: "
+                        + relative);
+                }
+            }
+        }
+        Vector<string> productCorePaths = [
+            "path:.#packages.x86_64-linux.retroarch-cores.coreContract",
+            "lib/retroarch/cores", "bin/retroarch-semu"
+        ];
+        for relative in ["src/generators/appimage/assembler.btrc",
+                "src/generators/appimage/contract.btrc",
+                "src/generators/appimage/provenance.btrc"] {
+            string content = Path.readAll(PathTools.join(project, relative));
+            for productPath in productCorePaths {
+                if (content.contains(productPath)) {
+                    return AppImageProvenanceContractTest.fail(
+                        "AppImage core/payload logic contains a product-name path: "
+                        + relative);
+                }
+            }
+        }
+        string provenanceSource = Path.readAll(PathTools.join(
+            project, "src/generators/appimage/provenance.btrc"));
+        if (provenanceSource.contains("systems.size() != 17")
+                || provenanceSource.contains(
+                    "Vector<string> ids = [\"semu-program\"")) {
+            return AppImageProvenanceContractTest.fail(
+                "generic provenance retains hard-coded system/component identities");
+        }
+
+        AppImageRuntimeInventoryResult mac =
+            AppImageRuntimeInventory.loadForTarget(
+                PathTools.join(project, "config"),
+                "macos", "aarch64-darwin");
+        if (!mac.ok()) {
+            return AppImageProvenanceContractTest.fail(mac.error);
+        }
+        bool ares = false;
+        for slice in mac.slices {
+            if (slice.id.equals("ares")) { ares = true; }
+        }
+        if (!ares) {
+            return AppImageProvenanceContractTest.fail(
+                "macOS target inventory omits the declared ares slice");
+        }
+        return 0;
+    }
+
+    class int staleRuntimeContract(string project, string runtimeRoot) {
+        if (runtimeRoot.isEmpty()) { return 0; }
+        AppImageProvenanceJson source =
+            AppImageRuntimeProvenance.sourceContract(project);
+        if (!source.ok()) {
+            return AppImageProvenanceContractTest.fail(source.error);
+        }
+        AppImageProvenanceJson closure =
+            AppImageRuntimeProvenance.runtimeStoreEntries(runtimeRoot,
+                source.value.get("target_output_store_path").asString());
+        if (closure.ok() || !closure.error.contains("different source tree")) {
+            return AppImageProvenanceContractTest.fail(
+                "an artifact built from a different tree was not rejected early");
+        }
+        return 0;
+    }
+
+    class int focused() {
+        int failures = AppImageProvenanceContractTest.mutationContracts();
+        failures += AppImageProvenanceContractTest.exactIdentityContracts();
+        failures += AppImageProvenanceContractTest.stagedStoreBinding();
+        failures += AppImageProvenanceContractTest.patchAndHookContracts();
+        failures += AppImageProvenanceContractTest.binaryHookContract();
+        failures += AppImageProvenanceContractTest.declarativeComponentContract();
+        if (failures == 0) {
+            print("AppImage provenance focused contract: PASS");
+        }
+        return failures;
+    }
+
+    class int run(string project, string staleRuntimeRoot = "") {
+        int failures = AppImageProvenanceContractTest.focused();
+        failures += AppImageProvenanceContractTest.productionContract(project);
+        failures += AppImageProvenanceContractTest.staleRuntimeContract(
+            project, staleRuntimeRoot);
+        if (failures == 0) {
+            print("AppImage provenance contract: complete + exact + ordered");
+        }
+        return failures;
+    }
+}

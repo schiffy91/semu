@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "enabled": true,
+  "default_variant": "classic",
+  "hole": {
+    "x": 0.2422535211,
+    "y": 0.1760324983,
+    "w": 0.5577464789,
+    "h": 0.3619498984
+  },
+  "variants": [
+    {
+      "id": "classic",
+      "label": "Classic Grey",
+      "art": "assets/bezels/gb/classic.png"
+    }
+  ],
+  "doc": {
+    "hole": "The Semu-owned 1065x1477 product render has one continuous charcoal lens. Declarative aperture pixels are 594x534.6 at (258,260), exactly 10:9. At 1280x800 the contain-fit leaves 321.733x289.560 pixels, selecting centered 320x288 (2x native) content without making raster art the geometry authority."
+  }
+}

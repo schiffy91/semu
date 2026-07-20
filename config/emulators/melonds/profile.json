@@ -1,0 +1,180 @@
+{
+  "schema_version": 1,
+  "compiler": {
+    "bindings": {
+      "emulator_name": {
+        "source": "emulator.name"
+      },
+      "renderer_value": {
+        "source": "platform.graphics.values.opengl"
+      },
+      "use_gl_value": {
+        "source": "platform.graphics.extra_pins.0.value"
+      }
+    },
+    "line_groups": {
+      "native_hotkeys": {
+        "rows": "actions.native",
+        "format": "${setting} = ${chord}",
+        "chord_encoding": {
+          "mode": "sum",
+          "modifiers": {
+            "Ctrl": 67108864,
+            "Alt": 134217728,
+            "Shift": 33554432,
+            "Meta": 268435456
+          },
+          "keys": {
+            "P": 80,
+            "Q": 81,
+            "+": 43,
+            "Tab": 16777217,
+            "Enter": 16777220
+          }
+        }
+      }
+    }
+  },
+  "controller": {
+    "joystick_id": 0,
+    "device": "SDL2 raw joystick zero",
+    "source": "Steam Virtual Gamepad",
+    "quit_chord": [
+      "select",
+      "start"
+    ],
+    "quit_owner": "steamdeck process-group watcher",
+    "quit_semantics": "immediate"
+  },
+  "storage": {
+    "config": "${state_root}/config/melonDS/melonDS.toml",
+    "game_saves": "${state_root}/data/melonDS/saves",
+    "save_states": "${state_root}/data/melonDS/states",
+    "cheats": "${state_root}/data/melonDS/cheats",
+    "firmware_copies": "${state_root}/config/melonDS/firmware",
+    "external_content_read_only": true,
+    "rom_adjacent_save_import": "read_once_when_state_save_is_absent"
+  },
+  "actions": {
+    "native": [
+      {
+        "setting": "HK_Pause",
+        "action": "ui.pause",
+        "chord": "Ctrl+P",
+        "consumer": "EmuThread::HK_Pause"
+      },
+      {
+        "setting": "HK_FullscreenToggle",
+        "action": "ui.fullscreen",
+        "chord": "Ctrl+Enter",
+        "consumer": "EmuThread::HK_FullscreenToggle"
+      },
+      {
+        "setting": "HK_FastForwardToggle",
+        "action": "speed.fast",
+        "chord": "Ctrl++",
+        "consumer": "EmuThread::HK_FastForwardToggle"
+      },
+      {
+        "setting": "HK_SwapScreens",
+        "action": "screen.swap",
+        "chord": "Ctrl+Tab",
+        "consumer": "EmuThread::HK_SwapScreens"
+      }
+    ],
+    "external": [
+      {
+        "action": "app.quit",
+        "chord": "Ctrl+Q",
+        "keyboard_consumer": "semu-input-supervisor",
+        "physical_consumer": "steamdeck process-group watcher",
+        "semantics": "immediate"
+      },
+      {
+        "action": "state.save",
+        "chord": "Ctrl+S",
+        "keyboard_consumer": "MainWindow::actSaveState[1]",
+        "native_slot": 1
+      },
+      {
+        "action": "state.load",
+        "chord": "Ctrl+A",
+        "keyboard_consumer": "MainWindow::actLoadState[1]",
+        "native_slot": 1
+      }
+    ]
+  },
+  "files": [
+    {
+      "path": "${emulator_name}/config/melonDS.toml",
+      "lines": [
+        "[3D]",
+        "Renderer = ${renderer_value}",
+        "",
+        "[3D.GL]",
+        "ScaleFactor = 1",
+        "BetterPolygons = false",
+        "HiresCoordinates = true",
+        "",
+        "[Screen]",
+        "UseGL = ${use_gl_value}",
+        "Filter = false",
+        "VSync = true",
+        "VSyncInterval = 1",
+        "",
+        "[Emu]",
+        "ConsoleType = 0",
+        "DirectBoot = true",
+        "ExternalBIOSEnable = false",
+        "",
+        "[DS]",
+        "BIOS9Path = \"firmware/bios9.bin\"",
+        "BIOS7Path = \"firmware/bios7.bin\"",
+        "FirmwarePath = \"firmware/firmware.bin\"",
+        "",
+        "[Instance0]",
+        "JoystickID = 0",
+        "SaveFilePath = \"../../data/melonDS/saves\"",
+        "SavestatePath = \"../../data/melonDS/states\"",
+        "CheatFilePath = \"../../data/melonDS/cheats\"",
+        "PauseLostFocus = false",
+        "MuteFastForward = false",
+        "",
+        "[Instance0.Joystick]",
+        "A = 1",
+        "B = 0",
+        "Select = 4",
+        "Start = 6",
+        "Right = 14",
+        "Left = 13",
+        "Up = 11",
+        "Down = 12",
+        "R = 10",
+        "L = 9",
+        "X = 3",
+        "Y = 2",
+        "",
+        "[Instance0.Keyboard]",
+        "@lines:native_hotkeys",
+        "",
+        "[Instance0.Window0]",
+        "ScreenRotation = 0",
+        "ScreenGap = 0",
+        "ScreenLayout = 2",
+        "ScreenSwap = false",
+        "ScreenSizing = 0",
+        "IntegerScaling = true",
+        "ScreenAspectTop = 0",
+        "ScreenAspectBot = 0",
+        "ShowOSD = false"
+      ]
+    }
+  ],
+  "doc": {
+    "controller": "The exact raw SDL button numbers match the Steam Virtual Gamepad: DS A/B/X/Y deliberately follow Nintendo east/south/north/west positions, shoulders are 9/10, View/Menu are 4/6, and D-pad buttons are 11-14. Touch remains melonDS pointer input for the Deck trackpad.",
+    "quit": "Select and Start remain independent DS inputs. The target-owned evdev watcher observes the physical pair and terminates the emulator process group immediately; radial app.quit emits Qt's standard Ctrl+Q shortcut.",
+    "hotkeys": "The emitter compiles four configurable Semu chords into melonDS's native hotkey table. The pinned Qt source binds slot-1 save/load directly to Ctrl+S and Ctrl+A, and the input supervisor owns Ctrl+Q. Every declared action appears exactly once across native and external ownership lanes.",
+    "geometry": "Horizontal layout id 2, even sizing id 0, zero gap, native 4:3 aspects, zero rotation, and no initial swap preserve two equal 256x192 LCD surfaces. Ctrl+Tab may swap positions without changing semantic tap order.",
+    "storage": "Relative writable asset paths are interpreted by the source patch from $XDG_CONFIG_HOME/melonDS and resolve into $XDG_DATA_HOME/melonDS. External BIOS and ROM-adjacent save sources stay read-only; only isolated copies/state are writable."
+  }
+}

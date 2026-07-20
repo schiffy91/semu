@@ -1,0 +1,42 @@
+// main.btrc - isolated strict-import compiler contract entrypoint.
+
+import std.{cli, fs}
+import ../core/compiler_contract_test.btrc
+import ./appimage_provenance_contract_test.btrc
+import ./azahar_touch_contract_test.btrc
+import ./cemu_production_contract_test.btrc
+import ./config_contract_test.btrc
+import ./emulator_runtime_contract_test.btrc
+import ./esde_contract_test.btrc
+import ./json_format_contract_test.btrc
+import ./melonds_touch_contract_test.btrc
+import ./rendering_contract_test.btrc
+import ./rendering_compositor_contract_test.btrc
+import ./retroarch_production_contract_test.btrc
+import ./source_architecture_contract_test.btrc
+import ./standalone_emulator_production_contract_test.btrc
+import ./steam_input_contract_test.btrc
+import ./sync_contract_test.btrc
+
+int main(int argc, char** argv) {
+    CliArgs arguments = CliArgs(argc, argv);
+    string project = arguments.valueAfter(
+        "--project", FileSystem.currentDirectory());
+    int failures = CompilerContractTest.run(project);
+    failures += AppImageProvenanceContractTest.run(project);
+    failures += AzaharTouchContractTest.run(project);
+    failures += CemuProductionContractTest.runStatic(project);
+    failures += ConfigContractTest.run(project);
+    failures += EmulatorRuntimeContractTest.run(project);
+    failures += EsDeContractTest.run(project);
+    failures += JsonFormatContractTest.run(project);
+    failures += MelonDsTouchContractTest.run(project);
+    failures += RenderingContractTest.run(project);
+    failures += RenderingCompositorContractTest.run(project);
+    failures += RetroArchProductionContractTest.run(project);
+    failures += SourceArchitectureContractTest.run(project);
+    failures += StandaloneEmulatorProductionContractTest.run(project);
+    failures += SteamInputContractTest.run(project);
+    failures += SyncContractTest.run(project);
+    return failures == 0 ? 0 : 1;
+}

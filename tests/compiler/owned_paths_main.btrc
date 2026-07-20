@@ -1,0 +1,10 @@
+// owned_paths_main.btrc - isolated strict-import owned-path contract.
+
+import std.{cli, fs}
+import ./owned_paths_contract_test.btrc
+
+int main(int argc, char** argv) {
+    CliArgs arguments = CliArgs(argc, argv);
+    return OwnedPathsContractTest.run(arguments.valueAfter(
+        "--project", FileSystem.currentDirectory()));
+}

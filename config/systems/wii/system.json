@@ -1,0 +1,90 @@
+{
+  "schema_version": 1,
+  "name": "Nintendo Wii",
+  "aliases": [],
+  "es_de": {
+    "platforms": [
+      "wii"
+    ],
+    "theme": "wii"
+  },
+  "rom": {
+    "dir": "wii",
+    "extensions": [
+      ".ciso",
+      ".dol",
+      ".elf",
+      ".gcm",
+      ".gcz",
+      ".iso",
+      ".nkit.iso",
+      ".rvz",
+      ".tgc",
+      ".wad",
+      ".wbfs",
+      ".wia",
+      ".7z",
+      ".zip"
+    ]
+  },
+  "verification": {
+    "rom_descriptors": [
+      "New Super Mario Bros. Wii (USA) (En,Fr,Es) (Rev 2).wbfs",
+      "Super Paper Mario (USA) (Rev 2).wbfs"
+    ],
+    "capture_frame": 180
+  },
+  "emulators": [
+    {
+      "emulator": "dolphin",
+      "label_aliases": [
+        "Dolphin (Standalone)"
+      ]
+    }
+  ],
+  "controller_profile": "steam_deck",
+  "display": {
+    "scaling": {
+      "mode": "integer_preferred",
+      "basis": "native_game_surface",
+      "fit": "contain",
+      "fallback": "fractional_downscale"
+    },
+    "screens": [
+      {
+        "id": "main",
+        "native": {
+          "w": 640,
+          "h": 480
+        }
+      }
+    ],
+    "aspect": {
+      "w": 4,
+      "h": 3
+    },
+    "widescreen": {
+      "aspect": {
+        "w": 16,
+        "h": 9
+      },
+      "detect": "emulator_reported_content_aspect",
+      "fallback": "default_aspect",
+      "switch_at": "frame_boundary"
+    },
+    "doc": {
+      "native": "Real 1x emulator output (was a 256x240 placeholder that corrupted integer placement)."
+    }
+  },
+  "render": {
+    "style": "console",
+    "priority": "game",
+    "kind": "pointer",
+    "corner_radius": 0.045
+  },
+  "doc": {
+    "hardware": "consumer CRT/component TV",
+    "intent": "Dolphin/game settings should drive 4:3 vs 16:9 presentation.",
+    "native_note": "256x240 carried over from RenderOptionCatalog (the tap's integer-scale base today), not true Wii output res. Change deliberately, not as a migration side effect."
+  }
+}

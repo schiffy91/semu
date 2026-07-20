@@ -1,0 +1,8 @@
+{
+  "schema_version": 1,
+  "enabled": false,
+  "variants": [],
+  "doc": {
+    "why": "Wii U uses modern 16:9 HDMI output. A TV/GamePad frame remains disabled until the emulator reports a verified second game surface."
+  }
+}

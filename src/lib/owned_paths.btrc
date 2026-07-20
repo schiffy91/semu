@@ -1,0 +1,687 @@
+// owned_paths.btrc - source, state, and generated-output ownership boundaries.
+
+import std.{fs, platform, strings, vector}
+
+#include <errno.h>
+#include <fcntl.h>
+#include <string.h>
+#include <sys/stat.h>
+#include <unistd.h>
+
+struct SemuOwnedSha256State {
+    unsigned int words[8];
+    unsigned long long bits;
+    unsigned char block[64];
+    size_t used;
+};
+
+int semuOwnedLinkNoReplace(int parentDescriptor,
+                           string sourceName,
+                           string destinationName) {
+    if (sourceName.isEmpty() || destinationName.isEmpty()
+            || sourceName.len() > 255 || destinationName.len() > 255) {
+        return -1;
+    }
+    char sourceBuffer[256];
+    char destinationBuffer[256];
+    memcpy(sourceBuffer, sourceName, (size_t)sourceName.len());
+    memcpy(destinationBuffer, destinationName,
+        (size_t)destinationName.len());
+    sourceBuffer[sourceName.len()] = 0;
+    destinationBuffer[destinationName.len()] = 0;
+    return linkat(parentDescriptor, sourceBuffer,
+        parentDescriptor, destinationBuffer, 0);
+}
+
+class SemuOwnedPaths {
+    class bool hasControl(string path) {
+        for value in path {
+            if (value < 32 || value == 127) { return true; }
+        }
+        return false;
+    }
+
+    class bool hasTraversal(string path) {
+        string portable = path.replace("\\", "/");
+        for component in Strings.split(portable, "/") {
+            if (component.equals(".") || component.equals("..")) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    class string lexicalAbsolute(string path) {
+        if (path.isEmpty() || path.contains("\\")
+                || SemuOwnedPaths.hasControl(path)
+                || path.contains("//") || SemuOwnedPaths.hasTraversal(path)) {
+            return "";
+        }
+        string absolute = PathTools.isAbsolute(path)
+            ? path : PathTools.join(FileSystem.currentDirectory(), path);
+        while (absolute.len() > 1 && absolute.endsWith("/")) {
+            absolute = absolute.substring(0, absolute.len() - 1);
+        }
+        return absolute;
+    }
+
+    class string normalized(string path) {
+        return SemuOwnedPaths.lexicalAbsolute(path);
+    }
+
+    class bool safeRelativePath(string path, bool allowEmpty = false) {
+        if (path.isEmpty()) { return allowEmpty; }
+        if (path.startsWith("/") || path.startsWith("\\")
+                || path.contains("\\") || SemuOwnedPaths.hasControl(path)
+                || (path.len() > 1 && path.charAt(1) == ':')) {
+            return false;
+        }
+        for component in Strings.split(path, "/") {
+            if (component.isEmpty() || component.equals(".")
+                    || component.equals("..")) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    class bool inside(string path, string root) {
+        string absolutePath = SemuOwnedPaths.normalized(path);
+        string absoluteRoot = SemuOwnedPaths.normalized(root);
+        if (absolutePath.isEmpty() || absoluteRoot.isEmpty()) { return false; }
+        if (absoluteRoot.equals("/")) { return absolutePath.startsWith("/"); }
+        return absolutePath.equals(absoluteRoot)
+            || absolutePath.startsWith(absoluteRoot + "/");
+    }
+
+    class bool canOwnDirectory(string path) {
+        string absolute = SemuOwnedPaths.normalized(path);
+        if (absolute.isEmpty() || absolute.equals("/")) { return false; }
+        string current = "";
+        for component in Strings.split(absolute, "/") {
+            if (component.isEmpty()) { continue; }
+            current = current + "/" + component;
+            FileStatus status = FileStatus(current);
+            if (!status.linkFound) { return true; }
+            if (status.isSymlink() || !status.isDir()
+                    || !UnixFileSystem.realPath(current).equals(current)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    class bool prepareDirectory(string path) {
+        string absolute = SemuOwnedPaths.normalized(path);
+        if (!SemuOwnedPaths.canOwnDirectory(absolute)) { return false; }
+        string current = "";
+        for component in Strings.split(absolute, "/") {
+            if (component.isEmpty()) { continue; }
+            current = current + "/" + component;
+            FileStatus status = FileStatus(current);
+            if (!status.linkFound
+                    && FileSystem.mkdir(current, 493) != 0) { // 0755
+                return false;
+            }
+            status = FileStatus(current);
+            if (!status.linkFound || status.isSymlink() || !status.isDir()
+                    || !UnixFileSystem.realPath(current).equals(current)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    class bool existingComponentsAreOwned(string root, string destination) {
+        string absoluteRoot = SemuOwnedPaths.normalized(root);
+        string absoluteDestination = SemuOwnedPaths.normalized(destination);
+        if (absoluteRoot.isEmpty() || absoluteDestination.isEmpty()
+                || !SemuOwnedPaths.inside(
+                    absoluteDestination, absoluteRoot)) {
+            return false;
+        }
+        FileStatus rootStatus = FileStatus(absoluteRoot);
+        if (!rootStatus.linkFound || rootStatus.isSymlink()
+                || !rootStatus.isDir()
+                || !UnixFileSystem.realPath(absoluteRoot).equals(absoluteRoot)) {
+            return false;
+        }
+        string relative = absoluteDestination.equals(absoluteRoot) ? ""
+            : absoluteDestination.substring(
+                absoluteRoot.len() + 1, absoluteDestination.len());
+        string current = absoluteRoot;
+        Vector<string> components = [];
+        if (!relative.isEmpty()) {
+            components = Strings.split(relative, "/");
+        }
+        for (int index = 0; index < components.size(); index++) {
+            current = PathTools.join(current, components.get(index));
+            FileStatus status = FileStatus(current);
+            if (!status.linkFound) { continue; }
+            if (status.isSymlink()
+                    || (index + 1 < components.size() && !status.isDir())
+                    || !UnixFileSystem.realPath(current).equals(current)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    class string containedPath(string root, string destination) {
+        string absolute = SemuOwnedPaths.normalized(destination);
+        if (absolute.isEmpty()) { return ""; }
+        return SemuOwnedPaths.existingComponentsAreOwned(root, absolute)
+            ? absolute : "";
+    }
+
+    class string relativeFile(string root, string relative) {
+        if (!SemuOwnedPaths.safeRelativePath(relative)) { return ""; }
+        string absoluteRoot = SemuOwnedPaths.normalized(root);
+        string candidate = SemuOwnedPaths.normalized(
+            PathTools.join(absoluteRoot, relative));
+        return SemuOwnedPaths.inside(candidate, absoluteRoot) ? candidate : "";
+    }
+
+    class bool prepareFile(string root, string destination) {
+        string absoluteRoot = SemuOwnedPaths.normalized(root);
+        string absoluteDestination = SemuOwnedPaths.normalized(destination);
+        if (absoluteRoot.isEmpty() || absoluteDestination.isEmpty()
+                || absoluteDestination.equals(absoluteRoot)
+                || !SemuOwnedPaths.inside(absoluteDestination, absoluteRoot)
+                || !SemuOwnedPaths.prepareDirectory(absoluteRoot)
+                || !SemuOwnedPaths.prepareDirectory(
+                    PathTools.dirname(absoluteDestination))) {
+            return false;
+        }
+        string safe = SemuOwnedPaths.containedPath(
+            absoluteRoot, absoluteDestination);
+        FileStatus status = FileStatus(safe);
+        return !safe.isEmpty() && !status.isSymlink() && !status.isDir();
+    }
+
+    class bool writeText(string root, string destination, string content) {
+        return SemuOwnedPaths.prepareFile(root, destination)
+            && FileSystem.writeText(destination, content)
+            && !SemuOwnedPaths.containedPath(root, destination).isEmpty();
+    }
+
+    class string projectRoot(string explicitProject) {
+        if (!explicitProject.isEmpty()) {
+            return FileSystem.absolutePath(explicitProject);
+        }
+        string environmentProject = Environment.get("SEMU_PROJECT_DIR", "");
+        if (!environmentProject.isEmpty()) {
+            return FileSystem.absolutePath(environmentProject);
+        }
+        return FileSystem.currentDirectory();
+    }
+
+    class string configRoot(string projectRoot) {
+        string packaged = Environment.get("SEMU_SOURCE_ROOT", "");
+        return packaged.isEmpty()
+            ? PathTools.join(projectRoot, "config")
+            : FileSystem.absolutePath(packaged);
+    }
+
+    class string semuHome(string explicitHome, string projectRoot) {
+        if (!explicitHome.isEmpty()) {
+            return SemuOwnedPaths.normalized(explicitHome);
+        }
+        string environmentHome = Environment.get("SEMU_HOME", "");
+        if (!environmentHome.isEmpty()) {
+            return SemuOwnedPaths.normalized(environmentHome);
+        }
+        return SemuOwnedPaths.normalized(
+            PathTools.join(projectRoot, "settings"));
+    }
+
+    class string defaultOutput(string projectRoot, string operation,
+                               string target, string emulator) {
+        string buildRoot = PathTools.join(projectRoot, "build");
+        if (operation.equals("emulator")) {
+            return PathTools.join(buildRoot,
+                "emulators/" + emulator + "/" + target);
+        }
+        if (operation.equals("configs")) {
+            return PathTools.join(buildRoot, "configs/" + target);
+        }
+        if (operation.equals("package")) {
+            return PathTools.join(buildRoot, "appimage/" + target);
+        }
+        if (operation.equals("verify")) {
+            return PathTools.join(buildRoot, "verification/" + target);
+        }
+        return PathTools.join(buildRoot, "targets/" + target);
+    }
+
+    class bool isSourcePath(string path, string projectRoot) {
+        string absolute = FileSystem.absolutePath(path);
+        string sourceRoot = PathTools.join(projectRoot, "src");
+        string configRoot = PathTools.join(projectRoot, "config");
+        return absolute.equals(sourceRoot) || absolute.startsWith(sourceRoot + "/")
+            || absolute.equals(configRoot) || absolute.startsWith(configRoot + "/");
+    }
+}
+
+class SemuOwnedFileDigest {
+    class unsigned int rotate(unsigned int value, unsigned int count) {
+        return (value >> count) | (value << (32u - count));
+    }
+
+    class void transform(struct SemuOwnedSha256State* state) {
+        unsigned int constants[64] = {
+            0x428a2f98u, 0x71374491u, 0xb5c0fbcfu, 0xe9b5dba5u,
+            0x3956c25bu, 0x59f111f1u, 0x923f82a4u, 0xab1c5ed5u,
+            0xd807aa98u, 0x12835b01u, 0x243185beu, 0x550c7dc3u,
+            0x72be5d74u, 0x80deb1feu, 0x9bdc06a7u, 0xc19bf174u,
+            0xe49b69c1u, 0xefbe4786u, 0x0fc19dc6u, 0x240ca1ccu,
+            0x2de92c6fu, 0x4a7484aau, 0x5cb0a9dcu, 0x76f988dau,
+            0x983e5152u, 0xa831c66du, 0xb00327c8u, 0xbf597fc7u,
+            0xc6e00bf3u, 0xd5a79147u, 0x06ca6351u, 0x14292967u,
+            0x27b70a85u, 0x2e1b2138u, 0x4d2c6dfcu, 0x53380d13u,
+            0x650a7354u, 0x766a0abbu, 0x81c2c92eu, 0x92722c85u,
+            0xa2bfe8a1u, 0xa81a664bu, 0xc24b8b70u, 0xc76c51a3u,
+            0xd192e819u, 0xd6990624u, 0xf40e3585u, 0x106aa070u,
+            0x19a4c116u, 0x1e376c08u, 0x2748774cu, 0x34b0bcb5u,
+            0x391c0cb3u, 0x4ed8aa4au, 0x5b9cca4fu, 0x682e6ff3u,
+            0x748f82eeu, 0x78a5636fu, 0x84c87814u, 0x8cc70208u,
+            0x90befffau, 0xa4506cebu, 0xbef9a3f7u, 0xc67178f2u
+        };
+        unsigned int schedule[64];
+        for (int index = 0; index < 16; index++) {
+            int offset = index * 4;
+            schedule[index] = ((unsigned int)state->block[offset] << 24)
+                | ((unsigned int)state->block[offset + 1] << 16)
+                | ((unsigned int)state->block[offset + 2] << 8)
+                | (unsigned int)state->block[offset + 3];
+        }
+        for (int index = 16; index < 64; index++) {
+            unsigned int left = schedule[index - 15];
+            unsigned int right = schedule[index - 2];
+            unsigned int small0 = SemuOwnedFileDigest.rotate(left, 7u)
+                ^ SemuOwnedFileDigest.rotate(left, 18u) ^ (left >> 3);
+            unsigned int small1 = SemuOwnedFileDigest.rotate(right, 17u)
+                ^ SemuOwnedFileDigest.rotate(right, 19u) ^ (right >> 10);
+            schedule[index] = schedule[index - 16] + small0
+                + schedule[index - 7] + small1;
+        }
+
+        unsigned int a = state->words[0];
+        unsigned int b = state->words[1];
+        unsigned int c = state->words[2];
+        unsigned int d = state->words[3];
+        unsigned int e = state->words[4];
+        unsigned int f = state->words[5];
+        unsigned int g = state->words[6];
+        unsigned int h = state->words[7];
+        for (int index = 0; index < 64; index++) {
+            unsigned int large1 = SemuOwnedFileDigest.rotate(e, 6u)
+                ^ SemuOwnedFileDigest.rotate(e, 11u)
+                ^ SemuOwnedFileDigest.rotate(e, 25u);
+            unsigned int choose = (e & f) ^ ((~e) & g);
+            unsigned int first = h + large1 + choose
+                + constants[index] + schedule[index];
+            unsigned int large0 = SemuOwnedFileDigest.rotate(a, 2u)
+                ^ SemuOwnedFileDigest.rotate(a, 13u)
+                ^ SemuOwnedFileDigest.rotate(a, 22u);
+            unsigned int majority = (a & b) ^ (a & c) ^ (b & c);
+            unsigned int second = large0 + majority;
+            h = g;
+            g = f;
+            f = e;
+            e = d + first;
+            d = c;
+            c = b;
+            b = a;
+            a = first + second;
+        }
+        state->words[0] = state->words[0] + a;
+        state->words[1] = state->words[1] + b;
+        state->words[2] = state->words[2] + c;
+        state->words[3] = state->words[3] + d;
+        state->words[4] = state->words[4] + e;
+        state->words[5] = state->words[5] + f;
+        state->words[6] = state->words[6] + g;
+        state->words[7] = state->words[7] + h;
+    }
+
+    class void initialize(struct SemuOwnedSha256State* state) {
+        memset(state, 0, sizeof(struct SemuOwnedSha256State));
+        state->words[0] = 0x6a09e667u;
+        state->words[1] = 0xbb67ae85u;
+        state->words[2] = 0x3c6ef372u;
+        state->words[3] = 0xa54ff53au;
+        state->words[4] = 0x510e527fu;
+        state->words[5] = 0x9b05688cu;
+        state->words[6] = 0x1f83d9abu;
+        state->words[7] = 0x5be0cd19u;
+    }
+
+    class void update(struct SemuOwnedSha256State* state,
+                      unsigned char* bytes, size_t length) {
+        for (size_t index = 0; index < length; index++) {
+            state->block[state->used] = bytes[index];
+            state->used = state->used + (size_t)1;
+            if (state->used == (size_t)64) {
+                SemuOwnedFileDigest.transform(state);
+                state->bits = state->bits + 512ULL;
+                state->used = (size_t)0;
+            }
+        }
+    }
+
+    class void finish(struct SemuOwnedSha256State* state,
+                      unsigned char* digest) {
+        size_t index = state->used;
+        state->block[index] = 0x80u;
+        index = index + (size_t)1;
+        if (index > (size_t)56) {
+            while (index < (size_t)64) {
+                state->block[index] = 0;
+                index = index + (size_t)1;
+            }
+            SemuOwnedFileDigest.transform(state);
+            index = (size_t)0;
+        }
+        while (index < (size_t)56) {
+            state->block[index] = 0;
+            index = index + (size_t)1;
+        }
+        state->bits = state->bits + (unsigned long long)state->used * 8ULL;
+        for (int byte = 0; byte < 8; byte++) {
+            state->block[63 - byte] = (unsigned char)
+                (state->bits >> (unsigned int)(byte * 8));
+        }
+        SemuOwnedFileDigest.transform(state);
+        for (int word = 0; word < 8; word++) {
+            digest[word * 4] = (unsigned char)(state->words[word] >> 24);
+            digest[word * 4 + 1] = (unsigned char)(state->words[word] >> 16);
+            digest[word * 4 + 2] = (unsigned char)(state->words[word] >> 8);
+            digest[word * 4 + 3] = (unsigned char)state->words[word];
+        }
+    }
+
+    class string descriptor(int descriptor) {
+        if (descriptor < 0
+                || (long long)lseek(descriptor, 0, SEEK_SET) < 0) {
+            return "";
+        }
+        struct SemuOwnedSha256State state;
+        SemuOwnedFileDigest.initialize(&state);
+        unsigned char buffer[65536];
+        while (true) {
+            long long count = (long long)read(
+                descriptor, buffer, sizeof(buffer));
+            if (count > 0) {
+                SemuOwnedFileDigest.update(&state, buffer, (size_t)count);
+                continue;
+            }
+            if (count < 0 && errno == EINTR) { continue; }
+            if (count < 0
+                    || (long long)lseek(descriptor, 0, SEEK_SET) < 0) {
+                return "";
+            }
+            break;
+        }
+        unsigned char digest[32];
+        SemuOwnedFileDigest.finish(&state, digest);
+        char digits[17] = "0123456789abcdef";
+        char output[65];
+        for (int index = 0; index < 32; index++) {
+            output[index * 2] = digits[digest[index] >> 4];
+            output[index * 2 + 1] = digits[digest[index] & 15u];
+        }
+        output[64] = 0;
+        return Strings.copy(output);
+    }
+
+    class string file(string path) {
+        string absolute = SemuOwnedPaths.normalized(path);
+        if (absolute.isEmpty()) { return ""; }
+        int parent = UnixFileSystem.openDirectoryNoFollow(
+            PathTools.dirname(absolute));
+        if (parent < 0) { return ""; }
+        string name = PathTools.basename(absolute);
+        int descriptor = openat(parent, name,
+            (int)O_RDONLY | (int)O_NOFOLLOW | (int)O_CLOEXEC);
+        close(parent);
+        if (descriptor < 0) { return ""; }
+        struct stat status;
+        string digest = fstat(descriptor, &status) == 0
+                && S_ISREG(status.st_mode)
+            ? SemuOwnedFileDigest.descriptor(descriptor) : "";
+        close(descriptor);
+        return digest;
+    }
+}
+
+class SemuOwnedImportResult {
+    public bool ok;
+    public bool existing;
+    public string digest;
+    public string error;
+
+    public SemuOwnedImportResult() {
+        self.ok = false;
+        self.existing = false;
+        self.digest = "";
+        self.error = "";
+    }
+
+    class SemuOwnedImportResult success(string digest, bool existing) {
+        SemuOwnedImportResult result = SemuOwnedImportResult();
+        result.ok = true;
+        result.existing = existing;
+        result.digest = digest;
+        return result;
+    }
+
+    class SemuOwnedImportResult failure(string error) {
+        SemuOwnedImportResult result = SemuOwnedImportResult();
+        result.error = error;
+        return result;
+    }
+}
+
+class SemuOwnedFileImport {
+    class int source(string path, struct stat* openedStatus) {
+        string absolute = SemuOwnedPaths.normalized(path);
+        if (absolute.isEmpty()) { return -1; }
+        int parent = UnixFileSystem.openDirectoryNoFollow(
+            PathTools.dirname(absolute));
+        if (parent < 0) { return -1; }
+        string name = PathTools.basename(absolute);
+        struct stat inspected;
+        int descriptor = -1;
+        if (!name.isEmpty()
+                && fstatat(parent, name, &inspected,
+                    AT_SYMLINK_NOFOLLOW) == 0
+                && S_ISREG(inspected.st_mode)) {
+            descriptor = openat(parent, name,
+                (int)O_RDONLY | (int)O_NOFOLLOW | (int)O_CLOEXEC);
+        }
+        close(parent);
+        if (descriptor < 0 || fstat(descriptor, openedStatus) != 0
+                || !S_ISREG(openedStatus->st_mode)
+                || openedStatus->st_dev != inspected.st_dev
+                || openedStatus->st_ino != inspected.st_ino) {
+            if (descriptor >= 0) { close(descriptor); }
+            return -1;
+        }
+        return descriptor;
+    }
+
+    class bool copy(int source, int destination) {
+        if ((long long)lseek(source, 0, SEEK_SET) < 0) { return false; }
+        unsigned char buffer[65536];
+        while (true) {
+            long long count = (long long)read(source, buffer, sizeof(buffer));
+            if (count == 0) { return true; }
+            if (count < 0) {
+                if (errno == EINTR) { continue; }
+                return false;
+            }
+            long long offset = 0;
+            while (offset < count) {
+                long long written = (long long)write(
+                    destination, buffer + offset,
+                    (size_t)(count - offset));
+                if (written > 0) {
+                    offset = offset + written;
+                } else if (written < 0 && errno == EINTR) {
+                    continue;
+                } else {
+                    return false;
+                }
+            }
+        }
+        return false;
+    }
+
+    class SemuOwnedImportResult existing(
+            int source, struct stat* sourceStatus, int parent, string name,
+            string sourceDigest) {
+        struct stat inspected;
+        if (fstatat(parent, name, &inspected, AT_SYMLINK_NOFOLLOW) != 0
+                || !S_ISREG(inspected.st_mode)) {
+            return SemuOwnedImportResult.failure(
+                "seed target is not absent or a regular file");
+        }
+        int destination = openat(parent, name,
+            (int)O_RDONLY | (int)O_NOFOLLOW | (int)O_CLOEXEC);
+        struct stat opened;
+        if (destination < 0 || fstat(destination, &opened) != 0
+                || !S_ISREG(opened.st_mode)
+                || opened.st_dev != inspected.st_dev
+                || opened.st_ino != inspected.st_ino) {
+            if (destination >= 0) { close(destination); }
+            return SemuOwnedImportResult.failure(
+                "seed target changed during inspection");
+        }
+        string destinationDigest = SemuOwnedFileDigest.descriptor(destination);
+        close(destination);
+        struct stat sourceAfter;
+        string sourceAfterDigest = SemuOwnedFileDigest.descriptor(source);
+        bool exact = fstat(source, &sourceAfter) == 0
+            && sourceAfter.st_dev == sourceStatus->st_dev
+            && sourceAfter.st_ino == sourceStatus->st_ino
+            && sourceAfter.st_size == sourceStatus->st_size
+            && opened.st_size == sourceStatus->st_size
+            && !sourceDigest.isEmpty()
+            && sourceDigest.equals(sourceAfterDigest)
+            && sourceDigest.equals(destinationDigest);
+        return exact
+            ? SemuOwnedImportResult.success(sourceDigest, true)
+            : SemuOwnedImportResult.failure(
+                "existing seed target differs from every declared source");
+    }
+
+    class SemuOwnedImportResult once(
+            string root, string sourcePath, string destinationPath) {
+        string destination = SemuOwnedPaths.containedPath(
+            root, destinationPath);
+        if (destination.isEmpty()
+                || !SemuOwnedPaths.prepareFile(root, destination)) {
+            return SemuOwnedImportResult.failure(
+                "seed destination is outside owned state or crosses a symlink");
+        }
+
+        struct stat sourceStatus;
+        int source = SemuOwnedFileImport.source(sourcePath, &sourceStatus);
+        if (source < 0) {
+            return SemuOwnedImportResult.failure(
+                "declared seed source is not a no-follow regular file");
+        }
+        string sourceDigest = SemuOwnedFileDigest.descriptor(source);
+        if (sourceDigest.isEmpty()) {
+            close(source);
+            return SemuOwnedImportResult.failure(
+                "declared seed source could not be hashed");
+        }
+
+        string parentPath = PathTools.dirname(destination);
+        string targetName = PathTools.basename(destination);
+        int parent = UnixFileSystem.openDirectoryNoFollow(parentPath);
+        if (parent < 0 || targetName.isEmpty()) {
+            close(source);
+            if (parent >= 0) { close(parent); }
+            return SemuOwnedImportResult.failure(
+                "seed destination parent is not an owned directory");
+        }
+        struct stat targetStatus;
+        if (fstatat(parent, targetName, &targetStatus,
+                AT_SYMLINK_NOFOLLOW) == 0) {
+            SemuOwnedImportResult result = SemuOwnedFileImport.existing(
+                source, &sourceStatus, parent, targetName, sourceDigest);
+            close(parent);
+            close(source);
+            return result;
+        }
+        if (errno != ENOENT) {
+            close(parent);
+            close(source);
+            return SemuOwnedImportResult.failure(
+                "seed destination could not be inspected");
+        }
+
+        int incoming = -1;
+        string incomingName = "";
+        for (int attempt = 0; attempt < 128 && incoming < 0; attempt++) {
+            incomingName = "." + targetName + ".incoming."
+                + f"{(int)getpid()}." + f"{attempt}";
+            incoming = openat(parent, incomingName,
+                (int)O_RDWR | (int)O_CREAT | (int)O_EXCL
+                    | (int)O_NOFOLLOW | (int)O_CLOEXEC,
+                (mode_t)384); // 0600
+            if (incoming < 0 && errno != EEXIST) { break; }
+        }
+        if (incoming < 0) {
+            close(parent);
+            close(source);
+            return SemuOwnedImportResult.failure(
+                "could not create an exclusive incoming seed file");
+        }
+
+        bool copied = SemuOwnedFileImport.copy(source, incoming)
+            && fsync(incoming) == 0
+            && fchmod(incoming, (mode_t)384) == 0;
+        struct stat sourceAfter;
+        struct stat incomingStatus;
+        string incomingDigest = copied
+            ? SemuOwnedFileDigest.descriptor(incoming) : "";
+        string sourceAfterDigest = copied
+            ? SemuOwnedFileDigest.descriptor(source) : "";
+        copied = copied && fstat(source, &sourceAfter) == 0
+            && fstat(incoming, &incomingStatus) == 0
+            && sourceAfter.st_dev == sourceStatus.st_dev
+            && sourceAfter.st_ino == sourceStatus.st_ino
+            && sourceAfter.st_size == sourceStatus.st_size
+            && incomingStatus.st_size == sourceStatus.st_size
+            && sourceDigest.equals(sourceAfterDigest)
+            && sourceDigest.equals(incomingDigest);
+        close(incoming);
+        if (!copied) {
+            unlinkat(parent, incomingName, 0);
+            close(parent);
+            close(source);
+            return SemuOwnedImportResult.failure(
+                "incoming seed does not match its unchanged read-only source");
+        }
+
+        bool published = semuOwnedLinkNoReplace(
+            parent, incomingName, targetName) == 0;
+        bool cleaned = unlinkat(parent, incomingName, 0) == 0;
+        bool durable = published && cleaned && fsync(parent) == 0;
+        close(parent);
+        close(source);
+        if (!durable) {
+            return SemuOwnedImportResult.failure(published
+                ? "seed was published but its transaction could not be finalized"
+                : "seed target appeared before atomic publication");
+        }
+        return SemuOwnedFileDigest.file(destination).equals(sourceDigest)
+            ? SemuOwnedImportResult.success(sourceDigest, false)
+            : SemuOwnedImportResult.failure(
+                "published seed differs from its verified incoming file");
+    }
+}

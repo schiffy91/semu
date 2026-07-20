@@ -1,0 +1,105 @@
+--- a/pcsx2/GS/Renderers/OpenGL/GSDeviceOGL.cpp
++++ b/pcsx2/GS/Renderers/OpenGL/GSDeviceOGL.cpp
+@@ -17,10 +17,38 @@
+ #include "imgui.h"
+ #include "IconsFontAwesome6.h"
+ 
++#ifdef HAVE_SEMU_RENDERER
++#include <semu_renderer.h>
++#endif
++
++#include <algorithm>
++#include <cmath>
++#include <cstring>
+ #include <cinttypes>
+ #include <fstream>
+ #include <sstream>
+ 
++#ifdef HAVE_SEMU_RENDERER
++static GLContext* s_semu_context = nullptr;
++static SemuRenderFrameGl s_semu_frame = {};
++static u64 s_semu_frame_id = 0;
++
++static void* SemuGetProcAddress(const char* name)
++{
++	return s_semu_context ? s_semu_context->GetProcAddress(name) : nullptr;
++}
++
++static void* SemuCurrentContext()
++{
++	return s_semu_context && s_semu_context->IsCurrent() ? s_semu_context : nullptr;
++}
++
++static void SemuClearFrame()
++{
++	std::memset(&s_semu_frame, 0, sizeof(s_semu_frame));
++}
++#endif
++
+ static constexpr u32 g_vs_cb_index        = 1;
+ static constexpr u32 g_ps_cb_index        = 0;
+ 
+@@ -948,6 +976,12 @@
+ {
+ 	RenderImGui();
+ 
++#ifdef HAVE_SEMU_RENDERER
++	if (s_semu_frame.frame_id != 0 && s_semu_context == m_gl_context.get())
++		semu_render_post_ui_gl(&s_semu_frame);
++	SemuClearFrame();
++#endif
++
+ 	if (m_gpu_timing_enabled)
+ 		PopTimestampQuery();
+ 
+@@ -1566,6 +1600,50 @@
+ 	// Only flipping the backbuffer is transparent (I hope)...
+ 	const GSVector4 flip_sr(sRect.xwzy());
+ 	DrawStretchRect(flip_sr, dRect, ds);
++
++#ifdef HAVE_SEMU_RENDERER
++	if (dTex == nullptr && ds.x > 0 && ds.y > 0)
++	{
++		const int content_left = std::clamp(static_cast<int>(std::floor(std::min(dRect.x, dRect.z))), 0, ds.x);
++		const int content_bottom = std::clamp(static_cast<int>(std::floor(std::min(dRect.y, dRect.w))), 0, ds.y);
++		const int content_right = std::clamp(static_cast<int>(std::ceil(std::max(dRect.x, dRect.z))), 0, ds.x);
++		const int content_top = std::clamp(static_cast<int>(std::ceil(std::max(dRect.y, dRect.w))), 0, ds.y);
++		const int native_width = static_cast<int>(std::lround(std::abs(sRect.z - sRect.x) * sTex->GetWidth()));
++		const int native_height = static_cast<int>(std::lround(std::abs(sRect.w - sRect.y) * sTex->GetHeight()));
++
++		if (content_right > content_left && content_top > content_bottom && native_width > 0 && native_height > 0)
++		{
++			SemuClearFrame();
++			s_semu_context = m_gl_context.get();
++			if (++s_semu_frame_id == 0)
++				s_semu_frame_id = 1;
++
++			s_semu_frame.abi = SEMU_RENDER_ABI_GL;
++			s_semu_frame.struct_size = sizeof(s_semu_frame);
++			s_semu_frame.frame_id = s_semu_frame_id;
++			s_semu_frame.framebuffer = 0;
++			s_semu_frame.color_buffer = GL_BACK;
++			s_semu_frame.framebuffer_width = ds.x;
++			s_semu_frame.framebuffer_height = ds.y;
++			s_semu_frame.presentation_aspect = static_cast<float>(content_right - content_left) /
++				static_cast<float>(content_top - content_bottom);
++			s_semu_frame.layout_variant = s_semu_frame.presentation_aspect >= 1.5f ?
++				SEMU_RENDER_LAYOUT_VARIANT_B : SEMU_RENDER_LAYOUT_DEFAULT;
++			s_semu_frame.surface_count = 1;
++			s_semu_frame.surfaces[0].x = content_left;
++			s_semu_frame.surfaces[0].y = content_bottom;
++			s_semu_frame.surfaces[0].width = content_right - content_left;
++			s_semu_frame.surfaces[0].height = content_top - content_bottom;
++			s_semu_frame.surfaces[0].native_width = native_width;
++			s_semu_frame.surfaces[0].native_height = native_height;
++			s_semu_frame.surfaces[0].rotation = 0;
++			s_semu_frame.surfaces[0].origin = SEMU_RENDER_ORIGIN_BOTTOM_LEFT;
++			s_semu_frame.get_proc = SemuGetProcAddress;
++			s_semu_frame.current_context = SemuCurrentContext;
++			semu_render_game_gl(&s_semu_frame);
++		}
++	}
++#endif
+ }
+ 
+ void GSDeviceOGL::UpdateCLUTTexture(GSTexture* sTex, float sScale, u32 offsetX, u32 offsetY, GSTexture* dTex, u32 dOffset, u32 dSize)

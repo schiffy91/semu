@@ -1,0 +1,242 @@
+// rendering.btrc - compile Semu system presentation policy into renderer ABI state.
+
+import std.{fs, json, vector}
+import ../compiler/model.btrc
+import ../lib/rendering_definition.btrc
+
+class SemuRenderingEnvironment {
+    public Vector<string> keys;
+    public Vector<string> values;
+
+    public SemuRenderingEnvironment() {
+        self.keys = [];
+        self.values = [];
+    }
+
+    public void set(string key, string value) {
+        for (int index = 0; index < self.keys.size(); index++) {
+            if (self.keys.get(index).equals(key)) {
+                self.values.set(index, value);
+                return;
+            }
+        }
+        self.keys.push(key);
+        self.values.push(value);
+    }
+
+    public string get(string key) {
+        for (int index = 0; index < self.keys.size(); index++) {
+            if (self.keys.get(index).equals(key)) {
+                return self.values.get(index);
+            }
+        }
+        return "";
+    }
+}
+
+class SemuRenderingAssets {
+    class string firstFile(Vector<string> candidates) {
+        for candidate in candidates {
+            if (FileSystem.isFile(candidate)) {
+                string canonical = UnixFileSystem.realPath(candidate);
+                return canonical.isEmpty() ? candidate : canonical;
+            }
+        }
+        return "";
+    }
+
+    class string shader(string projectRoot, string assetRoot,
+                        string logicalPath) {
+        string prefix = "assets/shaders/";
+        if (!logicalPath.startsWith(prefix)) { return ""; }
+        string relative = logicalPath.substring(prefix.len(), logicalPath.len());
+        return SemuRenderingAssets.firstFile([
+            PathTools.join(assetRoot,
+                "share/libretro/shaders/semu/" + relative),
+            PathTools.join(projectRoot,
+                "build/nix/result/share/libretro/shaders/semu/" + relative)
+        ]);
+    }
+
+    class string image(string projectRoot, string assetRoot,
+                       string logicalPath) {
+        if (!logicalPath.startsWith("assets/")) { return ""; }
+        return SemuRenderingAssets.firstFile([
+            PathTools.join(assetRoot, "share/semu/" + logicalPath),
+            PathTools.join(projectRoot,
+                "build/nix/result/share/semu/" + logicalPath),
+            PathTools.join(projectRoot, "config/" + logicalPath)
+        ]);
+    }
+}
+
+class SemuRenderingCompiler {
+    class string suffix(int index) {
+        Vector<string> suffixes = ["", "_B", "_C", "_D"];
+        return index >= 0 && index < suffixes.size()
+            ? suffixes.get(index) : "";
+    }
+
+    class void emitVariant(SemuRenderingEnvironment environment,
+                           SemuCompilerModel model, SemuSystemSource system,
+                           string assetRoot, string suffix, string variantId,
+                           string shaderPath, CompilerDiagnostics diagnostics) {
+        JsonValue variant = SemuRenderingDefinition.variant(
+            system.bezels, variantId);
+        if (!shaderPath.isEmpty()) {
+            environment.set("SEMU_RENDER_SHADER_PRESET" + suffix, shaderPath);
+        }
+        if (!variant.isObject()) { return; }
+        string logicalArt = variant.get("art").isString()
+            ? variant.get("art").asString() : "";
+        string art = SemuRenderingAssets.image(
+            model.projectRoot, assetRoot, logicalArt);
+        if (art.isEmpty()) {
+            diagnostics.add(system.bezelsFile,
+                "variants." + variantId + ".art",
+                "declared bezel art is absent from the runtime asset root");
+            return;
+        }
+        environment.set("SEMU_RENDER_ART" + suffix, art);
+        if (variant.get("glass").isString()) {
+            string glass = SemuRenderingAssets.image(model.projectRoot,
+                assetRoot, variant.get("glass").asString());
+            if (glass.isEmpty()) {
+                diagnostics.add(system.bezelsFile,
+                    "variants." + variantId + ".glass",
+                    "declared glass art is absent from the runtime asset root");
+            } else {
+                environment.set("SEMU_RENDER_GLASS" + suffix, glass);
+            }
+        }
+        JsonValue hole = variant.get("hole").isObject()
+            ? variant.get("hole") : system.bezels.get("hole");
+        JsonValue holes = variant.get("screen_holes").isObject()
+            ? variant.get("screen_holes") : system.bezels.get("screen_holes");
+        if (holes.isObject()) {
+            environment.set("SEMU_RENDER_SCREEN_PRI" + suffix,
+                SemuRenderingDefinition.rect(holes.get("top")));
+            environment.set("SEMU_RENDER_SCREEN_SEC" + suffix,
+                SemuRenderingDefinition.rect(holes.get("bottom")));
+        } else {
+            environment.set("SEMU_RENDER_SCREEN" + suffix,
+                SemuRenderingDefinition.rect(hole));
+        }
+    }
+
+    class void emitResolvedVariants(
+            SemuRenderingEnvironment environment, SemuCompilerModel model,
+            SemuSystemSource system, string assetRoot, string layout,
+            string defaultVariant, string shaderPath,
+            CompilerDiagnostics diagnostics) {
+        if (!layout.equals("auto")) {
+            for (int index = 0; index < 4; index++) {
+                SemuRenderingCompiler.emitVariant(environment, model, system,
+                    assetRoot, SemuRenderingCompiler.suffix(index), layout,
+                    shaderPath, diagnostics);
+            }
+            return;
+        }
+        SemuRenderingCompiler.emitVariant(environment, model, system,
+            assetRoot, "", defaultVariant, shaderPath, diagnostics);
+        string widescreen = system.bezels.get("widescreen_variant").isString()
+            ? system.bezels.get("widescreen_variant").asString() : "";
+        if (!widescreen.isEmpty() && !widescreen.equals(defaultVariant)) {
+            SemuRenderingCompiler.emitVariant(environment, model, system,
+                assetRoot, "_B", widescreen, shaderPath, diagnostics);
+        }
+    }
+
+    class SemuRenderingEnvironment compile(
+            SemuCompilerModel model, SemuSystemSource system,
+            string emulatorId, string assetRoot, string stateRoot,
+            JsonValue settings, CompilerDiagnostics diagnostics) {
+        SemuRenderingEnvironment environment = SemuRenderingEnvironment();
+        string logicalShader = SemuRenderingDefinition.text(settings,
+            "visual.systems." + system.id + ".shader_file",
+            system.shaders.get("screen").isString()
+                ? system.shaders.get("screen").asString() : "none");
+        bool requestedShaders = system.shaders.get("enabled").isBool()
+            && system.shaders.get("enabled").asBool() != 0
+            && SemuRenderingDefinition.boolean(
+                settings, "visual.crt_shaders", true)
+            && SemuRenderingDefinition.boolean(settings,
+                "visual.systems." + system.id + ".shaders", true);
+        bool shaders = requestedShaders && !logicalShader.equals("none");
+        string defaultVariant = SemuRenderingDefinition.text(settings,
+            "visual.systems." + system.id + ".bezel_variant",
+            system.bezels.get("default_variant").isString()
+                ? system.bezels.get("default_variant").asString() : "none");
+        bool requestedBezels = system.bezels.get("enabled").isBool()
+            && system.bezels.get("enabled").asBool() != 0
+            && SemuRenderingDefinition.boolean(settings, "visual.bezels", true)
+            && SemuRenderingDefinition.boolean(settings,
+                "visual.systems." + system.id + ".bezels", true);
+        bool bezels = requestedBezels && !defaultVariant.equals("none");
+        environment.set("SEMU_RENDER_SYSTEM_ID", system.id);
+        environment.set("SEMU_RENDER_EMULATOR_ID", emulatorId);
+        environment.set("SEMU_RENDER_STATE_DIR", stateRoot);
+        environment.set("SEMU_RENDER_SHADERS", shaders ? "1" : "0");
+        environment.set("SEMU_RENDER_BEZELS", bezels ? "1" : "0");
+        environment.set("SEMU_RENDER_INTEGER_SCALE",
+            SemuRenderingDefinition.boolean(
+                settings, "visual.integer_scaling", true) ? "1" : "0");
+
+        JsonValue render = system.definition.get("render");
+        JsonValue display = system.definition.get("display");
+        string layout = SemuRenderingDefinition.text(settings,
+            "visual.systems." + system.id + ".layout", "auto");
+        if (bezels && !SemuRenderingDefinition.variant(
+                system.bezels, defaultVariant).isObject()) {
+            diagnostics.add(system.bezelsFile, "default_variant",
+                "resolved bezel variant is not declared");
+        }
+        if (!layout.equals("auto") && !SemuRenderingDefinition.variant(
+                system.bezels, layout).isObject()) {
+            diagnostics.add(system.bezelsFile, "variants",
+                "resolved layout is not a declared presentation variant");
+        }
+        string style = render.get("style").isString()
+            ? render.get("style").asString() : "";
+        JsonValue screens = display.get("screens");
+        string selectedLayout = layout.equals("auto")
+            ? defaultVariant : layout;
+        if (screens.isArray() && screens.size() == 2
+                && selectedLayout.contains("horizontal")) {
+            style = "horizontal";
+        }
+        environment.set("SEMU_RENDER_STYLE", style);
+        JsonValue aspect = display.get("aspect");
+        if (aspect.isObject() && aspect.get("w").isInt()
+                && aspect.get("h").isInt() && aspect.get("h").asInt() > 0) {
+            environment.set("SEMU_RENDER_ASPECT",
+                f"{aspect.get("w").asInt()}:{aspect.get("h").asInt()}");
+        }
+        if (render.get("reflect").isNumber()) {
+            environment.set("SEMU_RENDER_REFLECT",
+                f"{render.get("reflect").asFloat()}");
+        }
+
+        string shaderPath = "";
+        if (shaders) {
+            if (!SemuRenderingDefinition.assetDeclared(
+                    model.assets.shaders, logicalShader)) {
+                diagnostics.add(system.shadersFile, "screen",
+                    "resolved shader is absent from the asset manifest");
+            } else {
+                shaderPath = SemuRenderingAssets.shader(
+                    model.projectRoot, assetRoot, logicalShader);
+                if (shaderPath.isEmpty()) {
+                    diagnostics.add(system.shadersFile, "screen",
+                        "declared shader is absent from the runtime asset root");
+                }
+            }
+        }
+        if (bezels || shaders) {
+            SemuRenderingCompiler.emitResolvedVariants(environment, model,
+                system, assetRoot, layout, defaultVariant, shaderPath,
+                diagnostics);
+        }
+        return environment;
+    }
+}

@@ -1,0 +1,348 @@
+{
+  "schema_version": 2,
+  "doc": {
+    "purpose": "Global screen-shader manifest: stages the pinned libretro shader tree and emits Semu-owned screen preset wrappers."
+  },
+  "upstreams": {
+    "libretro_slang": {
+      "kind": "nixpkgs",
+      "attr": "libretro-shaders-slang"
+    }
+  },
+  "trees": {
+    "shaders_slang": {
+      "from": "libretro_slang",
+      "stage": "shaders_slang"
+    }
+  },
+  "assets": {
+    "assets/shaders/fallback/crt.slangp": {
+      "type": "slang_wrapper",
+      "reference": {
+        "tree": "shaders_slang",
+        "path": "bezel/Mega_Bezel/Presets/MBZ__5__POTATO.slangp",
+        "sha256": "4a6bb7fd0e716013f28b2c93d97c9b787f20c2b0a728e9208a786887861797f6"
+      },
+      "requires": [
+        "shaders_slang"
+      ],
+      "output": {
+        "sha256": "9e622ef865a95f6c8c6b5e11f5e9e920200777ad5b7f4d3e4a804fa6cb217c7c"
+      }
+    },
+    "assets/shaders/gb/screen.slangp": {
+      "type": "slang_wrapper",
+      "reference": {
+        "tree": "shaders_slang",
+        "path": "handheld/gameboy.slangp",
+        "sha256": "0aeebf5dcc15a8a3e5a3aa5c0a2a6f66cf13eb15aec890b483424d23bce9f4e7"
+      },
+      "requires": [
+        "shaders_slang"
+      ],
+      "params": {
+        "adjacent_texel_alpha_blending": 0.35,
+        "contrast": 0.9,
+        "palette": 4,
+        "pixel_opacity": 0.9,
+        "pixel_size": 1.1,
+        "pixel_softness": 5,
+        "response_time": 0.333,
+        "screen_light": 1.15,
+        "shadow_enable": 0,
+        "sharp_mode": 1
+      },
+      "output": {
+        "sha256": "9808224c81dc56182101e38b05eda50bd28f2fc197a2f59d2347e2610490c48c"
+      },
+      "doc": {
+        "why": "DMG palette and temporal LCD response with a crisp dot matrix sized for the declared 282x254 bezel aperture; real-device appearance remains a physical acceptance gate."
+      }
+    },
+    "assets/shaders/gbc/screen.slangp": {
+      "type": "slang_pipeline",
+      "passes": [
+        {
+          "tree": "shaders_slang",
+          "path": "motionblur/shaders/response-time.slang",
+          "sha256": "d47a142527d94f01a34170f6ff1951e42f46b2ae36651149037fcd63a4d1906f",
+          "filter_linear": false,
+          "scale_type": "source",
+          "scale": 1
+        },
+        {
+          "tree": "shaders_slang",
+          "path": "handheld/shaders/color/gbc-color.slang",
+          "sha256": "ef74a7c7a9519fd4301ea55ad09ecbd8e958f6f03657c83a7a45fcfb429b15b3",
+          "filter_linear": true,
+          "scale_type": "viewport",
+          "scale": 1
+        },
+        {
+          "tree": "shaders_slang",
+          "path": "misc/shaders/image-adjustment.slang",
+          "sha256": "e608b1dd71d660d2ce8a77ee3e3a62ad5047d50a75adc8db7b4a1b7c1be83e2d",
+          "filter_linear": true,
+          "scale_type": "viewport",
+          "scale": 1
+        }
+      ],
+      "requires": [
+        "shaders_slang"
+      ],
+      "params": {
+        "ia_black_level": 0.3,
+        "ia_bright_boost": 0.3,
+        "ia_luminance": 2,
+        "ia_saturation": 1,
+        "lighten_screen": 0.15,
+        "mode": 1,
+        "response_time": 0.222
+      },
+      "output": {
+        "sha256": "e07b4a7584c41179ae5ab93765b5fa2586062dcedf6fa2e1e99bd63478fc3011"
+      },
+      "doc": {
+        "why": "GBC color response and persistence without a magnified RGB textile pattern. Paired brightness and black-level values expose the reflective panel while preserving true black; the chain passes direct EGL readback, while real-ROM appearance remains a physical acceptance gate."
+      }
+    },
+    "assets/shaders/gba/screen.slangp": {
+      "type": "slang_pipeline",
+      "passes": [
+        {
+          "tree": "shaders_slang",
+          "path": "motionblur/shaders/response-time.slang",
+          "sha256": "d47a142527d94f01a34170f6ff1951e42f46b2ae36651149037fcd63a4d1906f",
+          "filter_linear": false,
+          "scale_type": "source",
+          "scale": 1
+        },
+        {
+          "tree": "shaders_slang",
+          "path": "handheld/shaders/color/NSO-gba-color.slang",
+          "sha256": "05d899f0b4d80ed1a3a551c6a082b442c77761eccd75dd2582de52d8f94a00f8",
+          "filter_linear": true,
+          "scale_type": "viewport",
+          "scale": 1
+        },
+        {
+          "tree": "shaders_slang",
+          "path": "misc/shaders/image-adjustment.slang",
+          "sha256": "e608b1dd71d660d2ce8a77ee3e3a62ad5047d50a75adc8db7b4a1b7c1be83e2d",
+          "filter_linear": true,
+          "scale_type": "viewport",
+          "scale": 1
+        }
+      ],
+      "requires": [
+        "shaders_slang"
+      ],
+      "params": {
+        "darken_screen": 0,
+        "ia_bright_boost": 0.05,
+        "ia_luminance": 1.5,
+        "ia_saturation": 1,
+        "mode": 1,
+        "response_time": 0.222
+      },
+      "output": {
+        "sha256": "d166f663906daebe92dde76229f0138a147fb7365e0421c9690581c7a8c663ec"
+      },
+      "doc": {
+        "why": "GBA response and persistence without a magnified RGB textile pattern. The positive-coefficient NSO color matrix avoids undefined fractional powers from the legacy GBA matrix, while the bounded luminance pass preserves readable reflected color; the exact chain must pass nonuniform direct EGL readback."
+      }
+    },
+    "assets/shaders/nes/screen.slangp": {
+      "type": "slang_wrapper",
+      "reference": {
+        "tree": "shaders_slang",
+        "path": "ntsc/ntsc-256px-composite-scanline.slangp",
+        "sha256": "d3e721c23e7684f432a8bc3ce5fa72f7185bcfc799c15dd889619d278a1ad0f3"
+      },
+      "requires": [
+        "shaders_slang"
+      ],
+      "output": {
+        "sha256": "6588e321463a2b0fbb4d19cdf7d6ed3eebed66a7cb8aec654076d250e16ed87e"
+      }
+    },
+    "assets/shaders/snes/screen.slangp": {
+      "type": "slang_wrapper",
+      "reference": {
+        "tree": "shaders_slang",
+        "path": "ntsc/ntsc-256px-svideo-scanline.slangp",
+        "sha256": "ba3306552a5c6f554243b50595f03a93b47797ea62e474f76c2d29f03264c98b"
+      },
+      "requires": [
+        "shaders_slang"
+      ],
+      "output": {
+        "sha256": "12a66eb0833ede1086b1aebe31b7fc9a4af1c428691ac921b522446a577b02a1"
+      }
+    },
+    "assets/shaders/genesis/screen.slangp": {
+      "type": "slang_wrapper",
+      "reference": {
+        "tree": "shaders_slang",
+        "path": "presets/crt-royale-fast/crt-royale-fast-ntsc-composite-aperture-genesis-rainbow-effect.slangp",
+        "sha256": "8814cce4e76df3e0507a6d6ecb2c709ae6a1100a1498389c7bb7d84e7e20719a"
+      },
+      "requires": [
+        "shaders_slang"
+      ],
+      "output": {
+        "sha256": "4a50d60e5738f1b103b9ea36d78c3cd7be2876119936071cc4030ae30f27cb92"
+      },
+      "doc": {
+        "why": "Size-adaptive Genesis composite decoding and a consumer aperture-grille CRT reproduce the console's color blending, scan structure, and rainbow artifacts without assuming a 320-pixel core surface."
+      }
+    },
+    "assets/shaders/n64/screen.slangp": {
+      "type": "slang_wrapper",
+      "reference": {
+        "tree": "shaders_slang",
+        "path": "crt/crt-hyllian.slangp",
+        "sha256": "f858cdb6fb9fa2786f85584a66915429e73c9c0cf7b8aea8548b213d2a17363f"
+      },
+      "requires": [
+        "shaders_slang"
+      ],
+      "output": {
+        "sha256": "e7ec3abf2ec66820546ac3188603dba9c9dfa59a9c8df9db6a2b04ebe3b342d3"
+      },
+      "doc": {
+        "why": "crt-hyllian's soft bright glow approximates the N64 VI filter and is a genuinely different chain from psx's crt-royale. Royale's beam parameters are compile-time constants, so preset overrides are ignored and produce byte-identical output."
+      }
+    },
+    "assets/shaders/psx/screen.slangp": {
+      "type": "slang_wrapper",
+      "reference": {
+        "tree": "shaders_slang",
+        "path": "crt/crt-royale.slangp",
+        "sha256": "724e0196cf83da1a229bc896e970d639b4cbeb9c41f341e1e5764780fecede96"
+      },
+      "requires": [
+        "shaders_slang"
+      ],
+      "output": {
+        "sha256": "35c3501464d7a81e5d92e3649e6216a4fc0a7e612ae5d91c3baa410cd30daccd"
+      }
+    },
+    "assets/shaders/nds/screen.slangp": {
+      "type": "slang_wrapper",
+      "reference": {
+        "tree": "shaders_slang",
+        "path": "handheld/lcd1x_nds.slangp",
+        "sha256": "e665adcb83e51ca2b1e54a618cd33a54c45cb55ded21b00f5b92bb51ded22e9f"
+      },
+      "requires": [
+        "shaders_slang"
+      ],
+      "output": {
+        "sha256": "41a305a4d8b792b7f0d5c196198842ab0aaf38afa37a0f1722f8ae5e14f8ca99"
+      },
+      "doc": {
+        "why": "NDS-tuned LCD grid; replaces the missing lcd-grid-v2 motionblur edition"
+      }
+    },
+    "assets/shaders/psp/screen.slangp": {
+      "type": "slang_wrapper",
+      "reference": {
+        "tree": "shaders_slang",
+        "path": "handheld/lcd1x_psp.slangp",
+        "sha256": "17f797ceb0fb46e0af61e5a5b4a7a14a99213fa611470cd6ba8e478a1f8debd4"
+      },
+      "requires": [
+        "shaders_slang"
+      ],
+      "output": {
+        "sha256": "a3ebc7effe657acb51c291d95daa57e2e5eb86e5194f5adf88650a1e3c5fc4f9"
+      },
+      "doc": {
+        "why": "PSP-tuned LCD grid; replaces the missing lcd-grid-v2 motionblur edition"
+      }
+    },
+    "assets/shaders/dreamcast/screen.slangp": {
+      "type": "slang_wrapper",
+      "reference": {
+        "tree": "shaders_slang",
+        "path": "crt/crt-royale.slangp",
+        "sha256": "724e0196cf83da1a229bc896e970d639b4cbeb9c41f341e1e5764780fecede96"
+      },
+      "requires": [
+        "shaders_slang"
+      ],
+      "output": {
+        "sha256": "35c3501464d7a81e5d92e3649e6216a4fc0a7e612ae5d91c3baa410cd30daccd"
+      }
+    },
+    "assets/shaders/gc/screen.slangp": {
+      "type": "slang_wrapper",
+      "reference": {
+        "tree": "shaders_slang",
+        "path": "crt/crt-royale.slangp",
+        "sha256": "724e0196cf83da1a229bc896e970d639b4cbeb9c41f341e1e5764780fecede96"
+      },
+      "requires": [
+        "shaders_slang"
+      ],
+      "output": {
+        "sha256": "35c3501464d7a81e5d92e3649e6216a4fc0a7e612ae5d91c3baa410cd30daccd"
+      },
+      "doc": {
+        "why": "GameCube's 480i/480p analog output is presented through the shared CRT chain; aspect-aware bezel selection remains independent."
+      }
+    },
+    "assets/shaders/wii/screen.slangp": {
+      "type": "slang_wrapper",
+      "reference": {
+        "tree": "shaders_slang",
+        "path": "crt/crt-royale.slangp",
+        "sha256": "724e0196cf83da1a229bc896e970d639b4cbeb9c41f341e1e5764780fecede96"
+      },
+      "requires": [
+        "shaders_slang"
+      ],
+      "output": {
+        "sha256": "35c3501464d7a81e5d92e3649e6216a4fc0a7e612ae5d91c3baa410cd30daccd"
+      },
+      "doc": {
+        "why": "Wii's analog television output shares the GameCube-era CRT chain while 4:3 and 16:9 geometry remain dynamically resolved."
+      }
+    },
+    "assets/shaders/ps2/screen.slangp": {
+      "type": "slang_wrapper",
+      "reference": {
+        "tree": "shaders_slang",
+        "path": "crt/crt-royale.slangp",
+        "sha256": "724e0196cf83da1a229bc896e970d639b4cbeb9c41f341e1e5764780fecede96"
+      },
+      "requires": [
+        "shaders_slang"
+      ],
+      "output": {
+        "sha256": "35c3501464d7a81e5d92e3649e6216a4fc0a7e612ae5d91c3baa410cd30daccd"
+      },
+      "doc": {
+        "why": "PS2's predominantly 480i analog output uses the shared high-quality CRT chain with aspect-aware 4:3 and 16:9 presentation."
+      }
+    },
+    "assets/shaders/n3ds/screen.slangp": {
+      "type": "slang_wrapper",
+      "reference": {
+        "tree": "shaders_slang",
+        "path": "handheld/lcd1x.slangp",
+        "sha256": "6dc15344013b6e3f426816a5df26772e9dfc7039868cf72959ac0ba459cf3fa1"
+      },
+      "requires": [
+        "shaders_slang"
+      ],
+      "output": {
+        "sha256": "ea2677e559812339ae1b18271864790f8c9aaeb9d26be4d3438b7a80b6bd65ba"
+      },
+      "doc": {
+        "why": "Generic LCD grid for the 3DS panels (no 3DS-tuned edition upstream; lcd1x matches the nds/psp family)."
+      }
+    }
+  }
+}

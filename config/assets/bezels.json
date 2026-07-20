@@ -1,0 +1,777 @@
+{
+  "schema_version": 1,
+  "doc": {
+    "purpose": "Global bezel manifest: central selection policy, generic fallbacks, and deterministic bezel-art recipes.",
+    "provenance": "Semu-owned originals carry exact output metadata. Remaining upstream assets are explicitly pinned for handheld and dual-screen presentations only.",
+    "shared_pins": "Upstreams named in both this file and shaders.json must carry identical rev/nar_hash pins; NixPackageContract enforces agreement."
+  },
+  "upstreams": {
+    "duimon_mega_bezel": {
+      "kind": "github",
+      "owner": "Duimon",
+      "repo": "Duimon-Mega-Bezel",
+      "rev": "d03dabf6e6b190dbf9b692efd492d8edd21abbb9",
+      "nar_hash": "sha256-EvWkMiw5ne0Im43404NVTJiQO5mWhMVNEk7fdpgb5rY="
+    }
+  },
+  "policy": {
+    "doc": {
+      "purpose": "Central bezel selection policy. Presentations own asset paths and source-pixel geometry without putting path policy in BTRC.",
+      "geometry": "Each presentation binds normalized runtime rectangles to explicit source-pixel apertures. The 4:3 and 16:9 CRTs are shared across systems so aspect substitution changes geometry and art together.",
+      "quality": "Asset identity and geometry are machine-verifiable. Visual realism remains a physical screenshot acceptance gate."
+    },
+    "presentations": {
+      "crt_4x3": {
+        "label": "Premium 4:3 CRT",
+        "art": "assets/bezels/tv/crt-4x3.png",
+        "aspect": {
+          "w": 4,
+          "h": 3
+        },
+        "hole": {
+          "x": 0.25,
+          "y": 0.1616161616161616,
+          "w": 0.5,
+          "h": 0.6
+        },
+        "geometry": {
+          "method": "measured_continuous_opening",
+          "canvas": {
+            "w": 1584,
+            "h": 990
+          },
+          "source_pixels": {
+            "x": 396,
+            "y": 160,
+            "w": 792,
+            "h": 594
+          }
+        }
+      },
+      "crt_16x9": {
+        "label": "Premium 16:9 CRT",
+        "art": "assets/bezels/tv/crt-16x9.png",
+        "aspect": {
+          "w": 16,
+          "h": 9
+        },
+        "hole": {
+          "x": 0.1375,
+          "y": 0.13125,
+          "w": 0.725,
+          "h": 0.6525
+        },
+        "geometry": {
+          "method": "measured_continuous_opening",
+          "canvas": {
+            "w": 1280,
+            "h": 800
+          },
+          "source_pixels": {
+            "x": 176,
+            "y": 105,
+            "w": 928,
+            "h": 522
+          }
+        }
+      },
+      "gb_classic_gray": {
+        "label": "Classic Gray",
+        "art": "assets/bezels/gb/classic.png",
+        "hole": {
+          "x": 0.2422535211,
+          "y": 0.1760324983,
+          "w": 0.5577464789,
+          "h": 0.3619498984
+        },
+        "geometry": {
+          "method": "aspect_constrained_lens_fit",
+          "canvas": {
+            "w": 1065,
+            "h": 1477
+          },
+          "source_pixels": {
+            "x": 258,
+            "y": 260,
+            "w": 594,
+            "h": 534.6
+          }
+        }
+      },
+      "gbc_frost_purple": {
+        "label": "Frost Purple",
+        "art": "assets/bezels/gbc/frost-purple.png",
+        "hole": {
+          "x": 0.3409090909,
+          "y": 0.1303030303,
+          "w": 0.3207070707,
+          "h": 0.4050505051
+        },
+        "geometry": {
+          "method": "measured_continuous_lens",
+          "canvas": {
+            "w": 1584,
+            "h": 990
+          },
+          "source_pixels": {
+            "x": 540,
+            "y": 129,
+            "w": 508,
+            "h": 401
+          }
+        }
+      },
+      "gba_indigo_wide": {
+        "label": "Indigo Wide",
+        "art": "assets/bezels/gba/indigo-wide.png",
+        "hole": {
+          "x": 0.3025477707,
+          "y": 0.2697302697,
+          "w": 0.3949044586,
+          "h": 0.4145854146
+        },
+        "geometry": {
+          "method": "measured_continuous_lens",
+          "canvas": {
+            "w": 1570,
+            "h": 1001
+          },
+          "source_pixels": {
+            "x": 475,
+            "y": 270,
+            "w": 620,
+            "h": 415
+          }
+        }
+      },
+      "nds_vertical_shell": {
+        "label": "DS Vertical",
+        "art": "assets/bezels/nds/vertical.png",
+        "hole": {
+          "x": 0.340234375,
+          "y": 0.04,
+          "w": 0.31953125,
+          "h": 0.911875
+        },
+        "screen_holes": {
+          "top": {
+            "x": 0.340234375,
+            "y": 0.04,
+            "w": 0.31953125,
+            "h": 0.3825
+          },
+          "bottom": {
+            "x": 0.340234375,
+            "y": 0.56875,
+            "w": 0.31953125,
+            "h": 0.383125
+          }
+        },
+        "geometry": {
+          "method": "measured_dark_display_openings",
+          "canvas": {
+            "w": 2560,
+            "h": 1600
+          },
+          "screen_pixels": {
+            "top": {
+              "x": 871,
+              "y": 64,
+              "w": 818,
+              "h": 612
+            },
+            "bottom": {
+              "x": 871,
+              "y": 910,
+              "w": 818,
+              "h": 613
+            }
+          }
+        }
+      },
+      "nds_horizontal_shell": {
+        "label": "DS Side by Side",
+        "art": "assets/bezels/nds/horizontal.png",
+        "hole": {
+          "x": 0.044140625,
+          "y": 0.2025,
+          "w": 0.91171875,
+          "h": 0.519375
+        },
+        "screen_holes": {
+          "top": {
+            "x": 0.044140625,
+            "y": 0.2025,
+            "w": 0.43203125,
+            "h": 0.519375
+          },
+          "bottom": {
+            "x": 0.523828125,
+            "y": 0.2025,
+            "w": 0.43203125,
+            "h": 0.519375
+          }
+        },
+        "geometry": {
+          "method": "measured_dark_display_openings",
+          "canvas": {
+            "w": 2560,
+            "h": 1600
+          },
+          "screen_pixels": {
+            "top": {
+              "x": 113,
+              "y": 324,
+              "w": 1106,
+              "h": 831
+            },
+            "bottom": {
+              "x": 1341,
+              "y": 324,
+              "w": 1106,
+              "h": 831
+            }
+          }
+        }
+      },
+      "nds_big_screen": {
+        "label": "DS Big Screen",
+        "art": "assets/bezels/nds/big_screen.png",
+        "hole": {
+          "x": 0.17109375,
+          "y": 0.274375,
+          "w": 0.66796875,
+          "h": 0.515625
+        },
+        "screen_holes": {
+          "top": {
+            "x": 0.17109375,
+            "y": 0.274375,
+            "w": 0.412890625,
+            "h": 0.495625
+          },
+          "bottom": {
+            "x": 0.6578125,
+            "y": 0.5725,
+            "w": 0.18125,
+            "h": 0.2175
+          }
+        },
+        "geometry": {
+          "method": "measured_dark_display_openings",
+          "canvas": {
+            "w": 2560,
+            "h": 1600
+          },
+          "screen_pixels": {
+            "top": {
+              "x": 438,
+              "y": 439,
+              "w": 1057,
+              "h": 793
+            },
+            "bottom": {
+              "x": 1684,
+              "y": 916,
+              "w": 464,
+              "h": 348
+            }
+          }
+        }
+      },
+      "n3ds_vertical_shell": {
+        "label": "3DS Vertical",
+        "art": "assets/bezels/n3ds/vertical.png",
+        "hole": {
+          "x": 0.289453125,
+          "y": 0.0475,
+          "w": 0.42109375,
+          "h": 0.90875
+        },
+        "screen_holes": {
+          "top": {
+            "x": 0.289453125,
+            "y": 0.0475,
+            "w": 0.42109375,
+            "h": 0.403125
+          },
+          "bottom": {
+            "x": 0.334375,
+            "y": 0.56125,
+            "w": 0.33125,
+            "h": 0.395
+          }
+        },
+        "geometry": {
+          "method": "measured_dark_display_openings",
+          "canvas": {
+            "w": 2560,
+            "h": 1600
+          },
+          "screen_pixels": {
+            "top": {
+              "x": 741,
+              "y": 76,
+              "w": 1078,
+              "h": 645
+            },
+            "bottom": {
+              "x": 856,
+              "y": 898,
+              "w": 848,
+              "h": 632
+            }
+          }
+        }
+      },
+      "n3ds_horizontal_shell": {
+        "label": "3DS Side by Side",
+        "art": "assets/bezels/n3ds/horizontal.png",
+        "hole": {
+          "x": 0.04921875,
+          "y": 0.25375,
+          "w": 0.914453125,
+          "h": 0.585625
+        },
+        "screen_holes": {
+          "top": {
+            "x": 0.04921875,
+            "y": 0.25375,
+            "w": 0.611328125,
+            "h": 0.585625
+          },
+          "bottom": {
+            "x": 0.731640625,
+            "y": 0.519375,
+            "w": 0.23203125,
+            "h": 0.27625
+          }
+        },
+        "geometry": {
+          "method": "measured_dark_display_openings",
+          "canvas": {
+            "w": 2560,
+            "h": 1600
+          },
+          "screen_pixels": {
+            "top": {
+              "x": 126,
+              "y": 406,
+              "w": 1565,
+              "h": 937
+            },
+            "bottom": {
+              "x": 1873,
+              "y": 831,
+              "w": 594,
+              "h": 442
+            }
+          }
+        }
+      },
+      "psp_classic": {
+        "label": "Classic Black",
+        "art": "assets/bezels/psp/classic.png",
+        "hole": {
+          "x": 0.24,
+          "y": 0.11,
+          "w": 0.52,
+          "h": 0.728
+        },
+        "geometry": {
+          "method": "declared_safe_aperture",
+          "canvas": {
+            "w": 5335,
+            "h": 2160
+          },
+          "source_pixels": {
+            "x": 1280.4,
+            "y": 237.6,
+            "w": 2774.2,
+            "h": 1572.48
+          }
+        }
+      }
+    },
+    "systems": {
+      "nes": {
+        "default_variant": "crt_4x3",
+        "variants": {
+          "crt_4x3": "crt_4x3"
+        },
+        "alternatives": []
+      },
+      "snes": {
+        "default_variant": "crt_4x3",
+        "variants": {
+          "crt_4x3": "crt_4x3"
+        },
+        "alternatives": []
+      },
+      "genesis": {
+        "default_variant": "crt_4x3",
+        "variants": {
+          "crt_4x3": "crt_4x3"
+        },
+        "alternatives": []
+      },
+      "n64": {
+        "default_variant": "crt_4x3",
+        "widescreen_variant": "crt_16x9",
+        "variants": {
+          "crt_4x3": "crt_4x3",
+          "crt_16x9": "crt_16x9"
+        },
+        "alternatives": []
+      },
+      "psx": {
+        "default_variant": "crt_4x3",
+        "widescreen_variant": "crt_16x9",
+        "variants": {
+          "crt_4x3": "crt_4x3",
+          "crt_16x9": "crt_16x9"
+        },
+        "alternatives": []
+      },
+      "dreamcast": {
+        "default_variant": "crt_4x3",
+        "widescreen_variant": "crt_16x9",
+        "variants": {
+          "crt_4x3": "crt_4x3",
+          "crt_16x9": "crt_16x9"
+        },
+        "alternatives": []
+      },
+      "gc": {
+        "default_variant": "crt_4x3",
+        "widescreen_variant": "crt_16x9",
+        "variants": {
+          "crt_4x3": "crt_4x3",
+          "crt_16x9": "crt_16x9"
+        },
+        "alternatives": []
+      },
+      "wii": {
+        "default_variant": "crt_4x3",
+        "widescreen_variant": "crt_16x9",
+        "variants": {
+          "crt_4x3": "crt_4x3",
+          "crt_16x9": "crt_16x9"
+        },
+        "alternatives": []
+      },
+      "ps2": {
+        "default_variant": "crt_4x3",
+        "widescreen_variant": "crt_16x9",
+        "variants": {
+          "crt_4x3": "crt_4x3",
+          "crt_16x9": "crt_16x9"
+        },
+        "alternatives": []
+      },
+      "gb": {
+        "default_variant": "gb_classic_gray",
+        "variants": {
+          "classic": "gb_classic_gray"
+        },
+        "alternatives": []
+      },
+      "gbc": {
+        "default_variant": "gbc_frost_purple",
+        "variants": {
+          "frost_purple": "gbc_frost_purple"
+        },
+        "alternatives": []
+      },
+      "gba": {
+        "default_variant": "gba_indigo_wide",
+        "variants": {
+          "indigo_wide": "gba_indigo_wide"
+        },
+        "alternatives": []
+      },
+      "nds": {
+        "default_variant": "nds_horizontal_shell",
+        "variants": {
+          "vertical": "nds_vertical_shell",
+          "horizontal": "nds_horizontal_shell",
+          "big_screen": "nds_big_screen"
+        },
+        "alternatives": [
+          "nds_vertical_shell",
+          "nds_big_screen"
+        ]
+      },
+      "n3ds": {
+        "default_variant": "n3ds_vertical_shell",
+        "variants": {
+          "vertical": "n3ds_vertical_shell",
+          "horizontal": "n3ds_horizontal_shell"
+        },
+        "alternatives": [
+          "n3ds_horizontal_shell"
+        ]
+      },
+      "psp": {
+        "default_variant": "psp_classic",
+        "variants": {
+          "classic": "psp_classic"
+        },
+        "alternatives": []
+      },
+      "switch": {
+        "enabled": false,
+        "default_variant": "",
+        "variants": {},
+        "alternatives": []
+      },
+      "wiiu": {
+        "enabled": false,
+        "default_variant": "",
+        "variants": {},
+        "alternatives": []
+      }
+    }
+  },
+  "generic": {
+    "doc": {
+      "note": "The generic fallback table for systems without bezels.json: asset_profile -> art + hole. Unknown profiles resolve as crt4x3."
+    },
+    "profiles": {
+      "crt4x3": {
+        "art": "assets/bezels/tv/crt-4x3.png",
+        "hole": {
+          "x": 0.25,
+          "y": 0.1616161616161616,
+          "w": 0.5,
+          "h": 0.6
+        }
+      },
+      "handheld": {
+        "art": "assets/bezels/tv/crt-4x3.png",
+        "hole": {
+          "x": 0.25,
+          "y": 0.1616161616161616,
+          "w": 0.5,
+          "h": 0.6
+        }
+      },
+      "wide16x9": {
+        "art": "assets/bezels/tv/crt-16x9.png",
+        "hole": {
+          "x": 0.1375,
+          "y": 0.13125,
+          "w": 0.725,
+          "h": 0.6525
+        }
+      },
+      "dual": {
+        "art": "assets/bezels/generic/bezel-3ds.png",
+        "hole": {
+          "x": 0.33,
+          "y": 0.04,
+          "w": 0.34,
+          "h": 0.92
+        }
+      }
+    }
+  },
+  "assets": {
+    "assets/bezels/tv/crt-4x3.png": {
+      "type": "local",
+      "path": "config/assets/bezels/tv/crt-4x3.png",
+      "output": {
+        "width": 1584,
+        "height": 990,
+        "bit_depth": 8,
+        "color_type": 2,
+        "sha256": "6376be22472594ce6fe07c5b8bfb70926224f0632dd3f5221ba7bc130838899a"
+      },
+      "doc": {
+        "provenance": "Semu-owned charcoal 4:3 CRT render. The continuous 792x594 source-pixel opening is declared by the central policy and each CRT system."
+      }
+    },
+    "assets/bezels/tv/crt-16x9.png": {
+      "type": "local",
+      "path": "config/assets/bezels/tv/crt-16x9.png",
+      "output": {
+        "width": 1280,
+        "height": 800,
+        "bit_depth": 8,
+        "color_type": 2,
+        "sha256": "6464318284eb9f3f91f0fcb14e7040df7f959a10531c564fe9d1102a3ed29649"
+      },
+      "doc": {
+        "provenance": "Semu-owned charcoal 16:9 CRT render. The continuous 928x522 source-pixel opening is declared by the central policy and widescreen-capable CRT systems."
+      }
+    },
+    "assets/bezels/generic/bezel-3ds.png": {
+      "type": "local",
+      "path": "config/assets/bezels/generic/bezel-3ds.png",
+      "output": {
+        "width": 1280,
+        "height": 800,
+        "bit_depth": 16,
+        "color_type": 6,
+        "sha256": "b48f80d1ec9e71cf36bff09ca4995511eb1f3f10603703b53dfd1d453a89fab2"
+      }
+    },
+    "assets/bezels/gb/classic.png": {
+      "type": "local",
+      "path": "config/assets/bezels/gb/classic.png",
+      "output": {
+        "width": 1065,
+        "height": 1477,
+        "bit_depth": 8,
+        "color_type": 6,
+        "sha256": "0196da73be03748301247b562a107ebcbdc5e5555426311c63ad02e4bdf86c64"
+      },
+      "doc": {
+        "provenance": "Semu-owned complete-console product render. The raster carries the continuous lens; systems/gb/bezels.json owns the game aperture."
+      }
+    },
+    "assets/bezels/gbc/frost-purple.png": {
+      "type": "local",
+      "path": "config/assets/bezels/gbc/frost-purple.png",
+      "output": {
+        "width": 1584,
+        "height": 990,
+        "bit_depth": 8,
+        "color_type": 2,
+        "sha256": "72d31045e3d1cd423d492b8c3dc7579e4743ace26daba22bb69cb35f8a1c8da2"
+      },
+      "doc": {
+        "provenance": "Semu-owned frost-purple Game Boy Color render. The continuous 508x401 source-pixel lens is declared by systems/gbc/bezels.json."
+      }
+    },
+    "assets/bezels/gba/indigo-wide.png": {
+      "type": "local",
+      "path": "config/assets/bezels/gba/indigo-wide.png",
+      "output": {
+        "width": 1570,
+        "height": 1001,
+        "bit_depth": 8,
+        "color_type": 2,
+        "sha256": "dfd0b5d1b6313109e6d243328e532c68745f5f39bd934baf91a6fac6a5144646"
+      },
+      "doc": {
+        "provenance": "Semu-owned indigo wide Game Boy Advance render. The continuous 620x415 source-pixel lens is declared by systems/gba/bezels.json."
+      }
+    },
+    "assets/fonts/menu-font.png": {
+      "type": "local",
+      "path": "config/assets/fonts/menu-font.png",
+      "output": {
+        "width": 384,
+        "height": 240,
+        "bit_depth": 8,
+        "color_type": 6,
+        "sha256": "ff31cc6b4813edc78aa24cfc4569aef7ef100b7f24d0289991f0c0b7693439f3"
+      }
+    },
+    "assets/bezels.json": {
+      "type": "local",
+      "path": "config/assets/bezels.json",
+      "doc": {
+        "why": "BezelResolver reads the generic table from the staged tree at $SEMU_ASSET_ROOT/share/semu/assets/bezels.json."
+      }
+    },
+    "assets/bezels/psp/classic.png": {
+      "type": "copy",
+      "from": "duimon_mega_bezel",
+      "path": "Graphics/SONY_PSP/PSP_Wide.png",
+      "file_sha256": "f9aabf8bf6a8eb9032a85da4e7fe25cc1087de108913e9afbc9818a61c57cbdf",
+      "output": {
+        "width": 5335,
+        "height": 2160,
+        "bit_depth": 8,
+        "color_type": 6,
+        "sha256": "f9aabf8bf6a8eb9032a85da4e7fe25cc1087de108913e9afbc9818a61c57cbdf"
+      },
+      "doc": {
+        "provenance": "Duimon PSP_Wide.png is the full-device PSP-E1000 render with both shoulder buttons, the full directional pad, and the complete face-button diamond inside the frame. PSP.png is the clipped 16:9 variant that cuts off the controls."
+      }
+    },
+    "assets/bezels/nds/vertical.png": {
+      "type": "local",
+      "path": "config/assets/bezels/nds/vertical.png",
+      "output": {
+        "width": 2560,
+        "height": 1600,
+        "bit_depth": 8,
+        "color_type": 6,
+        "sha256": "1be8bf26fe6cd2cce8bda139841b8fc8de18b2fe6fe3ec2e1af0cbd217037663"
+      },
+      "doc": {
+        "provenance": "Committed source (un-fetchable): originally baked from Duimon NDS_Vertical_Alt-[ADV]-[Guest].slangp via bake_bezels.sh (librashader, day variant, intro off). Lives in-tree at its final bezels/ path; bake-bezels round-trips it identically."
+      }
+    },
+    "assets/bezels/nds/horizontal.png": {
+      "type": "local",
+      "path": "config/assets/bezels/nds/horizontal.png",
+      "output": {
+        "width": 2560,
+        "height": 1600,
+        "bit_depth": 8,
+        "color_type": 6,
+        "sha256": "a52537d848bee36f14f72de5fecbdecef7213f68809db9dbfd52bc550f488b56"
+      },
+      "doc": {
+        "provenance": "Committed source (un-fetchable): originally baked from Duimon NDS-[ADV]-[Guest].slangp via bake_bezels.sh (librashader, day variant, intro off). Lives in-tree at its final bezels/ path; bake-bezels round-trips it identically."
+      }
+    },
+    "assets/bezels/n3ds/vertical.png": {
+      "type": "local",
+      "path": "config/assets/bezels/n3ds/vertical.png",
+      "output": {
+        "width": 2560,
+        "height": 1600,
+        "bit_depth": 8,
+        "color_type": 6,
+        "sha256": "35b5c194e5224ea1d7c7182113b519ad97bf5e3898d28143163b45ecc256e68f"
+      },
+      "doc": {
+        "provenance": "Committed source (un-fetchable): originally baked from Duimon 3DS_Vertical_Alt-[ADV]-[Guest].slangp via bake_bezels.sh (librashader, day variant, intro off). Lives in-tree at its final bezels/ path; bake-bezels round-trips it identically."
+      }
+    },
+    "assets/bezels/n3ds/horizontal.png": {
+      "type": "local",
+      "path": "config/assets/bezels/n3ds/horizontal.png",
+      "output": {
+        "width": 2560,
+        "height": 1600,
+        "bit_depth": 8,
+        "color_type": 6,
+        "sha256": "4a709ce9a895a1d326d2b96681caf61d50c8e6c5dcb65e969d6b2d5c1c570f23"
+      },
+      "doc": {
+        "provenance": "Committed source (un-fetchable): originally baked from Duimon 3DS-[ADV]-[Guest].slangp via bake_bezels.sh (librashader, day variant, intro off). Lives in-tree at its final bezels/ path; bake-bezels round-trips it identically."
+      }
+    },
+    "assets/bezels/nds/big_screen.png": {
+      "type": "local",
+      "path": "config/assets/bezels/nds/big_screen.png",
+      "output": {
+        "width": 2560,
+        "height": 1600,
+        "bit_depth": 8,
+        "color_type": 6,
+        "sha256": "3848df6572b465e4dcd5c1f97e53e9c8233dc8835381b81c1dcda662252c4daa"
+      },
+      "doc": {
+        "provenance": "Committed source (un-fetchable): originally baked from Duimon NDS_Hybrid-[ADV]-[Guest].slangp via bake_bezels.sh (librashader, day variant, intro off). Lives in-tree at its final bezels/ path; bake-bezels round-trips it identically."
+      }
+    }
+  },
+  "staging": [
+    {
+      "id": "renderer_menu",
+      "files": [
+        {
+          "src": "assets/fonts/menu-font.png",
+          "dest": "lib/semu/menu-font.png"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,174 @@
+--- a/gfx/drivers/gl2.c
++++ b/gfx/drivers/gl2.c
+@@ -86,6 +86,30 @@
+ #endif
+ #ifdef HAVE_GFX_WIDGETS
+ #include "../gfx_widgets.h"
++#endif
++
++#ifdef HAVE_SEMU_RENDERER
++#include <semu_renderer.h>
++
++static const gfx_ctx_driver_t *semu_gl2_context_driver;
++static void *semu_gl2_context_data;
++
++static void *semu_gl2_get_proc(const char *name)
++{
++   if (!semu_gl2_context_driver || !semu_gl2_context_driver->get_proc_address)
++      return NULL;
++   return (void*)semu_gl2_context_driver->get_proc_address(name);
++}
++
++static void *semu_gl2_current_context(void)
++{
++   void *context = NULL;
++   if (!semu_gl2_context_driver)
++      return NULL;
++   if (semu_gl2_context_driver->get_context_data)
++      context = semu_gl2_context_driver->get_context_data(semu_gl2_context_data);
++   return context ? context : semu_gl2_context_data;
++}
+ #endif
+ 
+ #ifndef GL_UNSIGNED_INT_8_8_8_8_REV
+@@ -3595,6 +3619,41 @@
+    /* Set prev textures. */
+    gl2_renderchain_bind_prev_texture(gl,
+          chain, &gl->tex_info);
++
++#ifdef HAVE_SEMU_RENDERER
++   struct SemuRenderFrameGl semu_frame = {0};
++   bool semu_frame_ready = video_info->libretro_running
++      && frame_width > 0 && frame_height > 0
++      && gl->vp.width > 0 && gl->vp.height > 0;
++   semu_gl2_context_driver                = gl->ctx_driver;
++   semu_gl2_context_data                  = gl->ctx_data;
++   semu_frame.abi                         = SEMU_RENDER_ABI_GL;
++   semu_frame.struct_size                 = sizeof(semu_frame);
++   semu_frame.frame_id                    = (unsigned long long)frame_count + 1;
++   semu_frame.framebuffer                 = 0;
++   semu_frame.color_buffer                = GL_BACK;
++   semu_frame.framebuffer_width           = (int)gl->video_width;
++   semu_frame.framebuffer_height          = (int)gl->video_height;
++   semu_frame.presentation_aspect          = gl->vp.height > 0
++      ? (float)gl->vp.width / (float)gl->vp.height : 0.0f;
++   semu_frame.layout_variant               = SEMU_RENDER_LAYOUT_AUTO;
++   semu_frame.surface_count               = 1;
++   semu_frame.surfaces[0].x               = (int)gl->vp.x;
++   semu_frame.surfaces[0].y               = (int)gl->vp.y;
++   semu_frame.surfaces[0].width           = (int)gl->vp.width;
++   semu_frame.surfaces[0].height          = (int)gl->vp.height;
++   semu_frame.surfaces[0].native_width    = frame_width > 0
++      ? (int)frame_width : (int)gl->vp.width;
++   semu_frame.surfaces[0].native_height   = frame_height > 0
++      ? (int)frame_height : (int)gl->vp.height;
++   /* The final viewport, including N64 cores, is upright in bottom-left GL space. */
++   semu_frame.surfaces[0].rotation        = 0;
++   semu_frame.surfaces[0].origin          = SEMU_RENDER_ORIGIN_BOTTOM_LEFT;
++   semu_frame.get_proc                    = semu_gl2_get_proc;
++   semu_frame.current_context             = semu_gl2_current_context;
++   if (semu_frame_ready)
++      semu_render_game_gl(&semu_frame);
++#endif
+ 
+ #ifdef HAVE_OVERLAY
+    if ((gl->flags & GL2_FLAG_OVERLAY_ENABLE) && overlay_behind_menu)
+@@ -3658,6 +3717,11 @@
+          if (!(gl->flags & GL2_FLAG_MENU_TEXTURE_ENABLE))
+ #endif
+             gl2_pbo_async_readback(gl);
++
++#ifdef HAVE_SEMU_RENDERER
++   if (semu_frame_ready)
++      semu_render_post_ui_gl(&semu_frame);
++#endif
+ 
+     if (gl->ctx_driver->swap_buffers)
+         gl->ctx_driver->swap_buffers(gl->ctx_data);
+--- a/gfx/drivers/gl3.c
++++ b/gfx/drivers/gl3.c
+@@ -61,6 +61,30 @@
+ #endif
+ #ifdef HAVE_GFX_WIDGETS
+ #include "../gfx_widgets.h"
++#endif
++
++#ifdef HAVE_SEMU_RENDERER
++#include <semu_renderer.h>
++
++static const gfx_ctx_driver_t *semu_gl3_context_driver;
++static void *semu_gl3_context_data;
++
++static void *semu_gl3_get_proc(const char *name)
++{
++   if (!semu_gl3_context_driver || !semu_gl3_context_driver->get_proc_address)
++      return NULL;
++   return (void*)semu_gl3_context_driver->get_proc_address(name);
++}
++
++static void *semu_gl3_current_context(void)
++{
++   void *context = NULL;
++   if (!semu_gl3_context_driver)
++      return NULL;
++   if (semu_gl3_context_driver->get_context_data)
++      context = semu_gl3_context_driver->get_context_data(semu_gl3_context_data);
++   return context ? context : semu_gl3_context_data;
++}
+ #endif
+ 
+ #define GL3_SET_TEXTURE_COORDS(coords, xamt, yamt) \
+@@ -4108,6 +4132,41 @@
+       gl3_filter_chain_end_frame(filter_chain);
+    }
+ #endif /* HAVE_SLANG */
++
++#ifdef HAVE_SEMU_RENDERER
++   struct SemuRenderFrameGl semu_frame = {0};
++   bool semu_frame_ready = video_info->libretro_running
++      && frame_width > 0 && frame_height > 0
++      && gl->vp.width > 0 && gl->vp.height > 0;
++   semu_gl3_context_driver                = gl->ctx_driver;
++   semu_gl3_context_data                  = gl->ctx_data;
++   semu_frame.abi                         = SEMU_RENDER_ABI_GL;
++   semu_frame.struct_size                 = sizeof(semu_frame);
++   semu_frame.frame_id                    = (unsigned long long)frame_count + 1;
++   semu_frame.framebuffer                 = 0;
++   semu_frame.color_buffer                = GL_BACK;
++   semu_frame.framebuffer_width           = (int)gl->video_width;
++   semu_frame.framebuffer_height          = (int)gl->video_height;
++   semu_frame.presentation_aspect          = gl->vp.height > 0
++      ? (float)gl->vp.width / (float)gl->vp.height : 0.0f;
++   semu_frame.layout_variant               = SEMU_RENDER_LAYOUT_AUTO;
++   semu_frame.surface_count               = 1;
++   semu_frame.surfaces[0].x               = (int)gl->vp.x;
++   semu_frame.surfaces[0].y               = (int)gl->vp.y;
++   semu_frame.surfaces[0].width           = (int)gl->vp.width;
++   semu_frame.surfaces[0].height          = (int)gl->vp.height;
++   semu_frame.surfaces[0].native_width    = frame_width > 0
++      ? (int)frame_width : (int)gl->vp.width;
++   semu_frame.surfaces[0].native_height   = frame_height > 0
++      ? (int)frame_height : (int)gl->vp.height;
++   /* The final viewport, including N64 cores, is upright in bottom-left GL space. */
++   semu_frame.surfaces[0].rotation        = 0;
++   semu_frame.surfaces[0].origin          = SEMU_RENDER_ORIGIN_BOTTOM_LEFT;
++   semu_frame.get_proc                    = semu_gl3_get_proc;
++   semu_frame.current_context             = semu_gl3_current_context;
++   if (semu_frame_ready)
++      semu_render_game_gl(&semu_frame);
++#endif
+ 
+ #ifdef HAVE_OVERLAY
+    if ((gl->flags & GL3_FLAG_OVERLAY_ENABLE) && overlay_behind_menu)
+@@ -4176,6 +4235,11 @@
+ #endif
+          gl3_pbo_async_readback(gl);
+    }
++
++#ifdef HAVE_SEMU_RENDERER
++   if (semu_frame_ready)
++      semu_render_post_ui_gl(&semu_frame);
++#endif
+ 
+    if (gl->ctx_driver->swap_buffers)
+       gl->ctx_driver->swap_buffers(gl->ctx_data);

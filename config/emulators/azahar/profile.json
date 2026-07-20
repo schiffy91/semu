@@ -1,0 +1,131 @@
+{
+  "schema_version": 1,
+  "compiler": {
+    "bindings": {
+      "emulator_name": {
+        "source": "emulator.name"
+      },
+      "controller_guid": {
+        "source": "input.device_identities.azahar_controller_guid",
+        "transform": "lower"
+      }
+    },
+    "line_groups": {
+      "keymap_hotkeys": {
+        "rows": "hotkeys.keymap",
+        "format": "${setting}=${chord}"
+      }
+    }
+  },
+  "controller_identity": "azahar_controller_guid",
+  "hotkeys": {
+    "keymap": [
+      {
+        "setting": "Main%20Window\\Load%20File\\KeySeq",
+        "action": "ui.open"
+      },
+      {
+        "setting": "Main%20Window\\Continue%2FPause%20Emulation\\KeySeq",
+        "action": "ui.pause"
+      },
+      {
+        "setting": "Main%20Window\\Capture%20Screenshot\\KeySeq",
+        "action": "ui.screenshot"
+      },
+      {
+        "setting": "Main%20Window\\Fullscreen\\KeySeq",
+        "action": "ui.fullscreen"
+      },
+      {
+        "setting": "Main%20Window\\Exit%20Azahar\\KeySeq",
+        "action": "app.quit"
+      },
+      {
+        "setting": "Main%20Window\\Quick%20Load\\KeySeq",
+        "action": "state.load"
+      },
+      {
+        "setting": "Main%20Window\\Quick%20Save\\KeySeq",
+        "action": "state.save"
+      },
+      {
+        "setting": "Main%20Window\\Swap%20Screens\\KeySeq",
+        "action": "screen.swap"
+      }
+    ]
+  },
+  "files": [
+    {
+      "path": "${emulator_name}/config/qt-config.ini",
+      "lines": [
+        "[Controls]",
+        "profile=0",
+        "profiles\\1\\name=Semu Steam Deck",
+        "profiles\\1\\button_a=engine:sdl,guid:${controller_guid},port:0,button:1",
+        "profiles\\1\\button_b=engine:sdl,guid:${controller_guid},port:0,button:0",
+        "profiles\\1\\button_x=engine:sdl,guid:${controller_guid},port:0,button:3",
+        "profiles\\1\\button_y=engine:sdl,guid:${controller_guid},port:0,button:2",
+        "profiles\\1\\button_up=engine:sdl,guid:${controller_guid},port:0,button:11",
+        "profiles\\1\\button_down=engine:sdl,guid:${controller_guid},port:0,button:12",
+        "profiles\\1\\button_left=engine:sdl,guid:${controller_guid},port:0,button:13",
+        "profiles\\1\\button_right=engine:sdl,guid:${controller_guid},port:0,button:14",
+        "profiles\\1\\button_l=engine:sdl,guid:${controller_guid},port:0,button:9",
+        "profiles\\1\\button_r=engine:sdl,guid:${controller_guid},port:0,button:10",
+        "profiles\\1\\button_start=engine:sdl,guid:${controller_guid},port:0,button:6",
+        "profiles\\1\\button_select=engine:sdl,guid:${controller_guid},port:0,button:4",
+        "profiles\\1\\button_zl=engine:sdl,guid:${controller_guid},port:0,axis:4,direction:+,threshold:0.5",
+        "profiles\\1\\button_zr=engine:sdl,guid:${controller_guid},port:0,axis:5,direction:+,threshold:0.5",
+        "profiles\\1\\button_home=engine:sdl,guid:${controller_guid},port:0,button:5",
+        "profiles\\1\\circle_pad=engine:sdl,guid:${controller_guid},port:0,axis_x:0,axis_y:1",
+        "profiles\\1\\c_stick=engine:sdl,guid:${controller_guid},port:0,axis_x:2,axis_y:3",
+        "profiles\\1\\motion_device=engine:motion_emu,update_period:100,sensitivity:0.01,tilt_clamp:90.0",
+        "profiles\\1\\touch_device=engine:emu_window",
+        "profiles\\1\\use_touchpad=false",
+        "profiles\\size=1",
+        "",
+        "[Data Storage]",
+        "use_custom_storage=false",
+        "use_virtual_sd=true",
+        "",
+        "[Layout]",
+        "layout_option=0",
+        "layout_option\\default=false",
+        "render_3d=0",
+        "render_3d\\default=false",
+        "screen_gap=0",
+        "screen_gap\\default=false",
+        "swap_screen=false",
+        "swap_screen\\default=false",
+        "upright_screen=false",
+        "upright_screen\\default=false",
+        "",
+        "[Renderer]",
+        "async_presentation=false",
+        "async_presentation\\default=false",
+        "graphics_api=1",
+        "graphics_api\\default=false",
+        "use_integer_scaling=true",
+        "use_integer_scaling\\default=false",
+        "",
+        "[UI]",
+        "confirm_before_closing=false",
+        "display_titlebar=false",
+        "first_start=false",
+        "fullscreen=true",
+        "single_window_mode=true",
+        "",
+        "[Shortcuts]",
+        "Main%20Window\\Toggle%20Frame%20Advancing\\KeySeq=",
+        "Main%20Window\\Toggle%20Status%20Bar\\KeySeq=",
+        "@lines:keymap_hotkeys"
+      ]
+    }
+  ],
+  "doc": {
+    "controller": "SDL button and axis numbers follow Azahar's current xinput_to_3ds_mapping: Nintendo face buttons cross the Steam/Xbox labels deliberately, triggers are axes 4/5, and both analog sticks map to Circle Pad/C-Stick.",
+    "identity": "${controller_guid} must be supplied by the target-owned steam_input.json device_identities.azahar_controller_guid value. AzaharEmitter validates the 32-hex SDL GUID and emits nothing when it is absent or malformed.",
+    "touch": "Azahar's emu_window touch device consumes ABI-native bottom-screen coordinates from Semu surface 1. The source patch captures only successful presses and clamps captured movement; Steam Input routes the Deck's right trackpad as the pointer source. Motion remains Azahar's explicit motion emulator until the target declares and verifies a DSU motion source.",
+    "storage": "Custom storage is disabled so NAND, SDMC saves, and save states remain below the isolated XDG data root. External aes_keys.txt and seeddb.bin sources are copied once into that root by emulator.json seeds.",
+    "hotkeys": "The keymap table compiles Semu actions into Azahar QKeySequence values. Conflicting Azahar defaults for Ctrl+A and Ctrl+S are cleared before those chords are assigned to Quick Load and Quick Save."
+  }
+}

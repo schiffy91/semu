@@ -1,0 +1,970 @@
+// Semantic surface extraction, librashader lanes, and bezel composition.
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include "stb_image.h"
+
+import ./renderer_abi.btrc
+import ./renderer_gl_api.btrc
+import ./librashader_gl.btrc
+import ./renderer_file_hash.btrc
+
+int RGL_RGBA = 0x1908;
+int RGL_RGBA8 = 0x8058;
+int RGL_UNSIGNED_BYTE = 0x1401;
+int RGL_TEXTURE_MIN_FILTER = 0x2801;
+int RGL_TEXTURE_MAG_FILTER = 0x2800;
+int RGL_TEXTURE_BASE_LEVEL = 0x813C;
+int RGL_TEXTURE_MAX_LEVEL = 0x813D;
+int RGL_TEXTURE_WRAP_S = 0x2802;
+int RGL_TEXTURE_WRAP_T = 0x2803;
+int RGL_LINEAR = 0x2601;
+int RGL_NEAREST = 0x2600;
+int RGL_CLAMP_TO_EDGE = 0x812F;
+int RGL_FRAMEBUFFER_COMPLETE = 0x8CD5;
+int RGL_COLOR_ATTACHMENT0 = 0x8CE0;
+int RGL_COLOR_BUFFER_BIT = 0x00004000;
+int RGL_VERTEX_SHADER = 0x8B31;
+int RGL_FRAGMENT_SHADER = 0x8B30;
+int RGL_COMPILE_STATUS = 0x8B81;
+int RGL_LINK_STATUS = 0x8B82;
+int RGL_TRIANGLES = 0x0004;
+int RGL_SRC_ALPHA = 0x0302;
+int RGL_ONE_MINUS_SRC_ALPHA = 0x0303;
+int RGL_FUNC_ADD = 0x8006;
+
+struct RendererPath {
+    char value[4096];
+};
+
+struct RendererNormalizedHole {
+    int set;
+    float x;
+    float y;
+    float width;
+    float height;
+};
+
+struct RendererVariantConfig {
+    int declared;
+    struct RendererPath shader_preset;
+    struct RendererPath art;
+    struct RendererPath glass;
+    struct RendererNormalizedHole screen;
+    struct RendererNormalizedHole primary;
+    struct RendererNormalizedHole secondary;
+    char shader_sha256[65];
+    char art_sha256[65];
+    char glass_sha256[65];
+    int shader_available;
+};
+
+struct RendererConfig {
+    int loaded;
+    int shaders_enabled;
+    int bezels_enabled;
+    int integer_scaling;
+    int dual_horizontal;
+    int active_variant;
+    float display_aspect;
+    float reflect;
+    float frames_per_second;
+    unsigned int frame_delta_ms;
+    struct RendererPath system_id;
+    struct RendererPath emulator_id;
+    struct RendererVariantConfig variants[4];
+};
+
+struct RendererGlResources {
+    int ready;
+    void* owner_context;
+    unsigned int program;
+    unsigned int vertex_array;
+    unsigned int extraction_framebuffer;
+    unsigned int raw_textures[2];
+    unsigned int shader_textures[2];
+    unsigned int bezel_textures[4];
+    unsigned int glass_textures[4];
+    unsigned int menu_texture;
+    int lane_native_width[2];
+    int lane_native_height[2];
+    int lane_output_width[2];
+    int lane_output_height[2];
+    int lane_shader_native_width[2];
+    int lane_shader_native_height[2];
+    int lane_shader_output_width[2];
+    int lane_shader_output_height[2];
+    unsigned long long lane_history[2];
+    struct RendererPath lane_shader_presets[2];
+    int art_width[4];
+    int art_height[4];
+    int art_loaded[4];
+    int glass_loaded[4];
+    int shader_actual;
+    int bezel_actual;
+    char failure_reason[64];
+    int uniform_game;
+    int uniform_game2;
+    int uniform_bezel;
+    int uniform_glass;
+    int uniform_menu;
+    int uniform_rect;
+    int uniform_rect2;
+    int uniform_bezel_rect;
+    int uniform_menu_rect;
+    int uniform_dual;
+    int uniform_has_art;
+    int uniform_has_glass;
+    int uniform_menu_on;
+    int uniform_reflect;
+    int uniform_pass;
+    int uniform_rotation;
+    int uniform_rotation2;
+};
+
+SemuLibrashaderOpenGLChain RendererShaderLane0;
+SemuLibrashaderOpenGLChain RendererShaderLane1;
+
+const char* SEMU_RENDER_VERTEX_SHADER = """#version 330 core
+void main(){vec2 p=vec2((gl_VertexID==1)?3.0:-1.0,(gl_VertexID==2)?3.0:-1.0);gl_Position=vec4(p,0.0,1.0);}""";
+
+const char* SEMU_RENDER_FRAGMENT_SHADER = """#version 330 core
+out vec4 frag;
+uniform sampler2D uGame;uniform sampler2D uGame2;uniform sampler2D uBezel;
+uniform sampler2D uGlass;uniform sampler2D uMenu;
+uniform vec4 uRect;uniform vec4 uRect2;uniform vec4 uBezelRect;uniform vec4 uMenuRect;
+uniform float uDual;uniform float uHasArt;uniform float uHasGlass;uniform float uMenuOn;
+ uniform float uReflect;uniform float uPass;uniform float uRotation;uniform float uRotation2;
+ bool inside(vec2 p,vec4 r){return p.x>=r.x&&p.x<=r.x+r.z&&p.y>=r.y&&p.y<=r.y+r.w;}
+ vec2 uv(vec2 p,vec4 r){return(p-r.xy)/r.zw;}
+ vec2 rotatedUv(vec2 q,float r){if(r<0.5)return q;if(r<1.5)return vec2(1.0-q.y,q.x);if(r<2.5)return vec2(1.0-q.x,1.0-q.y);return vec2(q.y,1.0-q.x);}
+ vec2 artUv(vec2 p){return vec2((p.x-uBezelRect.x)/uBezelRect.z,1.0-(p.y-uBezelRect.y)/uBezelRect.w);}
+void main(){
+ vec2 p=gl_FragCoord.xy;
+ if(uPass<0.5){if(uHasArt>0.5&&inside(p,uBezelRect)){frag=texture(uBezel,artUv(p));return;}frag=vec4(0.0,0.0,0.0,1.0);return;}
+ if(uPass<1.5){bool a=inside(p,uRect);bool b=uDual>0.5&&inside(p,uRect2);if(!a&&!b)discard;
+  vec2 q=a?rotatedUv(uv(p,uRect),uRotation):rotatedUv(uv(p,uRect2),uRotation2);
+  vec3 c=a?texture(uGame,q).rgb:texture(uGame2,q).rgb;
+  if(uHasGlass>0.5&&inside(p,uBezelRect)){vec4 g=texture(uGlass,artUv(p));c=1.0-(1.0-c)*(1.0-g.rgb*g.a*clamp(uReflect,0.0,1.0));}
+  frag=vec4(c,1.0);return;}
+ if(uPass<2.5){if(uHasArt<0.5||!inside(p,uBezelRect)||inside(p,uRect)||(uDual>0.5&&inside(p,uRect2)))discard;frag=texture(uBezel,artUv(p));return;}
+ if(uMenuOn<0.5||!inside(p,uMenuRect))discard;vec2 q=uv(p,uMenuRect);q.y=1.0-q.y;frag=texture(uMenu,q);
+}""";
+
+class RendererConfiguration {
+    class void copyEnvironment(struct RendererPath* path, char* name) {
+        if (path == null) { return; }
+        path->value[0] = 0;
+        char* value = getenv(name);
+        if (value != null && value[0] != 0) {
+            strncpy(path->value, value, 4095);
+            path->value[4095] = 0;
+        }
+    }
+
+    class void parseHole(struct RendererNormalizedHole* hole, char* name) {
+        if (hole == null) { return; }
+        memset(hole, 0, sizeof(struct RendererNormalizedHole));
+        char* value = getenv(name);
+        if (value != null && sscanf(value, "%f,%f,%f,%f", &hole->x, &hole->y,
+                &hole->width, &hole->height) == 4
+            && hole->x >= 0.0f && hole->y >= 0.0f
+            && hole->width > 0.0f && hole->height > 0.0f
+            && hole->x + hole->width <= 1.0001f
+            && hole->y + hole->height <= 1.0001f) {
+            hole->set = 1;
+        }
+    }
+
+    class void loadVariant(struct RendererVariantConfig* variant, char* suffix) {
+        char name[128];
+        snprintf(name, sizeof(name), "SEMU_RENDER_SHADER_PRESET%s", suffix);
+        RendererConfiguration.copyEnvironment(&variant->shader_preset, name);
+        snprintf(name, sizeof(name), "SEMU_RENDER_ART%s", suffix);
+        RendererConfiguration.copyEnvironment(&variant->art, name);
+        snprintf(name, sizeof(name), "SEMU_RENDER_GLASS%s", suffix);
+        RendererConfiguration.copyEnvironment(&variant->glass, name);
+        snprintf(name, sizeof(name), "SEMU_RENDER_SCREEN%s", suffix);
+        RendererConfiguration.parseHole(&variant->screen, name);
+        snprintf(name, sizeof(name), "SEMU_RENDER_SCREEN_PRI%s", suffix);
+        RendererConfiguration.parseHole(&variant->primary, name);
+        snprintf(name, sizeof(name), "SEMU_RENDER_SCREEN_SEC%s", suffix);
+        RendererConfiguration.parseHole(&variant->secondary, name);
+        variant->shader_available = RendererFileHash.sha256(
+            variant->shader_preset.value, variant->shader_sha256) ? 1 : 0;
+        RendererFileHash.sha256(variant->art.value, variant->art_sha256);
+        RendererFileHash.sha256(variant->glass.value, variant->glass_sha256);
+        variant->declared = (variant->art.value[0] != 0
+            || variant->shader_preset.value[0] != 0 || variant->screen.set != 0
+            || variant->primary.set != 0 || variant->secondary.set != 0) ? 1 : 0;
+    }
+
+    class struct RendererVariantConfig* active(struct RendererConfig* config) {
+        return &config->variants[config->active_variant];
+    }
+
+    class char* shaderPreset(struct RendererConfig* config) {
+        struct RendererVariantConfig* active = RendererConfiguration.active(config);
+        if (active->shader_preset.value[0] != 0) {
+            return active->shader_preset.value;
+        }
+        return config->variants[0].shader_preset.value;
+    }
+
+    class char* shaderHash(struct RendererConfig* config) {
+        struct RendererVariantConfig* active = RendererConfiguration.active(config);
+        if (active->shader_preset.value[0] != 0) {
+            return active->shader_sha256;
+        }
+        return config->variants[0].shader_sha256;
+    }
+
+    class bool shaderAvailable(struct RendererConfig* config) {
+        if (config == null) { return false; }
+        struct RendererVariantConfig* active = RendererConfiguration.active(config);
+        if (active->shader_preset.value[0] != 0) {
+            return active->shader_available != 0;
+        }
+        return config->variants[0].shader_available != 0;
+    }
+
+    class int select(struct RendererConfig* config,
+                     struct SemuRenderFrameGl* frame) {
+        int selected = 0;
+        if (frame->layout_variant >= (unsigned int)SEMU_RENDER_LAYOUT_DEFAULT
+            && frame->layout_variant <= (unsigned int)SEMU_RENDER_LAYOUT_VARIANT_D) {
+            int explicitVariant = (int)frame->layout_variant - 1;
+            if (config->variants[explicitVariant].declared != 0) {
+                selected = explicitVariant;
+            }
+        } else if (frame->presentation_aspect >= 1.55f
+                && config->variants[1].declared != 0) {
+            selected = 1;
+        }
+        config->active_variant = selected;
+        return selected;
+    }
+
+    class void load(struct RendererConfig* config) {
+        if (config == null || config->loaded != 0) { return; }
+        memset(config, 0, sizeof(struct RendererConfig));
+        config->loaded = 1;
+        config->shaders_enabled = 1;
+        config->bezels_enabled = 1;
+        config->frames_per_second = 60.0f;
+        config->frame_delta_ms = 17;
+        char* value = getenv("SEMU_RENDER_SHADERS");
+        if (value != null && value[0] == '0') { config->shaders_enabled = 0; }
+        value = getenv("SEMU_RENDER_BEZELS");
+        if (value != null && value[0] == '0') { config->bezels_enabled = 0; }
+        value = getenv("SEMU_RENDER_INTEGER_SCALE");
+        if (value != null && value[0] == '1') { config->integer_scaling = 1; }
+        value = getenv("SEMU_RENDER_STYLE");
+        if (value != null && strcmp(value, "horizontal") == 0) {
+            config->dual_horizontal = 1;
+        }
+        value = getenv("SEMU_RENDER_ASPECT");
+        if (value != null) {
+            float width = 0.0f;
+            float height = 0.0f;
+            if (sscanf(value, "%f:%f", &width, &height) == 2 && height > 0.0f) {
+                config->display_aspect = width / height;
+            } else {
+                config->display_aspect = (float)atof(value);
+            }
+        }
+        value = getenv("SEMU_RENDER_REFLECT");
+        if (value != null) { config->reflect = (float)atof(value); }
+        value = getenv("SEMU_RENDER_FPS");
+        if (value != null && atof(value) > 0.0) {
+            config->frames_per_second = (float)atof(value);
+        }
+        value = getenv("SEMU_RENDER_FRAME_DELTA_MS");
+        if (value != null && atoi(value) > 0) {
+            config->frame_delta_ms = (unsigned int)atoi(value);
+        }
+        RendererConfiguration.copyEnvironment(&config->system_id,
+            "SEMU_RENDER_SYSTEM_ID");
+        RendererConfiguration.copyEnvironment(&config->emulator_id,
+            "SEMU_RENDER_EMULATOR_ID");
+        char* suffixes[4] = {"", "_B", "_C", "_D"};
+        for (int index = 0; index < 4; index++) {
+            RendererConfiguration.loadVariant(&config->variants[index],
+                suffixes[index]);
+        }
+    }
+}
+
+class RendererGeometry {
+    class void fit(int areaX, int areaY, int areaWidth, int areaHeight,
+                   int nativeWidth, int nativeHeight, float declaredAspect,
+                   int integerScaling, struct RendererLaneGeometry* lane) {
+        struct RendererPixelRect area;
+        area.x = areaX;
+        area.y = areaY;
+        area.width = areaWidth;
+        area.height = areaHeight;
+        struct RendererPixelRect output;
+        RendererCompositionContract.fit(&area, nativeWidth, nativeHeight,
+            lane->rotation, declaredAspect, integerScaling, &output);
+        lane->output_x = output.x;
+        lane->output_y = output.y;
+        lane->output_width = output.width;
+        lane->output_height = output.height;
+    }
+
+    class void fitHole(struct RendererNormalizedHole* hole,
+                       struct RendererCompositionGeometry* geometry,
+                       int integerScaling,
+                       struct RendererLaneGeometry* lane) {
+        struct RendererCanvasRect canvas;
+        canvas.x = geometry->bezel_x;
+        canvas.y = geometry->bezel_y;
+        canvas.width = geometry->bezel_width;
+        canvas.height = geometry->bezel_height;
+        struct RendererPixelRect aperture;
+        RendererCompositionContract.aperture(&canvas, hole->x, hole->y,
+            hole->width, hole->height, &aperture);
+        RendererGeometry.fit(aperture.x, aperture.y, aperture.width,
+            aperture.height, lane->native_width, lane->native_height,
+            0.0f, integerScaling, lane);
+    }
+
+    class bool resolve(struct SemuRenderFrameGl* frame,
+                       struct RendererConfig* config,
+                       struct RendererGlResources* resources,
+                       struct RendererCompositionGeometry* geometry) {
+        if (frame == null || config == null || resources == null
+            || geometry == null) { return false; }
+        memset(geometry, 0, sizeof(struct RendererCompositionGeometry));
+        geometry->lane_count = frame->surface_count;
+        for (int index = 0; index < frame->surface_count; index++) {
+            struct SemuRenderSurfaceGl* surface = &frame->surfaces[index];
+            struct RendererLaneGeometry* lane = &geometry->lanes[index];
+            lane->source_x = surface->x;
+            lane->source_y = RendererFrameContract.sourceY(frame, surface);
+            lane->source_width = surface->width;
+            lane->source_height = surface->height;
+            lane->native_width = surface->native_width;
+            lane->native_height = surface->native_height;
+            lane->rotation = surface->rotation;
+            lane->origin = surface->origin;
+        }
+
+        int areaX = 0;
+        int areaY = 0;
+        int areaWidth = frame->framebuffer_width;
+        int areaHeight = frame->framebuffer_height;
+        int variantIndex = config->active_variant;
+        struct RendererVariantConfig* variant = RendererConfiguration.active(config);
+        bool hasLaneHoles = frame->surface_count == 2
+            && variant->primary.set != 0 && variant->secondary.set != 0;
+        bool bezel = config->bezels_enabled != 0
+            && resources->art_loaded[variantIndex] != 0
+            && (variant->screen.set != 0 || hasLaneHoles);
+        if (bezel) {
+            struct RendererCanvasRect canvas;
+            RendererCompositionContract.contain(areaWidth, areaHeight,
+                resources->art_width[variantIndex],
+                resources->art_height[variantIndex], &canvas);
+            geometry->bezel_x = canvas.x;
+            geometry->bezel_y = canvas.y;
+            geometry->bezel_width = canvas.width;
+            geometry->bezel_height = canvas.height;
+            if (hasLaneHoles) {
+                RendererGeometry.fitHole(&variant->primary, geometry,
+                    config->integer_scaling, &geometry->lanes[0]);
+                RendererGeometry.fitHole(&variant->secondary, geometry,
+                    config->integer_scaling, &geometry->lanes[1]);
+                return true;
+            }
+            struct RendererPixelRect aperture;
+            RendererCompositionContract.aperture(&canvas,
+                variant->screen.x, variant->screen.y,
+                variant->screen.width, variant->screen.height, &aperture);
+            areaX = aperture.x;
+            areaY = aperture.y;
+            areaWidth = aperture.width;
+            areaHeight = aperture.height;
+        }
+
+        if (frame->surface_count == 1) {
+            RendererGeometry.fit(areaX, areaY, areaWidth, areaHeight,
+                geometry->lanes[0].native_width, geometry->lanes[0].native_height,
+                frame->presentation_aspect > 0.01f
+                    ? frame->presentation_aspect : config->display_aspect,
+                config->integer_scaling,
+                &geometry->lanes[0]);
+            return true;
+        }
+
+        int gap = 8;
+        if (config->dual_horizontal != 0) {
+            int laneWidth = (areaWidth - gap) / 2;
+            RendererGeometry.fit(areaX, areaY, laneWidth, areaHeight,
+                geometry->lanes[0].native_width, geometry->lanes[0].native_height,
+                0.0f, config->integer_scaling, &geometry->lanes[0]);
+            RendererGeometry.fit(areaX + laneWidth + gap, areaY, laneWidth,
+                areaHeight, geometry->lanes[1].native_width,
+                geometry->lanes[1].native_height, 0.0f,
+                config->integer_scaling, &geometry->lanes[1]);
+        } else {
+            int laneHeight = (areaHeight - gap) / 2;
+            RendererGeometry.fit(areaX, areaY + laneHeight + gap, areaWidth,
+                laneHeight, geometry->lanes[0].native_width,
+                geometry->lanes[0].native_height, 0.0f,
+                config->integer_scaling, &geometry->lanes[0]);
+            RendererGeometry.fit(areaX, areaY, areaWidth, laneHeight,
+                geometry->lanes[1].native_width,
+                geometry->lanes[1].native_height, 0.0f,
+                config->integer_scaling, &geometry->lanes[1]);
+        }
+        return true;
+    }
+}
+
+class RendererResourceFailure {
+    class void clear(struct RendererGlResources* resources) {
+        if (resources == null) { return; }
+        resources->failure_reason[0] = 0;
+    }
+
+    class int set(struct RendererGlResources* resources, int status,
+                  char* reason) {
+        if (resources != null) {
+            snprintf(resources->failure_reason,
+                sizeof(resources->failure_reason), "%s",
+                reason == null ? "unknown" : reason);
+        }
+        return status;
+    }
+}
+
+class RendererResources {
+    class void abandonDestroyedContext(struct RendererGlResources* resources) {
+        if (resources == null) { return; }
+        for (int index = 0; index < 2; index++) {
+            SemuLibrashaderOpenGLChain chain = index == 0
+                ? RendererShaderLane0 : RendererShaderLane1;
+            if (chain != null) {
+                chain.abandonDestroyedContext();
+                delete chain;
+            }
+            if (index == 0) { RendererShaderLane0 = null; }
+            else { RendererShaderLane1 = null; }
+        }
+        memset(resources, 0, sizeof(struct RendererGlResources));
+    }
+
+    class bool current(struct RendererGlApi* gl,
+                       struct RendererGlResources* resources,
+                       void* context) {
+        if (gl == null || gl->is_program == null || resources == null) {
+            return false;
+        }
+        // glIsProgram catches same-address context recreation, where comparing
+        // only the emulator's opaque context token cannot detect stale objects.
+        bool programAlive = resources->program != 0u
+            && gl->is_program(resources->program) != 0;
+        return RendererContextContract.resourcesCurrent(
+            resources->owner_context, context, resources->ready,
+            resources->program, programAlive);
+    }
+
+    class void normalizeUnpack(struct RendererGlApi* gl) {
+        gl->bind_buffer((unsigned int)RGL_PIXEL_UNPACK_BUFFER, 0);
+        gl->pixel_store((unsigned int)RGL_UNPACK_SWAP_BYTES, 0);
+        gl->pixel_store((unsigned int)RGL_UNPACK_LSB_FIRST, 0);
+        gl->pixel_store((unsigned int)RGL_UNPACK_ROW_LENGTH, 0);
+        gl->pixel_store((unsigned int)RGL_UNPACK_IMAGE_HEIGHT, 0);
+        gl->pixel_store((unsigned int)RGL_UNPACK_SKIP_PIXELS, 0);
+        gl->pixel_store((unsigned int)RGL_UNPACK_SKIP_ROWS, 0);
+        gl->pixel_store((unsigned int)RGL_UNPACK_SKIP_IMAGES, 0);
+        gl->pixel_store((unsigned int)RGL_UNPACK_ALIGNMENT, 1);
+    }
+
+    class void configureTexture(struct RendererGlApi* gl, unsigned int texture,
+                                int filter) {
+        gl->bind_texture((unsigned int)RGL_TEXTURE_2D, texture);
+        gl->texture_parameter((unsigned int)RGL_TEXTURE_2D,
+            (unsigned int)RGL_TEXTURE_BASE_LEVEL, 0);
+        gl->texture_parameter((unsigned int)RGL_TEXTURE_2D,
+            (unsigned int)RGL_TEXTURE_MAX_LEVEL, 0);
+        gl->texture_parameter((unsigned int)RGL_TEXTURE_2D,
+            (unsigned int)RGL_TEXTURE_MIN_FILTER, filter);
+        gl->texture_parameter((unsigned int)RGL_TEXTURE_2D,
+            (unsigned int)RGL_TEXTURE_MAG_FILTER, filter);
+        gl->texture_parameter((unsigned int)RGL_TEXTURE_2D,
+            (unsigned int)RGL_TEXTURE_WRAP_S, RGL_CLAMP_TO_EDGE);
+        gl->texture_parameter((unsigned int)RGL_TEXTURE_2D,
+            (unsigned int)RGL_TEXTURE_WRAP_T, RGL_CLAMP_TO_EDGE);
+    }
+
+    class unsigned int compile(struct RendererGlApi* gl, unsigned int kind,
+                               const char* source) {
+        unsigned int shader = gl->create_shader(kind);
+        char* text = (char*)source;
+        gl->shader_source(shader, 1, &text, null);
+        gl->compile_shader(shader);
+        int compiled = 0;
+        gl->get_shader_integer(shader, (unsigned int)RGL_COMPILE_STATUS, &compiled);
+        return compiled != 0 ? shader : 0;
+    }
+
+    class bool loadImage(struct RendererGlApi* gl, char* path,
+                         unsigned int* texture, int* width, int* height) {
+        if (path == null || path[0] == 0) { return false; }
+        int channels = 0;
+        unsigned char* pixels = stbi_load(path, width, height, &channels, 4);
+        if (pixels == null) { return false; }
+        if (*width < 1 || *height < 1) {
+            stbi_image_free((void*)pixels);
+            return false;
+        }
+        gl->gen_textures(1, texture);
+        RendererResources.configureTexture(gl, *texture, RGL_LINEAR);
+        RendererResources.normalizeUnpack(gl);
+        RendererGlErrors.clear(gl);
+        gl->texture_image_2d((unsigned int)RGL_TEXTURE_2D, 0, RGL_RGBA8,
+            *width, *height, 0, (unsigned int)RGL_RGBA,
+            (unsigned int)RGL_UNSIGNED_BYTE, pixels);
+        bool uploaded = RendererGlErrors.none(gl);
+        stbi_image_free((void*)pixels);
+        if (!uploaded) { *texture = 0; }
+        return uploaded;
+    }
+
+    class bool initialize(struct RendererGlApi* gl,
+                          struct RendererGlResources* resources,
+                          struct RendererConfig* config,
+                          void* context) {
+        if (gl == null || resources == null || config == null || context == null) {
+            return false;
+        }
+        if (resources->ready != 0) {
+            if (RendererResources.current(gl, resources, context)) { return true; }
+            RendererResources.abandonDestroyedContext(resources);
+        }
+        resources->owner_context = context;
+        gl->gen_textures(2, resources->raw_textures);
+        gl->gen_textures(2, resources->shader_textures);
+        gl->gen_textures(1, &resources->menu_texture);
+        gl->gen_framebuffers(1, &resources->extraction_framebuffer);
+        gl->gen_vertex_arrays(1, &resources->vertex_array);
+        unsigned int vertex = RendererResources.compile(gl,
+            (unsigned int)RGL_VERTEX_SHADER, SEMU_RENDER_VERTEX_SHADER);
+        unsigned int fragment = RendererResources.compile(gl,
+            (unsigned int)RGL_FRAGMENT_SHADER, SEMU_RENDER_FRAGMENT_SHADER);
+        if (vertex == 0 || fragment == 0) { return false; }
+        resources->program = gl->create_program();
+        gl->attach_shader(resources->program, vertex);
+        gl->attach_shader(resources->program, fragment);
+        gl->link_program(resources->program);
+        int linked = 0;
+        gl->get_program_integer(resources->program,
+            (unsigned int)RGL_LINK_STATUS, &linked);
+        if (linked == 0) { return false; }
+
+        resources->uniform_game = gl->uniform_location(resources->program, "uGame");
+        resources->uniform_game2 = gl->uniform_location(resources->program, "uGame2");
+        resources->uniform_bezel = gl->uniform_location(resources->program, "uBezel");
+        resources->uniform_glass = gl->uniform_location(resources->program, "uGlass");
+        resources->uniform_menu = gl->uniform_location(resources->program, "uMenu");
+        resources->uniform_rect = gl->uniform_location(resources->program, "uRect");
+        resources->uniform_rect2 = gl->uniform_location(resources->program, "uRect2");
+        resources->uniform_bezel_rect = gl->uniform_location(resources->program,
+            "uBezelRect");
+        resources->uniform_menu_rect = gl->uniform_location(resources->program,
+            "uMenuRect");
+        resources->uniform_dual = gl->uniform_location(resources->program, "uDual");
+        resources->uniform_has_art = gl->uniform_location(resources->program, "uHasArt");
+        resources->uniform_has_glass = gl->uniform_location(resources->program,
+            "uHasGlass");
+        resources->uniform_menu_on = gl->uniform_location(resources->program, "uMenuOn");
+        resources->uniform_reflect = gl->uniform_location(resources->program, "uReflect");
+        resources->uniform_pass = gl->uniform_location(resources->program, "uPass");
+        resources->uniform_rotation = gl->uniform_location(
+            resources->program, "uRotation");
+        resources->uniform_rotation2 = gl->uniform_location(
+            resources->program, "uRotation2");
+        gl->use_program(resources->program);
+        if (resources->uniform_game >= 0) { gl->uniform_1i(resources->uniform_game, 0); }
+        if (resources->uniform_game2 >= 0) { gl->uniform_1i(resources->uniform_game2, 4); }
+        if (resources->uniform_bezel >= 0) { gl->uniform_1i(resources->uniform_bezel, 1); }
+        if (resources->uniform_glass >= 0) { gl->uniform_1i(resources->uniform_glass, 2); }
+        if (resources->uniform_menu >= 0) { gl->uniform_1i(resources->uniform_menu, 3); }
+        for (int variantIndex = 0; variantIndex < 4; variantIndex++) {
+            struct RendererVariantConfig* variant = &config->variants[variantIndex];
+            gl->active_texture((unsigned int)(RGL_TEXTURE0 + 1));
+            resources->art_loaded[variantIndex] = RendererResources.loadImage(gl,
+                variant->art.value, &resources->bezel_textures[variantIndex],
+                &resources->art_width[variantIndex],
+                &resources->art_height[variantIndex]) ? 1 : 0;
+            int glassWidth = 0;
+            int glassHeight = 0;
+            gl->active_texture((unsigned int)(RGL_TEXTURE0 + 2));
+            resources->glass_loaded[variantIndex] = RendererResources.loadImage(gl,
+                variant->glass.value, &resources->glass_textures[variantIndex],
+                &glassWidth, &glassHeight) ? 1 : 0;
+        }
+        gl->active_texture((unsigned int)RGL_TEXTURE0);
+        resources->ready = 1;
+        return true;
+    }
+}
+
+class RendererShaderPasses {
+    class SemuLibrashaderOpenGLChain lane(int index) {
+        return index == 0 ? RendererShaderLane0 : RendererShaderLane1;
+    }
+
+    class void setLane(int index, SemuLibrashaderOpenGLChain lane) {
+        if (index == 0) { RendererShaderLane0 = lane; }
+        else { RendererShaderLane1 = lane; }
+    }
+
+    class void resetLane(int index, struct RendererGlResources* resources) {
+        SemuLibrashaderOpenGLChain chain = RendererShaderPasses.lane(index);
+        if (chain != null) { delete chain; }
+        RendererShaderPasses.setLane(index, null);
+        resources->lane_history[index] = 0;
+        resources->lane_shader_presets[index].value[0] = 0;
+        resources->lane_shader_native_width[index] = 0;
+        resources->lane_shader_native_height[index] = 0;
+        resources->lane_shader_output_width[index] = 0;
+        resources->lane_shader_output_height[index] = 0;
+    }
+
+    class bool presetAvailable(struct RendererConfig* config) {
+        return RendererConfiguration.shaderAvailable(config);
+    }
+
+    class bool prepareTexture(struct RendererGlApi* gl, unsigned int texture,
+                              int width, int height, bool resize) {
+        RendererResources.configureTexture(gl, texture, RGL_NEAREST);
+        if (resize) {
+            RendererResources.normalizeUnpack(gl);
+            RendererGlErrors.clear(gl);
+            gl->texture_image_2d((unsigned int)RGL_TEXTURE_2D, 0, RGL_RGBA8,
+                width, height, 0, (unsigned int)RGL_RGBA,
+                (unsigned int)RGL_UNSIGNED_BYTE, null);
+            if (!RendererGlErrors.none(gl)) { return false; }
+        }
+        return true;
+    }
+
+    class bool extract(struct RendererGlApi* gl,
+                       struct RendererGlResources* resources,
+                       struct SemuRenderFrameGl* frame,
+                       struct RendererLaneGeometry* lane,
+                       int index) {
+        bool nativeChanged = resources->lane_native_width[index]
+                != lane->native_width
+            || resources->lane_native_height[index] != lane->native_height;
+        bool outputChanged = resources->lane_output_width[index]
+                != lane->output_width
+            || resources->lane_output_height[index] != lane->output_height;
+        gl->active_texture((unsigned int)RGL_TEXTURE0);
+        gl->bind_sampler(0, 0);
+        if (!RendererShaderPasses.prepareTexture(gl,
+                resources->raw_textures[index], lane->native_width,
+                lane->native_height, nativeChanged)
+            || !RendererShaderPasses.prepareTexture(gl,
+                resources->shader_textures[index], lane->output_width,
+                lane->output_height, outputChanged)) {
+            return false;
+        }
+        resources->lane_native_width[index] = lane->native_width;
+        resources->lane_native_height[index] = lane->native_height;
+        resources->lane_output_width[index] = lane->output_width;
+        resources->lane_output_height[index] = lane->output_height;
+
+        gl->bind_framebuffer((unsigned int)RGL_READ_FRAMEBUFFER, frame->framebuffer);
+        gl->read_buffer(frame->color_buffer);
+        gl->bind_framebuffer((unsigned int)RGL_DRAW_FRAMEBUFFER,
+            resources->extraction_framebuffer);
+        gl->framebuffer_texture_2d((unsigned int)RGL_DRAW_FRAMEBUFFER,
+            (unsigned int)RGL_COLOR_ATTACHMENT0, (unsigned int)RGL_TEXTURE_2D,
+            resources->raw_textures[index], 0);
+        gl->draw_buffer((unsigned int)RGL_COLOR_ATTACHMENT0);
+        if (gl->check_framebuffer((unsigned int)RGL_DRAW_FRAMEBUFFER)
+                != (unsigned int)RGL_FRAMEBUFFER_COMPLETE) {
+            return false;
+        }
+        gl->disable((unsigned int)RGL_SCISSOR_TEST);
+        RendererGlErrors.clear(gl);
+        gl->blit_framebuffer(lane->source_x, lane->source_y,
+            lane->source_x + lane->source_width,
+            lane->source_y + lane->source_height, 0, 0,
+            lane->native_width, lane->native_height,
+            (unsigned int)RGL_COLOR_BUFFER_BIT, (unsigned int)RGL_NEAREST);
+        return RendererGlErrors.none(gl);
+    }
+
+    class bool render(struct RendererGlApi* gl,
+                      struct RendererConfig* config,
+                      struct RendererGlResources* resources,
+                      struct SemuRenderFrameGl* frame,
+                      struct RendererLaneGeometry* lane,
+                      int index) {
+        if (config->shaders_enabled == 0
+            || !RendererShaderPasses.presetAvailable(config)) { return false; }
+        char* preset = RendererConfiguration.shaderPreset(config);
+        SemuLibrashaderOpenGLChain chain = RendererShaderPasses.lane(index);
+        bool presetChanged = resources->lane_shader_presets[index].value[0] != 0
+            && strcmp(resources->lane_shader_presets[index].value, preset) != 0;
+        bool dimensionsChanged = chain != null
+            && (resources->lane_shader_native_width[index] != lane->native_width
+                || resources->lane_shader_native_height[index] != lane->native_height
+                || resources->lane_shader_output_width[index] != lane->output_width
+                || resources->lane_shader_output_height[index]
+                    != lane->output_height);
+        if (presetChanged || dimensionsChanged) {
+            RendererShaderPasses.resetLane(index, resources);
+            chain = null;
+        }
+        if (chain == null) {
+            chain = new SemuLibrashaderOpenGLChain(
+                (void*)frame->get_proc, (void*)frame->current_context);
+            if (!chain.create(preset, 330, false, false,
+                    true, true, true)) {
+                delete chain;
+                return false;
+            }
+            RendererShaderPasses.setLane(index, chain);
+            snprintf(resources->lane_shader_presets[index].value, 4096,
+                "%s", preset);
+        }
+        unsigned int rotation = lane->rotation == 90 ? 1
+            : (lane->rotation == 180 ? 2 : (lane->rotation == 270 ? 3 : 0));
+        float aspect = (float)lane->native_width / (float)lane->native_height;
+        int result = chain.render(resources->raw_textures[index], RGL_RGBA8,
+            (unsigned int)lane->native_width, (unsigned int)lane->native_height,
+            resources->shader_textures[index], RGL_RGBA8,
+            (unsigned int)lane->output_width, (unsigned int)lane->output_height,
+            (size_t)resources->lane_history[index], false, 1, rotation, aspect,
+            config->frames_per_second, config->frame_delta_ms);
+        if (result != SEMU_LIBRASHADER_RENDERED
+                || !RendererGlErrors.none(gl)) {
+            RendererShaderPasses.resetLane(index, resources);
+            return false;
+        }
+        resources->lane_shader_native_width[index] = lane->native_width;
+        resources->lane_shader_native_height[index] = lane->native_height;
+        resources->lane_shader_output_width[index] = lane->output_width;
+        resources->lane_shader_output_height[index] = lane->output_height;
+        resources->lane_history[index] = resources->lane_history[index] + 1;
+        return true;
+    }
+}
+
+class RendererAssetContract {
+    class int validate(struct RendererConfig* config,
+                       struct RendererGlResources* resources) {
+        if (config == null || resources == null) {
+            return RendererResourceFailure.set(resources,
+                SEMU_RENDER_PIPELINE_FAILED, "invalid_asset_state");
+        }
+        RendererResourceFailure.clear(resources);
+        struct RendererVariantConfig* variant = RendererConfiguration.active(config);
+        int selected = config->active_variant;
+        bool presetAvailable = RendererShaderPasses.presetAvailable(config);
+        bool artDeclared = variant->art.value[0] != 0;
+        bool artLoaded = resources->art_loaded[selected] != 0;
+        bool glassDeclared = variant->glass.value[0] != 0;
+        bool glassLoaded = resources->glass_loaded[selected] != 0;
+        bool apertureDeclared = variant->screen.set != 0
+            || (variant->primary.set != 0 && variant->secondary.set != 0);
+        int status = RendererAssetRequirements.status(config->shaders_enabled,
+            presetAvailable, config->bezels_enabled, artDeclared, artLoaded,
+            glassDeclared, glassLoaded, apertureDeclared);
+        if (status == SEMU_RENDER_APPLIED) { return status; }
+        if (config->shaders_enabled != 0 && !presetAvailable) {
+            return RendererResourceFailure.set(resources,
+                SEMU_RENDER_ASSET_MISSING, "shader_preset_missing");
+        }
+        if (config->bezels_enabled != 0) {
+            if (!artDeclared || !artLoaded) {
+                return RendererResourceFailure.set(resources,
+                    SEMU_RENDER_ASSET_MISSING, "bezel_art_missing");
+            }
+            if (glassDeclared && !glassLoaded) {
+                return RendererResourceFailure.set(resources,
+                    SEMU_RENDER_ASSET_MISSING, "bezel_glass_missing");
+            }
+            if (!apertureDeclared) {
+                return RendererResourceFailure.set(resources,
+                    SEMU_RENDER_PIPELINE_FAILED, "bezel_aperture_missing");
+            }
+        }
+        return RendererResourceFailure.set(resources, status,
+            "asset_validation_failed");
+    }
+}
+
+class RendererCompositor {
+    class bool fullFramebufferState(struct RendererGlApi* gl,
+                                    struct SemuRenderFrameGl* frame) {
+        int viewport[4] = {0, 0, 0, 0};
+        gl->get_integer((unsigned int)RGL_VIEWPORT, viewport);
+        return viewport[0] == 0 && viewport[1] == 0
+            && viewport[2] == frame->framebuffer_width
+            && viewport[3] == frame->framebuffer_height
+            && gl->is_enabled((unsigned int)RGL_SCISSOR_TEST) == 0;
+    }
+
+    class void setRect(struct RendererGlApi* gl, int location,
+                       struct RendererLaneGeometry* lane) {
+        if (location >= 0 && lane != null) {
+            gl->uniform_4f(location, (float)lane->output_x,
+                (float)lane->output_y, (float)lane->output_width,
+                (float)lane->output_height);
+        }
+    }
+
+    class void drawPass(struct RendererGlApi* gl,
+                        struct RendererGlResources* resources,
+                        int pass, bool blend) {
+        if (blend) {
+            gl->enable((unsigned int)RGL_BLEND);
+            gl->blend_function_separate((unsigned int)RGL_SRC_ALPHA,
+                (unsigned int)RGL_ONE_MINUS_SRC_ALPHA,
+                (unsigned int)RGL_SRC_ALPHA,
+                (unsigned int)RGL_ONE_MINUS_SRC_ALPHA);
+            gl->blend_equation_separate((unsigned int)RGL_FUNC_ADD,
+                (unsigned int)RGL_FUNC_ADD);
+        } else {
+            gl->disable((unsigned int)RGL_BLEND);
+        }
+        if (resources->uniform_pass >= 0) {
+            gl->uniform_1f(resources->uniform_pass, (float)pass);
+        }
+        gl->draw_arrays((unsigned int)RGL_TRIANGLES, 0, 3);
+    }
+
+    class int game(struct RendererGlApi* gl,
+                   struct RendererGlResources* resources,
+                   struct RendererConfig* config,
+                   struct SemuRenderFrameGl* frame,
+                   struct RendererCompositionGeometry* geometry) {
+        int filtered[2] = {0, 0};
+        resources->shader_actual = 0;
+        resources->bezel_actual = 0;
+        int assets = RendererAssetContract.validate(config, resources);
+        if (assets != SEMU_RENDER_APPLIED) { return assets; }
+        bool shaderRequested = config->shaders_enabled != 0;
+        for (int index = 0; index < geometry->lane_count; index++) {
+            if (!RendererShaderPasses.extract(gl, resources, frame,
+                    &geometry->lanes[index], index)) {
+                return RendererResourceFailure.set(resources,
+                    SEMU_RENDER_PIPELINE_FAILED, "surface_extract_failed");
+            }
+            if (shaderRequested) {
+                if (!RendererShaderPasses.render(gl, config, resources,
+                        frame, &geometry->lanes[index], index)) {
+                    return RendererResourceFailure.set(resources,
+                        SEMU_RENDER_PIPELINE_FAILED, "shader_render_failed");
+                }
+                filtered[index] = 1;
+            }
+        }
+        resources->shader_actual = shaderRequested ? 1 : 0;
+
+        gl->active_texture((unsigned int)RGL_TEXTURE0);
+        gl->bind_sampler(0, 0);
+        gl->bind_texture((unsigned int)RGL_TEXTURE_2D, filtered[0] != 0
+            ? resources->shader_textures[0] : resources->raw_textures[0]);
+        gl->active_texture((unsigned int)(RGL_TEXTURE0 + 4));
+        gl->bind_sampler(4, 0);
+        int second = geometry->lane_count > 1 ? 1 : 0;
+        gl->bind_texture((unsigned int)RGL_TEXTURE_2D, filtered[second] != 0
+            ? resources->shader_textures[second] : resources->raw_textures[second]);
+        gl->active_texture((unsigned int)(RGL_TEXTURE0 + 1));
+        gl->bind_sampler(1, 0);
+        gl->bind_texture((unsigned int)RGL_TEXTURE_2D,
+            resources->bezel_textures[config->active_variant]);
+        gl->active_texture((unsigned int)(RGL_TEXTURE0 + 2));
+        gl->bind_sampler(2, 0);
+        gl->bind_texture((unsigned int)RGL_TEXTURE_2D,
+            resources->glass_textures[config->active_variant]);
+
+        gl->bind_framebuffer((unsigned int)RGL_DRAW_FRAMEBUFFER, frame->framebuffer);
+        gl->draw_buffer(frame->color_buffer);
+        gl->disable((unsigned int)RGL_DEPTH_TEST);
+        gl->disable((unsigned int)RGL_SCISSOR_TEST);
+        gl->disable((unsigned int)RGL_CULL_FACE);
+        gl->disable((unsigned int)RGL_STENCIL_TEST);
+        gl->disable((unsigned int)RGL_MULTISAMPLE);
+        gl->disable((unsigned int)RGL_FRAMEBUFFER_SRGB);
+        gl->color_mask(1, 1, 1, 1);
+        gl->depth_mask(0);
+        gl->stencil_mask_separate((unsigned int)RGL_FRONT, 0xffffffffu);
+        gl->stencil_mask_separate((unsigned int)RGL_BACK, 0xffffffffu);
+        gl->viewport(0, 0, frame->framebuffer_width, frame->framebuffer_height);
+        if (!RendererCompositor.fullFramebufferState(gl, frame)) {
+            return RendererResourceFailure.set(resources,
+                SEMU_RENDER_PIPELINE_FAILED, "framebuffer_state_invalid");
+        }
+        gl->use_program(resources->program);
+        gl->bind_vertex_array(resources->vertex_array);
+        RendererCompositor.setRect(gl, resources->uniform_rect,
+            &geometry->lanes[0]);
+        RendererCompositor.setRect(gl, resources->uniform_rect2,
+            &geometry->lanes[second]);
+        if (resources->uniform_rotation >= 0) {
+            gl->uniform_1f(resources->uniform_rotation, filtered[0] != 0
+                ? 0.0f : (float)geometry->lanes[0].rotation / 90.0f);
+        }
+        if (resources->uniform_rotation2 >= 0) {
+            gl->uniform_1f(resources->uniform_rotation2,
+                filtered[second] != 0 ? 0.0f
+                    : (float)geometry->lanes[second].rotation / 90.0f);
+        }
+        if (resources->uniform_dual >= 0) {
+            gl->uniform_1f(resources->uniform_dual,
+                geometry->lane_count > 1 ? 1.0f : 0.0f);
+        }
+        if (resources->uniform_bezel_rect >= 0) {
+            gl->uniform_4f(resources->uniform_bezel_rect, geometry->bezel_x,
+                geometry->bezel_y, geometry->bezel_width,
+                geometry->bezel_height);
+        }
+        bool art = config->bezels_enabled != 0
+            && resources->art_loaded[config->active_variant] != 0
+            && geometry->bezel_width > 0.0f && geometry->bezel_height > 0.0f;
+        bool glass = art
+            && resources->glass_loaded[config->active_variant] != 0;
+        resources->bezel_actual = art ? 1 : 0;
+        if (resources->uniform_has_art >= 0) {
+            gl->uniform_1f(resources->uniform_has_art, art ? 1.0f : 0.0f);
+        }
+        if (resources->uniform_has_glass >= 0) {
+            gl->uniform_1f(resources->uniform_has_glass, glass ? 1.0f : 0.0f);
+        }
+        if (resources->uniform_reflect >= 0) {
+            gl->uniform_1f(resources->uniform_reflect,
+                glass ? config->reflect : 0.0f);
+        }
+        if (resources->uniform_menu_on >= 0) {
+            gl->uniform_1f(resources->uniform_menu_on, 0.0f);
+        }
+        RendererGlErrors.clear(gl);
+        RendererCompositor.drawPass(gl, resources,
+            SEMU_RENDER_PASS_BACKGROUND, false);
+        RendererCompositor.drawPass(gl, resources,
+            SEMU_RENDER_PASS_GAME, false);
+        if (art) {
+            RendererCompositor.drawPass(gl, resources,
+                SEMU_RENDER_PASS_CHROME, true);
+        }
+        bool drew = RendererGlErrors.none(gl);
+        if (!drew) {
+            resources->shader_actual = 0;
+            resources->bezel_actual = 0;
+            return RendererResourceFailure.set(resources,
+                SEMU_RENDER_PIPELINE_FAILED, "composition_draw_failed");
+        }
+        return SEMU_RENDER_APPLIED;
+    }
+}

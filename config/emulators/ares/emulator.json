@@ -1,0 +1,106 @@
+{
+  "schema_version": 1,
+  "name": "ares",
+  "default_system": "n64",
+  "input": {
+    "actions": [
+      "ui.pause",
+      "ui.screenshot",
+      "ui.fullscreen",
+      "app.quit",
+      "state.prev",
+      "state.next",
+      "state.load",
+      "state.save",
+      "speed.fast"
+    ]
+  },
+  "platforms": {
+    "macos": {
+      "backend": "native",
+      "executable": "${asset_root}/Applications/ares.app/Contents/MacOS/ares",
+      "args": [
+        "--fullscreen",
+        "--kiosk",
+        "--no-file-prompt",
+        "--system",
+        "Nintendo 64",
+        "--settings-file",
+        "${state_root}/config/ares/settings.bml",
+        "--setting",
+        "Video/Driver=OpenGL 3.2",
+        "--setting",
+        "Video/Shader=None",
+        "--setting",
+        "Video/Output=Integer",
+        "--setting",
+        "General/NoFilePrompt=true",
+        "--setting",
+        "Paths/Home=${state_root}/data/ares",
+        "--setting",
+        "Paths/Firmware=${state_root}/data/ares/firmware",
+        "--setting",
+        "Paths/Saves=${state_root}/data/ares/saves",
+        "--setting",
+        "Paths/Screenshots=${state_root}/data/ares/screenshots",
+        "--setting",
+        "Paths/Debugging=${state_root}/data/ares/debug"
+      ],
+      "sandbox": {
+        "filesystems": [
+          {
+            "path": "${project}",
+            "mode": "ro"
+          },
+          {
+            "path": "${asset_root}",
+            "mode": "ro"
+          },
+          {
+            "path": "${roms}",
+            "mode": "ro"
+          },
+          {
+            "path": "${emulation_root}",
+            "mode": "ro"
+          },
+          {
+            "path": "${state_root}",
+            "mode": "create"
+          }
+        ]
+      },
+      "graphics": {
+        "method": "cli"
+      },
+      "aspect_probe": {
+        "files": [
+          "${state_root}/config/ares/settings.bml"
+        ],
+        "widescreen_markers": [
+          "Video/AspectCorrectionMode: Anamorphic",
+          "AspectCorrectionMode: Anamorphic"
+        ],
+        "standard_markers": [
+          "Video/AspectCorrectionMode: Standard",
+          "AspectCorrectionMode: Standard"
+        ],
+        "fallback": "standard"
+      },
+      "state": {
+        "config_home": "preserve",
+        "data_home": "preserve",
+        "profile_config_dir": "${state_root}/config/ares",
+        "managed_profile_files": [
+          "config/settings.bml"
+        ]
+      }
+    }
+  },
+  "doc": {
+    "launch": "The exact source-built macOS application launches one N64 ROM in kiosk fullscreen with its Semu-owned settings file. There is no host application, prebuilt binary, or libretro fallback.",
+    "state": "The command line resolves every mutable ares path below the per-emulator state root. Generated settings are installed into that root; ROM, package, project, and external emulation trees remain read-only under sandbox-exec.",
+    "input": "ares SDL input consumes the complete Steam Virtual Gamepad mapping emitted from profile.json, with a stable Quartz keyboard fallback for macOS verification. The declared hotkeys cover pause, screenshot, fullscreen, state slots, save/load, fast-forward, and quit; the emulator source contains no Semu-specific Start+Select policy.",
+    "rendering": "The launch contract forces ares' OpenGL 3.2 driver and disables its native shader. OpenGL::output calls the directly linked Semu game phase after rendering the game texture, and VideoCGL calls the post-UI phase immediately before flushBuffer; ares owns no Semu shader, bezel, or menu behavior."
+  }
+}

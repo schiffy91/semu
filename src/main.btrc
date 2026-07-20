@@ -1,0 +1,8 @@
+// main.btrc - production Semu CLI entrypoint.
+
+import std.{cli}
+import ./cli.btrc
+
+int main(int argc, char** argv) {
+    return SemuCli.run(CliArgs(argc, argv));
+}

@@ -1,0 +1,70 @@
+{
+  "schema_version": 1,
+  "target": "steam-deck",
+  "application": {
+    "name": "Semu",
+    "comment": "Emulation environment",
+    "icon": "semu",
+    "categories": "Game;Emulator;"
+  },
+  "paths": {
+    "install_root": "Applications/Semu",
+    "project_root": ".local/share/semu",
+    "applications_root": ".local/share/applications",
+    "artifact": "Semu-x86_64.AppImage",
+    "artifact_store": "artifacts",
+    "desktop_entry": "semu.desktop",
+    "stable_launcher": "bin/semu",
+    "runtime_cli": "libexec/semu-btrc"
+  },
+  "release": {
+    "retained": 2,
+    "launcher_payload": "share/semu/appimage/semu-launcher"
+  },
+  "platform": {
+    "required_executables": [
+      "bwrap",
+      "sha256sum",
+      "cp",
+      "chmod"
+    ],
+    "bubblewrap": "bwrap"
+  },
+  "runtime": {
+    "sandbox_appdir": "/run/semu-appdir",
+    "settings_platform": "linux",
+    "owned_roms_fallback": "build/runtime/content/ROMs",
+    "post_install_command": [
+      "sync",
+      "apply"
+    ],
+    "es_de_home": "ES-DE",
+    "cli_commands": [
+      "build",
+      "package",
+      "launcher",
+      "settings",
+      "sync",
+      "verify"
+    ],
+    "es_de_writable_directories": [
+      "settings",
+      "custom_systems",
+      "logs",
+      "collections",
+      "gamelists",
+      "downloaded_media",
+      "themes"
+    ],
+    "steam_input_templates": ".steam/steam/controller_base/templates",
+    "steam_input_icons": ".steam/steam/tenfoot/resource/images/library/controller/binding_icons",
+    "steam_controller_configs": ".local/share/Steam/steamapps/common/Steam Controller Configs"
+  },
+  "steam": {
+    "input_definition": "input/steam-deck/steam_input.json",
+    "add_utility": "steamos-add-to-steam",
+    "legacy_artifacts": [
+      "Semu-x86_64.AppImage"
+    ]
+  }
+}

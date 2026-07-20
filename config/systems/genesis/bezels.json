@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "enabled": true,
+  "default_variant": "crt_4x3",
+  "variants": [
+    {
+      "id": "crt_4x3",
+      "label": "Premium 4:3 CRT",
+      "art": "assets/bezels/tv/crt-4x3.png",
+      "hole": {
+        "x": 0.25,
+        "y": 0.1616161616161616,
+        "w": 0.5,
+        "h": 0.6
+      }
+    }
+  ]
+}

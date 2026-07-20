@@ -1,0 +1,466 @@
+// render_hooks.btrc - semantic patch and runtime hook evidence.
+
+import std.{fs, json, process, strings, vector}
+import ../runtime_inventory.btrc
+import ./support.btrc
+
+class AppImageRenderHookProvenance {
+    class bool validPatch(JsonValue patch) {
+        if (!AppImageProvenanceSupport.exactKeys(
+                patch, ["kind", "name", "sha256", "urls"])) {
+            return false;
+        }
+        JsonValue kind = patch.get("kind");
+        JsonValue name = patch.get("name");
+        JsonValue sha256 = patch.get("sha256");
+        JsonValue urls = patch.get("urls");
+        if (!kind.isString() || !name.isString() || name.asString().isEmpty()
+            || !sha256.isString() || !urls.isArray()) {
+            return false;
+        }
+        if (kind.asString().equals("local")) {
+            return AppImageProvenanceSupport.lowerHex(sha256.asString(), 64)
+                && urls.size() == 0;
+        }
+        if (!kind.asString().equals("fixed-output")
+            || !AppImageProvenanceSupport.sriSha256(sha256.asString())
+            || urls.size() == 0) {
+            return false;
+        }
+        for (int index = 0; index < urls.size(); index++) {
+            JsonValue url = urls.at(index);
+            if (!url.isString() || !url.asString().startsWith("https://")) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    class bool hasPatch(JsonValue package, string name) {
+        JsonValue patches = package.get("patches");
+        if (!patches.isArray()) { return false; }
+        for (int index = 0; index < patches.size(); index++) {
+            JsonValue patch = patches.at(index);
+            if (patch.get("name").isString()
+                && patch.get("name").asString().equals(name)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    class string patchDigest(JsonValue package, string name) {
+        JsonValue patches = package.get("patches");
+        if (!patches.isArray()) { return ""; }
+        for (int index = 0; index < patches.size(); index++) {
+            JsonValue patch = patches.at(index);
+            if (patch.get("name").isString()
+                    && patch.get("name").asString().equals(name)
+                    && patch.get("sha256").isString()) {
+                return patch.get("sha256").asString();
+            }
+        }
+        return "";
+    }
+
+    class AppImageProvenanceInternalResult exactLocalPatches(
+            string configRoot, AppImageRuntimeSlice slice,
+            JsonValue package) {
+        if (slice.localPatches.size() != 1
+                || !slice.hookPatch.equals(
+                    PathTools.basename(slice.localPatches.get(0)))) {
+            return AppImageProvenanceInternalResult.failure(
+                "emulator has no exact target-declared renderer patch: "
+                + slice.id);
+        }
+        for localPatch in slice.localPatches {
+            string name = PathTools.basename(localPatch);
+            JsonValue patches = package.get("patches");
+            JsonValue declared = JsonValue.makeNull();
+            if (patches.isArray()) {
+                for (int index = 0; index < patches.size(); index++) {
+                    JsonValue candidate = patches.at(index);
+                    if (candidate.get("name").isString()
+                            && candidate.get("name").asString().equals(name)) {
+                        declared = candidate;
+                    }
+                }
+            }
+            AppImageProvenanceInternalDigest local =
+                AppImageProvenanceSupport.hashFile(configRoot, localPatch);
+            if (!declared.isObject()
+                    || !declared.get("kind").isString()
+                    || !declared.get("kind").asString().equals("local")
+                    || !declared.get("sha256").isString()
+                    || !local.ok()
+                    || !declared.get("sha256").asString()
+                        .equals(local.value)) {
+                return AppImageProvenanceInternalResult.failure(
+                    "emulator local patch contract is absent or disagrees "
+                    + "with source: " + slice.id + "/" + name);
+            }
+        }
+        return AppImageProvenanceInternalResult.success();
+    }
+
+    class bool runtimeBuildContractMatches(
+            JsonValue runtimeContract, AppImageRuntimeSlice slice,
+            JsonValue sourcePackage) {
+        JsonValue revision = runtimeContract.get("source_revision");
+        JsonValue sourceHash = runtimeContract.get("source_sha256");
+        JsonValue patchHash = runtimeContract.get("patch_sha256");
+        JsonValue hook = runtimeContract.get("render_hook");
+        string expectedPatch = AppImageRenderHookProvenance.patchDigest(
+            sourcePackage, slice.hookPatch);
+        return runtimeContract.isObject()
+            && revision.isString()
+            && revision.asString().equals(slice.sourceRevision)
+            && sourceHash.isString()
+            && sourceHash.asString().equals(slice.sourceSha256)
+            && patchHash.isString()
+            && AppImageProvenanceSupport.lowerHex(
+                patchHash.asString(), 64)
+            && patchHash.asString().equals(expectedPatch)
+            && AppImageRenderHookProvenance.hookContractMatches(hook, slice);
+    }
+
+    class bool hookContractMatches(
+            JsonValue hook, AppImageRuntimeSlice slice) {
+        JsonValue phases = hook.get("phases");
+        if (!hook.isObject() || !hook.get("abi").isInt()
+                || hook.get("abi").asInt() != 2
+                || !hook.get("api").isString()
+                || !hook.get("api").asString().equals("semu-renderer")
+                || !hook.get("linkage").isString()
+                || !hook.get("linkage").asString().equals(slice.hookLinkage)
+                || !hook.get("library").isString()
+                || !hook.get("library").asString().equals(slice.hookLibrary)
+                || !hook.get("patch").isString()
+                || !hook.get("patch").asString().equals(slice.hookPatch)
+                || !hook.get("inactive_reports").isBool()
+                || hook.get("inactive_reports").asBool()
+                || !hook.get("backend").isString()
+                || !hook.get("backend").asString().equals("opengl")
+                || !hook.get("header").isString()
+                || hook.get("header").asString().isEmpty()
+                || !hook.get("callbacks").isArray()
+                || hook.get("callbacks").size() == 0
+                || !hook.get("framebuffer").isString()
+                || hook.get("framebuffer").asString().isEmpty()
+                || !phases.isArray()
+                || phases.size() != 2
+                || phases.size() != slice.hookSymbols.size()
+                || !AppImageProvenanceSupport.canonicalJson(hook).equals(
+                    AppImageProvenanceSupport.canonicalJson(
+                        slice.renderHook))) {
+            return false;
+        }
+        for (int index = 0; index < phases.size(); index++) {
+            JsonValue phase = phases.at(index);
+            JsonValue id = phase.get("id");
+            JsonValue symbol = phase.get("symbol");
+            JsonValue after = phase.get("after");
+            JsonValue before = phase.get("before");
+            string expectedId = index == 0 ? "game" : "post_ui";
+            if (!phase.isObject() || !id.isString()
+                    || !id.asString().equals(expectedId)
+                    || !symbol.isString()
+                    || !symbol.asString().equals(
+                        slice.hookSymbols.get(index))
+                    || !after.isString() || after.asString().isEmpty()
+                    || !before.isString() || before.asString().isEmpty()) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    class Vector<string> addedPatchLines(string content) {
+        Vector<string> result = [];
+        bool blockComment = false;
+        for line in Strings.split(content, "\n") {
+            if (!line.startsWith("+") || line.startsWith("+++")) {
+                continue;
+            }
+            string code = line.substring(1, line.len() - 1);
+            bool scanning = true;
+            while (scanning) {
+                if (blockComment) {
+                    int end = Strings.find(code, "*/", 0);
+                    if (end < 0) { code = ""; break; }
+                    code = code.substring(end + 2,
+                        code.len() - end - 2);
+                    blockComment = false;
+                }
+                int block = Strings.find(code, "/*", 0);
+                int lineComment = Strings.find(code, "//", 0);
+                if (lineComment >= 0
+                        && (block < 0 || lineComment < block)) {
+                    code = code.substring(0, lineComment);
+                    scanning = false;
+                } else if (block >= 0) {
+                    int end = Strings.find(code, "*/", block + 2);
+                    string before = code.substring(0, block);
+                    if (end < 0) {
+                        code = before;
+                        blockComment = true;
+                        scanning = false;
+                    } else {
+                        code = before + code.substring(end + 2,
+                            code.len() - end - 2);
+                    }
+                } else {
+                    scanning = false;
+                }
+            }
+            code = code.trim();
+            if (!code.isEmpty() && !code.startsWith("#")) {
+                result.push(code);
+            }
+        }
+        return result;
+    }
+
+    class bool directPatchCall(string content, string symbol) {
+        for code in AppImageRenderHookProvenance.addedPatchLines(content) {
+            int call = Strings.find(code, symbol + "(", 0);
+            string prefix = call < 0 ? "" : code.substring(0, call).trim();
+            bool invocation = prefix.isEmpty() || prefix.contains("=")
+                || prefix.contains("(") || prefix.endsWith("return")
+                || prefix.endsWith(";") || prefix.endsWith("{")
+                || prefix.endsWith("::");
+            if (call >= 0 && invocation && !code.contains("extern ")
+                    && !code.startsWith("extern")) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    class string pinvokeFunction(string content, string symbol) {
+        bool declaration = false;
+        int remaining = 0;
+        for code in AppImageRenderHookProvenance.addedPatchLines(content) {
+            if (code.contains("EntryPoint")
+                    && code.contains("\"" + symbol + "\"")) {
+                declaration = true;
+                remaining = 8;
+                continue;
+            }
+            if (!declaration) { continue; }
+            remaining--;
+            int opening = Strings.find(code, "(", 0);
+            if (code.contains("extern ") && opening > 0) {
+                string head = code.substring(0, opening)
+                    .replace("\t", " ").trim();
+                Vector<string> words = Strings.split(head, " ");
+                for (int index = words.size() - 1; index >= 0; index--) {
+                    string word = words.get(index).trim();
+                    if (!word.isEmpty()) { return word; }
+                }
+            }
+            if (remaining <= 0) { return ""; }
+        }
+        return "";
+    }
+
+    class bool pinvokePatchCall(string content, string symbol) {
+        string functionName = AppImageRenderHookProvenance.pinvokeFunction(
+            content, symbol);
+        if (functionName.isEmpty()) { return false; }
+        for code in AppImageRenderHookProvenance.addedPatchLines(content) {
+            if (!code.contains("extern ")
+                    && code.contains(functionName + "(")) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    class AppImageProvenanceInternalJson hookPatchEvidence(
+            string repoRoot, AppImageRuntimeSlice slice,
+            JsonValue package) {
+        AppImageProvenanceInternalResult exact =
+            AppImageRenderHookProvenance.exactLocalPatches(
+                PathTools.join(repoRoot, "config"), slice, package);
+        if (!exact.ok()) {
+            return AppImageProvenanceInternalJson.failure(exact.error);
+        }
+        string relative = "config/" + slice.localPatches.get(0);
+        string content = Path.readAll(PathTools.join(repoRoot, relative));
+        if (content.isEmpty()) {
+            return AppImageProvenanceInternalJson.failure(
+                "renderer hook patch is empty: " + relative);
+        }
+        JsonValue calls = JsonValue.makeArray();
+        for symbol in slice.hookSymbols {
+            bool found = false;
+            if (slice.hookLinkage.equals("direct")) {
+                found = AppImageRenderHookProvenance.directPatchCall(
+                    content, symbol);
+            } else {
+                found = AppImageRenderHookProvenance.pinvokePatchCall(
+                    content, symbol);
+            }
+            if (!found) {
+                return AppImageProvenanceInternalJson.failure(
+                    "renderer patch has no added static call boundary for "
+                    + slice.id + ": " + symbol);
+            }
+            JsonValue call = JsonValue.makeObject();
+            call.set("symbol", JsonValue.makeString(symbol));
+            call.set("boundary", JsonValue.makeString(slice.hookLinkage));
+            calls.push(call);
+        }
+        AppImageProvenanceInternalDigest digest =
+            AppImageProvenanceSupport.hashFile(repoRoot, relative);
+        if (!digest.ok()) {
+            return AppImageProvenanceInternalJson.failure(digest.error);
+        }
+        JsonValue evidence = AppImageProvenanceSupport.digestEntry(
+            relative, digest.value);
+        evidence.set("linkage", JsonValue.makeString(slice.hookLinkage));
+        evidence.set("library", JsonValue.makeString(slice.hookLibrary));
+        evidence.set("calls", calls);
+        return AppImageProvenanceInternalJson.success(evidence);
+    }
+
+    class bool directHookEvidence(
+            string dynamic, string symbols, string relocations,
+            AppImageRuntimeSlice slice) {
+        string library = "lib" + slice.hookLibrary + ".so";
+        string normalizedSymbols =
+            AppImageProvenanceSupport.normalizedToolOutput(symbols);
+        string normalizedRelocations =
+            AppImageProvenanceSupport.normalizedToolOutput(relocations);
+        if (!dynamic.contains("NEEDED")
+                || !dynamic.contains("[" + library + "]")) {
+            return false;
+        }
+        for symbol in slice.hookSymbols {
+            if (!normalizedSymbols.contains(" UND " + symbol)
+                    || !normalizedRelocations.contains(symbol)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    class bool directHookCarrier(
+            string path, AppImageRuntimeSlice slice) {
+        ExecResult dynamic = AppImageProvenanceSupport.readElf(
+            "--dynamic", path);
+        ExecResult symbols = AppImageProvenanceSupport.readElf(
+            "--dyn-syms", path);
+        ExecResult relocations = AppImageProvenanceSupport.readElf(
+            "--relocs", path);
+        return dynamic.ok() && symbols.ok() && relocations.ok()
+            && AppImageRenderHookProvenance.directHookEvidence(
+                dynamic.stdout(), symbols.stdout(), relocations.stdout(),
+                slice);
+    }
+
+    class bool managedHookCarrier(
+            string path, AppImageRuntimeSlice slice) {
+        ExecResult kind = AppImageProvenanceSupport.process(
+            "file", ["--brief", "--", path], "", 30000, 16384, 16384);
+        string description = kind.stdout();
+        bool managed = kind.ok()
+            && (description.contains("Mono/.Net assembly")
+                || description.contains(".Net assembly")
+                || description.contains(".NET assembly"));
+        if (!managed || !AppImageProvenanceSupport.artifactContains(
+                path, slice.hookLibrary)) {
+            return false;
+        }
+        for symbol in slice.hookSymbols {
+            if (!AppImageProvenanceSupport.artifactContains(path, symbol)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    class AppImageProvenanceInternalJson hookCarriers(
+            string runtimeRoot, string packageRelative,
+            AppImageRuntimeSlice slice) {
+        string packageRoot = PathTools.join(runtimeRoot, packageRelative);
+        FileStatus status = FileStatus(packageRoot);
+        if (!status.isDir() || status.isSymlink()) {
+            return AppImageProvenanceInternalJson.failure(
+                "runtime package output is absent: " + packageRelative);
+        }
+        if (slice.hookSymbols.size() == 0
+                || slice.hookLibrary.isEmpty()
+                || (!slice.hookLinkage.equals("direct")
+                    && !slice.hookLinkage.equals("direct_pinvoke"))) {
+            return AppImageProvenanceInternalJson.failure(
+                "runtime package has no exact hook declaration: " + slice.id);
+        }
+        string firstSymbol = slice.hookSymbols.get(0);
+        ExecResult result = AppImageProvenanceSupport.process("grep",
+            ["-r", "-a", "-l", "-F", "--", firstSymbol, packageRoot],
+            "", 300000, 8388608, 1048576);
+        if (!result.ok()) {
+            string detail = result.stderr().trim();
+            return AppImageProvenanceInternalJson.failure(
+                "cannot locate renderer hook carrier for " + slice.id
+                + (detail.isEmpty() ? "" : ": " + detail));
+        }
+        Vector<string> carriers = [];
+        for line in Strings.split(result.stdout(), "\n") {
+            string path = line.trim();
+            if (path.isEmpty()) { continue; }
+            if (!path.startsWith(packageRoot + "/")) {
+                return AppImageProvenanceInternalJson.failure(
+                    "renderer hook carrier escaped its package output");
+            }
+            string relative = packageRelative + "/"
+                + path.substring(packageRoot.len() + 1,
+                    path.len() - packageRoot.len() - 1);
+            FileStatus carrierStatus = FileStatus(path);
+            bool complete = carrierStatus.isFile()
+                && !carrierStatus.isSymlink();
+            if (complete && slice.hookLinkage.equals("direct")) {
+                complete = AppImageRenderHookProvenance.directHookCarrier(
+                    path, slice);
+            } else if (complete) {
+                complete = AppImageRenderHookProvenance.managedHookCarrier(
+                    path, slice);
+            }
+            if (complete && !carriers.contains(relative)) {
+                carriers.push(relative);
+            }
+        }
+        carriers = AppImageRuntimeInventory.sorted(carriers);
+        if (carriers.size() == 0) {
+            return AppImageProvenanceInternalJson.failure(
+                "package output has no binary carrying every renderer hook "
+                + "and direct library boundary: " + slice.id);
+        }
+        JsonValue evidence = JsonValue.makeObject();
+        evidence.set("linkage", JsonValue.makeString(slice.hookLinkage));
+        evidence.set("library", JsonValue.makeString(slice.hookLibrary));
+        evidence.set("binary_evidence", JsonValue.makeString(
+            slice.hookLinkage.equals("direct")
+                ? "elf_dynamic_linkage" : "managed_cli_metadata"));
+        JsonValue symbols = JsonValue.makeArray();
+        for symbol in slice.hookSymbols {
+            symbols.push(JsonValue.makeString(symbol));
+        }
+        evidence.set("symbols", symbols);
+        JsonValue files = JsonValue.makeArray();
+        for relative in carriers {
+            AppImageProvenanceInternalDigest digest =
+                AppImageProvenanceSupport.hashFile(runtimeRoot, relative);
+            if (!digest.ok()) {
+                return AppImageProvenanceInternalJson.failure(digest.error);
+            }
+            files.push(AppImageProvenanceSupport.digestEntry(
+                relative, digest.value));
+        }
+        evidence.set("binary_files", files);
+        return AppImageProvenanceInternalJson.success(evidence);
+    }
+
+}

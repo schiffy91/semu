@@ -1,0 +1,465 @@
+// OpenGL procedure loading and complete caller-state preservation. Every
+// symbol comes from the emulator-provided callback in SemuRenderFrameGl.
+
+#include <string.h>
+
+import ./renderer_abi.btrc
+
+int RGL_VIEWPORT = 0x0BA2;
+int RGL_SCISSOR_BOX = 0x0C10;
+int RGL_TEXTURE_2D = 0x0DE1;
+int RGL_TEXTURE0 = 0x84C0;
+int RGL_TEXTURE_BINDING_2D = 0x8069;
+int RGL_SAMPLER_BINDING = 0x8919;
+int RGL_ACTIVE_TEXTURE = 0x84E0;
+int RGL_MAX_COMBINED_TEXTURE_IMAGE_UNITS = 0x8B4D;
+int RGL_CURRENT_PROGRAM = 0x8B8D;
+int RGL_VERTEX_ARRAY_BINDING = 0x85B5;
+int RGL_DRAW_FRAMEBUFFER = 0x8CA9;
+int RGL_READ_FRAMEBUFFER = 0x8CA8;
+int RGL_DRAW_FRAMEBUFFER_BINDING = 0x8CA6;
+int RGL_READ_FRAMEBUFFER_BINDING = 0x8CAA;
+int RGL_DRAW_BUFFER = 0x0C01;
+int RGL_READ_BUFFER = 0x0C02;
+int RGL_ARRAY_BUFFER = 0x8892;
+int RGL_ELEMENT_ARRAY_BUFFER = 0x8893;
+int RGL_ARRAY_BUFFER_BINDING = 0x8894;
+int RGL_ELEMENT_ARRAY_BUFFER_BINDING = 0x8895;
+int RGL_PIXEL_PACK_BUFFER = 0x88EB;
+int RGL_PIXEL_UNPACK_BUFFER = 0x88EC;
+int RGL_PIXEL_PACK_BUFFER_BINDING = 0x88ED;
+int RGL_PIXEL_UNPACK_BUFFER_BINDING = 0x88EF;
+int RGL_PACK_SWAP_BYTES = 0x0D00;
+int RGL_PACK_LSB_FIRST = 0x0D01;
+int RGL_PACK_ROW_LENGTH = 0x0D02;
+int RGL_PACK_SKIP_ROWS = 0x0D03;
+int RGL_PACK_SKIP_PIXELS = 0x0D04;
+int RGL_PACK_ALIGNMENT = 0x0D05;
+int RGL_PACK_IMAGE_HEIGHT = 0x806C;
+int RGL_PACK_SKIP_IMAGES = 0x806B;
+int RGL_UNPACK_SWAP_BYTES = 0x0CF0;
+int RGL_UNPACK_LSB_FIRST = 0x0CF1;
+int RGL_UNPACK_ROW_LENGTH = 0x0CF2;
+int RGL_UNPACK_SKIP_ROWS = 0x0CF3;
+int RGL_UNPACK_SKIP_PIXELS = 0x0CF4;
+int RGL_UNPACK_ALIGNMENT = 0x0CF5;
+int RGL_UNPACK_IMAGE_HEIGHT = 0x806E;
+int RGL_UNPACK_SKIP_IMAGES = 0x806D;
+int RGL_BLEND_SRC_RGB = 0x80C9;
+int RGL_BLEND_DST_RGB = 0x80C8;
+int RGL_BLEND_SRC_ALPHA = 0x80CB;
+int RGL_BLEND_DST_ALPHA = 0x80CA;
+int RGL_BLEND_EQUATION_RGB = 0x8009;
+int RGL_BLEND_EQUATION_ALPHA = 0x883D;
+int RGL_COLOR_WRITEMASK = 0x0C23;
+int RGL_DEPTH_WRITEMASK = 0x0B72;
+int RGL_STENCIL_WRITEMASK = 0x0B98;
+int RGL_STENCIL_BACK_WRITEMASK = 0x8CA5;
+int RGL_DEPTH_TEST = 0x0B71;
+int RGL_BLEND = 0x0BE2;
+int RGL_SCISSOR_TEST = 0x0C11;
+int RGL_CULL_FACE = 0x0B44;
+int RGL_STENCIL_TEST = 0x0B90;
+int RGL_MULTISAMPLE = 0x809D;
+int RGL_FRAMEBUFFER_SRGB = 0x8DB9;
+int RGL_FRONT = 0x0404;
+int RGL_BACK = 0x0405;
+int RGL_NO_ERROR = 0;
+int SEMU_RENDER_TEXTURE_UNITS = 5;
+
+struct RendererGlApi {
+    __fn_ptr<void, unsigned int, int*> get_integer;
+    __fn_ptr<void, unsigned int, unsigned char*> get_boolean;
+    __fn_ptr<unsigned char, unsigned int> is_enabled;
+    __fn_ptr<unsigned char, unsigned int> is_program;
+    __fn_ptr<void, int, unsigned int*> gen_textures;
+    __fn_ptr<void, unsigned int, unsigned int> bind_texture;
+    __fn_ptr<void, unsigned int, int, int, int, int, int,
+        unsigned int, unsigned int, void*> texture_image_2d;
+    __fn_ptr<void, unsigned int, unsigned int, int> texture_parameter;
+    __fn_ptr<void, unsigned int> active_texture;
+    __fn_ptr<void, unsigned int, unsigned int> bind_sampler;
+    __fn_ptr<void, int, unsigned int*> gen_vertex_arrays;
+    __fn_ptr<void, unsigned int> bind_vertex_array;
+    __fn_ptr<void, int, unsigned int*> gen_framebuffers;
+    __fn_ptr<void, unsigned int, unsigned int> bind_framebuffer;
+    __fn_ptr<void, unsigned int, unsigned int, unsigned int,
+        unsigned int, int> framebuffer_texture_2d;
+    __fn_ptr<unsigned int, unsigned int> check_framebuffer;
+    __fn_ptr<void, int, int, int, int, int, int, int, int,
+        unsigned int, unsigned int> blit_framebuffer;
+    __fn_ptr<void, unsigned int> draw_buffer;
+    __fn_ptr<void, unsigned int> read_buffer;
+    __fn_ptr<unsigned int, unsigned int> create_shader;
+    __fn_ptr<void, unsigned int, int, char**, int*> shader_source;
+    __fn_ptr<void, unsigned int> compile_shader;
+    __fn_ptr<void, unsigned int, unsigned int, int*> get_shader_integer;
+    __fn_ptr<unsigned int> create_program;
+    __fn_ptr<void, unsigned int, unsigned int> attach_shader;
+    __fn_ptr<void, unsigned int> link_program;
+    __fn_ptr<void, unsigned int, unsigned int, int*> get_program_integer;
+    __fn_ptr<void, unsigned int> use_program;
+    __fn_ptr<int, unsigned int, char*> uniform_location;
+    __fn_ptr<void, int, int> uniform_1i;
+    __fn_ptr<void, int, float> uniform_1f;
+    __fn_ptr<void, int, float, float, float, float> uniform_4f;
+    __fn_ptr<void, unsigned int, int, int> draw_arrays;
+    __fn_ptr<void, int, int, int, int> viewport;
+    __fn_ptr<void, int, int, int, int> scissor;
+    __fn_ptr<void, unsigned int> enable;
+    __fn_ptr<void, unsigned int> disable;
+    __fn_ptr<void, unsigned int, int> pixel_store;
+    __fn_ptr<void, unsigned int, unsigned int> bind_buffer;
+    __fn_ptr<void, unsigned int, unsigned int, unsigned int,
+        unsigned int> blend_function_separate;
+    __fn_ptr<void, unsigned int, unsigned int> blend_equation_separate;
+    __fn_ptr<void, unsigned char, unsigned char, unsigned char,
+        unsigned char> color_mask;
+    __fn_ptr<void, unsigned char> depth_mask;
+    __fn_ptr<void, unsigned int, unsigned int> stencil_mask_separate;
+    __fn_ptr<void, int, int, int, int, unsigned int,
+        unsigned int, void*> read_pixels;
+    __fn_ptr<unsigned int> get_error;
+};
+
+struct RendererGlState {
+    int valid;
+    int program;
+    int vertex_array;
+    int active_texture;
+    int textures[5];
+    int samplers[5];
+    int viewport[4];
+    int scissor[4];
+    int draw_framebuffer;
+    int read_framebuffer;
+    int draw_buffer;
+    int read_buffer;
+    int array_buffer;
+    int element_buffer;
+    int pack_buffer;
+    int unpack_buffer;
+    int pack[8];
+    int unpack[8];
+    int blend[6];
+    unsigned char enables[7];
+    unsigned char color_mask[4];
+    unsigned char depth_mask;
+    unsigned int stencil_front_mask;
+    unsigned int stencil_back_mask;
+};
+
+class RendererGlProcedures {
+    class void* resolve(struct SemuRenderFrameGl* frame, const char* name) {
+        return frame == null || frame->get_proc == null
+            ? null : frame->get_proc(name);
+    }
+
+    class bool load(struct RendererGlApi* gl, struct SemuRenderFrameGl* frame) {
+        if (gl == null || frame == null || frame->get_proc == null) { return false; }
+        memset(gl, 0, sizeof(struct RendererGlApi));
+        gl->get_integer = (__fn_ptr<void, unsigned int, int*>)
+            RendererGlProcedures.resolve(frame, "glGetIntegerv");
+        gl->get_boolean = (__fn_ptr<void, unsigned int, unsigned char*>)
+            RendererGlProcedures.resolve(frame, "glGetBooleanv");
+        gl->is_enabled = (__fn_ptr<unsigned char, unsigned int>)
+            RendererGlProcedures.resolve(frame, "glIsEnabled");
+        gl->is_program = (__fn_ptr<unsigned char, unsigned int>)
+            RendererGlProcedures.resolve(frame, "glIsProgram");
+        gl->gen_textures = (__fn_ptr<void, int, unsigned int*>)
+            RendererGlProcedures.resolve(frame, "glGenTextures");
+        gl->bind_texture = (__fn_ptr<void, unsigned int, unsigned int>)
+            RendererGlProcedures.resolve(frame, "glBindTexture");
+        gl->texture_image_2d = (__fn_ptr<void, unsigned int, int, int, int,
+            int, int, unsigned int, unsigned int, void*>)
+            RendererGlProcedures.resolve(frame, "glTexImage2D");
+        gl->texture_parameter = (__fn_ptr<void, unsigned int, unsigned int, int>)
+            RendererGlProcedures.resolve(frame, "glTexParameteri");
+        gl->active_texture = (__fn_ptr<void, unsigned int>)
+            RendererGlProcedures.resolve(frame, "glActiveTexture");
+        gl->bind_sampler = (__fn_ptr<void, unsigned int, unsigned int>)
+            RendererGlProcedures.resolve(frame, "glBindSampler");
+        gl->gen_vertex_arrays = (__fn_ptr<void, int, unsigned int*>)
+            RendererGlProcedures.resolve(frame, "glGenVertexArrays");
+        gl->bind_vertex_array = (__fn_ptr<void, unsigned int>)
+            RendererGlProcedures.resolve(frame, "glBindVertexArray");
+        gl->gen_framebuffers = (__fn_ptr<void, int, unsigned int*>)
+            RendererGlProcedures.resolve(frame, "glGenFramebuffers");
+        gl->bind_framebuffer = (__fn_ptr<void, unsigned int, unsigned int>)
+            RendererGlProcedures.resolve(frame, "glBindFramebuffer");
+        gl->framebuffer_texture_2d = (__fn_ptr<void, unsigned int, unsigned int,
+            unsigned int, unsigned int, int>)
+            RendererGlProcedures.resolve(frame, "glFramebufferTexture2D");
+        gl->check_framebuffer = (__fn_ptr<unsigned int, unsigned int>)
+            RendererGlProcedures.resolve(frame, "glCheckFramebufferStatus");
+        gl->blit_framebuffer = (__fn_ptr<void, int, int, int, int, int, int,
+            int, int, unsigned int, unsigned int>)
+            RendererGlProcedures.resolve(frame, "glBlitFramebuffer");
+        gl->draw_buffer = (__fn_ptr<void, unsigned int>)
+            RendererGlProcedures.resolve(frame, "glDrawBuffer");
+        gl->read_buffer = (__fn_ptr<void, unsigned int>)
+            RendererGlProcedures.resolve(frame, "glReadBuffer");
+        gl->create_shader = (__fn_ptr<unsigned int, unsigned int>)
+            RendererGlProcedures.resolve(frame, "glCreateShader");
+        gl->shader_source = (__fn_ptr<void, unsigned int, int, char**, int*>)
+            RendererGlProcedures.resolve(frame, "glShaderSource");
+        gl->compile_shader = (__fn_ptr<void, unsigned int>)
+            RendererGlProcedures.resolve(frame, "glCompileShader");
+        gl->get_shader_integer = (__fn_ptr<void, unsigned int, unsigned int, int*>)
+            RendererGlProcedures.resolve(frame, "glGetShaderiv");
+        gl->create_program = (__fn_ptr<unsigned int>)
+            RendererGlProcedures.resolve(frame, "glCreateProgram");
+        gl->attach_shader = (__fn_ptr<void, unsigned int, unsigned int>)
+            RendererGlProcedures.resolve(frame, "glAttachShader");
+        gl->link_program = (__fn_ptr<void, unsigned int>)
+            RendererGlProcedures.resolve(frame, "glLinkProgram");
+        gl->get_program_integer = (__fn_ptr<void, unsigned int, unsigned int,
+            int*>)RendererGlProcedures.resolve(frame, "glGetProgramiv");
+        gl->use_program = (__fn_ptr<void, unsigned int>)
+            RendererGlProcedures.resolve(frame, "glUseProgram");
+        gl->uniform_location = (__fn_ptr<int, unsigned int, char*>)
+            RendererGlProcedures.resolve(frame, "glGetUniformLocation");
+        gl->uniform_1i = (__fn_ptr<void, int, int>)
+            RendererGlProcedures.resolve(frame, "glUniform1i");
+        gl->uniform_1f = (__fn_ptr<void, int, float>)
+            RendererGlProcedures.resolve(frame, "glUniform1f");
+        gl->uniform_4f = (__fn_ptr<void, int, float, float, float, float>)
+            RendererGlProcedures.resolve(frame, "glUniform4f");
+        gl->draw_arrays = (__fn_ptr<void, unsigned int, int, int>)
+            RendererGlProcedures.resolve(frame, "glDrawArrays");
+        gl->viewport = (__fn_ptr<void, int, int, int, int>)
+            RendererGlProcedures.resolve(frame, "glViewport");
+        gl->scissor = (__fn_ptr<void, int, int, int, int>)
+            RendererGlProcedures.resolve(frame, "glScissor");
+        gl->enable = (__fn_ptr<void, unsigned int>)
+            RendererGlProcedures.resolve(frame, "glEnable");
+        gl->disable = (__fn_ptr<void, unsigned int>)
+            RendererGlProcedures.resolve(frame, "glDisable");
+        gl->pixel_store = (__fn_ptr<void, unsigned int, int>)
+            RendererGlProcedures.resolve(frame, "glPixelStorei");
+        gl->bind_buffer = (__fn_ptr<void, unsigned int, unsigned int>)
+            RendererGlProcedures.resolve(frame, "glBindBuffer");
+        gl->blend_function_separate = (__fn_ptr<void, unsigned int, unsigned int,
+            unsigned int, unsigned int>)
+            RendererGlProcedures.resolve(frame, "glBlendFuncSeparate");
+        gl->blend_equation_separate = (__fn_ptr<void, unsigned int, unsigned int>)
+            RendererGlProcedures.resolve(frame, "glBlendEquationSeparate");
+        gl->color_mask = (__fn_ptr<void, unsigned char, unsigned char,
+            unsigned char, unsigned char>)
+            RendererGlProcedures.resolve(frame, "glColorMask");
+        gl->depth_mask = (__fn_ptr<void, unsigned char>)
+            RendererGlProcedures.resolve(frame, "glDepthMask");
+        gl->stencil_mask_separate = (__fn_ptr<void, unsigned int, unsigned int>)
+            RendererGlProcedures.resolve(frame, "glStencilMaskSeparate");
+        gl->read_pixels = (__fn_ptr<void, int, int, int, int, unsigned int,
+            unsigned int, void*>)RendererGlProcedures.resolve(frame, "glReadPixels");
+        gl->get_error = (__fn_ptr<unsigned int>)
+            RendererGlProcedures.resolve(frame, "glGetError");
+
+        return gl->get_integer != null && gl->get_boolean != null
+            && gl->is_enabled != null && gl->is_program != null
+            && gl->gen_textures != null
+            && gl->bind_texture != null && gl->texture_image_2d != null
+            && gl->texture_parameter != null && gl->active_texture != null
+            && gl->bind_sampler != null && gl->gen_vertex_arrays != null
+            && gl->bind_vertex_array != null && gl->gen_framebuffers != null
+            && gl->bind_framebuffer != null && gl->framebuffer_texture_2d != null
+            && gl->check_framebuffer != null && gl->blit_framebuffer != null
+            && gl->draw_buffer != null && gl->read_buffer != null
+            && gl->create_shader != null && gl->shader_source != null
+            && gl->compile_shader != null && gl->get_shader_integer != null
+            && gl->create_program != null && gl->attach_shader != null
+            && gl->link_program != null && gl->get_program_integer != null
+            && gl->use_program != null && gl->uniform_location != null
+            && gl->uniform_1i != null && gl->uniform_1f != null
+            && gl->uniform_4f != null && gl->draw_arrays != null
+            && gl->viewport != null && gl->scissor != null
+            && gl->enable != null && gl->disable != null
+            && gl->pixel_store != null && gl->bind_buffer != null
+            && gl->blend_function_separate != null
+            && gl->blend_equation_separate != null && gl->color_mask != null
+            && gl->depth_mask != null && gl->stencil_mask_separate != null
+            && gl->read_pixels != null && gl->get_error != null;
+    }
+}
+
+class RendererGlErrors {
+    class void clear(struct RendererGlApi* gl) {
+        if (gl == null || gl->get_error == null) { return; }
+        for (int count = 0; count < 32
+                && gl->get_error() != (unsigned int)RGL_NO_ERROR; count++) {}
+    }
+
+    class bool none(struct RendererGlApi* gl) {
+        return gl != null && gl->get_error != null
+            && gl->get_error() == (unsigned int)RGL_NO_ERROR;
+    }
+}
+
+class RendererGlStateGuard {
+    class int integer(struct RendererGlApi* gl, unsigned int name) {
+        int value = 0;
+        gl->get_integer(name, &value);
+        return value;
+    }
+
+    class bool save(struct RendererGlApi* gl, struct RendererGlState* state) {
+        if (gl == null || state == null) { return false; }
+        state->valid = 0;
+        int units = RendererGlStateGuard.integer(gl,
+            (unsigned int)RGL_MAX_COMBINED_TEXTURE_IMAGE_UNITS);
+        if (units < SEMU_RENDER_TEXTURE_UNITS || units > 1024) { return false; }
+
+        state->program = RendererGlStateGuard.integer(gl, (unsigned int)RGL_CURRENT_PROGRAM);
+        state->vertex_array = RendererGlStateGuard.integer(gl,
+            (unsigned int)RGL_VERTEX_ARRAY_BINDING);
+        state->active_texture = RendererGlStateGuard.integer(gl,
+            (unsigned int)RGL_ACTIVE_TEXTURE);
+        for (int unit = 0; unit < SEMU_RENDER_TEXTURE_UNITS; unit++) {
+            gl->active_texture((unsigned int)(RGL_TEXTURE0 + unit));
+            state->textures[unit] = RendererGlStateGuard.integer(gl,
+                (unsigned int)RGL_TEXTURE_BINDING_2D);
+            state->samplers[unit] = RendererGlStateGuard.integer(gl,
+                (unsigned int)RGL_SAMPLER_BINDING);
+        }
+        gl->active_texture((unsigned int)state->active_texture);
+        gl->get_integer((unsigned int)RGL_VIEWPORT, state->viewport);
+        gl->get_integer((unsigned int)RGL_SCISSOR_BOX, state->scissor);
+        state->draw_framebuffer = RendererGlStateGuard.integer(gl,
+            (unsigned int)RGL_DRAW_FRAMEBUFFER_BINDING);
+        state->read_framebuffer = RendererGlStateGuard.integer(gl,
+            (unsigned int)RGL_READ_FRAMEBUFFER_BINDING);
+        state->draw_buffer = RendererGlStateGuard.integer(gl, (unsigned int)RGL_DRAW_BUFFER);
+        state->read_buffer = RendererGlStateGuard.integer(gl, (unsigned int)RGL_READ_BUFFER);
+        state->array_buffer = RendererGlStateGuard.integer(gl,
+            (unsigned int)RGL_ARRAY_BUFFER_BINDING);
+        state->element_buffer = RendererGlStateGuard.integer(gl,
+            (unsigned int)RGL_ELEMENT_ARRAY_BUFFER_BINDING);
+        state->pack_buffer = RendererGlStateGuard.integer(gl,
+            (unsigned int)RGL_PIXEL_PACK_BUFFER_BINDING);
+        state->unpack_buffer = RendererGlStateGuard.integer(gl,
+            (unsigned int)RGL_PIXEL_UNPACK_BUFFER_BINDING);
+        unsigned int packNames[8] = {
+            (unsigned int)RGL_PACK_SWAP_BYTES, (unsigned int)RGL_PACK_LSB_FIRST,
+            (unsigned int)RGL_PACK_ROW_LENGTH, (unsigned int)RGL_PACK_IMAGE_HEIGHT,
+            (unsigned int)RGL_PACK_SKIP_PIXELS, (unsigned int)RGL_PACK_SKIP_ROWS,
+            (unsigned int)RGL_PACK_SKIP_IMAGES, (unsigned int)RGL_PACK_ALIGNMENT
+        };
+        unsigned int unpackNames[8] = {
+            (unsigned int)RGL_UNPACK_SWAP_BYTES, (unsigned int)RGL_UNPACK_LSB_FIRST,
+            (unsigned int)RGL_UNPACK_ROW_LENGTH, (unsigned int)RGL_UNPACK_IMAGE_HEIGHT,
+            (unsigned int)RGL_UNPACK_SKIP_PIXELS, (unsigned int)RGL_UNPACK_SKIP_ROWS,
+            (unsigned int)RGL_UNPACK_SKIP_IMAGES, (unsigned int)RGL_UNPACK_ALIGNMENT
+        };
+        for (int index = 0; index < 8; index++) {
+            state->pack[index] = RendererGlStateGuard.integer(gl, packNames[index]);
+            state->unpack[index] = RendererGlStateGuard.integer(gl, unpackNames[index]);
+        }
+        unsigned int blendNames[6] = {
+            (unsigned int)RGL_BLEND_SRC_RGB, (unsigned int)RGL_BLEND_DST_RGB,
+            (unsigned int)RGL_BLEND_SRC_ALPHA, (unsigned int)RGL_BLEND_DST_ALPHA,
+            (unsigned int)RGL_BLEND_EQUATION_RGB,
+            (unsigned int)RGL_BLEND_EQUATION_ALPHA
+        };
+        for (int index = 0; index < 6; index++) {
+            state->blend[index] = RendererGlStateGuard.integer(gl, blendNames[index]);
+        }
+        unsigned int capabilities[7] = {
+            (unsigned int)RGL_DEPTH_TEST, (unsigned int)RGL_BLEND,
+            (unsigned int)RGL_SCISSOR_TEST, (unsigned int)RGL_CULL_FACE,
+            (unsigned int)RGL_STENCIL_TEST, (unsigned int)RGL_MULTISAMPLE,
+            (unsigned int)RGL_FRAMEBUFFER_SRGB
+        };
+        for (int index = 0; index < 7; index++) {
+            state->enables[index] = gl->is_enabled(capabilities[index]);
+        }
+        gl->get_boolean((unsigned int)RGL_COLOR_WRITEMASK, state->color_mask);
+        gl->get_boolean((unsigned int)RGL_DEPTH_WRITEMASK, &state->depth_mask);
+        int stencil = RendererGlStateGuard.integer(gl,
+            (unsigned int)RGL_STENCIL_WRITEMASK);
+        state->stencil_front_mask = (unsigned int)stencil;
+        stencil = RendererGlStateGuard.integer(gl,
+            (unsigned int)RGL_STENCIL_BACK_WRITEMASK);
+        state->stencil_back_mask = (unsigned int)stencil;
+        state->valid = 1;
+        return true;
+    }
+
+    class void restoreCapability(struct RendererGlApi* gl,
+                                 unsigned int capability,
+                                 unsigned char enabled) {
+        if (enabled != 0) { gl->enable(capability); }
+        else { gl->disable(capability); }
+    }
+
+    class void restore(struct RendererGlApi* gl, struct RendererGlState* state) {
+        if (gl == null || state == null || state->valid == 0) { return; }
+        gl->bind_framebuffer((unsigned int)RGL_DRAW_FRAMEBUFFER,
+            (unsigned int)state->draw_framebuffer);
+        gl->draw_buffer((unsigned int)state->draw_buffer);
+        gl->bind_framebuffer((unsigned int)RGL_READ_FRAMEBUFFER,
+            (unsigned int)state->read_framebuffer);
+        gl->read_buffer((unsigned int)state->read_buffer);
+        gl->blend_function_separate((unsigned int)state->blend[0],
+            (unsigned int)state->blend[1], (unsigned int)state->blend[2],
+            (unsigned int)state->blend[3]);
+        gl->blend_equation_separate((unsigned int)state->blend[4],
+            (unsigned int)state->blend[5]);
+        gl->color_mask(state->color_mask[0], state->color_mask[1],
+            state->color_mask[2], state->color_mask[3]);
+        gl->depth_mask(state->depth_mask);
+        gl->stencil_mask_separate((unsigned int)RGL_FRONT,
+            state->stencil_front_mask);
+        gl->stencil_mask_separate((unsigned int)RGL_BACK,
+            state->stencil_back_mask);
+        unsigned int packNames[8] = {
+            (unsigned int)RGL_PACK_SWAP_BYTES, (unsigned int)RGL_PACK_LSB_FIRST,
+            (unsigned int)RGL_PACK_ROW_LENGTH, (unsigned int)RGL_PACK_IMAGE_HEIGHT,
+            (unsigned int)RGL_PACK_SKIP_PIXELS, (unsigned int)RGL_PACK_SKIP_ROWS,
+            (unsigned int)RGL_PACK_SKIP_IMAGES, (unsigned int)RGL_PACK_ALIGNMENT
+        };
+        unsigned int unpackNames[8] = {
+            (unsigned int)RGL_UNPACK_SWAP_BYTES, (unsigned int)RGL_UNPACK_LSB_FIRST,
+            (unsigned int)RGL_UNPACK_ROW_LENGTH, (unsigned int)RGL_UNPACK_IMAGE_HEIGHT,
+            (unsigned int)RGL_UNPACK_SKIP_PIXELS, (unsigned int)RGL_UNPACK_SKIP_ROWS,
+            (unsigned int)RGL_UNPACK_SKIP_IMAGES, (unsigned int)RGL_UNPACK_ALIGNMENT
+        };
+        for (int index = 0; index < 8; index++) {
+            gl->pixel_store(packNames[index], state->pack[index]);
+            gl->pixel_store(unpackNames[index], state->unpack[index]);
+        }
+        gl->bind_buffer((unsigned int)RGL_ARRAY_BUFFER,
+            (unsigned int)state->array_buffer);
+        gl->bind_vertex_array((unsigned int)state->vertex_array);
+        gl->bind_buffer((unsigned int)RGL_ELEMENT_ARRAY_BUFFER,
+            (unsigned int)state->element_buffer);
+        gl->bind_buffer((unsigned int)RGL_PIXEL_PACK_BUFFER,
+            (unsigned int)state->pack_buffer);
+        gl->bind_buffer((unsigned int)RGL_PIXEL_UNPACK_BUFFER,
+            (unsigned int)state->unpack_buffer);
+        for (int unit = 0; unit < SEMU_RENDER_TEXTURE_UNITS; unit++) {
+            gl->active_texture((unsigned int)(RGL_TEXTURE0 + unit));
+            gl->bind_texture((unsigned int)RGL_TEXTURE_2D,
+                (unsigned int)state->textures[unit]);
+            gl->bind_sampler((unsigned int)unit,
+                (unsigned int)state->samplers[unit]);
+        }
+        gl->active_texture((unsigned int)state->active_texture);
+        gl->use_program((unsigned int)state->program);
+        gl->viewport(state->viewport[0], state->viewport[1],
+            state->viewport[2], state->viewport[3]);
+        gl->scissor(state->scissor[0], state->scissor[1],
+            state->scissor[2], state->scissor[3]);
+        unsigned int capabilities[7] = {
+            (unsigned int)RGL_DEPTH_TEST, (unsigned int)RGL_BLEND,
+            (unsigned int)RGL_SCISSOR_TEST, (unsigned int)RGL_CULL_FACE,
+            (unsigned int)RGL_STENCIL_TEST, (unsigned int)RGL_MULTISAMPLE,
+            (unsigned int)RGL_FRAMEBUFFER_SRGB
+        };
+        for (int index = 0; index < 7; index++) {
+            RendererGlStateGuard.restoreCapability(gl, capabilities[index],
+                state->enables[index]);
+        }
+        state->valid = 0;
+    }
+}

@@ -1,0 +1,479 @@
+diff --git a/src/citra_qt/bootmanager.cpp b/src/citra_qt/bootmanager.cpp
+index 39649b8..a68455b 100644
+--- a/src/citra_qt/bootmanager.cpp
++++ b/src/citra_qt/bootmanager.cpp
+@@ -34,6 +34,7 @@
+ // clang-format on
+ #include <QOffscreenSurface>
+ #include <QOpenGLContext>
++#include <semu_renderer.h>
+ #endif
+ 
+ #if defined(__APPLE__)
+@@ -271,10 +272,14 @@ public:
+ };
+ 
+ #ifdef ENABLE_OPENGL
++namespace OpenGL {
++SemuRenderFrameGl* GetSemuRenderFrame();
++}
++
+ class OpenGLRenderWidget : public RenderWidget {
+ public:
+     explicit OpenGLRenderWidget(GRenderWindow* parent, Core::System& system_, bool is_secondary)
+-        : RenderWidget(parent), system(system_), is_secondary(is_secondary) {
++        : RenderWidget(parent), render_window(*parent), system(system_), is_secondary(is_secondary) {
+         setAttribute(Qt::WA_NativeWindow);
+         setAttribute(Qt::WA_PaintOnScreen);
+         if (GetWindowSystemType() == Frontend::WindowSystemType::Wayland) {
+@@ -297,6 +302,11 @@ public:
+         context->MakeCurrent();
+         glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
+         system.GPU().Renderer().TryPresent(100, is_secondary);
++        auto* frame = OpenGL::GetSemuRenderFrame();
++        render_window.PublishSemuPointerFrame(frame);
++        if (frame != nullptr) {
++            semu_render_post_ui_gl(frame);
++        }
+         context->SwapBuffers();
+         glFinish();
+     }
+@@ -312,6 +322,7 @@ public:
+ 
+ private:
+     std::unique_ptr<Frontend::GraphicsContext> context{};
++    GRenderWindow& render_window;
+     Core::System& system;
+     bool is_secondary;
+ };
+@@ -441,9 +452,16 @@ static Frontend::EmuWindow::WindowSystemInfo GetWindowSystemInfo(QWindow* window
+ 
+ std::unique_ptr<Frontend::GraphicsContext> GRenderWindow::main_context;
+ 
++struct GRenderWindow::SemuPointerState {
++    std::mutex mutex;
++    SemuRenderPointerMap map{};
++    SemuRenderMapPointer map_pointer = nullptr;
++};
++
+ GRenderWindow::GRenderWindow(QWidget* parent_, EmuThread* emu_thread_, Core::System& system_,
+                              bool is_secondary_)
+-    : QWidget(parent_), EmuWindow(is_secondary_), emu_thread(emu_thread_), system{system_} {
++    : QWidget(parent_), EmuWindow(is_secondary_), emu_thread(emu_thread_), system{system_},
++      semu_pointer_state(std::make_unique<SemuPointerState>()) {
+ 
+     setAttribute(Qt::WA_AcceptTouchEvents);
+     auto layout = new QHBoxLayout(this);
+@@ -518,10 +536,57 @@ qreal GRenderWindow::windowPixelRatio() const {
+     return devicePixelRatioF();
+ }
+ 
+-std::pair<u32, u32> GRenderWindow::ScaleTouch(const QPointF pos) const {
+-    const qreal pixel_ratio = windowPixelRatio();
+-    return {static_cast<u32>(std::max(std::round(pos.x() * pixel_ratio), qreal{0.0})),
+-            static_cast<u32>(std::max(std::round(pos.y() * pixel_ratio), qreal{0.0}))};
++void GRenderWindow::PublishSemuPointerFrame(const SemuRenderFrameGl* frame) {
++    std::scoped_lock lock{semu_pointer_state->mutex};
++    semu_pointer_state->map = {};
++    semu_pointer_state->map_pointer = nullptr;
++    if (frame == nullptr || frame->abi != SEMU_RENDER_ABI_GL ||
++        frame->struct_size < sizeof(SemuRenderFrameGl) || frame->map_pointer == nullptr ||
++        frame->pointer_map.abi != SEMU_RENDER_ABI_GL ||
++        frame->pointer_map.struct_size < sizeof(SemuRenderPointerMap) ||
++        frame->pointer_map.frame_id != frame->frame_id ||
++        frame->pointer_map.surface_count <= 1) {
++        return;
++    }
++    semu_pointer_state->map = frame->pointer_map;
++    semu_pointer_state->map_pointer = frame->map_pointer;
++}
++
++std::optional<GRenderWindow::SemuNativeTouchPoint> GRenderWindow::ScaleTouch(
++    const QPointF pos, bool clamp) const {
++    SemuRenderPointerMap pointer_map{};
++    SemuRenderMapPointer map_pointer = nullptr;
++    {
++        std::scoped_lock lock{semu_pointer_state->mutex};
++        pointer_map = semu_pointer_state->map;
++        map_pointer = semu_pointer_state->map_pointer;
++    }
++    if (map_pointer == nullptr || width() <= 0 || height() <= 0) {
++        return std::nullopt;
++    }
++
++    SemuRenderPointerQuery query{};
++    query.abi = SEMU_RENDER_ABI_GL;
++    query.struct_size = sizeof(SemuRenderPointerQuery);
++    query.frame_id = pointer_map.frame_id;
++    query.x = static_cast<float>(pos.x());
++    query.y = static_cast<float>(pos.y());
++    query.viewport_width = width();
++    query.viewport_height = height();
++    query.origin = SEMU_RENDER_ORIGIN_TOP_LEFT;
++    query.surface_index = 1;
++    query.clamp = clamp ? 1 : 0;
++
++    SemuRenderPointerResult result{};
++    if (map_pointer(&pointer_map, &query, &result) != SEMU_RENDER_POINTER_MAPPED ||
++        result.frame_id != pointer_map.frame_id || result.surface_index != 1 ||
++        result.native_width != Core::kScreenBottomWidth ||
++        result.native_height != Core::kScreenBottomHeight) {
++        return std::nullopt;
++    }
++    return SemuNativeTouchPoint{result.native_x, result.native_y,
++                                static_cast<unsigned>(result.native_width),
++                                static_cast<unsigned>(result.native_height)};
+ }
+ 
+ void GRenderWindow::closeEvent(QCloseEvent* event) {
+@@ -544,8 +609,11 @@ void GRenderWindow::mousePressEvent(QMouseEvent* event) {
+ 
+     auto pos = event->pos();
+     if (event->button() == Qt::LeftButton) {
+-        const auto [x, y] = ScaleTouch(pos);
+-        this->TouchPressed(x, y);
++        semu_touch_captured = false;
++        if (const auto touch = ScaleTouch(pos, false)) {
++            semu_touch_captured = this->TouchPressedNative(
++                touch->x, touch->y, touch->width, touch->height);
++        }
+     } else if (event->button() == Qt::RightButton) {
+         InputCommon::GetMotionEmu()->BeginTilt(pos.x(), pos.y());
+     }
+@@ -558,8 +626,11 @@ void GRenderWindow::mouseMoveEvent(QMouseEvent* event) {
+     }
+ 
+     auto pos = event->pos();
+-    const auto [x, y] = ScaleTouch(pos);
+-    this->TouchMoved(x, y);
++    if (semu_touch_captured) {
++        if (const auto touch = ScaleTouch(pos, true)) {
++            this->TouchMovedNative(touch->x, touch->y, touch->width, touch->height);
++        }
++    }
+     InputCommon::GetMotionEmu()->Tilt(pos.x(), pos.y());
+     emit MouseActivity();
+ }
+@@ -569,20 +640,28 @@ void GRenderWindow::mouseReleaseEvent(QMouseEvent* event) {
+         return; // touch input is handled in TouchEndEvent
+     }
+ 
+-    if (event->button() == Qt::LeftButton)
++    if (event->button() == Qt::LeftButton) {
+         this->TouchReleased();
+-    else if (event->button() == Qt::RightButton)
++        semu_touch_captured = false;
++    } else if (event->button() == Qt::RightButton) {
+         InputCommon::GetMotionEmu()->EndTilt();
++    }
+     emit MouseActivity();
+ }
+ 
+ void GRenderWindow::TouchBeginEvent(const QTouchEvent* event) {
+     // TouchBegin always has exactly one touch point, so take the .first()
+-    const auto [x, y] = ScaleTouch(event->points().first().position());
+-    this->TouchPressed(x, y);
++    semu_touch_captured = false;
++    if (const auto touch = ScaleTouch(event->points().first().position(), false)) {
++        semu_touch_captured = this->TouchPressedNative(
++            touch->x, touch->y, touch->width, touch->height);
++    }
+ }
+ 
+ void GRenderWindow::TouchUpdateEvent(const QTouchEvent* event) {
++    if (!semu_touch_captured) {
++        return;
++    }
+     QPointF pos;
+     int active_points = 0;
+ 
+@@ -594,14 +673,19 @@ void GRenderWindow::TouchUpdateEvent(const QTouchEvent* event) {
+         }
+     }
+ 
++    if (active_points == 0) {
++        return;
++    }
+     pos /= active_points;
+ 
+-    const auto [x, y] = ScaleTouch(pos);
+-    this->TouchMoved(x, y);
++    if (const auto touch = ScaleTouch(pos, true)) {
++        this->TouchMovedNative(touch->x, touch->y, touch->width, touch->height);
++    }
+ }
+ 
+ void GRenderWindow::TouchEndEvent() {
+     this->TouchReleased();
++    semu_touch_captured = false;
+ }
+ 
+ bool GRenderWindow::event(QEvent* event) {
+@@ -625,6 +709,10 @@ bool GRenderWindow::event(QEvent* event) {
+ 
+ void GRenderWindow::focusOutEvent(QFocusEvent* event) {
+     QWidget::focusOutEvent(event);
++    if (semu_touch_captured) {
++        this->TouchReleased();
++        semu_touch_captured = false;
++    }
+     if (auto* keyboard = InputCommon::GetKeyboard(); keyboard) {
+         keyboard->ReleaseAllKeys();
+     }
+@@ -767,10 +855,14 @@ bool GRenderWindow::InitializeOpenGL() {
+     return true;
+ }
+ 
+-static void* GetProcAddressGL(const char* name) {
++void* GetProcAddressGL(const char* name) {
+     return reinterpret_cast<void*>(QOpenGLContext::currentContext()->getProcAddress(name));
+ }
+ 
++void* GetCurrentContextGL() {
++    return QOpenGLContext::currentContext();
++}
++
+ bool GRenderWindow::LoadOpenGL() {
+     auto context = CreateSharedContext();
+     auto scope = context->Acquire();
+diff --git a/src/citra_qt/bootmanager.h b/src/citra_qt/bootmanager.h
+index 118959c..8c017bc 100644
+--- a/src/citra_qt/bootmanager.h
++++ b/src/citra_qt/bootmanager.h
+@@ -8,6 +8,7 @@
+ #include <condition_variable>
+ #include <memory>
+ #include <mutex>
++#include <optional>
+ #include <QThread>
+ #include <QWidget>
+ #include "core/core.h"
+@@ -15,6 +16,7 @@
+ 
+ class QKeyEvent;
+ class QTouchEvent;
++struct SemuRenderFrameGl;
+ 
+ class GRenderWindow;
+ 
+@@ -163,7 +165,7 @@ public:
+ 
+     void CaptureScreenshot(u32 res_scale, const QString& screenshot_path);
+ 
+-    std::pair<u32, u32> ScaleTouch(const QPointF pos) const;
++    void PublishSemuPointerFrame(const SemuRenderFrameGl* frame);
+ 
+ public slots:
+ 
+@@ -184,6 +186,15 @@ signals:
+     void MouseActivity();
+ 
+ private:
++    struct SemuPointerState;
++    struct SemuNativeTouchPoint {
++        float x;
++        float y;
++        unsigned width;
++        unsigned height;
++    };
++
++    std::optional<SemuNativeTouchPoint> ScaleTouch(const QPointF pos, bool clamp) const;
+     void TouchBeginEvent(const QTouchEvent* event);
+     void TouchUpdateEvent(const QTouchEvent* event);
+     void TouchEndEvent();
+@@ -214,6 +225,8 @@ private:
+     /// Temporary storage of the screenshot taken
+     QImage screenshot_image;
+     QByteArray geometry;
++    std::unique_ptr<SemuPointerState> semu_pointer_state;
++    bool semu_touch_captured = false;
+     bool first_frame = false;
+     bool has_focus = false;
+ 
+diff --git a/src/core/frontend/emu_window.cpp b/src/core/frontend/emu_window.cpp
+index 3216a16..0906b47 100644
+--- a/src/core/frontend/emu_window.cpp
++++ b/src/core/frontend/emu_window.cpp
+@@ -191,6 +191,29 @@ bool EmuWindow::TouchPressed(unsigned framebuffer_x, unsigned framebuffer_y) {
+     return true;
+ }
+ 
++bool EmuWindow::SetTouchNative(float native_x, float native_y, unsigned native_width,
++                               unsigned native_height, bool require_pressed) {
++    if (native_width == 0 || native_height == 0 || !std::isfinite(native_x) ||
++        !std::isfinite(native_y) || native_x < 0.0f || native_y < 0.0f ||
++        native_x > static_cast<float>(native_width - 1) ||
++        native_y > static_cast<float>(native_height - 1)) {
++        return false;
++    }
++    std::scoped_lock guard{touch_state->mutex};
++    if (require_pressed && !touch_state->touch_pressed) {
++        return false;
++    }
++    touch_state->touch_x = native_x / static_cast<float>(native_width);
++    touch_state->touch_y = native_y / static_cast<float>(native_height);
++    touch_state->touch_pressed = true;
++    return true;
++}
++
++bool EmuWindow::TouchPressedNative(float native_x, float native_y, unsigned native_width,
++                                   unsigned native_height) {
++    return SetTouchNative(native_x, native_y, native_width, native_height, false);
++}
++
+ void EmuWindow::TouchReleased() {
+     std::scoped_lock guard{touch_state->mutex};
+     touch_state->touch_pressed = false;
+@@ -208,6 +231,11 @@ void EmuWindow::TouchMoved(unsigned framebuffer_x, unsigned framebuffer_y) {
+     TouchPressed(framebuffer_x, framebuffer_y);
+ }
+ 
++void EmuWindow::TouchMovedNative(float native_x, float native_y, unsigned native_width,
++                                 unsigned native_height) {
++    SetTouchNative(native_x, native_y, native_width, native_height, true);
++}
++
+ void EmuWindow::UpdateCurrentFramebufferLayout(u32 width, u32 height, bool is_portrait_mode) {
+     Layout::FramebufferLayout layout;
+     const Settings::LayoutOption layout_option = Settings::values.layout_option.GetValue();
+diff --git a/src/core/frontend/emu_window.h b/src/core/frontend/emu_window.h
+index 175f418..b91834b 100644
+--- a/src/core/frontend/emu_window.h
++++ b/src/core/frontend/emu_window.h
+@@ -199,6 +199,13 @@ public:
+      */
+     bool TouchPressed(unsigned framebuffer_x, unsigned framebuffer_y);
+ 
++    /**
++     * Signal a touch using bottom-screen-native, display-upright coordinates.
++     * This bypasses framebuffer layout and stereo presentation transforms.
++     */
++    bool TouchPressedNative(float native_x, float native_y, unsigned native_width,
++                            unsigned native_height);
++
+     /// Signal that a touch released event has occurred (e.g. mouse click released)
+     void TouchReleased();
+ 
+@@ -209,6 +216,10 @@ public:
+      */
+     void TouchMoved(unsigned framebuffer_x, unsigned framebuffer_y);
+ 
++    /// Move an active native-coordinate touch without framebuffer layout transforms.
++    void TouchMovedNative(float native_x, float native_y, unsigned native_width,
++                          unsigned native_height);
++
+     /**
+      * Returns currently active configuration.
+      * @note Accesses to the returned object need not be consistent because it may be modified in
+@@ -334,6 +345,8 @@ private:
+     }
+ 
+     void CreateTouchState();
++    bool SetTouchNative(float native_x, float native_y, unsigned native_width,
++                        unsigned native_height, bool require_pressed);
+ 
+     /**
+      * Check if the given x/y coordinates are within the touchpad specified by the framebuffer
+diff --git a/src/video_core/renderer_opengl/renderer_opengl.cpp b/src/video_core/renderer_opengl/renderer_opengl.cpp
+index c8cb6c0..bc75b8d 100644
+--- a/src/video_core/renderer_opengl/renderer_opengl.cpp
++++ b/src/video_core/renderer_opengl/renderer_opengl.cpp
+@@ -9,6 +9,8 @@
+ #include "core/frontend/emu_window.h"
+ #include "core/frontend/framebuffer_layout.h"
+ #include "core/memory.h"
++#include "core/3ds.h"
++#include <semu_renderer.h>
+ #include "video_core/pica/pica_core.h"
+ #include "video_core/renderer_opengl/gl_state.h"
+ #include "video_core/renderer_opengl/gl_texture_mailbox.h"
+@@ -21,11 +23,70 @@
+ #include "video_core/host_shaders/opengl_present_interlaced_frag.h"
+ #include "video_core/host_shaders/opengl_present_vert.h"
+ 
++void* GetProcAddressGL(const char* name);
++void* GetCurrentContextGL();
++
+ namespace OpenGL {
+ 
+ MICROPROFILE_DEFINE(OpenGL_RenderFrame, "OpenGL", "Render Frame", MP_RGB(128, 128, 64));
+ MICROPROFILE_DEFINE(OpenGL_WaitPresent, "OpenGL", "Wait For Present", MP_RGB(128, 128, 128));
+ 
++namespace {
++
++thread_local SemuRenderFrameGl semu_render_frame{};
++thread_local bool semu_render_frame_ready = false;
++thread_local unsigned long long semu_render_frame_id = 0;
++
++bool IsSemuRenderSurfaceValid(const Layout::FramebufferLayout& layout,
++                              const Common::Rectangle<u32>& rectangle) {
++    return rectangle.left < rectangle.right && rectangle.top < rectangle.bottom &&
++           rectangle.right <= layout.width && rectangle.bottom <= layout.height;
++}
++
++bool BuildSemuRenderFrame(const Layout::FramebufferLayout& layout) {
++    semu_render_frame = {};
++    const bool geometry_valid = IsSemuRenderSurfaceValid(layout, layout.top_screen) &&
++                                IsSemuRenderSurfaceValid(layout, layout.bottom_screen);
++    if (!geometry_valid) {
++        return false;
++    }
++
++    const auto set_surface = [](SemuRenderSurfaceGl& surface,
++                                const Common::Rectangle<u32>& rectangle,
++                                int native_width, int native_height) {
++        surface.x = static_cast<int>(rectangle.left);
++        surface.y = static_cast<int>(rectangle.top);
++        surface.width = static_cast<int>(rectangle.GetWidth());
++        surface.height = static_cast<int>(rectangle.GetHeight());
++        surface.native_width = native_width;
++        surface.native_height = native_height;
++        surface.rotation = 0;
++        surface.origin = SEMU_RENDER_ORIGIN_TOP_LEFT;
++    };
++
++    semu_render_frame.abi = SEMU_RENDER_ABI_GL;
++    semu_render_frame.struct_size = sizeof(semu_render_frame);
++    semu_render_frame.frame_id = ++semu_render_frame_id;
++    semu_render_frame.framebuffer = 0;
++    semu_render_frame.color_buffer = GL_BACK;
++    semu_render_frame.framebuffer_width = static_cast<int>(layout.width);
++    semu_render_frame.framebuffer_height = static_cast<int>(layout.height);
++    semu_render_frame.surface_count = 2;
++    set_surface(semu_render_frame.surfaces[0], layout.top_screen,
++                Core::kScreenTopWidth, Core::kScreenTopHeight);
++    set_surface(semu_render_frame.surfaces[1], layout.bottom_screen,
++                Core::kScreenBottomWidth, Core::kScreenBottomHeight);
++    semu_render_frame.get_proc = GetProcAddressGL;
++    semu_render_frame.current_context = GetCurrentContextGL;
++    return true;
++}
++
++} // namespace
++
++SemuRenderFrameGl* GetSemuRenderFrame() {
++    return semu_render_frame_ready ? &semu_render_frame : nullptr;
++}
++
+ /**
+  * Vertex structure that the drawn screen rectangles are composed of.
+  */
+@@ -854,6 +915,7 @@ void RendererOpenGL::DrawBottomScreen(const Layout::FramebufferLayout& layout,
+ }
+ 
+ void RendererOpenGL::TryPresent(int timeout_ms, bool is_secondary) {
++    semu_render_frame_ready = false;
+     const auto& window = is_secondary ? *secondary_window : render_window;
+     const auto& layout = window.GetFramebufferLayout();
+     auto frame = window.mailbox->TryGetPresentFrame(timeout_ms);
+@@ -892,6 +954,10 @@ void RendererOpenGL::TryPresent(int timeout_ms, bool is_secondary) {
+     glFlush();
+ 
+     glBindFramebuffer(GL_READ_FRAMEBUFFER, 0);
++    semu_render_frame_ready = BuildSemuRenderFrame(layout);
++    if (semu_render_frame_ready) {
++        semu_render_game_gl(&semu_render_frame);
++    }
+ }
+ 
+ void RendererOpenGL::PrepareVideoDumping() {

@@ -1,0 +1,8 @@
+{
+  "schema_version": 2,
+  "enabled": false,
+  "renderer": true,
+  "doc": {
+    "note": "Modern HDMI/OLED output receives no era CRT treatment. The game-boundary tap remains active for presentation evidence and radial input."
+  }
+}

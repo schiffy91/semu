@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "enabled": true,
+  "default_variant": "classic",
+  "hole": {
+    "x": 0.24,
+    "y": 0.11,
+    "w": 0.52,
+    "h": 0.728
+  },
+  "variants": [
+    {
+      "id": "classic",
+      "label": "Classic",
+      "art": "assets/bezels/psp/classic.png"
+    }
+  ],
+  "doc": {
+    "hole": "Screen viewport centered in the flat black face of the FULL-DEVICE Duimon PSP_Wide render (5335x2160), clearing the d-pad, analog nub and face-button diamond. Native 480x272 (16:9) aspect so the game fills it flush."
+  }
+}

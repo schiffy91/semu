@@ -1,0 +1,83 @@
+{
+  "schema_version": 1,
+  "name": "Sony PlayStation Portable",
+  "aliases": [],
+  "es_de": {
+    "platforms": [
+      "psp"
+    ],
+    "theme": "psp"
+  },
+  "rom": {
+    "dir": "psp",
+    "extensions": [
+      ".chd",
+      ".cso",
+      ".elf",
+      ".iso",
+      ".pbp",
+      ".prx",
+      ".7z",
+      ".zip"
+    ]
+  },
+  "verification": {
+    "rom_descriptors": [
+      "Lumines - Puzzle Fusion (USA) (En,Ja).iso",
+      "LocoRoco (USA) (En,Ja,Fr,De,Es,It,Nl,Pt,Sv,No,Da,Fi,Zh,Ko,Ru).iso"
+    ],
+    "capture_frame": 180
+  },
+  "emulators": [
+    {
+      "emulator": "ppsspp",
+      "platforms": [
+        "linux"
+      ]
+    },
+    {
+      "emulator": "retroarch",
+      "label": "PPSSPP (Libretro)",
+      "core": "ppsspp",
+      "platforms": [
+        "macos"
+      ]
+    }
+  ],
+  "display": {
+    "scaling": {
+      "mode": "integer_preferred",
+      "basis": "native_game_surface",
+      "fit": "contain",
+      "fallback": "fractional_downscale"
+    },
+    "screens": [
+      {
+        "id": "main",
+        "native": {
+          "w": 480,
+          "h": 272
+        }
+      }
+    ],
+    "aspect": {
+      "w": 30,
+      "h": 17
+    },
+    "doc": {
+      "aspect": "30:17 is the exact reduced ratio of the square-pixel 480x272 PSP LCD; it avoids the fractional horizontal distortion introduced by a nominal 16:9 override."
+    }
+  },
+  "render": {
+    "style": "handheld",
+    "asset_profile": "handheld",
+    "priority": "game",
+    "corner_radius": 0.045,
+    "lcd_grid": 0.15,
+    "lcd_subpixel": 0.20
+  },
+  "doc": {
+    "hardware": "480x272 PSP LCD",
+    "intent": "Preserve the PSP LCD color response, pixel structure, and exact square-pixel panel ratio."
+  }
+}

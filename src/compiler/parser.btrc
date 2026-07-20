@@ -1,0 +1,753 @@
+// parser.btrc - strict std.json parsing into the compiler-owned source model.
+
+import std.{fs, json, vector}
+import ../lib/owned_paths.btrc
+import ../lib/rendering_settings.btrc
+import ./lexer.btrc
+import ./model.btrc
+
+class CompilerJsonFields {
+    class string label(string context, string key) {
+        return context.isEmpty() ? key : context + "." + key;
+    }
+
+    class JsonValue readObject(string file, CompilerDiagnostics diagnostics) {
+        FileStatus status = FileStatus(file);
+        if (status.isSymlink() || !status.isFile()) {
+            diagnostics.add(file, "(root)",
+                "definition must be a non-symlink regular file");
+            return JsonValue.makeObject();
+        }
+        JsonValue root = JsonValue.readFile(file);
+        if (root.isError()) {
+            diagnostics.add(file, "(root)", "invalid JSON");
+            return JsonValue.makeObject();
+        }
+        if (!root.isObject()) {
+            diagnostics.add(file, "(root)", "expected a JSON object");
+            return JsonValue.makeObject();
+        }
+        return root;
+    }
+
+    class void schema(JsonValue root, int expected, string file,
+                      CompilerDiagnostics diagnostics) {
+        if (!root.has("schema_version")) {
+            diagnostics.add(file, "schema_version", "missing required field");
+            return;
+        }
+        JsonValue version = root.get("schema_version");
+        if (!version.isInt()) {
+            diagnostics.add(file, "schema_version", "expected integer");
+        } else if (version.asInt() != expected) {
+            diagnostics.add(file, "schema_version",
+                f"version {version.asInt()} unsupported (want {expected})");
+        }
+    }
+
+    class void keys(JsonValue object, Vector<string> allowed, string file,
+                    string context, CompilerDiagnostics diagnostics) {
+        if (!object.isObject()) { return; }
+        Vector<string> keys = object.keys();
+        keys.sort();
+        for key in keys {
+            if (!allowed.contains(key)) {
+                diagnostics.add(file, CompilerJsonFields.label(context, key),
+                    "unknown key");
+            }
+        }
+    }
+
+    class string requiredString(JsonValue object, string key, string file,
+                                string context, CompilerDiagnostics diagnostics) {
+        string field = CompilerJsonFields.label(context, key);
+        if (!object.has(key)) {
+            diagnostics.add(file, field, "missing required field");
+            return "";
+        }
+        JsonValue value = object.get(key);
+        if (!value.isString() || value.asString().isEmpty()) {
+            diagnostics.add(file, field, "expected non-empty string");
+            return "";
+        }
+        return value.asString();
+    }
+
+    class string optionalString(JsonValue object, string key, string fallback,
+                                string file, string context,
+                                CompilerDiagnostics diagnostics) {
+        if (!object.has(key)) { return fallback; }
+        return CompilerJsonFields.requiredString(
+            object, key, file, context, diagnostics);
+    }
+
+    class Vector<string> strings(JsonValue object, string key, bool required,
+                                 string file, string context,
+                                 CompilerDiagnostics diagnostics,
+                                 bool unique = true) {
+        Vector<string> result = [];
+        string field = CompilerJsonFields.label(context, key);
+        if (!object.has(key)) {
+            if (required) { diagnostics.add(file, field, "missing required field"); }
+            return result;
+        }
+        JsonValue values = object.get(key);
+        if (!values.isArray()) {
+            diagnostics.add(file, field, "expected array of strings");
+            return result;
+        }
+        for (int index = 0; index < values.size(); index++) {
+            JsonValue value = values.at(index);
+            if (!value.isString() || value.asString().isEmpty()) {
+                diagnostics.add(file, f"{field}[{index}]",
+                    "expected non-empty string");
+            } else if (unique && result.contains(value.asString())) {
+                diagnostics.add(file, f"{field}[{index}]", "duplicate value");
+            } else {
+                result.push(value.asString());
+            }
+        }
+        return result;
+    }
+
+    class int optionalInt(JsonValue object, string key, int fallback,
+                          string file, string context,
+                          CompilerDiagnostics diagnostics) {
+        if (!object.has(key)) { return fallback; }
+        JsonValue value = object.get(key);
+        if (!value.isInt()) {
+            diagnostics.add(file, CompilerJsonFields.label(context, key),
+                "expected integer");
+            return fallback;
+        }
+        return value.asInt();
+    }
+}
+
+class SemuEmulatorRenderingParser {
+    class void exactString(JsonValue object, string key, string expected,
+                           string file, string context,
+                           CompilerDiagnostics diagnostics) {
+        string value = CompilerJsonFields.requiredString(
+            object, key, file, context, diagnostics);
+        if (!value.isEmpty() && !value.equals(expected)) {
+            diagnostics.add(file, CompilerJsonFields.label(context, key),
+                "expected '" + expected + "'");
+        }
+    }
+
+    class void boolean(JsonValue object, string key, string file,
+                       string context, CompilerDiagnostics diagnostics) {
+        if (!object.has(key) || !object.get(key).isBool()) {
+            diagnostics.add(file, CompilerJsonFields.label(context, key),
+                "expected boolean");
+        }
+    }
+
+    class void phase(JsonValue value, string expectedId,
+                     string expectedSymbol, string file, int index,
+                     CompilerDiagnostics diagnostics) {
+        string context = f"phases[{index}]";
+        if (!value.isObject()) {
+            diagnostics.add(file, context, "expected object");
+            return;
+        }
+        SemuEmulatorRenderingParser.exactString(
+            value, "id", expectedId, file, context, diagnostics);
+        SemuEmulatorRenderingParser.exactString(
+            value, "symbol", expectedSymbol, file, context, diagnostics);
+    }
+
+    class void validate(JsonValue root, string file,
+                        CompilerDiagnostics diagnostics) {
+        CompilerJsonFields.keys(root,
+            ["schema_version", "activation", "integration", "phases",
+             "surfaces", "orientation_contract", "composition", "doc"],
+            file, "", diagnostics);
+
+        JsonValue activation = root.get("activation");
+        if (!activation.isObject()) {
+            diagnostics.add(file, "activation", "expected object");
+        } else {
+            SemuEmulatorRenderingParser.exactString(activation, "mode",
+                "source_patched_direct_link", file, "activation", diagnostics);
+            SemuEmulatorRenderingParser.boolean(
+                activation, "package_ready", file, "activation", diagnostics);
+            SemuEmulatorRenderingParser.boolean(
+                activation, "runtime_proven", file, "activation", diagnostics);
+            SemuEmulatorRenderingParser.boolean(
+                activation, "physical_proven", file, "activation", diagnostics);
+        }
+
+        JsonValue integration = root.get("integration");
+        if (!integration.isObject()) {
+            diagnostics.add(file, "integration", "expected object");
+        } else {
+            if (!integration.get("abi").isInt()
+                    || integration.get("abi").asInt() != 2) {
+                diagnostics.add(file, "integration.abi", "expected ABI 2");
+            }
+            SemuEmulatorRenderingParser.exactString(integration, "api",
+                "semu-renderer", file, "integration", diagnostics);
+            string linkage = CompilerJsonFields.requiredString(
+                integration, "linkage", file, "integration", diagnostics);
+            if (!linkage.isEmpty()
+                    && !["direct", "direct_pinvoke"].contains(linkage)) {
+                diagnostics.add(file, "integration.linkage",
+                    "expected direct or direct_pinvoke");
+            }
+            SemuEmulatorRenderingParser.exactString(integration, "header",
+                "semu_renderer.h", file, "integration", diagnostics);
+            SemuEmulatorRenderingParser.exactString(integration, "library",
+                "semurenderer", file, "integration", diagnostics);
+            SemuEmulatorRenderingParser.exactString(integration, "backend",
+                "opengl", file, "integration", diagnostics);
+            CompilerJsonFields.strings(integration, "callbacks", true,
+                file, "integration", diagnostics);
+            SemuEmulatorRenderingParser.boolean(
+                integration, "inactive_reports", file, "integration", diagnostics);
+            if (integration.get("inactive_reports").isBool()
+                    && integration.get("inactive_reports").asBool() != 0) {
+                diagnostics.add(file, "integration.inactive_reports",
+                    "inactive emulator views must not invoke the renderer");
+            }
+            string patch = CompilerJsonFields.requiredString(
+                integration, "patch", file, "integration", diagnostics);
+            if (!patch.isEmpty()
+                    && (!PathTools.basename(patch).equals(patch)
+                        || !patch.endsWith(".patch"))) {
+                diagnostics.add(file, "integration.patch",
+                    "expected an owned .patch filename");
+            }
+        }
+
+        JsonValue phases = root.get("phases");
+        if (!phases.isArray() || phases.size() != 2) {
+            diagnostics.add(file, "phases",
+                "expected exactly game and post_ui phases");
+        } else {
+            SemuEmulatorRenderingParser.phase(phases.at(0), "game",
+                "semu_render_game_gl", file, 0, diagnostics);
+            SemuEmulatorRenderingParser.phase(phases.at(1), "post_ui",
+                "semu_render_post_ui_gl", file, 1, diagnostics);
+        }
+
+        JsonValue surfaces = root.get("surfaces");
+        if (!surfaces.isArray() || surfaces.size() < 1) {
+            diagnostics.add(file, "surfaces",
+                "expected at least one game surface");
+        }
+
+        JsonValue composition = root.get("composition");
+        if (!composition.isObject()) {
+            diagnostics.add(file, "composition", "expected object");
+        } else {
+            SemuEmulatorRenderingParser.exactString(composition, "owner",
+                "semurenderer", file, "composition", diagnostics);
+            for field in ["shader", "bezel", "semu_menu"] {
+                SemuEmulatorRenderingParser.exactString(composition, field,
+                    "renderer_owned", file, "composition", diagnostics);
+            }
+        }
+    }
+}
+
+class SemuTargetParser {
+    class SemuTargetViewport viewport(JsonValue json, string file,
+                                      CompilerDiagnostics diagnostics) {
+        SemuTargetViewport result = SemuTargetViewport();
+        if (!json.isObject()) {
+            diagnostics.add(file, "validation.viewport", "expected object");
+            return result;
+        }
+        CompilerJsonFields.keys(json, ["width", "height"], file,
+            "validation.viewport", diagnostics);
+        result.width = CompilerJsonFields.optionalInt(
+            json, "width", 0, file, "validation.viewport", diagnostics);
+        result.height = CompilerJsonFields.optionalInt(
+            json, "height", 0, file, "validation.viewport", diagnostics);
+        if (result.width < 1 || result.height < 1) {
+            diagnostics.add(file, "validation.viewport",
+                "dimensions must be positive integers");
+        }
+        return result;
+    }
+
+    class SemuTargetValidation validation(JsonValue json, string file,
+                                           CompilerDiagnostics diagnostics) {
+        SemuTargetValidation result = SemuTargetValidation();
+        if (!json.isObject()) {
+            diagnostics.add(file, "validation", "expected object");
+            return result;
+        }
+        CompilerJsonFields.keys(json,
+            ["kind", "requires", "must_complete_before", "harness", "image", "viewport"],
+            file, "validation", diagnostics);
+        result.kind = CompilerJsonFields.requiredString(
+            json, "kind", file, "validation", diagnostics);
+        if (!result.kind.isEmpty()
+                && !["physical", "host", "post-deployment-parity"].contains(result.kind)) {
+            diagnostics.add(file, "validation.kind", "unsupported validation kind");
+        }
+        result.requires = CompilerJsonFields.strings(
+            json, "requires", false, file, "validation", diagnostics);
+        result.mustCompleteBefore = CompilerJsonFields.strings(
+            json, "must_complete_before", false, file, "validation", diagnostics);
+        result.harness = CompilerJsonFields.optionalString(
+            json, "harness", "", file, "validation", diagnostics);
+        if (!result.harness.isEmpty()
+                && !SemuOwnedPaths.safeRelativePath(result.harness)) {
+            diagnostics.add(file, "validation.harness",
+                "expected a safe project-relative harness directory");
+        }
+        result.image = CompilerJsonFields.optionalString(
+            json, "image", "", file, "validation", diagnostics);
+        if (json.has("viewport")) {
+            result.viewport = SemuTargetParser.viewport(
+                json.get("viewport"), file, diagnostics);
+        }
+        return result;
+    }
+
+    class SemuCompilerTarget parse(string expectedId, string file,
+                                   CompilerDiagnostics diagnostics) {
+        SemuCompilerTarget target = SemuCompilerTarget();
+        target.id = expectedId;
+        target.file = file;
+        target.sourceFiles.push(file);
+        JsonValue root = CompilerJsonFields.readObject(file, diagnostics);
+        CompilerJsonFields.schema(root, 1, file, diagnostics);
+        CompilerJsonFields.keys(root,
+            ["schema_version", "id", "inherits", "platform", "nix_systems",
+             "deployment_target", "backends", "artifact", "input", "settings",
+             "validation"], file, "", diagnostics);
+        string declaredId = CompilerJsonFields.requiredString(
+            root, "id", file, "", diagnostics);
+        if (!declaredId.isEmpty() && !declaredId.equals(expectedId)) {
+            diagnostics.add(file, "id",
+                "must equal target filename '" + expectedId + "'");
+        }
+        target.inherits = CompilerJsonFields.optionalString(
+            root, "inherits", "", file, "", diagnostics);
+        if (!target.inherits.isEmpty()
+                && !SemuDefinitionId.valid(target.inherits)) {
+            diagnostics.add(file, "inherits",
+                "expected a lowercase target identifier");
+        }
+        target.platform = CompilerJsonFields.optionalString(
+            root, "platform", "", file, "", diagnostics);
+        if (!target.platform.isEmpty()
+                && !["linux", "macos"].contains(target.platform)) {
+            diagnostics.add(file, "platform", "unsupported platform");
+        }
+        target.nixSystems = CompilerJsonFields.strings(
+            root, "nix_systems", false, file, "", diagnostics);
+        target.deploymentTargetDeclared = root.has("deployment_target");
+        if (target.deploymentTargetDeclared) {
+            JsonValue deployment = root.get("deployment_target");
+            if (!deployment.isBool()) {
+                diagnostics.add(file, "deployment_target", "expected boolean");
+            } else {
+                target.deploymentTarget = deployment.asBool();
+            }
+        }
+        target.backends = CompilerJsonFields.strings(
+            root, "backends", false, file, "", diagnostics);
+        target.artifact = CompilerJsonFields.optionalString(
+            root, "artifact", "", file, "", diagnostics);
+        if (!target.artifact.isEmpty()
+                && !["appimage", "nix-bundle"].contains(target.artifact)) {
+            diagnostics.add(file, "artifact", "unsupported artifact kind");
+        }
+        target.input = CompilerJsonFields.optionalString(
+            root, "input", "", file, "", diagnostics);
+        if (!target.input.isEmpty()
+                && !SemuDefinitionReference.valid(target.input, "input")) {
+            diagnostics.add(file, "input",
+                "expected an input/<id> definition reference");
+        }
+        if (root.has("settings")) {
+            if (!root.get("settings").isObject()) {
+                diagnostics.add(file, "settings", "expected object");
+            } else {
+                target.settings = root.get("settings");
+            }
+        }
+        if (!root.has("validation")) {
+            diagnostics.add(file, "validation", "missing required field");
+        } else {
+            target.validation = SemuTargetParser.validation(
+                root.get("validation"), file, diagnostics);
+        }
+        return target;
+    }
+}
+
+class SemuOwnedPathDeclarations {
+    class void relative(JsonValue object, string key, string file,
+                        string context, CompilerDiagnostics diagnostics,
+                        bool allowEmpty = false) {
+        if (!object.has(key)) { return; }
+        JsonValue value = object.get(key);
+        string field = CompilerJsonFields.label(context, key);
+        if (!value.isString()
+                || !SemuOwnedPaths.safeRelativePath(
+                    value.isString() ? value.asString() : "", allowEmpty)) {
+            diagnostics.add(file, field,
+                "expected a safe relative Semu-owned path");
+        }
+    }
+
+    class void statePath(JsonValue object, string key, string file,
+                         string context, CompilerDiagnostics diagnostics) {
+        if (!object.has(key)) { return; }
+        JsonValue value = object.get(key);
+        string field = CompilerJsonFields.label(context, key);
+        string prefix = "${state_root}/";
+        if (!value.isString() || !value.asString().startsWith(prefix)
+                || !SemuOwnedPaths.safeRelativePath(
+                    value.asString().substring(prefix.len(),
+                        value.asString().len()))) {
+            diagnostics.add(file, field,
+                "must resolve beneath ${state_root}");
+        }
+    }
+
+    class void relativeList(JsonValue object, string key, string file,
+                            string context,
+                            CompilerDiagnostics diagnostics) {
+        if (!object.has(key)) { return; }
+        JsonValue values = object.get(key);
+        string field = CompilerJsonFields.label(context, key);
+        if (!values.isArray()) {
+            diagnostics.add(file, field, "expected array of relative paths");
+            return;
+        }
+        for (int index = 0; index < values.size(); index++) {
+            JsonValue value = values.at(index);
+            if (!value.isString()
+                    || !SemuOwnedPaths.safeRelativePath(
+                        value.isString() ? value.asString() : "")) {
+                diagnostics.add(file, f"{field}[{index}]",
+                    "expected a safe relative Semu-owned path");
+            }
+        }
+    }
+
+    class void platform(JsonValue platform, string file, string context,
+                        CompilerDiagnostics diagnostics) {
+        JsonValue state = platform.get("state");
+        if (!state.isObject()) { return; }
+        SemuOwnedPathDeclarations.relative(
+            state, "config_subdir", file, context + ".state", diagnostics);
+        SemuOwnedPathDeclarations.relative(
+            state, "data_subdir", file, context + ".state", diagnostics);
+        SemuOwnedPathDeclarations.statePath(
+            state, "profile_config_dir", file,
+            context + ".state", diagnostics);
+        SemuOwnedPathDeclarations.statePath(
+            state, "profile_data_dir", file,
+            context + ".state", diagnostics);
+        SemuOwnedPathDeclarations.relativeList(
+            state, "managed_profile_files", file,
+            context + ".state", diagnostics);
+        JsonValue seeds = state.get("seeds");
+        if (!seeds.isArray()) { return; }
+        for (int index = 0; index < seeds.size(); index++) {
+            JsonValue seed = seeds.at(index);
+            string seedContext = context + f".state.seeds[{index}]";
+            if (!seed.isObject()) {
+                diagnostics.add(file, seedContext, "expected object");
+                continue;
+            }
+            SemuOwnedPathDeclarations.statePath(
+                seed, "target", file, seedContext, diagnostics);
+            CompilerJsonFields.strings(
+                seed, "sources", true, file, seedContext, diagnostics, false);
+        }
+    }
+
+    class void profile(JsonValue profile, string file,
+                       CompilerDiagnostics diagnostics) {
+        JsonValue files = profile.get("files");
+        if (!files.isArray()) { return; }
+        for (int index = 0; index < files.size(); index++) {
+            JsonValue entry = files.at(index);
+            string context = f"files[{index}]";
+            if (!entry.isObject()) {
+                diagnostics.add(file, context, "expected object");
+                continue;
+            }
+            SemuOwnedPathDeclarations.relative(
+                entry, "path", file, context, diagnostics);
+        }
+    }
+}
+
+class SemuSourceParser {
+    class SemuSystemSource system(SemuDefinitionUnit unit,
+                                  CompilerDiagnostics diagnostics) {
+        SemuSystemSource system = SemuSystemSource();
+        system.id = unit.id;
+        system.file = PathTools.join(unit.path, "system.json");
+        system.shadersFile = PathTools.join(unit.path, "shaders.json");
+        system.bezelsFile = PathTools.join(unit.path, "bezels.json");
+        JsonValue root = CompilerJsonFields.readObject(system.file, diagnostics);
+        system.definition = root;
+        CompilerJsonFields.schema(root, 1, system.file, diagnostics);
+        CompilerJsonFields.keys(root,
+            ["schema_version", "name", "aliases", "es_de", "rom", "verification",
+             "emulators", "bios", "controller_profile", "display", "render", "doc"],
+            system.file, "", diagnostics);
+        system.name = CompilerJsonFields.requiredString(
+            root, "name", system.file, "", diagnostics);
+        system.shaders = SemuSourceParser.companion(
+            system.shadersFile, 2, diagnostics);
+        system.bezels = SemuSourceParser.companion(
+            system.bezelsFile, 1, diagnostics);
+
+        if (!root.has("rom") || !root.get("rom").isObject()) {
+            diagnostics.add(system.file, "rom", "expected object");
+        } else {
+            system.romDirectory = CompilerJsonFields.requiredString(
+                root.get("rom"), "dir", system.file, "rom", diagnostics);
+            system.extensions = CompilerJsonFields.strings(
+                root.get("rom"), "extensions", true,
+                system.file, "rom", diagnostics);
+        }
+        if (!root.has("es_de") || !root.get("es_de").isObject()) {
+            diagnostics.add(system.file, "es_de", "expected object");
+        } else {
+            system.esDePlatforms = CompilerJsonFields.strings(
+                root.get("es_de"), "platforms", true,
+                system.file, "es_de", diagnostics);
+            system.esDeTheme = CompilerJsonFields.requiredString(
+                root.get("es_de"), "theme", system.file, "es_de", diagnostics);
+        }
+        if (!root.has("emulators") || !root.get("emulators").isArray()) {
+            diagnostics.add(system.file, "emulators", "expected array");
+            return system;
+        }
+        JsonValue bindings = root.get("emulators");
+        for (int index = 0; index < bindings.size(); index++) {
+            JsonValue source = bindings.at(index);
+            string context = f"emulators[{index}]";
+            if (!source.isObject()) {
+                diagnostics.add(system.file, context, "expected object");
+                continue;
+            }
+            CompilerJsonFields.keys(source,
+                ["emulator", "label", "label_aliases", "core", "platforms", "args"],
+                system.file, context, diagnostics);
+            SemuSystemBindingSource binding = SemuSystemBindingSource();
+            binding.emulator = CompilerJsonFields.requiredString(
+                source, "emulator", system.file, context, diagnostics);
+            binding.label = CompilerJsonFields.optionalString(
+                source, "label", "", system.file, context, diagnostics);
+            binding.labelAliases = CompilerJsonFields.strings(
+                source, "label_aliases", false,
+                system.file, context, diagnostics);
+            binding.core = CompilerJsonFields.optionalString(
+                source, "core", "", system.file, context, diagnostics);
+            binding.platforms = CompilerJsonFields.strings(
+                source, "platforms", false, system.file, context, diagnostics);
+            binding.arguments = CompilerJsonFields.strings(
+                source, "args", false, system.file, context, diagnostics, false);
+            if (!binding.emulator.isEmpty()) { system.emulators.push(binding); }
+        }
+        return system;
+    }
+
+    class JsonValue companion(string file, int schemaVersion,
+                              CompilerDiagnostics diagnostics) {
+        if (!FileSystem.isFile(file)) {
+            diagnostics.add(file, "(root)", "missing definition file");
+            return JsonValue.makeObject();
+        }
+        JsonValue root = CompilerJsonFields.readObject(file, diagnostics);
+        CompilerJsonFields.schema(root, schemaVersion, file, diagnostics);
+        return root;
+    }
+
+    class SemuEmulatorSource emulator(SemuDefinitionUnit unit,
+                                      CompilerDiagnostics diagnostics) {
+        SemuEmulatorSource emulator = SemuEmulatorSource();
+        emulator.id = unit.id;
+        emulator.file = PathTools.join(unit.path, "emulator.json");
+        emulator.packageDefinitionFile = PathTools.join(unit.path, "package.json");
+        emulator.packageNixFile = PathTools.join(unit.path, "package.nix");
+        emulator.profileFile = PathTools.join(unit.path, "profile.json");
+        emulator.renderingFile = PathTools.join(unit.path, "rendering.json");
+        JsonValue root = CompilerJsonFields.readObject(emulator.file, diagnostics);
+        emulator.definition = root;
+        CompilerJsonFields.schema(root, 1, emulator.file, diagnostics);
+        CompilerJsonFields.keys(root,
+            ["schema_version", "name", "default_system", "input", "platforms", "doc"],
+            emulator.file, "", diagnostics);
+        emulator.name = CompilerJsonFields.requiredString(
+            root, "name", emulator.file, "", diagnostics);
+
+        if (!root.has("input") || !root.get("input").isObject()) {
+            diagnostics.add(emulator.file, "input", "expected object");
+        } else {
+            emulator.actions = CompilerJsonFields.strings(
+                root.get("input"), "actions", true,
+                emulator.file, "input", diagnostics);
+        }
+        if (!root.has("platforms") || !root.get("platforms").isObject()) {
+            diagnostics.add(emulator.file, "platforms", "expected object");
+        } else {
+            JsonValue platforms = root.get("platforms");
+            Vector<string> platformIds = platforms.keys();
+            platformIds.sort();
+            for platformId in platformIds {
+                JsonValue source = platforms.get(platformId);
+                if (!source.isObject()) {
+                    diagnostics.add(emulator.file, "platforms." + platformId,
+                        "expected object");
+                    continue;
+                }
+                SemuEmulatorPlatformSource platform = SemuEmulatorPlatformSource();
+                platform.id = platformId;
+                platform.backend = CompilerJsonFields.requiredString(
+                    source, "backend", emulator.file,
+                    "platforms." + platformId, diagnostics);
+                platform.executable = CompilerJsonFields.requiredString(
+                    source, "executable", emulator.file,
+                    "platforms." + platformId, diagnostics);
+                platform.arguments = CompilerJsonFields.strings(
+                    source, "args", false, emulator.file,
+                    "platforms." + platformId, diagnostics, false);
+                platform.definition = source;
+                SemuOwnedPathDeclarations.platform(source, emulator.file,
+                    "platforms." + platformId, diagnostics);
+                emulator.platforms.push(platform);
+            }
+        }
+        SemuSourceParser.companion(
+            emulator.packageDefinitionFile, 1, diagnostics);
+        emulator.profile = SemuSourceParser.companion(
+            emulator.profileFile, 1, diagnostics);
+        SemuOwnedPathDeclarations.profile(
+            emulator.profile, emulator.profileFile, diagnostics);
+        emulator.rendering = SemuSourceParser.companion(
+            emulator.renderingFile, 1, diagnostics);
+        SemuEmulatorRenderingParser.validate(
+            emulator.rendering, emulator.renderingFile, diagnostics);
+        JsonValue integration = emulator.rendering.get("integration");
+        if (integration.get("patch").isString()) {
+            emulator.renderPatchFile = PathTools.join(
+                unit.path, integration.get("patch").asString());
+        }
+        return emulator;
+    }
+
+    class SemuInputSource input(SemuDefinitionUnit unit,
+                                CompilerDiagnostics diagnostics) {
+        SemuInputSource input = SemuInputSource();
+        input.id = unit.id;
+        input.path = unit.path;
+        string actionsFile = "";
+        for name in SemuDefinitionLexer.sortedEntries(unit.path) {
+            if (!name.endsWith(".json")) { continue; }
+            string file = PathTools.join(unit.path, name);
+            FileStatus status = FileStatus(file);
+            if (status.isSymlink()) {
+                diagnostics.add(file, "(root)",
+                    "input definition must not be a symlink");
+                continue;
+            }
+            if (!status.isFile()) { continue; }
+            input.definitionFiles.push(file);
+            JsonValue root = CompilerJsonFields.readObject(file, diagnostics);
+            if (!root.has("schema_version") || !root.get("schema_version").isInt()) {
+                diagnostics.add(file, "schema_version", "expected integer");
+            }
+            if (root.has("actions")) {
+                if (!root.get("actions").isObject()) {
+                    diagnostics.add(file, "actions", "expected object");
+                } else if (!actionsFile.isEmpty()) {
+                    diagnostics.add(file, "actions",
+                        "multiple action vocabularies in one input definition");
+                } else {
+                    actionsFile = file;
+                    input.actionsFile = file;
+                    input.actions = root.get("actions").keys();
+                    input.actions.sort();
+                    input.definition = root;
+                }
+            }
+        }
+        if (actionsFile.isEmpty()) {
+            diagnostics.add(unit.path, "actions", "missing input action vocabulary");
+        }
+        return input;
+    }
+
+    class SemuAssetSource assets(SemuDefinitionUnit unit,
+                                 CompilerDiagnostics diagnostics) {
+        SemuAssetSource assets = SemuAssetSource();
+        assets.root = unit.path;
+        assets.shadersFile = PathTools.join(unit.path, "shaders.json");
+        assets.bezelsFile = PathTools.join(unit.path, "bezels.json");
+        assets.shaders = SemuSourceParser.companion(
+            assets.shadersFile, 2, diagnostics);
+        assets.bezels = SemuSourceParser.companion(
+            assets.bezelsFile, 1, diagnostics);
+        return assets;
+    }
+}
+
+class SemuCompilerParser {
+    class SemuDefinitionUnit targetUnit(Vector<SemuDefinitionUnit> units, string id) {
+        SemuDefinitionUnit missing = SemuDefinitionUnit();
+        for unit in units {
+            if (unit.kind.equals("target") && unit.id.equals(id)) { return unit; }
+        }
+        return missing;
+    }
+
+    class SemuCompilerModel parse(string projectRoot, string targetId,
+                                  CompilerDiagnostics diagnostics) {
+        SemuCompilerModel model = SemuCompilerModel();
+        model.projectRoot = projectRoot;
+        model.configRoot = SemuOwnedPaths.configRoot(projectRoot);
+        model.units = SemuDefinitionLexer.lex(model.configRoot, diagnostics);
+        SemuDefinitionUnit targetSource = SemuCompilerParser.targetUnit(
+            model.units, targetId);
+        if (targetSource.path.isEmpty()) {
+            diagnostics.add(PathTools.join(model.configRoot, "targets"),
+                targetId, "unknown target");
+        } else {
+            model.target = SemuTargetParser.parse(
+                targetId, targetSource.path, diagnostics);
+        }
+        for unit in model.units {
+            if (unit.kind.equals("system")) {
+                model.systems.push(SemuSourceParser.system(unit, diagnostics));
+            } else if (unit.kind.equals("emulator")) {
+                model.emulators.push(SemuSourceParser.emulator(unit, diagnostics));
+            } else if (unit.kind.equals("input")) {
+                model.inputs.push(SemuSourceParser.input(unit, diagnostics));
+            } else if (unit.kind.equals("assets")) {
+                model.assets = SemuSourceParser.assets(unit, diagnostics);
+            } else if (unit.kind.equals("settings")) {
+                model.repositorySettingsFile = unit.path;
+                model.repositorySettings = CompilerJsonFields.readObject(
+                    unit.path, diagnostics);
+                CompilerJsonFields.schema(
+                    model.repositorySettings, 1, unit.path, diagnostics);
+                CompilerJsonFields.keys(model.repositorySettings,
+                    ["schema_version", "menu", "paths", "visual", "ui", "sync", "doc"],
+                    unit.path, "", diagnostics);
+            }
+        }
+        model.repositorySettings = SemuRenderingSettingsDefinitions.expand(
+            model.repositorySettings, model.configRoot);
+        if (model.repositorySettings.isError()) {
+            diagnostics.add(PathTools.join(model.configRoot, "settings/defaults.json"),
+                "visual.systems", "could not compile system rendering settings");
+        }
+        return model;
+    }
+}

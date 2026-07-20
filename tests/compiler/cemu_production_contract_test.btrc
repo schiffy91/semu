@@ -1,0 +1,679 @@
+// Aggregate-safe production contract for the pinned Cemu 2.6 slice.
+
+import std.{fs, json, vector}
+
+class CemuProductionContractTest {
+    class int fail(string message) {
+        print("  FAIL cemu production: " + message);
+        return 1;
+    }
+
+    class string file(string root, string relative) {
+        return PathTools.join(root, relative);
+    }
+
+    class string text(string root, string relative) {
+        string path = CemuProductionContractTest.file(root, relative);
+        return FileSystem.isFile(path) ? FileSystem.readText(path) : "";
+    }
+
+    class bool line(JsonValue lines, string expected) {
+        if (!lines.isArray()) { return false; }
+        for (int index = 0; index < lines.size(); index++) {
+            if (lines.at(index).isString()
+                    && lines.at(index).asString().equals(expected)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    class bool lineContains(JsonValue lines, string expected) {
+        if (!lines.isArray()) { return false; }
+        for (int index = 0; index < lines.size(); index++) {
+            if (lines.at(index).isString()
+                    && lines.at(index).asString().contains(expected)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    class bool exactStrings(JsonValue actual, Vector<string> expected) {
+        if (!actual.isArray() || actual.size() != expected.size()) {
+            return false;
+        }
+        for (int index = 0; index < expected.size(); index++) {
+            if (!actual.at(index).isString()
+                    || !actual.at(index).asString().equals(
+                        expected.get(index))) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    class bool containsString(JsonValue actual, string expected) {
+        if (!actual.isArray()) { return false; }
+        for (int index = 0; index < actual.size(); index++) {
+            if (actual.at(index).isString()
+                    && actual.at(index).asString().equals(expected)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    class int occurrences(string text, string needle) {
+        int count = 0;
+        string remaining = text;
+        while (remaining.contains(needle)) {
+            int position = remaining.indexOf(needle);
+            count++;
+            remaining = remaining.substring(
+                position + needle.len(), remaining.len());
+        }
+        return count;
+    }
+
+    class bool ordered(string text, Vector<string> needles) {
+        int cursor = 0;
+        for needle in needles {
+            string remaining = text.substring(cursor, text.len());
+            int position = remaining.indexOf(needle);
+            if (position < 0) { return false; }
+            cursor += position + needle.len();
+        }
+        return true;
+    }
+
+    class JsonValue profileFile(JsonValue profile, string suffix) {
+        JsonValue files = profile.get("files");
+        if (!files.isArray()) { return JsonValue.makeNull(); }
+        for (int index = 0; index < files.size(); index++) {
+            JsonValue file = files.at(index);
+            if (file.get("path").isString()
+                    && file.get("path").asString().endsWith(suffix)) {
+                return file;
+            }
+        }
+        return JsonValue.makeNull();
+    }
+
+    class bool action(JsonValue profile, string group, string id,
+                      string chord) {
+        JsonValue actions = profile.get("actions").get(group);
+        if (!actions.isArray()) { return false; }
+        for (int index = 0; index < actions.size(); index++) {
+            JsonValue action = actions.at(index);
+            if (action.get("action").isString()
+                    && action.get("action").asString().equals(id)
+                    && (chord.isEmpty()
+                        || (action.get("chord").isString()
+                            && action.get("chord").asString().equals(chord)))) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    class Vector<string> expectedMappings() {
+        return [
+            "1:vpad.a:SDL_CONTROLLER_BUTTON_B:1",
+            "2:vpad.b:SDL_CONTROLLER_BUTTON_A:0",
+            "3:vpad.x:SDL_CONTROLLER_BUTTON_Y:3",
+            "4:vpad.y:SDL_CONTROLLER_BUTTON_X:2",
+            "5:vpad.l:SDL_CONTROLLER_BUTTON_LEFTSHOULDER:9",
+            "6:vpad.r:SDL_CONTROLLER_BUTTON_RIGHTSHOULDER:10",
+            "7:vpad.zl:kTriggerXP:42",
+            "8:vpad.zr:kTriggerYP:43",
+            "9:vpad.plus:SDL_CONTROLLER_BUTTON_START:6",
+            "10:vpad.minus:SDL_CONTROLLER_BUTTON_BACK:4",
+            "11:vpad.up:SDL_CONTROLLER_BUTTON_DPAD_UP:11",
+            "12:vpad.down:SDL_CONTROLLER_BUTTON_DPAD_DOWN:12",
+            "13:vpad.left:SDL_CONTROLLER_BUTTON_DPAD_LEFT:13",
+            "14:vpad.right:SDL_CONTROLLER_BUTTON_DPAD_RIGHT:14",
+            "15:vpad.stick_l:SDL_CONTROLLER_BUTTON_LEFTSTICK:7",
+            "16:vpad.stick_r:SDL_CONTROLLER_BUTTON_RIGHTSTICK:8",
+            "17:vpad.stick_l_up:kAxisYN:45",
+            "18:vpad.stick_l_down:kAxisYP:39",
+            "19:vpad.stick_l_left:kAxisXN:44",
+            "20:vpad.stick_l_right:kAxisXP:38",
+            "21:vpad.stick_r_up:kRotationYN:47",
+            "22:vpad.stick_r_down:kRotationYP:41",
+            "23:vpad.stick_r_left:kRotationXN:46",
+            "24:vpad.stick_r_right:kRotationXP:40",
+            "27:vpad.home:SDL_CONTROLLER_BUTTON_GUIDE:5"
+        ];
+    }
+
+    class bool mappings(JsonValue controller) {
+        JsonValue rows = controller.get("mappings");
+        Vector<string> expected = CemuProductionContractTest.expectedMappings();
+        if (!rows.isArray() || rows.size() != expected.size()) { return false; }
+        for (int index = 0; index < rows.size(); index++) {
+            JsonValue row = rows.at(index);
+            if (!row.get("mapping").isInt()
+                    || !row.get("control").isString()
+                    || !row.get("source").isString()
+                    || !row.get("button").isInt()
+                    || row.has("action")) {
+                return false;
+            }
+            string encoded = f"{row.get("mapping").asInt()}"
+                + ":" + row.get("control").asString()
+                + ":" + row.get("source").asString()
+                + f":{row.get("button").asInt()}";
+            if (!encoded.equals(expected.get(index))) { return false; }
+        }
+        return true;
+    }
+
+    class int generatedControllerContract(string path, string project) {
+        if (!FileSystem.isFile(path)) {
+            return CemuProductionContractTest.fail(
+                "--generated-controller must name compiler-emitted controller0.xml");
+        }
+        JsonValue profile = JsonValue.readFile(CemuProductionContractTest.file(
+            project, "config/emulators/cemu/profile.json"));
+        JsonValue controller = profile.get("controller");
+        JsonValue rows = controller.get("mappings");
+        string generated = FileSystem.readText(path);
+        Vector<string> entries = [];
+        for (int index = 0; index < rows.size(); index++) {
+            JsonValue row = rows.at(index);
+            entries.push("<entry><mapping>"
+                + f"{row.get("mapping").asInt()}"
+                + "</mapping><button>" + f"{row.get("button").asInt()}"
+                + "</button></entry>");
+        }
+        if (generated.contains("${")
+                || !generated.contains("<api>SDLController</api>")
+                || !generated.contains("<display_name>Steam Virtual Gamepad</display_name>")
+                || !generated.contains("<uuid>"
+                    + controller.get("uuid").asString() + "</uuid>")
+                || CemuProductionContractTest.occurrences(
+                    generated, "<entry>") != rows.size()
+                || !CemuProductionContractTest.ordered(generated, entries)) {
+            return CemuProductionContractTest.fail(
+                "compiler-emitted controller0.xml is incomplete or reordered");
+        }
+        return 0;
+    }
+
+    class bool lowerHex(string value) {
+        if (value.len() != 32) { return false; }
+        for character in value {
+            bool decimal = character >= '0' && character <= '9';
+            bool hexadecimal = character >= 'a' && character <= 'f';
+            if (!decimal && !hexadecimal) { return false; }
+        }
+        return true;
+    }
+
+    class int declarativeContract(string project) {
+        string directory = "config/emulators/cemu";
+        JsonValue emulator = JsonValue.readFile(
+            CemuProductionContractTest.file(
+                project, directory + "/emulator.json"));
+        JsonValue package = JsonValue.readFile(
+            CemuProductionContractTest.file(
+                project, directory + "/package.json"));
+        JsonValue profile = JsonValue.readFile(
+            CemuProductionContractTest.file(
+                project, directory + "/profile.json"));
+        JsonValue rendering = JsonValue.readFile(
+            CemuProductionContractTest.file(
+                project, directory + "/rendering.json"));
+        JsonValue system = JsonValue.readFile(
+            CemuProductionContractTest.file(
+                project, "config/systems/wiiu/system.json"));
+        JsonValue input = JsonValue.readFile(
+            CemuProductionContractTest.file(
+                project, "config/input/steam-deck/steam_input.json"));
+        int failures = 0;
+
+        JsonValue source = package.get("source");
+        JsonValue fallbacks = package.get("fallbacks");
+        if (!package.get("build_kind").isString()
+                || !package.get("build_kind").asString().equals("source")
+                || !package.get("version").asString().equals("2.6")
+                || !source.get("revision").asString().equals(
+                    "a6fb0a48eb437a8a41c13b782ac8ae0433bf8f98")
+                || !source.get("sha256").asString().equals(
+                    "sha256-YO3rMhlBZ5fGu0ceAFB0R3owFuSobx39faWL9EUFwAM=")
+                || !CemuProductionContractTest.exactStrings(
+                    package.get("platforms"), ["x86_64-linux"])
+                || fallbacks.get("host_executable").asBool()
+                || fallbacks.get("flatpak").asBool()
+                || fallbacks.get("libretro").asBool()
+                || fallbacks.get("prebuilt_binary").asBool()) {
+            failures += CemuProductionContractTest.fail(
+                "source identity or no-fallback package contract regressed");
+        }
+
+        JsonValue linux = emulator.get("platforms").get("linux");
+        JsonValue launch = linux.get("launch_contract");
+        JsonValue titleRoot = launch.get("upstream_inputs").get("title_root");
+        if (!linux.get("backend").asString().equals("bwrap")
+                || !linux.get("executable").asString().equals(
+                    "${asset_root}/bin/Cemu")
+                || !CemuProductionContractTest.exactStrings(linux.get("args"), [
+                    "-f", "-m", "${state_root}/data/Cemu/mlc01", "-g"
+                ])
+                || !launch.get("rom_placement").asString().equals(
+                    "one value immediately after -g")
+                || launch.get("command_line_failure_exit_code").asInt() != 74
+                || !CemuProductionContractTest.exactStrings(
+                    system.get("rom").get("extensions"), [
+                        ".rpx", ".wua", ".wud", ".wux"
+                    ])
+                || !CemuProductionContractTest.exactStrings(
+                    launch.get("upstream_inputs").get("files"), [
+                        ".wud", ".wux", ".iso", ".wua", ".wuhb",
+                        "title.tmd", ".rpx", ".elf"
+                    ])
+                || !titleRoot.get("accepted").asBool()
+                || !CemuProductionContractTest.exactStrings(
+                    titleRoot.get("required_directories"), [
+                        "code", "content", "meta"
+                    ])) {
+            failures += CemuProductionContractTest.fail(
+                "-f/-m/-g or title-format/directory contract regressed");
+        }
+
+        JsonValue state = linux.get("state");
+        JsonValue seeds = state.get("seeds");
+        JsonValue seed = JsonValue.makeObject();
+        if (seeds.isArray() && seeds.size() == 1) {
+            seed = seeds.at(0);
+        }
+        JsonValue filesystems = linux.get("sandbox").get("filesystems");
+        bool externalReadOnly = true;
+        bool biosReadOnly = false;
+        for (int index = 0; index < filesystems.size(); index++) {
+            JsonValue filesystem = filesystems.at(index);
+            if (filesystem.get("path").asString().equals("${bios}")
+                    && filesystem.get("mode").asString().equals("ro")) {
+                biosReadOnly = true;
+            }
+            if (!filesystem.get("path").asString().equals("${state_root}")
+                    && !filesystem.get("mode").asString().equals("ro")) {
+                externalReadOnly = false;
+            }
+        }
+        if (!seeds.isArray() || seeds.size() != 1 || !seed.isObject()
+                || !state.get("config_subdir").asString().equals("Cemu")
+                || !state.get("data_subdir").asString().equals("Cemu")
+                || !seed.get("purpose").isString()
+                || !seed.get("purpose").asString().equals(
+                    "wiiu_disc_and_title_keys")
+                || !seed.get("target").asString().equals(
+                    "${state_root}/data/Cemu/keys.txt")
+                || !seed.get("copy").asString().equals(
+                    "once_if_target_absent")
+                || !seed.get("source_access").asString().equals("read_only")
+                || seed.get("overwrite").asBool()
+                || !CemuProductionContractTest.exactStrings(
+                    seed.get("sources"), [
+                        "${semu_home}/firmware/cemu/keys.txt",
+                        "${emulation_root}/Cemu/data/keys.txt",
+                        "${bios}/wiiu/keys.txt",
+                        "${bios}/keys.txt"
+                    ])
+                || !biosReadOnly
+                || FileSystem.readText(CemuProductionContractTest.file(
+                    project, directory + "/emulator.json"))
+                    .contains("${paths.project_bios}")
+                || !externalReadOnly) {
+            failures += CemuProductionContractTest.fail(
+                "MLC, key, ticket, or external-media ownership is not closed");
+        }
+
+        JsonValue controller = profile.get("controller");
+        string guid = controller.get("guid").asString();
+        int guidIndex = controller.get("guid_index").asInt();
+        string uuid = f"{guidIndex}_" + guid;
+        JsonValue controllerFile = CemuProductionContractTest.profileFile(
+            profile, "controllerProfiles/controller0.xml");
+        JsonValue controllerLines = controllerFile.get("lines");
+        JsonValue groups = profile.get("compiler").get("line_groups");
+        if (!controller.get("authoritative").asBool()
+                || !controller.get("compile_define").asString().equals(
+                    "SEMU_CEMU_OWNED_INPUT_PROFILE")
+                || !controller.get("emulated_type").asString().equals(
+                    "Wii U GamePad")) {
+            failures += CemuProductionContractTest.fail(
+                "authoritative generated controller profile regressed");
+        }
+        if (guidIndex != 0 || !CemuProductionContractTest.lowerHex(guid)) {
+            failures += CemuProductionContractTest.fail(
+                "Steam Virtual Gamepad SDL GUID is not a 32-digit lowercase hex GUID");
+        }
+        if (!controller.get("uuid").asString().equals(uuid)) {
+            failures += CemuProductionContractTest.fail(
+                "Cemu UUID must be <guid-index>_<SDL-guid>: expected " + uuid
+                    + ", got " + controller.get("uuid").asString());
+        }
+        if (!CemuProductionContractTest.mappings(controller)) {
+            failures += CemuProductionContractTest.fail(
+                "VPAD-to-SDL button/axis mapping regressed");
+        }
+        if (!groups.get("controller_mappings").get("rows")
+                    .asString().equals("controller.mappings")
+                || !CemuProductionContractTest.line(
+                    controllerLines, "@lines:controller_mappings")
+                || CemuProductionContractTest.lineContains(
+                    controllerLines, "<entry>")
+                || !CemuProductionContractTest.action(
+                    profile, "native", "app.quit", "Ctrl+Q")
+                || !CemuProductionContractTest.action(
+                    profile, "native", "screen.swap", "Ctrl+Tab")
+                || !CemuProductionContractTest.action(
+                    profile, "unsupported", "state.save", "")
+                || !CemuProductionContractTest.action(
+                    profile, "unsupported", "state.load", "")) {
+            failures += CemuProductionContractTest.fail(
+                "generated controller template or action contract regressed");
+        }
+
+        JsonValue settingsLines = CemuProductionContractTest.profileFile(
+            profile, "config/settings.xml").get("lines");
+        if (!CemuProductionContractTest.line(
+                    settingsLines, "\t<fullscreen>true</fullscreen>")
+                || !CemuProductionContractTest.line(
+                    settingsLines, "\t<open_pad>false</open_pad>")
+                || !CemuProductionContractTest.line(settingsLines,
+                    "\t\t\t<ControllerProfiles>false</ControllerProfiles>")
+                || !CemuProductionContractTest.line(settingsLines,
+                    "\t\t\t<ControllerBattery>false</ControllerBattery>")) {
+            failures += CemuProductionContractTest.fail(
+                "fullscreen, pad-window, or controller-notification profile regressed");
+        }
+
+        JsonValue integration = rendering.get("integration");
+        JsonValue phases = rendering.get("phases");
+        if (rendering.get("activation").get("runtime_proven").asBool()
+                || rendering.get("activation").get("physical_proven").asBool()
+                || integration.get("abi").asInt() != 2
+                || !integration.get("linkage").asString().equals("direct")
+                || !integration.get("backend").asString().equals("opengl")
+                || integration.get("surface_count").asInt() != 1
+                || phases.size() != 2
+                || !phases.at(0).get("symbol").asString().equals(
+                    "semu_render_game_gl")
+                || !phases.at(1).get("symbol").asString().equals(
+                    "semu_render_post_ui_gl")) {
+            failures += CemuProductionContractTest.fail(
+                "direct ABI-2 renderer declaration regressed or overclaims proof");
+        }
+
+        JsonValue quit = input.get("quit_chord");
+        if (!CemuProductionContractTest.exactStrings(
+                    quit.get("buttons"), ["select", "start"])
+                || quit.get("window_ms").asInt() != 250
+                || !input.get("actions").get("app.quit").get("chord")
+                    .asString().equals("Ctrl+Q")
+                || !CemuProductionContractTest.containsString(
+                    input.get("radial").get("quick_slots"), "app.quit")) {
+            failures += CemuProductionContractTest.fail(
+                "Ctrl/radial/Start+Select policy is not connected to Cemu");
+        }
+
+        return failures;
+    }
+
+    class int upstreamContract(string source) {
+        string launch = CemuProductionContractTest.text(
+            source, "src/config/LaunchSettings.cpp");
+        string title = CemuProductionContractTest.text(
+            source, "src/Cafe/TitleList/TitleInfo.cpp");
+        string input = CemuProductionContractTest.text(
+            source, "src/input/InputManager.cpp");
+        string inputApi = CemuProductionContractTest.text(
+            source, "src/input/api/InputAPI.h");
+        string main = CemuProductionContractTest.text(source, "src/main.cpp");
+        string factory = CemuProductionContractTest.text(
+            source, "src/input/ControllerFactory.cpp");
+        string sdl = CemuProductionContractTest.text(
+            source, "src/input/api/SDL/SDLController.cpp");
+        string buttons = CemuProductionContractTest.text(
+            source, "src/input/api/Controller.h");
+        string vpad = CemuProductionContractTest.text(
+            source, "src/input/emulated/VPADController.h");
+        string vpadSource = CemuProductionContractTest.text(
+            source, "src/input/emulated/VPADController.cpp");
+        string mainWindow = CemuProductionContractTest.text(
+            source, "src/gui/MainWindow.cpp");
+        string latte = CemuProductionContractTest.text(
+            source, "src/Cafe/HW/Latte/Core/LatteRenderTarget.cpp");
+        string active = CemuProductionContractTest.text(
+            source, "src/config/ActiveSettings.cpp");
+        string app = CemuProductionContractTest.text(
+            source, "src/gui/CemuApp.cpp");
+        string keys = CemuProductionContractTest.text(
+            source, "src/Cafe/Filesystem/FST/KeyCache.cpp");
+        string saves = CemuProductionContractTest.text(
+            source, "src/Cafe/CafeSystem.cpp");
+        int failures = 0;
+
+        if (!CemuProductionContractTest.ordered(launch, [
+                    "(\"game,g\", po::wvalue<std::wstring>()",
+                    "(\"mlc,m\", po::wvalue<std::wstring>()",
+                    "(\"fullscreen,f\", po::value<bool>()",
+                    "s_load_game_file = tmp;",
+                    "s_mlc_path = tmp;",
+                    "s_fullscreen = vm[\"fullscreen\"].as<bool>();"
+                ])) {
+            failures += CemuProductionContractTest.fail(
+                "pinned source no longer implements the declared -g/-m/-f parser");
+        }
+
+        Vector<string> titleFacts = [
+            "boost::iends_with(filenameStr, \".rpx\")",
+            "boost::iends_with(filenameStr, \".wud\")",
+            "boost::iends_with(filenameStr, \".wux\")",
+            "boost::iends_with(filenameStr, \".iso\")",
+            "boost::iequals(filenameStr, \"title.tmd\")",
+            "boost::iends_with(filenameStr, \".wua\")",
+            "boost::iends_with(filenameStr, \".wuhb\")",
+            "fs::exists(path / \"content\", ec)",
+            "fs::exists(path / \"meta\", ec)",
+            "fs::exists(path / \"code\", ec)",
+            "we use the first base title that we find"
+        ];
+        for fact in titleFacts {
+            if (!title.contains(fact)) {
+                failures += CemuProductionContractTest.fail(
+                    "pinned title loader is missing: " + fact);
+            }
+        }
+
+        if (!CemuProductionContractTest.ordered(main, [
+                    "InputManager::instance().load();",
+                    "CafeSystem::Initialize();"
+                ])
+                || !input.contains(
+                    "controllerProfiles/controller{}")
+                || !input.contains(
+                    "const auto api = InputAPI::from_string(api_node.child_value());")
+                || !inputApi.contains("return \"SDLController\";")
+                || !input.contains("set_controller(emulated_controller);")
+                || !factory.contains(
+                    "const auto index = uuid.find_first_of('_');")
+                || !factory.contains(
+                    "const auto guid_index = ConvertString<size_t>(uuid.substr(0, index));")
+                || !CemuProductionContractTest.ordered(sdl, [
+                    "base_type(fmt::format(\"{}_\", guid_index)",
+                    "SDL_JoystickGetGUIDString(m_guid, tmp, std::size(tmp));",
+                    "m_uuid += tmp;"
+                ])) {
+            failures += CemuProductionContractTest.fail(
+                "controller0 auto-load or 0_<SDL GUID> construction changed upstream");
+        }
+
+        if (!CemuProductionContractTest.ordered(buttons, [
+                    "kButton0", "kButton31", "kButtonZL", "kButtonZR",
+                    "kButtonUp", "kButtonDown", "kButtonLeft", "kButtonRight",
+                    "kAxisXP", "kAxisYP", "kRotationXP", "kRotationYP",
+                    "kTriggerXP", "kTriggerYP", "kAxisXN", "kAxisYN",
+                    "kRotationXN", "kRotationYN", "kTriggerXN", "kTriggerYN"
+                ])
+                || !CemuProductionContractTest.ordered(vpad, [
+                    "kButtonId_None", "kButtonId_A", "kButtonId_B",
+                    "kButtonId_X", "kButtonId_Y", "kButtonId_L",
+                    "kButtonId_R", "kButtonId_ZL", "kButtonId_ZR",
+                    "kButtonId_Plus", "kButtonId_Minus", "kButtonId_Up",
+                    "kButtonId_Down", "kButtonId_Left", "kButtonId_Right",
+                    "kButtonId_StickL", "kButtonId_StickR",
+                    "kButtonId_StickL_Up", "kButtonId_StickL_Down",
+                    "kButtonId_StickL_Left", "kButtonId_StickL_Right",
+                    "kButtonId_StickR_Up", "kButtonId_StickR_Down",
+                    "kButtonId_StickR_Left", "kButtonId_StickR_Right",
+                    "kButtonId_Mic", "kButtonId_Screen", "kButtonId_Home"
+                ])) {
+            failures += CemuProductionContractTest.fail(
+                "Cemu 2.6 button or synthetic-axis enum ordering changed");
+        }
+
+        Vector<string> defaultMappingFacts = [
+            "{kButtonId_A, kButton1}",
+            "{kButtonId_B, kButton0}",
+            "{kButtonId_X, kButton3}",
+            "{kButtonId_Y, kButton2}",
+            "{kButtonId_L, kButton9}",
+            "{kButtonId_R, kButton10}",
+            "{kButtonId_ZL, kTriggerXP}",
+            "{kButtonId_ZR, kTriggerYP}",
+            "{kButtonId_Plus, kButton6}",
+            "{kButtonId_Minus, kButton4}",
+            "{kButtonId_Up, kButton11}",
+            "{kButtonId_Down, kButton12}",
+            "{kButtonId_Left, kButton13}",
+            "{kButtonId_Right, kButton14}",
+            "{kButtonId_StickL, kButton7}",
+            "{kButtonId_StickR, kButton8}",
+            "{kButtonId_StickL_Up, kAxisYN}",
+            "{kButtonId_StickL_Down, kAxisYP}",
+            "{kButtonId_StickL_Left, kAxisXN}",
+            "{kButtonId_StickL_Right, kAxisXP}",
+            "{kButtonId_StickR_Up, kRotationYN}",
+            "{kButtonId_StickR_Down, kRotationYP}",
+            "{kButtonId_StickR_Left, kRotationXN}",
+            "{kButtonId_StickR_Right, kRotationXP}"
+        ];
+        for fact in defaultMappingFacts {
+            if (!vpadSource.contains(fact)) {
+                failures += CemuProductionContractTest.fail(
+                    "Cemu 2.6 default SDL GamePad mapping changed: " + fact);
+            }
+        }
+
+        if (!mainWindow.contains(
+                    "event.CmdDown() && event.GetKeyCode() == 'Q'")
+                || !latte.contains(
+                    "const bool togglePressed = (ctrlPressed && tabPressed)")
+                || !active.contains("return GetUserDataPath(\"mlc01\");")
+                || !app.contains("XDG_DATA_HOME")
+                || !app.contains("XDG_CONFIG_HOME")
+                || !keys.contains(
+                    "ActiveSettings::GetUserDataPath(\"keys.txt\")")
+                || !saves.contains(
+                    "usr/save/{:08X}/{:08X}/user/")) {
+            failures += CemuProductionContractTest.fail(
+                "native quit/swap, key, MLC, or persistent-save source path changed");
+        }
+
+        if (!CemuProductionContractTest.ordered(mainWindow, [
+                    "RequestLaunchGame(load_file.value()",
+                    "quick_launch = true;",
+                    "if (!quick_launch)",
+                    "CreateGameListAndStatusBar();"
+                ])) {
+            failures += CemuProductionContractTest.fail(
+                "quick-launch empty-window failure premise changed upstream");
+        }
+        return failures;
+    }
+
+    class int patchAndPackageContract(string project) {
+        string patch = CemuProductionContractTest.text(
+            project, "config/emulators/cemu/cemu.patch");
+        string packageNix = CemuProductionContractTest.text(
+            project, "config/emulators/cemu/package.nix");
+        string supervisor = CemuProductionContractTest.text(
+            project, "src/generators/input/linux_supervisor.btrc");
+        int failures = 0;
+
+        if (!patch.contains("#ifdef SEMU_CEMU_OWNED_INPUT_PROFILE")
+                || !patch.contains("SEMU_CEMU_LAUNCH_FAILURE")
+                || !patch.contains("exit(74);")
+                || CemuProductionContractTest.occurrences(
+                    patch, "return SemuReportLaunchFailure") != 7
+                || !CemuProductionContractTest.ordered(packageNix, [
+                    "patchFlags = [", "\"-p1\"", "\"--fuzz=0\"", "];"
+                ])) {
+            failures += CemuProductionContractTest.fail(
+                "authoritative input or fail-closed quick-launch patch regressed");
+        }
+
+        if (!patch.contains("semu_render_game_gl(&s_semu_frame);")
+                || !patch.contains("semu_render_post_ui_gl(&s_semu_frame);")
+                || !patch.contains("CafeSystem::IsTitleRunning()")
+                || !patch.contains("if (!isPadView")
+                || !packageNix.contains(
+                    "test \"$draw_line\" -lt \"$game_line\"")
+                || !packageNix.contains(
+                    "test \"$game_line\" -lt \"$screenshot_line\"")
+                || !packageNix.contains(
+                    "test \"$screenshot_line\" -lt \"$imgui_line\"")
+                || !packageNix.contains(
+                    "test \"$post_call_line\" -lt \"$swap_line\"")) {
+            failures += CemuProductionContractTest.fail(
+                "game/post-UI ABI-2 hook or source-order assertions regressed");
+        }
+
+        Vector<string> forbidden = [
+            "gamescope", "LD_PRELOAD", "glXSwapBuffers", "eglSwapBuffers",
+            "XOpenDisplay", "wl_display", "wayland-client", "screen capture"
+        ];
+        for mechanism in forbidden {
+            if (patch.contains(mechanism)) {
+                failures += CemuProductionContractTest.fail(
+                    "forbidden rendering mechanism entered the patch: "
+                    + mechanism);
+            }
+        }
+
+        if (!supervisor.contains("setpgid(child, child)")
+                || !supervisor.contains("kill(-child, SIGKILL)")
+                || !supervisor.contains("process-group-terminate")) {
+            failures += CemuProductionContractTest.fail(
+                "Start+Select cannot terminate Cemu's process group");
+        }
+        return failures;
+    }
+
+    class int runStatic(string project) {
+        int failures = CemuProductionContractTest.declarativeContract(project)
+            + CemuProductionContractTest.patchAndPackageContract(project);
+        if (failures == 0) {
+            print("cemu production contract: package, input, storage, launch, and ABI-2 boundaries valid");
+        }
+        return failures;
+    }
+
+    class int run(string project, string source) {
+        if (!FileSystem.isDir(source)) {
+            return CemuProductionContractTest.fail(
+                "--source must name the realized pinned Cemu 2.6 source");
+        }
+        int failures = CemuProductionContractTest.declarativeContract(project)
+            + CemuProductionContractTest.patchAndPackageContract(project)
+            + CemuProductionContractTest.upstreamContract(source);
+        if (failures == 0) {
+            print("cemu production contract: pinned source, package, input, storage, launch, and ABI-2 boundaries valid");
+        }
+        return failures;
+    }
+}

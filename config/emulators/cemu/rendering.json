@@ -1,0 +1,109 @@
+{
+  "schema_version": 1,
+  "activation": {
+    "mode": "source_patched_direct_link",
+    "package_ready": true,
+    "runtime_proven": false,
+    "physical_proven": false
+  },
+  "integration": {
+    "abi": 2,
+    "api": "semu-renderer",
+    "linkage": "direct",
+    "header": "semu_renderer.h",
+    "library": "semurenderer",
+    "compile_define": "HAVE_SEMU_RENDERER",
+    "backend": "opengl",
+    "callbacks": [
+      "emulator_opengl_loader",
+      "emulator_current_context"
+    ],
+    "procedure_resolver": {
+      "loaded_table": "Common/GLInclude/glFunctions.h",
+      "extensions": [
+        {
+          "name": "glBlitFramebuffer",
+          "type": "PFNGLBLITFRAMEBUFFERPROC"
+        },
+        {
+          "name": "glColorMask",
+          "type": "PFNGLCOLORMASKPROC"
+        },
+        {
+          "name": "glGetBooleanv",
+          "type": "PFNGLGETBOOLEANVPROC"
+        },
+        {
+          "name": "glReadBuffer",
+          "type": "PFNGLREADBUFFERPROC"
+        },
+        {
+          "name": "glReadPixels",
+          "type": "PFNGLREADPIXELSPROC"
+        },
+        {
+          "name": "glUniform1f",
+          "type": "PFNGLUNIFORM1FPROC"
+        },
+        {
+          "name": "glUniform4f",
+          "type": "PFNGLUNIFORM4FPROC"
+        }
+      ]
+    },
+    "inactive_reports": false,
+    "frame_gate": "main_window_title_running_with_valid_geometry",
+    "framebuffer": "default_opengl_backbuffer",
+    "content": "live Cemu output image rectangle",
+    "native": "selected_output_texture_effective_size",
+    "presentation_aspect": "live final game content width divided by height",
+    "layout_variant": "DEFAULT below 1.5 aspect and VARIANT_B at or above 1.5",
+    "origin": "bottom_left",
+    "orientation": "upright",
+    "rotation": 0,
+    "surface_count": 1,
+    "secondary_pad_window": "passthrough",
+    "patch": "cemu.patch"
+  },
+  "phases": [
+    {
+      "id": "game",
+      "symbol": "semu_render_game_gl",
+      "source": "src/Cafe/HW/Latte/Core/LatteRenderTarget.cpp",
+      "function": "LatteRenderTarget_copyToBackbuffer",
+      "after": "final TV game texture draw into the main OpenGL backbuffer",
+      "before": "screenshot capture, software keyboard, error applet, Latte overlay, and ImGui"
+    },
+    {
+      "id": "post_ui",
+      "symbol": "semu_render_post_ui_gl",
+      "source": "src/Cafe/HW/Latte/Renderer/OpenGL/OpenGLRenderer.cpp",
+      "function": "OpenGLRenderer::SwapBuffers",
+      "after": "software keyboard, error applet, Latte overlay, and ImGui",
+      "before": "emulator-owned GLCanvas_SwapBuffers"
+    }
+  ],
+  "surfaces": [
+    {
+      "index": 0,
+      "id": "game",
+      "geometry": "live Cemu output image rectangle",
+      "native": "selected output texture effective dimensions",
+      "origin": "bottom_left",
+      "orientation": "upright",
+      "rotation": 0
+    }
+  ],
+  "composition": {
+    "owner": "semurenderer",
+    "shader": "renderer_owned",
+    "bezel": "renderer_owned",
+    "semu_menu": "renderer_owned",
+    "cemu_ui": "between_game_and_post_ui_phases",
+    "secondary_pad_window": "native_passthrough"
+  },
+  "doc": {
+    "boundary": "The main TV path submits the completed game rectangle after the final texture draw and before Cemu UI. SwapBuffers submits the same frame after Cemu UI and immediately before the emulator-owned canvas swap.",
+    "evidence": "Package linkage, patch application, frame gating, exact phase order, and forbidden-symbol absence are source gates. Real Wii U pixels and physical composition remain runtime gates."
+  }
+}

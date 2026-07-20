@@ -1,0 +1,108 @@
+// Evidence provenance for the Steam Deck test harness. Synthetic input may
+// prove the hardware/software path, but it can never satisfy a human gate.
+
+import std.strings
+
+class DeckEvidenceClass {
+    class string diagnostic() { return "diagnostic"; }
+    class string automatedHardware() { return "automated-hardware-path"; }
+    class string humanPhysical() { return "human-physical"; }
+
+    class string forScenario(string scenario) {
+        if (scenario.equals("steam-shortcut-launch")
+                || scenario.equals("automated-game-mode")) {
+            return DeckEvidenceClass.automatedHardware();
+        }
+        if (scenario.equals("operator-start-select")
+                || scenario.equals("operator-radial")) {
+            return DeckEvidenceClass.humanPhysical();
+        }
+        return scenario.equals("unattended")
+            ? DeckEvidenceClass.diagnostic() : "";
+    }
+
+    class string inputOrigin(string scenario) {
+        if (scenario.equals("automated-game-mode")) {
+            return "synthetic-uinput";
+        }
+        if (scenario.equals("operator-start-select")
+                || scenario.equals("operator-radial")) {
+            return "human";
+        }
+        return ["steam-shortcut-launch", "unattended"].contains(scenario)
+            ? "none" : "";
+    }
+
+    class bool synthetic(string scenario) {
+        return DeckEvidenceClass.inputOrigin(scenario)
+            .equals("synthetic-uinput");
+    }
+
+    class bool human(string scenario) {
+        return DeckEvidenceClass.inputOrigin(scenario).equals("human");
+    }
+
+    class bool acceptanceEligible(string scenario) {
+        return DeckEvidenceClass.forScenario(scenario)
+            .equals(DeckEvidenceClass.humanPhysical());
+    }
+
+    class string fields(string scenario) {
+        string evidence = DeckEvidenceClass.forScenario(scenario);
+        string origin = DeckEvidenceClass.inputOrigin(scenario);
+        if (evidence.isEmpty() || origin.isEmpty()) { return ""; }
+        return "evidence_class=" + evidence
+            + " input_origin=" + origin
+            + " synthetic_input="
+            + (DeckEvidenceClass.synthetic(scenario) ? "1" : "0")
+            + " human_input="
+            + (DeckEvidenceClass.human(scenario) ? "1" : "0")
+            + " human_observed="
+            + (DeckEvidenceClass.human(scenario) ? "1" : "0")
+            + " acceptance_eligible="
+            + (DeckEvidenceClass.acceptanceEligible(scenario) ? "1" : "0");
+    }
+}
+
+class DeckEvidenceReceiptPolicy {
+    class string field(string line, string name) {
+        string marker = name + "=";
+        int opening = line.startsWith(marker) ? 0 : line.indexOf(" " + marker);
+        if (opening < 0) { return ""; }
+        opening += opening == 0 ? 0 : 1;
+        string tail = line.substring(opening + marker.len(), line.len());
+        int closing = tail.indexOf(" ");
+        return closing < 0 ? tail : tail.substring(0, closing);
+    }
+
+    class string verifyClassification(string line, string scenario) {
+        string evidence = DeckEvidenceClass.forScenario(scenario);
+        string origin = DeckEvidenceClass.inputOrigin(scenario);
+        if (evidence.isEmpty() || origin.isEmpty()) {
+            return "unknown evidence scenario: " + scenario;
+        }
+        if (!DeckEvidenceReceiptPolicy.field(
+                line, "evidence_class").equals(evidence)
+                || !DeckEvidenceReceiptPolicy.field(
+                    line, "input_origin").equals(origin)
+                || !DeckEvidenceReceiptPolicy.field(line, "synthetic_input")
+                    .equals(DeckEvidenceClass.synthetic(scenario) ? "1" : "0")
+                || !DeckEvidenceReceiptPolicy.field(line, "human_input")
+                    .equals(DeckEvidenceClass.human(scenario) ? "1" : "0")
+                || !DeckEvidenceReceiptPolicy.field(line, "human_observed")
+                    .equals(DeckEvidenceClass.human(scenario) ? "1" : "0")
+                || !DeckEvidenceReceiptPolicy.field(line, "acceptance_eligible")
+                    .equals(DeckEvidenceClass.acceptanceEligible(scenario)
+                        ? "1" : "0")) {
+            return "evidence classification does not match scenario " + scenario;
+        }
+        if (DeckEvidenceClass.synthetic(scenario)
+                && (DeckEvidenceReceiptPolicy.field(
+                        line, "human_observed").equals("1")
+                    || DeckEvidenceReceiptPolicy.field(
+                        line, "acceptance_eligible").equals("1"))) {
+            return "synthetic evidence was mislabeled as human physical proof";
+        }
+        return "";
+    }
+}

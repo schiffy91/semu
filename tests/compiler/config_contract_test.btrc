@@ -1,0 +1,384 @@
+// config_contract_test.btrc - owned config state, UI, and ES-DE argv proof.
+
+import std.{fs, io, json, process}
+import ../../src/generators/appimage/app_runtime.btrc
+import ../../src/generators/appimage/install_policy.btrc
+import ../../src/generators/settings.btrc
+import ../../src/lib/json_format.btrc
+
+class ConfigContractTest {
+    class int fail(string message) {
+        print("  FAIL config: " + message);
+        return 1;
+    }
+
+    class JsonValue field(JsonValue document, string key) {
+        return ConfigContractTest.fieldInSections(
+            document.get("sections"), key);
+    }
+
+    class JsonValue fieldInSections(JsonValue sections, string key) {
+        if (!sections.isArray()) { return JsonValue.makeNull(); }
+        for (int sectionIndex = 0; sectionIndex < sections.size(); sectionIndex++) {
+            JsonValue section = sections.at(sectionIndex);
+            JsonValue fields = section.get("fields");
+            if (fields.isArray()) {
+                for (int fieldIndex = 0; fieldIndex < fields.size(); fieldIndex++) {
+                    JsonValue field = fields.at(fieldIndex);
+                    if (field.get("key").isString()
+                            && field.get("key").asString().equals(key)) {
+                        return field;
+                    }
+                }
+            }
+            JsonValue nested = ConfigContractTest.fieldInSections(
+                section.get("sections"), key);
+            if (!nested.isNull()) { return nested; }
+        }
+        return JsonValue.makeNull();
+    }
+
+    class bool choice(JsonValue field, string expected) {
+        JsonValue choices = field.get("choices");
+        if (!choices.isArray()) { return false; }
+        for (int index = 0; index < choices.size(); index++) {
+            if (choices.at(index).isString()
+                    && choices.at(index).asString().equals(expected)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    class string fakeStableLauncher() {
+        return """#!/usr/bin/env sh
+set -eu
+test \"$#\" = 2
+test \"$1\" = settings
+test \"$2\" = ui
+printf '{\"fuse_free\":true}\n'
+""";
+    }
+
+    class int run(string project) {
+        string home = FileSystem.tempDir("semu-config-home");
+        string packaging = FileSystem.tempDir("semu-config-packaging");
+        if (home.isEmpty() || packaging.isEmpty()) {
+            return ConfigContractTest.fail("could not create scratch roots");
+        }
+        string defaultsFile = SemuConfigPaths.defaults(project);
+        string defaultsBefore = Path.readAll(defaultsFile);
+        SemuConfigStore store = SemuConfigStore(project, home);
+        SemuConfigResult prepared = store.prepare();
+        int failures = 0;
+        if (!prepared.ok || !FileSystem.isFile(
+                SemuConfigPaths.userFile(home))) {
+            failures += ConfigContractTest.fail(
+                "prepare did not create $SEMU_HOME/semu.json");
+        }
+
+        SemuConfigResult initial = store.get("visual.integer_scaling");
+        SemuConfigResult updated = store.putJson("visual.bezels", "false");
+        JsonValue user = JsonValue.readFile(SemuConfigPaths.userFile(home));
+        if (!initial.ok || !initial.value.isBool()
+                || !initial.value.asBool()
+                || !updated.ok || !user.isObject()
+                || user.has("menu") || user.has("doc")
+                || !user.get("visual").get("bezels").isBool()
+                || user.get("visual").get("bezels").asBool()) {
+            failures += ConfigContractTest.fail(
+                "get/put did not preserve a typed sparse user overlay");
+        }
+
+        SemuConfigResult internal = store.putJson(
+            "sync.folders.saves.rescan_seconds", "1200");
+        SemuConfigResult internalRead = store.get(
+            "sync.folders.saves.rescan_seconds");
+        if (!internal.ok || !internalRead.ok || !internalRead.value.isInt()
+                || internalRead.value.asInt() != 1200) {
+            failures += ConfigContractTest.fail(
+                "config PATH access was limited to ES-DE menu fields");
+        }
+
+        SemuConfigResult systemVariant = store.putJson(
+            "visual.systems.nds.bezel_variant", "\"vertical\"");
+        SemuConfigResult systemShader = store.putJson(
+            "visual.systems.gb.shader_file",
+            "\"assets/shaders/gba/screen.slangp\"");
+        SemuConfigResult systemLayout = store.putJson(
+            "visual.systems.gc.layout", "\"crt_16x9\"");
+        SemuConfigResult invalidVariant = store.putJson(
+            "visual.systems.nds.bezel_variant", "\"not-declared\"");
+        JsonValue sparseUser = JsonValue.readFile(
+            SemuConfigPaths.userFile(home));
+        JsonValue sparseSystems = sparseUser.get("visual").get("systems");
+        if (!systemVariant.ok || !systemShader.ok || !systemLayout.ok
+                || !systemShader.value.isString()
+                || !systemShader.value.asString().equals(
+                    "assets/shaders/gba/screen.slangp")
+                || !systemLayout.value.asString().equals("crt_16x9")
+                || invalidVariant.ok) {
+            failures += ConfigContractTest.fail(
+                "system rendering settings were not compiled as typed owned state");
+        }
+        if (!sparseSystems.isObject() || sparseSystems.keys().size() != 3
+                || !sparseSystems.has("gb") || !sparseSystems.has("gc")
+                || !sparseSystems.has("nds") || sparseSystems.has("switch")) {
+            failures += ConfigContractTest.fail(
+                "per-system writes expanded defaults into semu.json");
+        }
+
+        string stableUser = Path.readAll(SemuConfigPaths.userFile(home));
+        SemuConfigResult wrongType = store.putJson("visual.bezels", "\"false\"");
+        SemuConfigResult unknown = store.putJson("visual.not_declared", "true");
+        SemuConfigResult metadata = store.putJson("menu.label", "\"changed\"");
+        SemuConfigResult publicSync = store.putJson(
+            "sync.runtime.gui_address", "\"0.0.0.0:8384\"");
+        SemuConfigResult removedScaling = store.putJson(
+            "visual.render_mode", "\"native\"");
+        SemuConfigResult removedSafetyControl = store.putJson(
+            "ui.controls.start_select_quit", "false");
+        if (wrongType.ok || unknown.ok || metadata.ok || publicSync.ok
+                || removedScaling.ok || removedSafetyControl.ok
+                || !Path.readAll(SemuConfigPaths.userFile(home)).equals(stableUser)) {
+            failures += ConfigContractTest.fail(
+                "invalid config writes changed semu.json");
+        }
+
+        string prettyUser = Path.readAll(SemuConfigPaths.userFile(home));
+        JsonValue prettyValue = JsonValue.parse(prettyUser);
+        if (prettyValue.isError()
+                || !prettyUser.equals(SemuJsonFormat.document(prettyValue))) {
+            failures += ConfigContractTest.fail(
+                "semu.json is not canonical pretty JSON");
+        }
+
+        string overrideFile = PathTools.join(
+            SemuConfigPaths.overrides(home), "90-session.json");
+        UnixFileSystem.mkdirp(PathTools.dirname(overrideFile));
+        Path.writeAll(overrideFile,
+            "{\"schema_version\":1,\"visual\":{\"bezels\":true}}\n");
+        SemuConfigResult overridden = store.get("visual.bezels");
+        store.putJson("visual.bezels", "false");
+        if (!overridden.ok || !overridden.value.isBool()
+                || !overridden.value.asBool()
+                || !Path.readAll(overrideFile).equals(
+                    "{\"schema_version\":1,\"visual\":{\"bezels\":true}}\n")) {
+            failures += ConfigContractTest.fail(
+                "read-only overrides did not win or were edited by put");
+        }
+
+        SettingsUiResult ui = SettingsUiProtocol.render(store, "linux");
+        JsonValue uiJson = JsonValue.parse(ui.document);
+        JsonValue definition = store.definition();
+        JsonValue gbShader = ConfigContractTest.field(
+            uiJson, "visual.systems.gb.shader_file");
+        JsonValue gbLayout = ConfigContractTest.field(
+            uiJson, "visual.systems.gb.layout");
+        JsonValue gcLayout = ConfigContractTest.field(
+            uiJson, "visual.systems.gc.layout");
+        JsonValue ndsLayout = ConfigContractTest.field(
+            uiJson, "visual.systems.nds.layout");
+        JsonValue switchShader = ConfigContractTest.field(
+            uiJson, "visual.systems.switch.shader_file");
+        JsonValue switchBezel = ConfigContractTest.field(
+            uiJson, "visual.systems.switch.bezel_variant");
+        JsonValue switchLayout = ConfigContractTest.field(
+            uiJson, "visual.systems.switch.layout");
+        JsonValue commands = uiJson.get("commands");
+        JsonValue linuxDiscovery = definition.get("paths")
+            .get("roms_candidates").get("linux");
+        string emulatorSource = Path.readAll(PathTools.join(
+            project, "src/generators/emulators.btrc"));
+        string appRuntimeSource = Path.readAll(PathTools.join(
+            project, "src/generators/appimage/app_runtime.btrc"));
+        string installPolicySource = Path.readAll(PathTools.join(
+            project, "src/generators/appimage/install_policy.btrc"));
+        string card = FileSystem.tempDir("semu-rom-layout");
+        string declaredRoms = PathTools.join(
+            card, "Emulation/ES-DE/ES-DE/ROMs");
+        UnixFileSystem.mkdirp(declaredRoms);
+        SemuRomsPolicy romsPolicy = SemuRomsPolicy();
+        SemuInstallResult romsLoaded = SemuRomsPolicy.load(
+            PathTools.join(project, "config"), "linux", romsPolicy);
+        SemuInstallResult romsResolved = romsPolicy.under(card);
+        string environmentCard = FileSystem.tempDir(
+            "semu-rom-layout-environment");
+        string environmentRoms = PathTools.join(environmentCard, "ROMs");
+        UnixFileSystem.mkdirp(environmentRoms);
+        SemuInstallResult skippedInvalid = romsPolicy.resolve([
+            PathTools.join(card, "missing"), environmentCard
+        ], home, "owned/ROMs");
+        SemuRomsPolicy macosRoms = SemuRomsPolicy();
+        SemuInstallResult macosLoaded = SemuRomsPolicy.load(
+            PathTools.join(project, "config"), "macos", macosRoms);
+        SemuAppRuntimePolicy runtimePolicy = SemuAppRuntimePolicy();
+        runtimePolicy.roms = romsPolicy;
+        runtimePolicy.ownedRomsFallback = "owned/ROMs";
+        SemuAppRuntimeOptions runtimeOptions = SemuAppRuntimeOptions();
+        runtimeOptions.arguments = ["--roms", card];
+        SemuAppRuntime runtime = SemuAppRuntime(
+            runtimePolicy, runtimeOptions);
+        runtime.projectRoot = home;
+        setenv("SEMU_ROMS_ROOT", environmentCard, 1);
+        SemuInstallResult explicitRoms = runtime.detectRoms();
+        runtime.options.arguments = [];
+        setenv("SEMU_ROMS_ROOT", PathTools.join(card, "missing"), 1);
+        setenv("SEMU_ROMS_DIR", environmentCard, 1);
+        SemuInstallResult laterEnvironmentRoms = runtime.detectRoms();
+        unsetenv("SEMU_ROMS_ROOT");
+        unsetenv("SEMU_ROMS_DIR");
+        if (!ui.ok || !uiJson.isObject()
+                || !uiJson.get("schema_version").isInt()
+                || uiJson.get("schema_version").asInt() != 2
+                || !uiJson.get("protocol").asString().equals("semu-settings-v2")
+                || !definition.isObject()
+                || !uiJson.get("sections").isArray()
+                || uiJson.get("sections").size() > 32
+                || definition.get("visual").get("systems").keys().size() != 17
+                || !gbShader.isObject()
+                || !gbShader.get("type").asString().equals("choice")
+                || !ConfigContractTest.choice(
+                    gbShader, "assets/shaders/gb/screen.slangp")
+                || !ConfigContractTest.choice(
+                    gbShader, "assets/shaders/gba/screen.slangp")
+                || !gbShader.get("value").asString().equals(
+                    "assets/shaders/gba/screen.slangp")
+                || !gbLayout.isNull()
+                || !ConfigContractTest.choice(gcLayout, "crt_4x3")
+                || !ConfigContractTest.choice(gcLayout, "crt_16x9")
+                || !gcLayout.get("value").asString().equals("crt_16x9")
+                || !ConfigContractTest.choice(ndsLayout, "vertical")
+                || !ConfigContractTest.choice(ndsLayout, "horizontal")
+                || !ConfigContractTest.choice(ndsLayout, "big_screen")
+                || !switchShader.isNull()
+                || !switchBezel.isNull()
+                || !switchLayout.isNull()
+                || !commands.isArray() || commands.size() != 3
+                || !commands.at(0).get("argv").at(0).asString().equals("sync")
+                || !commands.at(0).get("argv").at(1).asString().equals("apply")
+                || !linuxDiscovery.isArray() || linuxDiscovery.size() != 4
+                || !linuxDiscovery.at(0).get("roms_path").asString().equals(
+                    "Emulation/ES-DE/ES-DE/ROMs")
+                || emulatorSource.contains("Emulation/ES-DE/ES-DE/ROMs")
+                || emulatorSource.contains("ES-DE/ES-DE/ROMs")
+                || emulatorSource.contains("Emulation/ROMs")
+                || appRuntimeSource.contains("/run/media/deck")
+                || appRuntimeSource.contains("Emulation/ES-DE/ES-DE/ROMs")
+                || installPolicySource.contains("/run/media/deck")
+                || installPolicySource.contains("Emulation/ES-DE/ES-DE/ROMs")
+                || !romsLoaded.ok() || romsPolicy.candidates.size() != 4
+                || !romsPolicy.defaultRoot.equals(
+                    "/run/media/deck/SD/Emulation/ES-DE/ES-DE/ROMs")
+                || !romsPolicy.candidates.get(0).equals(
+                    "Emulation/ES-DE/ES-DE/ROMs")
+                || !romsResolved.ok()
+                || !romsResolved.document.equals(
+                    UnixFileSystem.realPath(declaredRoms))
+                || !skippedInvalid.ok()
+                || !skippedInvalid.document.equals(
+                    UnixFileSystem.realPath(environmentRoms))
+                || !macosLoaded.ok()
+                || !macosRoms.defaultRoot.equals("${home}/ES-DE/ROMs")
+                || !explicitRoms.ok()
+                || !explicitRoms.document.equals(
+                    UnixFileSystem.realPath(declaredRoms))
+                || !laterEnvironmentRoms.ok()
+                || !laterEnvironmentRoms.document.equals(
+                    UnixFileSystem.realPath(environmentRoms))
+                || !ui.document.equals(SemuJsonFormat.document(uiJson))) {
+            failures += ConfigContractTest.fail(
+                "settings ui did not emit the native typed protocol");
+        }
+
+        SemuSettingsCompileResult compiled = SemuSettingsCompiler.emit(store);
+        JsonValue compiledJson = JsonValue.readFile(compiled.output);
+        if (!compiled.ok() || !compiledJson.isObject()
+                || compiledJson.has("menu") || compiledJson.has("doc")
+                || compiledJson.get("ui").has("controls")
+                || compiledJson.get("visual").has("render_mode")
+                || !Path.readAll(compiled.output).equals(
+                    SemuJsonFormat.document(compiledJson))) {
+            failures += ConfigContractTest.fail(
+                "effective settings were not compiled to a bounded owned document");
+        }
+
+        JsonValue defaults = JsonValue.readFile(defaultsFile);
+        string launcher = "/home/deck/Applications/Semu/bin/semu";
+        string manifestText = SettingsEsDeGenerator.document(
+            defaults, "linux", launcher);
+        JsonValue manifest = JsonValue.parse(manifestText);
+        JsonValue entry = manifest.get("entry");
+        if (!manifest.isObject() || manifest.has("entries")
+                || !manifest.get("schema_version").isInt()
+                || manifest.get("schema_version").asInt() != 2
+                || !entry.get("protocol").isString()
+                || !entry.get("protocol").asString()
+                    .equals("semu-settings-v2")
+                || !entry.get("launcher").asString().equals(launcher)
+                || entry.get("actions").get("read").size() != 2
+                || !entry.get("actions").get("read").at(0)
+                    .asString().equals("settings")
+                || !entry.get("actions").get("read").at(1).asString().equals("ui")
+                || !entry.get("actions").get("write").at(1).asString().equals("put")
+                || !entry.get("actions").get("commands").isArray()
+                || entry.get("actions").get("commands").size()
+                    != commands.size()
+                || SettingsEsDeGenerator.emitAppImage(
+                    defaults, packaging, "linux", launcher) != 0
+                || !FileSystem.isFile(PathTools.join(
+                    packaging, "settings/semu_settings.json"))) {
+            failures += ConfigContractTest.fail(
+                "ES-DE/AppImage contract is not one settings ui/put entry");
+        }
+
+        string esDeHome = PathTools.join(packaging, "ES-DE home");
+        string installedRoot = PathTools.join(packaging, "installed");
+        string stableLauncher = PathTools.join(installedRoot, "bin/semu");
+        FileSystem.mkdirp(PathTools.dirname(stableLauncher));
+        Path.writeAll(stableLauncher, ConfigContractTest.fakeStableLauncher());
+        FileSystem.chmod(stableLauncher, 493);
+        int installed = SettingsEsDeGenerator.install(
+            defaults, esDeHome, "linux", stableLauncher);
+        string runner = SettingsEsDeGenerator.runner(esDeHome);
+        string installedManifest = PathTools.join(
+            esDeHome, SettingsEsDeGenerator.installedRelativePath());
+        JsonValue installedDocument = JsonValue.readFile(installedManifest);
+        string runnerSource = Path.readAll(runner);
+        UnixShell shell = UnixShell();
+        ExecResult invocation = shell.run(
+            ShellWords.quote(runner) + " settings ui",
+            CommandOutput.collect(), CommandOutput.collect());
+        if (installed != 0 || !FileSystem.isFile(runner)
+                || !installedDocument.isObject()
+                || installedDocument.has("entries")
+                || !installedDocument.get("entry").get("launcher")
+                    .asString().equals(runner)
+                || installedDocument.stringify().contains(".AppImage")
+                || runnerSource.contains("APPIMAGE_EXTRACT_AND_RUN")
+                || runnerSource.contains("fusermount")
+                || !invocation.ok()
+                || !invocation.stdout().contains("\"fuse_free\":true")
+                || !SettingsEsDeGenerator.validMenuLauncher(runner)
+                || !SettingsEsDeGenerator.validStableLauncher(stableLauncher)
+                || !SettingsEsDeGenerator.document(
+                    defaults, "linux", "/tmp/Semu.AppImage").isEmpty()) {
+            failures += ConfigContractTest.fail(
+                "installed ES-DE entry did not execute through one direct no-FUSE runner");
+        }
+
+        if (!Path.readAll(defaultsFile).equals(defaultsBefore)
+                || FileSystem.exists(PathTools.join(project, "generated/semu.json"))) {
+            failures += ConfigContractTest.fail(
+                "config operations touched immutable or generated source");
+        }
+        FileSystem.removeRecursive(home);
+        FileSystem.removeRecursive(packaging);
+        FileSystem.removeRecursive(card);
+        FileSystem.removeRecursive(environmentCard);
+        if (failures == 0) {
+            print("config contract: owned store + UI + ES-DE argv valid");
+        }
+        return failures;
+    }
+}

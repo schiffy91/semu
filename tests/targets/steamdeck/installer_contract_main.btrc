@@ -1,0 +1,651 @@
+// installer_contract_main.btrc - transactional Linux installer contract.
+
+import std.{bytes, cli, fs, io, json, platform, process, strings, vector}
+import ../../../src/generators/appimage/installed_launcher.btrc
+import ../../../src/generators/appimage/installer.btrc
+
+class InstallerContractFiles {
+    class bool script(string path, string source) {
+        return FileSystem.writeText(path, source)
+            && FileSystem.chmod(path, 493) == 0; // 0755
+    }
+
+    class bool copyTree(string source, string destination) {
+        return ChildProcess.run("cp", ["-R", "--", source, destination],
+            timeoutMilliseconds=300000).ok();
+    }
+
+    class bool copyFile(string source, string destination) {
+        return ChildProcess.run("cp", ["--", source, destination],
+            timeoutMilliseconds=300000).ok();
+    }
+
+    class bool append(string path, string value) {
+        File output = File(path, "a");
+        bool written = output.ok() && output.write(value) && output.close();
+        return written;
+    }
+
+    class int lineCount(string path) {
+        if (!SemuInstallHost.regularFile(path)) { return 0; }
+        int count = 0;
+        for line in Strings.split(FileSystem.readText(path), "\n") {
+            if (!line.isEmpty()) { count++; }
+        }
+        return count;
+    }
+
+    class int matchingLines(string path, string token) {
+        if (!SemuInstallHost.regularFile(path)) { return 0; }
+        int count = 0;
+        for line in Strings.split(FileSystem.readText(path), "\n") {
+            if (line.contains(token)) { count++; }
+        }
+        return count;
+    }
+
+    class int directories(string root) {
+        if (!SemuInstallHost.realDirectory(root)) { return 0; }
+        int count = 0;
+        for name in Directory(root).entries() {
+            FileStatus status = FileStatus(PathTools.join(root, name));
+            if (status.isDir() && !status.isSymlink()) { count++; }
+        }
+        return count;
+    }
+}
+
+class InstallerContractVdf {
+    class void cstring(Bytes bytes, string value) {
+        bytes.appendBytes(Bytes.fromString(value));
+        bytes.append(0);
+    }
+
+    class void field(Bytes bytes, string key, string value) {
+        bytes.append(1);
+        InstallerContractVdf.cstring(bytes, key);
+        InstallerContractVdf.cstring(bytes, value);
+    }
+
+    class Bytes database(Vector<string> names, Vector<string> executables) {
+        Bytes bytes = Bytes();
+        if (names.size() != executables.size()) { return bytes; }
+        bytes.append(0);
+        InstallerContractVdf.cstring(bytes, "shortcuts");
+        for (int index = 0; index < names.size(); index++) {
+            bytes.append(0);
+            InstallerContractVdf.cstring(bytes, f"{index}");
+            InstallerContractVdf.field(
+                bytes, "appname", names.get(index));
+            InstallerContractVdf.field(
+                bytes, "exe", executables.get(index));
+            bytes.append(0);
+            InstallerContractVdf.cstring(bytes, "tags");
+            InstallerContractVdf.field(bytes, "0", "fixture");
+            bytes.append(8);
+            bytes.append(8);
+        }
+        bytes.append(8);
+        bytes.append(8);
+        return bytes;
+    }
+}
+
+class InstallerContractFixture {
+    public string project;
+    public string executable;
+    public string root;
+    public string installRoot;
+    public string projectRoot;
+    public string romsRoot;
+    public string biosRoot;
+    public string applicationsRoot;
+    public string home;
+    public string bin;
+    public string configRoot;
+    public string installer;
+    public string launcherTemplate;
+    public string desktopTemplate;
+    public string extractionLog;
+    public string launchLog;
+    public string steamAddLog;
+    public string steamServiceLog;
+    public string steamState;
+    public string vdf;
+
+    public InstallerContractFixture(string project, string executable) {
+        self.project = project;
+        self.executable = executable;
+        self.root = FileSystem.tempDir("semu-installer-contract");
+        self.installRoot = PathTools.join(self.root, "install");
+        self.projectRoot = PathTools.join(self.root, "project");
+        self.romsRoot = PathTools.join(self.root, "roms");
+        self.biosRoot = PathTools.join(self.root, "bios");
+        self.applicationsRoot = PathTools.join(self.root, "applications");
+        self.home = PathTools.join(self.root, "home");
+        self.bin = PathTools.join(self.root, "bin");
+        self.configRoot = PathTools.join(self.root, "config");
+        self.installer = PathTools.join(project, "packaging/install/installer.sh");
+        self.launcherTemplate = PathTools.join(
+            project, "packaging/appimage/semu-launcher.template");
+        self.desktopTemplate = PathTools.join(
+            project, "packaging/appimage/semu.desktop.template");
+        self.extractionLog = PathTools.join(self.root, "extractions.log");
+        self.launchLog = PathTools.join(self.root, "launches.log");
+        self.steamAddLog = PathTools.join(self.root, "steam-adds.log");
+        self.steamServiceLog = PathTools.join(self.root, "steam-service.log");
+        self.steamState = PathTools.join(self.root, "steam.state");
+        self.vdf = PathTools.join(self.home,
+            ".local/share/Steam/userdata/1000/config/shortcuts.vdf");
+    }
+
+    public bool prepare() {
+        if (self.root.isEmpty()) { return false; }
+        bool directories = FileSystem.mkdirp(self.projectRoot) == 0
+            && FileSystem.mkdirp(self.romsRoot) == 0
+            && FileSystem.mkdirp(self.biosRoot) == 0
+            && FileSystem.mkdirp(self.applicationsRoot) == 0
+            && FileSystem.mkdirp(self.bin) == 0
+            && FileSystem.mkdirp(PathTools.dirname(self.vdf)) == 0;
+        bool config = directories
+            && InstallerContractFiles.copyTree(
+                PathTools.join(self.project, "config"), self.configRoot)
+            && InstallerContractFiles.copyFile(PathTools.join(self.project,
+                    "packaging/install/legacy_shortcuts.json"),
+                PathTools.join(
+                    self.configRoot, "settings/legacy_shortcuts.json"));
+        Bytes unrelated = InstallerContractVdf.database(
+            ["Unrelated"], ["\"/opt/unrelated\""]);
+        bool state = config
+            && FileSystem.writeText(
+                PathTools.join(self.biosRoot, "firmware.bin"),
+                "external-bios-key-data\n")
+            && FileSystem.chmod(
+                PathTools.join(self.biosRoot, "firmware.bin"), 292) == 0
+            && FileSystem.chmod(self.biosRoot, 365) == 0 // 0555
+            && FileSystem.writeText(self.extractionLog, "")
+            && FileSystem.writeText(self.launchLog, "")
+            && FileSystem.writeText(self.steamAddLog, "")
+            && FileSystem.writeText(self.steamServiceLog, "")
+            && FileSystem.writeText(self.steamState, "active\n")
+            && SemuInstallHost.atomicBytes(self.vdf, unrelated, 384);
+        return state && self.writeUtilities();
+    }
+
+    public bool writeUtilities() {
+        string systemctl = """#!/usr/bin/env sh
+set -eu
+state=\"$SEMU_TEST_STEAM_STATE\"
+log=\"$SEMU_TEST_STEAM_SERVICE_LOG\"
+case \"$*\" in
+  \"--user is-active --quiet steam-launcher.service\")
+    [ \"$(cat \"$state\")\" = active ] && exit 0
+    exit 3
+    ;;
+  \"--user stop steam-launcher.service\")
+    printf 'stop\n' >> \"$log\"
+    printf 'inactive\n' > \"$state\"
+    ;;
+  \"--user start steam-launcher.service\")
+    printf 'start\n' >> \"$log\"
+    printf 'active\n' > \"$state\"
+    ;;
+  *) exit 64 ;;
+esac
+""";
+        string pgrep = """#!/usr/bin/env sh
+set -eu
+[ \"$*\" = \"-x steam\" ] || exit 64
+[ \"$(cat \"$SEMU_TEST_STEAM_STATE\")\" = active ]
+""";
+        string addToSteam = """#!/usr/bin/env sh
+set -eu
+[ \"$#\" -eq 1 ] && [ -f \"$1\" ] || exit 64
+grep -Fxq 'Name=Semu' \"$1\"
+grep -Fq '/bin/semu\"' \"$1\"
+! grep -Eq 'AppRun|\\.AppImage' \"$1\"
+expected=\"$SEMU_TEST_EXPECT_COMMITTED_DIGEST\"
+current=\"$SEMU_TEST_INSTALL_ROOT/state/current\"
+canonical=\"$SEMU_TEST_INSTALL_ROOT/Semu-x86_64.AppImage\"
+if [ \"$expected\" = absent ]; then
+  [ ! -e \"$current\" ] && [ ! -e \"$canonical\" ]
+else
+  [ \"$(cat \"$current\")\" = \"$expected\" ]
+  [ \"$(sha256sum \"$canonical\" | cut -d' ' -f1)\" = \"$expected\" ]
+fi
+if [ \"$SEMU_TEST_MUTATE_VDF\" = 1 ]; then
+  printf 'late-steam-mutation\n' >> \"$SEMU_TEST_VDF\"
+fi
+[ \"$SEMU_TEST_FAIL_STEAM\" != 1 ] || exit 75
+printf '%s\n' \"$1\" >> \"$SEMU_TEST_STEAM_ADD_LOG\"
+""";
+        string hostBwrap = """#!/usr/bin/env sh
+[ \"${1:-}\" = --version ] || exit 64
+printf 'host bubblewrap fixture\n'
+""";
+        return InstallerContractFiles.script(
+                PathTools.join(self.bin, "systemctl"), systemctl)
+            && InstallerContractFiles.script(
+                PathTools.join(self.bin, "pgrep"), pgrep)
+            && InstallerContractFiles.script(
+                PathTools.join(self.bin, "steamos-add-to-steam"), addToSteam)
+            && InstallerContractFiles.script(
+                PathTools.join(self.bin, "bwrap"), hostBwrap);
+    }
+
+    public string artifactSource(string version) {
+        return """#!/usr/bin/env sh
+set -eu
+[ \"$1\" = --appimage-extract ] || exit 64
+printf 'extract\n' >> \"$SEMU_TEST_EXTRACTION_LOG\"
+mkdir -p squashfs-root/bin squashfs-root/usr/bin squashfs-root/lib/semu \
+  squashfs-root/share/semu/appimage squashfs-root/share/semu/config \
+  squashfs-root/nix/store
+cat > squashfs-root/bin/bwrap <<'BUNDLED_BWRAP'
+#!/usr/bin/env sh
+printf 'bundled bubblewrap fixture\n'
+BUNDLED_BWRAP
+cat > squashfs-root/AppRun <<'APPRUN'
+#!/usr/bin/env sh
+set -eu
+env | grep -Eq '^(APPIMAGE|APPIMAGE_EXTRACT_AND_RUN|SEMU_CLI|SEMU_SOURCE_ROOT|SEMU_ASSET_ROOT|SEMU_BWRAP)=' && exit 90
+[ \"$SEMU_ENTRYPOINT\" = \"$SEMU_TEST_INSTALL_ROOT/bin/semu\" ]
+[ \"$SEMU_INSTALLED_ENTRYPOINT\" = \"$SEMU_ENTRYPOINT\" ]
+[ \"$SEMU_APP_EXEC\" = \"$SEMU_ENTRYPOINT\" ]
+[ \"$SEMU_TARGET\" = steam-deck ]
+[ \"$SEMU_BIOS_ROOT\" = \"$SEMU_TEST_BIOS_ROOT\" ]
+[ -r \"$SEMU_BIOS_ROOT/firmware.bin\" ]
+[ -d \"$APPDIR\" ] && [ ! -L \"$APPDIR\" ]
+if [ \"$1\" = sync ]; then
+  expected=\"$SEMU_TEST_EXPECT_COMMITTED_DIGEST\"
+  current=\"$SEMU_TEST_INSTALL_ROOT/state/current\"
+  canonical=\"$SEMU_TEST_INSTALL_ROOT/Semu-x86_64.AppImage\"
+  if [ \"$expected\" = absent ]; then
+    [ ! -e \"$current\" ] && [ ! -e \"$canonical\" ]
+  else
+    [ \"$(cat \"$current\")\" = \"$expected\" ]
+    [ \"$(sha256sum \"$canonical\" | cut -d' ' -f1)\" = \"$expected\" ]
+  fi
+  [ \"$SEMU_TEST_FAIL_SYNC\" != 1 ] || exit 75
+fi
+printf '%s %s %s\n' \"$SEMU_RELEASE_DIGEST\" \"$1\" \"$APPDIR\" \
+  >> \"$SEMU_TEST_LAUNCH_LOG\"
+case \"$1\" in settings|sync) exit 0 ;; esac
+cat \"$APPDIR/share/semu/test-version\"
+APPRUN
+cp \"$SEMU_TEST_STATIC_CLI\" squashfs-root/lib/semu/semu-btrc
+cp \"$SEMU_TEST_STATIC_CLI\" squashfs-root/usr/bin/semu
+cp -R \"$SEMU_TEST_CONFIG_ROOT/.\" squashfs-root/share/semu/config/
+cp \"$SEMU_TEST_LAUNCHER_TEMPLATE\" \
+  squashfs-root/share/semu/appimage/semu-launcher
+cp \"$SEMU_TEST_DESKTOP_TEMPLATE\" squashfs-root/semu.desktop
+printf '%s\n' '@@VERSION@@' > squashfs-root/share/semu/test-version
+chmod 0755 squashfs-root/AppRun squashfs-root/bin/bwrap \
+  squashfs-root/usr/bin/semu squashfs-root/lib/semu/semu-btrc \
+  squashfs-root/share/semu/appimage/semu-launcher
+""".replace("@@VERSION@@", version);
+    }
+
+    public bool makeArtifact(string version, string destination) {
+        return InstallerContractFiles.script(
+            destination, self.artifactSource(version));
+    }
+
+    public Vector<string> environment(
+            string expected, string shortcutState = "missing",
+            bool failSync = false, bool failSteam = false,
+            bool mutateVdf = false) {
+        return [
+            "HOME=" + self.home,
+            "PATH=" + self.bin + ":" + Environment.get("PATH", ""),
+            "SEMU_APPLICATIONS_DIR=" + self.applicationsRoot,
+            "SEMU_INSTALLER_TEST_STEAMOS=1",
+            "SEMU_INSTALLER_TEST_STEAM_SHORTCUT_STATE=" + shortcutState,
+            "SEMU_INSTALLER_TEST_ADD_TO_STEAM="
+                + PathTools.join(self.bin, "steamos-add-to-steam"),
+            "SEMU_TEST_EXTRACTION_LOG=" + self.extractionLog,
+            "SEMU_TEST_LAUNCH_LOG=" + self.launchLog,
+            "SEMU_TEST_STEAM_ADD_LOG=" + self.steamAddLog,
+            "SEMU_TEST_STEAM_SERVICE_LOG=" + self.steamServiceLog,
+            "SEMU_TEST_STEAM_STATE=" + self.steamState,
+            "SEMU_TEST_INSTALL_ROOT=" + self.installRoot,
+            "SEMU_TEST_EXPECT_COMMITTED_DIGEST=" + expected,
+            "SEMU_TEST_STATIC_CLI=" + self.executable,
+            "SEMU_TEST_CONFIG_ROOT=" + self.configRoot,
+            "SEMU_TEST_LAUNCHER_TEMPLATE=" + self.launcherTemplate,
+            "SEMU_TEST_DESKTOP_TEMPLATE=" + self.desktopTemplate,
+            "SEMU_TEST_BIOS_ROOT=" + self.biosRoot,
+            "SEMU_TEST_VDF=" + self.vdf,
+            "SEMU_TEST_FAIL_SYNC=" + (failSync ? "1" : "0"),
+            "SEMU_TEST_FAIL_STEAM=" + (failSteam ? "1" : "0"),
+            "SEMU_TEST_MUTATE_VDF=" + (mutateVdf ? "1" : "0"),
+            "SEMU_BIOS_ROOT=" + self.biosRoot,
+            "APPIMAGE=/retired", "APPIMAGE_EXTRACT_AND_RUN=1",
+            "APPIMAGE_TEST=dirty", "APPDIR=/retired",
+            "SEMU_CLI=/retired/semu", "SEMU_SOURCE_ROOT=/retired/config",
+            "SEMU_ASSET_ROOT=/retired/assets", "SEMU_BWRAP=/retired/bwrap"
+        ];
+    }
+
+    public string current() {
+        return SemuInstallHost.identity(
+            PathTools.join(self.installRoot, "state/current"), true);
+    }
+
+    public ExecResult invoke(
+            Vector<string> arguments, string expected,
+            string shortcutState = "missing", bool failSync = false,
+            bool failSteam = false, bool mutateVdf = false) {
+        return ChildProcess.run(self.installer, arguments,
+            environment=self.environment(expected, shortcutState,
+                failSync, failSteam, mutateVdf),
+            timeoutMilliseconds=300000,
+            maxStdoutBytes=65536,
+            maxStderrBytes=65536);
+    }
+
+    public ExecResult install(
+            string artifact, string shortcutState = "missing",
+            bool failSync = false, bool failSteam = false,
+            bool mutateVdf = false) {
+        string expected = self.current();
+        if (expected.isEmpty()) { expected = "absent"; }
+        return self.invoke([
+            "install", "--artifact", artifact,
+            "--install-root", self.installRoot,
+            "--project", self.projectRoot,
+            "--roms", self.romsRoot
+        ], expected, shortcutState, failSync, failSteam, mutateVdf);
+    }
+
+    public ExecResult lifecycle(
+            string action, string shortcutState = "missing") {
+        string expected = self.current();
+        return self.invoke([
+            action, "--install-root", self.installRoot,
+            "--project", self.projectRoot,
+            "--roms", self.romsRoot
+        ], expected, shortcutState);
+    }
+
+    public ExecResult installed() {
+        string launcher = PathTools.join(self.installRoot, "bin/semu");
+        return ChildProcess.run(launcher, ["probe"],
+            environment=self.environment(self.current()),
+            timeoutMilliseconds=300000,
+            maxStdoutBytes=65536,
+            maxStderrBytes=65536);
+    }
+
+    public void cleanup() {
+        FileSystem.chmod(self.biosRoot, 448); // 0700
+        FileSystem.removeRecursive(self.root);
+    }
+}
+
+class InstallerContractTest {
+    class int fail(InstallerContractFixture fixture, string message) {
+        print("installer contract: " + message);
+        fixture.cleanup();
+        return 1;
+    }
+
+    class bool bytesEqual(string left, string right) {
+        return SemuInstallHost.sameBytes(
+            SemuInstallHost.readBytes(left), SemuInstallHost.readBytes(right));
+    }
+
+    class int run(string project, string executable) {
+        InstallerContractFixture fixture =
+            InstallerContractFixture(project, executable);
+        if (!fixture.prepare()) {
+            return InstallerContractTest.fail(fixture,
+                "could not prepare Linux installer fixture");
+        }
+        string artifactV1 = PathTools.join(fixture.root, "Semu-v1.AppImage");
+        string artifactV2 = PathTools.join(fixture.root, "Semu-v2.AppImage");
+        string artifactV3 = PathTools.join(fixture.root, "Semu-v3.AppImage");
+        string artifactBad = PathTools.join(fixture.root, "Semu-bad.AppImage");
+        if (!fixture.makeArtifact("v1", artifactV1)
+                || !fixture.makeArtifact("v2", artifactV2)
+                || !fixture.makeArtifact("v3", artifactV3)
+                || !InstallerContractFiles.script(artifactBad,
+                    "#!/usr/bin/env sh\nmkdir -p squashfs-root\n")) {
+            return InstallerContractTest.fail(fixture,
+                "could not create AppImage fixtures");
+        }
+        string digestV1 = SemuInstallHost.sha256File(artifactV1);
+        string digestV2 = SemuInstallHost.sha256File(artifactV2);
+        string digestV3 = SemuInstallHost.sha256File(artifactV3);
+        string biosDigest = SemuInstallHost.sha256File(
+            PathTools.join(fixture.biosRoot, "firmware.bin"));
+        Bytes initialVdf = SemuInstallHost.readBytes(fixture.vdf);
+        JsonValue input = JsonValue.readFile(PathTools.join(
+            fixture.configRoot, "input/steam-deck/steam_input.json"));
+        JsonValue application = input.get("application");
+        if (Strings.split(Path.readAll(fixture.installer), "\n").size() > 60
+                || Strings.split(
+                    Path.readAll(fixture.launcherTemplate), "\n").size() > 12
+                || Path.readAll(fixture.installer).contains("fusermount")
+                || Path.readAll(fixture.installer).contains("shortcuts.vdf")
+                || !application.get("shortcut_name").isString()
+                || !application.get("shortcut_name").asString().equals("Semu")
+                || !application.get("config_id").isString()
+                || !application.get("config_id").asString().equals("semu")) {
+            return InstallerContractTest.fail(fixture,
+                "shell bootstrap or Steam input identity is malformed");
+        }
+
+        ExecResult first = fixture.install(artifactV1);
+        string canonical = PathTools.join(
+            fixture.installRoot, "Semu-x86_64.AppImage");
+        if (!first.ok()
+                || InstallerContractFiles.lineCount(fixture.extractionLog) != 1
+                || !fixture.current().equals(digestV1)
+                || FileStatus(PathTools.join(
+                    fixture.installRoot, "state/previous")).linkFound
+                || !SemuInstallHost.regularFile(PathTools.join(
+                    fixture.installRoot, "bin/semu"))
+                || !SemuInstallHost.regularFile(PathTools.join(
+                    fixture.installRoot, "libexec/semu-btrc"))
+                || !SemuInstallHost.regularFile(canonical)
+                || (FileStatus(canonical).mode & 73) != 0
+                || !InstallerContractTest.bytesEqual(artifactV1, canonical)
+                || InstallerContractFiles.lineCount(fixture.steamAddLog) != 1
+                || InstallerContractFiles.matchingLines(
+                    fixture.launchLog, " sync ") != 1
+                || !fixture.installed().trimmed().equals("v1")) {
+            return InstallerContractTest.fail(fixture,
+                "first install is not exact, immutable, and launchable: "
+                    + SemuInstallHost.processError(first));
+        }
+
+        ExecResult same = fixture.install(artifactV1);
+        if (!same.ok()
+                || InstallerContractFiles.lineCount(fixture.extractionLog) != 1
+                || InstallerContractFiles.lineCount(fixture.steamAddLog) != 1
+                || InstallerContractFiles.matchingLines(
+                    fixture.launchLog, " sync ") != 1) {
+            return InstallerContractTest.fail(fixture,
+                "same-digest installation is not idempotent");
+        }
+
+        ExecResult failedSync = fixture.install(
+            artifactV2, "missing", true);
+        if (failedSync.ok() || !fixture.current().equals(digestV1)
+                || !SemuInstallHost.identity(canonical + ".sha256")
+                    .equals(digestV1)
+                || !InstallerContractTest.bytesEqual(artifactV1, canonical)
+                || FileStatus(PathTools.join(
+                    fixture.installRoot, "releases/" + digestV2)).linkFound
+                || FileStatus(PathTools.join(
+                    fixture.installRoot,
+                    "artifacts/" + digestV2 + ".AppImage")).linkFound
+                || !fixture.installed().trimmed().equals("v1")) {
+            return InstallerContractTest.fail(fixture,
+                "sync failure did not restore exact v1 deployment bytes");
+        }
+
+        ExecResult malformed = fixture.install(artifactBad);
+        if (malformed.ok() || !fixture.current().equals(digestV1)
+                || !fixture.installed().trimmed().equals("v1")) {
+            return InstallerContractTest.fail(fixture,
+                "malformed upgrade changed the active release");
+        }
+
+        ExecResult second = fixture.install(artifactV2);
+        if (!second.ok() || !fixture.current().equals(digestV2)
+                || !SemuInstallHost.identity(PathTools.join(
+                    fixture.installRoot, "state/previous")).equals(digestV1)
+                || InstallerContractFiles.directories(PathTools.join(
+                    fixture.installRoot, "releases")) != 2
+                || !fixture.installed().trimmed().equals("v2")) {
+            return InstallerContractTest.fail(fixture,
+                "v2 upgrade or two-release retention failed");
+        }
+
+        ExecResult rollback = fixture.lifecycle("rollback");
+        if (!rollback.ok() || !fixture.current().equals(digestV1)
+                || !SemuInstallHost.identity(PathTools.join(
+                    fixture.installRoot, "state/previous")).equals(digestV2)
+                || !fixture.installed().trimmed().equals("v1")
+                || !InstallerContractTest.bytesEqual(artifactV1, canonical)) {
+            return InstallerContractTest.fail(fixture,
+                "rollback did not restore exact canonical v1 bytes");
+        }
+
+        Bytes vdfBeforeSteamFailure = SemuInstallHost.readBytes(fixture.vdf);
+        ExecResult failedSteam = fixture.install(
+            artifactV3, "missing-force", false, true, true);
+        if (failedSteam.ok() || !fixture.current().equals(digestV1)
+                || !InstallerContractTest.bytesEqual(artifactV1, canonical)
+                || !SemuInstallHost.sameBytes(vdfBeforeSteamFailure,
+                    SemuInstallHost.readBytes(fixture.vdf))
+                || FileStatus(PathTools.join(
+                    fixture.installRoot, "releases/" + digestV3)).linkFound
+                || FileStatus(PathTools.join(
+                    fixture.installRoot,
+                    "artifacts/" + digestV3 + ".AppImage")).linkFound
+                || !fixture.installed().trimmed().equals("v1")) {
+            return InstallerContractTest.fail(fixture,
+                "late Steam failure did not roll back deployment and VDF bytes");
+        }
+
+        ExecResult third = fixture.install(artifactV3);
+        if (!third.ok() || !fixture.current().equals(digestV3)
+                || !SemuInstallHost.identity(PathTools.join(
+                    fixture.installRoot, "state/previous")).equals(digestV1)
+                || InstallerContractFiles.directories(PathTools.join(
+                    fixture.installRoot, "releases")) != 2
+                || FileStatus(PathTools.join(
+                    fixture.installRoot, "releases/" + digestV2)).linkFound
+                || !fixture.installed().trimmed().equals("v3")
+                || !fixture.lifecycle("status").ok()) {
+            return InstallerContractTest.fail(fixture,
+                "v3 upgrade, pruning, launch, or status validation failed");
+        }
+
+        ExecResult legacyStatus = fixture.lifecycle("status", "legacy");
+        if (legacyStatus.ok() || !legacyStatus.stdout().contains(
+                "declared legacy Semu shortcuts require transactional migration")) {
+            return InstallerContractTest.fail(fixture,
+                "legacy shortcut status did not fail closed with a diagnostic");
+        }
+
+        string hostBwrap = PathTools.join(fixture.bin, "bwrap");
+        string savedBwrap = hostBwrap + ".saved";
+        bool failingHost = rename(hostBwrap, savedBwrap) == 0
+            && InstallerContractFiles.script(
+                hostBwrap, "#!/usr/bin/env sh\nexit 1\n");
+        ExecResult hostBwrapStatus = failingHost
+            ? fixture.lifecycle("status")
+            : ExecResult(127, "", "host bwrap fixture failed", hostBwrap);
+        unlink(hostBwrap);
+        rename(savedBwrap, hostBwrap);
+        if (!hostBwrapStatus.ok()) {
+            return InstallerContractTest.fail(fixture,
+                "installer consulted host bwrap instead of bundled bwrap");
+        }
+
+        string appImage = PathTools.join(
+            fixture.home, "Applications/Semu/Semu-x86_64.AppImage");
+        string megaBezel = PathTools.join(fixture.home, "semu-mb-launch.sh");
+        Bytes legacy = InstallerContractVdf.database([
+            "Unrelated", "Semu-x86_64.AppImage",
+            "Semu-x86_64.AppImage", "Semu MegaBezel"
+        ], ["\"/opt/unrelated\"", "\"" + appImage + "\"",
+            "\"" + appImage + "\"", "\"" + megaBezel + "\""]);
+        int steamAddsBeforeMigration =
+            InstallerContractFiles.lineCount(fixture.steamAddLog);
+        bool legacyWritten = SemuInstallHost.atomicBytes(
+            fixture.vdf, legacy, 384);
+        ExecResult migrated = legacyWritten
+            ? fixture.install(artifactV3, "inspect")
+            : ExecResult(127, "", "legacy fixture failed", fixture.vdf);
+        ExecResult migratedAgain = migrated.ok()
+            ? fixture.install(artifactV3, "inspect") : migrated;
+        if (!migrated.ok() || !migratedAgain.ok()
+                || !SemuInstallHost.sameBytes(
+                    initialVdf, SemuInstallHost.readBytes(fixture.vdf))
+                || InstallerContractFiles.lineCount(fixture.steamAddLog)
+                    != steamAddsBeforeMigration + 1
+                || !FileSystem.readText(fixture.steamState)
+                    .trim().equals("active")) {
+            return InstallerContractTest.fail(fixture,
+                "legacy duplicate migration is not exact, bounded, or idempotent");
+        }
+
+        Bytes corrupt = legacy.slice(0, legacy.length() - 1);
+        bool corruptWritten = SemuInstallHost.atomicBytes(
+            fixture.vdf, corrupt, 384);
+        ExecResult corruptStatus = corruptWritten
+            ? fixture.lifecycle("status", "inspect")
+            : ExecResult(127, "", "corrupt fixture failed", fixture.vdf);
+        SemuInstallHost.atomicBytes(fixture.vdf, initialVdf, 384);
+        if (corruptStatus.ok()) {
+            return InstallerContractTest.fail(fixture,
+                "corrupt Steam shortcut database was accepted");
+        }
+
+        if (!SemuInstallHost.sha256File(PathTools.join(
+                    fixture.biosRoot, "firmware.bin")).equals(biosDigest)
+                || Directory(fixture.biosRoot).entries().size() != 1) {
+            return InstallerContractTest.fail(fixture,
+                "installer copied or mutated external BIOS/key data");
+        }
+        string appRun = PathTools.join(fixture.installRoot,
+            "releases/" + digestV3 + "/AppRun");
+        bool corruptedRelease = FileSystem.chmod(appRun, 493) == 0
+            && InstallerContractFiles.append(appRun, "\ncorrupt\n");
+        if (!corruptedRelease || fixture.lifecycle("status").ok()) {
+            return InstallerContractTest.fail(fixture,
+                "corrupt extracted release was accepted");
+        }
+        int stops = InstallerContractFiles.matchingLines(
+            fixture.steamServiceLog, "stop");
+        int starts = InstallerContractFiles.matchingLines(
+            fixture.steamServiceLog, "start");
+        if (stops == 0 || stops != starts) {
+            return InstallerContractTest.fail(fixture,
+                "Steam service was not safely stopped and restored");
+        }
+
+        fixture.cleanup();
+        print("installer contract: PASS");
+        return 0;
+    }
+}
+
+int main(int argc, char** argv) {
+    CliArgs arguments = CliArgs(argc, argv);
+    if (arguments.command().equals("install")) {
+        CliCommandLine command = CliCommandLine.parseFrom(arguments, 1);
+        return command.operand(0).equals("launch")
+            ? SemuInstalledLauncher.launch(command)
+            : SemuInstallCommand.run(command);
+    }
+    string project = arguments.valueAfter(
+        "--project", FileSystem.currentDirectory());
+    return InstallerContractTest.run(
+        project, PathTools.absolute(arguments.program));
+}

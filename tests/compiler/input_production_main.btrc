@@ -1,0 +1,11 @@
+// input_production_main.btrc - isolated strict-import input contract runner.
+
+import std.{cli, fs}
+import ./steam_input_contract_test.btrc
+
+int main(int argc, char** argv) {
+    CliArgs arguments = CliArgs(argc, argv);
+    string project = arguments.valueAfter(
+        "--project", FileSystem.currentDirectory());
+    return SteamInputContractTest.run(project) == 0 ? 0 : 1;
+}

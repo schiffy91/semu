@@ -1,0 +1,108 @@
+// Digest-bound AppImage deployment and compiler-generated settings prepare.
+// The existing product installer owns release lifecycle policy.
+
+import std.{fs, process, vector}
+import ./acceptance_plan.btrc
+import ./deck_transport.btrc
+
+class DeckDeployment {
+    public DeckHarnessOptions options;
+    public DeckTransport transport;
+
+    public DeckDeployment(DeckHarnessOptions options, DeckTransport transport) {
+        self.options = options;
+        self.transport = transport;
+    }
+
+    public DeckHarnessResult verifyArtifact() {
+        string semu = PathTools.join(self.options.project, "build/semu");
+        if (!FileSystem.isFile(semu) || FileSystem.isSymlink(semu)
+                || !FileSystem.isFile(self.options.artifact)
+                || FileSystem.isSymlink(self.options.artifact)
+                || !FileSystem.isFile(self.options.installer)
+                || FileSystem.isSymlink(self.options.installer)) {
+            return DeckHarnessResult.failure(
+                "artifact, installer, or strict Semu verifier is absent");
+        }
+        ExecResult verified = ChildProcess.run(semu,
+            ["package", "appimage", "verify", "--target", "steam-deck",
+             "--runtime-root", self.options.runtimeRoot,
+             "--artifact", self.options.artifact,
+             "--project", self.options.project], "",
+            CommandEnvironment.empty(), CommandEnvironment.empty(), 900000,
+            8388608, 8388608, "", CommandOutput.stream(),
+            CommandOutput.stream());
+        return self.transport.checked(verified, "verify host AppImage contract");
+    }
+
+    public DeckHarnessResult prepareSettings() {
+        string launcher = DeckHarnessOptions.installedLauncher();
+        Vector<string> arguments = [
+            "SEMU_ENTRYPOINT=" + launcher,
+            "SEMU_ROMS_ROOT=" + self.options.romsRoot,
+            launcher, "settings", "prepare", "--target", "steam-deck",
+            "--project", self.options.remoteProject,
+            "--semu-home", PathTools.join(self.options.remoteProject, "settings"),
+            "--es-de-home", self.options.esDeHome,
+            "--output", PathTools.join(self.options.remoteProject,
+                "build/configs/steam-deck")
+        ];
+        return self.transport.checked(self.transport.remote(
+            "/usr/bin/env", arguments, true, 900000),
+            "compile/install Semu-owned settings and ES-DE outputs");
+    }
+
+    public DeckHarnessResult deploy() {
+        DeckHarnessResult verified = self.verifyArtifact();
+        if (!verified.ok()) { return verified; }
+        string artifactSha256 = DeckHostDigest.file(self.options.artifact);
+        string installerSha256 = DeckHostDigest.file(self.options.installer);
+        if (artifactSha256.isEmpty() || installerSha256.isEmpty()) {
+            return DeckHarnessResult.failure(
+                "host artifact or installer digest is invalid");
+        }
+        string stage = PathTools.join(
+            self.options.remoteHarnessRoot(), "deploy");
+        DeckHarnessResult directory = self.transport.checked(
+            self.transport.remote("/usr/bin/mkdir", ["-p", "--", stage]),
+            "create remote deployment staging root");
+        if (!directory.ok()) { return directory; }
+        string remoteArtifact = PathTools.join(stage,
+            "Semu-x86_64." + artifactSha256 + ".AppImage");
+        string remoteInstaller = PathTools.join(stage,
+            "installer." + installerSha256 + ".sh");
+        DeckHarnessResult artifact = self.transport.checked(
+            self.transport.rsync(self.options.artifact, remoteArtifact, true),
+            "stage AppImage");
+        if (!artifact.ok()) { return artifact; }
+        DeckHarnessResult installer = self.transport.checked(
+            self.transport.rsync(self.options.installer, remoteInstaller, true),
+            "stage installer");
+        if (!installer.ok()) { return installer; }
+        if (!self.transport.remoteHash(remoteArtifact).equals(artifactSha256)
+                || !self.transport.remoteHash(
+                    remoteInstaller).equals(installerSha256)) {
+            return DeckHarnessResult.failure(
+                "remote deployment staging bytes differ from host bytes");
+        }
+        DeckHarnessResult installed = self.transport.checked(
+            self.transport.remote("/usr/bin/bash",
+                [remoteInstaller, "install", "--artifact", remoteArtifact,
+                 "--sha256", artifactSha256,
+                 "--install-root", DeckHarnessOptions.installRoot(),
+                 "--project", self.options.remoteProject,
+                 "--roms", self.options.romsRoot], true, 900000),
+            "install digest-bound AppImage release");
+        if (!installed.ok()) { return installed; }
+        if (!self.transport.remoteHash(
+                DeckHarnessOptions.installedAppImage()).equals(artifactSha256)) {
+            return DeckHarnessResult.failure(
+                "installed AppImage bytes differ from verified host bytes");
+        }
+        DeckHarnessResult prepared = self.prepareSettings();
+        if (!prepared.ok()) { return prepared; }
+        self.transport.remote(
+            "/usr/bin/rm", ["-f", "--", remoteArtifact, remoteInstaller]);
+        return DeckHarnessResult.success();
+    }
+}

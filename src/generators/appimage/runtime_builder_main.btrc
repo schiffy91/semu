@@ -1,0 +1,29 @@
+// runtime_builder_main.btrc - native host entrypoint for runtime construction.
+
+import std.{cli, fs}
+import ./runtime_builder.btrc
+
+int main(int argc, char** argv) {
+    CliArgs arguments = CliArgs(argc, argv);
+    string repo = arguments.valueAfter("--repo", "");
+    string output = arguments.valueAfter("--output", "");
+    AppImageRuntimeBuildPlan plan = AppImageRuntimeBuildPlan();
+    AppImageRuntimeBuildResult loaded =
+        AppImageRuntimeBuildPlan.create(repo, output, plan);
+    if (!loaded.ok()) {
+        print("Semu AppImage runtime: " + loaded.error);
+        return 2;
+    }
+    if (arguments.has("--plan")) {
+        print(plan.snapshot + "\n" + plan.exportRoot + "\n"
+            + plan.output + "\n" + plan.image + "\n" + plan.volume);
+        return 0;
+    }
+    AppImageRuntimeBuildResult built = AppImageRuntimeBuilder(plan).run();
+    if (!built.ok()) {
+        print("Semu AppImage runtime: " + built.error);
+        return 2;
+    }
+    print("Steam Deck runtime: " + built.value);
+    return 0;
+}

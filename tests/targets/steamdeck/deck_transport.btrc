@@ -1,0 +1,344 @@
+// Host-to-Deck transport and helper deployment. SSH carries one executable
+// invocation at a time; durable acceptance behavior lives in remote_helper.btrc.
+
+import std.{fs, json, process, random, strings, vector}
+import ./acceptance_plan.btrc
+import ./game_mode.btrc
+
+class DeckHostDigest {
+    class string parse(ExecResult result) {
+        if (!result.ok()) { return ""; }
+        string line = result.stdout().trim();
+        int separator = line.indexOf(" ");
+        string value = separator < 0
+            ? line : line.substring(0, separator);
+        return DeckHarnessStrings.lowerHex(value, 64) ? value : "";
+    }
+
+    class string file(string path) {
+        if (!FileSystem.isFile(path) || FileSystem.isSymlink(path)) {
+            return "";
+        }
+        return DeckHostDigest.parse(ChildProcess.run(
+            "/usr/bin/shasum", ["-a", "256", "--", path], "",
+            CommandEnvironment.empty(), CommandEnvironment.empty(), 300000));
+    }
+}
+
+class DeckRunIdentity {
+    class string create() {
+        Random random = Random();
+        random.seedTime();
+        Vector<string> parts = [];
+        for (int index = 0; index < 4; index++) {
+            int value = random.randint(0, 2147483646);
+            char buffer[16];
+            snprintf(buffer, 16, "%08x", (unsigned int)value);
+            parts.push(Strings.copy(buffer));
+        }
+        return parts.join("");
+    }
+}
+
+class DeckTransportReceipt {
+    public bool valid;
+    public string error;
+    public string localRoot;
+    public string remoteRoot;
+    public JsonValue document;
+
+    public DeckTransportReceipt() {
+        self.valid = false;
+        self.error = "";
+        self.localRoot = "";
+        self.remoteRoot = "";
+        self.document = JsonValue.makeObject();
+    }
+
+    class DeckTransportReceipt failure(string error) {
+        DeckTransportReceipt result = DeckTransportReceipt();
+        result.error = error;
+        return result;
+    }
+}
+
+class DeckStagedFile {
+    public bool valid;
+    public string path;
+    public string sha256;
+    public string error;
+
+    public DeckStagedFile() {
+        self.valid = false;
+        self.path = "";
+        self.sha256 = "";
+        self.error = "";
+    }
+}
+
+class DeckTransport {
+    public DeckHarnessOptions options;
+
+    public DeckTransport(DeckHarnessOptions options) {
+        self.options = options;
+    }
+
+    class bool safeRemoteToken(string value) {
+        if (value.isEmpty() || value.contains("\n")
+                || value.contains("\r") || value.contains("\t")
+                || value.contains(" ") || value.contains("'")
+                || value.contains("\"") || value.contains("\\")) {
+            return false;
+        }
+        return true;
+    }
+
+    public Vector<string> sshPrefix() {
+        Vector<string> result = [];
+        for token in Strings.split(self.options.sshOptions, " ") {
+            if (!token.isEmpty()) { result.push(token); }
+        }
+        result.push(self.options.host);
+        return result;
+    }
+
+    public ExecResult remote(string executable, Vector<string> arguments,
+                             bool stream = false,
+                             int timeoutMilliseconds = 300000) {
+        Vector<string> command = self.sshPrefix();
+        if (!DeckTransport.safeRemoteToken(executable)) {
+            Vector<string> empty = [];
+            return ChildProcess.run("", empty);
+        }
+        command.push(executable);
+        for argument in arguments {
+            if (!DeckTransport.safeRemoteToken(argument)) {
+                Vector<string> empty = [];
+                return ChildProcess.run("", empty);
+            }
+            command.push(argument);
+        }
+        return ChildProcess.run("/usr/bin/ssh", command, "",
+            CommandEnvironment.empty(), CommandEnvironment.empty(),
+            timeoutMilliseconds, 8388608, 8388608, "",
+            stream ? CommandOutput.stream() : CommandOutput.collect(),
+            stream ? CommandOutput.stream() : CommandOutput.collect());
+    }
+
+    public Vector<string> rsyncArguments(string local, string remote,
+                                         bool toDeck) {
+        Vector<string> arguments = ["-a", "--checksum", "--partial",
+            "--safe-links", "--no-devices", "--no-specials"];
+        string transport = "/usr/bin/ssh";
+        for token in Strings.split(self.options.sshOptions, " ") {
+            if (!token.isEmpty()) { transport = transport + " " + token; }
+        }
+        arguments.push("-e");
+        arguments.push(transport);
+        arguments.push(toDeck ? local : self.options.host + ":" + remote);
+        arguments.push(toDeck ? self.options.host + ":" + remote : local);
+        return arguments;
+    }
+
+    public ExecResult rsync(string local, string remote, bool toDeck,
+                            bool stream = false) {
+        return ChildProcess.run("/usr/bin/rsync",
+            self.rsyncArguments(local, remote, toDeck), "",
+            CommandEnvironment.empty(), CommandEnvironment.empty(), 600000,
+            8388608, 8388608, "",
+            stream ? CommandOutput.stream() : CommandOutput.collect(),
+            stream ? CommandOutput.stream() : CommandOutput.collect());
+    }
+
+    public DeckHarnessResult checked(ExecResult result, string operation) {
+        if (result.ok()) { return DeckHarnessResult.success(); }
+        string detail = result.stderr().trim();
+        if (detail.isEmpty()) { detail = result.stdout().trim(); }
+        if (detail.isEmpty()) { detail = "no command output"; }
+        return DeckHarnessResult.failure(
+            operation + f" failed (exit {result.code}): " + detail);
+    }
+
+    public DeckHarnessResult createRemoteDirectories() {
+        Vector<string> paths = [self.options.remoteRequestsRoot(),
+            self.options.remoteRunsRoot(),
+            PathTools.join(self.options.remoteHarnessRoot(), "bin")];
+        Vector<string> arguments = ["-p", "--"];
+        for path in paths { arguments.push(path); }
+        return self.checked(self.remote(
+            "/usr/bin/mkdir", arguments), "create remote harness directories");
+    }
+
+    public string remoteHash(string path) {
+        ExecResult result = self.remote(
+            "/usr/bin/sha256sum", ["--", path], false, 300000);
+        if (!result.ok()) { return ""; }
+        string line = result.stdout().trim();
+        int separator = line.indexOf(" ");
+        string digest = separator < 0
+            ? line : line.substring(0, separator);
+        return DeckHarnessStrings.lowerHex(digest, 64) ? digest : "";
+    }
+
+    public DeckHarnessResult stageHelpers() {
+        DeckHarnessResult local = self.options.validateLocal(true);
+        if (!local.ok()) { return local; }
+        DeckHarnessResult directories = self.createRemoteDirectories();
+        if (!directories.ok()) { return directories; }
+        string helperDigest = DeckHostDigest.file(
+            self.options.remoteHelperBinary);
+        string inputDigest = DeckHostDigest.file(
+            self.options.inputHelperBinary);
+        if (helperDigest.isEmpty() || inputDigest.isEmpty()) {
+            return DeckHarnessResult.failure(
+                "could not digest strict-import Linux helpers");
+        }
+        DeckHarnessResult helper = self.checked(self.rsync(
+            self.options.remoteHelperBinary,
+            self.options.remoteHelper(), true), "stage acceptance helper");
+        if (!helper.ok()) { return helper; }
+        DeckHarnessResult input = self.checked(self.rsync(
+            self.options.inputHelperBinary,
+            self.options.remoteInputHelper(), true), "stage uinput helper");
+        if (!input.ok()) { return input; }
+        DeckHarnessResult executable = self.checked(self.remote(
+            "/usr/bin/chmod", ["0755", "--", self.options.remoteHelper(),
+                self.options.remoteInputHelper()]), "mark helpers executable");
+        if (!executable.ok()) { return executable; }
+        if (!self.remoteHash(self.options.remoteHelper()).equals(helperDigest)
+                || !self.remoteHash(
+                    self.options.remoteInputHelper()).equals(inputDigest)) {
+            return DeckHarnessResult.failure(
+                "Deck helper bytes differ from the strict-import host builds");
+        }
+        return DeckHarnessResult.success();
+    }
+
+    public string localRequestPath(string identity) {
+        return PathTools.join(self.options.evidenceRoot,
+            "requests/" + identity + ".json");
+    }
+
+    public string remoteRequestPath(string identity) {
+        return PathTools.join(self.options.remoteRequestsRoot(),
+            identity + ".json");
+    }
+
+    public string localRunRoot(string identity) {
+        return PathTools.join(self.options.evidenceRoot, "runs/" + identity);
+    }
+
+    public string remoteRunRoot(string identity) {
+        return PathTools.join(self.options.remoteRunsRoot(), identity);
+    }
+
+    public DeckStagedFile stageText(string identity, string name,
+                                    string content) {
+        DeckStagedFile result = DeckStagedFile();
+        if (!DeckHarnessStrings.lowerHex(identity, 32)
+                || name.isEmpty() || name.contains("/")
+                || name.contains("\n") || name.contains("\r")) {
+            result.error = "unsafe staged-file identity";
+            return result;
+        }
+        string local = PathTools.join(self.options.evidenceRoot,
+            "requests/" + identity + "-" + name);
+        string remote = PathTools.join(self.options.remoteRequestsRoot(),
+            identity + "-" + name);
+        if (FileSystem.exists(local) || FileSystem.isSymlink(local)
+                || FileSystem.mkdirp(PathTools.dirname(local)) != 0
+                || !FileSystem.writeText(local, content)) {
+            result.error = "could not materialize staged request input";
+            return result;
+        }
+        string digest = DeckHostDigest.file(local);
+        DeckHarnessResult copied = self.checked(
+            self.rsync(local, remote, true), "stage request input");
+        if (!copied.ok() || digest.isEmpty()
+                || !self.remoteHash(remote).equals(digest)) {
+            result.error = copied.ok()
+                ? "staged request input digest mismatch" : copied.error;
+            return result;
+        }
+        result.valid = true;
+        result.path = remote;
+        result.sha256 = digest;
+        return result;
+    }
+
+    public DeckTransportReceipt invoke(DeckGameModeRequest request,
+                                       string requestIdentity,
+                                       string runIdentity = "",
+                                       bool existingRun = false) {
+        DeckTransportReceipt result = DeckTransportReceipt();
+        string selectedRun = runIdentity.isEmpty()
+            ? requestIdentity : runIdentity;
+        string localRequest = self.localRequestPath(requestIdentity);
+        string remoteRequest = self.remoteRequestPath(requestIdentity);
+        string localRoot = self.localRunRoot(selectedRun);
+        string remoteRoot = self.remoteRunRoot(selectedRun);
+        request.runRoot = remoteRoot;
+        if (!request.valid()
+                || !DeckHarnessStrings.lowerHex(requestIdentity, 32)
+                || !DeckHarnessStrings.lowerHex(selectedRun, 32)) {
+            result.error = "invalid typed Game Mode request";
+            return result;
+        }
+        if ((!existingRun && FileSystem.exists(localRoot))
+                || FileSystem.isSymlink(localRoot)
+                || FileSystem.mkdirp(PathTools.dirname(localRequest)) != 0
+                || FileSystem.isSymlink(localRequest)
+                || FileSystem.exists(localRequest)
+                || !FileSystem.writeText(
+                    localRequest, request.json().stringify() + "\n")) {
+            result.error = "could not create local request/evidence paths";
+            return result;
+        }
+        DeckHarnessResult requestCopy = self.checked(self.rsync(
+            localRequest, remoteRequest, true), "stage typed helper request");
+        if (!requestCopy.ok()) {
+            result.error = requestCopy.error;
+            return result;
+        }
+        ExecResult executed = self.remote(self.options.remoteHelper(),
+            ["--request", remoteRequest], true, 900000);
+        if (FileSystem.mkdirp(localRoot) != 0) {
+            result.error = "could not create local evidence directory";
+            return result;
+        }
+        ExecResult collected = self.rsync(localRoot + "/",
+            remoteRoot + "/", false);
+        if (!executed.ok()) {
+            result.error = "Deck acceptance helper failed with exit "
+                + f"{executed.code}";
+            string detail = executed.stderr().trim();
+            if (detail.isEmpty()) { detail = executed.stdout().trim(); }
+            if (!detail.isEmpty()) {
+                result.error = result.error + ": " + detail;
+            }
+            return result;
+        }
+        if (!collected.ok()) {
+            result.error = "could not collect helper receipt: "
+                + collected.stderr().trim();
+            return result;
+        }
+        string receiptPath = PathTools.join(localRoot, "receipt.json");
+        if (request.operation.equals("batch-begin")) {
+            receiptPath = PathTools.join(localRoot, "batch-begin.json");
+        } else if (request.operation.equals("batch-end")) {
+            receiptPath = PathTools.join(localRoot, "batch-end.json");
+        }
+        JsonValue document = JsonValue.readFile(receiptPath);
+        string policy = DeckGameModeReceiptPolicy.verify(document, request);
+        if (!policy.isEmpty()) {
+            result.error = policy;
+            return result;
+        }
+        result.valid = true;
+        result.localRoot = localRoot;
+        result.remoteRoot = remoteRoot;
+        result.document = document;
+        return result;
+    }
+}

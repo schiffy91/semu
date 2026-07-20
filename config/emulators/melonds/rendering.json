@@ -1,0 +1,160 @@
+{
+  "schema_version": 1,
+  "activation": {
+    "mode": "source_patched_direct_link",
+    "package_ready": true,
+    "runtime_proven": false,
+    "physical_proven": false
+  },
+  "integration": {
+    "abi": 2,
+    "api": "semu-renderer",
+    "linkage": "direct",
+    "header": "semu_renderer.h",
+    "library": "semurenderer",
+    "backend": "opengl",
+    "callbacks": [
+      "get_proc_address",
+      "current_context"
+    ],
+    "inactive_reports": false,
+    "framebuffer": "default_opengl_draw_framebuffer",
+    "geometry": "qt_screen_layout_transforms_scaled_to_drawable",
+    "surface_order": [
+      {
+        "id": "top",
+        "native_w": 256,
+        "native_h": 192
+      },
+      {
+        "id": "bottom",
+        "native_w": 256,
+        "native_h": 192
+      }
+    ],
+    "origin": "top_left",
+    "orientation": "display_upright",
+    "rotation": 0,
+    "pointer_mapping": {
+      "map": "frame.pointer_map",
+      "callback": "frame.map_pointer",
+      "snapshot": "last_successful_post_ui_frame",
+      "surface_index": 1,
+      "surface_id": "bottom",
+      "viewport": "qt_logical_widget",
+      "origin": "top_left",
+      "press_clamp": false,
+      "captured_motion_clamp": true,
+      "events": [
+        "mouse_press",
+        "mouse_move",
+        "tablet",
+        "touch"
+      ],
+      "consumer": "EmuInstance::touchScreen",
+      "coordinates": "abi_native_pixels"
+    },
+    "patch": "melonds.patch"
+  },
+  "phases": [
+    {
+      "id": "game",
+      "symbol": "semu_render_game_gl",
+      "source": "src/frontend/qt_sdl/Screen.cpp",
+      "function": "ScreenPanelGL::drawScreen",
+      "after": "both LCD glDrawArrays calls",
+      "before": "osdUpdate"
+    },
+    {
+      "id": "post_ui",
+      "symbol": "semu_render_post_ui_gl",
+      "source": "src/frontend/qt_sdl/Screen.cpp",
+      "function": "ScreenPanelGL::drawScreen",
+      "after": "splash and OSD draws",
+      "before": "glContext->SwapBuffers"
+    }
+  ],
+  "surfaces": [
+    {
+      "index": 0,
+      "id": "top",
+      "geometry": "axis-aligned final framebuffer bounds for screenKind zero",
+      "native": {
+        "w": 256,
+        "h": 192
+      },
+      "origin": "top_left",
+      "orientation": "display_upright",
+      "rotation": 0
+    },
+    {
+      "index": 1,
+      "id": "bottom",
+      "geometry": "axis-aligned final framebuffer bounds for screenKind one",
+      "native": {
+        "w": 256,
+        "h": 192
+      },
+      "origin": "top_left",
+      "orientation": "display_upright",
+      "rotation": 0
+    }
+  ],
+  "orientation_contract": {
+    "sampled_pixels": "final_default_framebuffer_rectangles_after_screen_transform",
+    "source_y_rule": "framebuffer_height - (surface_y + surface_height)",
+    "lane_identity": "screenKind zero is top and screenKind one is bottom",
+    "asymmetric_probe": {
+      "framebuffer": {
+        "w": 1280,
+        "h": 800
+      },
+      "top": {
+        "screen_kind": 0,
+        "lane": 0,
+        "x": 41,
+        "y": 23,
+        "w": 512,
+        "h": 384,
+        "source_y": 393,
+        "corner": "top_left_red"
+      },
+      "bottom": {
+        "screen_kind": 1,
+        "lane": 1,
+        "x": 701,
+        "y": 317,
+        "w": 384,
+        "h": 288,
+        "source_y": 195,
+        "corner": "top_left_blue"
+      },
+      "expected_lane_order": [
+        "top",
+        "bottom"
+      ],
+      "expected_rotation": [
+        0,
+        0
+      ]
+    }
+  },
+  "composition": {
+    "owner": "semurenderer",
+    "shader": "renderer_owned",
+    "bezel": "renderer_owned",
+    "semu_menu": "renderer_owned",
+    "melonds_ui": "between_game_and_post_ui_phases",
+    "surface_order": [
+      "top",
+      "bottom"
+    ],
+    "semantic_order_independent_of_screen_swap": true
+  },
+  "doc": {
+    "boundary": "drawScreen submits the two completed LCD regions before osdUpdate, then submits the same frame after splash and OSD drawing and immediately before SwapBuffers.",
+    "orientation": "The live transforms already rotate the LCD pixels before the axis-aligned framebuffer bounds are sampled. Lane identity comes only from screenKind; both final-framebuffer lanes report rotation zero.",
+    "touch": "ScreenPanel retains only the immutable pointer map from a game frame whose game and post-UI phases both succeeded. Mouse, tablet, and touch presses map only inside bottom surface 1; captured updates clamp to that same surface and pass ABI-native coordinates directly to EmuInstance::touchScreen.",
+    "evidence": "The asymmetric lane fixture proves screenKind ordering, independent top-left source_y conversion, and zero renderer rotation. Package linkage, phase order, and forbidden-symbol absence are source gates; runtime pixels remain separate."
+  }
+}

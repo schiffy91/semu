@@ -1,0 +1,21 @@
+// Strict-import entrypoint for repository tree policy and its contracts.
+
+import std.{cli, console, fs}
+import ./audit.btrc
+import ./contract_test.btrc
+
+int main(int argc, char** argv) {
+    CliArgs arguments = CliArgs(argc, argv);
+    if (arguments.has("--self-test")) {
+        return TreeAuditContractTest.run() == 0 ? 0 : 1;
+    }
+    string project = FileSystem.absolutePath(arguments.valueAfter(
+        "--project", FileSystem.currentDirectory()));
+    if (project.isEmpty()) {
+        Console.error("tree-audit: project root could not be resolved");
+        return 2;
+    }
+    TreeAuditResult result = TreeAuditor.audit(project);
+    result.report();
+    return result.ok() ? 0 : 1;
+}

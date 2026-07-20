@@ -1,0 +1,256 @@
+// esde.btrc - deterministic ES-DE documents from a checked compiler plan.
+
+import std.{fs, vector}
+import ../compiler/model.btrc
+import ../lib/owned_paths.btrc
+
+class SemuEsDeXml {
+    class string escape(string value) {
+        return value.replace("&", "&amp;")
+            .replace("\"", "&quot;")
+            .replace("<", "&lt;")
+            .replace(">", "&gt;");
+    }
+
+    class string extensions(Vector<string> values) {
+        Vector<string> result = [];
+        for value in values {
+            string lower = value.toLower();
+            string upper = value.toUpper();
+            if (!result.contains(lower)) { result.push(lower); }
+            if (!result.contains(upper)) { result.push(upper); }
+        }
+        return result.join(" ");
+    }
+}
+
+class SemuEsDeTemplates {
+    class string read(SemuBuildPlan plan, string name,
+                      CompilerDiagnostics diagnostics) {
+        string path = PathTools.join(plan.configRoot,
+            "assets/esde/templates/" + name + ".xml");
+        string source = Path.readAll(path);
+        if (source.isEmpty()) {
+            diagnostics.add(path, "template", "ES-DE template is absent or empty");
+        }
+        return source;
+    }
+
+    class string complete(string source, string name,
+                          CompilerDiagnostics diagnostics) {
+        if (source.contains("${")) {
+            diagnostics.add(name, "template",
+                "ES-DE template contains an unresolved token");
+            return "";
+        }
+        return source;
+    }
+
+    class string command(SemuBuildPlan plan, string label, string command,
+                         CompilerDiagnostics diagnostics) {
+        return SemuEsDeTemplates.complete(
+            SemuEsDeTemplates.read(plan, "command", diagnostics)
+                .replace("${LABEL}", label)
+                .replace("${COMMAND}", command),
+            "command", diagnostics);
+    }
+
+    class string system(SemuBuildPlan plan, string name, string fullname,
+                        string romDirectory, string extensions,
+                        string commands, string platforms, string theme,
+                        CompilerDiagnostics diagnostics) {
+        return SemuEsDeTemplates.complete(
+            SemuEsDeTemplates.read(plan, "es_system", diagnostics)
+                .replace("${NAME}", name)
+                .replace("${FULLNAME}", fullname)
+                .replace("${ROM_DIRECTORY}", romDirectory)
+                .replace("${EXTENSIONS}", extensions)
+                .replace("${COMMANDS}", commands)
+                .replace("${PLATFORMS}", platforms)
+                .replace("${THEME}", theme),
+            "es_system", diagnostics);
+    }
+
+    class string systems(SemuBuildPlan plan, string systems,
+                         CompilerDiagnostics diagnostics) {
+        return SemuEsDeTemplates.complete(
+            SemuEsDeTemplates.read(plan, "es_systems", diagnostics)
+                .replace("${SYSTEMS}", systems),
+            "es_systems", diagnostics);
+    }
+
+    class string findRule(SemuBuildPlan plan, string name, string shim,
+                          CompilerDiagnostics diagnostics) {
+        return SemuEsDeTemplates.complete(
+            SemuEsDeTemplates.read(plan, "es_find_rule", diagnostics)
+                .replace("${NAME}", name)
+                .replace("${SHIM}", shim),
+            "es_find_rule", diagnostics);
+    }
+
+    class string findRules(SemuBuildPlan plan, string rules,
+                           CompilerDiagnostics diagnostics) {
+        return SemuEsDeTemplates.complete(
+            SemuEsDeTemplates.read(plan, "es_find_rules", diagnostics)
+                .replace("${RULES}", rules),
+            "es_find_rules", diagnostics);
+    }
+}
+
+class SemuEsDeSelection {
+    class SemuSystemSource system(SemuCompilerModel model, string id) {
+        for candidate in model.systems {
+            if (candidate.id.equals(id)) { return candidate; }
+        }
+        return SemuSystemSource();
+    }
+
+    class SemuEmulatorSource emulator(SemuCompilerModel model, string id) {
+        for candidate in model.emulators {
+            if (candidate.id.equals(id)) { return candidate; }
+        }
+        return SemuEmulatorSource();
+    }
+
+    class bool binding(SemuCompilerModel model, SemuBuildPlan plan,
+                       SemuSystemBindingSource binding) {
+        if (!plan.emulators.contains(binding.emulator)
+                || !binding.supports(plan.platform)) {
+            return false;
+        }
+        SemuEmulatorSource emulator = SemuEsDeSelection.emulator(
+            model, binding.emulator);
+        return !emulator.id.isEmpty() && emulator.supports(plan.platform);
+    }
+
+    class bool emulatorUsed(SemuCompilerModel model, SemuBuildPlan plan,
+                            string emulatorId) {
+        for systemId in plan.systems {
+            SemuSystemSource system = SemuEsDeSelection.system(model, systemId);
+            for binding in system.emulators {
+                if (binding.emulator.equals(emulatorId)
+                        && SemuEsDeSelection.binding(model, plan, binding)) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+}
+
+class SemuEsDeGenerator {
+    class string relativeDirectory() {
+        return "es-de/custom_systems";
+    }
+
+    class string directory(SemuBuildPlan plan) {
+        return PathTools.join(plan.outputRoot,
+            SemuEsDeGenerator.relativeDirectory());
+    }
+
+    class string label(SemuCompilerModel model,
+                       SemuSystemBindingSource binding) {
+        if (!binding.label.isEmpty()) { return binding.label; }
+        return SemuEsDeSelection.emulator(model, binding.emulator).name;
+    }
+
+    class Vector<string> labels(SemuCompilerModel model,
+                                SemuSystemBindingSource binding) {
+        Vector<string> result = [];
+        string primary = SemuEsDeGenerator.label(model, binding);
+        if (!primary.isEmpty()) { result.push(primary); }
+        for alias in binding.labelAliases {
+            if (!result.contains(alias)) { result.push(alias); }
+        }
+        return result;
+    }
+
+    class string command(string systemId, SemuSystemBindingSource binding) {
+        string command = "%EMULATOR_" + binding.emulator.toUpper() + "%"
+            + " --system " + systemId;
+        if (!binding.core.isEmpty()) {
+            command = command + " --core " + binding.core;
+        }
+        return command + " --rom %ROM%";
+    }
+
+    class string systemEntry(SemuCompilerModel model, SemuBuildPlan plan,
+                             SemuSystemSource system,
+                             CompilerDiagnostics diagnostics) {
+        string commands = "";
+        for binding in system.emulators {
+            if (!SemuEsDeSelection.binding(model, plan, binding)) { continue; }
+            string encoded = SemuEsDeXml.escape(
+                SemuEsDeGenerator.command(system.id, binding));
+            for label in SemuEsDeGenerator.labels(model, binding) {
+                commands = commands + SemuEsDeTemplates.command(
+                    plan, SemuEsDeXml.escape(label), encoded, diagnostics);
+            }
+        }
+        if (commands.isEmpty()) { return ""; }
+        return SemuEsDeTemplates.system(plan,
+            SemuEsDeXml.escape(system.id),
+            SemuEsDeXml.escape(system.name),
+            SemuEsDeXml.escape(system.romDirectory),
+            SemuEsDeXml.escape(SemuEsDeXml.extensions(system.extensions)),
+            commands,
+            SemuEsDeXml.escape(system.esDePlatforms.join(",")),
+            SemuEsDeXml.escape(system.esDeTheme), diagnostics);
+    }
+
+    class string systemsXml(SemuCompilerModel model, SemuBuildPlan plan,
+                            CompilerDiagnostics diagnostics) {
+        string systems = "";
+        for systemId in plan.systems {
+            SemuSystemSource system = SemuEsDeSelection.system(model, systemId);
+            if (!system.id.isEmpty()) {
+                systems = systems + SemuEsDeGenerator.systemEntry(
+                    model, plan, system, diagnostics);
+            }
+        }
+        return SemuEsDeTemplates.systems(plan, systems, diagnostics);
+    }
+
+    class string launcherRule(SemuBuildPlan plan, string emulatorId,
+                              CompilerDiagnostics diagnostics) {
+        string name = emulatorId.toUpper();
+        string shim = "semu-" + emulatorId;
+        return SemuEsDeTemplates.findRule(plan,
+            SemuEsDeXml.escape(name), SemuEsDeXml.escape(shim), diagnostics);
+    }
+
+    class string findRulesXml(SemuCompilerModel model, SemuBuildPlan plan,
+                              CompilerDiagnostics diagnostics) {
+        string rules = "";
+        for emulatorId in plan.emulators {
+            if (SemuEsDeSelection.emulatorUsed(model, plan, emulatorId)) {
+                rules = rules + SemuEsDeGenerator.launcherRule(
+                    plan, emulatorId, diagnostics);
+            }
+        }
+        return SemuEsDeTemplates.findRules(plan, rules, diagnostics);
+    }
+
+    class string emit(SemuCompilerModel model, SemuBuildPlan plan,
+                      CompilerDiagnostics diagnostics) {
+        string directory = SemuEsDeGenerator.directory(plan);
+        string systems = PathTools.join(directory, "es_systems.xml");
+        string rules = PathTools.join(directory, "es_find_rules.xml");
+        string systemsXml = SemuEsDeGenerator.systemsXml(
+            model, plan, diagnostics);
+        string findRulesXml = SemuEsDeGenerator.findRulesXml(
+            model, plan, diagnostics);
+        if (systemsXml.isEmpty() || findRulesXml.isEmpty()) { return ""; }
+        if (!SemuOwnedPaths.writeText(
+                plan.outputRoot, systems, systemsXml)) {
+            diagnostics.add(systems, "output", "could not write ES-DE systems");
+            return "";
+        }
+        if (!SemuOwnedPaths.writeText(
+                plan.outputRoot, rules, findRulesXml)) {
+            diagnostics.add(rules, "output", "could not write ES-DE find rules");
+            return "";
+        }
+        return directory;
+    }
+}

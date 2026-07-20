@@ -1,0 +1,770 @@
+// Strict-import Linux entrypoint deployed by the host harness. All durable
+// remote behavior is represented here; SSH only invokes this binary with one
+// Semu-owned JSON request.
+
+import std.{cli, fs, json, process, strings, vector}
+import ./evidence.btrc
+import ./game_mode.btrc
+import ./remote_system.btrc
+import ./steam_shortcuts.btrc
+
+class DeckRemoteSnapshot {
+    public Vector<DeckProtectedInput> inputs;
+    public bool valid;
+
+    public DeckRemoteSnapshot() {
+        self.inputs = [];
+        self.valid = false;
+    }
+
+    class DeckRemoteSnapshot capture(Vector<DeckProtectedInput> requested,
+                                     Vector<string> roots,
+                                     bool requireExpected) {
+        DeckRemoteSnapshot snapshot = DeckRemoteSnapshot();
+        for request in requested {
+            if (!request.validPath(roots)) { return snapshot; }
+            DeckProtectedInput input = DeckProtectedInput();
+            input.kind = request.kind;
+            input.path = UnixFileSystem.realPath(request.path);
+            if (!input.path.equals(request.path)
+                    || !FileSystem.isFile(input.path)
+                    || FileSystem.isSymlink(input.path)) {
+                return snapshot;
+            }
+            input.sha256 = DeckRemoteHash.file(input.path);
+            if (!DeckGameModeContract.sha256(input.sha256)
+                    || (requireExpected
+                        && !input.sha256.equals(request.sha256))) {
+                return snapshot;
+            }
+            snapshot.inputs.push(input);
+        }
+        snapshot.valid = !snapshot.inputs.isEmpty();
+        return snapshot;
+    }
+
+    public bool equals(DeckRemoteSnapshot other) {
+        if (!self.valid || !other.valid
+                || self.inputs.size() != other.inputs.size()) {
+            return false;
+        }
+        for (int index = 0; index < self.inputs.size(); index++) {
+            DeckProtectedInput left = self.inputs.get(index);
+            DeckProtectedInput right = other.inputs.get(index);
+            if (!left.kind.equals(right.kind)
+                    || !left.path.equals(right.path)
+                    || !left.sha256.equals(right.sha256)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    public JsonValue json() {
+        JsonValue result = JsonValue.makeArray();
+        for input in self.inputs { result.push(input.json()); }
+        return result;
+    }
+}
+
+class DeckGeneratedSnapshot {
+    public Vector<string> paths;
+    public Vector<string> digests;
+    public bool valid;
+
+    public DeckGeneratedSnapshot() {
+        self.paths = [];
+        self.digests = [];
+        self.valid = false;
+    }
+
+    class DeckGeneratedSnapshot capture(Vector<string> paths) {
+        DeckGeneratedSnapshot snapshot = DeckGeneratedSnapshot();
+        for path in paths {
+            if (!DeckGameModeContract.absolute(path)
+                    || !FileSystem.isFile(path)
+                    || FileSystem.isSymlink(path)) {
+                return snapshot;
+            }
+            string canonical = UnixFileSystem.realPath(path);
+            string digest = DeckRemoteHash.file(path);
+            if (!canonical.equals(path)
+                    || !DeckGameModeContract.sha256(digest)) {
+                return snapshot;
+            }
+            snapshot.paths.push(path);
+            snapshot.digests.push(digest);
+        }
+        snapshot.valid = !snapshot.paths.isEmpty();
+        return snapshot;
+    }
+
+    public bool equals(DeckGeneratedSnapshot other) {
+        return self.valid && other.valid
+            && self.paths.join("\n").equals(other.paths.join("\n"))
+            && self.digests.join("\n").equals(other.digests.join("\n"));
+    }
+
+    public JsonValue json() {
+        JsonValue result = JsonValue.makeArray();
+        for (int index = 0; index < self.paths.size(); index++) {
+            JsonValue entry = JsonValue.makeObject();
+            entry.set("path", JsonValue.makeString(self.paths.get(index)));
+            entry.set("sha256",
+                JsonValue.makeString(self.digests.get(index)));
+            result.push(entry);
+        }
+        return result;
+    }
+}
+
+class DeckRemoteEvidence {
+    class int count(string log, Vector<string> fields) {
+        int found = 0;
+        for line in Strings.split(log, "\n") {
+            bool matches = true;
+            for field in fields {
+                int separator = field.indexOf("=");
+                if (separator < 1
+                        || !DeckEvidenceReceiptPolicy.field(
+                            line, field.substring(0, separator)).equals(
+                                field.substring(separator + 1, field.len()))) {
+                    matches = false;
+                }
+            }
+            if (matches) { found++; }
+        }
+        return found;
+    }
+
+    class bool immediate(string log, string source, string reason,
+                         int minimum) {
+        int found = 0;
+        for line in Strings.split(log, "\n") {
+            if (!DeckEvidenceReceiptPolicy.field(
+                    line, "event").equals("process-group-terminate")
+                    || !DeckEvidenceReceiptPolicy.field(
+                        line, "source").equals(source)
+                    || !DeckEvidenceReceiptPolicy.field(
+                        line, "reason").equals(reason)
+                    || !DeckEvidenceReceiptPolicy.field(
+                        line, "reaped").equals("1")) {
+                continue;
+            }
+            int elapsed = DeckEvidenceReceiptPolicy.field(
+                line, "elapsed_ms").toInt();
+            int bound = DeckEvidenceReceiptPolicy.field(
+                line, "bound_ms").toInt();
+            if (elapsed >= 0 && elapsed <= 250 && bound == 250) { found++; }
+        }
+        return found >= minimum;
+    }
+
+    class bool radial(string log, string source, int radial, int minimum) {
+        return DeckRemoteEvidence.count(log,
+            ["event=action-edge", "source=" + source,
+             "radial=" + f"{radial}"]) >= minimum;
+    }
+
+    class bool gameplay(string log, DeckGameModeRequest request,
+                        string source) {
+        for control in ["directional", "face"] {
+            if (DeckRemoteEvidence.count(log,
+                    ["event=gameplay-input", "system_id=" + request.systemId,
+                     "emulator_id=" + request.emulatorId,
+                     "source=" + source, "control=" + control,
+                     "consumed=1"]) < 1) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    class bool saveLoad(string log, DeckGameModeRequest request) {
+        if (!request.savestateExpected) { return true; }
+        return DeckRemoteEvidence.count(log,
+            ["event=state-save", "system_id=" + request.systemId,
+             "emulator_id=" + request.emulatorId, "consumed=1"]) >= 1
+            && DeckRemoteEvidence.count(log,
+                ["event=state-load", "system_id=" + request.systemId,
+                 "emulator_id=" + request.emulatorId, "consumed=1",
+                 "restored=1"]) >= 1;
+    }
+
+    class bool wiiModes(string log, DeckGameModeRequest request) {
+        if (!request.wiiExpected) { return true; }
+        for mode in ["wii.controller.wiimote",
+                     "wii.controller.nunchuk",
+                     "wii.controller.classic",
+                     "wii.controller.gamecube"] {
+            if (DeckRemoteEvidence.count(log,
+                    ["event=wii-controller-mode", "system_id=wii",
+                     "emulator_id=dolphin", "action=" + mode,
+                     "applied=1", "consumer=dolphin"]) < 1) {
+                return false;
+            }
+        }
+        return true;
+    }
+}
+
+class DeckRemoteGame {
+    class string releaseRoot(DeckGameModeRequest request) {
+        return PathTools.join(PathTools.dirname(
+            PathTools.dirname(request.shortcut.executable)),
+            "releases/" + request.releaseSha256);
+    }
+
+    class bool packaged(int process, DeckGameModeRequest request,
+                        int esDe) {
+        if (!DeckRemoteProcess.descendant(process, esDe)
+                || !DeckRemoteProcess.hasArgument(process,
+                    "/run/semu-appdir" + request.expectedExecutable)
+                || !DeckRemoteProcess.hasArgument(process, request.rom)
+                || (!request.coreFilename.isEmpty()
+                    && !DeckRemoteProcess.hasBasenameArgument(
+                        process, request.coreFilename))) {
+            return false;
+        }
+        if (!DeckRemoteProcess.environmentValue(process,
+                "SEMU_RENDER_SYSTEM_ID").equals(request.systemId)
+                || !DeckRemoteProcess.environmentValue(process,
+                    "SEMU_RENDER_EMULATOR_ID").equals(request.emulatorId)
+                || !DeckRemoteProcess.environmentValue(process,
+                    "SEMU_RELEASE_DIGEST").equals(request.releaseSha256)
+                || !DeckRemoteProcess.environmentValue(process,
+                    "SEMU_ENTRYPOINT").equals(request.shortcut.executable)) {
+            return false;
+        }
+        string relative = request.expectedExecutable.startsWith("/")
+            ? request.expectedExecutable.substring(
+                1, request.expectedExecutable.len() - 1)
+            : request.expectedExecutable;
+        string packaged = PathTools.join(
+            DeckRemoteGame.releaseRoot(request), relative);
+        return DeckRemoteHash.file(packaged).equals(
+            request.expectedExecutableSha256);
+    }
+
+    class int find(DeckGameModeRequest request, int esDe,
+                   Vector<int> excluded) {
+        int found = 0;
+        for process in DeckRemoteProcess.all() {
+            if (excluded.contains(process)
+                    || !DeckRemoteGame.packaged(process, request, esDe)) {
+                continue;
+            }
+            if (found != 0) { return 0; }
+            found = process;
+        }
+        return found;
+    }
+
+    class int waitFor(DeckGameModeRequest request, int esDe,
+                      Vector<int> excluded) {
+        for (int attempt = 0; attempt < 3000; attempt++) {
+            int process = DeckRemoteGame.find(request, esDe, excluded);
+            if (process > 1) { return process; }
+            if (!DeckRemoteProcess.alive(esDe)
+                    || !DeckRemoteClock.sleep(100)) {
+                return 0;
+            }
+        }
+        return 0;
+    }
+
+    class bool waitForExit(int process, int milliseconds) {
+        int attempts = milliseconds / 100;
+        for (int attempt = 0; attempt < attempts; attempt++) {
+            if (!DeckRemoteProcess.alive(process)) { return true; }
+            if (!DeckRemoteClock.sleep(100)) { return false; }
+        }
+        return !DeckRemoteProcess.alive(process);
+    }
+}
+
+class DeckRemoteInput {
+    class bool run(DeckGameModeRequest request, string plan,
+                   string expectedSha256, string receipt) {
+        if (!DeckRemoteHash.file(request.inputHelper).equals(
+                request.inputHelperSha256)
+                || !DeckRemoteHash.file(plan).equals(expectedSha256)
+                || FileSystem.exists(receipt)) {
+            return false;
+        }
+        ExecResult result = ChildProcess.run(request.inputHelper,
+            ["--plan", plan, "--receipt", receipt], "",
+            CommandEnvironment.empty(), CommandEnvironment.empty(), 120000,
+            1048576, 1048576);
+        return result.ok() && FileSystem.isFile(receipt)
+            && FileSystem.readText(receipt).contains(
+                "input_origin=synthetic-uinput")
+            && FileSystem.readText(receipt).contains(
+                "steam_radial_ui_proven=0");
+    }
+
+    class bool relaunch(DeckGameModeRequest request, string root,
+                        int sequence) {
+        string plan = PathTools.join(root,
+            "relaunch-" + f"{sequence}" + ".plan");
+        string receipt = PathTools.join(root,
+            "relaunch-" + f"{sequence}" + ".log");
+        string content = "wait|1000\ntap|gamepad|south\n";
+        return !FileSystem.exists(plan)
+            && FileSystem.writeText(plan, content)
+            && DeckRemoteInput.run(request, plan,
+                DeckRemoteHash.file(plan), receipt);
+    }
+}
+
+class DeckRemoteReceipt {
+    class JsonValue evidence(string scenario, bool humanObserved) {
+        JsonValue value = JsonValue.makeObject();
+        bool synthetic = scenario.equals("automated-game-mode");
+        bool human = scenario.startsWith("operator-") && humanObserved;
+        value.set("class", JsonValue.makeString(synthetic
+            ? DeckEvidenceClass.automatedHardware()
+            : (human ? DeckEvidenceClass.humanPhysical()
+                : DeckEvidenceClass.automatedHardware())));
+        value.set("input_origin", JsonValue.makeString(synthetic
+            ? "synthetic-uinput" : (human ? "human" : "none")));
+        value.set("synthetic_input", JsonValue.makeBool(synthetic));
+        value.set("human_input", JsonValue.makeBool(human));
+        value.set("human_observed", JsonValue.makeBool(human));
+        value.set("acceptance_eligible", JsonValue.makeBool(human));
+        return value;
+    }
+
+    class JsonValue shortcut(DeckExpectedShortcut shortcut) {
+        return shortcut.json();
+    }
+
+    class JsonValue base(string operation) {
+        JsonValue root = JsonValue.makeObject();
+        root.set("schema_version", JsonValue.makeInt(1));
+        root.set("operation", JsonValue.makeString(operation));
+        return root;
+    }
+
+    class bool write(string path, JsonValue receipt) {
+        return !FileSystem.exists(path)
+            && FileSystem.writeText(path, receipt.stringify() + "\n");
+    }
+}
+
+class DeckRemoteRunner {
+    public DeckGameModeRequest request;
+    public string requestPath;
+
+    public DeckRemoteRunner(string requestPath) {
+        self.requestPath = requestPath;
+        self.request = DeckGameModeRequest.parse(requestPath);
+    }
+
+    public bool safeRequest() {
+        return self.request.valid()
+            && FileSystem.isFile(self.requestPath)
+            && !FileSystem.isSymlink(self.requestPath)
+            && DeckGameModeContract.contains(self.request.projectRoot
+                + "/build/verification/steamdeck/requests",
+                self.requestPath);
+    }
+
+    public bool prepareRunRoot(bool existing) {
+        if (FileSystem.isSymlink(self.request.runRoot)) { return false; }
+        if (existing) {
+            return FileSystem.isDir(self.request.runRoot);
+        }
+        return !FileSystem.exists(self.request.runRoot)
+            && FileSystem.mkdirp(self.request.runRoot) == 0
+            && !FileSystem.isSymlink(self.request.runRoot);
+    }
+
+    public DeckSteamShortcutResolution shortcut() {
+        return DeckRemoteShortcut.resolve(
+            self.request.steamRoot, self.request.shortcut.executable);
+    }
+
+    public bool exactShortcut(DeckSteamShortcutResolution actual) {
+        return DeckRemoteShortcut.matches(actual, self.request.shortcut);
+    }
+
+    public int inspect() {
+        if (!self.prepareRunRoot(false)) { return 71; }
+        DeckSteamShortcutResolution resolution = DeckRemoteShortcut.resolve(
+            self.request.steamRoot, self.request.shortcut.executable);
+        string launcherSha256 = resolution.valid
+            ? DeckRemoteHash.file(self.request.shortcut.executable) : "";
+        DeckExpectedShortcut expected = DeckExpectedShortcut.fromResolution(
+            resolution, launcherSha256);
+        if (!expected.valid()) {
+            print(resolution.error.isEmpty()
+                ? "installed shortcut identity is incomplete"
+                : resolution.error);
+            return 78;
+        }
+        JsonValue receipt = DeckRemoteReceipt.base("inspect");
+        receipt.set("shortcut", expected.json());
+        return DeckRemoteReceipt.write(PathTools.join(
+            self.request.runRoot, "receipt.json"), receipt) ? 0 : 74;
+    }
+
+    public int inspectInputs() {
+        if (!self.prepareRunRoot(false)) { return 71; }
+        DeckRemoteSnapshot snapshot = DeckRemoteSnapshot.capture(
+            self.request.protectedInputs, self.request.externalRoots, false);
+        if (!snapshot.valid) { return 77; }
+        JsonValue receipt = DeckRemoteReceipt.base("inspect-inputs");
+        receipt.set("protected_inputs", snapshot.json());
+        return DeckRemoteReceipt.write(PathTools.join(
+            self.request.runRoot, "receipt.json"), receipt) ? 0 : 74;
+    }
+
+    public int batch(bool begin) {
+        if (!self.prepareRunRoot(!begin)) { return 71; }
+        string sentinel = DeckRemoteSentinel.value(self.request);
+        if (!DeckGameModeContract.sha256(sentinel)) { return 77; }
+        string stored = PathTools.join(
+            self.request.runRoot, "external-media.sentinel");
+        if (begin) {
+            if (FileSystem.exists(stored)
+                    || !FileSystem.writeText(stored, sentinel + "\n")) {
+                return 74;
+            }
+        } else if (!FileSystem.readText(stored).trim().equals(sentinel)) {
+            return 79;
+        }
+        JsonValue receipt = DeckRemoteReceipt.base(
+            begin ? "batch-begin" : "batch-end");
+        JsonValue media = JsonValue.makeObject();
+        media.set("sentinel_sha256", JsonValue.makeString(sentinel));
+        media.set("external_tree_scans", JsonValue.makeInt(0));
+        media.set("external_content_bytes_hashed", JsonValue.makeInt(0));
+        media.set("unchanged", JsonValue.makeBool(!begin));
+        receipt.set("media", media);
+        return DeckRemoteReceipt.write(PathTools.join(self.request.runRoot,
+            begin ? "batch-begin.json" : "batch-end.json"), receipt)
+            ? 0 : 74;
+    }
+
+    public bool prerequisites() {
+        if (DeckRemoteProcess.steam() < 2
+                || !self.exactShortcut(self.shortcut())
+                || access("/dev/uinput", W_OK) != 0) {
+            return false;
+        }
+        for root in self.request.externalRoots {
+            if (!FileSystem.isDir(root) || FileSystem.isSymlink(root)) {
+                return false;
+            }
+        }
+        DeckGeneratedSnapshot generated = DeckGeneratedSnapshot.capture(
+            self.request.generatedInputs);
+        ExecResult keepawake = ChildProcess.run("/usr/bin/systemctl",
+            ["--user", "is-active", "--quiet", "semu-keepawake.service"],
+            "", CommandEnvironment.empty(), CommandEnvironment.empty(), 10000);
+        return generated.valid && keepawake.ok();
+    }
+
+    public int preflight() {
+        if (!self.prepareRunRoot(false) || !self.prerequisites()) { return 77; }
+        JsonValue receipt = DeckRemoteReceipt.base("preflight");
+        receipt.set("shortcut", self.request.shortcut.json());
+        JsonValue checks = JsonValue.makeObject();
+        checks.set("game_mode", JsonValue.makeBool(true));
+        checks.set("keepawake", JsonValue.makeBool(true));
+        checks.set("uinput", JsonValue.makeBool(true));
+        checks.set("generated_inputs_readonly",
+            JsonValue.makeBool(true));
+        receipt.set("checks", checks);
+        return DeckRemoteReceipt.write(PathTools.join(
+            self.request.runRoot, "receipt.json"), receipt) ? 0 : 74;
+    }
+
+    public int frontend() {
+        if (!self.prepareRunRoot(false) || !self.prerequisites()) { return 77; }
+        DeckRemoteSession session = DeckRemoteGameMode.launch(self.request);
+        if (!session.valid(self.request)) { return 79; }
+        string screenshot = PathTools.join(
+            self.request.runRoot, "frontend-game-mode.png");
+        string screenshotSha256 = DeckRemoteGameMode.screenshot(
+            session, screenshot);
+        if (screenshotSha256.isEmpty()) { return 79; }
+        JsonValue receipt = DeckRemoteReceipt.base("frontend");
+        receipt.set("evidence", DeckRemoteReceipt.evidence(
+            "steam-shortcut-launch", false));
+        receipt.set("shortcut", self.request.shortcut.json());
+        JsonValue launch = JsonValue.makeObject();
+        launch.set("steam_ancestry", JsonValue.makeBool(true));
+        launch.set("same_game_mode_session", JsonValue.makeBool(true));
+        launch.set("gamescope_screenshot", JsonValue.makeBool(true));
+        launch.set("screenshot_sha256",
+            JsonValue.makeString(screenshotSha256));
+        receipt.set("launch", launch);
+        JsonValue media = JsonValue.makeObject();
+        media.set("external_tree_scans", JsonValue.makeInt(0));
+        media.set("external_content_bytes_hashed", JsonValue.makeInt(0));
+        receipt.set("media", media);
+        return DeckRemoteReceipt.write(PathTools.join(
+            self.request.runRoot, "receipt.json"), receipt) ? 0 : 74;
+    }
+
+    public string inputStateRoot() {
+        return PathTools.join(self.request.projectRoot,
+            "build/runtime/state/" + self.request.emulatorId + "/rendering");
+    }
+
+    public bool copyEvidence(string stateRoot, string inputLog,
+                             string emulatorLog, string wiiLog) {
+        string destination = PathTools.join(self.request.runRoot, "runtime");
+        if (FileSystem.mkdirp(destination) != 0) { return false; }
+        for name in ["semu-render-evidence.log", "semu-render-final.ppm"] {
+            string source = PathTools.join(stateRoot, name);
+            if (FileSystem.isFile(source)
+                    && !DeckRemoteFile.copy(
+                        source, PathTools.join(destination, name))) {
+                return false;
+            }
+        }
+        return !inputLog.isEmpty() && !emulatorLog.isEmpty()
+            && FileSystem.writeText(PathTools.join(
+                destination, "semu-input-evidence.log"), inputLog)
+            && FileSystem.writeText(PathTools.join(
+                destination, "semu-emulator-evidence.log"), emulatorLog)
+            && (!self.request.wiiExpected || (!wiiLog.isEmpty()
+                && FileSystem.writeText(PathTools.join(destination,
+                    "semu-wii-controller-evidence.log"), wiiLog)));
+    }
+
+    public int scenario() {
+        if (!self.prepareRunRoot(false) || !self.prerequisites()) { return 77; }
+        DeckRemoteSnapshot protectedBefore = DeckRemoteSnapshot.capture(
+            self.request.protectedInputs, self.request.externalRoots, true);
+        DeckGeneratedSnapshot generatedBefore = DeckGeneratedSnapshot.capture(
+            self.request.generatedInputs);
+        if (!protectedBefore.valid || !generatedBefore.valid) { return 77; }
+
+        string stateRoot = self.inputStateRoot();
+        string inputLogPath = PathTools.join(
+            stateRoot, "semu-input-evidence.log");
+        string emulatorLogPath = PathTools.join(
+            stateRoot, "semu-emulator-evidence.log");
+        string wiiLogPath = PathTools.join(
+            stateRoot, "semu-wii-controller-evidence.log");
+        long long inputOpening = DeckRemoteFile.size(inputLogPath);
+        long long emulatorOpening = DeckRemoteFile.size(emulatorLogPath);
+        long long wiiOpening = DeckRemoteFile.size(wiiLogPath);
+        if (inputOpening < 0LL) { inputOpening = 0LL; }
+        if (emulatorOpening < 0LL) { emulatorOpening = 0LL; }
+        if (wiiOpening < 0LL) { wiiOpening = 0LL; }
+
+        Vector<int> existing = DeckRemoteProcess.all();
+        DeckRemoteSession session = DeckRemoteGameMode.launch(self.request);
+        if (!session.valid(self.request)) { return 79; }
+        string frontendScreenshot = DeckRemoteGameMode.screenshot(session,
+            PathTools.join(self.request.runRoot, "frontend-game-mode.png"));
+        if (frontendScreenshot.isEmpty()) { return 79; }
+
+        bool automated = self.request.operation.equals("automated-game-mode");
+        if (automated && !DeckRemoteInput.run(self.request,
+                self.request.navigationPlan,
+                self.request.navigationPlanSha256,
+                PathTools.join(self.request.runRoot, "navigation-uinput.log"))) {
+            return 80;
+        }
+        if (!automated) {
+            print("Select the declared ROM in the live Semu ES-DE session using only the physical Steam Deck controls.");
+        }
+        int game = DeckRemoteGame.waitFor(self.request, session.esDe, existing);
+        if (game < 2 || !DeckRemoteMounts.externalReadOnly(
+                game, self.request.externalRoots)) {
+            return 81;
+        }
+        string gameScreenshot = DeckRemoteGameMode.screenshot(session,
+            PathTools.join(self.request.runRoot, "game-running.png"));
+        if (gameScreenshot.isEmpty()) { return 79; }
+
+        if (automated) {
+            if (!DeckRemoteInput.run(self.request, self.request.actionPlan,
+                    self.request.actionPlanSha256, PathTools.join(
+                        self.request.runRoot, "actions-uinput.log"))
+                    || !DeckRemoteGame.waitForExit(game, 30000)) {
+                return 82;
+            }
+            if (!DeckRemoteInput.relaunch(self.request,
+                    self.request.runRoot, 1)) { return 80; }
+            game = DeckRemoteGame.waitFor(self.request, session.esDe, []);
+            if (game < 2 || !DeckRemoteInput.run(self.request,
+                    self.request.startSelectPlan,
+                    self.request.startSelectPlanSha256,
+                    PathTools.join(self.request.runRoot,
+                        "start-select-uinput.log"))
+                    || !DeckRemoteGame.waitForExit(game, 30000)) {
+                return 82;
+            }
+            if (!DeckRemoteInput.relaunch(self.request,
+                    self.request.runRoot, 2)) { return 80; }
+            game = DeckRemoteGame.waitFor(self.request, session.esDe, []);
+            if (game < 2 || !DeckRemoteInput.run(self.request,
+                    self.request.reverseStartSelectPlan,
+                    self.request.reverseStartSelectPlanSha256,
+                    PathTools.join(self.request.runRoot,
+                        "start-select-reverse-uinput.log"))
+                    || !DeckRemoteGame.waitForExit(game, 30000)) {
+                return 82;
+            }
+        } else if (self.request.operation.equals("operator-start-select")) {
+            print("Use native gameplay controls, then press Start+Select together in the first press order.");
+            if (!DeckRemoteGame.waitForExit(game, 300000)) { return 82; }
+            print("Relaunch the same declared ROM in this ES-DE session, then press Select+Start in the opposite order.");
+            game = DeckRemoteGame.waitFor(self.request, session.esDe, []);
+            if (game < 2 || !DeckRemoteGame.waitForExit(game, 300000)) {
+                return 82;
+            }
+        } else {
+            print("Exercise native gameplay, save/load, every quick/menu radial slot, Wii modes when applicable, then quit from the physical radial.");
+            int captures = 0;
+            for (int frame = 0; frame < 1200
+                    && DeckRemoteProcess.alive(game); frame++) {
+                string path = PathTools.join(self.request.runRoot,
+                    "operator-radial-" + f"{frame}" + ".png");
+                if (!DeckRemoteGameMode.screenshot(session, path).isEmpty()) {
+                    captures++;
+                }
+                DeckRemoteClock.sleep(250);
+            }
+            if (captures < 1 || DeckRemoteProcess.alive(game)) { return 82; }
+        }
+
+        if (!session.valid(self.request)) { return 83; }
+        string returnScreenshot = DeckRemoteGameMode.screenshot(session,
+            PathTools.join(self.request.runRoot, "esde-return.png"));
+        DeckRemoteSnapshot protectedAfter = DeckRemoteSnapshot.capture(
+            self.request.protectedInputs, self.request.externalRoots, true);
+        DeckGeneratedSnapshot generatedAfter = DeckGeneratedSnapshot.capture(
+            self.request.generatedInputs);
+        if (returnScreenshot.isEmpty()
+                || !protectedBefore.equals(protectedAfter)
+                || !generatedBefore.equals(generatedAfter)) {
+            return 84;
+        }
+
+        string inputLog = DeckRemoteFile.tail(inputLogPath, inputOpening);
+        string emulatorLog = DeckRemoteFile.tail(
+            emulatorLogPath, emulatorOpening);
+        string wiiLog = DeckRemoteFile.tail(wiiLogPath, wiiOpening);
+        string source = automated ? "virtual" : "hardware";
+        bool requireRadial = !self.request.operation.equals(
+            "operator-start-select");
+        bool requireStartSelect = !self.request.operation.equals(
+            "operator-radial");
+        bool quick = !requireRadial || DeckRemoteEvidence.radial(
+            inputLog, source, 1, self.request.quickRadialSlots);
+        bool menu = !requireRadial || DeckRemoteEvidence.radial(
+            inputLog, source, 2, self.request.menuRadialSlots);
+        bool radialQuit = !requireRadial || DeckRemoteEvidence.immediate(
+            inputLog, source, "action-chord", 1);
+        bool startSelect = !requireStartSelect || DeckRemoteEvidence.immediate(
+            inputLog, source, "select+start", 2);
+        bool gameplay = DeckRemoteEvidence.gameplay(
+            emulatorLog, self.request,
+            automated ? "steam-virtual-gamepad" : "hardware");
+        bool saves = !requireRadial || DeckRemoteEvidence.saveLoad(
+            emulatorLog, self.request);
+        bool modes = !requireRadial || DeckRemoteEvidence.wiiModes(
+            wiiLog, self.request);
+        if (!quick || !menu || !radialQuit || !startSelect
+                || !gameplay || !saves || !modes) {
+            return 85;
+        }
+        if (!self.copyEvidence(
+                stateRoot, inputLog, emulatorLog, wiiLog)) { return 86; }
+
+        JsonValue receipt = DeckRemoteReceipt.base(self.request.operation);
+        receipt.set("evidence", DeckRemoteReceipt.evidence(
+            self.request.scenario, self.request.humanObserved));
+        receipt.set("shortcut", self.request.shortcut.json());
+        JsonValue launch = JsonValue.makeObject();
+        launch.set("steam_ancestry", JsonValue.makeBool(true));
+        launch.set("same_game_mode_session", JsonValue.makeBool(true));
+        launch.set("same_es_de_session", JsonValue.makeBool(true));
+        launch.set("through_es_de", JsonValue.makeBool(true));
+        launch.set("packaged_process", JsonValue.makeBool(true));
+        launch.set("process_return", JsonValue.makeBool(true));
+        launch.set("gamescope_screenshot", JsonValue.makeBool(true));
+        launch.set("frontend_screenshot_sha256",
+            JsonValue.makeString(frontendScreenshot));
+        launch.set("game_screenshot_sha256",
+            JsonValue.makeString(gameScreenshot));
+        launch.set("return_screenshot_sha256",
+            JsonValue.makeString(returnScreenshot));
+        receipt.set("launch", launch);
+        JsonValue media = JsonValue.makeObject();
+        media.set("external_tree_scans", JsonValue.makeInt(0));
+        media.set("external_content_bytes_hashed", JsonValue.makeInt(0));
+        media.set("external_mounts_readonly", JsonValue.makeBool(true));
+        media.set("protected_inputs_unchanged", JsonValue.makeBool(true));
+        receipt.set("media", media);
+        receipt.set("protected_inputs", protectedAfter.json());
+        JsonValue generated = JsonValue.makeObject();
+        generated.set("unchanged", JsonValue.makeBool(true));
+        generated.set("files", generatedAfter.json());
+        receipt.set("generated_inputs", generated);
+        JsonValue input = JsonValue.makeObject();
+        input.set("gameplay_injected", JsonValue.makeBool(automated));
+        input.set("gameplay_consumed", JsonValue.makeBool(gameplay));
+        input.set("quick_radial_consumed", JsonValue.makeBool(quick));
+        input.set("menu_radial_consumed", JsonValue.makeBool(menu));
+        input.set("quick_radial_slots",
+            JsonValue.makeInt(requireRadial
+                ? self.request.quickRadialSlots : 0));
+        input.set("menu_radial_slots",
+            JsonValue.makeInt(requireRadial
+                ? self.request.menuRadialSlots : 0));
+        input.set("wii_mode_slots",
+            JsonValue.makeInt(requireRadial
+                ? self.request.wiiModeSlots : 0));
+        input.set("radial_quit_immediate", JsonValue.makeBool(radialQuit));
+        input.set("start_select_orders",
+            JsonValue.makeInt(requireStartSelect ? 2 : 0));
+        input.set("steam_radial_ui_proven", JsonValue.makeBool(
+            !automated && self.request.operation.equals("operator-radial")
+                && self.request.humanObserved));
+        input.set("save_load_consumed", JsonValue.makeBool(saves));
+        input.set("wii_modes_consumed", JsonValue.makeBool(modes));
+        receipt.set("input", input);
+        return DeckRemoteReceipt.write(PathTools.join(
+            self.request.runRoot, "receipt.json"), receipt) ? 0 : 74;
+    }
+
+    public int run() {
+        if (!self.safeRequest()) { return 64; }
+        if (self.request.operation.equals("inspect")) { return self.inspect(); }
+        if (self.request.operation.equals("inspect-inputs")) {
+            return self.inspectInputs();
+        }
+        if (self.request.operation.equals("batch-begin")) {
+            return self.batch(true);
+        }
+        if (self.request.operation.equals("batch-end")) {
+            return self.batch(false);
+        }
+        if (self.request.operation.equals("preflight")) {
+            return self.preflight();
+        }
+        if (self.request.operation.equals("frontend")) {
+            return self.frontend();
+        }
+        return self.scenario();
+    }
+}
+
+int main(int argc, char** argv) {
+    CliArgs arguments = CliArgs(argc, argv);
+    string request = arguments.valueAfter("--request", "");
+    if (argc != 3 || !DeckGameModeContract.absolute(request)) {
+        print("usage: semu-deck-acceptance --request /absolute/request.json");
+        return 64;
+    }
+    return DeckRemoteRunner(request).run();
+}

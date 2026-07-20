@@ -1,0 +1,143 @@
+// Stable native action journal ABI shared by the input supervisor and renderer.
+// Controller composition, chords, icons, and evidence markers are declarative
+// Steam Deck target data and do not belong in this wire contract.
+
+#include <stdio.h>
+#include <string.h>
+
+struct SemuActionRecord {
+    unsigned int abi;
+    unsigned int size;
+    unsigned long long sequence;
+    long long monotonic_ms;
+    int action;
+    int radial;
+    int slot;
+    int reserved;
+    char source[16];
+};
+
+#define SEMU_ACTION_EXTENSION_CAPACITY 64
+#define SEMU_ACTION_EXTENSION_ID_CAPACITY 128
+
+struct SemuActionExtensionIdentity {
+    char value[SEMU_ACTION_EXTENSION_ID_CAPACITY];
+};
+
+struct SemuActionExtensionIdentity
+    SemuActionExtensionIds[SEMU_ACTION_EXTENSION_CAPACITY];
+int SemuActionExtensionCount = 0;
+
+class SemuActions {
+    class int none() { return 0; }
+    class int menuToggle() { return 1; }
+    class int menuUp() { return 2; }
+    class int menuDown() { return 3; }
+    class int menuConfirm() { return 4; }
+    class int menuBack() { return 5; }
+    class int stateSave() { return 6; }
+    class int stateLoad() { return 7; }
+    class int appQuit() { return 8; }
+    class int screenshot() { return 9; }
+    class int escape() { return 10; }
+    class int extensionBase() { return 11; }
+    class int extensionCapacity() { return SEMU_ACTION_EXTENSION_CAPACITY; }
+
+    class void resetExtensions() {
+        memset(SemuActionExtensionIds, 0,
+            sizeof(SemuActionExtensionIds));
+        SemuActionExtensionCount = 0;
+    }
+
+    class bool extensionId(string actionId) {
+        return actionId.contains(".controller.");
+    }
+
+    class int extensionCode(string actionId) {
+        if (!SemuActions.extensionId(actionId)) { return SemuActions.none(); }
+        for (int index = 0; index < SemuActionExtensionCount; index++) {
+            if (actionId.equals(SemuActionExtensionIds[index].value)) {
+                return SemuActions.extensionBase() + index;
+            }
+        }
+        if (SemuActionExtensionCount >= SemuActions.extensionCapacity()
+                || actionId.len() >= SEMU_ACTION_EXTENSION_ID_CAPACITY) {
+            return SemuActions.none();
+        }
+        snprintf(SemuActionExtensionIds[SemuActionExtensionCount].value,
+            SEMU_ACTION_EXTENSION_ID_CAPACITY, "%s", actionId);
+        SemuActionExtensionCount++;
+        return SemuActions.extensionBase() + SemuActionExtensionCount - 1;
+    }
+
+    class string extensionIdentity(int action) {
+        int slot = action - SemuActions.extensionBase();
+        return slot >= 0 && slot < SemuActionExtensionCount
+            ? SemuActionExtensionIds[slot].value : "";
+    }
+
+    class int code(string actionId) {
+        if (actionId.equals("ui.menu")) { return SemuActions.menuToggle(); }
+        if (actionId.equals("ui.menu.up")) { return SemuActions.menuUp(); }
+        if (actionId.equals("ui.menu.down")) { return SemuActions.menuDown(); }
+        if (actionId.equals("ui.menu.confirm")) { return SemuActions.menuConfirm(); }
+        if (actionId.equals("ui.menu.back")) { return SemuActions.menuBack(); }
+        if (actionId.equals("state.save")) { return SemuActions.stateSave(); }
+        if (actionId.equals("state.load")) { return SemuActions.stateLoad(); }
+        if (actionId.equals("app.quit")) { return SemuActions.appQuit(); }
+        if (actionId.equals("ui.screenshot")) { return SemuActions.screenshot(); }
+        if (actionId.equals("ui.escape")) { return SemuActions.escape(); }
+        return SemuActions.extensionCode(actionId);
+    }
+
+    class string id(int action) {
+        if (action == SemuActions.menuToggle()) { return "ui.menu"; }
+        if (action == SemuActions.menuUp()) { return "ui.menu.up"; }
+        if (action == SemuActions.menuDown()) { return "ui.menu.down"; }
+        if (action == SemuActions.menuConfirm()) { return "ui.menu.confirm"; }
+        if (action == SemuActions.menuBack()) { return "ui.menu.back"; }
+        if (action == SemuActions.stateSave()) { return "state.save"; }
+        if (action == SemuActions.stateLoad()) { return "state.load"; }
+        if (action == SemuActions.appQuit()) { return "app.quit"; }
+        if (action == SemuActions.screenshot()) { return "ui.screenshot"; }
+        if (action == SemuActions.escape()) { return "ui.escape"; }
+        return SemuActions.extensionIdentity(action);
+    }
+
+    class bool valid(int action) {
+        return !SemuActions.id(action).isEmpty();
+    }
+
+    class bool controllerMode(int action) {
+        return action >= SemuActions.extensionBase()
+            && action < SemuActions.extensionBase() + SemuActionExtensionCount;
+    }
+
+    class int controllerModeSlot(int action) {
+        return SemuActions.controllerMode(action)
+            ? action - SemuActions.extensionBase() : -1;
+    }
+
+    class bool rendererOwned(int action) {
+        return action == SemuActions.menuToggle()
+            || action == SemuActions.menuUp()
+            || action == SemuActions.menuDown()
+            || action == SemuActions.menuConfirm()
+            || action == SemuActions.menuBack()
+            || action == SemuActions.stateSave()
+            || action == SemuActions.stateLoad()
+            || action == SemuActions.screenshot();
+    }
+}
+
+class RendererActionJournal {
+    class int abi() { return 1; }
+    class string fileName() { return "semu-render-actions.bin"; }
+    class string sequenceFileName() { return "semu-input-sequence.bin"; }
+    class string sessionLockFileName() { return "semu-input-session.lock"; }
+    class string evidenceFileName() { return "semu-input-evidence.log"; }
+    class int direct() { return 0; }
+    class int quickRadial() { return 1; }
+    class int menuRadial() { return 2; }
+    class int systemRadial() { return 3; }
+}

@@ -1,0 +1,496 @@
+// cli.btrc - compiler-shaped Semu command surface.
+
+import std.{cli, fs, json, platform}
+import ./compiler/model.btrc
+import ./compiler/pipeline.btrc
+import ./generators/appimage.btrc
+import ./generators/appimage/app_runtime.btrc
+import ./generators/appimage/assembler.btrc
+import ./generators/appimage/installed_launcher.btrc
+import ./generators/appimage/installer.btrc
+import ./generators/appimage/provenance.btrc
+import ./generators/emulator_profiles.btrc
+import ./generators/emulator_runtime.btrc
+import ./generators/esde.btrc
+import ./generators/esde_runtime.btrc
+import ./generators/settings.btrc
+import ./generators/steam_input.btrc
+import ./generators/sync.btrc
+import ./lib/owned_paths.btrc
+
+class SemuCli {
+    class void commandLineSettings(CliCommandLine command, SemuBuildRequest request,
+                                   CompilerDiagnostics diagnostics) {
+        string text = command.option("--settings-json", "{}");
+        JsonValue settings = JsonValue.parse(text);
+        if (settings.isError() || !settings.isObject()) {
+            diagnostics.add("--settings-json", "(root)",
+                "expected a JSON object");
+        } else {
+            request.commandLineSettings = settings;
+        }
+    }
+
+    class SemuBuildRequest request(CliCommandLine command, string operation,
+                                   string target, string emulator,
+                                   CompilerDiagnostics diagnostics,
+                                   string outputOption = "--output") {
+        SemuBuildRequest request = SemuBuildRequest();
+        request.operation = operation;
+        request.target = target;
+        request.emulator = emulator;
+        request.projectRoot = SemuOwnedPaths.projectRoot(
+            command.option("--project", ""));
+        request.semuHome = SemuOwnedPaths.semuHome(
+            command.option("--semu-home", ""), request.projectRoot);
+        request.outputRoot = command.option(outputOption, "");
+        SemuCli.commandLineSettings(command, request, diagnostics);
+        return request;
+    }
+
+    class bool report(CompilerDiagnostics diagnostics) {
+        if (diagnostics.ok()) { return false; }
+        print(f"compiler violations: {diagnostics.errors.size()}");
+        for error in diagnostics.errors { print("  " + error); }
+        return true;
+    }
+
+    class int compile(SemuBuildRequest request,
+                      CompilerDiagnostics diagnostics) {
+        SemuCompilation compilation = SemuCompiler.compile(
+            request, diagnostics);
+        if (SemuCli.report(diagnostics)) { return 1; }
+        SemuCompilerModel model = compilation.model;
+        SemuBuildPlan plan = compilation.plan;
+        string output = compilation.output;
+        string configOutput = request.operation.equals("configs")
+            ? SemuEmulatorGenerator.emit(model, plan, diagnostics) : "";
+        string esDeOutput = request.operation.equals("configs")
+            ? SemuEsDeGenerator.emit(model, plan, diagnostics) : "";
+        string domainOutput = request.operation.equals("package")
+            ? SemuAppImageGenerator.emit(
+                plan, request.projectRoot, diagnostics) : "";
+        if (SemuCli.report(diagnostics)) { return 1; }
+        print("wrote " + output);
+        if (!configOutput.isEmpty()) { print("wrote " + configOutput); }
+        if (!esDeOutput.isEmpty()) { print("wrote " + esDeOutput); }
+        if (!domainOutput.isEmpty()) { print("wrote " + domainOutput); }
+        return 0;
+    }
+
+    class int runBuild(CliArgs arguments) {
+        CliCommandLine command = CliCommandLine.parseFrom(arguments, 1);
+        CompilerDiagnostics diagnostics = CompilerDiagnostics();
+        if (!command.ok()) {
+            for error in command.errors {
+                diagnostics.add("build", "arguments", error);
+            }
+            SemuCli.report(diagnostics);
+            return 1;
+        }
+        string kind = command.operand(0);
+        if (kind.equals("target")) {
+            string target = command.operand(1);
+            if (target.isEmpty()) { return SemuCli.usage(1); }
+            return SemuCli.compile(
+                SemuCli.request(command, "target", target, "", diagnostics),
+                diagnostics);
+        }
+        if (kind.equals("emulator")) {
+            string emulator = command.operand(1);
+            string target = command.option("--target", "");
+            if (emulator.isEmpty() || target.isEmpty()) { return SemuCli.usage(1); }
+            return SemuCli.compile(
+                SemuCli.request(command, "emulator", target, emulator, diagnostics),
+                diagnostics);
+        }
+        if (kind.equals("configs")) {
+            string target = command.option("--target", "");
+            if (target.isEmpty()) { return SemuCli.usage(1); }
+            return SemuCli.compile(
+                SemuCli.request(command, "configs", target, "", diagnostics),
+                diagnostics);
+        }
+        return SemuCli.usage(1);
+    }
+
+    class int runPackage(CliArgs arguments) {
+        CliCommandLine command = CliCommandLine.parseFrom(arguments, 1);
+        if (!command.ok() || !command.operand(0).equals("appimage")) {
+            return SemuCli.usage(1);
+        }
+        string mode = command.operand(1);
+        string project = SemuOwnedPaths.projectRoot(
+            command.option("--project", ""));
+        string runtimeRoot = command.option("--runtime-root", "");
+        if (mode.equals("provenance")) {
+            if (runtimeRoot.isEmpty()
+                    || (command.flag("--write") == command.flag("--validate"))) {
+                return SemuCli.usage(1);
+            }
+            AppImageProvenanceResult result = command.flag("--write")
+                ? AppImageRuntimeProvenance.write(project, runtimeRoot)
+                : AppImageRuntimeProvenance.validate(project, runtimeRoot);
+            if (!result.ok()) {
+                print("appimage provenance: " + result.error);
+                return 2;
+            }
+            print("appimage provenance: "
+                + (command.flag("--write") ? "wrote " : "validated ")
+                + AppImageRuntimeProvenance.path(runtimeRoot));
+            return 0;
+        }
+        if (!mode.isEmpty() && !mode.equals("verify")) {
+            return SemuCli.usage(1);
+        }
+        string target = command.option("--target", "");
+        if (target.isEmpty() || runtimeRoot.isEmpty()) {
+            return SemuCli.usage(1);
+        }
+        CompilerDiagnostics diagnostics = CompilerDiagnostics();
+        string operation = mode.equals("verify") ? "verify" : "package";
+        SemuBuildRequest request = SemuCli.request(
+            command, operation, target, "", diagnostics, "--plan-output");
+        int compiled = SemuCli.compile(request, diagnostics);
+        if (compiled != 0) { return compiled; }
+        string workRoot = command.option("--work-root", "");
+        if (mode.equals("verify")) {
+            string artifact = command.option("--artifact", "");
+            if (artifact.isEmpty()) { return SemuCli.usage(1); }
+            return AppImageAssembler.verify(project, runtimeRoot, artifact,
+                workRoot, command.flag("--print-sha256"));
+        }
+        string output = command.option("--output", "");
+        if (output.isEmpty()) { return SemuCli.usage(1); }
+        return AppImageAssembler.assemble(
+            project, runtimeRoot, output, workRoot);
+    }
+
+    class int runVerify(CliArgs arguments) {
+        CliCommandLine command = CliCommandLine.parseFrom(arguments, 1);
+        if (!command.ok() || !command.operand(0).equals("target")) {
+            return SemuCli.usage(1);
+        }
+        string target = command.operand(1);
+        if (target.isEmpty()) { return SemuCli.usage(1); }
+        CompilerDiagnostics diagnostics = CompilerDiagnostics();
+        return SemuCli.compile(
+            SemuCli.request(command, "verify", target, "", diagnostics),
+            diagnostics);
+    }
+
+    class int runLauncher(CliArgs arguments) {
+        CliCommandLine command = CliCommandLine.parseFrom(arguments, 1);
+        string emulatorId = command.operand(0);
+        string target = command.option("--target",
+            Environment.get("SEMU_TARGET", ""));
+        string project = SemuOwnedPaths.projectRoot(
+            command.option("--project", ""));
+        string semuHome = SemuOwnedPaths.semuHome(
+            command.option("--semu-home", ""), project);
+        if (!command.ok() || emulatorId.isEmpty() || target.isEmpty()) {
+            return SemuCli.usage(1);
+        }
+
+        CompilerDiagnostics diagnostics = CompilerDiagnostics();
+        SemuBuildRequest request = SemuBuildRequest();
+        request.operation = "configs";
+        request.target = target;
+        request.projectRoot = project;
+        request.semuHome = semuHome;
+        SemuCompilation compilation = SemuCompiler.check(
+            request, diagnostics);
+        if (SemuCli.report(diagnostics)) { return 1; }
+        SemuCompilerModel model = compilation.model;
+        SemuBuildPlan build = compilation.plan;
+
+        SemuEmulatorSource emulator = model.emulatorById(emulatorId);
+        string systemId = command.option("--system", "");
+        if (systemId.isEmpty() && emulator.definition.get(
+                "default_system").isString()) {
+            systemId = emulator.definition.get("default_system").asString();
+        }
+        string rom = command.option("--rom", command.operand(1));
+        string core = command.option("--core", "");
+        if (systemId.isEmpty() || rom.isEmpty()) {
+            return SemuCli.usage(1);
+        }
+        SemuLaunchPlan plan = SemuEmulatorRuntime.plan(
+            model, build, emulatorId, systemId, core, rom, diagnostics);
+        if (SemuCli.report(diagnostics)) { return 1; }
+        if (command.flag("--print-plan")) {
+            print(plan.json().stringify());
+            return plan.error.isEmpty() ? 0 : 1;
+        }
+        return SemuEmulatorRuntime.execute(plan);
+    }
+
+    class int settingsError(SemuConfigResult result) {
+        print("settings: " + result.error);
+        return 1;
+    }
+
+    class int applySettings(CliCommandLine command, SemuConfigStore store) {
+        CompilerDiagnostics inventoryDiagnostics = CompilerDiagnostics();
+        string selectedTarget = command.option("--target", "");
+        int applied = 0;
+        for targetId in SemuCompiler.targetIds(
+                store.projectRoot, inventoryDiagnostics) {
+            if (!selectedTarget.isEmpty()
+                    && !targetId.equals(selectedTarget)) {
+                continue;
+            }
+            CompilerDiagnostics diagnostics = CompilerDiagnostics();
+            SemuBuildRequest request = SemuBuildRequest();
+            request.operation = "configs";
+            request.target = targetId;
+            request.projectRoot = store.projectRoot;
+            request.semuHome = store.semuHome;
+            if (SemuCli.compile(request, diagnostics) != 0) { return 1; }
+            applied++;
+        }
+        if (SemuCli.report(inventoryDiagnostics)) { return 1; }
+        if (applied == 0) {
+            print("settings: no matching compiler target");
+            return 1;
+        }
+        SemuSettingsCompileResult compiled = SemuSettingsCompiler.emit(store);
+        if (!compiled.ok()) {
+            print("settings: " + compiled.error);
+            return 1;
+        }
+        SemuSyncProductResult synchronization = SemuSyncProduct.execute(
+            store, SettingsUiProtocol.hostPlatform(),
+            SemuSyncOperation.settingsPrepare());
+        if (!synchronization.ok()) {
+            print("settings: " + synchronization.error);
+            return 1;
+        }
+        print(f"applied settings to {applied} target configuration plan(s)");
+        return 0;
+    }
+
+    class int prepareSettings(CliCommandLine command, SemuConfigStore store) {
+        SemuConfigResult result = store.prepare();
+        if (!result.ok) { return SemuCli.settingsError(result); }
+
+        string target = command.option("--target",
+            Environment.get("SEMU_TARGET", ""));
+        if (target.isEmpty()) {
+            print("settings: --target or SEMU_TARGET is required");
+            return 1;
+        }
+
+        CompilerDiagnostics diagnostics = CompilerDiagnostics();
+        SemuBuildRequest request = SemuBuildRequest();
+        request.operation = "configs";
+        request.target = target;
+        request.projectRoot = store.projectRoot;
+        request.semuHome = store.semuHome;
+        request.outputRoot = command.option("--output", "");
+        SemuCli.commandLineSettings(command, request, diagnostics);
+        SemuCompilation compilation = SemuCompiler.check(
+            request, diagnostics);
+        if (SemuCli.report(diagnostics)) { return 1; }
+        SemuCompilerModel model = compilation.model;
+        SemuBuildPlan plan = compilation.plan;
+
+        string launcher = SettingsEsDeGenerator.launcher(plan.settings);
+        string esDeHome = command.option("--es-de-home",
+            Environment.get("SEMU_ES_DE_HOME",
+                PathTools.join(Environment.get("HOME", "."), "ES-DE")));
+        if (SettingsUiProtocol.applies(plan.settings.get("menu"), plan.platform)
+                && !SettingsEsDeGenerator.validStableLauncher(launcher)) {
+            print("settings: SEMU_ENTRYPOINT must name an installed bin/semu or a persistent AppImage");
+            return 1;
+        }
+        string installed = SemuEsDeRuntime.install(
+            model, plan, esDeHome, diagnostics);
+        if (SemuCli.report(diagnostics) || installed.isEmpty()
+                || SettingsEsDeGenerator.install(
+                    plan.settings, esDeHome, plan.platform, launcher) != 0) {
+            return 1;
+        }
+        if (plan.platform.equals("linux")) {
+            SemuInputSource selectedInput = model.inputByReference(plan.input);
+            if (selectedInput.actionsFile.isEmpty()) {
+                print("settings: selected input action definition is absent");
+                return 1;
+            }
+            string generatedInput = PathTools.join(
+                plan.outputRoot, "steam-input");
+            SteamInputResult emitted = SteamInputGenerator.emit(
+                selectedInput.actionsFile, generatedInput);
+            if (!emitted.ok()) {
+                for error in emitted.errors { print("settings: " + error); }
+                return 1;
+            }
+            SteamInputResult inputInstalled = SteamInputGenerator.install(
+                selectedInput.actionsFile, generatedInput,
+                Environment.get("HOME", "."));
+            if (!inputInstalled.ok()) {
+                for error in inputInstalled.errors {
+                    print("settings: " + error);
+                }
+                return 1;
+            }
+        }
+        SemuSettingsCompileResult compiled = SemuSettingsCompiler.emit(store);
+        if (!compiled.ok()) {
+            print("settings: " + compiled.error);
+            return 1;
+        }
+        SemuSyncProductResult synchronization = SemuSyncProduct.execute(
+            store, plan.platform, SemuSyncOperation.settingsPrepare());
+        if (!synchronization.ok()) {
+            print("settings: " + synchronization.error);
+            return 1;
+        }
+        print("ready " + result.file);
+        return 0;
+    }
+
+    class int runSync(CliArgs arguments) {
+        CliCommandLine command = CliCommandLine.parseFrom(arguments, 1);
+        if (!command.ok()) { return SemuCli.usage(1); }
+        string action = command.operand(0);
+        string project = SemuOwnedPaths.projectRoot(
+            command.option("--project", ""));
+        string semuHome = SemuOwnedPaths.semuHome(
+            command.option("--semu-home", ""), project);
+        string platformId = command.option(
+            "--platform", SettingsUiProtocol.hostPlatform());
+        SemuConfigStore store = SemuConfigStore(project, semuHome);
+        SemuSyncOperation operation = SemuSyncOperation.direct(action);
+        if (!operation.valid()) { return SemuCli.usage(1); }
+        if (action.equals("daemon")) {
+            return SemuSyncProduct.daemon(store, platformId);
+        }
+        SemuSyncProductResult result = SemuSyncProduct.execute(
+            store, platformId, operation, !command.flag("--print"));
+        if (!result.ok()) {
+            print("sync: " + result.error);
+            return 1;
+        }
+        print(result.document.trim());
+        return 0;
+    }
+
+    class int runInstall(CliArgs arguments) {
+        CliCommandLine command = CliCommandLine.parseFrom(arguments, 1);
+        if (!command.ok()) { return SemuInstallCommand.run(command); }
+        if (command.operand(0).equals("launch")) {
+            return SemuInstalledLauncher.launch(command);
+        }
+        return SemuInstallCommand.run(command);
+    }
+
+    class int runRuntime(CliArgs arguments) {
+        return SemuAppRuntimeCommand.run(
+            CliCommandLine.parseFrom(arguments, 1));
+    }
+
+    class int runSettings(CliArgs arguments) {
+        CliCommandLine command = CliCommandLine.parseFrom(arguments, 1);
+        if (!command.ok()) { return SemuCli.usage(1); }
+        string action = command.operand(0);
+        string project = SemuOwnedPaths.projectRoot(
+            command.option("--project", ""));
+        string semuHome = SemuOwnedPaths.semuHome(
+            command.option("--semu-home", ""), project);
+        SemuConfigStore store = SemuConfigStore(project, semuHome);
+
+        if (action.equals("prepare")) {
+            return SemuCli.prepareSettings(command, store);
+        }
+        if (action.equals("get")) {
+            string path = command.operand(1);
+            if (path.isEmpty()) { return SemuCli.usage(1); }
+            SemuConfigResult result = store.get(path);
+            if (!result.ok) { return SemuCli.settingsError(result); }
+            print(result.value.stringify());
+            return 0;
+        }
+        if (action.equals("put")) {
+            string path = command.operand(1);
+            string encodedValue = command.operand(2);
+            if (path.isEmpty() || encodedValue.isEmpty()) {
+                return SemuCli.usage(1);
+            }
+            SemuConfigResult result = store.putJson(path, encodedValue);
+            if (!result.ok) { return SemuCli.settingsError(result); }
+            print("updated " + result.path + " in " + result.file);
+            return command.flag("--apply")
+                ? SemuCli.applySettings(command, store) : 0;
+        }
+        if (action.equals("ui")) {
+            SettingsUiResult result = SettingsUiProtocol.render(
+                store, SettingsUiProtocol.hostPlatform());
+            if (!result.ok) {
+                print("settings: " + result.error);
+                return 1;
+            }
+            print(result.document.trim());
+            return 0;
+        }
+        if (action.equals("terminal")) {
+            return SettingsUiProtocol.terminal(
+                store, SettingsUiProtocol.hostPlatform());
+        }
+        return SemuCli.usage(1);
+    }
+
+    class int usage(int status) {
+        print("usage: semu <command>");
+        print("  build target TARGET [--output PATH]");
+        print("  build emulator ID --target TARGET [--output PATH]");
+        print("  build configs --target TARGET [--output PATH]");
+        print("  package appimage --target TARGET --runtime-root PATH --output PATH");
+        print("      [--plan-output PATH] [--work-root PATH]");
+        print("  package appimage verify --target TARGET --runtime-root PATH");
+        print("      --artifact PATH [--plan-output PATH] [--work-root PATH]");
+        print("  package appimage provenance (--write | --validate)");
+        print("      --runtime-root PATH [--project PATH]");
+        print("  verify target TARGET [--output PATH]");
+        print("  launcher EMULATOR --target TARGET --system SYSTEM --rom PATH");
+        print("      [--core CORE] [--print-plan] [--project PATH]");
+        print("  settings prepare --target TARGET [--es-de-home PATH]");
+        print("      [--project PATH] [--semu-home PATH] [--output PATH]");
+        print("  settings ui|get PATH|put PATH JSON_VALUE [--apply]");
+        print("      [--target TARGET] [--project PATH] [--semu-home PATH]");
+        print("  sync apply|status [--platform PLATFORM]");
+        print("      [--project PATH] [--semu-home PATH]");
+        print("  sync open [--print] [--platform PLATFORM]");
+        print("      [--project PATH] [--semu-home PATH]");
+        print("  sync daemon --platform PLATFORM");
+        print("      [--project PATH] [--semu-home PATH]");
+        print("  install install|status|rollback [--install-root PATH]");
+        print("      [--artifact PATH] [--project PATH]");
+        print("  common: [--project PATH] [--semu-home PATH]");
+        print("          [--settings-json JSON]");
+        return status;
+    }
+
+    class int run(CliArgs arguments) {
+        string command = arguments.command();
+        if (command.equals("-h") || command.equals("--help")
+                || command.equals("help")) {
+            return SemuCli.usage(0);
+        }
+        if (command.equals("build")) { return SemuCli.runBuild(arguments); }
+        if (command.equals("package")) { return SemuCli.runPackage(arguments); }
+        if (command.equals("verify")) { return SemuCli.runVerify(arguments); }
+        if (command.equals("launcher")) { return SemuCli.runLauncher(arguments); }
+        if (command.equals("settings")) {
+            return SemuCli.runSettings(arguments);
+        }
+        if (command.equals("sync")) { return SemuCli.runSync(arguments); }
+        if (command.equals("install")) {
+            return SemuCli.runInstall(arguments);
+        }
+        if (command.equals("runtime")) {
+            return SemuCli.runRuntime(arguments);
+        }
+        return SemuCli.usage(1);
+    }
+}

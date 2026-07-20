@@ -1,0 +1,95 @@
+{
+  "schema_version": 1,
+  "name": "Nintendo 64",
+  "aliases": [],
+  "es_de": {
+    "platforms": [
+      "n64"
+    ],
+    "theme": "n64"
+  },
+  "rom": {
+    "dir": "n64",
+    "extensions": [
+      ".bin",
+      ".d64",
+      ".n64",
+      ".ndd",
+      ".u1",
+      ".v64",
+      ".z64",
+      ".7z",
+      ".zip"
+    ]
+  },
+  "verification": {
+    "rom_descriptors": [
+      "Super Mario 64 (USA).zip",
+      "Mario Kart 64 (USA).zip"
+    ],
+    "capture_frame": 180
+  },
+  "emulators": [
+    {
+      "emulator": "retroarch",
+      "label": "Mupen64Plus-Next",
+      "core": "mupen64plus_next",
+      "platforms": [
+        "linux"
+      ]
+    },
+    {
+      "emulator": "ares",
+      "platforms": [
+        "macos"
+      ]
+    }
+  ],
+  "display": {
+    "scaling": {
+      "mode": "integer_preferred",
+      "basis": "native_game_surface",
+      "fit": "contain",
+      "fallback": "fractional_downscale"
+    },
+    "screens": [
+      {
+        "id": "main",
+        "native": {
+          "w": 320,
+          "h": 240
+        }
+      }
+    ],
+    "aspect": {
+      "w": 4,
+      "h": 3
+    },
+    "widescreen": {
+      "aspect": {
+        "w": 16,
+        "h": 9
+      },
+      "detect": "emulator_reported_content_aspect",
+      "fallback": "default_aspect",
+      "switch_at": "frame_boundary"
+    }
+  },
+  "render": {
+    "style": "console",
+    "asset_profile": "crt4x3",
+    "priority": "game",
+    "reflect": 0.18,
+    "corner_radius": 0.045,
+    "curvature": 0.04,
+    "glow": 0.18,
+    "bloom": 0.2,
+    "vignette": 0.22
+  },
+  "doc": {
+    "hardware": "consumer CRT over composite/S-Video",
+    "intent": "Do not sharpen away the hardware VI softness.",
+    "orientation": "The RetroArch frame_output contract requires an upright bottom-left-origin game frame in GL space; the N64 acceptance test composes this system binding with that platform contract.",
+    "shader": "Mupen renders high-res; the compositor applies the declared soft 240p preset when shaders are enabled."
+  }
+}

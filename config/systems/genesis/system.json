@@ -1,0 +1,82 @@
+{
+  "schema_version": 1,
+  "name": "Sega Genesis",
+  "aliases": [
+    "megadrive",
+    "megadrive-japan"
+  ],
+  "es_de": {
+    "platforms": [
+      "genesis",
+      "megadrive"
+    ],
+    "theme": "genesis"
+  },
+  "rom": {
+    "dir": "genesis",
+    "extensions": [
+      ".32x",
+      ".68k",
+      ".bin",
+      ".chd",
+      ".gen",
+      ".iso",
+      ".md",
+      ".mdx",
+      ".sg",
+      ".smd",
+      ".7z",
+      ".zip"
+    ]
+  },
+  "verification": {
+    "rom_descriptors": [
+      "Sonic The Hedgehog (USA, Europe).zip",
+      "Gunstar Heroes (USA).zip"
+    ],
+    "capture_frame": 180
+  },
+  "emulators": [
+    {
+      "emulator": "retroarch",
+      "label": "Genesis Plus GX",
+      "core": "genesis_plus_gx"
+    }
+  ],
+  "display": {
+    "scaling": {
+      "mode": "integer_preferred",
+      "basis": "native_game_surface",
+      "fit": "contain",
+      "fallback": "fractional_downscale"
+    },
+    "screens": [
+      {
+        "id": "main",
+        "native": {
+          "w": 320,
+          "h": 224
+        }
+      }
+    ],
+    "aspect": {
+      "w": 4,
+      "h": 3
+    }
+  },
+  "render": {
+    "style": "console",
+    "asset_profile": "crt4x3",
+    "priority": "game",
+    "reflect": 0.18,
+    "corner_radius": 0.045,
+    "curvature": 0.04,
+    "glow": 0.18,
+    "bloom": 0.2,
+    "vignette": 0.22
+  },
+  "doc": {
+    "hardware": "consumer CRT over composite/RGB",
+    "intent": "Composite blending matters for dithering-heavy art."
+  }
+}

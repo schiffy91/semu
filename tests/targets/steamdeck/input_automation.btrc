@@ -1,0 +1,304 @@
+// Declarative test-only input plans. These plans exercise /dev/uinput and are
+// always classified as synthetic automated hardware-path evidence.
+
+import std.{json, strings, vector}
+
+class DeckInputAutomation {
+    class Vector<string> strings(JsonValue value) {
+        Vector<string> result = [];
+        if (!value.isArray()) { return result; }
+        for (int index = 0; index < value.size(); index++) {
+            if (value.at(index).isString()) {
+                result.push(value.at(index).asString());
+            }
+        }
+        return result;
+    }
+
+    class bool safeToken(string value) {
+        if (value.isEmpty() || value.len() > 128) { return false; }
+        for character in value {
+            bool lower = character >= 'a' && character <= 'z';
+            bool digit = character >= '0' && character <= '9';
+            bool punctuation = character == '_' || character == '+'
+                || character == '-' || character == '.';
+            if (!lower && !digit && !punctuation) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    class JsonValue radialEntry(JsonValue actions, string action, int slot,
+                                string marker) {
+        JsonValue entry = JsonValue.makeObject();
+        entry.set("slot", JsonValue.makeInt(slot));
+        entry.set("action", JsonValue.makeString(action));
+        entry.set("marker", JsonValue.makeString(marker));
+        string chord = actions.get(action).get("chord").isString()
+            ? actions.get(action).get("chord").asString().toLower()
+                .replace("control", "ctrl") : "";
+        string icon = actions.get(action).get("icon").isString()
+            ? actions.get(action).get("icon").asString() : "";
+        entry.set("chord", JsonValue.makeString(chord));
+        entry.set("icon", JsonValue.makeString(icon));
+        return entry;
+    }
+
+    class JsonValue radial(JsonValue actions, Vector<string> actionNames,
+                           Vector<string> markers) {
+        JsonValue entries = JsonValue.makeArray();
+        if (!markers.isEmpty() && markers.size() != actionNames.size()) {
+            return entries;
+        }
+        for (int index = 0; index < actionNames.size(); index++) {
+            entries.push(DeckInputAutomation.radialEntry(
+                actions, actionNames.get(index), index,
+                markers.isEmpty() ? "" : markers.get(index)));
+        }
+        return entries;
+    }
+
+    class JsonValue compile(JsonValue input, Vector<string> quick,
+                            Vector<string> menu, Vector<string> wiiModes) {
+        JsonValue result = JsonValue.makeObject();
+        JsonValue actions = input.get("actions");
+        JsonValue radial = input.get("radial");
+        Vector<string> quickMarkers = DeckInputAutomation.strings(
+            radial.get("evidence_markers").get("quick"));
+        Vector<string> menuMarkers = DeckInputAutomation.strings(
+            radial.get("evidence_markers").get("menu"));
+        result.set("device", JsonValue.makeString("/dev/uinput"));
+        result.set("input_origin", JsonValue.makeString("synthetic-uinput"));
+        result.set("human_equivalent", JsonValue.makeBool(false));
+        JsonValue gameplay = JsonValue.makeArray();
+        gameplay.push(JsonValue.makeString("tap|gamepad|dpad_left"));
+        gameplay.push(JsonValue.makeString("tap|gamepad|south"));
+        result.set("gameplay", gameplay);
+        JsonValue stateChange = JsonValue.makeArray();
+        stateChange.push(JsonValue.makeString("tap|gamepad|dpad_right"));
+        stateChange.push(JsonValue.makeString("tap|gamepad|south"));
+        result.set("state_change", stateChange);
+        JsonValue quitButtons = input.get("quit_chord").get("buttons");
+        JsonValue startSelect = JsonValue.makeObject();
+        startSelect.set("first", JsonValue.makeString(
+            quitButtons.isArray() && quitButtons.size() == 2
+                && quitButtons.at(0).isString()
+                ? quitButtons.at(0).asString().toLower() : ""));
+        startSelect.set("second", JsonValue.makeString(
+            quitButtons.isArray() && quitButtons.size() == 2
+                && quitButtons.at(1).isString()
+                ? quitButtons.at(1).asString().toLower() : ""));
+        startSelect.set("window_ms", input.get("quit_chord").get("window_ms"));
+        result.set("start_select", startSelect);
+        result.set("quick_radial", DeckInputAutomation.radial(
+            actions, quick, quickMarkers));
+        result.set("menu_radial", DeckInputAutomation.radial(
+            actions, menu, menuMarkers));
+        Vector<string> noMarkers = [];
+        result.set("wii_modes", DeckInputAutomation.radial(
+            actions, wiiModes, noMarkers));
+        return result;
+    }
+
+    class string verifyRadial(JsonValue entries, Vector<string> expected,
+                              JsonValue actions, JsonValue markers,
+                              JsonValue iconFiles, bool systemLayer) {
+        if (!entries.isArray() || entries.size() != expected.size()) {
+            return "automation radial does not match the compiler action count";
+        }
+        for (int index = 0; index < entries.size(); index++) {
+            JsonValue entry = entries.at(index);
+            string action = entry.get("action").isString()
+                ? entry.get("action").asString() : "";
+            string chord = entry.get("chord").isString()
+                ? entry.get("chord").asString() : "";
+            string icon = entry.get("icon").isString()
+                ? entry.get("icon").asString() : "";
+            string marker = entry.get("marker").isString()
+                ? entry.get("marker").asString() : "";
+            string declaredChord = actions.get(action).get("chord").isString()
+                ? actions.get(action).get("chord").asString().toLower()
+                    .replace("control", "ctrl") : "";
+            string declaredIcon = actions.get(action).get("icon").isString()
+                ? actions.get(action).get("icon").asString() : "";
+            if (!entry.get("slot").isInt()
+                    || entry.get("slot").asInt() != index
+                    || !action.equals(expected.get(index))
+                    || !icon.equals(declaredIcon)
+                    || icon.equals("semu-ctrl.png")
+                    || !icon.endsWith(".png")
+                    || !DeckInputAutomation.strings(iconFiles).contains(icon)
+                    || !DeckInputAutomation.safeToken(chord)) {
+                return f"automation radial slot {index} is not declaratively bound";
+            }
+            if (systemLayer) {
+                if (!chord.equals(declaredChord)) {
+                    return f"system radial slot {index} has the wrong synthetic ABI key";
+                }
+            } else {
+                string expectedMarker = markers.at(index).isString()
+                    ? markers.at(index).asString() : "";
+                if (!marker.equals(expectedMarker)
+                        || !chord.equals(declaredChord)) {
+                    return f"radial slot {index} marker/chord drifted from config";
+                }
+            }
+        }
+        return "";
+    }
+
+    class string verify(JsonValue automation, JsonValue input,
+                        Vector<string> quick, Vector<string> menu,
+                        Vector<string> wiiModes) {
+        if (!automation.isObject()
+                || !automation.get("device").isString()
+                || !automation.get("device").asString().equals("/dev/uinput")
+                || !automation.get("input_origin").isString()
+                || !automation.get("input_origin").asString()
+                    .equals("synthetic-uinput")
+                || !automation.get("human_equivalent").isBool()
+                || automation.get("human_equivalent").asBool()) {
+            return "automation fixture does not declare synthetic /dev/uinput provenance";
+        }
+        JsonValue actions = input.get("actions");
+        JsonValue radial = input.get("radial");
+        JsonValue icons = input.get("binding_icons").get("files");
+        string quickError = DeckInputAutomation.verifyRadial(
+            automation.get("quick_radial"), quick, actions,
+            radial.get("evidence_markers").get("quick"), icons, false);
+        if (!quickError.isEmpty()) { return quickError; }
+        string menuError = DeckInputAutomation.verifyRadial(
+            automation.get("menu_radial"), menu, actions,
+            radial.get("evidence_markers").get("menu"), icons, false);
+        if (!menuError.isEmpty()) { return menuError; }
+        return DeckInputAutomation.verifyRadial(
+            automation.get("wii_modes"), wiiModes, actions,
+            JsonValue.makeArray(), icons, true);
+    }
+
+    class Vector<string> radialLines(JsonValue entries, string skippedAction) {
+        Vector<string> result = [];
+        for (int index = 0; index < entries.size(); index++) {
+            JsonValue entry = entries.at(index);
+            string action = entry.get("action").asString();
+            if (action.equals(skippedAction)) { continue; }
+            string marker = entry.get("marker").isString()
+                ? entry.get("marker").asString() : "";
+            string chord = entry.get("chord").asString();
+            result.push(marker.isEmpty()
+                ? "chord|command|" + chord
+                : "radial|command|" + marker + "|" + chord);
+            result.push("wait|250");
+        }
+        return result;
+    }
+
+    class string actionPlan(JsonValue automation, bool wii) {
+        Vector<string> lines = [
+            "# Semu synthetic input; never human physical evidence",
+            "wait|1000"
+        ];
+        for line in DeckInputAutomation.strings(
+                automation.get("gameplay")) {
+            lines.push(line);
+        }
+        JsonValue quick = automation.get("quick_radial");
+        for (int index = 0; index < quick.size(); index++) {
+            JsonValue entry = quick.at(index);
+            string action = entry.get("action").asString();
+            if (action.equals("state.load") || action.equals("app.quit")) {
+                continue;
+            }
+            for line in DeckInputAutomation.radialLines(
+                    DeckInputAutomation.single(entry), "") {
+                lines.push(line);
+            }
+        }
+        for line in DeckInputAutomation.strings(
+                automation.get("state_change")) {
+            lines.push(line);
+        }
+        for (int index = 0; index < quick.size(); index++) {
+            JsonValue entry = quick.at(index);
+            if (entry.get("action").asString().equals("state.load")) {
+                for line in DeckInputAutomation.radialLines(
+                        DeckInputAutomation.single(entry), "") {
+                    lines.push(line);
+                }
+            }
+        }
+        for line in DeckInputAutomation.radialLines(
+                automation.get("menu_radial"), "") {
+            lines.push(line);
+        }
+        if (wii) {
+            for line in DeckInputAutomation.radialLines(
+                    automation.get("wii_modes"), "") {
+                lines.push(line);
+            }
+        }
+        string quit = DeckInputAutomation.radialQuitPlan(automation).trim();
+        for line in Strings.split(quit, "\n") {
+            if (!line.isEmpty() && !line.startsWith("#")
+                    && !line.startsWith("wait|")) {
+                lines.push(line);
+            }
+        }
+        return lines.join("\n") + "\n";
+    }
+
+    class JsonValue single(JsonValue value) {
+        JsonValue result = JsonValue.makeArray();
+        result.push(value);
+        return result;
+    }
+
+    class string radialQuitPlan(JsonValue automation) {
+        JsonValue quick = automation.get("quick_radial");
+        for (int index = 0; index < quick.size(); index++) {
+            JsonValue entry = quick.at(index);
+            if (entry.get("action").asString().equals("app.quit")) {
+                return "# Synthetic radial consumer probe; not physical radial evidence\n"
+                    + "wait|1000\nradial|command|"
+                    + entry.get("marker").asString() + "|"
+                    + entry.get("chord").asString() + "\n";
+            }
+        }
+        return "";
+    }
+
+    class string startSelectPlan(JsonValue automation, bool reverse) {
+        JsonValue chord = automation.get("start_select");
+        string first = reverse ? chord.get("second").asString()
+            : chord.get("first").asString();
+        string second = reverse ? chord.get("first").asString()
+            : chord.get("second").asString();
+        return "# Synthetic Start+Select; not human evidence\nwait|1000\n"
+            + "chord|gamepad|" + first + "+" + second + "\n";
+    }
+
+    class string navigationPlan(int systemOffset, int gameOffset) {
+        if (systemOffset < 0 || systemOffset > 64
+                || gameOffset < 0 || gameOffset > 4096) {
+            return "";
+        }
+        Vector<string> lines = [
+            "# ES-DE navigation through the installed Game Mode shortcut",
+            "wait|1000",
+            "tap|gamepad|east",
+            "tap|gamepad|left_trigger"
+        ];
+        for (int index = 0; index < systemOffset; index++) {
+            lines.push("tap|gamepad|right_shoulder");
+        }
+        lines.push("tap|gamepad|south");
+        lines.push("wait|500");
+        lines.push("tap|gamepad|left_trigger");
+        for (int index = 0; index < gameOffset; index++) {
+            lines.push("tap|gamepad|dpad_down");
+        }
+        lines.push("tap|gamepad|south");
+        return lines.join("\n") + "\n";
+    }
+}

@@ -1,0 +1,9 @@
+{
+  "schema_version": 2,
+  "enabled": true,
+  "renderer": true,
+  "screen": "assets/shaders/genesis/screen.slangp",
+  "doc": {
+    "intent": "Genesis dithering blended by analog CRT video"
+  }
+}

@@ -1,0 +1,190 @@
+{
+  "schema_version": 1,
+  "compiler": {
+    "bindings": {
+      "emulator_name": {
+        "source": "emulator.name"
+      }
+    },
+    "line_groups": {
+      "keymap_hotkeys": {
+        "rows": "hotkeys.keymap",
+        "format": "${setting} = ${chord}",
+        "chord_encoding": {
+          "mode": "joined",
+          "modifiers": {
+            "Ctrl": "113",
+            "Alt": "57",
+            "Shift": "59",
+            "Meta": "117"
+          },
+          "keys": {
+            "A": "29",
+            "J": "38",
+            "K": "39",
+            "M": "41",
+            "O": "43",
+            "P": "44",
+            "Q": "45",
+            "S": "47",
+            "X": "52",
+            "Enter": "66",
+            "Backspace": "67",
+            "-": "69",
+            "+": "81",
+            "Tab": "61",
+            "Space": "62",
+            "Up": "19",
+            "Down": "20",
+            "Esc": "111"
+          },
+          "require_modifier_map": true,
+          "require_key_map": true,
+          "modifier_format": "1-${value}",
+          "key_format": "1-${value}",
+          "separator": ":"
+        }
+      }
+    }
+  },
+  "controller": {
+    "ownership": "semu_generated",
+    "consumer": "PPSSPP SDL GameController port zero",
+    "device_id": 10,
+    "device": "PPSSPP DEVICE_ID_PAD_0",
+    "source": "SDL GameController pad zero",
+    "quit_chord": [
+      "select",
+      "start"
+    ],
+    "quit_owner": "steamdeck process-group watcher",
+    "quit_semantics": "immediate"
+  },
+  "storage": {
+    "memstick_root": "${state_root}/config/ppsspp",
+    "settings": "${state_root}/config/ppsspp/PSP/SYSTEM",
+    "game_saves": "${state_root}/config/ppsspp/PSP/SAVEDATA",
+    "save_states": "${state_root}/config/ppsspp/PSP/PPSSPP_STATE",
+    "screenshots": "${state_root}/config/ppsspp/PSP/SCREENSHOT",
+    "external_content_read_only": true
+  },
+  "hotkeys": {
+    "keymap": [
+      {
+        "setting": "Pause (no menu)",
+        "action": "ui.pause"
+      },
+      {
+        "setting": "Screenshot",
+        "action": "ui.screenshot"
+      },
+      {
+        "setting": "Toggle Fullscreen",
+        "action": "ui.fullscreen"
+      },
+      {
+        "setting": "Pause",
+        "action": "ui.menu"
+      },
+      {
+        "setting": "Exit App",
+        "action": "app.quit"
+      },
+      {
+        "setting": "Previous Slot",
+        "action": "state.prev"
+      },
+      {
+        "setting": "Next Slot",
+        "action": "state.next"
+      },
+      {
+        "setting": "Load State",
+        "action": "state.load"
+      },
+      {
+        "setting": "Save State",
+        "action": "state.save"
+      },
+      {
+        "setting": "Fast-forward",
+        "action": "speed.fast"
+      }
+    ]
+  },
+  "files": [
+    {
+      "path": "${emulator_name}/config/PSP/SYSTEM/ppsspp.ini",
+      "lines": [
+        "[General]",
+        "FirstRun = False",
+        "Enable Logging = False",
+        "AutoRun = True",
+        "CheckForNewVersion = False",
+        "DiscordRichPresence = False",
+        "",
+        "[Graphics]",
+        "GraphicsBackend = OPENGL",
+        "DisabledGraphicsBackends = VULKAN,DIRECT3D11,DIRECT3D9",
+        "FullScreen = True",
+        "EnableCardboardVR = False",
+        "SoftwareRenderer = False",
+        "SkipBufferEffects = False",
+        "InternalResolution = 0",
+        "InternalScreenRotation = 1",
+        "DisplayOffsetX = 0.5",
+        "DisplayOffsetY = 0.5",
+        "DisplayScale = 1",
+        "DisplayIntegerScale = False",
+        "DisplayAspectRatio = 1",
+        "DisplayStretch = False",
+        "DisplayCropTo16x9 = False",
+        "IgnoreScreenInsets = True",
+        "VSync = True",
+        "",
+        "[Control]",
+        "ShowTouchControls = False",
+        "ShowTouchPause = False",
+        "",
+        "[VR]",
+        "VREnable = False",
+        "VREnableStereo = False",
+        "VRForce = False",
+        "",
+        "[PostShaderList]",
+        "",
+        "[PostShaderSetting]"
+      ]
+    },
+    {
+      "path": "${emulator_name}/config/PSP/SYSTEM/controls.ini",
+      "lines": [
+        "[ControlMapping]",
+        "Up = 10-19",
+        "Down = 10-20",
+        "Left = 10-21",
+        "Right = 10-22",
+        "Circle = 10-190",
+        "Cross = 10-189",
+        "Square = 10-191",
+        "Triangle = 10-188",
+        "Start = 10-197",
+        "Select = 10-196",
+        "L = 10-193",
+        "R = 10-192",
+        "An.Up = 10-4003",
+        "An.Down = 10-4002",
+        "An.Left = 10-4001",
+        "An.Right = 10-4000",
+        "@lines:keymap_hotkeys"
+      ]
+    }
+  ],
+  "doc": {
+    "controller": "The numeric mappings are PPSSPP 1.19.3's SDL GameController translation: Steam/Xbox A/B/X/Y become button codes 189/190/191/188, shoulders 193/192, View/Menu 196/197, and the left stick uses axis key codes 4000-4003.",
+    "quit": "Select and Start remain independent PSP inputs. Semu's target-owned evdev watcher observes the physical pair and terminates the emulator process group immediately; app.quit also maps Ctrl+Q to PPSSPP Exit App.",
+    "actions": "Pause without UI, PPSSPP menu, screenshot, fullscreen, quit, previous/next state slot, explicit load/save, and fast-forward are compiled from the shared Semu keymap into PPSSPP MultiInputMapping chords.",
+    "rendering": "OpenGL, horizontal output, non-VR presentation, no stretch/crop/integer scaling, and an empty post-shader chain keep the managed presentation contract deterministic while PPSSPP's live rectangle still adapts to framebuffer size and aspect.",
+    "storage": "Both generated INI files are deployed into the isolated XDG memstick. PPSSPP creates SAVEDATA, PPSSPP_STATE, screenshots, cache, and other writable content below that same Semu-owned root."
+  }
+}

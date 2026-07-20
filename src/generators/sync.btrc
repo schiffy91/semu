@@ -1,0 +1,1481 @@
+// sync.btrc - Semu-owned Syncthing desired state and user-service lifecycle.
+
+import std.{datetime, fs, http_framing, io, json, platform, process, strings, vector}
+import ../lib/json_format.btrc
+import ../lib/owned_paths.btrc
+import ./emulators.btrc
+import ./settings.btrc
+
+#include <unistd.h>
+
+class SemuSyncFolder {
+    public string id;
+    public string label;
+    public string path;
+    public string access;
+    public string syncthingType;
+    public string markerPolicy;
+    public string markerName;
+    public bool enabled;
+    public bool watch;
+    public int rescanSeconds;
+
+    public SemuSyncFolder() {
+        self.id = "";
+        self.label = "";
+        self.path = "";
+        self.access = "";
+        self.syncthingType = "";
+        self.markerPolicy = "";
+        self.markerName = "";
+        self.enabled = false;
+        self.watch = false;
+        self.rescanSeconds = 0;
+    }
+
+    public string syncthingId() { return "semu-" + self.id; }
+
+    public JsonValue json() {
+        JsonValue value = JsonValue.makeObject();
+        value.set("id", JsonValue.makeString(self.id));
+        value.set("syncthing_id", JsonValue.makeString(self.syncthingId()));
+        value.set("label", JsonValue.makeString(self.label));
+        value.set("path", JsonValue.makeString(self.path));
+        value.set("access", JsonValue.makeString(self.access));
+        value.set("syncthing_type", JsonValue.makeString(self.syncthingType));
+        value.set("marker_policy", JsonValue.makeString(self.markerPolicy));
+        value.set("marker_name", JsonValue.makeString(self.markerName));
+        value.set("enabled", JsonValue.makeBool(self.enabled));
+        value.set("watch", JsonValue.makeBool(self.watch));
+        value.set("rescan_seconds", JsonValue.makeInt(self.rescanSeconds));
+        return value;
+    }
+}
+
+class SemuSyncPlan {
+    public string projectRoot;
+    public string semuHome;
+    public string platformId;
+    public string launcher;
+    public string guiAddress;
+    public bool enabled;
+    public bool startAtBoot;
+    public Vector<SemuSyncFolder> folders;
+    public string error;
+
+    public SemuSyncPlan() {
+        self.projectRoot = "";
+        self.semuHome = "";
+        self.platformId = "";
+        self.launcher = "";
+        self.guiAddress = "";
+        self.enabled = false;
+        self.startAtBoot = false;
+        self.folders = [];
+        self.error = "";
+    }
+
+    public bool ok() { return self.error.isEmpty(); }
+
+    public JsonValue json() {
+        JsonValue value = JsonValue.makeObject();
+        JsonValue runtime = JsonValue.makeObject();
+        JsonValue folders = JsonValue.makeArray();
+        runtime.set("enabled", JsonValue.makeBool(self.enabled));
+        runtime.set("start_at_boot", JsonValue.makeBool(self.startAtBoot));
+        runtime.set("gui_address", JsonValue.makeString(self.guiAddress));
+        runtime.set("launcher", JsonValue.makeString(self.launcher));
+        for folder in self.folders { folders.push(folder.json()); }
+        value.set("schema_version", JsonValue.makeInt(1));
+        value.set("protocol", JsonValue.makeString("semu-syncthing-v1"));
+        value.set("project_root", JsonValue.makeString(self.projectRoot));
+        value.set("semu_home", JsonValue.makeString(self.semuHome));
+        value.set("platform", JsonValue.makeString(self.platformId));
+        value.set("runtime", runtime);
+        value.set("folders", folders);
+        return value;
+    }
+}
+
+class SemuSyncPaths {
+    class string root(string semuHome) {
+        return PathTools.join(semuHome, "generated/sync");
+    }
+
+    class string desired(string semuHome) {
+        return PathTools.join(SemuSyncPaths.root(semuHome), "config.json");
+    }
+
+    class string service(string semuHome) {
+        return PathTools.join(
+            SemuSyncPaths.root(semuHome), "semu-syncthing.service");
+    }
+
+    class string configRoot(string semuHome) {
+        return PathTools.join(SemuSyncPaths.root(semuHome), "runtime/config");
+    }
+
+    class string dataRoot(string semuHome) {
+        return PathTools.join(SemuSyncPaths.root(semuHome), "runtime/data");
+    }
+
+    class string configFile(string semuHome) {
+        return PathTools.join(SemuSyncPaths.configRoot(semuHome), "config.xml");
+    }
+}
+
+class SemuSyncEndpoint {
+    class string cliAddress(string configured) {
+        return SemuConfigStore.loopbackAddress(configured) ? configured : "";
+    }
+
+    class string restBaseUrl(string configured) {
+        string address = SemuSyncEndpoint.cliAddress(configured);
+        return address.isEmpty() ? "" : "http://" + address;
+    }
+
+    class string uiUrl(string configured) {
+        string baseUrl = SemuSyncEndpoint.restBaseUrl(configured);
+        return baseUrl.isEmpty() ? "" : baseUrl + "/";
+    }
+}
+
+class SemuSyncExecutables {
+    class string executable(string value) {
+        if (value.isEmpty()) { return ""; }
+        if (value.contains("/")) {
+            string absolute = FileSystem.absolutePath(value);
+            return FileSystem.isFile(absolute)
+                    && (int)access(absolute, (int)X_OK) == 0
+                ? absolute : "";
+        }
+        for directory in Strings.split(
+                Environment.get("PATH", "/usr/bin:/bin"), ":") {
+            string candidate = PathTools.join(
+                directory.isEmpty() ? FileSystem.currentDirectory() : directory,
+                value);
+            if (FileSystem.isFile(candidate)
+                    && (int)access(candidate, (int)X_OK) == 0) {
+                return FileSystem.absolutePath(candidate);
+            }
+        }
+        return "";
+    }
+
+    class string declaredSyncthingPath() {
+        string sourceRoot = Environment.get("SEMU_SOURCE_ROOT", "");
+        if (sourceRoot.isEmpty()) { return ""; }
+        JsonValue defaults = JsonValue.readFile(PathTools.join(
+            sourceRoot, "settings/defaults.json"));
+        JsonValue path = defaults.get("menu").get("sync_runtime")
+            .get("syncthing").get("appdir_relative_path");
+        if (!path.isString()
+                || !SemuOwnedPaths.safeRelativePath(path.asString())) {
+            return "";
+        }
+        return path.asString();
+    }
+
+    class string bundleRoot() {
+        string appDir = Environment.get("APPDIR", "");
+        return appDir.isEmpty()
+            ? Environment.get("SEMU_ASSET_ROOT", "") : appDir;
+    }
+
+    class string syncthing() {
+        string root = SemuSyncExecutables.bundleRoot();
+        if (!root.isEmpty()) {
+            string relative = SemuSyncExecutables.declaredSyncthingPath();
+            return relative.isEmpty() ? ""
+                : SemuSyncExecutables.executable(
+                    PathTools.join(root, relative));
+        }
+        return SemuSyncExecutables.executable(
+            Environment.get("SEMU_SYNCTHING_BIN", ""));
+    }
+
+    class string systemctl() {
+        string explicit = SemuSyncExecutables.executable(
+            Environment.get("SEMU_SYSTEMCTL", ""));
+        return explicit.isEmpty()
+            ? SemuSyncExecutables.executable("systemctl") : explicit;
+    }
+
+}
+
+class SemuSyncRuntimeOptions {
+    public string syncthing;
+    public string systemctl;
+
+    public SemuSyncRuntimeOptions() {
+        self.syncthing = SemuSyncExecutables.syncthing();
+        self.systemctl = SemuSyncExecutables.systemctl();
+    }
+}
+
+class SemuSyncPolicy {
+    class string writableRoot(string projectRoot, string path) {
+        string runtimeRoot = SemuOwnedPaths.normalized(
+            PathTools.join(projectRoot, "build/runtime"));
+        string absolute = SemuOwnedPaths.normalized(path);
+        if (runtimeRoot.isEmpty() || absolute.isEmpty()) { return ""; }
+        for root in [PathTools.join(runtimeRoot, "content"),
+                     PathTools.join(runtimeRoot, "state")] {
+            if (SemuOwnedPaths.inside(absolute, root)) { return root; }
+        }
+        return "";
+    }
+
+    class bool safeRelativePath(string path) {
+        if (path.startsWith("/") || path.contains("\\")
+                || path.contains("\n") || path.contains("\r")) {
+            return false;
+        }
+        for part in Strings.split(path, "/") {
+            if (part.equals(".") || part.equals("..")) { return false; }
+        }
+        return true;
+    }
+
+    class string boundedJoin(string root, string relativePath) {
+        if (root.isEmpty()) { return ""; }
+        string absoluteRoot = SemuOwnedPaths.normalized(root);
+        string candidate = relativePath.isEmpty() ? absoluteRoot
+            : SemuOwnedPaths.normalized(
+                PathTools.join(absoluteRoot, relativePath));
+        if (absoluteRoot.isEmpty() || candidate.isEmpty()
+                || !SemuOwnedPaths.inside(candidate, absoluteRoot)) {
+            return "";
+        }
+        return candidate;
+    }
+
+    class string platformRoot(string kind, string platformId,
+                              JsonValue settings) {
+        JsonValue configured = SemuConfigStore.valueAt(
+            settings, "paths." + kind + "_root." + platformId);
+        if (!configured.isString()
+                || !SemuConfigStore.platformPath(configured.asString())) {
+            return "";
+        }
+        string value = configured.asString();
+        if (value.startsWith("${home}/")) {
+            string home = Environment.get("HOME", "");
+            if (home.isEmpty() || !PathTools.isAbsolute(home)) { return ""; }
+            value = value.replace("${home}", home);
+        }
+        return PathTools.isAbsolute(value)
+            ? FileSystem.absolutePath(value) : "";
+    }
+
+    class string policyRoot(string kind, string projectRoot,
+                             string platformId, JsonValue settings) {
+        string runtimeRoot = PathTools.join(projectRoot, "build/runtime");
+        if (kind.equals("content")) {
+            return PathTools.join(runtimeRoot, "content");
+        }
+        if (kind.equals("state")) {
+            return PathTools.join(runtimeRoot, "state");
+        }
+        if (kind.equals("roms")) {
+            return SemuRuntimeLayout.romsRoot(
+                projectRoot, platformId, settings);
+        }
+        return SemuSyncPolicy.platformRoot(kind, platformId, settings);
+    }
+
+    class SemuSyncPlan resolve(SemuConfigStore store, string platformId) {
+        SemuSyncPlan plan = SemuSyncPlan();
+        plan.projectRoot = FileSystem.absolutePath(store.projectRoot);
+        plan.semuHome = SemuOwnedPaths.normalized(store.semuHome);
+        plan.platformId = platformId;
+        SemuConfigResult effective = store.effective();
+        JsonValue definition = store.definition();
+        if (!effective.ok) { plan.error = effective.error; return plan; }
+        if (!definition.isObject() || !definition.get("menu").isObject()
+                || !definition.get("menu").get("sync_folders").isArray()
+                || !effective.value.get("sync").isObject()
+                || !effective.value.get("sync").get("runtime").isObject()
+                || !effective.value.get("sync").get("folders").isObject()) {
+            plan.error = "synchronization definition is incomplete";
+            return plan;
+        }
+        JsonValue runtime = effective.value.get("sync").get("runtime");
+        if (!runtime.get("enabled").isBool()
+                || !runtime.get("start_at_boot").isBool()
+                || !runtime.get("gui_address").isString()
+                || !SemuConfigStore.loopbackAddress(
+                    runtime.get("gui_address").asString())) {
+            plan.error = "synchronization runtime settings are invalid";
+            return plan;
+        }
+        plan.enabled = runtime.get("enabled").asBool();
+        plan.startAtBoot = runtime.get("start_at_boot").asBool();
+        plan.guiAddress = runtime.get("gui_address").asString();
+        plan.launcher = SettingsEsDeGenerator.resolveLauncher(definition,
+            Environment.get("SEMU_ENTRYPOINT", ""),
+            Environment.get("HOME", "."));
+        if (!SettingsEsDeGenerator.validStableLauncher(plan.launcher)) {
+            plan.error = "stable installed Semu launcher is unavailable";
+            return plan;
+        }
+
+        JsonValue policies = definition.get("menu").get("sync_folders");
+        JsonValue settings = effective.value.get("sync").get("folders");
+        Vector<string> seen = [];
+        for (int index = 0; index < policies.size(); index++) {
+            JsonValue policy = policies.at(index);
+            if (!policy.isObject() || !policy.get("id").isString()
+                    || !policy.get("label").isString()
+                    || !policy.get("root").isString()
+                    || !policy.get("relative_path").isString()
+                    || !policy.get("access").isString()
+                    || !policy.get("syncthing_type").isString()
+                    || !policy.get("marker_policy").isString()) {
+                plan.error = "synchronization folder policy is malformed";
+                return plan;
+            }
+            string id = policy.get("id").asString();
+            string rootKind = policy.get("root").asString();
+            string relativePath = policy.get("relative_path").asString();
+            string accessMode = policy.get("access").asString();
+            string syncthingType = policy.get("syncthing_type").asString();
+            string markerPolicy = policy.get("marker_policy").asString();
+            if (id.isEmpty() || seen.contains(id) || !settings.has(id)
+                    || !settings.get(id).isObject()
+                    || !SemuSyncPolicy.safeRelativePath(relativePath)
+                    || (accessMode.equals("readwrite")
+                        && !rootKind.equals("content")
+                        && !rootKind.equals("state"))
+                    || (accessMode.equals("readwrite")
+                        && !syncthingType.equals("sendreceive"))
+                    || (accessMode.equals("readwrite")
+                        && !markerPolicy.equals("managed"))
+                    || (accessMode.equals("readonly")
+                        && !syncthingType.equals("sendonly"))
+                    || (accessMode.equals("readonly")
+                        && !markerPolicy.equals("preexisting_child"))
+                    || (!accessMode.equals("readwrite")
+                        && !accessMode.equals("readonly"))) {
+                plan.error = "unsafe synchronization policy for folder: " + id;
+                return plan;
+            }
+            JsonValue configured = settings.get(id);
+            if (!configured.get("enabled").isBool()
+                    || !configured.get("watch").isBool()
+                    || !configured.get("rescan_seconds").isInt()
+                    || configured.get("rescan_seconds").asInt() < 10
+                    || configured.get("rescan_seconds").asInt() > 86400) {
+                plan.error = "invalid synchronization settings for folder: " + id;
+                return plan;
+            }
+            string root = SemuSyncPolicy.policyRoot(
+                rootKind, plan.projectRoot, platformId, effective.value);
+            string path = SemuSyncPolicy.boundedJoin(root, relativePath);
+            if (path.isEmpty()) {
+                plan.error = "synchronization path escapes its declared root: " + id;
+                return plan;
+            }
+            SemuSyncFolder folder = SemuSyncFolder();
+            folder.id = id;
+            folder.label = policy.get("label").asString();
+            folder.path = path;
+            folder.access = accessMode;
+            folder.syncthingType = syncthingType;
+            folder.markerPolicy = markerPolicy;
+            folder.enabled = configured.get("enabled").asBool();
+            folder.watch = configured.get("watch").asBool();
+            folder.rescanSeconds = configured.get("rescan_seconds").asInt();
+            folder.markerName = markerPolicy.equals("managed")
+                ? ".stfolder" : "";
+            if (plan.enabled && folder.enabled
+                    && markerPolicy.equals("preexisting_child")) {
+                folder.markerName = SemuSyncMarker.select(folder.path);
+                if (folder.markerName.isEmpty()) {
+                    plan.error = "read-only synchronization folder has no safe pre-existing marker: "
+                        + id;
+                    return plan;
+                }
+            }
+            plan.folders.push(folder);
+            seen.push(id);
+        }
+        if (seen.size() != settings.keys().size()) {
+            plan.error = "synchronization settings and immutable policies differ";
+        }
+        return plan;
+    }
+}
+
+class SemuSyncMarker {
+    class bool safeName(string name) {
+        if (name.isEmpty() || name.equals(".") || name.equals("..")
+                || name.len() > 255 || name.contains("/")
+                || name.contains("\\") || name.contains("\n")
+                || name.contains("\r") || name.contains("\t")) {
+            return false;
+        }
+        for character in name {
+            if (character < (char)32 || character == (char)127) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    class bool existingChild(string root, string name) {
+        if (!SemuSyncMarker.safeName(name)) { return false; }
+        FileStatus rootStatus = FileStatus(root);
+        if (!rootStatus.isDir() || rootStatus.isSymlink()) { return false; }
+        string child = PathTools.join(root, name);
+        FileStatus childStatus = FileStatus(child);
+        return childStatus.linkFound && !childStatus.isSymlink()
+            && (childStatus.isFile() || childStatus.isDir());
+    }
+
+    class string select(string root) {
+        if (SemuSyncMarker.existingChild(root, ".stfolder")) {
+            return ".stfolder";
+        }
+        Vector<string> hidden = [];
+        for name in SemuConfigStore.sortedEntries(root) {
+            if (!SemuSyncMarker.existingChild(root, name)) { continue; }
+            if (!name.startsWith(".")) { return name; }
+            hidden.push(name);
+        }
+        return hidden.isEmpty() ? "" : hidden.get(0);
+    }
+
+    class bool ready(SemuSyncFolder folder) {
+        if (!folder.enabled) { return true; }
+        if (folder.markerPolicy.equals("managed")) {
+            return folder.access.equals("readwrite")
+                && folder.markerName.equals(".stfolder");
+        }
+        return folder.access.equals("readonly")
+            && folder.markerPolicy.equals("preexisting_child")
+            && SemuSyncMarker.existingChild(
+                folder.path, folder.markerName);
+    }
+
+    class string runtimeError(SemuSyncPlan plan) {
+        if (!plan.enabled) { return ""; }
+        for folder in plan.folders {
+            if (folder.enabled && !SemuSyncMarker.ready(folder)) {
+                return "synchronization marker is unavailable for folder: "
+                    + folder.id;
+            }
+        }
+        return "";
+    }
+}
+
+class SemuSystemdUnit {
+    class string quote(string value) {
+        if (value.contains("\n") || value.contains("\r")) { return ""; }
+        return "\"" + value.replace("\\", "\\\\")
+            .replace("\"", "\\\"") + "\"";
+    }
+
+    class string paths(Vector<string> values) {
+        Vector<string> quoted = [];
+        for value in values {
+            string encoded = SemuSystemdUnit.quote(value);
+            if (encoded.isEmpty()) { return ""; }
+            quoted.push(encoded);
+        }
+        return quoted.join(" ");
+    }
+}
+
+class SemuSyncServiceTemplate {
+    class string relativePath() {
+        return "templates/sync/semu-syncthing.service.template";
+    }
+
+    class string canonicalPath(string projectRoot) {
+        return PathTools.join(
+            projectRoot, "packaging/sync/semu-syncthing.service.template");
+    }
+
+    class string stagedPath(string projectRoot) {
+        return PathTools.join(SemuConfigPaths.sourceRoot(projectRoot),
+            SemuSyncServiceTemplate.relativePath());
+    }
+
+    class string source(string projectRoot) {
+        string staged = SemuSyncServiceTemplate.stagedPath(projectRoot);
+        if (FileSystem.isFile(staged) && !FileSystem.isSymlink(staged)) {
+            return staged;
+        }
+        if (!Environment.get("SEMU_SOURCE_ROOT", "").isEmpty()) { return ""; }
+        string canonical = SemuSyncServiceTemplate.canonicalPath(projectRoot);
+        return FileSystem.isFile(canonical) && !FileSystem.isSymlink(canonical)
+            ? canonical : "";
+    }
+
+    class int occurrences(string document, string token) {
+        int count = 0;
+        string remaining = document;
+        int found = remaining.indexOf(token);
+        while (found >= 0) {
+            count++;
+            int next = found + token.len();
+            remaining = remaining.substring(next, remaining.len() - next);
+            found = remaining.indexOf(token);
+        }
+        return count;
+    }
+
+    class string render(string projectRoot, Vector<string> tokens,
+                        Vector<string> values) {
+        string path = SemuSyncServiceTemplate.source(projectRoot);
+        string document = path.isEmpty() ? "" : Path.readAll(path);
+        if (document.isEmpty() || tokens.size() != values.size()) { return ""; }
+        for (int index = 0; index < tokens.size(); index++) {
+            string token = tokens.get(index);
+            if (token.isEmpty() || values.get(index).contains("@@")
+                    || SemuSyncServiceTemplate.occurrences(document, token) != 1) {
+                return "";
+            }
+            document = document.replace(token, values.get(index));
+        }
+        return document.contains("@@") ? "" : document;
+    }
+}
+
+class SemuSyncGenerationResult {
+    public string desiredFile;
+    public string serviceFile;
+    public string configFile;
+    public string error;
+
+    public SemuSyncGenerationResult() {
+        self.desiredFile = "";
+        self.serviceFile = "";
+        self.configFile = "";
+        self.error = "";
+    }
+
+    public bool ok() {
+        return self.error.isEmpty()
+            && !self.desiredFile.isEmpty() && !self.serviceFile.isEmpty();
+    }
+}
+
+class SemuSyncGenerator {
+    class bool prepareOwnedDirectory(string ownedRoot, string path) {
+        string root = SemuOwnedPaths.normalized(ownedRoot);
+        string directory = SemuOwnedPaths.normalized(path);
+        return !root.isEmpty() && !directory.isEmpty()
+            && SemuOwnedPaths.inside(directory, root)
+            && SemuOwnedPaths.prepareDirectory(root)
+            && SemuOwnedPaths.prepareDirectory(directory)
+            && SemuOwnedPaths.containedPath(root, directory).equals(directory)
+            && FileSystem.isDir(directory) && !FileSystem.isSymlink(directory);
+    }
+
+    class string service(SemuSyncPlan plan) {
+        string configRoot = SemuSyncPaths.configRoot(plan.semuHome);
+        string dataRoot = SemuSyncPaths.dataRoot(plan.semuHome);
+        Vector<string> writePaths = [configRoot, dataRoot];
+        Vector<string> readPaths = [];
+        for folder in plan.folders {
+            if (!folder.enabled) { continue; }
+            if (folder.access.equals("readwrite")) {
+                writePaths.push(folder.path);
+            } else {
+                readPaths.push(folder.path);
+            }
+        }
+        string executable = SemuSystemdUnit.quote(plan.launcher);
+        string working = SemuSystemdUnit.quote(SemuSyncPaths.root(plan.semuHome));
+        string writePolicy = SemuSystemdUnit.paths(writePaths);
+        string readPolicy = SemuSystemdUnit.paths(readPaths);
+        if (executable.isEmpty() || working.isEmpty() || writePolicy.isEmpty()) {
+            return "";
+        }
+        string command = executable
+            + " sync daemon"
+            + " --project " + SemuSystemdUnit.quote(plan.projectRoot)
+            + " --semu-home " + SemuSystemdUnit.quote(plan.semuHome)
+            + " --platform " + SemuSystemdUnit.quote(plan.platformId);
+        return SemuSyncServiceTemplate.render(plan.projectRoot, [
+            "@@SEMU_LAUNCHER@@",
+            "@@EXEC_START@@",
+            "@@WORKING_DIRECTORY@@",
+            "@@READ_WRITE_PATHS@@",
+            "@@READ_ONLY_PATHS@@"
+        ], [executable, command, working, writePolicy, readPolicy]);
+    }
+
+    class string prepareDirectories(SemuSyncPlan plan) {
+        string semuHome = SemuOwnedPaths.normalized(plan.semuHome);
+        if (semuHome.isEmpty() || !semuHome.equals(plan.semuHome)
+                || !SemuSyncGenerator.prepareOwnedDirectory(
+                    semuHome, SemuSyncPaths.configRoot(semuHome))
+                || !SemuSyncGenerator.prepareOwnedDirectory(
+                    semuHome, SemuSyncPaths.dataRoot(semuHome))) {
+            return "could not create bounded synchronization runtime paths";
+        }
+        for folder in plan.folders {
+            if (!folder.enabled || !folder.access.equals("readwrite")) { continue; }
+            string ownedRoot = SemuSyncPolicy.writableRoot(
+                plan.projectRoot, folder.path);
+            if (ownedRoot.isEmpty()
+                    || !SemuSyncGenerator.prepareOwnedDirectory(
+                        ownedRoot, folder.path)) {
+                return "could not prepare owned synchronization folder: "
+                    + folder.id;
+            }
+        }
+        return "";
+    }
+
+    class SemuSyncGenerationResult emit(SemuSyncPlan plan) {
+        SemuSyncGenerationResult result = SemuSyncGenerationResult();
+        if (!plan.ok()) { result.error = plan.error; return result; }
+        result.error = SemuSyncGenerator.prepareDirectories(plan);
+        if (!result.error.isEmpty()) { return result; }
+        string service = SemuSyncGenerator.service(plan);
+        if (service.isEmpty()) {
+            result.error = "stable Semu launcher or service policy is invalid";
+            return result;
+        }
+        result.desiredFile = SemuSyncPaths.desired(plan.semuHome);
+        result.serviceFile = SemuSyncPaths.service(plan.semuHome);
+        result.configFile = SemuSyncPaths.configFile(plan.semuHome);
+        string ownedRoot = SemuOwnedPaths.normalized(plan.semuHome);
+        result.error = SemuOwnedDocument.write(ownedRoot, result.desiredFile,
+            SemuJsonFormat.document(plan.json()), 384); // 0600
+        if (result.error.isEmpty()) {
+            result.error = SemuOwnedDocument.write(
+                ownedRoot, result.serviceFile, service, 384); // 0600
+        }
+        return result;
+    }
+}
+
+class SemuSyncSidecar {
+    class bool identifier(string value) {
+        if (value.isEmpty()) { return false; }
+        for character in value {
+            bool alpha = (character >= 'a' && character <= 'z')
+                || (character >= 'A' && character <= 'Z');
+            bool digit = character >= '0' && character <= '9';
+            if (!alpha && !digit && character != '_' && character != '-') {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    class bool ownedWritePath(string projectRoot, string path) {
+        string absolute = SemuOwnedPaths.normalized(path);
+        return !absolute.isEmpty() && absolute.equals(path)
+            && !SemuSyncPolicy.writableRoot(projectRoot, path).isEmpty();
+    }
+
+    class SemuSyncPlan load(string projectRoot, string semuHome,
+                            string platformId) {
+        SemuSyncPlan plan = SemuSyncPlan();
+        plan.projectRoot = FileSystem.absolutePath(projectRoot);
+        plan.semuHome = SemuOwnedPaths.normalized(semuHome);
+        plan.platformId = platformId;
+        string file = SemuOwnedPaths.containedPath(plan.semuHome,
+            SemuSyncPaths.desired(plan.semuHome));
+        FileStatus status = FileStatus(file);
+        string encoded = Path.readAll(file);
+        JsonValue value = JsonValue.parse(encoded);
+        if (!status.isFile() || status.isSymlink() || value.isError()
+                || !value.isObject() || value.keys().size() != 7
+                || !value.get("schema_version").isInt()
+                || value.get("schema_version").asInt() != 1
+                || !value.get("protocol").isString()
+                || !value.get("protocol").asString()
+                    .equals("semu-syncthing-v1")
+                || !value.get("project_root").isString()
+                || !value.get("project_root").asString()
+                    .equals(plan.projectRoot)
+                || !value.get("semu_home").isString()
+                || !value.get("semu_home").asString().equals(plan.semuHome)
+                || !value.get("platform").isString()
+                || !value.get("platform").asString().equals(platformId)
+                || !encoded.equals(SemuJsonFormat.document(value))) {
+            plan.error = "synchronization sidecar is invalid";
+            return plan;
+        }
+        JsonValue runtime = value.get("runtime");
+        JsonValue folders = value.get("folders");
+        if (!runtime.isObject() || runtime.keys().size() != 4
+                || !runtime.get("enabled").isBool()
+                || !runtime.get("start_at_boot").isBool()
+                || !runtime.get("gui_address").isString()
+                || !runtime.get("launcher").isString()
+                || !SemuConfigStore.loopbackAddress(
+                    runtime.get("gui_address").asString())
+                || !SettingsEsDeGenerator.validStableLauncher(
+                    runtime.get("launcher").asString())
+                || !folders.isArray() || folders.size() == 0) {
+            plan.error = "synchronization sidecar runtime is invalid";
+            return plan;
+        }
+        plan.enabled = runtime.get("enabled").asBool();
+        plan.startAtBoot = runtime.get("start_at_boot").asBool();
+        plan.guiAddress = runtime.get("gui_address").asString();
+        plan.launcher = runtime.get("launcher").asString();
+        Vector<string> seen = [];
+        for (int index = 0; index < folders.size(); index++) {
+            JsonValue source = folders.at(index);
+            if (!source.isObject() || source.keys().size() != 11
+                    || !source.get("id").isString()
+                    || !source.get("syncthing_id").isString()
+                    || !source.get("label").isString()
+                    || !source.get("path").isString()
+                    || !source.get("access").isString()
+                    || !source.get("syncthing_type").isString()
+                    || !source.get("marker_policy").isString()
+                    || !source.get("marker_name").isString()
+                    || !source.get("enabled").isBool()
+                    || !source.get("watch").isBool()
+                    || !source.get("rescan_seconds").isInt()) {
+                plan.error = "synchronization sidecar folder is malformed";
+                return plan;
+            }
+            SemuSyncFolder folder = SemuSyncFolder();
+            folder.id = source.get("id").asString();
+            folder.label = source.get("label").asString();
+            folder.path = source.get("path").asString();
+            folder.access = source.get("access").asString();
+            folder.syncthingType = source.get("syncthing_type").asString();
+            folder.markerPolicy = source.get("marker_policy").asString();
+            folder.markerName = source.get("marker_name").asString();
+            folder.enabled = source.get("enabled").asBool();
+            folder.watch = source.get("watch").asBool();
+            folder.rescanSeconds = source.get("rescan_seconds").asInt();
+            string absolute = FileSystem.absolutePath(folder.path);
+            bool accessValid = false;
+            if (folder.access.equals("readwrite")) {
+                accessValid = folder.syncthingType.equals("sendreceive")
+                    && folder.markerPolicy.equals("managed")
+                    && folder.markerName.equals(".stfolder")
+                    && SemuSyncSidecar.ownedWritePath(
+                        plan.projectRoot, folder.path);
+            } else if (folder.access.equals("readonly")) {
+                bool markerValid = false;
+                if (!plan.enabled || !folder.enabled) {
+                    markerValid = folder.markerName.isEmpty();
+                } else {
+                    markerValid = SemuSyncMarker.safeName(folder.markerName);
+                }
+                accessValid = folder.syncthingType.equals("sendonly");
+                if (!folder.markerPolicy.equals("preexisting_child")
+                        || !absolute.equals(folder.path) || !markerValid) {
+                    accessValid = false;
+                }
+            }
+            if (!SemuSyncSidecar.identifier(folder.id)
+                    || seen.contains(folder.id) || folder.label.isEmpty()
+                    || !source.get("syncthing_id").asString()
+                        .equals(folder.syncthingId())
+                    || !accessValid || folder.rescanSeconds < 10
+                    || folder.rescanSeconds > 86400) {
+                plan.error = "synchronization sidecar folder is unsafe: "
+                    + folder.id;
+                return plan;
+            }
+            seen.push(folder.id);
+            plan.folders.push(folder);
+        }
+        return plan;
+    }
+}
+
+class SemuLoopbackHttpResponse {
+    public int status;
+    public string body;
+    public string error;
+
+    public SemuLoopbackHttpResponse(int status, string body, string error) {
+        self.status = status;
+        self.body = body;
+        self.error = error;
+    }
+
+    public bool ok() { return self.status >= 200 && self.status < 300; }
+}
+
+/* curl owns HTTP status and body handling. BTRC stdlib owns framing validation
+ * and structured process execution; this class adds only the loopback policy. */
+class SemuLoopbackHttpClient {
+    class bool safeUrl(string url) {
+        if (url.isEmpty() || url.len() > 4096
+                || !url.startsWith("http://")
+                || !HttpFraming.requestTarget(url)) {
+            return false;
+        }
+        string location = url.substring(7, url.len() - 7);
+        int pathStart = location.indexOf("/");
+        if (pathStart < 0) { return false; }
+        string authority = location.substring(0, pathStart);
+        return SemuConfigStore.loopbackAddress(authority);
+    }
+
+    class SemuLoopbackHttpResponse request(
+            string method, string url, Vector<string> headers, string body,
+            int timeoutSeconds = 10) {
+        Vector<string> allowed = ["GET", "POST", "PUT", "PATCH", "DELETE"];
+        if (!allowed.contains(method)
+                || !HttpFraming.token(method)
+                || !SemuLoopbackHttpClient.safeUrl(url)
+                || timeoutSeconds < 1 || timeoutSeconds > 30
+                || body.len() > 4194304) {
+            return SemuLoopbackHttpResponse(
+                0, "", "invalid bounded loopback HTTP request");
+        }
+        for header in headers {
+            if (header.len() > 4096 || !HttpFraming.headerLine(header)) {
+                return SemuLoopbackHttpResponse(
+                    0, "", "invalid bounded loopback HTTP header");
+            }
+        }
+        Vector<string> arguments = [
+            "--fail-with-body",
+            "--silent",
+            "--show-error",
+            "--proto", "=http",
+            "--proto-redir", "=http",
+            "--max-time", Strings.fromInt(timeoutSeconds),
+            "--max-filesize", "4194304",
+            "--request", method
+        ];
+        for header in headers {
+            arguments.push("--header");
+            arguments.push(header);
+        }
+        if (!body.isEmpty()) {
+            arguments.push("--data-binary");
+            arguments.push("@-");
+        }
+        arguments.push("--");
+        arguments.push(url);
+        ExecResult executed = ChildProcess.run("curl", arguments,
+            timeoutMilliseconds=timeoutSeconds * 1000 + 1000,
+            maxStdoutBytes=4194304,
+            maxStderrBytes=65536,
+            stdinData=body);
+        if (!executed.ok()) {
+            return SemuLoopbackHttpResponse(0, "",
+                executed.wasTimedOut()
+                    ? "loopback HTTP request timed out"
+                    : "loopback HTTP request failed");
+        }
+        return SemuLoopbackHttpResponse(200, executed.stdout(), "");
+    }
+
+    class SemuLoopbackHttpResponse get(
+            string url, Vector<string> headers, int timeoutSeconds = 10) {
+        return SemuLoopbackHttpClient.request(
+            "GET", url, headers, "", timeoutSeconds);
+    }
+}
+
+class SemuSyncFolderStatusResult {
+    public JsonValue folders;
+    public string error;
+
+    public SemuSyncFolderStatusResult() {
+        self.folders = JsonValue.makeArray();
+        self.error = "";
+    }
+
+    public bool ok() { return self.error.isEmpty(); }
+}
+
+class SemuSyncApi {
+    class string tag(string document, string name) {
+        string opening = "<" + name + ">";
+        string closing = "</" + name + ">";
+        int start = document.indexOf(opening);
+        if (start < 0) { return ""; }
+        start += opening.len();
+        string suffix = document.substring(start, document.len() - start);
+        int end = suffix.indexOf(closing);
+        return end < 0 ? "" : suffix.substring(0, end).trim();
+    }
+
+    class Vector<string> headers(string apiKey) {
+        return ["Content-Type: application/json", "X-API-Key: " + apiKey];
+    }
+
+    class bool safeApiKey(string apiKey) {
+        if (apiKey.len() < 16 || apiKey.len() > 128) { return false; }
+        for character in apiKey {
+            bool alpha = (character >= 'a' && character <= 'z')
+                || (character >= 'A' && character <= 'Z');
+            bool digit = character >= '0' && character <= '9';
+            if (!alpha && !digit && character != '-' && character != '_') {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    class JsonValue existingFolder(JsonValue folders, string id) {
+        if (!folders.isArray()) { return JsonValue.makeNull(); }
+        for (int index = 0; index < folders.size(); index++) {
+            JsonValue folder = folders.at(index);
+            if (folder.isObject() && folder.get("id").isString()
+                    && folder.get("id").asString().equals(id)) {
+                return folder;
+            }
+        }
+        return JsonValue.makeNull();
+    }
+
+    class string waitForHealth(string baseUrl) {
+        Vector<string> noHeaders = [];
+        for (int attempt = 0; attempt < 50; attempt++) {
+            SemuLoopbackHttpResponse response = SemuLoopbackHttpClient.get(
+                baseUrl + "/rest/noauth/health", noHeaders, 2);
+            if (response.ok()) { return ""; }
+            Timer.sleepMillis(200);
+        }
+        return "Syncthing loopback API did not become healthy";
+    }
+
+    class string apiKey(SemuSyncPlan plan, string configFile) {
+        string safeConfig = SemuOwnedPaths.containedPath(
+            plan.semuHome, configFile);
+        FileStatus configStatus = FileStatus(safeConfig);
+        if (safeConfig.isEmpty() || !configStatus.isFile()
+                || configStatus.isSymlink()) {
+            return "";
+        }
+        string apiKey = SemuSyncApi.tag(Path.readAll(safeConfig), "apikey");
+        return SemuSyncApi.safeApiKey(apiKey) ? apiKey : "";
+    }
+
+    class SemuSyncFolderStatusResult folderStatuses(
+            SemuSyncPlan plan, string configFile, bool observe) {
+        SemuSyncFolderStatusResult result = SemuSyncFolderStatusResult();
+        string baseUrl = SemuSyncEndpoint.restBaseUrl(plan.guiAddress);
+        string apiKey = observe ? SemuSyncApi.apiKey(plan, configFile) : "";
+        if (observe && (baseUrl.isEmpty() || apiKey.isEmpty())) {
+            result.error = "Syncthing folder status credentials are unavailable";
+            return result;
+        }
+        Vector<string> headers = [];
+        if (observe) { headers = SemuSyncApi.headers(apiKey); }
+        for folder in plan.folders {
+            if (!folder.enabled) { continue; }
+            JsonValue status = JsonValue.makeObject();
+            status.set("id", JsonValue.makeString(folder.id));
+            status.set("syncthing_id",
+                JsonValue.makeString(folder.syncthingId()));
+            status.set("type", JsonValue.makeString(folder.syncthingType));
+            status.set("marker_name", JsonValue.makeString(folder.markerName));
+            status.set("marker_ready",
+                JsonValue.makeBool(SemuSyncMarker.ready(folder)));
+            status.set("observed", JsonValue.makeBool(observe));
+            if (!observe) {
+                status.set("state", JsonValue.makeString("unavailable"));
+                status.set("error", JsonValue.makeString(""));
+                result.folders.push(status);
+                continue;
+            }
+            SemuLoopbackHttpResponse response = SemuLoopbackHttpClient.get(
+                baseUrl + "/rest/db/status?folder=" + folder.syncthingId(),
+                headers, 5);
+            JsonValue observed = JsonValue.parse(response.body);
+            if (!response.ok() || !observed.isObject()
+                    || !observed.get("state").isString()
+                    || !observed.get("error").isString()
+                    || !observed.get("localFiles").isInt()
+                    || !observed.get("localDirectories").isInt()
+                    || !observed.get("localBytes").isInt()) {
+                result.error = "could not read Syncthing folder status: "
+                    + folder.id;
+                return result;
+            }
+            status.set("state", observed.get("state"));
+            status.set("error", observed.get("error"));
+            status.set("local_files", observed.get("localFiles"));
+            status.set("local_directories", observed.get("localDirectories"));
+            status.set("local_bytes", observed.get("localBytes"));
+            result.folders.push(status);
+        }
+        return result;
+    }
+
+    class string reconcile(SemuSyncPlan plan, string configFile) {
+        string markerError = SemuSyncMarker.runtimeError(plan);
+        if (!markerError.isEmpty()) { return markerError; }
+        string safeConfig = SemuOwnedPaths.containedPath(
+            plan.semuHome, configFile);
+        FileStatus configStatus = FileStatus(safeConfig);
+        if (safeConfig.isEmpty() || !configStatus.isFile()
+                || configStatus.isSymlink()) {
+            return "Syncthing owned config is unavailable";
+        }
+        string apiKey = SemuSyncApi.apiKey(plan, safeConfig);
+        if (apiKey.isEmpty()) {
+            return "Syncthing API key is unavailable";
+        }
+        string baseUrl = SemuSyncEndpoint.restBaseUrl(plan.guiAddress);
+        if (baseUrl.isEmpty()) {
+            return "Syncthing loopback endpoint is invalid";
+        }
+        string health = SemuSyncApi.waitForHealth(baseUrl);
+        if (!health.isEmpty()) { return health; }
+        Vector<string> headers = SemuSyncApi.headers(apiKey);
+        SemuLoopbackHttpResponse listed = SemuLoopbackHttpClient.get(
+            baseUrl + "/rest/config/folders", headers);
+        JsonValue existing = JsonValue.parse(listed.body);
+        if (!listed.ok() || !existing.isArray()) {
+            return "could not read Syncthing folder configuration";
+        }
+        SemuLoopbackHttpResponse defaults = SemuLoopbackHttpClient.get(
+            baseUrl + "/rest/config/defaults/folder", headers);
+        JsonValue template = JsonValue.parse(defaults.body);
+        if (!defaults.ok() || !template.isObject()) {
+            return "could not read Syncthing folder defaults";
+        }
+        for folder in plan.folders {
+            string endpoint = baseUrl + "/rest/config/folders/"
+                + folder.syncthingId();
+            JsonValue current = SemuSyncApi.existingFolder(
+                existing, folder.syncthingId());
+            if (!folder.enabled) {
+                if (!current.isNull()) {
+                    SemuLoopbackHttpResponse removed = SemuLoopbackHttpClient.request(
+                        "DELETE", endpoint, headers, "");
+                    if (!removed.ok()) {
+                        return "could not disable Syncthing folder: " + folder.id;
+                    }
+                }
+                continue;
+            }
+            JsonValue configured = current.isObject() ? current : template;
+            configured.set("id", JsonValue.makeString(folder.syncthingId()));
+            configured.set("label", JsonValue.makeString("Semu " + folder.label));
+            configured.set("path", JsonValue.makeString(folder.path));
+            configured.set("type", JsonValue.makeString(folder.syncthingType));
+            configured.set("markerName", JsonValue.makeString(
+                folder.markerName));
+            configured.set("rescanIntervalS", JsonValue.makeInt(
+                folder.rescanSeconds));
+            configured.set("fsWatcherEnabled", JsonValue.makeBool(folder.watch));
+            configured.set("paused", JsonValue.makeBool(false));
+            SemuLoopbackHttpResponse written = SemuLoopbackHttpClient.request(
+                "PUT", endpoint, headers, SemuJsonFormat.value(configured));
+            if (!written.ok()) {
+                return "could not configure Syncthing folder: " + folder.id;
+            }
+        }
+        JsonValue gui = JsonValue.makeObject();
+        gui.set("enabled", JsonValue.makeBool(true));
+        gui.set("tls", JsonValue.makeBool(false));
+        gui.set("address", JsonValue.makeString(plan.guiAddress));
+        SemuLoopbackHttpResponse guiResult = SemuLoopbackHttpClient.request(
+            "PATCH", baseUrl + "/rest/config/gui", headers,
+            SemuJsonFormat.value(gui));
+        return guiResult.ok() ? "" : "could not constrain Syncthing to loopback";
+    }
+}
+
+class SemuSyncServiceStatus {
+    public bool active;
+    public bool enabledAtBoot;
+    public string error;
+
+    public SemuSyncServiceStatus() {
+        self.active = false;
+        self.enabledAtBoot = false;
+        self.error = "";
+    }
+
+    public bool ok() { return self.error.isEmpty(); }
+}
+
+class SemuSyncService {
+    class ExecResult systemctl(string executable, Vector<string> arguments) {
+        Vector<string> command = ["--user"];
+        command.extend(arguments);
+        return ChildProcess.run(executable, command,
+            timeoutMilliseconds=30000,
+            maxStdoutBytes=65536,
+            maxStderrBytes=65536);
+    }
+
+    class string initialize(SemuSyncPlan plan, SemuSyncRuntimeOptions options) {
+        string prepared = SemuSyncGenerator.prepareDirectories(plan);
+        if (!prepared.isEmpty()) { return prepared; }
+        string configFile = SemuOwnedPaths.containedPath(plan.semuHome,
+            SemuSyncPaths.configFile(plan.semuHome));
+        FileStatus configStatus = FileStatus(configFile);
+        if (!configFile.isEmpty() && configStatus.isFile()
+                && !configStatus.isSymlink()) {
+            return "";
+        }
+        if (options.syncthing.isEmpty()) {
+            return "bundled Syncthing executable is unavailable";
+        }
+        ExecResult generated = ChildProcess.run(options.syncthing, [
+            "generate",
+            "--config=" + SemuSyncPaths.configRoot(plan.semuHome),
+            "--data=" + SemuSyncPaths.dataRoot(plan.semuHome),
+            "--no-port-probing"
+        ], timeoutMilliseconds=30000,
+            maxStdoutBytes=1048576, maxStderrBytes=1048576);
+        configFile = SemuOwnedPaths.containedPath(plan.semuHome,
+            SemuSyncPaths.configFile(plan.semuHome));
+        configStatus = FileStatus(configFile);
+        return generated.ok() && !configFile.isEmpty()
+                && configStatus.isFile() && !configStatus.isSymlink()
+            ? "" : "bundled Syncthing could not initialize its owned config";
+    }
+
+    class string installUnit(SemuSyncRuntimeOptions options,
+                             SemuSyncPlan plan,
+                             SemuSyncGenerationResult generated) {
+        string serviceFile = SemuOwnedPaths.containedPath(
+            plan.semuHome, generated.serviceFile);
+        FileStatus serviceStatus = FileStatus(serviceFile);
+        if (serviceFile.isEmpty() || !serviceStatus.isFile()
+                || serviceStatus.isSymlink()) {
+            return "generated Syncthing user service is outside SEMU_HOME";
+        }
+        if (!SemuSyncService.systemctl(options.systemctl,
+                ["link", "--force", serviceFile]).ok()) {
+            return "could not link the Semu Syncthing user service";
+        }
+        return SemuSyncService.systemctl(
+                options.systemctl, ["daemon-reload"]).ok()
+            ? "" : "could not reload the user service manager";
+    }
+
+    class SemuSyncServiceStatus status(string systemctl) {
+        SemuSyncServiceStatus status = SemuSyncServiceStatus();
+        if (systemctl.isEmpty()) {
+            status.error = "systemctl --user is unavailable";
+            return status;
+        }
+        ExecResult active = SemuSyncService.systemctl(
+            systemctl, ["is-active", "semu-syncthing.service"]);
+        string activeState = active.trimmed().toLower();
+        if (active.code == 0 && activeState.equals("active")) {
+            status.active = true;
+        } else if (active.code == 3 && activeState.equals("inactive")) {
+            status.active = false;
+        } else if (active.code == 4 && activeState.equals("unknown")) {
+            status.active = false;
+        } else {
+            status.error = activeState.equals("failed")
+                ? "the Semu Syncthing user service is failed"
+                : "could not query the Semu Syncthing user service";
+            return status;
+        }
+
+        ExecResult enabled = SemuSyncService.systemctl(
+            systemctl, ["is-enabled", "semu-syncthing.service"]);
+        string enabledState = enabled.trimmed().toLower();
+        if (enabled.code == 0
+                && ["enabled", "enabled-runtime"].contains(enabledState)) {
+            status.enabledAtBoot = true;
+        } else if ((enabled.code == 0 || enabled.code == 1)
+                && ["disabled", "static", "indirect", "masked",
+                    "masked-runtime", "not-found", "linked", "linked-runtime",
+                    "generated", "transient"].contains(enabledState)) {
+            status.enabledAtBoot = false;
+        } else {
+            status.error = "could not query whether the Semu Syncthing user service starts at boot";
+        }
+        return status;
+    }
+
+    class string apply(SemuSyncPlan plan, SemuSyncRuntimeOptions options,
+                       SemuSyncGenerationResult generated) {
+        if (options.systemctl.isEmpty()) {
+            return "systemctl --user is unavailable";
+        }
+        string registered = SemuSyncService.installUnit(
+            options, plan, generated);
+        if (!registered.isEmpty()) { return registered; }
+        if (!plan.enabled) {
+            return SemuSyncService.systemctl(options.systemctl,
+                    ["disable", "--now", "semu-syncthing.service"]).ok()
+                ? "" : "could not disable the Semu Syncthing user service";
+        }
+        string markerError = SemuSyncMarker.runtimeError(plan);
+        if (!markerError.isEmpty()) { return markerError; }
+        string initialized = SemuSyncService.initialize(plan, options);
+        if (!initialized.isEmpty()) { return initialized; }
+        if (plan.startAtBoot) {
+            if (!SemuSyncService.systemctl(options.systemctl,
+                    ["enable", "--now", "semu-syncthing.service"]).ok()) {
+                return "could not enable the Semu Syncthing user service";
+            }
+        } else {
+            if (!SemuSyncService.systemctl(options.systemctl,
+                    ["disable", "semu-syncthing.service"]).ok()) {
+                return "could not disable start-at-boot for the Semu Syncthing user service";
+            }
+            if (!SemuSyncService.systemctl(options.systemctl,
+                    ["start", "semu-syncthing.service"]).ok()) {
+                return "could not start the Semu Syncthing user service";
+            }
+        }
+        return SemuSyncApi.reconcile(plan, generated.configFile);
+    }
+}
+
+class SemuSyncProductResult {
+    public string document;
+    public string error;
+
+    public SemuSyncProductResult() {
+        self.document = "";
+        self.error = "";
+    }
+
+    public bool ok() { return self.error.isEmpty(); }
+}
+
+class SemuSyncOperation {
+    public string action;
+    public string owner;
+    public int serviceApplyCount;
+
+    public SemuSyncOperation(string action = "", string owner = "",
+                             int serviceApplyCount = 0) {
+        self.action = action;
+        self.owner = owner;
+        self.serviceApplyCount = serviceApplyCount;
+    }
+
+    class SemuSyncOperation settingsPrepare() {
+        return SemuSyncOperation("prepare", "settings", 0);
+    }
+
+    class SemuSyncOperation installerApply() {
+        return SemuSyncOperation("apply", "installer", 1);
+    }
+
+    class SemuSyncOperation direct(string action) {
+        if (!["apply", "status", "open", "daemon"].contains(action)) {
+            return SemuSyncOperation();
+        }
+        return SemuSyncOperation(
+            action, "cli", action.equals("apply") ? 1 : 0);
+    }
+
+    public bool valid() {
+        if (self.action.equals("prepare")) {
+            return self.owner.equals("settings")
+                && self.serviceApplyCount == 0;
+        }
+        if (!["apply", "status", "open", "daemon"].contains(self.action)) {
+            return false;
+        }
+        return (self.owner.equals("installer")
+                || self.owner.equals("cli"))
+            && self.serviceApplyCount == (self.action.equals("apply") ? 1 : 0);
+    }
+
+    public Vector<string> arguments(string projectRoot, string semuHome,
+                                    string platformId) {
+        if (!self.valid() || self.action.equals("prepare")) {
+            Vector<string> invalid = [];
+            return invalid;
+        }
+        return [
+            "sync", self.action,
+            "--project", projectRoot,
+            "--semu-home", semuHome,
+            "--platform", platformId
+        ];
+    }
+}
+
+class SemuSyncProduct {
+    class SemuSyncProductResult prepare(SemuConfigStore store,
+                                        string platformId) {
+        SemuSyncProductResult result = SemuSyncProductResult();
+        SemuSyncPlan plan = SemuSyncPolicy.resolve(store, platformId);
+        SemuSyncGenerationResult generated = SemuSyncGenerator.emit(plan);
+        if (!generated.ok()) { result.error = generated.error; return result; }
+        SemuSyncPlan sidecar = SemuSyncSidecar.load(
+            store.projectRoot, store.semuHome, platformId);
+        if (!sidecar.ok()) { result.error = sidecar.error; return result; }
+        result.document = SemuJsonFormat.document(sidecar.json());
+        return result;
+    }
+
+    class SemuSyncProductResult apply(SemuConfigStore store,
+                                      string platformId) {
+        SemuSyncProductResult result = SemuSyncProductResult();
+        SemuSyncPlan plan = SemuSyncPolicy.resolve(store, platformId);
+        SemuSyncRuntimeOptions options = SemuSyncRuntimeOptions();
+        SemuSyncGenerationResult generated = SemuSyncGenerator.emit(plan);
+        if (!generated.ok()) { result.error = generated.error; return result; }
+        SemuSyncPlan sidecar = SemuSyncSidecar.load(
+            store.projectRoot, store.semuHome, platformId);
+        if (!sidecar.ok()) { result.error = sidecar.error; return result; }
+        result.error = platformId.equals("linux")
+            ? SemuSyncService.apply(sidecar, options, generated) : "";
+        if (result.error.isEmpty()) {
+            result.document = SemuJsonFormat.document(sidecar.json());
+        }
+        return result;
+    }
+
+    class SemuSyncProductResult execute(SemuConfigStore store,
+                                        string platformId,
+                                        SemuSyncOperation operation,
+                                        bool launchOpen = false) {
+        if (!operation.valid() || operation.action.equals("daemon")) {
+            SemuSyncProductResult invalid = SemuSyncProductResult();
+            invalid.error = "invalid synchronization lifecycle operation";
+            return invalid;
+        }
+        if (operation.action.equals("prepare")) {
+            return SemuSyncProduct.prepare(store, platformId);
+        }
+        if (operation.action.equals("apply")) {
+            return SemuSyncProduct.apply(store, platformId);
+        }
+        if (operation.action.equals("status")) {
+            return SemuSyncProduct.status(store, platformId);
+        }
+        return SemuSyncProduct.open(store, platformId, launchOpen);
+    }
+
+    class int daemon(SemuConfigStore store, string platformId) {
+        SemuSyncPlan plan = SemuSyncSidecar.load(
+            store.projectRoot, store.semuHome, platformId);
+        if (!plan.ok()) { print("sync: " + plan.error); return 1; }
+        if (!plan.enabled) {
+            print("sync: synchronization is disabled in the generated sidecar");
+            return 1;
+        }
+        string markerError = SemuSyncMarker.runtimeError(plan);
+        if (!markerError.isEmpty()) {
+            print("sync: " + markerError);
+            return 1;
+        }
+        SemuSyncRuntimeOptions options = SemuSyncRuntimeOptions();
+        string configRoot = SemuSyncPaths.configRoot(plan.semuHome);
+        string dataRoot = SemuSyncPaths.dataRoot(plan.semuHome);
+        string configFile = SemuSyncPaths.configFile(plan.semuHome);
+        if (options.syncthing.isEmpty()
+                || !SemuOwnedPaths.containedPath(
+                    plan.semuHome, configRoot).equals(configRoot)
+                || !SemuOwnedPaths.containedPath(
+                    plan.semuHome, dataRoot).equals(dataRoot)
+                || !SemuOwnedPaths.containedPath(
+                    plan.semuHome, configFile).equals(configFile)
+                || !FileSystem.isDir(configRoot) || !FileSystem.isDir(dataRoot)
+                || !FileSystem.isFile(configFile)) {
+            print("sync: packaged Syncthing or owned config is unavailable");
+            return 1;
+        }
+        string configArgument = "--config=" + configRoot;
+        string dataArgument = "--data=" + dataRoot;
+        string guiAddress = SemuSyncEndpoint.cliAddress(plan.guiAddress);
+        if (guiAddress.isEmpty()) {
+            print("sync: Syncthing loopback endpoint is invalid");
+            return 1;
+        }
+        ExecResult served = ChildProcess.run(options.syncthing, [
+            "serve", "--gui-address", guiAddress,
+            configArgument, dataArgument,
+            "--no-browser", "--no-port-probing", "--no-restart",
+            "--no-upgrade"
+        ], stdout=CommandOutput.stream(), stderr=CommandOutput.stream());
+        if (!served.ok()) {
+            print("sync: packaged Syncthing exited with code "
+                + Strings.fromInt(served.code));
+        }
+        return served.code;
+    }
+
+    class SemuSyncProductResult status(SemuConfigStore store,
+                                       string platformId) {
+        SemuSyncProductResult result = SemuSyncProductResult();
+        SemuSyncPlan plan = SemuSyncSidecar.load(
+            store.projectRoot, store.semuHome, platformId);
+        if (!plan.ok()) { result.error = plan.error; return result; }
+        SemuSyncRuntimeOptions options = SemuSyncRuntimeOptions();
+        SemuSyncServiceStatus serviceStatus = SemuSyncServiceStatus();
+        if (platformId.equals("linux")) {
+            serviceStatus = SemuSyncService.status(options.systemctl);
+            if (!serviceStatus.ok()) {
+                result.error = serviceStatus.error;
+                return result;
+            }
+        }
+        JsonValue status = plan.json();
+        JsonValue service = JsonValue.makeObject();
+        Vector<string> noHeaders = [];
+        string restBaseUrl = SemuSyncEndpoint.restBaseUrl(plan.guiAddress);
+        SemuLoopbackHttpResponse health = SemuLoopbackHttpClient.get(
+            restBaseUrl + "/rest/noauth/health", noHeaders, 2);
+        bool observeFolders = plan.enabled && health.ok();
+        SemuSyncFolderStatusResult folderStatuses =
+            SemuSyncApi.folderStatuses(
+                plan, SemuSyncPaths.configFile(plan.semuHome),
+                observeFolders);
+        if (!folderStatuses.ok()) {
+            result.error = folderStatuses.error;
+            return result;
+        }
+        service.set("unit", JsonValue.makeString("semu-syncthing.service"));
+        service.set("generated", JsonValue.makeBool(
+            FileSystem.isFile(SemuSyncPaths.service(plan.semuHome))));
+        service.set("config_initialized", JsonValue.makeBool(
+            FileSystem.isFile(SemuSyncPaths.configFile(plan.semuHome))));
+        service.set("active", JsonValue.makeBool(serviceStatus.active));
+        service.set("enabled_at_boot",
+            JsonValue.makeBool(serviceStatus.enabledAtBoot));
+        service.set("api_healthy", JsonValue.makeBool(health.ok()));
+        service.set("folders", folderStatuses.folders);
+        service.set("ui_url", JsonValue.makeString(
+            SemuSyncEndpoint.uiUrl(plan.guiAddress)));
+        status.set("service", service);
+        result.document = SemuJsonFormat.document(status);
+        return result;
+    }
+
+    class SemuSyncProductResult open(SemuConfigStore store,
+                                     string platformId, bool launch) {
+        SemuSyncProductResult result = SemuSyncProductResult();
+        SemuSyncPlan plan = SemuSyncSidecar.load(
+            store.projectRoot, store.semuHome, platformId);
+        if (!plan.ok()) { result.error = plan.error; return result; }
+        string url = SemuSyncEndpoint.uiUrl(plan.guiAddress);
+        if (url.isEmpty()) {
+            result.error = "Syncthing loopback endpoint is invalid";
+            return result;
+        }
+        if (launch) {
+            SemuSyncRuntimeOptions options = SemuSyncRuntimeOptions();
+            if (options.syncthing.isEmpty()) {
+                result.error = "bundled Syncthing executable is unavailable";
+                return result;
+            }
+            ExecResult opened = ChildProcess.run(options.syncthing, [
+                "browser",
+                "--config=" + SemuSyncPaths.configRoot(plan.semuHome),
+                "--data=" + SemuSyncPaths.dataRoot(plan.semuHome)
+            ], timeoutMilliseconds=10000,
+                maxStdoutBytes=65536, maxStderrBytes=65536);
+            if (!opened.ok()) {
+                result.error = "Syncthing could not open its loopback UI";
+                return result;
+            }
+        }
+        result.document = url + "\n";
+        return result;
+    }
+}

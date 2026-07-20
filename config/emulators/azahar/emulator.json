@@ -1,0 +1,123 @@
+{
+  "schema_version": 1,
+  "name": "Azahar",
+  "default_system": "n3ds",
+  "input": {
+    "actions": [
+      "ui.open",
+      "ui.pause",
+      "ui.screenshot",
+      "ui.fullscreen",
+      "app.quit",
+      "state.load",
+      "state.save",
+      "screen.swap"
+    ]
+  },
+  "platforms": {
+    "linux": {
+      "backend": "bwrap",
+      "executable": "${asset_root}/bin/azahar",
+      "args": [
+        "--fullscreen"
+      ],
+      "gl_wrapper": "${asset_root}/bin/nixGL",
+      "sandbox": {
+        "filesystems": [
+          {
+            "path": "${asset_root}",
+            "mode": "ro"
+          },
+          {
+            "path": "${roms}",
+            "mode": "ro"
+          },
+          {
+            "path": "${emulation_root}",
+            "mode": "ro"
+          },
+          {
+            "path": "${bios}",
+            "mode": "ro"
+          },
+          {
+            "path": "${state_root}",
+            "mode": "create"
+          }
+        ]
+      },
+      "graphics": {
+        "method": "config_file",
+        "file": "${state_root}/config/azahar-emu/qt-config.ini",
+        "format": "ini",
+        "section": "Renderer",
+        "key": "graphics_api",
+        "values": {
+          "opengl": "1"
+        },
+        "extra_pins": [
+          {
+            "section": "Renderer",
+            "key": "async_presentation",
+            "value": "false"
+          },
+          {
+            "section": "Renderer",
+            "key": "use_integer_scaling",
+            "value": "true"
+          }
+        ]
+      },
+      "state": {
+        "config_home": "xdg",
+        "data_home": "xdg",
+        "config_subdir": "azahar-emu",
+        "data_subdir": "azahar-emu",
+        "managed_profile_files": [
+          "config/qt-config.ini"
+        ],
+        "seeds": [
+          {
+            "purpose": "n3ds_aes_keys",
+            "target": "${state_root}/data/azahar-emu/sysdata/aes_keys.txt",
+            "copy": "once_if_target_absent",
+            "source_access": "read_only",
+            "overwrite": false,
+            "sources": [
+              "${emulation_root}/bios/aes_keys.txt",
+              "${emulation_root}/bios/n3ds/aes_keys.txt",
+              "${bios}/n3ds/aes_keys.txt",
+              "${bios}/aes_keys.txt"
+            ]
+          },
+          {
+            "purpose": "n3ds_seed_database",
+            "target": "${state_root}/data/azahar-emu/sysdata/seeddb.bin",
+            "copy": "once_if_target_absent",
+            "source_access": "read_only",
+            "overwrite": false,
+            "sources": [
+              "${emulation_root}/bios/seeddb.bin",
+              "${emulation_root}/bios/n3ds/seeddb.bin",
+              "${bios}/n3ds/seeddb.bin",
+              "${bios}/seeddb.bin"
+            ]
+          }
+        ]
+      },
+      "firmware": {
+        "dir": "${emulation_root}/bios",
+        "fallback_dirs": [
+          "${bios}/n3ds",
+          "${bios}"
+        ]
+      }
+    }
+  },
+  "doc": {
+    "launch": "The source-built Azahar binary consumes --fullscreen followed by one positional ROM path. There is no libretro core, host Flatpak, or prebuilt-AppImage fallback.",
+    "state": "Azahar reads configuration from $XDG_CONFIG_HOME/azahar-emu and keeps NAND, SDMC saves, save states, cache, and logs below the isolated $XDG_DATA_HOME/$XDG_CACHE_HOME state roots. Named key files are first-run copies; external sources are never modified.",
+    "sandbox": "The package closure, ROM library, shared Emulation tree, and BIOS/key roots are read-only. Azahar can write only its isolated state root.",
+    "rendering": "OpenGL is pinned in the managed profile. The source-built package directly links libsemurenderer, submits display-upright semantic top/bottom regions from TryPresent, copies the resulting immutable pointer map into GRenderWindow, then submits completed frontend rendering immediately before SwapBuffers. Bottom-screen touch uses ABI-native coordinates and bypasses Azahar's framebuffer-layout transform. Both lanes use zero rotation, with no deactivate or display/session path."
+  }
+}

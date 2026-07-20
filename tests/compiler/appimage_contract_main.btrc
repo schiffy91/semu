@@ -1,0 +1,828 @@
+// appimage_contract_main.btrc - isolated strict-import AppImage contract.
+
+import std.{bytes, cli, fs, io, platform, strings, vector}
+import ../../src/generators/appimage.btrc
+import ../../src/generators/appimage/assembler.btrc
+import ../../src/generators/appimage/install_policy.btrc
+import ../../src/generators/appimage/install_store.btrc
+import ../../src/generators/appimage/installed_launcher.btrc
+import ../../src/generators/appimage/installer.btrc
+import ../../src/generators/appimage/no_fuse_verifier.btrc
+import ../../src/generators/appimage/provenance.btrc
+import ../../src/generators/appimage/runtime_inventory.btrc
+import ../../src/generators/appimage/runtime_builder.btrc
+import ../../src/generators/appimage/steam_shortcuts.btrc
+
+class AppImageSteamVdfFixture {
+    class void cstring(Bytes bytes, string value) {
+        bytes.appendBytes(Bytes.fromString(value));
+        bytes.append(0);
+    }
+
+    class void stringField(Bytes bytes, string key, string value) {
+        bytes.append(1);
+        AppImageSteamVdfFixture.cstring(bytes, key);
+        AppImageSteamVdfFixture.cstring(bytes, value);
+    }
+
+    class Bytes database(Vector<string> names, Vector<string> executables) {
+        Bytes bytes = Bytes();
+        if (names.size() != executables.size()) { return bytes; }
+        bytes.append(0);
+        AppImageSteamVdfFixture.cstring(bytes, "shortcuts");
+        for (int index = 0; index < names.size(); index++) {
+            bytes.append(0);
+            AppImageSteamVdfFixture.cstring(bytes, f"{index}");
+            AppImageSteamVdfFixture.stringField(
+                bytes, "appname", names.get(index));
+            AppImageSteamVdfFixture.stringField(
+                bytes, "exe", executables.get(index));
+            bytes.append(0);
+            AppImageSteamVdfFixture.cstring(bytes, "tags");
+            AppImageSteamVdfFixture.stringField(bytes, "0", "fixture");
+            bytes.append(8);
+            bytes.append(8);
+        }
+        bytes.append(8);
+        bytes.append(8);
+        return bytes;
+    }
+}
+
+class AppImageContractTest {
+    class AppImagePathPlan lockPlan(string workBase) {
+        AppImagePathPlan plan = AppImagePathPlan();
+        string canonical = UnixFileSystem.realPath(workBase);
+        plan.valid = true;
+        plan.workBase = canonical;
+        plan.runtimeRoot = PathTools.join(canonical, "runtime-root");
+        return plan;
+    }
+
+    class bool assemblyLock(string executable) {
+        string scratch = FileSystem.tempDir("semu-appimage-lock");
+        if (scratch.isEmpty()) { return false; }
+        AppImagePathPlan plan = AppImageContractTest.lockPlan(scratch);
+        AppImageAssemblyLock held = AppImageAssemblyLock.acquire(plan);
+        bool acquired = held.ok();
+        ExecResult contended = acquired
+            ? ChildProcess.run(executable,
+                ["assembly-lock-probe", "--work-base", scratch])
+            : ExecResult(127, "", "parent could not acquire lock", executable);
+        AppImageContractResult released = acquired
+            ? held.unlock()
+            : AppImageContractResult.failure(held.error);
+        ExecResult reacquired = released.ok()
+            ? ChildProcess.run(executable,
+                ["assembly-lock-probe", "--work-base", scratch])
+            : ExecResult(127, "", "parent could not release lock", executable);
+        string lockPath = AppImageAssemblyLock.path(plan);
+        bool valid = acquired && !contended.ok() && released.ok()
+            && reacquired.ok() && SemuInstallHost.regularFile(lockPath)
+            && !FileStatus(lockPath).isSymlink();
+        if (!valid) {
+            print(f"assembly lock detail: acquired={acquired}"
+                + f" contended={contended.code} released={released.ok()}"
+                + f" reacquired={reacquired.code}"
+                + f" regular={SemuInstallHost.regularFile(lockPath)}"
+                + f" symlink={FileStatus(lockPath).isSymlink()}"
+                + " executable=" + executable);
+        }
+        FileSystem.removeRecursive(scratch);
+        return valid;
+    }
+
+    class bool exactRollback() {
+        string scratch = FileSystem.tempDir("semu-install-rollback");
+        if (scratch.isEmpty()) { return false; }
+        string source = PathTools.join(scratch, "candidate");
+        string destination = PathTools.join(scratch, "canonical");
+        bool prepared = FileSystem.writeText(source, "candidate-bytes\n")
+            && FileSystem.writeText(destination, "prior-bytes-with-newline\n")
+            && FileSystem.chmod(source, 320) == 0 // 0500
+            && FileSystem.chmod(destination, 288) == 0; // 0440
+        string priorDigest = SemuInstallHost.sha256File(destination);
+        FileStatus priorStatus = FileStatus(destination);
+        SemuInstallTransaction transaction =
+            SemuInstallTransaction(scratch);
+        bool replaced = prepared && !priorDigest.isEmpty()
+            && transaction.begin().ok()
+            && transaction.copy(source, destination, 320)
+            && SemuInstallHost.sha256File(destination).equals(
+                SemuInstallHost.sha256File(source));
+        transaction.rollback();
+        FileStatus restoredStatus = FileStatus(destination);
+        bool restored = replaced
+            && SemuInstallHost.sha256File(destination).equals(priorDigest)
+            && (restoredStatus.mode & 511) == (priorStatus.mode & 511)
+            && !FileStatus(transaction.root).linkFound;
+        FileSystem.removeRecursive(scratch);
+        return restored;
+    }
+
+    class bool runtimePaths(string project) {
+        string launcher = SemuAppImageGenerator.runtimeLauncherTemplate(project);
+        string hostHome = Environment.get("HOME", "");
+        return launcher.equals("${home}/Applications/Semu/bin/semu")
+            && (hostHome.isEmpty() || !launcher.contains(hostHome));
+    }
+
+    class bool packagingOwnership() {
+        string scratch = FileSystem.tempDir("semu-appimage-owned-output");
+        if (scratch.isEmpty()) { return false; }
+        string project = PathTools.join(scratch, "project");
+        string outside = PathTools.join(scratch, "outside");
+        string build = PathTools.join(project, "build");
+        string sentinel = PathTools.join(outside, "sentinel");
+        CompilerDiagnostics diagnostics = CompilerDiagnostics();
+        bool prepared = FileSystem.mkdirp(project) == 0
+            && FileSystem.mkdirp(outside) == 0
+            && FileSystem.writeText(sentinel, "outside-bytes\n")
+            && FileSystem.symlink(outside, build) == 0;
+        string linkedRoot = SemuAppImageGenerator.packagingRoot(
+            project, "fixture");
+        bool linkedBuildRejected = prepared
+            && !SemuAppImageGenerator.freshPackagingRoot(
+                build, linkedRoot, diagnostics)
+            && Path.readAll(sentinel).equals("outside-bytes\n");
+        unlink(build);
+
+        bool traversalRejected = SemuAppImageGenerator.packagingRoot(
+            project, "../escape").isEmpty();
+        bool packagingPrepared = FileSystem.mkdirp(
+            PathTools.join(build, "packaging")) == 0;
+        string root = SemuAppImageGenerator.packagingRoot(project, "fixture");
+        bool linkedRootPrepared = packagingPrepared
+            && FileSystem.symlink(outside, root) == 0;
+        bool linkedRootRejected = linkedRootPrepared
+            && !SemuAppImageGenerator.freshPackagingRoot(
+                build, root, diagnostics)
+            && Path.readAll(sentinel).equals("outside-bytes\n");
+        unlink(root);
+
+        bool regularRoot = SemuAppImageGenerator.freshPackagingRoot(
+            build, root, diagnostics);
+        string linkedBin = PathTools.join(root, "bin");
+        bool linkedDestination = regularRoot
+            && FileSystem.symlink(outside, linkedBin) == 0;
+        bool writeRejected = linkedDestination
+            && !SemuAppImageGenerator.write(build,
+                PathTools.join(linkedBin, "launcher"), "unsafe\n", false,
+                diagnostics)
+            && !FileStatus(PathTools.join(outside, "launcher")).linkFound
+            && Path.readAll(sentinel).equals("outside-bytes\n");
+        FileSystem.removeRecursive(scratch);
+        return linkedBuildRejected && traversalRejected
+            && linkedRootRejected && writeRejected;
+    }
+
+    class bool steamShortcutMigration() {
+        string scratch = FileSystem.tempDir("semu-steam-vdf-migration");
+        if (scratch.isEmpty()) { return false; }
+        string home = PathTools.join(scratch, "home");
+        string stateRoot = PathTools.join(scratch, "state");
+        string bin = PathTools.join(scratch, "bin");
+        string database = PathTools.join(scratch, "shortcuts.vdf");
+        string corrupt = PathTools.join(scratch, "corrupt.vdf");
+        string serviceState = PathTools.join(scratch, "steam.state");
+        string serviceLog = PathTools.join(scratch, "steam.log");
+        string systemctl = PathTools.join(bin, "systemctl");
+        string pgrep = PathTools.join(bin, "pgrep");
+        string appImage = PathTools.join(
+            home, "Applications/Semu/Semu-x86_64.AppImage");
+        string megaBezel = PathTools.join(home, "semu-mb-launch.sh");
+        string stable = PathTools.join(home, "Applications/Semu/bin/semu");
+        Bytes source = AppImageSteamVdfFixture.database(
+            ["Unrelated", "Semu-x86_64.AppImage",
+             "Semu-x86_64.AppImage", "Semu MegaBezel"],
+            ["\"/opt/unrelated\"", "\"" + appImage + "\"",
+             "\"" + appImage + "\"", "\"" + megaBezel + "\""]);
+        Bytes expected = AppImageSteamVdfFixture.database(
+            ["Unrelated"], ["\"/opt/unrelated\""]);
+        SemuSteamMigrationPolicy policy = SemuSteamMigrationPolicy();
+        policy.serviceUnit = "steam-launcher.service";
+        policy.processName = "steam";
+        policy.rules = [
+            SemuSteamLegacyRule("Semu-x86_64.AppImage",
+                "${home}/Applications/Semu/Semu-x86_64.AppImage"),
+            SemuSteamLegacyRule(
+                "Semu MegaBezel", "${home}/semu-mb-launch.sh")
+        ];
+        bool prepared = FileSystem.mkdirp(home) == 0
+            && FileSystem.mkdirp(stateRoot) == 0
+            && FileSystem.mkdirp(bin) == 0
+            && SemuInstallHost.atomicBytes(database, source, 384)
+            && SemuInstallHost.atomicBytes(
+                corrupt, source.slice(0, source.length() - 1), 384)
+            && FileSystem.writeText(serviceState, "active\n")
+            && FileSystem.writeText(serviceLog, "")
+            && FileSystem.writeText(systemctl, """#!/usr/bin/env sh
+set -eu
+state=\"$SEMU_TEST_STEAM_STATE\"
+log=\"$SEMU_TEST_STEAM_LOG\"
+case \"$2\" in
+  is-active) [ \"$(cat \"$state\")\" = active ] && exit 0 || exit 3 ;;
+  stop) printf 'inactive\n' > \"$state\"; printf 'stop\n' >> \"$log\" ;;
+  start) printf 'active\n' > \"$state\"; printf 'start\n' >> \"$log\" ;;
+  *) exit 64 ;;
+esac
+""")
+            && FileSystem.writeText(pgrep, """#!/usr/bin/env sh
+set -eu
+[ \"$(cat \"$SEMU_TEST_STEAM_STATE\")\" = active ]
+""")
+            && FileSystem.chmod(systemctl, 493) == 0
+            && FileSystem.chmod(pgrep, 493) == 0;
+        string originalPath = Environment.get("PATH", "");
+        setenv("PATH", bin + ":" + originalPath, 1);
+        setenv("SEMU_TEST_STEAM_STATE", serviceState, 1);
+        setenv("SEMU_TEST_STEAM_LOG", serviceLog, 1);
+
+        SemuSteamVdfEdit pure = SemuSteamShortcutVdf.removeDeclared(
+            source, policy.rules, home);
+        SemuSteamVdfEdit idempotent = pure.valid
+            ? SemuSteamShortcutVdf.removeDeclared(
+                pure.content, policy.rules, home) : SemuSteamVdfEdit();
+        SemuSteamVdfEdit malformed = SemuSteamShortcutVdf.removeDeclared(
+            source.slice(0, source.length() - 1), policy.rules, home);
+        Bytes unknownBytes = AppImageSteamVdfFixture.database(
+            ["Semu Unknown"], ["\"" + PathTools.join(
+                home, "unknown.sh") + "\""]);
+        string unknown = PathTools.join(scratch, "unknown.vdf");
+        bool unknownWritten = SemuInstallHost.atomicBytes(
+            unknown, unknownBytes, 384);
+        SemuSteamShortcutInspection conflict =
+            SemuSteamShortcutDatabase.inspect(
+                [unknown], policy.rules, home, stable);
+
+        string before = SemuInstallHost.sha256File(database);
+        SemuSteamShortcutMigration migration = SemuSteamShortcutMigration(
+            policy, stateRoot, home, stable, [database]);
+        SemuInstallResult migrated = prepared && unknownWritten
+            ? migration.begin()
+            : SemuInstallResult.failure("fixture setup failed");
+        bool stoppedAndRestarted = migrated.ok()
+            && FileSystem.readText(serviceState).trim().equals("active")
+            && SemuInstallHost.sameBytes(
+                SemuInstallHost.readBytes(database), expected);
+        SemuInstallResult rolledBack = migrated.ok()
+            ? migration.rollback()
+            : SemuInstallResult.failure("migration did not begin");
+        bool exactRollback = rolledBack.ok()
+            && SemuInstallHost.sha256File(database).equals(before)
+            && SemuInstallHost.sameBytes(
+                SemuInstallHost.readBytes(database), source)
+            && FileSystem.readText(serviceState).trim().equals("active");
+
+        string deploymentFile = PathTools.join(scratch, "deployment");
+        SemuInstallTransaction deployment =
+            SemuInstallTransaction(stateRoot);
+        SemuSteamShortcutMigration sharedMigration =
+            SemuSteamShortcutMigration(
+                policy, stateRoot, home, stable, [database]);
+        bool sharedPrepared = FileSystem.writeText(
+                deploymentFile, "prior-deployment-bytes\n")
+            && deployment.begin().ok()
+            && deployment.snapshot(database)
+            && deployment.snapshot(deploymentFile);
+        SemuInstallResult sharedStarted = sharedPrepared
+            ? sharedMigration.beginWith(deployment)
+            : SemuInstallResult.failure("shared transaction setup failed");
+        bool sharedMutated = sharedStarted.ok()
+            && FileSystem.writeText(
+                deploymentFile, "candidate-deployment-bytes\n");
+        SemuInstallResult sharedRolledBack = sharedMutated
+            ? sharedMigration.rollback()
+            : SemuInstallResult.failure("shared migration did not begin");
+        bool exactSharedRollback = sharedRolledBack.ok()
+            && SemuInstallHost.sameBytes(
+                SemuInstallHost.readBytes(database), source)
+            && FileSystem.readText(deploymentFile)
+                .equals("prior-deployment-bytes\n");
+
+        SemuSteamShortcutMigration committedMigration =
+            SemuSteamShortcutMigration(
+                policy, stateRoot, home, stable, [database]);
+        SemuInstallResult migratedAgain = committedMigration.begin();
+        SemuInstallResult committed = migratedAgain.ok()
+            ? committedMigration.commit()
+            : SemuInstallResult.failure("second migration did not begin");
+        string logBeforeIdempotence = FileSystem.readText(serviceLog);
+        SemuSteamShortcutMigration noOp = SemuSteamShortcutMigration(
+            policy, stateRoot, home, stable, [database]);
+        SemuInstallResult noOpResult = noOp.begin();
+        SemuSteamShortcutMigration corruptMigration =
+            SemuSteamShortcutMigration(
+                policy, stateRoot, home, stable, [corrupt]);
+        string corruptBefore = SemuInstallHost.sha256File(corrupt);
+        SemuInstallResult corruptResult = corruptMigration.begin();
+
+        bool exact = pure.valid && pure.removed == 3
+            && SemuInstallHost.sameBytes(pure.content, expected)
+            && idempotent.valid && idempotent.removed == 0
+            && SemuInstallHost.sameBytes(idempotent.content, expected)
+            && !malformed.valid && !conflict.valid
+            && stoppedAndRestarted && exactRollback && exactSharedRollback
+            && migratedAgain.ok() && committed.ok()
+            && noOpResult.ok() && noOp.removed == 0
+            && FileSystem.readText(serviceLog).equals(logBeforeIdempotence)
+            && !corruptResult.ok()
+            && SemuInstallHost.sha256File(corrupt).equals(corruptBefore)
+            && FileSystem.readText(serviceState).trim().equals("active")
+            && Strings.split(FileSystem.readText(serviceLog).trim(), "\n")
+                .size() == 10;
+        setenv("PATH", originalPath, 1);
+        unsetenv("SEMU_TEST_STEAM_STATE");
+        unsetenv("SEMU_TEST_STEAM_LOG");
+        FileSystem.removeRecursive(scratch);
+        return exact;
+    }
+
+    class bool romPrecedence() {
+        string scratch = FileSystem.tempDir("semu-rom-precedence");
+        if (scratch.isEmpty()) { return false; }
+        string cli = PathTools.join(scratch, "cli");
+        string environment = PathTools.join(scratch, "environment");
+        string configured = PathTools.join(scratch, "configured");
+        string biosEnvironment = PathTools.join(scratch, "bios-environment");
+        string biosConfigured = PathTools.join(scratch, "bios-configured");
+        string semuHome = PathTools.join(scratch, "settings");
+        string project = PathTools.join(scratch, "project");
+        bool prepared = FileSystem.mkdirp(cli) == 0
+            && FileSystem.mkdirp(environment) == 0
+            && FileSystem.mkdirp(configured) == 0
+            && FileSystem.mkdirp(biosEnvironment) == 0
+            && FileSystem.mkdirp(biosConfigured) == 0
+            && FileSystem.mkdirp(semuHome) == 0
+            && FileSystem.mkdirp(project) == 0
+            && FileSystem.writeText(PathTools.join(semuHome, "semu.json"),
+                "{\n  \"paths\": {\n    \"roms_root\": {\n"
+                + "      \"linux\": \"" + configured
+                + "\"\n    },\n    \"bios_root\": {\n"
+                + "      \"linux\": \"" + biosConfigured
+                + "\"\n    }\n  }\n}\n");
+        SemuRomsPolicy policy = SemuRomsPolicy();
+        policy.defaultRoot = PathTools.join(scratch, "absent-default");
+        policy.candidates = ["roms"];
+        SemuInstallResult cliResult = policy.runtime(
+            cli, [environment], semuHome, "linux", project, "roms");
+        SemuInstallResult environmentResult = policy.runtime(
+            "", [environment], semuHome, "linux", project, "roms");
+        string environmentPath = UnixFileSystem.realPath(environment);
+        FileSystem.removeRecursive(environment);
+        SemuInstallResult configuredResult = policy.runtime(
+            "", [environment], semuHome, "linux", project, "roms");
+        SemuBiosPolicy bios = SemuBiosPolicy();
+        bios.defaultRoot = PathTools.join(scratch, "absent-bios");
+        SemuInstallResult biosEnvironmentResult = bios.resolve(
+            biosEnvironment, semuHome, "linux");
+        SemuInstallResult biosConfiguredResult = bios.resolve(
+            "", semuHome, "linux");
+        bool exact = prepared && cliResult.ok()
+            && cliResult.document.equals(UnixFileSystem.realPath(cli))
+            && environmentResult.ok()
+            && environmentResult.document.equals(environmentPath)
+            && configuredResult.ok()
+            && configuredResult.document.equals(
+                UnixFileSystem.realPath(configured))
+            && biosEnvironmentResult.ok()
+            && biosEnvironmentResult.document.equals(
+                UnixFileSystem.realPath(biosEnvironment))
+            && biosConfiguredResult.ok()
+            && biosConfiguredResult.document.equals(
+                UnixFileSystem.realPath(biosConfigured))
+            && !biosConfiguredResult.document.startsWith(project + "/");
+        FileSystem.removeRecursive(scratch);
+        return exact;
+    }
+
+    class bool exactLinuxInventory(Vector<AppImageRuntimeSlice> slices) {
+        Vector<string> expected = [
+            "azahar", "cemu", "dolphin", "flycast", "melonds",
+            "pcsx2", "ppsspp", "retroarch", "ryujinx"
+        ];
+        if (slices.size() != expected.size()) { return false; }
+        for (int index = 0; index < expected.size(); index++) {
+            if (!slices.get(index).id.equals(expected.get(index))) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    class bool exactLinuxCores(Vector<string> cores) {
+        Vector<string> expected = [
+            "desmume", "gambatte", "genesis_plus_gx", "mednafen_psx",
+            "mesen", "mgba", "mupen64plus_next", "snes9x"
+        ];
+        if (cores.size() != expected.size()) { return false; }
+        for (int index = 0; index < expected.size(); index++) {
+            if (!cores.get(index).equals(expected.get(index))) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    class bool runtimeBuilder(string project) {
+        string scratch = FileSystem.tempDir("semu-runtime-builder-plan");
+        if (scratch.isEmpty()) { return false; }
+        string cache = PathTools.join(scratch, "cache");
+        string output = PathTools.join(cache, "runtime-root");
+        AppImageRuntimeBuildPlan plan = AppImageRuntimeBuildPlan();
+        AppImageRuntimeBuildResult loaded = AppImageRuntimeBuildPlan.create(
+            project, output, plan, cache);
+        bool identityFixture = loaded.ok()
+            && FileSystem.mkdirp(PathTools.join(plan.snapshot, "config")) == 0
+            && FileSystem.writeText(PathTools.join(
+                plan.snapshot, "flake.nix"), "{ outputs = _: {}; }\n")
+            && FileSystem.writeText(PathTools.join(
+                plan.snapshot, "config/fixture.json"), "{\"value\":1}\n");
+        AppImageRuntimeBuildResult firstIdentity = identityFixture
+            ? AppImageRuntimeSnapshot.identity(plan)
+            : AppImageRuntimeBuildResult.failure("identity fixture failed");
+        bool identityChanged = FileSystem.writeText(PathTools.join(
+            plan.snapshot, "config/fixture.json"), "{\"value\":2}\n");
+        AppImageRuntimeBuildResult secondIdentity = identityChanged
+            ? AppImageRuntimeSnapshot.identity(plan)
+            : AppImageRuntimeBuildResult.failure("identity mutation failed");
+
+        string outside = PathTools.join(scratch, "outside");
+        string sentinel = PathTools.join(outside, "sentinel");
+        bool exportPrepared = FileSystem.mkdirp(plan.exportRoot) == 0
+            && FileSystem.mkdirp(outside) == 0
+            && FileSystem.writeText(PathTools.join(
+                plan.exportRoot, "runtime"), "runtime-bytes\n")
+            && FileSystem.writeText(sentinel, "outside-bytes\n");
+        AppImageRuntimeBuildResult published = exportPrepared
+            ? AppImageRuntimeExporter.publish(plan)
+            : AppImageRuntimeBuildResult.failure("export fixture failed");
+        AppImageRuntimeBuildResult republished = published.ok()
+            ? AppImageRuntimeExporter.publish(plan) : published;
+        AppImageRuntimeBuilder firstBuilder = AppImageRuntimeBuilder(plan);
+        AppImageRuntimeBuilder secondBuilder = AppImageRuntimeBuilder(plan);
+        AppImageRuntimeBuildResult firstLock = firstBuilder.acquire();
+        AppImageRuntimeBuildResult contendedLock = secondBuilder.acquire();
+        AppImageRuntimeBuildResult firstUnlock = firstBuilder.unlock();
+        AppImageRuntimeBuildResult secondLock = firstUnlock.ok()
+            ? secondBuilder.acquire() : firstUnlock;
+        AppImageRuntimeBuildResult secondUnlock = secondLock.ok()
+            ? secondBuilder.unlock() : secondLock;
+        bool linkedLock = secondUnlock.ok()
+            && FileSystem.symlink(outside, plan.lock) == 0;
+        AppImageRuntimeBuilder linkedLockBuilder = AppImageRuntimeBuilder(plan);
+        AppImageRuntimeBuildResult linkedLockResult = linkedLock
+            ? linkedLockBuilder.acquire()
+            : AppImageRuntimeBuildResult.failure("linked lock fixture failed");
+        if (linkedLock) { unlink(plan.lock); }
+
+        string unmarked = PathTools.join(scratch, "unmarked");
+        FileSystem.mkdirp(unmarked);
+        AppImageRuntimeBuildPlan unmarkedPlan = AppImageRuntimeBuildPlan();
+        AppImageRuntimeBuildResult unmarkedResult =
+            AppImageRuntimeBuildPlan.create(project,
+                PathTools.join(unmarked, "runtime-root"),
+                unmarkedPlan, unmarked);
+
+        string linked = PathTools.join(scratch, "linked-cache");
+        FileSystem.symlink(outside, linked);
+        AppImageRuntimeBuildPlan linkedPlan = AppImageRuntimeBuildPlan();
+        AppImageRuntimeBuildResult linkedResult =
+            AppImageRuntimeBuildPlan.create(project,
+                PathTools.join(linked, "runtime-root"), linkedPlan, linked);
+
+        string outputCache = PathTools.join(scratch, "output-cache");
+        AppImageRuntimeBuildPlan outputPlan = AppImageRuntimeBuildPlan();
+        AppImageRuntimeBuildResult outputLoaded =
+            AppImageRuntimeBuildPlan.create(project,
+                PathTools.join(outputCache, "runtime-root"),
+                outputPlan, outputCache);
+        bool outputLinked = outputLoaded.ok()
+            && FileSystem.symlink(outside, outputPlan.output) == 0;
+        AppImageRuntimeBuildPlan unsafeOutputPlan = AppImageRuntimeBuildPlan();
+        AppImageRuntimeBuildResult unsafeOutput = outputLinked
+            ? AppImageRuntimeBuildPlan.create(project, outputPlan.output,
+                unsafeOutputPlan, outputCache)
+            : AppImageRuntimeBuildResult.failure(
+                "unsafe output fixture failed");
+
+        AppImageRuntimeBuildPlan arbitraryPlan = AppImageRuntimeBuildPlan();
+        AppImageRuntimeBuildResult arbitrary =
+            AppImageRuntimeBuildPlan.create(project,
+                PathTools.join(scratch, "arbitrary-output"),
+                arbitraryPlan, PathTools.join(scratch, "arbitrary-cache"));
+        AppImageRuntimeBuildPlan traversalPlan = AppImageRuntimeBuildPlan();
+        AppImageRuntimeBuildResult traversal =
+            AppImageRuntimeBuildPlan.create(project, "", traversalPlan,
+                PathTools.join(scratch, "cache/../escape"));
+        AppImageRuntimeBuildPlan rootPlan = AppImageRuntimeBuildPlan();
+        AppImageRuntimeBuildResult root = AppImageRuntimeBuildPlan.create(
+            project, "/runtime-root", rootPlan, "/");
+        string home = UnixFileSystem.realPath(Environment.get("HOME", ""));
+        AppImageRuntimeBuildPlan homePlan = AppImageRuntimeBuildPlan();
+        AppImageRuntimeBuildResult protectedHome =
+            AppImageRuntimeBuildPlan.create(project,
+                PathTools.join(home, "runtime-root"), homePlan, home);
+        string homeAncestor = PathTools.dirname(home);
+        AppImageRuntimeBuildPlan ancestorPlan = AppImageRuntimeBuildPlan();
+        AppImageRuntimeBuildResult protectedAncestor =
+            AppImageRuntimeBuildPlan.create(project,
+                PathTools.join(homeAncestor, "runtime-root"),
+                ancestorPlan, homeAncestor);
+        AppImageRuntimeBuildPlan repositoryPlan = AppImageRuntimeBuildPlan();
+        AppImageRuntimeBuildResult protectedRepository =
+            AppImageRuntimeBuildPlan.create(project,
+                PathTools.join(project, "runtime-root"),
+                repositoryPlan, project);
+        string bootstrap = Path.readAll(PathTools.join(
+            project, "packaging/appimage/build_runtime.sh"));
+        bool exact = loaded.ok()
+            && plan.snapshot.equals(PathTools.join(cache, "source"))
+            && plan.output.equals(output)
+            && FileSystem.readText(AppImageRuntimeCache.marker(cache))
+                .equals(AppImageRuntimeCache.document(
+                    cache, UnixFileSystem.realPath(project)))
+            && plan.image.equals("docker.io/nixos/nix@sha256:29fc5fe207f159ceb0143c25c19c774062fee02ce5eda118f3067547b3054894")
+            && plan.volume.equals("semu-appimage-nix-x86_64")
+            && AppImageRuntimeExporter.containerProgram().contains(
+                "SEMU_SOURCE_SNAPSHOT_IDENTITY")
+            && !AppImageRuntimeExporter.containerProgram().contains(
+                "SEMU_SOURCE_FLAKE_SHA256")
+            && AppImageRuntimeExporter.containerProgram().contains(
+                "pkgs.bubblewrap")
+            && AppImageRuntimeExporter.containerProgram().contains(
+                "steamdeck-runtime-store-path.txt")
+            && firstIdentity.ok() && secondIdentity.ok()
+            && !firstIdentity.value.equals(secondIdentity.value)
+            && firstIdentity.value.contains("src=absent;")
+            && firstIdentity.value.contains("assets=absent;")
+            && firstIdentity.value.contains("patches=absent;")
+            && published.ok() && republished.ok()
+            && firstLock.ok() && !contendedLock.ok()
+            && firstUnlock.ok() && secondLock.ok() && secondUnlock.ok()
+            && !linkedLockResult.ok()
+            && FileStatus(plan.output).isSymlink()
+            && UnixFileSystem.realPath(plan.output)
+                .equals(UnixFileSystem.realPath(plan.exportRoot))
+            && FileSystem.readText(sentinel).equals("outside-bytes\n")
+            && !unmarkedResult.ok() && !linkedResult.ok()
+            && !unsafeOutput.ok() && !arbitrary.ok() && !traversal.ok()
+            && !root.ok() && !protectedHome.ok()
+            && !protectedAncestor.ok() && !protectedRepository.ok()
+            && Strings.split(bootstrap, "\n").size() <= 42
+            && !bootstrap.contains("podman run")
+            && !bootstrap.contains("rsync -a")
+            && !bootstrap.contains("hdiutil ")
+            && bootstrap.contains("--strict-imports")
+            && bootstrap.contains("runtime_builder_main.btrc");
+        FileSystem.removeRecursive(scratch);
+        return exact;
+    }
+
+    class bool genericCoreHost() {
+        JsonValue platform = JsonValue.parse(
+            "{\"core_loader\":{\"filename\":\"${core}.so\","
+            + "\"directories\":[\"${asset_root}/cores\"],"
+            + "\"args\":[\"--core\",\"${core_file}\"]}}");
+        JsonValue standalone = JsonValue.makeObject();
+        if (!AppImageRuntimeInventory.validCoreLoader(platform)
+                || AppImageRuntimeInventory.validCoreLoader(standalone)) {
+            return false;
+        }
+        string scratch = FileSystem.tempDir("semu-core-host");
+        string system = PathTools.join(scratch, "systems/fixture");
+        if (scratch.isEmpty() || FileSystem.mkdirp(system) != 0
+                || !FileSystem.writeText(PathTools.join(system, "system.json"),
+                    "{\"emulators\":[{\"emulator\":\"renamed-host\","
+                    + "\"core\":\"fixture_core\"}]}\n")) {
+            FileSystem.removeRecursive(scratch);
+            return false;
+        }
+        AppImageRuntimeInventoryResult hosted =
+            AppImageRuntimeInventory.declaredBindings(
+                scratch, "linux", ["renamed-host"],
+                ["renamed-host"], ["renamed-host"]);
+        FileSystem.writeText(PathTools.join(system, "system.json"),
+            "{\"emulators\":[{\"emulator\":\"standalone\","
+            + "\"core\":\"forbidden_core\"}]}\n");
+        Vector<string> noCoreHosts = [];
+        AppImageRuntimeInventoryResult rejected =
+            AppImageRuntimeInventory.declaredBindings(
+                scratch, "linux", ["standalone"],
+                ["standalone"], noCoreHosts);
+        bool valid = hosted.ok() && hosted.cores.size() == 1
+            && hosted.cores.get(0).equals("fixture_core")
+            && !rejected.ok();
+        FileSystem.removeRecursive(scratch);
+        return valid;
+    }
+
+    class bool renamedTarget() {
+        string scratch = FileSystem.tempDir("semu-renamed-target");
+        string config = PathTools.join(scratch, "config");
+        string installRoot = PathTools.join(scratch, "install");
+        string releaseRoot = PathTools.join(scratch, "release");
+        string releaseConfig = PathTools.join(
+            releaseRoot, "share/semu/config");
+        string installPolicy =
+            "{\"schema_version\":1,\"target\":\"portable-deck\"}\n";
+        string targetDefinition =
+            "{\"schema_version\":1,\"id\":\"portable-deck\","
+            + "\"inherits\":\"base-handheld\",\"platform\":\"linux\"}\n";
+        bool prepared = !scratch.isEmpty()
+            && FileSystem.mkdirp(PathTools.join(config, "settings")) == 0
+            && FileSystem.mkdirp(PathTools.join(config, "targets")) == 0
+            && FileSystem.mkdirp(PathTools.join(installRoot, "state")) == 0
+            && FileSystem.mkdirp(PathTools.join(releaseConfig, "settings")) == 0
+            && FileSystem.mkdirp(PathTools.join(releaseConfig, "targets")) == 0
+            && FileSystem.writeText(PathTools.join(
+                config, "settings/install.json"), installPolicy)
+            && FileSystem.writeText(PathTools.join(
+                config, "targets/portable-deck.json"), targetDefinition)
+            && FileSystem.writeText(PathTools.join(
+                releaseConfig, "settings/install.json"), installPolicy)
+            && FileSystem.writeText(PathTools.join(
+                releaseConfig, "targets/portable-deck.json"),
+                targetDefinition)
+            && FileSystem.writeText(PathTools.join(
+                installRoot, "state/target"), "portable-deck\n");
+        SemuInstallResult declared = SemuTargetPolicy.load(config, "linux");
+        SemuInstallResult inherited =
+            SemuInstalledLauncher.verifiedTarget(installRoot, releaseRoot);
+        FileSystem.writeText(PathTools.join(
+            installRoot, "state/target"), "wrong-target\n");
+        SemuInstallResult mismatch =
+            SemuInstalledLauncher.verifiedTarget(installRoot, releaseRoot);
+        bool valid = prepared && declared.ok()
+            && declared.document.equals("portable-deck")
+            && inherited.ok()
+            && inherited.document.equals("portable-deck")
+            && !mismatch.ok();
+        FileSystem.removeRecursive(scratch);
+        return valid;
+    }
+}
+
+int main(int argc, char** argv) {
+    CliArgs arguments = CliArgs(argc, argv);
+    if (arguments.command().equals("assembly-lock-probe")) {
+        AppImagePathPlan plan = AppImageContractTest.lockPlan(
+            arguments.valueAfter("--work-base", ""));
+        AppImageAssemblyLock lock = AppImageAssemblyLock.acquire(plan);
+        if (!lock.ok()) { return 75; }
+        return lock.unlock().ok() ? 0 : 76;
+    }
+    if (arguments.command().equals("install")) {
+        CliCommandLine command = CliCommandLine.parseFrom(arguments, 1);
+        return command.operand(0).equals("launch")
+            ? SemuInstalledLauncher.launch(command)
+            : SemuInstallCommand.run(command);
+    }
+    string project = FileSystem.currentDirectory();
+    string runtimePrefix = arguments.valueAfter("--runtime-prefix", "");
+    if (!runtimePrefix.isEmpty()) {
+        Type2AppImageOffset offset =
+            Type2AppImage.parseBareRuntimeFile(runtimePrefix);
+        if (!offset.ok()) {
+            print("appimage contract: " + offset.error);
+            return 1;
+        }
+        print(f"appimage type-2 runtime: offset={offset.offset}");
+    }
+    string appImage = arguments.valueAfter("--appimage", "");
+    if (!appImage.isEmpty()) {
+        Type2AppImageOffset offset = Type2AppImage.parseFile(appImage);
+        if (!offset.ok()) {
+            print("appimage contract: " + offset.error);
+            return 1;
+        }
+        print(f"appimage type-2 payload: offset={offset.offset}");
+    }
+    string volume =
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+    Vector<string> boundary = AppImageNoFuseVerifier.boundaryCommand(
+        volume, "/verification/probe", ["argument"], ["HOME=/verification/home"]);
+    Vector<string> emptyArguments = [];
+    if (boundary.size() == 0 || !boundary.contains("--network")
+            || !boundary.contains("none") || !boundary.contains("--read-only")
+            || !boundary.contains("--cap-drop")
+            || boundary.contains("-c") || boundary.contains("-ceu")
+            || AppImageNoFuseVerifier.boundaryCommand(
+                volume, "/verification/probe", emptyArguments,
+                ["HOME=/one", "HOME=/two"]).size() != 0
+            || !AppImageNoFuseVerifier.containsWords(
+                ["prefix", "--inside", "--appdir", "/run/semu-appdir"],
+                ["--inside", "--appdir", "/run/semu-appdir"])) {
+        print("appimage contract: typed startup boundary is malformed");
+        return 1;
+    }
+    string verifierSource = Path.readAll(PathTools.join(
+        project, "src/generators/appimage/no_fuse_verifier.btrc"));
+    if (verifierSource.contains("startupBoundaryScript")
+            || verifierSource.contains("set -euo pipefail")
+            || verifierSource.contains("<<'")) {
+        print("appimage contract: production verifier embeds a shell fixture");
+        return 1;
+    }
+    if (arguments.has("--format-only")) {
+        print("appimage contract: PASS");
+        return 0;
+    }
+
+    if (!AppImageContractTest.exactRollback()) {
+        print("appimage contract: transaction rollback changed prior bytes or mode");
+        return 1;
+    }
+    if (!AppImageContractTest.assemblyLock(
+            PathTools.absolute(arguments.program))) {
+        print("appimage contract: assembly lock contention or release regressed");
+        return 1;
+    }
+    if (!AppImageContractTest.runtimePaths(project)) {
+        print("appimage contract: generated runtime path embeds the build host");
+        return 1;
+    }
+    if (!AppImageContractTest.packagingOwnership()) {
+        print("appimage contract: packaging output escaped its owned build root");
+        return 1;
+    }
+    if (!AppImageContractTest.steamShortcutMigration()) {
+        print("appimage contract: legacy Steam shortcut migration is unsafe");
+        return 1;
+    }
+    if (!AppImageContractTest.romPrecedence()) {
+        print("appimage contract: runtime-owned ROM precedence regressed");
+        return 1;
+    }
+    if (!AppImageContractTest.runtimeBuilder(project)) {
+        print("appimage contract: runtime builder policy leaked into shell glue");
+        return 1;
+    }
+    if (!AppImageContractTest.genericCoreHost()) {
+        print("appimage contract: core-host behavior depends on emulator name");
+        return 1;
+    }
+    if (!AppImageContractTest.renamedTarget()) {
+        print("appimage contract: installed target identity is not declarative");
+        return 1;
+    }
+    for relative in [
+            "src/generators/appimage/installed_launcher.btrc",
+            "src/generators/appimage/install_policy.btrc",
+            "src/generators/appimage/app_runtime.btrc"] {
+        if (Path.readAll(PathTools.join(project, relative))
+                .contains("\"steam-deck\"")) {
+            print("appimage contract: product target literal remains in "
+                + relative);
+            return 1;
+        }
+    }
+    string appRuntimeSource = Path.readAll(PathTools.join(
+        project, "src/generators/appimage/app_runtime.btrc"));
+    if (appRuntimeSource.contains("runtime/content/bios")
+            || !appRuntimeSource.contains(
+                "self.readOnly(self.biosRoot, protectedMounts)")
+            || !appRuntimeSource.contains(
+                "\"--setenv\", \"SEMU_BIOS_ROOT\", self.biosRoot")) {
+        print("appimage contract: external BIOS root is not preserved read-only");
+        return 1;
+    }
+
+    AppImageRuntimeInventoryResult inventory =
+        AppImageRuntimeInventory.load(PathTools.join(project, "config"));
+    if (!inventory.ok()) {
+        print("appimage contract: " + inventory.error);
+        return 1;
+    }
+    if (!AppImageContractTest.exactLinuxInventory(inventory.slices)) {
+        print("appimage contract: Linux runtime emulator inventory is not exact");
+        return 1;
+    }
+    if (!AppImageContractTest.exactLinuxCores(inventory.cores)) {
+        print("appimage contract: Linux runtime core inventory is not exact");
+        return 1;
+    }
+    for slice in inventory.slices {
+        if (slice.id.equals("ares")) {
+            print("appimage contract: macOS-only ares entered Linux inventory");
+            return 1;
+        }
+    }
+    string contractPath =
+        AppImageRuntimeProvenance.buildContractPath(project);
+    string expression = Path.readAll(contractPath);
+    if (!expression.contains("builtins.getAttr id entries")
+            || !expression.contains(
+                "builtins.getAttr (id + \"-runtime\") packages;")) {
+        print("appimage contract: Nix attribute interpolation is not literal-safe");
+        return 1;
+    }
+    AppImageProvenanceJson builds =
+        AppImageRuntimeProvenance.buildContracts(project);
+    if (!builds.ok()) {
+        print("appimage contract: " + builds.error);
+        return 1;
+    }
+    print("appimage contract: PASS");
+    return 0;
+}

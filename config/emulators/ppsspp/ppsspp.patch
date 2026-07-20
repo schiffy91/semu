@@ -1,0 +1,222 @@
+--- a/Common/GPU/OpenGL/GLQueueRunner.h
++++ b/Common/GPU/OpenGL/GLQueueRunner.h
+@@ -12,6 +12,8 @@
+ #include "Common/GPU/thin3d.h"
+ #include "Common/Data/Collections/TinySet.h"
+ #include "Common/Data/Collections/FastVec.h"
++
++#include <semu_renderer.h>
+ 
+ struct GLRViewport {
+ 	float x, y, w, h, minZ, maxZ;
+@@ -280,6 +282,8 @@
+ 	READBACK,
+ 	READBACK_IMAGE,
+ 	RENDER_SKIP,
++	SEMU_RENDER_GAME,
++	SEMU_RENDER_POST_UI,
+ };
+ 
+ enum class GLRRenderPassAction {
+@@ -336,6 +340,7 @@
+ 			GLRect2D srcRect;
+ 			int mipLevel;
+ 		} readback_image;
++		SemuRenderFrameGl semuRenderFrame;
+ 	};
+ };
+ 
+--- a/Common/GPU/OpenGL/GLQueueRunner.cpp
++++ b/Common/GPU/OpenGL/GLQueueRunner.cpp
+@@ -701,6 +701,12 @@
+ 			break;
+ 		case GLRStepType::RENDER_SKIP:
+ 			break;
++		case GLRStepType::SEMU_RENDER_GAME:
++			semu_render_game_gl(&step.semuRenderFrame);
++			break;
++		case GLRStepType::SEMU_RENDER_POST_UI:
++			semu_render_post_ui_gl(&step.semuRenderFrame);
++			break;
+ 		default:
+ 			Crash();
+ 			break;
+@@ -1833,6 +1839,15 @@
+ 	case GLRStepType::RENDER_SKIP:
+ 		snprintf(buffer, sizeof(buffer), "(RENDER_SKIP) %s\n", step.tag);
+ 		break;
++	case GLRStepType::SEMU_RENDER_GAME:
++		snprintf(buffer, sizeof(buffer), "SEMU_RENDER_GAME frame=%llu surfaces=%d\n",
++			(unsigned long long)step.semuRenderFrame.frame_id,
++			step.semuRenderFrame.surface_count);
++		break;
++	case GLRStepType::SEMU_RENDER_POST_UI:
++		snprintf(buffer, sizeof(buffer), "SEMU_RENDER_POST_UI frame=%llu\n",
++			(unsigned long long)step.semuRenderFrame.frame_id);
++		break;
+ 	default:
+ 		buffer[0] = 0;
+ 		break;
+--- a/Common/GPU/OpenGL/GLRenderManager.h
++++ b/Common/GPU/OpenGL/GLRenderManager.h
+@@ -254,6 +254,21 @@
+ 	// Can run on a different thread!
+ 	void Finish();
+ 	void Present();
++	void QueueSemuGameRender(const SemuRenderFrameGl &frame);
++	void SetSemuRenderCallbacks(void *(*getProc)(const char *),
++		void *(*currentContext)()) {
++		semuGetProc_ = getProc;
++		semuCurrentContext_ = currentContext;
++	}
++	uint64_t GetSemuRenderFrameId() const {
++		return frameData_[curFrame_].frameId;
++	}
++	void *(*GetSemuRenderGetProc() const)(const char *) {
++		return semuGetProc_;
++	}
++	void *(*GetSemuRenderCurrentContext() const)() {
++		return semuCurrentContext_;
++	}
+ 
+ 	// Creation commands. These were not needed in Vulkan since there we can do that on the main thread.
+ 	// We pass in width/height here even though it's not strictly needed until we support glTextureStorage
+@@ -915,5 +930,9 @@
+ 	InvalidationCallback invalidationCallback_;
+ 
+ 	uint64_t frameIdGen_ = FRAME_TIME_HISTORY_LENGTH;
++	SemuRenderFrameGl semuRenderFrame_{};
++	bool semuRenderFrameReady_ = false;
++	void *(*semuGetProc_)(const char *) = nullptr;
++	void *(*semuCurrentContext_)() = nullptr;
+ 	HistoryBuffer<FrameTimeData, FRAME_TIME_HISTORY_LENGTH> &frameTimeHistory_;
+ };
+--- a/Common/GPU/OpenGL/GLRenderManager.cpp
++++ b/Common/GPU/OpenGL/GLRenderManager.cpp
+@@ -307,6 +307,18 @@
+ 	steps_.push_back(step);
+ }
+ 
++void GLRenderManager::QueueSemuGameRender(const SemuRenderFrameGl &frame) {
++	_assert_(insideFrame_);
++	GLRStep *step = new GLRStep{ GLRStepType::SEMU_RENDER_GAME };
++	step->semuRenderFrame = frame;
++	step->tag = "SemuRenderGame";
++	steps_.push_back(step);
++	semuRenderFrame_ = frame;
++	semuRenderFrameReady_ = true;
++
++	curRenderStep_ = nullptr;
++}
++
+ bool GLRenderManager::CopyFramebufferToMemory(GLRFramebuffer *src, int aspectBits, int x, int y, int w, int h, Draw::DataFormat destFormat, uint8_t *pixels, int pixelStride, Draw::ReadbackMode mode, const char *tag) {
+ 	_assert_(pixels);
+ 
+@@ -383,6 +395,7 @@
+ 	}
+ 
+ 	insideFrame_ = true;
++	semuRenderFrameReady_ = false;
+ }
+ 
+ void GLRenderManager::Finish() {
+@@ -427,10 +440,22 @@
+ }
+ 
+ void GLRenderManager::Present() {
++	GLRRenderThreadTask *postUiTask = nullptr;
++	if (semuRenderFrameReady_) {
++		postUiTask = new GLRRenderThreadTask(GLRRunType::SUBMIT);
++		postUiTask->frame = curFrame_;
++		GLRStep *step = new GLRStep{ GLRStepType::SEMU_RENDER_POST_UI };
++		step->semuRenderFrame = semuRenderFrame_;
++		step->tag = "SemuRenderPostUI";
++		postUiTask->steps.push_back(step);
++	}
+ 	GLRRenderThreadTask *presentTask = new GLRRenderThreadTask(GLRRunType::PRESENT);
+ 	presentTask->frame = curFrame_;
+ 	{
+ 		std::unique_lock<std::mutex> lock(pushMutex_);
++		if (postUiTask) {
++			renderThreadQueue_.push(postUiTask);
++		}
+ 		renderThreadQueue_.push(presentTask);
+ 		pushCondVar_.notify_one();
+ 	}
+--- a/GPU/Common/PresentationCommon.cpp
++++ b/GPU/Common/PresentationCommon.cpp
+@@ -38,6 +38,8 @@
+ #include "GPU/GPUState.h"
+ #include "Common/GPU/ShaderTranslation.h"
+ 
++#include "Common/GPU/OpenGL/GLRenderManager.h"
++
+ struct Vertex {
+ 	float x, y, z;
+ 	float u, v;
+@@ -945,6 +947,54 @@
+ 		draw_->Draw(4, 0);
+ 	}
+ 
++	if (GetGPUBackend() == GPUBackend::OPENGL) {
++		float contentX = rc.x;
++		float contentY = rc.y;
++		float contentWidth = rc.w;
++		float contentHeight = rc.h;
++		if (flags & OutputFlags::PILLARBOX) {
++			const float centerX = (float)pixelWidth_ * 0.5f;
++			contentX = centerX + (contentX - centerX) * 0.75f;
++			contentWidth *= 0.75f;
++		}
++
++		const int contentLeft = std::max(0, (int)floorf(contentX));
++		const int contentTop = std::max(0, (int)floorf(contentY));
++		const int contentRight = std::min(pixelWidth_,
++			(int)ceilf(contentX + contentWidth));
++		const int contentBottom = std::min(pixelHeight_,
++			(int)ceilf(contentY + contentHeight));
++		const bool validSurface = pixelWidth_ > 0 && pixelHeight_ > 0 &&
++			contentRight > contentLeft && contentBottom > contentTop;
++		auto *renderManager = reinterpret_cast<GLRenderManager *>(
++			draw_->GetNativeObject(Draw::NativeObject::RENDER_MANAGER));
++		if (validSurface && renderManager) {
++			SemuRenderFrameGl frame{};
++			frame.abi = SEMU_RENDER_ABI_GL;
++			frame.struct_size = sizeof(frame);
++			frame.frame_id = renderManager->GetSemuRenderFrameId();
++			frame.framebuffer = 0;
++			frame.color_buffer = GL_BACK;
++			frame.framebuffer_width = pixelWidth_;
++			frame.framebuffer_height = pixelHeight_;
++			frame.surface_count = 1;
++			frame.surfaces[0].x = contentLeft;
++			frame.surfaces[0].y = contentTop;
++			frame.surfaces[0].width = contentRight - contentLeft;
++			frame.surfaces[0].height = contentBottom - contentTop;
++			frame.surfaces[0].native_width = 480;
++			frame.surfaces[0].native_height = 272;
++			frame.surfaces[0].rotation = 0;
++			frame.surfaces[0].origin = SEMU_RENDER_ORIGIN_TOP_LEFT;
++			frame.get_proc = renderManager->GetSemuRenderGetProc();
++			frame.current_context = renderManager->GetSemuRenderCurrentContext();
++			renderManager->QueueSemuGameRender(frame);
++			draw_->BindFramebufferAsRenderTarget(nullptr,
++				{ Draw::RPAction::KEEP, Draw::RPAction::DONT_CARE, Draw::RPAction::DONT_CARE },
++				"PostSemuRenderGameUI");
++		}
++	}
++
+ 	DoRelease(srcFramebuffer_);
+ 	DoRelease(srcTexture_);
+ 
+--- a/SDL/SDLGLGraphicsContext.cpp
++++ b/SDL/SDLGLGraphicsContext.cpp
+@@ -425,6 +425,8 @@
+ 	draw_ = Draw::T3DCreateGLContext(true);
+ 	renderManager_ = (GLRenderManager *)draw_->GetNativeObject(Draw::NativeObject::RENDER_MANAGER);
+ 	renderManager_->SetInflightFrames(g_Config.iInflightFrames);
++	renderManager_->SetSemuRenderCallbacks(SDL_GL_GetProcAddress,
++		SDL_GL_GetCurrentContext);
+ 	SetGPUBackend(GPUBackend::OPENGL);
+ 	bool success = draw_->CreatePresets();
+ 	_assert_(success);

@@ -1,0 +1,118 @@
+{
+  "schema_version": 1,
+  "name": "PCSX2",
+  "default_system": "ps2",
+  "input": {
+    "actions": [
+      "ui.pause",
+      "ui.screenshot",
+      "ui.fullscreen",
+      "ui.menu",
+      "app.quit",
+      "state.prev",
+      "state.next",
+      "state.load",
+      "state.save",
+      "speed.rewind",
+      "speed.fast"
+    ]
+  },
+  "platforms": {
+    "linux": {
+      "backend": "bwrap",
+      "executable": "${asset_root}/bin/pcsx2-qt",
+      "args": [
+        "-batch",
+        "-fullscreen",
+        "--"
+      ],
+      "gl_wrapper": "${asset_root}/bin/nixGL",
+      "input": {
+        "primary_device": "SDL-0",
+        "selection": "first_sdl_gamepad"
+      },
+      "sandbox": {
+        "devices": [
+          "all"
+        ],
+        "filesystems": [
+          {
+            "path": "${project}",
+            "mode": "ro"
+          },
+          {
+            "path": "${asset_root}",
+            "mode": "ro"
+          },
+          {
+            "path": "${roms}",
+            "mode": "ro"
+          },
+          {
+            "path": "${state_root}",
+            "mode": "create"
+          },
+          {
+            "path": "${emulation_root}",
+            "mode": "ro"
+          },
+          {
+            "path": "${bios}",
+            "mode": "ro"
+          }
+        ]
+      },
+      "graphics": {
+        "method": "config_file",
+        "file": "${state_root}/config/PCSX2/inis/PCSX2.ini",
+        "format": "ini",
+        "key": "Renderer",
+        "values": {
+          "opengl": "12"
+        },
+        "section": "EmuCore/GS"
+      },
+      "aspect_probe": {
+        "files": [
+          "${state_root}/config/PCSX2/inis/PCSX2.ini",
+          "${project}/generated/packaging/emulators/profiles/PCSX2/config/inis/PCSX2.ini"
+        ],
+        "widescreen_markers": [
+          "aspectratio = 16:9",
+          "aspectratio=16:9",
+          "enablewidescreenpatches = true",
+          "enablewidescreenpatches=true",
+          "widescreenpatches = enabled"
+        ],
+        "standard_markers": [
+          "aspectratio = 4:3",
+          "aspectratio=4:3"
+        ],
+        "fallback": "standard"
+      },
+      "state": {
+        "config_home": "xdg",
+        "data_home": "xdg",
+        "config_subdir": "PCSX2",
+        "managed_profile_files": [
+          "config/inis/PCSX2.ini",
+          "config/inputprofiles/Steam Deck.ini"
+        ]
+      },
+      "firmware": {
+        "dir": "${emulation_root}/PCSX2/config/bios",
+        "fallback_dirs": [
+          "${bios}/ps2"
+        ]
+      }
+    }
+  },
+  "doc": {
+    "runtime": "Linux executes the exact pinned, source-patched PCSX2 package from the AppImage asset root inside bubblewrap. No host executable, Flatpak runtime, or prebuilt Linux binary participates.",
+    "state": "PCSX2 2.6.3 reads $XDG_CONFIG_HOME/PCSX2; Semu maps that to the per-emulator state root. Settings, memory cards, save states, snapshots, cache, logs, and textures remain Semu-owned generated/runtime state.",
+    "graphics": "[EmuCore/GS] Renderer = 12 forces OpenGL in the generated profile. The direct ABI 2 hook runs after the final upright GS draw, then after PCSX2 UI immediately before the emulator-owned swap.",
+    "firmware": "The configured PS2 BIOS root is mounted read-only. ROM, BIOS, and external emulation roots are never writable from the PCSX2 sandbox.",
+    "input": "The packaged Game Mode process binds Pad1 to its first SDL gamepad, SDL-0. The profile compiler reads this Linux platform declaration directly; it does not inherit a stale host enumeration index.",
+    "platforms": "PCSX2 is intentionally Linux-only until a reproducible source-built Darwin slice exists. An upstream application archive is not a production fallback."
+  }
+}

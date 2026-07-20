@@ -1,0 +1,139 @@
+{
+  "schema_version": 1,
+  "actions": {
+    "external": [
+      {
+        "action": "app.quit",
+        "chord": "Ctrl+Q",
+        "consumer": "semu-input-supervisor",
+        "semantics": "immediate process-group termination"
+      }
+    ]
+  },
+  "compiler": {
+    "bindings": {
+      "profile_name": {
+        "source": "emulator.name"
+      },
+      "input_driver": {
+        "source": "platform.retroarch.input_driver"
+      },
+      "audio_driver": {
+        "literal": "pulse"
+      },
+      "content_root": {
+        "source": "runtime.content_root"
+      }
+    },
+    "line_groups": {
+      "keymap_hotkeys": {
+        "rows": "hotkeys.keymap",
+        "format": "${setting} = \"${chord}\"",
+        "chord_encoding": {
+          "mode": "joined",
+          "ignore_modifiers": true,
+          "key_case": "lower",
+          "keys": {
+            "+": "add",
+            "-": "subtract",
+            "Esc": "escape"
+          }
+        },
+        "prefix": [
+          "input_quit_gamepad_combo = \"0\""
+        ]
+      }
+    }
+  },
+  "doc": {
+    "purpose": "RetroArch profile content (retroarch.cfg, golden line order) as data, substituted by RetroArchEmitter. The visual block emits fullscreen raw output with native shaders and smoothing disabled; session-specific driver and scaling pins are runtime upserts owned by RetroArchRendering.",
+    "variables": "${profile_name} contract name; ${input_driver}/${audio_driver} resolved by the emulator class (lines drop when empty); ${content_root} the shared runtime content root."
+  },
+  "hotkeys": {
+    "keymap": [
+      {
+        "setting": "input_pause_toggle",
+        "action": "ui.pause"
+      },
+      {
+        "setting": "input_load_state",
+        "action": "state.load"
+      },
+      {
+        "setting": "input_menu_toggle",
+        "action": "ui.menu"
+      },
+      {
+        "setting": "input_save_state",
+        "action": "state.save"
+      },
+      {
+        "setting": "input_screenshot",
+        "action": "ui.screenshot"
+      },
+      {
+        "setting": "input_state_slot_decrease",
+        "action": "state.prev"
+      },
+      {
+        "setting": "input_state_slot_increase",
+        "action": "state.next"
+      },
+      {
+        "setting": "input_rewind",
+        "action": "speed.rewind"
+      },
+      {
+        "setting": "input_toggle_fast_forward",
+        "action": "speed.fast"
+      },
+      {
+        "setting": "input_toggle_fullscreen",
+        "action": "ui.fullscreen"
+      },
+      {
+        "setting": "input_exit_emulator",
+        "action": "ui.escape"
+      }
+    ]
+  },
+  "files": [
+    {
+      "path": "${profile_name}/retroarch.cfg",
+      "lines": [
+        "config_save_on_exit = \"false\"",
+        {
+          "if": "audio_driver",
+          "line": "audio_driver = \"${audio_driver}\""
+        },
+        {
+          "if": "input_driver",
+          "line": "input_driver = \"${input_driver}\""
+        },
+        "input_autodetect_enable = \"true\"",
+        "input_joypad_driver = \"sdl2\"",
+        "input_player1_joypad_index = \"0\"",
+        "notification_show_autoconfig = \"false\"",
+        "notification_show_autoconfig_fails = \"false\"",
+        "network_cmd_enable = \"true\"",
+        "network_cmd_port = \"55355\"",
+        "input_remap_binds_enable = \"true\"",
+        "savestate_directory = \"${content_root}/states\"",
+        "savefile_directory = \"${content_root}/saves\"",
+        "screenshot_directory = \"${content_root}/screenshots\"",
+        "video_fullscreen = \"true\"",
+        "video_scale_integer = \"true\"",
+        "video_force_aspect = \"true\"",
+        "video_vsync = \"true\"",
+        "video_smooth = \"false\"",
+        "video_shader_enable = \"false\"",
+        "input_overlay_enable = \"false\"",
+        "input_overlay_enable_autopreferred = \"false\"",
+        "savestate_auto_save = \"false\"",
+        "savestate_auto_load = \"false\"",
+        "savestate_thumbnail_enable = \"false\"",
+        "@lines:keymap_hotkeys"
+      ]
+    }
+  ]
+}

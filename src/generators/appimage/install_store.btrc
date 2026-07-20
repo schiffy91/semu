@@ -1,0 +1,593 @@
+// install_store.btrc - safe release storage and transactional file updates.
+
+import std.{bytes, fs, platform, process, strings, vector}
+import ./install_policy.btrc
+
+class SemuInstallHost {
+    class bool sameBytes(Bytes left, Bytes right) {
+        if (left.length() != right.length()) { return false; }
+        for (int index = 0; index < left.length(); index++) {
+            if (left.get(index) != right.get(index)) { return false; }
+        }
+        return true;
+    }
+
+    class Bytes readBytes(string path) {
+        if (!SemuInstallHost.regularFile(path)) { return Bytes(); }
+        File input = File(path, "rb");
+        if (!input.ok()) { return Bytes(); }
+        Bytes content = input.readBytes();
+        input.close();
+        return content;
+    }
+
+    class string processError(ExecResult result) {
+        string detail = result.stderr().trim();
+        if (detail.isEmpty()) { detail = result.stdout().trim(); }
+        return detail.isEmpty()
+            ? f"process exited {result.code}" : detail;
+    }
+
+    class string sha256File(string path) {
+        if (!FileSystem.isFile(path) || FileSystem.isSymlink(path)) { return ""; }
+        ExecResult result = ChildProcess.run(
+            "sha256sum", [path], "", CommandEnvironment.empty(),
+            CommandEnvironment.empty(), 300000);
+        string output = result.ok() ? result.stdout().trim() : "";
+        if (output.len() < 64) { return ""; }
+        string digest = output.substring(0, 64).toLower();
+        return SemuInstallPolicy.validDigest(digest) ? digest : "";
+    }
+
+    class string sha256Text(string text) {
+        ExecResult result = ChildProcess.run(
+            "sha256sum", CommandEnvironment.empty(), "",
+            CommandEnvironment.empty(), CommandEnvironment.empty(), 300000,
+            1024, 8192, text);
+        string output = result.ok() ? result.stdout().trim() : "";
+        if (output.len() < 64) { return ""; }
+        string digest = output.substring(0, 64).toLower();
+        return SemuInstallPolicy.validDigest(digest) ? digest : "";
+    }
+
+    class bool regularFile(string path) {
+        FileStatus status = FileStatus(path);
+        return status.isFile() && !status.isSymlink();
+    }
+
+    class bool realDirectory(string path) {
+        FileStatus status = FileStatus(path);
+        return status.isDir() && !status.isSymlink()
+            && UnixFileSystem.realPath(path).equals(path);
+    }
+
+    class bool mkdirp(string path) {
+        if (FileSystem.mkdirp(path) != 0) { return false; }
+        string canonical = UnixFileSystem.realPath(path);
+        return !canonical.isEmpty() && SemuInstallHost.realDirectory(canonical);
+    }
+
+    class string temporaryFor(string destination) {
+        return PathTools.join(PathTools.dirname(destination),
+            "." + PathTools.basename(destination) + ".tmp."
+                + f"{(int)getpid()}");
+    }
+
+    class bool atomicText(string destination, string content, int mode) {
+        string temporary = SemuInstallHost.temporaryFor(destination);
+        FileStatus destinationStatus = FileStatus(destination);
+        if (destinationStatus.isSymlink() || FileStatus(temporary).linkFound
+                || !SemuInstallHost.realDirectory(
+                    UnixFileSystem.realPath(PathTools.dirname(destination)))) {
+            return false;
+        }
+        if (!FileSystem.writeText(temporary, content)
+                || FileSystem.chmod(temporary, mode) != 0
+                || rename(temporary, destination) != 0) {
+            FileSystem.removeRecursive(temporary);
+            return false;
+        }
+        return true;
+    }
+
+    class bool atomicBytes(string destination, Bytes content, int mode) {
+        string temporary = SemuInstallHost.temporaryFor(destination);
+        FileStatus destinationStatus = FileStatus(destination);
+        if (destinationStatus.isSymlink() || FileStatus(temporary).linkFound
+                || !SemuInstallHost.realDirectory(
+                    UnixFileSystem.realPath(PathTools.dirname(destination)))) {
+            return false;
+        }
+        File output = File(temporary, "wb");
+        bool written = output.ok() && output.writeBytes(content);
+        output.close();
+        Bytes verified = written
+            ? SemuInstallHost.readBytes(temporary) : Bytes();
+        if (!written || !SemuInstallHost.sameBytes(content, verified)
+                || FileSystem.chmod(temporary, mode) != 0
+                || rename(temporary, destination) != 0) {
+            FileSystem.removeRecursive(temporary);
+            return false;
+        }
+        return true;
+    }
+
+    class bool atomicCopy(string source, string destination, int mode) {
+        if (!SemuInstallHost.regularFile(source)) { return false; }
+        string temporary = SemuInstallHost.temporaryFor(destination);
+        if (FileStatus(destination).isSymlink()
+                || FileStatus(temporary).linkFound) {
+            return false;
+        }
+        ExecResult copied = ChildProcess.run(
+            "cp", ["--", source, temporary], "", CommandEnvironment.empty(),
+            CommandEnvironment.empty(), 300000);
+        bool valid = copied.ok()
+            && FileSystem.chmod(temporary, mode) == 0
+            && SemuInstallHost.sha256File(source).equals(
+                SemuInstallHost.sha256File(temporary))
+            && rename(temporary, destination) == 0;
+        if (!valid) { FileSystem.removeRecursive(temporary); }
+        return valid;
+    }
+
+    class string identity(string path, bool optional = false) {
+        if (!FileSystem.exists(path)) { return optional ? "" : "invalid"; }
+        if (!SemuInstallHost.regularFile(path)) { return "invalid"; }
+        string value = FileSystem.readText(path).trim();
+        return SemuInstallPolicy.validDigest(value) ? value : "invalid";
+    }
+
+    class Vector<string> appImageEnvironment() {
+        Vector<string> names = ["APPDIR", "NO_CLEANUP"];
+        int index = 0;
+        while (environ != NULL && environ[index] != NULL) {
+            string assignment = Strings.copy(environ[index]);
+            int separator = Strings.find(assignment, "=", 0);
+            string name = separator > 0
+                ? assignment.substring(0, separator) : "";
+            if (name.startsWith("APPIMAGE") && !names.contains(name)) {
+                names.push(name);
+            }
+            index++;
+        }
+        return names;
+    }
+
+    class bool containsBytes(string path, string needle) {
+        if (!SemuInstallHost.regularFile(path) || needle.isEmpty()) {
+            return false;
+        }
+        FILE* input = fopen(path, "rb");
+        if (input == NULL) { return false; }
+        int matched = 0;
+        int length = needle.len();
+        int value = fgetc(input);
+        while (value != EOF) {
+            unsigned char expected = (unsigned char)needle.charAt(matched);
+            if ((unsigned char)value == expected) {
+                matched++;
+                if (matched == length) {
+                    fclose(input);
+                    return true;
+                }
+            } else {
+                matched = (unsigned char)value
+                    == (unsigned char)needle.charAt(0) ? 1 : 0;
+            }
+            value = fgetc(input);
+        }
+        fclose(input);
+        return false;
+    }
+}
+
+class SemuInstallTree {
+    class string entry(string root, string relative,
+                       SemuInstallResult status) {
+        if (relative.contains("\n") || relative.contains("\r")) {
+            status.valid = false;
+            status.error = "release path contains a line separator: " + relative;
+            return "";
+        }
+        string path = PathTools.join(root, relative);
+        FileStatus file = FileStatus(path);
+        int mode = (file.isSymlink() ? file.linkMode : file.mode) & 4095;
+        if (file.isSymlink()) {
+            string target = FileSystem.readLink(path);
+            if (target.contains("\n") || target.contains("\r")) {
+                status.valid = false;
+                status.error = "release link contains a line separator: " + relative;
+                return "";
+            }
+            return f"L {mode} {relative} {target}\n";
+        }
+        if (file.isFile()) {
+            string digest = SemuInstallHost.sha256File(path);
+            if (digest.isEmpty()) {
+                status.valid = false;
+                status.error = "cannot hash release file: " + relative;
+                return "";
+            }
+            return f"F {mode} {relative} {digest}\n";
+        }
+        if (!file.isDir()) {
+            status.valid = false;
+            status.error = "release entry has unsupported type: " + relative;
+            return "";
+        }
+        string manifest = f"D {mode} {relative}\n";
+        Vector<string> names = Directory(path).entries();
+        names.sort();
+        for name in names {
+            string child = relative.isEmpty()
+                ? name : relative + "/" + name;
+            manifest += SemuInstallTree.entry(root, child, status);
+            if (!status.ok()) { return ""; }
+        }
+        return manifest;
+    }
+
+    class SemuInstallResult digest(string root) {
+        if (!SemuInstallHost.realDirectory(root)) {
+            return SemuInstallResult.failure(
+                "release tree is not a real directory: " + root);
+        }
+        SemuInstallResult traversal = SemuInstallResult.success();
+        Vector<string> names = Directory(root).entries();
+        names.sort();
+        string manifest = "";
+        for name in names {
+            manifest += SemuInstallTree.entry(root, name, traversal);
+            if (!traversal.ok()) { return traversal; }
+        }
+        string digest = SemuInstallHost.sha256Text(manifest);
+        return digest.isEmpty()
+            ? SemuInstallResult.failure("cannot hash release tree manifest")
+            : SemuInstallResult.success(digest);
+    }
+
+    class bool readOnly(string root) {
+        FileStatus base = FileStatus(root);
+        if (!base.isDir() || base.isSymlink() || (base.mode & 18) != 0) {
+            return false;
+        }
+        for name in Directory(root).entries() {
+            string path = PathTools.join(root, name);
+            FileStatus status = FileStatus(path);
+            if (status.isSymlink()) { continue; }
+            if ((status.mode & 18) != 0) { return false; }
+            if (status.isDir() && !SemuInstallTree.readOnly(path)) {
+                return false;
+            }
+        }
+        return true;
+    }
+}
+
+class SemuInstallLock {
+    public string path;
+    public bool owned;
+
+    public SemuInstallLock(string path) {
+        self.path = path;
+        self.owned = false;
+    }
+
+    public SemuInstallResult acquire() {
+        if (FileSystem.mkdir(self.path, 448) != 0) { // 0700
+            string owner = SemuInstallHost.regularFile(
+                PathTools.join(self.path, "pid"))
+                ? FileSystem.readText(PathTools.join(self.path, "pid")).trim()
+                : "unknown";
+            return SemuInstallResult.failure(
+                "another installer owns the deployment (pid " + owner + ")");
+        }
+        self.owned = true;
+        if (!SemuInstallHost.atomicText(PathTools.join(self.path, "pid"),
+                f"{(int)getpid()}\n", 384)) { // 0600
+            self.unlock();
+            return SemuInstallResult.failure("cannot record installation lock owner");
+        }
+        return SemuInstallResult.success();
+    }
+
+    public void unlock() {
+        if (self.owned) {
+            FileSystem.removeRecursive(self.path);
+            self.owned = false;
+        }
+    }
+}
+
+class SemuInstallTransaction {
+    public string root;
+    public Vector<string> destinations;
+    public Vector<string> backups;
+    public Vector<bool> existed;
+    public bool active;
+
+    public SemuInstallTransaction(string installRoot) {
+        self.root = PathTools.join(installRoot,
+            ".transaction." + f"{(int)getpid()}");
+        self.destinations = [];
+        self.backups = [];
+        self.existed = [];
+        self.active = false;
+    }
+
+    public SemuInstallResult begin() {
+        if (FileStatus(self.root).linkFound
+                || FileSystem.mkdir(self.root, 448) != 0) { // 0700
+            return SemuInstallResult.failure(
+                "cannot create deployment transaction");
+        }
+        self.active = true;
+        return SemuInstallResult.success();
+    }
+
+    public bool backup(string destination) {
+        if (!self.active) { return false; }
+        string backup = PathTools.join(
+            self.root, "item." + f"{self.destinations.size()}");
+        FileStatus status = FileStatus(destination);
+        bool present = status.linkFound;
+        if (present && rename(destination, backup) != 0) { return false; }
+        self.destinations.push(destination);
+        self.backups.push(backup);
+        self.existed.push(present);
+        return true;
+    }
+
+    public bool snapshot(string destination) {
+        if (!self.active) { return false; }
+        string backup = PathTools.join(
+            self.root, "item." + f"{self.destinations.size()}");
+        FileStatus status = FileStatus(destination);
+        bool present = status.linkFound;
+        if (present && (!status.isFile() || status.isSymlink()
+                || !SemuInstallHost.atomicCopy(
+                    destination, backup, status.mode & 511))) {
+            return false;
+        }
+        self.destinations.push(destination);
+        self.backups.push(backup);
+        self.existed.push(present);
+        return true;
+    }
+
+    public bool copy(string source, string destination, int mode) {
+        return self.backup(destination)
+            && SemuInstallHost.atomicCopy(source, destination, mode);
+    }
+
+    public bool text(string destination, string content, int mode) {
+        return self.backup(destination)
+            && SemuInstallHost.atomicText(destination, content, mode);
+    }
+
+    public bool bytes(string destination, Bytes content, int mode) {
+        return self.snapshot(destination)
+            && SemuInstallHost.atomicBytes(destination, content, mode);
+    }
+
+    public bool stageRemoval(string destination) {
+        return self.backup(destination);
+    }
+
+    public void rollback() {
+        if (!self.active) { return; }
+        for (int index = self.destinations.size() - 1; index >= 0; index--) {
+            string destination = self.destinations.get(index);
+            FileSystem.removeRecursive(destination);
+            if (self.existed.get(index)) {
+                rename(self.backups.get(index), destination);
+            }
+        }
+        FileSystem.removeRecursive(self.root);
+        self.active = false;
+    }
+
+    public bool commit() {
+        if (!self.active || FileSystem.removeRecursive(self.root) != 0) {
+            return false;
+        }
+        self.active = false;
+        return true;
+    }
+}
+
+class SemuReleaseStore {
+    public SemuInstallPolicy policy;
+    public SemuInstallPaths paths;
+
+    public SemuReleaseStore(SemuInstallPolicy policy, SemuInstallPaths paths) {
+        self.policy = policy;
+        self.paths = paths;
+    }
+
+    public SemuInstallResult createLayout() {
+        for directory in [self.paths.installRoot, self.paths.projectRoot,
+                self.paths.releases, self.paths.artifacts,
+                self.paths.state, self.paths.trees,
+                PathTools.dirname(self.paths.stableLauncher),
+                PathTools.dirname(self.paths.runtimeCli),
+                self.paths.applicationsRoot] {
+            if (!SemuInstallHost.mkdirp(directory)) {
+                return SemuInstallResult.failure(
+                    "owned directory is absent or unsafe: " + directory);
+            }
+        }
+        return SemuInstallResult.success();
+    }
+
+    public SemuInstallResult openLayout() {
+        for directory in [self.paths.installRoot, self.paths.projectRoot,
+                self.paths.releases, self.paths.artifacts,
+                self.paths.state, self.paths.trees,
+                PathTools.dirname(self.paths.stableLauncher),
+                PathTools.dirname(self.paths.runtimeCli),
+                self.paths.applicationsRoot] {
+            if (!SemuInstallHost.realDirectory(directory)) {
+                return SemuInstallResult.failure(
+                    "owned directory is absent or unsafe: " + directory);
+            }
+        }
+        return SemuInstallResult.success();
+    }
+
+    public SemuInstallResult verifyPrerequisites() {
+        for executable in self.policy.requiredExecutables {
+            if (executable.equals(self.policy.bubblewrap)) {
+                continue;
+            }
+            ExecResult probe = ChildProcess.run(
+                executable, ["--version"], "", CommandEnvironment.empty(),
+                CommandEnvironment.empty(), 5000, 4096, 4096);
+            if (!probe.ok()) {
+                return SemuInstallResult.failure(
+                    "required SteamOS/Linux executable is missing or not runnable: "
+                    + executable);
+            }
+        }
+        return SemuInstallResult.success();
+    }
+
+    public bool releaseShape(string releaseRoot) {
+        for relative in ["AppRun", "bin/bwrap", "usr/bin/semu",
+                "lib/semu/semu-btrc",
+                self.policy.launcherPayload, "semu.desktop"] {
+            if (!SemuInstallHost.regularFile(
+                    PathTools.join(releaseRoot, relative))) {
+                return false;
+            }
+        }
+        return access(PathTools.join(releaseRoot, "bin/bwrap"), X_OK) == 0
+            && SemuInstallHost.realDirectory(
+                PathTools.join(releaseRoot, "nix/store"));
+    }
+
+    public SemuInstallResult verifyRelease(string digest) {
+        if (!SemuInstallPolicy.validDigest(digest)) {
+            return SemuInstallResult.failure("release identity is malformed");
+        }
+        string releaseRoot = PathTools.join(self.paths.releases, digest);
+        string receipt = PathTools.join(self.paths.trees, digest + ".sha256");
+        if (!self.releaseShape(releaseRoot)
+                || !SemuInstallTree.readOnly(releaseRoot)) {
+            return SemuInstallResult.failure(
+                "release is absent, writable, or structurally invalid: " + digest);
+        }
+        SemuInstallResult target = SemuTargetPolicy.load(PathTools.join(
+            releaseRoot, "share/semu/config"),
+            self.policy.settingsPlatform);
+        if (!target.ok() || !target.document.equals(self.policy.target)) {
+            return SemuInstallResult.failure(
+                "release target metadata disagrees with install policy: "
+                + digest);
+        }
+        string expected = SemuInstallHost.identity(receipt);
+        SemuInstallResult actual = SemuInstallTree.digest(releaseRoot);
+        if (expected.equals("invalid") || !actual.ok()
+                || !expected.equals(actual.document)) {
+            return SemuInstallResult.failure(
+                "extracted release tree is corrupt: " + digest);
+        }
+        return SemuInstallResult.success(releaseRoot);
+    }
+
+    public SemuInstallResult incomingArtifact(SemuInstallOptions options) {
+        if (!SemuInstallHost.regularFile(options.artifact)) {
+            return SemuInstallResult.failure(
+                "artifact must be a regular non-symlink file");
+        }
+        string incoming = PathTools.join(self.paths.installRoot,
+            ".artifact." + f"{(int)getpid()}");
+        if (FileStatus(incoming).linkFound
+                || !SemuInstallHost.atomicCopy(options.artifact, incoming, 365)) {
+            return SemuInstallResult.failure("cannot stage exact AppImage bytes");
+        }
+        string digest = SemuInstallHost.sha256File(incoming);
+        if (digest.isEmpty() || (!options.expectedSha256.isEmpty()
+                && !digest.equals(options.expectedSha256))) {
+            FileSystem.removeRecursive(incoming);
+            return SemuInstallResult.failure(
+                "AppImage sha256 does not match the requested bytes");
+        }
+        return SemuInstallResult.success(incoming + "\n" + digest);
+    }
+
+    public SemuInstallResult extract(string incoming, string digest,
+                                     SemuInstallOptions options) {
+        string releaseRoot = PathTools.join(self.paths.releases, digest);
+        if (FileSystem.exists(releaseRoot)) {
+            SemuInstallResult existing = self.verifyRelease(digest);
+            if (!options.bootstrapTemporary.isEmpty()) {
+                FileSystem.removeRecursive(options.bootstrapTemporary);
+            }
+            return existing;
+        }
+
+        string extraction = "";
+        string extracted = "";
+        if (!options.bootstrapRoot.isEmpty()) {
+            extracted = UnixFileSystem.realPath(options.bootstrapRoot);
+            extraction = UnixFileSystem.realPath(options.bootstrapTemporary);
+            if (extracted.isEmpty() || extraction.isEmpty()
+                    || !extracted.startsWith(extraction + "/")
+                    || !SemuInstallHost.realDirectory(extracted)) {
+                return SemuInstallResult.failure(
+                    "bootstrap extraction root is absent or unsafe");
+            }
+        } else {
+            extraction = PathTools.join(self.paths.installRoot,
+                ".extract." + digest + "." + f"{(int)getpid()}");
+            if (FileSystem.mkdir(extraction, 448) != 0) { // 0700
+                return SemuInstallResult.failure(
+                    "cannot create AppImage extraction directory");
+            }
+            ExecResult unpacked = ChildProcess.run(incoming,
+                ["--appimage-extract"], extraction, CommandEnvironment.empty(),
+                SemuInstallHost.appImageEnvironment(), 300000,
+                1024, 8192, "", CommandOutput.suppress());
+            if (!unpacked.ok()) {
+                FileSystem.removeRecursive(extraction);
+                return SemuInstallResult.failure(
+                    "AppImage extraction failed: "
+                    + SemuInstallHost.processError(unpacked));
+            }
+            extracted = PathTools.join(extraction, "squashfs-root");
+        }
+        if (!self.releaseShape(extracted)) {
+            FileSystem.removeRecursive(extraction);
+            return SemuInstallResult.failure(
+                "extracted AppImage has no complete Semu release payload");
+        }
+        ExecResult normalized = ChildProcess.run(
+            "chmod", ["-R", "a-w", extracted], "",
+            CommandEnvironment.empty(), CommandEnvironment.empty(), 300000);
+        if (!normalized.ok() || !SemuInstallTree.readOnly(extracted)) {
+            FileSystem.removeRecursive(extraction);
+            return SemuInstallResult.failure(
+                "cannot normalize extracted release permissions");
+        }
+        SemuInstallResult tree = SemuInstallTree.digest(extracted);
+        if (!tree.ok() || rename(extracted, releaseRoot) != 0
+                || !SemuInstallHost.atomicText(
+                    PathTools.join(self.paths.trees, digest + ".sha256"),
+                    tree.document + "\n", 292)) { // 0444
+            FileSystem.removeRecursive(releaseRoot);
+            FileSystem.removeRecursive(extraction);
+            return SemuInstallResult.failure(
+                tree.ok() ? "cannot publish extracted release" : tree.error);
+        }
+        FileSystem.removeRecursive(extraction);
+        SemuInstallResult verified = self.verifyRelease(digest);
+        if (!verified.ok()) {
+            FileSystem.removeRecursive(releaseRoot);
+            FileSystem.removeRecursive(
+                PathTools.join(self.paths.trees, digest + ".sha256"));
+        }
+        return verified;
+    }
+}

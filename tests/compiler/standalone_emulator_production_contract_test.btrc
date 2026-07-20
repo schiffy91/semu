@@ -1,0 +1,653 @@
+// Standalone strict-import contract for source-built emulator slices not owned
+// by the aggregate compiler runner.
+
+import std.{fs, json, vector}
+
+class StandaloneEmulatorProductionContractTest {
+    class Vector<string> emulatorIds() {
+        return ["dolphin", "ppsspp", "flycast", "pcsx2", "ryujinx", "ares"];
+    }
+
+    class Vector<string> allEmulatorIds() {
+        return [
+            "retroarch", "dolphin", "ppsspp", "flycast", "azahar",
+            "melonds", "pcsx2", "cemu", "ryujinx", "ares"
+        ];
+    }
+
+    class int fail(string emulator, string message) {
+        print("  FAIL " + emulator + " production: " + message);
+        return 1;
+    }
+
+    class string path(string project, string emulator, string file) {
+        return PathTools.join(project,
+            "config/emulators/" + emulator + "/" + file);
+    }
+
+    class bool stringArrayContains(JsonValue values, string expected) {
+        if (!values.isArray()) { return false; }
+        for (int index = 0; index < values.size(); index++) {
+            if (values.at(index).isString()
+                    && values.at(index).asString().equals(expected)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    class bool allFallbacksDisabled(JsonValue fallbacks) {
+        Vector<string> keys = fallbacks.keys();
+        if (!fallbacks.isObject() || keys.isEmpty()) { return false; }
+        for key in keys {
+            JsonValue value = fallbacks.get(key);
+            if (!value.isBool() || value.asBool()) { return false; }
+        }
+        return true;
+    }
+
+    class bool profileAction(JsonValue profile, string action) {
+        JsonValue hotkeys = profile.get("hotkeys").get("keymap");
+        if (!hotkeys.isArray()) { return false; }
+        for (int index = 0; index < hotkeys.size(); index++) {
+            JsonValue entry = hotkeys.at(index);
+            if (entry.get("action").isString()
+                    && entry.get("action").asString().equals(action)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    class Vector<string> profileActions(JsonValue profile) {
+        Vector<string> actions = [];
+        Vector<JsonValue> groups = [
+            profile.get("hotkeys").get("keymap"),
+            profile.get("actions").get("native"),
+            profile.get("actions").get("external"),
+            profile.get("controller_modes")
+        ];
+        for group in groups {
+            if (!group.isArray()) { continue; }
+            for (int index = 0; index < group.size(); index++) {
+                JsonValue action = group.at(index).get("action");
+                if (action.isString()) { actions.push(action.asString()); }
+            }
+        }
+        return actions;
+    }
+
+    class int count(Vector<string> values, string expected) {
+        int total = 0;
+        for value in values {
+            if (value.equals(expected)) { total++; }
+        }
+        return total;
+    }
+
+    class bool validConsumerEntries(JsonValue profile) {
+        JsonValue hotkeys = profile.get("hotkeys").get("keymap");
+        if (hotkeys.isArray()) {
+            for (int index = 0; index < hotkeys.size(); index++) {
+                JsonValue entry = hotkeys.at(index);
+                bool setting = entry.get("setting").isString()
+                    && !entry.get("setting").asString().isEmpty();
+                bool nativeConsumer = entry.get("native").isString()
+                    && !entry.get("native").asString().isEmpty();
+                if (!entry.get("action").isString()
+                        || (!setting && !nativeConsumer)) {
+                    return false;
+                }
+            }
+        }
+        JsonValue native = profile.get("actions").get("native");
+        if (native.isArray()) {
+            for (int index = 0; index < native.size(); index++) {
+                JsonValue entry = native.at(index);
+                bool consumer = entry.get("consumer").isString()
+                    && !entry.get("consumer").asString().isEmpty();
+                bool keyboard = entry.get("keyboard_consumer").isString()
+                    && !entry.get("keyboard_consumer").asString().isEmpty();
+                if (!entry.get("action").isString()
+                        || (!consumer && !keyboard)) {
+                    return false;
+                }
+            }
+        }
+        JsonValue external = profile.get("actions").get("external");
+        if (external.isArray()) {
+            for (int index = 0; index < external.size(); index++) {
+                JsonValue entry = external.at(index);
+                bool consumer = entry.get("consumer").isString()
+                    && !entry.get("consumer").asString().isEmpty();
+                bool keyboard = entry.get("keyboard_consumer").isString()
+                    && !entry.get("keyboard_consumer").asString().isEmpty();
+                bool physical = entry.get("physical_consumer").isString()
+                    && !entry.get("physical_consumer").asString().isEmpty();
+                if (!entry.get("action").isString()
+                        || (!consumer && !keyboard && !physical)) {
+                    return false;
+                }
+            }
+        }
+        JsonValue modes = profile.get("controller_modes");
+        if (modes.isArray()) {
+            for (int index = 0; index < modes.size(); index++) {
+                JsonValue entry = modes.at(index);
+                if (!entry.get("action").isString()
+                        || !entry.get("hotkey_setting").isString()
+                        || entry.get("hotkey_setting").asString().isEmpty()) {
+                    return false;
+                }
+            }
+        }
+        return true;
+    }
+
+    class bool gameplayInputOwned(JsonValue profile) {
+        JsonValue controller = profile.get("controller");
+        if (!controller.isObject()
+                || !controller.get("ownership").isString()
+                || controller.get("ownership").asString().isEmpty()
+                || !controller.get("consumer").isString()
+                || controller.get("consumer").asString().isEmpty()) {
+            return false;
+        }
+        bool source = controller.get("source").isString()
+            && !controller.get("source").asString().isEmpty();
+        bool guid = controller.get("guid").isString()
+            && !controller.get("guid").asString().isEmpty();
+        JsonValue sources = controller.get("sources");
+        return source || guid || (sources.isArray() && sources.size() > 0);
+    }
+
+    class int actionContract(string project, string emulator) {
+        JsonValue definition = JsonValue.readFile(
+            StandaloneEmulatorProductionContractTest.path(
+                project, emulator, "emulator.json"));
+        JsonValue profile = JsonValue.readFile(
+            StandaloneEmulatorProductionContractTest.path(
+                project, emulator, "profile.json"));
+        JsonValue declared = definition.get("input").get("actions");
+        Vector<string> consumed =
+            StandaloneEmulatorProductionContractTest.profileActions(profile);
+        bool valid = declared.isArray()
+            && StandaloneEmulatorProductionContractTest
+                .validConsumerEntries(profile);
+        Vector<string> declaredActions = [];
+        if (declared.isArray()) {
+            for (int index = 0; index < declared.size(); index++) {
+                if (!declared.at(index).isString()) {
+                    valid = false;
+                    continue;
+                }
+                string action = declared.at(index).asString();
+                declaredActions.push(action);
+                if (StandaloneEmulatorProductionContractTest.count(
+                            consumed, action) != 1) {
+                    valid = false;
+                }
+            }
+        }
+        for action in consumed {
+            if (StandaloneEmulatorProductionContractTest.count(
+                        declaredActions, action) != 1) {
+                valid = false;
+            }
+        }
+        JsonValue unsupported = profile.get("actions").get("unsupported");
+        if (unsupported.isArray()) {
+            for (int index = 0; index < unsupported.size(); index++) {
+                JsonValue entry = unsupported.at(index);
+                if (!entry.get("action").isString()
+                        || !entry.get("reason").isString()
+                        || entry.get("reason").asString().isEmpty()
+                        || StandaloneEmulatorProductionContractTest
+                            .stringArrayContains(
+                                declared, entry.get("action").asString())
+                        || consumed.contains(entry.get("action").asString())) {
+                    valid = false;
+                }
+            }
+        }
+        if (valid) { return 0; }
+        return StandaloneEmulatorProductionContractTest.fail(
+            emulator,
+            "declared actions do not have exactly one concrete profile consumer");
+    }
+
+    class bool forbiddenProductMechanism(string patch) {
+        Vector<string> forbidden = [
+            "LD_PRELOAD", "gamescope", "glXSwapBuffers", "eglSwapBuffers",
+            "XGetImage", "wl_display", "wlr_screencopy", "window capture",
+            "dlopen", "dlsym"
+        ];
+        for marker in forbidden {
+            if (patch.contains(marker)) { return true; }
+        }
+        return false;
+    }
+
+    class bool hasActivePrebuiltField(JsonValue package) {
+        for key in package.keys() {
+            if (key.toLower().contains("prebuilt")) { return true; }
+        }
+        return false;
+    }
+
+    class bool filesystem(JsonValue platform, string path, string mode) {
+        JsonValue filesystems = platform.get("sandbox").get("filesystems");
+        if (!filesystems.isArray()) { return false; }
+        for (int index = 0; index < filesystems.size(); index++) {
+            JsonValue entry = filesystems.at(index);
+            if (entry.get("path").isString()
+                    && entry.get("mode").isString()
+                    && entry.get("path").asString().equals(path)
+                    && entry.get("mode").asString().equals(mode)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    class bool onlyOwnedWrites(JsonValue platform) {
+        JsonValue filesystems = platform.get("sandbox").get("filesystems");
+        if (!filesystems.isArray()) { return false; }
+        for (int index = 0; index < filesystems.size(); index++) {
+            JsonValue entry = filesystems.at(index);
+            if (entry.get("mode").isString()
+                    && entry.get("mode").asString().equals("rw")) {
+                return false;
+            }
+            if (entry.get("mode").isString()
+                    && entry.get("mode").asString().equals("create")
+                    && (!entry.get("path").isString()
+                        || !entry.get("path").asString().startsWith(
+                            "${state_root}"))) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    class bool fullscreen(JsonValue platform) {
+        JsonValue args = platform.get("args");
+        if (!args.isArray()) { return false; }
+        for (int index = 0; index < args.size(); index++) {
+            if (!args.at(index).isString()) { continue; }
+            string argument = args.at(index).asString().toLower();
+            if (argument.contains("fullscreen") || argument.equals("-f")) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    class bool seedsStayOwned(JsonValue platform) {
+        JsonValue state = platform.get("state");
+        if (!state.isObject()) { return false; }
+        JsonValue seeds = state.get("seeds");
+        if (!seeds.isArray()) { return true; }
+        for (int index = 0; index < seeds.size(); index++) {
+            JsonValue seed = seeds.at(index);
+            JsonValue sources = seed.get("sources");
+            if (!seed.isObject()
+                    || !seed.get("purpose").isString()
+                    || seed.get("purpose").asString().isEmpty()
+                    || !seed.get("target").isString()
+                    || !seed.get("target").asString().startsWith(
+                        "${state_root}/")
+                    || !seed.get("copy").isString()
+                    || !seed.get("copy").asString().equals(
+                        "once_if_target_absent")
+                    || !seed.get("source_access").isString()
+                    || !seed.get("source_access").asString().equals(
+                        "read_only")
+                    || !seed.get("overwrite").isBool()
+                    || seed.get("overwrite").asBool()
+                    || !sources.isArray() || sources.size() == 0) {
+                return false;
+            }
+            for (int sourceIndex = 0; sourceIndex < sources.size();
+                    sourceIndex++) {
+                if (!sources.at(sourceIndex).isString()
+                        || sources.at(sourceIndex).asString().isEmpty()) {
+                    return false;
+                }
+            }
+        }
+        return true;
+    }
+
+    class int seedContract(string project, string emulator) {
+        JsonValue definition = JsonValue.readFile(
+            StandaloneEmulatorProductionContractTest.path(
+                project, emulator, "emulator.json"));
+        JsonValue platforms = definition.get("platforms");
+        for platform in platforms.keys() {
+            if (!StandaloneEmulatorProductionContractTest.seedsStayOwned(
+                    platforms.get(platform))) {
+                return StandaloneEmulatorProductionContractTest.fail(
+                    emulator, platform
+                        + " firmware seeds are not fail-closed owned imports");
+            }
+        }
+        return 0;
+    }
+
+    class JsonValue seed(JsonValue platform, string purpose) {
+        JsonValue seeds = platform.get("state").get("seeds");
+        if (!seeds.isArray()) { return JsonValue.makeNull(); }
+        for (int index = 0; index < seeds.size(); index++) {
+            JsonValue candidate = seeds.at(index);
+            if (candidate.get("purpose").isString()
+                    && candidate.get("purpose").asString().equals(purpose)) {
+                return candidate;
+            }
+        }
+        return JsonValue.makeNull();
+    }
+
+    class bool sourceAt(JsonValue seed, int index, string expected) {
+        JsonValue sources = seed.get("sources");
+        return sources.isArray() && index >= 0 && index < sources.size()
+            && sources.at(index).isString()
+            && sources.at(index).asString().equals(expected);
+    }
+
+    class bool sourceContains(JsonValue seed, string expected) {
+        return StandaloneEmulatorProductionContractTest.stringArrayContains(
+            seed.get("sources"), expected);
+    }
+
+    class bool packageSupports(JsonValue package, string platform) {
+        JsonValue platforms = package.get("platforms");
+        if (platform.equals("linux")) {
+            return StandaloneEmulatorProductionContractTest
+                .stringArrayContains(platforms, "x86_64-linux");
+        }
+        return StandaloneEmulatorProductionContractTest
+                .stringArrayContains(platforms, "aarch64-darwin")
+            || StandaloneEmulatorProductionContractTest
+                .stringArrayContains(platforms, "x86_64-darwin");
+    }
+
+    class bool allPcsx2Pad1BindingsDeclarative(JsonValue profile) {
+        JsonValue lines = profile.get("blocks").get("pad_sections");
+        if (!lines.isArray()) { return false; }
+        bool pad1 = false;
+        int bindings = 0;
+        for (int index = 0; index < lines.size(); index++) {
+            if (!lines.at(index).isString()) { return false; }
+            string line = lines.at(index).asString();
+            if (line.equals("[Pad1]")) {
+                pad1 = true;
+                continue;
+            }
+            if (pad1 && line.startsWith("[")) {
+                return bindings >= 24;
+            }
+            if (!pad1 || line.startsWith("Type = ")) { continue; }
+            if (line.contains(" = ")) {
+                bindings++;
+                if (!line.contains(" = ${pad}/")) { return false; }
+            }
+        }
+        return false;
+    }
+
+    class bool exactPatchContract(
+            JsonValue rendering, string patch, string packageNix) {
+        JsonValue phases = rendering.get("phases");
+        if (!phases.isArray() || phases.size() != 2) { return false; }
+        for (int index = 0; index < phases.size(); index++) {
+            JsonValue phase = phases.at(index);
+            if (!phase.get("symbol").isString()
+                    || !patch.contains(phase.get("symbol").asString())
+                    || !packageNix.contains(phase.get("symbol").asString())) {
+                return false;
+            }
+        }
+        return packageNix.contains("render-hook.nix")
+            && packageNix.contains("rendering.patch")
+            && packageNix.contains("--fuzz=0")
+            && packageNix.contains("doInstallCheck = true")
+            && packageNix.contains("sourceContract.revision")
+            && packageNix.contains("sourceContract.sha256");
+    }
+
+    class bool exactRenderContract(JsonValue rendering, string emulator) {
+        JsonValue activation = rendering.get("activation");
+        JsonValue integration = rendering.get("integration");
+        JsonValue phases = rendering.get("phases");
+        JsonValue composition = rendering.get("composition");
+        if (!activation.get("mode").isString()
+                || !activation.get("mode").asString().equals(
+                    "source_patched_direct_link")
+                || !activation.get("package_ready").isBool()
+                || !activation.get("package_ready").asBool()
+                || activation.get("runtime_proven").asBool()
+                || activation.get("physical_proven").asBool()
+                || integration.get("abi").asInt() != 2
+                || !integration.get("backend").asString().equals("opengl")
+                || !integration.get("patch").asString().equals(
+                    emulator + ".patch")
+                || !integration.get("library").asString().equals(
+                    "semurenderer")
+                || !integration.get("linkage").asString().startsWith("direct")
+                || phases.size() != 2
+                || !phases.at(0).get("id").asString().equals("game")
+                || !phases.at(0).get("symbol").asString().equals(
+                    "semu_render_game_gl")
+                || !phases.at(1).get("id").asString().equals("post_ui")
+                || !phases.at(1).get("symbol").asString().equals(
+                    "semu_render_post_ui_gl")
+                || !composition.get("owner").asString().equals("semurenderer")
+                || !composition.get("shader").asString().equals(
+                    "renderer_owned")
+                || !composition.get("bezel").asString().equals(
+                    "renderer_owned")) {
+            return false;
+        }
+        return true;
+    }
+
+    class int validate(string project, string emulator) {
+        JsonValue definition = JsonValue.readFile(
+            StandaloneEmulatorProductionContractTest.path(
+                project, emulator, "emulator.json"));
+        JsonValue package = JsonValue.readFile(
+            StandaloneEmulatorProductionContractTest.path(
+                project, emulator, "package.json"));
+        JsonValue profile = JsonValue.readFile(
+            StandaloneEmulatorProductionContractTest.path(
+                project, emulator, "profile.json"));
+        JsonValue rendering = JsonValue.readFile(
+            StandaloneEmulatorProductionContractTest.path(
+                project, emulator, "rendering.json"));
+        string patch = FileSystem.readText(
+            StandaloneEmulatorProductionContractTest.path(
+                project, emulator, emulator + ".patch"));
+        string packageNix = FileSystem.readText(
+            StandaloneEmulatorProductionContractTest.path(
+                project, emulator, "package.nix"));
+        int failures = 0;
+        string definitionText = FileSystem.readText(
+            StandaloneEmulatorProductionContractTest.path(
+                project, emulator, "emulator.json"));
+
+        JsonValue source = package.get("source");
+        if (!package.get("build_kind").isString()
+                || !package.get("build_kind").asString().equals("source")
+                || !source.get("revision").isString()
+                || source.get("revision").asString().len() != 40
+                || !source.get("sha256").isString()
+                || !source.get("sha256").asString().startsWith("sha256-")
+                || !StandaloneEmulatorProductionContractTest
+                    .allFallbacksDisabled(package.get("fallbacks"))
+                || StandaloneEmulatorProductionContractTest
+                    .hasActivePrebuiltField(package)
+                || !package.get("outputs").get("build_contract").isString()) {
+            failures += StandaloneEmulatorProductionContractTest.fail(
+                emulator, "source identity or fallback contract is not closed");
+        }
+
+        if (!StandaloneEmulatorProductionContractTest.exactRenderContract(
+                    rendering, emulator)
+                || !StandaloneEmulatorProductionContractTest.exactPatchContract(
+                    rendering, patch, packageNix)
+                || StandaloneEmulatorProductionContractTest
+                    .forbiddenProductMechanism(patch)) {
+            failures += StandaloneEmulatorProductionContractTest.fail(
+                emulator, "direct ABI-2 hook or exact patch contract regressed");
+        }
+
+        JsonValue actions = definition.get("input").get("actions");
+        if (!StandaloneEmulatorProductionContractTest.stringArrayContains(
+                actions, "app.quit")) {
+            failures += StandaloneEmulatorProductionContractTest.fail(
+                emulator, "quit is not declared by emulator JSON");
+        }
+        bool save = StandaloneEmulatorProductionContractTest
+            .stringArrayContains(actions, "state.save");
+        bool load = StandaloneEmulatorProductionContractTest
+            .stringArrayContains(actions, "state.load");
+        if (save != load || (save
+                && (!StandaloneEmulatorProductionContractTest
+                    .profileAction(profile, "state.save")
+                    || !StandaloneEmulatorProductionContractTest
+                        .profileAction(profile, "state.load")))) {
+            failures += StandaloneEmulatorProductionContractTest.fail(
+                emulator, "save/load declarations are not profile-owned JSON");
+        }
+
+        JsonValue platforms = definition.get("platforms");
+        bool usesBios = definitionText.contains("${bios}");
+        if (definitionText.contains("${paths.project_bios}")) {
+            failures += StandaloneEmulatorProductionContractTest.fail(
+                emulator, "legacy generated BIOS token is forbidden");
+        }
+        for platformName in platforms.keys() {
+            JsonValue platform = platforms.get(platformName);
+            if (!StandaloneEmulatorProductionContractTest.packageSupports(
+                        package, platformName)
+                    || !platform.get("executable").isString()
+                    || !platform.get("executable").asString().startsWith(
+                        "${asset_root}/")
+                    || (platformName.equals("linux")
+                        && !platform.get("backend").asString().equals("bwrap"))
+                    || !StandaloneEmulatorProductionContractTest
+                        .fullscreen(platform)
+                    || !StandaloneEmulatorProductionContractTest.filesystem(
+                        platform, "${asset_root}", "ro")
+                    || !StandaloneEmulatorProductionContractTest.filesystem(
+                        platform, "${roms}", "ro")
+                    || !StandaloneEmulatorProductionContractTest.filesystem(
+                        platform, "${emulation_root}", "ro")
+                    || (usesBios
+                        && !StandaloneEmulatorProductionContractTest.filesystem(
+                            platform, "${bios}", "ro"))
+                    || !StandaloneEmulatorProductionContractTest.filesystem(
+                        platform, "${state_root}", "create")
+                    || !StandaloneEmulatorProductionContractTest
+                        .onlyOwnedWrites(platform)
+                    || !StandaloneEmulatorProductionContractTest
+                        .seedsStayOwned(platform)) {
+                failures += StandaloneEmulatorProductionContractTest.fail(
+                    emulator, platformName
+                        + " package/fullscreen/path contract can escape JSON ownership");
+            }
+        }
+
+        if (!StandaloneEmulatorProductionContractTest
+                .gameplayInputOwned(profile)) {
+            failures += StandaloneEmulatorProductionContractTest.fail(
+                emulator, "gameplay input ownership is not declared in profile JSON");
+        }
+
+        return failures;
+    }
+
+    class int run(string project) {
+        int failures = 0;
+        string generator = FileSystem.readText(
+            PathTools.join(project, "src/generators/emulators.btrc"));
+        for emulator in StandaloneEmulatorProductionContractTest
+                .allEmulatorIds() {
+            failures += StandaloneEmulatorProductionContractTest
+                .actionContract(project, emulator);
+            failures += StandaloneEmulatorProductionContractTest
+                .seedContract(project, emulator);
+        }
+        for emulator in StandaloneEmulatorProductionContractTest.emulatorIds() {
+            failures += StandaloneEmulatorProductionContractTest.validate(
+                project, emulator);
+            if (generator.contains("\"" + emulator + "\"")) {
+                failures += StandaloneEmulatorProductionContractTest.fail(
+                    emulator, "generic BTRC generator hard-codes emulator identity");
+            }
+        }
+
+        JsonValue flycast = JsonValue.readFile(
+            StandaloneEmulatorProductionContractTest.path(
+                project, "flycast", "emulator.json"));
+        JsonValue flycastLinux = flycast.get("platforms").get("linux");
+        if (!StandaloneEmulatorProductionContractTest.sourceContains(
+                    StandaloneEmulatorProductionContractTest.seed(
+                        flycastLinux, "dreamcast_boot_rom"),
+                    "${bios}/dc/dc_boot.bin")
+                || !StandaloneEmulatorProductionContractTest.sourceContains(
+                    StandaloneEmulatorProductionContractTest.seed(
+                        flycastLinux, "dreamcast_flash_rom"),
+                    "${bios}/dc/dc_flash.bin")) {
+            failures += StandaloneEmulatorProductionContractTest.fail(
+                "flycast", "Dreamcast BIOS fallbacks do not use ${bios}/dc");
+        }
+
+        JsonValue pcsx2 = JsonValue.readFile(
+            StandaloneEmulatorProductionContractTest.path(
+                project, "pcsx2", "emulator.json"));
+        JsonValue pcsx2Profile = JsonValue.readFile(
+            StandaloneEmulatorProductionContractTest.path(
+                project, "pcsx2", "profile.json"));
+        if (!pcsx2.get("platforms").get("linux").get("input")
+                    .get("primary_device").asString().equals("SDL-0")
+                || !pcsx2.get("platforms").get("linux").get("input")
+                    .get("selection").asString().equals("first_sdl_gamepad")
+                || !pcsx2Profile.get("compiler").get("bindings").get("pad")
+                    .get("source").asString().equals(
+                        "platform.input.primary_device")
+                || !StandaloneEmulatorProductionContractTest
+                    .allPcsx2Pad1BindingsDeclarative(pcsx2Profile)
+                || FileSystem.readText(
+                    StandaloneEmulatorProductionContractTest.path(
+                        project, "pcsx2", "profile.json"))
+                    .contains("SDL-1")) {
+            failures += StandaloneEmulatorProductionContractTest.fail(
+                "pcsx2", "Pad1 is not bound to the first packaged SDL gamepad");
+        }
+
+        JsonValue ryujinx = JsonValue.readFile(
+            StandaloneEmulatorProductionContractTest.path(
+                project, "ryujinx", "emulator.json"));
+        for platformName in ryujinx.get("platforms").keys() {
+            JsonValue platform = ryujinx.get("platforms").get(platformName);
+            if (!StandaloneEmulatorProductionContractTest.sourceAt(
+                        StandaloneEmulatorProductionContractTest.seed(
+                            platform, "prod_keys"), 0,
+                        "${semu_home}/firmware/ryujinx/prod.keys")
+                    || !StandaloneEmulatorProductionContractTest.sourceAt(
+                        StandaloneEmulatorProductionContractTest.seed(
+                            platform, "title_keys"), 0,
+                        "${semu_home}/firmware/ryujinx/title.keys")) {
+                failures += StandaloneEmulatorProductionContractTest.fail(
+                    "ryujinx", platformName
+                        + " does not prefer persistent Semu-owned keys");
+            }
+        }
+        if (failures == 0) {
+            print("standalone emulator production contract: six slices valid");
+        }
+        return failures;
+    }
+}

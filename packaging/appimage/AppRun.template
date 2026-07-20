@@ -1,0 +1,10 @@
+#!/usr/bin/env sh
+set -eu
+
+appdir="${APPDIR:-$(CDPATH= cd -- "$(dirname -- "$0")" && pwd -P)}"
+runtime="$appdir/lib/semu/semu-btrc"
+[ -x "$runtime" ] || {
+  echo "Semu: bundled static runtime is missing." >&2
+  exit 127
+}
+exec "$runtime" runtime app --appdir "$appdir" -- "$@"

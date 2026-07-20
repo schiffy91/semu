@@ -1,0 +1,8 @@
+{
+  "schema_version": 1,
+  "enabled": false,
+  "variants": [],
+  "doc": {
+    "why": "Modern docked or handheld output uses the game rectangle directly. No bezel asset is selected by default."
+  }
+}

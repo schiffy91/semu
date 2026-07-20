@@ -1,0 +1,524 @@
+// Focused contracts for the compiler-derived Steam Deck acceptance harness.
+
+import std.{bytes, cli, fs, json, strings, vector}
+import ./acceptance_plan.btrc
+import ./evidence.btrc
+import ./game_mode.btrc
+import ./input_automation.btrc
+import ./steam_shortcuts.btrc
+
+class DeckSteamShortcutFixture {
+    class void cstring(Bytes bytes, string value) {
+        bytes.appendBytes(Bytes.fromString(value));
+        bytes.append(0);
+    }
+
+    class void stringField(Bytes bytes, string key, string value) {
+        bytes.append(1);
+        DeckSteamShortcutFixture.cstring(bytes, key);
+        DeckSteamShortcutFixture.cstring(bytes, value);
+    }
+
+    class void intField(Bytes bytes, string key, string littleEndianHex) {
+        bytes.append(2);
+        DeckSteamShortcutFixture.cstring(bytes, key);
+        Bytes value = DeckHexBytes.decode(littleEndianHex);
+        if (value.length() == 4) { bytes.appendBytes(value); }
+    }
+
+    class Bytes database(Vector<string> names, Vector<string> executables,
+                         Vector<string> launchOptions,
+                         Vector<string> appIdLittleEndianHex) {
+        Bytes bytes = Bytes();
+        if (names.size() != executables.size()
+                || names.size() != launchOptions.size()
+                || names.size() != appIdLittleEndianHex.size()) {
+            return bytes;
+        }
+        bytes.append(0);
+        DeckSteamShortcutFixture.cstring(bytes, "shortcuts");
+        for (int index = 0; index < names.size(); index++) {
+            bytes.append(0);
+            DeckSteamShortcutFixture.cstring(bytes, f"{index}");
+            DeckSteamShortcutFixture.intField(
+                bytes, "appid", appIdLittleEndianHex.get(index));
+            DeckSteamShortcutFixture.stringField(
+                bytes, "appname", names.get(index));
+            DeckSteamShortcutFixture.stringField(
+                bytes, "exe", executables.get(index));
+            string executable = DeckSteamShortcutPolicy.unquote(
+                executables.get(index));
+            DeckSteamShortcutFixture.stringField(bytes, "StartDir",
+                "\"" + PathTools.dirname(executable) + "\"");
+            DeckSteamShortcutFixture.stringField(
+                bytes, "LaunchOptions", launchOptions.get(index));
+            bytes.append(0);
+            DeckSteamShortcutFixture.cstring(bytes, "tags");
+            DeckSteamShortcutFixture.stringField(bytes, "0", "Semu");
+            bytes.append(8);
+            bytes.append(8);
+        }
+        bytes.append(8);
+        bytes.append(8);
+        return bytes;
+    }
+}
+
+class DeckHarnessContractTest {
+    class string zeroHash() {
+        return "0000000000000000000000000000000000000000000000000000000000000000";
+    }
+
+    class string oneHash() {
+        return "1111111111111111111111111111111111111111111111111111111111111111";
+    }
+
+    class int fail(string message) {
+        print("  FAIL steamdeck harness: " + message);
+        return 1;
+    }
+
+    class Vector<string> fixtureInventory(JsonValue fixture, string system) {
+        Vector<string> result = [];
+        JsonValue files = fixture.get("systems").get(system);
+        if (!files.isArray()) { return result; }
+        for (int index = 0; index < files.size(); index++) {
+            if (files.at(index).isString()) {
+                result.push(files.at(index).asString());
+            }
+        }
+        return result;
+    }
+
+    class DeckSteamShortcutResolution shortcutResolution(JsonValue fixture) {
+        JsonValue expected = fixture.get("steam_shortcut");
+        string database = "/home/deck/.local/share/Steam/userdata/1/config/shortcuts.vdf";
+        DeckSteamShortcutParseResult parsed = DeckSteamShortcutVdf.parse(
+            DeckSteamShortcutFixture.database(
+                [expected.get("name").asString()],
+                ["\"" + expected.get("executable").asString() + "\""],
+                [""], [expected.get("appid_le_hex").asString()]),
+            database);
+        Vector<DeckSteamShortcutParseResult> documents = [parsed];
+        DeckSteamShortcutResolution resolution = DeckSteamShortcutPolicy.resolve(
+            documents, expected.get("executable").asString());
+        resolution.databaseSha256 = expected.get("database_sha256").asString();
+        return resolution;
+    }
+
+    class bool shortcutContracts(JsonValue fixture) {
+        string stable = "/home/deck/Applications/Semu/bin/semu";
+        JsonValue expected = fixture.get("steam_shortcut");
+        Bytes validBytes = DeckSteamShortcutFixture.database(
+            ["Semu"], ["\"" + stable + "\""], [""],
+            [expected.get("appid_le_hex").asString()]);
+        DeckSteamShortcutParseResult valid = DeckSteamShortcutVdf.parse(
+            validBytes,
+            "/home/deck/.local/share/Steam/userdata/1/config/shortcuts.vdf");
+        Vector<DeckSteamShortcutParseResult> documents = [valid];
+        DeckSteamShortcutResolution resolution = DeckSteamShortcutPolicy.resolve(
+            documents, stable);
+        if (!valid.valid || valid.shortcuts.size() != 1 || !resolution.valid
+                || !resolution.appId().equals(
+                    expected.get("appid").asString())
+                || !resolution.gameId().equals(
+                    expected.get("gameid").asString())) {
+            return false;
+        }
+
+        DeckSteamShortcutParseResult malformed = DeckSteamShortcutVdf.parse(
+            validBytes.slice(0, validBytes.length() - 1), "malformed.vdf");
+        if (malformed.valid || malformed.error.isEmpty()) { return false; }
+
+        DeckSteamShortcutParseResult wrongStart = DeckSteamShortcutVdf.parse(
+            validBytes, "wrong-start.vdf");
+        wrongStart.shortcuts.get(0).startDirectory = "/tmp";
+        Vector<DeckSteamShortcutParseResult> wrongStartDocuments = [wrongStart];
+        if (DeckSteamShortcutPolicy.verify(
+                wrongStartDocuments, stable).isEmpty()) {
+            return false;
+        }
+
+        DeckSteamShortcutParseResult launchOptions = DeckSteamShortcutVdf.parse(
+            DeckSteamShortcutFixture.database(["Semu"], [stable],
+                ["--wrong"], [expected.get("appid_le_hex").asString()]),
+            "launch-options.vdf");
+        Vector<DeckSteamShortcutParseResult> launchOptionDocuments = [
+            launchOptions
+        ];
+        if (DeckSteamShortcutPolicy.verify(
+                launchOptionDocuments, stable).isEmpty()) {
+            return false;
+        }
+
+        DeckSteamShortcutParseResult transient = DeckSteamShortcutVdf.parse(
+            DeckSteamShortcutFixture.database(["Semu"],
+                ["/home/deck/Applications/Semu/Semu-x86_64.AppImage"],
+                [""], [expected.get("appid_le_hex").asString()]),
+            "transient.vdf");
+        Vector<DeckSteamShortcutParseResult> transientDocuments = [transient];
+        return DeckSteamShortcutPolicy.verify(
+            transientDocuments, stable).contains("forbidden");
+    }
+
+    class bool evidenceContracts(JsonValue fixture) {
+        JsonValue contracts = fixture.get("evidence_contracts");
+        if (!contracts.isArray() || contracts.size() != 5) { return false; }
+        for (int index = 0; index < contracts.size(); index++) {
+            JsonValue expected = contracts.at(index);
+            string scenario = expected.get("scenario").asString();
+            string fields = DeckEvidenceClass.fields(scenario);
+            if (!DeckEvidenceClass.forScenario(scenario).equals(
+                    expected.get("evidence_class").asString())
+                    || !DeckEvidenceClass.inputOrigin(scenario).equals(
+                        expected.get("input_origin").asString())
+                    || DeckEvidenceClass.acceptanceEligible(scenario)
+                        != expected.get("acceptance_eligible").asBool()
+                    || !DeckEvidenceReceiptPolicy.verifyClassification(
+                        fields, scenario).isEmpty()) {
+                return false;
+            }
+        }
+        string mislabeled = DeckEvidenceClass.fields("automated-game-mode")
+            .replace("human_observed=0", "human_observed=1");
+        return DeckEvidenceReceiptPolicy.verifyClassification(
+            mislabeled, "automated-game-mode").contains("does not match");
+    }
+
+    class JsonValue evidence(string scenario) {
+        JsonValue result = JsonValue.makeObject();
+        result.set("class", JsonValue.makeString(
+            DeckEvidenceClass.forScenario(scenario)));
+        result.set("input_origin", JsonValue.makeString(
+            DeckEvidenceClass.inputOrigin(scenario)));
+        result.set("synthetic_input", JsonValue.makeBool(
+            DeckEvidenceClass.synthetic(scenario)));
+        result.set("human_input", JsonValue.makeBool(
+            DeckEvidenceClass.human(scenario)));
+        result.set("human_observed", JsonValue.makeBool(
+            DeckEvidenceClass.human(scenario)));
+        result.set("acceptance_eligible", JsonValue.makeBool(
+            DeckEvidenceClass.acceptanceEligible(scenario)));
+        return result;
+    }
+
+    class DeckGameModeRequest automatedRequest(
+            DeckExpectedShortcut shortcut, string rom, bool wii) {
+        DeckGameModeRequest request = DeckGameModeRequest();
+        request.operation = "automated-game-mode";
+        request.scenario = request.operation;
+        request.runRoot = "/home/deck/.local/share/semu/build/verification/steamdeck/runs/fixture";
+        request.projectRoot = "/home/deck/.local/share/semu";
+        request.esDeHome = "/home/deck/ES-DE";
+        request.steamRoot = "/home/deck/.local/share/Steam";
+        request.externalRoots = [
+            "/run/media/deck/SD/Emulation/ES-DE/ES-DE/ROMs",
+            "/run/media/deck/SD/Emulation/RetroArch/config/system",
+            "/run/media/deck/SD/Emulation"
+        ];
+        request.generatedInputs = [
+            "/home/deck/ES-DE/custom_systems/es_systems.xml",
+            "/home/deck/ES-DE/custom_systems/es_find_rules.xml",
+            "/home/deck/ES-DE/settings/semu_settings.json"
+        ];
+        request.shortcut = shortcut;
+        request.releaseSha256 = DeckHarnessContractTest.zeroHash();
+        request.systemId = wii ? "wii" : "gb";
+        request.emulatorId = wii ? "dolphin" : "retroarch";
+        request.expectedExecutable = wii
+            ? "/home/deck/Applications/Semu/releases/fixture/usr/bin/dolphin"
+            : "/home/deck/Applications/Semu/releases/fixture/usr/bin/retroarch";
+        request.expectedExecutableSha256 = DeckHarnessContractTest.oneHash();
+        request.coreFilename = wii ? "" : "gambatte_libretro.so";
+        request.rom = rom;
+        request.captureFrame = 120;
+        request.navigationPlan = request.runRoot + "/input/navigation.plan";
+        request.navigationPlanSha256 = DeckHarnessContractTest.zeroHash();
+        request.actionPlan = request.runRoot + "/input/actions.plan";
+        request.actionPlanSha256 = DeckHarnessContractTest.oneHash();
+        request.inputHelper = request.projectRoot
+            + "/build/verification/steamdeck/bin/semu-deck-uinput";
+        request.inputHelperSha256 = DeckHarnessContractTest.zeroHash();
+        request.startSelectPlan = request.runRoot + "/input/start-select.plan";
+        request.startSelectPlanSha256 = DeckHarnessContractTest.oneHash();
+        request.reverseStartSelectPlan = request.runRoot
+            + "/input/start-select-reverse.plan";
+        request.reverseStartSelectPlanSha256 = DeckHarnessContractTest.zeroHash();
+        request.wiiExpected = wii;
+        request.savestateExpected = true;
+        request.quickRadialSlots = 6;
+        request.menuRadialSlots = 5;
+        request.wiiModeSlots = wii ? 4 : 0;
+        request.humanObserved = false;
+        DeckProtectedInput protectedRom = DeckProtectedInput();
+        protectedRom.kind = "rom";
+        protectedRom.path = rom;
+        protectedRom.sha256 = DeckHarnessContractTest.oneHash();
+        request.protectedInputs.push(protectedRom);
+        return request;
+    }
+
+    class bool requestContracts(string project, JsonValue fixture) {
+        DeckSteamShortcutResolution resolution =
+            DeckHarnessContractTest.shortcutResolution(fixture);
+        DeckExpectedShortcut shortcut = DeckExpectedShortcut.fromResolution(
+            resolution, DeckHarnessContractTest.zeroHash());
+        string rom = "/run/media/deck/SD/Emulation/ES-DE/ES-DE/ROMs/gb/Tetris.zip";
+        DeckGameModeRequest request = DeckHarnessContractTest.automatedRequest(
+            shortcut, rom, false);
+        string temporary = FileSystem.tempDir("semu-deck-request-contract");
+        if (!resolution.valid || !shortcut.valid() || !request.valid()
+                || temporary.isEmpty()) {
+            return false;
+        }
+        string path = PathTools.join(temporary, "request.json");
+        bool wrote = FileSystem.writeText(path, request.json().stringify());
+        DeckGameModeRequest parsed = DeckGameModeRequest.parse(path);
+        FileSystem.removeRecursive(temporary);
+        if (!wrote || !parsed.valid()
+                || !parsed.shortcut.appId.equals(shortcut.appId)
+                || !parsed.shortcut.gameId.equals(shortcut.gameId)
+                || parsed.protectedInputs.size() != 1
+                || !parsed.protectedInputs.get(0).sha256.equals(
+                    DeckHarnessContractTest.oneHash())) {
+            return false;
+        }
+
+        DeckGameModeRequest operator = request;
+        operator.operation = "operator-radial";
+        operator.scenario = operator.operation;
+        if (operator.valid()) { return false; }
+        operator.humanObserved = true;
+        if (!operator.valid()) { return false; }
+
+        DeckGameModeRequest frontend = DeckGameModeRequest();
+        frontend.operation = "frontend";
+        frontend.runRoot = request.runRoot;
+        frontend.projectRoot = request.projectRoot;
+        frontend.esDeHome = request.esDeHome;
+        frontend.steamRoot = request.steamRoot;
+        frontend.externalRoots = request.externalRoots;
+        frontend.generatedInputs = request.generatedInputs;
+        frontend.shortcut = shortcut;
+        JsonValue receipt = JsonValue.makeObject();
+        receipt.set("schema_version", JsonValue.makeInt(1));
+        receipt.set("operation", JsonValue.makeString("frontend"));
+        receipt.set("evidence", DeckHarnessContractTest.evidence(
+            "steam-shortcut-launch"));
+        receipt.set("shortcut", shortcut.json());
+        JsonValue launch = JsonValue.makeObject();
+        launch.set("steam_ancestry", JsonValue.makeBool(true));
+        launch.set("same_game_mode_session", JsonValue.makeBool(true));
+        launch.set("gamescope_screenshot", JsonValue.makeBool(true));
+        receipt.set("launch", launch);
+        JsonValue media = JsonValue.makeObject();
+        media.set("external_tree_scans", JsonValue.makeInt(0));
+        media.set("external_content_bytes_hashed", JsonValue.makeInt(0));
+        receipt.set("media", media);
+        if (!DeckGameModeReceiptPolicy.verify(receipt, frontend).isEmpty()) {
+            return false;
+        }
+        receipt.get("shortcut").set("app_id", JsonValue.makeString("1"));
+        return DeckGameModeReceiptPolicy.verify(
+            receipt, frontend).contains("exact installed shortcut");
+    }
+
+    class bool inputContracts(DeckAcceptancePlan plan) {
+        JsonValue automation = DeckInputAutomation.compile(
+            plan.inputDefinition, plan.quickRadial,
+            plan.menuRadial, plan.wiiModes);
+        if (!DeckInputAutomation.verify(automation, plan.inputDefinition,
+                plan.quickRadial, plan.menuRadial,
+                plan.wiiModes).isEmpty()) {
+            return false;
+        }
+        string actions = DeckInputAutomation.actionPlan(automation, true);
+        string quit = DeckInputAutomation.radialQuitPlan(automation);
+        string first = DeckInputAutomation.startSelectPlan(automation, false);
+        string reverse = DeckInputAutomation.startSelectPlan(automation, true);
+        int saveIndex = actions.indexOf("radial|command|kp0|ctrl+s");
+        int changedIndex = actions.indexOf("tap|gamepad|dpad_right");
+        int loadIndex = actions.indexOf("radial|command|kp1|ctrl+a");
+        return actions.contains("tap|gamepad|dpad_left")
+            && actions.contains("tap|gamepad|south")
+            && saveIndex >= 0 && changedIndex > saveIndex
+            && loadIndex > changedIndex
+            && actions.contains("chord|command|ctrl+shift+f9")
+            && actions.contains("chord|command|ctrl+shift+f10")
+            && actions.contains("chord|command|ctrl+shift+f11")
+            && actions.contains("chord|command|ctrl+shift+f12")
+            && quit.contains("radial|command|kp2|ctrl+q")
+            && first.contains("select+start")
+            && reverse.contains("start+select");
+    }
+
+    class JsonValue batchReceipt(string operation, bool unchanged) {
+        JsonValue receipt = JsonValue.makeObject();
+        receipt.set("schema_version", JsonValue.makeInt(1));
+        receipt.set("operation", JsonValue.makeString(operation));
+        JsonValue media = JsonValue.makeObject();
+        media.set("external_tree_scans", JsonValue.makeInt(0));
+        media.set("external_content_bytes_hashed", JsonValue.makeInt(0));
+        media.set("sentinel_sha256", JsonValue.makeString(
+            DeckHarnessContractTest.zeroHash()));
+        media.set("unchanged", JsonValue.makeBool(unchanged));
+        receipt.set("media", media);
+        return receipt;
+    }
+
+    class DeckGameModeRequest batchRequest(string operation) {
+        DeckGameModeRequest request = DeckGameModeRequest();
+        request.operation = operation;
+        request.runRoot = "/home/deck/.local/share/semu/build/verification/steamdeck/runs/batch";
+        request.projectRoot = "/home/deck/.local/share/semu";
+        request.esDeHome = "/home/deck/ES-DE";
+        request.steamRoot = "/home/deck/.local/share/Steam";
+        request.externalRoots = ["/run/media/deck/SD/Emulation"];
+        return request;
+    }
+
+    class bool latencyContracts(string project) {
+        DeckGameModeRequest begin = DeckHarnessContractTest.batchRequest(
+            "batch-begin");
+        DeckGameModeRequest end = DeckHarnessContractTest.batchRequest(
+            "batch-end");
+        if (!begin.valid() || !end.valid()
+                || !DeckGameModeReceiptPolicy.verify(
+                    DeckHarnessContractTest.batchReceipt(
+                        "batch-begin", false), begin).isEmpty()
+                || !DeckGameModeReceiptPolicy.verify(
+                    DeckHarnessContractTest.batchReceipt(
+                        "batch-end", true), end).isEmpty()) {
+            return false;
+        }
+        string helper = FileSystem.readText(PathTools.join(project,
+            "tests/targets/steamdeck/remote_helper.btrc"));
+        string system = FileSystem.readText(PathTools.join(project,
+            "tests/targets/steamdeck/remote_system.btrc"));
+        string sources = helper + "\n" + system;
+        return !sources.contains("fingerprint_tree")
+            && !sources.contains("tree_manifest")
+            && !sources.contains("external_content_bytes_hashed =")
+            && helper.contains("DeckRemoteSentinel")
+            && helper.contains("DeckRemoteSnapshot");
+    }
+
+    class bool sourceContracts(string project) {
+        string directory = PathTools.join(project,
+            "tests/targets/steamdeck");
+        if (FileSystem.exists(PathTools.join(
+                directory, "game_mode_remote.sh.template"))) {
+            return false;
+        }
+        Vector<string> helperSources = [
+            "steamdeck_harness.btrc", "remote_helper.btrc",
+            "remote_system.btrc", "deck_transport.btrc",
+            "deck_preflight.btrc", "deck_deploy.btrc",
+            "input_automation.btrc"
+        ];
+        for name in helperSources {
+            string source = FileSystem.readText(PathTools.join(directory, name));
+            if (source.isEmpty() || source.contains("DeckScripts")
+                    || source.contains("bash -lc")
+                    || source.contains("fingerprint_tree")
+                    || source.contains("tree_manifest")
+                    || source.contains("es_systems.xml")) {
+                return false;
+            }
+        }
+        string facade = FileSystem.readText(PathTools.join(
+            directory, "steamdeck_harness.btrc"));
+        if (Strings.split(facade, "\n").size() > 500) { return false; }
+        string remote = FileSystem.readText(PathTools.join(
+            directory, "remote_system.btrc"));
+        string input = FileSystem.readText(PathTools.join(
+            directory, "input_automation.btrc"));
+        return remote.contains("steam://rungameid/")
+            && remote.contains("SteamAppId")
+            && remote.contains("SteamGameId")
+            && remote.contains("/usr/bin/gamescopectl")
+            && !input.contains("class string invocation(");
+    }
+
+    class int run(string project, string fixturePath) {
+        JsonValue fixture = JsonValue.readFile(fixturePath);
+        DeckAcceptancePlan plan = DeckAcceptancePlan.load(project);
+        if (fixture.isError() || !fixture.isObject() || !plan.ok()) {
+            for error in plan.errors { print("  " + error); }
+            return DeckHarnessContractTest.fail(
+                "fixture or compiler-derived acceptance plan is invalid");
+        }
+        int failures = 0;
+        string romsRoot = fixture.get("roms_root").isString()
+            ? fixture.get("roms_root").asString() : "";
+        JsonValue encoded = JsonValue.parse(plan.json(
+            DeckHarnessOptions()).stringify());
+        if (fixture.get("schema_version").asInt() != 1
+                || romsRoot.isEmpty() || plan.systems.size() != 17
+                || plan.quickRadial.isEmpty() || plan.menuRadial.isEmpty()
+                || plan.wiiModes.size() != 4 || encoded.isError()
+                || encoded.get("schema_version").asInt() != 2
+                || encoded.get("systems").size() != 17
+                || !encoded.get("synthetic_policy").asString()
+                    .contains("never proves physical")) {
+            failures += DeckHarnessContractTest.fail(
+                "compiler matrix or proof policy is incomplete");
+        }
+        JsonValue fixtureSystems = fixture.get("systems");
+        if (!fixtureSystems.isObject()
+                || fixtureSystems.keys().size() != plan.systems.size()) {
+            failures += DeckHarnessContractTest.fail(
+                "fixture does not cover the exact compiler system inventory");
+        }
+        for system in plan.systems {
+            Vector<string> inventory = DeckHarnessContractTest.fixtureInventory(
+                fixture, system.id);
+            string selected = DeckRomSelector.select(system, romsRoot, inventory);
+            if (inventory.isEmpty() || selected.isEmpty()
+                    || !inventory.contains(selected)
+                    || !selected.startsWith(
+                        romsRoot + "/" + system.romDirectory + "/")) {
+                failures += DeckHarnessContractTest.fail(
+                    system.id + " lacks an extension-valid fixture ROM");
+            }
+        }
+        if (!DeckHarnessContractTest.shortcutContracts(fixture)) {
+            failures += DeckHarnessContractTest.fail(
+                "exact Steam shortcut/app-id policy regressed");
+        }
+        if (!DeckHarnessContractTest.evidenceContracts(fixture)) {
+            failures += DeckHarnessContractTest.fail(
+                "synthetic/human evidence classification regressed");
+        }
+        if (!DeckHarnessContractTest.requestContracts(project, fixture)) {
+            failures += DeckHarnessContractTest.fail(
+                "typed Game Mode request/receipt binding regressed");
+        }
+        if (!DeckHarnessContractTest.inputContracts(plan)) {
+            failures += DeckHarnessContractTest.fail(
+                "gameplay/state/radial/Wii input plan regressed");
+        }
+        if (!DeckHarnessContractTest.latencyContracts(project)) {
+            failures += DeckHarnessContractTest.fail(
+                "repeated scenarios can rescan external content");
+        }
+        if (!DeckHarnessContractTest.sourceContracts(project)) {
+            failures += DeckHarnessContractTest.fail(
+                "durable shell, XML mutation, or facade-size gate regressed");
+        }
+        if (failures == 0) {
+            print("steamdeck harness contract: 17 systems, exact shortcut, typed helper, immutable media gates valid");
+        }
+        return failures;
+    }
+}
+
+int main(int argc, char** argv) {
+    CliArgs arguments = CliArgs(argc, argv);
+    string project = arguments.valueAfter(
+        "--project", FileSystem.currentDirectory());
+    string fixture = arguments.valueAfter(
+        "--fixture", PathTools.join(project,
+            "tests/targets/steamdeck/fixture.json"));
+    return DeckHarnessContractTest.run(project, fixture) == 0 ? 0 : 1;
+}

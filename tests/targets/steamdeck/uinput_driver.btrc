@@ -1,0 +1,328 @@
+// Linux-only test driver for deterministic synthetic input. Its receipts are
+// explicitly non-human and cannot satisfy the physical operator gate.
+
+#include <errno.h>
+#include <fcntl.h>
+#include <linux/input.h>
+#include <linux/uinput.h>
+#include <stdbool.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/ioctl.h>
+#include <sys/time.h>
+#include <time.h>
+#include <unistd.h>
+
+struct DeckSyntheticDevice {
+    int descriptor;
+};
+
+class DeckSyntheticClock {
+    class bool sleepMilliseconds(int milliseconds) {
+        if (milliseconds < 0 || milliseconds > 30000) { return false; }
+        struct timespec delay;
+        delay.tv_sec = (time_t)(milliseconds / 1000);
+        delay.tv_nsec = (long)(milliseconds % 1000) * 1000000L;
+        while (nanosleep(&delay, &delay) != 0) {
+            if (errno != EINTR) { return false; }
+        }
+        return true;
+    }
+}
+
+class DeckSyntheticKeys {
+    class int code(char* token) {
+        if (token == null || token[0] == 0) { return -1; }
+        if (strcmp(token, "south") == 0) { return BTN_SOUTH; }
+        if (strcmp(token, "east") == 0) { return BTN_EAST; }
+        if (strcmp(token, "north") == 0) { return BTN_NORTH; }
+        if (strcmp(token, "west") == 0) { return BTN_WEST; }
+        if (strcmp(token, "select") == 0) { return BTN_SELECT; }
+        if (strcmp(token, "start") == 0) { return BTN_START; }
+        if (strcmp(token, "dpad_left") == 0) { return BTN_DPAD_LEFT; }
+        if (strcmp(token, "dpad_right") == 0) { return BTN_DPAD_RIGHT; }
+        if (strcmp(token, "dpad_up") == 0) { return BTN_DPAD_UP; }
+        if (strcmp(token, "dpad_down") == 0) { return BTN_DPAD_DOWN; }
+        if (strcmp(token, "left_shoulder") == 0) { return BTN_TL; }
+        if (strcmp(token, "right_shoulder") == 0) { return BTN_TR; }
+        if (strcmp(token, "left_trigger") == 0) { return BTN_TL2; }
+        if (strcmp(token, "right_trigger") == 0) { return BTN_TR2; }
+        if (strcmp(token, "ctrl") == 0) { return KEY_LEFTCTRL; }
+        if (strcmp(token, "alt") == 0) { return KEY_LEFTALT; }
+        if (strcmp(token, "shift") == 0) { return KEY_LEFTSHIFT; }
+        if (strcmp(token, "meta") == 0) { return KEY_LEFTMETA; }
+        if (strcmp(token, "a") == 0) { return KEY_A; }
+        if (strcmp(token, "backspace") == 0) { return KEY_BACKSPACE; }
+        if (strcmp(token, "down") == 0) { return KEY_DOWN; }
+        if (strcmp(token, "enter") == 0) { return KEY_ENTER; }
+        if (strcmp(token, "esc") == 0) { return KEY_ESC; }
+        if (strcmp(token, "j") == 0) { return KEY_J; }
+        if (strcmp(token, "k") == 0) { return KEY_K; }
+        if (strcmp(token, "m") == 0) { return KEY_M; }
+        if (strcmp(token, "o") == 0) { return KEY_O; }
+        if (strcmp(token, "p") == 0) { return KEY_P; }
+        if (strcmp(token, "q") == 0) { return KEY_Q; }
+        if (strcmp(token, "s") == 0) { return KEY_S; }
+        if (strcmp(token, "space") == 0) { return KEY_SPACE; }
+        if (strcmp(token, "tab") == 0) { return KEY_TAB; }
+        if (strcmp(token, "up") == 0) { return KEY_UP; }
+        if (strcmp(token, "x") == 0) { return KEY_X; }
+        if (strcmp(token, "minus") == 0) { return KEY_MINUS; }
+        if (strcmp(token, "kpplus") == 0) { return KEY_KPPLUS; }
+        if (strcmp(token, "kpdecimal") == 0) { return KEY_KPDOT; }
+        if (strcmp(token, "f9") == 0) { return KEY_F9; }
+        if (strcmp(token, "f10") == 0) { return KEY_F10; }
+        if (strcmp(token, "f11") == 0) { return KEY_F11; }
+        if (strcmp(token, "f12") == 0) { return KEY_F12; }
+        if (strcmp(token, "f13") == 0) { return KEY_F13; }
+        if (strcmp(token, "f14") == 0) { return KEY_F14; }
+        if (strcmp(token, "f15") == 0) { return KEY_F15; }
+        if (strcmp(token, "f16") == 0) { return KEY_F16; }
+        if (strlen(token) == (size_t)3 && token[0] == 'k'
+                && token[1] == 'p' && token[2] >= '0' && token[2] <= '9') {
+            int keypad[10] = {KEY_KP0, KEY_KP1, KEY_KP2, KEY_KP3, KEY_KP4,
+                KEY_KP5, KEY_KP6, KEY_KP7, KEY_KP8, KEY_KP9};
+            return keypad[token[2] - '0'];
+        }
+        return -1;
+    }
+}
+
+class DeckSyntheticDeviceIo {
+    class bool setKey(int descriptor, int code) {
+        return ioctl(descriptor, UI_SET_KEYBIT, code) == 0;
+    }
+
+    class bool createGamepad(struct DeckSyntheticDevice* device) {
+        device->descriptor = open("/dev/uinput",
+            (int)O_WRONLY | (int)O_NONBLOCK | (int)O_CLOEXEC);
+        if (device->descriptor < 0
+                || ioctl(device->descriptor, UI_SET_EVBIT, EV_KEY) != 0
+                || ioctl(device->descriptor, UI_SET_EVBIT, EV_ABS) != 0
+                || ioctl(device->descriptor, UI_SET_ABSBIT, ABS_X) != 0
+                || ioctl(device->descriptor, UI_SET_ABSBIT, ABS_Y) != 0) {
+            return false;
+        }
+        int keys[] = {BTN_SOUTH, BTN_EAST, BTN_NORTH, BTN_WEST,
+            BTN_SELECT, BTN_START, BTN_DPAD_LEFT, BTN_DPAD_RIGHT,
+            BTN_DPAD_UP, BTN_DPAD_DOWN, BTN_TL, BTN_TR, BTN_TL2, BTN_TR2};
+        for (size_t index = 0; index < sizeof(keys) / sizeof(int); index++) {
+            if (!DeckSyntheticDeviceIo.setKey(device->descriptor, keys[index])) {
+                return false;
+            }
+        }
+        struct uinput_abs_setup horizontal;
+        memset(&horizontal, 0, sizeof(horizontal));
+        horizontal.code = ABS_X;
+        horizontal.absinfo.minimum = -32768;
+        horizontal.absinfo.maximum = 32767;
+        struct uinput_abs_setup vertical = horizontal;
+        vertical.code = ABS_Y;
+        if (ioctl(device->descriptor, UI_ABS_SETUP, &horizontal) != 0
+                || ioctl(device->descriptor, UI_ABS_SETUP, &vertical) != 0) {
+            return false;
+        }
+        struct uinput_setup setup;
+        memset(&setup, 0, sizeof(setup));
+        snprintf(setup.name, UINPUT_MAX_NAME_SIZE,
+            "%s", "Semu Synthetic Steam Gamepad");
+        setup.id.bustype = BUS_USB;
+        setup.id.vendor = 0x28de;
+        setup.id.product = 0x11ff;
+        setup.id.version = 1;
+        return ioctl(device->descriptor, UI_DEV_SETUP, &setup) == 0
+            && ioctl(device->descriptor, UI_DEV_CREATE) == 0;
+    }
+
+    class bool createCommandFacet(struct DeckSyntheticDevice* device) {
+        device->descriptor = open("/dev/uinput",
+            (int)O_WRONLY | (int)O_NONBLOCK | (int)O_CLOEXEC);
+        if (device->descriptor < 0
+                || ioctl(device->descriptor, UI_SET_EVBIT, EV_KEY) != 0) {
+            return false;
+        }
+        int keys[] = {KEY_LEFTCTRL, KEY_LEFTALT, KEY_LEFTSHIFT, KEY_LEFTMETA,
+            KEY_A, KEY_BACKSPACE, KEY_DOWN, KEY_ENTER, KEY_ESC, KEY_J, KEY_K,
+            KEY_M, KEY_O, KEY_P, KEY_Q, KEY_S, KEY_SPACE, KEY_TAB, KEY_UP,
+            KEY_X, KEY_MINUS, KEY_KPPLUS, KEY_KPDOT, KEY_KP0, KEY_KP1,
+            KEY_KP2, KEY_KP3, KEY_KP4, KEY_KP5, KEY_KP6, KEY_KP7, KEY_KP8,
+            KEY_KP9, KEY_F9, KEY_F10, KEY_F11, KEY_F12, KEY_F13, KEY_F14,
+            KEY_F15, KEY_F16};
+        for (size_t index = 0; index < sizeof(keys) / sizeof(int); index++) {
+            if (!DeckSyntheticDeviceIo.setKey(device->descriptor, keys[index])) {
+                return false;
+            }
+        }
+        struct uinput_setup setup;
+        memset(&setup, 0, sizeof(setup));
+        snprintf(setup.name, UINPUT_MAX_NAME_SIZE,
+            "%s", "Semu Synthetic Command Facet");
+        setup.id.bustype = BUS_USB;
+        setup.id.vendor = 0x28de;
+        setup.id.product = 0x1205;
+        setup.id.version = 1;
+        return ioctl(device->descriptor, UI_DEV_SETUP, &setup) == 0
+            && ioctl(device->descriptor, UI_DEV_CREATE) == 0;
+    }
+
+    class bool emit(struct DeckSyntheticDevice* device,
+                    int code, int value) {
+        if (device == null || device->descriptor < 0 || code < 0) {
+            return false;
+        }
+        struct input_event event;
+        memset(&event, 0, sizeof(event));
+        event.type = EV_KEY;
+        event.code = (unsigned short)code;
+        event.value = value;
+        if (write(device->descriptor, &event, sizeof(event))
+                != (ssize_t)sizeof(event)) { return false; }
+        memset(&event, 0, sizeof(event));
+        event.type = EV_SYN;
+        event.code = SYN_REPORT;
+        return write(device->descriptor, &event, sizeof(event))
+            == (ssize_t)sizeof(event);
+    }
+
+    class bool tap(struct DeckSyntheticDevice* device, int code) {
+        return DeckSyntheticDeviceIo.emit(device, code, 1)
+            && DeckSyntheticClock.sleepMilliseconds(20)
+            && DeckSyntheticDeviceIo.emit(device, code, 0)
+            && DeckSyntheticClock.sleepMilliseconds(80);
+    }
+
+    class void destroyDevice(struct DeckSyntheticDevice* device) {
+        if (device == null || device->descriptor < 0) { return; }
+        ioctl(device->descriptor, UI_DEV_DESTROY);
+        close(device->descriptor);
+        device->descriptor = -1;
+    }
+}
+
+class DeckSyntheticPlan {
+    class struct DeckSyntheticDevice* device(char* name,
+            struct DeckSyntheticDevice* gamepad,
+            struct DeckSyntheticDevice* command) {
+        if (strcmp(name, "gamepad") == 0) { return gamepad; }
+        return strcmp(name, "command") == 0 ? command : null;
+    }
+
+    class bool chord(struct DeckSyntheticDevice* device, char* encoded) {
+        int codes[8];
+        int count = 0;
+        char* save = null;
+        char* token = strtok_r(encoded, "+", &save);
+        while (token != null && count < 8) {
+            codes[count] = DeckSyntheticKeys.code(token);
+            if (codes[count] < 0) { return false; }
+            count++;
+            token = strtok_r(null, "+", &save);
+        }
+        if (token != null || count == 0) { return false; }
+        for (int index = 0; index < count; index++) {
+            if (!DeckSyntheticDeviceIo.emit(device, codes[index], 1)) {
+                return false;
+            }
+        }
+        if (!DeckSyntheticClock.sleepMilliseconds(20)) { return false; }
+        for (int index = count - 1; index >= 0; index--) {
+            if (!DeckSyntheticDeviceIo.emit(device, codes[index], 0)) {
+                return false;
+            }
+        }
+        return DeckSyntheticClock.sleepMilliseconds(80);
+    }
+
+    class bool execute(char* path, char* receiptPath,
+                       struct DeckSyntheticDevice* gamepad,
+                       struct DeckSyntheticDevice* command) {
+        FILE* plan = fopen(path, "r");
+        FILE* receipt = fopen(receiptPath, "wx");
+        if (plan == null || receipt == null) {
+            if (plan != null) { fclose(plan); }
+            if (receipt != null) { fclose(receipt); }
+            return false;
+        }
+        fprintf(receipt, "schema=1 event=uinput-session evidence_class=automated-hardware-path input_origin=synthetic-uinput synthetic_input=1 human_input=0 human_observed=0 acceptance_eligible=0 device=/dev/uinput source=virtual steam_radial_ui_proven=0\n");
+        char line[512];
+        int sequence = 0;
+        bool valid = true;
+        while (valid && fgets(line, sizeof(line), plan) != null) {
+            line[strcspn(line, "\r\n")] = 0;
+            if (line[0] == 0 || line[0] == '#') { continue; }
+            char original[512];
+            snprintf(original, sizeof(original), "%s", line);
+            char* save = null;
+            char* operation = strtok_r(line, "|", &save);
+            char* deviceName = strtok_r(null, "|", &save);
+            char* first = strtok_r(null, "|", &save);
+            char* second = strtok_r(null, "|", &save);
+            char* trailing = strtok_r(null, "|", &save);
+            struct DeckSyntheticDevice* selected = deviceName == null
+                ? null : DeckSyntheticPlan.device(
+                    deviceName, gamepad, command);
+            if (strcmp(operation, "wait") == 0) {
+                valid = deviceName != null && first == null
+                    && DeckSyntheticClock.sleepMilliseconds(atoi(deviceName));
+            } else if (strcmp(operation, "tap") == 0) {
+                valid = selected != null && first != null && second == null
+                    && DeckSyntheticDeviceIo.tap(
+                        selected, DeckSyntheticKeys.code(first));
+            } else if (strcmp(operation, "chord") == 0) {
+                valid = selected != null && first != null && second == null
+                    && DeckSyntheticPlan.chord(selected, first);
+            } else if (strcmp(operation, "radial") == 0) {
+                valid = selected == command && first != null && second != null
+                    && trailing == null
+                    && DeckSyntheticDeviceIo.emit(
+                        command, DeckSyntheticKeys.code(first), 1)
+                    && DeckSyntheticPlan.chord(command, second)
+                    && DeckSyntheticDeviceIo.emit(
+                        command, DeckSyntheticKeys.code(first), 0);
+            } else {
+                valid = false;
+            }
+            if (valid) {
+                fprintf(receipt,
+                    "schema=1 event=uinput-step sequence=%d synthetic_input=1 plan=%s\n",
+                    sequence++, original);
+                fflush(receipt);
+            }
+        }
+        bool planClosed = fclose(plan) == 0;
+        bool receiptClosed = fclose(receipt) == 0;
+        return valid && planClosed && receiptClosed && sequence > 0;
+    }
+}
+
+class DeckSyntheticInputCli {
+    class int run(int argc, char** argv) {
+        if (argc != 5 || strcmp(argv[1], "--plan") != 0
+                || strcmp(argv[3], "--receipt") != 0
+                || argv[2][0] != '/' || argv[4][0] != '/') {
+            fputs("usage: semu-deck-uinput --plan /absolute/path --receipt /absolute/path\n", stderr);
+            return 64;
+        }
+        struct DeckSyntheticDevice gamepad;
+        struct DeckSyntheticDevice command;
+        gamepad.descriptor = -1;
+        command.descriptor = -1;
+        if (!DeckSyntheticDeviceIo.createGamepad(&gamepad)
+                || !DeckSyntheticDeviceIo.createCommandFacet(&command)
+                || !DeckSyntheticClock.sleepMilliseconds(1000)) {
+            DeckSyntheticDeviceIo.destroyDevice(&command);
+            DeckSyntheticDeviceIo.destroyDevice(&gamepad);
+            return 77;
+        }
+        bool valid = DeckSyntheticPlan.execute(
+            argv[2], argv[4], &gamepad, &command);
+        DeckSyntheticDeviceIo.destroyDevice(&command);
+        DeckSyntheticDeviceIo.destroyDevice(&gamepad);
+        return valid ? 0 : 1;
+    }
+}
+
+int main(int argc, char** argv) {
+    return DeckSyntheticInputCli.run(argc, argv);
+}

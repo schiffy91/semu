@@ -1,0 +1,566 @@
+// provenance.btrc - stable facade for exact source/runtime provenance.
+
+import std.{fs, json, process, strings, vector}
+import ./runtime_inventory.btrc
+import ./provenance/document.btrc
+import ./provenance/render_hooks.btrc
+import ./provenance/runtime_contract.btrc
+import ./provenance/source_contract.btrc
+import ./provenance/support.btrc
+
+class AppImageProvenanceResult {
+    public bool valid;
+    public string error;
+
+    public AppImageProvenanceResult(bool valid, string error) {
+        self.valid = valid;
+        self.error = error;
+    }
+
+    class AppImageProvenanceResult success() {
+        return AppImageProvenanceResult(true, "");
+    }
+
+    class AppImageProvenanceResult failure(string error) {
+        return AppImageProvenanceResult(false, error);
+    }
+
+    public bool ok() { return self.valid; }
+}
+
+class AppImageProvenanceDigest {
+    public bool valid;
+    public string value;
+    public string error;
+
+    public AppImageProvenanceDigest(bool valid, string value, string error) {
+        self.valid = valid;
+        self.value = value;
+        self.error = error;
+    }
+
+    class AppImageProvenanceDigest success(string value) {
+        return AppImageProvenanceDigest(true, value, "");
+    }
+
+    class AppImageProvenanceDigest failure(string error) {
+        return AppImageProvenanceDigest(false, "", error);
+    }
+
+    public bool ok() { return self.valid; }
+}
+
+class AppImageProvenancePath {
+    public bool valid;
+    public string value;
+    public string error;
+
+    public AppImageProvenancePath(bool valid, string value, string error) {
+        self.valid = valid;
+        self.value = value;
+        self.error = error;
+    }
+
+    class AppImageProvenancePath success(string value) {
+        return AppImageProvenancePath(true, value, "");
+    }
+
+    class AppImageProvenancePath failure(string error) {
+        return AppImageProvenancePath(false, "", error);
+    }
+
+    public bool ok() { return self.valid; }
+}
+
+class AppImageProvenanceJson {
+    public bool valid;
+    public JsonValue value;
+    public string error;
+
+    public AppImageProvenanceJson() {
+        self.valid = false;
+        self.value = JsonValue.makeNull();
+        self.error = "";
+    }
+
+    class AppImageProvenanceJson success(JsonValue value) {
+        AppImageProvenanceJson result = AppImageProvenanceJson();
+        result.valid = true;
+        result.value = value;
+        return result;
+    }
+
+    class AppImageProvenanceJson failure(string error) {
+        AppImageProvenanceJson result = AppImageProvenanceJson();
+        result.error = error;
+        return result;
+    }
+
+    public bool ok() { return self.valid; }
+}
+
+class AppImageProvenanceFacadeConversion {
+    class AppImageProvenanceResult result(
+            AppImageProvenanceInternalResult value) {
+        return value.ok() ? AppImageProvenanceResult.success()
+            : AppImageProvenanceResult.failure(value.error);
+    }
+
+    class AppImageProvenanceDigest digest(
+            AppImageProvenanceInternalDigest value) {
+        return value.ok() ? AppImageProvenanceDigest.success(value.value)
+            : AppImageProvenanceDigest.failure(value.error);
+    }
+
+    class AppImageProvenancePath path(
+            AppImageProvenanceInternalPath value) {
+        return value.ok() ? AppImageProvenancePath.success(value.value)
+            : AppImageProvenancePath.failure(value.error);
+    }
+
+    class AppImageProvenanceJson json(
+            AppImageProvenanceInternalJson value) {
+        return value.ok() ? AppImageProvenanceJson.success(value.value)
+            : AppImageProvenanceJson.failure(value.error);
+    }
+}
+
+
+class AppImageRuntimeProvenance {
+    class string relativePath() {
+        return AppImageProvenanceSupport.relativePath();
+    }
+
+    class string path(string runtimeRoot) {
+        return AppImageProvenanceSupport.path(runtimeRoot);
+    }
+
+    class bool runtimeLooksPopulated(string runtimeRoot) {
+        return AppImageProvenanceSupport.runtimeLooksPopulated(runtimeRoot);
+    }
+
+    class bool lowerHex(string value, int expectedLength) {
+        return AppImageProvenanceSupport.lowerHex(value, expectedLength);
+    }
+
+    class bool sriSha256(string value) {
+        return AppImageProvenanceSupport.sriSha256(value);
+    }
+
+    class bool exactKeys(JsonValue objectValue, Vector<string> expected) {
+        return AppImageProvenanceSupport.exactKeys(objectValue, expected);
+    }
+
+    class bool safeRelative(string relative) {
+        return AppImageProvenanceSupport.safeRelative(relative);
+    }
+
+    class bool validStorePath(string value) {
+        return AppImageProvenanceSupport.validStorePath(value);
+    }
+
+    class bool safeRegularFile(string root, string relative) {
+        return AppImageProvenanceSupport.safeRegularFile(root, relative);
+    }
+
+    class AppImageProvenanceDigest nixHash(string kind, string path) {
+        return AppImageProvenanceFacadeConversion.digest(
+            AppImageProvenanceSupport.nixHash(kind, path));
+    }
+
+    class AppImageProvenanceDigest hashFile(string root, string relative) {
+        return AppImageProvenanceFacadeConversion.digest(
+            AppImageProvenanceSupport.hashFile(root, relative));
+    }
+
+    class AppImageProvenanceDigest hashDirectory(string path) {
+        return AppImageProvenanceFacadeConversion.digest(
+            AppImageProvenanceSupport.hashDirectory(path));
+    }
+
+    class void collectRegularFiles(
+            string root, string relative, Vector<string> files,
+            Vector<string> errors) {
+        AppImageProvenanceSupport.collectRegularFiles(root, relative, files, errors);
+    }
+
+    class AppImageProvenanceJson hashedFiles(
+            string root, Vector<string> relatives) {
+        return AppImageProvenanceFacadeConversion.json(
+            AppImageProvenanceSupport.hashedFiles(root, relatives));
+    }
+
+    class AppImageProvenancePath normalizedStoreLink(
+            Vector<string> parent, string target, Vector<string> suffix) {
+        return AppImageProvenanceFacadeConversion.path(
+            AppImageProvenanceSupport.normalizedStoreLink(parent, target, suffix));
+    }
+
+    class AppImageProvenancePath resolveStorePath(
+            string runtimeRoot, string storePath, string relative) {
+        return AppImageProvenanceFacadeConversion.path(
+            AppImageProvenanceSupport.resolveStorePath(runtimeRoot, storePath, relative));
+    }
+
+    class AppImageProvenanceJson verifiedRuntimePath(
+            string runtimeRoot, string storePath, string relative) {
+        return AppImageProvenanceFacadeConversion.json(
+            AppImageProvenanceSupport.verifiedRuntimePath(runtimeRoot, storePath, relative));
+    }
+
+    class AppImageProvenanceJson verifiedRuntimeFiles(
+            string runtimeRoot, string storePath, Vector<string> relatives) {
+        return AppImageProvenanceFacadeConversion.json(
+            AppImageProvenanceSupport.verifiedRuntimeFiles(runtimeRoot, storePath, relatives));
+    }
+
+    class bool filesEqual(string first, string second) {
+        return AppImageProvenanceSupport.filesEqual(first, second);
+    }
+
+    class string digestForPath(JsonValue entries, string path) {
+        return AppImageProvenanceSupport.digestForPath(entries, path);
+    }
+
+    class JsonValue filesBelow(JsonValue entries, string prefix) {
+        return AppImageProvenanceSupport.filesBelow(entries, prefix);
+    }
+
+    class AppImageProvenanceJson productionSourceFiles(string repoRoot) {
+        return AppImageProvenanceFacadeConversion.json(
+            AppImageSourceProvenance.productionSourceFiles(repoRoot));
+    }
+
+    class AppImageProvenanceDigest hashText(
+            string directory, string content) {
+        return AppImageProvenanceFacadeConversion.digest(
+            AppImageProvenanceSupport.hashText(directory, content));
+    }
+
+    class AppImageProvenanceResult exactInventory(
+            string label, JsonValue expected, JsonValue actual) {
+        return AppImageProvenanceFacadeConversion.result(
+            AppImageProvenanceSupport.exactInventory(label, expected, actual));
+    }
+
+    class AppImageProvenanceDigest targetOutputStorePath(
+            string repoRoot, JsonValue target) {
+        return AppImageProvenanceFacadeConversion.digest(
+            AppImageSourceProvenance.targetOutputStorePath(repoRoot, target));
+    }
+
+    class string buildContractPath(string repoRoot) {
+        return AppImageSourceProvenance.buildContractPath(repoRoot);
+    }
+
+    class bool validPatch(JsonValue patch) {
+        return AppImageRenderHookProvenance.validPatch(patch);
+    }
+
+    class bool hasPatch(JsonValue package, string name) {
+        return AppImageRenderHookProvenance.hasPatch(package, name);
+    }
+
+    class string patchDigest(JsonValue package, string name) {
+        return AppImageRenderHookProvenance.patchDigest(package, name);
+    }
+
+    class AppImageProvenanceResult exactLocalPatches(
+            string configRoot, AppImageRuntimeSlice slice,
+            JsonValue package) {
+        return AppImageProvenanceFacadeConversion.result(
+            AppImageRenderHookProvenance.exactLocalPatches(configRoot, slice, package));
+    }
+
+    class bool validBuildPackage(JsonValue package, bool esDe) {
+        return AppImageSourceProvenance.validBuildPackage(package, esDe);
+    }
+
+    class AppImageProvenanceJson buildContracts(string repoRoot) {
+        return AppImageProvenanceFacadeConversion.json(
+            AppImageSourceProvenance.buildContracts(repoRoot));
+    }
+
+    class AppImageProvenanceJson coreBuildContracts(
+            string repoRoot, JsonValue selectedCores,
+            JsonValue coreRuntime, string nixSystem) {
+        return AppImageProvenanceFacadeConversion.json(
+            AppImageSourceProvenance.coreBuildContracts(repoRoot, selectedCores, coreRuntime, nixSystem));
+    }
+
+    class AppImageProvenanceDigest btrcRevision(string repoRoot) {
+        return AppImageProvenanceFacadeConversion.digest(
+            AppImageSourceProvenance.btrcRevision(repoRoot));
+    }
+
+    class AppImageProvenanceJson flakeInputs(string repoRoot) {
+        return AppImageProvenanceFacadeConversion.json(
+            AppImageSourceProvenance.flakeInputs(repoRoot));
+    }
+
+    class AppImageProvenanceJson deploymentTarget(
+            string repoRoot, JsonValue sourceFiles) {
+        return AppImageProvenanceFacadeConversion.json(
+            AppImageSourceProvenance.deploymentTarget(repoRoot, sourceFiles));
+    }
+
+    class AppImageProvenanceJson packageDefinitions(
+            string repoRoot, JsonValue sourceFiles) {
+        return AppImageProvenanceFacadeConversion.json(
+            AppImageSourceProvenance.packageDefinitions(repoRoot, sourceFiles));
+    }
+
+    class AppImageProvenanceJson packageRecipes(JsonValue sourceFiles) {
+        return AppImageProvenanceFacadeConversion.json(
+            AppImageSourceProvenance.packageRecipes(sourceFiles));
+    }
+
+    class AppImageProvenanceJson coreRuntime(
+            JsonValue packages, string nixSystem) {
+        return AppImageProvenanceFacadeConversion.json(
+            AppImageSourceProvenance.coreRuntime(packages, nixSystem));
+    }
+
+    class bool nixSystemIdentifier(string value) {
+        return AppImageSourceProvenance.nixSystemIdentifier(value);
+    }
+
+    class AppImageProvenanceJson appImageRuntimeSource(
+            string repoRoot, JsonValue sourceFiles, string nixSystem) {
+        return AppImageProvenanceFacadeConversion.json(
+            AppImageSourceProvenance.appImageRuntimeSource(repoRoot, sourceFiles, nixSystem));
+    }
+
+    class AppImageProvenanceJson assetBinding(
+            JsonValue declarations, string sourcePath) {
+        return AppImageProvenanceFacadeConversion.json(
+            AppImageSourceProvenance.assetBinding(declarations, sourcePath));
+    }
+
+    class AppImageProvenanceJson systemBindings(
+            string repoRoot, JsonValue sourceFiles,
+            JsonValue assetDeclarations) {
+        return AppImageProvenanceFacadeConversion.json(
+            AppImageSourceProvenance.systemBindings(repoRoot, sourceFiles, assetDeclarations));
+    }
+
+    class AppImageProvenanceJson settingsContract(
+            string repoRoot, JsonValue sourceFiles) {
+        return AppImageProvenanceFacadeConversion.json(
+            AppImageSourceProvenance.settingsContract(repoRoot, sourceFiles));
+    }
+
+    class bool bindingApplies(JsonValue binding, string platform) {
+        return AppImageSourceProvenance.bindingApplies(binding, platform);
+    }
+
+    class AppImageProvenanceJson selectedCores(
+            JsonValue systems, string platform, string provider) {
+        return AppImageProvenanceFacadeConversion.json(
+            AppImageSourceProvenance.selectedCores(systems, platform, provider));
+    }
+
+    class JsonValue digestEntry(string path, string digest) {
+        return AppImageProvenanceSupport.digestEntry(path, digest);
+    }
+
+    class JsonValue declaredAsset(
+            string sourcePath, string runtimePath, string digest) {
+        return AppImageSourceProvenance.declaredAsset(sourcePath, runtimePath, digest);
+    }
+
+    class string declaredDigest(JsonValue declarations, string sourcePath) {
+        return AppImageSourceProvenance.declaredDigest(declarations, sourcePath);
+    }
+
+    class bool hasRuntimePath(JsonValue declarations, string runtimePath) {
+        return AppImageSourceProvenance.hasRuntimePath(declarations, runtimePath);
+    }
+
+    class AppImageProvenanceJson declaredAssets(string repoRoot) {
+        return AppImageProvenanceFacadeConversion.json(
+            AppImageSourceProvenance.declaredAssets(repoRoot));
+    }
+
+    class AppImageProvenanceJson runtimeAssets(
+            string repoRoot, string runtimeRoot) {
+        return AppImageProvenanceFacadeConversion.json(
+            AppImageRuntimeContractProvenance.runtimeAssets(repoRoot, runtimeRoot));
+    }
+
+    class void collectRuntimeHashUnits(
+            string root, string relative, Vector<string> excluded,
+            Vector<string> paths, Vector<string> kinds,
+            Vector<string> errors) {
+        AppImageRuntimeContractProvenance.collectRuntimeHashUnits(root, relative, excluded, paths, kinds, errors);
+    }
+
+    class AppImageProvenanceJson runtimeTree(string runtimeRoot) {
+        return AppImageProvenanceFacadeConversion.json(
+            AppImageRuntimeContractProvenance.runtimeTree(runtimeRoot));
+    }
+
+    class void collectStorePayloadFiles(
+            string runtimeRoot, string targetStorePath, string relative,
+            Vector<string> ancestry, Vector<string> files,
+            Vector<string> errors, int depth) {
+        AppImageRuntimeContractProvenance.collectStorePayloadFiles(runtimeRoot, targetStorePath, relative, ancestry, files, errors, depth);
+    }
+
+    class AppImageProvenanceJson runtimePayload(
+            string runtimeRoot, string targetStorePath) {
+        return AppImageProvenanceFacadeConversion.json(
+            AppImageRuntimeContractProvenance.runtimePayload(runtimeRoot, targetStorePath));
+    }
+
+    class AppImageProvenanceJson runtimeExecutables(
+            string runtimeRoot, string targetStorePath) {
+        return AppImageProvenanceFacadeConversion.json(
+            AppImageRuntimeContractProvenance.runtimeExecutables(runtimeRoot, targetStorePath));
+    }
+
+    class AppImageProvenanceJson runtimeStoreEntries(
+            string runtimeRoot, string targetStorePath) {
+        return AppImageProvenanceFacadeConversion.json(
+            AppImageRuntimeContractProvenance.runtimeStoreEntries(runtimeRoot, targetStorePath));
+    }
+
+    class bool runtimeBuildContractMatches(
+            JsonValue runtimeContract, AppImageRuntimeSlice slice,
+            JsonValue sourcePackage) {
+        return AppImageRenderHookProvenance.runtimeBuildContractMatches(runtimeContract, slice, sourcePackage);
+    }
+
+    class AppImageProvenanceJson runtimeBuildContracts(
+            string runtimeRoot, Vector<AppImageRuntimeSlice> slices,
+            JsonValue builds) {
+        return AppImageProvenanceFacadeConversion.json(
+            AppImageRuntimeContractProvenance.runtimeBuildContracts(runtimeRoot, slices, builds));
+    }
+
+    class bool hookContractMatches(
+            JsonValue hook, AppImageRuntimeSlice slice) {
+        return AppImageRenderHookProvenance.hookContractMatches(hook, slice);
+    }
+
+    class string canonicalJson(JsonValue value) {
+        return AppImageProvenanceSupport.canonicalJson(value);
+    }
+
+    class Vector<string> addedPatchLines(string content) {
+        return AppImageRenderHookProvenance.addedPatchLines(content);
+    }
+
+    class bool directPatchCall(string content, string symbol) {
+        return AppImageRenderHookProvenance.directPatchCall(content, symbol);
+    }
+
+    class string pinvokeFunction(string content, string symbol) {
+        return AppImageRenderHookProvenance.pinvokeFunction(content, symbol);
+    }
+
+    class bool pinvokePatchCall(string content, string symbol) {
+        return AppImageRenderHookProvenance.pinvokePatchCall(content, symbol);
+    }
+
+    class AppImageProvenanceJson hookPatchEvidence(
+            string repoRoot, AppImageRuntimeSlice slice,
+            JsonValue package) {
+        return AppImageProvenanceFacadeConversion.json(
+            AppImageRenderHookProvenance.hookPatchEvidence(repoRoot, slice, package));
+    }
+
+    class bool artifactContains(string path, string value) {
+        return AppImageProvenanceSupport.artifactContains(path, value);
+    }
+
+    class string normalizedToolOutput(string value) {
+        return AppImageProvenanceSupport.normalizedToolOutput(value);
+    }
+
+    class bool directHookEvidence(
+            string dynamic, string symbols, string relocations,
+            AppImageRuntimeSlice slice) {
+        return AppImageRenderHookProvenance.directHookEvidence(dynamic, symbols, relocations, slice);
+    }
+
+    class ExecResult readElf(string mode, string path) {
+        return AppImageProvenanceSupport.readElf(mode, path);
+    }
+
+    class bool directHookCarrier(
+            string path, AppImageRuntimeSlice slice) {
+        return AppImageRenderHookProvenance.directHookCarrier(path, slice);
+    }
+
+    class bool managedHookCarrier(
+            string path, AppImageRuntimeSlice slice) {
+        return AppImageRenderHookProvenance.managedHookCarrier(path, slice);
+    }
+
+    class AppImageProvenanceJson hookCarriers(
+            string runtimeRoot, string packageRelative,
+            AppImageRuntimeSlice slice) {
+        return AppImageProvenanceFacadeConversion.json(
+            AppImageRenderHookProvenance.hookCarriers(runtimeRoot, packageRelative, slice));
+    }
+
+    class AppImageProvenanceJson runtimePackages(
+            string repoRoot, string runtimeRoot, JsonValue builds,
+            Vector<AppImageRuntimeSlice> slices) {
+        return AppImageProvenanceFacadeConversion.json(
+            AppImageRuntimeContractProvenance.runtimePackages(repoRoot, runtimeRoot, builds, slices));
+    }
+
+    class AppImageProvenanceJson runtimeCores(
+            string runtimeRoot, JsonValue coreRuntime,
+            JsonValue selected, JsonValue builds) {
+        return AppImageProvenanceFacadeConversion.json(
+            AppImageRuntimeContractProvenance.runtimeCores(runtimeRoot, coreRuntime, selected, builds));
+    }
+
+    class AppImageProvenanceJson runtimeComponents(JsonValue storeContract) {
+        return AppImageProvenanceFacadeConversion.json(
+            AppImageRuntimeContractProvenance.runtimeComponents(storeContract));
+    }
+
+    class AppImageProvenanceJson runtimePrefix(
+            string runtimeRoot, JsonValue sourceContract) {
+        return AppImageProvenanceFacadeConversion.json(
+            AppImageRuntimeContractProvenance.runtimePrefix(runtimeRoot, sourceContract));
+    }
+
+    class AppImageProvenanceJson runtimeSnapshot(
+            string repoRoot, string runtimeRoot, JsonValue builds,
+            Vector<AppImageRuntimeSlice> slices, JsonValue selectedCores,
+            JsonValue selectedCoreBuilds, JsonValue coreRuntime,
+            JsonValue appImageRuntime,
+            string targetStorePath) {
+        return AppImageProvenanceFacadeConversion.json(
+            AppImageRuntimeContractProvenance.runtimeSnapshot(repoRoot, runtimeRoot, builds, slices, selectedCores, selectedCoreBuilds, coreRuntime, appImageRuntime, targetStorePath));
+    }
+
+    class AppImageProvenanceJson sourceContract(string repoRoot) {
+        return AppImageProvenanceFacadeConversion.json(
+            AppImageSourceProvenance.sourceContract(repoRoot));
+    }
+
+    class AppImageProvenanceJson document(
+            string repoRoot, string runtimeRoot) {
+        return AppImageProvenanceFacadeConversion.json(
+            AppImageProvenanceDocument.document(repoRoot, runtimeRoot));
+    }
+
+    class AppImageProvenanceResult write(
+            string repoRoot, string runtimeRoot) {
+        return AppImageProvenanceFacadeConversion.result(
+            AppImageProvenanceDocument.write(repoRoot, runtimeRoot));
+    }
+
+    class AppImageProvenanceResult validate(
+            string repoRoot, string runtimeRoot) {
+        return AppImageProvenanceFacadeConversion.result(
+            AppImageProvenanceDocument.validate(repoRoot, runtimeRoot));
+    }
+
+}

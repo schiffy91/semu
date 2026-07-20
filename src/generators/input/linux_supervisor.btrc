@@ -1,0 +1,2019 @@
+// Linux evdev input supervisor. It translates EV_KEY press edges into the
+// renderer action journal and owns bounded process-group quit termination.
+
+#include <dirent.h>
+#include <errno.h>
+#include <fcntl.h>
+#include <limits.h>
+#include <signal.h>
+#include <stdbool.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <strings.h>
+#include <poll.h>
+#include <sys/ioctl.h>
+#include <sys/prctl.h>
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <sys/wait.h>
+#include <time.h>
+#include <unistd.h>
+#include <linux/input.h>
+
+import ./action_abi.btrc
+
+#define SEMU_MAX_INPUT_FDS 128
+#define SEMU_MAX_KEYS 768
+#define SEMU_INPUT_POLL_MS 10
+#define SEMU_INPUT_RESCAN_TICKS 20
+#define SEMU_INPUT_JOURNAL_MAX_RECORDS 4096
+#define SEMU_RADIAL_MARKER_WINDOW_MS 100
+#define SEMU_QUIT_CHORD_WINDOW_ENV "SEMU_QUIT_CHORD_WINDOW_MS"
+#define SEMU_QUIT_CHORD_WINDOW_MIN_MS 50
+#define SEMU_QUIT_CHORD_WINDOW_MAX_MS 1000
+#define SEMU_QUIT_BOUND_MS 250
+#define SEMU_INPUT_ACTION_BINDINGS_ENV "SEMU_INPUT_ACTION_BINDINGS"
+#define SEMU_INPUT_EXTENSION_ACTIONS_ENV "SEMU_INPUT_EXTENSION_ACTIONS"
+#define SEMU_INPUT_QUIT_BUTTONS_ENV "SEMU_INPUT_QUIT_BUTTONS"
+#define SEMU_INPUT_GAMEPAD_SOURCE_ENV "SEMU_INPUT_GAMEPAD_SOURCE"
+#define SEMU_INPUT_GAMEPAD_VENDOR_ENV "SEMU_INPUT_GAMEPAD_VENDOR"
+#define SEMU_INPUT_GAMEPAD_PRODUCT_ENV "SEMU_INPUT_GAMEPAD_PRODUCT"
+#define SEMU_INPUT_GAMEPAD_PHYSICAL_ENV "SEMU_INPUT_GAMEPAD_PHYSICAL"
+#define SEMU_INPUT_COMMAND_SOURCE_ENV "SEMU_INPUT_COMMAND_SOURCE"
+#define SEMU_INPUT_COMMAND_VENDOR_ENV "SEMU_INPUT_COMMAND_VENDOR"
+#define SEMU_INPUT_COMMAND_PRODUCT_ENV "SEMU_INPUT_COMMAND_PRODUCT"
+#define SEMU_INPUT_COMMAND_PHYSICAL_PREFIX_ENV "SEMU_INPUT_COMMAND_PHYSICAL_PREFIX"
+#define SEMU_INPUT_COMMAND_PHYSICAL_SUFFIX_ENV "SEMU_INPUT_COMMAND_PHYSICAL_SUFFIX"
+
+struct SemuInputDevice {
+    int fd;
+    char path[256];
+    char name[128];
+    char source[16];
+    char physical[256];
+    unsigned short vendor;
+    unsigned short product;
+    bool gamepad;
+    bool command_facet;
+    bool supports_extensions;
+    bool down[SEMU_MAX_KEYS];
+    long long quit_first_at;
+    long long quit_second_at;
+    long long marker_at;
+    int marker_radial;
+    int marker_slot;
+};
+
+struct SemuInputFacetPolicy {
+    char source[16];
+    unsigned short vendor;
+    unsigned short product;
+    bool physical_empty;
+    char physical_prefix[128];
+    char physical_suffix[128];
+};
+
+struct SemuInputDecision {
+    int action;
+    int radial;
+    int slot;
+    int quit;
+    char reason[32];
+};
+
+struct SemuInputSupervisorState {
+    struct SemuInputDevice devices[SEMU_MAX_INPUT_FDS];
+    size_t length;
+    int chord_window_ms;
+    int quit_first_code;
+    int quit_second_code;
+    long long quit_requested_at;
+    long long quit_edge_at;
+    char quit_reason[32];
+    char quit_path[256];
+    char quit_source[16];
+};
+
+unsigned long long SemuInputActionSequence = 0ULL;
+int SemuInputSessionDescriptor = -1;
+
+class SemuInputClock {
+    class long long milliseconds() {
+        struct timespec stamp;
+        if (clock_gettime(CLOCK_MONOTONIC, &stamp) != 0) { return -1LL; }
+        return (long long)stamp.tv_sec * 1000LL
+            + (long long)stamp.tv_nsec / 1000000LL;
+    }
+}
+
+class SemuInputStreams {
+    class void error(char* message) { fputs(message, stderr); }
+}
+
+class SemuInputIdentity {
+    class bool text(char* environmentName, char* output, size_t capacity) {
+        char* value = getenv(environmentName);
+        if (value == null || value[0] == 0 || output == null
+                || capacity == (size_t)0 || strlen(value) >= capacity) {
+            return false;
+        }
+        snprintf(output, capacity, "%s", value);
+        return true;
+    }
+
+    class bool hex(char* environmentName, unsigned short* output) {
+        char* value = getenv(environmentName);
+        if (value == null || output == null || strlen(value) != (size_t)4) {
+            return false;
+        }
+        unsigned int parsed = 0U;
+        for (size_t index = 0; index < (size_t)4; index++) {
+            char character = value[index];
+            unsigned int digit = character >= '0' && character <= '9'
+                ? (unsigned int)(character - '0')
+                : character >= 'a' && character <= 'f'
+                    ? (unsigned int)(character - 'a' + 10) : 16U;
+            if (digit >= 16U) { return false; }
+            parsed = parsed * 16U + digit;
+        }
+        *output = (unsigned short)parsed;
+        return true;
+    }
+
+    class bool load(bool gamepad, struct SemuInputFacetPolicy* policy) {
+        if (policy == null) { return false; }
+        memset(policy, 0, sizeof(struct SemuInputFacetPolicy));
+        char* source = gamepad
+            ? (char*)SEMU_INPUT_GAMEPAD_SOURCE_ENV
+            : (char*)SEMU_INPUT_COMMAND_SOURCE_ENV;
+        char* vendor = gamepad
+            ? (char*)SEMU_INPUT_GAMEPAD_VENDOR_ENV
+            : (char*)SEMU_INPUT_COMMAND_VENDOR_ENV;
+        char* product = gamepad
+            ? (char*)SEMU_INPUT_GAMEPAD_PRODUCT_ENV
+            : (char*)SEMU_INPUT_COMMAND_PRODUCT_ENV;
+        if (!SemuInputIdentity.text(source, policy->source,
+                sizeof(policy->source))
+                || (strcmp(policy->source, "hardware") != 0
+                    && strcmp(policy->source, "virtual") != 0)
+                || !SemuInputIdentity.hex(vendor, &policy->vendor)
+                || !SemuInputIdentity.hex(product, &policy->product)) {
+            return false;
+        }
+        if (gamepad) {
+            char physical[16];
+            if (!SemuInputIdentity.text(
+                    (char*)SEMU_INPUT_GAMEPAD_PHYSICAL_ENV,
+                    physical, sizeof(physical))
+                    || strcmp(physical, "empty") != 0) {
+                return false;
+            }
+            policy->physical_empty = true;
+            return true;
+        }
+        return SemuInputIdentity.text(
+                (char*)SEMU_INPUT_COMMAND_PHYSICAL_PREFIX_ENV,
+                policy->physical_prefix, sizeof(policy->physical_prefix))
+            && SemuInputIdentity.text(
+                (char*)SEMU_INPUT_COMMAND_PHYSICAL_SUFFIX_ENV,
+                policy->physical_suffix, sizeof(policy->physical_suffix));
+    }
+
+    class bool endsWith(char* value, char* suffix) {
+        size_t length = strlen(value);
+        size_t suffixLength = strlen(suffix);
+        return suffixLength <= length
+            && strcmp(value + length - suffixLength, suffix) == 0;
+    }
+
+    class bool matches(struct SemuInputDevice* device, bool gamepad) {
+        if (device == null) { return false; }
+        struct SemuInputFacetPolicy policy;
+        if (!SemuInputIdentity.load(gamepad, &policy)
+                || strcmp(device->source, policy.source) != 0
+                || device->vendor != policy.vendor
+                || device->product != policy.product) {
+            return false;
+        }
+        if (policy.physical_empty) { return device->physical[0] == 0; }
+        return device->physical[0] != 0
+            && strncmp(device->physical, policy.physical_prefix,
+                strlen(policy.physical_prefix)) == 0
+            && SemuInputIdentity.endsWith(
+                device->physical, policy.physical_suffix);
+    }
+}
+
+class SemuInputSessionLock {
+    class bool set(int descriptor, short lockType) {
+        struct flock lock;
+        memset(&lock, 0, sizeof(lock));
+        lock.l_type = lockType;
+        lock.l_whence = SEEK_SET;
+        lock.l_start = (off_t)0;
+        lock.l_len = (off_t)0;
+        return fcntl(descriptor, F_SETLK, &lock) == 0;
+    }
+
+    class bool acquire(int descriptor) {
+        return SemuInputSessionLock.set(descriptor, (short)F_WRLCK);
+    }
+
+    class bool unlock(int descriptor) {
+        return SemuInputSessionLock.set(descriptor, (short)F_UNLCK);
+    }
+}
+
+class SemuInputStateFiles {
+    class char* root() {
+        char* value = getenv("SEMU_RENDER_STATE_DIR");
+        return value == null || value[0] == 0 ? null : value;
+    }
+
+    class bool path(char* output, size_t capacity, string fileName) {
+        char* root = SemuInputStateFiles.root();
+        if (output == null || capacity == (size_t)0 || root == null
+            || fileName == null) { return false; }
+        int written = snprintf(output, capacity, "%s/%s", root, fileName);
+        return written >= 0 && (size_t)written < capacity;
+    }
+
+    class bool syncRoot() {
+        char* root = SemuInputStateFiles.root();
+        if (root == null) { return false; }
+        int descriptor = open(root,
+            (int)O_RDONLY | (int)O_DIRECTORY | (int)O_CLOEXEC);
+        if (descriptor < 0) { return false; }
+        bool synced = fsync(descriptor) == 0;
+        bool closed = close(descriptor) == 0;
+        return synced && closed;
+    }
+
+    class void evidence(char* eventName, char* detail) {
+        char path[PATH_MAX];
+        string fileName = RendererActionJournal.evidenceFileName();
+        if (!SemuInputStateFiles.path(path, sizeof(path), fileName)) { return; }
+        FILE* file = fopen(path, "a");
+        if (file == null) { return; }
+        fprintf(file, "schema=1 mono_ms=%lld event=%s %s\n",
+            SemuInputClock.milliseconds(), eventName,
+            detail == null ? "" : detail);
+        fclose(file);
+    }
+
+    class bool reset(string fileName) {
+        char path[PATH_MAX];
+        if (!SemuInputStateFiles.path(path, sizeof(path), fileName)) {
+            return false;
+        }
+        char temporary[PATH_MAX];
+        int written = snprintf(temporary, sizeof(temporary), "%s.tmp.%ld.%lld",
+            path, (long)getpid(), SemuInputClock.milliseconds());
+        if (written < 0 || (size_t)written >= sizeof(temporary)) { return false; }
+        int descriptor = open(temporary,
+            (int)O_WRONLY | (int)O_CREAT | (int)O_EXCL | (int)O_CLOEXEC,
+            (mode_t)0600);
+        if (descriptor < 0) { return false; }
+        bool synced = fsync(descriptor) == 0;
+        bool closed = close(descriptor) == 0;
+        bool ready = synced && closed;
+        if (!ready || rename(temporary, path) != 0) {
+            unlink(temporary);
+            return false;
+        }
+        return SemuInputStateFiles.syncRoot();
+    }
+
+    class bool acquireSession() {
+        if (SemuInputSessionDescriptor >= 0) { return false; }
+        char path[PATH_MAX];
+        if (!SemuInputStateFiles.path(path, sizeof(path),
+                RendererActionJournal.sessionLockFileName())) {
+            return false;
+        }
+        int descriptor = open(path,
+            (int)O_RDWR | (int)O_CREAT | (int)O_CLOEXEC | (int)O_NOFOLLOW,
+            (mode_t)0600);
+        struct stat status;
+        if (descriptor < 0 || fstat(descriptor, &status) != 0
+                || !S_ISREG(status.st_mode)) {
+            if (descriptor >= 0) { close(descriptor); }
+            return false;
+        }
+        if (!SemuInputSessionLock.acquire(descriptor)) {
+            close(descriptor);
+            return false;
+        }
+        SemuInputSessionDescriptor = descriptor;
+        return true;
+    }
+
+    class void releaseSession() {
+        if (SemuInputSessionDescriptor < 0) { return; }
+        SemuInputSessionLock.unlock(SemuInputSessionDescriptor);
+        close(SemuInputSessionDescriptor);
+        SemuInputSessionDescriptor = -1;
+    }
+
+    class bool loadSequence(unsigned long long* output) {
+        if (output == null) { return false; }
+        char path[PATH_MAX];
+        if (!SemuInputStateFiles.path(path, sizeof(path),
+                RendererActionJournal.sequenceFileName())) {
+            return false;
+        }
+        int descriptor = open(path,
+            (int)O_RDONLY | (int)O_CLOEXEC | (int)O_NOFOLLOW);
+        if (descriptor < 0) {
+            if (errno == ENOENT) {
+                *output = 0ULL;
+                return true;
+            }
+            return false;
+        }
+        unsigned long long value = 0ULL;
+        unsigned char* bytes = (unsigned char*)&value;
+        size_t offset = (size_t)0;
+        while (offset < sizeof(value)) {
+            ssize_t count = read(descriptor, bytes + offset,
+                sizeof(value) - offset);
+            if (count > (ssize_t)0) {
+                offset += (size_t)count;
+            } else if (count < (ssize_t)0 && errno == EINTR) {
+                continue;
+            } else {
+                close(descriptor);
+                return false;
+            }
+        }
+        unsigned char extra = 0;
+        ssize_t trailing = read(descriptor, &extra, (size_t)1);
+        bool valid = trailing == (ssize_t)0 && close(descriptor) == 0;
+        if (!valid) { return false; }
+        *output = value;
+        return true;
+    }
+
+    class bool storeSequence(unsigned long long value) {
+        char path[PATH_MAX];
+        if (!SemuInputStateFiles.path(path, sizeof(path),
+                RendererActionJournal.sequenceFileName())) {
+            return false;
+        }
+        char temporary[PATH_MAX];
+        int written = snprintf(temporary, sizeof(temporary), "%s.tmp.%ld.%lld",
+            path, (long)getpid(), SemuInputClock.milliseconds());
+        if (written < 0 || (size_t)written >= sizeof(temporary)) { return false; }
+        int descriptor = open(temporary,
+            (int)O_WRONLY | (int)O_CREAT | (int)O_EXCL | (int)O_CLOEXEC,
+            (mode_t)0600);
+        if (descriptor < 0) { return false; }
+        unsigned char* bytes = (unsigned char*)&value;
+        size_t offset = (size_t)0;
+        while (offset < sizeof(value)) {
+            ssize_t count = write(descriptor, bytes + offset,
+                sizeof(value) - offset);
+            if (count > (ssize_t)0) {
+                offset += (size_t)count;
+            } else if (count < (ssize_t)0 && errno == EINTR) {
+                continue;
+            } else {
+                close(descriptor);
+                unlink(temporary);
+                return false;
+            }
+        }
+        bool synced = fsync(descriptor) == 0;
+        bool closed = close(descriptor) == 0;
+        bool ready = synced && closed;
+        if (!ready || rename(temporary, path) != 0) {
+            unlink(temporary);
+            return false;
+        }
+        return SemuInputStateFiles.syncRoot();
+    }
+
+    class bool beginSession() {
+        if (!SemuInputStateFiles.acquireSession()) { return false; }
+        unsigned long long sequence = 0ULL;
+        bool ready = SemuInputStateFiles.loadSequence(&sequence)
+            && SemuInputStateFiles.reset(RendererActionJournal.fileName())
+            && SemuInputStateFiles.reset(
+                RendererActionJournal.evidenceFileName());
+        if (!ready) {
+            SemuInputStateFiles.releaseSession();
+            return false;
+        }
+        SemuInputActionSequence = sequence;
+        return true;
+    }
+
+    class bool reserveSequence(unsigned long long* output) {
+        if (output == null || SemuInputSessionDescriptor < 0
+                || SemuInputActionSequence == ULLONG_MAX) {
+            return false;
+        }
+        unsigned long long next = SemuInputActionSequence + 1ULL;
+        if (!SemuInputStateFiles.storeSequence(next)) { return false; }
+        SemuInputActionSequence = next;
+        *output = next;
+        return true;
+    }
+
+    class bool journalAtCapacity(char* path) {
+        FILE* file = fopen(path, "rb");
+        if (file == null) { return false; }
+        bool sought = fseek(file, 0L, SEEK_END) == 0;
+        long length = sought ? ftell(file) : -1L;
+        bool full = length >= (long)(sizeof(struct SemuActionRecord)
+            * (size_t)SEMU_INPUT_JOURNAL_MAX_RECORDS);
+        fclose(file);
+        return full;
+    }
+
+    class bool action(int action, int radial, int slot, char* source,
+                      long long monotonicMilliseconds) {
+        char path[PATH_MAX];
+        string fileName = RendererActionJournal.fileName();
+        if (!SemuInputStateFiles.path(path, sizeof(path), fileName)) {
+            return false;
+        }
+        if (SemuInputStateFiles.journalAtCapacity(path)) { return false; }
+        FILE* file = fopen(path, "ab");
+        if (file == null) { return false; }
+        struct SemuActionRecord record;
+        memset(&record, 0, sizeof(record));
+        record.abi = (unsigned int)RendererActionJournal.abi();
+        record.size = (unsigned int)sizeof(struct SemuActionRecord);
+        if (!SemuInputStateFiles.reserveSequence(&record.sequence)) {
+            fclose(file);
+            return false;
+        }
+        record.monotonic_ms = monotonicMilliseconds;
+        record.action = action;
+        record.radial = radial;
+        record.slot = slot;
+        snprintf(record.source, sizeof(record.source), "%s",
+            source == null ? "unknown" : source);
+        bool wrote = fwrite(&record, sizeof(record), 1, file) == (size_t)1
+            && fflush(file) == 0 && fsync(fileno(file)) == 0;
+        bool closed = fclose(file) == 0;
+        return wrote && closed;
+    }
+
+}
+
+class SemuInputWindow {
+    class bool parse(char* text, int* output) {
+        if (text == null || output == null || text[0] == 0) { return false; }
+        for (size_t index = 0; text[index] != 0; index++) {
+            if (text[index] < '0' || text[index] > '9') { return false; }
+        }
+        errno = 0;
+        char* end = null;
+        long value = strtol(text, &end, 10);
+        if (errno != 0 || end == null || *end != 0
+            || value < SEMU_QUIT_CHORD_WINDOW_MIN_MS
+            || value > SEMU_QUIT_CHORD_WINDOW_MAX_MS) { return false; }
+        *output = (int)value;
+        return true;
+    }
+
+    class bool load(int* output) {
+        return SemuInputWindow.parse(getenv(SEMU_QUIT_CHORD_WINDOW_ENV), output);
+    }
+}
+
+class SemuInputQuitChord {
+    class int buttonCode(char* name) {
+        if (name == null || name[0] == 0) { return -1; }
+        if (strcasecmp(name, "select") == 0) { return BTN_SELECT; }
+        if (strcasecmp(name, "start") == 0) { return BTN_START; }
+        return -1;
+    }
+
+    class bool parse(char* text, int* first, int* second) {
+        if (text == null || first == null || second == null) { return false; }
+        size_t length = strlen(text);
+        if (length < (size_t)3 || length >= (size_t)64) { return false; }
+        char copy[64];
+        memcpy(copy, text, length + (size_t)1);
+        char* comma = strchr(copy, ',');
+        if (comma == null || comma == copy || comma[1] == 0
+                || strchr(comma + 1, ',') != null) { return false; }
+        *comma = 0;
+        int parsedFirst = SemuInputQuitChord.buttonCode(copy);
+        int parsedSecond = SemuInputQuitChord.buttonCode(comma + 1);
+        if (parsedFirst < 0 || parsedSecond < 0
+                || parsedFirst == parsedSecond) { return false; }
+        *first = parsedFirst;
+        *second = parsedSecond;
+        return true;
+    }
+
+    class bool load(int* first, int* second) {
+        return SemuInputQuitChord.parse(
+            getenv(SEMU_INPUT_QUIT_BUTTONS_ENV), first, second);
+    }
+}
+
+class SemuInputExtensionActions {
+    class bool integer(char* text, size_t length, int* output) {
+        if (text == null || length == (size_t)0 || output == null) {
+            return false;
+        }
+        int value = 0;
+        for (size_t index = 0; index < length; index++) {
+            if (text[index] < '0' || text[index] > '9') { return false; }
+            int digit = text[index] - '0';
+            if (value > ((int)INT_MAX - digit) / 10) { return false; }
+            value = value * 10 + digit;
+        }
+        *output = value;
+        return true;
+    }
+
+    class bool loadCompiledBindings() {
+        char* list = getenv(SEMU_INPUT_ACTION_BINDINGS_ENV);
+        if (list == null || list[0] == 0) { return false; }
+        bool slots[SEMU_ACTION_EXTENSION_CAPACITY];
+        memset(slots, 0, sizeof(slots));
+        int highest = -1;
+        char* cursor = list;
+        while (*cursor != 0) {
+            size_t length = strcspn(cursor, ";");
+            char* colon = (char*)memchr(cursor, ':', length);
+            int action = 0;
+            if (colon == null || !SemuInputExtensionActions.integer(
+                    cursor, (size_t)(colon - cursor), &action)) {
+                return false;
+            }
+            if (action >= SemuActions.extensionBase()) {
+                int slot = action - SemuActions.extensionBase();
+                if (slot < 0 || slot >= SemuActions.extensionCapacity()) {
+                    return false;
+                }
+                slots[slot] = true;
+                if (slot > highest) { highest = slot; }
+            }
+            cursor = cursor + length;
+            if (*cursor == ';') {
+                cursor++;
+                if (*cursor == 0) { return false; }
+            }
+        }
+        for (int slot = 0; slot <= highest; slot++) {
+            if (!slots[slot]) { return false; }
+            char identity[SEMU_ACTION_EXTENSION_ID_CAPACITY];
+            snprintf(identity, sizeof(identity), "runtime.controller.%d", slot);
+            string actionId = identity;
+            if (SemuActions.extensionCode(actionId)
+                    != SemuActions.extensionBase() + slot) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    class bool load() {
+        SemuActions.resetExtensions();
+        char* list = getenv(SEMU_INPUT_EXTENSION_ACTIONS_ENV);
+        if (list == null || list[0] == 0) {
+            return SemuInputExtensionActions.loadCompiledBindings();
+        }
+        char* cursor = list;
+        int expected = SemuActions.extensionBase();
+        while (*cursor != 0) {
+            size_t length = strcspn(cursor, ",");
+            if (length == (size_t)0
+                    || length >= (size_t)SEMU_ACTION_EXTENSION_ID_CAPACITY) {
+                return false;
+            }
+            char identity[SEMU_ACTION_EXTENSION_ID_CAPACITY];
+            memcpy(identity, cursor, length);
+            identity[length] = 0;
+            string actionId = identity;
+            if (SemuActions.extensionCode(actionId) != expected) {
+                return false;
+            }
+            expected++;
+            cursor = cursor + length;
+            if (*cursor == ',') {
+                cursor++;
+                if (*cursor == 0) { return false; }
+            }
+        }
+        return true;
+    }
+}
+
+class SemuInputMarkers {
+    class int tokenCode(char* token, size_t length) {
+        if (length == (size_t)3 && token[0] == 'k' && token[1] == 'p'
+                && token[2] >= '0' && token[2] <= '9') {
+            int codes[10] = {KEY_KP0, KEY_KP1, KEY_KP2, KEY_KP3, KEY_KP4,
+                KEY_KP5, KEY_KP6, KEY_KP7, KEY_KP8, KEY_KP9};
+            return codes[token[2] - '0'];
+        }
+        return length == (size_t)9 && strncmp(token, "kpdecimal", length) == 0
+            ? KEY_KPDOT : -1;
+    }
+
+    class bool inList(char* list, int code, int* slot) {
+        if (list == null || list[0] == 0 || slot == null) { return false; }
+        int index = 0;
+        char* start = list;
+        char* cursor = list;
+        while (true) {
+            if (*cursor == ',' || *cursor == 0) {
+                size_t length = (size_t)(cursor - start);
+                if (SemuInputMarkers.tokenCode(start, length) == code) {
+                    *slot = index;
+                    return true;
+                }
+                if (*cursor == 0) { return false; }
+                start = cursor + 1;
+                index++;
+            }
+            cursor++;
+        }
+        return false;
+    }
+
+    class bool decode(int code, int* radial, int* slot) {
+        if (radial == null || slot == null) { return false; }
+        if (SemuInputMarkers.inList(getenv("SEMU_INPUT_QUICK_MARKERS"),
+                code, slot)) {
+            *radial = RendererActionJournal.quickRadial();
+            return true;
+        }
+        if (SemuInputMarkers.inList(getenv("SEMU_INPUT_MENU_MARKERS"),
+                code, slot)) {
+            *radial = RendererActionJournal.menuRadial();
+            return true;
+        }
+        return false;
+    }
+}
+
+class SemuInputBindings {
+    class int modifierCode(char* token, size_t length) {
+        if (length == (size_t)4 && strncmp(token, "ctrl", length) == 0) {
+            return KEY_LEFTCTRL;
+        }
+        if (length == (size_t)3 && strncmp(token, "alt", length) == 0) {
+            return KEY_LEFTALT;
+        }
+        if (length == (size_t)5 && strncmp(token, "shift", length) == 0) {
+            return KEY_LEFTSHIFT;
+        }
+        return length == (size_t)4 && strncmp(token, "meta", length) == 0
+            ? (int)KEY_LEFTMETA : -1;
+    }
+
+    class int keyCode(char* token) {
+        if (token == null || token[0] == 0) { return -1; }
+        if (strcasecmp(token, "a") == 0) { return KEY_A; }
+        if (strcasecmp(token, "backspace") == 0) { return KEY_BACKSPACE; }
+        if (strcasecmp(token, "down") == 0) { return KEY_DOWN; }
+        if (strcasecmp(token, "esc") == 0) { return KEY_ESC; }
+        if (strcasecmp(token, "f4") == 0) { return KEY_F4; }
+        if (strcasecmp(token, "f9") == 0) { return KEY_F9; }
+        if (strcasecmp(token, "f10") == 0) { return KEY_F10; }
+        if (strcasecmp(token, "f11") == 0) { return KEY_F11; }
+        if (strcasecmp(token, "f12") == 0) { return KEY_F12; }
+        if (strcasecmp(token, "f13") == 0) { return KEY_F13; }
+        if (strcasecmp(token, "f14") == 0) { return KEY_F14; }
+        if (strcasecmp(token, "f15") == 0) { return KEY_F15; }
+        if (strcasecmp(token, "f16") == 0) { return KEY_F16; }
+        if (strcasecmp(token, "m") == 0) { return KEY_M; }
+        if (strcasecmp(token, "q") == 0) { return KEY_Q; }
+        if (strcasecmp(token, "s") == 0) { return KEY_S; }
+        if (strcasecmp(token, "space") == 0) { return KEY_SPACE; }
+        if (strcasecmp(token, "up") == 0) { return KEY_UP; }
+        if (strcasecmp(token, "x") == 0) { return KEY_X; }
+        return -1;
+    }
+
+    class bool modifiersDown(struct SemuInputDevice* device, char* modifiers) {
+        if (device == null || modifiers == null) { return false; }
+        bool control = device->down[KEY_LEFTCTRL] || device->down[KEY_RIGHTCTRL];
+        bool alt = device->down[KEY_LEFTALT] || device->down[KEY_RIGHTALT];
+        bool shift = device->down[KEY_LEFTSHIFT] || device->down[KEY_RIGHTSHIFT];
+        bool meta = device->down[KEY_LEFTMETA] || device->down[KEY_RIGHTMETA];
+        bool requiresControl = strstr(modifiers, "ctrl") != null;
+        bool requiresAlt = strstr(modifiers, "alt") != null;
+        bool requiresShift = strstr(modifiers, "shift") != null;
+        bool requiresMeta = strstr(modifiers, "meta") != null;
+        return control == requiresControl && alt == requiresAlt
+            && shift == requiresShift && meta == requiresMeta;
+    }
+
+    class bool validModifiers(char* modifiers) {
+        if (modifiers == null || modifiers[0] == 0) { return false; }
+        if (strcmp(modifiers, "none") == 0) { return true; }
+        bool seenControl = false;
+        bool seenAlt = false;
+        bool seenShift = false;
+        bool seenMeta = false;
+        char* start = modifiers;
+        char* cursor = modifiers;
+        while (true) {
+            if (*cursor == '+' || *cursor == 0) {
+                int code = SemuInputBindings.modifierCode(
+                    start, (size_t)(cursor - start));
+                if (code == (int)KEY_LEFTCTRL && !seenControl) {
+                    seenControl = true;
+                } else if (code == (int)KEY_LEFTALT && !seenAlt) {
+                    seenAlt = true;
+                } else if (code == (int)KEY_LEFTSHIFT && !seenShift) {
+                    seenShift = true;
+                } else if (code == (int)KEY_LEFTMETA && !seenMeta) {
+                    seenMeta = true;
+                } else {
+                    return false;
+                }
+                if (*cursor == 0) { return true; }
+                start = cursor + 1;
+            }
+            cursor++;
+        }
+        return false;
+    }
+
+    class bool validConfiguration() {
+        char* list = getenv(SEMU_INPUT_ACTION_BINDINGS_ENV);
+        if (list == null || list[0] == 0) { return false; }
+        bool seen[SEMU_ACTION_EXTENSION_CAPACITY + 16];
+        memset(seen, 0, sizeof(seen));
+        char* cursor = list;
+        while (*cursor != 0) {
+            size_t length = strcspn(cursor, ";");
+            if (length == (size_t)0 || length >= (size_t)128) { return false; }
+            char entry[128];
+            memcpy(entry, cursor, length);
+            entry[length] = 0;
+            char* first = strchr(entry, ':');
+            char* second = first == null ? null : strchr(first + 1, ':');
+            if (first == null || second == null || strchr(second + 1, ':') != null) {
+                return false;
+            }
+            *first = 0;
+            *second = 0;
+            int action = 0;
+            if (!SemuInputExtensionActions.integer(
+                    entry, strlen(entry), &action)
+                    || !SemuActions.valid(action)
+                    || action < 0 || action >= (int)(sizeof(seen) / sizeof(bool))
+                    || seen[action]
+                    || !SemuInputBindings.validModifiers(first + 1)
+                    || SemuInputBindings.keyCode(second + 1) < 0) {
+                return false;
+            }
+            seen[action] = true;
+            cursor = cursor + length;
+            if (*cursor == ';') {
+                cursor++;
+                if (*cursor == 0) { return false; }
+            }
+        }
+        return true;
+    }
+
+    class int decode(struct SemuInputDevice* device, int eventCode) {
+        char* list = getenv(SEMU_INPUT_ACTION_BINDINGS_ENV);
+        if (list == null || list[0] == 0) { return SemuActions.none(); }
+        char* cursor = list;
+        while (*cursor != 0) {
+            size_t length = strcspn(cursor, ";");
+            if (length > (size_t)0 && length < (size_t)128) {
+                char entry[128];
+                memcpy(entry, cursor, length);
+                entry[length] = 0;
+                char* first = strchr(entry, ':');
+                char* second = first == null ? null : strchr(first + 1, ':');
+                if (first != null && second != null) {
+                    *first = 0;
+                    *second = 0;
+                    int action = 0;
+                    bool parsedAction = SemuInputExtensionActions.integer(
+                        entry, strlen(entry), &action);
+                    int key = SemuInputBindings.keyCode(second + 1);
+                    if (parsedAction && SemuActions.valid(action)
+                            && key == eventCode
+                            && SemuInputBindings.modifiersDown(device, first + 1)) {
+                        return action;
+                    }
+                }
+            }
+            cursor = cursor + length;
+            if (*cursor == ';') { cursor++; }
+        }
+        return SemuActions.none();
+    }
+}
+
+class SemuInputEdges {
+    class bool down(struct SemuInputDevice* device, int code) {
+        return device != null && code >= 0 && code < SEMU_MAX_KEYS
+            && device->down[code];
+    }
+
+    class void clear(struct SemuInputDecision* decision) {
+        memset(decision, 0, sizeof(struct SemuInputDecision));
+    }
+
+    class void quit(struct SemuInputDecision* decision, char* reason) {
+        decision->action = SemuActions.appQuit();
+        decision->quit = 1;
+        snprintf(decision->reason, sizeof(decision->reason), "%s", reason);
+    }
+
+    class void radial(struct SemuInputDevice* device,
+                      struct SemuInputDecision* decision,
+                      long long at) {
+        long long elapsed = at - device->marker_at;
+        if (device->marker_at >= 0LL && elapsed >= 0LL
+                && elapsed <= (long long)SEMU_RADIAL_MARKER_WINDOW_MS) {
+            decision->radial = device->marker_radial;
+            decision->slot = device->marker_slot;
+        }
+    }
+
+    class bool record(struct SemuInputDevice* device, int code, int value,
+                      long long at, int chordWindow,
+                      int quitFirstCode, int quitSecondCode,
+                      struct SemuInputDecision* decision) {
+        SemuInputEdges.clear(decision);
+        if (device == null || code < 0 || code >= SEMU_MAX_KEYS
+            || (value != 0 && value != 1)) { return false; }
+        bool wasDown = device->down[code];
+        device->down[code] = value == 1;
+        if (value == 0) {
+            if (code == quitFirstCode) { device->quit_first_at = -1LL; }
+            if (code == quitSecondCode) { device->quit_second_at = -1LL; }
+            int radial = 0;
+            int slot = 0;
+            if (SemuInputMarkers.decode(code, &radial, &slot)
+                    && device->marker_radial == radial
+                    && device->marker_slot == slot) {
+                device->marker_at = -1LL;
+                device->marker_radial = 0;
+                device->marker_slot = 0;
+            }
+            return false;
+        }
+        if (wasDown) { return false; }
+
+        int markerRadial = 0;
+        int markerSlot = 0;
+        if (SemuInputMarkers.decode(code, &markerRadial, &markerSlot)) {
+            device->marker_at = at;
+            device->marker_radial = markerRadial;
+            device->marker_slot = markerSlot;
+            decision->radial = markerRadial;
+            decision->slot = markerSlot;
+            return true;
+        }
+
+        if (code == quitFirstCode) { device->quit_first_at = at; }
+        if (code == quitSecondCode) { device->quit_second_at = at; }
+        bool configuredChord = SemuInputEdges.down(device, quitFirstCode)
+            && SemuInputEdges.down(device, quitSecondCode);
+        long long chordDelta = device->quit_first_at - device->quit_second_at;
+        if (chordDelta < 0LL) { chordDelta = -chordDelta; }
+        if ((code == quitFirstCode || code == quitSecondCode) && configuredChord
+            && device->quit_first_at >= 0LL && device->quit_second_at >= 0LL
+            && chordDelta <= (long long)chordWindow) {
+            SemuInputEdges.quit(decision, "select+start");
+            return true;
+        }
+
+        decision->action = SemuInputBindings.decode(device, code);
+        if (decision->action == SemuActions.appQuit()) {
+            decision->quit = 1;
+            snprintf(decision->reason, sizeof(decision->reason), "%s",
+                "action-chord");
+        }
+        if (decision->action != SemuActions.none()) {
+            if (SemuActions.controllerMode(decision->action)) {
+                decision->radial = RendererActionJournal.systemRadial();
+                decision->slot = SemuActions.controllerModeSlot(decision->action);
+            } else {
+                SemuInputEdges.radial(device, decision, at);
+            }
+            return true;
+        }
+        return false;
+    }
+}
+
+class SemuInputFrames {
+    class void clearHeld(struct SemuInputDevice* device) {
+        if (device == null) { return; }
+        memset(device->down, 0, sizeof(device->down));
+        device->quit_first_at = -1LL;
+        device->quit_second_at = -1LL;
+        device->marker_at = -1LL;
+        device->marker_radial = 0;
+        device->marker_slot = 0;
+    }
+
+    class bool evaluate(struct SemuInputDevice* device,
+                        struct input_event* event, long long at,
+                        int chordWindow, int quitFirstCode,
+                        int quitSecondCode,
+                        struct SemuInputDecision* decision) {
+        if (decision == null) { return false; }
+        SemuInputEdges.clear(decision);
+        if (event == null) { return false; }
+        if ((unsigned short)event->type == (unsigned short)EV_SYN
+                && (unsigned short)event->code
+                    == (unsigned short)SYN_DROPPED) {
+            SemuInputFrames.clearHeld(device);
+            return false;
+        }
+        if ((unsigned short)event->type != (unsigned short)EV_KEY) {
+            return false;
+        }
+        return SemuInputEdges.record(device, event->code, event->value, at,
+            chordWindow, quitFirstCode, quitSecondCode, decision);
+    }
+}
+
+class SemuLinuxInputDevices {
+    class bool eventNodeName(char* name) {
+        if (name == null || strncmp(name, "event", 5) != 0 || name[5] == 0) {
+            return false;
+        }
+        for (size_t index = (size_t)5; name[index] != 0; index++) {
+            if (name[index] < '0' || name[index] > '9') { return false; }
+        }
+        return true;
+    }
+
+    class void classify(char* eventName, char* output, size_t capacity) {
+        char linkPath[PATH_MAX];
+        char resolved[PATH_MAX];
+        int written = snprintf(linkPath, sizeof(linkPath),
+            "/sys/class/input/%s/device", eventName);
+        bool hardware = written >= 0 && (size_t)written < sizeof(linkPath)
+            && realpath(linkPath, resolved) != null
+            && strstr(resolved, "/virtual/") == null;
+        snprintf(output, capacity, "%s", hardware ? "hardware" : "virtual");
+    }
+
+    class bool openAlready(struct SemuInputSupervisorState* state, char* path) {
+        for (size_t index = 0; index < state->length; index++) {
+            if (strcmp(state->devices[index].path, path) == 0) { return true; }
+        }
+        return false;
+    }
+
+    class int indexForDescriptor(struct SemuInputSupervisorState* state,
+                                 int descriptor) {
+        for (size_t index = 0; index < state->length; index++) {
+            if (state->devices[index].fd == descriptor) { return (int)index; }
+        }
+        return -1;
+    }
+
+    class bool bit(unsigned long* bits, int code) {
+        if (bits == null || code < 0 || code > KEY_MAX) { return false; }
+        size_t width = sizeof(unsigned long) * (size_t)8;
+        return (bits[(size_t)code / width]
+            & ((unsigned long)1
+                << (unsigned int)((size_t)code % width))) != 0UL;
+    }
+
+    class void mark(unsigned long* bits, int code) {
+        if (bits == null || code < 0 || code > KEY_MAX) { return; }
+        size_t width = sizeof(unsigned long) * (size_t)8;
+        bits[(size_t)code / width] = bits[(size_t)code / width]
+            | ((unsigned long)1
+                << (unsigned int)((size_t)code % width));
+    }
+
+    class void clear(unsigned long* bits, int code) {
+        if (bits == null || code < 0 || code > KEY_MAX) { return; }
+        size_t width = sizeof(unsigned long) * (size_t)8;
+        bits[(size_t)code / width] = bits[(size_t)code / width]
+            & ~((unsigned long)1
+                << (unsigned int)((size_t)code % width));
+    }
+
+    class bool modifierRequired(char* modifiers, int code) {
+        if (modifiers == null || modifiers[0] == 0
+                || strcmp(modifiers, "none") == 0) {
+            return false;
+        }
+        char* start = modifiers;
+        char* cursor = modifiers;
+        while (true) {
+            if (*cursor == '+' || *cursor == 0) {
+                if (SemuInputBindings.modifierCode(
+                        start, (size_t)(cursor - start)) == code) {
+                    return true;
+                }
+                if (*cursor == 0) { return false; }
+                start = cursor + 1;
+            }
+            cursor++;
+        }
+        return false;
+    }
+
+    class bool commandKey(int code, bool includeExtensions) {
+        char* bindings = getenv(SEMU_INPUT_ACTION_BINDINGS_ENV);
+        if (bindings != null) {
+            char* cursor = bindings;
+            while (*cursor != 0) {
+                size_t length = strcspn(cursor, ";");
+                if (length > (size_t)0 && length < (size_t)128) {
+                    char entry[128];
+                    memcpy(entry, cursor, length);
+                    entry[length] = 0;
+                    char* first = strchr(entry, ':');
+                    char* second = first == null ? null : strchr(first + 1, ':');
+                    if (first != null && second != null) {
+                        *first = 0;
+                        *second = 0;
+                        int action = 0;
+                        bool parsed = SemuInputExtensionActions.integer(
+                            entry, strlen(entry), &action);
+                        bool eligible = parsed && SemuActions.valid(action)
+                            && (includeExtensions
+                                || action < SemuActions.extensionBase());
+                        if (eligible
+                                && (SemuInputBindings.keyCode(second + 1) == code
+                                    || SemuLinuxInputDevices.modifierRequired(
+                                        first + 1, code))) {
+                            return true;
+                        }
+                    }
+                }
+                cursor = cursor + length;
+                if (*cursor == ';') { cursor++; }
+            }
+        }
+        int radial = 0;
+        int slot = 0;
+        return SemuInputMarkers.decode(code, &radial, &slot);
+    }
+
+    class bool commandKeyboard(unsigned long* keyBits, bool includeExtensions) {
+        bool hasCommand = false;
+        for (int code = 0; code <= KEY_MAX; code++) {
+            if (!SemuLinuxInputDevices.commandKey(code, includeExtensions)) {
+                continue;
+            }
+            hasCommand = true;
+            if (!SemuLinuxInputDevices.bit(keyBits, code)) { return false; }
+        }
+        return hasCommand;
+    }
+
+    class bool coreCommandKeyboard(unsigned long* keyBits) {
+        return SemuLinuxInputDevices.commandKeyboard(keyBits, false);
+    }
+
+    class bool completeCommandKeyboard(unsigned long* keyBits) {
+        return SemuLinuxInputDevices.commandKeyboard(keyBits, true);
+    }
+
+    class bool gamepadCapabilities(unsigned long* eventBits,
+                                   unsigned long* keyBits,
+                                   unsigned long* absoluteBits,
+                                   int quitFirstCode, int quitSecondCode) {
+        return SemuLinuxInputDevices.bit(eventBits, EV_KEY)
+            && SemuLinuxInputDevices.bit(eventBits, EV_ABS)
+            && SemuLinuxInputDevices.bit(keyBits, BTN_SOUTH)
+            && SemuLinuxInputDevices.bit(keyBits, quitFirstCode)
+            && SemuLinuxInputDevices.bit(keyBits, quitSecondCode)
+            && SemuLinuxInputDevices.bit(absoluteBits, ABS_X)
+            && SemuLinuxInputDevices.bit(absoluteBits, ABS_Y);
+    }
+
+    class bool commandFacetCapabilities(unsigned long* eventBits,
+                                        unsigned long* keyBits) {
+        return SemuLinuxInputDevices.bit(eventBits, EV_KEY)
+            && SemuLinuxInputDevices.completeCommandKeyboard(keyBits);
+    }
+
+    class bool acceptedCapabilities(unsigned long* eventBits,
+                                    unsigned long* keyBits,
+                                    unsigned long* absoluteBits,
+                                    int quitFirstCode, int quitSecondCode) {
+        bool gamepad = SemuLinuxInputDevices.gamepadCapabilities(
+            eventBits, keyBits, absoluteBits, quitFirstCode, quitSecondCode);
+        bool commandFacet = SemuLinuxInputDevices.commandFacetCapabilities(
+            eventBits, keyBits);
+        return gamepad || commandFacet;
+    }
+
+    class bool accepted(int descriptor, int quitFirstCode, int quitSecondCode,
+                        char* source, char* name, size_t nameCapacity,
+                        char* physical, size_t physicalCapacity,
+                        unsigned short* vendor, unsigned short* product,
+                        bool* gamepad, bool* commandFacet,
+                        bool* supportsExtensions) {
+        if (gamepad != null) { *gamepad = false; }
+        if (commandFacet != null) { *commandFacet = false; }
+        if (supportsExtensions != null) { *supportsExtensions = false; }
+        size_t words = ((size_t)KEY_MAX + (sizeof(unsigned long) * (size_t)8))
+            / (sizeof(unsigned long) * (size_t)8);
+        unsigned long eventBits[words];
+        unsigned long keyBits[words];
+        unsigned long absoluteBits[words];
+        memset(eventBits, 0, sizeof(eventBits));
+        memset(keyBits, 0, sizeof(keyBits));
+        memset(absoluteBits, 0, sizeof(absoluteBits));
+        if (ioctl(descriptor, EVIOCGBIT(0, sizeof(eventBits)), eventBits) < 0
+                || !SemuLinuxInputDevices.bit(eventBits, EV_KEY)
+                || ioctl(descriptor, EVIOCGBIT(EV_KEY, sizeof(keyBits)), keyBits) < 0) {
+            return false;
+        }
+        if (SemuLinuxInputDevices.bit(eventBits, EV_ABS)
+                && ioctl(descriptor, EVIOCGBIT(EV_ABS, sizeof(absoluteBits)),
+                    absoluteBits) < 0) {
+            return false;
+        }
+        struct input_id identity;
+        memset(&identity, 0, sizeof(identity));
+        if (ioctl(descriptor, EVIOCGID, &identity) < 0) { return false; }
+        if (vendor != null) { *vendor = identity.vendor; }
+        if (product != null) { *product = identity.product; }
+        if (name != null && nameCapacity > (size_t)0) {
+            memset(name, 0, nameCapacity);
+            if (ioctl(descriptor, EVIOCGNAME(nameCapacity), name) < 0
+                    || name[0] == 0) {
+                snprintf(name, nameCapacity, "%s", "unnamed");
+            }
+        }
+        if (physical != null && physicalCapacity > (size_t)0) {
+            memset(physical, 0, physicalCapacity);
+            if (ioctl(descriptor, EVIOCGPHYS(physicalCapacity), physical) < 0) {
+                physical[0] = 0;
+            }
+        }
+        bool gamepadCapabilities = SemuLinuxInputDevices.gamepadCapabilities(
+            eventBits, keyBits, absoluteBits, quitFirstCode, quitSecondCode);
+        bool commandCapabilities = SemuLinuxInputDevices.commandFacetCapabilities(
+            eventBits, keyBits);
+        struct SemuInputDevice candidate;
+        memset(&candidate, 0, sizeof(candidate));
+        candidate.vendor = identity.vendor;
+        candidate.product = identity.product;
+        snprintf(candidate.source, sizeof(candidate.source), "%s", source);
+        snprintf(candidate.physical, sizeof(candidate.physical), "%s",
+            physical == null ? "" : physical);
+        bool eligibleGamepad = gamepadCapabilities
+            && SemuInputIdentity.matches(&candidate, true);
+        bool eligibleCommands = commandCapabilities
+            && SemuInputIdentity.matches(&candidate, false);
+        bool eligible = eligibleGamepad || eligibleCommands;
+        if (gamepad != null) { *gamepad = eligibleGamepad; }
+        if (commandFacet != null) { *commandFacet = eligibleCommands; }
+        if (eligible && supportsExtensions != null) {
+            *supportsExtensions = eligibleCommands
+                && SemuLinuxInputDevices.completeCommandKeyboard(keyBits);
+        }
+        return eligible;
+    }
+
+    class void closeAt(struct SemuInputSupervisorState* state, size_t index) {
+        if (index >= state->length) { return; }
+        char detail[320];
+        snprintf(detail, sizeof(detail), "path=%s source=%s",
+            state->devices[index].path, state->devices[index].source);
+        SemuInputStateFiles.evidence("hotplug-remove", detail);
+        close(state->devices[index].fd);
+        state->devices[index] = state->devices[state->length - (size_t)1];
+        state->length--;
+    }
+
+    class void closeDescriptor(struct SemuInputSupervisorState* state,
+                               int descriptor) {
+        int index = SemuLinuxInputDevices.indexForDescriptor(state, descriptor);
+        if (index >= 0) {
+            SemuLinuxInputDevices.closeAt(state, (size_t)index);
+        }
+    }
+
+    class void closeAll(struct SemuInputSupervisorState* state) {
+        while (state->length > (size_t)0) {
+            SemuLinuxInputDevices.closeAt(state, state->length - (size_t)1);
+        }
+    }
+
+    class bool hasPairedGamepad(struct SemuInputSupervisorState* state,
+                                struct SemuInputDevice* command) {
+        if (command == null || !SemuInputIdentity.matches(command, false)) {
+            return false;
+        }
+        for (size_t index = (size_t)0; index < state->length; index++) {
+            if (state->devices[index].gamepad
+                    && SemuInputIdentity.matches(&state->devices[index], true)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    class void pruneUnpairedCommandFacets(
+            struct SemuInputSupervisorState* state) {
+        size_t index = (size_t)0;
+        while (index < state->length) {
+            struct SemuInputDevice* device = &state->devices[index];
+            bool unpaired = device->command_facet && !device->gamepad
+                && (!device->supports_extensions
+                    || !SemuLinuxInputDevices.hasPairedGamepad(state, device));
+            if (unpaired) {
+                SemuLinuxInputDevices.closeAt(state, index);
+            } else {
+                index++;
+            }
+        }
+    }
+
+    class void scan(struct SemuInputSupervisorState* state) {
+        DIR* directory = opendir("/dev/input");
+        if (directory == null) { return; }
+        struct dirent* entry = readdir(directory);
+        while (entry != null && state->length < (size_t)SEMU_MAX_INPUT_FDS) {
+            if (SemuLinuxInputDevices.eventNodeName(entry->d_name)) {
+                char path[256];
+                int written = snprintf(path, sizeof(path),
+                    "/dev/input/%s", entry->d_name);
+                if (written >= 0 && (size_t)written < sizeof(path)
+                    && !SemuLinuxInputDevices.openAlready(state, path)) {
+                    int descriptor = open(path,
+                        (int)O_RDONLY | (int)O_NONBLOCK | (int)O_CLOEXEC
+                            | (int)O_NOFOLLOW);
+                    if (descriptor >= 0) {
+                        char source[16];
+                        SemuLinuxInputDevices.classify(entry->d_name,
+                            source, sizeof(source));
+                        char name[128];
+                        char physical[256];
+                        unsigned short vendor = 0;
+                        unsigned short product = 0;
+                        bool gamepad = false;
+                        bool commandFacet = false;
+                        bool supportsExtensions = false;
+                        if (!SemuLinuxInputDevices.accepted(descriptor,
+                                state->quit_first_code, state->quit_second_code,
+                                source, name, sizeof(name),
+                                physical, sizeof(physical), &vendor, &product,
+                                &gamepad, &commandFacet,
+                                &supportsExtensions)) {
+                            close(descriptor);
+                            entry = readdir(directory);
+                            continue;
+                        }
+                        struct SemuInputDevice* device =
+                            &state->devices[state->length];
+                        memset(device, 0, sizeof(struct SemuInputDevice));
+                        device->fd = descriptor;
+                        device->quit_first_at = -1LL;
+                        device->quit_second_at = -1LL;
+                        device->marker_at = -1LL;
+                        snprintf(device->path, sizeof(device->path), "%s", path);
+                        snprintf(device->name, sizeof(device->name), "%s", name);
+                        snprintf(device->source, sizeof(device->source), "%s", source);
+                        snprintf(device->physical, sizeof(device->physical), "%s",
+                            physical);
+                        device->vendor = vendor;
+                        device->product = product;
+                        device->gamepad = gamepad;
+                        device->command_facet = commandFacet;
+                        device->supports_extensions = supportsExtensions;
+                        if (commandFacet && !gamepad
+                                && !SemuLinuxInputDevices.hasPairedGamepad(
+                                    state, device)) {
+                            close(descriptor);
+                            memset(device, 0, sizeof(struct SemuInputDevice));
+                            entry = readdir(directory);
+                            continue;
+                        }
+                        state->length++;
+                        char detail[512];
+                        snprintf(detail, sizeof(detail),
+                            "path=%s source=%s physical=%s id=%04x:%04x gamepad=%d commands=%d extensions=%d name=%s",
+                            device->path, device->source,
+                            device->physical[0] == 0 ? "empty" : device->physical,
+                            (unsigned int)device->vendor,
+                            (unsigned int)device->product,
+                            device->gamepad ? 1 : 0,
+                            device->command_facet ? 1 : 0,
+                            device->supports_extensions ? 1 : 0, device->name);
+                        SemuInputStateFiles.evidence("hotplug-add", detail);
+                    }
+                }
+            }
+            entry = readdir(directory);
+        }
+        closedir(directory);
+    }
+
+    class bool handleDecision(struct SemuInputSupervisorState* state,
+                              struct SemuInputDevice* device,
+                              struct SemuInputDecision* decision,
+                              long long at) {
+        if (decision->action == SemuActions.none()) {
+            if (decision->radial != 0) {
+                char marker[256];
+                snprintf(marker, sizeof(marker),
+                    "source=%s radial=%d slot=%d",
+                    device->source, decision->radial, decision->slot);
+                SemuInputStateFiles.evidence("radial-edge", marker);
+            }
+            return false;
+        }
+        bool persisted = SemuInputStateFiles.action(decision->action,
+            decision->radial, decision->slot, device->source, at);
+        char detail[384];
+        snprintf(detail, sizeof(detail),
+            "path=%s source=%s action=%d radial=%d slot=%d quit=%d reason=%s",
+            device->path, device->source, decision->action, decision->radial,
+            decision->slot, decision->quit,
+            decision->reason[0] == 0 ? "none" : decision->reason);
+        SemuInputStateFiles.evidence(
+            persisted ? (char*)"action-edge" : (char*)"action-journal-failure",
+            detail);
+        if (decision->quit == 0) { return false; }
+        state->quit_requested_at = at;
+        state->quit_edge_at = at;
+        snprintf(state->quit_reason, sizeof(state->quit_reason), "%s",
+            decision->reason);
+        snprintf(state->quit_path, sizeof(state->quit_path), "%s", device->path);
+        snprintf(state->quit_source, sizeof(state->quit_source), "%s",
+            device->source);
+        return true;
+    }
+
+    class bool poll(struct SemuInputSupervisorState* state, int timeoutMs) {
+        struct pollfd polls[SEMU_MAX_INPUT_FDS];
+        size_t snapshotLength = state->length;
+        for (size_t index = 0; index < snapshotLength; index++) {
+            polls[index].fd = state->devices[index].fd;
+            polls[index].events = POLLIN;
+            polls[index].revents = 0;
+        }
+        int ready = poll(polls, (nfds_t)snapshotLength, timeoutMs);
+        if (ready <= 0) { return false; }
+        for (size_t snapshotIndex = 0; snapshotIndex < snapshotLength;
+                snapshotIndex++) {
+            int currentIndex = SemuLinuxInputDevices.indexForDescriptor(
+                state, polls[snapshotIndex].fd);
+            if (currentIndex < 0) { continue; }
+            size_t index = (size_t)currentIndex;
+            if (((short)polls[snapshotIndex].revents
+                    & ((short)POLLERR | (short)POLLHUP | (short)POLLNVAL)) != 0) {
+                SemuLinuxInputDevices.closeDescriptor(
+                    state, polls[snapshotIndex].fd);
+                continue;
+            }
+            if (((short)polls[snapshotIndex].revents & (short)POLLIN) == 0) {
+                continue;
+            }
+            struct input_event events[32];
+            ssize_t bytes = read(state->devices[index].fd, events, sizeof(events));
+            if (bytes < (ssize_t)0) {
+                if (errno != EAGAIN && errno != EWOULDBLOCK) {
+                    SemuLinuxInputDevices.closeDescriptor(
+                        state, polls[snapshotIndex].fd);
+                    continue;
+                }
+            } else if (bytes == (ssize_t)0
+                    || (size_t)bytes % sizeof(struct input_event) != (size_t)0) {
+                SemuLinuxInputDevices.closeDescriptor(
+                    state, polls[snapshotIndex].fd);
+                continue;
+            } else {
+                size_t count = (size_t)bytes / sizeof(struct input_event);
+                for (size_t eventIndex = 0; eventIndex < count; eventIndex++) {
+                    struct SemuInputDecision decision;
+                    long long at = SemuInputClock.milliseconds();
+                    if (SemuInputFrames.evaluate(&state->devices[index],
+                            &events[eventIndex], at, state->chord_window_ms,
+                            state->quit_first_code, state->quit_second_code,
+                            &decision)
+                        && SemuLinuxInputDevices.handleDecision(state,
+                            &state->devices[index], &decision, at)) { return true; }
+                }
+            }
+        }
+        return false;
+    }
+}
+
+class SemuSupervisedProcess {
+    class int statusCode(int status) {
+        if (WIFEXITED(status)) { return WEXITSTATUS(status); }
+        if (WIFSIGNALED(status)) { return 128 + WTERMSIG(status); }
+        return 1;
+    }
+
+    class bool terminate(pid_t child, long long requestedAt,
+                         long long* elapsed, int* childStatus) {
+        if (requestedAt < 0LL) { return false; }
+        if (kill(-child, SIGKILL) != 0 && errno != (int)ESRCH) { return false; }
+        while (SemuInputClock.milliseconds() - requestedAt
+                <= (long long)SEMU_QUIT_BOUND_MS) {
+            int status = 0;
+            pid_t waited = waitpid(child, &status, WNOHANG);
+            if (waited == child) {
+                *elapsed = SemuInputClock.milliseconds() - requestedAt;
+                *childStatus = SemuSupervisedProcess.statusCode(status);
+                return *elapsed >= 0LL
+                    && *elapsed <= (long long)SEMU_QUIT_BOUND_MS;
+            }
+            if (waited < (pid_t)0 && errno != EINTR) { return false; }
+            usleep(SEMU_INPUT_POLL_MS * 1000);
+        }
+        return false;
+    }
+}
+
+class SemuInputSupervisor {
+    class void resetDevice(struct SemuInputDevice* device) {
+        memset(device, 0, sizeof(struct SemuInputDevice));
+        device->quit_first_at = -1LL;
+        device->quit_second_at = -1LL;
+        device->marker_at = -1LL;
+    }
+
+    class bool journalSelfTest(char* root) {
+        if (root == null || setenv("SEMU_RENDER_STATE_DIR", root, 1) != 0) {
+            return false;
+        }
+        char journal[PATH_MAX];
+        char evidence[PATH_MAX];
+        char sequence[PATH_MAX];
+        string journalName = RendererActionJournal.fileName();
+        string evidenceName = RendererActionJournal.evidenceFileName();
+        if (!SemuInputStateFiles.path(journal, sizeof(journal), journalName)
+                || !SemuInputStateFiles.path(
+                    evidence, sizeof(evidence), evidenceName)
+                || !SemuInputStateFiles.path(sequence, sizeof(sequence),
+                    RendererActionJournal.sequenceFileName())) {
+            return false;
+        }
+        struct SemuActionRecord stale;
+        memset(&stale, 0, sizeof(stale));
+        stale.abi = (unsigned int)RendererActionJournal.abi();
+        stale.size = (unsigned int)sizeof(struct SemuActionRecord);
+        stale.sequence = 99ULL;
+        stale.action = SemuActions.menuToggle();
+        FILE* file = fopen(journal, "wb");
+        if (file == null) { return false; }
+        bool wroteStale = fwrite(&stale, sizeof(stale), 1, file) == (size_t)1;
+        bool closedStale = fclose(file) == 0;
+        if (!wroteStale || !closedStale) { return false; }
+        file = fopen(evidence, "wb");
+        if (file == null) { return false; }
+        bool wroteEvidence = fputs("stale\n", file) >= 0;
+        bool closedEvidence = fclose(file) == 0;
+        if (!wroteEvidence || !closedEvidence
+                || !SemuInputStateFiles.storeSequence(99ULL)) {
+            return false;
+        }
+        if (!SemuInputStateFiles.beginSession()
+                || SemuInputActionSequence != 99ULL) { return false; }
+        char lockPath[PATH_MAX];
+        if (!SemuInputStateFiles.path(lockPath, sizeof(lockPath),
+                RendererActionJournal.sessionLockFileName())) {
+            SemuInputStateFiles.releaseSession();
+            return false;
+        }
+        pid_t contender = fork();
+        if (contender == (pid_t)0) {
+            int competing = open(lockPath,
+                (int)O_RDWR | (int)O_CLOEXEC | (int)O_NOFOLLOW);
+            bool blocked = competing >= 0
+                && !SemuInputSessionLock.acquire(competing)
+                && (errno == EACCES || errno == EAGAIN);
+            if (competing >= 0) { close(competing); }
+            _exit(blocked ? 0 : 1);
+        }
+        int contenderStatus = 0;
+        bool exclusive = contender > (pid_t)0
+            && waitpid(contender, &contenderStatus, 0) == contender
+            && WIFEXITED(contenderStatus)
+            && WEXITSTATUS(contenderStatus) == 0;
+        if (!exclusive) {
+            SemuInputStateFiles.releaseSession();
+            return false;
+        }
+        file = fopen(journal, "rb");
+        if (file == null) { return false; }
+        bool journalEmpty = fseek(file, 0L, SEEK_END) == 0
+            && (long)ftell(file) == 0L;
+        fclose(file);
+        file = fopen(evidence, "rb");
+        if (file == null) { return false; }
+        bool evidenceEmpty = fseek(file, 0L, SEEK_END) == 0
+            && (long)ftell(file) == 0L;
+        fclose(file);
+        if (!journalEmpty || !evidenceEmpty
+                || !SemuInputStateFiles.action(SemuActions.stateSave(),
+                    RendererActionJournal.direct(), 1, (char*)"self-test", 1LL)) {
+            SemuInputStateFiles.releaseSession();
+            return false;
+        }
+        file = fopen(journal, "rb");
+        struct SemuActionRecord current;
+        bool firstRecord = file != null
+            && fread(&current, sizeof(current), 1, file) == (size_t)1
+            && current.sequence == 100ULL
+            && (int)current.action == SemuActions.stateSave();
+        if (file != null) { fclose(file); }
+        if (!firstRecord) {
+            SemuInputStateFiles.releaseSession();
+            return false;
+        }
+
+        int descriptor = open(journal, (int)O_WRONLY | (int)O_CLOEXEC);
+        off_t capacity = (off_t)(sizeof(struct SemuActionRecord)
+            * (size_t)SEMU_INPUT_JOURNAL_MAX_RECORDS);
+        if (descriptor < 0) {
+            SemuInputStateFiles.releaseSession();
+            return false;
+        }
+        bool resized = ftruncate(descriptor, capacity) == 0;
+        bool closed = close(descriptor) == 0;
+        bool rejectedAtCapacity = resized && closed
+            && !SemuInputStateFiles.action(SemuActions.stateLoad(),
+                RendererActionJournal.direct(), 1, (char*)"self-test", 2LL)
+            && SemuInputActionSequence == 100ULL;
+        if (!rejectedAtCapacity) {
+            SemuInputStateFiles.releaseSession();
+            return false;
+        }
+        file = fopen(journal, "rb");
+        bool bounded = file != null
+            && fread(&current, sizeof(current), 1, file) == (size_t)1
+            && current.sequence == 100ULL
+            && (int)current.action == SemuActions.stateSave()
+            && fseek(file, 0L, SEEK_END) == 0
+            && (long)ftell(file) == (long)capacity;
+        if (file != null) { fclose(file); }
+        SemuInputStateFiles.releaseSession();
+        if (!bounded || !SemuInputStateFiles.beginSession()
+                || SemuInputActionSequence != 100ULL
+                || !SemuInputStateFiles.action(SemuActions.menuToggle(),
+                    RendererActionJournal.direct(), 0, (char*)"self-test", 3LL)) {
+            SemuInputStateFiles.releaseSession();
+            return false;
+        }
+        file = fopen(journal, "rb");
+        bool continued = file != null
+            && fread(&current, sizeof(current), 1, file) == (size_t)1
+            && current.sequence == 101ULL
+            && (int)current.action == SemuActions.menuToggle();
+        if (file != null) { fclose(file); }
+        SemuInputStateFiles.releaseSession();
+        file = fopen(sequence, "wb");
+        bool wroteCorruption = file != null && fputc(1, file) == 1;
+        bool closedCorruption = file != null && fclose(file) == 0;
+        bool corrupted = wroteCorruption && closedCorruption;
+        bool rejected = corrupted && !SemuInputStateFiles.beginSession()
+            && SemuInputSessionDescriptor < 0;
+        return continued && rejected;
+    }
+
+    class bool capabilitySelfTest(int quitFirstCode, int quitSecondCode) {
+        size_t words = ((size_t)KEY_MAX + (sizeof(unsigned long) * (size_t)8))
+            / (sizeof(unsigned long) * (size_t)8);
+        unsigned long events[words];
+        unsigned long keys[words];
+        unsigned long axes[words];
+        memset(events, 0, sizeof(events));
+        memset(keys, 0, sizeof(keys));
+        memset(axes, 0, sizeof(axes));
+        SemuLinuxInputDevices.mark(events, EV_KEY);
+        SemuLinuxInputDevices.mark(events, EV_ABS);
+        SemuLinuxInputDevices.mark(keys, quitFirstCode);
+        SemuLinuxInputDevices.mark(keys, quitSecondCode);
+        SemuLinuxInputDevices.mark(keys, BTN_SOUTH);
+        SemuLinuxInputDevices.mark(axes, ABS_X);
+        SemuLinuxInputDevices.mark(axes, ABS_Y);
+        if (!SemuLinuxInputDevices.acceptedCapabilities(
+                events, keys, axes, quitFirstCode, quitSecondCode)) {
+            return false;
+        }
+        memset(axes, 0, sizeof(axes));
+        if (SemuLinuxInputDevices.acceptedCapabilities(
+                events, keys, axes, quitFirstCode, quitSecondCode)) {
+            return false;
+        }
+        memset(events, 0, sizeof(events));
+        memset(keys, 0, sizeof(keys));
+        SemuLinuxInputDevices.mark(events, EV_KEY);
+        for (int code = 0; code <= KEY_MAX; code++) {
+            if (SemuLinuxInputDevices.commandKey(code, false)) {
+                SemuLinuxInputDevices.mark(keys, code);
+            }
+        }
+        if (!SemuLinuxInputDevices.acceptedCapabilities(
+                events, keys, axes, quitFirstCode, quitSecondCode)) {
+            return false;
+        }
+        if (SemuLinuxInputDevices.completeCommandKeyboard(keys)) { return false; }
+        for (int code = 0; code <= KEY_MAX; code++) {
+            if (SemuLinuxInputDevices.commandKey(code, true)) {
+                SemuLinuxInputDevices.mark(keys, code);
+            }
+        }
+        if (!SemuLinuxInputDevices.completeCommandKeyboard(keys)) { return false; }
+        SemuLinuxInputDevices.clear(keys, KEY_F13);
+        if (SemuLinuxInputDevices.completeCommandKeyboard(keys)
+                || !SemuLinuxInputDevices.acceptedCapabilities(
+                    events, keys, axes, quitFirstCode, quitSecondCode)) {
+            return false;
+        }
+        SemuLinuxInputDevices.clear(keys, KEY_LEFTCTRL);
+        if (SemuLinuxInputDevices.acceptedCapabilities(
+                events, keys, axes, quitFirstCode, quitSecondCode)) {
+            return false;
+        }
+        memset(keys, 0, sizeof(keys));
+        SemuLinuxInputDevices.mark(keys, BTN_LEFT);
+        return !SemuLinuxInputDevices.acceptedCapabilities(
+            events, keys, axes, quitFirstCode, quitSecondCode);
+    }
+
+    class bool pairingSelfTest() {
+        int gamepadPipe[2];
+        int commandPipe[2];
+        if (pipe(gamepadPipe) != 0) { return false; }
+        if (pipe(commandPipe) != 0) {
+            close(gamepadPipe[0]);
+            close(gamepadPipe[1]);
+            return false;
+        }
+        struct SemuInputSupervisorState state;
+        memset(&state, 0, sizeof(state));
+        state.length = (size_t)2;
+        SemuInputSupervisor.resetDevice(&state.devices[0]);
+        SemuInputSupervisor.resetDevice(&state.devices[1]);
+        state.devices[0].fd = gamepadPipe[0];
+        state.devices[0].gamepad = true;
+        state.devices[0].vendor = (unsigned short)0x1111;
+        state.devices[1].fd = commandPipe[0];
+        state.devices[1].command_facet = true;
+        state.devices[1].vendor = (unsigned short)0x1111;
+        snprintf(state.devices[0].path, sizeof(state.devices[0].path), "%s",
+            "fixture-gamepad");
+        snprintf(state.devices[1].path, sizeof(state.devices[1].path), "%s",
+            "fixture-command");
+        SemuLinuxInputDevices.pruneUnpairedCommandFacets(&state);
+        bool paired = state.length == (size_t)2;
+        SemuLinuxInputDevices.closeDescriptor(&state, gamepadPipe[0]);
+        SemuLinuxInputDevices.pruneUnpairedCommandFacets(&state);
+        bool pruned = state.length == (size_t)0;
+        close(gamepadPipe[1]);
+        close(commandPipe[1]);
+        return paired && pruned;
+    }
+
+    class bool hotplugSelfTest(int quitFirstCode, int quitSecondCode) {
+        int removed[2];
+        int retained[2];
+        if (pipe(removed) != 0) { return false; }
+        if (pipe(retained) != 0) {
+            close(removed[0]);
+            close(removed[1]);
+            return false;
+        }
+        struct SemuInputSupervisorState state;
+        memset(&state, 0, sizeof(state));
+        state.length = (size_t)2;
+        state.chord_window_ms = 250;
+        state.quit_first_code = quitFirstCode;
+        state.quit_second_code = quitSecondCode;
+        SemuInputSupervisor.resetDevice(&state.devices[0]);
+        SemuInputSupervisor.resetDevice(&state.devices[1]);
+        state.devices[0].fd = removed[0];
+        state.devices[1].fd = retained[0];
+        snprintf(state.devices[0].path, sizeof(state.devices[0].path), "%s",
+            "fixture-removed");
+        snprintf(state.devices[1].path, sizeof(state.devices[1].path), "%s",
+            "fixture-retained");
+        snprintf(state.devices[0].source, sizeof(state.devices[0].source), "%s",
+            "virtual");
+        snprintf(state.devices[1].source, sizeof(state.devices[1].source), "%s",
+            "virtual");
+        close(removed[1]);
+        struct input_event event;
+        memset(&event, 0, sizeof(event));
+        event.type = (unsigned short)EV_KEY;
+        event.code = (unsigned short)BTN_SOUTH;
+        event.value = 1;
+        bool prepared = write(retained[1], &event, sizeof(event))
+            == (ssize_t)sizeof(event);
+        bool quit = prepared && SemuLinuxInputDevices.poll(&state, 100);
+        bool retainedProcessed = !quit && state.length == (size_t)1
+            && state.devices[0].fd == retained[0]
+            && state.devices[0].down[BTN_SOUTH];
+        SemuLinuxInputDevices.closeAll(&state);
+        close(retained[1]);
+        return retainedProcessed;
+    }
+
+    class int selfTest() {
+        int window = 0;
+        if (!SemuInputWindow.parse("50", &window) || window != 50
+            || !SemuInputWindow.parse("1000", &window) || window != 1000
+            || SemuInputWindow.parse("49", &window)
+            || SemuInputWindow.parse("1001", &window)
+            || SemuInputWindow.parse("250ms", &window)) { return 1; }
+        if (!SemuLinuxInputDevices.eventNodeName((char*)"event0")
+                || !SemuLinuxInputDevices.eventNodeName((char*)"event10")
+                || SemuLinuxInputDevices.eventNodeName((char*)"event")
+                || SemuLinuxInputDevices.eventNodeName((char*)"event-controller")) {
+            return 2;
+        }
+
+        struct SemuInputDevice device;
+        struct SemuInputDecision decision;
+        int quitFirstCode = 0;
+        int quitSecondCode = 0;
+        if (!SemuInputQuitChord.parse("select,start", &quitFirstCode,
+                &quitSecondCode)
+            || SemuInputQuitChord.parse("select,select", &quitFirstCode,
+                &quitSecondCode)
+            || SemuInputQuitChord.parse("select", &quitFirstCode,
+                &quitSecondCode)) { return 3; }
+        setenv("SEMU_INPUT_QUICK_MARKERS", "kp0,kp1,kp2,kp3,kp4,kp5", 1);
+        setenv("SEMU_INPUT_MENU_MARKERS", "kp6,kp7,kp8,kp9,kpdecimal", 1);
+        setenv("SEMU_INPUT_ACTION_BINDINGS",
+            "1:ctrl:m;2:ctrl:up;3:ctrl:down;4:ctrl:space;"
+            + "5:ctrl:backspace;6:ctrl:s;7:ctrl:a;8:ctrl:q;"
+            + "9:ctrl:x;10:none:esc;11:none:f13;12:none:f14;"
+            + "13:none:f15;14:none:f16", 1);
+        setenv("SEMU_INPUT_EXTENSION_ACTIONS",
+            "fixture.controller.one,fixture.controller.two,"
+            + "fixture.controller.three,fixture.controller.four", 1);
+        if (!SemuInputExtensionActions.load()) { return 4; }
+        if (unsetenv("SEMU_INPUT_EXTENSION_ACTIONS") != 0
+                || !SemuInputExtensionActions.load()
+                || !SemuInputBindings.validConfiguration()
+                || SemuActionExtensionCount != 4
+                || !SemuActions.id(SemuActions.extensionBase()).equals(
+                    "runtime.controller.0")) {
+            return 5;
+        }
+
+        char stateRoot[] = "/tmp/semu-input-self-test-XXXXXX";
+        char* stateDirectory = mkdtemp(stateRoot);
+        if (stateDirectory == null
+                || !SemuInputSupervisor.journalSelfTest(stateDirectory)) {
+            return 6;
+        }
+        if (!SemuInputSupervisor.capabilitySelfTest(
+                quitFirstCode, quitSecondCode)) { return 7; }
+        if (!SemuInputSupervisor.hotplugSelfTest(
+                quitFirstCode, quitSecondCode)) { return 8; }
+        if (!SemuInputSupervisor.pairingSelfTest()) { return 9; }
+
+        SemuInputSupervisor.resetDevice(&device);
+        struct input_event frame;
+        memset(&frame, 0, sizeof(frame));
+        frame.type = (unsigned short)EV_REL;
+        frame.code = (unsigned short)REL_X;
+        frame.value = 1;
+        if (SemuInputFrames.evaluate(&device, &frame, 1999LL, 250,
+                quitFirstCode, quitSecondCode, &decision)) { return 10; }
+        frame.type = (unsigned short)EV_KEY;
+        frame.code = (unsigned short)BTN_SELECT;
+        if (SemuInputFrames.evaluate(&device, &frame, 2000LL, 250,
+                quitFirstCode, quitSecondCode, &decision)) { return 11; }
+        frame.code = (unsigned short)BTN_START;
+        if (!SemuInputFrames.evaluate(&device, &frame, 2250LL, 250,
+                quitFirstCode, quitSecondCode, &decision)
+            || decision.quit == 0
+            || strcmp(decision.reason, "select+start") != 0) { return 12; }
+
+        SemuInputSupervisor.resetDevice(&device);
+        frame.code = (unsigned short)BTN_START;
+        if (SemuInputFrames.evaluate(&device, &frame, 3000LL, 250,
+                quitFirstCode, quitSecondCode, &decision)) { return 13; }
+        frame.code = (unsigned short)BTN_SELECT;
+        if (!SemuInputFrames.evaluate(&device, &frame, 3250LL, 250,
+                quitFirstCode, quitSecondCode, &decision)
+                || decision.quit == 0) { return 14; }
+
+        SemuInputSupervisor.resetDevice(&device);
+        frame.code = (unsigned short)BTN_SELECT;
+        if (SemuInputFrames.evaluate(&device, &frame, 4000LL, 250,
+                quitFirstCode, quitSecondCode, &decision)) { return 15; }
+        frame.code = (unsigned short)BTN_START;
+        if (SemuInputFrames.evaluate(&device, &frame, 4251LL, 250,
+                quitFirstCode, quitSecondCode, &decision)) { return 16; }
+
+        SemuInputSupervisor.resetDevice(&device);
+        frame.code = (unsigned short)KEY_KP0;
+        if (!SemuInputFrames.evaluate(&device, &frame, 5000LL, 250,
+                quitFirstCode, quitSecondCode, &decision)
+            || decision.radial != RendererActionJournal.quickRadial()
+            || decision.slot != 0) { return 17; }
+        frame.code = (unsigned short)KEY_LEFTCTRL;
+        if (SemuInputFrames.evaluate(&device, &frame, 5001LL, 250,
+                quitFirstCode, quitSecondCode, &decision)) { return 18; }
+        frame.code = (unsigned short)KEY_S;
+        if (!SemuInputFrames.evaluate(&device, &frame, 5002LL, 250,
+                quitFirstCode, quitSecondCode, &decision)
+            || decision.action != SemuActions.stateSave()
+            || decision.radial != RendererActionJournal.quickRadial()
+            || decision.slot != 0) { return 19; }
+
+        SemuInputSupervisor.resetDevice(&device);
+        frame.code = (unsigned short)KEY_KP6;
+        if (!SemuInputFrames.evaluate(&device, &frame, 6000LL, 250,
+                quitFirstCode, quitSecondCode, &decision)) { return 20; }
+        frame.code = (unsigned short)KEY_LEFTCTRL;
+        if (SemuInputFrames.evaluate(&device, &frame, 6001LL, 250,
+                quitFirstCode, quitSecondCode, &decision)) { return 21; }
+        frame.code = (unsigned short)KEY_M;
+        if (!SemuInputFrames.evaluate(&device, &frame, 6002LL, 250,
+                quitFirstCode, quitSecondCode, &decision)
+            || decision.action != SemuActions.menuToggle()
+            || decision.radial != RendererActionJournal.menuRadial()
+            || decision.slot != 0) { return 22; }
+
+        int controllerModeKeys[4] = {KEY_F13, KEY_F14, KEY_F15, KEY_F16};
+        for (int index = 0; index < 4; index++) {
+            SemuInputSupervisor.resetDevice(&device);
+            frame.code = (unsigned short)controllerModeKeys[index];
+            if (!SemuInputFrames.evaluate(&device, &frame,
+                    7000LL + (long long)index, 250, quitFirstCode,
+                    quitSecondCode, &decision)
+                || decision.action != SemuActions.extensionBase() + index
+                || decision.radial != RendererActionJournal.systemRadial()
+                || decision.slot != index) { return 23; }
+        }
+
+        pid_t child = (pid_t)fork();
+        if (child < (pid_t)0) { return 24; }
+        if (child == (pid_t)0) {
+            setpgid(0, 0);
+            while (true) { pause(); }
+        }
+        if (setpgid(child, child) != 0 && errno != EACCES) { return 25; }
+        long long requestedAt = SemuInputClock.milliseconds();
+        long long elapsed = -1LL;
+        int childStatus = 0;
+        if (!SemuSupervisedProcess.terminate(
+                child, requestedAt, &elapsed, &childStatus)
+            || elapsed < 0LL || elapsed > (long long)SEMU_QUIT_BOUND_MS
+            || childStatus != 128 + SIGKILL) { return 26; }
+        char cleanup[PATH_MAX];
+        string cleanupJournal = RendererActionJournal.fileName();
+        if (SemuInputStateFiles.path(
+                cleanup, sizeof(cleanup), cleanupJournal)) {
+            unlink(cleanup);
+        }
+        string cleanupEvidence = RendererActionJournal.evidenceFileName();
+        if (SemuInputStateFiles.path(
+                cleanup, sizeof(cleanup), cleanupEvidence)) {
+            unlink(cleanup);
+        }
+        string cleanupSequence = RendererActionJournal.sequenceFileName();
+        if (SemuInputStateFiles.path(
+                cleanup, sizeof(cleanup), cleanupSequence)) {
+            unlink(cleanup);
+        }
+        string cleanupLock = RendererActionJournal.sessionLockFileName();
+        if (SemuInputStateFiles.path(
+                cleanup, sizeof(cleanup), cleanupLock)) {
+            unlink(cleanup);
+        }
+        rmdir(stateDirectory);
+        return 0;
+    }
+
+    class int commandIndex(int argc, char** argv) {
+        return argc > 1 && strcmp(argv[1], "--") == 0 ? 2 : 1;
+    }
+
+    class int run(int argc, char** argv) {
+        if (argc == 2 && strcmp(argv[1], "--self-test") == 0) {
+            return SemuInputSupervisor.selfTest();
+        }
+        int commandIndex = SemuInputSupervisor.commandIndex(argc, argv);
+        if (commandIndex >= argc) {
+            SemuInputStreams.error((char*)
+                "usage: semu-input-supervisor [--] COMMAND [ARGS...]\n");
+            return 64;
+        }
+        char* executable = (char*)argv[commandIndex];
+        char** commandArguments = (char**)&argv[commandIndex];
+        char* enabled = getenv("SEMU_INPUT_SUPERVISOR");
+        bool disabled = enabled != null && strcmp(enabled, "0") == 0;
+        if (disabled) {
+            execvp(executable, commandArguments);
+            return 127;
+        }
+        int chordWindow = 0;
+        if (!SemuInputWindow.load(&chordWindow)) {
+            char message[160];
+            snprintf(message, sizeof(message), "%s must be an integer in %d..%d\n",
+                (char*)SEMU_QUIT_CHORD_WINDOW_ENV,
+                (int)SEMU_QUIT_CHORD_WINDOW_MIN_MS,
+                (int)SEMU_QUIT_CHORD_WINDOW_MAX_MS);
+            SemuInputStreams.error(message);
+            return 64;
+        }
+        int quitFirstCode = 0;
+        int quitSecondCode = 0;
+        if (!SemuInputQuitChord.load(&quitFirstCode, &quitSecondCode)) {
+            SemuInputStreams.error((char*)
+                "SEMU_INPUT_QUIT_BUTTONS must declare two distinct supported buttons\n");
+            return 64;
+        }
+        char* actionBindings = getenv(SEMU_INPUT_ACTION_BINDINGS_ENV);
+        if (actionBindings == null || actionBindings[0] == 0) {
+            SemuInputStreams.error((char*)
+                "SEMU_INPUT_ACTION_BINDINGS must be generated from the input target\n");
+            return 64;
+        }
+        if (!SemuInputExtensionActions.load()
+                || !SemuInputBindings.validConfiguration()) {
+            SemuInputStreams.error((char*)
+                "SEMU input action bindings or extension identities are invalid\n");
+            return 64;
+        }
+        if (!SemuInputStateFiles.beginSession()) {
+            SemuInputStreams.error((char*)
+                "SEMU_RENDER_STATE_DIR must name an unused writable Semu state directory\n");
+            return 73;
+        }
+        pid_t child = (pid_t)fork();
+        if (child < (pid_t)0) {
+            SemuInputStateFiles.releaseSession();
+            return 127;
+        }
+        if (child == (pid_t)0) {
+            setpgid(0, 0);
+            execvp(executable, commandArguments);
+            _exit(127);
+        }
+        setpgid(child, child);
+        struct SemuInputSupervisorState state;
+        memset(&state, 0, sizeof(state));
+        state.chord_window_ms = chordWindow;
+        state.quit_first_code = quitFirstCode;
+        state.quit_second_code = quitSecondCode;
+        state.quit_requested_at = -1LL;
+        char detail[512];
+        snprintf(detail, sizeof(detail), "child=%ld command=%s",
+            (long)child, executable);
+        SemuInputStateFiles.evidence("supervisor-start", detail);
+
+        int rescanTicks = 0;
+        while (true) {
+            int status = 0;
+            pid_t waited = waitpid(child, &status, WNOHANG);
+            if (waited == child) {
+                int code = SemuSupervisedProcess.statusCode(status);
+                snprintf(detail, sizeof(detail), "child=%ld status=%d requested=0",
+                    (long)child, code);
+                SemuInputStateFiles.evidence("child-exit", detail);
+                SemuLinuxInputDevices.closeAll(&state);
+                SemuInputStateFiles.releaseSession();
+                return code;
+            }
+            if (rescanTicks <= 0) {
+                SemuLinuxInputDevices.scan(&state);
+                rescanTicks = SEMU_INPUT_RESCAN_TICKS;
+            }
+            rescanTicks--;
+            bool quitRequested = SemuLinuxInputDevices.poll(
+                &state, SEMU_INPUT_POLL_MS);
+            SemuLinuxInputDevices.pruneUnpairedCommandFacets(&state);
+            if (quitRequested) {
+                long long elapsed = -1LL;
+                int childStatus = 1;
+                bool reaped = SemuSupervisedProcess.terminate(child,
+                    state.quit_requested_at, &elapsed, &childStatus);
+                snprintf(detail, sizeof(detail),
+                    "child=%ld path=%s source=%s reason=%s reaped=%d elapsed_ms=%lld bound_ms=%d",
+                    (long)child, state.quit_path, state.quit_source,
+                    state.quit_reason, reaped ? 1 : 0, elapsed,
+                    SEMU_QUIT_BOUND_MS);
+                SemuInputStateFiles.evidence("process-group-terminate", detail);
+                SemuLinuxInputDevices.closeAll(&state);
+                SemuInputStateFiles.releaseSession();
+                return reaped ? 0 : 70;
+            }
+        }
+        return 1;
+    }
+}
+
+int main(int argc, char** argv) {
+    return SemuInputSupervisor.run(argc, argv);
+}

@@ -1,0 +1,103 @@
+{
+  "schema_version": 1,
+  "name": "Nintendo DS",
+  "aliases": [],
+  "es_de": {
+    "platforms": [
+      "nds"
+    ],
+    "theme": "nds"
+  },
+  "rom": {
+    "dir": "nds",
+    "extensions": [
+      ".app",
+      ".bin",
+      ".nds",
+      ".7z",
+      ".zip"
+    ]
+  },
+  "verification": {
+    "rom_descriptors": [
+      "Meteos (USA).zip",
+      "Soul Bubbles (USA) (En,Fr,De,Es,It).zip"
+    ],
+    "capture_frame": 180
+  },
+  "emulators": [
+    {
+      "emulator": "melonds",
+      "platforms": [
+        "linux"
+      ]
+    },
+    {
+      "emulator": "retroarch",
+      "label": "DeSmuME",
+      "core": "desmume",
+      "platforms": [
+        "linux",
+        "macos"
+      ]
+    }
+  ],
+  "display": {
+    "scaling": {
+      "mode": "integer_preferred",
+      "basis": "native_game_surface",
+      "fit": "contain",
+      "fallback": "fractional_downscale",
+      "lanes": "independent"
+    },
+    "screens": [
+      {
+        "id": "top",
+        "native": {
+          "w": 256,
+          "h": 192
+        },
+        "aspect": {
+          "w": 4,
+          "h": 3
+        }
+      },
+      {
+        "id": "bottom",
+        "native": {
+          "w": 256,
+          "h": 192
+        },
+        "aspect": {
+          "w": 4,
+          "h": 3
+        }
+      }
+    ],
+    "arrangement": "vertical",
+    "surface_mapping": {
+      "mode": "by_screen_id",
+      "history": "independent",
+      "touch_screen": "bottom"
+    }
+  },
+  "render": {
+    "style": "handheld",
+    "asset_profile": "dual",
+    "priority": "bezel",
+    "kind": "dual",
+    "corner_radius": 0.05,
+    "lcd_grid": 0.20,
+    "lcd_subpixel": 0.25,
+    "lcd_wash": 0.10,
+    "shell_tint": {
+      "r": 0.82,
+      "g": 0.82,
+      "b": 0.85
+    }
+  },
+  "doc": {
+    "hardware": "dual 256x192 resistive LCDs",
+    "intent": "Expose both screens with independent LCD processing; Semu owns the dual-screen presentation contract."
+  }
+}

@@ -1,8 +1,0 @@
-[Desktop Entry]
-Name=Semu
-Comment=Sandboxed emulation environment (ES-DE + semu launchers)
-Exec=AppRun
-Icon=semu
-Type=Application
-Categories=Game;Emulator;
-Terminal=false

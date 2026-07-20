@@ -1,0 +1,80 @@
+{
+  "schema_version": 1,
+  "enabled": true,
+  "default_variant": "vertical",
+  "hole": {
+    "x": 0.289453125,
+    "y": 0.0475,
+    "w": 0.42109375,
+    "h": 0.90875
+  },
+  "screen_holes": {
+    "top": {
+      "x": 0.289453125,
+      "y": 0.0475,
+      "w": 0.42109375,
+      "h": 0.403125
+    },
+    "bottom": {
+      "x": 0.334375,
+      "y": 0.56125,
+      "w": 0.33125,
+      "h": 0.395
+    }
+  },
+  "variants": [
+    {
+      "id": "vertical",
+      "label": "3DS Vertical",
+      "art": "assets/bezels/n3ds/vertical.png",
+      "screen_holes": {
+        "top": {
+          "x": 0.289453125,
+          "y": 0.0475,
+          "w": 0.42109375,
+          "h": 0.403125
+        },
+        "bottom": {
+          "x": 0.334375,
+          "y": 0.56125,
+          "w": 0.33125,
+          "h": 0.395
+        }
+      },
+      "hole": {
+        "x": 0.289453125,
+        "y": 0.0475,
+        "w": 0.42109375,
+        "h": 0.90875
+      }
+    },
+    {
+      "id": "horizontal",
+      "label": "Side by Side",
+      "art": "assets/bezels/n3ds/horizontal.png",
+      "hole": {
+        "x": 0.04921875,
+        "y": 0.25375,
+        "w": 0.914453125,
+        "h": 0.585625
+      },
+      "screen_holes": {
+        "top": {
+          "x": 0.04921875,
+          "y": 0.25375,
+          "w": 0.611328125,
+          "h": 0.585625
+        },
+        "bottom": {
+          "x": 0.731640625,
+          "y": 0.519375,
+          "w": 0.23203125,
+          "h": 0.27625
+        }
+      }
+    }
+  ],
+  "doc": {
+    "note": "The vertical shell is the Steam Deck default because both 400x240 and 320x240 surfaces fit at native integer scale on 1280x800. Horizontal remains a top-screen-priority alternative and may fractionally downscale the touch surface. Rectangles target measured dark display openings, and both variants consume Azahar's separate ABI2 surfaces."
+  }
+}

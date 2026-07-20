@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "id": "ppsspp",
+  "version": "1.19.3",
+  "build_kind": "source",
+  "source": {
+    "kind": "github_revision_with_submodules",
+    "owner": "hrydgard",
+    "repo": "ppsspp",
+    "tag": "v1.19.3",
+    "revision": "e49c0bd8836a8a8f678565357773386f1174d3f5",
+    "fetch_submodules": true,
+    "sha256": "sha256-71oIjUXYGFNyhcXQP65Bd2gYF6golrPR4USwS7bTxFQ="
+  },
+  "platforms": [
+    "x86_64-linux"
+  ],
+  "graphics_apis": [
+    "opengl"
+  ],
+  "outputs": {
+    "main_program": "bin/ppsspp",
+    "main_program_name": "ppsspp",
+    "patched_binary": "share/ppsspp/bin/PPSSPPSDL",
+    "build_contract": "share/semu/ppsspp-build-contract.json"
+  },
+  "fallbacks": {
+    "host_executable": false,
+    "flatpak": false,
+    "libretro": false,
+    "prebuilt_binary": false
+  },
+  "metadata": {
+    "description": "Fast and portable PSP emulator",
+    "homepage": "https://www.ppsspp.org/",
+    "license": "gpl2Plus"
+  },
+  "doc": {
+    "source": "Nix fetches the immutable upstream 1.19.3 commit with all declared submodules and verifies the recursive source hash before applying the Semu patch.",
+    "platforms": "Only the Steam Deck x86_64-linux closure is declared. Evaluation fails on other hosts instead of selecting an alternate package or frontend.",
+    "rendering": "PPSSPP queues the directly linked renderer's game phase after the final PSP image draw, executes normal PPSSPP UI, then queues the post-UI phase from Present immediately before the real swap task. No inactive report or runtime symbol lookup exists."
+  }
+}

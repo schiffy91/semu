@@ -1,0 +1,189 @@
+--- a/ruby/cmake/os-macos.cmake
++++ b/ruby/cmake/os-macos.cmake
+@@ -5,7 +5,10 @@
+   ruby
+   PRIVATE video/metal/metal.cpp video/metal/metal.hpp video/metal/Shaders.metal video/metal/ShaderTypes.h
+ )
++target_sources(ruby PRIVATE video/cgl.cpp)
++target_link_libraries(ruby PRIVATE "$<LINK_LIBRARY:FRAMEWORK,OpenGL.framework>")
+ 
++
+ # todo address
+ target_compile_options(ruby PRIVATE $<$<CXX_COMPILER_ID:Clang,AppleClang>:-Wno-unguarded-availability>)
+ 
+@@ -48,6 +51,7 @@
+ endif()
+ 
+ target_enable_feature(ruby "Metal video driver" VIDEO_METAL)
++target_enable_feature(ruby "CGL OpenGL video driver" VIDEO_CGL)
+ target_enable_feature(ruby "OpenAL audio driver" AUDIO_OPENAL)
+ if(SDL_FOUND)
+   target_enable_feature(ruby "SDL input driver" INPUT_SDL)
+@@ -55,8 +59,9 @@
+ endif()
+ if(librashader_FOUND AND ARES_ENABLE_LIBRASHADER)
+   target_enable_feature(ruby "librashader Metal runtime" LIBRA_RUNTIME_METAL)
++  target_enable_feature(ruby "librashader OpenGL runtime" LIBRA_RUNTIME_OPENGL)
+ else()
+-  target_compile_definitions(ruby PRIVATE LIBRA_RUNTIME_METAL)
++  target_compile_definitions(ruby PRIVATE LIBRA_RUNTIME_METAL LIBRA_RUNTIME_OPENGL)
+ endif()
+ target_enable_feature(ruby "Quartz input driver" INPUT_QUARTZ)
+ 
+--- a/ruby/video/video.cpp
++++ b/ruby/video/video.cpp
+@@ -10,6 +10,10 @@
+   #include <ruby/video/wgl.cpp>
+ #endif
+ 
++#if defined(VIDEO_CGL)
++  #include <ruby/video/cgl.cpp>
++#endif
++
+ #if defined(VIDEO_METAL)
+   #include <ruby/video/metal/metal.cpp>
+ #endif
+@@ -184,6 +188,10 @@
+   if(driver == "OpenGL 4.6") self.instance = std::make_unique<VideoWGL>(*this, 4, 6);
+   #endif
+   
++  #if defined(VIDEO_CGL)
++  if(driver == "OpenGL 3.2") self.instance = std::make_unique<VideoCGL>(*this);
++  #endif
++
+   #if defined(VIDEO_METAL)
+   if(driver == "Metal") self.instance = std::make_unique<VideoMetal>(*this);
+   #endif
+@@ -208,6 +216,10 @@
+   "OpenGL 3.2",
+   #endif
+     
++  #if defined(VIDEO_CGL)
++  "OpenGL 3.2",
++  #endif
++
+   #if defined(VIDEO_METAL)
+     "Metal",
+   #endif
+--- a/ruby/video/opengl/opengl.hpp
++++ b/ruby/video/opengl/opengl.hpp
+@@ -18,6 +18,10 @@
+ 
+ #include <librashader/librashader_ld.h>
+ 
++#if defined(HAVE_SEMU_RENDERER)
++#include <semu_renderer.h>
++#endif
++
+ #include "bind.hpp"
+ #include "utility.hpp"
+ 
+@@ -69,6 +73,12 @@
+   u32 outputY = 0;
+   u32 outputWidth = 0;
+   u32 outputHeight = 0;
++#if defined(HAVE_SEMU_RENDERER)
++  SemuRenderFrameGl semuFrame = {};
++  unsigned long long semuFrameId = 0;
++  bool semuFrameReady = false;
++  void* (*semuCurrentContext)() = nullptr;
++#endif
+   struct Setting {
+     string name;
+     string value;
+--- a/ruby/video/opengl/main.hpp
++++ b/ruby/video/opengl/main.hpp
+@@ -1,6 +1,13 @@
+ #if defined(PLATFORM_MACOS)
+ #import <mach-o/dyld.h>
+ #endif
++
++#if defined(HAVE_SEMU_RENDERER)
++static auto semuGetProc(const char* name) -> void* {
++  return (void*)OpenGL::resolveSymbol(name);
++}
++#endif
++
+ auto OpenGL::setShader(const string& pathname) -> void {
+   settings.reset();
+ 
+@@ -45,6 +52,9 @@
+ }
+ 
+ auto OpenGL::output() -> void {
++#if defined(HAVE_SEMU_RENDERER)
++  semuFrameReady = false;
++#endif
+   clear();
+ 
+   glActiveTexture(GL_TEXTURE0);
+@@ -111,6 +121,39 @@
+   }
+ 
+   render(sources[0].width, sources[0].height, outputX + x, outputY + y, targetWidth, targetHeight);
++
++#if defined(HAVE_SEMU_RENDERER)
++  bool semuGeometryValid = outputWidth > 0 && outputHeight > 0
++    && width > 0 && height > 0 && targetWidth > 0 && targetHeight > 0
++    && outputX + x <= outputWidth && outputY + y <= outputHeight
++    && targetWidth <= outputWidth - (outputX + x)
++    && targetHeight <= outputHeight - (outputY + y);
++  if(semuGeometryValid) {
++    semuFrame = {};
++    semuFrame.abi = SEMU_RENDER_ABI_GL;
++    semuFrame.struct_size = sizeof(semuFrame);
++    semuFrame.frame_id = ++semuFrameId;
++    semuFrame.framebuffer = 0;
++    semuFrame.color_buffer = GL_BACK;
++    semuFrame.framebuffer_width = (int)outputWidth;
++    semuFrame.framebuffer_height = (int)outputHeight;
++    semuFrame.presentation_aspect = (float)targetWidth / (float)targetHeight;
++    semuFrame.layout_variant = SEMU_RENDER_LAYOUT_AUTO;
++    semuFrame.surface_count = 1;
++    semuFrame.surfaces[0].x = (int)(outputX + x);
++    semuFrame.surfaces[0].y = (int)(outputY + y);
++    semuFrame.surfaces[0].width = (int)targetWidth;
++    semuFrame.surfaces[0].height = (int)targetHeight;
++    semuFrame.surfaces[0].native_width = (int)width;
++    semuFrame.surfaces[0].native_height = (int)height;
++    semuFrame.surfaces[0].rotation = 0;
++    semuFrame.surfaces[0].origin = SEMU_RENDER_ORIGIN_BOTTOM_LEFT;
++    semuFrame.get_proc = semuGetProc;
++    semuFrame.current_context = semuCurrentContext;
++    semu_render_game_gl(&semuFrame);
++    semuFrameReady = true;
++  }
++#endif
+ }
+ 
+ auto OpenGL::initialize(const string& shader) -> bool {
+--- a/ruby/video/cgl.cpp
++++ b/ruby/video/cgl.cpp
+@@ -1,6 +1,12 @@
+ #define GL_ALPHA_TEST 0x0bc0
+ #include "opengl/opengl.hpp"
+ 
++#if defined(HAVE_SEMU_RENDERER)
++static auto semuCglCurrentContext() -> void* {
++  return (__bridge void*)[NSOpenGLContext currentContext];
++}
++#endif
++
+ struct VideoCGL;
+ 
+ @interface RubyVideoCGL : NSOpenGLView {
+@@ -140,8 +146,14 @@
+       OpenGL::outputY = 0;
+       OpenGL::outputWidth = windowWidth;
+       OpenGL::outputHeight = windowHeight;
++#if defined(HAVE_SEMU_RENDERER)
++      OpenGL::semuCurrentContext = semuCglCurrentContext;
++#endif
+       OpenGL::output();
+ 
++#if defined(HAVE_SEMU_RENDERER)
++      if(semuFrameReady) semu_render_post_ui_gl(&semuFrame);
++#endif
+       [[view openGLContext] flushBuffer];
+       if(self.flush) glFinish();
+       [view unlockFocus];

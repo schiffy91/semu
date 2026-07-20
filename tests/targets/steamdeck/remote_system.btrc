@@ -1,0 +1,543 @@
+// Linux inspection primitives for the test-only acceptance helper. Product
+// code remains display-server agnostic; gamescopectl is used only to capture
+// physical Game Mode evidence.
+
+import std.{bytes, fs, io, process, strings, vector}
+import ./game_mode.btrc
+import ./steam_shortcuts.btrc
+
+#include <errno.h>
+#include <signal.h>
+#include <sys/stat.h>
+#include <time.h>
+#include <unistd.h>
+
+class DeckRemoteClock {
+    class bool sleep(int milliseconds) {
+        if (milliseconds < 0 || milliseconds > 30000) { return false; }
+        struct timespec delay;
+        delay.tv_sec = (time_t)(milliseconds / 1000);
+        delay.tv_nsec = (long)(milliseconds % 1000) * 1000000L;
+        while (nanosleep(&delay, &delay) != 0) {
+            if (errno != EINTR) { return false; }
+        }
+        return true;
+    }
+}
+
+class DeckRemoteHash {
+    class string output(ExecResult result) {
+        if (!result.ok()) { return ""; }
+        string line = result.stdout().trim();
+        int separator = line.indexOf(" ");
+        string digest = separator < 0
+            ? line : line.substring(0, separator);
+        return DeckGameModeContract.sha256(digest) ? digest : "";
+    }
+
+    class string file(string path) {
+        if (!FileSystem.isFile(path) || FileSystem.isSymlink(path)) {
+            return "";
+        }
+        return DeckRemoteHash.output(ChildProcess.run(
+            "/usr/bin/sha256sum", ["--", path], "",
+            CommandEnvironment.empty(), CommandEnvironment.empty(), 300000));
+    }
+
+    class string text(string value) {
+        Vector<string> arguments = [];
+        return DeckRemoteHash.output(ChildProcess.run(
+            "/usr/bin/sha256sum", arguments, "",
+            CommandEnvironment.empty(), CommandEnvironment.empty(), 30000,
+            4096, 4096, value));
+    }
+}
+
+class DeckRemoteFile {
+    class string number(long long value) {
+        char buffer[32];
+        snprintf(buffer, 32, "%lld", value);
+        return Strings.copy(buffer);
+    }
+
+    class Bytes bytes(string path) {
+        File file = File(path, "rb");
+        if (!file.ok()) { return Bytes(); }
+        Bytes result = file.readBytes();
+        bool closed = file.close();
+        return closed && !file.failed() ? result : Bytes();
+    }
+
+    class Vector<string> zeroSeparated(string path) {
+        Vector<string> result = [];
+        Bytes bytes = DeckRemoteFile.bytes(path);
+        int opening = 0;
+        for (int index = 0; index <= bytes.length(); index++) {
+            if (index < bytes.length() && bytes.get(index) != 0) { continue; }
+            if (index > opening) {
+                result.push(bytes.slice(opening, index).toStringLossy());
+            }
+            opening = index + 1;
+        }
+        return result;
+    }
+
+    class bool copy(string source, string destination) {
+        if (!FileSystem.isFile(source) || FileSystem.isSymlink(source)
+                || FileSystem.exists(destination)) {
+            return false;
+        }
+        File input = File(source, "rb");
+        File output = File(destination, "wbx");
+        if (!input.ok() || !output.ok()) {
+            input.close();
+            output.close();
+            return false;
+        }
+        Bytes bytes = input.readBytes();
+        bool wrote = !input.failed() && output.writeBytes(bytes);
+        bool inputClosed = input.close();
+        bool outputClosed = output.close();
+        return wrote && inputClosed && outputClosed;
+    }
+
+    class long long size(string path) {
+        struct stat status;
+        return stat(path, &status) == 0 && S_ISREG(status.st_mode)
+            ? (long long)status.st_size : -1LL;
+    }
+
+    class string tail(string path, long long opening) {
+        if (opening < 0LL) { return ""; }
+        FILE* file = fopen(path, "rb");
+        if (file == NULL || fseeko(file, (off_t)opening, SEEK_SET) != 0) {
+            if (file != NULL) { fclose(file); }
+            return "";
+        }
+        Bytes bytes = Bytes();
+        char chunk[8192];
+        size_t count = fread(chunk, 1, 8192, file);
+        while (count > (size_t)0) {
+            bytes.appendRaw(chunk, (int)count);
+            count = fread(chunk, 1, 8192, file);
+        }
+        bool valid = ferror(file) == 0 && fclose(file) == 0;
+        return valid ? bytes.toStringLossy() : "";
+    }
+
+    class string metadata(string path) {
+        struct stat status;
+        if (lstat(path, &status) != 0) { return "absent"; }
+        return DeckRemoteFile.number((long long)status.st_dev) + "|"
+            + DeckRemoteFile.number((long long)status.st_ino) + "|"
+            + DeckRemoteFile.number((long long)status.st_mode) + "|"
+            + DeckRemoteFile.number((long long)status.st_size) + "|"
+            + DeckRemoteFile.number((long long)status.st_mtime) + "|"
+            + DeckRemoteFile.number((long long)status.st_ctime);
+    }
+}
+
+class DeckRemoteProcess {
+    class bool numeric(string value) {
+        if (value.isEmpty()) { return false; }
+        for character in value {
+            if (character < '0' || character > '9') { return false; }
+        }
+        return true;
+    }
+
+    class Vector<int> all() {
+        Vector<int> result = [];
+        for name in FileSystem.listDir("/proc") {
+            if (DeckRemoteProcess.numeric(name)) { result.push(name.toInt()); }
+        }
+        return result;
+    }
+
+    class bool alive(int process) {
+        return process > 1 && kill((pid_t)process, 0) == 0;
+    }
+
+    class string path(int process, string name) {
+        return "/proc/" + f"{process}" + "/" + name;
+    }
+
+    class string comm(int process) {
+        return FileSystem.readText(
+            DeckRemoteProcess.path(process, "comm")).trim();
+    }
+
+    class Vector<string> arguments(int process) {
+        return DeckRemoteFile.zeroSeparated(
+            DeckRemoteProcess.path(process, "cmdline"));
+    }
+
+    class Vector<string> environment(int process) {
+        return DeckRemoteFile.zeroSeparated(
+            DeckRemoteProcess.path(process, "environ"));
+    }
+
+    class string environmentValue(int process, string name) {
+        string prefix = name + "=";
+        for entry in DeckRemoteProcess.environment(process) {
+            if (entry.startsWith(prefix)) {
+                return entry.substring(prefix.len(), entry.len());
+            }
+        }
+        return "";
+    }
+
+    class Vector<string> statFields(int process) {
+        string value = FileSystem.readText(
+            DeckRemoteProcess.path(process, "stat")).trim();
+        int closing = Strings.rfind(value, ")");
+        if (closing < 0) {
+            Vector<string> empty = [];
+            return empty;
+        }
+        return Strings.split(value.substring(closing + 2, value.len()), " ");
+    }
+
+    class int parent(int process) {
+        Vector<string> fields = DeckRemoteProcess.statFields(process);
+        return fields.size() > 1 ? fields.get(1).toInt() : 0;
+    }
+
+    class string startTime(int process) {
+        Vector<string> fields = DeckRemoteProcess.statFields(process);
+        return fields.size() > 19 ? fields.get(19) : "";
+    }
+
+    class string session(int process) {
+        Vector<string> fields = DeckRemoteProcess.statFields(process);
+        return fields.size() > 3 ? fields.get(3) : "";
+    }
+
+    class bool descendant(int process, int ancestor) {
+        int cursor = process;
+        for (int depth = 0; depth < 96; depth++) {
+            cursor = DeckRemoteProcess.parent(cursor);
+            if (cursor == ancestor) { return true; }
+            if (cursor <= 1) { return false; }
+        }
+        return false;
+    }
+
+    class bool gamepadUi(int process) {
+        return DeckRemoteProcess.arguments(process).contains("-gamepadui");
+    }
+
+    class int steam() {
+        int found = 0;
+        for process in DeckRemoteProcess.all() {
+            if (DeckRemoteProcess.comm(process).equals("steam")
+                    && DeckRemoteProcess.gamepadUi(process)) {
+                if (found != 0) { return 0; }
+                found = process;
+            }
+        }
+        return found;
+    }
+
+    class Vector<int> esDeProcesses() {
+        Vector<int> result = [];
+        for process in DeckRemoteProcess.all() {
+            if (DeckRemoteProcess.comm(process).equals("es-de")) {
+                result.push(process);
+            }
+        }
+        return result;
+    }
+
+    class bool hasArgument(int process, string expected) {
+        return expected.isEmpty()
+            || DeckRemoteProcess.arguments(process).contains(expected);
+    }
+
+    class bool hasBasenameArgument(int process, string expected) {
+        if (expected.isEmpty()) { return true; }
+        for argument in DeckRemoteProcess.arguments(process) {
+            if (PathTools.basename(argument).equals(expected)) { return true; }
+        }
+        return false;
+    }
+
+    class Vector<string> sessionEnvironment(int process) {
+        Vector<string> result = [];
+        for entry in DeckRemoteProcess.environment(process) {
+            for prefix in ["DISPLAY=", "WAYLAND_DISPLAY=", "XDG_RUNTIME_DIR=",
+                           "DBUS_SESSION_BUS_ADDRESS=", "XDG_SESSION_TYPE=",
+                           "SDL_VIDEODRIVER="] {
+                if (entry.startsWith(prefix)) { result.push(entry); }
+            }
+        }
+        return result;
+    }
+}
+
+class DeckRemoteMounts {
+    class string decode(string value) {
+        return value.replace("\\040", " ")
+            .replace("\\011", "\t")
+            .replace("\\012", "\n")
+            .replace("\\134", "\\");
+    }
+
+    class bool option(string options, string expected) {
+        return Strings.split(options, ",").contains(expected);
+    }
+
+    class bool readOnly(int process, string target) {
+        string best = "";
+        string selected = "";
+        for line in Strings.split(FileSystem.readText(
+                DeckRemoteProcess.path(process, "mountinfo")), "\n") {
+            Vector<string> fields = Strings.split(line, " ");
+            if (fields.size() < 6) { continue; }
+            string mount = DeckRemoteMounts.decode(fields.get(4));
+            if (DeckGameModeContract.contains(mount, target)
+                    && mount.len() > best.len()) {
+                best = mount;
+                selected = fields.get(5);
+            }
+        }
+        return !best.isEmpty() && DeckRemoteMounts.option(selected, "ro");
+    }
+
+    class bool externalReadOnly(int process, Vector<string> roots) {
+        string mountInfo = FileSystem.readText(
+            DeckRemoteProcess.path(process, "mountinfo"));
+        for root in roots {
+            if (!DeckRemoteMounts.readOnly(process, root)) { return false; }
+            for line in Strings.split(mountInfo, "\n") {
+                Vector<string> fields = Strings.split(line, " ");
+                if (fields.size() < 6) { continue; }
+                string mount = DeckRemoteMounts.decode(fields.get(4));
+                if (DeckGameModeContract.contains(root, mount)
+                        && !DeckRemoteMounts.option(fields.get(5), "ro")) {
+                    return false;
+                }
+            }
+        }
+        return true;
+    }
+}
+
+class DeckRemoteShortcut {
+    class Vector<string> databases(string steamRoot) {
+        Vector<string> result = [];
+        string users = PathTools.join(steamRoot, "userdata");
+        if (!FileSystem.isDir(users) || FileSystem.isSymlink(users)) {
+            return result;
+        }
+        for account in FileSystem.listDir(users) {
+            if (!DeckRemoteProcess.numeric(account)) { continue; }
+            string path = PathTools.join(users,
+                account + "/config/shortcuts.vdf");
+            if (FileSystem.isFile(path) && !FileSystem.isSymlink(path)) {
+                result.push(path);
+            }
+        }
+        return result;
+    }
+
+    class DeckSteamShortcutResolution resolve(string steamRoot,
+                                                string executable) {
+        DeckSteamShortcutResolution failure = DeckSteamShortcutResolution();
+        Vector<string> paths = DeckRemoteShortcut.databases(steamRoot);
+        if (paths.isEmpty()) {
+            failure.error = "Steam has no readable shortcut database";
+            return failure;
+        }
+        Vector<DeckSteamShortcutParseResult> documents = [];
+        for path in paths {
+            Bytes bytes = DeckRemoteFile.bytes(path);
+            DeckSteamShortcutParseResult parsed = DeckSteamShortcutVdf.parse(
+                bytes, path);
+            if (!parsed.valid) {
+                failure.error = path + ": " + parsed.error;
+                return failure;
+            }
+            documents.push(parsed);
+        }
+        DeckSteamShortcutResolution resolution = DeckSteamShortcutPolicy.resolve(
+            documents, executable);
+        if (!resolution.valid) { return resolution; }
+        resolution.databaseSha256 = DeckRemoteHash.file(
+            resolution.shortcut.source);
+        if (resolution.databaseSha256.isEmpty()) {
+            resolution.valid = false;
+            resolution.error = "could not hash the resolved shortcut database";
+        }
+        return resolution;
+    }
+
+    class bool matches(DeckSteamShortcutResolution actual,
+                       DeckExpectedShortcut expected) {
+        return actual.valid && expected.valid()
+            && actual.shortcut.source.equals(expected.database)
+            && actual.databaseSha256.equals(expected.databaseSha256)
+            && actual.shortcut.index.equals(expected.index)
+            && actual.appId().equals(expected.appId)
+            && actual.gameId().equals(expected.gameId)
+            && DeckSteamShortcutPolicy.unquote(actual.shortcut.executable)
+                .equals(expected.executable)
+            && DeckRemoteHash.file(expected.executable)
+                .equals(expected.executableSha256);
+    }
+}
+
+class DeckRemoteSession {
+    public int steam;
+    public int esDe;
+    public string esDeStart;
+    public string esDeSession;
+
+    public DeckRemoteSession() {
+        self.steam = 0;
+        self.esDe = 0;
+        self.esDeStart = "";
+        self.esDeSession = "";
+    }
+
+    public bool valid(DeckGameModeRequest request) {
+        return self.steam > 1 && self.esDe > 1
+            && DeckRemoteProcess.alive(self.steam)
+            && DeckRemoteProcess.alive(self.esDe)
+            && DeckRemoteProcess.descendant(self.esDe, self.steam)
+            && DeckRemoteProcess.gamepadUi(self.steam)
+            && DeckRemoteProcess.startTime(self.esDe).equals(self.esDeStart)
+            && DeckRemoteProcess.session(self.esDe).equals(self.esDeSession)
+            && DeckRemoteProcess.environmentValue(
+                self.esDe, "SteamAppId").equals(request.shortcut.appId)
+            && DeckRemoteProcess.environmentValue(
+                self.esDe, "SteamGameId").equals(request.shortcut.gameId)
+            && DeckRemoteProcess.environmentValue(
+                self.esDe, "SEMU_ENTRYPOINT").equals(
+                    request.shortcut.executable);
+    }
+}
+
+class DeckRemoteGameMode {
+    class DeckRemoteSession existing(DeckGameModeRequest request) {
+        DeckRemoteSession session = DeckRemoteSession();
+        session.steam = DeckRemoteProcess.steam();
+        if (session.steam < 2) { return session; }
+        for candidate in DeckRemoteProcess.esDeProcesses() {
+            if (!DeckRemoteProcess.descendant(candidate, session.steam)) {
+                continue;
+            }
+            if (session.esDe != 0) {
+                session.esDe = 0;
+                return session;
+            }
+            session.esDe = candidate;
+        }
+        if (session.esDe > 1) {
+            session.esDeStart = DeckRemoteProcess.startTime(session.esDe);
+            session.esDeSession = DeckRemoteProcess.session(session.esDe);
+        }
+        return session.valid(request) ? session : DeckRemoteSession();
+    }
+
+    class DeckRemoteSession launch(DeckGameModeRequest request) {
+        DeckRemoteSession current = DeckRemoteGameMode.existing(request);
+        if (current.valid(request)) { return current; }
+        int steam = DeckRemoteProcess.steam();
+        if (steam < 2 || !DeckRemoteProcess.esDeProcesses().isEmpty()) {
+            return DeckRemoteSession();
+        }
+        ExecResult launched = ChildProcess.run("/usr/bin/steam",
+            ["-silent", "steam://rungameid/" + request.shortcut.gameId],
+            "", DeckRemoteProcess.sessionEnvironment(steam),
+            CommandEnvironment.empty(), 30000,
+            65536, 65536, "", CommandOutput.suppress(),
+            CommandOutput.collect());
+        if (!launched.ok()) { return DeckRemoteSession(); }
+        for (int attempt = 0; attempt < 1800; attempt++) {
+            DeckRemoteSession session = DeckRemoteGameMode.existing(request);
+            if (session.valid(request)) { return session; }
+            if (!DeckRemoteClock.sleep(100)) { break; }
+        }
+        return DeckRemoteSession();
+    }
+
+    class string screenshot(DeckRemoteSession session, string path) {
+        if (session.esDe < 2 || !DeckRemoteProcess.alive(session.esDe)
+                || FileSystem.exists(path)) { return ""; }
+        ExecResult result = ChildProcess.run("/usr/bin/gamescopectl",
+            ["screenshot", path], "",
+            DeckRemoteProcess.sessionEnvironment(session.esDe),
+            CommandEnvironment.empty(), 30000,
+            65536, 65536);
+        return result.ok() ? DeckRemoteHash.file(path) : "";
+    }
+}
+
+class DeckRemoteSentinel {
+    class Vector<string> sorted(Vector<string> values) {
+        Vector<string> result = [];
+        for value in values { result.push(value); }
+        for (int index = 1; index < result.size(); index++) {
+            string current = result.get(index);
+            int previous = index - 1;
+            while (previous >= 0 && result.get(previous) > current) {
+                result.set(previous + 1, result.get(previous));
+                previous--;
+            }
+            result.set(previous + 1, current);
+        }
+        return result;
+    }
+
+    class bool relevant(string mount, Vector<string> roots) {
+        for root in roots {
+            if (DeckGameModeContract.contains(mount, root)
+                    || DeckGameModeContract.contains(root, mount)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    class Vector<string> mountRecords(Vector<string> roots) {
+        Vector<string> records = [];
+        for line in Strings.split(
+                FileSystem.readText("/proc/self/mountinfo"), "\n") {
+            Vector<string> fields = Strings.split(line, " ");
+            if (fields.size() < 10) { continue; }
+            string mount = DeckRemoteMounts.decode(fields.get(4));
+            if (!DeckRemoteSentinel.relevant(mount, roots)) { continue; }
+            int separator = -1;
+            for (int index = 6; index < fields.size(); index++) {
+                if (fields.get(index).equals("-")) {
+                    separator = index;
+                    break;
+                }
+            }
+            if (separator < 0 || separator + 3 >= fields.size()) {
+                continue;
+            }
+            records.push("mount|" + mount + "|" + fields.get(5)
+                + "|" + fields.get(separator + 1)
+                + "|" + fields.get(separator + 2)
+                + "|" + fields.get(separator + 3));
+        }
+        return DeckRemoteSentinel.sorted(records);
+    }
+
+    class string value(DeckGameModeRequest request) {
+        Vector<string> records = [];
+        for root in request.externalRoots {
+            if (!FileSystem.isDir(root) || FileSystem.isSymlink(root)) {
+                return "";
+            }
+            records.push(root + "|" + DeckRemoteFile.metadata(root));
+        }
+        for record in DeckRemoteSentinel.mountRecords(request.externalRoots) {
+            records.push(record);
+        }
+        return DeckRemoteHash.text(
+            DeckRemoteSentinel.sorted(records).join("\n") + "\n");
+    }
+}
