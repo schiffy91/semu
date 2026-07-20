@@ -1,6 +1,6 @@
 SHELL := /bin/bash
 
-BTRC_TRANSPILE := nix run path:.\#btrcpy --
+BTRC_TRANSPILE := nix run .\#btrcpy --
 
 TARGET ?= steam-deck
 EMULATOR ?=
@@ -39,7 +39,7 @@ cross-linux: $(SEMU_BIN) ## Cross-build build/semu-linux-x64 (static musl)
 
 nix-build: ## Build the composed Nix package
 	@mkdir -p "$(dir $(NIX_RESULT))"
-	nix build --out-link "$(NIX_RESULT)" path:.\#default
+	nix build --out-link "$(NIX_RESULT)" .\#default
 
 target: $(SEMU_BIN) ## Compile TARGET (default: steam-deck)
 	$(SEMU_BIN) build target "$(TARGET)" --project "$(CURDIR)"

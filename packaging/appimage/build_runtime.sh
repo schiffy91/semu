@@ -26,7 +26,7 @@ if [ ! -x "$builder" ] || [ "$source" -nt "$builder" ] \
   }
   temporary="$tools/runtime-builder.$$"
   trap 'rm -f -- "$temporary" "$temporary.c"' EXIT HUP INT TERM
-  (cd "$repo" && nix run path:.#btrcpy -- "$entrypoint" -o "$temporary.c" \
+  (cd "$repo" && nix run .#btrcpy -- "$entrypoint" -o "$temporary.c" \
     --strict-imports --no-cache --no-stdlib)
   cc "$temporary.c" -std=c11 -o "$temporary" -lm
   chmod 0555 "$temporary"
