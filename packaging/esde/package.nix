@@ -49,6 +49,11 @@ let
       };
 
       patches = [ settingsPatch ];
+      postPatch = (previousAttrs.postPatch or "") + ''
+        grep --fixed-strings --quiet \
+          'mBoolMap["SplashScreen"] = {true, true};' \
+          es-core/src/Settings.cpp
+      '';
       cmakeFlags = [
         (esDePackages.lib.cmakeBool "APPLICATION_UPDATER" false)
         (esDePackages.lib.cmakeBool "STEAM_DECK" steamDeck)
@@ -90,9 +95,6 @@ let
         for theme in slate-es-de linear-es-de modern-es-de; do
           test -s "$out/share/es-de/themes/$theme/theme.xml"
         done
-        grep --fixed-strings --quiet \
-          'mBoolMap["SplashScreen"] = {true, true};' \
-          es-core/src/Settings.cpp
       '';
 
       passthru = (previousAttrs.passthru or { }) // {

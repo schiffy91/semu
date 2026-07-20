@@ -46,7 +46,7 @@ new file mode 100644
 index 0000000..b151332
 --- /dev/null
 +++ b/es-app/src/guis/GuiSemuSettings.cpp
-@@ -0,0 +1,817 @@
+@@ -0,0 +1,818 @@
 +//  SPDX-License-Identifier: MIT
 +//
 +//  Generic Semu settings bridge. The installed manifest selects one stable
@@ -722,8 +722,9 @@ index 0000000..b151332
 +            }
 +            if (detail.empty())
 +                detail = result.success ? "COMMAND COMPLETED" : "COMMAND FAILED";
-+            if (!result.success)
++            if (!result.success) {
 +                LOG(LogError) << "GuiSemuSettings: Declared command failed";
++            }
 +            mWindow->pushGui(new GuiMsgBox(command.label + "\n\n" + detail));
 +        });
 +        addRow(row);
