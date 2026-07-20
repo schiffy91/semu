@@ -1,6 +1,6 @@
 // emulator_runtime_contract_test.btrc - profile and launch compilation proof.
 
-import std.{fs, json, vector}
+import std.{fs, json, strings, vector}
 import ../../src/compiler/checker.btrc
 import ../../src/compiler/model.btrc
 import ../../src/compiler/parser.btrc
@@ -9,6 +9,7 @@ import ../../src/generators/emulator_profiles.btrc
 import ../../src/generators/emulator_runtime.btrc
 import ../../src/generators/emulators.btrc
 import ../../src/generators/input/action_abi.btrc
+import ../../src/generators/steam_input.btrc
 import ../../src/lib/json_format.btrc
 
 class EmulatorRuntimeContractTest {
@@ -31,6 +32,78 @@ class EmulatorRuntimeContractTest {
             }
         }
         return "";
+    }
+
+    class JsonValue admissionEnvironment(JsonValue inputDefinition) {
+        JsonValue result = JsonValue.makeObject();
+        JsonValue supervisor = inputDefinition.get("device_identities")
+            .get("supervisor");
+        JsonValue gamepad = supervisor.get("gamepad");
+        JsonValue command = supervisor.get("command_facet");
+        result.set("SEMU_INPUT_GAMEPAD_SOURCE", gamepad.get("source"));
+        result.set("SEMU_INPUT_GAMEPAD_VENDOR", gamepad.get("vendor"));
+        result.set("SEMU_INPUT_GAMEPAD_PRODUCT", gamepad.get("product"));
+        result.set("SEMU_INPUT_GAMEPAD_PHYSICAL", gamepad.get("physical"));
+        result.set("SEMU_INPUT_COMMAND_SOURCE", command.get("source"));
+        result.set("SEMU_INPUT_COMMAND_VENDOR", command.get("vendor"));
+        result.set("SEMU_INPUT_COMMAND_PRODUCT", command.get("product"));
+        result.set("SEMU_INPUT_COMMAND_PHYSICAL_PREFIX",
+            command.get("physical_prefix"));
+        result.set("SEMU_INPUT_COMMAND_PHYSICAL_SUFFIX",
+            command.get("physical_suffix"));
+        return result;
+    }
+
+    class bool inputFixture(SemuInputSource input, string destination,
+                            JsonValue definition) {
+        string sourceDirectory = PathTools.join(
+            PathTools.dirname(input.actionsFile),
+            SemuJsonPath.text(definition.get("binding_icons")
+                .get("source_dir")));
+        string fixtureDirectory = PathTools.dirname(destination);
+        string fixtureIcons = PathTools.join(fixtureDirectory,
+            SemuJsonPath.text(definition.get("binding_icons")
+                .get("source_dir")));
+        JsonValue icons = definition.get("binding_icons").get("files");
+        if (!icons.isArray()
+                || FileSystem.mkdirp(fixtureDirectory) != 0) {
+            return false;
+        }
+        for (int index = 0; index < icons.size(); index++) {
+            string icon = SemuJsonPath.text(icons.at(index));
+            if (!SteamInputFiles.copyPng(
+                    PathTools.join(sourceDirectory, icon),
+                    PathTools.join(fixtureIcons, icon))) {
+                return false;
+            }
+        }
+        return Path.writeAll(destination,
+            SemuJsonFormat.document(definition));
+    }
+
+    class JsonValue capturedEnvironment(string file) {
+        JsonValue result = JsonValue.makeObject();
+        for line in Strings.split(Path.readAll(file), "\n") {
+            int separator = line.indexOf("=");
+            if (separator <= 0) { continue; }
+            result.set(line.substring(0, separator), JsonValue.makeString(
+                line.substring(
+                    separator + 1, line.len() - separator - 1)));
+        }
+        return result;
+    }
+
+    class bool containsEnvironment(JsonValue actual, JsonValue expected) {
+        Vector<string> keys = expected.keys();
+        if (keys.size() != 9) { return false; }
+        for key in keys {
+            if (!actual.has(key) || !actual.get(key).isString()
+                    || !actual.get(key).asString().equals(
+                        expected.get(key).asString())) {
+                return false;
+            }
+        }
+        return true;
     }
 
     class string declaredSupervisorBindings(SemuInputSource input) {
@@ -256,6 +329,44 @@ class EmulatorRuntimeContractTest {
         }
 
         SemuInputSource deckInput = model.inputByReference(model.target.input);
+        JsonValue inputFixtureDefinition = JsonValue.parse(
+            Path.readAll(deckInput.actionsFile));
+        JsonValue fixtureSupervisor = inputFixtureDefinition
+            .get("device_identities").get("supervisor");
+        fixtureSupervisor.get("gamepad").set(
+            "vendor", JsonValue.makeString("1a2b"));
+        fixtureSupervisor.get("gamepad").set(
+            "product", JsonValue.makeString("5678"));
+        fixtureSupervisor.get("command_facet").set(
+            "vendor", JsonValue.makeString("1a2b"));
+        fixtureSupervisor.get("command_facet").set(
+            "product", JsonValue.makeString("def0"));
+        fixtureSupervisor.get("command_facet").set(
+            "physical_prefix", JsonValue.makeString("fixture-usb-"));
+        fixtureSupervisor.get("command_facet").set(
+            "physical_suffix", JsonValue.makeString("/input9"));
+        string inputFixtureFile = PathTools.join(
+            scratch, "input-fixture/steam_input.json");
+        bool inputFixtureReady = !inputFixtureDefinition.isError()
+            && EmulatorRuntimeContractTest.inputFixture(
+                deckInput, inputFixtureFile, inputFixtureDefinition);
+        SteamInputResult generatedInput = inputFixtureReady
+            ? SteamInputGenerator.emit(inputFixtureFile,
+                PathTools.join(build.outputRoot, "steam-input"))
+            : SteamInputResult();
+        JsonValue expectedAdmission =
+            EmulatorRuntimeContractTest.admissionEnvironment(
+                inputFixtureDefinition);
+        JsonValue generatedEnvironment =
+            SemuInputSupervisorEnvironment.loadOwned(build.outputRoot);
+        if (!inputFixtureReady || !generatedInput.ok()
+                || !EmulatorRuntimeContractTest.containsEnvironment(
+                    generatedEnvironment, expectedAdmission)) {
+            for error in generatedInput.errors { print("  " + error); }
+            failures += EmulatorRuntimeContractTest.fail(
+                "generated owned supervisor environment fixture is invalid");
+        }
+
         int linuxEmulators = 0;
         for emulator in model.emulators {
             if (!emulator.supports("linux")) { continue; }
@@ -399,7 +510,11 @@ class EmulatorRuntimeContractTest {
         Path.writeAll(executable, "fixture");
         Path.writeAll(graphicsWrapper, "fixture");
         Path.writeAll(core, "fixture");
-        Path.writeAll(supervisor, "fixture");
+        Path.writeAll(supervisor, """#!/bin/sh
+set -eu
+command -p env > \"$SEMU_TEST_SUPERVISOR_CAPTURE\"
+""");
+        FileSystem.chmod(supervisor, 493); // 0755
         Path.writeAll(shader, "fixture");
         Path.writeAll(bezel, "fixture");
         Path.writeAll(biosMarker, "read-only-fixture");
@@ -503,6 +618,8 @@ class EmulatorRuntimeContractTest {
                 || !EmulatorRuntimeContractTest.environment(
                     launch, "SEMU_INPUT_ACTION_BINDINGS").contains(
                         "8:ctrl:q")
+                || !EmulatorRuntimeContractTest.containsEnvironment(
+                    launch.json().get("environment"), expectedAdmission)
                 || !launch.backend.equals("bwrap")
                 || !launch.requiresSandbox
                 || !FileSystem.isFile(PathTools.join(scratch,
@@ -512,6 +629,43 @@ class EmulatorRuntimeContractTest {
             print("  launch plan: " + launch.json().stringify());
             failures += EmulatorRuntimeContractTest.fail(
                 "semantic RetroArch launch did not prepare its owned runtime");
+        }
+
+        string supervisorCapture = PathTools.join(
+            scratch, "supervisor-environment.txt");
+        launch.environment(
+            "SEMU_TEST_SUPERVISOR_CAPTURE", supervisorCapture);
+        launch.requiresSandbox = false;
+        int supervisorExit = SemuEmulatorRuntime.execute(launch);
+        JsonValue capturedSupervisorEnvironment =
+            EmulatorRuntimeContractTest.capturedEnvironment(
+                supervisorCapture);
+        if (supervisorExit != 0
+                || !EmulatorRuntimeContractTest.containsEnvironment(
+                    capturedSupervisorEnvironment, expectedAdmission)) {
+            failures += EmulatorRuntimeContractTest.fail(
+                "launch execution did not pass all nine generated admission variables to the supervisor process");
+        }
+
+        string supervisorEnvironmentFile =
+            SemuInputSupervisorEnvironment.file(build.outputRoot);
+        string completeSupervisorEnvironment = Path.readAll(
+            supervisorEnvironmentFile);
+        string omittedAdmissionKey =
+            "SEMU_INPUT_COMMAND_PHYSICAL_SUFFIX";
+        string omittedAdmissionLine = omittedAdmissionKey + "="
+            + expectedAdmission.get(omittedAdmissionKey).asString() + "\n";
+        Path.writeAll(supervisorEnvironmentFile,
+            completeSupervisorEnvironment.replace(omittedAdmissionLine, ""));
+        SemuLaunchPlan incompleteAdmission = SemuEmulatorRuntime.plan(
+            model, build, "retroarch", "gb", "gambatte", rom,
+            CompilerDiagnostics());
+        Path.writeAll(
+            supervisorEnvironmentFile, completeSupervisorEnvironment);
+        if (!incompleteAdmission.error.equals(
+                "Linux input supervisor configuration is invalid")) {
+            failures += EmulatorRuntimeContractTest.fail(
+                "launcher fell back to hard-coded admission policy when the generated environment was incomplete");
         }
 
         FileSystem.removeRecursive(supervisor);
