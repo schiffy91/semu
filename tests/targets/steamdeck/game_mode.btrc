@@ -514,6 +514,70 @@ class DeckGameModeReceiptPolicy {
         return DeckEvidenceReceiptPolicy.verifyClassification(line, scenario);
     }
 
+    class bool exactShortcut(JsonValue root, DeckGameModeRequest request) {
+        DeckExpectedShortcut actual = DeckExpectedShortcut.parse(
+            root.get("shortcut"));
+        return actual.valid()
+            && actual.database.equals(request.shortcut.database)
+            && actual.databaseSha256.equals(
+                request.shortcut.databaseSha256)
+            && actual.index.equals(request.shortcut.index)
+            && actual.appId.equals(request.shortcut.appId)
+            && actual.gameId.equals(request.shortcut.gameId)
+            && actual.executable.equals(request.shortcut.executable)
+            && actual.executableSha256.equals(
+                request.shortcut.executableSha256);
+    }
+
+    class string generatedInputs(JsonValue root,
+                                  DeckGameModeRequest request,
+                                  string receiptKind) {
+        JsonValue generatedFiles = root.get("generated_inputs").get("files");
+        if (!generatedFiles.isArray()
+                || generatedFiles.size() != request.generatedInputs.size()) {
+            return receiptKind + " generated-input receipt is incomplete";
+        }
+        for (int index = 0; index < generatedFiles.size(); index++) {
+            JsonValue actual = generatedFiles.at(index);
+            if (!actual.get("path").isString()
+                    || !actual.get("path").asString().equals(
+                        request.generatedInputs.get(index))
+                    || !actual.get("sha256").isString()
+                    || !DeckGameModeContract.sha256(
+                        actual.get("sha256").asString())) {
+                return receiptKind + " generated-input identity changed";
+            }
+        }
+        return "";
+    }
+
+    class string preflight(JsonValue root, DeckGameModeRequest request) {
+        if (root.has("evidence")) {
+            return "preflight receipt must not contain physical evidence";
+        }
+        if (!DeckGameModeReceiptPolicy.exactShortcut(root, request)) {
+            return "preflight receipt is not bound to the exact installed shortcut";
+        }
+        JsonValue checks = root.get("checks");
+        if (!DeckGameModeReceiptPolicy.flag(root, "checks", "game_mode")
+                || !checks.get("steam_pid").isInt()
+                || checks.get("steam_pid").asInt() < 2
+                || !DeckGameModeReceiptPolicy.flag(
+                    root, "checks", "keepawake")
+                || !DeckGameModeReceiptPolicy.text(
+                    root, "checks", "keepawake_service").equals(
+                        "semu-keepawake.service")
+                || !DeckGameModeReceiptPolicy.flag(root, "checks", "uinput")
+                || !DeckGameModeReceiptPolicy.text(
+                    root, "checks", "uinput_device").equals("/dev/uinput")
+                || !DeckGameModeReceiptPolicy.flag(
+                    root, "checks", "generated_inputs_hashed")) {
+            return "preflight receipt is missing concrete prerequisite checks";
+        }
+        return DeckGameModeReceiptPolicy.generatedInputs(
+            root, request, "preflight");
+    }
+
     class string verify(JsonValue root, DeckGameModeRequest request) {
         if (!root.isObject() || !root.get("schema_version").isInt()
                 || root.get("schema_version").asInt() != 1
@@ -558,22 +622,14 @@ class DeckGameModeReceiptPolicy {
                     == request.operation.equals("batch-end")
                 ? "" : "batch media receipt performed a broad scan";
         }
+        if (request.operation.equals("preflight")) {
+            return DeckGameModeReceiptPolicy.preflight(root, request);
+        }
         string classification = DeckGameModeReceiptPolicy.classification(
             root, request.operation.equals("frontend")
                 ? "steam-shortcut-launch" : request.scenario);
         if (!classification.isEmpty()) { return classification; }
-        DeckExpectedShortcut actual = DeckExpectedShortcut.parse(
-            root.get("shortcut"));
-        if (!actual.valid()
-                || !actual.database.equals(request.shortcut.database)
-                || !actual.databaseSha256.equals(
-                    request.shortcut.databaseSha256)
-                || !actual.index.equals(request.shortcut.index)
-                || !actual.appId.equals(request.shortcut.appId)
-                || !actual.gameId.equals(request.shortcut.gameId)
-                || !actual.executable.equals(request.shortcut.executable)
-                || !actual.executableSha256.equals(
-                    request.shortcut.executableSha256)) {
+        if (!DeckGameModeReceiptPolicy.exactShortcut(root, request)) {
             return "receipt is not bound to the exact installed shortcut";
         }
         JsonValue launch = root.get("launch");
@@ -622,22 +678,9 @@ class DeckGameModeReceiptPolicy {
                 return "scenario protected-input identity changed";
             }
         }
-        JsonValue generatedFiles = root.get("generated_inputs").get("files");
-        if (!generatedFiles.isArray()
-                || generatedFiles.size() != request.generatedInputs.size()) {
-            return "scenario generated-input receipt is incomplete";
-        }
-        for (int index = 0; index < generatedFiles.size(); index++) {
-            JsonValue actual = generatedFiles.at(index);
-            if (!actual.get("path").isString()
-                    || !actual.get("path").asString().equals(
-                        request.generatedInputs.get(index))
-                    || !actual.get("sha256").isString()
-                    || !DeckGameModeContract.sha256(
-                        actual.get("sha256").asString())) {
-                return "scenario generated-input identity changed";
-            }
-        }
+        string generatedInputs = DeckGameModeReceiptPolicy.generatedInputs(
+            root, request, "scenario");
+        if (!generatedInputs.isEmpty()) { return generatedInputs; }
         if (request.operation.equals("automated-game-mode")
                 && (DeckGameModeReceiptPolicy.flag(
                     root, "input", "steam_radial_ui_proven")

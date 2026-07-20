@@ -258,6 +258,105 @@ class DeckHarnessContractTest {
         return request;
     }
 
+    class DeckGameModeRequest preflightRequest(
+            DeckExpectedShortcut shortcut) {
+        DeckGameModeRequest request = DeckGameModeRequest();
+        request.operation = "preflight";
+        request.runRoot = "/home/deck/.local/share/semu/build/verification/steamdeck/runs/preflight";
+        request.projectRoot = "/home/deck/.local/share/semu";
+        request.esDeHome = "/home/deck/ES-DE";
+        request.steamRoot = "/home/deck/.local/share/Steam";
+        request.externalRoots = [
+            "/run/media/deck/SD/Emulation/ES-DE/ES-DE/ROMs",
+            "/run/media/deck/SD/Emulation/RetroArch/config/system",
+            "/run/media/deck/SD/Emulation"
+        ];
+        request.generatedInputs = [
+            "/home/deck/ES-DE/custom_systems/es_systems.xml",
+            "/home/deck/ES-DE/custom_systems/es_find_rules.xml",
+            "/home/deck/ES-DE/settings/semu_settings.json"
+        ];
+        request.shortcut = shortcut;
+        return request;
+    }
+
+    class JsonValue preflightReceipt(DeckGameModeRequest request) {
+        JsonValue receipt = JsonValue.makeObject();
+        receipt.set("schema_version", JsonValue.makeInt(1));
+        receipt.set("operation", JsonValue.makeString("preflight"));
+        receipt.set("shortcut", request.shortcut.json());
+        JsonValue checks = JsonValue.makeObject();
+        checks.set("game_mode", JsonValue.makeBool(true));
+        checks.set("steam_pid", JsonValue.makeInt(2));
+        checks.set("keepawake", JsonValue.makeBool(true));
+        checks.set("keepawake_service",
+            JsonValue.makeString("semu-keepawake.service"));
+        checks.set("uinput", JsonValue.makeBool(true));
+        checks.set("uinput_device", JsonValue.makeString("/dev/uinput"));
+        checks.set("generated_inputs_hashed", JsonValue.makeBool(true));
+        receipt.set("checks", checks);
+        JsonValue files = JsonValue.makeArray();
+        for path in request.generatedInputs {
+            JsonValue file = JsonValue.makeObject();
+            file.set("path", JsonValue.makeString(path));
+            file.set("sha256", JsonValue.makeString(
+                DeckHarnessContractTest.oneHash()));
+            files.push(file);
+        }
+        JsonValue generatedInputs = JsonValue.makeObject();
+        generatedInputs.set("files", files);
+        receipt.set("generated_inputs", generatedInputs);
+        return receipt;
+    }
+
+    class bool preflightReceiptContracts(JsonValue fixture) {
+        DeckSteamShortcutResolution resolution =
+            DeckHarnessContractTest.shortcutResolution(fixture);
+        DeckExpectedShortcut shortcut = DeckExpectedShortcut.fromResolution(
+            resolution, DeckHarnessContractTest.zeroHash());
+        DeckGameModeRequest request =
+            DeckHarnessContractTest.preflightRequest(shortcut);
+        JsonValue receipt = DeckHarnessContractTest.preflightReceipt(request);
+        if (!request.valid()
+                || !DeckEvidenceClass.forScenario("preflight").isEmpty()
+                || receipt.has("evidence")
+                || !DeckGameModeReceiptPolicy.verify(
+                    receipt, request).isEmpty()) {
+            return false;
+        }
+
+        JsonValue wrongShortcut = JsonValue.parse(receipt.stringify());
+        wrongShortcut.get("shortcut").set(
+            "app_id", JsonValue.makeString("1"));
+        if (!DeckGameModeReceiptPolicy.verify(wrongShortcut, request).contains(
+                "exact installed shortcut")) {
+            return false;
+        }
+
+        JsonValue wrongGenerated = JsonValue.parse(receipt.stringify());
+        wrongGenerated.get("generated_inputs").get("files").at(0).set(
+            "sha256", JsonValue.makeString("not-a-sha256"));
+        if (!DeckGameModeReceiptPolicy.verify(wrongGenerated, request).contains(
+                "generated-input identity changed")) {
+            return false;
+        }
+
+        JsonValue physicalEvidence = JsonValue.parse(receipt.stringify());
+        physicalEvidence.set("evidence",
+            DeckHarnessContractTest.evidence("operator-radial"));
+        if (!DeckGameModeReceiptPolicy.verify(
+                physicalEvidence, request).contains(
+                    "must not contain physical evidence")) {
+            return false;
+        }
+
+        JsonValue wrongDevice = JsonValue.parse(receipt.stringify());
+        wrongDevice.get("checks").set(
+            "uinput_device", JsonValue.makeString("/tmp/uinput"));
+        return DeckGameModeReceiptPolicy.verify(wrongDevice, request).contains(
+            "concrete prerequisite checks");
+    }
+
     class bool requestContracts(string project, JsonValue fixture) {
         DeckSteamShortcutResolution resolution =
             DeckHarnessContractTest.shortcutResolution(fixture);
@@ -489,6 +588,10 @@ class DeckHarnessContractTest {
         if (!DeckHarnessContractTest.evidenceContracts(fixture)) {
             failures += DeckHarnessContractTest.fail(
                 "synthetic/human evidence classification regressed");
+        }
+        if (!DeckHarnessContractTest.preflightReceiptContracts(fixture)) {
+            failures += DeckHarnessContractTest.fail(
+                "preflight concrete-artifact receipt policy regressed");
         }
         if (!DeckHarnessContractTest.requestContracts(project, fixture)) {
             failures += DeckHarnessContractTest.fail(
