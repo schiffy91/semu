@@ -29,7 +29,8 @@ class AppImageSourceProvenance {
                 "deployment target does not select one exact Nix system");
         }
         string reference = ".#packages."
-            + systems.at(0).asString() + ".default.outPath";
+            + systems.at(0).asString()
+            + ".steamdeck-runtime.outPath";
         ExecResult result = AppImageProvenanceSupport.process("nix", [
             "--extra-experimental-features", "nix-command flakes",
             "eval", "--raw", reference
