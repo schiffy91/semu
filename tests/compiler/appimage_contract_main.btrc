@@ -449,16 +449,84 @@ set -eu
 
         string outside = PathTools.join(scratch, "outside");
         string sentinel = PathTools.join(outside, "sentinel");
-        bool exportPrepared = FileSystem.mkdirp(plan.exportRoot) == 0
+        string foreign = PathTools.join(plan.generationsRoot, "foreign");
+        bool generationsPrepared = FileSystem.mkdirp(plan.generationsRoot) == 0
             && FileSystem.mkdirp(outside) == 0
+            && FileSystem.writeText(sentinel, "outside-bytes\n")
+            && FileSystem.symlink(outside, foreign) == 0;
+        AppImageRuntimeBuildResult oldGeneration = generationsPrepared
+            ? AppImageRuntimeGeneration.create(plan)
+            : AppImageRuntimeBuildResult.failure(
+                "runtime generations fixture failed");
+        plan.exportRoot = oldGeneration.value;
+        bool oldPrepared = oldGeneration.ok()
             && FileSystem.writeText(PathTools.join(
-                plan.exportRoot, "runtime"), "runtime-bytes\n")
-            && FileSystem.writeText(sentinel, "outside-bytes\n");
-        AppImageRuntimeBuildResult published = exportPrepared
-            ? AppImageRuntimeExporter.publish(plan)
-            : AppImageRuntimeBuildResult.failure("export fixture failed");
-        AppImageRuntimeBuildResult republished = published.ok()
-            ? AppImageRuntimeExporter.publish(plan) : published;
+                plan.exportRoot, "runtime"), "old-runtime-bytes\n");
+        AppImageRuntimeBuildResult published = oldPrepared
+            ? AppImageRuntimeExporter.finish(
+                plan, AppImageRuntimeBuildResult.success())
+            : AppImageRuntimeBuildResult.failure(
+                "old runtime generation fixture failed");
+        string oldPath = published.ok()
+            ? UnixFileSystem.realPath(plan.output) : "";
+        string oldBytes = published.ok()
+            ? FileSystem.readText(PathTools.join(plan.output, "runtime")) : "";
+
+        AppImageRuntimeBuildResult failedGeneration = published.ok()
+            ? AppImageRuntimeGeneration.create(plan) : published;
+        plan.exportRoot = failedGeneration.value;
+        bool failedPrepared = failedGeneration.ok()
+            && FileSystem.writeText(PathTools.join(
+                plan.exportRoot, "runtime"), "failed-runtime-bytes\n");
+        string failedPath = plan.exportRoot;
+        AppImageRuntimeBuildResult rejected = failedPrepared
+            ? AppImageRuntimeExporter.finish(plan,
+                AppImageRuntimeBuildResult.failure(
+                    "injected provenance failure"))
+            : AppImageRuntimeBuildResult.failure(
+                "failed runtime generation fixture failed");
+        bool failurePreserved = !rejected.ok()
+            && rejected.error.contains("injected provenance failure")
+            && UnixFileSystem.realPath(plan.output).equals(oldPath)
+            && FileSystem.readText(PathTools.join(
+                plan.output, "runtime")).equals(oldBytes)
+            && !FileStatus(failedPath).linkFound;
+
+        AppImageRuntimeBuildResult nextGeneration = failurePreserved
+            ? AppImageRuntimeGeneration.create(plan) : rejected;
+        plan.exportRoot = nextGeneration.value;
+        bool nextPrepared = nextGeneration.ok()
+            && FileSystem.writeText(PathTools.join(
+                plan.exportRoot, "runtime"), "next-runtime-bytes\n");
+        AppImageRuntimeBuildResult republished = nextPrepared
+            ? AppImageRuntimeExporter.finish(
+                plan, AppImageRuntimeBuildResult.success())
+            : AppImageRuntimeBuildResult.failure(
+                "next runtime generation fixture failed");
+        int ownedGenerations = 0;
+        if (republished.ok()) {
+            for name in Directory(plan.generationsRoot).entries() {
+                if (AppImageRuntimeGeneration.owned(plan,
+                        PathTools.join(plan.generationsRoot, name))) {
+                    ownedGenerations++;
+                }
+            }
+        }
+        bool successReplaced = republished.ok()
+            && !UnixFileSystem.realPath(plan.output).equals(oldPath)
+            && UnixFileSystem.realPath(plan.output).equals(plan.exportRoot)
+            && FileSystem.readText(PathTools.join(
+                plan.output, "runtime")).equals("next-runtime-bytes\n")
+            && !FileStatus(oldPath).linkFound
+            && ownedGenerations == 1
+            && FileStatus(foreign).isSymlink()
+            && FileSystem.readText(sentinel).equals("outside-bytes\n");
+        AppImageRuntimeBuildPlan reloadedPlan = AppImageRuntimeBuildPlan();
+        AppImageRuntimeBuildResult reloaded = successReplaced
+            ? AppImageRuntimeBuildPlan.create(
+                project, output, reloadedPlan, cache)
+            : AppImageRuntimeBuildResult.failure(
+                "published runtime reload fixture failed");
         AppImageRuntimeBuilder firstBuilder = AppImageRuntimeBuilder(plan);
         AppImageRuntimeBuilder secondBuilder = AppImageRuntimeBuilder(plan);
         AppImageRuntimeBuildResult firstLock = firstBuilder.acquire();
@@ -538,6 +606,9 @@ set -eu
             project, "packaging/appimage/build_runtime.sh"));
         bool exact = loaded.ok()
             && plan.snapshot.equals(PathTools.join(cache, "source"))
+            && plan.generationsRoot.equals(PathTools.join(cache,
+                plan.macos
+                    ? "linux-case-sensitive/generations" : "generations"))
             && plan.output.equals(output)
             && FileSystem.readText(AppImageRuntimeCache.marker(cache))
                 .equals(AppImageRuntimeCache.document(
@@ -563,13 +634,14 @@ set -eu
             && firstIdentity.value.contains("src=absent;")
             && firstIdentity.value.contains("assets=absent;")
             && firstIdentity.value.contains("patches=absent;")
-            && published.ok() && republished.ok()
+            && failurePreserved && successReplaced && reloaded.ok()
+            && reloadedPlan.generationsRoot.equals(plan.generationsRoot)
             && firstLock.ok() && !contendedLock.ok()
             && firstUnlock.ok() && secondLock.ok() && secondUnlock.ok()
             && !linkedLockResult.ok()
             && FileStatus(plan.output).isSymlink()
             && UnixFileSystem.realPath(plan.output)
-                .equals(UnixFileSystem.realPath(plan.exportRoot))
+                .equals(plan.exportRoot)
             && FileSystem.readText(sentinel).equals("outside-bytes\n")
             && !unmarkedResult.ok() && !linkedResult.ok()
             && !unsafeOutput.ok() && !arbitrary.ok() && !traversal.ok()

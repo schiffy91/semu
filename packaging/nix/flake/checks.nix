@@ -19,6 +19,8 @@ forAllSystems (
       repositoryRoot = ../../..;
     };
     productionPackages = self.packages.x86_64-linux;
+    steamDeckBootstrapCli = productionPackages.steamdeck-runtime.semuBootstrapCli;
+    bootstrapContract = steamDeckBootstrapCli.bootstrapContract;
     expectedRuntimeNames = map (id: "${id}-runtime") architectureContract.linuxEmulatorIds;
     actualRuntimeNames = lib.filter (
       name: lib.hasSuffix "-runtime" name && name != "steamdeck-runtime"
@@ -30,6 +32,19 @@ forAllSystems (
       assert lib.assertMsg (
         productionPackages.default.outPath == productionPackages.steamdeck-runtime.outPath
       ) "the default x86_64-linux package must be the exact Steam Deck runtime";
+      assert lib.assertMsg (
+        steamDeckBootstrapCli.outPath == productionPackages.semu-program.outPath
+      ) "the canonical Steam Deck runtime must expose its exact Semu bootstrap CLI";
+      assert lib.assertMsg (
+        bootstrapContract == {
+          schema_version = 1;
+          platform = "x86_64-linux";
+          elf_class = "ELF64";
+          machine = "x86-64";
+          static = true;
+          pt_interp = false;
+        }
+      ) "the canonical Steam Deck bootstrap CLI contract is not static x86_64 ELF";
       assert lib.assertMsg (
         !(productionPackages ? visualAssets)
       ) "the retired camelCase visualAssets package alias was restored";
@@ -192,6 +207,37 @@ forAllSystems (
             SHELL="${pkgs.bash}/bin/bash" \
             tree-audit
           touch "$out"
+        '';
+  }
+  // lib.optionalAttrs (system == "x86_64-linux") {
+    steamdeck-bootstrap-cli =
+      pkgs.runCommand "semu-steamdeck-bootstrap-cli-check"
+        {
+          nativeBuildInputs = [
+            pkgs.binutils-unwrapped
+            pkgs.file
+          ];
+        }
+        ''
+          binary=${steamDeckBootstrapCli}/lib/semu/semu-btrc
+          test -f "$binary"
+          description="$(file -b "$binary")"
+          headers="$(readelf -hW "$binary")"
+          segments="$(readelf -lW "$binary")"
+
+          printf '%s\n' "$description" \
+            | grep -Eq '^ELF 64-bit LSB (pie )?executable, x86-64,'
+          printf '%s\n' "$description" \
+            | grep -Eq 'statically linked|static-pie linked'
+          printf '%s\n' "$headers" | grep -Eq 'Class:[[:space:]]+ELF64$'
+          printf '%s\n' "$headers" \
+            | grep -Eq 'Machine:[[:space:]]+Advanced Micro Devices X86-64$'
+          if printf '%s\n' "$segments" \
+              | grep -Eq '(^|[[:space:]])INTERP([[:space:]]|$)'; then
+            echo "Steam Deck bootstrap CLI contains a PT_INTERP loader" >&2
+            exit 1
+          fi
+          printf '%s\n' "$description" > "$out"
         '';
   }
 )

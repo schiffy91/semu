@@ -163,6 +163,13 @@ struct SemuRenderPendingFrame {
 };
 
 class RendererFrameContract {
+    class bool compatible(struct SemuRenderFrameGl* frame) {
+        return frame != null
+            && frame->abi == (unsigned int)SEMU_RENDER_ABI_GL
+            && frame->struct_size
+                >= (unsigned int)sizeof(struct SemuRenderFrameGl);
+    }
+
     class bool validLayout(unsigned int layout) {
         return layout == (unsigned int)SEMU_RENDER_LAYOUT_AUTO
             || layout == (unsigned int)SEMU_RENDER_LAYOUT_DEFAULT
@@ -192,8 +199,7 @@ class RendererFrameContract {
     }
 
     class bool valid(struct SemuRenderFrameGl* frame) {
-        if (frame == null || frame->abi != (unsigned int)SEMU_RENDER_ABI_GL
-            || frame->struct_size < (unsigned int)sizeof(struct SemuRenderFrameGl)
+        if (!RendererFrameContract.compatible(frame)
             || frame->frame_id == 0 || frame->framebuffer_width < 1
             || frame->framebuffer_height < 1 || frame->surface_count < 1
             || frame->surface_count > SEMU_RENDER_MAX_SURFACES

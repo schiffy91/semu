@@ -428,6 +428,50 @@ class RenderingPointerContract {
             && runtime.contains(
                 "frame->map_pointer = semu_render_map_pointer_abi2;");
     }
+
+    class bool abiLayoutSourceContract(string project) {
+        string nativeRoot = PathTools.join(project,
+            "src/generators/rendering/native");
+        string abi = FileSystem.readText(
+            PathTools.join(nativeRoot, "renderer_abi.btrc"));
+        string runtime = FileSystem.readText(
+            PathTools.join(nativeRoot, "libsemurenderer.btrc"));
+        string ryujinx = FileSystem.readText(PathTools.join(project,
+            "config/emulators/ryujinx/ryujinx.patch"));
+        string ryujinxPackage = FileSystem.readText(PathTools.join(project,
+            "config/emulators/ryujinx/package.nix"));
+        string rendererPackage = FileSystem.readText(PathTools.join(project,
+            "packaging/nix/renderer.nix"));
+        int compatibility = runtime.indexOf(
+            "if (!RendererFrameContract.compatible(frame))");
+        int pointerMap = runtime.indexOf(
+            "RendererPointerContract.clearMap(&frame->pointer_map);");
+        return compatibility >= 0 && pointerMap > compatibility
+            && abi.contains("class bool compatible(struct SemuRenderFrameGl* frame)")
+            && abi.contains(
+                ">= (unsigned int)sizeof(struct SemuRenderFrameGl);")
+            && ryujinx.contains("private const int FrameSize = 232;")
+            && ryujinx.contains("private struct SemuRenderPointerMap")
+            && ryujinx.contains("public SemuRenderPointerMap PointerMap;")
+            && ryujinx.contains("public nint MapPointer;")
+            && ryujinx.contains(
+                "Marshal.SizeOf<SemuRenderFrameGl>() == FrameSize")
+            && ryujinx.contains(
+                "nameof(SemuRenderFrameGl.PointerMap)) == 128")
+            && ryujinx.contains(
+                "nameof(SemuRenderFrameGl.MapPointer)) == 224")
+            && ryujinx.contains("if (!AbiLayoutValid ||")
+            && ryujinx.contains("StructSize = (uint)FrameSize")
+            && ryujinxPackage.contains(
+                "grep -Fq 'private const int FrameSize = 232;'")
+            && rendererPackage.contains(
+                "_Static_assert(sizeof(SemuRenderFrameGl) == 232")
+            && rendererPackage.contains(
+                "reject_undersized_without_writes")
+            && rendererPackage.contains(
+                "exact_frame_publishes_callback_tail")
+            && rendererPackage.contains("./renderer-abi-conformance");
+    }
 }
 
 class RenderingCompositorLayerContract {
@@ -643,6 +687,10 @@ class RenderingCompositorContractTest {
         if (!RenderingPointerContract.sourceContract(project)) {
             failures += RenderingCompositorContractTest.fail(
                 "ABI-2 frame no longer publishes its exact pointer map callback");
+        }
+        if (!RenderingPointerContract.abiLayoutSourceContract(project)) {
+            failures += RenderingCompositorContractTest.fail(
+                "ABI-2 managed/native layout or bounded-call gate regressed");
         }
         if (!RenderingCompositorLayerContract.sourceOrder(project)) {
             failures += RenderingCompositorContractTest.fail(

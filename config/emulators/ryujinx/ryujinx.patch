@@ -4,7 +4,7 @@
 +    <DefineConstants Condition=" '$(ExtraDefineConstants)' != '' ">$(DefineConstants);$(ExtraDefineConstants)</DefineConstants>
 --- a/src/Ryujinx.Graphics.OpenGL/Window.cs
 +++ b/src/Ryujinx.Graphics.OpenGL/Window.cs
-@@ -6,8 +6,163 @@
+@@ -6,8 +6,237 @@
  using Ryujinx.Graphics.OpenGL.Image;
  using System;
  
@@ -24,6 +24,9 @@
 +        private const uint ColorBufferBack = 0x0405;
 +        private const int OriginBottomLeft = 0;
 +        private const int Applied = 1;
++        private const int RenderSurfaceSize = 32;
++        private const int PointerMapSize = 96;
++        private const int FrameSize = 232;
 +
 +        [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
 +        private delegate nint GetProcCallback(
@@ -32,7 +35,7 @@
 +        [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
 +        private delegate nint CurrentContextCallback();
 +
-+        [StructLayout(LayoutKind.Sequential)]
++        [StructLayout(LayoutKind.Sequential, Pack = 8)]
 +        private struct SemuRenderSurfaceGl
 +        {
 +            public int X;
@@ -45,7 +48,33 @@
 +            public int Origin;
 +        }
 +
-+        [StructLayout(LayoutKind.Sequential)]
++        [StructLayout(LayoutKind.Sequential, Pack = 8)]
++        private struct SemuRenderPointerSurface
++        {
++            public int X;
++            public int Y;
++            public int Width;
++            public int Height;
++            public int NativeWidth;
++            public int NativeHeight;
++            public int Rotation;
++            public int Origin;
++        }
++
++        [StructLayout(LayoutKind.Sequential, Pack = 8)]
++        private struct SemuRenderPointerMap
++        {
++            public uint Abi;
++            public uint StructSize;
++            public ulong FrameId;
++            public int FramebufferWidth;
++            public int FramebufferHeight;
++            public int SurfaceCount;
++            public SemuRenderPointerSurface Surface0;
++            public SemuRenderPointerSurface Surface1;
++        }
++
++        [StructLayout(LayoutKind.Sequential, Pack = 8)]
 +        private struct SemuRenderFrameGl
 +        {
 +            public uint Abi;
@@ -62,6 +91,45 @@
 +            public SemuRenderSurfaceGl Surface1;
 +            public nint GetProc;
 +            public nint CurrentContext;
++            public SemuRenderPointerMap PointerMap;
++            public nint MapPointer;
++        }
++
++        private static int OffsetOf<T>(string field) where T : struct
++        {
++            return Marshal.OffsetOf<T>(field).ToInt32();
++        }
++
++        private static bool HasExactAbiLayout()
++        {
++            return Marshal.SizeOf<SemuRenderSurfaceGl>() == RenderSurfaceSize &&
++                OffsetOf<SemuRenderSurfaceGl>(
++                    nameof(SemuRenderSurfaceGl.Origin)) == 28 &&
++                Marshal.SizeOf<SemuRenderPointerSurface>() == RenderSurfaceSize &&
++                OffsetOf<SemuRenderPointerSurface>(
++                    nameof(SemuRenderPointerSurface.Origin)) == 28 &&
++                Marshal.SizeOf<SemuRenderPointerMap>() == PointerMapSize &&
++                OffsetOf<SemuRenderPointerMap>(
++                    nameof(SemuRenderPointerMap.FrameId)) == 8 &&
++                OffsetOf<SemuRenderPointerMap>(
++                    nameof(SemuRenderPointerMap.Surface0)) == 28 &&
++                OffsetOf<SemuRenderPointerMap>(
++                    nameof(SemuRenderPointerMap.Surface1)) == 60 &&
++                Marshal.SizeOf<SemuRenderFrameGl>() == FrameSize &&
++                OffsetOf<SemuRenderFrameGl>(
++                    nameof(SemuRenderFrameGl.FrameId)) == 8 &&
++                OffsetOf<SemuRenderFrameGl>(
++                    nameof(SemuRenderFrameGl.Surface0)) == 44 &&
++                OffsetOf<SemuRenderFrameGl>(
++                    nameof(SemuRenderFrameGl.Surface1)) == 76 &&
++                OffsetOf<SemuRenderFrameGl>(
++                    nameof(SemuRenderFrameGl.GetProc)) == 112 &&
++                OffsetOf<SemuRenderFrameGl>(
++                    nameof(SemuRenderFrameGl.CurrentContext)) == 120 &&
++                OffsetOf<SemuRenderFrameGl>(
++                    nameof(SemuRenderFrameGl.PointerMap)) == 128 &&
++                OffsetOf<SemuRenderFrameGl>(
++                    nameof(SemuRenderFrameGl.MapPointer)) == 224;
 +        }
 +
 +        [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl,
@@ -82,6 +150,7 @@
 +            Marshal.GetFunctionPointerForDelegate(GetProcThunk);
 +        private static readonly nint CurrentContextPointer =
 +            Marshal.GetFunctionPointerForDelegate(CurrentContextThunk);
++        private static readonly bool AbiLayoutValid = HasExactAbiLayout();
 +        private static ulong _nextFrameId;
 +        private static SemuRenderFrameGl _frame;
 +        private static bool _pending;
@@ -107,7 +176,8 @@
 +        {
 +            _pending = false;
 +            _frame = default;
-+            if (framebufferWidth <= 0 || framebufferHeight <= 0 ||
++            if (!AbiLayoutValid || framebufferWidth <= 0 ||
++                framebufferHeight <= 0 ||
 +                contentWidth <= 0 || contentHeight <= 0 ||
 +                nativeWidth <= 0 || nativeHeight <= 0)
 +            {
@@ -118,7 +188,7 @@
 +            _frame = new SemuRenderFrameGl
 +            {
 +                Abi = RendererAbi,
-+                StructSize = (uint)Marshal.SizeOf<SemuRenderFrameGl>(),
++                StructSize = (uint)FrameSize,
 +                FrameId = _nextFrameId,
 +                Framebuffer = 0,
 +                ColorBuffer = ColorBufferBack,
@@ -143,6 +213,10 @@
 +                CurrentContext = CurrentContextPointer,
 +            };
 +            _pending = RenderGameNative(ref _frame) == Applied;
++            if (!_pending)
++            {
++                _frame = default;
++            }
 +        }
 +
 +        public static void RenderPostUi()
@@ -168,7 +242,7 @@
      class Window : IWindow, IDisposable
      {
          private readonly OpenGLRenderer _renderer;
-@@ -135,6 +290,9 @@
+@@ -135,6 +364,9 @@
                  srcY1 = crop.Bottom;
              }
  
@@ -178,7 +252,7 @@
              float ratioX = crop.IsStretched ? 1.0f : MathF.Min(1.0f, _height * crop.AspectRatioX / (_width * crop.AspectRatioY));
              float ratioY = crop.IsStretched ? 1.0f : MathF.Min(1.0f, _width * crop.AspectRatioY / (_height * crop.AspectRatioX));
  
-@@ -219,6 +377,18 @@
+@@ -219,6 +451,18 @@
              GL.ClipControl(ClipOrigin.LowerLeft, ClipDepthMode.NegativeOneToOne);
              GL.Viewport(0, 0, _width, _height);
              GL.BindFramebuffer(FramebufferTarget.Framebuffer, drawFramebuffer);

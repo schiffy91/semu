@@ -120,6 +120,12 @@ assert lib.assertMsg (
   && lib.hasInfix "EntryPoint = \"semu_render_post_ui_gl\"" addedPatchText
   && lib.hasInfix "private const uint RendererAbi = 2;" addedPatchText
   && lib.hasInfix "private const uint ColorBufferBack = 0x0405;" addedPatchText
+  && lib.hasInfix "private const int FrameSize = 232;" addedPatchText
+  && lib.hasInfix "private struct SemuRenderPointerMap" addedPatchText
+  && lib.hasInfix "public SemuRenderPointerMap PointerMap;" addedPatchText
+  && lib.hasInfix "public nint MapPointer;" addedPatchText
+  && lib.hasInfix "AbiLayoutValid = HasExactAbiLayout();" addedPatchText
+  && lib.hasInfix "if (!AbiLayoutValid" addedPatchText
   && lib.hasInfix "ColorBuffer = ColorBufferBack" addedPatchText
   && lib.hasInfix "Rotation = 0" addedPatchText
 ) "Ryujinx's patch must directly P/Invoke the two-phase ABI 2 renderer";
@@ -187,8 +193,21 @@ buildDotnetModule {
     test "$(grep -Fc 'SemuRendererClient.RenderPostUi();' "$embedded")" -eq 1
     grep -Fq 'private const uint RendererAbi = 2;' "$window"
     grep -Fq 'private const uint ColorBufferBack = 0x0405;' "$window"
+    grep -Fq 'private const int RenderSurfaceSize = 32;' "$window"
+    grep -Fq 'private const int PointerMapSize = 96;' "$window"
+    grep -Fq 'private const int FrameSize = 232;' "$window"
+    grep -Fq 'private struct SemuRenderPointerSurface' "$window"
+    grep -Fq 'private struct SemuRenderPointerMap' "$window"
+    grep -Fq 'public SemuRenderPointerMap PointerMap;' "$window"
+    grep -Fq 'public nint MapPointer;' "$window"
+    grep -Fq 'Marshal.SizeOf<SemuRenderPointerMap>() == PointerMapSize' "$window"
+    grep -Fq 'Marshal.SizeOf<SemuRenderFrameGl>() == FrameSize' "$window"
+    grep -Fq 'nameof(SemuRenderFrameGl.PointerMap)) == 128' "$window"
+    grep -Fq 'nameof(SemuRenderFrameGl.MapPointer)) == 224' "$window"
+    grep -Fq 'AbiLayoutValid = HasExactAbiLayout();' "$window"
+    grep -Fq 'if (!AbiLayoutValid || framebufferWidth <= 0 ||' "$window"
     grep -Fq 'ColorBuffer = ColorBufferBack' "$window"
-    grep -Fq 'StructSize = (uint)Marshal.SizeOf<SemuRenderFrameGl>()' "$window"
+    grep -Fq 'StructSize = (uint)FrameSize' "$window"
     grep -Fq 'PresentationAspect = (float)contentWidth / contentHeight' "$window"
     grep -Fq 'LayoutVariantB : LayoutDefault' "$window"
     grep -Fq 'Rotation = 0' "$window"

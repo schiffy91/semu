@@ -782,6 +782,28 @@ class AppImageProvenanceContractTest {
             return AppImageProvenanceContractTest.fail(
                 "canonical Steam Deck runtime omits Bubblewrap");
         }
+        string packageWiring = Path.readAll(PathTools.join(
+            project, "packaging/nix/flake/packages.nix"));
+        string checks = Path.readAll(PathTools.join(
+            project, "packaging/nix/flake/checks.nix"));
+        string program = Path.readAll(PathTools.join(
+            project, "packaging/nix/semu_program.nix"));
+        if (!packageWiring.contains("pkgs.pkgsStatic.callPackage")
+                || !packageWiring.contains("requireStaticBootstrap = true")
+                || !steamDeckPackage.contains(
+                    "semuBootstrapCli = semuProgram")
+                || !program.contains("stdenv.hostPlatform.isStatic")
+                || !program.contains("${stdenv.cc.targetPrefix}readelf")
+                || !program.contains("\"$readelf\" -lW")
+                || !program.contains("INTERP")
+                || !checks.contains(
+                    "steamDeckBootstrapCli.outPath == productionPackages.semu-program.outPath")
+                || !checks.contains("statically linked|static-pie linked")
+                || !checks.contains("readelf -lW")
+                || !checks.contains("INTERP")) {
+            return AppImageProvenanceContractTest.fail(
+                "canonical Steam Deck bootstrap CLI is not fail-closed static ELF");
+        }
 
         AppImageRuntimeInventoryResult mac =
             AppImageRuntimeInventory.loadForTarget(

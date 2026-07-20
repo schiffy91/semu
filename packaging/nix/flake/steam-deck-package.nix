@@ -64,7 +64,7 @@ in
 {
   inherit esDe;
 
-  runtime = pkgs.callPackage ../semu_app.nix {
+  runtime = (pkgs.callPackage ../semu_app.nix {
     inherit
       semuCli
       esDe
@@ -81,5 +81,9 @@ in
       appimageRuntime
       semuRenderer
     ];
-  };
+  }).overrideAttrs (previous: {
+    passthru = (previous.passthru or { }) // {
+      semuBootstrapCli = semuProgram;
+    };
+  });
 }
