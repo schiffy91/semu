@@ -478,6 +478,8 @@ class EsDeContractTest {
                     "@@ -0,0 +1,1 @@\n+one\n+two\n")
                 || !esDePackage.contains(
                     "settingsProtocol = \"semu-settings-v2\";")
+                || !esDePackage.contains(
+                    "postPatch = (previousAttrs.postPatch or \"\")")
                 || !EsDeContractTest.settingsProtocolV2(
                     project, PathTools.join(scratch, "protocol-home"),
                     model.systems.size())
