@@ -1650,6 +1650,19 @@ class SemuInputSupervisor {
     }
 
     class bool pairingSelfTest() {
+        if (setenv(SEMU_INPUT_GAMEPAD_SOURCE_ENV, "virtual", 1) != 0
+                || setenv(SEMU_INPUT_GAMEPAD_VENDOR_ENV, "1111", 1) != 0
+                || setenv(SEMU_INPUT_GAMEPAD_PRODUCT_ENV, "2222", 1) != 0
+                || setenv(SEMU_INPUT_GAMEPAD_PHYSICAL_ENV, "empty", 1) != 0
+                || setenv(SEMU_INPUT_COMMAND_SOURCE_ENV, "hardware", 1) != 0
+                || setenv(SEMU_INPUT_COMMAND_VENDOR_ENV, "1111", 1) != 0
+                || setenv(SEMU_INPUT_COMMAND_PRODUCT_ENV, "3333", 1) != 0
+                || setenv(SEMU_INPUT_COMMAND_PHYSICAL_PREFIX_ENV,
+                    "usb-", 1) != 0
+                || setenv(SEMU_INPUT_COMMAND_PHYSICAL_SUFFIX_ENV,
+                    "/input1", 1) != 0) {
+            return false;
+        }
         int gamepadPipe[2];
         int commandPipe[2];
         if (pipe(gamepadPipe) != 0) { return false; }
@@ -1666,9 +1679,18 @@ class SemuInputSupervisor {
         state.devices[0].fd = gamepadPipe[0];
         state.devices[0].gamepad = true;
         state.devices[0].vendor = (unsigned short)0x1111;
+        state.devices[0].product = (unsigned short)0x2222;
         state.devices[1].fd = commandPipe[0];
         state.devices[1].command_facet = true;
+        state.devices[1].supports_extensions = true;
         state.devices[1].vendor = (unsigned short)0x1111;
+        state.devices[1].product = (unsigned short)0x3333;
+        snprintf(state.devices[0].source, sizeof(state.devices[0].source),
+            "%s", "virtual");
+        snprintf(state.devices[1].source, sizeof(state.devices[1].source),
+            "%s", "hardware");
+        snprintf(state.devices[1].physical,
+            sizeof(state.devices[1].physical), "%s", "usb-fixture/input1");
         snprintf(state.devices[0].path, sizeof(state.devices[0].path), "%s",
             "fixture-gamepad");
         snprintf(state.devices[1].path, sizeof(state.devices[1].path), "%s",
