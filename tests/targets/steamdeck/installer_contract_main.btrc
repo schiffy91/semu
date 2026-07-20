@@ -53,6 +53,21 @@ class InstallerContractFiles {
         }
         return count;
     }
+
+    class bool hasEntryWithPrefix(string root, string prefix) {
+        if (!SemuInstallHost.realDirectory(root)) { return false; }
+        for name in Directory(root).entries() {
+            if (name.startsWith(prefix)) { return true; }
+        }
+        return false;
+    }
+
+    class string device(string path) {
+        ExecResult result = ChildProcess.run(
+            "stat", ["-c", "%d", "--", path],
+            timeoutMilliseconds=300000);
+        return result.ok() ? result.stdout().trim() : "";
+    }
 }
 
 class InstallerContractVdf {
@@ -112,6 +127,7 @@ class InstallerContractFixture {
     public string steamServiceLog;
     public string steamState;
     public string vdf;
+    public string bootstrapTemporaryRoot;
 
     public InstallerContractFixture(string project, string executable) {
         self.project = project;
@@ -137,6 +153,8 @@ class InstallerContractFixture {
         self.steamState = PathTools.join(self.root, "steam.state");
         self.vdf = PathTools.join(self.home,
             ".local/share/Steam/userdata/1000/config/shortcuts.vdf");
+        self.bootstrapTemporaryRoot = Environment.get(
+            "SEMU_TEST_BOOTSTRAP_TMPDIR", "");
     }
 
     public bool prepare() {
@@ -295,7 +313,7 @@ chmod 0755 squashfs-root/AppRun squashfs-root/bin/bwrap \
             string expected, string shortcutState = "missing",
             bool failSync = false, bool failSteam = false,
             bool mutateVdf = false) {
-        return [
+        Vector<string> values = [
             "HOME=" + self.home,
             "PATH=" + self.bin + ":" + Environment.get("PATH", ""),
             "SEMU_APPLICATIONS_DIR=" + self.applicationsRoot,
@@ -325,6 +343,18 @@ chmod 0755 squashfs-root/AppRun squashfs-root/bin/bwrap \
             "SEMU_CLI=/retired/semu", "SEMU_SOURCE_ROOT=/retired/config",
             "SEMU_ASSET_ROOT=/retired/assets", "SEMU_BWRAP=/retired/bwrap"
         ];
+        if (!self.bootstrapTemporaryRoot.isEmpty()) {
+            values.push("TMPDIR=" + self.bootstrapTemporaryRoot);
+        }
+        return values;
+    }
+
+    public bool crossFilesystemBootstrap() {
+        string installDevice = InstallerContractFiles.device(self.root);
+        string bootstrapDevice = InstallerContractFiles.device(
+            self.bootstrapTemporaryRoot);
+        return !installDevice.isEmpty() && !bootstrapDevice.isEmpty()
+            && !installDevice.equals(bootstrapDevice);
     }
 
     public string current() {
@@ -402,6 +432,10 @@ class InstallerContractTest {
             return InstallerContractTest.fail(fixture,
                 "could not prepare Linux installer fixture");
         }
+        if (!fixture.crossFilesystemBootstrap()) {
+            return InstallerContractTest.fail(fixture,
+                "bootstrap and release fixtures are not on distinct filesystems");
+        }
         string artifactV1 = PathTools.join(fixture.root, "Semu-v1.AppImage");
         string artifactV2 = PathTools.join(fixture.root, "Semu-v2.AppImage");
         string artifactV3 = PathTools.join(fixture.root, "Semu-v3.AppImage");
@@ -451,6 +485,10 @@ class InstallerContractTest {
                 || !SemuInstallHost.regularFile(canonical)
                 || (FileStatus(canonical).mode & 73) != 0
                 || !InstallerContractTest.bytesEqual(artifactV1, canonical)
+                || InstallerContractFiles.hasEntryWithPrefix(PathTools.join(
+                    fixture.installRoot, "releases"), ".candidate.")
+                || !Directory(fixture.bootstrapTemporaryRoot)
+                    .entries().isEmpty()
                 || InstallerContractFiles.lineCount(fixture.steamAddLog) != 1
                 || InstallerContractFiles.matchingLines(
                     fixture.launchLog, " sync ") != 1

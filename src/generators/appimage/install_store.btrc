@@ -517,6 +517,39 @@ class SemuReleaseStore {
         return SemuInstallResult.success(incoming + "\n" + digest);
     }
 
+    public SemuInstallResult stageRelease(string source, string digest) {
+        string candidate = PathTools.join(self.paths.releases,
+            ".candidate." + digest + "." + f"{(int)getpid()}");
+        if (!SemuInstallHost.realDirectory(self.paths.releases)
+                || FileStatus(candidate).linkFound
+                || FileSystem.mkdir(candidate, 448) != 0) { // 0700
+            return SemuInstallResult.failure(
+                "cannot create release candidate on publication filesystem");
+        }
+        ExecResult copied = ChildProcess.run(
+            "cp", ["-a", "--", source + "/.", candidate], "",
+            CommandEnvironment.empty(), CommandEnvironment.empty(), 300000,
+            1024, 8192, "", CommandOutput.suppress());
+        SemuInstallResult sourceTree = copied.ok()
+            ? SemuInstallTree.digest(source)
+            : SemuInstallResult.failure(
+                "cannot stage extracted release: "
+                    + SemuInstallHost.processError(copied));
+        SemuInstallResult candidateTree = sourceTree.ok()
+            ? SemuInstallTree.digest(candidate) : sourceTree;
+        bool exact = sourceTree.ok() && candidateTree.ok()
+            && sourceTree.document.equals(candidateTree.document)
+            && self.releaseShape(candidate);
+        if (!exact) {
+            FileSystem.removeRecursive(candidate);
+            if (!sourceTree.ok()) { return sourceTree; }
+            if (!candidateTree.ok()) { return candidateTree; }
+            return SemuInstallResult.failure(
+                "release candidate differs from extracted payload");
+        }
+        return SemuInstallResult.success(candidate);
+    }
+
     public SemuInstallResult extract(string incoming, string digest,
                                      SemuInstallOptions options) {
         string releaseRoot = PathTools.join(self.paths.releases, digest);
@@ -563,19 +596,27 @@ class SemuReleaseStore {
             return SemuInstallResult.failure(
                 "extracted AppImage has no complete Semu release payload");
         }
+        SemuInstallResult staged = self.stageRelease(extracted, digest);
+        if (!staged.ok()) {
+            FileSystem.removeRecursive(extraction);
+            return staged;
+        }
+        string candidate = staged.document;
         ExecResult normalized = ChildProcess.run(
-            "chmod", ["-R", "a-w", extracted], "",
+            "chmod", ["-R", "a-w", candidate], "",
             CommandEnvironment.empty(), CommandEnvironment.empty(), 300000);
-        if (!normalized.ok() || !SemuInstallTree.readOnly(extracted)) {
+        if (!normalized.ok() || !SemuInstallTree.readOnly(candidate)) {
+            FileSystem.removeRecursive(candidate);
             FileSystem.removeRecursive(extraction);
             return SemuInstallResult.failure(
                 "cannot normalize extracted release permissions");
         }
-        SemuInstallResult tree = SemuInstallTree.digest(extracted);
-        if (!tree.ok() || rename(extracted, releaseRoot) != 0
+        SemuInstallResult tree = SemuInstallTree.digest(candidate);
+        if (!tree.ok() || rename(candidate, releaseRoot) != 0
                 || !SemuInstallHost.atomicText(
                     PathTools.join(self.paths.trees, digest + ".sha256"),
                     tree.document + "\n", 292)) { // 0444
+            FileSystem.removeRecursive(candidate);
             FileSystem.removeRecursive(releaseRoot);
             FileSystem.removeRecursive(extraction);
             return SemuInstallResult.failure(
