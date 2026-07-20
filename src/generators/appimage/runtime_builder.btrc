@@ -447,16 +447,9 @@ done
 if [ \"$actual_source_identity\" != \"$SEMU_SOURCE_SNAPSHOT_IDENTITY\" ]; then
   exit 72
 fi
-runtime_expression='let
-  flake = builtins.getFlake \"path:/src\";
-  pkgs = flake.inputs.nixpkgs.legacyPackages.x86_64-linux;
-in pkgs.symlinkJoin {
-  name = \"semu-steamdeck-runtime-self-contained\";
-  paths = [ flake.packages.x86_64-linux.steamdeck-runtime pkgs.bubblewrap ];
-}'
 out=\"$(nix --option sandbox false --option filter-syscalls false \
   --extra-experimental-features \"nix-command flakes\" \
-  build --impure --expr \"$runtime_expression\" --no-link --print-out-paths -L)\"
+  build path:/src#steamdeck-runtime --no-link --print-out-paths -L)\"
 previous=\"$(cat /export/share/semu/steamdeck-runtime-store-path.txt 2>/dev/null || true)\"
 rm -rf /export/bin /export/lib /export/share
 if [ \"$previous\" != \"$out\" ]; then rm -rf /export/nix; fi

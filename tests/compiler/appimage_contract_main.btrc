@@ -551,6 +551,10 @@ set -eu
             && !AppImageRuntimeExporter.containerProgram().contains(
                 "SEMU_SOURCE_FLAKE_SHA256")
             && AppImageRuntimeExporter.containerProgram().contains(
+                "build path:/src#steamdeck-runtime")
+            && !AppImageRuntimeExporter.containerProgram().contains(
+                "pkgs.symlinkJoin")
+            && !AppImageRuntimeExporter.containerProgram().contains(
                 "pkgs.bubblewrap")
             && AppImageRuntimeExporter.containerProgram().contains(
                 "steamdeck-runtime-store-path.txt")

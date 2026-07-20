@@ -764,12 +764,23 @@ class AppImageProvenanceContractTest {
             }
         }
         string provenanceSource = Path.readAll(PathTools.join(
-            project, "src/generators/appimage/provenance.btrc"));
+            project,
+            "src/generators/appimage/provenance/source_contract.btrc"));
         if (provenanceSource.contains("systems.size() != 17")
                 || provenanceSource.contains(
-                    "Vector<string> ids = [\"semu-program\"")) {
+                    "Vector<string> ids = [\"semu-program\"")
+                || !provenanceSource.contains(
+                    "steamdeck-runtime.outPath")
+                || provenanceSource.contains(".default.outPath")) {
             return AppImageProvenanceContractTest.fail(
-                "generic provenance retains hard-coded system/component identities");
+                "provenance does not select the exact canonical runtime output");
+        }
+
+        string steamDeckPackage = Path.readAll(PathTools.join(
+            project, "packaging/nix/flake/steam-deck-package.nix"));
+        if (!steamDeckPackage.contains("pkgs.bubblewrap")) {
+            return AppImageProvenanceContractTest.fail(
+                "canonical Steam Deck runtime omits Bubblewrap");
         }
 
         AppImageRuntimeInventoryResult mac =

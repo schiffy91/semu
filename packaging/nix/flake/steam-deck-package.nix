@@ -74,6 +74,7 @@ in
       ;
     runtimeTools = [
       pkgs.bash
+      pkgs.bubblewrap
       pkgs.curl
       pkgs.syncthing
       nixGLRuntime
