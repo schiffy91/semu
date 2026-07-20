@@ -4,12 +4,16 @@ set -eu
 repo=${1:?repository root is required}
 source_c=${2:?transpiled installer contract is required}
 stage="$(mktemp -d "${TMPDIR:-/tmp}/semu-installer-contract.XXXXXX")"
-trap 'rm -rf -- "$stage"' EXIT HUP INT TERM
+bootstrap_tmp=""
+trap 'rm -rf -- "$stage"; [ -z "$bootstrap_tmp" ] || rm -rf -- "$bootstrap_tmp"' EXIT HUP INT TERM
 binary="$stage/semu-installer-contract"
 
 if [ "$(uname -s)" = Linux ]; then
+  bootstrap_tmp="/dev/shm/semu-installer-bootstrap.$$"
+  mkdir -m 0700 -- "$bootstrap_tmp"
   cc "$source_c" -std=c11 -o "$binary" -lm
-  "$binary" --project "$repo"
+  SEMU_TEST_BOOTSTRAP_TMPDIR="$bootstrap_tmp" \
+    "$binary" --project "$repo"
   exit
 fi
 
@@ -28,6 +32,8 @@ cp "$repo/packaging/appimage/semu-launcher.template" \
   "$stage/packaging/appimage/"
 cp -R "$repo/config" "$stage/config"
 podman run --rm --platform "$platform" \
+  --tmpfs /bootstrap-tmp:rw,mode=0700 \
+  --env SEMU_TEST_BOOTSTRAP_TMPDIR=/bootstrap-tmp \
   --mount "type=bind,source=$stage,target=/contract,ro" \
   --entrypoint /contract/semu-installer-contract \
   docker.io/library/debian:bookworm-slim --project /contract
