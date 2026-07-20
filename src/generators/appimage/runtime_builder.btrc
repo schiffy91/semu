@@ -379,6 +379,7 @@ class AppImageRuntimeSnapshot {
                         "source identity root is unsafe: " + relative);
                 }
                 ExecResult hashed = AppImageRuntimeBuildCommand.capture("nix", [
+                    "--extra-experimental-features", "nix-command",
                     "hash", "path", "--type", "sha256", "--base16", path
                 ]);
                 value = hashed.ok()
@@ -435,7 +436,8 @@ for relative in flake.nix flake.lock Makefile src config packaging tests assets 
   path=\"/src/$relative\"
   if [ -e \"$path\" ] || [ -L \"$path\" ]; then
     [ ! -L \"$path\" ] || exit 73
-    digest=\"$(nix hash path --type sha256 --base16 \"$path\" 2>/dev/null || true)\"
+    digest=\"$(nix --extra-experimental-features \"nix-command\" \\
+      hash path --type sha256 --base16 \"$path\" 2>/dev/null || true)\"
     [ \"${#digest}\" -eq 64 ] || exit 73
   else
     digest=absent

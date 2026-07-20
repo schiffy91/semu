@@ -546,6 +546,8 @@ set -eu
             && plan.volume.equals("semu-appimage-nix-x86_64")
             && AppImageRuntimeExporter.containerProgram().contains(
                 "SEMU_SOURCE_SNAPSHOT_IDENTITY")
+            && AppImageRuntimeExporter.containerProgram().contains(
+                "--extra-experimental-features \"nix-command\"")
             && !AppImageRuntimeExporter.containerProgram().contains(
                 "SEMU_SOURCE_FLAKE_SHA256")
             && AppImageRuntimeExporter.containerProgram().contains(
