@@ -1617,20 +1617,24 @@ class SemuInputSupervisor {
                 SemuLinuxInputDevices.mark(keys, code);
             }
         }
-        if (!SemuLinuxInputDevices.acceptedCapabilities(
-                events, keys, axes, quitFirstCode, quitSecondCode)) {
+        if (SemuLinuxInputDevices.acceptedCapabilities(
+                events, keys, axes, quitFirstCode, quitSecondCode)
+                || SemuLinuxInputDevices.completeCommandKeyboard(keys)) {
             return false;
         }
-        if (SemuLinuxInputDevices.completeCommandKeyboard(keys)) { return false; }
         for (int code = 0; code <= KEY_MAX; code++) {
             if (SemuLinuxInputDevices.commandKey(code, true)) {
                 SemuLinuxInputDevices.mark(keys, code);
             }
         }
-        if (!SemuLinuxInputDevices.completeCommandKeyboard(keys)) { return false; }
+        if (!SemuLinuxInputDevices.completeCommandKeyboard(keys)
+                || !SemuLinuxInputDevices.acceptedCapabilities(
+                    events, keys, axes, quitFirstCode, quitSecondCode)) {
+            return false;
+        }
         SemuLinuxInputDevices.clear(keys, KEY_F13);
         if (SemuLinuxInputDevices.completeCommandKeyboard(keys)
-                || !SemuLinuxInputDevices.acceptedCapabilities(
+                || SemuLinuxInputDevices.acceptedCapabilities(
                     events, keys, axes, quitFirstCode, quitSecondCode)) {
             return false;
         }
