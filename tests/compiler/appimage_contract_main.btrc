@@ -573,6 +573,8 @@ set -eu
             && !bootstrap.contains("podman run")
             && !bootstrap.contains("rsync -a")
             && !bootstrap.contains("hdiutil ")
+            && !bootstrap.contains("cache_root/tools")
+            && bootstrap.contains("mktemp -d")
             && bootstrap.contains("--strict-imports")
             && bootstrap.contains("runtime_builder_main.btrc");
         FileSystem.removeRecursive(scratch);
