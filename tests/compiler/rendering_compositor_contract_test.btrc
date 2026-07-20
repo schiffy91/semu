@@ -1,0 +1,680 @@
+// rendering_compositor_contract_test.btrc - native composition atoms and order.
+
+#include <string.h>
+
+import std.{fs, json, strings, vector}
+import ../../src/generators/rendering/native/renderer_abi.btrc
+import ../../src/generators/rendering/native/renderer_gl_api.btrc
+
+unsigned int RenderingReadbackError;
+int RenderingReadbackCalls;
+
+void renderingFailingReadPixels(int x, int y, int width, int height,
+                                unsigned int format, unsigned int kind,
+                                void* output) {
+    RenderingReadbackCalls = RenderingReadbackCalls + 1;
+    RenderingReadbackError = 0x0502u;
+}
+
+unsigned int renderingReadbackError() {
+    unsigned int error = RenderingReadbackError;
+    RenderingReadbackError = 0u;
+    return error;
+}
+
+class RenderingCompositorFixtures {
+    class bool close(float actual, float expected) {
+        float difference = actual - expected;
+        if (difference < 0.0f) { difference = -difference; }
+        return difference < 0.001f;
+    }
+
+    class JsonValue defaultVariant(JsonValue bezels) {
+        string defaultId = bezels.get("default_variant").isString()
+            ? bezels.get("default_variant").asString() : "";
+        JsonValue variants = bezels.get("variants");
+        if (defaultId.isEmpty() || !variants.isArray()) {
+            return JsonValue.makeNull();
+        }
+        for (int index = 0; index < variants.size(); index++) {
+            JsonValue variant = variants.at(index);
+            if (variant.get("id").isString()
+                    && variant.get("id").asString().equals(defaultId)) {
+                return variant;
+            }
+        }
+        return JsonValue.makeNull();
+    }
+
+    class JsonValue selected(JsonValue variant, JsonValue defaults,
+                             string field) {
+        return variant.get(field).isObject()
+            ? variant.get(field) : defaults.get(field);
+    }
+
+    class bool canvas(string project, JsonValue variant,
+                      JsonValue assetManifest, int viewportWidth,
+                      int viewportHeight, struct RendererCanvasRect* output) {
+        if (!variant.get("art").isString()) { return false; }
+        JsonValue asset = assetManifest.get("assets").get(
+            variant.get("art").asString()).get("output");
+        if (!asset.get("width").isInt() || !asset.get("height").isInt()) {
+            return false;
+        }
+        RendererCompositionContract.contain(viewportWidth, viewportHeight,
+            asset.get("width").asInt(), asset.get("height").asInt(), output);
+        return output->width > 0.0f && output->height > 0.0f
+            && FileSystem.isFile(PathTools.join(project,
+                "config/" + variant.get("art").asString()));
+    }
+
+    class bool aperture(struct RendererCanvasRect* canvas, JsonValue value,
+                        struct RendererPixelRect* output) {
+        if (!value.isObject() || !value.get("x").isNumber()
+                || !value.get("y").isNumber()
+                || !value.get("w").isNumber()
+                || !value.get("h").isNumber()) { return false; }
+        RendererCompositionContract.aperture(canvas,
+            (float)value.get("x").asFloat(),
+            (float)value.get("y").asFloat(),
+            (float)value.get("w").asFloat(),
+            (float)value.get("h").asFloat(), output);
+        return RendererCompositionContract.valid(output);
+    }
+
+    class bool maximalIntegerFit(struct RendererPixelRect* aperture,
+                                 struct RendererPixelRect* content,
+                                 int nativeWidth, int nativeHeight) {
+        int horizontal = aperture->width / nativeWidth;
+        int vertical = aperture->height / nativeHeight;
+        int scale = horizontal < vertical ? horizontal : vertical;
+        if (scale < 1) { return false; }
+        return content->width == nativeWidth * scale
+            && content->height == nativeHeight * scale
+            && RendererCompositionContract.contains(aperture, content)
+            && (content->x * 2 + content->width
+                == aperture->x * 2 + aperture->width
+                || content->x * 2 + content->width + 1
+                    == aperture->x * 2 + aperture->width)
+            && (content->y * 2 + content->height
+                == aperture->y * 2 + aperture->height
+                || content->y * 2 + content->height + 1
+                    == aperture->y * 2 + aperture->height);
+    }
+
+    class bool mappedCenter(struct SemuRenderPointerMap* map, int index,
+                            int viewportWidth, int viewportHeight) {
+        struct SemuRenderPointerSurface* surface = &map->surfaces[index];
+        float framebufferX = (float)surface->x
+            + (float)surface->width * 0.5f;
+        float framebufferY = (float)surface->y
+            + (float)surface->height * 0.5f;
+        struct SemuRenderPointerQuery query;
+        query.abi = (unsigned int)SEMU_RENDER_ABI_GL;
+        query.struct_size =
+            (unsigned int)sizeof(struct SemuRenderPointerQuery);
+        query.frame_id = map->frame_id;
+        query.x = framebufferX * (float)viewportWidth
+            / (float)map->framebuffer_width;
+        query.y = ((float)map->framebuffer_height - framebufferY)
+            * (float)viewportHeight / (float)map->framebuffer_height;
+        query.viewport_width = viewportWidth;
+        query.viewport_height = viewportHeight;
+        query.origin = SEMU_RENDER_ORIGIN_TOP_LEFT;
+        query.surface_index = -1;
+        query.clamp = 0;
+        struct SemuRenderPointerResult topLeft;
+        if (RendererPointerContract.map(map, &query, &topLeft)
+                != SEMU_RENDER_POINTER_MAPPED
+                || topLeft.surface_index != index
+                || topLeft.frame_id != map->frame_id
+                || topLeft.origin != SEMU_RENDER_ORIGIN_TOP_LEFT
+                || !RenderingCompositorFixtures.close(
+                    topLeft.normalized_x, 0.5f)
+                || !RenderingCompositorFixtures.close(
+                    topLeft.normalized_y, 0.5f)
+                || !RenderingCompositorFixtures.close(topLeft.native_x,
+                    (float)(surface->native_width - 1) * 0.5f)
+                || !RenderingCompositorFixtures.close(topLeft.native_y,
+                    (float)(surface->native_height - 1) * 0.5f)) {
+            return false;
+        }
+
+        query.y = framebufferY * (float)viewportHeight
+            / (float)map->framebuffer_height;
+        query.origin = SEMU_RENDER_ORIGIN_BOTTOM_LEFT;
+        struct SemuRenderPointerResult bottomLeft;
+        return RendererPointerContract.map(map, &query, &bottomLeft)
+                == SEMU_RENDER_POINTER_MAPPED
+            && bottomLeft.surface_index == index
+            && RenderingCompositorFixtures.close(
+                bottomLeft.normalized_x, topLeft.normalized_x)
+            && RenderingCompositorFixtures.close(
+                bottomLeft.normalized_y, topLeft.normalized_y);
+    }
+}
+
+class RenderingCompositorGeometryContract {
+    class bool genericAspectFits() {
+        struct RendererPixelRect viewport;
+        viewport.x = 0;
+        viewport.y = 0;
+        viewport.width = 1280;
+        viewport.height = 800;
+        struct RendererPixelRect standard;
+        RendererCompositionContract.fit(&viewport, 640, 480, 0,
+            4.0f / 3.0f, 1, &standard);
+        if (standard.x != 320 || standard.y != 160
+                || standard.width != 640 || standard.height != 480) {
+            return false;
+        }
+        struct RendererPixelRect wide;
+        RendererCompositionContract.fit(&viewport, 640, 360, 0,
+            16.0f / 9.0f, 1, &wide);
+        if (wide.x != 0 || wide.y != 40
+                || wide.width != 1280 || wide.height != 720) {
+            return false;
+        }
+        struct RendererPixelRect anamorphic;
+        RendererCompositionContract.fit(&viewport, 640, 480, 0,
+            16.0f / 9.0f, 1, &anamorphic);
+        if (anamorphic.x != 213 || anamorphic.y != 160
+                || anamorphic.width != 853 || anamorphic.height != 480) {
+            return false;
+        }
+        viewport.width = 1920;
+        viewport.height = 1080;
+        RendererCompositionContract.fit(&viewport, 640, 480, 0,
+            4.0f / 3.0f, 1, &standard);
+        RendererCompositionContract.fit(&viewport, 640, 360, 0,
+            16.0f / 9.0f, 1, &wide);
+        return standard.x == 320 && standard.y == 60
+            && standard.width == 1280 && standard.height == 960
+            && wide.x == 0 && wide.y == 0
+            && wide.width == 1920 && wide.height == 1080;
+    }
+
+    class bool shell(string project, string systemId,
+                     int viewportWidth, int viewportHeight) {
+        JsonValue system = JsonValue.readFile(PathTools.join(project,
+            "config/systems/" + systemId + "/system.json"));
+        JsonValue bezels = JsonValue.readFile(PathTools.join(project,
+            "config/systems/" + systemId + "/bezels.json"));
+        JsonValue assets = JsonValue.readFile(PathTools.join(project,
+            "config/assets/bezels.json"));
+        JsonValue variant = RenderingCompositorFixtures.defaultVariant(bezels);
+        JsonValue screen = system.get("display").get("screens").at(0);
+        JsonValue native = screen.get("native");
+        JsonValue aspect = system.get("display").get("aspect");
+        if (!variant.isObject() || !native.get("w").isInt()
+                || !native.get("h").isInt() || !aspect.get("w").isInt()
+                || !aspect.get("h").isInt()) { return false; }
+        struct RendererCanvasRect canvas;
+        struct RendererPixelRect aperture;
+        if (!RenderingCompositorFixtures.canvas(project, variant, assets,
+                viewportWidth, viewportHeight, &canvas)
+                || !RenderingCompositorFixtures.aperture(&canvas,
+                    RenderingCompositorFixtures.selected(
+                        variant, bezels, "hole"), &aperture)) {
+            return false;
+        }
+        struct RendererPixelRect content;
+        RendererCompositionContract.fit(&aperture,
+            native.get("w").asInt(), native.get("h").asInt(), 0,
+            (float)aspect.get("w").asInt()
+                / (float)aspect.get("h").asInt(), 1, &content);
+        return RenderingCompositorFixtures.maximalIntegerFit(&aperture,
+            &content, native.get("w").asInt(), native.get("h").asInt());
+    }
+
+    class bool dualShell(string project, string systemId,
+                         int viewportWidth, int viewportHeight) {
+        JsonValue system = JsonValue.readFile(PathTools.join(project,
+            "config/systems/" + systemId + "/system.json"));
+        JsonValue bezels = JsonValue.readFile(PathTools.join(project,
+            "config/systems/" + systemId + "/bezels.json"));
+        JsonValue assets = JsonValue.readFile(PathTools.join(project,
+            "config/assets/bezels.json"));
+        JsonValue variant = RenderingCompositorFixtures.defaultVariant(bezels);
+        JsonValue holes = RenderingCompositorFixtures.selected(
+            variant, bezels, "screen_holes");
+        JsonValue screens = system.get("display").get("screens");
+        struct RendererCanvasRect canvas;
+        if (!variant.isObject() || !holes.isObject() || !screens.isArray()
+                || screens.size() != 2
+                || !RenderingCompositorFixtures.canvas(project, variant, assets,
+                    viewportWidth, viewportHeight, &canvas)) { return false; }
+        struct SemuRenderFrameGl frame;
+        frame.frame_id = 41ULL;
+        frame.framebuffer_width = viewportWidth;
+        frame.framebuffer_height = viewportHeight;
+        struct RendererCompositionGeometry geometry;
+        geometry.lane_count = 2;
+        for (int index = 0; index < screens.size(); index++) {
+            JsonValue screen = screens.at(index);
+            JsonValue native = screen.get("native");
+            string screenId = screen.get("id").isString()
+                ? screen.get("id").asString() : "";
+            struct RendererPixelRect aperture;
+            if (screenId.isEmpty() || !native.get("w").isInt()
+                    || !native.get("h").isInt()
+                    || !RenderingCompositorFixtures.aperture(
+                        &canvas, holes.get(screenId), &aperture)) {
+                return false;
+            }
+            struct RendererPixelRect content;
+            RendererCompositionContract.fit(&aperture,
+                native.get("w").asInt(), native.get("h").asInt(),
+                0, 0.0f, 1, &content);
+            if (!RenderingCompositorFixtures.maximalIntegerFit(&aperture,
+                    &content, native.get("w").asInt(),
+                    native.get("h").asInt())) { return false; }
+            geometry.lanes[index].output_x = content.x;
+            geometry.lanes[index].output_y = content.y;
+            geometry.lanes[index].output_width = content.width;
+            geometry.lanes[index].output_height = content.height;
+            geometry.lanes[index].native_width = native.get("w").asInt();
+            geometry.lanes[index].native_height = native.get("h").asInt();
+            geometry.lanes[index].rotation = 0;
+            geometry.lanes[index].origin = SEMU_RENDER_ORIGIN_TOP_LEFT;
+        }
+        struct SemuRenderPointerMap pointerMap;
+        RendererPointerContract.publish(&frame, &geometry, &pointerMap);
+        return RenderingCompositorFixtures.mappedCenter(
+                &pointerMap, 0, viewportWidth, viewportHeight)
+            && RenderingCompositorFixtures.mappedCenter(
+                &pointerMap, 1, viewportWidth, viewportHeight);
+    }
+}
+
+class RenderingPointerContract {
+    class bool rotation(int rotation, int origin,
+                        float expectedX, float expectedY) {
+        struct SemuRenderPointerMap map;
+        RendererPointerContract.clearMap(&map);
+        map.frame_id = 73ULL;
+        map.framebuffer_width = 1280;
+        map.framebuffer_height = 800;
+        map.surface_count = 1;
+        map.surfaces[0].x = 200;
+        map.surfaces[0].y = 100;
+        map.surfaces[0].width = 800;
+        map.surfaces[0].height = 600;
+        map.surfaces[0].native_width = 256;
+        map.surfaces[0].native_height = 192;
+        map.surfaces[0].rotation = rotation;
+        map.surfaces[0].origin = origin;
+
+        struct SemuRenderPointerQuery query;
+        query.abi = (unsigned int)SEMU_RENDER_ABI_GL;
+        query.struct_size =
+            (unsigned int)sizeof(struct SemuRenderPointerQuery);
+        query.frame_id = map.frame_id;
+        query.x = 400.0f;
+        query.y = 550.0f;
+        query.viewport_width = 1280;
+        query.viewport_height = 800;
+        query.origin = SEMU_RENDER_ORIGIN_TOP_LEFT;
+        query.surface_index = -1;
+        query.clamp = 0;
+        struct SemuRenderPointerResult result;
+        if (RendererPointerContract.map(&map, &query, &result)
+                != SEMU_RENDER_POINTER_MAPPED
+                || result.surface_index != 0 || result.rotation != rotation
+                || result.origin != origin
+                || !RenderingCompositorFixtures.close(
+                    result.normalized_x, expectedX)
+                || !RenderingCompositorFixtures.close(
+                    result.normalized_y, expectedY)) {
+            return false;
+        }
+
+        query.y = 250.0f;
+        query.origin = SEMU_RENDER_ORIGIN_BOTTOM_LEFT;
+        struct SemuRenderPointerResult alternateOrigin;
+        return RendererPointerContract.map(&map, &query, &alternateOrigin)
+                == SEMU_RENDER_POINTER_MAPPED
+            && RenderingCompositorFixtures.close(
+                alternateOrigin.normalized_x, expectedX)
+            && RenderingCompositorFixtures.close(
+                alternateOrigin.normalized_y, expectedY);
+    }
+
+    class bool rotationsAndOrigins() {
+        return RenderingPointerContract.rotation(
+                0, SEMU_RENDER_ORIGIN_TOP_LEFT, 0.25f, 0.75f)
+            && RenderingPointerContract.rotation(
+                90, SEMU_RENDER_ORIGIN_TOP_LEFT, 0.75f, 0.75f)
+            && RenderingPointerContract.rotation(
+                180, SEMU_RENDER_ORIGIN_TOP_LEFT, 0.75f, 0.25f)
+            && RenderingPointerContract.rotation(
+                270, SEMU_RENDER_ORIGIN_TOP_LEFT, 0.25f, 0.25f)
+            && RenderingPointerContract.rotation(
+                0, SEMU_RENDER_ORIGIN_BOTTOM_LEFT, 0.25f, 0.25f)
+            && RenderingPointerContract.rotation(
+                90, SEMU_RENDER_ORIGIN_BOTTOM_LEFT, 0.75f, 0.25f)
+            && RenderingPointerContract.rotation(
+                180, SEMU_RENDER_ORIGIN_BOTTOM_LEFT, 0.75f, 0.75f)
+            && RenderingPointerContract.rotation(
+                270, SEMU_RENDER_ORIGIN_BOTTOM_LEFT, 0.25f, 0.75f);
+    }
+
+    class bool rejectionStatuses() {
+        struct SemuRenderPointerMap map;
+        RendererPointerContract.clearMap(&map);
+        map.frame_id = 91ULL;
+        map.framebuffer_width = 1280;
+        map.framebuffer_height = 800;
+        map.surface_count = 1;
+        map.surfaces[0].x = 400;
+        map.surfaces[0].y = 300;
+        map.surfaces[0].width = 480;
+        map.surfaces[0].height = 320;
+        map.surfaces[0].native_width = 320;
+        map.surfaces[0].native_height = 240;
+        map.surfaces[0].rotation = 0;
+        map.surfaces[0].origin = SEMU_RENDER_ORIGIN_TOP_LEFT;
+
+        struct SemuRenderPointerQuery query;
+        query.abi = (unsigned int)SEMU_RENDER_ABI_GL;
+        query.struct_size =
+            (unsigned int)sizeof(struct SemuRenderPointerQuery);
+        query.frame_id = 92ULL;
+        query.x = 640.0f;
+        query.y = 340.0f;
+        query.viewport_width = 1280;
+        query.viewport_height = 800;
+        query.origin = SEMU_RENDER_ORIGIN_TOP_LEFT;
+        query.surface_index = -1;
+        query.clamp = 0;
+        struct SemuRenderPointerResult result;
+        if (RendererPointerContract.map(&map, &query, &result)
+                != SEMU_RENDER_POINTER_STALE) { return false; }
+        query.frame_id = 0ULL;
+        query.x = 50.0f;
+        query.y = 50.0f;
+        if (RendererPointerContract.map(&map, &query, &result)
+                != SEMU_RENDER_POINTER_OUTSIDE
+                || result.surface_index != -1 || result.frame_id != map.frame_id) {
+            return false;
+        }
+        query.surface_index = 0;
+        query.clamp = 1;
+        if (RendererPointerContract.map(&map, &query, &result)
+                != SEMU_RENDER_POINTER_MAPPED || result.surface_index != 0
+                || result.clamped != 1
+                || !RenderingCompositorFixtures.close(
+                    result.normalized_x, 0.0f)
+                || !RenderingCompositorFixtures.close(
+                    result.normalized_y, 0.0f)) {
+            return false;
+        }
+        query.viewport_width = 0;
+        return RendererPointerContract.map(&map, &query, &result)
+            == SEMU_RENDER_POINTER_INVALID;
+    }
+
+    class bool sourceContract(string project) {
+        string header = FileSystem.readText(PathTools.join(project,
+            "src/generators/rendering/native/semu_render_header.nix"));
+        string runtime = FileSystem.readText(PathTools.join(project,
+            "src/generators/rendering/native/libsemurenderer.btrc"));
+        return header.contains("typedef struct SemuRenderPointerMap")
+            && header.contains("typedef int (*SemuRenderMapPointer)")
+            && header.contains("SemuRenderPointerMap pointer_map;")
+            && header.contains("SemuRenderMapPointer map_pointer;")
+            && runtime.contains(
+                "RendererPointerContract.publish(frame, &SemuRenderer.geometry")
+            && runtime.contains(
+                "frame->map_pointer = semu_render_map_pointer_abi2;");
+    }
+}
+
+class RenderingCompositorLayerContract {
+    class bool sourceOrder(string project) {
+        string source = FileSystem.readText(PathTools.join(project,
+            "src/generators/rendering/native/renderer_compositor.btrc"));
+        Vector<string> background = Strings.split(
+            source, "SEMU_RENDER_PASS_BACKGROUND, false");
+        Vector<string> game = Strings.split(
+            source, "SEMU_RENDER_PASS_GAME, false");
+        Vector<string> chrome = Strings.split(
+            source, "SEMU_RENDER_PASS_CHROME, true");
+        if (background.size() != 2 || game.size() != 2 || chrome.size() != 2) {
+            return false;
+        }
+        int backgroundOffset = background.get(0).len();
+        int gameOffset = game.get(0).len();
+        int chromeOffset = chrome.get(0).len();
+        return backgroundOffset < gameOffset && gameOffset < chromeOffset
+            && source.contains(
+                "if(uPass<0.5){if(uHasArt>0.5&&inside(p,uBezelRect))")
+            && source.contains(
+                "if(uPass<1.5){bool a=inside(p,uRect);bool b=uDual>0.5&&inside(p,uRect2);if(!a&&!b)discard;")
+            && source.contains(
+                "if(uPass<2.5){if(uHasArt<0.5||!inside(p,uBezelRect)||inside(p,uRect)||(uDual>0.5&&inside(p,uRect2)))discard;")
+            && source.contains(
+                "vec2 rotatedUv(vec2 q,float r){if(r<0.5)return q;if(r<1.5)return vec2(1.0-q.y,q.x);if(r<2.5)return vec2(1.0-q.x,1.0-q.y);return vec2(q.y,1.0-q.x);}")
+            && source.contains(
+                "vec2 q=a?rotatedUv(uv(p,uRect),uRotation):rotatedUv(uv(p,uRect2),uRotation2);")
+            && source.contains(
+                "filtered[second] != 0 ? 0.0f")
+            && source.contains("frag=texture(uBezel,artUv(p));return;");
+    }
+}
+
+class RenderingProductionHardeningContract {
+    class bool ordinaryFrameSkipsFilePolling() {
+        return RendererFrameSchedule.due(1ULL, 0ULL, 0)
+            && !RendererFrameSchedule.due(2ULL, 3ULL, 0)
+            && RendererFrameSchedule.due(3ULL, 3ULL, 0)
+            && RendererFrameSchedule.due(2ULL, 3ULL, 1)
+            && RendererFrameSchedule.after(41ULL, 2ULL) == 43ULL;
+    }
+
+    class bool ordinaryFrameDoesNoPostGlWork() {
+        return !RendererEvidenceContract.needsGl(0, 0, 0, 0, 0, 100ULL)
+            && !RendererEvidenceContract.needsGl(0, 60, 0, 0, 0, 59ULL)
+            && RendererEvidenceContract.needsGl(0, 60, 0, 0, 0, 60ULL)
+            && RendererEvidenceContract.needsGl(0, 0, 0, 1, 0, 1ULL)
+            && RendererEvidenceContract.needsGl(1, 0, 1, 0, 0, 1ULL)
+            && !RendererEvidenceContract.needsGl(0, 60, 0, 1, 1, 60ULL);
+    }
+
+    class bool failedReadbackIsInvalid() {
+        struct RendererGlApi gl;
+        gl.get_error = renderingReadbackError;
+        unsigned char pixels[4096];
+        RendererReadbackContract.prepare(pixels, sizeof(pixels));
+        RenderingReadbackError = 0u;
+        RenderingReadbackCalls = 0;
+        RendererGlErrors.clear(&gl);
+        renderingFailingReadPixels(0, 0, 32, 32, 0u, 0u, pixels);
+        bool errorFree = RendererGlErrors.none(&gl);
+        bool untouched = !RendererReadbackContract.overwritten(
+            pixels, sizeof(pixels));
+        memset(pixels, 0, sizeof(pixels));
+        bool completed = RendererReadbackContract.overwritten(
+            pixels, sizeof(pixels));
+        return RenderingReadbackCalls == 1 && !errorFree && untouched
+            && completed
+            && !RendererReadbackContract.proven(
+                false, completed, 1, true)
+            && !RendererReadbackContract.proven(
+                true, false, 1, true)
+            && !RendererReadbackContract.proven(
+                true, true, 0, true)
+            && !RendererReadbackContract.proven(
+                true, true, 1, false)
+            && RendererReadbackContract.proven(
+                true, true, 1, true);
+    }
+
+    class bool missingRequestedAssetFailsClosed() {
+        return RendererAssetRequirements.status(1, false,
+                0, false, false, false, false, false)
+                == SEMU_RENDER_ASSET_MISSING
+            && RendererAssetRequirements.status(0, false,
+                1, true, false, false, false, true)
+                == SEMU_RENDER_ASSET_MISSING
+            && RendererAssetRequirements.status(0, false,
+                1, true, true, true, false, true)
+                == SEMU_RENDER_ASSET_MISSING
+            && RendererAssetRequirements.status(0, false,
+                1, true, true, false, false, false)
+                == SEMU_RENDER_PIPELINE_FAILED
+            && RendererAssetRequirements.status(0, false,
+                0, false, false, false, false, false)
+                == SEMU_RENDER_APPLIED;
+    }
+
+    class bool recreatedContextForcesReset() {
+        void* first = (void*)0x1000;
+        void* second = (void*)0x2000;
+        return !RendererContextContract.changed(null, first, 0ULL, 1ULL)
+            && !RendererContextContract.changed(first, first, 41ULL, 42ULL)
+            && RendererContextContract.changed(first, second, 41ULL, 42ULL)
+            && RendererContextContract.changed(first, first, 41ULL, 1ULL)
+            && RendererContextContract.resourcesCurrent(
+                first, first, 1, 7u, true)
+            && !RendererContextContract.resourcesCurrent(
+                first, first, 1, 7u, false)
+            && !RendererContextContract.resourcesCurrent(
+                first, second, 1, 7u, true);
+    }
+
+    class bool integratedSource(string project) {
+        string root = PathTools.join(project,
+            "src/generators/rendering/native");
+        string runtime = FileSystem.readText(
+            PathTools.join(root, "libsemurenderer.btrc"));
+        string post = FileSystem.readText(
+            PathTools.join(root, "renderer_post_ui.btrc"));
+        string compositor = FileSystem.readText(
+            PathTools.join(root, "renderer_compositor.btrc"));
+        string shader = FileSystem.readText(
+            PathTools.join(root, "librashader_gl.btrc"));
+        string abi = FileSystem.readText(
+            PathTools.join(root, "renderer_abi.btrc"));
+        int gameStart = runtime.indexOf("int semu_render_game_gl");
+        int postStart = runtime.indexOf("int semu_render_post_ui_gl");
+        string gamePhase = gameStart >= 0 && postStart > gameStart
+            ? runtime.substring(gameStart, postStart) : "";
+        string postPhase = postStart >= 0
+            ? runtime.substring(postStart, runtime.len()) : "";
+        int fastPath = runtime.indexOf("if (!needsGl)");
+        string fastPost = fastPath >= 0
+            ? runtime.substring(fastPath, runtime.len()) : "";
+        int captureStart = post.indexOf("class bool capture(");
+        string capture = captureStart >= 0
+            ? post.substring(captureStart, post.len()) : "";
+        int clearError = capture.indexOf("RendererGlErrors.clear(gl);");
+        int readPixels = capture.indexOf("gl->read_pixels(");
+        int checkError = capture.indexOf("if (!errorFree || !overwritten)");
+        return fastPath >= 0
+            && !fastPost.contains(
+                "RendererGlProcedures.load(&SemuRenderer.gl, frame)")
+            && post.contains("RendererReadbackContract.prepare(rgba, bytes)")
+            && post.contains(
+                "RendererReadbackContract.overwritten(rgba, bytes)")
+            && clearError >= 0 && readPixels > clearError
+            && checkError > readPixels
+            && compositor.contains("RendererAssetRequirements.status(")
+            && compositor.contains("shader_preset_missing")
+            && compositor.contains("bezel_art_missing")
+            && runtime.contains("RendererResources.abandonDestroyedContext(")
+            && runtime.contains("RendererResources.current(")
+            && shader.contains("abandonDestroyedContext")
+            && shader.contains("self.handle = (libra_gl_filter_chain_t)0;")
+            && compositor.contains(
+                "RendererConfiguration.shaderAvailable(config)")
+            && !compositor.contains("struct stat")
+            && post.contains("RendererFrameSchedule.due(frame->frame_id")
+            && post.contains("state->next_action_frame")
+            && gamePhase.contains("RendererCompositor.game(")
+            && !postPhase.contains("RendererCompositor.game(")
+            && postPhase.contains("RendererPostUiPhase.apply(")
+            && !runtime.contains("passWrites(")
+            && !post.contains("passWrites(")
+            && !compositor.contains("passWrites(")
+            && !shader.contains("passWrites(")
+            && !abi.contains("passWrites(");
+    }
+}
+
+class RenderingCompositorContractTest {
+    class int fail(string message) {
+        print("  FAIL compositor: " + message);
+        return 1;
+    }
+
+    class int run(string project) {
+        int failures = 0;
+        if (!RenderingCompositorGeometryContract.genericAspectFits()) {
+            failures += RenderingCompositorContractTest.fail(
+                "4:3 and 16:9 contain/integer geometry changed");
+        }
+        for systemId in ["gb", "gbc", "gba", "psp"] {
+            if (!RenderingCompositorGeometryContract.shell(
+                    project, systemId, 1280, 800)
+                    || !RenderingCompositorGeometryContract.shell(
+                        project, systemId, 1920, 1080)) {
+                failures += RenderingCompositorContractTest.fail(systemId
+                    + " no longer fits maximally scaled game pixels inside its measured shell aperture");
+            }
+        }
+        for systemId in ["nds", "n3ds"] {
+            if (!RenderingCompositorGeometryContract.dualShell(
+                    project, systemId, 1280, 800)
+                    || !RenderingCompositorGeometryContract.dualShell(
+                        project, systemId, 2560, 1600)) {
+                failures += RenderingCompositorContractTest.fail(systemId
+                    + " lanes no longer scale independently inside measured apertures");
+            }
+        }
+        if (!RenderingPointerContract.rotationsAndOrigins()) {
+            failures += RenderingCompositorContractTest.fail(
+                "inverse pointer mapping changed for origin or rotation");
+        }
+        if (!RenderingPointerContract.rejectionStatuses()) {
+            failures += RenderingCompositorContractTest.fail(
+                "pointer mapping no longer rejects stale, outside, or invalid queries");
+        }
+        if (!RenderingPointerContract.sourceContract(project)) {
+            failures += RenderingCompositorContractTest.fail(
+                "ABI-2 frame no longer publishes its exact pointer map callback");
+        }
+        if (!RenderingCompositorLayerContract.sourceOrder(project)) {
+            failures += RenderingCompositorContractTest.fail(
+                "native draw order or shader/game/chrome isolation changed");
+        }
+        if (!RenderingProductionHardeningContract.ordinaryFrameDoesNoPostGlWork()) {
+            failures += RenderingCompositorContractTest.fail(
+                "ordinary post-UI frames schedule GL or capture work");
+        }
+        if (!RenderingProductionHardeningContract.ordinaryFrameSkipsFilePolling()) {
+            failures += RenderingCompositorContractTest.fail(
+                "ordinary post-UI frames poll the action journal every frame");
+        }
+        if (!RenderingProductionHardeningContract.failedReadbackIsInvalid()) {
+            failures += RenderingCompositorContractTest.fail(
+                "failed framebuffer readback was accepted as evidence");
+        }
+        if (!RenderingProductionHardeningContract.missingRequestedAssetFailsClosed()) {
+            failures += RenderingCompositorContractTest.fail(
+                "requested missing shader or bezel does not fail closed");
+        }
+        if (!RenderingProductionHardeningContract.recreatedContextForcesReset()) {
+            failures += RenderingCompositorContractTest.fail(
+                "recreated GL context does not invalidate owned resources");
+        }
+        if (!RenderingProductionHardeningContract.integratedSource(project)) {
+            failures += RenderingCompositorContractTest.fail(
+                "production renderer bypasses a hardening atom");
+        }
+        if (failures == 0) {
+            print("renderer compositor contract: shell -> shaded game lanes -> aperture-safe chrome; pointer -> semantic native surface");
+        }
+        return failures;
+    }
+}

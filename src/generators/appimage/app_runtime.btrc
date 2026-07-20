@@ -1,0 +1,498 @@
+// app_runtime.btrc - AppImage environment, sandbox, CLI, and ES-DE runtime.
+
+import std.{cli, fs, json, platform, process, strings, vector}
+import ./esde_startup.btrc
+import ./install_policy.btrc
+import ./install_store.btrc
+import ./installed_launcher.btrc
+
+class SemuAppRuntimePolicy {
+    public string target;
+    public string sandboxAppDir;
+    public string esDeHomeRelative;
+    public string bubblewrap;
+    public Vector<string> cliCommands;
+    public Vector<string> esDeWritableDirectories;
+    public string steamInputTemplates;
+    public string steamInputIcons;
+    public string steamControllerConfigs;
+    public string settingsPlatform;
+    public string ownedRomsFallback;
+    public SemuRomsPolicy roms;
+    public SemuBiosPolicy bios;
+
+    public SemuAppRuntimePolicy() {
+        self.target = "";
+        self.sandboxAppDir = "";
+        self.esDeHomeRelative = "";
+        self.bubblewrap = "";
+        self.cliCommands = [];
+        self.esDeWritableDirectories = [];
+        self.steamInputTemplates = "";
+        self.steamInputIcons = "";
+        self.steamControllerConfigs = "";
+        self.settingsPlatform = "";
+        self.ownedRomsFallback = "";
+        self.roms = SemuRomsPolicy();
+        self.bios = SemuBiosPolicy();
+    }
+
+    public SemuInstallResult load(string appDir) {
+        string file = PathTools.join(
+            appDir, "share/semu/config/settings/install.json");
+        JsonValue root = JsonValue.readFile(file);
+        JsonValue platform = root.get("platform");
+        JsonValue runtime = root.get("runtime");
+        if (root.isError() || !root.isObject()
+                || !platform.isObject() || !runtime.isObject()
+                || !root.get("schema_version").isInt()
+                || root.get("schema_version").asInt() != 1) {
+            return SemuInstallResult.failure(
+                "bundled AppImage runtime policy is missing or invalid");
+        }
+        self.bubblewrap = SemuInstallPolicy.scalar(platform, "bubblewrap");
+        self.sandboxAppDir = SemuInstallPolicy.scalar(
+            runtime, "sandbox_appdir");
+        self.esDeHomeRelative = SemuInstallPolicy.scalar(
+            runtime, "es_de_home");
+        self.cliCommands = SemuInstallPolicy.strings(runtime, "cli_commands");
+        self.esDeWritableDirectories = SemuInstallPolicy.strings(
+            runtime, "es_de_writable_directories");
+        self.steamInputTemplates = SemuInstallPolicy.scalar(
+            runtime, "steam_input_templates");
+        self.steamInputIcons = SemuInstallPolicy.scalar(
+            runtime, "steam_input_icons");
+        self.steamControllerConfigs = SemuInstallPolicy.scalar(
+            runtime, "steam_controller_configs");
+        self.settingsPlatform = SemuInstallPolicy.scalar(
+            runtime, "settings_platform");
+        self.ownedRomsFallback = SemuInstallPolicy.scalar(
+            runtime, "owned_roms_fallback");
+        SemuInstallResult romsLoaded = SemuRomsPolicy.load(
+            PathTools.join(appDir, "share/semu/config"),
+            self.settingsPlatform, self.roms);
+        SemuInstallResult biosLoaded = SemuBiosPolicy.load(
+            PathTools.join(appDir, "share/semu/config"),
+            self.settingsPlatform, self.bios);
+        if (!romsLoaded.ok()) { return romsLoaded; }
+        if (!biosLoaded.ok()) { return biosLoaded; }
+        SemuInstallResult targetLoaded = SemuTargetPolicy.load(
+            PathTools.join(appDir, "share/semu/config"),
+            self.settingsPlatform);
+        if (!targetLoaded.ok()) { return targetLoaded; }
+        self.target = targetLoaded.document;
+        bool valid = SemuTargetPolicy.identifier(self.target)
+            && self.sandboxAppDir.startsWith("/run/")
+            && !self.sandboxAppDir.contains("..")
+            && SemuInstallPolicy.safeRelative(self.esDeHomeRelative)
+            && !self.bubblewrap.isEmpty()
+            && self.cliCommands.contains("settings")
+            && self.cliCommands.contains("sync")
+            && self.cliCommands.contains("launcher")
+            && !self.esDeWritableDirectories.isEmpty()
+            && SemuInstallPolicy.safeRelative(self.steamInputTemplates)
+            && SemuInstallPolicy.safeRelative(self.steamInputIcons)
+            && SemuInstallPolicy.safeRelative(self.steamControllerConfigs)
+            && SemuInstallPolicy.safeRelative(self.ownedRomsFallback);
+        return valid ? SemuInstallResult.success()
+            : SemuInstallResult.failure("bundled AppImage runtime policy is unsafe");
+    }
+}
+
+class SemuAppRuntimeOptions {
+    public string appDir;
+    public bool inside;
+    public Vector<string> arguments;
+
+    public SemuAppRuntimeOptions() {
+        self.appDir = "";
+        self.inside = false;
+        self.arguments = [];
+    }
+
+    class SemuAppRuntimeOptions parse(CliCommandLine command) {
+        SemuAppRuntimeOptions options = SemuAppRuntimeOptions();
+        options.appDir = command.option("--appdir", "");
+        options.inside = command.flag("--inside");
+        for (int index = 1; index < command.operands.size(); index++) {
+            options.arguments.push(command.operands.get(index));
+        }
+        return options;
+    }
+}
+
+class SemuAppRuntime {
+    public SemuAppRuntimePolicy policy;
+    public SemuAppRuntimeOptions options;
+    public string appDir;
+    public string hostPath;
+    public string entrypoint;
+    public string projectRoot;
+    public string semuHome;
+    public string esDeHome;
+    public string romsRoot;
+    public string biosRoot;
+    public string cli;
+
+    public SemuAppRuntime(SemuAppRuntimePolicy policy,
+                          SemuAppRuntimeOptions options) {
+        self.policy = policy;
+        self.options = options;
+        self.appDir = UnixFileSystem.realPath(options.appDir);
+        self.hostPath = Environment.get("PATH", "/usr/bin:/bin");
+        self.entrypoint = "";
+        self.projectRoot = "";
+        self.semuHome = "";
+        self.esDeHome = "";
+        self.romsRoot = "";
+        self.biosRoot = "";
+        self.cli = "";
+    }
+
+    public string argumentValue(string name) {
+        for (int index = 0; index < self.options.arguments.size(); index++) {
+            string value = self.options.arguments.get(index);
+            if (value.equals(name) && index + 1 < self.options.arguments.size()) {
+                return self.options.arguments.get(index + 1);
+            }
+            if (value.startsWith(name + "=")) {
+                return value.substring(name.len() + 1,
+                    value.len() - name.len() - 1);
+            }
+        }
+        return "";
+    }
+
+    public bool argumentPresent(string name) {
+        for value in self.options.arguments {
+            if (value.equals(name) || value.startsWith(name + "=")) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    public SemuInstallResult detectRoms() {
+        return self.policy.roms.runtime(
+            self.argumentValue("--roms"), [
+                Environment.get("SEMU_ROMS_ROOT", ""),
+                Environment.get("SEMU_ROMS_DIR", ""),
+                Environment.get("SEMU_ROMS", "")
+            ], self.semuHome, self.policy.settingsPlatform,
+            self.projectRoot, self.policy.ownedRomsFallback);
+    }
+
+    public SemuInstallResult detectBios() {
+        return self.policy.bios.resolve(
+            Environment.get("SEMU_BIOS_ROOT", ""), self.semuHome,
+            self.policy.settingsPlatform);
+    }
+
+    public SemuInstallResult configure() {
+        if (self.appDir.isEmpty() || !SemuInstallHost.realDirectory(self.appDir)) {
+            return SemuInstallResult.failure("AppDir is absent or unsafe");
+        }
+        string config = PathTools.join(self.appDir, "share/semu/config");
+        if (FileSystem.isDir(PathTools.join(self.appDir, "nix/store"))
+                && !SemuInstallHost.regularFile(
+                    PathTools.join(config, "settings/defaults.json"))) {
+            return SemuInstallResult.failure(
+                "bundled configuration contracts are missing");
+        }
+        if (FileSystem.isDir(PathTools.join(self.appDir, "nix/store"))) {
+            string startupError = SemuEsDeStartupContract.validate(self.appDir);
+            if (!startupError.isEmpty()) {
+                return SemuInstallResult.failure(startupError);
+            }
+        }
+        self.entrypoint = Environment.get("SEMU_ENTRYPOINT", "");
+        if (self.entrypoint.isEmpty()) {
+            self.entrypoint = PathTools.join(Environment.get("HOME", "."),
+                "Applications/Semu/bin/semu");
+        }
+        self.entrypoint = UnixFileSystem.realPath(self.entrypoint);
+        if (self.entrypoint.isEmpty()
+                || !SemuInstallHost.regularFile(self.entrypoint)
+                || access(self.entrypoint, X_OK) != 0) {
+            return SemuInstallResult.failure(
+                "install the AppImage before launch; no stable no-FUSE entrypoint exists");
+        }
+        string explicitProject = Environment.get("SEMU_PROJECT_DIR", "");
+        if (explicitProject.isEmpty()) {
+            explicitProject = self.argumentValue("--project");
+        }
+        if (explicitProject.isEmpty()) {
+            explicitProject = PathTools.join(Environment.get(
+                "XDG_DATA_HOME", PathTools.join(
+                    Environment.get("HOME", "."), ".local/share")), "semu");
+        }
+        self.projectRoot = FileSystem.absolutePath(explicitProject);
+        self.semuHome = FileSystem.absolutePath(Environment.get(
+            "SEMU_HOME", PathTools.join(self.projectRoot, "settings")));
+        self.esDeHome = FileSystem.absolutePath(Environment.get(
+            "SEMU_ES_DE_HOME", PathTools.join(
+                Environment.get("HOME", "."),
+                self.policy.esDeHomeRelative)));
+        SemuInstallResult detectedRoms = self.detectRoms();
+        if (!detectedRoms.ok()) { return detectedRoms; }
+        self.romsRoot = detectedRoms.document;
+        SemuInstallResult detectedBios = self.detectBios();
+        if (!detectedBios.ok()) { return detectedBios; }
+        self.biosRoot = detectedBios.document;
+        self.cli = PathTools.join(self.appDir, "lib/semu/semu-btrc");
+        if (!SemuInstallHost.regularFile(self.cli) || access(self.cli, X_OK) != 0) {
+            return SemuInstallResult.failure("bundled static Semu CLI is missing");
+        }
+
+        string launcherBin = PathTools.join(self.appDir, "usr/bin");
+        string path = launcherBin + ":" + PathTools.join(self.appDir, "bin")
+            + ":" + self.hostPath;
+        SemuRuntimeExec.unset([
+            "SEMU_ALLOW_PROJECT_CLI", "SEMU_BWRAP", "SEMU_BWRAP_ARGS",
+            "SEMU_BWRAP_PROTECTED_ARGS", "SEMU_BWRAP_WRITABLE_ARGS",
+            "SEMU_CLI_CONTEXT_ARGS", "SEMU_ESDE_PASSTHROUGH_ARGS",
+            "SEMU_SANDBOX_APPDIR"
+        ]);
+        bool configured = SemuRuntimeExec.set("APPDIR", self.appDir)
+            && SemuRuntimeExec.set("PATH", path)
+            && SemuRuntimeExec.set("SEMU_TARGET", self.policy.target)
+            && SemuRuntimeExec.set("SEMU_SOURCE_ROOT", config)
+            && SemuRuntimeExec.set("SEMU_CLI", self.cli)
+            && SemuRuntimeExec.set("SEMU_ENTRYPOINT", self.entrypoint)
+            && SemuRuntimeExec.set("SEMU_INSTALLED_ENTRYPOINT", self.entrypoint)
+            && SemuRuntimeExec.set("SEMU_APP_EXEC", self.entrypoint)
+            && SemuRuntimeExec.set("SEMU_BIN", self.entrypoint)
+            && SemuRuntimeExec.set("SEMU_ASSET_ROOT", self.appDir)
+            && SemuRuntimeExec.set("SEMU_LAUNCHER_BIN", launcherBin)
+            && SemuRuntimeExec.set("SEMU_PROJECT_DIR", self.projectRoot)
+            && SemuRuntimeExec.set("SEMU_HOME", self.semuHome)
+            && SemuRuntimeExec.set("SEMU_ES_DE_HOME", self.esDeHome)
+            && SemuRuntimeExec.set("SEMU_ROMS_DIR", self.romsRoot)
+            && SemuRuntimeExec.set("SEMU_ROMS_ROOT", self.romsRoot)
+            && SemuRuntimeExec.set("SEMU_BIOS_ROOT", self.biosRoot);
+        string coreDirectory = PathTools.join(
+            self.appDir, "usr/lib/retroarch/cores");
+        string shaderDirectory = PathTools.join(
+            self.appDir, "share/libretro/shaders/shaders_slang");
+        if (FileSystem.isDir(coreDirectory)) {
+            configured = configured && SemuRuntimeExec.set(
+                "SEMU_RETROARCH_CORE_DIR", coreDirectory);
+        }
+        if (FileSystem.isDir(shaderDirectory)) {
+            configured = configured && SemuRuntimeExec.set(
+                "SEMU_RETROARCH_SHADER_DIR", shaderDirectory);
+        }
+        return configured ? SemuInstallResult.success()
+            : SemuInstallResult.failure("cannot establish AppImage runtime environment");
+    }
+
+    public string bundledExecutable(string name) {
+        if (name.isEmpty() || !PathTools.basename(name).equals(name)) {
+            return "";
+        }
+        string candidate = PathTools.join(self.appDir, "bin/" + name);
+        return SemuInstallHost.regularFile(candidate)
+                && access(candidate, X_OK) == 0
+            ? candidate : "";
+    }
+
+    public SemuInstallResult writable(string path, Vector<string> mounts) {
+        if (path.isEmpty() || !SemuInstallHost.mkdirp(path)) {
+            return SemuInstallResult.failure(
+                "cannot create a declared writable runtime path: " + path);
+        }
+        string canonical = UnixFileSystem.realPath(path);
+        string home = UnixFileSystem.realPath(Environment.get("HOME", "."));
+        string project = UnixFileSystem.realPath(self.projectRoot);
+        if (canonical.isEmpty() || canonical.equals("/")
+                || canonical.equals(home) || canonical.equals(project)) {
+            return SemuInstallResult.failure(
+                "refusing broad writable sandbox bind: " + path);
+        }
+        mounts.extend(["--bind", canonical, canonical]);
+        return SemuInstallResult.success();
+    }
+
+    public void readOnly(string path, Vector<string> mounts) {
+        string canonical = UnixFileSystem.realPath(path);
+        if (!canonical.isEmpty() && SemuInstallHost.realDirectory(canonical)) {
+            mounts.extend(["--ro-bind", canonical, canonical]);
+        }
+    }
+
+    public int enterSandbox() {
+        string bubblewrap = self.bundledExecutable(self.policy.bubblewrap);
+        if (bubblewrap.isEmpty()) {
+            print("runtime: exact bundled bubblewrap executable is missing");
+            return 127;
+        }
+        string sandbox = self.policy.sandboxAppDir;
+        Vector<string> arguments = [
+            "--ro-bind", "/", "/", "--proc", "/proc",
+            "--dev-bind", "/dev", "/dev",
+            "--ro-bind", self.appDir, sandbox,
+            "--tmpfs", "/tmp", "--tmpfs", "/nix",
+            "--ro-bind", sandbox + "/nix/store", "/nix/store",
+            "--setenv", "APPDIR", sandbox,
+            "--setenv", "SEMU_ASSET_ROOT", sandbox,
+            "--setenv", "SEMU_SOURCE_ROOT", sandbox + "/share/semu/config",
+            "--setenv", "SEMU_CLI", sandbox + "/lib/semu/semu-btrc",
+            "--setenv", "SEMU_LAUNCHER_BIN", sandbox + "/usr/bin",
+            "--setenv", "SEMU_RETROARCH_CORE_DIR",
+                sandbox + "/usr/lib/retroarch/cores",
+            "--setenv", "SEMU_RETROARCH_SHADER_DIR",
+                sandbox + "/share/libretro/shaders/shaders_slang",
+            "--setenv", "SEMU_BIOS_ROOT", self.biosRoot,
+            "--setenv", "PATH", sandbox + "/usr/bin:" + sandbox + "/bin:"
+                + self.hostPath
+        ];
+        Vector<string> writableMounts = [];
+        Vector<string> protectedMounts = [];
+        string buildRoot = PathTools.join(self.projectRoot, "build");
+        for directory in [self.semuHome, buildRoot] {
+            SemuInstallResult mounted = self.writable(directory, writableMounts);
+            if (!mounted.ok()) { print("runtime: " + mounted.error); return 2; }
+        }
+        for directory in self.policy.esDeWritableDirectories {
+            SemuInstallResult mounted = self.writable(
+                PathTools.join(self.esDeHome, directory), writableMounts);
+            if (!mounted.ok()) { print("runtime: " + mounted.error); return 2; }
+        }
+        string home = Environment.get("HOME", ".");
+        for directory in [
+                Environment.get("SEMU_STEAM_INPUT_DIR",
+                    PathTools.join(home, self.policy.steamInputTemplates)),
+                Environment.get("SEMU_STEAM_INPUT_ICON_DIR",
+                    PathTools.join(home, self.policy.steamInputIcons)),
+                PathTools.join(home, self.policy.steamControllerConfigs)] {
+            SemuInstallResult mounted = self.writable(directory, writableMounts);
+            if (!mounted.ok()) { print("runtime: " + mounted.error); return 2; }
+        }
+        self.readOnly(self.biosRoot, protectedMounts);
+        self.readOnly(self.romsRoot, protectedMounts);
+        arguments.extend(writableMounts);
+        arguments.extend(protectedMounts);
+        arguments.extend([
+            "--", sandbox + "/lib/semu/semu-btrc",
+            "runtime", "app", "--inside", "--appdir", sandbox, "--"
+        ]);
+        arguments.extend(self.options.arguments);
+        return SemuRuntimeExec.replace(bubblewrap, arguments);
+    }
+
+    public bool explicitSettingsPrepare() {
+        return self.options.arguments.size() >= 2
+            && self.options.arguments.get(0).equals("settings")
+            && self.options.arguments.get(1).equals("prepare");
+    }
+
+    public bool routesToCli() {
+        return !self.options.arguments.isEmpty()
+            && self.policy.cliCommands.contains(self.options.arguments.get(0));
+    }
+
+    public int prepareSettings() {
+        if (self.explicitSettingsPrepare()
+                || (!self.options.arguments.isEmpty()
+                    && self.options.arguments.get(0).equals("sync"))) {
+            return 0;
+        }
+        ExecResult prepared = ChildProcess.run(self.cli,
+            ["settings", "prepare", "--target", self.policy.target,
+             "--project", self.projectRoot], "",
+            CommandEnvironment.empty(), CommandEnvironment.empty(),
+            300000, 8192, 32768, "", CommandOutput.suppress());
+        if (prepared.ok()) { return 0; }
+        print("runtime: settings preparation failed: "
+            + SemuInstallHost.processError(prepared));
+        return 2;
+    }
+
+    public Vector<string> esDeArguments() {
+        Vector<string> result = [];
+        int index = 0;
+        while (index < self.options.arguments.size()) {
+            string value = self.options.arguments.get(index);
+            if (value.equals("--project") || value.equals("--roms")) {
+                index += index + 1 < self.options.arguments.size() ? 2 : 1;
+            } else if (value.startsWith("--project=")
+                    || value.startsWith("--roms=")) {
+                index++;
+            } else {
+                result.push(value);
+                index++;
+            }
+        }
+        return result;
+    }
+
+    public int runInside() {
+        int prepared = self.prepareSettings();
+        if (prepared != 0) { return prepared; }
+        if (!self.options.arguments.isEmpty()
+                && ["-h", "--help", "help"].contains(
+                    self.options.arguments.get(0))) {
+            return SemuRuntimeExec.replace(self.cli, self.options.arguments);
+        }
+        if (self.routesToCli()) {
+            Vector<string> arguments = self.options.arguments;
+            if (!arguments.get(0).equals("launcher")
+                    && !self.argumentPresent("--project")) {
+                arguments.push("--project");
+                arguments.push(self.projectRoot);
+            }
+            return SemuRuntimeExec.replace(self.cli, arguments);
+        }
+        string restriction =
+            "/proc/sys/kernel/apparmor_restrict_unprivileged_userns";
+        if (SemuInstallHost.regularFile(restriction)
+                && FileSystem.readText(restriction).trim().equals("1")) {
+            fprintf(stderr,
+                "Semu: unprivileged user namespaces are restricted; bwrap may fail until the host policy permits them.\n");
+        }
+        string nixGl = PathTools.join(self.appDir, "bin/nixGL");
+        string esDe = PathTools.join(self.appDir, "usr/bin/es-de");
+        if (!SemuInstallHost.regularFile(nixGl) || access(nixGl, X_OK) != 0
+                || !SemuInstallHost.regularFile(esDe)
+                || access(esDe, X_OK) != 0) {
+            print("runtime: bundled ES-DE graphics entrypoints are missing");
+            return 127;
+        }
+        Vector<string> arguments = SemuEsDeStartupContract.launchArguments(
+            esDe, self.esDeHome, self.esDeArguments());
+        if (arguments.isEmpty()) {
+            print("runtime: ES-DE startup arguments violate the splash/home contract");
+            return 2;
+        }
+        return SemuRuntimeExec.replace(nixGl, arguments);
+    }
+
+    public int run() {
+        SemuInstallResult configured = self.configure();
+        if (!configured.ok()) { print("runtime: " + configured.error); return 2; }
+        if (!self.options.inside
+                && FileSystem.isDir(PathTools.join(self.appDir, "nix/store"))) {
+            return self.enterSandbox();
+        }
+        return self.runInside();
+    }
+}
+
+class SemuAppRuntimeCommand {
+    class int run(CliCommandLine command) {
+        if (!command.ok() || !command.operand(0).equals("app")) {
+            print("runtime: expected app runtime command");
+            return 2;
+        }
+        SemuAppRuntimeOptions options = SemuAppRuntimeOptions.parse(command);
+        string appDir = UnixFileSystem.realPath(options.appDir);
+        if (appDir.isEmpty()) {
+            print("runtime: --appdir must name a real AppDir");
+            return 2;
+        }
+        SemuAppRuntimePolicy policy = SemuAppRuntimePolicy();
+        SemuInstallResult loaded = policy.load(appDir);
+        if (!loaded.ok()) { print("runtime: " + loaded.error); return 2; }
+        return SemuAppRuntime(policy, options).run();
+    }
+}

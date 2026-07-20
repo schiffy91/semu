@@ -1,0 +1,286 @@
+{
+  "schema_version": 1,
+  "compiler": {
+    "bindings": {
+      "emulator_name": {
+        "source": "emulator.name"
+      },
+      "controller_api": {
+        "source": "input.device_identities.cemu_api"
+      },
+      "controller_display_name": {
+        "source": "input.device_identities.cemu_display_name"
+      },
+      "controller_uuid": {
+        "source": "profile.controller.uuid"
+      },
+      "controller_type": {
+        "source": "profile.controller.emulated_type"
+      },
+      "controller_rumble": {
+        "source": "profile.controller.rumble"
+      },
+      "renderer_key": {
+        "source": "platform.graphics.key"
+      },
+      "renderer_value": {
+        "source": "platform.graphics.values.opengl"
+      }
+    },
+    "line_groups": {
+      "controller_mappings": {
+        "rows": "controller.mappings",
+        "format": "\t\t\t<entry><mapping>${mapping}</mapping><button>${button}</button></entry>"
+      }
+    }
+  },
+  "controller": {
+    "api_identity": "cemu_api",
+    "display_name_identity": "cemu_display_name",
+    "authoritative": true,
+    "compile_define": "SEMU_CEMU_OWNED_INPUT_PROFILE",
+    "emulated_type": "Wii U GamePad",
+    "guid_index": 0,
+    "guid": "03000000de280000ff11000001000000",
+    "uuid": "0_03000000de280000ff11000001000000",
+    "rumble": "0.5",
+    "mappings": [
+      {
+        "mapping": 1,
+        "control": "vpad.a",
+        "source": "SDL_CONTROLLER_BUTTON_B",
+        "button": 1
+      },
+      {
+        "mapping": 2,
+        "control": "vpad.b",
+        "source": "SDL_CONTROLLER_BUTTON_A",
+        "button": 0
+      },
+      {
+        "mapping": 3,
+        "control": "vpad.x",
+        "source": "SDL_CONTROLLER_BUTTON_Y",
+        "button": 3
+      },
+      {
+        "mapping": 4,
+        "control": "vpad.y",
+        "source": "SDL_CONTROLLER_BUTTON_X",
+        "button": 2
+      },
+      {
+        "mapping": 5,
+        "control": "vpad.l",
+        "source": "SDL_CONTROLLER_BUTTON_LEFTSHOULDER",
+        "button": 9
+      },
+      {
+        "mapping": 6,
+        "control": "vpad.r",
+        "source": "SDL_CONTROLLER_BUTTON_RIGHTSHOULDER",
+        "button": 10
+      },
+      {
+        "mapping": 7,
+        "control": "vpad.zl",
+        "source": "kTriggerXP",
+        "button": 42
+      },
+      {
+        "mapping": 8,
+        "control": "vpad.zr",
+        "source": "kTriggerYP",
+        "button": 43
+      },
+      {
+        "mapping": 9,
+        "control": "vpad.plus",
+        "source": "SDL_CONTROLLER_BUTTON_START",
+        "button": 6
+      },
+      {
+        "mapping": 10,
+        "control": "vpad.minus",
+        "source": "SDL_CONTROLLER_BUTTON_BACK",
+        "button": 4
+      },
+      {
+        "mapping": 11,
+        "control": "vpad.up",
+        "source": "SDL_CONTROLLER_BUTTON_DPAD_UP",
+        "button": 11
+      },
+      {
+        "mapping": 12,
+        "control": "vpad.down",
+        "source": "SDL_CONTROLLER_BUTTON_DPAD_DOWN",
+        "button": 12
+      },
+      {
+        "mapping": 13,
+        "control": "vpad.left",
+        "source": "SDL_CONTROLLER_BUTTON_DPAD_LEFT",
+        "button": 13
+      },
+      {
+        "mapping": 14,
+        "control": "vpad.right",
+        "source": "SDL_CONTROLLER_BUTTON_DPAD_RIGHT",
+        "button": 14
+      },
+      {
+        "mapping": 15,
+        "control": "vpad.stick_l",
+        "source": "SDL_CONTROLLER_BUTTON_LEFTSTICK",
+        "button": 7
+      },
+      {
+        "mapping": 16,
+        "control": "vpad.stick_r",
+        "source": "SDL_CONTROLLER_BUTTON_RIGHTSTICK",
+        "button": 8
+      },
+      {
+        "mapping": 17,
+        "control": "vpad.stick_l_up",
+        "source": "kAxisYN",
+        "button": 45
+      },
+      {
+        "mapping": 18,
+        "control": "vpad.stick_l_down",
+        "source": "kAxisYP",
+        "button": 39
+      },
+      {
+        "mapping": 19,
+        "control": "vpad.stick_l_left",
+        "source": "kAxisXN",
+        "button": 44
+      },
+      {
+        "mapping": 20,
+        "control": "vpad.stick_l_right",
+        "source": "kAxisXP",
+        "button": 38
+      },
+      {
+        "mapping": 21,
+        "control": "vpad.stick_r_up",
+        "source": "kRotationYN",
+        "button": 47
+      },
+      {
+        "mapping": 22,
+        "control": "vpad.stick_r_down",
+        "source": "kRotationYP",
+        "button": 41
+      },
+      {
+        "mapping": 23,
+        "control": "vpad.stick_r_left",
+        "source": "kRotationXN",
+        "button": 46
+      },
+      {
+        "mapping": 24,
+        "control": "vpad.stick_r_right",
+        "source": "kRotationXP",
+        "button": 40
+      },
+      {
+        "mapping": 27,
+        "control": "vpad.home",
+        "source": "SDL_CONTROLLER_BUTTON_GUIDE",
+        "button": 5
+      }
+    ]
+  },
+  "actions": {
+    "native": [
+      {
+        "action": "app.quit",
+        "chord": "Ctrl+Q",
+        "consumer": "MainWindow::OnKeyDown"
+      },
+      {
+        "action": "screen.swap",
+        "chord": "Ctrl+Tab",
+        "consumer": "LatteRenderTarget_copyToBackbuffer"
+      }
+    ],
+    "unsupported": [
+      {
+        "action": "state.save",
+        "reason": "Cemu 2.6 has no savestate implementation or native save-state command."
+      },
+      {
+        "action": "state.load",
+        "reason": "Cemu 2.6 has no savestate implementation or native load-state command."
+      }
+    ]
+  },
+  "files": [
+    {
+      "path": "${emulator_name}/config/controllerProfiles/controller0.xml",
+      "lines": [
+        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>",
+        "<emulated_controller>",
+        "\t<type>${controller_type}</type>",
+        "\t<controller>",
+        "\t\t<api>${controller_api}</api>",
+        "\t\t<uuid>${controller_uuid}</uuid>",
+        "\t\t<display_name>${controller_display_name}</display_name>",
+        "\t\t<rumble>${controller_rumble}</rumble>",
+        "\t\t<axis>",
+        "\t\t\t<deadzone>0.1</deadzone>",
+        "\t\t\t<range>1</range>",
+        "\t\t</axis>",
+        "\t\t<rotation>",
+        "\t\t\t<deadzone>0.1</deadzone>",
+        "\t\t\t<range>1</range>",
+        "\t\t</rotation>",
+        "\t\t<trigger>",
+        "\t\t\t<deadzone>0.1</deadzone>",
+        "\t\t\t<range>1</range>",
+        "\t\t</trigger>",
+        "\t\t<mappings>",
+        "@lines:controller_mappings",
+        "\t\t</mappings>",
+        "\t</controller>",
+        "</emulated_controller>"
+      ]
+    },
+    {
+      "path": "${emulator_name}/config/settings.xml",
+      "lines": [
+        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>",
+        "<content>",
+        "\t<Graphic>",
+        "\t\t<${renderer_key}>${renderer_value}</${renderer_key}>",
+        "\t\t<FullscreenScaling>0</FullscreenScaling>",
+        "\t\t<Notification>",
+        "\t\t\t<ControllerProfiles>false</ControllerProfiles>",
+        "\t\t\t<ControllerBattery>false</ControllerBattery>",
+        "\t\t</Notification>",
+        "\t</Graphic>",
+        "\t<fullscreen>true</fullscreen>",
+        "\t<fullscreen_menubar>false</fullscreen_menubar>",
+        "\t<open_pad>false</open_pad>",
+        "\t<disable_screensaver>true</disable_screensaver>",
+        "\t<feral_gamemode>false</feral_gamemode>",
+        "\t<use_discord_presence>false</use_discord_presence>",
+        "\t<play_boot_sound>false</play_boot_sound>",
+        "\t<check_update>false</check_update>",
+        "</content>"
+      ]
+    }
+  ],
+  "doc": {
+    "controller": "Cemu automatically loads controllerProfiles/controller0.xml for player one before CafeSystem initialization. The 0_ prefix is Cemu's duplicate-GUID index followed by SDL_JoystickGetGUIDString's 32 lowercase hexadecimal digits. Mapping ids are VPAD ButtonId values; button ids are the pinned 2.6 SDL_GameControllerButton values and Controller.h synthetic axis values. The Semu source build ignores per-title controller overrides so this generated profile remains authoritative.",
+    "display": "open_pad=false leaves one primary game window. Ctrl+Tab changes whether that main window presents TV or GamePad output; the separate pad window remains closed.",
+    "storage": "The profile pins only input and UI settings. emulator.json owns the XDG and -m paths that keep normal Wii U title saves inside the isolated MLC root.",
+    "actions": "Native rows are fail-closed invariants checked against steamdeck.skm before emission. Unsupported rows document shared Semu actions that this exact upstream release cannot consume."
+  }
+}

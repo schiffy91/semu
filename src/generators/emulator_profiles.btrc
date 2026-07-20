@@ -1,0 +1,559 @@
+// emulator_profiles.btrc - declarative emulator profile compilation.
+
+import std.{fs, json, vector}
+import ../compiler/model.btrc
+import ../lib/json_format.btrc
+import ../lib/owned_paths.btrc
+import ./emulators.btrc
+
+class SemuProfileBindings {
+    public Vector<string> names;
+    public Vector<string> values;
+
+    public SemuProfileBindings() {
+        self.names = [];
+        self.values = [];
+    }
+
+    public void put(string name, string value) {
+        for (int index = 0; index < self.names.size(); index++) {
+            if (self.names.get(index).equals(name)) {
+                self.values.set(index, value);
+                return;
+            }
+        }
+        self.names.push(name);
+        self.values.push(value);
+    }
+
+    public string get(string name) {
+        for (int index = 0; index < self.names.size(); index++) {
+            if (self.names.get(index).equals(name)) {
+                return self.values.get(index);
+            }
+        }
+        return "";
+    }
+
+    public string render(string source) {
+        string result = source;
+        for (int index = 0; index < self.names.size(); index++) {
+            result = result.replace(
+                "${" + self.names.get(index) + "}", self.values.get(index));
+        }
+        return result;
+    }
+}
+
+class SemuChordEncoder {
+    class string key(string chord) {
+        string remaining = chord;
+        Vector<string> known = ["Ctrl", "Alt", "Shift", "Meta"];
+        bool consumed = true;
+        while (consumed) {
+            consumed = false;
+            for modifier in known {
+                string prefix = modifier + "+";
+                if (remaining.startsWith(prefix)) {
+                    remaining = remaining.substring(
+                        prefix.len(), remaining.len());
+                    consumed = true;
+                }
+            }
+        }
+        return remaining;
+    }
+
+    class Vector<string> modifiers(string chord) {
+        Vector<string> result = [];
+        string remaining = chord;
+        Vector<string> known = ["Ctrl", "Alt", "Shift", "Meta"];
+        bool consumed = true;
+        while (consumed) {
+            consumed = false;
+            for modifier in known {
+                string prefix = modifier + "+";
+                if (remaining.startsWith(prefix)) {
+                    result.push(modifier);
+                    remaining = remaining.substring(
+                        prefix.len(), remaining.len());
+                    consumed = true;
+                }
+            }
+        }
+        return result;
+    }
+
+    class string mapped(JsonValue values, string token, bool required) {
+        if (values.isObject() && values.has(token)) {
+            return SemuJsonPath.text(values.get(token));
+        }
+        return required ? "" : token;
+    }
+
+    class string formatted(string format, string value) {
+        return format.isEmpty() ? value : format.replace("${value}", value);
+    }
+
+    class string joined(JsonValue encoding, string chord) {
+        JsonValue whole = encoding.get("whole");
+        if (whole.isObject() && whole.has(chord)) {
+            return SemuJsonPath.text(whole.get(chord));
+        }
+        bool requireModifiers = encoding.get("require_modifier_map").isBool()
+            && encoding.get("require_modifier_map").asBool();
+        bool requireKeys = encoding.get("require_key_map").isBool()
+            && encoding.get("require_key_map").asBool();
+        bool ignoreModifiers = encoding.get("ignore_modifiers").isBool()
+            && encoding.get("ignore_modifiers").asBool();
+        Vector<string> parts = [];
+        if (!ignoreModifiers) {
+            for modifier in SemuChordEncoder.modifiers(chord) {
+                string value = SemuChordEncoder.mapped(
+                    encoding.get("modifiers"), modifier, requireModifiers);
+                if (value.isEmpty()) { return ""; }
+                parts.push(SemuChordEncoder.formatted(
+                    SemuJsonPath.text(encoding.get("modifier_format")), value));
+            }
+        }
+        string key = SemuChordEncoder.mapped(
+            encoding.get("keys"), SemuChordEncoder.key(chord), requireKeys);
+        if (key.isEmpty()) { return ""; }
+        if (SemuJsonPath.text(encoding.get("key_case")).equals("lower")) {
+            key = key.toLower();
+        }
+        parts.push(SemuChordEncoder.formatted(
+            SemuJsonPath.text(encoding.get("key_format")), key));
+        return SemuChordEncoder.formatted(
+            SemuJsonPath.text(encoding.get("format")),
+            parts.join(SemuJsonPath.text(encoding.get("separator"))));
+    }
+
+    class string sum(JsonValue encoding, string chord) {
+        JsonValue modifiers = encoding.get("modifiers");
+        JsonValue keys = encoding.get("keys");
+        string key = SemuChordEncoder.key(chord);
+        if (!keys.isObject() || !keys.get(key).isInt()) { return ""; }
+        int result = keys.get(key).asInt();
+        for modifier in SemuChordEncoder.modifiers(chord) {
+            if (!modifiers.isObject() || !modifiers.get(modifier).isInt()) {
+                return "";
+            }
+            result += modifiers.get(modifier).asInt();
+        }
+        return f"{result}";
+    }
+
+    class string compile(JsonValue encoding, string chord) {
+        if (!encoding.isObject()) { return chord; }
+        string mode = SemuJsonPath.text(encoding.get("mode"));
+        if (mode.equals("joined")) {
+            return SemuChordEncoder.joined(encoding, chord);
+        }
+        if (mode.equals("sum")) { return SemuChordEncoder.sum(encoding, chord); }
+        return "";
+    }
+}
+
+class SemuProfileCompiler {
+    class string relativeDestination(string declaredPath,
+                                     SemuEmulatorSource emulator) {
+        if (!SemuOwnedPaths.safeRelativePath(declaredPath)) { return ""; }
+        string prefix = emulator.name + "/";
+        string relative = declaredPath.startsWith(prefix)
+            ? declaredPath.substring(prefix.len(), declaredPath.len())
+            : declaredPath;
+        return SemuOwnedPaths.safeRelativePath(relative) ? relative : "";
+    }
+
+    class bool managedDestination(string relative,
+                                  SemuEmulatorPlatformSource platform) {
+        JsonValue managed = platform.definition.get("state")
+            .get("managed_profile_files");
+        if (!managed.isArray()) { return true; }
+        for (int index = 0; index < managed.size(); index++) {
+            if (SemuJsonPath.text(managed.at(index)).equals(relative)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    class string firmwareDirectory(JsonValue platform,
+                                   SemuRuntimeContext context) {
+        JsonValue firmware = platform.get("firmware");
+        if (!firmware.isObject()) {
+            return context.biosRoot;
+        }
+        Vector<string> candidates = [];
+        JsonValue primary = firmware.get("dir");
+        if (primary.isString()) { candidates.push(primary.asString()); }
+        JsonValue fallbacks = firmware.get("fallback_dirs");
+        if (fallbacks.isArray()) {
+            for (int index = 0; index < fallbacks.size(); index++) {
+                if (fallbacks.at(index).isString()) {
+                    candidates.push(fallbacks.at(index).asString());
+                }
+            }
+        }
+        for candidate in candidates {
+            string resolved = SemuTokenResolver.resolve(candidate, context);
+            if (!resolved.contains("${") && FileSystem.isDir(resolved)) {
+                return resolved;
+            }
+        }
+        return context.biosRoot;
+    }
+
+    class JsonValue sourceRoot(string namespaceName,
+                               SemuEmulatorSource emulator,
+                               SemuEmulatorPlatformSource platform,
+                               SemuInputSource input,
+                               SemuRuntimeContext context) {
+        if (namespaceName.equals("emulator")) { return emulator.definition; }
+        if (namespaceName.equals("platform")) { return platform.definition; }
+        if (namespaceName.equals("input")) { return input.definition; }
+        if (namespaceName.equals("profile")) { return emulator.profile; }
+        if (namespaceName.equals("settings")) { return context.settings; }
+        JsonValue runtime = JsonValue.makeObject();
+        runtime.set("state_root", JsonValue.makeString(context.stateRoot));
+        runtime.set("content_root", JsonValue.makeString(context.contentRoot));
+        runtime.set("bios_directory", JsonValue.makeString(
+            SemuProfileCompiler.firmwareDirectory(platform.definition, context)));
+        return runtime;
+    }
+
+    class string bindingValue(JsonValue spec,
+                              SemuEmulatorSource emulator,
+                              SemuEmulatorPlatformSource platform,
+                              SemuInputSource input,
+                              SemuRuntimeContext context) {
+        string value = spec.has("literal")
+            ? SemuJsonPath.text(spec.get("literal")) : "";
+        if (spec.has("source") && spec.get("source").isString()) {
+            string source = spec.get("source").asString();
+            int separator = source.indexOf(".");
+            string namespaceName = separator < 0
+                ? source : source.substring(0, separator);
+            string path = separator < 0
+                ? "" : source.substring(separator + 1, source.len());
+            value = SemuJsonPath.text(SemuJsonPath.get(
+                SemuProfileCompiler.sourceRoot(namespaceName,
+                    emulator, platform, input, context), path));
+        }
+        if (spec.has("map")) {
+            JsonValue mapping = spec.get("map");
+            JsonValue mapped = mapping.isObject()
+                ? mapping.get(value) : JsonValue.makeNull();
+            value = mapped.isString() ? mapped.asString() : "";
+        }
+        if (spec.get("transform").isString()
+                && spec.get("transform").asString().equals("lower")) {
+            value = value.toLower();
+        }
+        return SemuTokenResolver.resolve(value, context);
+    }
+
+    class SemuProfileBindings bindings(
+            SemuEmulatorSource emulator,
+            SemuEmulatorPlatformSource platform,
+            SemuInputSource input,
+            SemuRuntimeContext context,
+            CompilerDiagnostics diagnostics) {
+        SemuProfileBindings result = SemuProfileBindings();
+        JsonValue compiler = emulator.profile.get("compiler");
+        JsonValue definitions = compiler.get("bindings");
+        if (!compiler.isObject() || !definitions.isObject()) {
+            diagnostics.add(emulator.profileFile, "compiler.bindings",
+                "missing declarative profile bindings");
+            return result;
+        }
+        Vector<string> names = definitions.keys();
+        names.sort();
+        for name in names {
+            JsonValue spec = definitions.get(name);
+            if (!spec.isObject()) {
+                diagnostics.add(emulator.profileFile,
+                    "compiler.bindings." + name, "expected object");
+                continue;
+            }
+            string value = SemuProfileCompiler.bindingValue(
+                spec, emulator, platform, input, context);
+            if (value.isEmpty() || value.contains("${")) {
+                diagnostics.add(emulator.profileFile,
+                    "compiler.bindings." + name,
+                    "binding did not resolve to a concrete value");
+            } else {
+                result.put(name, value);
+            }
+        }
+        return result;
+    }
+
+    class string actionChord(JsonValue row, SemuInputSource input) {
+        JsonValue action = row.get("action");
+        if (!action.isString()) { return ""; }
+        return SemuJsonPath.text(input.definition.get("actions")
+            .get(action.asString()).get("chord"));
+    }
+
+    class string renderRow(string format, JsonValue row, int index,
+                           JsonValue chordEncoding, SemuProfileBindings base,
+                           SemuInputSource input) {
+        SemuProfileBindings bindings = SemuProfileBindings();
+        for (int binding = 0; binding < base.names.size(); binding++) {
+            bindings.put(base.names.get(binding), base.values.get(binding));
+        }
+        bindings.put("index", f"{index}");
+        if (row.isObject()) {
+            for key in row.keys() {
+                JsonValue value = row.get(key);
+                bindings.put(key, value.isArray()
+                    ? SemuJsonPath.csv(value) : SemuJsonPath.text(value));
+            }
+            if (row.has("scancodes")) {
+                bindings.put("scancodes_csv",
+                    SemuJsonPath.csv(row.get("scancodes")));
+            }
+        }
+        string chord = SemuProfileCompiler.actionChord(row, input);
+        if (!chord.isEmpty()) {
+            bindings.put("chord", SemuChordEncoder.compile(chordEncoding, chord));
+        }
+        return bindings.render(format);
+    }
+
+    class SemuProfileBindings lineGroups(
+            SemuEmulatorSource emulator, SemuInputSource input,
+            SemuProfileBindings bindings,
+            CompilerDiagnostics diagnostics) {
+        SemuProfileBindings result = SemuProfileBindings();
+        JsonValue groups = emulator.profile.get("compiler").get("line_groups");
+        if (!groups.isObject()) {
+            diagnostics.add(emulator.profileFile, "compiler.line_groups",
+                "expected object");
+            return result;
+        }
+        Vector<string> names = groups.keys();
+        names.sort();
+        for name in names {
+            JsonValue spec = groups.get(name);
+            string rowsPath = SemuJsonPath.text(spec.get("rows"));
+            string format = SemuJsonPath.text(spec.get("format"));
+            JsonValue chordEncoding = spec.get("chord_encoding");
+            JsonValue rows = SemuJsonPath.get(emulator.profile, rowsPath);
+            Vector<string> lines = [];
+            JsonValue prefix = spec.get("prefix");
+            if (prefix.isArray()) {
+                for (int index = 0; index < prefix.size(); index++) {
+                    lines.push(bindings.render(SemuJsonPath.text(prefix.at(index))));
+                }
+            }
+            if (!rows.isArray() || format.isEmpty()) {
+                diagnostics.add(emulator.profileFile,
+                    "compiler.line_groups." + name,
+                    "rows must be an array and format must be non-empty");
+            } else {
+                for (int index = 0; index < rows.size(); index++) {
+                    JsonValue row = rows.at(index);
+                    string action = SemuJsonPath.text(row.get("action"));
+                    if (!action.isEmpty()
+                            && !emulator.actions.contains(action)) {
+                        continue;
+                    }
+                    string line = SemuProfileCompiler.renderRow(
+                        format, row, index, chordEncoding, bindings, input);
+                    if (line.contains("${") || line.isEmpty()) {
+                        diagnostics.add(emulator.profileFile,
+                            "compiler.line_groups." + name,
+                            f"row {index} did not resolve");
+                    } else {
+                        lines.push(line);
+                    }
+                }
+            }
+            result.put(name, lines.join("\n"));
+        }
+        return result;
+    }
+
+    class void renderLine(Vector<string> output, JsonValue value,
+                          JsonValue profile, SemuProfileBindings bindings,
+                          SemuProfileBindings groups) {
+        if (value.isObject()) {
+            string condition = SemuJsonPath.text(value.get("if"));
+            if (!bindings.get(condition).isEmpty()) {
+                output.push(bindings.render(
+                    SemuJsonPath.text(value.get("line"))));
+            }
+            return;
+        }
+        string line = SemuJsonPath.text(value);
+        if (line.startsWith("@block:")) {
+            JsonValue block = profile.get("blocks").get(
+                line.replace("@block:", ""));
+            if (block.isArray()) {
+                for (int index = 0; index < block.size(); index++) {
+                    SemuProfileCompiler.renderLine(
+                        output, block.at(index), profile, bindings, groups);
+                }
+            }
+            return;
+        }
+        if (line.startsWith("@lines:")) {
+            string group = groups.get(line.replace("@lines:", ""));
+            if (!group.isEmpty()) { output.push(group); }
+            return;
+        }
+        output.push(bindings.render(line));
+    }
+
+    class JsonValue renderJson(JsonValue value, SemuProfileBindings bindings,
+                               SemuRuntimeContext context) {
+        if (value.isObject()) {
+            JsonValue result = JsonValue.makeObject();
+            Vector<string> keys = value.keys();
+            keys.sort();
+            for key in keys {
+                result.set(key, SemuProfileCompiler.renderJson(
+                    value.get(key), bindings, context));
+            }
+            return result;
+        }
+        if (value.isArray()) {
+            JsonValue result = JsonValue.makeArray();
+            for (int index = 0; index < value.size(); index++) {
+                result.push(SemuProfileCompiler.renderJson(
+                    value.at(index), bindings, context));
+            }
+            return result;
+        }
+        if (value.isString()) {
+            return JsonValue.makeString(SemuTokenResolver.resolve(
+                bindings.render(value.asString()), context));
+        }
+        if (value.isBool()) { return JsonValue.makeBool(value.asBool()); }
+        if (value.isInt()) { return JsonValue.makeInt(value.asInt()); }
+        if (value.isNumber()) { return JsonValue.makeFloat(value.asFloat()); }
+        return JsonValue.makeNull();
+    }
+
+    class string destination(string declaredPath,
+                             SemuEmulatorSource emulator,
+                             SemuEmulatorPlatformSource platform,
+                             SemuRuntimeContext context) {
+        string relative = SemuProfileCompiler.relativeDestination(
+            declaredPath, emulator);
+        if (relative.isEmpty()
+                || !SemuProfileCompiler.managedDestination(
+                    relative, platform)) {
+            return "";
+        }
+        JsonValue state = platform.definition.get("state");
+        if (relative.startsWith("config/")) {
+            string suffix = relative.substring(7, relative.len());
+            string exact = SemuJsonPath.text(state.get("profile_config_dir"));
+            string subdir = SemuJsonPath.text(state.get("config_subdir"));
+            string root = exact.isEmpty()
+                ? PathTools.join(context.stateRoot,
+                    "config/" + (subdir.isEmpty() ? emulator.id : subdir))
+                : SemuTokenResolver.resolve(exact, context);
+            return SemuOwnedPaths.containedPath(context.stateRoot,
+                PathTools.join(root, suffix));
+        }
+        if (relative.startsWith("data/")) {
+            string suffix = relative.substring(5, relative.len());
+            string exact = SemuJsonPath.text(state.get("profile_data_dir"));
+            string subdir = SemuJsonPath.text(state.get("data_subdir"));
+            string root = exact.isEmpty()
+                ? PathTools.join(context.stateRoot,
+                    "data/" + (subdir.isEmpty() ? emulator.id : subdir))
+                : SemuTokenResolver.resolve(exact, context);
+            return SemuOwnedPaths.containedPath(context.stateRoot,
+                PathTools.join(root, suffix));
+        }
+        return SemuOwnedPaths.containedPath(context.stateRoot, PathTools.join(
+            PathTools.join(context.stateRoot, "config/" + emulator.id),
+            relative));
+    }
+
+    class int emit(SemuEmulatorSource emulator, SemuInputSource input,
+                   SemuRuntimeContext context, bool installRuntime,
+                   string outputRoot, CompilerDiagnostics diagnostics) {
+        SemuEmulatorPlatformSource platform = emulator.platformById(
+            context.platformId);
+        if (platform.id.isEmpty()) {
+            diagnostics.add(emulator.file, "platforms." + context.platformId,
+                "profile platform is unavailable");
+            return 1;
+        }
+        SemuProfileBindings bindings = SemuProfileCompiler.bindings(
+            emulator, platform, input, context, diagnostics);
+        SemuProfileBindings groups = SemuProfileCompiler.lineGroups(
+            emulator, input, bindings, diagnostics);
+        JsonValue files = emulator.profile.get("files");
+        if (!files.isArray() || files.size() == 0) {
+            diagnostics.add(emulator.profileFile, "files",
+                "profile declares no files");
+            return 1;
+        }
+        for (int fileIndex = 0; fileIndex < files.size(); fileIndex++) {
+            JsonValue file = files.at(fileIndex);
+            string declared = bindings.render(
+                SemuJsonPath.text(file.get("path")));
+            Vector<string> lines = [];
+            JsonValue sourceLines = file.get("lines");
+            JsonValue sourceJson = file.get("json");
+            bool linesFile = sourceLines.isArray();
+            bool jsonFile = file.has("json");
+            if (declared.isEmpty() || declared.contains("${")
+                    || linesFile == jsonFile) {
+                diagnostics.add(emulator.profileFile,
+                    f"files[{fileIndex}]", "profile file is not renderable");
+                continue;
+            }
+            if (linesFile) {
+                for (int lineIndex = 0;
+                        lineIndex < sourceLines.size(); lineIndex++) {
+                    SemuProfileCompiler.renderLine(
+                        lines, sourceLines.at(lineIndex),
+                        emulator.profile, bindings, groups);
+                }
+            }
+            string destination = installRuntime
+                ? SemuProfileCompiler.destination(
+                    declared, emulator, platform, context)
+                : SemuOwnedPaths.relativeFile(outputRoot, declared);
+            string text = linesFile
+                ? SemuTokenResolver.resolve(lines.join("\n") + "\n", context)
+                : SemuJsonFormat.document(SemuProfileCompiler.renderJson(
+                    sourceJson, bindings, context));
+            string ownedRoot = installRuntime
+                ? context.stateRoot : outputRoot;
+            if (destination.isEmpty() || text.contains("${")
+                    || !SemuOwnedPaths.writeText(
+                        ownedRoot, destination, text)) {
+                diagnostics.add(destination, "output",
+                    "could not write resolved profile");
+            }
+        }
+        return diagnostics.ok() ? 0 : 1;
+    }
+}
+
+class SemuEmulatorGenerator {
+    class string emit(SemuCompilerModel model, SemuBuildPlan plan,
+                      CompilerDiagnostics diagnostics) {
+        string root = PathTools.join(plan.outputRoot, "profiles");
+        SemuInputSource input = model.inputByReference(plan.input);
+        for emulator in model.emulators {
+            if (!plan.emulators.contains(emulator.id)) { continue; }
+            SemuRuntimeContext context = SemuRuntimeContext(
+                model.projectRoot, plan.platform, emulator.id,
+                plan.settings, plan.semuHome);
+            SemuProfileCompiler.emit(
+                emulator, input, context, false, root, diagnostics);
+        }
+        return diagnostics.ok() ? root : "";
+    }
+}

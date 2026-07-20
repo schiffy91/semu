@@ -1,0 +1,83 @@
+{
+  "schema_version": 1,
+  "activation": {
+    "mode": "source_patched_direct_link",
+    "package_ready": true,
+    "runtime_proven": false,
+    "physical_proven": false
+  },
+  "integration": {
+    "abi": 2,
+    "api": "semu-renderer",
+    "linkage": "direct",
+    "header": "semu_renderer.h",
+    "library": "semurenderer",
+    "backend": "opengl",
+    "callbacks": [
+      "get_proc_address",
+      "current_context"
+    ],
+    "inactive_reports": false,
+    "framebuffer": "current_default_opengl_draw_framebuffer",
+    "geometry": "ruby_opengl_live_output_and_target_dimensions",
+    "presentation_aspect": "live rendered target width divided by height",
+    "layout_variant": "auto_from_presentation_aspect",
+    "surface_order": [
+      {
+        "id": "game",
+        "native": "dynamic"
+      }
+    ],
+    "origin": "bottom_left",
+    "orientation": "upright",
+    "rotation": 0,
+    "patch": "ares.patch",
+    "compile_define": "HAVE_SEMU_RENDERER",
+    "driver_build": {
+      "cmake_source": "ruby/cmake/os-macos.cmake",
+      "registry_source": "ruby/video/video.cpp",
+      "feature": "VIDEO_CGL",
+      "driver": "OpenGL 3.2"
+    }
+  },
+  "phases": [
+    {
+      "id": "game",
+      "symbol": "semu_render_game_gl",
+      "source": "ruby/video/opengl/main.hpp",
+      "function": "ruby::OpenGL::output",
+      "after": "render(sources[0].width, sources[0].height, outputX + x, outputY + y, targetWidth, targetHeight)",
+      "before": "return to VideoCGL"
+    },
+    {
+      "id": "post_ui",
+      "symbol": "semu_render_post_ui_gl",
+      "source": "ruby/video/cgl.cpp",
+      "function": "ruby::VideoCGL::output",
+      "after": "OpenGL::output",
+      "before": "NSOpenGLContext flushBuffer"
+    }
+  ],
+  "surfaces": [
+    {
+      "index": 0,
+      "id": "game",
+      "geometry": "live outputX/outputY plus centered target rectangle",
+      "native": "current ares input texture dimensions",
+      "origin": "bottom_left",
+      "orientation": "upright",
+      "rotation": 0
+    }
+  ],
+  "composition": {
+    "owner": "semurenderer",
+    "shader": "renderer_owned",
+    "bezel": "renderer_owned",
+    "semu_menu": "renderer_owned",
+    "hiro_ui": "native and outside the OpenGL game view"
+  },
+  "doc": {
+    "boundary": "OpenGL::output submits the completed game rectangle to the game phase while the CGL context and default framebuffer are current. VideoCGL submits the same frame to the post-UI phase immediately before its own flushBuffer.",
+    "evidence": "Package linkage, patch application, exact phase order, and forbidden-symbol absence are source gates. A real macOS N64 frame and composition receipt remain runtime gates."
+  }
+}

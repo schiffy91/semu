@@ -1,0 +1,680 @@
+// Emulator-facing OpenGL renderer ABI and phase-ownership contract.
+
+#include <stddef.h>
+
+int SEMU_RENDER_ABI_GL = 2;
+int SEMU_RENDER_MAX_SURFACES = 2;
+int SEMU_RENDER_ORIGIN_BOTTOM_LEFT = 0;
+int SEMU_RENDER_ORIGIN_TOP_LEFT = 1;
+int SEMU_RENDER_LAYOUT_AUTO = 0;
+int SEMU_RENDER_LAYOUT_DEFAULT = 1;
+int SEMU_RENDER_LAYOUT_VARIANT_B = 2;
+int SEMU_RENDER_LAYOUT_VARIANT_C = 3;
+int SEMU_RENDER_LAYOUT_VARIANT_D = 4;
+
+int SEMU_RENDER_PASSTHROUGH = 0;
+int SEMU_RENDER_APPLIED = 1;
+int SEMU_RENDER_INVALID_FRAME = -1;
+int SEMU_RENDER_NO_CONTEXT = -2;
+int SEMU_RENDER_GL_UNAVAILABLE = -3;
+int SEMU_RENDER_PIPELINE_FAILED = -4;
+int SEMU_RENDER_ASSET_MISSING = -5;
+
+int SEMU_RENDER_POINTER_OUTSIDE = 0;
+int SEMU_RENDER_POINTER_MAPPED = 1;
+int SEMU_RENDER_POINTER_INVALID = -1;
+int SEMU_RENDER_POINTER_UNAVAILABLE = -2;
+int SEMU_RENDER_POINTER_STALE = -3;
+
+int SEMU_RENDER_PASS_BACKGROUND = 0;
+int SEMU_RENDER_PASS_GAME = 1;
+int SEMU_RENDER_PASS_CHROME = 2;
+int SEMU_RENDER_PASS_MENU = 3;
+
+struct RendererCanvasRect {
+    float x;
+    float y;
+    float width;
+    float height;
+};
+
+struct RendererPixelRect {
+    int x;
+    int y;
+    int width;
+    int height;
+};
+
+struct SemuRenderSurfaceGl {
+    int x;
+    int y;
+    int width;
+    int height;
+    int native_width;
+    int native_height;
+    int rotation;
+    int origin;
+};
+
+struct SemuRenderPointerSurface {
+    int x;
+    int y;
+    int width;
+    int height;
+    int native_width;
+    int native_height;
+    int rotation;
+    int origin;
+};
+
+struct SemuRenderPointerMap {
+    unsigned int abi;
+    unsigned int struct_size;
+    unsigned long long frame_id;
+    int framebuffer_width;
+    int framebuffer_height;
+    int surface_count;
+    struct SemuRenderPointerSurface surfaces[2];
+};
+
+struct SemuRenderPointerQuery {
+    unsigned int abi;
+    unsigned int struct_size;
+    unsigned long long frame_id;
+    float x;
+    float y;
+    int viewport_width;
+    int viewport_height;
+    int origin;
+    int surface_index;
+    int clamp;
+};
+
+struct SemuRenderPointerResult {
+    unsigned int abi;
+    unsigned int struct_size;
+    unsigned long long frame_id;
+    int surface_index;
+    int native_width;
+    int native_height;
+    int rotation;
+    int origin;
+    int clamped;
+    float normalized_x;
+    float normalized_y;
+    float native_x;
+    float native_y;
+};
+
+struct SemuRenderFrameGl {
+    unsigned int abi;
+    unsigned int struct_size;
+    unsigned long long frame_id;
+    unsigned int framebuffer;
+    unsigned int color_buffer;
+    int framebuffer_width;
+    int framebuffer_height;
+    float presentation_aspect;
+    unsigned int layout_variant;
+    int surface_count;
+    struct SemuRenderSurfaceGl surfaces[2];
+    __fn_ptr<void*, const char*> get_proc;
+    __fn_ptr<void*> current_context;
+    struct SemuRenderPointerMap pointer_map;
+    __fn_ptr<int, struct SemuRenderPointerMap*,
+        struct SemuRenderPointerQuery*, struct SemuRenderPointerResult*>
+        map_pointer;
+};
+
+struct RendererLaneGeometry {
+    int source_x;
+    int source_y;
+    int source_width;
+    int source_height;
+    int native_width;
+    int native_height;
+    int output_x;
+    int output_y;
+    int output_width;
+    int output_height;
+    int rotation;
+    int origin;
+};
+
+struct RendererCompositionGeometry {
+    int lane_count;
+    struct RendererLaneGeometry lanes[2];
+    float bezel_x;
+    float bezel_y;
+    float bezel_width;
+    float bezel_height;
+};
+
+struct SemuRenderPendingFrame {
+    int valid;
+    unsigned long long frame_id;
+    void* context;
+    unsigned int framebuffer;
+    unsigned int color_buffer;
+    int framebuffer_width;
+    int framebuffer_height;
+    float presentation_aspect;
+    unsigned int layout_variant;
+};
+
+class RendererFrameContract {
+    class bool validLayout(unsigned int layout) {
+        return layout == (unsigned int)SEMU_RENDER_LAYOUT_AUTO
+            || layout == (unsigned int)SEMU_RENDER_LAYOUT_DEFAULT
+            || layout == (unsigned int)SEMU_RENDER_LAYOUT_VARIANT_B
+            || layout == (unsigned int)SEMU_RENDER_LAYOUT_VARIANT_C
+            || layout == (unsigned int)SEMU_RENDER_LAYOUT_VARIANT_D;
+    }
+
+    class bool validRotation(int rotation) {
+        return rotation == 0 || rotation == 90
+            || rotation == 180 || rotation == 270;
+    }
+
+    class bool validSurface(struct SemuRenderFrameGl* frame,
+                            struct SemuRenderSurfaceGl* surface) {
+        if (frame == null || surface == null
+            || surface->x < 0 || surface->y < 0
+            || surface->width < 1 || surface->height < 1
+            || surface->native_width < 1 || surface->native_height < 1
+            || surface->x + surface->width > frame->framebuffer_width
+            || surface->y + surface->height > frame->framebuffer_height
+            || !RendererFrameContract.validRotation(surface->rotation)) {
+            return false;
+        }
+        return surface->origin == SEMU_RENDER_ORIGIN_BOTTOM_LEFT
+            || surface->origin == SEMU_RENDER_ORIGIN_TOP_LEFT;
+    }
+
+    class bool valid(struct SemuRenderFrameGl* frame) {
+        if (frame == null || frame->abi != (unsigned int)SEMU_RENDER_ABI_GL
+            || frame->struct_size < (unsigned int)sizeof(struct SemuRenderFrameGl)
+            || frame->frame_id == 0 || frame->framebuffer_width < 1
+            || frame->framebuffer_height < 1 || frame->surface_count < 1
+            || frame->surface_count > SEMU_RENDER_MAX_SURFACES
+            || frame->presentation_aspect < 0.0f
+            || frame->presentation_aspect > 10.0f
+            || !RendererFrameContract.validLayout(frame->layout_variant)
+            || frame->get_proc == null || frame->current_context == null) {
+            return false;
+        }
+        for (int index = 0; index < frame->surface_count; index++) {
+            if (!RendererFrameContract.validSurface(frame,
+                    &frame->surfaces[index])) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    class int sourceY(struct SemuRenderFrameGl* frame,
+                      struct SemuRenderSurfaceGl* surface) {
+        if (frame == null || surface == null) { return -1; }
+        return surface->origin == SEMU_RENDER_ORIGIN_TOP_LEFT
+            ? frame->framebuffer_height - surface->y - surface->height
+            : surface->y;
+    }
+}
+
+class RendererCompositionContract {
+    class int rounded(float value) { return (int)(value + 0.5f); }
+
+    class bool valid(struct RendererPixelRect* rectangle) {
+        return rectangle != null && rectangle->width > 0
+            && rectangle->height > 0;
+    }
+
+    class bool contains(struct RendererPixelRect* outer,
+                        struct RendererPixelRect* inner) {
+        return RendererCompositionContract.valid(outer)
+            && RendererCompositionContract.valid(inner)
+            && inner->x >= outer->x && inner->y >= outer->y
+            && inner->x + inner->width <= outer->x + outer->width
+            && inner->y + inner->height <= outer->y + outer->height;
+    }
+
+    class bool inside(struct RendererPixelRect* rectangle, int x, int y) {
+        return RendererCompositionContract.valid(rectangle)
+            && x >= rectangle->x && y >= rectangle->y
+            && x < rectangle->x + rectangle->width
+            && y < rectangle->y + rectangle->height;
+    }
+
+    class void contain(int viewportWidth, int viewportHeight,
+                       int contentWidth, int contentHeight,
+                       struct RendererCanvasRect* output) {
+        if (output == null) { return; }
+        output->x = 0.0f;
+        output->y = 0.0f;
+        output->width = 0.0f;
+        output->height = 0.0f;
+        if (viewportWidth < 1 || viewportHeight < 1
+                || contentWidth < 1 || contentHeight < 1) { return; }
+        float horizontal = (float)viewportWidth / (float)contentWidth;
+        float vertical = (float)viewportHeight / (float)contentHeight;
+        float scale = horizontal < vertical ? horizontal : vertical;
+        output->width = scale * (float)contentWidth;
+        output->height = scale * (float)contentHeight;
+        output->x = ((float)viewportWidth - output->width) * 0.5f;
+        output->y = ((float)viewportHeight - output->height) * 0.5f;
+    }
+
+    class void aperture(struct RendererCanvasRect* canvas,
+                        float x, float y, float width, float height,
+                        struct RendererPixelRect* output) {
+        if (output == null) { return; }
+        output->x = 0;
+        output->y = 0;
+        output->width = 0;
+        output->height = 0;
+        if (canvas == null || canvas->width <= 0.0f
+                || canvas->height <= 0.0f || x < 0.0f || y < 0.0f
+                || width <= 0.0f || height <= 0.0f
+                || x + width > 1.0001f || y + height > 1.0001f) { return; }
+        output->x = RendererCompositionContract.rounded(
+            canvas->x + x * canvas->width);
+        output->y = RendererCompositionContract.rounded(
+            canvas->y + (1.0f - y - height) * canvas->height);
+        output->width = RendererCompositionContract.rounded(
+            width * canvas->width);
+        output->height = RendererCompositionContract.rounded(
+            height * canvas->height);
+    }
+
+    class void fit(struct RendererPixelRect* area,
+                   int nativeWidth, int nativeHeight, int rotation,
+                   float declaredAspect, int integerScaling,
+                   struct RendererPixelRect* output) {
+        if (output == null) { return; }
+        output->x = 0;
+        output->y = 0;
+        output->width = 0;
+        output->height = 0;
+        if (!RendererCompositionContract.valid(area)
+                || nativeWidth < 1 || nativeHeight < 1) { return; }
+        int rotatedWidth = rotation == 90 || rotation == 270
+            ? nativeHeight : nativeWidth;
+        int rotatedHeight = rotation == 90 || rotation == 270
+            ? nativeWidth : nativeHeight;
+        float aspect = declaredAspect > 0.01f ? declaredAspect
+            : (float)rotatedWidth / (float)rotatedHeight;
+        int height = area->height;
+        int width = RendererCompositionContract.rounded((float)height * aspect);
+        if (width > area->width) {
+            width = area->width;
+            height = RendererCompositionContract.rounded((float)width / aspect);
+        }
+        if (integerScaling != 0) {
+            int integerWidth = RendererCompositionContract.rounded(
+                (float)rotatedHeight * aspect);
+            int scaleWidth = area->width / integerWidth;
+            int scaleHeight = area->height / rotatedHeight;
+            int scale = scaleWidth < scaleHeight ? scaleWidth : scaleHeight;
+            if (scale > 0) {
+                width = integerWidth * scale;
+                height = rotatedHeight * scale;
+            }
+        }
+        output->width = width;
+        output->height = height;
+        output->x = area->x + (area->width - width) / 2;
+        output->y = area->y + (area->height - height) / 2;
+    }
+
+}
+
+class RendererContextContract {
+    class bool changed(void* owner, void* next,
+                       unsigned long long previousFrame,
+                       unsigned long long nextFrame) {
+        return owner != null && (owner != next
+            || (nextFrame > 0ULL && previousFrame > 0ULL
+                && nextFrame < previousFrame));
+    }
+
+    class bool resourcesCurrent(void* owner, void* next, int ready,
+                                unsigned int program, bool programAlive) {
+        return owner != null && owner == next && ready != 0
+            && program != 0u && programAlive;
+    }
+}
+
+class RendererFrameSchedule {
+    class bool due(unsigned long long frameId,
+                   unsigned long long nextFrame, int urgent) {
+        return urgent != 0 || nextFrame == 0ULL || frameId >= nextFrame;
+    }
+
+    class unsigned long long after(unsigned long long frameId,
+                                   unsigned long long interval) {
+        unsigned long long next = frameId + interval;
+        return next > frameId ? next : 0ULL;
+    }
+}
+
+// glReadPixels has no return value. A deterministic canary rejects callbacks
+// that report no GL error while leaving all or nearly all output untouched.
+class RendererReadbackContract {
+    class unsigned char marker(size_t index) {
+        return (unsigned char)(((index * (size_t)131u + (size_t)0x5au)
+            ^ (index / (size_t)128u)) & (size_t)0xffu);
+    }
+
+    class void prepare(unsigned char* pixels, size_t count) {
+        if (pixels == null) { return; }
+        for (size_t index = 0; index < count; index++) {
+            pixels[index] = RendererReadbackContract.marker(index);
+        }
+    }
+
+    class bool overwritten(unsigned char* pixels, size_t count) {
+        if (pixels == null || count == (size_t)0) { return false; }
+        size_t changed = (size_t)0;
+        size_t required = count / (size_t)64;
+        if (required < (size_t)1) { required = (size_t)1; }
+        for (size_t index = 0; index < count; index++) {
+            if (pixels[index] != RendererReadbackContract.marker(index)) {
+                changed++;
+                if (changed >= required) { return true; }
+            }
+        }
+        return false;
+    }
+
+    class bool proven(bool errorFree, bool overwritten,
+                      int nonblank, bool written) {
+        return errorFree && overwritten && nonblank == 1 && written;
+    }
+}
+
+class RendererEvidenceContract {
+    class bool due(int targetFrame, int captureCount, int requested,
+                   int exhausted, unsigned long long frameId) {
+        return exhausted == 0 && (requested != 0
+            || (targetFrame > 0 && captureCount == 0
+                && frameId >= (unsigned long long)targetFrame));
+    }
+
+    class bool needsGl(int menuVisible, int targetFrame, int captureCount,
+                       int requested, int exhausted,
+                       unsigned long long frameId) {
+        return menuVisible != 0 || RendererEvidenceContract.due(targetFrame,
+            captureCount, requested, exhausted, frameId);
+    }
+}
+
+class RendererAssetRequirements {
+    class int status(int shadersEnabled, bool presetAvailable,
+                     int bezelsEnabled, bool artDeclared, bool artLoaded,
+                     bool glassDeclared, bool glassLoaded,
+                     bool apertureDeclared) {
+        if (shadersEnabled != 0 && !presetAvailable) {
+            return SEMU_RENDER_ASSET_MISSING;
+        }
+        if (bezelsEnabled != 0
+                && (!artDeclared || !artLoaded
+                    || (glassDeclared && !glassLoaded))) {
+            return SEMU_RENDER_ASSET_MISSING;
+        }
+        if (bezelsEnabled != 0 && !apertureDeclared) {
+            return SEMU_RENDER_PIPELINE_FAILED;
+        }
+        return SEMU_RENDER_APPLIED;
+    }
+}
+
+class RendererPointerContract {
+    class float unit(float value) {
+        if (value < 0.0f) { return 0.0f; }
+        return value > 1.0f ? 1.0f : value;
+    }
+
+    class void clearMap(struct SemuRenderPointerMap* map) {
+        if (map == null) { return; }
+        map->abi = (unsigned int)SEMU_RENDER_ABI_GL;
+        map->struct_size = (unsigned int)sizeof(struct SemuRenderPointerMap);
+        map->frame_id = 0ULL;
+        map->framebuffer_width = 0;
+        map->framebuffer_height = 0;
+        map->surface_count = 0;
+        for (int index = 0; index < SEMU_RENDER_MAX_SURFACES; index++) {
+            map->surfaces[index].x = 0;
+            map->surfaces[index].y = 0;
+            map->surfaces[index].width = 0;
+            map->surfaces[index].height = 0;
+            map->surfaces[index].native_width = 0;
+            map->surfaces[index].native_height = 0;
+            map->surfaces[index].rotation = 0;
+            map->surfaces[index].origin = SEMU_RENDER_ORIGIN_TOP_LEFT;
+        }
+    }
+
+    class void clearResult(struct SemuRenderPointerResult* result) {
+        if (result == null) { return; }
+        result->abi = (unsigned int)SEMU_RENDER_ABI_GL;
+        result->struct_size =
+            (unsigned int)sizeof(struct SemuRenderPointerResult);
+        result->frame_id = 0ULL;
+        result->surface_index = -1;
+        result->native_width = 0;
+        result->native_height = 0;
+        result->rotation = 0;
+        result->origin = SEMU_RENDER_ORIGIN_TOP_LEFT;
+        result->clamped = 0;
+        result->normalized_x = 0.0f;
+        result->normalized_y = 0.0f;
+        result->native_x = 0.0f;
+        result->native_y = 0.0f;
+    }
+
+    class void publish(struct SemuRenderFrameGl* frame,
+                       struct RendererCompositionGeometry* geometry,
+                       struct SemuRenderPointerMap* map) {
+        RendererPointerContract.clearMap(map);
+        if (frame == null || geometry == null || map == null
+                || geometry->lane_count < 1
+                || geometry->lane_count > SEMU_RENDER_MAX_SURFACES) { return; }
+        map->frame_id = frame->frame_id;
+        map->framebuffer_width = frame->framebuffer_width;
+        map->framebuffer_height = frame->framebuffer_height;
+        map->surface_count = geometry->lane_count;
+        for (int index = 0; index < geometry->lane_count; index++) {
+            struct RendererLaneGeometry* lane = &geometry->lanes[index];
+            struct SemuRenderPointerSurface* surface = &map->surfaces[index];
+            surface->x = lane->output_x;
+            surface->y = lane->output_y;
+            surface->width = lane->output_width;
+            surface->height = lane->output_height;
+            surface->native_width = lane->native_width;
+            surface->native_height = lane->native_height;
+            surface->rotation = lane->rotation;
+            surface->origin = lane->origin;
+        }
+    }
+
+    class bool validMap(struct SemuRenderPointerMap* map) {
+        if (map == null || map->abi != (unsigned int)SEMU_RENDER_ABI_GL
+                || map->struct_size
+                    < (unsigned int)sizeof(struct SemuRenderPointerMap)
+                || map->frame_id == 0ULL || map->framebuffer_width < 1
+                || map->framebuffer_height < 1 || map->surface_count < 1
+                || map->surface_count > SEMU_RENDER_MAX_SURFACES) {
+            return false;
+        }
+        for (int index = 0; index < map->surface_count; index++) {
+            struct SemuRenderPointerSurface* surface = &map->surfaces[index];
+            if (surface->x < 0 || surface->y < 0 || surface->width < 1
+                    || surface->height < 1 || surface->native_width < 1
+                    || surface->native_height < 1
+                    || surface->x + surface->width > map->framebuffer_width
+                    || surface->y + surface->height > map->framebuffer_height
+                    || !RendererFrameContract.validRotation(surface->rotation)
+                    || (surface->origin != SEMU_RENDER_ORIGIN_BOTTOM_LEFT
+                        && surface->origin != SEMU_RENDER_ORIGIN_TOP_LEFT)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    class bool validQuery(struct SemuRenderPointerQuery* query) {
+        return query != null
+            && query->abi == (unsigned int)SEMU_RENDER_ABI_GL
+            && query->struct_size
+                >= (unsigned int)sizeof(struct SemuRenderPointerQuery)
+            && query->viewport_width > 0 && query->viewport_height > 0
+            && query->x >= 0.0f && query->y >= 0.0f
+            && query->x <= (float)query->viewport_width
+            && query->y <= (float)query->viewport_height
+            && query->surface_index >= -1
+            && query->surface_index < SEMU_RENDER_MAX_SURFACES
+            && (query->clamp == 0 || query->clamp == 1)
+            && (query->clamp == 0 || query->surface_index >= 0)
+            && (query->origin == SEMU_RENDER_ORIGIN_BOTTOM_LEFT
+                || query->origin == SEMU_RENDER_ORIGIN_TOP_LEFT);
+    }
+
+    class bool inside(struct SemuRenderPointerSurface* surface,
+                      float x, float y) {
+        return surface != null && x >= (float)surface->x
+            && y >= (float)surface->y
+            && x <= (float)(surface->x + surface->width)
+            && y <= (float)(surface->y + surface->height);
+    }
+
+    class int map(struct SemuRenderPointerMap* map,
+                  struct SemuRenderPointerQuery* query,
+                  struct SemuRenderPointerResult* result) {
+        RendererPointerContract.clearResult(result);
+        if (result == null || !RendererPointerContract.validQuery(query)) {
+            return SEMU_RENDER_POINTER_INVALID;
+        }
+        if (!RendererPointerContract.validMap(map)) {
+            return SEMU_RENDER_POINTER_UNAVAILABLE;
+        }
+        if (query->frame_id != 0ULL && query->frame_id != map->frame_id) {
+            return SEMU_RENDER_POINTER_STALE;
+        }
+        if (query->surface_index >= map->surface_count) {
+            return SEMU_RENDER_POINTER_INVALID;
+        }
+
+        float framebufferX = query->x * (float)map->framebuffer_width
+            / (float)query->viewport_width;
+        float vertical = query->y * (float)map->framebuffer_height
+            / (float)query->viewport_height;
+        float framebufferY = query->origin == SEMU_RENDER_ORIGIN_TOP_LEFT
+            ? (float)map->framebuffer_height - vertical : vertical;
+
+        int first = query->surface_index >= 0 ? query->surface_index : 0;
+        int last = query->surface_index >= 0
+            ? query->surface_index + 1 : map->surface_count;
+        for (int index = first; index < last; index++) {
+            struct SemuRenderPointerSurface* surface = &map->surfaces[index];
+            bool contained = RendererPointerContract.inside(surface,
+                framebufferX, framebufferY);
+            if (!contained && query->clamp == 0) { continue; }
+            float mappedX = framebufferX;
+            float mappedY = framebufferY;
+            if (!contained) {
+                if (mappedX < (float)surface->x) {
+                    mappedX = (float)surface->x;
+                } else if (mappedX > (float)(surface->x + surface->width)) {
+                    mappedX = (float)(surface->x + surface->width);
+                }
+                if (mappedY < (float)surface->y) {
+                    mappedY = (float)surface->y;
+                } else if (mappedY > (float)(surface->y + surface->height)) {
+                    mappedY = (float)(surface->y + surface->height);
+                }
+            }
+            float displayX = RendererPointerContract.unit(
+                (mappedX - (float)surface->x) / (float)surface->width);
+            float displayY = RendererPointerContract.unit(1.0f
+                - (mappedY - (float)surface->y)
+                    / (float)surface->height);
+            float semanticX = displayX;
+            float semanticY = displayY;
+            if (surface->rotation == 90) {
+                semanticX = displayY;
+                semanticY = 1.0f - displayX;
+            } else if (surface->rotation == 180) {
+                semanticX = 1.0f - displayX;
+                semanticY = 1.0f - displayY;
+            } else if (surface->rotation == 270) {
+                semanticX = 1.0f - displayY;
+                semanticY = displayX;
+            }
+            float nativeY = surface->origin == SEMU_RENDER_ORIGIN_TOP_LEFT
+                ? semanticY : 1.0f - semanticY;
+            result->frame_id = map->frame_id;
+            result->surface_index = index;
+            result->native_width = surface->native_width;
+            result->native_height = surface->native_height;
+            result->rotation = surface->rotation;
+            result->origin = surface->origin;
+            result->clamped = contained ? 0 : 1;
+            result->normalized_x = RendererPointerContract.unit(semanticX);
+            result->normalized_y = RendererPointerContract.unit(nativeY);
+            result->native_x = result->normalized_x
+                * (float)(surface->native_width - 1);
+            result->native_y = result->normalized_y
+                * (float)(surface->native_height - 1);
+            return SEMU_RENDER_POINTER_MAPPED;
+        }
+        result->frame_id = map->frame_id;
+        return SEMU_RENDER_POINTER_OUTSIDE;
+    }
+}
+
+class RendererPhaseOwnership {
+    class void clear(struct SemuRenderPendingFrame* pending) {
+        if (pending == null) { return; }
+        pending->valid = 0;
+        pending->frame_id = 0;
+        pending->context = null;
+        pending->framebuffer = 0;
+        pending->color_buffer = 0;
+        pending->framebuffer_width = 0;
+        pending->framebuffer_height = 0;
+        pending->presentation_aspect = 0.0f;
+        pending->layout_variant = 0;
+    }
+
+    class void acceptGame(struct SemuRenderPendingFrame* pending,
+                          struct SemuRenderFrameGl* frame,
+                          void* context) {
+        if (pending == null || frame == null || context == null) {
+            RendererPhaseOwnership.clear(pending);
+            return;
+        }
+        pending->valid = 1;
+        pending->frame_id = frame->frame_id;
+        pending->context = context;
+        pending->framebuffer = frame->framebuffer;
+        pending->color_buffer = frame->color_buffer;
+        pending->framebuffer_width = frame->framebuffer_width;
+        pending->framebuffer_height = frame->framebuffer_height;
+        pending->presentation_aspect = frame->presentation_aspect;
+        pending->layout_variant = frame->layout_variant;
+    }
+
+    class bool matchesPost(struct SemuRenderPendingFrame* pending,
+                           struct SemuRenderFrameGl* frame,
+                           void* context) {
+        return pending != null && frame != null && pending->valid != 0
+            && context != null && pending->context == context
+            && pending->frame_id == frame->frame_id
+            && pending->framebuffer == frame->framebuffer
+            && pending->color_buffer == frame->color_buffer
+            && pending->framebuffer_width == frame->framebuffer_width
+            && pending->framebuffer_height == frame->framebuffer_height
+            && pending->presentation_aspect == frame->presentation_aspect
+            && pending->layout_variant == frame->layout_variant;
+    }
+}

@@ -1,7 +1,0 @@
-{
-  "schema_version": 1,
-  "enabled": true,
-  "screen": "assets/shaders/nds/screen.slangp",
-  "composite": "assets/shaders/nds/composite.slangp",
-  "doc": { "intent": "two LCD panels with mild persistence" }
-}

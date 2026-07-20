@@ -1,0 +1,225 @@
+// esde_runtime.btrc - install compiler-owned ES-DE output into one frontend home.
+
+import std.{fs, json, platform, strings, vector}
+import ../compiler/model.btrc
+import ../lib/owned_paths.btrc
+import ./esde.btrc
+
+class SemuEsDeSettings {
+    class string stringAt(JsonValue root, Vector<string> path) {
+        JsonValue value = root;
+        for key in path {
+            if (!value.isObject() || !value.has(key)) { return ""; }
+            value = value.get(key);
+        }
+        return value.isString() ? value.asString() : "";
+    }
+
+    class int intAt(JsonValue root, Vector<string> path, int fallback) {
+        JsonValue value = root;
+        for key in path {
+            if (!value.isObject() || !value.has(key)) { return fallback; }
+            value = value.get(key);
+        }
+        return value.isInt() ? value.asInt() : fallback;
+    }
+
+    class string resolvePath(string value, SemuCompilerModel model,
+                             SemuBuildPlan plan) {
+        string resolved = value
+            .replace("${home}", Environment.get("HOME", "."))
+            .replace("${project}", model.projectRoot)
+            .replace("${semu_home}", plan.semuHome);
+        if (resolved.isEmpty() || resolved.startsWith("/")) { return resolved; }
+        return PathTools.join(model.projectRoot, resolved);
+    }
+
+    class string romsRoot(SemuCompilerModel model, SemuBuildPlan plan) {
+        string explicitRoot = Environment.get("SEMU_ROMS_ROOT",
+            Environment.get("SEMU_ROMS_DIR", ""));
+        string configured = explicitRoot.isEmpty()
+            ? SemuEsDeSettings.stringAt(plan.settings,
+                ["paths", "roms_root", plan.platform])
+            : explicitRoot;
+        return SemuEsDeSettings.resolvePath(configured, model, plan);
+    }
+
+    class string declaredChoice(SemuCompilerModel model, string key,
+                                string selected) {
+        JsonValue sections = model.repositorySettings.get("menu")
+            .get("sections");
+        if (selected.isEmpty() || !sections.isArray()) { return ""; }
+        int matches = 0;
+        bool selectedDeclared = false;
+        for (int sectionIndex = 0;
+                sectionIndex < sections.size(); sectionIndex++) {
+            JsonValue fields = sections.at(sectionIndex).get("fields");
+            if (!fields.isArray()) { continue; }
+            for (int fieldIndex = 0; fieldIndex < fields.size(); fieldIndex++) {
+                JsonValue field = fields.at(fieldIndex);
+                if (!field.get("key").isString()
+                        || !field.get("key").asString().equals(key)) {
+                    continue;
+                }
+                matches++;
+                JsonValue choices = field.get("choices");
+                if (!field.get("type").isString()
+                        || !field.get("type").asString().equals("choice")
+                        || !choices.isArray() || choices.size() < 1
+                        || choices.size() > 32) {
+                    return "";
+                }
+                Vector<string> declared = [];
+                for (int index = 0; index < choices.size(); index++) {
+                    JsonValue choice = choices.at(index);
+                    if (!choice.isString() || choice.asString().isEmpty()
+                            || declared.contains(choice.asString())) {
+                        return "";
+                    }
+                    declared.push(choice.asString());
+                }
+                selectedDeclared = declared.contains(selected);
+            }
+        }
+        return matches == 1 && selectedDeclared ? selected : "";
+    }
+
+    class string theme(SemuCompilerModel model, SemuBuildPlan plan,
+                       CompilerDiagnostics diagnostics) {
+        string selected = SemuEsDeSettings.stringAt(
+            plan.settings, ["ui", "theme"]);
+        string declared = SemuEsDeSettings.declaredChoice(
+            model, "ui.theme", selected);
+        if (declared.isEmpty()) {
+            diagnostics.add(model.repositorySettingsFile, "ui.theme",
+                "must select one declared ES-DE theme");
+        }
+        return declared;
+    }
+
+    class int displayIndex(SemuBuildPlan plan) {
+        return SemuEsDeSettings.intAt(plan.settings,
+            ["ui", "display_index", plan.platform], 0);
+    }
+}
+
+class SemuEsDeSettingsDocument {
+    class string setting(string type, string name, string value) {
+        return "<" + type + " name=\"" + SemuEsDeXml.escape(name)
+            + "\" value=\"" + SemuEsDeXml.escape(value) + "\" />";
+    }
+
+    class string upsert(string existing, string type, string name,
+                        string value) {
+        string replacement = SemuEsDeSettingsDocument.setting(
+            type, name, value);
+        string marker = "name=\"" + name + "\"";
+        Vector<string> source = Strings.split(existing, "\n");
+        Vector<string> result = [];
+        bool replaced = false;
+        for line in source {
+            if (line.contains(marker)) {
+                if (!replaced) {
+                    result.push(replacement);
+                    replaced = true;
+                }
+            } else if (!line.isEmpty()) {
+                result.push(line);
+            }
+        }
+        if (!replaced) { result.push(replacement); }
+        return result.join("\n") + "\n";
+    }
+
+    class string merge(string existing, string romsRoot, string theme,
+                       int displayIndex) {
+        string result = existing.trim().isEmpty()
+            ? "<?xml version=\"1.0\"?>\n" : existing;
+        result = SemuEsDeSettingsDocument.upsert(
+            result, "string", "ROMDirectory", romsRoot);
+        result = SemuEsDeSettingsDocument.upsert(
+            result, "bool", "CreatePlaceholderSystemDirectories", "false");
+        if (!theme.isEmpty()) {
+            result = SemuEsDeSettingsDocument.upsert(
+                result, "string", "Theme", theme);
+        }
+        return SemuEsDeSettingsDocument.upsert(
+            result, "int", "DisplayIndex", displayIndex.toString());
+    }
+}
+
+class SemuEsDeRuntime {
+    class string customSystemsDirectory(string esDeHome) {
+        return PathTools.join(esDeHome, "custom_systems");
+    }
+
+    class string settingsFile(string esDeHome) {
+        return PathTools.join(esDeHome, "settings/es_settings.xml");
+    }
+
+    class bool writeOwned(string root, string path, string content,
+                          CompilerDiagnostics diagnostics) {
+        if (!SemuOwnedPaths.writeText(root, path, content)) {
+            diagnostics.add(path, "install", "could not install ES-DE output");
+            return false;
+        }
+        return true;
+    }
+
+    class string install(SemuCompilerModel model, SemuBuildPlan plan,
+                         string esDeHome, CompilerDiagnostics diagnostics) {
+        string romsRoot = SemuEsDeSettings.romsRoot(model, plan);
+        string theme = SemuEsDeSettings.theme(model, plan, diagnostics);
+        if (romsRoot.isEmpty() || romsRoot.contains("${")) {
+            diagnostics.add(model.configRoot,
+                "settings.paths.roms_root." + plan.platform,
+                "must resolve to a concrete ROM root");
+            return "";
+        }
+        if (theme.isEmpty()) { return ""; }
+        if (esDeHome.isEmpty()) {
+            diagnostics.add("SEMU_ES_DE_HOME", "install",
+                "ES-DE home must not be empty");
+            return "";
+        }
+        if (!SemuOwnedPaths.prepareDirectory(esDeHome)) {
+            diagnostics.add(esDeHome, "install",
+                "ES-DE home has a symlinked or non-directory ancestor");
+            return "";
+        }
+
+        string generated = SemuEsDeGenerator.emit(model, plan, diagnostics);
+        if (generated.isEmpty()) { return ""; }
+        string installed = SemuEsDeRuntime.customSystemsDirectory(esDeHome);
+        for name in ["es_systems.xml", "es_find_rules.xml"] {
+            string source = PathTools.join(generated, name);
+            if (!FileSystem.isFile(source)
+                    || !SemuEsDeRuntime.writeOwned(
+                        esDeHome, PathTools.join(installed, name),
+                        Path.readAll(source), diagnostics)) {
+                if (!FileSystem.isFile(source)) {
+                    diagnostics.add(source, "install",
+                        "generated ES-DE document is absent");
+                }
+                return "";
+            }
+        }
+
+        string settingsFile = SemuOwnedPaths.containedPath(
+            esDeHome, SemuEsDeRuntime.settingsFile(esDeHome));
+        if (settingsFile.isEmpty()) {
+            diagnostics.add(esDeHome, "install",
+                "ES-DE settings path escapes its owned home");
+            return "";
+        }
+        string existing = FileSystem.isFile(settingsFile)
+            ? Path.readAll(settingsFile) : "";
+        string merged = SemuEsDeSettingsDocument.merge(existing, romsRoot,
+            theme, SemuEsDeSettings.displayIndex(plan));
+        if (!SemuEsDeRuntime.writeOwned(
+                esDeHome, settingsFile, merged, diagnostics)) {
+            return "";
+        }
+        return installed;
+    }
+}

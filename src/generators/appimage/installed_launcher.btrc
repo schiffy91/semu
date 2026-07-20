@@ -1,0 +1,130 @@
+// installed_launcher.btrc - stable no-FUSE release selection and execution.
+
+import std.{cli, fs, platform, strings, vector}
+import ./install_policy.btrc
+import ./install_store.btrc
+
+class SemuRuntimeExec {
+    class int replace(string executable, Vector<string> arguments) {
+        if (executable.isEmpty() || !SemuInstallHost.regularFile(executable)
+                || access(executable, X_OK) != 0) {
+            fprintf(stderr, "Semu: executable is absent or unsafe: %s\n",
+                __btrc_string_or_empty(executable));
+            return 127;
+        }
+        char** raw = ChildProcessArguments.build(executable, arguments);
+        Vector<string> environment = CommandEnvironment.empty();
+        Vector<string> unsets = CommandEnvironment.empty();
+        char** rawEnvironment = ChildProcessEnvironment.build(
+            environment, unsets);
+        if (raw == NULL || rawEnvironment == NULL) {
+            ChildProcessArguments.freeEntries(raw);
+            ChildProcessEnvironment.freeEntries(rawEnvironment);
+            return 127;
+        }
+        execve(raw[0], raw, rawEnvironment);
+        ChildProcessArguments.freeEntries(raw);
+        ChildProcessEnvironment.freeEntries(rawEnvironment);
+        fprintf(stderr, "Semu: failed to execute %s\n",
+            __btrc_string_or_empty(executable));
+        return 127;
+    }
+
+    class void unset(Vector<string> names) {
+        for name in names { unsetenv(name); }
+    }
+
+    class bool set(string name, string value) {
+        return setenv(name, value, 1) == 0;
+    }
+}
+
+class SemuInstalledLauncher {
+    class Vector<string> inheritedRuntimeVariables() {
+        Vector<string> names = SemuInstallHost.appImageEnvironment();
+        names.extend([
+            "SEMU_ALLOW_PROJECT_CLI", "SEMU_APP_EXEC", "SEMU_ASSET_ROOT",
+            "SEMU_BIN", "SEMU_BUNDLED_CONFIG_ROOT", "SEMU_BWRAP",
+            "SEMU_BWRAP_ARGS", "SEMU_BWRAP_PROTECTED_ARGS",
+            "SEMU_BWRAP_WRITABLE_ARGS", "SEMU_CLI", "SEMU_CLI_CONTEXT_ARGS",
+            "SEMU_ENTRYPOINT", "SEMU_ESDE_PASSTHROUGH_ARGS",
+            "SEMU_INSTALLED_ENTRYPOINT", "SEMU_LAUNCHER_BIN",
+            "SEMU_NIX_STORE_MOUNTED", "SEMU_RELEASE_DIGEST",
+            "SEMU_RETROARCH_CORE_DIR", "SEMU_RETROARCH_SHADER_DIR",
+            "SEMU_SANDBOX_APPDIR", "SEMU_SOURCE_ROOT", "SEMU_TARGET"
+        ]);
+        return names;
+    }
+
+    class SemuInstallResult verifiedTarget(
+            string installRoot, string releaseRoot) {
+        string recordedPath = PathTools.join(installRoot, "state/target");
+        if (!SemuInstallHost.regularFile(recordedPath)) {
+            return SemuInstallResult.failure(
+                "installed release has no target identity");
+        }
+        string recorded = FileSystem.readText(recordedPath).trim();
+        SemuInstallResult bundled = SemuTargetPolicy.load(PathTools.join(
+            releaseRoot, "share/semu/config"));
+        return SemuTargetPolicy.identifier(recorded) && bundled.ok()
+                && recorded.equals(bundled.document)
+            ? SemuInstallResult.success(recorded)
+            : SemuInstallResult.failure(
+                "installed target disagrees with current release metadata");
+    }
+
+    class int launch(CliCommandLine command) {
+        string installRoot = command.option("--install-root", "");
+        if (installRoot.isEmpty()) {
+            installRoot = PathTools.join(
+                Environment.get("HOME", "."), "Applications/Semu");
+        }
+        installRoot = UnixFileSystem.realPath(installRoot);
+        if (installRoot.isEmpty()
+                || !SemuInstallHost.realDirectory(installRoot)) {
+            print("install: installed release root is absent or unsafe");
+            return 2;
+        }
+        string stable = PathTools.join(installRoot, "bin/semu");
+        string currentFile = PathTools.join(installRoot, "state/current");
+        string digest = SemuInstallHost.identity(currentFile);
+        if (!SemuInstallPolicy.validDigest(digest)) {
+            print("install: installed release has no valid current identity");
+            return 2;
+        }
+        string releaseRoot = PathTools.join(
+            installRoot, "releases/" + digest);
+        string appRun = PathTools.join(releaseRoot, "AppRun");
+        string receipt = PathTools.join(
+            installRoot, "state/trees/" + digest + ".sha256");
+        if (!SemuInstallHost.realDirectory(releaseRoot)
+                || !SemuInstallHost.regularFile(appRun)
+                || access(appRun, X_OK) != 0
+                || !SemuInstallHost.regularFile(receipt)
+                || !SemuInstallHost.regularFile(stable)) {
+            print("install: current extracted release is absent or unsafe");
+            return 2;
+        }
+        SemuInstallResult target =
+            SemuInstalledLauncher.verifiedTarget(installRoot, releaseRoot);
+        if (!target.ok()) {
+            print("install: " + target.error);
+            return 2;
+        }
+
+        SemuRuntimeExec.unset(
+            SemuInstalledLauncher.inheritedRuntimeVariables());
+        bool environment = SemuRuntimeExec.set("APPDIR", releaseRoot)
+            && SemuRuntimeExec.set("SEMU_ENTRYPOINT", stable)
+            && SemuRuntimeExec.set("SEMU_INSTALLED_ENTRYPOINT", stable)
+            && SemuRuntimeExec.set("SEMU_APP_EXEC", stable)
+            && SemuRuntimeExec.set("SEMU_RELEASE_DIGEST", digest)
+            && SemuRuntimeExec.set("SEMU_TARGET", target.document);
+        if (!environment) {
+            print("install: cannot establish active release environment");
+            return 2;
+        }
+        return SemuRuntimeExec.replace(appRun,
+            command.operands.slice(1, command.operands.size()));
+    }
+}

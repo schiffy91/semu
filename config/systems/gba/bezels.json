@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "enabled": true,
+  "default_variant": "indigo_wide",
+  "hole": {
+    "x": 0.3025477707,
+    "y": 0.2697302697,
+    "w": 0.3949044586,
+    "h": 0.4145854146
+  },
+  "variants": [
+    {
+      "id": "indigo_wide",
+      "label": "Indigo Wide",
+      "art": "assets/bezels/gba/indigo-wide.png"
+    }
+  ],
+  "doc": {
+    "hole": "Measured continuous lens rectangle x=475, y=270, w=620, h=415 in the 1570x1001 Semu-owned source. Its contain-fit aperture at 1280x800 holds centered 2x 240x160 content at the native 3:2 aspect."
+  }
+}

@@ -1,0 +1,377 @@
+// checker.btrc - fail-closed validation of a resolved target build plan.
+
+import std.{fs, json, vector}
+import ../lib/owned_paths.btrc
+import ../lib/rendering_definition.btrc
+import ./model.btrc
+
+class SemuRenderingContract {
+    class void keys(JsonValue object, Vector<string> allowed, string file,
+                    string context, CompilerDiagnostics diagnostics) {
+        if (!object.isObject()) { return; }
+        for key in object.keys() {
+            if (!allowed.contains(key)) {
+                diagnostics.add(file,
+                    context.isEmpty() ? key : context + "." + key,
+                    "unknown key");
+            }
+        }
+    }
+
+    class void rect(JsonValue value, string file, string field,
+                    CompilerDiagnostics diagnostics) {
+        if (!SemuRenderingDefinition.validRect(value)) {
+            diagnostics.add(file, field,
+                "expected a normalized x/y/w/h rectangle inside the canvas");
+        }
+    }
+
+    class void screenHoles(JsonValue value, string file, string field,
+                           CompilerDiagnostics diagnostics) {
+        if (!value.isObject()) {
+            diagnostics.add(file, field, "expected top and bottom rectangles");
+            return;
+        }
+        SemuRenderingContract.keys(
+            value, ["top", "bottom"], file, field, diagnostics);
+        SemuRenderingContract.rect(
+            value.get("top"), file, field + ".top", diagnostics);
+        SemuRenderingContract.rect(
+            value.get("bottom"), file, field + ".bottom", diagnostics);
+    }
+
+    class void shader(SemuCompilerModel model, SemuSystemSource system,
+                      CompilerDiagnostics diagnostics) {
+        JsonValue source = system.shaders;
+        SemuRenderingContract.keys(source,
+            ["schema_version", "enabled", "renderer", "screen", "doc"],
+            system.shadersFile, "", diagnostics);
+        if (!source.get("enabled").isBool()) {
+            diagnostics.add(system.shadersFile, "enabled", "expected boolean");
+            return;
+        }
+        if (!source.get("renderer").isBool()
+                || source.get("renderer").asBool() == 0) {
+            diagnostics.add(system.shadersFile, "renderer",
+                "Semu renderer ownership must be declared");
+        }
+        if (source.get("enabled").asBool() != 0) {
+            JsonValue screen = source.get("screen");
+            if (!screen.isString() || screen.asString().isEmpty()) {
+                diagnostics.add(system.shadersFile, "screen",
+                    "enabled shader requires a logical asset path");
+            } else if (!SemuRenderingDefinition.assetDeclared(
+                    model.assets.shaders, screen.asString())) {
+                diagnostics.add(system.shadersFile, "screen",
+                    "shader is absent from config/assets/shaders.json");
+            }
+        }
+    }
+
+    class void bezel(SemuCompilerModel model, SemuSystemSource system,
+                     CompilerDiagnostics diagnostics) {
+        JsonValue source = system.bezels;
+        SemuRenderingContract.keys(source,
+            ["schema_version", "enabled", "default_variant",
+             "widescreen_variant", "hole", "screen_holes", "variants", "doc"],
+            system.bezelsFile, "", diagnostics);
+        if (!source.get("enabled").isBool()) {
+            diagnostics.add(system.bezelsFile, "enabled", "expected boolean");
+            return;
+        }
+        JsonValue variants = source.get("variants");
+        if (!variants.isArray()) {
+            diagnostics.add(system.bezelsFile, "variants", "expected array");
+            return;
+        }
+        if (source.get("enabled").asBool() == 0) { return; }
+        string defaultVariant = source.get("default_variant").isString()
+            ? source.get("default_variant").asString() : "";
+        if (defaultVariant.isEmpty()
+                || !SemuRenderingDefinition.variant(
+                    source, defaultVariant).isObject()) {
+            diagnostics.add(system.bezelsFile, "default_variant",
+                "enabled bezel requires a declared default variant");
+        }
+        if (source.has("widescreen_variant")) {
+            string wide = source.get("widescreen_variant").isString()
+                ? source.get("widescreen_variant").asString() : "";
+            if (wide.isEmpty() || wide.equals(defaultVariant)
+                    || !SemuRenderingDefinition.variant(source, wide).isObject()) {
+                diagnostics.add(system.bezelsFile, "widescreen_variant",
+                    "expected a distinct declared variant");
+            }
+        }
+        Vector<string> ids = [];
+        for (int index = 0; index < variants.size(); index++) {
+            JsonValue variant = variants.at(index);
+            string field = f"variants[{index}]";
+            SemuRenderingContract.keys(variant,
+                ["id", "label", "art", "glass", "hole", "screen_holes"],
+                system.bezelsFile, field, diagnostics);
+            string id = variant.get("id").isString()
+                ? variant.get("id").asString() : "";
+            if (id.isEmpty() || ids.contains(id)) {
+                diagnostics.add(system.bezelsFile, field + ".id",
+                    id.isEmpty() ? "expected non-empty string" : "duplicate variant");
+            } else {
+                ids.push(id);
+            }
+            string art = variant.get("art").isString()
+                ? variant.get("art").asString() : "";
+            if (art.isEmpty() || !SemuRenderingDefinition.assetDeclared(
+                    model.assets.bezels, art)) {
+                diagnostics.add(system.bezelsFile, field + ".art",
+                    "bezel art is absent from config/assets/bezels.json");
+            }
+            if (variant.has("glass")) {
+                string glass = variant.get("glass").isString()
+                    ? variant.get("glass").asString() : "";
+                if (glass.isEmpty() || !SemuRenderingDefinition.assetDeclared(
+                        model.assets.bezels, glass)) {
+                    diagnostics.add(system.bezelsFile, field + ".glass",
+                        "glass art is absent from config/assets/bezels.json");
+                }
+            }
+            JsonValue hole = variant.get("hole").isObject()
+                ? variant.get("hole") : source.get("hole");
+            JsonValue screenHoles = variant.get("screen_holes").isObject()
+                ? variant.get("screen_holes") : source.get("screen_holes");
+            if (screenHoles.isObject()) {
+                SemuRenderingContract.screenHoles(
+                    screenHoles, system.bezelsFile,
+                    field + ".screen_holes", diagnostics);
+            } else {
+                SemuRenderingContract.rect(
+                    hole, system.bezelsFile, field + ".hole", diagnostics);
+            }
+        }
+    }
+
+    class void check(SemuCompilerModel model, SemuSystemSource system,
+                     CompilerDiagnostics diagnostics) {
+        SemuRenderingContract.shader(model, system, diagnostics);
+        SemuRenderingContract.bezel(model, system, diagnostics);
+    }
+}
+
+class SemuCompilerChecker {
+    class bool regularFile(string path) {
+        FileStatus status = FileStatus(path);
+        return status.isFile() && !status.isSymlink();
+    }
+
+    class int countKind(Vector<SemuDefinitionUnit> units, string kind) {
+        int count = 0;
+        for unit in units { if (unit.kind.equals(kind)) { count++; } }
+        return count;
+    }
+
+    class bool knownTarget(Vector<SemuDefinitionUnit> units, string id) {
+        for unit in units {
+            if (unit.kind.equals("target") && unit.id.equals(id)) { return true; }
+        }
+        return false;
+    }
+
+    class void check(SemuCompilerModel model, SemuBuildRequest request,
+                     SemuBuildPlan plan, CompilerDiagnostics diagnostics) {
+        if (!["target", "emulator", "configs", "package", "verify"]
+                .contains(plan.operation)) {
+            diagnostics.add(model.configRoot, "operation", "unsupported compiler operation");
+        }
+        if (model.target.id.isEmpty() || plan.target.isEmpty()) {
+            diagnostics.add(model.configRoot, "target", "no target resolved");
+        } else if (!request.target.equals(plan.target)) {
+            diagnostics.add(model.target.file, "target",
+                "request and resolved target differ");
+        }
+        if (plan.platform.isEmpty()) {
+            diagnostics.add(model.target.file, "platform",
+                "target and ancestors declare no platform");
+        }
+        if (plan.artifact.isEmpty()) {
+            diagnostics.add(model.target.file, "artifact",
+                "target and ancestors declare no artifact");
+        }
+        if (plan.nixSystems.isEmpty()) {
+            diagnostics.add(model.target.file, "nix_systems",
+                "target and ancestors declare no Nix systems");
+        }
+        if (plan.deploymentTarget
+                && plan.validation.kind.equals("physical")) {
+            string projectRoot = SemuOwnedPaths.normalized(model.projectRoot);
+            string harness = SemuOwnedPaths.safeRelativePath(
+                    plan.validation.harness)
+                ? SemuOwnedPaths.containedPath(projectRoot,
+                    PathTools.join(projectRoot,
+                        plan.validation.harness))
+                : "";
+            FileStatus harnessStatus = FileStatus(harness);
+            if (harness.isEmpty() || !harnessStatus.isDir()
+                    || harnessStatus.isSymlink()) {
+                diagnostics.add(model.target.file, "validation.harness",
+                    "physical deployment requires an existing project-owned harness directory");
+            }
+            if (plan.validation.viewport.width < 1
+                    || plan.validation.viewport.height < 1) {
+                diagnostics.add(model.target.file, "validation.viewport",
+                    "physical deployment requires a positive validation viewport");
+            }
+        }
+        if (plan.systems.isEmpty()) {
+            diagnostics.add(model.target.file, "systems", "target selects no systems");
+        }
+        if (plan.emulators.isEmpty()) {
+            diagnostics.add(model.target.file, "emulators", "target selects no emulators");
+        }
+        if (plan.operation.equals("emulator")
+                && (plan.emulators.size() != 1
+                    || !plan.emulators.get(0).equals(request.emulator))) {
+            diagnostics.add(model.target.file, "emulator",
+                "selected emulator has no compatible system bindings");
+        }
+        if (plan.operation.equals("package") && !plan.artifact.equals("appimage")) {
+            diagnostics.add(model.target.file, "artifact",
+                "package appimage requires an appimage target");
+        }
+        if (SemuCompilerChecker.countKind(model.units, "target") < 1
+                || SemuCompilerChecker.countKind(model.units, "system") < 1
+                || SemuCompilerChecker.countKind(model.units, "emulator") < 1
+                || SemuCompilerChecker.countKind(model.units, "settings") != 1
+                || SemuCompilerChecker.countKind(model.units, "assets") != 1) {
+            diagnostics.add(model.configRoot, "definitions",
+                "target/system/emulator/settings/assets inventory is incomplete");
+        }
+        for prerequisite in plan.validation.requires {
+            if (!SemuCompilerChecker.knownTarget(model.units, prerequisite)) {
+                diagnostics.add(model.target.file, "validation.requires",
+                    "unknown prerequisite target '" + prerequisite + "'");
+            } else if (prerequisite.equals(plan.target)) {
+                diagnostics.add(model.target.file, "validation.requires",
+                    "target cannot require itself");
+            }
+        }
+        for successor in plan.validation.mustCompleteBefore {
+            if (!SemuCompilerChecker.knownTarget(model.units, successor)) {
+                diagnostics.add(model.target.file,
+                    "validation.must_complete_before",
+                    "unknown target '" + successor + "'");
+            } else if (successor.equals(plan.target)) {
+                diagnostics.add(model.target.file,
+                    "validation.must_complete_before",
+                    "target cannot precede itself");
+            }
+        }
+
+        SemuInputSource input = SemuInputSource();
+        if (!plan.input.isEmpty()) {
+            input = model.inputByReference(plan.input);
+            if (input.path.isEmpty()) {
+                diagnostics.add(model.target.file, "input",
+                    "target input definition is absent");
+            }
+        }
+        for emulatorId in plan.emulators {
+            SemuEmulatorSource emulator = model.emulatorById(emulatorId);
+            if (emulator.id.isEmpty()) {
+                diagnostics.add(model.target.file, "emulators." + emulatorId,
+                    "selected emulator definition is absent");
+                continue;
+            }
+            if (!emulator.supports(plan.platform)) {
+                diagnostics.add(emulator.file, "platforms." + plan.platform,
+                    "selected emulator does not support target platform");
+                continue;
+            }
+            SemuEmulatorPlatformSource platform = emulator.platformById(
+                plan.platform);
+            if (!plan.backends.isEmpty()
+                    && !plan.backends.contains(platform.backend)) {
+                diagnostics.add(emulator.file,
+                    "platforms." + plan.platform + ".backend",
+                    "backend is not enabled by the target");
+            }
+            if (!SemuCompilerChecker.regularFile(
+                    emulator.packageDefinitionFile)) {
+                diagnostics.add(emulator.packageDefinitionFile, "(root)",
+                    "selected emulator lacks package.json");
+            }
+            if (!SemuCompilerChecker.regularFile(emulator.packageNixFile)) {
+                diagnostics.add(emulator.packageNixFile, "(root)",
+                    "selected emulator lacks package.nix");
+            }
+            if (!SemuCompilerChecker.regularFile(emulator.profileFile)) {
+                diagnostics.add(emulator.profileFile, "(root)",
+                    "selected emulator lacks profile.json");
+            }
+            if (!SemuCompilerChecker.regularFile(emulator.renderingFile)) {
+                diagnostics.add(emulator.renderingFile, "(root)",
+                    "selected emulator lacks rendering.json");
+            } else {
+                JsonValue activation = emulator.rendering.get("activation");
+                if (!activation.get("package_ready").isBool()
+                        || activation.get("package_ready").asBool() == 0) {
+                    diagnostics.add(emulator.renderingFile,
+                        "activation.package_ready",
+                        "selected emulator render hook is not package-ready");
+                }
+                if (emulator.renderPatchFile.isEmpty()
+                        || !SemuCompilerChecker.regularFile(
+                            emulator.renderPatchFile)) {
+                    diagnostics.add(emulator.renderingFile,
+                        "integration.patch",
+                        "declared emulator render patch is absent");
+                }
+            }
+            if (!input.path.isEmpty()) {
+                for action in emulator.actions {
+                    if (!input.actions.contains(action)) {
+                        diagnostics.add(emulator.file, "input.actions",
+                            "action '" + action + "' is absent from target input vocabulary");
+                    }
+                }
+            }
+        }
+        for systemId in plan.systems {
+            SemuSystemSource system = model.systemById(systemId);
+            if (system.id.isEmpty()) {
+                diagnostics.add(model.target.file, "systems." + systemId,
+                    "selected system definition is absent");
+            } else {
+                SemuRenderingContract.check(model, system, diagnostics);
+            }
+        }
+        for file in plan.definitionFiles {
+            if (!SemuCompilerChecker.regularFile(file)) {
+                diagnostics.add(file, "(root)", "selected definition is absent");
+            }
+        }
+        if (!plan.settings.isObject()) {
+            diagnostics.add(model.configRoot, "settings",
+                "resolved settings must be an object");
+        } else {
+            JsonValue biosRoot = plan.settings.get("paths")
+                .get("bios_root").get(plan.platform);
+            string biosPath = biosRoot.isString()
+                ? biosRoot.asString() : "";
+            if (biosPath.isEmpty()
+                    || biosPath.replace("${home}", "/home")
+                        .replace("${project}", "/project")
+                        .contains("${")) {
+                diagnostics.add(model.repositorySettingsFile,
+                    "paths.bios_root." + plan.platform,
+                    "expected a concrete configurable read-only BIOS root");
+            }
+        }
+        if (plan.outputRoot.isEmpty()) {
+            diagnostics.add(model.projectRoot, "output", "output root is empty");
+        } else if (SemuOwnedPaths.isSourcePath(plan.outputRoot, model.projectRoot)) {
+            diagnostics.add(plan.outputRoot, "output",
+                "generated output cannot be written into src or config");
+        } else if (!SemuOwnedPaths.canOwnDirectory(plan.outputRoot)) {
+            diagnostics.add(plan.outputRoot, "output",
+                "generated output has a symlinked or non-directory ancestor");
+        }
+    }
+}

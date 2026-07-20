@@ -1,0 +1,165 @@
+// json_format_contract_test.btrc - canonical generated JSON document proof.
+
+import std.{fs, io, json}
+import ../../src/compiler/checker.btrc
+import ../../src/compiler/generator.btrc
+import ../../src/compiler/model.btrc
+import ../../src/compiler/parser.btrc
+import ../../src/compiler/resolver.btrc
+import ../../src/generators/appimage.btrc
+import ../../src/generators/emulator_profiles.btrc
+import ../../src/lib/json_format.btrc
+
+class JsonFormatContractTest {
+    class int fail(string message) {
+        print("  FAIL JSON format: " + message);
+        return 1;
+    }
+
+    class bool canonicalFile(string path) {
+        if (!FileSystem.isFile(path)) { return false; }
+        string text = Path.readAll(path);
+        if (!text.endsWith("\n") || text.endsWith("\n\n")
+                || !text.contains("\n  \"")) {
+            return false;
+        }
+        JsonValue value = JsonValue.parse(text);
+        return !value.isError()
+            && SemuJsonFormat.document(value).equals(text);
+    }
+
+    class int checkFormatter() {
+        string escapedKey = "key\"\\\n";
+        string escapedValue = "quote \" backslash \\ slash / newline\n tab\t carriage\r";
+        JsonValue nested = JsonValue.makeObject();
+        JsonValue array = JsonValue.makeArray();
+        array.push(JsonValue.makeString(escapedValue));
+        array.push(JsonValue.makeInt(7));
+        array.push(JsonValue.makeBool(true));
+        array.push(JsonValue.makeNull());
+        nested.set("array", array);
+        nested.set("empty", JsonValue.makeObject());
+
+        JsonValue source = JsonValue.makeObject();
+        source.set("zeta", JsonValue.makeString(escapedValue));
+        source.set("alpha", nested);
+        source.set(escapedKey, JsonValue.makeArray());
+
+        string formatted = SemuJsonFormat.value(source);
+        string document = SemuJsonFormat.document(source);
+        JsonValue parsed = JsonValue.parse(document);
+        if (formatted.endsWith("\n")
+                || !document.equals(formatted + "\n")
+                || document.endsWith("\n\n")
+                || parsed.isError()
+                || !parsed.stringify().equals(source.stringify())
+                || !parsed.get("zeta").asString().equals(escapedValue)
+                || !parsed.has(escapedKey)
+                || formatted.indexOf("\"zeta\"")
+                    >= formatted.indexOf("\"alpha\"")
+                || !formatted.contains("\n  \"alpha\": {\n    \"array\": [\n")) {
+            return JsonFormatContractTest.fail(
+                "nested values, escaping, order, or indentation changed");
+        }
+
+        string scratch = FileSystem.tempDir("semu-json-format-boundary");
+        if (scratch.isEmpty()) {
+            return JsonFormatContractTest.fail(
+                "could not create document-boundary scratch root");
+        }
+        string canonical = PathTools.join(scratch, "canonical.json");
+        string unterminated = PathTools.join(scratch, "unterminated.json");
+        bool wrote = FileSystem.writeText(canonical, document)
+            && FileSystem.writeText(unterminated, formatted);
+        bool validBoundary = wrote
+            && JsonFormatContractTest.canonicalFile(canonical)
+            && !JsonFormatContractTest.canonicalFile(unterminated);
+        FileSystem.removeRecursive(scratch);
+        if (!validBoundary) {
+            return JsonFormatContractTest.fail(
+                "file-boundary validation accepted missing final newline");
+        }
+        return 0;
+    }
+
+    class SemuBuildPlan compile(SemuCompilerModel model,
+                                SemuBuildRequest request,
+                                CompilerDiagnostics diagnostics) {
+        SemuBuildPlan plan = SemuBuildResolver.resolve(
+            model, request, diagnostics);
+        SemuCompilerChecker.check(model, request, plan, diagnostics);
+        return plan;
+    }
+
+    class int checkGeneratedDocuments(string project) {
+        string scratch = FileSystem.tempDir("semu-json-generation");
+        if (scratch.isEmpty()) {
+            return JsonFormatContractTest.fail(
+                "could not create generation scratch root");
+        }
+
+        CompilerDiagnostics configDiagnostics = CompilerDiagnostics();
+        SemuBuildRequest configRequest = SemuBuildRequest();
+        configRequest.operation = "configs";
+        configRequest.target = "steam-deck";
+        configRequest.projectRoot = project;
+        configRequest.semuHome = PathTools.join(scratch, "home");
+        configRequest.outputRoot = PathTools.join(scratch, "configs");
+        SemuCompilerModel configModel = SemuCompilerParser.parse(
+            project, configRequest.target, configDiagnostics);
+        SemuBuildPlan configPlan = JsonFormatContractTest.compile(
+            configModel, configRequest, configDiagnostics);
+        string buildPlan = configDiagnostics.ok()
+            ? SemuCompilerGenerator.emit(configPlan, configDiagnostics) : "";
+        string profiles = configDiagnostics.ok()
+            ? SemuEmulatorGenerator.emit(
+                configModel, configPlan, configDiagnostics) : "";
+        string profile = PathTools.join(
+            profiles, "Ryujinx/config/Config.json");
+
+        CompilerDiagnostics appImageDiagnostics = CompilerDiagnostics();
+        SemuBuildRequest appImageRequest = SemuBuildRequest();
+        appImageRequest.operation = "package";
+        appImageRequest.target = "steam-deck";
+        appImageRequest.projectRoot = project;
+        appImageRequest.semuHome = PathTools.join(scratch, "home");
+        appImageRequest.outputRoot = PathTools.join(scratch, "appimage");
+        SemuCompilerModel appImageModel = SemuCompilerParser.parse(
+            project, appImageRequest.target, appImageDiagnostics);
+        SemuBuildPlan appImagePlan = JsonFormatContractTest.compile(
+            appImageModel, appImageRequest, appImageDiagnostics);
+        string appImageBuildPlan = appImageDiagnostics.ok()
+            ? SemuCompilerGenerator.emit(
+                appImagePlan, appImageDiagnostics) : "";
+        string appImageFile = appImageDiagnostics.ok()
+            ? SemuAppImageGenerator.emit(
+                appImagePlan, project, appImageDiagnostics) : "";
+
+        int failures = 0;
+        if (!configDiagnostics.ok()
+                || !JsonFormatContractTest.canonicalFile(buildPlan)
+                || !JsonFormatContractTest.canonicalFile(profile)) {
+            for error in configDiagnostics.errors { print("  " + error); }
+            failures += JsonFormatContractTest.fail(
+                "build plan or emulator profile is not canonical pretty JSON");
+        }
+        if (!appImageDiagnostics.ok()
+                || !JsonFormatContractTest.canonicalFile(appImageBuildPlan)
+                || !JsonFormatContractTest.canonicalFile(appImageFile)) {
+            for error in appImageDiagnostics.errors { print("  " + error); }
+            failures += JsonFormatContractTest.fail(
+                "AppImage plan is not canonical pretty JSON");
+        }
+        FileSystem.removeRecursive(scratch);
+        return failures;
+    }
+
+    class int run(string project) {
+        int failures = JsonFormatContractTest.checkFormatter();
+        failures += JsonFormatContractTest.checkGeneratedDocuments(project);
+        if (failures == 0) {
+            print("JSON format contract: canonical generated documents valid");
+        }
+        return failures;
+    }
+}

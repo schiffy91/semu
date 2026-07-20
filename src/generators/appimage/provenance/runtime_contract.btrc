@@ -1,0 +1,862 @@
+// runtime_contract.btrc - staged runtime tree, payload, package, and core contract.
+
+import std.{fs, json, process, strings, vector}
+import ../../../lib/json_format.btrc
+import ../runtime_inventory.btrc
+import ./render_hooks.btrc
+import ./source_contract.btrc
+import ./support.btrc
+
+class AppImageRuntimeContractProvenance {
+    class AppImageProvenanceInternalJson runtimeAssets(
+            string repoRoot, string runtimeRoot) {
+        AppImageProvenanceInternalJson declared =
+            AppImageSourceProvenance.declaredAssets(repoRoot);
+        if (!declared.ok()) { return declared; }
+        JsonValue files = JsonValue.makeArray();
+        for (int index = 0; index < declared.value.size(); index++) {
+            JsonValue expected = declared.value.at(index);
+            string runtimePath = expected.get("runtime_path").asString();
+            string expectedDigest = expected.get("sha256").asString();
+            AppImageProvenanceInternalDigest actual =
+                AppImageProvenanceSupport.hashFile(runtimeRoot, runtimePath);
+            if (!actual.ok()) {
+                return AppImageProvenanceInternalJson.failure(actual.error);
+            }
+            if (!actual.value.equals(expectedDigest)) {
+                return AppImageProvenanceInternalJson.failure(
+                    "runtime asset digest disagrees with its declaration: "
+                    + runtimePath);
+            }
+            files.push(AppImageProvenanceSupport.digestEntry(
+                runtimePath, actual.value));
+        }
+        JsonValue assets = JsonValue.makeObject();
+        assets.set("files", files);
+        return AppImageProvenanceInternalJson.success(assets);
+    }
+
+    class void collectRuntimeHashUnits(
+            string root, string relative, Vector<string> excluded,
+            Vector<string> paths, Vector<string> kinds,
+            Vector<string> errors) {
+        if (excluded.contains(relative)) { return; }
+        string path = relative.isEmpty() ? root : PathTools.join(root, relative);
+        FileStatus status = FileStatus(path);
+        if (!status.linkFound || status.isSymlink()) {
+            errors.push("runtime identity path is absent or symlinked: " + path);
+            return;
+        }
+        bool ancestor = relative.isEmpty();
+        for omitted in excluded {
+            if (omitted.startsWith(relative + "/")) { ancestor = true; }
+        }
+        if (status.isDir() && ancestor) {
+            for name in AppImageRuntimeInventory.sorted(
+                    FileSystem.listDir(path)) {
+                string child = relative.isEmpty() ? name : relative + "/" + name;
+                AppImageRuntimeContractProvenance.collectRuntimeHashUnits(
+                    root, child, excluded, paths, kinds, errors);
+            }
+            return;
+        }
+        if (status.isDir()) {
+            paths.push(relative);
+            kinds.push("path");
+            return;
+        }
+        if (status.isFile()) {
+            paths.push(relative);
+            kinds.push("file");
+            return;
+        }
+        errors.push("runtime identity path has an unsupported type: " + path);
+    }
+
+    class AppImageProvenanceInternalJson runtimeTree(string runtimeRoot) {
+        JsonValue expectedRoots = JsonValue.makeArray();
+        for name in ["bin", "lib", "nix", "share"] {
+            expectedRoots.push(JsonValue.makeString(name));
+        }
+        JsonValue actualRoots = JsonValue.makeArray();
+        for name in AppImageRuntimeInventory.sorted(
+                FileSystem.listDir(runtimeRoot)) {
+            FileStatus status = FileStatus(PathTools.join(runtimeRoot, name));
+            if (!status.isDir() || status.isSymlink()) {
+                return AppImageProvenanceInternalJson.failure(
+                    "runtime root contains an unsafe entry: " + name);
+            }
+            actualRoots.push(JsonValue.makeString(name));
+        }
+        AppImageProvenanceInternalResult roots =
+            AppImageProvenanceSupport.exactInventory(
+                "runtime root", expectedRoots, actualRoots);
+        if (!roots.ok()) {
+            return AppImageProvenanceInternalJson.failure(roots.error);
+        }
+
+        Vector<string> paths = [];
+        Vector<string> kinds = [];
+        Vector<string> errors = [];
+        Vector<string> excluded = [
+            AppImageProvenanceSupport.relativePath(), "nix"
+        ];
+        AppImageRuntimeContractProvenance.collectRuntimeHashUnits(
+            runtimeRoot, "", excluded, paths, kinds, errors);
+        if (!errors.isEmpty() || paths.size() == 0
+                || paths.size() != kinds.size()) {
+            return AppImageProvenanceInternalJson.failure(errors.isEmpty()
+                ? "runtime identity produced no hash units"
+                : errors.join("; "));
+        }
+        JsonValue units = JsonValue.makeArray();
+        for (int index = 0; index < paths.size(); index++) {
+            string relative = paths.get(index);
+            string kind = kinds.get(index);
+            AppImageProvenanceInternalDigest digest = kind.equals("file")
+                ? AppImageProvenanceSupport.hashFile(runtimeRoot, relative)
+                : AppImageProvenanceSupport.hashDirectory(
+                    PathTools.join(runtimeRoot, relative));
+            if (!digest.ok()) {
+                return AppImageProvenanceInternalJson.failure(digest.error);
+            }
+            JsonValue entry = AppImageProvenanceSupport.digestEntry(
+                relative, digest.value);
+            entry.set("kind", JsonValue.makeString(kind));
+            units.push(entry);
+        }
+        return AppImageProvenanceInternalJson.success(units);
+    }
+
+    class void collectStorePayloadFiles(
+            string runtimeRoot, string targetStorePath, string relative,
+            Vector<string> ancestry, Vector<string> files,
+            Vector<string> errors, int depth) {
+        if (depth > 128 || !AppImageProvenanceSupport.safeRelative(relative)) {
+            errors.push("Nix target payload traversal is invalid: " + relative);
+            return;
+        }
+        AppImageProvenanceInternalPath resolved =
+            AppImageProvenanceSupport.resolveStorePath(
+                runtimeRoot, targetStorePath, relative);
+        if (!resolved.ok()) {
+            errors.push(resolved.error);
+            return;
+        }
+        FileStatus status = FileStatus(resolved.value);
+        if (status.isFile() && !status.isSymlink()) {
+            files.push(relative);
+            return;
+        }
+        if (!status.isDir() || status.isSymlink()
+                || ancestry.contains(resolved.value)) {
+            errors.push("Nix target payload contains a directory cycle: "
+                + relative);
+            return;
+        }
+        Vector<string> descendants = [];
+        for ancestor in ancestry { descendants.push(ancestor); }
+        descendants.push(resolved.value);
+        for name in AppImageRuntimeInventory.sorted(
+                FileSystem.listDir(resolved.value)) {
+            if (name.isEmpty() || name.equals(".") || name.equals("..")
+                    || name.contains("/")) {
+                errors.push("Nix target payload has an invalid entry: " + name);
+                return;
+            }
+            AppImageRuntimeContractProvenance.collectStorePayloadFiles(
+                runtimeRoot, targetStorePath, relative + "/" + name,
+                descendants, files, errors, depth + 1);
+            if (!errors.isEmpty()) { return; }
+        }
+    }
+
+    class AppImageProvenanceInternalJson runtimePayload(
+            string runtimeRoot, string targetStorePath) {
+        Vector<string> expected = [];
+        Vector<string> errors = [];
+        for root in ["bin", "lib", "share"] {
+            Vector<string> ancestry = [];
+            AppImageRuntimeContractProvenance.collectStorePayloadFiles(
+                runtimeRoot, targetStorePath, root,
+                ancestry, expected, errors, 0);
+        }
+        if (!errors.isEmpty() || expected.size() == 0) {
+            return AppImageProvenanceInternalJson.failure(errors.isEmpty()
+                ? "Nix target payload inventory is empty"
+                : errors.join("; "));
+        }
+        expected = AppImageRuntimeInventory.sorted(expected);
+
+        Vector<string> actual = [];
+        Vector<string> actualErrors = [];
+        for root in ["bin", "lib", "share"] {
+            AppImageProvenanceSupport.collectRegularFiles(
+                runtimeRoot, root, actual, actualErrors);
+        }
+        Vector<string> filtered = [];
+        for relative in actual {
+            if (!relative.equals(AppImageProvenanceSupport.relativePath())
+                    && !relative.equals(
+                        "share/semu/steamdeck-runtime-store-path.txt")) {
+                filtered.push(relative);
+            }
+        }
+        filtered = AppImageRuntimeInventory.sorted(filtered);
+        JsonValue expectedJson = JsonValue.makeArray();
+        JsonValue actualJson = JsonValue.makeArray();
+        for relative in expected {
+            expectedJson.push(JsonValue.makeString(relative));
+        }
+        for relative in filtered {
+            actualJson.push(JsonValue.makeString(relative));
+        }
+        AppImageProvenanceInternalResult exact =
+            AppImageProvenanceSupport.exactInventory(
+                "staged target payload", expectedJson, actualJson);
+        if (!actualErrors.isEmpty()) {
+            return AppImageProvenanceInternalJson.failure(actualErrors.join("; "));
+        }
+        if (!exact.ok()) {
+            return AppImageProvenanceInternalJson.failure(exact.error);
+        }
+        for relative in expected {
+            AppImageProvenanceInternalPath source =
+                AppImageProvenanceSupport.resolveStorePath(
+                    runtimeRoot, targetStorePath, relative);
+            string staged = PathTools.join(runtimeRoot, relative);
+            if (!source.ok()
+                    || !AppImageProvenanceSupport.filesEqual(
+                        staged, source.value)) {
+                return AppImageProvenanceInternalJson.failure(
+                    "staged target payload differs from its Nix output: "
+                    + relative);
+            }
+        }
+        JsonValue roots = JsonValue.makeArray();
+        for root in ["bin", "lib", "share"] {
+            AppImageProvenanceInternalDigest digest =
+                AppImageProvenanceSupport.hashDirectory(
+                    PathTools.join(runtimeRoot, root));
+            if (!digest.ok()) {
+                return AppImageProvenanceInternalJson.failure(digest.error);
+            }
+            roots.push(AppImageProvenanceSupport.digestEntry(
+                root, digest.value));
+        }
+        JsonValue payload = JsonValue.makeObject();
+        payload.set("target_store_path", JsonValue.makeString(targetStorePath));
+        payload.set("file_count", JsonValue.makeInt(expected.size()));
+        payload.set("roots", roots);
+        return AppImageProvenanceInternalJson.success(payload);
+    }
+
+    class AppImageProvenanceInternalJson runtimeExecutables(
+            string runtimeRoot, string targetStorePath) {
+        string bin = PathTools.join(runtimeRoot, "bin");
+        FileStatus status = FileStatus(bin);
+        if (!status.isDir() || status.isSymlink()) {
+            return AppImageProvenanceInternalJson.failure(
+                "runtime executable directory is absent or unsafe");
+        }
+        string targetBin = PathTools.join(runtimeRoot, "nix/store/"
+            + PathTools.basename(targetStorePath) + "/bin");
+        FileStatus targetStatus = FileStatus(targetBin);
+        if (!targetStatus.isDir() || targetStatus.isSymlink()) {
+            return AppImageProvenanceInternalJson.failure(
+                "selected target output has no safe bin directory");
+        }
+        JsonValue expected = JsonValue.makeArray();
+        for name in AppImageRuntimeInventory.sorted(
+                FileSystem.listDir(targetBin)) {
+            if (!FileStatus(PathTools.join(targetBin, name)).linkFound) {
+                return AppImageProvenanceInternalJson.failure(
+                    "selected target output has an unreadable executable: " + name);
+            }
+            expected.push(JsonValue.makeString("bin/" + name));
+        }
+
+        Vector<string> files = [];
+        JsonValue actual = JsonValue.makeArray();
+        for name in AppImageRuntimeInventory.sorted(FileSystem.listDir(bin)) {
+            string relative = "bin/" + name;
+            if (!AppImageRuntimeInventory.safePath(
+                    runtimeRoot, relative, true)) {
+                return AppImageProvenanceInternalJson.failure(
+                    "runtime bin entry is not an executable regular file: "
+                    + relative);
+            }
+            files.push(relative);
+            actual.push(JsonValue.makeString(relative));
+        }
+        AppImageProvenanceInternalResult exact =
+            AppImageProvenanceSupport.exactInventory(
+                "runtime executable", expected, actual);
+        if (!exact.ok()) {
+            return AppImageProvenanceInternalJson.failure(exact.error);
+        }
+        return AppImageProvenanceSupport.verifiedRuntimeFiles(
+            runtimeRoot, targetStorePath, files);
+    }
+
+    class AppImageProvenanceInternalJson runtimeStoreEntries(
+            string runtimeRoot, string targetStorePath) {
+        string markerRelative =
+            "share/semu/steamdeck-runtime-store-path.txt";
+        if (!AppImageProvenanceSupport.safeRegularFile(
+                runtimeRoot, markerRelative)) {
+            return AppImageProvenanceInternalJson.failure(
+                "runtime target-output marker is absent or unsafe");
+        }
+        string recordedTarget = Path.readAll(
+            PathTools.join(runtimeRoot, markerRelative)).trim();
+        if (!recordedTarget.equals(targetStorePath)) {
+            return AppImageProvenanceInternalJson.failure(
+                "staged runtime was built from a different source tree");
+        }
+
+        string store = PathTools.join(runtimeRoot, "nix/store");
+        FileStatus status = FileStatus(store);
+        if (!status.isDir() || status.isSymlink()) {
+            return AppImageProvenanceInternalJson.failure(
+                "staged Nix store is absent or unsafe");
+        }
+        string storeUrl = "local?root=" + runtimeRoot;
+        ExecResult queryResult = AppImageProvenanceSupport.process("nix", [
+            "--extra-experimental-features", "nix-command flakes",
+            "path-info", "--json", "--json-format", "1", "--recursive",
+            "--store", storeUrl, targetStorePath
+        ]);
+        JsonValue closure = JsonValue.parse(queryResult.stdout());
+        if (!queryResult.ok() || closure.isError() || !closure.isObject()) {
+            return AppImageProvenanceInternalJson.failure(
+                "cannot query staged Nix closure: "
+                + AppImageProvenanceSupport.processError(queryResult));
+        }
+
+        Vector<string> closurePaths = AppImageRuntimeInventory.sorted(
+            closure.keys());
+        JsonValue expected = JsonValue.makeArray();
+        JsonValue entries = JsonValue.makeArray();
+        for path in closurePaths {
+            JsonValue metadata = closure.get(path);
+            JsonValue narHash = metadata.get("narHash");
+            JsonValue narSize = metadata.get("narSize");
+            JsonValue references = metadata.get("references");
+            if (!AppImageProvenanceSupport.validStorePath(path)
+                    || !metadata.isObject() || !narHash.isString()
+                    || !AppImageProvenanceSupport.sriSha256(
+                        narHash.asString())
+                    || !narSize.isInt() || narSize.asInt() < 1
+                    || !references.isArray()) {
+                return AppImageProvenanceInternalJson.failure(
+                    "staged closure metadata is malformed: " + path);
+            }
+            Vector<string> referencePaths = [];
+            for (int index = 0; index < references.size(); index++) {
+                JsonValue reference = references.at(index);
+                if (!reference.isString()
+                        || !closurePaths.contains(reference.asString())
+                        || referencePaths.contains(reference.asString())) {
+                    return AppImageProvenanceInternalJson.failure(
+                        "staged closure has an invalid reference: " + path);
+                }
+                referencePaths.push(reference.asString());
+            }
+            referencePaths = AppImageRuntimeInventory.sorted(referencePaths);
+            JsonValue canonicalReferences = JsonValue.makeArray();
+            for reference in referencePaths {
+                canonicalReferences.push(JsonValue.makeString(reference));
+            }
+            JsonValue entry = JsonValue.makeObject();
+            entry.set("path", JsonValue.makeString(path));
+            entry.set("nar_sha256", narHash);
+            entry.set("nar_size", narSize);
+            entry.set("references", canonicalReferences);
+            entries.push(entry);
+            expected.push(JsonValue.makeString(path));
+        }
+        if (entries.size() == 0 || !closure.get(targetStorePath).isObject()) {
+            return AppImageProvenanceInternalJson.failure(
+                "staged Nix closure does not contain its target output");
+        }
+
+        JsonValue actual = JsonValue.makeArray();
+        for name in AppImageRuntimeInventory.sorted(FileSystem.listDir(store)) {
+            if (name.equals(".links")) {
+                FileStatus links = FileStatus(PathTools.join(store, name));
+                if (!links.isDir() || links.isSymlink()) {
+                    return AppImageProvenanceInternalJson.failure(
+                        "staged Nix store hard-link index is unsafe");
+                }
+                continue;
+            }
+            string path = PathTools.join(store, name);
+            FileStatus entryStatus = FileStatus(path);
+            string storePath = "/nix/store/" + name;
+            if ((!entryStatus.isDir() && !entryStatus.isFile())
+                    || entryStatus.isSymlink()
+                    || !AppImageProvenanceSupport.validStorePath(storePath)) {
+                return AppImageProvenanceInternalJson.failure(
+                    "staged Nix store contains an invalid entry: " + name);
+            }
+            actual.push(JsonValue.makeString(storePath));
+        }
+        AppImageProvenanceInternalResult exact =
+            AppImageProvenanceSupport.exactInventory(
+                "staged Nix closure", expected, actual);
+        if (!exact.ok()) {
+            return AppImageProvenanceInternalJson.failure(exact.error);
+        }
+
+        ExecResult verification = AppImageProvenanceSupport.process("nix", [
+            "--extra-experimental-features", "nix-command flakes",
+            "store", "verify", "--all", "--no-trust", "--store", storeUrl
+        ]);
+        if (!verification.ok()) {
+            return AppImageProvenanceInternalJson.failure(
+                "staged Nix closure failed NAR integrity verification");
+        }
+
+        JsonValue result = JsonValue.makeObject();
+        result.set("target_store_path", JsonValue.makeString(targetStorePath));
+        result.set("paths", entries);
+        return AppImageProvenanceInternalJson.success(result);
+    }
+
+    class AppImageProvenanceInternalJson runtimeBuildContracts(
+            string runtimeRoot, Vector<AppImageRuntimeSlice> slices,
+            JsonValue builds) {
+        Vector<string> expectedPaths = [
+            "share/semu/es-de-build-contract.json"
+        ];
+        for slice in slices {
+            if (!slice.buildContract.isEmpty()) {
+                expectedPaths.push(slice.buildContract);
+            }
+        }
+        expectedPaths = AppImageRuntimeInventory.sorted(expectedPaths);
+        JsonValue expected = JsonValue.makeArray();
+        for path in expectedPaths { expected.push(JsonValue.makeString(path)); }
+
+        string share = PathTools.join(runtimeRoot, "share/semu");
+        JsonValue actual = JsonValue.makeArray();
+        for name in AppImageRuntimeInventory.sorted(FileSystem.listDir(share)) {
+            if (name.endsWith("-build-contract.json")) {
+                actual.push(JsonValue.makeString("share/semu/" + name));
+            }
+        }
+        AppImageProvenanceInternalResult exact =
+            AppImageProvenanceSupport.exactInventory(
+                "runtime build-contract", expected, actual);
+        if (!exact.ok()) {
+            return AppImageProvenanceInternalJson.failure(exact.error);
+        }
+        AppImageProvenanceInternalJson hashes =
+            AppImageProvenanceSupport.hashedFiles(runtimeRoot, expectedPaths);
+        if (!hashes.ok()) { return hashes; }
+        JsonValue contracts = JsonValue.makeArray();
+        for (int index = 0; index < hashes.value.size(); index++) {
+            JsonValue hash = hashes.value.at(index);
+            JsonValue contract = JsonValue.readFile(PathTools.join(
+                runtimeRoot, hash.get("path").asString()));
+            if (contract.isError() || !contract.isObject()) {
+                return AppImageProvenanceInternalJson.failure(
+                    "runtime build contract is malformed: "
+                    + hash.get("path").asString());
+            }
+            if (hash.get("path").asString()
+                    .equals("share/semu/es-de-build-contract.json")) {
+                JsonValue expected = builds.get("es_de");
+                JsonValue revision = contract.get("source_revision");
+                JsonValue sourceHash = contract.get("source_sha256");
+                if (!revision.isString() || !sourceHash.isString()
+                        || !expected.get("source_revision").isString()
+                        || !expected.get("source_sha256").isString()
+                        || !revision.asString().equals(
+                            expected.get("source_revision").asString())
+                        || !sourceHash.asString().equals(
+                            expected.get("source_sha256").asString())) {
+                    return AppImageProvenanceInternalJson.failure(
+                        "runtime ES-DE build contract disagrees with its source package");
+                }
+            } else {
+                bool matched = false;
+                for slice in slices {
+                    if (!slice.buildContract.equals(
+                            hash.get("path").asString())) {
+                        continue;
+                    }
+                    matched = true;
+                    if (!AppImageRenderHookProvenance.runtimeBuildContractMatches(
+                            contract, slice,
+                            builds.get("emulators").get(slice.id))) {
+                        return AppImageProvenanceInternalJson.failure(
+                            "runtime build contract does not prove its exact "
+                            + "patch/hook package boundary: " + slice.id);
+                    }
+                }
+                if (!matched) {
+                    return AppImageProvenanceInternalJson.failure(
+                        "runtime contains an undeclared build contract: "
+                        + hash.get("path").asString());
+                }
+            }
+            JsonValue entry = JsonValue.makeObject();
+            entry.set("path", hash.get("path"));
+            entry.set("sha256", hash.get("sha256"));
+            entry.set("contract", contract);
+            contracts.push(entry);
+        }
+        return AppImageProvenanceInternalJson.success(contracts);
+    }
+
+    class AppImageProvenanceInternalJson runtimePackages(
+            string repoRoot, string runtimeRoot, JsonValue builds,
+            Vector<AppImageRuntimeSlice> slices) {
+        JsonValue packages = JsonValue.makeArray();
+        JsonValue contracts = builds.get("emulators");
+        for slice in slices {
+            JsonValue contract = contracts.get(slice.id);
+            JsonValue storePath = contract.get("package_store_path");
+            if (!storePath.isString()
+                    || !storePath.asString().startsWith("/nix/store/")) {
+                return AppImageProvenanceInternalJson.failure(
+                    "build contract has no package store path: " + slice.id);
+            }
+            string name = PathTools.basename(storePath.asString());
+            string relative = "nix/store/" + name;
+            AppImageProvenanceInternalDigest packageDigest =
+                AppImageProvenanceSupport.hashDirectory(
+                    PathTools.join(runtimeRoot, relative));
+            if (!packageDigest.ok()) {
+                return AppImageProvenanceInternalJson.failure(packageDigest.error);
+            }
+            AppImageProvenanceInternalJson hooks =
+                AppImageRenderHookProvenance.hookCarriers(
+                    runtimeRoot, relative, slice);
+            if (!hooks.ok()) { return hooks; }
+            AppImageProvenanceInternalJson patch =
+                AppImageRenderHookProvenance.hookPatchEvidence(
+                    repoRoot, slice, contract);
+            if (!patch.ok()) { return patch; }
+            Vector<string> files = [];
+            for path in slice.packagedExecutables { files.push(path); }
+            if (!slice.buildContract.isEmpty()) {
+                files.push(slice.buildContract);
+            }
+            AppImageProvenanceInternalJson runtimeFiles =
+                AppImageProvenanceSupport.verifiedRuntimeFiles(
+                    runtimeRoot, storePath.asString(), files);
+            if (!runtimeFiles.ok()) { return runtimeFiles; }
+            JsonValue entry = JsonValue.makeObject();
+            entry.set("id", JsonValue.makeString(slice.id));
+            entry.set("package_store_path", storePath);
+            entry.set("package_nar_sha256",
+                JsonValue.makeString(packageDigest.value));
+            entry.set("runtime_files", runtimeFiles.value);
+            entry.set("source_patch", patch.value);
+            entry.set("renderer_hooks", hooks.value);
+            packages.push(entry);
+        }
+        return AppImageProvenanceInternalJson.success(packages);
+    }
+
+    class AppImageProvenanceInternalJson runtimeCores(
+            string runtimeRoot, JsonValue coreRuntime,
+            JsonValue selected, JsonValue builds) {
+        AppImageProvenanceInternalResult sourceNames =
+            AppImageProvenanceSupport.exactInventory(
+                "selected-core build", selected,
+                builds.get("selected_core_ids"));
+        if (!sourceNames.ok()) {
+            return AppImageProvenanceInternalJson.failure(sourceNames.error);
+        }
+        JsonValue directoryValue = coreRuntime.get("directory");
+        if (!directoryValue.isString()
+                || !AppImageRuntimeInventory.safeRelative(
+                    directoryValue.asString())) {
+            return AppImageProvenanceInternalJson.failure(
+                "selected-core runtime directory is invalid");
+        }
+        string directoryRelative = directoryValue.asString();
+        string directory = PathTools.join(runtimeRoot, directoryRelative);
+        FileStatus directoryStatus = FileStatus(directory);
+        if (!directoryStatus.isDir() || directoryStatus.isSymlink()) {
+            return AppImageProvenanceInternalJson.failure(
+                "selected-core runtime directory is absent or unsafe");
+        }
+        JsonValue buildEntries = builds.get("cores");
+        if (!buildEntries.isArray()
+                || buildEntries.size() != selected.size()) {
+            return AppImageProvenanceInternalJson.failure(
+                "selected-core source packages do not match selected names");
+        }
+        Vector<string> expectedLibraries = [];
+        for (int index = 0; index < buildEntries.size(); index++) {
+            JsonValue build = buildEntries.at(index);
+            JsonValue name = build.get("name");
+            JsonValue library = build.get("library");
+            if (!name.isString()
+                    || !name.asString().equals(selected.at(index).asString())
+                    || !library.isString()
+                    || !AppImageRuntimeInventory.safeRelative(
+                        library.asString())
+                    || !PathTools.dirname(library.asString())
+                        .equals(directoryRelative)
+                    || expectedLibraries.contains(library.asString())) {
+                return AppImageProvenanceInternalJson.failure(
+                    "selected-core library path disagrees with its declaration");
+            }
+            expectedLibraries.push(library.asString());
+        }
+        expectedLibraries = AppImageRuntimeInventory.sorted(expectedLibraries);
+        Vector<string> actualLibraries = [];
+        for name in AppImageRuntimeInventory.sorted(
+                FileSystem.listDir(directory)) {
+            string relative = directoryRelative + "/" + name;
+            if (!AppImageRuntimeInventory.safePath(
+                    runtimeRoot, relative, false)) {
+                return AppImageProvenanceInternalJson.failure(
+                    "selected-core directory contains an undeclared entry: "
+                    + relative);
+            }
+            actualLibraries.push(relative);
+        }
+        JsonValue expected = JsonValue.makeArray();
+        JsonValue actual = JsonValue.makeArray();
+        for path in expectedLibraries {
+            expected.push(JsonValue.makeString(path));
+        }
+        for path in actualLibraries { actual.push(JsonValue.makeString(path)); }
+        AppImageProvenanceInternalResult exact = AppImageProvenanceSupport.exactInventory(
+            "selected core library", expected, actual);
+        if (!exact.ok()) {
+            return AppImageProvenanceInternalJson.failure(exact.error);
+        }
+        AppImageProvenanceInternalJson files =
+            AppImageProvenanceSupport.hashedFiles(
+                runtimeRoot, expectedLibraries);
+        if (!files.ok()) { return files; }
+        JsonValue packageEvidence = JsonValue.makeArray();
+        for (int index = 0; index < buildEntries.size(); index++) {
+            JsonValue build = buildEntries.at(index);
+            JsonValue storePath = build.get("nix_store_path");
+            JsonValue library = build.get("library");
+            if (!storePath.isString() || !library.isString()
+                    || !expectedLibraries.contains(library.asString())) {
+                return AppImageProvenanceInternalJson.failure(
+                    "selected-core runtime path disagrees with package metadata");
+            }
+            string libraryDigest = AppImageProvenanceSupport.digestForPath(
+                files.value, library.asString());
+            if (!AppImageProvenanceSupport.lowerHex(libraryDigest, 64)) {
+                return AppImageProvenanceInternalJson.failure(
+                    "selected-core runtime file has no exact digest");
+            }
+            string relativeStore = "nix/store/"
+                + PathTools.basename(storePath.asString());
+            AppImageProvenanceInternalDigest packageDigest =
+                AppImageProvenanceSupport.hashDirectory(
+                    PathTools.join(runtimeRoot, relativeStore));
+            if (!packageDigest.ok()) {
+                return AppImageProvenanceInternalJson.failure(packageDigest.error);
+            }
+            AppImageProvenanceInternalJson libraryEvidence =
+                AppImageProvenanceSupport.verifiedRuntimePath(
+                    runtimeRoot, storePath.asString(), library.asString());
+            if (!libraryEvidence.ok()) { return libraryEvidence; }
+            JsonValue evidence = JsonValue.makeObject();
+            evidence.set("name", build.get("name"));
+            evidence.set("nix_store_path", storePath);
+            evidence.set("package_nar_sha256",
+                JsonValue.makeString(packageDigest.value));
+            evidence.set("library", libraryEvidence.value);
+            packageEvidence.push(evidence);
+        }
+        JsonValue result = JsonValue.makeObject();
+        result.set("provider", coreRuntime.get("provider"));
+        result.set("directory", directoryValue);
+        result.set("names", selected);
+        result.set("libraries", files.value);
+        result.set("packages", packageEvidence);
+        return AppImageProvenanceInternalJson.success(result);
+    }
+
+    class AppImageProvenanceInternalJson runtimeComponents(JsonValue storeContract) {
+        JsonValue targetPath = storeContract.get("target_store_path");
+        JsonValue paths = storeContract.get("paths");
+        if (!targetPath.isString() || !paths.isArray()) {
+            return AppImageProvenanceInternalJson.failure(
+                "Nix runtime component contract is malformed");
+        }
+        JsonValue target = JsonValue.makeNull();
+        for (int index = 0; index < paths.size(); index++) {
+            JsonValue path = paths.at(index).get("path");
+            if (path.isString()
+                    && path.asString().equals(targetPath.asString())) {
+                target = paths.at(index);
+            }
+        }
+        JsonValue references = target.get("references");
+        if (!target.isObject() || !references.isArray()) {
+            return AppImageProvenanceInternalJson.failure(
+                "Nix target output has no direct component references");
+        }
+        Vector<string> componentPaths = [targetPath.asString()];
+        for (int index = 0; index < references.size(); index++) {
+            JsonValue reference = references.at(index);
+            if (!reference.isString()
+                    || componentPaths.contains(reference.asString())) {
+                return AppImageProvenanceInternalJson.failure(
+                    "Nix target has an invalid direct component reference");
+            }
+            componentPaths.push(reference.asString());
+        }
+        componentPaths = AppImageRuntimeInventory.sorted(componentPaths);
+        JsonValue components = JsonValue.makeArray();
+        for componentPath in componentPaths {
+            JsonValue source = JsonValue.makeNull();
+            for (int index = 0; index < paths.size(); index++) {
+                JsonValue path = paths.at(index).get("path");
+                if (path.isString()
+                        && path.asString().equals(componentPath)) {
+                    source = paths.at(index);
+                }
+            }
+            if (!source.isObject()) {
+                return AppImageProvenanceInternalJson.failure(
+                    "Nix target references a component outside its closure: "
+                    + componentPath);
+            }
+            JsonValue component = JsonValue.makeObject();
+            component.set("id", JsonValue.makeString(
+                PathTools.basename(componentPath)));
+            component.set("store", source);
+            component.set("target_output", JsonValue.makeBool(
+                componentPath.equals(targetPath.asString())));
+            components.push(component);
+        }
+        return AppImageProvenanceInternalJson.success(components);
+    }
+
+    class AppImageProvenanceInternalJson runtimePrefix(
+            string runtimeRoot, JsonValue sourceContract) {
+        Vector<string> keys = ["id", "kind", "package_name",
+            "package_store_path", "recipe", "runtime_path", "source_name",
+            "source_sha256", "source_store_path", "source_urls", "version"];
+        if (!AppImageProvenanceSupport.exactKeys(sourceContract, keys)
+                || !sourceContract.get("id").isString()
+                || !sourceContract.get("id").asString()
+                    .equals("appimage-type2-runtime")
+                || !sourceContract.get("kind").isString()
+                || !sourceContract.get("kind").asString()
+                    .equals("fixed-output")
+                || !sourceContract.get("package_store_path").isString()
+                || !sourceContract.get("runtime_path").isString()) {
+            return AppImageProvenanceInternalJson.failure(
+                "AppImage runtime source identity is incomplete");
+        }
+        string packageStorePath =
+            sourceContract.get("package_store_path").asString();
+        string runtimePath = sourceContract.get("runtime_path").asString();
+        if (!AppImageProvenanceSupport.validStorePath(packageStorePath)
+                || !AppImageRuntimeInventory.safeRelative(runtimePath)) {
+            return AppImageProvenanceInternalJson.failure(
+                "AppImage runtime package/path identity is invalid");
+        }
+        string packageRelative =
+            "nix/store/" + PathTools.basename(packageStorePath);
+        string packageFile = packageRelative + "/" + runtimePath;
+        if (!AppImageRuntimeInventory.safePath(runtimeRoot, runtimePath, true)
+                || !AppImageRuntimeInventory.safePath(
+                    runtimeRoot, packageFile, true)) {
+            return AppImageProvenanceInternalJson.failure(
+                "staged runtime lacks its dedicated executable Type-2 prefix");
+        }
+        AppImageProvenanceInternalDigest staged =
+            AppImageProvenanceSupport.hashFile(runtimeRoot, runtimePath);
+        AppImageProvenanceInternalDigest packaged =
+            AppImageProvenanceSupport.hashFile(runtimeRoot, packageFile);
+        AppImageProvenanceInternalDigest packageNar =
+            AppImageProvenanceSupport.hashDirectory(
+                PathTools.join(runtimeRoot, packageRelative));
+        if (!staged.ok() || !packaged.ok() || !packageNar.ok()
+                || !staged.value.equals(packaged.value)) {
+            return AppImageProvenanceInternalJson.failure(
+                "staged Type-2 prefix differs from its pinned Nix package");
+        }
+        JsonValue result = JsonValue.makeObject();
+        result.set("package_store_path", JsonValue.makeString(packageStorePath));
+        result.set("package_nar_sha256", JsonValue.makeString(packageNar.value));
+        result.set("package_file", AppImageProvenanceSupport.digestEntry(
+            packageFile, packaged.value));
+        result.set("runtime_file", AppImageProvenanceSupport.digestEntry(
+            runtimePath, staged.value));
+        return AppImageProvenanceInternalJson.success(result);
+    }
+
+    class AppImageProvenanceInternalJson runtimeSnapshot(
+            string repoRoot, string runtimeRoot, JsonValue builds,
+            Vector<AppImageRuntimeSlice> slices, JsonValue selectedCores,
+            JsonValue selectedCoreBuilds, JsonValue coreRuntime,
+            JsonValue appImageRuntime,
+            string targetStorePath) {
+        AppImageRuntimeInventoryResult validated =
+            AppImageRuntimeInventory.validate(
+                PathTools.join(repoRoot, "config"), runtimeRoot);
+        if (!validated.ok()) {
+            return AppImageProvenanceInternalJson.failure(validated.error);
+        }
+        AppImageProvenanceInternalJson store =
+            AppImageRuntimeContractProvenance.runtimeStoreEntries(
+                runtimeRoot, targetStorePath);
+        if (!store.ok()) { return store; }
+        AppImageProvenanceInternalJson tree =
+            AppImageRuntimeContractProvenance.runtimeTree(runtimeRoot);
+        if (!tree.ok()) { return tree; }
+        AppImageProvenanceInternalJson payload =
+            AppImageRuntimeContractProvenance.runtimePayload(
+                runtimeRoot, targetStorePath);
+        if (!payload.ok()) { return payload; }
+        AppImageProvenanceInternalJson executables =
+            AppImageRuntimeContractProvenance.runtimeExecutables(
+                runtimeRoot, targetStorePath);
+        if (!executables.ok()) { return executables; }
+        AppImageProvenanceInternalJson contracts =
+            AppImageRuntimeContractProvenance.runtimeBuildContracts(
+                runtimeRoot, slices, builds);
+        if (!contracts.ok()) { return contracts; }
+        AppImageProvenanceInternalJson packages =
+            AppImageRuntimeContractProvenance.runtimePackages(
+                repoRoot, runtimeRoot, builds, slices);
+        if (!packages.ok()) { return packages; }
+        AppImageProvenanceInternalJson cores =
+            AppImageRuntimeContractProvenance.runtimeCores(
+                runtimeRoot, coreRuntime, selectedCores, selectedCoreBuilds);
+        if (!cores.ok()) { return cores; }
+        AppImageProvenanceInternalJson components =
+            AppImageRuntimeContractProvenance.runtimeComponents(store.value);
+        if (!components.ok()) { return components; }
+        AppImageProvenanceInternalJson prefix =
+            AppImageRuntimeContractProvenance.runtimePrefix(
+                runtimeRoot, appImageRuntime);
+        if (!prefix.ok()) { return prefix; }
+        AppImageProvenanceInternalJson assets =
+            AppImageRuntimeContractProvenance.runtimeAssets(repoRoot, runtimeRoot);
+        if (!assets.ok()) { return assets; }
+        JsonValue snapshot = JsonValue.makeObject();
+        snapshot.set("tree", tree.value);
+        snapshot.set("target_payload", payload.value);
+        snapshot.set("executables", executables.value);
+        snapshot.set("nix_store_closure", store.value);
+        snapshot.set("build_contracts", contracts.value);
+        snapshot.set("packages", packages.value);
+        snapshot.set("selected_cores", cores.value);
+        snapshot.set("components", components.value);
+        snapshot.set("appimage_runtime", prefix.value);
+        snapshot.set("assets", assets.value);
+        return AppImageProvenanceInternalJson.success(snapshot);
+    }
+
+}

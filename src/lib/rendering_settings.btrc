@@ -1,0 +1,407 @@
+// rendering_settings.btrc - compile per-system settings from product definitions.
+
+import std.{fs, json, vector}
+import ./merge.btrc
+import ./owned_paths.btrc
+import ./rendering_definition.btrc
+
+class SemuSystemInputDefinition {
+    public bool valid;
+    public Vector<string> actions;
+    public Vector<string> controllerModes;
+
+    public SemuSystemInputDefinition() {
+        self.valid = false;
+        self.actions = [];
+        self.controllerModes = [];
+    }
+}
+
+class SemuRenderingSettingsDefinitions {
+    class Vector<string> sortedDirectories(string root) {
+        Vector<string> entries = [];
+        if (!FileSystem.isDir(root)) { return entries; }
+        for entry in Directory(root).entries() {
+            if (FileSystem.isDir(PathTools.join(root, entry))) {
+                entries.push(entry);
+            }
+        }
+        entries.sort();
+        return entries;
+    }
+
+    class bool identifier(string value) {
+        if (value.isEmpty()) { return false; }
+        for character in value {
+            bool alpha = (character >= 'a' && character <= 'z')
+                || (character >= 'A' && character <= 'Z');
+            bool digit = character >= '0' && character <= '9';
+            if (!alpha && !digit && character != '_' && character != '-') {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    class JsonValue field(string key, string label, string kind) {
+        JsonValue field = JsonValue.makeObject();
+        field.set("key", JsonValue.makeString(key));
+        field.set("label", JsonValue.makeString(label));
+        field.set("type", JsonValue.makeString(kind));
+        return field;
+    }
+
+    class JsonValue strings(Vector<string> values) {
+        JsonValue choices = JsonValue.makeArray();
+        for value in values { choices.push(JsonValue.makeString(value)); }
+        return choices;
+    }
+
+    class Vector<string> variantIds(JsonValue bezels) {
+        Vector<string> ids = [];
+        JsonValue variants = bezels.get("variants");
+        if (!variants.isArray()) { return ids; }
+        for (int index = 0; index < variants.size(); index++) {
+            JsonValue variant = variants.at(index);
+            string id = variant.isObject() && variant.get("id").isString()
+                ? variant.get("id").asString() : "";
+            if (!id.isEmpty() && !ids.contains(id)) { ids.push(id); }
+        }
+        return ids;
+    }
+
+    class JsonValue shaderChoices(JsonValue shaders, JsonValue manifest) {
+        Vector<string> choices = ["none"];
+        string selected = shaders.get("screen").isString()
+            ? shaders.get("screen").asString() : "";
+        if (!selected.isEmpty() && !choices.contains(selected)) {
+            choices.push(selected);
+        }
+        JsonValue assets = manifest.get("assets");
+        Vector<string> paths = [];
+        if (assets.isObject()) { paths = assets.keys(); }
+        paths.sort();
+        for path in paths {
+            if (path.startsWith("assets/shaders/")
+                    && !choices.contains(path)) {
+                choices.push(path);
+            }
+        }
+        return SemuRenderingSettingsDefinitions.strings(choices);
+    }
+
+    class JsonValue bezelChoices(JsonValue bezels) {
+        Vector<string> choices =
+            SemuRenderingSettingsDefinitions.variantIds(bezels);
+        if (choices.isEmpty()) { choices.push("none"); }
+        return SemuRenderingSettingsDefinitions.strings(choices);
+    }
+
+    class JsonValue layoutChoices(JsonValue bezels) {
+        Vector<string> choices = ["auto"];
+        for id in SemuRenderingSettingsDefinitions.variantIds(bezels) {
+            if (!choices.contains(id)) { choices.push(id); }
+        }
+        return SemuRenderingSettingsDefinitions.strings(choices);
+    }
+
+    class bool declaredSystemAssets(JsonValue shaders, JsonValue bezels,
+                                    JsonValue shaderManifest,
+                                    JsonValue bezelManifest) {
+        if (shaders.get("screen").isString()
+                && !SemuRenderingDefinition.assetDeclared(
+                    shaderManifest, shaders.get("screen").asString())) {
+            return false;
+        }
+        JsonValue variants = bezels.get("variants");
+        if (!variants.isArray()) { return false; }
+        for (int index = 0; index < variants.size(); index++) {
+            JsonValue variant = variants.at(index);
+            if (!variant.isObject() || !variant.get("id").isString()
+                    || !variant.get("art").isString()
+                    || !SemuRenderingDefinition.assetDeclared(
+                        bezelManifest, variant.get("art").asString())) {
+                return false;
+            }
+            if (variant.get("glass").isString()
+                    && !SemuRenderingDefinition.assetDeclared(
+                        bezelManifest, variant.get("glass").asString())) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    class SemuSystemInputDefinition inputDefinition(
+            string configRoot, string systemId, JsonValue system) {
+        SemuSystemInputDefinition result = SemuSystemInputDefinition();
+        JsonValue references = system.get("emulators");
+        if (!references.isArray() || references.size() == 0) { return result; }
+        Vector<string> visited = [];
+        for (int referenceIndex = 0;
+             referenceIndex < references.size(); referenceIndex++) {
+            JsonValue reference = references.at(referenceIndex);
+            if (!reference.isObject()
+                    || !reference.get("emulator").isString()) {
+                return result;
+            }
+            string emulatorId = reference.get("emulator").asString();
+            if (!SemuRenderingSettingsDefinitions.identifier(emulatorId)) {
+                return result;
+            }
+            if (visited.contains(emulatorId)) { continue; }
+            visited.push(emulatorId);
+            string emulatorRoot = PathTools.join(
+                configRoot, "emulators/" + emulatorId);
+            JsonValue emulator = JsonValue.readFile(
+                PathTools.join(emulatorRoot, "emulator.json"));
+            JsonValue profile = JsonValue.readFile(
+                PathTools.join(emulatorRoot, "profile.json"));
+            JsonValue actions = emulator.get("input").get("actions");
+            if (!emulator.isObject() || !profile.isObject()
+                    || !actions.isArray()) {
+                return result;
+            }
+            Vector<string> emulatorActions = [];
+            for (int actionIndex = 0;
+                 actionIndex < actions.size(); actionIndex++) {
+                JsonValue action = actions.at(actionIndex);
+                if (!action.isString() || action.asString().isEmpty()) {
+                    return result;
+                }
+                string actionId = action.asString();
+                if (!emulatorActions.contains(actionId)) {
+                    emulatorActions.push(actionId);
+                }
+                if (!result.actions.contains(actionId)) {
+                    result.actions.push(actionId);
+                }
+            }
+            if (!profile.has("controller_modes")) { continue; }
+            JsonValue modes = profile.get("controller_modes");
+            if (!modes.isArray()) { return result; }
+            for (int modeIndex = 0; modeIndex < modes.size(); modeIndex++) {
+                JsonValue mode = modes.at(modeIndex);
+                if (!mode.isObject() || !mode.get("id").isString()
+                        || !mode.get("action").isString()) {
+                    return result;
+                }
+                string id = mode.get("id").asString();
+                string action = mode.get("action").asString();
+                if (!SemuRenderingSettingsDefinitions.identifier(id)
+                        || !emulatorActions.contains(action)) {
+                    return result;
+                }
+                if (action.startsWith(systemId + ".")
+                        && !result.controllerModes.contains(id)) {
+                    result.controllerModes.push(id);
+                }
+            }
+        }
+        result.actions.sort();
+        if (result.controllerModes.isEmpty()) {
+            result.controllerModes.push("automatic");
+        }
+        result.valid = true;
+        return result;
+    }
+
+    class JsonValue renderingDefaults(JsonValue shaders, JsonValue bezels) {
+        JsonValue defaults = JsonValue.makeObject();
+        defaults.set("shaders", shaders.get("enabled").isBool()
+            ? shaders.get("enabled") : JsonValue.makeBool(false));
+        defaults.set("bezels", bezels.get("enabled").isBool()
+            ? bezels.get("enabled") : JsonValue.makeBool(false));
+        defaults.set("shader_file", shaders.get("screen").isString()
+            ? shaders.get("screen") : JsonValue.makeString("none"));
+        defaults.set("bezel_variant", bezels.get("default_variant").isString()
+            ? bezels.get("default_variant") : JsonValue.makeString("none"));
+        defaults.set("layout", JsonValue.makeString("auto"));
+        return defaults;
+    }
+
+    class string configuredControllerMode(JsonValue source, string systemId) {
+        JsonValue menu = source.get("menu");
+        JsonValue defaults = menu.get("system_defaults");
+        JsonValue system = defaults.get(systemId);
+        JsonValue mode = system.get("controller_mode");
+        return mode.isString() ? mode.asString() : "automatic";
+    }
+
+    class JsonValue systemSection(string id, string name, JsonValue shaders,
+                                  JsonValue bezels, JsonValue shaderManifest,
+                                  Vector<string> controllerModes,
+                                  string parentId) {
+        JsonValue fields = JsonValue.makeArray();
+        fields.push(SemuRenderingSettingsDefinitions.field(
+            "paths.systems." + id + ".rom_directory",
+            "ROM SUBDIRECTORY", "relative_path"));
+        if (controllerModes.size() > 1) {
+            JsonValue controller = SemuRenderingSettingsDefinitions.field(
+                "input.systems." + id + ".controller_mode",
+                "CONTROLLER MODE", "choice");
+            controller.set("choices",
+                SemuRenderingSettingsDefinitions.strings(controllerModes));
+            fields.push(controller);
+        }
+
+        string prefix = "visual.systems." + id + ".";
+        bool shadersEnabled = shaders.get("enabled").isBool()
+            && shaders.get("enabled").asBool();
+        if (shadersEnabled) {
+            fields.push(SemuRenderingSettingsDefinitions.field(
+                prefix + "shaders", "SHADER", "boolean"));
+            JsonValue shaderChoices =
+                SemuRenderingSettingsDefinitions.shaderChoices(
+                    shaders, shaderManifest);
+            if (shaderChoices.size() > 1) {
+                JsonValue shader = SemuRenderingSettingsDefinitions.field(
+                    prefix + "shader_file", "SHADER PRESET", "choice");
+                shader.set("choices", shaderChoices);
+                fields.push(shader);
+            }
+        }
+        bool bezelsEnabled = bezels.get("enabled").isBool()
+            && bezels.get("enabled").asBool();
+        if (bezelsEnabled) {
+            fields.push(SemuRenderingSettingsDefinitions.field(
+                prefix + "bezels", "BEZEL", "boolean"));
+            Vector<string> variants =
+                SemuRenderingSettingsDefinitions.variantIds(bezels);
+            if (variants.size() > 1) {
+                JsonValue bezel = SemuRenderingSettingsDefinitions.field(
+                    prefix + "bezel_variant", "BEZEL STYLE", "choice");
+                bezel.set("choices",
+                    SemuRenderingSettingsDefinitions.strings(variants));
+                fields.push(bezel);
+                JsonValue layout = SemuRenderingSettingsDefinitions.field(
+                    prefix + "layout", "LAYOUT", "choice");
+                layout.set("choices",
+                    SemuRenderingSettingsDefinitions.layoutChoices(bezels));
+                fields.push(layout);
+            }
+        }
+
+        JsonValue section = JsonValue.makeObject();
+        section.set("id", JsonValue.makeString("system-" + id));
+        section.set("label", JsonValue.makeString(name.toUpper()));
+        section.set("parent", JsonValue.makeString(parentId));
+        section.set("fields", fields);
+        return section;
+    }
+
+    class JsonValue expand(JsonValue source, string configRoot) {
+        if (!source.isObject()) { return JsonValue.makeError(); }
+        JsonValue expanded = JsonMerge.copy(source);
+        string systemsRoot = PathTools.join(configRoot, "systems");
+        JsonValue shaderManifest = JsonValue.readFile(
+            PathTools.join(configRoot, "assets/shaders.json"));
+        JsonValue bezelManifest = JsonValue.readFile(
+            PathTools.join(configRoot, "assets/bezels.json"));
+        JsonValue menu = expanded.get("menu");
+        if (!shaderManifest.isObject()
+                || !shaderManifest.get("assets").isObject()
+                || !bezelManifest.isObject()
+                || !bezelManifest.get("assets").isObject()
+                || !menu.isObject() || !menu.get("sections").isArray()) {
+            return JsonValue.makeError();
+        }
+        JsonValue declaredDefaults = menu.get("system_defaults");
+        JsonValue navigation = menu.get("navigation");
+        JsonValue systemOverrides = navigation.get("system_overrides");
+        if (!declaredDefaults.isNull() && !declaredDefaults.isObject()) {
+            return JsonValue.makeError();
+        }
+        if (!navigation.isObject() || !systemOverrides.isObject()
+                || !systemOverrides.get("id").isString()
+                || !SemuRenderingSettingsDefinitions.identifier(
+                    systemOverrides.get("id").asString())
+                || !systemOverrides.get("label").isString()
+                || systemOverrides.get("label").asString().isEmpty()) {
+            return JsonValue.makeError();
+        }
+
+        JsonValue pathSystems = JsonValue.makeObject();
+        JsonValue inputSystems = JsonValue.makeObject();
+        JsonValue visualSystems = JsonValue.makeObject();
+        JsonValue systemSections = JsonValue.makeArray();
+        Vector<string> systemIds =
+            SemuRenderingSettingsDefinitions.sortedDirectories(systemsRoot);
+        for id in systemIds {
+            if (!SemuRenderingSettingsDefinitions.identifier(id)) {
+                return JsonValue.makeError();
+            }
+            string root = PathTools.join(systemsRoot, id);
+            JsonValue system = JsonValue.readFile(
+                PathTools.join(root, "system.json"));
+            JsonValue shaders = JsonValue.readFile(
+                PathTools.join(root, "shaders.json"));
+            JsonValue bezels = JsonValue.readFile(
+                PathTools.join(root, "bezels.json"));
+            string romDirectory = system.get("rom").get("dir").isString()
+                ? system.get("rom").get("dir").asString() : "";
+            SemuSystemInputDefinition input =
+                SemuRenderingSettingsDefinitions.inputDefinition(
+                    configRoot, id, system);
+            string controllerMode =
+                SemuRenderingSettingsDefinitions.configuredControllerMode(
+                    source, id);
+            if (!system.isObject() || !shaders.isObject() || !bezels.isObject()
+                    || !system.get("name").isString()
+                    || !SemuOwnedPaths.safeRelativePath(romDirectory)
+                    || !input.valid
+                    || !input.controllerModes.contains(controllerMode)
+                    || !SemuRenderingSettingsDefinitions.declaredSystemAssets(
+                        shaders, bezels, shaderManifest, bezelManifest)) {
+                return JsonValue.makeError();
+            }
+
+            JsonValue path = JsonValue.makeObject();
+            path.set("rom_directory", JsonValue.makeString(romDirectory));
+            pathSystems.set(id, path);
+            JsonValue inputSettings = JsonValue.makeObject();
+            inputSettings.set("controller_mode",
+                JsonValue.makeString(controllerMode));
+            inputSystems.set(id, inputSettings);
+            visualSystems.set(id,
+                SemuRenderingSettingsDefinitions.renderingDefaults(
+                    shaders, bezels));
+            systemSections.push(
+                SemuRenderingSettingsDefinitions.systemSection(
+                    id, system.get("name").asString(), shaders, bezels,
+                    shaderManifest, input.controllerModes,
+                    systemOverrides.get("id").asString()));
+        }
+        if (declaredDefaults.isObject()) {
+            for id in declaredDefaults.keys() {
+                if (!systemIds.contains(id)
+                        || !declaredDefaults.get(id).isObject()
+                        || declaredDefaults.get(id).keys().size() != 1
+                        || !declaredDefaults.get(id).has("controller_mode")) {
+                    return JsonValue.makeError();
+                }
+            }
+        }
+
+        JsonValue paths = expanded.get("paths").isObject()
+            ? expanded.get("paths") : JsonValue.makeObject();
+        paths.set("systems", pathSystems);
+        expanded.set("paths", paths);
+        JsonValue input = expanded.get("input").isObject()
+            ? expanded.get("input") : JsonValue.makeObject();
+        input.set("systems", inputSystems);
+        expanded.set("input", input);
+        JsonValue visual = expanded.get("visual").isObject()
+            ? expanded.get("visual") : JsonValue.makeObject();
+        visual.set("systems", visualSystems);
+        expanded.set("visual", visual);
+
+        JsonValue sections = menu.get("sections");
+        for (int index = 0; index < systemSections.size(); index++) {
+            sections.push(systemSections.at(index));
+        }
+        menu.set("sections", sections);
+        expanded.set("menu", menu);
+        return expanded;
+    }
+}

@@ -1,0 +1,693 @@
+// runtime_inventory.btrc - declarative Linux runtime slice inventory.
+
+import std.{fs, json, strings, vector}
+
+#include <fcntl.h>
+
+class AppImageRuntimeSlice {
+    public string id;
+    public string packageId;
+    public string executable;
+    public Vector<string> packagedExecutables;
+    public string buildContract;
+    public string sourceRevision;
+    public string sourceSha256;
+    public string recipe;
+    public Vector<string> definitions;
+    public Vector<string> localPatches;
+    public Vector<string> hookSymbols;
+    public string hookLinkage;
+    public string hookLibrary;
+    public string hookPatch;
+    public JsonValue renderHook;
+
+    public AppImageRuntimeSlice() {
+        self.id = "";
+        self.packageId = "";
+        self.executable = "";
+        self.packagedExecutables = [];
+        self.buildContract = "";
+        self.sourceRevision = "";
+        self.sourceSha256 = "";
+        self.recipe = "";
+        self.definitions = [];
+        self.localPatches = [];
+        self.hookSymbols = [];
+        self.hookLinkage = "";
+        self.hookLibrary = "";
+        self.hookPatch = "";
+        self.renderHook = JsonValue.makeObject();
+    }
+}
+
+class AppImageRuntimeInventoryResult {
+    public bool valid;
+    public Vector<AppImageRuntimeSlice> slices;
+    public Vector<string> cores;
+    public string error;
+
+    public AppImageRuntimeInventoryResult() {
+        self.valid = false;
+        self.slices = [];
+        self.cores = [];
+        self.error = "";
+    }
+
+    class AppImageRuntimeInventoryResult success(
+            Vector<AppImageRuntimeSlice> slices, Vector<string> cores) {
+        AppImageRuntimeInventoryResult result =
+            AppImageRuntimeInventoryResult();
+        result.valid = true;
+        result.slices = slices;
+        result.cores = cores;
+        return result;
+    }
+
+    class AppImageRuntimeInventoryResult failure(string error) {
+        AppImageRuntimeInventoryResult result =
+            AppImageRuntimeInventoryResult();
+        result.error = error;
+        return result;
+    }
+
+    public bool ok() { return self.valid; }
+}
+
+class AppImageRuntimeInventory {
+    class bool identifier(string value) {
+        if (value.isEmpty()) { return false; }
+        for character in value {
+            bool alphaNumeric = (character >= 'a' && character <= 'z')
+                || (character >= '0' && character <= '9');
+            if (!alphaNumeric && character != '-') { return false; }
+        }
+        return true;
+    }
+
+    class bool safeRelative(string value) {
+        if (value.isEmpty() || value.startsWith("/")) { return false; }
+        for component in Strings.split(value, "/") {
+            if (component.isEmpty() || component.equals(".")
+                || component.equals("..")) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    class bool lowerHex(string value, int length) {
+        if (value.len() != length) { return false; }
+        for character in value {
+            if (!((character >= '0' && character <= '9')
+                    || (character >= 'a' && character <= 'f'))) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    class bool sriSha256(string value) {
+        if (!value.startsWith("sha256-") || value.len() != 51
+                || value.charAt(50) != '=') {
+            return false;
+        }
+        for (int index = 7; index < 50; index++) {
+            char character = value.charAt(index);
+            bool alphaNumeric = (character >= 'a' && character <= 'z')
+                || (character >= 'A' && character <= 'Z')
+                || (character >= '0' && character <= '9');
+            if (!alphaNumeric && character != '+' && character != '/') {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    class bool coreIdentifier(string value) {
+        if (value.isEmpty()) { return false; }
+        for character in value {
+            bool alphaNumeric = (character >= 'a' && character <= 'z')
+                || (character >= '0' && character <= '9');
+            if (!alphaNumeric && character != '_' && character != '-') {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    class Vector<string> sorted(Vector<string> values) {
+        Vector<string> result = [];
+        for value in values {
+            int insertion = 0;
+            while (insertion < result.size()
+                    && result.get(insertion) < value) {
+                insertion++;
+            }
+            result.insert(insertion, value);
+        }
+        return result;
+    }
+
+    class bool arrayContains(JsonValue array, string expected) {
+        if (!array.isArray()) { return false; }
+        for (int index = 0; index < array.size(); index++) {
+            JsonValue value = array.at(index);
+            if (value.isString() && value.asString().equals(expected)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    class string output(JsonValue outputs, string key) {
+        JsonValue value = outputs.get(key);
+        return value.isString() ? value.asString() : "";
+    }
+
+    class bool integrationSupports(JsonValue integration, string nixSystem) {
+        JsonValue platforms = integration.get("platforms");
+        return !platforms.isArray()
+            || AppImageRuntimeInventory.arrayContains(platforms, nixSystem);
+    }
+
+    class Vector<string> localPatchPaths(
+            string id, string directory, JsonValue integration,
+            string nixSystem) {
+        Vector<string> patches = [];
+        if (!AppImageRuntimeInventory.integrationSupports(
+                integration, nixSystem)) {
+            return patches;
+        }
+        JsonValue patch = integration.get("patch");
+        if (!patch.isString()
+                || !AppImageRuntimeInventory.safeRelative(patch.asString())
+                || !PathTools.basename(patch.asString())
+                    .equals(patch.asString())) {
+            return patches;
+        }
+        string path = PathTools.join(directory, patch.asString());
+        FileStatus status = FileStatus(path);
+        if (status.isFile() && !status.isSymlink()) {
+            patches.push("emulators/" + id + "/" + patch.asString());
+        }
+        return patches;
+    }
+
+    class Vector<string> phaseSymbols(JsonValue rendering) {
+        Vector<string> symbols = [];
+        JsonValue phases = rendering.get("phases");
+        if (!phases.isArray()) { return symbols; }
+        for (int index = 0; index < phases.size(); index++) {
+            JsonValue symbol = phases.at(index).get("symbol");
+            if (!symbol.isString() || symbol.asString().isEmpty()
+                    || symbols.contains(symbol.asString())) {
+                Vector<string> invalid = [];
+                return invalid;
+            }
+            symbols.push(symbol.asString());
+        }
+        return symbols;
+    }
+
+    class bool packageSupports(JsonValue package, string nixSystem,
+                               JsonValue outputs, string platform) {
+        JsonValue declared = package.get("platforms");
+        if (declared.isArray()) {
+            return AppImageRuntimeInventory.arrayContains(declared, nixSystem);
+        }
+        return !AppImageRuntimeInventory.output(
+            outputs, platform + "_main_program").isEmpty();
+    }
+
+    class bool validCoreLoader(JsonValue targetPlatform) {
+        JsonValue loader = targetPlatform.get("core_loader");
+        JsonValue filename = loader.get("filename");
+        JsonValue directories = loader.get("directories");
+        JsonValue arguments = loader.get("args");
+        if (!loader.isObject() || !filename.isString()
+                || !filename.asString().contains("${core}")
+                || !directories.isArray() || directories.size() == 0
+                || !arguments.isArray() || arguments.size() == 0) {
+            return false;
+        }
+        bool coreFile = false;
+        for (int index = 0; index < directories.size(); index++) {
+            JsonValue directory = directories.at(index);
+            if (!directory.isString() || directory.asString().isEmpty()) {
+                return false;
+            }
+        }
+        for (int index = 0; index < arguments.size(); index++) {
+            JsonValue argument = arguments.at(index);
+            if (!argument.isString() || argument.asString().isEmpty()) {
+                return false;
+            }
+            if (argument.asString().contains("${core_file}")) {
+                coreFile = true;
+            }
+        }
+        return coreFile;
+    }
+
+    class AppImageRuntimeInventoryResult declaredBindings(
+            string sourceRoot, string platform,
+            Vector<string> emulatorNames, Vector<string> supported,
+            Vector<string> coreHosts) {
+        string systemsRoot = PathTools.join(sourceRoot, "systems");
+        FileStatus root = FileStatus(systemsRoot);
+        if (!root.isDir() || root.isSymlink()) {
+            return AppImageRuntimeInventoryResult.failure(
+                "AppImage system definition root is absent or symlinked: "
+                + systemsRoot);
+        }
+        Vector<string> required = [];
+        Vector<string> cores = [];
+        Vector<string> selectedCoreHosts = [];
+        for systemName in AppImageRuntimeInventory.sorted(
+                FileSystem.listDir(systemsRoot)) {
+            if (!AppImageRuntimeInventory.identifier(systemName)) {
+                return AppImageRuntimeInventoryResult.failure(
+                    "invalid system directory in AppImage inventory: "
+                    + systemName);
+            }
+            string directory = PathTools.join(systemsRoot, systemName);
+            FileStatus directoryStatus = FileStatus(directory);
+            JsonValue system = JsonValue.readFile(
+                PathTools.join(directory, "system.json"));
+            JsonValue bindings = system.get("emulators");
+            if (!directoryStatus.isDir() || directoryStatus.isSymlink()
+                    || system.isError() || !system.isObject()
+                    || !bindings.isArray() || bindings.size() == 0) {
+                return AppImageRuntimeInventoryResult.failure(
+                    "system emulator bindings are malformed: " + directory);
+            }
+            for (int index = 0; index < bindings.size(); index++) {
+                JsonValue binding = bindings.at(index);
+                JsonValue emulator = binding.get("emulator");
+                JsonValue platforms = binding.get("platforms");
+                if (!binding.isObject() || !emulator.isString()
+                        || !AppImageRuntimeInventory.identifier(
+                            emulator.asString())
+                        || !emulatorNames.contains(emulator.asString())
+                        || (platforms.isArray()
+                            && platforms.size() == 0)) {
+                    return AppImageRuntimeInventoryResult.failure(
+                        "system has an invalid emulator binding: "
+                        + systemName);
+                }
+                bool applies = !platforms.isArray()
+                    || AppImageRuntimeInventory.arrayContains(
+                        platforms, platform);
+                if (!applies) { continue; }
+                string id = emulator.asString();
+                bool available = supported.contains(id);
+                if (!available) {
+                    if (platforms.isArray()) {
+                        return AppImageRuntimeInventoryResult.failure(
+                            "system explicitly selects an unavailable "
+                            + platform + " emulator: " + id);
+                    }
+                    continue;
+                }
+                if (!required.contains(id)) { required.push(id); }
+                JsonValue core = binding.get("core");
+                if (coreHosts.contains(id)) {
+                    if (!core.isString()
+                            || !AppImageRuntimeInventory.coreIdentifier(
+                                core.asString())) {
+                        return AppImageRuntimeInventoryResult.failure(
+                            "core-host binding has no valid core: "
+                            + systemName);
+                    }
+                    if (!cores.contains(core.asString())) {
+                        cores.push(core.asString());
+                    }
+                    if (!selectedCoreHosts.contains(id)) {
+                        selectedCoreHosts.push(id);
+                    }
+                } else if (!core.isNull()) {
+                    return AppImageRuntimeInventoryResult.failure(
+                        "standalone emulator binding declares a core: "
+                        + systemName);
+                }
+            }
+        }
+        required = AppImageRuntimeInventory.sorted(required);
+        cores = AppImageRuntimeInventory.sorted(cores);
+        Vector<string> orderedSupported =
+            AppImageRuntimeInventory.sorted(supported);
+        if (required.size() != orderedSupported.size()) {
+            return AppImageRuntimeInventoryResult.failure(
+                "target emulator inventory differs from system bindings");
+        }
+        for (int index = 0; index < required.size(); index++) {
+            if (!required.get(index).equals(orderedSupported.get(index))) {
+                return AppImageRuntimeInventoryResult.failure(
+                    "target emulator inventory differs from system bindings");
+            }
+        }
+        for host in coreHosts {
+            if (supported.contains(host)
+                    && !selectedCoreHosts.contains(host)) {
+                return AppImageRuntimeInventoryResult.failure(
+                    "target runtime declares a core host without selected cores: "
+                    + host);
+            }
+        }
+        Vector<AppImageRuntimeSlice> noSlices = [];
+        AppImageRuntimeInventoryResult result =
+            AppImageRuntimeInventoryResult.success(noSlices, cores);
+        return result;
+    }
+
+    class Vector<string> executableOutputKeys(string platform) {
+        if (platform.equals("linux")) {
+            return ["linux_main_program", "main_program",
+                "linux_real_program", "linked_program", "patched_binary"];
+        }
+        return [platform + "_main_program", "main_program",
+            platform + "_bundle_program", "linked_program", "patched_binary"];
+    }
+
+    class bool addExecutable(Vector<string> values, string value) {
+        if (value.isEmpty()) { return true; }
+        if (!AppImageRuntimeInventory.safeRelative(value)
+                || values.contains(value)) {
+            return false;
+        }
+        values.push(value);
+        return true;
+    }
+
+    class AppImageRuntimeInventoryResult loadForTarget(
+            string sourceRoot, string platform, string nixSystem) {
+        if (!platform.equals("linux") && !platform.equals("macos")) {
+            return AppImageRuntimeInventoryResult.failure(
+                "unsupported AppImage package inventory platform: " + platform);
+        }
+        string emulatorRoot = PathTools.join(sourceRoot, "emulators");
+        FileStatus rootStatus = FileStatus(emulatorRoot);
+        if (!rootStatus.isDir() || rootStatus.isSymlink()) {
+            return AppImageRuntimeInventoryResult.failure(
+                "AppImage emulator definition root is absent or symlinked: "
+                + emulatorRoot);
+        }
+
+        Vector<AppImageRuntimeSlice> slices = [];
+        Vector<string> supported = [];
+        Vector<string> coreHosts = [];
+        Vector<string> names = AppImageRuntimeInventory.sorted(
+            FileSystem.listDir(emulatorRoot));
+        for name in names {
+            if (!AppImageRuntimeInventory.identifier(name)) {
+                return AppImageRuntimeInventoryResult.failure(
+                    "invalid emulator directory in AppImage inventory: " + name);
+            }
+            string directory = PathTools.join(emulatorRoot, name);
+            FileStatus directoryStatus = FileStatus(directory);
+            if (!directoryStatus.isDir() || directoryStatus.isSymlink()) {
+                return AppImageRuntimeInventoryResult.failure(
+                    "emulator inventory entry is not a real directory: "
+                    + directory);
+            }
+            JsonValue emulator = JsonValue.readFile(
+                PathTools.join(directory, "emulator.json"));
+            JsonValue package = JsonValue.readFile(
+                PathTools.join(directory, "package.json"));
+            JsonValue rendering = JsonValue.readFile(
+                PathTools.join(directory, "rendering.json"));
+            if (emulator.isError() || package.isError() || rendering.isError()
+                    || !emulator.isObject() || !package.isObject()
+                    || !rendering.isObject()) {
+                return AppImageRuntimeInventoryResult.failure(
+                    "emulator/package/rendering definition is malformed: "
+                    + directory);
+            }
+            JsonValue targetPlatform =
+                emulator.get("platforms").get(platform);
+            if (!targetPlatform.isObject()) { continue; }
+            JsonValue coreLoader = targetPlatform.get("core_loader");
+            if (!coreLoader.isNull()
+                    && !AppImageRuntimeInventory.validCoreLoader(
+                        targetPlatform)) {
+                return AppImageRuntimeInventoryResult.failure(
+                    "emulator core-loader capability is malformed: " + name);
+            }
+            JsonValue outputs = package.get("outputs");
+            if (!outputs.isObject()
+                    || !AppImageRuntimeInventory.packageSupports(
+                        package, nixSystem, outputs, platform)) {
+                return AppImageRuntimeInventoryResult.failure(
+                    "target emulator has no matching package output: " + name);
+            }
+
+            JsonValue executableValue = targetPlatform.get("executable");
+            if (!executableValue.isString() || !outputs.isObject()) {
+                return AppImageRuntimeInventoryResult.failure(
+                    "target emulator lacks executable/package outputs: " + name);
+            }
+            string prefix = "${asset_root}/";
+            string executable = executableValue.asString();
+            if (!executable.startsWith(prefix)) {
+                return AppImageRuntimeInventoryResult.failure(
+                    "AppImage executable must be asset-root relative: " + name);
+            }
+            executable = executable.substring(
+                prefix.len(), executable.len() - prefix.len());
+            string packagedMain = AppImageRuntimeInventory.output(
+                outputs, platform + "_main_program");
+            if (packagedMain.isEmpty()) {
+                packagedMain = AppImageRuntimeInventory.output(
+                    outputs, "main_program");
+            }
+            if (!AppImageRuntimeInventory.safeRelative(executable)
+                    || !executable.equals(packagedMain)) {
+                return AppImageRuntimeInventoryResult.failure(
+                    "launcher/package executable mismatch for " + name);
+            }
+
+            AppImageRuntimeSlice slice = AppImageRuntimeSlice();
+            slice.id = name;
+            JsonValue packageId = package.get("id");
+            if (!packageId.isString() || packageId.asString().isEmpty()) {
+                return AppImageRuntimeInventoryResult.failure(
+                    "package definition has no id: " + name);
+            }
+            slice.packageId = packageId.asString();
+            slice.executable = executable;
+            for key in AppImageRuntimeInventory.executableOutputKeys(platform) {
+                if (!AppImageRuntimeInventory.addExecutable(
+                        slice.packagedExecutables,
+                        AppImageRuntimeInventory.output(outputs, key))) {
+                    return AppImageRuntimeInventoryResult.failure(
+                        "invalid or duplicate packaged executable for " + name);
+                }
+            }
+            if (!slice.packagedExecutables.contains(executable)) {
+                return AppImageRuntimeInventoryResult.failure(
+                    "packaged executable inventory omits launcher for " + name);
+            }
+            slice.buildContract = AppImageRuntimeInventory.output(
+                outputs, "build_contract");
+            if (slice.buildContract.isEmpty()
+                    || !AppImageRuntimeInventory.safeRelative(
+                        slice.buildContract)) {
+                return AppImageRuntimeInventoryResult.failure(
+                    "missing or invalid build-contract path for " + name);
+            }
+            JsonValue source = package.get("source");
+            JsonValue revision = source.get("revision");
+            JsonValue sha256 = source.get("sha256");
+            if (!source.isObject() || !revision.isString()
+                    || !sha256.isString()
+                    || !AppImageRuntimeInventory.lowerHex(
+                        revision.asString(), 40)
+                    || !AppImageRuntimeInventory.sriSha256(
+                        sha256.asString())) {
+                return AppImageRuntimeInventoryResult.failure(
+                    "package source identity is incomplete for " + name);
+            }
+            slice.sourceRevision = revision.asString();
+            slice.sourceSha256 = sha256.asString();
+            slice.recipe = "emulators/" + name + "/package.nix";
+            if (!FileStatus(PathTools.join(sourceRoot, slice.recipe)).isFile()) {
+                return AppImageRuntimeInventoryResult.failure(
+                    "package recipe is absent: " + slice.recipe);
+            }
+            slice.definitions = [
+                "emulators/" + name + "/emulator.json",
+                "emulators/" + name + "/package.json",
+                "emulators/" + name + "/profile.json",
+                "emulators/" + name + "/rendering.json"
+            ];
+            for definition in slice.definitions {
+                FileStatus definitionStatus =
+                    FileStatus(PathTools.join(sourceRoot, definition));
+                if (!definitionStatus.isFile()
+                        || definitionStatus.isSymlink()) {
+                    return AppImageRuntimeInventoryResult.failure(
+                        "emulator definition is absent or unsafe: " + definition);
+                }
+            }
+            JsonValue integration = rendering.get("integration");
+            bool hookEnabled = integration.isObject()
+                && AppImageRuntimeInventory.integrationSupports(
+                    integration, nixSystem);
+            slice.localPatches = AppImageRuntimeInventory.localPatchPaths(
+                name, directory, integration, nixSystem);
+            if (hookEnabled) {
+                slice.hookSymbols =
+                    AppImageRuntimeInventory.phaseSymbols(rendering);
+            }
+            JsonValue linkage = integration.get("linkage");
+            JsonValue library = integration.get("library");
+            JsonValue patch = integration.get("patch");
+            if (hookEnabled && linkage.isString()
+                    && library.isString() && patch.isString()) {
+                slice.hookLinkage = linkage.asString();
+                slice.hookLibrary = library.asString();
+                slice.hookPatch = patch.asString();
+                slice.renderHook = integration;
+                slice.renderHook.set("phases", rendering.get("phases"));
+            }
+            JsonValue activation = rendering.get("activation");
+            if (!activation.get("package_ready").isBool()
+                    || !activation.get("package_ready").asBool()
+                    || (hookEnabled && (slice.hookSymbols.size() == 0
+                        || slice.localPatches.size() != 1
+                        || (!slice.hookLinkage.equals("direct")
+                            && !slice.hookLinkage.equals("direct_pinvoke"))
+                        || slice.hookLibrary.isEmpty()
+                        || !slice.hookPatch.equals(PathTools.basename(
+                            slice.localPatches.get(0)))))) {
+                return AppImageRuntimeInventoryResult.failure(
+                    "source-built renderer hook contract is incomplete: " + name);
+            }
+            slices.push(slice);
+            supported.push(name);
+            if (AppImageRuntimeInventory.validCoreLoader(targetPlatform)) {
+                coreHosts.push(name);
+            }
+        }
+        if (slices.size() == 0) {
+            return AppImageRuntimeInventoryResult.failure(
+                "target inventory contains no emulator slices: " + platform);
+        }
+        AppImageRuntimeInventoryResult bindings =
+            AppImageRuntimeInventory.declaredBindings(
+                sourceRoot, platform, names, supported, coreHosts);
+        if (!bindings.ok()) { return bindings; }
+        return AppImageRuntimeInventoryResult.success(slices, bindings.cores);
+    }
+
+    class AppImageRuntimeInventoryResult load(string sourceRoot) {
+        return AppImageRuntimeInventory.loadForTarget(
+            sourceRoot, "linux", "x86_64-linux");
+    }
+
+    class bool safePath(string root, string relative, bool executable) {
+        if (!AppImageRuntimeInventory.safeRelative(relative)) { return false; }
+        FileStatus rootStatus = FileStatus(root);
+        if (!rootStatus.isDir() || rootStatus.isSymlink()) { return false; }
+        string current = root;
+        for component in Strings.split(relative, "/") {
+            current = PathTools.join(current, component);
+            FileStatus status = FileStatus(current);
+            if (!status.linkFound || status.isSymlink()) { return false; }
+        }
+        struct stat status;
+        if (stat(current, &status) != 0 || !S_ISREG(status.st_mode)
+                || status.st_size < 1) {
+            return false;
+        }
+        return !executable || (status.st_mode & 73) != 0; // 0111
+    }
+
+    class AppImageRuntimeInventoryResult validate(
+            string sourceRoot, string runtimeRoot) {
+        AppImageRuntimeInventoryResult inventory =
+            AppImageRuntimeInventory.load(sourceRoot);
+        if (!inventory.ok()) { return inventory; }
+        for slice in inventory.slices {
+            for executable in slice.packagedExecutables {
+                if (!AppImageRuntimeInventory.safePath(
+                        runtimeRoot, executable, true)) {
+                    return AppImageRuntimeInventoryResult.failure(
+                        "runtime lacks declared " + slice.id
+                        + " executable: " + executable);
+                }
+            }
+            if (!slice.buildContract.isEmpty()) {
+                if (!AppImageRuntimeInventory.safePath(
+                        runtimeRoot, slice.buildContract, false)) {
+                    return AppImageRuntimeInventoryResult.failure(
+                        "runtime lacks declared " + slice.id
+                        + " build contract: " + slice.buildContract);
+                }
+                JsonValue contract = JsonValue.readFile(
+                    PathTools.join(runtimeRoot, slice.buildContract));
+                JsonValue revision = contract.get("source_revision");
+                JsonValue sha256 = contract.get("source_sha256");
+                if (!contract.isObject() || !revision.isString()
+                        || !sha256.isString()
+                        || !revision.asString().equals(slice.sourceRevision)
+                        || !sha256.asString().equals(slice.sourceSha256)) {
+                    return AppImageRuntimeInventoryResult.failure(
+                        "runtime build contract disagrees with " + slice.id
+                        + " package source identity");
+                }
+            }
+        }
+        return inventory;
+    }
+
+    class JsonValue manifest(Vector<AppImageRuntimeSlice> slices) {
+        JsonValue result = JsonValue.makeArray();
+        for slice in slices {
+            JsonValue entry = JsonValue.makeObject();
+            entry.set("id", JsonValue.makeString(slice.id));
+            entry.set("package_id", JsonValue.makeString(slice.packageId));
+            entry.set("executable", JsonValue.makeString(slice.executable));
+            JsonValue executables = JsonValue.makeArray();
+            for executable in slice.packagedExecutables {
+                executables.push(JsonValue.makeString(executable));
+            }
+            entry.set("packaged_executables", executables);
+            if (!slice.buildContract.isEmpty()) {
+                entry.set("build_contract",
+                    JsonValue.makeString(slice.buildContract));
+            }
+            entry.set("source_revision",
+                JsonValue.makeString(slice.sourceRevision));
+            entry.set("source_sha256",
+                JsonValue.makeString(slice.sourceSha256));
+            entry.set("recipe", JsonValue.makeString(slice.recipe));
+            JsonValue definitions = JsonValue.makeArray();
+            for definition in slice.definitions {
+                definitions.push(JsonValue.makeString(definition));
+            }
+            entry.set("definitions", definitions);
+            JsonValue patches = JsonValue.makeArray();
+            for patch in slice.localPatches {
+                patches.push(JsonValue.makeString(patch));
+            }
+            entry.set("local_patches", patches);
+            JsonValue hooks = JsonValue.makeArray();
+            for symbol in slice.hookSymbols {
+                hooks.push(JsonValue.makeString(symbol));
+            }
+            entry.set("hook_symbols", hooks);
+            if (!slice.hookSymbols.isEmpty()) {
+                entry.set("hook_linkage",
+                    JsonValue.makeString(slice.hookLinkage));
+                entry.set("hook_library",
+                    JsonValue.makeString(slice.hookLibrary));
+                entry.set("hook_patch",
+                    JsonValue.makeString(slice.hookPatch));
+                entry.set("render_hook", slice.renderHook);
+            }
+            result.push(entry);
+        }
+        return result;
+    }
+}

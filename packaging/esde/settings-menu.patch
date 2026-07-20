@@ -1,0 +1,893 @@
+diff --git a/es-app/CMakeLists.txt b/es-app/CMakeLists.txt
+index 772b306..454bfd0 100644
+--- a/es-app/CMakeLists.txt
++++ b/es-app/CMakeLists.txt
+@@ -44,6 +44,7 @@ set(ES_HEADERS
+     ${CMAKE_CURRENT_SOURCE_DIR}/src/guis/GuiScraperSearch.h
+     ${CMAKE_CURRENT_SOURCE_DIR}/src/guis/GuiScraperSingle.h
+     ${CMAKE_CURRENT_SOURCE_DIR}/src/guis/GuiScreensaverOptions.h
++    ${CMAKE_CURRENT_SOURCE_DIR}/src/guis/GuiSemuSettings.h
+     ${CMAKE_CURRENT_SOURCE_DIR}/src/guis/GuiSettings.h
+     ${CMAKE_CURRENT_SOURCE_DIR}/src/guis/GuiSystemStatusOptions.h
+     ${CMAKE_CURRENT_SOURCE_DIR}/src/guis/GuiThemeDownloader.h
+@@ -97,6 +98,7 @@ set(ES_SOURCES
+     ${CMAKE_CURRENT_SOURCE_DIR}/src/guis/GuiScraperSearch.cpp
+     ${CMAKE_CURRENT_SOURCE_DIR}/src/guis/GuiScraperSingle.cpp
+     ${CMAKE_CURRENT_SOURCE_DIR}/src/guis/GuiScreensaverOptions.cpp
++    ${CMAKE_CURRENT_SOURCE_DIR}/src/guis/GuiSemuSettings.cpp
+     ${CMAKE_CURRENT_SOURCE_DIR}/src/guis/GuiSettings.cpp
+     ${CMAKE_CURRENT_SOURCE_DIR}/src/guis/GuiSystemStatusOptions.cpp
+     ${CMAKE_CURRENT_SOURCE_DIR}/src/guis/GuiThemeDownloader.cpp
+diff --git a/es-app/src/guis/GuiMenu.cpp b/es-app/src/guis/GuiMenu.cpp
+index 919fffb..d4b0f50 100644
+--- a/es-app/src/guis/GuiMenu.cpp
++++ b/es-app/src/guis/GuiMenu.cpp
+@@ -34,6 +34,7 @@
+ #include "guis/GuiOrphanedDataCleanup.h"
+ #include "guis/GuiScraperMenu.h"
+ #include "guis/GuiScreensaverOptions.h"
++#include "guis/GuiSemuSettings.h"
+ #include "guis/GuiSystemStatusOptions.h"
+ #include "guis/GuiTextEditKeyboardPopup.h"
+ #include "guis/GuiTextEditPopup.h"
+@@ -82,6 +83,10 @@ GuiMenu::GuiMenu()
+     if (isFullUI)
+         addEntry(_("UTILITIES"), mMenuColorPrimary, true, [this] { openUtilities(); });
+ 
++    if (isFullUI && GuiSemuSettings::available())
++        addEntry(GuiSemuSettings::menuLabel(), mMenuColorPrimary, true,
++                 [this] { mWindow->pushGui(new GuiSemuSettings); });
++
+     if (!Settings::getInstance()->getBool("ForceKiosk") &&
+         Settings::getInstance()->getString("UIMode") != "kiosk") {
+ #if defined(__APPLE__)
+diff --git a/es-app/src/guis/GuiSemuSettings.cpp b/es-app/src/guis/GuiSemuSettings.cpp
+new file mode 100644
+index 0000000..b151332
+--- /dev/null
++++ b/es-app/src/guis/GuiSemuSettings.cpp
+@@ -0,0 +1,761 @@
++//  SPDX-License-Identifier: MIT
++//
++//  Generic Semu settings bridge. The installed manifest selects one stable
++//  launcher; the BTRC CLI supplies the typed UI document and owns all writes.
++
++#include "guis/GuiSemuSettings.h"
++
++#include "Log.h"
++#include "Settings.h"
++#include "components/OptionListComponent.h"
++#include "components/SwitchComponent.h"
++#include "components/TextComponent.h"
++#include "guis/GuiMsgBox.h"
++#include "rapidjson/document.h"
++#include "utils/FileSystemUtil.h"
++#include "utils/StringUtil.h"
++
++#include <algorithm>
++#include <array>
++#include <cerrno>
++#include <csignal>
++#include <cstdlib>
++#include <fstream>
++#include <memory>
++#include <string>
++#include <sys/stat.h>
++#include <sys/wait.h>
++#include <unistd.h>
++#include <utility>
++#include <vector>
++
++namespace
++{
++    constexpr size_t MAX_SETTINGS_DOCUMENT_SIZE {1024 * 1024};
++    constexpr size_t MAX_ARGUMENT_COUNT {32};
++    constexpr size_t MAX_ARGUMENT_SIZE {4096};
++    constexpr size_t MAX_COMMAND_MESSAGE_SIZE {16 * 1024};
++    constexpr size_t MAX_ROOT_ROW_COUNT {32};
++    constexpr size_t MAX_SECTION_ROW_COUNT {32};
++    constexpr size_t MAX_MENU_SECTION_COUNT {32};
++
++    struct SemuSettingsManifest {
++        std::string label;
++        std::string launcher;
++        std::vector<std::string> readArguments;
++        std::vector<std::string> writeArguments;
++        std::vector<std::vector<std::string>> allowedCommands;
++    };
++
++    struct SemuSaveProtocol {
++        std::vector<std::string> writeArguments;
++        std::string applyFlag;
++    };
++
++    struct SemuUiCommand {
++        std::string identifier;
++        std::string label;
++        std::vector<std::string> arguments;
++    };
++
++    struct SemuUiField {
++        std::string key;
++        std::string label;
++        std::string type;
++        std::string value;
++        std::vector<std::string> choices;
++        bool booleanValue {false};
++    };
++
++    struct SemuUiSection {
++        std::string kind;
++        std::string identifier;
++        std::string label;
++        std::vector<SemuUiField> fields;
++        std::vector<SemuUiCommand> commands;
++        std::vector<SemuUiSection> sections;
++    };
++
++    struct SemuPendingChange {
++        std::string key;
++        std::string encodedValue;
++    };
++
++    struct SemuPendingSettings {
++        std::vector<SemuPendingChange> changes;
++        bool committed {false};
++    };
++
++    struct SemuCommandResult {
++        bool success {false};
++        std::string output;
++    };
++
++    bool readBoundedFile(const std::string& path, std::string& output)
++    {
++        std::ifstream stream {path, std::ios::binary | std::ios::ate};
++        if (!stream)
++            return false;
++        const std::streamsize size {stream.tellg()};
++        if (size < 0 || static_cast<size_t>(size) > MAX_SETTINGS_DOCUMENT_SIZE)
++            return false;
++        output.resize(static_cast<size_t>(size));
++        stream.seekg(0, std::ios::beg);
++        return size == 0 || static_cast<bool>(stream.read(output.data(), size));
++    }
++
++    bool readStringArray(const rapidjson::Value& value, std::vector<std::string>& output)
++    {
++        if (!value.IsArray() || value.Empty() || value.Size() > MAX_ARGUMENT_COUNT)
++            return false;
++        for (const auto& item : value.GetArray()) {
++            if (!item.IsString() || item.GetStringLength() == 0 ||
++                item.GetStringLength() > MAX_ARGUMENT_SIZE)
++                return false;
++            std::string argument {item.GetString(), item.GetStringLength()};
++            if (argument.find('\0') != std::string::npos)
++                return false;
++            output.emplace_back(std::move(argument));
++        }
++        return true;
++    }
++
++    bool validIdentifier(const std::string& value);
++
++    bool readCommandAllowlist(
++        const rapidjson::Value& value,
++        std::vector<std::vector<std::string>>& output)
++    {
++        if (!value.IsArray() || value.Empty() || value.Size() > MAX_ARGUMENT_COUNT)
++            return false;
++        for (const auto& encodedArguments : value.GetArray()) {
++            std::vector<std::string> arguments;
++            if (!readStringArray(encodedArguments, arguments) || arguments.size() != 2 ||
++                !validIdentifier(arguments[0]) || !validIdentifier(arguments[1]) ||
++                std::find(output.cbegin(), output.cend(), arguments) != output.cend())
++                return false;
++            output.emplace_back(std::move(arguments));
++        }
++        return true;
++    }
++
++    bool isStableLauncher(const std::string& launcher)
++    {
++        const std::string lowered {Utils::String::toLower(launcher)};
++        const bool installed {launcher.size() >= 9 &&
++                              launcher.compare(launcher.size() - 9, 9, "/bin/semu") == 0};
++        struct stat fileStatus {};
++        return !launcher.empty() && launcher.front() == '/' && installed &&
++               launcher.find("${") == std::string::npos &&
++               lowered.find("apprun") == std::string::npos &&
++               lowered.find("/tmp/.mount") == std::string::npos &&
++               lowered.find("/.mount_") == std::string::npos &&
++               lowered.find("/active/") == std::string::npos &&
++               lowered.find("/releases/") == std::string::npos &&
++               lowered.find("/appdir/") == std::string::npos &&
++               lowered.find("/squashfs-root/") == std::string::npos &&
++               lstat(launcher.c_str(), &fileStatus) == 0 && S_ISREG(fileStatus.st_mode) &&
++               access(launcher.c_str(), X_OK) == 0;
++    }
++
++    bool loadManifest(SemuSettingsManifest& manifest)
++    {
++        std::string encoded;
++        const std::string path {Utils::FileSystem::getAppDataDirectory() +
++                                "/settings/semu_settings.json"};
++        if (!readBoundedFile(path, encoded))
++            return false;
++
++        rapidjson::Document document;
++        document.Parse(encoded.data(), encoded.size());
++        if (document.HasParseError() || !document.IsObject() || document.MemberCount() != 2 ||
++            !document.HasMember("schema_version") || !document["schema_version"].IsInt() ||
++            document["schema_version"].GetInt() != 2 || !document.HasMember("entry") ||
++            !document["entry"].IsObject())
++            return false;
++
++        const auto& entry {document["entry"]};
++        if (entry.MemberCount() != 5 || !entry.HasMember("id") || !entry["id"].IsString() ||
++            std::string {entry["id"].GetString()} != "semu-settings" || !entry.HasMember("label") ||
++            !entry["label"].IsString() || !entry.HasMember("protocol") ||
++            !entry["protocol"].IsString() ||
++            std::string {entry["protocol"].GetString()} != "semu-settings-v2" ||
++            !entry.HasMember("launcher") || !entry["launcher"].IsString() ||
++            !entry.HasMember("actions") || !entry["actions"].IsObject())
++            return false;
++
++        manifest.label = entry["label"].GetString();
++        manifest.launcher = entry["launcher"].GetString();
++        const auto& actions {entry["actions"]};
++        if (!isStableLauncher(manifest.launcher) ||
++            actions.MemberCount() != 3 || !actions.HasMember("read") ||
++            !actions.HasMember("write") || !actions.HasMember("commands") ||
++            !readStringArray(actions["read"], manifest.readArguments) ||
++            !readStringArray(actions["write"], manifest.writeArguments) ||
++            !readCommandAllowlist(actions["commands"], manifest.allowedCommands) ||
++            manifest.readArguments != std::vector<std::string> {"settings", "ui"} ||
++            manifest.writeArguments != std::vector<std::string> {"settings", "put"})
++            return false;
++        return true;
++    }
++
++    bool readText(const rapidjson::Value& value, std::string& output)
++    {
++        if (!value.IsString() || value.GetStringLength() == 0 ||
++            value.GetStringLength() > MAX_ARGUMENT_SIZE)
++            return false;
++        output.assign(value.GetString(), value.GetStringLength());
++        return output.find('\0') == std::string::npos;
++    }
++
++    bool readValueText(const rapidjson::Value& value, std::string& output)
++    {
++        if (!value.IsString() || value.GetStringLength() > MAX_ARGUMENT_SIZE)
++            return false;
++        output.assign(value.GetString(), value.GetStringLength());
++        return output.find('\0') == std::string::npos;
++    }
++
++    bool readSaveProtocol(const rapidjson::Value& value,
++                          const SemuSettingsManifest& manifest,
++                          SemuSaveProtocol& protocol)
++    {
++        std::string strategy;
++        if (!value.IsObject() || value.MemberCount() != 3 ||
++            !value.HasMember("strategy") || !readText(value["strategy"], strategy) ||
++            strategy != "apply_last_changed_write" || !value.HasMember("write_argv") ||
++            !readStringArray(value["write_argv"], protocol.writeArguments) ||
++            protocol.writeArguments != manifest.writeArguments ||
++            !value.HasMember("apply_flag") ||
++            !readText(value["apply_flag"], protocol.applyFlag) ||
++            protocol.applyFlag != "--apply")
++            return false;
++        return true;
++    }
++
++    bool validIdentifier(const std::string& value)
++    {
++        if (value.empty() || value.size() > 64 || value.front() == '-' ||
++            value.back() == '-')
++            return false;
++        for (const unsigned char character : value) {
++            if ((character < 'a' || character > 'z') &&
++                (character < '0' || character > '9') && character != '-')
++                return false;
++        }
++        return true;
++    }
++
++    bool validSettingKey(const std::string& value)
++    {
++        if (value.empty() || value.size() > 256 || value.front() == '.' ||
++            value.back() == '.' || value.find("..") != std::string::npos)
++            return false;
++        for (const unsigned char character : value) {
++            if ((character < 'a' || character > 'z') &&
++                (character < '0' || character > '9') && character != '_' &&
++                character != '.')
++                return false;
++        }
++        return true;
++    }
++
++    bool readUiCommand(
++        const rapidjson::Value& value,
++        const std::vector<std::vector<std::string>>& allowedCommands,
++        SemuUiCommand& command)
++    {
++        return value.IsObject() && value.MemberCount() == 3 && value.HasMember("id") &&
++               readText(value["id"], command.identifier) &&
++               validIdentifier(command.identifier) && value.HasMember("label") &&
++               readText(value["label"], command.label) && value.HasMember("argv") &&
++               readStringArray(value["argv"], command.arguments) &&
++               std::find(allowedCommands.cbegin(), allowedCommands.cend(),
++                         command.arguments) != allowedCommands.cend();
++    }
++
++    SemuCommandResult runCommand(const std::string& executable,
++                                 const std::vector<std::string>& arguments)
++    {
++        SemuCommandResult result;
++        int outputPipe[2];
++        if (pipe(outputPipe) != 0)
++            return result;
++
++        const pid_t child {fork()};
++        if (child == -1) {
++            close(outputPipe[0]);
++            close(outputPipe[1]);
++            return result;
++        }
++        if (child == 0) {
++            close(outputPipe[0]);
++            if (dup2(outputPipe[1], STDOUT_FILENO) == -1)
++                _exit(126);
++            close(outputPipe[1]);
++
++            std::vector<std::string> storage;
++            storage.reserve(arguments.size() + 1);
++            storage.push_back(executable);
++            storage.insert(storage.end(), arguments.begin(), arguments.end());
++            std::vector<char*> argv;
++            argv.reserve(storage.size() + 1);
++            for (auto& argument : storage)
++                argv.push_back(argument.data());
++            argv.push_back(nullptr);
++            execv(executable.c_str(), argv.data());
++            _exit(127);
++        }
++
++        close(outputPipe[1]);
++        std::array<char, 4096> buffer;
++        bool bounded {true};
++        bool readSucceeded {true};
++        while (true) {
++            const ssize_t count {read(outputPipe[0], buffer.data(), buffer.size())};
++            if (count > 0) {
++                if (result.output.size() + static_cast<size_t>(count) >
++                    MAX_SETTINGS_DOCUMENT_SIZE) {
++                    bounded = false;
++                    kill(child, SIGKILL);
++                    break;
++                }
++                result.output.append(buffer.data(), static_cast<size_t>(count));
++                continue;
++            }
++            if (count == -1 && errno == EINTR)
++                continue;
++            if (count == -1)
++                readSucceeded = false;
++            break;
++        }
++        close(outputPipe[0]);
++
++        int status {0};
++        pid_t waited;
++        do {
++            waited = waitpid(child, &status, 0);
++        } while (waited == -1 && errno == EINTR);
++        result.success = bounded && readSucceeded && waited == child && WIFEXITED(status) &&
++                         WEXITSTATUS(status) == 0;
++        return result;
++    }
++
++    std::string encodeJsonString(const std::string& value)
++    {
++        std::string encoded {"\""};
++        for (const unsigned char character : value) {
++            switch (character) {
++                case '"':
++                    encoded += "\\\"";
++                    break;
++                case '\\':
++                    encoded += "\\\\";
++                    break;
++                case '\b':
++                    encoded += "\\b";
++                    break;
++                case '\f':
++                    encoded += "\\f";
++                    break;
++                case '\n':
++                    encoded += "\\n";
++                    break;
++                case '\r':
++                    encoded += "\\r";
++                    break;
++                case '\t':
++                    encoded += "\\t";
++                    break;
++                default:
++                    if (character < 0x20) {
++                        constexpr char hex[] {"0123456789abcdef"};
++                        encoded += "\\u00";
++                        encoded += hex[(character >> 4) & 0x0f];
++                        encoded += hex[character & 0x0f];
++                    }
++                    else {
++                        encoded += static_cast<char>(character);
++                    }
++            }
++        }
++        return encoded + "\"";
++    }
++
++    void stageChange(const std::shared_ptr<SemuPendingSettings>& pending,
++                     const std::string& key,
++                     const std::string& encodedValue)
++    {
++        if (pending->committed)
++            return;
++        for (auto& change : pending->changes) {
++            if (change.key == key) {
++                change.encodedValue = encodedValue;
++                return;
++            }
++        }
++        pending->changes.push_back({key, encodedValue});
++    }
++
++    bool commitChanges(const SemuSettingsManifest& manifest,
++                       const SemuSaveProtocol& protocol,
++                       const std::shared_ptr<SemuPendingSettings>& pending)
++    {
++        if (pending->committed)
++            return true;
++        if (pending->changes.empty()) {
++            pending->committed = true;
++            return true;
++        }
++        for (size_t index {0}; index < pending->changes.size(); ++index) {
++            const auto& change {pending->changes[index]};
++            std::vector<std::string> arguments {protocol.writeArguments};
++            arguments.push_back(change.key);
++            arguments.push_back(change.encodedValue);
++            if (index + 1 == pending->changes.size())
++                arguments.push_back(protocol.applyFlag);
++            const SemuCommandResult result {runCommand(manifest.launcher, arguments)};
++            if (!result.success) {
++                LOG(LogError) << "GuiSemuSettings: Failed to save setting \""
++                              << change.key << "\"";
++                return false;
++            }
++        }
++        pending->committed = true;
++        return true;
++    }
++
++    void addBoolean(GuiSettings* gui,
++                    const std::shared_ptr<SemuPendingSettings>& pending,
++                    const SemuUiField& field)
++    {
++        const bool original {field.booleanValue};
++        auto control = std::make_shared<SwitchComponent>();
++        control->setState(original);
++        gui->addWithLabel(field.label, control);
++        gui->addSaveFunc([pending, key = field.key, original, control] {
++            if (control->getState() != original)
++                stageChange(pending, key, control->getState() ? "true" : "false");
++        });
++    }
++
++    void addChoice(GuiSettings* gui,
++                   const std::shared_ptr<SemuPendingSettings>& pending,
++                   const SemuUiField& field)
++    {
++        const std::string original {field.value};
++        auto control =
++            std::make_shared<OptionListComponent<std::string>>(field.label, false);
++        for (const auto& value : field.choices) {
++            control->add(Utils::String::toUpper(value), value, value == original);
++        }
++        gui->addWithLabel(field.label, control);
++        gui->addSaveFunc([pending, key = field.key, original, control] {
++            if (control->getSelected() != original)
++                stageChange(pending, key, encodeJsonString(control->getSelected()));
++        });
++    }
++
++    void addText(GuiSettings* gui,
++                 unsigned int color,
++                 const std::shared_ptr<SemuPendingSettings>& pending,
++                 const SemuUiField& field)
++    {
++        const std::string original {field.value};
++        const bool encodeAsString {field.type != "integer"};
++        auto control = std::make_shared<TextComponent>(original, Font::get(FONT_SIZE_MEDIUM),
++                                                       color);
++        gui->addEditableTextComponent(field.label, control, original);
++        gui->addSaveFunc(
++            [pending, key = field.key, original, control, encodeAsString] {
++            if (control->getValue() != original)
++                stageChange(pending, key, encodeAsString
++                    ? encodeJsonString(control->getValue()) : control->getValue());
++        });
++    }
++
++    bool readUiField(const rapidjson::Value& value, SemuUiField& field)
++    {
++        if (!value.IsObject() || !value.HasMember("key") ||
++            !readText(value["key"], field.key) || !validSettingKey(field.key) ||
++            !value.HasMember("label") ||
++            !readText(value["label"], field.label) || !value.HasMember("type") ||
++            !readText(value["type"], field.type) || !value.HasMember("value"))
++            return false;
++        if (field.type == "boolean") {
++            if (value.MemberCount() != 4 || !value["value"].IsBool())
++                return false;
++            field.booleanValue = value["value"].GetBool();
++            return true;
++        }
++        if (field.type == "integer") {
++            if (value.MemberCount() != 4 || !value["value"].IsInt())
++                return false;
++            field.value = std::to_string(value["value"].GetInt());
++            return true;
++        }
++        if (field.type == "choice") {
++            if (value.MemberCount() != 5 ||
++                !readValueText(value["value"], field.value) ||
++                !value.HasMember("choices") || !value["choices"].IsArray() ||
++                value["choices"].Empty() ||
++                value["choices"].Size() > MAX_ARGUMENT_COUNT)
++                return false;
++            bool selectedDeclared {false};
++            std::vector<std::string> choices;
++            for (const auto& encodedChoice : value["choices"].GetArray()) {
++                std::string choice;
++                if (!readText(encodedChoice, choice) ||
++                    std::find(choices.cbegin(), choices.cend(), choice) != choices.cend())
++                    return false;
++                selectedDeclared = selectedDeclared || choice == field.value;
++                choices.emplace_back(std::move(choice));
++            }
++            field.choices = std::move(choices);
++            return selectedDeclared;
++        }
++        if (value.MemberCount() != 4 ||
++            (field.type != "path" && field.type != "string" &&
++             field.type != "relative_path" && field.type != "loopback"))
++            return false;
++        return readValueText(value["value"], field.value);
++    }
++
++    bool claimIdentifier(std::vector<std::string>& identifiers,
++                         const std::string& identifier)
++    {
++        if (std::find(identifiers.cbegin(), identifiers.cend(), identifier) !=
++            identifiers.cend())
++            return false;
++        identifiers.emplace_back(identifier);
++        return true;
++    }
++
++    bool sameCommand(const SemuUiCommand& left, const SemuUiCommand& right)
++    {
++        return left.identifier == right.identifier && left.label == right.label &&
++               left.arguments == right.arguments;
++    }
++
++    bool declaredCommand(const std::vector<SemuUiCommand>& registry,
++                         const SemuUiCommand& command)
++    {
++        return std::find_if(registry.cbegin(), registry.cend(),
++                            [&command](const SemuUiCommand& declared) {
++                                return sameCommand(declared, command);
++                            }) != registry.cend();
++    }
++
++    bool readSectionIdentity(const rapidjson::Value& value, SemuUiSection& section,
++                             std::vector<std::string>& sectionIdentifiers)
++    {
++        return value.HasMember("kind") && readText(value["kind"], section.kind) &&
++               value.HasMember("id") && readText(value["id"], section.identifier) &&
++               validIdentifier(section.identifier) &&
++               claimIdentifier(sectionIdentifiers, section.identifier) &&
++               value.HasMember("label") && readText(value["label"], section.label);
++    }
++
++    bool readUiPage(
++        const rapidjson::Value& value,
++        const std::vector<std::vector<std::string>>& allowedCommands,
++        const std::vector<SemuUiCommand>& commandRegistry,
++        SemuUiSection& section,
++        std::vector<std::string>& sectionIdentifiers,
++        std::vector<std::string>& fieldKeys,
++        std::vector<std::string>& referencedCommandIdentifiers)
++    {
++        const bool hasCommands {value.IsObject() && value.HasMember("commands")};
++        if (!value.IsObject() || value.MemberCount() != (hasCommands ? 5 : 4) ||
++            !readSectionIdentity(value, section, sectionIdentifiers) ||
++            section.kind != "page" || !value.HasMember("fields") ||
++            !value["fields"].IsArray() || value["fields"].Empty())
++            return false;
++
++        const size_t commandCount {
++            value.HasMember("commands") && value["commands"].IsArray()
++                ? value["commands"].Size()
++                : 0};
++        if ((value.HasMember("commands") && !value["commands"].IsArray()) ||
++            value["fields"].Size() + commandCount > MAX_SECTION_ROW_COUNT)
++            return false;
++
++        for (const auto& encodedField : value["fields"].GetArray()) {
++            SemuUiField field;
++            if (!readUiField(encodedField, field) || !claimIdentifier(fieldKeys, field.key))
++                return false;
++            section.fields.emplace_back(std::move(field));
++        }
++        if (!value.HasMember("commands"))
++            return true;
++        for (const auto& encodedCommand : value["commands"].GetArray()) {
++            SemuUiCommand command;
++            if (!readUiCommand(encodedCommand, allowedCommands, command) ||
++                !declaredCommand(commandRegistry, command) ||
++                !claimIdentifier(referencedCommandIdentifiers, command.identifier))
++                return false;
++            section.commands.emplace_back(std::move(command));
++        }
++        return true;
++    }
++
++    bool readUiSection(
++        const rapidjson::Value& value,
++        const std::vector<std::vector<std::string>>& allowedCommands,
++        const std::vector<SemuUiCommand>& commandRegistry,
++        SemuUiSection& section,
++        std::vector<std::string>& sectionIdentifiers,
++        std::vector<std::string>& fieldKeys,
++        std::vector<std::string>& referencedCommandIdentifiers)
++    {
++        if (!value.IsObject() || !value.HasMember("kind") ||
++            !value["kind"].IsString())
++            return false;
++        if (std::string {value["kind"].GetString()} == "page")
++            return readUiPage(value, allowedCommands, commandRegistry, section,
++                              sectionIdentifiers, fieldKeys,
++                              referencedCommandIdentifiers);
++        if (std::string {value["kind"].GetString()} != "menu" ||
++            value.MemberCount() != 4 ||
++            !readSectionIdentity(value, section, sectionIdentifiers) ||
++            !value.HasMember("sections") || !value["sections"].IsArray() ||
++            value["sections"].Empty() ||
++            value["sections"].Size() > MAX_MENU_SECTION_COUNT)
++            return false;
++        for (const auto& encodedSection : value["sections"].GetArray()) {
++            SemuUiSection child;
++            if (!readUiPage(encodedSection, allowedCommands, commandRegistry, child,
++                            sectionIdentifiers, fieldKeys,
++                            referencedCommandIdentifiers))
++                return false;
++            section.sections.emplace_back(std::move(child));
++        }
++        return true;
++    }
++} // namespace
++
++class GuiSemuSettingsPage : public GuiSettings
++{
++public:
++    GuiSemuSettingsPage(
++        const SemuUiSection& section,
++        const std::shared_ptr<SemuPendingSettings>& pending,
++        const SemuSettingsManifest& manifest)
++        : GuiSettings {section.label}
++    {
++        for (const auto& field : section.fields) {
++            if (field.type == "boolean")
++                addBoolean(this, pending, field);
++            else if (field.type == "choice")
++                addChoice(this, pending, field);
++            else
++                addText(this, mMenuColorPrimary, pending, field);
++        }
++        for (const auto& command : section.commands)
++            addProtocolCommand(command, manifest.launcher);
++    }
++
++private:
++    void addProtocolCommand(const SemuUiCommand& command,
++                            const std::string& launcher)
++    {
++        ComponentListRow row;
++        row.addElement(std::make_shared<TextComponent>(
++                           command.label, Font::get(FONT_SIZE_MEDIUM), mMenuColorPrimary),
++                       true);
++        row.addElement(getMenu().makeArrow(), false);
++        row.makeAcceptInputHandler([this, command, launcher] {
++            const SemuCommandResult result {runCommand(launcher, command.arguments)};
++            std::string detail {Utils::String::trim(result.output)};
++            if (detail.size() > MAX_COMMAND_MESSAGE_SIZE) {
++                detail.resize(MAX_COMMAND_MESSAGE_SIZE);
++                detail += "\n...";
++            }
++            if (detail.empty())
++                detail = result.success ? "COMMAND COMPLETED" : "COMMAND FAILED";
++            if (!result.success)
++                LOG(LogError) << "GuiSemuSettings: Declared command failed";
++            mWindow->pushGui(new GuiMsgBox(command.label + "\n\n" + detail));
++        });
++        addRow(row);
++    }
++};
++
++class GuiSemuSettingsMenu : public GuiSettings
++{
++public:
++    GuiSemuSettingsMenu(
++        const SemuUiSection& section,
++        const std::shared_ptr<SemuPendingSettings>& pending,
++        const SemuSettingsManifest& manifest)
++        : GuiSettings {section.label}
++    {
++        for (const auto& child : section.sections) {
++            ComponentListRow row;
++            row.addElement(std::make_shared<TextComponent>(
++                               child.label, Font::get(FONT_SIZE_MEDIUM), mMenuColorPrimary),
++                           true);
++            row.addElement(getMenu().makeArrow(), false);
++            row.makeAcceptInputHandler([this, child, pending, manifest] {
++                mWindow->pushGui(new GuiSemuSettingsPage(child, pending, manifest));
++            });
++            addRow(row);
++        }
++    }
++};
++
++bool GuiSemuSettings::available()
++{
++    SemuSettingsManifest manifest;
++    return loadManifest(manifest);
++}
++
++std::string GuiSemuSettings::menuLabel()
++{
++    SemuSettingsManifest manifest;
++    return loadManifest(manifest) ? manifest.label : "SEMU SETTINGS";
++}
++
++GuiSemuSettings::GuiSemuSettings()
++    : GuiSettings {menuLabel()}
++{
++    SemuSettingsManifest manifest;
++    if (!loadManifest(manifest)) {
++        LOG(LogError) << "GuiSemuSettings: Invalid or unavailable settings manifest";
++        return;
++    }
++    const SemuCommandResult result {runCommand(manifest.launcher, manifest.readArguments)};
++    rapidjson::Document document;
++    document.Parse(result.output.data(), result.output.size());
++    std::string documentId;
++    std::string documentTitle;
++    SemuSaveProtocol saveProtocol;
++    if (!result.success || document.HasParseError() || !document.IsObject() ||
++        document.MemberCount() != 7 ||
++        !document.HasMember("schema_version") || !document["schema_version"].IsInt() ||
++        document["schema_version"].GetInt() != 2 || !document.HasMember("protocol") ||
++        !document["protocol"].IsString() ||
++        std::string {document["protocol"].GetString()} != "semu-settings-v2" ||
++        !document.HasMember("id") || !readText(document["id"], documentId) ||
++        documentId != "semu-settings" || !document.HasMember("title") ||
++        !readText(document["title"], documentTitle) ||
++        documentTitle != manifest.label ||
++        !document.HasMember("save") ||
++        !readSaveProtocol(document["save"], manifest, saveProtocol) ||
++        !document.HasMember("sections") || !document["sections"].IsArray() ||
++        document["sections"].Empty() ||
++        !document.HasMember("commands") || !document["commands"].IsArray() ||
++        document["sections"].Size() > MAX_ROOT_ROW_COUNT ||
++        document["commands"].Size() > MAX_ARGUMENT_COUNT ||
++        document["commands"].Size() != manifest.allowedCommands.size()) {
++        LOG(LogError) << "GuiSemuSettings: Invalid BTRC settings UI document";
++        return;
++    }
++
++    std::vector<SemuUiCommand> commands;
++    std::vector<std::string> commandIdentifiers;
++    std::vector<std::vector<std::string>> commandArguments;
++    commands.reserve(document["commands"].Size());
++    for (const auto& encodedCommand : document["commands"].GetArray()) {
++        SemuUiCommand command;
++        if (!readUiCommand(encodedCommand, manifest.allowedCommands, command) ||
++            !claimIdentifier(commandIdentifiers, command.identifier) ||
++            std::find(commandArguments.cbegin(), commandArguments.cend(),
++                      command.arguments) != commandArguments.cend()) {
++            LOG(LogError) << "GuiSemuSettings: Invalid declared command";
++            return;
++        }
++        commandArguments.emplace_back(command.arguments);
++        commands.emplace_back(std::move(command));
++    }
++    for (const auto& allowed : manifest.allowedCommands) {
++        if (std::find(commandArguments.cbegin(), commandArguments.cend(), allowed) ==
++            commandArguments.cend()) {
++            LOG(LogError) << "GuiSemuSettings: Missing allowed command";
++            return;
++        }
++    }
++
++    std::vector<SemuUiSection> sections;
++    std::vector<std::string> sectionIdentifiers;
++    std::vector<std::string> fieldKeys;
++    std::vector<std::string> referencedCommandIdentifiers;
++    sections.reserve(document["sections"].Size());
++    for (const auto& encodedSection : document["sections"].GetArray()) {
++        SemuUiSection section;
++        if (!readUiSection(encodedSection, manifest.allowedCommands, commands, section,
++                           sectionIdentifiers, fieldKeys,
++                           referencedCommandIdentifiers)) {
++            LOG(LogError) << "GuiSemuSettings: Invalid declared section";
++            return;
++        }
++        sections.emplace_back(std::move(section));
++    }
++    if (referencedCommandIdentifiers.size() != commands.size()) {
++        LOG(LogError) << "GuiSemuSettings: Declared commands are not placed exactly once";
++        return;
++    }
++
++    auto pending = std::make_shared<SemuPendingSettings>();
++    for (const auto& section : sections) {
++        ComponentListRow row;
++        row.addElement(std::make_shared<TextComponent>(
++                           section.label, Font::get(FONT_SIZE_MEDIUM), mMenuColorPrimary),
++                       true);
++        row.addElement(getMenu().makeArrow(), false);
++        row.makeAcceptInputHandler([this, section, pending, manifest] {
++            if (section.kind == "page")
++                mWindow->pushGui(new GuiSemuSettingsPage(section, pending, manifest));
++            else
++                mWindow->pushGui(new GuiSemuSettingsMenu(section, pending, manifest));
++        });
++        addRow(row);
++    }
++    addSaveFunc([manifest, saveProtocol, pending] {
++        commitChanges(manifest, saveProtocol, pending);
++    });
++}
+diff --git a/es-app/src/guis/GuiSemuSettings.h b/es-app/src/guis/GuiSemuSettings.h
+new file mode 100644
+index 0000000..1cc6a0c
+--- /dev/null
++++ b/es-app/src/guis/GuiSemuSettings.h
+@@ -0,0 +1,16 @@
++//  SPDX-License-Identifier: MIT
++//
++//  Generic Semu settings bridge. Semu owns the schema and values; this class
++//  only renders the protocol returned by the stable Semu CLI.
++
++#ifndef ES_APP_GUIS_GUI_SEMU_SETTINGS_H
++#define ES_APP_GUIS_GUI_SEMU_SETTINGS_H
++
++#include "guis/GuiSettings.h"
++
++#include <string>
++class GuiSemuSettings : public GuiSettings
++{
++public:
++    GuiSemuSettings();
++
++    static bool available();
++    static std::string menuLabel();
++};
++
++#endif // ES_APP_GUIS_GUI_SEMU_SETTINGS_H

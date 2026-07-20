@@ -1,0 +1,131 @@
+{
+  "schema_version": 1,
+  "implementations": {
+    "desmume": {
+      "linux": {
+        "kind": "nixpkgs_libretro",
+        "package_attribute": "desmume"
+      },
+      "macos": {
+        "artifact": "desmume",
+        "kind": "libretro_buildbot_archive",
+        "sha256": {
+          "aarch64-darwin": "sha256-TdvYhw6sPquqR69wV+y4Im5kyKI70JuoRL2p1acoc94=",
+          "x86_64-darwin": "sha256-3m6ffxS8jVmlpEE/Wzc1zkhRE82pZHTCqIjghpZga1Y="
+        }
+      }
+    },
+    "flycast": {
+      "macos": {
+        "artifact": "flycast",
+        "kind": "libretro_buildbot_archive",
+        "sha256": {
+          "aarch64-darwin": "sha256-TuTvmuGizfJOWZsHQlxz94MEPwyuJRYFRYbA0AzR6dk=",
+          "x86_64-darwin": "sha256-gkfOWwTl5B8Ht1g2V11GBLp3JqjECm8OFzGbZ3Cdahk="
+        }
+      }
+    },
+    "gambatte": {
+      "linux": {
+        "kind": "nixpkgs_libretro",
+        "package_attribute": "gambatte"
+      },
+      "macos": {
+        "artifact": "gambatte",
+        "kind": "libretro_buildbot_archive",
+        "sha256": {
+          "aarch64-darwin": "sha256-PgWveksmEl8m23RfGe0TUASD1sF8NCU2ahD7rQxLcOc=",
+          "x86_64-darwin": "sha256-xmUVaSVKjCipHBdlfPanQvT5LsBMh/RwDN5Kf4u6vRU="
+        }
+      }
+    },
+    "genesis_plus_gx": {
+      "linux": {
+        "kind": "nixpkgs_libretro",
+        "package_attribute": "genesis-plus-gx"
+      },
+      "macos": {
+        "artifact": "genesis_plus_gx",
+        "kind": "libretro_buildbot_archive",
+        "sha256": {
+          "aarch64-darwin": "sha256-x1LzTLrQpBO2xGOCyt4QwDynhCS1YK7JAGZ/3PTat44=",
+          "x86_64-darwin": "sha256-FgUkWQlbBYD4azOk+dpLIsZuTGm/QL4A+BTYlQJHqx4="
+        }
+      }
+    },
+    "mednafen_psx": {
+      "linux": {
+        "kind": "nixpkgs_libretro",
+        "package_attribute": "beetle-psx"
+      }
+    },
+    "mednafen_psx_hw": {
+      "macos": {
+        "artifact": "mednafen_psx_hw",
+        "kind": "libretro_buildbot_archive",
+        "sha256": {
+          "aarch64-darwin": "sha256-kYNxIhDc4bX5dQGqPWQGrZnbkjSWekMU4Osx1+pCF40=",
+          "x86_64-darwin": "sha256-N0CsujMVWaFWMLRwtT0TdEoO+e/NgIUHkZVCq1i8rIs="
+        }
+      }
+    },
+    "mesen": {
+      "linux": {
+        "kind": "nixpkgs_libretro",
+        "package_attribute": "mesen"
+      },
+      "macos": {
+        "artifact": "mesen",
+        "kind": "libretro_buildbot_archive",
+        "sha256": {
+          "aarch64-darwin": "sha256-y5qjFuwrh8UHrK1KS5hp57GXVg7o1sEzM9oOw34AyBw=",
+          "x86_64-darwin": "sha256-gxC64F+vQxKMBSxV40XTSVhQUPWcTVT81AHvOIFlfOs="
+        }
+      }
+    },
+    "mgba": {
+      "linux": {
+        "kind": "nixpkgs_libretro",
+        "package_attribute": "mgba"
+      },
+      "macos": {
+        "artifact": "mgba",
+        "kind": "libretro_buildbot_archive",
+        "sha256": {
+          "aarch64-darwin": "sha256-V7wXwP8NCw5OSo7V9uMbT4oNcVGMnxAuGgzmfdvAq7Q=",
+          "x86_64-darwin": "sha256-G2IVABRf4l05IDiLXD6WzPUAZkuiElCG/ZlF6hmzTKk="
+        }
+      }
+    },
+    "mupen64plus_next": {
+      "linux": {
+        "kind": "nixpkgs_libretro",
+        "package_attribute": "mupen64plus"
+      }
+    },
+    "ppsspp": {
+      "macos": {
+        "artifact": "ppsspp",
+        "kind": "libretro_buildbot_archive",
+        "sha256": {
+          "aarch64-darwin": "sha256-ozmQ8SXcDj5hQys30C2iVneyEzKXQuy6m7c3leh+ygM=",
+          "x86_64-darwin": "sha256-UC9bTtDXEE24SI3XBMuvbGcAZNF/SDkxlDPyt7Hyxg4="
+        }
+      }
+    },
+    "snes9x": {
+      "linux": {
+        "kind": "nixpkgs_libretro",
+        "package_attribute": "snes9x"
+      },
+      "macos": {
+        "artifact": "snes9x",
+        "kind": "libretro_buildbot_archive",
+        "sha256": {
+          "aarch64-darwin": "sha256-1+hLHACkd7b8ymtGEgbzkbnNTxLaa+wtvnhldAHFuS0=",
+          "x86_64-darwin": "sha256-PeDlLkHfCFx0yNrd8mwds1N5q0QZnDcAZwz7LGBhjs0="
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,377 @@
+// Repository tree policy expressed against BTRC's filesystem model.
+
+import std.{console, fs, vector}
+
+class TreeAuditPolicy {
+    class Vector<string> topLevelPaths() {
+        return [
+            ".git", ".gitattributes", ".gitignore", "Makefile", "README.md", "build",
+            "config", "docs", "flake.lock", "flake.nix", "packaging", "src",
+            "tests"
+        ];
+    }
+
+    class Vector<string> sourceRoots() {
+        return ["cli.btrc", "compiler", "generators", "lib", "main.btrc"];
+    }
+
+    class Vector<string> configFamilies() {
+        return ["assets", "emulators", "input", "settings", "systems", "targets"];
+    }
+
+    class Vector<string> packagingFamilies() {
+        return ["appimage", "esde", "install", "nix", "sync"];
+    }
+
+    class Vector<string> testFamilies() {
+        return ["compiler", "core", "fixtures", "targets"];
+    }
+
+    class Vector<string> testTargets() {
+        return ["bazzite", "steamdeck"];
+    }
+
+    class Vector<string> sourceFileTypes() {
+        return ["btrc", "h", "nix"];
+    }
+
+    class Vector<string> configFileTypes() {
+        return ["json", "md", "nix", "patch", "png", "skm", "txt", "xml"];
+    }
+
+    class Vector<string> packagingFileTypes() {
+        return ["json", "nix", "patch", "sh", "template"];
+    }
+
+    class Vector<string> testFileTypes() {
+        return ["btrc", "cfg", "in", "json", "nix", "sh", "template"];
+    }
+
+    class Vector<string> generatedDirectoryNames() {
+        return [
+            "generated", "build", "dist", "out", "cache", ".cache",
+            ".pytest_cache", "__pycache__"
+        ];
+    }
+
+    class bool generatedFileName(string name) {
+        return name.equals(".DS_Store") || name.startsWith("._")
+            || name.endsWith("~") || name.endsWith(".swo")
+            || name.endsWith(".swp");
+    }
+
+    class bool sourceTestName(string name) {
+        if (name.contains("_test.")) { return true; }
+        if (!name.startsWith("test_") || name.len() <= 5) { return false; }
+        return name.substring(5, name.len() - 5).contains(".");
+    }
+
+    class string extension(string name) {
+        int separator = -1;
+        for (int index = 0; index < name.len(); index++) {
+            if (name.charAt(index) == '.') { separator = index; }
+        }
+        if (separator < 0) { return ""; }
+        return name.substring(separator + 1, name.len() - separator - 1);
+    }
+}
+
+class TreeAuditResult {
+    public Vector<string> issues;
+
+    public TreeAuditResult() {
+        self.issues = [];
+    }
+
+    public bool ok() {
+        return self.issues.isEmpty();
+    }
+
+    public void add(string issue) {
+        self.issues.push(issue);
+    }
+
+    public void rejectPaths(string message, Vector<string> paths) {
+        if (!paths.isEmpty()) {
+            self.add(message + "\n" + paths.sorted().join("\n"));
+        }
+    }
+
+    public bool contains(string text) {
+        for issue in self.issues {
+            if (issue.contains(text)) { return true; }
+        }
+        return false;
+    }
+
+    public void report() {
+        if (self.ok()) {
+            Console.log("OK approved tree");
+            return;
+        }
+        for issue in self.issues { Console.error(issue); }
+    }
+}
+
+class TreeAuditNode {
+    public string absolutePath;
+    public string relativePath;
+    public string parentPath;
+    public string name;
+    public FileStatus status;
+
+    public TreeAuditNode(string absolutePath, string relativePath,
+                         string parentPath, string name) {
+        self.absolutePath = absolutePath;
+        self.relativePath = relativePath;
+        self.parentPath = parentPath;
+        self.name = name;
+        self.status = FileStatus(absolutePath);
+    }
+
+    public bool isDirectory() {
+        return self.status.isDir() && !self.status.isSymlink();
+    }
+
+    public bool isFile() {
+        return self.status.isFile() && !self.status.isSymlink();
+    }
+}
+
+class TreeAuditWalker {
+    class Vector<string> names(string absolutePath) {
+        Directory directory = Directory(absolutePath);
+        Vector<string> names = directory.entries();
+        names.sort();
+        return names;
+    }
+
+    class Vector<TreeAuditNode> children(string projectRoot, string relativeRoot,
+                                         TreeAuditResult result) {
+        Vector<TreeAuditNode> nodes = [];
+        string absoluteRoot = relativeRoot.isEmpty()
+            ? projectRoot : PathTools.join(projectRoot, relativeRoot);
+        FileStatus rootStatus = FileStatus(absoluteRoot);
+        if (!rootStatus.isDir() || rootStatus.isSymlink()) {
+            string display = relativeRoot.isEmpty() ? "." : relativeRoot;
+            result.add("required tree is not a real directory: " + display);
+            return nodes;
+        }
+        for name in TreeAuditWalker.names(absoluteRoot) {
+            string relative = relativeRoot.isEmpty()
+                ? name : PathTools.join(relativeRoot, name);
+            nodes.push(TreeAuditNode(
+                PathTools.join(absoluteRoot, name), relative, relativeRoot, name));
+        }
+        return nodes;
+    }
+
+    class void collect(string projectRoot, string relativeRoot,
+                       Vector<TreeAuditNode> nodes, TreeAuditResult result) {
+        Vector<TreeAuditNode> children = TreeAuditWalker.children(
+            projectRoot, relativeRoot, result);
+        for node in children {
+            nodes.push(node);
+            if (node.isDirectory()) {
+                TreeAuditWalker.collect(
+                    projectRoot, node.relativePath, nodes, result);
+            }
+        }
+    }
+
+    class Vector<TreeAuditNode> descendants(string projectRoot,
+                                             string relativeRoot,
+                                             TreeAuditResult result) {
+        Vector<TreeAuditNode> nodes = [];
+        TreeAuditWalker.collect(projectRoot, relativeRoot, nodes, result);
+        return nodes;
+    }
+}
+
+class TreeAuditor {
+    class void checkChildren(Vector<TreeAuditNode> nodes, string root,
+                             string label, Vector<string> approved,
+                             bool directoriesOnly, TreeAuditResult result) {
+        for node in nodes {
+            if (!node.parentPath.equals(root)
+                    || (directoriesOnly && !node.isDirectory())) {
+                continue;
+            }
+            if (!approved.contains(node.name)) {
+                result.add(f"unexpected {label}: {node.name}");
+            }
+        }
+    }
+
+    class void checkDocs(Vector<TreeAuditNode> nodes, TreeAuditResult result) {
+        Vector<string> directories = [];
+        Vector<string> files = [];
+        for node in nodes {
+            if (node.isDirectory()) {
+                directories.push(node.relativePath);
+            } else if (node.isFile() && !node.name.endsWith(".md")) {
+                files.push(node.relativePath);
+            }
+        }
+        result.rejectPaths(
+            "unexpected nested directories under docs:", directories);
+        result.rejectPaths(
+            "unexpected files under docs (only top-level Markdown is allowed):",
+            files);
+    }
+
+    class void checkOwnedSource(Vector<TreeAuditNode> source,
+                                Vector<TreeAuditNode> tests,
+                                TreeAuditResult result) {
+        Vector<TreeAuditNode> nodes = [];
+        nodes.extend(source);
+        nodes.extend(tests);
+        Vector<string> nestedSourceTrees = [];
+        Vector<string> generatedPaths = [];
+        Vector<string> generatedDirectories =
+            TreeAuditPolicy.generatedDirectoryNames();
+        for node in nodes {
+            if (node.isDirectory()
+                    && (node.name.equals("runtime") || node.name.equals("src"))) {
+                nestedSourceTrees.push(node.relativePath);
+            }
+            if ((node.isDirectory() && generatedDirectories.contains(node.name))
+                    || node.name.equals("result")
+                    || (node.isFile()
+                        && TreeAuditPolicy.generatedFileName(node.name))) {
+                generatedPaths.push(node.relativePath);
+            }
+        }
+        result.rejectPaths(
+            "nested runtime/source trees are not allowed:", nestedSourceTrees);
+        result.rejectPaths(
+            "generated/cache paths are not allowed in owned source:",
+            generatedPaths);
+    }
+
+    class bool executableScript(TreeAuditNode node) {
+        bool executable = (node.status.mode & 73) != 0; // 0111
+        return executable && FileSystem.readText(node.absolutePath).startsWith("#!");
+    }
+
+    class void checkFileTypes(Vector<TreeAuditNode> nodes, string label,
+                              Vector<string> approved, bool allowSpecial,
+                              TreeAuditResult result) {
+        for node in nodes {
+            if (!node.isFile()) { continue; }
+            if (allowSpecial && node.name.equals("Makefile")) { continue; }
+            if (!node.name.contains(".")) {
+                if (allowSpecial && TreeAuditor.executableScript(node)) { continue; }
+                result.add(f"unexpected {label} file type: {node.relativePath}");
+                continue;
+            }
+            if (!approved.contains(TreeAuditPolicy.extension(node.name))) {
+                result.add(f"unexpected {label} file type: {node.relativePath}");
+            }
+        }
+    }
+
+    class void checkTestPlacement(Vector<TreeAuditNode> tests,
+                                  TreeAuditResult result) {
+        Vector<string> misplaced = [];
+        for node in tests {
+            if (node.parentPath.equals("tests") && node.isFile()
+                    && !node.name.equals("Makefile")
+                    && !node.name.equals("main.btrc")) {
+                misplaced.push(node.relativePath);
+            }
+        }
+        result.rejectPaths(
+            "test files must live in an approved test family:", misplaced);
+    }
+
+    class void checkSourceTests(Vector<TreeAuditNode> source,
+                                TreeAuditResult result) {
+        Vector<string> misplaced = [];
+        for node in source {
+            if (node.isFile() && TreeAuditPolicy.sourceTestName(node.name)) {
+                misplaced.push(node.relativePath);
+            }
+        }
+        result.rejectPaths("tests must remain under tests:", misplaced);
+    }
+
+    class bool emptyDirectory(string path) {
+        Directory directory = Directory(path);
+        Vector<string> entries = directory.entries();
+        return entries.isEmpty();
+    }
+
+    class void checkEmptyConfig(string projectRoot,
+                                Vector<TreeAuditNode> config,
+                                TreeAuditResult result) {
+        Vector<string> empty = [];
+        string configRoot = PathTools.join(projectRoot, "config");
+        if (TreeAuditor.emptyDirectory(configRoot)) {
+            empty.push("config");
+        }
+        for node in config {
+            if (node.isDirectory()
+                    && TreeAuditor.emptyDirectory(node.absolutePath)) {
+                empty.push(node.relativePath);
+            }
+        }
+        result.rejectPaths(
+            "empty directories under config are not allowed:", empty);
+    }
+
+    class TreeAuditResult audit(string projectRoot) {
+        TreeAuditResult result = TreeAuditResult();
+        string project = FileSystem.absolutePath(projectRoot);
+        if (project.isEmpty()) {
+            result.add("project root could not be resolved: " + projectRoot);
+            return result;
+        }
+
+        Vector<TreeAuditNode> top = TreeAuditWalker.children(project, "", result);
+        Vector<TreeAuditNode> config = TreeAuditWalker.descendants(
+            project, "config", result);
+        Vector<TreeAuditNode> docs = TreeAuditWalker.descendants(
+            project, "docs", result);
+        Vector<TreeAuditNode> packaging = TreeAuditWalker.descendants(
+            project, "packaging", result);
+        Vector<TreeAuditNode> source = TreeAuditWalker.descendants(
+            project, "src", result);
+        Vector<TreeAuditNode> tests = TreeAuditWalker.descendants(
+            project, "tests", result);
+
+        TreeAuditor.checkChildren(top, "", "top-level path",
+            TreeAuditPolicy.topLevelPaths(), false, result);
+        TreeAuditor.checkChildren(config, "config", "config family",
+            TreeAuditPolicy.configFamilies(), true, result);
+        TreeAuditor.checkChildren(packaging, "packaging", "packaging family",
+            TreeAuditPolicy.packagingFamilies(), true, result);
+        TreeAuditor.checkChildren(source, "src", "path under src",
+            TreeAuditPolicy.sourceRoots(), false, result);
+        TreeAuditor.checkChildren(tests, "tests", "test family",
+            TreeAuditPolicy.testFamilies(), true, result);
+
+        string targets = PathTools.join(project, "tests/targets");
+        if (!FileSystem.isDir(targets) || FileSystem.isSymlink(targets)) {
+            result.add("required tree is not a real directory: tests/targets");
+        } else {
+            TreeAuditor.checkChildren(tests, "tests/targets", "test target",
+                TreeAuditPolicy.testTargets(), true, result);
+        }
+
+        TreeAuditor.checkDocs(docs, result);
+        TreeAuditor.checkOwnedSource(source, tests, result);
+        TreeAuditor.checkFileTypes(config, "config",
+            TreeAuditPolicy.configFileTypes(), false, result);
+        TreeAuditor.checkFileTypes(packaging, "packaging",
+            TreeAuditPolicy.packagingFileTypes(), true, result);
+        TreeAuditor.checkFileTypes(source, "source",
+            TreeAuditPolicy.sourceFileTypes(), false, result);
+        TreeAuditor.checkFileTypes(tests, "test",
+            TreeAuditPolicy.testFileTypes(), true, result);
+        TreeAuditor.checkTestPlacement(tests, result);
+        TreeAuditor.checkSourceTests(source, result);
+        TreeAuditor.checkEmptyConfig(project, config, result);
+        return result;
+    }
+}

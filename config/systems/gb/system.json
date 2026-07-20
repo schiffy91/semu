@@ -1,0 +1,70 @@
+{
+  "schema_version": 1,
+  "name": "Nintendo Game Boy",
+  "aliases": [
+    "gameboy"
+  ],
+  "es_de": {
+    "platforms": [
+      "gb"
+    ],
+    "theme": "gb"
+  },
+  "rom": {
+    "dir": "gb",
+    "extensions": [
+      ".bin",
+      ".dmg",
+      ".gb",
+      ".gbs",
+      ".7z",
+      ".zip"
+    ]
+  },
+  "verification": {
+    "rom_descriptors": [
+      "Tetris (World) (Rev 1).zip",
+      "Kirby's Dream Land (USA, Europe).zip"
+    ],
+    "capture_frame": 180
+  },
+  "emulators": [
+    {
+      "emulator": "retroarch",
+      "label": "Gambatte",
+      "core": "gambatte"
+    }
+  ],
+  "display": {
+    "scaling": {
+      "mode": "integer_preferred",
+      "basis": "native_game_surface",
+      "fit": "contain",
+      "fallback": "fractional_downscale"
+    },
+    "screens": [
+      {
+        "id": "main",
+        "native": {
+          "w": 160,
+          "h": 144
+        }
+      }
+    ],
+    "aspect": {
+      "w": 10,
+      "h": 9
+    }
+  },
+  "render": {
+    "style": "handheld",
+    "asset_profile": "handheld",
+    "priority": "bezel",
+    "fill": true,
+    "reflect": 0.12
+  },
+  "doc": {
+    "hardware": "DMG-01 reflective STN LCD",
+    "intent": "The owned DMG screen preset controls the olive palette, LCD matrix, and restrained STN response; the render block controls the classic shell and low glass reflection."
+  }
+}

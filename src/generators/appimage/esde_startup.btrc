@@ -1,0 +1,159 @@
+// esde_startup.btrc - immutable ES-DE resources and startup argv contract.
+
+import std.{fs, json, strings, vector}
+import ./install_store.btrc
+
+class SemuEsDeStartupContract {
+    class bool exactKeys(JsonValue value, Vector<string> expected) {
+        if (!value.isObject() || value.keys().size() != expected.size()) {
+            return false;
+        }
+        for key in value.keys() {
+            if (!expected.contains(key)) { return false; }
+        }
+        return true;
+    }
+
+    class bool lowerHex(string value, int length) {
+        if (value.len() != length) { return false; }
+        for character in value {
+            bool decimal = character >= '0' && character <= '9';
+            bool hexadecimal = character >= 'a' && character <= 'f';
+            if (!decimal && !hexadecimal) { return false; }
+        }
+        return true;
+    }
+
+    class bool sriSha256(string value) {
+        if (value.len() != 51 || !value.startsWith("sha256-")
+                || value.charAt(value.len() - 1) != '=') {
+            return false;
+        }
+        for (int index = 7; index < value.len() - 1; index++) {
+            char character = value.charAt(index);
+            bool alphaNumeric = (character >= 'a' && character <= 'z')
+                || (character >= 'A' && character <= 'Z')
+                || (character >= '0' && character <= '9');
+            if (!alphaNumeric && character != '+' && character != '/') {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    class bool safeStorePath(string value) {
+        string prefix = "/nix/store/";
+        if (!value.startsWith(prefix) || value.contains("\\")
+                || value.contains("\n") || value.contains("\r")
+                || value.contains("$" + "{")) {
+            return false;
+        }
+        Vector<string> parts = Strings.split(
+            value.substring(1, value.len() - 1), "/");
+        if (parts.size() < 3 || !parts.get(0).equals("nix")
+                || !parts.get(1).equals("store")
+                || parts.get(2).len() < 34
+                || parts.get(2).charAt(32) != '-') {
+            return false;
+        }
+        for part in parts {
+            if (part.isEmpty() || part.equals(".") || part.equals("..")) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    class string mappedPath(string appDir, string storePath) {
+        if (!SemuInstallHost.realDirectory(appDir)
+                || !SemuEsDeStartupContract.safeStorePath(storePath)) {
+            return "";
+        }
+        string relative = storePath.substring(1, storePath.len() - 1);
+        string current = appDir;
+        for part in Strings.split(relative, "/") {
+            current = PathTools.join(current, part);
+            FileStatus status = FileStatus(current);
+            if (!status.linkFound || status.isSymlink()) { return ""; }
+        }
+        return current;
+    }
+
+    class string validate(string appDir) {
+        string contractPath = PathTools.join(
+            appDir, "share/semu/es-de-build-contract.json");
+        if (!SemuInstallHost.regularFile(contractPath)) {
+            return "ES-DE build contract is absent from the AppImage";
+        }
+        JsonValue contract = JsonValue.readFile(contractPath);
+        if (!SemuEsDeStartupContract.exactKeys(contract, [
+                "schema_version", "source_revision", "source_sha256",
+                "patch_sha256", "settings_protocol", "program_data_root",
+                "splash"])) {
+            return "ES-DE build contract has an unsupported shape";
+        }
+        JsonValue schema = contract.get("schema_version");
+        JsonValue sourceRevision = contract.get("source_revision");
+        JsonValue sourceHash = contract.get("source_sha256");
+        JsonValue patchHash = contract.get("patch_sha256");
+        JsonValue protocol = contract.get("settings_protocol");
+        JsonValue programData = contract.get("program_data_root");
+        JsonValue splash = contract.get("splash");
+        if (!schema.isInt() || schema.asInt() != 2
+                || !sourceRevision.isString()
+                || !SemuEsDeStartupContract.lowerHex(
+                    sourceRevision.asString(), 40)
+                || !sourceHash.isString()
+                || !SemuEsDeStartupContract.sriSha256(sourceHash.asString())
+                || !patchHash.isString()
+                || !SemuEsDeStartupContract.lowerHex(patchHash.asString(), 64)
+                || !protocol.isString()
+                || !protocol.asString().equals("semu-settings-v2")
+                || !programData.isString()
+                || !SemuEsDeStartupContract.exactKeys(splash,
+                    ["logical_path", "package_path", "sha256"])
+                || !splash.get("logical_path").isString()
+                || !splash.get("logical_path").asString()
+                    .equals(":/graphics/splash.svg")
+                || !splash.get("package_path").isString()
+                || !splash.get("sha256").isString()
+                || !SemuEsDeStartupContract.lowerHex(
+                    splash.get("sha256").asString(), 64)) {
+            return "ES-DE splash declaration is malformed";
+        }
+        string programDataPath = programData.asString();
+        string packagePath = splash.get("package_path").asString();
+        if (!programDataPath.endsWith("/share/es-de")
+                || !packagePath.equals(programDataPath
+                    + "/resources/graphics/splash.svg")) {
+            return "ES-DE splash does not resolve through its package data root";
+        }
+        string mappedProgramData = SemuEsDeStartupContract.mappedPath(
+            appDir, programDataPath);
+        string mappedSplash = SemuEsDeStartupContract.mappedPath(
+            appDir, packagePath);
+        if (!SemuInstallHost.realDirectory(mappedProgramData)
+                || !SemuInstallHost.regularFile(mappedSplash)) {
+            return "ES-DE splash is absent from the AppImage Nix closure";
+        }
+        string actual = SemuInstallHost.sha256File(mappedSplash);
+        return !actual.isEmpty()
+                && actual.equals(splash.get("sha256").asString())
+            ? "" : "ES-DE splash differs from its source package";
+    }
+
+    class Vector<string> launchArguments(
+            string executable, string home, Vector<string> passthrough) {
+        Vector<string> invalid = [];
+        if (executable.isEmpty() || home.isEmpty()) { return invalid; }
+        for argument in passthrough {
+            if (argument.equals("--home") || argument.startsWith("--home=")
+                    || argument.equals("--no-splash")) {
+                return invalid;
+            }
+        }
+        Vector<string> result = [executable, "--home", home];
+        result.extend(passthrough);
+        return result;
+    }
+}

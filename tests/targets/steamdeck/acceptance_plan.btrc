@@ -1,0 +1,788 @@
+// Compiler-derived acceptance model. This module describes what the Deck
+// harness must prove; it performs no transport and launches no processes.
+
+import std.{fs, json, platform, strings, vector}
+import ../../../src/compiler/model.btrc
+import ../../../src/compiler/parser.btrc
+import ../../../src/compiler/resolver.btrc
+import ./evidence.btrc
+
+class DeckHarnessResult {
+    public bool valid;
+    public string error;
+
+    public DeckHarnessResult() {
+        self.valid = false;
+        self.error = "";
+    }
+
+    class DeckHarnessResult success() {
+        DeckHarnessResult result = DeckHarnessResult();
+        result.valid = true;
+        return result;
+    }
+
+    class DeckHarnessResult failure(string error) {
+        DeckHarnessResult result = DeckHarnessResult();
+        result.error = error;
+        return result;
+    }
+
+    public bool ok() { return self.valid; }
+}
+
+class DeckHarnessStrings {
+    class Vector<string> lines(string text) {
+        Vector<string> result = [];
+        for line in Strings.split(text, "\n") {
+            string value = line.trim();
+            if (!value.isEmpty()) { result.push(value); }
+        }
+        return result;
+    }
+
+    class Vector<string> sorted(Vector<string> values) {
+        Vector<string> result = [];
+        for value in values { result.push(value); }
+        for (int index = 1; index < result.size(); index++) {
+            string current = result.get(index);
+            int previous = index - 1;
+            while (previous >= 0 && result.get(previous) > current) {
+                result.set(previous + 1, result.get(previous));
+                previous--;
+            }
+            result.set(previous + 1, current);
+        }
+        return result;
+    }
+
+    class bool lowerHex(string value, int length) {
+        if (value.len() != length) { return false; }
+        for character in value {
+            bool digit = character >= '0' && character <= '9';
+            bool lower = character >= 'a' && character <= 'f';
+            if (!digit && !lower) { return false; }
+        }
+        return true;
+    }
+
+    class bool safeRelative(string value) {
+        return !value.isEmpty() && !value.startsWith("/")
+            && !value.startsWith("../") && !value.contains("/../")
+            && !value.endsWith("/..") && !value.contains("\n")
+            && !value.contains("\r");
+    }
+
+    class string field(string line, string name) {
+        string marker = name + "=";
+        int opening = line.startsWith(marker)
+            ? 0 : line.indexOf(" " + marker);
+        if (opening < 0) { return ""; }
+        opening += opening == 0 ? marker.len() : marker.len() + 1;
+        string tail = line.substring(opening, line.len());
+        int closing = tail.indexOf(" ");
+        return closing < 0 ? tail : tail.substring(0, closing);
+    }
+
+    class bool lineHasFields(string line, Vector<string> fields) {
+        for required in fields {
+            int separator = required.indexOf("=");
+            if (separator < 1) { return false; }
+            string name = required.substring(0, separator);
+            string value = required.substring(separator + 1, required.len());
+            if (!DeckHarnessStrings.field(line, name).equals(value)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    class string matchingLine(string text, Vector<string> fields) {
+        for line in DeckHarnessStrings.lines(text) {
+            if (DeckHarnessStrings.lineHasFields(line, fields)) { return line; }
+        }
+        return "";
+    }
+
+    class JsonValue jsonStrings(Vector<string> values) {
+        JsonValue result = JsonValue.makeArray();
+        for value in values { result.push(JsonValue.makeString(value)); }
+        return result;
+    }
+}
+
+class DeckHarnessOptions {
+    public string project;
+    public string host;
+    public string sshOptions;
+    public string artifact;
+    public string runtimeRoot;
+    public string installer;
+    public string remoteProject;
+    public string romsRoot;
+    public string biosRoot;
+    public string externalStateRoot;
+    public string esDeHome;
+    public string steamRoot;
+    public string evidenceRoot;
+    public string remoteHelperBinary;
+    public string inputHelperBinary;
+    public string system;
+    public string output;
+    public bool humanObserved;
+
+    public DeckHarnessOptions() {
+        self.project = FileSystem.currentDirectory();
+        self.host = "deck@steamdeck.local";
+        self.sshOptions = "-o ConnectTimeout=5 -o BatchMode=yes";
+        self.artifact = PathTools.join(self.project,
+            "build/Semu-x86_64.AppImage");
+        self.runtimeRoot = PathTools.join(Environment.get("HOME", "."),
+            ".cache/semu/appimage-runtime/runtime-root");
+        self.installer = PathTools.join(self.project,
+            "packaging/install/installer.sh");
+        self.remoteProject = "/home/deck/.local/share/semu";
+        self.romsRoot = "/run/media/deck/SD/Emulation/ES-DE/ES-DE/ROMs";
+        self.biosRoot = "/run/media/deck/SD/Emulation/RetroArch/config/system";
+        self.externalStateRoot = "/run/media/deck/SD/Emulation";
+        self.esDeHome = "/home/deck/ES-DE";
+        self.steamRoot = "/home/deck/.local/share/Steam";
+        self.evidenceRoot = PathTools.join(self.project,
+            "build/verification/steamdeck");
+        self.remoteHelperBinary = PathTools.join(self.project,
+            "build/tests/steamdeck-acceptance-helper-x86_64-linux");
+        self.inputHelperBinary = PathTools.join(self.project,
+            "build/tests/semu-deck-uinput-x86_64-linux");
+        self.system = "";
+        self.output = "";
+        self.humanObserved = false;
+    }
+
+    class string installedLauncher() {
+        return "/home/deck/Applications/Semu/bin/semu";
+    }
+
+    class string installedAppImage() {
+        return "/home/deck/Applications/Semu/Semu-x86_64.AppImage";
+    }
+
+    class string installRoot() {
+        return "/home/deck/Applications/Semu";
+    }
+
+    public string remoteHarnessRoot() {
+        return PathTools.join(self.remoteProject,
+            "build/verification/steamdeck");
+    }
+
+    public string remoteRequestsRoot() {
+        return PathTools.join(self.remoteHarnessRoot(), "requests");
+    }
+
+    public string remoteRunsRoot() {
+        return PathTools.join(self.remoteHarnessRoot(), "runs");
+    }
+
+    public string remoteHelper() {
+        return PathTools.join(self.remoteHarnessRoot(),
+            "bin/semu-deck-acceptance");
+    }
+
+    public string remoteInputHelper() {
+        return PathTools.join(self.remoteHarnessRoot(),
+            "bin/semu-deck-uinput");
+    }
+
+    public Vector<string> externalRoots() {
+        return [self.romsRoot, self.biosRoot, self.externalStateRoot];
+    }
+
+    public Vector<string> generatedInputs() {
+        return [
+            PathTools.join(self.esDeHome, "custom_systems/es_systems.xml"),
+            PathTools.join(self.esDeHome, "custom_systems/es_find_rules.xml"),
+            PathTools.join(self.esDeHome, "settings/semu_settings.json")
+        ];
+    }
+
+    public DeckHarnessResult validateLocal(bool requireHelpers = false) {
+        if (!FileSystem.isDir(self.project)) {
+            return DeckHarnessResult.failure("project root is absent");
+        }
+        if (self.host.isEmpty() || self.host.contains("\n")
+                || self.sshOptions.contains("\n")) {
+            return DeckHarnessResult.failure("SSH configuration is invalid");
+        }
+        for path in [self.remoteProject, self.romsRoot, self.biosRoot,
+                     self.externalStateRoot, self.esDeHome, self.steamRoot] {
+            if (!path.startsWith("/") || path.contains("\n")
+                    || path.contains("\r") || path.contains("/../")) {
+                return DeckHarnessResult.failure(
+                    "Deck paths must be normalized absolute paths");
+            }
+        }
+        if (!self.remoteProject.startsWith("/home/deck/")) {
+            return DeckHarnessResult.failure(
+                "remote project must remain inside /home/deck");
+        }
+        for external in self.externalRoots() {
+            if (external.equals(self.remoteProject)
+                    || external.startsWith(self.remoteProject + "/")
+                    || self.remoteProject.startsWith(external + "/")) {
+                return DeckHarnessResult.failure(
+                    "Semu-owned and external media roots must be disjoint");
+            }
+        }
+        string evidence = FileSystem.absolutePath(self.evidenceRoot);
+        string projectRoot = FileSystem.absolutePath(self.project);
+        if (evidence.isEmpty() || projectRoot.isEmpty()
+                || !evidence.startsWith(projectRoot + "/build/")) {
+            return DeckHarnessResult.failure(
+                "local evidence must stay inside the project build tree");
+        }
+        if (requireHelpers
+                && (!FileSystem.isFile(self.remoteHelperBinary)
+                    || FileSystem.isSymlink(self.remoteHelperBinary)
+                    || !FileSystem.isFile(self.inputHelperBinary)
+                    || FileSystem.isSymlink(self.inputHelperBinary))) {
+            return DeckHarnessResult.failure(
+                "strict-import Linux acceptance helpers have not been built");
+        }
+        return DeckHarnessResult.success();
+    }
+}
+
+class DeckSurfaceContract {
+    public string id;
+    public int nativeWidth;
+    public int nativeHeight;
+    public string origin;
+    public int rotation;
+
+    public DeckSurfaceContract() {
+        self.id = "";
+        self.nativeWidth = 0;
+        self.nativeHeight = 0;
+        self.origin = "";
+        self.rotation = -1;
+    }
+
+    public JsonValue json() {
+        JsonValue value = JsonValue.makeObject();
+        value.set("id", JsonValue.makeString(self.id));
+        value.set("native_width", JsonValue.makeInt(self.nativeWidth));
+        value.set("native_height", JsonValue.makeInt(self.nativeHeight));
+        value.set("origin", JsonValue.makeString(self.origin));
+        value.set("rotation", JsonValue.makeInt(self.rotation));
+        return value;
+    }
+}
+
+class DeckProtectedInputGroup {
+    public string kind;
+    public string purpose;
+    public bool required;
+    public Vector<string> candidates;
+
+    public DeckProtectedInputGroup() {
+        self.kind = "";
+        self.purpose = "";
+        self.required = false;
+        self.candidates = [];
+    }
+
+    public Vector<string> resolved(DeckHarnessOptions options) {
+        Vector<string> result = [];
+        for template in self.candidates {
+            string value = template
+                .replace("${emulation_root}", options.externalStateRoot)
+                .replace("${bios}", options.biosRoot)
+                .replace("${roms}", options.romsRoot);
+            if (!value.contains("${") && value.startsWith("/")) {
+                result.push(value);
+            }
+        }
+        return result;
+    }
+
+    public JsonValue json(DeckHarnessOptions options) {
+        JsonValue value = JsonValue.makeObject();
+        value.set("kind", JsonValue.makeString(self.kind));
+        value.set("purpose", JsonValue.makeString(self.purpose));
+        value.set("required", JsonValue.makeBool(self.required));
+        value.set("candidates", DeckHarnessStrings.jsonStrings(
+            self.resolved(options)));
+        return value;
+    }
+}
+
+class DeckSystemCase {
+    public string id;
+    public string name;
+    public string romDirectory;
+    public Vector<string> extensions;
+    public Vector<string> preferredRoms;
+    public string emulator;
+    public string core;
+    public string coreFilename;
+    public string executable;
+    public int captureFrame;
+    public Vector<DeckSurfaceContract> surfaces;
+    public bool shaderExpected;
+    public bool bezelExpected;
+    public bool savestateExpected;
+    public string shaderPath;
+    public string shaderSha256;
+    public Vector<string> bezelPaths;
+    public Vector<string> bezelSha256;
+    public Vector<DeckProtectedInputGroup> protectedGroups;
+
+    public DeckSystemCase() {
+        self.id = "";
+        self.name = "";
+        self.romDirectory = "";
+        self.extensions = [];
+        self.preferredRoms = [];
+        self.emulator = "";
+        self.core = "";
+        self.coreFilename = "";
+        self.executable = "";
+        self.captureFrame = 0;
+        self.surfaces = [];
+        self.shaderExpected = false;
+        self.bezelExpected = false;
+        self.savestateExpected = false;
+        self.shaderPath = "";
+        self.shaderSha256 = "";
+        self.bezelPaths = [];
+        self.bezelSha256 = [];
+        self.protectedGroups = [];
+    }
+
+    public Vector<string> romCandidates(DeckHarnessOptions options) {
+        Vector<string> result = [];
+        string root = PathTools.join(options.romsRoot, self.romDirectory);
+        for descriptor in self.preferredRoms {
+            result.push(PathTools.join(root, descriptor));
+        }
+        return result;
+    }
+
+    public JsonValue json(DeckHarnessOptions options) {
+        JsonValue value = JsonValue.makeObject();
+        value.set("id", JsonValue.makeString(self.id));
+        value.set("name", JsonValue.makeString(self.name));
+        value.set("rom_directory", JsonValue.makeString(self.romDirectory));
+        value.set("extensions", DeckHarnessStrings.jsonStrings(self.extensions));
+        value.set("preferred_roms",
+            DeckHarnessStrings.jsonStrings(self.preferredRoms));
+        value.set("emulator", JsonValue.makeString(self.emulator));
+        value.set("core", JsonValue.makeString(self.core));
+        value.set("core_filename", JsonValue.makeString(self.coreFilename));
+        value.set("executable", JsonValue.makeString(self.executable));
+        value.set("capture_frame", JsonValue.makeInt(self.captureFrame));
+        JsonValue surfaces = JsonValue.makeArray();
+        for surface in self.surfaces { surfaces.push(surface.json()); }
+        value.set("surfaces", surfaces);
+        value.set("shader_expected", JsonValue.makeBool(self.shaderExpected));
+        value.set("bezel_expected", JsonValue.makeBool(self.bezelExpected));
+        value.set("savestate_expected", JsonValue.makeBool(self.savestateExpected));
+        value.set("shader_path", JsonValue.makeString(self.shaderPath));
+        value.set("shader_sha256", JsonValue.makeString(self.shaderSha256));
+        value.set("bezel_paths", DeckHarnessStrings.jsonStrings(self.bezelPaths));
+        value.set("bezel_sha256", DeckHarnessStrings.jsonStrings(self.bezelSha256));
+        JsonValue groups = JsonValue.makeArray();
+        for group in self.protectedGroups { groups.push(group.json(options)); }
+        value.set("protected_input_groups", groups);
+        return value;
+    }
+}
+
+class DeckAcceptancePlan {
+    public Vector<DeckSystemCase> systems;
+    public Vector<string> quickRadial;
+    public Vector<string> menuRadial;
+    public Vector<string> wiiModes;
+    public JsonValue inputDefinition;
+    public Vector<string> errors;
+
+    public DeckAcceptancePlan() {
+        self.systems = [];
+        self.quickRadial = [];
+        self.menuRadial = [];
+        self.wiiModes = [];
+        self.inputDefinition = JsonValue.makeObject();
+        self.errors = [];
+    }
+
+    public bool ok() { return self.errors.isEmpty(); }
+
+    public DeckSystemCase system(string id) {
+        for candidate in self.systems {
+            if (candidate.id.equals(id)) { return candidate; }
+        }
+        return DeckSystemCase();
+    }
+
+    public int systemIndex(string id) {
+        for (int index = 0; index < self.systems.size(); index++) {
+            if (self.systems.get(index).id.equals(id)) { return index; }
+        }
+        return -1;
+    }
+
+    class Vector<string> strings(JsonValue value) {
+        Vector<string> result = [];
+        if (!value.isArray()) { return result; }
+        for (int index = 0; index < value.size(); index++) {
+            if (value.at(index).isString()) {
+                result.push(value.at(index).asString());
+            }
+        }
+        return result;
+    }
+
+    class string assetHash(JsonValue manifest, string path) {
+        JsonValue output = manifest.get("assets").get(path).get("output");
+        string digest = output.get("sha256").isString()
+            ? output.get("sha256").asString() : "";
+        return DeckHarnessStrings.lowerHex(digest, 64) ? digest : "";
+    }
+
+    class string executablePath(SemuEmulatorPlatformSource platform) {
+        string prefix = "${asset_root}";
+        return platform.executable.startsWith(prefix + "/")
+            ? platform.executable.substring(prefix.len(),
+                platform.executable.len()) : "";
+    }
+
+    class string coreFilename(SemuEmulatorPlatformSource platform,
+                              string core) {
+        if (core.isEmpty()) { return ""; }
+        JsonValue loader = platform.definition.get("core_loader");
+        string filename = loader.get("filename").isString()
+            ? loader.get("filename").asString().replace("${core}", core) : "";
+        return filename.contains("${") ? "" : filename;
+    }
+
+    class Vector<DeckSurfaceContract> surfaces(SemuSystemSource system,
+                                                SemuEmulatorSource emulator) {
+        Vector<DeckSurfaceContract> result = [];
+        JsonValue screens = system.definition.get("display").get("screens");
+        JsonValue hookSurfaces = emulator.rendering.get("surfaces");
+        if (!screens.isArray() || !hookSurfaces.isArray()
+                || screens.size() != hookSurfaces.size()) {
+            return result;
+        }
+        for (int index = 0; index < screens.size(); index++) {
+            JsonValue screen = screens.at(index);
+            JsonValue hook = hookSurfaces.at(index);
+            DeckSurfaceContract surface = DeckSurfaceContract();
+            surface.id = screen.get("id").isString()
+                ? screen.get("id").asString() : "";
+            surface.nativeWidth = screen.get("native").get("w").isInt()
+                ? screen.get("native").get("w").asInt() : 0;
+            surface.nativeHeight = screen.get("native").get("h").isInt()
+                ? screen.get("native").get("h").asInt() : 0;
+            surface.origin = hook.get("origin").isString()
+                ? hook.get("origin").asString() : "";
+            surface.rotation = hook.get("rotation").isInt()
+                ? hook.get("rotation").asInt() : -1;
+            if (surface.id.isEmpty() || surface.nativeWidth < 1
+                    || surface.nativeHeight < 1
+                    || !["top_left", "bottom_left"].contains(surface.origin)
+                    || surface.rotation != 0) {
+                result.clear();
+                return result;
+            }
+            result.push(surface);
+        }
+        return result;
+    }
+
+    class string inputKind(string purpose) {
+        string value = purpose.toLower();
+        return value.contains("key") || value.contains("aes")
+            || value.contains("seed") ? "key" : "firmware";
+    }
+
+    class Vector<DeckProtectedInputGroup> protectedGroups(
+            SemuSystemSource system, SemuEmulatorPlatformSource platform) {
+        Vector<DeckProtectedInputGroup> result = [];
+        JsonValue seeds = platform.definition.get("state").get("seeds");
+        if (seeds.isArray()) {
+            for (int index = 0; index < seeds.size(); index++) {
+                JsonValue seed = seeds.at(index);
+                DeckProtectedInputGroup group = DeckProtectedInputGroup();
+                group.purpose = seed.get("purpose").isString()
+                    ? seed.get("purpose").asString() : "";
+                group.kind = DeckAcceptancePlan.inputKind(group.purpose);
+                group.required = false;
+                group.candidates = DeckAcceptancePlan.strings(
+                    seed.get("sources"));
+                if (!group.purpose.isEmpty() && !group.candidates.isEmpty()) {
+                    result.push(group);
+                }
+            }
+        }
+        JsonValue bios = system.definition.get("bios");
+        JsonValue files = bios.get("files");
+        string directory = bios.get("dir").isString()
+            ? bios.get("dir").asString() : "";
+        bool required = bios.get("required").isBool()
+            && bios.get("required").asBool();
+        string match = bios.get("match").isString()
+            ? bios.get("match").asString() : "all";
+        if (!directory.isEmpty() && files.isArray()
+                && (directory.equals("bios")
+                    || directory.startsWith("bios/"))) {
+            DeckProtectedInputGroup any = DeckProtectedInputGroup();
+            any.kind = directory.contains("switch") ? "key" : "bios";
+            any.purpose = system.id + "_bios_any";
+            any.required = required;
+            for (int index = 0; index < files.size(); index++) {
+                string name = files.at(index).get("name").isString()
+                    ? files.at(index).get("name").asString() : "";
+                if (name.isEmpty()) { continue; }
+                DeckProtectedInputGroup group = DeckProtectedInputGroup();
+                group.kind = any.kind;
+                group.purpose = system.id + "_" + name;
+                group.required = required;
+                group.candidates.push("${emulation_root}/" + directory
+                    + "/" + name);
+                string suffix = directory.equals("bios") ? ""
+                    : directory.substring(5, directory.len());
+                group.candidates.push("${bios}"
+                    + (suffix.isEmpty() ? "" : "/" + suffix) + "/" + name);
+                if (match.equals("any")) {
+                    for candidate in group.candidates {
+                        any.candidates.push(candidate);
+                    }
+                } else {
+                    result.push(group);
+                }
+            }
+            if (match.equals("any") && !any.candidates.isEmpty()) {
+                result.push(any);
+            }
+        }
+        return result;
+    }
+
+    class void renderingContract(DeckAcceptancePlan result,
+                                  DeckSystemCase system,
+                                  SemuSystemSource source,
+                                  SemuCompilerModel model) {
+        system.shaderExpected = source.shaders.get("enabled").isBool()
+            && source.shaders.get("enabled").asBool();
+        system.bezelExpected = source.bezels.get("enabled").isBool()
+            && source.bezels.get("enabled").asBool();
+        if (system.shaderExpected) {
+            system.shaderPath = source.shaders.get("screen").isString()
+                ? source.shaders.get("screen").asString() : "";
+            system.shaderSha256 = DeckAcceptancePlan.assetHash(
+                model.assets.shaders, system.shaderPath);
+            if (system.shaderPath.isEmpty() || system.shaderSha256.isEmpty()) {
+                result.errors.push("shader identity is incomplete for "
+                    + system.id);
+            }
+        }
+        if (!system.bezelExpected) { return; }
+        JsonValue variants = source.bezels.get("variants");
+        if (!variants.isArray() || variants.size() < 1) {
+            result.errors.push("bezel variants are incomplete for " + system.id);
+            return;
+        }
+        for (int index = 0; index < variants.size(); index++) {
+            string path = variants.at(index).get("art").isString()
+                ? variants.at(index).get("art").asString() : "";
+            string digest = DeckAcceptancePlan.assetHash(
+                model.assets.bezels, path);
+            if (path.isEmpty() || digest.isEmpty()) {
+                result.errors.push("bezel identity is incomplete for "
+                    + system.id);
+            }
+            system.bezelPaths.push(path);
+            system.bezelSha256.push(digest);
+        }
+    }
+
+    class void inputContract(DeckAcceptancePlan result,
+                             SemuCompilerModel model) {
+        SemuInputSource selected = model.inputByReference(model.target.input);
+        result.inputDefinition = selected.definition;
+        JsonValue radial = selected.definition.get("radial");
+        result.quickRadial = DeckAcceptancePlan.strings(
+            radial.get("quick_slots"));
+        result.menuRadial = DeckAcceptancePlan.strings(
+            radial.get("menu_slots"));
+        JsonValue layers = radial.get("system_layers");
+        if (layers.isArray()) {
+            for (int index = 0; index < layers.size(); index++) {
+                JsonValue layer = layers.at(index);
+                if (layer.get("id").isString()
+                        && layer.get("id").asString()
+                            .equals("wii_controller")) {
+                    result.wiiModes = DeckAcceptancePlan.strings(
+                        layer.get("slots"));
+                }
+            }
+        }
+        JsonValue actions = selected.definition.get("actions");
+        Vector<string> icons = DeckAcceptancePlan.strings(
+            selected.definition.get("binding_icons").get("files"));
+        Vector<string> required = [];
+        for action in result.quickRadial { required.push(action); }
+        for action in result.menuRadial { required.push(action); }
+        for action in result.wiiModes { required.push(action); }
+        for action in required {
+            string icon = actions.get(action).get("icon").isString()
+                ? actions.get(action).get("icon").asString() : "";
+            if (icon.isEmpty() || icon.equals("semu-ctrl.png")
+                    || !icons.contains(icon)) {
+                result.errors.push(
+                    "semantic Steam radial icon is missing for " + action);
+            }
+        }
+        if (result.quickRadial.isEmpty() || result.menuRadial.isEmpty()
+                || result.wiiModes.size() != 4) {
+            result.errors.push(
+                "Steam Deck input definition lacks quick/menu/Wii radial policy");
+        }
+    }
+
+    class DeckAcceptancePlan load(string project) {
+        DeckAcceptancePlan result = DeckAcceptancePlan();
+        CompilerDiagnostics diagnostics = CompilerDiagnostics();
+        SemuCompilerModel model = SemuCompilerParser.parse(
+            project, "steam-deck", diagnostics);
+        SemuBuildRequest request = SemuBuildRequest();
+        request.operation = "verify";
+        request.target = "steam-deck";
+        request.projectRoot = project;
+        request.semuHome = PathTools.join(project,
+            "build/tests/steamdeck/empty-home");
+        request.outputRoot = PathTools.join(project,
+            "build/tests/steamdeck/plan");
+        SemuBuildPlan build = SemuBuildResolver.resolve(
+            model, request, diagnostics);
+        for error in diagnostics.errors { result.errors.push(error); }
+        if (!model.target.platform.equals("linux")
+                || !model.target.deploymentTarget
+                || !model.target.validation.kind.equals("physical")) {
+            result.errors.push(
+                "steam-deck target is not a physical Linux deployment target");
+        }
+        for id in build.systems {
+            SemuSystemSource source = model.systemById(id);
+            SemuSystemBindingSource binding = SemuSystemBindingSource();
+            for candidate in source.emulators {
+                if (candidate.supports(build.platform)) {
+                    binding = candidate;
+                    break;
+                }
+            }
+            SemuEmulatorSource emulator = model.emulatorById(binding.emulator);
+            SemuEmulatorPlatformSource platform = emulator.platformById(
+                build.platform);
+            DeckSystemCase system = DeckSystemCase();
+            system.id = source.id;
+            system.name = source.name;
+            system.romDirectory = source.romDirectory;
+            system.extensions = source.extensions;
+            system.emulator = binding.emulator;
+            system.core = binding.core;
+            system.coreFilename = DeckAcceptancePlan.coreFilename(
+                platform, binding.core);
+            system.executable = DeckAcceptancePlan.executablePath(platform);
+            JsonValue verification = source.definition.get("verification");
+            system.preferredRoms = DeckAcceptancePlan.strings(
+                verification.get("rom_descriptors"));
+            system.captureFrame = verification.get("capture_frame").isInt()
+                ? verification.get("capture_frame").asInt() : 0;
+            system.surfaces = DeckAcceptancePlan.surfaces(source, emulator);
+            system.savestateExpected = emulator.actions.contains("state.save")
+                && emulator.actions.contains("state.load");
+            system.protectedGroups = DeckAcceptancePlan.protectedGroups(
+                source, platform);
+            DeckAcceptancePlan.renderingContract(result, system, source, model);
+            if (system.id.isEmpty() || system.name.isEmpty()
+                    || system.romDirectory.isEmpty()
+                    || system.extensions.isEmpty()
+                    || system.preferredRoms.isEmpty()
+                    || system.emulator.isEmpty() || system.executable.isEmpty()
+                    || (!system.core.isEmpty() && system.coreFilename.isEmpty())
+                    || system.captureFrame < 1 || system.captureFrame > 900
+                    || system.surfaces.isEmpty()) {
+                result.errors.push("incomplete physical descriptor for " + id);
+            }
+            for descriptor in system.preferredRoms {
+                if (!DeckHarnessStrings.safeRelative(descriptor)) {
+                    result.errors.push(
+                        "unsafe verification ROM descriptor for " + id);
+                }
+            }
+            result.systems.push(system);
+        }
+        if (result.systems.size() != 17) {
+            result.errors.push(f"physical matrix has {result.systems.size()} systems, expected 17");
+        }
+        DeckAcceptancePlan.inputContract(result, model);
+        return result;
+    }
+
+    public JsonValue json(DeckHarnessOptions options) {
+        JsonValue root = JsonValue.makeObject();
+        root.set("schema_version", JsonValue.makeInt(2));
+        root.set("target", JsonValue.makeString("steam-deck"));
+        root.set("launch_contract", JsonValue.makeString(
+            "installed-shortcut -> Steam Game Mode -> same ES-DE session -> compiler-generated system entry -> packaged emulator"));
+        root.set("synthetic_policy", JsonValue.makeString(
+            "uinput proves the automated hardware path only; it never proves physical Steam radial UI"));
+        root.set("installed_launcher", JsonValue.makeString(
+            DeckHarnessOptions.installedLauncher()));
+        root.set("roms_root", JsonValue.makeString(options.romsRoot));
+        root.set("quick_radial", DeckHarnessStrings.jsonStrings(self.quickRadial));
+        root.set("menu_radial", DeckHarnessStrings.jsonStrings(self.menuRadial));
+        root.set("wii_modes", DeckHarnessStrings.jsonStrings(self.wiiModes));
+        root.set("generated_inputs",
+            DeckHarnessStrings.jsonStrings(options.generatedInputs()));
+        JsonValue systems = JsonValue.makeArray();
+        for system in self.systems { systems.push(system.json(options)); }
+        root.set("systems", systems);
+        return root;
+    }
+}
+
+class DeckRomSelector {
+    class bool allowedExtension(string path, Vector<string> extensions) {
+        string lower = path.toLower();
+        for extension in extensions {
+            if (lower.endsWith(extension.toLower())) { return true; }
+        }
+        return false;
+    }
+
+    class string select(DeckSystemCase system, string romsRoot,
+                        Vector<string> inventory) {
+        string root = romsRoot.endsWith("/")
+            ? romsRoot.substring(0, romsRoot.len() - 1) : romsRoot;
+        string systemRoot = root + "/" + system.romDirectory + "/";
+        for descriptor in system.preferredRoms {
+            string preferred = systemRoot + descriptor;
+            if (inventory.contains(preferred)
+                    && DeckRomSelector.allowedExtension(
+                        preferred, system.extensions)) {
+                return preferred;
+            }
+        }
+        for candidate in DeckHarnessStrings.sorted(inventory) {
+            if (candidate.startsWith(systemRoot)
+                    && DeckRomSelector.allowedExtension(
+                        candidate, system.extensions)) {
+                return candidate;
+            }
+        }
+        return "";
+    }
+}

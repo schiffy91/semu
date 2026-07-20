@@ -1,0 +1,1052 @@
+// sync_contract_test.btrc - owned Syncthing policy and generation proof.
+
+import std.{datetime, fs, io, json, platform, process, strings, vector}
+import ../../src/generators/appimage/installer.btrc
+import ../../src/generators/sync.btrc
+import ../../src/lib/json_format.btrc
+
+class SyncProcessAudit {
+    class bool digits(string value) {
+        if (value.isEmpty()) { return false; }
+        for character in value {
+            if (character < '0' || character > '9') { return false; }
+        }
+        return true;
+    }
+
+    class bool clean(string fixtureRoot) {
+        ExecResult listed = ChildProcess.run("ps", [
+            "-axo", "pid=,ppid=,command="
+        ], timeoutMilliseconds=5000,
+            maxStdoutBytes=4194304, maxStderrBytes=65536);
+        if (!listed.ok()) { return false; }
+
+        Vector<int> processIds = [];
+        Vector<int> parentIds = [];
+        Vector<string> commands = [];
+        for line in Strings.split(listed.stdout(), "\n") {
+            Vector<string> fields = [];
+            for field in Strings.split(line.trim(), " ") {
+                if (!field.isEmpty()) { fields.push(field); }
+            }
+            if (fields.size() < 3 || !SyncProcessAudit.digits(fields.get(0))
+                    || !SyncProcessAudit.digits(fields.get(1))) {
+                continue;
+            }
+            processIds.push(fields.get(0).toInt());
+            parentIds.push(fields.get(1).toInt());
+            Vector<string> commandFields = [];
+            for (int index = 2; index < fields.size(); index++) {
+                commandFields.push(fields.get(index));
+            }
+            commands.push(commandFields.join(" "));
+        }
+
+        Vector<int> descendants = [Platform.pid()];
+        bool changed = true;
+        while (changed) {
+            changed = false;
+            for (int index = 0; index < processIds.size(); index++) {
+                if (descendants.contains(parentIds.get(index))
+                        && !descendants.contains(processIds.get(index))) {
+                    descendants.push(processIds.get(index));
+                    changed = true;
+                }
+            }
+        }
+        for (int index = 0; index < commands.size(); index++) {
+            string command = commands.get(index).toLower();
+            if (command.contains("syncthing")
+                    && (commands.get(index).contains(fixtureRoot)
+                        || descendants.contains(processIds.get(index)))) {
+                return false;
+            }
+        }
+        return true;
+    }
+}
+
+class RealSyncthingRuntimeContract {
+    class int fail(string message) {
+        print("  FAIL real Syncthing: " + message);
+        return 1;
+    }
+
+    class bool collect(string root, string relative,
+                       Vector<string> records) {
+        string directory = relative.isEmpty()
+            ? root : PathTools.join(root, relative);
+        Vector<string> names = [];
+        for name in Directory(directory).entries() { names.push(name); }
+        names.sort();
+        for name in names {
+            string child = relative.isEmpty()
+                ? name : relative + "/" + name;
+            string path = PathTools.join(root, child);
+            FileStatus status = FileStatus(path);
+            if (status.isSymlink()) { return false; }
+            if (status.isDir()) {
+                records.push(child + "/|"
+                    + Strings.fromInt(status.mode & 511));
+                if (!RealSyncthingRuntimeContract.collect(
+                        root, child, records)) {
+                    return false;
+                }
+            } else if (status.isFile()) {
+                records.push(child + "|" + Strings.fromInt(status.mode & 511)
+                    + "|" + Path.readAll(path));
+            } else {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    class string snapshot(string root) {
+        Vector<string> records = [];
+        FileStatus rootStatus = FileStatus(root);
+        records.push(".|" + Strings.fromInt(rootStatus.mode & 511));
+        if (!RealSyncthingRuntimeContract.collect(root, "", records)) {
+            return "";
+        }
+        return records.join("\n");
+    }
+
+    class SemuSyncFolder folder(string id, string label, string path) {
+        SemuSyncFolder folder = SemuSyncFolder();
+        folder.id = id;
+        folder.label = label;
+        folder.path = path;
+        folder.access = "readonly";
+        folder.syncthingType = "sendonly";
+        folder.markerPolicy = "preexisting_child";
+        folder.markerName = SemuSyncMarker.select(path);
+        folder.enabled = true;
+        folder.watch = false;
+        folder.rescanSeconds = 10;
+        return folder;
+    }
+
+    class JsonValue folderStatus(JsonValue statuses, string id) {
+        if (!statuses.isArray()) { return JsonValue.makeNull(); }
+        for (int index = 0; index < statuses.size(); index++) {
+            JsonValue status = statuses.at(index);
+            if (status.isObject() && status.get("id").isString()
+                    && status.get("id").asString().equals(id)) {
+                return status;
+            }
+        }
+        return JsonValue.makeNull();
+    }
+
+    class int run() {
+        string executable = SemuSyncExecutables.executable(
+            Environment.get("SEMU_TEST_SYNCTHING_BIN", ""));
+        if (executable.isEmpty()) { return 0; }
+        string scratch = FileSystem.tempDir("semu-real-syncthing");
+        if (scratch.isEmpty()) {
+            return RealSyncthingRuntimeContract.fail(
+                "could not create an isolated runtime root");
+        }
+        string home = PathTools.join(scratch, "home");
+        string romsRoot = PathTools.join(scratch, "external-roms");
+        string biosRoot = PathTools.join(scratch, "external-bios");
+        string romMarker = PathTools.join(romsRoot, "gb");
+        UnixFileSystem.mkdirp(romMarker);
+        UnixFileSystem.mkdirp(biosRoot);
+        string firmware = PathTools.join(biosRoot, "firmware.bin");
+        string game = PathTools.join(romMarker, "game.rom");
+        Path.writeAll(firmware, "marker\n");
+        Path.writeAll(game, "rom payload\n");
+        FileSystem.chmod(firmware, 292); // 0444
+        FileSystem.chmod(game, 292); // 0444
+        FileSystem.chmod(romMarker, 365); // 0555
+        FileSystem.chmod(romsRoot, 365); // 0555
+        FileSystem.chmod(biosRoot, 365); // 0555
+        string romsBefore = RealSyncthingRuntimeContract.snapshot(romsRoot);
+        string biosBefore = RealSyncthingRuntimeContract.snapshot(biosRoot);
+
+        SemuSyncPlan plan = SemuSyncPlan();
+        plan.projectRoot = scratch;
+        plan.semuHome = home;
+        plan.platformId = "macos";
+        plan.enabled = true;
+        plan.startAtBoot = false;
+        int port = 30000 + (Platform.pid() % 20000);
+        plan.guiAddress = "127.0.0.1:" + Strings.fromInt(port);
+        SemuSyncFolder roms = RealSyncthingRuntimeContract.folder(
+            "roms", "ROMS", romsRoot);
+        SemuSyncFolder bios = RealSyncthingRuntimeContract.folder(
+            "bios", "BIOS AND KEYS", biosRoot);
+        plan.folders.push(roms);
+        plan.folders.push(bios);
+
+        SemuSyncRuntimeOptions options = SemuSyncRuntimeOptions();
+        options.syncthing = executable;
+        string initialized = SemuSyncService.initialize(plan, options);
+        string configRoot = SemuSyncPaths.configRoot(home);
+        string dataRoot = SemuSyncPaths.dataRoot(home);
+        string configFile = SemuSyncPaths.configFile(home);
+        if (!initialized.isEmpty() || !roms.markerName.equals("gb")
+                || !bios.markerName.equals("firmware.bin")
+                || !SemuSyncMarker.runtimeError(plan).isEmpty()) {
+            FileSystem.chmod(romsRoot, 493);
+            FileSystem.chmod(romMarker, 493);
+            FileSystem.chmod(biosRoot, 493);
+            FileSystem.removeRecursive(scratch);
+            return RealSyncthingRuntimeContract.fail(
+                "could not initialize the exact no-write marker plan");
+        }
+
+        string guiAddress = plan.guiAddress;
+        Thread<ExecResult> daemon = spawn(() => {
+            return ChildProcess.run(executable, [
+                "serve", "--gui-address", guiAddress,
+                "--config=" + configRoot,
+                "--data=" + dataRoot,
+                "--no-browser", "--no-port-probing", "--no-restart",
+                "--no-upgrade"
+            ], timeoutMilliseconds=30000,
+                maxStdoutBytes=4194304, maxStderrBytes=4194304);
+        });
+        string baseUrl = SemuSyncEndpoint.restBaseUrl(plan.guiAddress);
+        string healthError = SemuSyncApi.waitForHealth(baseUrl);
+        string reconcileError = healthError.isEmpty()
+            ? SemuSyncApi.reconcile(plan, configFile) : healthError;
+        SemuSyncFolderStatusResult statuses = SemuSyncFolderStatusResult();
+        JsonValue observedRoms = JsonValue.makeNull();
+        JsonValue observedBios = JsonValue.makeNull();
+        if (reconcileError.isEmpty()) {
+            for (int attempt = 0; attempt < 100; attempt++) {
+                statuses = SemuSyncApi.folderStatuses(plan, configFile, true);
+                observedRoms = RealSyncthingRuntimeContract.folderStatus(
+                    statuses.folders, "roms");
+                observedBios = RealSyncthingRuntimeContract.folderStatus(
+                    statuses.folders, "bios");
+                if (statuses.ok() && observedRoms.isObject()
+                        && observedBios.isObject()
+                        && observedRoms.get("state").isString()
+                        && observedRoms.get("state").asString().equals("idle")
+                        && observedBios.get("state").isString()
+                        && observedBios.get("state").asString().equals("idle")
+                        && observedRoms.get("local_files").isInt()
+                        && observedRoms.get("local_files").asInt() == 1
+                        && observedBios.get("local_files").isInt()
+                        && observedBios.get("local_files").asInt() == 1) {
+                    break;
+                }
+                Timer.sleepMillis(100);
+            }
+        }
+        string apiKey = SemuSyncApi.apiKey(plan, configFile);
+        SemuLoopbackHttpResponse stopped = SemuLoopbackHttpClient.request(
+            "POST", baseUrl + "/rest/system/shutdown",
+            SemuSyncApi.headers(apiKey), "", 5);
+        ExecResult served = daemon.join();
+        string romsAfter = RealSyncthingRuntimeContract.snapshot(romsRoot);
+        string biosAfter = RealSyncthingRuntimeContract.snapshot(biosRoot);
+        bool passed = reconcileError.isEmpty() && statuses.ok()
+            && observedRoms.isObject() && observedBios.isObject()
+            && observedRoms.get("state").asString().equals("idle")
+            && observedBios.get("state").asString().equals("idle")
+            && observedRoms.get("error").asString().isEmpty()
+            && observedBios.get("error").asString().isEmpty()
+            && observedRoms.get("local_files").asInt() == 1
+            && observedRoms.get("local_directories").asInt() == 1
+            && observedBios.get("local_files").asInt() == 1
+            && observedBios.get("local_directories").asInt() == 0
+            && observedRoms.get("marker_ready").asBool() != 0
+            && observedBios.get("marker_ready").asBool() != 0
+            && stopped.ok() && served.ok()
+            && !romsBefore.isEmpty() && romsBefore.equals(romsAfter)
+            && !biosBefore.isEmpty() && biosBefore.equals(biosAfter)
+            && !FileSystem.exists(PathTools.join(romsRoot, ".stfolder"))
+            && !FileSystem.exists(PathTools.join(biosRoot, ".stfolder"));
+        FileSystem.chmod(romsRoot, 493);
+        FileSystem.chmod(romMarker, 493);
+        FileSystem.chmod(biosRoot, 493);
+        FileSystem.chmod(firmware, 420);
+        FileSystem.chmod(game, 420);
+        FileSystem.removeRecursive(scratch);
+        if (!passed) {
+            print("  real health/reconcile error: " + reconcileError);
+            print("  real status error: " + statuses.error);
+            print("  real daemon code: " + Strings.fromInt(served.code));
+            return RealSyncthingRuntimeContract.fail(
+                "send-only scan changed media or did not reach idle");
+        }
+        print("real Syncthing contract: ROM/BIOS markers + idle scans + unchanged media valid");
+        return 0;
+    }
+}
+
+class SyncContractTest {
+    class int fail(string message) {
+        print("  FAIL sync: " + message);
+        return 1;
+    }
+
+    class SemuSyncFolder folder(SemuSyncPlan plan, string id) {
+        SemuSyncFolder missing = SemuSyncFolder();
+        for folder in plan.folders {
+            if (folder.id.equals(id)) { return folder; }
+        }
+        return missing;
+    }
+
+    class SemuSyncPlan relocatedPlan(SemuSyncPlan source,
+                                     string projectRoot, string semuHome) {
+        SemuSyncPlan plan = SemuSyncPlan();
+        plan.projectRoot = projectRoot;
+        plan.semuHome = semuHome;
+        plan.platformId = source.platformId;
+        plan.launcher = source.launcher;
+        plan.guiAddress = source.guiAddress;
+        plan.enabled = source.enabled;
+        plan.startAtBoot = source.startAtBoot;
+        plan.folders = source.folders;
+        return plan;
+    }
+
+    class string unitLine(string document, string prefix) {
+        for line in Strings.split(document, "\n") {
+            if (line.startsWith(prefix)) { return line; }
+        }
+        return "";
+    }
+
+    class string expectedService(string template, SemuSyncPlan plan) {
+        Vector<string> writePaths = [
+            SemuSyncPaths.configRoot(plan.semuHome),
+            SemuSyncPaths.dataRoot(plan.semuHome)
+        ];
+        Vector<string> readPaths = [];
+        for folder in plan.folders {
+            if (!folder.enabled) { continue; }
+            if (folder.access.equals("readwrite")) {
+                writePaths.push(folder.path);
+            } else {
+                readPaths.push(folder.path);
+            }
+        }
+        string launcher = SemuSystemdUnit.quote(plan.launcher);
+        string command = launcher
+            + " sync daemon"
+            + " --project " + SemuSystemdUnit.quote(plan.projectRoot)
+            + " --semu-home " + SemuSystemdUnit.quote(plan.semuHome)
+            + " --platform " + SemuSystemdUnit.quote(plan.platformId);
+        return template
+            .replace("@@SEMU_LAUNCHER@@", launcher)
+            .replace("@@EXEC_START@@", command)
+            .replace("@@WORKING_DIRECTORY@@",
+                SemuSystemdUnit.quote(SemuSyncPaths.root(plan.semuHome)))
+            .replace("@@READ_WRITE_PATHS@@",
+                SemuSystemdUnit.paths(writePaths))
+            .replace("@@READ_ONLY_PATHS@@",
+                SemuSystemdUnit.paths(readPaths));
+    }
+
+    class string fakeSyncthing() {
+        return "#!/usr/bin/env sh\n"
+            + "set -eu\n"
+            + "config=\"\"\n"
+            + "for argument in \"$@\"; do\n"
+            + "  case \"$argument\" in\n"
+            + "    --config=*) config=\"${argument#--config=}\" ;;\n"
+            + "  esac\n"
+            + "done\n"
+            + "test -n \"$config\"\n"
+            + "mkdir -p \"$config\"\n"
+            + "printf '%s\\n' '<configuration><gui><apikey>"
+            + "abcdefghijklmnop1234567890</apikey></gui></configuration>' "
+            + "> \"$config/config.xml\"\n";
+    }
+
+    class string recordingLauncher() {
+        return "#!/usr/bin/env sh\n"
+            + "set -eu\n"
+            + "printf '%s\\n' \"$*\" >> \"$SEMU_SYNC_TEST_LOG\"\n";
+    }
+
+    class string recordingSystemctl() {
+        return "#!/usr/bin/env sh\n"
+            + "set -eu\n"
+            + "printf '%s\\n' \"$*\" >> \"$SEMU_SYNC_SYSTEMCTL_LOG\"\n"
+            + "failure=${SEMU_SYNC_SYSTEMCTL_FAIL:-}\n"
+            + "verb=${2:-}\n"
+            + "if [ \"$failure\" = \"$verb\" ]; then exit 41; fi\n"
+            + "if [ \"$failure\" = \"disable-now\" ] "
+            + "&& [ \"$verb\" = \"disable\" ] "
+            + "&& [ \"${3:-}\" = \"--now\" ]; then exit 42; fi\n"
+            + "if [ \"$failure\" = \"disable-boot\" ] "
+            + "&& [ \"$verb\" = \"disable\" ] "
+            + "&& [ \"${3:-}\" = \"semu-syncthing.service\" ]; "
+            + "then exit 43; fi\n"
+            + "if [ \"$verb\" = \"is-active\" ]; then "
+            + "if [ \"$failure\" = \"service-failed\" ]; "
+            + "then printf '%s\\n' failed; exit 3; fi; "
+            + "printf '%s\\n' active; fi\n"
+            + "if [ \"$verb\" = \"is-enabled\" ]; "
+            + "then printf '%s\\n' enabled; fi\n";
+    }
+
+    class string recordingCurl() {
+        return "#!/usr/bin/env sh\n"
+            + "set -eu\n"
+            + ": > \"$SEMU_SYNC_CURL_LOG\"\n"
+            + "for argument in \"$@\"; do "
+            + "printf '%s\\n' \"$argument\" >> \"$SEMU_SYNC_CURL_LOG\"; done\n"
+            + "body=$(cat)\n"
+            + "if [ -n \"$body\" ]; then printf '%s' \"$body\"; "
+            + "else printf '%s' '{\"status\":\"OK\"}'; fi\n";
+    }
+
+    class int run(string project) {
+        string scratch = FileSystem.tempDir("semu-sync-contract");
+        if (scratch.isEmpty()) {
+            return SyncContractTest.fail("could not create scratch root");
+        }
+        if (!SyncProcessAudit.clean(scratch)) {
+            FileSystem.removeRecursive(scratch);
+            return SyncContractTest.fail(
+                "Syncthing process existed inside a fresh fixture boundary");
+        }
+        ExecResult copied = ChildProcess.run("cp", [
+            "-R", PathTools.join(project, "config"), scratch
+        ], timeoutMilliseconds=30000,
+            maxStdoutBytes=65536, maxStderrBytes=65536);
+        if (!copied.ok() || !FileSystem.isDir(PathTools.join(scratch, "config"))) {
+            FileSystem.removeRecursive(scratch);
+            return SyncContractTest.fail("could not create isolated config fixture");
+        }
+        string canonicalTemplate = PathTools.join(
+            project, "packaging/sync/semu-syncthing.service.template");
+        string stagedTemplate = PathTools.join(
+            scratch, "config/templates/sync/semu-syncthing.service.template");
+        string template = Path.readAll(canonicalTemplate);
+        UnixFileSystem.mkdirp(PathTools.dirname(stagedTemplate));
+        if (template.isEmpty() || !Path.writeAll(stagedTemplate, template)) {
+            FileSystem.removeRecursive(scratch);
+            return SyncContractTest.fail(
+                "could not stage the shipped synchronization template");
+        }
+        int failures = 0;
+
+        string appDir = PathTools.join(scratch, "AppDir");
+        string bundledSyncthing = PathTools.join(appDir, "bin/syncthing");
+        string legacySyncthing = PathTools.join(
+            appDir, "usr/bin/syncthing");
+        string hostBin = PathTools.join(scratch, "host-bin");
+        string hostSyncthing = PathTools.join(hostBin, "syncthing");
+        string explicitSyncthing = PathTools.join(
+            scratch, "explicit-syncthing");
+        UnixFileSystem.mkdirp(PathTools.dirname(bundledSyncthing));
+        UnixFileSystem.mkdirp(PathTools.dirname(legacySyncthing));
+        UnixFileSystem.mkdirp(hostBin);
+        for executable in [bundledSyncthing, legacySyncthing,
+                           hostSyncthing, explicitSyncthing] {
+            Path.writeAll(executable, "#!/usr/bin/env sh\nexit 0\n");
+            FileSystem.chmod(executable, 448); // 0700
+        }
+        string previousAppDir = Environment.get("APPDIR", "");
+        string previousAssetRoot = Environment.get("SEMU_ASSET_ROOT", "");
+        string previousSourceRoot = Environment.get("SEMU_SOURCE_ROOT", "");
+        string previousSyncthing = Environment.get("SEMU_SYNCTHING_BIN", "");
+        string previousPathForBundle = Environment.get("PATH", "");
+        setenv("APPDIR", appDir, 1);
+        setenv("SEMU_ASSET_ROOT", "", 1);
+        setenv("SEMU_SOURCE_ROOT", PathTools.join(scratch, "config"), 1);
+        setenv("SEMU_SYNCTHING_BIN", explicitSyncthing, 1);
+        setenv("PATH", hostBin, 1);
+        string declaredSyncthing =
+            SemuSyncExecutables.declaredSyncthingPath();
+        string resolvedSyncthing = SemuSyncExecutables.syncthing();
+        FileSystem.chmod(bundledSyncthing, 384); // 0600
+        string missingBundled = SemuSyncExecutables.syncthing();
+        if (previousAppDir.isEmpty()) { unsetenv("APPDIR"); }
+        else { setenv("APPDIR", previousAppDir, 1); }
+        if (previousAssetRoot.isEmpty()) { unsetenv("SEMU_ASSET_ROOT"); }
+        else { setenv("SEMU_ASSET_ROOT", previousAssetRoot, 1); }
+        if (previousSourceRoot.isEmpty()) { unsetenv("SEMU_SOURCE_ROOT"); }
+        else { setenv("SEMU_SOURCE_ROOT", previousSourceRoot, 1); }
+        if (previousSyncthing.isEmpty()) { unsetenv("SEMU_SYNCTHING_BIN"); }
+        else { setenv("SEMU_SYNCTHING_BIN", previousSyncthing, 1); }
+        setenv("PATH", previousPathForBundle, 1);
+        JsonValue bundledPolicy = JsonValue.readFile(
+            PathTools.join(scratch, "config/settings/defaults.json"))
+            .get("menu").get("sync_runtime").get("syncthing");
+        if (!bundledPolicy.isObject()
+                || !bundledPolicy.get("appdir_relative_path").isString()
+                || !bundledPolicy.get("appdir_relative_path").asString()
+                    .equals("bin/syncthing")
+                || !declaredSyncthing.equals("bin/syncthing")
+                || !resolvedSyncthing.equals(
+                    FileSystem.absolutePath(bundledSyncthing))
+                || !missingBundled.isEmpty()) {
+            failures += SyncContractTest.fail(
+                "AppDir Syncthing did not resolve declaratively or fail closed");
+        }
+
+        string home = PathTools.join(scratch, "home");
+        string externalRoms = PathTools.join(scratch, "external-roms");
+        string externalBios = PathTools.join(scratch, "external-bios");
+        UnixFileSystem.mkdirp(externalRoms);
+        UnixFileSystem.mkdirp(externalBios);
+        string romMarker = PathTools.join(externalRoms, "gb");
+        UnixFileSystem.mkdirp(romMarker);
+        string romSentinel = PathTools.join(romMarker, "game.gb");
+        Path.writeAll(romSentinel, "read-only ROM fixture\n");
+        string biosSentinel = PathTools.join(externalBios, "firmware.bin");
+        Path.writeAll(biosSentinel, "read-only firmware fixture\n");
+        SemuConfigStore store = SemuConfigStore(scratch, home);
+        SemuConfigResult prepared = store.prepare();
+        SemuConfigResult romRoot = store.put(
+            "paths.roms_root.linux", JsonValue.makeString(externalRoms));
+        SemuConfigResult biosRoot = store.put(
+            "paths.bios_root.linux", JsonValue.makeString(externalBios));
+        SemuSyncPlan plan = SemuSyncPolicy.resolve(store, "linux");
+        SemuSyncFolder saves = SyncContractTest.folder(plan, "saves");
+        SemuSyncFolder roms = SyncContractTest.folder(plan, "roms");
+        SemuSyncFolder bios = SyncContractTest.folder(plan, "bios");
+        if (!prepared.ok || !romRoot.ok || !biosRoot.ok
+                || !plan.ok() || plan.folders.size() != 7
+                || plan.enabled || plan.startAtBoot
+                || saves.id.isEmpty() || saves.enabled
+                || !saves.access.equals("readwrite")
+                || !saves.syncthingType.equals("sendreceive")
+                || !saves.markerPolicy.equals("managed")
+                || !saves.markerName.equals(".stfolder")
+                || !saves.path.startsWith(
+                    FileSystem.absolutePath(scratch) + "/build/runtime/")
+                || roms.enabled || bios.enabled
+                || !roms.path.equals(FileSystem.absolutePath(externalRoms))
+                || !roms.access.equals("readonly")
+                || !roms.syncthingType.equals("sendonly")
+                || !roms.markerPolicy.equals("preexisting_child")
+                || !roms.markerName.isEmpty()
+                || !bios.path.equals(FileSystem.absolutePath(externalBios))
+                || !bios.access.equals("readonly")
+                || !bios.syncthingType.equals("sendonly")
+                || !bios.markerPolicy.equals("preexisting_child")
+                || !bios.markerName.isEmpty()) {
+            failures += SyncContractTest.fail(
+                "declarative folder policy did not resolve exact safe defaults");
+        }
+
+        string fake = PathTools.join(scratch, "syncthing-fixture");
+        Path.writeAll(fake, SyncContractTest.fakeSyncthing());
+        FileSystem.chmod(fake, 448); // 0700
+        SemuSyncRuntimeOptions options = SemuSyncRuntimeOptions();
+        options.syncthing = fake;
+        options.systemctl = fake;
+        SemuSyncGenerationResult first = SemuSyncGenerator.emit(plan);
+        string desiredBefore = Path.readAll(first.desiredFile);
+        string serviceBefore = Path.readAll(first.serviceFile);
+        SemuSyncGenerationResult second = SemuSyncGenerator.emit(plan);
+        SemuSyncPlan loadedSidecar = SemuSyncSidecar.load(
+            scratch, home, "linux");
+        SemuConfigResult unappliedAddress = store.putJson(
+            "sync.runtime.gui_address", "\"127.0.0.1:9393\"");
+        SemuSyncPlan unchangedSidecar = SemuSyncSidecar.load(
+            scratch, home, "linux");
+        SemuConfigResult restoredAddress = store.putJson(
+            "sync.runtime.gui_address", "\"127.0.0.1:8384\"");
+        JsonValue desired = JsonValue.parse(desiredBefore);
+        string writeLine = SyncContractTest.unitLine(
+            serviceBefore, "ReadWritePaths=");
+        string readLine = SyncContractTest.unitLine(
+            serviceBefore, "ReadOnlyPaths=");
+        string expectedService = SyncContractTest.expectedService(
+            template, plan);
+        if (!first.ok() || !second.ok() || desired.isError()
+                || (FileStatus(first.desiredFile).mode & 511) != 384
+                || (FileStatus(first.serviceFile).mode & 511) != 384
+                || !loadedSidecar.ok() || !unchangedSidecar.ok()
+                || !unappliedAddress.ok || !restoredAddress.ok
+                || !loadedSidecar.guiAddress.equals("127.0.0.1:8384")
+                || !unchangedSidecar.guiAddress.equals("127.0.0.1:8384")
+                || !desired.get("project_root").asString()
+                    .equals(FileSystem.absolutePath(scratch))
+                || !desired.get("semu_home").asString()
+                    .equals(FileSystem.absolutePath(home))
+                || !desired.get("platform").asString().equals("linux")
+                || !desiredBefore.equals(SemuJsonFormat.document(desired))
+                || !desiredBefore.equals(Path.readAll(second.desiredFile))
+                || !serviceBefore.equals(Path.readAll(second.serviceFile))
+                || writeLine.contains(saves.path)
+                || writeLine.contains(externalRoms)
+                || writeLine.contains(externalBios)
+                || readLine.contains(externalRoms)
+                || readLine.contains(externalBios)
+                || serviceBefore.contains("sudo")
+                || serviceBefore.contains("fusermount")
+                || serviceBefore.contains(".AppImage")
+                || serviceBefore.contains("/run/semu-appdir")
+                || serviceBefore.contains("/tmp/.mount")
+                || !serviceBefore.contains("/Applications/Semu/bin/semu\"")
+                || !serviceBefore.contains(" sync daemon")
+                || !serviceBefore.contains("ProtectSystem=strict")
+                || !serviceBefore.contains("ProtectHome=read-only")
+                || !serviceBefore.equals(expectedService)
+                || !SemuSyncServiceTemplate.source(scratch)
+                    .equals(stagedTemplate)) {
+            print("  first generation error: " + first.error);
+            print("  second generation error: " + second.error);
+            print("  ReadWritePaths: " + writeLine);
+            print("  ReadOnlyPaths: " + readLine);
+            failures += SyncContractTest.fail(
+                "owned authoritative sidecar/service generation is unsafe or non-idempotent");
+        }
+
+        string syncPackage = Path.readAll(PathTools.join(
+            project, "packaging/sync/package.nix"));
+        string semuSourcePackage = Path.readAll(PathTools.join(
+            project, "packaging/nix/semu_source.nix"));
+        string packagesModule = Path.readAll(PathTools.join(
+            project, "packaging/nix/flake/packages.nix"));
+        string syncSource = Path.readAll(PathTools.join(
+            project, "src/generators/sync.btrc"));
+        if (!template.equals(Path.readAll(stagedTemplate))
+                || syncSource.contains("class SemuSyncTemplates")
+                || syncSource.contains("Description=Semu Syncthing")
+                || !syncSource.contains("http_framing")
+                || !syncSource.contains("HttpFraming.headerLine(header)")
+                || !syncSource.contains(
+                    "ChildProcess.run(\"curl\", arguments")
+                || syncSource.contains("__SEMU_HTTP_STATUS__")
+                || syncSource.contains("class string curl()")
+                || syncSource.contains(
+                    "SemuSyncExecutables.executable(\"syncthing\")")
+                || syncSource.contains("execl(")
+                || !syncSource.contains("SemuSyncSidecar.load(")
+                || !syncPackage.contains(
+                    "builtins.readFile ./semu-syncthing.service.template")
+                || !packagesModule.contains(
+                    "semuSyncTemplate = pkgs.callPackage")
+                || !packagesModule.contains(
+                    "packaging/sync/package.nix")
+                || !packagesModule.contains(
+                    "semu-sync-template = semuSyncTemplate")
+                || !semuSourcePackage.contains(
+                    "${semuSyncTemplate}/share/semu/sync/semu-syncthing.service.template")
+                || !semuSourcePackage.contains(
+                    "$out/share/semu/config/templates/sync/semu-syncthing.service.template")) {
+            failures += SyncContractTest.fail(
+                "stdlib transport, bundled Syncthing, sidecar, or template ownership regressed");
+        }
+
+        SemuConfigResult enableRuntimeForFolders = store.putJson(
+            "sync.runtime.enabled", "true");
+        SemuConfigResult enableSaves = store.putJson(
+            "sync.folders.saves.enabled", "true");
+        SemuConfigResult enableRoms = store.putJson(
+            "sync.folders.roms.enabled", "true");
+        SemuConfigResult enableBios = store.putJson(
+            "sync.folders.bios.enabled", "true");
+        SemuSyncPlan readOnlyPlan = SemuSyncPolicy.resolve(store, "linux");
+        SemuSyncFolder readOnlyRoms = SyncContractTest.folder(
+            readOnlyPlan, "roms");
+        SemuSyncFolder readOnlyBios = SyncContractTest.folder(
+            readOnlyPlan, "bios");
+        SemuSyncGenerationResult readOnlyGenerated = SemuSyncGenerator.emit(
+            readOnlyPlan);
+        string readOnlyService = Path.readAll(readOnlyGenerated.serviceFile);
+        string readOnlyWrites = SyncContractTest.unitLine(
+            readOnlyService, "ReadWritePaths=");
+        string readOnlyReads = SyncContractTest.unitLine(
+            readOnlyService, "ReadOnlyPaths=");
+        if (!enableRuntimeForFolders.ok || !enableSaves.ok
+                || !enableRoms.ok || !enableBios.ok
+                || !readOnlyGenerated.ok()
+                || !readOnlyRoms.markerName.equals("gb")
+                || !readOnlyBios.markerName.equals("firmware.bin")
+                || !SemuSyncMarker.ready(readOnlyRoms)
+                || !SemuSyncMarker.ready(readOnlyBios)
+                || !SemuSyncMarker.runtimeError(readOnlyPlan).isEmpty()
+                || readOnlyWrites.contains(externalRoms)
+                || readOnlyWrites.contains(externalBios)
+                || !readOnlyReads.contains(externalRoms)
+                || !readOnlyReads.contains(externalBios)
+                || FileSystem.exists(PathTools.join(
+                    externalRoms, ".stfolder"))
+                || FileSystem.exists(PathTools.join(
+                    externalBios, ".stfolder"))
+                || !Path.readAll(romSentinel)
+                    .equals("read-only ROM fixture\n")
+                || !Path.readAll(biosSentinel)
+                    .equals("read-only firmware fixture\n")) {
+            print("  ROM enable error: " + enableRoms.error);
+            print("  read-only generation error: " + readOnlyGenerated.error);
+            print("  ROM ReadWritePaths: " + readOnlyWrites);
+            print("  ROM ReadOnlyPaths: " + readOnlyReads);
+            failures += SyncContractTest.fail(
+                "external ROM or BIOS synchronization received write access");
+        }
+
+        string initialized = SemuSyncService.initialize(readOnlyPlan, options);
+        string initializedAgain = SemuSyncService.initialize(readOnlyPlan, options);
+        if (!initialized.isEmpty() || !initializedAgain.isEmpty()
+                || !FileSystem.isFile(
+                    SemuSyncPaths.configFile(readOnlyPlan.semuHome))) {
+            failures += SyncContractTest.fail(
+                "bundled Syncthing did not initialize its isolated config idempotently");
+        }
+
+        string emptyExternal = PathTools.join(scratch, "empty-external");
+        string symlinkExternal = PathTools.join(scratch, "symlink-external");
+        UnixFileSystem.mkdirp(emptyExternal);
+        UnixFileSystem.mkdirp(symlinkExternal);
+        int markerLinked = FileSystem.symlink(
+            biosSentinel, PathTools.join(symlinkExternal, "firmware.bin"));
+        SemuConfigResult emptyRoot = store.put(
+            "paths.roms_root.linux", JsonValue.makeString(emptyExternal));
+        SemuSyncPlan missingMarker = SemuSyncPolicy.resolve(store, "linux");
+        SemuSyncGenerationResult missingGenerated = SemuSyncGenerator.emit(
+            missingMarker);
+        SemuConfigResult symlinkRoot = store.put(
+            "paths.roms_root.linux", JsonValue.makeString(symlinkExternal));
+        SemuSyncPlan symlinkMarker = SemuSyncPolicy.resolve(store, "linux");
+        SemuConfigResult restoreRoms = store.put(
+            "paths.roms_root.linux", JsonValue.makeString(externalRoms));
+        SemuSyncPlan restoredReadOnly = SemuSyncPolicy.resolve(store, "linux");
+        if (markerLinked != 0 || !emptyRoot.ok || missingMarker.ok()
+                || missingGenerated.ok() || !symlinkRoot.ok
+                || symlinkMarker.ok() || !restoreRoms.ok
+                || !restoredReadOnly.ok()
+                || !SyncContractTest.folder(restoredReadOnly, "roms")
+                    .markerName.equals("gb")
+                || FileSystem.exists(PathTools.join(
+                    emptyExternal, ".stfolder"))
+                || FileSystem.exists(PathTools.join(
+                    symlinkExternal, ".stfolder"))) {
+            failures += SyncContractTest.fail(
+                "read-only marker policy did not fail closed without a real direct child");
+        }
+
+        Vector<string> noHeaders = [];
+        Vector<string> injectedHeader = ["X-API-Key: value\nInjected: true"];
+        Vector<string> malformedHeader = ["Bad Header: value"];
+        if (SemuLoopbackHttpClient.get(
+                    "https://127.0.0.1:8384/rest/config", noHeaders).ok()
+                || SemuLoopbackHttpClient.get(
+                    "http://example.com/rest/config", noHeaders).ok()
+                || SemuLoopbackHttpClient.get(
+                    "http://127.0.0.1:8384.evil/rest/config", noHeaders).ok()
+                || SemuLoopbackHttpClient.get(
+                    "http://127.0.0.1:8384/rest/config",
+                    injectedHeader).ok()
+                || SemuLoopbackHttpClient.get(
+                    "http://127.0.0.1:8384/rest/config",
+                    malformedHeader).ok()) {
+            failures += SyncContractTest.fail(
+                "loopback HTTP boundary bypassed std framing or endpoint policy");
+        }
+
+        string outsideGenerated = PathTools.join(
+            scratch, "outside-sync-generated");
+        string linkedHome = PathTools.join(scratch, "linked-sync-home");
+        UnixFileSystem.mkdirp(outsideGenerated);
+        UnixFileSystem.mkdirp(linkedHome);
+        int linkedGenerated = FileSystem.symlink(outsideGenerated,
+            PathTools.join(linkedHome, "generated"));
+        SemuSyncPlan linkedPlan = SyncContractTest.relocatedPlan(
+            plan, plan.projectRoot, linkedHome);
+        SemuSyncGenerationResult linkedResult = SemuSyncGenerator.emit(
+            linkedPlan);
+
+        string destinationHome = PathTools.join(
+            scratch, "destination-sync-home");
+        SemuSyncPlan destinationPlan = SyncContractTest.relocatedPlan(
+            plan, plan.projectRoot, destinationHome);
+        string destinationPrepared = SemuSyncGenerator.prepareDirectories(
+            destinationPlan);
+        string outsideSidecar = PathTools.join(
+            scratch, "outside-sync-sidecar.json");
+        Path.writeAll(outsideSidecar, "preserve sync sidecar\n");
+        int destinationLinked = FileSystem.symlink(outsideSidecar,
+            SemuSyncPaths.desired(destinationHome));
+        SemuSyncGenerationResult destinationResult = SemuSyncGenerator.emit(
+            destinationPlan);
+
+        string traversalHome = PathTools.join(
+            scratch, "safe/../sync-traversal-home");
+        SemuSyncPlan traversalPlan = SyncContractTest.relocatedPlan(
+            plan, plan.projectRoot, traversalHome);
+        SemuSyncGenerationResult traversalResult = SemuSyncGenerator.emit(
+            traversalPlan);
+
+        string guardProject = PathTools.join(scratch, "guard-project");
+        string guardRuntime = PathTools.join(guardProject, "build/runtime");
+        string outsideContent = PathTools.join(scratch, "outside-content");
+        UnixFileSystem.mkdirp(guardRuntime);
+        UnixFileSystem.mkdirp(outsideContent);
+        int contentLinked = FileSystem.symlink(outsideContent,
+            PathTools.join(guardRuntime, "content"));
+        SemuSyncPlan writablePlan = SemuSyncPlan();
+        writablePlan.projectRoot = guardProject;
+        writablePlan.semuHome = PathTools.join(guardProject, "home");
+        SemuSyncFolder writableFolder = SemuSyncFolder();
+        writableFolder.id = "saves";
+        writableFolder.path = PathTools.join(guardRuntime, "content/saves");
+        writableFolder.access = "readwrite";
+        writableFolder.syncthingType = "sendreceive";
+        writableFolder.enabled = true;
+        writablePlan.folders.push(writableFolder);
+        string writableError = SemuSyncGenerator.prepareDirectories(
+            writablePlan);
+        if (linkedGenerated != 0 || linkedResult.ok()
+                || FileSystem.exists(PathTools.join(
+                    outsideGenerated, "sync/config.json"))
+                || !destinationPrepared.isEmpty() || destinationLinked != 0
+                || destinationResult.ok()
+                || !Path.readAll(outsideSidecar)
+                    .equals("preserve sync sidecar\n")
+                || traversalResult.ok()
+                || FileSystem.exists(PathTools.join(
+                    scratch, "sync-traversal-home"))
+                || contentLinked != 0 || writableError.isEmpty()
+                || FileSystem.exists(PathTools.join(outsideContent, "saves"))) {
+            failures += SyncContractTest.fail(
+                "sync writes escaped through a symlink or traversal component");
+        }
+
+        string curlBin = PathTools.join(scratch, "curl-bin");
+        string curlProgram = PathTools.join(curlBin, "curl");
+        string curlLog = PathTools.join(scratch, "curl.log");
+        string injectedFile = PathTools.join(scratch, "injected");
+        UnixFileSystem.mkdirp(curlBin);
+        Path.writeAll(curlProgram, SyncContractTest.recordingCurl());
+        FileSystem.chmod(curlProgram, 448); // 0700
+        string previousPath = Environment.get("PATH", "");
+        setenv("PATH", curlBin + ":" + previousPath, 1);
+        setenv("SEMU_SYNC_CURL_LOG", curlLog, 1);
+        string requestBody = "{\"folder\":\"semu-saves\"}";
+        Vector<string> safeHeaders = [
+            "Content-Type: application/json",
+            "X-Test: value; touch " + injectedFile
+        ];
+        SemuLoopbackHttpResponse transported = SemuLoopbackHttpClient.request(
+            "PUT", "http://127.0.0.1:8384/rest/config/folders/semu-saves",
+            safeHeaders, requestBody, 2);
+        string curlArguments = Path.readAll(curlLog);
+        setenv("PATH", previousPath, 1);
+        unsetenv("SEMU_SYNC_CURL_LOG");
+        if (!transported.ok() || !transported.body.equals(requestBody)
+                || !curlArguments.contains("--proto\n=http\n")
+                || !curlArguments.contains("--request\nPUT\n")
+                || !curlArguments.contains(
+                    "--header\nX-Test: value; touch " + injectedFile + "\n")
+                || !curlArguments.contains("--data-binary\n@-\n")
+                || !curlArguments.contains(
+                    "--\nhttp://127.0.0.1:8384/rest/config/folders/semu-saves\n")
+                || FileSystem.exists(injectedFile)) {
+            failures += SyncContractTest.fail(
+                "loopback transport did not preserve structured argv and stdin");
+        }
+
+        string systemctlProgram = PathTools.join(
+            scratch, "systemctl-recorder");
+        string systemctlLog = PathTools.join(scratch, "systemctl.log");
+        Path.writeAll(systemctlProgram,
+            SyncContractTest.recordingSystemctl());
+        FileSystem.chmod(systemctlProgram, 448); // 0700
+        options.systemctl = systemctlProgram;
+        setenv("SEMU_SYNC_SYSTEMCTL_LOG", systemctlLog, 1);
+
+        SemuConfigResult disableSync = store.putJson(
+            "sync.runtime.enabled", "false");
+        SemuSyncPlan disabledPlan = SemuSyncPolicy.resolve(store, "linux");
+        SemuSyncGenerationResult disabledGenerated = SemuSyncGenerator.emit(
+            disabledPlan);
+        setenv("SEMU_SYNC_SYSTEMCTL_FAIL", "disable-now", 1);
+        string disableNowError = SemuSyncService.apply(
+            disabledPlan, options, disabledGenerated);
+        string disableNowLog = Path.readAll(systemctlLog);
+
+        setenv("SEMU_SYNC_SYSTEMCTL_FAIL", "", 1);
+        string disabledSuccess = SemuSyncService.apply(
+            disabledPlan, options, disabledGenerated);
+        SemuConfigResult enableSync = store.putJson(
+            "sync.runtime.enabled", "true");
+        SemuConfigResult disableBoot = store.putJson(
+            "sync.runtime.start_at_boot", "false");
+        SemuSyncPlan nonBootPlan = SemuSyncPolicy.resolve(store, "linux");
+        SemuSyncGenerationResult nonBootGenerated = SemuSyncGenerator.emit(
+            nonBootPlan);
+        Path.writeAll(systemctlLog, "");
+        setenv("SEMU_SYNC_SYSTEMCTL_FAIL", "disable-boot", 1);
+        string disableBootError = SemuSyncService.apply(
+            nonBootPlan, options, nonBootGenerated);
+        string disableBootLog = Path.readAll(systemctlLog);
+        setenv("SEMU_SYNC_SYSTEMCTL_FAIL", "link", 1);
+        string linkError = SemuSyncService.apply(
+            disabledPlan, options, disabledGenerated);
+        setenv("SEMU_SYNC_SYSTEMCTL_FAIL", "daemon-reload", 1);
+        string reloadError = SemuSyncService.apply(
+            disabledPlan, options, disabledGenerated);
+        setenv("SEMU_SYNC_SYSTEMCTL_FAIL", "is-active", 1);
+        SemuSyncServiceStatus queryFailure = SemuSyncService.status(
+            options.systemctl);
+        setenv("SEMU_SYNC_SYSTEMCTL_FAIL", "service-failed", 1);
+        SemuSyncServiceStatus failedService = SemuSyncService.status(
+            options.systemctl);
+        setenv("SEMU_SYNC_SYSTEMCTL_FAIL", "", 1);
+        SemuSyncServiceStatus runningService = SemuSyncService.status(
+            options.systemctl);
+        unsetenv("SEMU_SYNC_SYSTEMCTL_FAIL");
+        unsetenv("SEMU_SYNC_SYSTEMCTL_LOG");
+        SemuConfigResult restoreBoot = store.putJson(
+            "sync.runtime.start_at_boot", "true");
+        if (!disableSync.ok || !disabledGenerated.ok()
+                || !disableNowError.equals(
+                    "could not disable the Semu Syncthing user service")
+                || !disableNowLog.contains(
+                    "--user disable --now semu-syncthing.service")
+                || !disabledSuccess.isEmpty()
+                || !enableSync.ok || !disableBoot.ok || !nonBootGenerated.ok()
+                || !disableBootError.equals(
+                    "could not disable start-at-boot for the Semu Syncthing user service")
+                || !disableBootLog.contains(
+                    "--user disable semu-syncthing.service")
+                || disableBootLog.contains(
+                    "--user start semu-syncthing.service")
+                || !linkError.equals(
+                    "could not link the Semu Syncthing user service")
+                || !reloadError.equals(
+                    "could not reload the user service manager")
+                || queryFailure.ok()
+                || !queryFailure.error.equals(
+                    "could not query the Semu Syncthing user service")
+                || failedService.ok()
+                || !failedService.error.equals(
+                    "the Semu Syncthing user service is failed")
+                || !runningService.ok() || !runningService.active
+                || !runningService.enabledAtBoot
+                || !restoreBoot.ok) {
+            print("  disable --now error: " + disableNowError);
+            print("  non-boot disable error: " + disableBootError);
+            print("  non-boot systemctl log: " + disableBootLog);
+            failures += SyncContractTest.fail(
+                "systemctl/service failures were suppressed or execution continued");
+        }
+
+        SemuSyncProductResult open = SemuSyncProduct.open(
+            store, "linux", false);
+        if (!SemuSyncEndpoint.cliAddress("127.0.0.1:8384")
+                .equals("127.0.0.1:8384")
+                || !SemuSyncEndpoint.restBaseUrl("127.0.0.1:8384")
+                    .equals("http://127.0.0.1:8384")
+                || !SemuSyncEndpoint.uiUrl("127.0.0.1:8384")
+                    .equals("http://127.0.0.1:8384/")
+                || !SemuSyncEndpoint.cliAddress("http://127.0.0.1:8384")
+                    .isEmpty()
+                || !open.ok()
+                || !open.document.equals("http://127.0.0.1:8384/\n")) {
+            failures += SyncContractTest.fail(
+                "Syncthing CLI address and REST URL were not kept distinct");
+        }
+
+        if (syncSource.contains("--gui-address=http://")) {
+            failures += SyncContractTest.fail(
+                "Syncthing daemon passed an HTTP URL to --gui-address");
+        }
+
+        string lifecycleLog = PathTools.join(scratch, "sync-lifecycle.log");
+        string lifecycleLauncher = PathTools.join(
+            scratch, "sync-lifecycle-recorder");
+        Path.writeAll(lifecycleLauncher, SyncContractTest.recordingLauncher());
+        FileSystem.chmod(lifecycleLauncher, 448); // 0700
+        setenv("SEMU_SYNC_TEST_LOG", lifecycleLog, 1);
+        setenv("SEMU_SYSTEMCTL", lifecycleLauncher, 1);
+
+        SemuSyncOperation settingsOperation =
+            SemuSyncOperation.settingsPrepare();
+        SemuSyncOperation installerOperation =
+            SemuSyncOperation.installerApply();
+        SemuSyncOperation directApply = SemuSyncOperation.direct("apply");
+        SemuSyncOperation directStatus = SemuSyncOperation.direct("status");
+        SemuSyncOperation rejectedOperation =
+            SemuSyncOperation.direct("prepare");
+        SemuSyncProductResult preparedSync = SemuSyncProduct.execute(
+            store, "linux", settingsOperation);
+        bool prepareTouchedService = FileSystem.exists(lifecycleLog);
+
+        SemuInstallOptions installOptions = SemuInstallOptions();
+        installOptions.installRoot = PathTools.join(scratch, "install");
+        installOptions.projectRoot = scratch;
+        installOptions.romsRoot = externalRoms;
+        installOptions.romsExplicit = true;
+        SemuInstallPolicy installPolicy = SemuInstallPolicy();
+        installPolicy.sourceRoot = PathTools.join(scratch, "config");
+        installPolicy.settingsPlatform = "linux";
+        installPolicy.ownedRomsFallback = "build/runtime/content/ROMs";
+        installPolicy.stableLauncher = "bin/semu";
+        installPolicy.runtimeCli = "libexec/semu-btrc";
+        installPolicy.defaultApplicationsRoot = ".local/share/applications";
+        installPolicy.postInstallCommand = ["sync", "apply"];
+        SemuInstallPaths installPaths = SemuInstallPaths(
+            installPolicy, installOptions);
+        UnixFileSystem.mkdirp(PathTools.dirname(installPaths.stableLauncher));
+        Path.writeAll(installPaths.stableLauncher,
+            SyncContractTest.recordingLauncher());
+        FileSystem.chmod(installPaths.stableLauncher, 448); // 0700
+        SemuInstaller installerFlow = SemuInstaller(
+            installOptions, installPolicy, installPaths);
+        string releaseRoot = PathTools.join(scratch, "release");
+        UnixFileSystem.mkdirp(releaseRoot);
+        Path.writeAll(PathTools.join(releaseRoot, "AppRun"),
+            SyncContractTest.recordingLauncher());
+        FileSystem.chmod(PathTools.join(releaseRoot, "AppRun"), 448); // 0700
+        SemuInstallResult installerApplied = installerFlow.applySync(
+            releaseRoot,
+            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+        Vector<string> lifecycleInvocations = [];
+        for line in Strings.split(Path.readAll(lifecycleLog), "\n") {
+            if (!line.trim().isEmpty()) {
+                lifecycleInvocations.push(line.trim());
+            }
+        }
+        unsetenv("SEMU_SYSTEMCTL");
+        unsetenv("SEMU_SYNC_TEST_LOG");
+        if (!settingsOperation.valid()
+                || settingsOperation.serviceApplyCount != 0
+                || !preparedSync.ok() || prepareTouchedService
+                || !installerOperation.valid()
+                || installerOperation.serviceApplyCount != 1
+                || !installerApplied.ok()
+                || lifecycleInvocations.size() != 1
+                || !lifecycleInvocations.get(0).startsWith("sync apply ")
+                || !directApply.valid() || !directStatus.valid()
+                || directApply.serviceApplyCount != 1
+                || directStatus.serviceApplyCount != 0
+                || rejectedOperation.valid()) {
+            print("  prepare lifecycle error: " + preparedSync.error);
+            print("  installer lifecycle error: " + installerApplied.error);
+            failures += SyncContractTest.fail(
+                "typed prepare/install/direct sync lifecycle is not exact");
+        }
+
+        string defaultsFile = SemuConfigPaths.defaults(scratch);
+        JsonValue defaults = JsonValue.readFile(defaultsFile);
+        JsonValue policies = defaults.get("menu").get("sync_folders");
+        JsonValue unsafePolicy = policies.at(0);
+        unsafePolicy.set("relative_path", JsonValue.makeString("../../escape"));
+        Path.writeAll(defaultsFile, SemuJsonFormat.document(defaults));
+        SemuSyncPlan rejected = SemuSyncPolicy.resolve(store, "linux");
+        if (rejected.ok() || FileSystem.exists(PathTools.join(scratch, "escape"))) {
+            failures += SyncContractTest.fail(
+                "folder policy traversal escaped its declared root");
+        }
+
+        if (!SyncProcessAudit.clean(scratch)) {
+            failures += SyncContractTest.fail(
+                "compiler test leaked a Syncthing process or descendant");
+        }
+        failures += RealSyncthingRuntimeContract.run();
+        FileSystem.removeRecursive(scratch);
+        if (failures == 0) {
+            print("sync contract: sidecar + stdlib transport + service failures valid");
+        }
+        return failures;
+    }
+}

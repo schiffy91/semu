@@ -1,0 +1,528 @@
+// Read-only parser and acceptance policy for Steam's binary shortcuts.vdf.
+
+import std.{bytes, fs, strings, vector}
+
+class DeckSteamShortcut {
+    public string source;
+    public string index;
+    public string name;
+    public string executable;
+    public string startDirectory;
+    public string launchOptions;
+    public string appId;
+    public bool sawAppId;
+    public bool sawName;
+    public bool sawExecutable;
+    public bool sawStartDirectory;
+    public bool sawLaunchOptions;
+
+    public DeckSteamShortcut() {
+        self.source = "";
+        self.index = "";
+        self.name = "";
+        self.executable = "";
+        self.startDirectory = "";
+        self.launchOptions = "";
+        self.appId = "";
+        self.sawAppId = false;
+        self.sawName = false;
+        self.sawExecutable = false;
+        self.sawStartDirectory = false;
+        self.sawLaunchOptions = false;
+    }
+
+    public string appIdText() {
+        return self.sawAppId
+            && DeckUnsignedDecimal.atLeast(self.appId, "2147483648")
+            ? self.appId : "";
+    }
+
+    public string gameId() {
+        string appId = self.appIdText();
+        if (appId.isEmpty()) { return ""; }
+        string shifted = DeckUnsignedDecimal.multiply(
+            DeckUnsignedDecimal.multiply(appId, 65536), 65536);
+        return DeckUnsignedDecimal.add(shifted, "33554432");
+    }
+}
+
+class DeckUnsignedDecimal {
+    class bool digits(string value) {
+        if (value.isEmpty()) { return false; }
+        for character in value {
+            if (character < '0' || character > '9') { return false; }
+        }
+        return true;
+    }
+
+    class bool atLeast(string value, string minimum) {
+        if (!DeckUnsignedDecimal.digits(value)
+                || !DeckUnsignedDecimal.digits(minimum)) {
+            return false;
+        }
+        if (value.len() != minimum.len()) {
+            return value.len() > minimum.len();
+        }
+        for (int index = 0; index < value.len(); index++) {
+            if (value.charAt(index) == minimum.charAt(index)) { continue; }
+            return value.charAt(index) > minimum.charAt(index);
+        }
+        return true;
+    }
+
+    class string multiply(string decimal, int factor) {
+        if (decimal.isEmpty() || factor < 0) { return ""; }
+        Vector<string> reversed = [];
+        int carry = 0;
+        for (int index = decimal.len() - 1; index >= 0; index--) {
+            char character = decimal.charAt(index);
+            if (character < '0' || character > '9') { return ""; }
+            int product = (character - '0') * factor + carry;
+            reversed.push(f"{product % 10}");
+            carry = product / 10;
+        }
+        while (carry > 0) {
+            reversed.push(f"{carry % 10}");
+            carry = carry / 10;
+        }
+        Vector<string> output = [];
+        for (int index = reversed.size() - 1; index >= 0; index--) {
+            output.push(reversed.get(index));
+        }
+        return output.isEmpty() ? "0" : output.join("");
+    }
+
+    class string add(string left, string right) {
+        Vector<string> reversed = [];
+        int leftIndex = left.len() - 1;
+        int rightIndex = right.len() - 1;
+        int carry = 0;
+        while (leftIndex >= 0 || rightIndex >= 0 || carry > 0) {
+            int leftDigit = 0;
+            int rightDigit = 0;
+            if (leftIndex >= 0) {
+                char character = left.charAt(leftIndex--);
+                if (character < '0' || character > '9') { return ""; }
+                leftDigit = character - '0';
+            }
+            if (rightIndex >= 0) {
+                char character = right.charAt(rightIndex--);
+                if (character < '0' || character > '9') { return ""; }
+                rightDigit = character - '0';
+            }
+            int sum = leftDigit + rightDigit + carry;
+            reversed.push(f"{sum % 10}");
+            carry = sum / 10;
+        }
+        Vector<string> output = [];
+        for (int index = reversed.size() - 1; index >= 0; index--) {
+            output.push(reversed.get(index));
+        }
+        return output.join("");
+    }
+}
+
+class DeckSteamShortcutParseResult {
+    public bool valid;
+    public string error;
+    public Vector<DeckSteamShortcut> shortcuts;
+
+    public DeckSteamShortcutParseResult() {
+        self.valid = false;
+        self.error = "";
+        self.shortcuts = [];
+    }
+}
+
+class DeckSteamShortcutVdf {
+    class void invalidate(DeckSteamShortcutParseResult result, string error) {
+        if (result.error.isEmpty()) { result.error = error; }
+        result.valid = false;
+    }
+
+    class bool bounded(Bytes bytes, int offset, int count) {
+        return offset >= 0 && count >= 0 && offset <= bytes.length()
+            && count <= bytes.length() - offset;
+    }
+
+    class string cstring(Bytes bytes, int* offset,
+                         DeckSteamShortcutParseResult result) {
+        int start = *offset;
+        int end = start;
+        while (end < bytes.length() && bytes.get(end) != 0) {
+            int value = bytes.get(end);
+            if (value < 32 || value == 127 || end - start >= 16384) {
+                DeckSteamShortcutVdf.invalidate(
+                    result, "shortcuts.vdf contains an invalid string");
+                return "";
+            }
+            end++;
+        }
+        if (end >= bytes.length()) {
+            DeckSteamShortcutVdf.invalidate(
+                result, "shortcuts.vdf contains an unterminated string");
+            return "";
+        }
+        *offset = end + 1;
+        return bytes.slice(start, end).toString();
+    }
+
+    class bool skipValue(Bytes bytes, int* offset, int type,
+                         DeckSteamShortcutParseResult result) {
+        int count = 0;
+        if (type == 2 || type == 3 || type == 4 || type == 6) {
+            count = 4;
+        } else if (type == 7 || type == 10) {
+            count = 8;
+        } else if (type == 5) {
+            int opening = *offset;
+            while (DeckSteamShortcutVdf.bounded(bytes, *offset, 2)
+                    && (bytes.get(*offset) != 0
+                        || bytes.get(*offset + 1) != 0)
+                    && *offset - opening <= 2097152) {
+                *offset += 2;
+            }
+            if (!DeckSteamShortcutVdf.bounded(bytes, *offset, 2)
+                    || *offset - opening > 2097152) {
+                DeckSteamShortcutVdf.invalidate(
+                    result, "shortcuts.vdf contains an invalid wide string");
+                return false;
+            }
+            *offset += 2;
+            return true;
+        } else {
+            DeckSteamShortcutVdf.invalidate(
+                result, f"shortcuts.vdf uses unsupported value type {type}");
+            return false;
+        }
+        if (!DeckSteamShortcutVdf.bounded(bytes, *offset, count)) {
+            DeckSteamShortcutVdf.invalidate(
+                result, "shortcuts.vdf contains a truncated value");
+            return false;
+        }
+        *offset += count;
+        return true;
+    }
+
+    class string unsignedInt32(Bytes bytes, int* offset,
+                               DeckSteamShortcutParseResult result) {
+        if (!DeckSteamShortcutVdf.bounded(bytes, *offset, 4)) {
+            DeckSteamShortcutVdf.invalidate(
+                result, "shortcuts.vdf contains a truncated appid");
+            return "";
+        }
+        string value = "0";
+        for (int index = 3; index >= 0; index--) {
+            value = DeckUnsignedDecimal.add(
+                DeckUnsignedDecimal.multiply(value, 256),
+                f"{bytes.get(*offset + index)}");
+        }
+        *offset += 4;
+        return value;
+    }
+
+    class bool decimalIndex(string value) {
+        if (value.isEmpty()) { return false; }
+        for character in value {
+            if (character < '0' || character > '9') { return false; }
+        }
+        return true;
+    }
+
+    class void capture(DeckSteamShortcut shortcut, string key, string value,
+                       DeckSteamShortcutParseResult result) {
+        string field = key.toLower();
+        if (field.equals("appname")) {
+            if (shortcut.sawName) {
+                DeckSteamShortcutVdf.invalidate(
+                    result, "shortcut contains duplicate appname fields");
+                return;
+            }
+            shortcut.sawName = true;
+            shortcut.name = value;
+        } else if (field.equals("exe")) {
+            if (shortcut.sawExecutable) {
+                DeckSteamShortcutVdf.invalidate(
+                    result, "shortcut contains duplicate exe fields");
+                return;
+            }
+            shortcut.sawExecutable = true;
+            shortcut.executable = value;
+        } else if (field.equals("startdir")) {
+            if (shortcut.sawStartDirectory) {
+                DeckSteamShortcutVdf.invalidate(
+                    result, "shortcut contains duplicate StartDir fields");
+                return;
+            }
+            shortcut.sawStartDirectory = true;
+            shortcut.startDirectory = value;
+        } else if (field.equals("launchoptions")) {
+            if (shortcut.sawLaunchOptions) {
+                DeckSteamShortcutVdf.invalidate(
+                    result, "shortcut contains duplicate LaunchOptions fields");
+                return;
+            }
+            shortcut.sawLaunchOptions = true;
+            shortcut.launchOptions = value;
+        }
+    }
+
+    class bool entries(Bytes bytes, int* offset, int depth,
+                       bool shortcutContainer, bool captureFields,
+                       DeckSteamShortcut shortcut,
+                       DeckSteamShortcutParseResult result) {
+        if (depth > 16) {
+            DeckSteamShortcutVdf.invalidate(
+                result, "shortcuts.vdf nesting exceeds the safety limit");
+            return false;
+        }
+        int fields = 0;
+        while (*offset < bytes.length()) {
+            if (++fields > 65536) {
+                DeckSteamShortcutVdf.invalidate(
+                    result, "shortcuts.vdf has too many fields");
+                return false;
+            }
+            int type = bytes.get(*offset);
+            *offset += 1;
+            if (type == 8) { return true; }
+            string key = DeckSteamShortcutVdf.cstring(bytes, offset, result);
+            if (!result.error.isEmpty() || key.isEmpty()) {
+                if (result.error.isEmpty()) {
+                    DeckSteamShortcutVdf.invalidate(
+                        result, "shortcuts.vdf contains an empty key");
+                }
+                return false;
+            }
+            if (type == 0) {
+                if (depth == 0 && key.equals("shortcuts")) {
+                    if (result.valid) {
+                        DeckSteamShortcutVdf.invalidate(
+                            result, "shortcuts.vdf has duplicate roots");
+                        return false;
+                    }
+                    result.valid = true;
+                    if (!DeckSteamShortcutVdf.entries(bytes, offset, depth + 1,
+                            true, false, shortcut, result)) {
+                        return false;
+                    }
+                } else if (shortcutContainer) {
+                    if (!DeckSteamShortcutVdf.decimalIndex(key)) {
+                        DeckSteamShortcutVdf.invalidate(result,
+                            "shortcuts.vdf shortcut index is not numeric");
+                        return false;
+                    }
+                    DeckSteamShortcut record = DeckSteamShortcut();
+                    record.source = shortcut.source;
+                    record.index = key;
+                    if (!DeckSteamShortcutVdf.entries(bytes, offset, depth + 1,
+                            false, true, record, result)) {
+                        return false;
+                    }
+                    result.shortcuts.push(record);
+                } else if (!DeckSteamShortcutVdf.entries(bytes, offset,
+                        depth + 1, false, false, shortcut, result)) {
+                    return false;
+                }
+                continue;
+            }
+            if (captureFields && key.toLower().equals("appid")) {
+                if (type != 2 || shortcut.sawAppId) {
+                    DeckSteamShortcutVdf.invalidate(result,
+                        type != 2
+                            ? "shortcut appid is not encoded as an int32"
+                            : "shortcut contains duplicate appid fields");
+                    return false;
+                }
+                shortcut.appId = DeckSteamShortcutVdf.unsignedInt32(
+                    bytes, offset, result);
+                shortcut.sawAppId = result.error.isEmpty();
+                if (!result.error.isEmpty()) { return false; }
+                continue;
+            }
+            if (captureFields && ["appname", "exe", "startdir",
+                                  "launchoptions"].contains(key.toLower())
+                    && type != 1) {
+                DeckSteamShortcutVdf.invalidate(result,
+                    "shortcut identity field is not encoded as a string");
+                return false;
+            }
+            if (type == 1) {
+                string value = DeckSteamShortcutVdf.cstring(
+                    bytes, offset, result);
+                if (!result.error.isEmpty()) { return false; }
+                if (captureFields) {
+                    DeckSteamShortcutVdf.capture(
+                        shortcut, key, value, result);
+                    if (!result.error.isEmpty()) { return false; }
+                }
+            } else if (!DeckSteamShortcutVdf.skipValue(
+                    bytes, offset, type, result)) {
+                return false;
+            }
+        }
+        DeckSteamShortcutVdf.invalidate(
+            result, "shortcuts.vdf object is missing its end marker");
+        return false;
+    }
+
+    class DeckSteamShortcutParseResult parse(Bytes bytes, string source) {
+        DeckSteamShortcutParseResult result = DeckSteamShortcutParseResult();
+        if (bytes.isEmpty() || bytes.length() > 16777216) {
+            result.error = "shortcuts.vdf is empty or exceeds 16 MiB";
+            return result;
+        }
+        DeckSteamShortcut root = DeckSteamShortcut();
+        root.source = source;
+        int offset = 0;
+        bool complete = DeckSteamShortcutVdf.entries(
+            bytes, &offset, 0, false, false, root, result);
+        if (!complete || !result.error.isEmpty() || !result.valid
+                || offset != bytes.length()) {
+            if (result.error.isEmpty()) {
+                result.error = !result.valid
+                    ? "shortcuts.vdf lacks a shortcuts root"
+                    : "shortcuts.vdf contains trailing data";
+            }
+            result.valid = false;
+        }
+        return result;
+    }
+}
+
+class DeckSteamShortcutResolution {
+    public bool valid;
+    public string error;
+    public DeckSteamShortcut shortcut;
+    public string databaseSha256;
+
+    public DeckSteamShortcutResolution() {
+        self.valid = false;
+        self.error = "";
+        self.shortcut = DeckSteamShortcut();
+        self.databaseSha256 = "";
+    }
+
+    public string appId() { return self.shortcut.appIdText(); }
+    public string gameId() { return self.shortcut.gameId(); }
+}
+
+class DeckSteamShortcutPolicy {
+    class string unquote(string value) {
+        string normalized = value.trim();
+        if (normalized.len() >= 2 && normalized.startsWith("\"")
+                && normalized.endsWith("\"")) {
+            normalized = normalized.substring(1, normalized.len() - 2);
+        }
+        return normalized;
+    }
+
+    class bool semuRelated(DeckSteamShortcut shortcut) {
+        string name = shortcut.name.toLower();
+        string target = DeckSteamShortcutPolicy.unquote(
+            shortcut.executable).toLower();
+        string details = (target + "\n" + shortcut.startDirectory + "\n"
+            + shortcut.launchOptions).toLower();
+        return name.equals("semu") || name.startsWith("semu-")
+            || name.startsWith("semu ") || target.endsWith("/semu")
+            || details.contains("/semu/")
+            || details.contains("semu-x86_64");
+    }
+
+    class bool transientTarget(DeckSteamShortcut shortcut) {
+        string value = (shortcut.executable + "\n"
+            + shortcut.startDirectory + "\n" + shortcut.launchOptions)
+            .toLower();
+        return value.contains("semu-x86_64.appimage")
+            || value.contains(".appimage")
+            || value.contains("/releases/")
+            || value.contains("/apprun");
+    }
+
+    class DeckSteamShortcutResolution resolve(
+            Vector<DeckSteamShortcutParseResult> documents,
+            string expectedExecutable) {
+        DeckSteamShortcutResolution result = DeckSteamShortcutResolution();
+        int matching = 0;
+        int semuRecords = 0;
+        for document in documents {
+            if (!document.valid) {
+                result.error = "cannot parse Steam shortcut database: "
+                    + document.error;
+                return result;
+            }
+            for shortcut in document.shortcuts {
+                if (!DeckSteamShortcutPolicy.semuRelated(shortcut)) { continue; }
+                semuRecords++;
+                if (DeckSteamShortcutPolicy.transientTarget(shortcut)) {
+                    result.error = "Steam shortcut " + shortcut.source + ":"
+                        + shortcut.index
+                        + " targets a forbidden release/AppImage/AppRun path";
+                    return result;
+                }
+                if (shortcut.sawName && shortcut.sawExecutable
+                        && shortcut.sawStartDirectory
+                        && shortcut.sawLaunchOptions && shortcut.sawAppId
+                        && shortcut.name.equals("Semu")
+                        && DeckSteamShortcutPolicy.unquote(shortcut.executable)
+                            .equals(expectedExecutable)
+                        && DeckSteamShortcutPolicy.unquote(
+                            shortcut.startDirectory).equals(
+                                PathTools.dirname(expectedExecutable))
+                        && shortcut.launchOptions.trim().isEmpty()
+                        && !shortcut.appIdText().isEmpty()
+                        && !shortcut.gameId().isEmpty()) {
+                    matching++;
+                    result.shortcut = shortcut;
+                } else {
+                    result.error = "Steam shortcut " + shortcut.source + ":"
+                        + shortcut.index
+                        + " is Semu-related but is not the exact name, target, start directory, empty launch-options, and non-Steam appid contract for "
+                        + expectedExecutable;
+                    return result;
+                }
+            }
+        }
+        if (matching != 1 || semuRecords != 1) {
+            result.error = f"expected exactly one stable Semu shortcut, found {matching} valid and {semuRecords} Semu-related records";
+            return result;
+        }
+        result.valid = true;
+        return result;
+    }
+
+    class string verify(Vector<DeckSteamShortcutParseResult> documents,
+                        string expectedExecutable) {
+        return DeckSteamShortcutPolicy.resolve(
+            documents, expectedExecutable).error;
+    }
+}
+
+class DeckHexBytes {
+    class int nibble(char value) {
+        if (value >= '0' && value <= '9') { return value - '0'; }
+        if (value >= 'a' && value <= 'f') { return value - 'a' + 10; }
+        if (value >= 'A' && value <= 'F') { return value - 'A' + 10; }
+        return -1;
+    }
+
+    class Bytes decode(string value) {
+        Bytes result = Bytes();
+        int high = -1;
+        for character in value {
+            if (character == ' ' || character == '\t'
+                    || character == '\r' || character == '\n') {
+                continue;
+            }
+            int digit = DeckHexBytes.nibble(character);
+            if (digit < 0) { return Bytes(); }
+            if (high < 0) {
+                high = digit;
+            } else {
+                result.append(high * 16 + digit);
+                high = -1;
+            }
+        }
+        return high < 0 ? result : Bytes();
+    }
+}

@@ -1,0 +1,28 @@
+[Unit]
+Description=Semu Syncthing
+After=network-online.target
+Wants=network-online.target
+ConditionPathIsExecutable=@@SEMU_LAUNCHER@@
+
+[Service]
+Type=simple
+ExecStart=@@EXEC_START@@
+WorkingDirectory=@@WORKING_DIRECTORY@@
+Restart=on-failure
+RestartSec=5s
+SuccessExitStatus=3 4
+TimeoutStopSec=30s
+KillMode=mixed
+UMask=0077
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=@@READ_WRITE_PATHS@@
+ReadOnlyPaths=@@READ_ONLY_PATHS@@
+RestrictSUIDSGID=yes
+RestrictRealtime=yes
+LockPersonality=yes
+
+[Install]
+WantedBy=default.target

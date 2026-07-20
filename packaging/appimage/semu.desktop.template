@@ -1,0 +1,10 @@
+[Desktop Entry]
+Name=Semu
+Comment=Emulation environment
+Exec=semu
+Icon=semu
+Type=Application
+Categories=Game;Emulator;
+Terminal=false
+StartupNotify=true
+X-Semu-Launch-Policy=installed-stable-launcher

@@ -1,0 +1,412 @@
+{
+  "schema_version": 1,
+  "compiler": {
+    "bindings": {
+      "emulator_name": {
+        "source": "emulator.name"
+      },
+      "pad": {
+        "source": "input.device_identities.dolphin_pad"
+      },
+      "wiimote": {
+        "source": "input.device_identities.dolphin_wiimote"
+      },
+      "pointer": {
+        "source": "input.device_identities.dolphin_pointer"
+      },
+      "speed_limit_expression": {
+        "literal": "Tab & !@(Ctrl+Tab)"
+      },
+      "wiimote_profile": {
+        "source": "profile.controller_modes.0.profile"
+      },
+      "nunchuk_profile": {
+        "source": "profile.controller_modes.1.profile"
+      },
+      "classic_profile": {
+        "source": "profile.controller_modes.2.profile"
+      },
+      "gamecube_profile": {
+        "source": "profile.controller_modes.3.profile"
+      },
+      "initial_wiimote_source": {
+        "source": "settings.input.systems.wii.controller_mode",
+        "map": {
+          "wiimote": "1",
+          "nunchuk": "1",
+          "classic": "1",
+          "gamecube": "0"
+        }
+      },
+      "initial_wiimote_extension": {
+        "source": "settings.input.systems.wii.controller_mode",
+        "map": {
+          "wiimote": "None",
+          "nunchuk": "Nunchuk",
+          "classic": "Classic",
+          "gamecube": "None"
+        }
+      }
+    },
+    "line_groups": {
+      "keymap_hotkeys": {
+        "rows": "hotkeys.keymap",
+        "format": "${setting} = ${chord}",
+        "chord_encoding": {
+          "mode": "joined",
+          "separator": "+",
+          "format": "@(${value})",
+          "whole": {
+            "Esc": "Escape"
+          }
+        }
+      },
+      "controller_mode_hotkeys": {
+        "rows": "controller_modes",
+        "format": "${hotkey_setting} = ${chord}",
+        "chord_encoding": {
+          "mode": "joined",
+          "separator": "+",
+          "format": "@(${value})",
+          "whole": {
+            "Esc": "Escape"
+          }
+        }
+      },
+      "controller_mode_profiles": {
+        "rows": "controller_modes",
+        "format": "${ini_key} = ${profile}"
+      }
+    }
+  },
+  "controller": {
+    "ownership": "semu_generated",
+    "source": "input.device_identities.dolphin_pad",
+    "consumer": "Dolphin SDL controller profiles"
+  },
+  "doc": {
+    "purpose": "Dolphin profile tree content as data: every INI body lives here, substituted by the generic profile compiler. Controller modes declare semantic actions, native hotkey settings, exact generated profile names, and the Dolphin input tree that owns each profile. The owned input.systems.wii.controller_mode setting selects the initial Wii Remote source and extension; all four profile hotkeys remain available for radial runtime switching.",
+    "grammar": "Dolphin's control-expression wire format: backtick controls, `<device>:<control>` qualified references, @(...) hotkey chords."
+  },
+  "controller_modes": [
+    {
+      "id": "wiimote",
+      "action": "wii.controller.wiimote",
+      "hotkey_setting": "Semu Controller Mode/Wii Remote",
+      "profile": "Semu Wiimote",
+      "profile_config": "wiimote",
+      "ini_key": "WiimoteProfile"
+    },
+    {
+      "id": "nunchuk",
+      "action": "wii.controller.nunchuk",
+      "hotkey_setting": "Semu Controller Mode/Wii Remote + Nunchuk",
+      "profile": "Semu Nunchuk",
+      "profile_config": "wiimote",
+      "ini_key": "NunchukProfile"
+    },
+    {
+      "id": "classic",
+      "action": "wii.controller.classic",
+      "hotkey_setting": "Semu Controller Mode/Classic Controller",
+      "profile": "Semu Classic",
+      "profile_config": "wiimote",
+      "ini_key": "ClassicProfile"
+    },
+    {
+      "id": "gamecube",
+      "action": "wii.controller.gamecube",
+      "hotkey_setting": "Semu Controller Mode/GameCube Controller",
+      "profile": "Semu GameCube",
+      "profile_config": "gcpad",
+      "ini_key": "GameCubeProfile"
+    }
+  ],
+  "blocks": {
+    "gamecube_pad_body": [
+      "Device = ${pad}",
+      "Buttons/A = `Button S`",
+      "Buttons/B = `Button W`",
+      "Buttons/X = `Button E`",
+      "Buttons/Y = `Button N`",
+      "Buttons/Z = `Shoulder R`|Back",
+      "Buttons/Start = Start",
+      "Main Stick/Up = `Axis 1-`",
+      "Main Stick/Down = `Axis 1+`",
+      "Main Stick/Left = `Axis 0-`",
+      "Main Stick/Right = `Axis 0+`",
+      "C-Stick/Up = `Axis 4-`",
+      "C-Stick/Down = `Axis 4+`",
+      "C-Stick/Left = `Axis 3-`",
+      "C-Stick/Right = `Axis 3+`",
+      "Triggers/L = `Trigger L`",
+      "Triggers/R = `Trigger R`",
+      "Triggers/L-Analog = `Trigger L`",
+      "Triggers/R-Analog = `Trigger R`",
+      "D-Pad/Up = `Pad N`",
+      "D-Pad/Down = `Pad S`",
+      "D-Pad/Left = `Pad W`",
+      "D-Pad/Right = `Pad E`",
+      "Rumble/Motor = Strong",
+      "Options/Always Connected = True"
+    ],
+    "wiimote_profile_common": [
+      "Device = ${wiimote}",
+      "Buttons/A = `A`|`${pointer}:Click 1`|`${pointer}:Return`",
+      "Buttons/B = B|`R4`",
+      "Buttons/1 = X",
+      "Buttons/2 = Y",
+      "Buttons/- = View",
+      "Buttons/+ = Menu",
+      "D-Pad/Up = `D-Pad Up`",
+      "D-Pad/Down = `D-Pad Down`",
+      "D-Pad/Left = `D-Pad Left`",
+      "D-Pad/Right = `D-Pad Right`",
+      "IR/Vertical Offset = 12.",
+      "IR/Total Yaw = 19.",
+      "IR/Total Pitch = 22.",
+      "IR/Auto-Hide = True",
+      "IR/Up = `${pointer}:Cursor Y-`",
+      "IR/Down = `${pointer}:Cursor Y+`",
+      "IR/Left = `${pointer}:Cursor X-`",
+      "IR/Right = `${pointer}:Cursor X+`",
+      "IR/Hide = `Thumb L`",
+      "IMUIR/Enabled = False",
+      "IMUAccelerometer/Up = `Accel Up`",
+      "IMUAccelerometer/Down = `Accel Down`",
+      "IMUAccelerometer/Left = `Accel Left`",
+      "IMUAccelerometer/Right = `Accel Right`",
+      "IMUAccelerometer/Forward = `Accel Forward`",
+      "IMUAccelerometer/Backward = `Accel Backward`",
+      "IMUGyroscope/Pitch Up = `Gyro Pitch Up`",
+      "IMUGyroscope/Pitch Down = `Gyro Pitch Down`",
+      "IMUGyroscope/Roll Left = `Gyro Roll Left`",
+      "IMUGyroscope/Roll Right = `Gyro Roll Right`",
+      "IMUGyroscope/Yaw Left = `Gyro Yaw Left`",
+      "IMUGyroscope/Yaw Right = `Gyro Yaw Right`"
+    ]
+  },
+  "hotkeys": {
+    "keymap": [
+      {
+        "setting": "General/Open",
+        "action": "ui.open"
+      },
+      {
+        "setting": "General/Toggle Pause",
+        "action": "ui.pause"
+      },
+      {
+        "setting": "General/Stop",
+        "action": "app.quit"
+      },
+      {
+        "setting": "General/Toggle Fullscreen",
+        "action": "ui.fullscreen"
+      },
+      {
+        "setting": "General/Take Screenshot",
+        "action": "ui.screenshot"
+      },
+      {
+        "setting": "Load State/Load State Slot 1",
+        "action": "state.load"
+      },
+      {
+        "setting": "Save State/Save State Slot 1",
+        "action": "state.save"
+      },
+      {
+        "setting": "Other State Hotkeys/Decrease Selected State Slot",
+        "action": "state.prev"
+      },
+      {
+        "setting": "Other State Hotkeys/Increase Selected State Slot",
+        "action": "state.next"
+      }
+    ]
+  },
+  "files": [
+    {
+      "path": "${emulator_name}/config/Dolphin.ini",
+      "lines": [
+        "[Analytics]",
+        "Enabled = False",
+        "PermissionAsked = True",
+        "",
+        "[Core]",
+        "SIDevice0 = 6",
+        "SIDevice1 = 0",
+        "SIDevice2 = 0",
+        "SIDevice3 = 0",
+        "WiimoteSource0 = ${initial_wiimote_source}",
+        "WiimoteSource1 = 0",
+        "WiimoteSource2 = 0",
+        "WiimoteSource3 = 0",
+        "GFXBackend = OGL",
+        "",
+        "[Interface]",
+        "ConfirmStop = False",
+        "UsePanicHandlers = False",
+        "",
+        "[Semu Controller Modes]",
+        "@lines:controller_mode_profiles"
+      ]
+    },
+    {
+      "path": "${emulator_name}/config/GCPadNew.ini",
+      "lines": [
+        "[GCPad1]",
+        "@block:gamecube_pad_body",
+        "[GCPad2]",
+        "Device = ${pad}",
+        "[GCPad3]",
+        "Device = ${pad}",
+        "[GCPad4]",
+        "Device = ${pad}"
+      ]
+    },
+    {
+      "path": "${emulator_name}/config/WiimoteNew.ini",
+      "lines": [
+        "[Wiimote1]",
+        "Device = ${pointer}",
+        "Buttons/A = Return|`Click 1`|`${wiimote}:A`",
+        "Buttons/B = B|`Click 3`|`${wiimote}:B`|`${wiimote}:R4`",
+        "Buttons/1 = 1|`${wiimote}:X`",
+        "Buttons/2 = 2|`${wiimote}:Y`",
+        "Buttons/- = Q|`${wiimote}:View`",
+        "Buttons/+ = E|`${wiimote}:Menu`",
+        "Buttons/Home = Return",
+        "D-Pad/Up = Up|`${wiimote}:D-Pad Up`",
+        "D-Pad/Down = Down|`${wiimote}:D-Pad Down`",
+        "D-Pad/Left = Left|`${wiimote}:D-Pad Left`",
+        "D-Pad/Right = Right|`${wiimote}:D-Pad Right`",
+        "IR/Vertical Offset = 12.",
+        "IR/Total Yaw = 19.",
+        "IR/Total Pitch = 22.",
+        "IR/Auto-Hide = True",
+        "IR/Up = `Cursor Y-`",
+        "IR/Down = `Cursor Y+`",
+        "IR/Left = `Cursor X-`",
+        "IR/Right = `Cursor X+`",
+        "IR/Hide = `${wiimote}:Thumb L`",
+        "IMUIR/Enabled = False",
+        "Extension = ${initial_wiimote_extension}",
+        "Nunchuk/Buttons/C = `${wiimote}:Shoulder R`",
+        "Nunchuk/Buttons/Z = `${wiimote}:Trigger R`",
+        "Nunchuk/Stick/Up = `${wiimote}:Left Stick Y+`",
+        "Nunchuk/Stick/Down = `${wiimote}:Left Stick Y-`",
+        "Nunchuk/Stick/Left = `${wiimote}:Left Stick X-`",
+        "Nunchuk/Stick/Right = `${wiimote}:Left Stick X+`",
+        "Classic/Buttons/A = `${wiimote}:B`",
+        "Classic/Buttons/B = `${wiimote}:A`",
+        "Classic/Buttons/X = `${wiimote}:Y`",
+        "Classic/Buttons/Y = `${wiimote}:X`",
+        "Classic/Buttons/ZL = `${wiimote}:L1`",
+        "Classic/Buttons/ZR = `${wiimote}:R1`",
+        "Classic/Buttons/- = `${wiimote}:View`",
+        "Classic/Buttons/+ = `${wiimote}:Menu`",
+        "Classic/Left Stick/Up = `${wiimote}:Left Stick Y+`",
+        "Classic/Left Stick/Down = `${wiimote}:Left Stick Y-`",
+        "Classic/Left Stick/Left = `${wiimote}:Left Stick X-`",
+        "Classic/Left Stick/Right = `${wiimote}:Left Stick X+`",
+        "Classic/Right Stick/Up = `${wiimote}:Right Stick Y+`",
+        "Classic/Right Stick/Down = `${wiimote}:Right Stick Y-`",
+        "Classic/Right Stick/Left = `${wiimote}:Right Stick X-`",
+        "Classic/Right Stick/Right = `${wiimote}:Right Stick X+`",
+        "Classic/Triggers/L = `${wiimote}:L2`",
+        "Classic/Triggers/R = `${wiimote}:R2`",
+        "Classic/D-Pad/Up = `${wiimote}:D-Pad Up`",
+        "Classic/D-Pad/Down = `${wiimote}:D-Pad Down`",
+        "Classic/D-Pad/Left = `${wiimote}:D-Pad Left`",
+        "Classic/D-Pad/Right = `${wiimote}:D-Pad Right`",
+        "Rumble/Motor = Strong",
+        "Source = 1",
+        "[Wiimote2]",
+        "Device = ${wiimote}",
+        "[Wiimote3]",
+        "Device = ${wiimote}",
+        "[Wiimote4]",
+        "Device = ${wiimote}",
+        "[BalanceBoard]",
+        "Device = ${wiimote}"
+      ]
+    },
+    {
+      "path": "${emulator_name}/config/Profiles/GCPad/${gamecube_profile}.ini",
+      "lines": [
+        "[Profile]",
+        "@block:gamecube_pad_body"
+      ]
+    },
+    {
+      "path": "${emulator_name}/config/Hotkeys.ini",
+      "lines": [
+        "[Hotkeys]",
+        "Device = ${pointer}",
+        "@lines:keymap_hotkeys",
+        "@lines:controller_mode_hotkeys",
+        "Emulation Speed/Disable Emulation Speed Limit = ${speed_limit_expression}",
+        "Controller Profile 1/Next Profile = @(Alt+F5)",
+        "Other State Hotkeys/Undo Load State = F12",
+        "Other State Hotkeys/Undo Save State = @(Shift+F12)"
+      ]
+    },
+    {
+      "path": "${emulator_name}/config/Profiles/Wiimote/${wiimote_profile}.ini",
+      "lines": [
+        "[Profile]",
+        "@block:wiimote_profile_common",
+        "Extension = None",
+        "Rumble/Motor = Strong"
+      ]
+    },
+    {
+      "path": "${emulator_name}/config/Profiles/Wiimote/${nunchuk_profile}.ini",
+      "lines": [
+        "[Profile]",
+        "@block:wiimote_profile_common",
+        "Extension = Nunchuk",
+        "Nunchuk/Buttons/C = `Shoulder R`",
+        "Nunchuk/Buttons/Z = `Trigger R`",
+        "Nunchuk/Stick/Up = `Left Stick Y+`",
+        "Nunchuk/Stick/Down = `Left Stick Y-`",
+        "Nunchuk/Stick/Left = `Left Stick X-`",
+        "Nunchuk/Stick/Right = `Left Stick X+`",
+        "Rumble/Motor = Strong"
+      ]
+    },
+    {
+      "path": "${emulator_name}/config/Profiles/Wiimote/${classic_profile}.ini",
+      "lines": [
+        "[Profile]",
+        "@block:wiimote_profile_common",
+        "Extension = Classic",
+        "Classic/Buttons/A = B",
+        "Classic/Buttons/B = A",
+        "Classic/Buttons/X = Y",
+        "Classic/Buttons/Y = X",
+        "Classic/Buttons/ZL = `L1`",
+        "Classic/Buttons/ZR = `R1`",
+        "Classic/Buttons/- = View",
+        "Classic/Buttons/+ = Menu",
+        "Classic/Left Stick/Up = `Left Stick Y+`",
+        "Classic/Left Stick/Down = `Left Stick Y-`",
+        "Classic/Left Stick/Left = `Left Stick X-`",
+        "Classic/Left Stick/Right = `Left Stick X+`",
+        "Classic/Right Stick/Up = `Right Stick Y+`",
+        "Classic/Right Stick/Down = `Right Stick Y-`",
+        "Classic/Right Stick/Left = `Right Stick X-`",
+        "Classic/Right Stick/Right = `Right Stick X+`",
+        "Classic/Triggers/L = `L2`",
+        "Classic/Triggers/R = `R2`",
+        "Classic/D-Pad/Up = `D-Pad Up`",
+        "Classic/D-Pad/Down = `D-Pad Down`",
+        "Classic/D-Pad/Left = `D-Pad Left`",
+        "Classic/D-Pad/Right = `D-Pad Right`",
+        "Rumble/Motor = Strong"
+      ]
+    }
+  ]
+}

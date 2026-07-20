@@ -1,0 +1,187 @@
+// Read-only Deck discovery and preflight. Exact shortcut identity and selected
+// external inputs are resolved by the deployed BTRC helper, never by shell.
+
+import std.{json, vector}
+import ./acceptance_plan.btrc
+import ./deck_transport.btrc
+import ./game_mode.btrc
+
+class DeckProtectedSelection {
+    public bool valid;
+    public string error;
+    public int descriptorIndex;
+    public Vector<DeckProtectedInput> inputs;
+
+    public DeckProtectedSelection() {
+        self.valid = false;
+        self.error = "";
+        self.descriptorIndex = -1;
+        self.inputs = [];
+    }
+
+    public string rom() {
+        for input in self.inputs {
+            if (input.kind.equals("rom")) { return input.path; }
+        }
+        return "";
+    }
+}
+
+class DeckBatchSnapshot {
+    public bool valid;
+    public string error;
+    public string identity;
+    public string sentinelSha256;
+
+    public DeckBatchSnapshot() {
+        self.valid = false;
+        self.error = "";
+        self.identity = "";
+        self.sentinelSha256 = "";
+    }
+}
+
+class DeckPreflight {
+    public DeckHarnessOptions options;
+    public DeckAcceptancePlan plan;
+    public DeckTransport transport;
+
+    public DeckPreflight(DeckHarnessOptions options,
+                         DeckAcceptancePlan plan,
+                         DeckTransport transport) {
+        self.options = options;
+        self.plan = plan;
+        self.transport = transport;
+    }
+
+    public DeckGameModeRequest base(string operation) {
+        DeckGameModeRequest request = DeckGameModeRequest();
+        request.operation = operation;
+        request.scenario = operation;
+        request.projectRoot = self.options.remoteProject;
+        request.esDeHome = self.options.esDeHome;
+        request.steamRoot = self.options.steamRoot;
+        request.externalRoots = self.options.externalRoots();
+        request.shortcut.executable = DeckHarnessOptions.installedLauncher();
+        return request;
+    }
+
+    public DeckExpectedShortcut inspectShortcut() {
+        DeckGameModeRequest request = self.base("inspect");
+        string identity = DeckRunIdentity.create();
+        DeckTransportReceipt receipt = self.transport.invoke(
+            request, identity);
+        if (!receipt.valid) { return DeckExpectedShortcut(); }
+        return DeckExpectedShortcut.parse(receipt.document.get("shortcut"));
+    }
+
+    public DeckProtectedInput inspectInput(string kind, string path) {
+        DeckGameModeRequest request = self.base("inspect-inputs");
+        DeckProtectedInput candidate = DeckProtectedInput();
+        candidate.kind = kind;
+        candidate.path = path;
+        request.protectedInputs.push(candidate);
+        DeckTransportReceipt receipt = self.transport.invoke(
+            request, DeckRunIdentity.create());
+        JsonValue inputs = receipt.document.get("protected_inputs");
+        return receipt.valid && inputs.isArray() && inputs.size() == 1
+            ? DeckProtectedInput.parse(inputs.at(0)) : DeckProtectedInput();
+    }
+
+    class bool hasPath(Vector<DeckProtectedInput> inputs, string path) {
+        for input in inputs {
+            if (input.path.equals(path)) { return true; }
+        }
+        return false;
+    }
+
+    public DeckProtectedSelection resolveInputs(DeckSystemCase system) {
+        DeckProtectedSelection result = DeckProtectedSelection();
+        Vector<string> roms = system.romCandidates(self.options);
+        for (int index = 0; index < roms.size(); index++) {
+            DeckProtectedInput rom = self.inspectInput("rom", roms.get(index));
+            if (rom.valid(self.options.externalRoots())) {
+                result.inputs.push(rom);
+                result.descriptorIndex = index;
+                break;
+            }
+        }
+        if (result.inputs.isEmpty()) {
+            result.error = system.id
+                + ": no declared verification ROM exists as a regular file";
+            return result;
+        }
+        for group in system.protectedGroups {
+            DeckProtectedInput selected = DeckProtectedInput();
+            for candidate in group.resolved(self.options) {
+                selected = self.inspectInput(group.kind, candidate);
+                if (selected.valid(self.options.externalRoots())) { break; }
+            }
+            if (!selected.valid(self.options.externalRoots())) {
+                if (group.required) {
+                    result.error = system.id
+                        + ": required protected input is absent: "
+                        + group.purpose;
+                    return result;
+                }
+                continue;
+            }
+            if (!DeckPreflight.hasPath(result.inputs, selected.path)) {
+                result.inputs.push(selected);
+            }
+        }
+        result.valid = true;
+        return result;
+    }
+
+    public DeckHarnessResult verify(DeckExpectedShortcut shortcut) {
+        if (!shortcut.valid()) {
+            return DeckHarnessResult.failure(
+                "installed Semu Steam shortcut could not be resolved exactly");
+        }
+        DeckGameModeRequest request = self.base("preflight");
+        request.shortcut = shortcut;
+        request.generatedInputs = self.options.generatedInputs();
+        DeckTransportReceipt receipt = self.transport.invoke(
+            request, DeckRunIdentity.create());
+        return receipt.valid ? DeckHarnessResult.success()
+            : DeckHarnessResult.failure(receipt.error);
+    }
+
+    public DeckBatchSnapshot beginBatch() {
+        DeckBatchSnapshot result = DeckBatchSnapshot();
+        result.identity = DeckRunIdentity.create();
+        DeckGameModeRequest request = self.base("batch-begin");
+        DeckTransportReceipt receipt = self.transport.invoke(
+            request, result.identity);
+        string sentinel = receipt.document.get("media")
+            .get("sentinel_sha256").isString()
+            ? receipt.document.get("media").get("sentinel_sha256").asString()
+            : "";
+        if (!receipt.valid || !DeckHarnessStrings.lowerHex(sentinel, 64)) {
+            result.error = receipt.valid
+                ? "batch sentinel receipt is invalid" : receipt.error;
+            return result;
+        }
+        result.valid = true;
+        result.sentinelSha256 = sentinel;
+        return result;
+    }
+
+    public DeckHarnessResult endBatch(DeckBatchSnapshot batch) {
+        if (!batch.valid) {
+            return DeckHarnessResult.failure("batch was not started");
+        }
+        DeckGameModeRequest request = self.base("batch-end");
+        DeckTransportReceipt receipt = self.transport.invoke(
+            request, DeckRunIdentity.create(), batch.identity, true);
+        string sentinel = receipt.document.get("media")
+            .get("sentinel_sha256").isString()
+            ? receipt.document.get("media").get("sentinel_sha256").asString()
+            : "";
+        return receipt.valid && sentinel.equals(batch.sentinelSha256)
+            ? DeckHarnessResult.success()
+            : DeckHarnessResult.failure(receipt.valid
+                ? "batch external-media metadata changed" : receipt.error);
+    }
+}

@@ -1,0 +1,105 @@
+{
+  "schema_version": 1,
+  "enabled": true,
+  "default_variant": "horizontal",
+  "hole": {
+    "x": 0.044140625,
+    "y": 0.2025,
+    "w": 0.91171875,
+    "h": 0.519375
+  },
+  "screen_holes": {
+    "top": {
+      "x": 0.044140625,
+      "y": 0.2025,
+      "w": 0.43203125,
+      "h": 0.519375
+    },
+    "bottom": {
+      "x": 0.523828125,
+      "y": 0.2025,
+      "w": 0.43203125,
+      "h": 0.519375
+    }
+  },
+  "variants": [
+    {
+      "id": "vertical",
+      "label": "DS Vertical",
+      "art": "assets/bezels/nds/vertical.png",
+      "hole": {
+        "x": 0.340234375,
+        "y": 0.04,
+        "w": 0.31953125,
+        "h": 0.911875
+      },
+      "screen_holes": {
+        "top": {
+          "x": 0.340234375,
+          "y": 0.04,
+          "w": 0.31953125,
+          "h": 0.3825
+        },
+        "bottom": {
+          "x": 0.340234375,
+          "y": 0.56875,
+          "w": 0.31953125,
+          "h": 0.383125
+        }
+      }
+    },
+    {
+      "id": "horizontal",
+      "label": "Side by Side",
+      "art": "assets/bezels/nds/horizontal.png",
+      "hole": {
+        "x": 0.044140625,
+        "y": 0.2025,
+        "w": 0.91171875,
+        "h": 0.519375
+      },
+      "screen_holes": {
+        "top": {
+          "x": 0.044140625,
+          "y": 0.2025,
+          "w": 0.43203125,
+          "h": 0.519375
+        },
+        "bottom": {
+          "x": 0.523828125,
+          "y": 0.2025,
+          "w": 0.43203125,
+          "h": 0.519375
+        }
+      }
+    },
+    {
+      "id": "big_screen",
+      "label": "Big Screen",
+      "art": "assets/bezels/nds/big_screen.png",
+      "hole": {
+        "x": 0.17109375,
+        "y": 0.274375,
+        "w": 0.66796875,
+        "h": 0.515625
+      },
+      "screen_holes": {
+        "top": {
+          "x": 0.17109375,
+          "y": 0.274375,
+          "w": 0.412890625,
+          "h": 0.495625
+        },
+        "bottom": {
+          "x": 0.6578125,
+          "y": 0.5725,
+          "w": 0.18125,
+          "h": 0.2175
+        }
+      }
+    }
+  ],
+  "doc": {
+    "layouts": "Horizontal is the Steam Deck default because it fits both 256x192 screens at a common integer scale. Vertical preserves the physical stacked layout, and big_screen prioritizes the top display. Rectangles target the measured dark display openings rather than the surrounding bevels."
+  }
+}

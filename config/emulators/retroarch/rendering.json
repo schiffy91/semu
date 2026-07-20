@@ -1,0 +1,71 @@
+{
+  "schema_version": 1,
+  "activation": {
+    "mode": "source_patched_direct_link",
+    "package_ready": true,
+    "runtime_proven": false,
+    "physical_proven": false
+  },
+  "integration": {
+    "abi": 2,
+    "api": "semu-renderer",
+    "linkage": "direct",
+    "header": "semu_renderer.h",
+    "library": "semurenderer",
+    "backend": "opengl",
+    "callbacks": [
+      "get_proc_address",
+      "current_context"
+    ],
+    "inactive_reports": false,
+    "frame_gate": "video_info.libretro_running with valid game and viewport geometry",
+    "platforms": [
+      "x86_64-linux"
+    ],
+    "framebuffer": "default_opengl_backbuffer",
+    "geometry": "live_retroarch_viewport",
+    "presentation_aspect": "live rendered viewport width divided by height",
+    "layout_variant": "auto_from_presentation_aspect",
+    "origin": "bottom_left",
+    "orientation": "upright",
+    "rotation": 0,
+    "patch": "retroarch.patch",
+    "compile_define": "HAVE_SEMU_RENDERER"
+  },
+  "phases": [
+    {
+      "id": "game",
+      "symbol": "semu_render_game_gl",
+      "after": "final GL2 or GL3 renderchain draw",
+      "before": "RetroArch overlays, menu, widgets, and OSD"
+    },
+    {
+      "id": "post_ui",
+      "symbol": "semu_render_post_ui_gl",
+      "after": "RetroArch overlays, menu, widgets, and OSD",
+      "before": "gfx context swap_buffers"
+    }
+  ],
+  "surfaces": [
+    {
+      "index": 0,
+      "id": "game",
+      "geometry": "live RetroArch viewport",
+      "native": "current libretro frame dimensions",
+      "origin": "bottom_left",
+      "orientation": "upright",
+      "rotation": 0
+    }
+  ],
+  "composition": {
+    "owner": "semurenderer",
+    "shader": "renderer_owned",
+    "bezel": "renderer_owned",
+    "semu_menu": "renderer_owned",
+    "retroarch_ui": "between_game_and_post_ui_phases"
+  },
+  "doc": {
+    "boundary": "GL2 and GL3 submit the completed game viewport to the game phase, draw all RetroArch UI and OSD normally, then submit the same frame to the post-UI phase immediately before RetroArch swaps. Both calls run regardless of RetroArch menu state.",
+    "evidence": "Package linkage, patch application, exact phase order, and forbidden-symbol absence are source gates. Real game pixels and physical composition remain runtime gates."
+  }
+}

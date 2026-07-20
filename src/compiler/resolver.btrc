@@ -1,0 +1,275 @@
+// resolver.btrc - inheritance, precedence, and target duty selection.
+
+import std.{fs, json, vector}
+import ../lib/merge.btrc
+import ../lib/owned_paths.btrc
+import ./model.btrc
+import ./parser.btrc
+
+class SemuTargetResolver {
+    class SemuCompilerTarget inherit(SemuCompilerTarget child,
+                                     SemuCompilerTarget parent) {
+        if (child.platform.isEmpty()) { child.platform = parent.platform; }
+        if (child.nixSystems.isEmpty()) { child.nixSystems = parent.nixSystems; }
+        if (child.backends.isEmpty()) { child.backends = parent.backends; }
+        if (child.artifact.isEmpty()) { child.artifact = parent.artifact; }
+        if (child.input.isEmpty()) { child.input = parent.input; }
+        if (!child.deploymentTargetDeclared && parent.deploymentTargetDeclared) {
+            child.deploymentTarget = parent.deploymentTarget;
+            child.deploymentTargetDeclared = true;
+        }
+        if (child.validation.kind.isEmpty()) {
+            child.validation.kind = parent.validation.kind;
+        }
+        if (child.validation.harness.isEmpty()) {
+            child.validation.harness = parent.validation.harness;
+        }
+        if (child.validation.image.isEmpty()) {
+            child.validation.image = parent.validation.image;
+        }
+        if (child.validation.viewport.width == 0) {
+            child.validation.viewport = parent.validation.viewport;
+        }
+        child.settings = JsonMerge.recursive(parent.settings, child.settings);
+        for file in parent.sourceFiles {
+            if (!child.sourceFiles.contains(file)) {
+                child.sourceFiles.push(file);
+            }
+        }
+        return child;
+    }
+
+    class SemuCompilerTarget resolve(SemuCompilerTarget target, string configRoot,
+                                     CompilerDiagnostics diagnostics) {
+        Vector<string> visited = [target.id];
+        SemuCompilerTarget resolved = target;
+        while (!resolved.inherits.isEmpty()) {
+            string parentId = resolved.inherits;
+            if (visited.contains(parentId)) {
+                diagnostics.add(resolved.file, "inherits",
+                    "target inheritance cycle through '" + parentId + "'");
+                return resolved;
+            }
+            if (!SemuDefinitionId.valid(parentId)) {
+                return resolved;
+            }
+            visited.push(parentId);
+            string parentFile = PathTools.join(
+                PathTools.join(configRoot, "targets"), parentId + ".json");
+            if (!FileSystem.isFile(parentFile)) {
+                diagnostics.add(resolved.file, "inherits",
+                    "unknown target '" + parentId + "'");
+                return resolved;
+            }
+            SemuCompilerTarget parent = SemuTargetParser.parse(
+                parentId, parentFile, diagnostics);
+            resolved = SemuTargetResolver.inherit(resolved, parent);
+            resolved.inherits = parent.inherits;
+        }
+        return resolved;
+    }
+}
+
+class SemuSettingsResolver {
+    class void overrideFiles(string semuHome, string root,
+                             Vector<string> files,
+                             CompilerDiagnostics diagnostics) {
+        FileStatus rootStatus = FileStatus(root);
+        if (!rootStatus.linkFound) { return; }
+        if (rootStatus.isSymlink() || !rootStatus.isDir()
+                || SemuOwnedPaths.containedPath(
+                    semuHome, root).isEmpty()) {
+            diagnostics.add(root, "overrides",
+                "override directory escapes Semu-owned settings");
+            return;
+        }
+        Vector<string> names = [];
+        for name in Directory(root).entries() { names.push(name); }
+        names.sort();
+        for name in names {
+            string path = PathTools.join(root, name);
+            FileStatus status = FileStatus(path);
+            if (status.isSymlink()) {
+                diagnostics.add(path, "overrides",
+                    "symlinked settings layers are not allowed");
+            } else if (status.isDir()) {
+                SemuSettingsResolver.overrideFiles(
+                    semuHome, path, files, diagnostics);
+            } else if (status.isFile() && name.endsWith(".json")
+                    && !SemuOwnedPaths.containedPath(
+                        semuHome, path).isEmpty()) {
+                files.push(path);
+            }
+        }
+    }
+
+    class JsonValue optionalObject(string file, CompilerDiagnostics diagnostics) {
+        if (!FileSystem.isFile(file)) { return JsonValue.makeObject(); }
+        JsonValue value = JsonValue.readFile(file);
+        if (value.isError()) {
+            diagnostics.add(file, "(root)", "invalid JSON");
+            return JsonValue.makeObject();
+        }
+        if (!value.isObject()) {
+            diagnostics.add(file, "(root)", "settings layer must be an object");
+            return JsonValue.makeObject();
+        }
+        return value;
+    }
+
+    class JsonValue optionalOwnedObject(string file, string semuHome,
+                                        CompilerDiagnostics diagnostics) {
+        FileStatus status = FileStatus(file);
+        if (!status.linkFound) { return JsonValue.makeObject(); }
+        if (status.isSymlink() || !status.isFile()
+                || SemuOwnedPaths.containedPath(
+                    semuHome, file).isEmpty()) {
+            diagnostics.add(file, "(root)",
+                "settings layer escapes Semu-owned settings");
+            return JsonValue.makeObject();
+        }
+        return SemuSettingsResolver.optionalObject(file, diagnostics);
+    }
+
+    class JsonValue overrides(string semuHome, CompilerDiagnostics diagnostics) {
+        Vector<string> files = [];
+        SemuSettingsResolver.overrideFiles(
+            semuHome, PathTools.join(semuHome, "overrides"),
+            files, diagnostics);
+        Vector<JsonValue> layers = [];
+        for file in files {
+            layers.push(SemuSettingsResolver.optionalObject(file, diagnostics));
+        }
+        return JsonMerge.precedence(layers);
+    }
+
+    class Vector<string> definitionFiles(
+            string semuHome, CompilerDiagnostics diagnostics) {
+        Vector<string> files = [];
+        string userSettings = PathTools.join(semuHome, "semu.json");
+        FileStatus userStatus = FileStatus(userSettings);
+        if (userStatus.linkFound && !userStatus.isSymlink()
+                && userStatus.isFile()
+                && !SemuOwnedPaths.containedPath(
+                    semuHome, userSettings).isEmpty()) {
+            files.push(userSettings);
+        }
+        SemuSettingsResolver.overrideFiles(
+            semuHome, PathTools.join(semuHome, "overrides"),
+            files, diagnostics);
+        files.sort();
+        return files;
+    }
+
+    class JsonValue resolve(JsonValue repository, JsonValue target,
+                            SemuBuildRequest request,
+                            CompilerDiagnostics diagnostics) {
+        if (request.semuHome.isEmpty()
+                || !SemuOwnedPaths.canOwnDirectory(request.semuHome)) {
+            diagnostics.add(request.semuHome, "settings",
+                "Semu settings root has a symlinked or non-directory ancestor");
+        }
+        JsonValue commandLine = request.commandLineSettings;
+        if (!commandLine.isObject()) {
+            diagnostics.add("--settings-json", "(root)",
+                "settings layer must be an object");
+            commandLine = JsonValue.makeObject();
+        }
+        SemuDefinitionLayers layers = SemuDefinitionLayers();
+        layers.repositoryDefaults = repository;
+        layers.targetDefaults = target;
+        layers.userSettings = SemuSettingsResolver.optionalOwnedObject(
+            PathTools.join(request.semuHome, "semu.json"),
+            request.semuHome, diagnostics);
+        layers.userOverrides = SemuSettingsResolver.overrides(
+            request.semuHome, diagnostics);
+        layers.commandLine = commandLine;
+        return layers.resolve();
+    }
+}
+
+class SemuBuildResolver {
+    class void addDefinition(SemuBuildPlan plan, string file) {
+        if (!file.isEmpty() && !plan.definitionFiles.contains(file)) {
+            plan.definitionFiles.push(file);
+        }
+    }
+
+    class SemuBuildPlan resolve(SemuCompilerModel model, SemuBuildRequest request,
+                                CompilerDiagnostics diagnostics) {
+        SemuBuildPlan plan = SemuBuildPlan();
+        SemuCompilerTarget target = SemuTargetResolver.resolve(
+            model.target, model.configRoot, diagnostics);
+        plan.operation = request.operation;
+        plan.target = target.id;
+        plan.platform = target.platform;
+        plan.artifact = target.artifact;
+        plan.configRoot = model.configRoot;
+        plan.semuHome = request.semuHome;
+        plan.outputRoot = request.outputRoot.isEmpty()
+            ? SemuOwnedPaths.defaultOutput(model.projectRoot, request.operation,
+                target.id, request.emulator)
+            : SemuOwnedPaths.normalized(request.outputRoot);
+        plan.input = target.input;
+        plan.nixSystems = target.nixSystems;
+        plan.deploymentTarget = target.deploymentTarget;
+        plan.backends = target.backends;
+        plan.validation = target.validation;
+        plan.settings = SemuSettingsResolver.resolve(
+            model.repositorySettings, target.settings, request, diagnostics);
+        for file in target.sourceFiles {
+            SemuBuildResolver.addDefinition(plan, file);
+        }
+        SemuBuildResolver.addDefinition(plan, model.repositorySettingsFile);
+        for file in SemuSettingsResolver.definitionFiles(
+                request.semuHome, diagnostics) {
+            SemuBuildResolver.addDefinition(plan, file);
+        }
+        SemuBuildResolver.addDefinition(plan, model.assets.shadersFile);
+        SemuBuildResolver.addDefinition(plan, model.assets.bezelsFile);
+
+        string selectedEmulator = request.operation.equals("emulator")
+            ? request.emulator : "";
+        if (!selectedEmulator.isEmpty()
+                && model.emulatorById(selectedEmulator).id.isEmpty()) {
+            diagnostics.add(model.configRoot, "emulator",
+                "unknown emulator '" + selectedEmulator + "'");
+        }
+
+        for system in model.systems {
+            bool selected = false;
+            for binding in system.emulators {
+                if (!binding.supports(target.platform)) { continue; }
+                if (!selectedEmulator.isEmpty()
+                        && !binding.emulator.equals(selectedEmulator)) { continue; }
+                selected = true;
+                if (!plan.emulators.contains(binding.emulator)) {
+                    plan.emulators.push(binding.emulator);
+                }
+            }
+            if (selected) {
+                plan.systems.push(system.id);
+                SemuBuildResolver.addDefinition(plan, system.file);
+                SemuBuildResolver.addDefinition(plan, system.shadersFile);
+                SemuBuildResolver.addDefinition(plan, system.bezelsFile);
+            }
+        }
+        plan.systems.sort();
+        plan.emulators.sort();
+        for emulatorId in plan.emulators {
+            SemuEmulatorSource emulator = model.emulatorById(emulatorId);
+            SemuBuildResolver.addDefinition(plan, emulator.file);
+            SemuBuildResolver.addDefinition(plan, emulator.packageDefinitionFile);
+            SemuBuildResolver.addDefinition(plan, emulator.packageNixFile);
+            SemuBuildResolver.addDefinition(plan, emulator.profileFile);
+            SemuBuildResolver.addDefinition(plan, emulator.renderingFile);
+            SemuBuildResolver.addDefinition(plan, emulator.renderPatchFile);
+        }
+        SemuInputSource input = model.inputByReference(target.input);
+        for file in input.definitionFiles {
+            SemuBuildResolver.addDefinition(plan, file);
+        }
+        plan.definitionFiles.sort();
+        return plan;
+    }
+}

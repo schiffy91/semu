@@ -1,0 +1,377 @@
+{
+  "schema_version": 1,
+  "menu": {
+    "id": "semu-settings",
+    "label": "SEMU SETTINGS",
+    "launcher": "${home}/Applications/Semu/bin/semu",
+    "runner": "${home}/ES-DE/settings/semu/bin/semu",
+    "platforms": [
+      "linux"
+    ],
+    "actions": {
+      "read": [
+        "settings",
+        "ui"
+      ],
+      "write": [
+        "settings",
+        "put"
+      ]
+    },
+    "save": {
+      "strategy": "apply_last_changed_write",
+      "apply_flag": "--apply"
+    },
+    "navigation": {
+      "system_overrides": {
+        "id": "system-overrides",
+        "label": "SYSTEM OVERRIDES"
+      }
+    },
+    "sync_runtime": {
+      "syncthing": {
+        "appdir_relative_path": "bin/syncthing"
+      }
+    },
+    "system_defaults": {
+      "wii": {
+        "controller_mode": "nunchuk"
+      }
+    },
+    "commands": [
+      {
+        "id": "sync-apply",
+        "label": "APPLY SYNCHRONIZATION",
+        "argv": [
+          "sync",
+          "apply"
+        ]
+      },
+      {
+        "id": "sync-status",
+        "label": "SYNCHRONIZATION STATUS",
+        "argv": [
+          "sync",
+          "status"
+        ]
+      },
+      {
+        "id": "sync-open",
+        "label": "OPEN SYNCHRONIZATION UI",
+        "argv": [
+          "sync",
+          "open"
+        ]
+      }
+    ],
+    "sync_folders": [
+      {
+        "id": "saves",
+        "label": "GAME SAVES",
+        "root": "content",
+        "relative_path": "saves",
+        "access": "readwrite",
+        "syncthing_type": "sendreceive",
+        "marker_policy": "managed"
+      },
+      {
+        "id": "states",
+        "label": "SAVE STATES",
+        "root": "content",
+        "relative_path": "states",
+        "access": "readwrite",
+        "syncthing_type": "sendreceive",
+        "marker_policy": "managed"
+      },
+      {
+        "id": "emulator_state",
+        "label": "EMULATOR STATE",
+        "root": "state",
+        "relative_path": "",
+        "access": "readwrite",
+        "syncthing_type": "sendreceive",
+        "marker_policy": "managed"
+      },
+      {
+        "id": "screenshots",
+        "label": "SCREENSHOTS",
+        "root": "content",
+        "relative_path": "screenshots",
+        "access": "readwrite",
+        "syncthing_type": "sendreceive",
+        "marker_policy": "managed"
+      },
+      {
+        "id": "gamelists",
+        "label": "GAME LISTS",
+        "root": "content",
+        "relative_path": "gamelists",
+        "access": "readwrite",
+        "syncthing_type": "sendreceive",
+        "marker_policy": "managed"
+      },
+      {
+        "id": "roms",
+        "label": "ROMS",
+        "root": "roms",
+        "relative_path": "",
+        "access": "readonly",
+        "syncthing_type": "sendonly",
+        "marker_policy": "preexisting_child"
+      },
+      {
+        "id": "bios",
+        "label": "BIOS AND KEYS",
+        "root": "bios",
+        "relative_path": "",
+        "access": "readonly",
+        "syncthing_type": "sendonly",
+        "marker_policy": "preexisting_child"
+      }
+    ],
+    "sections": [
+      {
+        "id": "library",
+        "label": "LIBRARY",
+        "fields": [
+          {
+            "key": "paths.roms_root.linux",
+            "label": "ROM DIRECTORY",
+            "type": "path",
+            "platforms": [
+              "linux"
+            ]
+          },
+          {
+            "key": "paths.roms_root.macos",
+            "label": "ROM DIRECTORY",
+            "type": "path",
+            "platforms": [
+              "macos"
+            ]
+          },
+          {
+            "key": "paths.bios_root.linux",
+            "label": "BIOS DIRECTORY",
+            "type": "path",
+            "platforms": [
+              "linux"
+            ]
+          },
+          {
+            "key": "paths.bios_root.macos",
+            "label": "BIOS DIRECTORY",
+            "type": "path",
+            "platforms": [
+              "macos"
+            ]
+          }
+        ]
+      },
+      {
+        "id": "rendering",
+        "label": "RENDERING",
+        "fields": [
+          {
+            "key": "visual.crt_shaders",
+            "label": "ERA-ACCURATE SHADERS",
+            "type": "boolean"
+          },
+          {
+            "key": "visual.bezels",
+            "label": "BEZELS",
+            "type": "boolean"
+          },
+          {
+            "key": "visual.integer_scaling",
+            "label": "INTEGER SCALING",
+            "type": "boolean"
+          }
+        ]
+      },
+      {
+        "id": "interface",
+        "label": "INTERFACE",
+        "fields": [
+          {
+            "key": "ui.theme",
+            "label": "THEME",
+            "type": "choice",
+            "choices": [
+              "slate-es-de",
+              "linear-es-de",
+              "modern-es-de"
+            ]
+          }
+        ]
+      },
+      {
+        "id": "sync",
+        "label": "SYNCHRONIZATION",
+        "commands": [
+          "sync-apply",
+          "sync-status",
+          "sync-open"
+        ],
+        "fields": [
+          {
+            "key": "sync.runtime.enabled",
+            "label": "ENABLE SYNCHRONIZATION",
+            "type": "boolean"
+          },
+          {
+            "key": "sync.runtime.start_at_boot",
+            "label": "START AT BOOT",
+            "type": "boolean"
+          },
+          {
+            "key": "sync.runtime.gui_address",
+            "label": "LOCAL UI ADDRESS",
+            "type": "loopback"
+          },
+          {
+            "key": "sync.folders.saves.enabled",
+            "label": "SYNC GAME SAVES",
+            "type": "boolean"
+          },
+          {
+            "key": "sync.folders.states.enabled",
+            "label": "SYNC SAVE STATES",
+            "type": "boolean"
+          },
+          {
+            "key": "sync.folders.emulator_state.enabled",
+            "label": "SYNC EMULATOR STATE",
+            "type": "boolean"
+          },
+          {
+            "key": "sync.folders.screenshots.enabled",
+            "label": "SYNC SCREENSHOTS",
+            "type": "boolean"
+          },
+          {
+            "key": "sync.folders.gamelists.enabled",
+            "label": "SYNC GAME LISTS",
+            "type": "boolean"
+          },
+          {
+            "key": "sync.folders.roms.enabled",
+            "label": "INDEX ROMS READ-ONLY",
+            "type": "boolean"
+          },
+          {
+            "key": "sync.folders.bios.enabled",
+            "label": "INDEX BIOS READ-ONLY",
+            "type": "boolean"
+          }
+        ]
+      }
+    ]
+  },
+  "paths": {
+    "roms_root": {
+      "linux": "/run/media/deck/SD/Emulation/ES-DE/ES-DE/ROMs",
+      "macos": "${home}/ES-DE/ROMs"
+    },
+    "bios_root": {
+      "linux": "/run/media/deck/SD/Emulation/RetroArch/config/system",
+      "macos": "${home}/ES-DE/BIOS"
+    },
+    "roms_candidates": {
+      "linux": [
+        {
+          "roms_path": "Emulation/ES-DE/ES-DE/ROMs",
+          "emulation_path": "Emulation"
+        },
+        {
+          "roms_path": "ES-DE/ES-DE/ROMs",
+          "emulation_path": ""
+        },
+        {
+          "roms_path": "Emulation/ROMs",
+          "emulation_path": "Emulation"
+        },
+        {
+          "roms_path": "ROMs",
+          "emulation_path": ""
+        }
+      ],
+      "macos": [
+        {
+          "roms_path": "ES-DE/ROMs",
+          "emulation_path": "ES-DE"
+        },
+        {
+          "roms_path": "ROMs",
+          "emulation_path": ""
+        }
+      ]
+    }
+  },
+  "visual": {
+    "crt_shaders": true,
+    "bezels": true,
+    "integer_scaling": true
+  },
+  "ui": {
+    "theme": "slate-es-de",
+    "display_index": {
+      "linux": 0,
+      "macos": 0
+    }
+  },
+  "sync": {
+    "runtime": {
+      "enabled": false,
+      "start_at_boot": false,
+      "tray": false,
+      "gui_address": "127.0.0.1:8384"
+    },
+    "folders": {
+      "saves": {
+        "enabled": false,
+        "watch": true,
+        "rescan_seconds": 900
+      },
+      "states": {
+        "enabled": false,
+        "watch": true,
+        "rescan_seconds": 900
+      },
+      "emulator_state": {
+        "enabled": false,
+        "watch": true,
+        "rescan_seconds": 900
+      },
+      "screenshots": {
+        "enabled": false,
+        "watch": true,
+        "rescan_seconds": 1800
+      },
+      "gamelists": {
+        "enabled": false,
+        "watch": true,
+        "rescan_seconds": 1800
+      },
+      "roms": {
+        "enabled": false,
+        "watch": true,
+        "rescan_seconds": 3600
+      },
+      "bios": {
+        "enabled": false,
+        "watch": true,
+        "rescan_seconds": 3600
+      }
+    }
+  },
+  "doc": {
+    "purpose": "The immutable Semu settings definition. User changes are sparse, typed writes to $SEMU_HOME/semu.json; generated outputs remain below $SEMU_HOME/generated.",
+    "menu": "The ES-DE start-menu entry invokes the regular installed Semu launcher. The UI renders four root settings pages plus one generated System Overrides submenu; synchronization commands live on the Sync page without mounting or extracting an AppImage.",
+    "save": "A bridge batches changed fields as settings put calls and appends --apply only to the final changed write, compiling generated target/runtime state exactly once per save.",
+    "paths": "roms_root, bios_root, and validated relative discovery candidates are keyed by registered platform id; each system's ROM subdirectory is compiled from its system definition. ${home} is expanded at runtime. External ROM and BIOS roots remain read-only inputs.",
+    "visual": "Global shader, bezel, and integer-scaling settings plus each compiled system shader, bezel, and layout choice feed the same direct emulator render-hook model. Integer scaling is the sole global scaling policy.",
+    "controls": "Start+Select quit and the left-trackpad radial are mandatory input-profile safety invariants, not user-configurable settings. They remain fixed until every runtime input consumer can apply dynamic policy consistently. Per-system controller modes are compiled from emulator actions and profiles; system_defaults selects a declared mode without embedding system branches in BTRC.",
+    "sync": "The runtime and every folder default disabled. The bundled Syncthing path, folder path, access, Syncthing type, and marker policy are immutable policy. Production resolves only the declared AppDir executable and fails closed when it is absent. Only explicitly enabled owned folders receive write access. Enabling a ROM or BIOS folder requires a safe pre-existing direct child as its custom Syncthing marker, so scanning remains send-only without creating .stfolder on external media."
+  }
+}

@@ -1,0 +1,144 @@
+{
+  "schema_version": 1,
+  "name": "melonDS",
+  "default_system": "nds",
+  "input": {
+    "actions": [
+      "ui.pause",
+      "ui.fullscreen",
+      "app.quit",
+      "state.load",
+      "state.save",
+      "speed.fast",
+      "screen.swap"
+    ]
+  },
+  "platforms": {
+    "linux": {
+      "backend": "bwrap",
+      "executable": "${asset_root}/bin/melonDS",
+      "args": [
+        "--fullscreen"
+      ],
+      "gl_wrapper": "${asset_root}/bin/nixGL",
+      "env": {
+        "set": {
+          "SDL_JOYSTICK_ALLOW_BACKGROUND_EVENTS": "1"
+        }
+      },
+      "sandbox": {
+        "devices": [
+          "all"
+        ],
+        "filesystems": [
+          {
+            "path": "${asset_root}",
+            "mode": "ro"
+          },
+          {
+            "path": "${roms}",
+            "mode": "ro"
+          },
+          {
+            "path": "${emulation_root}",
+            "mode": "ro"
+          },
+          {
+            "path": "${bios}",
+            "mode": "ro"
+          },
+          {
+            "path": "${state_root}",
+            "mode": "create"
+          }
+        ]
+      },
+      "graphics": {
+        "method": "config_file",
+        "file": "${state_root}/config/melonDS/melonDS.toml",
+        "format": "toml",
+        "section": "3D",
+        "key": "Renderer",
+        "values": {
+          "opengl": "1"
+        },
+        "extra_pins": [
+          {
+            "section": "Screen",
+            "key": "UseGL",
+            "value": "true"
+          },
+          {
+            "section": "Screen",
+            "key": "Filter",
+            "value": "false"
+          }
+        ]
+      },
+      "state": {
+        "config_home": "xdg",
+        "data_home": "xdg",
+        "config_subdir": "melonDS",
+        "data_subdir": "melonDS",
+        "managed_profile_files": [
+          "config/melonDS.toml"
+        ],
+        "seeds": [
+          {
+            "purpose": "nds_bios9",
+            "target": "${state_root}/config/melonDS/firmware/bios9.bin",
+            "copy": "once_if_target_absent",
+            "source_access": "read_only",
+            "overwrite": false,
+            "sources": [
+              "${emulation_root}/bios/nds/bios9.bin",
+              "${emulation_root}/bios/bios9.bin",
+              "${bios}/nds/bios9.bin",
+              "${bios}/bios9.bin"
+            ]
+          },
+          {
+            "purpose": "nds_bios7",
+            "target": "${state_root}/config/melonDS/firmware/bios7.bin",
+            "copy": "once_if_target_absent",
+            "source_access": "read_only",
+            "overwrite": false,
+            "sources": [
+              "${emulation_root}/bios/nds/bios7.bin",
+              "${emulation_root}/bios/bios7.bin",
+              "${bios}/nds/bios7.bin",
+              "${bios}/bios7.bin"
+            ]
+          },
+          {
+            "purpose": "nds_firmware",
+            "target": "${state_root}/config/melonDS/firmware/firmware.bin",
+            "copy": "once_if_target_absent",
+            "source_access": "read_only",
+            "overwrite": false,
+            "sources": [
+              "${emulation_root}/bios/nds/firmware.bin",
+              "${emulation_root}/bios/firmware.bin",
+              "${bios}/nds/firmware.bin",
+              "${bios}/firmware.bin"
+            ]
+          }
+        ]
+      },
+      "firmware": {
+        "dir": "${emulation_root}/bios",
+        "fallback_dirs": [
+          "${bios}/nds",
+          "${bios}"
+        ]
+      }
+    }
+  },
+  "doc": {
+    "launch": "The bundled source-built melonDS Qt frontend receives --fullscreen followed by exactly one positional Nintendo DS ROM. No host executable, Flatpak, libretro core, or prebuilt binary is permitted.",
+    "state": "melonDS reads $XDG_CONFIG_HOME/melonDS/melonDS.toml. Managed relative save, savestate, and cheat paths are source-patched to resolve below Semu's isolated XDG state instead of the process working directory.",
+    "sandbox": "The package closure, ROM library, shared Emulation tree, and external BIOS roots are read-only. Optional BIOS files are copied once into isolated state; a ROM-adjacent .sav may be imported read-only, while all later writes target Semu state.",
+    "input": "SDL raw joystick zero is the Steam Virtual Gamepad lane. The profile maps every DS control explicitly; pinned Qt actions consume Ctrl+S and Ctrl+A for slot-1 save/load, while Semu's process-group watcher owns Ctrl+Q and immediate physical Select+Start termination.",
+    "rendering": "The managed TOML pins both melonDS OpenGL selectors. The source-built package directly links libsemurenderer, submits semantic top/bottom final-framebuffer regions before OSD, then submits splash/OSD output immediately before SwapBuffers. screenKind owns lane identity, both lanes use zero rotation, and no inactive or display/session path exists."
+  }
+}

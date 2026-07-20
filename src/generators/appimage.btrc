@@ -1,0 +1,261 @@
+// appimage.btrc - declarative AppImage package input and plan generation.
+
+import std.{fs, json, vector}
+import ../compiler/model.btrc
+import ../lib/json_format.btrc
+import ../lib/owned_paths.btrc
+import ./appimage/install_policy.btrc
+import ./settings.btrc
+
+class SemuAppImageGenerator {
+    class string buildRoot(string projectRoot) {
+        string project = SemuOwnedPaths.normalized(projectRoot);
+        FileStatus status = FileStatus(project);
+        if (project.isEmpty() || !status.isDir() || status.isSymlink()
+                || !UnixFileSystem.realPath(project).equals(project)) {
+            return "";
+        }
+        return SemuOwnedPaths.relativeFile(project, "build");
+    }
+
+    class string packagingRoot(string projectRoot, string platform) {
+        string build = SemuAppImageGenerator.buildRoot(projectRoot);
+        string relative = "packaging/" + platform;
+        return build.isEmpty() || !SemuOwnedPaths.safeRelativePath(relative)
+            ? "" : SemuOwnedPaths.relativeFile(build, relative);
+    }
+
+    class bool write(string buildRoot, string path, string text, bool executable,
+                     CompilerDiagnostics diagnostics) {
+        if (buildRoot.isEmpty()
+                || !SemuOwnedPaths.writeText(buildRoot, path, text)) {
+            diagnostics.add(path, "output", "could not write AppImage packaging input");
+            return false;
+        }
+        if (executable && FileSystem.chmod(path, 493) != 0) { // 0755
+            diagnostics.add(path, "output", "could not mark AppImage input executable");
+            return false;
+        }
+        return true;
+    }
+
+    class bool emitTemplate(string projectRoot, string buildRoot,
+                            string packagingRoot,
+                            string name, bool executable,
+                            CompilerDiagnostics diagnostics) {
+        string source = PathTools.join(
+            projectRoot, "packaging/appimage/" + name + ".template");
+        if (!FileSystem.isFile(source)) {
+            diagnostics.add(source, "input", "missing AppImage template");
+            return false;
+        }
+        return SemuAppImageGenerator.write(
+            buildRoot, PathTools.join(packagingRoot, name),
+            Path.readAll(source), executable, diagnostics);
+    }
+
+    class string launcher(string emulator, string target) {
+        return """#!/usr/bin/env sh
+exec \"$(dirname \"$0\")/semu\" launcher @@EMULATOR@@ --target @@TARGET@@ \"$@\"
+"""
+            .replace("@@EMULATOR@@", emulator)
+            .replace("@@TARGET@@", target);
+    }
+
+    class string runtimeLauncherTemplate(string projectRoot) {
+        JsonValue install = JsonValue.readFile(PathTools.join(
+            projectRoot, "config/settings/install.json"));
+        string installRoot = SemuInstallPolicy.scalar(
+            install.get("paths"), "install_root");
+        string launcher = SemuInstallPolicy.scalar(
+            install.get("paths"), "stable_launcher");
+        if (install.isError()
+                || !SemuInstallPolicy.safeRelative(installRoot)
+                || !SemuInstallPolicy.safeRelative(launcher)) {
+            return "";
+        }
+        return "${home}/" + installRoot + "/" + launcher;
+    }
+
+    class bool emitSettingsManifest(
+            JsonValue defaults, string projectRoot, string buildRoot,
+            string packagingRoot, string platform,
+            CompilerDiagnostics diagnostics) {
+        string launcher = SemuAppImageGenerator.runtimeLauncherTemplate(
+            projectRoot);
+        string relative = launcher.startsWith("${home}/")
+            ? launcher.substring(8, launcher.len() - 8) : "";
+        string validationLauncher = "/__semu_runtime_home__/" + relative;
+        JsonValue manifest = JsonValue.parse(SettingsEsDeGenerator.document(
+            defaults, platform, validationLauncher));
+        JsonValue entry = manifest.get("entry");
+        if (launcher.isEmpty() || manifest.isError() || !entry.isObject()) {
+            diagnostics.add(packagingRoot, "settings",
+                "could not derive the runtime-owned ES-DE settings manifest");
+            return false;
+        }
+        entry.set("launcher", JsonValue.makeString(launcher));
+        manifest.set("entry", entry);
+        return SemuAppImageGenerator.write(buildRoot, PathTools.join(
+                packagingRoot, SettingsEsDeGenerator.appImageRelativePath()),
+            SemuJsonFormat.document(manifest), false, diagnostics);
+    }
+
+    class bool emitLegacyShortcutPolicy(
+            string projectRoot, string buildRoot, string packagingRoot,
+            CompilerDiagnostics diagnostics) {
+        string source = PathTools.join(
+            projectRoot, "packaging/install/legacy_shortcuts.json");
+        JsonValue policy = JsonValue.readFile(source);
+        if (policy.isError() || !policy.isObject()) {
+            diagnostics.add(source, "input",
+                "missing declarative legacy Steam shortcut policy");
+            return false;
+        }
+        return SemuAppImageGenerator.write(buildRoot, PathTools.join(
+                packagingRoot, "settings/legacy_shortcuts.json"),
+            SemuJsonFormat.document(policy), false, diagnostics);
+    }
+
+    class bool symlinkFreeTree(string root) {
+        FileStatus status = FileStatus(root);
+        if (!status.linkFound) { return true; }
+        if (status.isSymlink()) { return false; }
+        if (!status.isDir()) { return status.isFile(); }
+        for name in FileSystem.listDir(root) {
+            if (!SemuOwnedPaths.safeRelativePath(name)
+                    || !SemuAppImageGenerator.symlinkFreeTree(
+                        PathTools.join(root, name))) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    class bool freshPackagingRoot(string buildRoot, string root,
+                                  CompilerDiagnostics diagnostics) {
+        if (buildRoot.isEmpty() || root.isEmpty()
+                || root.equals(buildRoot)
+                || !SemuOwnedPaths.prepareDirectory(buildRoot)
+                || SemuOwnedPaths.containedPath(
+                    buildRoot, root).isEmpty()) {
+            diagnostics.add(root, "output",
+                "AppImage packaging root escapes the owned project build root");
+            return false;
+        }
+        FileStatus status = FileStatus(root);
+        if (status.isSymlink()
+                || (status.linkFound && !status.isDir())
+                || !SemuAppImageGenerator.symlinkFreeTree(root)) {
+            diagnostics.add(root, "output",
+                "AppImage packaging root must be an owned directory");
+            return false;
+        }
+        if (status.isDir()) { FileSystem.removeRecursive(root); }
+        if (FileStatus(root).linkFound) {
+            diagnostics.add(root, "output",
+                "could not clear previous AppImage packaging output");
+            return false;
+        }
+        return SemuOwnedPaths.prepareDirectory(root)
+            && !SemuOwnedPaths.containedPath(buildRoot, root).isEmpty();
+    }
+
+    class string emitPackaging(SemuBuildPlan plan, string projectRoot,
+                               CompilerDiagnostics diagnostics) {
+        string buildRoot = SemuAppImageGenerator.buildRoot(projectRoot);
+        string root = SemuAppImageGenerator.packagingRoot(
+            projectRoot, plan.platform);
+        string bin = PathTools.join(root, "bin");
+        if (!SemuAppImageGenerator.freshPackagingRoot(
+                buildRoot, root, diagnostics)
+                || !SemuOwnedPaths.prepareDirectory(bin)
+                || SemuOwnedPaths.containedPath(
+                    buildRoot, bin).isEmpty()) {
+            diagnostics.add(root, "output", "could not create AppImage packaging root");
+            return "";
+        }
+        if (!SemuAppImageGenerator.emitTemplate(
+                projectRoot, buildRoot, root, "AppRun", true, diagnostics)
+            || !SemuAppImageGenerator.emitTemplate(
+                projectRoot, buildRoot, root,
+                "semu.desktop", false, diagnostics)
+            || !SemuAppImageGenerator.emitTemplate(
+                projectRoot, buildRoot, root,
+                "semu-launcher", true, diagnostics)) {
+            return "";
+        }
+        JsonValue defaults = JsonValue.readFile(
+            SemuConfigPaths.defaults(projectRoot));
+        if (defaults.isError() || !SemuAppImageGenerator.emitSettingsManifest(
+                defaults, projectRoot, buildRoot, root,
+                plan.platform, diagnostics)
+                || !SemuAppImageGenerator.emitLegacyShortcutPolicy(
+                    projectRoot, buildRoot, root, diagnostics)) {
+            return "";
+        }
+        for emulator in plan.emulators {
+            string launcher = PathTools.join(bin, "semu-" + emulator);
+            if (!SemuAppImageGenerator.write(buildRoot, launcher,
+                    SemuAppImageGenerator.launcher(
+                        emulator, plan.target), true, diagnostics)) {
+                return "";
+            }
+        }
+        return root;
+    }
+
+    class Vector<string> packageRecipes(SemuBuildPlan plan) {
+        Vector<string> recipes = [];
+        for file in plan.definitionFiles {
+            if (file.endsWith("/package.nix") && !recipes.contains(file)) {
+                recipes.push(file);
+            }
+        }
+        return recipes;
+    }
+
+    class JsonValue strings(Vector<string> values) {
+        JsonValue result = JsonValue.makeArray();
+        for value in values { result.push(JsonValue.makeString(value)); }
+        return result;
+    }
+
+    class JsonValue packagePlan(SemuBuildPlan plan) {
+        JsonValue root = JsonValue.makeObject();
+        root.set("schema_version", JsonValue.makeInt(1));
+        root.set("kind", JsonValue.makeString("appimage"));
+        root.set("target", JsonValue.makeString(plan.target));
+        root.set("platform", JsonValue.makeString(plan.platform));
+        root.set("output_root", JsonValue.makeString(plan.outputRoot));
+        root.set("emulators", SemuAppImageGenerator.strings(plan.emulators));
+        root.set("package_recipes", SemuAppImageGenerator.strings(
+            SemuAppImageGenerator.packageRecipes(plan)));
+        return root;
+    }
+
+    class string packagePlanText(SemuBuildPlan plan) {
+        return SemuJsonFormat.document(
+            SemuAppImageGenerator.packagePlan(plan));
+    }
+
+    class string emit(SemuBuildPlan plan, string projectRoot,
+                      CompilerDiagnostics diagnostics) {
+        if (!plan.artifact.equals("appimage")) {
+            diagnostics.add(plan.outputRoot, "artifact",
+                "AppImage generation requires an appimage build plan");
+            return "";
+        }
+        if (SemuAppImageGenerator.emitPackaging(
+                plan, projectRoot, diagnostics).isEmpty()) {
+            return "";
+        }
+        string output = PathTools.join(plan.outputRoot, "appimage-plan.json");
+        string text = SemuAppImageGenerator.packagePlanText(plan);
+        if (!FileSystem.writeText(output, text)) {
+            diagnostics.add(output, "output", "could not write AppImage package plan");
+            return "";
+        }
+        return output;
+    }
+}

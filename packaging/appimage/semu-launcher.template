@@ -1,0 +1,10 @@
+#!/usr/bin/env sh
+set -eu
+
+root="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd -P)"
+runtime="$root/libexec/semu-btrc"
+[ -x "$runtime" ] || {
+  echo "Semu: installed static runtime is missing." >&2
+  exit 127
+}
+exec "$runtime" install launch --install-root "$root" -- "$@"

@@ -1,0 +1,77 @@
+// Strict CLI entrypoint for physical Steam Deck acceptance.
+
+import std.{cli, fs}
+import ./steamdeck_harness.btrc
+
+class DeckHarnessCli {
+    class DeckHarnessOptions options(CliCommandLine command) {
+        DeckHarnessOptions options = DeckHarnessOptions();
+        options.project = command.option(
+            "--project", FileSystem.currentDirectory());
+        options.host = command.option("--host", options.host);
+        options.sshOptions = command.option(
+            "--ssh-options", options.sshOptions);
+        options.artifact = command.option("--artifact", options.artifact);
+        options.runtimeRoot = command.option(
+            "--runtime-root", options.runtimeRoot);
+        options.installer = command.option("--installer", options.installer);
+        options.remoteProject = command.option(
+            "--remote-project", options.remoteProject);
+        options.romsRoot = command.option("--roms-root", options.romsRoot);
+        options.biosRoot = command.option("--bios-root", options.biosRoot);
+        options.externalStateRoot = command.option(
+            "--external-state-root", options.externalStateRoot);
+        options.esDeHome = command.option("--es-de-home", options.esDeHome);
+        options.steamRoot = command.option("--steam-root", options.steamRoot);
+        options.evidenceRoot = command.option(
+            "--evidence-root", options.evidenceRoot);
+        options.remoteHelperBinary = command.option(
+            "--remote-helper", options.remoteHelperBinary);
+        options.inputHelperBinary = command.option(
+            "--input-helper", options.inputHelperBinary);
+        options.system = command.option("--system", "");
+        options.output = command.option("--output", "");
+        options.humanObserved = command.flag("--human-observed");
+        return options;
+    }
+
+    class int usage(int status) {
+        print("usage: steamdeck-harness <plan|preflight|steam-launch|deploy|prepare|automated|operator-start-select|operator-radial|accept-system|accept> [options]");
+        return status;
+    }
+
+    class int run(CliArgs arguments) {
+        CliCommandLine command = CliCommandLine.parse(arguments);
+        if (!command.ok()) {
+            for error in command.errors { print("steamdeck harness: " + error); }
+            return DeckHarnessCli.usage(64);
+        }
+        string operation = command.operand(0);
+        if (operation.isEmpty()) { return DeckHarnessCli.usage(64); }
+        DeckPhysicalHarness harness = DeckPhysicalHarness(
+            DeckHarnessCli.options(command));
+        if (operation.equals("plan")) { return harness.emitPlan(); }
+        if (operation.equals("preflight")) { return harness.preflight(); }
+        if (operation.equals("steam-launch")) {
+            return harness.gameModeLaunch();
+        }
+        if (operation.equals("deploy")) { return harness.deploy(); }
+        if (operation.equals("prepare")) { return harness.prepare(); }
+        if (operation.equals("automated")) {
+            return harness.runScenario("automated-game-mode");
+        }
+        if (operation.equals("operator-start-select")) {
+            return harness.runScenario("operator-start-select");
+        }
+        if (operation.equals("operator-radial")) {
+            return harness.runScenario("operator-radial");
+        }
+        if (operation.equals("accept-system")) { return harness.acceptSystem(); }
+        if (operation.equals("accept")) { return harness.accept(); }
+        return DeckHarnessCli.usage(64);
+    }
+}
+
+int main(int argc, char** argv) {
+    return DeckHarnessCli.run(CliArgs(argc, argv));
+}

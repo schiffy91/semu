@@ -1,0 +1,951 @@
+// installer.btrc - AppImage deployment, rollback, and Steam registration.
+
+import std.{cli, fs, platform, process, strings, vector}
+import ./install_policy.btrc
+import ./install_store.btrc
+import ./steam_shortcuts.btrc
+
+class SemuDesktopEntry {
+    class string execValue(string path) {
+        if (path.contains("\n") || path.contains("\r")
+                || path.contains("%")) {
+            return "";
+        }
+        return "\"" + path.replace("\\", "\\\\")
+            .replace("\"", "\\\"").replace("`", "\\`")
+            .replace("$", "\\$") + "\"";
+    }
+
+    class string document(SemuInstallPolicy policy, SemuInstallPaths paths) {
+        string executable = SemuDesktopEntry.execValue(paths.stableLauncher);
+        if (executable.isEmpty()) { return ""; }
+        return "[Desktop Entry]\n"
+            + "Name=" + policy.applicationName + "\n"
+            + "Comment=" + policy.applicationComment + "\n"
+            + "Exec=" + executable + "\n"
+            + "Icon=" + policy.applicationIcon + "\n"
+            + "Type=Application\n"
+            + "Categories=" + policy.applicationCategories + "\n"
+            + "Terminal=false\n"
+            + "StartupNotify=true\n"
+            + "X-Semu-Launch-Policy=installed-stable-launcher\n";
+    }
+
+    class bool valid(SemuInstallPolicy policy, SemuInstallPaths paths) {
+        if (!SemuInstallHost.regularFile(paths.desktopEntry)) { return false; }
+        string expected = SemuDesktopEntry.document(policy, paths);
+        return !expected.isEmpty()
+            && FileSystem.readText(paths.desktopEntry).equals(expected)
+            && !expected.contains("AppRun") && !expected.contains(".AppImage");
+    }
+}
+
+class SemuSteamShortcut {
+    public SemuInstallPolicy policy;
+    public SemuInstallPaths paths;
+    public SemuSteamShortcutMigration migration;
+    public Vector<string> trackedFiles;
+    public Vector<string> trackedDigests;
+    public string receiptDigest;
+    public bool receiptExisted;
+    public bool tracked;
+
+    public SemuSteamShortcut(SemuInstallPolicy policy, SemuInstallPaths paths) {
+        self.policy = policy;
+        self.paths = paths;
+        Vector<string> noFiles = [];
+        self.migration = SemuSteamShortcutMigration(
+            policy.steamMigration, paths.state, paths.home,
+            paths.stableLauncher, noFiles);
+        self.trackedFiles = [];
+        self.trackedDigests = [];
+        self.receiptDigest = "";
+        self.receiptExisted = false;
+        self.tracked = false;
+    }
+
+    public bool steamOs() {
+        if (Environment.get("SEMU_INSTALLER_TEST_STEAMOS", "").equals("1")) {
+            return true;
+        }
+        if (!SemuInstallHost.regularFile("/etc/os-release")) { return false; }
+        string document = FileSystem.readText("/etc/os-release").toLower();
+        return document.contains("id=steamos\n")
+            || document.contains("id=\"steamos\"\n")
+            || document.contains("variant_id=steamdeck\n")
+            || document.contains("variant_id=\"steamdeck\"\n");
+    }
+
+    public string receipt() {
+        return "version=1\nname=" + self.policy.applicationName
+            + "\nlauncher=" + self.paths.stableLauncher
+            + "\ndesktop=" + self.paths.desktopEntry + "\n";
+    }
+
+    public bool receiptMatches() {
+        return SemuInstallHost.regularFile(self.paths.steamReceipt)
+            && FileSystem.readText(self.paths.steamReceipt).equals(self.receipt());
+    }
+
+    public Vector<string> shortcutFiles() {
+        Vector<string> files = [];
+        for userdata in [PathTools.join(self.paths.home, ".steam/steam/userdata"),
+                PathTools.join(self.paths.home, ".local/share/Steam/userdata")] {
+            if (!SemuInstallHost.realDirectory(
+                    UnixFileSystem.realPath(userdata))) {
+                continue;
+            }
+            for account in Directory(userdata).entries() {
+                string candidate = PathTools.join(userdata,
+                    account + "/config/shortcuts.vdf");
+                if (SemuInstallHost.regularFile(candidate)) {
+                    string canonical = UnixFileSystem.realPath(candidate);
+                    if (!canonical.isEmpty() && !files.contains(canonical)) {
+                        files.push(canonical);
+                    }
+                }
+            }
+        }
+        return files;
+    }
+
+    public string state() {
+        string fixture = Environment.get(
+            "SEMU_INSTALLER_TEST_STEAM_SHORTCUT_STATE", "");
+        if (["legacy", "correct"].contains(fixture)) {
+            return fixture;
+        }
+        if (fixture.equals("missing-force")) { return "missing"; }
+        if (fixture.equals("missing")) {
+            return self.receiptMatches() ? "recorded" : "missing";
+        }
+        SemuSteamShortcutInspection inspection =
+            SemuSteamShortcutDatabase.inspect(
+                self.shortcutFiles(), self.policy.steamMigration.rules,
+                self.paths.home, self.paths.stableLauncher);
+        if (!inspection.valid) { return "invalid"; }
+        if (inspection.legacy > 0) { return "legacy"; }
+        if (inspection.stable == 1) { return "correct"; }
+        return self.receiptMatches() ? "recorded" : "missing";
+    }
+
+    public SemuInstallResult preflight() {
+        if (!self.steamOs()) { return SemuInstallResult.success(); }
+        string fixture = Environment.get(
+            "SEMU_INSTALLER_TEST_STEAM_SHORTCUT_STATE", "");
+        if (!fixture.isEmpty()) { return SemuInstallResult.success(); }
+        SemuSteamShortcutInspection inspection =
+            SemuSteamShortcutDatabase.inspect(
+                self.shortcutFiles(), self.policy.steamMigration.rules,
+                self.paths.home, self.paths.stableLauncher);
+        return inspection.valid ? SemuInstallResult.success()
+            : SemuInstallResult.failure(inspection.error);
+    }
+
+    public SemuInstallResult recordReceipt() {
+        return SemuInstallHost.atomicText(
+                self.paths.steamReceipt, self.receipt(), 292)
+            ? SemuInstallResult.success()
+            : SemuInstallResult.failure(
+                "cannot record Steam shortcut registration");
+    }
+
+    public SemuInstallResult track(SemuInstallTransaction transaction) {
+        if (!self.steamOs()) { return SemuInstallResult.success(); }
+        if (!transaction.active || self.tracked) {
+            return SemuInstallResult.failure(
+                "Steam registration requires one active deployment transaction");
+        }
+        Vector<string> files = self.shortcutFiles();
+        SemuSteamServiceControl service =
+            SemuSteamServiceControl(self.policy.steamMigration);
+        SemuInstallResult quiet = service.quiesce();
+        if (!quiet.ok()) { return quiet; }
+
+        self.tracked = true;
+        self.trackedFiles = files;
+        self.trackedDigests = [];
+        self.receiptExisted = FileStatus(self.paths.steamReceipt).linkFound;
+        self.receiptDigest = self.receiptExisted
+            ? SemuInstallHost.sha256File(self.paths.steamReceipt) : "";
+        bool captured = (!self.receiptExisted || !self.receiptDigest.isEmpty())
+            && transaction.snapshot(self.paths.steamReceipt);
+        for path in files {
+            string digest = SemuInstallHost.sha256File(path);
+            if (digest.isEmpty() || !transaction.snapshot(path)) {
+                captured = false;
+                break;
+            }
+            self.trackedDigests.push(digest);
+        }
+        self.migration = SemuSteamShortcutMigration(
+            self.policy.steamMigration, self.paths.state, self.paths.home,
+            self.paths.stableLauncher, files);
+        if (!captured || self.trackedDigests.size() != files.size()) {
+            transaction.rollback();
+            SemuInstallResult restored = service.restore();
+            self.tracked = false;
+            return SemuInstallResult.failure(restored.ok()
+                ? "cannot capture Steam registration transaction"
+                : "cannot capture Steam registration transaction; "
+                    + restored.error);
+        }
+        SemuInstallResult restored = service.restore();
+        if (!restored.ok()) {
+            transaction.rollback();
+            service.restore();
+            self.tracked = false;
+            return restored;
+        }
+        return SemuInstallResult.success();
+    }
+
+    public bool exactTrackedState() {
+        if (self.receiptExisted) {
+            if (!SemuInstallHost.sha256File(self.paths.steamReceipt)
+                    .equals(self.receiptDigest)) {
+                return false;
+            }
+        } else if (FileStatus(self.paths.steamReceipt).linkFound) {
+            return false;
+        }
+        if (self.trackedFiles.size() != self.trackedDigests.size()) {
+            return false;
+        }
+        for (int index = 0; index < self.trackedFiles.size(); index++) {
+            if (!SemuInstallHost.sha256File(self.trackedFiles.get(index))
+                    .equals(self.trackedDigests.get(index))) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    public SemuInstallResult rollbackDeployment(
+            SemuInstallTransaction transaction) {
+        if (!self.tracked) {
+            transaction.rollback();
+            return SemuInstallResult.success();
+        }
+        SemuInstallResult rolledBack;
+        if (self.migration.active) {
+            rolledBack = self.migration.rollback();
+        } else {
+            SemuSteamServiceControl service =
+                SemuSteamServiceControl(self.policy.steamMigration);
+            SemuInstallResult quiet = service.quiesce();
+            if (!quiet.ok()) { return quiet; }
+            transaction.rollback();
+            SemuInstallResult restored = service.restore();
+            rolledBack = restored;
+        }
+        bool exact = self.exactTrackedState();
+        self.tracked = false;
+        if (!rolledBack.ok()) { return rolledBack; }
+        return exact ? SemuInstallResult.success()
+            : SemuInstallResult.failure(
+                "Steam deployment rollback did not restore exact bytes");
+    }
+
+    public void completeDeployment() {
+        self.migration.active = false;
+        self.migration.ownsTransaction = false;
+        self.tracked = false;
+    }
+
+    public SemuInstallResult ensure(SemuInstallTransaction transaction) {
+        if (!self.steamOs()) { return SemuInstallResult.success(); }
+        if (!self.tracked || !transaction.active) {
+            return SemuInstallResult.failure(
+                "Steam registration is outside the deployment transaction");
+        }
+        string current = self.state();
+        if (current.equals("invalid")) {
+            SemuSteamShortcutInspection invalid =
+                SemuSteamShortcutDatabase.inspect(
+                    self.shortcutFiles(), self.policy.steamMigration.rules,
+                    self.paths.home, self.paths.stableLauncher);
+            return SemuInstallResult.failure(invalid.error.isEmpty()
+                ? "Steam shortcut database is malformed"
+                : invalid.error);
+        }
+        if (current.equals("recorded")) {
+            return SemuInstallResult.success();
+        }
+        if (current.equals("correct")) {
+            return self.recordReceipt();
+        }
+        Vector<string> shortcutFiles = self.trackedFiles;
+        if (current.equals("legacy")) {
+            SemuInstallResult migrated = self.migration.beginWith(transaction);
+            if (!migrated.ok()) { return migrated; }
+            SemuSteamShortcutInspection after =
+                SemuSteamShortcutDatabase.inspect(
+                    shortcutFiles, self.policy.steamMigration.rules,
+                    self.paths.home, self.paths.stableLauncher);
+            if (!after.valid || after.legacy != 0) {
+                return self.migration.abort(after.error.isEmpty()
+                    ? "legacy Steam shortcuts remain after migration"
+                    : after.error);
+            }
+            if (after.stable == 1) {
+                SemuInstallResult recorded = self.recordReceipt();
+                if (!recorded.ok()) {
+                    return self.migration.abort(recorded.error);
+                }
+                return recorded;
+            }
+        }
+        string utility = Environment.get(
+            "SEMU_INSTALLER_TEST_ADD_TO_STEAM", self.policy.steamAddUtility);
+        ExecResult added = ChildProcess.run(utility, [self.paths.desktopEntry],
+            "", CommandEnvironment.empty(), CommandEnvironment.empty(),
+            30000, 4096, 8192);
+        if (!added.ok()) {
+            string error =
+                "SteamOS utility " + self.policy.steamAddUtility
+                + " could not register the stable Semu desktop entry: "
+                + SemuInstallHost.processError(added);
+            return self.migration.active ? self.migration.abort(error)
+                : SemuInstallResult.failure(error);
+        }
+        SemuInstallResult recorded = self.recordReceipt();
+        if (!recorded.ok()) {
+            return self.migration.active
+                ? self.migration.abort(recorded.error) : recorded;
+        }
+        SemuSteamShortcutInspection verified =
+            SemuSteamShortcutDatabase.inspect(
+                shortcutFiles, self.policy.steamMigration.rules,
+                self.paths.home, self.paths.stableLauncher);
+        if (!verified.valid || verified.legacy != 0) {
+            string reason = verified.error.isEmpty()
+                ? "Steam registration restored a legacy shortcut"
+                : verified.error;
+            return self.migration.active
+                ? self.migration.abort(reason)
+                : SemuInstallResult.failure(reason);
+        }
+        return recorded;
+    }
+
+    public SemuInstallResult validate() {
+        if (!self.steamOs()) { return SemuInstallResult.success(); }
+        string current = self.state();
+        if (current.equals("correct") || current.equals("recorded")) {
+            return SemuInstallResult.success(current);
+        }
+        if (current.equals("legacy")) {
+            return SemuInstallResult.failure(
+                "declared legacy Semu shortcuts require transactional migration");
+        }
+        if (current.equals("invalid")) {
+            return SemuInstallResult.failure(
+                "Steam shortcut database is malformed or contains an "
+                + "undeclared Semu-related record");
+        }
+        return SemuInstallResult.failure(
+            "no Steam shortcut or receipt targets the stable Semu launcher");
+    }
+}
+
+class SemuInstaller {
+    public SemuInstallOptions options;
+    public SemuInstallPolicy policy;
+    public SemuInstallPaths paths;
+    public SemuReleaseStore store;
+    public SemuSteamShortcut steam;
+    public SemuInstallLock lock;
+
+    public SemuInstaller(SemuInstallOptions options,
+                         SemuInstallPolicy policy,
+                         SemuInstallPaths paths) {
+        self.options = options;
+        self.policy = policy;
+        self.paths = paths;
+        self.store = SemuReleaseStore(policy, paths);
+        self.steam = SemuSteamShortcut(policy, paths);
+        self.lock = SemuInstallLock(paths.lock);
+    }
+
+    public SemuInstallResult normalizedRoms() {
+        if (self.options.romsExplicit) {
+            return self.policy.roms.under(self.options.romsRoot);
+        }
+        SemuInstallResult configured = self.policy.roms.configured(
+            PathTools.join(self.paths.projectRoot, "settings"),
+            self.policy.settingsPlatform);
+        if (!configured.ok()) { return configured; }
+        Vector<string> candidates = [
+            Environment.get("SEMU_ROMS_ROOT", ""),
+            Environment.get("SEMU_ROMS_DIR", ""),
+            Environment.get("SEMU_ROMS", "")
+        ];
+        if (!configured.document.isEmpty()) {
+            candidates.push(configured.document);
+        }
+        return self.policy.roms.resolve(candidates, self.paths.projectRoot,
+            self.policy.ownedRomsFallback);
+    }
+
+    public SemuInstallResult normalizedBios() {
+        return self.policy.bios.resolve(
+            Environment.get("SEMU_BIOS_ROOT", ""),
+            PathTools.join(self.paths.projectRoot, "settings"),
+            self.policy.settingsPlatform);
+    }
+
+    public Vector<string> runtimeUnsets() {
+        return [
+            "APPIMAGE", "APPIMAGE_EXTRACT_AND_RUN", "NO_CLEANUP",
+            "SEMU_ALLOW_PROJECT_CLI", "SEMU_ASSET_ROOT", "SEMU_BIN",
+            "SEMU_BWRAP", "SEMU_CLI", "SEMU_LAUNCHER_BIN",
+            "SEMU_NIX_STORE_MOUNTED",
+            "SEMU_RETROARCH_CORE_DIR", "SEMU_RETROARCH_SHADER_DIR",
+            "SEMU_SOURCE_ROOT"
+        ];
+    }
+
+    public Vector<string> runtimeEnvironment(
+            string releaseRoot, string digest, string roms, string bios) {
+        return [
+            "APPDIR=" + releaseRoot,
+            "SEMU_ENTRYPOINT=" + self.paths.stableLauncher,
+            "SEMU_INSTALLED_ENTRYPOINT=" + self.paths.stableLauncher,
+            "SEMU_APP_EXEC=" + self.paths.stableLauncher,
+            "SEMU_RELEASE_DIGEST=" + digest,
+            "SEMU_PROJECT_DIR=" + self.paths.projectRoot,
+            "SEMU_HOME=" + PathTools.join(self.paths.projectRoot, "settings"),
+            "SEMU_ROMS_ROOT=" + roms,
+            "SEMU_BIOS_ROOT=" + bios,
+            "SEMU_TARGET=" + self.policy.target
+        ];
+    }
+
+    public SemuInstallResult prepare(string releaseRoot, string digest) {
+        SemuInstallResult resolvedRoms = self.normalizedRoms();
+        if (!resolvedRoms.ok()) { return resolvedRoms; }
+        SemuInstallResult resolvedBios = self.normalizedBios();
+        if (!resolvedBios.ok()) { return resolvedBios; }
+        string roms = resolvedRoms.document;
+        if (!FileSystem.isDir(roms)) {
+            string ownedPrefix = self.paths.projectRoot + "/";
+            if (!roms.startsWith(ownedPrefix)
+                    || !SemuInstallHost.mkdirp(roms)) {
+                return SemuInstallResult.failure(
+                    "external ROM root does not exist: " + roms);
+            }
+        }
+        Vector<string> environment = self.runtimeEnvironment(
+            releaseRoot, digest, roms, resolvedBios.document);
+        ExecResult prepared = ChildProcess.run(
+            PathTools.join(releaseRoot, "AppRun"),
+            ["settings", "prepare", "--target", self.policy.target,
+             "--project", self.paths.projectRoot], "", environment,
+            self.runtimeUnsets(), 300000, 8192, 32768,
+            "", CommandOutput.suppress());
+        return prepared.ok() ? SemuInstallResult.success()
+            : SemuInstallResult.failure(
+                "release settings preparation failed: "
+                + SemuInstallHost.processError(prepared));
+    }
+
+    public SemuInstallResult applySync(string releaseRoot, string digest) {
+        SemuInstallResult resolvedRoms = self.normalizedRoms();
+        if (!resolvedRoms.ok()) { return resolvedRoms; }
+        SemuInstallResult resolvedBios = self.normalizedBios();
+        if (!resolvedBios.ok()) { return resolvedBios; }
+        Vector<string> arguments = [];
+        arguments.extend(self.policy.postInstallCommand);
+        arguments.extend([
+            "--project", self.paths.projectRoot,
+            "--semu-home", PathTools.join(
+                self.paths.projectRoot, "settings"),
+            "--platform", self.policy.settingsPlatform
+        ]);
+        if (self.policy.postInstallCommand.size() != 2
+                || !self.policy.postInstallCommand.get(0).equals("sync")
+                || !self.policy.postInstallCommand.get(1).equals("apply")) {
+            return SemuInstallResult.failure(
+                "synchronization install lifecycle is invalid");
+        }
+        ExecResult applied = ChildProcess.run(
+            PathTools.join(releaseRoot, "AppRun"), arguments, "",
+            self.runtimeEnvironment(releaseRoot, digest,
+                resolvedRoms.document, resolvedBios.document),
+            self.runtimeUnsets(),
+            300000, 8192, 32768,
+            "", CommandOutput.suppress());
+        return applied.ok() ? SemuInstallResult.success()
+            : SemuInstallResult.failure(
+                "synchronization apply failed: "
+                + SemuInstallHost.processError(applied));
+    }
+
+    public SemuInstallResult validateCandidate(
+            string releaseRoot, string digest) {
+        SemuInstallResult verifiedRelease = self.store.verifyRelease(digest);
+        string retained = PathTools.join(
+            self.paths.artifacts, digest + ".AppImage");
+        if (!verifiedRelease.ok()
+                || !verifiedRelease.document.equals(releaseRoot)
+                || !SemuInstallHost.regularFile(retained)
+                || (FileStatus(retained).mode & 73) != 0
+                || !SemuInstallHost.sha256File(retained).equals(digest)
+                || !SemuInstallHost.regularFile(self.paths.stableLauncher)
+                || !SemuInstallHost.regularFile(self.paths.runtimeCli)
+                || !SemuInstallHost.sha256File(self.paths.stableLauncher).equals(
+                    SemuInstallHost.sha256File(PathTools.join(
+                        releaseRoot, self.policy.launcherPayload)))
+                || !SemuInstallHost.sha256File(self.paths.runtimeCli).equals(
+                    SemuInstallHost.sha256File(PathTools.join(
+                        releaseRoot, "lib/semu/semu-btrc")))
+                || !SemuDesktopEntry.valid(self.policy, self.paths)) {
+            return SemuInstallResult.failure(
+                "candidate deployment failed pre-publication validation");
+        }
+        return self.steam.validate();
+    }
+
+    public bool stagePrevious(SemuInstallTransaction transaction,
+                              string previous) {
+        string path = PathTools.join(self.paths.state, "previous");
+        if (previous.isEmpty()) {
+            return transaction.stageRemoval(path);
+        }
+        return transaction.text(path, previous + "\n", 292);
+    }
+
+    public bool prune(SemuInstallTransaction transaction,
+                      string current, string previous) {
+        for name in Directory(self.paths.releases).entries() {
+            string path = PathTools.join(self.paths.releases, name);
+            if (!name.equals(current) && !name.equals(previous)
+                    && !transaction.stageRemoval(path)) {
+                return false;
+            }
+        }
+        for name in Directory(self.paths.trees).entries() {
+            string digest = name.endsWith(".sha256")
+                ? name.substring(0, name.len() - 7) : "";
+            if (!digest.equals(current) && !digest.equals(previous)
+                    && !transaction.stageRemoval(PathTools.join(
+                        self.paths.trees, name))) {
+                return false;
+            }
+        }
+        for name in Directory(self.paths.artifacts).entries() {
+            string digest = name.endsWith(".AppImage")
+                ? name.substring(0, name.len() - 9) : "";
+            if (!digest.equals(current) && !digest.equals(previous)
+                    && !transaction.stageRemoval(PathTools.join(
+                        self.paths.artifacts, name))) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    public void discardUncommittedRelease(string digest, bool existed) {
+        if (existed) { return; }
+        FileSystem.removeRecursive(PathTools.join(self.paths.releases, digest));
+        FileSystem.removeRecursive(PathTools.join(
+            self.paths.trees, digest + ".sha256"));
+    }
+
+    public SemuInstallResult install() {
+        SemuInstallResult layout = self.store.createLayout();
+        if (!layout.ok()) { return layout; }
+        SemuInstallResult prerequisites = self.store.verifyPrerequisites();
+        if (!prerequisites.ok()) { return prerequisites; }
+        SemuInstallResult locked = self.lock.acquire();
+        if (!locked.ok()) { return locked; }
+        SemuInstallResult steam = self.steam.preflight();
+        if (!steam.ok()) { self.lock.unlock(); return steam; }
+        if (self.options.artifact.isEmpty()) {
+            self.lock.unlock();
+            return SemuInstallResult.failure("install requires --artifact PATH");
+        }
+
+        SemuInstallResult staged = self.store.incomingArtifact(self.options);
+        if (!staged.ok()) { self.lock.unlock(); return staged; }
+        Vector<string> stagedFields = Strings.split(staged.document, "\n");
+        string incoming = stagedFields.get(0);
+        string digest = stagedFields.get(1);
+        string oldCurrent = SemuInstallHost.identity(
+            PathTools.join(self.paths.state, "current"), true);
+        string oldPrevious = SemuInstallHost.identity(
+            PathTools.join(self.paths.state, "previous"), true);
+        bool releaseExisted = FileStatus(PathTools.join(
+            self.paths.releases, digest)).linkFound;
+        if (oldCurrent.equals("invalid") || oldPrevious.equals("invalid")) {
+            FileSystem.removeRecursive(incoming);
+            self.lock.unlock();
+            return SemuInstallResult.failure(
+                "installed release identity is malformed");
+        }
+        if (!oldCurrent.isEmpty()) {
+            SemuInstallResult verified = self.store.verifyRelease(oldCurrent);
+            if (!verified.ok()) {
+                FileSystem.removeRecursive(incoming);
+                self.lock.unlock();
+                return verified;
+            }
+        }
+        if (!oldPrevious.isEmpty()) {
+            SemuInstallResult verified = self.store.verifyRelease(oldPrevious);
+            if (!verified.ok()) {
+                FileSystem.removeRecursive(incoming);
+                self.lock.unlock();
+                return verified;
+            }
+        }
+
+        SemuInstallResult extracted = self.store.extract(
+            incoming, digest, self.options);
+        if (!extracted.ok()) {
+            FileSystem.removeRecursive(incoming);
+            self.lock.unlock();
+            return extracted;
+        }
+        string releaseRoot = extracted.document;
+        string nextPrevious = oldCurrent.equals(digest)
+            ? oldPrevious : oldCurrent;
+        SemuInstallTransaction transaction =
+            SemuInstallTransaction(self.paths.installRoot);
+        SemuInstallResult begun = transaction.begin();
+        if (!begun.ok()) {
+            self.discardUncommittedRelease(digest, releaseExisted);
+            FileSystem.removeRecursive(incoming);
+            self.lock.unlock();
+            return begun;
+        }
+
+        bool stagedDeployment = transaction.copy(PathTools.join(
+                releaseRoot, self.policy.launcherPayload),
+                self.paths.stableLauncher, 493)
+            && transaction.copy(PathTools.join(
+                releaseRoot, "lib/semu/semu-btrc"),
+                self.paths.runtimeCli, 493)
+            && transaction.text(self.paths.desktopEntry,
+                SemuDesktopEntry.document(self.policy, self.paths), 420)
+            && transaction.copy(incoming, PathTools.join(
+                self.paths.artifacts, digest + ".AppImage"), 292);
+        SemuInstallResult prepared = stagedDeployment
+            ? self.prepare(releaseRoot, digest)
+            : SemuInstallResult.failure("cannot stage stable deployment entrypoints");
+        if (!stagedDeployment || !prepared.ok()) {
+            transaction.rollback();
+            self.discardUncommittedRelease(digest, releaseExisted);
+            FileSystem.removeRecursive(incoming);
+            self.lock.unlock();
+            return prepared.ok()
+                ? SemuInstallResult.failure("deployment transaction failed")
+                : prepared;
+        }
+        SemuInstallResult synchronized = oldCurrent.equals(digest)
+            ? SemuInstallResult.success()
+            : self.applySync(releaseRoot, digest);
+        SemuInstallResult steamTracked = synchronized.ok()
+            ? self.steam.track(transaction) : synchronized;
+        SemuInstallResult registered = !synchronized.ok()
+            ? synchronized
+            : steamTracked.ok() ? self.steam.ensure(transaction)
+                : steamTracked;
+        SemuInstallResult candidate = registered.ok()
+            ? self.validateCandidate(releaseRoot, digest) : registered;
+        bool published = candidate.ok()
+            && transaction.copy(incoming, self.paths.canonicalArtifact, 292)
+            && transaction.text(self.paths.artifactDigest, digest + "\n", 292)
+            && transaction.text(
+                self.paths.targetIdentity, self.policy.target + "\n", 292)
+            && self.stagePrevious(transaction, nextPrevious)
+            && transaction.text(PathTools.join(
+                self.paths.state, "current"), digest + "\n", 292)
+            && self.prune(transaction, digest, nextPrevious);
+        SemuInstallResult status = !candidate.ok()
+            ? candidate
+            : published ? self.statusUnlocked()
+                : SemuInstallResult.failure(
+                    "deployment publication transaction failed");
+        bool committed = status.ok() && transaction.commit();
+        if (!committed) {
+            SemuInstallResult restored =
+                self.steam.rollbackDeployment(transaction);
+            self.discardUncommittedRelease(digest, releaseExisted);
+            FileSystem.removeRecursive(incoming);
+            self.lock.unlock();
+            SemuInstallResult failure = status.ok()
+                ? SemuInstallResult.failure(
+                    "deployment finalization transaction failed")
+                : status;
+            return restored.ok() ? failure : SemuInstallResult.failure(
+                failure.error + "; rollback failed: " + restored.error);
+        }
+        self.steam.completeDeployment();
+        FileSystem.removeRecursive(incoming);
+        self.lock.unlock();
+        return status;
+    }
+
+    public SemuInstallResult rollback() {
+        SemuInstallResult layout = self.store.openLayout();
+        if (!layout.ok()) { return layout; }
+        SemuInstallResult prerequisites = self.store.verifyPrerequisites();
+        if (!prerequisites.ok()) { return prerequisites; }
+        SemuInstallResult locked = self.lock.acquire();
+        if (!locked.ok()) { return locked; }
+        SemuInstallResult steam = self.steam.preflight();
+        if (!steam.ok()) { self.lock.unlock(); return steam; }
+        string current = SemuInstallHost.identity(
+            PathTools.join(self.paths.state, "current"));
+        string previous = SemuInstallHost.identity(
+            PathTools.join(self.paths.state, "previous"));
+        if (!SemuInstallPolicy.validDigest(current)
+                || !SemuInstallPolicy.validDigest(previous)
+                || current.equals(previous)) {
+            self.lock.unlock();
+            return SemuInstallResult.failure(
+                "rollback requires two distinct verified releases");
+        }
+        SemuInstallResult verifiedCurrent = self.store.verifyRelease(current);
+        SemuInstallResult verifiedPrevious = self.store.verifyRelease(previous);
+        if (!verifiedCurrent.ok() || !verifiedPrevious.ok()) {
+            self.lock.unlock();
+            return verifiedCurrent.ok() ? verifiedPrevious : verifiedCurrent;
+        }
+        string releaseRoot = verifiedPrevious.document;
+        SemuInstallTransaction transaction =
+            SemuInstallTransaction(self.paths.installRoot);
+        SemuInstallResult begun = transaction.begin();
+        if (!begun.ok()) { self.lock.unlock(); return begun; }
+        bool staged = transaction.copy(PathTools.join(
+                releaseRoot, self.policy.launcherPayload),
+                self.paths.stableLauncher, 493)
+            && transaction.copy(PathTools.join(
+                releaseRoot, "lib/semu/semu-btrc"),
+                self.paths.runtimeCli, 493);
+        SemuInstallResult prepared = staged
+            ? self.prepare(releaseRoot, previous)
+            : SemuInstallResult.failure("cannot stage rollback entrypoints");
+        if (!staged || !prepared.ok()) {
+            transaction.rollback();
+            self.lock.unlock();
+            return prepared.ok()
+                ? SemuInstallResult.failure("rollback transaction failed")
+                : prepared;
+        }
+        SemuInstallResult steamTracked = self.steam.track(transaction);
+        SemuInstallResult registered = steamTracked.ok()
+            ? self.steam.ensure(transaction) : steamTracked;
+        SemuInstallResult candidate = registered.ok()
+            ? self.validateCandidate(releaseRoot, previous) : registered;
+        bool published = candidate.ok()
+            && transaction.copy(PathTools.join(
+                self.paths.artifacts, previous + ".AppImage"),
+                self.paths.canonicalArtifact, 292)
+            && transaction.text(
+                self.paths.artifactDigest, previous + "\n", 292)
+            && transaction.text(
+                self.paths.targetIdentity, self.policy.target + "\n", 292)
+            && transaction.text(PathTools.join(
+                self.paths.state, "previous"), current + "\n", 292)
+            && transaction.text(PathTools.join(
+                self.paths.state, "current"), previous + "\n", 292);
+        SemuInstallResult status = !candidate.ok()
+            ? candidate
+            : published ? self.statusUnlocked()
+                : SemuInstallResult.failure(
+                    "rollback publication transaction failed");
+        bool committed = status.ok() && transaction.commit();
+        if (!committed) {
+            SemuInstallResult restored =
+                self.steam.rollbackDeployment(transaction);
+            self.lock.unlock();
+            SemuInstallResult failure = status.ok()
+                ? SemuInstallResult.failure(
+                    "rollback finalization transaction failed")
+                : status;
+            return restored.ok() ? failure : SemuInstallResult.failure(
+                failure.error + "; rollback failed: " + restored.error);
+        }
+        self.steam.completeDeployment();
+        self.lock.unlock();
+        return status;
+    }
+
+    public SemuInstallResult validateInventory(string current, string previous) {
+        int releases = 0;
+        for name in Directory(self.paths.releases).entries() {
+            if (!name.equals(current) && !name.equals(previous)) {
+                return SemuInstallResult.failure(
+                    "stale extracted release remains installed: " + name);
+            }
+            releases++;
+        }
+        int expected = previous.isEmpty() ? 1 : self.policy.retainedReleases;
+        if (releases != expected) {
+            return SemuInstallResult.failure(
+                "installed release count does not match retention policy");
+        }
+        int artifacts = 0;
+        for name in Directory(self.paths.artifacts).entries() {
+            string digest = name.endsWith(".AppImage")
+                ? name.substring(0, name.len() - 9) : "";
+            string path = PathTools.join(self.paths.artifacts, name);
+            if ((!digest.equals(current) && !digest.equals(previous))
+                    || !SemuInstallHost.regularFile(path)
+                    || (FileStatus(path).mode & 73) != 0
+                    || !SemuInstallHost.sha256File(path).equals(digest)) {
+                return SemuInstallResult.failure(
+                    "stale or invalid retained AppImage remains installed: "
+                    + name);
+            }
+            artifacts++;
+        }
+        if (artifacts != expected) {
+            return SemuInstallResult.failure(
+                "retained AppImage count does not match release policy");
+        }
+        return SemuInstallResult.success();
+    }
+
+    public SemuInstallResult statusUnlocked() {
+        if (!SemuInstallHost.regularFile(self.paths.canonicalArtifact)
+                || (FileStatus(self.paths.canonicalArtifact).mode & 73) != 0) {
+            return SemuInstallResult.failure(
+                "canonical AppImage is absent, executable, or unsafe");
+        }
+        string artifact = SemuInstallHost.sha256File(
+            self.paths.canonicalArtifact);
+        string recorded = SemuInstallHost.identity(self.paths.artifactDigest);
+        string current = SemuInstallHost.identity(
+            PathTools.join(self.paths.state, "current"));
+        string installedTarget = SemuInstallHost.regularFile(
+            self.paths.targetIdentity)
+            ? FileSystem.readText(self.paths.targetIdentity).trim() : "";
+        if (artifact.isEmpty() || !artifact.equals(recorded)
+                || !artifact.equals(current)
+                || !SemuTargetPolicy.identifier(installedTarget)
+                || !installedTarget.equals(self.policy.target)) {
+            return SemuInstallResult.failure(
+                "canonical AppImage digest or target does not match its bytes");
+        }
+        string previous = SemuInstallHost.identity(
+            PathTools.join(self.paths.state, "previous"), true);
+        if (!SemuInstallPolicy.validDigest(current)
+                || previous.equals("invalid") || current.equals(previous)) {
+            return SemuInstallResult.failure(
+                "installed release identities are malformed");
+        }
+        for digest in previous.isEmpty() ? [current] : [current, previous] {
+            string retained = PathTools.join(
+                self.paths.artifacts, digest + ".AppImage");
+            if (!SemuInstallHost.regularFile(retained)
+                    || (FileStatus(retained).mode & 73) != 0
+                    || !SemuInstallHost.sha256File(retained).equals(digest)) {
+                return SemuInstallResult.failure(
+                    "retained AppImage bytes are missing or invalid: "
+                    + digest);
+            }
+        }
+        SemuInstallResult active = self.store.verifyRelease(current);
+        if (!active.ok()) { return active; }
+        if (!previous.isEmpty()) {
+            SemuInstallResult retained = self.store.verifyRelease(previous);
+            if (!retained.ok()) { return retained; }
+        }
+        if (!SemuInstallHost.regularFile(self.paths.stableLauncher)
+                || !SemuInstallHost.regularFile(self.paths.runtimeCli)
+                || !SemuInstallHost.sha256File(self.paths.stableLauncher).equals(
+                    SemuInstallHost.sha256File(PathTools.join(
+                        active.document, self.policy.launcherPayload)))
+                || !SemuInstallHost.sha256File(self.paths.runtimeCli).equals(
+                    SemuInstallHost.sha256File(PathTools.join(
+                        active.document, "lib/semu/semu-btrc")))) {
+            return SemuInstallResult.failure(
+                "stable launcher/runtime does not match the active release");
+        }
+        if (!SemuDesktopEntry.valid(self.policy, self.paths)) {
+            return SemuInstallResult.failure(
+                "installed desktop entry does not target the stable launcher");
+        }
+        SemuInstallResult shortcut = self.steam.validate();
+        if (!shortcut.ok()) { return shortcut; }
+        SemuInstallResult inventory = self.validateInventory(current, previous);
+        if (!inventory.ok()) { return inventory; }
+        return SemuInstallResult.success(
+            "artifact=" + self.paths.canonicalArtifact
+            + "\nartifact_sha256=" + artifact
+            + "\ncurrent=" + current
+            + "\ntarget=" + installedTarget
+            + "\nprevious=" + (previous.isEmpty() ? "none" : previous)
+            + "\nlauncher=" + self.paths.stableLauncher
+            + "\nruntime_cli=" + self.paths.runtimeCli
+            + "\ndesktop=" + self.paths.desktopEntry
+            + "\nsteam_shortcut=" + shortcut.document
+            + "\nproject=" + self.paths.projectRoot + "\n");
+    }
+
+    public SemuInstallResult status() {
+        SemuInstallResult layout = self.store.openLayout();
+        if (!layout.ok()) { return layout; }
+        SemuInstallResult prerequisites = self.store.verifyPrerequisites();
+        if (!prerequisites.ok()) { return prerequisites; }
+        SemuInstallResult locked = self.lock.acquire();
+        if (!locked.ok()) { return locked; }
+        SemuInstallResult result = self.statusUnlocked();
+        self.lock.unlock();
+        return result;
+    }
+
+    public SemuInstallResult execute() {
+        if (self.options.action.equals("install")) { return self.install(); }
+        if (self.options.action.equals("status")) { return self.status(); }
+        if (self.options.action.equals("rollback")) { return self.rollback(); }
+        return SemuInstallResult.failure(
+            "expected install, status, or rollback action");
+    }
+}
+
+class SemuInstallCommand {
+    class void cleanupBootstrap(SemuInstallOptions options) {
+        if (options.bootstrapRoot.isEmpty()
+                || options.bootstrapTemporary.isEmpty()) {
+            return;
+        }
+        string root = UnixFileSystem.realPath(options.bootstrapRoot);
+        string temporary = UnixFileSystem.realPath(
+            options.bootstrapTemporary);
+        if (!root.isEmpty() && !temporary.isEmpty()
+                && root.startsWith(temporary + "/")
+                && PathTools.basename(temporary).startsWith("semu-install.")) {
+            FileSystem.removeRecursive(temporary);
+        }
+    }
+
+    class int run(CliCommandLine command) {
+        if (!command.ok()) {
+            for error in command.errors { print("install: " + error); }
+            return 2;
+        }
+        SemuInstallOptions options = SemuInstallOptions.parse(command);
+        SemuInstallPolicy policy = SemuInstallPolicy();
+        SemuInstallResult loaded = SemuInstallPolicy.load(options, policy);
+        if (!loaded.ok()) {
+            print("install: " + loaded.error);
+            SemuInstallCommand.cleanupBootstrap(options);
+            return 2;
+        }
+        SemuInstallPaths paths = SemuInstallPaths(policy, options);
+        SemuInstaller installer = SemuInstaller(options, policy, paths);
+        SemuInstallResult result = installer.execute();
+        SemuInstallCommand.cleanupBootstrap(options);
+        if (!result.ok()) {
+            print("install: " + result.error);
+            return 2;
+        }
+        if (!result.document.isEmpty()) { print(result.document.trim()); }
+        return 0;
+    }
+}

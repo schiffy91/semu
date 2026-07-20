@@ -1,0 +1,404 @@
+--- a/Source/Core/Core/HotkeyManager.cpp
++++ b/Source/Core/Core/HotkeyManager.cpp
+@@ -103,6 +103,11 @@
+     _trans("Previous Profile"),
+     _trans("Next Game Profile"),
+     _trans("Previous Game Profile"),
++
++    _trans("Wii Remote"),
++    _trans("Wii Remote + Nunchuk"),
++    _trans("Classic Controller"),
++    _trans("GameCube Controller"),
+ 
+     _trans("Toggle Crop"),
+     _trans("Toggle Aspect Ratio"),
+@@ -310,6 +315,7 @@
+      {_trans("Controller Profile 2"), HK_NEXT_WIIMOTE_PROFILE_2, HK_PREV_GAME_WIIMOTE_PROFILE_2},
+      {_trans("Controller Profile 3"), HK_NEXT_WIIMOTE_PROFILE_3, HK_PREV_GAME_WIIMOTE_PROFILE_3},
+      {_trans("Controller Profile 4"), HK_NEXT_WIIMOTE_PROFILE_4, HK_PREV_GAME_WIIMOTE_PROFILE_4},
++     {_trans("Semu Controller Mode"), HK_SEMU_WIIMOTE_MODE, HK_SEMU_GAMECUBE_MODE},
+      {_trans("Graphics Toggles"), HK_TOGGLE_CROP, HK_TOGGLE_TEXTURES},
+      {_trans("Internal Resolution"), HK_INCREASE_IR, HK_DECREASE_IR},
+      {_trans("Freelook"), HK_FREELOOK_TOGGLE, HK_FREELOOK_TOGGLE},
+--- a/Source/Core/Core/HotkeyManager.h
++++ b/Source/Core/Core/HotkeyManager.h
+@@ -91,6 +91,11 @@
+   HK_PREV_WIIMOTE_PROFILE_4,
+   HK_NEXT_GAME_WIIMOTE_PROFILE_4,
+   HK_PREV_GAME_WIIMOTE_PROFILE_4,
++
++  HK_SEMU_WIIMOTE_MODE,
++  HK_SEMU_NUNCHUK_MODE,
++  HK_SEMU_CLASSIC_MODE,
++  HK_SEMU_GAMECUBE_MODE,
+ 
+   HK_TOGGLE_CROP,
+   HK_TOGGLE_AR,
+@@ -204,6 +209,7 @@
+   HKGP_CONTROLLER_PROFILE_2,
+   HKGP_CONTROLLER_PROFILE_3,
+   HKGP_CONTROLLER_PROFILE_4,
++  HKGP_SEMU_CONTROLLER_MODE,
+   HKGP_GRAPHICS_TOGGLES,
+   HKGP_IR,
+   HKGP_FREELOOK,
+--- a/Source/Core/DolphinQt/HotkeyScheduler.cpp
++++ b/Source/Core/DolphinQt/HotkeyScheduler.cpp
+@@ -340,6 +340,15 @@
+       else if (IsHotkey(HK_NEXT_GAME_WIIMOTE_PROFILE_4))
+         m_profile_cycler.NextWiimoteProfileForGame(3);
+ 
++      if (IsHotkey(HK_SEMU_WIIMOTE_MODE))
++        m_profile_cycler.ActivateSemuControllerMode(InputProfile::SemuControllerMode::Wiimote);
++      else if (IsHotkey(HK_SEMU_NUNCHUK_MODE))
++        m_profile_cycler.ActivateSemuControllerMode(InputProfile::SemuControllerMode::Nunchuk);
++      else if (IsHotkey(HK_SEMU_CLASSIC_MODE))
++        m_profile_cycler.ActivateSemuControllerMode(InputProfile::SemuControllerMode::Classic);
++      else if (IsHotkey(HK_SEMU_GAMECUBE_MODE))
++        m_profile_cycler.ActivateSemuControllerMode(InputProfile::SemuControllerMode::GameCube);
++
+       auto ShowVolume = [] {
+         OSD::AddMessage(std::string("Volume: ") +
+                         (Config::Get(Config::MAIN_AUDIO_MUTED) ?
+--- a/Source/Core/InputCommon/InputProfile.cpp
++++ b/Source/Core/InputCommon/InputProfile.cpp
+@@ -4,17 +4,25 @@
+ #include "InputCommon/InputProfile.h"
+ 
+ #include <algorithm>
++#include <filesystem>
+ #include <iterator>
+ 
+ #include <fmt/format.h>
+ 
+ #include "Common/FileSearch.h"
+ #include "Common/FileUtil.h"
++#include "Common/IniFile.h"
+ #include "Common/StringUtil.h"
+ 
++#include "Core/Config/MainSettings.h"
++#include "Core/Config/WiimoteSettings.h"
+ #include "Core/ConfigManager.h"
+ #include "Core/Core.h"
++#include "Core/HW/GCPad.h"
++#include "Core/HW/SI/SI.h"
++#include "Core/HW/SI/SI_Device.h"
+ #include "Core/HW/Wiimote.h"
++#include "Core/System.h"
+ 
+ #include "InputCommon/ControllerEmu/ControllerEmu.h"
+ #include "InputCommon/ControllerInterface/ControllerInterface.h"
+@@ -25,8 +33,31 @@
+ namespace
+ {
+ constexpr int display_message_ms = 3000;
++
++const char* GetSemuProfileKey(SemuControllerMode mode)
++{
++  switch (mode)
++  {
++  case SemuControllerMode::Wiimote:
++    return "WiimoteProfile";
++  case SemuControllerMode::Nunchuk:
++    return "NunchukProfile";
++  case SemuControllerMode::Classic:
++    return "ClassicProfile";
++  case SemuControllerMode::GameCube:
++    return "GameCubeProfile";
++  }
++  return "";
+ }
+ 
++bool IsSafeSemuProfileName(const std::string& profile)
++{
++  return !profile.empty() && profile != "." && profile != ".." &&
++         profile.find('/') == std::string::npos && profile.find('\\') == std::string::npos &&
++         profile.find("..") == std::string::npos;
++}
++}
++
+ std::vector<std::string> GetProfilesFromSetting(const std::string& setting, const std::string& root)
+ {
+   const auto& setting_choices = SplitString(setting, ',');
+@@ -71,7 +102,7 @@
+   return profiles[profile_index];
+ }
+ 
+-void ProfileCycler::UpdateToProfile(const std::string& profile_filename,
++bool ProfileCycler::UpdateToProfile(const std::string& profile_filename,
+                                     ControllerEmu::EmulatedController* controller,
+                                     InputConfig* device_configuration)
+ {
+@@ -87,12 +118,14 @@
+     controller->LoadConfig(ini_file.GetOrCreateSection("Profile"));
+     controller->UpdateReferences(g_controller_interface);
+     device_configuration->GenerateControllerTextures(ini_file);
++    return true;
+   }
+   else
+   {
+     Core::DisplayMessage("Unable to load input profile '" + base + "' for device '" +
+                              controller->GetName() + "'",
+                          display_message_ms);
++    return false;
+   }
+ }
+ 
+@@ -209,5 +242,66 @@
+ {
+   CycleProfileForGame(CycleDirection::Backward, Wiimote::GetConfig(), m_wiimote_profile_index,
+                       GetWiimoteInputProfilesForGame(controller_index), controller_index);
++}
++
++bool ProfileCycler::ActivateSemuControllerMode(SemuControllerMode mode)
++{
++  auto& system = Core::System::GetInstance();
++  if (!Core::IsRunning(system) || !system.IsWii())
++    return false;
++
++  Common::IniFile dolphin_ini;
++  if (!dolphin_ini.Load(File::GetUserPath(D_CONFIG_IDX) + "Dolphin.ini"))
++    return false;
++
++  std::string profile_name;
++  const auto* section = dolphin_ini.GetOrCreateSection("Semu Controller Modes");
++  if (!section->Get(GetSemuProfileKey(mode), &profile_name) ||
++      !IsSafeSemuProfileName(profile_name))
++  {
++    Core::DisplayMessage("Invalid Semu controller profile", display_message_ms);
++    return false;
++  }
++
++  InputConfig* input_config =
++      mode == SemuControllerMode::GameCube ? Pad::GetConfig() : Wiimote::GetConfig();
++  if (input_config == nullptr || input_config->GetControllerCount() == 0)
++    return false;
++
++  std::error_code path_error;
++  const std::filesystem::path profile_root = std::filesystem::weakly_canonical(
++      input_config->GetUserProfileDirectoryPath(), path_error);
++  const std::filesystem::path profile_path = profile_root / (profile_name + ".ini");
++  const std::filesystem::file_status profile_status =
++      std::filesystem::symlink_status(profile_path, path_error);
++  const std::filesystem::path canonical_profile =
++      std::filesystem::canonical(profile_path, path_error);
++  if (path_error || std::filesystem::is_symlink(profile_status) ||
++      !std::filesystem::is_regular_file(profile_status) ||
++      canonical_profile.parent_path() != profile_root)
++  {
++    Core::DisplayMessage("Unable to load Semu controller profile '" + profile_name + "'",
++                         display_message_ms);
++    return false;
++  }
++
++  if (!UpdateToProfile(canonical_profile.string(), input_config->GetController(0), input_config))
++    return false;
++
++  const bool gamecube = mode == SemuControllerMode::GameCube;
++  {
++    Config::ConfigChangeCallbackGuard config_guard;
++    Config::SetCurrent(Config::WIIMOTE_1_SOURCE,
++                       gamecube ? WiimoteSource::None : WiimoteSource::Emulated);
++    Config::SetCurrent(Config::GetInfoForSIDevice(0),
++                       gamecube ? SerialInterface::SIDEVICE_GC_CONTROLLER :
++                                  SerialInterface::SIDEVICE_NONE);
++  }
++  {
++    const Core::CPUThreadGuard guard(system);
++    system.GetSerialInterface().ChangeDevice(
++        gamecube ? SerialInterface::SIDEVICE_GC_CONTROLLER : SerialInterface::SIDEVICE_NONE, 0);
++  }
++  return true;
+ }
+ }  // namespace InputProfile
+--- a/Source/Core/VideoCommon/AbstractGfx.h
++++ b/Source/Core/VideoCommon/AbstractGfx.h
+@@ -8,6 +8,10 @@
+ 
+ #include "VideoCommon/RenderState.h"
+ 
++#ifdef HAVE_SEMU_RENDERER
++#include <semu_renderer.h>
++#endif
++
+ #include <array>
+ #include <memory>
+ #include <vector>
+@@ -107,6 +111,11 @@
+   // per-frame resources and prepare for the next frame.
+   virtual bool BindBackbuffer(const ClearColor& clear_color = {}) { return true; }
+ 
++#ifdef HAVE_SEMU_RENDERER
++  virtual void RenderSemuGameFrame(SemuRenderFrameGl* frame) {}
++  virtual void RenderSemuPostUiFrame(SemuRenderFrameGl* frame) {}
++#endif
++
+   // Presents the backbuffer to the window system, or "swaps buffers".
+   virtual void PresentBackbuffer() {}
+ 
+--- a/Source/Core/VideoCommon/Present.cpp
++++ b/Source/Core/VideoCommon/Present.cpp
+@@ -878,6 +878,11 @@
+   g_gfx->BeginUtilityDrawing();
+   const bool backbuffer_bound = g_gfx->BindBackbuffer({{0.0f, 0.0f, 0.0f, 1.0f}});
+ 
++#ifdef HAVE_SEMU_RENDERER
++  SemuRenderFrameGl semu_frame{};
++  bool semu_frame_ready = false;
++#endif
++
+   // Render the XFB to the screen.
+   if (backbuffer_bound && m_xfb_entry)
+   {
+@@ -887,6 +892,37 @@
+     AdjustRectanglesToFitBounds(&render_target_rc, &render_source_rc, m_backbuffer_width,
+                                 m_backbuffer_height);
+     RenderXFBToScreen(render_target_rc, m_xfb_entry->texture.get(), render_source_rc);
++
++#ifdef HAVE_SEMU_RENDERER
++    semu_frame.abi = SEMU_RENDER_ABI_GL;
++    semu_frame.struct_size = sizeof(semu_frame);
++    semu_frame.frame_id = m_present_count;
++    semu_frame.framebuffer = 0;
++    semu_frame.framebuffer_width = m_backbuffer_width;
++    semu_frame.framebuffer_height = m_backbuffer_height;
++    const bool semu_widescreen = g_widescreen && g_widescreen->IsGameWidescreen();
++    semu_frame.presentation_aspect = CalculateDrawAspectRatio(false);
++    semu_frame.layout_variant =
++        semu_widescreen ? SEMU_RENDER_LAYOUT_VARIANT_B : SEMU_RENDER_LAYOUT_DEFAULT;
++    semu_frame.surface_count = 1;
++    semu_frame.surfaces[0].x = render_target_rc.left;
++    semu_frame.surfaces[0].y = render_target_rc.top;
++    semu_frame.surfaces[0].width = render_target_rc.GetWidth();
++    semu_frame.surfaces[0].height = render_target_rc.GetHeight();
++    semu_frame.surfaces[0].native_width = static_cast<int>(m_last_xfb_width);
++    semu_frame.surfaces[0].native_height = static_cast<int>(m_last_xfb_height);
++    semu_frame.surfaces[0].rotation = 0;
++    semu_frame.surfaces[0].origin = SEMU_RENDER_ORIGIN_TOP_LEFT;
++    const bool valid_geometry =
++        semu_frame.framebuffer_width > 0 && semu_frame.framebuffer_height > 0 &&
++        semu_frame.surfaces[0].width > 0 && semu_frame.surfaces[0].height > 0 &&
++        semu_frame.surfaces[0].native_width > 0 && semu_frame.surfaces[0].native_height > 0;
++    if (valid_geometry)
++    {
++      g_gfx->RenderSemuGameFrame(&semu_frame);
++      semu_frame_ready = true;
++    }
++#endif
+   }
+ 
+   if (m_onscreen_ui)
+@@ -911,6 +947,10 @@
+       present_info->present_time_accuracy = PresentInfo::PresentTimeAccuracy::PresentInProgress;
+     }
+ 
++#ifdef HAVE_SEMU_RENDERER
++    if (semu_frame_ready)
++      g_gfx->RenderSemuPostUiFrame(&semu_frame);
++#endif
+     g_gfx->PresentBackbuffer();
+   }
+ 
+--- a/Source/Core/VideoBackends/OGL/OGLGfx.h
++++ b/Source/Core/VideoBackends/OGL/OGLGfx.h
+@@ -60,6 +60,10 @@
+   void DispatchComputeShader(const AbstractShader* shader, u32 groupsize_x, u32 groupsize_y,
+                              u32 groupsize_z, u32 groups_x, u32 groups_y, u32 groups_z) override;
+   bool BindBackbuffer(const ClearColor& clear_color = {}) override;
++#ifdef HAVE_SEMU_RENDERER
++  void RenderSemuGameFrame(SemuRenderFrameGl* frame) override;
++  void RenderSemuPostUiFrame(SemuRenderFrameGl* frame) override;
++#endif
+   void PresentBackbuffer() override;
+ 
+   void BeginUtilityDrawing() override;
+--- a/Source/Core/VideoBackends/OGL/OGLGfx.cpp
++++ b/Source/Core/VideoBackends/OGL/OGLGfx.cpp
+@@ -26,6 +26,28 @@
+ namespace OGL
+ {
+ VideoConfig g_ogl_config;
++
++#ifdef HAVE_SEMU_RENDERER
++static thread_local GLContext* s_semu_gl_context;
++
++static void* SemuGetProc(const char* name)
++{
++  return s_semu_gl_context ? s_semu_gl_context->GetFuncAddress(name) : nullptr;
++}
++
++static void* SemuCurrentContext()
++{
++  return s_semu_gl_context;
++}
++
++static void PrepareSemuFrame(SemuRenderFrameGl* frame, GLContext* context)
++{
++  s_semu_gl_context = context;
++  frame->color_buffer = GL_BACK;
++  frame->get_proc = SemuGetProc;
++  frame->current_context = SemuCurrentContext;
++}
++#endif
+ 
+ static void APIENTRY ErrorCallback(GLenum source, GLenum type, GLuint id, GLenum severity,
+                                    GLsizei length, const char* message, const void* userParam)
+@@ -433,6 +455,24 @@
+   m_main_gl_context->Swap();
+ }
+ 
++#ifdef HAVE_SEMU_RENDERER
++void OGLGfx::RenderSemuGameFrame(SemuRenderFrameGl* frame)
++{
++  if (!frame)
++    return;
++  PrepareSemuFrame(frame, m_main_gl_context.get());
++  semu_render_game_gl(frame);
++}
++
++void OGLGfx::RenderSemuPostUiFrame(SemuRenderFrameGl* frame)
++{
++  if (!frame)
++    return;
++  PrepareSemuFrame(frame, m_main_gl_context.get());
++  semu_render_post_ui_gl(frame);
++}
++#endif
++
+ void OGLGfx::OnConfigChanged(u32 bits)
+ {
+   AbstractGfx::OnConfigChanged(bits);
+--- a/Source/Core/InputCommon/InputProfile.h
++++ b/Source/Core/InputCommon/InputProfile.h
+@@ -24,6 +24,14 @@
+   Backward = -1
+ };
+ 
++enum class SemuControllerMode
++{
++  Wiimote,
++  Nunchuk,
++  Classic,
++  GameCube
++};
++
+ class ProfileCycler
+ {
+ public:
+@@ -31,6 +39,7 @@
+   void PreviousWiimoteProfile(int controller_index);
+   void NextWiimoteProfileForGame(int controller_index);
+   void PreviousWiimoteProfileForGame(int controller_index);
++  bool ActivateSemuControllerMode(SemuControllerMode mode);
+ 
+ private:
+   void CycleProfile(CycleDirection cycle_direction, InputConfig* device_configuration,
+@@ -43,7 +52,7 @@
+   std::vector<std::string> GetMatchingProfilesFromSetting(const std::string& setting,
+                                                           const std::vector<std::string>& profiles,
+                                                           InputConfig* device_configuration);
+-  void UpdateToProfile(const std::string& profile_filename,
++  bool UpdateToProfile(const std::string& profile_filename,
+                        ControllerEmu::EmulatedController* controller,
+                        InputConfig* device_configuration);
+   std::string GetWiimoteInputProfilesForGame(int controller_index);

@@ -1,0 +1,96 @@
+{
+  "schema_version": 1,
+  "name": "PPSSPP",
+  "default_system": "psp",
+  "input": {
+    "actions": [
+      "ui.pause",
+      "ui.screenshot",
+      "ui.fullscreen",
+      "ui.menu",
+      "app.quit",
+      "state.prev",
+      "state.next",
+      "state.load",
+      "state.save",
+      "speed.fast"
+    ]
+  },
+  "platforms": {
+    "linux": {
+      "backend": "bwrap",
+      "executable": "${asset_root}/bin/ppsspp",
+      "args": [
+        "--fullscreen"
+      ],
+      "gl_wrapper": "${asset_root}/bin/nixGL",
+      "sandbox": {
+        "devices": [
+          "all"
+        ],
+        "filesystems": [
+          {
+            "path": "${asset_root}",
+            "mode": "ro"
+          },
+          {
+            "path": "${roms}",
+            "mode": "ro"
+          },
+          {
+            "path": "${emulation_root}",
+            "mode": "ro"
+          },
+          {
+            "path": "${state_root}",
+            "mode": "create"
+          }
+        ]
+      },
+      "graphics": {
+        "method": "config_file",
+        "file": "${state_root}/config/ppsspp/PSP/SYSTEM/ppsspp.ini",
+        "format": "ini",
+        "section": "Graphics",
+        "key": "GraphicsBackend",
+        "values": {
+          "opengl": "OPENGL"
+        },
+        "extra_pins": [
+          {
+            "section": "Graphics",
+            "key": "DisabledGraphicsBackends",
+            "value": "VULKAN,DIRECT3D11,DIRECT3D9"
+          },
+          {
+            "section": "Graphics",
+            "key": "EnableCardboardVR",
+            "value": "False"
+          },
+          {
+            "section": "Graphics",
+            "key": "InternalScreenRotation",
+            "value": "1"
+          }
+        ]
+      },
+      "state": {
+        "config_home": "xdg",
+        "data_home": "xdg",
+        "config_subdir": "ppsspp",
+        "data_subdir": "ppsspp",
+        "managed_profile_files": [
+          "config/PSP/SYSTEM/ppsspp.ini",
+          "config/PSP/SYSTEM/controls.ini"
+        ]
+      }
+    }
+  },
+  "doc": {
+    "launch": "The bundled source-built SDL frontend receives --fullscreen and exactly one positional ROM appended by the launcher. No host executable, Flatpak, libretro core, or prebuilt binary is permitted.",
+    "state": "PPSSPP maps $XDG_CONFIG_HOME/ppsspp to isolated Semu state. Generated settings live in PSP/SYSTEM, game saves in PSP/SAVEDATA, save states in PSP/PPSSPP_STATE, and cache/screenshots remain below the same isolated root.",
+    "sandbox": "The package, ROM library, and external Emulation tree are read-only. PPSSPP can write only its per-emulator state root; external ROM, BIOS, and save trees are never modified.",
+    "input": "Pad zero is PPSSPP's SDL GameController lane for the Steam Virtual Gamepad. PSP controls are explicit, Semu keymap actions compile to PPSSPP chords, and the target process-group watcher owns immediate physical Start+Select termination.",
+    "rendering": "The managed profile pins OpenGL. The source-built package directly links libsemurenderer and submits the final PSP image before PPSSPP UI, then submits the completed UI immediately before the real present task. No inactive report or display/session branch is emulator-owned."
+  }
+}

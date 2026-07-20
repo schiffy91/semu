@@ -1,0 +1,312 @@
+// Public physical Steam Deck harness. The facade makes orchestration obvious;
+// plan, transport/deployment, preflight, remote execution, and evidence policy
+// remain cohesive modules with strict direct imports.
+
+import std.{fs, json, vector}
+import ./acceptance_evidence.btrc
+import ./acceptance_plan.btrc
+import ./deck_deploy.btrc
+import ./deck_preflight.btrc
+import ./deck_transport.btrc
+import ./game_mode.btrc
+import ./input_automation.btrc
+
+class DeckPhysicalHarness {
+    public DeckHarnessOptions options;
+    public DeckAcceptancePlan plan;
+    public DeckTransport transport;
+    public DeckPreflight preflightGate;
+    public DeckDeployment deployment;
+
+    public DeckPhysicalHarness(DeckHarnessOptions options) {
+        self.options = options;
+        self.plan = DeckAcceptancePlan.load(options.project);
+        self.transport = DeckTransport(options);
+        self.preflightGate = DeckPreflight(options, self.plan, self.transport);
+        self.deployment = DeckDeployment(options, self.transport);
+    }
+
+    public DeckHarnessResult ready(bool requireHelpers = false) {
+        DeckHarnessResult optionsStatus = self.options.validateLocal(
+            requireHelpers);
+        if (!optionsStatus.ok()) { return optionsStatus; }
+        return self.plan.ok()
+            ? DeckHarnessResult.success()
+            : DeckHarnessResult.failure(self.plan.errors.join("; "));
+    }
+
+    public int fail(DeckHarnessResult result) {
+        print("steamdeck harness: FAIL " + result.error);
+        return 1;
+    }
+
+    public int emitPlan() {
+        DeckHarnessResult status = self.ready();
+        if (!status.ok()) { return self.fail(status); }
+        string document = self.plan.json(self.options).stringify() + "\n";
+        if (self.options.output.isEmpty()) {
+            print(document.trim());
+            return 0;
+        }
+        if (FileSystem.isSymlink(self.options.output)
+                || FileSystem.mkdirp(PathTools.dirname(self.options.output)) != 0
+                || !FileSystem.writeText(self.options.output, document)) {
+            return self.fail(DeckHarnessResult.failure(
+                "could not write acceptance plan: " + self.options.output));
+        }
+        print("steamdeck harness: wrote " + self.options.output);
+        return 0;
+    }
+
+    public DeckExpectedShortcut exactShortcut() {
+        DeckHarnessResult staged = self.transport.stageHelpers();
+        if (!staged.ok()) {
+            print("steamdeck harness: FAIL " + staged.error);
+            return DeckExpectedShortcut();
+        }
+        return self.preflightGate.inspectShortcut();
+    }
+
+    public int preflight() {
+        DeckHarnessResult status = self.ready(true);
+        if (!status.ok()) { return self.fail(status); }
+        DeckExpectedShortcut shortcut = self.exactShortcut();
+        DeckHarnessResult verified = self.preflightGate.verify(shortcut);
+        if (!verified.ok()) { return self.fail(verified); }
+        print("steamdeck harness: exact installed shortcut, Game Mode ancestry, keepawake, uinput, and compiler-generated ES-DE inputs verified");
+        print("steamdeck harness: app_id=" + shortcut.appId
+            + " game_id=" + shortcut.gameId
+            + " launcher_sha256=" + shortcut.executableSha256);
+        return 0;
+    }
+
+    public int deploy() {
+        DeckHarnessResult status = self.ready(true);
+        if (!status.ok()) { return self.fail(status); }
+        DeckHarnessResult deployed = self.deployment.deploy();
+        if (!deployed.ok()) { return self.fail(deployed); }
+        return self.preflight();
+    }
+
+    public int prepare() {
+        DeckHarnessResult status = self.ready(true);
+        if (!status.ok()) { return self.fail(status); }
+        DeckHarnessResult prepared = self.deployment.prepareSettings();
+        if (!prepared.ok()) { return self.fail(prepared); }
+        return self.preflight();
+    }
+
+    public DeckGameModeRequest request(string operation,
+                                       DeckExpectedShortcut shortcut,
+                                       DeckSystemCase system,
+                                       DeckProtectedSelection selected,
+                                       string releaseSha256,
+                                       string executableSha256) {
+        DeckGameModeRequest request = self.preflightGate.base(operation);
+        request.shortcut = shortcut;
+        request.generatedInputs = self.options.generatedInputs();
+        request.releaseSha256 = releaseSha256;
+        request.systemId = system.id;
+        request.emulatorId = system.emulator;
+        request.expectedExecutable = system.executable;
+        request.expectedExecutableSha256 = executableSha256;
+        request.coreFilename = system.coreFilename;
+        request.rom = selected.rom();
+        request.captureFrame = system.captureFrame;
+        request.wiiExpected = system.id.equals("wii");
+        request.savestateExpected = system.savestateExpected;
+        request.quickRadialSlots = self.plan.quickRadial.size();
+        request.menuRadialSlots = self.plan.menuRadial.size();
+        request.wiiModeSlots = request.wiiExpected
+            ? self.plan.wiiModes.size() : 0;
+        request.humanObserved = !operation.equals("automated-game-mode")
+            && self.options.humanObserved;
+        request.protectedInputs = selected.inputs;
+        return request;
+    }
+
+    public DeckHarnessResult stageAutomation(DeckGameModeRequest request,
+                                             DeckSystemCase system,
+                                             DeckProtectedSelection selected,
+                                             string identity) {
+        JsonValue automation = DeckInputAutomation.compile(
+            self.plan.inputDefinition, self.plan.quickRadial,
+            self.plan.menuRadial, self.plan.wiiModes);
+        string automationError = DeckInputAutomation.verify(
+            automation, self.plan.inputDefinition, self.plan.quickRadial,
+            self.plan.menuRadial, self.plan.wiiModes);
+        if (!automationError.isEmpty()) {
+            return DeckHarnessResult.failure(automationError);
+        }
+        DeckStagedFile navigation = self.transport.stageText(identity,
+            "navigation.plan", DeckInputAutomation.navigationPlan(
+                self.plan.systemIndex(system.id), selected.descriptorIndex));
+        DeckStagedFile actions = self.transport.stageText(identity,
+            "actions.plan", DeckInputAutomation.actionPlan(
+                automation, system.id.equals("wii")));
+        DeckStagedFile startSelect = self.transport.stageText(identity,
+            "start-select.plan", DeckInputAutomation.startSelectPlan(
+                automation, false));
+        DeckStagedFile reverseStartSelect = self.transport.stageText(identity,
+            "start-select-reverse.plan", DeckInputAutomation.startSelectPlan(
+                automation, true));
+        string inputSha256 = DeckHostDigest.file(
+            self.options.inputHelperBinary);
+        if (!navigation.valid || !actions.valid || !startSelect.valid
+                || !reverseStartSelect.valid || inputSha256.isEmpty()) {
+            return DeckHarnessResult.failure(
+                "could not stage digest-bound synthetic input plans");
+        }
+        request.navigationPlan = navigation.path;
+        request.navigationPlanSha256 = navigation.sha256;
+        request.actionPlan = actions.path;
+        request.actionPlanSha256 = actions.sha256;
+        request.startSelectPlan = startSelect.path;
+        request.startSelectPlanSha256 = startSelect.sha256;
+        request.reverseStartSelectPlan = reverseStartSelect.path;
+        request.reverseStartSelectPlanSha256 = reverseStartSelect.sha256;
+        request.inputHelper = self.options.remoteInputHelper();
+        request.inputHelperSha256 = inputSha256;
+        return DeckHarnessResult.success();
+    }
+
+    public string installedRelease() {
+        string remote = self.transport.remoteHash(
+            DeckHarnessOptions.installedAppImage());
+        string local = DeckHostDigest.file(self.options.artifact);
+        return !remote.isEmpty() && remote.equals(local) ? remote : "";
+    }
+
+    public string executableHash(DeckSystemCase system,
+                                 string releaseDigest) {
+        string relative = system.executable.startsWith("/")
+            ? system.executable.substring(1, system.executable.len() - 1)
+            : system.executable;
+        return self.transport.remoteHash(PathTools.join(
+            DeckHarnessOptions.installRoot() + "/releases/" + releaseDigest,
+            relative));
+    }
+
+    public int gameModeLaunch() {
+        DeckHarnessResult status = self.ready(true);
+        if (!status.ok()) { return self.fail(status); }
+        DeckExpectedShortcut shortcut = self.exactShortcut();
+        DeckHarnessResult checked = self.preflightGate.verify(shortcut);
+        if (!checked.ok()) { return self.fail(checked); }
+        DeckGameModeRequest request = self.preflightGate.base("frontend");
+        request.shortcut = shortcut;
+        request.generatedInputs = self.options.generatedInputs();
+        DeckTransportReceipt receipt = self.transport.invoke(
+            request, DeckRunIdentity.create());
+        if (!receipt.valid) {
+            return self.fail(DeckHarnessResult.failure(receipt.error));
+        }
+        string screenshot = PathTools.join(
+            receipt.localRoot, "frontend-game-mode.png");
+        string expected = receipt.document.get("launch")
+            .get("screenshot_sha256").isString()
+            ? receipt.document.get("launch")
+                .get("screenshot_sha256").asString() : "";
+        if (!DeckHostDigest.file(screenshot).equals(expected)) {
+            return self.fail(DeckHarnessResult.failure(
+                "frontend Game Mode screenshot is not digest-bound"));
+        }
+        print("steamdeck harness: installed Semu shortcut launched inside Steam Game Mode; evidence is automated and not physical radial proof");
+        return 0;
+    }
+
+    public DeckHarnessResult runScenarioInBatch(string operation,
+                                                 DeckExpectedShortcut shortcut,
+                                                 DeckSystemCase system) {
+        if (!["automated-game-mode", "operator-start-select",
+              "operator-radial"].contains(operation)) {
+            return DeckHarnessResult.failure(
+                "unsupported Game Mode scenario: " + operation);
+        }
+        if (!operation.equals("automated-game-mode")
+                && !self.options.humanObserved) {
+            return DeckHarnessResult.failure(
+                "physical scenarios require explicit --human-observed and live operator interaction");
+        }
+        DeckProtectedSelection selected = self.preflightGate.resolveInputs(system);
+        if (!selected.valid) { return DeckHarnessResult.failure(selected.error); }
+        string releaseDigest = self.installedRelease();
+        string executableSha256 = self.executableHash(
+            system, releaseDigest);
+        if (releaseDigest.isEmpty() || executableSha256.isEmpty()) {
+            return DeckHarnessResult.failure(system.id
+                + ": installed release is not the exact host artifact/runtime");
+        }
+        DeckGameModeRequest request = self.request(operation, shortcut,
+            system, selected, releaseDigest, executableSha256);
+        string identity = DeckRunIdentity.create();
+        if (operation.equals("automated-game-mode")) {
+            DeckHarnessResult automation = self.stageAutomation(
+                request, system, selected, identity);
+            if (!automation.ok()) { return automation; }
+        }
+        DeckTransportReceipt collected = self.transport.invoke(
+            request, identity);
+        return DeckAcceptanceEvidence.verify(
+            system, self.plan, request, collected);
+    }
+
+    public int runScenario(string operation) {
+        DeckHarnessResult status = self.ready(true);
+        if (!status.ok()) { return self.fail(status); }
+        DeckSystemCase system = self.plan.system(self.options.system);
+        if (system.id.isEmpty()) {
+            return self.fail(DeckHarnessResult.failure(
+                "unknown or missing --system: " + self.options.system));
+        }
+        DeckExpectedShortcut shortcut = self.exactShortcut();
+        DeckHarnessResult checked = self.preflightGate.verify(shortcut);
+        if (!checked.ok()) { return self.fail(checked); }
+        DeckBatchSnapshot batch = self.preflightGate.beginBatch();
+        if (!batch.valid) {
+            return self.fail(DeckHarnessResult.failure(batch.error));
+        }
+        DeckHarnessResult scenario = self.runScenarioInBatch(
+            operation, shortcut, system);
+        DeckHarnessResult unchanged = self.preflightGate.endBatch(batch);
+        if (!scenario.ok()) { return self.fail(scenario); }
+        if (!unchanged.ok()) { return self.fail(unchanged); }
+        print("steamdeck harness: " + system.id + " " + operation
+            + " verified through exact Steam shortcut and same ES-DE session");
+        return 0;
+    }
+
+    public int acceptSystem() {
+        if (self.runScenario("automated-game-mode") != 0) { return 1; }
+        if (self.runScenario("operator-start-select") != 0) { return 1; }
+        return self.runScenario("operator-radial");
+    }
+
+    public int accept() {
+        DeckHarnessResult status = self.ready(true);
+        if (!status.ok()) { return self.fail(status); }
+        if (!self.options.humanObserved) {
+            return self.fail(DeckHarnessResult.failure(
+                "full physical acceptance requires --human-observed and an operator for every system"));
+        }
+        DeckExpectedShortcut shortcut = self.exactShortcut();
+        DeckHarnessResult checked = self.preflightGate.verify(shortcut);
+        if (!checked.ok()) { return self.fail(checked); }
+        DeckBatchSnapshot batch = self.preflightGate.beginBatch();
+        if (!batch.valid) {
+            return self.fail(DeckHarnessResult.failure(batch.error));
+        }
+        for system in self.plan.systems {
+            for scenario in ["automated-game-mode", "operator-start-select",
+                             "operator-radial"] {
+                DeckHarnessResult row = self.runScenarioInBatch(
+                    scenario, shortcut, system);
+                if (!row.ok()) { return self.fail(row); }
+            }
+        }
+        DeckHarnessResult unchanged = self.preflightGate.endBatch(batch);
+        if (!unchanged.ok()) { return self.fail(unchanged); }
+        print("steamdeck harness: all 17 systems passed automated and human physical Game Mode gates");
+        return 0;
+    }
+}

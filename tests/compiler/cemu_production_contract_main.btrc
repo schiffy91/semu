@@ -1,0 +1,22 @@
+// Isolated runner for source and compiler-emitted Cemu production evidence.
+
+import std.{cli, fs}
+import ./cemu_production_contract_test.btrc
+
+int main(int argc, char** argv) {
+    CliArgs arguments = CliArgs(argc, argv);
+    string project = FileSystem.absolutePath(arguments.valueAfter(
+        "--project", FileSystem.currentDirectory()));
+    if (arguments.has("--static-only")) {
+        return CemuProductionContractTest.runStatic(project) == 0 ? 0 : 1;
+    }
+    string source = FileSystem.absolutePath(arguments.valueAfter(
+        "--source", ""));
+    string generatedController = FileSystem.absolutePath(
+        arguments.valueAfter("--generated-controller", ""));
+    if (CemuProductionContractTest.generatedControllerContract(
+            generatedController, project) != 0) {
+        return 1;
+    }
+    return CemuProductionContractTest.run(project, source) == 0 ? 0 : 1;
+}

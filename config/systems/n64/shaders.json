@@ -1,0 +1,9 @@
+{
+  "schema_version": 2,
+  "enabled": true,
+  "renderer": true,
+  "screen": "assets/shaders/n64/screen.slangp",
+  "doc": {
+    "intent": "late-90s CRT with N64 VI softness and scanlines"
+  }
+}

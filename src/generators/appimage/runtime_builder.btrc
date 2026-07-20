@@ -1,0 +1,688 @@
+// runtime_builder.btrc - cached cross-host Steam Deck runtime construction.
+
+import std.{fs, platform, process, strings, vector}
+import ../../lib/owned_paths.btrc
+
+#include <sys/statvfs.h>
+
+class AppImageRuntimeBuildResult {
+    public bool valid;
+    public string value;
+    public string error;
+
+    public AppImageRuntimeBuildResult(bool valid, string value = "",
+                                      string error = "") {
+        self.valid = valid;
+        self.value = value;
+        self.error = error;
+    }
+
+    class AppImageRuntimeBuildResult success(string value = "") {
+        return AppImageRuntimeBuildResult(true, value, "");
+    }
+
+    class AppImageRuntimeBuildResult failure(string error) {
+        return AppImageRuntimeBuildResult(false, "", error);
+    }
+
+    public bool ok() { return self.valid; }
+}
+
+class AppImageRuntimeCache {
+    class string markerName() {
+        return ".semu-appimage-runtime-cache-v1";
+    }
+
+    class string marker(string root) {
+        return PathTools.join(root, AppImageRuntimeCache.markerName());
+    }
+
+    class string document(string root, string repository) {
+        return "version=1\nroot=" + root + "\nrepository="
+            + repository + "\n";
+    }
+
+    class bool overlap(string first, string second) {
+        return SemuOwnedPaths.inside(first, second)
+            || SemuOwnedPaths.inside(second, first);
+    }
+
+    class AppImageRuntimeBuildResult claim(
+            string root, string repository, string home) {
+        if (root.isEmpty() || repository.isEmpty() || root.equals("/")
+                || root.equals(home)
+                || SemuOwnedPaths.inside(home, root)
+                || AppImageRuntimeCache.overlap(root, repository)
+                || !SemuOwnedPaths.canOwnDirectory(root)) {
+            return AppImageRuntimeBuildResult.failure(
+                "runtime cache root overlaps a protected path or has a symlinked ancestor");
+        }
+        FileStatus initial = FileStatus(root);
+        string marker = AppImageRuntimeCache.marker(root);
+        string expected = AppImageRuntimeCache.document(root, repository);
+        if (initial.linkFound) {
+            FileStatus ownership = FileStatus(marker);
+            if (!initial.isDir() || initial.isSymlink()
+                    || !UnixFileSystem.realPath(root).equals(root)
+                    || !ownership.isFile() || ownership.isSymlink()
+                    || !FileSystem.readText(marker).equals(expected)) {
+                return AppImageRuntimeBuildResult.failure(
+                    "preexisting runtime cache is not owned by this Semu repository");
+            }
+            return AppImageRuntimeBuildResult.success();
+        }
+        if (!SemuOwnedPaths.prepareDirectory(root)
+                || FileSystem.chmod(root, 448) != 0
+                || !SemuOwnedPaths.writeText(root, marker, expected)
+                || FileSystem.chmod(marker, 384) != 0) { // 0700, 0600
+            return AppImageRuntimeBuildResult.failure(
+                "cannot claim the Semu AppImage runtime cache");
+        }
+        return AppImageRuntimeCache.validate(root, repository);
+    }
+
+    class AppImageRuntimeBuildResult validate(
+            string root, string repository) {
+        string marker = AppImageRuntimeCache.marker(root);
+        FileStatus cache = FileStatus(root);
+        FileStatus ownership = FileStatus(marker);
+        if (!cache.isDir() || cache.isSymlink()
+                || !UnixFileSystem.realPath(root).equals(root)
+                || !ownership.isFile() || ownership.isSymlink()
+                || !FileSystem.readText(marker).equals(
+                    AppImageRuntimeCache.document(root, repository))) {
+            return AppImageRuntimeBuildResult.failure(
+                "runtime cache ownership marker is absent or invalid");
+        }
+        return AppImageRuntimeBuildResult.success();
+    }
+
+    class bool derived(string root, string path) {
+        return !root.isEmpty() && !path.isEmpty() && !path.equals(root)
+            && SemuOwnedPaths.inside(path, root)
+            && !SemuOwnedPaths.containedPath(
+                root, PathTools.dirname(path)).isEmpty();
+    }
+}
+
+class AppImageRuntimeBuildPlan {
+    public string repoRoot;
+    public string cacheRoot;
+    public string output;
+    public string snapshot;
+    public string exportRoot;
+    public string metadataRoot;
+    public string image;
+    public string volume;
+    public string lock;
+    public bool macos;
+
+    public AppImageRuntimeBuildPlan() {
+        self.repoRoot = "";
+        self.cacheRoot = "";
+        self.output = "";
+        self.snapshot = "";
+        self.exportRoot = "";
+        self.metadataRoot = "";
+        self.image = "docker.io/nixos/nix@sha256:29fc5fe207f159ceb0143c25c19c774062fee02ce5eda118f3067547b3054894";
+        self.volume = "";
+        self.lock = "";
+        self.macos = false;
+    }
+
+    class AppImageRuntimeBuildResult create(
+            string repo, string requestedOutput,
+            AppImageRuntimeBuildPlan plan, string cacheOverride = "") {
+        plan.repoRoot = UnixFileSystem.realPath(repo);
+        string home = UnixFileSystem.realPath(
+            Environment.get("HOME", ""));
+        string defaultCache = home.isEmpty()
+            ? "" : PathTools.join(home, ".cache/semu/appimage-runtime");
+        plan.cacheRoot = SemuOwnedPaths.normalized(cacheOverride.isEmpty()
+            ? Environment.get("SEMU_APPIMAGE_CACHE_ROOT", defaultCache)
+            : cacheOverride);
+        string canonicalOutput = SemuOwnedPaths.normalized(
+            PathTools.join(plan.cacheRoot, "runtime-root"));
+        plan.output = requestedOutput.isEmpty() ? canonicalOutput
+            : SemuOwnedPaths.normalized(requestedOutput);
+        plan.snapshot = PathTools.join(plan.cacheRoot, "source");
+        plan.volume = Environment.get(
+            "SEMU_APPIMAGE_NIX_VOLUME", "semu-appimage-nix-x86_64");
+        plan.lock = PathTools.join(plan.cacheRoot, "build.lock");
+        ExecResult system = ChildProcess.run("uname", ["-s"],
+            timeoutMilliseconds=5000,
+            maxStdoutBytes=4096,
+            maxStderrBytes=4096,
+            stdout=CommandOutput.collect(),
+            stderr=CommandOutput.collect());
+        plan.macos = system.ok() && system.stdout().trim().equals("Darwin");
+        plan.exportRoot = plan.macos
+            ? PathTools.join(plan.cacheRoot,
+                "linux-case-sensitive/runtime")
+            : PathTools.join(plan.cacheRoot, "export");
+        plan.metadataRoot = PathTools.join(plan.cacheRoot, "metadata");
+        FileStatus repository = FileStatus(plan.repoRoot);
+        if (plan.repoRoot.isEmpty() || !repository.isDir()
+                || repository.isSymlink() || plan.cacheRoot.isEmpty()
+                || plan.output.isEmpty() || !plan.output.equals(canonicalOutput)
+                || plan.volume.isEmpty()
+                || plan.volume.contains("/") || plan.volume.contains("\n")) {
+            return AppImageRuntimeBuildResult.failure(
+                "runtime build paths or cache volume are invalid");
+        }
+        AppImageRuntimeBuildResult claimed = AppImageRuntimeCache.claim(
+            plan.cacheRoot, plan.repoRoot, home);
+        if (!claimed.ok()) { return claimed; }
+        for path in [plan.snapshot, plan.exportRoot, plan.metadataRoot,
+                plan.lock, plan.output] {
+            if (!AppImageRuntimeCache.derived(plan.cacheRoot, path)) {
+                return AppImageRuntimeBuildResult.failure(
+                    "runtime build path escapes its marked cache root");
+            }
+        }
+        FileStatus output = FileStatus(plan.output);
+        if (output.linkFound) {
+            string export = UnixFileSystem.realPath(plan.exportRoot);
+            if (!output.isSymlink() || export.isEmpty()
+                    || !UnixFileSystem.realPath(plan.output).equals(export)) {
+                return AppImageRuntimeBuildResult.failure(
+                    "runtime output is not the owned export link");
+            }
+        }
+        return AppImageRuntimeBuildResult.success();
+    }
+}
+
+class AppImageRuntimeBuildCommand {
+    class ExecResult capture(
+            string executable, Vector<string> arguments,
+            string workingDirectory = "", int timeout = 300000) {
+        return ChildProcess.run(executable, arguments,
+            cwd=workingDirectory,
+            timeoutMilliseconds=timeout,
+            maxStdoutBytes=67108864,
+            maxStderrBytes=67108864,
+            stdout=CommandOutput.collect(),
+            stderr=CommandOutput.collect());
+    }
+
+    class ExecResult logged(
+            string executable, Vector<string> arguments,
+            string workingDirectory = "", int timeout = 43200000) {
+        return ChildProcess.run(executable, arguments,
+            cwd=workingDirectory,
+            timeoutMilliseconds=timeout,
+            maxStdoutBytes=67108864,
+            maxStderrBytes=67108864,
+            stdout=CommandOutput.stream(),
+            stderr=CommandOutput.stream());
+    }
+
+    class AppImageRuntimeBuildResult checked(
+            ExecResult result, string operation) {
+        if (result.ok()) { return AppImageRuntimeBuildResult.success(); }
+        string detail = result.stderr().trim();
+        if (detail.isEmpty()) { detail = result.stdout().trim(); }
+        return AppImageRuntimeBuildResult.failure(operation + f" failed (exit {result.code})"
+            + (detail.isEmpty() ? "" : ": " + detail));
+    }
+
+    class AppImageRuntimeBuildResult prerequisite(
+            string executable, Vector<string> arguments, string message) {
+        ExecResult result = AppImageRuntimeBuildCommand.capture(
+            executable, arguments, "", 30000);
+        return result.ok() ? AppImageRuntimeBuildResult.success()
+            : AppImageRuntimeBuildResult.failure(message);
+    }
+
+    class AppImageRuntimeBuildResult chmodWritable(string path) {
+        FileStatus status = FileStatus(path);
+        if (!status.linkFound) { return AppImageRuntimeBuildResult.success(); }
+        return AppImageRuntimeBuildCommand.checked(
+            AppImageRuntimeBuildCommand.capture(
+                "chmod", ["-R", "u+w", "--", path]),
+            "make cached runtime path writable");
+    }
+}
+
+class AppImageMacRuntimeVolume {
+    class AppImageRuntimeBuildResult prepare(
+            AppImageRuntimeBuildPlan plan) {
+        AppImageRuntimeBuildResult owned = AppImageRuntimeCache.validate(
+            plan.cacheRoot, plan.repoRoot);
+        if (!owned.ok()) { return owned; }
+        if (!SemuOwnedPaths.prepareDirectory(plan.metadataRoot)) {
+            return AppImageRuntimeBuildResult.failure(
+                "cannot create owned runtime metadata root");
+        }
+        if (!plan.macos) {
+            if (!SemuOwnedPaths.prepareDirectory(plan.exportRoot)) {
+                return AppImageRuntimeBuildResult.failure(
+                    "cannot create runtime export root");
+            }
+            return AppImageRuntimeBuildResult.success(plan.exportRoot);
+        }
+        AppImageRuntimeBuildResult hdiutil =
+            AppImageRuntimeBuildCommand.prerequisite(
+                "hdiutil", ["help"],
+                "hdiutil is required for the macOS cross build");
+        if (!hdiutil.ok()) { return hdiutil; }
+        string image = PathTools.join(
+            plan.cacheRoot, "linux-case-sensitive.sparsebundle");
+        string mountPoint = PathTools.join(
+            plan.cacheRoot, "linux-case-sensitive");
+        string size = Environment.get(
+            "SEMU_APPIMAGE_CASE_IMAGE_SIZE", "32g");
+        if (!FileStatus(image).isDir()) {
+            print("Creating sparse case-sensitive AppImage build volume...");
+            AppImageRuntimeBuildResult created =
+                AppImageRuntimeBuildCommand.checked(
+                    AppImageRuntimeBuildCommand.capture("hdiutil", [
+                        "create", "-quiet", "-size", size,
+                        "-type", "SPARSEBUNDLE", "-fs",
+                        "Case-sensitive APFS", "-volname",
+                        "SemuAppImage", image
+                    ], "", 1800000), "create case-sensitive build volume");
+            if (!created.ok()) { return created; }
+        }
+        if (!SemuOwnedPaths.prepareDirectory(mountPoint)) {
+            return AppImageRuntimeBuildResult.failure(
+                "cannot create case-sensitive volume mount point");
+        }
+        Vector<string> noArguments = [];
+        ExecResult mounts = AppImageRuntimeBuildCommand.capture(
+            "mount", noArguments);
+        if (!mounts.ok()) {
+            return AppImageRuntimeBuildResult.failure(
+                "cannot inspect mounted build volumes");
+        }
+        if (!mounts.stdout().contains(" on " + mountPoint + " (")) {
+            AppImageRuntimeBuildResult resized =
+                AppImageRuntimeBuildCommand.checked(
+                    AppImageRuntimeBuildCommand.capture("hdiutil", [
+                        "resize", "-quiet", "-size", size, image
+                    ], "", 1800000), "resize case-sensitive build volume");
+            if (!resized.ok()) { return resized; }
+            AppImageRuntimeBuildResult attached =
+                AppImageRuntimeBuildCommand.checked(
+                    AppImageRuntimeBuildCommand.capture("hdiutil", [
+                        "attach", "-quiet", "-nobrowse", "-mountpoint",
+                        mountPoint, image
+                    ], "", 1800000), "attach case-sensitive build volume");
+            if (!attached.ok()) { return attached; }
+        }
+        struct statvfs volumeStatus;
+        int minimumKib = Environment.get(
+            "SEMU_APPIMAGE_CASE_MINIMUM_KIB", "25165824").toInt();
+        long long totalKib = statvfs(mountPoint, &volumeStatus) == 0
+            ? (long long)volumeStatus.f_blocks
+                * (long long)volumeStatus.f_frsize / 1024
+            : 0;
+        if (minimumKib < 1 || totalKib < (long long)minimumKib) {
+            return AppImageRuntimeBuildResult.failure(
+                "case-sensitive build volume is undersized");
+        }
+        string lower = PathTools.join(mountPoint, ".semu-case-probe-a");
+        string upper = PathTools.join(mountPoint, ".semu-case-probe-A");
+        FileSystem.removeRecursive(lower);
+        FileSystem.removeRecursive(upper);
+        bool distinct = FileSystem.writeText(lower, "a\n")
+            && FileSystem.writeText(upper, "A\n")
+            && FileStatus(lower).isFile() && FileStatus(upper).isFile();
+        FileSystem.removeRecursive(lower);
+        FileSystem.removeRecursive(upper);
+        if (!distinct) {
+            return AppImageRuntimeBuildResult.failure(
+                "APFS build volume is not case-sensitive");
+        }
+        if (!SemuOwnedPaths.prepareDirectory(plan.exportRoot)) {
+            return AppImageRuntimeBuildResult.failure(
+                "cannot create case-sensitive runtime export root");
+        }
+        return AppImageRuntimeBuildResult.success(plan.exportRoot);
+    }
+}
+
+class AppImageRuntimeSnapshot {
+    class Vector<string> identityPaths() {
+        return [
+            "flake.nix", "flake.lock", "Makefile", "src", "config",
+            "packaging", "tests", "assets", "patches"
+        ];
+    }
+
+    class bool digest(string value) {
+        if (value.len() != 64) { return false; }
+        for character in value {
+            if (!((character >= '0' && character <= '9')
+                    || (character >= 'a' && character <= 'f'))) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    class AppImageRuntimeBuildResult identity(
+            AppImageRuntimeBuildPlan plan) {
+        AppImageRuntimeBuildResult owned = AppImageRuntimeCache.validate(
+            plan.cacheRoot, plan.repoRoot);
+        if (!owned.ok()) { return owned; }
+        string identity = "";
+        for relative in AppImageRuntimeSnapshot.identityPaths() {
+            string path = PathTools.join(plan.snapshot, relative);
+            FileStatus status = FileStatus(path);
+            string value = "absent";
+            if (status.linkFound) {
+                if (status.isSymlink()
+                        || (!status.isDir() && !status.isFile())) {
+                    return AppImageRuntimeBuildResult.failure(
+                        "source identity root is unsafe: " + relative);
+                }
+                ExecResult hashed = AppImageRuntimeBuildCommand.capture("nix", [
+                    "hash", "path", "--type", "sha256", "--base16", path
+                ]);
+                value = hashed.ok()
+                    ? hashed.stdout().trim().toLower() : "";
+                if (!AppImageRuntimeSnapshot.digest(value)) {
+                    return AppImageRuntimeBuildResult.failure(
+                        "cannot hash source identity root: " + relative);
+                }
+            }
+            identity = identity + relative + "=" + value + ";";
+        }
+        return AppImageRuntimeBuildResult.success(identity);
+    }
+
+    class AppImageRuntimeBuildResult refresh(
+            AppImageRuntimeBuildPlan plan) {
+        AppImageRuntimeBuildResult owned = AppImageRuntimeCache.validate(
+            plan.cacheRoot, plan.repoRoot);
+        if (!owned.ok()) { return owned; }
+        FileStatus snapshot = FileStatus(plan.snapshot);
+        if (snapshot.isSymlink()
+                || (snapshot.linkFound && !snapshot.isDir())) {
+            return AppImageRuntimeBuildResult.failure(
+                "source snapshot must be a real directory");
+        }
+        if (!SemuOwnedPaths.prepareDirectory(plan.snapshot)
+                || !SemuOwnedPaths.prepareDirectory(plan.exportRoot)
+                || SemuOwnedPaths.containedPath(
+                    plan.cacheRoot, plan.snapshot).isEmpty()
+                || SemuOwnedPaths.containedPath(
+                    plan.cacheRoot, plan.exportRoot).isEmpty()) {
+            return AppImageRuntimeBuildResult.failure(
+                "cannot create cached runtime directories");
+        }
+        AppImageRuntimeBuildResult writableSnapshot =
+            AppImageRuntimeBuildCommand.chmodWritable(plan.snapshot);
+        AppImageRuntimeBuildResult writableExport =
+            AppImageRuntimeBuildCommand.chmodWritable(plan.exportRoot);
+        if (!writableSnapshot.ok()) { return writableSnapshot; }
+        if (!writableExport.ok()) { return writableExport; }
+        return AppImageRuntimeBuildCommand.checked(
+            AppImageRuntimeBuildCommand.capture("rsync", [
+                "-a", "--delete", "--exclude", "/.git/",
+                "--exclude", "/build/", plan.repoRoot + "/",
+                plan.snapshot + "/"
+            ], "", 1800000), "refresh stable-inode source snapshot");
+    }
+}
+
+class AppImageRuntimeExporter {
+    class string containerProgram() {
+        return """actual_source_identity=\"\"
+for relative in flake.nix flake.lock Makefile src config packaging tests assets patches; do
+  path=\"/src/$relative\"
+  if [ -e \"$path\" ] || [ -L \"$path\" ]; then
+    [ ! -L \"$path\" ] || exit 73
+    digest=\"$(nix hash path --type sha256 --base16 \"$path\" 2>/dev/null || true)\"
+    [ \"${#digest}\" -eq 64 ] || exit 73
+  else
+    digest=absent
+  fi
+  actual_source_identity=\"${actual_source_identity}${relative}=${digest};\"
+done
+if [ \"$actual_source_identity\" != \"$SEMU_SOURCE_SNAPSHOT_IDENTITY\" ]; then
+  exit 72
+fi
+runtime_expression='let
+  flake = builtins.getFlake \"path:/src\";
+  pkgs = flake.inputs.nixpkgs.legacyPackages.x86_64-linux;
+in pkgs.symlinkJoin {
+  name = \"semu-steamdeck-runtime-self-contained\";
+  paths = [ flake.packages.x86_64-linux.steamdeck-runtime pkgs.bubblewrap ];
+}'
+out=\"$(nix --option sandbox false --option filter-syscalls false \
+  --extra-experimental-features \"nix-command flakes\" \
+  build --impure --expr \"$runtime_expression\" --no-link --print-out-paths -L)\"
+previous=\"$(cat /export/share/semu/steamdeck-runtime-store-path.txt 2>/dev/null || true)\"
+rm -rf /export/bin /export/lib /export/share
+if [ \"$previous\" != \"$out\" ]; then rm -rf /export/nix; fi
+mkdir -p /export/bin /export/lib /export/share
+cp -RL --preserve=mode,timestamps \"$out/bin/.\" /export/bin/
+cp -RL --preserve=mode,timestamps \"$out/lib/.\" /export/lib/
+cp -RL --preserve=mode,timestamps \"$out/share/.\" /export/share/
+if [ \"$previous\" != \"$out\" ]; then
+  nix --option sandbox false --option filter-syscalls false \
+    --extra-experimental-features \"nix-command flakes\" copy \
+    --no-check-sigs --to \"local?root=/export\" \"$out\"
+fi
+chmod u+w /export/share/semu
+printf \"%s\\n\" \"$out\" > /export/share/semu/steamdeck-runtime-store-path.txt
+printf \"%s\\n\" \"$actual_source_identity\" > /metadata/source-snapshot-identity
+""";
+    }
+
+    class AppImageRuntimeBuildResult crossBuildProgram(
+            AppImageRuntimeBuildPlan plan) {
+        print("Cross-building the x86_64 Semu program with pinned Nix toolchains...");
+        ExecResult built = ChildProcess.run("nix", [
+            "--extra-experimental-features", "nix-command flakes",
+            "build", "path:" + plan.snapshot + "#semu-program-linux",
+            "--no-link", "--print-out-paths", "-L"
+        ], timeoutMilliseconds=43200000,
+            maxStdoutBytes=1048576,
+            maxStderrBytes=67108864,
+            stdout=CommandOutput.collect(),
+            stderr=CommandOutput.stream());
+        string output = built.ok() ? built.stdout().trim() : "";
+        string source = PathTools.join(output, "lib/semu/semu-btrc");
+        string destination = PathTools.join(
+            plan.snapshot, "build/appimage/semu-btrc-x86_64");
+        if (!built.ok() || output.contains("\n")
+                || !FileStatus(source).isFile()
+                || FileSystem.mkdirp(PathTools.dirname(destination)) != 0) {
+            return AppImageRuntimeBuildResult.failure(
+                "pinned x86_64 Semu program build failed");
+        }
+        AppImageRuntimeBuildResult copied =
+            AppImageRuntimeBuildCommand.checked(
+                AppImageRuntimeBuildCommand.capture(
+                    "cp", ["--", source, destination]),
+                "stage x86_64 Semu program");
+        if (!copied.ok() || FileSystem.chmod(destination, 365) != 0) { // 0555
+            return copied.ok()
+                ? AppImageRuntimeBuildResult.failure(
+                    "cannot secure x86_64 Semu program") : copied;
+        }
+        ExecResult kind = AppImageRuntimeBuildCommand.capture(
+            "file", ["--brief", "--", destination]);
+        return kind.ok() && kind.stdout().contains("ELF 64-bit")
+                && kind.stdout().contains("x86-64")
+            ? AppImageRuntimeBuildResult.success()
+            : AppImageRuntimeBuildResult.failure(
+                "cross build did not produce an x86_64 ELF");
+    }
+
+    class AppImageRuntimeBuildResult exportRuntime(
+            AppImageRuntimeBuildPlan plan) {
+        AppImageRuntimeBuildResult sourceIdentity =
+            AppImageRuntimeSnapshot.identity(plan);
+        if (!sourceIdentity.ok()) { return sourceIdentity; }
+        print("Building pinned x86_64 Steam Deck runtime (cached in Podman volume "
+            + plan.volume + ")...");
+        Vector<string> arguments = [
+            "run", "--rm", "--platform", "linux/amd64", "--privileged",
+            "--ulimit", "stack=67108864:67108864",
+            "--entrypoint", "/bin/sh",
+            "-e", "XDG_CACHE_HOME=/nix/var/cache",
+            "-e", "SEMU_SOURCE_SNAPSHOT_IDENTITY=" + sourceIdentity.value,
+            "-v", plan.volume + ":/nix",
+            "-v", plan.snapshot + ":/src:ro",
+            "-v", plan.exportRoot + ":/export",
+            "-v", plan.metadataRoot + ":/metadata",
+            plan.image, "-euc", AppImageRuntimeExporter.containerProgram()
+        ];
+        int attempts = 0;
+        while (attempts < 8) {
+            ExecResult built = AppImageRuntimeBuildCommand.logged(
+                "podman", arguments);
+            if (built.ok()) { return AppImageRuntimeBuildResult.success(); }
+            if (built.code != 72) {
+                return AppImageRuntimeBuildResult.failure(
+                    f"Podman runtime build failed (exit {built.code})");
+            }
+            attempts++;
+            AppImageRuntimeBuildCommand.capture("sleep", ["0.5"]);
+        }
+        return AppImageRuntimeBuildResult.failure(
+            "Podman could not refresh the source bind");
+    }
+
+    class AppImageRuntimeBuildResult recordProvenance(
+            AppImageRuntimeBuildPlan plan) {
+        print("Recording AppImage runtime provenance...");
+        ExecResult built = ChildProcess.run("nix", [
+            "--extra-experimental-features", "nix-command flakes",
+            "build", "path:" + plan.snapshot + "#semu-program",
+            "--no-link", "--print-out-paths", "-L"
+        ], timeoutMilliseconds=43200000,
+            maxStdoutBytes=1048576,
+            maxStderrBytes=67108864,
+            stdout=CommandOutput.collect(),
+            stderr=CommandOutput.stream());
+        string output = built.ok() ? built.stdout().trim() : "";
+        string program = PathTools.join(output, "lib/semu/semu-btrc");
+        if (!built.ok() || output.contains("\n")
+                || !FileStatus(program).isFile()) {
+            return AppImageRuntimeBuildResult.failure(
+                "native provenance program build failed");
+        }
+        return AppImageRuntimeBuildCommand.checked(
+            AppImageRuntimeBuildCommand.logged(program, [
+                "package", "appimage", "provenance", "--write",
+                "--project", plan.snapshot,
+                "--runtime-root", plan.exportRoot
+            ], plan.snapshot), "record AppImage runtime provenance");
+    }
+
+    class AppImageRuntimeBuildResult publish(
+            AppImageRuntimeBuildPlan plan) {
+        AppImageRuntimeBuildResult owned = AppImageRuntimeCache.validate(
+            plan.cacheRoot, plan.repoRoot);
+        if (!owned.ok()) { return owned; }
+        string export = UnixFileSystem.realPath(plan.exportRoot);
+        if (export.isEmpty() || !SemuOwnedPaths.inside(export, plan.cacheRoot)
+                || !AppImageRuntimeCache.derived(
+                    plan.cacheRoot, plan.output)) {
+            return AppImageRuntimeBuildResult.failure(
+                "runtime export is outside its marked cache root");
+        }
+        FileStatus output = FileStatus(plan.output);
+        if (output.linkFound && !output.isSymlink()) {
+            return AppImageRuntimeBuildResult.failure(
+                "runtime output is not an owned publication link");
+        }
+        if (!SemuOwnedPaths.prepareDirectory(PathTools.dirname(plan.output))) {
+            return AppImageRuntimeBuildResult.failure(
+                "cannot create runtime output parent");
+        }
+        string temporary = plan.output + ".next." + f"{(int)getpid()}";
+        if (FileStatus(temporary).linkFound
+                || FileSystem.symlink(plan.exportRoot, temporary) != 0) {
+            return AppImageRuntimeBuildResult.failure(
+                "cannot create runtime publication link");
+        }
+        if (rename(temporary, plan.output) != 0) {
+            unlink(temporary);
+            return AppImageRuntimeBuildResult.failure(
+                "cannot atomically publish runtime output link");
+        }
+        return UnixFileSystem.realPath(plan.output).equals(export)
+            ? AppImageRuntimeBuildResult.success(plan.output)
+            : AppImageRuntimeBuildResult.failure(
+                "published runtime output does not resolve to its export");
+    }
+}
+
+class AppImageRuntimeBuilder {
+    public AppImageRuntimeBuildPlan plan;
+    public bool locked;
+
+    public AppImageRuntimeBuilder(AppImageRuntimeBuildPlan plan) {
+        self.plan = plan;
+        self.locked = false;
+    }
+
+    public AppImageRuntimeBuildResult unlock() {
+        if (!self.locked) { return AppImageRuntimeBuildResult.success(); }
+        AppImageRuntimeBuildResult owned = AppImageRuntimeCache.validate(
+            self.plan.cacheRoot, self.plan.repoRoot);
+        FileStatus lock = FileStatus(self.plan.lock);
+        if (!owned.ok()
+                || !AppImageRuntimeCache.derived(
+                    self.plan.cacheRoot, self.plan.lock)
+                || !lock.isDir() || lock.isSymlink()
+                || rmdir(self.plan.lock) != 0) {
+            return AppImageRuntimeBuildResult.failure(
+                "cannot safely release the owned runtime build lock");
+        }
+        self.locked = false;
+        return AppImageRuntimeBuildResult.success();
+    }
+
+    public AppImageRuntimeBuildResult acquire() {
+        AppImageRuntimeBuildResult owned = AppImageRuntimeCache.validate(
+            self.plan.cacheRoot, self.plan.repoRoot);
+        if (!owned.ok()) { return owned; }
+        if (FileStatus(self.plan.lock).linkFound
+                || FileSystem.mkdir(self.plan.lock, 448) != 0) { // 0700
+            return AppImageRuntimeBuildResult.failure(
+                "another builder owns " + self.plan.lock);
+        }
+        self.locked = true;
+        return AppImageRuntimeBuildResult.success();
+    }
+
+    public AppImageRuntimeBuildResult run() {
+        AppImageRuntimeBuildResult podman =
+            AppImageRuntimeBuildCommand.prerequisite(
+                "podman", ["info"],
+                "Podman is not running (try: podman machine start)");
+        AppImageRuntimeBuildResult nix =
+            AppImageRuntimeBuildCommand.prerequisite(
+                "nix", ["--version"],
+                "Nix is required for the pinned cross build");
+        if (!podman.ok()) { return podman; }
+        if (!nix.ok()) { return nix; }
+        AppImageRuntimeBuildResult acquired = self.acquire();
+        if (!acquired.ok()) { return acquired; }
+
+        AppImageRuntimeBuildResult volume =
+            AppImageMacRuntimeVolume.prepare(self.plan);
+        AppImageRuntimeBuildResult snapshot = volume.ok()
+            ? AppImageRuntimeSnapshot.refresh(self.plan) : volume;
+        AppImageRuntimeBuildResult program = snapshot.ok()
+            ? AppImageRuntimeExporter.crossBuildProgram(self.plan) : snapshot;
+        AppImageRuntimeBuildResult runtime = program.ok()
+            ? AppImageRuntimeExporter.exportRuntime(self.plan) : program;
+        AppImageRuntimeBuildResult provenance = runtime.ok()
+            ? AppImageRuntimeExporter.recordProvenance(self.plan) : runtime;
+        AppImageRuntimeBuildResult published = provenance.ok()
+            ? AppImageRuntimeExporter.publish(self.plan) : provenance;
+        AppImageRuntimeBuildResult unlocked = self.unlock();
+        if (published.ok()) { return unlocked.ok() ? published : unlocked; }
+        return unlocked.ok() ? published : AppImageRuntimeBuildResult.failure(
+            published.error + "; " + unlocked.error);
+    }
+}

@@ -1,7 +1,0 @@
-{
-  "schema_version": 1,
-  "enabled": true,
-  "screen": "assets/shaders/gba/screen.slangp",
-  "composite": "assets/shaders/gba/composite.slangp",
-  "doc": { "intent": "original GBA color and LCD persistence" }
-}

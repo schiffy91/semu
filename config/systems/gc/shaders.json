@@ -1,0 +1,9 @@
+{
+  "schema_version": 2,
+  "enabled": true,
+  "renderer": true,
+  "screen": "assets/shaders/gc/screen.slangp",
+  "doc": {
+    "note": "Standalone Dolphin reports game-only geometry to the shared Semu CRT pipeline; bezels.json resolves 4:3 or 16:9 art independently."
+  }
+}

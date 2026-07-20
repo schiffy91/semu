@@ -1,0 +1,518 @@
+// Standalone strict-import contract for the RetroArch production slice.
+
+import std.{fs, json, vector}
+import ../../src/generators/steam_input.btrc
+
+class RetroArchProductionContractTest {
+    class int fail(string message) {
+        print("  FAIL retroarch production: " + message);
+        return 1;
+    }
+
+    class string file(string project, string relative) {
+        return PathTools.join(project, relative);
+    }
+
+    class bool line(JsonValue lines, string expected) {
+        if (!lines.isArray()) { return false; }
+        for (int index = 0; index < lines.size(); index++) {
+            if (lines.at(index).isString()
+                    && lines.at(index).asString().equals(expected)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    class bool action(JsonValue profile, string setting, string action) {
+        JsonValue keymap = profile.get("hotkeys").get("keymap");
+        if (!keymap.isArray()) { return false; }
+        for (int index = 0; index < keymap.size(); index++) {
+            JsonValue entry = keymap.at(index);
+            if (entry.get("setting").isString()
+                    && entry.get("action").isString()
+                    && entry.get("setting").asString().equals(setting)
+                    && entry.get("action").asString().equals(action)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    class bool filesystem(JsonValue platform, string path, string mode) {
+        JsonValue filesystems = platform.get("sandbox").get("filesystems");
+        if (!filesystems.isArray()) { return false; }
+        for (int index = 0; index < filesystems.size(); index++) {
+            JsonValue entry = filesystems.at(index);
+            if (entry.get("path").isString()
+                    && entry.get("mode").isString()
+                    && entry.get("path").asString().equals(path)
+                    && entry.get("mode").asString().equals(mode)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    class bool platformIncludesLinux(JsonValue binding) {
+        JsonValue platforms = binding.get("platforms");
+        if (!platforms.isArray()) { return true; }
+        for (int index = 0; index < platforms.size(); index++) {
+            if (platforms.at(index).isString()
+                    && platforms.at(index).asString().equals("linux")) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    class Vector<string> selectedLinuxCores(string project) {
+        Vector<string> cores = [];
+        string root = RetroArchProductionContractTest.file(
+            project, "config/systems");
+        for name in Directory(root).entries() {
+            string systemFile = PathTools.join(
+                PathTools.join(root, name), "system.json");
+            if (!FileSystem.isFile(systemFile)) { continue; }
+            JsonValue system = JsonValue.readFile(systemFile);
+            JsonValue bindings = system.get("emulators");
+            if (!bindings.isArray()) { continue; }
+            for (int index = 0; index < bindings.size(); index++) {
+                JsonValue binding = bindings.at(index);
+                if (!binding.get("emulator").isString()
+                        || !binding.get("emulator").asString().equals("retroarch")
+                        || !RetroArchProductionContractTest.platformIncludesLinux(binding)
+                        || !binding.get("core").isString()) {
+                    continue;
+                }
+                string core = binding.get("core").asString();
+                if (!cores.contains(core)) { cores.push(core); }
+            }
+        }
+        return cores;
+    }
+
+    class bool exactSet(Vector<string> actual, Vector<string> expected) {
+        if (actual.size() != expected.size()) { return false; }
+        for value in expected {
+            if (!actual.contains(value)) { return false; }
+        }
+        return true;
+    }
+
+    class bool autoconfigProfile(JsonValue profile, JsonValue mapping) {
+        JsonValue lines = profile.get("lines");
+        if (!profile.get("device_name").isString()
+                || !RetroArchProductionContractTest.line(
+                    lines, "input_device_display_name = \"Steam Virtual Gamepad\"")
+                || !RetroArchProductionContractTest.line(
+                    lines, "input_enable_hotkey_btn = \"nul\"")) {
+            return false;
+        }
+        for key in mapping.keys() {
+            if (!mapping.get(key).isString()
+                    || !RetroArchProductionContractTest.line(lines,
+                        key + " = \"" + mapping.get(key).asString() + "\"")) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    class int occurrences(string text, string needle) {
+        int total = 0;
+        string remaining = text;
+        while (remaining.contains(needle)) {
+            int index = remaining.indexOf(needle);
+            total++;
+            remaining = remaining.substring(
+                index + needle.len(), remaining.len());
+        }
+        return total;
+    }
+
+    class bool patchSection(string section, string completedGameDraw) {
+        int draw = section.indexOf(completedGameDraw);
+        int game = section.indexOf("semu_render_game_gl(&semu_frame);");
+        int overlay = section.indexOf("overlay_behind_menu");
+        int postUi = section.indexOf("semu_render_post_ui_gl(&semu_frame);");
+        int present = section.indexOf("ctx_driver->swap_buffers");
+        return draw >= 0 && game > draw && overlay > game
+            && postUi > overlay && present > postUi
+            && RetroArchProductionContractTest.occurrences(
+                section, "semu_render_game_gl(&semu_frame);") == 1
+            && RetroArchProductionContractTest.occurrences(
+                section, "semu_render_post_ui_gl(&semu_frame);") == 1
+            && RetroArchProductionContractTest.occurrences(
+                section, "semu_frame.surfaces[0].rotation        = 0;") == 1
+            && RetroArchProductionContractTest.occurrences(
+                section, "SEMU_RENDER_ORIGIN_BOTTOM_LEFT") == 1;
+    }
+
+    class bool nativeGamepadVdf(string project) {
+        SteamInputResult parsed = SteamInputParser.parse(
+            RetroArchProductionContractTest.file(
+                project, "config/input/steam-deck/steam_input.json"));
+        if (!parsed.ok()) { return false; }
+        string vdf = "";
+        for template in parsed.definition.templates {
+            if (template.isDefault) {
+                vdf = SteamInputVdf.render(parsed.definition, template);
+            }
+        }
+        Vector<string> nativeBindings = [
+            "xinput_button A", "xinput_button B", "xinput_button X",
+            "xinput_button Y", "xinput_button DPAD_UP",
+            "xinput_button DPAD_DOWN", "xinput_button DPAD_LEFT",
+            "xinput_button DPAD_RIGHT", "xinput_button SHOULDER_LEFT",
+            "xinput_button SHOULDER_RIGHT", "xinput_button TRIGGER_LEFT",
+            "xinput_button TRIGGER_RIGHT", "xinput_button SELECT",
+            "xinput_button START"
+        ];
+        for binding in nativeBindings {
+            if (!vdf.contains(binding)) { return false; }
+        }
+        return vdf.contains("\"preset\" { \"id\" \"0\" \"name\" \"Default\"")
+            && vdf.contains("\"0\" \"button_diamond active\"")
+            && vdf.contains("\"1\" \"dpad active\"")
+            && vdf.contains("\"2\" \"joystick active\"")
+            && vdf.contains("\"3\" \"right_joystick active\"")
+            && vdf.contains("\"4\" \"left_trigger active\"")
+            && vdf.contains("\"5\" \"right_trigger active\"")
+            && vdf.contains("\"7\" \"switch active\"")
+            && vdf.contains("\"Long_Press\"")
+            && vdf.contains("controller_action CHANGE_PRESET 1")
+            && vdf.contains("controller_action CHANGE_PRESET 2");
+    }
+
+    class int run(string project) {
+        string directory = "config/emulators/retroarch";
+        JsonValue emulator = JsonValue.readFile(
+            RetroArchProductionContractTest.file(
+                project, directory + "/emulator.json"));
+        JsonValue package = JsonValue.readFile(
+            RetroArchProductionContractTest.file(
+                project, directory + "/package.json"));
+        JsonValue cores = JsonValue.readFile(
+            RetroArchProductionContractTest.file(
+                project, directory + "/cores.json"));
+        JsonValue profile = JsonValue.readFile(
+            RetroArchProductionContractTest.file(
+                project, directory + "/profile.json"));
+        JsonValue rendering = JsonValue.readFile(
+            RetroArchProductionContractTest.file(
+                project, directory + "/rendering.json"));
+        JsonValue n64 = JsonValue.readFile(
+            RetroArchProductionContractTest.file(
+                project, "config/systems/n64/system.json"));
+        JsonValue autoconfig = JsonValue.readFile(
+            RetroArchProductionContractTest.file(project,
+                "config/input/steam-deck/retroarch_autoconfig.json"));
+        string patch = FileSystem.readText(
+            RetroArchProductionContractTest.file(
+                project, directory + "/retroarch.patch"));
+        string commandPatch = FileSystem.readText(
+            RetroArchProductionContractTest.file(
+                project, directory + "/retroarch_commands.patch"));
+        string packageNix = FileSystem.readText(
+            RetroArchProductionContractTest.file(
+                project, directory + "/package.nix"));
+        string emulatorNix = FileSystem.readText(
+            RetroArchProductionContractTest.file(
+                project, "packaging/nix/emulators.nix"));
+        string deckPackageNix = FileSystem.readText(
+            RetroArchProductionContractTest.file(
+                project, "packaging/nix/flake/steam-deck-package.nix"));
+        JsonValue deckInput = JsonValue.readFile(
+            RetroArchProductionContractTest.file(
+                project, "config/input/steam-deck/steam_input.json"));
+        string supervisor = FileSystem.readText(
+            RetroArchProductionContractTest.file(project,
+                "src/generators/input/linux_supervisor.btrc"));
+        int failures = 0;
+
+        JsonValue linux = emulator.get("platforms").get("linux");
+        JsonValue coreDirectories = linux.get("core_loader").get("directories");
+        JsonValue fallbacks = package.get("fallbacks");
+        JsonValue auxiliaryPatches = package.get("auxiliary_patches");
+        JsonValue networkCommands = auxiliaryPatches.get("network_commands");
+        JsonValue statusNullSafety = auxiliaryPatches.get("status_null_safety");
+        JsonValue coreRuntime = package.get("core_runtime");
+        JsonValue coreHost = package.get("core_host");
+        JsonValue runtimeExtras = package.get("runtime_extras");
+        if (!package.get("build_kind").isString()
+                || !package.get("build_kind").asString().equals("source")
+                || !package.get("source").get("revision").isString()
+                || package.get("source").get("revision").asString().len() != 40
+                || !package.get("source").get("sha256").isString()
+                || !package.get("source").get("sha256").asString()
+                    .startsWith("sha256-")
+                || !linux.get("executable").isString()
+                || !linux.get("executable").asString().equals(
+                    "${asset_root}/bin/retroarch-semu")
+                || !fallbacks.get("linux_host_executable").isBool()
+                || fallbacks.get("linux_host_executable").asBool()
+                || fallbacks.get("linux_flatpak").asBool()
+                || fallbacks.get("linux_prebuilt_binary").asBool()
+                || fallbacks.get("macos_host_executable").asBool()
+                || fallbacks.get("macos_prebuilt_binary").asBool()
+                || package.has("macos_prebuilt")
+                || !networkCommands.get("kind").asString().equals(
+                    "local_exact")
+                || !networkCommands.get("file").asString().equals(
+                    "retroarch_commands.patch")
+                || !networkCommands.get("sha256").asString().equals(
+                    "sha256-T6Q12aEYcrYuz2tbRGU8r5kDjYmmpZYM5KhYoqTSp1g=")
+                || !statusNullSafety.get("kind").asString().equals(
+                    "url_exact")
+                || !statusNullSafety.get("url").asString().equals(
+                    "https://github.com/libretro/RetroArch/commit/68e8274a31bce913950cfb0fa5f82646d3661015.patch")
+                || !statusNullSafety.get("sha256").asString().equals(
+                    "sha256-dXlaIwU8L2XPJtTRq6BFuzsWooSvRJ8isPL4W4Cw/nY=")
+                || !package.get("outputs").get("build_contract").asString()
+                    .equals("share/semu/retroarch-build-contract.json")
+                || !coreRuntime.get("exact_selection").asBool()
+                || coreRuntime.get("environment_search").asBool()
+                || coreRuntime.get("host_search").asBool()
+                || !coreHost.get("enabled").asBool()
+                || !coreHost.get("selector_field").asString().equals("core")
+                || !coreHost.get("implementation_manifest").asString()
+                    .equals("cores.json")
+                || runtimeExtras.keys().size() != 2
+                || !runtimeExtras.get("selected_cores").get("kind")
+                    .asString().equals("core_host_bundle")
+                || !runtimeExtras.get("input_autoconfig").get("kind")
+                    .asString().equals("merged_input_autoconfig")
+                || !runtimeExtras.get("input_autoconfig").get("manifest")
+                    .asString().equals(
+                        "../../input/steam-deck/retroarch_autoconfig.json")
+                || !coreDirectories.isArray() || coreDirectories.size() != 1
+                || !coreDirectories.at(0).asString().equals(
+                    "${asset_root}/lib/retroarch/cores")) {
+            failures += RetroArchProductionContractTest.fail(
+                "runtime can escape the exact source-built AppImage slice");
+        }
+
+        Vector<string> expectedCores = [
+            "desmume", "gambatte", "genesis_plus_gx", "mednafen_psx",
+            "mesen", "mgba", "mupen64plus_next", "snes9x"
+        ];
+        bool exactImplementations = cores.get("schema_version").asInt() == 1;
+        for core in expectedCores {
+            JsonValue implementation = cores.get("implementations")
+                .get(core).get("linux");
+            if (!implementation.get("kind").isString()
+                    || !implementation.get("kind").asString().equals(
+                        "nixpkgs_libretro")
+                    || !implementation.get("package_attribute").isString()
+                    || implementation.get("package_attribute").asString()
+                        .isEmpty()) {
+                exactImplementations = false;
+            }
+        }
+        if (!RetroArchProductionContractTest.exactSet(
+                RetroArchProductionContractTest.selectedLinuxCores(project),
+                expectedCores)
+                || !exactImplementations
+                || !packageNix.contains("core-host-build-contract.json")
+                || !packageNix.contains(
+                    "selected_core_ids = selectedCoreIds")
+                || !packageNix.contains("host = coreHostId")
+                || packageNix.contains(
+                    "required_core_names = selectedCoreIds")
+                || !packageNix.contains("semuCoreHostPackage")
+                || !packageNix.contains("semuRuntimeExtras = runtimeExtras")
+                || !packageNix.contains("steamDeckAutoconfigManifest")
+                || !packageNix.contains(
+                    "cp -R ${retroarch-joypad-autoconfig}/share/libretro/autoconfig")
+                || !packageNix.contains(
+                    "cp -RL ${steamDeckAutoconfig}/share/libretro/autoconfig/.")
+                || !packageNix.contains(
+                    "networkCommandPatchContract.sha256 == networkCommandPatchHash")
+                || !packageNix.contains(
+                    "networkCommandPatch = ./retroarch_commands.patch")
+                || packageNix.contains(
+                    "./. + \"/${networkCommandPatchContract.file}\"")
+                || !packageNix.contains(
+                    "statusNullSafetyPatchContract.sha256")
+                || emulatorNix.toLower().contains("retroarch")
+                || deckPackageNix.toLower().contains("retroarch")
+                || !emulatorNix.contains("renamedCoreHostEvaluation")
+                || !emulatorNix.contains("hostId = \"renamed-host\"")
+                || !emulatorNix.contains("coreHostPackages")
+                || !emulatorNix.contains("runtimeExtraPackages")
+                || !deckPackageNix.contains(
+                    "semuEmulators.runtimeExtraPackages")) {
+            failures += RetroArchProductionContractTest.fail(
+                "core host selection or runtime extras escaped the local slice");
+        }
+
+        if (RetroArchProductionContractTest.occurrences(commandPatch,
+                    "string_is_equal(arg, \"menu_active\")") != 1
+                || RetroArchProductionContractTest.occurrences(commandPatch,
+                    "string_is_equal(arg, \"cheevos_enable\")") != 1
+                || RetroArchProductionContractTest.occurrences(commandPatch,
+                    "bool command_save_state_slot(command_t* cmd, const char* arg)") != 2
+                || RetroArchProductionContractTest.occurrences(commandPatch,
+                    "{ \"SAVE_STATE_SLOT\",command_save_state_slot, \"<slot number>\"}") != 1
+                || commandPatch.contains("GET_STATUS")
+                || packageNix.contains("5ff33af")) {
+            failures += RetroArchProductionContractTest.fail(
+                "exact local network-command patch contract regressed");
+        }
+
+        JsonValue macos = emulator.get("platforms").get("macos");
+        JsonValue macosEnvironment = macos.get("env").get("set");
+        if (FileSystem.readText(RetroArchProductionContractTest.file(
+                    project, directory + "/emulator.json"))
+                    .contains("${paths.project_bios}")
+                || !RetroArchProductionContractTest.filesystem(
+                    linux, "${bios}", "ro")
+                || !RetroArchProductionContractTest.filesystem(
+                    macos, "${project}", "ro")
+                || !RetroArchProductionContractTest.filesystem(
+                    macos, "${asset_root}", "ro")
+                || !RetroArchProductionContractTest.filesystem(
+                    macos, "${roms}", "ro")
+                || !RetroArchProductionContractTest.filesystem(
+                    macos, "${emulation_root}", "ro")
+                || !RetroArchProductionContractTest.filesystem(
+                    macos, "${bios}", "ro")
+                || !RetroArchProductionContractTest.filesystem(
+                    macos, "${state_root}", "create")
+                || !macosEnvironment.get("HOME").asString().equals(
+                    "${state_root}/home")
+                || !macosEnvironment.get("SEMU_RETROARCH_CONFIG").asString()
+                    .equals("${state_root}/config/RetroArch/retroarch.cfg")
+                || !macos.get("state").get("profile_config_dir").asString()
+                    .equals("${state_root}/config/RetroArch")
+                || macos.get("firmware").get("dir").asString()
+                    .contains("${home}")) {
+            failures += RetroArchProductionContractTest.fail(
+                "macOS package/config paths are not confined to Semu-owned state");
+        }
+
+        JsonValue frame = linux.get("retroarch").get("frame_output");
+        JsonValue settings = linux.get("retroarch").get("settings_overrides");
+        JsonValue profileLines = profile.get("files").at(0).get("lines");
+        JsonValue prefixes = profile.get("compiler").get("line_groups")
+            .get("keymap_hotkeys").get("prefix");
+        if (!linux.get("args").isArray()
+                || !linux.get("args").at(0).asString().equals("-f")
+                || !frame.get("fullscreen").asBool()
+                || frame.get("native_shader").asBool()
+                || frame.get("native_bezel").asBool()
+                || !settings.get("notification_show_autoconfig")
+                    .asString().equals("false")
+                || !settings.get("notification_show_autoconfig_fails")
+                    .asString().equals("false")
+                || !settings.get("video_shader_enable").asString().equals("false")
+                || !settings.get("input_overlay_enable").asString().equals("false")
+                || !settings.get("input_overlay_enable_autopreferred")
+                    .asString().equals("false")
+                || !RetroArchProductionContractTest.line(
+                    profileLines, "video_fullscreen = \"true\"")
+                || !RetroArchProductionContractTest.line(
+                    profileLines, "video_shader_enable = \"false\"")
+                || !RetroArchProductionContractTest.line(
+                    profileLines, "input_overlay_enable = \"false\"")
+                || !RetroArchProductionContractTest.line(profileLines,
+                    "input_overlay_enable_autopreferred = \"false\"")
+                || !RetroArchProductionContractTest.line(prefixes,
+                    "input_quit_gamepad_combo = \"0\"")) {
+            failures += RetroArchProductionContractTest.fail(
+                "fullscreen or exclusive Semu rendering ownership regressed");
+        }
+
+        if (!RetroArchProductionContractTest.action(
+                    profile, "input_save_state", "state.save")
+                || !RetroArchProductionContractTest.action(
+                    profile, "input_load_state", "state.load")
+                || !deckInput.get("actions").get("state.save").get("chord")
+                    .asString().equals("Ctrl+S")
+                || !deckInput.get("actions").get("state.load").get("chord")
+                    .asString().equals("Ctrl+A")) {
+            failures += RetroArchProductionContractTest.fail(
+                "save/load actions are not consumed by the RetroArch profile");
+        }
+
+        JsonValue gameplay = autoconfig.get("contract").get("gameplay_mapping");
+        JsonValue profiles = autoconfig.get("profiles");
+        if (!profiles.isArray() || profiles.size() != 2
+                || !RetroArchProductionContractTest.autoconfigProfile(
+                    profiles.at(0), gameplay)
+                || !RetroArchProductionContractTest.autoconfigProfile(
+                    profiles.at(1), gameplay)
+                || settings.has("input_player1_reserved_device")
+                || settings.has("input_player1_device_reservation_type")
+                || !settings.get("input_autodetect_enable").asString()
+                    .equals("true")
+                || !settings.get("input_player1_joypad_index").asString()
+                    .equals("0")
+                || !RetroArchProductionContractTest.line(profileLines,
+                    "input_autodetect_enable = \"true\"")
+                || !RetroArchProductionContractTest.line(profileLines,
+                    "input_player1_joypad_index = \"0\"")
+                || !RetroArchProductionContractTest.line(profileLines,
+                    "notification_show_autoconfig = \"false\"")
+                || !RetroArchProductionContractTest.line(profileLines,
+                    "notification_show_autoconfig_fails = \"false\"")
+                || !RetroArchProductionContractTest.nativeGamepadVdf(project)) {
+            failures += RetroArchProductionContractTest.fail(
+                "SDL port-1 autoconfiguration or native VDF gamepad output is incomplete");
+        }
+
+        JsonValue quit = deckInput.get("quit_chord");
+        JsonValue buttons = quit.get("buttons");
+        if (!buttons.isArray() || buttons.size() != 2
+                || !buttons.at(0).asString().equals("select")
+                || !buttons.at(1).asString().equals("start")
+                || quit.get("window_ms").asInt() != 250
+                || !supervisor.contains("setpgid(child, child)")
+                || !supervisor.contains("kill(-child, SIGKILL)")
+                || !supervisor.contains("process-group-terminate")) {
+            failures += RetroArchProductionContractTest.fail(
+                "Start+Select does not resolve to bounded supervisor process-group termination");
+        }
+
+        int gl3Marker = patch.indexOf("--- a/gfx/drivers/gl3.c");
+        string gl2 = gl3Marker < 0 ? "" : patch.substring(0, gl3Marker);
+        string gl3 = gl3Marker < 0 ? "" : patch.substring(gl3Marker, patch.len());
+        JsonValue surface = rendering.get("surfaces").at(0);
+        JsonValue n64Binding = n64.get("emulators").at(0);
+        string n64Orientation = n64.get("doc").get("orientation").asString();
+        if (!RetroArchProductionContractTest.patchSection(
+                    gl2, "gl2_renderchain_bind_prev_texture")
+                || !RetroArchProductionContractTest.patchSection(
+                    gl3, "gl3_filter_chain_end_frame")
+                || patch.contains("retroarch_get_rotation")
+                || patch.contains("SEMU_RENDER_ORIGIN_TOP_LEFT")
+                || !surface.get("orientation").asString().equals("upright")
+                || !surface.get("origin").asString().equals("bottom_left")
+                || surface.get("rotation").asInt() != 0
+                || !n64Orientation.contains(
+                    "upright bottom-left-origin game frame in GL space")
+                || n64Orientation.contains("top-left")
+                || !n64Binding.get("emulator").asString().equals("retroarch")
+                || !n64Binding.get("core").asString().equals(
+                    "mupen64plus_next")
+                || !RetroArchProductionContractTest.platformIncludesLinux(
+                    n64Binding)
+                || RetroArchProductionContractTest.occurrences(patch,
+                    "including N64 cores, is upright in bottom-left GL space") != 2
+                || !packageNix.contains("--fuzz=0")
+                || !packageNix.contains("semuBuildContract = buildContract")
+                || !packageNix.contains("outputContract.build_contract")
+                || !packageNix.contains("test \"$game_line\" -lt \"$menu_line\"")
+                || !packageNix.contains("test \"$widget_line\" -lt \"$post_line\"")
+                || !packageNix.contains("test \"$post_line\" -lt \"$swap_line\"")) {
+            failures += RetroArchProductionContractTest.fail(
+                "upright game/UI/present hook ordering is not source-asserted");
+        }
+
+        if (failures == 0) {
+            print("retroarch production contract: package + cores + input + hooks valid");
+        }
+        return failures;
+    }
+}

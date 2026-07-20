@@ -1,0 +1,47 @@
+// json_format.btrc - canonical human-readable formatting for JsonValue documents.
+
+import std.{json, vector}
+
+class SemuJsonFormat {
+    class string indentation(int depth) {
+        string result = "";
+        for (int index = 0; index < depth; index++) {
+            result += "  ";
+        }
+        return result;
+    }
+
+    class string valueAt(JsonValue value, int depth) {
+        if (value.isArray()) {
+            if (value.size() == 0) { return "[]"; }
+            Vector<string> elements = [];
+            for (int index = 0; index < value.size(); index++) {
+                elements.push(SemuJsonFormat.indentation(depth + 1)
+                    + SemuJsonFormat.valueAt(value.at(index), depth + 1));
+            }
+            return "[\n" + elements.join(",\n") + "\n"
+                + SemuJsonFormat.indentation(depth) + "]";
+        }
+        if (value.isObject()) {
+            Vector<string> keys = value.keys();
+            if (keys.isEmpty()) { return "{}"; }
+            Vector<string> fields = [];
+            for key in keys {
+                fields.push(SemuJsonFormat.indentation(depth + 1)
+                    + "\"" + JsonValue.encodeString(key) + "\": "
+                    + SemuJsonFormat.valueAt(value.get(key), depth + 1));
+            }
+            return "{\n" + fields.join(",\n") + "\n"
+                + SemuJsonFormat.indentation(depth) + "}";
+        }
+        return value.stringify();
+    }
+
+    class string value(JsonValue value) {
+        return SemuJsonFormat.valueAt(value, 0);
+    }
+
+    class string document(JsonValue value) {
+        return SemuJsonFormat.value(value) + "\n";
+    }
+}

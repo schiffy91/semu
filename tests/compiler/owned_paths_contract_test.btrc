@@ -1,0 +1,95 @@
+// owned_paths_contract_test.btrc - generated/runtime write confinement.
+
+import std.{fs, json, process}
+import ../../src/compiler/parser.btrc
+import ../../src/lib/owned_paths.btrc
+
+class OwnedPathsContractTest {
+    class int fail(string message) {
+        print("  FAIL owned paths: " + message);
+        return 1;
+    }
+
+    class bool rejectsUnsafeDeclarations() {
+        for path in ["/tmp/escape", "../escape", "safe/../escape",
+                     "safe//escape", "safe\\escape", "."] {
+            if (SemuOwnedPaths.safeRelativePath(path)) { return false; }
+        }
+        return SemuOwnedPaths.safeRelativePath("profiles/owned/config.ini")
+            && SemuOwnedPaths.safeRelativePath("", true);
+    }
+
+    class bool rejectsInvalidStateSchema() {
+        JsonValue platform = JsonValue.makeObject();
+        JsonValue state = JsonValue.makeObject();
+        state.set("profile_config_dir",
+            JsonValue.makeString("/tmp/not-semu-owned"));
+        JsonValue seeds = JsonValue.makeArray();
+        JsonValue seed = JsonValue.makeObject();
+        seed.set("target",
+            JsonValue.makeString("${state_root}/../outside"));
+        JsonValue sources = JsonValue.makeArray();
+        sources.push(JsonValue.makeString("${emulation_root}/bios/source"));
+        seed.set("sources", sources);
+        seeds.push(seed);
+        state.set("seeds", seeds);
+        platform.set("state", state);
+        CompilerDiagnostics diagnostics = CompilerDiagnostics();
+        SemuOwnedPathDeclarations.platform(
+            platform, "fixture.json", "platforms.linux", diagnostics);
+        return diagnostics.errors.size() == 2;
+    }
+
+    class bool rejectsSymlinkedParent(string scratch) {
+        string root = PathTools.join(scratch, "state");
+        string outside = PathTools.join(scratch, "outside");
+        string linked = PathTools.join(root, "linked");
+        if (FileSystem.mkdirp(root) != 0 || FileSystem.mkdirp(outside) != 0) {
+            return false;
+        }
+        ExecResult link = ChildProcess.run("ln", ["-s", outside, linked],
+            timeoutMilliseconds=5000,
+            stdout=CommandOutput.suppress(),
+            stderr=CommandOutput.collect());
+        string escaped = PathTools.join(linked, "profile.ini");
+        return link.ok()
+            && SemuOwnedPaths.containedPath(root, escaped).isEmpty()
+            && !SemuOwnedPaths.prepareFile(root, escaped)
+            && !FileSystem.isFile(PathTools.join(outside, "profile.ini"));
+    }
+
+    class int run(string project) {
+        string scratch = FileSystem.tempDir("semu-owned-paths");
+        if (scratch.isEmpty()) {
+            return OwnedPathsContractTest.fail("could not create scratch root");
+        }
+        int failures = 0;
+        if (!OwnedPathsContractTest.rejectsUnsafeDeclarations()) {
+            failures += OwnedPathsContractTest.fail(
+                "unsafe relative path syntax was accepted");
+        }
+        if (!OwnedPathsContractTest.rejectsInvalidStateSchema()) {
+            failures += OwnedPathsContractTest.fail(
+                "state-root schema escapes were not diagnosed");
+        }
+        if (!OwnedPathsContractTest.rejectsSymlinkedParent(scratch)) {
+            failures += OwnedPathsContractTest.fail(
+                "symlinked write parent escaped the owned root");
+        }
+        string root = PathTools.join(scratch, "generated");
+        string owned = PathTools.join(root, "profiles/config.ini");
+        if (!SemuOwnedPaths.prepareFile(root, owned)
+                || !FileSystem.writeText(owned, "owned\n")
+                || !FileSystem.isFile(owned)
+                || !SemuOwnedPaths.containedPath(
+                    root, PathTools.join(scratch, "outside.ini")).isEmpty()) {
+            failures += OwnedPathsContractTest.fail(
+                "valid owned destination or absolute containment regressed");
+        }
+        FileSystem.removeRecursive(scratch);
+        if (failures == 0) {
+            print("owned paths contract: traversal + symlink confinement valid");
+        }
+        return failures;
+    }
+}

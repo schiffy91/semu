@@ -1,0 +1,79 @@
+{
+  "schema_version": 1,
+  "activation": {
+    "mode": "source_patched_direct_link",
+    "package_ready": true,
+    "runtime_proven": false,
+    "physical_proven": false
+  },
+  "integration": {
+    "abi": 2,
+    "api": "semu-renderer",
+    "linkage": "direct_pinvoke",
+    "header": "semu_renderer.h",
+    "library": "semurenderer",
+    "compile_define": "SEMU_RENDERER",
+    "compile_project": "src/Ryujinx.Graphics.OpenGL/Ryujinx.Graphics.OpenGL.csproj",
+    "backend": "opengl",
+    "callbacks": [
+      "spb_get_proc_address",
+      "spb_current_context"
+    ],
+    "inactive_reports": false,
+    "frame_gate": "dequeued_guest_presentation_texture",
+    "framebuffer": "default_opengl_backbuffer",
+    "content": "final_letterboxed_destination_rect",
+    "native": "pre_scaling_source_crop",
+    "presentation_aspect": "live final game content width divided by height",
+    "layout_variant": "DEFAULT below 1.5 aspect and VARIANT_B at or above 1.5",
+    "surface_count": 1,
+    "rotation": 0,
+    "origin": "bottom_left",
+    "orientation": "upright",
+    "patch": "ryujinx.patch",
+    "platforms": [
+      "x86_64-linux",
+      "aarch64-linux"
+    ]
+  },
+  "phases": [
+    {
+      "id": "game",
+      "symbol": "semu_render_game_gl",
+      "source": "src/Ryujinx.Graphics.OpenGL/Window.cs",
+      "function": "Window.CopyTextureToFrameBufferRGB",
+      "after": "final guest OpenGL blit and output-state normalization",
+      "before": "the emulator-owned presentation callback"
+    },
+    {
+      "id": "post_ui",
+      "symbol": "semu_render_post_ui_gl",
+      "source": "src/Ryujinx/UI/Renderer/EmbeddedWindowOpenGL.cs",
+      "function": "EmbeddedWindowOpenGL.SwapBuffers",
+      "after": "all work preceding the embedded OpenGL presentation callback",
+      "before": "the emulator-owned native window SwapBuffers"
+    }
+  ],
+  "surfaces": [
+    {
+      "index": 0,
+      "id": "game",
+      "geometry": "final letterboxed guest destination rectangle",
+      "native": "guest source crop dimensions before scaling",
+      "origin": "bottom_left",
+      "orientation": "upright",
+      "rotation": 0
+    }
+  ],
+  "composition": {
+    "owner": "semurenderer",
+    "shader": "renderer_owned",
+    "bezel": "renderer_owned",
+    "semu_menu": "renderer_owned",
+    "ryujinx_ui": "between_game_and_post_ui_phases"
+  },
+  "doc": {
+    "boundary": "The managed OpenGL path submits the completed guest rectangle after its final blit. EmbeddedWindowOpenGL submits the same frame after emulator UI work and immediately before the native window swap.",
+    "evidence": "Static P/Invoke linkage, patch application, frame gating, exact phase order, and forbidden-symbol absence are source gates. Real Switch pixels and physical composition remain runtime gates."
+  }
+}

@@ -1,0 +1,76 @@
+{
+  "schema_version": 1,
+  "name": "Nintendo Entertainment System",
+  "aliases": [
+    "famicom"
+  ],
+  "es_de": {
+    "platforms": [
+      "nes"
+    ],
+    "theme": "nes"
+  },
+  "rom": {
+    "dir": "nes",
+    "extensions": [
+      ".3dsen",
+      ".bin",
+      ".fds",
+      ".nes",
+      ".unf",
+      ".unif",
+      ".7z",
+      ".zip"
+    ]
+  },
+  "verification": {
+    "rom_descriptors": [
+      "Super Mario Bros. (World).zip",
+      "Mega Man 2 (USA).zip"
+    ],
+    "capture_frame": 180
+  },
+  "emulators": [
+    {
+      "emulator": "retroarch",
+      "label": "Mesen",
+      "core": "mesen"
+    }
+  ],
+  "display": {
+    "scaling": {
+      "mode": "integer_preferred",
+      "basis": "native_game_surface",
+      "fit": "contain",
+      "fallback": "fractional_downscale"
+    },
+    "screens": [
+      {
+        "id": "main",
+        "native": {
+          "w": 256,
+          "h": 240
+        }
+      }
+    ],
+    "aspect": {
+      "w": 4,
+      "h": 3
+    }
+  },
+  "render": {
+    "style": "console",
+    "asset_profile": "crt4x3",
+    "priority": "game",
+    "reflect": 0.18,
+    "corner_radius": 0.045,
+    "curvature": 0.04,
+    "glow": 0.18,
+    "bloom": 0.2,
+    "vignette": 0.22
+  },
+  "doc": {
+    "hardware": "consumer CRT over composite",
+    "intent": "Classic 240p TV path with composite artifacting, phosphor mask, and scanlines."
+  }
+}

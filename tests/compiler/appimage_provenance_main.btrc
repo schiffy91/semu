@@ -1,0 +1,62 @@
+// appimage_provenance_main.btrc - isolated strict provenance contract entrypoint.
+
+import std.{cli, fs}
+import ./appimage_provenance_contract_test.btrc
+import ../../src/generators/appimage/provenance.btrc
+import ../../src/generators/appimage/runtime_inventory.btrc
+
+int main(int argc, char** argv) {
+    CliArgs arguments = CliArgs(argc, argv);
+    string project = arguments.valueAfter(
+        "--project", FileSystem.currentDirectory());
+    string staleRuntime = arguments.valueAfter("--expect-stale-runtime", "");
+    string auditRuntime = arguments.valueAfter("--audit-runtime", "");
+    string auditHooks = arguments.valueAfter("--audit-hooks", "");
+    if (arguments.has("--focused")) {
+        return AppImageProvenanceContractTest.focused() == 0 ? 0 : 1;
+    }
+    if (!auditHooks.isEmpty()) {
+        AppImageRuntimeInventoryResult inventory =
+            AppImageRuntimeInventory.load(PathTools.join(project, "config"));
+        AppImageProvenanceJson builds =
+            AppImageRuntimeProvenance.buildContracts(project);
+        if (!inventory.ok() || !builds.ok()) {
+            print("AppImage hook packages: "
+                + (inventory.ok() ? builds.error : inventory.error));
+            return 1;
+        }
+        AppImageProvenanceJson packages =
+            AppImageRuntimeProvenance.runtimePackages(
+                project, auditHooks, builds.value, inventory.slices);
+        AppImageProvenanceJson contracts = packages.ok()
+            ? AppImageRuntimeProvenance.runtimeBuildContracts(
+                auditHooks, inventory.slices, builds.value)
+            : AppImageProvenanceJson.failure(packages.error);
+        if (!packages.ok() || !contracts.ok()) {
+            print("AppImage hook packages: "
+                + (packages.ok() ? contracts.error : packages.error));
+            return 1;
+        }
+        print("AppImage hook packages: "
+            + packages.value.size().toString()
+            + " exact source/patch/binary boundaries");
+        return 0;
+    }
+    if (!auditRuntime.isEmpty()) {
+        string target = Path.readAll(PathTools.join(auditRuntime,
+            "share/semu/steamdeck-runtime-store-path.txt")).trim();
+        AppImageProvenanceJson payload =
+            AppImageRuntimeProvenance.runtimePayload(
+                auditRuntime, target);
+        if (!payload.ok()) {
+            print("AppImage target payload: " + payload.error);
+            return 1;
+        }
+        print("AppImage target payload: "
+            + payload.value.get("file_count").asInt().toString()
+            + " exact files");
+        return 0;
+    }
+    return AppImageProvenanceContractTest.run(
+        project, staleRuntime) == 0 ? 0 : 1;
+}

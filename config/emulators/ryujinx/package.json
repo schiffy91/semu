@@ -1,0 +1,76 @@
+{
+  "schema_version": 1,
+  "id": "ryujinx",
+  "version": "1.3.3",
+  "build_kind": "source",
+  "source": {
+    "kind": "forgejo_archive",
+    "repository": "https://git.ryujinx.app/projects/Ryubing",
+    "url": "https://git.ryujinx.app/api/v1/repos/projects/Ryubing/archive/e2143d43bcb6762340d8a01f20e7b5fdf104f02f.tar.gz?rev=e2143d43bcb6762340d8a01f20e7b5fdf104f02f",
+    "revision": "e2143d43bcb6762340d8a01f20e7b5fdf104f02f",
+    "sha256": "sha256-LhQaXxmj5HIgfmrsDN8GhhVXlXHpDO2Q8JtNLaCq0mk="
+  },
+  "build": {
+    "project_file": "src/Ryujinx/Ryujinx.csproj",
+    "dotnet_sdk": "sdk_9_0",
+    "dotnet_runtime": "runtime_9_0",
+    "nuget_deps": "deps.json",
+    "nuget_config": "nuget.config",
+    "central_packages": "Directory.Packages.props",
+    "enable_parallel": false,
+    "defines": [
+      "DISABLE_UPDATER",
+      "FORCE_EXTERNAL_BASE_DIR"
+    ],
+    "linux_defines": [
+      "SEMU_RENDERER"
+    ],
+    "executables": [
+      "Ryujinx"
+    ],
+    "dead_nuget_source_keys": [
+      "Ryujinx.UpdateClient"
+    ],
+    "disabled_package_references": [
+      "Ryujinx.UpdateClient",
+      "Ryujinx.Systems.Update.Common"
+    ],
+    "updater_stub_path": "src/Ryujinx/Systems/Updater/Updater.GitLab.cs",
+    "macos_info_plist": "distribution/macos/Info.plist",
+    "macos_icon": "distribution/macos/Ryujinx.icns",
+    "macos_bundle": "Applications/Ryujinx.app"
+  },
+  "platforms": [
+    "x86_64-linux",
+    "aarch64-linux",
+    "x86_64-darwin",
+    "aarch64-darwin"
+  ],
+  "graphics_apis": [
+    "opengl",
+    "vulkan"
+  ],
+  "outputs": {
+    "linux_main_program": "bin/Ryujinx",
+    "macos_main_program": "Applications/Ryujinx.app/Contents/MacOS/Ryujinx",
+    "macos_wrapper": "bin/ryujinx",
+    "build_contract": "share/semu/ryujinx-build-contract.json"
+  },
+  "fallbacks": {
+    "linux_host_executable": false,
+    "linux_flatpak": false,
+    "linux_prebuilt_binary": false
+  },
+  "meta": {
+    "description": "Nintendo Switch emulator built from the Ryubing continuation source",
+    "homepage": "https://git.ryujinx.app/projects/Ryubing",
+    "license": "mit",
+    "linux_main_program": "Ryujinx",
+    "macos_main_program": "ryujinx"
+  },
+  "doc": {
+    "source": "The current official Ryubing Forgejo repository exposes release 1.3.3 at this immutable commit archive. The normalized unpacked source hash matches the former repository pin byte-for-byte.",
+    "build": "The pinned source declares .NET SDK 9.0.100 with latestFeature roll-forward and builds src/Ryujinx/Ryujinx.csproj. Its retired updater NuGet feed is removed declaratively and the updater is compiled out.",
+    "rendering": "The Linux managed OpenGL path uses static named P/Invoke into libsemurenderer: game rendering runs after the final guest blit, and post-UI rendering runs immediately before the embedded window's owned swap. Settings and loading views never create a renderer frame."
+  }
+}

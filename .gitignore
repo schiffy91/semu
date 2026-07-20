@@ -11,6 +11,7 @@ __pycache__/
 .venv/
 .mcp.json
 .deck-smoke/
+build/
 
 # === Licensed game/media/emulator payloads ===
 # Source/config exceptions should be added explicitly rather than broadening

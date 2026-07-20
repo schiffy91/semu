@@ -1,0 +1,208 @@
+// Filesystem-backed contracts for every independent tree-audit policy family.
+
+import std.{console, fs, vector}
+import ./audit.btrc
+
+class TreeAuditFixture {
+    class bool directory(string root, string relative) {
+        return FileSystem.mkdirp(PathTools.join(root, relative)) == 0;
+    }
+
+    class bool file(string root, string relative, string content) {
+        string path = PathTools.join(root, relative);
+        return FileSystem.mkdirp(PathTools.dirname(path)) == 0
+            && FileSystem.writeText(path, content);
+    }
+
+    class string create() {
+        string root = FileSystem.tempDir("semu-tree-audit");
+        if (root.isEmpty()) { return ""; }
+        Vector<string> directories = [
+            "config/settings", "docs", "packaging/install", "src/compiler",
+            "tests/targets/steamdeck"
+        ];
+        for relative in directories {
+            if (!TreeAuditFixture.directory(root, relative)) {
+                FileSystem.removeRecursive(root);
+                return "";
+            }
+        }
+        if (!TreeAuditFixture.file(root, "README.md", "# Fixture\n")
+                || !TreeAuditFixture.file(root, "config/settings/defaults.json", "{}\n")
+                || !TreeAuditFixture.file(root,
+                    "config/assets/esde/templates/command.xml", "<command />\n")
+                || !TreeAuditFixture.file(root, "docs/README.md", "# Fixture\n")
+                || !TreeAuditFixture.file(root, "src/main.btrc", "int main() { return 0; }\n")
+                || !TreeAuditFixture.file(root, "tests/Makefile", "test:\n\t@true\n")
+                || !TreeAuditFixture.file(root, "packaging/install/runner",
+                    "#!/bin/sh\nexit 0\n")) {
+            FileSystem.removeRecursive(root);
+            return "";
+        }
+        string runner = PathTools.join(root, "packaging/install/runner");
+        if (FileSystem.chmod(runner, 493) != 0) { // 0755
+            FileSystem.removeRecursive(root);
+            return "";
+        }
+        return root;
+    }
+}
+
+class TreeAuditContractTest {
+    class int fail(string message) {
+        Console.error("  FAIL " + message);
+        return 1;
+    }
+
+    class int validTree() {
+        string root = TreeAuditFixture.create();
+        if (root.isEmpty()) {
+            return TreeAuditContractTest.fail("could not create valid fixture");
+        }
+        TreeAuditResult result = TreeAuditor.audit(root);
+        FileSystem.removeRecursive(root);
+        if (!result.ok()) {
+            result.report();
+            return TreeAuditContractTest.fail("valid fixture was rejected");
+        }
+        return 0;
+    }
+
+    class int rejectsFile(string label, string relative, string content,
+                          string expected) {
+        string root = TreeAuditFixture.create();
+        if (root.isEmpty() || !TreeAuditFixture.file(root, relative, content)) {
+            if (!root.isEmpty()) { FileSystem.removeRecursive(root); }
+            return TreeAuditContractTest.fail("could not prepare " + label);
+        }
+        TreeAuditResult result = TreeAuditor.audit(root);
+        FileSystem.removeRecursive(root);
+        if (result.ok() || !result.contains(expected)) {
+            result.report();
+            return TreeAuditContractTest.fail(label + " was not rejected by " + expected);
+        }
+        return 0;
+    }
+
+    class int rejectsDirectory(string label, string relative, string child,
+                               string expected) {
+        string root = TreeAuditFixture.create();
+        if (root.isEmpty()
+                || !TreeAuditFixture.file(
+                    root, PathTools.join(relative, child), "fixture\n")) {
+            if (!root.isEmpty()) { FileSystem.removeRecursive(root); }
+            return TreeAuditContractTest.fail("could not prepare " + label);
+        }
+        TreeAuditResult result = TreeAuditor.audit(root);
+        FileSystem.removeRecursive(root);
+        if (result.ok() || !result.contains(expected)) {
+            result.report();
+            return TreeAuditContractTest.fail(label + " was not rejected by " + expected);
+        }
+        return 0;
+    }
+
+    class int rejectsEmptyConfigDirectory() {
+        string root = TreeAuditFixture.create();
+        if (root.isEmpty()
+                || !TreeAuditFixture.directory(root, "config/input")) {
+            if (!root.isEmpty()) { FileSystem.removeRecursive(root); }
+            return TreeAuditContractTest.fail("could not prepare empty config family");
+        }
+        TreeAuditResult result = TreeAuditor.audit(root);
+        FileSystem.removeRecursive(root);
+        if (result.ok()
+                || !result.contains("empty directories under config are not allowed")) {
+            result.report();
+            return TreeAuditContractTest.fail("empty config directory was accepted");
+        }
+        return 0;
+    }
+
+    class int rejectsMissingTargetsRoot() {
+        string root = TreeAuditFixture.create();
+        string targets = root.isEmpty()
+            ? "" : PathTools.join(root, "tests/targets");
+        if (root.isEmpty() || FileSystem.removeRecursive(targets) != 0) {
+            if (!root.isEmpty()) { FileSystem.removeRecursive(root); }
+            return TreeAuditContractTest.fail("could not prepare missing target root");
+        }
+        TreeAuditResult result = TreeAuditor.audit(root);
+        FileSystem.removeRecursive(root);
+        if (result.ok()
+                || !result.contains(
+                    "required tree is not a real directory: tests/targets")) {
+            result.report();
+            return TreeAuditContractTest.fail("missing target root was accepted");
+        }
+        return 0;
+    }
+
+    class int run() {
+        int failures = TreeAuditContractTest.validTree();
+        failures += TreeAuditContractTest.rejectsFile(
+            "unexpected top-level path", "notes.md", "notes\n",
+            "unexpected top-level path");
+        failures += TreeAuditContractTest.rejectsDirectory(
+            "retired Claude metadata", ".claude", "settings.json",
+            "unexpected top-level path");
+        failures += TreeAuditContractTest.rejectsDirectory(
+            "unexpected config family", "config/catalog", "entry.json",
+            "unexpected config family");
+        failures += TreeAuditContractTest.rejectsDirectory(
+            "unexpected packaging family", "packaging/runtime", "entry.json",
+            "unexpected packaging family");
+        failures += TreeAuditContractTest.rejectsDirectory(
+            "unexpected source root", "src/legacy", "module.btrc",
+            "unexpected path under src");
+        failures += TreeAuditContractTest.rejectsDirectory(
+            "unexpected test family", "tests/integration", "case.btrc",
+            "unexpected test family");
+        failures += TreeAuditContractTest.rejectsDirectory(
+            "unexpected test target", "tests/targets/linux", "case.btrc",
+            "unexpected test target");
+        failures += TreeAuditContractTest.rejectsDirectory(
+            "nested docs", "docs/architecture", "README.md",
+            "unexpected nested directories under docs");
+        failures += TreeAuditContractTest.rejectsFile(
+            "non-Markdown docs", "docs/notes.txt", "notes\n",
+            "unexpected files under docs");
+        failures += TreeAuditContractTest.rejectsDirectory(
+            "nested runtime", "src/compiler/runtime", "module.btrc",
+            "nested runtime/source trees are not allowed");
+        failures += TreeAuditContractTest.rejectsDirectory(
+            "generated cache", "tests/core/cache", "case.btrc",
+            "generated/cache paths are not allowed in owned source");
+        failures += TreeAuditContractTest.rejectsFile(
+            "editor artifact", "src/compiler/.DS_Store", "artifact\n",
+            "generated/cache paths are not allowed in owned source");
+        failures += TreeAuditContractTest.rejectsFile(
+            "reserved result path", "tests/core/result", "artifact\n",
+            "generated/cache paths are not allowed in owned source");
+        failures += TreeAuditContractTest.rejectsFile(
+            "config extension", "config/settings/defaults.yaml", "{}\n",
+            "unexpected config file type");
+        failures += TreeAuditContractTest.rejectsFile(
+            "non-executable extensionless packaging file",
+            "packaging/install/README", "not executable\n",
+            "unexpected packaging file type");
+        failures += TreeAuditContractTest.rejectsFile(
+            "source extension", "src/compiler/notes.toml", "name = 'notes'\n",
+            "unexpected source file type");
+        failures += TreeAuditContractTest.rejectsFile(
+            "test extension", "tests/core/case.py", "pass\n",
+            "unexpected test file type");
+        failures += TreeAuditContractTest.rejectsFile(
+            "root test file", "tests/orphan.btrc", "class Orphan {}\n",
+            "test files must live in an approved test family");
+        failures += TreeAuditContractTest.rejectsFile(
+            "test in source", "src/compiler/parser_test.btrc", "class Test {}\n",
+            "tests must remain under tests");
+        failures += TreeAuditContractTest.rejectsEmptyConfigDirectory();
+        failures += TreeAuditContractTest.rejectsMissingTargetsRoot();
+        if (failures == 0) {
+            Console.log("OK tree-audit contracts (21 rejection cases)");
+        }
+        return failures;
+    }
+}

@@ -1,0 +1,150 @@
+// document.btrc - provenance document composition, persistence, and validation.
+
+import std.{fs, json, strings, vector}
+import ../../../lib/json_format.btrc
+import ../runtime_inventory.btrc
+import ./runtime_contract.btrc
+import ./source_contract.btrc
+import ./support.btrc
+
+class AppImageProvenanceDocument {
+    class AppImageProvenanceInternalJson document(
+            string repoRoot, string runtimeRoot) {
+        string repo = UnixFileSystem.realPath(repoRoot);
+        string runtime = UnixFileSystem.realPath(runtimeRoot);
+        if (repo.isEmpty() || runtime.isEmpty()) {
+            return AppImageProvenanceInternalJson.failure(
+                "provenance roots must be existing real directories");
+        }
+        AppImageProvenanceInternalJson source =
+            AppImageSourceProvenance.sourceContract(repo);
+        if (!source.ok()) { return source; }
+        JsonValue selected = source.value.get("deployment_target")
+            .get("selected").get("definition");
+        JsonValue platform = selected.get("platform");
+        JsonValue nixSystems = selected.get("nix_systems");
+        if (!platform.isString() || !nixSystems.isArray()
+                || nixSystems.size() != 1 || !nixSystems.at(0).isString()) {
+            return AppImageProvenanceInternalJson.failure(
+                "source provenance lost its target platform identity");
+        }
+        AppImageRuntimeInventoryResult inventory =
+            AppImageRuntimeInventory.loadForTarget(
+                PathTools.join(repo, "config"), platform.asString(),
+                nixSystems.at(0).asString());
+        if (!inventory.ok()) {
+            return AppImageProvenanceInternalJson.failure(inventory.error);
+        }
+        AppImageProvenanceInternalJson snapshot =
+            AppImageRuntimeContractProvenance.runtimeSnapshot(repo, runtime,
+                source.value.get("build_contracts"), inventory.slices,
+                source.value.get("selected_cores"),
+                source.value.get("selected_core_builds"),
+                source.value.get("core_runtime"),
+                source.value.get("appimage_runtime"),
+                source.value.get("target_output_store_path").asString());
+        if (!snapshot.ok()) { return snapshot; }
+        JsonValue identity = JsonValue.makeObject();
+        identity.set("schema_version", JsonValue.makeInt(4));
+        identity.set("source", source.value);
+        identity.set("runtime", snapshot.value);
+        AppImageProvenanceInternalDigest digest = AppImageProvenanceSupport.hashText(
+            runtime, SemuJsonFormat.document(identity));
+        if (!digest.ok()) {
+            return AppImageProvenanceInternalJson.failure(digest.error);
+        }
+        JsonValue document = JsonValue.makeObject();
+        document.set("schema_version", JsonValue.makeInt(4));
+        document.set("release_identity_sha256",
+            JsonValue.makeString(digest.value));
+        document.set("source", source.value);
+        document.set("runtime", snapshot.value);
+        return AppImageProvenanceInternalJson.success(document);
+    }
+
+    class AppImageProvenanceInternalResult write(
+            string repoRoot, string runtimeRoot) {
+        string repo = UnixFileSystem.realPath(repoRoot);
+        string runtime = UnixFileSystem.realPath(runtimeRoot);
+        if (repo.isEmpty() || runtime.isEmpty()) {
+            return AppImageProvenanceInternalResult.failure(
+                "provenance roots must be existing real directories");
+        }
+        AppImageProvenanceInternalJson document =
+            AppImageProvenanceDocument.document(repo, runtime);
+        if (!document.ok()) {
+            return AppImageProvenanceInternalResult.failure(document.error);
+        }
+        string output = AppImageProvenanceSupport.path(runtime);
+        string parent = PathTools.dirname(output);
+        FileStatus parentStatus = FileStatus(parent);
+        FileStatus outputStatus = FileStatus(output);
+        if (!parentStatus.isDir() || parentStatus.isSymlink()
+            || (outputStatus.linkFound
+                && (!outputStatus.isFile() || outputStatus.isSymlink()))) {
+            return AppImageProvenanceInternalResult.failure(
+                "runtime provenance destination is unsafe: " + output);
+        }
+        if (!Path.writeAll(output,
+                SemuJsonFormat.document(document.value))) {
+            return AppImageProvenanceInternalResult.failure(
+                "cannot write runtime provenance: " + output);
+        }
+        return AppImageProvenanceInternalResult.success();
+    }
+
+    class AppImageProvenanceInternalResult validate(
+            string repoRoot, string runtimeRoot) {
+        string repo = UnixFileSystem.realPath(repoRoot);
+        string runtime = UnixFileSystem.realPath(runtimeRoot);
+        if (repo.isEmpty() || runtime.isEmpty()) {
+            return AppImageProvenanceInternalResult.failure(
+                "provenance roots must be existing real directories");
+        }
+        string provenancePath = AppImageProvenanceSupport.path(runtime);
+        if (!AppImageProvenanceSupport.safeRegularFile(
+                runtime, AppImageProvenanceSupport.relativePath())) {
+            return AppImageProvenanceInternalResult.failure(
+                "runtime provenance is missing or unsafe: " + provenancePath);
+        }
+        JsonValue recorded = JsonValue.readFile(provenancePath);
+        if (recorded.isError()
+            || !AppImageProvenanceSupport.exactKeys(
+                recorded, ["schema_version", "release_identity_sha256",
+                    "source", "runtime"])
+            || !recorded.get("schema_version").isInt()
+            || recorded.get("schema_version").asInt() != 4
+            || !recorded.get("release_identity_sha256").isString()
+            || !AppImageProvenanceSupport.lowerHex(
+                recorded.get("release_identity_sha256").asString(), 64)) {
+            return AppImageProvenanceInternalResult.failure(
+                "runtime provenance is malformed or has an unsupported schema");
+        }
+        AppImageProvenanceInternalJson expected =
+            AppImageProvenanceDocument.document(repo, runtime);
+        if (!expected.ok()) {
+            return AppImageProvenanceInternalResult.failure(expected.error);
+        }
+        if (!SemuJsonFormat.document(
+                recorded.get("source")).equals(
+                SemuJsonFormat.document(
+                    expected.value.get("source")))) {
+            return AppImageProvenanceInternalResult.failure(
+                "runtime provenance is stale for the live source/build snapshot");
+        }
+        if (!SemuJsonFormat.document(
+                recorded.get("runtime")).equals(
+                SemuJsonFormat.document(
+                    expected.value.get("runtime")))) {
+            return AppImageProvenanceInternalResult.failure(
+                "staged runtime closure differs from its release provenance");
+        }
+        if (!recorded.get("release_identity_sha256").asString().equals(
+                expected.value.get("release_identity_sha256").asString())) {
+            return AppImageProvenanceInternalResult.failure(
+                "release identity does not bind this source/runtime pair");
+        }
+        return AppImageProvenanceInternalResult.success();
+    }
+
+}

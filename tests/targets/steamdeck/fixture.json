@@ -1,0 +1,224 @@
+{
+  "schema_version": 1,
+  "roms_root": "/fixture/ROMs",
+  "steam_shortcut": {
+    "index": "0",
+    "name": "Semu",
+    "executable": "/home/deck/Applications/Semu/bin/semu",
+    "appid": "2400334934",
+    "appid_le_hex": "5634128f",
+    "gameid": "10309360041009872896",
+    "database_sha256": "1111111111111111111111111111111111111111111111111111111111111111"
+  },
+  "evidence_contracts": [
+    {
+      "scenario": "unattended",
+      "evidence_class": "diagnostic",
+      "input_origin": "none",
+      "acceptance_eligible": false
+    },
+    {
+      "scenario": "steam-shortcut-launch",
+      "evidence_class": "automated-hardware-path",
+      "input_origin": "none",
+      "acceptance_eligible": false
+    },
+    {
+      "scenario": "automated-game-mode",
+      "evidence_class": "automated-hardware-path",
+      "input_origin": "synthetic-uinput",
+      "acceptance_eligible": false
+    },
+    {
+      "scenario": "operator-start-select",
+      "evidence_class": "human-physical",
+      "input_origin": "human",
+      "acceptance_eligible": true
+    },
+    {
+      "scenario": "operator-radial",
+      "evidence_class": "human-physical",
+      "input_origin": "human",
+      "acceptance_eligible": true
+    }
+  ],
+  "automation": {
+    "device": "/dev/uinput",
+    "input_origin": "synthetic-uinput",
+    "human_equivalent": false,
+    "gameplay": [
+      "tap|gamepad|dpad_left",
+      "tap|gamepad|south"
+    ],
+    "state_change": [
+      "tap|gamepad|dpad_right",
+      "tap|gamepad|south"
+    ],
+    "start_select": {
+      "first": "select",
+      "second": "start",
+      "window_ms": 100
+    },
+    "quick_radial": [
+      {
+        "slot": 0,
+        "action": "state.save",
+        "marker": "kp0",
+        "chord": "ctrl+s",
+        "icon": "semu-save.png"
+      },
+      {
+        "slot": 1,
+        "action": "state.load",
+        "marker": "kp1",
+        "chord": "ctrl+a",
+        "icon": "semu-load.png"
+      },
+      {
+        "slot": 2,
+        "action": "app.quit",
+        "marker": "kp2",
+        "chord": "ctrl+q",
+        "icon": "semu-quit.png"
+      },
+      {
+        "slot": 3,
+        "action": "ui.menu",
+        "marker": "kp3",
+        "chord": "ctrl+m",
+        "icon": "semu-menu.png"
+      },
+      {
+        "slot": 4,
+        "action": "ui.screenshot",
+        "marker": "kp4",
+        "chord": "ctrl+x",
+        "icon": "semu-screenshot.png"
+      },
+      {
+        "slot": 5,
+        "action": "ui.escape",
+        "marker": "kp5",
+        "chord": "esc",
+        "icon": "semu-back.png"
+      }
+    ],
+    "menu_radial": [
+      {
+        "slot": 0,
+        "action": "ui.menu",
+        "marker": "kp6",
+        "chord": "ctrl+m",
+        "icon": "semu-menu.png"
+      },
+      {
+        "slot": 1,
+        "action": "ui.menu.up",
+        "marker": "kp7",
+        "chord": "ctrl+up",
+        "icon": "semu-up.png"
+      },
+      {
+        "slot": 2,
+        "action": "ui.menu.down",
+        "marker": "kp8",
+        "chord": "ctrl+down",
+        "icon": "semu-down.png"
+      },
+      {
+        "slot": 3,
+        "action": "ui.menu.confirm",
+        "marker": "kp9",
+        "chord": "ctrl+space",
+        "icon": "semu-confirm.png"
+      },
+      {
+        "slot": 4,
+        "action": "ui.menu.back",
+        "marker": "kpdecimal",
+        "chord": "ctrl+backspace",
+        "icon": "semu-back.png"
+      }
+    ],
+    "wii_modes": [
+      {
+        "slot": 0,
+        "action": "wii.controller.wiimote",
+        "chord": "ctrl+shift+f9",
+        "icon": "semu-wiimote.png"
+      },
+      {
+        "slot": 1,
+        "action": "wii.controller.nunchuk",
+        "chord": "ctrl+shift+f10",
+        "icon": "semu-wiimote-nunchuk.png"
+      },
+      {
+        "slot": 2,
+        "action": "wii.controller.classic",
+        "chord": "ctrl+shift+f11",
+        "icon": "semu-classic-controller.png"
+      },
+      {
+        "slot": 3,
+        "action": "wii.controller.gamecube",
+        "chord": "ctrl+shift+f12",
+        "icon": "semu-gamecube-controller.png"
+      }
+    ]
+  },
+  "systems": {
+    "dreamcast": [
+      "/fixture/ROMs/dreamcast/Ikaruga (Japan).chd"
+    ],
+    "gb": [
+      "/fixture/ROMs/gb/Tetris (World) (Rev 1).zip"
+    ],
+    "gba": [
+      "/fixture/ROMs/gba/Mario Kart - Super Circuit (USA).zip"
+    ],
+    "gbc": [
+      "/fixture/ROMs/gbc/Super Mario Bros. Deluxe (USA, Europe) (Rev 2).zip"
+    ],
+    "gc": [
+      "/fixture/ROMs/gc/Super Monkey Ball (USA).rvz"
+    ],
+    "genesis": [
+      "/fixture/ROMs/genesis/Sonic The Hedgehog (USA, Europe).zip"
+    ],
+    "n3ds": [
+      "/fixture/ROMs/n3ds/BOXBOY! (USA) (En,Fr,Es) (eShop).3ds"
+    ],
+    "n64": [
+      "/fixture/ROMs/n64/not-a-rom.pak",
+      "/fixture/ROMs/n64/Super Mario 64 (USA).zip"
+    ],
+    "nds": [
+      "/fixture/ROMs/nds/Meteos (USA).zip"
+    ],
+    "nes": [
+      "/fixture/ROMs/nes/Super Mario Bros. (World).zip"
+    ],
+    "ps2": [
+      "/fixture/ROMs/ps2/SSX (USA).iso"
+    ],
+    "psp": [
+      "/fixture/ROMs/psp/Lumines - Puzzle Fusion (USA) (En,Ja).iso"
+    ],
+    "psx": [
+      "/fixture/ROMs/psx/Mr. Driller (USA).m3u/Mr. Driller (USA).m3u"
+    ],
+    "snes": [
+      "/fixture/ROMs/snes/Super Mario World (USA).zip"
+    ],
+    "switch": [
+      "/fixture/ROMs/switch/Animal Crossing New Horizons [01006F8002326000][US][v0].nsp"
+    ],
+    "wii": [
+      "/fixture/ROMs/wii/New Super Mario Bros. Wii (USA) (En,Fr,Es) (Rev 2).wbfs"
+    ],
+    "wiiu": [
+      "/fixture/ROMs/wiiu/Nintendo Land (US).wua"
+    ]
+  }
+}

@@ -1,0 +1,75 @@
+{
+  "schema_version": 1,
+  "activation": {
+    "mode": "source_patched_direct_link",
+    "package_ready": true,
+    "runtime_proven": false,
+    "physical_proven": false
+  },
+  "integration": {
+    "abi": 2,
+    "api": "semu-renderer",
+    "linkage": "direct",
+    "header": "semu_renderer.h",
+    "library": "semurenderer",
+    "compile_define": "HAVE_SEMU_RENDERER",
+    "backend": "opengl",
+    "callbacks": [
+      "emulator_get_proc_address",
+      "emulator_current_context"
+    ],
+    "inactive_reports": false,
+    "platforms": [
+      "x86_64-linux"
+    ],
+    "framebuffer": "default_opengl_backbuffer",
+    "content": "clipped_present_destination_rectangle",
+    "native": "normalized_present_source_rectangle",
+    "presentation_aspect": "live final game content width divided by height",
+    "layout_variant": "DEFAULT below 1.5 aspect and VARIANT_B at or above 1.5",
+    "rotation": 0,
+    "origin": "bottom_left",
+    "orientation": "upright",
+    "patch": "pcsx2.patch"
+  },
+  "phases": [
+    {
+      "id": "game",
+      "symbol": "semu_render_game_gl",
+      "source": "pcsx2/GS/Renderers/OpenGL/GSDeviceOGL.cpp",
+      "function": "GSDeviceOGL::PresentRect",
+      "after": "final upright GS texture draw into the OpenGL backbuffer",
+      "before": "FullscreenUI, OSD, ImGui, and Qt presentation"
+    },
+    {
+      "id": "post_ui",
+      "symbol": "semu_render_post_ui_gl",
+      "source": "pcsx2/GS/Renderers/OpenGL/GSDeviceOGL.cpp",
+      "function": "GSDeviceOGL::EndPresent",
+      "after": "FullscreenUI, OSD, and ImGui rendering",
+      "before": "emulator-owned GLContext::SwapBuffers"
+    }
+  ],
+  "surfaces": [
+    {
+      "index": 0,
+      "id": "game",
+      "geometry": "clipped live presentation destination rectangle",
+      "native": "normalized source crop dimensions before scaling",
+      "origin": "bottom_left",
+      "orientation": "upright",
+      "rotation": 0
+    }
+  ],
+  "composition": {
+    "owner": "semurenderer",
+    "shader": "renderer_owned",
+    "bezel": "renderer_owned",
+    "semu_menu": "renderer_owned",
+    "pcsx2_ui": "between_game_and_post_ui_phases"
+  },
+  "doc": {
+    "boundary": "PresentRect submits the completed upright GS destination after the final game draw. EndPresent submits the same frame after FullscreenUI, OSD, and ImGui and immediately before the emulator-owned OpenGL swap.",
+    "evidence": "Package linkage, patch application, live geometry, exact phase order, and forbidden-symbol absence are source gates. Real PlayStation 2 pixels and physical composition remain runtime gates."
+  }
+}

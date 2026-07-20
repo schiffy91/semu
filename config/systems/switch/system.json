@@ -1,0 +1,80 @@
+{
+  "schema_version": 1,
+  "name": "Nintendo Switch",
+  "aliases": [],
+  "es_de": {
+    "platforms": [
+      "switch"
+    ],
+    "theme": "switch"
+  },
+  "rom": {
+    "dir": "switch",
+    "extensions": [
+      ".nca",
+      ".nro",
+      ".nso",
+      ".nsp",
+      ".xci",
+      ".7z",
+      ".zip"
+    ]
+  },
+  "verification": {
+    "rom_descriptors": [
+      "Animal Crossing New Horizons [01006F8002326000][US][v0].nsp",
+      "The Legend of Zelda Tears of the Kingdom [0100F2C0115B6000][v0][US].nsp"
+    ],
+    "capture_frame": 180
+  },
+  "emulators": [
+    {
+      "emulator": "ryujinx"
+    }
+  ],
+  "bios": {
+    "required": true,
+    "match": "all",
+    "files": [
+      {
+        "name": "prod.keys"
+      },
+      {
+        "name": "title.keys"
+      }
+    ],
+    "dir": "bios/switch"
+  },
+  "display": {
+    "scaling": {
+      "mode": "integer_preferred",
+      "basis": "native_game_surface",
+      "fit": "contain",
+      "fallback": "fractional_downscale"
+    },
+    "screens": [
+      {
+        "id": "main",
+        "native": {
+          "w": 1280,
+          "h": 720
+        }
+      }
+    ],
+    "aspect": {
+      "w": 16,
+      "h": 9
+    }
+  },
+  "render": {
+    "style": "handheld",
+    "priority": "game",
+    "corner_radius": 0.045,
+    "fill": true
+  },
+  "doc": {
+    "hardware": "modern 16:9 handheld/docked display",
+    "intent": "Modern system: fullscreen first, optional cosmetic frame only when explicitly enabled.",
+    "bios": "Ryujinx needs dumped Switch keys and firmware from the user's console."
+  }
+}

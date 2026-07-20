@@ -1,0 +1,385 @@
+// model.btrc - typed compiler inputs, definitions, diagnostics, and build plans.
+
+import std.{json, vector}
+
+class CompilerDiagnostics {
+    public Vector<string> errors;
+
+    public CompilerDiagnostics() {
+        self.errors = [];
+    }
+
+    public void add(string file, string field, string message) {
+        string diagnostic = f"{file}: {field}: {message}";
+        if (!self.errors.contains(diagnostic)) {
+            self.errors.push(diagnostic);
+            self.errors.sort();
+        }
+    }
+
+    public bool ok() {
+        return self.errors.isEmpty();
+    }
+}
+
+class SemuDefinitionId {
+    class bool valid(string id) {
+        if (id.isEmpty()) { return false; }
+        for (int index = 0; index < id.len(); index++) {
+            int value = id.charAt(index);
+            bool lower = value >= 97 && value <= 122;
+            bool digit = value >= 48 && value <= 57;
+            if (!lower && !digit && value != 45) { return false; }
+        }
+        return true;
+    }
+}
+
+class SemuDefinitionReference {
+    class string id(string reference, string kind) {
+        string prefix = kind + "/";
+        if (!reference.startsWith(prefix)) { return ""; }
+        string id = reference.substring(prefix.len(), reference.len() - prefix.len());
+        return SemuDefinitionId.valid(id) ? id : "";
+    }
+
+    class bool valid(string reference, string kind) {
+        return !SemuDefinitionReference.id(reference, kind).isEmpty();
+    }
+}
+
+class SemuDefinitionUnit {
+    public string kind;
+    public string id;
+    public string path;
+
+    public SemuDefinitionUnit() {
+        self.kind = "";
+        self.id = "";
+        self.path = "";
+    }
+}
+
+class SemuTargetViewport {
+    public int width;
+    public int height;
+
+    public SemuTargetViewport() {
+        self.width = 0;
+        self.height = 0;
+    }
+}
+
+class SemuTargetValidation {
+    public string kind;
+    public Vector<string> requires;
+    public Vector<string> mustCompleteBefore;
+    public string harness;
+    public string image;
+    public SemuTargetViewport viewport;
+
+    public SemuTargetValidation() {
+        self.kind = "";
+        self.requires = [];
+        self.mustCompleteBefore = [];
+        self.harness = "";
+        self.image = "";
+        self.viewport = SemuTargetViewport();
+    }
+}
+
+class SemuCompilerTarget {
+    public string id;
+    public string file;
+    public string inherits;
+    public string platform;
+    public Vector<string> nixSystems;
+    public bool deploymentTarget;
+    public bool deploymentTargetDeclared;
+    public Vector<string> backends;
+    public string artifact;
+    public string input;
+    public JsonValue settings;
+    public SemuTargetValidation validation;
+    public Vector<string> sourceFiles;
+
+    public SemuCompilerTarget() {
+        self.id = "";
+        self.file = "";
+        self.inherits = "";
+        self.platform = "";
+        self.nixSystems = [];
+        self.deploymentTarget = false;
+        self.deploymentTargetDeclared = false;
+        self.backends = [];
+        self.artifact = "";
+        self.input = "";
+        self.settings = JsonValue.makeObject();
+        self.validation = SemuTargetValidation();
+        self.sourceFiles = [];
+    }
+}
+
+class SemuSystemBindingSource {
+    public string emulator;
+    public string label;
+    public Vector<string> labelAliases;
+    public string core;
+    public Vector<string> platforms;
+    public Vector<string> arguments;
+
+    public SemuSystemBindingSource() {
+        self.emulator = "";
+        self.label = "";
+        self.labelAliases = [];
+        self.core = "";
+        self.platforms = [];
+        self.arguments = [];
+    }
+
+    public bool supports(string platform) {
+        return self.platforms.isEmpty() || self.platforms.contains(platform);
+    }
+}
+
+class SemuSystemSource {
+    public string id;
+    public string file;
+    public string shadersFile;
+    public string bezelsFile;
+    public string name;
+    public string romDirectory;
+    public Vector<string> extensions;
+    public Vector<string> esDePlatforms;
+    public string esDeTheme;
+    public Vector<SemuSystemBindingSource> emulators;
+    public JsonValue definition;
+    public JsonValue shaders;
+    public JsonValue bezels;
+
+    public SemuSystemSource() {
+        self.id = "";
+        self.file = "";
+        self.shadersFile = "";
+        self.bezelsFile = "";
+        self.name = "";
+        self.romDirectory = "";
+        self.extensions = [];
+        self.esDePlatforms = [];
+        self.esDeTheme = "";
+        self.emulators = [];
+        self.definition = JsonValue.makeObject();
+        self.shaders = JsonValue.makeObject();
+        self.bezels = JsonValue.makeObject();
+    }
+
+    public SemuSystemBindingSource bindingByEmulator(string emulatorId) {
+        for binding in self.emulators {
+            if (binding.emulator.equals(emulatorId)) { return binding; }
+        }
+        return SemuSystemBindingSource();
+    }
+}
+
+class SemuAssetSource {
+    public string root;
+    public string shadersFile;
+    public string bezelsFile;
+    public JsonValue shaders;
+    public JsonValue bezels;
+
+    public SemuAssetSource() {
+        self.root = "";
+        self.shadersFile = "";
+        self.bezelsFile = "";
+        self.shaders = JsonValue.makeObject();
+        self.bezels = JsonValue.makeObject();
+    }
+}
+
+class SemuEmulatorPlatformSource {
+    public string id;
+    public string backend;
+    public string executable;
+    public Vector<string> arguments;
+    public JsonValue definition;
+
+    public SemuEmulatorPlatformSource() {
+        self.id = "";
+        self.backend = "";
+        self.executable = "";
+        self.arguments = [];
+        self.definition = JsonValue.makeObject();
+    }
+}
+
+class SemuEmulatorSource {
+    public string id;
+    public string file;
+    public string name;
+    public Vector<string> actions;
+    public Vector<SemuEmulatorPlatformSource> platforms;
+    public string packageDefinitionFile;
+    public string packageNixFile;
+    public string profileFile;
+    public string renderingFile;
+    public string renderPatchFile;
+    public JsonValue definition;
+    public JsonValue profile;
+    public JsonValue rendering;
+
+    public SemuEmulatorSource() {
+        self.id = "";
+        self.file = "";
+        self.name = "";
+        self.actions = [];
+        self.platforms = [];
+        self.packageDefinitionFile = "";
+        self.packageNixFile = "";
+        self.profileFile = "";
+        self.renderingFile = "";
+        self.renderPatchFile = "";
+        self.definition = JsonValue.makeObject();
+        self.profile = JsonValue.makeObject();
+        self.rendering = JsonValue.makeObject();
+    }
+
+    public bool supports(string platform) {
+        for candidate in self.platforms {
+            if (candidate.id.equals(platform)) { return true; }
+        }
+        return false;
+    }
+
+    public SemuEmulatorPlatformSource platformById(string platformId) {
+        for platform in self.platforms {
+            if (platform.id.equals(platformId)) { return platform; }
+        }
+        return SemuEmulatorPlatformSource();
+    }
+}
+
+class SemuInputSource {
+    public string id;
+    public string path;
+    public string actionsFile;
+    public Vector<string> actions;
+    public Vector<string> definitionFiles;
+    public JsonValue definition;
+
+    public SemuInputSource() {
+        self.id = "";
+        self.path = "";
+        self.actionsFile = "";
+        self.actions = [];
+        self.definitionFiles = [];
+        self.definition = JsonValue.makeObject();
+    }
+}
+
+class SemuCompilerModel {
+    public string projectRoot;
+    public string configRoot;
+    public SemuCompilerTarget target;
+    public Vector<SemuSystemSource> systems;
+    public Vector<SemuEmulatorSource> emulators;
+    public Vector<SemuInputSource> inputs;
+    public SemuAssetSource assets;
+    public string repositorySettingsFile;
+    public JsonValue repositorySettings;
+    public Vector<SemuDefinitionUnit> units;
+
+    public SemuCompilerModel() {
+        self.projectRoot = "";
+        self.configRoot = "";
+        self.target = SemuCompilerTarget();
+        self.systems = [];
+        self.emulators = [];
+        self.inputs = [];
+        self.assets = SemuAssetSource();
+        self.repositorySettingsFile = "";
+        self.repositorySettings = JsonValue.makeObject();
+        self.units = [];
+    }
+
+    public SemuSystemSource systemById(string id) {
+        for system in self.systems {
+            if (system.id.equals(id)) { return system; }
+        }
+        return SemuSystemSource();
+    }
+
+    public SemuEmulatorSource emulatorById(string id) {
+        for emulator in self.emulators {
+            if (emulator.id.equals(id)) { return emulator; }
+        }
+        return SemuEmulatorSource();
+    }
+
+    public SemuInputSource inputByReference(string reference) {
+        string id = SemuDefinitionReference.id(reference, "input");
+        if (id.isEmpty()) { return SemuInputSource(); }
+        for input in self.inputs {
+            if (input.id.equals(id)) { return input; }
+        }
+        return SemuInputSource();
+    }
+}
+
+class SemuBuildRequest {
+    public string operation;
+    public string target;
+    public string emulator;
+    public string projectRoot;
+    public string semuHome;
+    public string outputRoot;
+    public JsonValue commandLineSettings;
+
+    public SemuBuildRequest() {
+        self.operation = "target";
+        self.target = "";
+        self.emulator = "";
+        self.projectRoot = "";
+        self.semuHome = "";
+        self.outputRoot = "";
+        self.commandLineSettings = JsonValue.makeObject();
+    }
+}
+
+class SemuBuildPlan {
+    public string operation;
+    public string target;
+    public string platform;
+    public string artifact;
+    public string configRoot;
+    public string semuHome;
+    public string outputRoot;
+    public string input;
+    public Vector<string> nixSystems;
+    public bool deploymentTarget;
+    public Vector<string> backends;
+    public Vector<string> systems;
+    public Vector<string> emulators;
+    public SemuTargetValidation validation;
+    public Vector<string> definitionFiles;
+    public JsonValue settings;
+
+    public SemuBuildPlan() {
+        self.operation = "";
+        self.target = "";
+        self.platform = "";
+        self.artifact = "";
+        self.configRoot = "";
+        self.semuHome = "";
+        self.outputRoot = "";
+        self.input = "";
+        self.nixSystems = [];
+        self.deploymentTarget = false;
+        self.backends = [];
+        self.systems = [];
+        self.emulators = [];
+        self.validation = SemuTargetValidation();
+        self.definitionFiles = [];
+        self.settings = JsonValue.makeObject();
+    }
+}

@@ -1,0 +1,673 @@
+// Typed request and receipt contracts shared by the host harness and the
+// Linux acceptance helper. The helper may write only beneath run_root.
+
+import std.{json, strings, vector}
+import ./evidence.btrc
+import ./steam_shortcuts.btrc
+
+class DeckProtectedInput {
+    public string kind;
+    public string path;
+    public string sha256;
+
+    public DeckProtectedInput() {
+        self.kind = "";
+        self.path = "";
+        self.sha256 = "";
+    }
+
+    class DeckProtectedInput parse(JsonValue value) {
+        DeckProtectedInput input = DeckProtectedInput();
+        if (!value.isObject()) { return input; }
+        input.kind = value.get("kind").isString()
+            ? value.get("kind").asString() : "";
+        input.path = value.get("path").isString()
+            ? value.get("path").asString() : "";
+        input.sha256 = value.get("sha256").isString()
+            ? value.get("sha256").asString() : "";
+        return input;
+    }
+
+    public JsonValue json() {
+        JsonValue value = JsonValue.makeObject();
+        value.set("kind", JsonValue.makeString(self.kind));
+        value.set("path", JsonValue.makeString(self.path));
+        value.set("sha256", JsonValue.makeString(self.sha256));
+        return value;
+    }
+
+    public bool valid(Vector<string> roots) {
+        if (!["rom", "bios", "key", "firmware"].contains(self.kind)
+                || !DeckGameModeContract.sha256(self.sha256)
+                || !self.validPath(roots)) {
+            return false;
+        }
+        return true;
+    }
+
+    public bool validPath(Vector<string> roots) {
+        if (!["rom", "bios", "key", "firmware"].contains(self.kind)
+                || !DeckGameModeContract.absolute(self.path)) {
+            return false;
+        }
+        for root in roots {
+            if (DeckGameModeContract.contains(root, self.path)) { return true; }
+        }
+        return false;
+    }
+}
+
+class DeckExpectedShortcut {
+    public string database;
+    public string databaseSha256;
+    public string index;
+    public string appId;
+    public string gameId;
+    public string executable;
+    public string executableSha256;
+
+    public DeckExpectedShortcut() {
+        self.database = "";
+        self.databaseSha256 = "";
+        self.index = "";
+        self.appId = "";
+        self.gameId = "";
+        self.executable = "";
+        self.executableSha256 = "";
+    }
+
+    class DeckExpectedShortcut fromResolution(
+            DeckSteamShortcutResolution resolution,
+            string executableSha256) {
+        DeckExpectedShortcut expected = DeckExpectedShortcut();
+        if (!resolution.valid) { return expected; }
+        expected.database = resolution.shortcut.source;
+        expected.databaseSha256 = resolution.databaseSha256;
+        expected.index = resolution.shortcut.index;
+        expected.appId = resolution.appId();
+        expected.gameId = resolution.gameId();
+        expected.executable = DeckSteamShortcutPolicy.unquote(
+            resolution.shortcut.executable);
+        expected.executableSha256 = executableSha256;
+        return expected;
+    }
+
+    class DeckExpectedShortcut parse(JsonValue value) {
+        DeckExpectedShortcut expected = DeckExpectedShortcut();
+        if (!value.isObject()) { return expected; }
+        expected.database = DeckGameModeContract.text(value, "database");
+        expected.databaseSha256 = DeckGameModeContract.text(
+            value, "database_sha256");
+        expected.index = DeckGameModeContract.text(value, "index");
+        expected.appId = DeckGameModeContract.text(value, "app_id");
+        expected.gameId = DeckGameModeContract.text(value, "game_id");
+        expected.executable = DeckGameModeContract.text(value, "executable");
+        expected.executableSha256 = DeckGameModeContract.text(
+            value, "executable_sha256");
+        return expected;
+    }
+
+    public JsonValue json() {
+        JsonValue value = JsonValue.makeObject();
+        value.set("database", JsonValue.makeString(self.database));
+        value.set("database_sha256",
+            JsonValue.makeString(self.databaseSha256));
+        value.set("index", JsonValue.makeString(self.index));
+        value.set("app_id", JsonValue.makeString(self.appId));
+        value.set("game_id", JsonValue.makeString(self.gameId));
+        value.set("executable", JsonValue.makeString(self.executable));
+        value.set("executable_sha256",
+            JsonValue.makeString(self.executableSha256));
+        return value;
+    }
+
+    public bool valid() {
+        return DeckGameModeContract.absolute(self.database)
+            && self.database.endsWith("/config/shortcuts.vdf")
+            && DeckGameModeContract.sha256(self.databaseSha256)
+            && DeckGameModeContract.decimal(self.index)
+            && DeckGameModeContract.decimal(self.appId)
+            && DeckGameModeContract.decimal(self.gameId)
+            && DeckGameModeContract.absolute(self.executable)
+            && DeckGameModeContract.sha256(self.executableSha256);
+    }
+}
+
+class DeckGameModeRequest {
+    public string operation;
+    public string scenario;
+    public string runRoot;
+    public string projectRoot;
+    public string esDeHome;
+    public string steamRoot;
+    public Vector<string> externalRoots;
+    public Vector<string> generatedInputs;
+    public DeckExpectedShortcut shortcut;
+    public string releaseSha256;
+    public string systemId;
+    public string emulatorId;
+    public string expectedExecutable;
+    public string expectedExecutableSha256;
+    public string coreFilename;
+    public string rom;
+    public int captureFrame;
+    public string navigationPlan;
+    public string navigationPlanSha256;
+    public string actionPlan;
+    public string actionPlanSha256;
+    public string inputHelper;
+    public string inputHelperSha256;
+    public string startSelectPlan;
+    public string startSelectPlanSha256;
+    public string reverseStartSelectPlan;
+    public string reverseStartSelectPlanSha256;
+    public bool wiiExpected;
+    public bool savestateExpected;
+    public int quickRadialSlots;
+    public int menuRadialSlots;
+    public int wiiModeSlots;
+    public bool humanObserved;
+    public Vector<DeckProtectedInput> protectedInputs;
+
+    public DeckGameModeRequest() {
+        self.operation = "";
+        self.scenario = "";
+        self.runRoot = "";
+        self.projectRoot = "";
+        self.esDeHome = "";
+        self.steamRoot = "";
+        self.externalRoots = [];
+        self.generatedInputs = [];
+        self.shortcut = DeckExpectedShortcut();
+        self.releaseSha256 = "";
+        self.systemId = "";
+        self.emulatorId = "";
+        self.expectedExecutable = "";
+        self.expectedExecutableSha256 = "";
+        self.coreFilename = "";
+        self.rom = "";
+        self.captureFrame = 0;
+        self.navigationPlan = "";
+        self.navigationPlanSha256 = "";
+        self.actionPlan = "";
+        self.actionPlanSha256 = "";
+        self.inputHelper = "";
+        self.inputHelperSha256 = "";
+        self.startSelectPlan = "";
+        self.startSelectPlanSha256 = "";
+        self.reverseStartSelectPlan = "";
+        self.reverseStartSelectPlanSha256 = "";
+        self.wiiExpected = false;
+        self.savestateExpected = false;
+        self.quickRadialSlots = 0;
+        self.menuRadialSlots = 0;
+        self.wiiModeSlots = 0;
+        self.humanObserved = false;
+        self.protectedInputs = [];
+    }
+
+    class Vector<string> strings(JsonValue value) {
+        Vector<string> result = [];
+        if (!value.isArray()) { return result; }
+        for (int index = 0; index < value.size(); index++) {
+            if (value.at(index).isString()) {
+                result.push(value.at(index).asString());
+            }
+        }
+        return result;
+    }
+
+    class DeckGameModeRequest parse(string path) {
+        DeckGameModeRequest request = DeckGameModeRequest();
+        JsonValue root = JsonValue.readFile(path);
+        if (!root.isObject() || !root.get("schema_version").isInt()
+                || root.get("schema_version").asInt() != 1) {
+            return request;
+        }
+        request.operation = DeckGameModeContract.text(root, "operation");
+        request.scenario = DeckGameModeContract.text(root, "scenario");
+        request.runRoot = DeckGameModeContract.text(root, "run_root");
+        request.projectRoot = DeckGameModeContract.text(root, "project_root");
+        request.esDeHome = DeckGameModeContract.text(root, "es_de_home");
+        request.steamRoot = DeckGameModeContract.text(root, "steam_root");
+        request.externalRoots = DeckGameModeRequest.strings(
+            root.get("external_roots"));
+        request.generatedInputs = DeckGameModeRequest.strings(
+            root.get("generated_inputs"));
+        request.shortcut = DeckExpectedShortcut.parse(root.get("shortcut"));
+        request.releaseSha256 = DeckGameModeContract.text(
+            root, "release_sha256");
+        request.systemId = DeckGameModeContract.text(root, "system_id");
+        request.emulatorId = DeckGameModeContract.text(root, "emulator_id");
+        request.expectedExecutable = DeckGameModeContract.text(
+            root, "expected_executable");
+        request.expectedExecutableSha256 = DeckGameModeContract.text(
+            root, "expected_executable_sha256");
+        request.coreFilename = DeckGameModeContract.text(
+            root, "core_filename");
+        request.rom = DeckGameModeContract.text(root, "rom");
+        request.captureFrame = root.get("capture_frame").isInt()
+            ? root.get("capture_frame").asInt() : 0;
+        request.navigationPlan = DeckGameModeContract.text(
+            root, "navigation_plan");
+        request.navigationPlanSha256 = DeckGameModeContract.text(
+            root, "navigation_plan_sha256");
+        request.actionPlan = DeckGameModeContract.text(root, "action_plan");
+        request.actionPlanSha256 = DeckGameModeContract.text(
+            root, "action_plan_sha256");
+        request.inputHelper = DeckGameModeContract.text(root, "input_helper");
+        request.inputHelperSha256 = DeckGameModeContract.text(
+            root, "input_helper_sha256");
+        request.startSelectPlan = DeckGameModeContract.text(
+            root, "start_select_plan");
+        request.startSelectPlanSha256 = DeckGameModeContract.text(
+            root, "start_select_plan_sha256");
+        request.reverseStartSelectPlan = DeckGameModeContract.text(
+            root, "reverse_start_select_plan");
+        request.reverseStartSelectPlanSha256 = DeckGameModeContract.text(
+            root, "reverse_start_select_plan_sha256");
+        request.wiiExpected = root.get("wii_expected").isBool()
+            && root.get("wii_expected").asBool();
+        request.savestateExpected = root.get("savestate_expected").isBool()
+            && root.get("savestate_expected").asBool();
+        request.quickRadialSlots = root.get("quick_radial_slots").isInt()
+            ? root.get("quick_radial_slots").asInt() : 0;
+        request.menuRadialSlots = root.get("menu_radial_slots").isInt()
+            ? root.get("menu_radial_slots").asInt() : 0;
+        request.wiiModeSlots = root.get("wii_mode_slots").isInt()
+            ? root.get("wii_mode_slots").asInt() : 0;
+        request.humanObserved = root.get("human_observed").isBool()
+            && root.get("human_observed").asBool();
+        JsonValue protectedInputs = root.get("protected_inputs");
+        if (protectedInputs.isArray()) {
+            for (int index = 0; index < protectedInputs.size(); index++) {
+                request.protectedInputs.push(DeckProtectedInput.parse(
+                    protectedInputs.at(index)));
+            }
+        }
+        return request;
+    }
+
+    public JsonValue json() {
+        JsonValue root = JsonValue.makeObject();
+        root.set("schema_version", JsonValue.makeInt(1));
+        root.set("operation", JsonValue.makeString(self.operation));
+        root.set("scenario", JsonValue.makeString(self.scenario));
+        root.set("run_root", JsonValue.makeString(self.runRoot));
+        root.set("project_root", JsonValue.makeString(self.projectRoot));
+        root.set("es_de_home", JsonValue.makeString(self.esDeHome));
+        root.set("steam_root", JsonValue.makeString(self.steamRoot));
+        root.set("external_roots", DeckGameModeContract.strings(
+            self.externalRoots));
+        root.set("generated_inputs", DeckGameModeContract.strings(
+            self.generatedInputs));
+        root.set("shortcut", self.shortcut.json());
+        root.set("release_sha256", JsonValue.makeString(self.releaseSha256));
+        root.set("system_id", JsonValue.makeString(self.systemId));
+        root.set("emulator_id", JsonValue.makeString(self.emulatorId));
+        root.set("expected_executable",
+            JsonValue.makeString(self.expectedExecutable));
+        root.set("expected_executable_sha256",
+            JsonValue.makeString(self.expectedExecutableSha256));
+        root.set("core_filename", JsonValue.makeString(self.coreFilename));
+        root.set("rom", JsonValue.makeString(self.rom));
+        root.set("capture_frame", JsonValue.makeInt(self.captureFrame));
+        root.set("navigation_plan",
+            JsonValue.makeString(self.navigationPlan));
+        root.set("navigation_plan_sha256",
+            JsonValue.makeString(self.navigationPlanSha256));
+        root.set("action_plan", JsonValue.makeString(self.actionPlan));
+        root.set("action_plan_sha256",
+            JsonValue.makeString(self.actionPlanSha256));
+        root.set("input_helper", JsonValue.makeString(self.inputHelper));
+        root.set("input_helper_sha256",
+            JsonValue.makeString(self.inputHelperSha256));
+        root.set("start_select_plan",
+            JsonValue.makeString(self.startSelectPlan));
+        root.set("start_select_plan_sha256",
+            JsonValue.makeString(self.startSelectPlanSha256));
+        root.set("reverse_start_select_plan",
+            JsonValue.makeString(self.reverseStartSelectPlan));
+        root.set("reverse_start_select_plan_sha256",
+            JsonValue.makeString(self.reverseStartSelectPlanSha256));
+        root.set("wii_expected", JsonValue.makeBool(self.wiiExpected));
+        root.set("savestate_expected",
+            JsonValue.makeBool(self.savestateExpected));
+        root.set("quick_radial_slots",
+            JsonValue.makeInt(self.quickRadialSlots));
+        root.set("menu_radial_slots", JsonValue.makeInt(self.menuRadialSlots));
+        root.set("wii_mode_slots", JsonValue.makeInt(self.wiiModeSlots));
+        root.set("human_observed", JsonValue.makeBool(self.humanObserved));
+        JsonValue protectedInputs = JsonValue.makeArray();
+        for input in self.protectedInputs {
+            protectedInputs.push(input.json());
+        }
+        root.set("protected_inputs", protectedInputs);
+        return root;
+    }
+
+    public bool valid() {
+        if (!["inspect", "inspect-inputs", "preflight", "batch-begin", "batch-end",
+              "frontend", "automated-game-mode", "operator-start-select",
+              "operator-radial"].contains(self.operation)
+                || !DeckGameModeContract.absolute(self.projectRoot)
+                || !DeckGameModeContract.absolute(self.runRoot)
+                || !self.runRoot.startsWith(self.projectRoot
+                    + "/build/verification/steamdeck/")
+                || !DeckGameModeContract.absolute(self.esDeHome)
+                || !DeckGameModeContract.absolute(self.steamRoot)) {
+            return false;
+        }
+        for root in self.externalRoots {
+            if (!DeckGameModeContract.absolute(root)
+                    || DeckGameModeContract.contains(root, self.projectRoot)
+                    || DeckGameModeContract.contains(self.projectRoot, root)) {
+                return false;
+            }
+        }
+        if (self.operation.equals("inspect")) {
+            return !self.externalRoots.isEmpty()
+                && DeckGameModeContract.absolute(self.shortcut.executable);
+        }
+        if (self.operation.equals("batch-begin")
+                || self.operation.equals("batch-end")) {
+            return !self.externalRoots.isEmpty();
+        }
+        if (self.operation.equals("inspect-inputs")) {
+            if (self.protectedInputs.isEmpty()) { return false; }
+            for input in self.protectedInputs {
+                if (!input.validPath(self.externalRoots)
+                        || !input.sha256.isEmpty()) { return false; }
+            }
+            return true;
+        }
+        if (!self.shortcut.valid()) { return false; }
+        for path in self.generatedInputs {
+            if (!DeckGameModeContract.absolute(path)) { return false; }
+        }
+        if (self.operation.equals("preflight")
+                || self.operation.equals("frontend")) {
+            return !self.generatedInputs.isEmpty();
+        }
+        if (!self.scenario.equals(self.operation)
+                || !DeckGameModeContract.identifier(self.systemId)
+                || !DeckGameModeContract.identifier(self.emulatorId)
+                || !DeckGameModeContract.sha256(self.releaseSha256)
+                || !self.expectedExecutable.startsWith("/")
+                || !DeckGameModeContract.sha256(
+                    self.expectedExecutableSha256)
+                || !DeckGameModeContract.absolute(self.rom)
+                || self.captureFrame < 1 || self.captureFrame > 900
+                || self.quickRadialSlots < 1 || self.quickRadialSlots > 32
+                || self.menuRadialSlots < 1 || self.menuRadialSlots > 32
+                || self.wiiModeSlots != (self.wiiExpected ? 4 : 0)
+                || self.protectedInputs.isEmpty()
+                || !self.protectedInputs.get(0).kind.equals("rom")
+                || !self.protectedInputs.get(0).path.equals(self.rom)) {
+            return false;
+        }
+        for input in self.protectedInputs {
+            if (!input.valid(self.externalRoots)) { return false; }
+        }
+        if (!self.operation.equals("automated-game-mode")) {
+            return self.humanObserved;
+        }
+        if (self.humanObserved) { return false; }
+        return DeckGameModeContract.absolute(self.navigationPlan)
+            && DeckGameModeContract.sha256(self.navigationPlanSha256)
+            && DeckGameModeContract.absolute(self.actionPlan)
+            && DeckGameModeContract.sha256(self.actionPlanSha256)
+            && DeckGameModeContract.absolute(self.inputHelper)
+            && DeckGameModeContract.sha256(self.inputHelperSha256)
+            && DeckGameModeContract.absolute(self.startSelectPlan)
+            && DeckGameModeContract.sha256(self.startSelectPlanSha256)
+            && DeckGameModeContract.absolute(self.reverseStartSelectPlan)
+            && DeckGameModeContract.sha256(
+                self.reverseStartSelectPlanSha256);
+    }
+}
+
+class DeckGameModeContract {
+    class string text(JsonValue value, string name) {
+        return value.get(name).isString()
+            ? value.get(name).asString() : "";
+    }
+
+    class JsonValue strings(Vector<string> values) {
+        JsonValue result = JsonValue.makeArray();
+        for value in values { result.push(JsonValue.makeString(value)); }
+        return result;
+    }
+
+    class bool absolute(string path) {
+        return path.startsWith("/") && !path.contains("\n")
+            && !path.contains("\r") && !path.contains("/../")
+            && !path.endsWith("/..");
+    }
+
+    class bool contains(string root, string path) {
+        string normalized = root.endsWith("/")
+            ? root.substring(0, root.len() - 1) : root;
+        return path.equals(normalized) || path.startsWith(normalized + "/");
+    }
+
+    class bool decimal(string value) {
+        if (value.isEmpty()) { return false; }
+        for character in value {
+            if (character < '0' || character > '9') { return false; }
+        }
+        return true;
+    }
+
+    class bool identifier(string value) {
+        if (value.isEmpty() || value.len() > 64) { return false; }
+        for character in value {
+            bool lower = character >= 'a' && character <= 'z';
+            bool digit = character >= '0' && character <= '9';
+            if (!lower && !digit && character != '-' && character != '_') {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    class bool sha256(string value) {
+        if (value.len() != 64) { return false; }
+        for character in value {
+            bool digit = character >= '0' && character <= '9';
+            bool lower = character >= 'a' && character <= 'f';
+            if (!digit && !lower) { return false; }
+        }
+        return true;
+    }
+}
+
+class DeckGameModeReceiptPolicy {
+    class string text(JsonValue root, string section, string field) {
+        JsonValue value = section.isEmpty() ? root : root.get(section);
+        return DeckGameModeContract.text(value, field);
+    }
+
+    class bool flag(JsonValue root, string section, string field) {
+        JsonValue value = section.isEmpty() ? root : root.get(section);
+        return value.get(field).isBool() && value.get(field).asBool();
+    }
+
+    class string classification(JsonValue root, string scenario) {
+        JsonValue evidence = root.get("evidence");
+        string line = "evidence_class="
+            + DeckGameModeContract.text(evidence, "class")
+            + " input_origin="
+            + DeckGameModeContract.text(evidence, "input_origin")
+            + " synthetic_input="
+            + (DeckGameModeReceiptPolicy.flag(
+                root, "evidence", "synthetic_input") ? "1" : "0")
+            + " human_input="
+            + (DeckGameModeReceiptPolicy.flag(
+                root, "evidence", "human_input") ? "1" : "0")
+            + " human_observed="
+            + (DeckGameModeReceiptPolicy.flag(
+                root, "evidence", "human_observed") ? "1" : "0")
+            + " acceptance_eligible="
+            + (DeckGameModeReceiptPolicy.flag(
+                root, "evidence", "acceptance_eligible") ? "1" : "0");
+        return DeckEvidenceReceiptPolicy.verifyClassification(line, scenario);
+    }
+
+    class string verify(JsonValue root, DeckGameModeRequest request) {
+        if (!root.isObject() || !root.get("schema_version").isInt()
+                || root.get("schema_version").asInt() != 1
+                || !DeckGameModeReceiptPolicy.text(
+                    root, "", "operation").equals(request.operation)) {
+            return "acceptance receipt has the wrong schema or operation";
+        }
+        if (request.operation.equals("inspect")) {
+            return DeckExpectedShortcut.parse(root.get("shortcut")).valid()
+                ? "" : "shortcut inspection receipt is invalid";
+        }
+        if (request.operation.equals("inspect-inputs")) {
+            JsonValue inputs = root.get("protected_inputs");
+            if (!inputs.isArray()
+                    || inputs.size() != request.protectedInputs.size()) {
+                return "protected-input inspection receipt is incomplete";
+            }
+            for (int index = 0; index < inputs.size(); index++) {
+                DeckProtectedInput input = DeckProtectedInput.parse(
+                    inputs.at(index));
+                if (!input.valid(request.externalRoots)
+                        || !input.path.equals(
+                            request.protectedInputs.get(index).path)
+                        || !input.kind.equals(
+                            request.protectedInputs.get(index).kind)) {
+                    return "protected-input inspection changed identity";
+                }
+            }
+            return "";
+        }
+        if (request.operation.equals("batch-begin")
+                || request.operation.equals("batch-end")) {
+            JsonValue media = root.get("media");
+            return media.get("external_tree_scans").isInt()
+                && media.get("external_tree_scans").asInt() == 0
+                && media.get("external_content_bytes_hashed").isInt()
+                && media.get("external_content_bytes_hashed").asInt() == 0
+                && DeckGameModeContract.sha256(
+                    DeckGameModeContract.text(media, "sentinel_sha256"))
+                && media.get("unchanged").isBool()
+                && media.get("unchanged").asBool()
+                    == request.operation.equals("batch-end")
+                ? "" : "batch media receipt performed a broad scan";
+        }
+        string classification = DeckGameModeReceiptPolicy.classification(
+            root, request.operation.equals("frontend")
+                ? "steam-shortcut-launch" : request.scenario);
+        if (!classification.isEmpty()) { return classification; }
+        DeckExpectedShortcut actual = DeckExpectedShortcut.parse(
+            root.get("shortcut"));
+        if (!actual.valid()
+                || !actual.database.equals(request.shortcut.database)
+                || !actual.databaseSha256.equals(
+                    request.shortcut.databaseSha256)
+                || !actual.index.equals(request.shortcut.index)
+                || !actual.appId.equals(request.shortcut.appId)
+                || !actual.gameId.equals(request.shortcut.gameId)
+                || !actual.executable.equals(request.shortcut.executable)
+                || !actual.executableSha256.equals(
+                    request.shortcut.executableSha256)) {
+            return "receipt is not bound to the exact installed shortcut";
+        }
+        JsonValue launch = root.get("launch");
+        JsonValue media = root.get("media");
+        if (!DeckGameModeReceiptPolicy.flag(
+                root, "launch", "steam_ancestry")
+                || !DeckGameModeReceiptPolicy.flag(
+                    root, "launch", "same_game_mode_session")
+                || !DeckGameModeReceiptPolicy.flag(
+                    root, "launch", "gamescope_screenshot")
+                || !media.get("external_tree_scans").isInt()
+                || media.get("external_tree_scans").asInt() != 0
+                || !media.get("external_content_bytes_hashed").isInt()
+                || media.get("external_content_bytes_hashed").asInt() != 0) {
+            return "Game Mode launch/session/media evidence is incomplete";
+        }
+        if (request.operation.equals("frontend")) { return ""; }
+        if (!DeckGameModeReceiptPolicy.flag(root, "launch", "through_es_de")
+                || !DeckGameModeReceiptPolicy.flag(
+                    root, "launch", "same_es_de_session")
+                || !DeckGameModeReceiptPolicy.flag(
+                    root, "launch", "packaged_process")
+                || !DeckGameModeReceiptPolicy.flag(
+                    root, "launch", "process_return")
+                || !DeckGameModeReceiptPolicy.flag(
+                    root, "media", "external_mounts_readonly")
+                || !DeckGameModeReceiptPolicy.flag(
+                    root, "media", "protected_inputs_unchanged")
+                || !DeckGameModeReceiptPolicy.flag(
+                    root, "generated_inputs", "unchanged")) {
+            return "scenario did not prove ES-DE ancestry or immutable inputs";
+        }
+        JsonValue protectedInputs = root.get("protected_inputs");
+        if (!protectedInputs.isArray()
+                || protectedInputs.size() != request.protectedInputs.size()) {
+            return "scenario protected-input receipt is incomplete";
+        }
+        for (int index = 0; index < protectedInputs.size(); index++) {
+            DeckProtectedInput actual = DeckProtectedInput.parse(
+                protectedInputs.at(index));
+            DeckProtectedInput expected = request.protectedInputs.get(index);
+            if (!actual.valid(request.externalRoots)
+                    || !actual.kind.equals(expected.kind)
+                    || !actual.path.equals(expected.path)
+                    || !actual.sha256.equals(expected.sha256)) {
+                return "scenario protected-input identity changed";
+            }
+        }
+        JsonValue generatedFiles = root.get("generated_inputs").get("files");
+        if (!generatedFiles.isArray()
+                || generatedFiles.size() != request.generatedInputs.size()) {
+            return "scenario generated-input receipt is incomplete";
+        }
+        for (int index = 0; index < generatedFiles.size(); index++) {
+            JsonValue actual = generatedFiles.at(index);
+            if (!actual.get("path").isString()
+                    || !actual.get("path").asString().equals(
+                        request.generatedInputs.get(index))
+                    || !actual.get("sha256").isString()
+                    || !DeckGameModeContract.sha256(
+                        actual.get("sha256").asString())) {
+                return "scenario generated-input identity changed";
+            }
+        }
+        if (request.operation.equals("automated-game-mode")
+                && (DeckGameModeReceiptPolicy.flag(
+                    root, "input", "steam_radial_ui_proven")
+                    || !DeckGameModeReceiptPolicy.flag(
+                        root, "input", "gameplay_injected"))) {
+            return "synthetic evidence overclaims a physical Steam radial";
+        }
+        JsonValue input = root.get("input");
+        int expectedQuick = request.operation.equals("operator-start-select")
+            ? 0 : request.quickRadialSlots;
+        int expectedMenu = request.operation.equals("operator-start-select")
+            ? 0 : request.menuRadialSlots;
+        int expectedWii = request.operation.equals("operator-start-select")
+            ? 0 : request.wiiModeSlots;
+        int expectedOrders = request.operation.equals("operator-radial")
+            ? 0 : 2;
+        if (!input.get("quick_radial_slots").isInt()
+                || input.get("quick_radial_slots").asInt()
+                    != expectedQuick
+                || !input.get("menu_radial_slots").isInt()
+                || input.get("menu_radial_slots").asInt()
+                    != expectedMenu
+                || !input.get("wii_mode_slots").isInt()
+                || input.get("wii_mode_slots").asInt()
+                    != expectedWii
+                || !input.get("start_select_orders").isInt()
+                || input.get("start_select_orders").asInt()
+                    != expectedOrders) {
+            return "input evidence does not cover every declared slot/order";
+        }
+        return "";
+    }
+}

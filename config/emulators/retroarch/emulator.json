@@ -1,0 +1,547 @@
+{
+  "schema_version": 1,
+  "name": "RetroArch",
+  "input": {
+    "actions": [
+      "ui.pause",
+      "ui.screenshot",
+      "ui.fullscreen",
+      "ui.menu",
+      "ui.escape",
+      "app.quit",
+      "state.prev",
+      "state.next",
+      "state.load",
+      "state.save",
+      "speed.rewind",
+      "speed.fast"
+    ]
+  },
+  "platforms": {
+    "linux": {
+      "backend": "bwrap",
+      "executable": "${asset_root}/bin/retroarch-semu",
+      "args": [
+        "-f"
+      ],
+      "gl_wrapper": "${asset_root}/bin/nixGL",
+      "sandbox": {
+        "sockets": [
+          "pulseaudio"
+        ],
+        "filesystems": [
+          {
+            "path": "${project}",
+            "mode": "ro"
+          },
+          {
+            "path": "${asset_root}",
+            "mode": "ro"
+          },
+          {
+            "path": "${emulation_root}",
+            "mode": "ro"
+          },
+          {
+            "path": "${roms}",
+            "mode": "ro"
+          },
+          {
+            "path": "${bios}",
+            "mode": "ro"
+          },
+          {
+            "path": "${state_root}",
+            "mode": "create"
+          },
+          {
+            "path": "${paths.project_saves}",
+            "mode": "create"
+          },
+          {
+            "path": "${paths.project_states}",
+            "mode": "create"
+          },
+          {
+            "path": "${paths.project_screenshots}",
+            "mode": "create"
+          }
+        ]
+      },
+      "state": {
+        "data_home": "xdg"
+      },
+      "firmware": {
+        "dir": "${emulation_root}/RetroArch/config/system",
+        "fallback_dirs": [
+          "${bios}"
+        ]
+      },
+      "core_loader": {
+        "filename": "${core}_libretro.so",
+        "directories": [
+          "${asset_root}/lib/retroarch/cores"
+        ],
+        "args": [
+          "-L",
+          "${core_file}"
+        ]
+      },
+      "retroarch": {
+        "video_driver": "glcore",
+        "input_driver": "sdl2",
+        "settings_overrides": {
+          "input_driver": "sdl2",
+          "input_joypad_driver": "sdl2",
+          "input_autodetect_enable": "true",
+          "input_player1_joypad_index": "0",
+          "joypad_autoconfig_dir": "${asset_root}/share/libretro/autoconfig",
+          "network_cmd_enable": "true",
+          "network_cmd_port": "55355",
+          "notification_show_autoconfig": "false",
+          "notification_show_autoconfig_fails": "false",
+          "input_overlay_enable": "false",
+          "input_overlay_enable_autopreferred": "false",
+          "savestate_auto_load": "false",
+          "savestate_auto_save": "false",
+          "savestate_thumbnail_enable": "false",
+          "video_shader_enable": "false",
+          "video_smooth": "false"
+        },
+        "frame_output": {
+          "fullscreen": true,
+          "scope": "game_only",
+          "origin": "bottom_left",
+          "orientation": "upright",
+          "filter": "nearest",
+          "native_shader": false,
+          "native_bezel": false
+        },
+        "core_options": {
+          "mesen": [
+            {
+              "key": "mesen_aspect_ratio",
+              "source": {
+                "kind": "literal",
+                "value": "4:3"
+              }
+            }
+          ],
+          "snes9x": [
+            {
+              "key": "snes9x_aspect",
+              "source": {
+                "kind": "literal",
+                "value": "4:3"
+              }
+            },
+            {
+              "key": "snes9x_overscan",
+              "source": {
+                "kind": "literal",
+                "value": "enabled"
+              }
+            }
+          ],
+          "genesis_plus_gx": [
+            {
+              "key": "genesis_plus_gx_aspect_ratio",
+              "source": {
+                "kind": "literal",
+                "value": "4:3"
+              }
+            },
+            {
+              "key": "genesis_plus_gx_overscan",
+              "source": {
+                "kind": "literal",
+                "value": "disabled"
+              }
+            },
+            {
+              "key": "genesis_plus_gx_render",
+              "source": {
+                "kind": "literal",
+                "value": "single field"
+              }
+            }
+          ],
+          "mupen64plus_next": [
+            {
+              "key": "mupen64plus-aspect",
+              "aspect": "standard",
+              "source": {
+                "kind": "literal",
+                "value": "4:3"
+              }
+            },
+            {
+              "key": "mupen64plus-aspect",
+              "aspect": "widescreen",
+              "source": {
+                "kind": "literal",
+                "value": "16:9 adjusted"
+              }
+            },
+            {
+              "key": "mupen64plus-43screensize",
+              "aspect": "standard",
+              "source": {
+                "kind": "render_resolution",
+                "basis": "combined",
+                "display_aspect": "standard",
+                "anchor": "width"
+              }
+            },
+            {
+              "key": "mupen64plus-169screensize",
+              "aspect": "widescreen",
+              "source": {
+                "kind": "render_resolution",
+                "basis": "combined",
+                "display_aspect": "widescreen",
+                "anchor": "width",
+                "minimum_scale": 2
+              }
+            },
+            {
+              "key": "mupen64plus-EnableFBEmulation",
+              "source": {
+                "kind": "literal",
+                "value": "True"
+              }
+            },
+            {
+              "key": "mupen64plus-rdp-plugin",
+              "source": {
+                "kind": "literal",
+                "value": "angrylion"
+              }
+            },
+            {
+              "key": "mupen64plus-rsp-plugin",
+              "source": {
+                "kind": "literal",
+                "value": "cxd4"
+              }
+            }
+          ],
+          "mednafen_psx": [
+            {
+              "key": "beetle_psx_aspect_ratio",
+              "source": {
+                "kind": "literal",
+                "value": "4:3"
+              }
+            },
+            {
+              "key": "beetle_psx_widescreen_hack",
+              "source": {
+                "kind": "literal",
+                "value": "disabled"
+              }
+            },
+            {
+              "key": "beetle_psx_display_vram",
+              "source": {
+                "kind": "literal",
+                "value": "disabled"
+              }
+            }
+          ],
+          "desmume": [
+            {
+              "key": "desmume_screens_layout",
+              "source": {
+                "kind": "literal",
+                "value": "top/bottom"
+              }
+            },
+            {
+              "key": "desmume_screens_gap",
+              "source": {
+                "kind": "literal",
+                "value": "0"
+              }
+            },
+            {
+              "key": "desmume_internal_resolution",
+              "source": {
+                "kind": "render_resolution",
+                "basis": "screen",
+                "screen": "top",
+                "display_aspect": "native",
+                "anchor": "width"
+              }
+            }
+          ],
+          "ppsspp": [
+            {
+              "key": "ppsspp_cropto16x9",
+              "source": {
+                "kind": "literal",
+                "value": "disabled"
+              }
+            },
+            {
+              "key": "ppsspp_internal_resolution",
+              "source": {
+                "kind": "render_resolution",
+                "basis": "combined",
+                "display_aspect": "native",
+                "anchor": "width"
+              }
+            }
+          ]
+        }
+      }
+    },
+    "macos": {
+      "backend": "nix",
+      "executable": "${asset_root}/bin/retroarch",
+      "sandbox": {
+        "filesystems": [
+          {
+            "path": "${project}",
+            "mode": "ro"
+          },
+          {
+            "path": "${asset_root}",
+            "mode": "ro"
+          },
+          {
+            "path": "${roms}",
+            "mode": "ro"
+          },
+          {
+            "path": "${emulation_root}",
+            "mode": "ro"
+          },
+          {
+            "path": "${bios}",
+            "mode": "ro"
+          },
+          {
+            "path": "${state_root}",
+            "mode": "create"
+          }
+        ]
+      },
+      "env": {
+        "set": {
+          "HOME": "${state_root}/home",
+          "SEMU_RETROARCH_CONFIG": "${state_root}/config/RetroArch/retroarch.cfg"
+        }
+      },
+      "state": {
+        "config_home": "preserve",
+        "data_home": "preserve",
+        "profile_config_dir": "${state_root}/config/RetroArch",
+        "managed_profile_files": [
+          "config/retroarch.cfg"
+        ]
+      },
+      "firmware": {
+        "dir": "${emulation_root}/RetroArch/config/system",
+        "fallback_dirs": [
+          "${bios}"
+        ]
+      },
+      "args": [
+        "-f"
+      ],
+      "core_loader": {
+        "filename": "${core}_libretro.dylib",
+        "directories": [
+          "${asset_root}/cores"
+        ],
+        "args": [
+          "-L",
+          "${core_file}"
+        ]
+      },
+      "retroarch": {
+        "video_driver": "metal",
+        "frame_output": {
+          "fullscreen": true,
+          "scope": "game_only",
+          "origin": "top_left",
+          "orientation": "upright",
+          "filter": "nearest",
+          "native_shader": false
+        },
+        "core_options": {
+          "mesen": [
+            {
+              "key": "mesen_aspect_ratio",
+              "source": {
+                "kind": "literal",
+                "value": "4:3"
+              }
+            }
+          ],
+          "snes9x": [
+            {
+              "key": "snes9x_aspect",
+              "source": {
+                "kind": "literal",
+                "value": "4:3"
+              }
+            },
+            {
+              "key": "snes9x_overscan",
+              "source": {
+                "kind": "literal",
+                "value": "enabled"
+              }
+            }
+          ],
+          "genesis_plus_gx": [
+            {
+              "key": "genesis_plus_gx_aspect_ratio",
+              "source": {
+                "kind": "literal",
+                "value": "4:3"
+              }
+            },
+            {
+              "key": "genesis_plus_gx_overscan",
+              "source": {
+                "kind": "literal",
+                "value": "disabled"
+              }
+            },
+            {
+              "key": "genesis_plus_gx_render",
+              "source": {
+                "kind": "literal",
+                "value": "single field"
+              }
+            }
+          ],
+          "mupen64plus_next": [
+            {
+              "key": "mupen64plus-aspect",
+              "aspect": "standard",
+              "source": {
+                "kind": "literal",
+                "value": "4:3"
+              }
+            },
+            {
+              "key": "mupen64plus-aspect",
+              "aspect": "widescreen",
+              "source": {
+                "kind": "literal",
+                "value": "16:9 adjusted"
+              }
+            },
+            {
+              "key": "mupen64plus-43screensize",
+              "aspect": "standard",
+              "source": {
+                "kind": "render_resolution",
+                "basis": "combined",
+                "display_aspect": "standard",
+                "anchor": "width"
+              }
+            },
+            {
+              "key": "mupen64plus-169screensize",
+              "aspect": "widescreen",
+              "source": {
+                "kind": "render_resolution",
+                "basis": "combined",
+                "display_aspect": "widescreen",
+                "anchor": "width",
+                "minimum_scale": 2
+              }
+            },
+            {
+              "key": "mupen64plus-EnableFBEmulation",
+              "source": {
+                "kind": "literal",
+                "value": "True"
+              }
+            }
+          ],
+          "mednafen_psx_hw": [
+            {
+              "key": "beetle_psx_hw_aspect_ratio",
+              "source": {
+                "kind": "literal",
+                "value": "4:3"
+              }
+            },
+            {
+              "key": "beetle_psx_hw_widescreen_hack",
+              "source": {
+                "kind": "literal",
+                "value": "disabled"
+              }
+            },
+            {
+              "key": "beetle_psx_hw_display_vram",
+              "source": {
+                "kind": "literal",
+                "value": "disabled"
+              }
+            }
+          ],
+          "desmume": [
+            {
+              "key": "desmume_screens_layout",
+              "source": {
+                "kind": "literal",
+                "value": "top/bottom"
+              }
+            },
+            {
+              "key": "desmume_screens_gap",
+              "source": {
+                "kind": "literal",
+                "value": "0"
+              }
+            },
+            {
+              "key": "desmume_internal_resolution",
+              "source": {
+                "kind": "render_resolution",
+                "basis": "screen",
+                "screen": "top",
+                "display_aspect": "native",
+                "anchor": "width"
+              }
+            }
+          ],
+          "ppsspp": [
+            {
+              "key": "ppsspp_cropto16x9",
+              "source": {
+                "kind": "literal",
+                "value": "disabled"
+              }
+            },
+            {
+              "key": "ppsspp_internal_resolution",
+              "source": {
+                "kind": "render_resolution",
+                "basis": "combined",
+                "display_aspect": "native",
+                "anchor": "width"
+              }
+            }
+          ]
+        }
+      }
+    }
+  },
+  "doc": {
+    "runtime": "Linux executes the source-built RetroArch and cores inside bubblewrap, with the AppImage Nix closure and packaged generic Mesa nixGL wrapper mounted read-only. No host RetroArch app or Flatpak runtime participates.",
+    "input": "The declared action set is the exact RetroArch profile/watcher capability surface. Linux uses SDL2 port 1 (joypad index 0) with autodetection and the packaged 28de:11ff aliases; it deliberately has no name-based device reservation because Steam Game Mode exposes the same virtual pad under multiple SDL names. Only autoconfiguration notifications are suppressed.",
+    "frame_output": "The Linux GL2/GL3 package calls the directly linked Semu renderer once after the game renderchain draw and once after RetroArch overlays, menu, widgets, and OSD. RetroArch native shaders and filtering stay disabled so the renderer owns shader, bezel, and Semu menu composition without suppressing either phase while RetroArch's menu is active. The macOS Metal path remains outside this OpenGL integration.",
+    "state": "data_home=xdg confines RetroArch config, data, and cache writes to its Semu-owned state root; saves, states, screenshots, and firmware use their separately declared paths.",
+    "sandbox_linux": "Project, assets, ROMs, BIOS, host OS, and the Nix store are read-only; parent binds precede the narrower Semu-owned writable overlays.",
+    "sandbox_macos": "The packaged source build, ROMs, firmware, project, and assets are read-only. HOME and the active RetroArch config are redirected beneath the per-emulator state root, the only writable path."
+  }
+}

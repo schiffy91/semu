@@ -1,0 +1,1054 @@
+// no_fuse_verifier.btrc - AppImage runtime verification without FUSE.
+
+import std.{fs, json, process, strings, vector}
+import ./contract.btrc
+
+class AppImageNoFuseHost {
+    class ExecResult capture(string executable, Vector<string> arguments) {
+        return ChildProcess.run(executable, arguments,
+            timeoutMilliseconds=1800000,
+            maxStdoutBytes=67108864,
+            maxStderrBytes=67108864,
+            stdout=CommandOutput.collect(),
+            stderr=CommandOutput.collect());
+    }
+
+    class ExecResult captureInput(
+            string executable, Vector<string> arguments, string input) {
+        return ChildProcess.run(executable, arguments,
+            timeoutMilliseconds=300000,
+            maxStdoutBytes=131072,
+            maxStderrBytes=131072,
+            stdinData=input);
+    }
+
+    class AppImageContractResult checked(ExecResult result, string operation) {
+        if (result.ok()) { return AppImageContractResult.success(); }
+        string detail = result.stderr().trim();
+        if (detail.isEmpty()) { detail = result.stdout().trim(); }
+        if (detail.isEmpty()) { detail = "no command output"; }
+        return AppImageContractResult.failure(
+            operation + f" failed (exit {result.code}): " + detail);
+    }
+
+    class bool validSha256(string digest) {
+        if (digest.len() != 64) { return false; }
+        for character in digest {
+            bool decimal = character >= '0' && character <= '9';
+            bool hexadecimal = character >= 'a' && character <= 'f';
+            if (!decimal && !hexadecimal) { return false; }
+        }
+        return true;
+    }
+
+    class string sha256(string path) {
+        if (!AppImagePayloadContract.nonEmptyFile(path)) { return ""; }
+        bool coreutils = FileSystem.isFile("/usr/bin/sha256sum");
+        string executable = coreutils ? "/usr/bin/sha256sum" : "/usr/bin/shasum";
+        Vector<string> arguments = coreutils ? [path] : ["-a", "256", path];
+        ExecResult result = AppImageNoFuseHost.capture(executable, arguments);
+        string output = result.ok() ? result.trimmed() : "";
+        string digest = output.len() < 64
+            ? "" : output.substring(0, 64).toLower();
+        return AppImageNoFuseHost.validSha256(digest) ? digest : "";
+    }
+}
+
+class AppImageStartupBoundaryPlan {
+    public bool valid;
+    public string target;
+    public string bubblewrap;
+    public string sandboxAppDir;
+    public string esDeHome;
+    public string launcherPayload;
+    public string stableLauncher;
+    public string runtimeCli;
+    public string root;
+    public string payload;
+    public string installRoot;
+    public string releaseRoot;
+    public string stableEntrypoint;
+    public string home;
+    public string project;
+    public string stubs;
+    public string digest;
+
+    public AppImageStartupBoundaryPlan() {
+        self.valid = false;
+        self.target = "";
+        self.bubblewrap = "";
+        self.sandboxAppDir = "";
+        self.esDeHome = "";
+        self.launcherPayload = "";
+        self.stableLauncher = "";
+        self.runtimeCli = "";
+        self.root = "/verification/startup-contract";
+        self.payload = "/verification/squashfs-root";
+        self.installRoot = self.root + "/install";
+        self.releaseRoot = "";
+        self.stableEntrypoint = self.root + "/stable-entrypoint";
+        self.home = self.root + "/home";
+        self.project = self.root + "/project";
+        self.stubs = self.root + "/stubs";
+        self.digest =
+            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+    }
+
+    class AppImageStartupBoundaryPlan load(AppImagePathPlan plan) {
+        AppImageStartupBoundaryPlan boundary =
+            AppImageStartupBoundaryPlan();
+        JsonValue install = JsonValue.readFile(PathTools.join(
+            plan.sourceRoot, "settings/install.json"));
+        JsonValue paths = install.get("paths");
+        JsonValue releasePolicy = install.get("release");
+        JsonValue platform = install.get("platform");
+        JsonValue runtime = install.get("runtime");
+        JsonValue target = install.get("target");
+        JsonValue bubblewrap = platform.get("bubblewrap");
+        JsonValue sandbox = runtime.get("sandbox_appdir");
+        JsonValue esDeHome = runtime.get("es_de_home");
+        JsonValue launcherPayload = releasePolicy.get("launcher_payload");
+        JsonValue stableLauncher = paths.get("stable_launcher");
+        JsonValue runtimeCli = paths.get("runtime_cli");
+        if (!install.isObject() || !paths.isObject()
+                || !releasePolicy.isObject()
+                || !platform.isObject() || !runtime.isObject()
+                || !target.isString() || target.asString().isEmpty()
+                || !bubblewrap.isString()
+                || !PathTools.basename(bubblewrap.asString())
+                    .equals(bubblewrap.asString())
+                || !sandbox.isString() || !sandbox.asString().startsWith("/run/")
+                || sandbox.asString().contains("..")
+                || !esDeHome.isString()
+                || !AppImageRuntimeInventory.safeRelative(esDeHome.asString())
+                || !launcherPayload.isString()
+                || !AppImageRuntimeInventory.safeRelative(
+                    launcherPayload.asString())
+                || !stableLauncher.isString()
+                || !AppImageRuntimeInventory.safeRelative(
+                    stableLauncher.asString())
+                || !runtimeCli.isString()
+                || !AppImageRuntimeInventory.safeRelative(
+                    runtimeCli.asString())) {
+            return boundary;
+        }
+        boundary.target = target.asString();
+        boundary.bubblewrap = bubblewrap.asString();
+        boundary.sandboxAppDir = sandbox.asString();
+        boundary.esDeHome = esDeHome.asString();
+        boundary.launcherPayload = launcherPayload.asString();
+        boundary.stableLauncher = stableLauncher.asString();
+        boundary.runtimeCli = runtimeCli.asString();
+        boundary.releaseRoot = boundary.installRoot + "/releases/"
+            + boundary.digest;
+        boundary.valid = true;
+        return boundary;
+    }
+
+    public bool ok() { return self.valid; }
+
+    public string installedLauncher() {
+        return self.installRoot + "/" + self.stableLauncher;
+    }
+
+    public string installedRuntime() {
+        return self.installRoot + "/" + self.runtimeCli;
+    }
+}
+
+class AppImageVerificationResult {
+    public bool valid;
+    public string digest;
+    public string error;
+
+    public AppImageVerificationResult(bool valid, string digest, string error) {
+        self.valid = valid;
+        self.digest = digest;
+        self.error = error;
+    }
+
+    class AppImageVerificationResult success(string digest) {
+        return AppImageVerificationResult(true, digest, "");
+    }
+
+    class AppImageVerificationResult failure(string error) {
+        return AppImageVerificationResult(false, "", error);
+    }
+
+    public bool ok() { return self.valid; }
+}
+
+class AppImageVerificationVolume {
+    public bool valid;
+    public string name;
+    public string error;
+
+    public AppImageVerificationVolume(bool valid, string name, string error) {
+        self.valid = valid;
+        self.name = name;
+        self.error = error;
+    }
+
+    class bool validName(string name) {
+        if (name.len() != 64) { return false; }
+        string lowered = name.toLower();
+        for (int index = 0; index < lowered.len(); index++) {
+            char value = lowered.charAt(index);
+            if (!Strings.isDigit(value) && !(value >= 'a' && value <= 'f')) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    class AppImageVerificationVolume create() {
+        ExecResult result = AppImageNoFuseHost.capture("podman",
+            ["volume", "create", "--label",
+             "io.semu.purpose=appimage-verification"]);
+        string name = result.ok() ? result.stdout().trim() : "";
+        if (!result.ok() || !AppImageVerificationVolume.validName(name)) {
+            return AppImageVerificationVolume(false, "",
+                "cannot create a bounded AppImage verification volume");
+        }
+        return AppImageVerificationVolume(true, name, "");
+    }
+
+    public bool ok() { return self.valid; }
+
+    public AppImageContractResult remove() {
+        if (!self.valid || !AppImageVerificationVolume.validName(self.name)) {
+            return AppImageContractResult.failure(
+                "cannot remove an invalid AppImage verification volume");
+        }
+        AppImageContractResult removed = AppImageNoFuseHost.checked(
+            AppImageNoFuseHost.capture(
+                "podman", ["volume", "rm", "--force", self.name]),
+            "remove AppImage verification volume");
+        self.valid = false;
+        self.name = "";
+        return removed;
+    }
+}
+
+class AppImageImmutablePathAssertion {
+    public string kind;
+    public string path;
+    public string operation;
+
+    public AppImageImmutablePathAssertion(
+            string kind, string path, string operation) {
+        self.kind = kind;
+        self.path = path;
+        self.operation = operation;
+    }
+
+    class AppImageImmutablePathAssertion absent(
+            string path, string operation) {
+        return AppImageImmutablePathAssertion("absent", path, operation);
+    }
+
+    class AppImageImmutablePathAssertion executable(
+            string path, string operation) {
+        return AppImageImmutablePathAssertion("executable", path, operation);
+    }
+
+    class AppImageImmutablePathAssertion directory(
+            string path, string operation) {
+        return AppImageImmutablePathAssertion("directory", path, operation);
+    }
+
+    class AppImageImmutablePathAssertion regularFile(
+            string path, string operation) {
+        return AppImageImmutablePathAssertion("regular-file", path, operation);
+    }
+
+    public bool ok() {
+        return !self.path.isEmpty() && !self.operation.isEmpty()
+            && (self.kind.equals("absent")
+                || self.kind.equals("executable")
+                || self.kind.equals("directory")
+                || self.kind.equals("regular-file"));
+    }
+
+    public Vector<string> testArguments() {
+        Vector<string> invalid = [];
+        if (!self.ok()) { return invalid; }
+        if (self.kind.equals("absent")) {
+            return ["!", "-e", self.path];
+        }
+        if (self.kind.equals("executable")) {
+            return ["-x", self.path];
+        }
+        if (self.kind.equals("directory")) {
+            return ["-d", self.path];
+        }
+        return ["-f", self.path];
+    }
+}
+
+class AppImageNoFuseVerifier {
+    class string verificationImage() {
+        return "docker.io/nixos/nix@sha256:29fc5fe207f159ceb0143c25c19c774062fee02ce5eda118f3067547b3054894";
+    }
+
+    class string nativeVerificationImage() {
+        return "docker.io/library/alpine@sha256:28bd5fe8b56d1bd048e5babf5b10710ebe0bae67db86916198a6eec434943f8b";
+    }
+
+    class string qemuVerificationImage() {
+        return "docker.io/tonistiigi/binfmt@sha256:400a4873b838d1b89194d982c45e5fb3cda4593fbfd7e08a02e76b03b21166f0";
+    }
+
+    class string podmanHostArchitecture() {
+        ExecResult result = AppImageNoFuseHost.capture(
+            "podman", ["info", "--format", "{{.Host.Arch}}"]);
+        return result.ok() ? result.trimmed() : "";
+    }
+
+    class Vector<string> lockedContainerPolicy(string containerPlatform) {
+        Vector<string> unsupported = [];
+        if (!containerPlatform.equals("linux/amd64")
+            && !containerPlatform.equals("linux/arm64")) {
+            return unsupported;
+        }
+        return ["run", "--rm", "--pull=missing", "--platform",
+            containerPlatform, "--network", "none", "--read-only", "--cap-drop",
+            "ALL", "--security-opt", "no-new-privileges", "--tmpfs",
+            "/tmp:rw,nosuid,nodev,mode=1777"];
+    }
+
+    class Vector<string> lockedVolumePolicy(
+            string containerPlatform, string volumeName, bool writable) {
+        Vector<string> policy = AppImageNoFuseVerifier.lockedContainerPolicy(
+            containerPlatform);
+        if (policy.size() == 0
+            || !AppImageVerificationVolume.validName(volumeName)) {
+            Vector<string> unsupported = [];
+            return unsupported;
+        }
+        policy.push("--mount");
+        policy.push("type=volume,source=" + volumeName
+            + ",target=/verification," + (writable ? "rw" : "ro"));
+        policy.push("--workdir");
+        policy.push("/verification");
+        return policy;
+    }
+
+    class Vector<string> lockedExtractionPolicy(
+            string containerPlatform, string artifact, string volumeName) {
+        Vector<string> policy = AppImageNoFuseVerifier.lockedVolumePolicy(
+            containerPlatform, volumeName, true);
+        if (policy.size() == 0 || artifact.isEmpty()) {
+            Vector<string> unsupported = [];
+            return unsupported;
+        }
+        policy.push("--volume");
+        policy.push(artifact + ":/artifact/Semu.AppImage:ro");
+        return policy;
+    }
+
+    class Vector<string> extractionCommand(
+            string podmanArchitecture, string artifact, string volumeName) {
+        bool arm64 = podmanArchitecture.equals("arm64")
+            || podmanArchitecture.equals("aarch64");
+        bool amd64 = podmanArchitecture.equals("amd64")
+            || podmanArchitecture.equals("x86_64");
+        Vector<string> unsupported = [];
+        if (!arm64 && !amd64) { return unsupported; }
+
+        Vector<string> command = AppImageNoFuseVerifier.lockedExtractionPolicy(
+            arm64 ? "linux/arm64" : "linux/amd64", artifact, volumeName);
+        if (command.size() == 0) { return unsupported; }
+        string mountedArtifact = "/artifact/Semu.AppImage";
+        command.push("--entrypoint");
+        if (arm64) {
+            command.push("/usr/bin/qemu-x86_64");
+            command.push("--env");
+            command.push("QEMU_PRESERVE_ARGV0=1");
+            command.push("--env");
+            command.push("TARGET_APPIMAGE=" + mountedArtifact);
+            command.push(AppImageNoFuseVerifier.qemuVerificationImage());
+            // This pinned QEMU consumes its program and then one preserved guest argv[0].
+            command.push(mountedArtifact);
+            command.push(mountedArtifact);
+        } else {
+            command.push(mountedArtifact);
+            command.push(AppImageNoFuseVerifier.verificationImage());
+        }
+        command.push("--appimage-extract");
+        return command;
+    }
+
+    class Vector<string> verificationToolCommand(
+            string podmanArchitecture, string volumeName, bool writable,
+            string executable,
+            Vector<string> arguments) {
+        bool arm64 = podmanArchitecture.equals("arm64")
+            || podmanArchitecture.equals("aarch64");
+        bool amd64 = podmanArchitecture.equals("amd64")
+            || podmanArchitecture.equals("x86_64");
+        Vector<string> unsupported = [];
+        if (!arm64 && !amd64) { return unsupported; }
+        Vector<string> command = AppImageNoFuseVerifier.lockedVolumePolicy(
+            arm64 ? "linux/arm64" : "linux/amd64", volumeName, writable);
+        if (command.size() == 0 || executable.isEmpty()) { return unsupported; }
+        command.push("--entrypoint");
+        command.push(arm64 ? "/bin/busybox"
+            : "/root/.nix-profile/bin/" + executable);
+        command.push(arm64 ? AppImageNoFuseVerifier.nativeVerificationImage()
+            : AppImageNoFuseVerifier.verificationImage());
+        if (arm64) { command.push(executable); }
+        for argument in arguments { command.push(argument); }
+        return command;
+    }
+
+    class Vector<string> immutablePathTestArguments(
+            Vector<AppImageImmutablePathAssertion> assertions) {
+        Vector<string> invalid = [];
+        if (assertions.size() == 0) { return invalid; }
+        Vector<string> arguments = [];
+        for (int index = 0; index < assertions.size(); index++) {
+            AppImageImmutablePathAssertion assertion = assertions.get(index);
+            Vector<string> predicate = assertion.testArguments();
+            if (predicate.size() == 0) { return invalid; }
+            if (index > 0) { arguments.push("-a"); }
+            arguments.push("(");
+            for argument in predicate { arguments.push(argument); }
+            arguments.push(")");
+        }
+        return arguments;
+    }
+
+    class Vector<string> immutablePathAssertionsCommand(
+            string podmanArchitecture, string volumeName,
+            Vector<AppImageImmutablePathAssertion> assertions) {
+        Vector<string> arguments =
+            AppImageNoFuseVerifier.immutablePathTestArguments(assertions);
+        if (arguments.size() == 0) { return arguments; }
+        return AppImageNoFuseVerifier.verificationToolCommand(
+            podmanArchitecture, volumeName, false, "test", arguments);
+    }
+
+    class AppImageContractResult runVerificationTool(
+            string podmanArchitecture, string volumeName, bool writable,
+            string executable,
+            Vector<string> arguments, string operation) {
+        Vector<string> command = AppImageNoFuseVerifier.verificationToolCommand(
+            podmanArchitecture, volumeName, writable, executable, arguments);
+        if (command.size() == 0) {
+            return AppImageContractResult.failure(
+                "invalid AppImage verification tool contract");
+        }
+        return AppImageNoFuseHost.checked(
+            AppImageNoFuseHost.capture("podman", command), operation);
+    }
+
+    class AppImageContractResult runImmutablePathAssertions(
+            string podmanArchitecture, string volumeName,
+            Vector<AppImageImmutablePathAssertion> assertions) {
+        Vector<string> command =
+            AppImageNoFuseVerifier.immutablePathAssertionsCommand(
+                podmanArchitecture, volumeName, assertions);
+        if (command.size() == 0) {
+            return AppImageContractResult.failure(
+                "invalid immutable AppImage path assertion contract");
+        }
+        ExecResult batched = AppImageNoFuseHost.capture("podman", command);
+        if (batched.ok()) { return AppImageContractResult.success(); }
+
+        // Replay only on failure so the original first-failure diagnostic is
+        // retained without charging successful builds one container per path.
+        for assertion in assertions {
+            AppImageContractResult diagnostic =
+                AppImageNoFuseVerifier.runVerificationTool(
+                    podmanArchitecture, volumeName, false, "test",
+                    assertion.testArguments(), assertion.operation);
+            if (!diagnostic.ok()) { return diagnostic; }
+        }
+        return AppImageNoFuseHost.checked(
+            batched, assertions.get(0).operation);
+    }
+
+    class AppImageContractResult caseSensitiveVolume(
+            string podmanArchitecture, string volumeName) {
+        string upper = "/verification/SEMU_CASE_PROBE";
+        string lower = "/verification/semu_case_probe";
+        AppImageContractResult first = AppImageNoFuseVerifier.runVerificationTool(
+            podmanArchitecture, volumeName, true, "mkdir", [upper],
+            "create uppercase AppImage volume case probe");
+        if (!first.ok()) { return first; }
+        AppImageContractResult second = AppImageNoFuseVerifier.runVerificationTool(
+            podmanArchitecture, volumeName, true, "mkdir", [lower],
+            "prove AppImage verification volume is case-sensitive");
+        AppImageContractResult lowerRemoved = second.ok()
+            ? AppImageNoFuseVerifier.runVerificationTool(podmanArchitecture,
+                volumeName, true, "rmdir", [lower],
+                "remove lowercase AppImage volume case probe")
+            : AppImageContractResult.success();
+        AppImageContractResult upperRemoved =
+            AppImageNoFuseVerifier.runVerificationTool(
+                podmanArchitecture, volumeName, true, "rmdir", [upper],
+                "remove uppercase AppImage volume case probe");
+        if (!second.ok()) { return second; }
+        if (!lowerRemoved.ok()) { return lowerRemoved; }
+        return upperRemoved;
+    }
+
+    class AppImageContractResult extractWithOwnRuntime(
+            string artifact, string volumeName) {
+        string podmanArchitecture =
+            AppImageNoFuseVerifier.podmanHostArchitecture();
+        AppImageContractResult caseSensitive =
+            AppImageNoFuseVerifier.caseSensitiveVolume(
+                podmanArchitecture, volumeName);
+        if (!caseSensitive.ok()) { return caseSensitive; }
+
+        Vector<string> extraction = AppImageNoFuseVerifier.extractionCommand(
+            podmanArchitecture, artifact, volumeName);
+        if (extraction.size() == 0) {
+            string reported = podmanArchitecture.isEmpty()
+                ? "unknown" : podmanArchitecture;
+            return AppImageContractResult.failure(
+                "unsupported Podman host architecture for x86_64 AppImage: "
+                + reported);
+        }
+        ExecResult result = AppImageNoFuseHost.capture("podman", extraction);
+        return AppImageNoFuseHost.checked(result,
+            "artifact --appimage-extract through pinned no-FUSE x86_64 execution");
+    }
+
+    class Vector<string> volumeEntriesCommand(
+            string podmanArchitecture, string volumeName, string path) {
+        return AppImageNoFuseVerifier.verificationToolCommand(
+            podmanArchitecture, volumeName, false, "ls", ["-A1", path]);
+    }
+
+    class bool exactListedEntries(string listing, Vector<string> expected) {
+        Vector<string> actual = [];
+        for line in Strings.split(listing, "\n") {
+            string entry = line.trim();
+            if (entry.isEmpty()) { continue; }
+            if (actual.contains(entry)) { return false; }
+            actual.push(entry);
+        }
+        if (actual.size() != expected.size()) { return false; }
+        for entry in actual {
+            if (!expected.contains(entry)) { return false; }
+        }
+        return true;
+    }
+
+    class AppImageContractResult exactVolumeEntries(
+            string podmanArchitecture, string volumeName, string path,
+            Vector<string> expected,
+            string operation) {
+        Vector<string> command = AppImageNoFuseVerifier.volumeEntriesCommand(
+            podmanArchitecture, volumeName, path);
+        if (command.size() == 0) {
+            return AppImageContractResult.failure(
+                "invalid AppImage volume listing contract");
+        }
+        ExecResult listed = AppImageNoFuseHost.capture("podman", command);
+        AppImageContractResult status =
+            AppImageNoFuseHost.checked(listed, operation);
+        if (!status.ok()) { return status; }
+        return AppImageNoFuseVerifier.exactListedEntries(
+                listed.stdout(), expected)
+            ? AppImageContractResult.success()
+            : AppImageContractResult.failure(operation + " returned ["
+                + Strings.split(listed.stdout().trim(), "\n").join(",")
+                + "] expected [" + expected.join(",") + "]");
+    }
+
+    class bool validBoundaryEnvironment(Vector<string> environment) {
+        Vector<string> names = [];
+        for assignment in environment {
+            int separator = Strings.find(assignment, "=", 0);
+            if (separator < 1 || assignment.contains("\n")
+                    || assignment.contains("\r")) {
+                return false;
+            }
+            string name = assignment.substring(0, separator);
+            if (names.contains(name)) { return false; }
+            for character in name {
+                bool alphaNumeric = (character >= 'A' && character <= 'Z')
+                    || (character >= 'a' && character <= 'z')
+                    || (character >= '0' && character <= '9');
+                if (!alphaNumeric && character != '_') { return false; }
+            }
+            names.push(name);
+        }
+        return true;
+    }
+
+    class Vector<string> boundaryCommand(
+            string volumeName, string entrypoint, Vector<string> arguments,
+            Vector<string> environment) {
+        Vector<string> unsupported = [];
+        bool allowedEntrypoint = entrypoint.startsWith("/verification/")
+            || entrypoint.startsWith("/root/.nix-profile/bin/");
+        if (!AppImageVerificationVolume.validName(volumeName)
+                || !allowedEntrypoint || entrypoint.contains("\n")
+                || entrypoint.contains("\r")
+                || !AppImageNoFuseVerifier.validBoundaryEnvironment(
+                    environment)) {
+            return unsupported;
+        }
+        Vector<string> command = AppImageNoFuseVerifier.lockedVolumePolicy(
+            "linux/amd64", volumeName, true);
+        for assignment in environment {
+            command.push("--env");
+            command.push(assignment);
+        }
+        command.push("--entrypoint");
+        command.push(entrypoint);
+        command.push(AppImageNoFuseVerifier.verificationImage());
+        command.extend(arguments);
+        return command;
+    }
+
+    class ExecResult runBoundary(
+            string volumeName, string entrypoint, Vector<string> arguments,
+            Vector<string> environment, string input = "") {
+        Vector<string> command = AppImageNoFuseVerifier.boundaryCommand(
+            volumeName, entrypoint, arguments, environment);
+        if (command.size() == 0) {
+            return ExecResult(127, "",
+                "invalid typed AppImage startup-boundary command", entrypoint);
+        }
+        return input.isEmpty()
+            ? AppImageNoFuseHost.capture("podman", command)
+            : AppImageNoFuseHost.captureInput("podman", command, input);
+    }
+
+    class AppImageContractResult runBoundaryTool(
+            string volumeName, string tool, Vector<string> arguments,
+            string operation) {
+        if (!PathTools.basename(tool).equals(tool)) {
+            return AppImageContractResult.failure(
+                "invalid startup-boundary tool name: " + tool);
+        }
+        Vector<string> environment = [];
+        return AppImageNoFuseHost.checked(
+            AppImageNoFuseVerifier.runBoundary(volumeName,
+                "/root/.nix-profile/bin/" + tool, arguments, environment),
+            operation);
+    }
+
+    class AppImageContractResult writeBoundaryFile(
+            string volumeName, string path, string content, string operation) {
+        Vector<string> environment = [];
+        return AppImageNoFuseHost.checked(
+            AppImageNoFuseVerifier.runBoundary(volumeName,
+                "/root/.nix-profile/bin/tee", ["--", path], environment,
+                content), operation);
+    }
+
+    class bool outputHasLine(string output, string expected) {
+        for line in Strings.split(output, "\n") {
+            if (line.equals(expected)) { return true; }
+        }
+        return false;
+    }
+
+    class Vector<string> outputWords(string output) {
+        Vector<string> words = [];
+        for line in Strings.split(output, "\n") {
+            for word in Strings.split(line, " ") {
+                if (!word.isEmpty()) { words.push(word); }
+            }
+        }
+        return words;
+    }
+
+    class bool containsWords(
+            Vector<string> words, Vector<string> expected) {
+        if (expected.size() == 0 || expected.size() > words.size()) {
+            return false;
+        }
+        for (int start = 0; start <= words.size() - expected.size(); start++) {
+            bool matches = true;
+            for (int index = 0; index < expected.size(); index++) {
+                if (!words.get(start + index).equals(expected.get(index))) {
+                    matches = false;
+                }
+            }
+            if (matches) { return true; }
+        }
+        return false;
+    }
+
+    class Vector<string> runtimeBoundaryEnvironment(
+            AppImageStartupBoundaryPlan boundary) {
+        return [
+            "HOME=" + boundary.home,
+            "PATH=" + boundary.stubs
+                + ":/root/.nix-profile/bin:/usr/bin:/bin",
+            "SEMU_ENTRYPOINT=" + boundary.stableEntrypoint,
+            "SEMU_PROJECT_DIR=" + boundary.project,
+            "SEMU_ROMS_ROOT=" + boundary.project + "/roms",
+            "APPDIR=" + boundary.payload
+        ];
+    }
+
+    class AppImageContractResult prepareStartupBoundary(
+            AppImageStartupBoundaryPlan boundary, string volumeName) {
+        AppImageContractResult reset = AppImageNoFuseVerifier.runBoundaryTool(
+            volumeName, "rm", ["-rf", "--", boundary.root],
+            "reset typed AppImage startup fixture");
+        if (!reset.ok()) { return reset; }
+        Vector<string> directories = ["-p", "--",
+            PathTools.dirname(boundary.installedLauncher()),
+            PathTools.dirname(boundary.installedRuntime()),
+            boundary.releaseRoot,
+            boundary.installRoot + "/state/trees",
+            boundary.stubs, boundary.home, boundary.project,
+            boundary.project + "/roms"];
+        AppImageContractResult created =
+            AppImageNoFuseVerifier.runBoundaryTool(
+                volumeName, "mkdir", directories,
+                "create typed AppImage startup fixture");
+        if (!created.ok()) { return created; }
+
+        Vector<Vector<string>> copies = [
+            [boundary.payload + "/" + boundary.launcherPayload,
+                boundary.installedLauncher()],
+            [boundary.payload + "/lib/semu/semu-btrc",
+                boundary.installedRuntime()],
+            ["/root/.nix-profile/bin/env", boundary.releaseRoot + "/AppRun"],
+            ["/root/.nix-profile/bin/false",
+                boundary.stubs + "/" + boundary.bubblewrap],
+            ["/root/.nix-profile/bin/true", boundary.stableEntrypoint]
+        ];
+        for copy in copies {
+            AppImageContractResult copied =
+                AppImageNoFuseVerifier.runBoundaryTool(
+                    volumeName, "cp", ["--", copy.get(0), copy.get(1)],
+                    "copy typed AppImage startup fixture executable");
+            if (!copied.ok()) { return copied; }
+        }
+        AppImageContractResult mode = AppImageNoFuseVerifier.runBoundaryTool(
+            volumeName, "chmod", ["0555", "--",
+                boundary.installedLauncher(), boundary.installedRuntime(),
+                boundary.releaseRoot + "/AppRun",
+                boundary.stubs + "/" + boundary.bubblewrap,
+                boundary.stableEntrypoint],
+            "mark typed AppImage startup fixture executable");
+        if (!mode.ok()) { return mode; }
+        AppImageContractResult current =
+            AppImageNoFuseVerifier.writeBoundaryFile(
+                volumeName, boundary.installRoot + "/state/current",
+                boundary.digest + "\n", "write active release identity");
+        if (!current.ok()) { return current; }
+        return AppImageNoFuseVerifier.writeBoundaryFile(
+            volumeName, boundary.installRoot + "/state/trees/"
+                + boundary.digest + ".sha256",
+            "tree\n", "write active release receipt");
+    }
+
+    class AppImageContractResult verifyStableLauncherBoundary(
+            AppImageStartupBoundaryPlan boundary, string volumeName) {
+        Vector<string> environment = [
+            "APPDIR=/retired", "APPIMAGE=/retired",
+            "SEMU_CLI=/retired/semu", "SEMU_SOURCE_ROOT=/retired/config",
+            "SEMU_ASSET_ROOT=/retired/assets", "SEMU_BWRAP=/retired/bwrap",
+            "SEMU_NIX_STORE_MOUNTED=1"
+        ];
+        Vector<string> arguments = [];
+        ExecResult launched = AppImageNoFuseVerifier.runBoundary(
+            volumeName, boundary.installedLauncher(), arguments, environment);
+        AppImageContractResult status = AppImageNoFuseHost.checked(
+            launched, "run the real stable launcher without FUSE");
+        if (!status.ok()) { return status; }
+        Vector<string> required = [
+            "APPDIR=" + boundary.releaseRoot,
+            "SEMU_ENTRYPOINT=" + boundary.installedLauncher(),
+            "SEMU_INSTALLED_ENTRYPOINT=" + boundary.installedLauncher(),
+            "SEMU_APP_EXEC=" + boundary.installedLauncher(),
+            "SEMU_RELEASE_DIGEST=" + boundary.digest,
+            "SEMU_TARGET=" + boundary.target
+        ];
+        for assignment in required {
+            if (!AppImageNoFuseVerifier.outputHasLine(
+                    launched.stdout(), assignment)) {
+                return AppImageContractResult.failure(
+                    "stable launcher lost environment contract: " + assignment);
+            }
+        }
+        for name in ["APPIMAGE", "SEMU_CLI", "SEMU_SOURCE_ROOT",
+                "SEMU_ASSET_ROOT", "SEMU_BWRAP", "SEMU_NIX_STORE_MOUNTED",
+                "FUSERMOUNT_PROG"] {
+            for line in Strings.split(launched.stdout(), "\n") {
+                if (line.startsWith(name + "=")) {
+                    return AppImageContractResult.failure(
+                        "stable launcher retained forbidden environment: " + name);
+                }
+            }
+        }
+        return AppImageContractResult.success();
+    }
+
+    class AppImageContractResult verifySandboxBoundary(
+            AppImageStartupBoundaryPlan boundary, string volumeName) {
+        string bundled = boundary.payload + "/bin/" + boundary.bubblewrap;
+        string backup = boundary.root + "/bwrap.original";
+        AppImageContractResult moved = AppImageNoFuseVerifier.runBoundaryTool(
+            volumeName, "mv", ["--", bundled, backup],
+            "preserve bundled bubblewrap for the no-FUSE probe");
+        if (!moved.ok()) { return moved; }
+        AppImageContractResult substituted =
+            AppImageNoFuseVerifier.runBoundaryTool(
+                volumeName, "cp", ["--", "/root/.nix-profile/bin/echo", bundled],
+                "install bundled bubblewrap argv probe");
+        if (substituted.ok()) {
+            substituted = AppImageNoFuseVerifier.runBoundaryTool(
+                volumeName, "chmod", ["0555", "--", bundled],
+                "mark bundled bubblewrap argv probe executable");
+        }
+        Vector<string> arguments = [];
+        ExecResult launched = substituted.ok()
+            ? AppImageNoFuseVerifier.runBoundary(
+                volumeName, boundary.payload + "/AppRun", arguments,
+                AppImageNoFuseVerifier.runtimeBoundaryEnvironment(boundary))
+            : ExecResult(127, "", substituted.error, bundled);
+        AppImageContractResult removed = substituted.ok()
+            ? AppImageNoFuseVerifier.runBoundaryTool(
+                volumeName, "rm", ["-f", "--", bundled],
+                "remove bundled bubblewrap argv probe")
+            : AppImageContractResult.success();
+        AppImageContractResult restored =
+            AppImageNoFuseVerifier.runBoundaryTool(
+                volumeName, "mv", ["--", backup, bundled],
+                "restore bundled bubblewrap after the no-FUSE probe");
+        if (!substituted.ok()) { return substituted; }
+        if (!removed.ok()) { return removed; }
+        if (!restored.ok()) { return restored; }
+        AppImageContractResult status = AppImageNoFuseHost.checked(
+            launched, "run extracted AppRun to its typed sandbox boundary");
+        if (!status.ok()) { return status; }
+        string output = launched.stdout();
+        if (output.contains("fusermount") || output.contains("squashfuse")) {
+            return AppImageContractResult.failure(
+                "extracted AppRun attempted a FUSE startup path");
+        }
+        Vector<string> words = AppImageNoFuseVerifier.outputWords(output);
+        Vector<Vector<string>> required = [
+            ["--ro-bind", boundary.payload, boundary.sandboxAppDir],
+            ["--tmpfs", "/tmp", "--tmpfs", "/nix"],
+            ["--ro-bind", boundary.sandboxAppDir + "/nix/store", "/nix/store"],
+            ["--setenv", "APPDIR", boundary.sandboxAppDir],
+            ["--", boundary.sandboxAppDir + "/lib/semu/semu-btrc",
+                "runtime", "app", "--inside", "--appdir",
+                boundary.sandboxAppDir, "--"]
+        ];
+        for sequence in required {
+            if (!AppImageNoFuseVerifier.containsWords(words, sequence)) {
+                return AppImageContractResult.failure(
+                    "extracted AppRun lost a sandbox startup boundary: "
+                    + sequence.join(" "));
+            }
+        }
+        return AppImageContractResult.success();
+    }
+
+    class AppImageContractResult verifyFrontendBoundary(
+            AppImageStartupBoundaryPlan boundary, string volumeName) {
+        string nixGl = boundary.payload + "/bin/nixGL";
+        string backup = boundary.root + "/nixGL.original";
+        AppImageContractResult moved = AppImageNoFuseVerifier.runBoundaryTool(
+            volumeName, "mv", ["--", nixGl, backup],
+            "preserve the extracted graphics launcher");
+        if (!moved.ok()) { return moved; }
+        AppImageContractResult substituted =
+            AppImageNoFuseVerifier.runBoundaryTool(
+                volumeName, "cp", ["--", "/root/.nix-profile/bin/echo", nixGl],
+                "install typed graphics-launch probe");
+        if (substituted.ok()) {
+            substituted = AppImageNoFuseVerifier.runBoundaryTool(
+                volumeName, "chmod", ["0555", "--", nixGl],
+                "mark typed graphics-launch probe executable");
+        }
+
+        ExecResult launched = substituted.ok()
+            ? AppImageNoFuseVerifier.runBoundary(volumeName,
+                boundary.payload + "/lib/semu/semu-btrc",
+                ["runtime", "app", "--inside", "--appdir",
+                    boundary.payload, "--"],
+                AppImageNoFuseVerifier.runtimeBoundaryEnvironment(boundary))
+            : ExecResult(127, "", substituted.error, nixGl);
+        AppImageContractResult removed = substituted.ok()
+            ? AppImageNoFuseVerifier.runBoundaryTool(
+                volumeName, "rm", ["-f", "--", nixGl],
+                "remove typed graphics-launch probe")
+            : AppImageContractResult.success();
+        AppImageContractResult restored = AppImageNoFuseVerifier.runBoundaryTool(
+            volumeName, "mv", ["--", backup, nixGl],
+            "restore the extracted graphics launcher");
+        if (!substituted.ok()) { return substituted; }
+        if (!removed.ok()) { return removed; }
+        if (!restored.ok()) { return restored; }
+        AppImageContractResult status = AppImageNoFuseHost.checked(
+            launched, "run the extracted inner frontend boundary");
+        if (!status.ok()) { return status; }
+        string expected = boundary.payload + "/usr/bin/es-de --home "
+            + boundary.home + "/" + boundary.esDeHome;
+        return launched.stdout().trim().equals(expected)
+            ? AppImageContractResult.success()
+            : AppImageContractResult.failure(
+                "inner runtime frontend argv differs: "
+                + launched.stdout().trim());
+    }
+
+    class AppImageContractResult startupBoundary(
+            AppImagePathPlan plan, string volumeName) {
+        AppImageStartupBoundaryPlan boundary =
+            AppImageStartupBoundaryPlan.load(plan);
+        if (!boundary.ok()) {
+            return AppImageContractResult.failure(
+                "declarative AppImage startup-boundary plan is invalid");
+        }
+        AppImageContractResult prepared =
+            AppImageNoFuseVerifier.prepareStartupBoundary(
+                boundary, volumeName);
+        if (!prepared.ok()) { return prepared; }
+        AppImageContractResult stable =
+            AppImageNoFuseVerifier.verifyStableLauncherBoundary(
+                boundary, volumeName);
+        if (!stable.ok()) { return stable; }
+        AppImageContractResult sandbox =
+            AppImageNoFuseVerifier.verifySandboxBoundary(boundary, volumeName);
+        if (!sandbox.ok()) { return sandbox; }
+        return AppImageNoFuseVerifier.verifyFrontendBoundary(
+            boundary, volumeName);
+    }
+
+    class AppImageContractResult preflightExtracted(
+            AppImagePathPlan plan, string volumeName) {
+        string podmanArchitecture =
+            AppImageNoFuseVerifier.podmanHostArchitecture();
+        AppImageStartupBoundaryPlan boundary =
+            AppImageStartupBoundaryPlan.load(plan);
+        string coreDirectory =
+            AppImagePayloadContract.coreDirectory(plan.runtimeRoot);
+        if (!boundary.ok() || coreDirectory.isEmpty()) {
+            return AppImageContractResult.failure(
+                "extracted AppImage lacks declarative startup/core inventory");
+        }
+        Vector<string> appDirEntries = [".DirIcon", "AppRun", "bin", "lib", "nix",
+            "semu.desktop", "semu.svg", "share", "usr"];
+        AppImageContractResult entries = AppImageNoFuseVerifier.exactVolumeEntries(
+            podmanArchitecture, volumeName, "/verification/squashfs-root",
+            appDirEntries,
+            "validate extracted AppImage top-level ownership");
+        if (!entries.ok()) { return entries; }
+
+        Vector<string> expectedBin = ["es-de", "semu"];
+        Vector<AppImageImmutablePathAssertion> assertions = [];
+        for name in FileSystem.listDir(PathTools.join(plan.packagingRoot, "bin")) {
+            if (name.equals("semu")) { continue; }
+            if (!PathTools.basename(name).equals(name)
+                || !name.startsWith("semu-") || expectedBin.contains(name)
+                || !AppImagePayloadContract.safeNonEmptyFile(
+                    PathTools.join(plan.packagingRoot, "bin"), name)) {
+                return AppImageContractResult.failure(
+                    "generated Linux packaging contains an invalid launcher: " + name);
+            }
+            expectedBin.push(name);
+        }
+        for name in expectedBin {
+            assertions.push(AppImageImmutablePathAssertion.executable(
+                "/verification/squashfs-root/usr/bin/" + name,
+                "preflight extracted AppImage launcher " + name));
+        }
+
+        string payloadOperation =
+            "preflight extracted AppImage payload without FUSE";
+        assertions.push(AppImageImmutablePathAssertion.absent(
+            "/dev/fuse", payloadOperation));
+        assertions.push(AppImageImmutablePathAssertion.executable(
+            "/verification/squashfs-root/AppRun", payloadOperation));
+        assertions.push(AppImageImmutablePathAssertion.executable(
+            "/verification/squashfs-root/" + boundary.launcherPayload,
+            payloadOperation));
+        string bundledBash = "/verification/squashfs-root/bin/bash";
+        assertions.push(AppImageImmutablePathAssertion.executable(
+            bundledBash, payloadOperation));
+        assertions.push(AppImageImmutablePathAssertion.executable(
+            "/verification/squashfs-root/bin/" + boundary.bubblewrap,
+            "validate the extracted AppImage bundled bubblewrap"));
+        assertions.push(AppImageImmutablePathAssertion.directory(
+            "/verification/squashfs-root/nix/store", payloadOperation));
+        assertions.push(AppImageImmutablePathAssertion.directory(
+            "/verification/squashfs-root/usr/" + coreDirectory,
+            payloadOperation));
+        assertions.push(AppImageImmutablePathAssertion.regularFile(
+            "/verification/squashfs-root/share/semu/config/settings/defaults.json",
+            payloadOperation));
+        assertions.push(AppImageImmutablePathAssertion.regularFile(
+            "/verification/squashfs-root/lib/libsemurenderer.so",
+            payloadOperation));
+        assertions.push(AppImageImmutablePathAssertion.executable(
+            "/verification/squashfs-root/bin/semu-input-supervisor",
+            payloadOperation));
+        assertions.push(AppImageImmutablePathAssertion.executable(
+            bundledBash, "validate the extracted AppImage bundled Bash"));
+        AppImageContractResult immutablePaths =
+            AppImageNoFuseVerifier.runImmutablePathAssertions(
+                podmanArchitecture, volumeName, assertions);
+        if (!immutablePaths.ok()) { return immutablePaths; }
+
+        return AppImageNoFuseVerifier.startupBoundary(plan, volumeName);
+    }
+
+    class AppImageVerificationResult verifyInVolume(
+            AppImagePathPlan plan, string artifact, string initialDigest,
+            string volumeName) {
+        AppImageContractResult extracted =
+            AppImageNoFuseVerifier.extractWithOwnRuntime(artifact, volumeName);
+        if (!extracted.ok()) {
+            return AppImageVerificationResult.failure(extracted.error);
+        }
+        AppImageContractResult preflight =
+            AppImageNoFuseVerifier.preflightExtracted(plan, volumeName);
+        if (!preflight.ok()) {
+            return AppImageVerificationResult.failure(preflight.error);
+        }
+        string finalDigest = AppImageNoFuseHost.sha256(artifact);
+        if (!initialDigest.equals(finalDigest)) {
+            return AppImageVerificationResult.failure(
+                "AppImage artifact changed during verification");
+        }
+        return AppImageVerificationResult.success(initialDigest);
+    }
+
+    class AppImageVerificationResult verify(
+            AppImagePathPlan plan, string artifact) {
+        if (!AppImagePayloadContract.executableFile(artifact)) {
+            return AppImageVerificationResult.failure(
+                "artifact is absent, empty, symlinked, or not executable: " + artifact);
+        }
+        string initialDigest = AppImageNoFuseHost.sha256(artifact);
+        if (initialDigest.isEmpty()) {
+            return AppImageVerificationResult.failure(
+                "cannot hash AppImage artifact: " + artifact);
+        }
+        Type2AppImageOffset offset = Type2AppImage.parseFile(artifact);
+        if (!offset.ok()) {
+            return AppImageVerificationResult.failure(offset.error);
+        }
+        AppImageVerificationVolume volume = AppImageVerificationVolume.create();
+        if (!volume.ok()) {
+            return AppImageVerificationResult.failure(volume.error);
+        }
+        AppImageVerificationResult verified =
+            AppImageNoFuseVerifier.verifyInVolume(
+                plan, artifact, initialDigest, volume.name);
+        AppImageContractResult removed = volume.remove();
+        if (!removed.ok()) {
+            string error = verified.ok() ? removed.error
+                : verified.error + "; " + removed.error;
+            return AppImageVerificationResult.failure(error);
+        }
+        return verified;
+    }
+}

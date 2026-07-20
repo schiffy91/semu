@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "id": "macos",
+  "platform": "macos",
+  "nix_systems": [
+    "aarch64-darwin",
+    "x86_64-darwin"
+  ],
+  "deployment_target": false,
+  "backends": [
+    "nix",
+    "native"
+  ],
+  "artifact": "nix-bundle",
+  "validation": {
+    "kind": "host"
+  }
+}

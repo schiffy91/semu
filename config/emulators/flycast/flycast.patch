@@ -1,0 +1,120 @@
+--- a/core/ui/mainui.cpp
++++ b/core/ui/mainui.cpp
+@@ -26,7 +26,10 @@
+ #include "emulator.h"
+ #include "imgui_driver.h"
+ #include "profiler/fc_profiler.h"
++#include <semu_renderer.h>
+ 
++SemuRenderFrameGl* TakeSemuRenderFrame();
++
+ #include <chrono>
+ #include <thread>
+ 
+@@ -93,8 +96,11 @@
+ 		mainui_rend_frame();
+ 		if (imguiDriver == nullptr)
+ 			forceReinit = true;
+-		else
++		else {
++			if (auto* frame = TakeSemuRenderFrame())
++				semu_render_post_ui_gl(frame);
+ 			imguiDriver->present();
++		}
+ 
+ 		if (config::RendererType != currentRenderer || forceReinit)
+ 		{
+--- a/core/rend/gles/gles.cpp
++++ b/core/rend/gles/gles.cpp
+@@ -12,14 +12,81 @@
+ #include "wsi/gl_context.h"
+ #include "emulator.h"
+ #include "naomi2.h"
++#include "ui/mainui.h"
+ 
++#include <SDL.h>
++#include <semu_renderer.h>
++
+ #ifdef TEST_AUTOMATION
+ #include "cfg/cfg.h"
+ #endif
+ 
+ #include <cmath>
+ #include <memory>
++
++namespace {
++thread_local SemuRenderFrameGl semu_render_frame{};
++thread_local bool semu_render_frame_ready = false;
++
++bool BuildSemuRenderFrame()
++{
++	GlFramebuffer *framebuffer =
++		gl.ofbo2.ready ? gl.ofbo2.framebuffer.get() : gl.ofbo.framebuffer.get();
++	int dx = 0;
++	int dy = 0;
++	if (!emu.running() || framebuffer == nullptr || settings.display.width <= 0
++			|| settings.display.height <= 0 || framebuffer->getWidth() <= 0
++			|| framebuffer->getHeight() <= 0)
++		return false;
++
++	getWindowboxDimensions(settings.display.width, settings.display.height,
++			gl.ofbo.aspectRatio, dx, dy, config::Rotate90);
++	const int content_width = settings.display.width - dx * 2;
++	const int content_height = settings.display.height - dy * 2;
++	if (dx < 0 || dy < 0 || content_width <= 0 || content_height <= 0
++			|| dx + content_width > settings.display.width
++			|| dy + content_height > settings.display.height)
++		return false;
++
++	GLint draw_framebuffer = 0;
++	GLint draw_buffer = GL_BACK;
++	glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &draw_framebuffer);
++	glGetIntegerv(GL_DRAW_BUFFER, &draw_buffer);
++	semu_render_frame = {};
++	semu_render_frame.abi = SEMU_RENDER_ABI_GL;
++	semu_render_frame.struct_size = sizeof(semu_render_frame);
++	semu_render_frame.frame_id = static_cast<unsigned long long>(MainFrameCount) + 1;
++	semu_render_frame.framebuffer = static_cast<unsigned int>(draw_framebuffer);
++	semu_render_frame.color_buffer = static_cast<unsigned int>(draw_buffer);
++	semu_render_frame.framebuffer_width = settings.display.width;
++	semu_render_frame.framebuffer_height = settings.display.height;
++	semu_render_frame.presentation_aspect =
++		static_cast<float>(content_width) / static_cast<float>(content_height);
++	semu_render_frame.layout_variant = semu_render_frame.presentation_aspect >= 1.55f ?
++		SEMU_RENDER_LAYOUT_VARIANT_B : SEMU_RENDER_LAYOUT_DEFAULT;
++	semu_render_frame.surface_count = 1;
++	semu_render_frame.surfaces[0].x = dx;
++	semu_render_frame.surfaces[0].y = dy;
++	semu_render_frame.surfaces[0].width = content_width;
++	semu_render_frame.surfaces[0].height = content_height;
++	semu_render_frame.surfaces[0].native_width = framebuffer->getWidth();
++	semu_render_frame.surfaces[0].native_height = framebuffer->getHeight();
++	semu_render_frame.surfaces[0].rotation = 0;
++	semu_render_frame.surfaces[0].origin = SEMU_RENDER_ORIGIN_BOTTOM_LEFT;
++	semu_render_frame.get_proc = SDL_GL_GetProcAddress;
++	semu_render_frame.current_context = SDL_GL_GetCurrentContext;
++	return true;
++}
++} // namespace
+ 
++SemuRenderFrameGl* TakeSemuRenderFrame()
++{
++	if (!semu_render_frame_ready)
++		return nullptr;
++	semu_render_frame_ready = false;
++	return &semu_render_frame;
++}
++
+ #ifdef GLES
+ #ifndef GL_RED
+ #define GL_RED                            0x1903
+@@ -1368,6 +1435,9 @@
+ 	{
+ 		frameRendered = true;
+ 		clearLastFrame = false;
++		semu_render_frame_ready = BuildSemuRenderFrame();
++		if (semu_render_frame_ready)
++			semu_render_game_gl(&semu_render_frame);
+ 		drawOSD();
+ 		renderVideoRouting();
+ 	}

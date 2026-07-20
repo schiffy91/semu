@@ -1,107 +1,88 @@
 SHELL := /bin/bash
 
-BTRC_TRANSPILE := nix run .\#btrcpy --
+BTRC_TRANSPILE := nix run path:.\#btrcpy --
 
-SEMU_SOURCE := src/semu.btrc
-SEMU_SOURCES := $(SEMU_SOURCE) $(shell find src/semu tests -name '*.btrc' -print 2>/dev/null)
-SEMU_C := src/generated/build/semu.c
-SEMU_BIN := src/generated/build/semu
-SEMU_MANIFEST := src/generated/semu.json
-NIX_RESULT := src/generated/nix/result
+TARGET ?= steam-deck
+EMULATOR ?=
+ACTION ?= help
 
-.PHONY: all install setup btrc-build cross-linux manifest help
+SEMU_SOURCE := src/main.btrc
+SEMU_SOURCES := $(SEMU_SOURCE) src/cli.btrc $(shell find src/compiler src/generators src/lib -name '*.btrc' -print 2>/dev/null)
+SEMU_CONFIG := $(shell find config -type f -print 2>/dev/null)
+SEMU_C := build/semu.c
+SEMU_BIN := build/semu
+NIX_RESULT := build/nix/result
 
-all: install ## Build all emulators + bootstrap content (idempotent, cached by nix)
-install: setup
+.PHONY: btrc-build cross-linux nix-build target configs emulator \
+	appimage-runtime appimage-build appimage-verify steamdeck bazzite help
 
 btrc-build: $(SEMU_BIN) ## Build the BTRC semu CLI
 
-$(SEMU_BIN): $(SEMU_SOURCES) flake.nix flake.lock Makefile
+$(SEMU_BIN): $(SEMU_SOURCES) $(SEMU_CONFIG) flake.nix flake.lock Makefile
 	@mkdir -p "$(dir $(SEMU_C))" "$(dir $(SEMU_BIN))"
 	$(BTRC_TRANSPILE) "$(CURDIR)/$(SEMU_SOURCE)" -o "$(CURDIR)/$(SEMU_C)" --strict-imports --no-cache --no-stdlib
 	perl -0pi -e 's/\n+\z/\n/' "$(SEMU_C)"
 	$(CC) "$(SEMU_C)" -std=c11 -o "$@" -lm
-	@mkdir -p src/generated
-	cp "$(SEMU_C)" src/generated/semu.c
-
-# Static x86_64-linux CLI for immutable targets (Bazzite VM, the Deck) that
-# ship no compiler: same transpiled C, zig cc as the cross toolchain.
-cross-linux: $(SEMU_BIN) ## Cross-build src/generated/build/semu-linux-x64 (static musl)
+# Static x86_64-linux CLI and input supervisor for immutable Linux targets.
+cross-linux: $(SEMU_BIN) ## Cross-build build/semu-linux-x64 (static musl)
 	nix shell nixpkgs\#zig --command zig cc -target x86_64-linux-musl -std=c11 \
-		"$(SEMU_C)" -o src/generated/build/semu-linux-x64 -lm
-	@file src/generated/build/semu-linux-x64 | grep -q "ELF 64-bit" || \
+		"$(SEMU_C)" -o build/semu-linux-x64 -lm
+	@file build/semu-linux-x64 | grep -q "ELF 64-bit" || \
 		{ echo "cross-linux did not produce an x86_64 ELF"; exit 2; }
-	@mkdir -p src/generated/build/steamdeck/tap
+	@mkdir -p build/steamdeck/input
+	$(BTRC_TRANSPILE) src/generators/input/linux_supervisor.btrc \
+		-o build/steamdeck/input/linux_supervisor.c \
+		--strict-imports --no-cache --no-stdlib
 	nix shell nixpkgs\#zig --command zig cc -target x86_64-linux-gnu -O2 -std=c11 \
-		src/semu/platforms/linux/quit_watch.c \
-		-o src/generated/build/steamdeck/tap/semu-quit-watch
+		build/steamdeck/input/linux_supervisor.c \
+		-o build/steamdeck/input/semu-input-supervisor
 
-manifest: $(SEMU_BIN) ## Generate src/generated/semu.json from semu.btrc
-	@mkdir -p "$(dir $(SEMU_MANIFEST))"
-	$(SEMU_BIN) manifest --output "$(SEMU_MANIFEST)"
-
-# The shippable x86_64 AppImage, assembled ON THIS MACHINE (no linux builder):
-# emitted AppRun/desktop/shims + the cross CLI + the cross tap library + the
-# dereferenced visualAssets tree + the contract-pinned ES-DE AppImage's usr/
-# (hash verified against es_de.nix — the single pin store) + the contract
-# cores from the libretro buildbot, squashed and concatenated onto the
-# AppImage type2 runtime. Output: src/generated/build/Semu-x86_64.AppImage.
-APPIMAGE_WORK := src/generated/build/appimage
-appimage: cross-linux ## Assemble src/generated/build/Semu-x86_64.AppImage (cross, on macOS)
-	$(SEMU_BIN) bootstrap --project "$$(pwd)"
-	nix shell nixpkgs\#zig --command zig cc -target x86_64-linux-gnu -shared -fPIC -O2 \
-		src/semu/emulators/rendering/tap/libsemutap.c \
-		-o src/generated/build/steamdeck/tap/libsemutap.so -lm -ldl
-	@set -euo pipefail; \
-	workdir="$(APPIMAGE_WORK)"; chmod -R u+w "$$workdir" 2>/dev/null || true; rm -rf "$$workdir"; mkdir -p "$$workdir"; \
-	esdeUrl=$$(grep -A3 'x86_64-linux = {' src/semu/emulators/es_de/es_de.nix | grep -o 'https[^"]*' | head -1); \
-	esdeHash=$$(grep -A3 'x86_64-linux = {' src/semu/emulators/es_de/es_de.nix | grep -o 'sha256-[^"]*' | head -1); \
-	echo "fetching es-de: $$esdeUrl"; \
-	curl -sL -o "$$workdir/es-de.AppImage" "$$esdeUrl"; \
-	gotHash=$$(nix hash file --sri --type sha256 "$$workdir/es-de.AppImage"); \
-	[ "$$gotHash" = "$$esdeHash" ] || { echo "es-de hash mismatch: $$gotHash != $$esdeHash"; exit 2; }; \
-	offset=$$(python3 -c 'import struct,sys;h=open(sys.argv[1],"rb").read(64);print(struct.unpack_from("<Q",h,0x28)[0]+struct.unpack_from("<H",h,0x3A)[0]*struct.unpack_from("<H",h,0x3C)[0])' "$$workdir/es-de.AppImage"); \
-	nix shell nixpkgs\#squashfsTools --command unsquashfs -q -offset "$$offset" -d "$$workdir/esde-root" "$$workdir/es-de.AppImage"; \
-	appdir="$$workdir/AppDir"; mkdir -p "$$appdir/usr/bin" "$$appdir/usr/lib/retroarch/cores" "$$appdir/lib/semu"; \
-	cp src/generated/packaging/linux/AppRun "$$appdir/AppRun"; chmod 755 "$$appdir/AppRun"; \
-	cp src/generated/packaging/linux/semu.desktop "$$appdir/semu.desktop"; \
-	cp src/generated/packaging/linux/bin/* "$$appdir/usr/bin/" 2>/dev/null || true; \
-	cp -R "$$workdir/esde-root/usr/." "$$appdir/usr/"; \
-	cp src/generated/build/semu-linux-x64 "$$appdir/usr/bin/semu"; chmod 755 "$$appdir/usr/bin/semu"; \
-	cp src/generated/build/steamdeck/tap/libsemutap.so "$$appdir/lib/semu/"; \
-	cp src/generated/build/steamdeck/tap/semu-quit-watch "$$appdir/lib/semu/"; \
-	visualAssets=$$(nix build .\#visualAssets --no-link --print-out-paths); \
-	rsync -rltL "$$visualAssets/share/" "$$appdir/share/"; chmod -R u+w "$$appdir/share"; \
-	cp -L "$$visualAssets/lib/semu/"* "$$appdir/lib/semu/" 2>/dev/null || true; \
-	for core in gambatte mgba mesen snes9x genesis_plus_gx mupen64plus_next mednafen_psx desmume flycast ppsspp azahar; do \
-		curl -sL -o "$$workdir/$$core.zip" "https://buildbot.libretro.com/nightly/linux/x86_64/latest/$${core}_libretro.so.zip"; \
-		unzip -oq "$$workdir/$$core.zip" -d "$$appdir/usr/lib/retroarch/cores/"; \
-	done; \
-	cp "$$appdir/usr/share/pixmaps/org.es_de.frontend.svg" "$$appdir/semu.svg"; \
-	cp "$$appdir/usr/share/pixmaps/org.es_de.frontend.svg" "$$appdir/.DirIcon"; \
-	nix shell nixpkgs\#squashfsTools --command mksquashfs "$$appdir" "$$workdir/semu.squashfs" \
-		-comp zstd -Xcompression-level 15 -root-owned -noappend -quiet; \
-	curl -sL -o "$$workdir/runtime-x86_64" \
-		"https://github.com/AppImage/type2-runtime/releases/download/continuous/runtime-x86_64"; \
-	cat "$$workdir/runtime-x86_64" "$$workdir/semu.squashfs" > src/generated/build/Semu-x86_64.AppImage; \
-	chmod 755 src/generated/build/Semu-x86_64.AppImage; \
-	ls -la src/generated/build/Semu-x86_64.AppImage
-
-setup: $(SEMU_BIN) ## Build all emulators and bootstrap Steam Deck/Linux content
-	@echo "Building semu bundle (nix handles caching)..."
+nix-build: ## Build the composed Nix package
 	@mkdir -p "$(dir $(NIX_RESULT))"
-	nix build --out-link "$(NIX_RESULT)" .#default
-	@echo ""
-	@# Extract Ryujinx on first run (.NET needs writable dir)
-	@if [ -f "$(NIX_RESULT)/bin/ryujinx" ] && [ ! -d "$$HOME/.local/share/ryujinx-app/Ryujinx.app" ]; then \
-		echo "Extracting Ryujinx (first run)..."; \
-		"$(NIX_RESULT)/bin/ryujinx" --help >/dev/null 2>&1 || true; \
-	fi
-	@echo ""
-	@echo "Bootstrapping Steam Deck/Linux-style content folders..."
-	$(SEMU_BIN) bootstrap --project "$$(pwd)"
-	@echo ""
-	@echo "Done. Launch with $(NIX_RESULT)/bin/semu or the bundled Semu AppImage."
+	nix build --out-link "$(NIX_RESULT)" path:.\#default
+
+target: $(SEMU_BIN) ## Compile TARGET (default: steam-deck)
+	$(SEMU_BIN) build target "$(TARGET)" --project "$(CURDIR)"
+
+configs: $(SEMU_BIN) ## Compile generated configs for TARGET (default: steam-deck)
+	$(SEMU_BIN) build configs --target "$(TARGET)" --project "$(CURDIR)"
+
+emulator: $(SEMU_BIN) ## Compile EMULATOR for TARGET
+	@test -n "$(EMULATOR)" || { echo "EMULATOR is required" >&2; exit 64; }
+	$(SEMU_BIN) build emulator "$(EMULATOR)" --target "$(TARGET)" \
+		--project "$(CURDIR)"
+
+# The shippable x86_64 AppImage is assembled by the compiler from an immutable
+# runtime root; packaging policy remains in BTRC and Nix.
+APPIMAGE_OUTPUT := $(CURDIR)/build/Semu-x86_64.AppImage
+APPIMAGE_WORK_OPTION = $(if $(strip $(SEMU_APPIMAGE_WORK_ROOT)),--work-root "$(SEMU_APPIMAGE_WORK_ROOT)",)
+ifeq ($(origin SEMU_APPIMAGE_RUNTIME_ROOT),undefined)
+SEMU_APPIMAGE_RUNTIME_ROOT := $(HOME)/.cache/semu/appimage-runtime/runtime-root
+APPIMAGE_RUNTIME_COMMAND = packaging/appimage/build_runtime.sh "$(SEMU_APPIMAGE_RUNTIME_ROOT)"
+else
+APPIMAGE_RUNTIME_COMMAND = test -d "$(SEMU_APPIMAGE_RUNTIME_ROOT)" || { \
+	echo "runtime root does not exist: $(SEMU_APPIMAGE_RUNTIME_ROOT)" >&2; exit 2; }
+endif
+appimage-runtime: ## Build or validate the pinned x86_64 Deck runtime root
+	$(APPIMAGE_RUNTIME_COMMAND)
+
+appimage-build: $(SEMU_BIN) appimage-runtime ## Assemble and verify the AppImage without deploying it
+	$(SEMU_BIN) package appimage --target steam-deck --project "$(CURDIR)" \
+		--runtime-root "$(SEMU_APPIMAGE_RUNTIME_ROOT)" $(APPIMAGE_WORK_OPTION) \
+		--output "$(APPIMAGE_OUTPUT)"
+
+appimage-verify: $(SEMU_BIN) ## Verify exact existing AppImage bytes without rebuilding
+	@test -x "$(APPIMAGE_OUTPUT)" || \
+		{ echo "missing AppImage; run 'make appimage-build' first" >&2; exit 2; }
+	$(SEMU_BIN) package appimage verify --target steam-deck --project "$(CURDIR)" \
+		--runtime-root "$(SEMU_APPIMAGE_RUNTIME_ROOT)" $(APPIMAGE_WORK_OPTION) \
+		--artifact "$(APPIMAGE_OUTPUT)"
+
+steamdeck: ## Delegate ACTION=<target> to the Steam Deck harness
+	$(MAKE) -f tests/targets/steamdeck/Makefile "$(ACTION)"
+
+bazzite: ## Delegate ACTION=<target> after physical Deck acceptance
+	$(MAKE) -f tests/targets/bazzite/Makefile "$(ACTION)"
 
 include tests/Makefile
 

@@ -1,0 +1,143 @@
+{
+  "schema_version": 1,
+  "name": "Flycast",
+  "default_system": "dreamcast",
+  "input": {
+    "actions": [
+      "ui.screenshot",
+      "ui.menu",
+      "app.quit",
+      "state.load",
+      "state.save"
+    ]
+  },
+  "platforms": {
+    "linux": {
+      "backend": "bwrap",
+      "executable": "${asset_root}/bin/flycast",
+      "args": [
+        "-config",
+        "window:fullscreen=yes"
+      ],
+      "gl_wrapper": "${asset_root}/bin/nixGL",
+      "sandbox": {
+        "devices": [
+          "all"
+        ],
+        "filesystems": [
+          {
+            "path": "${asset_root}",
+            "mode": "ro"
+          },
+          {
+            "path": "${roms}",
+            "mode": "ro"
+          },
+          {
+            "path": "${emulation_root}",
+            "mode": "ro"
+          },
+          {
+            "path": "${bios}",
+            "mode": "ro"
+          },
+          {
+            "path": "${state_root}",
+            "mode": "create"
+          }
+        ]
+      },
+      "graphics": {
+        "method": "config_file",
+        "file": "${state_root}/config/flycast/emu.cfg",
+        "format": "ini",
+        "section": "rend",
+        "key": "RendererType",
+        "values": {
+          "opengl": "0"
+        },
+        "extra_pins": [
+          {
+            "section": "rend",
+            "key": "EmulateFramebuffer",
+            "value": "no"
+          },
+          {
+            "section": "rend",
+            "key": "Rotate90",
+            "value": "no"
+          }
+        ]
+      },
+      "aspect_probe": {
+        "files": [
+          "${state_root}/config/flycast/emu.cfg",
+          "${project}/generated/packaging/emulators/profiles/Flycast/config/emu.cfg"
+        ],
+        "widescreen_markers": [
+          "widescreen = yes",
+          "widescreengamehacks = yes",
+          "screenstretching = 134"
+        ],
+        "standard_markers": [
+          "widescreen = no",
+          "screenstretching = 100"
+        ],
+        "fallback": "standard"
+      },
+      "state": {
+        "config_home": "xdg",
+        "data_home": "xdg",
+        "config_subdir": "flycast",
+        "data_subdir": "flycast",
+        "managed_profile_files": [
+          "config/emu.cfg",
+          "config/mappings/SDL_Keyboard.cfg"
+        ],
+        "seeds": [
+          {
+            "purpose": "dreamcast_boot_rom",
+            "target": "${state_root}/data/flycast/dc_boot.bin",
+            "copy": "once_if_target_absent",
+            "source_access": "read_only",
+            "overwrite": false,
+            "sources": [
+              "${emulation_root}/bios/dreamcast/dc_boot.bin",
+              "${emulation_root}/bios/dc_boot.bin",
+              "${bios}/dc/dc_boot.bin",
+              "${bios}/dc_boot.bin"
+            ]
+          },
+          {
+            "purpose": "dreamcast_flash_rom",
+            "target": "${state_root}/data/flycast/dc_flash.bin",
+            "copy": "once_if_target_absent",
+            "source_access": "read_only",
+            "overwrite": false,
+            "sources": [
+              "${emulation_root}/bios/dreamcast/dc_flash.bin",
+              "${emulation_root}/bios/dc_flash.bin",
+              "${bios}/dc/dc_flash.bin",
+              "${bios}/dc_flash.bin"
+            ]
+          }
+        ]
+      },
+      "firmware": {
+        "dir": "${emulation_root}/bios/dreamcast",
+        "fallback_dirs": [
+          "${emulation_root}/bios",
+          "${bios}/dc",
+          "${bios}"
+        ]
+      }
+    }
+  },
+  "doc": {
+    "launch": "The bundled source-built binary receives -config window:fullscreen=yes followed by one positional ROM. There is no host, Flatpak, or libretro launch route.",
+    "state": "Flycast reads ${state_root}/config/flycast/emu.cfg and its generated SDL keyboard mapping through XDG_CONFIG_HOME. VMUs, native saves, save states, shader cache, logs, and writable flash remain below the isolated XDG data/cache roots.",
+    "firmware": "Named Dreamcast boot/flash files are copied once into isolated state from read-only external roots. The shared Emulation, ROM, and project BIOS trees are never writable.",
+    "input": "SDL GameController supplies gameplay. The generated version-4 SDL keyboard mapping consumes the shared Ctrl+Q/Ctrl+A/Ctrl+S/Ctrl+M actions for quit/load/save/menu; the target process watcher owns immediate physical Select+Start quit.",
+    "rendering": "RendererType 0 pins OpenGL. The source-built package directly links libsemurenderer, submits Flycast's final display-upright windowbox before OSD/video routing, and submits completed frontend UI immediately before present. ABI rotation is zero and no display/session or inactive-report path is emulator-owned."
+  }
+}

@@ -1,0 +1,100 @@
+{
+  "schema_version": 1,
+  "activation": {
+    "mode": "source_patched_direct_link",
+    "package_ready": true,
+    "runtime_proven": false,
+    "physical_proven": false
+  },
+  "integration": {
+    "abi": 2,
+    "api": "semu-renderer",
+    "linkage": "direct",
+    "header": "semu_renderer.h",
+    "library": "semurenderer",
+    "backend": "opengl",
+    "callbacks": [
+      "get_proc_address",
+      "current_context"
+    ],
+    "inactive_reports": false,
+    "framebuffer": "default_opengl_draw_framebuffer",
+    "geometry": "live_windowbox_from_output_size_and_composed_game_aspect",
+    "presentation_aspect": "live final output windowbox width divided by height",
+    "layout_variant": "DEFAULT below 1.55 aspect and VARIANT_B at or above 1.55",
+    "surface_order": [
+      {
+        "id": "game",
+        "native": "composed_game_framebuffer"
+      }
+    ],
+    "origin": "bottom_left",
+    "orientation": "display_upright",
+    "rotation": 0,
+    "patch": "flycast.patch"
+  },
+  "phases": [
+    {
+      "id": "game",
+      "symbol": "semu_render_game_gl",
+      "source": "core/rend/gles/gles.cpp",
+      "function": "OpenGLRenderer::Render",
+      "after": "final game composition",
+      "before": "drawOSD and renderVideoRouting"
+    },
+    {
+      "id": "post_ui",
+      "symbol": "semu_render_post_ui_gl",
+      "source": "core/ui/mainui.cpp",
+      "function": "mainui_loop",
+      "after": "Flycast OSD, profiler, and frontend UI",
+      "before": "imguiDriver->present"
+    }
+  ],
+  "surfaces": [
+    {
+      "index": 0,
+      "id": "game",
+      "geometry": "live final output windowbox",
+      "native": "current composed game framebuffer dimensions",
+      "origin": "bottom_left",
+      "orientation": "display_upright",
+      "rotation": 0
+    }
+  ],
+  "orientation_contract": {
+    "sampled_pixels": "final_default_framebuffer_windowbox_after_flycast_rotation",
+    "source_orientation": "display_upright",
+    "asymmetric_probe": {
+      "source_grid": {
+        "w": 3,
+        "h": 2
+      },
+      "corner_order_before_renderer": [
+        "top_left_red",
+        "top_right_green",
+        "bottom_left_blue",
+        "bottom_right_yellow"
+      ],
+      "corner_order_after_renderer": [
+        "top_left_red",
+        "top_right_green",
+        "bottom_left_blue",
+        "bottom_right_yellow"
+      ],
+      "expected_rotation": 0
+    }
+  },
+  "composition": {
+    "owner": "semurenderer",
+    "shader": "renderer_owned",
+    "bezel": "renderer_owned",
+    "semu_menu": "renderer_owned",
+    "flycast_ui": "between_game_and_post_ui_phases"
+  },
+  "doc": {
+    "boundary": "OpenGLRenderer submits the completed output windowbox before Flycast OSD and video routing. mainui_loop submits the same frame after Flycast UI and immediately before imguiDriver presents.",
+    "orientation": "The sampled default-framebuffer pixels already include Flycast's rotation and are display-upright. ABI rotation is therefore zero; applying Rotate90 again in the renderer would fail the asymmetric corner-order contract.",
+    "evidence": "Package linkage, patch application, exact phase order, zero-rotation orientation, and forbidden-symbol absence are source gates. Runtime pixels remain a separate acceptance gate."
+  }
+}

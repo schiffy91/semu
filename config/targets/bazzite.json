@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "id": "bazzite",
+  "inherits": "steam-deck",
+  "platform": "linux",
+  "nix_systems": [
+    "x86_64-linux"
+  ],
+  "backends": [
+    "bwrap"
+  ],
+  "validation": {
+    "kind": "post-deployment-parity",
+    "requires": [
+      "steam-deck"
+    ],
+    "harness": "tests/targets/bazzite",
+    "image": "bazzite-deck-stable-live-amd64.iso",
+    "viewport": {
+      "width": 1280,
+      "height": 800
+    }
+  }
+}

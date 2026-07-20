@@ -1,0 +1,79 @@
+{
+  "schema_version": 1,
+  "name": "Nintendo Game Boy Advance",
+  "aliases": [],
+  "es_de": {
+    "platforms": [
+      "gba"
+    ],
+    "theme": "gba"
+  },
+  "rom": {
+    "dir": "gba",
+    "extensions": [
+      ".agb",
+      ".bin",
+      ".cgb",
+      ".gb",
+      ".gba",
+      ".gbc",
+      ".7z",
+      ".zip"
+    ]
+  },
+  "verification": {
+    "rom_descriptors": [
+      "Mario Kart - Super Circuit (USA).zip",
+      "Wario Land 4 (USA, Europe).zip"
+    ],
+    "capture_frame": 180
+  },
+  "emulators": [
+    {
+      "emulator": "retroarch",
+      "label": "mGBA",
+      "core": "mgba"
+    }
+  ],
+  "display": {
+    "scaling": {
+      "mode": "integer_preferred",
+      "basis": "native_game_surface",
+      "fit": "contain",
+      "fallback": "fractional_downscale"
+    },
+    "screens": [
+      {
+        "id": "main",
+        "native": {
+          "w": 240,
+          "h": 160
+        }
+      }
+    ],
+    "aspect": {
+      "w": 3,
+      "h": 2
+    }
+  },
+  "render": {
+    "style": "handheld",
+    "asset_profile": "handheld",
+    "priority": "bezel",
+    "fill": true,
+    "reflect": 0.55,
+    "lcd_grid": 0.30,
+    "lcd_subpixel": 0.30,
+    "lcd_wash": 0.55,
+    "corner_radius": 0.02,
+    "shell_tint": {
+      "r": 0.34,
+      "g": 0.32,
+      "b": 0.52
+    }
+  },
+  "doc": {
+    "hardware": "AGB-001 reflective TFT LCD",
+    "intent": "Use the original wide GBA target, not SP-first artwork."
+  }
+}

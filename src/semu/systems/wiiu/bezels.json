@@ -1,9 +1,0 @@
-{
-  "schema_version": 1,
-  "enabled": false,
-  "default_variant": "gamepad",
-  "variants": [],
-  "doc": {
-    "why": "No authentic shell art exists (Wii U GamePad: Duimon has none; photo bezels were tried and rejected 2026-07-07 'these look weird'). Bezel off = pure black borders per the standing ruling."
-  }
-}

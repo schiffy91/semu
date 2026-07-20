@@ -1,0 +1,647 @@
+// steam_install.btrc - confined, verified Steam Input publication.
+
+import std.{bytes, fs, io, platform, strings, vector}
+
+#include <errno.h>
+#include <fcntl.h>
+#include <stdlib.h>
+#include <sys/stat.h>
+#include <unistd.h>
+
+class SteamInputInstallLayout {
+    public string ownedRoot;
+    public string steamUser;
+    public string templatesDirectory;
+    public string iconsDirectory;
+    public string applicationRoot;
+    public string applicationDirectory;
+
+    public SteamInputInstallLayout() {
+        self.ownedRoot = "";
+        self.steamUser = "";
+        self.templatesDirectory = "";
+        self.iconsDirectory = "";
+        self.applicationRoot = "";
+        self.applicationDirectory = "";
+    }
+}
+
+class SteamInputInstallOptions {
+    public int truncateStageIndex;
+    public int failAfterPublications;
+
+    public SteamInputInstallOptions() {
+        self.truncateStageIndex = -1;
+        self.failAfterPublications = -1;
+    }
+
+    class SteamInputInstallOptions interruptedWrite(int artifactIndex) {
+        SteamInputInstallOptions options = SteamInputInstallOptions();
+        options.truncateStageIndex = artifactIndex;
+        return options;
+    }
+
+    class SteamInputInstallOptions rollbackAfter(int publicationCount) {
+        SteamInputInstallOptions options = SteamInputInstallOptions();
+        options.failAfterPublications = publicationCount;
+        return options;
+    }
+}
+
+class SteamInputInstallPolicy {
+    class string templatesPattern() {
+        return "${home}/.local/share/Steam/controller_base/templates";
+    }
+
+    class string iconsPattern() {
+        return "${home}/.local/share/Steam/tenfoot/resource/images/library/controller/binding_icons";
+    }
+
+    class string applicationPattern() {
+        return "${home}/.local/share/Steam/steamapps/common/Steam Controller Configs/${steam_user}/config/${application_id}";
+    }
+
+    class bool numericId(string value) {
+        if (value.isEmpty()) { return false; }
+        for character in value {
+            if (character < '0' || character > '9') { return false; }
+        }
+        return true;
+    }
+
+    class bool safeSegment(string value) {
+        if (value.isEmpty() || value.equals(".") || value.equals("..")
+                || !PathTools.basename(value).equals(value)
+                || value.contains("\\")) {
+            return false;
+        }
+        for character in value {
+            bool allowed = (character >= 'a' && character <= 'z')
+                || (character >= '0' && character <= '9')
+                || character == '-' || character == '_';
+            if (!allowed) { return false; }
+        }
+        return true;
+    }
+
+    class bool lexicalAbsolute(string path) {
+        if (path == null || path.isEmpty() || !PathTools.isAbsolute(path)
+                || path.contains("\\") || path.contains("//")
+                || (path.len() > 1 && path.endsWith("/"))) {
+            return false;
+        }
+        for character in path {
+            if (character < 32 || character == 127) { return false; }
+        }
+        for component in Strings.split(path, "/") {
+            if (component.equals(".") || component.equals("..")) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    class bool inside(string path, string root) {
+        return SteamInputInstallPolicy.lexicalAbsolute(path)
+            && SteamInputInstallPolicy.lexicalAbsolute(root)
+            && !root.equals("/")
+            && (path.equals(root) || path.startsWith(root + "/"));
+    }
+
+    class bool realDirectory(string path) {
+        if (!SteamInputInstallPolicy.lexicalAbsolute(path)) { return false; }
+        FileStatus status = FileStatus(path);
+        if (!status.isDir() || status.isSymlink()
+                || !UnixFileSystem.realPath(path).equals(path)) {
+            return false;
+        }
+        int descriptor = UnixFileSystem.openDirectoryNoFollow(path);
+        if (descriptor < 0) { return false; }
+        bool valid = fsync(descriptor) == 0;
+        close(descriptor);
+        return valid;
+    }
+
+    class bool dedicatedRoot(string root) {
+        if (!SteamInputInstallPolicy.realDirectory(root) || root.equals("/")) {
+            return false;
+        }
+        string home = UnixFileSystem.realPath(Environment.get("HOME", ""));
+        if (!home.isEmpty() && root.equals(home)) {
+            return false;
+        }
+        return !FileStatus(PathTools.join(root, ".git")).linkFound
+            && !FileStatus(PathTools.join(root, "flake.nix")).linkFound;
+    }
+
+    class bool prepareDirectory(string root, string directory) {
+        if (!SteamInputInstallPolicy.dedicatedRoot(root)
+                || !SteamInputInstallPolicy.inside(directory, root)) {
+            return false;
+        }
+        if (directory.equals(root)) { return true; }
+        string relative = directory.substring(root.len() + 1,
+            directory.len() - root.len() - 1);
+        string current = root;
+        for component in Strings.split(relative, "/") {
+            if (component.isEmpty() || component.equals(".")
+                    || component.equals("..")) {
+                return false;
+            }
+            current = PathTools.join(current, component);
+            FileStatus status = FileStatus(current);
+            if (status.isMissing()) {
+                if (FileSystem.mkdir(current, 493) != 0) { return false; }
+                status = FileStatus(current);
+            }
+            if (!status.isDir() || status.isSymlink()
+                    || !UnixFileSystem.realPath(current).equals(current)) {
+                return false;
+            }
+            int descriptor = UnixFileSystem.openDirectoryNoFollow(current);
+            if (descriptor < 0) { return false; }
+            close(descriptor);
+        }
+        return true;
+    }
+
+    class SteamInputInstallLayout layout(string root, string steamUser,
+                                          string applicationId) {
+        SteamInputInstallLayout result = SteamInputInstallLayout();
+        result.ownedRoot = root;
+        result.steamUser = steamUser;
+        result.templatesDirectory = PathTools.join(
+            root, "controller_base/templates");
+        result.iconsDirectory = PathTools.join(
+            root, "tenfoot/resource/images/library/controller/binding_icons");
+        result.applicationRoot = PathTools.join(root,
+            "steamapps/common/Steam Controller Configs/" + steamUser + "/config");
+        result.applicationDirectory = PathTools.join(
+            result.applicationRoot, applicationId);
+        return result;
+    }
+
+    class bool validLayout(SteamInputInstallLayout layout, string ownedRoot,
+                           string steamUser, string applicationId) {
+        if (!SteamInputInstallPolicy.dedicatedRoot(ownedRoot)
+                || !SteamInputInstallPolicy.numericId(steamUser)
+                || !SteamInputInstallPolicy.safeSegment(applicationId)) {
+            return false;
+        }
+        SteamInputInstallLayout expected = SteamInputInstallPolicy.layout(
+            ownedRoot, steamUser, applicationId);
+        return layout.ownedRoot.equals(expected.ownedRoot)
+            && layout.steamUser.equals(expected.steamUser)
+            && layout.templatesDirectory.equals(expected.templatesDirectory)
+            && layout.iconsDirectory.equals(expected.iconsDirectory)
+            && layout.applicationRoot.equals(expected.applicationRoot)
+            && layout.applicationDirectory.equals(expected.applicationDirectory);
+    }
+
+    class string productionRoot(string home) {
+        if (!SteamInputInstallPolicy.lexicalAbsolute(home)) { return ""; }
+        string requested = UnixFileSystem.realPath(home);
+        string current = UnixFileSystem.realPath(Environment.get("HOME", ""));
+        if (requested.isEmpty() || current.isEmpty()
+                || !requested.equals(home) || !requested.equals(current)) {
+            return "";
+        }
+        string root = PathTools.join(home, ".local/share/Steam");
+        return SteamInputInstallPolicy.dedicatedRoot(root) ? root : "";
+    }
+}
+
+class SteamInputInstallDisk {
+    class bool sameBytes(Bytes left, Bytes right) {
+        return left.equals(right);
+    }
+
+    class Bytes readRegular(string path) {
+        FileStatus status = FileStatus(path);
+        if (!status.isFile() || status.isSymlink()) { return Bytes(); }
+        File input = File(path, "rb");
+        if (!input.ok()) { return Bytes(); }
+        Bytes content = input.readBytes();
+        input.close();
+        return content;
+    }
+
+    class bool verified(string path, Bytes expected) {
+        FileStatus status = FileStatus(path);
+        return status.isFile() && !status.isSymlink()
+            && SteamInputInstallDisk.sameBytes(
+                SteamInputInstallDisk.readRegular(path), expected);
+    }
+
+    class int entryKind(int parent, string name) {
+        struct stat status;
+        if (fstatat(parent, name, &status, AT_SYMLINK_NOFOLLOW) != 0) {
+            return errno == ENOENT ? 0 : -1;
+        }
+        if (S_ISLNK(status.st_mode)) { return -1; }
+        if (S_ISREG(status.st_mode)) { return 1; }
+        if (S_ISDIR(status.st_mode)) { return 2; }
+        return -1;
+    }
+
+    class bool writeExclusive(int parent, string name, Bytes content,
+                              int byteLimit = -1) {
+        int length = content.length();
+        int requested = byteLimit < 0 ? length : byteLimit;
+        if (length <= 0 || length > 16777216
+                || requested < 0 || requested > length
+                || SteamInputInstallDisk.entryKind(parent, name) != 0) {
+            return false;
+        }
+        int descriptor = openat(parent, name,
+            (int)O_WRONLY | (int)O_CREAT | (int)O_EXCL
+                | (int)O_NOFOLLOW | (int)O_CLOEXEC,
+            (mode_t)384); // 0600 until verification completes.
+        if (descriptor < 0) { return false; }
+        unsigned char* buffer = (unsigned char*)malloc((size_t)requested);
+        if (buffer == NULL) {
+            close(descriptor);
+            unlinkat(parent, name, 0);
+            return false;
+        }
+        for (int index = 0; index < requested; index++) {
+            buffer[index] = (unsigned char)content.get(index);
+        }
+        int offset = 0;
+        bool written = true;
+        while (offset < requested) {
+            ssize_t count = write(descriptor, buffer + offset,
+                (size_t)(requested - offset));
+            if (count <= (ssize_t)0) {
+                if (count < (ssize_t)0 && errno == EINTR) { continue; }
+                written = false;
+                break;
+            }
+            offset = offset + (int)count;
+        }
+        free(buffer);
+        struct stat status;
+        bool durable = written && fstat(descriptor, &status) == 0
+            && status.st_size == (off_t)requested
+            && fchmod(descriptor, (mode_t)420) == 0 // 0644
+            && fsync(descriptor) == 0;
+        if (close(descriptor) != 0) { durable = false; }
+        if (!durable) { unlinkat(parent, name, 0); }
+        return durable;
+    }
+
+    class bool unlinkFile(int parent, string name) {
+        int kind = SteamInputInstallDisk.entryKind(parent, name);
+        return kind == 0 || (kind == 1 && unlinkat(parent, name, 0) == 0);
+    }
+
+    // 0: unchanged, 1: renamed but parent sync failed, 2: durable rename.
+    class int renameEntry(string parentPath, string source,
+                          string destination) {
+        int parent = UnixFileSystem.openDirectoryNoFollow(parentPath);
+        if (parent < 0 || source.isEmpty() || destination.isEmpty()
+                || !PathTools.basename(source).equals(source)
+                || !PathTools.basename(destination).equals(destination)
+                || source.contains("\\") || destination.contains("\\")) {
+            if (parent >= 0) { close(parent); }
+            return 0;
+        }
+        string sourcePath = PathTools.join(parentPath, source);
+        string destinationPath = PathTools.join(parentPath, destination);
+        bool confined = PathTools.dirname(sourcePath).equals(parentPath)
+            && PathTools.dirname(destinationPath).equals(parentPath)
+            && !source.equals(".") && !source.equals("..")
+            && !destination.equals(".") && !destination.equals("..");
+        bool moved = confined && rename(sourcePath, destinationPath) == 0;
+        bool durable = moved && fsync(parent) == 0;
+        close(parent);
+        return durable ? 2 : (moved ? 1 : 0);
+    }
+}
+
+class SteamInputTransactionFile {
+    public string destination;
+    public Bytes content;
+    public string stagedName;
+    public string backupName;
+    public bool staged;
+    public bool backup;
+    public bool published;
+    public bool existed;
+
+    public SteamInputTransactionFile(string destination, Bytes content) {
+        self.destination = destination;
+        self.content = content;
+        self.stagedName = "";
+        self.backupName = "";
+        self.staged = false;
+        self.backup = false;
+        self.published = false;
+        self.existed = false;
+    }
+
+    public bool stage(int index, bool truncate) {
+        string parentPath = PathTools.dirname(self.destination);
+        int parent = UnixFileSystem.openDirectoryNoFollow(parentPath);
+        if (parent < 0) { return false; }
+        string target = PathTools.basename(self.destination);
+        int targetKind = SteamInputInstallDisk.entryKind(parent, target);
+        self.stagedName = "." + target + ".semu-stage."
+            + f"{(int)getpid()}." + f"{index}";
+        self.backupName = "." + target + ".semu-backup."
+            + f"{(int)getpid()}." + f"{index}";
+        bool namesAvailable = (targetKind == 0 || targetKind == 1)
+            && SteamInputInstallDisk.entryKind(parent, self.stagedName) == 0
+            && SteamInputInstallDisk.entryKind(parent, self.backupName) == 0;
+        int byteLimit = truncate ? self.content.length() - 1 : -1;
+        bool written = namesAvailable
+            && SteamInputInstallDisk.writeExclusive(
+                parent, self.stagedName, self.content, byteLimit);
+        if (written) { self.staged = true; }
+        if (written && fsync(parent) != 0) { written = false; }
+        close(parent);
+        bool verified = written && SteamInputInstallDisk.verified(
+            PathTools.join(parentPath, self.stagedName), self.content);
+        if (!verified) { self.discardStage(); }
+        return verified;
+    }
+
+    public bool publish() {
+        string parentPath = PathTools.dirname(self.destination);
+        int parent = UnixFileSystem.openDirectoryNoFollow(parentPath);
+        if (parent < 0 || !self.staged) {
+            if (parent >= 0) { close(parent); }
+            return false;
+        }
+        string target = PathTools.basename(self.destination);
+        int targetKind = SteamInputInstallDisk.entryKind(parent, target);
+        self.existed = targetKind == 1;
+        bool ready = targetKind == 0 || targetKind == 1;
+        if (ready && self.existed) {
+            Bytes previous = SteamInputInstallDisk.readRegular(
+                self.destination);
+            self.backup = previous.length() > 0
+                && SteamInputInstallDisk.writeExclusive(
+                    parent, self.backupName, previous)
+                && SteamInputInstallDisk.verified(
+                    PathTools.join(parentPath, self.backupName), previous);
+            ready = self.backup;
+        }
+        close(parent);
+        int publication = ready ? SteamInputInstallDisk.renameEntry(
+            parentPath, self.stagedName, target) : 0;
+        if (publication > 0) {
+            self.staged = false;
+            self.published = true;
+        }
+        ready = publication == 2;
+        return ready && SteamInputInstallDisk.verified(
+            self.destination, self.content);
+    }
+
+    public bool rollback() {
+        string parentPath = PathTools.dirname(self.destination);
+        int parent = UnixFileSystem.openDirectoryNoFollow(parentPath);
+        if (parent < 0) { return false; }
+        string target = PathTools.basename(self.destination);
+        bool restored = true;
+        if (self.published) {
+            if (self.backup) {
+                close(parent);
+                int restoration = SteamInputInstallDisk.renameEntry(
+                    parentPath, self.backupName, target);
+                restored = restoration == 2;
+                parent = UnixFileSystem.openDirectoryNoFollow(parentPath);
+                if (parent < 0) { return false; }
+                if (restoration > 0) { self.backup = false; }
+            } else {
+                restored = SteamInputInstallDisk.unlinkFile(parent, target);
+            }
+            self.published = false;
+        } else if (self.backup) {
+            restored = SteamInputInstallDisk.unlinkFile(parent, self.backupName);
+            self.backup = false;
+        }
+        if (self.staged) {
+            restored = SteamInputInstallDisk.unlinkFile(
+                parent, self.stagedName) && restored;
+            self.staged = false;
+        }
+        restored = fsync(parent) == 0 && restored;
+        close(parent);
+        return restored;
+    }
+
+    public bool commit() {
+        string parentPath = PathTools.dirname(self.destination);
+        int parent = UnixFileSystem.openDirectoryNoFollow(parentPath);
+        if (parent < 0) { return false; }
+        bool clean = true;
+        if (self.backup) {
+            clean = SteamInputInstallDisk.unlinkFile(parent, self.backupName);
+            self.backup = false;
+        }
+        if (self.staged) {
+            clean = SteamInputInstallDisk.unlinkFile(
+                parent, self.stagedName) && clean;
+            self.staged = false;
+        }
+        clean = fsync(parent) == 0 && clean;
+        close(parent);
+        return clean;
+    }
+
+    public void discardStage() {
+        if (self.stagedName.isEmpty()) { return; }
+        string parentPath = PathTools.dirname(self.destination);
+        int parent = UnixFileSystem.openDirectoryNoFollow(parentPath);
+        if (parent < 0) { return; }
+        SteamInputInstallDisk.unlinkFile(parent, self.stagedName);
+        fsync(parent);
+        close(parent);
+        self.staged = false;
+    }
+}
+
+class SteamInputTransactionRemoval {
+    public string destination;
+    public string quarantineName;
+    public bool moved;
+
+    public SteamInputTransactionRemoval(string destination) {
+        self.destination = destination;
+        self.quarantineName = "";
+        self.moved = false;
+    }
+
+    public bool stage(int index) {
+        string parentPath = PathTools.dirname(self.destination);
+        int parent = UnixFileSystem.openDirectoryNoFollow(parentPath);
+        if (parent < 0) { return false; }
+        string target = PathTools.basename(self.destination);
+        int kind = SteamInputInstallDisk.entryKind(parent, target);
+        self.quarantineName = ".semu-deprecated-" + target + "."
+            + f"{(int)getpid()}." + f"{index}";
+        bool ready = kind == 0 || (kind == 2
+            && SteamInputInstallDisk.entryKind(
+                parent, self.quarantineName) == 0);
+        close(parent);
+        if (ready && kind == 2) {
+            int quarantine = SteamInputInstallDisk.renameEntry(
+                parentPath, target, self.quarantineName);
+            self.moved = quarantine > 0;
+            ready = quarantine == 2;
+        }
+        return ready;
+    }
+
+    public bool rollback() {
+        if (!self.moved) { return true; }
+        string parentPath = PathTools.dirname(self.destination);
+        int parent = UnixFileSystem.openDirectoryNoFollow(parentPath);
+        if (parent < 0) { return false; }
+        string target = PathTools.basename(self.destination);
+        bool targetMissing = SteamInputInstallDisk.entryKind(parent, target) == 0;
+        close(parent);
+        int restoration = targetMissing ? SteamInputInstallDisk.renameEntry(
+            parentPath, self.quarantineName, target) : 0;
+        bool restored = restoration == 2;
+        if (restoration > 0) { self.moved = false; }
+        return restored;
+    }
+
+    public bool commit() {
+        if (!self.moved) { return true; }
+        string quarantine = PathTools.join(
+            PathTools.dirname(self.destination), self.quarantineName);
+        bool removed = FileSystem.removeRecursive(quarantine) == 0;
+        if (removed) { self.moved = false; }
+        return removed;
+    }
+}
+
+class SteamInputInstallTransaction {
+    public string ownedRoot;
+    public Vector<SteamInputTransactionFile> files;
+    public Vector<SteamInputTransactionRemoval> removals;
+    public Vector<string> destinations;
+    public string error;
+
+    public SteamInputInstallTransaction(string ownedRoot) {
+        self.ownedRoot = ownedRoot;
+        self.files = [];
+        self.removals = [];
+        self.destinations = [];
+        self.error = "";
+    }
+
+    public bool addSource(string source, string destination) {
+        Bytes content = SteamInputInstallDisk.readRegular(source);
+        return self.addBytes(destination, content);
+    }
+
+    public bool addText(string destination, string content) {
+        return self.addBytes(destination, Bytes.fromString(content));
+    }
+
+    public bool addBytes(string destination, Bytes content) {
+        if (!SteamInputInstallPolicy.inside(destination, self.ownedRoot)
+                || destination.equals(self.ownedRoot)
+                || content.length() <= 0 || self.destinations.contains(destination)) {
+            self.error = "artifact is empty, duplicated, or outside the owned Steam root";
+            return false;
+        }
+        self.files.push(SteamInputTransactionFile(destination, content));
+        self.destinations.push(destination);
+        return true;
+    }
+
+    public bool removeDeclared(string destination) {
+        if (!SteamInputInstallPolicy.inside(destination, self.ownedRoot)
+                || destination.equals(self.ownedRoot)
+                || !SteamInputInstallPolicy.safeSegment(
+                    PathTools.basename(destination))) {
+            self.error = "deprecated path is outside the owned Steam root";
+            return false;
+        }
+        self.removals.push(SteamInputTransactionRemoval(destination));
+        return true;
+    }
+
+    public bool execute(SteamInputInstallOptions options) {
+        for (int index = 0; index < self.files.size(); index++) {
+            bool truncate = index == options.truncateStageIndex;
+            if (!self.files.get(index).stage(index, truncate)) {
+                self.error = truncate
+                    ? "staged artifact failed byte verification"
+                    : "could not stage and verify artifact";
+                self.rollback();
+                return false;
+            }
+        }
+        for (int index = 0; index < self.removals.size(); index++) {
+            if (!self.removals.get(index).stage(index)) {
+                self.error = "could not quarantine declared deprecated config";
+                self.rollback();
+                return false;
+            }
+        }
+        int published = 0;
+        for file in self.files {
+            if (!file.publish()) {
+                self.error = "atomic artifact publication failed";
+                self.rollback();
+                return false;
+            }
+            published++;
+            if (options.failAfterPublications == published) {
+                self.error = "injected publication interruption";
+                self.rollback();
+                return false;
+            }
+        }
+        bool committed = true;
+        for file in self.files { committed = file.commit() && committed; }
+        for removal in self.removals {
+            committed = removal.commit() && committed;
+        }
+        if (!committed) {
+            self.error = "publication committed but transaction cleanup failed";
+        }
+        return committed;
+    }
+
+    public bool rollback() {
+        bool restored = true;
+        for (int index = self.files.size() - 1; index >= 0; index--) {
+            restored = self.files.get(index).rollback() && restored;
+        }
+        for (int index = self.removals.size() - 1; index >= 0; index--) {
+            restored = self.removals.get(index).rollback() && restored;
+        }
+        if (!restored) { self.error = self.error + "; rollback incomplete"; }
+        return restored;
+    }
+}
+
+class SteamInputAtomicFile {
+    class bool replaceBytes(string destination, Bytes content) {
+        string parentPath = PathTools.dirname(destination);
+        if (!SteamInputInstallPolicy.realDirectory(parentPath)
+                || content.length() <= 0) {
+            return false;
+        }
+        SteamInputTransactionFile file = SteamInputTransactionFile(
+            destination, content);
+        if (!file.stage(0, false) || !file.publish()) {
+            file.rollback();
+            return false;
+        }
+        return file.commit();
+    }
+
+    class bool replaceText(string destination, string content) {
+        return SteamInputAtomicFile.replaceBytes(
+            destination, Bytes.fromString(content));
+    }
+}

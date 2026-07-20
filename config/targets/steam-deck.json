@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "id": "steam-deck",
+  "platform": "linux",
+  "nix_systems": [
+    "x86_64-linux"
+  ],
+  "deployment_target": true,
+  "backends": [
+    "bwrap"
+  ],
+  "artifact": "appimage",
+  "input": "input/steam-deck",
+  "validation": {
+    "kind": "physical",
+    "harness": "tests/targets/steamdeck",
+    "viewport": {
+      "width": 1280,
+      "height": 800
+    },
+    "must_complete_before": [
+      "bazzite"
+    ]
+  }
+}

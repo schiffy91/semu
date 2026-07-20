@@ -1,0 +1,126 @@
+{
+  "schema_version": 1,
+  "name": "Sony PlayStation",
+  "aliases": [
+    "playstation",
+    "ps1"
+  ],
+  "es_de": {
+    "platforms": [
+      "psx"
+    ],
+    "theme": "psx"
+  },
+  "rom": {
+    "dir": "psx",
+    "extensions": [
+      ".bin",
+      ".ccd",
+      ".chd",
+      ".cue",
+      ".ecm",
+      ".exe",
+      ".img",
+      ".iso",
+      ".m3u",
+      ".pbp",
+      ".psexe",
+      ".toc",
+      ".7z",
+      ".zip"
+    ]
+  },
+  "verification": {
+    "rom_descriptors": [
+      "Mr. Driller (USA).m3u/Mr. Driller (USA).m3u",
+      "PaRappa the Rapper (USA) (En,Fr,De,Es,It).m3u/PaRappa the Rapper (USA) (En,Fr,De,Es,It).m3u"
+    ],
+    "capture_frame": 360
+  },
+  "emulators": [
+    {
+      "emulator": "retroarch",
+      "label": "Beetle PSX",
+      "label_aliases": [
+        "SwanStation"
+      ],
+      "core": "mednafen_psx",
+      "platforms": [
+        "linux"
+      ]
+    },
+    {
+      "emulator": "retroarch",
+      "label": "Beetle PSX HW",
+      "label_aliases": [
+        "SwanStation"
+      ],
+      "core": "mednafen_psx_hw",
+      "platforms": [
+        "macos"
+      ]
+    }
+  ],
+  "bios": {
+    "required": true,
+    "match": "all",
+    "files": [
+      {
+        "name": "scph5500.bin"
+      },
+      {
+        "name": "scph5501.bin"
+      },
+      {
+        "name": "scph5502.bin"
+      }
+    ],
+    "dir": "bios"
+  },
+  "display": {
+    "scaling": {
+      "mode": "integer_preferred",
+      "basis": "native_game_surface",
+      "fit": "contain",
+      "fallback": "fractional_downscale"
+    },
+    "screens": [
+      {
+        "id": "main",
+        "native": {
+          "w": 320,
+          "h": 240
+        }
+      }
+    ],
+    "aspect": {
+      "w": 4,
+      "h": 3
+    },
+    "widescreen": {
+      "aspect": {
+        "w": 16,
+        "h": 9
+      },
+      "detect": "emulator_reported_content_aspect",
+      "fallback": "default_aspect",
+      "switch_at": "frame_boundary"
+    }
+  },
+  "render": {
+    "style": "console",
+    "asset_profile": "crt4x3",
+    "priority": "game",
+    "reflect": 0.18,
+    "corner_radius": 0.045,
+    "curvature": 0.04,
+    "glow": 0.18,
+    "bloom": 0.2,
+    "vignette": 0.22
+  },
+  "doc": {
+    "hardware": "consumer CRT over composite/S-Video",
+    "intent": "Preserve wobble/softness instead of HD-cleaning the output.",
+    "bios": "Beetle PSX expects user-supplied PlayStation BIOS dumps."
+  }
+}

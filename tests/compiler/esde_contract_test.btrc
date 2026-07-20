@@ -1,0 +1,500 @@
+// esde_contract_test.btrc - compiler selection, XML, and isolated install proof.
+
+import std.{fs, json, process, strings, vector}
+import ../../src/compiler/checker.btrc
+import ../../src/compiler/model.btrc
+import ../../src/compiler/parser.btrc
+import ../../src/compiler/resolver.btrc
+import ../../src/generators/appimage/esde_startup.btrc
+import ../../src/generators/esde.btrc
+import ../../src/generators/esde_runtime.btrc
+import ../../src/generators/settings.btrc
+
+class EsDeContractTest {
+    class int fail(string message) {
+        print("  FAIL es-de: " + message);
+        return 1;
+    }
+
+    class bool validXml(string file) {
+        UnixShell shell = UnixShell();
+        ExecResult available = shell.run("command -v xmllint",
+            CommandOutput.collect(), CommandOutput.combine());
+        if (available.code != 0) { return false; }
+        ExecResult result = shell.run(
+            "xmllint --noout " + ShellWords.quote(file),
+            CommandOutput.collect(), CommandOutput.combine());
+        return result.code == 0;
+    }
+
+    class JsonValue section(JsonValue sections, string identifier) {
+        if (!sections.isArray()) { return JsonValue.makeNull(); }
+        for (int index = 0; index < sections.size(); index++) {
+            JsonValue candidate = sections.at(index);
+            if (candidate.get("id").isString()
+                    && candidate.get("id").asString().equals(identifier)) {
+                return candidate;
+            }
+            JsonValue nested = EsDeContractTest.section(
+                candidate.get("sections"), identifier);
+            if (!nested.isNull()) { return nested; }
+        }
+        return JsonValue.makeNull();
+    }
+
+    class bool containsArray(JsonValue values, JsonValue expected) {
+        if (!values.isArray() || !expected.isArray()) { return false; }
+        for (int index = 0; index < values.size(); index++) {
+            if (values.at(index).stringify().equals(expected.stringify())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    class bool containsCommand(JsonValue values, JsonValue expected) {
+        if (!values.isArray() || !expected.isObject()
+                || !expected.get("id").isString()
+                || !expected.get("label").isString()
+                || !expected.get("argv").isArray()) {
+            return false;
+        }
+        for (int index = 0; index < values.size(); index++) {
+            JsonValue candidate = values.at(index);
+            if (candidate.get("id").isString()
+                    && candidate.get("id").asString().equals(
+                        expected.get("id").asString())
+                    && candidate.get("label").isString()
+                    && candidate.get("label").asString().equals(
+                        expected.get("label").asString())
+                    && candidate.get("argv").isArray()
+                    && candidate.get("argv").stringify().equals(
+                        expected.get("argv").stringify())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    class bool settingsProtocolV2(string project, string semuHome,
+                                  int expectedSystemCount) {
+        SemuConfigStore store = SemuConfigStore(project, semuHome);
+        SettingsUiResult rendered = SettingsUiProtocol.render(store, "linux");
+        JsonValue document = JsonValue.parse(rendered.document);
+        JsonValue sections = document.get("sections");
+        JsonValue commands = document.get("commands");
+        JsonValue systemMenu = EsDeContractTest.section(
+            sections, "system-overrides");
+        JsonValue syncPage = EsDeContractTest.section(sections, "sync");
+        JsonValue manifest = JsonValue.parse(SettingsEsDeGenerator.document(
+            store.definition(), "linux",
+            "/home/deck/ES-DE/settings/semu/bin/semu"));
+        JsonValue allowed = manifest.get("entry").get("actions").get("commands");
+        if (!rendered.ok || !document.isObject()
+                || !document.get("schema_version").isInt()
+                || document.get("schema_version").asInt() != 2
+                || !document.get("protocol").isString()
+                || !document.get("protocol").asString()
+                    .equals("semu-settings-v2")
+                || !sections.isArray() || sections.size() == 0
+                || sections.size() > 32 || !commands.isArray()
+                || commands.size() == 0 || commands.size() > 32
+                || !systemMenu.get("kind").isString()
+                || !systemMenu.get("kind").asString().equals("menu")
+                || !systemMenu.get("sections").isArray()
+                || systemMenu.get("sections").size() != expectedSystemCount
+                || !syncPage.get("kind").isString()
+                || !syncPage.get("kind").asString().equals("page")
+                || !syncPage.get("commands").isArray()
+                || syncPage.get("commands").size() != commands.size()
+                || !manifest.get("schema_version").isInt()
+                || manifest.get("schema_version").asInt() != 2
+                || !manifest.get("entry").get("protocol").isString()
+                || !manifest.get("entry").get("protocol").asString()
+                    .equals("semu-settings-v2")
+                || !allowed.isArray() || allowed.size() != commands.size()) {
+            return false;
+        }
+        for (int index = 0; index < commands.size(); index++) {
+            JsonValue command = commands.at(index);
+            if (!command.get("argv").isArray()
+                    || !EsDeContractTest.containsArray(
+                        allowed, command.get("argv"))
+                    || !EsDeContractTest.containsCommand(
+                        syncPage.get("commands"), command)) {
+                return false;
+            }
+        }
+        for (int index = 0;
+             index < systemMenu.get("sections").size(); index++) {
+            JsonValue page = systemMenu.get("sections").at(index);
+            if (!page.get("kind").isString()
+                    || !page.get("kind").asString().equals("page")
+                    || !page.get("fields").isArray()
+                    || page.get("fields").size() == 0
+                    || page.get("fields").size() > 32) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    class JsonValue overrides(string romsRoot) {
+        JsonValue roots = JsonValue.makeObject();
+        roots.set("linux", JsonValue.makeString(romsRoot));
+        JsonValue paths = JsonValue.makeObject();
+        paths.set("roms_root", roots);
+
+        JsonValue displays = JsonValue.makeObject();
+        displays.set("linux", JsonValue.makeInt(2));
+        JsonValue ui = JsonValue.makeObject();
+        ui.set("theme", JsonValue.makeString("modern-es-de"));
+        ui.set("display_index", displays);
+
+        JsonValue result = JsonValue.makeObject();
+        result.set("paths", paths);
+        result.set("ui", ui);
+        return result;
+    }
+
+    class bool startupResources(string scratch) {
+        string appDir = PathTools.join(scratch, "splash-appdir");
+        string storeName = "00000000000000000000000000000000-es-de";
+        string storeRoot = "/nix/store/" + storeName;
+        string programData = storeRoot + "/share/es-de";
+        string splashPath = programData + "/resources/graphics/splash.svg";
+        string mappedSplash = PathTools.join(
+            appDir, splashPath.substring(1, splashPath.len() - 1));
+        string contractPath = PathTools.join(
+            appDir, "share/semu/es-de-build-contract.json");
+        if (FileSystem.mkdirp(PathTools.dirname(mappedSplash)) != 0
+                || FileSystem.mkdirp(PathTools.dirname(contractPath)) != 0
+                || !FileSystem.writeText(mappedSplash,
+                    "<svg><rect fill=\"#00A1B0\"/></svg>\n")) {
+            return false;
+        }
+        string digest = SemuInstallHost.sha256File(mappedSplash);
+        if (digest.isEmpty()) { return false; }
+
+        JsonValue splash = JsonValue.makeObject();
+        splash.set("logical_path", JsonValue.makeString(
+            ":/graphics/splash.svg"));
+        splash.set("package_path", JsonValue.makeString(splashPath));
+        splash.set("sha256", JsonValue.makeString(digest));
+        JsonValue contract = JsonValue.makeObject();
+        contract.set("schema_version", JsonValue.makeInt(2));
+        contract.set("source_revision", JsonValue.makeString(
+            "4f2830048ee002fee337cd7affea3d5333f8faf5"));
+        contract.set("source_sha256", JsonValue.makeString(
+            "sha256-poegMKtPtUbdUbAwVj6O+rh7bxou+Wc+IDS3TBHh2LU="));
+        contract.set("patch_sha256", JsonValue.makeString(
+            "0000000000000000000000000000000000000000000000000000000000000000"));
+        contract.set("settings_protocol", JsonValue.makeString(
+            "semu-settings-v2"));
+        contract.set("program_data_root", JsonValue.makeString(programData));
+        contract.set("splash", splash);
+        if (!FileSystem.writeText(contractPath, contract.stringify() + "\n")
+                || !SemuEsDeStartupContract.validate(appDir).isEmpty()) {
+            return false;
+        }
+
+        Vector<string> launch = SemuEsDeStartupContract.launchArguments(
+            "/nix/store/es-de/bin/es-de", "/home/deck/ES-DE", ["--debug"]);
+        bool exactLaunch = launch.size() == 4
+            && launch.get(0).equals("/nix/store/es-de/bin/es-de")
+            && launch.get(1).equals("--home")
+            && launch.get(2).equals("/home/deck/ES-DE")
+            && launch.get(3).equals("--debug")
+            && SemuEsDeStartupContract.launchArguments(
+                "/nix/store/es-de/bin/es-de", "/home/deck/ES-DE",
+                ["--no-splash"]).isEmpty()
+            && SemuEsDeStartupContract.launchArguments(
+                "/nix/store/es-de/bin/es-de", "/home/deck/ES-DE",
+                ["--home=/tmp/other"]).isEmpty();
+        if (!FileSystem.writeText(mappedSplash,
+                "<svg><rect fill=\"#000000\"/></svg>\n")) {
+            return false;
+        }
+        return exactLaunch
+            && !SemuEsDeStartupContract.validate(appDir).isEmpty();
+    }
+
+    class int run(string project) {
+        string scratch = FileSystem.tempDir("semu-esde-contract");
+        if (scratch.isEmpty()) {
+            return EsDeContractTest.fail("could not create scratch root");
+        }
+        string roms = PathTools.join(scratch, "external-roms-must-not-exist");
+        string semuHome = PathTools.join(scratch, "semu-home");
+        string output = PathTools.join(scratch, "generated");
+        string esDeHome = PathTools.join(scratch, "es-de-home");
+
+        SemuBuildRequest request = SemuBuildRequest();
+        request.operation = "configs";
+        request.target = "steam-deck";
+        request.projectRoot = project;
+        request.semuHome = semuHome;
+        request.outputRoot = output;
+        request.commandLineSettings = EsDeContractTest.overrides(roms);
+
+        CompilerDiagnostics diagnostics = CompilerDiagnostics();
+        SemuCompilerModel model = SemuCompilerParser.parse(
+            project, request.target, diagnostics);
+        SemuBuildPlan plan = SemuBuildResolver.resolve(
+            model, request, diagnostics);
+        SemuCompilerChecker.check(model, request, plan, diagnostics);
+        int failures = 0;
+        if (!diagnostics.ok()) {
+            failures += EsDeContractTest.fail(
+                "real Steam Deck compiler plan did not validate");
+        }
+
+        plan.systems = ["gb", "gc"];
+        plan.emulators = ["retroarch", "dolphin"];
+        string generated = SemuEsDeGenerator.emit(model, plan, diagnostics);
+        string systemsFile = PathTools.join(generated, "es_systems.xml");
+        string rulesFile = PathTools.join(generated, "es_find_rules.xml");
+        string systems = Path.readAll(systemsFile);
+        string rules = Path.readAll(rulesFile);
+
+        if (generated.isEmpty() || !diagnostics.ok()
+                || !EsDeContractTest.validXml(systemsFile)
+                || !EsDeContractTest.validXml(rulesFile)) {
+            failures += EsDeContractTest.fail(
+                "generated custom-system documents are not valid XML");
+        }
+        if (!systems.contains("<name>gb</name>")
+                || !systems.contains("<name>gc</name>")
+                || systems.contains("<name>gba</name>")
+                || systems.contains("<name>wii</name>")
+                || systems.contains("<name>n64</name>")) {
+            failures += EsDeContractTest.fail(
+                "build-plan system filtering was not exact");
+        }
+        if (!systems.contains(
+                "%EMULATOR_RETROARCH% --system gb --core gambatte --rom %ROM%")
+                || !systems.contains(
+                    "%EMULATOR_DOLPHIN% --system gc --rom %ROM%")
+                || systems.contains("%CORE_") || systems.contains(" -f ")
+                || systems.contains("--config")) {
+            failures += EsDeContractTest.fail(
+                "ES-DE commands are not the semantic launcher contract");
+        }
+        if (!systems.contains("label=\"Dolphin\"")
+                || !systems.contains("label=\"Dolphin (Standalone)\"")
+                || !systems.contains("<path>%ROMPATH%/gb</path>")
+                || !systems.contains(".gb .GB")) {
+            failures += EsDeContractTest.fail(
+                "parsed labels, aliases, ROM directory, or extensions were lost");
+        }
+        if (!rules.contains("<emulator name=\"RETROARCH\">")
+                || !rules.contains("<emulator name=\"DOLPHIN\">")
+                || rules.contains("PPSSPP") || rules.contains("corepath")) {
+            failures += EsDeContractTest.fail(
+                "find rules contain unselected or legacy core-path behavior");
+        }
+
+        string settingsFile = SemuEsDeRuntime.settingsFile(esDeHome);
+        FileSystem.mkdirp(PathTools.dirname(settingsFile));
+        FileSystem.writeText(settingsFile,
+            "<?xml version=\"1.0\"?>\n"
+            + "<string name=\"UnrelatedPreference\" value=\"preserve-me\" />\n"
+            + "<string name=\"ROMDirectory\" value=\"/old-library\" />\n"
+            + "<bool name=\"CreatePlaceholderSystemDirectories\" value=\"true\" />\n");
+        string installed = SemuEsDeRuntime.install(
+            model, plan, esDeHome, diagnostics);
+        string installedSystems = Path.readAll(PathTools.join(
+            installed, "es_systems.xml"));
+        string installedRules = Path.readAll(PathTools.join(
+            installed, "es_find_rules.xml"));
+        string settings = Path.readAll(settingsFile);
+        if (installed.isEmpty() || !diagnostics.ok()
+                || !installedSystems.equals(systems)
+                || !installedRules.equals(rules)) {
+            failures += EsDeContractTest.fail(
+                "isolated install did not preserve generated documents exactly");
+        }
+        if (!settings.contains(
+                "name=\"UnrelatedPreference\" value=\"preserve-me\"")
+                || !settings.contains("name=\"ROMDirectory\" value=\"" + roms + "\"")
+                || !settings.contains(
+                    "name=\"CreatePlaceholderSystemDirectories\" value=\"false\"")
+                || !settings.contains("name=\"Theme\" value=\"modern-es-de\"")
+                || !settings.contains("name=\"DisplayIndex\" value=\"2\"")
+                || settings.contains("/old-library")) {
+            failures += EsDeContractTest.fail(
+                "owned ES-DE settings were not narrowly merged");
+        }
+        if (settings.contains("ApplicationUpdaterFrequency")
+                || settings.contains("SaveGamelistsMode")
+                || settings.contains("CustomEventScripts")
+                || settings.contains("InputControllerType")
+                || settings.contains("StartupView")
+                || settings.contains("MediaDirectory")
+                || settings.contains("UserThemeDirectory")
+                || FileSystem.exists(roms)) {
+            failures += EsDeContractTest.fail(
+                "install changed unowned policy or touched the ROM root");
+        }
+        string invalidThemeHome = PathTools.join(scratch, "invalid-theme-home");
+        plan.settings.get("ui").set(
+            "theme", JsonValue.makeString("undeclared-theme"));
+        CompilerDiagnostics invalidThemeDiagnostics = CompilerDiagnostics();
+        string invalidThemeInstall = SemuEsDeRuntime.install(
+            model, plan, invalidThemeHome, invalidThemeDiagnostics);
+        plan.settings.get("ui").set(
+            "theme", JsonValue.makeString("modern-es-de"));
+        if (!invalidThemeInstall.isEmpty() || invalidThemeDiagnostics.ok()
+                || FileSystem.exists(invalidThemeHome)
+                || !SemuEsDeSettings.declaredChoice(
+                    model, "ui.theme", "modern-es-de")
+                    .equals("modern-es-de")
+                || !SemuEsDeSettings.declaredChoice(
+                    model, "ui.theme", "undeclared-theme").isEmpty()) {
+            failures += EsDeContractTest.fail(
+                "undeclared ES-DE theme reached generated native config");
+        }
+
+        string generatorSource = Path.readAll(PathTools.join(
+            project, "src/generators/esde.btrc"));
+        string runtimeSource = Path.readAll(PathTools.join(
+            project, "src/generators/esde_runtime.btrc"));
+        string settingsSource = Path.readAll(PathTools.join(
+            project, "src/generators/settings.btrc"));
+        string settingsPatch = Path.readAll(PathTools.join(
+            project, "packaging/esde/settings-menu.patch"));
+        string esDePackage = Path.readAll(PathTools.join(
+            project, "packaging/esde/package.nix"));
+        string appRuntime = Path.readAll(PathTools.join(
+            project, "src/generators/appimage/app_runtime.btrc"));
+        string acceptance = Path.readAll(PathTools.join(
+            project, "docs/acceptance-matrix.md"));
+        string productionGoal = Path.readAll(PathTools.join(
+            project, "docs/production-goal.md"));
+        bool nativeSystemIdentity = false;
+        for system in model.systems {
+            if (settingsPatch.contains("\"" + system.id + "\"")) {
+                nativeSystemIdentity = true;
+            }
+        }
+        if (generatorSource.contains("../semu/")
+                || runtimeSource.contains("../semu/")
+                || generatorSource.contains("PlatformRegistry")
+                || generatorSource.contains("EmulatorRegistry")
+                || systems.contains("semu-settings")
+                || systems.contains("SEMU SETTINGS")
+                || SettingsEsDeGenerator.validStableLauncher(
+                    "/home/deck/Semu-x86_64.AppImage")
+                || SettingsEsDeGenerator.validStableLauncher(
+                    "/home/deck/semu-x86_64.appimage")
+                || !SettingsEsDeGenerator.validStableLauncher(
+                    "/home/deck/Applications/Semu/bin/semu")
+                || SettingsEsDeGenerator.validStableLauncher(
+                    "${home}/Semu-x86_64.AppImage")
+                || SettingsEsDeGenerator.validStableLauncher(
+                    "/tmp/.mount_Semu/Semu-x86_64.AppImage")
+                || !SettingsEsDeGenerator.validMenuLauncher(
+                    "/home/deck/ES-DE/settings/semu/bin/semu")
+                || SettingsEsDeGenerator.validMenuLauncher(
+                    "/home/deck/Semu-x86_64.AppImage")
+                || !settingsSource.contains("runnerRelativePath")
+                || settingsSource.contains("APPIMAGE_EXTRACT_AND_RUN")
+                || Strings.split(settingsPatch,
+                    "addEntry(GuiSemuSettings::menuLabel()").size() != 2
+                || !settingsPatch.contains("const bool installed")
+                || settingsPatch.contains("const bool appImage")
+                || !settingsPatch.contains("document.MemberCount() != 2")
+                || !settingsPatch.contains("entry.MemberCount() != 5")
+                || !settingsPatch.contains("launcher.find(\"${\")")
+                || !settingsPatch.contains("lstat(launcher.c_str(), &fileStatus) == 0")
+                || !settingsPatch.contains("S_ISREG(fileStatus.st_mode)")
+                || !settingsPatch.contains("MAX_ROOT_ROW_COUNT {32}")
+                || !settingsPatch.contains("MAX_SECTION_ROW_COUNT {32}")
+                || !settingsPatch.contains("MAX_MENU_SECTION_COUNT {32}")
+                || !settingsPatch.contains("class GuiSemuSettingsPage")
+                || !settingsPatch.contains("class GuiSemuSettingsMenu")
+                || !settingsPatch.contains(
+                    "new GuiSemuSettingsPage(section, pending, manifest)")
+                || !settingsPatch.contains(
+                    "new GuiSemuSettingsMenu(section, pending, manifest)")
+                || !settingsPatch.contains(
+                    "document[\"sections\"].Size() > MAX_ROOT_ROW_COUNT")
+                || !settingsPatch.contains("readUiPage(")
+                || !settingsPatch.contains("readUiSection(")
+                || !settingsPatch.contains("manifest.allowedCommands")
+                || !settingsPatch.contains("declaredCommand(commandRegistry, command)")
+                || !settingsPatch.contains(
+                    "protocol.applyFlag != \"--apply\"")
+                || !settingsPatch.contains(
+                    "index + 1 == pending->changes.size()")
+                || !settingsPatch.contains("semu-settings-v2")
+                || settingsPatch.contains("semu-settings-v1")
+                || !esDePackage.contains(
+                    "settingsProtocol = \"semu-settings-v2\";")
+                || !EsDeContractTest.settingsProtocolV2(
+                    project, PathTools.join(scratch, "protocol-home"),
+                    model.systems.size())
+                || settingsPatch.contains("MAX_UI_ITEM_COUNT")
+                || settingsPatch.contains("validField(")
+                || nativeSystemIdentity
+                || !esDePackage.contains("patches = [ settingsPatch ];")
+                || !esDePackage.contains("doInstallCheck = true;")
+                || !esDePackage.contains(
+                    "$out/share/es-de/resources/graphics/splash.svg")
+                || !esDePackage.contains("#00A1B0")
+                || !appRuntime.contains(
+                    "SemuEsDeStartupContract.launchArguments")
+                || !acceptance.contains("Visible nonblack splash")
+                || !productionGoal.contains(
+                    "ES-DE must show a visible nonblack splash")
+                || !EsDeContractTest.startupResources(scratch)
+                || settingsPatch.contains("APPIMAGE_EXTRACT_AND_RUN")
+                || settingsPatch.contains("fusermount")) {
+            failures += EsDeContractTest.fail(
+                "native settings hierarchy or startup-resource contract regressed");
+        }
+
+        string outsideEsDe = PathTools.join(scratch, "outside-esde");
+        string linkedEsDe = PathTools.join(scratch, "linked-esde");
+        FileSystem.mkdirp(outsideEsDe);
+        if (FileSystem.symlink(outsideEsDe, linkedEsDe) != 0) {
+            failures += EsDeContractTest.fail(
+                "could not create ES-DE root symlink fixture");
+        } else {
+            CompilerDiagnostics linkedDiagnostics = CompilerDiagnostics();
+            string linkedInstall = SemuEsDeRuntime.install(
+                model, plan, PathTools.join(linkedEsDe, "not-created"),
+                linkedDiagnostics);
+            if (!linkedInstall.isEmpty() || linkedDiagnostics.ok()
+                    || FileSystem.exists(PathTools.join(
+                        outsideEsDe, "not-created"))) {
+                failures += EsDeContractTest.fail(
+                    "non-existent ES-DE home followed a symlink ancestor");
+            }
+        }
+
+        string nestedEsDe = PathTools.join(scratch, "nested-esde");
+        FileSystem.mkdirp(nestedEsDe);
+        if (FileSystem.symlink(outsideEsDe, PathTools.join(
+                nestedEsDe, "custom_systems")) != 0) {
+            failures += EsDeContractTest.fail(
+                "could not create ES-DE nested symlink fixture");
+        } else {
+            CompilerDiagnostics nestedDiagnostics = CompilerDiagnostics();
+            string nestedInstall = SemuEsDeRuntime.install(
+                model, plan, nestedEsDe, nestedDiagnostics);
+            if (!nestedInstall.isEmpty() || nestedDiagnostics.ok()
+                    || FileSystem.isFile(PathTools.join(
+                        outsideEsDe, "es_systems.xml"))) {
+                failures += EsDeContractTest.fail(
+                    "ES-DE install followed a symlinked output parent");
+            }
+        }
+
+        FileSystem.removeRecursive(scratch);
+        if (failures == 0) {
+            print("es-de contract: semantic XML + isolated install valid");
+        }
+        return failures;
+    }
+}

@@ -1,0 +1,698 @@
+// steam_input_contract_test.btrc - declarative Neptune VDF and install proof.
+
+import std.{fs, io, json, platform, vector}
+import ../../src/generators/steam_input.btrc
+
+class SteamInputContractTest {
+    class int fail(string message) {
+        print("  FAIL steam-input: " + message);
+        return 1;
+    }
+
+    class bool sameBytes(string leftPath, string rightPath) {
+        File left = File(leftPath, "rb");
+        File right = File(rightPath, "rb");
+        if (!left.ok() || !right.ok()) { return false; }
+        var leftBytes = left.readBytes();
+        var rightBytes = right.readBytes();
+        left.close();
+        right.close();
+        return leftBytes.equals(rightBytes);
+    }
+
+    class bool copyDefinitionAssets(SteamInputDefinition definition,
+                                    string directory) {
+        string icons = PathTools.join(directory, definition.iconSourceDirectory);
+        if (UnixFileSystem.mkdirp(icons) != 0) { return false; }
+        string source = PathTools.join(PathTools.dirname(definition.file),
+            definition.iconSourceDirectory);
+        for icon in definition.icons {
+            if (!SteamInputFiles.copyPng(PathTools.join(source, icon),
+                    PathTools.join(icons, icon))) { return false; }
+        }
+        return true;
+    }
+
+    class bool hasError(SteamInputResult result, string fragment) {
+        for error in result.errors {
+            if (error.contains(fragment)) { return true; }
+        }
+        return false;
+    }
+
+    class bool transactionResidue(SteamInputInstallLayout layout) {
+        for directory in [layout.templatesDirectory, layout.iconsDirectory,
+                           layout.applicationRoot,
+                           layout.applicationDirectory] {
+            if (!FileSystem.isDir(directory)) { continue; }
+            Directory entries = Directory(directory);
+            for entry in entries.entriesBounded(256) {
+                if (entry.contains(".semu-stage.")
+                        || entry.contains(".semu-backup.")
+                        || entry.startsWith(".semu-deprecated-")) {
+                    return true;
+                }
+            }
+            if (entries.failed()) { return true; }
+        }
+        return false;
+    }
+
+    class Vector<string> installedFiles(SteamInputDefinition definition,
+                                        SteamInputInstallLayout layout) {
+        Vector<string> files = [];
+        for template in definition.templates {
+            files.push(PathTools.join(
+                layout.templatesDirectory, template.output));
+        }
+        for icon in definition.icons {
+            files.push(PathTools.join(layout.iconsDirectory, icon));
+        }
+        files.push(PathTools.join(layout.applicationDirectory,
+            definition.applicationControllerFile));
+        return files;
+    }
+
+    class bool seedSnapshots(SteamInputDefinition definition,
+                             SteamInputInstallLayout layout,
+                             string snapshots) {
+        if (UnixFileSystem.mkdirp(snapshots) != 0) { return false; }
+        Vector<string> installed = SteamInputContractTest.installedFiles(
+            definition, layout);
+        for (int index = 0; index < installed.size(); index++) {
+            string content = "preexisting-steam-input-" + f"{index}" + "\n";
+            if (!FileSystem.writeText(installed.get(index), content)
+                    || !FileSystem.writeText(
+                        PathTools.join(snapshots, f"{index}"), content)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    class bool snapshotsRestored(SteamInputDefinition definition,
+                                 SteamInputInstallLayout layout,
+                                 string snapshots) {
+        Vector<string> installed = SteamInputContractTest.installedFiles(
+            definition, layout);
+        for (int index = 0; index < installed.size(); index++) {
+            if (!SteamInputContractTest.sameBytes(installed.get(index),
+                    PathTools.join(snapshots, f"{index}"))) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    class int unsafeInstallRoots(string project, string config,
+                                 string emitted,
+                                 SteamInputDefinition definition,
+                                 string scratch) {
+        int failures = 0;
+        string home = UnixFileSystem.realPath(Environment.get("HOME", ""));
+        string repo = UnixFileSystem.realPath(project);
+        for root in ["/", home, repo,
+                      PathTools.join(scratch, "traversal/../Steam")] {
+            SteamInputInstallLayout layout = SteamInputInstallPolicy.layout(
+                root, "123", definition.applicationConfigId);
+            SteamInputResult result = SteamInputGenerator.installAt(
+                config, emitted, root, layout);
+            if (result.ok() || !SteamInputContractTest.hasError(
+                    result, "exact owned-root layout")) {
+                failures += SteamInputContractTest.fail(
+                    "unsafe owned Steam root was accepted: " + root);
+            }
+        }
+
+        string symlinkTarget = PathTools.join(scratch, "symlink-target");
+        string realSteam = PathTools.join(symlinkTarget, "Steam");
+        string symlinkParent = PathTools.join(scratch, "symlink-parent");
+        UnixFileSystem.mkdirp(PathTools.join(realSteam, "userdata/123"));
+        if (FileSystem.symlink(symlinkTarget, symlinkParent) != 0) {
+            failures += SteamInputContractTest.fail(
+                "could not create symlink-parent fixture");
+        } else {
+            string linkedSteam = PathTools.join(symlinkParent, "Steam");
+            SteamInputInstallLayout linked = SteamInputInstallPolicy.layout(
+                linkedSteam, "123", definition.applicationConfigId);
+            SteamInputResult result = SteamInputGenerator.installAt(
+                config, emitted, linkedSteam, linked);
+            if (result.ok()) {
+                failures += SteamInputContractTest.fail(
+                    "Steam root with a symlink parent was accepted");
+            }
+        }
+
+        string validRoot = PathTools.join(scratch, "owned-root-negative");
+        UnixFileSystem.mkdirp(PathTools.join(validRoot, "userdata/123"));
+        SteamInputInstallLayout arbitrary = SteamInputInstallPolicy.layout(
+            validRoot, "123", definition.applicationConfigId);
+        arbitrary.applicationDirectory = PathTools.join(
+            scratch, "arbitrary-matching-basename/"
+                + definition.applicationConfigId);
+        SteamInputResult arbitraryResult = SteamInputGenerator.installAt(
+            config, emitted, validRoot, arbitrary);
+        if (arbitraryResult.ok()) {
+            failures += SteamInputContractTest.fail(
+                "arbitrary application path with matching basename was accepted");
+        }
+        SteamInputInstallLayout arbitraryTemplates =
+            SteamInputInstallPolicy.layout(
+                validRoot, "123", definition.applicationConfigId);
+        arbitraryTemplates.templatesDirectory = PathTools.join(
+            scratch, "arbitrary-templates");
+        SteamInputInstallLayout arbitraryIcons = SteamInputInstallPolicy.layout(
+            validRoot, "123", definition.applicationConfigId);
+        arbitraryIcons.iconsDirectory = PathTools.join(
+            scratch, "arbitrary-icons");
+        if (SteamInputGenerator.installAt(config, emitted, validRoot,
+                arbitraryTemplates).ok()
+                || SteamInputGenerator.installAt(config, emitted, validRoot,
+                    arbitraryIcons).ok()) {
+            failures += SteamInputContractTest.fail(
+                "independent template or icon destination was accepted");
+        }
+        return failures;
+    }
+
+    class int transactionFailures(string config, string emitted,
+                                  SteamInputDefinition definition,
+                                  SteamInputInstallLayout layout,
+                                  string deprecated, string scratch) {
+        int failures = 0;
+        string firstTemplate = PathTools.join(
+            layout.templatesDirectory, definition.templates.get(0).output);
+        string interruptedSnapshot = PathTools.join(
+            scratch, "interrupted-template.snapshot");
+        FileSystem.writeText(firstTemplate, "before-interrupted-write\n");
+        FileSystem.writeText(interruptedSnapshot, "before-interrupted-write\n");
+        UnixFileSystem.mkdirp(PathTools.dirname(deprecated));
+        FileSystem.writeText(deprecated, "deprecated-before-interrupt\n");
+        SteamInputResult interrupted = SteamInputGenerator.installAtWithOptions(
+            config, emitted, layout.ownedRoot, layout,
+            SteamInputInstallOptions.interruptedWrite(0));
+        if (interrupted.ok()
+                || !SteamInputContractTest.hasError(
+                    interrupted, "byte verification")
+                || !SteamInputContractTest.sameBytes(
+                    firstTemplate, interruptedSnapshot)
+                || !FileSystem.isFile(deprecated)
+                || SteamInputContractTest.transactionResidue(layout)) {
+            failures += SteamInputContractTest.fail(
+                "interrupted staged write changed visible Steam state");
+        }
+
+        string snapshots = PathTools.join(scratch, "rollback-snapshots");
+        if (!SteamInputContractTest.seedSnapshots(
+                definition, layout, snapshots)) {
+            failures += SteamInputContractTest.fail(
+                "could not prepare rollback snapshots");
+            return failures;
+        }
+        FileSystem.writeText(deprecated, "deprecated-before-rollback\n");
+        SteamInputResult rollback = SteamInputGenerator.installAtWithOptions(
+            config, emitted, layout.ownedRoot, layout,
+            SteamInputInstallOptions.rollbackAfter(1));
+        if (rollback.ok()
+                || !SteamInputContractTest.hasError(
+                    rollback, "publication interruption")
+                || !SteamInputContractTest.snapshotsRestored(
+                    definition, layout, snapshots)
+                || !FileSystem.readText(deprecated).equals(
+                    "deprecated-before-rollback\n")
+                || SteamInputContractTest.transactionResidue(layout)) {
+            failures += SteamInputContractTest.fail(
+                "publication failure did not roll back files and cleanup");
+        }
+        return failures;
+    }
+
+    class bool line(JsonValue lines, string expected) {
+        if (!lines.isArray()) { return false; }
+        for (int index = 0; index < lines.size(); index++) {
+            if (lines.at(index).isString()
+                    && lines.at(index).asString().equals(expected)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    class bool stringValue(JsonValue values, string expected) {
+        if (!values.isArray()) { return false; }
+        for (int index = 0; index < values.size(); index++) {
+            if (values.at(index).isString()
+                    && values.at(index).asString().equals(expected)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    class bool retroarchProfile(JsonValue profile, JsonValue gameplay,
+                                JsonValue labels) {
+        if (!profile.isObject() || !profile.get("device_name").isString()) {
+            return false;
+        }
+        string device = profile.get("device_name").asString();
+        JsonValue lines = profile.get("lines");
+        if (!SteamInputContractTest.line(lines, "input_driver = \"sdl2\"")
+                || !SteamInputContractTest.line(lines,
+                    "input_device = \"" + device + "\"")
+                || !SteamInputContractTest.line(lines,
+                    "input_device_display_name = \"Steam Virtual Gamepad\"")
+                || !SteamInputContractTest.line(lines,
+                    "input_enable_hotkey_btn = \"nul\"")) {
+            return false;
+        }
+        for key in gameplay.keys() {
+            if (!gameplay.get(key).isString()
+                    || !SteamInputContractTest.line(lines,
+                        key + " = \"" + gameplay.get(key).asString() + "\"")) {
+                return false;
+            }
+        }
+        for key in labels.keys() {
+            if (!labels.get(key).isString()
+                    || !SteamInputContractTest.line(lines,
+                        key + " = \"" + labels.get(key).asString() + "\"")) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    class int retroarchAutoconfig(string project) {
+        string path = PathTools.join(
+            project, "config/input/steam-deck/retroarch_autoconfig.json");
+        string text = FileSystem.readText(path);
+        JsonValue root = JsonValue.readFile(path);
+        if (root.isError() || !root.isObject()) {
+            return SteamInputContractTest.fail(
+                "RetroArch autoconfig declaration is not a JSON object");
+        }
+        JsonValue contract = root.get("contract");
+        JsonValue identity = contract.get("identity");
+        JsonValue names = identity.get("accepted_device_names");
+        JsonValue profiles = root.get("profiles");
+        if (!contract.isObject() || !identity.isObject()
+                || identity.has("reservation")
+                || text.contains("exclusive player-one reservation")
+                || names.size() != 2
+                || !SteamInputContractTest.stringValue(
+                    names, "Steam Virtual Gamepad")
+                || !SteamInputContractTest.stringValue(
+                    names, "Microsoft X-Box 360 pad 0")
+                || !profiles.isArray() || profiles.size() != 2
+                || !SteamInputContractTest.retroarchProfile(profiles.at(0),
+                    contract.get("gameplay_mapping"),
+                    contract.get("gameplay_labels"))
+                || !SteamInputContractTest.retroarchProfile(profiles.at(1),
+                    contract.get("gameplay_mapping"),
+                    contract.get("gameplay_labels"))) {
+            return SteamInputContractTest.fail(
+                "RetroArch SDL index-0/autoconfig declaration is stale or incomplete");
+        }
+        return 0;
+    }
+
+    class int run(string project) {
+        string config = PathTools.join(
+            project, "config/input/steam-deck/steam_input.json");
+        string scratch = FileSystem.tempDir("semu-steam-input-contract");
+        if (scratch.isEmpty()) {
+            return SteamInputContractTest.fail("could not create scratch root");
+        }
+        string emitted = PathTools.join(scratch, "emitted");
+        string ownedSteam = PathTools.join(scratch, "owned/Steam");
+        UnixFileSystem.mkdirp(PathTools.join(ownedSteam, "userdata/123"));
+        SteamInputInstallLayout installLayout = SteamInputInstallPolicy.layout(
+            ownedSteam, "123", "semu");
+        string installedTemplates = installLayout.templatesDirectory;
+        string installedIcons = installLayout.iconsDirectory;
+        string applicationRoot = installLayout.applicationRoot;
+        string application = installLayout.applicationDirectory;
+        string deprecated = PathTools.join(applicationRoot,
+            "semu-x8664appimage/old.vdf");
+        string undeclared = PathTools.join(applicationRoot,
+            "unrelated-shortcut/keep.vdf");
+        UnixFileSystem.mkdirp(PathTools.dirname(deprecated));
+        FileSystem.writeText(deprecated, "obsolete\n");
+        UnixFileSystem.mkdirp(PathTools.dirname(undeclared));
+        FileSystem.writeText(undeclared, "must-remain\n");
+        int failures = 0;
+        failures += SteamInputContractTest.retroarchAutoconfig(project);
+
+        SteamInputResult generated = SteamInputGenerator.emit(config, emitted);
+        if (!generated.ok()) {
+            for error in generated.errors { print("  " + error); }
+            failures += SteamInputContractTest.fail("real config did not generate");
+        }
+
+        string fullPath = PathTools.join(emitted, "neptune-full.vdf");
+        string simplePath = PathTools.join(emitted, "neptune-simple.vdf");
+        string supervisorEnvironment = FileSystem.readText(PathTools.join(
+            emitted, "semu-input-supervisor.env"));
+        string vdf = FileSystem.readText(fullPath);
+        Vector<string> semanticBindings = [
+            "Save State, semu-save.png #232323 #FFFFFF",
+            "Load State, semu-load.png #232323 #FFFFFF",
+            "Quit Emulator, semu-quit.png #232323 #FFFFFF",
+            "Open Menu, semu-menu.png #232323 #FFFFFF",
+            "Take Screenshot, semu-screenshot.png #232323 #FFFFFF",
+            "Escape, semu-back.png #232323 #FFFFFF",
+            "Menu Up, semu-up.png #232323 #FFFFFF",
+            "Menu Down, semu-down.png #232323 #FFFFFF",
+            "Menu Confirm, semu-confirm.png #232323 #FFFFFF",
+            "Menu Back, semu-back.png #232323 #FFFFFF",
+            "Wiimote, semu-wiimote.png #232323 #FFFFFF",
+            "Wiimote + Nunchuk, semu-wiimote-nunchuk.png #232323 #FFFFFF",
+            "Classic Controller, semu-classic-controller.png #232323 #FFFFFF",
+            "GameCube Controller, semu-gamecube-controller.png #232323 #FFFFFF"
+        ];
+        for binding in semanticBindings {
+            if (!vdf.contains(binding)) {
+                failures += SteamInputContractTest.fail(
+                    "missing semantic radial binding: " + binding);
+            }
+        }
+        if (!FileSystem.isFile(fullPath) || !FileSystem.isFile(simplePath)
+                || !vdf.contains("\"controller_type\"\t\t\"controller_neptune\"")
+                || !vdf.contains("\"touch_menu_show_labels\" \"0\"")
+                || !vdf.contains("Save State, semu-save.png #232323 #FFFFFF")
+                || !vdf.contains("Load State, semu-load.png #232323 #FFFFFF")
+                || !vdf.contains("Open Menu, semu-menu.png #232323 #FFFFFF")
+                || !vdf.contains("Quit Emulator, semu-quit.png #232323 #FFFFFF")
+                || vdf.contains(", Ctrl,") || vdf.contains(", Control,")
+                || vdf.contains(", LEFT_CONTROL,")) {
+            failures += SteamInputContractTest.fail(
+                "quick radial lacks semantic custom icons or uses modifier placeholders");
+        }
+        if (!vdf.contains("xinput_button A")
+                || !vdf.contains("xinput_button B")
+                || !vdf.contains("xinput_button X")
+                || !vdf.contains("xinput_button Y")
+                || !vdf.contains("\"id\" \"0\" \"name\" \"Default\"")
+                || !vdf.contains("\"0\" \"button_diamond active\"")
+                || !vdf.contains("\"1\" \"dpad active\"")
+                || !vdf.contains("\"2\" \"joystick active\"")
+                || !vdf.contains("\"3\" \"right_joystick active\"")
+                || !vdf.contains("\"Long_Press\" { \"bindings\" { \"binding\" "
+                    + "\"controller_action CHANGE_PRESET 2 0 0, Hotkey, , \"")
+                || !vdf.contains("\"release\" { \"bindings\" { \"binding\" "
+                    + "\"controller_action CHANGE_PRESET 1 0 0, , \"")) {
+            failures += SteamInputContractTest.fail(
+                "native gamepad output is not isolated from held hotkey modes");
+        }
+        if (!vdf.contains("xinput_button SELECT")
+                || !vdf.contains("xinput_button START")
+                || !vdf.contains("Start+Select quit")
+                || !supervisorEnvironment.contains(
+                        "SEMU_INPUT_QUIT_BUTTONS=select,start\nSEMU_QUIT_CHORD_WINDOW_MS=250")
+                || supervisorEnvironment.contains("SEMU_INPUT_QUIT_WINDOW_MS")
+                || !supervisorEnvironment.contains("6:ctrl:s")
+                || !supervisorEnvironment.contains("7:ctrl:a")
+                || !supervisorEnvironment.contains("8:ctrl:q")
+                || !supervisorEnvironment.contains(
+                    "SEMU_INPUT_EXTENSION_ACTIONS=wii.controller.wiimote,"
+                    + "wii.controller.nunchuk,wii.controller.classic,"
+                    + "wii.controller.gamecube\n")
+                || !supervisorEnvironment.contains("11:ctrl+shift:f9")
+                || !supervisorEnvironment.contains("12:ctrl+shift:f10")
+                || !supervisorEnvironment.contains("13:ctrl+shift:f11")
+                || !supervisorEnvironment.contains("14:ctrl+shift:f12")
+                || supervisorEnvironment.contains("alt:f4")) {
+            failures += SteamInputContractTest.fail(
+                "Start+Select quit was not preserved in VDF and supervisor policy");
+        }
+        for actionId in ["wii.controller.wiimote", "wii.controller.nunchuk",
+                         "wii.controller.classic", "wii.controller.gamecube"] {
+            SteamInputAction action = generated.definition.action(actionId);
+            if (!action.supervisorChord.equals(action.chord)) {
+                failures += SteamInputContractTest.fail(
+                    "held controller-mode chord diverges between Steam and supervisor: "
+                    + actionId);
+            }
+        }
+        if (!vdf.contains(
+                "key_press LEFT_CONTROL, Quit Emulator, semu-quit.png")
+                || !vdf.contains(
+                    "xinput_button SELECT, Quit Emulator, semu-quit.png")
+                || !vdf.contains(
+                    "xinput_button START, Quit Emulator, semu-quit.png")
+                || vdf.contains("key_press LEFT_ALT, Quit Emulator")
+                || vdf.contains("key_press F4, Quit Emulator")
+                || vdf.contains("key_press ESCAPE, Quit Emulator")) {
+            failures += SteamInputContractTest.fail(
+                "quit actions do not converge on the declarative supervisor chord");
+        }
+        string saveMarkerFirst =
+            "key_press KEYPAD_0, Save State, semu-save.png #232323 #FFFFFF\" "
+            + "\"binding\" \"key_press LEFT_CONTROL, Save State";
+        string menuMarkerFirst =
+            "key_press KEYPAD_6, Open Menu, semu-menu.png #232323 #FFFFFF\" "
+            + "\"binding\" \"key_press LEFT_CONTROL, Open Menu";
+        if (!vdf.contains(saveMarkerFirst) || !vdf.contains(menuMarkerFirst)) {
+            failures += SteamInputContractTest.fail(
+                "radial evidence marker must precede its action chord");
+        }
+        if (!vdf.contains("Wii Controller Mode")
+                || !vdf.contains("Wiimote, semu-wiimote.png #232323 #FFFFFF")
+                || !vdf.contains(
+                    "Wiimote + Nunchuk, semu-wiimote-nunchuk.png #232323 #FFFFFF")
+                || !vdf.contains(
+                    "Classic Controller, semu-classic-controller.png #232323 #FFFFFF")
+                || !vdf.contains(
+                    "GameCube Controller, semu-gamecube-controller.png #232323 #FFFFFF")
+                || !vdf.contains("key_press F9") || !vdf.contains("key_press F10")
+                || !vdf.contains("key_press F11") || !vdf.contains("key_press F12")
+                || RendererActionJournal.systemRadial() != 3) {
+            failures += SteamInputContractTest.fail(
+                "Wii controller-mode radial is incomplete or not semantic");
+        }
+        SteamInputRadialLayer controllerModes =
+            generated.definition.systemLayer("wii_controller");
+        for (int index = 0; index < controllerModes.slots.size(); index++) {
+            string actionId = controllerModes.slots.get(index);
+            int code = SemuActions.code(actionId);
+            if (code != SemuActions.extensionBase() + index
+                    || !SemuActions.id(code).equals(actionId)
+                    || SemuActions.controllerModeSlot(code) != index) {
+                failures += SteamInputContractTest.fail(
+                    "declarative controller-mode order did not produce stable ABI slots");
+            }
+        }
+
+        SteamInputResult installed = SteamInputGenerator.installAt(
+            config, emitted, ownedSteam, installLayout);
+        if (!installed.ok()) {
+            for error in installed.errors { print("  " + error); }
+            failures += SteamInputContractTest.fail("isolated install failed");
+        }
+        for template in generated.definition.templates {
+            if (!SteamInputContractTest.sameBytes(
+                    PathTools.join(emitted, template.output),
+                    PathTools.join(installedTemplates, template.output))) {
+                failures += SteamInputContractTest.fail(
+                    "installed template differs: " + template.output);
+            }
+        }
+        for icon in generated.definition.icons {
+            if (!SteamInputContractTest.sameBytes(
+                    PathTools.join(emitted,
+                        generated.definition.iconOutputDirectory + "/" + icon),
+                    PathTools.join(installedIcons, icon))) {
+                failures += SteamInputContractTest.fail(
+                    "installed icon differs: " + icon);
+            }
+        }
+        if (!SteamInputContractTest.sameBytes(fullPath, PathTools.join(
+                application, "controller_neptune.vdf"))
+                || FileSystem.exists(PathTools.join(
+                    applicationRoot, "semu-x8664appimage"))
+                || !FileSystem.readText(undeclared).equals("must-remain\n")) {
+            failures += SteamInputContractTest.fail(
+                "default profile assignment or bounded stale-ID cleanup failed");
+        }
+        failures += SteamInputContractTest.unsafeInstallRoots(project, config,
+            emitted, generated.definition, scratch);
+        failures += SteamInputContractTest.transactionFailures(config, emitted,
+            generated.definition, installLayout, deprecated, scratch);
+
+        string invalidRoot = PathTools.join(scratch, "invalid-definition");
+        string invalidFile = PathTools.join(invalidRoot, "steam_input.json");
+        string definitionText = FileSystem.readText(config);
+        if (!SteamInputContractTest.copyDefinitionAssets(
+                generated.definition, invalidRoot)) {
+            failures += SteamInputContractTest.fail(
+                "could not prepare malformed-definition fixtures");
+        } else {
+            FileSystem.writeText(invalidFile, definitionText.replace(
+                "\"show_labels\": false", "\"show_labels\": true"));
+            SteamInputResult labels = SteamInputParser.parse(invalidFile);
+            if (labels.ok() || !SteamInputContractTest.hasError(
+                    labels, "radial.show_labels")) {
+                failures += SteamInputContractTest.fail(
+                    "visible keyboard-label fallback was not rejected");
+            }
+
+            FileSystem.writeText(invalidFile, definitionText.replace(
+                "\"window_ms\": 250", "\"window_ms\": 25"));
+            SteamInputResult window = SteamInputParser.parse(invalidFile);
+            if (window.ok() || !SteamInputContractTest.hasError(
+                    window, "50..1000 ms")) {
+                failures += SteamInputContractTest.fail(
+                    "out-of-contract quit window was not rejected");
+            }
+
+            FileSystem.writeText(invalidFile, definitionText.replace(
+                "\"Ctrl+S\"", "\"Ctrl+S,Injected\""));
+            SteamInputResult chord = SteamInputParser.parse(invalidFile);
+            if (chord.ok() || !SteamInputContractTest.hasError(
+                    chord, "safe key chord")) {
+                failures += SteamInputContractTest.fail(
+                    "unsafe VDF chord text was not rejected");
+            }
+
+            FileSystem.writeText(invalidFile, definitionText.replace(
+                "\"kp0\",", "\"unsupported\","));
+            SteamInputResult marker = SteamInputParser.parse(invalidFile);
+            if (marker.ok() || !SteamInputContractTest.hasError(
+                    marker, "unsupported marker")) {
+                failures += SteamInputContractTest.fail(
+                    "unsupported radial evidence marker was not rejected");
+            }
+
+            FileSystem.writeText(invalidFile, definitionText.replace(
+                "\"label\": \"Save State\"", "\"label\": \"Ctrl\""));
+            SteamInputResult icon = SteamInputParser.parse(invalidFile);
+            if (icon.ok() || !SteamInputContractTest.hasError(
+                    icon, "semantic Semu icon and label")) {
+                failures += SteamInputContractTest.fail(
+                    "generic modifier radial label was not rejected");
+            }
+
+            FileSystem.writeText(invalidFile, definitionText.replace(
+                SteamInputInstallPolicy.templatesPattern(),
+                "/tmp/arbitrary-steam-templates"));
+            SteamInputResult pathOverride = SteamInputParser.parse(invalidFile);
+            if (pathOverride.ok() || !SteamInputContractTest.hasError(
+                    pathOverride, "exact canonical current-user Steam layout")) {
+                failures += SteamInputContractTest.fail(
+                    "independent Steam template destination was not rejected");
+            }
+
+            string alternate = definitionText
+                .replace("wii.controller.wiimote", "fixture.controller.remote")
+                .replace("wii.controller.nunchuk", "fixture.controller.extension")
+                .replace("wii.controller.classic", "fixture.controller.classic")
+                .replace("wii.controller.gamecube", "fixture.controller.gamepad");
+            FileSystem.writeText(invalidFile, alternate);
+            SteamInputResult alternateResult = SteamInputParser.parse(invalidFile);
+            if (!alternateResult.ok()
+                    || !SemuActions.id(SemuActions.extensionBase()).equals(
+                        "fixture.controller.remote")) {
+                failures += SteamInputContractTest.fail(
+                    "alternate declarative controller actions did not configure the ABI");
+            }
+            SteamInputResult reparsed = SteamInputParser.parse(config);
+            if (!reparsed.ok()
+                    || !SemuActions.id(SemuActions.extensionBase()).equals(
+                        "wii.controller.wiimote")) {
+                failures += SteamInputContractTest.fail(
+                    "action ABI leaked extension identities between parse sessions");
+            }
+        }
+
+        string source = FileSystem.readText(PathTools.join(
+            project, "src/generators/steam_input.btrc"));
+        string installSource = FileSystem.readText(PathTools.join(
+            project, "src/generators/input/steam_install.btrc"));
+        if (source.contains("../semu/") || source.contains("src/semu/")
+                || source.contains("steamdeck.skm")
+                || source.contains("Ctrl+S") || source.contains("F13")) {
+            failures += SteamInputContractTest.fail(
+                "generator imports legacy code or hard-codes configured actions");
+        }
+        for removedOverride in ["SEMU_STEAM_INPUT_DIR",
+                                "SEMU_STEAM_INPUT_ICON_DIR",
+                                "SEMU_STEAM_APPLICATION_CONFIG_DIR"] {
+            if (source.contains(removedOverride)
+                    || installSource.contains(removedOverride)
+                    || definitionText.contains(removedOverride)) {
+                failures += SteamInputContractTest.fail(
+                    "independent Steam destination override remains: "
+                    + removedOverride);
+            }
+        }
+        if (!installSource.contains("O_NOFOLLOW")
+                || !installSource.contains("O_EXCL")
+                || !installSource.contains("rename(")
+                || !installSource.contains("fsync")
+                || !installSource.contains("verified")
+                || !installSource.contains("rollback")
+                || installSource.contains(
+                    "removeRecursive(self.destination)")) {
+            failures += SteamInputContractTest.fail(
+                "Steam install lost no-follow staging, verification, or rollback");
+        }
+        string actionAbi = FileSystem.readText(PathTools.join(
+            project, "src/generators/input/action_abi.btrc"));
+        if (actionAbi.contains("wii.controller.")
+                || actionAbi.contains("wiiWiimote")
+                || actionAbi.contains("wiiNunchuk")
+                || actionAbi.contains("wiiClassic")
+                || actionAbi.contains("wiiGameCube")) {
+            failures += SteamInputContractTest.fail(
+                "generic action ABI contains Wii-specific action identities");
+        }
+        string supervisor = FileSystem.readText(PathTools.join(
+            project, "src/generators/input/linux_supervisor.btrc"));
+        if (!supervisor.contains("SemuInputStateFiles.beginSession()")
+                || !supervisor.contains("SemuInputStateFiles.acquireSession()")
+                || !supervisor.contains("SemuInputStateFiles.reserveSequence")
+                || !supervisor.contains("SemuInputStateFiles.storeSequence")
+                || !supervisor.contains("SEMU_INPUT_JOURNAL_MAX_RECORDS")
+                || !supervisor.contains("indexForDescriptor")
+                || !supervisor.contains("closeDescriptor")
+                || !supervisor.contains("acceptedCapabilities")
+                || !supervisor.contains("gamepadCapabilities")
+                || !supervisor.contains("coreCommandKeyboard")
+                || !supervisor.contains("completeCommandKeyboard")
+                || !supervisor.contains("supports_extensions")
+                || !supervisor.contains("hasPairedGamepad")
+                || !supervisor.contains("pruneUnpairedCommandFacets")
+                || !supervisor.contains("SemuInputFrames.evaluate")
+                || !supervisor.contains("SEMU_INPUT_EXTENSION_ACTIONS_ENV")
+                || !supervisor.contains("SemuSupervisedProcess.terminate")
+                || !supervisor.contains("F_SETLK")
+                || !supervisor.contains("F_WRLCK")
+                || !supervisor.contains("F_UNLCK")
+                || supervisor.contains("flock(")) {
+            failures += SteamInputContractTest.fail(
+                "native supervisor lost session, hotplug, filtering, or quit policy");
+        }
+        if (supervisor.contains("EVIOCGRAB")) {
+            failures += SteamInputContractTest.fail(
+                "native supervisor must remain a passive evdev observer");
+        }
+        if (source.contains("28de:11ff") || source.contains("28de:1205")
+                || supervisor.contains("28de:11ff")
+                || supervisor.contains("28de:1205")) {
+            failures += SteamInputContractTest.fail(
+                "Steam Deck device identities escaped declarative target data");
+        }
+        if (definitionText.contains("quit_extra_bindings")
+                || source.contains("quitExtraBindings")
+                || source.contains("alt_f4")) {
+            failures += SteamInputContractTest.fail(
+                "quit policy retains duplicated emulator-specific fallbacks");
+        }
+
+        FileSystem.removeRecursive(scratch);
+        if (failures == 0) {
+            print("device-free Steam Input contract: declarations + icons + install valid");
+        }
+        return failures;
+    }
+}

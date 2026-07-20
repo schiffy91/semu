@@ -1,0 +1,66 @@
+// rendering_definition.btrc - shared accessors for declarative rendering data.
+
+import std.{json, strings, vector}
+
+class SemuRenderingDefinition {
+    class JsonValue at(JsonValue root, string path) {
+        JsonValue current = root;
+        for part in Strings.split(path, ".") {
+            if (!current.isObject() || !current.has(part)) {
+                return JsonValue.makeNull();
+            }
+            current = current.get(part);
+        }
+        return current;
+    }
+
+    class bool boolean(JsonValue root, string path, bool fallback) {
+        JsonValue value = SemuRenderingDefinition.at(root, path);
+        if (value.isBool()) { return value.asBool(); }
+        return fallback;
+    }
+
+    class string text(JsonValue root, string path, string fallback = "") {
+        JsonValue value = SemuRenderingDefinition.at(root, path);
+        return value.isString() && !value.asString().isEmpty()
+            ? value.asString() : fallback;
+    }
+
+    class bool validRect(JsonValue value) {
+        if (!value.isObject()) { return false; }
+        Vector<string> keys = ["x", "y", "w", "h"];
+        for key in keys {
+            if (!value.get(key).isNumber()) { return false; }
+        }
+        double x = value.get("x").asFloat();
+        double y = value.get("y").asFloat();
+        double width = value.get("w").asFloat();
+        double height = value.get("h").asFloat();
+        return x >= 0.0 && y >= 0.0 && width > 0.0 && height > 0.0
+            && x + width <= 1.0001 && y + height <= 1.0001;
+    }
+
+    class string rect(JsonValue value) {
+        if (!SemuRenderingDefinition.validRect(value)) { return ""; }
+        return f"{value.get("x").asFloat()},{value.get("y").asFloat()},"
+            + f"{value.get("w").asFloat()},{value.get("h").asFloat()}";
+    }
+
+    class JsonValue variant(JsonValue bezel, string id) {
+        JsonValue variants = bezel.get("variants");
+        if (!variants.isArray()) { return JsonValue.makeNull(); }
+        for (int index = 0; index < variants.size(); index++) {
+            JsonValue candidate = variants.at(index);
+            if (candidate.get("id").isString()
+                    && candidate.get("id").asString().equals(id)) {
+                return candidate;
+            }
+        }
+        return JsonValue.makeNull();
+    }
+
+    class bool assetDeclared(JsonValue manifest, string logicalPath) {
+        JsonValue assets = manifest.get("assets");
+        return assets.isObject() && assets.has(logicalPath);
+    }
+}

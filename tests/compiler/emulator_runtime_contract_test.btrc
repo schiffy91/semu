@@ -1,0 +1,764 @@
+// emulator_runtime_contract_test.btrc - profile and launch compilation proof.
+
+import std.{fs, json, vector}
+import ../../src/compiler/checker.btrc
+import ../../src/compiler/model.btrc
+import ../../src/compiler/parser.btrc
+import ../../src/compiler/resolver.btrc
+import ../../src/generators/emulator_profiles.btrc
+import ../../src/generators/emulator_runtime.btrc
+import ../../src/generators/emulators.btrc
+import ../../src/generators/input/action_abi.btrc
+import ../../src/lib/json_format.btrc
+
+class EmulatorRuntimeContractTest {
+    class int fail(string message) {
+        print("  FAIL emulator runtime: " + message);
+        return 1;
+    }
+
+    class bool containsArgument(SemuLaunchPlan plan, string value) {
+        for argument in plan.arguments {
+            if (argument.equals(value)) { return true; }
+        }
+        return false;
+    }
+
+    class string environment(SemuLaunchPlan plan, string key) {
+        for (int index = 0; index < plan.environmentKeys.size(); index++) {
+            if (plan.environmentKeys.get(index).equals(key)) {
+                return plan.environmentValues.get(index);
+            }
+        }
+        return "";
+    }
+
+    class string declaredSupervisorBindings(SemuInputSource input) {
+        JsonValue actions = input.definition.get("actions");
+        JsonValue selectedLayers = input.definition.get("capabilities")
+            .get("controller_mode_layers");
+        JsonValue systemLayers = input.definition.get("radial")
+            .get("system_layers");
+        if (!actions.isObject() || !selectedLayers.isArray()
+                || !systemLayers.isArray()) {
+            return "";
+        }
+
+        SemuActions.resetExtensions();
+        for (int selectedIndex = 0;
+                selectedIndex < selectedLayers.size(); selectedIndex++) {
+            string selected = SemuJsonPath.text(
+                selectedLayers.at(selectedIndex));
+            for (int layerIndex = 0;
+                    layerIndex < systemLayers.size(); layerIndex++) {
+                JsonValue layer = systemLayers.at(layerIndex);
+                if (!SemuJsonPath.text(layer.get("id")).equals(selected)
+                        || !layer.get("slots").isArray()) {
+                    continue;
+                }
+                JsonValue slots = layer.get("slots");
+                for (int slotIndex = 0; slotIndex < slots.size(); slotIndex++) {
+                    SemuActions.code(SemuJsonPath.text(slots.at(slotIndex)));
+                }
+            }
+        }
+
+        Vector<string> bindings = [];
+        Vector<string> actionIds = actions.keys();
+        actionIds.sort();
+        for actionId in actionIds {
+            int action = SemuActions.code(actionId);
+            if (action == SemuActions.none()) { continue; }
+            JsonValue declaration = actions.get(actionId);
+            JsonValue encodedChord = declaration.has("supervisor_chord")
+                ? declaration.get("supervisor_chord")
+                : declaration.get("chord");
+            string chord = SemuJsonPath.text(encodedChord);
+            string key = SemuChordEncoder.key(chord);
+            if (key.isEmpty()) { return ""; }
+            Vector<string> modifiers = [];
+            for modifier in SemuChordEncoder.modifiers(chord) {
+                modifiers.push(modifier.toLower());
+            }
+            bindings.push(action.toString() + ":"
+                + (modifiers.isEmpty() ? "none" : modifiers.join("+"))
+                + ":" + key.toLower());
+        }
+        return bindings.join(";");
+    }
+
+    class bool actionAbiIsStable() {
+        Vector<string> actionIds = [
+            "ui.menu",
+            "ui.menu.up",
+            "ui.menu.down",
+            "ui.menu.confirm",
+            "ui.menu.back",
+            "state.save",
+            "state.load",
+            "app.quit",
+            "ui.screenshot",
+            "ui.escape",
+            "wii.controller.wiimote",
+            "wii.controller.nunchuk",
+            "wii.controller.classic",
+            "wii.controller.gamecube"
+        ];
+        for (int index = 0; index < actionIds.size(); index++) {
+            int code = index + 1;
+            if (SemuActions.code(actionIds.get(index)) != code
+                    || !SemuActions.id(code).equals(actionIds.get(index))) {
+                return false;
+            }
+        }
+        return SemuActions.code("unknown") == SemuActions.none()
+            && SemuActions.id(100).isEmpty()
+            && SemuActions.rendererOwned(SemuActions.stateSave())
+            && !SemuActions.rendererOwned(SemuActions.appQuit())
+            && RendererActionJournal.abi() == 1
+            && RendererActionJournal.fileName().equals(
+                "semu-render-actions.bin")
+            && RendererActionJournal.evidenceFileName().equals(
+                "semu-input-evidence.log")
+            && RendererActionJournal.direct() == 0
+            && RendererActionJournal.quickRadial() == 1
+            && RendererActionJournal.menuRadial() == 2
+            && RendererActionJournal.systemRadial() == 3
+            && SemuActions.controllerModeSlot(
+                SemuActions.extensionBase()) == 0
+            && SemuActions.controllerModeSlot(
+                SemuActions.extensionBase() + 3) == 3;
+    }
+
+    class bool unresolvedPlansFailClosed() {
+        SemuLaunchPlan unresolvedArgument = SemuLaunchPlan();
+        unresolvedArgument.arguments = ["emulator", "${missing}"];
+        SemuLaunchPlan unresolvedEnvironment = SemuLaunchPlan();
+        unresolvedEnvironment.arguments = ["emulator"];
+        unresolvedEnvironment.environment("VALID_NAME", "${missing}");
+        SemuLaunchPlan invalidEnvironment = SemuLaunchPlan();
+        invalidEnvironment.arguments = ["emulator"];
+        invalidEnvironment.environment("INVALID=NAME", "value");
+        return !unresolvedArgument.resolved()
+            && !unresolvedEnvironment.resolved()
+            && !invalidEnvironment.resolved();
+    }
+
+    class JsonValue seedDeclaration(
+            string target, Vector<string> sourcePaths) {
+        JsonValue sources = JsonValue.makeArray();
+        for source in sourcePaths {
+            sources.push(JsonValue.makeString(source));
+        }
+        JsonValue seed = JsonValue.makeObject();
+        seed.set("purpose", JsonValue.makeString("contract_fixture"));
+        seed.set("target", JsonValue.makeString(target));
+        seed.set("copy", JsonValue.makeString("once_if_target_absent"));
+        seed.set("source_access", JsonValue.makeString("read_only"));
+        seed.set("overwrite", JsonValue.makeBool(false));
+        seed.set("sources", sources);
+        return seed;
+    }
+
+    class JsonValue seedPlatform(JsonValue seed) {
+        JsonValue seeds = JsonValue.makeArray();
+        seeds.push(seed);
+        JsonValue state = JsonValue.makeObject();
+        state.set("seeds", seeds);
+        JsonValue platform = JsonValue.makeObject();
+        platform.set("state", state);
+        return platform;
+    }
+
+    class bool dolphinControllerModes(
+            SemuCompilerModel model, SemuBuildPlan build,
+            SemuInputSource input, string scratch) {
+        Vector<string> modes = [
+            "wiimote", "nunchuk", "classic", "gamecube"];
+        Vector<string> sources = ["1", "1", "1", "0"];
+        Vector<string> extensions = [
+            "None", "Nunchuk", "Classic", "None"];
+        SemuEmulatorSource dolphin = model.emulatorById("dolphin");
+        for (int index = 0; index < modes.size(); index++) {
+            JsonValue settings = JsonValue.parse(build.settings.stringify());
+            JsonValue selected = settings.get("input").get("systems")
+                .get("wii");
+            if (!selected.isObject()) { return false; }
+            selected.set("controller_mode",
+                JsonValue.makeString(modes.get(index)));
+            SemuRuntimeContext context = SemuRuntimeContext(
+                model.projectRoot, "linux", dolphin.id,
+                settings, build.semuHome);
+            string output = PathTools.join(
+                scratch, "dolphin-mode-" + modes.get(index));
+            CompilerDiagnostics diagnostics = CompilerDiagnostics();
+            SemuProfileCompiler.emit(
+                dolphin, input, context, false, output, diagnostics);
+            string dolphinIni = Path.readAll(PathTools.join(
+                output, "Dolphin/config/Dolphin.ini"));
+            string wiimoteIni = Path.readAll(PathTools.join(
+                output, "Dolphin/config/WiimoteNew.ini"));
+            string hotkeys = Path.readAll(PathTools.join(
+                output, "Dolphin/config/Hotkeys.ini"));
+            if (!diagnostics.ok()
+                    || !dolphinIni.contains(
+                        "WiimoteSource0 = " + sources.get(index))
+                    || !wiimoteIni.contains(
+                        "Extension = " + extensions.get(index))
+                    || !wiimoteIni.contains("Classic/Buttons/A =")
+                    || !wiimoteIni.contains("Nunchuk/Buttons/C =")
+                    || !hotkeys.contains(
+                        "Semu Controller Mode/Wii Remote =")
+                    || !hotkeys.contains(
+                        "Semu Controller Mode/Wii Remote + Nunchuk =")
+                    || !hotkeys.contains(
+                        "Semu Controller Mode/Classic Controller =")
+                    || !hotkeys.contains(
+                        "Semu Controller Mode/GameCube Controller =")) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    class int run(string project) {
+        string scratch = FileSystem.tempDir("semu-emulator-runtime");
+        if (scratch.isEmpty()) {
+            return EmulatorRuntimeContractTest.fail(
+                "could not create scratch root");
+        }
+        CompilerDiagnostics diagnostics = CompilerDiagnostics();
+        SemuBuildRequest request = SemuBuildRequest();
+        request.operation = "configs";
+        request.target = "steam-deck";
+        request.projectRoot = project;
+        request.semuHome = PathTools.join(scratch, "settings");
+        request.outputRoot = PathTools.join(scratch, "compiled");
+        SemuCompilerModel model = SemuCompilerParser.parse(
+            project, request.target, diagnostics);
+        SemuBuildPlan build = SemuBuildResolver.resolve(
+            model, request, diagnostics);
+        SemuCompilerChecker.check(model, request, build, diagnostics);
+        string profiles = diagnostics.ok()
+            ? SemuEmulatorGenerator.emit(model, build, diagnostics) : "";
+        int failures = 0;
+        if (!EmulatorRuntimeContractTest.actionAbiIsStable()) {
+            failures += EmulatorRuntimeContractTest.fail(
+                "production action ABI changed");
+        }
+        if (!EmulatorRuntimeContractTest.unresolvedPlansFailClosed()) {
+            failures += EmulatorRuntimeContractTest.fail(
+                "unresolved launch values were accepted");
+        }
+        if (!diagnostics.ok() || profiles.isEmpty()) {
+            failures += EmulatorRuntimeContractTest.fail(
+                "checked Steam Deck definitions did not emit profiles");
+        }
+
+        SemuInputSource deckInput = model.inputByReference(model.target.input);
+        int linuxEmulators = 0;
+        for emulator in model.emulators {
+            if (!emulator.supports("linux")) { continue; }
+            linuxEmulators++;
+            SemuLaunchPlan inputPlan = SemuLaunchPlan();
+            bool configured = SemuEmulatorRuntime.configureInputSupervisor(
+                inputPlan, deckInput);
+            string window = EmulatorRuntimeContractTest.environment(
+                inputPlan, "SEMU_QUIT_CHORD_WINDOW_MS");
+            string buttons = EmulatorRuntimeContractTest.environment(
+                inputPlan, "SEMU_INPUT_QUIT_BUTTONS");
+            string bindings = EmulatorRuntimeContractTest.environment(
+                inputPlan, "SEMU_INPUT_ACTION_BINDINGS");
+            string declaredBindings =
+                EmulatorRuntimeContractTest.declaredSupervisorBindings(
+                    deckInput);
+            if (!emulator.actions.contains("app.quit") || !configured
+                    || !window.equals("250")
+                    || !buttons.equals("select,start")
+                    || declaredBindings.isEmpty()
+                    || !bindings.equals(declaredBindings)) {
+                failures += EmulatorRuntimeContractTest.fail(
+                    emulator.id + " does not inherit the shared Deck quit/input policy"
+                    + f" (configured={configured}, window={window}, buttons={buttons}, bindings={bindings}, declared={declaredBindings})");
+            }
+        }
+        if (linuxEmulators != 9) {
+            failures += EmulatorRuntimeContractTest.fail(
+                f"expected 9 Steam Deck emulators, found {linuxEmulators}");
+        }
+
+        JsonValue retroarchCoreDirectories = model.emulatorById("retroarch")
+            .platformById("linux").definition
+            .get("core_loader").get("directories");
+        Vector<string> expectedRetroarchCoreDirectories = [
+            "${asset_root}/lib/retroarch/cores"
+        ];
+        bool retroarchCoresAreAppImageOwned =
+            retroarchCoreDirectories.isArray()
+            && retroarchCoreDirectories.size()
+                == expectedRetroarchCoreDirectories.size();
+        if (retroarchCoresAreAppImageOwned) {
+            for (int index = 0;
+                    index < expectedRetroarchCoreDirectories.size(); index++) {
+                if (!retroarchCoreDirectories.at(index).asString().equals(
+                        expectedRetroarchCoreDirectories.get(index))) {
+                    retroarchCoresAreAppImageOwned = false;
+                }
+            }
+        }
+        if (!retroarchCoresAreAppImageOwned) {
+            failures += EmulatorRuntimeContractTest.fail(
+                "RetroArch core search escaped AppImage-owned directories");
+        }
+
+        Vector<string> required = [
+            "RetroArch/retroarch.cfg",
+            "Dolphin/config/Dolphin.ini",
+            "PPSSPP/config/PSP/SYSTEM/controls.ini",
+            "Flycast/config/mappings/SDL_Keyboard.cfg",
+            "Azahar/config/qt-config.ini",
+            "melonDS/config/melonDS.toml",
+            "PCSX2/config/inputprofiles/Steam Deck.ini",
+            "Cemu/config/settings.xml",
+            "Ryujinx/config/Config.json"
+        ];
+        for relative in required {
+            string file = PathTools.join(profiles, relative);
+            if (!FileSystem.isFile(file) || Path.readAll(file).contains("${")) {
+                failures += EmulatorRuntimeContractTest.fail(
+                    "profile is absent or unresolved: " + relative);
+            }
+        }
+        JsonValue ryujinx = JsonValue.readFile(
+            PathTools.join(profiles, "Ryujinx/config/Config.json"));
+        string ryujinxText = Path.readAll(
+            PathTools.join(profiles, "Ryujinx/config/Config.json"));
+        string retroarch = Path.readAll(
+            PathTools.join(profiles, "RetroArch/retroarch.cfg"));
+        string dolphin = Path.readAll(
+            PathTools.join(profiles, "Dolphin/config/Hotkeys.ini"));
+        string ppsspp = Path.readAll(PathTools.join(
+            profiles, "PPSSPP/config/PSP/SYSTEM/controls.ini"));
+        string melonds = Path.readAll(
+            PathTools.join(profiles, "melonDS/config/melonDS.toml"));
+        string pcsx2 = Path.readAll(PathTools.join(
+            profiles, "PCSX2/config/inputprofiles/Steam Deck.ini"));
+        if (ryujinx.isError()
+                || !ryujinxText.equals(SemuJsonFormat.document(ryujinx))
+                || !retroarch.contains(
+                    "input_toggle_fast_forward = \"add\"")
+                || !dolphin.contains(
+                    "General/Toggle Pause = @(Ctrl+P)")
+                || !ppsspp.contains(
+                    "Pause (no menu) = 1-113:1-44")
+                || !melonds.contains("HK_Pause = 67108944")
+                || !pcsx2.contains(
+                    "ToggleTurbo = Keyboard/Control & Keyboard/Plus")) {
+            failures += EmulatorRuntimeContractTest.fail(
+                "declarative profile encoding or canonical JSON regressed");
+        }
+
+        string generatorSource = Path.readAll(
+            PathTools.join(project, "src/generators/emulators.btrc"))
+            + Path.readAll(PathTools.join(
+                project, "src/generators/emulator_profiles.btrc"))
+            + Path.readAll(PathTools.join(
+                project, "src/generators/emulator_runtime.btrc"));
+        if (generatorSource.contains("chord_grammar")
+                || generatorSource.contains("SEMU_RETROARCH_CORE_DIR")
+                || generatorSource.contains("class string retroarch(")
+                || generatorSource.contains("class string dolphin(")
+                || generatorSource.contains("class string pcsx2(")
+                || generatorSource.contains("class string ppsspp(")) {
+            failures += EmulatorRuntimeContractTest.fail(
+                "generic generator contains emulator-specific profile policy");
+        }
+
+        string romsRoot = PathTools.join(scratch, "roms");
+        string rom = PathTools.join(PathTools.join(romsRoot, "gb"), "game.gb");
+        string executable = PathTools.join(scratch, "bin/retroarch-semu");
+        string graphicsWrapper = PathTools.join(scratch, "bin/nixGL");
+        string core = PathTools.join(
+            scratch, "lib/retroarch/cores/gambatte_libretro.so");
+        string supervisor = PathTools.join(
+            scratch, "lib/semu/semu-input-supervisor");
+        string shader = PathTools.join(scratch,
+            "share/libretro/shaders/semu/gb/screen.slangp");
+        string bezel = PathTools.join(scratch,
+            "share/semu/assets/bezels/gb/classic.png");
+        string biosRoot = PathTools.join(scratch, "read-only-bios");
+        string biosMarker = PathTools.join(biosRoot, "marker.bin");
+        FileSystem.mkdirp(PathTools.dirname(rom));
+        FileSystem.mkdirp(PathTools.dirname(executable));
+        FileSystem.mkdirp(PathTools.dirname(core));
+        FileSystem.mkdirp(PathTools.dirname(supervisor));
+        FileSystem.mkdirp(PathTools.dirname(shader));
+        FileSystem.mkdirp(PathTools.dirname(bezel));
+        FileSystem.mkdirp(biosRoot);
+        Path.writeAll(rom, "fixture");
+        Path.writeAll(executable, "fixture");
+        Path.writeAll(graphicsWrapper, "fixture");
+        Path.writeAll(core, "fixture");
+        Path.writeAll(supervisor, "fixture");
+        Path.writeAll(shader, "fixture");
+        Path.writeAll(bezel, "fixture");
+        Path.writeAll(biosMarker, "read-only-fixture");
+        string cardRoot = PathTools.join(scratch, "card");
+        string discoveredRoms = PathTools.join(
+            cardRoot, "Emulation/ES-DE/ES-DE/ROMs");
+        FileSystem.mkdirp(discoveredRoms);
+        SemuRuntimeMediaLayout discovered = SemuRuntimeLayout.discover(
+            cardRoot, "linux", build.settings);
+        if (!discovered.romsRoot.equals(discoveredRoms)
+                || !discovered.emulationRoot.equals(
+                    PathTools.join(cardRoot, "Emulation"))) {
+            failures += EmulatorRuntimeContractTest.fail(
+                "declarative Steam Deck ROM discovery did not resolve both roots");
+        }
+        build.settings.get("paths").get("roms_root").set(
+            "linux", JsonValue.makeString(romsRoot));
+        build.settings.get("paths").get("bios_root").set(
+            "linux", JsonValue.makeString(biosRoot));
+        model.projectRoot = scratch;
+        SemuRuntimeContext runtimeContext = SemuRuntimeContext(
+            scratch, "linux", "retroarch", build.settings,
+            build.semuHome);
+        string overrideBios = PathTools.join(scratch, "override-bios");
+        FileSystem.mkdirp(overrideBios);
+        if (!runtimeContext.biosRoot.equals(
+                UnixFileSystem.realPath(biosRoot))
+                || !runtimeContext.semuHome.equals(build.semuHome)
+                || !SemuTokenResolver.resolve(
+                    "${bios}", runtimeContext).equals(
+                        UnixFileSystem.realPath(biosRoot))
+                || !SemuTokenResolver.resolve(
+                    "${semu_home}", runtimeContext).equals(build.semuHome)
+                || !SemuRuntimeLayout.semuHome(scratch, "").equals(
+                    PathTools.join(scratch, "settings"))
+                || !SemuRuntimeLayout.resolveBiosRoot(
+                    scratch, "linux", build.settings, overrideBios)
+                    .equals(UnixFileSystem.realPath(overrideBios))) {
+            failures += EmulatorRuntimeContractTest.fail(
+                "BIOS or Semu-home runtime tokens did not resolve explicitly");
+        }
+        SemuEmulatorSource biosConsumer = model.emulatorById("pcsx2");
+        SemuRuntimeContext biosConsumerContext = SemuRuntimeContext(
+            scratch, "linux", biosConsumer.id, build.settings,
+            build.semuHome);
+        CompilerDiagnostics biosProfileDiagnostics = CompilerDiagnostics();
+        string biosProfileOutput = PathTools.join(
+            scratch, "bios-profile-output");
+        SemuProfileCompiler.emit(biosConsumer, deckInput,
+            biosConsumerContext, false, biosProfileOutput,
+            biosProfileDiagnostics);
+        if (!biosProfileDiagnostics.ok()
+                || !Path.readAll(PathTools.join(biosProfileOutput,
+                    "PCSX2/config/inis/PCSX2.ini"))
+                    .contains("Bios = " + biosRoot)) {
+            failures += EmulatorRuntimeContractTest.fail(
+                "generated firmware profile did not use the read-only BIOS root");
+        }
+        if (!EmulatorRuntimeContractTest.dolphinControllerModes(
+                model, build, deckInput, scratch)) {
+            failures += EmulatorRuntimeContractTest.fail(
+                "Wii controller setting did not select each initial Dolphin mode while retaining radial switching");
+        }
+        SemuLaunchPlan launch = SemuEmulatorRuntime.plan(
+            model, build, "retroarch", "gb", "gambatte", rom, diagnostics);
+        if (!diagnostics.ok() || !launch.error.isEmpty()
+                || !EmulatorRuntimeContractTest.containsArgument(launch, "-f")
+                || !EmulatorRuntimeContractTest.containsArgument(launch, "-L")
+                || !EmulatorRuntimeContractTest.containsArgument(
+                    launch, UnixFileSystem.realPath(rom))
+                || launch.arguments.size() < 3
+                || !launch.arguments.get(0).equals(supervisor)
+                || !launch.arguments.get(1).equals("--")
+                || !EmulatorRuntimeContractTest.environment(
+                    launch, "SEMU_RENDER_SYSTEM_ID").equals("gb")
+                || !EmulatorRuntimeContractTest.environment(
+                    launch, "SEMU_RENDER_SHADER_PRESET").equals(
+                        UnixFileSystem.realPath(shader))
+                || !EmulatorRuntimeContractTest.environment(
+                    launch, "SEMU_RENDER_ART").equals(
+                        UnixFileSystem.realPath(bezel))
+                || !EmulatorRuntimeContractTest.environment(
+                    launch, "SEMU_RENDER_SCREEN").contains(
+                        "0.24225")
+                || !EmulatorRuntimeContractTest.environment(
+                    launch, "SEMU_QUIT_CHORD_WINDOW_MS").equals("250")
+                || !EmulatorRuntimeContractTest.environment(
+                    launch, "SEMU_INPUT_QUIT_BUTTONS").equals("select,start")
+                || !EmulatorRuntimeContractTest.environment(
+                    launch, "SEMU_INPUT_QUICK_MARKERS").equals(
+                        "kp0,kp1,kp2,kp3,kp4,kp5")
+                || !EmulatorRuntimeContractTest.environment(
+                    launch, "SEMU_INPUT_MENU_MARKERS").equals(
+                        "kp6,kp7,kp8,kp9,kpdecimal")
+                || !EmulatorRuntimeContractTest.environment(
+                    launch, "SEMU_INPUT_ACTION_BINDINGS").contains(
+                        "6:ctrl:s")
+                || !EmulatorRuntimeContractTest.environment(
+                    launch, "SEMU_INPUT_ACTION_BINDINGS").contains(
+                        "7:ctrl:a")
+                || !EmulatorRuntimeContractTest.environment(
+                    launch, "SEMU_INPUT_ACTION_BINDINGS").contains(
+                        "8:ctrl:q")
+                || !launch.backend.equals("bwrap")
+                || !launch.requiresSandbox
+                || !FileSystem.isFile(PathTools.join(scratch,
+                    "build/runtime/state/retroarch/config/retroarch/retroarch.cfg"))
+                || !Path.readAll(biosMarker).equals("read-only-fixture")) {
+            for error in diagnostics.errors { print("  " + error); }
+            print("  launch plan: " + launch.json().stringify());
+            failures += EmulatorRuntimeContractTest.fail(
+                "semantic RetroArch launch did not prepare its owned runtime");
+        }
+
+        FileSystem.removeRecursive(supervisor);
+        SemuLaunchPlan missingSupervisor = SemuEmulatorRuntime.plan(
+            model, build, "retroarch", "gb", "gambatte", rom, diagnostics);
+        if (!missingSupervisor.error.equals(
+                "declared input supervisor is unavailable")) {
+            failures += EmulatorRuntimeContractTest.fail(
+                "Linux launch did not fail closed without its input supervisor");
+        }
+
+        Path.writeAll(supervisor, "fixture");
+        string configuredBios = build.settings.get("paths")
+            .get("bios_root").get("linux").asString();
+        build.settings.get("paths").get("bios_root").set(
+            "linux", JsonValue.makeString(PathTools.join(
+                scratch, "missing-bios")));
+        SemuLaunchPlan missingBios = SemuEmulatorRuntime.plan(
+            model, build, "retroarch", "gb", "gambatte", rom,
+            CompilerDiagnostics());
+        build.settings.get("paths").get("bios_root").set(
+            "linux", JsonValue.makeString(configuredBios));
+        if (!missingBios.error.equals(
+                "configured read-only BIOS root is unavailable")
+                || FileSystem.exists(PathTools.join(scratch, "missing-bios"))) {
+            failures += EmulatorRuntimeContractTest.fail(
+                "missing BIOS root was created or accepted by the launcher");
+        }
+
+        string originalHome = build.semuHome;
+        string outsideHome = PathTools.join(scratch, "outside-home");
+        string linkedHome = PathTools.join(scratch, "linked-home");
+        FileSystem.mkdirp(outsideHome);
+        if (FileSystem.symlink(outsideHome, linkedHome) != 0) {
+            failures += EmulatorRuntimeContractTest.fail(
+                "could not create Semu-home symlink fixture");
+        } else {
+            build.semuHome = linkedHome;
+            SemuLaunchPlan invalidHome = SemuEmulatorRuntime.plan(
+                model, build, "retroarch", "gb", "gambatte", rom,
+                CompilerDiagnostics());
+            build.semuHome = originalHome;
+            if (!invalidHome.error.equals(
+                    "Semu settings home is outside runtime-owned storage")) {
+                failures += EmulatorRuntimeContractTest.fail(
+                    "symlinked Semu settings home was accepted by the launcher");
+            }
+        }
+
+        string outside = PathTools.join(scratch, "outside.gb");
+        Path.writeAll(outside, "fixture");
+        SemuLaunchPlan rejected = SemuEmulatorRuntime.plan(
+            model, build, "retroarch", "gb", "gambatte",
+            outside, diagnostics);
+        if (rejected.error.isEmpty()) {
+            failures += EmulatorRuntimeContractTest.fail(
+                "launcher accepted a ROM outside the selected system root");
+        }
+
+        SemuEmulatorSource confinedEmulator = model.emulatorById("retroarch");
+        SemuEmulatorPlatformSource confinedPlatform =
+            confinedEmulator.platformById("linux");
+        SemuRuntimeContext confinedContext = SemuRuntimeContext(
+            scratch, "linux", "retroarch", build.settings,
+            build.semuHome);
+        string escapedProfileRoot = PathTools.join(
+            scratch, "escaped-profile-root");
+        confinedPlatform.definition.get("state").set(
+            "profile_config_dir", JsonValue.makeString(escapedProfileRoot));
+        if (!SemuProfileCompiler.destination(
+                "config/escape.ini", confinedEmulator, confinedPlatform,
+                confinedContext).isEmpty()
+                || !SemuProfileCompiler.destination(
+                    "../escape.ini", confinedEmulator, confinedPlatform,
+                    confinedContext).isEmpty()) {
+            failures += EmulatorRuntimeContractTest.fail(
+                "profile destination escaped Semu-owned runtime state");
+        }
+
+        string outsideProfiles = PathTools.join(
+            scratch, "outside-profiles");
+        string linkedProfiles = PathTools.join(
+            confinedContext.stateRoot, "config/linked");
+        FileSystem.mkdirp(PathTools.dirname(linkedProfiles));
+        FileSystem.mkdirp(outsideProfiles);
+        if (FileSystem.symlink(outsideProfiles, linkedProfiles) != 0) {
+            failures += EmulatorRuntimeContractTest.fail(
+                "could not create profile symlink rejection fixture");
+        } else {
+            confinedPlatform.definition.get("state").set(
+                "profile_config_dir", JsonValue.makeString(
+                    "${state_root}/config/linked"));
+            if (!SemuProfileCompiler.destination(
+                    "config/escape.ini", confinedEmulator,
+                    confinedPlatform, confinedContext).isEmpty()) {
+                failures += EmulatorRuntimeContractTest.fail(
+                    "profile destination followed a symlinked parent");
+            }
+        }
+
+        SemuEmulatorSource tokenEscape = model.emulatorById("retroarch");
+        tokenEscape.name = "../escaped-profile";
+        tokenEscape.definition.set(
+            "name", JsonValue.makeString("../escaped-profile"));
+        CompilerDiagnostics tokenDiagnostics = CompilerDiagnostics();
+        string tokenOutput = PathTools.join(scratch, "token-output");
+        SemuProfileCompiler.emit(tokenEscape, deckInput, confinedContext,
+            false, tokenOutput, tokenDiagnostics);
+        if (tokenDiagnostics.ok()
+                || FileSystem.exists(PathTools.join(
+                    scratch, "escaped-profile/retroarch.cfg"))) {
+            failures += EmulatorRuntimeContractTest.fail(
+                "resolved profile token escaped generated output ownership");
+        }
+
+        string seedRoot = PathTools.join(scratch, "seed-sources");
+        string seedSource = PathTools.join(seedRoot, "firmware.bin");
+        string seedBytes = "verified-firmware-fixture\n";
+        FileSystem.mkdirp(seedRoot);
+        Path.writeAll(seedSource, seedBytes);
+        FileSystem.chmod(seedSource, 292); // 0444
+        string sourceDigest = SemuOwnedFileDigest.file(seedSource);
+        int sourceMode = FileStatus(seedSource).mode & 4095;
+
+        string seedTarget = PathTools.join(
+            confinedContext.stateRoot, "data/imported/firmware.bin");
+        FileSystem.mkdirp(PathTools.dirname(seedTarget));
+        string interrupted = PathTools.join(PathTools.dirname(seedTarget),
+            "." + PathTools.basename(seedTarget) + ".incoming."
+                + f"{(int)getpid()}.0");
+        Path.writeAll(interrupted, "interrupted-incoming");
+        JsonValue successfulSeed =
+            EmulatorRuntimeContractTest.seedDeclaration(
+                seedTarget, [seedSource]);
+        CompilerDiagnostics successfulDiagnostics = CompilerDiagnostics();
+        SemuEmulatorRuntime.seed(
+            EmulatorRuntimeContractTest.seedPlatform(successfulSeed),
+            confinedContext, successfulDiagnostics);
+        string targetDigest = SemuOwnedFileDigest.file(seedTarget);
+        if (!successfulDiagnostics.ok()
+                || sourceDigest.isEmpty()
+                || !sourceDigest.equals(targetDigest)
+                || !Path.readAll(seedTarget).equals(seedBytes)
+                || !Path.readAll(seedSource).equals(seedBytes)
+                || (FileStatus(seedSource).mode & 4095) != sourceMode
+                || (FileStatus(seedTarget).mode & 4095) != 384
+                || !Path.readAll(interrupted).equals("interrupted-incoming")) {
+            failures += EmulatorRuntimeContractTest.fail(
+                "transactional seed did not publish verified bytes from an unchanged source");
+        }
+
+        CompilerDiagnostics idempotentDiagnostics = CompilerDiagnostics();
+        SemuEmulatorRuntime.seed(
+            EmulatorRuntimeContractTest.seedPlatform(successfulSeed),
+            confinedContext, idempotentDiagnostics);
+        if (!idempotentDiagnostics.ok()
+                || !SemuOwnedFileDigest.file(seedTarget).equals(sourceDigest)) {
+            failures += EmulatorRuntimeContractTest.fail(
+                "byte-identical existing seed was not accepted idempotently");
+        }
+
+        string partialSource = PathTools.join(seedRoot, "complete.bin");
+        string partialTarget = PathTools.join(
+            confinedContext.stateRoot, "data/imported/partial.bin");
+        Path.writeAll(partialSource, "complete-content");
+        Path.writeAll(partialTarget, "partial");
+        CompilerDiagnostics partialDiagnostics = CompilerDiagnostics();
+        SemuEmulatorRuntime.seed(
+            EmulatorRuntimeContractTest.seedPlatform(
+                EmulatorRuntimeContractTest.seedDeclaration(
+                    partialTarget, [partialSource])),
+            confinedContext, partialDiagnostics);
+        if (partialDiagnostics.ok()
+                || !Path.readAll(partialTarget).equals("partial")
+                || !Path.readAll(partialSource).equals("complete-content")) {
+            failures += EmulatorRuntimeContractTest.fail(
+                "partial existing seed was overwritten or treated as complete");
+        }
+
+        string symlinkSource = PathTools.join(seedRoot, "linked.bin");
+        string symlinkTarget = PathTools.join(
+            confinedContext.stateRoot, "data/imported/from-link.bin");
+        FileSystem.symlink(seedSource, symlinkSource);
+        CompilerDiagnostics sourceLinkDiagnostics = CompilerDiagnostics();
+        SemuEmulatorRuntime.seed(
+            EmulatorRuntimeContractTest.seedPlatform(
+                EmulatorRuntimeContractTest.seedDeclaration(
+                    symlinkTarget, [symlinkSource])),
+            confinedContext, sourceLinkDiagnostics);
+        if (sourceLinkDiagnostics.ok() || FileSystem.exists(symlinkTarget)
+                || !Path.readAll(seedSource).equals(seedBytes)) {
+            failures += EmulatorRuntimeContractTest.fail(
+                "symlinked seed source was followed or modified");
+        }
+
+        string outsideSeed = PathTools.join(scratch, "outside-seed.bin");
+        string linkedTarget = PathTools.join(
+            confinedContext.stateRoot, "data/imported/linked-target.bin");
+        Path.writeAll(outsideSeed, "outside-unchanged");
+        FileSystem.symlink(outsideSeed, linkedTarget);
+        CompilerDiagnostics targetLinkDiagnostics = CompilerDiagnostics();
+        SemuEmulatorRuntime.seed(
+            EmulatorRuntimeContractTest.seedPlatform(
+                EmulatorRuntimeContractTest.seedDeclaration(
+                    linkedTarget, [seedSource])),
+            confinedContext, targetLinkDiagnostics);
+        if (targetLinkDiagnostics.ok()
+                || !FileStatus(linkedTarget).isSymlink()
+                || !Path.readAll(outsideSeed).equals("outside-unchanged")) {
+            failures += EmulatorRuntimeContractTest.fail(
+                "symlinked seed destination was followed or replaced");
+        }
+
+        string escapedSeed = PathTools.join(
+            PathTools.dirname(confinedContext.stateRoot),
+            "escaped-seed.bin");
+        CompilerDiagnostics traversalDiagnostics = CompilerDiagnostics();
+        SemuEmulatorRuntime.seed(
+            EmulatorRuntimeContractTest.seedPlatform(
+                EmulatorRuntimeContractTest.seedDeclaration(
+                    "${state_root}/../escaped-seed.bin", [seedSource])),
+            confinedContext, traversalDiagnostics);
+        if (traversalDiagnostics.ok() || FileSystem.exists(escapedSeed)) {
+            failures += EmulatorRuntimeContractTest.fail(
+                "runtime seed escaped Semu-owned runtime state");
+        }
+
+        JsonValue incompleteSeed = JsonValue.makeObject();
+        incompleteSeed.set("target", JsonValue.makeString(PathTools.join(
+            confinedContext.stateRoot, "data/imported/incomplete.bin")));
+        JsonValue incompleteSources = JsonValue.makeArray();
+        incompleteSources.push(JsonValue.makeString(seedSource));
+        incompleteSeed.set("sources", incompleteSources);
+        CompilerDiagnostics declarationDiagnostics = CompilerDiagnostics();
+        SemuEmulatorRuntime.seed(
+            EmulatorRuntimeContractTest.seedPlatform(incompleteSeed),
+            confinedContext, declarationDiagnostics);
+        if (declarationDiagnostics.ok()
+                || FileSystem.exists(PathTools.join(confinedContext.stateRoot,
+                    "data/imported/incomplete.bin"))) {
+            failures += EmulatorRuntimeContractTest.fail(
+                "seed copy/access/overwrite declaration was not enforced");
+        }
+        FileSystem.removeRecursive(scratch);
+        if (failures == 0) {
+            print("emulator runtime contract: profiles + semantic launch valid");
+        }
+        return failures;
+    }
+}

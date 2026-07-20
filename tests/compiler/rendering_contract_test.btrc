@@ -1,0 +1,787 @@
+// rendering_contract_test.btrc - declarative system presentation compilation.
+
+import std.{fs, io, json, process, strings, vector}
+import ../../src/compiler/checker.btrc
+import ../../src/compiler/model.btrc
+import ../../src/compiler/parser.btrc
+import ../../src/compiler/resolver.btrc
+import ../../src/generators/rendering.btrc
+import ../../src/lib/merge.btrc
+import ../../src/lib/rendering_definition.btrc
+
+class RenderingExpectations {
+    class Vector<string> systems() {
+        return ["dreamcast", "gb", "gba", "gbc", "gc", "genesis", "n3ds",
+            "n64", "nds", "nes", "ps2", "psp", "psx", "snes", "switch",
+            "wii", "wiiu"];
+    }
+
+    class Vector<string> widescreenSystems() {
+        return ["dreamcast", "gc", "n64", "ps2", "psx", "wii"];
+    }
+
+    class Vector<string> dualScreenSystems() {
+        return ["n3ds", "nds"];
+    }
+
+    class bool effectsEnabled(string id) {
+        return !id.equals("switch") && !id.equals("wiiu");
+    }
+
+    class string shader(string id) {
+        if (!RenderingExpectations.effectsEnabled(id)) { return ""; }
+        return "assets/shaders/" + id + "/screen.slangp";
+    }
+
+    class string defaultBezel(string id) {
+        if (id.equals("gb")) { return "classic"; }
+        if (id.equals("gbc")) { return "frost_purple"; }
+        if (id.equals("gba")) { return "indigo_wide"; }
+        if (id.equals("nds")) { return "horizontal"; }
+        if (id.equals("n3ds")) { return "vertical"; }
+        if (id.equals("psp")) { return "classic"; }
+        if (!RenderingExpectations.effectsEnabled(id)) { return ""; }
+        return "crt_4x3";
+    }
+
+    class string aspect(string id) {
+        if (id.equals("gb") || id.equals("gbc")) { return "10:9"; }
+        if (id.equals("gba")) { return "3:2"; }
+        if (id.equals("psp")) { return "30:17"; }
+        if (id.equals("switch") || id.equals("wiiu")) { return "16:9"; }
+        if (RenderingExpectations.dualScreenSystems().contains(id)) { return ""; }
+        return "4:3";
+    }
+}
+
+class RenderingAssetAudit {
+    class bool digest(string value) {
+        if (value.len() != 64) { return false; }
+        for character in value {
+            bool decimal = character >= '0' && character <= '9';
+            bool hexadecimal = character >= 'a' && character <= 'f';
+            if (!decimal && !hexadecimal) { return false; }
+        }
+        return true;
+    }
+
+    class string sha256(string path) {
+        bool shasum = FileSystem.isFile("/usr/bin/shasum");
+        string executable = shasum ? "/usr/bin/shasum" : "sha256sum";
+        Vector<string> arguments = shasum ? ["-a", "256", path] : [path];
+        Command command = Command(executable).args(arguments);
+        ExecResult result = UnixShell().run(command.render(),
+            CommandOutput.collect(), CommandOutput.collect(), false, false);
+        string output = result.ok() ? result.trimmed() : "";
+        if (output.len() < 64) { return ""; }
+        string value = output.substring(0, 64).toLower();
+        return RenderingAssetAudit.digest(value) ? value : "";
+    }
+
+    class int unsigned32(Bytes bytes, int offset) {
+        return bytes.get(offset) * 16777216
+            + bytes.get(offset + 1) * 65536
+            + bytes.get(offset + 2) * 256
+            + bytes.get(offset + 3);
+    }
+
+    class string imagePath(string project, string logical, JsonValue recipe) {
+        if (recipe.get("type").isString()
+                && recipe.get("type").asString().equals("local")
+                && recipe.get("path").isString()) {
+            return PathTools.join(project, recipe.get("path").asString());
+        }
+        return PathTools.join(project, "config/" + logical);
+    }
+
+    class bool png(string project, string logical, JsonValue recipe) {
+        JsonValue output = recipe.get("output");
+        if (!output.isObject() || !output.get("width").isInt()
+                || !output.get("height").isInt()
+                || !output.get("bit_depth").isInt()
+                || !output.get("color_type").isInt()
+                || !output.get("sha256").isString()
+                || !RenderingAssetAudit.digest(output.get("sha256").asString())) {
+            return false;
+        }
+        string path = RenderingAssetAudit.imagePath(project, logical, recipe);
+        File file = File(path, "rb");
+        if (!file.ok()) { return false; }
+        Bytes bytes = file.readBytes();
+        file.close();
+        bool header = bytes.length() >= 26
+            && bytes.get(0) == 137 && bytes.get(1) == 80
+            && bytes.get(2) == 78 && bytes.get(3) == 71
+            && bytes.get(4) == 13 && bytes.get(5) == 10
+            && bytes.get(6) == 26 && bytes.get(7) == 10;
+        if (!header
+                || RenderingAssetAudit.unsigned32(bytes, 16)
+                    != output.get("width").asInt()
+                || RenderingAssetAudit.unsigned32(bytes, 20)
+                    != output.get("height").asInt()
+                || bytes.get(24) != output.get("bit_depth").asInt()
+                || bytes.get(25) != output.get("color_type").asInt()
+                || !RenderingAssetAudit.sha256(path)
+                    .equals(output.get("sha256").asString())) {
+            return false;
+        }
+        return !recipe.get("type").asString().equals("copy")
+            || (recipe.get("file_sha256").isString()
+                && recipe.get("file_sha256").asString()
+                    .equals(output.get("sha256").asString()));
+    }
+
+    class bool bezelAssets(string project, JsonValue manifest) {
+        JsonValue assets = manifest.get("assets");
+        if (!assets.isObject()) { return false; }
+        for logical in assets.keys() {
+            if (logical.endsWith(".png")
+                    && !RenderingAssetAudit.png(
+                        project, logical, assets.get(logical))) {
+                print("  bezel asset mismatch: " + logical);
+                return false;
+            }
+        }
+        return true;
+    }
+
+    class bool shaderRecipe(JsonValue recipe) {
+        if (!recipe.get("type").isString()
+                || !recipe.get("output").get("sha256").isString()
+                || !RenderingAssetAudit.digest(
+                    recipe.get("output").get("sha256").asString())) {
+            return false;
+        }
+        string type = recipe.get("type").asString();
+        if (type.equals("slang_wrapper")) {
+            JsonValue reference = recipe.get("reference");
+            return reference.get("tree").isString()
+                && reference.get("path").isString()
+                && reference.get("sha256").isString()
+                && RenderingAssetAudit.digest(
+                    reference.get("sha256").asString());
+        }
+        if (!type.equals("slang_pipeline")
+                || !recipe.get("passes").isArray()
+                || recipe.get("passes").size() == 0) {
+            return false;
+        }
+        for (int index = 0; index < recipe.get("passes").size(); index++) {
+            JsonValue pass = recipe.get("passes").at(index);
+            if (!pass.get("tree").isString() || !pass.get("path").isString()
+                    || !pass.get("sha256").isString()
+                    || !RenderingAssetAudit.digest(
+                        pass.get("sha256").asString())) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    class bool shaderAssets(JsonValue manifest) {
+        JsonValue assets = manifest.get("assets");
+        if (!assets.isObject()) { return false; }
+        for logical in assets.keys() {
+            if (!logical.startsWith("assets/shaders/")
+                    || !RenderingAssetAudit.shaderRecipe(assets.get(logical))) {
+                print("  shader asset mismatch: " + logical);
+                return false;
+            }
+        }
+        return true;
+    }
+}
+
+class RenderingGeometryAudit {
+    class bool close(double left, double right) {
+        double difference = left - right;
+        if (difference < 0.0) { difference = 0.0 - difference; }
+        return difference < 0.000000001;
+    }
+
+    class bool aspect(JsonValue value, string expected) {
+        if (!value.isObject() || !value.get("w").isInt()
+                || !value.get("h").isInt()
+                || value.get("w").asInt() < 1 || value.get("h").asInt() < 1) {
+            return false;
+        }
+        return f"{value.get("w").asInt()}:{value.get("h").asInt()}"
+            .equals(expected);
+    }
+
+    class bool sameRect(JsonValue left, JsonValue right) {
+        if (!left.isObject() || !right.isObject()) { return false; }
+        for field in ["x", "y", "w", "h"] {
+            if (!left.get(field).isNumber() || !right.get(field).isNumber()
+                    || !RenderingGeometryAudit.close(
+                        left.get(field).asFloat(), right.get(field).asFloat())) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    class bool normalizedPixels(JsonValue rectangle, JsonValue pixels,
+                                int width, int height) {
+        if (!SemuRenderingDefinition.validRect(rectangle) || !pixels.isObject()) {
+            return false;
+        }
+        for field in ["x", "y", "w", "h"] {
+            if (!pixels.get(field).isNumber()) { return false; }
+        }
+        return RenderingGeometryAudit.close(
+                rectangle.get("x").asFloat(), pixels.get("x").asFloat() / width)
+            && RenderingGeometryAudit.close(
+                rectangle.get("y").asFloat(), pixels.get("y").asFloat() / height)
+            && RenderingGeometryAudit.close(
+                rectangle.get("w").asFloat(), pixels.get("w").asFloat() / width)
+            && RenderingGeometryAudit.close(
+                rectangle.get("h").asFloat(), pixels.get("h").asFloat() / height);
+    }
+
+    class bool presentation(JsonValue value, JsonValue assets) {
+        JsonValue geometry = value.get("geometry");
+        JsonValue canvas = geometry.get("canvas");
+        if (!value.isObject() || !value.get("art").isString()
+                || !assets.has(value.get("art").asString())
+                || !geometry.isObject() || !canvas.get("w").isInt()
+                || !canvas.get("h").isInt()) {
+            return false;
+        }
+        JsonValue output = assets.get(value.get("art").asString()).get("output");
+        int width = canvas.get("w").asInt();
+        int height = canvas.get("h").asInt();
+        if (width < 1 || height < 1 || !output.get("width").isInt()
+                || !output.get("height").isInt()
+                || output.get("width").asInt() != width
+                || output.get("height").asInt() != height) {
+            return false;
+        }
+        JsonValue screenHoles = value.get("screen_holes");
+        if (screenHoles.isObject()) {
+            JsonValue screenPixels = geometry.get("screen_pixels");
+            return RenderingGeometryAudit.normalizedPixels(
+                    screenHoles.get("top"), screenPixels.get("top"), width, height)
+                && RenderingGeometryAudit.normalizedPixels(
+                    screenHoles.get("bottom"), screenPixels.get("bottom"),
+                    width, height);
+        }
+        return RenderingGeometryAudit.normalizedPixels(
+            value.get("hole"), geometry.get("source_pixels"), width, height);
+    }
+
+    class JsonValue variant(JsonValue bezels, string id) {
+        JsonValue variants = bezels.get("variants");
+        if (!variants.isArray()) { return JsonValue.makeNull(); }
+        for (int index = 0; index < variants.size(); index++) {
+            JsonValue candidate = variants.at(index);
+            if (candidate.get("id").isString()
+                    && candidate.get("id").asString().equals(id)) {
+                return candidate;
+            }
+        }
+        return JsonValue.makeNull();
+    }
+
+    class bool nativeFits(JsonValue presentation, JsonValue screens,
+                          int viewportWidth, int viewportHeight) {
+        JsonValue canvas = presentation.get("geometry").get("canvas");
+        double horizontalScale = (double)viewportWidth / canvas.get("w").asInt();
+        double verticalScale = (double)viewportHeight / canvas.get("h").asInt();
+        double artScale = horizontalScale < verticalScale
+            ? horizontalScale : verticalScale;
+        JsonValue holes = presentation.get("screen_holes");
+        JsonValue source = presentation.get("geometry").get("source_pixels");
+        for (int index = 0; index < screens.size(); index++) {
+            JsonValue screen = screens.at(index);
+            JsonValue aperture = holes.isObject()
+                ? (screen.get("id").asString().equals("top")
+                    ? holes.get("top") : holes.get("bottom"))
+                : presentation.get("hole");
+            JsonValue native = screen.get("native");
+            if (!SemuRenderingDefinition.validRect(aperture)
+                    || !native.get("w").isInt() || !native.get("h").isInt()) {
+                return false;
+            }
+            double availableWidth = aperture.get("w").asFloat()
+                * canvas.get("w").asInt() * artScale;
+            double availableHeight = aperture.get("h").asFloat()
+                * canvas.get("h").asInt() * artScale;
+            if (availableWidth + 0.001 < native.get("w").asInt()
+                    || availableHeight + 0.001 < native.get("h").asInt()) {
+                return false;
+            }
+        }
+        return source.isNull() || source.isObject();
+    }
+}
+
+class RenderingDeclarationAudit {
+    class bool completeSystemSet(SemuCompilerModel model) {
+        Vector<string> expected = RenderingExpectations.systems();
+        if (model.systems.size() != expected.size()) { return false; }
+        for system in model.systems {
+            if (!expected.contains(system.id)) { return false; }
+        }
+        return true;
+    }
+
+    class bool scaling(JsonValue display, bool dual) {
+        JsonValue scaling = display.get("scaling");
+        return scaling.get("mode").isString()
+            && scaling.get("mode").asString().equals("integer_preferred")
+            && scaling.get("basis").isString()
+            && scaling.get("basis").asString().equals("native_game_surface")
+            && scaling.get("fit").isString()
+            && scaling.get("fit").asString().equals("contain")
+            && scaling.get("fallback").isString()
+            && scaling.get("fallback").asString().equals("fractional_downscale")
+            && (!dual || (scaling.get("lanes").isString()
+                && scaling.get("lanes").asString().equals("independent")));
+    }
+
+    class bool display(SemuSystemSource system) {
+        JsonValue display = system.definition.get("display");
+        JsonValue screens = display.get("screens");
+        bool dual = RenderingExpectations.dualScreenSystems().contains(system.id);
+        if (!screens.isArray() || screens.size() != (dual ? 2 : 1)
+                || !RenderingDeclarationAudit.scaling(display, dual)) {
+            return false;
+        }
+        if (dual) {
+            JsonValue mapping = display.get("surface_mapping");
+            if (!display.get("arrangement").isString()
+                    || !display.get("arrangement").asString().equals("vertical")
+                    || !mapping.get("mode").isString()
+                    || !mapping.get("mode").asString().equals("by_screen_id")
+                    || !mapping.get("history").isString()
+                    || !mapping.get("history").asString().equals("independent")
+                    || !mapping.get("touch_screen").isString()
+                    || !mapping.get("touch_screen").asString().equals("bottom")) {
+                return false;
+            }
+            string topAspect = system.id.equals("n3ds") ? "5:3" : "4:3";
+            return screens.at(0).get("id").asString().equals("top")
+                && screens.at(1).get("id").asString().equals("bottom")
+                && RenderingGeometryAudit.aspect(
+                    screens.at(0).get("aspect"), topAspect)
+                && RenderingGeometryAudit.aspect(
+                    screens.at(1).get("aspect"), "4:3");
+        }
+        if (!RenderingGeometryAudit.aspect(
+                display.get("aspect"), RenderingExpectations.aspect(system.id))) {
+            return false;
+        }
+        bool adaptive = RenderingExpectations.widescreenSystems().contains(system.id);
+        JsonValue widescreen = display.get("widescreen");
+        if (!adaptive) { return !widescreen.isObject(); }
+        return RenderingGeometryAudit.aspect(widescreen.get("aspect"), "16:9")
+            && widescreen.get("detect").isString()
+            && widescreen.get("detect").asString()
+                .equals("emulator_reported_content_aspect")
+            && widescreen.get("fallback").isString()
+            && widescreen.get("fallback").asString().equals("default_aspect")
+            && widescreen.get("switch_at").isString()
+            && widescreen.get("switch_at").asString().equals("frame_boundary");
+    }
+
+    class bool shader(SemuCompilerModel model, SemuSystemSource system) {
+        bool enabled = RenderingExpectations.effectsEnabled(system.id);
+        if (!system.shaders.get("enabled").isBool()
+                || system.shaders.get("enabled").asBool() != enabled
+                || !system.shaders.get("renderer").isBool()
+                || !system.shaders.get("renderer").asBool()) {
+            return false;
+        }
+        if (!enabled) { return !system.shaders.get("screen").isString(); }
+        string expected = RenderingExpectations.shader(system.id);
+        return system.shaders.get("screen").isString()
+            && system.shaders.get("screen").asString().equals(expected)
+            && model.assets.shaders.get("assets").has(expected);
+    }
+
+    class bool bezel(SemuCompilerModel model, SemuSystemSource system) {
+        bool enabled = RenderingExpectations.effectsEnabled(system.id);
+        JsonValue variants = system.bezels.get("variants");
+        if (!system.bezels.get("enabled").isBool()
+                || system.bezels.get("enabled").asBool() != enabled
+                || !variants.isArray()) {
+            return false;
+        }
+        JsonValue policy = model.assets.bezels.get("policy");
+        JsonValue systemPolicy = policy.get("systems").get(system.id);
+        if (!systemPolicy.isObject()) { return false; }
+        if (!enabled) {
+            return variants.size() == 0
+                && !system.bezels.get("default_variant").isString()
+                && systemPolicy.get("enabled").isBool()
+                && !systemPolicy.get("enabled").asBool()
+                && systemPolicy.get("variants").isObject()
+                && systemPolicy.get("variants").size() == 0;
+        }
+        string defaultVariant = RenderingExpectations.defaultBezel(system.id);
+        JsonValue mappings = systemPolicy.get("variants");
+        JsonValue presentations = policy.get("presentations");
+        if (!system.bezels.get("default_variant").isString()
+                || !system.bezels.get("default_variant").asString()
+                    .equals(defaultVariant)
+                || !mappings.isObject() || mappings.size() != variants.size()
+                || !mappings.get(defaultVariant).isString()
+                || !systemPolicy.get("default_variant").isString()
+                || !systemPolicy.get("default_variant").asString()
+                    .equals(mappings.get(defaultVariant).asString())) {
+            return false;
+        }
+        for (int index = 0; index < variants.size(); index++) {
+            JsonValue variant = variants.at(index);
+            string id = variant.get("id").isString()
+                ? variant.get("id").asString() : "";
+            if (id.isEmpty() || !mappings.get(id).isString()) { return false; }
+            JsonValue presentation = presentations.get(mappings.get(id).asString());
+            JsonValue holes = variant.get("screen_holes").isObject()
+                ? variant.get("screen_holes") : system.bezels.get("screen_holes");
+            JsonValue hole = variant.get("hole").isObject()
+                ? variant.get("hole") : system.bezels.get("hole");
+            if (!presentation.isObject() || !variant.get("art").isString()
+                    || !presentation.get("art").isString()) {
+                return false;
+            }
+            bool sameGeometry = false;
+            if (holes.isObject()) {
+                sameGeometry = RenderingGeometryAudit.sameRect(holes.get("top"),
+                        presentation.get("screen_holes").get("top"))
+                    && RenderingGeometryAudit.sameRect(holes.get("bottom"),
+                        presentation.get("screen_holes").get("bottom"));
+            } else {
+                sameGeometry = RenderingGeometryAudit.sameRect(
+                    hole, presentation.get("hole"));
+            }
+            if (!variant.get("art").asString()
+                    .equals(presentation.get("art").asString())
+                    || !sameGeometry
+                    || !RenderingGeometryAudit.presentation(
+                        presentation, model.assets.bezels.get("assets"))) {
+                return false;
+            }
+        }
+        bool adaptive = RenderingExpectations.widescreenSystems().contains(system.id);
+        if (adaptive != system.bezels.get("widescreen_variant").isString()) {
+            return false;
+        }
+        if (adaptive && (!system.bezels.get("widescreen_variant").asString()
+                .equals("crt_16x9")
+                || !systemPolicy.get("widescreen_variant").asString()
+                    .equals("crt_16x9"))) {
+            return false;
+        }
+        JsonValue defaultPresentation = presentations.get(
+            mappings.get(defaultVariant).asString());
+        return RenderingGeometryAudit.nativeFits(defaultPresentation,
+                system.definition.get("display").get("screens"), 1280, 800)
+            && RenderingGeometryAudit.nativeFits(defaultPresentation,
+                system.definition.get("display").get("screens"), 1920, 1080);
+    }
+
+    class bool system(SemuCompilerModel model, SemuSystemSource system) {
+        bool displayValid = RenderingDeclarationAudit.display(system);
+        bool shaderValid = RenderingDeclarationAudit.shader(model, system);
+        bool bezelValid = RenderingDeclarationAudit.bezel(model, system);
+        if (!displayValid) { print("  " + system.id + ": display policy invalid"); }
+        if (!shaderValid) { print("  " + system.id + ": shader policy invalid"); }
+        if (!bezelValid) { print("  " + system.id + ": bezel policy invalid"); }
+        return displayValid && shaderValid && bezelValid;
+    }
+}
+
+class RenderingContractTest {
+    class int fail(string message) {
+        print("  FAIL rendering: " + message);
+        return 1;
+    }
+
+    class string shaderPath(string root, string logical) {
+        string prefix = "assets/shaders/";
+        return PathTools.join(root, "share/libretro/shaders/semu/"
+            + logical.substring(prefix.len(), logical.len()));
+    }
+
+    class string imagePath(string root, string logical) {
+        return PathTools.join(root, "share/semu/" + logical);
+    }
+
+    class bool writeAsset(string path) {
+        return FileSystem.mkdirp(PathTools.dirname(path)) == 0
+            && FileSystem.writeText(path, "fixture");
+    }
+
+    class bool stageAssets(SemuCompilerModel model, string root) {
+        JsonValue shaders = model.assets.shaders.get("assets");
+        JsonValue bezels = model.assets.bezels.get("assets");
+        for logical in shaders.keys() {
+            if (!RenderingContractTest.writeAsset(
+                    RenderingContractTest.shaderPath(root, logical))) {
+                return false;
+            }
+        }
+        for logical in bezels.keys() {
+            if (!logical.startsWith("assets/")
+                    || !RenderingContractTest.writeAsset(
+                        RenderingContractTest.imagePath(root, logical))) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    class JsonValue presentationLayer(string gbShader, string gcLayout,
+                                      string ndsLayout) {
+        JsonValue root = JsonValue.makeObject();
+        JsonValue visual = JsonValue.makeObject();
+        JsonValue systems = JsonValue.makeObject();
+        if (!gbShader.isEmpty()) {
+            JsonValue gb = JsonValue.makeObject();
+            gb.set("shader_file", JsonValue.makeString(gbShader));
+            systems.set("gb", gb);
+        }
+        if (!gcLayout.isEmpty()) {
+            JsonValue gc = JsonValue.makeObject();
+            gc.set("layout", JsonValue.makeString(gcLayout));
+            systems.set("gc", gc);
+        }
+        if (!ndsLayout.isEmpty()) {
+            JsonValue nds = JsonValue.makeObject();
+            nds.set("layout", JsonValue.makeString(ndsLayout));
+            systems.set("nds", nds);
+        }
+        visual.set("systems", systems);
+        root.set("schema_version", JsonValue.makeInt(1));
+        root.set("visual", visual);
+        return root;
+    }
+
+    class int run(string project) {
+        string scratch = FileSystem.tempDir("semu-rendering-contract");
+        if (scratch.isEmpty()) {
+            return RenderingContractTest.fail("could not create scratch root");
+        }
+        CompilerDiagnostics diagnostics = CompilerDiagnostics();
+        SemuCompilerModel model = SemuCompilerParser.parse(
+            project, "steam-deck", diagnostics);
+        if (!diagnostics.ok()) {
+            for error in diagnostics.errors { print("  " + error); }
+            FileSystem.removeRecursive(scratch);
+            return RenderingContractTest.fail("could not parse definitions");
+        }
+        if (!RenderingContractTest.stageAssets(model, scratch)) {
+            FileSystem.removeRecursive(scratch);
+            return RenderingContractTest.fail("could not stage runtime assets");
+        }
+
+        JsonValue settings = JsonValue.readFile(
+            PathTools.join(project, "config/settings/defaults.json"));
+        int failures = 0;
+        if (!RenderingDeclarationAudit.completeSystemSet(model)) {
+            failures += RenderingContractTest.fail(
+                "configured systems differ from the exact 17-system matrix");
+        }
+        if (!RenderingAssetAudit.bezelAssets(project, model.assets.bezels)) {
+            failures += RenderingContractTest.fail(
+                "PNG metadata or digests do not match committed bytes");
+        }
+        if (!RenderingAssetAudit.shaderAssets(model.assets.shaders)) {
+            failures += RenderingContractTest.fail(
+                "shader source/output digest contract is incomplete");
+        }
+        for system in model.systems {
+            if (!RenderingDeclarationAudit.system(model, system)) {
+                failures += RenderingContractTest.fail(system.id
+                    + " has incomplete shader, bezel, scaling, or aspect policy");
+            }
+            CompilerDiagnostics systemDiagnostics = CompilerDiagnostics();
+            SemuRenderingContract.check(model, system, systemDiagnostics);
+            SemuRenderingEnvironment environment = SemuRenderingCompiler.compile(
+                model, system, "fixture-emulator", scratch,
+                PathTools.join(scratch, "state/" + system.id),
+                settings, systemDiagnostics);
+            bool shaderEnabled = system.shaders.get("enabled").asBool();
+            bool bezelEnabled = system.bezels.get("enabled").asBool();
+            string defaultVariant = system.bezels.get("default_variant").isString()
+                ? system.bezels.get("default_variant").asString() : "";
+            JsonValue defaultPresentation = SemuRenderingDefinition.variant(
+                system.bezels, defaultVariant);
+            string defaultArt = defaultPresentation.get("art").isString()
+                ? defaultPresentation.get("art").asString() : "";
+            if (!systemDiagnostics.ok()
+                    || !environment.get("SEMU_RENDER_SYSTEM_ID").equals(system.id)
+                    || !environment.get("SEMU_RENDER_EMULATOR_ID")
+                        .equals("fixture-emulator")
+                    || !environment.get("SEMU_RENDER_SHADERS")
+                        .equals(shaderEnabled ? "1" : "0")
+                    || !environment.get("SEMU_RENDER_BEZELS")
+                        .equals(bezelEnabled ? "1" : "0")
+                    || !environment.get("SEMU_RENDER_INTEGER_SCALE").equals("1")
+                    || (shaderEnabled
+                        && environment.get("SEMU_RENDER_SHADER_PRESET").isEmpty())
+                    || (bezelEnabled
+                        && (environment.get("SEMU_RENDER_ART").isEmpty()
+                            || !environment.get("SEMU_RENDER_ART")
+                                .endsWith("/" + defaultArt)))) {
+                for error in systemDiagnostics.errors { print("  " + error); }
+                failures += RenderingContractTest.fail(
+                    system.id + " did not compile its declared presentation");
+            }
+            if (system.bezels.get("widescreen_variant").isString()
+                    && (environment.get("SEMU_RENDER_ART_B").isEmpty()
+                        || environment.get("SEMU_RENDER_SHADER_PRESET_B").isEmpty())) {
+                failures += RenderingContractTest.fail(
+                    system.id + " lost its aspect-adaptive variant B");
+            }
+            JsonValue screens = system.definition.get("display").get("screens");
+            if (bezelEnabled && screens.isArray() && screens.size() == 2
+                    && (environment.get("SEMU_RENDER_SCREEN_PRI").isEmpty()
+                        || environment.get("SEMU_RENDER_SCREEN_SEC").isEmpty())) {
+                failures += RenderingContractTest.fail(
+                    system.id + " lost dual-screen aperture geometry");
+            }
+        }
+
+        string sourceProjectRoot = model.projectRoot;
+        model.projectRoot = PathTools.join(scratch, "missing-project");
+        CompilerDiagnostics missingAssetDiagnostics = CompilerDiagnostics();
+        SemuRenderingEnvironment missingAssets = SemuRenderingCompiler.compile(
+            model, model.systemById("gb"), "retroarch",
+            PathTools.join(scratch, "missing-runtime-assets"),
+            PathTools.join(scratch, "state/gb-missing"), settings,
+            missingAssetDiagnostics);
+        model.projectRoot = sourceProjectRoot;
+        if (missingAssetDiagnostics.ok()
+                || !missingAssets.get("SEMU_RENDER_SHADERS").equals("1")
+                || !missingAssets.get("SEMU_RENDER_BEZELS").equals("1")
+                || !missingAssets.get("SEMU_RENDER_SHADER_PRESET").isEmpty()
+                || !missingAssets.get("SEMU_RENDER_ART").isEmpty()) {
+            failures += RenderingContractTest.fail(
+                "required shader and bezel assets silently degraded when absent");
+        }
+
+        string semuHome = PathTools.join(scratch, "settings");
+        string overrides = PathTools.join(semuHome, "overrides");
+        UnixFileSystem.mkdirp(overrides);
+        JsonValue userLayer = RenderingContractTest.presentationLayer(
+            "assets/shaders/gbc/screen.slangp", "crt_4x3", "vertical");
+        JsonValue overrideLayer = RenderingContractTest.presentationLayer(
+            "assets/shaders/gba/screen.slangp", "crt_16x9", "big_screen");
+        Path.writeAll(PathTools.join(semuHome, "semu.json"),
+            userLayer.stringify() + "\n");
+        Path.writeAll(PathTools.join(overrides, "90-presentation.json"),
+            overrideLayer.stringify() + "\n");
+        SemuBuildRequest request = SemuBuildRequest();
+        request.operation = "configs";
+        request.target = "steam-deck";
+        request.projectRoot = project;
+        request.semuHome = semuHome;
+        request.outputRoot = PathTools.join(scratch, "output");
+        request.commandLineSettings =
+            RenderingContractTest.presentationLayer(
+                "assets/shaders/nes/screen.slangp", "", "");
+        CompilerDiagnostics resolvedDiagnostics = CompilerDiagnostics();
+        SemuBuildPlan resolved = SemuBuildResolver.resolve(
+            model, request, resolvedDiagnostics);
+        SemuRenderingEnvironment handheld = SemuRenderingCompiler.compile(
+            model, model.systemById("gb"), "retroarch", scratch,
+            PathTools.join(scratch, "state/gb"), resolved.settings,
+            resolvedDiagnostics);
+        SemuRenderingEnvironment widescreen = SemuRenderingCompiler.compile(
+            model, model.systemById("gc"), "dolphin", scratch,
+            PathTools.join(scratch, "state/gc"), resolved.settings,
+            resolvedDiagnostics);
+        SemuRenderingEnvironment dual = SemuRenderingCompiler.compile(
+            model, model.systemById("nds"), "melonds", scratch,
+            PathTools.join(scratch, "state/nds"), resolved.settings,
+            resolvedDiagnostics);
+        SemuRenderingEnvironment modern = SemuRenderingCompiler.compile(
+            model, model.systemById("switch"), "ryujinx", scratch,
+            PathTools.join(scratch, "state/switch"), resolved.settings,
+            resolvedDiagnostics);
+        JsonValue noneSettings = JsonMerge.recursive(
+            resolved.settings,
+            RenderingContractTest.presentationLayer("none", "", ""));
+        CompilerDiagnostics noneDiagnostics = CompilerDiagnostics();
+        SemuRenderingEnvironment disabledHandheld =
+            SemuRenderingCompiler.compile(
+                model, model.systemById("gb"), "retroarch", scratch,
+                PathTools.join(scratch, "state/gb-none"), noneSettings,
+                noneDiagnostics);
+        JsonValue fixedFourThreeSettings = JsonMerge.recursive(
+            resolved.settings,
+            RenderingContractTest.presentationLayer(
+                "", "crt_4x3", ""));
+        CompilerDiagnostics fixedFourThreeDiagnostics = CompilerDiagnostics();
+        SemuRenderingEnvironment fixedFourThree =
+            SemuRenderingCompiler.compile(
+                model, model.systemById("gc"), "dolphin", scratch,
+                PathTools.join(scratch, "state/gc-4x3"),
+                fixedFourThreeSettings, fixedFourThreeDiagnostics);
+        string resolvedShader = SemuRenderingDefinition.text(resolved.settings,
+            "visual.systems.gb.shader_file");
+        string resolvedGcLayout = SemuRenderingDefinition.text(resolved.settings,
+            "visual.systems.gc.layout");
+        string resolvedNdsLayout = SemuRenderingDefinition.text(resolved.settings,
+            "visual.systems.nds.layout");
+        string modernShader = SemuRenderingDefinition.text(resolved.settings,
+            "visual.systems.switch.shader_file");
+        string modernBezel = SemuRenderingDefinition.text(resolved.settings,
+            "visual.systems.switch.bezel_variant");
+        string modernLayout = SemuRenderingDefinition.text(resolved.settings,
+            "visual.systems.switch.layout");
+        if (!resolvedDiagnostics.ok()
+                || !resolvedShader.equals("assets/shaders/nes/screen.slangp")
+                || !handheld.get("SEMU_RENDER_SHADER_PRESET")
+                    .endsWith("/nes/screen.slangp")
+                || !resolvedGcLayout.equals("crt_16x9")
+                || !widescreen.get("SEMU_RENDER_ART")
+                    .endsWith("/assets/bezels/tv/crt-16x9.png")
+                || !widescreen.get("SEMU_RENDER_ART_B").equals(
+                    widescreen.get("SEMU_RENDER_ART"))
+                || !widescreen.get("SEMU_RENDER_ART_C").equals(
+                    widescreen.get("SEMU_RENDER_ART"))
+                || !widescreen.get("SEMU_RENDER_ART_D").equals(
+                    widescreen.get("SEMU_RENDER_ART"))
+                || !resolvedNdsLayout.equals("big_screen")
+                || !dual.get("SEMU_RENDER_ART")
+                    .endsWith("/assets/bezels/nds/big_screen.png")
+                || !dual.get("SEMU_RENDER_ART_B").equals(
+                    dual.get("SEMU_RENDER_ART"))
+                || !dual.get("SEMU_RENDER_SCREEN_PRI").equals(
+                    dual.get("SEMU_RENDER_SCREEN_PRI_D"))
+                || !dual.get("SEMU_RENDER_SCREEN_SEC").equals(
+                    dual.get("SEMU_RENDER_SCREEN_SEC_D"))
+                || !modernShader.equals("none")
+                || !modernBezel.equals("none")
+                || !modernLayout.equals("auto")
+                || !modern.get("SEMU_RENDER_SHADERS").equals("0")
+                || !modern.get("SEMU_RENDER_BEZELS").equals("0")
+                || !modern.get("SEMU_RENDER_ART").isEmpty()
+                || !noneDiagnostics.ok()
+                || !disabledHandheld.get("SEMU_RENDER_SHADERS").equals("0")
+                || !disabledHandheld.get(
+                    "SEMU_RENDER_SHADER_PRESET").isEmpty()
+                || !fixedFourThreeDiagnostics.ok()
+                || !fixedFourThree.get("SEMU_RENDER_ART")
+                    .endsWith("/assets/bezels/tv/crt-4x3.png")
+                || !fixedFourThree.get("SEMU_RENDER_ART_B").equals(
+                    fixedFourThree.get("SEMU_RENDER_ART"))
+                || !fixedFourThree.get("SEMU_RENDER_ART_C").equals(
+                    fixedFourThree.get("SEMU_RENDER_ART"))
+                || !fixedFourThree.get("SEMU_RENDER_ART_D").equals(
+                    fixedFourThree.get("SEMU_RENDER_ART"))) {
+            for error in resolvedDiagnostics.errors { print("  " + error); }
+            failures += RenderingContractTest.fail(
+                "per-system precedence did not reach handheld, widescreen, dual-screen, and modern generation");
+        }
+        FileSystem.removeRecursive(scratch);
+        if (failures == 0) {
+            print("rendering contract: 17 systems + exact assets + geometry resolve");
+        }
+        return failures;
+    }
+}

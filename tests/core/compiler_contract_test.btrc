@@ -1,0 +1,634 @@
+// compiler_contract_test.btrc - contracts for the source-layout compiler pipeline.
+
+import std.{fs, json, vector}
+import ../../src/compiler/checker.btrc
+import ../../src/compiler/generator.btrc
+import ../../src/compiler/lexer.btrc
+import ../../src/compiler/model.btrc
+import ../../src/compiler/parser.btrc
+import ../../src/compiler/pipeline.btrc
+import ../../src/compiler/resolver.btrc
+import ../../src/generators/appimage.btrc
+import ../../src/lib/merge.btrc
+
+class CompilerContractTest {
+    class int fail(string message) {
+        print("  FAIL " + message);
+        return 1;
+    }
+
+    class bool hasDiagnostic(CompilerDiagnostics diagnostics, string field) {
+        for error in diagnostics.errors {
+            if (error.contains(": " + field + ":")) { return true; }
+        }
+        return false;
+    }
+
+    class SemuBuildPlan compile(string project, string semuHome, string target,
+                                string operation, string emulator, string output,
+                                CompilerDiagnostics diagnostics) {
+        SemuBuildRequest request = SemuBuildRequest();
+        request.projectRoot = project;
+        request.semuHome = semuHome;
+        request.target = target;
+        request.operation = operation;
+        request.emulator = emulator;
+        request.outputRoot = output;
+        return SemuCompiler.check(request, diagnostics).plan;
+    }
+
+    class int checkTargets(string project, string semuHome, string outputRoot) {
+        int failures = 0;
+        CompilerDiagnostics inventoryDiagnostics = CompilerDiagnostics();
+        Vector<SemuDefinitionUnit> units = SemuDefinitionLexer.lex(
+            PathTools.join(project, "config"), inventoryDiagnostics);
+        if (!inventoryDiagnostics.ok()) {
+            return CompilerContractTest.fail("definition inventory did not lex cleanly");
+        }
+        int targets = 0;
+        for unit in units {
+            if (!unit.kind.equals("target")) { continue; }
+            targets++;
+            CompilerDiagnostics diagnostics = CompilerDiagnostics();
+            SemuBuildPlan plan = CompilerContractTest.compile(
+                project, semuHome, unit.id, "target", "",
+                PathTools.join(outputRoot, unit.id), diagnostics);
+            if (!diagnostics.ok()) {
+                for error in diagnostics.errors { print("  " + error); }
+                failures += CompilerContractTest.fail(
+                    unit.id + " did not compile cleanly");
+                continue;
+            }
+            if (!plan.target.equals(unit.id) || plan.platform.isEmpty()
+                    || plan.artifact.isEmpty() || plan.nixSystems.isEmpty()
+                    || plan.systems.isEmpty()
+                    || plan.emulators.isEmpty() || plan.definitionFiles.isEmpty()) {
+                failures += CompilerContractTest.fail(
+                    unit.id + " resolved an incomplete build plan");
+            }
+            JsonValue encoded = JsonValue.parse(
+                SemuCompilerGenerator.planText(plan));
+            if (encoded.isError()
+                    || !encoded.get("target").asString().equals(unit.id)
+                    || encoded.get("nix_systems").size() != plan.nixSystems.size()
+                    || !encoded.get("deployment_target").isBool()
+                    || !encoded.get("validation").isObject()
+                    || encoded.get("systems").size() != plan.systems.size()
+                    || encoded.get("emulators").size() != plan.emulators.size()) {
+                failures += CompilerContractTest.fail(
+                    unit.id + " plan did not round-trip through std.json");
+            }
+            Vector<string> sortedSystems = plan.systems.copy();
+            Vector<string> sortedEmulators = plan.emulators.copy();
+            Vector<string> sortedDefinitions = plan.definitionFiles.copy();
+            sortedSystems.sort();
+            sortedEmulators.sort();
+            sortedDefinitions.sort();
+            if (!plan.systems.join("\n").equals(sortedSystems.join("\n"))
+                    || !plan.emulators.join("\n").equals(
+                        sortedEmulators.join("\n"))
+                    || !plan.definitionFiles.join("\n").equals(
+                        sortedDefinitions.join("\n"))) {
+                failures += CompilerContractTest.fail(
+                    unit.id + " plan inventories are not deterministic");
+            }
+            string settingsFile = PathTools.join(
+                project, "config/settings/defaults.json");
+            if (!plan.definitionFiles.contains(settingsFile)) {
+                failures += CompilerContractTest.fail(
+                    unit.id + " omitted repository settings provenance");
+            }
+
+            CompilerDiagnostics sourceDiagnostics = CompilerDiagnostics();
+            SemuCompilerTarget source = SemuTargetParser.parse(
+                unit.id, unit.path, sourceDiagnostics);
+            if (!sourceDiagnostics.ok()) {
+                failures += CompilerContractTest.fail(
+                    unit.id + " source target did not parse twice consistently");
+            } else {
+                if (!source.validation.requires.join("\n").equals(
+                            plan.validation.requires.join("\n"))
+                        || !source.validation.mustCompleteBefore.join("\n").equals(
+                            plan.validation.mustCompleteBefore.join("\n"))) {
+                    failures += CompilerContractTest.fail(
+                        unit.id + " inherited target-local validation ordering");
+                }
+                if (!source.inherits.isEmpty()) {
+                    string parent = PathTools.join(project,
+                        "config/targets/" + source.inherits + ".json");
+                    if (!plan.definitionFiles.contains(parent)) {
+                        failures += CompilerContractTest.fail(
+                            unit.id + " omitted inherited target provenance");
+                    }
+                }
+            }
+        }
+        if (targets == 0) {
+            failures += CompilerContractTest.fail("no target definitions were discovered");
+        }
+        return failures;
+    }
+
+    class int checkEmulatorSlice(string project, string semuHome, string outputRoot) {
+        CompilerDiagnostics inventoryDiagnostics = CompilerDiagnostics();
+        Vector<SemuDefinitionUnit> units = SemuDefinitionLexer.lex(
+            PathTools.join(project, "config"), inventoryDiagnostics);
+        string target = "";
+        for unit in units {
+            if (unit.kind.equals("target")) { target = unit.id; break; }
+        }
+        if (target.isEmpty()) {
+            return CompilerContractTest.fail("cannot select a target for emulator slice");
+        }
+        CompilerDiagnostics targetDiagnostics = CompilerDiagnostics();
+        SemuBuildPlan targetPlan = CompilerContractTest.compile(
+            project, semuHome, target, "target", "",
+            PathTools.join(outputRoot, "target"), targetDiagnostics);
+        if (!targetDiagnostics.ok() || targetPlan.emulators.isEmpty()) {
+            return CompilerContractTest.fail("cannot derive an emulator slice");
+        }
+        string emulator = targetPlan.emulators.get(0);
+        CompilerDiagnostics sliceDiagnostics = CompilerDiagnostics();
+        SemuBuildPlan slice = CompilerContractTest.compile(
+            project, semuHome, target, "emulator", emulator,
+            PathTools.join(outputRoot, "emulator"), sliceDiagnostics);
+        if (!sliceDiagnostics.ok() || slice.emulators.size() != 1
+                || !slice.emulators.get(0).equals(emulator)
+                || slice.systems.isEmpty()) {
+            for error in sliceDiagnostics.errors { print("  " + error); }
+            return CompilerContractTest.fail(
+                "emulator build did not narrow the target plan declaratively");
+        }
+        return 0;
+    }
+
+    class int checkSteamDeckSelection(string project, string semuHome,
+                                      string outputRoot) {
+        CompilerDiagnostics diagnostics = CompilerDiagnostics();
+        SemuBuildPlan plan = CompilerContractTest.compile(
+            project, semuHome, "steam-deck", "target", "",
+            PathTools.join(outputRoot, "steam-deck-selection"), diagnostics);
+        Vector<string> expectedSystems = [
+            "dreamcast", "gb", "gba", "gbc", "gc", "genesis", "n3ds",
+            "n64", "nds", "nes", "ps2", "psp", "psx", "snes",
+            "switch", "wii", "wiiu"
+        ];
+        Vector<string> expectedEmulators = [
+            "azahar", "cemu", "dolphin", "flycast", "melonds", "pcsx2",
+            "ppsspp", "retroarch", "ryujinx"
+        ];
+        if (!diagnostics.ok()
+                || !plan.systems.join("\n").equals(
+                    expectedSystems.join("\n"))
+                || !plan.emulators.join("\n").equals(
+                    expectedEmulators.join("\n"))
+                || !plan.deploymentTarget
+                || !plan.validation.kind.equals("physical")
+                || !plan.validation.harness.equals(
+                    "tests/targets/steamdeck")
+                || !plan.validation.image.isEmpty()
+                || plan.validation.viewport.width != 1280
+                || plan.validation.viewport.height != 800
+                || !plan.validation.mustCompleteBefore.contains("bazzite")) {
+            for error in diagnostics.errors { print("  " + error); }
+            return CompilerContractTest.fail(
+                "Steam Deck product slice or physical harness changed");
+        }
+
+        CompilerDiagnostics bazziteDiagnostics = CompilerDiagnostics();
+        SemuBuildPlan bazzite = CompilerContractTest.compile(
+            project, semuHome, "bazzite", "target", "",
+            PathTools.join(outputRoot, "bazzite-ordering"),
+            bazziteDiagnostics);
+        if (!bazziteDiagnostics.ok()
+                || !bazzite.validation.requires.contains("steam-deck")) {
+            return CompilerContractTest.fail(
+                "Bazzite no longer depends on completed Steam Deck validation");
+        }
+
+        SemuBuildRequest invalidRequest = SemuBuildRequest();
+        invalidRequest.projectRoot = project;
+        invalidRequest.semuHome = semuHome;
+        invalidRequest.target = "steam-deck";
+        invalidRequest.operation = "target";
+        invalidRequest.outputRoot = PathTools.join(
+            outputRoot, "invalid-physical-validation");
+        CompilerDiagnostics invalidDiagnostics = CompilerDiagnostics();
+        SemuCompilerModel invalidModel = SemuCompilerParser.parse(
+            project, invalidRequest.target, invalidDiagnostics);
+        SemuBuildPlan invalid = SemuBuildResolver.resolve(
+            invalidModel, invalidRequest, invalidDiagnostics);
+        invalid.validation.harness = "";
+        invalid.validation.viewport = SemuTargetViewport();
+        SemuCompilerChecker.check(
+            invalidModel, invalidRequest, invalid, invalidDiagnostics);
+        if (!CompilerContractTest.hasDiagnostic(
+                    invalidDiagnostics, "validation.harness")
+                || !CompilerContractTest.hasDiagnostic(
+                    invalidDiagnostics, "validation.viewport")) {
+            return CompilerContractTest.fail(
+                "physical deployment accepted an empty harness or viewport");
+        }
+        return 0;
+    }
+
+    class int checkOwnedRoots(string project, string outputRoot) {
+        string outside = PathTools.join(outputRoot, "outside");
+        string link = PathTools.join(outputRoot, "linked-output");
+        if (FileSystem.mkdirp(outside) != 0
+                || FileSystem.symlink(outside, link) != 0) {
+            return CompilerContractTest.fail(
+                "could not create owned-root rejection fixture");
+        }
+
+        SemuBuildRequest request = SemuBuildRequest();
+        request.projectRoot = project;
+        request.semuHome = PathTools.join(outputRoot, "settings");
+        request.target = "steam-deck";
+        request.operation = "target";
+        request.outputRoot = PathTools.join(link, "not-created");
+        CompilerDiagnostics diagnostics = CompilerDiagnostics();
+        SemuCompilation compilation = SemuCompiler.compile(
+            request, diagnostics);
+        if (diagnostics.ok() || !compilation.output.isEmpty()
+                || FileSystem.exists(PathTools.join(outside, "not-created"))) {
+            return CompilerContractTest.fail(
+                "non-existent output beneath a symlink ancestor was accepted");
+        }
+
+        request.outputRoot = PathTools.join(
+            outputRoot, "owned/../escaped-output");
+        diagnostics = CompilerDiagnostics();
+        compilation = SemuCompiler.compile(request, diagnostics);
+        if (diagnostics.ok() || !compilation.output.isEmpty()
+                || FileSystem.exists(PathTools.join(
+                    outputRoot, "escaped-output"))) {
+            return CompilerContractTest.fail(
+                "output traversal was normalized into an owned destination");
+        }
+
+        string settings = PathTools.join(outputRoot, "symlinked-settings");
+        string outsideOverrides = PathTools.join(
+            outputRoot, "outside-overrides");
+        if (FileSystem.mkdirp(settings) != 0
+                || FileSystem.mkdirp(outsideOverrides) != 0
+                || !FileSystem.writeText(PathTools.join(
+                    outsideOverrides, "visual.json"),
+                    "{\"visual\":{\"render_mode\":\"escaped\"}}\n")
+                || FileSystem.symlink(outsideOverrides,
+                    PathTools.join(settings, "overrides")) != 0) {
+            return CompilerContractTest.fail(
+                "could not create settings symlink rejection fixture");
+        }
+        request.semuHome = settings;
+        request.outputRoot = PathTools.join(outputRoot, "safe-output");
+        diagnostics = CompilerDiagnostics();
+        compilation = SemuCompiler.compile(request, diagnostics);
+        string renderMode = compilation.plan.settings.get("visual")
+            .get("render_mode").isString()
+            ? compilation.plan.settings.get("visual")
+                .get("render_mode").asString() : "";
+        if (diagnostics.ok() || !compilation.output.isEmpty()
+                || renderMode.equals("escaped")) {
+            return CompilerContractTest.fail(
+                "symlinked user override escaped the settings ownership root");
+        }
+        return 0;
+    }
+
+    class int checkSymlinkedDefinitions(string outputRoot) {
+        string config = PathTools.join(outputRoot, "symlinked-config");
+        for directory in [
+                "targets", "systems", "emulators", "input",
+                "settings", "assets"] {
+            FileSystem.mkdirp(PathTools.join(config, directory));
+        }
+        string outsideTarget = PathTools.join(
+            outputRoot, "outside-target.json");
+        string linkedTarget = PathTools.join(
+            config, "targets/escape.json");
+        string outsideSystem = PathTools.join(outputRoot, "outside-system");
+        string linkedSystem = PathTools.join(config, "systems/escape");
+        FileSystem.writeText(outsideTarget,
+            "{\"schema_version\":1,\"id\":\"escape\"}\n");
+        FileSystem.writeText(PathTools.join(
+            config, "settings/defaults.json"),
+            "{\"schema_version\":1}\n");
+        FileSystem.mkdirp(outsideSystem);
+        if (FileSystem.symlink(outsideTarget, linkedTarget) != 0
+                || FileSystem.symlink(outsideSystem, linkedSystem) != 0) {
+            return CompilerContractTest.fail(
+                "could not create definition symlink fixtures");
+        }
+        CompilerDiagnostics diagnostics = CompilerDiagnostics();
+        Vector<SemuDefinitionUnit> units = SemuDefinitionLexer.lex(
+            config, diagnostics);
+        for unit in units {
+            if (unit.id.equals("escape")) {
+                return CompilerContractTest.fail(
+                    "symlinked source definition entered the compiler inventory");
+            }
+        }
+        if (diagnostics.ok()) {
+            return CompilerContractTest.fail(
+                "symlinked source definitions were not diagnosed");
+        }
+        return 0;
+    }
+
+    class int checkMergeAndDiagnostics() {
+        JsonValue base = JsonValue.parse(
+            "{\"z\":1,\"nested\":{\"kept\":true,\"value\":1}}");
+        JsonValue overlay = JsonValue.parse(
+            "{\"a\":2,\"nested\":{\"value\":3}}");
+        string baseBefore = base.stringify();
+        string overlayBefore = overlay.stringify();
+        JsonValue merged = JsonMerge.recursive(base, overlay);
+        if (!base.stringify().equals(baseBefore)
+                || !overlay.stringify().equals(overlayBefore)
+                || !merged.keys().join(",").equals("a,nested,z")
+                || !merged.get("nested").keys().join(",").equals("kept,value")
+                || merged.get("nested").get("value").asInt() != 3) {
+            return CompilerContractTest.fail(
+                "JSON precedence was mutating or non-deterministic");
+        }
+
+        CompilerDiagnostics diagnostics = CompilerDiagnostics();
+        diagnostics.add("z.json", "field", "last");
+        diagnostics.add("a.json", "field", "first");
+        diagnostics.add("a.json", "field", "first");
+        if (diagnostics.errors.size() != 2
+                || !diagnostics.errors.get(0).startsWith("a.json:")
+                || !diagnostics.errors.get(1).startsWith("z.json:")) {
+            return CompilerContractTest.fail(
+                "compiler diagnostics were duplicated or traversal-ordered");
+        }
+        return 0;
+    }
+
+    class int checkDefinitionReferences() {
+        SemuCompilerModel model = SemuCompilerModel();
+        SemuInputSource steamDeck = SemuInputSource();
+        steamDeck.id = "steam-deck";
+        steamDeck.path = "/config/input/steam-deck";
+        SemuInputSource deck = SemuInputSource();
+        deck.id = "deck";
+        deck.path = "/config/input/deck";
+        model.inputs.push(deck);
+        model.inputs.push(steamDeck);
+        if (!model.inputByReference("input/steam-deck").id.equals("steam-deck")
+                || !model.inputByReference("steam-deck").id.isEmpty()
+                || !model.inputByReference("other/steam-deck").id.isEmpty()
+                || SemuDefinitionReference.valid("input/../deck", "input")
+                || SemuDefinitionId.valid("SteamDeck")) {
+            return CompilerContractTest.fail(
+                "definition references accepted a suffix alias or unsafe id");
+        }
+        return 0;
+    }
+
+    class int checkInvalidCommandLineLayer(string semuHome) {
+        SemuBuildRequest request = SemuBuildRequest();
+        request.semuHome = semuHome;
+        request.commandLineSettings = JsonValue.makeString("not-an-object");
+        CompilerDiagnostics diagnostics = CompilerDiagnostics();
+        JsonValue resolved = SemuSettingsResolver.resolve(
+            JsonValue.makeObject(), JsonValue.makeObject(), request, diagnostics);
+        if (!resolved.isObject() || diagnostics.errors.size() != 1
+                || !diagnostics.errors.get(0).startsWith("--settings-json:")) {
+            return CompilerContractTest.fail(
+                "invalid CLI settings layer did not fail deterministically");
+        }
+        return 0;
+    }
+
+    class int checkPrecedence(string project, string semuHome, string outputRoot) {
+        if (FileSystem.mkdirp(PathTools.join(semuHome, "overrides")) != 0
+                || !FileSystem.writeText(PathTools.join(semuHome, "semu.json"),
+                    "{\"visual\":{\"render_mode\":\"user\"}}\n")
+                || !FileSystem.writeText(
+                    PathTools.join(semuHome, "overrides/visual.json"),
+                    "{\"visual\":{\"render_mode\":\"override\"}}\n")) {
+            return CompilerContractTest.fail("could not create settings precedence fixture");
+        }
+
+        CompilerDiagnostics inventoryDiagnostics = CompilerDiagnostics();
+        Vector<SemuDefinitionUnit> units = SemuDefinitionLexer.lex(
+            PathTools.join(project, "config"), inventoryDiagnostics);
+        string target = "";
+        for unit in units {
+            if (unit.kind.equals("target")) { target = unit.id; break; }
+        }
+        SemuBuildRequest request = SemuBuildRequest();
+        request.projectRoot = project;
+        request.semuHome = semuHome;
+        request.target = target;
+        request.outputRoot = PathTools.join(outputRoot, "precedence");
+        request.commandLineSettings = JsonValue.parse(
+            "{\"visual\":{\"render_mode\":\"cli\"}}");
+        CompilerDiagnostics diagnostics = CompilerDiagnostics();
+        SemuCompilerModel model = SemuCompilerParser.parse(
+            project, target, diagnostics);
+        SemuBuildPlan plan = SemuBuildResolver.resolve(
+            model, request, diagnostics);
+        SemuCompilerChecker.check(model, request, plan, diagnostics);
+        if (!diagnostics.ok()) {
+            for error in diagnostics.errors { print("  " + error); }
+            return CompilerContractTest.fail("settings precedence plan did not compile");
+        }
+        string renderMode = plan.settings.get("visual").get("render_mode").asString();
+        if (!renderMode.equals("cli")) {
+            return CompilerContractTest.fail(
+                "CLI settings did not win the five-layer precedence cascade");
+        }
+        if (!plan.definitionFiles.contains(PathTools.join(semuHome, "semu.json"))
+                || !plan.definitionFiles.contains(
+                    PathTools.join(semuHome, "overrides/visual.json"))) {
+            return CompilerContractTest.fail(
+                "user settings layers were omitted from plan provenance");
+        }
+        request.commandLineSettings = JsonValue.makeObject();
+        diagnostics = CompilerDiagnostics();
+        model = SemuCompilerParser.parse(project, target, diagnostics);
+        plan = SemuBuildResolver.resolve(model, request, diagnostics);
+        if (!diagnostics.ok()
+                || !plan.settings.get("visual").get("render_mode")
+                    .asString().equals("override")) {
+            return CompilerContractTest.fail(
+                "user override did not win when the CLI layer was empty");
+        }
+        return 0;
+    }
+
+    class int checkEmission(string project, string semuHome, string outputRoot) {
+        CompilerDiagnostics inventoryDiagnostics = CompilerDiagnostics();
+        Vector<SemuDefinitionUnit> units = SemuDefinitionLexer.lex(
+            PathTools.join(project, "config"), inventoryDiagnostics);
+        string target = "";
+        for unit in units {
+            if (unit.kind.equals("target")) { target = unit.id; break; }
+        }
+        CompilerDiagnostics diagnostics = CompilerDiagnostics();
+        SemuBuildPlan plan = CompilerContractTest.compile(
+            project, semuHome, target, "configs", "",
+            PathTools.join(outputRoot, "emission"), diagnostics);
+        string output = diagnostics.ok()
+            ? SemuCompilerGenerator.emit(plan, diagnostics) : "";
+        if (!diagnostics.ok() || !FileSystem.isFile(output)) {
+            for error in diagnostics.errors { print("  " + error); }
+            return CompilerContractTest.fail("checked plan was not emitted");
+        }
+        JsonValue emitted = JsonValue.readFile(output);
+        if (emitted.isError() || !emitted.get("operation").asString().equals("configs")) {
+            return CompilerContractTest.fail("emitted plan is not valid compiler JSON");
+        }
+        return 0;
+    }
+
+    class int checkPackagePlan(string project, string semuHome, string outputRoot) {
+        CompilerDiagnostics inventoryDiagnostics = CompilerDiagnostics();
+        Vector<SemuDefinitionUnit> units = SemuDefinitionLexer.lex(
+            PathTools.join(project, "config"), inventoryDiagnostics);
+        SemuBuildPlan packagePlan = SemuBuildPlan();
+        CompilerDiagnostics packageDiagnostics = CompilerDiagnostics();
+        bool found = false;
+        for unit in units {
+            if (!unit.kind.equals("target")) { continue; }
+            CompilerDiagnostics targetDiagnostics = CompilerDiagnostics();
+            SemuBuildPlan candidate = CompilerContractTest.compile(
+                project, semuHome, unit.id, "target", "",
+                PathTools.join(outputRoot, "package-candidate"), targetDiagnostics);
+            if (targetDiagnostics.ok() && candidate.artifact.equals("appimage")) {
+                packagePlan = CompilerContractTest.compile(
+                    project, semuHome, unit.id, "package", "",
+                    PathTools.join(outputRoot, "package"), packageDiagnostics);
+                found = true;
+                break;
+            }
+        }
+        if (!found || !packageDiagnostics.ok()) {
+            return CompilerContractTest.fail(
+                "could not derive an AppImage package plan from target data");
+        }
+        string packagingBin = PathTools.join(
+            SemuAppImageGenerator.packagingRoot(project, packagePlan.platform),
+            "bin");
+        FileSystem.mkdirp(packagingBin);
+        string staleLauncher = PathTools.join(packagingBin, "semu-stale");
+        FileSystem.writeText(staleLauncher, "stale\n");
+        SemuCompilerGenerator.emit(packagePlan, packageDiagnostics);
+        string output = packageDiagnostics.ok()
+            ? SemuAppImageGenerator.emit(
+                packagePlan, project, packageDiagnostics) : "";
+        JsonValue emitted = output.isEmpty()
+            ? JsonValue.makeError() : JsonValue.readFile(output);
+        if (!packageDiagnostics.ok() || emitted.isError()
+                || emitted.get("package_recipes").size()
+                    != packagePlan.emulators.size()
+                || FileSystem.isFile(staleLauncher)) {
+            return CompilerContractTest.fail(
+                "AppImage package slices were not fresh or target-derived");
+        }
+        Vector<string> launchers = FileSystem.listDir(packagingBin);
+        if (launchers.size() != packagePlan.emulators.size()) {
+            return CompilerContractTest.fail(
+                "AppImage packaging retained unselected launcher files");
+        }
+        for emulator in packagePlan.emulators {
+            if (!launchers.contains("semu-" + emulator)) {
+                return CompilerContractTest.fail(
+                    "AppImage packaging omitted launcher for " + emulator);
+            }
+        }
+        return 0;
+    }
+
+    class int checkSourceBoundary(string project) {
+        Vector<string> files = [
+            "lexer.btrc", "parser.btrc", "model.btrc",
+            "resolver.btrc", "checker.btrc", "generator.btrc"
+        ];
+        for file in files {
+            string text = FileSystem.readText(
+                PathTools.join(project, "src/compiler/" + file));
+            if (text.contains("../semu/") || text.contains("src/semu/")) {
+                return CompilerContractTest.fail(
+                    file + " still imports the legacy source tree");
+            }
+        }
+        return 0;
+    }
+
+    class int checkProductionAppImageSurface(string project) {
+        string cli = FileSystem.readText(PathTools.join(project, "src/cli.btrc"));
+        string generator = FileSystem.readText(PathTools.join(
+            project, "src/generators/appimage.btrc"));
+        string makefile = FileSystem.readText(PathTools.join(project, "Makefile"));
+        Vector<string> cliContracts = [
+            "AppImageAssembler.assemble", "AppImageAssembler.verify",
+            "package appimage verify", "--runtime-root", "--target"
+        ];
+        for contract in cliContracts {
+            if (!cli.contains(contract)) {
+                return CompilerContractTest.fail(
+                    "production AppImage CLI is missing " + contract);
+            }
+        }
+        if (!generator.contains("emitPackaging")
+                || !generator.contains("for emulator in plan.emulators")) {
+            return CompilerContractTest.fail(
+                "AppImage packaging inputs are not generated from the compiler plan");
+        }
+        Vector<string> unsupported = [
+            "$(SEMU_BIN) manifest", "$(SEMU_BIN) bootstrap",
+            "package appimage --project", "package appimage verify --project"
+        ];
+        for invocation in unsupported {
+            if (makefile.contains(invocation)) {
+                return CompilerContractTest.fail(
+                    "Make invokes unsupported CLI surface: " + invocation);
+            }
+        }
+        if (!makefile.contains(
+                "package appimage --target steam-deck --project")
+            || !makefile.contains(
+                "package appimage verify --target steam-deck --project")) {
+            return CompilerContractTest.fail(
+                "Make does not pass the compiler target to AppImage operations");
+        }
+        return 0;
+    }
+
+    class int run(string project) {
+        string outputRoot = FileSystem.tempDir("semu-compiler-contract");
+        string semuHome = FileSystem.tempDir("semu-compiler-home");
+        if (outputRoot.isEmpty() || semuHome.isEmpty()) {
+            return CompilerContractTest.fail("could not create compiler test roots");
+        }
+        int failures = CompilerContractTest.checkTargets(
+            project, semuHome, outputRoot);
+        failures += CompilerContractTest.checkEmulatorSlice(
+            project, semuHome, outputRoot);
+        failures += CompilerContractTest.checkSteamDeckSelection(
+            project, semuHome, outputRoot);
+        failures += CompilerContractTest.checkOwnedRoots(project, outputRoot);
+        failures += CompilerContractTest.checkSymlinkedDefinitions(outputRoot);
+        failures += CompilerContractTest.checkPrecedence(
+            project, semuHome, outputRoot);
+        failures += CompilerContractTest.checkEmission(
+            project, semuHome, outputRoot);
+        failures += CompilerContractTest.checkPackagePlan(
+            project, semuHome, outputRoot);
+        failures += CompilerContractTest.checkMergeAndDiagnostics();
+        failures += CompilerContractTest.checkDefinitionReferences();
+        failures += CompilerContractTest.checkInvalidCommandLineLayer(semuHome);
+        failures += CompilerContractTest.checkSourceBoundary(project);
+        failures += CompilerContractTest.checkProductionAppImageSurface(project);
+        FileSystem.removeRecursive(outputRoot);
+        FileSystem.removeRecursive(semuHome);
+        if (failures == 0) {
+            print("compiler contract: stages + precedence + slices + emission valid");
+        }
+        return failures;
+    }
+}

@@ -1,0 +1,224 @@
+--- a/src/Ryujinx.Graphics.OpenGL/Ryujinx.Graphics.OpenGL.csproj
++++ b/src/Ryujinx.Graphics.OpenGL/Ryujinx.Graphics.OpenGL.csproj
+@@ -4,0 +5 @@
++    <DefineConstants Condition=" '$(ExtraDefineConstants)' != '' ">$(DefineConstants);$(ExtraDefineConstants)</DefineConstants>
+--- a/src/Ryujinx.Graphics.OpenGL/Window.cs
++++ b/src/Ryujinx.Graphics.OpenGL/Window.cs
+@@ -6,8 +6,163 @@
+ using Ryujinx.Graphics.OpenGL.Image;
+ using System;
+ 
++#if SEMU_RENDERER
++using System.Runtime.InteropServices;
++#endif
++
+ namespace Ryujinx.Graphics.OpenGL
+ {
++#if SEMU_RENDERER
++    public static class SemuRendererClient
++    {
++        private const string LibraryName = "semurenderer";
++        private const uint RendererAbi = 2;
++        private const uint LayoutDefault = 1;
++        private const uint LayoutVariantB = 2;
++        private const uint ColorBufferBack = 0x0405;
++        private const int OriginBottomLeft = 0;
++        private const int Applied = 1;
++
++        [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
++        private delegate nint GetProcCallback(
++            [MarshalAs(UnmanagedType.LPUTF8Str)] string name);
++
++        [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
++        private delegate nint CurrentContextCallback();
++
++        [StructLayout(LayoutKind.Sequential)]
++        private struct SemuRenderSurfaceGl
++        {
++            public int X;
++            public int Y;
++            public int Width;
++            public int Height;
++            public int NativeWidth;
++            public int NativeHeight;
++            public int Rotation;
++            public int Origin;
++        }
++
++        [StructLayout(LayoutKind.Sequential)]
++        private struct SemuRenderFrameGl
++        {
++            public uint Abi;
++            public uint StructSize;
++            public ulong FrameId;
++            public uint Framebuffer;
++            public uint ColorBuffer;
++            public int FramebufferWidth;
++            public int FramebufferHeight;
++            public float PresentationAspect;
++            public uint LayoutVariant;
++            public int SurfaceCount;
++            public SemuRenderSurfaceGl Surface0;
++            public SemuRenderSurfaceGl Surface1;
++            public nint GetProc;
++            public nint CurrentContext;
++        }
++
++        [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl,
++            EntryPoint = "semu_render_game_gl", ExactSpelling = true)]
++        private static extern int RenderGameNative(ref SemuRenderFrameGl frame);
++
++        [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl,
++            EntryPoint = "semu_render_post_ui_gl", ExactSpelling = true)]
++        private static extern int RenderPostUiNative(ref SemuRenderFrameGl frame);
++
++        private static Func<string, nint> _getProc = _ => nint.Zero;
++        private static Func<nint> _currentContext = () => nint.Zero;
++        private static readonly GetProcCallback GetProcThunk =
++            name => _getProc(name);
++        private static readonly CurrentContextCallback CurrentContextThunk =
++            () => _currentContext();
++        private static readonly nint GetProcPointer =
++            Marshal.GetFunctionPointerForDelegate(GetProcThunk);
++        private static readonly nint CurrentContextPointer =
++            Marshal.GetFunctionPointerForDelegate(CurrentContextThunk);
++        private static ulong _nextFrameId;
++        private static SemuRenderFrameGl _frame;
++        private static bool _pending;
++
++        public static void Configure(
++            Func<string, nint> getProc,
++            Func<nint> currentContext)
++        {
++            _getProc = getProc ?? throw new ArgumentNullException(nameof(getProc));
++            _currentContext = currentContext ??
++                throw new ArgumentNullException(nameof(currentContext));
++        }
++
++        internal static void RenderGame(
++            int framebufferWidth,
++            int framebufferHeight,
++            int contentX,
++            int contentY,
++            int contentWidth,
++            int contentHeight,
++            int nativeWidth,
++            int nativeHeight)
++        {
++            _pending = false;
++            _frame = default;
++            if (framebufferWidth <= 0 || framebufferHeight <= 0 ||
++                contentWidth <= 0 || contentHeight <= 0 ||
++                nativeWidth <= 0 || nativeHeight <= 0)
++            {
++                return;
++            }
++
++            _nextFrameId = _nextFrameId == ulong.MaxValue ? 1 : _nextFrameId + 1;
++            _frame = new SemuRenderFrameGl
++            {
++                Abi = RendererAbi,
++                StructSize = (uint)Marshal.SizeOf<SemuRenderFrameGl>(),
++                FrameId = _nextFrameId,
++                Framebuffer = 0,
++                ColorBuffer = ColorBufferBack,
++                FramebufferWidth = framebufferWidth,
++                FramebufferHeight = framebufferHeight,
++                PresentationAspect = (float)contentWidth / contentHeight,
++                LayoutVariant = (float)contentWidth / contentHeight >= 1.5f ?
++                    LayoutVariantB : LayoutDefault,
++                SurfaceCount = 1,
++                Surface0 = new SemuRenderSurfaceGl
++                {
++                    X = contentX,
++                    Y = contentY,
++                    Width = contentWidth,
++                    Height = contentHeight,
++                    NativeWidth = nativeWidth,
++                    NativeHeight = nativeHeight,
++                    Rotation = 0,
++                    Origin = OriginBottomLeft,
++                },
++                GetProc = GetProcPointer,
++                CurrentContext = CurrentContextPointer,
++            };
++            _pending = RenderGameNative(ref _frame) == Applied;
++        }
++
++        public static void RenderPostUi()
++        {
++            if (!_pending)
++            {
++                return;
++            }
++
++            try
++            {
++                RenderPostUiNative(ref _frame);
++            }
++            finally
++            {
++                _pending = false;
++                _frame = default;
++            }
++        }
++    }
++#endif
++
+     class Window : IWindow, IDisposable
+     {
+         private readonly OpenGLRenderer _renderer;
+@@ -135,6 +290,9 @@
+                 srcY1 = crop.Bottom;
+             }
+ 
++            int nativeWidth = Math.Abs(srcX1 - srcX0);
++            int nativeHeight = Math.Abs(srcY1 - srcY0);
++
+             float ratioX = crop.IsStretched ? 1.0f : MathF.Min(1.0f, _height * crop.AspectRatioX / (_width * crop.AspectRatioY));
+             float ratioY = crop.IsStretched ? 1.0f : MathF.Min(1.0f, _width * crop.AspectRatioY / (_height * crop.AspectRatioX));
+ 
+@@ -219,6 +377,18 @@
+             GL.ClipControl(ClipOrigin.LowerLeft, ClipDepthMode.NegativeOneToOne);
+             GL.Viewport(0, 0, _width, _height);
+             GL.BindFramebuffer(FramebufferTarget.Framebuffer, drawFramebuffer);
++
++#if SEMU_RENDERER
++            SemuRendererClient.RenderGame(
++                _width,
++                _height,
++                Math.Min(dstX0, dstX1),
++                Math.Min(dstY0, dstY1),
++                Math.Abs(dstX1 - dstX0),
++                Math.Abs(dstY1 - dstY0),
++                nativeWidth,
++                nativeHeight);
++#endif
+ 
+             swapBuffersCallback();
+ 
+--- a/src/Ryujinx/UI/Renderer/EmbeddedWindowOpenGL.cs
++++ b/src/Ryujinx/UI/Renderer/EmbeddedWindowOpenGL.cs
+@@ -59,6 +59,12 @@
+ 
+             GL.LoadBindings(new OpenTKBindingsContext(Context.GetProcAddress));
+ 
++#if SEMU_RENDERER
++            SemuRendererClient.Configure(
++                Context.GetProcAddress,
++                () => Context.IsCurrent ? Context.ContextHandle : nint.Zero);
++#endif
++
+             Context.MakeCurrent(null);
+         }
+ 
+@@ -81,6 +87,9 @@
+ 
+         public void SwapBuffers()
+         {
++#if SEMU_RENDERER
++            SemuRendererClient.RenderPostUi();
++#endif
+             _window?.SwapBuffers();
+         }
+ 

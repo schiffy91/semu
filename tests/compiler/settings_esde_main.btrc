@@ -1,0 +1,885 @@
+// settings_esde_main.btrc - focused settings and ES-DE contract entrypoint.
+
+import std.{cli, fs, io, json, process, strings, vector}
+import ../../src/generators/settings.btrc
+import ../../src/lib/json_format.btrc
+import ../../src/lib/rendering_settings.btrc
+
+class DynamicSystemSettingsContract {
+    class int fail(string message) {
+        print("  FAIL dynamic settings: " + message);
+        return 1;
+    }
+
+    class JsonValue field(JsonValue document, string key) {
+        JsonValue sections = document.get("sections");
+        return DynamicSystemSettingsContract.fieldIn(sections, key);
+    }
+
+    class JsonValue fieldIn(JsonValue sections, string key) {
+        if (!sections.isArray()) { return JsonValue.makeNull(); }
+        for (int sectionIndex = 0;
+             sectionIndex < sections.size(); sectionIndex++) {
+            JsonValue section = sections.at(sectionIndex);
+            JsonValue fields = section.get("fields");
+            if (fields.isArray()) {
+                for (int fieldIndex = 0;
+                     fieldIndex < fields.size(); fieldIndex++) {
+                    JsonValue field = fields.at(fieldIndex);
+                    if (field.get("key").isString()
+                            && field.get("key").asString().equals(key)) {
+                        return field;
+                    }
+                }
+            }
+            JsonValue nested = DynamicSystemSettingsContract.fieldIn(
+                section.get("sections"), key);
+            if (nested.isObject()) { return nested; }
+        }
+        return JsonValue.makeNull();
+    }
+
+    class JsonValue section(JsonValue sections, string id) {
+        if (!sections.isArray()) { return JsonValue.makeNull(); }
+        for (int index = 0; index < sections.size(); index++) {
+            JsonValue section = sections.at(index);
+            if (section.isObject() && section.get("id").isString()
+                    && section.get("id").asString().equals(id)) {
+                return section;
+            }
+            JsonValue nested = DynamicSystemSettingsContract.section(
+                section.get("sections"), id);
+            if (nested.isObject()) { return nested; }
+        }
+        return JsonValue.makeNull();
+    }
+
+    class bool exactChoices(JsonValue field, Vector<string> expected) {
+        JsonValue choices = field.get("choices");
+        if (!choices.isArray() || choices.size() != expected.size()) {
+            return false;
+        }
+        for (int index = 0; index < expected.size(); index++) {
+            if (!choices.at(index).isString()
+                    || !choices.at(index).asString().equals(
+                        expected.get(index))) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    class int run(string project) {
+        string home = FileSystem.tempDir("semu-dynamic-settings");
+        if (home.isEmpty()) {
+            return DynamicSystemSettingsContract.fail(
+                "could not create scratch home");
+        }
+        SemuConfigStore store = SemuConfigStore(project, home);
+        SemuConfigResult prepared = store.prepare();
+        JsonValue definition = store.definition();
+        SettingsUiResult rendered = SettingsUiProtocol.render(store, "linux");
+        SettingsUiResult macosRendered = SettingsUiProtocol.render(store, "macos");
+        JsonValue ui = JsonValue.parse(rendered.document);
+        JsonValue macosUi = JsonValue.parse(macosRendered.document);
+        JsonValue raw = JsonValue.readFile(SemuConfigPaths.defaults(project));
+        string configRoot = SemuConfigPaths.sourceRoot(project);
+        string systemsRoot = PathTools.join(configRoot, "systems");
+        Vector<string> systems =
+            SemuRenderingSettingsDefinitions.sortedDirectories(systemsRoot);
+        int failures = 0;
+        JsonValue rootSections = ui.get("sections");
+        JsonValue systemOverrides = DynamicSystemSettingsContract.section(
+            rootSections, "system-overrides");
+        Vector<string> rootIds = [
+            "library", "rendering", "interface", "sync", "system-overrides"
+        ];
+        bool rootNavigationExact = rootSections.isArray()
+            && rootSections.size() == rootIds.size();
+        int largestRootPage = 0;
+        if (rootNavigationExact) {
+            for (int index = 0; index < rootIds.size(); index++) {
+                JsonValue section = rootSections.at(index);
+                if (!section.get("id").isString()
+                        || !section.get("id").asString()
+                            .equals(rootIds.get(index))) {
+                    rootNavigationExact = false;
+                }
+                JsonValue fields = section.get("fields");
+                if (fields.isArray() && fields.size() > largestRootPage) {
+                    largestRootPage = fields.size();
+                }
+            }
+        }
+        JsonValue linuxRoms = DynamicSystemSettingsContract.field(
+            ui, "paths.roms_root.linux");
+        JsonValue linuxBios = DynamicSystemSettingsContract.field(
+            ui, "paths.bios_root.linux");
+        JsonValue hiddenMacosBios = DynamicSystemSettingsContract.field(
+            ui, "paths.bios_root.macos");
+        JsonValue macosRoms = DynamicSystemSettingsContract.field(
+            macosUi, "paths.roms_root.macos");
+        JsonValue macosBios = DynamicSystemSettingsContract.field(
+            macosUi, "paths.bios_root.macos");
+        JsonValue hiddenLinuxBios = DynamicSystemSettingsContract.field(
+            macosUi, "paths.bios_root.linux");
+        if (!prepared.ok || !definition.isObject() || !rendered.ok
+                || !macosRendered.ok || !ui.isObject() || !macosUi.isObject()
+                || systems.isEmpty()
+                || ui.get("schema_version").asInt() != 2
+                || !ui.get("protocol").asString()
+                    .equals("semu-settings-v2")
+                || !rootSections.isArray()
+                || !rootNavigationExact || largestRootPage > 10
+                || rootSections.size()
+                    != raw.get("menu").get("sections").size() + 1
+                || !systemOverrides.isObject()
+                || !systemOverrides.get("kind").asString().equals("menu")
+                || !systemOverrides.get("sections").isArray()
+                || systemOverrides.get("sections").size() != systems.size()
+                || definition.get("paths").get("systems").keys().size()
+                    != systems.size()
+                || definition.get("input").get("systems").keys().size()
+                    != systems.size()
+                || definition.get("visual").get("systems").keys().size()
+                    != systems.size()
+                || !definition.get("paths").get("bios_root").get("linux")
+                    .asString().equals(
+                        "/run/media/deck/SD/Emulation/RetroArch/config/system")
+                || !definition.get("paths").get("bios_root").get("macos")
+                    .asString().equals("${home}/ES-DE/BIOS")
+                || !linuxRoms.isObject() || !linuxBios.isObject()
+                || !linuxBios.get("type").asString().equals("path")
+                || !linuxBios.get("value").asString().equals(
+                    "/run/media/deck/SD/Emulation/RetroArch/config/system")
+                || hiddenMacosBios.isObject()
+                || !macosRoms.isObject() || !macosBios.isObject()
+                || !macosBios.get("type").asString().equals("path")
+                || !macosBios.get("value").asString()
+                    .equals("${home}/ES-DE/BIOS")
+                || hiddenLinuxBios.isObject()) {
+            failures += DynamicSystemSettingsContract.fail(
+                "platform roots or system definitions did not expand into the UI");
+        }
+
+        int controllerRows = 0;
+        for id in systems {
+            JsonValue system = JsonValue.readFile(PathTools.join(
+                systemsRoot, id + "/system.json"));
+            JsonValue shaders = JsonValue.readFile(PathTools.join(
+                systemsRoot, id + "/shaders.json"));
+            JsonValue bezels = JsonValue.readFile(PathTools.join(
+                systemsRoot, id + "/bezels.json"));
+            string romDirectory = system.get("rom").get("dir").asString();
+            SemuSystemInputDefinition input =
+                SemuRenderingSettingsDefinitions.inputDefinition(
+                    configRoot, id, system);
+            JsonValue pathField = DynamicSystemSettingsContract.field(
+                ui, "paths.systems." + id + ".rom_directory");
+            JsonValue inputField = DynamicSystemSettingsContract.field(
+                ui, "input.systems." + id + ".controller_mode");
+            JsonValue shaderField = DynamicSystemSettingsContract.field(
+                ui, "visual.systems." + id + ".shader_file");
+            JsonValue bezelField = DynamicSystemSettingsContract.field(
+                ui, "visual.systems." + id + ".bezel_variant");
+            JsonValue layoutField = DynamicSystemSettingsContract.field(
+                ui, "visual.systems." + id + ".layout");
+            JsonValue shaderToggle = DynamicSystemSettingsContract.field(
+                ui, "visual.systems." + id + ".shaders");
+            JsonValue bezelToggle = DynamicSystemSettingsContract.field(
+                ui, "visual.systems." + id + ".bezels");
+            bool shadersEnabled = shaders.get("enabled").isBool()
+                && shaders.get("enabled").asBool();
+            bool bezelsEnabled = bezels.get("enabled").isBool()
+                && bezels.get("enabled").asBool();
+            int variantCount = SemuRenderingSettingsDefinitions
+                .variantIds(bezels).size();
+            bool controllerVisible = input.controllerModes.size() > 1;
+            if (inputField.isObject()) { controllerRows++; }
+            if (!pathField.isObject()
+                    || !pathField.get("type").asString().equals("relative_path")
+                    || !pathField.get("value").asString().equals(romDirectory)
+                    || !input.valid
+                    || (controllerVisible
+                        && (!inputField.isObject()
+                            || !DynamicSystemSettingsContract.exactChoices(
+                                inputField, input.controllerModes)))
+                    || (!controllerVisible && inputField.isObject())
+                    || shadersEnabled != shaderToggle.isObject()
+                    || shadersEnabled != shaderField.isObject()
+                    || bezelsEnabled != bezelToggle.isObject()
+                    || (bezelsEnabled && variantCount > 1)
+                        != bezelField.isObject()
+                    || (bezelsEnabled && variantCount > 1)
+                        != layoutField.isObject()) {
+                failures += DynamicSystemSettingsContract.fail(
+                    "path/input/rendering fields diverged for system: " + id);
+            }
+        }
+
+        JsonValue wiiController = DynamicSystemSettingsContract.field(
+            ui, "input.systems.wii.controller_mode");
+        Vector<string> wiiModes = [
+            "wiimote", "nunchuk", "classic", "gamecube"
+        ];
+        JsonValue syncPage = DynamicSystemSettingsContract.section(
+            rootSections, "sync");
+        if (controllerRows != 1 || !wiiController.isObject()
+                || !DynamicSystemSettingsContract.exactChoices(
+                    wiiController, wiiModes)
+                || !syncPage.isObject()
+                || !syncPage.get("commands").isArray()
+                || syncPage.get("commands").size() != 3
+                || DynamicSystemSettingsContract.field(
+                    ui, "visual.systems.switch.shaders").isObject()
+                || DynamicSystemSettingsContract.field(
+                    ui, "visual.systems.switch.bezels").isObject()
+                || DynamicSystemSettingsContract.field(
+                    ui, "visual.systems.wiiu.shader_file").isObject()
+                || DynamicSystemSettingsContract.field(
+                    ui, "visual.systems.wiiu.bezel_variant").isObject()
+                || DynamicSystemSettingsContract.field(
+                    ui, "visual.systems.gb.bezel_variant").isObject()
+                || DynamicSystemSettingsContract.field(
+                    ui, "visual.systems.gb.layout").isObject()) {
+            failures += DynamicSystemSettingsContract.fail(
+                "hierarchy exposed inert controls or hid Wii's four modes");
+        }
+
+        string selected = systems.get(0);
+        string externalBios = PathTools.join(home, "firmware");
+        SemuConfigResult biosChanged = store.put(
+            "paths.bios_root.linux", JsonValue.makeString(externalBios));
+        SemuConfigResult biosRead = store.get("paths.bios_root.linux");
+        string biosStable = Path.readAll(SemuConfigPaths.userFile(home));
+        SemuConfigResult relativeBios = store.put(
+            "paths.bios_root.linux", JsonValue.makeString("relative/firmware"));
+        bool relativeBiosRejected = !relativeBios.ok
+            && Path.readAll(SemuConfigPaths.userFile(home)).equals(biosStable);
+        SemuConfigResult unresolvedBios = store.put(
+            "paths.bios_root.macos",
+            JsonValue.makeString("${home}/ES-DE/${firmware}"));
+        bool unresolvedBiosRejected = !unresolvedBios.ok
+            && Path.readAll(SemuConfigPaths.userFile(home)).equals(biosStable);
+        SemuConfigResult changed = store.putJson(
+            "paths.systems." + selected + ".rom_directory",
+            "\"custom/" + selected + "\"");
+        string stable = Path.readAll(SemuConfigPaths.userFile(home));
+        SemuConfigResult traversal = store.putJson(
+            "paths.systems." + selected + ".rom_directory",
+            "\"../escape\"");
+        SemuSettingsCompileResult compiled = SemuSettingsCompiler.emit(store);
+        JsonValue output = JsonValue.readFile(compiled.output);
+        string implementation = Path.readAll(PathTools.join(
+            project, "src/lib/rendering_settings.btrc"));
+        bool embeddedSystem = false;
+        for id in systems {
+            if (implementation.contains("\"" + id + "\"")) {
+                embeddedSystem = true;
+            }
+        }
+        if (!biosChanged.ok || !biosRead.ok
+                || !biosRead.value.asString().equals(externalBios)
+                || !relativeBiosRejected || !unresolvedBiosRejected
+                || !changed.ok || traversal.ok
+                || !Path.readAll(SemuConfigPaths.userFile(home)).equals(stable)
+                || !compiled.ok() || !output.get("paths").get("systems").isObject()
+                || !output.get("input").get("systems").isObject()
+                || !output.get("visual").get("systems").isObject()
+                || output.get("ui").has("controls")
+                || output.get("visual").has("render_mode")
+                || embeddedSystem) {
+            failures += DynamicSystemSettingsContract.fail(
+                "typed system settings were unsafe, omitted, or hardcoded");
+        }
+        FileSystem.removeRecursive(home);
+        if (failures == 0) {
+            print("dynamic settings contract: hierarchy + real choices valid");
+        }
+        return failures;
+    }
+}
+
+class ExposedSettingsEffectContract {
+    class int fail(string message) {
+        print("  FAIL settings effects: " + message);
+        return 1;
+    }
+
+    class void collectFields(JsonValue sections, Vector<JsonValue> fields,
+                             Vector<string> keys) {
+        if (!sections.isArray()) { return; }
+        for (int sectionIndex = 0;
+             sectionIndex < sections.size(); sectionIndex++) {
+            JsonValue section = sections.at(sectionIndex);
+            JsonValue sectionFields = section.get("fields");
+            if (sectionFields.isArray()) {
+                for (int fieldIndex = 0;
+                     fieldIndex < sectionFields.size(); fieldIndex++) {
+                    JsonValue field = sectionFields.at(fieldIndex);
+                    string key = field.get("key").isString()
+                        ? field.get("key").asString() : "";
+                    if (!key.isEmpty() && !keys.contains(key)) {
+                        keys.push(key);
+                        fields.push(field);
+                    }
+                }
+            }
+            ExposedSettingsEffectContract.collectFields(
+                section.get("sections"), fields, keys);
+        }
+    }
+
+    class JsonValue alternate(JsonValue field, string scratch, int index) {
+        string kind = field.get("type").isString()
+            ? field.get("type").asString() : "";
+        JsonValue current = field.get("value");
+        if (kind.equals("boolean") && current.isBool()) {
+            return JsonValue.makeBool(!current.asBool());
+        }
+        if (kind.equals("choice") && field.get("choices").isArray()) {
+            JsonValue choices = field.get("choices");
+            for (int choiceIndex = 0;
+                 choiceIndex < choices.size(); choiceIndex++) {
+                JsonValue choice = choices.at(choiceIndex);
+                if (choice.isString()
+                        && (!current.isString()
+                            || !choice.asString().equals(current.asString()))) {
+                    return choice;
+                }
+            }
+            return JsonValue.makeNull();
+        }
+        if (kind.equals("path")) {
+            return JsonValue.makeString(PathTools.join(
+                scratch, "configured-path-" + index.toString()));
+        }
+        if (kind.equals("relative_path")) {
+            return JsonValue.makeString(
+                "configured-system-" + index.toString());
+        }
+        if (kind.equals("loopback")) {
+            return JsonValue.makeString(
+                "127.0.0.1:" + (38484 + index).toString());
+        }
+        if (kind.equals("string")) {
+            return JsonValue.makeString(
+                "semu-setting-" + index.toString());
+        }
+        if (kind.equals("integer") && current.isInt()) {
+            return JsonValue.makeInt(current.asInt() + 1);
+        }
+        return JsonValue.makeNull();
+    }
+
+    class JsonValue setNested(JsonValue root, Vector<string> parts,
+                              int index, JsonValue value) {
+        JsonValue result = root.isObject() ? root : JsonValue.makeObject();
+        string part = parts.get(index);
+        if (index == parts.size() - 1) {
+            result.set(part, value);
+            return result;
+        }
+        JsonValue child = result.has(part) && result.get(part).isObject()
+            ? result.get(part) : JsonValue.makeObject();
+        result.set(part, ExposedSettingsEffectContract.setNested(
+            child, parts, index + 1, value));
+        return result;
+    }
+
+    class int run(string project) {
+        string scratch = FileSystem.tempDir("semu-settings-effects");
+        if (scratch.isEmpty()) {
+            return ExposedSettingsEffectContract.fail(
+                "could not create scratch root");
+        }
+        Vector<JsonValue> fields = [];
+        Vector<string> keys = [];
+        string home = PathTools.join(scratch, "home");
+        SemuConfigStore store = SemuConfigStore(project, home);
+        SemuConfigResult prepared = store.prepare();
+        for platformId in ["linux", "macos"] {
+            SettingsUiResult rendered = SettingsUiProtocol.render(
+                store, platformId);
+            JsonValue document = JsonValue.parse(rendered.document);
+            if (!prepared.ok || !rendered.ok || !document.isObject()) {
+                FileSystem.removeRecursive(scratch);
+                return ExposedSettingsEffectContract.fail(
+                    "could not render " + platformId + " fields");
+            }
+            ExposedSettingsEffectContract.collectFields(
+                document.get("sections"), fields, keys);
+        }
+
+        int failures = 0;
+        SemuSettingsCompileResult before = SemuSettingsCompiler.emit(store);
+        JsonValue beforeProduct = before.ok()
+            ? JsonValue.readFile(before.output) : JsonValue.makeError();
+        string beforeDocument = before.ok() ? Path.readAll(before.output) : "";
+        JsonValue overlay = JsonValue.makeObject();
+        overlay.set("schema_version", JsonValue.makeInt(1));
+        Vector<JsonValue> replacements = [];
+        for (int index = 0; index < fields.size(); index++) {
+            JsonValue field = fields.get(index);
+            string key = field.get("key").asString();
+            JsonValue replacement = ExposedSettingsEffectContract.alternate(
+                field, scratch, index);
+            replacements.push(replacement);
+            if (replacement.isNull()) {
+                failures += ExposedSettingsEffectContract.fail(
+                    "visible field has no valid alternate value: " + key);
+            } else {
+                overlay = ExposedSettingsEffectContract.setNested(
+                    overlay, Strings.split(key, "."), 0, replacement);
+            }
+        }
+
+        string overlayError = SemuOwnedDocument.write(
+            home, SemuConfigPaths.userFile(home),
+            SemuJsonFormat.document(overlay), 384); // 0600
+        SemuSettingsCompileResult after = overlayError.isEmpty()
+            ? SemuSettingsCompiler.emit(store)
+            : SemuSettingsCompileResult();
+        JsonValue generated = after.ok()
+            ? JsonValue.readFile(after.output) : JsonValue.makeError();
+        if (!prepared.ok || !before.ok() || !beforeProduct.isObject()
+                || !overlayError.isEmpty() || !after.ok()
+                || !generated.isObject()
+                || Path.readAll(after.output).equals(beforeDocument)
+                || after.output.equals(SemuConfigPaths.userFile(home))
+                || (FileStatus(after.output).mode & 511) != 384) {
+            failures += ExposedSettingsEffectContract.fail(
+                "could not compile the exhaustive typed overlay");
+        }
+        for (int index = 0; index < fields.size(); index++) {
+            string key = fields.get(index).get("key").asString();
+            JsonValue replacement = replacements.get(index);
+            JsonValue beforeValue = SemuConfigStore.valueAt(
+                beforeProduct, key);
+            JsonValue afterValue = SemuConfigStore.valueAt(generated, key);
+            if (replacement.isNull()
+                    || beforeValue.stringify().equals(replacement.stringify())
+                    || !afterValue.stringify().equals(replacement.stringify())) {
+                failures += ExposedSettingsEffectContract.fail(
+                    "visible field has no typed compiled effect: " + key);
+            }
+        }
+
+        SemuConfigStore invariantStore = SemuConfigStore(
+            project, PathTools.join(scratch, "invariants"));
+        SemuConfigResult invariantPrepared = invariantStore.prepare();
+        JsonValue definition = invariantStore.definition();
+        SettingsUiResult invariantUi = SettingsUiProtocol.render(
+            invariantStore, "linux");
+        JsonValue invariantDocument = JsonValue.parse(invariantUi.document);
+        if (!invariantPrepared.ok || !definition.isObject()
+                || !invariantUi.ok || !invariantDocument.isObject()
+                || !SemuConfigStore.valueAt(
+                    definition, "visual.render_mode").isNull()
+                || !SemuConfigStore.valueAt(
+                    definition, "ui.controls.start_select_quit").isNull()
+                || !SemuConfigStore.valueAt(
+                    definition, "ui.controls.left_trackpad_radial").isNull()
+                || DynamicSystemSettingsContract.field(
+                    invariantDocument, "visual.render_mode").isObject()
+                || DynamicSystemSettingsContract.field(
+                    invariantDocument,
+                    "ui.controls.start_select_quit").isObject()
+                || DynamicSystemSettingsContract.field(
+                    invariantDocument,
+                    "ui.controls.left_trackpad_radial").isObject()) {
+            failures += ExposedSettingsEffectContract.fail(
+                "inert global controls remain configurable");
+        }
+
+        int fieldCount = fields.size();
+        FileSystem.removeRecursive(scratch);
+        if (failures == 0) {
+            print("settings effects contract: " + fieldCount.toString()
+                + " exposed fields change the compiled settings product");
+        }
+        return failures;
+    }
+}
+
+class SettingsTerminalHierarchyContract {
+    class int fail(string message) {
+        print("  FAIL settings terminal: " + message);
+        return 1;
+    }
+
+    class int sectionIndex(JsonValue sections, string id) {
+        if (!sections.isArray()) { return -1; }
+        for (int index = 0; index < sections.size(); index++) {
+            JsonValue section = sections.at(index);
+            if (section.get("id").isString()
+                    && section.get("id").asString().equals(id)) {
+                return index;
+            }
+        }
+        return -1;
+    }
+
+    class int fieldIndex(JsonValue fields, string key) {
+        if (!fields.isArray()) { return -1; }
+        for (int index = 0; index < fields.size(); index++) {
+            JsonValue field = fields.at(index);
+            if (field.get("key").isString()
+                    && field.get("key").asString().equals(key)) {
+                return index;
+            }
+        }
+        return -1;
+    }
+
+    class int run(string project) {
+        string scratch = FileSystem.tempDir("semu-settings-terminal");
+        if (scratch.isEmpty()) {
+            return SettingsTerminalHierarchyContract.fail(
+                "could not create scratch root");
+        }
+        string home = PathTools.join(scratch, "home");
+        SemuConfigStore store = SemuConfigStore(project, home);
+        SemuConfigResult prepared = store.prepare();
+        SettingsUiResult rendered = SettingsUiProtocol.render(store, "linux");
+        JsonValue document = JsonValue.parse(rendered.document);
+        JsonValue rootSections = document.get("sections");
+        int overridesIndex = SettingsTerminalHierarchyContract.sectionIndex(
+            rootSections, "system-overrides");
+        JsonValue overrides = overridesIndex >= 0
+            ? rootSections.at(overridesIndex) : JsonValue.makeNull();
+        int wiiIndex = SettingsTerminalHierarchyContract.sectionIndex(
+            overrides.get("sections"), "system-wii");
+        JsonValue wii = wiiIndex >= 0
+            ? overrides.get("sections").at(wiiIndex) : JsonValue.makeNull();
+        int controllerIndex = SettingsTerminalHierarchyContract.fieldIndex(
+            wii.get("fields"), "input.systems.wii.controller_mode");
+
+        Vector<string> noInput = [];
+        SettingsTerminalSession snapshot = SettingsTerminalSession(
+            store, document, noInput, false);
+        int snapshotResult = snapshot.run();
+        Vector<string> script = [];
+        if (overridesIndex >= 0 && wiiIndex >= 0 && controllerIndex >= 0) {
+            script = [
+                (overridesIndex + 1).toString(),
+                (wiiIndex + 1).toString(),
+                (controllerIndex + 1).toString(),
+                "\"classic\"", "b", "b", "q"
+            ];
+        }
+        SettingsTerminalSession interactive = SettingsTerminalSession(
+            store, document, script, false);
+        int sessionResult = interactive.run();
+        SemuConfigResult selected = store.get(
+            "input.systems.wii.controller_mode");
+        string generatedFile = SemuSettingsCompiler.output(home);
+        JsonValue generated = JsonValue.readFile(generatedFile);
+        JsonValue generatedMode = SemuConfigStore.valueAt(
+            generated, "input.systems.wii.controller_mode");
+        int failures = 0;
+        if (!prepared.ok || !rendered.ok || !document.isObject()
+                || overridesIndex < 0 || wiiIndex < 0 || controllerIndex < 0
+                || snapshotResult != 0 || sessionResult != 0
+                || !snapshot.transcript.contains("SYSTEM OVERRIDES")
+                || !snapshot.transcript.contains("WII")
+                || !snapshot.transcript.contains(
+                    "CONTROLLER MODE = \"nunchuk\"")
+                || !snapshot.transcript.contains(
+                    "[wiimote, nunchuk, classic, gamecube]")
+                || !interactive.transcript.contains(
+                    "Updated input.systems.wii.controller_mode and compiled ")
+                || interactive.cursor != script.size()
+                || !selected.ok || !selected.value.isString()
+                || !selected.value.asString().equals("classic")
+                || !generated.isObject() || !generatedMode.isString()
+                || !generatedMode.asString().equals("classic")) {
+            failures += SettingsTerminalHierarchyContract.fail(
+                "nested navigation omitted or failed to compile Wii input");
+        }
+        JsonValue children = overrides.get("sections");
+        if (children.isArray()) {
+            for (int index = 0; index < children.size(); index++) {
+                string label = children.at(index).get("label").isString()
+                    ? children.at(index).get("label").asString() : "";
+                if (label.isEmpty() || !snapshot.transcript.contains(label)) {
+                    failures += SettingsTerminalHierarchyContract.fail(
+                        "tree snapshot omitted a system page: " + label);
+                }
+            }
+        }
+        FileSystem.removeRecursive(scratch);
+        if (failures == 0) {
+            print("settings terminal contract: nested navigation + compile valid");
+        }
+        return failures;
+    }
+}
+
+class SettingsOwnershipContract {
+    class int fail(string message) {
+        print("  FAIL settings ownership: " + message);
+        return 1;
+    }
+
+    class int run(string project) {
+        string scratch = FileSystem.tempDir("semu-settings-ownership");
+        if (scratch.isEmpty()) {
+            return SettingsOwnershipContract.fail(
+                "could not create scratch root");
+        }
+        int failures = 0;
+
+        string outsideAncestor = PathTools.join(scratch, "outside-ancestor");
+        string linkedAncestor = PathTools.join(scratch, "linked-ancestor");
+        UnixFileSystem.mkdirp(outsideAncestor);
+        int linked = FileSystem.symlink(outsideAncestor, linkedAncestor);
+        SemuConfigStore linkedStore = SemuConfigStore(
+            project, PathTools.join(linkedAncestor, "semu-home"));
+        SemuConfigResult linkedPrepare = linkedStore.prepare();
+        if (linked != 0 || linkedPrepare.ok
+                || FileSystem.exists(PathTools.join(
+                    outsideAncestor, "semu-home/semu.json"))) {
+            failures += SettingsOwnershipContract.fail(
+                "settings store followed a symlinked ancestor");
+        }
+
+        string destinationHome = PathTools.join(scratch, "destination-home");
+        string outsideFile = PathTools.join(scratch, "outside-settings.json");
+        UnixFileSystem.mkdirp(destinationHome);
+        Path.writeAll(outsideFile, "preserve\n");
+        int destinationLinked = FileSystem.symlink(
+            outsideFile, SemuConfigPaths.userFile(destinationHome));
+        SemuConfigStore destinationStore = SemuConfigStore(
+            project, destinationHome);
+        SemuConfigResult destinationPrepare = destinationStore.prepare();
+        if (destinationLinked != 0 || destinationPrepare.ok
+                || !Path.readAll(outsideFile).equals("preserve\n")) {
+            failures += SettingsOwnershipContract.fail(
+                "settings store followed a symlinked destination");
+        }
+
+        string compilerHome = PathTools.join(scratch, "compiler-home");
+        SemuConfigStore compilerStore = SemuConfigStore(project, compilerHome);
+        SemuConfigResult compilerPrepared = compilerStore.prepare();
+        string outsideGenerated = PathTools.join(scratch, "outside-generated");
+        UnixFileSystem.mkdirp(outsideGenerated);
+        int generatedLinked = FileSystem.symlink(outsideGenerated,
+            PathTools.join(compilerHome, "generated"));
+        SemuSettingsCompileResult escaped = SemuSettingsCompiler.emit(
+            compilerStore);
+        if (!compilerPrepared.ok || generatedLinked != 0 || escaped.ok()
+                || FileSystem.exists(PathTools.join(
+                    outsideGenerated, "settings/settings.json"))) {
+            failures += SettingsOwnershipContract.fail(
+                "settings compiler followed a symlinked output parent");
+        }
+
+        string traversalHome = PathTools.join(
+            scratch, "safe/../traversal-home");
+        SemuConfigStore traversalStore = SemuConfigStore(
+            project, traversalHome);
+        SemuConfigResult traversalPrepare = traversalStore.prepare();
+        string directRoot = PathTools.join(scratch, "direct-root");
+        string directTraversal = SemuOwnedDocument.write(directRoot,
+            PathTools.join(directRoot, "../outside-write"),
+            "must not escape\n", 384);
+        if (traversalPrepare.ok || directTraversal.isEmpty()
+                || FileSystem.exists(PathTools.join(scratch, "traversal-home"))
+                || FileSystem.exists(PathTools.join(scratch, "outside-write"))) {
+            failures += SettingsOwnershipContract.fail(
+                "settings write accepted lexical traversal");
+        }
+
+        string atomicRoot = PathTools.join(scratch, "atomic-root");
+        string atomicFile = PathTools.join(atomicRoot, "state/settings.json");
+        string first = SemuOwnedDocument.write(
+            atomicRoot, atomicFile, "first\n", 384);
+        string second = SemuOwnedDocument.write(
+            atomicRoot, atomicFile, "second\n", 384);
+        if (!first.isEmpty() || !second.isEmpty()
+                || !Path.readAll(atomicFile).equals("second\n")
+                || (FileStatus(atomicFile).mode & 511) != 384
+                || FileSystem.isSymlink(atomicFile)) {
+            failures += SettingsOwnershipContract.fail(
+                "confined atomic replacement did not preserve file semantics");
+        }
+
+        FileSystem.removeRecursive(scratch);
+        if (failures == 0) {
+            print("settings ownership contract: component confinement valid");
+        }
+        return failures;
+    }
+}
+
+class SettingsBridgeContract {
+    class int fail(string message) {
+        print("  FAIL settings bridge: " + message);
+        return 1;
+    }
+
+    class Vector<string> arguments(JsonValue encoded) {
+        Vector<string> arguments = [];
+        if (!encoded.isArray()) { return arguments; }
+        for (int index = 0; index < encoded.size(); index++) {
+            if (!encoded.at(index).isString()) {
+                Vector<string> invalid = [];
+                return invalid;
+            }
+            arguments.push(encoded.at(index).asString());
+        }
+        return arguments;
+    }
+
+    class JsonValue change(string key, string encodedValue) {
+        JsonValue change = JsonValue.makeObject();
+        change.set("key", JsonValue.makeString(key));
+        change.set("value", JsonValue.makeString(encodedValue));
+        return change;
+    }
+
+    class string recorder() {
+        return """#!/usr/bin/env sh
+set -eu
+printf '%s\n' \"$*\" >> \"$SEMU_SETTINGS_BRIDGE_LOG\"
+printf '%s\n' ok
+""";
+    }
+
+    class int run(string project) {
+        string scratch = FileSystem.tempDir("semu-settings-bridge");
+        if (scratch.isEmpty()) {
+            return SettingsBridgeContract.fail("could not create scratch root");
+        }
+        string home = PathTools.join(scratch, "home");
+        SemuConfigStore store = SemuConfigStore(project, home);
+        SemuConfigResult prepared = store.prepare();
+        SettingsUiResult rendered = SettingsUiProtocol.render(store, "linux");
+        JsonValue document = JsonValue.parse(rendered.document);
+        JsonValue commands = document.get("commands");
+        JsonValue changes = JsonValue.makeArray();
+        changes.push(SettingsBridgeContract.change(
+            "visual.bezels", "false"));
+        changes.push(SettingsBridgeContract.change(
+            "ui.theme", "\"linear-es-de\""));
+        JsonValue saveInvocations = SettingsUiProtocol.saveInvocations(
+            document, changes);
+        JsonValue singleChange = JsonValue.makeArray();
+        singleChange.push(SettingsBridgeContract.change(
+            "visual.integer_scaling", "false"));
+        JsonValue singleInvocation = SettingsUiProtocol.saveInvocations(
+            document, singleChange);
+        JsonValue noChanges = JsonValue.makeArray();
+        JsonValue noInvocations = SettingsUiProtocol.saveInvocations(
+            document, noChanges);
+
+        int compiledApplyCount = 0;
+        SemuSettingsCompileResult appliedSettings = SemuSettingsCompileResult();
+        bool storedChanges = saveInvocations.isArray();
+        if (saveInvocations.isArray()) {
+            for (int index = 0; index < saveInvocations.size(); index++) {
+                JsonValue invocation = saveInvocations.at(index);
+                SemuConfigResult stored = store.putJson(
+                    invocation.at(2).asString(), invocation.at(3).asString());
+                if (!stored.ok) { storedChanges = false; }
+                if (invocation.size() == 5
+                        && invocation.at(4).asString().equals("--apply")) {
+                    appliedSettings = SemuSettingsCompiler.emit(store);
+                    compiledApplyCount++;
+                }
+            }
+        }
+        JsonValue generatedSettings = JsonValue.readFile(
+            appliedSettings.output);
+
+        string launcher = PathTools.join(scratch, "record-settings-bridge");
+        string log = PathTools.join(scratch, "bridge.log");
+        Path.writeAll(launcher, SettingsBridgeContract.recorder());
+        FileSystem.chmod(launcher, 448); // 0700
+        setenv("SEMU_SETTINGS_BRIDGE_LOG", log, 1);
+        bool executionOk = true;
+        if (commands.isArray()) {
+            for (int index = 0; index < commands.size(); index++) {
+                ExecResult executed = ChildProcess.run(launcher,
+                    SettingsBridgeContract.arguments(
+                        commands.at(index).get("argv")),
+                    timeoutMilliseconds=5000,
+                    maxStdoutBytes=65536, maxStderrBytes=65536);
+                if (!executed.ok()) { executionOk = false; }
+            }
+        }
+        if (saveInvocations.isArray()) {
+            for (int index = 0; index < saveInvocations.size(); index++) {
+                ExecResult executed = ChildProcess.run(launcher,
+                    SettingsBridgeContract.arguments(
+                        saveInvocations.at(index)),
+                    timeoutMilliseconds=5000,
+                    maxStdoutBytes=65536, maxStderrBytes=65536);
+                if (!executed.ok()) { executionOk = false; }
+            }
+        }
+        if (singleInvocation.isArray() && singleInvocation.size() == 1) {
+            ExecResult executed = ChildProcess.run(launcher,
+                SettingsBridgeContract.arguments(singleInvocation.at(0)),
+                timeoutMilliseconds=5000,
+                maxStdoutBytes=65536, maxStderrBytes=65536);
+            if (!executed.ok()) { executionOk = false; }
+        }
+        unsetenv("SEMU_SETTINGS_BRIDGE_LOG");
+
+        string recorded = Path.readAll(log);
+        string cliSource = Path.readAll(PathTools.join(project, "src/cli.btrc"));
+        int failures = 0;
+        if (!prepared.ok || !rendered.ok || !document.isObject()
+                || !commands.isArray() || commands.size() != 3
+                || !commands.at(0).get("id").asString().equals("sync-apply")
+                || !commands.at(1).get("id").asString().equals("sync-status")
+                || !commands.at(2).get("id").asString().equals("sync-open")
+                || !saveInvocations.isArray() || saveInvocations.size() != 2
+                || saveInvocations.at(0).size() != 4
+                || saveInvocations.at(1).size() != 5
+                || saveInvocations.at(0).stringify().contains("--apply")
+                || !saveInvocations.at(1).at(4).asString().equals("--apply")
+                || !singleInvocation.isArray() || singleInvocation.size() != 1
+                || !singleInvocation.at(0).at(4).asString().equals("--apply")
+                || !noInvocations.isArray() || noInvocations.size() != 0
+                || !storedChanges || compiledApplyCount != 1
+                || !appliedSettings.ok() || !generatedSettings.isObject()
+                || generatedSettings.get("visual").get("bezels").asBool()
+                || !generatedSettings.get("ui").get("theme")
+                    .asString().equals("linear-es-de")
+                || !executionOk
+                || !recorded.contains("sync apply\n")
+                || !recorded.contains("sync status\n")
+                || !recorded.contains("sync open\n")
+                || !recorded.contains(
+                    "settings put visual.bezels false\n")
+                || !recorded.contains(
+                    "settings put ui.theme \"linear-es-de\" --apply\n")
+                || Strings.split(recorded, "--apply").size() != 3
+                || !cliSource.contains("command.flag(\"--apply\")")
+                || !cliSource.contains("SemuCli.applySettings(command, store)")
+                || !cliSource.contains("SemuCli.compile(request, diagnostics)")) {
+            failures += SettingsBridgeContract.fail(
+                "commands or apply-once save execution diverged from the protocol");
+        }
+        FileSystem.removeRecursive(scratch);
+        if (failures == 0) {
+            print("settings bridge contract: commands + apply-once save valid");
+        }
+        return failures;
+    }
+}
+
+int main(int argc, char** argv) {
+    CliArgs arguments = CliArgs(argc, argv);
+    string project = arguments.valueAfter(
+        "--project", FileSystem.currentDirectory());
+    int failures = DynamicSystemSettingsContract.run(project);
+    failures += ExposedSettingsEffectContract.run(project);
+    failures += SettingsTerminalHierarchyContract.run(project);
+    failures += SettingsOwnershipContract.run(project);
+    failures += SettingsBridgeContract.run(project);
+    return failures == 0 ? 0 : 1;
+}

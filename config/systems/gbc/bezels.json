@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "enabled": true,
+  "default_variant": "frost_purple",
+  "hole": {
+    "x": 0.3409090909,
+    "y": 0.1303030303,
+    "w": 0.3207070707,
+    "h": 0.4050505051
+  },
+  "variants": [
+    {
+      "id": "frost_purple",
+      "label": "Frost Purple",
+      "art": "assets/bezels/gbc/frost-purple.png"
+    }
+  ],
+  "doc": {
+    "hole": "Measured continuous lens rectangle x=540, y=129, w=508, h=401 in the 1584x990 Semu-owned source. Its contain-fit aperture at 1280x800 holds centered 2x 160x144 content while preserving the native 10:9 image."
+  }
+}

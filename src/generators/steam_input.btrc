@@ -1,0 +1,1702 @@
+// steam_input.btrc - compile Steam Deck input policy into Steam-owned VDF files.
+
+import std.{bytes, fs, io, json, platform, strings, vector}
+import ./input/action_abi.btrc
+import ./input/steam_install.btrc
+
+class SteamInputAction {
+    public string id;
+    public string alias;
+    public string label;
+    public string icon;
+    public string chord;
+    public string supervisorChord;
+
+    public SteamInputAction() {
+        self.id = "";
+        self.alias = "";
+        self.label = "";
+        self.icon = "";
+        self.chord = "";
+        self.supervisorChord = "";
+    }
+}
+
+class SteamInputHotkey {
+    public string button;
+    public string action;
+
+    public SteamInputHotkey() {
+        self.button = "";
+        self.action = "";
+    }
+}
+
+class SteamInputRadialLayer {
+    public string id;
+    public string name;
+    public Vector<string> activators;
+    public Vector<string> slots;
+
+    public SteamInputRadialLayer() {
+        self.id = "";
+        self.name = "";
+        self.activators = [];
+        self.slots = [];
+    }
+}
+
+class SteamInputTemplate {
+    public string id;
+    public string title;
+    public string quickRadialName;
+    public string menuRadialName;
+    public string output;
+    public bool isDefault;
+
+    public SteamInputTemplate() {
+        self.id = "";
+        self.title = "";
+        self.quickRadialName = "";
+        self.menuRadialName = "";
+        self.output = "";
+        self.isDefault = false;
+    }
+}
+
+class SteamInputEvdevIdentity {
+    public string source;
+    public string vendor;
+    public string product;
+    public string physical;
+    public string physicalPrefix;
+    public string physicalSuffix;
+
+    public SteamInputEvdevIdentity() {
+        self.source = "";
+        self.vendor = "";
+        self.product = "";
+        self.physical = "";
+        self.physicalPrefix = "";
+        self.physicalSuffix = "";
+    }
+}
+
+class SteamInputDefinition {
+    public string file;
+    public Vector<string> modifiers;
+    public Vector<SteamInputAction> actions;
+    public Vector<SteamInputHotkey> hotkeys;
+    public string iconSourceDirectory;
+    public string iconOutputDirectory;
+    public string iconColors;
+    public Vector<string> icons;
+    public string controllerModel;
+    public bool gyro;
+    public string leftTrackpad;
+    public string rightTrackpad;
+    public string hotkeyButton;
+    public bool showRadialLabels;
+    public Vector<string> quickSlots;
+    public Vector<string> menuSlots;
+    public Vector<string> quickMarkers;
+    public Vector<string> menuMarkers;
+    public Vector<SteamInputRadialLayer> systemLayers;
+    public Vector<string> savestateActions;
+    public Vector<string> controllerModeLayers;
+    public Vector<string> quitButtons;
+    public int quitWindowMilliseconds;
+    public Vector<SteamInputTemplate> templates;
+    public Vector<string> keyTokens;
+    public Vector<string> keyNames;
+    public string templatesDirectory;
+    public string bindingIconsDirectory;
+    public string applicationShortcutName;
+    public string applicationConfigId;
+    public string applicationControllerFile;
+    public Vector<string> deprecatedApplicationConfigIds;
+    public string applicationConfigDirectory;
+    public SteamInputEvdevIdentity gamepadIdentity;
+    public SteamInputEvdevIdentity commandIdentity;
+
+    public SteamInputDefinition() {
+        self.file = "";
+        self.modifiers = [];
+        self.actions = [];
+        self.hotkeys = [];
+        self.iconSourceDirectory = "";
+        self.iconOutputDirectory = "";
+        self.iconColors = "";
+        self.icons = [];
+        self.controllerModel = "";
+        self.gyro = false;
+        self.leftTrackpad = "";
+        self.rightTrackpad = "";
+        self.hotkeyButton = "";
+        self.showRadialLabels = false;
+        self.quickSlots = [];
+        self.menuSlots = [];
+        self.quickMarkers = [];
+        self.menuMarkers = [];
+        self.systemLayers = [];
+        self.savestateActions = [];
+        self.controllerModeLayers = [];
+        self.quitButtons = [];
+        self.quitWindowMilliseconds = 0;
+        self.templates = [];
+        self.keyTokens = [];
+        self.keyNames = [];
+        self.templatesDirectory = "";
+        self.bindingIconsDirectory = "";
+        self.applicationShortcutName = "";
+        self.applicationConfigId = "";
+        self.applicationControllerFile = "";
+        self.deprecatedApplicationConfigIds = [];
+        self.applicationConfigDirectory = "";
+        self.gamepadIdentity = SteamInputEvdevIdentity();
+        self.commandIdentity = SteamInputEvdevIdentity();
+    }
+
+    public bool hasAction(string id) {
+        for action in self.actions {
+            if (action.id.equals(id)) { return true; }
+        }
+        return false;
+    }
+
+    public SteamInputAction action(string id) {
+        for action in self.actions {
+            if (action.id.equals(id)) { return action; }
+        }
+        return SteamInputAction();
+    }
+
+    public string hotkeyAction(string button) {
+        for hotkey in self.hotkeys {
+            if (hotkey.button.equals(button)) { return hotkey.action; }
+        }
+        return "";
+    }
+
+    public string keyName(string token) {
+        string lowered = token.toLower();
+        for (int index = 0; index < self.keyTokens.size(); index++) {
+            if (self.keyTokens.get(index).equals(lowered)) {
+                return self.keyNames.get(index);
+            }
+        }
+        return token.toUpper();
+    }
+
+    public SteamInputTemplate defaultTemplate() {
+        for template in self.templates {
+            if (template.isDefault) { return template; }
+        }
+        return SteamInputTemplate();
+    }
+
+    public bool hasSystemLayer(string id) {
+        for layer in self.systemLayers {
+            if (layer.id.equals(id)) { return true; }
+        }
+        return false;
+    }
+
+    public SteamInputRadialLayer systemLayer(string id) {
+        for layer in self.systemLayers {
+            if (layer.id.equals(id)) { return layer; }
+        }
+        return SteamInputRadialLayer();
+    }
+}
+
+class SteamInputResult {
+    public SteamInputDefinition definition;
+    public Vector<string> errors;
+    public string outputDirectory;
+
+    public SteamInputResult() {
+        self.definition = SteamInputDefinition();
+        self.errors = [];
+        self.outputDirectory = "";
+    }
+
+    public bool ok() {
+        return self.errors.isEmpty();
+    }
+
+    public void fail(string field, string message) {
+        self.errors.push(self.definition.file + ": " + field + ": " + message);
+    }
+}
+
+class SteamInputFiles {
+    class int pngDimension(Bytes content, int offset) {
+        return content.get(offset) * 16777216
+            + content.get(offset + 1) * 65536
+            + content.get(offset + 2) * 256
+            + content.get(offset + 3);
+    }
+
+    class bool safeDirectoryName(string name) {
+        if (name.isEmpty() || name.equals(".") || name.equals("..")
+                || !PathTools.basename(name).equals(name) || name.contains("\\")) {
+            return false;
+        }
+        for character in name {
+            bool allowed = (character >= 'a' && character <= 'z')
+                || (character >= '0' && character <= '9') || character == '-';
+            if (!allowed) { return false; }
+        }
+        return true;
+    }
+
+    class bool safeIconName(string name) {
+        if (!name.startsWith("semu-") || !name.endsWith(".png")
+                || !PathTools.basename(name).equals(name) || name.contains("\\")) {
+            return false;
+        }
+        for character in name {
+            bool allowed = (character >= 'a' && character <= 'z')
+                || (character >= '0' && character <= '9')
+                || character == '-' || character == '.';
+            if (!allowed) { return false; }
+        }
+        return true;
+    }
+
+    class bool safeTemplateName(string name) {
+        if (!name.endsWith(".vdf") || !PathTools.basename(name).equals(name)
+                || name.contains("\\")) {
+            return false;
+        }
+        for character in name {
+            bool allowed = (character >= 'a' && character <= 'z')
+                || (character >= '0' && character <= '9')
+                || character == '-' || character == '.';
+            if (!allowed) { return false; }
+        }
+        return true;
+    }
+
+    class bool numericId(string value) {
+        return SteamInputInstallPolicy.numericId(value);
+    }
+
+    class bool safeApplicationId(string value) {
+        if (value.isEmpty() || value.equals(".") || value.equals("..")) {
+            return false;
+        }
+        for character in value {
+            bool allowed = (character >= 'a' && character <= 'z')
+                || (character >= '0' && character <= '9')
+                || character == '-' || character == '_';
+            if (!allowed) { return false; }
+        }
+        return true;
+    }
+
+    class bool png(string path) {
+        if (!FileSystem.isFile(path) || FileSystem.isSymlink(path)) { return false; }
+        File file = File(path, "rb");
+        if (!file.ok()) { return false; }
+        Bytes content = file.readBytes();
+        file.close();
+        return content.length() >= 33
+            && content.get(0) == 137 && content.get(1) == 80
+            && content.get(2) == 78 && content.get(3) == 71
+            && content.get(4) == 13 && content.get(5) == 10
+            && content.get(6) == 26 && content.get(7) == 10
+            && content.get(8) == 0 && content.get(9) == 0
+            && content.get(10) == 0 && content.get(11) == 13
+            && content.get(12) == 73 && content.get(13) == 72
+            && content.get(14) == 68 && content.get(15) == 82
+            && SteamInputFiles.pngDimension(content, 16) == 256
+            && SteamInputFiles.pngDimension(content, 20) == 256;
+    }
+
+    class bool prepareDirectory(string path) {
+        if (FileSystem.isSymlink(path)) { return false; }
+        if (FileSystem.exists(path)) { return FileSystem.isDir(path); }
+        return UnixFileSystem.mkdirp(path) == 0;
+    }
+
+    class bool copyPng(string source, string destination) {
+        if (!SteamInputFiles.png(source)
+                || !SteamInputFiles.prepareDirectory(PathTools.dirname(destination))) {
+            return false;
+        }
+        File input = File(source, "rb");
+        if (!input.ok()) { return false; }
+        Bytes content = input.readBytes();
+        input.close();
+        return SteamInputAtomicFile.replaceBytes(destination, content);
+    }
+}
+
+class SteamInputChord {
+    class int lastPlus(string chord) {
+        int result = -1;
+        for (int index = 0; index < chord.len(); index++) {
+            if (chord.charAt(index) == '+') { result = index; }
+        }
+        return result;
+    }
+
+    class string key(string chord) {
+        if (chord.endsWith("++")) { return "+"; }
+        if (chord.endsWith("+-")) { return "-"; }
+        int plus = SteamInputChord.lastPlus(chord);
+        return plus < 0 ? chord
+            : chord.substring(plus + 1, chord.len() - plus - 1);
+    }
+
+    class Vector<string> modifiers(string chord) {
+        Vector<string> result = [];
+        string prefix = "";
+        if (chord.endsWith("++") || chord.endsWith("+-")) {
+            prefix = chord.len() <= 2 ? ""
+                : chord.substring(0, chord.len() - 2);
+        } else {
+            int plus = SteamInputChord.lastPlus(chord);
+            if (plus >= 0) { prefix = chord.substring(0, plus); }
+        }
+        if (!prefix.isEmpty()) {
+            for modifier in Strings.split(prefix, "+") { result.push(modifier); }
+        }
+        return result;
+    }
+
+    class string vdf(SteamInputDefinition definition, string chord) {
+        Vector<string> tokens = [];
+        for modifier in SteamInputChord.modifiers(chord) {
+            tokens.push(definition.keyName(modifier));
+        }
+        tokens.push(definition.keyName(SteamInputChord.key(chord)));
+        return tokens.join(" ");
+    }
+}
+
+class SteamInputParser {
+    class void keys(JsonValue object, Vector<string> allowed, string context,
+                    SteamInputResult result) {
+        if (!object.isObject()) {
+            result.fail(context, "expected object");
+            return;
+        }
+        for key in object.keys() {
+            if (!allowed.contains(key)) { result.fail(context + "." + key, "unknown key"); }
+        }
+    }
+
+    class string stringField(JsonValue object, string key, string context,
+                             SteamInputResult result) {
+        if (!object.isObject() || !object.has(key)
+                || !object.get(key).isString()
+                || object.get(key).asString().isEmpty()) {
+            result.fail(context.isEmpty() ? key : context + "." + key,
+                "expected non-empty string");
+            return "";
+        }
+        return object.get(key).asString();
+    }
+
+    class Vector<string> strings(JsonValue object, string key, string context,
+                                 SteamInputResult result) {
+        Vector<string> values = [];
+        string field = context.isEmpty() ? key : context + "." + key;
+        if (!object.isObject() || !object.has(key) || !object.get(key).isArray()) {
+            result.fail(field, "expected array of strings");
+            return values;
+        }
+        JsonValue array = object.get(key);
+        for (int index = 0; index < array.size(); index++) {
+            JsonValue value = array.at(index);
+            if (!value.isString() || value.asString().isEmpty()) {
+                result.fail(f"{field}[{index}]", "expected non-empty string");
+            } else if (values.contains(value.asString())) {
+                result.fail(f"{field}[{index}]", "duplicate value");
+            } else {
+                values.push(value.asString());
+            }
+        }
+        return values;
+    }
+
+    class bool safeText(string value) {
+        return !value.isEmpty() && !value.contains(",") && !value.contains("\"")
+            && !value.contains("\n") && !value.contains("\r");
+    }
+
+    class bool safeId(string value, bool dots) {
+        if (value.isEmpty()) { return false; }
+        for character in value {
+            bool allowed = (character >= 'a' && character <= 'z')
+                || (character >= '0' && character <= '9') || character == '_'
+                || (dots && character == '.');
+            if (!allowed) { return false; }
+        }
+        return true;
+    }
+
+    class bool safeChord(string value) {
+        if (value.isEmpty() || value.contains("\n") || value.contains("\r")
+                || value.contains("\"") || value.contains(",")) {
+            return false;
+        }
+        for character in value {
+            bool allowed = (character >= 'a' && character <= 'z')
+                || (character >= 'A' && character <= 'Z')
+                || (character >= '0' && character <= '9')
+                || character == '+' || character == '-';
+            if (!allowed) { return false; }
+        }
+        return true;
+    }
+
+    class bool marker(string value) {
+        return ["kp0", "kp1", "kp2", "kp3", "kp4", "kp5", "kp6",
+            "kp7", "kp8", "kp9", "kpdecimal"].contains(value);
+    }
+
+    class bool keyName(string value) {
+        if (value.isEmpty()) { return false; }
+        for character in value {
+            bool allowed = (character >= 'A' && character <= 'Z')
+                || (character >= '0' && character <= '9')
+                || character == '_';
+            if (!allowed) { return false; }
+        }
+        return true;
+    }
+
+    class bool color(string value) {
+        if (value.len() != 7 || value.charAt(0) != '#') { return false; }
+        for (int index = 1; index < value.len(); index++) {
+            char character = value.charAt(index);
+            bool valid = (character >= '0' && character <= '9')
+                || (character >= 'A' && character <= 'F');
+            if (!valid) { return false; }
+        }
+        return true;
+    }
+
+    class bool hexIdentity(string value) {
+        if (value.len() != 4) { return false; }
+        for character in value {
+            bool valid = (character >= '0' && character <= '9')
+                || (character >= 'a' && character <= 'f');
+            if (!valid) { return false; }
+        }
+        return true;
+    }
+
+    class bool physicalIdentity(string value) {
+        if (value.isEmpty() || value.contains(":") || value.contains("\n")
+                || value.contains("\r")) {
+            return false;
+        }
+        for character in value {
+            if (character < 32 || character == 127) { return false; }
+        }
+        return true;
+    }
+
+    class bool supportedHotkeyButton(string button) {
+        return ["A", "B", "X", "Y", "D-Pad Up", "D-Pad Down",
+                "D-Pad Left", "D-Pad Right", "Start", "L1", "R1",
+                "L2", "R2", "L3", "R3"].contains(button);
+    }
+
+    class void parseIcons(JsonValue root, SteamInputResult result) {
+        if (!root.has("binding_icons") || !root.get("binding_icons").isObject()) {
+            result.fail("binding_icons", "expected object");
+            return;
+        }
+        JsonValue icons = root.get("binding_icons");
+        SteamInputParser.keys(icons,
+            ["source_dir", "output_dir", "colors", "files"],
+            "binding_icons", result);
+        SteamInputDefinition definition = result.definition;
+        definition.iconSourceDirectory = SteamInputParser.stringField(
+            icons, "source_dir", "binding_icons", result);
+        definition.iconOutputDirectory = SteamInputParser.stringField(
+            icons, "output_dir", "binding_icons", result);
+        definition.iconColors = SteamInputParser.stringField(
+            icons, "colors", "binding_icons", result);
+        definition.icons = SteamInputParser.strings(
+            icons, "files", "binding_icons", result);
+        if (!SteamInputFiles.safeDirectoryName(definition.iconSourceDirectory)) {
+            result.fail("binding_icons.source_dir", "unsafe relative directory name");
+        }
+        if (!SteamInputFiles.safeDirectoryName(definition.iconOutputDirectory)) {
+            result.fail("binding_icons.output_dir", "unsafe relative directory name");
+        }
+        Vector<string> colors = Strings.split(definition.iconColors, " ");
+        if (colors.size() != 2 || !SteamInputParser.color(colors.get(0))
+                || !SteamInputParser.color(colors.get(1))) {
+            result.fail("binding_icons.colors", "expected two uppercase #RRGGBB values");
+        }
+        string sourceDirectory = PathTools.join(
+            PathTools.dirname(definition.file), definition.iconSourceDirectory);
+        for icon in definition.icons {
+            if (!SteamInputFiles.safeIconName(icon)) {
+                result.fail("binding_icons.files", "unsafe icon filename '" + icon + "'");
+            } else if (!SteamInputFiles.png(PathTools.join(sourceDirectory, icon))) {
+                result.fail("binding_icons.files", "missing or invalid PNG '" + icon + "'");
+            }
+        }
+    }
+
+    class void parseActions(JsonValue root, SteamInputResult result) {
+        if (!root.has("actions") || !root.get("actions").isObject()) {
+            result.fail("actions", "expected object keyed by action id");
+            return;
+        }
+        JsonValue actions = root.get("actions");
+        for id in actions.keys() {
+            JsonValue value = actions.get(id);
+            string context = "actions." + id;
+            SteamInputParser.keys(value,
+                ["alias", "label", "icon", "chord", "supervisor_chord"],
+                context, result);
+            SteamInputAction action = SteamInputAction();
+            action.id = id;
+            action.alias = SteamInputParser.stringField(value, "alias", context, result);
+            action.label = SteamInputParser.stringField(value, "label", context, result);
+            action.icon = SteamInputParser.stringField(value, "icon", context, result);
+            action.chord = SteamInputParser.stringField(value, "chord", context, result);
+            action.supervisorChord = value.has("supervisor_chord")
+                ? SteamInputParser.stringField(
+                    value, "supervisor_chord", context, result)
+                : action.chord;
+            if (!SteamInputParser.safeId(action.id, true)) {
+                result.fail(context, "unsafe action id");
+            }
+            if (!SteamInputParser.safeId(action.alias, false)) {
+                result.fail(context + ".alias", "unsafe alias");
+            }
+            if (!SteamInputParser.safeText(action.label)) {
+                result.fail(context + ".label", "unsafe VDF text");
+            }
+            if (!result.definition.icons.contains(action.icon)) {
+                result.fail(context + ".icon", "icon is not declared by binding_icons.files");
+            }
+            string key = SteamInputChord.key(action.chord);
+            if (!SteamInputParser.safeChord(action.chord) || key.isEmpty()) {
+                result.fail(context + ".chord", "expected a safe key chord");
+            }
+            for modifier in SteamInputChord.modifiers(action.chord) {
+                if (!result.definition.modifiers.contains(modifier.toLower())) {
+                    result.fail(context + ".chord", "undeclared modifier '" + modifier + "'");
+                }
+            }
+            string supervisorKey = SteamInputChord.key(action.supervisorChord);
+            if (!SteamInputParser.safeChord(action.supervisorChord)
+                    || supervisorKey.isEmpty()) {
+                result.fail(context + ".supervisor_chord",
+                    "expected a safe supervisor key chord");
+            }
+            for modifier in SteamInputChord.modifiers(action.supervisorChord) {
+                if (!result.definition.modifiers.contains(modifier.toLower())) {
+                    result.fail(context + ".supervisor_chord",
+                        "undeclared modifier '" + modifier + "'");
+                }
+            }
+            if (result.definition.hasAction(action.id)) {
+                result.fail(context, "duplicate action id");
+            }
+            result.definition.actions.push(action);
+        }
+        if (result.definition.actions.isEmpty()) {
+            result.fail("actions", "must declare at least one action");
+        }
+    }
+
+    class void parseHotkeys(JsonValue root, SteamInputResult result) {
+        if (!root.has("hotkey_bindings") || !root.get("hotkey_bindings").isArray()) {
+            result.fail("hotkey_bindings", "expected array");
+            return;
+        }
+        JsonValue hotkeys = root.get("hotkey_bindings");
+        for (int index = 0; index < hotkeys.size(); index++) {
+            JsonValue value = hotkeys.at(index);
+            string context = f"hotkey_bindings[{index}]";
+            SteamInputParser.keys(value, ["button", "action"], context, result);
+            SteamInputHotkey hotkey = SteamInputHotkey();
+            hotkey.button = SteamInputParser.stringField(value, "button", context, result);
+            hotkey.action = SteamInputParser.stringField(value, "action", context, result);
+            if (!SteamInputParser.supportedHotkeyButton(hotkey.button)) {
+                result.fail(context + ".button", "unsupported Steam Deck button");
+            }
+            if (!result.definition.hotkeyAction(hotkey.button).isEmpty()) {
+                result.fail(context + ".button", "duplicate button");
+            }
+            if (!result.definition.hasAction(hotkey.action)) {
+                result.fail(context + ".action", "unknown action");
+            }
+            result.definition.hotkeys.push(hotkey);
+        }
+    }
+
+    class Vector<string> evidence(JsonValue markers, string key,
+                                  SteamInputResult result) {
+        return SteamInputParser.strings(markers, key, "radial.evidence_markers", result);
+    }
+
+    class void validateSlots(Vector<string> slots, string field,
+                             SteamInputResult result) {
+        for action in slots {
+            if (!result.definition.hasAction(action)) {
+                result.fail(field, "unknown action '" + action + "'");
+                continue;
+            }
+            SteamInputAction definition = result.definition.action(action);
+            string label = definition.label.toLower();
+            if (!SteamInputFiles.safeIconName(definition.icon)
+                    || ["ctrl", "control", "alt", "shift", "meta"]
+                        .contains(label)
+                    || label.startsWith("ctrl+")
+                    || label.startsWith("control+")) {
+                result.fail(field, "action '" + action
+                    + "' must use a semantic Semu icon and label");
+            }
+        }
+    }
+
+    class void parseController(JsonValue root, SteamInputResult result) {
+        if (!root.has("controller") || !root.get("controller").isObject()) {
+            result.fail("controller", "expected object");
+            return;
+        }
+        JsonValue controller = root.get("controller");
+        SteamInputParser.keys(controller,
+            ["model", "gyro", "trackpads", "hotkey_button"], "controller", result);
+        SteamInputDefinition definition = result.definition;
+        definition.controllerModel = SteamInputParser.stringField(
+            controller, "model", "controller", result);
+        definition.hotkeyButton = SteamInputParser.stringField(
+            controller, "hotkey_button", "controller", result);
+        if (!controller.has("gyro") || !controller.get("gyro").isBool()) {
+            result.fail("controller.gyro", "expected boolean");
+        } else {
+            definition.gyro = controller.get("gyro").asBool();
+        }
+        if (!controller.has("trackpads") || !controller.get("trackpads").isObject()) {
+            result.fail("controller.trackpads", "expected object");
+        } else {
+            JsonValue trackpads = controller.get("trackpads");
+            SteamInputParser.keys(trackpads, ["left", "right"],
+                "controller.trackpads", result);
+            definition.leftTrackpad = SteamInputParser.stringField(
+                trackpads, "left", "controller.trackpads", result);
+            definition.rightTrackpad = SteamInputParser.stringField(
+                trackpads, "right", "controller.trackpads", result);
+        }
+        if (!definition.controllerModel.equals("steam_deck")
+                || !definition.leftTrackpad.equals("radial_hotkeys")
+                || !definition.rightTrackpad.equals("mouse")
+                || !definition.hotkeyButton.equals("view_long_press")) {
+            result.fail("controller", "unsupported Neptune controller policy");
+        }
+    }
+
+    class void parseRadial(JsonValue root, SteamInputResult result) {
+        if (!root.has("radial") || !root.get("radial").isObject()) {
+            result.fail("radial", "expected object");
+            return;
+        }
+        JsonValue radial = root.get("radial");
+        SteamInputParser.keys(radial,
+            ["show_labels", "quick_slots", "menu_slots", "evidence_markers",
+             "system_layers"], "radial", result);
+        if (!radial.has("show_labels") || !radial.get("show_labels").isBool()) {
+            result.fail("radial.show_labels", "expected boolean");
+        } else {
+            result.definition.showRadialLabels = radial.get("show_labels").asBool();
+            if (result.definition.showRadialLabels) {
+                result.fail("radial.show_labels",
+                    "must be false so keyboard modifier labels never replace icons");
+            }
+        }
+        result.definition.quickSlots = SteamInputParser.strings(
+            radial, "quick_slots", "radial", result);
+        result.definition.menuSlots = SteamInputParser.strings(
+            radial, "menu_slots", "radial", result);
+        SteamInputParser.validateSlots(
+            result.definition.quickSlots, "radial.quick_slots", result);
+        SteamInputParser.validateSlots(
+            result.definition.menuSlots, "radial.menu_slots", result);
+        for required in ["state.save", "state.load", "app.quit", "ui.menu"] {
+            if (!result.definition.quickSlots.contains(required)) {
+                result.fail("radial.quick_slots",
+                    "missing required action '" + required + "'");
+            }
+        }
+        for required in ["ui.menu", "ui.menu.up", "ui.menu.down",
+                         "ui.menu.confirm", "ui.menu.back"] {
+            if (!result.definition.menuSlots.contains(required)) {
+                result.fail("radial.menu_slots",
+                    "missing required action '" + required + "'");
+            }
+        }
+        if (!radial.has("evidence_markers")
+                || !radial.get("evidence_markers").isObject()) {
+            result.fail("radial.evidence_markers", "expected object");
+        } else {
+            JsonValue markers = radial.get("evidence_markers");
+            SteamInputParser.keys(markers, ["quick", "menu"],
+                "radial.evidence_markers", result);
+            result.definition.quickMarkers = SteamInputParser.evidence(markers, "quick", result);
+            result.definition.menuMarkers = SteamInputParser.evidence(markers, "menu", result);
+            if (result.definition.quickMarkers.size()
+                    != result.definition.quickSlots.size()) {
+                result.fail("radial.evidence_markers.quick", "must match quick_slots");
+            }
+            if (result.definition.menuMarkers.size()
+                    != result.definition.menuSlots.size()) {
+                result.fail("radial.evidence_markers.menu", "must match menu_slots");
+            }
+            for marker in result.definition.quickMarkers {
+                if (!SteamInputParser.marker(marker)) {
+                    result.fail("radial.evidence_markers.quick",
+                        "unsupported marker '" + marker + "'");
+                }
+            }
+            for marker in result.definition.menuMarkers {
+                if (!SteamInputParser.marker(marker)) {
+                    result.fail("radial.evidence_markers.menu",
+                        "unsupported marker '" + marker + "'");
+                } else if (result.definition.quickMarkers.contains(marker)) {
+                    result.fail("radial.evidence_markers",
+                        "marker '" + marker + "' is assigned twice");
+                }
+            }
+        }
+        if (!radial.has("system_layers") || !radial.get("system_layers").isArray()) {
+            result.fail("radial.system_layers", "expected array");
+            return;
+        }
+        JsonValue layers = radial.get("system_layers");
+        for (int index = 0; index < layers.size(); index++) {
+            JsonValue value = layers.at(index);
+            string context = f"radial.system_layers[{index}]";
+            SteamInputParser.keys(value, ["id", "name", "activators", "slots"],
+                context, result);
+            SteamInputRadialLayer layer = SteamInputRadialLayer();
+            layer.id = SteamInputParser.stringField(value, "id", context, result);
+            layer.name = SteamInputParser.stringField(value, "name", context, result);
+            layer.activators = SteamInputParser.strings(value, "activators", context, result);
+            layer.slots = SteamInputParser.strings(value, "slots", context, result);
+            if (!SteamInputParser.safeId(layer.id, false)
+                    || !SteamInputParser.safeText(layer.name)) {
+                result.fail(context, "unsafe layer id or name");
+            }
+            if (result.definition.hasSystemLayer(layer.id)) {
+                result.fail(context + ".id", "duplicate layer id");
+            }
+            if (layer.activators.isEmpty() || layer.slots.isEmpty()
+                    || layer.slots.size() > 20) {
+                result.fail(context,
+                    "layer requires one or more activators and 1..20 slots");
+            }
+            for activator in layer.activators {
+                if (!["left_lower_grip", "right_lower_grip"].contains(activator)) {
+                    result.fail(context + ".activators", "unsupported grip activator");
+                }
+            }
+            SteamInputParser.validateSlots(layer.slots, context + ".slots", result);
+            result.definition.systemLayers.push(layer);
+        }
+    }
+
+    class void parseCapabilities(JsonValue root, SteamInputResult result) {
+        if (!root.has("capabilities") || !root.get("capabilities").isObject()) {
+            result.fail("capabilities", "expected object");
+            return;
+        }
+        JsonValue capabilities = root.get("capabilities");
+        SteamInputParser.keys(capabilities,
+            ["savestate_actions", "controller_mode_layers"],
+            "capabilities", result);
+        result.definition.savestateActions = SteamInputParser.strings(
+            capabilities, "savestate_actions", "capabilities", result);
+        result.definition.controllerModeLayers = SteamInputParser.strings(
+            capabilities, "controller_mode_layers", "capabilities", result);
+        for required in ["state.save", "state.load"] {
+            if (!result.definition.savestateActions.contains(required)
+                    || !result.definition.quickSlots.contains(required)) {
+                result.fail("capabilities.savestate_actions",
+                    "missing quick-radial action '" + required + "'");
+            }
+        }
+        for action in result.definition.savestateActions {
+            if (!result.definition.hasAction(action)) {
+                result.fail("capabilities.savestate_actions",
+                    "unknown action '" + action + "'");
+            }
+        }
+        for layer in result.definition.controllerModeLayers {
+            if (!result.definition.hasSystemLayer(layer)) {
+                result.fail("capabilities.controller_mode_layers",
+                    "unknown layer '" + layer + "'");
+                continue;
+            }
+            Vector<string> actions = result.definition.systemLayer(layer).slots;
+            for (int index = 0; index < actions.size(); index++) {
+                int code = SemuActions.code(actions.get(index));
+                if (!SemuActions.controllerMode(code)
+                        || SemuActions.controllerModeSlot(code) != index) {
+                    result.fail("radial.system_layers." + layer + ".slots",
+                        "controller modes must follow their stable action ABI order");
+                }
+            }
+        }
+        if (result.definition.controllerModeLayers.isEmpty()) {
+            result.fail("capabilities.controller_mode_layers",
+                "must declare at least one controller-mode layer");
+        }
+    }
+
+    class void parseQuit(JsonValue root, SteamInputResult result) {
+        if (!root.has("quit_chord") || !root.get("quit_chord").isObject()) {
+            result.fail("quit_chord", "expected object");
+            return;
+        }
+        JsonValue chord = root.get("quit_chord");
+        SteamInputParser.keys(chord, ["buttons", "window_ms"], "quit_chord", result);
+        result.definition.quitButtons = SteamInputParser.strings(
+            chord, "buttons", "quit_chord", result);
+        if (!chord.has("window_ms") || !chord.get("window_ms").isInt()) {
+            result.fail("quit_chord.window_ms", "expected positive integer");
+        } else {
+            result.definition.quitWindowMilliseconds = chord.get("window_ms").asInt();
+        }
+        if (result.definition.quitButtons.size() != 2
+                || !result.definition.quitButtons.contains("select")
+                || !result.definition.quitButtons.contains("start")
+                || result.definition.quitWindowMilliseconds < 50
+                || result.definition.quitWindowMilliseconds > 1000) {
+            result.fail("quit_chord",
+                "must declare Start+Select with a window in 50..1000 ms");
+        }
+        if (!result.definition.hasAction("app.quit")) {
+            result.fail("actions.app.quit", "required by quit_chord");
+        }
+    }
+
+    class void parseTemplates(JsonValue root, SteamInputResult result) {
+        if (!root.has("templates") || !root.get("templates").isArray()) {
+            result.fail("templates", "expected array");
+            return;
+        }
+        JsonValue templates = root.get("templates");
+        int defaults = 0;
+        for (int index = 0; index < templates.size(); index++) {
+            JsonValue value = templates.at(index);
+            string context = f"templates[{index}]";
+            SteamInputParser.keys(value,
+                ["id", "title", "quick_radial_name", "menu_radial_name",
+                 "output", "default"], context, result);
+            SteamInputTemplate template = SteamInputTemplate();
+            template.id = SteamInputParser.stringField(value, "id", context, result);
+            template.title = SteamInputParser.stringField(value, "title", context, result);
+            template.quickRadialName = SteamInputParser.stringField(
+                value, "quick_radial_name", context, result);
+            template.menuRadialName = SteamInputParser.stringField(
+                value, "menu_radial_name", context, result);
+            template.output = SteamInputParser.stringField(value, "output", context, result);
+            if (value.has("default")) {
+                if (!value.get("default").isBool()) {
+                    result.fail(context + ".default", "expected boolean");
+                } else {
+                    template.isDefault = value.get("default").asBool();
+                }
+            }
+            if (!SteamInputParser.safeId(template.id, false)
+                    || !SteamInputParser.safeText(template.title)
+                    || !SteamInputParser.safeText(template.quickRadialName)
+                    || !SteamInputParser.safeText(template.menuRadialName)
+                    || !SteamInputFiles.safeTemplateName(template.output)) {
+                result.fail(context, "unsafe template metadata");
+            }
+            if (template.isDefault) { defaults++; }
+            result.definition.templates.push(template);
+        }
+        if (result.definition.templates.isEmpty() || defaults != 1) {
+            result.fail("templates", "must declare templates with exactly one default");
+        }
+    }
+
+    class void parseApplication(JsonValue root, SteamInputResult result) {
+        if (!root.has("application") || !root.get("application").isObject()) {
+            result.fail("application", "expected object");
+            return;
+        }
+        JsonValue application = root.get("application");
+        SteamInputParser.keys(application,
+            ["shortcut_name", "config_id", "controller_file",
+             "deprecated_config_ids"], "application", result);
+        SteamInputDefinition definition = result.definition;
+        definition.applicationShortcutName = SteamInputParser.stringField(
+            application, "shortcut_name", "application", result);
+        definition.applicationConfigId = SteamInputParser.stringField(
+            application, "config_id", "application", result);
+        definition.applicationControllerFile = SteamInputParser.stringField(
+            application, "controller_file", "application", result);
+        definition.deprecatedApplicationConfigIds = SteamInputParser.strings(
+            application, "deprecated_config_ids", "application", result);
+        if (!SteamInputParser.safeText(definition.applicationShortcutName)
+                || !SteamInputFiles.safeApplicationId(
+                    definition.applicationConfigId)
+                || !definition.applicationControllerFile.equals(
+                    "controller_neptune.vdf")) {
+            result.fail("application", "unsafe Steam shortcut assignment");
+        }
+        for id in definition.deprecatedApplicationConfigIds {
+            if (!SteamInputFiles.safeApplicationId(id)
+                    || id.equals(definition.applicationConfigId)) {
+                result.fail("application.deprecated_config_ids",
+                    "unsafe or active config id '" + id + "'");
+            }
+        }
+    }
+
+    class SteamInputEvdevIdentity parseEvdevIdentity(
+            JsonValue value, string context, bool gamepad,
+            SteamInputResult result) {
+        SteamInputEvdevIdentity identity = SteamInputEvdevIdentity();
+        SteamInputParser.keys(value,
+            gamepad
+                ? ["source", "vendor", "product", "physical"]
+                : ["source", "vendor", "product", "physical_prefix",
+                   "physical_suffix"],
+            context, result);
+        identity.source = SteamInputParser.stringField(
+            value, "source", context, result);
+        identity.vendor = SteamInputParser.stringField(
+            value, "vendor", context, result);
+        identity.product = SteamInputParser.stringField(
+            value, "product", context, result);
+        if (gamepad) {
+            identity.physical = SteamInputParser.stringField(
+                value, "physical", context, result);
+        } else {
+            identity.physicalPrefix = SteamInputParser.stringField(
+                value, "physical_prefix", context, result);
+            identity.physicalSuffix = SteamInputParser.stringField(
+                value, "physical_suffix", context, result);
+        }
+        if (!["hardware", "virtual"].contains(identity.source)
+                || !SteamInputParser.hexIdentity(identity.vendor)
+                || !SteamInputParser.hexIdentity(identity.product)
+                || (gamepad && !identity.physical.equals("empty"))
+                || (!gamepad
+                    && (!SteamInputParser.physicalIdentity(
+                            identity.physicalPrefix)
+                        || !SteamInputParser.physicalIdentity(
+                            identity.physicalSuffix)))) {
+            result.fail(context,
+                "expected a source/product/physical evdev identity");
+        }
+        return identity;
+    }
+
+    class void parseDeviceIdentities(JsonValue root,
+                                     SteamInputResult result) {
+        if (!root.has("device_identities")
+                || !root.get("device_identities").isObject()) {
+            result.fail("device_identities", "expected object");
+            return;
+        }
+        JsonValue identities = root.get("device_identities");
+        SteamInputParser.keys(identities,
+            ["retroarch_input_driver", "azahar_controller_guid",
+             "dolphin_pad", "dolphin_wiimote", "dolphin_pointer",
+             "pcsx2_pad", "cemu_api", "cemu_display_name", "cemu_profile",
+             "ryujinx_controller_id", "supervisor"],
+            "device_identities", result);
+        for key in identities.keys() {
+            if (!key.equals("supervisor")
+                    && (!identities.get(key).isString()
+                        || identities.get(key).asString().isEmpty())) {
+                result.fail("device_identities." + key,
+                    "expected non-empty string");
+            }
+        }
+        if (!identities.has("supervisor")
+                || !identities.get("supervisor").isObject()) {
+            result.fail("device_identities.supervisor", "expected object");
+            return;
+        }
+        JsonValue supervisor = identities.get("supervisor");
+        SteamInputParser.keys(supervisor, ["gamepad", "command_facet"],
+            "device_identities.supervisor", result);
+        if (!supervisor.has("gamepad")
+                || !supervisor.get("gamepad").isObject()
+                || !supervisor.has("command_facet")
+                || !supervisor.get("command_facet").isObject()) {
+            result.fail("device_identities.supervisor",
+                "expected gamepad and command_facet objects");
+            return;
+        }
+        result.definition.gamepadIdentity =
+            SteamInputParser.parseEvdevIdentity(supervisor.get("gamepad"),
+                "device_identities.supervisor.gamepad", true, result);
+        result.definition.commandIdentity =
+            SteamInputParser.parseEvdevIdentity(
+                supervisor.get("command_facet"),
+                "device_identities.supervisor.command_facet", false, result);
+        if (!result.definition.gamepadIdentity.vendor.equals(
+                result.definition.commandIdentity.vendor)
+                || !result.definition.gamepadIdentity.source.equals("virtual")
+                || !result.definition.commandIdentity.source.equals("hardware")) {
+            result.fail("device_identities.supervisor",
+                "gamepad and command facets must describe one coherent Steam source");
+        }
+    }
+
+    class void parseKeyNames(JsonValue root, SteamInputResult result) {
+        if (!root.has("key_names") || !root.get("key_names").isObject()) {
+            result.fail("key_names", "expected object");
+            return;
+        }
+        JsonValue names = root.get("key_names");
+        for token in names.keys() {
+            if (!names.get(token).isString() || names.get(token).asString().isEmpty()) {
+                result.fail("key_names." + token, "expected non-empty string");
+            } else if ((!SteamInputParser.safeId(token, false)
+                    && !["+", "-"].contains(token))
+                    || !SteamInputParser.keyName(names.get(token).asString())) {
+                result.fail("key_names." + token, "unsafe key token or VDF name");
+            } else if (result.definition.keyTokens.contains(token.toLower())) {
+                result.fail("key_names." + token, "duplicate case-insensitive token");
+            } else {
+                result.definition.keyTokens.push(token.toLower());
+                result.definition.keyNames.push(names.get(token).asString());
+            }
+        }
+    }
+
+    class void parsePlatform(JsonValue root, SteamInputResult result) {
+        if (!root.has("platforms") || !root.get("platforms").isObject()
+                || !root.get("platforms").has("linux")
+                || !root.get("platforms").get("linux").isObject()) {
+            result.fail("platforms.linux", "expected object");
+            return;
+        }
+        JsonValue platforms = root.get("platforms");
+        SteamInputParser.keys(platforms, ["linux"], "platforms", result);
+        JsonValue linux = platforms.get("linux");
+        SteamInputParser.keys(linux,
+            ["templates_dir", "binding_icons_dir", "application_config_dir"],
+            "platforms.linux", result);
+        result.definition.templatesDirectory = SteamInputParser.stringField(
+            linux, "templates_dir", "platforms.linux", result);
+        result.definition.bindingIconsDirectory = SteamInputParser.stringField(
+            linux, "binding_icons_dir", "platforms.linux", result);
+        result.definition.applicationConfigDirectory = SteamInputParser.stringField(
+            linux, "application_config_dir", "platforms.linux", result);
+        if (!result.definition.templatesDirectory.equals(
+                SteamInputInstallPolicy.templatesPattern())
+                || !result.definition.bindingIconsDirectory.equals(
+                    SteamInputInstallPolicy.iconsPattern())
+                || !result.definition.applicationConfigDirectory.equals(
+                    SteamInputInstallPolicy.applicationPattern())) {
+            result.fail("platforms.linux",
+                "paths must be the exact canonical current-user Steam layout");
+        }
+    }
+
+    class SteamInputResult parse(string file) {
+        SteamInputResult result = SteamInputResult();
+        SemuActions.resetExtensions();
+        result.definition.file = FileSystem.absolutePath(file);
+        JsonValue root = JsonValue.readFile(result.definition.file);
+        if (root.isError() || !root.isObject()) {
+            result.fail("(root)", "invalid JSON object");
+            return result;
+        }
+        SteamInputParser.keys(root,
+            ["schema_version", "modifiers", "actions", "hotkey_bindings",
+             "binding_icons", "controller", "radial", "capabilities",
+             "quit_chord", "templates", "application", "key_names",
+             "device_identities", "platforms", "doc"], "", result);
+        if (!root.has("schema_version") || !root.get("schema_version").isInt()
+                || root.get("schema_version").asInt() != 2) {
+            result.fail("schema_version", "expected version 2");
+        }
+        result.definition.modifiers = SteamInputParser.strings(
+            root, "modifiers", "", result);
+        SteamInputParser.parseIcons(root, result);
+        SteamInputParser.parseActions(root, result);
+        SteamInputParser.parseHotkeys(root, result);
+        SteamInputParser.parseController(root, result);
+        SteamInputParser.parseRadial(root, result);
+        SteamInputParser.parseCapabilities(root, result);
+        SteamInputParser.parseQuit(root, result);
+        SteamInputParser.parseTemplates(root, result);
+        SteamInputParser.parseApplication(root, result);
+        SteamInputParser.parseDeviceIdentities(root, result);
+        SteamInputParser.parseKeyNames(root, result);
+        for marker in result.definition.quickMarkers {
+            if (!result.definition.keyTokens.contains(marker)) {
+                result.fail("key_names", "missing radial marker '" + marker + "'");
+            }
+        }
+        for marker in result.definition.menuMarkers {
+            if (!result.definition.keyTokens.contains(marker)) {
+                result.fail("key_names", "missing radial marker '" + marker + "'");
+            }
+        }
+        SteamInputParser.parsePlatform(root, result);
+        return result;
+    }
+}
+
+class SteamInputVdf {
+    class string actionBinding(SteamInputDefinition definition, string command,
+                               string actionId) {
+        SteamInputAction action = definition.action(actionId);
+        return "\"binding\" \"" + command + ", " + action.label + ", "
+            + action.icon + " " + definition.iconColors + "\"";
+    }
+
+    class string keyBindings(SteamInputDefinition definition, string chord,
+                             string actionId) {
+        Vector<string> bindings = [];
+        for key in Strings.split(SteamInputChord.vdf(definition, chord), " ") {
+            bindings.push(SteamInputVdf.actionBinding(
+                definition, "key_press " + key, actionId));
+        }
+        return bindings.join(" ");
+    }
+
+    class string xinput(string button) {
+        return "\"binding\" \"xinput_button " + button + ", , \"";
+    }
+
+    class string actionBindings(SteamInputDefinition definition, string actionId,
+                                bool supervisor = false) {
+        SteamInputAction action = definition.action(actionId);
+        string chord = supervisor ? action.supervisorChord : action.chord;
+        string bindings = SteamInputVdf.keyBindings(definition, chord, actionId);
+        if (!actionId.equals("app.quit")) { return bindings; }
+        for button in definition.quitButtons {
+            bindings = bindings + " " + SteamInputVdf.actionBinding(definition,
+                "xinput_button " + button.toUpper(), actionId);
+        }
+        return bindings;
+    }
+
+    class string input(string name, string activator, string bindings) {
+        return "\t\t\t\"" + name + "\" { \"activators\" { \"" + activator
+            + "\" { \"bindings\" { " + bindings + " } } } }";
+    }
+
+    class void groupHead(Vector<string> lines, string id, string mode) {
+        lines.push("\t\"group\"");
+        lines.push("\t{");
+        lines.push("\t\t\"id\" \"" + id + "\"");
+        lines.push("\t\t\"mode\" \"" + mode + "\"");
+        lines.push("\t\t\"inputs\"");
+        lines.push("\t\t{");
+    }
+
+    class void groupTail(Vector<string> lines) {
+        lines.push("\t\t}");
+        lines.push("\t}");
+    }
+
+    class string singleGroup(string id, string mode, string name, string bindings) {
+        return "\t\"group\" { \"id\" \"" + id + "\" \"mode\" \"" + mode
+            + "\" \"inputs\" { \"" + name
+            + "\" { \"activators\" { \"Full_Press\" { \"bindings\" { "
+            + bindings + " } } } } } }";
+    }
+
+    class string hotkeyPreset() {
+        return "\"binding\" \"controller_action CHANGE_PRESET 2 0 0, Hotkey, , \"";
+    }
+
+    class string defaultPreset() {
+        return "\"binding\" \"controller_action CHANGE_PRESET 1 0 0, , \"";
+    }
+
+    class string layerPreset(int preset, string label) {
+        return "\"binding\" \"controller_action CHANGE_PRESET "
+            + f"{preset + 1}" + " 0 0, " + label + ", , \"";
+    }
+
+    class string layerActivator(string activator) {
+        if (activator.equals("left_lower_grip")) { return "button_back_left_lower"; }
+        if (activator.equals("right_lower_grip")) { return "button_back_right_lower"; }
+        return "";
+    }
+
+    class void gamepadGroups(Vector<string> lines, SteamInputDefinition definition) {
+        SteamInputVdf.groupHead(lines, "0", "four_buttons");
+        lines.push(SteamInputVdf.input("button_a", "Full_Press", SteamInputVdf.xinput("A")));
+        lines.push(SteamInputVdf.input("button_b", "Full_Press", SteamInputVdf.xinput("B")));
+        lines.push(SteamInputVdf.input("button_x", "Full_Press", SteamInputVdf.xinput("X")));
+        lines.push(SteamInputVdf.input("button_y", "Full_Press", SteamInputVdf.xinput("Y")));
+        SteamInputVdf.groupTail(lines);
+
+        SteamInputVdf.groupHead(lines, "1", "dpad");
+        lines.push(SteamInputVdf.input("dpad_north", "Full_Press", SteamInputVdf.xinput("DPAD_UP")));
+        lines.push(SteamInputVdf.input("dpad_south", "Full_Press", SteamInputVdf.xinput("DPAD_DOWN")));
+        lines.push(SteamInputVdf.input("dpad_east", "Full_Press", SteamInputVdf.xinput("DPAD_RIGHT")));
+        lines.push(SteamInputVdf.input("dpad_west", "Full_Press", SteamInputVdf.xinput("DPAD_LEFT")));
+        SteamInputVdf.groupTail(lines);
+
+        lines.push(SteamInputVdf.singleGroup("2", "joystick_move", "click",
+            SteamInputVdf.xinput("JOYSTICK_LEFT")));
+        lines.push(SteamInputVdf.singleGroup("3", "joystick_move", "click",
+            SteamInputVdf.xinput("JOYSTICK_RIGHT")));
+        lines.push(SteamInputVdf.singleGroup("4", "trigger", "click",
+            SteamInputVdf.xinput("TRIGGER_LEFT")));
+        lines.push(SteamInputVdf.singleGroup("5", "trigger", "click",
+            SteamInputVdf.xinput("TRIGGER_RIGHT")));
+        lines.push("\t\"group\" { \"id\" \"6\" \"mode\" \"absolute_mouse\" \"inputs\" { \"click\" { \"activators\" { \"Soft_Press\" { \"bindings\" { \"binding\" \"mouse_button LEFT, , \" } } } } } }");
+
+        SteamInputVdf.groupHead(lines, "7", "switches");
+        lines.push(SteamInputVdf.input("button_escape", "Full_Press",
+            SteamInputVdf.xinput("START")));
+        lines.push("\t\t\t\"button_menu\" { \"activators\" { \"Full_Press\" { \"bindings\" { "
+            + SteamInputVdf.xinput("SELECT")
+            + " } } \"Long_Press\" { \"bindings\" { "
+            + SteamInputVdf.hotkeyPreset() + " } } } }");
+        lines.push(SteamInputVdf.input("left_bumper", "Full_Press",
+            SteamInputVdf.xinput("SHOULDER_LEFT")));
+        lines.push(SteamInputVdf.input("right_bumper", "Full_Press",
+            SteamInputVdf.xinput("SHOULDER_RIGHT")));
+        lines.push(SteamInputVdf.input("button_back_left_upper", "Full_Press",
+            SteamInputVdf.hotkeyPreset()));
+        lines.push(SteamInputVdf.input("button_back_right_upper", "Full_Press",
+            SteamInputVdf.hotkeyPreset()));
+        for (int index = 0; index < definition.systemLayers.size(); index++) {
+            SteamInputRadialLayer layer = definition.systemLayers.get(index);
+            for activator in layer.activators {
+                lines.push(SteamInputVdf.input(
+                    SteamInputVdf.layerActivator(activator), "Full_Press",
+                    SteamInputVdf.layerPreset(index + 2, layer.name)));
+            }
+        }
+        SteamInputVdf.groupTail(lines);
+    }
+
+    class void boundInput(Vector<string> lines, SteamInputDefinition definition,
+                          string button, string inputName) {
+        string action = definition.hotkeyAction(button);
+        if (!action.isEmpty()) {
+            lines.push(SteamInputVdf.input(inputName, "Full_Press",
+                SteamInputVdf.actionBindings(definition, action)));
+        }
+    }
+
+    class bool anyHotkey(SteamInputDefinition definition, Vector<string> buttons) {
+        for button in buttons {
+            if (!definition.hotkeyAction(button).isEmpty()) { return true; }
+        }
+        return false;
+    }
+
+    class void hotkeyGroups(Vector<string> lines, SteamInputDefinition definition) {
+        Vector<string> face = ["A", "B", "X", "Y"];
+        if (SteamInputVdf.anyHotkey(definition, face)) {
+            SteamInputVdf.groupHead(lines, "10", "four_buttons");
+            SteamInputVdf.boundInput(lines, definition, "A", "button_a");
+            SteamInputVdf.boundInput(lines, definition, "B", "button_b");
+            SteamInputVdf.boundInput(lines, definition, "X", "button_x");
+            SteamInputVdf.boundInput(lines, definition, "Y", "button_y");
+            SteamInputVdf.groupTail(lines);
+        }
+        if (!definition.hotkeyAction("L2").isEmpty()) {
+            lines.push(SteamInputVdf.singleGroup("11", "trigger", "click",
+                SteamInputVdf.actionBindings(definition, definition.hotkeyAction("L2"))));
+        }
+        if (!definition.hotkeyAction("R2").isEmpty()) {
+            lines.push(SteamInputVdf.singleGroup("12", "trigger", "click",
+                SteamInputVdf.actionBindings(definition, definition.hotkeyAction("R2"))));
+        }
+        Vector<string> dpad = ["D-Pad Up", "D-Pad Down", "D-Pad Left", "D-Pad Right"];
+        if (SteamInputVdf.anyHotkey(definition, dpad)) {
+            SteamInputVdf.groupHead(lines, "13", "dpad");
+            SteamInputVdf.boundInput(lines, definition, "D-Pad Up", "dpad_north");
+            SteamInputVdf.boundInput(lines, definition, "D-Pad Down", "dpad_south");
+            SteamInputVdf.boundInput(lines, definition, "D-Pad Right", "dpad_east");
+            SteamInputVdf.boundInput(lines, definition, "D-Pad Left", "dpad_west");
+            SteamInputVdf.groupTail(lines);
+        }
+        SteamInputVdf.groupHead(lines, "14", "switches");
+        SteamInputVdf.boundInput(lines, definition, "Start", "button_escape");
+        lines.push(SteamInputVdf.input("button_menu", "release",
+            SteamInputVdf.defaultPreset()));
+        SteamInputVdf.boundInput(lines, definition, "L1", "left_bumper");
+        SteamInputVdf.boundInput(lines, definition, "R1", "right_bumper");
+        lines.push(SteamInputVdf.input("button_back_left_upper", "release",
+            SteamInputVdf.defaultPreset()));
+        lines.push(SteamInputVdf.input("button_back_right_upper", "release",
+            SteamInputVdf.defaultPreset()));
+        SteamInputVdf.groupTail(lines);
+        if (!definition.hotkeyAction("L3").isEmpty()) {
+            lines.push(SteamInputVdf.singleGroup("15", "joystick_move", "click",
+                SteamInputVdf.actionBindings(definition, definition.hotkeyAction("L3"))));
+        }
+        if (!definition.hotkeyAction("R3").isEmpty()) {
+            lines.push(SteamInputVdf.singleGroup("16", "joystick_move", "click",
+                SteamInputVdf.actionBindings(definition, definition.hotkeyAction("R3"))));
+        }
+    }
+
+    class void radial(Vector<string> lines, SteamInputDefinition definition,
+                      string id, Vector<string> slots, Vector<string> markers,
+                      string name, bool evidence, bool supervisor = false) {
+        lines.push("\t\"group\"");
+        lines.push("\t{");
+        lines.push("\t\t\"id\" \"" + id + "\"");
+        lines.push("\t\t\"mode\" \"radial_menu\"");
+        lines.push("\t\t\"name\" \"" + name + "\"");
+        lines.push("\t\t\"inputs\"");
+        lines.push("\t\t{");
+        for (int index = 0; index < slots.size(); index++) {
+            string action = slots.get(index);
+            string bindings = SteamInputVdf.actionBindings(
+                definition, action, supervisor);
+            if (evidence && index < markers.size()) {
+                bindings = SteamInputVdf.keyBindings(
+                    definition, markers.get(index), action) + " " + bindings;
+            }
+            lines.push(SteamInputVdf.input(f"touch_menu_button_{index}",
+                "Full_Press", bindings));
+        }
+        lines.push("\t\t}");
+        lines.push("\t\t\"settings\"");
+        lines.push("\t\t{");
+        lines.push("\t\t\t\"touchmenu_button_fire_type\" \"1\"");
+        lines.push("\t\t\t\"touch_menu_show_labels\" \""
+            + (definition.showRadialLabels ? "1" : "0") + "\"");
+        lines.push("\t\t}");
+        lines.push("\t}");
+    }
+
+    class void systemSwitch(Vector<string> lines, SteamInputRadialLayer layer,
+                            string id) {
+        SteamInputVdf.groupHead(lines, id, "switches");
+        lines.push(SteamInputVdf.input("button_escape", "Full_Press",
+            SteamInputVdf.xinput("START")));
+        lines.push(SteamInputVdf.input("button_menu", "Full_Press",
+            SteamInputVdf.xinput("SELECT")));
+        lines.push(SteamInputVdf.input("left_bumper", "Full_Press",
+            SteamInputVdf.xinput("SHOULDER_LEFT")));
+        lines.push(SteamInputVdf.input("right_bumper", "Full_Press",
+            SteamInputVdf.xinput("SHOULDER_RIGHT")));
+        for activator in layer.activators {
+            lines.push(SteamInputVdf.input(SteamInputVdf.layerActivator(activator),
+                "release", SteamInputVdf.defaultPreset()));
+        }
+        SteamInputVdf.groupTail(lines);
+    }
+
+    class Vector<string> hotkeyGroupIds(SteamInputDefinition definition) {
+        return [SteamInputVdf.anyHotkey(definition, ["A", "B", "X", "Y"]) ? "10" : "0",
+                SteamInputVdf.anyHotkey(definition,
+                    ["D-Pad Up", "D-Pad Down", "D-Pad Left", "D-Pad Right"])
+                    ? "13" : "1",
+                definition.hotkeyAction("L3").isEmpty() ? "2" : "15",
+                definition.hotkeyAction("R3").isEmpty() ? "3" : "16",
+                definition.hotkeyAction("L2").isEmpty() ? "4" : "11",
+                definition.hotkeyAction("R2").isEmpty() ? "5" : "12", "14"];
+    }
+
+    class string preset(string id, string name, Vector<string> groups,
+                        string leftTrackpad) {
+        string bindings = "\"" + groups.get(0) + "\" \"button_diamond active\""
+            + " \"" + groups.get(1) + "\" \"dpad active\""
+            + " \"" + groups.get(2) + "\" \"joystick active\""
+            + " \"" + groups.get(3) + "\" \"right_joystick active\""
+            + " \"" + groups.get(4) + "\" \"left_trigger active\""
+            + " \"" + groups.get(5) + "\" \"right_trigger active\""
+            + " \"6\" \"right_trackpad active\""
+            + " \"" + groups.get(6) + "\" \"switch active\""
+            + " \"" + leftTrackpad + "\" \"left_trackpad active\"";
+        return "\t\"preset\" { \"id\" \"" + id + "\" \"name\" \"" + name
+            + "\" \"group_source_bindings\" { " + bindings + " } }";
+    }
+
+    class string render(SteamInputDefinition definition,
+                        SteamInputTemplate template) {
+        Vector<string> lines = [];
+        lines.push("\"controller_mappings\"");
+        lines.push("{");
+        lines.push("\t\"version\"\t\t\"3\"");
+        lines.push("\t\"revision\"\t\t\"1\"");
+        lines.push("\t\"title\"\t\t\"" + template.title + "\"");
+        lines.push("\t\"description\"\t\t\"Semu gamepad, radial actions, and Start+Select quit.\"");
+        lines.push("\t\"creator\"\t\t\"Semu\"");
+        lines.push("\t\"controller_type\"\t\t\"controller_neptune\"");
+        lines.push("\t\"actions\"");
+        lines.push("\t{");
+        lines.push("\t\t\"Default\" { \"title\" \"Gamepad\" \"legacy_set\" \"1\" }");
+        lines.push("\t\t\"Preset_1000001\" { \"title\" \"Hotkeys\" \"legacy_set\" \"1\" }");
+        for (int index = 0; index < definition.systemLayers.size(); index++) {
+            lines.push("\t\t\"Preset_" + f"{1000002 + index}" + "\" { \"title\" \""
+                + definition.systemLayers.get(index).name
+                + "\" \"legacy_set\" \"1\" }");
+        }
+        lines.push("\t}");
+        SteamInputVdf.gamepadGroups(lines, definition);
+        SteamInputVdf.hotkeyGroups(lines, definition);
+        for (int index = 0; index < definition.systemLayers.size(); index++) {
+            SteamInputVdf.systemSwitch(lines, definition.systemLayers.get(index),
+                f"{30 + index}");
+        }
+        SteamInputVdf.radial(lines, definition, "20", definition.quickSlots,
+            definition.quickMarkers, template.quickRadialName, template.isDefault);
+        SteamInputVdf.radial(lines, definition, "21", definition.menuSlots,
+            definition.menuMarkers, template.menuRadialName, template.isDefault);
+        for (int index = 0; index < definition.systemLayers.size(); index++) {
+            SteamInputRadialLayer layer = definition.systemLayers.get(index);
+            Vector<string> noMarkers = [];
+            SteamInputVdf.radial(lines, definition, f"{22 + index}", layer.slots,
+                noMarkers, layer.name, false, true);
+        }
+        lines.push(SteamInputVdf.preset("0", "Default",
+            ["0", "1", "2", "3", "4", "5", "7"], "20"));
+        lines.push(SteamInputVdf.preset("1", "Preset_1000001",
+            SteamInputVdf.hotkeyGroupIds(definition), "21"));
+        for (int index = 0; index < definition.systemLayers.size(); index++) {
+            lines.push(SteamInputVdf.preset(f"{index + 2}",
+                "Preset_" + f"{1000002 + index}",
+                ["0", "1", "2", "3", "4", "5", f"{30 + index}"],
+                f"{22 + index}"));
+        }
+        lines.push("\t\"settings\" { \"left_trackpad_mode\" \"0\" \"right_trackpad_mode\" \"0\" }");
+        lines.push("}");
+        return lines.join("\n") + "\n";
+    }
+}
+
+class SteamInputInstallPaths {
+    class string steamUser(string steamRoot) {
+        if (!SteamInputInstallPolicy.dedicatedRoot(steamRoot)) { return ""; }
+        string userdata = PathTools.join(steamRoot, "userdata");
+        if (!SteamInputInstallPolicy.realDirectory(userdata)) { return ""; }
+        string explicitUser = Environment.get("SEMU_STEAM_USER_ID", "");
+        if (!explicitUser.isEmpty()) {
+            string selected = PathTools.join(userdata, explicitUser);
+            return SteamInputFiles.numericId(explicitUser)
+                && SteamInputInstallPolicy.realDirectory(selected)
+                ? explicitUser : "";
+        }
+        Vector<string> users = [];
+        Directory directory = Directory(userdata);
+        Vector<string> entries = directory.entriesBounded(64);
+        if (directory.failed() || entries.size() > 64) { return ""; }
+        for entry in entries {
+            if (SteamInputFiles.numericId(entry)
+                    && SteamInputInstallPolicy.realDirectory(
+                        PathTools.join(userdata, entry))) {
+                users.push(entry);
+            }
+        }
+        return users.size() == 1 ? users.get(0) : "";
+    }
+
+    class SteamInputInstallLayout production(
+            SteamInputDefinition definition, string home) {
+        string root = SteamInputInstallPolicy.productionRoot(home);
+        string user = root.isEmpty() ? ""
+            : SteamInputInstallPaths.steamUser(root);
+        return SteamInputInstallPolicy.layout(
+            root, user, definition.applicationConfigId);
+    }
+}
+
+class SteamInputGenerator {
+    class void prepareActionAbi(SteamInputDefinition definition) {
+        SemuActions.resetExtensions();
+        for layerId in definition.controllerModeLayers {
+            SteamInputRadialLayer layer = definition.systemLayer(layerId);
+            for actionId in layer.slots { SemuActions.code(actionId); }
+        }
+    }
+
+    class string supervisorActionBindings(SteamInputDefinition definition) {
+        SteamInputGenerator.prepareActionAbi(definition);
+        Vector<string> bindings = [];
+        for action in definition.actions {
+            int code = SemuActions.code(action.id);
+            if (!SemuActions.valid(code)) { continue; }
+            Vector<string> modifiers = [];
+            for modifier in SteamInputChord.modifiers(action.supervisorChord) {
+                modifiers.push(modifier.toLower());
+            }
+            bindings.push(code.toString() + ":"
+                + (modifiers.isEmpty() ? "none" : modifiers.join("+"))
+                + ":" + SteamInputChord.key(
+                    action.supervisorChord).toLower());
+        }
+        return bindings.join(";");
+    }
+
+    class string supervisorExtensionActions(SteamInputDefinition definition) {
+        Vector<string> actions = [];
+        for layerId in definition.controllerModeLayers {
+            for actionId in definition.systemLayer(layerId).slots {
+                actions.push(actionId);
+            }
+        }
+        return actions.join(",");
+    }
+
+    class string supervisorEnvironment(SteamInputDefinition definition) {
+        return "SEMU_INPUT_QUIT_BUTTONS=" + definition.quitButtons.join(",") + "\n"
+            + "SEMU_QUIT_CHORD_WINDOW_MS="
+            + definition.quitWindowMilliseconds.toString() + "\n"
+            + "SEMU_INPUT_QUICK_MARKERS=" + definition.quickMarkers.join(",") + "\n"
+            + "SEMU_INPUT_MENU_MARKERS=" + definition.menuMarkers.join(",") + "\n"
+            + "SEMU_INPUT_EXTENSION_ACTIONS="
+            + SteamInputGenerator.supervisorExtensionActions(definition) + "\n"
+            + "SEMU_INPUT_ACTION_BINDINGS="
+            + SteamInputGenerator.supervisorActionBindings(definition) + "\n"
+            + "SEMU_INPUT_GAMEPAD_SOURCE="
+            + definition.gamepadIdentity.source + "\n"
+            + "SEMU_INPUT_GAMEPAD_VENDOR="
+            + definition.gamepadIdentity.vendor + "\n"
+            + "SEMU_INPUT_GAMEPAD_PRODUCT="
+            + definition.gamepadIdentity.product + "\n"
+            + "SEMU_INPUT_GAMEPAD_PHYSICAL="
+            + definition.gamepadIdentity.physical + "\n"
+            + "SEMU_INPUT_COMMAND_SOURCE="
+            + definition.commandIdentity.source + "\n"
+            + "SEMU_INPUT_COMMAND_VENDOR="
+            + definition.commandIdentity.vendor + "\n"
+            + "SEMU_INPUT_COMMAND_PRODUCT="
+            + definition.commandIdentity.product + "\n"
+            + "SEMU_INPUT_COMMAND_PHYSICAL_PREFIX="
+            + definition.commandIdentity.physicalPrefix + "\n"
+            + "SEMU_INPUT_COMMAND_PHYSICAL_SUFFIX="
+            + definition.commandIdentity.physicalSuffix + "\n";
+    }
+
+    class SteamInputResult emit(string configFile, string outputDirectory) {
+        SteamInputResult result = SteamInputParser.parse(configFile);
+        result.outputDirectory = FileSystem.absolutePath(outputDirectory);
+        if (!result.ok()) { return result; }
+        if (!SteamInputFiles.prepareDirectory(result.outputDirectory)) {
+            result.fail("output", "cannot create safe output directory");
+            return result;
+        }
+        string iconOutput = PathTools.join(
+            result.outputDirectory, result.definition.iconOutputDirectory);
+        if (!SteamInputFiles.prepareDirectory(iconOutput)) {
+            result.fail("output", "cannot create binding icon directory");
+            return result;
+        }
+        string iconSource = PathTools.join(PathTools.dirname(result.definition.file),
+            result.definition.iconSourceDirectory);
+        for icon in result.definition.icons {
+            if (!SteamInputFiles.copyPng(PathTools.join(iconSource, icon),
+                    PathTools.join(iconOutput, icon))) {
+                result.fail("binding_icons.files", "failed to emit '" + icon + "'");
+            }
+        }
+        for template in result.definition.templates {
+            string destination = PathTools.join(result.outputDirectory, template.output);
+            if (!SteamInputAtomicFile.replaceText(destination,
+                    SteamInputVdf.render(result.definition, template))) {
+                result.fail("templates." + template.id, "failed to emit VDF");
+            }
+        }
+        if (!SteamInputAtomicFile.replaceText(PathTools.join(
+                result.outputDirectory, "semu-input-supervisor.env"),
+                SteamInputGenerator.supervisorEnvironment(result.definition))) {
+            result.fail("quit_chord", "failed to emit supervisor environment");
+        }
+        return result;
+    }
+
+    class SteamInputResult installAt(string configFile, string emittedDirectory,
+                                      string ownedRoot,
+                                      SteamInputInstallLayout layout) {
+        return SteamInputGenerator.installAtWithOptions(configFile,
+            emittedDirectory, ownedRoot, layout, SteamInputInstallOptions());
+    }
+
+    class SteamInputResult installAtWithOptions(
+            string configFile, string emittedDirectory, string ownedRoot,
+            SteamInputInstallLayout layout, SteamInputInstallOptions options) {
+        SteamInputResult result = SteamInputParser.parse(configFile);
+        result.outputDirectory = FileSystem.absolutePath(emittedDirectory);
+        if (!result.ok()) { return result; }
+        if (!SteamInputInstallPolicy.validLayout(layout, ownedRoot,
+                layout.steamUser, result.definition.applicationConfigId)) {
+            result.fail("install",
+                "Steam destinations are not the exact owned-root layout");
+            return result;
+        }
+        for directory in [layout.templatesDirectory, layout.iconsDirectory,
+                           layout.applicationRoot,
+                           layout.applicationDirectory] {
+            if (!SteamInputInstallPolicy.prepareDirectory(
+                    ownedRoot, directory)) {
+                result.fail("install",
+                    "cannot create a symlink-free Steam destination layout");
+                return result;
+            }
+        }
+        SteamInputInstallTransaction transaction =
+            SteamInputInstallTransaction(ownedRoot);
+        for template in result.definition.templates {
+            string source = PathTools.join(result.outputDirectory, template.output);
+            string destination = PathTools.join(
+                layout.templatesDirectory, template.output);
+            if (!transaction.addSource(source, destination)) {
+                result.fail("install.templates", "failed to install '" + template.output + "'");
+            }
+        }
+        string emittedIcons = PathTools.join(
+            result.outputDirectory, result.definition.iconOutputDirectory);
+        for icon in result.definition.icons {
+            if (!transaction.addSource(PathTools.join(emittedIcons, icon),
+                    PathTools.join(layout.iconsDirectory, icon))) {
+                result.fail("install.binding_icons", "failed to install '" + icon + "'");
+            }
+        }
+        SteamInputTemplate selected = result.definition.defaultTemplate();
+        string selectedSource = PathTools.join(
+            result.outputDirectory, selected.output);
+        string controllerDestination = PathTools.join(
+            layout.applicationDirectory,
+            result.definition.applicationControllerFile);
+        if (selected.output.isEmpty()
+                || !transaction.addSource(
+                    selectedSource, controllerDestination)) {
+            result.fail("install.application",
+                "failed to stage the default shortcut profile");
+        }
+        for id in result.definition.deprecatedApplicationConfigIds {
+            if (!transaction.removeDeclared(
+                    PathTools.join(layout.applicationRoot, id))) {
+                result.fail("install.application",
+                    "deprecated config id escaped the application root");
+            }
+        }
+        if (!result.ok()) { return result; }
+        if (!transaction.execute(options)) {
+            result.fail("install.transaction", transaction.error);
+        }
+        return result;
+    }
+
+    class SteamInputResult install(string configFile, string emittedDirectory,
+                                    string home) {
+        SteamInputResult parsed = SteamInputParser.parse(configFile);
+        if (!parsed.ok()) { return parsed; }
+        SteamInputInstallLayout layout = SteamInputInstallPaths.production(
+            parsed.definition, home);
+        return SteamInputGenerator.installAt(configFile, emittedDirectory,
+            layout.ownedRoot, layout);
+    }
+}

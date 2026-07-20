@@ -1,0 +1,87 @@
+// merge.btrc - one recursive JSON precedence rule for compiler-owned state.
+
+import std.{json, vector}
+
+class JsonMerge {
+    class JsonValue copy(JsonValue value) {
+        if (value.isObject()) {
+            JsonValue result = JsonValue.makeObject();
+            Vector<string> keys = value.keys();
+            keys.sort();
+            for key in keys {
+                result.set(key, JsonMerge.copy(value.get(key)));
+            }
+            return result;
+        }
+        if (value.isArray()) {
+            JsonValue result = JsonValue.makeArray();
+            for (int index = 0; index < value.size(); index++) {
+                result.push(JsonMerge.copy(value.at(index)));
+            }
+            return result;
+        }
+        if (value.isString()) { return JsonValue.makeString(value.asString()); }
+        if (value.isBool()) { return JsonValue.makeBool(value.asBool()); }
+        if (value.isInt()) { return JsonValue.makeInt(value.asInt()); }
+        if (value.isNumber()) { return JsonValue.makeFloat(value.asFloat()); }
+        if (value.isError()) { return JsonValue.makeError(); }
+        return JsonValue.makeNull();
+    }
+
+    class JsonValue recursive(JsonValue base, JsonValue overlay) {
+        if (!base.isObject() || !overlay.isObject()) {
+            return JsonMerge.copy(overlay);
+        }
+        Vector<string> keys = base.keys();
+        for key in overlay.keys() {
+            if (!keys.contains(key)) { keys.push(key); }
+        }
+        keys.sort();
+        JsonValue result = JsonValue.makeObject();
+        for key in keys {
+            if (base.has(key) && overlay.has(key)) {
+                result.set(key, JsonMerge.recursive(
+                    base.get(key), overlay.get(key)));
+            } else if (overlay.has(key)) {
+                result.set(key, JsonMerge.copy(overlay.get(key)));
+            } else {
+                result.set(key, JsonMerge.copy(base.get(key)));
+            }
+        }
+        return result;
+    }
+
+    class JsonValue precedence(Vector<JsonValue> layers) {
+        JsonValue result = JsonValue.makeObject();
+        for layer in layers {
+            if (layer.isObject()) { result = JsonMerge.recursive(result, layer); }
+        }
+        return result;
+    }
+}
+
+class SemuDefinitionLayers {
+    public JsonValue repositoryDefaults;
+    public JsonValue targetDefaults;
+    public JsonValue userSettings;
+    public JsonValue userOverrides;
+    public JsonValue commandLine;
+
+    public SemuDefinitionLayers() {
+        self.repositoryDefaults = JsonValue.makeObject();
+        self.targetDefaults = JsonValue.makeObject();
+        self.userSettings = JsonValue.makeObject();
+        self.userOverrides = JsonValue.makeObject();
+        self.commandLine = JsonValue.makeObject();
+    }
+
+    public JsonValue resolve() {
+        return JsonMerge.precedence([
+            self.repositoryDefaults,
+            self.targetDefaults,
+            self.userSettings,
+            self.userOverrides,
+            self.commandLine
+        ]);
+    }
+}

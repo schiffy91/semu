@@ -1,0 +1,503 @@
+// emulator_runtime.btrc - semantic emulator launch planning and execution.
+
+import std.{fs, json, platform, process, vector}
+import ../compiler/model.btrc
+import ../lib/owned_paths.btrc
+import ./emulator_profiles.btrc
+import ./emulators.btrc
+import ./input/action_abi.btrc
+import ./rendering.btrc
+
+class SemuRuntimeFiles {
+    class bool inside(string path, string root) {
+        return path.equals(root) || path.startsWith(root + "/");
+    }
+
+    class string canonicalDirectory(string path) {
+        if (!FileSystem.isDir(path)) { return ""; }
+        return UnixFileSystem.realPath(path);
+    }
+
+    class string canonicalFile(string path) {
+        if (!FileSystem.isFile(path)) { return ""; }
+        return UnixFileSystem.realPath(path);
+    }
+
+    class bool hasExtension(string path, Vector<string> extensions) {
+        string lower = path.toLower();
+        for extension in extensions {
+            if (lower.endsWith(extension.toLower())) { return true; }
+        }
+        return false;
+    }
+
+    class string systemRom(string supplied, SemuSystemSource system,
+                           SemuRuntimeContext context) {
+        string systemRoot = SemuRuntimeFiles.canonicalDirectory(
+            PathTools.join(context.romsRoot, system.romDirectory));
+        string rom = SemuRuntimeFiles.canonicalFile(
+            FileSystem.absolutePath(supplied));
+        if (systemRoot.isEmpty() || rom.isEmpty()
+                || !SemuRuntimeFiles.inside(rom, systemRoot)
+                || !SemuRuntimeFiles.hasExtension(rom, system.extensions)) {
+            return "";
+        }
+        return rom;
+    }
+}
+
+
+class SemuLaunchPlan {
+    public Vector<string> arguments;
+    public Vector<string> environmentKeys;
+    public Vector<string> environmentValues;
+    public string backend;
+    public bool requiresSandbox;
+    public string error;
+
+    public SemuLaunchPlan() {
+        self.arguments = [];
+        self.environmentKeys = [];
+        self.environmentValues = [];
+        self.backend = "";
+        self.requiresSandbox = false;
+        self.error = "";
+    }
+
+    public void environment(string key, string value) {
+        for (int index = 0; index < self.environmentKeys.size(); index++) {
+            if (self.environmentKeys.get(index).equals(key)) {
+                self.environmentValues.set(index, value);
+                return;
+            }
+        }
+        self.environmentKeys.push(key);
+        self.environmentValues.push(value);
+    }
+
+    public bool resolved() {
+        for argument in self.arguments {
+            if (argument.isEmpty() || argument.contains("${")) { return false; }
+        }
+        for (int index = 0; index < self.environmentKeys.size(); index++) {
+            string key = self.environmentKeys.get(index);
+            if (key.isEmpty() || key.contains("=")
+                    || self.environmentValues.get(index).contains("${")) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    public JsonValue json() {
+        JsonValue root = JsonValue.makeObject();
+        JsonValue argv = JsonValue.makeArray();
+        for argument in self.arguments {
+            argv.push(JsonValue.makeString(argument));
+        }
+        JsonValue environment = JsonValue.makeObject();
+        for (int index = 0; index < self.environmentKeys.size(); index++) {
+            environment.set(self.environmentKeys.get(index),
+                JsonValue.makeString(self.environmentValues.get(index)));
+        }
+        root.set("argv", argv);
+        root.set("environment", environment);
+        root.set("backend", JsonValue.makeString(self.backend));
+        root.set("requires_sandbox", JsonValue.makeBool(self.requiresSandbox));
+        root.set("error", JsonValue.makeString(self.error));
+        return root;
+    }
+}
+
+class SemuEmulatorRuntime {
+    class int minimumQuitChordWindowMilliseconds() { return 50; }
+    class int maximumQuitChordWindowMilliseconds() { return 1000; }
+
+    class string supervisorActionBindings(SemuInputSource input) {
+        JsonValue actions = input.definition.get("actions");
+        if (!actions.isObject()) { return ""; }
+        SemuActions.resetExtensions();
+        JsonValue selectedLayers = input.definition.get("capabilities")
+            .get("controller_mode_layers");
+        JsonValue systemLayers = input.definition.get("radial")
+            .get("system_layers");
+        if (selectedLayers.isArray() && systemLayers.isArray()) {
+            for (int selectedIndex = 0;
+                    selectedIndex < selectedLayers.size(); selectedIndex++) {
+                string selected = SemuJsonPath.text(
+                    selectedLayers.at(selectedIndex));
+                for (int layerIndex = 0;
+                        layerIndex < systemLayers.size(); layerIndex++) {
+                    JsonValue layer = systemLayers.at(layerIndex);
+                    if (!SemuJsonPath.text(layer.get("id")).equals(selected)
+                            || !layer.get("slots").isArray()) { continue; }
+                    JsonValue slots = layer.get("slots");
+                    for (int slotIndex = 0;
+                            slotIndex < slots.size(); slotIndex++) {
+                        SemuActions.code(SemuJsonPath.text(slots.at(slotIndex)));
+                    }
+                }
+            }
+        }
+        Vector<string> bindings = [];
+        Vector<string> actionIds = actions.keys();
+        actionIds.sort();
+        for actionId in actionIds {
+            int action = SemuActions.code(actionId);
+            if (action == SemuActions.none()) { continue; }
+            JsonValue specification = actions.get(actionId);
+            string chord = SemuJsonPath.text(
+                specification.has("supervisor_chord")
+                    ? specification.get("supervisor_chord")
+                    : specification.get("chord"));
+            string key = SemuChordEncoder.key(chord);
+            if (key.isEmpty()) { return ""; }
+            Vector<string> modifiers = [];
+            for modifier in SemuChordEncoder.modifiers(chord) {
+                modifiers.push(modifier.toLower());
+            }
+            bindings.push(action.toString() + ":"
+                + (modifiers.isEmpty() ? "none" : modifiers.join("+"))
+                + ":" + key.toLower());
+        }
+        return bindings.join(";");
+    }
+
+    class bool configureInputSupervisor(SemuLaunchPlan plan,
+                                        SemuInputSource input) {
+        JsonValue quit = input.definition.get("quit_chord");
+        if (!quit.isObject() || !quit.get("window_ms").isInt()) {
+            return false;
+        }
+        JsonValue buttons = quit.get("buttons");
+        if (!buttons.isArray() || buttons.size() != 2) { return false; }
+        bool hasSelect = false;
+        bool hasStart = false;
+        for (int index = 0; index < buttons.size(); index++) {
+            string button = SemuJsonPath.text(buttons.at(index));
+            if (button.equals("select")) {
+                hasSelect = true;
+            } else if (button.equals("start")) {
+                hasStart = true;
+            } else {
+                return false;
+            }
+        }
+        if (!hasSelect || !hasStart) { return false; }
+        int window = quit.get("window_ms").asInt();
+        if (window < SemuEmulatorRuntime.minimumQuitChordWindowMilliseconds()
+                || window > SemuEmulatorRuntime.maximumQuitChordWindowMilliseconds()) {
+            return false;
+        }
+        JsonValue markers = input.definition.get("radial")
+            .get("evidence_markers");
+        JsonValue quick = markers.get("quick");
+        JsonValue menu = markers.get("menu");
+        string bindings = SemuEmulatorRuntime.supervisorActionBindings(input);
+        if (!quick.isArray() || !menu.isArray() || bindings.isEmpty()) {
+            return false;
+        }
+        plan.environment("SEMU_QUIT_CHORD_WINDOW_MS", f"{window}");
+        plan.environment("SEMU_INPUT_QUIT_BUTTONS", SemuJsonPath.csv(buttons));
+        plan.environment("SEMU_INPUT_QUICK_MARKERS", SemuJsonPath.csv(quick));
+        plan.environment("SEMU_INPUT_MENU_MARKERS", SemuJsonPath.csv(menu));
+        plan.environment("SEMU_INPUT_ACTION_BINDINGS", bindings);
+        return true;
+    }
+
+    class string coreFile(JsonValue loader, string core,
+                          SemuRuntimeContext context) {
+        string filename = SemuJsonPath.text(loader.get("filename"))
+            .replace("${core}", core);
+        JsonValue directories = loader.get("directories");
+        if (filename.isEmpty() || filename.contains("${")
+                || !directories.isArray()) {
+            return "";
+        }
+        for (int index = 0; index < directories.size(); index++) {
+            string directory = SemuTokenResolver.resolve(
+                SemuJsonPath.text(directories.at(index)), context);
+            if (directory.isEmpty() || directory.contains("${")) { continue; }
+            string candidate = PathTools.join(directory, filename);
+            if (FileSystem.isFile(candidate)) { return candidate; }
+        }
+        return "";
+    }
+
+    class void seed(JsonValue platform, SemuRuntimeContext context,
+                    CompilerDiagnostics diagnostics) {
+        JsonValue seeds = platform.get("state").get("seeds");
+        if (!seeds.isArray()) { return; }
+        for (int index = 0; index < seeds.size(); index++) {
+            JsonValue seed = seeds.at(index);
+            JsonValue sources = seed.get("sources");
+            if (!seed.isObject() || !seed.get("copy").isString()
+                    || !seed.get("copy").asString()
+                        .equals("once_if_target_absent")
+                    || !seed.get("source_access").isString()
+                    || !seed.get("source_access").asString()
+                        .equals("read_only")
+                    || !seed.get("overwrite").isBool()
+                    || seed.get("overwrite").asBool()
+                    || !sources.isArray() || sources.size() < 1) {
+                diagnostics.add(context.stateRoot, f"seeds[{index}]",
+                    "seed must declare once_if_target_absent, read_only, overwrite=false, and sources");
+                continue;
+            }
+            string target = SemuTokenResolver.resolve(
+                SemuJsonPath.text(seed.get("target")), context);
+            string ownedTarget = target.contains("${") ? ""
+                : SemuOwnedPaths.containedPath(context.stateRoot, target);
+            if (ownedTarget.isEmpty()) {
+                diagnostics.add(context.stateRoot, f"seeds[{index}].target",
+                    "seed target escapes Semu-owned runtime state");
+                continue;
+            }
+            bool imported = false;
+            string failure = "";
+            for (int sourceIndex = 0;
+                    !imported && sourceIndex < sources.size(); sourceIndex++) {
+                string source = SemuTokenResolver.resolve(
+                    SemuJsonPath.text(sources.at(sourceIndex)), context);
+                if (source.isEmpty() || source.contains("${")) { continue; }
+                SemuOwnedImportResult result = SemuOwnedFileImport.once(
+                    context.stateRoot, source, ownedTarget);
+                imported = result.ok;
+                if (!result.error.isEmpty()) { failure = result.error; }
+            }
+            if (!imported) {
+                diagnostics.add(ownedTarget, "seed",
+                    failure.isEmpty()
+                        ? "no declared read-only source is available"
+                        : failure);
+            }
+        }
+    }
+
+    class void stateEnvironment(SemuLaunchPlan plan, JsonValue platform,
+                                SemuRuntimeContext context) {
+        JsonValue state = platform.get("state");
+        if (!state.isObject()) { return; }
+        string config = SemuJsonPath.text(state.get("config_home"));
+        string data = SemuJsonPath.text(state.get("data_home"));
+        if (config.isEmpty() || config.equals("xdg")) {
+            plan.environment("XDG_CONFIG_HOME",
+                PathTools.join(context.stateRoot, "config"));
+        }
+        if (data.isEmpty() || data.equals("xdg")) {
+            plan.environment("XDG_DATA_HOME",
+                PathTools.join(context.stateRoot, "data"));
+            plan.environment("XDG_CACHE_HOME",
+                PathTools.join(context.stateRoot, "cache"));
+        }
+        JsonValue set = platform.get("env").get("set");
+        if (set.isObject()) {
+            Vector<string> keys = set.keys();
+            keys.sort();
+            for key in keys {
+                plan.environment(key, SemuTokenResolver.resolve(
+                    SemuJsonPath.text(set.get(key)), context));
+            }
+        }
+    }
+
+    class bool renderEnvironment(SemuLaunchPlan plan,
+                                 SemuCompilerModel model,
+                                 SemuSystemSource system,
+                                 SemuRuntimeContext context,
+                                 CompilerDiagnostics diagnostics) {
+        string state = PathTools.join(context.stateRoot, "rendering");
+        if (!SemuOwnedPaths.prepareDirectory(state)) {
+            diagnostics.add(state, "output",
+                "could not create renderer state directory");
+            return false;
+        }
+        SemuRenderingEnvironment environment = SemuRenderingCompiler.compile(
+            model, system, context.emulatorId, context.assetRoot, state,
+            context.settings, diagnostics);
+        if (!diagnostics.ok()) { return false; }
+        for (int index = 0; index < environment.keys.size(); index++) {
+            plan.environment(environment.keys.get(index),
+                environment.values.get(index));
+        }
+        return true;
+    }
+
+    class SemuLaunchPlan plan(SemuCompilerModel model, SemuBuildPlan build,
+                              string emulatorId, string systemId,
+                              string core, string rom,
+                              CompilerDiagnostics diagnostics) {
+        SemuLaunchPlan plan = SemuLaunchPlan();
+        SemuEmulatorSource emulator = model.emulatorById(emulatorId);
+        SemuSystemSource system = model.systemById(systemId);
+        SemuEmulatorPlatformSource platform = emulator.platformById(
+            build.platform);
+        SemuSystemBindingSource binding = system.bindingByEmulator(emulatorId);
+        SemuInputSource input = model.inputByReference(build.input);
+        if (emulator.id.isEmpty() || system.id.isEmpty()
+                || platform.id.isEmpty() || binding.emulator.isEmpty()) {
+            plan.error = "launcher selection is not present in the target plan";
+            return plan;
+        }
+        if (!build.emulators.contains(emulatorId)
+                || !build.systems.contains(systemId)
+                || !binding.supports(build.platform)) {
+            plan.error = "launcher selection is not enabled for this target";
+            return plan;
+        }
+        SemuRuntimeContext context = SemuRuntimeContext(
+            model.projectRoot, build.platform, emulatorId,
+            build.settings, build.semuHome);
+        if (context.semuHome.isEmpty()
+                || !SemuOwnedPaths.canOwnDirectory(context.semuHome)) {
+            plan.error = "Semu settings home is outside runtime-owned storage";
+            return plan;
+        }
+        if (context.biosRoot.isEmpty()
+                || !FileSystem.isDir(context.biosRoot)) {
+            plan.error = "configured read-only BIOS root is unavailable";
+            return plan;
+        }
+        string selectedRom = SemuRuntimeFiles.systemRom(rom, system, context);
+        if (selectedRom.isEmpty()) {
+            plan.error = "ROM is not a declared file inside the selected system root";
+            return plan;
+        }
+
+        JsonValue coreLoader = platform.definition.get("core_loader");
+        string selectedCore = core.isEmpty() ? binding.core : core;
+        if (coreLoader.isObject()
+                && (selectedCore.isEmpty()
+                    || !selectedCore.equals(binding.core))) {
+            plan.error = "declared core does not match the selected system binding";
+            return plan;
+        }
+
+        string executable = SemuTokenResolver.resolve(
+            platform.executable, context);
+        if (executable.contains("${") || !FileSystem.isFile(executable)) {
+            plan.error = "declared source-built emulator executable is unavailable";
+            return plan;
+        }
+
+        string wrapper = SemuTokenResolver.resolve(SemuJsonPath.text(
+            platform.definition.get("gl_wrapper")), context);
+        if (!wrapper.isEmpty() && !FileSystem.isFile(wrapper)) {
+            plan.error = "declared graphics wrapper is unavailable";
+            return plan;
+        }
+
+        string coreFile = "";
+        if (coreLoader.isObject()) {
+            coreFile = SemuEmulatorRuntime.coreFile(
+                coreLoader, selectedCore, context);
+            if (coreFile.isEmpty()) {
+                plan.error = "declared source-built core is unavailable";
+                return plan;
+            }
+        }
+
+        if (!SemuOwnedPaths.prepareDirectory(context.semuHome)
+                || !SemuOwnedPaths.prepareDirectory(
+                    PathTools.join(context.stateRoot, "config"))
+                || !SemuOwnedPaths.prepareDirectory(
+                    PathTools.join(context.stateRoot, "data"))
+                || !SemuOwnedPaths.prepareDirectory(
+                    PathTools.join(context.stateRoot, "cache"))
+                || !SemuOwnedPaths.prepareDirectory(context.contentRoot)) {
+            plan.error = "runtime state directories could not be created";
+            return plan;
+        }
+        SemuProfileCompiler.emit(
+            emulator, input, context, true, "", diagnostics);
+        SemuEmulatorRuntime.seed(platform.definition, context, diagnostics);
+        if (!diagnostics.ok()) {
+            plan.error = "runtime preparation failed";
+            return plan;
+        }
+
+        if (!wrapper.isEmpty()) { plan.arguments.push(wrapper); }
+        plan.arguments.push(executable);
+        JsonValue extra = platform.definition.get("state").get("extra_args");
+        if (extra.isArray()) {
+            for (int index = 0; index < extra.size(); index++) {
+                plan.arguments.push(SemuTokenResolver.resolve(
+                    SemuJsonPath.text(extra.at(index)), context));
+            }
+        }
+        for argument in platform.arguments {
+            plan.arguments.push(SemuTokenResolver.resolve(argument, context));
+        }
+        for argument in binding.arguments {
+            plan.arguments.push(SemuTokenResolver.resolve(argument, context));
+        }
+        if (coreLoader.isObject()) {
+            JsonValue coreArguments = coreLoader.get("args");
+            if (!coreArguments.isArray()) {
+                plan.error = "declared core arguments are invalid";
+                return plan;
+            }
+            for (int index = 0; index < coreArguments.size(); index++) {
+                plan.arguments.push(SemuTokenResolver.resolve(
+                    SemuJsonPath.text(coreArguments.at(index))
+                        .replace("${core_file}", coreFile), context));
+            }
+        }
+        plan.arguments.push(selectedRom);
+        plan.backend = platform.backend;
+        plan.requiresSandbox = platform.backend.equals("bwrap");
+        SemuEmulatorRuntime.stateEnvironment(
+            plan, platform.definition, context);
+        if (!SemuEmulatorRuntime.renderEnvironment(
+                plan, model, system, context, diagnostics)) {
+            plan.error = "runtime rendering configuration is invalid";
+            return plan;
+        }
+        if (build.platform.equals("linux")) {
+            if (!SemuEmulatorRuntime.configureInputSupervisor(plan, input)) {
+                plan.error = "Linux input supervisor configuration is invalid";
+                return plan;
+            }
+            string supervisor = PathTools.join(
+                context.assetRoot, "lib/semu/semu-input-supervisor");
+            if (!FileSystem.isFile(supervisor)) {
+                plan.error = "declared input supervisor is unavailable";
+                return plan;
+            }
+            plan.arguments.insert(0, "--");
+            plan.arguments.insert(0, supervisor);
+        }
+        if (!plan.resolved()) {
+            plan.error = "launch arguments contain unresolved declarative values";
+        }
+        return plan;
+    }
+
+    class int execute(SemuLaunchPlan plan) {
+        if (!plan.error.isEmpty() || plan.arguments.isEmpty()) {
+            print("launcher: " + (plan.error.isEmpty()
+                ? "empty launch plan" : plan.error));
+            return 1;
+        }
+        if (plan.requiresSandbox
+                && !Environment.get("SEMU_NIX_STORE_MOUNTED", "").equals("1")) {
+            print("launcher: bwrap backend must execute through the Semu AppImage sandbox");
+            return 1;
+        }
+        Vector<string> environment = [];
+        for (int index = 0; index < plan.environmentKeys.size(); index++) {
+            environment.push(plan.environmentKeys.get(index) + "="
+                + plan.environmentValues.get(index));
+        }
+        Vector<string> arguments = [];
+        for (int index = 1; index < plan.arguments.size(); index++) {
+            arguments.push(plan.arguments.get(index));
+        }
+        ExecResult result = ChildProcess.run(
+            plan.arguments.get(0), arguments,
+            environment=environment,
+            stdout=CommandOutput.stream(),
+            stderr=CommandOutput.stream());
+        return result.code;
+    }
+}

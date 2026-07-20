@@ -1,0 +1,66 @@
+// generator.btrc - deterministic serialization and emission of checked plans.
+
+import std.{fs, json, vector}
+import ../lib/json_format.btrc
+import ../lib/owned_paths.btrc
+import ./model.btrc
+
+class SemuCompilerGenerator {
+    class JsonValue strings(Vector<string> values) {
+        JsonValue result = JsonValue.makeArray();
+        for value in values { result.push(JsonValue.makeString(value)); }
+        return result;
+    }
+
+    class JsonValue validation(SemuTargetValidation validation) {
+        JsonValue result = JsonValue.makeObject();
+        result.set("kind", JsonValue.makeString(validation.kind));
+        result.set("requires", SemuCompilerGenerator.strings(validation.requires));
+        result.set("must_complete_before",
+            SemuCompilerGenerator.strings(validation.mustCompleteBefore));
+        result.set("harness", JsonValue.makeString(validation.harness));
+        result.set("image", JsonValue.makeString(validation.image));
+        JsonValue viewport = JsonValue.makeObject();
+        viewport.set("width", JsonValue.makeInt(validation.viewport.width));
+        viewport.set("height", JsonValue.makeInt(validation.viewport.height));
+        result.set("viewport", viewport);
+        return result;
+    }
+
+    class JsonValue planJson(SemuBuildPlan plan) {
+        JsonValue root = JsonValue.makeObject();
+        root.set("schema_version", JsonValue.makeInt(1));
+        root.set("operation", JsonValue.makeString(plan.operation));
+        root.set("target", JsonValue.makeString(plan.target));
+        root.set("platform", JsonValue.makeString(plan.platform));
+        root.set("artifact", JsonValue.makeString(plan.artifact));
+        root.set("config_root", JsonValue.makeString(plan.configRoot));
+        root.set("semu_home", JsonValue.makeString(plan.semuHome));
+        root.set("output_root", JsonValue.makeString(plan.outputRoot));
+        root.set("input", JsonValue.makeString(plan.input));
+        root.set("nix_systems", SemuCompilerGenerator.strings(plan.nixSystems));
+        root.set("deployment_target", JsonValue.makeBool(plan.deploymentTarget));
+        root.set("backends", SemuCompilerGenerator.strings(plan.backends));
+        root.set("systems", SemuCompilerGenerator.strings(plan.systems));
+        root.set("emulators", SemuCompilerGenerator.strings(plan.emulators));
+        root.set("validation", SemuCompilerGenerator.validation(plan.validation));
+        root.set("definition_files", SemuCompilerGenerator.strings(plan.definitionFiles));
+        root.set("settings", plan.settings);
+        return root;
+    }
+
+    class string planText(SemuBuildPlan plan) {
+        return SemuJsonFormat.document(SemuCompilerGenerator.planJson(plan));
+    }
+
+    class string emit(SemuBuildPlan plan, CompilerDiagnostics diagnostics) {
+        string output = PathTools.join(plan.outputRoot, "build-plan.json");
+        if (!SemuOwnedPaths.writeText(
+                plan.outputRoot, output,
+                SemuCompilerGenerator.planText(plan))) {
+            diagnostics.add(output, "output", "could not write build plan");
+            return "";
+        }
+        return output;
+    }
+}

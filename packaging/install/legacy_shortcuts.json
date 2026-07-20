@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "service": {
+    "unit": "steam-launcher.service",
+    "process": "steam"
+  },
+  "records": [
+    {
+      "name": "Semu-x86_64.AppImage",
+      "executable": "${home}/Applications/Semu/Semu-x86_64.AppImage"
+    },
+    {
+      "name": "Semu MegaBezel",
+      "executable": "${home}/semu-mb-launch.sh"
+    }
+  ]
+}

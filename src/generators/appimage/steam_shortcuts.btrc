@@ -1,0 +1,676 @@
+// steam_shortcuts.btrc - bounded binary-VDF inspection and migration.
+
+import std.{bytes, fs, process, strings, vector}
+import ./install_policy.btrc
+import ./install_store.btrc
+
+class SemuSteamShortcutRecord {
+    public string index;
+    public string name;
+    public string executable;
+    public int start;
+    public int end;
+    public bool sawName;
+    public bool sawExecutable;
+
+    public SemuSteamShortcutRecord() {
+        self.index = "";
+        self.name = "";
+        self.executable = "";
+        self.start = 0;
+        self.end = 0;
+        self.sawName = false;
+        self.sawExecutable = false;
+    }
+}
+
+class SemuSteamVdfResult {
+    public bool valid;
+    public string error;
+    public Vector<SemuSteamShortcutRecord> records;
+
+    public SemuSteamVdfResult() {
+        self.valid = false;
+        self.error = "";
+        self.records = [];
+    }
+}
+
+class SemuSteamVdfEdit {
+    public bool valid;
+    public string error;
+    public Bytes content;
+    public int removed;
+
+    public SemuSteamVdfEdit() {
+        self.valid = false;
+        self.error = "";
+        self.content = Bytes();
+        self.removed = 0;
+    }
+
+    public bool changed() { return self.valid && self.removed > 0; }
+}
+
+class SemuSteamShortcutVdf {
+    class void invalidate(SemuSteamVdfResult result, string error) {
+        if (result.error.isEmpty()) { result.error = error; }
+        result.valid = false;
+    }
+
+    class bool bounded(Bytes bytes, int offset, int count) {
+        return offset >= 0 && count >= 0 && offset <= bytes.length()
+            && count <= bytes.length() - offset;
+    }
+
+    class string cstring(Bytes bytes, int* offset,
+                         SemuSteamVdfResult result) {
+        int start = *offset;
+        int end = start;
+        while (end < bytes.length() && bytes.get(end) != 0) {
+            int value = bytes.get(end);
+            if (value < 32 || value == 127 || end - start >= 16384) {
+                SemuSteamShortcutVdf.invalidate(
+                    result, "shortcuts.vdf contains an invalid string");
+                return "";
+            }
+            end++;
+        }
+        if (end >= bytes.length()) {
+            SemuSteamShortcutVdf.invalidate(
+                result, "shortcuts.vdf contains an unterminated string");
+            return "";
+        }
+        *offset = end + 1;
+        return bytes.slice(start, end).toString();
+    }
+
+    class bool skipValue(Bytes bytes, int* offset, int type,
+                         SemuSteamVdfResult result) {
+        int count = 0;
+        if (type == 2 || type == 3 || type == 4 || type == 6) {
+            count = 4;
+        } else if (type == 7 || type == 10) {
+            count = 8;
+        } else if (type == 5) {
+            int opening = *offset;
+            while (SemuSteamShortcutVdf.bounded(bytes, *offset, 2)
+                    && (bytes.get(*offset) != 0
+                        || bytes.get(*offset + 1) != 0)
+                    && *offset - opening <= 2097152) {
+                *offset += 2;
+            }
+            if (!SemuSteamShortcutVdf.bounded(bytes, *offset, 2)
+                    || *offset - opening > 2097152) {
+                SemuSteamShortcutVdf.invalidate(
+                    result, "shortcuts.vdf contains an invalid wide string");
+                return false;
+            }
+            *offset += 2;
+            return true;
+        } else {
+            SemuSteamShortcutVdf.invalidate(result,
+                f"shortcuts.vdf uses unsupported value type {type}");
+            return false;
+        }
+        if (!SemuSteamShortcutVdf.bounded(bytes, *offset, count)) {
+            SemuSteamShortcutVdf.invalidate(
+                result, "shortcuts.vdf contains a truncated value");
+            return false;
+        }
+        *offset += count;
+        return true;
+    }
+
+    class bool decimalIndex(string value) {
+        if (value.isEmpty()) { return false; }
+        for character in value {
+            if (character < '0' || character > '9') { return false; }
+        }
+        return true;
+    }
+
+    class void capture(SemuSteamShortcutRecord record,
+                       string key, string value,
+                       SemuSteamVdfResult result) {
+        string field = key.toLower();
+        if (field.equals("appname")) {
+            if (record.sawName) {
+                SemuSteamShortcutVdf.invalidate(
+                    result, "shortcut contains duplicate appname fields");
+                return;
+            }
+            record.sawName = true;
+            record.name = value;
+        } else if (field.equals("exe")) {
+            if (record.sawExecutable) {
+                SemuSteamShortcutVdf.invalidate(
+                    result, "shortcut contains duplicate exe fields");
+                return;
+            }
+            record.sawExecutable = true;
+            record.executable = value;
+        }
+    }
+
+    class bool entries(Bytes bytes, int* offset, int depth,
+                       bool shortcutContainer, bool captureFields,
+                       SemuSteamShortcutRecord record,
+                       SemuSteamVdfResult result) {
+        if (depth > 16) {
+            SemuSteamShortcutVdf.invalidate(
+                result, "shortcuts.vdf nesting exceeds the safety limit");
+            return false;
+        }
+        int fields = 0;
+        while (*offset < bytes.length()) {
+            if (++fields > 65536) {
+                SemuSteamShortcutVdf.invalidate(
+                    result, "shortcuts.vdf has too many fields");
+                return false;
+            }
+            int entryStart = *offset;
+            int type = bytes.get(*offset);
+            *offset += 1;
+            if (type == 8) { return true; }
+            string key = SemuSteamShortcutVdf.cstring(bytes, offset, result);
+            if (!result.error.isEmpty() || key.isEmpty()) {
+                if (result.error.isEmpty()) {
+                    SemuSteamShortcutVdf.invalidate(
+                        result, "shortcuts.vdf contains an empty key");
+                }
+                return false;
+            }
+            if (type == 0) {
+                if (depth == 0 && key.equals("shortcuts")) {
+                    if (result.valid) {
+                        SemuSteamShortcutVdf.invalidate(
+                            result, "shortcuts.vdf has duplicate roots");
+                        return false;
+                    }
+                    result.valid = true;
+                    if (!SemuSteamShortcutVdf.entries(bytes, offset, depth + 1,
+                            true, false, record, result)) {
+                        return false;
+                    }
+                } else if (shortcutContainer) {
+                    if (!SemuSteamShortcutVdf.decimalIndex(key)) {
+                        SemuSteamShortcutVdf.invalidate(result,
+                            "shortcuts.vdf shortcut index is not numeric");
+                        return false;
+                    }
+                    for existing in result.records {
+                        if (existing.index.equals(key)) {
+                            SemuSteamShortcutVdf.invalidate(result,
+                                "shortcuts.vdf contains duplicate shortcut indexes");
+                            return false;
+                        }
+                    }
+                    SemuSteamShortcutRecord shortcut =
+                        SemuSteamShortcutRecord();
+                    shortcut.index = key;
+                    shortcut.start = entryStart;
+                    if (!SemuSteamShortcutVdf.entries(bytes, offset, depth + 1,
+                            false, true, shortcut, result)) {
+                        return false;
+                    }
+                    shortcut.end = *offset;
+                    if (!shortcut.sawName || !shortcut.sawExecutable) {
+                        SemuSteamShortcutVdf.invalidate(result,
+                            "shortcut lacks appname or exe identity");
+                        return false;
+                    }
+                    result.records.push(shortcut);
+                } else if (!SemuSteamShortcutVdf.entries(bytes, offset,
+                        depth + 1, false, false, record, result)) {
+                    return false;
+                }
+                continue;
+            }
+            string lower = key.toLower();
+            if (captureFields
+                    && ["appname", "exe"].contains(lower) && type != 1) {
+                SemuSteamShortcutVdf.invalidate(result,
+                    "shortcut identity field is not encoded as a string");
+                return false;
+            }
+            if (type == 1) {
+                string value = SemuSteamShortcutVdf.cstring(
+                    bytes, offset, result);
+                if (!result.error.isEmpty()) { return false; }
+                if (captureFields) {
+                    SemuSteamShortcutVdf.capture(
+                        record, key, value, result);
+                    if (!result.error.isEmpty()) { return false; }
+                }
+            } else if (!SemuSteamShortcutVdf.skipValue(
+                    bytes, offset, type, result)) {
+                return false;
+            }
+        }
+        SemuSteamShortcutVdf.invalidate(
+            result, "shortcuts.vdf object is missing its end marker");
+        return false;
+    }
+
+    class SemuSteamVdfResult parse(Bytes bytes) {
+        SemuSteamVdfResult result = SemuSteamVdfResult();
+        if (bytes.isEmpty() || bytes.length() > 16777216) {
+            result.error = "shortcuts.vdf is empty or exceeds 16 MiB";
+            return result;
+        }
+        SemuSteamShortcutRecord root = SemuSteamShortcutRecord();
+        int offset = 0;
+        bool complete = SemuSteamShortcutVdf.entries(
+            bytes, &offset, 0, false, false, root, result);
+        if (!complete || !result.error.isEmpty() || !result.valid
+                || offset != bytes.length()) {
+            if (result.error.isEmpty()) {
+                result.error = !result.valid
+                    ? "shortcuts.vdf lacks a shortcuts root"
+                    : "shortcuts.vdf contains trailing data";
+            }
+            result.valid = false;
+        }
+        return result;
+    }
+
+    class string unquote(string value) {
+        string normalized = value.trim();
+        if (normalized.len() >= 2 && normalized.startsWith("\"")
+                && normalized.endsWith("\"")) {
+            return normalized.substring(1, normalized.len() - 2);
+        }
+        return normalized;
+    }
+
+    class string expandedExecutable(
+            SemuSteamLegacyRule rule, string home) {
+        return rule.executable.replace("${home}", home);
+    }
+
+    class bool matches(SemuSteamShortcutRecord record,
+                       SemuSteamLegacyRule rule, string home) {
+        return record.name.equals(rule.name)
+            && SemuSteamShortcutVdf.unquote(record.executable).equals(
+                SemuSteamShortcutVdf.expandedExecutable(rule, home));
+    }
+
+    class bool declared(SemuSteamShortcutRecord record,
+                        Vector<SemuSteamLegacyRule> rules, string home) {
+        for rule in rules {
+            if (SemuSteamShortcutVdf.matches(record, rule, home)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    class SemuSteamVdfEdit removeDeclared(
+            Bytes source, Vector<SemuSteamLegacyRule> rules, string home) {
+        SemuSteamVdfEdit edit = SemuSteamVdfEdit();
+        SemuSteamVdfResult parsed = SemuSteamShortcutVdf.parse(source);
+        if (!parsed.valid) {
+            edit.error = parsed.error;
+            return edit;
+        }
+        Bytes output = Bytes();
+        int cursor = 0;
+        for record in parsed.records {
+            if (!SemuSteamShortcutVdf.declared(record, rules, home)) {
+                continue;
+            }
+            output.appendBytes(source.slice(cursor, record.start));
+            cursor = record.end;
+            edit.removed++;
+        }
+        output.appendBytes(source.slice(cursor, source.length()));
+        SemuSteamVdfResult verified = SemuSteamShortcutVdf.parse(output);
+        if (!verified.valid) {
+            edit.error = "rewritten shortcuts.vdf is invalid: "
+                + verified.error;
+            return edit;
+        }
+        for record in verified.records {
+            if (SemuSteamShortcutVdf.declared(record, rules, home)) {
+                edit.error = "rewritten shortcuts.vdf retained a legacy record";
+                return edit;
+            }
+        }
+        edit.valid = true;
+        edit.content = output;
+        return edit;
+    }
+}
+
+class SemuSteamShortcutInspection {
+    public bool valid;
+    public string error;
+    public int stable;
+    public int legacy;
+
+    public SemuSteamShortcutInspection() {
+        self.valid = false;
+        self.error = "";
+        self.stable = 0;
+        self.legacy = 0;
+    }
+
+    public string state() {
+        if (!self.valid) { return "invalid"; }
+        if (self.legacy > 0) { return "legacy"; }
+        if (self.stable == 1) { return "correct"; }
+        return "missing";
+    }
+}
+
+class SemuSteamShortcutDatabase {
+    class bool semuRelated(SemuSteamShortcutRecord record) {
+        string name = record.name.toLower();
+        string executable = SemuSteamShortcutVdf.unquote(
+            record.executable).toLower();
+        return name.equals("semu") || name.startsWith("semu-")
+            || name.startsWith("semu ") || executable.endsWith("/semu")
+            || executable.contains("/semu/")
+            || executable.contains("semu-x86_64")
+            || executable.contains("semu-mb-launch");
+    }
+
+    class SemuSteamShortcutInspection inspect(
+            Vector<string> files, Vector<SemuSteamLegacyRule> rules,
+            string home, string stableLauncher) {
+        SemuSteamShortcutInspection inspection =
+            SemuSteamShortcutInspection();
+        for path in files {
+            Bytes content = SemuInstallHost.readBytes(path);
+            SemuSteamVdfResult parsed =
+                SemuSteamShortcutVdf.parse(content);
+            if (!parsed.valid) {
+                inspection.error = "cannot parse Steam shortcut database "
+                    + path + ": " + parsed.error;
+                return inspection;
+            }
+            for record in parsed.records {
+                bool legacy = SemuSteamShortcutVdf.declared(
+                    record, rules, home);
+                bool stable = record.name.equals("Semu")
+                    && SemuSteamShortcutVdf.unquote(record.executable).equals(
+                        stableLauncher);
+                if (legacy) {
+                    inspection.legacy++;
+                } else if (stable) {
+                    inspection.stable++;
+                } else if (SemuSteamShortcutDatabase.semuRelated(record)) {
+                    inspection.error = "Steam contains an undeclared Semu-related "
+                        + "shortcut at " + path + ":" + record.index;
+                    return inspection;
+                }
+            }
+        }
+        if (inspection.stable > 1) {
+            inspection.error = "Steam contains duplicate stable Semu shortcuts";
+            return inspection;
+        }
+        inspection.valid = true;
+        return inspection;
+    }
+}
+
+class SemuSteamServiceControl {
+    public SemuSteamMigrationPolicy policy;
+    public bool initiallyRunning;
+    public bool stopped;
+
+    public SemuSteamServiceControl(SemuSteamMigrationPolicy policy) {
+        self.policy = policy;
+        self.initiallyRunning = false;
+        self.stopped = false;
+    }
+
+    class ExecResult command(string executable, Vector<string> arguments) {
+        return ChildProcess.run(executable, arguments, "",
+            CommandEnvironment.empty(), CommandEnvironment.empty(),
+            30000, 4096, 8192);
+    }
+
+    public SemuInstallResult unitActive() {
+        ExecResult status = SemuSteamServiceControl.command(
+            "systemctl", ["--user", "is-active", "--quiet",
+                self.policy.serviceUnit]);
+        if (status.code == 0) { return SemuInstallResult.success("active"); }
+        if (status.code == 3) { return SemuInstallResult.success("inactive"); }
+        return SemuInstallResult.failure(
+            "cannot determine Steam service state: "
+            + SemuInstallHost.processError(status));
+    }
+
+    public SemuInstallResult processRunning() {
+        ExecResult status = SemuSteamServiceControl.command(
+            "pgrep", ["-x", self.policy.processName]);
+        if (status.code == 0) { return SemuInstallResult.success("running"); }
+        if (status.code == 1) { return SemuInstallResult.success("stopped"); }
+        return SemuInstallResult.failure(
+            "cannot determine Steam process state: "
+            + SemuInstallHost.processError(status));
+    }
+
+    public SemuInstallResult waitFor(bool running) {
+        for (int attempt = 0; attempt < 100; attempt++) {
+            SemuInstallResult unit = self.unitActive();
+            SemuInstallResult process = self.processRunning();
+            if (!unit.ok()) { return unit; }
+            if (!process.ok()) { return process; }
+            bool active = unit.document.equals("active");
+            bool present = process.document.equals("running");
+            if (active == running && present == running) {
+                return SemuInstallResult.success();
+            }
+            usleep(100000);
+        }
+        return SemuInstallResult.failure(running
+            ? "Steam service did not restart cleanly"
+            : "Steam service did not become quiescent");
+    }
+
+    public SemuInstallResult quiesce() {
+        if (self.stopped) { return SemuInstallResult.success(); }
+        SemuInstallResult unit = self.unitActive();
+        SemuInstallResult process = self.processRunning();
+        if (!unit.ok()) { return unit; }
+        if (!process.ok()) { return process; }
+        bool active = unit.document.equals("active");
+        bool present = process.document.equals("running");
+        if (!active && present) {
+            return SemuInstallResult.failure(
+                "Steam is running outside its declared user service");
+        }
+        self.initiallyRunning = active;
+        if (!active) { return SemuInstallResult.success(); }
+        string ownCgroup = SemuInstallHost.regularFile("/proc/self/cgroup")
+            ? FileSystem.readText("/proc/self/cgroup") : "";
+        if (ownCgroup.contains("/" + self.policy.serviceUnit)) {
+            return SemuInstallResult.failure(
+                "legacy shortcut migration cannot stop its own Steam service");
+        }
+        ExecResult stopped = SemuSteamServiceControl.command(
+            "systemctl", ["--user", "stop", self.policy.serviceUnit]);
+        if (!stopped.ok()) {
+            return SemuInstallResult.failure(
+                "cannot stop Steam for shortcut migration: "
+                + SemuInstallHost.processError(stopped));
+        }
+        SemuInstallResult quiet = self.waitFor(false);
+        if (quiet.ok()) { self.stopped = true; }
+        return quiet;
+    }
+
+    public SemuInstallResult restore() {
+        if (!self.initiallyRunning || !self.stopped) {
+            return SemuInstallResult.success();
+        }
+        ExecResult started = SemuSteamServiceControl.command(
+            "systemctl", ["--user", "start", self.policy.serviceUnit]);
+        if (!started.ok()) {
+            return SemuInstallResult.failure(
+                "cannot restart Steam after shortcut migration: "
+                + SemuInstallHost.processError(started));
+        }
+        SemuInstallResult running = self.waitFor(true);
+        if (running.ok()) { self.stopped = false; }
+        return running;
+    }
+}
+
+class SemuSteamShortcutMigration {
+    public SemuSteamMigrationPolicy policy;
+    public string home;
+    public string stableLauncher;
+    public Vector<string> files;
+    public Vector<string> digests;
+    public Vector<SemuSteamVdfEdit> edits;
+    public SemuInstallTransaction transaction;
+    public SemuSteamServiceControl service;
+    public bool active;
+    public bool ownsTransaction;
+    public int removed;
+
+    public SemuSteamShortcutMigration(
+            SemuSteamMigrationPolicy policy, string transactionRoot,
+            string home, string stableLauncher, Vector<string> files) {
+        self.policy = policy;
+        self.home = home;
+        self.stableLauncher = stableLauncher;
+        self.files = files;
+        self.digests = [];
+        self.edits = [];
+        self.transaction = SemuInstallTransaction(transactionRoot);
+        self.service = SemuSteamServiceControl(policy);
+        self.active = false;
+        self.ownsTransaction = false;
+        self.removed = 0;
+    }
+
+    public SemuInstallResult plan() {
+        self.digests = [];
+        self.edits = [];
+        self.removed = 0;
+        for path in self.files {
+            if (!SemuInstallHost.regularFile(path)) {
+                return SemuInstallResult.failure(
+                    "Steam shortcut database is absent or unsafe: " + path);
+            }
+            Bytes source = SemuInstallHost.readBytes(path);
+            SemuSteamVdfEdit edit = SemuSteamShortcutVdf.removeDeclared(
+                source, self.policy.rules, self.home);
+            string digest = SemuInstallHost.sha256File(path);
+            if (!edit.valid || digest.isEmpty()) {
+                return SemuInstallResult.failure(
+                    "cannot prepare Steam shortcut migration for " + path
+                    + ": " + edit.error);
+            }
+            self.digests.push(digest);
+            self.edits.push(edit);
+            self.removed += edit.removed;
+        }
+        return SemuInstallResult.success();
+    }
+
+    public SemuInstallResult begin() {
+        SemuInstallResult planned = self.plan();
+        if (!planned.ok() || self.removed == 0) { return planned; }
+        SemuInstallResult quiet = self.service.quiesce();
+        if (!quiet.ok()) { return quiet; }
+        SemuInstallResult started = self.transaction.begin();
+        if (!started.ok()) {
+            self.service.restore();
+            return started;
+        }
+        self.ownsTransaction = true;
+        self.active = true;
+        return self.rewrite(true);
+    }
+
+    public SemuInstallResult beginWith(
+            SemuInstallTransaction deploymentTransaction) {
+        SemuInstallResult planned = self.plan();
+        if (!planned.ok() || self.removed == 0) { return planned; }
+        if (!deploymentTransaction.active) {
+            return SemuInstallResult.failure(
+                "Steam migration requires an active deployment transaction");
+        }
+        SemuInstallResult quiet = self.service.quiesce();
+        if (!quiet.ok()) { return quiet; }
+        self.transaction = deploymentTransaction;
+        self.ownsTransaction = false;
+        self.active = true;
+        return self.rewrite(false);
+    }
+
+    public SemuInstallResult rewrite(bool snapshotFiles) {
+        for (int index = 0; index < self.files.size(); index++) {
+            string path = self.files.get(index);
+            FileStatus status = FileStatus(path);
+            if (snapshotFiles && !self.transaction.snapshot(path)) {
+                return self.abort(
+                    "cannot back up Steam shortcut database: " + path);
+            }
+            SemuSteamVdfEdit edit = self.edits.get(index);
+            if (edit.changed()
+                    && !SemuInstallHost.atomicBytes(
+                        path, edit.content, status.mode & 511)) {
+                return self.abort(
+                    "cannot atomically rewrite Steam shortcut database: "
+                    + path);
+            }
+        }
+        SemuSteamShortcutInspection verified =
+            SemuSteamShortcutDatabase.inspect(
+                self.files, self.policy.rules, self.home,
+                self.stableLauncher);
+        if (!verified.valid || verified.legacy != 0) {
+            return self.abort(verified.error.isEmpty()
+                ? "legacy Steam shortcut remained after migration"
+                : verified.error);
+        }
+        SemuInstallResult restored = self.service.restore();
+        return restored.ok() ? SemuInstallResult.success(f"{self.removed}")
+            : self.abort(restored.error);
+    }
+
+    public SemuInstallResult abort(string reason) {
+        SemuInstallResult rolledBack = self.rollback();
+        return SemuInstallResult.failure(rolledBack.ok() ? reason
+            : reason + "; rollback failed: " + rolledBack.error);
+    }
+
+    public SemuInstallResult rollback() {
+        if (!self.active) { return SemuInstallResult.success(); }
+        SemuInstallResult quiet = self.service.quiesce();
+        if (!quiet.ok()) { return quiet; }
+        self.transaction.rollback();
+        bool exact = true;
+        for (int index = 0; index < self.files.size(); index++) {
+            exact = exact && SemuInstallHost.sha256File(
+                self.files.get(index)).equals(self.digests.get(index));
+        }
+        self.active = false;
+        self.ownsTransaction = false;
+        SemuInstallResult restored = self.service.restore();
+        if (!exact) {
+            return SemuInstallResult.failure(
+                "Steam shortcut rollback did not restore exact bytes");
+        }
+        return restored;
+    }
+
+    public SemuInstallResult commit() {
+        if (!self.active) { return SemuInstallResult.success(); }
+        if (self.ownsTransaction && !self.transaction.commit()) {
+            return SemuInstallResult.failure(
+                "cannot commit Steam shortcut migration backup cleanup");
+        }
+        self.active = false;
+        self.ownsTransaction = false;
+        return SemuInstallResult.success();
+    }
+}

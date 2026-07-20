@@ -1,0 +1,1332 @@
+// settings.btrc - owned settings store, native UI protocol, and ES-DE entry.
+
+import std.{fs, io, json, platform, process, strings, vector}
+import ../lib/json_format.btrc
+import ../lib/merge.btrc
+import ../lib/owned_paths.btrc
+import ../lib/rendering_settings.btrc
+
+#include <stdio.h>
+#include <sys/utsname.h>
+#include <unistd.h>
+
+class SemuConfigResult {
+    public bool ok;
+    public bool found;
+    public string path;
+    public string file;
+    public string error;
+    public JsonValue value;
+
+    public SemuConfigResult() {
+        self.ok = false;
+        self.found = false;
+        self.path = "";
+        self.file = "";
+        self.error = "";
+        self.value = JsonValue.makeNull();
+    }
+}
+
+class SettingsUiResult {
+    public bool ok;
+    public string document;
+    public string error;
+
+    public SettingsUiResult() {
+        self.ok = false;
+        self.document = "";
+        self.error = "";
+    }
+}
+
+class SemuOwnedDocument {
+    class void discard(string ownedRoot, string path) {
+        string safe = SemuOwnedPaths.containedPath(ownedRoot, path);
+        FileStatus status = FileStatus(safe);
+        if (!safe.isEmpty() && status.isFile() && !status.isSymlink()) {
+            FileSystem.removeRecursive(safe);
+        }
+    }
+
+    class string write(string ownedRoot, string outputPath,
+                       string content, int mode) {
+        string root = SemuOwnedPaths.normalized(ownedRoot);
+        string output = SemuOwnedPaths.normalized(outputPath);
+        if (content.isEmpty() || root.isEmpty() || output.isEmpty()
+                || output.equals(root)
+                || !SemuOwnedPaths.inside(output, root)
+                || !SemuOwnedPaths.prepareFile(root, output)
+                || !SemuOwnedPaths.containedPath(root, output).equals(output)) {
+            return "unsafe owned output path: " + outputPath;
+        }
+        FileStatus outputStatus = FileStatus(output);
+        if (outputStatus.isSymlink()
+                || (outputStatus.linkFound && !outputStatus.isFile())) {
+            return "unsafe owned output path: " + outputPath;
+        }
+        if (outputStatus.isFile() && Path.readAll(output).equals(content)) {
+            return FileSystem.chmod(output, mode) == 0
+                ? "" : "could not enforce owned output mode: " + outputPath;
+        }
+        string incoming = f"{output}.incoming.{Platform.pid()}";
+        if (!SemuOwnedPaths.prepareFile(root, incoming)
+                || !SemuOwnedPaths.containedPath(root, incoming).equals(incoming)
+                || !Path.writeAll(incoming, content)
+                || FileSystem.chmod(incoming, mode) != 0
+                || !SemuOwnedPaths.containedPath(root, incoming).equals(incoming)
+                || !SemuOwnedPaths.prepareFile(root, output)
+                || !SemuOwnedPaths.containedPath(root, output).equals(output)
+                || rename(incoming, output) != 0) {
+            SemuOwnedDocument.discard(root, incoming);
+            return "could not atomically write owned output: " + outputPath;
+        }
+        FileStatus committed = FileStatus(output);
+        return SemuOwnedPaths.containedPath(root, output).equals(output)
+                && committed.isFile() && !committed.isSymlink()
+            ? "" : "owned output escaped after atomic write: " + outputPath;
+    }
+}
+
+class SemuConfigPaths {
+    class string sourceRoot(string projectRoot) {
+        string packaged = Environment.get("SEMU_SOURCE_ROOT", "");
+        return packaged.isEmpty()
+            ? PathTools.join(projectRoot, "config") : packaged;
+    }
+
+    class string defaults(string projectRoot) {
+        return PathTools.join(
+            SemuConfigPaths.sourceRoot(projectRoot), "settings/defaults.json");
+    }
+
+    class string userFile(string semuHome) {
+        return PathTools.join(semuHome, "semu.json");
+    }
+
+    class string overrides(string semuHome) {
+        return PathTools.join(semuHome, "overrides");
+    }
+}
+
+class SemuConfigStore {
+    public string projectRoot;
+    public string semuHome;
+    private string lastError;
+
+    public SemuConfigStore(string projectRoot, string semuHome) {
+        self.projectRoot = FileSystem.absolutePath(projectRoot);
+        self.semuHome = SemuOwnedPaths.normalized(semuHome);
+        self.lastError = "";
+    }
+
+    class bool nameGreater(string left, string right) {
+        int limit = left.len() < right.len() ? left.len() : right.len();
+        for (int index = 0; index < limit; index++) {
+            if (left.charAt(index) > right.charAt(index)) { return true; }
+            if (left.charAt(index) < right.charAt(index)) { return false; }
+        }
+        return left.len() > right.len();
+    }
+
+    class Vector<string> sortedEntries(string root) {
+        Vector<string> entries = [];
+        if (!FileSystem.isDir(root)) { return entries; }
+        for entry in Directory(root).entries() { entries.push(entry); }
+        for (int index = 1; index < entries.size(); index++) {
+            string current = entries.get(index);
+            int previous = index - 1;
+            while (previous >= 0
+                    && SemuConfigStore.nameGreater(entries.get(previous), current)) {
+                entries.set(previous + 1, entries.get(previous));
+                previous--;
+            }
+            entries.set(previous + 1, current);
+        }
+        return entries;
+    }
+
+    private SemuConfigResult failure(string path, string message) {
+        SemuConfigResult result = SemuConfigResult();
+        result.path = path;
+        result.file = SemuConfigPaths.userFile(self.semuHome);
+        result.error = message;
+        return result;
+    }
+
+    private bool safeOwnedPaths() {
+        self.lastError = "";
+        if (self.semuHome.isEmpty()) {
+            self.lastError = "SEMU_HOME is empty";
+            return false;
+        }
+        if (!SemuOwnedPaths.canOwnDirectory(self.semuHome)) {
+            self.lastError = "SEMU_HOME has an unsafe path component: "
+                + self.semuHome;
+            return false;
+        }
+        FileStatus home = FileStatus(self.semuHome);
+        if (home.linkFound && (!home.isDir() || home.isSymlink()
+                || !UnixFileSystem.realPath(self.semuHome)
+                    .equals(self.semuHome))) {
+            self.lastError = "SEMU_HOME must be a real directory: " + self.semuHome;
+            return false;
+        }
+        string userFile = SemuConfigPaths.userFile(self.semuHome);
+        FileStatus user = FileStatus(userFile);
+        if (home.linkFound
+                && SemuOwnedPaths.containedPath(
+                    self.semuHome, userFile).isEmpty()) {
+            self.lastError = "settings store escapes SEMU_HOME: " + userFile;
+            return false;
+        }
+        if (user.linkFound && (!user.isFile() || user.isSymlink())) {
+            self.lastError = "settings store must be a regular owned file: " + userFile;
+            return false;
+        }
+        string overrides = SemuConfigPaths.overrides(self.semuHome);
+        FileStatus overrideStatus = FileStatus(overrides);
+        if (home.linkFound
+                && SemuOwnedPaths.containedPath(
+                    self.semuHome, overrides).isEmpty()) {
+            self.lastError = "settings overrides escape SEMU_HOME: " + overrides;
+            return false;
+        }
+        if (overrideStatus.linkFound
+                && (!overrideStatus.isDir() || overrideStatus.isSymlink())) {
+            self.lastError = "settings overrides must be a real directory: " + overrides;
+            return false;
+        }
+        return true;
+    }
+
+    private bool sameKind(JsonValue expected, JsonValue actual) {
+        return (expected.isObject() && actual.isObject())
+            || (expected.isArray() && actual.isArray())
+            || (expected.isString() && actual.isString())
+            || (expected.isBool() && actual.isBool())
+            || (expected.isInt() && actual.isInt())
+            || (expected.isNumber() && !expected.isInt() && actual.isNumber())
+            || (expected.isNull() && actual.isNull());
+    }
+
+    private string nodeError(JsonValue defaults, JsonValue overlay, string context) {
+        if (!overlay.isObject()) {
+            return self.sameKind(defaults, overlay) ? ""
+                : context + ": value type differs from the immutable definition";
+        }
+        if (!defaults.isObject()) {
+            return context + ": object crosses a non-object definition";
+        }
+        for key in overlay.keys() {
+            string child = context.isEmpty() ? key : context + "." + key;
+            if (!defaults.has(key)) {
+                return child + ": unknown settings path";
+            }
+            string error = self.nodeError(defaults.get(key), overlay.get(key), child);
+            if (!error.isEmpty()) { return error; }
+        }
+        return "";
+    }
+
+    private string overlayError(JsonValue defaults, JsonValue overlay, string file) {
+        if (!overlay.isObject()) { return file + ": settings overlay must be an object"; }
+        if (!overlay.has("schema_version")
+                || !overlay.get("schema_version").isInt()
+                || overlay.get("schema_version").asInt() != 1) {
+            return file + ": schema_version must equal 1";
+        }
+        if (overlay.has("menu") || overlay.has("doc")) {
+            return file + ": menu and doc are immutable definition metadata";
+        }
+        for key in overlay.keys() {
+            if (key.equals("schema_version")) { continue; }
+            if (!defaults.has(key)) { return file + ": unknown settings section: " + key; }
+            string error = self.nodeError(defaults.get(key), overlay.get(key), key);
+            if (!error.isEmpty()) { return file + ": " + error; }
+        }
+        return "";
+    }
+
+    private JsonValue defaults() {
+        string file = SemuConfigPaths.defaults(self.projectRoot);
+        JsonValue defaults = JsonValue.readFile(file);
+        if (defaults.isError() || !defaults.isObject()) {
+            self.lastError = "settings definition is invalid: " + file;
+            return JsonValue.makeError();
+        }
+        if (!defaults.has("schema_version")
+                || !defaults.get("schema_version").isInt()
+                || defaults.get("schema_version").asInt() != 1
+                || !defaults.has("menu") || !defaults.get("menu").isObject()) {
+            self.lastError = "settings definition has an unsupported schema: " + file;
+            return JsonValue.makeError();
+        }
+        JsonValue expanded = SemuRenderingSettingsDefinitions.expand(
+            defaults, SemuConfigPaths.sourceRoot(self.projectRoot));
+        if (expanded.isError()) {
+            self.lastError = "system rendering settings are invalid under: "
+                + SemuConfigPaths.sourceRoot(self.projectRoot);
+        }
+        return expanded;
+    }
+
+    public JsonValue definition() { return self.defaults(); }
+
+    private JsonValue readOverlay(string file, JsonValue defaults) {
+        JsonValue overlay = JsonValue.readFile(file);
+        if (overlay.isError()) {
+            self.lastError = "settings overlay is invalid JSON: " + file;
+            return JsonValue.makeError();
+        }
+        string error = self.overlayError(defaults, overlay, file);
+        if (!error.isEmpty()) {
+            self.lastError = error;
+            return JsonValue.makeError();
+        }
+        return overlay;
+    }
+
+    private bool collectOverrideFiles(string root, Vector<string> files) {
+        if (!FileSystem.isDir(root)) { return true; }
+        for name in SemuConfigStore.sortedEntries(root) {
+            string path = PathTools.join(root, name);
+            FileStatus status = FileStatus(path);
+            if (status.isSymlink()) {
+                self.lastError = "settings override may not be a symlink: " + path;
+                return false;
+            }
+            if (status.isDir()) {
+                if (!self.collectOverrideFiles(path, files)) { return false; }
+            } else if (status.isFile() && name.endsWith(".json")) {
+                files.push(path);
+            }
+        }
+        return true;
+    }
+
+    private JsonValue effectiveRoot() {
+        self.lastError = "";
+        if (!self.safeOwnedPaths()) { return JsonValue.makeError(); }
+        JsonValue root = self.defaults();
+        if (root.isError()) { return root; }
+        string userFile = SemuConfigPaths.userFile(self.semuHome);
+        if (FileSystem.isFile(userFile)) {
+            JsonValue user = self.readOverlay(userFile, root);
+            if (user.isError()) { return user; }
+            root = JsonMerge.recursive(root, user);
+        }
+        Vector<string> overrides = [];
+        if (!self.collectOverrideFiles(
+                SemuConfigPaths.overrides(self.semuHome), overrides)) {
+            return JsonValue.makeError();
+        }
+        JsonValue definition = self.defaults();
+        if (definition.isError()) { return definition; }
+        for file in overrides {
+            JsonValue overlay = self.readOverlay(file, definition);
+            if (overlay.isError()) { return overlay; }
+            root = JsonMerge.recursive(root, overlay);
+        }
+        return root;
+    }
+
+    class JsonValue valueAt(JsonValue root, string dottedPath) {
+        if (dottedPath == null || dottedPath.isEmpty()) {
+            return JsonValue.makeNull();
+        }
+        JsonValue value = root;
+        for part in Strings.split(dottedPath, ".") {
+            if (part.isEmpty() || !value.isObject() || !value.has(part)) {
+                return JsonValue.makeNull();
+            }
+            value = value.get(part);
+        }
+        return value;
+    }
+
+    private JsonValue fieldDefinition(JsonValue defaults, string dottedPath) {
+        JsonValue menu = defaults.get("menu");
+        if (!menu.has("sections") || !menu.get("sections").isArray()) {
+            return JsonValue.makeNull();
+        }
+        JsonValue sections = menu.get("sections");
+        for (int sectionIndex = 0; sectionIndex < sections.size(); sectionIndex++) {
+            JsonValue section = sections.at(sectionIndex);
+            if (!section.isObject() || !section.has("fields")
+                    || !section.get("fields").isArray()) { continue; }
+            JsonValue fields = section.get("fields");
+            for (int fieldIndex = 0; fieldIndex < fields.size(); fieldIndex++) {
+                JsonValue field = fields.at(fieldIndex);
+                if (field.isObject() && field.has("key")
+                        && field.get("key").isString()
+                        && field.get("key").asString().equals(dottedPath)) {
+                    return field;
+                }
+            }
+        }
+        return JsonValue.makeNull();
+    }
+
+    private bool configurablePath(JsonValue defaults, string dottedPath) {
+        Vector<string> parts = Strings.split(dottedPath, ".");
+        if (parts.size() == 0 || parts.get(0).isEmpty()
+                || parts.get(0).equals("schema_version")
+                || parts.get(0).equals("menu")
+                || parts.get(0).equals("doc")) {
+            return false;
+        }
+        return !SemuConfigStore.valueAt(defaults, dottedPath).isNull();
+    }
+
+    class bool loopbackAddress(string value) {
+        if (value.isEmpty() || value.contains("/") || value.contains("@")
+                || value.contains(" ") || value.contains("\t")
+                || value.contains("\n") || value.contains("\r")) {
+            return false;
+        }
+        string port = "";
+        if (value.startsWith("127.0.0.1:")) {
+            port = value.substring(10, value.len() - 10);
+        } else if (value.startsWith("[::1]:")) {
+            port = value.substring(6, value.len() - 6);
+        } else {
+            return false;
+        }
+        if (port.isEmpty() || port.len() > 5) { return false; }
+        for (int index = 0; index < port.len(); index++) {
+            char digit = port.charAt(index);
+            if (digit < '0' || digit > '9') { return false; }
+        }
+        int number = port.toInt();
+        return number >= 1024 && number <= 65535;
+    }
+
+    class bool platformPath(string value) {
+        if (value.isEmpty() || value.contains("\\")
+                || value.contains("\n") || value.contains("\r")) {
+            return false;
+        }
+        string homePrefix = "${home}/";
+        if (value.startsWith(homePrefix)) {
+            string relative = value.substring(
+                homePrefix.len(), value.len() - homePrefix.len());
+            return !relative.contains("${")
+                && SemuOwnedPaths.safeRelativePath(relative);
+        }
+        return !value.contains("${") && PathTools.isAbsolute(value)
+            && !SemuOwnedPaths.hasTraversal(value);
+    }
+
+    private bool validFieldValue(JsonValue field, JsonValue value) {
+        if (!field.has("type") || !field.get("type").isString()) { return false; }
+        string kind = field.get("type").asString();
+        if (kind.equals("boolean")) { return value.isBool(); }
+        if (kind.equals("path")) {
+            return value.isString()
+                && SemuConfigStore.platformPath(value.asString());
+        }
+        if (kind.equals("string")) { return value.isString(); }
+        if (kind.equals("relative_path")) {
+            return value.isString()
+                && SemuOwnedPaths.safeRelativePath(value.asString());
+        }
+        if (kind.equals("integer")) { return value.isInt(); }
+        if (kind.equals("loopback")) {
+            return value.isString()
+                && SemuConfigStore.loopbackAddress(value.asString());
+        }
+        if (!kind.equals("choice") || !value.isString()
+                || !field.has("choices") || !field.get("choices").isArray()) {
+            return false;
+        }
+        JsonValue choices = field.get("choices");
+        for (int index = 0; index < choices.size(); index++) {
+            JsonValue choice = choices.at(index);
+            if (choice.isString() && choice.asString().equals(value.asString())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private JsonValue setNested(JsonValue root, Vector<string> parts,
+                                int index, JsonValue value) {
+        JsonValue result = root.isObject() ? root : JsonValue.makeObject();
+        string part = parts.get(index);
+        if (index == parts.size() - 1) {
+            result.set(part, value);
+            return result;
+        }
+        JsonValue child = result.has(part) && result.get(part).isObject()
+            ? result.get(part) : JsonValue.makeObject();
+        result.set(part, self.setNested(child, parts, index + 1, value));
+        return result;
+    }
+
+    private string writeOverlay(JsonValue overlay) {
+        if (!self.safeOwnedPaths()) { return self.lastError; }
+        string userFile = SemuConfigPaths.userFile(self.semuHome);
+        JsonValue defaults = self.defaults();
+        string error = defaults.isError() ? self.lastError
+            : self.overlayError(defaults, overlay, userFile);
+        return error.isEmpty()
+            ? SemuOwnedDocument.write(
+                self.semuHome, userFile,
+                SemuJsonFormat.document(overlay), 384) // 0600
+            : error;
+    }
+
+    public SemuConfigResult prepare() {
+        if (!self.safeOwnedPaths()) { return self.failure("", self.lastError); }
+        JsonValue defaults = self.defaults();
+        if (defaults.isError()) { return self.failure("", self.lastError); }
+        string userFile = SemuConfigPaths.userFile(self.semuHome);
+        if (!FileSystem.isFile(userFile)) {
+            JsonValue overlay = JsonValue.makeObject();
+            overlay.set("schema_version", JsonValue.makeInt(1));
+            string error = self.writeOverlay(overlay);
+            if (!error.isEmpty()) { return self.failure("", error); }
+        } else {
+            JsonValue overlay = self.readOverlay(userFile, defaults);
+            if (overlay.isError()) { return self.failure("", self.lastError); }
+        }
+        SemuConfigResult result = SemuConfigResult();
+        result.ok = true;
+        result.file = userFile;
+        return result;
+    }
+
+    public SemuConfigResult effective() {
+        JsonValue root = self.effectiveRoot();
+        if (root.isError()) { return self.failure("", self.lastError); }
+        SemuConfigResult result = SemuConfigResult();
+        result.ok = true;
+        result.found = true;
+        result.file = SemuConfigPaths.userFile(self.semuHome);
+        result.value = root;
+        return result;
+    }
+
+    public SemuConfigResult get(string dottedPath) {
+        JsonValue root = self.effectiveRoot();
+        if (root.isError()) { return self.failure(dottedPath, self.lastError); }
+        JsonValue defaults = self.defaults();
+        if (defaults.isError()) { return self.failure(dottedPath, self.lastError); }
+        if (!self.configurablePath(defaults, dottedPath)) {
+            return self.failure(dottedPath, "unknown configurable path: " + dottedPath);
+        }
+        JsonValue value = SemuConfigStore.valueAt(root, dottedPath);
+        if (value.isNull()) {
+            return self.failure(dottedPath, "configured path is absent: " + dottedPath);
+        }
+        SemuConfigResult result = SemuConfigResult();
+        result.ok = true;
+        result.found = true;
+        result.path = dottedPath;
+        result.file = SemuConfigPaths.userFile(self.semuHome);
+        result.value = value;
+        return result;
+    }
+
+    public SemuConfigResult put(string dottedPath, JsonValue value) {
+        SemuConfigResult current = self.effective();
+        if (!current.ok) { return self.failure(dottedPath, current.error); }
+        JsonValue defaults = self.defaults();
+        if (defaults.isError()) { return self.failure(dottedPath, self.lastError); }
+        if (!self.configurablePath(defaults, dottedPath)) {
+            return self.failure(dottedPath, "unknown configurable path: " + dottedPath);
+        }
+        JsonValue field = self.fieldDefinition(defaults, dottedPath);
+        JsonValue expected = SemuConfigStore.valueAt(defaults, dottedPath);
+        bool valid = false;
+        if (!value.isError()) {
+            if (field.isNull()) { valid = self.sameKind(expected, value); }
+            else { valid = self.validFieldValue(field, value); }
+        }
+        if (!valid) {
+            return self.failure(dottedPath,
+                "value does not match the declared type or choices: " + dottedPath);
+        }
+        Vector<string> parts = Strings.split(dottedPath, ".");
+        JsonValue user = JsonValue.makeObject();
+        string userFile = SemuConfigPaths.userFile(self.semuHome);
+        if (FileSystem.isFile(userFile)) {
+            user = self.readOverlay(userFile, defaults);
+            if (user.isError()) { return self.failure(dottedPath, self.lastError); }
+        } else {
+            user.set("schema_version", JsonValue.makeInt(1));
+        }
+        user = self.setNested(user, parts, 0, value);
+        string error = self.writeOverlay(user);
+        if (!error.isEmpty()) { return self.failure(dottedPath, error); }
+        SemuConfigResult result = SemuConfigResult();
+        result.ok = true;
+        result.found = true;
+        result.path = dottedPath;
+        result.file = userFile;
+        result.value = value;
+        return result;
+    }
+
+    public SemuConfigResult putJson(string dottedPath, string encodedValue) {
+        JsonValue value = JsonValue.parse(encodedValue);
+        if (value.isError()) {
+            return self.failure(dottedPath, "value is not valid JSON");
+        }
+        return self.put(dottedPath, value);
+    }
+}
+
+class SemuSettingsCompileResult {
+    public string output;
+    public string error;
+
+    public SemuSettingsCompileResult() {
+        self.output = "";
+        self.error = "";
+    }
+
+    public bool ok() { return self.error.isEmpty() && !self.output.isEmpty(); }
+}
+
+class SemuSettingsCompiler {
+    class string output(string semuHome) {
+        return PathTools.join(semuHome, "generated/settings/settings.json");
+    }
+
+    class JsonValue document(JsonValue effective) {
+        JsonValue generated = JsonValue.makeObject();
+        generated.set("schema_version", JsonValue.makeInt(1));
+        for key in ["paths", "input", "visual", "ui", "sync"] {
+            if (effective.has(key)) { generated.set(key, effective.get(key)); }
+        }
+        return generated;
+    }
+
+    class SemuSettingsCompileResult emit(SemuConfigStore store) {
+        SemuSettingsCompileResult result = SemuSettingsCompileResult();
+        SemuConfigResult effective = store.effective();
+        if (!effective.ok) { result.error = effective.error; return result; }
+        string ownedRoot = SemuOwnedPaths.normalized(store.semuHome);
+        string output = SemuOwnedPaths.relativeFile(
+            ownedRoot, "generated/settings/settings.json");
+        if (ownedRoot.isEmpty() || output.isEmpty()) {
+            result.error = "compiled settings output escapes SEMU_HOME";
+            return result;
+        }
+        result.error = SemuOwnedDocument.write(ownedRoot, output,
+            SemuJsonFormat.document(
+                SemuSettingsCompiler.document(effective.value)), 384); // 0600
+        if (result.error.isEmpty()) { result.output = output; }
+        return result;
+    }
+}
+
+class SettingsTerminalSession {
+    public SemuConfigStore store;
+    public JsonValue document;
+    public Vector<string> scriptedInput;
+    public int cursor;
+    public bool live;
+    public string transcript;
+
+    public SettingsTerminalSession(SemuConfigStore configStore,
+                                   JsonValue protocolDocument,
+                                   Vector<string> input,
+                                   bool liveTerminal) {
+        self.store = configStore;
+        self.document = protocolDocument;
+        self.scriptedInput = input;
+        self.cursor = 0;
+        self.live = liveTerminal;
+        self.transcript = "";
+    }
+
+    private string indentation(int depth) {
+        string value = "";
+        for (int index = 0; index < depth; index++) { value += "  "; }
+        return value;
+    }
+
+    private void line(string value) {
+        self.transcript += value + "\n";
+        if (self.live) { print(value); }
+    }
+
+    private string input() {
+        if (self.cursor < self.scriptedInput.size()) {
+            string value = self.scriptedInput.get(self.cursor);
+            self.cursor++;
+            return value;
+        }
+        if (!self.live) { return "q"; }
+        char buffer[4096];
+        if ((char*)fgets(buffer, 4096, stdin) == NULL) { return "q"; }
+        return Strings.copy(buffer).trim();
+    }
+
+    private string choices(JsonValue field) {
+        JsonValue encoded = field.get("choices");
+        if (!encoded.isArray()) { return ""; }
+        Vector<string> values = [];
+        for (int index = 0; index < encoded.size(); index++) {
+            if (encoded.at(index).isString()) {
+                values.push(encoded.at(index).asString());
+            }
+        }
+        return values.isEmpty() ? "" : " [" + values.join(", ") + "]";
+    }
+
+    private void renderTree(JsonValue sections, int depth) {
+        if (!sections.isArray()) { return; }
+        for (int sectionIndex = 0;
+             sectionIndex < sections.size(); sectionIndex++) {
+            JsonValue section = sections.at(sectionIndex);
+            self.line(self.indentation(depth)
+                + section.get("label").asString());
+            if (section.get("kind").isString()
+                    && section.get("kind").asString().equals("menu")) {
+                self.renderTree(section.get("sections"), depth + 1);
+                continue;
+            }
+            JsonValue fields = section.get("fields");
+            if (fields.isArray()) {
+                for (int fieldIndex = 0;
+                     fieldIndex < fields.size(); fieldIndex++) {
+                    JsonValue field = fields.at(fieldIndex);
+                    self.line(self.indentation(depth + 1)
+                        + field.get("label").asString() + " = "
+                        + field.get("value").stringify()
+                        + self.choices(field));
+                }
+            }
+            JsonValue commands = section.get("commands");
+            if (commands.isArray()) {
+                for (int commandIndex = 0;
+                     commandIndex < commands.size(); commandIndex++) {
+                    self.line(self.indentation(depth + 1)
+                        + commands.at(commandIndex).get("label").asString());
+                }
+            }
+        }
+    }
+
+    private int selection(string encoded, int count) {
+        if (encoded.isEmpty()) { return -1; }
+        for character in encoded {
+            if (character < '0' || character > '9') { return -1; }
+        }
+        int selected = encoded.toInt() - 1;
+        return selected >= 0 && selected < count ? selected : -1;
+    }
+
+    private void execute(JsonValue command) {
+        string launcher = Environment.get("SEMU_BIN", "");
+        if (launcher.isEmpty() || !FileSystem.isFile(launcher)
+                || (int)access(launcher, (int)X_OK) != 0) {
+            self.line("settings: declared SEMU_BIN is unavailable");
+            return;
+        }
+        Vector<string> arguments = [];
+        JsonValue encoded = command.get("argv");
+        if (!encoded.isArray()) {
+            self.line("settings: command arguments are invalid");
+            return;
+        }
+        for (int index = 0; index < encoded.size(); index++) {
+            if (!encoded.at(index).isString()) {
+                self.line("settings: command arguments are invalid");
+                return;
+            }
+            arguments.push(encoded.at(index).asString());
+        }
+        ExecResult result = ChildProcess.run(launcher, arguments,
+            timeoutMilliseconds=30000,
+            maxStdoutBytes=4194304, maxStderrBytes=4194304);
+        if (!result.stdout().trim().isEmpty()) {
+            self.line(result.stdout().trim());
+        }
+        if (!result.ok()) {
+            self.line(result.stderr().trim().isEmpty()
+                ? "settings: command failed"
+                : "settings: " + result.stderr().trim());
+        }
+    }
+
+    private int page(JsonValue section) {
+        JsonValue fields = section.get("fields");
+        JsonValue commands = section.get("commands");
+        int fieldCount = fields.isArray() ? fields.size() : 0;
+        int commandCount = commands.isArray() ? commands.size() : 0;
+        while (true) {
+            self.line("");
+            self.line(section.get("label").asString());
+            for (int index = 0; index < fieldCount; index++) {
+                JsonValue field = fields.at(index);
+                self.line("  " + (index + 1).toString() + ". "
+                    + field.get("label").asString() + " = "
+                    + field.get("value").stringify()
+                    + self.choices(field));
+            }
+            for (int index = 0; index < commandCount; index++) {
+                self.line("  " + (fieldCount + index + 1).toString()
+                    + ". " + commands.at(index).get("label").asString());
+            }
+            self.line("Select an item, b to go back, or q to quit:");
+            string encoded = self.input();
+            if (encoded.equals("q") || encoded.equals("quit")) { return 2; }
+            if (encoded.equals("b") || encoded.equals("back")) { return 1; }
+            int selected = self.selection(
+                encoded, fieldCount + commandCount);
+            if (selected < 0) {
+                self.line("Invalid selection.");
+                continue;
+            }
+            if (selected >= fieldCount) {
+                self.execute(commands.at(selected - fieldCount));
+                continue;
+            }
+            JsonValue field = fields.at(selected);
+            string key = field.get("key").asString();
+            self.line("Enter a JSON value for " + key + ":");
+            SemuConfigResult updated = self.store.putJson(key, self.input());
+            if (!updated.ok) {
+                self.line("settings: " + updated.error);
+                continue;
+            }
+            SemuSettingsCompileResult compiled =
+                SemuSettingsCompiler.emit(self.store);
+            if (!compiled.ok()) {
+                self.line("settings: " + compiled.error);
+                continue;
+            }
+            field.set("value", updated.value);
+            self.line("Updated " + updated.path
+                + " and compiled " + compiled.output + ".");
+        }
+        return 0;
+    }
+
+    private int menu(JsonValue sections, string title, bool root) {
+        if (!sections.isArray()) { return 1; }
+        while (true) {
+            self.line("");
+            self.line(title);
+            for (int index = 0; index < sections.size(); index++) {
+                self.line("  " + (index + 1).toString() + ". "
+                    + sections.at(index).get("label").asString());
+            }
+            self.line(root
+                ? "Select a section, or q to quit:"
+                : "Select a section, b to go back, or q to quit:");
+            string encoded = self.input();
+            if (encoded.equals("q") || encoded.equals("quit")) { return 2; }
+            if (!root && (encoded.equals("b") || encoded.equals("back"))) {
+                return 1;
+            }
+            int selected = self.selection(encoded, sections.size());
+            if (selected < 0) {
+                self.line("Invalid selection.");
+                continue;
+            }
+            JsonValue section = sections.at(selected);
+            int result = section.get("kind").asString().equals("menu")
+                ? self.menu(section.get("sections"),
+                    section.get("label").asString(), false)
+                : self.page(section);
+            if (result == 2) { return 2; }
+        }
+        return 0;
+    }
+
+    public int run() {
+        if (!self.document.isObject()
+                || !self.document.get("sections").isArray()) {
+            self.line("settings: protocol document is invalid");
+            return 1;
+        }
+        self.line(self.document.get("title").asString());
+        if (!self.live && self.scriptedInput.isEmpty()) {
+            self.renderTree(self.document.get("sections"), 0);
+            return 0;
+        }
+        self.menu(self.document.get("sections"),
+            self.document.get("title").asString(), true);
+        return 0;
+    }
+}
+
+class SettingsUiProtocol {
+    class string hostPlatform() {
+        string explicitPlatform = Environment.get("SEMU_PLATFORM", "");
+        if (!explicitPlatform.isEmpty()) { return explicitPlatform; }
+        struct utsname systemInfo;
+        return (int)uname(&systemInfo) == 0
+                && Strings.copy(systemInfo.sysname).equals("Darwin")
+            ? "macos" : "linux";
+    }
+
+    class bool applies(JsonValue definition, string platformId) {
+        if (!definition.has("platforms")) { return true; }
+        JsonValue platforms = definition.get("platforms");
+        if (!platforms.isArray()) { return false; }
+        for (int index = 0; index < platforms.size(); index++) {
+            JsonValue platform = platforms.at(index);
+            if (platform.isString() && platform.asString().equals(platformId)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    class JsonValue copyStrings(JsonValue source) {
+        JsonValue values = JsonValue.makeArray();
+        if (!source.isArray()) { return values; }
+        for (int index = 0; index < source.size(); index++) {
+            JsonValue value = source.at(index);
+            if (value.isString()) { values.push(value); }
+        }
+        return values;
+    }
+
+    class JsonValue commands(JsonValue menu) {
+        JsonValue commands = JsonValue.makeArray();
+        if (!menu.has("commands") || !menu.get("commands").isArray()) {
+            return commands;
+        }
+        JsonValue source = menu.get("commands");
+        Vector<string> identifiers = [];
+        for (int index = 0; index < source.size(); index++) {
+            JsonValue command = source.at(index);
+            if (!command.isObject() || !command.get("id").isString()
+                    || command.get("id").asString().isEmpty()
+                    || identifiers.contains(command.get("id").asString())
+                    || !command.get("label").isString()
+                    || command.get("label").asString().isEmpty()
+                    || !command.get("argv").isArray()
+                    || command.get("argv").size() != 2
+                    || !command.get("argv").at(0).isString()
+                    || !command.get("argv").at(0).asString().equals("sync")
+                    || !command.get("argv").at(1).isString()
+                    || (!command.get("argv").at(1).asString().equals("apply")
+                        && !command.get("argv").at(1).asString().equals("status")
+                        && !command.get("argv").at(1).asString().equals("open"))) {
+                return JsonValue.makeError();
+            }
+            identifiers.push(command.get("id").asString());
+            JsonValue emitted = JsonValue.makeObject();
+            emitted.set("id", command.get("id"));
+            emitted.set("label", command.get("label"));
+            emitted.set("argv", SettingsUiProtocol.copyStrings(
+                command.get("argv")));
+            commands.push(emitted);
+        }
+        return commands;
+    }
+
+    class JsonValue command(JsonValue commands, string id) {
+        if (!commands.isArray() || id.isEmpty()) {
+            return JsonValue.makeNull();
+        }
+        for (int index = 0; index < commands.size(); index++) {
+            JsonValue command = commands.at(index);
+            if (command.isObject() && command.get("id").isString()
+                    && command.get("id").asString().equals(id)) {
+                return command;
+            }
+        }
+        return JsonValue.makeNull();
+    }
+
+    class JsonValue sectionCommands(JsonValue sourceSection,
+                                    JsonValue commands) {
+        JsonValue emitted = JsonValue.makeArray();
+        if (!sourceSection.has("commands")) { return emitted; }
+        JsonValue references = sourceSection.get("commands");
+        if (!references.isArray()) { return JsonValue.makeError(); }
+        Vector<string> seen = [];
+        for (int index = 0; index < references.size(); index++) {
+            JsonValue reference = references.at(index);
+            if (!reference.isString() || reference.asString().isEmpty()
+                    || seen.contains(reference.asString())) {
+                return JsonValue.makeError();
+            }
+            JsonValue command = SettingsUiProtocol.command(
+                commands, reference.asString());
+            if (!command.isObject()) { return JsonValue.makeError(); }
+            emitted.push(command);
+            seen.push(reference.asString());
+        }
+        return emitted;
+    }
+
+    class JsonValue save(JsonValue menu) {
+        JsonValue invalid = JsonValue.makeError();
+        JsonValue actions = menu.get("actions");
+        JsonValue definition = menu.get("save");
+        JsonValue write = actions.get("write");
+        if (!actions.isObject() || !definition.isObject()
+                || definition.keys().size() != 2
+                || !definition.get("strategy").isString()
+                || !definition.get("strategy").asString()
+                    .equals("apply_last_changed_write")
+                || !definition.get("apply_flag").isString()
+                || !definition.get("apply_flag").asString().equals("--apply")
+                || !write.isArray() || write.size() != 2
+                || !write.at(0).isString()
+                || !write.at(0).asString().equals("settings")
+                || !write.at(1).isString()
+                || !write.at(1).asString().equals("put")) {
+            return invalid;
+        }
+        JsonValue save = JsonValue.makeObject();
+        save.set("strategy", definition.get("strategy"));
+        save.set("write_argv", SettingsUiProtocol.copyStrings(write));
+        save.set("apply_flag", definition.get("apply_flag"));
+        return save;
+    }
+
+    class JsonValue saveInvocations(JsonValue document, JsonValue changes) {
+        JsonValue invocations = JsonValue.makeArray();
+        JsonValue save = document.get("save");
+        if (!save.isObject() || !changes.isArray()
+                || !save.get("strategy").isString()
+                || !save.get("strategy").asString()
+                    .equals("apply_last_changed_write")
+                || !save.get("write_argv").isArray()
+                || save.get("write_argv").size() != 2
+                || !save.get("write_argv").at(0).isString()
+                || !save.get("write_argv").at(0).asString()
+                    .equals("settings")
+                || !save.get("write_argv").at(1).isString()
+                || !save.get("write_argv").at(1).asString().equals("put")
+                || !save.get("apply_flag").isString()
+                || !save.get("apply_flag").asString().equals("--apply")) {
+            return JsonValue.makeError();
+        }
+        for (int index = 0; index < changes.size(); index++) {
+            JsonValue change = changes.at(index);
+            if (!change.isObject() || change.keys().size() != 2
+                    || !change.get("key").isString()
+                    || change.get("key").asString().isEmpty()
+                    || !change.get("value").isString()
+                    || JsonValue.parse(change.get("value").asString()).isError()) {
+                return JsonValue.makeError();
+            }
+            JsonValue invocation = SettingsUiProtocol.copyStrings(
+                save.get("write_argv"));
+            invocation.push(change.get("key"));
+            invocation.push(change.get("value"));
+            if (index + 1 == changes.size()) {
+                invocation.push(save.get("apply_flag"));
+            }
+            invocations.push(invocation);
+        }
+        return invocations;
+    }
+
+    class SettingsUiResult render(SemuConfigStore store, string platformId) {
+        SettingsUiResult result = SettingsUiResult();
+        SemuConfigResult effective = store.effective();
+        if (!effective.ok) { result.error = effective.error; return result; }
+        JsonValue defaults = store.definition();
+        if (!defaults.isObject() || !defaults.has("menu")) {
+            result.error = "settings UI definition is unavailable";
+            return result;
+        }
+        JsonValue menu = defaults.get("menu");
+        JsonValue navigation = menu.get("navigation");
+        JsonValue systemOverrides = navigation.get("system_overrides");
+        if (!navigation.isObject() || !systemOverrides.isObject()
+                || !systemOverrides.get("id").isString()
+                || systemOverrides.get("id").asString().isEmpty()
+                || !systemOverrides.get("label").isString()
+                || systemOverrides.get("label").asString().isEmpty()) {
+            result.error = "settings navigation definition is invalid";
+            return result;
+        }
+        string systemParent = systemOverrides.get("id").asString();
+        JsonValue sections = JsonValue.makeArray();
+        JsonValue systemSections = JsonValue.makeArray();
+        JsonValue sourceSections = menu.get("sections");
+        JsonValue commands = SettingsUiProtocol.commands(menu);
+        JsonValue save = SettingsUiProtocol.save(menu);
+        if (!sourceSections.isArray() || commands.isError() || save.isError()) {
+            result.error = "settings command, save, or section definition is invalid";
+            return result;
+        }
+        for (int sectionIndex = 0;
+             sectionIndex < sourceSections.size(); sectionIndex++) {
+            JsonValue sourceSection = sourceSections.at(sectionIndex);
+            if (!sourceSection.isObject()
+                    || !sourceSection.get("id").isString()
+                    || sourceSection.get("id").asString().isEmpty()
+                    || !sourceSection.get("label").isString()
+                    || sourceSection.get("label").asString().isEmpty()
+                    || !sourceSection.get("fields").isArray()) {
+                result.error = "settings section definition is invalid";
+                return result;
+            }
+            JsonValue fields = JsonValue.makeArray();
+            JsonValue sourceFields = sourceSection.get("fields");
+            for (int fieldIndex = 0;
+                 fieldIndex < sourceFields.size(); fieldIndex++) {
+                JsonValue sourceField = sourceFields.at(fieldIndex);
+                if (!sourceField.isObject()
+                        || !SettingsUiProtocol.applies(sourceField, platformId)) { continue; }
+                string key = sourceField.get("key").asString();
+                JsonValue value = SemuConfigStore.valueAt(effective.value, key);
+                if (value.isNull()) { result.error = "missing setting: " + key; return result; }
+                JsonValue field = JsonValue.makeObject();
+                field.set("key", sourceField.get("key"));
+                field.set("label", sourceField.get("label"));
+                field.set("type", sourceField.get("type"));
+                field.set("value", value);
+                if (sourceField.has("choices")) {
+                    field.set("choices", SettingsUiProtocol.copyStrings(
+                        sourceField.get("choices")));
+                }
+                fields.push(field);
+            }
+            if (fields.size() == 0) { continue; }
+            JsonValue section = JsonValue.makeObject();
+            section.set("kind", JsonValue.makeString("page"));
+            section.set("id", sourceSection.get("id"));
+            section.set("label", sourceSection.get("label"));
+            section.set("fields", fields);
+            JsonValue sectionCommands = SettingsUiProtocol.sectionCommands(
+                sourceSection, commands);
+            if (sectionCommands.isError()) {
+                result.error = "settings section command reference is invalid";
+                return result;
+            }
+            if (sectionCommands.size() > 0) {
+                section.set("commands", sectionCommands);
+            }
+            if (sourceSection.has("parent")) {
+                if (!sourceSection.get("parent").isString()
+                        || !sourceSection.get("parent").asString()
+                            .equals(systemParent)) {
+                    result.error = "settings section has an unknown parent";
+                    return result;
+                }
+                systemSections.push(section);
+            } else {
+                sections.push(section);
+            }
+        }
+        if (systemSections.size() > 0) {
+            JsonValue group = JsonValue.makeObject();
+            group.set("kind", JsonValue.makeString("menu"));
+            group.set("id", systemOverrides.get("id"));
+            group.set("label", systemOverrides.get("label"));
+            group.set("sections", systemSections);
+            sections.push(group);
+        }
+        JsonValue document = JsonValue.makeObject();
+        document.set("schema_version", JsonValue.makeInt(2));
+        document.set("protocol", JsonValue.makeString("semu-settings-v2"));
+        document.set("id", menu.get("id"));
+        document.set("title", menu.get("label"));
+        document.set("save", save);
+        document.set("sections", sections);
+        document.set("commands", commands);
+        result.ok = true;
+        result.document = SemuJsonFormat.document(document);
+        return result;
+    }
+
+    class int terminal(SemuConfigStore store, string platformId) {
+        SettingsUiResult rendered = SettingsUiProtocol.render(store, platformId);
+        if (!rendered.ok) { print("settings: " + rendered.error); return 1; }
+        JsonValue document = JsonValue.parse(rendered.document);
+        bool interactive = (int)isatty((int)STDIN_FILENO) != 0;
+        Vector<string> noInput = [];
+        SettingsTerminalSession session = SettingsTerminalSession(
+            store, document, noInput, interactive);
+        int result = session.run();
+        if (!interactive) { print(session.transcript.trim()); }
+        return result;
+    }
+}
+
+class SettingsEsDeGenerator {
+    class string appImageRelativePath() {
+        return "settings/semu_settings.json";
+    }
+
+    class string installedRelativePath() {
+        return "settings/semu_settings.json";
+    }
+
+    class string runnerRelativePath() {
+        return "settings/semu/bin/semu";
+    }
+
+    class string runner(string esDeHome) {
+        return PathTools.join(esDeHome,
+            SettingsEsDeGenerator.runnerRelativePath());
+    }
+
+    class bool validStableLauncher(string launcher) {
+        string lowered = launcher.toLower();
+        return launcher.startsWith("/")
+            && launcher.endsWith("/bin/semu")
+            && !launcher.contains("${")
+            && !lowered.contains("apprun")
+            && !lowered.contains("/tmp/.mount")
+            && !lowered.contains("/.mount_")
+            && !lowered.contains("/active/")
+            && !lowered.contains("/releases/")
+            && !lowered.contains("/appdir/")
+            && !lowered.contains("/squashfs-root/");
+    }
+
+    class bool validMenuLauncher(string launcher) {
+        return SettingsEsDeGenerator.validStableLauncher(launcher)
+            && launcher.endsWith("/bin/semu");
+    }
+
+    class bool usableLauncher(string launcher) {
+        FileStatus status = FileStatus(launcher);
+        return SettingsEsDeGenerator.validStableLauncher(launcher)
+            && status.isFile() && !status.isSymlink()
+            && (int)access(launcher, (int)X_OK) == 0;
+    }
+
+    class string runnerDocument(string launcher) {
+        if (!SettingsEsDeGenerator.validStableLauncher(launcher)) { return ""; }
+        return """#!/usr/bin/env sh
+set -eu
+exec @@LAUNCHER@@ \"$@\"
+"""
+            .replace("@@LAUNCHER@@", ShellWords.quote(launcher));
+    }
+
+    class int writeOwned(string ownedRoot, string outputPath,
+                         string content, int mode) {
+        return SemuOwnedDocument.write(
+            ownedRoot, outputPath, content, mode).isEmpty()
+            ? 0 : 1;
+    }
+
+    class string configuredLauncher(JsonValue defaults, string home) {
+        if (!defaults.isObject() || !defaults.has("menu")
+                || !defaults.get("menu").isObject()
+                || !defaults.get("menu").has("launcher")
+                || !defaults.get("menu").get("launcher").isString()) { return ""; }
+        return defaults.get("menu").get("launcher").asString()
+            .replace("${home}", home);
+    }
+
+    class string configuredRunner(JsonValue defaults, string home) {
+        if (!defaults.isObject() || !defaults.has("menu")
+                || !defaults.get("menu").isObject()
+                || !defaults.get("menu").has("runner")
+                || !defaults.get("menu").get("runner").isString()) { return ""; }
+        string runner = defaults.get("menu").get("runner").asString()
+            .replace("${home}", home);
+        return SettingsEsDeGenerator.validMenuLauncher(runner) ? runner : "";
+    }
+
+    class string resolveLauncher(JsonValue defaults, string installed, string home) {
+        if (SettingsEsDeGenerator.validStableLauncher(installed)) { return installed; }
+        string configured = SettingsEsDeGenerator.configuredLauncher(defaults, home);
+        return SettingsEsDeGenerator.validStableLauncher(configured) ? configured : "";
+    }
+
+    class string launcher(JsonValue defaults) {
+        return SettingsEsDeGenerator.resolveLauncher(defaults,
+            Environment.get("SEMU_ENTRYPOINT", ""), Environment.get("HOME", "."));
+    }
+
+    class bool exactAction(JsonValue action, string verb) {
+        return action.isArray() && action.size() == 2
+            && action.at(0).isString() && action.at(0).asString().equals("settings")
+            && action.at(1).isString() && action.at(1).asString().equals(verb);
+    }
+
+    class string document(JsonValue defaults, string platformId,
+                          string stableLauncher) {
+        if (!defaults.isObject() || !defaults.has("menu")) { return ""; }
+        JsonValue menu = defaults.get("menu");
+        if (!SettingsUiProtocol.applies(menu, platformId)
+                || !SettingsEsDeGenerator.validMenuLauncher(stableLauncher)
+                || !menu.has("id") || !menu.get("id").isString()
+                || !menu.get("id").asString().equals("semu-settings")
+                || !menu.has("label") || !menu.get("label").isString()
+                || menu.get("label").asString().isEmpty()
+                || !menu.has("actions") || !menu.get("actions").isObject()) {
+            return "";
+        }
+        JsonValue actions = menu.get("actions");
+        if (!actions.has("read") || !actions.has("write")
+                || !SettingsEsDeGenerator.exactAction(actions.get("read"), "ui")
+                || !SettingsEsDeGenerator.exactAction(actions.get("write"), "put")) {
+            return "";
+        }
+        JsonValue entry = JsonValue.makeObject();
+        entry.set("id", menu.get("id"));
+        entry.set("label", menu.get("label"));
+        entry.set("protocol", JsonValue.makeString("semu-settings-v2"));
+        entry.set("launcher", JsonValue.makeString(stableLauncher));
+        JsonValue emittedActions = JsonValue.makeObject();
+        emittedActions.set("read", SettingsUiProtocol.copyStrings(actions.get("read")));
+        emittedActions.set("write", SettingsUiProtocol.copyStrings(actions.get("write")));
+        JsonValue allowedCommands = JsonValue.makeArray();
+        JsonValue commands = SettingsUiProtocol.commands(menu);
+        if (commands.isError()) { return ""; }
+        for (int index = 0; index < commands.size(); index++) {
+            allowedCommands.push(SettingsUiProtocol.copyStrings(
+                commands.at(index).get("argv")));
+        }
+        emittedActions.set("commands", allowedCommands);
+        entry.set("actions", emittedActions);
+        JsonValue document = JsonValue.makeObject();
+        document.set("schema_version", JsonValue.makeInt(2));
+        document.set("entry", entry);
+        return SemuJsonFormat.document(document);
+    }
+
+    class int write(JsonValue defaults, string platformId, string stableLauncher,
+                    string ownedRoot, string outputPath) {
+        if (!SettingsUiProtocol.applies(defaults.get("menu"), platformId)) { return 0; }
+        string content = SettingsEsDeGenerator.document(
+            defaults, platformId, stableLauncher);
+        if (SettingsEsDeGenerator.writeOwned(
+                ownedRoot, outputPath, content, 384) != 0) { // 0600
+            print("settings: could not write ES-DE integration " + outputPath);
+            return 1;
+        }
+        return 0;
+    }
+
+    class int emitAppImage(JsonValue defaults, string packagingRoot,
+                           string platformId, string stableLauncher) {
+        string menuLauncher = SettingsEsDeGenerator.validMenuLauncher(stableLauncher)
+            ? stableLauncher : SettingsEsDeGenerator.configuredRunner(
+                defaults, Environment.get("HOME", "."));
+        return SettingsEsDeGenerator.write(defaults, platformId, menuLauncher,
+            packagingRoot,
+            PathTools.join(packagingRoot, SettingsEsDeGenerator.appImageRelativePath()));
+    }
+
+    class int install(JsonValue defaults, string esDeHome, string platformId,
+                      string stableLauncher) {
+        if (!SettingsUiProtocol.applies(defaults.get("menu"), platformId)) {
+            return 0;
+        }
+        string menuLauncher = SettingsEsDeGenerator.runner(esDeHome);
+        if (!SettingsEsDeGenerator.usableLauncher(stableLauncher)
+                || SettingsEsDeGenerator.writeOwned(esDeHome, menuLauncher,
+                    SettingsEsDeGenerator.runnerDocument(stableLauncher), 448) != 0) { // 0700
+            print("settings: could not install the regular ES-DE runner");
+            return 1;
+        }
+        return SettingsEsDeGenerator.write(defaults, platformId, menuLauncher,
+            esDeHome,
+            PathTools.join(esDeHome,
+                SettingsEsDeGenerator.installedRelativePath()));
+    }
+}

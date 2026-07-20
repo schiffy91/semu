@@ -1,0 +1,402 @@
+{
+  "schema_version": 2,
+  "modifiers": [
+    "ctrl",
+    "alt",
+    "shift",
+    "meta"
+  ],
+  "actions": {
+    "ui.open": {
+      "alias": "open",
+      "label": "Open",
+      "icon": "semu-open.png",
+      "chord": "Ctrl+O"
+    },
+    "ui.pause": {
+      "alias": "pause",
+      "label": "Pause / Resume",
+      "icon": "semu-pause.png",
+      "chord": "Ctrl+P"
+    },
+    "ui.screenshot": {
+      "alias": "screenshot",
+      "label": "Take Screenshot",
+      "icon": "semu-screenshot.png",
+      "chord": "Ctrl+X"
+    },
+    "ui.fullscreen": {
+      "alias": "fullscreen",
+      "label": "Toggle Fullscreen",
+      "icon": "semu-fullscreen.png",
+      "chord": "Ctrl+Enter"
+    },
+    "ui.menu": {
+      "alias": "menu",
+      "label": "Open Menu",
+      "icon": "semu-menu.png",
+      "chord": "Ctrl+M"
+    },
+    "ui.menu.up": {
+      "alias": "menu_up",
+      "label": "Menu Up",
+      "icon": "semu-up.png",
+      "chord": "Ctrl+Up"
+    },
+    "ui.menu.down": {
+      "alias": "menu_down",
+      "label": "Menu Down",
+      "icon": "semu-down.png",
+      "chord": "Ctrl+Down"
+    },
+    "ui.menu.confirm": {
+      "alias": "menu_confirm",
+      "label": "Menu Confirm",
+      "icon": "semu-confirm.png",
+      "chord": "Ctrl+Space"
+    },
+    "ui.menu.back": {
+      "alias": "menu_back",
+      "label": "Menu Back",
+      "icon": "semu-back.png",
+      "chord": "Ctrl+Backspace"
+    },
+    "app.quit": {
+      "alias": "quit",
+      "label": "Quit Emulator",
+      "icon": "semu-quit.png",
+      "chord": "Ctrl+Q"
+    },
+    "state.prev": {
+      "alias": "previous_state_slot",
+      "label": "Previous State Slot",
+      "icon": "semu-previous.png",
+      "chord": "Ctrl+J"
+    },
+    "state.next": {
+      "alias": "next_state_slot",
+      "label": "Next State Slot",
+      "icon": "semu-next.png",
+      "chord": "Ctrl+K"
+    },
+    "state.load": {
+      "alias": "load_state",
+      "label": "Load State",
+      "icon": "semu-load.png",
+      "chord": "Ctrl+A"
+    },
+    "state.save": {
+      "alias": "save_state",
+      "label": "Save State",
+      "icon": "semu-save.png",
+      "chord": "Ctrl+S"
+    },
+    "speed.rewind": {
+      "alias": "rewind",
+      "label": "Rewind",
+      "icon": "semu-rewind.png",
+      "chord": "Ctrl+-"
+    },
+    "speed.fast": {
+      "alias": "fast_forward",
+      "label": "Fast Forward",
+      "icon": "semu-fast-forward.png",
+      "chord": "Ctrl++"
+    },
+    "screen.swap": {
+      "alias": "swap_screens",
+      "label": "Swap Screens",
+      "icon": "semu-swap.png",
+      "chord": "Ctrl+Tab"
+    },
+    "wii.controller.wiimote": {
+      "alias": "wii_wiimote",
+      "label": "Wiimote",
+      "icon": "semu-wiimote.png",
+      "chord": "Ctrl+Shift+F9",
+      "supervisor_chord": "Ctrl+Shift+F9"
+    },
+    "wii.controller.nunchuk": {
+      "alias": "wii_nunchuk",
+      "label": "Wiimote + Nunchuk",
+      "icon": "semu-wiimote-nunchuk.png",
+      "chord": "Ctrl+Shift+F10",
+      "supervisor_chord": "Ctrl+Shift+F10"
+    },
+    "wii.controller.classic": {
+      "alias": "wii_classic",
+      "label": "Classic Controller",
+      "icon": "semu-classic-controller.png",
+      "chord": "Ctrl+Shift+F11",
+      "supervisor_chord": "Ctrl+Shift+F11"
+    },
+    "wii.controller.gamecube": {
+      "alias": "wii_gamecube",
+      "label": "GameCube Controller",
+      "icon": "semu-gamecube-controller.png",
+      "chord": "Ctrl+Shift+F12",
+      "supervisor_chord": "Ctrl+Shift+F12"
+    },
+    "ui.escape": {
+      "alias": "escape",
+      "label": "Escape",
+      "icon": "semu-back.png",
+      "chord": "Esc"
+    }
+  },
+  "hotkey_bindings": [
+    {
+      "button": "A",
+      "action": "ui.pause"
+    },
+    {
+      "button": "B",
+      "action": "ui.screenshot"
+    },
+    {
+      "button": "X",
+      "action": "ui.fullscreen"
+    },
+    {
+      "button": "Y",
+      "action": "ui.menu"
+    },
+    {
+      "button": "Start",
+      "action": "app.quit"
+    },
+    {
+      "button": "D-Pad Left",
+      "action": "state.prev"
+    },
+    {
+      "button": "D-Pad Right",
+      "action": "state.next"
+    },
+    {
+      "button": "L1",
+      "action": "state.load"
+    },
+    {
+      "button": "R1",
+      "action": "state.save"
+    },
+    {
+      "button": "L2",
+      "action": "speed.rewind"
+    },
+    {
+      "button": "R2",
+      "action": "speed.fast"
+    },
+    {
+      "button": "L3",
+      "action": "screen.swap"
+    },
+    {
+      "button": "R3",
+      "action": "ui.escape"
+    }
+  ],
+  "binding_icons": {
+    "source_dir": "icons",
+    "output_dir": "binding-icons",
+    "colors": "#232323 #FFFFFF",
+    "files": [
+      "semu-back.png",
+      "semu-classic-controller.png",
+      "semu-confirm.png",
+      "semu-down.png",
+      "semu-fast-forward.png",
+      "semu-fullscreen.png",
+      "semu-gamecube-controller.png",
+      "semu-load.png",
+      "semu-menu.png",
+      "semu-next.png",
+      "semu-open.png",
+      "semu-pause.png",
+      "semu-previous.png",
+      "semu-quit.png",
+      "semu-rewind.png",
+      "semu-save.png",
+      "semu-screenshot.png",
+      "semu-swap.png",
+      "semu-up.png",
+      "semu-wiimote-nunchuk.png",
+      "semu-wiimote.png"
+    ]
+  },
+  "controller": {
+    "model": "steam_deck",
+    "gyro": false,
+    "trackpads": {
+      "left": "radial_hotkeys",
+      "right": "mouse"
+    },
+    "hotkey_button": "view_long_press"
+  },
+  "radial": {
+    "show_labels": false,
+    "quick_slots": [
+      "state.save",
+      "state.load",
+      "app.quit",
+      "ui.menu",
+      "ui.screenshot",
+      "ui.escape"
+    ],
+    "menu_slots": [
+      "ui.menu",
+      "ui.menu.up",
+      "ui.menu.down",
+      "ui.menu.confirm",
+      "ui.menu.back"
+    ],
+    "evidence_markers": {
+      "quick": [
+        "kp0",
+        "kp1",
+        "kp2",
+        "kp3",
+        "kp4",
+        "kp5"
+      ],
+      "menu": [
+        "kp6",
+        "kp7",
+        "kp8",
+        "kp9",
+        "kpdecimal"
+      ]
+    },
+    "system_layers": [
+      {
+        "id": "wii_controller",
+        "name": "Wii Controller Mode",
+        "activators": [
+          "left_lower_grip",
+          "right_lower_grip"
+        ],
+        "slots": [
+          "wii.controller.wiimote",
+          "wii.controller.nunchuk",
+          "wii.controller.classic",
+          "wii.controller.gamecube"
+        ]
+      }
+    ]
+  },
+  "capabilities": {
+    "savestate_actions": [
+      "state.save",
+      "state.load"
+    ],
+    "controller_mode_layers": [
+      "wii_controller"
+    ]
+  },
+  "quit_chord": {
+    "buttons": [
+      "select",
+      "start"
+    ],
+    "window_ms": 250
+  },
+  "templates": [
+    {
+      "id": "neptune_simple",
+      "title": "Semu: Steam Deck - Neptune SIMPLE",
+      "quick_radial_name": "Semu Simple Radial",
+      "menu_radial_name": "Semu Menu Controls",
+      "output": "neptune-simple.vdf"
+    },
+    {
+      "id": "neptune_full",
+      "title": "Semu: Steam Deck - Neptune FULL",
+      "quick_radial_name": "Semu Full Radial",
+      "menu_radial_name": "Semu Menu Controls",
+      "output": "neptune-full.vdf",
+      "default": true
+    }
+  ],
+  "application": {
+    "shortcut_name": "Semu",
+    "config_id": "semu",
+    "controller_file": "controller_neptune.vdf",
+    "deprecated_config_ids": [
+      "semu-x86_64appimage",
+      "semu-x8664appimage"
+    ]
+  },
+  "key_names": {
+    "ctrl": "LEFT_CONTROL",
+    "alt": "LEFT_ALT",
+    "shift": "LEFT_SHIFT",
+    "meta": "LEFT_GUI",
+    "enter": "RETURN",
+    "esc": "ESCAPE",
+    "tab": "TAB",
+    "up": "UP",
+    "down": "DOWN",
+    "backspace": "BACKSPACE",
+    "space": "SPACE",
+    "kp0": "KEYPAD_0",
+    "kp1": "KEYPAD_1",
+    "kp2": "KEYPAD_2",
+    "kp3": "KEYPAD_3",
+    "kp4": "KEYPAD_4",
+    "kp5": "KEYPAD_5",
+    "kp6": "KEYPAD_6",
+    "kp7": "KEYPAD_7",
+    "kp8": "KEYPAD_8",
+    "kp9": "KEYPAD_9",
+    "kpdecimal": "KEYPAD_PERIOD",
+    "+": "KEYPAD_PLUS",
+    "-": "KEYPAD_DASH"
+  },
+  "device_identities": {
+    "retroarch_input_driver": "sdl2",
+    "azahar_controller_guid": "03000000de280000ff11000001000000",
+    "dolphin_pad": "SDL/0/Steam Deck Controller",
+    "dolphin_wiimote": "SteamDeck/0/Steam Deck",
+    "dolphin_pointer": "XInput2/0/Virtual core pointer",
+    "pcsx2_pad": "SDL-1",
+    "cemu_api": "SDLController",
+    "cemu_display_name": "Steam Virtual Gamepad",
+    "cemu_profile": "SteamInput-P1",
+    "ryujinx_controller_id": "0-f7390003-28de-0000-ff11-000001000000",
+    "supervisor": {
+      "gamepad": {
+        "source": "virtual",
+        "vendor": "28de",
+        "product": "11ff",
+        "physical": "empty"
+      },
+      "command_facet": {
+        "source": "hardware",
+        "vendor": "28de",
+        "product": "1205",
+        "physical_prefix": "usb-",
+        "physical_suffix": "/input1"
+      }
+    }
+  },
+  "platforms": {
+    "linux": {
+      "templates_dir": "${home}/.local/share/Steam/controller_base/templates",
+      "binding_icons_dir": "${home}/.local/share/Steam/tenfoot/resource/images/library/controller/binding_icons",
+      "application_config_dir": "${home}/.local/share/Steam/steamapps/common/Steam Controller Configs/${steam_user}/config/${application_id}"
+    }
+  },
+  "doc": {
+    "controller": "Deck policy the doctor asserts: no gyro, both trackpads active, hotkeys entered via View long-press; the generated VDF also maps the L4/R4 back grips to the same preset switch.",
+    "radial": "show_labels=false makes every radial icon-only so Steam never substitutes modifier glyphs such as Ctrl. The default preset maps group 20 to quick_slots, preserving Save/Load/Quit/Menu/Screenshot/Escape. Holding View or either upper grip activates the hotkey preset and maps group 21 to menu_slots. Declarative system_layers allocate additional left-trackpad radial presets; their ordered slots generate stable extension codes beginning at the generic native ABI extension base. The Wii layer is held with either lower grip and declares Wiimote, Nunchuk, Classic, and GameCube as slots 0 through 3. Its Ctrl+Shift+F9 through F12 chords stay inside the held layer and are supported by the Deck command facet. Evidence markers precede quick and menu action chords so the supervisor can attribute each physical action to its radial slot.",
+    "quit_chord": "The physical View/Menu buttons emit XInput SELECT/START unchanged. window_ms is the maximum verifier interval for the pair; the process-group watcher terminates as soon as it observes both buttons held. Radial and HKB quit use the app.quit action chord instead.",
+    "templates": "Exactly one template carries default:true. settings prepare stages and byte-verifies every declared template, binding icon, and default shortcut profile before atomically publishing them. Deprecated application IDs are transactionally quarantined only beneath the same exact Steam user config root.",
+    "binding_icons": "Every action declares a non-keyboard Semu PNG. Legacy VDF bindings encode the icon filename and its two colors in one metadata field, matching Valve's radial-menu format. Physical Deck acceptance: after bootstrap and provision, restart Steam, apply Semu: Steam Deck - Neptune FULL, open all three left-trackpad radials, and assert all 15 slots show the declared Semu icons with no Ctrl/key glyphs; activate the quick and menu slots to complete their capture evidence, then verify each Wii mode reaches its Dolphin consumer.",
+    "key_names": "semu-keymap-v1 key token to Steam VDF key-name lookup (was steamInputKeyName); unlisted keys upper-case verbatim in the emitter.",
+    "device_identities": "Target-owned emulator and evdev identity constants formerly baked into runtime code; a different target can ship different values with no BTRC changes. The Deck supervisor admits only the declared virtual 28de:11ff gameplay facet with an empty physical path and the declared hardware 28de:1205 command facet with its USB input1 physical identity. The gameplay facet must expose Start, Select, a face button, and X/Y axes. The command facet must expose every generated core, system-layer, modifier, and radial-marker key before it is paired. The supervisor opens devices read-only, never grabs them, never changes Steam Input layers, and never suppresses native gamepad output; unrelated same-vendor devices, keyboards, and event facets are rejected.",
+    "platforms": "All three destinations are exact children of the canonical current user's ${home}/.local/share/Steam root. Independent path overrides are forbidden; focused tests inject one separately owned Steam root and derive the same fixed layout beneath it. SEMU_STEAM_USER_ID may select one existing numeric userdata directory when local Steam state is otherwise ambiguous.",
+    "actions": "The complete native input vocabulary. Each action declares its chord, alias for ${..._BINDINGS} tokens, semantic label, and manifest-backed Semu PNG. The parser compiles these entries and hotkey_bindings directly into the native keymap and supervisor environment consumed by profile and Steam Input generators. Which emulators honor each action is declared per emulator in config/emulators/<emu>/emulator.json input.actions; ui.menu.{up,down,confirm,back} are consumed by the renderer menu, Wii controller actions are consumed by Dolphin's in-process mode selector, and ui.escape is desktop-only."
+  }
+}

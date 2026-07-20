@@ -1,0 +1,135 @@
+{
+  "schema_version": 1,
+  "name": "Cemu",
+  "default_system": "wiiu",
+  "input": {
+    "actions": [
+      "app.quit",
+      "screen.swap"
+    ]
+  },
+  "platforms": {
+    "linux": {
+      "backend": "bwrap",
+      "executable": "${asset_root}/bin/Cemu",
+      "args": [
+        "-f",
+        "-m",
+        "${state_root}/data/Cemu/mlc01",
+        "-g"
+      ],
+      "launch_contract": {
+        "rom_placement": "one value immediately after -g",
+        "fullscreen_flag": "-f",
+        "mlc_flag": "-m",
+        "game_flag": "-g",
+        "command_line_failure_exit_code": 74,
+        "upstream_inputs": {
+          "files": [
+            ".wud",
+            ".wux",
+            ".iso",
+            ".wua",
+            ".wuhb",
+            "title.tmd",
+            ".rpx",
+            ".elf"
+          ],
+          "title_root": {
+            "accepted": true,
+            "required_directories": [
+              "code",
+              "content",
+              "meta"
+            ]
+          },
+          "rpx_in_code_directory_resolves_title_root": true,
+          "wua_selects_first_base_title": true
+        },
+        "target_inputs_source": "config/systems/wiiu/system.json",
+        "title_ticket_policy": "NUS title.tmd uses its adjacent title.tik in the read-only ROM tree; Semu never copies or rewrites it."
+      },
+      "gl_wrapper": "${asset_root}/bin/nixGL",
+      "sandbox": {
+        "devices": [
+          "all"
+        ],
+        "filesystems": [
+          {
+            "path": "${project}",
+            "mode": "ro"
+          },
+          {
+            "path": "${asset_root}",
+            "mode": "ro"
+          },
+          {
+            "path": "${roms}",
+            "mode": "ro"
+          },
+          {
+            "path": "${emulation_root}",
+            "mode": "ro"
+          },
+          {
+            "path": "${bios}",
+            "mode": "ro"
+          },
+          {
+            "path": "${state_root}",
+            "mode": "create"
+          }
+        ]
+      },
+      "graphics": {
+        "method": "config_file",
+        "file": "${state_root}/config/Cemu/settings.xml",
+        "format": "xml",
+        "key": "api",
+        "values": {
+          "opengl": "0"
+        }
+      },
+      "state": {
+        "config_home": "xdg",
+        "data_home": "xdg",
+        "config_subdir": "Cemu",
+        "data_subdir": "Cemu",
+        "managed_profile_files": [
+          "config/settings.xml",
+          "config/controllerProfiles/controller0.xml"
+        ],
+        "seeds": [
+          {
+            "purpose": "wiiu_disc_and_title_keys",
+            "target": "${state_root}/data/Cemu/keys.txt",
+            "copy": "once_if_target_absent",
+            "source_access": "read_only",
+            "overwrite": false,
+            "sources": [
+              "${semu_home}/firmware/cemu/keys.txt",
+              "${emulation_root}/Cemu/data/keys.txt",
+              "${bios}/wiiu/keys.txt",
+              "${bios}/keys.txt"
+            ]
+          }
+        ]
+      },
+      "firmware": {
+        "dir": "${emulation_root}/Cemu/data",
+        "fallback_dirs": [
+          "${bios}/wiiu",
+          "${bios}"
+        ]
+      }
+    }
+  },
+  "doc": {
+    "runtime": "Linux launches the exact source-built package from the asset root. -f starts fullscreen, -m selects Semu's isolated MLC, and -g consumes exactly one following Wii U title. The Steam Deck system definition selects file inputs; upstream Cemu additionally understands an extracted title root containing code, content, and meta. No host executable, Flatpak, libretro core, or prebuilt binary participates.",
+    "state": "Cemu reads settings from $XDG_CONFIG_HOME/Cemu and data from $XDG_DATA_HOME/Cemu. -m pins the writable MLC, including normal title saves under mlc01/usr/save, below ${state_root}/data/Cemu/mlc01. keys.txt is copied only when its isolated target is absent, preferring the bounded user-owned ${semu_home}/firmware/cemu import; an adjacent NUS title.tik remains in the read-only ROM tree. External keys, tickets, ROMs, BIOS material, and existing saves are never modified.",
+    "input": "controllerProfiles/controller0.xml is Cemu's automatically loaded player-one profile. It pins the Steam Virtual Gamepad through SDL and maps the complete Wii U GamePad surface. Ctrl+Q quits and Ctrl+Tab swaps the selected TV/GamePad view. Upstream Cemu 2.6 has no savestate implementation, so state.save and state.load are declared unsupported in profile.json rather than mapped to inert chords.",
+    "rendering": "OpenGL is forced through settings.xml and the package build. The direct ABI 2 game phase runs only for the selected main-window TV image after DrawBackbufferQuad; the post-UI phase runs immediately before Cemu's owned swap. The separate pad window never creates a renderer frame.",
+    "readiness": "A failed -g quick launch exits with status 74 instead of leaving Cemu's deliberately empty quick-launch window blocked behind a modal dialog. Successful readiness still requires a frame-bound shared renderer receipt; process survival alone is never success.",
+    "sandbox": "The package closure, ROM library, configured BIOS root, and external Cemu data are read-only. Cemu can write only its isolated state root."
+  }
+}

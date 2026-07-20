@@ -1,0 +1,40 @@
+{
+  "schema_version": 1,
+  "id": "cemu",
+  "version": "2.6",
+  "build_kind": "source",
+  "source": {
+    "kind": "github",
+    "owner": "cemu-project",
+    "repo": "Cemu",
+    "revision": "a6fb0a48eb437a8a41c13b782ac8ae0433bf8f98",
+    "sha256": "sha256-YO3rMhlBZ5fGu0ceAFB0R3owFuSobx39faWL9EUFwAM="
+  },
+  "platforms": [
+    "x86_64-linux"
+  ],
+  "graphics_apis": [
+    "opengl"
+  ],
+  "outputs": {
+    "main_program": "bin/Cemu",
+    "linked_program": "bin/.Cemu-wrapped",
+    "build_contract": "share/semu/cemu-build-contract.json"
+  },
+  "fallbacks": {
+    "host_executable": false,
+    "flatpak": false,
+    "libretro": false,
+    "prebuilt_binary": false
+  },
+  "metadata": {
+    "description": "Wii U emulator",
+    "homepage": "https://cemu.info",
+    "license": "mpl20"
+  },
+  "doc": {
+    "source": "The immutable v2.6 release commit and fixed-output hash resolve to the exact upstream source used by the pinned Nixpkgs Cemu 2.6 recipe.",
+    "platforms": "This slice is proven only for the Steam Deck's x86_64-linux closure. Evaluation fails on every other host instead of selecting a host, Flatpak, libretro, or prebuilt fallback.",
+    "rendering": "The TV game path directly invokes the shared ABI 2 renderer after its final draw and before Cemu UI; the post-UI phase runs immediately before Cemu's owned swap. Shader-cache, settings, empty, and secondary-pad-window paths never create a renderer frame."
+  }
+}

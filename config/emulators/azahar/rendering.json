@@ -1,0 +1,162 @@
+{
+  "schema_version": 1,
+  "activation": {
+    "mode": "source_patched_direct_link",
+    "package_ready": true,
+    "runtime_proven": false,
+    "physical_proven": false
+  },
+  "integration": {
+    "abi": 2,
+    "api": "semu-renderer",
+    "linkage": "direct",
+    "header": "semu_renderer.h",
+    "library": "semurenderer",
+    "backend": "opengl",
+    "callbacks": [
+      "get_proc_address",
+      "current_context"
+    ],
+    "inactive_reports": false,
+    "framebuffer": "default_opengl_draw_framebuffer",
+    "geometry": "frontend_framebuffer_layout",
+    "surface_order": [
+      {
+        "id": "top",
+        "native_w": 400,
+        "native_h": 240
+      },
+      {
+        "id": "bottom",
+        "native_w": 320,
+        "native_h": 240
+      }
+    ],
+    "origin": "top_left",
+    "orientation": "display_upright",
+    "rotation": 0,
+    "patch": "azahar.patch",
+    "pointer_mapping": {
+      "map": "frame.pointer_map",
+      "callback": "frame.map_pointer",
+      "snapshot": "copy_by_value_after_game_phase",
+      "surface_index": 1,
+      "surface_id": "bottom",
+      "viewport": "qt_logical_widget",
+      "origin": "top_left",
+      "press_clamp": false,
+      "captured_motion_clamp": true,
+      "events": [
+        "mouse_press",
+        "mouse_move",
+        "touch_begin",
+        "touch_update"
+      ],
+      "consumer": "GRenderWindow",
+      "coordinates": "abi_native_pixels",
+      "delivery": {
+        "capture": "successful_press",
+        "press": "TouchPressedNative",
+        "captured_motion": "TouchMovedNative",
+        "legacy_framebuffer_transform": false
+      }
+    }
+  },
+  "phases": [
+    {
+      "id": "game",
+      "symbol": "semu_render_game_gl",
+      "source": "src/video_core/renderer_opengl/renderer_opengl.cpp",
+      "function": "OpenGL::RendererOpenGL::TryPresent",
+      "after": "final game blit and read-framebuffer reset",
+      "before": "frontend rendering returns"
+    },
+    {
+      "id": "post_ui",
+      "symbol": "semu_render_post_ui_gl",
+      "source": "src/citra_qt/bootmanager.cpp",
+      "function": "OpenGLRenderWidget::Present",
+      "after": "frontend rendering",
+      "before": "context SwapBuffers"
+    }
+  ],
+  "surfaces": [
+    {
+      "index": 0,
+      "id": "top",
+      "geometry": "framebuffer_layout.top_screen",
+      "native": {
+        "w": 400,
+        "h": 240
+      },
+      "origin": "top_left",
+      "orientation": "display_upright",
+      "rotation": 0
+    },
+    {
+      "index": 1,
+      "id": "bottom",
+      "geometry": "framebuffer_layout.bottom_screen",
+      "native": {
+        "w": 320,
+        "h": 240
+      },
+      "origin": "top_left",
+      "orientation": "display_upright",
+      "rotation": 0
+    }
+  ],
+  "orientation_contract": {
+    "sampled_pixels": "final_default_framebuffer_layout_rectangles",
+    "source_y_rule": "framebuffer_height - (surface_y + surface_height)",
+    "asymmetric_probe": {
+      "framebuffer": {
+        "w": 1280,
+        "h": 720
+      },
+      "top": {
+        "lane": 0,
+        "x": 37,
+        "y": 29,
+        "w": 800,
+        "h": 480,
+        "source_y": 211,
+        "corner": "top_left_red"
+      },
+      "bottom": {
+        "lane": 1,
+        "x": 877,
+        "y": 311,
+        "w": 320,
+        "h": 240,
+        "source_y": 169,
+        "corner": "top_left_blue"
+      },
+      "expected_lane_order": [
+        "top",
+        "bottom"
+      ],
+      "expected_rotation": [
+        0,
+        0
+      ]
+    }
+  },
+  "composition": {
+    "owner": "semurenderer",
+    "shader": "renderer_owned",
+    "bezel": "renderer_owned",
+    "semu_menu": "renderer_owned",
+    "azahar_ui": "between_game_and_post_ui_phases",
+    "surface_order": [
+      "top",
+      "bottom"
+    ]
+  },
+  "doc": {
+    "boundary": "TryPresent submits the final default-framebuffer layout rectangles after its game blit. OpenGLRenderWidget submits the same frame after frontend rendering and immediately before SwapBuffers.",
+    "orientation": "Both sampled rectangles are already display-oriented. Their top-left coordinates are converted to GL source_y independently of rotation, and both lanes report rotation zero.",
+    "pointer_mapping": "OpenGLRenderWidget copies each successful ABI 2 pointer map into GRenderWindow before post-UI composition. Mouse and touch presses must land in bottom surface 1; only a successful press captures that surface, and captured movement clamps to it. ABI-native bottom-screen coordinates enter EmuWindow without Azahar's framebuffer-layout or stereo transforms.",
+    "evidence": "The asymmetric 400x240 top and 320x240 bottom lanes, distinct placement probe, package linkage, phase order, and forbidden-symbol absence are source gates. Runtime pixels remain a separate acceptance gate."
+  }
+}
