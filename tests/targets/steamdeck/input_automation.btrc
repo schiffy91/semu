@@ -4,6 +4,10 @@
 import std.{json, strings, vector}
 
 class DeckInputAutomation {
+    class string evidenceStage(string name) {
+        return "# semu-evidence-stage " + name;
+    }
+
     class Vector<string> strings(JsonValue value) {
         Vector<string> result = [];
         if (!value.isArray()) { return result; }
@@ -199,9 +203,17 @@ class DeckInputAutomation {
             "# Semu synthetic input; never human physical evidence",
             "wait|1000"
         ];
-        for line in DeckInputAutomation.strings(
-                automation.get("gameplay")) {
-            lines.push(line);
+        Vector<string> gameplay = DeckInputAutomation.strings(
+            automation.get("gameplay"));
+        Vector<string> gameplayStages = [
+            "gameplay-directional", "gameplay-face"
+        ];
+        for (int index = 0; index < gameplay.size(); index++) {
+            if (index >= gameplayStages.size()) { return ""; }
+            lines.push(DeckInputAutomation.evidenceStage(
+                gameplayStages.get(index)));
+            lines.push(gameplay.get(index));
+            lines.push("wait|250");
         }
         JsonValue quick = automation.get("quick_radial");
         for (int index = 0; index < quick.size(); index++) {
@@ -210,11 +222,14 @@ class DeckInputAutomation {
             if (action.equals("state.load") || action.equals("app.quit")) {
                 continue;
             }
+            lines.push(DeckInputAutomation.evidenceStage(
+                action.equals("state.save") ? "state-save" : "quick-radial"));
             for line in DeckInputAutomation.radialLines(
                     DeckInputAutomation.single(entry), "") {
                 lines.push(line);
             }
         }
+        lines.push(DeckInputAutomation.evidenceStage("state-change"));
         for line in DeckInputAutomation.strings(
                 automation.get("state_change")) {
             lines.push(line);
@@ -222,17 +237,20 @@ class DeckInputAutomation {
         for (int index = 0; index < quick.size(); index++) {
             JsonValue entry = quick.at(index);
             if (entry.get("action").asString().equals("state.load")) {
+                lines.push(DeckInputAutomation.evidenceStage("state-load"));
                 for line in DeckInputAutomation.radialLines(
                         DeckInputAutomation.single(entry), "") {
                     lines.push(line);
                 }
             }
         }
+        lines.push(DeckInputAutomation.evidenceStage("menu-radial"));
         for line in DeckInputAutomation.radialLines(
                 automation.get("menu_radial"), "") {
             lines.push(line);
         }
         if (wii) {
+            lines.push(DeckInputAutomation.evidenceStage("wii-modes"));
             for line in DeckInputAutomation.radialLines(
                     automation.get("wii_modes"), "") {
                 lines.push(line);
@@ -242,6 +260,10 @@ class DeckInputAutomation {
         for line in Strings.split(quit, "\n") {
             if (!line.isEmpty() && !line.startsWith("#")
                     && !line.startsWith("wait|")) {
+                if (!lines.get(lines.size() - 1).equals(
+                        DeckInputAutomation.evidenceStage("radial-quit"))) {
+                    lines.push(DeckInputAutomation.evidenceStage("radial-quit"));
+                }
                 lines.push(line);
             }
         }
