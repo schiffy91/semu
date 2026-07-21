@@ -2,11 +2,15 @@
 // module never controls the Deck; it evaluates artifacts produced by the
 // exact-shortcut Game Mode helper.
 
+#define STB_IMAGE_IMPLEMENTATION
+#include "stb_image.h"
+
 import std.{fs, image, json, strings, vector}
 import ../../../src/generators/input/action_abi.btrc
 import ./acceptance_plan.btrc
 import ./deck_transport.btrc
 import ./game_mode.btrc
+import ./run_evidence.btrc
 
 class DeckEvidenceRectangle {
     public int x;
@@ -81,6 +85,143 @@ class DeckEvidenceImage {
     }
 }
 
+class DeckScreenshotProbe {
+    public bool valid;
+    public int width;
+    public int height;
+
+    public DeckScreenshotProbe() {
+        self.valid = false;
+        self.width = 0;
+        self.height = 0;
+    }
+
+    class bool meaningful(unsigned char* pixels, int imageWidth,
+                          int imageHeight,
+                          DeckEvidenceRectangle rectangle) {
+        if (pixels == null || !rectangle.inside(
+                imageWidth, imageHeight)) {
+            return false;
+        }
+        long long sampled = 0LL;
+        long long lit = 0LL;
+        int minimum = 765;
+        int maximum = 0;
+        int stepX = rectangle.width > 512 ? rectangle.width / 512 : 1;
+        int stepY = rectangle.height > 512 ? rectangle.height / 512 : 1;
+        for (int y = rectangle.y; y < rectangle.y + rectangle.height;
+                y += stepY) {
+            int row = imageHeight - y - 1;
+            for (int x = rectangle.x; x < rectangle.x + rectangle.width;
+                    x += stepX) {
+                unsigned char* pixel = pixels
+                    + ((size_t)row * (size_t)imageWidth + (size_t)x)
+                        * (size_t)4;
+                int level = (int)pixel[0] + (int)pixel[1] + (int)pixel[2];
+                sampled++;
+                if (level >= 12) { lit++; }
+                if (level < minimum) { minimum = level; }
+                if (level > maximum) { maximum = level; }
+            }
+        }
+        long long required = sampled / 1000LL;
+        if (required < 64LL) { required = 64LL; }
+        if (required > sampled) { required = sampled; }
+        return sampled > 0LL && lit >= required && maximum - minimum >= 16;
+    }
+
+    class DeckScreenshotProbe load(string path,
+                                   Vector<DeckEvidenceRectangle> regions) {
+        DeckScreenshotProbe result = DeckScreenshotProbe();
+        if (!FileSystem.isFile(path) || FileSystem.isSymlink(path)) {
+            return result;
+        }
+        int channels = 0;
+        unsigned char* pixels = stbi_load(
+            path, &result.width, &result.height, &channels, 4);
+        if (pixels == null || result.width < 1 || result.height < 1) {
+            if (pixels != null) { stbi_image_free((void*)pixels); }
+            return result;
+        }
+        if (regions.isEmpty()) {
+            DeckEvidenceRectangle full = DeckEvidenceRectangle();
+            full.width = result.width;
+            full.height = result.height;
+            full.valid = true;
+            regions.push(full);
+        }
+        result.valid = true;
+        for region in regions {
+            if (!DeckScreenshotProbe.meaningful(
+                    pixels, result.width, result.height, region)) {
+                result.valid = false;
+            }
+        }
+        stbi_image_free((void*)pixels);
+        return result;
+    }
+
+    class bool inAny(int x, int y,
+                     Vector<DeckEvidenceRectangle> regions) {
+        for region in regions {
+            if (region.valid && x >= region.x && x < region.x + region.width
+                    && y >= region.y && y < region.y + region.height) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    class bool radialOverlay(string baselinePath, string candidatePath,
+                             Vector<DeckEvidenceRectangle> content) {
+        int baselineWidth = 0;
+        int baselineHeight = 0;
+        int baselineChannels = 0;
+        int candidateWidth = 0;
+        int candidateHeight = 0;
+        int candidateChannels = 0;
+        unsigned char* baseline = stbi_load(
+            baselinePath, &baselineWidth, &baselineHeight,
+            &baselineChannels, 4);
+        unsigned char* candidate = stbi_load(
+            candidatePath, &candidateWidth, &candidateHeight,
+            &candidateChannels, 4);
+        if (baseline == null || candidate == null
+                || baselineWidth != candidateWidth
+                || baselineHeight != candidateHeight
+                || baselineWidth < 1 || baselineHeight < 1) {
+            if (baseline != null) { stbi_image_free((void*)baseline); }
+            if (candidate != null) { stbi_image_free((void*)candidate); }
+            return false;
+        }
+        long long outside = 0LL;
+        long long changed = 0LL;
+        for (int y = 0; y < baselineHeight; y++) {
+            int rendererY = baselineHeight - y - 1;
+            for (int x = 0; x < baselineWidth; x++) {
+                if (DeckScreenshotProbe.inAny(x, rendererY, content)) {
+                    continue;
+                }
+                outside++;
+                size_t offset = ((size_t)y * (size_t)baselineWidth
+                    + (size_t)x) * (size_t)4;
+                int difference = abs((int)baseline[offset]
+                        - (int)candidate[offset])
+                    + abs((int)baseline[offset + (size_t)1]
+                        - (int)candidate[offset + (size_t)1])
+                    + abs((int)baseline[offset + (size_t)2]
+                        - (int)candidate[offset + (size_t)2]);
+                if (difference >= 48) { changed++; }
+            }
+        }
+        stbi_image_free((void*)baseline);
+        stbi_image_free((void*)candidate);
+        long long required = outside / 500LL;
+        if (required < 64LL) { required = 64LL; }
+        return outside >= 256LL && changed >= required;
+    }
+}
+
 class DeckAcceptanceEvidence {
     class string runtimePath(string root, string name) {
         return PathTools.join(root, "runtime/" + name);
@@ -89,6 +230,17 @@ class DeckAcceptanceEvidence {
     class string safeText(string path) {
         return FileSystem.isFile(path) && !FileSystem.isSymlink(path)
             ? FileSystem.readText(path) : "";
+    }
+
+    class Vector<string> bound(DeckGameModeRequest request,
+                               Vector<string> fields) {
+        Vector<string> result = [
+            "run_id=" + request.runId,
+            "harness_revision=" + request.harnessRevision,
+            "artifact_sha256=" + request.releaseSha256
+        ];
+        for field in fields { result.push(field); }
+        return result;
     }
 
     class bool dimensions(string value, int* width, int* height) {
@@ -113,12 +265,16 @@ class DeckAcceptanceEvidence {
             && JsonValue.parse(fields.get(3)).asFloat() > 0.0;
     }
 
-    class string capturedRendererLine(string log, DeckSystemCase system) {
+    class string capturedRendererLine(string log, DeckSystemCase system,
+                                      DeckGameModeRequest request) {
         for line in DeckHarnessStrings.lines(log) {
             if (!DeckHarnessStrings.lineHasFields(line,
-                    ["schema=2", "phase=post_ui", "system_id=" + system.id,
-                     "emulator_id=" + system.emulator, "matched=1",
-                     "status=1", "nonblank=1", "capture_exhausted=0"])) {
+                    DeckAcceptanceEvidence.bound(request,
+                        ["schema=3", "phase=post_ui",
+                         "system_id=" + system.id,
+                         "emulator_id=" + system.emulator, "matched=1",
+                         "status=1", "nonblank=1",
+                         "capture_exhausted=0"]))) {
                 continue;
             }
             string frame = DeckHarnessStrings.field(line, "frame_id");
@@ -127,6 +283,9 @@ class DeckAcceptanceEvidence {
             if (!frame.isEmpty() && frame.equals(captured)
                     && !frame.equals("0")
                     && DeckHarnessStrings.field(
+                        line, "capture_target").toInt()
+                        == request.captureFrame
+                    && DeckHarnessStrings.field(
                         line, "capture_count").toInt() >= 1) {
                 return line;
             }
@@ -134,14 +293,17 @@ class DeckAcceptanceEvidence {
         return "";
     }
 
-    class DeckHarnessResult renderer(DeckSystemCase system, string root) {
+    class DeckHarnessResult renderer(DeckSystemCase system,
+                                     DeckGameModeRequest request,
+                                     string root) {
         string logPath = DeckAcceptanceEvidence.runtimePath(
             root, "semu-render-evidence.log");
         string imagePath = DeckAcceptanceEvidence.runtimePath(
             root, "semu-render-final.ppm");
         string log = DeckAcceptanceEvidence.safeText(logPath);
         ImageLoad loaded = ImageIO.loadPpm(imagePath);
-        string line = DeckAcceptanceEvidence.capturedRendererLine(log, system);
+        string line = DeckAcceptanceEvidence.capturedRendererLine(
+            log, system, request);
         int framebufferWidth = 0;
         int framebufferHeight = 0;
         if (!loaded.ok() || line.isEmpty()
@@ -230,13 +392,15 @@ class DeckAcceptanceEvidence {
         return result;
     }
 
-    class bool immediate(string log, string source, string reason,
-                         int expected) {
+    class bool immediate(string log, DeckGameModeRequest request,
+                         string source, string reason, int expected) {
         int count = 0;
         for line in DeckHarnessStrings.lines(log) {
             if (!DeckHarnessStrings.lineHasFields(line,
-                    ["schema=1", "event=process-group-terminate",
-                     "source=" + source, "reason=" + reason, "reaped=1"])) {
+                    DeckAcceptanceEvidence.bound(request,
+                        ["schema=1", "event=process-group-terminate",
+                         "source=" + source, "reason=" + reason,
+                         "reaped=1"]))) {
                 continue;
             }
             int elapsed = DeckHarnessStrings.field(line, "elapsed_ms").toInt();
@@ -246,38 +410,60 @@ class DeckAcceptanceEvidence {
         return count >= expected;
     }
 
-    class bool radialAction(string log, string source, string action,
-                            int radial, int slot) {
+    class bool radialAction(string log, DeckGameModeRequest request,
+                            string source, string action, int radial,
+                            int slot) {
         int code = SemuActions.code(action);
         if (code == SemuActions.none()) { return false; }
         string edge = DeckHarnessStrings.matchingLine(log,
-            ["schema=1", "event=action-edge", "source=" + source,
-             "action=" + f"{code}", "radial=" + f"{radial}",
-             "slot=" + f"{slot}",
-             "quit=" + (action.equals("app.quit") ? "1" : "0")]);
+            DeckAcceptanceEvidence.bound(request,
+                ["schema=1", "event=action-edge", "source=" + source,
+                 "action=" + f"{code}", "radial=" + f"{radial}",
+                 "slot=" + f"{slot}",
+                 "quit=" + (action.equals("app.quit") ? "1" : "0")]));
         return !edge.isEmpty() && (radial == 3
             || !DeckHarnessStrings.matchingLine(log,
-                ["schema=1", "event=radial-edge", "source=" + source,
-                 "radial=" + f"{radial}", "slot=" + f"{slot}"]).isEmpty());
+                DeckAcceptanceEvidence.bound(request,
+                    ["schema=1", "event=radial-edge", "source=" + source,
+                     "radial=" + f"{radial}",
+                     "slot=" + f"{slot}"])).isEmpty());
     }
 
     class DeckHarnessResult gameplay(DeckSystemCase system,
                                      DeckGameModeRequest request,
-                                     string log, string source) {
+                                     JsonValue receipt, string log,
+                                     string source) {
         string romSha256 = request.protectedInputs.get(0).sha256;
+        JsonValue gameplay = receipt.get("phases").get("gameplay");
+        int gamePidValue = gameplay.get("game_pid").isInt()
+            ? gameplay.get("game_pid").asInt() : 0;
+        string gamePid = gamePidValue > 0 ? f"{gamePidValue}" : "";
+        string gameStart = gameplay.get("game_start").isString()
+            ? gameplay.get("game_start").asString() : "";
         for control in ["directional", "face"] {
             string line = DeckHarnessStrings.matchingLine(log,
-                ["schema=1", "event=gameplay-input", "system_id=" + system.id,
-                 "emulator_id=" + system.emulator,
-                 "rom_sha256=" + romSha256, "source=" + source,
-                 "control=" + control, "consumed=1"]);
+                DeckAcceptanceEvidence.bound(request,
+                    ["schema=1", "event=gameplay-input",
+                     "system_id=" + system.id,
+                     "emulator_id=" + system.emulator,
+                     "rom_sha256=" + romSha256, "source=" + source,
+                     "control=" + control, "consumed=1",
+                     "game_pid=" + gamePid,
+                     "game_start=" + gameStart]));
             string before = DeckHarnessStrings.field(line, "frame_before");
             string after = DeckHarnessStrings.field(line, "frame_after");
+            string screenshotBefore = DeckHarnessStrings.field(
+                line, "screenshot_before_sha256");
+            string screenshotAfter = DeckHarnessStrings.field(
+                line, "screenshot_after_sha256");
             if (line.isEmpty() || !DeckHarnessStrings.lowerHex(before, 16)
                     || !DeckHarnessStrings.lowerHex(after, 16)
                     || before.equals("0000000000000000")
                     || after.equals("0000000000000000")
-                    || before.equals(after)) {
+                    || before.equals(after)
+                    || !DeckHarnessStrings.lowerHex(screenshotBefore, 64)
+                    || !DeckHarnessStrings.lowerHex(screenshotAfter, 64)
+                    || screenshotBefore.equals(screenshotAfter)) {
                 return DeckHarnessResult.failure(system.id
                     + ": gameplay control was not consumed: " + control);
             }
@@ -285,21 +471,78 @@ class DeckAcceptanceEvidence {
         return DeckHarnessResult.success();
     }
 
-    class DeckHarnessResult saveLoad(DeckSystemCase system, string log) {
+    class DeckHarnessResult saveLoad(DeckSystemCase system,
+                                     DeckGameModeRequest request,
+                                     JsonValue receipt, string log) {
         if (!system.savestateExpected) { return DeckHarnessResult.success(); }
+        JsonValue gameplay = receipt.get("phases").get("gameplay");
+        int gamePidValue = gameplay.get("game_pid").isInt()
+            ? gameplay.get("game_pid").asInt() : 0;
+        string gamePid = gamePidValue > 0 ? f"{gamePidValue}" : "";
+        string gameStart = gameplay.get("game_start").isString()
+            ? gameplay.get("game_start").asString() : "";
         string saved = DeckHarnessStrings.matchingLine(log,
-            ["schema=1", "event=state-save", "system_id=" + system.id,
-             "emulator_id=" + system.emulator, "consumed=1"]);
+            DeckAcceptanceEvidence.bound(request,
+                ["schema=1", "event=state-save", "system_id=" + system.id,
+                 "emulator_id=" + system.emulator, "consumed=1",
+                 "game_pid=" + gamePid, "game_start=" + gameStart,
+                 "state_changed=1"]));
         string loaded = DeckHarnessStrings.matchingLine(log,
-            ["schema=1", "event=state-load", "system_id=" + system.id,
-             "emulator_id=" + system.emulator, "consumed=1", "restored=1"]);
+            DeckAcceptanceEvidence.bound(request,
+                ["schema=1", "event=state-load", "system_id=" + system.id,
+                 "emulator_id=" + system.emulator, "consumed=1",
+                 "restored=1", "game_pid=" + gamePid,
+                 "game_start=" + gameStart]));
         string digest = DeckHarnessStrings.field(saved, "state_sha256");
+        string name = DeckHarnessStrings.field(saved, "state_name_sha256");
+        string bytes = DeckHarnessStrings.field(saved, "state_bytes");
+        string modified = DeckHarnessStrings.field(saved, "state_modified_ns");
+        string savedFrame = DeckHarnessStrings.field(saved, "frame_saved");
+        string changedFrame = DeckHarnessStrings.field(
+            loaded, "frame_changed");
+        string loadedSavedFrame = DeckHarnessStrings.field(
+            loaded, "frame_saved");
+        string restoredFrame = DeckHarnessStrings.field(
+            loaded, "frame_restored");
         if (saved.isEmpty() || loaded.isEmpty()
                 || !DeckHarnessStrings.lowerHex(digest, 64)
+                || !DeckHarnessStrings.lowerHex(name, 64)
+                || !DeckRunEvidence.positiveDecimal(bytes)
+                || !DeckRunEvidence.notBefore(
+                    modified, DeckRunEvidence.started(receipt))
+                || !["0", "1"].contains(
+                    DeckHarnessStrings.field(saved, "state_created"))
+                || !DeckHarnessStrings.lowerHex(savedFrame, 16)
+                || !DeckHarnessStrings.lowerHex(changedFrame, 16)
+                || !DeckHarnessStrings.lowerHex(restoredFrame, 16)
+                || savedFrame.equals(changedFrame)
+                || !loadedSavedFrame.equals(savedFrame)
+                || !restoredFrame.equals(savedFrame)
                 || !DeckHarnessStrings.field(
                     loaded, "state_sha256").equals(digest)
+                || !DeckHarnessStrings.field(
+                    loaded, "state_name_sha256").equals(name)
+                || !DeckHarnessStrings.field(
+                    loaded, "state_bytes").equals(bytes)
                 || !DeckHarnessStrings.field(loaded, "slot").equals(
-                    DeckHarnessStrings.field(saved, "slot"))) {
+                    DeckHarnessStrings.field(saved, "slot"))
+                || !DeckHarnessStrings.lowerHex(
+                    DeckHarnessStrings.field(
+                        saved, "screenshot_saved_sha256"), 64)
+                || !DeckHarnessStrings.field(
+                    loaded, "screenshot_saved_sha256").equals(
+                        DeckHarnessStrings.field(
+                            saved, "screenshot_saved_sha256"))
+                || !DeckHarnessStrings.lowerHex(
+                    DeckHarnessStrings.field(
+                        loaded, "screenshot_changed_sha256"), 64)
+                || DeckHarnessStrings.field(
+                    loaded, "screenshot_changed_sha256").equals(
+                        DeckHarnessStrings.field(
+                            saved, "screenshot_saved_sha256"))
+                || !DeckHarnessStrings.lowerHex(
+                    DeckHarnessStrings.field(
+                        loaded, "screenshot_restored_sha256"), 64)) {
             return DeckHarnessResult.failure(system.id
                 + ": save/load restoration is unproven");
         }
@@ -309,7 +552,7 @@ class DeckAcceptanceEvidence {
     class DeckHarnessResult input(DeckSystemCase system,
                                   DeckAcceptancePlan plan,
                                   DeckGameModeRequest request,
-                                  string root) {
+                                  JsonValue receipt, string root) {
         string input = DeckAcceptanceEvidence.safeText(
             DeckAcceptanceEvidence.runtimePath(
                 root, "semu-input-evidence.log"));
@@ -320,29 +563,31 @@ class DeckAcceptanceEvidence {
         string source = automated ? "virtual" : "hardware";
         string gameplaySource = automated
             ? "steam-virtual-gamepad" : "hardware";
-        DeckHarnessResult controls = DeckAcceptanceEvidence.gameplay(
-            system, request, emulator, gameplaySource);
-        if (!controls.ok()) { return controls; }
+        if (!request.operation.equals("operator-start-select")) {
+            DeckHarnessResult controls = DeckAcceptanceEvidence.gameplay(
+                system, request, receipt, emulator, gameplaySource);
+            if (!controls.ok()) { return controls; }
+        }
         if (!request.operation.equals("operator-start-select")) {
             for (int slot = 0; slot < plan.quickRadial.size(); slot++) {
-                if (!DeckAcceptanceEvidence.radialAction(input, source,
-                        plan.quickRadial.get(slot), 1, slot)) {
+                if (!DeckAcceptanceEvidence.radialAction(input, request,
+                        source, plan.quickRadial.get(slot), 1, slot)) {
                     return DeckHarnessResult.failure(system.id
                         + f": quick radial slot {slot} is unproven");
                 }
             }
             for (int slot = 0; slot < plan.menuRadial.size(); slot++) {
-                if (!DeckAcceptanceEvidence.radialAction(input, source,
-                        plan.menuRadial.get(slot), 2, slot)) {
+                if (!DeckAcceptanceEvidence.radialAction(input, request,
+                        source, plan.menuRadial.get(slot), 2, slot)) {
                     return DeckHarnessResult.failure(system.id
                         + f": menu radial slot {slot} is unproven");
                 }
             }
             DeckHarnessResult state = DeckAcceptanceEvidence.saveLoad(
-                system, emulator);
+                system, request, receipt, emulator);
             if (!state.ok()) { return state; }
             if (!DeckAcceptanceEvidence.immediate(
-                    input, source, "action-chord", 1)) {
+                    input, request, source, "action-chord", 1)) {
                 return DeckHarnessResult.failure(system.id
                     + ": radial quit was not immediate");
             }
@@ -353,12 +598,15 @@ class DeckAcceptanceEvidence {
                 for (int slot = 0; slot < plan.wiiModes.size(); slot++) {
                     string mode = plan.wiiModes.get(slot);
                     if (!DeckAcceptanceEvidence.radialAction(
-                            input, source, mode, 3, slot)
+                            input, request, source, mode, 3, slot)
                             || DeckAcceptanceEvidence.matchingCount(modes,
-                                ["schema=1", "event=wii-controller-mode",
-                                 "system_id=wii", "emulator_id=dolphin",
-                                 "action=" + mode, "applied=1",
-                                 "consumer=dolphin"]) < 1) {
+                                DeckAcceptanceEvidence.bound(request,
+                                    ["schema=1",
+                                     "event=wii-controller-mode",
+                                     "system_id=wii",
+                                     "emulator_id=dolphin",
+                                     "action=" + mode, "applied=1",
+                                     "consumer=dolphin"])) < 1) {
                         return DeckHarnessResult.failure(
                             "wii: controller mode is unproven: " + mode);
                     }
@@ -367,14 +615,38 @@ class DeckAcceptanceEvidence {
         }
         if (!request.operation.equals("operator-radial")
                 && !DeckAcceptanceEvidence.immediate(
-                    input, source, "select+start", 2)) {
+                    input, request, source, "select+start", 2)) {
             return DeckHarnessResult.failure(system.id
                 + ": both Start+Select press orders are unproven");
         }
         return DeckHarnessResult.success();
     }
 
-    class DeckHarnessResult screenshots(JsonValue receipt, string root) {
+    class DeckHarnessResult artifacts(JsonValue receipt, string root) {
+        JsonValue artifacts = receipt.get("artifacts");
+        if (!artifacts.isArray()) {
+            return DeckHarnessResult.failure(
+                "run artifact manifest is absent after collection");
+        }
+        for (int index = 0; index < artifacts.size(); index++) {
+            JsonValue artifact = artifacts.at(index);
+            string name = DeckGameModeContract.text(artifact, "name");
+            string expected = DeckGameModeContract.text(
+                artifact, "sha256");
+            string path = PathTools.join(root, name);
+            if (!DeckRunEvidence.safeRelative(name)
+                    || !DeckHostDigest.file(path).equals(expected)) {
+                return DeckHarnessResult.failure(
+                    "collected run artifact is absent, linked, or mismatched: "
+                    + name);
+            }
+        }
+        return DeckHarnessResult.success();
+    }
+
+    class DeckHarnessResult screenshots(DeckSystemCase system,
+                                        DeckGameModeRequest request,
+                                        JsonValue receipt, string root) {
         JsonValue launch = receipt.get("launch");
         Vector<string> names = ["frontend-game-mode.png", "game-running.png",
             "esde-return.png"];
@@ -384,11 +656,121 @@ class DeckAcceptanceEvidence {
             string path = PathTools.join(root, names.get(index));
             string expected = launch.get(fields.get(index)).isString()
                 ? launch.get(fields.get(index)).asString() : "";
-            if (!DeckHostDigest.file(path).equals(expected)) {
+            if (!DeckHostDigest.file(path).equals(expected)
+                    || !DeckRunEvidence.artifactDigest(
+                        receipt, names.get(index)).equals(expected)) {
                 return DeckHarnessResult.failure(
                     "Game Mode screenshot digest is absent or mismatched: "
                     + names.get(index));
             }
+        }
+
+        if (request.operation.equals("operator-start-select")) {
+            Vector<DeckEvidenceRectangle> full = [];
+            DeckScreenshotProbe frontend = DeckScreenshotProbe.load(
+                PathTools.join(root, "frontend-game-mode.png"), full);
+            Vector<DeckEvidenceRectangle> gameRegions = [];
+            DeckScreenshotProbe game = DeckScreenshotProbe.load(
+                PathTools.join(root, "game-running.png"), gameRegions);
+            Vector<DeckEvidenceRectangle> returnedRegions = [];
+            DeckScreenshotProbe returned = DeckScreenshotProbe.load(
+                PathTools.join(root, "esde-return.png"), returnedRegions);
+            if (!frontend.valid || !game.valid || !returned.valid
+                    || frontend.width < 640 || frontend.height < 400
+                    || game.width != frontend.width
+                    || game.height != frontend.height
+                    || returned.width != frontend.width
+                    || returned.height != frontend.height
+                    || launch.get("game_screenshot_sha256").asString().equals(
+                        launch.get("frontend_screenshot_sha256").asString())
+                    || launch.get("game_screenshot_sha256").asString().equals(
+                        launch.get("return_screenshot_sha256").asString())) {
+                return DeckHarnessResult.failure(system.id
+                    + ": Start+Select screenshots are blank, stale, or cross-session");
+            }
+            return DeckHarnessResult.success();
+        }
+
+        string rendererLog = DeckAcceptanceEvidence.safeText(
+            DeckAcceptanceEvidence.runtimePath(
+                root, "semu-render-evidence.log"));
+        string rendererLine = DeckAcceptanceEvidence.capturedRendererLine(
+            rendererLog, system, request);
+        int framebufferWidth = 0;
+        int framebufferHeight = 0;
+        Vector<DeckEvidenceRectangle> content = [];
+        if (rendererLine.isEmpty()
+                || !DeckAcceptanceEvidence.dimensions(
+                    DeckHarnessStrings.field(
+                        rendererLine, "framebuffer_size"),
+                    &framebufferWidth, &framebufferHeight)) {
+            return DeckHarnessResult.failure(
+                system.id + ": screenshots have no run-bound renderer geometry");
+        }
+        for (int index = 0; index < system.surfaces.size(); index++) {
+            DeckEvidenceRectangle rectangle = DeckEvidenceRectangle.parse(
+                DeckHarnessStrings.field(rendererLine,
+                    "surface" + f"{index}" + "_content"));
+            if (!rectangle.inside(framebufferWidth, framebufferHeight)) {
+                return DeckHarnessResult.failure(system.id
+                    + ": screenshot content rectangle is invalid");
+            }
+            content.push(rectangle);
+        }
+
+        Vector<DeckEvidenceRectangle> full = [];
+        DeckScreenshotProbe frontend = DeckScreenshotProbe.load(
+            PathTools.join(root, "frontend-game-mode.png"), full);
+        DeckScreenshotProbe game = DeckScreenshotProbe.load(
+            PathTools.join(root, "game-running.png"), content);
+        Vector<DeckEvidenceRectangle> returnedRegions = [];
+        DeckScreenshotProbe returned = DeckScreenshotProbe.load(
+            PathTools.join(root, "esde-return.png"), returnedRegions);
+        if (!frontend.valid || frontend.width < 640 || frontend.height < 400
+                || !game.valid || game.width != framebufferWidth
+                || game.height != framebufferHeight
+                || !returned.valid || returned.width < 640
+                || returned.height < 400
+                || launch.get("game_screenshot_sha256").asString().equals(
+                    launch.get("frontend_screenshot_sha256").asString())
+                || launch.get("game_screenshot_sha256").asString().equals(
+                    launch.get("return_screenshot_sha256").asString())) {
+            return DeckHarnessResult.failure(system.id
+                + ": Game Mode screenshots are blank, stale, or lack meaningful game-region pixels");
+        }
+
+        int checkedOperator = 0;
+        Vector<string> operatorDigests = [];
+        JsonValue artifacts = receipt.get("artifacts");
+        for (int index = 0; index < artifacts.size()
+                && checkedOperator < 8; index++) {
+            string name = DeckGameModeContract.text(
+                artifacts.at(index), "name");
+            if (!DeckRunEvidence.operatorScreenshot(name)) { continue; }
+            Vector<DeckEvidenceRectangle> operatorRegions = [];
+            DeckScreenshotProbe probe = DeckScreenshotProbe.load(
+                PathTools.join(root, name), operatorRegions);
+            if (!probe.valid || probe.width != game.width
+                    || probe.height != game.height
+                    || !DeckScreenshotProbe.radialOverlay(
+                        PathTools.join(root, "game-running.png"),
+                        PathTools.join(root, name), content)) {
+                return DeckHarnessResult.failure(system.id
+                    + ": operator radial screenshot does not show a radial/menu overlay");
+            }
+            string digest = DeckRunEvidence.artifactDigest(receipt, name);
+            if (!DeckHarnessStrings.lowerHex(digest, 64)
+                    || operatorDigests.contains(digest)) {
+                return DeckHarnessResult.failure(system.id
+                    + ": operator radial screenshots are stale or duplicated");
+            }
+            operatorDigests.push(digest);
+            checkedOperator++;
+        }
+        if (request.operation.equals("operator-radial")
+                && checkedOperator < 2) {
+            return DeckHarnessResult.failure(system.id
+                + ": quick and menu radial screenshots are not both evidenced");
         }
         return DeckHarnessResult.success();
     }
@@ -403,13 +785,18 @@ class DeckAcceptanceEvidence {
         string policy = DeckGameModeReceiptPolicy.verify(
             collected.document, request);
         if (!policy.isEmpty()) { return DeckHarnessResult.failure(policy); }
-        DeckHarnessResult screenshots = DeckAcceptanceEvidence.screenshots(
+        DeckHarnessResult artifacts = DeckAcceptanceEvidence.artifacts(
             collected.document, collected.localRoot);
+        if (!artifacts.ok()) { return artifacts; }
+        DeckHarnessResult screenshots = DeckAcceptanceEvidence.screenshots(
+            system, request, collected.document, collected.localRoot);
         if (!screenshots.ok()) { return screenshots; }
-        DeckHarnessResult renderer = DeckAcceptanceEvidence.renderer(
-            system, collected.localRoot);
-        if (!renderer.ok()) { return renderer; }
+        if (!request.operation.equals("operator-start-select")) {
+            DeckHarnessResult renderer = DeckAcceptanceEvidence.renderer(
+                system, request, collected.localRoot);
+            if (!renderer.ok()) { return renderer; }
+        }
         return DeckAcceptanceEvidence.input(
-            system, plan, request, collected.localRoot);
+            system, plan, request, collected.document, collected.localRoot);
     }
 }

@@ -1,10 +1,12 @@
 // Focused contracts for the compiler-derived Steam Deck acceptance harness.
 
-import std.{bytes, cli, fs, json, strings, vector}
+import std.{bytes, cli, fs, io, json, strings, vector}
+import ./acceptance_evidence.btrc
 import ./acceptance_plan.btrc
 import ./evidence.btrc
 import ./game_mode.btrc
 import ./input_automation.btrc
+import ./run_evidence.btrc
 import ./steam_shortcuts.btrc
 
 class DeckSteamShortcutFixture {
@@ -72,6 +74,28 @@ class DeckHarnessContractTest {
     class string oneHash() {
         return "1111111111111111111111111111111111111111111111111111111111111111";
     }
+
+    class string runId() {
+        return "0123456789abcdef0123456789abcdef";
+    }
+
+    class string otherRunId() {
+        return "fedcba9876543210fedcba9876543210";
+    }
+
+    class string revision() {
+        return "2222222222222222222222222222222222222222";
+    }
+
+    class string artifactHash() {
+        return "3333333333333333333333333333333333333333333333333333333333333333";
+    }
+
+    class string requestHash() {
+        return "4444444444444444444444444444444444444444444444444444444444444444";
+    }
+
+    class string startedNs() { return "1784500000000000000"; }
 
     class int fail(string message) {
         print("  FAIL steamdeck harness: " + message);
@@ -172,6 +196,8 @@ class DeckHarnessContractTest {
                     expected.get("evidence_class").asString())
                     || !DeckEvidenceClass.inputOrigin(scenario).equals(
                         expected.get("input_origin").asString())
+                    || !DeckEvidenceClass.proofMode(scenario).equals(
+                        expected.get("proof_mode").asString())
                     || DeckEvidenceClass.acceptanceEligible(scenario)
                         != expected.get("acceptance_eligible").asBool()
                     || !DeckEvidenceReceiptPolicy.verifyClassification(
@@ -191,6 +217,8 @@ class DeckHarnessContractTest {
             DeckEvidenceClass.forScenario(scenario)));
         result.set("input_origin", JsonValue.makeString(
             DeckEvidenceClass.inputOrigin(scenario)));
+        result.set("proof_mode", JsonValue.makeString(
+            DeckEvidenceClass.proofMode(scenario)));
         result.set("synthetic_input", JsonValue.makeBool(
             DeckEvidenceClass.synthetic(scenario)));
         result.set("human_input", JsonValue.makeBool(
@@ -207,7 +235,11 @@ class DeckHarnessContractTest {
         DeckGameModeRequest request = DeckGameModeRequest();
         request.operation = "automated-game-mode";
         request.scenario = request.operation;
-        request.runRoot = "/home/deck/.local/share/semu/build/verification/steamdeck/runs/fixture";
+        request.runId = DeckHarnessContractTest.runId();
+        request.harnessRevision = DeckHarnessContractTest.revision();
+        request.documentSha256 = DeckHarnessContractTest.requestHash();
+        request.runRoot = "/home/deck/.local/share/semu/build/verification/steamdeck/runs/"
+            + request.runId;
         request.projectRoot = "/home/deck/.local/share/semu";
         request.esDeHome = "/home/deck/ES-DE";
         request.steamRoot = "/home/deck/.local/share/Steam";
@@ -222,7 +254,7 @@ class DeckHarnessContractTest {
             "/home/deck/ES-DE/settings/semu_settings.json"
         ];
         request.shortcut = shortcut;
-        request.releaseSha256 = DeckHarnessContractTest.zeroHash();
+        request.releaseSha256 = DeckHarnessContractTest.artifactHash();
         request.systemId = wii ? "wii" : "gb";
         request.emulatorId = wii ? "dolphin" : "retroarch";
         request.expectedExecutable = wii
@@ -262,7 +294,11 @@ class DeckHarnessContractTest {
             DeckExpectedShortcut shortcut) {
         DeckGameModeRequest request = DeckGameModeRequest();
         request.operation = "preflight";
-        request.runRoot = "/home/deck/.local/share/semu/build/verification/steamdeck/runs/preflight";
+        request.runId = DeckHarnessContractTest.runId();
+        request.harnessRevision = DeckHarnessContractTest.revision();
+        request.documentSha256 = DeckHarnessContractTest.requestHash();
+        request.runRoot = "/home/deck/.local/share/semu/build/verification/steamdeck/runs/"
+            + request.runId;
         request.projectRoot = "/home/deck/.local/share/semu";
         request.esDeHome = "/home/deck/ES-DE";
         request.steamRoot = "/home/deck/.local/share/Steam";
@@ -277,13 +313,42 @@ class DeckHarnessContractTest {
             "/home/deck/ES-DE/settings/semu_settings.json"
         ];
         request.shortcut = shortcut;
+        request.releaseSha256 = DeckHarnessContractTest.artifactHash();
         return request;
     }
 
-    class JsonValue preflightReceipt(DeckGameModeRequest request) {
+    class JsonValue installed(DeckGameModeRequest request) {
+        JsonValue installed = JsonValue.makeObject();
+        installed.set("artifact_path", JsonValue.makeString(
+            "/home/deck/Applications/Semu/Semu-x86_64.AppImage"));
+        installed.set("artifact_sha256",
+            JsonValue.makeString(request.releaseSha256));
+        installed.set("current_release",
+            JsonValue.makeString(request.releaseSha256));
+        installed.set("release_root", JsonValue.makeString(
+            "/home/deck/Applications/Semu/releases/"
+                + request.releaseSha256));
+        installed.set("launcher_path",
+            JsonValue.makeString(request.shortcut.executable));
+        installed.set("launcher_sha256", JsonValue.makeString(
+            request.shortcut.executableSha256));
+        return installed;
+    }
+
+    class JsonValue baseReceipt(DeckGameModeRequest request) {
         JsonValue receipt = JsonValue.makeObject();
-        receipt.set("schema_version", JsonValue.makeInt(1));
-        receipt.set("operation", JsonValue.makeString("preflight"));
+        receipt.set("schema_version", JsonValue.makeInt(2));
+        receipt.set("operation", JsonValue.makeString(request.operation));
+        receipt.set("run", DeckRunEvidence.binding(request.runId,
+            request.harnessRevision, request.releaseSha256,
+            request.documentSha256, DeckHarnessContractTest.startedNs()));
+        receipt.set("installed",
+            DeckHarnessContractTest.installed(request));
+        return receipt;
+    }
+
+    class JsonValue preflightReceipt(DeckGameModeRequest request) {
+        JsonValue receipt = DeckHarnessContractTest.baseReceipt(request);
         receipt.set("shortcut", request.shortcut.json());
         JsonValue checks = JsonValue.makeObject();
         checks.set("game_mode", JsonValue.makeBool(true));
@@ -375,6 +440,9 @@ class DeckHarnessContractTest {
         DeckGameModeRequest parsed = DeckGameModeRequest.parse(path);
         FileSystem.removeRecursive(temporary);
         if (!wrote || !parsed.valid()
+                || !parsed.runId.equals(request.runId)
+                || !parsed.harnessRevision.equals(request.harnessRevision)
+                || !parsed.releaseSha256.equals(request.releaseSha256)
                 || !parsed.shortcut.appId.equals(shortcut.appId)
                 || !parsed.shortcut.gameId.equals(shortcut.gameId)
                 || parsed.protectedInputs.size() != 1
@@ -392,6 +460,9 @@ class DeckHarnessContractTest {
 
         DeckGameModeRequest frontend = DeckGameModeRequest();
         frontend.operation = "frontend";
+        frontend.runId = request.runId;
+        frontend.harnessRevision = request.harnessRevision;
+        frontend.documentSha256 = request.documentSha256;
         frontend.runRoot = request.runRoot;
         frontend.projectRoot = request.projectRoot;
         frontend.esDeHome = request.esDeHome;
@@ -399,9 +470,8 @@ class DeckHarnessContractTest {
         frontend.externalRoots = request.externalRoots;
         frontend.generatedInputs = request.generatedInputs;
         frontend.shortcut = shortcut;
-        JsonValue receipt = JsonValue.makeObject();
-        receipt.set("schema_version", JsonValue.makeInt(1));
-        receipt.set("operation", JsonValue.makeString("frontend"));
+        frontend.releaseSha256 = request.releaseSha256;
+        JsonValue receipt = DeckHarnessContractTest.baseReceipt(frontend);
         receipt.set("evidence", DeckHarnessContractTest.evidence(
             "steam-shortcut-launch"));
         receipt.set("shortcut", shortcut.json());
@@ -409,7 +479,25 @@ class DeckHarnessContractTest {
         launch.set("steam_ancestry", JsonValue.makeBool(true));
         launch.set("same_game_mode_session", JsonValue.makeBool(true));
         launch.set("gamescope_screenshot", JsonValue.makeBool(true));
+        launch.set("screenshot_sha256", JsonValue.makeString(
+            DeckHarnessContractTest.oneHash()));
         receipt.set("launch", launch);
+        JsonValue artifacts = JsonValue.makeArray();
+        artifacts.push(DeckRunEvidence.artifact(frontend.runId,
+            "frontend-game-mode.png", DeckHarnessContractTest.oneHash(),
+            "4096", "1784500001000000000"));
+        receipt.set("artifacts", artifacts);
+        JsonValue phases = JsonValue.makeObject();
+        JsonValue launchPhase = DeckRunEvidence.phase(frontend.runId,
+            "1784500002000000000");
+        launchPhase.set("screenshot_sha256", JsonValue.makeString(
+            DeckHarnessContractTest.oneHash()));
+        launchPhase.set("steam_pid", JsonValue.makeInt(2));
+        launchPhase.set("es_de_pid", JsonValue.makeInt(3));
+        launchPhase.set("es_de_start", JsonValue.makeString("100"));
+        launchPhase.set("es_de_session", JsonValue.makeString("2"));
+        phases.set("launch", launchPhase);
+        receipt.set("phases", phases);
         JsonValue media = JsonValue.makeObject();
         media.set("external_tree_scans", JsonValue.makeInt(0));
         media.set("external_content_bytes_hashed", JsonValue.makeInt(0));
@@ -420,6 +508,540 @@ class DeckHarnessContractTest {
         receipt.get("shortcut").set("app_id", JsonValue.makeString("1"));
         return DeckGameModeReceiptPolicy.verify(
             receipt, frontend).contains("exact installed shortcut");
+    }
+
+    class string artifactDigest(string name) {
+        if (name.equals("frontend-game-mode.png")) {
+            return DeckHarnessContractTest.zeroHash();
+        }
+        if (name.equals("game-running.png")) {
+            return DeckHarnessContractTest.oneHash();
+        }
+        if (name.equals("esde-return.png")) {
+            return DeckHarnessContractTest.requestHash();
+        }
+        if (name.equals("runtime/semu-render-final.ppm")) {
+            return DeckHarnessContractTest.artifactHash();
+        }
+        return DeckHarnessContractTest.oneHash();
+    }
+
+    class JsonValue scenarioReceipt(DeckGameModeRequest request) {
+        bool automated = request.operation.equals("automated-game-mode");
+        bool radialRequired = !request.operation.equals(
+            "operator-start-select");
+        bool startSelectRequired = !request.operation.equals(
+            "operator-radial");
+        bool physicalStartSelect = request.operation.equals(
+            "operator-start-select");
+        bool physicalRadial = request.operation.equals("operator-radial");
+        bool stateRequired = request.savestateExpected && radialRequired;
+        JsonValue receipt = DeckHarnessContractTest.baseReceipt(request);
+        receipt.set("evidence", DeckHarnessContractTest.evidence(
+            request.scenario));
+        receipt.set("shortcut", request.shortcut.json());
+
+        JsonValue launch = JsonValue.makeObject();
+        launch.set("steam_ancestry", JsonValue.makeBool(true));
+        launch.set("same_game_mode_session", JsonValue.makeBool(true));
+        launch.set("same_es_de_session", JsonValue.makeBool(true));
+        launch.set("through_es_de", JsonValue.makeBool(true));
+        launch.set("packaged_process", JsonValue.makeBool(true));
+        launch.set("process_return", JsonValue.makeBool(true));
+        launch.set("gamescope_screenshot", JsonValue.makeBool(true));
+        launch.set("frontend_screenshot_sha256", JsonValue.makeString(
+            DeckHarnessContractTest.artifactDigest(
+                "frontend-game-mode.png")));
+        launch.set("game_screenshot_sha256", JsonValue.makeString(
+            DeckHarnessContractTest.artifactDigest("game-running.png")));
+        launch.set("return_screenshot_sha256", JsonValue.makeString(
+            DeckHarnessContractTest.artifactDigest("esde-return.png")));
+        receipt.set("launch", launch);
+
+        JsonValue media = JsonValue.makeObject();
+        media.set("external_tree_scans", JsonValue.makeInt(0));
+        media.set("external_content_bytes_hashed", JsonValue.makeInt(0));
+        media.set("external_mounts_readonly", JsonValue.makeBool(true));
+        media.set("protected_inputs_unchanged", JsonValue.makeBool(true));
+        receipt.set("media", media);
+        JsonValue protectedInputs = JsonValue.makeArray();
+        for protectedInput in request.protectedInputs {
+            protectedInputs.push(protectedInput.json());
+        }
+        receipt.set("protected_inputs", protectedInputs);
+
+        JsonValue generatedFiles = JsonValue.makeArray();
+        for path in request.generatedInputs {
+            JsonValue file = JsonValue.makeObject();
+            file.set("path", JsonValue.makeString(path));
+            file.set("sha256", JsonValue.makeString(
+                DeckHarnessContractTest.oneHash()));
+            generatedFiles.push(file);
+        }
+        JsonValue generated = JsonValue.makeObject();
+        generated.set("unchanged", JsonValue.makeBool(true));
+        generated.set("files", generatedFiles);
+        receipt.set("generated_inputs", generated);
+
+        JsonValue input = JsonValue.makeObject();
+        input.set("gameplay_injected", JsonValue.makeBool(automated));
+        input.set("gameplay_consumed", JsonValue.makeBool(true));
+        input.set("quick_radial_consumed", JsonValue.makeBool(true));
+        input.set("menu_radial_consumed", JsonValue.makeBool(true));
+        input.set("quick_radial_slots",
+            JsonValue.makeInt(radialRequired
+                ? request.quickRadialSlots : 0));
+        input.set("menu_radial_slots",
+            JsonValue.makeInt(radialRequired
+                ? request.menuRadialSlots : 0));
+        input.set("wii_mode_slots",
+            JsonValue.makeInt(radialRequired
+                ? request.wiiModeSlots : 0));
+        input.set("radial_quit_immediate", JsonValue.makeBool(true));
+        input.set("start_select_orders",
+            JsonValue.makeInt(startSelectRequired ? 2 : 0));
+        input.set("physical_start_select_proven",
+            JsonValue.makeBool(physicalStartSelect));
+        input.set("steam_radial_ui_proven",
+            JsonValue.makeBool(physicalRadial));
+        input.set("save_load_consumed", JsonValue.makeBool(true));
+        input.set("wii_modes_consumed", JsonValue.makeBool(true));
+        receipt.set("input", input);
+
+        JsonValue artifacts = JsonValue.makeArray();
+        for name in DeckGameModeReceiptPolicy.requiredArtifacts(request) {
+            artifacts.push(DeckRunEvidence.artifact(request.runId, name,
+                DeckHarnessContractTest.artifactDigest(name), "4096",
+                "1784500001000000000"));
+        }
+        if (physicalRadial) {
+            artifacts.push(DeckRunEvidence.artifact(request.runId,
+                "operator-radial-0.png", DeckHarnessContractTest.zeroHash(),
+                "4096", "1784500001000000000"));
+        }
+        receipt.set("artifacts", artifacts);
+
+        JsonValue phases = JsonValue.makeObject();
+        JsonValue launchPhase = DeckRunEvidence.phase(
+            request.runId, "1784500002000000000");
+        launchPhase.set("screenshot_sha256", JsonValue.makeString(
+            DeckHarnessContractTest.artifactDigest(
+                "frontend-game-mode.png")));
+        launchPhase.set("steam_pid", JsonValue.makeInt(2));
+        launchPhase.set("es_de_pid", JsonValue.makeInt(3));
+        launchPhase.set("es_de_start", JsonValue.makeString("100"));
+        launchPhase.set("es_de_session", JsonValue.makeString("2"));
+        phases.set("launch", launchPhase);
+
+        JsonValue gameplay = DeckRunEvidence.phase(
+            request.runId, "1784500003000000000");
+        gameplay.set("game_pid", JsonValue.makeInt(4));
+        gameplay.set("game_start", JsonValue.makeString("200"));
+        gameplay.set("screenshot_sha256", JsonValue.makeString(
+            DeckHarnessContractTest.artifactDigest("game-running.png")));
+        gameplay.set("renderer_log_sha256", JsonValue.makeString(
+            DeckHarnessContractTest.artifactDigest(
+                "runtime/semu-render-evidence.log")));
+        gameplay.set("renderer_frame_sha256", JsonValue.makeString(
+            DeckHarnessContractTest.artifactDigest(
+                "runtime/semu-render-final.ppm")));
+        gameplay.set("emulator_log_sha256", JsonValue.makeString(
+            DeckHarnessContractTest.artifactDigest(
+                "runtime/semu-emulator-evidence.log")));
+        gameplay.set("executable_sha256",
+            JsonValue.makeString(request.expectedExecutableSha256));
+        phases.set("gameplay", gameplay);
+
+        JsonValue state = JsonValue.makeObject();
+        state.set("run_id", JsonValue.makeString(request.runId));
+        state.set("verified_ns",
+            JsonValue.makeString("1784500006000000000"));
+        state.set("required", JsonValue.makeBool(stateRequired));
+        state.set("observed", JsonValue.makeBool(stateRequired));
+        state.set("evidence_sha256", JsonValue.makeString(
+            DeckHarnessContractTest.artifactDigest(
+                "runtime/semu-emulator-evidence.log")));
+        phases.set("state", state);
+
+        JsonValue quit = DeckRunEvidence.phase(
+            request.runId, "1784500004000000000");
+        quit.set("radial", JsonValue.makeBool(radialRequired));
+        quit.set("start_select", JsonValue.makeBool(startSelectRequired));
+        quit.set("process_exited", JsonValue.makeBool(true));
+        quit.set("evidence_sha256", JsonValue.makeString(
+            DeckHarnessContractTest.artifactDigest(
+                "runtime/semu-input-evidence.log")));
+        phases.set("quit", quit);
+
+        JsonValue returned = DeckRunEvidence.phase(
+            request.runId, "1784500005000000000");
+        returned.set("screenshot_sha256", JsonValue.makeString(
+            DeckHarnessContractTest.artifactDigest("esde-return.png")));
+        returned.set("same_es_de_session", JsonValue.makeBool(true));
+        returned.set("game_process_absent", JsonValue.makeBool(true));
+        phases.set("es_de_return", returned);
+        receipt.set("phases", phases);
+
+        JsonValue observation = JsonValue.makeObject();
+        observation.set("run_challenge",
+            JsonValue.makeString(request.runId));
+        observation.set("proof_mode", JsonValue.makeString(
+            DeckEvidenceClass.proofMode(request.scenario)));
+        observation.set("virtual_input_only", JsonValue.makeBool(automated));
+        observation.set("physical_start_select_observed",
+            JsonValue.makeBool(physicalStartSelect));
+        observation.set("physical_radial_observed",
+            JsonValue.makeBool(physicalRadial));
+        receipt.set("observation", observation);
+        return receipt;
+    }
+
+    class JsonValue withoutArtifact(JsonValue receipt, string removed) {
+        JsonValue changed = JsonValue.parse(receipt.stringify());
+        JsonValue retained = JsonValue.makeArray();
+        JsonValue artifacts = changed.get("artifacts");
+        for (int index = 0; index < artifacts.size(); index++) {
+            if (!DeckGameModeContract.text(
+                    artifacts.at(index), "name").equals(removed)) {
+                retained.push(artifacts.at(index));
+            }
+        }
+        changed.set("artifacts", retained);
+        return changed;
+    }
+
+    class bool runEvidenceContracts(JsonValue fixture,
+                                    DeckExpectedShortcut shortcut) {
+        JsonValue expected = fixture.get("run_evidence");
+        if (!expected.isObject()
+                || !expected.get("run_id").asString().equals(
+                    DeckHarnessContractTest.runId())
+                || !expected.get("harness_revision").asString().equals(
+                    DeckHarnessContractTest.revision())
+                || !expected.get("artifact_sha256").asString().equals(
+                    DeckHarnessContractTest.artifactHash())) {
+            return false;
+        }
+        DeckGameModeRequest request = DeckHarnessContractTest.automatedRequest(
+            shortcut,
+            "/run/media/deck/SD/Emulation/ES-DE/ES-DE/ROMs/gb/Tetris.zip",
+            false);
+        JsonValue receipt = DeckHarnessContractTest.scenarioReceipt(request);
+        string automatedError = DeckGameModeReceiptPolicy.verify(
+            receipt, request);
+        if (!request.valid() || !automatedError.isEmpty()) {
+            print("  run evidence automated fixture: " + automatedError);
+            return false;
+        }
+        DeckGameModeRequest operatorStartSelect =
+            DeckHarnessContractTest.automatedRequest(shortcut,
+                "/run/media/deck/SD/Emulation/ES-DE/ES-DE/ROMs/gb/Tetris.zip",
+                false);
+        operatorStartSelect.operation = "operator-start-select";
+        operatorStartSelect.scenario = operatorStartSelect.operation;
+        operatorStartSelect.humanObserved = true;
+        JsonValue startSelectReceipt =
+            DeckHarnessContractTest.scenarioReceipt(operatorStartSelect);
+        DeckGameModeRequest operatorRadial =
+            DeckHarnessContractTest.automatedRequest(shortcut,
+                "/run/media/deck/SD/Emulation/ES-DE/ES-DE/ROMs/gb/Tetris.zip",
+                false);
+        operatorRadial.operation = "operator-radial";
+        operatorRadial.scenario = operatorRadial.operation;
+        operatorRadial.humanObserved = true;
+        JsonValue radialReceipt =
+            DeckHarnessContractTest.scenarioReceipt(operatorRadial);
+        string startSelectError = DeckGameModeReceiptPolicy.verify(
+            startSelectReceipt, operatorStartSelect);
+        string radialError = DeckGameModeReceiptPolicy.verify(
+            radialReceipt, operatorRadial);
+        if (!operatorStartSelect.valid() || !operatorRadial.valid()
+                || !startSelectError.isEmpty() || !radialError.isEmpty()) {
+            print("  run evidence operator-start-select fixture: "
+                + startSelectError);
+            print("  run evidence operator-radial fixture: " + radialError);
+            return false;
+        }
+
+        JsonValue wrongRun = JsonValue.parse(receipt.stringify());
+        wrongRun.get("run").set("id",
+            JsonValue.makeString(DeckHarnessContractTest.otherRunId()));
+        JsonValue wrongRevision = JsonValue.parse(receipt.stringify());
+        wrongRevision.get("run").set("harness_revision",
+            JsonValue.makeString(
+                "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"));
+        JsonValue wrongArtifact = JsonValue.parse(receipt.stringify());
+        wrongArtifact.get("run").set("artifact_sha256",
+            JsonValue.makeString(DeckHarnessContractTest.zeroHash()));
+        JsonValue wrongRequest = JsonValue.parse(receipt.stringify());
+        wrongRequest.get("run").set("request_sha256",
+            JsonValue.makeString(DeckHarnessContractTest.zeroHash()));
+        JsonValue staleScreenshot = JsonValue.parse(receipt.stringify());
+        staleScreenshot.get("artifacts").at(0).set("modified_ns",
+            JsonValue.makeString("1784499999999999999"));
+        JsonValue foreignLog = JsonValue.parse(receipt.stringify());
+        foreignLog.get("artifacts").at(3).set("run_id",
+            JsonValue.makeString(DeckHarnessContractTest.otherRunId()));
+        JsonValue crossRunPhase = JsonValue.parse(receipt.stringify());
+        crossRunPhase.get("phases").get("quit").set("run_id",
+            JsonValue.makeString(DeckHarnessContractTest.otherRunId()));
+        JsonValue unordered = JsonValue.parse(receipt.stringify());
+        unordered.get("phases").get("quit").set("observed_ns",
+            JsonValue.makeString("1784500002500000000"));
+        JsonValue syntheticOverclaim = JsonValue.parse(receipt.stringify());
+        syntheticOverclaim.get("observation").set(
+            "physical_radial_observed", JsonValue.makeBool(true));
+        JsonValue wrongInstalled = JsonValue.parse(receipt.stringify());
+        wrongInstalled.get("installed").set("current_release",
+            JsonValue.makeString(DeckHarnessContractTest.zeroHash()));
+        JsonValue missingLog = DeckHarnessContractTest.withoutArtifact(
+            receipt, "runtime/semu-input-evidence.log");
+        JsonValue virtualPhysicalReceipt = JsonValue.parse(
+            radialReceipt.stringify());
+        virtualPhysicalReceipt.set("evidence",
+            DeckHarnessContractTest.evidence("automated-game-mode"));
+
+        return DeckGameModeReceiptPolicy.verify(wrongRun, request).contains(
+                "exact acceptance run")
+            && DeckGameModeReceiptPolicy.verify(
+                wrongRevision, request).contains("exact acceptance run")
+            && DeckGameModeReceiptPolicy.verify(
+                wrongArtifact, request).contains("exact acceptance run")
+            && DeckGameModeReceiptPolicy.verify(
+                wrongRequest, request).contains("exact acceptance run")
+            && DeckGameModeReceiptPolicy.verify(
+                staleScreenshot, request).contains(
+                "stale")
+            && DeckGameModeReceiptPolicy.verify(foreignLog, request).contains(
+                "foreign")
+            && DeckGameModeReceiptPolicy.verify(
+                crossRunPhase, request).contains("cross-run")
+            && DeckGameModeReceiptPolicy.verify(unordered, request).contains(
+                "unordered")
+            && DeckGameModeReceiptPolicy.verify(
+                syntheticOverclaim, request).contains("overclaimed")
+            && DeckGameModeReceiptPolicy.verify(
+                wrongInstalled, request).contains("installed artifact")
+            && DeckGameModeReceiptPolicy.verify(missingLog, request).contains(
+                "missing required evidence")
+            && DeckGameModeReceiptPolicy.verify(
+                virtualPhysicalReceipt, operatorRadial).contains(
+                    "classification");
+    }
+
+    class bool writePpm(string path, bool blank, bool blankContent) {
+        Bytes bytes = Bytes.fromString("P6\n16 16\n255\n");
+        for (int y = 0; y < 16; y++) {
+            for (int x = 0; x < 16; x++) {
+                bool content = x >= 6 && x < 10 && y >= 6 && y < 10;
+                int level = blank || (blankContent && content)
+                    ? 0 : ((x + y) % 2 == 0 ? 32 : 220);
+                bytes.append(level);
+                bytes.append(level);
+                bytes.append(level);
+            }
+        }
+        File file = File(path, "wbx");
+        bool wrote = file.ok() && file.writeBytes(bytes);
+        bool closed = file.close();
+        return wrote && closed;
+    }
+
+    class bool writeRadialPpm(string path, bool overlay) {
+        Bytes bytes = Bytes.fromString("P6\n32 32\n255\n");
+        for (int y = 0; y < 32; y++) {
+            for (int x = 0; x < 32; x++) {
+                bool radial = overlay && x < 8 && y < 8;
+                int red = radial ? 240 : ((x + y) % 2 == 0 ? 32 : 96);
+                int green = radial ? 32 : red;
+                int blue = radial ? 32 : red;
+                bytes.append(red);
+                bytes.append(green);
+                bytes.append(blue);
+            }
+        }
+        File file = File(path, "wbx");
+        bool wrote = file.ok() && file.writeBytes(bytes);
+        bool closed = file.close();
+        return wrote && closed;
+    }
+
+    class bool screenshotContracts() {
+        string temporary = FileSystem.tempDir("semu-deck-screenshot-contract");
+        if (temporary.isEmpty()) { return false; }
+        string meaningful = PathTools.join(temporary, "meaningful.ppm");
+        string blank = PathTools.join(temporary, "blank.ppm");
+        string blankContent = PathTools.join(
+            temporary, "blank-content.ppm");
+        if (!DeckHarnessContractTest.writePpm(meaningful, false, false)
+                || !DeckHarnessContractTest.writePpm(blank, true, false)
+                || !DeckHarnessContractTest.writePpm(
+                    blankContent, false, true)) {
+            FileSystem.removeRecursive(temporary);
+            return false;
+        }
+        Vector<DeckEvidenceRectangle> full = [];
+        DeckScreenshotProbe good = DeckScreenshotProbe.load(
+            meaningful, full);
+        Vector<DeckEvidenceRectangle> blankFull = [];
+        DeckScreenshotProbe empty = DeckScreenshotProbe.load(blank, blankFull);
+        Vector<DeckEvidenceRectangle> variedFull = [];
+        DeckScreenshotProbe varied = DeckScreenshotProbe.load(
+            blankContent, variedFull);
+        DeckEvidenceRectangle content = DeckEvidenceRectangle();
+        content.x = 6;
+        content.y = 6;
+        content.width = 4;
+        content.height = 4;
+        content.valid = true;
+        Vector<DeckEvidenceRectangle> contentOnly = [content];
+        DeckScreenshotProbe missingContent = DeckScreenshotProbe.load(
+            blankContent, contentOnly);
+        string gameplay = PathTools.join(temporary, "gameplay.ppm");
+        string radial = PathTools.join(temporary, "radial.ppm");
+        DeckEvidenceRectangle gameplayContent = DeckEvidenceRectangle();
+        gameplayContent.x = 8;
+        gameplayContent.y = 8;
+        gameplayContent.width = 16;
+        gameplayContent.height = 16;
+        gameplayContent.valid = true;
+        Vector<DeckEvidenceRectangle> gameplayRegions = [gameplayContent];
+        bool radialFiles = DeckHarnessContractTest.writeRadialPpm(
+                gameplay, false)
+            && DeckHarnessContractTest.writeRadialPpm(radial, true);
+        bool valid = good.valid && good.width == 16 && good.height == 16
+            && !empty.valid && varied.valid && !missingContent.valid
+            && radialFiles
+            && DeckScreenshotProbe.radialOverlay(
+                gameplay, radial, gameplayRegions)
+            && !DeckScreenshotProbe.radialOverlay(
+                gameplay, gameplay, gameplayRegions);
+        FileSystem.removeRecursive(temporary);
+        return valid;
+    }
+
+    class string boundLine(DeckGameModeRequest request, string fields) {
+        return "run_id=" + request.runId
+            + " harness_revision=" + request.harnessRevision
+            + " artifact_sha256=" + request.releaseSha256
+            + " " + fields + "\n";
+    }
+
+    class bool observedBehaviorContracts(DeckAcceptancePlan plan,
+                                         DeckExpectedShortcut shortcut) {
+        DeckGameModeRequest request = DeckHarnessContractTest.automatedRequest(
+            shortcut,
+            "/run/media/deck/SD/Emulation/ES-DE/ES-DE/ROMs/gb/Tetris.zip",
+            false);
+        DeckSystemCase system = plan.system("gb");
+        JsonValue receipt = DeckHarnessContractTest.scenarioReceipt(request);
+        string frameA = "1111111111111111";
+        string frameB = "2222222222222222";
+        string frameC = "3333333333333333";
+        string gameplay = DeckHarnessContractTest.boundLine(request,
+            "schema=1 event=gameplay-input system_id=gb"
+            + " emulator_id=retroarch rom_sha256="
+            + request.protectedInputs.get(0).sha256
+            + " source=steam-virtual-gamepad control=directional consumed=1"
+            + " game_pid=4 game_start=200 frame_before=" + frameA
+            + " frame_after=" + frameB
+            + " screenshot_before_sha256="
+            + DeckHarnessContractTest.zeroHash()
+            + " screenshot_after_sha256="
+            + DeckHarnessContractTest.oneHash())
+            + DeckHarnessContractTest.boundLine(request,
+                "schema=1 event=gameplay-input system_id=gb"
+                + " emulator_id=retroarch rom_sha256="
+                + request.protectedInputs.get(0).sha256
+                + " source=steam-virtual-gamepad control=face consumed=1"
+                + " game_pid=4 game_start=200 frame_before=" + frameB
+                + " frame_after=" + frameC
+                + " screenshot_before_sha256="
+                + DeckHarnessContractTest.oneHash()
+                + " screenshot_after_sha256="
+                + DeckHarnessContractTest.requestHash());
+        string unchanged = gameplay.replace(
+            "frame_after=" + frameB, "frame_after=" + frameA);
+
+        string saved = DeckHarnessContractTest.boundLine(request,
+            "schema=1 event=state-save system_id=gb emulator_id=retroarch"
+            + " rom_sha256=" + request.protectedInputs.get(0).sha256
+            + " source=steam-virtual-gamepad consumed=1 slot=observed"
+            + " state_name_sha256=" + DeckHarnessContractTest.zeroHash()
+            + " state_sha256=" + DeckHarnessContractTest.oneHash()
+            + " state_bytes=4096 state_modified_ns=1784500001000000000"
+            + " state_created=1 state_changed=1 game_pid=4 game_start=200"
+            + " frame_saved=" + frameB
+            + " screenshot_saved_sha256="
+            + DeckHarnessContractTest.oneHash());
+        string loaded = DeckHarnessContractTest.boundLine(request,
+            "schema=1 event=state-load system_id=gb emulator_id=retroarch"
+            + " rom_sha256=" + request.protectedInputs.get(0).sha256
+            + " source=steam-virtual-gamepad consumed=1 restored=1"
+            + " slot=observed state_name_sha256="
+            + DeckHarnessContractTest.zeroHash()
+            + " state_sha256=" + DeckHarnessContractTest.oneHash()
+            + " state_bytes=4096 game_pid=4 game_start=200"
+            + " frame_saved=" + frameB + " frame_changed=" + frameC
+            + " frame_restored=" + frameB
+            + " screenshot_saved_sha256="
+            + DeckHarnessContractTest.oneHash()
+            + " screenshot_changed_sha256="
+            + DeckHarnessContractTest.requestHash()
+            + " screenshot_restored_sha256="
+            + DeckHarnessContractTest.artifactHash());
+        string absentState = (saved + loaded).replace(
+            "state_bytes=4096", "state_bytes=0");
+        string notRestored = (saved + loaded).replace(
+            "frame_restored=" + frameB, "frame_restored=" + frameA);
+
+        string renderer = DeckHarnessContractTest.boundLine(request,
+            "schema=3 phase=post_ui system_id=gb emulator_id=retroarch"
+            + " matched=1 status=1 nonblank=1 capture_exhausted=0"
+            + " capture_target=120 capture_count=1 frame_id=120"
+            + " capture_frame_id=120");
+        string wrongSchema = renderer.replace("schema=3", "schema=2");
+        return system.id.equals("gb")
+            && DeckAcceptanceEvidence.gameplay(
+                system, request, receipt, gameplay,
+                "steam-virtual-gamepad").ok()
+            && !DeckAcceptanceEvidence.gameplay(
+                system, request, receipt, unchanged,
+                "steam-virtual-gamepad").ok()
+            && DeckAcceptanceEvidence.saveLoad(
+                system, request, receipt, saved + loaded).ok()
+            && !DeckAcceptanceEvidence.saveLoad(
+                system, request, receipt, absentState).ok()
+            && !DeckAcceptanceEvidence.saveLoad(
+                system, request, receipt, notRestored).ok()
+            && !DeckAcceptanceEvidence.capturedRendererLine(
+                renderer, system, request).isEmpty()
+            && DeckAcceptanceEvidence.capturedRendererLine(
+                wrongSchema, system, request).isEmpty();
+    }
+
+    class bool logBindingContracts(DeckExpectedShortcut shortcut) {
+        DeckGameModeRequest request = DeckHarnessContractTest.automatedRequest(
+            shortcut,
+            "/run/media/deck/SD/Emulation/ES-DE/ES-DE/ROMs/gb/Tetris.zip",
+            false);
+        string event = "run_id=" + request.runId
+            + " harness_revision=" + request.harnessRevision
+            + " artifact_sha256=" + request.releaseSha256
+            + " schema=1 event=process-group-terminate source=virtual"
+            + " reason=select+start reaped=1 elapsed_ms=10 bound_ms=250\n";
+        string crossRun = event.replace(
+            "run_id=" + request.runId,
+            "run_id=" + DeckHarnessContractTest.otherRunId());
+        string staleUnbound = "schema=1 event=process-group-terminate"
+            + " source=virtual reason=select+start reaped=1"
+            + " elapsed_ms=10 bound_ms=250\n";
+        return DeckAcceptanceEvidence.immediate(
+                event, request, "virtual", "select+start", 1)
+            && !DeckAcceptanceEvidence.immediate(
+                crossRun, request, "virtual", "select+start", 1)
+            && !DeckAcceptanceEvidence.immediate(
+                staleUnbound, request, "virtual", "select+start", 1);
     }
 
     class bool inputContracts(DeckAcceptancePlan plan) {
@@ -440,6 +1062,12 @@ class DeckHarnessContractTest {
         int loadIndex = actions.indexOf("radial|command|kp1|ctrl+a");
         return actions.contains("tap|gamepad|dpad_left")
             && actions.contains("tap|gamepad|south")
+            && actions.contains("# semu-evidence-stage gameplay-directional")
+            && actions.contains("# semu-evidence-stage gameplay-face")
+            && actions.contains("# semu-evidence-stage state-save")
+            && actions.contains("# semu-evidence-stage state-change")
+            && actions.contains("# semu-evidence-stage state-load")
+            && actions.contains("# semu-evidence-stage radial-quit")
             && saveIndex >= 0 && changedIndex > saveIndex
             && loadIndex > changedIndex
             && actions.contains("chord|command|ctrl+shift+f9")
@@ -451,10 +1079,9 @@ class DeckHarnessContractTest {
             && reverse.contains("start+select");
     }
 
-    class JsonValue batchReceipt(string operation, bool unchanged) {
-        JsonValue receipt = JsonValue.makeObject();
-        receipt.set("schema_version", JsonValue.makeInt(1));
-        receipt.set("operation", JsonValue.makeString(operation));
+    class JsonValue batchReceipt(DeckGameModeRequest request,
+                                 bool unchanged) {
+        JsonValue receipt = DeckHarnessContractTest.baseReceipt(request);
         JsonValue media = JsonValue.makeObject();
         media.set("external_tree_scans", JsonValue.makeInt(0));
         media.set("external_content_bytes_hashed", JsonValue.makeInt(0));
@@ -468,11 +1095,20 @@ class DeckHarnessContractTest {
     class DeckGameModeRequest batchRequest(string operation) {
         DeckGameModeRequest request = DeckGameModeRequest();
         request.operation = operation;
-        request.runRoot = "/home/deck/.local/share/semu/build/verification/steamdeck/runs/batch";
+        request.runId = DeckHarnessContractTest.runId();
+        request.harnessRevision = DeckHarnessContractTest.revision();
+        request.documentSha256 = DeckHarnessContractTest.requestHash();
+        request.runRoot = "/home/deck/.local/share/semu/build/verification/steamdeck/runs/"
+            + request.runId;
         request.projectRoot = "/home/deck/.local/share/semu";
         request.esDeHome = "/home/deck/ES-DE";
         request.steamRoot = "/home/deck/.local/share/Steam";
         request.externalRoots = ["/run/media/deck/SD/Emulation"];
+        request.shortcut.executable =
+            "/home/deck/Applications/Semu/bin/semu";
+        request.shortcut.executableSha256 =
+            DeckHarnessContractTest.zeroHash();
+        request.releaseSha256 = DeckHarnessContractTest.artifactHash();
         return request;
     }
 
@@ -484,10 +1120,10 @@ class DeckHarnessContractTest {
         if (!begin.valid() || !end.valid()
                 || !DeckGameModeReceiptPolicy.verify(
                     DeckHarnessContractTest.batchReceipt(
-                        "batch-begin", false), begin).isEmpty()
+                        begin, false), begin).isEmpty()
                 || !DeckGameModeReceiptPolicy.verify(
                     DeckHarnessContractTest.batchReceipt(
-                        "batch-end", true), end).isEmpty()) {
+                        end, true), end).isEmpty()) {
             return false;
         }
         string helper = FileSystem.readText(PathTools.join(project,
@@ -513,6 +1149,7 @@ class DeckHarnessContractTest {
             "steamdeck_harness.btrc", "remote_helper.btrc",
             "remote_system.btrc", "deck_transport.btrc",
             "deck_preflight.btrc", "deck_deploy.btrc",
+            "acceptance_evidence.btrc", "run_evidence.btrc",
             "input_automation.btrc"
         ];
         for name in helperSources {
@@ -530,12 +1167,21 @@ class DeckHarnessContractTest {
         if (Strings.split(facade, "\n").size() > 500) { return false; }
         string remote = FileSystem.readText(PathTools.join(
             directory, "remote_system.btrc"));
+        string transport = FileSystem.readText(PathTools.join(
+            directory, "deck_transport.btrc"));
+        string helper = FileSystem.readText(PathTools.join(
+            directory, "remote_helper.btrc"));
         string input = FileSystem.readText(PathTools.join(
             directory, "input_automation.btrc"));
         return remote.contains("steam://rungameid/")
             && remote.contains("SteamAppId")
             && remote.contains("SteamGameId")
             && remote.contains("/usr/bin/gamescopectl")
+            && helper.contains("build/runtime/state")
+            && helper.contains("DeckRemoteFile.removeRegular")
+            && helper.contains("UnixFileSystem.realPath")
+            && transport.contains("status\", \"--porcelain\"")
+            && !transport.contains("--untracked-files=no")
             && !input.contains("class string invocation(");
     }
 
@@ -597,6 +1243,29 @@ class DeckHarnessContractTest {
             failures += DeckHarnessContractTest.fail(
                 "typed Game Mode request/receipt binding regressed");
         }
+        DeckSteamShortcutResolution runResolution =
+            DeckHarnessContractTest.shortcutResolution(fixture);
+        DeckExpectedShortcut runShortcut = DeckExpectedShortcut.fromResolution(
+            runResolution, DeckHarnessContractTest.zeroHash());
+        if (!runResolution.valid || !runShortcut.valid()
+                || !DeckHarnessContractTest.runEvidenceContracts(
+                    fixture, runShortcut)) {
+            failures += DeckHarnessContractTest.fail(
+                "adversarial run/revision/artifact/freshness binding regressed");
+        }
+        if (!DeckHarnessContractTest.screenshotContracts()) {
+            failures += DeckHarnessContractTest.fail(
+                "decoded screenshot pixel/content-region policy regressed");
+        }
+        if (!DeckHarnessContractTest.logBindingContracts(runShortcut)) {
+            failures += DeckHarnessContractTest.fail(
+                "stale/unbound runtime log rejection regressed");
+        }
+        if (!DeckHarnessContractTest.observedBehaviorContracts(
+                plan, runShortcut)) {
+            failures += DeckHarnessContractTest.fail(
+                "observed gameplay/state/renderer adversarial gates regressed");
+        }
         if (!DeckHarnessContractTest.inputContracts(plan)) {
             failures += DeckHarnessContractTest.fail(
                 "gameplay/state/radial/Wii input plan regressed");
@@ -610,7 +1279,7 @@ class DeckHarnessContractTest {
                 "durable shell, XML mutation, or facade-size gate regressed");
         }
         if (failures == 0) {
-            print("steamdeck harness contract: 17 systems, exact shortcut, typed helper, immutable media gates valid");
+            print("steamdeck harness contract: 17 systems, exact shortcut, run-bound fresh evidence, screenshot pixels, immutable media gates valid");
         }
         return failures;
     }
