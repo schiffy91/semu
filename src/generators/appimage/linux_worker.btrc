@@ -1074,7 +1074,7 @@ class AppImageLinuxWorker {
             "--cap-drop", "ALL",
             "--security-opt", "no-new-privileges",
             "--tmpfs", "/tmp:rw,nosuid,nodev,mode=1777",
-            "--volumes-from", storeContainerId + ":ro",
+            "--volumes-from", storeContainerId + ":rw",
             "--mount", "type=volume,target=/work",
             "--mount", "type=bind,source=" + runtime.ownership.cacheRoot
                 + ",target=" + runtime.ownership.cacheRoot + ",readonly",
@@ -1085,9 +1085,7 @@ class AppImageLinuxWorker {
             "--env", "HOME=/tmp/home",
             "--env", "XDG_CACHE_HOME=/tmp/cache",
             "--env", "TMPDIR=/tmp",
-            "--env", "NIX_REMOTE=local?read-only=true",
-            "--env", "NIX_CONFIG=experimental-features = "
-                + "nix-command flakes read-only-local-store",
+            "--env", "NIX_CONFIG=experimental-features = nix-command flakes",
             "--entrypoint", worker + "/bin/semu-btrc",
             AppImageNixReleaseProof.pinnedImage()
         ]);

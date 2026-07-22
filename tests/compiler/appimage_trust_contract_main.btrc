@@ -445,7 +445,7 @@ class AppImageTrustContractTest {
             && AppImageWorkerContainer.hasPair(
                 command, "--cidfile", cidfile)
             && AppImageWorkerContainer.hasPair(
-                command, "--volumes-from", containerId + ":ro")
+                command, "--volumes-from", containerId + ":rw")
             && command.contains("--network") && command.contains("none")
             && command.contains("--read-only")
             && command.contains("--userns")
@@ -461,10 +461,9 @@ class AppImageTrustContractTest {
             && AppImageWorkerContainer.hasPair(
                 command, "--env", "XDG_CACHE_HOME=/tmp/cache")
             && AppImageWorkerContainer.hasPair(command, "--env",
-                "NIX_REMOTE=local?read-only=true")
-            && AppImageWorkerContainer.hasPair(command, "--env",
-                "NIX_CONFIG=experimental-features = nix-command flakes "
-                    + "read-only-local-store")
+                "NIX_CONFIG=experimental-features = nix-command flakes")
+            && !joined.contains("NIX_REMOTE")
+            && !joined.contains("read-only-local-store")
             && AppImageWorkerContainer.hasPair(
                 command, "--cap-drop", "ALL")
             && !command.contains("--cap-add") && !joined.contains("CHOWN")
