@@ -1661,8 +1661,8 @@ class AppImageRuntimeLease {
             : AppImageProvenanceJson.failure(
                 "runtime Nix release proof is unavailable");
         string stagedClosureDigest = stagedClosure.ok()
-            ? SemuOwnedFileDigest.text(
-                stagedClosure.value.document()) : "";
+            ? AppImageNixReleaseProof.closureDocumentDigest(
+                stagedClosure.value) : "";
         JsonValue coreDirectoryValue = provenanceDocument.get("runtime")
             .get("selected_cores").get("directory");
         string coreDirectory = coreDirectoryValue.isString()
