@@ -1,0 +1,59 @@
+// Writes one renderer-owned action using the production wire ABI.
+
+#include <errno.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+import ../../../src/generators/input/action_abi.btrc
+
+class RetroArchIntegrationControl {
+    class int action(string value) {
+        if (value.equals("menu")) { return SemuActions.menuToggle(); }
+        if (value.equals("screenshot")) { return SemuActions.screenshot(); }
+        return SemuActions.none();
+    }
+
+    class bool append(string stateDirectory, unsigned long long sequence,
+                      int action) {
+        char path[4096];
+        if (snprintf(path, sizeof(path), "%s/%s", stateDirectory,
+                RendererActionJournal.fileName()) >= (int)sizeof(path)) {
+            return false;
+        }
+        FILE* file = fopen(path, "ab");
+        if (file == null) { return false; }
+        struct SemuActionRecord record;
+        memset(&record, 0, sizeof(record));
+        record.abi = (unsigned int)RendererActionJournal.abi();
+        record.size = (unsigned int)sizeof(record);
+        record.sequence = sequence;
+        record.action = action;
+        memcpy(record.source, "integration", 11);
+        bool wrote = fwrite(&record, sizeof(record), 1, file) == (size_t)1
+            && fflush(file) == 0 && fclose(file) == 0;
+        return wrote;
+    }
+}
+
+int main(int argc, char** argv) {
+    if (argc != 4) {
+        fprintf(stderr,
+            "usage: semu-retroarch-control <state-dir> <sequence> <menu|screenshot>\n");
+        return 2;
+    }
+    char* end = null;
+    unsigned long long sequence = strtoull(argv[2], &end, 10);
+    int action = RetroArchIntegrationControl.action(argv[3]);
+    if (end == null || *end != 0 || sequence == 0ULL
+            || action == SemuActions.none()) {
+        fprintf(stderr, "invalid integration action\n");
+        return 2;
+    }
+    if (!RetroArchIntegrationControl.append(argv[1], sequence, action)) {
+        fprintf(stderr, "cannot append integration action: %s\n",
+            strerror(errno));
+        return 1;
+    }
+    return 0;
+}

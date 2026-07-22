@@ -1,6 +1,6 @@
 // appimage_contract_main.btrc - isolated strict-import AppImage contract.
 
-import std.{bytes, cli, fs, io, platform, strings, vector}
+import std.{bytes, cli, fs, io, json, platform, strings, vector}
 import ../../src/generators/appimage.btrc
 import ../../src/generators/appimage/assembler.btrc
 import ../../src/generators/appimage/install_policy.btrc
@@ -8,10 +8,39 @@ import ../../src/generators/appimage/install_store.btrc
 import ../../src/generators/appimage/installed_launcher.btrc
 import ../../src/generators/appimage/installer.btrc
 import ../../src/generators/appimage/no_fuse_verifier.btrc
+import ../../src/generators/appimage/output_transaction.btrc
 import ../../src/generators/appimage/provenance.btrc
+import ../../src/generators/appimage/release_inventory.btrc
 import ../../src/generators/appimage/runtime_inventory.btrc
 import ../../src/generators/appimage/runtime_builder.btrc
 import ../../src/generators/appimage/steam_shortcuts.btrc
+import ../../src/generators/appimage/work_session.btrc
+
+class AppImageSteamVdfRecord {
+    public string name;
+    public string executable;
+    public string startDirectory;
+    public string launchOptions;
+    public string shortcutPath;
+    public string flatpakAppId;
+    public string devkitGameId;
+    public bool nonSteamAppId;
+    public bool devkitOverride;
+
+    public AppImageSteamVdfRecord(string name = "",
+                                  string executable = "") {
+        self.name = name;
+        self.executable = executable;
+        self.startDirectory = PathTools.dirname(
+            SemuSteamShortcutVdf.unquote(executable));
+        self.launchOptions = "";
+        self.shortcutPath = "";
+        self.flatpakAppId = "";
+        self.devkitGameId = "";
+        self.nonSteamAppId = true;
+        self.devkitOverride = false;
+    }
+}
 
 class AppImageSteamVdfFixture {
     class void cstring(Bytes bytes, string value) {
@@ -25,18 +54,43 @@ class AppImageSteamVdfFixture {
         AppImageSteamVdfFixture.cstring(bytes, value);
     }
 
-    class Bytes database(Vector<string> names, Vector<string> executables) {
+    class void int32Field(Bytes bytes, string key,
+                          int byte0, int byte1, int byte2, int byte3) {
+        bytes.append(2);
+        AppImageSteamVdfFixture.cstring(bytes, key);
+        bytes.append(byte0);
+        bytes.append(byte1);
+        bytes.append(byte2);
+        bytes.append(byte3);
+    }
+
+    class Bytes documents(Vector<AppImageSteamVdfRecord> records) {
         Bytes bytes = Bytes();
-        if (names.size() != executables.size()) { return bytes; }
         bytes.append(0);
         AppImageSteamVdfFixture.cstring(bytes, "shortcuts");
-        for (int index = 0; index < names.size(); index++) {
+        for (int index = 0; index < records.size(); index++) {
+            AppImageSteamVdfRecord record = records.get(index);
             bytes.append(0);
             AppImageSteamVdfFixture.cstring(bytes, f"{index}");
+            AppImageSteamVdfFixture.int32Field(bytes, "appid", index + 1,
+                0, 0, record.nonSteamAppId ? 128 : 0);
             AppImageSteamVdfFixture.stringField(
-                bytes, "appname", names.get(index));
+                bytes, "appname", record.name);
             AppImageSteamVdfFixture.stringField(
-                bytes, "exe", executables.get(index));
+                bytes, "exe", record.executable);
+            AppImageSteamVdfFixture.stringField(
+                bytes, "StartDir", record.startDirectory);
+            AppImageSteamVdfFixture.stringField(
+                bytes, "ShortcutPath", record.shortcutPath);
+            AppImageSteamVdfFixture.stringField(
+                bytes, "LaunchOptions", record.launchOptions);
+            AppImageSteamVdfFixture.stringField(
+                bytes, "DevkitGameID", record.devkitGameId);
+            AppImageSteamVdfFixture.int32Field(bytes,
+                "DevkitOverrideAppID", record.devkitOverride ? 1 : 0,
+                0, 0, 0);
+            AppImageSteamVdfFixture.stringField(
+                bytes, "FlatpakAppID", record.flatpakAppId);
             bytes.append(0);
             AppImageSteamVdfFixture.cstring(bytes, "tags");
             AppImageSteamVdfFixture.stringField(bytes, "0", "fixture");
@@ -47,6 +101,33 @@ class AppImageSteamVdfFixture {
         bytes.append(8);
         return bytes;
     }
+
+    class Bytes database(Vector<string> names, Vector<string> executables) {
+        Vector<AppImageSteamVdfRecord> records = [];
+        if (names.size() != executables.size()) { return Bytes(); }
+        for (int index = 0; index < names.size(); index++) {
+            records.push(AppImageSteamVdfRecord(
+                names.get(index), executables.get(index)));
+        }
+        return AppImageSteamVdfFixture.documents(records);
+    }
+
+    class string loginUsers(Vector<string> steamIds,
+                            Vector<bool> mostRecent) {
+        if (steamIds.size() != mostRecent.size()) { return ""; }
+        Vector<string> lines = ["\"users\"", "{"];
+        for (int index = 0; index < steamIds.size(); index++) {
+            lines.push("\t\"" + steamIds.get(index) + "\"");
+            lines.push("\t{");
+            lines.push("\t\t\"AccountName\" \"fixture-"
+                + f"{index}" + "\"");
+            lines.push("\t\t\"MostRecent\" \""
+                + (mostRecent.get(index) ? "1" : "0") + "\"");
+            lines.push("\t}");
+        }
+        lines.push("}");
+        return lines.join("\n") + "\n";
+    }
 }
 
 class AppImageContractTest {
@@ -54,9 +135,568 @@ class AppImageContractTest {
         AppImagePathPlan plan = AppImagePathPlan();
         string canonical = UnixFileSystem.realPath(workBase);
         plan.valid = true;
+        plan.repoRoot = PathTools.join(canonical, "repo");
         plan.workBase = canonical;
         plan.runtimeRoot = PathTools.join(canonical, "runtime-root");
+        plan.workRoot = "";
+        plan.outputPath = PathTools.join(canonical, "Semu-x86_64.AppImage");
         return plan;
+    }
+
+    class bool ownedWorkDirectory() {
+        string scratch = FileSystem.tempDir("semu-appimage-owned-work");
+        if (scratch.isEmpty()) { return false; }
+        AppImagePathPlan plan = AppImageContractTest.lockPlan(scratch);
+        string stale = PathTools.join(scratch, ".semu-appimage-work-runtime-root");
+        string staleSentinel = PathTools.join(stale, "sentinel");
+        bool stalePrepared = FileSystem.mkdirp(stale) == 0
+            && FileSystem.writeText(staleSentinel, "preserve-me\n");
+        AppImageWorkSession first = AppImageWorkSession.create(plan);
+        AppImageWorkSession second = AppImageWorkSession.create(plan);
+        string firstPath = first.path;
+        string secondPath = second.path;
+        bool distinct = first.ok() && second.ok()
+            && !firstPath.equals(secondPath)
+            && FileSystem.writeText(PathTools.join(firstPath, "sentinel"), "one\n")
+            && FileSystem.writeText(PathTools.join(secondPath, "sentinel"), "two\n");
+        AppImageContractResult firstCleanup = distinct
+            ? first.cleanup() : AppImageContractResult.failure("first session failed");
+        AppImageContractResult secondCleanup = distinct
+            ? second.cleanup() : AppImageContractResult.failure("second session failed");
+        bool cleaned = firstCleanup.ok() && secondCleanup.ok()
+            && !FileStatus(firstPath).linkFound
+            && !FileStatus(secondPath).linkFound
+            && Path.readAll(staleSentinel).equals("preserve-me\n");
+
+        AppImageWorkSession replaced = AppImageWorkSession.create(plan);
+        string replacedPath = replaced.path;
+        string movedPath = replacedPath + ".moved";
+        bool forged = replaced.ok() && rename(replacedPath, movedPath) == 0
+            && FileSystem.mkdir(replacedPath, 448) == 0
+            && FileSystem.writeText(
+                PathTools.join(replacedPath, "replacement"), "preserve\n");
+        AppImageContractResult replacementCleanup = forged
+            ? replaced.cleanup()
+            : AppImageContractResult.success();
+        bool replacementPreserved = forged && !replacementCleanup.ok()
+            && Path.readAll(PathTools.join(
+                replacedPath, "replacement")).equals("preserve\n");
+
+        if (!stalePrepared || !distinct || !cleaned || !replacementPreserved) {
+            print(f"owned work detail: stale={stalePrepared} distinct={distinct}"
+                + f" cleaned={cleaned} replacement={replacementPreserved}"
+                + " first_error=" + first.error
+                + " second_error=" + second.error
+                + " replacement_error=" + replacementCleanup.error);
+        }
+        FileSystem.removeRecursive(movedPath);
+        FileSystem.removeRecursive(scratch);
+        return stalePrepared && distinct && cleaned && replacementPreserved;
+    }
+
+    class bool noFuseReleaseLifecycle() {
+        string scratch = FileSystem.tempDir("semu-no-fuse-release");
+        if (scratch.isEmpty()) { return false; }
+        AppImagePathPlan plan = AppImageContractTest.lockPlan(scratch);
+        AppImageWorkSession repeatSession = AppImageWorkSession.create(plan);
+        AppImageWorkSession oneShotSession = AppImageWorkSession.create(plan);
+        bool repeatSessionReady = repeatSession.ok();
+        bool oneShotSessionReady = oneShotSession.ok();
+        string repeatable = PathTools.join(scratch, "repeatable-launcher");
+        string oneShot = PathTools.join(scratch, "one-shot-launcher");
+        string linked = PathTools.join(scratch, "linked-launcher");
+        string state = PathTools.join(scratch, "one-shot-state");
+        bool fixtures = repeatSessionReady && oneShotSessionReady
+            && FileSystem.writeText(repeatable,
+                "#!/bin/sh\nprintf 'true\\n'\n")
+            && FileSystem.chmod(repeatable, 493) == 0
+            && FileSystem.writeText(oneShot,
+                "#!/bin/sh\n"
+                + "[ ! -e \"$SEMU_TEST_STATE\" ] || exit 23\n"
+                + ": > \"$SEMU_TEST_STATE\"\n"
+                + "printf 'true\\n'\n")
+            && FileSystem.chmod(oneShot, 493) == 0
+            && FileSystem.symlink(repeatable, linked) == 0;
+        string repeatableDigest = fixtures
+            ? SemuInstallHost.sha256File(repeatable) : "";
+        string oneShotDigest = fixtures
+            ? SemuInstallHost.sha256File(oneShot) : "";
+        AppImageHeldFileLease interpreter =
+            AppImageHeldFileLease.capturePath(
+                UnixFileSystem.realPath("/bin/bash"), true);
+        bool interpreterReady = interpreter.ok();
+        fixtures = fixtures && interpreterReady;
+        ExecResult kernel = ChildProcess.run("uname", ["-s"]);
+        bool linux = kernel.ok()
+            && kernel.stdout().trim().equals("Linux");
+        Vector<string> noArguments = [];
+        AppImageNoFuseLaunchProof repeatableProof = fixtures && linux
+            ? AppImageNoFuseLaunchProof.run(
+                repeatSession, interpreter, repeatable, repeatableDigest,
+                noArguments, "true\n")
+            : AppImageNoFuseLaunchProof();
+        AppImageNoFuseLaunchProof linkedProof = fixtures && linux
+            ? AppImageNoFuseLaunchProof.run(
+                repeatSession, interpreter, linked, repeatableDigest,
+                noArguments, "true\n")
+            : AppImageNoFuseLaunchProof();
+
+        AppImageNoFuseEnvironmentLease environment =
+            AppImageNoFuseEnvironmentLease();
+        Vector<string> oneShotEnvironment = ["SEMU_TEST_STATE=" + state];
+        Vector<string> noUnsets = [];
+        bool environmentApplied = fixtures
+            && environment.apply(oneShotEnvironment, noUnsets);
+        AppImageNoFuseLaunchProof oneShotProof = environmentApplied && linux
+            ? AppImageNoFuseLaunchProof.run(
+                oneShotSession, interpreter, oneShot, oneShotDigest,
+                noArguments, "true\n")
+            : AppImageNoFuseLaunchProof();
+        bool environmentRestored = environmentApplied
+            && environment.restore();
+        if (!linux) {
+            repeatableProof.first = true;
+            repeatableProof.second = true;
+            repeatableProof.firstOutput = "true\n";
+            repeatableProof.secondOutput = "true\n";
+            repeatableProof.launcherDigest = repeatableDigest;
+            linkedProof.error = "cannot open exact release file";
+            oneShotProof.first = true;
+            oneShotProof.second = false;
+            oneShotProof.error = "second stable no-FUSE launch failed";
+        }
+
+        AppImageNoFuseReleaseEvidence complete =
+            AppImageNoFuseReleaseEvidence();
+        complete.structural = true;
+        complete.status = true;
+        complete.authoritiesBound = true;
+        complete.cleaned = true;
+        complete.expectedDigest = repeatableDigest;
+        complete.canonicalDigest = repeatableDigest;
+        complete.launcherPayloadDigest = repeatableDigest;
+        complete.launches = repeatableProof;
+
+        AppImageNoFuseReleaseEvidence structuralOnly =
+            AppImageNoFuseReleaseEvidence();
+        structuralOnly.structural = true;
+
+        AppImageNoFuseReleaseEvidence wrongDigest =
+            AppImageNoFuseReleaseEvidence();
+        wrongDigest.structural = true;
+        wrongDigest.status = true;
+        wrongDigest.authoritiesBound = true;
+        wrongDigest.cleaned = true;
+        wrongDigest.expectedDigest = repeatableDigest;
+        wrongDigest.canonicalDigest =
+            "0000000000000000000000000000000000000000000000000000000000000000";
+        wrongDigest.launcherPayloadDigest = repeatableDigest;
+        wrongDigest.launches = repeatableProof;
+
+        bool exact = fixtures
+            && repeatableProof.exact(repeatableDigest, "true\n")
+            && complete.accepted("true\n")
+            && !structuralOnly.accepted("true\n")
+            && !wrongDigest.accepted("true\n")
+            && !linkedProof.exact(repeatableDigest, "true\n")
+            && linkedProof.error.contains("cannot open exact release file")
+            && oneShotProof.first && !oneShotProof.second
+            && !oneShotProof.exact(oneShotDigest, "true\n")
+            && oneShotProof.error.contains("second stable no-FUSE launch failed")
+            && environmentRestored;
+        string repeatSessionPath = repeatSession.path;
+        string oneShotSessionPath = oneShotSession.path;
+        interpreter.closeDescriptors();
+        AppImageContractResult repeatCleaned = repeatSession.ok()
+            ? repeatSession.cleanup()
+            : AppImageContractResult.failure(repeatSession.error);
+        AppImageContractResult oneShotCleaned = oneShotSession.ok()
+            ? oneShotSession.cleanup()
+            : AppImageContractResult.failure(oneShotSession.error);
+        bool sessionCleaned = repeatCleaned.ok() && oneShotCleaned.ok()
+            && !FileStatus(repeatSessionPath).linkFound
+            && !FileStatus(oneShotSessionPath).linkFound;
+        if (!exact || !sessionCleaned) {
+            print(f"no-FUSE lifecycle detail: fixtures={fixtures}"
+                + f" repeat_session={repeatSessionReady}"
+                + f" one_shot_session={oneShotSessionReady}"
+                + f" interpreter={interpreterReady}"
+                + f" repeat_digest={SemuInstallPolicy.validDigest(repeatableDigest)}"
+                + f" one_shot_digest={SemuInstallPolicy.validDigest(oneShotDigest)}"
+                + f" repeatable={repeatableProof.exact(repeatableDigest, \"true\\n\")}"
+                + f" linked_rejected={!linkedProof.exact(repeatableDigest, \"true\\n\")}"
+                + f" first={oneShotProof.first} second={oneShotProof.second}"
+                + f" env_restored={environmentRestored}"
+                + f" session_cleaned={sessionCleaned}"
+                + " repeatable_error=" + repeatableProof.error
+                + " linked_error=" + linkedProof.error
+                + " one_shot_error=" + oneShotProof.error
+                + " repeat_session_error=" + repeatSession.error
+                + " one_shot_session_error=" + oneShotSession.error
+                + " interpreter_error=" + interpreter.error
+                + " repeat_cleanup_error=" + repeatCleaned.error
+                + " one_shot_cleanup_error=" + oneShotCleaned.error);
+        }
+        FileSystem.removeRecursive(scratch);
+        return exact && sessionCleaned;
+    }
+
+    class bool verificationSnapshotBinding() {
+        string scratch = FileSystem.tempDir("semu-appimage-snapshot");
+        if (scratch.isEmpty()) { return false; }
+        AppImagePathPlan plan = AppImageContractTest.lockPlan(scratch);
+        string source = PathTools.join(scratch, "source.AppImage");
+        string held = source + ".held";
+        string output = PathTools.join(scratch, "published.AppImage");
+        plan.outputPath = output;
+        bool sourcePrepared = FileSystem.writeText(source, "verified-a\n")
+            && FileSystem.chmod(source, 493) == 0; // 0755
+        AppImageWorkSession first = sourcePrepared
+            ? AppImageWorkSession.create(plan) : AppImageWorkSession();
+        AppImageVerificationSnapshot snapshot = first.ok()
+            ? AppImageVerificationSnapshot.capture(first, source)
+            : AppImageVerificationSnapshot();
+        bool exactSnapshot = snapshot.ok()
+            && snapshot.sourceStillBound()
+            && snapshot.snapshotStillBound();
+        bool replaced = snapshot.ok() && rename(source, held) == 0
+            && FileSystem.writeText(source, "unverified-b\n")
+            && FileSystem.chmod(source, 493) == 0;
+        bool rejectedWhileReplaced = replaced
+            && !snapshot.sourceStillBound()
+            && snapshot.snapshotStillBound()
+            && Path.readAll(snapshot.path).equals("verified-a\n");
+        bool restored = rejectedWhileReplaced && unlink(source) == 0
+            && rename(held, source) == 0
+            && snapshot.sourceStillBound();
+        AppImageAssemblyLock outputLock = restored
+            ? AppImageAssemblyLock.acquire(plan) : AppImageAssemblyLock();
+        AppImageContractResult published = outputLock.ok()
+            ? AppImageOutputTransaction.publish(snapshot, outputLock, 493)
+            : AppImageContractResult.failure("source restoration fixture failed");
+        AppImageContractResult snapshotFinished = snapshot.ok()
+            ? snapshot.finish()
+            : AppImageContractResult.failure("snapshot capture failed");
+        AppImageContractResult firstCleaned = first.ok()
+            ? first.cleanup()
+            : AppImageContractResult.failure("work session failed");
+        AppImageContractResult outputUnlocked = outputLock.ok()
+            ? outputLock.unlock()
+            : AppImageContractResult.failure(outputLock.error);
+        bool exactPublication = published.ok() && snapshotFinished.ok()
+            && firstCleaned.ok() && outputUnlocked.ok()
+            && Path.readAll(output).equals("verified-a\n");
+
+        AppImageWorkSession second = AppImageWorkSession.create(plan);
+        AppImageVerificationSnapshot forged = second.ok()
+            ? AppImageVerificationSnapshot.capture(second, source)
+            : AppImageVerificationSnapshot();
+        string moved = forged.path + ".held";
+        bool snapshotReplaced = forged.ok()
+            && FileSystem.chmod(forged.directory, 448) == 0
+            && rename(forged.path, moved) == 0
+            && FileSystem.writeText(forged.path, "replacement\n")
+            && FileSystem.chmod(forged.path, 320) == 0;
+        bool forgedRejected = snapshotReplaced && !forged.snapshotStillBound();
+        AppImageContractResult forgedFinished = forged.ok()
+            ? forged.finish()
+            : AppImageContractResult.failure("forged snapshot capture failed");
+        AppImageContractResult secondCleaned = second.ok()
+            ? second.cleanup()
+            : AppImageContractResult.failure("second work session failed");
+        bool exact = exactSnapshot && rejectedWhileReplaced && restored
+            && exactPublication && forgedRejected && !forgedFinished.ok()
+            && secondCleaned.ok();
+        if (!exact) {
+            print(f"snapshot detail: exact={exactSnapshot}"
+                + f" replaced={rejectedWhileReplaced} restored={restored}"
+                + f" published={exactPublication} forged={forgedRejected}"
+                + f" forged_finish_rejected={!forgedFinished.ok()}"
+                + f" cleaned={secondCleaned.ok()}"
+                + " capture_error=" + snapshot.error
+                + " publish_error=" + published.error
+                + " finish_error=" + snapshotFinished.error
+                + " forged_error=" + forgedFinished.error);
+        }
+        FileSystem.removeRecursive(scratch);
+        return exact;
+    }
+
+    class bool directoryWriteLeaseNoFollow() {
+        string scratch = FileSystem.tempDir("semu-appimage-write-lease");
+        string appDir = PathTools.join(scratch, "AppDir");
+        string owned = PathTools.join(appDir, "owned");
+        string moved = PathTools.join(appDir, "moved");
+        string outside = PathTools.join(scratch, "outside");
+        bool prepared = !scratch.isEmpty()
+            && FileSystem.mkdirp(owned) == 0
+            && FileSystem.mkdirp(outside) == 0
+            && FileSystem.chmod(owned, 365) == 0 // 0555
+            && FileSystem.chmod(outside, 448) == 0; // 0700
+        AppImageDirectoryWriteLease lease = prepared
+            ? AppImageDirectoryWriteLease.acquire(appDir, owned)
+            : AppImageDirectoryWriteLease();
+        bool replaced = lease.ok() && rename(owned, moved) == 0
+            && FileSystem.symlink(outside, owned) == 0;
+        AppImageContractResult restored = replaced
+            ? lease.restore()
+            : AppImageContractResult.failure("lease replacement fixture failed");
+        bool exact = restored.ok()
+            && (FileStatus(moved).mode & 4095) == 365
+            && (FileStatus(outside).mode & 4095) == 448
+            && FileStatus(owned).isSymlink();
+        if (FileStatus(owned).isSymlink()) { unlink(owned); }
+        FileSystem.chmod(moved, 448);
+        FileSystem.removeRecursive(scratch);
+        return exact;
+    }
+
+    class bool completePayloadHashContract() {
+        string scratch = FileSystem.tempDir("semu-appimage-payload-hash");
+        string deep = PathTools.join(scratch, "nix/store/deep/payload");
+        bool prepared = !scratch.isEmpty()
+            && FileSystem.mkdirp(PathTools.dirname(deep)) == 0
+            && FileSystem.writeText(deep, "original\n")
+            && FileSystem.chmod(deep, 420) == 0; // 0644
+        SemuInstallResult originalTree = prepared
+            ? SemuInstallTree.digest(scratch)
+            : SemuInstallResult.failure("fixture setup failed");
+        bool changedBytes = originalTree.ok()
+            && FileSystem.writeText(deep, "changed\n");
+        SemuInstallResult byteTree = changedBytes
+            ? SemuInstallTree.digest(scratch)
+            : SemuInstallResult.failure("byte mutation failed");
+        bool restoredBytes = byteTree.ok()
+            && FileSystem.writeText(deep, "original\n");
+        SemuInstallResult restoredTree = restoredBytes
+            ? SemuInstallTree.digest(scratch)
+            : SemuInstallResult.failure("byte restoration failed");
+        bool restricted = restoredTree.ok()
+            && FileSystem.chmod(deep, 384) == 0; // 0600
+        SemuInstallResult restrictedTree = restricted
+            ? SemuInstallTree.digest(scratch)
+            : SemuInstallResult.failure("ordinary mode mutation failed");
+        bool changedMode = restrictedTree.ok()
+            && FileSystem.chmod(deep, 493) == 0; // 0755
+        SemuInstallResult modeTree = changedMode
+            ? SemuInstallTree.digest(scratch)
+            : SemuInstallResult.failure("mode mutation failed");
+        bool changedNode = modeTree.ok()
+            && FileSystem.removeRecursive(deep) == 0
+            && FileSystem.symlink("elsewhere", deep) == 0;
+        SemuInstallResult linkTree = changedNode
+            ? SemuInstallTree.digest(scratch)
+            : SemuInstallResult.failure("node mutation failed");
+        bool bound = originalTree.ok() && byteTree.ok()
+            && restoredTree.ok() && restrictedTree.ok()
+            && modeTree.ok() && linkTree.ok()
+            && !byteTree.document.equals(originalTree.document)
+            && restoredTree.document.equals(originalTree.document)
+            && !restrictedTree.document.equals(originalTree.document)
+            && !modeTree.document.equals(restrictedTree.document)
+            && !linkTree.document.equals(modeTree.document);
+        FileSystem.removeRecursive(scratch);
+        return bound;
+    }
+
+    class bool immutableReleaseModes() {
+        string scratch = FileSystem.tempDir("semu-release-modes");
+        string nested = PathTools.join(scratch, "nested");
+        string payload = PathTools.join(nested, "payload");
+        bool prepared = !scratch.isEmpty()
+            && FileSystem.mkdirp(nested) == 0
+            && FileSystem.writeText(payload, "immutable\n")
+            && FileSystem.chmod(payload, 292) == 0 // 0444
+            && FileSystem.chmod(nested, 365) == 0 // 0555
+            && FileSystem.chmod(scratch, 365) == 0; // 0555
+        bool immutable = prepared && SemuInstallTree.readOnly(scratch);
+
+        bool writableRootRejected = immutable
+            && FileSystem.chmod(scratch, 493) == 0 // 0755
+            && !SemuInstallTree.readOnly(scratch)
+            && FileSystem.chmod(scratch, 365) == 0;
+        bool writableFileRejected = writableRootRejected
+            && FileSystem.chmod(nested, 493) == 0
+            && FileSystem.chmod(payload, 420) == 0 // 0644
+            && FileSystem.chmod(nested, 365) == 0
+            && !SemuInstallTree.readOnly(scratch);
+
+        FileSystem.chmod(scratch, 448);
+        FileSystem.chmod(nested, 448);
+        FileSystem.removeRecursive(scratch);
+        return immutable && writableRootRejected && writableFileRejected;
+    }
+
+    class bool descriptorTreeImport() {
+        string scratch = FileSystem.tempDir("semu-descriptor-tree-import");
+        if (scratch.isEmpty()) { return false; }
+        string source = PathTools.join(scratch, "source");
+        string moved = PathTools.join(scratch, "source-held");
+        string destination = PathTools.join(scratch, "destination");
+        string changedDestination =
+            PathTools.join(scratch, "changed-destination");
+        string heldDestination =
+            PathTools.join(scratch, "held-destination");
+        string payload = PathTools.join(source, "nested/payload");
+        string provenance = PathTools.join(source, "provenance.json");
+        bool prepared = FileSystem.mkdirp(PathTools.dirname(payload)) == 0
+            && FileSystem.mkdir(destination, 448) == 0
+            && FileSystem.mkdir(changedDestination, 448) == 0
+            && FileSystem.mkdir(heldDestination, 448) == 0
+            && FileSystem.writeText(payload, "original\n")
+            && FileSystem.writeText(provenance, "release-a\n")
+            && FileSystem.symlink("nested/payload",
+                PathTools.join(source, "payload-link")) == 0
+            && FileSystem.chmod(payload, 416) == 0; // 0640
+        int sourceDescriptor = prepared ? open(source,
+            (int)O_RDONLY | (int)O_DIRECTORY
+                | (int)O_NOFOLLOW | (int)O_CLOEXEC) : -1;
+        int destinationDescriptor = prepared ? open(destination,
+            (int)O_RDONLY | (int)O_DIRECTORY
+                | (int)O_NOFOLLOW | (int)O_CLOEXEC) : -1;
+        SemuInstallResult expected = sourceDescriptor >= 0
+            ? SemuInstallTree.digestDescriptor(sourceDescriptor)
+            : SemuInstallResult.failure("source descriptor failed");
+        SemuInstallResult imported = expected.ok()
+            ? SemuInstallTree.copyDescriptor(sourceDescriptor,
+                destinationDescriptor, expected.document)
+            : expected;
+        SemuInstallResult destinationDigest = imported.ok()
+            ? SemuInstallTree.digestDescriptor(destinationDescriptor)
+            : SemuInstallResult.failure(imported.error);
+        bool exactCopy = destinationDigest.ok()
+            && destinationDigest.document.equals(expected.document)
+            && (FileStatus(PathTools.join(
+                destination, "nested/payload")).mode & 4095) == 416
+            && FileStatus(PathTools.join(
+                destination, "payload-link")).isSymlink();
+
+        bool sameSizeMutation = exactCopy
+            && FileSystem.writeText(payload, "mutated!\n");
+        int changedDescriptor = sameSizeMutation ? open(changedDestination,
+            (int)O_RDONLY | (int)O_DIRECTORY
+                | (int)O_NOFOLLOW | (int)O_CLOEXEC) : -1;
+        SemuInstallResult changed = changedDescriptor >= 0
+            ? SemuInstallTree.copyDescriptor(sourceDescriptor,
+                changedDescriptor, expected.document)
+            : SemuInstallResult.failure("changed destination failed");
+        bool mutationRejected = sameSizeMutation && !changed.ok()
+            && FileSystem.writeText(payload, "original\n");
+
+        SemuInstallResult restored = mutationRejected
+            ? SemuInstallTree.digestDescriptor(sourceDescriptor)
+            : SemuInstallResult.failure("source restoration failed");
+        bool sourceMoved = restored.ok()
+            && restored.document.equals(expected.document)
+            && rename(source, moved) == 0
+            && FileSystem.mkdir(source, 448) == 0
+            && FileSystem.writeText(
+                PathTools.join(source, "replacement"), "replacement\n");
+        int heldDescriptor = sourceMoved ? open(heldDestination,
+            (int)O_RDONLY | (int)O_DIRECTORY
+                | (int)O_NOFOLLOW | (int)O_CLOEXEC) : -1;
+        SemuInstallResult held = heldDescriptor >= 0
+            ? SemuInstallTree.copyDescriptor(sourceDescriptor,
+                heldDescriptor, expected.document)
+            : SemuInstallResult.failure("held destination failed");
+        bool heldRoot = held.ok()
+            && Path.readAll(PathTools.join(
+                heldDestination, "nested/payload")).equals("original\n")
+            && !FileStatus(PathTools.join(
+                heldDestination, "replacement")).linkFound;
+
+        Vector<string> excluded = ["provenance.json"];
+        SemuInstallResult filteredBefore = sourceDescriptor >= 0
+            ? SemuInstallTree.digestDescriptorExcluding(
+                sourceDescriptor, excluded)
+            : SemuInstallResult.failure("filtered source failed");
+        bool excludedChanged = heldRoot
+            && FileSystem.writeText(
+                PathTools.join(moved, "provenance.json"), "release-b\n");
+        SemuInstallResult filteredAfter = excludedChanged
+            ? SemuInstallTree.digestDescriptorExcluding(
+                sourceDescriptor, excluded)
+            : SemuInstallResult.failure("excluded mutation failed");
+        bool filtered = filteredBefore.ok() && filteredAfter.ok()
+            && filteredBefore.document.equals(filteredAfter.document);
+
+        if (heldDescriptor >= 0) { close(heldDescriptor); }
+        if (changedDescriptor >= 0) { close(changedDescriptor); }
+        if (destinationDescriptor >= 0) { close(destinationDescriptor); }
+        if (sourceDescriptor >= 0) { close(sourceDescriptor); }
+        bool exact = prepared && exactCopy && mutationRejected
+            && heldRoot && filtered;
+        if (!exact) {
+            print(f"descriptor import detail: prepared={prepared}"
+                + f" exact_copy={exactCopy} mutation={mutationRejected}"
+                + f" moved={sourceMoved} held={heldRoot} filtered={filtered}"
+                + " expected=" + expected.error
+                + " imported=" + imported.error
+                + " destination=" + destinationDigest.error
+                + " changed=" + changed.error
+                + " restored=" + restored.error
+                + " held_error=" + held.error
+                + " filtered_before=" + filteredBefore.error
+                + " filtered_after=" + filteredAfter.error);
+        }
+        FileSystem.removeRecursive(scratch);
+        return exact;
+    }
+
+    class bool descriptorTreeDigestFraming() {
+        string scratch =
+            FileSystem.tempDir("semu-descriptor-tree-digest-framing");
+        if (scratch.isEmpty()) { return false; }
+        string first = PathTools.join(scratch, "first");
+        string second = PathTools.join(scratch, "second");
+        bool prepared = FileSystem.mkdir(first, 448) == 0
+            && FileSystem.mkdir(second, 448) == 0
+            && FileSystem.symlink(
+                "b c", PathTools.join(first, "a")) == 0
+            && FileSystem.symlink(
+                "c", PathTools.join(second, "a b")) == 0;
+        int firstDescriptor = prepared ? open(first,
+            (int)O_RDONLY | (int)O_DIRECTORY
+                | (int)O_NOFOLLOW | (int)O_CLOEXEC) : -1;
+        int secondDescriptor = prepared ? open(second,
+            (int)O_RDONLY | (int)O_DIRECTORY
+                | (int)O_NOFOLLOW | (int)O_CLOEXEC) : -1;
+        SemuInstallResult firstDigest = firstDescriptor >= 0
+            ? SemuInstallTree.digestDescriptor(firstDescriptor)
+            : SemuInstallResult.failure("first collision tree failed");
+        SemuInstallResult firstAgain = firstDigest.ok()
+            ? SemuInstallTree.digestDescriptor(firstDescriptor)
+            : firstDigest;
+        SemuInstallResult secondDigest = secondDescriptor >= 0
+            ? SemuInstallTree.digestDescriptor(secondDescriptor)
+            : SemuInstallResult.failure("second collision tree failed");
+        bool exact = firstDigest.ok() && firstAgain.ok()
+            && secondDigest.ok()
+            && firstAgain.document.equals(firstDigest.document)
+            && !secondDigest.document.equals(firstDigest.document);
+        if (secondDescriptor >= 0) { close(secondDescriptor); }
+        if (firstDescriptor >= 0) { close(firstDescriptor); }
+        FileSystem.removeRecursive(scratch);
+        return exact;
+    }
+
+    class bool runtimePrefixBinding() {
+        string scratch = FileSystem.tempDir("semu-appimage-prefix-binding");
+        if (scratch.isEmpty()) { return false; }
+        string expected = PathTools.join(scratch, "runtime");
+        string artifact = PathTools.join(scratch, "artifact");
+        string linked = PathTools.join(scratch, "linked-runtime");
+        bool prepared = FileSystem.writeText(expected, "prefix")
+            && FileSystem.writeText(artifact, "prefixpayload")
+            && Type2AppImage.exactPrefix(expected, artifact, 6LL);
+        bool mutationRejected = prepared
+            && FileSystem.writeText(artifact, "prefiyayload")
+            && !Type2AppImage.exactPrefix(expected, artifact, 6LL);
+        bool linkRejected = mutationRejected
+            && FileSystem.symlink(expected, linked) == 0
+            && !Type2AppImage.exactPrefix(linked, artifact, 6LL);
+        FileSystem.removeRecursive(scratch);
+        return prepared && mutationRejected && linkRejected;
     }
 
     class bool assemblyLock(string executable) {
@@ -176,18 +816,443 @@ class AppImageContractTest {
             && linkedRootRejected && writeRejected;
     }
 
+    class bool stagedConfigOwnership() {
+        string scratch = FileSystem.tempDir("semu-appimage-staged-config");
+        if (scratch.isEmpty()) { return false; }
+        string runtimeRoot = PathTools.join(scratch, "runtime");
+        string source =
+            PathTools.join(runtimeRoot, "share/semu/config");
+        string appDir = PathTools.join(scratch, "AppDir");
+        string destination = PathTools.join(appDir, "share/semu/config");
+        bool prepared = true;
+        for relative in ["assets", "emulators", "input", "settings", "systems"] {
+            prepared = prepared
+                && FileSystem.mkdirp(PathTools.join(source, relative)) == 0;
+        }
+        prepared = prepared
+            && FileSystem.writeText(PathTools.join(
+                source, "settings/defaults.json"), "{}\n")
+            && FileSystem.chmod(PathTools.join(source, "settings"), 365) == 0
+            && FileSystem.mkdirp(destination) == 0;
+        int sourceDescriptor = prepared ? open(source,
+            (int)O_RDONLY | (int)O_DIRECTORY
+                | (int)O_NOFOLLOW | (int)O_CLOEXEC) : -1;
+        int destinationDescriptor = prepared ? open(destination,
+            (int)O_RDONLY | (int)O_DIRECTORY
+                | (int)O_NOFOLLOW | (int)O_CLOEXEC) : -1;
+        SemuInstallResult sourceDigest = sourceDescriptor >= 0
+            ? SemuInstallTree.digestDescriptor(sourceDescriptor)
+            : SemuInstallResult.failure("staged config source lease failed");
+        SemuInstallResult copied = sourceDigest.ok()
+                && destinationDescriptor >= 0
+            ? SemuInstallTree.copyDescriptor(
+                sourceDescriptor, destinationDescriptor,
+                sourceDigest.document)
+            : SemuInstallResult.failure("staged config fixture failed");
+        if (destinationDescriptor >= 0) { close(destinationDescriptor); }
+        if (sourceDescriptor >= 0) { close(sourceDescriptor); }
+        int sourceMode = FileStatus(PathTools.join(source, "settings")).mode & 4095;
+        int destinationMode =
+            FileStatus(PathTools.join(destination, "settings")).mode & 4095;
+        bool ownership = copied.ok() && sourceMode == 365
+            && destinationMode == sourceMode
+            && access(PathTools.join(source, "settings"), W_OK) != 0
+            && access(PathTools.join(destination, "settings"), W_OK) != 0;
+        AppImageContractResult accepted = ownership
+            ? AppImageAssembler.validateStagedRuntimeConfig(runtimeRoot, appDir)
+            : AppImageContractResult.failure(
+                "staged config mode was not preserved");
+        bool widened = accepted.ok()
+            && FileSystem.chmod(
+                PathTools.join(destination, "settings"), 493) == 0; // 0755
+        AppImageContractResult modeRejected = widened
+            ? AppImageAssembler.validateStagedRuntimeConfig(runtimeRoot, appDir)
+            : AppImageContractResult.success();
+        bool modeRestored = widened && !modeRejected.ok()
+            && FileSystem.chmod(PathTools.join(
+                destination, "settings"), destinationMode) == 0;
+        AppImageDirectoryWriteLease lease = modeRestored
+            ? AppImageDirectoryWriteLease.acquire(
+                appDir, PathTools.join(destination, "settings"))
+            : AppImageDirectoryWriteLease();
+        bool mutated = lease.ok() && FileSystem.writeText(
+            PathTools.join(destination, "settings/rogue.json"), "{}\n");
+        AppImageContractResult restored = lease.ok()
+            ? lease.restore()
+            : AppImageContractResult.failure("staging lease was not acquired");
+        AppImageContractResult rejected = mutated
+            ? AppImageAssembler.validateStagedRuntimeConfig(runtimeRoot, appDir)
+            : AppImageContractResult.failure("staged config mutation failed");
+        bool exactRestoration = restored.ok()
+            && (FileStatus(PathTools.join(destination, "settings")).mode & 4095)
+                == destinationMode
+            && access(PathTools.join(destination, "settings"), W_OK) != 0
+            && (FileStatus(PathTools.join(source, "settings")).mode & 4095)
+                == sourceMode;
+        FileSystem.chmod(PathTools.join(source, "settings"), 448); // 0700
+        FileSystem.chmod(PathTools.join(destination, "settings"), 448); // 0700
+        FileSystem.removeRecursive(scratch);
+        return accepted.ok() && modeRestored
+            && exactRestoration && !rejected.ok();
+    }
+
+    class SemuSteamMigrationPolicy shortcutMigrationPolicy() {
+        SemuSteamMigrationPolicy migration = SemuSteamMigrationPolicy();
+        migration.serviceUnit = "steam-launcher.service";
+        migration.processName = "steam";
+        migration.rules = [
+            SemuSteamLegacyRule("Semu-x86_64.AppImage",
+                "${home}/Applications/Semu/Semu-x86_64.AppImage"),
+            SemuSteamLegacyRule(
+                "Semu MegaBezel", "${home}/semu-mb-launch.sh")
+        ];
+        return migration;
+    }
+
+    class bool steamShortcutContract() {
+        string scratch = FileSystem.tempDir("semu-steam-shortcut-contract");
+        if (scratch.isEmpty()) { return false; }
+        string oldHome = Environment.get("HOME", "");
+        string oldApplications = Environment.get("SEMU_APPLICATIONS_DIR", "");
+        string home = PathTools.join(scratch, "home");
+        string steamRoot = PathTools.join(home, ".local/share/Steam");
+        string loginUsers = PathTools.join(steamRoot, "config/loginusers.vdf");
+        string database = PathTools.join(
+            steamRoot, "userdata/1/config/shortcuts.vdf");
+        string inactiveDatabase = PathTools.join(
+            steamRoot, "userdata/2/config/shortcuts.vdf");
+        string installRoot = PathTools.join(home, "Applications/Semu");
+        string stable = PathTools.join(installRoot, "bin/semu");
+        Bytes zero = AppImageSteamVdfFixture.database(
+            ["Unrelated"], ["\"/opt/unrelated\""]);
+        Bytes exact = AppImageSteamVdfFixture.database(
+            ["Unrelated", "Semu"],
+            ["\"/opt/unrelated\"", "\"" + stable + "\""]);
+        Bytes changedUnrelated = AppImageSteamVdfFixture.database(
+            ["Unrelated", "Semu"],
+            ["\"/opt/changed\"", "\"" + stable + "\""]);
+        Bytes onlyStable = AppImageSteamVdfFixture.database(
+            ["Semu"], ["\"" + stable + "\""]);
+        AppImageSteamVdfRecord wrongStart =
+            AppImageSteamVdfRecord("Semu", "\"" + stable + "\"");
+        wrongStart.startDirectory = "/tmp";
+        AppImageSteamVdfRecord wrongOptions =
+            AppImageSteamVdfRecord("Semu", "\"" + stable + "\"");
+        wrongOptions.launchOptions = "--replace-target /tmp/other";
+        Bytes invalidRegistration = AppImageSteamVdfFixture.documents([
+            AppImageSteamVdfRecord("Unrelated", "\"/opt/unrelated\""),
+            wrongOptions
+        ]);
+        AppImageSteamVdfRecord lowAppId =
+            AppImageSteamVdfRecord("Semu", "\"" + stable + "\"");
+        lowAppId.nonSteamAppId = false;
+        AppImageSteamVdfRecord shortcutRedirect =
+            AppImageSteamVdfRecord("Semu", "\"" + stable + "\"");
+        shortcutRedirect.shortcutPath = "/tmp/other";
+        AppImageSteamVdfRecord flatpakRedirect =
+            AppImageSteamVdfRecord("Semu", "\"" + stable + "\"");
+        flatpakRedirect.flatpakAppId = "org.example.Other";
+        Vector<string> adversarialPaths = [
+            PathTools.join(scratch, "duplicate.vdf"),
+            PathTools.join(scratch, "stale-artifact.vdf"),
+            PathTools.join(scratch, "stale-release.vdf"),
+            PathTools.join(scratch, "wrong-start.vdf"),
+            PathTools.join(scratch, "wrong-options.vdf"),
+            PathTools.join(scratch, "low-appid.vdf"),
+            PathTools.join(scratch, "shortcut-redirect.vdf"),
+            PathTools.join(scratch, "flatpak-redirect.vdf")
+        ];
+        bool prepared = FileSystem.mkdirp(PathTools.dirname(loginUsers)) == 0
+            && FileSystem.mkdirp(PathTools.dirname(database)) == 0
+            && FileSystem.mkdirp(PathTools.dirname(inactiveDatabase)) == 0
+            && FileSystem.writeText(loginUsers,
+                AppImageSteamVdfFixture.loginUsers(
+                    ["76561197960265729", "76561197960265730"],
+                    [true, false]))
+            && SemuInstallHost.atomicBytes(database, zero, 384)
+            && SemuInstallHost.atomicBytes(inactiveDatabase, exact, 384)
+            && SemuInstallHost.atomicBytes(adversarialPaths.get(0),
+                AppImageSteamVdfFixture.database(
+                    ["Semu", "Semu"],
+                    ["\"" + stable + "\"", "\"" + stable + "\""]), 384)
+            && SemuInstallHost.atomicBytes(adversarialPaths.get(1),
+                AppImageSteamVdfFixture.database(["Semu"], ["\""
+                    + PathTools.join(installRoot, "Semu-x86_64.AppImage")
+                    + "\""]), 384)
+            && SemuInstallHost.atomicBytes(adversarialPaths.get(2),
+                AppImageSteamVdfFixture.database(["Semu"], ["\""
+                    + PathTools.join(installRoot,
+                        "releases/deadbeef/AppRun") + "\""]), 384)
+            && SemuInstallHost.atomicBytes(adversarialPaths.get(3),
+                AppImageSteamVdfFixture.documents([wrongStart]), 384)
+            && SemuInstallHost.atomicBytes(adversarialPaths.get(4),
+                AppImageSteamVdfFixture.documents([wrongOptions]), 384)
+            && SemuInstallHost.atomicBytes(adversarialPaths.get(5),
+                AppImageSteamVdfFixture.documents([lowAppId]), 384)
+            && SemuInstallHost.atomicBytes(adversarialPaths.get(6),
+                AppImageSteamVdfFixture.documents([shortcutRedirect]), 384)
+            && SemuInstallHost.atomicBytes(adversarialPaths.get(7),
+                AppImageSteamVdfFixture.documents([flatpakRedirect]), 384);
+        SemuSteamMigrationPolicy migration =
+            AppImageContractTest.shortcutMigrationPolicy();
+        SemuSteamShortcutDiscovery active = prepared
+            ? SemuSteamShortcutDatabase.discover(home)
+            : SemuSteamShortcutDiscovery();
+        SemuInstallResult activeMissing = active.valid
+            ? SemuSteamShortcutDatabase.requireExact(
+                active.files, migration.rules, home, stable)
+            : SemuInstallResult.failure("active account fixture failed");
+        SemuInstallResult inactiveExact = prepared
+            ? SemuSteamShortcutDatabase.requireExact(
+                [inactiveDatabase], migration.rules, home, stable)
+            : SemuInstallResult.failure("inactive account fixture failed");
+        bool ambiguousWritten = prepared && FileSystem.writeText(loginUsers,
+            AppImageSteamVdfFixture.loginUsers(
+                ["76561197960265729", "76561197960265730"], [true, true]));
+        SemuSteamShortcutDiscovery ambiguous = ambiguousWritten
+            ? SemuSteamShortcutDatabase.discover(home)
+            : SemuSteamShortcutDiscovery();
+        bool switchedWritten = FileSystem.writeText(loginUsers,
+            AppImageSteamVdfFixture.loginUsers(
+                ["76561197960265729", "76561197960265730"], [false, true]));
+        SemuSteamShortcutDiscovery switched = switchedWritten
+            ? SemuSteamShortcutDatabase.discover(home)
+            : SemuSteamShortcutDiscovery();
+        SemuInstallResult switchedExact = switched.valid
+            ? SemuSteamShortcutDatabase.requireExact(
+                switched.files, migration.rules, home, stable)
+            : SemuInstallResult.failure("switched account fixture failed");
+        bool activeRestored = FileSystem.writeText(loginUsers,
+            AppImageSteamVdfFixture.loginUsers(
+                ["76561197960265729", "76561197960265730"], [true, false]));
+
+        SemuSteamShortcutSnapshot before = activeRestored
+            ? SemuSteamShortcutDatabase.snapshotUnrelated([database])
+            : SemuSteamShortcutSnapshot();
+        SemuInstallResult zeroResult = activeRestored
+            ? SemuSteamShortcutDatabase.requireExact(
+                [database], migration.rules, home, stable)
+            : SemuInstallResult.failure("zero fixture failed");
+        Vector<SemuInstallResult> adversarial = [];
+        for path in adversarialPaths {
+            adversarial.push(SemuSteamShortcutDatabase.requireExact(
+                [path], migration.rules, home, stable));
+        }
+        bool adversarialRejected = adversarial.size() == 8;
+        for result in adversarial {
+            adversarialRejected = adversarialRejected && !result.ok();
+        }
+        bool exactWritten = SemuInstallHost.atomicBytes(database, exact, 384);
+        SemuInstallResult exactResult = exactWritten
+            ? SemuSteamShortcutDatabase.requireExact(
+                [database], migration.rules, home, stable)
+            : SemuInstallResult.failure("exact fixture failed");
+        SemuInstallResult preserved = exactWritten
+            ? SemuSteamShortcutDatabase.verifyMutation(
+                before, [database], migration.rules, home, stable)
+            : SemuInstallResult.failure("exact fixture failed");
+        bool changedWritten = SemuInstallHost.atomicBytes(
+            database, changedUnrelated, 384);
+        SemuInstallResult changed = changedWritten
+            ? SemuSteamShortcutDatabase.verifyMutation(
+                before, [database], migration.rules, home, stable)
+            : SemuInstallResult.failure("changed fixture failed");
+        bool removedWritten = SemuInstallHost.atomicBytes(
+            database, onlyStable, 384);
+        SemuInstallResult removed = removedWritten
+            ? SemuSteamShortcutDatabase.verifyMutation(
+                before, [database], migration.rules, home, stable)
+            : SemuInstallResult.failure("removed fixture failed");
+
+        setenv("HOME", home, 1);
+        setenv("SEMU_APPLICATIONS_DIR",
+            PathTools.join(scratch, "applications"), 1);
+        SemuInstallPolicy policy = SemuInstallPolicy();
+        policy.applicationName = "Semu";
+        policy.stableLauncher = "bin/semu";
+        policy.desktopEntryName = "semu.desktop";
+        policy.steamAddUtility = "steamos-add-to-steam";
+        policy.steamMigration = migration;
+        SemuInstallOptions options = SemuInstallOptions();
+        options.installRoot = installRoot;
+        options.projectRoot = PathTools.join(scratch, "project");
+        SemuInstallPaths paths = SemuInstallPaths(policy, options);
+        string deploymentFile = PathTools.join(installRoot, "deployment");
+        SemuInstallTransaction transaction =
+            SemuInstallTransaction(installRoot);
+        SemuSteamServiceControl service =
+            SemuSteamServiceControl.testDouble(migration, true);
+        SemuSteamShortcutRegistrar registrar =
+            SemuSteamShortcutRegistrar.testDouble(database, exact);
+        SemuSteamShortcut shortcut = SemuSteamShortcut(policy, paths);
+        shortcut.useTestDoubles(service, registrar);
+        string inactiveDigest = SemuInstallHost.sha256File(inactiveDatabase);
+        bool lifecyclePrepared = SemuInstallHost.atomicBytes(database, zero, 384)
+            && FileSystem.mkdirp(paths.state) == 0
+            && FileSystem.writeText(
+                deploymentFile, "prior-deployment-bytes\n")
+            && transaction.begin().ok()
+            && transaction.snapshot(deploymentFile)
+            && FileSystem.writeText(
+                deploymentFile, "candidate-deployment-bytes\n");
+        SemuInstallResult tracked = lifecyclePrepared
+            ? shortcut.track(transaction)
+            : SemuInstallResult.failure("lifecycle fixture failed");
+        SemuInstallResult ensured = tracked.ok()
+            ? shortcut.ensure(transaction) : tracked;
+        bool ensuredExact = ensured.ok() && registrar.fixture.calls == 1
+            && SemuSteamShortcutDatabase.requireExact(
+                [database], migration.rules, home, stable).ok()
+            && SemuInstallHost.sha256File(inactiveDatabase)
+                .equals(inactiveDigest);
+        service.fixture.stopSucceeds = false;
+        SemuInstallResult rolledBack = ensured.ok()
+            ? shortcut.rollbackDeployment(transaction)
+            : SemuInstallResult.failure("ensure failed");
+        bool stopFailureRolledBack = ensuredExact && !rolledBack.ok()
+            && !transaction.active
+            && SemuInstallHost.sameBytes(
+                SemuInstallHost.readBytes(database), zero)
+            && FileSystem.readText(deploymentFile)
+                .equals("prior-deployment-bytes\n")
+            && !FileStatus(paths.steamReceipt).linkFound
+            && SemuInstallHost.sha256File(inactiveDatabase)
+                .equals(inactiveDigest);
+
+        SemuInstallTransaction invalidTransaction =
+            SemuInstallTransaction(installRoot);
+        SemuSteamServiceControl invalidService =
+            SemuSteamServiceControl.testDouble(migration, true);
+        SemuSteamShortcutRegistrar invalidRegistrar =
+            SemuSteamShortcutRegistrar.testDouble(
+                database, invalidRegistration);
+        SemuSteamShortcut invalidShortcut = SemuSteamShortcut(policy, paths);
+        invalidShortcut.useTestDoubles(invalidService, invalidRegistrar);
+        bool invalidReady = invalidTransaction.begin().ok();
+        SemuInstallResult invalidTracked = invalidReady
+            ? invalidShortcut.track(invalidTransaction)
+            : SemuInstallResult.failure("invalid registrar fixture failed");
+        SemuInstallResult invalidEnsured = invalidTracked.ok()
+            ? invalidShortcut.ensure(invalidTransaction) : invalidTracked;
+        SemuInstallResult invalidRolledBack = !invalidEnsured.ok()
+            ? invalidShortcut.rollbackDeployment(invalidTransaction)
+            : SemuInstallResult.failure("invalid registration was accepted");
+        bool registrarCannotBypass = invalidTracked.ok()
+            && !invalidEnsured.ok() && invalidRegistrar.fixture.calls == 1
+            && invalidRolledBack.ok() && !invalidTransaction.active
+            && SemuInstallHost.sameBytes(
+                SemuInstallHost.readBytes(database), zero)
+            && !FileStatus(paths.steamReceipt).linkFound;
+
+        SemuInstallTransaction switchTransaction =
+            SemuInstallTransaction(installRoot);
+        SemuSteamServiceControl switchService =
+            SemuSteamServiceControl.testDouble(migration, true);
+        SemuSteamShortcutRegistrar switchRegistrar =
+            SemuSteamShortcutRegistrar.testDouble(database, exact);
+        SemuSteamShortcut switchShortcut = SemuSteamShortcut(policy, paths);
+        switchShortcut.useTestDoubles(switchService, switchRegistrar);
+        bool switchReady = switchTransaction.begin().ok();
+        SemuInstallResult switchTracked = switchReady
+            ? switchShortcut.track(switchTransaction)
+            : SemuInstallResult.failure("account switch fixture failed");
+        bool accountChanged = switchTracked.ok()
+            && FileSystem.writeText(loginUsers,
+                AppImageSteamVdfFixture.loginUsers(
+                    ["76561197960265729", "76561197960265730"],
+                    [false, true]));
+        SemuInstallResult switchEnsured = accountChanged
+            ? switchShortcut.ensure(switchTransaction)
+            : SemuInstallResult.failure("account switch was not staged");
+        SemuInstallResult switchRolledBack = !switchEnsured.ok()
+            ? switchShortcut.rollbackDeployment(switchTransaction)
+            : SemuInstallResult.failure("active account switch was accepted");
+        SemuSteamShortcutDiscovery restoredAccount =
+            SemuSteamShortcutDatabase.discover(home);
+        bool accountSwitchRejected = switchTracked.ok()
+            && !switchEnsured.ok() && switchRegistrar.fixture.calls == 0
+            && switchRolledBack.ok() && !switchTransaction.active
+            && restoredAccount.valid && restoredAccount.accountId.equals("1")
+            && SemuInstallHost.sameBytes(
+                SemuInstallHost.readBytes(database), zero);
+
+        string absentHome = PathTools.join(scratch, "absent-home");
+        string absentSteam = PathTools.join(
+            absentHome, ".local/share/Steam");
+        string absentLogin = PathTools.join(
+            absentSteam, "config/loginusers.vdf");
+        string absentDatabase = PathTools.join(
+            absentSteam, "userdata/7/config/shortcuts.vdf");
+        string absentInstall = PathTools.join(
+            absentHome, "Applications/Semu");
+        string absentStable = PathTools.join(absentInstall, "bin/semu");
+        Bytes absentExact = AppImageSteamVdfFixture.database(
+            ["Semu"], ["\"" + absentStable + "\""]);
+        bool absentPrepared = FileSystem.mkdirp(
+                PathTools.dirname(absentLogin)) == 0
+            && FileSystem.mkdirp(PathTools.dirname(absentDatabase)) == 0
+            && FileSystem.writeText(absentLogin,
+                AppImageSteamVdfFixture.loginUsers(
+                    ["76561197960265735"], [true]));
+        setenv("HOME", absentHome, 1);
+        SemuInstallOptions absentOptions = SemuInstallOptions();
+        absentOptions.installRoot = absentInstall;
+        absentOptions.projectRoot = PathTools.join(scratch, "absent-project");
+        SemuInstallPaths absentPaths = SemuInstallPaths(policy, absentOptions);
+        SemuInstallTransaction absentTransaction =
+            SemuInstallTransaction(absentInstall);
+        SemuSteamServiceControl absentService =
+            SemuSteamServiceControl.testDouble(migration, true);
+        SemuSteamShortcutRegistrar absentRegistrar =
+            SemuSteamShortcutRegistrar.testDouble(
+                absentDatabase, absentExact);
+        SemuSteamShortcut absentShortcut =
+            SemuSteamShortcut(policy, absentPaths);
+        absentShortcut.useTestDoubles(absentService, absentRegistrar);
+        bool absentReady = absentPrepared
+            && FileSystem.mkdirp(absentPaths.state) == 0
+            && absentTransaction.begin().ok();
+        SemuInstallResult absentTracked = absentReady
+            ? absentShortcut.track(absentTransaction)
+            : SemuInstallResult.failure("absent fixture failed");
+        SemuInstallResult absentEnsured = absentTracked.ok()
+            ? absentShortcut.ensure(absentTransaction) : absentTracked;
+        bool absentCreated = absentEnsured.ok()
+            && SemuInstallHost.regularFile(absentDatabase)
+            && absentShortcut.validate().ok();
+        SemuInstallResult absentRolledBack = absentEnsured.ok()
+            ? absentShortcut.rollbackDeployment(absentTransaction)
+            : SemuInstallResult.failure("absent ensure failed");
+        bool absentRemoved = absentCreated && absentRolledBack.ok()
+            && !absentTransaction.active
+            && !FileStatus(absentDatabase).linkFound
+            && !FileStatus(absentPaths.steamReceipt).linkFound;
+
+        if (oldHome.isEmpty()) { unsetenv("HOME"); }
+        else { setenv("HOME", oldHome, 1); }
+        if (oldApplications.isEmpty()) { unsetenv("SEMU_APPLICATIONS_DIR"); }
+        else { setenv("SEMU_APPLICATIONS_DIR", oldApplications, 1); }
+        bool exactContract = active.valid && active.accountId.equals("1")
+            && active.database.equals(database) && !activeMissing.ok()
+            && inactiveExact.ok() && !ambiguous.valid
+            && switched.valid && switched.accountId.equals("2")
+            && switched.database.equals(inactiveDatabase)
+            && switchedExact.ok() && before.valid && !zeroResult.ok()
+            && adversarialRejected && exactResult.ok() && preserved.ok()
+            && !changed.ok() && !removed.ok()
+            && stopFailureRolledBack && registrarCannotBypass
+            && accountSwitchRejected && absentRemoved;
+        FileSystem.removeRecursive(scratch);
+        return exactContract;
+    }
+
     class bool steamShortcutMigration() {
         string scratch = FileSystem.tempDir("semu-steam-vdf-migration");
         if (scratch.isEmpty()) { return false; }
         string home = PathTools.join(scratch, "home");
         string stateRoot = PathTools.join(scratch, "state");
-        string bin = PathTools.join(scratch, "bin");
         string database = PathTools.join(scratch, "shortcuts.vdf");
         string corrupt = PathTools.join(scratch, "corrupt.vdf");
-        string serviceState = PathTools.join(scratch, "steam.state");
-        string serviceLog = PathTools.join(scratch, "steam.log");
-        string systemctl = PathTools.join(bin, "systemctl");
-        string pgrep = PathTools.join(bin, "pgrep");
         string appImage = PathTools.join(
             home, "Applications/Semu/Semu-x86_64.AppImage");
         string megaBezel = PathTools.join(home, "semu-mb-launch.sh");
@@ -199,45 +1264,13 @@ class AppImageContractTest {
              "\"" + appImage + "\"", "\"" + megaBezel + "\""]);
         Bytes expected = AppImageSteamVdfFixture.database(
             ["Unrelated"], ["\"/opt/unrelated\""]);
-        SemuSteamMigrationPolicy policy = SemuSteamMigrationPolicy();
-        policy.serviceUnit = "steam-launcher.service";
-        policy.processName = "steam";
-        policy.rules = [
-            SemuSteamLegacyRule("Semu-x86_64.AppImage",
-                "${home}/Applications/Semu/Semu-x86_64.AppImage"),
-            SemuSteamLegacyRule(
-                "Semu MegaBezel", "${home}/semu-mb-launch.sh")
-        ];
+        SemuSteamMigrationPolicy policy =
+            AppImageContractTest.shortcutMigrationPolicy();
         bool prepared = FileSystem.mkdirp(home) == 0
             && FileSystem.mkdirp(stateRoot) == 0
-            && FileSystem.mkdirp(bin) == 0
             && SemuInstallHost.atomicBytes(database, source, 384)
             && SemuInstallHost.atomicBytes(
-                corrupt, source.slice(0, source.length() - 1), 384)
-            && FileSystem.writeText(serviceState, "active\n")
-            && FileSystem.writeText(serviceLog, "")
-            && FileSystem.writeText(systemctl, """#!/usr/bin/env sh
-set -eu
-state=\"$SEMU_TEST_STEAM_STATE\"
-log=\"$SEMU_TEST_STEAM_LOG\"
-case \"$2\" in
-  is-active) [ \"$(cat \"$state\")\" = active ] && exit 0 || exit 3 ;;
-  stop) printf 'inactive\n' > \"$state\"; printf 'stop\n' >> \"$log\" ;;
-  start) printf 'active\n' > \"$state\"; printf 'start\n' >> \"$log\" ;;
-  *) exit 64 ;;
-esac
-""")
-            && FileSystem.writeText(pgrep, """#!/usr/bin/env sh
-set -eu
-[ \"$(cat \"$SEMU_TEST_STEAM_STATE\")\" = active ]
-""")
-            && FileSystem.chmod(systemctl, 493) == 0
-            && FileSystem.chmod(pgrep, 493) == 0;
-        string originalPath = Environment.get("PATH", "");
-        setenv("PATH", bin + ":" + originalPath, 1);
-        setenv("SEMU_TEST_STEAM_STATE", serviceState, 1);
-        setenv("SEMU_TEST_STEAM_LOG", serviceLog, 1);
-
+                corrupt, source.slice(0, source.length() - 1), 384);
         SemuSteamVdfEdit pure = SemuSteamShortcutVdf.removeDeclared(
             source, policy.rules, home);
         SemuSteamVdfEdit idempotent = pure.valid
@@ -245,24 +1278,27 @@ set -eu
                 pure.content, policy.rules, home) : SemuSteamVdfEdit();
         SemuSteamVdfEdit malformed = SemuSteamShortcutVdf.removeDeclared(
             source.slice(0, source.length() - 1), policy.rules, home);
-        Bytes unknownBytes = AppImageSteamVdfFixture.database(
-            ["Semu Unknown"], ["\"" + PathTools.join(
-                home, "unknown.sh") + "\""]);
         string unknown = PathTools.join(scratch, "unknown.vdf");
-        bool unknownWritten = SemuInstallHost.atomicBytes(
-            unknown, unknownBytes, 384);
+        bool unknownWritten = SemuInstallHost.atomicBytes(unknown,
+            AppImageSteamVdfFixture.database(
+                ["Semu Unknown"], ["\"" + PathTools.join(
+                    home, "unknown.sh") + "\""]), 384);
         SemuSteamShortcutInspection conflict =
             SemuSteamShortcutDatabase.inspect(
                 [unknown], policy.rules, home, stable);
 
         string before = SemuInstallHost.sha256File(database);
+        SemuSteamServiceControl service =
+            SemuSteamServiceControl.testDouble(policy, true);
         SemuSteamShortcutMigration migration = SemuSteamShortcutMigration(
             policy, stateRoot, home, stable, [database]);
+        migration.service = service;
         SemuInstallResult migrated = prepared && unknownWritten
             ? migration.begin()
             : SemuInstallResult.failure("fixture setup failed");
         bool stoppedAndRestarted = migrated.ok()
-            && FileSystem.readText(serviceState).trim().equals("active")
+            && service.fixture.stopCalls == 1
+            && service.fixture.startCalls == 1
             && SemuInstallHost.sameBytes(
                 SemuInstallHost.readBytes(database), expected);
         SemuInstallResult rolledBack = migrated.ok()
@@ -272,14 +1308,18 @@ set -eu
             && SemuInstallHost.sha256File(database).equals(before)
             && SemuInstallHost.sameBytes(
                 SemuInstallHost.readBytes(database), source)
-            && FileSystem.readText(serviceState).trim().equals("active");
+            && service.fixture.unitActive
+            && service.fixture.processRunning;
 
         string deploymentFile = PathTools.join(scratch, "deployment");
         SemuInstallTransaction deployment =
             SemuInstallTransaction(stateRoot);
+        SemuSteamServiceControl sharedService =
+            SemuSteamServiceControl.testDouble(policy, true);
         SemuSteamShortcutMigration sharedMigration =
             SemuSteamShortcutMigration(
                 policy, stateRoot, home, stable, [database]);
+        sharedMigration.service = sharedService;
         bool sharedPrepared = FileSystem.writeText(
                 deploymentFile, "prior-deployment-bytes\n")
             && deployment.begin().ok()
@@ -291,29 +1331,48 @@ set -eu
         bool sharedMutated = sharedStarted.ok()
             && FileSystem.writeText(
                 deploymentFile, "candidate-deployment-bytes\n");
+        sharedService.fixture.stopSucceeds = false;
         SemuInstallResult sharedRolledBack = sharedMutated
             ? sharedMigration.rollback()
             : SemuInstallResult.failure("shared migration did not begin");
-        bool exactSharedRollback = sharedRolledBack.ok()
+        bool exactSharedRollback = !sharedRolledBack.ok()
+            && !deployment.active
             && SemuInstallHost.sameBytes(
                 SemuInstallHost.readBytes(database), source)
             && FileSystem.readText(deploymentFile)
                 .equals("prior-deployment-bytes\n");
 
+        SemuSteamServiceControl timeoutService =
+            SemuSteamServiceControl.testDouble(policy, true);
+        timeoutService.fixture.stopConverges = false;
+        SemuInstallResult timeout = timeoutService.quiesce();
+        bool timeoutRestored = !timeout.ok() && !timeoutService.stopped
+            && timeoutService.fixture.stopCalls == 1
+            && timeoutService.fixture.startCalls == 1
+            && timeoutService.fixture.unitActive
+            && timeoutService.fixture.processRunning;
+
+        SemuSteamServiceControl committedService =
+            SemuSteamServiceControl.testDouble(policy, true);
         SemuSteamShortcutMigration committedMigration =
             SemuSteamShortcutMigration(
                 policy, stateRoot, home, stable, [database]);
+        committedMigration.service = committedService;
         SemuInstallResult migratedAgain = committedMigration.begin();
         SemuInstallResult committed = migratedAgain.ok()
             ? committedMigration.commit()
             : SemuInstallResult.failure("second migration did not begin");
-        string logBeforeIdempotence = FileSystem.readText(serviceLog);
+        SemuSteamServiceControl noOpService =
+            SemuSteamServiceControl.testDouble(policy, true);
         SemuSteamShortcutMigration noOp = SemuSteamShortcutMigration(
             policy, stateRoot, home, stable, [database]);
+        noOp.service = noOpService;
         SemuInstallResult noOpResult = noOp.begin();
         SemuSteamShortcutMigration corruptMigration =
             SemuSteamShortcutMigration(
                 policy, stateRoot, home, stable, [corrupt]);
+        corruptMigration.service =
+            SemuSteamServiceControl.testDouble(policy, true);
         string corruptBefore = SemuInstallHost.sha256File(corrupt);
         SemuInstallResult corruptResult = corruptMigration.begin();
 
@@ -323,17 +1382,11 @@ set -eu
             && SemuInstallHost.sameBytes(idempotent.content, expected)
             && !malformed.valid && !conflict.valid
             && stoppedAndRestarted && exactRollback && exactSharedRollback
-            && migratedAgain.ok() && committed.ok()
+            && timeoutRestored && migratedAgain.ok() && committed.ok()
             && noOpResult.ok() && noOp.removed == 0
-            && FileSystem.readText(serviceLog).equals(logBeforeIdempotence)
+            && noOpService.fixture.stopCalls == 0
             && !corruptResult.ok()
-            && SemuInstallHost.sha256File(corrupt).equals(corruptBefore)
-            && FileSystem.readText(serviceState).trim().equals("active")
-            && Strings.split(FileSystem.readText(serviceLog).trim(), "\n")
-                .size() == 10;
-        setenv("PATH", originalPath, 1);
-        unsetenv("SEMU_TEST_STEAM_STATE");
-        unsetenv("SEMU_TEST_STEAM_LOG");
+            && SemuInstallHost.sha256File(corrupt).equals(corruptBefore);
         FileSystem.removeRecursive(scratch);
         return exact;
     }
@@ -424,6 +1477,33 @@ set -eu
         return true;
     }
 
+    class bool immutableReleaseSelection(string project) {
+        AppImageReleaseInventory inventory = AppImageReleaseInventory();
+        inventory.kind = "emulator-slice";
+        inventory.target = "steam-deck";
+        inventory.platform = "linux";
+        inventory.nixSystem = "x86_64-linux";
+        inventory.packageAttribute = "steamdeck-runtime-retroarch";
+        inventory.emulatorIds = ["retroarch"];
+        string cli = Path.readAll(PathTools.join(project, "src/cli.btrc"));
+        int expectedAttribute = Strings.find(
+            cli, "string expectedPackageAttribute", 0);
+        int lease = Strings.find(
+            cli, "AppImageRuntimeLease.acquire(", expectedAttribute + 1);
+        int selection = Strings.find(
+            cli, "matchesPackageSelection", lease + 1);
+        int assembly = Strings.find(
+            cli, "string workRoot", selection + 1);
+        int laterCompile = Strings.find(
+            cli, "SemuCli.compile(", selection + 1);
+        return inventory.matchesPackageSelection("steam-deck", "retroarch")
+            && !inventory.matchesPackageSelection("steam-deck", "dolphin")
+            && inventory.packageEmulator("").equals("retroarch")
+            && expectedAttribute >= 0 && lease > expectedAttribute
+            && selection > lease && assembly > selection
+            && (laterCompile < 0 || laterCompile > assembly);
+    }
+
     class bool runtimeBuilder(string project) {
         string scratch = FileSystem.tempDir("semu-runtime-builder-plan");
         if (scratch.isEmpty()) { return false; }
@@ -432,12 +1512,51 @@ set -eu
         AppImageRuntimeBuildPlan plan = AppImageRuntimeBuildPlan();
         AppImageRuntimeBuildResult loaded = AppImageRuntimeBuildPlan.create(
             project, output, plan, cache);
+        JsonValue ownedMount = JsonValue.parse(
+            "{\"images\":[{\"image-path\":\"/cache/owned.sparsebundle\","
+            + "\"image-type\":\"sparse bundle disk image\","
+            + "\"writeable\":true,\"image-encrypted\":false,"
+            + "\"system-entities\":[{\"mount-point\":\"/cache/mount\","
+            + "\"dev-entry\":\"/dev/disk1s1\"}]}]}");
+        JsonValue foreignMount = JsonValue.parse(
+            "{\"images\":[{\"image-path\":\"/cache/foreign.sparsebundle\","
+            + "\"image-type\":\"sparse bundle disk image\","
+            + "\"writeable\":true,\"image-encrypted\":false,"
+            + "\"system-entities\":[{\"mount-point\":\"/cache/mount\","
+            + "\"dev-entry\":\"/dev/disk2s1\"}]}]}");
+        JsonValue duplicateMount = JsonValue.parse(
+            "{\"images\":[{\"image-path\":\"/cache/owned.sparsebundle\","
+            + "\"image-type\":\"sparse bundle disk image\","
+            + "\"writeable\":true,\"image-encrypted\":false,"
+            + "\"system-entities\":[{\"mount-point\":\"/cache/mount\","
+            + "\"dev-entry\":\"/dev/disk1s1\"}]},{"
+            + "\"image-path\":\"/cache/foreign.sparsebundle\","
+            + "\"image-type\":\"sparse bundle disk image\","
+            + "\"writeable\":true,\"image-encrypted\":false,"
+            + "\"system-entities\":[{\"mount-point\":\"/cache/mount\","
+            + "\"dev-entry\":\"/dev/disk2s1\"}]}]}");
+        string imageFixture = PathTools.join(scratch, "owned.sparsebundle");
+        string linkedImage = PathTools.join(scratch, "linked.sparsebundle");
+        bool imagePrepared = FileSystem.mkdirp(imageFixture) == 0
+            && FileSystem.symlink(imageFixture, linkedImage) == 0;
+        bool mountIdentity = imagePrepared
+            && AppImageMacRuntimeVolume.safeImage(imageFixture)
+            && !AppImageMacRuntimeVolume.safeImage(linkedImage)
+            && AppImageMacRuntimeVolume.ownsMountedImage(ownedMount,
+                "/cache/owned.sparsebundle", "/cache/mount")
+            && !AppImageMacRuntimeVolume.ownsMountedImage(foreignMount,
+                "/cache/owned.sparsebundle", "/cache/mount")
+            && !AppImageMacRuntimeVolume.ownsMountedImage(duplicateMount,
+                "/cache/owned.sparsebundle", "/cache/mount");
         bool identityFixture = loaded.ok()
             && FileSystem.mkdirp(PathTools.join(plan.snapshot, "config")) == 0
+            && FileSystem.mkdirp(PathTools.join(plan.snapshot, "docs")) == 0
             && FileSystem.writeText(PathTools.join(
                 plan.snapshot, "flake.nix"), "{ outputs = _: {}; }\n")
             && FileSystem.writeText(PathTools.join(
-                plan.snapshot, "config/fixture.json"), "{\"value\":1}\n");
+                plan.snapshot, "config/fixture.json"), "{\"value\":1}\n")
+            && FileSystem.writeText(PathTools.join(
+                plan.snapshot, "docs/goal.md"), "first\n");
         AppImageRuntimeBuildResult firstIdentity = identityFixture
             ? AppImageRuntimeSnapshot.identity(plan)
             : AppImageRuntimeBuildResult.failure("identity fixture failed");
@@ -446,6 +1565,59 @@ set -eu
         AppImageRuntimeBuildResult secondIdentity = identityChanged
             ? AppImageRuntimeSnapshot.identity(plan)
             : AppImageRuntimeBuildResult.failure("identity mutation failed");
+        bool nonBuildInputChanged = secondIdentity.ok()
+            && FileSystem.writeText(PathTools.join(
+                plan.snapshot, "docs/goal.md"), "second\n");
+        AppImageRuntimeBuildResult thirdIdentity = nonBuildInputChanged
+            ? AppImageRuntimeSnapshot.identity(plan)
+            : AppImageRuntimeBuildResult.failure(
+                "complete identity mutation failed");
+        bool forbiddenPrepared = thirdIdentity.ok()
+            && FileSystem.mkdirp(PathTools.join(plan.snapshot, "build")) == 0
+            && FileSystem.writeText(PathTools.join(
+                plan.snapshot, "build/stale"), "stale\n");
+        AppImageRuntimeBuildResult forbiddenIdentity = forbiddenPrepared
+            ? AppImageRuntimeSnapshot.identity(plan)
+            : AppImageRuntimeBuildResult.failure(
+                "forbidden identity fixture failed");
+        FileSystem.removeRecursive(PathTools.join(plan.snapshot, "build"));
+
+        string refreshRepository = PathTools.join(scratch, "refresh-repo");
+        string refreshCache = PathTools.join(scratch, "refresh-cache");
+        AppImageRuntimeBuildPlan refreshPlan = AppImageRuntimeBuildPlan();
+        bool refreshFixture = FileSystem.mkdirp(PathTools.join(
+                refreshRepository, ".git")) == 0
+            && FileSystem.mkdirp(PathTools.join(
+                refreshRepository, "build")) == 0
+            && FileSystem.writeText(PathTools.join(
+                refreshRepository, "flake.nix"), "{ outputs = _: {}; }\n")
+            && FileSystem.writeText(PathTools.join(
+                refreshRepository, ".git/ignored"), "git\n")
+            && FileSystem.writeText(PathTools.join(
+                refreshRepository, "build/ignored"), "build\n");
+        AppImageRuntimeBuildResult refreshLoaded = refreshFixture
+            ? AppImageRuntimeBuildPlan.create(
+                refreshRepository, PathTools.join(
+                    refreshCache, "runtime-root"), refreshPlan,
+                refreshCache, "steamdeck-runtime-retroarch")
+            : AppImageRuntimeBuildResult.failure(
+                "refresh fixture setup failed");
+        AppImageRuntimeBuildResult firstRefresh = refreshLoaded.ok()
+            ? AppImageRuntimeSnapshot.refresh(refreshPlan) : refreshLoaded;
+        bool stalePrepared = firstRefresh.ok()
+            && FileSystem.mkdirp(PathTools.join(
+                refreshPlan.snapshot, "build")) == 0
+            && FileSystem.writeText(PathTools.join(
+                refreshPlan.snapshot, "build/stale"), "stale\n");
+        AppImageRuntimeBuildResult secondRefresh = stalePrepared
+            ? AppImageRuntimeSnapshot.refresh(refreshPlan)
+            : AppImageRuntimeBuildResult.failure(
+                "stale refresh fixture failed");
+        bool excludedDeleted = secondRefresh.ok()
+            && !FileStatus(PathTools.join(
+                refreshPlan.snapshot, ".git")).linkFound
+            && !FileStatus(PathTools.join(
+                refreshPlan.snapshot, "build")).linkFound;
 
         string outside = PathTools.join(scratch, "outside");
         string sentinel = PathTools.join(outside, "sentinel");
@@ -454,17 +1626,24 @@ set -eu
             && FileSystem.mkdirp(outside) == 0
             && FileSystem.writeText(sentinel, "outside-bytes\n")
             && FileSystem.symlink(outside, foreign) == 0;
+        int cacheDescriptor = generationsPrepared
+            ? UnixFileSystem.openDirectoryNoFollow(plan.cacheRoot) : -1;
         AppImageRuntimeBuildResult oldGeneration = generationsPrepared
             ? AppImageRuntimeGeneration.create(plan)
             : AppImageRuntimeBuildResult.failure(
                 "runtime generations fixture failed");
         plan.exportRoot = oldGeneration.value;
+        string oldProof = AppImageRuntimeGeneration.nixProof(
+            plan, plan.exportRoot);
         bool oldPrepared = oldGeneration.ok()
             && FileSystem.writeText(PathTools.join(
-                plan.exportRoot, "runtime"), "old-runtime-bytes\n");
+                plan.exportRoot, "runtime"), "old-runtime-bytes\n")
+            && FileSystem.writeText(oldProof, "fixture-proof\n")
+            && FileSystem.chmod(oldProof, 292) == 0;
         AppImageRuntimeBuildResult published = oldPrepared
             ? AppImageRuntimeExporter.finish(
-                plan, AppImageRuntimeBuildResult.success())
+                plan, AppImageRuntimeBuildResult.success(),
+                cacheDescriptor)
             : AppImageRuntimeBuildResult.failure(
                 "old runtime generation fixture failed");
         string oldPath = published.ok()
@@ -482,7 +1661,7 @@ set -eu
         AppImageRuntimeBuildResult rejected = failedPrepared
             ? AppImageRuntimeExporter.finish(plan,
                 AppImageRuntimeBuildResult.failure(
-                    "injected provenance failure"))
+                    "injected provenance failure"), cacheDescriptor)
             : AppImageRuntimeBuildResult.failure(
                 "failed runtime generation fixture failed");
         bool failurePreserved = !rejected.ok()
@@ -495,12 +1674,17 @@ set -eu
         AppImageRuntimeBuildResult nextGeneration = failurePreserved
             ? AppImageRuntimeGeneration.create(plan) : rejected;
         plan.exportRoot = nextGeneration.value;
+        string nextProof = AppImageRuntimeGeneration.nixProof(
+            plan, plan.exportRoot);
         bool nextPrepared = nextGeneration.ok()
             && FileSystem.writeText(PathTools.join(
-                plan.exportRoot, "runtime"), "next-runtime-bytes\n");
+                plan.exportRoot, "runtime"), "next-runtime-bytes\n")
+            && FileSystem.writeText(nextProof, "fixture-proof\n")
+            && FileSystem.chmod(nextProof, 292) == 0;
         AppImageRuntimeBuildResult republished = nextPrepared
             ? AppImageRuntimeExporter.finish(
-                plan, AppImageRuntimeBuildResult.success())
+                plan, AppImageRuntimeBuildResult.success(),
+                cacheDescriptor)
             : AppImageRuntimeBuildResult.failure(
                 "next runtime generation fixture failed");
         int ownedGenerations = 0;
@@ -517,8 +1701,10 @@ set -eu
             && UnixFileSystem.realPath(plan.output).equals(plan.exportRoot)
             && FileSystem.readText(PathTools.join(
                 plan.output, "runtime")).equals("next-runtime-bytes\n")
-            && !FileStatus(oldPath).linkFound
-            && ownedGenerations == 1
+            && FileStatus(oldPath).isDir()
+            && FileSystem.readText(PathTools.join(
+                oldPath, "runtime")).equals("old-runtime-bytes\n")
+            && ownedGenerations == 2
             && FileStatus(foreign).isSymlink()
             && FileSystem.readText(sentinel).equals("outside-bytes\n");
         AppImageRuntimeBuildPlan reloadedPlan = AppImageRuntimeBuildPlan();
@@ -527,6 +1713,22 @@ set -eu
                 project, output, reloadedPlan, cache)
             : AppImageRuntimeBuildResult.failure(
                 "published runtime reload fixture failed");
+        AppImageRuntimeBuildResult reloadedOutput = reloaded.ok()
+            ? AppImageRuntimeBuildPlan.validateOutput(reloadedPlan)
+            : reloaded;
+        AppImageRuntimeBuildPlan wrongReleasePlan =
+            AppImageRuntimeBuildPlan();
+        AppImageRuntimeBuildResult wrongRelease =
+            AppImageRuntimeBuildPlan.create(
+                project, output, wrongReleasePlan, cache,
+                "steamdeck-runtime-retroarch");
+        AppImageRuntimeBuildPlan invalidReleasePlan =
+            AppImageRuntimeBuildPlan();
+        AppImageRuntimeBuildResult invalidRelease =
+            AppImageRuntimeBuildPlan.create(
+                project, PathTools.join(scratch, "invalid/runtime-root"),
+                invalidReleasePlan, PathTools.join(scratch, "invalid"),
+                "steamdeck-runtime/escape");
         AppImageRuntimeBuilder firstBuilder = AppImageRuntimeBuilder(plan);
         AppImageRuntimeBuilder secondBuilder = AppImageRuntimeBuilder(plan);
         AppImageRuntimeBuildResult firstLock = firstBuilder.acquire();
@@ -536,7 +1738,13 @@ set -eu
             ? secondBuilder.acquire() : firstUnlock;
         AppImageRuntimeBuildResult secondUnlock = secondLock.ok()
             ? secondBuilder.unlock() : secondLock;
-        bool linkedLock = secondUnlock.ok()
+        FileStatus retainedLock = FileStatus(plan.lock);
+        bool lockRetained = secondUnlock.ok()
+            && retainedLock.isFile() && !retainedLock.isSymlink()
+            && (retainedLock.mode & 511) == 384;
+        bool lockRemoved = lockRetained
+            && FileSystem.removeRecursive(plan.lock) == 0;
+        bool linkedLock = lockRemoved
             && FileSystem.symlink(outside, plan.lock) == 0;
         AppImageRuntimeBuilder linkedLockBuilder = AppImageRuntimeBuilder(plan);
         AppImageRuntimeBuildResult linkedLockResult = linkedLock
@@ -568,11 +1776,14 @@ set -eu
         bool outputLinked = outputLoaded.ok()
             && FileSystem.symlink(outside, outputPlan.output) == 0;
         AppImageRuntimeBuildPlan unsafeOutputPlan = AppImageRuntimeBuildPlan();
-        AppImageRuntimeBuildResult unsafeOutput = outputLinked
+        AppImageRuntimeBuildResult unsafeOutputLoaded = outputLinked
             ? AppImageRuntimeBuildPlan.create(project, outputPlan.output,
                 unsafeOutputPlan, outputCache)
             : AppImageRuntimeBuildResult.failure(
                 "unsafe output fixture failed");
+        AppImageRuntimeBuildResult unsafeOutput = unsafeOutputLoaded.ok()
+            ? AppImageRuntimeBuildPlan.validateOutput(unsafeOutputPlan)
+            : unsafeOutputLoaded;
 
         AppImageRuntimeBuildPlan arbitraryPlan = AppImageRuntimeBuildPlan();
         AppImageRuntimeBuildResult arbitrary =
@@ -604,17 +1815,20 @@ set -eu
                 repositoryPlan, project);
         string bootstrap = Path.readAll(PathTools.join(
             project, "packaging/appimage/build_runtime.sh"));
-        bool exact = loaded.ok()
+        bool cacheClosed = cacheDescriptor < 0
+            || close(cacheDescriptor) == 0;
+        bool exact = loaded.ok() && mountIdentity && cacheClosed
             && plan.snapshot.equals(PathTools.join(cache, "source"))
             && plan.generationsRoot.equals(PathTools.join(cache,
                 plan.macos
                     ? "linux-case-sensitive/generations" : "generations"))
             && plan.output.equals(output)
+            && plan.packageAttribute.equals("steamdeck-runtime")
             && FileSystem.readText(AppImageRuntimeCache.marker(cache))
                 .equals(AppImageRuntimeCache.document(
-                    cache, UnixFileSystem.realPath(project)))
+                    cache, UnixFileSystem.realPath(project),
+                    "steamdeck-runtime"))
             && plan.image.equals("docker.io/nixos/nix@sha256:29fc5fe207f159ceb0143c25c19c774062fee02ce5eda118f3067547b3054894")
-            && plan.volume.equals("semu-appimage-nix-x86_64")
             && AppImageRuntimeExporter.containerProgram().contains(
                 "SEMU_SOURCE_SNAPSHOT_IDENTITY")
             && AppImageRuntimeExporter.containerProgram().contains(
@@ -622,29 +1836,45 @@ set -eu
             && !AppImageRuntimeExporter.containerProgram().contains(
                 "SEMU_SOURCE_FLAKE_SHA256")
             && AppImageRuntimeExporter.containerProgram().contains(
-                "build path:/src#steamdeck-runtime")
+                "build \"path:/src#$SEMU_PACKAGE_ATTRIBUTE\"")
+            && AppImageRuntimeExporter.containerProgram().contains(
+                "path-info --json --recursive \"$out\"")
+            && !AppImageRuntimeExporter.containerProgram().contains(
+                "--json-format")
             && !AppImageRuntimeExporter.containerProgram().contains(
                 "pkgs.symlinkJoin")
             && !AppImageRuntimeExporter.containerProgram().contains(
                 "pkgs.bubblewrap")
             && AppImageRuntimeExporter.containerProgram().contains(
-                "steamdeck-runtime-store-path.txt")
+                "release-store-path.txt")
             && firstIdentity.ok() && secondIdentity.ok()
             && !firstIdentity.value.equals(secondIdentity.value)
-            && firstIdentity.value.contains("src=absent;")
-            && firstIdentity.value.contains("assets=absent;")
-            && firstIdentity.value.contains("patches=absent;")
+            && thirdIdentity.ok()
+            && !secondIdentity.value.equals(thirdIdentity.value)
+            && AppImageRuntimeSnapshot.digest(firstIdentity.value)
+            && AppImageRuntimeSnapshot.digest(secondIdentity.value)
+            && AppImageRuntimeSnapshot.digest(thirdIdentity.value)
+            && !forbiddenIdentity.ok() && excludedDeleted
             && failurePreserved && successReplaced && reloaded.ok()
+            && reloadedOutput.ok()
+            && !wrongRelease.ok() && !invalidRelease.ok()
             && reloadedPlan.generationsRoot.equals(plan.generationsRoot)
             && firstLock.ok() && !contendedLock.ok()
             && firstUnlock.ok() && secondLock.ok() && secondUnlock.ok()
+            && lockRetained
             && !linkedLockResult.ok()
             && FileStatus(plan.output).isSymlink()
             && UnixFileSystem.realPath(plan.output)
                 .equals(plan.exportRoot)
+            && FileStatus(AppImageRuntimeGeneration.marker(
+                plan, plan.exportRoot)).isFile()
+            && !FileStatus(PathTools.join(
+                plan.exportRoot,
+                AppImageRuntimeGeneration.markerName())).linkFound
             && FileSystem.readText(sentinel).equals("outside-bytes\n")
             && !unmarkedResult.ok() && !linkedResult.ok()
-            && !unsafeOutput.ok() && !arbitrary.ok() && !traversal.ok()
+            && unsafeOutputLoaded.ok() && !unsafeOutput.ok()
+            && !arbitrary.ok() && !traversal.ok()
             && !root.ok() && !protectedHome.ok()
             && !protectedAncestor.ok() && !protectedRepository.ok()
             && Strings.split(bootstrap, "\n").size() <= 42
@@ -654,7 +1884,21 @@ set -eu
             && !bootstrap.contains("cache_root/tools")
             && bootstrap.contains("mktemp -d")
             && bootstrap.contains("--strict-imports")
+            && bootstrap.contains("--cache-root")
+            && bootstrap.contains("--package")
             && bootstrap.contains("runtime_builder_main.btrc");
+        if (!exact) {
+            print(f"runtime builder lock detail: first={firstLock.ok()}"
+                + f" contended={contendedLock.ok()}"
+                + f" first_unlock={firstUnlock.ok()}"
+                + f" second={secondLock.ok()}"
+                + f" second_unlock={secondUnlock.ok()}"
+                + f" retained={lockRetained} removed={lockRemoved}"
+                + f" linked={linkedLock} linked_rejected={!linkedLockResult.ok()}"
+                + " first_error=" + firstLock.error
+                + " contention_error=" + contendedLock.error
+                + " unlock_error=" + firstUnlock.error);
+        }
         FileSystem.removeRecursive(scratch);
         return exact;
     }
@@ -759,6 +2003,19 @@ int main(int argc, char** argv) {
             : SemuInstallCommand.run(command);
     }
     string project = FileSystem.currentDirectory();
+    if (arguments.has("--no-fuse-only")) {
+        bool passed = AppImageContractTest.noFuseReleaseLifecycle();
+        print(passed ? "appimage no-FUSE release contract: PASS"
+            : "appimage no-FUSE release contract: FAIL");
+        return passed ? 0 : 1;
+    }
+    if (arguments.has("--steam-shortcuts-only")) {
+        bool passed = AppImageContractTest.steamShortcutContract()
+            && AppImageContractTest.steamShortcutMigration();
+        print(passed ? "appimage Steam shortcut contract: PASS"
+            : "appimage Steam shortcut contract: FAIL");
+        return passed ? 0 : 1;
+    }
     string runtimePrefix = arguments.valueAfter("--runtime-prefix", "");
     if (!runtimePrefix.isEmpty()) {
         Type2AppImageOffset offset =
@@ -778,30 +2035,14 @@ int main(int argc, char** argv) {
         }
         print(f"appimage type-2 payload: offset={offset.offset}");
     }
-    string volume =
-        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
-    Vector<string> boundary = AppImageNoFuseVerifier.boundaryCommand(
-        volume, "/verification/probe", ["argument"], ["HOME=/verification/home"]);
-    Vector<string> emptyArguments = [];
-    if (boundary.size() == 0 || !boundary.contains("--network")
-            || !boundary.contains("none") || !boundary.contains("--read-only")
-            || !boundary.contains("--cap-drop")
-            || boundary.contains("-c") || boundary.contains("-ceu")
-            || AppImageNoFuseVerifier.boundaryCommand(
-                volume, "/verification/probe", emptyArguments,
-                ["HOME=/one", "HOME=/two"]).size() != 0
-            || !AppImageNoFuseVerifier.containsWords(
-                ["prefix", "--inside", "--appdir", "/run/semu-appdir"],
-                ["--inside", "--appdir", "/run/semu-appdir"])) {
-        print("appimage contract: typed startup boundary is malformed");
-        return 1;
-    }
     string verifierSource = Path.readAll(PathTools.join(
         project, "src/generators/appimage/no_fuse_verifier.btrc"));
     if (verifierSource.contains("startupBoundaryScript")
             || verifierSource.contains("set -euo pipefail")
-            || verifierSource.contains("<<'")) {
-        print("appimage contract: production verifier embeds a shell fixture");
+            || verifierSource.contains("<<'")
+            || verifierSource.contains("podman")
+            || verifierSource.contains("qemu")) {
+        print("appimage contract: structural verifier contains a retired execution path");
         return 1;
     }
     if (arguments.has("--format-only")) {
@@ -818,6 +2059,42 @@ int main(int argc, char** argv) {
         print("appimage contract: assembly lock contention or release regressed");
         return 1;
     }
+    if (!AppImageContractTest.ownedWorkDirectory()) {
+        print("appimage contract: private work-session ownership regressed");
+        return 1;
+    }
+    if (!AppImageContractTest.verificationSnapshotBinding()) {
+        print("appimage contract: verification snapshot is not descriptor-bound");
+        return 1;
+    }
+    if (!AppImageContractTest.noFuseReleaseLifecycle()) {
+        print("appimage contract: no-FUSE install and repeat-launch proof is incomplete");
+        return 1;
+    }
+    if (!AppImageContractTest.directoryWriteLeaseNoFollow()) {
+        print("appimage contract: directory write lease was not inode-bound");
+        return 1;
+    }
+    if (!AppImageContractTest.completePayloadHashContract()) {
+        print("appimage contract: descriptor payload identity is not exact");
+        return 1;
+    }
+    if (!AppImageContractTest.immutableReleaseModes()) {
+        print("appimage contract: installed release permits writable modes");
+        return 1;
+    }
+    if (!AppImageContractTest.descriptorTreeImport()) {
+        print("appimage contract: descriptor runtime import is not exact");
+        return 1;
+    }
+    if (!AppImageContractTest.descriptorTreeDigestFraming()) {
+        print("appimage contract: descriptor tree digest framing is ambiguous");
+        return 1;
+    }
+    if (!AppImageContractTest.runtimePrefixBinding()) {
+        print("appimage contract: runtime prefix is not exact or no-follow");
+        return 1;
+    }
     if (!AppImageContractTest.runtimePaths(project)) {
         print("appimage contract: generated runtime path embeds the build host");
         return 1;
@@ -826,12 +2103,25 @@ int main(int argc, char** argv) {
         print("appimage contract: packaging output escaped its owned build root");
         return 1;
     }
+    if (!AppImageContractTest.stagedConfigOwnership()) {
+        print("appimage contract: provenance-bound staged config is not exact");
+        return 1;
+    }
+    if (!AppImageContractTest.steamShortcutContract()) {
+        print("appimage contract: stable Steam shortcut proof is not exact");
+        return 1;
+    }
     if (!AppImageContractTest.steamShortcutMigration()) {
         print("appimage contract: legacy Steam shortcut migration is unsafe");
         return 1;
     }
     if (!AppImageContractTest.romPrecedence()) {
         print("appimage contract: runtime-owned ROM precedence regressed");
+        return 1;
+    }
+    if (!AppImageContractTest.immutableReleaseSelection(
+            project)) {
+        print("appimage contract: compiler selection escaped the immutable release inventory");
         return 1;
     }
     if (!AppImageContractTest.runtimeBuilder(project)) {

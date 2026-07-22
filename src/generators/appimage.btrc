@@ -2,7 +2,6 @@
 
 import std.{fs, json, vector}
 import ../compiler/model.btrc
-import ../lib/json_format.btrc
 import ../lib/owned_paths.btrc
 import ./appimage/install_policy.btrc
 import ./settings.btrc
@@ -98,7 +97,7 @@ exec \"$(dirname \"$0\")/semu\" launcher @@EMULATOR@@ --target @@TARGET@@ \"$@\"
         manifest.set("entry", entry);
         return SemuAppImageGenerator.write(buildRoot, PathTools.join(
                 packagingRoot, SettingsEsDeGenerator.appImageRelativePath()),
-            SemuJsonFormat.document(manifest), false, diagnostics);
+            manifest.document(), false, diagnostics);
     }
 
     class bool emitLegacyShortcutPolicy(
@@ -114,7 +113,7 @@ exec \"$(dirname \"$0\")/semu\" launcher @@EMULATOR@@ --target @@TARGET@@ \"$@\"
         }
         return SemuAppImageGenerator.write(buildRoot, PathTools.join(
                 packagingRoot, "settings/legacy_shortcuts.json"),
-            SemuJsonFormat.document(policy), false, diagnostics);
+            policy.document(), false, diagnostics);
     }
 
     class bool symlinkFreeTree(string root) {
@@ -235,8 +234,7 @@ exec \"$(dirname \"$0\")/semu\" launcher @@EMULATOR@@ --target @@TARGET@@ \"$@\"
     }
 
     class string packagePlanText(SemuBuildPlan plan) {
-        return SemuJsonFormat.document(
-            SemuAppImageGenerator.packagePlan(plan));
+        return SemuAppImageGenerator.packagePlan(plan).document();
     }
 
     class string emit(SemuBuildPlan plan, string projectRoot,

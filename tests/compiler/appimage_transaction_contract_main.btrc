@@ -1,0 +1,1202 @@
+// Adversarial contracts for AppImage assembly and runtime publication.
+
+import std.{cli, fs, io, json, process, vector}
+import ../../src/generators/appimage/assembler.btrc
+import ../../src/generators/appimage/linux_worker.btrc
+import ../../src/generators/appimage/output_transaction.btrc
+import ../../src/generators/appimage/runtime_builder.btrc
+import ../../src/lib/owned_paths.btrc
+
+class AppImageTransactionContractTest {
+    class AppImagePathPlan assemblyPlan(string root, string generation) {
+        AppImagePathPlan plan = AppImagePathPlan();
+        plan.valid = true;
+        plan.repoRoot = PathTools.join(root, "repo");
+        plan.workBase = root;
+        plan.runtimeRoot = PathTools.join(root, generation);
+        plan.outputPath = PathTools.join(root, "Semu-x86_64.AppImage");
+        return plan;
+    }
+
+    class bool canonicalOutputLock(string executable) {
+        string scratch = FileSystem.tempDir("semu-appimage-output-lock");
+        if (scratch.isEmpty()) { return false; }
+        string outputRoot = PathTools.join(scratch, "output");
+        string firstWorkRoot = PathTools.join(scratch, "work-first");
+        string secondWorkRoot = PathTools.join(scratch, "work-second");
+        bool prepared = FileSystem.mkdirp(outputRoot) == 0
+            && FileSystem.mkdirp(firstWorkRoot) == 0
+            && FileSystem.mkdirp(secondWorkRoot) == 0;
+        AppImagePathPlan first =
+            AppImageTransactionContractTest.assemblyPlan(
+                firstWorkRoot, "generations/runtime.first");
+        AppImagePathPlan second =
+            AppImageTransactionContractTest.assemblyPlan(
+                secondWorkRoot, "generations/runtime.second");
+        first.outputPath = PathTools.join(
+            outputRoot, "Semu-x86_64.AppImage");
+        second.outputPath = first.outputPath;
+        string firstPath = AppImageAssemblyLock.path(first);
+        string secondPath = AppImageAssemblyLock.path(second);
+        AppImageAssemblyLock held = prepared
+            ? AppImageAssemblyLock.acquire(first) : AppImageAssemblyLock();
+        bool heldInitially = held.ok();
+        AppImageAssemblyLock localContender = heldInitially
+            ? AppImageAssemblyLock.acquire(second) : AppImageAssemblyLock();
+        bool localContenderRejected = heldInitially && !localContender.ok();
+        ExecResult contended = localContenderRejected
+            ? ChildProcess.run(executable,
+                ["output-lock-probe", "--output", second.outputPath])
+            : ExecResult(127, "", "parent lock failed", executable);
+        bool contenderRejected = contended.code == 75;
+        string displaced = firstPath + ".displaced";
+        bool replaced = contenderRejected
+            && rename(firstPath, displaced) == 0
+            && FileSystem.writeText(firstPath, "replacement-lock\n")
+            && FileSystem.chmod(firstPath, 384) == 0; // 0600
+        AppImageContractResult released = replaced
+            ? held.unlock()
+            : AppImageContractResult.failure(heldInitially
+                ? "lock replacement fixture failed" : held.error);
+        bool replacementPreserved = replaced
+            && FileSystem.readText(firstPath).equals("replacement-lock\n");
+        bool passed = firstPath.equals(secondPath)
+            && heldInitially && localContenderRejected && contenderRejected
+            && replaced && !released.ok()
+            && replacementPreserved;
+        FileSystem.removeRecursive(scratch);
+        return passed;
+    }
+
+    class bool publicationCase(bool priorPresent, bool failAfterRename) {
+        string scratch = FileSystem.tempDir(
+            "semu-appimage-output-publication");
+        if (scratch.isEmpty()) { return false; }
+        string outputRoot = PathTools.join(scratch, "output");
+        string workRoot = PathTools.join(scratch, "work");
+        bool prepared = FileSystem.mkdirp(outputRoot) == 0
+            && FileSystem.mkdirp(workRoot) == 0;
+        AppImagePathPlan plan =
+            AppImageTransactionContractTest.assemblyPlan(
+                workRoot, "generations/runtime");
+        plan.outputPath = PathTools.join(
+            outputRoot, "Semu-x86_64.AppImage");
+        string prior = "prior-appimage-bytes\n";
+        prepared = prepared && (!priorPresent
+            || (FileSystem.writeText(plan.outputPath, prior)
+                && FileSystem.chmod(plan.outputPath, 493) == 0));
+        string priorDigest = priorPresent
+            ? SemuOwnedFileDigest.file(plan.outputPath) : "";
+        AppImageAssemblyLock lock = prepared
+            ? AppImageAssemblyLock.acquire(plan) : AppImageAssemblyLock();
+        AppImageWorkSession session = lock.ok()
+            ? AppImageWorkSession.create(plan) : AppImageWorkSession();
+        string source = session.ok()
+            ? PathTools.join(session.path, "candidate.AppImage") : "";
+        bool sourceReady = session.ok()
+            && FileSystem.writeText(source,
+                "verified-candidate-appimage-bytes\n")
+            && FileSystem.chmod(source, 493) == 0;
+        AppImageVerificationSnapshot snapshot = sourceReady
+            ? AppImageVerificationSnapshot.capture(session, source)
+            : AppImageVerificationSnapshot();
+        string candidateDigest = snapshot.ok() ? snapshot.digest : "";
+        AppImageContractResult published = snapshot.ok()
+            ? AppImageOutputTransaction.publish(
+                snapshot, lock, 493, failAfterRename)
+            : AppImageContractResult.failure(snapshot.error);
+        bool outputCorrect = false;
+        if (failAfterRename) {
+            bool priorRestored = false;
+            if (priorPresent) {
+                priorRestored = SemuOwnedFileDigest.file(plan.outputPath)
+                    .equals(priorDigest);
+            } else {
+                priorRestored = FileStatus(plan.outputPath).linkFound == 0;
+            }
+            outputCorrect = !published.ok() && lock.stillBound()
+                && priorRestored;
+        } else {
+            outputCorrect = published.ok() && lock.stillBound()
+                && SemuOwnedFileDigest.file(plan.outputPath)
+                    .equals(candidateDigest);
+        }
+        bool metadataClean = lock.ok()
+            && AppImageOutputFiles.absent(
+                lock.parentDescriptor, lock.candidateName)
+            && AppImageOutputFiles.absent(
+                lock.parentDescriptor, lock.previousName)
+            && AppImageOutputFiles.absent(
+                lock.parentDescriptor, lock.journalName)
+            && AppImageOutputFiles.absent(
+                lock.parentDescriptor, lock.journalTemporaryName);
+        AppImageContractResult snapshotReleased = snapshot.ok()
+            ? snapshot.finish() : AppImageContractResult.success();
+        AppImageContractResult sessionCleaned = session.ok()
+            ? session.cleanup() : AppImageContractResult.success();
+        AppImageContractResult lockReleased = lock.ok()
+            ? lock.unlock() : AppImageContractResult.failure(lock.error);
+        bool passed = outputCorrect && metadataClean
+            && snapshotReleased.ok() && sessionCleaned.ok()
+            && lockReleased.ok();
+        FileSystem.removeRecursive(scratch);
+        return passed;
+    }
+
+    class bool outputPublication() {
+        return AppImageTransactionContractTest.publicationCase(
+                false, true)
+            && AppImageTransactionContractTest.publicationCase(
+                true, true)
+            && AppImageTransactionContractTest.publicationCase(
+                true, false);
+    }
+
+    class bool liveRollbackRejectsModeTamper() {
+        string scratch = FileSystem.tempDir(
+            "semu-appimage-live-rollback-mode");
+        if (scratch.isEmpty()) { return false; }
+        AppImagePathPlan plan =
+            AppImageTransactionContractTest.assemblyPlan(
+                scratch, "generations/runtime");
+        bool prepared = FileSystem.writeText(
+                plan.outputPath, "prior-live-rollback\n")
+            && FileSystem.chmod(plan.outputPath, 493) == 0;
+        string priorDigest = prepared
+            ? SemuOwnedFileDigest.file(plan.outputPath) : "";
+        AppImageAssemblyLock lock = prepared
+            ? AppImageAssemblyLock.acquire(plan) : AppImageAssemblyLock();
+        bool renamed = lock.ok()
+            && renameat(lock.parentDescriptor, lock.outputName,
+                lock.parentDescriptor, lock.previousName) == 0
+            && FileSystem.writeText(
+                plan.outputPath, "candidate-live-rollback\n")
+            && FileSystem.chmod(plan.outputPath, 493) == 0;
+        string candidateDigest = renamed
+            ? SemuOwnedFileDigest.file(plan.outputPath) : "";
+        bool tampered = renamed
+            && chmod(PathTools.join(scratch, lock.previousName),
+                (mode_t)420) == 0; // 0644
+        AppImageContractResult rolled = tampered
+            ? AppImageOutputTransaction.rollback(
+                lock, true, true, candidateDigest, 493,
+                priorDigest, 493, "mode tamper fixture")
+            : AppImageContractResult.failure(
+                "live rollback mode fixture failed");
+        bool rejected = tampered && !rolled.ok()
+            && SemuOwnedFileDigest.file(plan.outputPath)
+                .equals(candidateDigest)
+            && (FileStatus(plan.outputPath).mode & 4095) == 493
+            && SemuOwnedFileDigest.file(PathTools.join(
+                scratch, lock.previousName)).equals(priorDigest)
+            && (FileStatus(PathTools.join(
+                scratch, lock.previousName)).mode & 4095) == 420;
+        AppImageContractResult released = lock.ok()
+            ? lock.unlock() : AppImageContractResult.failure(lock.error);
+        bool safelyClosed = !released.ok() && !lock.ok();
+        FileSystem.removeRecursive(scratch);
+        return rejected && safelyClosed;
+    }
+
+    class bool publicationRecoveryCase(bool committed,
+                                       bool priorAlreadyCleaned = false,
+                                       bool priorModeTampered = false) {
+        string scratch = FileSystem.tempDir(
+            "semu-appimage-output-recovery");
+        if (scratch.isEmpty()) { return false; }
+        string outputRoot = PathTools.join(scratch, "output");
+        string workRoot = PathTools.join(scratch, "work");
+        bool prepared = FileSystem.mkdirp(outputRoot) == 0
+            && FileSystem.mkdirp(workRoot) == 0;
+        AppImagePathPlan plan =
+            AppImageTransactionContractTest.assemblyPlan(
+                workRoot, "generations/runtime");
+        plan.outputPath = PathTools.join(
+            outputRoot, "Semu-x86_64.AppImage");
+        prepared = prepared
+            && FileSystem.writeText(
+                plan.outputPath, "prior-recovery-bytes\n")
+            && FileSystem.chmod(plan.outputPath, 493) == 0;
+        string priorDigest = prepared
+            ? SemuOwnedFileDigest.file(plan.outputPath) : "";
+        AppImageAssemblyLock lock = prepared
+            ? AppImageAssemblyLock.acquire(plan) : AppImageAssemblyLock();
+        AppImageWorkSession session = lock.ok()
+            ? AppImageWorkSession.create(plan) : AppImageWorkSession();
+        string source = session.ok()
+            ? PathTools.join(session.path, "candidate.AppImage") : "";
+        bool sourceReady = session.ok()
+            && FileSystem.writeText(
+                source, "candidate-recovery-bytes\n")
+            && FileSystem.chmod(source, 493) == 0;
+        AppImageVerificationSnapshot snapshot = sourceReady
+            ? AppImageVerificationSnapshot.capture(session, source)
+            : AppImageVerificationSnapshot();
+        int candidate = snapshot.ok()
+            ? openat(lock.parentDescriptor, lock.candidateName,
+                (int)O_RDWR | (int)O_CREAT | (int)O_EXCL
+                    | (int)O_NOFOLLOW | (int)O_CLOEXEC,
+                (mode_t)384)
+            : -1;
+        bool candidateReady = candidate >= 0
+            && SemuOwnedFileImport.copy(snapshot.descriptor, candidate)
+            && fchmod(candidate, (mode_t)493) == 0
+            && fsync(candidate) == 0
+            && SemuOwnedFileDigest.descriptor(candidate)
+                .equals(snapshot.digest)
+            && AppImageOutputFiles.writeOwnedMetadata(
+                lock.parentDescriptor, lock.journalName,
+                lock.journalTemporaryName,
+                AppImageOutputJournal.document(
+                    "prepared", true, priorDigest, 493,
+                    snapshot.digest, 493));
+        bool renamed = candidateReady
+            && renameat(lock.parentDescriptor, lock.outputName,
+                lock.parentDescriptor, lock.previousName) == 0
+            && renameat(lock.parentDescriptor, lock.candidateName,
+                lock.parentDescriptor, lock.outputName) == 0
+            && AppImageOutputFiles.writeOwnedMetadata(
+                lock.parentDescriptor, lock.journalName,
+                lock.journalTemporaryName,
+                AppImageOutputJournal.document(
+                    committed ? "committed" : "renamed",
+                    true, priorDigest, 493, snapshot.digest, 493))
+            && fsync(lock.parentDescriptor) == 0;
+        bool interrupted = renamed;
+        if (interrupted && priorAlreadyCleaned) {
+            interrupted = committed
+                && unlinkat(lock.parentDescriptor,
+                    lock.previousName, 0) == 0
+                && fsync(lock.parentDescriptor) == 0;
+        }
+        if (interrupted && priorModeTampered) {
+            interrupted = !committed && !priorAlreadyCleaned
+                && chmod(PathTools.join(outputRoot,
+                    lock.previousName), (mode_t)420) == 0
+                && fsync(lock.parentDescriptor) == 0; // 0644
+        }
+        if (candidate >= 0) { close(candidate); }
+        AppImageContractResult snapshotReleased = snapshot.ok()
+            ? snapshot.finish() : AppImageContractResult.success();
+        AppImageContractResult sessionCleaned = session.ok()
+            ? session.cleanup() : AppImageContractResult.success();
+        bool abandoned = interrupted
+            && AppImageAssemblyLock.set(
+                lock.descriptor, (short)F_UNLCK)
+            && (lock.outputDescriptor < 0
+                || close(lock.outputDescriptor) == 0)
+            && close(lock.descriptor) == 0
+            && close(lock.parentDescriptor) == 0;
+        lock.valid = false;
+        lock.outputDescriptor = -1;
+        lock.descriptor = -1;
+        lock.parentDescriptor = -1;
+        AppImageAssemblyLock recovered = abandoned
+            ? AppImageAssemblyLock.acquire(plan) : AppImageAssemblyLock();
+        string expectedDigest = committed ? snapshot.digest : priorDigest;
+        bool recoveredExact = !priorModeTampered
+            && recovered.ok() && recovered.stillBound()
+            && SemuOwnedFileDigest.file(plan.outputPath)
+                .equals(expectedDigest)
+            && (FileStatus(plan.outputPath).mode & 4095) == 493
+            && AppImageOutputFiles.absent(
+                recovered.parentDescriptor, recovered.candidateName)
+            && AppImageOutputFiles.absent(
+                recovered.parentDescriptor, recovered.previousName)
+            && AppImageOutputFiles.absent(
+                recovered.parentDescriptor, recovered.journalName)
+            && AppImageOutputFiles.absent(
+                recovered.parentDescriptor,
+                recovered.journalTemporaryName);
+        bool tamperRejected = priorModeTampered && !recovered.ok()
+            && SemuOwnedFileDigest.file(plan.outputPath)
+                .equals(snapshot.digest)
+            && (FileStatus(PathTools.join(outputRoot,
+                lock.previousName)).mode & 4095) == 420;
+        AppImageContractResult recoveredReleased = recovered.ok()
+            ? recovered.unlock()
+            : (tamperRejected ? AppImageContractResult.success()
+                : AppImageContractResult.failure(recovered.error));
+        bool passed = renamed && abandoned
+            && (recoveredExact || tamperRejected)
+            && snapshotReleased.ok() && sessionCleaned.ok()
+            && recoveredReleased.ok();
+        FileSystem.removeRecursive(scratch);
+        return passed;
+    }
+
+    class bool outputRecovery() {
+        return AppImageTransactionContractTest.publicationRecoveryCase(false)
+            && AppImageTransactionContractTest.publicationRecoveryCase(true)
+            && AppImageTransactionContractTest.publicationRecoveryCase(
+                true, true)
+            && AppImageTransactionContractTest.publicationRecoveryCase(
+                false, false, true);
+    }
+
+    class bool prepareGeneration(AppImageRuntimeBuildPlan plan,
+                                 string generation,
+                                 string content) {
+        string proof = AppImageRuntimeGeneration.nixProof(plan, generation);
+        return FileSystem.writeText(
+                PathTools.join(generation, "runtime"), content)
+            && FileSystem.writeText(proof, "fixture-proof\n")
+            && FileSystem.chmod(proof, 292) == 0; // 0444
+    }
+
+    class bool foreignRetirementPreserved(string project) {
+        string scratch = FileSystem.tempDir(
+            "semu-appimage-foreign-retirement");
+        if (scratch.isEmpty()) { return false; }
+        string cache = PathTools.join(scratch, "cache");
+        AppImageRuntimeBuildPlan plan = AppImageRuntimeBuildPlan();
+        AppImageRuntimeBuildResult loaded = AppImageRuntimeBuildPlan.create(
+            project, PathTools.join(cache, "runtime-root"), plan, cache,
+            "steamdeck-runtime-retroarch");
+        string foreign = PathTools.join(
+            plan.generationsRoot, "foreign.retired");
+        string sentinel = PathTools.join(foreign, "must-remain");
+        bool prepared = loaded.ok()
+            && FileSystem.mkdirp(plan.generationsRoot) == 0
+            && FileSystem.mkdirp(foreign) == 0
+            && FileSystem.writeText(sentinel, "foreign-owned-by-test\n");
+        AppImageRuntimeBuildResult recovered = prepared
+            ? AppImageRuntimeGeneration.recoverRetirements(plan)
+            : AppImageRuntimeBuildResult.failure(
+                "foreign retirement fixture failed");
+        bool preserved = recovered.ok() && FileStatus(foreign).isDir()
+            && FileSystem.readText(sentinel)
+                .equals("foreign-owned-by-test\n");
+        string markerRoot = AppImageRuntimeGeneration.markerRoot(plan);
+        string malformed = PathTools.join(
+            markerRoot, "malformed.owner.retired");
+        bool malformedReady = preserved
+            && FileSystem.mkdirp(markerRoot) == 0
+            && FileSystem.writeText(malformed, "not-an-owner-marker\n")
+            && FileSystem.chmod(malformed, 384) == 0;
+        AppImageRuntimeBuildResult malformedRecovery = malformedReady
+            ? AppImageRuntimeGeneration.recoverRetirements(plan)
+            : AppImageRuntimeBuildResult.failure(
+                "malformed retirement marker fixture failed");
+        bool malformedPreserved = malformedReady
+            && !malformedRecovery.ok()
+            && FileSystem.readText(malformed)
+                .equals("not-an-owner-marker\n")
+            && FileSystem.readText(sentinel)
+                .equals("foreign-owned-by-test\n");
+        FileSystem.removeRecursive(scratch);
+        return preserved && malformedPreserved;
+    }
+
+    class bool retirementIdentitySubstitution(string project) {
+        string scratch = FileSystem.tempDir(
+            "semu-appimage-retirement-identity");
+        if (scratch.isEmpty()) { return false; }
+        string cache = PathTools.join(scratch, "cache");
+        AppImageRuntimeBuildPlan plan = AppImageRuntimeBuildPlan();
+        AppImageRuntimeBuildResult loaded = AppImageRuntimeBuildPlan.create(
+            project, PathTools.join(cache, "runtime-root"), plan, cache,
+            "steamdeck-runtime-retroarch");
+        bool rootsReady = loaded.ok()
+            && FileSystem.mkdirp(plan.generationsRoot) == 0;
+        AppImageRuntimeBuildResult generation = rootsReady
+            ? AppImageRuntimeGeneration.create(plan)
+            : AppImageRuntimeBuildResult.failure(
+                "retirement identity root fixture failed");
+        bool generationReady = generation.ok()
+            && AppImageTransactionContractTest.prepareGeneration(
+                plan, generation.value, "captured-runtime\n");
+        string generationName = PathTools.basename(generation.value);
+        string marker = AppImageRuntimeGeneration.marker(
+            plan, generation.value);
+        string proof = AppImageRuntimeGeneration.nixProof(
+            plan, generation.value);
+        string retiredGeneration = generation.value + ".retired";
+        string retiredMarker = marker + ".retired";
+        string retiredProof = proof + ".retired";
+        string markerDocument = generationReady
+            ? FileSystem.readText(marker) : "";
+        string proofDocument = generationReady
+            ? FileSystem.readText(proof) : "";
+        bool retired = generationReady
+            && rename(marker, retiredMarker) == 0
+            && rename(proof, retiredProof) == 0
+            && rename(generation.value, retiredGeneration) == 0;
+        AppImageRetiredGenerationLease lease = retired
+            ? AppImageRetiredGenerationLease.capture(plan, generationName)
+            : AppImageRetiredGenerationLease();
+        string displaced = retiredGeneration + ".captured";
+        string sentinel = PathTools.join(
+            retiredGeneration, "foreign-sentinel");
+        bool substituted = lease.ok()
+            && rename(retiredGeneration, displaced) == 0
+            && FileSystem.mkdirp(retiredGeneration) == 0
+            && FileSystem.writeText(sentinel, "foreign-owned-by-test\n");
+        AppImageRuntimeBuildResult removed = substituted
+            ? lease.remove()
+            : AppImageRuntimeBuildResult.failure(
+                "retirement substitution fixture failed");
+        if (!substituted) { lease.closeDescriptor(); }
+        bool preserved = substituted && !removed.ok()
+            && FileStatus(displaced).isDir()
+            && FileStatus(retiredGeneration).isDir()
+            && FileSystem.readText(sentinel)
+                .equals("foreign-owned-by-test\n")
+            && FileSystem.readText(retiredMarker).equals(markerDocument)
+            && FileSystem.readText(retiredProof).equals(proofDocument);
+        FileSystem.removeRecursive(scratch);
+        return preserved;
+    }
+
+    class bool readOnlyRetirementCleanup(string project) {
+        string scratch = FileSystem.tempDir(
+            "semu-appimage-read-only-retirement");
+        if (scratch.isEmpty()) { return false; }
+        string cache = PathTools.join(scratch, "cache");
+        AppImageRuntimeBuildPlan plan = AppImageRuntimeBuildPlan();
+        AppImageRuntimeBuildResult loaded = AppImageRuntimeBuildPlan.create(
+            project, PathTools.join(cache, "runtime-root"), plan, cache,
+            "steamdeck-runtime-retroarch");
+        bool rootsReady = loaded.ok()
+            && FileSystem.mkdirp(plan.generationsRoot) == 0;
+        AppImageRuntimeBuildResult generation = rootsReady
+            ? AppImageRuntimeGeneration.create(plan)
+            : AppImageRuntimeBuildResult.failure(
+                "read-only retirement root fixture failed");
+        string first = generation.ok()
+            ? PathTools.join(generation.value, "read-only") : "";
+        string second = first.isEmpty()
+            ? "" : PathTools.join(first, "nested");
+        string payload = second.isEmpty()
+            ? "" : PathTools.join(second, "payload");
+        bool prepared = generation.ok()
+            && AppImageTransactionContractTest.prepareGeneration(
+                plan, generation.value, "read-only-runtime\n")
+            && FileSystem.mkdirp(second) == 0
+            && FileSystem.writeText(payload, "immutable-payload\n")
+            && FileSystem.chmod(payload, 292) == 0 // 0444
+            && FileSystem.chmod(second, 365) == 0 // 0555
+            && FileSystem.chmod(first, 365) == 0
+            && FileSystem.chmod(generation.value, 365) == 0;
+        AppImageRuntimeBuildResult removed = prepared
+            ? AppImageRuntimeGeneration.discard(plan, generation.value)
+            : AppImageRuntimeBuildResult.failure(
+                "read-only retirement fixture failed");
+        bool exact = removed.ok()
+            && !FileStatus(generation.value).linkFound
+            && !FileStatus(AppImageRuntimeGeneration.marker(
+                plan, generation.value)).linkFound
+            && !FileStatus(AppImageRuntimeGeneration.nixProof(
+                plan, generation.value)).linkFound;
+        FileSystem.removeRecursive(scratch);
+        return exact;
+    }
+
+    class bool runtimeNixRootContract() {
+        AppImageRuntimeBuildPlan plan = AppImageRuntimeBuildPlan();
+        plan.metadataRoot = "/owned/cache/metadata";
+        plan.snapshot = "/owned/cache/source";
+        string sourceRoot = AppImageRuntimeNixRoots.source(plan);
+        string sourceStorePath =
+            "/nix/store/0123456789abcdfghijklmnpqrsvwxyz-source";
+        Vector<string> sourceArguments =
+            AppImageRuntimeNixRoots.arguments(
+                sourceStorePath, sourceRoot);
+        return sourceRoot.equals(
+                "/owned/cache/metadata/nix-roots/source-flake")
+            && AppImageRuntimeNixRoots.allowed(
+                plan, sourceStorePath, sourceRoot)
+            && !AppImageRuntimeNixRoots.allowed(
+                plan, sourceStorePath,
+                "/owned/cache/foreign-source-root")
+            && sourceArguments.join("\n").equals(
+                "--extra-experimental-features\n"
+                + "nix-command flakes\n"
+                + "build\n" + sourceStorePath + "\n"
+                + "--out-link\n" + sourceRoot + "\n"
+                + "--print-out-paths\n-L");
+    }
+
+    class bool runtimePublicationRecovery(string project) {
+        string scratch = FileSystem.tempDir(
+            "semu-appimage-runtime-publication-recovery");
+        if (scratch.isEmpty()) { return false; }
+        string cache = PathTools.join(scratch, "cache");
+        AppImageRuntimeBuildPlan plan = AppImageRuntimeBuildPlan();
+        AppImageRuntimeBuildResult loaded = AppImageRuntimeBuildPlan.create(
+            project, PathTools.join(cache, "runtime-root"), plan, cache,
+            "steamdeck-runtime-retroarch");
+        bool rootsReady = loaded.ok()
+            && FileSystem.mkdirp(plan.generationsRoot) == 0;
+        int cacheDescriptor = rootsReady
+            ? UnixFileSystem.openDirectoryNoFollow(plan.cacheRoot) : -1;
+        AppImageRuntimeBuildResult first = rootsReady
+            ? AppImageRuntimeGeneration.create(plan)
+            : AppImageRuntimeBuildResult.failure(
+                "runtime recovery root fixture failed");
+        bool firstReady = first.ok()
+            && AppImageTransactionContractTest.prepareGeneration(
+                plan, first.value, "first-runtime\n");
+        AppImageRuntimeBuildResult second = firstReady
+            ? AppImageRuntimeGeneration.create(plan) : first;
+        bool secondReady = second.ok()
+            && AppImageTransactionContractTest.prepareGeneration(
+                plan, second.value, "second-runtime\n");
+        string outputName = PathTools.basename(plan.output);
+        string nextName = outputName + ".next";
+        string rollbackName = outputName + ".rollback";
+        bool initialPublished = secondReady
+            && semuAppImageSymlinkAt(first.value, cacheDescriptor,
+                outputName) == 0
+            && semuAppImageSymlinkAt(second.value, cacheDescriptor,
+                nextName) == 0
+            && fsync(cacheDescriptor) == 0;
+        AppImageRuntimeBuildResult nextRecovered = initialPublished
+            ? AppImageRuntimeExporter.recoverPublication(
+                plan, cacheDescriptor)
+            : AppImageRuntimeBuildResult.failure(
+                "runtime next-link fixture failed");
+        bool nextExact = nextRecovered.ok()
+            && UnixFileSystem.realPath(plan.output).equals(first.value)
+            && !FileStatus(plan.output + ".next").linkFound;
+
+        string replacementName = outputName + ".fixture";
+        bool failedPublication = nextExact
+            && semuAppImageSymlinkAt(second.value, cacheDescriptor,
+                replacementName) == 0
+            && renameat(cacheDescriptor, replacementName,
+                cacheDescriptor, outputName) == 0
+            && semuAppImageSymlinkAt(first.value, cacheDescriptor,
+                rollbackName) == 0
+            && fsync(cacheDescriptor) == 0;
+        AppImageRuntimeBuildResult rollbackRecovered = failedPublication
+            ? AppImageRuntimeExporter.recoverPublication(
+                plan, cacheDescriptor)
+            : AppImageRuntimeBuildResult.failure(
+                "runtime rollback-link fixture failed");
+        bool rollbackExact = rollbackRecovered.ok()
+            && UnixFileSystem.realPath(plan.output).equals(first.value)
+            && !FileStatus(plan.output + ".rollback").linkFound;
+        bool substitutionReady = rollbackExact
+            && semuAppImageSymlinkAt(first.value, cacheDescriptor,
+                rollbackName) == 0
+            && fsync(cacheDescriptor) == 0;
+        string capturedPrevious = substitutionReady
+            ? UnixFileSystem.realPath(plan.output + ".rollback") : "";
+        bool substituted = !capturedPrevious.isEmpty()
+            && unlinkat(cacheDescriptor, rollbackName, 0) == 0
+            && semuAppImageSymlinkAt(second.value, cacheDescriptor,
+                rollbackName) == 0
+            && fsync(cacheDescriptor) == 0;
+        AppImageRuntimeBuildResult substitutionRecovered = substituted
+            ? AppImageRuntimeExporter.restoreRollback(
+                plan, cacheDescriptor, rollbackName,
+                outputName, capturedPrevious)
+            : AppImageRuntimeBuildResult.failure(
+                "runtime rollback substitution fixture failed");
+        bool substitutionExact = substitutionRecovered.ok()
+            && UnixFileSystem.realPath(plan.output).equals(first.value)
+            && !FileStatus(plan.output + ".rollback").linkFound;
+        bool cacheClosed = cacheDescriptor < 0
+            || close(cacheDescriptor) == 0;
+        FileSystem.removeRecursive(scratch);
+        return firstReady && secondReady && nextExact
+            && rollbackExact && substitutionExact && cacheClosed;
+    }
+
+    class bool pruneFailureRollsBack(string project) {
+        string scratch = FileSystem.tempDir("semu-appimage-prune-rollback");
+        if (scratch.isEmpty()) { return false; }
+        string cache = PathTools.join(scratch, "cache");
+        string output = PathTools.join(cache, "runtime-root");
+        AppImageRuntimeBuildPlan plan = AppImageRuntimeBuildPlan();
+        AppImageRuntimeBuildResult loaded = AppImageRuntimeBuildPlan.create(
+            project, output, plan, cache, "steamdeck-runtime-retroarch");
+        bool rootsReady = loaded.ok()
+            && FileSystem.mkdirp(plan.generationsRoot) == 0;
+        int cacheDescriptor = rootsReady
+            ? UnixFileSystem.openDirectoryNoFollow(plan.cacheRoot) : -1;
+
+        AppImageRuntimeBuildResult previous = rootsReady
+            ? AppImageRuntimeGeneration.create(plan)
+            : AppImageRuntimeBuildResult.failure(
+                "runtime generation root fixture failed");
+        plan.exportRoot = previous.value;
+        bool previousReady = previous.ok()
+            && AppImageTransactionContractTest.prepareGeneration(
+                plan, plan.exportRoot, "previous-runtime\n");
+        AppImageRuntimeBuildResult firstPublication = previousReady
+            ? AppImageRuntimeExporter.finish(
+                plan, AppImageRuntimeBuildResult.success(),
+                cacheDescriptor)
+            : AppImageRuntimeBuildResult.failure(
+                "previous runtime fixture failed");
+        string previousPath = firstPublication.ok()
+            ? UnixFileSystem.realPath(plan.output) : "";
+
+        AppImageRuntimeBuildResult retained = firstPublication.ok()
+            ? AppImageRuntimeGeneration.create(plan)
+            : firstPublication;
+        plan.exportRoot = retained.value;
+        bool retainedReady = retained.ok()
+            && AppImageTransactionContractTest.prepareGeneration(
+                plan, plan.exportRoot, "retained-runtime\n");
+        AppImageRuntimeBuildResult retainedPublication = retainedReady
+            ? AppImageRuntimeExporter.finish(
+                plan, AppImageRuntimeBuildResult.success(),
+                cacheDescriptor)
+            : AppImageRuntimeBuildResult.failure(
+                "retained runtime fixture failed");
+
+        AppImageRuntimeBuildResult candidate = retainedPublication.ok()
+            ? AppImageRuntimeGeneration.create(plan)
+            : retainedPublication;
+        plan.exportRoot = candidate.value;
+        string candidatePath = plan.exportRoot;
+        bool candidateReady = candidate.ok()
+            && AppImageTransactionContractTest.prepareGeneration(
+                plan, plan.exportRoot, "candidate-runtime\n");
+        bool pruneFailureInjected = candidateReady;
+        AppImageRuntimeBuildResult publication = pruneFailureInjected
+            ? AppImageRuntimeExporter.finish(
+                plan, AppImageRuntimeBuildResult.success(), cacheDescriptor,
+                true)
+            : AppImageRuntimeBuildResult.failure(
+                "prune failure fixture could not be injected");
+        bool candidateAlreadyDiscarded =
+            !FileStatus(candidatePath).linkFound
+            && !FileStatus(AppImageRuntimeGeneration.marker(
+                plan, candidatePath)).linkFound
+            && !FileStatus(AppImageRuntimeGeneration.nixProof(
+                plan, candidatePath)).linkFound;
+        AppImageRuntimeBuildResult candidateDiscarded =
+            candidateAlreadyDiscarded
+            ? AppImageRuntimeBuildResult.success()
+            : (AppImageRuntimeGeneration.owned(plan, candidatePath)
+                ? AppImageRuntimeGeneration.discard(plan, candidatePath)
+                : AppImageRuntimeBuildResult.failure(
+                    "candidate generation was not recoverable after rollback"));
+        string retainedPath = retainedPublication.ok()
+            ? UnixFileSystem.realPath(plan.output) : "";
+        bool previousRestored = !publication.ok()
+            && publication.error.contains(
+                "runtime pruning failed after publication")
+            && !previousPath.isEmpty() && !retainedPath.isEmpty()
+            && UnixFileSystem.realPath(plan.output).equals(retainedPath)
+            && FileStatus(retainedPath).isDir()
+            && FileSystem.readText(PathTools.join(
+                retainedPath, "runtime")).equals("retained-runtime\n");
+        int ownedGenerations = 0;
+        bool noRetiredEntries = true;
+        if (previousRestored && candidateDiscarded.ok()) {
+            for name in Directory(plan.generationsRoot).entries() {
+                noRetiredEntries = noRetiredEntries
+                    && !name.endsWith(".retired");
+                if (AppImageRuntimeGeneration.owned(plan,
+                        PathTools.join(plan.generationsRoot, name))) {
+                    ownedGenerations++;
+                }
+            }
+        }
+        bool exactNamespace = candidateDiscarded.ok()
+            && FileStatus(previousPath).isDir()
+            && FileStatus(retainedPath).isDir()
+            && !FileStatus(candidatePath).linkFound
+            && FileStatus(AppImageRuntimeGeneration.marker(
+                plan, previousPath)).isFile()
+            && FileStatus(AppImageRuntimeGeneration.nixProof(
+                plan, previousPath)).isFile()
+            && FileStatus(AppImageRuntimeGeneration.marker(
+                plan, retainedPath)).isFile()
+            && FileStatus(AppImageRuntimeGeneration.nixProof(
+                plan, retainedPath)).isFile()
+            && !FileStatus(AppImageRuntimeGeneration.marker(
+                plan, candidatePath)).linkFound
+            && !FileStatus(AppImageRuntimeGeneration.nixProof(
+                plan, candidatePath)).linkFound
+            && !FileStatus(plan.output + ".next").linkFound
+            && !FileStatus(plan.output + ".rollback").linkFound
+            && ownedGenerations == 2 && noRetiredEntries;
+        bool cacheClosed = cacheDescriptor < 0
+            || close(cacheDescriptor) == 0;
+        FileSystem.removeRecursive(scratch);
+        return loaded.ok() && previousReady && firstPublication.ok()
+            && retainedReady && retainedPublication.ok()
+            && candidateReady && pruneFailureInjected
+            && previousRestored && exactNamespace && cacheClosed;
+    }
+
+    class bool runtimeLockBinding(string project) {
+        string scratch = FileSystem.tempDir(
+            "semu-appimage-runtime-lock-binding");
+        if (scratch.isEmpty()) { return false; }
+        string cache = PathTools.join(scratch, "cache");
+        AppImageRuntimeBuildPlan plan = AppImageRuntimeBuildPlan();
+        AppImageRuntimeBuildResult loaded =
+            AppImageRuntimeBuildPlan.create(project,
+                PathTools.join(cache, "runtime-root"), plan, cache,
+                "steamdeck-runtime-retroarch");
+        AppImageRuntimeBuilder builder = AppImageRuntimeBuilder(plan);
+        AppImageRuntimeBuildResult acquired = loaded.ok()
+            ? builder.acquire() : loaded;
+        string displaced = plan.lock + ".leased";
+        bool replaced = acquired.ok()
+            && rename(plan.lock, displaced) == 0
+            && FileSystem.writeText(plan.lock, "replacement-lock\n")
+            && FileSystem.chmod(plan.lock, 384) == 0;
+        AppImageRuntimeBuildResult released = replaced
+            ? builder.unlock()
+            : AppImageRuntimeBuildResult.failure(
+                "runtime lock replacement fixture failed");
+        bool passed = replaced && !released.ok()
+            && FileSystem.readText(plan.lock)
+                .equals("replacement-lock\n");
+        FileSystem.removeRecursive(scratch);
+        return passed;
+    }
+
+    class bool descriptorBoundPackagingCopy() {
+        string scratch = FileSystem.tempDir("semu-appimage-packaging-copy");
+        if (scratch.isEmpty()) { return false; }
+        string sourceRoot = PathTools.join(scratch, "generated-packaging");
+        string destinationRoot = PathTools.join(scratch, "AppDir");
+        string source = PathTools.join(sourceRoot, "AppRun");
+        string displaced = source + ".leased";
+        bool prepared = FileSystem.mkdirp(sourceRoot) == 0
+            && FileSystem.mkdirp(destinationRoot) == 0
+            && FileSystem.writeText(source, "leased-runtime-input\n")
+            && FileSystem.chmod(source, 493) == 0; // 0755
+        int destinationDescriptor = prepared
+            ? UnixFileSystem.openDirectoryNoFollow(destinationRoot) : -1;
+        AppImageHeldFileLease lease = prepared
+            ? AppImageHeldFileLease.capturePath(source, true)
+            : AppImageHeldFileLease();
+        bool leaseCaptured = lease.ok();
+        string leasedDigest = lease.ok() ? lease.digest : "";
+        SemuInstallResult firstCopy =
+            lease.ok() && destinationDescriptor >= 0
+                ? lease.copyTo(destinationDescriptor, "AppRun")
+                : SemuInstallResult.failure("packaging lease fixture failed");
+        bool replaced = firstCopy.ok() && rename(source, displaced) == 0
+            && FileSystem.writeText(source, "pathname-replacement\n")
+            && FileSystem.chmod(source, 493) == 0;
+        SemuInstallResult substituted = replaced
+            ? lease.copyTo(destinationDescriptor, "AppRun.replaced")
+            : SemuInstallResult.failure(
+                "packaging replacement fixture failed");
+        bool firstExact = firstCopy.ok()
+            && SemuOwnedFileDigest.file(
+                PathTools.join(destinationRoot, "AppRun"))
+                    .equals(leasedDigest);
+        bool replacementRejected = replaced && !substituted.ok()
+            && !FileStatus(PathTools.join(
+                destinationRoot, "AppRun.replaced")).linkFound;
+        string leaseError = lease.error;
+        lease.closeDescriptors();
+        bool destinationClosed = destinationDescriptor < 0
+            || close(destinationDescriptor) == 0;
+        if (!firstExact || !replacementRejected || !destinationClosed) {
+            print(f"packaging copy detail: prepared={prepared}"
+                + f" lease={leaseCaptured} first={firstCopy.ok()}"
+                + f" replaced={replaced} substituted={substituted.ok()}"
+                + f" exact={firstExact} rejected={replacementRejected}"
+                + f" closed={destinationClosed} lease_error={leaseError}"
+                + " first_error=" + firstCopy.error
+                + " substituted_error=" + substituted.error);
+        }
+        FileSystem.removeRecursive(scratch);
+        return firstExact && replacementRejected && destinationClosed;
+    }
+
+    class bool exactRuntimeNamespaces() {
+        Vector<string> namespaces = AppImageAssembler.runtimeNamespaces();
+        return namespaces.size() == 4
+            && namespaces.contains("bin")
+            && namespaces.contains("lib")
+            && namespaces.contains("share")
+            && namespaces.contains("nix/store")
+            && !namespaces.contains("nix");
+    }
+
+    class bool leasedExecutableTransfer(string executable) {
+        string scratch = FileSystem.tempDir(
+            "semu-appimage-leased-executable");
+        if (scratch.isEmpty()) { return false; }
+        string marker = PathTools.join(scratch, "executed");
+        AppImagePathPlan plan =
+            AppImageTransactionContractTest.assemblyPlan(
+                scratch, "generations/runtime");
+        AppImageWorkSession session = AppImageWorkSession.create(plan);
+        AppImageHeldFileLease lease = session.ok()
+            ? AppImageHeldFileLease.capturePath(executable, true)
+            : AppImageHeldFileLease();
+        AppImageHeldFileLease staged = lease.ok()
+            ? AppImageLeasedExecutable.stage(
+                lease, session, "fixture-tool")
+            : AppImageHeldFileLease();
+        string stagedPath = staged.ok() ? PathTools.join(session.path,
+            ".semu-executable-" + lease.digest) : "";
+        string displaced = stagedPath + ".leased";
+        bool exact = staged.ok() && staged.descriptorStillExact()
+            && SemuOwnedFileDigest.file(stagedPath).equals(lease.digest);
+        bool replaced = exact && rename(stagedPath, displaced) == 0
+            && FileSystem.writeText(stagedPath,
+                "#!/bin/sh\nprintf 'replacement-ran\\n' > \"$2\"\n")
+            && FileSystem.chmod(stagedPath, 493) == 0;
+        ExecResult executed = replaced
+            ? AppImageLeasedExecutable.runStaged(
+                lease, staged, session, "fixture-tool",
+                ["leased-executable-probe", marker])
+            : ExecResult(126, "", "fixture replacement failed",
+                "fixture-tool");
+        bool nativeLinux = FileSystem.exists("/proc/self/exe");
+        bool executionBound = false;
+        if (nativeLinux) {
+            executionBound = executed.ok()
+                && FileSystem.readText(marker)
+                    .equals("leased-executable-ok\n");
+        } else {
+            executionBound = !executed.ok()
+                && executed.stderr().contains(
+                    "executable descriptor is invalid or unsupported")
+                && !FileStatus(marker).linkFound;
+        }
+        bool replacementRejected = replaced && executionBound
+            && !FileSystem.readText(marker).equals("replacement-ran\n");
+        bool sessionReady = session.ok();
+        bool leaseReady = lease.ok();
+        bool stagedReady = staged.ok();
+        string leaseError = lease.error;
+        string stagedError = staged.error;
+        string executionStderr = executed.stderr().trim();
+        string executionStdout = executed.stdout().trim();
+        string markerValue = FileSystem.readText(marker).trim();
+        staged.closeDescriptors();
+        lease.closeDescriptors();
+        AppImageContractResult cleaned = session.ok()
+            ? session.cleanup() : AppImageContractResult.success();
+        bool passed = exact && replacementRejected
+            && cleaned.ok();
+        if (!passed) {
+            print(f"leased executable detail: session={sessionReady}"
+                + f" lease={leaseReady} staged={stagedReady}"
+                + f" exact={exact} replaced={replaced}"
+                + f" exit={executed.code} execution_bound={executionBound}"
+                + f" replacement_rejected={replacementRejected}"
+                + f" cleanup={cleaned.ok()}"
+                + " lease_error=" + leaseError
+                + " staged_error=" + stagedError
+                + " stderr=" + executionStderr
+                + " stdout=" + executionStdout
+                + " marker=" + markerValue);
+        }
+        FileSystem.removeRecursive(scratch);
+        return passed;
+    }
+
+    class bool nativeWorkerAuthority() {
+        string packageAttribute = "steamdeck-runtime-retroarch";
+        string releaseDigest =
+            "1111111111111111111111111111111111111111111111111111111111111111";
+        string provenance =
+            "2222222222222222222222222222222222222222222222222222222222222222";
+        string inventory =
+            "3333333333333333333333333333333333333333333333333333333333333333";
+        string prefix =
+            "4444444444444444444444444444444444444444444444444444444444444444";
+        string proof =
+            "5555555555555555555555555555555555555555555555555555555555555555";
+        string closure =
+            "6666666666666666666666666666666666666666666666666666666666666666";
+        string source =
+            "/nix/store/00000000000000000000000000000000-semu-source";
+        string target =
+            "/nix/store/11111111111111111111111111111111-semu-runtime";
+        string authority = AppImageRuntimeLease.assemblyAuthorityValues(
+            packageAttribute, releaseDigest, provenance, inventory, prefix,
+            proof, closure, source, target);
+        string repeated = AppImageRuntimeLease.assemblyAuthorityValues(
+            packageAttribute, releaseDigest, provenance, inventory, prefix,
+            proof, closure, source, target);
+        string changed = AppImageRuntimeLease.assemblyAuthorityValues(
+            packageAttribute, releaseDigest, provenance, inventory, prefix,
+            proof, releaseDigest, source, target);
+        return AppImageNixReleaseProof.digest(authority)
+            && repeated.equals(authority)
+            && !changed.equals(authority)
+            && AppImageRuntimeLease.assemblyAuthorityValues(
+                packageAttribute, releaseDigest, provenance, inventory, prefix,
+                proof, closure, "/nix/store/not-valid", target).isEmpty();
+    }
+
+    class bool workerVerificationHandoff() {
+        string scratch = FileSystem.tempDir(
+            "semu-appimage-worker-handoff");
+        if (scratch.isEmpty()) { return false; }
+        AppImagePathPlan plan =
+            AppImageTransactionContractTest.assemblyPlan(
+                scratch, "runtime");
+        AppImageWorkSession session = AppImageWorkSession.create(plan);
+        string source = PathTools.join(scratch, "source.AppImage");
+        bool prepared = session.ok()
+            && FileSystem.writeText(source, "held-appimage-bytes\n")
+            && FileSystem.chmod(source, 493) == 0
+            && semuAppImageMkdirAt(
+                session.rootDescriptor, "exchange", 448) == 0;
+        AppImageVerificationSnapshot input = prepared
+            ? AppImageVerificationSnapshot.capture(session, source)
+            : AppImageVerificationSnapshot();
+        AppImageLinuxWorkerHandoff handoff =
+            AppImageLinuxWorkerHandoff();
+        handoff.valid = session.ok();
+        handoff.session = session;
+        handoff.exchange = session.ok()
+            ? PathTools.join(session.path, "exchange") : "";
+        AppImageContractResult staged = input.ok()
+            ? handoff.stageVerificationArtifact(input)
+            : AppImageContractResult.failure(input.error);
+        AppImageHeldFileLease transferred = staged.ok()
+            ? AppImageHeldFileLease.captureRelative(
+                handoff.session.rootDescriptor,
+                "exchange/Semu.AppImage")
+            : AppImageHeldFileLease();
+        bool exact = transferred.ok()
+            && transferred.mode == 320
+            && transferred.digest.equals(input.digest)
+            && transferred.stillBound(handoff.session.rootDescriptor)
+            && input.sourceStillBound() && input.snapshotStillBound();
+        transferred.closeDescriptors();
+        AppImageContractResult inputReleased = input.ok()
+            ? input.finish() : AppImageContractResult.success();
+        AppImageContractResult handoffReleased = handoff.ok()
+            ? handoff.finish() : AppImageContractResult.success();
+        bool passed = exact && inputReleased.ok() && handoffReleased.ok()
+            && FileSystem.readText(source).equals("held-appimage-bytes\n");
+        FileSystem.removeRecursive(scratch);
+        return passed;
+    }
+
+    class string proofDocument(string artifactDigest, string label) {
+        JsonValue artifact = JsonValue.makeObject();
+        artifact.set("sha256", JsonValue.makeString(artifactDigest));
+        JsonValue document = JsonValue.makeObject();
+        document.set("schema_version", JsonValue.makeInt(1));
+        document.set("label", JsonValue.makeString(label));
+        document.set("artifact", artifact);
+        return document.document();
+    }
+
+    class bool proofBundlePublication() {
+        string scratch = FileSystem.tempDir(
+            "semu-appimage-proof-publication");
+        if (scratch.isEmpty()) { return false; }
+        AppImagePathPlan plan =
+            AppImageTransactionContractTest.assemblyPlan(
+                scratch, "generations/runtime");
+        AppImageAssemblyLock lock = AppImageAssemblyLock.acquire(plan);
+        string firstArtifact = SemuOwnedFileDigest.text("artifact-one");
+        string firstDocument =
+            AppImageTransactionContractTest.proofDocument(
+                firstArtifact, "first");
+        string firstProofDigest = SemuOwnedFileDigest.text(firstDocument);
+        AppImageReleaseProofBundleResult first = lock.ok()
+            ? AppImageReleaseProofBundle.publish(
+                lock, firstArtifact, firstDocument)
+            : AppImageReleaseProofBundleResult();
+        AppImageReleaseProofBundleResult repeated = first.ok()
+            ? AppImageReleaseProofBundle.publish(
+                lock, firstArtifact, firstDocument)
+            : AppImageReleaseProofBundleResult();
+
+        string secondArtifact = SemuOwnedFileDigest.text("artifact-two");
+        string secondDocument =
+            AppImageTransactionContractTest.proofDocument(
+                secondArtifact, "second");
+        string secondProofDigest = SemuOwnedFileDigest.text(secondDocument);
+        string secondFinal = AppImageReleaseProofBundle.fileName(
+            lock.outputName, secondArtifact);
+        string secondTemporary =
+            AppImageReleaseProofBundle.temporaryName(secondArtifact);
+        int staged = first.ok()
+            ? openat(lock.parentDescriptor, secondTemporary,
+                (int)O_RDWR | (int)O_CREAT | (int)O_EXCL
+                    | (int)O_NOFOLLOW | (int)O_CLOEXEC,
+                (mode_t)384)
+            : -1;
+        bool stagedExact = staged >= 0
+            && semuAppImageWriteAll(staged, secondDocument) == 0
+            && fchmod(staged, (mode_t)292) == 0
+            && fsync(staged) == 0
+            && close(staged) == 0
+            && semuAppImageProofLinkAt(
+                lock.parentDescriptor, secondTemporary, secondFinal) == 0;
+        AppImageReleaseProofBundleResult recovered = stagedExact
+            ? AppImageReleaseProofBundle.publish(
+                lock, secondArtifact, secondDocument)
+            : AppImageReleaseProofBundleResult();
+
+        string foreignArtifact = SemuOwnedFileDigest.text("artifact-foreign");
+        string foreignName = AppImageReleaseProofBundle.fileName(
+            lock.outputName, foreignArtifact);
+        string expectedForeign =
+            AppImageTransactionContractTest.proofDocument(
+                foreignArtifact, "expected");
+        bool foreignReady = recovered.ok()
+            && FileSystem.writeText(
+                PathTools.join(scratch, foreignName),
+                AppImageTransactionContractTest.proofDocument(
+                    foreignArtifact, "foreign"))
+            && FileSystem.chmod(
+                PathTools.join(scratch, foreignName), 292) == 0;
+        AppImageReleaseProofBundleResult rejected = foreignReady
+            ? AppImageReleaseProofBundle.publish(
+                lock, foreignArtifact, expectedForeign)
+            : AppImageReleaseProofBundleResult();
+
+        bool exact = first.ok() && repeated.ok() && recovered.ok()
+            && first.name.contains(firstArtifact)
+            && first.digest.equals(firstProofDigest)
+            && repeated.path.equals(first.path)
+            && recovered.digest.equals(secondProofDigest)
+            && AppImageReleaseProofBundle.exactAt(
+                lock.parentDescriptor, first.name,
+                firstProofDigest, 292, 1)
+            && AppImageReleaseProofBundle.exactAt(
+                lock.parentDescriptor, recovered.name,
+                secondProofDigest, 292, 1)
+            && AppImageOutputFiles.absent(
+                lock.parentDescriptor, secondTemporary)
+            && !rejected.ok();
+        AppImageContractResult released = lock.ok()
+            ? lock.unlock() : AppImageContractResult.failure(lock.error);
+        FileSystem.removeRecursive(scratch);
+        return exact && released.ok();
+    }
+
+    class int run(string project, string executable) {
+        bool lock = AppImageTransactionContractTest.canonicalOutputLock(
+            executable);
+        bool rollback =
+            AppImageTransactionContractTest.pruneFailureRollsBack(project);
+        bool retirementOwnership =
+            AppImageTransactionContractTest.foreignRetirementPreserved(
+                project);
+        bool retirementIdentity =
+            AppImageTransactionContractTest.retirementIdentitySubstitution(
+                project);
+        bool readOnlyRetirement =
+            AppImageTransactionContractTest.readOnlyRetirementCleanup(
+                project);
+        bool runtimeNixRoots =
+            AppImageTransactionContractTest.runtimeNixRootContract();
+        bool runtimeRecovery =
+            AppImageTransactionContractTest.runtimePublicationRecovery(
+                project);
+        bool runtimeLock =
+            AppImageTransactionContractTest.runtimeLockBinding(project);
+        bool packaging =
+            AppImageTransactionContractTest.descriptorBoundPackagingCopy();
+        bool namespaces =
+            AppImageTransactionContractTest.exactRuntimeNamespaces();
+        bool leasedExecutable =
+            AppImageTransactionContractTest.leasedExecutableTransfer(
+                executable);
+        bool workerAuthority =
+            AppImageTransactionContractTest.nativeWorkerAuthority();
+        bool workerHandoff =
+            AppImageTransactionContractTest.workerVerificationHandoff();
+        bool proofBundle =
+            AppImageTransactionContractTest.proofBundlePublication();
+        bool publication =
+            AppImageTransactionContractTest.outputPublication();
+        bool liveRollbackMode =
+            AppImageTransactionContractTest.liveRollbackRejectsModeTamper();
+        bool recovery =
+            AppImageTransactionContractTest.outputRecovery();
+        if (!lock) {
+            print("appimage transaction contract: output lock identity/authority defect");
+        }
+        if (!rollback) {
+            print("appimage transaction contract: prune rollback defect");
+        }
+        if (!retirementOwnership) {
+            print("appimage transaction contract: foreign retirement ownership defect");
+        }
+        if (!retirementIdentity) {
+            print("appimage transaction contract: retirement identity substitution defect");
+        }
+        if (!readOnlyRetirement) {
+            print("appimage transaction contract: read-only retirement cleanup defect");
+        }
+        if (!runtimeNixRoots) {
+            print("appimage transaction contract: runtime Nix GC-root contract defect");
+        }
+        if (!runtimeRecovery) {
+            print("appimage transaction contract: runtime publication recovery defect");
+        }
+        if (!runtimeLock) {
+            print("appimage transaction contract: runtime lock binding defect");
+        }
+        if (!packaging) {
+            print("appimage transaction contract: pathname packaging copy defect");
+        }
+        if (!namespaces) {
+            print("appimage transaction contract: runtime namespace mapping defect");
+        }
+        if (!leasedExecutable) {
+            print("appimage transaction contract: leased executable transfer defect");
+        }
+        if (!workerAuthority) {
+            print("appimage transaction contract: native worker authority defect");
+        }
+        if (!workerHandoff) {
+            print("appimage transaction contract: verification handoff defect");
+        }
+        if (!proofBundle) {
+            print("appimage transaction contract: release proof publication defect");
+        }
+        if (!publication) {
+            print("appimage transaction contract: output publication defect");
+        }
+        if (!liveRollbackMode) {
+            print("appimage transaction contract: live rollback mode defect");
+        }
+        if (!recovery) {
+            print("appimage transaction contract: output recovery defect");
+        }
+        if (!lock || !rollback || !retirementOwnership
+                || !retirementIdentity || !readOnlyRetirement
+                || !runtimeNixRoots || !runtimeRecovery
+                || !runtimeLock || !packaging || !namespaces
+                || !leasedExecutable || !workerAuthority || !workerHandoff
+                || !proofBundle || !publication || !liveRollbackMode
+                || !recovery) {
+            return 1;
+        }
+        print("appimage transaction contract: PASS");
+        return 0;
+    }
+}
+
+int main(int argc, char** argv) {
+    CliArgs arguments = CliArgs(argc, argv);
+    if (arguments.command().equals("leased-executable-probe")) {
+        string marker = arguments.valueAfter(
+            "leased-executable-probe", "");
+        return !marker.isEmpty()
+                && FileSystem.writeText(
+                    marker, "leased-executable-ok\n")
+            ? 0 : 74;
+    }
+    if (arguments.command().equals("output-lock-probe")) {
+        AppImagePathPlan plan = AppImagePathPlan();
+        plan.valid = true;
+        plan.outputPath = arguments.valueAfter("--output", "");
+        AppImageAssemblyLock lock = AppImageAssemblyLock.acquire(plan);
+        if (!lock.ok()) { return 75; }
+        return lock.unlock().ok() ? 0 : 76;
+    }
+    return AppImageTransactionContractTest.run(
+        FileSystem.currentDirectory(),
+        PathTools.absolute(arguments.program));
+}

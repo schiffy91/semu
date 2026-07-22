@@ -44,11 +44,16 @@ class SemuSteamShortcut {
     public SemuInstallPolicy policy;
     public SemuInstallPaths paths;
     public SemuSteamShortcutMigration migration;
+    public SemuSteamShortcutSnapshot shortcutSnapshot;
+    public SemuSteamShortcutDiscovery trackedDiscovery;
+    public SemuSteamServiceControl service;
+    public SemuSteamShortcutRegistrar registrar;
     public Vector<string> trackedFiles;
     public Vector<string> trackedDigests;
     public string receiptDigest;
     public bool receiptExisted;
     public bool tracked;
+    public bool testDoubles;
 
     public SemuSteamShortcut(SemuInstallPolicy policy, SemuInstallPaths paths) {
         self.policy = policy;
@@ -57,15 +62,29 @@ class SemuSteamShortcut {
         self.migration = SemuSteamShortcutMigration(
             policy.steamMigration, paths.state, paths.home,
             paths.stableLauncher, noFiles);
+        self.shortcutSnapshot = SemuSteamShortcutSnapshot();
+        self.trackedDiscovery = SemuSteamShortcutDiscovery();
+        self.service = SemuSteamServiceControl(policy.steamMigration);
+        self.registrar = SemuSteamShortcutRegistrar();
         self.trackedFiles = [];
         self.trackedDigests = [];
         self.receiptDigest = "";
         self.receiptExisted = false;
         self.tracked = false;
+        self.testDoubles = false;
+    }
+
+    public void useTestDoubles(SemuSteamServiceControl service,
+                               SemuSteamShortcutRegistrar registrar) {
+        self.service = service;
+        self.registrar = registrar;
+        self.testDoubles = true;
     }
 
     public bool steamOs() {
-        if (Environment.get("SEMU_INSTALLER_TEST_STEAMOS", "").equals("1")) {
+        if (self.testDoubles
+                || Environment.get(
+                    "SEMU_INSTALLER_TEST_STEAMOS", "").equals("1")) {
             return true;
         }
         if (!SemuInstallHost.regularFile("/etc/os-release")) { return false; }
@@ -87,56 +106,32 @@ class SemuSteamShortcut {
             && FileSystem.readText(self.paths.steamReceipt).equals(self.receipt());
     }
 
-    public Vector<string> shortcutFiles() {
-        Vector<string> files = [];
-        for userdata in [PathTools.join(self.paths.home, ".steam/steam/userdata"),
-                PathTools.join(self.paths.home, ".local/share/Steam/userdata")] {
-            if (!SemuInstallHost.realDirectory(
-                    UnixFileSystem.realPath(userdata))) {
-                continue;
-            }
-            for account in Directory(userdata).entries() {
-                string candidate = PathTools.join(userdata,
-                    account + "/config/shortcuts.vdf");
-                if (SemuInstallHost.regularFile(candidate)) {
-                    string canonical = UnixFileSystem.realPath(candidate);
-                    if (!canonical.isEmpty() && !files.contains(canonical)) {
-                        files.push(canonical);
-                    }
-                }
-            }
-        }
-        return files;
+    public SemuSteamShortcutDiscovery shortcutDiscovery() {
+        return SemuSteamShortcutDatabase.discover(self.paths.home);
     }
 
     public string state() {
-        string fixture = Environment.get(
-            "SEMU_INSTALLER_TEST_STEAM_SHORTCUT_STATE", "");
-        if (["legacy", "correct"].contains(fixture)) {
-            return fixture;
-        }
-        if (fixture.equals("missing-force")) { return "missing"; }
-        if (fixture.equals("missing")) {
-            return self.receiptMatches() ? "recorded" : "missing";
-        }
+        SemuSteamShortcutDiscovery discovery = self.shortcutDiscovery();
+        if (!discovery.valid) { return "invalid"; }
         SemuSteamShortcutInspection inspection =
             SemuSteamShortcutDatabase.inspect(
-                self.shortcutFiles(), self.policy.steamMigration.rules,
+                discovery.files, self.policy.steamMigration.rules,
                 self.paths.home, self.paths.stableLauncher);
         if (!inspection.valid) { return "invalid"; }
         if (inspection.legacy > 0) { return "legacy"; }
         if (inspection.stable == 1) { return "correct"; }
-        return self.receiptMatches() ? "recorded" : "missing";
+        return "missing";
     }
 
     public SemuInstallResult preflight() {
         if (!self.steamOs()) { return SemuInstallResult.success(); }
-        string fixture = Environment.get(
-            "SEMU_INSTALLER_TEST_STEAM_SHORTCUT_STATE", "");
-        if (!fixture.isEmpty()) { return SemuInstallResult.success(); }
+        SemuSteamShortcutDiscovery discovery = self.shortcutDiscovery();
+        if (!discovery.valid) {
+            return SemuInstallResult.failure(discovery.error);
+        }
         SemuSteamShortcutInspection inspection =
             SemuSteamShortcutDatabase.inspect(
-                self.shortcutFiles(), self.policy.steamMigration.rules,
+                discovery.files, self.policy.steamMigration.rules,
                 self.paths.home, self.paths.stableLauncher);
         return inspection.valid ? SemuInstallResult.success()
             : SemuInstallResult.failure(inspection.error);
@@ -150,29 +145,86 @@ class SemuSteamShortcut {
                 "cannot record Steam shortcut registration");
     }
 
+    public string trackedDigest(string path) {
+        for (int index = 0; index < self.trackedFiles.size(); index++) {
+            if (self.trackedFiles.get(index).equals(path)) {
+                return self.trackedDigests.get(index);
+            }
+        }
+        return "invalid";
+    }
+
+    public bool trackedPathExact(string path) {
+        string expected = self.trackedDigest(path);
+        if (expected.equals("invalid")) { return false; }
+        if (expected.isEmpty()) { return !FileStatus(path).linkFound; }
+        return SemuInstallHost.sha256File(path).equals(expected);
+    }
+
+    public SemuInstallResult requireTrackedAccount(
+            SemuSteamShortcutDiscovery discovery) {
+        if (!discovery.valid) {
+            return SemuInstallResult.failure(discovery.error);
+        }
+        if (!self.trackedDiscovery.sameAccount(discovery)) {
+            return SemuInstallResult.failure(
+                "active Steam account changed during shortcut registration");
+        }
+        if (!self.trackedPathExact(discovery.loginUsers)) {
+            return SemuInstallResult.failure(
+                "Steam loginusers.vdf changed during shortcut registration");
+        }
+        return SemuInstallResult.success();
+    }
+
+    public SemuInstallResult registrationFailure(string reason) {
+        if (self.migration.active) { return self.migration.abort(reason); }
+        SemuInstallResult restored = self.service.restore();
+        return SemuInstallResult.failure(restored.ok() ? reason
+            : reason + "; Steam restore failed: " + restored.error);
+    }
+
     public SemuInstallResult track(SemuInstallTransaction transaction) {
         if (!self.steamOs()) { return SemuInstallResult.success(); }
         if (!transaction.active || self.tracked) {
             return SemuInstallResult.failure(
                 "Steam registration requires one active deployment transaction");
         }
-        Vector<string> files = self.shortcutFiles();
-        SemuSteamServiceControl service =
-            SemuSteamServiceControl(self.policy.steamMigration);
-        SemuInstallResult quiet = service.quiesce();
+        SemuSteamShortcutDiscovery discovery = self.shortcutDiscovery();
+        if (!discovery.valid || discovery.database.isEmpty()) {
+            return SemuInstallResult.failure(discovery.error.isEmpty()
+                ? "cannot identify a safe Steam account shortcut database"
+                : discovery.error);
+        }
+        Vector<string> files = discovery.files;
+        SemuInstallResult quiet = self.service.quiesce();
         if (!quiet.ok()) { return quiet; }
 
+        self.shortcutSnapshot =
+            SemuSteamShortcutDatabase.snapshotUnrelated(files);
+        if (!self.shortcutSnapshot.valid) {
+            SemuInstallResult restored = self.service.restore();
+            return SemuInstallResult.failure(restored.ok()
+                ? self.shortcutSnapshot.error
+                : self.shortcutSnapshot.error + "; " + restored.error);
+        }
+
         self.tracked = true;
-        self.trackedFiles = files;
+        self.trackedDiscovery = discovery;
+        self.trackedFiles = [discovery.loginUsers, discovery.database];
         self.trackedDigests = [];
         self.receiptExisted = FileStatus(self.paths.steamReceipt).linkFound;
         self.receiptDigest = self.receiptExisted
             ? SemuInstallHost.sha256File(self.paths.steamReceipt) : "";
         bool captured = (!self.receiptExisted || !self.receiptDigest.isEmpty())
             && transaction.snapshot(self.paths.steamReceipt);
-        for path in files {
-            string digest = SemuInstallHost.sha256File(path);
-            if (digest.isEmpty() || !transaction.snapshot(path)) {
+        for path in self.trackedFiles {
+            FileStatus status = FileStatus(path);
+            string digest = status.linkFound
+                && SemuInstallHost.regularFile(path)
+                ? SemuInstallHost.sha256File(path) : "";
+            if ((status.linkFound && digest.isEmpty())
+                    || !transaction.snapshot(path)) {
                 captured = false;
                 break;
             }
@@ -181,19 +233,21 @@ class SemuSteamShortcut {
         self.migration = SemuSteamShortcutMigration(
             self.policy.steamMigration, self.paths.state, self.paths.home,
             self.paths.stableLauncher, files);
-        if (!captured || self.trackedDigests.size() != files.size()) {
+        self.migration.service = self.service;
+        if (!captured
+                || self.trackedDigests.size() != self.trackedFiles.size()) {
             transaction.rollback();
-            SemuInstallResult restored = service.restore();
+            SemuInstallResult restored = self.service.restore();
             self.tracked = false;
             return SemuInstallResult.failure(restored.ok()
                 ? "cannot capture Steam registration transaction"
                 : "cannot capture Steam registration transaction; "
                     + restored.error);
         }
-        SemuInstallResult restored = service.restore();
+        SemuInstallResult restored = self.service.restore();
         if (!restored.ok()) {
             transaction.rollback();
-            service.restore();
+            self.service.restore();
             self.tracked = false;
             return restored;
         }
@@ -213,8 +267,11 @@ class SemuSteamShortcut {
             return false;
         }
         for (int index = 0; index < self.trackedFiles.size(); index++) {
-            if (!SemuInstallHost.sha256File(self.trackedFiles.get(index))
-                    .equals(self.trackedDigests.get(index))) {
+            string expected = self.trackedDigests.get(index);
+            string path = self.trackedFiles.get(index);
+            if ((expected.isEmpty() && FileStatus(path).linkFound)
+                    || (!expected.isEmpty()
+                        && !SemuInstallHost.sha256File(path).equals(expected))) {
                 return false;
             }
         }
@@ -231,13 +288,16 @@ class SemuSteamShortcut {
         if (self.migration.active) {
             rolledBack = self.migration.rollback();
         } else {
-            SemuSteamServiceControl service =
-                SemuSteamServiceControl(self.policy.steamMigration);
-            SemuInstallResult quiet = service.quiesce();
-            if (!quiet.ok()) { return quiet; }
+            SemuInstallResult quiet = self.service.quiesce();
             transaction.rollback();
-            SemuInstallResult restored = service.restore();
-            rolledBack = restored;
+            SemuInstallResult restored = self.service.restore();
+            string error = quiet.ok() ? "" : quiet.error;
+            if (!restored.ok()) {
+                error = error.isEmpty() ? restored.error
+                    : error + "; Steam restore failed: " + restored.error;
+            }
+            rolledBack = error.isEmpty() ? SemuInstallResult.success()
+                : SemuInstallResult.failure(error);
         }
         bool exact = self.exactTrackedState();
         self.tracked = false;
@@ -259,24 +319,27 @@ class SemuSteamShortcut {
             return SemuInstallResult.failure(
                 "Steam registration is outside the deployment transaction");
         }
-        string current = self.state();
-        if (current.equals("invalid")) {
-            SemuSteamShortcutInspection invalid =
-                SemuSteamShortcutDatabase.inspect(
-                    self.shortcutFiles(), self.policy.steamMigration.rules,
-                    self.paths.home, self.paths.stableLauncher);
-            return SemuInstallResult.failure(invalid.error.isEmpty()
-                ? "Steam shortcut database is malformed"
-                : invalid.error);
+        SemuSteamShortcutDiscovery discovery = self.shortcutDiscovery();
+        SemuInstallResult selected = self.requireTrackedAccount(discovery);
+        if (!selected.ok()) { return selected; }
+        SemuSteamShortcutInspection inspection =
+            SemuSteamShortcutDatabase.inspect(
+                discovery.files, self.policy.steamMigration.rules,
+                self.paths.home, self.paths.stableLauncher);
+        if (!inspection.valid) {
+            return SemuInstallResult.failure(inspection.error.isEmpty()
+                ? "Steam shortcut database is malformed" : inspection.error);
         }
-        if (current.equals("recorded")) {
-            return SemuInstallResult.success();
+        if (inspection.legacy == 0 && inspection.stable == 1) {
+            SemuInstallResult exact =
+                SemuSteamShortcutDatabase.verifyMutation(
+                    self.shortcutSnapshot, discovery.files,
+                    self.policy.steamMigration.rules, self.paths.home,
+                    self.paths.stableLauncher);
+            return exact.ok() ? self.recordReceipt() : exact;
         }
-        if (current.equals("correct")) {
-            return self.recordReceipt();
-        }
-        Vector<string> shortcutFiles = self.trackedFiles;
-        if (current.equals("legacy")) {
+        Vector<string> shortcutFiles = self.migration.files;
+        if (inspection.legacy > 0) {
             SemuInstallResult migrated = self.migration.beginWith(transaction);
             if (!migrated.ok()) { return migrated; }
             SemuSteamShortcutInspection after =
@@ -289,6 +352,24 @@ class SemuSteamShortcut {
                     : after.error);
             }
             if (after.stable == 1) {
+                SemuSteamShortcutDiscovery migratedDiscovery =
+                    self.shortcutDiscovery();
+                SemuInstallResult migratedAccount =
+                    self.requireTrackedAccount(migratedDiscovery);
+                if (!migratedAccount.ok()
+                        || migratedDiscovery.files.size() != 1
+                        || !migratedDiscovery.files.get(0).equals(
+                            self.trackedDiscovery.database)) {
+                    return self.migration.abort(migratedAccount.ok()
+                        ? "Steam migration changed the active shortcut database"
+                        : migratedAccount.error);
+                }
+                SemuInstallResult exact =
+                    SemuSteamShortcutDatabase.verifyMutation(
+                        self.shortcutSnapshot, migratedDiscovery.files,
+                        self.policy.steamMigration.rules, self.paths.home,
+                        self.paths.stableLauncher);
+                if (!exact.ok()) { return self.migration.abort(exact.error); }
                 SemuInstallResult recorded = self.recordReceipt();
                 if (!recorded.ok()) {
                     return self.migration.abort(recorded.error);
@@ -296,56 +377,76 @@ class SemuSteamShortcut {
                 return recorded;
             }
         }
-        string utility = Environment.get(
-            "SEMU_INSTALLER_TEST_ADD_TO_STEAM", self.policy.steamAddUtility);
-        ExecResult added = ChildProcess.run(utility, [self.paths.desktopEntry],
-            "", CommandEnvironment.empty(), CommandEnvironment.empty(),
-            30000, 4096, 8192);
-        if (!added.ok()) {
-            string error =
-                "SteamOS utility " + self.policy.steamAddUtility
-                + " could not register the stable Semu desktop entry: "
-                + SemuInstallHost.processError(added);
-            return self.migration.active ? self.migration.abort(error)
-                : SemuInstallResult.failure(error);
+
+        SemuInstallResult quiet = self.service.quiesce();
+        if (!quiet.ok()) {
+            return self.migration.active
+                ? self.migration.abort(quiet.error) : quiet;
+        }
+        SemuSteamShortcutDiscovery stopped = self.shortcutDiscovery();
+        selected = self.requireTrackedAccount(stopped);
+        if (!selected.ok()) {
+            return self.registrationFailure(selected.error);
+        }
+        SemuInstallResult added = self.registrar.add(
+            self.policy.steamAddUtility, self.paths.desktopEntry);
+        if (!added.ok()) { return self.registrationFailure(added.error); }
+        SemuSteamShortcutDiscovery registered = self.shortcutDiscovery();
+        selected = self.requireTrackedAccount(registered);
+        if (!selected.ok()) {
+            return self.registrationFailure(selected.error);
+        }
+        if (registered.files.size() != 1
+                || !registered.files.get(0).equals(
+                    self.trackedDiscovery.database)) {
+            return self.registrationFailure(
+                "Steam registration did not mutate the pretracked active database");
+        }
+        SemuInstallResult verified =
+            SemuSteamShortcutDatabase.verifyMutation(
+                self.shortcutSnapshot, registered.files,
+                self.policy.steamMigration.rules, self.paths.home,
+                self.paths.stableLauncher);
+        if (!verified.ok()) {
+            return self.registrationFailure(verified.error);
         }
         SemuInstallResult recorded = self.recordReceipt();
         if (!recorded.ok()) {
-            return self.migration.active
-                ? self.migration.abort(recorded.error) : recorded;
+            return self.registrationFailure(recorded.error);
         }
-        SemuSteamShortcutInspection verified =
-            SemuSteamShortcutDatabase.inspect(
-                shortcutFiles, self.policy.steamMigration.rules,
-                self.paths.home, self.paths.stableLauncher);
-        if (!verified.valid || verified.legacy != 0) {
-            string reason = verified.error.isEmpty()
-                ? "Steam registration restored a legacy shortcut"
-                : verified.error;
-            return self.migration.active
-                ? self.migration.abort(reason)
-                : SemuInstallResult.failure(reason);
-        }
-        return recorded;
+        SemuInstallResult restored = self.service.restore();
+        return restored.ok() ? recorded
+            : self.registrationFailure(restored.error);
     }
 
     public SemuInstallResult validate() {
         if (!self.steamOs()) { return SemuInstallResult.success(); }
-        string current = self.state();
-        if (current.equals("correct") || current.equals("recorded")) {
-            return SemuInstallResult.success(current);
+        SemuSteamShortcutDiscovery discovery = self.shortcutDiscovery();
+        if (!discovery.valid) {
+            return SemuInstallResult.failure(discovery.error);
         }
-        if (current.equals("legacy")) {
+        SemuSteamShortcutInspection inspection =
+            SemuSteamShortcutDatabase.inspect(
+                discovery.files, self.policy.steamMigration.rules,
+                self.paths.home, self.paths.stableLauncher);
+        if (!inspection.valid) {
+            return SemuInstallResult.failure(inspection.error.isEmpty()
+                ? "Steam shortcut database is malformed or ambiguous"
+                : inspection.error);
+        }
+        if (inspection.legacy > 0) {
             return SemuInstallResult.failure(
                 "declared legacy Semu shortcuts require transactional migration");
         }
-        if (current.equals("invalid")) {
+        SemuInstallResult exact = SemuSteamShortcutDatabase.requireExact(
+            discovery.files, self.policy.steamMigration.rules,
+            self.paths.home, self.paths.stableLauncher);
+        if (!exact.ok()) { return exact; }
+        if (!self.receiptMatches()) {
             return SemuInstallResult.failure(
-                "Steam shortcut database is malformed or contains an "
-                + "undeclared Semu-related record");
+                "Steam shortcut registration receipt is absent or stale");
         }
-        return SemuInstallResult.failure(
-            "no Steam shortcut or receipt targets the stable Semu launcher");
+        return SemuInstallResult.success("correct");
     }
 }
 

@@ -56,7 +56,24 @@
         "sha256": "9808224c81dc56182101e38b05eda50bd28f2fc197a2f59d2347e2610490c48c"
       },
       "doc": {
-        "why": "DMG palette and temporal LCD response with a crisp dot matrix sized for the declared 282x254 bezel aperture; real-device appearance remains a physical acceptance gate."
+        "why": "DMG palette and temporal LCD response with a crisp dot matrix for the declared 160x144, 10:9 game surface; real-device appearance remains a physical acceptance gate."
+      }
+    },
+    "assets/shaders/gb/pocket.slangp": {
+      "type": "slang_wrapper",
+      "reference": {
+        "tree": "shaders_slang",
+        "path": "handheld/gameboy-pocket.slangp",
+        "sha256": "77359eb26be0a1a7c8a77df217918144b2438d633c2009d781415d10086a56c8"
+      },
+      "requires": [
+        "shaders_slang"
+      ],
+      "output": {
+        "sha256": "77ef8fee4364c45af1bcc1b557e1817a3cfe7f61ae6ca9df9b63200eb5bed51f"
+      },
+      "doc": {
+        "why": "Pinned libretro Game Boy Pocket palette, paper background, LCD matrix, and temporal response provide a materially distinct reflective-panel alternative to the olive DMG default."
       }
     },
     "assets/shaders/gbc/screen.slangp": {

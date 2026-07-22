@@ -1,10 +1,8 @@
 // support.btrc - shared bounded path, hashing, process, and JSON evidence.
 
 import std.{fs, json, process, strings, vector}
-import ../../../lib/json_format.btrc
 import ../runtime_inventory.btrc
 
-#include <fcntl.h>
 #include <string.h>
 
 class AppImageProvenanceInternalResult {
@@ -348,7 +346,9 @@ class AppImageProvenanceSupport {
         for component in suffix { normalized.push(component); }
         if (normalized.size() < 4
                 || !normalized.get(0).equals("nix")
-                || !normalized.get(1).equals("store")) {
+                || !normalized.get(1).equals("store")
+                || !AppImageProvenanceSupport.validStorePath(
+                    "/nix/store/" + normalized.get(2))) {
             return AppImageProvenanceInternalPath.failure(
                 "Nix output link did not resolve to a store file: " + target);
         }
@@ -548,30 +548,23 @@ class AppImageProvenanceSupport {
         return result;
     }
 
-    class AppImageProvenanceInternalDigest hashText(
-            string directory, string content) {
-        string templatePath = PathTools.join(
-            directory, ".semu-release-identity.XXXXXX");
-        char* raw = Strings.copy(templatePath);
-        if (raw == NULL) {
+    class AppImageProvenanceInternalDigest hashText(string content) {
+        string directory = FileSystem.tempDir("semu-release-identity");
+        if (directory.isEmpty()) {
             return AppImageProvenanceInternalDigest.failure(
-                "cannot allocate release-identity temporary path");
+                "cannot create release-identity temporary directory");
         }
-        int descriptor = mkstemp(raw);
-        if (descriptor < 0) {
-            return AppImageProvenanceInternalDigest.failure(
-                "cannot create release-identity temporary file");
-        }
-        string path = Strings.copy(raw);
-        close(descriptor);
+        string path = PathTools.join(directory, "identity.json");
         bool written = Path.writeAll(path, content);
         AppImageProvenanceInternalDigest digest = written
             ? AppImageProvenanceSupport.nixHash("file", path)
             : AppImageProvenanceInternalDigest.failure(
                 "cannot write release-identity temporary file");
-        if (unlink(path) != 0 && digest.ok()) {
-            return AppImageProvenanceInternalDigest.failure(
-                "cannot remove release-identity temporary file");
+        if (FileSystem.removeRecursive(directory) != 0) {
+            return AppImageProvenanceInternalDigest.failure(digest.ok()
+                ? "cannot remove release-identity temporary directory"
+                : digest.error
+                    + "; cannot remove release-identity temporary directory");
         }
         return digest;
     }
@@ -582,8 +575,7 @@ class AppImageProvenanceSupport {
             return AppImageProvenanceInternalResult.failure(
                 label + " inventory must be an array");
         }
-        if (!SemuJsonFormat.document(expected).equals(
-                SemuJsonFormat.document(actual))) {
+        if (!expected.document().equals(actual.document())) {
             return AppImageProvenanceInternalResult.failure(
                 label + " inventory differs by omission, addition, order, or content");
         }

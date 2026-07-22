@@ -45,6 +45,24 @@ class CompilerJsonFields {
         }
     }
 
+    class void schemaOneOf(JsonValue root, Vector<int> supported, string file,
+                           CompilerDiagnostics diagnostics) {
+        if (!root.has("schema_version")) {
+            diagnostics.add(file, "schema_version", "missing required field");
+            return;
+        }
+        JsonValue version = root.get("schema_version");
+        if (!version.isInt()) {
+            diagnostics.add(file, "schema_version", "expected integer");
+        } else if (!supported.contains(version.asInt())) {
+            Vector<string> encoded = [];
+            for expected in supported { encoded.push(f"{expected}"); }
+            diagnostics.add(file, "schema_version",
+                f"version {version.asInt()} unsupported (want "
+                    + encoded.join(" or ") + ")");
+        }
+    }
+
     class void keys(JsonValue object, Vector<string> allowed, string file,
                     string context, CompilerDiagnostics diagnostics) {
         if (!object.isObject()) { return; }
@@ -125,6 +143,10 @@ class CompilerJsonFields {
 }
 
 class SemuEmulatorRenderingParser {
+    class bool supportedAbi(int abi) {
+        return abi == 2 || abi == 3;
+    }
+
     class void exactString(JsonValue object, string key, string expected,
                            string file, string context,
                            CompilerDiagnostics diagnostics) {
@@ -158,11 +180,168 @@ class SemuEmulatorRenderingParser {
             value, "symbol", expectedSymbol, file, context, diagnostics);
     }
 
+    class void surfaces(JsonValue values, string file, string context,
+                        CompilerDiagnostics diagnostics) {
+        if (!values.isArray() || values.size() < 1) {
+            diagnostics.add(file, context,
+                "expected at least one game surface");
+            return;
+        }
+        Vector<string> ids = [];
+        for (int index = 0; index < values.size(); index++) {
+            JsonValue surface = values.at(index);
+            string surfaceContext = f"{context}[{index}]";
+            if (!surface.isObject()) {
+                diagnostics.add(file, surfaceContext, "expected object");
+                continue;
+            }
+            CompilerJsonFields.keys(surface,
+                ["index", "id", "geometry", "native", "origin",
+                 "orientation", "rotation"],
+                file, surfaceContext, diagnostics);
+            int declaredIndex = CompilerJsonFields.optionalInt(
+                surface, "index", -1, file, surfaceContext, diagnostics);
+            if (declaredIndex != index) {
+                diagnostics.add(file, surfaceContext + ".index",
+                    f"expected contiguous index {index}");
+            }
+            string id = CompilerJsonFields.requiredString(
+                surface, "id", file, surfaceContext, diagnostics);
+            if (!id.isEmpty() && ids.contains(id)) {
+                diagnostics.add(file, surfaceContext + ".id",
+                    "duplicate surface id");
+            } else if (!id.isEmpty()) {
+                ids.push(id);
+            }
+            CompilerJsonFields.requiredString(
+                surface, "geometry", file, surfaceContext, diagnostics);
+            JsonValue native = surface.get("native");
+            if ((!native.isString() || native.asString().isEmpty())
+                    && (!native.isObject()
+                        || !native.get("w").isInt()
+                        || native.get("w").asInt() < 1
+                        || !native.get("h").isInt()
+                        || native.get("h").asInt() < 1)) {
+                diagnostics.add(file, surfaceContext + ".native",
+                    "expected a non-empty source description or positive w/h object");
+            }
+            string origin = CompilerJsonFields.requiredString(
+                surface, "origin", file, surfaceContext, diagnostics);
+            if (!origin.isEmpty()
+                    && !["top_left", "bottom_left"].contains(origin)) {
+                diagnostics.add(file, surfaceContext + ".origin",
+                    "expected top_left or bottom_left");
+            }
+            CompilerJsonFields.requiredString(
+                surface, "orientation", file, surfaceContext, diagnostics);
+            int rotation = CompilerJsonFields.optionalInt(
+                surface, "rotation", -1, file, surfaceContext, diagnostics);
+            if (rotation != 0 && rotation != 90
+                    && rotation != 180 && rotation != 270) {
+                diagnostics.add(file, surfaceContext + ".rotation",
+                    "expected 0, 90, 180, or 270 degrees");
+            }
+        }
+    }
+
+    class void surfaceMatch(JsonValue match, string file, string context,
+                            CompilerDiagnostics diagnostics) {
+        if (!match.isObject()) {
+            diagnostics.add(file, context, "expected object");
+            return;
+        }
+        CompilerJsonFields.keys(match, ["screen_count", "arrangement"],
+            file, context, diagnostics);
+        int screenCount = CompilerJsonFields.optionalInt(
+            match, "screen_count", 0, file, context, diagnostics);
+        if (screenCount < 1 || screenCount > 2) {
+            diagnostics.add(file, context + ".screen_count",
+                "renderer ABI supports one or two screens");
+        }
+        bool hasArrangement = match.has("arrangement");
+        string arrangement = CompilerJsonFields.optionalString(
+            match, "arrangement", "", file, context, diagnostics);
+        if (screenCount == 1 && hasArrangement) {
+            diagnostics.add(file, context + ".arrangement",
+                "single-screen mode must not declare an arrangement");
+        }
+        if (screenCount == 2
+                && !["horizontal", "vertical"].contains(arrangement)) {
+            diagnostics.add(file, context + ".arrangement",
+                "two-screen mode requires horizontal or vertical arrangement");
+        }
+    }
+
+    class void surfaceModes(JsonValue modes, string file,
+                            CompilerDiagnostics diagnostics) {
+        if (!modes.isArray() || modes.size() < 1) {
+            diagnostics.add(file, "surface_modes",
+                "expected at least one conditional surface mode");
+            return;
+        }
+        Vector<string> ids = [];
+        Vector<string> matches = [];
+        for (int index = 0; index < modes.size(); index++) {
+            JsonValue mode = modes.at(index);
+            string context = f"surface_modes[{index}]";
+            if (!mode.isObject()) {
+                diagnostics.add(file, context, "expected object");
+                continue;
+            }
+            CompilerJsonFields.keys(mode,
+                ["id", "match", "validation", "surfaces"],
+                file, context, diagnostics);
+            string id = CompilerJsonFields.requiredString(
+                mode, "id", file, context, diagnostics);
+            if (!id.isEmpty() && ids.contains(id)) {
+                diagnostics.add(file, context + ".id", "duplicate mode id");
+            } else if (!id.isEmpty()) {
+                ids.push(id);
+            }
+            JsonValue match = mode.get("match");
+            SemuEmulatorRenderingParser.surfaceMatch(
+                match, file, context + ".match", diagnostics);
+            JsonValue validation = mode.get("validation");
+            if (!validation.isObject()) {
+                diagnostics.add(file, context + ".validation",
+                    "expected object");
+            } else {
+                CompilerJsonFields.keys(validation,
+                    ["native_widths", "live_geometry"],
+                    file, context + ".validation", diagnostics);
+                string widths = CompilerJsonFields.requiredString(validation,
+                    "native_widths", file, context + ".validation", diagnostics);
+                string geometry = CompilerJsonFields.requiredString(validation,
+                    "live_geometry", file, context + ".validation", diagnostics);
+                if (!["equal", "independent"].contains(widths)) {
+                    diagnostics.add(file,
+                        context + ".validation.native_widths",
+                        "expected equal or independent");
+                }
+                if (!["positive", "uniform_integer_scale"].contains(geometry)) {
+                    diagnostics.add(file,
+                        context + ".validation.live_geometry",
+                        "expected positive or uniform_integer_scale");
+                }
+            }
+            string encodedMatch = match.isObject() ? match.stringify() : "";
+            if (!encodedMatch.isEmpty() && matches.contains(encodedMatch)) {
+                diagnostics.add(file, context + ".match",
+                    "duplicate surface mode match");
+            } else if (!encodedMatch.isEmpty()) {
+                matches.push(encodedMatch);
+            }
+            SemuEmulatorRenderingParser.surfaces(
+                mode.get("surfaces"), file, context + ".surfaces", diagnostics);
+        }
+    }
+
     class void validate(JsonValue root, string file,
                         CompilerDiagnostics diagnostics) {
         CompilerJsonFields.keys(root,
             ["schema_version", "activation", "integration", "phases",
-             "surfaces", "orientation_contract", "composition", "doc"],
+             "surfaces", "surface_modes", "orientation_contract",
+             "composition", "doc"],
             file, "", diagnostics);
 
         JsonValue activation = root.get("activation");
@@ -184,8 +363,10 @@ class SemuEmulatorRenderingParser {
             diagnostics.add(file, "integration", "expected object");
         } else {
             if (!integration.get("abi").isInt()
-                    || integration.get("abi").asInt() != 2) {
-                diagnostics.add(file, "integration.abi", "expected ABI 2");
+                    || !SemuEmulatorRenderingParser.supportedAbi(
+                        integration.get("abi").asInt())) {
+                diagnostics.add(file, "integration.abi",
+                    "expected a declared Semu ABI version");
             }
             SemuEmulatorRenderingParser.exactString(integration, "api",
                 "semu-renderer", file, "integration", diagnostics);
@@ -232,10 +413,17 @@ class SemuEmulatorRenderingParser {
                 "semu_render_post_ui_gl", file, 1, diagnostics);
         }
 
-        JsonValue surfaces = root.get("surfaces");
-        if (!surfaces.isArray() || surfaces.size() < 1) {
+        bool staticSurfaces = root.has("surfaces");
+        bool conditionalSurfaces = root.has("surface_modes");
+        if (staticSurfaces == conditionalSurfaces) {
             diagnostics.add(file, "surfaces",
-                "expected at least one game surface");
+                "expected exactly one of surfaces or surface_modes");
+        } else if (staticSurfaces) {
+            SemuEmulatorRenderingParser.surfaces(
+                root.get("surfaces"), file, "surfaces", diagnostics);
+        } else {
+            SemuEmulatorRenderingParser.surfaceModes(
+                root.get("surface_modes"), file, diagnostics);
         }
 
         JsonValue composition = root.get("composition");
@@ -501,10 +689,10 @@ class SemuSourceParser {
             system.file, "", diagnostics);
         system.name = CompilerJsonFields.requiredString(
             root, "name", system.file, "", diagnostics);
-        system.shaders = SemuSourceParser.companion(
-            system.shadersFile, 2, diagnostics);
-        system.bezels = SemuSourceParser.companion(
-            system.bezelsFile, 1, diagnostics);
+        system.shaders = SemuSourceParser.companionVersions(
+            system.shadersFile, [2, 3], diagnostics);
+        system.bezels = SemuSourceParser.companionVersions(
+            system.bezelsFile, [1, 2], diagnostics);
 
         if (!root.has("rom") || !root.get("rom").isObject()) {
             diagnostics.add(system.file, "rom", "expected object");
@@ -566,6 +754,18 @@ class SemuSourceParser {
         }
         JsonValue root = CompilerJsonFields.readObject(file, diagnostics);
         CompilerJsonFields.schema(root, schemaVersion, file, diagnostics);
+        return root;
+    }
+
+    class JsonValue companionVersions(string file, Vector<int> schemaVersions,
+                                      CompilerDiagnostics diagnostics) {
+        if (!FileSystem.isFile(file)) {
+            diagnostics.add(file, "(root)", "missing definition file");
+            return JsonValue.makeObject();
+        }
+        JsonValue root = CompilerJsonFields.readObject(file, diagnostics);
+        CompilerJsonFields.schemaOneOf(
+            root, schemaVersions, file, diagnostics);
         return root;
     }
 

@@ -228,8 +228,7 @@ class SemuBuildResolver {
         SemuBuildResolver.addDefinition(plan, model.assets.shadersFile);
         SemuBuildResolver.addDefinition(plan, model.assets.bezelsFile);
 
-        string selectedEmulator = request.operation.equals("emulator")
-            ? request.emulator : "";
+        string selectedEmulator = request.emulator;
         if (!selectedEmulator.isEmpty()
                 && model.emulatorById(selectedEmulator).id.isEmpty()) {
             diagnostics.add(model.configRoot, "emulator",

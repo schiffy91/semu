@@ -52,6 +52,12 @@ class AppImageProvenanceContractTest {
         bool prepared = FileSystem.mkdirp(targetBin) == 0
             && FileSystem.mkdirp(packageBin) == 0
             && FileSystem.mkdirp(runtimeBin) == 0
+            && FileSystem.mkdirp(PathTools.join(
+                scratch, "nix/store/" + targetName + "/lib")) == 0
+            && FileSystem.mkdirp(PathTools.join(
+                scratch, "nix/store/" + targetName + "/share")) == 0
+            && FileSystem.mkdirp(PathTools.join(scratch, "lib")) == 0
+            && FileSystem.mkdirp(PathTools.join(scratch, "share/semu")) == 0
             && FileSystem.writeText(
                 PathTools.join(packageBin, "program"), "payload\n")
             && FileSystem.writeText(
@@ -77,6 +83,17 @@ class AppImageProvenanceContractTest {
             && matching.value.get("sha256").isString()
             && matching.value.get("sha256").asString().equals(
                 matching.value.get("store_sha256").asString());
+        AppImageProvenanceJson payloadBefore =
+            AppImageRuntimeProvenance.runtimePayload(scratch, targetPath);
+        FileSystem.writeText(PathTools.join(scratch,
+            "share/semu/appimage-runtime-provenance.json"), "{}\n");
+        AppImageProvenanceJson payloadAfter =
+            AppImageRuntimeProvenance.runtimePayload(scratch, targetPath);
+        bool metadataStable = payloadBefore.ok() && payloadAfter.ok()
+            && AppImageRuntimeProvenance.canonicalJson(
+                payloadBefore.value).equals(
+                    AppImageRuntimeProvenance.canonicalJson(
+                        payloadAfter.value));
         FileSystem.writeText(
             PathTools.join(runtimeBin, "program"), "mutated\n");
         AppImageProvenanceJson mutated =
@@ -90,8 +107,20 @@ class AppImageProvenanceContractTest {
         AppImageProvenancePath escaped =
             AppImageRuntimeProvenance.resolveStorePath(
                 scratch, targetPath, "bin/escape");
+        string hardLinks = PathTools.join(scratch, "nix/store/.links");
+        bool hardLinkPrepared = FileSystem.mkdirp(hardLinks) == 0
+            && FileSystem.writeText(
+                PathTools.join(hardLinks, "payload"), "payload\n")
+            && AppImageProvenanceContractTest.link(
+                "/nix/store/.links/payload",
+                PathTools.join(targetBin, "hard-link-index"));
+        AppImageProvenancePath hardLinkIndex =
+            AppImageRuntimeProvenance.resolveStorePath(
+                scratch, targetPath, "bin/hard-link-index");
         FileSystem.removeRecursive(scratch);
-        if (!exact || !rejectedMutation || !escapePrepared || escaped.ok()) {
+        if (!exact || !metadataStable || !rejectedMutation
+                || !escapePrepared || escaped.ok()
+                || !hardLinkPrepared || hardLinkIndex.ok()) {
             return AppImageProvenanceContractTest.fail(
                 "staged bytes, store links, or store-boundary rejection regressed");
         }
@@ -127,7 +156,7 @@ class AppImageProvenanceContractTest {
         slice.hookLibrary = "semurenderer";
         slice.hookPatch = patch;
         JsonValue hook = JsonValue.makeObject();
-        hook.set("abi", JsonValue.makeInt(2));
+        hook.set("abi", JsonValue.makeInt(3));
         hook.set("api", JsonValue.makeString("semu-renderer"));
         hook.set("linkage", JsonValue.makeString(linkage));
         hook.set("header", JsonValue.makeString("semu_renderer.h"));
@@ -135,6 +164,7 @@ class AppImageProvenanceContractTest {
         hook.set("backend", JsonValue.makeString("opengl"));
         JsonValue callbacks = JsonValue.makeArray();
         callbacks.push(JsonValue.makeString("get_proc_address"));
+        callbacks.push(JsonValue.makeString("context_generation"));
         hook.set("callbacks", callbacks);
         hook.set("inactive_reports", JsonValue.makeBool(false));
         hook.set("framebuffer", JsonValue.makeString("default"));
@@ -228,6 +258,258 @@ class AppImageProvenanceContractTest {
                     emptyRuntimePatch, slice, exact)) {
             return AppImageProvenanceContractTest.fail(
                 "runtime source/patch/hook semantics are not exact");
+        }
+        return 0;
+    }
+
+    class int selectedCoreBuildContractBinding() {
+        string scratch = FileSystem.tempDir("semu-core-build-contract");
+        string share = PathTools.join(scratch, "share/semu");
+        string contracts = PathTools.join(share, "contracts");
+        if (scratch.isEmpty() || FileSystem.mkdirp(contracts) != 0) {
+            FileSystem.removeRecursive(scratch);
+            return AppImageProvenanceContractTest.fail(
+                "could not create selected-core contract fixture");
+        }
+
+        string patchDigest =
+            "3333333333333333333333333333333333333333333333333333333333333333";
+        AppImageRuntimeSlice slice =
+            AppImageProvenanceContractTest.hookSlice("render.patch");
+        slice.buildContract =
+            "share/semu/contracts/fixture-build-contract.json";
+        JsonValue sourcePackage =
+            AppImageProvenanceContractTest.buildPackage(patchDigest);
+        slice.sourceRevision =
+            sourcePackage.get("source_revision").asString();
+        slice.sourceSha256 = sourcePackage.get("source_sha256").asString();
+
+        JsonValue esDe = JsonValue.makeObject();
+        esDe.set("source_revision", JsonValue.makeString(
+            "1111111111111111111111111111111111111111"));
+        esDe.set("source_sha256", JsonValue.makeString(
+            "sha256-4mUCsD4XyKJh3LSAnUGCVQiycHPCtA+RvoP+NZQkXeA="));
+        JsonValue emulatorPackages = JsonValue.makeObject();
+        emulatorPackages.set(slice.id, sourcePackage);
+        JsonValue builds = JsonValue.makeObject();
+        builds.set("es_de", esDe);
+        builds.set("emulators", emulatorPackages);
+
+        JsonValue runtimePackage = JsonValue.makeObject();
+        runtimePackage.set("source_revision",
+            sourcePackage.get("source_revision"));
+        runtimePackage.set("source_sha256",
+            sourcePackage.get("source_sha256"));
+        runtimePackage.set("patch_sha256",
+            JsonValue.makeString(patchDigest));
+        runtimePackage.set("render_hook", slice.renderHook);
+
+        JsonValue coreRuntime = JsonValue.makeObject();
+        coreRuntime.set("build_contract", JsonValue.makeString(
+            "share/semu/contracts/core-host-build-contract.json"));
+        JsonValue coreContract = JsonValue.makeObject();
+        coreContract.set("schema_version", JsonValue.makeInt(1));
+        coreContract.set("host", JsonValue.makeString("fixture"));
+        coreContract.set("platform", JsonValue.makeString("x86_64-linux"));
+        JsonValue selected = JsonValue.makeArray();
+        selected.push(JsonValue.makeString("fixture_core"));
+        coreContract.set("selected_core_ids", selected);
+        coreContract.set("cores", JsonValue.makeArray());
+
+        bool wrote = FileSystem.writeText(
+                PathTools.join(share, "es-de-build-contract.json"),
+                esDe.stringify())
+            && FileSystem.writeText(
+                PathTools.join(contracts, "fixture-build-contract.json"),
+                runtimePackage.stringify())
+            && FileSystem.writeText(
+                PathTools.join(contracts, "core-host-build-contract.json"),
+                coreContract.stringify());
+        Vector<AppImageRuntimeSlice> slices = [slice];
+        bool accepted = wrote && AppImageRuntimeProvenance.runtimeBuildContracts(
+            scratch, slices, builds, coreRuntime, coreContract).ok();
+
+        JsonValue changedCoreContract =
+            JsonValue.parse(coreContract.stringify());
+        changedCoreContract.set("host", JsonValue.makeString("wrong"));
+        FileSystem.writeText(
+            PathTools.join(contracts, "core-host-build-contract.json"),
+            changedCoreContract.stringify());
+        bool mutationRejected = !AppImageRuntimeProvenance.runtimeBuildContracts(
+            scratch, slices, builds, coreRuntime, coreContract).ok();
+
+        FileSystem.removeRecursive(
+            PathTools.join(contracts, "core-host-build-contract.json"));
+        bool omissionRejected = !AppImageRuntimeProvenance.runtimeBuildContracts(
+            scratch, slices, builds, coreRuntime, coreContract).ok();
+
+        FileSystem.writeText(
+            PathTools.join(contracts, "core-host-build-contract.json"),
+            coreContract.stringify());
+        FileSystem.writeText(
+            PathTools.join(contracts, "rogue-build-contract.json"), "{}\n");
+        bool additionRejected = !AppImageRuntimeProvenance.runtimeBuildContracts(
+            scratch, slices, builds, coreRuntime, coreContract).ok();
+        FileSystem.removeRecursive(scratch);
+        if (!accepted || !mutationRejected || !omissionRejected
+                || !additionRejected) {
+            return AppImageProvenanceContractTest.fail(
+                "selected-core contract was not exact and mandatory");
+        }
+        return 0;
+    }
+
+    class int provenanceFileMode() {
+        string scratch = FileSystem.tempDir("semu-provenance-mode");
+        string path = PathTools.join(scratch, "provenance.json");
+        bool prepared = !scratch.isEmpty()
+            && FileSystem.writeText(path, "{}\n")
+            && FileSystem.chmod(path,
+                AppImageProvenanceDocument.canonicalMode()) == 0;
+        bool canonical = prepared
+            && AppImageProvenanceDocument.canonicalFile(path);
+        bool changed = canonical && FileSystem.chmod(path, 384) == 0; // 0600
+        bool rejected = changed
+            && !AppImageProvenanceDocument.canonicalFile(path);
+        bool special = rejected && FileSystem.chmod(path, 2340) == 0; // 04444
+        bool specialRejected = special
+            && !AppImageProvenanceDocument.canonicalFile(path);
+        FileSystem.removeRecursive(scratch);
+        if (!canonical || !rejected || !specialRejected) {
+            return AppImageProvenanceContractTest.fail(
+                "runtime provenance mode is not deterministic");
+        }
+        return 0;
+    }
+
+    class int provenanceAtomicSeal() {
+        string scratch = FileSystem.tempDir("semu-provenance-atomic-seal");
+        string output = PathTools.join(scratch, "provenance.json");
+        if (scratch.isEmpty()) {
+            return AppImageProvenanceContractTest.fail(
+                "could not create provenance seal fixture");
+        }
+        AppImageProvenanceInternalResult first =
+            AppImageProvenanceDocument.seal(output, "first\n");
+        AppImageProvenanceInternalResult second = first.ok()
+            ? AppImageProvenanceDocument.seal(output, "second\n")
+            : first;
+        bool repeatable = second.ok()
+            && Path.readAll(output).equals("second\n")
+            && AppImageProvenanceDocument.canonicalFile(output);
+
+        string sentinel = PathTools.join(scratch, "sentinel");
+        string symlinkOutput = PathTools.join(scratch, "symlink.json");
+        bool symlinkPrepared = repeatable
+            && FileSystem.writeText(sentinel, "sentinel\n")
+            && AppImageProvenanceContractTest.link(sentinel, symlinkOutput);
+        AppImageProvenanceInternalResult symlinkAttempt = symlinkPrepared
+            ? AppImageProvenanceDocument.seal(symlinkOutput, "attack\n")
+            : AppImageProvenanceInternalResult.success();
+        bool symlinkRejected = symlinkPrepared && !symlinkAttempt.ok()
+            && Path.readAll(sentinel).equals("sentinel\n");
+
+        string realParent = PathTools.join(scratch, "real-parent");
+        string linkedParent = PathTools.join(scratch, "linked-parent");
+        bool parentLinkPrepared = symlinkRejected
+            && FileSystem.mkdirp(realParent) == 0
+            && AppImageProvenanceContractTest.link(realParent, linkedParent);
+        AppImageProvenanceInternalResult parentLinkAttempt = parentLinkPrepared
+            ? AppImageProvenanceDocument.seal(
+                PathTools.join(linkedParent, "provenance.json"), "attack\n")
+            : AppImageProvenanceInternalResult.success();
+        bool parentLinkRejected = parentLinkPrepared
+            && !parentLinkAttempt.ok()
+            && !FileStatus(PathTools.join(
+                realParent, "provenance.json")).linkFound;
+
+        bool noTemporary = parentLinkRejected;
+        for entry in FileSystem.listDir(scratch) {
+            if (entry.startsWith(".appimage-runtime-provenance.")) {
+                noTemporary = false;
+            }
+        }
+        bool locked = noTemporary
+            && FileSystem.chmod(scratch, 365) == 0; // 0555
+        AppImageProvenanceInternalResult failed = locked
+            ? AppImageProvenanceDocument.seal(output, "third\n")
+            : AppImageProvenanceInternalResult.success();
+        bool preserved = locked && !failed.ok()
+            && Path.readAll(output).equals("second\n")
+            && AppImageProvenanceDocument.canonicalFile(output);
+        FileSystem.chmod(scratch, 448); // 0700
+        FileSystem.removeRecursive(scratch);
+        if (!repeatable || !symlinkRejected || !parentLinkRejected
+                || !noTemporary || !preserved) {
+            return AppImageProvenanceContractTest.fail(
+                "runtime provenance sealing is not descriptor-bound and atomic");
+        }
+        return 0;
+    }
+
+    class int provenancePublicationSourceContract() {
+        string path = PathTools.join(FileSystem.currentDirectory(),
+            "src/generators/appimage/provenance/document.btrc");
+        string source = Path.readAll(path);
+        int sealStart = source.indexOf(
+            "class AppImageProvenanceInternalResult seal(");
+        if (sealStart < 0) {
+            return AppImageProvenanceContractTest.fail(
+                "provenance document writer is missing");
+        }
+        string seal = source.substring(sealStart, source.len());
+        int write = seal.indexOf(
+            "AppImageProvenanceDocument.writeContent(descriptor, content)");
+        int digest = seal.indexOf(
+            "SemuOwnedFileDigest.descriptor(descriptor)");
+        int chmod = seal.indexOf(
+            "semuProvenanceFchmod(descriptor, canonicalMode)");
+        int fileSync = seal.indexOf("fsync(descriptor)");
+        int nameBinding = seal.indexOf(
+            "parentDescriptor, temporaryName, &sealedStatus");
+        int publish = seal.indexOf(
+            "renameat(parentDescriptor, temporaryName");
+        int publishedBinding = seal.indexOf(
+            "fstatat(parentDescriptor, outputName");
+        int parentSync = seal.indexOf("fsync(parentDescriptor)");
+        bool ordered = write >= 0 && write < digest
+            && digest < chmod && chmod < fileSync
+            && fileSync < nameBinding && nameBinding < publish
+            && publish < publishedBinding && publishedBinding < parentSync;
+        bool pathWriteAbsent = !seal.contains("Path.writeAll(temporary")
+            && !seal.contains("FileSystem.chmod(temporary")
+            && !seal.contains("open(temporary")
+            && !seal.contains("rename(temporary")
+            && !seal.contains("unlink(temporary");
+        if (!ordered || !pathWriteAbsent) {
+            return AppImageProvenanceContractTest.fail(
+                "provenance publication lost descriptor authority or durability order");
+        }
+        return 0;
+    }
+
+    class int releaseIdentityHashIsolation() {
+        string scratch = FileSystem.tempDir("semu-provenance-hash-isolation");
+        string sentinel = PathTools.join(scratch, "sentinel");
+        bool prepared = !scratch.isEmpty()
+            && FileSystem.writeText(sentinel, "immutable-runtime\n")
+            && FileSystem.chmod(scratch, 365) == 0; // 0555
+        Vector<string> empty = [];
+        Vector<string> before = prepared
+            ? FileSystem.listDir(scratch) : empty;
+        AppImageProvenanceDigest digest = prepared
+            ? AppImageRuntimeProvenance.hashText("{\"identity\":true}\n")
+            : AppImageProvenanceDigest.failure("fixture setup failed");
+        Vector<string> after = FileSystem.listDir(scratch);
+        bool isolated = digest.ok()
+            && before.join("\n").equals(after.join("\n"))
+            && Path.readAll(sentinel).equals("immutable-runtime\n")
+            && (FileStatus(scratch).mode & 4095) == 365;
+        FileSystem.chmod(scratch, 448); // 0700
+        FileSystem.removeRecursive(scratch);
+        if (!isolated) {
+            return AppImageProvenanceContractTest.fail(
+                "release identity hashing mutated an immutable runtime root");
         }
         return 0;
     }
@@ -445,7 +727,7 @@ class AppImageProvenanceContractTest {
         Vector<string> noReferences = [];
         JsonValue paths = JsonValue.makeArray();
         paths.push(AppImageProvenanceContractTest.closureEntry(
-            target, [second, first]));
+            target, [second, target, first]));
         paths.push(AppImageProvenanceContractTest.closureEntry(
             first, noReferences));
         paths.push(AppImageProvenanceContractTest.closureEntry(
@@ -465,8 +747,25 @@ class AppImageProvenanceContractTest {
         JsonValue unknown = JsonValue.makeObject();
         unknown.set("target_store_path", JsonValue.makeString(target));
         unknown.set("paths", unknownPaths);
+        JsonValue duplicatePaths = JsonValue.makeArray();
+        duplicatePaths.push(AppImageProvenanceContractTest.closureEntry(
+            target, [first, first]));
+        duplicatePaths.push(AppImageProvenanceContractTest.closureEntry(
+            first, noReferences));
+        JsonValue duplicate = JsonValue.makeObject();
+        duplicate.set("target_store_path", JsonValue.makeString(target));
+        duplicate.set("paths", duplicatePaths);
+        JsonValue repeatedSelfPaths = JsonValue.makeArray();
+        repeatedSelfPaths.push(AppImageProvenanceContractTest.closureEntry(
+            target, [target, target]));
+        JsonValue repeatedSelf = JsonValue.makeObject();
+        repeatedSelf.set("target_store_path", JsonValue.makeString(target));
+        repeatedSelf.set("paths", repeatedSelfPaths);
         if (!components.ok() || components.value.size() != 3
-                || AppImageRuntimeProvenance.runtimeComponents(unknown).ok()) {
+                || AppImageRuntimeProvenance.runtimeComponents(unknown).ok()
+                || AppImageRuntimeProvenance.runtimeComponents(duplicate).ok()
+                || AppImageRuntimeProvenance.runtimeComponents(
+                    repeatedSelf).ok()) {
             return AppImageProvenanceContractTest.fail(
                 "runtime components are not derived exactly from Nix references");
         }
@@ -693,6 +992,9 @@ class AppImageProvenanceContractTest {
             }
         }
         if (!coreRuntime.get("provider").isString()
+                || !coreRuntime.get("build_contract").isString()
+                || !coreRuntime.get("build_contract").asString().equals(
+                    "share/semu/core-host-build-contract.json")
                 || !coreRuntime.get("directory").isString()
                 || !AppImageRuntimeInventory.safeRelative(
                     coreRuntime.get("directory").asString())
@@ -770,7 +1072,9 @@ class AppImageProvenanceContractTest {
                 || provenanceSource.contains(
                     "Vector<string> ids = [\"semu-program\"")
                 || !provenanceSource.contains(
-                    "steamdeck-runtime.outPath")
+                    "targetOutputStorePathForRelease")
+                || !provenanceSource.contains(
+                    "releaseInventory.packageAttribute + \".outPath\"")
                 || provenanceSource.contains(".default.outPath")) {
             return AppImageProvenanceContractTest.fail(
                 "provenance does not select the exact canonical runtime output");
@@ -788,6 +1092,14 @@ class AppImageProvenanceContractTest {
             project, "packaging/nix/flake/checks.nix"));
         string program = Path.readAll(PathTools.join(
             project, "packaging/nix/semu_program.nix"));
+        string runtimeBuilder = Path.readAll(PathTools.join(
+            project, "src/generators/appimage/runtime_builder.btrc"));
+        string assembler = Path.readAll(PathTools.join(
+            project, "src/generators/appimage/assembler.btrc"));
+        string assemblyTools = Path.readAll(PathTools.join(
+            project, "src/generators/appimage/assembly_tools.btrc"));
+        string linuxWorker = Path.readAll(PathTools.join(
+            project, "src/generators/appimage/linux_worker.btrc"));
         if (!packageWiring.contains("pkgs.pkgsStatic.callPackage")
                 || !packageWiring.contains("requireStaticBootstrap = true")
                 || !steamDeckPackage.contains(
@@ -803,6 +1115,64 @@ class AppImageProvenanceContractTest {
                 || !checks.contains("INTERP")) {
             return AppImageProvenanceContractTest.fail(
                 "canonical Steam Deck bootstrap CLI is not fail-closed static ELF");
+        }
+        if (!runtimeBuilder.contains("volumeStatus.f_bavail")
+                || runtimeBuilder.contains("volumeStatus.f_blocks")
+                || !runtimeBuilder.contains(
+                    "insufficient available space")) {
+            return AppImageProvenanceContractTest.fail(
+                "case-sensitive runtime volume gate does not measure available space");
+        }
+        if (assembler.contains("nixpkgs#")
+                || assembler.contains("path:.#appimage-assembly-tools")
+                || assembler.contains(
+                    "AppImageCommands.run(\"nix\"")
+                || assembler.contains("ChildProcess.run(")
+                || assembler.contains("\"rsync\"")
+                || assembler.contains("\"sha256sum\"")
+                || assembler.contains("\"shasum\"")
+                || !linuxWorker.contains(
+                    "AppImageLinuxWorker.workerReference(")
+                || !linuxWorker.contains("\"#packages.\"")
+                || !linuxWorker.contains(
+                    "AppImageNixReleaseProof.pinnedImage()")
+                || !linuxWorker.contains(
+                    "AppImageLinuxWorker.imageInspectionArguments()")
+                || !linuxWorker.contains("\"linux/amd64\"")
+                || !linuxWorker.contains(
+                    "AppImageNixReleaseProof.requiredSystem()")
+                || linuxWorker.contains(
+                    "\"podman\", [\"info\", \"--format\", \"json\"]")
+                || !linuxWorker.contains(
+                    "\"copy\", \"--to\", \"file://\" + handoff.sourceCache")
+                || !linuxWorker.contains("target=/source-cache,readonly")
+                || linuxWorker.contains("target=/src")
+                || !linuxWorker.contains("\"--read-only\"")
+                || !linuxWorker.contains("\"--cap-add\", \"CHOWN\"")
+                || !linuxWorker.contains("requiresChown=false")
+                || !linuxWorker.contains(
+                    "\"--assembly-tools-root\", worker")
+                || !linuxWorker.contains(
+                    "\"--receipt\", \"/exchange/receipt.json\"")
+                || !linuxWorker.contains(
+                    "\"--runtime-owner\", runtime.builderRepository")
+                || !linuxWorker.contains("AppImageOutputTransaction.publish(")
+                || !assemblyTools.contains("copyLeaseTo(")
+                || !assemblyTools.contains(
+                    "executableDescriptor=staged.descriptor")
+                || !packageWiring.contains(
+                    "appimage-assembly-tools = appImageAssemblyTools")
+                || !packageWiring.contains(
+                    "appimage-worker = appImageWorker")
+                || !packageWiring.contains("paths = [")
+                || !packageWiring.contains("semuProgram")
+                || !packageWiring.contains("appImageAssemblyTools")
+                || packageWiring.contains("pkgs.coreutils")
+                || !checks.contains("appimage-worker")
+                || !checks.contains("command -v mksquashfs")
+                || !checks.contains("command -v unsquashfs")) {
+            return AppImageProvenanceContractTest.fail(
+                "AppImage assembly tools are not supplied by the repository's pinned flake");
         }
 
         AppImageRuntimeInventoryResult mac =
@@ -843,6 +1213,11 @@ class AppImageProvenanceContractTest {
     class int focused() {
         int failures = AppImageProvenanceContractTest.mutationContracts();
         failures += AppImageProvenanceContractTest.exactIdentityContracts();
+        failures += AppImageProvenanceContractTest.selectedCoreBuildContractBinding();
+        failures += AppImageProvenanceContractTest.provenanceFileMode();
+        failures += AppImageProvenanceContractTest.provenanceAtomicSeal();
+        failures += AppImageProvenanceContractTest.provenancePublicationSourceContract();
+        failures += AppImageProvenanceContractTest.releaseIdentityHashIsolation();
         failures += AppImageProvenanceContractTest.stagedStoreBinding();
         failures += AppImageProvenanceContractTest.patchAndHookContracts();
         failures += AppImageProvenanceContractTest.binaryHookContract();

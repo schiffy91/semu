@@ -3,10 +3,12 @@
 import std.{bytes, fs, io, json, process, strings, vector}
 import ./esde_startup.btrc
 import ./provenance.btrc
+import ./release_inventory.btrc
 import ./runtime_inventory.btrc
 
 #include <fcntl.h>
 #include <limits.h>
+#include <string.h>
 
 class AppImageContractResult {
     public bool valid;
@@ -28,11 +30,36 @@ class AppImageContractResult {
     public bool ok() { return self.valid; }
 }
 
+class AppImagePayloadIdentity {
+    public bool valid;
+    public string treeDigest;
+    public string error;
+
+    public AppImagePayloadIdentity(bool valid, string treeDigest,
+                                   string error) {
+        self.valid = valid;
+        self.treeDigest = treeDigest;
+        self.error = error;
+    }
+
+    class AppImagePayloadIdentity success(string treeDigest) {
+        return AppImagePayloadIdentity(true, treeDigest, "");
+    }
+
+    class AppImagePayloadIdentity failure(string error) {
+        return AppImagePayloadIdentity(false, "", error);
+    }
+
+    public bool ok() { return self.valid; }
+}
+
 class AppImagePathPlan {
     public bool valid;
     public string repoRoot;
     public string sourceRoot;
     public string runtimeRoot;
+    public string runtimePublication;
+    public string runtimeLock;
     public string packagingRoot;
     public string buildRoot;
     public string workBase;
@@ -45,6 +72,8 @@ class AppImagePathPlan {
         self.repoRoot = "";
         self.sourceRoot = "";
         self.runtimeRoot = "";
+        self.runtimePublication = "";
+        self.runtimeLock = "";
         self.packagingRoot = "";
         self.buildRoot = "";
         self.workBase = "";
@@ -77,13 +106,6 @@ class AppImagePathContract {
         if (path[0] == '/') { return Strings.copy(path); }
         string current = UnixFileSystem.currentDirectory();
         return current.isEmpty() ? "" : PathTools.join(current, path);
-    }
-
-    class bool safeOptionalDirectory(string path) {
-        FileStatus status = FileStatus(path);
-        if (!status.linkFound) { return true; }
-        return status.isDir() && !status.isSymlink()
-            && UnixFileSystem.realPath(path).equals(path);
     }
 
     class bool safeOptionalOutput(string path) {
@@ -123,18 +145,6 @@ class AppImagePathContract {
         return distinct && cleaned;
     }
 
-    class string derivedWorkRoot(string workBase, string runtimeRoot) {
-        return PathTools.join(workBase,
-            ".semu-appimage-work-" + PathTools.basename(runtimeRoot));
-    }
-
-    class bool ownsWorkRoot(AppImagePathPlan plan) {
-        return plan.ok()
-            && !plan.workBase.isEmpty()
-            && plan.workRoot.equals(AppImagePathContract.derivedWorkRoot(
-                plan.workBase, plan.runtimeRoot));
-    }
-
     class AppImagePathPlan invalid(string error) {
         AppImagePathPlan plan = AppImagePathPlan();
         plan.error = error;
@@ -143,7 +153,8 @@ class AppImagePathContract {
 
     class AppImagePathPlan plan(string repoPath, string runtimePath,
                                 string requestedOutput,
-                                string requestedWorkBase = "") {
+                                string requestedWorkBase = "",
+                                string requestedOutputRoot = "") {
         string repo = UnixFileSystem.realPath(repoPath);
         if (repo.isEmpty() || !AppImagePathContract.realDirectory(repo)) {
             return AppImagePathContract.invalid(
@@ -151,26 +162,50 @@ class AppImagePathContract {
         }
 
         string source = PathTools.join(repo, "config");
-        string packaging = PathTools.join(repo, "build/packaging/linux");
-        string build = PathTools.join(repo, "build");
+        string defaultBuild = PathTools.join(repo, "build");
+        string requestedBuild = requestedOutputRoot.isEmpty()
+            ? defaultBuild
+            : AppImagePathContract.lexicalAbsolute(requestedOutputRoot);
+        string build = UnixFileSystem.realPath(requestedBuild);
         if (!AppImagePathContract.realDirectory(source)) {
             return AppImagePathContract.invalid(
                 "Semu config root is absent or traverses a symlink: " + source);
         }
-        if (!AppImagePathContract.realDirectory(packaging)) {
+        if (build.isEmpty() || !requestedBuild.equals(build)
+                || !AppImagePathContract.realDirectory(build)) {
             return AppImagePathContract.invalid(
-                "generated Linux packaging is absent or traverses a symlink: "
-                + packaging);
-        }
-        if (!AppImagePathContract.realDirectory(build)) {
-            return AppImagePathContract.invalid(
-                "generated build root is absent or traverses a symlink: " + build);
+                "AppImage output root is absent or traverses a symlink: "
+                    + requestedBuild);
         }
 
-        string runtime = UnixFileSystem.realPath(runtimePath);
+        string runtimePublication =
+            AppImagePathContract.lexicalAbsolute(runtimePath);
+        string runtimePublicationParent =
+            PathTools.dirname(runtimePublication);
+        string runtimeCacheRoot =
+            UnixFileSystem.realPath(runtimePublicationParent);
+        FileStatus runtimePublicationStatus =
+            FileStatus(runtimePublication);
+        string runtime = UnixFileSystem.realPath(runtimePublication);
         if (runtime.isEmpty() || !AppImagePathContract.realDirectory(runtime)) {
             return AppImagePathContract.invalid(
                 "runtime root does not resolve to a real directory: " + runtimePath);
+        }
+        if (runtimePublication.isEmpty()
+                || !PathTools.basename(runtimePublication)
+                    .equals("runtime-root")
+                || runtimeCacheRoot.isEmpty()
+                || !runtimeCacheRoot.equals(runtimePublicationParent)
+                || !AppImagePathContract.realDirectory(runtimeCacheRoot)
+                || !runtimePublicationStatus.isSymlink()) {
+            return AppImagePathContract.invalid(
+                "runtime must be the builder's owned runtime-root publication link");
+        }
+        string runtimeLock = PathTools.join(runtimeCacheRoot, "build.lock");
+        FileStatus runtimeLockStatus = FileStatus(runtimeLock);
+        if (!runtimeLockStatus.isFile() || runtimeLockStatus.isSymlink()) {
+            return AppImagePathContract.invalid(
+                "runtime builder lock is absent or unsafe: " + runtimeLock);
         }
         if (!AppImagePathContract.caseSensitiveDirectory(runtime)) {
             return AppImagePathContract.invalid(
@@ -198,7 +233,7 @@ class AppImagePathContract {
         string output = PathTools.join(outputParent, PathTools.basename(requested));
         if (!AppImagePathContract.within(build, output)) {
             return AppImagePathContract.invalid(
-                "AppImage output must stay under the generated build root: " + output);
+                "AppImage output must stay under its owned output root: " + output);
         }
         if (!AppImagePathContract.safeOptionalOutput(output)) {
             return AppImagePathContract.invalid(
@@ -221,45 +256,28 @@ class AppImagePathContract {
             return AppImagePathContract.invalid(
                 "AppImage work filesystem is not proven case-sensitive: " + workBase);
         }
-        string work = AppImagePathContract.derivedWorkRoot(workBase, runtime);
-        if (!AppImagePathContract.safeOptionalDirectory(work)) {
-            return AppImagePathContract.invalid(
-                "AppImage work root is a symlink or non-directory");
-        }
-        Vector<string> protectedPaths = [repo, source, packaging, runtime, output];
-        for protectedPath in protectedPaths {
-            if (AppImagePathContract.overlap(work, protectedPath)) {
+        for protectedPath in [repo, source] {
+            if (AppImagePathContract.within(protectedPath, workBase)) {
                 return AppImagePathContract.invalid(
-                    "AppImage work root overlaps a source, runtime, or output path");
+                    "AppImage work filesystem may not live inside a source tree");
             }
         }
         if (AppImagePathContract.overlap(runtime, source)
-            || AppImagePathContract.overlap(runtime, packaging)
             || AppImagePathContract.overlap(runtime, output)) {
             return AppImagePathContract.invalid(
                 "AppImage source, runtime, work, and output paths must be disjoint");
-        }
-
-        // Payload validation owns diagnostics for incomplete roots. Any root
-        // carrying the mandatory frontend is an assembly candidate and must
-        // prove that it was built from this exact live source snapshot.
-        if (AppImageRuntimeProvenance.runtimeLooksPopulated(runtime)) {
-            AppImageProvenanceResult provenance =
-                AppImageRuntimeProvenance.validate(repo, runtime);
-            if (!provenance.ok()) {
-                return AppImagePathContract.invalid(
-                    "AppImage runtime provenance rejected: " + provenance.error);
-            }
         }
 
         AppImagePathPlan plan = AppImagePathPlan();
         plan.repoRoot = repo;
         plan.sourceRoot = source;
         plan.runtimeRoot = runtime;
-        plan.packagingRoot = packaging;
+        plan.runtimePublication = runtimePublication;
+        plan.runtimeLock = runtimeLock;
+        plan.packagingRoot = "";
         plan.buildRoot = build;
         plan.workBase = workBase;
-        plan.workRoot = work;
+        plan.workRoot = "";
         plan.outputPath = output;
         plan.valid = true;
         return plan;
@@ -381,6 +399,55 @@ class Type2AppImage {
             ? Bytes.fromRaw(buffer, (int)received) : Bytes();
     }
 
+    class Type2AppImageOffset parseDescriptorMode(
+            int descriptor, bool bareRuntime) {
+        struct stat status;
+        if (descriptor < 0 || fstat(descriptor, &status) != 0
+                || !S_ISREG(status.st_mode)) {
+            return Type2AppImageOffset.failure(
+                "AppImage source descriptor is not a regular file");
+        }
+        if (status.st_size < (off_t)64) {
+            return Type2AppImageOffset.failure("AppImage ELF header is truncated");
+        }
+        Bytes header = Type2AppImage.preadBounded(descriptor, 0LL, 64);
+        if (header.length() != 64) {
+            return Type2AppImageOffset.failure("AppImage ELF header is truncated");
+        }
+        Type2AppImageOffset parsed = Type2AppImage.parseHeader(header);
+        if (!parsed.ok()) { return parsed; }
+        long long fileSize = (long long)status.st_size;
+        if (bareRuntime) {
+            if (parsed.offset != fileSize) {
+                return Type2AppImageOffset.failure(
+                    "bare AppImage runtime size differs from its ELF section-table end");
+            }
+        } else {
+            if (fileSize < 4LL || parsed.offset < 64LL
+                    || parsed.offset > fileSize - 4LL) {
+                return Type2AppImageOffset.failure(
+                    "AppImage ELF runtime offset exceeds the artifact size");
+            }
+            Bytes magic = Type2AppImage.preadBounded(
+                descriptor, parsed.offset, 4);
+            if (magic.length() != 4
+                    || !Type2AppImage.squashfsMagic(magic, 0LL)) {
+                return Type2AppImageOffset.failure(
+                    "AppImage ELF runtime prefix is not followed by SquashFS");
+            }
+        }
+        struct stat finalStatus;
+        if (fstat(descriptor, &finalStatus) != 0
+                || finalStatus.st_dev != status.st_dev
+                || finalStatus.st_ino != status.st_ino
+                || finalStatus.st_size != status.st_size
+                || finalStatus.st_mode != status.st_mode) {
+            return Type2AppImageOffset.failure(
+                "AppImage source descriptor changed while parsing");
+        }
+        return parsed;
+    }
+
     class Type2AppImageOffset parseFileMode(
             string path, bool bareRuntime) {
         struct stat pathStatus;
@@ -389,53 +456,20 @@ class Type2AppImage {
                 "AppImage source is not a regular file: " + path);
         }
         int descriptor = open(
-            path, (int)O_RDONLY | (int)O_CLOEXEC | (int)O_NOFOLLOW | (int)O_NONBLOCK);
-        if (descriptor < 0) {
-            return Type2AppImageOffset.failure("cannot open AppImage source: " + path);
-        }
-        struct stat status;
-        if (fstat(descriptor, &status) != 0 || !S_ISREG(status.st_mode)
-            || status.st_dev != pathStatus.st_dev
-            || status.st_ino != pathStatus.st_ino) {
-            close(descriptor);
+            path, (int)O_RDONLY | (int)O_CLOEXEC
+                | (int)O_NOFOLLOW | (int)O_NONBLOCK);
+        struct stat opened;
+        if (descriptor < 0 || fstat(descriptor, &opened) != 0
+                || !S_ISREG(opened.st_mode)
+                || opened.st_dev != pathStatus.st_dev
+                || opened.st_ino != pathStatus.st_ino) {
+            if (descriptor >= 0) { close(descriptor); }
             return Type2AppImageOffset.failure(
-                "AppImage source is not a regular file: " + path);
+                "AppImage source is not a bound regular file: " + path);
         }
-        if (status.st_size < (off_t)64) {
-            close(descriptor);
-            return Type2AppImageOffset.failure("AppImage ELF header is truncated");
-        }
-        Bytes header = Type2AppImage.preadBounded(descriptor, 0LL, 64);
-        if (header.length() != 64) {
-            close(descriptor);
-            return Type2AppImageOffset.failure("AppImage ELF header is truncated");
-        }
-        Type2AppImageOffset parsed = Type2AppImage.parseHeader(header);
-        if (!parsed.ok()) {
-            close(descriptor);
-            return parsed;
-        }
-        long long fileSize = (long long)status.st_size;
-        if (bareRuntime) {
-            close(descriptor);
-            if (parsed.offset != fileSize) {
-                return Type2AppImageOffset.failure(
-                    "bare AppImage runtime size differs from its ELF section-table end");
-            }
-            return parsed;
-        }
-        if (fileSize < 4LL || parsed.offset < 64LL
-            || parsed.offset > fileSize - 4LL) {
-            close(descriptor);
-            return Type2AppImageOffset.failure(
-                "AppImage ELF runtime offset exceeds the artifact size");
-        }
-        Bytes magic = Type2AppImage.preadBounded(descriptor, parsed.offset, 4);
+        Type2AppImageOffset parsed =
+            Type2AppImage.parseDescriptorMode(descriptor, bareRuntime);
         close(descriptor);
-        if (magic.length() != 4 || !Type2AppImage.squashfsMagic(magic, 0LL)) {
-            return Type2AppImageOffset.failure(
-                "AppImage ELF runtime prefix is not followed by SquashFS");
-        }
         return parsed;
     }
 
@@ -446,9 +480,99 @@ class Type2AppImage {
     class Type2AppImageOffset parseFile(string path) {
         return Type2AppImage.parseFileMode(path, false);
     }
+
+    class Type2AppImageOffset parseBareRuntimeDescriptor(int descriptor) {
+        return Type2AppImage.parseDescriptorMode(descriptor, true);
+    }
+
+    class Type2AppImageOffset parseDescriptor(int descriptor) {
+        return Type2AppImage.parseDescriptorMode(descriptor, false);
+    }
+
+    class bool exactPrefixDescriptors(
+            int expectedDescriptor, int artifactDescriptor, long long bytes) {
+        if (bytes < 1LL || expectedDescriptor < 0 || artifactDescriptor < 0) {
+            return false;
+        }
+        struct stat expectedStat;
+        struct stat artifactStat;
+        bool valid = fstat(expectedDescriptor, &expectedStat) == 0
+            && fstat(artifactDescriptor, &artifactStat) == 0
+            && S_ISREG(expectedStat.st_mode) && S_ISREG(artifactStat.st_mode)
+            && (long long)expectedStat.st_size == bytes
+            && (long long)artifactStat.st_size > bytes;
+        char expectedBuffer[65536];
+        char artifactBuffer[65536];
+        long long position = 0LL;
+        while (valid && position < bytes) {
+            long long remaining = bytes - position;
+            int count = remaining > 65536LL ? 65536 : (int)remaining;
+            ssize_t expectedRead = pread(expectedDescriptor,
+                expectedBuffer, (size_t)count, (off_t)position);
+            while (expectedRead < (ssize_t)0 && errno == EINTR) {
+                expectedRead = pread(expectedDescriptor,
+                    expectedBuffer, (size_t)count, (off_t)position);
+            }
+            ssize_t artifactRead = pread(artifactDescriptor,
+                artifactBuffer, (size_t)count, (off_t)position);
+            while (artifactRead < (ssize_t)0 && errno == EINTR) {
+                artifactRead = pread(artifactDescriptor,
+                    artifactBuffer, (size_t)count, (off_t)position);
+            }
+            valid = expectedRead == (ssize_t)count
+                && artifactRead == (ssize_t)count
+                && memcmp(expectedBuffer, artifactBuffer,
+                    (size_t)count) == 0;
+            position += (long long)count;
+        }
+        struct stat expectedAfter;
+        struct stat artifactAfter;
+        return valid && position == bytes
+            && fstat(expectedDescriptor, &expectedAfter) == 0
+            && fstat(artifactDescriptor, &artifactAfter) == 0
+            && expectedAfter.st_dev == expectedStat.st_dev
+            && expectedAfter.st_ino == expectedStat.st_ino
+            && expectedAfter.st_size == expectedStat.st_size
+            && expectedAfter.st_mode == expectedStat.st_mode
+            && artifactAfter.st_dev == artifactStat.st_dev
+            && artifactAfter.st_ino == artifactStat.st_ino
+            && artifactAfter.st_size == artifactStat.st_size
+            && artifactAfter.st_mode == artifactStat.st_mode;
+    }
+
+    class bool exactPrefix(string expected, string artifact, long long bytes) {
+        FileStatus expectedStatus = FileStatus(expected);
+        FileStatus artifactStatus = FileStatus(artifact);
+        if (bytes < 1LL || !expectedStatus.isFile()
+                || expectedStatus.isSymlink() || !artifactStatus.isFile()
+                || artifactStatus.isSymlink()) {
+            return false;
+        }
+        int expectedDescriptor = open(expected,
+            (int)O_RDONLY | (int)O_CLOEXEC | (int)O_NOFOLLOW);
+        int artifactDescriptor = open(artifact,
+            (int)O_RDONLY | (int)O_CLOEXEC | (int)O_NOFOLLOW);
+        bool exact = Type2AppImage.exactPrefixDescriptors(
+            expectedDescriptor, artifactDescriptor, bytes);
+        if (expectedDescriptor >= 0) { close(expectedDescriptor); }
+        if (artifactDescriptor >= 0) { close(artifactDescriptor); }
+        return exact;
+    }
 }
 
 class AppImagePayloadContract {
+    class AppImageRuntimeInventoryResult selectedInventory(
+            string root, string sourceRoot) {
+        AppImageReleaseInventoryResult loadedInventory =
+            AppImageReleaseInventoryLoader.load(root);
+        if (!loadedInventory.ok()) {
+            return AppImageRuntimeInventoryResult.failure(
+                loadedInventory.error);
+        }
+        return AppImageRuntimeInventory.validateSlices(
+            root, loadedInventory.inventory.select(sourceRoot));
+    }
+
     class bool realDirectory(string path) {
         FileStatus status = FileStatus(path);
         return status.isDir() && !status.isSymlink();
@@ -595,7 +719,7 @@ class AppImagePayloadContract {
                 || !contract.get("schema_version").isInt()
                 || contract.get("schema_version").asInt() != 1
                 || !contract.get("abi").isInt()
-                || contract.get("abi").asInt() != 2
+                || contract.get("abi").asInt() != 3
                 || !libraryValue.isString()
                 || !AppImageRuntimeInventory.safeRelative(
                     libraryValue.asString())
@@ -617,6 +741,10 @@ class AppImagePayloadContract {
             exportedSymbols.push(symbol.asString());
         }
         for slice in slices {
+            if (!slice.renderHook.get("abi").isInt()
+                    || slice.renderHook.get("abi").asInt() != 3) {
+                return false;
+            }
             for symbol in slice.hookSymbols {
                 if (!exportedSymbols.contains(symbol)) { return false; }
                 bool carried = false;
@@ -717,7 +845,7 @@ class AppImagePayloadContract {
     class AppImageContractResult validateRuntime(
             string root, string sourceRoot) {
         AppImageRuntimeInventoryResult inventory =
-            AppImageRuntimeInventory.validate(sourceRoot, root);
+            AppImagePayloadContract.selectedInventory(root, sourceRoot);
         if (!inventory.ok()) {
             return AppImageContractResult.failure(inventory.error);
         }
@@ -750,7 +878,7 @@ class AppImagePayloadContract {
         if (!AppImagePayloadContract.exactRendererAbi(
                 root, inventory.slices)) {
             return AppImageContractResult.failure(
-                "an emulator or libsemurenderer lacks the exact direct-linked ABI 2 contract");
+                "an emulator or libsemurenderer lacks the exact direct-linked ABI 3 contract");
         }
         if (!AppImagePayloadContract.sourceBuiltEsDe(root, "bin/es-de")) {
             return AppImageContractResult.failure(
@@ -762,7 +890,7 @@ class AppImagePayloadContract {
     class AppImageContractResult validateAppDir(
             string root, string sourceRoot) {
         AppImageRuntimeInventoryResult inventory =
-            AppImageRuntimeInventory.validate(sourceRoot, root);
+            AppImagePayloadContract.selectedInventory(root, sourceRoot);
         if (!inventory.ok()) {
             return AppImageContractResult.failure(inventory.error);
         }
@@ -793,7 +921,7 @@ class AppImagePayloadContract {
         if (!AppImagePayloadContract.exactRendererAbi(
                 root, inventory.slices)) {
             return AppImageContractResult.failure(
-                "AppDir lacks the exact direct-linked renderer ABI 2 contract");
+                "AppDir lacks the exact direct-linked renderer ABI 3 contract");
         }
         if (!AppImagePayloadContract.sourceBuiltEsDe(root, "usr/bin/es-de")) {
             return AppImageContractResult.failure(

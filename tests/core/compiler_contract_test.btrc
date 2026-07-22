@@ -148,16 +148,19 @@ class CompilerContractTest {
             return CompilerContractTest.fail("cannot derive an emulator slice");
         }
         string emulator = targetPlan.emulators.get(0);
-        CompilerDiagnostics sliceDiagnostics = CompilerDiagnostics();
-        SemuBuildPlan slice = CompilerContractTest.compile(
-            project, semuHome, target, "emulator", emulator,
-            PathTools.join(outputRoot, "emulator"), sliceDiagnostics);
-        if (!sliceDiagnostics.ok() || slice.emulators.size() != 1
-                || !slice.emulators.get(0).equals(emulator)
-                || slice.systems.isEmpty()) {
-            for error in sliceDiagnostics.errors { print("  " + error); }
-            return CompilerContractTest.fail(
-                "emulator build did not narrow the target plan declaratively");
+        for operation in ["emulator", "configs", "package", "verify"] {
+            CompilerDiagnostics sliceDiagnostics = CompilerDiagnostics();
+            SemuBuildPlan slice = CompilerContractTest.compile(
+                project, semuHome, target, operation, emulator,
+                PathTools.join(outputRoot, operation), sliceDiagnostics);
+            if (!sliceDiagnostics.ok() || slice.emulators.size() != 1
+                    || !slice.emulators.get(0).equals(emulator)
+                    || slice.systems.isEmpty()) {
+                for error in sliceDiagnostics.errors { print("  " + error); }
+                return CompilerContractTest.fail(
+                    operation
+                    + " did not narrow the target plan declaratively");
+            }
         }
         return 0;
     }
@@ -580,8 +583,7 @@ class CompilerContractTest {
                 "AppImage packaging inputs are not generated from the compiler plan");
         }
         Vector<string> unsupported = [
-            "$(SEMU_BIN) manifest", "$(SEMU_BIN) bootstrap",
-            "package appimage --project", "package appimage verify --project"
+            "$(SEMU_BIN) manifest", "$(SEMU_BIN) bootstrap"
         ];
         for invocation in unsupported {
             if (makefile.contains(invocation)) {
@@ -590,11 +592,15 @@ class CompilerContractTest {
             }
         }
         if (!makefile.contains(
-                "package appimage --target steam-deck --project")
+                "package appimage --target steam-deck")
             || !makefile.contains(
-                "package appimage verify --target steam-deck --project")) {
+                "package appimage verify --target steam-deck")
+            || !makefile.contains(
+                "--project \"$(SEMU_APPIMAGE_SOURCE_ROOT)\"")
+            || !makefile.contains(
+                "--runtime-builder-repository \"$(CURDIR)\"")) {
             return CompilerContractTest.fail(
-                "Make does not pass the compiler target to AppImage operations");
+                "Make does not separate frozen AppImage source and builder roots");
         }
         return 0;
     }

@@ -1,9 +1,38 @@
 // runtime_builder.btrc - cached cross-host Steam Deck runtime construction.
 
-import std.{fs, platform, process, strings, vector}
+import std.{fs, json, platform, process, strings, vector}
 import ../../lib/owned_paths.btrc
+import ./nix_release_proof.btrc
+import ./provenance/document.btrc
 
 #include <sys/statvfs.h>
+#include <errno.h>
+#include <fcntl.h>
+#include <limits.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/file.h>
+#include <sys/stat.h>
+#include <unistd.h>
+
+int semuAppImageFileLock(int descriptor, int operation) {
+    return flock(descriptor, operation);
+}
+
+int semuAppImageSymlinkAt(string target, int parentDescriptor, string name) {
+    if (target.isEmpty() || target.len() >= PATH_MAX
+            || name.isEmpty() || name.len() > 255) {
+        errno = EINVAL;
+        return -1;
+    }
+    char targetBuffer[PATH_MAX];
+    char nameBuffer[256];
+    memcpy(targetBuffer, target, (size_t)target.len());
+    targetBuffer[target.len()] = 0;
+    memcpy(nameBuffer, name, (size_t)name.len());
+    nameBuffer[name.len()] = 0;
+    return symlinkat(targetBuffer, parentDescriptor, nameBuffer);
+}
 
 class AppImageRuntimeBuildResult {
     public bool valid;
@@ -37,9 +66,10 @@ class AppImageRuntimeCache {
         return PathTools.join(root, AppImageRuntimeCache.markerName());
     }
 
-    class string document(string root, string repository) {
+    class string document(string root, string repository,
+                          string packageAttribute) {
         return "version=1\nroot=" + root + "\nrepository="
-            + repository + "\n";
+            + repository + "\npackage=" + packageAttribute + "\n";
     }
 
     class bool overlap(string first, string second) {
@@ -48,7 +78,8 @@ class AppImageRuntimeCache {
     }
 
     class AppImageRuntimeBuildResult claim(
-            string root, string repository, string home) {
+            string root, string repository, string home,
+            string packageAttribute) {
         if (root.isEmpty() || repository.isEmpty() || root.equals("/")
                 || root.equals(home)
                 || SemuOwnedPaths.inside(home, root)
@@ -59,7 +90,8 @@ class AppImageRuntimeCache {
         }
         FileStatus initial = FileStatus(root);
         string marker = AppImageRuntimeCache.marker(root);
-        string expected = AppImageRuntimeCache.document(root, repository);
+        string expected = AppImageRuntimeCache.document(
+            root, repository, packageAttribute);
         if (initial.linkFound) {
             FileStatus ownership = FileStatus(marker);
             if (!initial.isDir() || initial.isSymlink()
@@ -78,11 +110,12 @@ class AppImageRuntimeCache {
             return AppImageRuntimeBuildResult.failure(
                 "cannot claim the Semu AppImage runtime cache");
         }
-        return AppImageRuntimeCache.validate(root, repository);
+        return AppImageRuntimeCache.validate(
+            root, repository, packageAttribute);
     }
 
     class AppImageRuntimeBuildResult validate(
-            string root, string repository) {
+            string root, string repository, string packageAttribute) {
         string marker = AppImageRuntimeCache.marker(root);
         FileStatus cache = FileStatus(root);
         FileStatus ownership = FileStatus(marker);
@@ -90,7 +123,8 @@ class AppImageRuntimeCache {
                 || !UnixFileSystem.realPath(root).equals(root)
                 || !ownership.isFile() || ownership.isSymlink()
                 || !FileSystem.readText(marker).equals(
-                    AppImageRuntimeCache.document(root, repository))) {
+                    AppImageRuntimeCache.document(
+                        root, repository, packageAttribute))) {
             return AppImageRuntimeBuildResult.failure(
                 "runtime cache ownership marker is absent or invalid");
         }
@@ -114,8 +148,8 @@ class AppImageRuntimeBuildPlan {
     public string exportRoot;
     public string metadataRoot;
     public string image;
-    public string volume;
     public string lock;
+    public string packageAttribute;
     public bool macos;
 
     public AppImageRuntimeBuildPlan() {
@@ -127,15 +161,45 @@ class AppImageRuntimeBuildPlan {
         self.exportRoot = "";
         self.metadataRoot = "";
         self.image = "docker.io/nixos/nix@sha256:29fc5fe207f159ceb0143c25c19c774062fee02ce5eda118f3067547b3054894";
-        self.volume = "";
         self.lock = "";
+        self.packageAttribute = "";
         self.macos = false;
+    }
+
+    class bool validPackageAttribute(string value) {
+        if (!value.startsWith("steamdeck-runtime")) { return false; }
+        for character in value {
+            bool alphaNumeric = (character >= 'a' && character <= 'z')
+                || (character >= '0' && character <= '9');
+            if (!alphaNumeric && character != '-') { return false; }
+        }
+        return !value.isEmpty();
+    }
+
+    class AppImageRuntimeBuildResult validateOutput(
+            AppImageRuntimeBuildPlan plan) {
+        FileStatus output = FileStatus(plan.output);
+        if (!output.linkFound) { return AppImageRuntimeBuildResult.success(); }
+        string published = UnixFileSystem.realPath(plan.output);
+        if (!output.isSymlink() || published.isEmpty()
+                || !FileStatus(published).isDir()
+                || !PathTools.dirname(published).equals(plan.generationsRoot)
+                || !SemuOwnedPaths.inside(published, plan.generationsRoot)
+                || published.equals(plan.generationsRoot)
+                || SemuOwnedPaths.inside(published, plan.snapshot)
+                || SemuOwnedPaths.inside(published, plan.metadataRoot)) {
+            return AppImageRuntimeBuildResult.failure(
+                "runtime output does not resolve to a safe cached runtime");
+        }
+        return AppImageRuntimeBuildResult.success();
     }
 
     class AppImageRuntimeBuildResult create(
             string repo, string requestedOutput,
-            AppImageRuntimeBuildPlan plan, string cacheOverride = "") {
+            AppImageRuntimeBuildPlan plan, string cacheOverride = "",
+            string packageAttribute = "steamdeck-runtime") {
         plan.repoRoot = UnixFileSystem.realPath(repo);
+        plan.packageAttribute = packageAttribute;
         string home = UnixFileSystem.realPath(
             Environment.get("HOME", ""));
         string defaultCache = home.isEmpty()
@@ -148,8 +212,6 @@ class AppImageRuntimeBuildPlan {
         plan.output = requestedOutput.isEmpty() ? canonicalOutput
             : SemuOwnedPaths.normalized(requestedOutput);
         plan.snapshot = PathTools.join(plan.cacheRoot, "source");
-        plan.volume = Environment.get(
-            "SEMU_APPIMAGE_NIX_VOLUME", "semu-appimage-nix-x86_64");
         plan.lock = PathTools.join(plan.cacheRoot, "build.lock");
         ExecResult system = ChildProcess.run("uname", ["-s"],
             timeoutMilliseconds=5000,
@@ -167,13 +229,13 @@ class AppImageRuntimeBuildPlan {
         if (plan.repoRoot.isEmpty() || !repository.isDir()
                 || repository.isSymlink() || plan.cacheRoot.isEmpty()
                 || plan.output.isEmpty() || !plan.output.equals(canonicalOutput)
-                || plan.volume.isEmpty()
-                || plan.volume.contains("/") || plan.volume.contains("\n")) {
+                || !AppImageRuntimeBuildPlan.validPackageAttribute(
+                    plan.packageAttribute)) {
             return AppImageRuntimeBuildResult.failure(
-                "runtime build paths or cache volume are invalid");
+                "runtime build paths are invalid");
         }
         AppImageRuntimeBuildResult claimed = AppImageRuntimeCache.claim(
-            plan.cacheRoot, plan.repoRoot, home);
+            plan.cacheRoot, plan.repoRoot, home, plan.packageAttribute);
         if (!claimed.ok()) { return claimed; }
         for path in [plan.snapshot, plan.generationsRoot, plan.metadataRoot,
                 plan.lock, plan.output] {
@@ -183,18 +245,9 @@ class AppImageRuntimeBuildPlan {
             }
         }
         FileStatus output = FileStatus(plan.output);
-        if (output.linkFound) {
-            string published = UnixFileSystem.realPath(plan.output);
-            if (!output.isSymlink() || published.isEmpty()
-                    || !FileStatus(published).isDir()
-                    || !SemuOwnedPaths.inside(published, plan.cacheRoot)
-                    || published.equals(plan.cacheRoot)
-                    || published.equals(plan.generationsRoot)
-                    || SemuOwnedPaths.inside(published, plan.snapshot)
-                    || SemuOwnedPaths.inside(published, plan.metadataRoot)) {
-                return AppImageRuntimeBuildResult.failure(
-                    "runtime output does not resolve to a safe cached runtime");
-            }
+        if (output.linkFound && !output.isSymlink()) {
+            return AppImageRuntimeBuildResult.failure(
+                "runtime output is not a publication symlink");
         }
         return AppImageRuntimeBuildResult.success();
     }
@@ -252,11 +305,721 @@ class AppImageRuntimeBuildCommand {
     }
 }
 
+class AppImagePodmanContainerId {
+    class bool valid(string value) {
+        if (value.len() != 64) { return false; }
+        for character in value {
+            bool decimal = character >= '0' && character <= '9';
+            bool hexadecimal = character >= 'a' && character <= 'f';
+            if (!decimal && !hexadecimal) { return false; }
+        }
+        return true;
+    }
+}
+
+class AppImagePodmanContainerIdLease {
+    public bool valid;
+    public int parentDescriptor;
+    public int descriptor;
+    public string name;
+    public string containerId;
+    public unsigned long long device;
+    public unsigned long long inode;
+
+    public AppImagePodmanContainerIdLease() {
+        self.valid = false;
+        self.parentDescriptor = -1;
+        self.descriptor = -1;
+        self.name = "";
+        self.containerId = "";
+        self.device = 0ULL;
+        self.inode = 0ULL;
+    }
+
+    public bool ok() { return self.valid; }
+
+    class AppImagePodmanContainerIdLease capture(
+            int sourceParentDescriptor, string name) {
+        AppImagePodmanContainerIdLease lease =
+            AppImagePodmanContainerIdLease();
+        if (sourceParentDescriptor < 0 || name.isEmpty()
+                || !PathTools.basename(name).equals(name)) {
+            return lease;
+        }
+        int parentDescriptor = dup(sourceParentDescriptor);
+        int descriptor = parentDescriptor >= 0
+            ? openat(parentDescriptor, name,
+                (int)O_RDONLY | (int)O_NOFOLLOW | (int)O_CLOEXEC)
+            : -1;
+        struct stat inspected;
+        struct stat held;
+        char bytes[66];
+        ssize_t count = -1;
+        if (descriptor >= 0) {
+            count = pread(descriptor, bytes, sizeof(bytes), (off_t)0);
+        }
+        bool exactContent = count == (ssize_t)64
+            || (count == (ssize_t)65 && bytes[64] == '\n');
+        if (exactContent) { bytes[64] = 0; }
+        string containerId = exactContent ? Strings.copy(bytes) : "";
+        uid_t effectiveUser = geteuid();
+        bool loaded = parentDescriptor >= 0 && descriptor >= 0
+            && fstatat(parentDescriptor, name, &inspected,
+                AT_SYMLINK_NOFOLLOW) == 0
+            && fstat(descriptor, &held) == 0
+            && S_ISREG(inspected.st_mode) != 0
+            && S_ISREG(held.st_mode) != 0
+            && inspected.st_dev == held.st_dev
+            && inspected.st_ino == held.st_ino
+            && held.st_nlink == (nlink_t)1
+            && held.st_uid == effectiveUser
+            && (held.st_mode & 18) == 0 // no group/other writes
+            && (held.st_size == (off_t)64
+                || held.st_size == (off_t)65)
+            && AppImagePodmanContainerId.valid(containerId);
+        if (!loaded) {
+            if (descriptor >= 0) { close(descriptor); }
+            if (parentDescriptor >= 0) { close(parentDescriptor); }
+            return lease;
+        }
+        lease.valid = true;
+        lease.parentDescriptor = parentDescriptor;
+        lease.descriptor = descriptor;
+        lease.name = name;
+        lease.containerId = containerId;
+        lease.device = (unsigned long long)held.st_dev;
+        lease.inode = (unsigned long long)held.st_ino;
+        return lease;
+    }
+
+    public bool stillBound() {
+        if (!self.valid || self.parentDescriptor < 0
+                || self.descriptor < 0 || self.name.isEmpty()
+                || !AppImagePodmanContainerId.valid(self.containerId)) {
+            return false;
+        }
+        struct stat inspected;
+        struct stat held;
+        uid_t effectiveUser = geteuid();
+        return fstatat(self.parentDescriptor, self.name, &inspected,
+                AT_SYMLINK_NOFOLLOW) == 0
+            && fstat(self.descriptor, &held) == 0
+            && S_ISREG(inspected.st_mode) != 0
+            && S_ISREG(held.st_mode) != 0
+            && inspected.st_dev == held.st_dev
+            && inspected.st_ino == held.st_ino
+            && (unsigned long long)held.st_dev == self.device
+            && (unsigned long long)held.st_ino == self.inode
+            && held.st_nlink == (nlink_t)1
+            && held.st_uid == effectiveUser
+            && (held.st_mode & 18) == 0;
+    }
+
+    public void releaseDescriptors() {
+        if (self.descriptor >= 0) { close(self.descriptor); }
+        if (self.parentDescriptor >= 0) {
+            close(self.parentDescriptor);
+        }
+        self.valid = false;
+        self.parentDescriptor = -1;
+        self.descriptor = -1;
+    }
+
+    public AppImageRuntimeBuildResult completeRemoval() {
+        if (!self.valid || self.parentDescriptor < 0
+                || self.descriptor < 0) {
+            self.releaseDescriptors();
+            return AppImageRuntimeBuildResult.failure(
+                "Podman cidfile lease is not held for cleanup");
+        }
+        struct stat held;
+        struct stat current;
+        bool heldReadable = fstat(self.descriptor, &held) == 0
+            && S_ISREG(held.st_mode) != 0
+            && (unsigned long long)held.st_dev == self.device
+            && (unsigned long long)held.st_ino == self.inode;
+        errno = 0;
+        bool pathPresent = fstatat(self.parentDescriptor, self.name,
+            &current, AT_SYMLINK_NOFOLLOW) == 0;
+        bool pathAbsent = !pathPresent && errno == ENOENT;
+        bool samePath = heldReadable && pathPresent
+            && S_ISREG(current.st_mode) != 0
+            && current.st_dev == held.st_dev
+            && current.st_ino == held.st_ino;
+        bool removed = heldReadable && pathAbsent
+            && held.st_nlink == (nlink_t)0;
+        if (heldReadable && samePath && held.st_nlink == (nlink_t)1) {
+            removed = unlinkat(
+                    self.parentDescriptor, self.name, 0) == 0
+                && fsync(self.parentDescriptor) == 0
+                && fstat(self.descriptor, &held) == 0
+                && held.st_nlink == (nlink_t)0;
+        }
+        bool descriptorClosed = close(self.descriptor) == 0;
+        bool parentClosed = close(self.parentDescriptor) == 0;
+        self.valid = false;
+        self.parentDescriptor = -1;
+        self.descriptor = -1;
+        return removed && descriptorClosed && parentClosed
+            ? AppImageRuntimeBuildResult.success()
+            : AppImageRuntimeBuildResult.failure(
+                "Podman cidfile was replaced or cleanup failed");
+    }
+}
+
+class AppImageRuntimePodmanLifecycle {
+    public AppImageRuntimeBuildPlan plan;
+    public bool handoffReady;
+    public bool ownerReady;
+    public string handoffPath;
+    public string handoffName;
+    public int handoffParentDescriptor;
+    public int handoffDescriptor;
+    public unsigned long long handoffDevice;
+    public unsigned long long handoffInode;
+    public AppImagePodmanContainerIdLease owner;
+    public int phaseNumber;
+    public int lastExitCode;
+
+    public AppImageRuntimePodmanLifecycle() {
+        self.plan = AppImageRuntimeBuildPlan();
+        self.handoffReady = false;
+        self.ownerReady = false;
+        self.handoffPath = "";
+        self.handoffName = "";
+        self.handoffParentDescriptor = -1;
+        self.handoffDescriptor = -1;
+        self.handoffDevice = 0ULL;
+        self.handoffInode = 0ULL;
+        self.owner = AppImagePodmanContainerIdLease();
+        self.phaseNumber = 0;
+        self.lastExitCode = -1;
+    }
+
+    class Vector<string> ownerArguments(
+            AppImageRuntimeBuildPlan plan, string cidfile) {
+        Vector<string> empty = [];
+        if (cidfile.isEmpty()) { return empty; }
+        return [
+            "create", "--cidfile", cidfile,
+            "--platform", "linux/amd64",
+            "--network", "none",
+            "--read-only", "--cap-drop", "ALL",
+            "--security-opt", "no-new-privileges",
+            "--mount", "type=volume,destination=/nix,rw",
+            "--entrypoint", "/bin/sh",
+            plan.image, "-c", "exit 0"
+        ];
+    }
+
+    class Vector<string> phaseArguments(
+            string ownerContainerId, string cidfile,
+            Vector<string> arguments) {
+        Vector<string> empty = [];
+        if (!AppImagePodmanContainerId.valid(ownerContainerId)
+                || cidfile.isEmpty()) {
+            return empty;
+        }
+        Vector<string> command = [
+            "create", "--rm", "--cidfile", cidfile,
+            "--platform", "linux/amd64",
+            "--volumes-from", ownerContainerId
+        ];
+        command.extend(arguments);
+        return command;
+    }
+
+    class Vector<string> startArguments(string containerId) {
+        Vector<string> empty = [];
+        if (!AppImagePodmanContainerId.valid(containerId)) {
+            return empty;
+        }
+        return ["start", "--attach", containerId];
+    }
+
+    class Vector<string> cleanupArguments(
+            string containerId, bool ignoreMissing = false) {
+        Vector<string> empty = [];
+        if (!AppImagePodmanContainerId.valid(containerId)) { return empty; }
+        Vector<string> command = ["rm", "--force", "--volumes"];
+        if (ignoreMissing) { command.push("--ignore"); }
+        command.push(containerId);
+        return command;
+    }
+
+    public bool handoffStillBound() {
+        if (!self.handoffReady || self.handoffName.isEmpty()
+                || self.handoffParentDescriptor < 0
+                || self.handoffDescriptor < 0) {
+            return false;
+        }
+        struct stat inspected;
+        struct stat held;
+        uid_t effectiveUser = geteuid();
+        return fstatat(self.handoffParentDescriptor, self.handoffName,
+                &inspected, AT_SYMLINK_NOFOLLOW) == 0
+            && fstat(self.handoffDescriptor, &held) == 0
+            && S_ISDIR(inspected.st_mode) != 0
+            && S_ISDIR(held.st_mode) != 0
+            && inspected.st_dev == held.st_dev
+            && inspected.st_ino == held.st_ino
+            && (unsigned long long)held.st_dev == self.handoffDevice
+            && (unsigned long long)held.st_ino == self.handoffInode
+            && held.st_uid == effectiveUser
+            && SemuOwnedPaths.permissions(held.st_mode) == 448; // 0700
+    }
+
+    public AppImageRuntimeBuildResult prepare(
+            AppImageRuntimeBuildPlan plan) {
+        self.plan = plan;
+        FileStatus cache = FileStatus(plan.cacheRoot);
+        if (!cache.isDir() || cache.isSymlink()
+                || !UnixFileSystem.realPath(plan.cacheRoot)
+                    .equals(plan.cacheRoot)) {
+            return AppImageRuntimeBuildResult.failure(
+                "cannot bind the private Podman handoff parent");
+        }
+        int parentDescriptor = UnixFileSystem.openDirectoryNoFollow(
+            plan.cacheRoot);
+        string templatePath = PathTools.join(
+            plan.cacheRoot, ".podman-runtime.XXXXXX");
+        char* raw = Strings.copy(templatePath);
+        char* created = parentDescriptor >= 0 ? mkdtemp(raw) : null;
+        string handoffPath = created == null ? "" : Strings.copy(created);
+        string handoffName = PathTools.basename(handoffPath);
+        int handoffDescriptor = !handoffPath.isEmpty()
+            ? UnixFileSystem.openDirectoryNoFollow(handoffPath) : -1;
+        struct stat parentStatus;
+        struct stat parentPathStatus;
+        struct stat inspected;
+        struct stat held;
+        uid_t effectiveUser = geteuid();
+        bool prepared = parentDescriptor >= 0 && handoffDescriptor >= 0
+            && !handoffName.isEmpty()
+            && UnixFileSystem.realPath(handoffPath).equals(handoffPath)
+            && fstat(parentDescriptor, &parentStatus) == 0
+            && stat(plan.cacheRoot, &parentPathStatus) == 0
+            && parentStatus.st_dev == parentPathStatus.st_dev
+            && parentStatus.st_ino == parentPathStatus.st_ino
+            && fstatat(parentDescriptor, handoffName, &inspected,
+                AT_SYMLINK_NOFOLLOW) == 0
+            && fstat(handoffDescriptor, &held) == 0
+            && S_ISDIR(inspected.st_mode) != 0
+            && S_ISDIR(held.st_mode) != 0
+            && inspected.st_dev == held.st_dev
+            && inspected.st_ino == held.st_ino
+            && held.st_uid == effectiveUser
+            && SemuOwnedPaths.permissions(held.st_mode) == 448;
+        if (!prepared) {
+            if (handoffDescriptor >= 0) { close(handoffDescriptor); }
+            if (parentDescriptor >= 0) { close(parentDescriptor); }
+            return AppImageRuntimeBuildResult.failure(
+                "cannot establish the private Podman handoff");
+        }
+        self.handoffReady = true;
+        self.handoffPath = handoffPath;
+        self.handoffName = handoffName;
+        self.handoffParentDescriptor = parentDescriptor;
+        self.handoffDescriptor = handoffDescriptor;
+        self.handoffDevice = (unsigned long long)held.st_dev;
+        self.handoffInode = (unsigned long long)held.st_ino;
+        return AppImageRuntimeBuildResult.success();
+    }
+
+    public bool cidfileAbsent(string name) {
+        if (!self.handoffStillBound() || name.isEmpty()
+                || !PathTools.basename(name).equals(name)) {
+            return false;
+        }
+        struct stat status;
+        errno = 0;
+        return fstatat(self.handoffDescriptor, name, &status,
+            AT_SYMLINK_NOFOLLOW) != 0 && errno == ENOENT;
+    }
+
+    public AppImageRuntimeBuildResult removeExact(
+            string containerId, bool ignoreMissing = false) {
+        Vector<string> arguments =
+            AppImageRuntimePodmanLifecycle.cleanupArguments(
+                containerId, ignoreMissing);
+        if (arguments.isEmpty()) {
+            return AppImageRuntimeBuildResult.failure(
+                "refusing to clean a noncanonical Podman container ID");
+        }
+        return AppImageRuntimeBuildCommand.checked(
+            AppImageRuntimeBuildCommand.capture(
+                "podman", arguments, "", 300000),
+            "clean exact Podman container");
+    }
+
+    public AppImageRuntimeBuildResult start(
+            AppImageRuntimeBuildPlan plan) {
+        AppImageRuntimeBuildResult prepared = self.prepare(plan);
+        if (!prepared.ok()) { return prepared; }
+        string cidfileName = "store-owner.cid";
+        if (!self.cidfileAbsent(cidfileName)) {
+            return AppImageRuntimeBuildResult.failure(
+                "Podman storage-owner cidfile is not fresh");
+        }
+        string cidfile = PathTools.join(self.handoffPath, cidfileName);
+        ExecResult created = AppImageRuntimeBuildCommand.capture(
+            "podman",
+            AppImageRuntimePodmanLifecycle.ownerArguments(plan, cidfile),
+            "", 300000);
+        AppImagePodmanContainerIdLease owner =
+            AppImagePodmanContainerIdLease.capture(
+                self.handoffDescriptor, cidfileName);
+        if (!owner.ok()) {
+            return AppImageRuntimeBuildResult.failure(
+                "Podman storage owner did not produce a held full CID");
+        }
+        self.owner = owner;
+        self.ownerReady = true;
+        if (!created.ok()) {
+            AppImageRuntimeBuildResult cleaned = self.close();
+            return AppImageRuntimeBuildResult.failure(
+                "Podman storage-owner creation failed"
+                + (cleaned.ok() ? "" : "; " + cleaned.error));
+        }
+        return self.owner.stillBound()
+            ? AppImageRuntimeBuildResult.success(self.owner.containerId)
+            : AppImageRuntimeBuildResult.failure(
+                "Podman storage-owner cidfile changed after creation");
+    }
+
+    public AppImageRuntimeBuildResult runPhase(
+            string operation, Vector<string> arguments,
+            bool streamOutput = false, int timeout = 43200000) {
+        if (!self.handoffStillBound() || !self.ownerReady
+                || !self.owner.stillBound()) {
+            return AppImageRuntimeBuildResult.failure(
+                operation + ": Podman storage-owner authority changed");
+        }
+        self.phaseNumber++;
+        string cidfileName = f"phase-{self.phaseNumber}.cid";
+        if (!self.cidfileAbsent(cidfileName)) {
+            return AppImageRuntimeBuildResult.failure(
+                operation + ": phase cidfile is not fresh");
+        }
+        string cidfile = PathTools.join(self.handoffPath, cidfileName);
+        Vector<string> command =
+            AppImageRuntimePodmanLifecycle.phaseArguments(
+                self.owner.containerId, cidfile, arguments);
+        if (command.isEmpty()) {
+            return AppImageRuntimeBuildResult.failure(
+                operation + ": phase command has no immutable owner CID");
+        }
+        ExecResult created = AppImageRuntimeBuildCommand.capture(
+            "podman", command, "", 300000);
+        AppImagePodmanContainerIdLease phase =
+            AppImagePodmanContainerIdLease.capture(
+                self.handoffDescriptor, cidfileName);
+        if (!phase.ok()) {
+            return AppImageRuntimeBuildResult.failure(
+                operation + ": phase did not produce a held full CID");
+        }
+        if (!created.ok() || !phase.stillBound()
+                || !self.owner.stillBound()) {
+            AppImageRuntimeBuildResult containerRemoved =
+                self.removeExact(phase.containerId, true);
+            AppImageRuntimeBuildResult cidfileRemoved =
+                phase.completeRemoval();
+            return AppImageRuntimeBuildResult.failure(
+                operation + ": phase creation or CID binding failed"
+                + (containerRemoved.ok() ? ""
+                    : "; " + containerRemoved.error)
+                + (cidfileRemoved.ok() ? ""
+                    : "; " + cidfileRemoved.error));
+        }
+        Vector<string> start =
+            AppImageRuntimePodmanLifecycle.startArguments(
+                phase.containerId);
+        ExecResult executed = streamOutput
+            ? AppImageRuntimeBuildCommand.logged(
+                "podman", start, "", timeout)
+            : AppImageRuntimeBuildCommand.capture(
+                "podman", start, "", timeout);
+        self.lastExitCode = executed.code;
+        AppImageRuntimeBuildResult containerRemoved =
+            self.removeExact(phase.containerId, true);
+        if (!containerRemoved.ok()) {
+            phase.releaseDescriptors();
+            return AppImageRuntimeBuildResult.failure(
+                operation + ": " + containerRemoved.error);
+        }
+        AppImageRuntimeBuildResult cidfileRemoved =
+            phase.completeRemoval();
+        if (!cidfileRemoved.ok() || !self.owner.stillBound()) {
+            return AppImageRuntimeBuildResult.failure(
+                operation + ": phase cleanup or owner identity failed");
+        }
+        if (!executed.ok()) {
+            string detail = executed.stderr().trim();
+            if (detail.isEmpty()) { detail = executed.stdout().trim(); }
+            return AppImageRuntimeBuildResult.failure(
+                operation + f" failed (exit {executed.code})"
+                + (detail.isEmpty() ? "" : ": " + detail));
+        }
+        return AppImageRuntimeBuildResult.success(executed.stdout());
+    }
+
+    public AppImageRuntimeBuildResult close() {
+        if (!self.handoffReady) {
+            return AppImageRuntimeBuildResult.success();
+        }
+        if (!self.ownerReady
+                || !AppImagePodmanContainerId.valid(
+                    self.owner.containerId)) {
+            if (self.handoffDescriptor >= 0) {
+                close(self.handoffDescriptor);
+            }
+            if (self.handoffParentDescriptor >= 0) {
+                close(self.handoffParentDescriptor);
+            }
+            self.handoffReady = false;
+            return AppImageRuntimeBuildResult.failure(
+                "Podman handoff retained because no immutable owner CID exists");
+        }
+        AppImageRuntimeBuildResult containerRemoved =
+            self.removeExact(self.owner.containerId);
+        if (!containerRemoved.ok()) {
+            self.owner.releaseDescriptors();
+            if (self.handoffDescriptor >= 0) {
+                close(self.handoffDescriptor);
+            }
+            if (self.handoffParentDescriptor >= 0) {
+                close(self.handoffParentDescriptor);
+            }
+            self.handoffReady = false;
+            self.ownerReady = false;
+            return containerRemoved;
+        }
+        AppImageRuntimeBuildResult cidfileRemoved =
+            self.owner.completeRemoval();
+        self.ownerReady = false;
+        if (!cidfileRemoved.ok() || !self.handoffStillBound()) {
+            if (self.handoffDescriptor >= 0) {
+                close(self.handoffDescriptor);
+            }
+            if (self.handoffParentDescriptor >= 0) {
+                close(self.handoffParentDescriptor);
+            }
+            self.handoffReady = false;
+            return cidfileRemoved.ok()
+                ? AppImageRuntimeBuildResult.failure(
+                    "Podman handoff changed before cleanup")
+                : cidfileRemoved;
+        }
+        bool removed = unlinkat(self.handoffParentDescriptor,
+                self.handoffName, AT_REMOVEDIR) == 0
+            && fsync(self.handoffParentDescriptor) == 0;
+        bool handoffClosed = close(self.handoffDescriptor) == 0;
+        bool parentClosed = close(self.handoffParentDescriptor) == 0;
+        self.handoffReady = false;
+        self.handoffDescriptor = -1;
+        self.handoffParentDescriptor = -1;
+        return removed && handoffClosed && parentClosed
+            ? AppImageRuntimeBuildResult.success()
+            : AppImageRuntimeBuildResult.failure(
+                "private Podman handoff cleanup failed");
+    }
+}
+
+class AppImageRuntimeNixProofVerifier {
+    class Vector<string> phase(
+            AppImageRuntimeBuildPlan plan,
+            Vector<string> nixArguments) {
+        Vector<string> arguments = [
+            "--network", "none",
+            "--read-only", "--cap-drop", "ALL",
+            "--security-opt", "no-new-privileges",
+            "--tmpfs", "/tmp:rw,nosuid,nodev,mode=1777",
+            "--env", "XDG_CACHE_HOME=/nix/var/cache",
+            "--entrypoint", "/root/.nix-profile/bin/nix",
+            plan.image,
+            "--offline",
+            "--option", "sandbox", "false",
+            "--option", "filter-syscalls", "false",
+            "--option", "allow-import-from-derivation", "false",
+            "--extra-experimental-features", "nix-command flakes"
+        ];
+        arguments.extend(nixArguments);
+        return arguments;
+    }
+
+    class AppImageRuntimeBuildResult verify(
+            AppImageNixReleaseProof proof,
+            AppImageRuntimePodmanLifecycle containers) {
+        if (!proof.ok() || !containers.ownerReady
+                || !containers.owner.stillBound()) {
+            return AppImageRuntimeBuildResult.failure(
+                "runtime Nix release proof has no immutable store owner");
+        }
+        ExecResult hostVerified = ChildProcess.run("nix", [
+            "--extra-experimental-features", "nix-command flakes",
+            "store", "verify", "--recursive", "--no-trust",
+            proof.sourceStorePath
+        ], timeoutMilliseconds=1800000,
+            maxStdoutBytes=131072,
+            maxStderrBytes=131072,
+            stdout=CommandOutput.collect(),
+            stderr=CommandOutput.collect());
+        if (!hostVerified.ok()) {
+            return AppImageRuntimeBuildResult.failure(
+                "frozen AppImage source failed host Nix-store verification: "
+                + AppImageNixReleaseProof.failureDetail(hostVerified));
+        }
+        string outputReference = AppImageNixReleaseProof.outputReference(
+            proof.sourceStorePath, proof.packageAttribute,
+            proof.nixSystem);
+        if (outputReference.isEmpty()) {
+            return AppImageRuntimeBuildResult.failure(
+                "pinned Nix runtime output reference is invalid");
+        }
+        AppImageRuntimeBuildResult evaluated = containers.runPhase(
+            "evaluate pinned Nix runtime",
+            AppImageRuntimeNixProofVerifier.phase(
+                containers.plan, [
+                    "eval", "--no-write-lock-file", "--raw",
+                    outputReference
+                ]));
+        string evaluatedTarget = evaluated.ok()
+            ? evaluated.value.trim() : "";
+        if (!evaluated.ok()
+                || !AppImageNixReleaseProof.storePath(evaluatedTarget)
+                || evaluatedTarget.contains("\n")
+                || !evaluatedTarget.equals(proof.targetStorePath)) {
+            return evaluated.ok()
+                ? AppImageRuntimeBuildResult.failure(
+                    "pinned Nix source disagrees with the runtime store path")
+                : evaluated;
+        }
+        AppImageRuntimeBuildResult closure = containers.runPhase(
+            "inspect pinned Nix runtime closure",
+            AppImageRuntimeNixProofVerifier.phase(
+                containers.plan, [
+                    "path-info", "--json", "--recursive",
+                    proof.targetStorePath
+                ]));
+        JsonValue closureDocument = closure.ok()
+            ? JsonValue.parse(closure.value) : JsonValue.makeError();
+        string closureDigest = closureDocument.isObject()
+            ? AppImageNixReleaseProof.canonicalClosureDigest(
+                closureDocument, proof.targetStorePath) : "";
+        if (!closure.ok() || !closureDigest.equals(proof.closureDigest)) {
+            return closure.ok()
+                ? AppImageRuntimeBuildResult.failure(
+                    "pinned Nix closure differs from the generation receipt")
+                : closure;
+        }
+        return containers.runPhase(
+            "verify pinned Nix runtime closure",
+            AppImageRuntimeNixProofVerifier.phase(
+                containers.plan, [
+                    "store", "verify", "--recursive", "--no-trust",
+                    proof.targetStorePath
+                ]), false, 3600000);
+    }
+}
+
 class AppImageMacRuntimeVolume {
+    class bool safeImage(string image) {
+        FileStatus status = FileStatus(image);
+        return status.isDir() && !status.isSymlink()
+            && UnixFileSystem.realPath(image).equals(image);
+    }
+
+    class bool ownsMountedImage(
+            JsonValue document, string image, string mountPoint) {
+        JsonValue images = document.get("images");
+        if (!document.isObject() || !images.isArray()) { return false; }
+        int mountClaims = 0;
+        int ownedClaims = 0;
+        for (int imageIndex = 0; imageIndex < images.size(); imageIndex++) {
+            JsonValue candidate = images.at(imageIndex);
+            JsonValue candidatePath = candidate.get("image-path");
+            JsonValue imageType = candidate.get("image-type");
+            JsonValue writable = candidate.get("writeable");
+            JsonValue encrypted = candidate.get("image-encrypted");
+            JsonValue entities = candidate.get("system-entities");
+            if (!candidate.isObject() || !entities.isArray()) { continue; }
+            for (int entityIndex = 0; entityIndex < entities.size(); entityIndex++) {
+                JsonValue entity = entities.at(entityIndex);
+                JsonValue mounted = entity.get("mount-point");
+                if (!entity.isObject() || !mounted.isString()
+                        || !mounted.asString().equals(mountPoint)) {
+                    continue;
+                }
+                mountClaims++;
+                if (candidatePath.isString()
+                        && candidatePath.asString().equals(image)
+                        && imageType.isString()
+                        && imageType.asString().equals(
+                            "sparse bundle disk image")
+                        && writable.isBool() && writable.asBool()
+                        && encrypted.isBool() && !encrypted.asBool()
+                        && entity.get("dev-entry").isString()) {
+                    ownedClaims++;
+                }
+            }
+        }
+        return mountClaims == 1 && ownedClaims == 1;
+    }
+
+    class AppImageRuntimeBuildResult mountedImageDocument(
+            AppImageRuntimeBuildPlan plan) {
+        ExecResult plist = AppImageRuntimeBuildCommand.capture(
+            "hdiutil", ["info", "-plist"], "", 30000);
+        if (!plist.ok()) {
+            return AppImageRuntimeBuildResult.failure(
+                "cannot inspect mounted disk-image identity");
+        }
+        string templatePath = PathTools.join(
+            plan.metadataRoot, ".hdiutil-info.XXXXXX");
+        char* raw = Strings.copy(templatePath);
+        int descriptor = mkstemp(raw);
+        if (descriptor < 0) {
+            return AppImageRuntimeBuildResult.failure(
+                "cannot create mounted-image identity input");
+        }
+        string temporary = Strings.copy(raw);
+        bool written = close(descriptor) == 0
+            && FileSystem.chmod(temporary, 384) == 0 // 0600
+            && Path.writeAll(temporary, plist.stdout());
+        if (!written) {
+            unlink(temporary);
+            return AppImageRuntimeBuildResult.failure(
+                "cannot stage mounted-image identity input");
+        }
+        ExecResult converted = AppImageRuntimeBuildCommand.capture(
+            "plutil", ["-convert", "json", "-o", "-", temporary],
+            "", 30000);
+        bool removed = unlink(temporary) == 0;
+        if (!converted.ok() || !removed) {
+            return AppImageRuntimeBuildResult.failure(
+                "cannot decode or clean mounted-image identity input");
+        }
+        return AppImageRuntimeBuildResult.success(converted.stdout());
+    }
+
+    class AppImageRuntimeBuildResult validateMountedImage(
+            AppImageRuntimeBuildPlan plan, string image, string mountPoint) {
+        AppImageRuntimeBuildResult encoded =
+            AppImageMacRuntimeVolume.mountedImageDocument(plan);
+        if (!encoded.ok()) { return encoded; }
+        JsonValue document = JsonValue.parse(encoded.value);
+        if (!AppImageMacRuntimeVolume.ownsMountedImage(
+                document, image, mountPoint)) {
+            return AppImageRuntimeBuildResult.failure(
+                "case-sensitive build mount is not the owned sparse image");
+        }
+        return AppImageRuntimeBuildResult.success();
+    }
+
     class AppImageRuntimeBuildResult prepare(
             AppImageRuntimeBuildPlan plan) {
         AppImageRuntimeBuildResult owned = AppImageRuntimeCache.validate(
-            plan.cacheRoot, plan.repoRoot);
+            plan.cacheRoot, plan.repoRoot, plan.packageAttribute);
         if (!owned.ok()) { return owned; }
         if (!SemuOwnedPaths.prepareDirectory(plan.metadataRoot)) {
             return AppImageRuntimeBuildResult.failure(
@@ -279,7 +1042,7 @@ class AppImageMacRuntimeVolume {
         string mountPoint = PathTools.join(
             plan.cacheRoot, "linux-case-sensitive");
         string size = Environment.get(
-            "SEMU_APPIMAGE_CASE_IMAGE_SIZE", "32g");
+            "SEMU_APPIMAGE_CASE_IMAGE_SIZE", "64g");
         if (!FileStatus(image).isDir()) {
             print("Creating sparse case-sensitive AppImage build volume...");
             AppImageRuntimeBuildResult created =
@@ -291,6 +1054,10 @@ class AppImageMacRuntimeVolume {
                         "SemuAppImage", image
                     ], "", 1800000), "create case-sensitive build volume");
             if (!created.ok()) { return created; }
+        }
+        if (!AppImageMacRuntimeVolume.safeImage(image)) {
+            return AppImageRuntimeBuildResult.failure(
+                "case-sensitive build image is absent, linked, or unsafe");
         }
         if (!SemuOwnedPaths.prepareDirectory(mountPoint)) {
             return AppImageRuntimeBuildResult.failure(
@@ -318,16 +1085,20 @@ class AppImageMacRuntimeVolume {
                     ], "", 1800000), "attach case-sensitive build volume");
             if (!attached.ok()) { return attached; }
         }
+        AppImageRuntimeBuildResult identity =
+            AppImageMacRuntimeVolume.validateMountedImage(
+                plan, image, mountPoint);
+        if (!identity.ok()) { return identity; }
         struct statvfs volumeStatus;
         int minimumKib = Environment.get(
             "SEMU_APPIMAGE_CASE_MINIMUM_KIB", "25165824").toInt();
-        long long totalKib = statvfs(mountPoint, &volumeStatus) == 0
-            ? (long long)volumeStatus.f_blocks
+        long long availableKib = statvfs(mountPoint, &volumeStatus) == 0
+            ? (long long)volumeStatus.f_bavail
                 * (long long)volumeStatus.f_frsize / 1024
             : 0;
-        if (minimumKib < 1 || totalKib < (long long)minimumKib) {
+        if (minimumKib < 1 || availableKib < (long long)minimumKib) {
             return AppImageRuntimeBuildResult.failure(
-                "case-sensitive build volume is undersized");
+                "case-sensitive build volume has insufficient available space");
         }
         string lower = PathTools.join(mountPoint, ".semu-case-probe-a");
         string upper = PathTools.join(mountPoint, ".semu-case-probe-A");
@@ -351,11 +1122,18 @@ class AppImageMacRuntimeVolume {
 }
 
 class AppImageRuntimeSnapshot {
-    class Vector<string> identityPaths() {
-        return [
-            "flake.nix", "flake.lock", "Makefile", "src", "config",
-            "packaging", "tests", "assets", "patches"
-        ];
+    class Vector<string> excludedRoots() {
+        return [".git", "build"];
+    }
+
+    class string forbiddenRoot(AppImageRuntimeBuildPlan plan) {
+        for relative in AppImageRuntimeSnapshot.excludedRoots() {
+            if (FileStatus(PathTools.join(
+                    plan.snapshot, relative)).linkFound) {
+                return relative;
+            }
+        }
+        return "";
     }
 
     class bool digest(string value) {
@@ -372,39 +1150,37 @@ class AppImageRuntimeSnapshot {
     class AppImageRuntimeBuildResult identity(
             AppImageRuntimeBuildPlan plan) {
         AppImageRuntimeBuildResult owned = AppImageRuntimeCache.validate(
-            plan.cacheRoot, plan.repoRoot);
+            plan.cacheRoot, plan.repoRoot, plan.packageAttribute);
         if (!owned.ok()) { return owned; }
-        string identity = "";
-        for relative in AppImageRuntimeSnapshot.identityPaths() {
-            string path = PathTools.join(plan.snapshot, relative);
-            FileStatus status = FileStatus(path);
-            string value = "absent";
-            if (status.linkFound) {
-                if (status.isSymlink()
-                        || (!status.isDir() && !status.isFile())) {
-                    return AppImageRuntimeBuildResult.failure(
-                        "source identity root is unsafe: " + relative);
-                }
-                ExecResult hashed = AppImageRuntimeBuildCommand.capture("nix", [
-                    "--extra-experimental-features", "nix-command",
-                    "hash", "path", "--type", "sha256", "--base16", path
-                ]);
-                value = hashed.ok()
-                    ? hashed.stdout().trim().toLower() : "";
-                if (!AppImageRuntimeSnapshot.digest(value)) {
-                    return AppImageRuntimeBuildResult.failure(
-                        "cannot hash source identity root: " + relative);
-                }
-            }
-            identity = identity + relative + "=" + value + ";";
+        FileStatus snapshot = FileStatus(plan.snapshot);
+        string forbidden = AppImageRuntimeSnapshot.forbiddenRoot(plan);
+        if (!snapshot.isDir() || snapshot.isSymlink()
+                || !UnixFileSystem.realPath(
+                    plan.snapshot).equals(plan.snapshot)) {
+            return AppImageRuntimeBuildResult.failure(
+                "source snapshot is absent, linked, or unsafe");
         }
-        return AppImageRuntimeBuildResult.success(identity);
+        if (!forbidden.isEmpty()) {
+            return AppImageRuntimeBuildResult.failure(
+                "source snapshot contains excluded root: " + forbidden);
+        }
+        ExecResult hashed = AppImageRuntimeBuildCommand.capture("nix", [
+            "--extra-experimental-features", "nix-command",
+            "hash", "path", "--type", "sha256", "--base16",
+            plan.snapshot
+        ]);
+        string identity = hashed.ok()
+            ? hashed.stdout().trim().toLower() : "";
+        return AppImageRuntimeSnapshot.digest(identity)
+            ? AppImageRuntimeBuildResult.success(identity)
+            : AppImageRuntimeBuildResult.failure(
+                "cannot hash complete source snapshot");
     }
 
     class AppImageRuntimeBuildResult refresh(
             AppImageRuntimeBuildPlan plan) {
         AppImageRuntimeBuildResult owned = AppImageRuntimeCache.validate(
-            plan.cacheRoot, plan.repoRoot);
+            plan.cacheRoot, plan.repoRoot, plan.packageAttribute);
         if (!owned.ok()) { return owned; }
         FileStatus snapshot = FileStatus(plan.snapshot);
         if (snapshot.isSymlink()
@@ -421,12 +1197,113 @@ class AppImageRuntimeSnapshot {
         AppImageRuntimeBuildResult writableSnapshot =
             AppImageRuntimeBuildCommand.chmodWritable(plan.snapshot);
         if (!writableSnapshot.ok()) { return writableSnapshot; }
-        return AppImageRuntimeBuildCommand.checked(
+        AppImageRuntimeBuildResult copied =
+            AppImageRuntimeBuildCommand.checked(
             AppImageRuntimeBuildCommand.capture("rsync", [
-                "-a", "--delete", "--exclude", "/.git/",
+                "-a", "--delete", "--delete-excluded", "--exclude", "/.git/",
                 "--exclude", "/build/", plan.repoRoot + "/",
                 plan.snapshot + "/"
             ], "", 1800000), "refresh stable-inode source snapshot");
+        if (!copied.ok()) { return copied; }
+        string forbidden = AppImageRuntimeSnapshot.forbiddenRoot(plan);
+        return forbidden.isEmpty()
+            ? AppImageRuntimeBuildResult.success()
+            : AppImageRuntimeBuildResult.failure(
+                "refreshed source snapshot retained excluded root: "
+                    + forbidden);
+    }
+}
+
+class AppImageRetiredGenerationLease {
+    public bool valid;
+    public int parentDescriptor;
+    public string name;
+    public DirectoryLease directory;
+    public string error;
+
+    public AppImageRetiredGenerationLease() {
+        self.valid = false;
+        self.parentDescriptor = -1;
+        self.name = "";
+        self.directory = DirectoryLease();
+        self.error = "";
+    }
+
+    public bool ok() { return self.valid; }
+
+    class bool rootBound(AppImageRuntimeBuildPlan plan,
+                         int parentDescriptor) {
+        struct stat held;
+        struct stat current;
+        return parentDescriptor >= 0
+            && fstat(parentDescriptor, &held) == 0
+            && stat(plan.generationsRoot, &current) == 0
+            && S_ISDIR(held.st_mode) != 0
+            && S_ISDIR(current.st_mode) != 0
+            && held.st_dev == current.st_dev
+            && held.st_ino == current.st_ino;
+    }
+
+    class AppImageRetiredGenerationLease capture(
+            AppImageRuntimeBuildPlan plan, string generationName) {
+        AppImageRetiredGenerationLease lease =
+            AppImageRetiredGenerationLease();
+        if (generationName.isEmpty()
+                || !PathTools.basename(generationName)
+                    .equals(generationName)
+                || generationName.endsWith(".retired")) {
+            lease.error = "runtime retirement name is invalid";
+            return lease;
+        }
+        int parentDescriptor = UnixFileSystem.openDirectoryNoFollow(
+            plan.generationsRoot);
+        string retiredName = generationName + ".retired";
+        DirectoryLease directory = parentDescriptor >= 0
+            ? UnixFileSystem.leaseDirectoryAt(
+                parentDescriptor, retiredName)
+            : DirectoryLease();
+        if (!AppImageRetiredGenerationLease.rootBound(
+                    plan, parentDescriptor)
+                || !directory.valid()) {
+            directory.closeLease();
+            if (parentDescriptor >= 0) { close(parentDescriptor); }
+            lease.error =
+                "retired runtime generation identity cannot be captured";
+            return lease;
+        }
+        lease.parentDescriptor = parentDescriptor;
+        lease.name = retiredName;
+        lease.directory = directory;
+        lease.valid = true;
+        return lease;
+    }
+
+    public AppImageRuntimeBuildResult remove() {
+        if (!self.valid || self.parentDescriptor < 0
+                || !self.directory.valid()) {
+            return AppImageRuntimeBuildResult.failure(
+                "retired runtime generation lease is invalid");
+        }
+        bool removed = UnixFileSystem.removeRecursiveAtLease(
+                self.parentDescriptor, self.name, self.directory) == 0;
+        bool durable = removed && fsync(self.parentDescriptor) == 0;
+        bool directoryClosed = self.directory.closeLease() == 0;
+        bool parentClosed = close(self.parentDescriptor) == 0;
+        self.parentDescriptor = -1;
+        self.valid = false;
+        return removed && durable && directoryClosed && parentClosed
+            ? AppImageRuntimeBuildResult.success()
+            : AppImageRuntimeBuildResult.failure(
+                "retired runtime generation identity changed or cleanup failed");
+    }
+
+    public void closeDescriptor() {
+        self.directory.closeLease();
+        if (self.parentDescriptor >= 0) {
+            close(self.parentDescriptor);
+        }
+        self.parentDescriptor = -1;
+        self.valid = false;
     }
 }
 
@@ -435,14 +1312,28 @@ class AppImageRuntimeGeneration {
         return ".semu-appimage-runtime-generation-v1";
     }
 
-    class string marker(string generation) {
+    class string markerRoot(AppImageRuntimeBuildPlan plan) {
+        return PathTools.join(plan.metadataRoot, "generations");
+    }
+
+    class string marker(
+            AppImageRuntimeBuildPlan plan, string generation) {
         return PathTools.join(
-            generation, AppImageRuntimeGeneration.markerName());
+            AppImageRuntimeGeneration.markerRoot(plan),
+            PathTools.basename(generation) + ".owner");
+    }
+
+    class string nixProof(
+            AppImageRuntimeBuildPlan plan, string generation) {
+        return PathTools.join(plan.cacheRoot,
+            AppImageNixReleaseProof.relativePath(
+                PathTools.basename(generation)));
     }
 
     class string document(AppImageRuntimeBuildPlan plan, string generation) {
         return "version=1\ncache=" + plan.cacheRoot + "\ngeneration="
-            + generation + "\nrepository=" + plan.repoRoot + "\n";
+            + generation + "\nrepository=" + plan.repoRoot + "\npackage="
+            + plan.packageAttribute + "\n";
     }
 
     class bool directChild(AppImageRuntimeBuildPlan plan, string generation) {
@@ -457,20 +1348,22 @@ class AppImageRuntimeGeneration {
             return false;
         }
         FileStatus root = FileStatus(generation);
-        FileStatus marker = FileStatus(
-            AppImageRuntimeGeneration.marker(generation));
+        string markerPath =
+            AppImageRuntimeGeneration.marker(plan, generation);
+        FileStatus marker = FileStatus(markerPath);
         return root.isDir() && !root.isSymlink()
             && UnixFileSystem.realPath(generation).equals(generation)
+            && !SemuOwnedPaths.containedPath(
+                plan.metadataRoot, markerPath).isEmpty()
             && marker.isFile() && !marker.isSymlink()
-            && FileSystem.readText(
-                AppImageRuntimeGeneration.marker(generation)).equals(
+            && FileSystem.readText(markerPath).equals(
                     AppImageRuntimeGeneration.document(plan, generation));
     }
 
     class AppImageRuntimeBuildResult create(
             AppImageRuntimeBuildPlan plan) {
         AppImageRuntimeBuildResult cache = AppImageRuntimeCache.validate(
-            plan.cacheRoot, plan.repoRoot);
+            plan.cacheRoot, plan.repoRoot, plan.packageAttribute);
         FileStatus root = FileStatus(plan.generationsRoot);
         if (!cache.ok() || !root.isDir() || root.isSymlink()
                 || !UnixFileSystem.realPath(plan.generationsRoot).equals(
@@ -493,21 +1386,200 @@ class AppImageRuntimeGeneration {
                 "cannot create fresh runtime generation");
         }
         string generation = Strings.copy(created);
-        string marker = AppImageRuntimeGeneration.marker(generation);
+        string markerRoot = AppImageRuntimeGeneration.markerRoot(plan);
+        string marker = AppImageRuntimeGeneration.marker(plan, generation);
         if (!AppImageRuntimeGeneration.directChild(plan, generation)
-                || !SemuOwnedPaths.writeText(generation, marker,
+                || !SemuOwnedPaths.prepareDirectory(markerRoot)
+                || !SemuOwnedPaths.writeText(plan.metadataRoot, marker,
                     AppImageRuntimeGeneration.document(plan, generation))
                 || FileSystem.chmod(marker, 384) != 0
                 || !AppImageRuntimeGeneration.owned(plan, generation)) {
             FileSystem.removeRecursive(generation);
+            if (FileStatus(marker).isFile()
+                    && !FileStatus(marker).isSymlink()) {
+                unlink(marker);
+            }
             return AppImageRuntimeBuildResult.failure(
                 "cannot claim fresh runtime generation");
         }
         return AppImageRuntimeBuildResult.success(generation);
     }
 
+    class bool absent(string path) {
+        return !FileStatus(path).linkFound;
+    }
+
+    class bool syncDirectory(string path) {
+        int descriptor = UnixFileSystem.openDirectoryNoFollow(path);
+        bool synced = descriptor >= 0 && fsync(descriptor) == 0;
+        bool closed = descriptor < 0 || close(descriptor) == 0;
+        return synced && closed;
+    }
+
+    class bool safeMetadata(string path) {
+        FileStatus status = FileStatus(path);
+        return status.isFile() && !status.isSymlink();
+    }
+
+    class bool exactMarker(AppImageRuntimeBuildPlan plan,
+                           string generation, string marker) {
+        FileStatus status = FileStatus(marker);
+        return status.isFile() && !status.isSymlink()
+            && (status.mode & 4095) == 384
+            && FileSystem.readText(marker).equals(
+                AppImageRuntimeGeneration.document(plan, generation));
+    }
+
+    class AppImageRuntimeBuildResult recoverRetirement(
+            AppImageRuntimeBuildPlan plan, string generationName) {
+        if (PathTools.basename(generationName).isEmpty()
+                || !PathTools.basename(generationName)
+                    .equals(generationName)
+                || generationName.endsWith(".retired")) {
+            return AppImageRuntimeBuildResult.failure(
+                "runtime retirement name is invalid");
+        }
+        string generation = PathTools.join(
+            plan.generationsRoot, generationName);
+        string retiredGeneration = generation + ".retired";
+        string marker = AppImageRuntimeGeneration.marker(plan, generation);
+        string retiredMarker = marker + ".retired";
+        string proof = AppImageRuntimeGeneration.nixProof(plan, generation);
+        string retiredProof = proof + ".retired";
+        AppImageRetiredGenerationLease retirement =
+            AppImageRetiredGenerationLease.capture(
+                plan, generationName);
+        FileStatus generationStatus = FileStatus(generation);
+        FileStatus retiredStatus = FileStatus(retiredGeneration);
+        bool markerActive = AppImageRuntimeGeneration.exactMarker(
+            plan, generation, marker);
+        bool markerRetired = AppImageRuntimeGeneration.exactMarker(
+            plan, generation, retiredMarker);
+        if (generationStatus.linkFound && retiredStatus.linkFound) {
+            retirement.closeDescriptor();
+            return AppImageRuntimeBuildResult.failure(
+                "runtime retirement has both active and retired generations");
+        }
+
+        if (generationStatus.linkFound) {
+            retirement.closeDescriptor();
+            bool restored = generationStatus.isDir()
+                && !generationStatus.isSymlink()
+                && markerActive != markerRetired;
+            if (FileStatus(retiredMarker).linkFound) {
+                restored = AppImageRuntimeGeneration.absent(marker)
+                    && markerRetired
+                    && rename(retiredMarker, marker) == 0;
+            }
+            if (restored && FileStatus(retiredProof).linkFound) {
+                restored = AppImageRuntimeGeneration.absent(proof)
+                    && AppImageRuntimeGeneration.safeMetadata(retiredProof)
+                    && rename(retiredProof, proof) == 0;
+            }
+            restored = restored
+                && AppImageRuntimeGeneration.syncDirectory(
+                    PathTools.dirname(marker))
+                && AppImageRuntimeGeneration.syncDirectory(
+                    PathTools.dirname(proof));
+            return restored ? AppImageRuntimeBuildResult.success()
+                : AppImageRuntimeBuildResult.failure(
+                    "incomplete runtime retirement could not be rolled back");
+        }
+
+        if (retiredStatus.linkFound) {
+            if (!retiredStatus.isDir() || retiredStatus.isSymlink()
+                    || !PathTools.dirname(retiredGeneration)
+                        .equals(plan.generationsRoot)
+                    || markerActive || !markerRetired
+                    || (FileStatus(retiredProof).linkFound
+                        && !AppImageRuntimeGeneration.safeMetadata(
+                            retiredProof))
+                    || !retirement.ok()) {
+                retirement.closeDescriptor();
+                return AppImageRuntimeBuildResult.failure(
+                    "retired runtime generation is not an owned directory");
+            }
+            AppImageRuntimeBuildResult removed = retirement.remove();
+            if (!removed.ok()
+                    || FileStatus(retiredGeneration).linkFound) {
+                return removed.ok() ? AppImageRuntimeBuildResult.failure(
+                    "retired runtime generation cleanup failed") : removed;
+            }
+        } else if (retirement.ok()) {
+            retirement.closeDescriptor();
+            return AppImageRuntimeBuildResult.failure(
+                "retired runtime generation changed after capture");
+        }
+        retirement.closeDescriptor();
+        if (!generationStatus.linkFound && !retiredStatus.linkFound
+                && FileStatus(retiredMarker).linkFound && !markerRetired) {
+            return AppImageRuntimeBuildResult.failure(
+                "retired runtime marker does not prove ownership");
+        }
+        if (!generationStatus.linkFound && !retiredStatus.linkFound
+                && !markerRetired
+                && FileStatus(retiredProof).linkFound) {
+            return AppImageRuntimeBuildResult.failure(
+                "orphaned runtime proof has no ownership marker");
+        }
+        if (markerRetired && FileStatus(retiredProof).linkFound
+                && !AppImageRuntimeGeneration.safeMetadata(retiredProof)) {
+            return AppImageRuntimeBuildResult.failure(
+                "retired runtime proof is not owned metadata");
+        }
+        bool metadataRemoved = true;
+        for retired in [retiredProof, retiredMarker] {
+            if (FileStatus(retired).linkFound) {
+                metadataRemoved = metadataRemoved
+                    && AppImageRuntimeGeneration.safeMetadata(retired)
+                    && unlink(retired) == 0;
+            }
+        }
+        bool durable = metadataRemoved
+            && AppImageRuntimeGeneration.syncDirectory(
+                plan.generationsRoot)
+            && AppImageRuntimeGeneration.syncDirectory(
+                PathTools.dirname(marker))
+            && AppImageRuntimeGeneration.syncDirectory(
+                PathTools.dirname(proof));
+        return durable ? AppImageRuntimeBuildResult.success()
+            : AppImageRuntimeBuildResult.failure(
+                "retired runtime metadata cleanup failed");
+    }
+
+    class AppImageRuntimeBuildResult recoverRetirements(
+            AppImageRuntimeBuildPlan plan) {
+        Vector<string> names = [];
+        string markerRoot = AppImageRuntimeGeneration.markerRoot(plan);
+        if (FileStatus(markerRoot).isDir()
+                && !FileStatus(markerRoot).isSymlink()) {
+            string markerSuffix = ".owner.retired";
+            string proofSuffix = ".nix-proof.json.retired";
+            for name in Directory(markerRoot).entries() {
+                string suffix = name.endsWith(markerSuffix)
+                    ? markerSuffix : (name.endsWith(proofSuffix)
+                        ? proofSuffix : "");
+                if (!suffix.isEmpty()) {
+                    string original = name.substring(0,
+                        name.len() - suffix.len());
+                    if (!names.contains(original)) { names.push(original); }
+                }
+            }
+        }
+        names.sort();
+        for name in names {
+            AppImageRuntimeBuildResult recovered =
+                AppImageRuntimeGeneration.recoverRetirement(plan, name);
+            if (!recovered.ok()) { return recovered; }
+        }
+        return AppImageRuntimeBuildResult.success();
+    }
+
     class AppImageRuntimeBuildResult discard(
             AppImageRuntimeBuildPlan plan, string generation) {
+        AppImageRuntimeBuildResult recovered =
+            AppImageRuntimeGeneration.recoverRetirements(plan);
+        if (!recovered.ok()) { return recovered; }
         if (!AppImageRuntimeGeneration.owned(plan, generation)) {
             return AppImageRuntimeBuildResult.failure(
                 "refusing to discard an unowned runtime generation");
@@ -517,20 +1589,61 @@ class AppImageRuntimeGeneration {
             return AppImageRuntimeBuildResult.failure(
                 "refusing to discard the published runtime generation");
         }
-        AppImageRuntimeBuildResult writable =
-            AppImageRuntimeBuildCommand.chmodWritable(generation);
-        if (!writable.ok() || FileSystem.removeRecursive(generation) != 0
-                || FileStatus(generation).linkFound) {
-            return writable.ok()
-                ? AppImageRuntimeBuildResult.failure(
-                    "cannot discard failed runtime generation")
-                : writable;
+        string marker = AppImageRuntimeGeneration.marker(plan, generation);
+        string nixProof = AppImageRuntimeGeneration.nixProof(
+            plan, generation);
+        FileStatus proofStatus = FileStatus(nixProof);
+        string retiredGeneration = generation + ".retired";
+        string retiredMarker = marker + ".retired";
+        string retiredProof = nixProof + ".retired";
+        if (!AppImageRuntimeGeneration.safeMetadata(marker)
+                || (proofStatus.linkFound
+                    && (!proofStatus.isFile() || proofStatus.isSymlink()))
+                || !AppImageRuntimeGeneration.absent(retiredGeneration)
+                || !AppImageRuntimeGeneration.absent(retiredMarker)
+                || !AppImageRuntimeGeneration.absent(retiredProof)) {
+            return AppImageRuntimeBuildResult.failure(
+                "runtime retirement inputs are not exact owned nodes");
         }
-        return AppImageRuntimeBuildResult.success();
+        bool markerMoved = rename(marker, retiredMarker) == 0
+            && AppImageRuntimeGeneration.syncDirectory(
+                PathTools.dirname(marker));
+        bool proofMoved = !proofStatus.linkFound
+            || (markerMoved && rename(nixProof, retiredProof) == 0
+                && AppImageRuntimeGeneration.syncDirectory(
+                    PathTools.dirname(nixProof)));
+        bool generationMoved = markerMoved && proofMoved
+            && rename(generation, retiredGeneration) == 0
+            && AppImageRuntimeGeneration.syncDirectory(
+                plan.generationsRoot);
+        if (!generationMoved) {
+            bool rolledBack = true;
+            if (FileStatus(retiredProof).linkFound) {
+                rolledBack = rename(retiredProof, nixProof) == 0;
+            }
+            if (FileStatus(retiredMarker).linkFound) {
+                rolledBack = rolledBack
+                    && rename(retiredMarker, marker) == 0;
+            }
+            rolledBack = rolledBack
+                && AppImageRuntimeGeneration.syncDirectory(
+                    PathTools.dirname(marker))
+                && AppImageRuntimeGeneration.syncDirectory(
+                    PathTools.dirname(nixProof));
+            return AppImageRuntimeBuildResult.failure(rolledBack
+                ? "runtime retirement failed before its commit point"
+                : "runtime retirement rollback requires recovery");
+        }
+        return AppImageRuntimeGeneration.recoverRetirement(
+            plan, PathTools.basename(generation));
     }
 
     class AppImageRuntimeBuildResult prune(
-            AppImageRuntimeBuildPlan plan, string current) {
+            AppImageRuntimeBuildPlan plan, string current,
+            string previous = "") {
+        AppImageRuntimeBuildResult recovered =
+            AppImageRuntimeGeneration.recoverRetirements(plan);
+        if (!recovered.ok()) { return recovered; }
         if (!AppImageRuntimeGeneration.owned(plan, current)) {
             return AppImageRuntimeBuildResult.failure(
                 "current runtime generation is not owned");
@@ -538,6 +1651,7 @@ class AppImageRuntimeGeneration {
         for name in Directory(plan.generationsRoot).entries() {
             string generation = PathTools.join(plan.generationsRoot, name);
             if (generation.equals(current)
+                    || (!previous.isEmpty() && generation.equals(previous))
                     || !AppImageRuntimeGeneration.owned(plan, generation)) {
                 continue;
             }
@@ -549,28 +1663,229 @@ class AppImageRuntimeGeneration {
     }
 }
 
+class AppImageRuntimeNixRoots {
+    class string directory(AppImageRuntimeBuildPlan plan) {
+        return PathTools.join(plan.metadataRoot, "nix-roots");
+    }
+
+    class string source(AppImageRuntimeBuildPlan plan) {
+        return PathTools.join(
+            AppImageRuntimeNixRoots.directory(plan), "source-flake");
+    }
+
+    class Vector<string> arguments(string installable, string outLink) {
+        return [
+            "--extra-experimental-features", "nix-command flakes",
+            "build", installable,
+            "--out-link", outLink,
+            "--print-out-paths", "-L"
+        ];
+    }
+
+    class bool allowed(AppImageRuntimeBuildPlan plan,
+                       string installable, string outLink) {
+        bool source = outLink.equals(
+            AppImageRuntimeNixRoots.source(plan));
+        return SemuOwnedPaths.inside(outLink, plan.metadataRoot)
+            && source
+            && AppImageNixReleaseProof.storePath(installable);
+    }
+
+    class bool exact(string outLink, string storePath) {
+        FileStatus root = FileStatus(outLink);
+        return AppImageNixReleaseProof.storePath(storePath)
+            && root.isSymlink()
+            && FileStatus(storePath).isDir()
+            && UnixFileSystem.realPath(outLink).equals(storePath);
+    }
+
+    class AppImageRuntimeBuildResult realize(
+            AppImageRuntimeBuildPlan plan,
+            string installable, string outLink) {
+        FileStatus existing = FileStatus(outLink);
+        if (!AppImageRuntimeNixRoots.allowed(
+                    plan, installable, outLink)
+                || !SemuOwnedPaths.prepareDirectory(
+                    AppImageRuntimeNixRoots.directory(plan))
+                || (existing.linkFound && !existing.isSymlink())) {
+            return AppImageRuntimeBuildResult.failure(
+                "Nix runtime GC-root location is not owned");
+        }
+        ExecResult built = ChildProcess.run("nix",
+            AppImageRuntimeNixRoots.arguments(installable, outLink),
+            timeoutMilliseconds=43200000,
+            maxStdoutBytes=1048576,
+            maxStderrBytes=67108864,
+            stdout=CommandOutput.collect(),
+            stderr=CommandOutput.stream());
+        string storePath = built.ok() ? built.stdout().trim() : "";
+        if (!built.ok() || storePath.contains("\n")
+                || !AppImageRuntimeNixRoots.exact(
+                    outLink, storePath)) {
+            return AppImageRuntimeBuildResult.failure(
+                "Nix runtime GC root does not match its realized output");
+        }
+        return AppImageRuntimeBuildResult.success(storePath);
+    }
+
+    class AppImageRuntimeBuildResult retainSource(
+            AppImageRuntimeBuildPlan plan, string sourceStorePath) {
+        return AppImageRuntimeNixRoots.realize(
+            plan, sourceStorePath,
+            AppImageRuntimeNixRoots.source(plan));
+    }
+
+    class bool retained(AppImageRuntimeBuildPlan plan,
+                        string sourceStorePath) {
+        return AppImageRuntimeNixRoots.exact(
+            AppImageRuntimeNixRoots.source(plan), sourceStorePath);
+    }
+}
+
 class AppImageRuntimeExporter {
+    class bool cacheBound(AppImageRuntimeBuildPlan plan,
+                          int cacheDescriptor) {
+        struct stat held;
+        struct stat path;
+        return cacheDescriptor >= 0
+            && fstat(cacheDescriptor, &held) == 0
+            && stat(plan.cacheRoot, &path) == 0
+            && S_ISDIR(held.st_mode) != 0
+            && S_ISDIR(path.st_mode) != 0
+            && held.st_dev == path.st_dev
+            && held.st_ino == path.st_ino;
+    }
+
+    class bool ownedPublicationLink(AppImageRuntimeBuildPlan plan,
+                                    string path) {
+        FileStatus status = FileStatus(path);
+        string target = status.isSymlink()
+            ? UnixFileSystem.realPath(path) : "";
+        return status.isSymlink() && !target.isEmpty()
+            && AppImageRuntimeGeneration.owned(plan, target);
+    }
+
+    class AppImageRuntimeBuildResult restoreRollback(
+            AppImageRuntimeBuildPlan plan, int cacheDescriptor,
+            string rollbackName, string outputName, string previous) {
+        FileStatus outputStatus = FileStatus(plan.output);
+        bool replaceable = !outputStatus.linkFound
+            || AppImageRuntimeExporter.ownedPublicationLink(
+                plan, plan.output);
+        bool moved = AppImageRuntimeGeneration.owned(plan, previous)
+            && replaceable
+            && renameat(cacheDescriptor, rollbackName,
+                cacheDescriptor, outputName) == 0;
+        bool restored = moved && fsync(cacheDescriptor) == 0
+            && UnixFileSystem.realPath(plan.output).equals(previous);
+        if (moved && !restored) {
+            restored = semuAppImageSymlinkAt(previous, cacheDescriptor,
+                    rollbackName) == 0
+                && fsync(cacheDescriptor) == 0
+                && renameat(cacheDescriptor, rollbackName,
+                    cacheDescriptor, outputName) == 0
+                && fsync(cacheDescriptor) == 0
+                && UnixFileSystem.realPath(plan.output).equals(previous);
+        }
+        return restored ? AppImageRuntimeBuildResult.success()
+            : AppImageRuntimeBuildResult.failure(
+                "runtime rollback link could not be recovered");
+    }
+
+    class AppImageRuntimeBuildResult rollbackPublished(
+            AppImageRuntimeBuildPlan plan, int cacheDescriptor,
+            string outputName, string rollbackName,
+            string previous, string failure) {
+        bool candidateActive =
+            AppImageRuntimeExporter.cacheBound(plan, cacheDescriptor)
+            && AppImageRuntimeExporter.ownedPublicationLink(
+                plan, plan.output)
+            && UnixFileSystem.realPath(plan.output)
+                .equals(plan.exportRoot);
+        if (!candidateActive) {
+            return AppImageRuntimeBuildResult.failure(
+                failure + "; runtime publication changed before rollback");
+        }
+        if (previous.isEmpty()) {
+            bool removed = unlinkat(cacheDescriptor, outputName, 0) == 0
+                && fsync(cacheDescriptor) == 0
+                && !FileStatus(plan.output).linkFound;
+            return AppImageRuntimeBuildResult.failure(removed
+                ? failure + "; publication rolled back"
+                : failure + "; rollback failed");
+        }
+        if (!AppImageRuntimeGeneration.owned(plan, previous)
+                || semuAppImageSymlinkAt(previous, cacheDescriptor,
+                    rollbackName) != 0
+                || fsync(cacheDescriptor) != 0) {
+            return AppImageRuntimeBuildResult.failure(
+                failure + "; rollback preparation failed");
+        }
+        AppImageRuntimeBuildResult restored =
+            AppImageRuntimeExporter.restoreRollback(
+                plan, cacheDescriptor, rollbackName,
+                outputName, previous);
+        return AppImageRuntimeBuildResult.failure(restored.ok()
+            ? failure + "; publication rolled back"
+            : failure + "; " + restored.error);
+    }
+
+    class AppImageRuntimeBuildResult recoverPublication(
+            AppImageRuntimeBuildPlan plan, int cacheDescriptor) {
+        if (!AppImageRuntimeExporter.cacheBound(plan, cacheDescriptor)) {
+            return AppImageRuntimeBuildResult.failure(
+                "runtime cache descriptor changed during recovery");
+        }
+        string outputName = PathTools.basename(plan.output);
+        string temporaryName = outputName + ".next";
+        string rollbackName = outputName + ".rollback";
+        string temporary = PathTools.join(plan.cacheRoot, temporaryName);
+        string rollback = PathTools.join(plan.cacheRoot, rollbackName);
+        FileStatus temporaryStatus = FileStatus(temporary);
+        FileStatus rollbackStatus = FileStatus(rollback);
+        if (temporaryStatus.linkFound && rollbackStatus.linkFound) {
+            return AppImageRuntimeBuildResult.failure(
+                "runtime publication has conflicting recovery links");
+        }
+        if (rollbackStatus.linkFound) {
+            string previous = AppImageRuntimeExporter.ownedPublicationLink(
+                    plan, rollback)
+                ? UnixFileSystem.realPath(rollback) : "";
+            return previous.isEmpty()
+                ? AppImageRuntimeBuildResult.failure(
+                    "runtime rollback link does not name an owned generation")
+                : AppImageRuntimeExporter.restoreRollback(
+                    plan, cacheDescriptor, rollbackName,
+                    outputName, previous);
+        }
+        if (temporaryStatus.linkFound) {
+            bool removed = AppImageRuntimeExporter.ownedPublicationLink(
+                    plan, temporary)
+                && unlinkat(cacheDescriptor, temporaryName, 0) == 0
+                && fsync(cacheDescriptor) == 0
+                && !FileStatus(temporary).linkFound;
+            return removed ? AppImageRuntimeBuildResult.success()
+                : AppImageRuntimeBuildResult.failure(
+                    "runtime candidate link could not be recovered");
+        }
+        return AppImageRuntimeBuildResult.success();
+    }
+
     class string containerProgram() {
-        return """actual_source_identity=\"\"
-for relative in flake.nix flake.lock Makefile src config packaging tests assets patches; do
-  path=\"/src/$relative\"
-  if [ -e \"$path\" ] || [ -L \"$path\" ]; then
-    [ ! -L \"$path\" ] || exit 73
-    digest=\"$(nix --extra-experimental-features \"nix-command\" \\
-      hash path --type sha256 --base16 \"$path\" 2>/dev/null || true)\"
-    [ \"${#digest}\" -eq 64 ] || exit 73
-  else
-    digest=absent
-  fi
-  actual_source_identity=\"${actual_source_identity}${relative}=${digest};\"
-done
+        return """actual_source_identity=\"$(nix \
+  --extra-experimental-features \"nix-command\" \
+  hash path --type sha256 --base16 /src 2>/dev/null || true)\"
+[ \"${#actual_source_identity}\" -eq 64 ] || exit 73
 if [ \"$actual_source_identity\" != \"$SEMU_SOURCE_SNAPSHOT_IDENTITY\" ]; then
   exit 72
 fi
+nix --option sandbox false --option filter-syscalls false \
+  --extra-experimental-features \"nix-command flakes\" \
+  flake archive --json \"path:/src\" > /metadata/container-source-flake.json
 out=\"$(nix --option sandbox false --option filter-syscalls false \
   --extra-experimental-features \"nix-command flakes\" \
-  build path:/src#steamdeck-runtime --no-link --print-out-paths -L)\"
-previous=\"$(cat /export/share/semu/steamdeck-runtime-store-path.txt 2>/dev/null || true)\"
+  build \"path:/src#$SEMU_PACKAGE_ATTRIBUTE\" --no-link --print-out-paths -L)\"
+previous=\"$(cat /export/share/semu/release-store-path.txt 2>/dev/null || true)\"
 rm -rf /export/bin /export/lib /export/share
 if [ \"$previous\" != \"$out\" ]; then rm -rf /export/nix; fi
 mkdir -p /export/bin /export/lib /export/share
@@ -583,7 +1898,12 @@ if [ \"$previous\" != \"$out\" ]; then
     --no-check-sigs --to \"local?root=/export\" \"$out\"
 fi
 chmod u+w /export/share/semu
-printf \"%s\\n\" \"$out\" > /export/share/semu/steamdeck-runtime-store-path.txt
+printf \"%s\\n\" \"$out\" > /export/share/semu/release-store-path.txt
+printf \"%s\\n\" \"$out\" > /metadata/target-store-path
+nix --option sandbox false --option filter-syscalls false \
+  --extra-experimental-features \"nix-command flakes\" \
+  path-info --json --recursive \"$out\" \
+  > /metadata/target-closure.json
 printf \"%s\\n\" \"$actual_source_identity\" > /metadata/source-snapshot-identity
 """;
     }
@@ -601,48 +1921,68 @@ printf \"%s\\n\" \"$actual_source_identity\" > /metadata/source-snapshot-identit
             stdout=CommandOutput.collect(),
             stderr=CommandOutput.stream());
         string output = built.ok() ? built.stdout().trim() : "";
-        string source = PathTools.join(output, "lib/semu/semu-btrc");
-        string destination = PathTools.join(
-            plan.snapshot, "build/appimage/semu-btrc-x86_64");
+        string program = PathTools.join(output, "lib/semu/semu-btrc");
         if (!built.ok() || output.contains("\n")
-                || !FileStatus(source).isFile()
-                || FileSystem.mkdirp(PathTools.dirname(destination)) != 0) {
+                || !FileStatus(program).isFile()) {
             return AppImageRuntimeBuildResult.failure(
                 "pinned x86_64 Semu program build failed");
         }
-        AppImageRuntimeBuildResult copied =
-            AppImageRuntimeBuildCommand.checked(
-                AppImageRuntimeBuildCommand.capture(
-                    "cp", ["--", source, destination]),
-                "stage x86_64 Semu program");
-        if (!copied.ok() || FileSystem.chmod(destination, 365) != 0) { // 0555
-            return copied.ok()
-                ? AppImageRuntimeBuildResult.failure(
-                    "cannot secure x86_64 Semu program") : copied;
-        }
         ExecResult kind = AppImageRuntimeBuildCommand.capture(
-            "file", ["--brief", "--", destination]);
-        return kind.ok() && kind.stdout().contains("ELF 64-bit")
-                && kind.stdout().contains("x86-64")
+            "file", ["--brief", "--", program]);
+        if (!kind.ok() || !kind.stdout().contains("ELF 64-bit")
+                || !kind.stdout().contains("x86-64")) {
+            return AppImageRuntimeBuildResult.failure(
+                "cross build did not produce an x86_64 ELF");
+        }
+
+        ExecResult archive = ChildProcess.run("nix", [
+            "--extra-experimental-features", "nix-command flakes",
+            "flake", "archive", "--json", "path:" + plan.snapshot
+        ], timeoutMilliseconds=1800000,
+            maxStdoutBytes=67108864,
+            maxStderrBytes=67108864,
+            stdout=CommandOutput.collect(),
+            stderr=CommandOutput.collect());
+        JsonValue archiveDocument = JsonValue.parse(archive.stdout());
+        string sourceStorePath = archiveDocument.get("path").isString()
+            ? archiveDocument.get("path").asString() : "";
+        AppImageRuntimeBuildResult retainedSource = archive.ok()
+            && AppImageNixReleaseProof.storePath(sourceStorePath)
+            ? AppImageRuntimeNixRoots.retainSource(
+                plan, sourceStorePath)
+            : AppImageRuntimeBuildResult.failure(
+                "frozen source store path cannot be retained");
+        string archiveText = archiveDocument.isObject()
+            ? archiveDocument.document() : "";
+        string hostArchivePath = PathTools.join(
+            plan.metadataRoot, "host-source-flake.json");
+        bool recorded = archive.ok()
+            && retainedSource.ok()
+            && retainedSource.value.equals(sourceStorePath)
+            && AppImageNixReleaseProof.storePath(sourceStorePath)
+            && AppImageRuntimeNixRoots.retained(
+                plan, sourceStorePath)
+            && SemuOwnedPaths.writeText(
+                plan.metadataRoot, hostArchivePath, archiveText);
+        return recorded
             ? AppImageRuntimeBuildResult.success()
             : AppImageRuntimeBuildResult.failure(
-                "cross build did not produce an x86_64 ELF");
+                "cannot retain the frozen AppImage source");
     }
 
     class AppImageRuntimeBuildResult exportRuntime(
-            AppImageRuntimeBuildPlan plan) {
+            AppImageRuntimeBuildPlan plan,
+            AppImageRuntimePodmanLifecycle containers) {
         AppImageRuntimeBuildResult sourceIdentity =
             AppImageRuntimeSnapshot.identity(plan);
         if (!sourceIdentity.ok()) { return sourceIdentity; }
-        print("Building pinned x86_64 Steam Deck runtime (cached in Podman volume "
-            + plan.volume + ")...");
-        Vector<string> arguments = [
-            "run", "--rm", "--platform", "linux/amd64", "--privileged",
-            "--ulimit", "stack=67108864:67108864",
+        print("Building pinned x86_64 Steam Deck runtime in an owned anonymous Nix store...");
+        Vector<string> phase = [
+            "--privileged",
             "--entrypoint", "/bin/sh",
             "-e", "XDG_CACHE_HOME=/nix/var/cache",
             "-e", "SEMU_SOURCE_SNAPSHOT_IDENTITY=" + sourceIdentity.value,
-            "-v", plan.volume + ":/nix",
+            "-e", "SEMU_PACKAGE_ATTRIBUTE=" + plan.packageAttribute,
             "-v", plan.snapshot + ":/src:ro",
             "-v", plan.exportRoot + ":/export",
             "-v", plan.metadataRoot + ":/metadata",
@@ -650,13 +1990,10 @@ printf \"%s\\n\" \"$actual_source_identity\" > /metadata/source-snapshot-identit
         ];
         int attempts = 0;
         while (attempts < 8) {
-            ExecResult built = AppImageRuntimeBuildCommand.logged(
-                "podman", arguments);
-            if (built.ok()) { return AppImageRuntimeBuildResult.success(); }
-            if (built.code != 72) {
-                return AppImageRuntimeBuildResult.failure(
-                    f"Podman runtime build failed (exit {built.code})");
-            }
+            AppImageRuntimeBuildResult built = containers.runPhase(
+                "Podman runtime build", phase, true);
+            if (built.ok()) { return built; }
+            if (containers.lastExitCode != 72) { return built; }
             attempts++;
             AppImageRuntimeBuildCommand.capture("sleep", ["0.5"]);
         }
@@ -691,12 +2028,141 @@ printf \"%s\\n\" \"$actual_source_identity\" > /metadata/source-snapshot-identit
             ], plan.snapshot), "record AppImage runtime provenance");
     }
 
+    class AppImageRuntimeBuildResult recordNixProof(
+            AppImageRuntimeBuildPlan plan,
+            AppImageRuntimePodmanLifecycle containers) {
+        print("Sealing independent Nix release proof...");
+        string hostSourceMetadata = PathTools.join(
+            plan.metadataRoot, "host-source-flake.json");
+        string containerSourceMetadata = PathTools.join(
+            plan.metadataRoot, "container-source-flake.json");
+        string closureMetadata = PathTools.join(
+            plan.metadataRoot, "target-closure.json");
+        string targetMetadata = PathTools.join(
+            plan.metadataRoot, "target-store-path");
+        string provenancePath = PathTools.join(plan.exportRoot,
+            "share/semu/appimage-runtime-provenance.json");
+        for path in [hostSourceMetadata, containerSourceMetadata,
+                closureMetadata, targetMetadata, provenancePath] {
+            FileStatus status = FileStatus(path);
+            if (!status.isFile() || status.isSymlink()
+                    || !UnixFileSystem.realPath(path).equals(path)) {
+                return AppImageRuntimeBuildResult.failure(
+                    "Nix release-proof input is absent or unsafe: " + path);
+            }
+        }
+        JsonValue hostSource = JsonValue.readFile(hostSourceMetadata);
+        JsonValue containerSource =
+            JsonValue.readFile(containerSourceMetadata);
+        JsonValue closure = JsonValue.readFile(closureMetadata);
+        string sourceStorePath = hostSource.get("path").isString()
+            ? hostSource.get("path").asString() : "";
+        string containerSourceStorePath =
+            containerSource.get("path").isString()
+                ? containerSource.get("path").asString() : "";
+        string targetStorePath =
+            FileSystem.readText(targetMetadata).trim();
+        string provenanceText = FileSystem.readText(provenancePath);
+        JsonValue provenance = JsonValue.parse(provenanceText);
+        JsonValue releaseIdentity =
+            provenance.get("release_identity_sha256");
+        string provenanceDigest =
+            SemuOwnedFileDigest.file(provenancePath);
+        JsonValue canonicalClosure =
+            AppImageNixReleaseProof.canonicalClosure(
+                closure, targetStorePath);
+        JsonValue runtimeClosure = provenance.get("runtime")
+            .get("nix_store_closure");
+        string canonicalClosureText = canonicalClosure.isError()
+            ? "" : canonicalClosure.stringify();
+        string runtimeClosureText = runtimeClosure.isError()
+            ? "" : runtimeClosure.stringify();
+        string closureDigest = canonicalClosureText.isEmpty() ? ""
+            : SemuOwnedFileDigest.text(canonicalClosureText);
+        AppImageReleaseInventoryResult inventory =
+            AppImageReleaseInventoryLoader.load(plan.exportRoot);
+        if (!hostSource.isObject() || !containerSource.isObject()
+                || !sourceStorePath.equals(containerSourceStorePath)
+                || !closure.isObject()
+                || !closure.get(targetStorePath).isObject()
+                || canonicalClosure.isError()
+                || runtimeClosure.isError()
+                || !canonicalClosureText.equals(runtimeClosureText)
+                || !AppImageNixReleaseProof.storePath(sourceStorePath)
+                || !AppImageNixReleaseProof.storePath(targetStorePath)
+                || !AppImageRuntimeNixRoots.retained(
+                    plan, sourceStorePath)
+                || !provenance.isObject()
+                || !provenanceText.equals(
+                    provenance.document())
+                || !provenance.get("source")
+                    .get("target_output_store_path").isString()
+                || !provenance.get("source")
+                    .get("target_output_store_path").asString()
+                        .equals(targetStorePath)
+                || !releaseIdentity.isString()
+                || !AppImageNixReleaseProof.digest(
+                    releaseIdentity.asString())
+                || !AppImageNixReleaseProof.digest(provenanceDigest)
+                || !AppImageNixReleaseProof.digest(closureDigest)
+                || !inventory.ok()
+                || !inventory.inventory.packageAttribute.equals(
+                    plan.packageAttribute)) {
+            return AppImageRuntimeBuildResult.failure(
+                "Nix release-proof inputs disagree with the exported runtime");
+        }
+        string document = AppImageNixReleaseProof.json(
+                plan.packageAttribute, sourceStorePath,
+                targetStorePath, closureDigest, provenanceDigest,
+                releaseIdentity.asString()).document();
+        AppImageNixReleaseProof proof = AppImageNixReleaseProof.parse(
+            document, plan.packageAttribute,
+            provenanceDigest, releaseIdentity.asString());
+        AppImageRuntimeBuildResult liveVerified = proof.ok()
+            ? AppImageRuntimeNixProofVerifier.verify(proof, containers)
+            : AppImageRuntimeBuildResult.failure(proof.error);
+        AppImageNixProofResult hostVerified = liveVerified.ok()
+            ? proof.verify()
+            : AppImageNixProofResult.failure(liveVerified.error);
+        if (!liveVerified.ok() || !hostVerified.ok()) {
+            return AppImageRuntimeBuildResult.failure(liveVerified.ok()
+                ? hostVerified.error : liveVerified.error);
+        }
+        string proofPath = AppImageRuntimeGeneration.nixProof(
+            plan, plan.exportRoot);
+        AppImageProvenanceInternalResult sealed =
+            AppImageProvenanceDocument.seal(proofPath, document);
+        if (!sealed.ok()) {
+            return AppImageRuntimeBuildResult.failure(sealed.error);
+        }
+        if (!FileSystem.readText(proofPath).equals(document)) {
+            return AppImageRuntimeBuildResult.failure(
+                "sealed Nix release proof differs from verified bytes");
+        }
+        return AppImageRuntimeBuildResult.success();
+    }
+
     class AppImageRuntimeBuildResult publish(
-            AppImageRuntimeBuildPlan plan) {
+            AppImageRuntimeBuildPlan plan, int cacheDescriptor,
+            bool failPruningAfterPublication = false) {
         AppImageRuntimeBuildResult owned = AppImageRuntimeCache.validate(
-            plan.cacheRoot, plan.repoRoot);
-        if (!owned.ok()) { return owned; }
+            plan.cacheRoot, plan.repoRoot, plan.packageAttribute);
+        if (!owned.ok()
+                || !AppImageRuntimeExporter.cacheBound(
+                    plan, cacheDescriptor)) {
+            return owned.ok() ? AppImageRuntimeBuildResult.failure(
+                "runtime cache descriptor changed before publication") : owned;
+        }
+        AppImageRuntimeBuildResult recovered =
+            AppImageRuntimeExporter.recoverPublication(
+                plan, cacheDescriptor);
+        if (!recovered.ok()) { return recovered; }
+        string nixProof = AppImageRuntimeGeneration.nixProof(
+            plan, plan.exportRoot);
+        FileStatus proofStatus = FileStatus(nixProof);
         if (!AppImageRuntimeGeneration.owned(plan, plan.exportRoot)
+                || !proofStatus.isFile() || proofStatus.isSymlink()
+                || (proofStatus.mode & 4095) != 292
                 || !AppImageRuntimeCache.derived(
                     plan.cacheRoot, plan.output)) {
             return AppImageRuntimeBuildResult.failure(
@@ -707,37 +2173,72 @@ printf \"%s\\n\" \"$actual_source_identity\" > /metadata/source-snapshot-identit
             return AppImageRuntimeBuildResult.failure(
                 "runtime output is not an owned publication link");
         }
-        if (!SemuOwnedPaths.prepareDirectory(PathTools.dirname(plan.output))) {
+        string previous = output.isSymlink()
+            ? UnixFileSystem.realPath(plan.output) : "";
+        if (output.isSymlink()
+                && (previous.isEmpty()
+                    || !AppImageRuntimeGeneration.owned(plan, previous))) {
             return AppImageRuntimeBuildResult.failure(
-                "cannot create runtime output parent");
+                "runtime output does not identify an owned prior generation");
         }
-        string temporary = plan.output + ".next." + f"{(int)getpid()}";
-        if (FileStatus(temporary).linkFound
-                || FileSystem.symlink(plan.exportRoot, temporary) != 0) {
+        string outputName = PathTools.basename(plan.output);
+        string temporaryName = outputName + ".next";
+        string rollbackName = outputName + ".rollback";
+        struct stat transientStatus;
+        errno = 0;
+        bool temporaryAbsent = fstatat(cacheDescriptor,
+            temporaryName, &transientStatus,
+            AT_SYMLINK_NOFOLLOW) != 0 && errno == ENOENT;
+        errno = 0;
+        bool rollbackAbsent = fstatat(cacheDescriptor,
+            rollbackName, &transientStatus,
+            AT_SYMLINK_NOFOLLOW) != 0 && errno == ENOENT;
+        if (!temporaryAbsent || !rollbackAbsent
+                || semuAppImageSymlinkAt(plan.exportRoot, cacheDescriptor,
+                    temporaryName) != 0
+                || fsync(cacheDescriptor) != 0) {
             return AppImageRuntimeBuildResult.failure(
                 "cannot create runtime publication link");
         }
-        if (rename(temporary, plan.output) != 0) {
-            unlink(temporary);
+        if (renameat(cacheDescriptor, temporaryName,
+                cacheDescriptor, outputName) != 0) {
+            unlinkat(cacheDescriptor, temporaryName, 0);
+            fsync(cacheDescriptor);
             return AppImageRuntimeBuildResult.failure(
                 "cannot atomically publish runtime output link");
         }
-        if (!UnixFileSystem.realPath(plan.output).equals(plan.exportRoot)) {
-            return AppImageRuntimeBuildResult.failure(
-                "published runtime output does not resolve to its generation");
+        bool published = fsync(cacheDescriptor) == 0
+            && AppImageRuntimeExporter.cacheBound(plan, cacheDescriptor)
+            && UnixFileSystem.realPath(plan.output).equals(plan.exportRoot);
+        if (!published) {
+            return AppImageRuntimeExporter.rollbackPublished(
+                plan, cacheDescriptor, outputName, rollbackName,
+                previous, "runtime publication verification failed");
         }
-        AppImageRuntimeBuildResult pruned =
-            AppImageRuntimeGeneration.prune(plan, plan.exportRoot);
-        return pruned.ok()
-            ? AppImageRuntimeBuildResult.success(plan.output) : pruned;
+        AppImageRuntimeBuildResult pruned = failPruningAfterPublication
+            ? AppImageRuntimeBuildResult.failure(
+                "injected post-publication pruning failure")
+            : AppImageRuntimeGeneration.prune(
+                plan, plan.exportRoot, previous);
+        if (!pruned.ok()) {
+            return AppImageRuntimeExporter.rollbackPublished(
+                plan, cacheDescriptor, outputName, rollbackName, previous,
+                "runtime pruning failed after publication: "
+                    + pruned.error);
+        }
+        return AppImageRuntimeBuildResult.success(plan.output);
     }
 
     class AppImageRuntimeBuildResult finish(
             AppImageRuntimeBuildPlan plan,
-            AppImageRuntimeBuildResult validation) {
+            AppImageRuntimeBuildResult validation,
+            int cacheDescriptor,
+            bool failPruningAfterPublication = false) {
         if (validation.ok()) {
             AppImageRuntimeBuildResult published =
-                AppImageRuntimeExporter.publish(plan);
+                AppImageRuntimeExporter.publish(
+                    plan, cacheDescriptor,
+                    failPruningAfterPublication);
             if (published.ok()
                     || UnixFileSystem.realPath(plan.output).equals(
                         plan.exportRoot)) {
@@ -759,38 +2260,132 @@ printf \"%s\\n\" \"$actual_source_identity\" > /metadata/source-snapshot-identit
 class AppImageRuntimeBuilder {
     public AppImageRuntimeBuildPlan plan;
     public bool locked;
+    public string lockName;
+    public int lockParentDescriptor;
+    public int lockDescriptor;
+    public unsigned long long lockParentDevice;
+    public unsigned long long lockParentInode;
+    public unsigned long long lockDevice;
+    public unsigned long long lockInode;
+    public int lockMode;
 
     public AppImageRuntimeBuilder(AppImageRuntimeBuildPlan plan) {
         self.plan = plan;
         self.locked = false;
+        self.lockName = "";
+        self.lockParentDescriptor = -1;
+        self.lockDescriptor = -1;
+        self.lockParentDevice = 0ULL;
+        self.lockParentInode = 0ULL;
+        self.lockDevice = 0ULL;
+        self.lockInode = 0ULL;
+        self.lockMode = 0;
+    }
+
+    public bool lockStillBound() {
+        if (!self.locked || self.lockName.isEmpty()
+                || self.lockParentDescriptor < 0
+                || self.lockDescriptor < 0) {
+            return false;
+        }
+        struct stat parent;
+        struct stat parentPath;
+        struct stat inspected;
+        struct stat held;
+        return fstat(self.lockParentDescriptor, &parent) == 0
+            && stat(self.plan.cacheRoot, &parentPath) == 0
+            && fstatat(self.lockParentDescriptor, self.lockName,
+                &inspected, AT_SYMLINK_NOFOLLOW) == 0
+            && fstat(self.lockDescriptor, &held) == 0
+            && S_ISDIR(parent.st_mode) != 0
+            && S_ISDIR(parentPath.st_mode) != 0
+            && S_ISREG(inspected.st_mode) != 0
+            && S_ISREG(held.st_mode) != 0
+            && parent.st_dev == parentPath.st_dev
+            && parent.st_ino == parentPath.st_ino
+            && inspected.st_dev == held.st_dev
+            && inspected.st_ino == held.st_ino
+            && (unsigned long long)parent.st_dev == self.lockParentDevice
+            && (unsigned long long)parent.st_ino == self.lockParentInode
+            && (unsigned long long)held.st_dev == self.lockDevice
+            && (unsigned long long)held.st_ino == self.lockInode
+            && held.st_nlink == (nlink_t)1
+            && SemuOwnedPaths.permissions(held.st_mode) == self.lockMode;
     }
 
     public AppImageRuntimeBuildResult unlock() {
         if (!self.locked) { return AppImageRuntimeBuildResult.success(); }
         AppImageRuntimeBuildResult owned = AppImageRuntimeCache.validate(
-            self.plan.cacheRoot, self.plan.repoRoot);
-        FileStatus lock = FileStatus(self.plan.lock);
-        if (!owned.ok()
-                || !AppImageRuntimeCache.derived(
-                    self.plan.cacheRoot, self.plan.lock)
-                || !lock.isDir() || lock.isSymlink()
-                || rmdir(self.plan.lock) != 0) {
+            self.plan.cacheRoot, self.plan.repoRoot,
+            self.plan.packageAttribute);
+        bool bound = self.lockStillBound();
+        bool released = bound && self.lockDescriptor >= 0
+            && semuAppImageFileLock(self.lockDescriptor, (int)LOCK_UN) == 0;
+        bool closed = self.lockDescriptor >= 0
+            && close(self.lockDescriptor) == 0;
+        bool parentClosed = self.lockParentDescriptor >= 0
+            && close(self.lockParentDescriptor) == 0;
+        self.lockName = "";
+        self.lockParentDescriptor = -1;
+        self.lockDescriptor = -1;
+        self.locked = false;
+        if (!owned.ok() || !AppImageRuntimeCache.derived(
+                self.plan.cacheRoot, self.plan.lock)
+                || !released || !closed || !parentClosed) {
             return AppImageRuntimeBuildResult.failure(
                 "cannot safely release the owned runtime build lock");
         }
-        self.locked = false;
         return AppImageRuntimeBuildResult.success();
     }
 
     public AppImageRuntimeBuildResult acquire() {
         AppImageRuntimeBuildResult owned = AppImageRuntimeCache.validate(
-            self.plan.cacheRoot, self.plan.repoRoot);
+            self.plan.cacheRoot, self.plan.repoRoot,
+            self.plan.packageAttribute);
         if (!owned.ok()) { return owned; }
-        if (FileStatus(self.plan.lock).linkFound
-                || FileSystem.mkdir(self.plan.lock, 448) != 0) { // 0700
+        string lockName = PathTools.basename(self.plan.lock);
+        int parentDescriptor = UnixFileSystem.openDirectoryNoFollow(
+            self.plan.cacheRoot);
+        int descriptor = parentDescriptor >= 0
+            ? openat(parentDescriptor, lockName,
+                (int)O_CREAT | (int)O_RDWR | (int)O_CLOEXEC
+                    | (int)O_NOFOLLOW,
+                384) // 0600
+            : -1;
+        struct stat parentStatus;
+        struct stat parentPathStatus;
+        struct stat inspected;
+        struct stat status;
+        if (parentDescriptor < 0 || descriptor < 0
+                || fstat(parentDescriptor, &parentStatus) != 0
+                || stat(self.plan.cacheRoot, &parentPathStatus) != 0
+                || parentStatus.st_dev != parentPathStatus.st_dev
+                || parentStatus.st_ino != parentPathStatus.st_ino
+                || fstatat(parentDescriptor, lockName, &inspected,
+                    AT_SYMLINK_NOFOLLOW) != 0
+                || fstat(descriptor, &status) != 0
+                || inspected.st_dev != status.st_dev
+                || inspected.st_ino != status.st_ino
+                || !S_ISDIR(parentStatus.st_mode)
+                || !S_ISREG(inspected.st_mode)
+                || !S_ISREG(status.st_mode)
+                || status.st_nlink != (nlink_t)1
+                || SemuOwnedPaths.permissions(status.st_mode) != 384
+                || semuAppImageFileLock(descriptor,
+                    (int)LOCK_EX | (int)LOCK_NB) != 0) {
+            if (descriptor >= 0) { close(descriptor); }
+            if (parentDescriptor >= 0) { close(parentDescriptor); }
             return AppImageRuntimeBuildResult.failure(
                 "another builder owns " + self.plan.lock);
         }
+        self.lockName = lockName;
+        self.lockParentDescriptor = parentDescriptor;
+        self.lockDescriptor = descriptor;
+        self.lockParentDevice = (unsigned long long)parentStatus.st_dev;
+        self.lockParentInode = (unsigned long long)parentStatus.st_ino;
+        self.lockDevice = (unsigned long long)status.st_dev;
+        self.lockInode = (unsigned long long)status.st_ino;
+        self.lockMode = SemuOwnedPaths.permissions(status.st_mode);
         self.locked = true;
         return AppImageRuntimeBuildResult.success();
     }
@@ -811,20 +2406,45 @@ class AppImageRuntimeBuilder {
 
         AppImageRuntimeBuildResult volume =
             AppImageMacRuntimeVolume.prepare(self.plan);
-        AppImageRuntimeBuildResult snapshot = volume.ok()
-            ? AppImageRuntimeSnapshot.refresh(self.plan) : volume;
+        AppImageRuntimeBuildResult output = volume.ok()
+            ? AppImageRuntimeBuildPlan.validateOutput(self.plan) : volume;
+        AppImageRuntimeBuildResult snapshot = output.ok()
+            ? AppImageRuntimeSnapshot.refresh(self.plan) : output;
         AppImageRuntimeBuildResult program = snapshot.ok()
             ? AppImageRuntimeExporter.crossBuildProgram(self.plan) : snapshot;
         AppImageRuntimeBuildResult generation = program.ok()
             ? AppImageRuntimeGeneration.create(self.plan) : program;
         if (generation.ok()) { self.plan.exportRoot = generation.value; }
-        AppImageRuntimeBuildResult runtime = generation.ok()
-            ? AppImageRuntimeExporter.exportRuntime(self.plan) : generation;
+        AppImageRuntimePodmanLifecycle containers =
+            AppImageRuntimePodmanLifecycle();
+        AppImageRuntimeBuildResult container = generation.ok()
+            ? containers.start(self.plan) : generation;
+        AppImageRuntimeBuildResult runtime = container.ok()
+            ? AppImageRuntimeExporter.exportRuntime(
+                self.plan, containers) : container;
         AppImageRuntimeBuildResult provenance = runtime.ok()
             ? AppImageRuntimeExporter.recordProvenance(self.plan) : runtime;
-        AppImageRuntimeBuildResult published = generation.ok()
-            ? AppImageRuntimeExporter.finish(self.plan, provenance)
+        AppImageRuntimeBuildResult proof = provenance.ok()
+            ? AppImageRuntimeExporter.recordNixProof(
+                self.plan, containers)
             : provenance;
+        AppImageRuntimeBuildResult containersClosed =
+            containers.handoffReady ? containers.close()
+                : AppImageRuntimeBuildResult.success();
+        AppImageRuntimeBuildResult publicationInput =
+            !containersClosed.ok()
+            ? (proof.ok() ? containersClosed
+                : AppImageRuntimeBuildResult.failure(
+                    proof.error + "; " + containersClosed.error))
+            : proof.ok() && !self.lockStillBound()
+            ? AppImageRuntimeBuildResult.failure(
+                "runtime build lock changed before publication")
+            : proof;
+        AppImageRuntimeBuildResult published = generation.ok()
+            ? AppImageRuntimeExporter.finish(
+                self.plan, publicationInput,
+                self.lockParentDescriptor)
+            : publicationInput;
         AppImageRuntimeBuildResult unlocked = self.unlock();
         if (published.ok()) { return unlocked.ok() ? published : unlocked; }
         return unlocked.ok() ? published : AppImageRuntimeBuildResult.failure(

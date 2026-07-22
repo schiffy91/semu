@@ -4,6 +4,7 @@
   lib,
   stdenv,
   callPackage,
+  btrcpy,
   semuRenderer,
 }:
 
@@ -208,6 +209,7 @@ let
       contract = packageContracts.${id};
     in
     lib.optionalAttrs (arguments ? semuRenderer) { inherit semuRenderer; }
+    // lib.optionalAttrs (arguments ? btrcpy) { inherit btrcpy; }
     // lib.optionalAttrs (coreHostEnabled contract) {
       coreHostId = id;
       selectedCoreIds = coreHostSelections.${id};

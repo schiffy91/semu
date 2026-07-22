@@ -1,0 +1,565 @@
+// Host-only contracts for generic, exact emulator-slice deployment.
+
+import std.{cli, fs, json, vector}
+import ../../../src/generators/appimage/contract.btrc
+import ../../../src/generators/appimage/nix_release_proof.btrc
+import ../../../src/generators/appimage/provenance/document.btrc
+import ../../../src/generators/appimage/work_session.btrc
+import ../../../src/lib/owned_paths.btrc
+import ./deck_deploy.btrc
+
+class DeckDeploymentContractTest {
+    class string digest(string value) {
+        return SemuOwnedFileDigest.text(value);
+    }
+
+    class JsonValue tagged(string name) {
+        JsonValue value = JsonValue.makeObject();
+        value.set("name", JsonValue.makeString(name));
+        return value;
+    }
+
+    class AppImageRuntimeLease runtime(
+            string target, string emulator, string packageAttribute) {
+        AppImageRuntimeLease runtime = AppImageRuntimeLease();
+        runtime.valid = true;
+        runtime.inventory.kind = "emulator-slice";
+        runtime.inventory.target = target;
+        runtime.inventory.platform = "linux";
+        runtime.inventory.nixSystem = "x86_64-linux";
+        runtime.inventory.packageAttribute = packageAttribute;
+        runtime.inventory.emulatorIds = [emulator];
+        runtime.releaseIdentity = DeckDeploymentContractTest.digest(
+            "release-identity");
+        runtime.provenanceDigest = DeckDeploymentContractTest.digest(
+            DeckDeploymentContractTest.tagged("provenance").document());
+        runtime.inventoryDigest = DeckDeploymentContractTest.digest(
+            runtime.inventory.json().document());
+        runtime.prefixDigest = DeckDeploymentContractTest.digest(
+            "runtime-prefix");
+        runtime.nixProof.nixSystem = "x86_64-linux";
+        runtime.nixProof.packageAttribute = packageAttribute;
+        runtime.nixProof.sourceStorePath =
+            "/nix/store/00000000000000000000000000000000-semu-source";
+        runtime.nixProof.targetStorePath =
+            "/nix/store/11111111111111111111111111111111-semu-runtime";
+        runtime.nixProof.closureDigest =
+            DeckDeploymentContractTest.digest("nix-closure");
+        runtime.nixProof.provenanceDigest = runtime.provenanceDigest;
+        runtime.nixProof.releaseIdentity = runtime.releaseIdentity;
+        runtime.nixProof.valid = true;
+        runtime.ownership.nixProofDigest = DeckDeploymentContractTest.digest(
+            DeckDeploymentContractTest.nixProof(runtime).document());
+        runtime.exportContractFile.digest = DeckDeploymentContractTest.digest(
+            DeckDeploymentContractTest.tagged("runtime-export").document());
+        runtime.storeExportContractFile.digest =
+            DeckDeploymentContractTest.digest(
+                DeckDeploymentContractTest.tagged(
+                    "store-export").document());
+        return runtime;
+    }
+
+    class JsonValue nixProof(AppImageRuntimeLease runtime) {
+        return AppImageNixReleaseProof.json(
+            runtime.nixProof.packageAttribute,
+            runtime.nixProof.sourceStorePath,
+            runtime.nixProof.targetStorePath,
+            runtime.nixProof.closureDigest,
+            runtime.provenanceDigest,
+            runtime.releaseIdentity);
+    }
+
+    class JsonValue worker(
+            AppImageRuntimeLease runtime, string target,
+            string emulator, string artifactDigest) {
+        JsonValue worker = JsonValue.makeObject();
+        worker.set("schema_version", JsonValue.makeInt(1));
+        worker.set("operation", JsonValue.makeString("build"));
+        worker.set("target", JsonValue.makeString(target));
+        worker.set("emulator", JsonValue.makeString(emulator));
+        worker.set("package_attribute", JsonValue.makeString(
+            runtime.nixProof.packageAttribute));
+        worker.set("runtime_authority_sha256", JsonValue.makeString(
+            runtime.assemblyAuthority()));
+        worker.set("release_identity_sha256", JsonValue.makeString(
+            runtime.releaseIdentity));
+        worker.set("provenance_sha256", JsonValue.makeString(
+            runtime.provenanceDigest));
+        worker.set("inventory_sha256", JsonValue.makeString(
+            runtime.inventoryDigest));
+        worker.set("runtime_prefix_sha256", JsonValue.makeString(
+            runtime.prefixDigest));
+        worker.set("nix_proof_sha256", JsonValue.makeString(
+            runtime.ownership.nixProofDigest));
+        worker.set("closure_sha256", JsonValue.makeString(
+            runtime.nixProof.closureDigest));
+        worker.set("source_store_path", JsonValue.makeString(
+            runtime.nixProof.sourceStorePath));
+        worker.set("target_store_path", JsonValue.makeString(
+            runtime.nixProof.targetStorePath));
+        worker.set("worker_system", JsonValue.makeString(
+            runtime.nixProof.nixSystem));
+        worker.set("worker_store_path", JsonValue.makeString(
+            "/nix/store/22222222222222222222222222222222-semu-worker"));
+        worker.set("mksquashfs_sha256", JsonValue.makeString(
+            DeckDeploymentContractTest.digest("mksquashfs")));
+        worker.set("unsquashfs_sha256", JsonValue.makeString(
+            DeckDeploymentContractTest.digest("unsquashfs")));
+        worker.set("payload_tree_sha256", JsonValue.makeString(
+            DeckDeploymentContractTest.digest("payload-tree")));
+        worker.set("artifact_sha256", JsonValue.makeString(
+            artifactDigest));
+        return worker;
+    }
+
+    class JsonValue releaseProof(
+            AppImageRuntimeLease runtime, string sourceRevision,
+            string target, string emulator,
+            string artifactName, string artifactDigest) {
+        JsonValue source = JsonValue.makeObject();
+        source.set("revision", JsonValue.makeString(sourceRevision));
+        source.set("upstream_revision",
+            JsonValue.makeString(sourceRevision));
+        source.set("nix_source_store_path", JsonValue.makeString(
+            runtime.nixProof.sourceStorePath));
+
+        JsonValue artifact = JsonValue.makeObject();
+        artifact.set("name", JsonValue.makeString(artifactName));
+        artifact.set("sha256", JsonValue.makeString(artifactDigest));
+        artifact.set("host_sha256", JsonValue.makeString(artifactDigest));
+
+        JsonValue releaseRecord = JsonValue.makeObject();
+        releaseRecord.set("target", JsonValue.makeString(target));
+        releaseRecord.set("emulator", JsonValue.makeString(emulator));
+        releaseRecord.set("nix_system", JsonValue.makeString(
+            runtime.nixProof.nixSystem));
+        releaseRecord.set("package_attribute", JsonValue.makeString(
+            runtime.nixProof.packageAttribute));
+        releaseRecord.set("release_identity_sha256", JsonValue.makeString(
+            runtime.releaseIdentity));
+        releaseRecord.set("assembly_authority_sha256", JsonValue.makeString(
+            runtime.assemblyAuthority()));
+
+        JsonValue worker = DeckDeploymentContractTest.worker(
+            runtime, target, emulator, artifactDigest);
+        JsonValue hashes = JsonValue.makeObject();
+        hashes.set("runtime_provenance_sha256", JsonValue.makeString(
+            runtime.provenanceDigest));
+        hashes.set("release_inventory_sha256", JsonValue.makeString(
+            runtime.inventoryDigest));
+        hashes.set("runtime_prefix_sha256", JsonValue.makeString(
+            runtime.prefixDigest));
+        hashes.set("nix_release_proof_sha256", JsonValue.makeString(
+            runtime.ownership.nixProofDigest));
+        hashes.set("runtime_export_contract_sha256", JsonValue.makeString(
+            runtime.exportContractFile.digest));
+        hashes.set("store_export_contract_sha256", JsonValue.makeString(
+            runtime.storeExportContractFile.digest));
+        hashes.set("worker_receipt_sha256", JsonValue.makeString(
+            DeckDeploymentContractTest.digest(worker.document())));
+        hashes.set("artifact_sha256", JsonValue.makeString(artifactDigest));
+
+        JsonValue runtimeProof = JsonValue.makeObject();
+        runtimeProof.set("nix_release_proof",
+            DeckDeploymentContractTest.nixProof(runtime));
+        runtimeProof.set("release_inventory", runtime.inventory.json());
+        runtimeProof.set("runtime_provenance",
+            DeckDeploymentContractTest.tagged("provenance"));
+        runtimeProof.set("runtime_export_contract",
+            DeckDeploymentContractTest.tagged("runtime-export"));
+        runtimeProof.set("store_export_contract",
+            DeckDeploymentContractTest.tagged("store-export"));
+
+        JsonValue diagnostics = JsonValue.makeObject();
+        diagnostics.set("exit_code", JsonValue.makeInt(0));
+        diagnostics.set("stdout_sha256", JsonValue.makeString(
+            DeckDeploymentContractTest.digest("stdout")));
+        diagnostics.set("stderr_sha256", JsonValue.makeString(
+            DeckDeploymentContractTest.digest("stderr")));
+        diagnostics.set("stdout_tail", JsonValue.makeString("built"));
+        diagnostics.set("stderr_tail", JsonValue.makeString(""));
+
+        JsonValue proof = JsonValue.makeObject();
+        proof.set("schema_version", JsonValue.makeInt(1));
+        proof.set("source", source);
+        proof.set("release", releaseRecord);
+        proof.set("artifact", artifact);
+        proof.set("host_hashes", hashes);
+        proof.set("runtime_proof", runtimeProof);
+        proof.set("worker_receipt", worker);
+        proof.set("worker_diagnostics", diagnostics);
+        return proof;
+    }
+
+    class string proofError(
+            JsonValue proof, string canonicalDocument,
+            AppImageRuntimeLease runtime, string sourceRevision,
+            string target, string emulator,
+            string artifactName, string artifactDigest) {
+        return DeckReleaseProofLease.documentError(
+            canonicalDocument, proof, sourceRevision,
+            artifactName, artifactDigest, target, emulator, runtime,
+            DeckDeploymentContractTest.tagged("provenance"),
+            runtime.inventory.json(),
+            DeckDeploymentContractTest.nixProof(runtime),
+            DeckDeploymentContractTest.tagged("runtime-export"),
+            DeckDeploymentContractTest.tagged("store-export"));
+    }
+
+    class bool proofSchemaAndIdentity() {
+        string target = "steam-deck";
+        string emulator = "retroarch";
+        string packageAttribute = "steamdeck-runtime-retroarch";
+        string sourceRevision = DeckDeploymentContractTest.digest(
+            "source-revision").substring(0, 40);
+        string artifactName = "Semu-retroarch-x86_64.AppImage";
+        string artifactDigest = DeckDeploymentContractTest.digest(
+            "artifact");
+        AppImageRuntimeLease runtime = DeckDeploymentContractTest.runtime(
+            target, emulator, packageAttribute);
+        JsonValue proof = DeckDeploymentContractTest.releaseProof(
+            runtime, sourceRevision, target, emulator,
+            artifactName, artifactDigest);
+        string canonical = proof.document();
+        if (!DeckDeploymentContractTest.proofError(
+                proof, canonical, runtime, sourceRevision,
+                target, emulator, artifactName, artifactDigest).isEmpty()
+                || DeckDeploymentContractTest.proofError(
+                    proof, canonical + "\n", runtime, sourceRevision,
+                    target, emulator, artifactName,
+                    artifactDigest).isEmpty()) {
+            return false;
+        }
+
+        Vector<string> sections = ["source", "source", "source",
+            "release", "release", "release", "release", "release",
+            "release", "artifact", "artifact", "artifact"];
+        Vector<string> fields = ["revision", "upstream_revision",
+            "nix_source_store_path", "target", "emulator", "nix_system",
+            "package_attribute", "release_identity_sha256",
+            "assembly_authority_sha256", "name", "sha256", "host_sha256"];
+        for (int index = 0; index < sections.size(); index++) {
+            JsonValue changed = JsonValue.parse(canonical);
+            JsonValue section = changed.get(sections.get(index));
+            section.set(fields.get(index),
+                JsonValue.makeString("foreign"));
+            changed.set(sections.get(index), section);
+            if (DeckDeploymentContractTest.proofError(
+                    changed, changed.document(), runtime, sourceRevision,
+                    target, emulator, artifactName,
+                    artifactDigest).isEmpty()) {
+                return false;
+            }
+        }
+
+        for hashField in ["artifact_sha256", "nix_release_proof_sha256",
+                "release_inventory_sha256", "runtime_export_contract_sha256",
+                "runtime_prefix_sha256", "runtime_provenance_sha256",
+                "store_export_contract_sha256", "worker_receipt_sha256"] {
+            JsonValue changed = JsonValue.parse(canonical);
+            JsonValue hashes = changed.get("host_hashes");
+            hashes.set(hashField, JsonValue.makeString(
+                DeckDeploymentContractTest.digest("foreign-" + hashField)));
+            changed.set("host_hashes", hashes);
+            if (DeckDeploymentContractTest.proofError(
+                    changed, changed.document(), runtime, sourceRevision,
+                    target, emulator, artifactName,
+                    artifactDigest).isEmpty()) {
+                return false;
+            }
+        }
+
+        for runtimeField in ["nix_release_proof", "release_inventory",
+                "runtime_export_contract", "runtime_provenance",
+                "store_export_contract"] {
+            JsonValue changed = JsonValue.parse(canonical);
+            JsonValue embedded = changed.get("runtime_proof");
+            embedded.set(runtimeField,
+                DeckDeploymentContractTest.tagged("foreign"));
+            changed.set("runtime_proof", embedded);
+            if (DeckDeploymentContractTest.proofError(
+                    changed, changed.document(), runtime, sourceRevision,
+                    target, emulator, artifactName,
+                    artifactDigest).isEmpty()) {
+                return false;
+            }
+        }
+
+        JsonValue crossArtifact = JsonValue.parse(canonical);
+        JsonValue worker = crossArtifact.get("worker_receipt");
+        worker.set("artifact_sha256", JsonValue.makeString(
+            DeckDeploymentContractTest.digest("other-artifact")));
+        crossArtifact.set("worker_receipt", worker);
+        JsonValue hashes = crossArtifact.get("host_hashes");
+        hashes.set("worker_receipt_sha256", JsonValue.makeString(
+            DeckDeploymentContractTest.digest(worker.document())));
+        crossArtifact.set("host_hashes", hashes);
+        if (DeckDeploymentContractTest.proofError(
+            crossArtifact, crossArtifact.document(), runtime,
+            sourceRevision, target, emulator,
+            artifactName, artifactDigest).isEmpty()) {
+            return false;
+        }
+
+        Vector<string> workerFields = ["target", "emulator",
+            "package_attribute", "runtime_authority_sha256",
+            "release_identity_sha256", "provenance_sha256",
+            "inventory_sha256", "runtime_prefix_sha256",
+            "nix_proof_sha256", "closure_sha256", "source_store_path",
+            "target_store_path", "worker_system", "artifact_sha256"];
+        for workerField in workerFields {
+            JsonValue changed = JsonValue.parse(canonical);
+            JsonValue changedWorker = changed.get("worker_receipt");
+            changedWorker.set(workerField, JsonValue.makeString("foreign"));
+            changed.set("worker_receipt", changedWorker);
+            JsonValue changedHashes = changed.get("host_hashes");
+            changedHashes.set("worker_receipt_sha256", JsonValue.makeString(
+                DeckDeploymentContractTest.digest(
+                    changedWorker.document())));
+            changed.set("host_hashes", changedHashes);
+            if (DeckDeploymentContractTest.proofError(
+                    changed, changed.document(), runtime, sourceRevision,
+                    target, emulator, artifactName,
+                    artifactDigest).isEmpty()) {
+                return false;
+            }
+        }
+        JsonValue failedWorker = JsonValue.parse(canonical);
+        JsonValue diagnostics = failedWorker.get("worker_diagnostics");
+        diagnostics.set("exit_code", JsonValue.makeInt(1));
+        failedWorker.set("worker_diagnostics", diagnostics);
+        return !DeckDeploymentContractTest.proofError(
+            failedWorker, failedWorker.document(), runtime,
+            sourceRevision, target, emulator,
+            artifactName, artifactDigest).isEmpty();
+    }
+
+    class bool proofFileLease() {
+        string scratch = FileSystem.tempDir("semu-deck-release-proof");
+        if (scratch.isEmpty()) { return false; }
+        scratch = UnixFileSystem.realPath(scratch);
+        string artifactName = "Semu-retroarch-x86_64.AppImage";
+        string artifactDigest = DeckDeploymentContractTest.digest("artifact");
+        string proofName = DeckReleaseProofLease.siblingName(
+            artifactName, artifactDigest);
+        string proofPath = PathTools.join(scratch, proofName);
+        string displaced = PathTools.join(scratch, "proof.original");
+        string symlinkPath = PathTools.join(scratch, "proof.symlink");
+        AppImagePathPlan plan = AppImagePathPlan();
+        plan.valid = true;
+        plan.workBase = scratch;
+        JsonValue first = JsonValue.makeObject();
+        first.set("schema_version", JsonValue.makeInt(1));
+        JsonValue second = JsonValue.makeObject();
+        second.set("schema_version", JsonValue.makeInt(2));
+        bool prepared = FileSystem.writeText(
+            proofPath, first.document());
+        AppImageWorkSession session = prepared
+            ? AppImageWorkSession.create(plan) : AppImageWorkSession();
+        string missingPath = PathTools.join(
+            scratch, "missing.proof.json");
+        DeckReleaseProofLease missing = session.ok()
+            ? DeckReleaseProofLease.bindBytes(
+                missingPath, PathTools.basename(missingPath), session)
+            : DeckReleaseProofLease();
+        bool missingRejected = !missing.ok();
+        missing.closeDescriptors();
+        DeckReleaseProofLease wrongName = session.ok()
+            ? DeckReleaseProofLease.bindBytes(
+                proofPath, "foreign.proof.json", session)
+            : DeckReleaseProofLease();
+        bool wrongNameRejected = !wrongName.ok();
+        wrongName.closeDescriptors();
+        DeckReleaseProofLease proof = session.ok()
+            ? DeckReleaseProofLease.bindBytes(
+                proofPath, proofName, session)
+            : DeckReleaseProofLease();
+        bool replaced = proof.ok() && rename(proofPath, displaced) == 0
+            && FileSystem.writeText(
+                proofPath, second.document());
+        bool rebindingRejected = replaced
+            && !proof.stillBound(session.rootDescriptor)
+            && proof.staged.descriptorStillExact();
+        proof.closeDescriptors();
+        bool symlinkCreated = symlink(displaced, symlinkPath) == 0;
+        DeckReleaseProofLease symlinkProof = symlinkCreated
+            ? DeckReleaseProofLease.bindBytes(
+                symlinkPath, PathTools.basename(symlinkPath), session)
+            : DeckReleaseProofLease();
+        bool symlinkRejected = symlinkCreated && !symlinkProof.ok();
+        symlinkProof.closeDescriptors();
+        AppImageContractResult sessionClosed = session.ok()
+            ? session.cleanup() : AppImageContractResult.success();
+        FileSystem.removeRecursive(scratch);
+        return !proofName.isEmpty()
+            && proofName.equals(artifactName + "." + artifactDigest
+                + ".proof.json")
+            && missingRejected && wrongNameRejected && rebindingRejected
+            && symlinkRejected && sessionClosed.ok();
+    }
+
+    class bool retainedProofIsImmutable() {
+        string scratch = FileSystem.tempDir(
+            "semu-deck-retained-release-proof");
+        if (scratch.isEmpty()) { return false; }
+        scratch = UnixFileSystem.realPath(scratch);
+        string output = PathTools.join(scratch, "release.proof.json");
+        JsonValue document = JsonValue.makeObject();
+        document.set("schema_version", JsonValue.makeInt(1));
+        string content = document.document();
+        string digest = DeckDeploymentContractTest.digest(content);
+        AppImageProvenanceInternalResult sealed =
+            AppImageProvenanceDocument.seal(output, content);
+        bool exact = sealed.ok() && DeckReleaseProofLease.exactFile(
+            output, digest, AppImageProvenanceDocument.canonicalMode());
+        bool mutableRejected = exact && FileSystem.chmod(output, 420) == 0
+            && !DeckReleaseProofLease.exactFile(
+                output, digest,
+                AppImageProvenanceDocument.canonicalMode());
+        FileSystem.removeRecursive(scratch);
+        return mutableRejected;
+    }
+
+    class bool exactStrings(Vector<string> left, Vector<string> right) {
+        if (left.size() != right.size()) { return false; }
+        for (int index = 0; index < left.size(); index++) {
+            if (!left.get(index).equals(right.get(index))) { return false; }
+        }
+        return true;
+    }
+
+    class DeckDeploymentTransaction slice(
+            string target, string emulator, string packageAttribute) {
+        DeckDeploymentTransaction transaction =
+            DeckDeploymentTransaction();
+        transaction.options.project = "/project";
+        transaction.options.runtimeRoot = "/runtime/runtime-root";
+        transaction.options.evidenceRoot = "/evidence";
+        transaction.runtime.inventory.kind = "emulator-slice";
+        transaction.runtime.inventory.target = target;
+        transaction.runtime.inventory.platform = "fixture-platform";
+        transaction.runtime.inventory.nixSystem = "fixture-system";
+        transaction.runtime.inventory.packageAttribute = packageAttribute;
+        transaction.runtime.inventory.emulatorIds = [emulator];
+        transaction.runtime.releaseIdentity = "release-digest";
+        transaction.artifact.path =
+            "/private/Semu-" + emulator + "-x86_64.AppImage";
+        transaction.artifact.digest = "artifact-digest";
+        return transaction;
+    }
+
+    class bool derivedSlice(
+            string target, string emulator, string packageAttribute) {
+        DeckDeploymentTransaction transaction =
+            DeckDeploymentContractTest.slice(
+                target, emulator, packageAttribute);
+        Vector<string> expected = [
+            "package", "appimage", "verify",
+            "--target", target,
+            "--emulator", emulator,
+            "--runtime-root", transaction.options.runtimeRoot,
+            "--artifact", transaction.artifact.path,
+            "--project", transaction.options.project,
+            "--print-sha256"
+        ];
+        return transaction.emulator().equals(emulator)
+            && transaction.runtime.inventory.packageAttribute.equals(
+                packageAttribute)
+            && transaction.artifactName().equals(
+                "Semu-" + emulator + "-x86_64.AppImage")
+            && transaction.artifactMatches(transaction.artifact.path)
+            && DeckDeploymentContractTest.exactStrings(
+                transaction.verifierArguments(), expected)
+            && transaction.remoteArtifactName().equals(
+                "Semu-" + emulator
+                    + "-x86_64.artifact-digest.AppImage")
+            && transaction.proofRoot().equals(
+                "/evidence/releases/release-digest/" + target + "/"
+                    + emulator + "/artifact-digest");
+    }
+
+    class bool rejectsAggregateAndArtifactMismatch() {
+        DeckDeploymentTransaction transaction =
+            DeckDeploymentContractTest.slice(
+                "fixture-target", "alpha", "fixture-package-alpha");
+        transaction.runtime.inventory.kind = "aggregate";
+        transaction.runtime.inventory.emulatorIds = ["alpha", "beta"];
+        bool aggregateRejected = transaction.emulator().isEmpty()
+            && transaction.artifactName().isEmpty();
+        transaction = DeckDeploymentContractTest.slice(
+            "fixture-target", "alpha", "fixture-package-alpha");
+        return aggregateRejected && !transaction.artifactMatches(
+            "/private/Semu-beta-x86_64.AppImage");
+    }
+
+    class bool descriptorBoundSnapshot() {
+        string scratch = FileSystem.tempDir(
+            "semu-deck-deployment-snapshot");
+        if (scratch.isEmpty()) { return false; }
+        scratch = UnixFileSystem.realPath(scratch);
+        string source = PathTools.join(scratch, "source.AppImage");
+        string displaced = PathTools.join(scratch, "source.original");
+        AppImagePathPlan plan = AppImagePathPlan();
+        plan.valid = true;
+        plan.workBase = scratch;
+        bool prepared = FileSystem.writeText(source, "exact-appimage\n")
+            && FileSystem.chmod(source, 493) == 0;
+        AppImageWorkSession session = prepared
+            ? AppImageWorkSession.create(plan) : AppImageWorkSession();
+        AppImageVerificationSnapshot snapshot = session.ok()
+            ? AppImageVerificationSnapshot.capture(session, source)
+            : AppImageVerificationSnapshot();
+        string digest = snapshot.ok() ? snapshot.digest : "";
+        bool replaced = snapshot.ok() && rename(source, displaced) == 0
+            && FileSystem.writeText(source, "replacement\n")
+            && FileSystem.chmod(source, 493) == 0;
+        bool exact = replaced && !snapshot.sourceStillBound()
+            && snapshot.snapshotStillBound()
+            && SemuOwnedFileDigest.file(snapshot.path).equals(digest)
+            && !SemuOwnedFileDigest.file(source).equals(digest);
+        AppImageContractResult snapshotClosed = snapshot.ok()
+            ? snapshot.finish() : AppImageContractResult.success();
+        AppImageContractResult sessionClosed = session.ok()
+            ? session.cleanup() : AppImageContractResult.success();
+        FileSystem.removeRecursive(scratch);
+        return exact && snapshotClosed.ok() && sessionClosed.ok();
+    }
+}
+
+int main(int argc, char** argv) {
+    CliArgs arguments = CliArgs(argc, argv);
+    Vector<string> failures = [];
+    if (arguments.count() != 0) { failures.push("arguments"); }
+    if (!DeckDeploymentContractTest.derivedSlice(
+            "fixture-deck-a", "retroarch", "fixture-package-retroarch")) {
+        failures.push("retroarch-slice");
+    }
+    if (!DeckDeploymentContractTest.derivedSlice(
+            "fixture-deck-b", "dolphin", "fixture-package-dolphin")) {
+        failures.push("dolphin-slice");
+    }
+    if (!DeckDeploymentContractTest.rejectsAggregateAndArtifactMismatch()) {
+        failures.push("slice-identity-rejection");
+    }
+    if (!DeckDeploymentContractTest.descriptorBoundSnapshot()) {
+        failures.push("artifact-snapshot-rebinding");
+    }
+    if (!DeckDeploymentContractTest.proofSchemaAndIdentity()) {
+        failures.push("release-proof-schema-identity");
+    }
+    if (!DeckDeploymentContractTest.proofFileLease()) {
+        failures.push("release-proof-file-lease");
+    }
+    if (!DeckDeploymentContractTest.retainedProofIsImmutable()) {
+        failures.push("retained-release-proof-immutability");
+    }
+    if (DeckDeploymentTransaction.verificationTimeoutMilliseconds()
+            != 43200000) {
+        failures.push("verification-timeout");
+    }
+    bool passed = failures.isEmpty();
+    print(passed
+        ? "deck deployment contract: PASS"
+        : "deck deployment contract: FAIL " + failures.join(","));
+    return passed ? 0 : 1;
+}

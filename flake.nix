@@ -7,7 +7,7 @@
     # dependency, so keep its final packaged toolchain isolated to ES-DE.
     nixpkgsEsDe.url = "github:NixOS/nixpkgs/ac62194c3917d5f474c1a844b6fd6da2db95077d";
     btrc = {
-      url = "github:schiffy91/btrc/codex/production-readiness";
+      url = "github:schiffy91/btrc/main";
       inputs.nixpkgs.follows = "nixpkgs";
     };
     nixGL.url = "github:nix-community/nixGL";

@@ -7,6 +7,12 @@
         "chord": "Ctrl+Q",
         "consumer": "semu-input-supervisor",
         "semantics": "immediate process-group termination"
+      },
+      {
+        "action": "ui.menu",
+        "chord": "Ctrl+M",
+        "consumer": "semu-renderer",
+        "semantics": "renderer-owned semantic menu above game treatment"
       }
     ]
   },
@@ -60,10 +66,6 @@
         "action": "state.load"
       },
       {
-        "setting": "input_menu_toggle",
-        "action": "ui.menu"
-      },
-      {
         "setting": "input_save_state",
         "action": "state.save"
       },
@@ -113,6 +115,7 @@
         "input_autodetect_enable = \"true\"",
         "input_joypad_driver = \"sdl2\"",
         "input_player1_joypad_index = \"0\"",
+        "joypad_autoconfig_dir = \"${asset_root}/share/libretro/autoconfig\"",
         "notification_show_autoconfig = \"false\"",
         "notification_show_autoconfig_fails = \"false\"",
         "network_cmd_enable = \"true\"",
@@ -122,6 +125,7 @@
         "savefile_directory = \"${content_root}/saves\"",
         "screenshot_directory = \"${content_root}/screenshots\"",
         "video_fullscreen = \"true\"",
+        "video_threaded = \"false\"",
         "video_scale_integer = \"true\"",
         "video_force_aspect = \"true\"",
         "video_vsync = \"true\"",

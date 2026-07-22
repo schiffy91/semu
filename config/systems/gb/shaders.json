@@ -1,9 +1,42 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "enabled": true,
   "renderer": true,
-  "screen": "assets/shaders/gb/screen.slangp",
+  "disabled_variant": "none",
+  "default_variant": "dmg",
+  "variants": [
+    {
+      "id": "dmg",
+      "label": "DMG-01 Olive LCD",
+      "screen": "assets/shaders/gb/screen.slangp",
+      "hardware": "DMG-01 reflective STN LCD"
+    },
+    {
+      "id": "pocket",
+      "label": "MGB-001 Pocket LCD",
+      "screen": "assets/shaders/gb/pocket.slangp",
+      "hardware": "MGB-001 reflective STN LCD"
+    }
+  ],
+  "compatibility": {
+    "surfaces": [
+      "main"
+    ],
+    "native": {
+      "w": 160,
+      "h": 144
+    },
+    "aspect": {
+      "w": 10,
+      "h": 9
+    },
+    "fit": "contain",
+    "scaling": {
+      "mode": "integer_preferred",
+      "fallback": "fractional_downscale"
+    }
+  },
   "doc": {
-    "intent": "olive-green DMG ramp, visible dot matrix, restrained STN persistence"
+    "intent": "DMG is the production default: restrained olive response, visible dot matrix, and restrained STN persistence. Pocket is a materially distinct pinned reflective-LCD treatment rather than a recolor of the default. The settings model prepends the explicit disabled variant to this finite list."
   }
 }

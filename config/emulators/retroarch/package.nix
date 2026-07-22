@@ -1,4 +1,4 @@
-# RetroArch source recipes. Linux GL2/GL3 directly link the shared renderer ABI;
+# RetroArch source recipes. Linux glcore directly links the shared renderer ABI;
 # macOS remains a separate Metal build of the same pinned source.
 {
   lib,
@@ -11,6 +11,7 @@
   ffmpeg_7,
   qt6,
   retroarch-bare,
+  btrcpy,
   semuRenderer,
   wrapGAppsHook3,
   libretro,
@@ -24,6 +25,7 @@
 
 let
   packageContract = builtins.fromJSON (builtins.readFile ./package.json);
+  profileContract = builtins.fromJSON (builtins.readFile ./profile.json);
   coreManifest = builtins.fromJSON (builtins.readFile ./cores.json);
   emulatorContract = builtins.fromJSON (builtins.readFile ./emulator.json);
   rendering = (import ../../../packaging/nix/render-hook.nix { inherit lib; }) {
@@ -33,6 +35,20 @@ let
   outputContract = packageContract.outputs;
   renderHook = rendering.hook;
   renderHookEnabled = lib.elem stdenv.hostPlatform.system renderHook.platforms;
+  surfaceModes = rendering.contract.surface_modes;
+  singleMode = lib.findFirst (
+    mode: mode.match == { screen_count = 1; }
+  ) null surfaceModes;
+  verticalMode = lib.findFirst (
+    mode:
+    mode.match
+      == {
+        screen_count = 2;
+        arrangement = "vertical";
+      }
+  ) null surfaceModes;
+  pointerMapping = rendering.contract.integration.pointer_mapping;
+  profileLines = (builtins.head profileContract.files).lines;
   version = packageContract.version;
 
   # ONE pinned source for every platform variant: tag v1.22.2, resolved
@@ -95,6 +111,8 @@ let
       source_url = if sourceIsAttrs then packageSource.url or null else null;
     };
   linuxCoreBuilds = map coreBuildContract linuxCoreResolutions;
+  coreBuildContractPath = packageContract.core_runtime.build_contract;
+  coreBuildContractDirectory = builtins.dirOf coreBuildContractPath;
   completeCoreBuild =
     build:
     builtins.isString build.package_name
@@ -131,12 +149,12 @@ let
       name = "semu-${coreHostId}-cores";
       paths = map (resolution: resolution.package) linuxCoreResolutions;
       postBuild = ''
-        mkdir -p "$out/share/semu"
+        mkdir -p "$out/${coreBuildContractDirectory}"
         cat > "$out/share/semu/core-host-selection.txt" <<'CORES'
         ${lib.concatStringsSep "\n" selectedCoreIds}
         CORES
         printf '%s\n' ${lib.escapeShellArg (builtins.toJSON linuxCoreContract)} \
-          > "$out/share/semu/core-host-build-contract.json"
+          > "$out/${coreBuildContractPath}"
 
         while IFS= read -r core; do
           test -s "$out/lib/retroarch/cores/''${core}_libretro.so" || {
@@ -157,7 +175,7 @@ let
         coreNames = selectedCoreIds;
         coreCount = lib.length selectedCoreIds;
         coreContract = linuxCoreContract;
-        coreContractPath = "share/semu/core-host-build-contract.json";
+        coreContractPath = coreBuildContractPath;
       };
     });
 
@@ -219,22 +237,38 @@ let
   };
 
   statusNullSafetyPatchContract = auxiliaryPatchContracts.status_null_safety;
-  getStatusNullSafetyPatch = fetchurl {
-    url = statusNullSafetyPatchContract.url;
-    name = "retroarch-get-status-null-safety.patch";
-    hash = statusNullSafetyPatchContract.sha256;
+  statusNullSafetyPatch = ./retroarch_get_status_null_safety.patch;
+  statusNullSafetyPatchHash = builtins.convertHash {
+    hash = builtins.hashFile "sha256" statusNullSafetyPatch;
+    hashAlgo = "sha256";
+    toHashFormat = "sri";
   };
 
   semuPatch = rendering.patch;
   semuPatchHash = rendering.patchHash;
+  semuHookDirectory = ../../../src/generators/rendering/retroarch;
+  semuHookSource = lib.fileset.toSource {
+    root = semuHookDirectory;
+    fileset = semuHookDirectory;
+  };
+  semuHookText = builtins.readFile (semuHookDirectory + "/runtime_bridge.btrc")
+    + builtins.readFile (semuHookDirectory + "/surface_contract.btrc");
+  semuHookHash = builtins.convertHash {
+    hash = builtins.hashString "sha256" semuHookText;
+    hashAlgo = "sha256";
+    toHashFormat = "sri";
+  };
   semuDarwinPatch = ./retroarch_darwin.patch;
   semuDarwinPatchHash = builtins.hashFile "sha256" ./retroarch_darwin.patch;
 
   sharedPatches = [
     networkCommandPatch
-    getStatusNullSafetyPatch
+    statusNullSafetyPatch
   ];
   semuPatchText = rendering.patchText;
+  semuPatchLines = lib.splitString "\n" semuPatchText;
+  semuHookLines = lib.splitString "\n" semuHookText;
+  containsLine = fragment: lines: lib.any (line: lib.hasInfix fragment line) lines;
   linuxCoreDirectories = emulatorContract.platforms.linux.core_loader.directories;
   expectedLinuxCoreDirectories = [
     "\${asset_root}/lib/retroarch/cores"
@@ -250,9 +284,10 @@ let
     source_revision = sourceContract.revision;
     source_sha256 = sourceContract.sha256;
     patch_sha256 = if renderHookEnabled then semuPatchHash else semuDarwinPatchHash;
+    hook_source_sha256 = if renderHookEnabled then semuHookHash else null;
     auxiliary_patch_sha256s = {
       network_commands = networkCommandPatchHash;
-      status_null_safety = statusNullSafetyPatchContract.sha256;
+      status_null_safety = statusNullSafetyPatchHash;
     };
     executable =
       if stdenv.hostPlatform.isDarwin then
@@ -278,27 +313,87 @@ let
       && packageContract.core_runtime.environment_search == false
       && packageContract.core_runtime.host_search == false
       && packageContract.core_runtime.directory == "lib/retroarch/cores"
+      && !lib.hasPrefix "/" coreBuildContractPath
+      && !lib.hasInfix ".." coreBuildContractPath
+      && lib.hasSuffix "-build-contract.json" coreBuildContractPath
       && packageContract.core_host.enabled
       && packageContract.core_host.selector_field == "core"
       && packageContract.core_host.implementation_manifest == "cores.json"
       && networkCommandPatchContract.kind == "local_exact"
       && networkCommandPatchContract.file == "retroarch_commands.patch"
       && networkCommandPatchContract.sha256 == networkCommandPatchHash
-      && statusNullSafetyPatchContract.kind == "url_exact"
-      && lib.hasPrefix "sha256-" statusNullSafetyPatchContract.sha256
+      && statusNullSafetyPatchContract.kind == "local_exact"
+      && statusNullSafetyPatchContract.file
+        == "retroarch_get_status_null_safety.patch"
+      && statusNullSafetyPatchContract.sha256 == statusNullSafetyPatchHash
       && coreManifest.schema_version == 1
       && validRuntimeExtras
       && linuxCoreDirectories == expectedLinuxCoreDirectories
     ) "RetroArch and its cores must resolve only from the source-built AppImage slice";
     assert lib.assertMsg (
-      renderHook.frame_gate == "video_info.libretro_running with valid game and viewport geometry"
-      && lib.hasInfix "semu_render_game_gl(&semu_frame);" semuPatchText
-      && lib.hasInfix "semu_render_post_ui_gl(&semu_frame);" semuPatchText
-      && lib.hasInfix "semu_frame_ready = video_info->libretro_running" semuPatchText
-      && lib.hasInfix "SEMU_RENDER_ORIGIN_BOTTOM_LEFT" semuPatchText
-      && lib.hasInfix "including N64 cores, is upright in bottom-left GL space" semuPatchText
-      && !lib.hasInfix "retroarch_get_rotation" semuPatchText
-    ) "RetroArch's renderer patch must implement the direct two-boundary GL ABI";
+      renderHook.abi == 3
+      && renderHook.callbacks == [
+        "get_proc_address"
+        "context_generation"
+      ]
+      && renderHook.context == {
+        driver = "glcore";
+        minimum_glsl = 330;
+        minimum_opengl = "3.3";
+      }
+      && renderHook.frame_gate
+        == "video_info.libretro_running with valid game and viewport geometry; native menu state gates pointer publication but not game treatment"
+      && renderHook.video_threading
+        == "disabled_to_keep_gl_context_creation_rendering_recreation_and_destroy_on_one_owner_thread"
+      && builtins.elem "video_threaded = \"false\"" profileLines
+      && containsLine "semu_render_game_gl(&semu_frame);" semuPatchLines
+      && containsLine "semu_render_post_ui_gl(&semu_frame);" semuPatchLines
+      && containsLine "video_driver_semu_build_frame_gl(&semu_frame" semuPatchLines
+      && containsLine "video_driver_semu_context_created()" semuPatchLines
+      && containsLine "video_driver_semu_context_destroying(" semuPatchLines
+      && containsLine "video_driver_semu_pointer_sample(" semuPatchLines
+      && containsLine "video_driver_semu_pointer_clear(true);" semuPatchLines
+      && containsLine "RARCH_DEVICE_MOUSE_SCREEN" semuPatchLines
+      && containsLine "RETRO_DEVICE_ID_MOUSE_X" semuPatchLines
+      && containsLine "RETRO_DEVICE_ID_MOUSE_Y" semuPatchLines
+      && containsLine "RETRO_DEVICE_ID_MOUSE_LEFT" semuPatchLines
+      && !containsLine "RARCH_DEVICE_POINTER_SCREEN" semuPatchLines
+      && containsLine "SEMU_RENDER_SURFACE_COUNT" semuHookLines
+      && containsLine "frame->context_generation" semuHookLines
+      && containsLine "semu_render_context_invalidate_gl(" semuHookLines
+      && containsLine "SemuRetroArchPointerBridge.sample(" semuHookLines
+      && !containsLine "DeSmuME" semuPatchLines
+      && !containsLine "DeSmuME" semuHookLines
+    ) "RetroArch must expose minimal ABI-3 tap points backed by the strict BTRC hook";
+    assert lib.assertMsg (
+      builtins.length surfaceModes == 2
+      && singleMode != null
+      && singleMode.id == "single"
+      && singleMode.validation == {
+        live_geometry = "positive";
+        native_widths = "independent";
+      }
+      && builtins.length singleMode.surfaces == 1
+      && (builtins.elemAt singleMode.surfaces 0).index == 0
+      && verticalMode != null
+      && verticalMode.id == "dual_vertical"
+      && verticalMode.validation == {
+        live_geometry = "uniform_integer_scale";
+        native_widths = "equal";
+      }
+      && builtins.length verticalMode.surfaces == 2
+      && (builtins.elemAt verticalMode.surfaces 0).index == 0
+      && (builtins.elemAt verticalMode.surfaces 1).index == 1
+      && (builtins.elemAt verticalMode.surfaces 0).id
+        != (builtins.elemAt verticalMode.surfaces 1).id
+      && pointerMapping.surface_id == "SEMU_RENDER_TOUCH_SURFACE_ID"
+      && pointerMapping.surface_index == "SEMU_RENDER_TOUCH_SURFACE_INDEX"
+      && pointerMapping.viewport == "retroarch_absolute_output_mouse"
+      && pointerMapping.coordinates
+        == "absolute_window_pixels_to_libretro_gapless_top_bottom_normalized"
+      && pointerMapping.press_clamp == false
+      && pointerMapping.captured_motion_clamp == true
+    ) "RetroArch must declare compiler-selected single and vertical surface modes";
     (
       (retroarch-bare.override {
         withGamemode = false;
@@ -319,7 +414,8 @@ let
         nativeBuildInputs = lib.subtractLists [
           qt6.wrapQtAppsHook
           wrapGAppsHook3
-        ] (previous.nativeBuildInputs or [ ]);
+        ] (previous.nativeBuildInputs or [ ])
+          ++ lib.optionals renderHookEnabled [ btrcpy ];
 
         dontWrapQtApps = true;
         dontWrapGApps = true;
@@ -329,6 +425,7 @@ let
           "--disable-ffmpeg"
           "--disable-vulkan"
           "--disable-wayland"
+          "--enable-threads"
         ];
 
         patches =
@@ -347,33 +444,87 @@ let
           ''
           + lib.optionalString renderHookEnabled ''
             test -s ${semuRenderer}/include/${renderHook.header}
+            btrcpy ${semuHookSource}/runtime_bridge.btrc \
+              -o gfx/semu_retroarch.c \
+              --strict-imports --no-cache --no-stdlib --no-dce
+            test -s gfx/semu_retroarch.c
+            hook_source=gfx/semu_retroarch.c
+            input_source=input/input_driver.c
             test "$(grep -hF 'semu_render_game_gl(&semu_frame);' \
-              gfx/drivers/gl2.c gfx/drivers/gl3.c | wc -l)" -eq 2
+              gfx/drivers/gl3.c | wc -l)" -eq 1
             test "$(grep -hF 'semu_render_post_ui_gl(&semu_frame);' \
-              gfx/drivers/gl2.c gfx/drivers/gl3.c | wc -l)" -eq 2
-            test "$(grep -hF 'semu_frame_ready = video_info->libretro_running' \
-              gfx/drivers/gl2.c gfx/drivers/gl3.c | wc -l)" -eq 2
-            test "$(grep -hF 'SEMU_RENDER_ORIGIN_BOTTOM_LEFT' \
-              gfx/drivers/gl2.c gfx/drivers/gl3.c | wc -l)" -eq 2
-            test "$(grep -hF 'including N64 cores, is upright in bottom-left GL space' \
-              gfx/drivers/gl2.c gfx/drivers/gl3.c | wc -l)" -eq 2
-            test "$(grep -hF 'surfaces[0].rotation' \
-              gfx/drivers/gl2.c gfx/drivers/gl3.c | wc -l)" -eq 2
-            test "$(grep -hF 'presentation_aspect' \
-              gfx/drivers/gl2.c gfx/drivers/gl3.c | wc -l)" -eq 2
-            test "$(grep -hF 'SEMU_RENDER_LAYOUT_AUTO' \
-              gfx/drivers/gl2.c gfx/drivers/gl3.c | wc -l)" -eq 2
-            for driver in gfx/drivers/gl2.c gfx/drivers/gl3.c; do
+              gfx/drivers/gl3.c | wc -l)" -eq 1
+            test "$(grep -hF 'video_driver_semu_build_frame_gl(&semu_frame,' \
+              gfx/drivers/gl3.c | wc -l)" -eq 1
+            test "$(grep -hF 'video_driver_semu_publish_pointer(' \
+              gfx/drivers/gl3.c | wc -l)" -eq 1
+            ! grep -hFq 'semu_frame.surface' gfx/drivers/gl3.c
+
+            test "$(grep -Fc 'bool video_driver_semu_build_frame_gl(' \
+              "$hook_source")" -eq 2
+            grep -Fq 'getenv("SEMU_RENDER_SURFACE_COUNT")' "$hook_source"
+            grep -Fq 'getenv("SEMU_RENDER_SURFACE_LAYOUT")' "$hook_source"
+            grep -Fq 'getenv("SEMU_RENDER_SURFACE_NATIVE_WIDTH_POLICY")' \
+              "$hook_source"
+            grep -Fq 'getenv("SEMU_RENDER_SURFACE_GEOMETRY_POLICY")' \
+              "$hook_source"
+            grep -Eq 'surface_count[[:space:]]*=[[:space:]]*2' "$hook_source"
+            grep -Eq 'context_generation[[:space:]]*=[[:space:]]*contextGeneration' \
+              "$hook_source"
+            grep -Fq 'semu_render_context_invalidate_gl(contextGeneration)' \
+              "$hook_source"
+            grep -Fq 'surface_index = touchIndex' "$hook_source"
+            grep -Fq 'wasCaptured != 0) ? 1 : 0' "$hook_source"
+            grep -Fq 'SemuRetroArchPointer.map_generation == mapGeneration' \
+              "$hook_source"
+            grep -Fq 'slock_lock(video->display_lock)' "$hook_source"
+            grep -Fq 'slock_lock(video->context_lock)' "$hook_source"
+
+            grep -Fq 'int semu_game_status = SEMU_RENDER_PASSTHROUGH;' \
+              gfx/drivers/gl3.c
+            grep -Fq '(void)semu_render_post_ui_gl(&semu_frame);' \
+              gfx/drivers/gl3.c
+            grep -Fq 'semu_game_status == SEMU_RENDER_APPLIED' \
+              gfx/drivers/gl3.c
+            ! grep -Fq 'semu_post_ui_status' gfx/drivers/gl3.c
+
+            destroy_line="$(grep -nF 'video_driver_semu_context_destroying(' \
+              gfx/drivers/gl3.c | cut -d: -f1 | tail -1)"
+            resources_line="$(grep -nF 'gl3_destroy_resources(gl);' \
+              gfx/drivers/gl3.c | cut -d: -f1 | tail -1)"
+            context_line="$(grep -nF 'gl->ctx_driver->destroy(gl->ctx_data);' \
+              gfx/drivers/gl3.c | cut -d: -f1 | tail -1)"
+            test "$destroy_line" -lt "$resources_line"
+            test "$resources_line" -lt "$context_line"
+
+            test "$(grep -Fc 'static void input_driver_semu_poll_pointer(' \
+              "$input_source")" -eq 1
+            grep -Fq 'RARCH_DEVICE_MOUSE_SCREEN' "$input_source"
+            grep -Fq 'RETRO_DEVICE_ID_MOUSE_X' "$input_source"
+            grep -Fq 'RETRO_DEVICE_ID_MOUSE_Y' "$input_source"
+            grep -Fq 'RETRO_DEVICE_ID_MOUSE_LEFT' "$input_source"
+            ! grep -Fq 'RARCH_DEVICE_POINTER_SCREEN' "$input_source"
+            grep -Fq 'input_driver_semu_poll_pointer(' "$input_source"
+            grep -Fq 'video_driver_semu_pointer_snapshot(' "$input_source"
+            ! grep -Fq 'DeSmuME' "$hook_source" "$input_source"
+            for driver in gfx/drivers/gl3.c; do
               game_line="$(grep -nF 'semu_render_game_gl(&semu_frame);' "$driver" | cut -d: -f1)"
+              completed_draw='gl3_filter_chain_end_frame'
+              completed_line="$(grep -nF "$completed_draw" "$driver" | \
+                awk -F: -v game="$game_line" '$1 < game { line = $1 } END { print line }')"
               menu_line="$(grep -nF 'menu_driver_frame(menu_is_alive, video_info);' "$driver" | cut -d: -f1)"
               widget_line="$(grep -nF 'gfx_widgets_frame(video_info);' "$driver" | cut -d: -f1)"
               post_line="$(grep -nF 'semu_render_post_ui_gl(&semu_frame);' "$driver" | cut -d: -f1)"
+              publish_line="$(grep -nF 'video_driver_semu_publish_pointer(' "$driver" | cut -d: -f1)"
               swap_line="$(grep -nF 'ctx_driver->swap_buffers' "$driver" | \
-                awk -F: -v post="$post_line" '$1 > post { print $1; exit }')"
+                awk -F: -v publish="$publish_line" '$1 > publish { print $1; exit }')"
+              test -n "$completed_line"
+              test "$completed_line" -lt "$game_line"
               test "$game_line" -lt "$menu_line"
               test "$menu_line" -lt "$widget_line"
               test "$widget_line" -lt "$post_line"
-              test "$post_line" -lt "$swap_line"
+              test "$post_line" -lt "$publish_line"
+              test "$publish_line" -lt "$swap_line"
             done
           '';
 

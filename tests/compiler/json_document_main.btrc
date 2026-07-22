@@ -1,0 +1,11 @@
+// json_document_main.btrc - isolated strict JSON document contract entrypoint.
+
+import std.{cli, fs}
+import ./json_document_contract_test.btrc
+
+int main(int argc, char** argv) {
+    CliArgs arguments = CliArgs(argc, argv);
+    string project = arguments.valueAfter(
+        "--project", FileSystem.currentDirectory());
+    return JsonDocumentContractTest.run(project) == 0 ? 0 : 1;
+}

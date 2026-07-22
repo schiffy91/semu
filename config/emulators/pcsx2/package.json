@@ -16,6 +16,12 @@
   "graphics_apis": [
     "opengl"
   ],
+  "patches": [
+    {
+      "file": "system-cubeb.patch",
+      "sha256": "9da95181d132aaefc4b842f7e353e42103bf28791b3db618c3a6ab320657d837"
+    }
+  ],
   "outputs": {
     "main_program": "bin/pcsx2-qt",
     "linked_program": "bin/.pcsx2-qt-wrapped",

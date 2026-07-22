@@ -1,0 +1,300 @@
+// Compiler-derived presentation choices for physical Deck acceptance.
+
+import std.{json, vector}
+import ../../../src/lib/rendering_definition.btrc
+
+class DeckPresentationMatrix {
+    class bool identifier(string value) {
+        if (value.isEmpty() || value.len() > 160) { return false; }
+        for character in value {
+            bool lower = character >= 'a' && character <= 'z';
+            bool digit = character >= '0' && character <= '9';
+            if (!lower && !digit && character != '-' && character != '_') {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    class bool sha256(string value) {
+        if (value.len() != 64) { return false; }
+        for character in value {
+            bool digit = character >= '0' && character <= '9';
+            bool lower = character >= 'a' && character <= 'f';
+            if (!digit && !lower) { return false; }
+        }
+        return true;
+    }
+
+    class string text(JsonValue value, string path) {
+        return SemuRenderingDefinition.text(value, path);
+    }
+
+    class string assetHash(JsonValue manifest, string path) {
+        if (!SemuRenderingDefinition.assetDeclared(manifest, path)) {
+            return "";
+        }
+        JsonValue digestValue = manifest.get("assets").get(path)
+            .get("output").get("sha256");
+        string digest = digestValue.isString()
+            ? digestValue.asString() : "";
+        return DeckPresentationMatrix.sha256(digest) ? digest : "";
+    }
+
+    class JsonValue choice(string kind, string id, string file,
+                           string digest, bool enabled) {
+        string root = kind.equals("shader")
+            ? "assets/shaders/" : "assets/bezels/";
+        if ((!kind.equals("shader") && !kind.equals("bezel"))
+                || !DeckPresentationMatrix.identifier(id)
+                || enabled == id.equals("none")
+                || (enabled && (!file.startsWith(root)
+                    || !DeckPresentationMatrix.sha256(digest)))
+                || (!enabled
+                    && (!file.equals("none") || !digest.isEmpty()))) {
+            return JsonValue.makeError();
+        }
+        JsonValue result = JsonValue.makeObject();
+        result.set("id", JsonValue.makeString(id));
+        result.set("file", JsonValue.makeString(file));
+        result.set("sha256", JsonValue.makeString(digest));
+        result.set("enabled", JsonValue.makeBool(enabled));
+        return result;
+    }
+
+    class JsonValue find(JsonValue values, string field, string identity) {
+        JsonValue result = JsonValue.makeNull();
+        int matches = 0;
+        if (!values.isArray() || identity.isEmpty()) {
+            return JsonValue.makeError();
+        }
+        for (int index = 0; index < values.size(); index++) {
+            if (DeckPresentationMatrix.text(
+                    values.at(index), field).equals(identity)) {
+                result = values.at(index);
+                matches++;
+            }
+        }
+        return matches == 1 ? result : JsonValue.makeError();
+    }
+
+    class JsonValue choices(JsonValue definition, JsonValue manifest,
+                            string kind) {
+        if (!definition.isObject()
+                || (!kind.equals("shader") && !kind.equals("bezel"))) {
+            return JsonValue.makeError();
+        }
+        JsonValue result = JsonValue.makeArray();
+        result.push(DeckPresentationMatrix.choice(
+            kind, "none", "none", "", false));
+        if (!SemuRenderingDefinition.boolean(
+                definition, "enabled", false)) {
+            return result;
+        }
+
+        string field = kind.equals("shader") ? "screen" : "art";
+        JsonValue variants = SemuRenderingDefinition.at(
+            definition, "variants");
+        Vector<string> ids = ["none"];
+        Vector<string> files = ["none"];
+        if (variants.isArray()) {
+            for (int index = 0; index < variants.size(); index++) {
+                JsonValue declared = variants.at(index);
+                string id = DeckPresentationMatrix.text(declared, "id");
+                string file = DeckPresentationMatrix.text(declared, field);
+                JsonValue resolved = SemuRenderingDefinition.variant(
+                    definition, id);
+                JsonValue choice = DeckPresentationMatrix.choice(
+                    kind, id, file,
+                    DeckPresentationMatrix.assetHash(manifest, file), true);
+                if (!resolved.isObject() || ids.contains(id)
+                        || files.contains(file) || choice.isError()) {
+                    return JsonValue.makeError();
+                }
+                result.push(choice);
+                ids.push(id);
+                files.push(file);
+            }
+            string selected = DeckPresentationMatrix.text(
+                definition, "default_variant");
+            if (selected.isEmpty()
+                    || DeckPresentationMatrix.find(
+                        result, "id", selected).isError()) {
+                return JsonValue.makeError();
+            }
+            return result;
+        }
+
+        string file = DeckPresentationMatrix.text(definition, field);
+        JsonValue fallback = DeckPresentationMatrix.choice(
+            kind, "default", file,
+            DeckPresentationMatrix.assetHash(manifest, file), true);
+        if (fallback.isError()) { return fallback; }
+        result.push(fallback);
+        return result;
+    }
+
+    class JsonValue catalog(JsonValue shaders, JsonValue bezels,
+                            JsonValue shaderManifest,
+                            JsonValue bezelManifest) {
+        JsonValue shaderChoices = DeckPresentationMatrix.choices(
+            shaders, shaderManifest, "shader");
+        JsonValue bezelChoices = DeckPresentationMatrix.choices(
+            bezels, bezelManifest, "bezel");
+        if (shaderChoices.isError() || bezelChoices.isError()) {
+            return JsonValue.makeError();
+        }
+        JsonValue integerModes = JsonValue.makeArray();
+        integerModes.push(JsonValue.makeBool(false));
+        integerModes.push(JsonValue.makeBool(true));
+        JsonValue result = JsonValue.makeObject();
+        result.set("shaders", shaderChoices);
+        result.set("bezels", bezelChoices);
+        result.set("integer_scaling", integerModes);
+        result.set("case_count", JsonValue.makeInt(
+            shaderChoices.size() * bezelChoices.size()
+                * integerModes.size()));
+        return result;
+    }
+
+    class string caseId(JsonValue shader, JsonValue bezel,
+                        bool integerScaling) {
+        return "shader-" + DeckPresentationMatrix.text(shader, "id")
+            + "__bezel-" + DeckPresentationMatrix.text(bezel, "id")
+            + "__integer-" + (integerScaling ? "on" : "off");
+    }
+
+    class JsonValue presentationCase(JsonValue shader, JsonValue bezel,
+                                     bool integerScaling) {
+        JsonValue result = JsonValue.makeObject();
+        result.set("id", JsonValue.makeString(
+            DeckPresentationMatrix.caseId(
+                shader, bezel, integerScaling)));
+        result.set("shader_id", shader.get("id"));
+        result.set("shader_file", shader.get("file"));
+        result.set("shader_sha256", shader.get("sha256"));
+        result.set("shader_enabled", shader.get("enabled"));
+        result.set("bezel_id", bezel.get("id"));
+        result.set("bezel_file", bezel.get("file"));
+        result.set("bezel_sha256", bezel.get("sha256"));
+        result.set("bezel_enabled", bezel.get("enabled"));
+        result.set("integer_scaling", JsonValue.makeBool(integerScaling));
+        return result;
+    }
+
+    class JsonValue cases(JsonValue catalog) {
+        JsonValue shaders = catalog.get("shaders");
+        JsonValue bezels = catalog.get("bezels");
+        JsonValue integers = catalog.get("integer_scaling");
+        JsonValue result = JsonValue.makeArray();
+        if (!shaders.isArray() || !bezels.isArray()
+                || !integers.isArray()) {
+            return JsonValue.makeError();
+        }
+        for (int shader = 0; shader < shaders.size(); shader++) {
+            for (int bezel = 0; bezel < bezels.size(); bezel++) {
+                for (int integer = 0; integer < integers.size(); integer++) {
+                    if (!integers.at(integer).isBool()) {
+                        return JsonValue.makeError();
+                    }
+                    result.push(DeckPresentationMatrix.presentationCase(
+                        shaders.at(shader), bezels.at(bezel),
+                        integers.at(integer).asBool()));
+                }
+            }
+        }
+        return DeckPresentationMatrix.exactCases(result, catalog)
+            ? result : JsonValue.makeError();
+    }
+
+    class bool exactCases(JsonValue cases, JsonValue catalog) {
+        JsonValue shaders = catalog.get("shaders");
+        JsonValue bezels = catalog.get("bezels");
+        JsonValue integers = catalog.get("integer_scaling");
+        if (!cases.isArray() || !shaders.isArray() || !bezels.isArray()
+                || !integers.isArray() || !catalog.get("case_count").isInt()
+                || cases.size() != catalog.get("case_count").asInt()
+                || cases.size()
+                    != shaders.size() * bezels.size() * integers.size()) {
+            return false;
+        }
+        Vector<string> ids = [];
+        for (int index = 0; index < cases.size(); index++) {
+            JsonValue value = cases.at(index);
+            string id = DeckPresentationMatrix.text(value, "id");
+            if (!DeckPresentationMatrix.identifier(id)
+                    || ids.contains(id)
+                    || !value.get("integer_scaling").isBool()) {
+                return false;
+            }
+            JsonValue shader = DeckPresentationMatrix.find(
+                shaders, "id",
+                DeckPresentationMatrix.text(value, "shader_id"));
+            JsonValue bezel = DeckPresentationMatrix.find(
+                bezels, "id",
+                DeckPresentationMatrix.text(value, "bezel_id"));
+            bool integerScaling = value.get("integer_scaling").asBool();
+            if (shader.isError() || bezel.isError()
+                    || !id.equals(DeckPresentationMatrix.caseId(
+                        shader, bezel, integerScaling))
+                    || !value.get("shader_file").stringify().equals(
+                        shader.get("file").stringify())
+                    || !value.get("shader_sha256").stringify().equals(
+                        shader.get("sha256").stringify())
+                    || !value.get("shader_enabled").stringify().equals(
+                        shader.get("enabled").stringify())
+                    || !value.get("bezel_file").stringify().equals(
+                        bezel.get("file").stringify())
+                    || !value.get("bezel_sha256").stringify().equals(
+                        bezel.get("sha256").stringify())
+                    || !value.get("bezel_enabled").stringify().equals(
+                        bezel.get("enabled").stringify())) {
+                return false;
+            }
+            ids.push(id);
+        }
+        return true;
+    }
+
+    class string productionDefaultId(JsonValue catalog,
+                                     JsonValue shaders,
+                                     JsonValue bezels,
+                                     JsonValue settings,
+                                     string systemId) {
+        string prefix = "visual.systems." + systemId + ".";
+        bool shaderRequested = SemuRenderingDefinition.boolean(
+                shaders, "enabled", false)
+            && SemuRenderingDefinition.boolean(
+                settings, "visual.crt_shaders", true)
+            && SemuRenderingDefinition.boolean(
+                settings, prefix + "shaders", true);
+        string shaderFile = SemuRenderingDefinition.text(
+            settings, prefix + "shader_file",
+            SemuRenderingDefinition.defaultShaderScreen(shaders));
+        string shaderId = shaderRequested
+            ? SemuRenderingDefinition.shaderVariantId(shaders, shaderFile)
+            : "none";
+        if (shaderId.isEmpty()) { return ""; }
+
+        bool bezelRequested = SemuRenderingDefinition.boolean(
+                bezels, "enabled", false)
+            && SemuRenderingDefinition.boolean(
+                settings, "visual.bezels", true)
+            && SemuRenderingDefinition.boolean(
+                settings, prefix + "bezels", true);
+        string bezelId = bezelRequested
+            ? SemuRenderingDefinition.text(settings,
+                prefix + "bezel_variant",
+                SemuRenderingDefinition.text(
+                    bezels, "default_variant", "none"))
+            : "none";
+        JsonValue shader = DeckPresentationMatrix.find(
+            catalog.get("shaders"), "id", shaderId);
+        JsonValue bezel = DeckPresentationMatrix.find(
+            catalog.get("bezels"), "id", bezelId);
+        if (shader.isError() || bezel.isError()) { return ""; }
+        return DeckPresentationMatrix.caseId(
+            shader, bezel, SemuRenderingDefinition.boolean(
+                settings, "visual.integer_scaling", true));
+    }
+}

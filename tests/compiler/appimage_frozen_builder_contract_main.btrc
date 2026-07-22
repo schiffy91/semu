@@ -1,0 +1,251 @@
+// Executable contract for the frozen-source/builder-repository host boundary.
+
+import std.{cli, fs, platform, process}
+import ../../src/generators/appimage/contract.btrc
+import ../../src/generators/appimage/linux_worker.btrc
+import ../../src/generators/appimage/release_proof_bundle.btrc
+import ../../src/generators/appimage/work_session.btrc
+
+class AppImageFrozenBuilderContract {
+    class string packageAttribute() {
+        return "steamdeck-runtime-retroarch";
+    }
+
+    class bool runGit(string directory, string operation,
+                      string argument = "", string value = "") {
+        var arguments = ["-C", directory, operation];
+        if (!argument.isEmpty()) { arguments.push(argument); }
+        if (!value.isEmpty()) { arguments.push(value); }
+        return ChildProcess.run("git", arguments,
+            timeoutMilliseconds=30000,
+            maxStdoutBytes=1048576,
+            maxStderrBytes=1048576,
+            stdout=CommandOutput.collect(),
+            stderr=CommandOutput.collect()).ok();
+    }
+
+    class bool prepareBuilder(string builder, string remote) {
+        bool initialized = FileSystem.mkdirp(
+                PathTools.join(builder, "config")) == 0
+            && FileSystem.mkdirp(PathTools.join(builder, "build")) == 0
+            && FileSystem.writeText(PathTools.join(builder, ".gitignore"),
+                "build/\n")
+            && FileSystem.writeText(
+                PathTools.join(builder, "config/fixture.json"), "{}\n")
+            && ChildProcess.run("git", ["init", "--bare", remote],
+                timeoutMilliseconds=30000,
+                maxStdoutBytes=1048576,
+                maxStderrBytes=1048576,
+                stdout=CommandOutput.collect(),
+                stderr=CommandOutput.collect()).ok()
+            && ChildProcess.run("git", ["init", builder],
+                timeoutMilliseconds=30000,
+                maxStdoutBytes=1048576,
+                maxStderrBytes=1048576,
+                stdout=CommandOutput.collect(),
+                stderr=CommandOutput.collect()).ok()
+            && AppImageFrozenBuilderContract.runGit(
+                builder, "config", "user.name", "Semu Contract")
+            && AppImageFrozenBuilderContract.runGit(
+                builder, "config", "user.email", "semu-contract@example.invalid")
+            && AppImageFrozenBuilderContract.runGit(
+                builder, "config", "commit.gpgsign", "false")
+            && AppImageFrozenBuilderContract.runGit(builder, "add", ".")
+            && AppImageFrozenBuilderContract.runGit(
+                builder, "commit", "-m", "fixture");
+        if (!initialized) { return false; }
+        ExecResult remoteAdded = ChildProcess.run("git", [
+            "-C", builder, "remote", "add", "origin", remote
+        ], timeoutMilliseconds=30000,
+            maxStdoutBytes=1048576,
+            maxStderrBytes=1048576,
+            stdout=CommandOutput.collect(),
+            stderr=CommandOutput.collect());
+        ExecResult pushed = remoteAdded.ok() ? ChildProcess.run("git", [
+            "-C", builder, "push", "--set-upstream", "origin", "HEAD"
+        ], timeoutMilliseconds=30000,
+            maxStdoutBytes=1048576,
+            maxStderrBytes=1048576,
+            stdout=CommandOutput.collect(),
+            stderr=CommandOutput.collect())
+            : remoteAdded;
+        return pushed.ok();
+    }
+
+    class AppImagePathPlan ownershipPlan(
+            string frozen, string generation, string publication) {
+        AppImagePathPlan plan = AppImagePathPlan();
+        plan.valid = true;
+        plan.repoRoot = frozen;
+        plan.runtimeRoot = generation;
+        plan.runtimePublication = publication;
+        return plan;
+    }
+
+    class bool prepareRuntimeOwnership(
+            string cache, string generation, string publication,
+            string builder) {
+        string markers = PathTools.join(cache, "metadata/generations");
+        string cacheMarker = PathTools.join(
+            cache, ".semu-appimage-runtime-cache-v1");
+        string generationMarker = PathTools.join(
+            markers, "runtime.fixture.owner");
+        string proof = PathTools.join(
+            markers, "runtime.fixture.nix-proof.json");
+        return FileSystem.mkdirp(generation) == 0
+            && FileSystem.mkdirp(markers) == 0
+            && FileSystem.writeText(PathTools.join(cache, "build.lock"), "")
+            && FileSystem.writeText(cacheMarker,
+                AppImageRuntimeOwnershipLease.cacheDocument(
+                    cache, builder,
+                    AppImageFrozenBuilderContract.packageAttribute()))
+            && FileSystem.writeText(generationMarker,
+                AppImageRuntimeOwnershipLease.generationDocument(
+                    cache, generation, builder,
+                    AppImageFrozenBuilderContract.packageAttribute()))
+            && FileSystem.writeText(proof, "{}\n")
+            && FileSystem.chmod(cacheMarker, 384) == 0 // 0600
+            && FileSystem.chmod(generationMarker, 384) == 0 // 0600
+            && FileSystem.chmod(proof, 292) == 0 // 0444
+            && FileSystem.symlink(generation, publication) == 0;
+    }
+
+    class int child(CliCommandLine command) {
+        string builder = command.option("--builder", "");
+        string frozen = command.option("--frozen", "");
+        string publication = command.option("--runtime-root", "");
+        string artifact = command.option("--artifact", "");
+        AppImageRuntimeLease runtime = AppImageRuntimeLease();
+        runtime.builderRepository = builder;
+        runtime.nixProof.sourceStorePath = frozen;
+        return AppImageLinuxWorker.run(
+            runtime, builder, publication, "steam-deck", "retroarch",
+            artifact, false, false);
+    }
+
+    class int gitShim(CliArgs arguments) {
+        string logRoot = Environment.get(
+            "SEMU_FROZEN_BUILDER_GIT_LOG", "");
+        string repository = arguments.valueAfter("-C", "");
+        string log = arguments.has("status") ? "status"
+            : arguments.has("HEAD^{commit}") ? "head"
+            : arguments.has("@{upstream}^{commit}") ? "upstream" : "";
+        if (logRoot.isEmpty() || repository.isEmpty() || log.isEmpty()
+                || !FileSystem.writeText(
+                    PathTools.join(logRoot, log), repository + "\n")) {
+            return 91;
+        }
+        if (!log.equals("status")) {
+            print("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+        }
+        return 0;
+    }
+
+    class int run(string program) {
+        string scratch = FileSystem.tempDir("semu-frozen-builder-contract");
+        if (scratch.isEmpty()) {
+            print("frozen-builder contract: cannot create fixture root");
+            return 1;
+        }
+        string frozen = PathTools.join(scratch, "frozen-source");
+        string builder = PathTools.join(scratch, "builder-repository");
+        string remote = PathTools.join(scratch, "builder-upstream.git");
+        string cache = PathTools.join(scratch, "runtime-cache");
+        string generation = PathTools.join(
+            cache, "generations/runtime.fixture");
+        string publication = PathTools.join(cache, "runtime-root");
+        string artifact = PathTools.join(builder, "build/Semu.AppImage");
+        string shimRoot = PathTools.join(scratch, "host-command-shim");
+        string gitLog = PathTools.join(scratch, "git-log");
+        bool prepared = FileSystem.mkdirp(frozen) == 0
+            && AppImageFrozenBuilderContract.prepareBuilder(builder, remote)
+            && AppImageFrozenBuilderContract.prepareRuntimeOwnership(
+                cache, generation, publication, builder)
+            && FileSystem.mkdirp(shimRoot) == 0
+            && FileSystem.mkdirp(gitLog) == 0
+            && FileSystem.symlink(
+                FileSystem.absolutePath(program),
+                PathTools.join(shimRoot, "git")) == 0;
+        if (!prepared) {
+            FileSystem.removeRecursive(scratch);
+            print("frozen-builder contract: fixture setup failed");
+            return 1;
+        }
+
+        AppImageSourceRevision builderRevision =
+            AppImageSourceRevision.capture(builder);
+        AppImageSourceRevision frozenRevision =
+            AppImageSourceRevision.capture(frozen);
+        AppImagePathPlan plan =
+            AppImageFrozenBuilderContract.ownershipPlan(
+                frozen, generation, publication);
+        AppImageRuntimeOwnershipLease ownership =
+            AppImageRuntimeOwnershipLease.acquire(
+                plan, AppImageFrozenBuilderContract.packageAttribute(),
+                builder);
+        bool distinctOwnership = ownership.ok() && ownership.stillBound();
+        ownership.closeDescriptors();
+        AppImageRuntimeOwnershipLease wrongOwner =
+            AppImageRuntimeOwnershipLease.acquire(
+                plan, AppImageFrozenBuilderContract.packageAttribute(),
+                frozen);
+        bool wrongOwnerRejected = !wrongOwner.ok();
+        wrongOwner.closeDescriptors();
+
+        string oldPath = Environment.get("PATH", "");
+        bool shimmed = setenv("PATH", shimRoot + ":" + oldPath, 1) == 0
+            && setenv("SEMU_FROZEN_BUILDER_GIT_SHIM", "1", 1) == 0
+            && setenv("SEMU_FROZEN_BUILDER_GIT_LOG", gitLog, 1) == 0;
+        ExecResult boundary = ChildProcess.run(program, [
+            "--boundary-child",
+            "--builder", builder,
+            "--frozen", frozen,
+            "--runtime-root", publication,
+            "--artifact", artifact
+        ], timeoutMilliseconds=30000,
+            maxStdoutBytes=1048576,
+            maxStderrBytes=1048576,
+            stdout=CommandOutput.collect(),
+            stderr=CommandOutput.collect());
+        setenv("PATH", oldPath, 1);
+        unsetenv("SEMU_FROZEN_BUILDER_GIT_SHIM");
+        unsetenv("SEMU_FROZEN_BUILDER_GIT_LOG");
+        string boundaryOutput = boundary.stdout().trim();
+        bool gitStayedOnBuilder = shimmed
+            && FileSystem.readText(PathTools.join(gitLog, "status")).trim()
+                .equals(builder)
+            && FileSystem.readText(PathTools.join(gitLog, "head")).trim()
+                .equals(builder)
+            && FileSystem.readText(PathTools.join(gitLog, "upstream")).trim()
+                .equals(builder);
+        bool exact = !builder.equals(frozen)
+            && !FileStatus(PathTools.join(frozen, ".git")).linkFound
+            && FileStatus(PathTools.join(builder, ".git")).isDir()
+            && builderRevision.ok() && !frozenRevision.ok()
+            && distinctOwnership && wrongOwnerRejected
+            && boundary.code == 2
+            && gitStayedOnBuilder;
+        FileSystem.removeRecursive(scratch);
+        if (!exact) {
+            print("frozen-builder contract: host boundary conflated frozen source and builder repository");
+            print("frozen-builder contract detail: " + boundaryOutput);
+            return 1;
+        }
+        print("appimage frozen-builder contract: PASS");
+        return 0;
+    }
+}
+
+int main(int argc, char** argv) {
+    CliArgs arguments = CliArgs(argc, argv);
+    if (PathTools.basename(arguments.program).equals("git")
+            && Environment.get(
+                "SEMU_FROZEN_BUILDER_GIT_SHIM", "0").equals("1")) {
+        return AppImageFrozenBuilderContract.gitShim(arguments);
+    }
+    if (arguments.has("--boundary-child")) {
+        return AppImageFrozenBuilderContract.child(
+            CliCommandLine.parseFrom(arguments, 1));
+    }
+    return AppImageFrozenBuilderContract.run(arguments.program);
+}

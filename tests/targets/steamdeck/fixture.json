@@ -15,33 +15,46 @@
       "scenario": "unattended",
       "evidence_class": "diagnostic",
       "input_origin": "none",
+      "proof_mode": "diagnostic-observation",
       "acceptance_eligible": false
     },
     {
       "scenario": "steam-shortcut-launch",
       "evidence_class": "automated-hardware-path",
       "input_origin": "none",
+      "proof_mode": "diagnostic-observation",
       "acceptance_eligible": false
     },
     {
       "scenario": "automated-game-mode",
       "evidence_class": "automated-hardware-path",
       "input_origin": "synthetic-uinput",
+      "proof_mode": "virtual-automation",
       "acceptance_eligible": false
     },
     {
       "scenario": "operator-start-select",
       "evidence_class": "human-physical",
       "input_origin": "human",
+      "proof_mode": "live-human-observation",
       "acceptance_eligible": true
     },
     {
       "scenario": "operator-radial",
       "evidence_class": "human-physical",
       "input_origin": "human",
+      "proof_mode": "live-human-observation",
       "acceptance_eligible": true
     }
   ],
+  "run_evidence": {
+    "run_id": "0123456789abcdef0123456789abcdef",
+    "other_run_id": "fedcba9876543210fedcba9876543210",
+    "harness_revision": "2222222222222222222222222222222222222222",
+    "artifact_sha256": "3333333333333333333333333333333333333333333333333333333333333333",
+    "request_sha256": "4444444444444444444444444444444444444444444444444444444444444444",
+    "started_ns": "1784500000000000000"
+  },
   "automation": {
     "device": "/dev/uinput",
     "input_origin": "synthetic-uinput",

@@ -65,8 +65,6 @@ let
     _Static_assert(offsetof(SemuRenderPointerResult, native_y) == 52, "result tail");
 
     _Static_assert(sizeof(SemuRenderGetProc) == sizeof(void*), "get-proc pointer size");
-    _Static_assert(sizeof(SemuRenderCurrentContext) == sizeof(void*),
-      "context pointer size");
     _Static_assert(sizeof(SemuRenderMapPointer) == sizeof(void*),
       "map callback pointer size");
     _Static_assert(sizeof(SemuRenderFrameGl) == 232, "frame size");
@@ -87,8 +85,8 @@ let
       "surface count");
     _Static_assert(offsetof(SemuRenderFrameGl, surfaces) == 44, "surfaces");
     _Static_assert(offsetof(SemuRenderFrameGl, get_proc) == 112, "get-proc callback");
-    _Static_assert(offsetof(SemuRenderFrameGl, current_context) == 120,
-      "context callback");
+    _Static_assert(offsetof(SemuRenderFrameGl, context_generation) == 120,
+      "context generation");
     _Static_assert(offsetof(SemuRenderFrameGl, pointer_map) == 128, "pointer map");
     _Static_assert(offsetof(SemuRenderFrameGl, map_pointer) == 224,
       "map callback");
@@ -101,10 +99,6 @@ let
 
     static void* missing_proc(const char* name) {
       (void)name;
-      return NULL;
-    }
-
-    static void* no_context(void) {
       return NULL;
     }
 
@@ -152,7 +146,7 @@ let
       frame->surfaces[0].native_height = 1;
       frame->surfaces[0].origin = SEMU_RENDER_ORIGIN_BOTTOM_LEFT;
       frame->get_proc = missing_proc;
-      frame->current_context = no_context;
+      frame->context_generation = 0;
       int status = semu_render_game_gl(frame);
       if (status != SEMU_RENDER_NO_CONTEXT
           || frame->pointer_map.abi != SEMU_RENDER_ABI_GL
@@ -177,12 +171,14 @@ let
     }
 
     int main(void) {
+      semu_render_context_invalidate_gl(1);
+      semu_render_context_invalidate_gl(1);
       if (!reject_undersized_without_writes()) {
-        fputs("undersized ABI-2 frame mutated caller storage\n", stderr);
+        fputs("undersized ABI-3 frame mutated caller storage\n", stderr);
         return 1;
       }
       if (!exact_frame_publishes_callback_tail()) {
-        fputs("exact ABI-2 frame callback tail failed\n", stderr);
+        fputs("exact ABI-3 frame callback tail failed\n", stderr);
         return 2;
       }
       return 0;
@@ -194,7 +190,7 @@ let
 in
 stdenv.mkDerivation {
   pname = "semu-renderer";
-  version = "2";
+  version = "3";
   src = rendererSource;
 
   dontConfigure = true;
@@ -220,6 +216,7 @@ stdenv.mkDerivation {
       cat > exports.map <<'MAP'
       {
         global:
+          semu_render_context_invalidate_gl;
           semu_render_game_gl;
           semu_render_post_ui_gl;
         local: *;
@@ -243,6 +240,7 @@ stdenv.mkDerivation {
     ${lib.optionalString stdenv.hostPlatform.isDarwin ''
       $CC -dynamiclib -Wl,-undefined,error \
         -Wl,-install_name,$out/lib/libsemurenderer.dylib \
+        -Wl,-exported_symbol,_semu_render_context_invalidate_gl \
         -Wl,-exported_symbol,_semu_render_game_gl \
         -Wl,-exported_symbol,_semu_render_post_ui_gl \
         semu_renderer.o \
@@ -268,10 +266,11 @@ stdenv.mkDerivation {
     cat > "$out/share/semu/renderer-contract.json" <<'JSON'
     {
       "schema_version": 1,
-      "abi": 2,
+      "abi": 3,
       "header": "include/semu_renderer.h",
       "library": "lib/${libraryName}",
       "exports": [
+        "semu_render_context_invalidate_gl",
         "semu_render_game_gl",
         "semu_render_post_ui_gl"
       ],
@@ -299,8 +298,9 @@ stdenv.mkDerivation {
   installCheckPhase = ''
     test -s "$out/include/semu_renderer.h"
     test -s "$out/lib/${libraryName}"
-    grep -Fq '#define SEMU_RENDER_ABI_GL 2u' \
+    grep -Fq '#define SEMU_RENDER_ABI_GL 3u' \
       "$out/include/semu_renderer.h"
+    grep -Fq 'semu_render_context_invalidate_gl' "$out/include/semu_renderer.h"
     grep -Fq 'semu_render_game_gl' "$out/include/semu_renderer.h"
     grep -Fq 'semu_render_post_ui_gl' "$out/include/semu_renderer.h"
     grep -Fq '"scope": "semantic_game_surfaces"' \
@@ -317,21 +317,23 @@ stdenv.mkDerivation {
       "$out/bin/semu-input-supervisor" --self-test
       nm -D --defined-only "$out/lib/libsemurenderer.so" \
         | awk '{ print $3 }' | sort > actual-exports
-      printf '%s\n' semu_render_game_gl semu_render_post_ui_gl \
+      printf '%s\n' semu_render_context_invalidate_gl \
+        semu_render_game_gl semu_render_post_ui_gl \
         | sort > expected-exports
       cmp expected-exports actual-exports
     ''}
     ${lib.optionalString stdenv.hostPlatform.isDarwin ''
       nm -gU "$out/lib/libsemurenderer.dylib" \
         | awk '{ print $3 }' | sed 's/^_//' | sort > actual-exports
-      printf '%s\n' semu_render_game_gl semu_render_post_ui_gl \
+      printf '%s\n' semu_render_context_invalidate_gl \
+        semu_render_game_gl semu_render_post_ui_gl \
         | sort > expected-exports
       cmp expected-exports actual-exports
     ''}
   '';
 
   passthru = {
-    abi = 2;
+    abi = 3;
     header = rendererHeader;
     inherit libraryName;
   };

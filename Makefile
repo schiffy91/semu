@@ -14,7 +14,9 @@ SEMU_BIN := build/semu
 NIX_RESULT := build/nix/result
 
 .PHONY: btrc-build cross-linux nix-build target configs emulator \
-	appimage-runtime appimage-build appimage-verify steamdeck bazzite help
+	appimage-runtime appimage-build appimage-verify \
+	appimage-emulator-runtime appimage-emulator-build \
+	appimage-emulator-verify steamdeck steamdeck-emulator bazzite help
 
 btrc-build: $(SEMU_BIN) ## Build the BTRC semu CLI
 
@@ -54,32 +56,67 @@ emulator: $(SEMU_BIN) ## Compile EMULATOR for TARGET
 
 # The shippable x86_64 AppImage is assembled by the compiler from an immutable
 # runtime root; packaging policy remains in BTRC and Nix.
-APPIMAGE_OUTPUT := $(CURDIR)/build/Semu-x86_64.AppImage
+APPIMAGE_PACKAGE_ATTRIBUTE ?= steamdeck-runtime
+APPIMAGE_EMULATOR ?=
+APPIMAGE_OUTPUT ?= $(CURDIR)/build/Semu-x86_64.AppImage
+APPIMAGE_EMULATOR_OPTION = $(if $(strip $(APPIMAGE_EMULATOR)),--emulator "$(APPIMAGE_EMULATOR)",)
 APPIMAGE_WORK_OPTION = $(if $(strip $(SEMU_APPIMAGE_WORK_ROOT)),--work-root "$(SEMU_APPIMAGE_WORK_ROOT)",)
 ifeq ($(origin SEMU_APPIMAGE_RUNTIME_ROOT),undefined)
-SEMU_APPIMAGE_RUNTIME_ROOT := $(HOME)/.cache/semu/appimage-runtime/runtime-root
-APPIMAGE_RUNTIME_COMMAND = packaging/appimage/build_runtime.sh "$(SEMU_APPIMAGE_RUNTIME_ROOT)"
+SEMU_APPIMAGE_RUNTIME_ROOT = $(HOME)/.cache/semu/appimage-runtime/$(APPIMAGE_PACKAGE_ATTRIBUTE)/runtime-root
+SEMU_APPIMAGE_SOURCE_ROOT = $(HOME)/.cache/semu/appimage-runtime/$(APPIMAGE_PACKAGE_ATTRIBUTE)/source
+APPIMAGE_RUNTIME_COMMAND = packaging/appimage/build_runtime.sh \
+	"$(SEMU_APPIMAGE_RUNTIME_ROOT)" "$(APPIMAGE_PACKAGE_ATTRIBUTE)"
 else
+SEMU_APPIMAGE_SOURCE_ROOT ?= $(dir $(SEMU_APPIMAGE_RUNTIME_ROOT))source
 APPIMAGE_RUNTIME_COMMAND = test -d "$(SEMU_APPIMAGE_RUNTIME_ROOT)" || { \
-	echo "runtime root does not exist: $(SEMU_APPIMAGE_RUNTIME_ROOT)" >&2; exit 2; }
+		echo "runtime root does not exist: $(SEMU_APPIMAGE_RUNTIME_ROOT)" >&2; exit 2; }
 endif
 appimage-runtime: ## Build or validate the pinned x86_64 Deck runtime root
 	$(APPIMAGE_RUNTIME_COMMAND)
 
 appimage-build: $(SEMU_BIN) appimage-runtime ## Assemble and verify the AppImage without deploying it
-	$(SEMU_BIN) package appimage --target steam-deck --project "$(CURDIR)" \
+	$(SEMU_BIN) package appimage --target steam-deck \
+		--project "$(SEMU_APPIMAGE_SOURCE_ROOT)" \
+		--runtime-builder-repository "$(CURDIR)" \
 		--runtime-root "$(SEMU_APPIMAGE_RUNTIME_ROOT)" $(APPIMAGE_WORK_OPTION) \
-		--output "$(APPIMAGE_OUTPUT)"
+		$(APPIMAGE_EMULATOR_OPTION) --output "$(APPIMAGE_OUTPUT)"
 
 appimage-verify: $(SEMU_BIN) ## Verify exact existing AppImage bytes without rebuilding
 	@test -x "$(APPIMAGE_OUTPUT)" || \
 		{ echo "missing AppImage; run 'make appimage-build' first" >&2; exit 2; }
-	$(SEMU_BIN) package appimage verify --target steam-deck --project "$(CURDIR)" \
+	$(SEMU_BIN) package appimage verify --target steam-deck \
+		--project "$(SEMU_APPIMAGE_SOURCE_ROOT)" \
+		--runtime-builder-repository "$(CURDIR)" \
 		--runtime-root "$(SEMU_APPIMAGE_RUNTIME_ROOT)" $(APPIMAGE_WORK_OPTION) \
-		--artifact "$(APPIMAGE_OUTPUT)"
+		$(APPIMAGE_EMULATOR_OPTION) --artifact "$(APPIMAGE_OUTPUT)"
+
+appimage-emulator-runtime: ## Build one exact emulator release runtime
+	@test -n "$(EMULATOR)" || { echo "EMULATOR is required" >&2; exit 64; }
+	$(MAKE) appimage-runtime \
+		APPIMAGE_PACKAGE_ATTRIBUTE=steamdeck-runtime-$(EMULATOR)
+
+appimage-emulator-build: ## Assemble one exact emulator release AppImage
+	@test -n "$(EMULATOR)" || { echo "EMULATOR is required" >&2; exit 64; }
+	$(MAKE) appimage-build \
+		APPIMAGE_PACKAGE_ATTRIBUTE=steamdeck-runtime-$(EMULATOR) \
+		APPIMAGE_EMULATOR=$(EMULATOR) \
+		APPIMAGE_OUTPUT="$(CURDIR)/build/Semu-$(EMULATOR)-x86_64.AppImage"
+
+appimage-emulator-verify: ## Verify one exact emulator release AppImage
+	@test -n "$(EMULATOR)" || { echo "EMULATOR is required" >&2; exit 64; }
+	$(MAKE) appimage-verify \
+		APPIMAGE_PACKAGE_ATTRIBUTE=steamdeck-runtime-$(EMULATOR) \
+		APPIMAGE_EMULATOR=$(EMULATOR) \
+		APPIMAGE_OUTPUT="$(CURDIR)/build/Semu-$(EMULATOR)-x86_64.AppImage"
 
 steamdeck: ## Delegate ACTION=<target> to the Steam Deck harness
 	$(MAKE) -f tests/targets/steamdeck/Makefile "$(ACTION)"
+
+steamdeck-emulator: ## Run ACTION for one exact emulator slice on the Deck
+	@test -n "$(EMULATOR)" || { echo "EMULATOR is required" >&2; exit 64; }
+	$(MAKE) -f tests/targets/steamdeck/Makefile "$(ACTION)" \
+		SEMU_DECK_APPIMAGE="$(CURDIR)/build/Semu-$(EMULATOR)-x86_64.AppImage" \
+		SEMU_APPIMAGE_RUNTIME_ROOT="$(HOME)/.cache/semu/appimage-runtime/steamdeck-runtime-$(EMULATOR)/runtime-root"
 
 bazzite: ## Delegate ACTION=<target> after physical Deck acceptance
 	$(MAKE) -f tests/targets/bazzite/Makefile "$(ACTION)"

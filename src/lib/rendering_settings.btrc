@@ -70,35 +70,32 @@ class SemuRenderingSettingsDefinitions {
         return ids;
     }
 
-    class JsonValue shaderChoices(JsonValue shaders, JsonValue manifest) {
-        Vector<string> choices = ["none"];
-        string selected = shaders.get("screen").isString()
-            ? shaders.get("screen").asString() : "";
-        if (!selected.isEmpty() && !choices.contains(selected)) {
-            choices.push(selected);
-        }
-        JsonValue assets = manifest.get("assets");
-        Vector<string> paths = [];
-        if (assets.isObject()) { paths = assets.keys(); }
-        paths.sort();
-        for path in paths {
-            if (path.startsWith("assets/shaders/")
-                    && !choices.contains(path)) {
-                choices.push(path);
-            }
-        }
+    class JsonValue shaderChoices(JsonValue shaders) {
+        Vector<string> choices =
+            SemuRenderingDefinition.shaderScreens(shaders);
+        if (!choices.contains("none")) { choices.insert(0, "none"); }
         return SemuRenderingSettingsDefinitions.strings(choices);
     }
 
     class JsonValue bezelChoices(JsonValue bezels) {
         Vector<string> choices =
             SemuRenderingSettingsDefinitions.variantIds(bezels);
-        if (choices.isEmpty()) { choices.push("none"); }
+        if (SemuRenderingDefinition.explicitDisabled(bezels)) {
+            choices.insert(0, "none");
+        } else if (choices.isEmpty()) {
+            choices.push("none");
+        }
         return SemuRenderingSettingsDefinitions.strings(choices);
     }
 
-    class JsonValue layoutChoices(JsonValue bezels) {
+    class JsonValue layoutChoices(JsonValue bezels, JsonValue system) {
         Vector<string> choices = ["auto"];
+        JsonValue screens = system.get("display").get("screens");
+        bool selectable = bezels.get("widescreen_variant").isString()
+            || (screens.isArray() && screens.size() > 1);
+        if (!selectable) {
+            return SemuRenderingSettingsDefinitions.strings(choices);
+        }
         for id in SemuRenderingSettingsDefinitions.variantIds(bezels) {
             if (!choices.contains(id)) { choices.push(id); }
         }
@@ -108,10 +105,12 @@ class SemuRenderingSettingsDefinitions {
     class bool declaredSystemAssets(JsonValue shaders, JsonValue bezels,
                                     JsonValue shaderManifest,
                                     JsonValue bezelManifest) {
-        if (shaders.get("screen").isString()
-                && !SemuRenderingDefinition.assetDeclared(
-                    shaderManifest, shaders.get("screen").asString())) {
-            return false;
+        for screen in SemuRenderingDefinition.shaderScreens(shaders) {
+            if (!screen.equals("none")
+                    && !SemuRenderingDefinition.assetDeclared(
+                        shaderManifest, screen)) {
+                return false;
+            }
         }
         JsonValue variants = bezels.get("variants");
         if (!variants.isArray()) { return false; }
@@ -212,8 +211,8 @@ class SemuRenderingSettingsDefinitions {
             ? shaders.get("enabled") : JsonValue.makeBool(false));
         defaults.set("bezels", bezels.get("enabled").isBool()
             ? bezels.get("enabled") : JsonValue.makeBool(false));
-        defaults.set("shader_file", shaders.get("screen").isString()
-            ? shaders.get("screen") : JsonValue.makeString("none"));
+        defaults.set("shader_file", JsonValue.makeString(
+            SemuRenderingDefinition.defaultShaderScreen(shaders)));
         defaults.set("bezel_variant", bezels.get("default_variant").isString()
             ? bezels.get("default_variant") : JsonValue.makeString("none"));
         defaults.set("layout", JsonValue.makeString("auto"));
@@ -228,8 +227,8 @@ class SemuRenderingSettingsDefinitions {
         return mode.isString() ? mode.asString() : "automatic";
     }
 
-    class JsonValue systemSection(string id, string name, JsonValue shaders,
-                                  JsonValue bezels, JsonValue shaderManifest,
+    class JsonValue systemSection(string id, string name, JsonValue system,
+                                  JsonValue shaders, JsonValue bezels,
                                   Vector<string> controllerModes,
                                   string parentId) {
         JsonValue fields = JsonValue.makeArray();
@@ -249,11 +248,12 @@ class SemuRenderingSettingsDefinitions {
         bool shadersEnabled = shaders.get("enabled").isBool()
             && shaders.get("enabled").asBool();
         if (shadersEnabled) {
-            fields.push(SemuRenderingSettingsDefinitions.field(
-                prefix + "shaders", "SHADER", "boolean"));
+            if (!SemuRenderingDefinition.explicitDisabled(shaders)) {
+                fields.push(SemuRenderingSettingsDefinitions.field(
+                    prefix + "shaders", "SHADER", "boolean"));
+            }
             JsonValue shaderChoices =
-                SemuRenderingSettingsDefinitions.shaderChoices(
-                    shaders, shaderManifest);
+                SemuRenderingSettingsDefinitions.shaderChoices(shaders);
             if (shaderChoices.size() > 1) {
                 JsonValue shader = SemuRenderingSettingsDefinitions.field(
                     prefix + "shader_file", "SHADER PRESET", "choice");
@@ -264,20 +264,24 @@ class SemuRenderingSettingsDefinitions {
         bool bezelsEnabled = bezels.get("enabled").isBool()
             && bezels.get("enabled").asBool();
         if (bezelsEnabled) {
-            fields.push(SemuRenderingSettingsDefinitions.field(
-                prefix + "bezels", "BEZEL", "boolean"));
-            Vector<string> variants =
-                SemuRenderingSettingsDefinitions.variantIds(bezels);
-            if (variants.size() > 1) {
+            if (!SemuRenderingDefinition.explicitDisabled(bezels)) {
+                fields.push(SemuRenderingSettingsDefinitions.field(
+                    prefix + "bezels", "BEZEL", "boolean"));
+            }
+            JsonValue bezelChoices =
+                SemuRenderingSettingsDefinitions.bezelChoices(bezels);
+            if (bezelChoices.size() > 1) {
                 JsonValue bezel = SemuRenderingSettingsDefinitions.field(
                     prefix + "bezel_variant", "BEZEL STYLE", "choice");
-                bezel.set("choices",
-                    SemuRenderingSettingsDefinitions.strings(variants));
+                bezel.set("choices", bezelChoices);
                 fields.push(bezel);
+            }
+            JsonValue layouts =
+                SemuRenderingSettingsDefinitions.layoutChoices(bezels, system);
+            if (layouts.size() > 1) {
                 JsonValue layout = SemuRenderingSettingsDefinitions.field(
                     prefix + "layout", "LAYOUT", "choice");
-                layout.set("choices",
-                    SemuRenderingSettingsDefinitions.layoutChoices(bezels));
+                layout.set("choices", layouts);
                 fields.push(layout);
             }
         }
@@ -368,8 +372,9 @@ class SemuRenderingSettingsDefinitions {
                     shaders, bezels));
             systemSections.push(
                 SemuRenderingSettingsDefinitions.systemSection(
-                    id, system.get("name").asString(), shaders, bezels,
-                    shaderManifest, input.controllerModes,
+                    id, system.get("name").asString(), system,
+                    shaders, bezels,
+                    input.controllerModes,
                     systemOverrides.get("id").asString()));
         }
         if (declaredDefaults.isObject()) {

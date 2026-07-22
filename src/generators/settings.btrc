@@ -1,7 +1,6 @@
 // settings.btrc - owned settings store, native UI protocol, and ES-DE entry.
 
 import std.{fs, io, json, platform, process, strings, vector}
-import ../lib/json_format.btrc
 import ../lib/merge.btrc
 import ../lib/owned_paths.btrc
 import ../lib/rendering_settings.btrc
@@ -473,7 +472,7 @@ class SemuConfigStore {
         return error.isEmpty()
             ? SemuOwnedDocument.write(
                 self.semuHome, userFile,
-                SemuJsonFormat.document(overlay), 384) // 0600
+                overlay.document(), 384) // 0600
             : error;
     }
 
@@ -616,8 +615,8 @@ class SemuSettingsCompiler {
             return result;
         }
         result.error = SemuOwnedDocument.write(ownedRoot, output,
-            SemuJsonFormat.document(
-                SemuSettingsCompiler.document(effective.value)), 384); // 0600
+            SemuSettingsCompiler.document(
+                effective.value).document(), 384); // 0600
         if (result.error.isEmpty()) { result.output = output; }
         return result;
     }
@@ -1133,7 +1132,7 @@ class SettingsUiProtocol {
         document.set("sections", sections);
         document.set("commands", commands);
         result.ok = true;
-        result.document = SemuJsonFormat.document(document);
+        result.document = document.document();
         return result;
     }
 
@@ -1286,7 +1285,7 @@ exec @@LAUNCHER@@ \"$@\"
         JsonValue document = JsonValue.makeObject();
         document.set("schema_version", JsonValue.makeInt(2));
         document.set("entry", entry);
-        return SemuJsonFormat.document(document);
+        return document.document();
     }
 
     class int write(JsonValue defaults, string platformId, string stableLauncher,

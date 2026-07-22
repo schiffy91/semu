@@ -1,7 +1,8 @@
 // source_contract.btrc - exact source, package, config, and asset contract.
 
 import std.{fs, json, process, strings, vector}
-import ../../../lib/json_format.btrc
+import ../../../lib/rendering_definition.btrc
+import ../release_inventory.btrc
 import ../runtime_inventory.btrc
 import ./render_hooks.btrc
 import ./support.btrc
@@ -20,17 +21,22 @@ class AppImageSourceProvenance {
         return AppImageProvenanceSupport.hashedFiles(repoRoot, files);
     }
 
-    class AppImageProvenanceInternalDigest targetOutputStorePath(
-            string repoRoot, JsonValue target) {
+    class AppImageProvenanceInternalDigest targetOutputStorePathForRelease(
+            string repoRoot, JsonValue target,
+            AppImageReleaseInventory releaseInventory) {
         JsonValue systems = target.get("nix_systems");
         if (!systems.isArray() || systems.size() != 1
-                || !systems.at(0).isString()) {
+                || !systems.at(0).isString()
+                || !systems.at(0).asString().equals(
+                    releaseInventory.nixSystem)
+                || !AppImageRuntimeInventory.identifier(
+                    releaseInventory.packageAttribute)) {
             return AppImageProvenanceInternalDigest.failure(
                 "deployment target does not select one exact Nix system");
         }
         string reference = ".#packages."
             + systems.at(0).asString()
-            + ".steamdeck-runtime.outPath";
+            + "." + releaseInventory.packageAttribute + ".outPath";
         ExecResult result = AppImageProvenanceSupport.process("nix", [
             "--extra-experimental-features", "nix-command flakes",
             "eval", "--raw", reference
@@ -42,6 +48,17 @@ class AppImageSourceProvenance {
                 + AppImageProvenanceSupport.processError(result));
         }
         return AppImageProvenanceInternalDigest.success(output);
+    }
+
+    class AppImageProvenanceInternalDigest targetOutputStorePath(
+            string repoRoot, JsonValue target) {
+        AppImageReleaseInventoryResult aggregate =
+            AppImageReleaseInventoryLoader.aggregate(
+                PathTools.join(repoRoot, "config"));
+        return aggregate.ok()
+            ? AppImageSourceProvenance.targetOutputStorePathForRelease(
+                repoRoot, target, aggregate.inventory)
+            : AppImageProvenanceInternalDigest.failure(aggregate.error);
     }
 
     class string buildContractPath(string repoRoot) {
@@ -95,7 +112,8 @@ class AppImageSourceProvenance {
                 storePath.asString());
     }
 
-    class AppImageProvenanceInternalJson buildContracts(string repoRoot) {
+    class AppImageProvenanceInternalJson buildContractsForRelease(
+            string repoRoot, AppImageReleaseInventory releaseInventory) {
         string contractPath =
             AppImageSourceProvenance.buildContractPath(repoRoot);
         if (contractPath.isEmpty()) {
@@ -104,8 +122,11 @@ class AppImageSourceProvenance {
         }
         ExecResult result = AppImageProvenanceSupport.process("nix", [
             "--extra-experimental-features",
-            "nix-command flakes", "eval", "--json", "--impure", "--file",
-            contractPath], repoRoot);
+            "nix-command flakes", "eval", "--json", "--impure",
+            "--file", contractPath, "--apply",
+            "contract: contract { packageAttribute = \""
+                + releaseInventory.packageAttribute + "\"; }"
+        ], repoRoot);
         if (!result.ok()) {
             return AppImageProvenanceInternalJson.failure(
                 "cannot evaluate AppImage build contracts: "
@@ -135,7 +156,7 @@ class AppImageSourceProvenance {
         }
 
         AppImageRuntimeInventoryResult inventory =
-            AppImageRuntimeInventory.load(PathTools.join(repoRoot, "config"));
+            releaseInventory.select(PathTools.join(repoRoot, "config"));
         JsonValue emulators = contracts.get("emulators");
         if (!inventory.ok() || !emulators.isObject()
                 || emulators.keys().size() != inventory.slices.size()) {
@@ -178,6 +199,16 @@ class AppImageSourceProvenance {
             }
         }
         return AppImageProvenanceInternalJson.success(contracts);
+    }
+
+    class AppImageProvenanceInternalJson buildContracts(string repoRoot) {
+        AppImageReleaseInventoryResult aggregate =
+            AppImageReleaseInventoryLoader.aggregate(
+                PathTools.join(repoRoot, "config"));
+        return aggregate.ok()
+            ? AppImageSourceProvenance.buildContractsForRelease(
+                repoRoot, aggregate.inventory)
+            : AppImageProvenanceInternalJson.failure(aggregate.error);
     }
 
     class AppImageProvenanceInternalJson coreBuildContracts(
@@ -490,15 +521,22 @@ class AppImageSourceProvenance {
                         platforms, nixSystem)) {
                 continue;
             }
-            Vector<string> keys = ["directory", "environment_search",
-                "exact_selection", "host_search", "selection_source"];
+            Vector<string> keys = ["build_contract", "directory",
+                "environment_search", "exact_selection", "host_search",
+                "selection_source"];
             JsonValue provider = package.get("id");
+            JsonValue buildContract = runtime.get("build_contract");
             JsonValue directory = runtime.get("directory");
             JsonValue selectionSource = runtime.get("selection_source");
             if (!AppImageProvenanceSupport.exactKeys(runtime, keys)
                     || !provider.isString()
                     || !AppImageRuntimeInventory.identifier(
                         provider.asString())
+                    || !buildContract.isString()
+                    || !AppImageRuntimeInventory.safeRelative(
+                        buildContract.asString())
+                    || !buildContract.asString()
+                        .endsWith("-build-contract.json")
                     || !directory.isString()
                     || !AppImageRuntimeInventory.safeRelative(
                         directory.asString())
@@ -516,6 +554,7 @@ class AppImageSourceProvenance {
             }
             JsonValue entry = JsonValue.makeObject();
             entry.set("provider", provider);
+            entry.set("build_contract", buildContract);
             entry.set("directory", directory);
             entry.set("package_attribute", JsonValue.makeString(
                 provider.asString() + "-cores"));
@@ -691,16 +730,23 @@ class AppImageSourceProvenance {
             }
             JsonValue shaderBinding = JsonValue.makeArray();
             if (shaders.get("enabled").asBool()) {
-                JsonValue screen = shaders.get("screen");
-                if (!screen.isString()) {
+                Vector<string> screens =
+                    SemuRenderingDefinition.shaderScreens(shaders);
+                if (screens.isEmpty()) {
                     return AppImageProvenanceInternalJson.failure(
                         "enabled system shader has no asset path: " + id);
                 }
-                AppImageProvenanceInternalJson binding =
-                    AppImageSourceProvenance.assetBinding(
-                        assetDeclarations, screen.asString());
-                if (!binding.ok()) { return binding; }
-                shaderBinding = binding.value;
+                for screen in screens {
+                    if (screen.equals("none")) { continue; }
+                    AppImageProvenanceInternalJson binding =
+                        AppImageSourceProvenance.assetBinding(
+                            assetDeclarations, screen);
+                    if (!binding.ok()) { return binding; }
+                    for (int assetIndex = 0;
+                         assetIndex < binding.value.size(); assetIndex++) {
+                        shaderBinding.push(binding.value.at(assetIndex));
+                    }
+                }
             }
             JsonValue bezelBindings = JsonValue.makeArray();
             JsonValue variants = bezels.get("variants");
@@ -742,6 +788,23 @@ class AppImageSourceProvenance {
                 "production system inventory is empty");
         }
         return AppImageProvenanceInternalJson.success(systems);
+    }
+
+    class AppImageProvenanceInternalJson selectedSystems(
+            JsonValue systems, Vector<string> selectedIds) {
+        JsonValue selected = JsonValue.makeArray();
+        for (int index = 0; index < systems.size(); index++) {
+            JsonValue system = systems.at(index);
+            JsonValue id = system.get("id");
+            if (id.isString() && selectedIds.contains(id.asString())) {
+                selected.push(system);
+            }
+        }
+        if (selected.size() != selectedIds.size()) {
+            return AppImageProvenanceInternalJson.failure(
+                "selected system provenance differs from the release inventory");
+        }
+        return AppImageProvenanceInternalJson.success(selected);
     }
 
     class AppImageProvenanceInternalJson settingsContract(
@@ -941,7 +1004,8 @@ class AppImageSourceProvenance {
         return AppImageProvenanceInternalJson.success(declarations);
     }
 
-    class AppImageProvenanceInternalJson sourceContract(string repoRoot) {
+    class AppImageProvenanceInternalJson sourceContractForRelease(
+            string repoRoot, AppImageReleaseInventory releaseInventory) {
         string sourceRoot = PathTools.join(repoRoot, "config");
         AppImageProvenanceInternalJson sourceFiles =
             AppImageSourceProvenance.productionSourceFiles(repoRoot);
@@ -964,7 +1028,8 @@ class AppImageSourceProvenance {
             AppImageSourceProvenance.flakeInputs(repoRoot);
         if (!flakeInputs.ok()) { return flakeInputs; }
         AppImageProvenanceInternalJson builds =
-            AppImageSourceProvenance.buildContracts(repoRoot);
+            AppImageSourceProvenance.buildContractsForRelease(
+                repoRoot, releaseInventory);
         if (!builds.ok()) { return builds; }
         AppImageProvenanceInternalJson assets =
             AppImageSourceProvenance.declaredAssets(repoRoot);
@@ -976,22 +1041,28 @@ class AppImageSourceProvenance {
         JsonValue targetDefinition =
             target.value.get("selected").get("definition");
         AppImageProvenanceInternalDigest targetOutput =
-            AppImageSourceProvenance.targetOutputStorePath(
-                repoRoot, targetDefinition);
+            AppImageSourceProvenance.targetOutputStorePathForRelease(
+                repoRoot, targetDefinition, releaseInventory);
         if (!targetOutput.ok()) {
             return AppImageProvenanceInternalJson.failure(targetOutput.error);
         }
+        JsonValue targetId = targetDefinition.get("id");
         JsonValue platform = targetDefinition.get("platform");
         JsonValue nixSystems = targetDefinition.get("nix_systems");
-        if (!platform.isString() || !nixSystems.isArray()
+        if (!targetId.isString() || !platform.isString()
+                || !nixSystems.isArray()
                 || nixSystems.size() != 1
-                || !nixSystems.at(0).isString()) {
+                || !nixSystems.at(0).isString()
+                || !releaseInventory.target.equals(
+                    targetId.asString())
+                || !releaseInventory.platform.equals(platform.asString())
+                || !releaseInventory.nixSystem.equals(
+                    nixSystems.at(0).asString())) {
             return AppImageProvenanceInternalJson.failure(
                 "AppImage deployment target has no exact platform/system");
         }
         AppImageRuntimeInventoryResult inventory =
-            AppImageRuntimeInventory.loadForTarget(sourceRoot,
-                platform.asString(), nixSystems.at(0).asString());
+            releaseInventory.select(sourceRoot);
         if (!inventory.ok()) {
             return AppImageProvenanceInternalJson.failure(inventory.error);
         }
@@ -1014,9 +1085,13 @@ class AppImageSourceProvenance {
             AppImageSourceProvenance.systemBindings(
                 repoRoot, sourceFiles.value, assets.value);
         if (!systems.ok()) { return systems; }
+        AppImageProvenanceInternalJson selectedSystems =
+            AppImageSourceProvenance.selectedSystems(
+                systems.value, inventory.systems);
+        if (!selectedSystems.ok()) { return selectedSystems; }
         AppImageProvenanceInternalJson cores =
             AppImageSourceProvenance.selectedCores(
-                systems.value, platform.asString(),
+                selectedSystems.value, platform.asString(),
                 coreRuntime.value.get("provider").asString());
         if (!cores.ok()) { return cores; }
         JsonValue inventoryCores = JsonValue.makeArray();
@@ -1057,6 +1132,7 @@ class AppImageSourceProvenance {
         contract.set("btrc_revision", JsonValue.makeString(btrc.value));
         contract.set("flake_inputs", flakeInputs.value);
         contract.set("deployment_target", target.value);
+        contract.set("release_inventory", releaseInventory.json());
         contract.set("target_output_store_path",
             JsonValue.makeString(targetOutput.value));
         contract.set("package_definitions", packages.value);
@@ -1067,12 +1143,23 @@ class AppImageSourceProvenance {
             AppImageRuntimeInventory.manifest(inventory.slices));
         contract.set("core_runtime", coreRuntime.value);
         contract.set("systems", systems.value);
+        contract.set("selected_systems", selectedSystems.value);
         contract.set("selected_cores", cores.value);
         contract.set("selected_core_builds", coreBuilds.value);
         contract.set("rendering_assets", assets.value);
         contract.set("input_files", inputFiles);
         contract.set("settings", settings.value);
         return AppImageProvenanceInternalJson.success(contract);
+    }
+
+    class AppImageProvenanceInternalJson sourceContract(string repoRoot) {
+        AppImageReleaseInventoryResult aggregate =
+            AppImageReleaseInventoryLoader.aggregate(
+                PathTools.join(repoRoot, "config"));
+        return aggregate.ok()
+            ? AppImageSourceProvenance.sourceContractForRelease(
+                repoRoot, aggregate.inventory)
+            : AppImageProvenanceInternalJson.failure(aggregate.error);
     }
 
 }

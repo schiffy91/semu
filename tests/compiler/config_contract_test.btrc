@@ -1,10 +1,9 @@
 // config_contract_test.btrc - owned config state, UI, and ES-DE argv proof.
 
-import std.{fs, io, json, process}
+import std.{fs, io, json, process, vector}
 import ../../src/generators/appimage/app_runtime.btrc
 import ../../src/generators/appimage/install_policy.btrc
 import ../../src/generators/settings.btrc
-import ../../src/lib/json_format.btrc
 
 class ConfigContractTest {
     class int fail(string message) {
@@ -102,9 +101,12 @@ printf '{\"fuse_free\":true}\n'
 
         SemuConfigResult systemVariant = store.putJson(
             "visual.systems.nds.bezel_variant", "\"vertical\"");
-        SemuConfigResult systemShader = store.putJson(
+        SemuConfigResult invalidSystemShader = store.putJson(
             "visual.systems.gb.shader_file",
             "\"assets/shaders/gba/screen.slangp\"");
+        SemuConfigResult systemShader = store.putJson(
+            "visual.systems.gb.shader_file",
+            "\"assets/shaders/gb/screen.slangp\"");
         SemuConfigResult systemLayout = store.putJson(
             "visual.systems.gc.layout", "\"crt_16x9\"");
         SemuConfigResult invalidVariant = store.putJson(
@@ -113,9 +115,10 @@ printf '{\"fuse_free\":true}\n'
             SemuConfigPaths.userFile(home));
         JsonValue sparseSystems = sparseUser.get("visual").get("systems");
         if (!systemVariant.ok || !systemShader.ok || !systemLayout.ok
+                || invalidSystemShader.ok
                 || !systemShader.value.isString()
                 || !systemShader.value.asString().equals(
-                    "assets/shaders/gba/screen.slangp")
+                    "assets/shaders/gb/screen.slangp")
                 || !systemLayout.value.asString().equals("crt_16x9")
                 || invalidVariant.ok) {
             failures += ConfigContractTest.fail(
@@ -148,7 +151,7 @@ printf '{\"fuse_free\":true}\n'
         string prettyUser = Path.readAll(SemuConfigPaths.userFile(home));
         JsonValue prettyValue = JsonValue.parse(prettyUser);
         if (prettyValue.isError()
-                || !prettyUser.equals(SemuJsonFormat.document(prettyValue))) {
+                || !prettyUser.equals(prettyValue.document())) {
             failures += ConfigContractTest.fail(
                 "semu.json is not canonical pretty JSON");
         }
@@ -215,17 +218,49 @@ printf '{\"fuse_free\":true}\n'
         SemuAppRuntimePolicy runtimePolicy = SemuAppRuntimePolicy();
         runtimePolicy.roms = romsPolicy;
         runtimePolicy.ownedRomsFallback = "owned/ROMs";
+        runtimePolicy.cliCommands = ["launcher", "settings", "sync"];
+        runtimePolicy.releaseInventory.kind = "emulator-slice";
+        runtimePolicy.releaseInventory.target = "steam-deck";
+        runtimePolicy.releaseInventory.emulatorIds = ["retroarch"];
         SemuAppRuntimeOptions runtimeOptions = SemuAppRuntimeOptions();
         runtimeOptions.arguments = ["--roms", card];
         SemuAppRuntime runtime = SemuAppRuntime(
             runtimePolicy, runtimeOptions);
         runtime.projectRoot = home;
+        string ownedEsDeHome = SemuAppRuntime.ownedEsDeHome(
+            home, "ES-DE");
+        string explicitOwnedEsDeHome = SemuAppRuntime.ownedEsDeHome(
+            home, "ES-DE", PathTools.join(home, "ES-DE"));
+        string escapedEsDeHome = SemuAppRuntime.ownedEsDeHome(
+            home, "ES-DE", PathTools.join(PathTools.dirname(home), "ES-DE"));
         setenv("SEMU_ROMS_ROOT", environmentCard, 1);
         SemuInstallResult explicitRoms = runtime.detectRoms();
         runtime.options.arguments = [];
         setenv("SEMU_ROMS_ROOT", PathTools.join(card, "missing"), 1);
         setenv("SEMU_ROMS_DIR", environmentCard, 1);
         SemuInstallResult laterEnvironmentRoms = runtime.detectRoms();
+        Vector<string> selectedSettings = [];
+        runtime.options.arguments = ["settings", "ui"];
+        SemuInstallResult selectedSettingsResult =
+            runtime.cliArguments(selectedSettings);
+        Vector<string> wrongSettings = [];
+        runtime.options.arguments = [
+            "settings", "ui", "--emulator", "dolphin"
+        ];
+        SemuInstallResult wrongSettingsResult =
+            runtime.cliArguments(wrongSettings);
+        Vector<string> wrongLauncher = [];
+        runtime.options.arguments = ["launcher", "dolphin"];
+        SemuInstallResult wrongLauncherResult =
+            runtime.cliArguments(wrongLauncher);
+        Vector<string> selectedLauncher = [];
+        runtime.options.arguments = ["launcher", "retroarch"];
+        SemuInstallResult selectedLauncherResult =
+            runtime.cliArguments(selectedLauncher);
+        Vector<string> forbiddenBuild = [];
+        runtime.options.arguments = ["build", "target", "steam-deck"];
+        SemuInstallResult forbiddenBuildResult =
+            runtime.cliArguments(forbiddenBuild);
         unsetenv("SEMU_ROMS_ROOT");
         unsetenv("SEMU_ROMS_DIR");
         if (!ui.ok || !uiJson.isObject()
@@ -240,10 +275,8 @@ printf '{\"fuse_free\":true}\n'
                 || !gbShader.get("type").asString().equals("choice")
                 || !ConfigContractTest.choice(
                     gbShader, "assets/shaders/gb/screen.slangp")
-                || !ConfigContractTest.choice(
-                    gbShader, "assets/shaders/gba/screen.slangp")
                 || !gbShader.get("value").asString().equals(
-                    "assets/shaders/gba/screen.slangp")
+                    "assets/shaders/gb/screen.slangp")
                 || !gbLayout.isNull()
                 || !ConfigContractTest.choice(gcLayout, "crt_4x3")
                 || !ConfigContractTest.choice(gcLayout, "crt_16x9")
@@ -286,9 +319,33 @@ printf '{\"fuse_free\":true}\n'
                 || !laterEnvironmentRoms.ok()
                 || !laterEnvironmentRoms.document.equals(
                     UnixFileSystem.realPath(environmentRoms))
-                || !ui.document.equals(SemuJsonFormat.document(uiJson))) {
+                || !ownedEsDeHome.equals(PathTools.join(home, "ES-DE"))
+                || !explicitOwnedEsDeHome.equals(ownedEsDeHome)
+                || !escapedEsDeHome.isEmpty()
+                || !selectedSettingsResult.ok()
+                || !selectedSettings.join("\n").contains(
+                    "--emulator\nretroarch")
+                || !selectedSettings.join("\n").contains(
+                    "--project\n" + home)
+                || wrongSettingsResult.ok()
+                || wrongLauncherResult.ok()
+                || !selectedLauncherResult.ok()
+                || !selectedLauncher.join("\n").equals(
+                    "launcher\nretroarch")
+                || forbiddenBuildResult.ok()
+                || !ui.document.equals(uiJson.document())) {
             failures += ConfigContractTest.fail(
                 "settings ui did not emit the native typed protocol");
+        }
+        if (appRuntimeSource.contains(
+                    "\"--dev-bind\", \"/dev\", \"/dev\"")
+                || !appRuntimeSource.contains(
+                    "mounts.extend([\"--dev\", \"/dev\", \"--tmpfs\", \"/dev/shm\"])")
+                || !appRuntimeSource.contains(
+                    "\"--dev-bind-try\", path, path")
+                || !appRuntimeSource.contains("name.startsWith(\"hidraw\")")) {
+            failures += ConfigContractTest.fail(
+                "runtime sandbox exposes broad devices instead of declared GPU/input/audio nodes");
         }
 
         SemuSettingsCompileResult compiled = SemuSettingsCompiler.emit(store);
@@ -298,7 +355,7 @@ printf '{\"fuse_free\":true}\n'
                 || compiledJson.get("ui").has("controls")
                 || compiledJson.get("visual").has("render_mode")
                 || !Path.readAll(compiled.output).equals(
-                    SemuJsonFormat.document(compiledJson))) {
+                    compiledJson.document())) {
             failures += ConfigContractTest.fail(
                 "effective settings were not compiled to a bounded owned document");
         }

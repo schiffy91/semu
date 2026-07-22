@@ -34,6 +34,9 @@ let
   semuPatch = rendering.patch;
   semuPatchText = rendering.patchText;
   semuPatchHash = rendering.patchHash;
+  packagePatch = builtins.elemAt packageContract.patches 0;
+  systemCubebPatch = ./. + "/${packagePatch.file}";
+  systemCubebPatchHash = builtins.hashFile "sha256" systemCubebPatch;
 
   buildContract = {
     schema_version = packageContract.schema_version;
@@ -43,6 +46,12 @@ let
     source_repo = sourceContract.repo;
     source_revision = sourceContract.revision;
     source_sha256 = sourceContract.sha256;
+    package_patches = [
+      {
+        file = packagePatch.file;
+        sha256 = systemCubebPatchHash;
+      }
+    ];
     patch_sha256 = semuPatchHash;
     executable = outputContract.main_program;
     linked_executable = outputContract.linked_program;
@@ -63,6 +72,11 @@ let
       && builtins.match "^[0-9a-f]{40}$" sourceContract.revision != null
       && lib.hasPrefix "sha256-" sourceContract.sha256
     ) "PCSX2's Linux source contract must be an immutable GitHub revision";
+    assert lib.assertMsg (
+      builtins.length packageContract.patches == 1
+      && packagePatch.file == "system-cubeb.patch"
+      && packagePatch.sha256 == systemCubebPatchHash
+    ) "PCSX2's package patch must be exact and hash-bound";
     assert lib.assertMsg (
       !packageContract.fallbacks.linux_host_executable
       && !packageContract.fallbacks.linux_flatpak
@@ -87,8 +101,8 @@ let
         pname = packageContract.id;
         version = packageContract.version;
         src = source;
-        patches = (previous.patches or [ ]) ++ [ semuPatch ];
-        patchFlags = (previous.patchFlags or [ "-p1" ]) ++ [ "--fuzz=0" ];
+        patches = [ systemCubebPatch semuPatch ];
+        patchFlags = [ "-p1" "--fuzz=0" ];
         buildInputs = lib.unique ((previous.buildInputs or [ ]) ++ [ semuRenderer ]);
 
         postPatch = (previous.postPatch or "") + ''

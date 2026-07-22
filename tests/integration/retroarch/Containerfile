@@ -1,0 +1,12 @@
+# x86_64 Nix is the build and runtime boundary for the production package.
+FROM docker.io/nixos/nix:2.31.2
+
+RUN printf '%s\n' \
+      'experimental-features = nix-command flakes' \
+      'sandbox = false' \
+      'filter-syscalls = false' \
+      'max-jobs = auto' \
+      'cores = 0' \
+      > /etc/nix/nix.conf
+
+WORKDIR /repository

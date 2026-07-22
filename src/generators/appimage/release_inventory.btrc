@@ -1,0 +1,236 @@
+// Immutable package selection embedded by the Nix release composition.
+
+import std.{fs, json, vector}
+import ./runtime_inventory.btrc
+
+class AppImageReleaseInventory {
+    public string kind;
+    public string target;
+    public string platform;
+    public string nixSystem;
+    public string packageAttribute;
+    public Vector<string> emulatorIds;
+
+    public AppImageReleaseInventory() {
+        self.kind = "";
+        self.target = "";
+        self.platform = "";
+        self.nixSystem = "";
+        self.packageAttribute = "";
+        self.emulatorIds = [];
+    }
+
+    public JsonValue json() {
+        JsonValue document = JsonValue.makeObject();
+        JsonValue emulators = JsonValue.makeArray();
+        for id in self.emulatorIds {
+            emulators.push(JsonValue.makeString(id));
+        }
+        document.set("schema_version", JsonValue.makeInt(1));
+        document.set("kind", JsonValue.makeString(self.kind));
+        document.set("target", JsonValue.makeString(self.target));
+        document.set("platform", JsonValue.makeString(self.platform));
+        document.set("nix_system", JsonValue.makeString(self.nixSystem));
+        document.set("package_attribute",
+            JsonValue.makeString(self.packageAttribute));
+        document.set("emulator_ids", emulators);
+        return document;
+    }
+
+    public AppImageRuntimeInventoryResult select(string sourceRoot) {
+        AppImageRuntimeInventoryResult selected =
+            AppImageRuntimeInventory.project(sourceRoot, self.platform,
+                self.nixSystem, self.emulatorIds);
+        if (!selected.ok()) { return selected; }
+        AppImageRuntimeInventoryResult complete =
+            AppImageRuntimeInventory.loadForTarget(sourceRoot,
+                self.platform, self.nixSystem);
+        if (!complete.ok()) { return complete; }
+        bool aggregate = self.kind.equals("aggregate");
+        if ((aggregate && selected.slices.size() != complete.slices.size())
+                || (!aggregate
+                    && selected.slices.size() >= complete.slices.size())) {
+            return AppImageRuntimeInventoryResult.failure(
+                "release kind disagrees with its selected emulator inventory");
+        }
+        return selected;
+    }
+
+    public bool matchesPackageSelection(
+            string selectedTarget, string requestedEmulator) {
+        if (!self.target.equals(selectedTarget)) { return false; }
+        if (self.kind.equals("aggregate")) {
+            return requestedEmulator.isEmpty();
+        }
+        return self.kind.equals("emulator-slice")
+            && self.emulatorIds.size() == 1
+            && (requestedEmulator.isEmpty()
+                || self.emulatorIds.get(0).equals(requestedEmulator));
+    }
+
+    public string packageEmulator(string requestedEmulator) {
+        return self.kind.equals("emulator-slice")
+                && requestedEmulator.isEmpty()
+            ? self.emulatorIds.get(0) : requestedEmulator;
+    }
+
+    public bool includes(string emulatorId) {
+        return self.emulatorIds.contains(emulatorId);
+    }
+}
+
+class AppImageReleaseInventoryResult {
+    public bool valid;
+    public AppImageReleaseInventory inventory;
+    public string error;
+
+    public AppImageReleaseInventoryResult() {
+        self.valid = false;
+        self.inventory = AppImageReleaseInventory();
+        self.error = "";
+    }
+
+    class AppImageReleaseInventoryResult success(
+            AppImageReleaseInventory inventory) {
+        AppImageReleaseInventoryResult result =
+            AppImageReleaseInventoryResult();
+        result.valid = true;
+        result.inventory = inventory;
+        return result;
+    }
+
+    class AppImageReleaseInventoryResult failure(string error) {
+        AppImageReleaseInventoryResult result =
+            AppImageReleaseInventoryResult();
+        result.error = error;
+        return result;
+    }
+
+    public bool ok() { return self.valid; }
+}
+
+class AppImageReleaseInventoryLoader {
+    class string relativePath() {
+        return "share/semu/appimage-release-inventory.json";
+    }
+
+    class bool exactKeys(JsonValue document) {
+        Vector<string> expected = [
+            "emulator_ids", "kind", "nix_system", "package_attribute",
+            "platform", "schema_version", "target"
+        ];
+        Vector<string> actual = document.keys();
+        actual.sort();
+        if (actual.size() != expected.size()) { return false; }
+        for (int index = 0; index < expected.size(); index++) {
+            if (!actual.get(index).equals(expected.get(index))) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    class Vector<string> identifiers(JsonValue values) {
+        Vector<string> result = [];
+        if (!values.isArray() || values.size() == 0) { return result; }
+        for (int index = 0; index < values.size(); index++) {
+            JsonValue value = values.at(index);
+            if (!value.isString()
+                    || !AppImageRuntimeInventory.identifier(
+                        value.asString())) {
+                Vector<string> invalid = [];
+                return invalid;
+            }
+            result.push(value.asString());
+        }
+        return result;
+    }
+
+    class bool orderedUnique(Vector<string> values) {
+        for (int index = 1; index < values.size(); index++) {
+            if (!(values.get(index - 1) < values.get(index))) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    class AppImageReleaseInventoryResult parse(
+            JsonValue document, string canonicalDocument) {
+        Vector<string> emulatorIds =
+            AppImageReleaseInventoryLoader.identifiers(
+                document.get("emulator_ids"));
+        if (document.isError() || !document.isObject()
+                || !AppImageReleaseInventoryLoader.exactKeys(document)
+                || !document.get("schema_version").isInt()
+                || document.get("schema_version").asInt() != 1
+                || !document.get("kind").isString()
+                || !document.get("target").isString()
+                || !document.get("platform").isString()
+                || !document.get("nix_system").isString()
+                || !document.get("package_attribute").isString()
+                || emulatorIds.isEmpty()
+                || !AppImageReleaseInventoryLoader.orderedUnique(
+                    emulatorIds)
+                || canonicalDocument.isEmpty()
+                || !canonicalDocument.equals(document.document())) {
+            return AppImageReleaseInventoryResult.failure(
+                "immutable AppImage release inventory is malformed");
+        }
+
+        AppImageReleaseInventory inventory = AppImageReleaseInventory();
+        inventory.kind = document.get("kind").asString();
+        inventory.target = document.get("target").asString();
+        inventory.platform = document.get("platform").asString();
+        inventory.nixSystem = document.get("nix_system").asString();
+        inventory.packageAttribute =
+            document.get("package_attribute").asString();
+        inventory.emulatorIds = emulatorIds;
+        bool aggregate = inventory.kind.equals("aggregate")
+            && inventory.packageAttribute.equals("steamdeck-runtime");
+        bool slice = inventory.kind.equals("emulator-slice")
+            && inventory.emulatorIds.size() == 1
+            && inventory.packageAttribute.equals(
+                "steamdeck-runtime-" + inventory.emulatorIds.get(0));
+        if (!inventory.target.equals("steam-deck")
+                || !inventory.platform.equals("linux")
+                || !inventory.nixSystem.equals("x86_64-linux")
+                || (!aggregate && !slice)) {
+            return AppImageReleaseInventoryResult.failure(
+                "immutable AppImage release inventory violates release policy");
+        }
+        return AppImageReleaseInventoryResult.success(inventory);
+    }
+
+    class AppImageReleaseInventoryResult load(string runtimeRoot) {
+        string root = UnixFileSystem.realPath(runtimeRoot);
+        string relative = AppImageReleaseInventoryLoader.relativePath();
+        if (root.isEmpty()
+                || !AppImageRuntimeInventory.safePath(root, relative, false)) {
+            return AppImageReleaseInventoryResult.failure(
+                "immutable AppImage release inventory is missing or unsafe");
+        }
+        string file = PathTools.join(root, relative);
+        string canonicalDocument = FileSystem.readText(file);
+        return AppImageReleaseInventoryLoader.parse(
+            JsonValue.parse(canonicalDocument), canonicalDocument);
+    }
+
+    class AppImageReleaseInventoryResult aggregate(string sourceRoot) {
+        AppImageRuntimeInventoryResult complete =
+            AppImageRuntimeInventory.load(sourceRoot);
+        if (!complete.ok()) {
+            return AppImageReleaseInventoryResult.failure(complete.error);
+        }
+        AppImageReleaseInventory inventory = AppImageReleaseInventory();
+        inventory.kind = "aggregate";
+        inventory.target = "steam-deck";
+        inventory.platform = "linux";
+        inventory.nixSystem = "x86_64-linux";
+        inventory.packageAttribute = "steamdeck-runtime";
+        for slice in complete.slices {
+            inventory.emulatorIds.push(slice.id);
+        }
+        return AppImageReleaseInventoryResult.success(inventory);
+    }
+}

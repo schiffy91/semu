@@ -1,20 +1,20 @@
 // assembler.btrc - deterministic AppImage assembly and verification.
 
 import std.{fs, io, platform, process, strings, vector}
+import ../../lib/owned_paths.btrc
+import ./assembly_tools.btrc
 import ./contract.btrc
+import ./install_store.btrc
+import ./nix_release_proof.btrc
 import ./no_fuse_verifier.btrc
+import ./output_transaction.btrc
 import ./runtime_inventory.btrc
+import ./work_session.btrc
 
+#include <errno.h>
 #include <fcntl.h>
 #include <string.h>
-
-class AppImageNumbers {
-    class string decimal(long long value) {
-        char buffer[32];
-        snprintf(buffer, 32, "%lld", value);
-        return Strings.copy(buffer);
-    }
-}
+#include <unistd.h>
 
 class AppImageCompression {
     class string bounded(string name, string fallback, int minimum, int maximum) {
@@ -34,77 +34,71 @@ class AppImageCompression {
     }
 }
 
-class AppImageAssemblyLock {
+class AppImageDirectoryWriteLease {
     public bool valid;
+    public string path;
+    public int originalMode;
     public int descriptor;
     public string error;
 
-    public AppImageAssemblyLock() {
+    public AppImageDirectoryWriteLease() {
         self.valid = false;
+        self.path = "";
+        self.originalMode = 0;
         self.descriptor = -1;
         self.error = "";
     }
 
     public bool ok() { return self.valid; }
 
-    class string path(AppImagePathPlan plan) {
-        return PathTools.join(plan.workBase,
-            ".semu-appimage-assembly-"
-                + PathTools.basename(plan.runtimeRoot) + ".lock");
-    }
-
-    class bool set(int descriptor, short lockType) {
-        struct flock lock;
-        memset(&lock, 0, sizeof(lock));
-        lock.l_type = lockType;
-        lock.l_whence = SEEK_SET;
-        lock.l_start = (off_t)0;
-        lock.l_len = (off_t)0;
-        return fcntl(descriptor, F_SETLK, &lock) == 0;
-    }
-
-    class AppImageAssemblyLock acquire(AppImagePathPlan plan) {
-        AppImageAssemblyLock lock = AppImageAssemblyLock();
-        if (!plan.ok() || !AppImagePathContract.realDirectory(plan.workBase)) {
-            lock.error = "cannot lock an invalid AppImage work filesystem";
-            return lock;
+    class AppImageDirectoryWriteLease acquire(string root, string path) {
+        AppImageDirectoryWriteLease lease = AppImageDirectoryWriteLease();
+        if (!AppImagePathContract.within(root, path)
+                || !UnixFileSystem.realPath(path).equals(path)) {
+            lease.error = "writable staging lease escaped its owned tree: " + path;
+            return lease;
         }
-        string lockPath = AppImageAssemblyLock.path(plan);
-        int descriptor = open(lockPath,
-            (int)O_CREAT | (int)O_RDWR | (int)O_CLOEXEC | (int)O_NOFOLLOW,
-            384); // 0600
+        int descriptor = open(path, (int)O_RDONLY | (int)O_CLOEXEC
+            | (int)O_NOFOLLOW | (int)O_DIRECTORY);
         struct stat status;
         if (descriptor < 0 || fstat(descriptor, &status) != 0
-            || !S_ISREG(status.st_mode)
-            || !AppImageAssemblyLock.set(descriptor, (short)F_WRLCK)) {
+                || !S_ISDIR(status.st_mode)) {
             if (descriptor >= 0) { close(descriptor); }
-            lock.error = "another AppImage operation owns " + plan.workBase;
-            return lock;
+            lease.error = "cannot open owned staging directory: " + path;
+            return lease;
         }
-        lock.descriptor = descriptor;
-        lock.valid = true;
-        return lock;
+        int mode = SemuOwnedPaths.permissions(status.st_mode);
+        if (fchmod(descriptor, mode | 128) != 0) { // add u+w
+            close(descriptor);
+            lease.error = "cannot make owned staging directory writable: " + path;
+            return lease;
+        }
+        lease.path = path;
+        lease.originalMode = mode;
+        lease.descriptor = descriptor;
+        lease.valid = true;
+        return lease;
     }
 
-    public AppImageContractResult unlock() {
-        if (!self.valid || self.descriptor < 0) {
+    public AppImageContractResult restore() {
+        if (!self.valid || self.path.isEmpty() || self.descriptor < 0) {
             return AppImageContractResult.failure(
-                "AppImage assembly lock is not held");
+                "staging directory write lease is not held");
         }
-        bool unlocked = AppImageAssemblyLock.set(
-            self.descriptor, (short)F_UNLCK);
-        int closed = close(self.descriptor);
-        self.descriptor = -1;
+        bool restored = fchmod(self.descriptor, self.originalMode) == 0;
+        bool closed = close(self.descriptor) == 0;
+        string path = self.path;
         self.valid = false;
-        if (!unlocked || closed != 0) {
-            return AppImageContractResult.failure(
-                "cannot release AppImage assembly lock");
-        }
-        return AppImageContractResult.success();
+        self.path = "";
+        self.descriptor = -1;
+        return restored && closed
+            ? AppImageContractResult.success()
+            : AppImageContractResult.failure(
+                "cannot restore staged directory permissions: " + path);
     }
 }
 
-class AppImageCommands {
+class AppImageToolResult {
     class AppImageContractResult checked(ExecResult result, string operation) {
         if (result.ok()) { return AppImageContractResult.success(); }
         string detail = result.stderr().trim();
@@ -114,166 +108,38 @@ class AppImageCommands {
             operation + f" failed (exit {result.code}): " + detail);
     }
 
-    class ExecResult run(string executable, Vector<string> arguments,
-                         string workingDirectory = "") {
-        return ChildProcess.run(executable, arguments,
-            cwd=workingDirectory,
-            timeoutMilliseconds=3600000,
-            maxStdoutBytes=67108864,
-            maxStderrBytes=67108864,
-            stdout=CommandOutput.collect(),
-            stderr=CommandOutput.collect());
+}
+
+class AppImageAssemblyResult {
+    public bool valid;
+    public string artifactDigest;
+    public string payloadTreeDigest;
+    public string error;
+
+    public AppImageAssemblyResult(bool valid, string artifactDigest,
+                                  string payloadTreeDigest, string error) {
+        self.valid = valid;
+        self.artifactDigest = artifactDigest;
+        self.payloadTreeDigest = payloadTreeDigest;
+        self.error = error;
     }
 
-    class ExecResult nixTool(string package, string executable,
-                             Vector<string> arguments) {
-        Vector<string> command = ["shell", package, "--command", executable];
-        for argument in arguments { command.push(argument); }
-        return AppImageCommands.run("nix", command);
+    class AppImageAssemblyResult success(
+            string artifactDigest, string payloadTreeDigest) {
+        return AppImageAssemblyResult(
+            true, artifactDigest, payloadTreeDigest, "");
     }
 
-    class AppImageContractResult copyFile(string source, string destination) {
-        if (!AppImagePayloadContract.nonEmptyFile(source)) {
-            return AppImageContractResult.failure(
-                "copy source is absent, empty, or a symlink: " + source);
-        }
-        if (!AppImagePathContract.realDirectory(PathTools.dirname(destination))) {
-            return AppImageContractResult.failure(
-                "copy destination parent is not a real directory: " + destination);
-        }
-        FileStatus destinationStatus = FileStatus(destination);
-        if (destinationStatus.linkFound) {
-            return AppImageContractResult.failure(
-                "copy destination already exists: " + destination);
-        }
-        return AppImageCommands.checked(
-            AppImageCommands.run("cp", ["-p", source, destination]),
-            "copy " + source);
+    class AppImageAssemblyResult failure(string error) {
+        return AppImageAssemblyResult(false, "", "", error);
     }
 
-    class AppImageContractResult copyTree(string source, string destination) {
-        if (!AppImagePayloadContract.realDirectory(source)) {
-            return AppImageContractResult.failure(
-                "copy source is absent or a symlink: " + source);
-        }
-        if (!AppImagePayloadContract.realDirectory(destination)) {
-            return AppImageContractResult.failure(
-                "copy destination is absent or a symlink: " + destination);
-        }
-        return AppImageCommands.checked(
-            AppImageCommands.run("rsync", ["-rltp", "--chmod=Du+rwx",
-                source + "/", destination + "/"]),
-            "copy tree " + source);
-    }
+    public bool ok() { return self.valid; }
+}
 
-    class AppImageContractResult verifyTreeMirror(
-            string source, string destination, Vector<string> excluded) {
-        if (!AppImagePayloadContract.realDirectory(source)
-            || !AppImagePayloadContract.realDirectory(destination)) {
-            return AppImageContractResult.failure(
-                "runtime mirror source/destination is not a real directory");
-        }
-        Vector<string> arguments = ["-rlnO", "--delete", "--checksum",
-            "--itemize-changes"];
-        for relative in excluded {
-            arguments.push("--exclude=" + relative);
-        }
-        arguments.push(source + "/");
-        arguments.push(destination + "/");
-        ExecResult compared = AppImageCommands.run("rsync", arguments);
-        AppImageContractResult status = AppImageCommands.checked(
-            compared, "verify staged runtime mirror " + source);
-        if (!status.ok()) { return status; }
-        if (!compared.stdout().trim().isEmpty()) {
-            return AppImageContractResult.failure(
-                "staged runtime mirror differs from its source: " + destination);
-        }
-        return AppImageContractResult.success();
-    }
-
-    class AppImageContractResult ensureOwnedDirectory(string directory) {
-        FileStatus status = FileStatus(directory);
-        if (status.linkFound) {
-            if (!status.isDir() || status.isSymlink()
-                || !UnixFileSystem.realPath(directory).equals(directory)) {
-                return AppImageContractResult.failure(
-                    "owned directory is a symlink or non-directory: " + directory);
-            }
-            if (FileSystem.chmod(directory, 448) != 0) { // 0700
-                return AppImageContractResult.failure(
-                    "cannot secure owned directory: " + directory);
-            }
-            return AppImageContractResult.success();
-        }
-        if (!AppImagePathContract.realDirectory(PathTools.dirname(directory))
-            || FileSystem.mkdir(directory, 448) != 0) { // 0700
-            return AppImageContractResult.failure(
-                "cannot create owned directory: " + directory);
-        }
-        return AppImageContractResult.success();
-    }
-
-    class bool makeOwnedDirectoriesWritable(string root, string path) {
-        if (!AppImagePathContract.within(root, path)) { return false; }
-        FileStatus status = FileStatus(path);
-        if (!status.linkFound || status.isSymlink() || !status.isDir()) {
-            return true;
-        }
-        if (FileSystem.chmod(path, 448) != 0) { return false; } // 0700
-        for entry in Directory(path).entries() {
-            if (entry.equals(".") || entry.equals("..")) { return false; }
-            string child = PathTools.join(path, entry);
-            if (!AppImageCommands.makeOwnedDirectoriesWritable(root, child)) {
-                return false;
-            }
-        }
-        return true;
-    }
-
-    class AppImageContractResult resetOwnedWork(AppImagePathPlan plan) {
-        if (!AppImagePathContract.ownsWorkRoot(plan)) {
-            return AppImageContractResult.failure(
-                "refusing to reset a non-derived AppImage work directory");
-        }
-        FileStatus status = FileStatus(plan.workRoot);
-        if (status.linkFound && (!status.isDir() || status.isSymlink()
-                || !UnixFileSystem.realPath(plan.workRoot).equals(plan.workRoot))) {
-            return AppImageContractResult.failure(
-                "AppImage work root is a symlink or non-directory: " + plan.workRoot);
-        }
-        if (status.linkFound
-            && (!AppImageCommands.makeOwnedDirectoriesWritable(
-                    plan.workRoot, plan.workRoot)
-                || FileSystem.removeRecursive(plan.workRoot) != 0)) {
-            return AppImageContractResult.failure(
-                "cannot remove owned AppImage work root: " + plan.workRoot);
-        }
-        AppImageContractResult created =
-            AppImageCommands.ensureOwnedDirectory(plan.workRoot);
-        if (!created.ok()) { return created; }
-        if (!AppImagePathContract.caseSensitiveDirectory(plan.workRoot)) {
-            return AppImageContractResult.failure(
-                "AppImage staging directory is not case-sensitive: " + plan.workRoot);
-        }
-        return AppImageContractResult.success();
-    }
-
-    class AppImageContractResult cleanupOwnedWork(AppImagePathPlan plan) {
-        if (!AppImagePathContract.ownsWorkRoot(plan)) {
-            return AppImageContractResult.failure(
-                "refusing to clean a non-derived AppImage work directory");
-        }
-        FileStatus status = FileStatus(plan.workRoot);
-        if (!status.linkFound) { return AppImageContractResult.success(); }
-        if (!status.isDir() || status.isSymlink()
-            || !UnixFileSystem.realPath(plan.workRoot).equals(plan.workRoot)
-            || !AppImageCommands.makeOwnedDirectoriesWritable(
-                plan.workRoot, plan.workRoot)
-            || FileSystem.removeRecursive(plan.workRoot) != 0) {
-            return AppImageContractResult.failure(
-                "cannot safely clean owned AppImage work root: " + plan.workRoot);
-        }
-        return AppImageContractResult.success();
+class AppImageAssembler {
+    class Vector<string> runtimeNamespaces() {
+        return ["bin", "lib", "share", "nix/store"];
     }
 
     class AppImageContractResult createFreshDirectory(string directory) {
@@ -288,121 +154,105 @@ class AppImageCommands {
         return AppImageContractResult.success();
     }
 
-    class string temporaryFile(string directory, string prefix) {
-        if (!AppImagePathContract.realDirectory(directory)) { return ""; }
-        string templatePath = PathTools.join(directory, prefix + ".XXXXXX");
-        char* raw = Strings.copy(templatePath);
-        int descriptor = mkstemp(raw);
-        if (descriptor < 0) { return ""; }
-        close(descriptor);
-        string path = Strings.copy(raw);
-        if (FileSystem.chmod(path, 384) != 0) { // 0600
-            unlink(path);
-            return "";
-        }
-        return path;
+    class AppImageContractResult identicalTree(
+            string source, string destination) {
+        string sourcePath = UnixFileSystem.realPath(source);
+        string destinationPath = UnixFileSystem.realPath(destination);
+        int sourceDescriptor = sourcePath.equals(source)
+            ? UnixFileSystem.openDirectoryNoFollow(source) : -1;
+        int destinationDescriptor = destinationPath.equals(destination)
+            ? UnixFileSystem.openDirectoryNoFollow(destination) : -1;
+        SemuInstallResult sourceDigest = sourceDescriptor >= 0
+            ? SemuInstallTree.digestDescriptor(sourceDescriptor)
+            : SemuInstallResult.failure(
+                "runtime mirror source is not descriptor-bound");
+        SemuInstallResult destinationDigest = destinationDescriptor >= 0
+            ? SemuInstallTree.digestDescriptor(destinationDescriptor)
+            : SemuInstallResult.failure(
+                "runtime mirror destination is not descriptor-bound");
+        bool sourceClosed = sourceDescriptor < 0
+            || close(sourceDescriptor) == 0;
+        bool destinationClosed = destinationDescriptor < 0
+            || close(destinationDescriptor) == 0;
+        return sourceDigest.ok() && destinationDigest.ok()
+                && sourceClosed && destinationClosed
+                && sourceDigest.document.equals(destinationDigest.document)
+            ? AppImageContractResult.success()
+            : AppImageContractResult.failure(!sourceDigest.ok()
+                ? sourceDigest.error : !destinationDigest.ok()
+                    ? destinationDigest.error
+                    : !sourceClosed || !destinationClosed
+                        ? "cannot close descriptor-bound runtime mirror"
+                        : "staged runtime mirror differs from its source");
     }
 
-    class AppImageContractResult discardTemporary(string path) {
-        FileStatus status = FileStatus(path);
-        if (!status.linkFound) { return AppImageContractResult.success(); }
-        if (!status.isFile() || status.isSymlink() || unlink(path) != 0) {
-            return AppImageContractResult.failure(
-                "cannot safely remove temporary file: " + path);
+    class AppImagePayloadIdentity payloadIdentity(
+            AppImageWorkSession session, string root) {
+        if (!session.ok() || !session.stillBound()
+                || !AppImagePathContract.within(session.path, root)) {
+            return AppImagePayloadIdentity.failure(
+                "payload identity is outside the bound work session");
         }
-        return AppImageContractResult.success();
+        string name = PathTools.basename(root);
+        int descriptor = name.isEmpty() ? -1
+            : AppImageRuntimeLease.openBelow(
+                session.rootDescriptor, name, true);
+        SemuInstallResult tree = descriptor >= 0
+            ? SemuInstallTree.digestDescriptor(descriptor)
+            : SemuInstallResult.failure(
+                "payload identity directory is not descriptor-bound");
+        if (descriptor >= 0) { close(descriptor); }
+        return tree.ok() && session.stillBound()
+            ? AppImagePayloadIdentity.success(tree.document)
+            : AppImagePayloadIdentity.failure(tree.ok()
+                ? "payload identity session changed while hashing"
+                : tree.error);
     }
 
-    class AppImageContractResult atomicPublish(
-            string source, string destination, int mode) {
-        FileStatus sourceStatus = FileStatus(source);
-        FileStatus destinationStatus = FileStatus(destination);
-        if (!sourceStatus.isFile() || sourceStatus.isSymlink()
-            || (destinationStatus.linkFound
-                && (!destinationStatus.isFile() || destinationStatus.isSymlink()))) {
-            return AppImageContractResult.failure(
-                "atomic publication requires regular non-symlink files");
+    class AppImagePayloadIdentity stageExpectedPayload(
+            AppImagePathPlan plan, AppImageWorkSession session,
+            AppImageRuntimeLease runtime,
+            string appDir) {
+        if (!runtime.ok() || !runtime.stillBound()
+                || !runtime.runtimeRoot.equals(plan.runtimeRoot)) {
+            return AppImagePayloadIdentity.failure(
+                "cannot stage payload outside the leased runtime generation");
         }
-        struct stat sourceStat;
-        struct stat parentStat;
-        if (stat(source, &sourceStat) != 0
-            || stat(PathTools.dirname(destination), &parentStat) != 0
-            || sourceStat.st_dev != parentStat.st_dev) {
-            return AppImageContractResult.failure(
-                "atomic publication requires one filesystem: " + destination);
+        string candidate = appDir + ".next";
+        if (FileStatus(appDir).linkFound || FileStatus(candidate).linkFound) {
+            return AppImagePayloadIdentity.failure(
+                "expected AppDir publication paths must be fresh");
         }
-        if (FileSystem.chmod(source, mode) != 0) {
-            return AppImageContractResult.failure(
-                "cannot set published file permissions: " + source);
+        AppImageContractResult staged = AppImageAssembler.stageAppDir(
+            runtime, session, candidate);
+        if (!staged.ok()) {
+            return AppImagePayloadIdentity.failure(staged.error);
         }
-        int descriptor = open(source, (int)O_RDONLY | (int)O_CLOEXEC | (int)O_NOFOLLOW);
-        if (descriptor < 0 || fsync(descriptor) != 0) {
-            if (descriptor >= 0) { close(descriptor); }
-            return AppImageContractResult.failure(
-                "cannot sync file before atomic publication: " + source);
+        AppImageContractResult owned = AppImageAssembler.validateOwnedPayload(
+            runtime, candidate);
+        if (!owned.ok()) {
+            return AppImagePayloadIdentity.failure(owned.error);
         }
-        close(descriptor);
-        if (rename(source, destination) != 0) {
-            return AppImageContractResult.failure(
-                "cannot atomically publish file: " + destination);
+        AppImagePayloadIdentity identity =
+            AppImageAssembler.payloadIdentity(session, candidate);
+        if (!identity.ok()) { return identity; }
+        if (!runtime.stillBound()) {
+            return AppImagePayloadIdentity.failure(
+                "runtime lease changed after staging the AppDir");
         }
-        return AppImageContractResult.success();
+        if (rename(candidate, appDir) != 0) {
+            return AppImagePayloadIdentity.failure(
+                "cannot atomically publish the expected AppDir snapshot");
+        }
+        AppImagePayloadIdentity published =
+            AppImageAssembler.payloadIdentity(session, appDir);
+        return published.ok() && runtime.stillBound()
+                && published.treeDigest.equals(identity.treeDigest)
+            ? published : AppImagePayloadIdentity.failure(published.ok()
+                ? "published AppDir identity differs from its candidate"
+                : published.error);
     }
 
-    class bool validSha256(string digest) {
-        if (digest.len() != 64) { return false; }
-        for character in digest {
-            bool decimal = character >= '0' && character <= '9';
-            bool hexadecimal = character >= 'a' && character <= 'f';
-            if (!decimal && !hexadecimal) { return false; }
-        }
-        return true;
-    }
-
-    class string sha256(string path) {
-        if (!AppImagePayloadContract.nonEmptyFile(path)) { return ""; }
-        bool coreutils = FileSystem.isFile("/usr/bin/sha256sum");
-        string executable = coreutils ? "/usr/bin/sha256sum" : "/usr/bin/shasum";
-        Vector<string> arguments = coreutils ? [path] : ["-a", "256", path];
-        ExecResult result = AppImageCommands.run(executable, arguments);
-        string output = result.ok() ? result.trimmed() : "";
-        string digest = output.len() < 64
-            ? "" : output.substring(0, 64).toLower();
-        return AppImageCommands.validSha256(digest) ? digest : "";
-    }
-
-    // The assembled file crosses into the repository only once. Copy into a
-    // same-filesystem temporary, prove byte identity, then rename atomically.
-    class AppImageContractResult publishCopy(
-            string source, string destination, int mode) {
-        string temporary = AppImageCommands.temporaryFile(
-            PathTools.dirname(destination), ".semu-appimage-publish");
-        if (temporary.isEmpty()) {
-            return AppImageContractResult.failure(
-                "cannot create AppImage publication temporary");
-        }
-        AppImageContractResult copied = AppImageCommands.checked(
-            AppImageCommands.run("cp", ["-p", source, temporary]),
-            "copy final AppImage into the repository output filesystem");
-        if (!copied.ok()) {
-            AppImageCommands.discardTemporary(temporary);
-            return copied;
-        }
-        string sourceDigest = AppImageCommands.sha256(source);
-        string copiedDigest = AppImageCommands.sha256(temporary);
-        if (sourceDigest.isEmpty() || !sourceDigest.equals(copiedDigest)) {
-            AppImageCommands.discardTemporary(temporary);
-            return AppImageContractResult.failure(
-                "published AppImage bytes differ from case-sensitive assembly output");
-        }
-        AppImageContractResult published =
-            AppImageCommands.atomicPublish(temporary, destination, mode);
-        if (!published.ok()) { AppImageCommands.discardTemporary(temporary); }
-        return published;
-    }
-}
-
-class AppImageAssembler {
     class AppImageContractResult validateSourceTree(string sourceRoot) {
         if (!AppImagePathContract.realDirectory(sourceRoot)
             || !AppImagePayloadContract.safeNonEmptyFile(
@@ -421,24 +271,18 @@ class AppImageAssembler {
         return AppImageContractResult.success();
     }
 
-    class AppImageContractResult stageSourceTree(string sourceRoot, string appDir) {
+    class AppImageContractResult validateStagedRuntimeConfig(
+            string runtimeRoot, string appDir) {
+        string sourceRoot =
+            PathTools.join(runtimeRoot, "share/semu/config");
         AppImageContractResult source =
             AppImageAssembler.validateSourceTree(sourceRoot);
         if (!source.ok()) { return source; }
-        string shareRoot = PathTools.join(appDir, "share/semu");
-        if (UnixFileSystem.mkdirp(shareRoot) != 0
-            || !AppImagePayloadContract.safeDirectory(appDir, "share/semu")) {
-            return AppImageContractResult.failure(
-                "cannot create a safe AppImage config payload parent");
-        }
-        string destination = PathTools.join(shareRoot, "config");
-        AppImageContractResult created =
-            AppImageCommands.createFreshDirectory(destination);
-        if (!created.ok()) { return created; }
-        AppImageContractResult copied =
-            AppImageCommands.copyTree(sourceRoot, destination);
-        if (!copied.ok()) { return copied; }
-        return AppImageAssembler.validateSourceTree(destination);
+        string destination = PathTools.join(appDir, "share/semu/config");
+        AppImageContractResult staged =
+            AppImageAssembler.validateSourceTree(destination);
+        if (!staged.ok()) { return staged; }
+        return AppImageAssembler.identicalTree(sourceRoot, destination);
     }
 
     class AppImageContractResult validateAppDir(string appDir) {
@@ -450,9 +294,66 @@ class AppImageAssembler {
             PathTools.join(appDir, "share/semu/config"));
     }
 
+    class AppImageContractResult importPackagingFile(
+            AppImageRuntimeLease runtime, AppImageWorkSession session,
+            string appDir, string sourceRelative,
+            string destinationRelative) {
+        string appDirName = PathTools.basename(appDir);
+        int appDirDescriptor = AppImageDescriptorTree.openBelow(
+            session.rootDescriptor, appDirName, true);
+        SemuInstallResult imported = appDirDescriptor >= 0
+            ? runtime.importPackagingFile(
+                runtime.packaging.relative + "/" + sourceRelative,
+                appDirDescriptor, destinationRelative)
+            : SemuInstallResult.failure(
+                "AppDir is not descriptor-bound for packaging import");
+        bool closed = appDirDescriptor < 0
+            || close(appDirDescriptor) == 0;
+        return imported.ok() && closed && session.stillBound()
+                && runtime.stillBound()
+            ? AppImageContractResult.success()
+            : AppImageContractResult.failure(!imported.ok() ? imported.error
+                : !closed ? "cannot close AppDir packaging destination"
+                : "AppDir or runtime changed during packaging import");
+    }
+
+    class AppImageContractResult copyStagedFile(
+            AppImageWorkSession session, string appDir,
+            string sourceRelative, string destinationRelative,
+            bool executable = false) {
+        string appDirName = PathTools.basename(appDir);
+        int appDirDescriptor = AppImageDescriptorTree.openBelow(
+            session.rootDescriptor, appDirName, true);
+        AppImageHeldFileLease source = appDirDescriptor >= 0
+            ? AppImageHeldFileLease.captureRelative(
+                appDirDescriptor, sourceRelative, executable)
+            : AppImageHeldFileLease();
+        SemuInstallResult copied = source.ok()
+            ? source.copyTo(appDirDescriptor, destinationRelative,
+                appDirDescriptor)
+            : SemuInstallResult.failure(source.error.isEmpty()
+                ? "AppDir is not descriptor-bound for file copy"
+                : source.error);
+        bool remainedBound = copied.ok() && source.stillBound(appDirDescriptor)
+            && session.stillBound();
+        source.closeDescriptors();
+        bool closed = appDirDescriptor < 0
+            || close(appDirDescriptor) == 0;
+        return remainedBound && closed
+            ? AppImageContractResult.success()
+            : AppImageContractResult.failure(!copied.ok() ? copied.error
+                : !closed ? "cannot close staged AppDir descriptor"
+                : "staged AppDir changed during descriptor copy");
+    }
+
     class AppImageContractResult stageLauncherShims(
-            string sourceDirectory, string destinationDirectory) {
-        if (!AppImagePathContract.realDirectory(sourceDirectory)
+            AppImageRuntimeLease runtime, AppImageWorkSession session,
+            string appDir) {
+        string sourceDirectory = PathTools.join(
+            runtime.packagingPath(), "bin");
+        string destinationDirectory = PathTools.join(appDir, "usr/bin");
+        if (!runtime.stillBound()
+            || !AppImagePathContract.realDirectory(sourceDirectory)
             || !AppImagePathContract.realDirectory(destinationDirectory)) {
             return AppImageContractResult.failure(
                 "AppImage launcher source/destination must be real directories");
@@ -464,18 +365,17 @@ class AppImageAssembler {
             }
             if (!PathTools.basename(name).equals(name)
                 || !name.startsWith("semu-")
-                || !AppImagePayloadContract.safeNonEmptyFile(sourceDirectory, name)) {
+                || !AppImagePayloadContract.safeNonEmptyFile(sourceDirectory, name)
+                || !AppImagePayloadContract.executableFile(
+                    PathTools.join(sourceDirectory, name))) {
                 return AppImageContractResult.failure(
                     "generated Linux packaging contains an invalid launcher: " + name);
             }
-            string destination = PathTools.join(destinationDirectory, name);
-            AppImageContractResult copied = AppImageCommands.copyFile(
-                PathTools.join(sourceDirectory, name), destination);
+            AppImageContractResult copied =
+                AppImageAssembler.importPackagingFile(
+                    runtime, session, appDir, "bin/" + name,
+                    "usr/bin/" + name);
             if (!copied.ok()) { return copied; }
-            if (FileSystem.chmod(destination, 493) != 0) { // 0755
-                return AppImageContractResult.failure(
-                    "cannot mark bundled launcher executable: " + destination);
-            }
             launcherCount++;
         }
         if (launcherCount == 0) {
@@ -486,8 +386,8 @@ class AppImageAssembler {
     }
 
     class AppImageContractResult stageSourceBuiltEsDe(
-            string runtimeRoot, string appDir) {
-        if (!AppImagePayloadContract.sourceBuiltEsDe(runtimeRoot, "bin/es-de")
+            AppImageWorkSession session, string appDir) {
+        if (!AppImagePayloadContract.sourceBuiltEsDe(appDir, "bin/es-de")
             || !AppImagePayloadContract.safeDirectory(appDir, "usr/bin")) {
             return AppImageContractResult.failure(
                 "source-built ES-DE or its AppDir destination is invalid");
@@ -497,13 +397,9 @@ class AppImageAssembler {
             return AppImageContractResult.failure(
                 "source-built ES-DE destination is not fresh");
         }
-        AppImageContractResult copied = AppImageCommands.copyFile(
-            PathTools.join(runtimeRoot, "bin/es-de"), destination);
+        AppImageContractResult copied = AppImageAssembler.copyStagedFile(
+            session, appDir, "bin/es-de", "usr/bin/es-de", true);
         if (!copied.ok()) { return copied; }
-        if (FileSystem.chmod(destination, 493) != 0) { // 0755
-            return AppImageContractResult.failure(
-                "cannot mark source-built ES-DE executable");
-        }
         if (!AppImagePayloadContract.sourceBuiltEsDe(
                 appDir, "usr/bin/es-de")) {
             return AppImageContractResult.failure(
@@ -524,17 +420,41 @@ class AppImageAssembler {
     }
 
     class bool identicalFile(string left, string right) {
-        string leftDigest = AppImageCommands.sha256(left);
-        string rightDigest = AppImageCommands.sha256(right);
-        return !leftDigest.isEmpty() && leftDigest.equals(rightDigest);
+        struct stat leftStatus;
+        struct stat rightStatus;
+        int leftDescriptor = SemuOwnedFileImport.source(left, &leftStatus);
+        int rightDescriptor = SemuOwnedFileImport.source(right, &rightStatus);
+        string leftDigest = leftDescriptor >= 0
+            ? SemuOwnedFileDigest.descriptor(leftDescriptor) : "";
+        string rightDigest = rightDescriptor >= 0
+            ? SemuOwnedFileDigest.descriptor(rightDescriptor) : "";
+        struct stat leftAfter;
+        struct stat rightAfter;
+        bool exact = leftDescriptor >= 0 && rightDescriptor >= 0
+            && !leftDigest.isEmpty() && leftDigest.equals(rightDigest)
+            && fstat(leftDescriptor, &leftAfter) == 0
+            && fstat(rightDescriptor, &rightAfter) == 0
+            && AppImageWorkSession.sameObject(&leftStatus, &leftAfter)
+            && AppImageWorkSession.sameObject(&rightStatus, &rightAfter)
+            && leftStatus.st_size == leftAfter.st_size
+            && rightStatus.st_size == rightAfter.st_size
+            && SemuOwnedPaths.permissions(leftStatus.st_mode)
+                == SemuOwnedPaths.permissions(rightStatus.st_mode)
+            && SemuOwnedFileDigest.descriptor(leftDescriptor)
+                .equals(leftDigest)
+            && SemuOwnedFileDigest.descriptor(rightDescriptor)
+                .equals(rightDigest);
+        if (leftDescriptor >= 0) { close(leftDescriptor); }
+        if (rightDescriptor >= 0) { close(rightDescriptor); }
+        return exact;
     }
 
     class AppImageContractResult validateOwnedUsr(
-            string runtimeRoot, string linuxPackaging, string appDir) {
+            AppImageRuntimeLease runtime, string linuxPackaging,
+            string appDir) {
         string usr = PathTools.join(appDir, "usr");
         string usrBin = PathTools.join(usr, "bin");
-        string coreDirectory =
-            AppImagePayloadContract.coreDirectory(runtimeRoot);
+        string coreDirectory = runtime.coreDirectory;
         Vector<string> components = Strings.split(coreDirectory, "/");
         if (components.size() == 0 || components.get(0).equals("bin")) {
             return AppImageContractResult.failure(
@@ -581,53 +501,45 @@ class AppImageAssembler {
                 "AppDir usr/bin contains unowned official ES-DE payload");
         }
         if (!AppImageAssembler.identicalFile(
-                PathTools.join(runtimeRoot, "bin/es-de"),
+                PathTools.join(appDir, "bin/es-de"),
                 PathTools.join(usrBin, "es-de"))
             || !AppImageAssembler.identicalFile(
-                PathTools.join(runtimeRoot, "lib/semu/semu-btrc"),
+                PathTools.join(appDir, "lib/semu/semu-btrc"),
                 PathTools.join(usrBin, "semu"))) {
             return AppImageContractResult.failure(
                 "AppDir frontend/CLI aliases do not belong to steamdeckRuntime");
         }
-        Vector<string> exclusions = [];
-        return AppImageCommands.verifyTreeMirror(
-            PathTools.join(runtimeRoot, coreDirectory), usrCores,
-            exclusions);
+        return AppImageAssembler.identicalTree(
+            PathTools.join(appDir, coreDirectory), usrCores);
     }
 
-    class AppImageContractResult validateRuntimePayload(
-            string runtimeRoot, string appDir) {
+    class AppImageContractResult validatePayloadShape(string appDir) {
         Vector<string> topLevel = [".DirIcon", "AppRun", "bin", "lib", "nix",
             "semu.desktop", "semu.svg", "share", "usr"];
         if (!AppImageAssembler.exactDirectoryEntries(appDir, topLevel)) {
             return AppImageContractResult.failure(
                 "AppDir contains payload outside its owned runtime/generated roots");
         }
-        for relative in ["bin", "lib", "nix"] {
-            Vector<string> exclusions = [];
-            AppImageContractResult mirrored = AppImageCommands.verifyTreeMirror(
-                PathTools.join(runtimeRoot, relative),
-                PathTools.join(appDir, relative), exclusions);
-            if (!mirrored.ok()) { return mirrored; }
-        }
-        return AppImageCommands.verifyTreeMirror(
-            PathTools.join(runtimeRoot, "share"),
-            PathTools.join(appDir, "share"),
-            ["semu/config", "semu/appimage"]);
+        return AppImageContractResult.success();
     }
 
     class AppImageContractResult validateOwnedPayload(
-            string runtimeRoot, string linuxPackaging, string appDir) {
+            AppImageRuntimeLease runtime, string appDir) {
+        if (!runtime.stillBound()) {
+            return AppImageContractResult.failure(
+                "runtime changed before AppDir ownership validation");
+        }
+        string linuxPackaging = runtime.packagingPath();
         AppImageContractResult payload = AppImageAssembler.validateAppDir(appDir);
         if (!payload.ok()) { return payload; }
-        AppImageContractResult runtime = AppImageAssembler.validateRuntimePayload(
-            runtimeRoot, appDir);
-        if (!runtime.ok()) { return runtime; }
+        AppImageContractResult shape =
+            AppImageAssembler.validatePayloadShape(appDir);
+        if (!shape.ok()) { return shape; }
         AppImageContractResult usr = AppImageAssembler.validateOwnedUsr(
-            runtimeRoot, linuxPackaging, appDir);
+            runtime, linuxPackaging, appDir);
         if (!usr.ok()) { return usr; }
         string icon = PathTools.join(
-            runtimeRoot, "share/pixmaps/org.es_de.frontend.svg");
+            appDir, "share/pixmaps/org.es_de.frontend.svg");
         if (!AppImageAssembler.identicalFile(icon, PathTools.join(appDir, "semu.svg"))
             || !AppImageAssembler.identicalFile(
                 icon, PathTools.join(appDir, ".DirIcon"))) {
@@ -641,6 +553,15 @@ class AppImageAssembler {
             return AppImageContractResult.failure(
                 "AppDir stable launcher differs from generated packaging");
         }
+        if (!AppImageAssembler.identicalFile(
+                PathTools.join(linuxPackaging, "AppRun"),
+                PathTools.join(appDir, "AppRun"))
+            || !AppImageAssembler.identicalFile(
+                PathTools.join(linuxPackaging, "semu.desktop"),
+                PathTools.join(appDir, "semu.desktop"))) {
+            return AppImageContractResult.failure(
+                "AppDir entrypoint metadata differs from generated packaging");
+        }
         for name in ["semu_settings.json", "legacy_shortcuts.json"] {
             if (!AppImageAssembler.identicalFile(
                     PathTools.join(linuxPackaging, "settings/" + name),
@@ -650,28 +571,25 @@ class AppImageAssembler {
                     "AppDir generated settings differ from packaging: " + name);
             }
         }
-        return AppImageContractResult.success();
+        return runtime.stillBound()
+            ? AppImageContractResult.success()
+            : AppImageContractResult.failure(
+                "runtime changed during AppDir ownership validation");
     }
 
     class AppImageContractResult stageAppDir(
-            string runtimeRoot, string linuxPackaging, string sourceRoot,
+            AppImageRuntimeLease runtime, AppImageWorkSession session,
             string appDir) {
-        AppImageContractResult runtime =
-            AppImagePayloadContract.validateRuntime(runtimeRoot, sourceRoot);
-        if (!runtime.ok()) { return runtime; }
-        AppImageRuntimeInventoryResult inventory =
-            AppImageRuntimeInventory.validate(sourceRoot, runtimeRoot);
-        if (!inventory.ok()) {
-            return AppImageContractResult.failure(inventory.error);
-        }
-        if (!AppImagePathContract.realDirectory(linuxPackaging)
-            || !AppImagePathContract.realDirectory(sourceRoot)) {
+        string linuxPackaging = runtime.packagingPath();
+        if (!runtime.ok() || !runtime.stillBound()
+                || !session.ok() || !session.stillBound()
+                || !AppImagePathContract.realDirectory(linuxPackaging)) {
             return AppImageContractResult.failure(
-                "AppDir source roots must be real non-symlink directories");
+                "AppDir inputs are not bound runtime/session/package roots");
         }
-        if (AppImagePathContract.overlap(appDir, runtimeRoot)
+        if (AppImagePathContract.overlap(appDir, runtime.runtimeRoot)
             || AppImagePathContract.overlap(appDir, linuxPackaging)
-            || AppImagePathContract.overlap(appDir, sourceRoot)) {
+            || !AppImagePathContract.within(session.path, appDir)) {
             return AppImageContractResult.failure(
                 "AppDir staging path overlaps a runtime or source root");
         }
@@ -686,23 +604,27 @@ class AppImageAssembler {
                     "generated Linux packaging lacks " + relative);
             }
         }
+        for relative in ["AppRun", "semu-launcher"] {
+            if (!AppImagePayloadContract.executableFile(
+                    PathTools.join(linuxPackaging, relative))) {
+                return AppImageContractResult.failure(
+                    "generated Linux packaging is not executable: " + relative);
+            }
+        }
         if (!AppImagePayloadContract.safeDirectory(linuxPackaging, "bin")) {
             return AppImageContractResult.failure(
                 "generated Linux packaging lacks launcher shims");
         }
 
         AppImageContractResult created =
-            AppImageCommands.createFreshDirectory(appDir);
+            AppImageAssembler.createFreshDirectory(appDir);
         if (!created.ok()) { return created; }
-        string coreDirectory =
-            AppImagePayloadContract.coreDirectory(runtimeRoot);
+        string coreDirectory = runtime.coreDirectory;
         if (coreDirectory.isEmpty()) {
             return AppImageContractResult.failure(
                 "runtime provenance has no selected-core directory");
         }
-        Vector<string> directories = ["bin", "lib", "share", "nix", "usr/bin",
-            "usr/" + coreDirectory, "share/semu/appimage"];
-        for relative in directories {
+        for relative in AppImageAssembler.runtimeNamespaces() {
             string directory = PathTools.join(appDir, relative);
             if (UnixFileSystem.mkdirp(directory) != 0) {
                 return AppImageContractResult.failure(
@@ -710,220 +632,411 @@ class AppImageAssembler {
             }
         }
 
-        AppImageContractResult copied = AppImageContractResult.success();
-        Vector<string> runtimeNamespaces = ["bin", "lib", "share", "nix"];
-        for relative in runtimeNamespaces {
-            copied = AppImageCommands.copyTree(
-                PathTools.join(runtimeRoot, relative),
-                PathTools.join(appDir, relative));
-            if (!copied.ok()) { return copied; }
-        }
-        copied = AppImageAssembler.stageSourceTree(sourceRoot, appDir);
-        if (!copied.ok()) { return copied; }
-        copied = AppImageCommands.copyFile(
-            PathTools.join(linuxPackaging, "settings/semu_settings.json"),
-            PathTools.join(appDir,
-                "share/semu/config/settings/semu_settings.json"));
-        if (!copied.ok()) { return copied; }
-        copied = AppImageCommands.copyFile(
-            PathTools.join(linuxPackaging, "settings/legacy_shortcuts.json"),
-            PathTools.join(appDir,
-                "share/semu/config/settings/legacy_shortcuts.json"));
-        if (!copied.ok()) { return copied; }
-        copied = AppImageCommands.copyTree(
-            PathTools.join(runtimeRoot, coreDirectory),
-            PathTools.join(appDir, "usr/" + coreDirectory));
-        if (!copied.ok()) { return copied; }
-        copied = AppImageCommands.copyFile(PathTools.join(linuxPackaging, "AppRun"),
-            PathTools.join(appDir, "AppRun"));
-        if (!copied.ok()) { return copied; }
-        if (FileSystem.chmod(PathTools.join(appDir, "AppRun"), 493) != 0) {
-            return AppImageContractResult.failure("cannot mark AppRun executable");
-        }
-        copied = AppImageCommands.copyFile(
-            PathTools.join(linuxPackaging, "semu-launcher"),
-            PathTools.join(appDir, "share/semu/appimage/semu-launcher"));
-        if (!copied.ok()) { return copied; }
-        if (FileSystem.chmod(PathTools.join(
-                appDir, "share/semu/appimage/semu-launcher"), 493) != 0) {
+        string appDirName = PathTools.basename(appDir);
+        int appDirDescriptor = AppImageDescriptorTree.openBelow(
+            session.rootDescriptor, appDirName, true);
+        if (appDirDescriptor < 0) {
             return AppImageContractResult.failure(
-                "cannot mark stable no-FUSE launcher executable");
+                "fresh AppDir is not descriptor-bound to its work session");
         }
-        copied = AppImageCommands.copyFile(
-            PathTools.join(linuxPackaging, "semu.desktop"),
-            PathTools.join(appDir, "semu.desktop"));
+        AppImageContractResult copied = AppImageContractResult.success();
+        for relative in AppImageAssembler.runtimeNamespaces() {
+            SemuInstallResult imported = runtime.importNode(
+                relative, appDirDescriptor, relative);
+            if (!imported.ok()) {
+                close(appDirDescriptor);
+                return AppImageContractResult.failure(imported.error);
+            }
+        }
+        for relative in ["usr/bin", "usr/" + coreDirectory] {
+            string directory = PathTools.join(appDir, relative);
+            if (UnixFileSystem.mkdirp(directory) != 0) {
+                close(appDirDescriptor);
+                return AppImageContractResult.failure(
+                    "cannot create AppDir directory: " + directory);
+            }
+        }
+        SemuInstallResult importedCore = runtime.importNode(
+            coreDirectory, appDirDescriptor, "usr/" + coreDirectory);
+        bool appDirClosed = close(appDirDescriptor) == 0;
+        if (!importedCore.ok() || !appDirClosed) {
+            return AppImageContractResult.failure(!importedCore.ok()
+                ? importedCore.error
+                : "cannot close the descriptor-bound AppDir after import");
+        }
+        copied = AppImageAssembler.validateSourceTree(
+            PathTools.join(appDir, "share/semu/config"));
         if (!copied.ok()) { return copied; }
-        copied = AppImageAssembler.stageSourceBuiltEsDe(runtimeRoot, appDir);
+        string settingsDirectory = PathTools.join(
+            appDir, "share/semu/config/settings");
+        AppImageDirectoryWriteLease settingsLease =
+            AppImageDirectoryWriteLease.acquire(appDir, settingsDirectory);
+        if (!settingsLease.ok()) {
+            return AppImageContractResult.failure(settingsLease.error);
+        }
+        AppImageContractResult settingsResult =
+            AppImageAssembler.importPackagingFile(
+                runtime, session, appDir,
+                "settings/semu_settings.json",
+                "share/semu/config/settings/semu_settings.json");
+        if (settingsResult.ok()) {
+            settingsResult = AppImageAssembler.importPackagingFile(
+                runtime, session, appDir,
+                "settings/legacy_shortcuts.json",
+                "share/semu/config/settings/legacy_shortcuts.json");
+        }
+        AppImageContractResult settingsRestored = settingsLease.restore();
+        if (!settingsResult.ok()) {
+            return settingsRestored.ok() ? settingsResult
+                : AppImageContractResult.failure(
+                    settingsResult.error + "; " + settingsRestored.error);
+        }
+        if (!settingsRestored.ok()) { return settingsRestored; }
+        copied = AppImageAssembler.importPackagingFile(
+            runtime, session, appDir, "AppRun", "AppRun");
+        if (!copied.ok()) { return copied; }
+        string appImageDirectory =
+            PathTools.join(appDir, "share/semu/appimage");
+        AppImageDirectoryWriteLease appImageLease =
+            AppImageDirectoryWriteLease.acquire(appDir, appImageDirectory);
+        if (!appImageLease.ok()) {
+            return AppImageContractResult.failure(appImageLease.error);
+        }
+        copied = AppImageAssembler.importPackagingFile(
+            runtime, session, appDir, "semu-launcher",
+            "share/semu/appimage/semu-launcher");
+        AppImageContractResult appImageRestored = appImageLease.restore();
+        if (!copied.ok()) {
+            return appImageRestored.ok() ? copied
+                : AppImageContractResult.failure(
+                    copied.error + "; " + appImageRestored.error);
+        }
+        if (!appImageRestored.ok()) { return appImageRestored; }
+        copied = AppImageAssembler.importPackagingFile(
+            runtime, session, appDir, "semu.desktop", "semu.desktop");
+        if (!copied.ok()) { return copied; }
+        copied = AppImageAssembler.stageSourceBuiltEsDe(session, appDir);
         if (!copied.ok()) { return copied; }
         copied = AppImageAssembler.stageLauncherShims(
-            PathTools.join(linuxPackaging, "bin"),
-            PathTools.join(appDir, "usr/bin"));
+            runtime, session, appDir);
         if (!copied.ok()) { return copied; }
 
-        copied = AppImageCommands.copyFile(
-            PathTools.join(runtimeRoot, "lib/semu/semu-btrc"),
-            PathTools.join(appDir, "usr/bin/semu"));
+        copied = AppImageAssembler.copyStagedFile(
+            session, appDir, "lib/semu/semu-btrc", "usr/bin/semu", true);
         if (!copied.ok()) { return copied; }
-        if (FileSystem.chmod(PathTools.join(appDir, "usr/bin/semu"), 493) != 0) {
-            return AppImageContractResult.failure("cannot mark bundled Semu CLI executable");
-        }
 
         string iconRelative = "share/pixmaps/org.es_de.frontend.svg";
-        string icon = PathTools.join(appDir, iconRelative);
         if (!AppImagePayloadContract.safeNonEmptyFile(appDir, iconRelative)) {
             return AppImageContractResult.failure(
                 "steamdeckRuntime lacks its source-built ES-DE frontend icon");
         }
-        copied = AppImageCommands.copyFile(icon, PathTools.join(appDir, "semu.svg"));
+        copied = AppImageAssembler.copyStagedFile(
+            session, appDir, iconRelative, "semu.svg");
         if (!copied.ok()) { return copied; }
-        copied = AppImageCommands.copyFile(icon, PathTools.join(appDir, ".DirIcon"));
+        copied = AppImageAssembler.copyStagedFile(
+            session, appDir, iconRelative, ".DirIcon");
         if (!copied.ok()) { return copied; }
-        return AppImageAssembler.validateOwnedPayload(
-            runtimeRoot, linuxPackaging, appDir);
+        return AppImageAssembler.validateOwnedPayload(runtime, appDir);
     }
 
-    class AppImageContractResult buildSquashfs(string appDir, string output) {
-        if (FileStatus(output).linkFound) {
-            return AppImageContractResult.failure(
-                "SquashFS output must not already exist: " + output);
+    class AppImageHeldFileLease buildSquashfs(
+            AppImageRuntimeLease runtime, AppImageWorkSession session,
+            AppImageAssemblyTools tools, string appDir, string output) {
+        string appDirName = PathTools.basename(appDir);
+        string outputName = PathTools.basename(output);
+        if (!runtime.ok() || !runtime.stillBound()
+                || !tools.ok() || !tools.stillBound()
+                || !session.ok() || !session.stillBound()
+                || appDirName.isEmpty() || outputName.isEmpty()
+                || !PathTools.dirname(appDir).equals(session.path)
+                || !PathTools.dirname(output).equals(session.path)) {
+            return AppImageHeldFileLease.failure(
+                "leased native mksquashfs is absent or unsafe");
         }
-        ExecResult built = AppImageCommands.nixTool(
-            "nixpkgs#squashfsTools", "mksquashfs",
-            [appDir, output, "-comp", "zstd", "-Xcompression-level",
+
+        struct stat existing;
+        errno = 0;
+        bool outputAbsent = fstatat(session.rootDescriptor, outputName,
+            &existing, AT_SYMLINK_NOFOLLOW) != 0 && errno == ENOENT;
+        int appDirDescriptor = outputAbsent
+            ? AppImageRuntimeLease.openBelow(
+                session.rootDescriptor, appDirName, true) : -1;
+        int outputDescriptor = appDirDescriptor >= 0 ? openat(
+            session.rootDescriptor, outputName,
+            (int)O_RDWR | (int)O_CREAT | (int)O_EXCL
+                | (int)O_NOFOLLOW | (int)O_CLOEXEC,
+            (mode_t)384) : -1; // 0600
+        if (appDirDescriptor < 0 || outputDescriptor < 0) {
+            if (outputDescriptor >= 0) { close(outputDescriptor); }
+            if (appDirDescriptor >= 0) { close(appDirDescriptor); }
+            return AppImageHeldFileLease.failure(
+                "cannot bind SquashFS input and output descriptors");
+        }
+
+        Vector<ChildDescriptorMapping> descriptors = [
+            ChildDescriptorMapping(appDirDescriptor, 40),
+            ChildDescriptorMapping(outputDescriptor, 41)
+        ];
+        ExecResult built = AppImageLeasedExecutable.run(
+            tools.mksquashfs, session, "mksquashfs",
+            ["/proc/self/fd/40", "/proc/self/fd/41",
+             "-comp", "zstd", "-Xcompression-level",
              AppImageCompression.level(),
              "-root-owned", "-noappend", "-no-xattrs", "-no-progress",
              "-repro-time", "0", "-processors", AppImageCompression.workers(),
              "-single-reader",
-             "-one-file-system-x", "-exit-on-error", "-quiet"]);
-        AppImageContractResult status = AppImageCommands.checked(
+             "-one-file-system-x", "-exit-on-error", "-quiet"],
+            descriptorMappings=descriptors,
+            workingDirectoryDescriptor=session.rootDescriptor);
+        bool appDirClosed = close(appDirDescriptor) == 0;
+        AppImageContractResult status = AppImageToolResult.checked(
             built, "build reproducible AppImage SquashFS");
-        if (!status.ok()) { return status; }
-        if (!AppImagePayloadContract.nonEmptyFile(output)) {
-            return AppImageContractResult.failure(
-                "mksquashfs produced no filesystem image");
+        bool captureOutput = status.ok() && appDirClosed;
+        AppImageHeldFileLease squashfs = captureOutput
+            ? AppImageHeldFileLease.fromDescriptor(
+                outputDescriptor, outputName, true)
+            : AppImageHeldFileLease.failure(status.ok()
+                ? "cannot release the SquashFS input descriptor"
+                : status.error);
+        if (captureOutput) { outputDescriptor = -1; }
+        if (!squashfs.ok()) {
+            if (outputDescriptor >= 0) { close(outputDescriptor); }
+            unlinkat(session.rootDescriptor, outputName, 0);
+            return squashfs;
         }
-        return AppImageContractResult.success();
+        bool exact = squashfs.size > 0ULL
+            && squashfs.stillBound(session.rootDescriptor)
+            && runtime.stillBound() && tools.stillBound()
+            && session.stillBound();
+        if (!exact) {
+            squashfs.closeDescriptors();
+            unlinkat(session.rootDescriptor, outputName, 0);
+            return AppImageHeldFileLease.failure(
+                "mksquashfs output or runtime lease changed during assembly");
+        }
+        return squashfs;
     }
 
     class AppImageContractResult concatenate(
-            string runtimeArtifact, long long runtimeBytes, string squashfs,
-            string output) {
-        if (runtimeBytes < 1LL || FileStatus(output).linkFound
-            || !AppImagePayloadContract.nonEmptyFile(runtimeArtifact)
-            || !AppImagePayloadContract.nonEmptyFile(squashfs)) {
+            AppImageWorkSession session, AppImageRuntimeLease runtime,
+            AppImageHeldFileLease squashfs, string output) {
+        string outputName = PathTools.basename(output);
+        if (!session.ok() || !session.stillBound()
+                || !runtime.ok() || !runtime.stillBound()
+                || runtime.prefixBytes < 1LL
+                || !squashfs.ok()
+                || !squashfs.stillBound(session.rootDescriptor)
+                || outputName.isEmpty()
+                || !PathTools.dirname(output).equals(session.path)) {
             return AppImageContractResult.failure(
-                "AppImage concatenation inputs/output are not safe regular files");
+                "AppImage concatenation is outside its bound session/runtime");
         }
-        ExecResult prefix = AppImageCommands.nixTool("nixpkgs#coreutils", "dd",
-            ["if=" + runtimeArtifact, "of=" + output, "bs=4194304",
-             "count=" + AppImageNumbers.decimal(runtimeBytes),
-             "iflag=count_bytes", "status=none"]);
-        AppImageContractResult status = AppImageCommands.checked(
-            prefix, "copy AppImage runtime prefix");
-        if (!status.ok()) { return status; }
-        ExecResult payload = AppImageCommands.nixTool("nixpkgs#coreutils", "dd",
-            ["if=" + squashfs, "of=" + output, "bs=4194304", "oflag=append",
-             "conv=notrunc", "status=none"]);
-        status = AppImageCommands.checked(payload, "append AppImage SquashFS");
-        if (!status.ok()) { return status; }
-        if (!AppImagePayloadContract.nonEmptyFile(output)) {
-            return AppImageContractResult.failure(
-                "AppImage concatenation produced no artifact");
-        }
+
         struct stat squashfsStatus;
-        struct stat outputStatus;
-        if (stat(squashfs, &squashfsStatus) != 0
-            || stat(output, &outputStatus) != 0
-            || (long long)squashfsStatus.st_size > (long long)LLONG_MAX - runtimeBytes
-            || (long long)outputStatus.st_size
-                != runtimeBytes + (long long)squashfsStatus.st_size) {
+        bool squashfsExact = fstat(
+                squashfs.descriptor, &squashfsStatus) == 0
+            && squashfs.descriptorStillExact();
+        int outputParent = squashfsExact ? dup(session.rootDescriptor) : -1;
+        int outputDescriptor = outputParent >= 0
+            ? openat(outputParent, outputName,
+                (int)O_RDWR | (int)O_CREAT | (int)O_EXCL
+                    | (int)O_NOFOLLOW | (int)O_CLOEXEC,
+                (mode_t)384)
+            : -1;
+        if (!squashfsExact || outputDescriptor < 0) {
+            if (outputDescriptor >= 0) { close(outputDescriptor); }
+            if (outputParent >= 0) {
+                unlinkat(outputParent, outputName, 0);
+                close(outputParent);
+            }
             return AppImageContractResult.failure(
-                "AppImage concatenation size does not match prefix plus SquashFS");
+                "cannot bind AppImage concatenation files by descriptor");
+        }
+
+        bool copied = SemuOwnedFileImport.copy(
+                runtime.prefixDescriptor, outputDescriptor)
+            && SemuOwnedFileImport.copy(
+                squashfs.descriptor, outputDescriptor)
+            && fchmod(outputDescriptor, (mode_t)493) == 0
+            && fsync(outputDescriptor) == 0;
+        struct stat squashfsAfter;
+        struct stat outputStatus;
+        string squashfsAfterDigest = copied
+            ? SemuOwnedFileDigest.descriptor(squashfs.descriptor) : "";
+        copied = copied
+            && fstat(squashfs.descriptor, &squashfsAfter) == 0
+            && fstat(outputDescriptor, &outputStatus) == 0
+            && squashfsAfter.st_dev == squashfsStatus.st_dev
+            && squashfsAfter.st_ino == squashfsStatus.st_ino
+            && squashfsAfter.st_size == squashfsStatus.st_size
+            && squashfsAfter.st_mode == squashfsStatus.st_mode
+            && squashfs.digest.equals(squashfsAfterDigest)
+            && (long long)squashfsStatus.st_size
+                <= (long long)LLONG_MAX - runtime.prefixBytes
+            && (long long)outputStatus.st_size
+                == runtime.prefixBytes + (long long)squashfsStatus.st_size
+            && SemuOwnedPaths.permissions(outputStatus.st_mode) == 493
+            && squashfs.stillBound(session.rootDescriptor)
+            && runtime.stillBound() && session.stillBound();
+        bool closedOutput = close(outputDescriptor) == 0;
+        outputDescriptor = -1;
+        bool durable = closedOutput && fsync(outputParent) == 0;
+        if (!copied || !closedOutput || !durable) {
+            unlinkat(outputParent, outputName, 0);
+        }
+        bool closedParent = close(outputParent) == 0;
+        if (!copied || !closedOutput || !durable || !closedParent) {
+            return AppImageContractResult.failure(
+                "descriptor-backed AppImage concatenation failed");
         }
         return AppImageContractResult.success();
     }
 
-    class AppImageContractResult assembleOwned(AppImagePathPlan plan) {
-        string runtimePrefixArtifact = PathTools.join(
-            plan.runtimeRoot, "share/semu/appimage/runtime-x86_64");
-        if (!AppImagePayloadContract.safeNonEmptyFile(plan.runtimeRoot,
-                "share/semu/appimage/runtime-x86_64")
-                || !AppImagePayloadContract.executableFile(
-                    runtimePrefixArtifact)) {
-            return AppImageContractResult.failure(
-                "runtime lacks the pinned executable x86_64 AppImage prefix");
+    class AppImageAssemblyResult assembleOwned(
+            AppImagePathPlan plan, AppImageWorkSession session,
+            AppImageRuntimeLease runtime, AppImageAssemblyTools tools,
+            AppImageAssemblyLock lock) {
+        if (!runtime.ok() || !runtime.stillBound()
+                || !tools.ok() || !tools.stillBound()) {
+            return AppImageAssemblyResult.failure(
+                "runtime lease is not bound before AppImage assembly");
         }
-        Type2AppImageOffset offset =
-            Type2AppImage.parseBareRuntimeFile(runtimePrefixArtifact);
-        if (!offset.ok()) {
-            return AppImageContractResult.failure(offset.error);
-        }
-
         string appDir = PathTools.join(plan.workRoot, "AppDir");
-        AppImageContractResult staged = AppImageAssembler.stageAppDir(
-            plan.runtimeRoot, plan.packagingRoot, plan.sourceRoot, appDir);
-        if (!staged.ok()) { return staged; }
+        AppImagePayloadIdentity expectedPayload =
+            AppImageAssembler.stageExpectedPayload(
+                plan, session, runtime, appDir);
+        if (!expectedPayload.ok()) {
+            return AppImageAssemblyResult.failure(expectedPayload.error);
+        }
+        AppImageVerificationExpectations expectations =
+            AppImageVerificationExpectations.capture(
+                runtime, session, appDir, expectedPayload);
+        if (!expectations.ok()) {
+            return AppImageAssemblyResult.failure(expectations.error);
+        }
 
-        string squashfs = PathTools.join(plan.workRoot, "semu.squashfs");
-        AppImageContractResult built =
-            AppImageAssembler.buildSquashfs(appDir, squashfs);
-        if (!built.ok()) { return built; }
+        string squashfsPath = PathTools.join(
+            plan.workRoot, "semu.squashfs");
+        AppImageHeldFileLease squashfs =
+            AppImageAssembler.buildSquashfs(
+                runtime, session, tools, appDir, squashfsPath);
+        if (!squashfs.ok()) {
+            return AppImageAssemblyResult.failure(squashfs.error);
+        }
+        AppImagePayloadIdentity stablePayload =
+            AppImageAssembler.payloadIdentity(session, appDir);
+        if (!stablePayload.ok()
+                || !stablePayload.treeDigest.equals(expectedPayload.treeDigest)) {
+            squashfs.closeDescriptors();
+            return AppImageAssemblyResult.failure(stablePayload.ok()
+                ? "staged AppImage payload changed while building SquashFS"
+                : stablePayload.error);
+        }
         string assembled = PathTools.join(
             plan.workRoot, "Semu-x86_64.AppImage");
         AppImageContractResult concatenated = AppImageAssembler.concatenate(
-            runtimePrefixArtifact, offset.offset, squashfs, assembled);
-        if (!concatenated.ok()) { return concatenated; }
-        if (FileSystem.chmod(assembled, 493) != 0) { // 0755
-            return AppImageContractResult.failure(
-                "cannot mark assembled AppImage executable before verification");
+            session, runtime, squashfs, assembled);
+        bool squashfsStillExact =
+            squashfs.stillBound(session.rootDescriptor);
+        squashfs.closeDescriptors();
+        if (!concatenated.ok() || !squashfsStillExact) {
+            return AppImageAssemblyResult.failure(concatenated.ok()
+                ? "SquashFS lease changed before release"
+                : concatenated.error);
         }
+        AppImageVerificationSnapshot snapshot =
+            AppImageVerificationSnapshot.capture(session, assembled);
+        if (!snapshot.ok()) {
+            return AppImageAssemblyResult.failure(snapshot.error);
+        }
+        string artifactDigest = snapshot.digest;
         AppImageVerificationResult verified =
-            AppImageNoFuseVerifier.verify(plan, assembled);
+            AppImageNoFuseVerifier.verifySnapshot(
+                runtime, tools, expectations, snapshot, session);
         if (!verified.ok()) {
-            return AppImageContractResult.failure(verified.error);
+            AppImageContractResult releasedAfterFailure = snapshot.finish();
+            return AppImageAssemblyResult.failure(releasedAfterFailure.ok()
+                ? verified.error
+                : verified.error + "; " + releasedAfterFailure.error);
         }
-        return AppImageCommands.publishCopy(
-            assembled, plan.outputPath, 493); // 0755
+        AppImageContractResult published = snapshot.snapshotStillBound()
+            ? AppImageOutputTransaction.publish(
+                snapshot, lock, 493) // 0755
+            : AppImageContractResult.failure(
+                "verified AppImage snapshot changed before publication");
+        AppImageContractResult released = snapshot.finish();
+        if (!published.ok()) {
+            return AppImageAssemblyResult.failure(released.ok()
+                ? published.error : published.error + "; " + released.error);
+        }
+        return released.ok()
+            ? AppImageAssemblyResult.success(
+                artifactDigest, expectedPayload.treeDigest)
+            : AppImageAssemblyResult.failure(released.error);
     }
 
-    class int fail(AppImageContractResult result) {
-        print("appimage: " + result.error);
-        return 2;
-    }
-
-    class int assemble(string repoRoot, string runtimeRoot, string outputPath,
-                       string requestedWorkBase = "") {
+    class AppImageAssemblyResult assemble(
+                       string repoRoot, string runtimeRoot, string outputPath,
+                       AppImageRuntimeLease runtime,
+                       AppImageAssemblyTools tools,
+                       string requestedWorkBase = "",
+                       string requestedOutputRoot = "") {
         AppImagePathPlan plan =
             AppImagePathContract.plan(repoRoot, runtimeRoot, outputPath,
-                requestedWorkBase);
+                requestedWorkBase, requestedOutputRoot);
         if (!plan.ok()) {
-            return AppImageAssembler.fail(
-                AppImageContractResult.failure(plan.error));
+            AppImageContractResult runtimeReleased = runtime.ok()
+                ? runtime.finish() : AppImageContractResult.failure(
+                    runtime.error);
+            return AppImageAssemblyResult.failure(
+                runtimeReleased.ok()
+                    ? plan.error : plan.error + "; " + runtimeReleased.error);
         }
-        AppImageContractResult runtimeStatus =
-            AppImagePayloadContract.validateRuntime(
-                plan.runtimeRoot, plan.sourceRoot);
-        if (!runtimeStatus.ok()) { return AppImageAssembler.fail(runtimeStatus); }
-
+        if (!runtime.ok() || !runtime.stillBound()
+                || !tools.ok() || !tools.stillBound()
+                || !runtime.runtimeRoot.equals(plan.runtimeRoot)
+                || !runtime.runtimePublication.equals(
+                    plan.runtimePublication)) {
+            AppImageContractResult runtimeReleased = runtime.ok()
+                ? runtime.finish() : AppImageContractResult.failure(
+                    runtime.error);
+            string error =
+                "compiler runtime lease differs from the assembly plan";
+            if (!runtimeReleased.ok()) {
+                error += "; " + runtimeReleased.error;
+            }
+            return AppImageAssemblyResult.failure(error);
+        }
         AppImageAssemblyLock lock = AppImageAssemblyLock.acquire(plan);
         if (!lock.ok()) {
-            return AppImageAssembler.fail(
-                AppImageContractResult.failure(lock.error));
-        }
-        AppImageContractResult workStatus =
-            AppImageCommands.resetOwnedWork(plan);
-        if (!workStatus.ok()) {
-            AppImageContractResult releasedAfterReset = lock.unlock();
-            if (!releasedAfterReset.ok()) {
-                return AppImageAssembler.fail(AppImageContractResult.failure(
-                    workStatus.error + "; " + releasedAfterReset.error));
+            AppImageContractResult runtimeReleased = runtime.finish();
+            string error = lock.error;
+            if (!runtimeReleased.ok()) {
+                error += "; " + runtimeReleased.error;
             }
-            return AppImageAssembler.fail(workStatus);
+            return AppImageAssemblyResult.failure(error);
         }
-        AppImageContractResult assembled = AppImageAssembler.assembleOwned(plan);
-        AppImageContractResult cleaned =
-            AppImageCommands.cleanupOwnedWork(plan);
+        AppImageWorkSession session = AppImageWorkSession.create(plan);
+        if (!session.ok()) {
+            AppImageContractResult releasedAfterSession = lock.unlock();
+            AppImageContractResult runtimeReleasedAfterSession =
+                runtime.finish();
+            string error = session.error;
+            if (!releasedAfterSession.ok()) {
+                error += "; " + releasedAfterSession.error;
+            }
+            if (!runtimeReleasedAfterSession.ok()) {
+                error += "; " + runtimeReleasedAfterSession.error;
+            }
+            return AppImageAssemblyResult.failure(error);
+        }
+        plan.workRoot = session.path;
+        AppImageAssemblyResult assembled =
+            AppImageAssembler.assembleOwned(
+                plan, session, runtime, tools, lock);
+        AppImageContractResult cleaned = session.cleanup();
         AppImageContractResult released = lock.unlock();
+        AppImageContractResult runtimeReleased = runtime.finish();
         string finalError = "";
         if (!assembled.ok()) { finalError = assembled.error; }
         if (!cleaned.ok()) {
@@ -934,35 +1047,80 @@ class AppImageAssembler {
             finalError = finalError.isEmpty() ? released.error
                 : finalError + "; " + released.error;
         }
-        if (!finalError.isEmpty()) {
-            return AppImageAssembler.fail(
-                AppImageContractResult.failure(finalError));
+        if (!runtimeReleased.ok()) {
+            finalError = finalError.isEmpty() ? runtimeReleased.error
+                : finalError + "; " + runtimeReleased.error;
         }
-        print("appimage: wrote " + plan.outputPath);
-        return 0;
+        if (!finalError.isEmpty()) {
+            return AppImageAssemblyResult.failure(finalError);
+        }
+        return assembled;
     }
 
-    class int verify(string repoRoot, string runtimeRoot, string artifactPath,
-                     string requestedWorkBase = "", bool digestOnly = false) {
+    class AppImageAssemblyResult verify(
+                     string repoRoot, string runtimeRoot, string artifactPath,
+                     AppImageRuntimeLease runtime,
+                     AppImageAssemblyTools tools,
+                     string requestedWorkBase = "",
+                     string requestedOutputRoot = "") {
         AppImagePathPlan plan = AppImagePathContract.plan(
-            repoRoot, runtimeRoot, artifactPath, requestedWorkBase);
+            repoRoot, runtimeRoot, artifactPath,
+            requestedWorkBase, requestedOutputRoot);
         if (!plan.ok()) {
-            return AppImageAssembler.fail(
-                AppImageContractResult.failure(plan.error));
+            AppImageContractResult runtimeReleased = runtime.ok()
+                ? runtime.finish() : AppImageContractResult.failure(
+                    runtime.error);
+            return AppImageAssemblyResult.failure(
+                runtimeReleased.ok()
+                    ? plan.error : plan.error + "; " + runtimeReleased.error);
+        }
+        if (!runtime.ok() || !runtime.stillBound()
+                || !tools.ok() || !tools.stillBound()
+                || !runtime.runtimeRoot.equals(plan.runtimeRoot)
+                || !runtime.runtimePublication.equals(
+                    plan.runtimePublication)) {
+            AppImageContractResult runtimeReleased = runtime.ok()
+                ? runtime.finish() : AppImageContractResult.failure(
+                    runtime.error);
+            string error =
+                "compiler runtime lease differs from the verification plan";
+            if (!runtimeReleased.ok()) {
+                error += "; " + runtimeReleased.error;
+            }
+            return AppImageAssemblyResult.failure(error);
         }
         AppImageAssemblyLock lock = AppImageAssemblyLock.acquire(plan);
         if (!lock.ok()) {
-            return AppImageAssembler.fail(
-                AppImageContractResult.failure(lock.error));
+            AppImageContractResult runtimeReleased = runtime.finish();
+            string error = lock.error;
+            if (!runtimeReleased.ok()) {
+                error += "; " + runtimeReleased.error;
+            }
+            return AppImageAssemblyResult.failure(error);
         }
-        AppImageContractResult workStatus =
-            AppImageCommands.resetOwnedWork(plan);
-        AppImageVerificationResult verified = workStatus.ok()
-            ? AppImageNoFuseVerifier.verify(plan, plan.outputPath)
-            : AppImageVerificationResult.failure(workStatus.error);
-        AppImageContractResult cleaned =
-            AppImageCommands.cleanupOwnedWork(plan);
+        AppImageWorkSession session = AppImageWorkSession.create(plan);
+        plan.workRoot = session.ok() ? session.path : "";
+        string expectedAppDir = PathTools.join(
+            plan.workRoot, "ExpectedAppDir");
+        AppImagePayloadIdentity expectedPayload = session.ok()
+            ? AppImageAssembler.stageExpectedPayload(
+                plan, session, runtime, expectedAppDir)
+            : AppImagePayloadIdentity.failure(session.error);
+        AppImageVerificationExpectations expectations = expectedPayload.ok()
+            ? AppImageVerificationExpectations.capture(
+                runtime, session, expectedAppDir, expectedPayload)
+            : AppImageVerificationExpectations();
+        if (!expectedPayload.ok()) {
+            expectations.error = expectedPayload.error;
+        }
+        AppImageVerificationResult verified = expectations.ok()
+            ? AppImageNoFuseVerifier.verify(
+                runtime, tools, expectations, session, plan.outputPath)
+            : AppImageVerificationResult.failure(expectations.error);
+        AppImageContractResult cleaned = session.ok() ? session.cleanup()
+            : AppImageContractResult.success();
         AppImageContractResult released = lock.unlock();
+        AppImageContractResult runtimeReleased = runtime.finish();
         string finalError = verified.ok() ? "" : verified.error;
         if (!cleaned.ok()) {
             finalError = finalError.isEmpty() ? cleaned.error
@@ -972,16 +1130,14 @@ class AppImageAssembler {
             finalError = finalError.isEmpty() ? released.error
                 : finalError + "; " + released.error;
         }
+        if (!runtimeReleased.ok()) {
+            finalError = finalError.isEmpty() ? runtimeReleased.error
+                : finalError + "; " + runtimeReleased.error;
+        }
         if (!finalError.isEmpty()) {
-            return AppImageAssembler.fail(
-                AppImageContractResult.failure(finalError));
+            return AppImageAssemblyResult.failure(finalError);
         }
-        if (digestOnly) {
-            print(verified.digest);
-        } else {
-            print("appimage: verified " + plan.outputPath
-                + " sha256=" + verified.digest);
-        }
-        return 0;
+        return AppImageAssemblyResult.success(
+            verified.digest, expectedPayload.treeDigest);
     }
 }

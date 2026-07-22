@@ -7,9 +7,20 @@ import ./renderer_abi.btrc
 
 int RGL_VIEWPORT = 0x0BA2;
 int RGL_SCISSOR_BOX = 0x0C10;
+int RGL_VERSION = 0x1F02;
+int RGL_SHADING_LANGUAGE_VERSION = 0x8B8C;
 int RGL_TEXTURE_2D = 0x0DE1;
 int RGL_TEXTURE0 = 0x84C0;
 int RGL_TEXTURE_BINDING_2D = 0x8069;
+int RGL_TEXTURE_MIN_FILTER = 0x2801;
+int RGL_TEXTURE_MAG_FILTER = 0x2800;
+int RGL_TEXTURE_BASE_LEVEL = 0x813C;
+int RGL_TEXTURE_MAX_LEVEL = 0x813D;
+int RGL_TEXTURE_WRAP_S = 0x2802;
+int RGL_TEXTURE_WRAP_T = 0x2803;
+int RGL_LINEAR = 0x2601;
+int RGL_NEAREST = 0x2600;
+int RGL_CLAMP_TO_EDGE = 0x812F;
 int RGL_SAMPLER_BINDING = 0x8919;
 int RGL_ACTIVE_TEXTURE = 0x84E0;
 int RGL_MAX_COMBINED_TEXTURE_IMAGE_UNITS = 0x8B4D;
@@ -62,6 +73,13 @@ int RGL_CULL_FACE = 0x0B44;
 int RGL_STENCIL_TEST = 0x0B90;
 int RGL_MULTISAMPLE = 0x809D;
 int RGL_FRAMEBUFFER_SRGB = 0x8DB9;
+int RGL_FRAMEBUFFER_COMPLETE = 0x8CD5;
+int RGL_COLOR_ATTACHMENT0 = 0x8CE0;
+int RGL_COLOR_BUFFER_BIT = 0x00004000;
+int RGL_RGBA = 0x1908;
+int RGL_RGBA8 = 0x8058;
+int RGL_UNSIGNED_BYTE = 0x1401;
+int RGL_COMPILE_STATUS = 0x8B81;
 int RGL_FRONT = 0x0404;
 int RGL_BACK = 0x0405;
 int RGL_NO_ERROR = 0;
@@ -69,10 +87,12 @@ int SEMU_RENDER_TEXTURE_UNITS = 5;
 
 struct RendererGlApi {
     __fn_ptr<void, unsigned int, int*> get_integer;
+    __fn_ptr<unsigned char*, unsigned int> get_string;
     __fn_ptr<void, unsigned int, unsigned char*> get_boolean;
     __fn_ptr<unsigned char, unsigned int> is_enabled;
     __fn_ptr<unsigned char, unsigned int> is_program;
     __fn_ptr<void, int, unsigned int*> gen_textures;
+    __fn_ptr<void, int, unsigned int*> delete_textures;
     __fn_ptr<void, unsigned int, unsigned int> bind_texture;
     __fn_ptr<void, unsigned int, int, int, int, int, int,
         unsigned int, unsigned int, void*> texture_image_2d;
@@ -80,8 +100,10 @@ struct RendererGlApi {
     __fn_ptr<void, unsigned int> active_texture;
     __fn_ptr<void, unsigned int, unsigned int> bind_sampler;
     __fn_ptr<void, int, unsigned int*> gen_vertex_arrays;
+    __fn_ptr<void, int, unsigned int*> delete_vertex_arrays;
     __fn_ptr<void, unsigned int> bind_vertex_array;
     __fn_ptr<void, int, unsigned int*> gen_framebuffers;
+    __fn_ptr<void, int, unsigned int*> delete_framebuffers;
     __fn_ptr<void, unsigned int, unsigned int> bind_framebuffer;
     __fn_ptr<void, unsigned int, unsigned int, unsigned int,
         unsigned int, int> framebuffer_texture_2d;
@@ -93,8 +115,10 @@ struct RendererGlApi {
     __fn_ptr<unsigned int, unsigned int> create_shader;
     __fn_ptr<void, unsigned int, int, char**, int*> shader_source;
     __fn_ptr<void, unsigned int> compile_shader;
+    __fn_ptr<void, unsigned int> delete_shader;
     __fn_ptr<void, unsigned int, unsigned int, int*> get_shader_integer;
     __fn_ptr<unsigned int> create_program;
+    __fn_ptr<void, unsigned int> delete_program;
     __fn_ptr<void, unsigned int, unsigned int> attach_shader;
     __fn_ptr<void, unsigned int> link_program;
     __fn_ptr<void, unsigned int, unsigned int, int*> get_program_integer;
@@ -149,6 +173,49 @@ struct RendererGlState {
     unsigned int stencil_back_mask;
 };
 
+struct RendererGlAtomicTarget {
+    unsigned int texture;
+    unsigned int framebuffer;
+    int width;
+    int height;
+};
+
+class RendererGlCapabilities {
+    class int parseVersion(const unsigned char* text) {
+        if (text == null) { return 0; }
+        int index = 0;
+        int majorVersion = 0;
+        int majorDigits = 0;
+        while (text[index] >= '0' && text[index] <= '9') {
+            majorVersion = majorVersion * 10 + (int)(text[index] - '0');
+            majorDigits = majorDigits + 1;
+            index = index + 1;
+        }
+        if (majorDigits == 0 || text[index] != '.') { return 0; }
+        index = index + 1;
+        int minorVersion = 0;
+        int minorDigits = 0;
+        while (text[index] >= '0' && text[index] <= '9') {
+            minorVersion = minorVersion * 10
+                + (int)(text[index] - '0');
+            minorDigits = minorDigits + 1;
+            index = index + 1;
+        }
+        if (minorDigits == 0 || minorDigits > 2) { return 0; }
+        if (minorDigits == 1) { minorVersion = minorVersion * 10; }
+        return majorVersion * 100 + minorVersion;
+    }
+
+    class bool supported(struct RendererGlApi* gl) {
+        if (gl == null || gl->get_string == null) { return false; }
+        int openGl = RendererGlCapabilities.parseVersion(
+            gl->get_string((unsigned int)RGL_VERSION));
+        int shadingLanguage = RendererGlCapabilities.parseVersion(
+            gl->get_string((unsigned int)RGL_SHADING_LANGUAGE_VERSION));
+        return openGl >= 330 && shadingLanguage >= 330;
+    }
+}
+
 class RendererGlProcedures {
     class void* resolve(struct SemuRenderFrameGl* frame, const char* name) {
         return frame == null || frame->get_proc == null
@@ -160,6 +227,8 @@ class RendererGlProcedures {
         memset(gl, 0, sizeof(struct RendererGlApi));
         gl->get_integer = (__fn_ptr<void, unsigned int, int*>)
             RendererGlProcedures.resolve(frame, "glGetIntegerv");
+        gl->get_string = (__fn_ptr<unsigned char*, unsigned int>)
+            RendererGlProcedures.resolve(frame, "glGetString");
         gl->get_boolean = (__fn_ptr<void, unsigned int, unsigned char*>)
             RendererGlProcedures.resolve(frame, "glGetBooleanv");
         gl->is_enabled = (__fn_ptr<unsigned char, unsigned int>)
@@ -168,6 +237,8 @@ class RendererGlProcedures {
             RendererGlProcedures.resolve(frame, "glIsProgram");
         gl->gen_textures = (__fn_ptr<void, int, unsigned int*>)
             RendererGlProcedures.resolve(frame, "glGenTextures");
+        gl->delete_textures = (__fn_ptr<void, int, unsigned int*>)
+            RendererGlProcedures.resolve(frame, "glDeleteTextures");
         gl->bind_texture = (__fn_ptr<void, unsigned int, unsigned int>)
             RendererGlProcedures.resolve(frame, "glBindTexture");
         gl->texture_image_2d = (__fn_ptr<void, unsigned int, int, int, int,
@@ -181,10 +252,14 @@ class RendererGlProcedures {
             RendererGlProcedures.resolve(frame, "glBindSampler");
         gl->gen_vertex_arrays = (__fn_ptr<void, int, unsigned int*>)
             RendererGlProcedures.resolve(frame, "glGenVertexArrays");
+        gl->delete_vertex_arrays = (__fn_ptr<void, int, unsigned int*>)
+            RendererGlProcedures.resolve(frame, "glDeleteVertexArrays");
         gl->bind_vertex_array = (__fn_ptr<void, unsigned int>)
             RendererGlProcedures.resolve(frame, "glBindVertexArray");
         gl->gen_framebuffers = (__fn_ptr<void, int, unsigned int*>)
             RendererGlProcedures.resolve(frame, "glGenFramebuffers");
+        gl->delete_framebuffers = (__fn_ptr<void, int, unsigned int*>)
+            RendererGlProcedures.resolve(frame, "glDeleteFramebuffers");
         gl->bind_framebuffer = (__fn_ptr<void, unsigned int, unsigned int>)
             RendererGlProcedures.resolve(frame, "glBindFramebuffer");
         gl->framebuffer_texture_2d = (__fn_ptr<void, unsigned int, unsigned int,
@@ -205,10 +280,14 @@ class RendererGlProcedures {
             RendererGlProcedures.resolve(frame, "glShaderSource");
         gl->compile_shader = (__fn_ptr<void, unsigned int>)
             RendererGlProcedures.resolve(frame, "glCompileShader");
+        gl->delete_shader = (__fn_ptr<void, unsigned int>)
+            RendererGlProcedures.resolve(frame, "glDeleteShader");
         gl->get_shader_integer = (__fn_ptr<void, unsigned int, unsigned int, int*>)
             RendererGlProcedures.resolve(frame, "glGetShaderiv");
         gl->create_program = (__fn_ptr<unsigned int>)
             RendererGlProcedures.resolve(frame, "glCreateProgram");
+        gl->delete_program = (__fn_ptr<void, unsigned int>)
+            RendererGlProcedures.resolve(frame, "glDeleteProgram");
         gl->attach_shader = (__fn_ptr<void, unsigned int, unsigned int>)
             RendererGlProcedures.resolve(frame, "glAttachShader");
         gl->link_program = (__fn_ptr<void, unsigned int>)
@@ -256,19 +335,24 @@ class RendererGlProcedures {
         gl->get_error = (__fn_ptr<unsigned int>)
             RendererGlProcedures.resolve(frame, "glGetError");
 
-        return gl->get_integer != null && gl->get_boolean != null
+        return gl->get_integer != null && gl->get_string != null
+            && gl->get_boolean != null
             && gl->is_enabled != null && gl->is_program != null
-            && gl->gen_textures != null
+            && gl->gen_textures != null && gl->delete_textures != null
             && gl->bind_texture != null && gl->texture_image_2d != null
             && gl->texture_parameter != null && gl->active_texture != null
             && gl->bind_sampler != null && gl->gen_vertex_arrays != null
+            && gl->delete_vertex_arrays != null
             && gl->bind_vertex_array != null && gl->gen_framebuffers != null
+            && gl->delete_framebuffers != null
             && gl->bind_framebuffer != null && gl->framebuffer_texture_2d != null
             && gl->check_framebuffer != null && gl->blit_framebuffer != null
             && gl->draw_buffer != null && gl->read_buffer != null
             && gl->create_shader != null && gl->shader_source != null
-            && gl->compile_shader != null && gl->get_shader_integer != null
-            && gl->create_program != null && gl->attach_shader != null
+            && gl->compile_shader != null && gl->delete_shader != null
+            && gl->get_shader_integer != null
+            && gl->create_program != null && gl->delete_program != null
+            && gl->attach_shader != null
             && gl->link_program != null && gl->get_program_integer != null
             && gl->use_program != null && gl->uniform_location != null
             && gl->uniform_1i != null && gl->uniform_1f != null
@@ -279,7 +363,8 @@ class RendererGlProcedures {
             && gl->blend_function_separate != null
             && gl->blend_equation_separate != null && gl->color_mask != null
             && gl->depth_mask != null && gl->stencil_mask_separate != null
-            && gl->read_pixels != null && gl->get_error != null;
+            && gl->read_pixels != null && gl->get_error != null
+            && RendererGlCapabilities.supported(gl);
     }
 }
 
@@ -293,6 +378,129 @@ class RendererGlErrors {
     class bool none(struct RendererGlApi* gl) {
         return gl != null && gl->get_error != null
             && gl->get_error() == (unsigned int)RGL_NO_ERROR;
+    }
+}
+
+class RendererGlShader {
+    class unsigned int compile(struct RendererGlApi* gl, unsigned int kind,
+                               const char* source) {
+        if (gl == null || source == null || gl->create_shader == null
+                || gl->shader_source == null || gl->compile_shader == null
+                || gl->get_shader_integer == null
+                || gl->delete_shader == null || gl->get_error == null) {
+            return 0u;
+        }
+        RendererGlErrors.clear(gl);
+        unsigned int shader = gl->create_shader(kind);
+        if (shader == 0u) {
+            RendererGlErrors.clear(gl);
+            return 0u;
+        }
+        char* text = (char*)source;
+        gl->shader_source(shader, 1, &text, null);
+        gl->compile_shader(shader);
+        int compiled = 0;
+        gl->get_shader_integer(shader,
+            (unsigned int)RGL_COMPILE_STATUS, &compiled);
+        if (compiled == 0 || !RendererGlErrors.none(gl)) {
+            gl->delete_shader(shader);
+            return 0u;
+        }
+        return shader;
+    }
+}
+
+class RendererGlAtomicComposition {
+    class bool allocated(struct RendererGlAtomicTarget* target) {
+        return target != null && target->texture != 0u
+            && target->framebuffer != 0u;
+    }
+
+    class bool prepare(struct RendererGlApi* gl,
+                       struct RendererGlAtomicTarget* target,
+                       int width, int height) {
+        if (gl == null || !RendererGlAtomicComposition.allocated(target)
+                || width < 1 || height < 1 || gl->active_texture == null
+                || gl->bind_sampler == null || gl->bind_texture == null
+                || gl->texture_parameter == null || gl->bind_buffer == null
+                || gl->texture_image_2d == null
+                || gl->bind_framebuffer == null
+                || gl->framebuffer_texture_2d == null
+                || gl->draw_buffer == null || gl->check_framebuffer == null
+                || gl->get_error == null) {
+            return false;
+        }
+        RendererGlErrors.clear(gl);
+        gl->active_texture((unsigned int)RGL_TEXTURE0);
+        gl->bind_sampler(0, 0);
+        gl->bind_texture((unsigned int)RGL_TEXTURE_2D, target->texture);
+        gl->texture_parameter((unsigned int)RGL_TEXTURE_2D,
+            (unsigned int)RGL_TEXTURE_BASE_LEVEL, 0);
+        gl->texture_parameter((unsigned int)RGL_TEXTURE_2D,
+            (unsigned int)RGL_TEXTURE_MAX_LEVEL, 0);
+        gl->texture_parameter((unsigned int)RGL_TEXTURE_2D,
+            (unsigned int)RGL_TEXTURE_MIN_FILTER, RGL_NEAREST);
+        gl->texture_parameter((unsigned int)RGL_TEXTURE_2D,
+            (unsigned int)RGL_TEXTURE_MAG_FILTER, RGL_NEAREST);
+        gl->texture_parameter((unsigned int)RGL_TEXTURE_2D,
+            (unsigned int)RGL_TEXTURE_WRAP_S, RGL_CLAMP_TO_EDGE);
+        gl->texture_parameter((unsigned int)RGL_TEXTURE_2D,
+            (unsigned int)RGL_TEXTURE_WRAP_T, RGL_CLAMP_TO_EDGE);
+        if (target->width != width || target->height != height) {
+            gl->bind_buffer((unsigned int)RGL_PIXEL_UNPACK_BUFFER, 0);
+            gl->texture_image_2d((unsigned int)RGL_TEXTURE_2D, 0, RGL_RGBA8,
+                width, height, 0, (unsigned int)RGL_RGBA,
+                (unsigned int)RGL_UNSIGNED_BYTE, null);
+            if (!RendererGlErrors.none(gl)) { return false; }
+            target->width = width;
+            target->height = height;
+        }
+        gl->bind_framebuffer((unsigned int)RGL_DRAW_FRAMEBUFFER,
+            target->framebuffer);
+        gl->framebuffer_texture_2d((unsigned int)RGL_DRAW_FRAMEBUFFER,
+            (unsigned int)RGL_COLOR_ATTACHMENT0,
+            (unsigned int)RGL_TEXTURE_2D, target->texture, 0);
+        gl->draw_buffer((unsigned int)RGL_COLOR_ATTACHMENT0);
+        return gl->check_framebuffer((unsigned int)RGL_DRAW_FRAMEBUFFER)
+                == (unsigned int)RGL_FRAMEBUFFER_COMPLETE
+            && RendererGlErrors.none(gl);
+    }
+
+    class bool commit(struct RendererGlApi* gl,
+                      struct RendererGlAtomicTarget* target,
+                      unsigned int destinationFramebuffer,
+                      unsigned int destinationColorBuffer,
+                      int width, int height) {
+        if (gl == null || !RendererGlAtomicComposition.allocated(target)
+                || target->width != width || target->height != height
+                || gl->bind_framebuffer == null
+                || gl->framebuffer_texture_2d == null
+                || gl->read_buffer == null || gl->draw_buffer == null
+                || gl->check_framebuffer == null
+                || gl->blit_framebuffer == null || gl->get_error == null) {
+            return false;
+        }
+        RendererGlErrors.clear(gl);
+        gl->bind_framebuffer((unsigned int)RGL_READ_FRAMEBUFFER,
+            target->framebuffer);
+        gl->framebuffer_texture_2d((unsigned int)RGL_READ_FRAMEBUFFER,
+            (unsigned int)RGL_COLOR_ATTACHMENT0,
+            (unsigned int)RGL_TEXTURE_2D, target->texture, 0);
+        gl->read_buffer((unsigned int)RGL_COLOR_ATTACHMENT0);
+        bool sourceReady = gl->check_framebuffer(
+            (unsigned int)RGL_READ_FRAMEBUFFER)
+            == (unsigned int)RGL_FRAMEBUFFER_COMPLETE;
+        gl->bind_framebuffer((unsigned int)RGL_DRAW_FRAMEBUFFER,
+            destinationFramebuffer);
+        gl->draw_buffer(destinationColorBuffer);
+        bool destinationReady = gl->check_framebuffer(
+            (unsigned int)RGL_DRAW_FRAMEBUFFER)
+            == (unsigned int)RGL_FRAMEBUFFER_COMPLETE;
+        if (!sourceReady || !destinationReady
+                || !RendererGlErrors.none(gl)) { return false; }
+        gl->blit_framebuffer(0, 0, width, height, 0, 0, width, height,
+            (unsigned int)RGL_COLOR_BUFFER_BIT, (unsigned int)RGL_NEAREST);
+        return RendererGlErrors.none(gl);
     }
 }
 

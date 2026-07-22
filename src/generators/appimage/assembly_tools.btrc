@@ -1,0 +1,160 @@
+// assembly_tools.btrc - native Linux authority for AppImage filesystem tools.
+
+import std.{fs, process, vector}
+import ../../lib/owned_paths.btrc
+import ./contract.btrc
+import ./nix_release_proof.btrc
+import ./work_session.btrc
+
+class AppImageLeasedExecutable {
+    class AppImageHeldFileLease stage(
+            AppImageHeldFileLease executable, AppImageWorkSession session,
+            string name) {
+        if (!executable.ok() || !executable.stillBound()
+                || !session.ok() || !session.stillBound()
+                || name.isEmpty()) {
+            return AppImageHeldFileLease.failure(
+                "release executable lease is not bound");
+        }
+        string relative = ".semu-executable-" + executable.digest;
+        AppImageHeldFileLease staged = executable.copyLeaseTo(
+            session.rootDescriptor, relative, -1, true);
+        if (!staged.ok() || !staged.digest.equals(executable.digest)
+                || !executable.stillBound() || !session.stillBound()) {
+            string detail = staged.error;
+            staged.closeDescriptors();
+            return AppImageHeldFileLease.failure(detail.isEmpty()
+                ? "transferred release executable is not exact and bound"
+                : detail);
+        }
+        return staged;
+    }
+
+    class ExecResult runStaged(
+            AppImageHeldFileLease executable,
+            AppImageHeldFileLease staged,
+            AppImageWorkSession session, string name,
+            Vector<string> arguments,
+            Vector<ChildDescriptorMapping> descriptorMappings =
+                ChildDescriptorMappings.empty(),
+            int workingDirectoryDescriptor = -1) {
+        if (!executable.ok() || !executable.stillBound()
+                || !staged.ok() || !staged.descriptorStillExact()
+                || !staged.digest.equals(executable.digest)
+                || !session.ok() || !session.stillBound()
+                || name.isEmpty()) {
+            return ExecResult(126, "",
+                "staged release executable lease is not exact and bound",
+                name);
+        }
+        ExecResult result = ChildProcess.run(
+            name, arguments,
+            timeoutMilliseconds=3600000,
+            maxStdoutBytes=67108864,
+            maxStderrBytes=67108864,
+            stdout=CommandOutput.collect(),
+            stderr=CommandOutput.collect(),
+            executableDescriptor=staged.descriptor,
+            descriptorMappings=descriptorMappings,
+            workingDirectoryDescriptor=workingDirectoryDescriptor);
+        bool remainedBound = staged.descriptorStillExact()
+            && executable.stillBound() && session.stillBound();
+        return remainedBound ? result : ExecResult(126, "",
+            "release executable changed during execution", name);
+    }
+
+    class ExecResult run(
+            AppImageHeldFileLease executable, AppImageWorkSession session,
+            string name, Vector<string> arguments,
+            Vector<ChildDescriptorMapping> descriptorMappings =
+                ChildDescriptorMappings.empty(),
+            int workingDirectoryDescriptor = -1) {
+        AppImageHeldFileLease staged =
+            AppImageLeasedExecutable.stage(executable, session, name);
+        if (!staged.ok()) {
+            return ExecResult(126, "",
+                "cannot transfer exact release executable: " + staged.error,
+                name);
+        }
+        ExecResult result = AppImageLeasedExecutable.runStaged(
+            executable, staged, session, name, arguments,
+            descriptorMappings, workingDirectoryDescriptor);
+        staged.closeDescriptors();
+        return result;
+    }
+}
+
+class AppImageAssemblyTools {
+    public bool valid;
+    public string root;
+    public AppImageHeldFileLease mksquashfs;
+    public AppImageHeldFileLease unsquashfs;
+    public string error;
+
+    public AppImageAssemblyTools() {
+        self.valid = false;
+        self.root = "";
+        self.mksquashfs = AppImageHeldFileLease();
+        self.unsquashfs = AppImageHeldFileLease();
+        self.error = "";
+    }
+
+    public bool ok() { return self.valid; }
+
+    class AppImageHeldFileLease executable(string root, string name) {
+        string path = UnixFileSystem.realPath(
+            PathTools.join(root, "bin/" + name));
+        return path.startsWith("/nix/store/")
+            ? AppImageHeldFileLease.capturePath(path, true)
+            : AppImageHeldFileLease.failure(
+                "AppImage worker tool escaped the Nix store: " + name);
+    }
+
+    class AppImageAssemblyTools acquire(string requestedRoot) {
+        AppImageAssemblyTools tools = AppImageAssemblyTools();
+        string root = SemuOwnedPaths.normalized(requestedRoot);
+        FileStatus status = FileStatus(root);
+        if (!AppImageNixReleaseProof.storePath(root)
+                || !status.isDir() || status.isSymlink()
+                || !UnixFileSystem.realPath(root).equals(root)) {
+            tools.error = "AppImage worker root is not an exact Nix store path";
+            return tools;
+        }
+        AppImageHeldFileLease mksquashfs =
+            AppImageAssemblyTools.executable(root, "mksquashfs");
+        AppImageHeldFileLease unsquashfs =
+            AppImageAssemblyTools.executable(root, "unsquashfs");
+        if (!mksquashfs.ok() || !unsquashfs.ok()
+                || !mksquashfs.stillBound()
+                || !unsquashfs.stillBound()) {
+            string detail = !mksquashfs.ok()
+                ? mksquashfs.error : unsquashfs.error;
+            mksquashfs.closeDescriptors();
+            unsquashfs.closeDescriptors();
+            tools.error = detail.isEmpty()
+                ? "AppImage worker tools are not exact and bound" : detail;
+            return tools;
+        }
+        tools.root = root;
+        tools.mksquashfs = mksquashfs;
+        tools.unsquashfs = unsquashfs;
+        tools.valid = true;
+        return tools;
+    }
+
+    public bool stillBound() {
+        return self.valid && AppImageNixReleaseProof.storePath(self.root)
+            && self.mksquashfs.stillBound()
+            && self.unsquashfs.stillBound();
+    }
+
+    public AppImageContractResult finish() {
+        bool exact = self.stillBound();
+        self.mksquashfs.closeDescriptors();
+        self.unsquashfs.closeDescriptors();
+        self.valid = false;
+        return exact ? AppImageContractResult.success()
+            : AppImageContractResult.failure(
+                "AppImage worker tools changed while leased");
+    }
+}

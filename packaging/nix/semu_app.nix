@@ -7,7 +7,7 @@
 # helpers, and <root>/share/{semu,libretro} contains visual assets. lib/semu is
 # materialized because symlinkJoin would otherwise link it wholesale to the
 # CLI store path, preventing other packaged runtime helpers from being merged.
-{ lib, symlinkJoin, makeWrapper
+{ lib, symlinkJoin, makeWrapper, jq
 , semuCli
 , emulatorPackages ? [ ]
 , esDe ? null
@@ -24,7 +24,7 @@ symlinkJoin {
   paths = [ semuCli ] ++ emulatorPackages
     ++ lib.filter (x: x != null) [ esDe semuShaders ]
     ++ runtimeTools;
-  nativeBuildInputs = [ makeWrapper ];
+  nativeBuildInputs = [ makeWrapper jq ];
   postBuild = lib.optionalString (semuBezels != null) ''
     if [ -L "$out/lib/semu" ]; then
       cliLib="$(readlink "$out/lib/semu")"
@@ -62,6 +62,48 @@ symlinkJoin {
       --set SEMU_BIN "$out/bin/semu" \
       --set SEMU_SOURCE_ROOT "$out/share/semu/config" \
       --prefix PATH : ${lib.escapeShellArg runtimePath}
+
+    # Match the modes Nix assigns when the output enters the immutable store.
+    # The contract must describe the copied runtime, not the writable build tree.
+    chmod -R a-w "$out/bin" "$out/lib" "$out/share"
+    exportContractRoot="$(mktemp -d)"
+    for namespace in bin lib share; do
+      cp -RL --preserve=mode,timestamps \
+        "$out/$namespace" "$exportContractRoot/$namespace"
+    done
+    binDigest="$("$out/lib/semu/semu-btrc" package appimage \
+      payload-identity --root "$exportContractRoot/bin")"
+    libDigest="$("$out/lib/semu/semu-btrc" package appimage \
+      payload-identity --root "$exportContractRoot/lib")"
+    shareDigest="$("$out/lib/semu/semu-btrc" package appimage \
+      payload-identity --root "$exportContractRoot/share")"
+    for digest in "$binDigest" "$libDigest" "$shareDigest"; do
+      test "''${#digest}" = 64
+      case "$digest" in
+        *[!0-9a-f]*) exit 1 ;;
+      esac
+    done
+    exportContractFile="$(mktemp)"
+    jq --sort-keys --null-input \
+      --arg bin "$binDigest" \
+      --arg lib "$libDigest" \
+      --arg share "$shareDigest" \
+      '{
+        schema_version: 1,
+        copy_policy: "recursive-dereference-preserve-mode",
+        nodes: [
+          {path: "bin", sha256: $bin},
+          {path: "lib", sha256: $lib},
+          {path: "share", sha256: $share}
+        ]
+      }' > "$exportContractFile"
+    chmod u+w "$out/share/semu"
+    install -m 0444 "$exportContractFile" \
+      "$out/share/semu/runtime-export-contract.json"
+    chmod a-w "$out/share/semu"
+    rm -f "$exportContractFile"
+    chmod -R u+w "$exportContractRoot"
+    rm -rf "$exportContractRoot"
   '';
   meta.description = "Semu with all contract-required emulators and assets bundled";
 }

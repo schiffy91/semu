@@ -5,7 +5,9 @@ import std.{fs, json, platform, strings, vector}
 import ../../../src/compiler/model.btrc
 import ../../../src/compiler/parser.btrc
 import ../../../src/compiler/resolver.btrc
+import ../../../src/lib/rendering_definition.btrc
 import ./evidence.btrc
+import ./presentation_matrix.btrc
 
 class DeckHarnessResult {
     public bool valid;
@@ -244,9 +246,11 @@ class DeckHarnessOptions {
                 && (!FileSystem.isFile(self.remoteHelperBinary)
                     || FileSystem.isSymlink(self.remoteHelperBinary)
                     || !FileSystem.isFile(self.inputHelperBinary)
-                    || FileSystem.isSymlink(self.inputHelperBinary))) {
+                    || FileSystem.isSymlink(self.inputHelperBinary)
+                    || !FileSystem.isFile(self.artifact)
+                    || FileSystem.isSymlink(self.artifact))) {
             return DeckHarnessResult.failure(
-                "strict-import Linux acceptance helpers have not been built");
+                "strict-import Linux helpers or exact AppImage are absent");
         }
         return DeckHarnessResult.success();
     }
@@ -335,6 +339,9 @@ class DeckSystemCase {
     public string shaderSha256;
     public Vector<string> bezelPaths;
     public Vector<string> bezelSha256;
+    public JsonValue presentationCatalog;
+    public JsonValue presentationCases;
+    public string presentationDefaultId;
     public Vector<DeckProtectedInputGroup> protectedGroups;
 
     public DeckSystemCase() {
@@ -356,6 +363,9 @@ class DeckSystemCase {
         self.shaderSha256 = "";
         self.bezelPaths = [];
         self.bezelSha256 = [];
+        self.presentationCatalog = JsonValue.makeObject();
+        self.presentationCases = JsonValue.makeArray();
+        self.presentationDefaultId = "";
         self.protectedGroups = [];
     }
 
@@ -391,6 +401,10 @@ class DeckSystemCase {
         value.set("shader_sha256", JsonValue.makeString(self.shaderSha256));
         value.set("bezel_paths", DeckHarnessStrings.jsonStrings(self.bezelPaths));
         value.set("bezel_sha256", DeckHarnessStrings.jsonStrings(self.bezelSha256));
+        value.set("presentation_catalog", self.presentationCatalog);
+        value.set("presentation_cases", self.presentationCases);
+        value.set("presentation_default_id",
+            JsonValue.makeString(self.presentationDefaultId));
         JsonValue groups = JsonValue.makeArray();
         for group in self.protectedGroups { groups.push(group.json(options)); }
         value.set("protected_input_groups", groups);
@@ -442,13 +456,6 @@ class DeckAcceptancePlan {
         return result;
     }
 
-    class string assetHash(JsonValue manifest, string path) {
-        JsonValue output = manifest.get("assets").get(path).get("output");
-        string digest = output.get("sha256").isString()
-            ? output.get("sha256").asString() : "";
-        return DeckHarnessStrings.lowerHex(digest, 64) ? digest : "";
-    }
-
     class string executablePath(SemuEmulatorPlatformSource platform) {
         string prefix = "${asset_root}";
         return platform.executable.startsWith(prefix + "/")
@@ -465,11 +472,45 @@ class DeckAcceptancePlan {
         return filename.contains("${") ? "" : filename;
     }
 
+    class bool surfaceModeMatches(JsonValue mode, JsonValue display) {
+        JsonValue match = mode.get("match");
+        JsonValue screens = display.get("screens");
+        if (!match.isObject() || !screens.isArray()
+                || !match.get("screen_count").isInt()
+                || match.get("screen_count").asInt() != screens.size()) {
+            return false;
+        }
+        if (!match.has("arrangement")) { return screens.size() == 1; }
+        return screens.size() == 2
+            && match.get("arrangement").isString()
+            && display.get("arrangement").isString()
+            && match.get("arrangement").asString()
+                .equals(display.get("arrangement").asString());
+    }
+
     class Vector<DeckSurfaceContract> surfaces(SemuSystemSource system,
                                                 SemuEmulatorSource emulator) {
         Vector<DeckSurfaceContract> result = [];
-        JsonValue screens = system.definition.get("display").get("screens");
+        JsonValue display = system.definition.get("display");
+        JsonValue screens = display.get("screens");
         JsonValue hookSurfaces = emulator.rendering.get("surfaces");
+        if (!hookSurfaces.isArray()) {
+            JsonValue modes = emulator.rendering.get("surface_modes");
+            int matches = 0;
+            if (screens.isArray() && modes.isArray()) {
+                for (int modeIndex = 0; modeIndex < modes.size(); modeIndex++) {
+                    JsonValue mode = modes.at(modeIndex);
+                    JsonValue candidate = mode.get("surfaces");
+                    if (DeckAcceptancePlan.surfaceModeMatches(mode, display)
+                            && candidate.isArray()
+                            && candidate.size() == screens.size()) {
+                        hookSurfaces = candidate;
+                        matches++;
+                    }
+                }
+            }
+            if (matches != 1) { return result; }
+        }
         if (!screens.isArray() || !hookSurfaces.isArray()
                 || screens.size() != hookSurfaces.size()) {
             return result;
@@ -572,38 +613,54 @@ class DeckAcceptancePlan {
     class void renderingContract(DeckAcceptancePlan result,
                                   DeckSystemCase system,
                                   SemuSystemSource source,
-                                  SemuCompilerModel model) {
-        system.shaderExpected = source.shaders.get("enabled").isBool()
-            && source.shaders.get("enabled").asBool();
-        system.bezelExpected = source.bezels.get("enabled").isBool()
-            && source.bezels.get("enabled").asBool();
-        if (system.shaderExpected) {
-            system.shaderPath = source.shaders.get("screen").isString()
-                ? source.shaders.get("screen").asString() : "";
-            system.shaderSha256 = DeckAcceptancePlan.assetHash(
-                model.assets.shaders, system.shaderPath);
-            if (system.shaderPath.isEmpty() || system.shaderSha256.isEmpty()) {
-                result.errors.push("shader identity is incomplete for "
+                                  SemuCompilerModel model,
+                                  SemuBuildPlan build) {
+        JsonValue catalog = DeckPresentationMatrix.catalog(
+            source.shaders, source.bezels,
+            model.assets.shaders, model.assets.bezels);
+        JsonValue cases = catalog.isError()
+            ? JsonValue.makeError()
+            : DeckPresentationMatrix.cases(catalog);
+        string productionDefault = catalog.isError()
+            ? "" : DeckPresentationMatrix.productionDefaultId(
+                catalog, source.shaders, source.bezels,
+                build.settings, system.id);
+        if (catalog.isError() || cases.isError()
+                || productionDefault.isEmpty()) {
+            result.errors.push(
+                "physical presentation matrix is incomplete for "
                     + system.id);
-            }
-        }
-        if (!system.bezelExpected) { return; }
-        JsonValue variants = source.bezels.get("variants");
-        if (!variants.isArray() || variants.size() < 1) {
-            result.errors.push("bezel variants are incomplete for " + system.id);
             return;
         }
-        for (int index = 0; index < variants.size(); index++) {
-            string path = variants.at(index).get("art").isString()
-                ? variants.at(index).get("art").asString() : "";
-            string digest = DeckAcceptancePlan.assetHash(
-                model.assets.bezels, path);
-            if (path.isEmpty() || digest.isEmpty()) {
-                result.errors.push("bezel identity is incomplete for "
-                    + system.id);
+
+        JsonValue selected = DeckPresentationMatrix.find(
+            cases, "id", productionDefault);
+        if (selected.isError()) {
+            result.errors.push(
+                "physical presentation default is absent for " + system.id);
+            return;
+        }
+        system.presentationCatalog = catalog;
+        system.presentationCases = cases;
+        system.presentationDefaultId = productionDefault;
+        system.shaderExpected = SemuRenderingDefinition.boolean(
+            selected, "shader_enabled", false);
+        system.bezelExpected = SemuRenderingDefinition.boolean(
+            selected, "bezel_enabled", false);
+        system.shaderPath = SemuRenderingDefinition.text(
+            selected, "shader_file");
+        system.shaderSha256 = SemuRenderingDefinition.text(
+            selected, "shader_sha256");
+        JsonValue bezels = catalog.get("bezels");
+        for (int index = 0; index < bezels.size(); index++) {
+            JsonValue bezel = bezels.at(index);
+            if (SemuRenderingDefinition.boolean(
+                    bezel, "enabled", false)) {
+                system.bezelPaths.push(
+                    SemuRenderingDefinition.text(bezel, "file"));
+                system.bezelSha256.push(
+                    SemuRenderingDefinition.text(bezel, "sha256"));
             }
-            system.bezelPaths.push(path);
-            system.bezelSha256.push(digest);
         }
     }
 
@@ -705,7 +762,8 @@ class DeckAcceptancePlan {
                 && emulator.actions.contains("state.load");
             system.protectedGroups = DeckAcceptancePlan.protectedGroups(
                 source, platform);
-            DeckAcceptancePlan.renderingContract(result, system, source, model);
+            DeckAcceptancePlan.renderingContract(
+                result, system, source, model, build);
             if (system.id.isEmpty() || system.name.isEmpty()
                     || system.romDirectory.isEmpty()
                     || system.extensions.isEmpty()

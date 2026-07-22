@@ -47,12 +47,25 @@ class DeckEvidenceClass {
             .equals(DeckEvidenceClass.humanPhysical());
     }
 
+    class string proofMode(string scenario) {
+        if (scenario.equals("automated-game-mode")) {
+            return "virtual-automation";
+        }
+        if (scenario.equals("operator-start-select")
+                || scenario.equals("operator-radial")) {
+            return "live-human-observation";
+        }
+        return ["steam-shortcut-launch", "unattended"].contains(scenario)
+            ? "diagnostic-observation" : "";
+    }
+
     class string fields(string scenario) {
         string evidence = DeckEvidenceClass.forScenario(scenario);
         string origin = DeckEvidenceClass.inputOrigin(scenario);
         if (evidence.isEmpty() || origin.isEmpty()) { return ""; }
         return "evidence_class=" + evidence
             + " input_origin=" + origin
+            + " proof_mode=" + DeckEvidenceClass.proofMode(scenario)
             + " synthetic_input="
             + (DeckEvidenceClass.synthetic(scenario) ? "1" : "0")
             + " human_input="
@@ -78,13 +91,16 @@ class DeckEvidenceReceiptPolicy {
     class string verifyClassification(string line, string scenario) {
         string evidence = DeckEvidenceClass.forScenario(scenario);
         string origin = DeckEvidenceClass.inputOrigin(scenario);
-        if (evidence.isEmpty() || origin.isEmpty()) {
+        string proofMode = DeckEvidenceClass.proofMode(scenario);
+        if (evidence.isEmpty() || origin.isEmpty() || proofMode.isEmpty()) {
             return "unknown evidence scenario: " + scenario;
         }
         if (!DeckEvidenceReceiptPolicy.field(
                 line, "evidence_class").equals(evidence)
                 || !DeckEvidenceReceiptPolicy.field(
                     line, "input_origin").equals(origin)
+                || !DeckEvidenceReceiptPolicy.field(
+                    line, "proof_mode").equals(proofMode)
                 || !DeckEvidenceReceiptPolicy.field(line, "synthetic_input")
                     .equals(DeckEvidenceClass.synthetic(scenario) ? "1" : "0")
                 || !DeckEvidenceReceiptPolicy.field(line, "human_input")

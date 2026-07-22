@@ -134,7 +134,9 @@ and is mounted/read through bounded launcher policy.
 ## Rendering Boundary
 
 The current design is an explicit, direct-linked renderer ABI, not window or
-swap interception. Each emulator definition names the same ABI-2 symbols:
+swap interception. RetroArch is the first ABI-3 slice; the remaining emulator
+definitions stay on ABI 2 until their own end-to-end migration slices are
+accepted. Every migrated definition names the same renderer symbols:
 
 ```text
 semu_render_game_gl
@@ -194,11 +196,11 @@ make appimage-build
 make appimage-verify
 ```
 
-As of 2026-07-19, a forced strict production compile and the aggregate
-`make test` pass. Flake no-build checking still fails while evaluating
-visual-asset and emulator package inputs with invalid Nix store source/patch
-paths. Until that is fixed and packages are built, AppImage success must not be
-claimed.
+As of 2026-07-21, forced strict production/compiler contracts and
+`nix flake check path:. --no-build --all-systems` pass against the latest pinned
+BTRC revision. A fresh exact x86_64 RetroArch runtime and AppImage still have not
+been independently verified or deployed, so AppImage or physical system success
+must not be claimed.
 
 The root Makefile still performs direct transpiler, Nix, runtime-builder, and
 target-harness orchestration. Keeping Make thin and moving durable policy to

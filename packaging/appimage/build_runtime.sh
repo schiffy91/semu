@@ -6,7 +6,12 @@ set -eu
 
 here="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd -P)"
 repo="$(CDPATH= cd -- "$here/../.." && pwd -P)"
-cache_root="${SEMU_APPIMAGE_CACHE_ROOT:-$HOME/.cache/semu/appimage-runtime}"
+package_attribute="${2:-${SEMU_APPIMAGE_PACKAGE_ATTRIBUTE:-steamdeck-runtime}}"
+if [ "${SEMU_APPIMAGE_CACHE_ROOT+x}" = x ]; then
+  cache_root="$SEMU_APPIMAGE_CACHE_ROOT"
+else
+  cache_root="$HOME/.cache/semu/appimage-runtime/$package_attribute"
+fi
 source="$repo/src/generators/appimage/runtime_builder.btrc"
 entrypoint="$repo/src/generators/appimage/runtime_builder_main.btrc"
 output="${1:-$cache_root/runtime-root}"
@@ -28,4 +33,5 @@ trap 'rm -rf -- "$bootstrap"' EXIT HUP INT TERM
 cc "$builder.c" -std=c11 -o "$builder" -lm
 
 if [ "${SEMU_APPIMAGE_RUNTIME_PLAN:-0}" = 1 ]; then set -- --plan; else set --; fi
-"$builder" --repo "$repo" --output "$output" "$@"
+"$builder" --repo "$repo" --cache-root "$cache_root" --output "$output" \
+  --package "$package_attribute" "$@"

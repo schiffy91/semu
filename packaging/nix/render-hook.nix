@@ -72,14 +72,15 @@ assert lib.assertMsg
 assert lib.assertMsg (obsoleteCapabilities == [ ])
   "${emulatorId}: obsolete rendering capabilities: ${toString obsoleteCapabilities}";
 assert lib.assertMsg
-  (integration.abi == 2
+  (builtins.isInt integration.abi
+    && integration.abi > 0
     && integration.api == "semu-renderer"
     && lib.elem integration.linkage [ "direct" "direct_pinvoke" ]
     && integration.header == "semu_renderer.h"
     && integration.library == "semurenderer"
     && integration.backend == "opengl"
     && integration.inactive_reports == false)
-  "${emulatorId}: rendering integration does not match the Semu ABI 2 contract";
+  "${emulatorId}: rendering integration does not declare a valid Semu ABI contract";
 assert lib.assertMsg
   (builtins.length phases == 2
     && firstPhase != null

@@ -8,6 +8,26 @@ import ../../src/generators/rendering/native/renderer_gl_api.btrc
 
 unsigned int RenderingReadbackError;
 int RenderingReadbackCalls;
+const char* RenderingCapabilityOpenGl;
+const char* RenderingCapabilityGlsl;
+unsigned int RenderingShaderIdentifier;
+int RenderingShaderCompileStatus;
+int RenderingShaderDeleteCalls;
+unsigned int RenderingShaderDeletedIdentifier;
+unsigned int RenderingAdversarialGlError;
+unsigned int RenderingAtomicDrawFramebuffer;
+unsigned int RenderingAtomicReadFramebuffer;
+unsigned int RenderingAtomicAttachedTexture;
+unsigned int RenderingAtomicDestinationFramebuffer;
+int RenderingAtomicTextureWidth;
+int RenderingAtomicTextureHeight;
+int RenderingAtomicCompositionComplete;
+int RenderingAtomicDestinationComplete;
+int RenderingAtomicFailDestinationBind;
+int RenderingAtomicBlits;
+int RenderingAtomicDestinationWrites;
+int RenderingAtomicBlitWidth;
+int RenderingAtomicBlitHeight;
 
 void renderingFailingReadPixels(int x, int y, int width, int height,
                                 unsigned int format, unsigned int kind,
@@ -20,6 +40,274 @@ unsigned int renderingReadbackError() {
     unsigned int error = RenderingReadbackError;
     RenderingReadbackError = 0u;
     return error;
+}
+
+unsigned char* renderingCapabilityString(unsigned int name) {
+    if (name == (unsigned int)RGL_VERSION) {
+        return (unsigned char*)RenderingCapabilityOpenGl;
+    }
+    return name == (unsigned int)RGL_SHADING_LANGUAGE_VERSION
+        ? (unsigned char*)RenderingCapabilityGlsl : null;
+}
+
+unsigned int renderingAdversarialGetError() {
+    unsigned int error = RenderingAdversarialGlError;
+    RenderingAdversarialGlError = 0u;
+    return error;
+}
+
+unsigned int renderingAdversarialCreateShader(unsigned int kind) {
+    return RenderingShaderIdentifier;
+}
+
+void renderingAdversarialShaderSource(unsigned int shader, int count,
+                                      char** source, int* lengths) {}
+
+void renderingAdversarialCompileShader(unsigned int shader) {}
+
+void renderingAdversarialShaderInteger(unsigned int shader,
+                                       unsigned int name, int* output) {
+    if (output != null) { *output = RenderingShaderCompileStatus; }
+}
+
+void renderingAdversarialDeleteShader(unsigned int shader) {
+    RenderingShaderDeleteCalls = RenderingShaderDeleteCalls + 1;
+    RenderingShaderDeletedIdentifier = shader;
+}
+
+void renderingAtomicActiveTexture(unsigned int texture) {}
+void renderingAtomicBindSampler(unsigned int unit, unsigned int sampler) {}
+void renderingAtomicBindTexture(unsigned int target, unsigned int texture) {}
+void renderingAtomicTextureParameter(unsigned int target,
+                                     unsigned int name, int value) {}
+void renderingAtomicBindBuffer(unsigned int target, unsigned int buffer) {}
+
+void renderingAtomicTextureImage(unsigned int target, int level,
+                                 int internalFormat, int width, int height,
+                                 int border, unsigned int format,
+                                 unsigned int kind, void* pixels) {
+    RenderingAtomicTextureWidth = width;
+    RenderingAtomicTextureHeight = height;
+}
+
+void renderingAtomicBindFramebuffer(unsigned int target,
+                                    unsigned int framebuffer) {
+    if (target == (unsigned int)RGL_DRAW_FRAMEBUFFER) {
+        RenderingAtomicDrawFramebuffer = framebuffer;
+        if (framebuffer == RenderingAtomicDestinationFramebuffer
+                && RenderingAtomicFailDestinationBind != 0) {
+            RenderingAdversarialGlError = 0x0502u;
+        }
+    } else if (target == (unsigned int)RGL_READ_FRAMEBUFFER) {
+        RenderingAtomicReadFramebuffer = framebuffer;
+    }
+}
+
+void renderingAtomicFramebufferTexture(unsigned int target,
+                                       unsigned int attachment,
+                                       unsigned int textureTarget,
+                                       unsigned int texture, int level) {
+    RenderingAtomicAttachedTexture = texture;
+}
+
+void renderingAtomicDrawBuffer(unsigned int buffer) {}
+void renderingAtomicReadBuffer(unsigned int buffer) {}
+
+unsigned int renderingAtomicFramebufferStatus(unsigned int target) {
+    if (target == (unsigned int)RGL_READ_FRAMEBUFFER) {
+        return RenderingAtomicCompositionComplete != 0
+            ? (unsigned int)RGL_FRAMEBUFFER_COMPLETE : 0u;
+    }
+    if (RenderingAtomicDrawFramebuffer
+            == RenderingAtomicDestinationFramebuffer) {
+        return RenderingAtomicDestinationComplete != 0
+            ? (unsigned int)RGL_FRAMEBUFFER_COMPLETE : 0u;
+    }
+    return RenderingAtomicCompositionComplete != 0
+        ? (unsigned int)RGL_FRAMEBUFFER_COMPLETE : 0u;
+}
+
+void renderingAtomicBlit(int sourceX0, int sourceY0,
+                         int sourceX1, int sourceY1,
+                         int destinationX0, int destinationY0,
+                         int destinationX1, int destinationY1,
+                         unsigned int mask, unsigned int filter) {
+    RenderingAtomicBlits = RenderingAtomicBlits + 1;
+    RenderingAtomicBlitWidth = destinationX1 - destinationX0;
+    RenderingAtomicBlitHeight = destinationY1 - destinationY0;
+    if (RenderingAtomicDrawFramebuffer
+            == RenderingAtomicDestinationFramebuffer) {
+        RenderingAtomicDestinationWrites = RenderingAtomicDestinationWrites + 1;
+    }
+}
+
+class RenderingGlAdversarialContract {
+    class void capabilityApi(struct RendererGlApi* gl) {
+        memset(gl, 0, sizeof(struct RendererGlApi));
+        gl->get_string = renderingCapabilityString;
+    }
+
+    class bool rejectsUnsupportedCapabilities() {
+        struct RendererGlApi gl;
+        RenderingGlAdversarialContract.capabilityApi(&gl);
+        RenderingCapabilityOpenGl = "3.2 Mesa";
+        RenderingCapabilityGlsl = "3.30";
+        if (RendererGlCapabilities.supported(&gl)) { return false; }
+        RenderingCapabilityOpenGl = "3.3 Mesa";
+        RenderingCapabilityGlsl = "1.50";
+        if (RendererGlCapabilities.supported(&gl)) { return false; }
+        RenderingCapabilityGlsl = "OpenGL ES GLSL ES 3.20";
+        if (RendererGlCapabilities.supported(&gl)) { return false; }
+        RenderingCapabilityGlsl = "3.30";
+        if (!RendererGlCapabilities.supported(&gl)) { return false; }
+        RenderingCapabilityOpenGl = "4.6 (Core Profile) Mesa";
+        RenderingCapabilityGlsl = "4.60 NVIDIA";
+        return RendererGlCapabilities.supported(&gl);
+    }
+
+    class bool failedShaderIsDeleted() {
+        struct RendererGlApi gl;
+        memset(&gl, 0, sizeof(struct RendererGlApi));
+        gl.create_shader = renderingAdversarialCreateShader;
+        gl.shader_source = renderingAdversarialShaderSource;
+        gl.compile_shader = renderingAdversarialCompileShader;
+        gl.get_shader_integer = renderingAdversarialShaderInteger;
+        gl.delete_shader = renderingAdversarialDeleteShader;
+        gl.get_error = renderingAdversarialGetError;
+        RenderingShaderIdentifier = 71u;
+        RenderingShaderCompileStatus = 0;
+        RenderingShaderDeleteCalls = 0;
+        RenderingShaderDeletedIdentifier = 0u;
+        RenderingAdversarialGlError = 0u;
+        if (RendererGlShader.compile(&gl, 0x8B31u, "void main(){}") != 0u
+                || RenderingShaderDeleteCalls != 1
+                || RenderingShaderDeletedIdentifier != 71u) {
+            return false;
+        }
+        RenderingShaderIdentifier = 72u;
+        RenderingShaderCompileStatus = 1;
+        RenderingShaderDeleteCalls = 0;
+        if (RendererGlShader.compile(&gl, 0x8B31u, "void main(){}") != 72u
+                || RenderingShaderDeleteCalls != 0) {
+            return false;
+        }
+        RenderingShaderIdentifier = 0u;
+        RenderingShaderDeleteCalls = 0;
+        return RendererGlShader.compile(&gl, 0x8B31u, "void main(){}") == 0u
+            && RenderingShaderDeleteCalls == 0;
+    }
+
+    class void atomicApi(struct RendererGlApi* gl) {
+        memset(gl, 0, sizeof(struct RendererGlApi));
+        gl->active_texture = renderingAtomicActiveTexture;
+        gl->bind_sampler = renderingAtomicBindSampler;
+        gl->bind_texture = renderingAtomicBindTexture;
+        gl->texture_parameter = renderingAtomicTextureParameter;
+        gl->bind_buffer = renderingAtomicBindBuffer;
+        gl->texture_image_2d = renderingAtomicTextureImage;
+        gl->bind_framebuffer = renderingAtomicBindFramebuffer;
+        gl->framebuffer_texture_2d = renderingAtomicFramebufferTexture;
+        gl->draw_buffer = renderingAtomicDrawBuffer;
+        gl->read_buffer = renderingAtomicReadBuffer;
+        gl->check_framebuffer = renderingAtomicFramebufferStatus;
+        gl->blit_framebuffer = renderingAtomicBlit;
+        gl->get_error = renderingAdversarialGetError;
+    }
+
+    class bool offscreenThenOneCommit() {
+        struct RendererGlApi gl;
+        RenderingGlAdversarialContract.atomicApi(&gl);
+        struct RendererGlAtomicTarget target;
+        memset(&target, 0, sizeof(struct RendererGlAtomicTarget));
+        target.texture = 41u;
+        target.framebuffer = 42u;
+        RenderingAtomicDestinationFramebuffer = 99u;
+        RenderingAtomicCompositionComplete = 1;
+        RenderingAtomicDestinationComplete = 1;
+        RenderingAtomicFailDestinationBind = 0;
+        RenderingAtomicBlits = 0;
+        RenderingAtomicDestinationWrites = 0;
+        RenderingAdversarialGlError = 0u;
+        if (!RendererGlAtomicComposition.prepare(&gl, &target, 1280, 800)
+                || RenderingAtomicDrawFramebuffer != target.framebuffer
+                || RenderingAtomicAttachedTexture != target.texture
+                || RenderingAtomicTextureWidth != 1280
+                || RenderingAtomicTextureHeight != 800
+                || RenderingAtomicDestinationWrites != 0) {
+            return false;
+        }
+        RenderingAtomicDestinationComplete = 0;
+        if (RendererGlAtomicComposition.commit(&gl, &target,
+                RenderingAtomicDestinationFramebuffer, 0x0405u, 1280, 800)
+                || RenderingAtomicBlits != 0
+                || RenderingAtomicDestinationWrites != 0) {
+            return false;
+        }
+        RenderingAtomicDestinationComplete = 1;
+        RenderingAtomicFailDestinationBind = 1;
+        if (RendererGlAtomicComposition.commit(&gl, &target,
+                RenderingAtomicDestinationFramebuffer, 0x0405u, 1280, 800)
+                || RenderingAtomicBlits != 0
+                || RenderingAtomicDestinationWrites != 0) {
+            return false;
+        }
+        RenderingAtomicFailDestinationBind = 0;
+        return RendererGlAtomicComposition.commit(&gl, &target,
+                RenderingAtomicDestinationFramebuffer, 0x0405u, 1280, 800)
+            && RenderingAtomicReadFramebuffer == target.framebuffer
+            && RenderingAtomicDrawFramebuffer
+                == RenderingAtomicDestinationFramebuffer
+            && RenderingAtomicBlits == 1
+            && RenderingAtomicDestinationWrites == 1
+            && RenderingAtomicBlitWidth == 1280
+            && RenderingAtomicBlitHeight == 800;
+    }
+
+    class bool sourceContract(string project) {
+        string root = PathTools.join(project,
+            "src/generators/rendering/native");
+        string api = FileSystem.readText(
+            PathTools.join(root, "renderer_gl_api.btrc"));
+        string compositor = FileSystem.readText(
+            PathTools.join(root, "renderer_compositor.btrc"));
+        int gameStart = compositor.indexOf("class int game(");
+        string game = gameStart >= 0
+            ? compositor.substring(gameStart, compositor.len()) : "";
+        int prepare = game.indexOf("RendererGlAtomicComposition.prepare(");
+        int background = game.indexOf("SEMU_RENDER_PASS_BACKGROUND, false");
+        int drew = game.indexOf("bool drew = RendererGlErrors.none(gl);");
+        int commit = game.indexOf("RendererGlAtomicComposition.commit(");
+        Vector<string> gameCommits = Strings.split(game,
+            "RendererGlAtomicComposition.commit(");
+        int atomicStart = api.indexOf("class RendererGlAtomicComposition");
+        string atomic = atomicStart >= 0
+            ? api.substring(atomicStart, api.len()) : "";
+        Vector<string> commitBlits = Strings.split(atomic,
+            "gl->blit_framebuffer(");
+        return api.contains("int RGL_VERSION = 0x1F02;")
+            && api.contains("int RGL_SHADING_LANGUAGE_VERSION = 0x8B8C;")
+            && api.contains("RendererGlCapabilities.supported(gl);")
+            && compositor.contains("!RendererGlCapabilities.supported(gl)")
+            && compositor.contains("RendererGlShader.compile(gl,")
+            && !compositor.contains("class unsigned int compile(")
+            && compositor.contains("gl->delete_textures(1, texture);")
+            && compositor.contains(
+                "gl->delete_textures(1, &resources->composition.texture);")
+            && compositor.contains(
+                "gl->delete_framebuffers(1, &resources->composition.framebuffer);")
+            && prepare >= 0 && background > prepare && drew > background
+            && commit > drew && gameCommits.size() == 2
+            && commitBlits.size() == 2
+            && !game.substring(prepare, commit).contains(
+                "RGL_DRAW_FRAMEBUFFER, frame->framebuffer")
+            && game.substring(drew, commit).contains(
+                "if (!drew)")
+            && api.contains(
+                "if (!sourceReady || !destinationReady")
+            && api.contains(
+                "gl->bind_framebuffer((unsigned int)RGL_DRAW_FRAMEBUFFER,")
+            && api.contains("destinationFramebuffer);");
+    }
 }
 
 class RenderingCompositorFixtures {
@@ -66,6 +354,32 @@ class RenderingCompositorFixtures {
         return output->width > 0.0f && output->height > 0.0f
             && FileSystem.isFile(PathTools.join(project,
                 "config/" + variant.get("art").asString()));
+    }
+
+    class bool surfaceCanvas(string project, JsonValue variant,
+                             JsonValue assetManifest, int viewportWidth,
+                             int viewportHeight, int nativeWidth,
+                             int nativeHeight, JsonValue hole,
+                             struct RendererCanvasRect* output) {
+        if (!RenderingCompositorFixtures.canvas(project, variant,
+                assetManifest, viewportWidth, viewportHeight, output)) {
+            return false;
+        }
+        JsonValue policy = variant.get("canvas");
+        if (!policy.isObject()) { return true; }
+        JsonValue asset = assetManifest.get("assets").get(
+            variant.get("art").asString()).get("output");
+        return policy.get("mode").isString()
+            && policy.get("mode").asString().equals("minimum_aperture")
+            && hole.get("w").isNumber() && hole.get("h").isNumber()
+            && RendererCompositionContract.minimumApertureCanvas(
+                viewportWidth, viewportHeight,
+                asset.get("width").asInt(), asset.get("height").asInt(),
+                (float)hole.get("w").asFloat(),
+                (float)hole.get("h").asFloat(), nativeWidth, nativeHeight, 0,
+                policy.get("min_integer_scale").asInt(),
+                (float)policy.get("max_width").asFloat(),
+                (float)policy.get("max_height").asFloat(), output);
     }
 
     class bool aperture(struct RendererCanvasRect* canvas, JsonValue value,
@@ -211,11 +525,13 @@ class RenderingCompositorGeometryContract {
                 || !aspect.get("h").isInt()) { return false; }
         struct RendererCanvasRect canvas;
         struct RendererPixelRect aperture;
-        if (!RenderingCompositorFixtures.canvas(project, variant, assets,
-                viewportWidth, viewportHeight, &canvas)
-                || !RenderingCompositorFixtures.aperture(&canvas,
-                    RenderingCompositorFixtures.selected(
-                        variant, bezels, "hole"), &aperture)) {
+        JsonValue hole = RenderingCompositorFixtures.selected(
+            variant, bezels, "hole");
+        if (!RenderingCompositorFixtures.surfaceCanvas(project, variant, assets,
+                viewportWidth, viewportHeight, native.get("w").asInt(),
+                native.get("h").asInt(), hole, &canvas)
+                || !RenderingCompositorFixtures.aperture(
+                    &canvas, hole, &aperture)) {
             return false;
         }
         struct RendererPixelRect content;
@@ -225,6 +541,75 @@ class RenderingCompositorGeometryContract {
                 / (float)aspect.get("h").asInt(), 1, &content);
         return RenderingCompositorFixtures.maximalIntegerFit(&aperture,
             &content, native.get("w").asInt(), native.get("h").asInt());
+    }
+
+    class bool gameBoyAdaptiveCanvas(string project) {
+        JsonValue system = JsonValue.readFile(PathTools.join(project,
+            "config/systems/gb/system.json"));
+        JsonValue bezels = JsonValue.readFile(PathTools.join(project,
+            "config/systems/gb/bezels.json"));
+        JsonValue assets = JsonValue.readFile(PathTools.join(project,
+            "config/assets/bezels.json"));
+        JsonValue native = system.get("display").get("screens").at(0)
+            .get("native");
+        JsonValue variants = bezels.get("variants");
+        Vector<int> widths = [1280, 1920];
+        Vector<int> heights = [800, 1080];
+        if (!variants.isArray() || variants.size() != 2) { return false; }
+        for (int variantIndex = 0;
+                variantIndex < variants.size(); variantIndex++) {
+            JsonValue variant = variants.at(variantIndex);
+            JsonValue hole = variant.get("hole");
+            for (int viewportIndex = 0;
+                    viewportIndex < widths.size(); viewportIndex++) {
+                struct RendererCanvasRect contained;
+                struct RendererCanvasRect canvas;
+                struct RendererPixelRect aperture;
+                struct RendererPixelRect integerContent;
+                struct RendererPixelRect fractionalContent;
+                if (!RenderingCompositorFixtures.canvas(project, variant,
+                        assets, widths.get(viewportIndex),
+                        heights.get(viewportIndex), &contained)
+                        || !RenderingCompositorFixtures.surfaceCanvas(project,
+                            variant, assets, widths.get(viewportIndex),
+                            heights.get(viewportIndex),
+                            native.get("w").asInt(),
+                            native.get("h").asInt(), hole, &canvas)
+                        || !RenderingCompositorFixtures.aperture(
+                            &canvas, hole, &aperture)) {
+                    return false;
+                }
+                RendererCompositionContract.fit(&aperture,
+                    native.get("w").asInt(), native.get("h").asInt(), 0,
+                    10.0f / 9.0f, 1, &integerContent);
+                RendererCompositionContract.fit(&aperture,
+                    native.get("w").asInt(), native.get("h").asInt(), 0,
+                    10.0f / 9.0f, 0, &fractionalContent);
+                bool preserved = RenderingCompositorFixtures.close(
+                        canvas.width, contained.width)
+                    && RenderingCompositorFixtures.close(
+                        canvas.height, contained.height);
+                if (integerContent.width != native.get("w").asInt() * 2
+                        || integerContent.height
+                            != native.get("h").asInt() * 2
+                        || fractionalContent.width
+                            < native.get("w").asInt() * 2
+                        || fractionalContent.height
+                            < native.get("h").asInt() * 2
+                        || canvas.x < 0.0f || canvas.y < 0.0f
+                        || canvas.x + canvas.width
+                            > (float)widths.get(viewportIndex)
+                        || canvas.y + canvas.height
+                            > (float)heights.get(viewportIndex)
+                        || !preserved
+                        || (variantIndex == 0 && viewportIndex == 0
+                            && (aperture.width != 320
+                                || aperture.height != 288))) {
+                    return false;
+                }
+            }
+        }
+        return true;
     }
 
     class bool dualShell(string project, string systemId,
@@ -426,7 +811,7 @@ class RenderingPointerContract {
             && runtime.contains(
                 "RendererPointerContract.publish(frame, &SemuRenderer.geometry")
             && runtime.contains(
-                "frame->map_pointer = semu_render_map_pointer_abi2;");
+                "frame->map_pointer = semu_render_map_pointer_abi3;");
     }
 
     class bool abiLayoutSourceContract(string project) {
@@ -502,6 +887,9 @@ class RenderingCompositorLayerContract {
             && source.contains(
                 "vec2 q=a?rotatedUv(uv(p,uRect),uRotation):rotatedUv(uv(p,uRect2),uRotation2);")
             && source.contains(
+                "vec2 gq=a?uv(p,uRect):uv(p,uRect2);gq.y=1.0-gq.y;vec4 g=texture(uGlass,gq);")
+            && !source.contains("texture(uGlass,artUv(p))")
+            && source.contains(
                 "filtered[second] != 0 ? 0.0f")
             && source.contains("frag=texture(uBezel,artUv(p));return;");
     }
@@ -573,9 +961,9 @@ class RenderingProductionHardeningContract {
     }
 
     class bool recreatedContextForcesReset() {
-        void* first = (void*)0x1000;
-        void* second = (void*)0x2000;
-        return !RendererContextContract.changed(null, first, 0ULL, 1ULL)
+        unsigned long long first = 41ULL;
+        unsigned long long second = 42ULL;
+        return !RendererContextContract.changed(0ULL, first, 0ULL, 1ULL)
             && !RendererContextContract.changed(first, first, 41ULL, 42ULL)
             && RendererContextContract.changed(first, second, 41ULL, 42ULL)
             && RendererContextContract.changed(first, first, 41ULL, 1ULL)
@@ -626,8 +1014,21 @@ class RenderingProductionHardeningContract {
             && compositor.contains("RendererAssetRequirements.status(")
             && compositor.contains("shader_preset_missing")
             && compositor.contains("bezel_art_missing")
+            && runtime.contains("void semu_render_context_invalidate_gl(")
+            && runtime.contains(
+                "SemuRendererLifecycle.reset(true, contextGeneration)")
+            && runtime.contains(
+                "RendererResources.releaseCurrentContext(")
+            && runtime.contains(
+                "SemuRenderer.resources.owner_context_generation")
+            && compositor.contains(
+                "RendererResources.releaseCurrentContext(")
             && runtime.contains("RendererResources.abandonDestroyedContext(")
             && runtime.contains("RendererResources.current(")
+            && compositor.contains("gl->delete_textures(")
+            && compositor.contains("gl->delete_framebuffers(")
+            && compositor.contains("gl->delete_vertex_arrays(")
+            && compositor.contains("gl->delete_program(")
             && shader.contains("abandonDestroyedContext")
             && shader.contains("self.handle = (libra_gl_filter_chain_t)0;")
             && compositor.contains(
@@ -654,9 +1055,29 @@ class RenderingCompositorContractTest {
 
     class int run(string project) {
         int failures = 0;
+        if (!RenderingGlAdversarialContract.rejectsUnsupportedCapabilities()) {
+            failures += RenderingCompositorContractTest.fail(
+                "OpenGL 3.2 or GLSL below 330 reaches renderer mutation");
+        }
+        if (!RenderingGlAdversarialContract.failedShaderIsDeleted()) {
+            failures += RenderingCompositorContractTest.fail(
+                "failed shader compilation leaks its allocated shader object");
+        }
+        if (!RenderingGlAdversarialContract.offscreenThenOneCommit()) {
+            failures += RenderingCompositorContractTest.fail(
+                "composition mutates the emulator framebuffer before one validated commit");
+        }
+        if (!RenderingGlAdversarialContract.sourceContract(project)) {
+            failures += RenderingCompositorContractTest.fail(
+                "production composition bypasses capability, cleanup, or atomic-commit policy");
+        }
         if (!RenderingCompositorGeometryContract.genericAspectFits()) {
             failures += RenderingCompositorContractTest.fail(
                 "4:3 and 16:9 contain/integer geometry changed");
+        }
+        if (!RenderingCompositorGeometryContract.gameBoyAdaptiveCanvas(project)) {
+            failures += RenderingCompositorContractTest.fail(
+                "Game Boy canvas no longer fits the full shell while enforcing an exact 2x Deck aperture");
         }
         for systemId in ["gb", "gbc", "gba", "psp"] {
             if (!RenderingCompositorGeometryContract.shell(
@@ -686,11 +1107,11 @@ class RenderingCompositorContractTest {
         }
         if (!RenderingPointerContract.sourceContract(project)) {
             failures += RenderingCompositorContractTest.fail(
-                "ABI-2 frame no longer publishes its exact pointer map callback");
+                "ABI-3 frame no longer publishes its exact pointer map callback");
         }
         if (!RenderingPointerContract.abiLayoutSourceContract(project)) {
             failures += RenderingCompositorContractTest.fail(
-                "ABI-2 managed/native layout or bounded-call gate regressed");
+                "ABI-3 managed/native layout or bounded-call gate regressed");
         }
         if (!RenderingCompositorLayerContract.sourceOrder(project)) {
             failures += RenderingCompositorContractTest.fail(

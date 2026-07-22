@@ -40,12 +40,94 @@ class SemuRenderingContract {
             value.get("bottom"), file, field + ".bottom", diagnostics);
     }
 
+    class void canvas(JsonValue value, string file, string field,
+                      CompilerDiagnostics diagnostics) {
+        SemuRenderingContract.keys(value,
+            ["mode", "min_integer_scale", "max_width", "max_height"],
+            file, field, diagnostics);
+        if (!SemuRenderingDefinition.validCanvas(value)) {
+            diagnostics.add(file, field,
+                "expected minimum_aperture with bounded min_integer_scale, max_width, and max_height");
+        }
+    }
+
+    class void compatibility(JsonValue value, string file,
+                             CompilerDiagnostics diagnostics) {
+        string field = "compatibility";
+        if (!value.isObject()) {
+            diagnostics.add(file, field, "expected object");
+            return;
+        }
+        SemuRenderingContract.keys(value,
+            ["surfaces", "native", "aspect", "fit", "scaling"],
+            file, field, diagnostics);
+        JsonValue surfaces = value.get("surfaces");
+        Vector<string> ids = [];
+        if (!surfaces.isArray() || surfaces.size() == 0) {
+            diagnostics.add(file, field + ".surfaces",
+                "expected a non-empty array");
+        } else {
+            for (int index = 0; index < surfaces.size(); index++) {
+                JsonValue id = surfaces.at(index);
+                if (!id.isString() || id.asString().isEmpty()
+                        || ids.contains(id.isString() ? id.asString() : "")) {
+                    diagnostics.add(file, f"{field}.surfaces[{index}]",
+                        "expected a unique non-empty string");
+                } else {
+                    ids.push(id.asString());
+                }
+            }
+        }
+        JsonValue native = value.get("native");
+        SemuRenderingContract.keys(
+            native, ["w", "h"], file, field + ".native", diagnostics);
+        if (!native.isObject() || !native.get("w").isInt()
+                || !native.get("h").isInt()
+                || native.get("w").asInt() < 1
+                || native.get("h").asInt() < 1) {
+            diagnostics.add(file, field + ".native",
+                "expected positive integer w/h");
+        }
+        JsonValue aspect = value.get("aspect");
+        SemuRenderingContract.keys(
+            aspect, ["w", "h"], file, field + ".aspect", diagnostics);
+        if (!aspect.isObject() || !aspect.get("w").isInt()
+                || !aspect.get("h").isInt()
+                || aspect.get("w").asInt() < 1
+                || aspect.get("h").asInt() < 1) {
+            diagnostics.add(file, field + ".aspect",
+                "expected positive integer w/h");
+        }
+        if (!value.get("fit").isString()
+                || !value.get("fit").asString().equals("contain")) {
+            diagnostics.add(file, field + ".fit", "expected contain");
+        }
+        JsonValue scaling = value.get("scaling");
+        SemuRenderingContract.keys(scaling,
+            ["mode", "fallback"], file, field + ".scaling", diagnostics);
+        if (!scaling.isObject()
+                || !scaling.get("mode").isString()
+                || !scaling.get("mode").asString()
+                    .equals("integer_preferred")
+                || !scaling.get("fallback").isString()
+                || !scaling.get("fallback").asString()
+                    .equals("fractional_downscale")) {
+            diagnostics.add(file, field + ".scaling",
+                "expected integer_preferred with fractional_downscale");
+        }
+    }
+
     class void shader(SemuCompilerModel model, SemuSystemSource system,
                       CompilerDiagnostics diagnostics) {
         JsonValue source = system.shaders;
-        SemuRenderingContract.keys(source,
-            ["schema_version", "enabled", "renderer", "screen", "doc"],
-            system.shadersFile, "", diagnostics);
+        int schema = source.get("schema_version").isInt()
+            ? source.get("schema_version").asInt() : 0;
+        Vector<string> allowed = schema == 3
+            ? ["schema_version", "enabled", "renderer", "disabled_variant",
+               "default_variant", "variants", "compatibility", "doc"]
+            : ["schema_version", "enabled", "renderer", "screen", "doc"];
+        SemuRenderingContract.keys(
+            source, allowed, system.shadersFile, "", diagnostics);
         if (!source.get("enabled").isBool()) {
             diagnostics.add(system.shadersFile, "enabled", "expected boolean");
             return;
@@ -55,7 +137,8 @@ class SemuRenderingContract {
             diagnostics.add(system.shadersFile, "renderer",
                 "Semu renderer ownership must be declared");
         }
-        if (source.get("enabled").asBool() != 0) {
+        if (source.get("enabled").asBool() == 0) { return; }
+        if (schema == 2) {
             JsonValue screen = source.get("screen");
             if (!screen.isString() || screen.asString().isEmpty()) {
                 diagnostics.add(system.shadersFile, "screen",
@@ -65,16 +148,75 @@ class SemuRenderingContract {
                 diagnostics.add(system.shadersFile, "screen",
                     "shader is absent from config/assets/shaders.json");
             }
+            return;
         }
+        if (schema != 3) { return; }
+        if (!SemuRenderingDefinition.explicitDisabled(source)) {
+            diagnostics.add(system.shadersFile, "disabled_variant",
+                "expected explicit none variant");
+        }
+        JsonValue variants = source.get("variants");
+        if (!variants.isArray() || variants.size() == 0) {
+            diagnostics.add(system.shadersFile, "variants",
+                "expected a non-empty array");
+            return;
+        }
+        Vector<string> ids = [];
+        for (int index = 0; index < variants.size(); index++) {
+            JsonValue variant = variants.at(index);
+            string field = f"variants[{index}]";
+            SemuRenderingContract.keys(variant,
+                ["id", "label", "screen", "hardware"],
+                system.shadersFile, field, diagnostics);
+            string id = variant.get("id").isString()
+                ? variant.get("id").asString() : "";
+            if (id.isEmpty() || id.equals("none") || ids.contains(id)) {
+                diagnostics.add(system.shadersFile, field + ".id",
+                    "expected a unique non-reserved id");
+            } else {
+                ids.push(id);
+            }
+            string screen = variant.get("screen").isString()
+                ? variant.get("screen").asString() : "";
+            if (screen.isEmpty() || !SemuRenderingDefinition.assetDeclared(
+                    model.assets.shaders, screen)) {
+                diagnostics.add(system.shadersFile, field + ".screen",
+                    "shader is absent from config/assets/shaders.json");
+            }
+            if (!variant.get("label").isString()
+                    || variant.get("label").asString().isEmpty()
+                    || !variant.get("hardware").isString()
+                    || variant.get("hardware").asString().isEmpty()) {
+                diagnostics.add(system.shadersFile, field,
+                    "variant requires non-empty label and hardware");
+            }
+        }
+        string defaultVariant = source.get("default_variant").isString()
+            ? source.get("default_variant").asString() : "";
+        if (defaultVariant.isEmpty()
+                || !SemuRenderingDefinition.variant(
+                    source, defaultVariant).isObject()) {
+            diagnostics.add(system.shadersFile, "default_variant",
+                "enabled shader requires a declared default variant");
+        }
+        SemuRenderingContract.compatibility(
+            source.get("compatibility"), system.shadersFile, diagnostics);
     }
 
     class void bezel(SemuCompilerModel model, SemuSystemSource system,
                      CompilerDiagnostics diagnostics) {
         JsonValue source = system.bezels;
-        SemuRenderingContract.keys(source,
-            ["schema_version", "enabled", "default_variant",
-             "widescreen_variant", "hole", "screen_holes", "variants", "doc"],
-            system.bezelsFile, "", diagnostics);
+        int schema = source.get("schema_version").isInt()
+            ? source.get("schema_version").asInt() : 0;
+        Vector<string> allowed = ["schema_version", "enabled",
+            "default_variant", "widescreen_variant", "hole", "screen_holes",
+            "variants", "doc"];
+        if (schema == 2) {
+            allowed.push("disabled_variant");
+            allowed.push("compatibility");
+        }
+        SemuRenderingContract.keys(
+            source, allowed, system.bezelsFile, "", diagnostics);
         if (!source.get("enabled").isBool()) {
             diagnostics.add(system.bezelsFile, "enabled", "expected boolean");
             return;
@@ -85,6 +227,14 @@ class SemuRenderingContract {
             return;
         }
         if (source.get("enabled").asBool() == 0) { return; }
+        if (schema == 2) {
+            if (!SemuRenderingDefinition.explicitDisabled(source)) {
+                diagnostics.add(system.bezelsFile, "disabled_variant",
+                    "expected explicit none variant");
+            }
+            SemuRenderingContract.compatibility(
+                source.get("compatibility"), system.bezelsFile, diagnostics);
+        }
         string defaultVariant = source.get("default_variant").isString()
             ? source.get("default_variant").asString() : "";
         if (defaultVariant.isEmpty()
@@ -107,7 +257,7 @@ class SemuRenderingContract {
             JsonValue variant = variants.at(index);
             string field = f"variants[{index}]";
             SemuRenderingContract.keys(variant,
-                ["id", "label", "art", "glass", "hole", "screen_holes"],
+                ["id", "label", "art", "glass", "canvas", "hole", "screen_holes"],
                 system.bezelsFile, field, diagnostics);
             string id = variant.get("id").isString()
                 ? variant.get("id").asString() : "";
@@ -132,6 +282,10 @@ class SemuRenderingContract {
                     diagnostics.add(system.bezelsFile, field + ".glass",
                         "glass art is absent from config/assets/bezels.json");
                 }
+            }
+            if (variant.has("canvas")) {
+                SemuRenderingContract.canvas(variant.get("canvas"),
+                    system.bezelsFile, field + ".canvas", diagnostics);
             }
             JsonValue hole = variant.get("hole").isObject()
                 ? variant.get("hole") : source.get("hole");
@@ -225,7 +379,7 @@ class SemuCompilerChecker {
         if (plan.emulators.isEmpty()) {
             diagnostics.add(model.target.file, "emulators", "target selects no emulators");
         }
-        if (plan.operation.equals("emulator")
+        if (!request.emulator.isEmpty()
                 && (plan.emulators.size() != 1
                     || !plan.emulators.get(0).equals(request.emulator))) {
             diagnostics.add(model.target.file, "emulator",

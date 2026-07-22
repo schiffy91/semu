@@ -1,0 +1,302 @@
+// Deterministic libretro core used only by the real RetroArch integration test.
+
+#include <libretro.h>
+#include <stdbool.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+__fn_ptr<bool, unsigned int, void*> SyntheticEnvironment;
+__fn_ptr<void, const void*, unsigned int, unsigned int, size_t>
+    SyntheticVideo;
+__fn_ptr<void, int16_t, int16_t> SyntheticAudio;
+__fn_ptr<size_t, const int16_t*, size_t> SyntheticAudioBatch;
+__fn_ptr<void> SyntheticInputPoll;
+__fn_ptr<int16_t, unsigned int, unsigned int, unsigned int, unsigned int>
+    SyntheticInputState;
+uint32_t SyntheticPixels[256 * 384];
+unsigned long long SyntheticFrame;
+FILE* SyntheticLog;
+bool SyntheticPointerLogged;
+int16_t SyntheticPointerX;
+int16_t SyntheticPointerY;
+int16_t SyntheticPointerPressed;
+int16_t SyntheticRawX;
+int16_t SyntheticRawY;
+int16_t SyntheticRawPressed;
+
+class SyntheticPattern {
+    class uint32_t color(int red, int green, int blue) {
+        return 0xff000000u | ((uint32_t)red << 16)
+            | ((uint32_t)green << 8) | (uint32_t)blue;
+    }
+
+    class void fill() {
+        uint32_t top = SyntheticPattern.color(224, 24, 32);
+        uint32_t bottom = SyntheticPattern.color(24, 48, 224);
+        uint32_t green = SyntheticPattern.color(24, 224, 64);
+        uint32_t yellow = SyntheticPattern.color(240, 224, 24);
+        for (int y = 0; y < 384; y++) {
+            for (int x = 0; x < 256; x++) {
+                SyntheticPixels[y * 256 + x] = y < 192 ? top : bottom;
+            }
+        }
+        for (int y = 12; y < 52; y++) {
+            for (int x = 12; x < 52; x++) {
+                SyntheticPixels[y * 256 + x] = green;
+            }
+        }
+        for (int y = 332; y < 372; y++) {
+            for (int x = 204; x < 244; x++) {
+                SyntheticPixels[y * 256 + x] = yellow;
+            }
+        }
+        char* stationary = getenv("SEMU_SYNTHETIC_STATIC");
+        if (stationary == null || stationary[0] != '1') {
+            int tick = (int)(SyntheticFrame % 128ULL);
+            for (int y = 176; y < 208; y++) {
+                for (int x = tick; x < tick + 8 && x < 256; x++) {
+                    SyntheticPixels[y * 256 + x] =
+                        SyntheticPattern.color(248, 248, 248);
+                }
+            }
+        }
+    }
+}
+
+struct SyntheticPointerTuple {
+    int16_t x;
+    int16_t y;
+    int16_t pressed;
+};
+
+class SyntheticPointer {
+    class int id(int permutation, int position) {
+        int orders[18] = {
+            RETRO_DEVICE_ID_POINTER_X, RETRO_DEVICE_ID_POINTER_Y,
+            RETRO_DEVICE_ID_POINTER_PRESSED,
+            RETRO_DEVICE_ID_POINTER_X, RETRO_DEVICE_ID_POINTER_PRESSED,
+            RETRO_DEVICE_ID_POINTER_Y,
+            RETRO_DEVICE_ID_POINTER_Y, RETRO_DEVICE_ID_POINTER_X,
+            RETRO_DEVICE_ID_POINTER_PRESSED,
+            RETRO_DEVICE_ID_POINTER_Y, RETRO_DEVICE_ID_POINTER_PRESSED,
+            RETRO_DEVICE_ID_POINTER_X,
+            RETRO_DEVICE_ID_POINTER_PRESSED, RETRO_DEVICE_ID_POINTER_X,
+            RETRO_DEVICE_ID_POINTER_Y,
+            RETRO_DEVICE_ID_POINTER_PRESSED, RETRO_DEVICE_ID_POINTER_Y,
+            RETRO_DEVICE_ID_POINTER_X
+        };
+        return orders[permutation * 3 + position];
+    }
+
+    class struct SyntheticPointerTuple sample(int permutation) {
+        struct SyntheticPointerTuple tuple;
+        memset(&tuple, 0, sizeof(tuple));
+        for (int position = 0; position < 3; position++) {
+            int id = SyntheticPointer.id(permutation, position);
+            int16_t value = SyntheticInputState(
+                0, RETRO_DEVICE_POINTER, 0, (unsigned int)id);
+            if (id == RETRO_DEVICE_ID_POINTER_X) { tuple.x = value; }
+            if (id == RETRO_DEVICE_ID_POINTER_Y) { tuple.y = value; }
+            if (id == RETRO_DEVICE_ID_POINTER_PRESSED) {
+                tuple.pressed = value;
+            }
+        }
+        return tuple;
+    }
+
+    class void poll() {
+        if ((void*)SyntheticInputPoll == null
+                || (void*)SyntheticInputState == null) {
+            return;
+        }
+        SyntheticInputPoll();
+        struct SyntheticPointerTuple tuples[6];
+        for (int permutation = 0; permutation < 6; permutation++) {
+            tuples[permutation] = SyntheticPointer.sample(permutation);
+        }
+        int16_t rawX = SyntheticInputState(
+            0, RETRO_DEVICE_MOUSE, 0, RETRO_DEVICE_ID_MOUSE_X);
+        int16_t rawY = SyntheticInputState(
+            0, RETRO_DEVICE_MOUSE, 0, RETRO_DEVICE_ID_MOUSE_Y);
+        int16_t rawPressed = SyntheticInputState(
+            0, RETRO_DEVICE_MOUSE, 0, RETRO_DEVICE_ID_MOUSE_LEFT);
+        bool consistent = true;
+        for (int permutation = 1; permutation < 6; permutation++) {
+            consistent = consistent
+                && tuples[permutation].x == tuples[0].x
+                && tuples[permutation].y == tuples[0].y
+                && tuples[permutation].pressed == tuples[0].pressed;
+        }
+        bool changed = !SyntheticPointerLogged
+            || tuples[0].x != SyntheticPointerX
+            || tuples[0].y != SyntheticPointerY
+            || tuples[0].pressed != SyntheticPointerPressed
+            || rawX != SyntheticRawX
+            || rawY != SyntheticRawY
+            || rawPressed != SyntheticRawPressed;
+        if (SyntheticLog != null && (changed || !consistent)) {
+            fprintf(SyntheticLog,
+                "pointer frame=%llu consistent=%d",
+                SyntheticFrame, consistent ? 1 : 0);
+            for (int permutation = 0; permutation < 6; permutation++) {
+                fprintf(SyntheticLog, " p%d=%d,%d,%d", permutation,
+                    (int)tuples[permutation].x,
+                    (int)tuples[permutation].y,
+                    (int)tuples[permutation].pressed);
+            }
+            fprintf(SyntheticLog, " raw=%d,%d,%d",
+                (int)rawX, (int)rawY, (int)rawPressed);
+            fputc('\n', SyntheticLog);
+            fflush(SyntheticLog);
+            SyntheticPointerLogged = true;
+            SyntheticPointerX = tuples[0].x;
+            SyntheticPointerY = tuples[0].y;
+            SyntheticPointerPressed = tuples[0].pressed;
+            SyntheticRawX = rawX;
+            SyntheticRawY = rawY;
+            SyntheticRawPressed = rawPressed;
+        }
+    }
+}
+
+void retro_init() {
+    SyntheticFrame = 0ULL;
+    SyntheticPointerLogged = false;
+    SyntheticPointerX = 0;
+    SyntheticPointerY = 0;
+    SyntheticPointerPressed = 0;
+    SyntheticRawX = 0;
+    SyntheticRawY = 0;
+    SyntheticRawPressed = 0;
+    char* logPath = getenv("SEMU_SYNTHETIC_CORE_LOG");
+    if (logPath != null && logPath[0] != 0) {
+        SyntheticLog = fopen(logPath, "wb");
+    }
+}
+
+void retro_deinit() {
+    if (SyntheticLog != null) {
+        fprintf(SyntheticLog, "deinit frame=%llu\n", SyntheticFrame);
+        fclose(SyntheticLog);
+        SyntheticLog = null;
+    }
+}
+
+unsigned int retro_api_version() { return RETRO_API_VERSION; }
+
+void retro_set_environment(retro_environment_t callback) {
+    SyntheticEnvironment =
+        (__fn_ptr<bool, unsigned int, void*>)callback;
+}
+
+void retro_set_video_refresh(retro_video_refresh_t callback) {
+    SyntheticVideo = (__fn_ptr<void, const void*, unsigned int,
+        unsigned int, size_t>)callback;
+}
+
+void retro_set_audio_sample(retro_audio_sample_t callback) {
+    SyntheticAudio = (__fn_ptr<void, int16_t, int16_t>)callback;
+}
+
+void retro_set_audio_sample_batch(retro_audio_sample_batch_t callback) {
+    SyntheticAudioBatch =
+        (__fn_ptr<size_t, const int16_t*, size_t>)callback;
+}
+
+void retro_set_input_poll(retro_input_poll_t callback) {
+    SyntheticInputPoll = (__fn_ptr<void>)callback;
+}
+
+void retro_set_input_state(retro_input_state_t callback) {
+    SyntheticInputState = (__fn_ptr<int16_t, unsigned int,
+        unsigned int, unsigned int, unsigned int>)callback;
+}
+
+void retro_get_system_info(struct retro_system_info* info) {
+    memset(info, 0, sizeof(*info));
+    info->library_name = "Semu Synthetic Surfaces";
+    info->library_version = "1";
+    info->valid_extensions = "semu";
+    info->need_fullpath = false;
+    info->block_extract = false;
+}
+
+void retro_get_system_av_info(struct retro_system_av_info* info) {
+    memset(info, 0, sizeof(*info));
+    info->geometry.base_width = 256;
+    info->geometry.base_height = 384;
+    info->geometry.max_width = 256;
+    info->geometry.max_height = 384;
+    info->geometry.aspect_ratio = 2.0f / 3.0f;
+    info->timing.fps = 60.0;
+    info->timing.sample_rate = 48000.0;
+}
+
+void retro_set_controller_port_device(unsigned int port,
+                                       unsigned int device) {
+    (void)port;
+    (void)device;
+}
+
+void retro_reset() { SyntheticFrame = 0ULL; }
+
+bool retro_load_game(const struct retro_game_info* game) {
+    (void)game;
+    enum retro_pixel_format format = RETRO_PIXEL_FORMAT_XRGB8888;
+    if ((void*)SyntheticEnvironment == null
+            || !SyntheticEnvironment(
+                RETRO_ENVIRONMENT_SET_PIXEL_FORMAT, &format)) {
+        return false;
+    }
+    bool supportsNoGame = true;
+    SyntheticEnvironment(
+        RETRO_ENVIRONMENT_SET_SUPPORT_NO_GAME, &supportsNoGame);
+    return true;
+}
+
+void retro_unload_game() {}
+unsigned int retro_get_region() { return RETRO_REGION_NTSC; }
+size_t retro_serialize_size() { return 0; }
+bool retro_serialize(void* data, size_t size) {
+    (void)data;
+    (void)size;
+    return false;
+}
+bool retro_unserialize(const void* data, size_t size) {
+    (void)data;
+    (void)size;
+    return false;
+}
+void* retro_get_memory_data(unsigned int id) {
+    (void)id;
+    return null;
+}
+size_t retro_get_memory_size(unsigned int id) {
+    (void)id;
+    return 0;
+}
+void retro_cheat_reset() {}
+void retro_cheat_set(unsigned int index, bool enabled, const char* code) {
+    (void)index;
+    (void)enabled;
+    (void)code;
+}
+bool retro_load_game_special(unsigned int type,
+        const struct retro_game_info* info, size_t count) {
+    (void)type;
+    (void)info;
+    (void)count;
+    return false;
+}
+
+void retro_run() {
+    SyntheticFrame++;
+    SyntheticPointer.poll();
+    SyntheticPattern.fill();
+    if ((void*)SyntheticVideo != null) {
+        SyntheticVideo(SyntheticPixels, 256, 384,
+            (size_t)256 * sizeof(uint32_t));
+    }
+}

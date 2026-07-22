@@ -18,19 +18,22 @@ int main(int argc, char** argv) {
     if (!auditHooks.isEmpty()) {
         AppImageRuntimeInventoryResult inventory =
             AppImageRuntimeInventory.load(PathTools.join(project, "config"));
-        AppImageProvenanceJson builds =
-            AppImageRuntimeProvenance.buildContracts(project);
-        if (!inventory.ok() || !builds.ok()) {
+        AppImageProvenanceJson source =
+            AppImageRuntimeProvenance.sourceContract(project);
+        if (!inventory.ok() || !source.ok()) {
             print("AppImage hook packages: "
-                + (inventory.ok() ? builds.error : inventory.error));
+                + (inventory.ok() ? source.error : inventory.error));
             return 1;
         }
+        JsonValue builds = source.value.get("build_contracts");
         AppImageProvenanceJson packages =
             AppImageRuntimeProvenance.runtimePackages(
-                project, auditHooks, builds.value, inventory.slices);
+                project, auditHooks, builds, inventory.slices);
         AppImageProvenanceJson contracts = packages.ok()
             ? AppImageRuntimeProvenance.runtimeBuildContracts(
-                auditHooks, inventory.slices, builds.value)
+                auditHooks, inventory.slices, builds,
+                source.value.get("core_runtime"),
+                source.value.get("selected_core_builds"))
             : AppImageProvenanceJson.failure(packages.error);
         if (!packages.ok() || !contracts.ok()) {
             print("AppImage hook packages: "
@@ -44,7 +47,7 @@ int main(int argc, char** argv) {
     }
     if (!auditRuntime.isEmpty()) {
         string target = Path.readAll(PathTools.join(auditRuntime,
-            "share/semu/steamdeck-runtime-store-path.txt")).trim();
+            "share/semu/release-store-path.txt")).trim();
         AppImageProvenanceJson payload =
             AppImageRuntimeProvenance.runtimePayload(
                 auditRuntime, target);

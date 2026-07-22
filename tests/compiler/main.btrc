@@ -8,11 +8,12 @@ import ./cemu_production_contract_test.btrc
 import ./config_contract_test.btrc
 import ./emulator_runtime_contract_test.btrc
 import ./esde_contract_test.btrc
-import ./json_format_contract_test.btrc
+import ./json_document_contract_test.btrc
 import ./melonds_touch_contract_test.btrc
 import ./rendering_contract_test.btrc
 import ./rendering_compositor_contract_test.btrc
 import ./retroarch_production_contract_test.btrc
+import ./release_inventory_contract_test.btrc
 import ./source_architecture_contract_test.btrc
 import ./standalone_emulator_production_contract_test.btrc
 import ./steam_input_contract_test.btrc
@@ -29,11 +30,12 @@ int main(int argc, char** argv) {
     failures += ConfigContractTest.run(project);
     failures += EmulatorRuntimeContractTest.run(project);
     failures += EsDeContractTest.run(project);
-    failures += JsonFormatContractTest.run(project);
+    failures += JsonDocumentContractTest.run(project);
     failures += MelonDsTouchContractTest.run(project);
     failures += RenderingContractTest.run(project);
     failures += RenderingCompositorContractTest.run(project);
     failures += RetroArchProductionContractTest.run(project);
+    failures += ReleaseInventoryContractTest.run(project);
     failures += SourceArchitectureContractTest.run(project);
     failures += StandaloneEmulatorProductionContractTest.run(project);
     failures += SteamInputContractTest.run(project);

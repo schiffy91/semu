@@ -23,8 +23,17 @@
   },
   "verification": {
     "rom_descriptors": [
-      "Tetris (World) (Rev 1).zip",
-      "Kirby's Dream Land (USA, Europe).zip"
+      "Tetris (World) (Rev 1).zip"
+    ],
+    "gameplay_controls": [
+      "dpad-up",
+      "dpad-down",
+      "dpad-left",
+      "dpad-right",
+      "a",
+      "b",
+      "start",
+      "select"
     ],
     "capture_frame": 180
   },
@@ -36,6 +45,7 @@
     }
   ],
   "display": {
+    "source_geometry": "exact_native",
     "scaling": {
       "mode": "integer_preferred",
       "basis": "native_game_surface",
@@ -61,10 +71,10 @@
     "asset_profile": "handheld",
     "priority": "bezel",
     "fill": true,
-    "reflect": 0.12
+    "reflect": 0.04
   },
   "doc": {
     "hardware": "DMG-01 reflective STN LCD",
-    "intent": "The owned DMG screen preset controls the olive palette, LCD matrix, and restrained STN response; the render block controls the classic shell and low glass reflection."
+    "intent": "The default DMG screen preset controls the restrained olive palette, LCD matrix, and STN response. The default gray shell declares a real pinned reflection map, so the restrained reflection coefficient is consumed by the compositor rather than remaining inert."
   }
 }

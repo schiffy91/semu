@@ -1,0 +1,417 @@
+// release_proof_bundle.btrc - immutable proof retained beside an AppImage.
+
+import std.{fs, json, process, strings, vector}
+import ../../lib/owned_paths.btrc
+import ./contract.btrc
+import ./nix_release_proof.btrc
+import ./output_transaction.btrc
+import ./work_session.btrc
+
+#include <errno.h>
+#include <fcntl.h>
+#include <sys/stat.h>
+#include <unistd.h>
+
+int semuAppImageProofLinkAt(int parentDescriptor, string source,
+                            string destination) {
+    if (source.isEmpty() || destination.isEmpty()
+            || source.len() >= 512 || destination.len() >= 512) {
+        return -1;
+    }
+    char sourceName[512];
+    char destinationName[512];
+    for (int index = 0; index < source.len(); index++) {
+        sourceName[index] = source.charAt(index);
+    }
+    sourceName[source.len()] = 0;
+    for (int index = 0; index < destination.len(); index++) {
+        destinationName[index] = destination.charAt(index);
+    }
+    destinationName[destination.len()] = 0;
+    return linkat(parentDescriptor, sourceName,
+        parentDescriptor, destinationName, 0);
+}
+
+class AppImageSourceRevision {
+    public bool valid;
+    public string repository;
+    public string revision;
+    public string upstreamRevision;
+    public string error;
+
+    public AppImageSourceRevision() {
+        self.valid = false;
+        self.repository = "";
+        self.revision = "";
+        self.upstreamRevision = "";
+        self.error = "";
+    }
+
+    public bool ok() { return self.valid; }
+
+    class bool commit(string value) {
+        if (value.len() != 40) { return false; }
+        for character in value {
+            bool decimal = character >= '0' && character <= '9';
+            bool hexadecimal = character >= 'a' && character <= 'f';
+            if (!decimal && !hexadecimal) { return false; }
+        }
+        return true;
+    }
+
+    class ExecResult git(string repository, Vector<string> arguments) {
+        Vector<string> command = ["-C", repository];
+        command.extend(arguments);
+        return ChildProcess.run("git", command,
+            timeoutMilliseconds=30000,
+            maxStdoutBytes=4194304,
+            maxStderrBytes=4194304,
+            stdout=CommandOutput.collect(),
+            stderr=CommandOutput.collect());
+    }
+
+    class string line(ExecResult result) {
+        string value = result.ok() ? result.stdout().trim() : "";
+        return value.isEmpty() || value.contains("\n")
+                || value.contains("\r")
+            ? "" : value.toLower();
+    }
+
+    class AppImageSourceRevision capture(string requestedRepository) {
+        AppImageSourceRevision source = AppImageSourceRevision();
+        string repository = UnixFileSystem.realPath(requestedRepository);
+        if (repository.isEmpty() || !FileStatus(repository).isDir()) {
+            source.error = "source repository is not a canonical directory";
+            return source;
+        }
+        ExecResult status = AppImageSourceRevision.git(repository,
+            ["status", "--porcelain=v1", "--untracked-files=all"]);
+        ExecResult revision = AppImageSourceRevision.git(repository,
+            ["rev-parse", "--verify", "HEAD^{commit}"]);
+        ExecResult upstream = AppImageSourceRevision.git(repository,
+            ["rev-parse", "--verify", "@{upstream}^{commit}"]);
+        string head = AppImageSourceRevision.line(revision);
+        string published = AppImageSourceRevision.line(upstream);
+        if (!status.ok() || !status.stdout().trim().isEmpty()) {
+            source.error = "AppImage source tree is not clean";
+            return source;
+        }
+        if (!AppImageSourceRevision.commit(head)
+                || !AppImageSourceRevision.commit(published)
+                || !head.equals(published)) {
+            source.error = "AppImage source revision is not exactly pushed to its upstream";
+            return source;
+        }
+        source.repository = repository;
+        source.revision = head;
+        source.upstreamRevision = published;
+        source.valid = true;
+        return source;
+    }
+
+    public bool stillExact() {
+        AppImageSourceRevision current =
+            AppImageSourceRevision.capture(self.repository);
+        return self.valid && current.ok()
+            && current.revision.equals(self.revision)
+            && current.upstreamRevision.equals(self.upstreamRevision);
+    }
+}
+
+class AppImageReleaseProofBundleResult {
+    public bool valid;
+    public string name;
+    public string path;
+    public string digest;
+    public string error;
+
+    public AppImageReleaseProofBundleResult() {
+        self.valid = false;
+        self.name = "";
+        self.path = "";
+        self.digest = "";
+        self.error = "";
+    }
+
+    public bool ok() { return self.valid; }
+
+    class AppImageReleaseProofBundleResult failure(string error) {
+        AppImageReleaseProofBundleResult result =
+            AppImageReleaseProofBundleResult();
+        result.error = error;
+        return result;
+    }
+}
+
+class AppImageReleaseProofBundle {
+    class JsonValue heldJson(int descriptor, string expectedDigest) {
+        string text = descriptor >= 0
+            ? SemuOwnedFileContent.text(descriptor) : "";
+        JsonValue value = JsonValue.parse(text);
+        if (!AppImageNixReleaseProof.digest(expectedDigest)
+                || !SemuOwnedFileDigest.descriptor(descriptor)
+                    .equals(expectedDigest)
+                || !value.isObject() || !text.equals(value.document())) {
+            return JsonValue.makeError();
+        }
+        return value;
+    }
+
+    class string bounded(string value) {
+        return value.len() <= 8192
+            ? value : value.substring(value.len() - 8192, 8192);
+    }
+
+    class string fileName(string outputName, string artifactDigest) {
+        return !outputName.isEmpty()
+                && AppImageNixReleaseProof.digest(artifactDigest)
+            ? outputName + "." + artifactDigest + ".proof.json" : "";
+    }
+
+    class string temporaryName(string artifactDigest) {
+        return AppImageNixReleaseProof.digest(artifactDigest)
+            ? ".semu-appimage-proof-" + artifactDigest + ".tmp" : "";
+    }
+
+    class string document(
+            AppImageRuntimeLease runtime,
+            AppImageHeldFileLease receiptFile,
+            AppImageSourceRevision source,
+            ExecResult execution,
+            string target, string emulator,
+            string outputName, string artifactDigest) {
+        if (!runtime.ok() || !runtime.stillBound()
+                || !receiptFile.ok() || !receiptFile.descriptorStillExact()
+                || !source.ok() || !source.stillExact()
+                || !execution.ok() || target.isEmpty()
+                || outputName.isEmpty()
+                || !AppImageNixReleaseProof.digest(artifactDigest)) {
+            return "";
+        }
+        JsonValue provenance = AppImageReleaseProofBundle.heldJson(
+            runtime.provenanceDescriptor, runtime.provenanceDigest);
+        JsonValue inventory = AppImageReleaseProofBundle.heldJson(
+            runtime.inventoryDescriptor, runtime.inventoryDigest);
+        JsonValue nixProof = AppImageReleaseProofBundle.heldJson(
+            runtime.ownership.nixProofDescriptor,
+            runtime.ownership.nixProofDigest);
+        JsonValue exportContract = AppImageReleaseProofBundle.heldJson(
+            runtime.exportContractFile.descriptor,
+            runtime.exportContractFile.digest);
+        JsonValue storeExportContract = AppImageReleaseProofBundle.heldJson(
+            runtime.storeExportContractFile.descriptor,
+            runtime.storeExportContractFile.digest);
+        JsonValue workerReceipt = AppImageReleaseProofBundle.heldJson(
+            receiptFile.descriptor, receiptFile.digest);
+        if (provenance.isError() || inventory.isError()
+                || nixProof.isError() || exportContract.isError()
+                || storeExportContract.isError()
+                || workerReceipt.isError()) {
+            return "";
+        }
+
+        JsonValue sourceIdentity = JsonValue.makeObject();
+        sourceIdentity.set("revision", JsonValue.makeString(source.revision));
+        sourceIdentity.set("upstream_revision",
+            JsonValue.makeString(source.upstreamRevision));
+        sourceIdentity.set("nix_source_store_path",
+            JsonValue.makeString(runtime.nixProof.sourceStorePath));
+
+        JsonValue artifact = JsonValue.makeObject();
+        artifact.set("name", JsonValue.makeString(outputName));
+        artifact.set("sha256", JsonValue.makeString(artifactDigest));
+        artifact.set("host_sha256", JsonValue.makeString(artifactDigest));
+
+        JsonValue releaseRecord = JsonValue.makeObject();
+        releaseRecord.set("target", JsonValue.makeString(target));
+        releaseRecord.set("emulator", JsonValue.makeString(emulator));
+        releaseRecord.set("nix_system",
+            JsonValue.makeString(runtime.nixProof.nixSystem));
+        releaseRecord.set("package_attribute",
+            JsonValue.makeString(runtime.nixProof.packageAttribute));
+        releaseRecord.set("release_identity_sha256",
+            JsonValue.makeString(runtime.releaseIdentity));
+        releaseRecord.set("assembly_authority_sha256",
+            JsonValue.makeString(runtime.assemblyAuthority()));
+
+        JsonValue hashes = JsonValue.makeObject();
+        hashes.set("runtime_provenance_sha256",
+            JsonValue.makeString(runtime.provenanceDigest));
+        hashes.set("release_inventory_sha256",
+            JsonValue.makeString(runtime.inventoryDigest));
+        hashes.set("runtime_prefix_sha256",
+            JsonValue.makeString(runtime.prefixDigest));
+        hashes.set("nix_release_proof_sha256",
+            JsonValue.makeString(runtime.ownership.nixProofDigest));
+        hashes.set("runtime_export_contract_sha256",
+            JsonValue.makeString(runtime.exportContractFile.digest));
+        hashes.set("store_export_contract_sha256",
+            JsonValue.makeString(runtime.storeExportContractFile.digest));
+        hashes.set("worker_receipt_sha256",
+            JsonValue.makeString(receiptFile.digest));
+        hashes.set("artifact_sha256",
+            JsonValue.makeString(artifactDigest));
+
+        JsonValue diagnostics = JsonValue.makeObject();
+        diagnostics.set("exit_code", JsonValue.makeInt(execution.code));
+        diagnostics.set("stdout_sha256", JsonValue.makeString(
+            SemuOwnedFileDigest.text(execution.stdout())));
+        diagnostics.set("stderr_sha256", JsonValue.makeString(
+            SemuOwnedFileDigest.text(execution.stderr())));
+        diagnostics.set("stdout_tail", JsonValue.makeString(
+            AppImageReleaseProofBundle.bounded(execution.stdout())));
+        diagnostics.set("stderr_tail", JsonValue.makeString(
+            AppImageReleaseProofBundle.bounded(execution.stderr())));
+
+        JsonValue runtimeProof = JsonValue.makeObject();
+        runtimeProof.set("nix_release_proof", nixProof);
+        runtimeProof.set("release_inventory", inventory);
+        runtimeProof.set("runtime_provenance", provenance);
+        runtimeProof.set("runtime_export_contract", exportContract);
+        runtimeProof.set("store_export_contract", storeExportContract);
+
+        JsonValue document = JsonValue.makeObject();
+        document.set("schema_version", JsonValue.makeInt(1));
+        document.set("source", sourceIdentity);
+        document.set("release", releaseRecord);
+        document.set("artifact", artifact);
+        document.set("host_hashes", hashes);
+        document.set("runtime_proof", runtimeProof);
+        document.set("worker_receipt", workerReceipt);
+        document.set("worker_diagnostics", diagnostics);
+        return document.document();
+    }
+
+    class bool exactAt(int parentDescriptor, string name,
+                       string digest, int mode, int links) {
+        struct stat inspected;
+        int descriptor = parentDescriptor >= 0 && !name.isEmpty()
+                && fstatat(parentDescriptor, name, &inspected,
+                    AT_SYMLINK_NOFOLLOW) == 0
+                && S_ISREG(inspected.st_mode) != 0
+            ? openat(parentDescriptor, name,
+                (int)O_RDONLY | (int)O_NOFOLLOW | (int)O_CLOEXEC)
+            : -1;
+        struct stat opened;
+        bool exact = descriptor >= 0 && fstat(descriptor, &opened) == 0
+            && S_ISREG(opened.st_mode) != 0
+            && AppImageWorkSession.sameObject(&inspected, &opened)
+            && opened.st_nlink == (nlink_t)links
+            && SemuOwnedPaths.permissions(opened.st_mode) == mode
+            && SemuOwnedFileDigest.descriptor(descriptor).equals(digest);
+        if (descriptor >= 0) { close(descriptor); }
+        return exact;
+    }
+
+    class bool sameEntry(int parentDescriptor, string left, string right) {
+        struct stat leftStatus;
+        struct stat rightStatus;
+        return fstatat(parentDescriptor, left, &leftStatus,
+                AT_SYMLINK_NOFOLLOW) == 0
+            && fstatat(parentDescriptor, right, &rightStatus,
+                AT_SYMLINK_NOFOLLOW) == 0
+            && AppImageWorkSession.sameObject(&leftStatus, &rightStatus);
+    }
+
+    class AppImageReleaseProofBundleResult publish(
+            AppImageAssemblyLock outputLock, string artifactDigest,
+            string canonicalDocument) {
+        string finalName = AppImageReleaseProofBundle.fileName(
+            outputLock.outputName, artifactDigest);
+        string temporaryName =
+            AppImageReleaseProofBundle.temporaryName(artifactDigest);
+        string proofDigest = SemuOwnedFileDigest.text(canonicalDocument);
+        JsonValue parsed = JsonValue.parse(canonicalDocument);
+        if (!outputLock.ok() || !outputLock.stillBound()
+                || finalName.isEmpty() || temporaryName.isEmpty()
+                || !AppImageNixReleaseProof.digest(proofDigest)
+                || !parsed.isObject()
+                || !canonicalDocument.equals(parsed.document())) {
+            return AppImageReleaseProofBundleResult.failure(
+                "release proof inputs are not exact and canonical");
+        }
+
+        bool finalPresent = !AppImageOutputFiles.absent(
+            outputLock.parentDescriptor, finalName);
+        bool temporaryPresent = !AppImageOutputFiles.absent(
+            outputLock.parentDescriptor, temporaryName);
+        if (finalPresent && temporaryPresent
+                && AppImageReleaseProofBundle.sameEntry(
+                    outputLock.parentDescriptor, finalName, temporaryName)
+                && AppImageReleaseProofBundle.exactAt(
+                    outputLock.parentDescriptor, finalName,
+                    proofDigest, 292, 2)
+                && unlinkat(outputLock.parentDescriptor,
+                    temporaryName, 0) == 0
+                && fsync(outputLock.parentDescriptor) == 0) {
+            temporaryPresent = false;
+        }
+        if (finalPresent) {
+            if (temporaryPresent
+                    || !AppImageReleaseProofBundle.exactAt(
+                        outputLock.parentDescriptor, finalName,
+                        proofDigest, 292, 1)) {
+                return AppImageReleaseProofBundleResult.failure(
+                    "artifact proof identity already exists with different bytes");
+            }
+            AppImageReleaseProofBundleResult existing =
+                AppImageReleaseProofBundleResult();
+            existing.valid = true;
+            existing.name = finalName;
+            existing.path = PathTools.join(
+                outputLock.outputParentPath, finalName);
+            existing.digest = proofDigest;
+            return existing;
+        }
+
+        if (temporaryPresent
+                && !AppImageReleaseProofBundle.exactAt(
+                    outputLock.parentDescriptor, temporaryName,
+                    proofDigest, 292, 1)) {
+            return AppImageReleaseProofBundleResult.failure(
+                "stale release proof candidate has different bytes");
+        }
+        if (!temporaryPresent) {
+            int descriptor = openat(outputLock.parentDescriptor,
+                temporaryName,
+                (int)O_RDWR | (int)O_CREAT | (int)O_EXCL
+                    | (int)O_NOFOLLOW | (int)O_CLOEXEC,
+                (mode_t)384); // 0600 while incomplete
+            bool written = descriptor >= 0
+                && semuAppImageWriteAll(descriptor, canonicalDocument) == 0
+                && fchmod(descriptor, (mode_t)292) == 0 // 0444
+                && fsync(descriptor) == 0
+                && SemuOwnedFileDigest.descriptor(descriptor)
+                    .equals(proofDigest);
+            bool closed = descriptor < 0 || close(descriptor) == 0;
+            if (!written || !closed) {
+                if (descriptor >= 0 && !closed) { close(descriptor); }
+                unlinkat(outputLock.parentDescriptor, temporaryName, 0);
+                return AppImageReleaseProofBundleResult.failure(
+                    "release proof candidate could not be written");
+            }
+        }
+        if (semuAppImageProofLinkAt(
+                outputLock.parentDescriptor, temporaryName, finalName) != 0
+                || !AppImageReleaseProofBundle.exactAt(
+                    outputLock.parentDescriptor, finalName,
+                    proofDigest, 292, 2)
+                || unlinkat(outputLock.parentDescriptor,
+                    temporaryName, 0) != 0
+                || fsync(outputLock.parentDescriptor) != 0
+                || !AppImageReleaseProofBundle.exactAt(
+                    outputLock.parentDescriptor, finalName,
+                    proofDigest, 292, 1)) {
+            return AppImageReleaseProofBundleResult.failure(
+                "release proof publication did not commit exactly");
+        }
+        AppImageReleaseProofBundleResult published =
+            AppImageReleaseProofBundleResult();
+        published.valid = true;
+        published.name = finalName;
+        published.path = PathTools.join(
+            outputLock.outputParentPath, finalName);
+        published.digest = proofDigest;
+        return published;
+    }
+}

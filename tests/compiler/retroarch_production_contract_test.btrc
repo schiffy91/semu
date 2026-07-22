@@ -133,20 +133,29 @@ class RetroArchProductionContractTest {
 
     class bool patchSection(string section, string completedGameDraw) {
         int draw = section.indexOf(completedGameDraw);
+        int build = section.indexOf(
+            "video_driver_semu_build_frame_gl(&semu_frame");
         int game = section.indexOf("semu_render_game_gl(&semu_frame);");
         int overlay = section.indexOf("overlay_behind_menu");
         int postUi = section.indexOf("semu_render_post_ui_gl(&semu_frame);");
+        int publish = section.indexOf(
+            "video_driver_semu_publish_pointer(");
         int present = section.indexOf("ctx_driver->swap_buffers");
-        return draw >= 0 && game > draw && overlay > game
-            && postUi > overlay && present > postUi
+        bool valid = draw >= 0 && build > draw && game > build && overlay > game
+            && postUi > overlay && publish > postUi && present > publish
+            && RetroArchProductionContractTest.occurrences(section,
+                "video_driver_semu_build_frame_gl(&semu_frame") == 1
             && RetroArchProductionContractTest.occurrences(
                 section, "semu_render_game_gl(&semu_frame);") == 1
             && RetroArchProductionContractTest.occurrences(
                 section, "semu_render_post_ui_gl(&semu_frame);") == 1
             && RetroArchProductionContractTest.occurrences(
-                section, "semu_frame.surfaces[0].rotation        = 0;") == 1
-            && RetroArchProductionContractTest.occurrences(
-                section, "SEMU_RENDER_ORIGIN_BOTTOM_LEFT") == 1;
+                section, "video_driver_semu_publish_pointer(") == 1
+            && !section.contains("semu_frame.surface");
+        if (!valid) {
+            print(f"  tap indexes draw={draw} build={build} game={game} overlay={overlay} post={postUi} publish={publish} present={present}");
+        }
+        return valid;
     }
 
     class bool nativeGamepadVdf(string project) {
@@ -185,6 +194,210 @@ class RetroArchProductionContractTest {
             && vdf.contains("controller_action CHANGE_PRESET 2");
     }
 
+    class bool inputSupervisorEvidence(string supervisor, JsonValue quit) {
+        JsonValue buttons = quit.get("buttons");
+        if (!buttons.isArray() || buttons.size() != 2
+                || !buttons.at(0).isString() || !buttons.at(1).isString()
+                || buttons.at(0).asString().equals(buttons.at(1).asString())
+                || !(buttons.at(0).asString().equals("select")
+                    || buttons.at(1).asString().equals("select"))
+                || !(buttons.at(0).asString().equals("start")
+                    || buttons.at(1).asString().equals("start"))
+                || !quit.get("window_ms").isInt()
+                || quit.get("window_ms").asInt() != 250) {
+            return false;
+        }
+        int edgesStart = supervisor.indexOf("class SemuInputEdges");
+        int framesStart = supervisor.indexOf("class SemuInputFrames");
+        int devicesStart = supervisor.indexOf(
+            "class SemuLinuxInputDevices");
+        int terminationStart = supervisor.indexOf(
+            "class SemuSupervisedProcess");
+        int evidenceStart = supervisor.indexOf(
+            "class SemuInputTerminationEvidence");
+        int supervisorStart = supervisor.indexOf("class SemuInputSupervisor");
+        int selfTestStart = supervisor.indexOf(
+            "class bool pairingSelfTest");
+        int commandStart = supervisor.indexOf("class int commandIndex");
+        if (edgesStart < 0 || framesStart <= edgesStart
+                || devicesStart <= framesStart
+                || terminationStart < 0 || evidenceStart <= terminationStart
+                || supervisorStart <= evidenceStart || selfTestStart < 0
+                || commandStart <= selfTestStart) {
+            return false;
+        }
+        string edges = supervisor.substring(
+            edgesStart, framesStart - edgesStart);
+        string frames = supervisor.substring(
+            framesStart, devicesStart - framesStart);
+        string devices = supervisor.substring(
+            devicesStart, terminationStart - devicesStart);
+        string termination = supervisor.substring(
+            terminationStart, evidenceStart - terminationStart);
+        string evidence = supervisor.substring(
+            evidenceStart, supervisorStart - evidenceStart);
+        string selfTest = supervisor.substring(
+            selfTestStart, commandStart - selfTestStart);
+        int decisionStart = supervisor.indexOf("class bool handleDecision");
+        int pollStart = supervisor.indexOf("class bool poll(");
+        if (decisionStart < 0 || pollStart <= decisionStart) { return false; }
+        string decision = supervisor.substring(
+            decisionStart, pollStart - decisionStart);
+        string runtime = supervisor.substring(
+            commandStart, supervisor.len() - commandStart);
+        Vector<string> evidenceFields = [
+            "event_id=", "event_sequence=", "configured_pair=",
+            "order=", "first_edge_id=", "first_button=", "first_code=",
+            "first_at_ms=", "first_edge_sequence=", "second_edge_id=",
+            "second_button=", "second_code=", "second_at_ms=",
+            "second_edge_sequence=", "delta_ms=", "window_ms=",
+            "device=", "device_id=", "path=", "source=", "physical=",
+            "pair_generation=", "pair_mode=",
+            "pair_gamepad_candidates=1", "pair_command_candidates=1",
+            "origin_authenticated=0", "gamepad_path=",
+            "gamepad_name=", "gamepad_physical=", "gamepad_uniq=",
+            "command_path=", "command_name=", "command_physical=",
+            "command_uniq=",
+            "supervisor=", "session_started_ms=", "child=",
+            "process_group=", "signal_sent=", "requested_at_ms=",
+            "completed_at_ms=", "elapsed_ms=", "bound_ms=",
+            "child_reaped=", "reaped_processes=", "group_empty=",
+            "whole_group_reaped="
+        ];
+        for field in evidenceFields {
+            if (!evidence.contains(field)) {
+                print("  missing input evidence field: " + field);
+                return false;
+            }
+        }
+        bool edgeContract = !supervisor.contains("select+start")
+            && edges.contains(
+                "configuredFirst->sequence < configuredSecond->sequence")
+            && edges.contains("second->at - first->at")
+            && edges.contains("delta > (long long)chordWindow")
+            && edges.contains("if (value == 2) { return false; }")
+            && edges.contains("if (wasDown) { return false; }")
+            && edges.contains("clearEvidence(");
+        bool evidenceContract = evidence.contains(
+                "char* configuredFirst = SemuInputQuitChord.buttonName(")
+            && evidence.contains("state->quit_first_code);")
+            && evidence.contains(
+                "char* first = SemuInputQuitChord.buttonName(")
+            && evidence.contains("state->quit_chord.first.code);")
+            && evidence.contains(
+                "chord->window_ms == state->chord_window_ms")
+            && evidence.contains(
+                "chord->delta_ms <= (long long)state->chord_window_ms")
+            && evidence.contains(
+                "result->requested_at != state->quit_requested_at")
+            && evidence.contains(
+                "state->quit_requested_at\n                        != state->quit_chord.second.at");
+        evidenceContract = evidenceContract
+            && evidence.contains(
+                "state->quit_chord.sequence != 0ULL && !chord")
+            && evidence.contains(
+                "!SemuInputTerminationEvidence.validPair(state)");
+        bool droppedStreamContract = frames.contains(
+                "device->discard_until_syn_report = true")
+            && frames.contains("SYN_DROPPED")
+            && frames.contains("SYN_REPORT")
+            && frames.contains("EVIOCGKEY(sizeof(keyBits))")
+            && frames.contains("SemuInputFrames.clearHeld(device)")
+            && frames.contains("SemuInputFrames.restoreHeld(");
+        bool singletonPairContract = devices.contains(
+                "gamepadCandidates == 1 && commandCandidates == 1")
+            && devices.contains("ambiguous-policy-match")
+            && devices.contains("unique-policy-pair")
+            && devices.contains("stable-uniq")
+            && devices.contains("stable-controller-root")
+            && devices.contains("cryptographic_identity=0")
+            && devices.contains("device->supports_extensions")
+            && devices.contains("SemuInputFrames.prepareAuthorization(")
+            && devices.contains("if (!state->devices[index].authorized)")
+            && !devices.contains("strcmp(device->name");
+        bool terminationContract = termination.contains(
+                "PR_SET_CHILD_SUBREAPER")
+            && termination.contains("waitpid(-processGroup")
+            && termination.contains("kill(-child, SIGKILL)")
+            && termination.contains(
+                "result->elapsed_ms <= (long long)SEMU_QUIT_BOUND_MS")
+            && termination.contains("result->group_empty")
+            && termination.contains("result->whole_group_reaped");
+        bool selfTestContract = selfTest.contains("quitOrderSelfTest(")
+            && selfTest.contains(
+                "quitFirstCode, quitSecondCode, 2000LL, &selectThenStart")
+            && selfTest.contains(
+                "quitSecondCode, quitFirstCode, 3000LL, &startThenSelect")
+            && selfTest.contains("staleRepeatReleaseSelfTest(")
+            && selfTest.contains("droppedStreamSelfTest(")
+            && selfTest.contains("sequenceAfterDrop")
+            && selfTest.contains("duplicateGamepadRejected")
+            && selfTest.contains("duplicateCommandRejected")
+            && selfTest.contains("ambiguityCleared")
+            && selfTest.contains("spoofed-gamepad")
+            && selfTest.contains("spoofed-command")
+            && selfTest.contains("stableIdentityPreferred")
+            && selfTest.contains(
+                "SEMU_INPUT_GAMEPAD_VENDOR_ENV, \"28de\"")
+            && selfTest.contains(
+                "SEMU_INPUT_GAMEPAD_PRODUCT_ENV, \"11ff\"")
+            && selfTest.contains(
+                "SEMU_INPUT_COMMAND_PRODUCT_ENV, \"1205\"")
+            && selfTest.contains("Microsoft X-Box 360 pad 0")
+            && selfTest.contains("Valve Software Steam Controller")
+            && selfTest.contains("event.value = 2;")
+            && selfTest.contains("event.value = 0;")
+            && selfTest.contains("first.sequence != second.sequence")
+            && selfTest.contains("firstChild != secondChild")
+            && selfTest.contains("firstResult.reaped_processes >= 2")
+            && selfTest.contains(
+                "firstResult.elapsed_ms <= (long long)SEMU_QUIT_BOUND_MS")
+            && selfTest.contains("strcmp(firstLine, secondLine) != 0");
+        selfTestContract = selfTestContract
+            && selfTest.contains("mismatchedRequestRejected")
+            && selfTest.contains("duplicateIdentityRejected")
+            && selfTest.contains("mismatchedWindowRejected");
+        bool noGameplaySynthesis = !supervisor.contains("event=gameplay-input")
+            && !supervisor.contains("consumed=1");
+        int quitCapture = decision.indexOf("if (decision->quit != 0)");
+        int journalWrite = decision.indexOf(
+            "bool persisted = SemuInputStateFiles.action");
+        int terminateCall = runtime.indexOf(
+            "bool reaped = SemuSupervisedProcess.terminate");
+        int processEvidence = runtime.indexOf(
+            "SemuInputStateFiles.evidence(\"process-group-terminate\"");
+        int actionEvidence = runtime.indexOf(
+            "bool actionFormatted = SemuInputTerminationEvidence.action");
+        bool latencyContract = quitCapture >= 0 && journalWrite > quitCapture
+            && terminateCall >= 0 && processEvidence > terminateCall
+            && actionEvidence > processEvidence;
+        if (!edgeContract) { print("  input edge evidence contract failed"); }
+        if (!evidenceContract) {
+            print("  input termination evidence schema contract failed");
+        }
+        if (!terminationContract) {
+            print("  input whole-group termination contract failed");
+        }
+        if (!selfTestContract) {
+            print("  input supervisor adversarial self-test contract failed");
+        }
+        if (!droppedStreamContract) {
+            print("  SYN_DROPPED quarantine/resynchronization contract failed");
+        }
+        if (!singletonPairContract) {
+            print("  evdev singleton-pair admission contract failed");
+        }
+        if (!noGameplaySynthesis) {
+            print("  input supervisor synthesized gameplay evidence");
+        }
+        if (!latencyContract) {
+            print("  quit evidence performs I/O before process termination");
+        }
+        return edgeContract && evidenceContract && terminationContract
+            && droppedStreamContract && singletonPairContract
+            && selfTestContract && noGameplaySynthesis && latencyContract;
+    }
+
     class int run(string project) {
         string directory = "config/emulators/retroarch";
         JsonValue emulator = JsonValue.readFile(
@@ -205,12 +418,23 @@ class RetroArchProductionContractTest {
         JsonValue n64 = JsonValue.readFile(
             RetroArchProductionContractTest.file(
                 project, "config/systems/n64/system.json"));
+        JsonValue nds = JsonValue.readFile(
+            RetroArchProductionContractTest.file(
+                project, "config/systems/nds/system.json"));
         JsonValue autoconfig = JsonValue.readFile(
             RetroArchProductionContractTest.file(project,
                 "config/input/steam-deck/retroarch_autoconfig.json"));
         string patch = FileSystem.readText(
             RetroArchProductionContractTest.file(
                 project, directory + "/retroarch.patch"));
+        string surfaceHook = FileSystem.readText(
+            RetroArchProductionContractTest.file(
+                project,
+                "src/generators/rendering/retroarch/surface_contract.btrc"));
+        string runtimeHook = FileSystem.readText(
+            RetroArchProductionContractTest.file(
+                project,
+                "src/generators/rendering/retroarch/runtime_bridge.btrc"));
         string commandPatch = FileSystem.readText(
             RetroArchProductionContractTest.file(
                 project, directory + "/retroarch_commands.patch"));
@@ -264,14 +488,17 @@ class RetroArchProductionContractTest {
                 || !networkCommands.get("sha256").asString().equals(
                     "sha256-T6Q12aEYcrYuz2tbRGU8r5kDjYmmpZYM5KhYoqTSp1g=")
                 || !statusNullSafety.get("kind").asString().equals(
-                    "url_exact")
-                || !statusNullSafety.get("url").asString().equals(
-                    "https://github.com/libretro/RetroArch/commit/68e8274a31bce913950cfb0fa5f82646d3661015.patch")
+                    "local_exact")
+                || !statusNullSafety.get("file").asString().equals(
+                    "retroarch_get_status_null_safety.patch")
                 || !statusNullSafety.get("sha256").asString().equals(
-                    "sha256-dXlaIwU8L2XPJtTRq6BFuzsWooSvRJ8isPL4W4Cw/nY=")
+                    "sha256-VFwauov45Fd/HGiJfdFdp2XyWiE4FN4xQPerrMOZ31A=")
                 || !package.get("outputs").get("build_contract").asString()
                     .equals("share/semu/retroarch-build-contract.json")
                 || !coreRuntime.get("exact_selection").asBool()
+                || !coreRuntime.get("build_contract").isString()
+                || !coreRuntime.get("build_contract").asString().equals(
+                    "share/semu/core-host-build-contract.json")
                 || coreRuntime.get("environment_search").asBool()
                 || coreRuntime.get("host_search").asBool()
                 || !coreHost.get("enabled").asBool()
@@ -314,7 +541,10 @@ class RetroArchProductionContractTest {
                 RetroArchProductionContractTest.selectedLinuxCores(project),
                 expectedCores)
                 || !exactImplementations
-                || !packageNix.contains("core-host-build-contract.json")
+                || !packageNix.contains(
+                    "coreBuildContractPath = packageContract.core_runtime.build_contract")
+                || packageNix.contains(
+                    "coreContractPath = \"share/semu/core-host-build-contract.json\"")
                 || !packageNix.contains(
                     "selected_core_ids = selectedCoreIds")
                 || !packageNix.contains("host = coreHostId")
@@ -334,7 +564,9 @@ class RetroArchProductionContractTest {
                 || packageNix.contains(
                     "./. + \"/${networkCommandPatchContract.file}\"")
                 || !packageNix.contains(
-                    "statusNullSafetyPatchContract.sha256")
+                    "statusNullSafetyPatchContract.sha256 == statusNullSafetyPatchHash")
+                || !packageNix.contains(
+                    "statusNullSafetyPatch = ./retroarch_get_status_null_safety.patch")
                 || emulatorNix.toLower().contains("retroarch")
                 || deckPackageNix.toLower().contains("retroarch")
                 || !emulatorNix.contains("renamedCoreHostEvaluation")
@@ -342,7 +574,8 @@ class RetroArchProductionContractTest {
                 || !emulatorNix.contains("coreHostPackages")
                 || !emulatorNix.contains("runtimeExtraPackages")
                 || !deckPackageNix.contains(
-                    "semuEmulators.runtimeExtraPackages")) {
+                    "semuEmulators.runtimeExtrasByEmulator")
+                || !deckPackageNix.contains("selectedRuntimeExtras")) {
             failures += RetroArchProductionContractTest.fail(
                 "core host selection or runtime extras escaped the local slice");
         }
@@ -463,51 +696,270 @@ class RetroArchProductionContractTest {
         }
 
         JsonValue quit = deckInput.get("quit_chord");
-        JsonValue buttons = quit.get("buttons");
-        if (!buttons.isArray() || buttons.size() != 2
-                || !buttons.at(0).asString().equals("select")
-                || !buttons.at(1).asString().equals("start")
-                || quit.get("window_ms").asInt() != 250
+        if (!RetroArchProductionContractTest.inputSupervisorEvidence(
+                supervisor, quit)
                 || !supervisor.contains("setpgid(child, child)")
-                || !supervisor.contains("kill(-child, SIGKILL)")
                 || !supervisor.contains("process-group-terminate")) {
             failures += RetroArchProductionContractTest.fail(
-                "Start+Select does not resolve to bounded supervisor process-group termination");
+                "configured quit pair lacks ordered, bounded whole-group evidence");
         }
 
         int gl3Marker = patch.indexOf("--- a/gfx/drivers/gl3.c");
-        string gl2 = gl3Marker < 0 ? "" : patch.substring(0, gl3Marker);
-        string gl3 = gl3Marker < 0 ? "" : patch.substring(gl3Marker, patch.len());
-        JsonValue surface = rendering.get("surfaces").at(0);
+        int headerMarker = patch.indexOf("--- a/gfx/video_driver.h");
+        string gl3 = gl3Marker < 0 || headerMarker <= gl3Marker
+            ? "" : patch.substring(gl3Marker, headerMarker - gl3Marker);
+        JsonValue surfaceModes = rendering.get("surface_modes");
+        JsonValue singleMode = surfaceModes.at(0);
+        JsonValue singleSurface = singleMode.get("surfaces").at(0);
+        JsonValue singleValidation = singleMode.get("validation");
+        JsonValue verticalMode = surfaceModes.at(1);
+        JsonValue verticalSurfaces = verticalMode.get("surfaces");
+        JsonValue verticalValidation = verticalMode.get("validation");
+        JsonValue firstSurface = verticalSurfaces.at(0);
+        JsonValue secondSurface = verticalSurfaces.at(1);
+        JsonValue integration = rendering.get("integration");
+        JsonValue callbacks = integration.get("callbacks");
+        JsonValue lifecycle = integration.get("context_lifecycle");
+        JsonValue pointer = integration.get("pointer_mapping");
         JsonValue n64Binding = n64.get("emulators").at(0);
         string n64Orientation = n64.get("doc").get("orientation").asString();
+        JsonValue ndsScreens = nds.get("display").get("screens");
+        JsonValue ndsBinding = nds.get("emulators").at(1);
+        JsonValue desmumeOptions = linux.get("retroarch")
+            .get("core_options").get("desmume");
+        int sameMapStart = runtimeHook.indexOf("class bool sameMap(");
+        int clearStart = runtimeHook.indexOf("class void clear(");
+        string sameMap = sameMapStart < 0 || clearStart <= sameMapStart
+            ? "" : runtimeHook.substring(
+                sameMapStart, clearStart - sameMapStart);
+        int sampleStart = runtimeHook.indexOf("class void sample(");
+        int snapshotStart = runtimeHook.indexOf("class bool snapshot(");
+        string sample = sampleStart < 0 || snapshotStart <= sampleStart
+            ? "" : runtimeHook.substring(
+                sampleStart, snapshotStart - sampleStart);
+        int sampleUnlock = sample.indexOf("semuRetroArchDisplayUnlock(");
+        int sampleCallback = sample.indexOf(
+            "mapPointer(&map, &query, &result)");
+        string afterCallback = sampleCallback < 0 ? ""
+            : sample.substring(sampleCallback, sample.len());
         if (!RetroArchProductionContractTest.patchSection(
-                    gl2, "gl2_renderchain_bind_prev_texture")
-                || !RetroArchProductionContractTest.patchSection(
-                    gl3, "gl3_filter_chain_end_frame")
-                || patch.contains("retroarch_get_rotation")
-                || patch.contains("SEMU_RENDER_ORIGIN_TOP_LEFT")
-                || !surface.get("orientation").asString().equals("upright")
-                || !surface.get("origin").asString().equals("bottom_left")
-                || surface.get("rotation").asInt() != 0
-                || !n64Orientation.contains(
-                    "upright bottom-left-origin game frame in GL space")
-                || n64Orientation.contains("top-left")
-                || !n64Binding.get("emulator").asString().equals("retroarch")
-                || !n64Binding.get("core").asString().equals(
-                    "mupen64plus_next")
-                || !RetroArchProductionContractTest.platformIncludesLinux(
-                    n64Binding)
-                || RetroArchProductionContractTest.occurrences(patch,
-                    "including N64 cores, is upright in bottom-left GL space") != 2
-                || !packageNix.contains("--fuzz=0")
-                || !packageNix.contains("semuBuildContract = buildContract")
-                || !packageNix.contains("outputContract.build_contract")
-                || !packageNix.contains("test \"$game_line\" -lt \"$menu_line\"")
-                || !packageNix.contains("test \"$widget_line\" -lt \"$post_line\"")
-                || !packageNix.contains("test \"$post_line\" -lt \"$swap_line\"")) {
+                gl3, "#endif /* HAVE_SLANG */")) {
             failures += RetroArchProductionContractTest.fail(
-                "upright game/UI/present hook ordering is not source-asserted");
+                "GL3 game and post-UI tap ordering regressed");
+        }
+
+        bool renderingContract = integration.get("abi").asInt() == 3
+            && callbacks.isArray() && callbacks.size() == 2
+            && callbacks.at(0).asString().equals("get_proc_address")
+            && callbacks.at(1).asString().equals("context_generation")
+            && integration.get("context").get("driver")
+                .asString().equals("glcore")
+            && integration.get("context").get("minimum_opengl")
+                .asString().equals("3.3")
+            && integration.get("context").get("minimum_glsl").asInt() == 330
+            && lifecycle.get("create").asString().equals(
+                "video_driver_semu_context_created")
+            && lifecycle.get("invalidate_before_destroy").asString().equals(
+                "semu_render_context_invalidate_gl")
+            && lifecycle.get("destroy").asString().equals(
+                "video_driver_semu_context_destroying")
+            && surfaceModes.isArray() && surfaceModes.size() == 2
+            && singleMode.get("id").asString().equals("single")
+            && singleMode.get("match").get("screen_count").asInt() == 1
+            && singleValidation.get("native_widths").asString()
+                .equals("independent")
+            && singleValidation.get("live_geometry").asString()
+                .equals("positive")
+            && singleMode.get("surfaces").size() == 1
+            && singleSurface.get("id").asString().equals("game")
+            && singleSurface.get("orientation").asString().equals("upright")
+            && singleSurface.get("origin").asString().equals("bottom_left")
+            && singleSurface.get("rotation").asInt() == 0
+            && verticalMode.get("id").asString().equals("dual_vertical")
+            && verticalMode.get("match").get("screen_count").asInt() == 2
+            && verticalMode.get("match").get("arrangement")
+                .asString().equals("vertical")
+            && verticalValidation.get("native_widths").asString()
+                .equals("equal")
+            && verticalValidation.get("live_geometry").asString()
+                .equals("uniform_integer_scale")
+            && verticalSurfaces.size() == 2
+            && firstSurface.get("index").asInt() == 0
+            && secondSurface.get("index").asInt() == 1
+            && !firstSurface.get("id").asString().equals(
+                secondSurface.get("id").asString())
+            && firstSurface.get("native").asString().contains(
+                "compiled system display screen 0")
+            && secondSurface.get("native").asString().contains(
+                "compiled system display screen 1")
+            && firstSurface.get("origin").asString().equals("top_left")
+            && firstSurface.get("rotation").asInt() == 0
+            && secondSurface.get("origin").asString().equals("top_left")
+            && secondSurface.get("rotation").asInt() == 0
+            && integration.get("frame_gate").asString().contains(
+                "menu state gates pointer publication")
+            && pointer.get("surface_index").asString().equals(
+                "SEMU_RENDER_TOUCH_SURFACE_INDEX")
+            && pointer.get("surface_id").asString().equals(
+                "SEMU_RENDER_TOUCH_SURFACE_ID")
+            && pointer.get("origin").asString().equals("top_left")
+            && !pointer.get("press_clamp").asBool()
+            && pointer.get("captured_motion_clamp").asBool()
+            && pointer.get("consumer").asString().equals(
+                "input_driver_state_wrapper");
+        if (!renderingContract) {
+            failures += RetroArchProductionContractTest.fail(
+                "declarative ABI-3 rendering metadata regressed");
+        }
+
+        bool patchContract = RetroArchProductionContractTest.occurrences(
+                patch, "video_driver_semu_context_created()") == 1
+            && RetroArchProductionContractTest.occurrences(patch,
+                "video_driver_semu_context_destroying(gl->semu_context_generation);") == 1
+            && RetroArchProductionContractTest.occurrences(patch,
+                "video_driver_semu_pointer_clear(true);") == 2
+            && patch.contains("input_driver_semu_poll_pointer(")
+            && patch.contains("video_driver_semu_pointer_snapshot(")
+            && patch.contains("RARCH_DEVICE_MOUSE_SCREEN")
+            && patch.contains("RETRO_DEVICE_ID_MOUSE_X")
+            && patch.contains("RETRO_DEVICE_ID_MOUSE_Y")
+            && patch.contains("RETRO_DEVICE_ID_MOUSE_LEFT")
+            && !patch.contains("RARCH_DEVICE_POINTER_SCREEN")
+            && patch.contains("int semu_game_status = SEMU_RENDER_PASSTHROUGH")
+            && patch.contains("(void)semu_render_post_ui_gl(&semu_frame)")
+            && patch.contains("semu_game_status == SEMU_RENDER_APPLIED")
+            && patch.contains("&& !menu_is_alive")
+            && !patch.contains("semu_post_ui_status")
+            && !patch.contains("current_context")
+            && !patch.contains("frame->surface_count")
+            && !patch.contains("getenv(")
+            && !patch.contains("256") && !patch.contains("192")
+            && !patch.contains("DeSmuME") && !patch.contains("gamescope")
+            && !patch.contains("LD_PRELOAD")
+            && !patch.contains("glXSwapBuffers")
+            && !patch.contains("eglSwapBuffers")
+            && !patch.contains("gfx/drivers/gl2.c")
+            && !patch.contains("gfx/common/gl2_common.h")
+            && gl3.contains("video_driver_semu_context_destroying(")
+            && gl3.indexOf("video_driver_semu_context_destroying(")
+                < gl3.indexOf("gl->ctx_driver->destroy(gl->ctx_data)");
+        if (!patchContract) {
+            failures += RetroArchProductionContractTest.fail(
+                "minimal tap patch or context-destroy ordering regressed");
+        }
+
+        bool surfaceHookContract = surfaceHook.contains(
+                "getenv(\"SEMU_RENDER_SURFACE_COUNT\")")
+            && surfaceHook.contains(
+                "getenv(\"SEMU_RENDER_SURFACE_LAYOUT\")")
+            && surfaceHook.contains(
+                "getenv(\"SEMU_RENDER_SURFACE_NATIVE_WIDTH_POLICY\")")
+            && surfaceHook.contains(
+                "getenv(\"SEMU_RENDER_SURFACE_GEOMETRY_POLICY\")")
+            && surfaceHook.contains("SEMU_RENDER_TOUCH_SURFACE_INDEX")
+            && surfaceHook.contains("SEMU_RETROARCH_WIDTHS_INDEPENDENT")
+            && surfaceHook.contains("SEMU_RETROARCH_WIDTHS_EQUAL")
+            && surfaceHook.contains("SEMU_RETROARCH_GEOMETRY_POSITIVE")
+            && surfaceHook.contains(
+                "SEMU_RETROARCH_GEOMETRY_UNIFORM_INTEGER_SCALE")
+            && surfaceHook.contains("SEMU_RETROARCH_GEOMETRY_EXACT_NATIVE")
+            && surfaceHook.contains(
+                "frameWidth != contract->surfaces[0].native_width")
+            && surfaceHook.contains("contract->count == 1")
+            && surfaceHook.contains("validatesDual(")
+            && !surfaceHook.contains("DeSmuME")
+            && !surfaceHook.toLower().contains("nds")
+            && !surfaceHook.contains("256") && !surfaceHook.contains("192");
+        if (!surfaceHookContract) {
+            failures += RetroArchProductionContractTest.fail(
+                "strict BTRC declarative surface hook regressed");
+        }
+
+        bool lifecycleHookContract = runtimeHook.contains(
+                "frame->context_generation = contextGeneration")
+            && !runtimeHook.contains("|| menuAlive")
+            && runtimeHook.contains(
+                "semu_render_context_invalidate_gl(contextGeneration)")
+            && runtimeHook.contains(
+                "SemuRetroArchGeneration.retire(contextGeneration)")
+            && runtimeHook.contains(
+                "SemuRetroArchPointer.map_generation == mapGeneration")
+            && runtimeHook.contains(
+                "SemuRetroArchGeneration.lockActive(contextGeneration)")
+            && runtimeHook.contains("slock_lock(video->display_lock)")
+            && runtimeHook.contains("slock_lock(video->context_lock)")
+            && !runtimeHook.contains("VIDEO_DRIVER_LOCK(")
+            && !runtimeHook.contains("VIDEO_DRIVER_CONTEXT_LOCK(");
+        if (!lifecycleHookContract) {
+            failures += RetroArchProductionContractTest.fail(
+                "strict BTRC context lifecycle hook regressed");
+        }
+
+        bool mapIdentityContract = !sameMap.isEmpty()
+            && !sameMap.contains("frame_id");
+        if (!mapIdentityContract) {
+            failures += RetroArchProductionContractTest.fail(
+                "pointer-map identity still depends on frame sequence");
+        }
+        bool pointerHookContract = !sample.isEmpty() && sampleUnlock >= 0
+            && sampleCallback > sampleUnlock
+            && afterCallback.contains("semuRetroArchDisplayLock(")
+            && RetroArchProductionContractTest.occurrences(
+                sample, "mapPointer(&map, &query, &result)") == 1;
+        if (!pointerHookContract) {
+            print(f"  pointer indexes unlock={sampleUnlock} callback={sampleCallback} callback_count={RetroArchProductionContractTest.occurrences(sample, \"mapPointer(&map, &query, &result)\")}");
+            failures += RetroArchProductionContractTest.fail(
+                "strict BTRC lock-safe pointer hook regressed");
+        }
+
+        bool systemContract = n64Orientation.contains(
+                "upright bottom-left-origin game frame in GL space")
+            && !n64Orientation.contains("top-left")
+            && n64Binding.get("emulator").asString().equals("retroarch")
+            && n64Binding.get("core").asString().equals("mupen64plus_next")
+            && RetroArchProductionContractTest.platformIncludesLinux(n64Binding)
+            && ndsScreens.size() == 2
+            && ndsScreens.at(0).get("id").asString().equals("top")
+            && ndsScreens.at(1).get("id").asString().equals("bottom")
+            && ndsBinding.get("emulator").asString().equals("retroarch")
+            && ndsBinding.get("core").asString().equals("desmume")
+            && desmumeOptions.size() == 3
+            && desmumeOptions.at(0).get("source").get("value")
+                .asString().equals("top/bottom")
+            && desmumeOptions.at(1).get("source").get("value")
+                .asString().equals("0");
+        if (!systemContract) {
+            failures += RetroArchProductionContractTest.fail(
+                "N64 orientation or NDS declarative system binding regressed");
+        }
+
+        bool packageContract = packageNix.contains("--fuzz=0")
+            && packageNix.contains("semuBuildContract = buildContract")
+            && packageNix.contains("outputContract.build_contract")
+            && packageNix.contains(
+                "builtins.length verticalMode.surfaces == 2")
+            && packageNix.contains(
+                "live_geometry = \"uniform_integer_scale\"")
+            && packageNix.contains(
+                "native_widths = \"independent\"")
+            && packageNix.contains(
+                "pointerMapping.surface_index == \"SEMU_RENDER_TOUCH_SURFACE_INDEX\"")
+            && packageNix.contains("\"--enable-threads\"")
+            && packageNix.contains(
+                "--strict-imports --no-cache --no-stdlib --no-dce")
+            && packageNix.contains(
+                "! grep -Fq 'semu_post_ui_status' gfx/drivers/gl3.c")
+            && packageNix.contains(
+                "test \"$completed_line\" -lt \"$game_line\"")
+            && packageNix.contains("test \"$game_line\" -lt \"$menu_line\"")
+            && packageNix.contains("test \"$widget_line\" -lt \"$post_line\"")
+            && packageNix.contains(
+                "test \"$post_line\" -lt \"$publish_line\"")
+            && packageNix.contains(
+                "test \"$publish_line\" -lt \"$swap_line\"");
+        if (!packageContract) {
+            failures += RetroArchProductionContractTest.fail(
+                "strict package source gates regressed");
         }
 
         if (failures == 0) {
