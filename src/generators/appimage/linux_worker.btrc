@@ -837,7 +837,8 @@ class AppImageLinuxWorker {
 
     class Vector<string> nixContainer(
             AppImageLinuxWorkerPlatform platform, string cidfile,
-            string storeContainerId, bool requiresChown, bool offline,
+            string storeContainerId, bool requiresChown,
+            bool buildsDerivations, bool offline,
             string sourceCache = "") {
         if (!platform.imageVerified() || cidfile.isEmpty()
                 || !AppImageNixReleaseProof.digest(storeContainerId)) {
@@ -859,6 +860,16 @@ class AppImageLinuxWorker {
         ]);
         if (requiresChown) {
             arguments.extend(["--cap-add", "CHOWN"]);
+        }
+        if (buildsDerivations) {
+            arguments.extend([
+                "--cap-add", "DAC_OVERRIDE",
+                "--cap-add", "FOWNER",
+                "--cap-add", "KILL",
+                "--cap-add", "SETGID",
+                "--cap-add", "SETUID",
+                "--cap-add", "SYS_CHROOT"
+            ]);
         }
         if (!sourceCache.isEmpty()) {
             arguments.extend([
@@ -972,7 +983,8 @@ class AppImageLinuxWorker {
 
         Vector<string> importArguments = AppImageLinuxWorker.nixContainer(
             platform, handoff.cidfile("source-import"),
-            storeContainerId, requiresChown=true, offline=true,
+            storeContainerId, requiresChown=true,
+            buildsDerivations=false, offline=true,
             sourceCache=handoff.sourceCache);
         importArguments.extend([
             "copy", "--from", "file:///source-cache", sourceStorePath
@@ -988,7 +1000,8 @@ class AppImageLinuxWorker {
 
         Vector<string> sourceVerify = AppImageLinuxWorker.nixContainer(
             platform, handoff.cidfile("source-verify"),
-            storeContainerId, requiresChown=false, offline=true);
+            storeContainerId, requiresChown=false,
+            buildsDerivations=false, offline=true);
         sourceVerify.extend([
             "store", "verify", "--recursive", "--no-trust",
             sourceStorePath
@@ -1004,7 +1017,8 @@ class AppImageLinuxWorker {
 
         Vector<string> buildArguments = AppImageLinuxWorker.nixContainer(
             platform, handoff.cidfile("worker-build"),
-            storeContainerId, requiresChown=true, offline=false);
+            storeContainerId, requiresChown=true,
+            buildsDerivations=true, offline=false);
         buildArguments.extend([
             "build", AppImageLinuxWorker.workerReference(
                 platform, sourceStorePath),
@@ -1023,7 +1037,8 @@ class AppImageLinuxWorker {
 
         Vector<string> verifyArguments = AppImageLinuxWorker.nixContainer(
             platform, handoff.cidfile("worker-verify"),
-            storeContainerId, requiresChown=false, offline=true);
+            storeContainerId, requiresChown=false,
+            buildsDerivations=false, offline=true);
         verifyArguments.extend([
             "store", "verify", "--recursive", "--no-trust", worker
         ]);

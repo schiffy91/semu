@@ -325,17 +325,17 @@ class AppImageTrustContractTest {
         string containerId = AppImageTrustContractTest.containerId();
         Vector<string> sourceImport = AppImageLinuxWorker.nixContainer(
             platform, cidfile, containerId,
-            requiresChown=true, offline=true,
+            requiresChown=true, buildsDerivations=false, offline=true,
             sourceCache="/private/source-cache");
         Vector<string> sourceVerify = AppImageLinuxWorker.nixContainer(
             platform, "/private/control/source-verify.cid", containerId,
-            requiresChown=false, offline=true);
+            requiresChown=false, buildsDerivations=false, offline=true);
         Vector<string> workerBuild = AppImageLinuxWorker.nixContainer(
             platform, "/private/control/worker-build.cid", containerId,
-            requiresChown=true, offline=false);
+            requiresChown=true, buildsDerivations=true, offline=false);
         Vector<string> workerVerify = AppImageLinuxWorker.nixContainer(
             platform, "/private/control/worker-verify.cid", containerId,
-            requiresChown=false, offline=true);
+            requiresChown=false, buildsDerivations=false, offline=true);
         Vector<string> store = AppImageWorkerStoreLease.command(
             platform, "/private/control/nix-store.cid");
         string importJoined = sourceImport.join("\n");
@@ -354,6 +354,24 @@ class AppImageTrustContractTest {
                 sourceImport, "--cap-add", "CHOWN")
             && AppImageWorkerContainer.hasPair(
                 workerBuild, "--cap-add", "CHOWN")
+            && AppImageWorkerContainer.hasPair(
+                workerBuild, "--cap-add", "DAC_OVERRIDE")
+            && AppImageWorkerContainer.hasPair(
+                workerBuild, "--cap-add", "FOWNER")
+            && AppImageWorkerContainer.hasPair(
+                workerBuild, "--cap-add", "KILL")
+            && AppImageWorkerContainer.hasPair(
+                workerBuild, "--cap-add", "SETGID")
+            && AppImageWorkerContainer.hasPair(
+                workerBuild, "--cap-add", "SETUID")
+            && AppImageWorkerContainer.hasPair(
+                workerBuild, "--cap-add", "SYS_CHROOT")
+            && !sourceImport.contains("DAC_OVERRIDE")
+            && !sourceImport.contains("FOWNER")
+            && !sourceImport.contains("KILL")
+            && !sourceImport.contains("SETGID")
+            && !sourceImport.contains("SETUID")
+            && !sourceImport.contains("SYS_CHROOT")
             && AppImageWorkerContainer.hasPair(
                 sourceImport, "--cap-drop", "ALL")
             && AppImageWorkerContainer.hasPair(
