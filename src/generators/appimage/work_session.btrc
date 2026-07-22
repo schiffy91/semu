@@ -1,0 +1,2357 @@
+// work_session.btrc - private, never-reused AppImage operation state.
+
+import std.{fs, json, strings, vector}
+import ../../lib/owned_paths.btrc
+import ./contract.btrc
+import ./install_policy.btrc
+import ./install_store.btrc
+import ./nix_release_proof.btrc
+import ./provenance.btrc
+import ./release_inventory.btrc
+import ./runtime_inventory.btrc
+
+#include <errno.h>
+#include <fcntl.h>
+#include <dirent.h>
+#include <string.h>
+#include <sys/file.h>
+#include <sys/stat.h>
+#include <unistd.h>
+
+int semuAppImageMkdirAt(int parentDescriptor, string name, int mode) {
+    if (name.isEmpty() || name.len() > 63) { return -1; }
+    char buffer[64];
+    memcpy(buffer, name, (size_t)name.len());
+    buffer[name.len()] = 0;
+    return mkdirat(parentDescriptor, buffer, (mode_t)mode);
+}
+
+int semuAppImageRuntimeLeaseLock(int descriptor, int operation) {
+    return flock(descriptor, operation);
+}
+
+class AppImageDescriptorTree {
+    class int openBelow(int rootDescriptor, string relative, bool directory) {
+        if (rootDescriptor < 0
+                || !SemuOwnedPaths.safeRelativePath(relative)) {
+            return -1;
+        }
+        var components = Strings.split(relative, "/");
+        int current = dup(rootDescriptor);
+        if (current < 0) { return -1; }
+        for (int index = 0; index < components.size(); index++) {
+            string name = components.get(index);
+            bool final = index == components.size() - 1;
+            bool expectDirectory = !final || directory;
+            struct stat inspected;
+            int flags = (int)O_RDONLY | (int)O_NOFOLLOW | (int)O_CLOEXEC;
+            if (expectDirectory) { flags |= (int)O_DIRECTORY; }
+            int child = fstatat(current, name, &inspected,
+                    AT_SYMLINK_NOFOLLOW) == 0
+                ? openat(current, name, flags) : -1;
+            struct stat opened;
+            bool correctKind = false;
+            if (child >= 0 && fstat(child, &opened) == 0) {
+                if (expectDirectory) {
+                    correctKind = S_ISDIR(opened.st_mode) != 0;
+                } else {
+                    correctKind = S_ISREG(opened.st_mode) != 0;
+                }
+            }
+            bool bound = child >= 0 && fstat(child, &opened) == 0
+                && inspected.st_dev == opened.st_dev
+                && inspected.st_ino == opened.st_ino
+                && correctKind;
+            close(current);
+            if (!bound) {
+                if (child >= 0) { close(child); }
+                return -1;
+            }
+            current = child;
+        }
+        return current;
+    }
+}
+
+class AppImageWorkSession {
+    public bool valid;
+    public string path;
+    public string name;
+    public int parentDescriptor;
+    public int rootDescriptor;
+    public unsigned long long device;
+    public unsigned long long inode;
+    public string error;
+
+    public AppImageWorkSession() {
+        self.valid = false;
+        self.path = "";
+        self.name = "";
+        self.parentDescriptor = -1;
+        self.rootDescriptor = -1;
+        self.device = 0ULL;
+        self.inode = 0ULL;
+        self.error = "";
+    }
+
+    public bool ok() { return self.valid; }
+
+    class bool sameObject(struct stat* left, struct stat* right) {
+        return left->st_dev == right->st_dev
+            && left->st_ino == right->st_ino;
+    }
+
+    class void closeDescriptors(AppImageWorkSession session) {
+        if (session.rootDescriptor >= 0) {
+            close(session.rootDescriptor);
+            session.rootDescriptor = -1;
+        }
+        if (session.parentDescriptor >= 0) {
+            close(session.parentDescriptor);
+            session.parentDescriptor = -1;
+        }
+    }
+
+    class AppImageWorkSession create(AppImagePathPlan plan) {
+        AppImageWorkSession session = AppImageWorkSession();
+        if (!plan.ok()
+                || !AppImagePathContract.realDirectory(plan.workBase)) {
+            session.error = "cannot create a session on an invalid AppImage work filesystem";
+            return session;
+        }
+
+        int parentDescriptor = UnixFileSystem.openDirectoryNoFollow(plan.workBase);
+        if (parentDescriptor < 0) {
+            session.error = "cannot open the AppImage work-session parent";
+            return session;
+        }
+        int randomDescriptor = open("/dev/urandom",
+            (int)O_RDONLY | (int)O_CLOEXEC | (int)O_NOFOLLOW);
+        unsigned char randomBytes[16];
+        int randomCount = -1;
+        if (randomDescriptor >= 0) {
+            randomCount = (int)read(
+                randomDescriptor, randomBytes, sizeof(randomBytes));
+        }
+        if (randomDescriptor >= 0) { close(randomDescriptor); }
+        if (randomCount != (int)sizeof(randomBytes)) {
+            close(parentDescriptor);
+            session.error = "cannot generate a private AppImage session identity";
+            return session;
+        }
+        char digits[17] = "0123456789abcdef";
+        char randomName[56];
+        char prefix[24] = ".semu-appimage-session.";
+        memcpy(randomName, prefix, (size_t)23);
+        for (int index = 0; index < 16; index++) {
+            randomName[23 + index * 2] = digits[randomBytes[index] >> 4];
+            randomName[24 + index * 2] = digits[randomBytes[index] & 15u];
+        }
+        randomName[55] = 0;
+        string name = Strings.copy(randomName);
+        if (semuAppImageMkdirAt(parentDescriptor, name, 448) != 0) {
+            close(parentDescriptor);
+            session.error = "cannot create a fresh AppImage work session";
+            return session;
+        }
+        string path = PathTools.join(plan.workBase, name);
+        int rootDescriptor = openat(
+            parentDescriptor, name,
+            (int)O_RDONLY | (int)O_DIRECTORY
+                | (int)O_NOFOLLOW | (int)O_CLOEXEC);
+        struct stat opened;
+        struct stat inspected;
+        bool bound = parentDescriptor >= 0 && rootDescriptor >= 0
+            && fstat(rootDescriptor, &opened) == 0
+            && fstatat(parentDescriptor, name, &inspected,
+                AT_SYMLINK_NOFOLLOW) == 0
+            && S_ISDIR(opened.st_mode) && S_ISDIR(inspected.st_mode)
+            && AppImageWorkSession.sameObject(&opened, &inspected)
+            && SemuOwnedPaths.permissions(opened.st_mode) == 448 // 0700
+            && UnixFileSystem.realPath(path).equals(path);
+        if (!bound) {
+            if (rootDescriptor >= 0) { close(rootDescriptor); }
+            close(parentDescriptor);
+            session.error = "fresh AppImage work session is not descriptor-bound";
+            return session;
+        }
+
+        for protectedPath in [plan.repoRoot, plan.sourceRoot,
+                plan.packagingRoot, plan.runtimeRoot, plan.outputPath] {
+            if (!protectedPath.isEmpty()
+                    && AppImagePathContract.overlap(path, protectedPath)) {
+                close(rootDescriptor);
+                UnixFileSystem.removeRecursiveAt(parentDescriptor, name);
+                close(parentDescriptor);
+                session.error = "fresh AppImage work session overlaps a protected path";
+                return session;
+            }
+        }
+        session.path = path;
+        session.name = name;
+        session.parentDescriptor = parentDescriptor;
+        session.rootDescriptor = rootDescriptor;
+        session.device = (unsigned long long)opened.st_dev;
+        session.inode = (unsigned long long)opened.st_ino;
+        session.valid = true;
+        return session;
+    }
+
+    public bool stillBound() {
+        if (!self.valid || self.parentDescriptor < 0
+                || self.rootDescriptor < 0 || self.name.isEmpty()) {
+            return false;
+        }
+        struct stat opened;
+        struct stat inspected;
+        return fstat(self.rootDescriptor, &opened) == 0
+            && fstatat(self.parentDescriptor, self.name, &inspected,
+                AT_SYMLINK_NOFOLLOW) == 0
+            && S_ISDIR(opened.st_mode) && S_ISDIR(inspected.st_mode)
+            && (unsigned long long)opened.st_dev == self.device
+            && (unsigned long long)opened.st_ino == self.inode
+            && AppImageWorkSession.sameObject(&opened, &inspected);
+    }
+
+    class bool makeDirectoriesWritable(int descriptor) {
+        if (descriptor < 0 || fchmod(descriptor, (mode_t)448) != 0) {
+            return false;
+        }
+        int duplicate = dup(descriptor);
+        DIR* directory = duplicate < 0 ? NULL : fdopendir(duplicate);
+        if (directory == NULL) {
+            if (duplicate >= 0) { close(duplicate); }
+            return false;
+        }
+        bool valid = true;
+        errno = 0;
+        struct dirent* entry = readdir(directory);
+        while (valid && entry != NULL) {
+            string name = entry->d_name;
+            if (!name.equals(".") && !name.equals("..")) {
+                struct stat inspected;
+                if (fstatat(descriptor, name, &inspected,
+                        AT_SYMLINK_NOFOLLOW) != 0) {
+                    valid = false;
+                } else if (S_ISDIR(inspected.st_mode)) {
+                    int child = openat(descriptor, name,
+                        (int)O_RDONLY | (int)O_DIRECTORY
+                            | (int)O_NOFOLLOW | (int)O_CLOEXEC);
+                    struct stat opened;
+                    valid = child >= 0 && fstat(child, &opened) == 0
+                        && AppImageWorkSession.sameObject(
+                            &inspected, &opened)
+                        && AppImageWorkSession.makeDirectoriesWritable(child);
+                    if (child >= 0) { close(child); }
+                }
+            }
+            errno = 0;
+            entry = valid ? readdir(directory) : NULL;
+        }
+        if (valid && errno != 0) { valid = false; }
+        if (closedir(directory) != 0) { valid = false; }
+        return valid;
+    }
+
+    public AppImageContractResult cleanup() {
+        if (!self.valid) {
+            return AppImageContractResult.failure(
+                "AppImage work session is not held");
+        }
+        string retainedPath = self.path;
+        bool bound = self.stillBound();
+        if (!bound) {
+            AppImageWorkSession.closeDescriptors(self);
+            self.valid = false;
+            return AppImageContractResult.failure(
+                "AppImage work session pathname was replaced; replacement preserved: "
+                    + retainedPath);
+        }
+        bool writable = AppImageWorkSession.makeDirectoriesWritable(
+                self.rootDescriptor)
+            && self.stillBound();
+        bool removed = writable && UnixFileSystem.removeRecursiveAt(
+            self.parentDescriptor, self.name) == 0;
+        AppImageWorkSession.closeDescriptors(self);
+        self.valid = false;
+        self.path = "";
+        self.name = "";
+        return removed ? AppImageContractResult.success()
+            : AppImageContractResult.failure(
+                "cannot clean descriptor-bound AppImage work session: "
+                    + retainedPath);
+    }
+}
+
+class AppImageRuntimeNodeLease {
+    public bool valid;
+    public string relative;
+    public string digest;
+    public Vector<string> excluded;
+    public int descriptor;
+    public unsigned long long device;
+    public unsigned long long inode;
+    public int mode;
+    public string error;
+
+    public AppImageRuntimeNodeLease() {
+        self.valid = false;
+        self.relative = "";
+        self.digest = "";
+        self.excluded = [];
+        self.descriptor = -1;
+        self.device = 0ULL;
+        self.inode = 0ULL;
+        self.mode = 0;
+        self.error = "";
+    }
+
+    public bool ok() { return self.valid; }
+
+    class AppImageRuntimeNodeLease capture(
+            int rootDescriptor, string relative) {
+        Vector<string> excluded = [];
+        return AppImageRuntimeNodeLease.captureFiltered(
+            rootDescriptor, relative, excluded);
+    }
+
+    class AppImageRuntimeNodeLease captureFiltered(
+            int rootDescriptor, string relative,
+            Vector<string> excluded) {
+        AppImageRuntimeNodeLease node = AppImageRuntimeNodeLease();
+        int descriptor = AppImageDescriptorTree.openBelow(
+            rootDescriptor, relative, true);
+        struct stat status;
+        SemuInstallResult digest = descriptor >= 0
+            ? SemuInstallTree.digestDescriptorExcluding(
+                descriptor, excluded)
+            : SemuInstallResult.failure(
+                "runtime node is not descriptor-bound: " + relative);
+        if (descriptor < 0 || fstat(descriptor, &status) != 0
+                || S_ISDIR(status.st_mode) == 0 || !digest.ok()
+                || !SemuInstallPolicy.validDigest(digest.document)) {
+            if (descriptor >= 0) { close(descriptor); }
+            node.error = digest.ok()
+                ? "runtime node lease is invalid: " + relative
+                : digest.error;
+            return node;
+        }
+        node.relative = relative;
+        node.digest = digest.document;
+        node.excluded = excluded;
+        node.descriptor = descriptor;
+        node.device = (unsigned long long)status.st_dev;
+        node.inode = (unsigned long long)status.st_ino;
+        node.mode = SemuOwnedPaths.permissions(status.st_mode);
+        node.valid = true;
+        return node;
+    }
+
+    public bool stillBound(int rootDescriptor) {
+        if (!self.valid || self.descriptor < 0) { return false; }
+        int reopened = AppImageDescriptorTree.openBelow(
+            rootDescriptor, self.relative, true);
+        struct stat held;
+        struct stat current;
+        bool bound = reopened >= 0
+            && fstat(self.descriptor, &held) == 0
+            && fstat(reopened, &current) == 0
+            && AppImageWorkSession.sameObject(&held, &current)
+            && (unsigned long long)held.st_dev == self.device
+            && (unsigned long long)held.st_ino == self.inode
+            && SemuOwnedPaths.permissions(held.st_mode) == self.mode;
+        if (reopened >= 0) { close(reopened); }
+        return bound;
+    }
+
+    public bool contentsStillBound(int rootDescriptor) {
+        if (!self.stillBound(rootDescriptor)) { return false; }
+        SemuInstallResult current =
+            SemuInstallTree.digestDescriptorExcluding(
+                self.descriptor, self.excluded);
+        return current.ok() && current.document.equals(self.digest)
+            && self.stillBound(rootDescriptor);
+    }
+
+    public SemuInstallResult importTo(int destinationDescriptor) {
+        if (!self.valid || self.descriptor < 0
+                || destinationDescriptor < 0) {
+            return SemuInstallResult.failure(
+                "runtime node lease is not available for import");
+        }
+        return SemuInstallTree.copyDescriptorExcluding(
+            self.descriptor, destinationDescriptor,
+            self.digest, self.excluded);
+    }
+
+    public void closeDescriptor() {
+        if (self.descriptor >= 0) { close(self.descriptor); }
+        self.descriptor = -1;
+        self.valid = false;
+    }
+}
+
+class AppImageHeldFileLease {
+    public bool valid;
+    public bool relative;
+    public string location;
+    public string name;
+    public string digest;
+    public int descriptor;
+    public int parentDescriptor;
+    public unsigned long long device;
+    public unsigned long long inode;
+    public unsigned long long size;
+    public int mode;
+    public string error;
+
+    public AppImageHeldFileLease() {
+        self.valid = false;
+        self.relative = false;
+        self.location = "";
+        self.name = "";
+        self.digest = "";
+        self.descriptor = -1;
+        self.parentDescriptor = -1;
+        self.device = 0ULL;
+        self.inode = 0ULL;
+        self.size = 0ULL;
+        self.mode = 0;
+        self.error = "";
+    }
+
+    public bool ok() { return self.valid; }
+
+    class AppImageHeldFileLease failure(string error) {
+        AppImageHeldFileLease lease = AppImageHeldFileLease();
+        lease.error = error;
+        return lease;
+    }
+
+    class AppImageHeldFileLease fromDescriptor(
+            int descriptor, string location, bool relative,
+            int parentDescriptor = -1, string name = "",
+            bool executable = false) {
+        AppImageHeldFileLease lease = AppImageHeldFileLease();
+        struct stat status;
+        string digest = descriptor >= 0
+            ? SemuOwnedFileDigest.descriptor(descriptor) : "";
+        bool captured = descriptor >= 0
+            && fstat(descriptor, &status) == 0
+            && S_ISREG(status.st_mode) != 0
+            && status.st_nlink == (nlink_t)1
+            && status.st_size >= (off_t)0
+            && SemuInstallPolicy.validDigest(digest)
+            && (!executable || (status.st_mode & 73) != 0);
+        if (!captured) {
+            if (descriptor >= 0) { close(descriptor); }
+            if (parentDescriptor >= 0) { close(parentDescriptor); }
+            lease.error = "cannot bind required release file: " + location;
+            return lease;
+        }
+        lease.relative = relative;
+        lease.location = location;
+        lease.name = name;
+        lease.digest = digest;
+        lease.descriptor = descriptor;
+        lease.parentDescriptor = parentDescriptor;
+        lease.device = (unsigned long long)status.st_dev;
+        lease.inode = (unsigned long long)status.st_ino;
+        lease.size = (unsigned long long)status.st_size;
+        lease.mode = SemuOwnedPaths.permissions(status.st_mode);
+        lease.valid = true;
+        return lease;
+    }
+
+    class AppImageHeldFileLease captureRelative(
+            int rootDescriptor, string relative, bool executable = false) {
+        int descriptor = AppImageDescriptorTree.openBelow(
+            rootDescriptor, relative, false);
+        return AppImageHeldFileLease.fromDescriptor(
+            descriptor, relative, true, -1, "", executable);
+    }
+
+    class AppImageHeldFileLease capturePath(
+            string path, bool executable = false) {
+        string normalized = SemuOwnedPaths.normalized(path);
+        string parentPath = PathTools.dirname(normalized);
+        string name = PathTools.basename(normalized);
+        int parentDescriptor = normalized.isEmpty() || name.isEmpty()
+            ? -1 : UnixFileSystem.openDirectoryNoFollow(parentPath);
+        struct stat inspected;
+        int descriptor = parentDescriptor >= 0
+                && fstatat(parentDescriptor, name, &inspected,
+                    AT_SYMLINK_NOFOLLOW) == 0
+                && S_ISREG(inspected.st_mode) != 0
+            ? openat(parentDescriptor, name,
+                (int)O_RDONLY | (int)O_NOFOLLOW | (int)O_CLOEXEC)
+            : -1;
+        struct stat opened;
+        bool same = descriptor >= 0 && fstat(descriptor, &opened) == 0
+            && AppImageWorkSession.sameObject(&inspected, &opened)
+            && UnixFileSystem.realPath(normalized).equals(normalized);
+        if (!same) {
+            if (descriptor >= 0) { close(descriptor); }
+            if (parentDescriptor >= 0) { close(parentDescriptor); }
+            AppImageHeldFileLease failed = AppImageHeldFileLease();
+            failed.error = "cannot open exact release file: " + path;
+            return failed;
+        }
+        return AppImageHeldFileLease.fromDescriptor(
+            descriptor, normalized, false, parentDescriptor, name,
+            executable);
+    }
+
+    public bool stillBound(int rootDescriptor = -1) {
+        if (!self.descriptorStillExact()) { return false; }
+        int reopened = self.relative
+            ? AppImageDescriptorTree.openBelow(
+                rootDescriptor, self.location, false)
+            : self.parentDescriptor >= 0
+                ? openat(self.parentDescriptor, self.name,
+                    (int)O_RDONLY | (int)O_NOFOLLOW | (int)O_CLOEXEC)
+                : -1;
+        struct stat held;
+        struct stat current;
+        bool bound = reopened >= 0
+            && fstat(self.descriptor, &held) == 0
+            && fstat(reopened, &current) == 0
+            && S_ISREG(held.st_mode) != 0
+            && AppImageWorkSession.sameObject(&held, &current)
+            && (unsigned long long)held.st_dev == self.device
+            && (unsigned long long)held.st_ino == self.inode
+            && (unsigned long long)held.st_size == self.size
+            && SemuOwnedPaths.permissions(held.st_mode) == self.mode
+            && SemuOwnedFileDigest.descriptor(self.descriptor)
+                .equals(self.digest);
+        if (reopened >= 0) { close(reopened); }
+        return bound;
+    }
+
+    public bool descriptorStillExact() {
+        if (!self.valid || self.descriptor < 0) { return false; }
+        struct stat held;
+        return fstat(self.descriptor, &held) == 0
+            && S_ISREG(held.st_mode) != 0
+            && (unsigned long long)held.st_dev == self.device
+            && (unsigned long long)held.st_ino == self.inode
+            && (unsigned long long)held.st_size == self.size
+            && SemuOwnedPaths.permissions(held.st_mode) == self.mode
+            && SemuOwnedFileDigest.descriptor(self.descriptor)
+                .equals(self.digest);
+    }
+
+    public AppImageHeldFileLease copyLeaseTo(
+            int destinationRootDescriptor, string destinationRelative,
+            int sourceRootDescriptor = -1, bool executable = false) {
+        if (!self.stillBound(sourceRootDescriptor)
+                || destinationRootDescriptor < 0
+                || !SemuOwnedPaths.safeRelativePath(destinationRelative)) {
+            return AppImageHeldFileLease.failure(
+                "release file lease is not bound for descriptor copy");
+        }
+        Vector<string> components = Strings.split(
+            destinationRelative, "/");
+        if (components.size() == 0) {
+            return AppImageHeldFileLease.failure(
+                "release file destination is empty");
+        }
+        string name = components.get(components.size() - 1);
+        string parentRelative = "";
+        for (int index = 0; index < components.size() - 1; index++) {
+            parentRelative = parentRelative.isEmpty()
+                ? components.get(index)
+                : parentRelative + "/" + components.get(index);
+        }
+        int destinationParent = parentRelative.isEmpty()
+            ? dup(destinationRootDescriptor)
+            : AppImageDescriptorTree.openBelow(
+                destinationRootDescriptor, parentRelative, true);
+        struct stat existing;
+        int destination = destinationParent >= 0
+                && fstatat(destinationParent, name, &existing,
+                    AT_SYMLINK_NOFOLLOW) != 0 && errno == ENOENT
+            ? openat(destinationParent, name,
+                (int)O_RDWR | (int)O_CREAT | (int)O_EXCL
+                    | (int)O_NOFOLLOW | (int)O_CLOEXEC,
+                self.mode)
+            : -1;
+        unsigned char buffer[65536];
+        unsigned long long offset = 0ULL;
+        bool copied = destination >= 0;
+        while (copied && offset < self.size) {
+            size_t requested = self.size - offset > 65536ULL
+                ? (size_t)65536 : (size_t)(self.size - offset);
+            ssize_t count = pread(self.descriptor, buffer, requested,
+                (off_t)offset);
+            if (count <= (ssize_t)0) {
+                copied = false;
+                break;
+            }
+            ssize_t written = 0;
+            while (copied && written < count) {
+                ssize_t current = write(destination,
+                    buffer + written, (size_t)(count - written));
+                if (current <= (ssize_t)0) {
+                    copied = false;
+                } else {
+                    written += current;
+                }
+            }
+            if (copied) { offset += (unsigned long long)count; }
+        }
+        struct stat destinationStatus;
+        copied = copied && offset == self.size
+            && fchmod(destination, (mode_t)self.mode) == 0
+            && fsync(destination) == 0
+            && fstat(destination, &destinationStatus) == 0
+            && S_ISREG(destinationStatus.st_mode) != 0
+            && destinationStatus.st_nlink == (nlink_t)1
+            && (unsigned long long)destinationStatus.st_size == self.size
+            && SemuOwnedPaths.permissions(destinationStatus.st_mode) == self.mode
+            && SemuOwnedFileDigest.descriptor(destination).equals(self.digest)
+            && self.stillBound(sourceRootDescriptor);
+        int heldDestination = copied
+            ? openat(destinationParent, name,
+                (int)O_RDONLY | (int)O_NOFOLLOW | (int)O_CLOEXEC)
+            : -1;
+        struct stat heldStatus;
+        copied = copied && heldDestination >= 0
+            && fstat(heldDestination, &heldStatus) == 0
+            && AppImageWorkSession.sameObject(
+                &destinationStatus, &heldStatus)
+            && (unsigned long long)heldStatus.st_size == self.size
+            && SemuOwnedPaths.permissions(heldStatus.st_mode) == self.mode
+            && SemuOwnedFileDigest.descriptor(heldDestination)
+                .equals(self.digest)
+            && fsync(destinationParent) == 0;
+        bool writerClosed = destination < 0 || close(destination) == 0;
+        destination = -1;
+        copied = copied && writerClosed;
+        if (!copied && destinationParent >= 0) {
+            unlinkat(destinationParent, name, 0);
+        }
+        bool parentClosed = destinationParent < 0
+            || close(destinationParent) == 0;
+        if (!copied || !parentClosed) {
+            if (heldDestination >= 0) { close(heldDestination); }
+            return AppImageHeldFileLease.failure(
+                "cannot copy descriptor-bound release file: "
+                    + destinationRelative);
+        }
+        return AppImageHeldFileLease.fromDescriptor(
+            heldDestination, destinationRelative, true,
+            -1, "", executable);
+    }
+
+    public SemuInstallResult copyTo(
+            int destinationRootDescriptor, string destinationRelative,
+            int sourceRootDescriptor = -1) {
+        AppImageHeldFileLease destination = self.copyLeaseTo(
+            destinationRootDescriptor, destinationRelative,
+            sourceRootDescriptor);
+        string digest = destination.digest;
+        string error = destination.error;
+        bool copied = destination.ok();
+        destination.closeDescriptors();
+        return copied ? SemuInstallResult.success(digest)
+            : SemuInstallResult.failure(error);
+    }
+
+    public void closeDescriptors() {
+        if (self.descriptor >= 0) { close(self.descriptor); }
+        if (self.parentDescriptor >= 0) { close(self.parentDescriptor); }
+        self.descriptor = -1;
+        self.parentDescriptor = -1;
+        self.valid = false;
+    }
+}
+
+class AppImageRuntimeExportContract {
+    public bool valid;
+    public string binDigest;
+    public string libDigest;
+    public string shareDigest;
+    public string error;
+
+    public AppImageRuntimeExportContract() {
+        self.valid = false;
+        self.binDigest = "";
+        self.libDigest = "";
+        self.shareDigest = "";
+        self.error = "";
+    }
+
+    public bool ok() { return self.valid; }
+
+    class bool exactKeys(JsonValue value, Vector<string> expected) {
+        if (!value.isObject()) { return false; }
+        Vector<string> actual = value.keys();
+        actual.sort();
+        expected.sort();
+        if (actual.size() != expected.size()) { return false; }
+        for (int index = 0; index < actual.size(); index++) {
+            if (!actual.get(index).equals(expected.get(index))) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    class AppImageRuntimeExportContract parse(string canonicalDocument) {
+        AppImageRuntimeExportContract contract =
+            AppImageRuntimeExportContract();
+        JsonValue document = JsonValue.parse(canonicalDocument);
+        JsonValue nodes = document.get("nodes");
+        if (!AppImageRuntimeExportContract.exactKeys(
+                document, ["copy_policy", "nodes", "schema_version"])
+                || !document.get("schema_version").isInt()
+                || document.get("schema_version").asInt() != 1
+                || !document.get("copy_policy").isString()
+                || !document.get("copy_policy").asString().equals(
+                    "recursive-dereference-preserve-mode")
+                || !nodes.isArray() || nodes.size() != 3
+                || !canonicalDocument.equals(document.document())) {
+            contract.error = "runtime export contract is malformed";
+            return contract;
+        }
+        Vector<string> paths = [];
+        for (int index = 0; index < nodes.size(); index++) {
+            JsonValue node = nodes.at(index);
+            JsonValue path = node.get("path");
+            JsonValue digest = node.get("sha256");
+            if (!AppImageRuntimeExportContract.exactKeys(
+                    node, ["path", "sha256"])
+                    || !path.isString() || !digest.isString()
+                    || !["bin", "lib", "share"].contains(path.asString())
+                    || paths.contains(path.asString())
+                    || !SemuInstallPolicy.validDigest(digest.asString())) {
+                contract.error = "runtime export contract node is malformed";
+                return contract;
+            }
+            paths.push(path.asString());
+            if (path.asString().equals("bin")) {
+                contract.binDigest = digest.asString();
+            } else if (path.asString().equals("lib")) {
+                contract.libDigest = digest.asString();
+            } else {
+                contract.shareDigest = digest.asString();
+            }
+        }
+        contract.valid = !contract.binDigest.isEmpty()
+            && !contract.libDigest.isEmpty()
+            && !contract.shareDigest.isEmpty();
+        if (!contract.valid) {
+            contract.error = "runtime export contract is incomplete";
+        }
+        return contract;
+    }
+
+    public string digestFor(string relative) {
+        if (relative.equals("bin")) { return self.binDigest; }
+        if (relative.equals("lib")) { return self.libDigest; }
+        if (relative.equals("share")) { return self.shareDigest; }
+        return "";
+    }
+}
+
+class AppImageRuntimeOwnershipLease {
+    public bool valid;
+    public string cacheRoot;
+    public string cacheName;
+    public string generationRoot;
+    public string generationRootRelative;
+    public string markerRoot;
+    public string markerRootRelative;
+    public string cacheMarkerName;
+    public string generationMarkerName;
+    public string nixProofName;
+    public string cacheMarkerDigest;
+    public string generationMarkerDigest;
+    public string nixProofDigest;
+    public int cacheParentDescriptor;
+    public int cacheDescriptor;
+    public int generationRootDescriptor;
+    public int markerRootDescriptor;
+    public int cacheMarkerDescriptor;
+    public int generationMarkerDescriptor;
+    public int nixProofDescriptor;
+    public unsigned long long cacheParentDevice;
+    public unsigned long long cacheParentInode;
+    public unsigned long long cacheDevice;
+    public unsigned long long cacheInode;
+    public unsigned long long generationRootDevice;
+    public unsigned long long generationRootInode;
+    public unsigned long long markerRootDevice;
+    public unsigned long long markerRootInode;
+    public unsigned long long cacheMarkerDevice;
+    public unsigned long long cacheMarkerInode;
+    public unsigned long long generationMarkerDevice;
+    public unsigned long long generationMarkerInode;
+    public unsigned long long nixProofDevice;
+    public unsigned long long nixProofInode;
+    public string error;
+
+    public AppImageRuntimeOwnershipLease() {
+        self.valid = false;
+        self.cacheRoot = "";
+        self.cacheName = "";
+        self.generationRoot = "";
+        self.generationRootRelative = "";
+        self.markerRoot = "";
+        self.markerRootRelative = "";
+        self.cacheMarkerName = "";
+        self.generationMarkerName = "";
+        self.nixProofName = "";
+        self.cacheMarkerDigest = "";
+        self.generationMarkerDigest = "";
+        self.nixProofDigest = "";
+        self.cacheParentDescriptor = -1;
+        self.cacheDescriptor = -1;
+        self.generationRootDescriptor = -1;
+        self.markerRootDescriptor = -1;
+        self.cacheMarkerDescriptor = -1;
+        self.generationMarkerDescriptor = -1;
+        self.nixProofDescriptor = -1;
+        self.cacheParentDevice = 0ULL;
+        self.cacheParentInode = 0ULL;
+        self.cacheDevice = 0ULL;
+        self.cacheInode = 0ULL;
+        self.generationRootDevice = 0ULL;
+        self.generationRootInode = 0ULL;
+        self.markerRootDevice = 0ULL;
+        self.markerRootInode = 0ULL;
+        self.cacheMarkerDevice = 0ULL;
+        self.cacheMarkerInode = 0ULL;
+        self.generationMarkerDevice = 0ULL;
+        self.generationMarkerInode = 0ULL;
+        self.nixProofDevice = 0ULL;
+        self.nixProofInode = 0ULL;
+        self.error = "";
+    }
+
+    public bool ok() { return self.valid; }
+
+    class bool lowerSha256(string digest) {
+        if (digest.len() != 64) { return false; }
+        for character in digest {
+            bool decimal = character >= '0' && character <= '9';
+            bool hexadecimal = character >= 'a' && character <= 'f';
+            if (!decimal && !hexadecimal) { return false; }
+        }
+        return true;
+    }
+
+    class string cacheDocument(
+            string cacheRoot, string repository,
+            string packageAttribute) {
+        return "version=1\nroot=" + cacheRoot + "\nrepository="
+            + repository + "\npackage=" + packageAttribute + "\n";
+    }
+
+    class string generationDocument(
+            string cacheRoot, string generation, string repository,
+            string packageAttribute) {
+        return "version=1\ncache=" + cacheRoot + "\ngeneration="
+            + generation + "\nrepository=" + repository
+            + "\npackage=" + packageAttribute + "\n";
+    }
+
+    class bool regularDescriptor(
+            int descriptor, struct stat* status, int mode) {
+        return descriptor >= 0 && fstat(descriptor, status) == 0
+            && S_ISREG(status->st_mode) != 0
+            && status->st_nlink == (nlink_t)1
+            && SemuOwnedPaths.permissions(status->st_mode) == mode;
+    }
+
+    class AppImageRuntimeOwnershipLease acquire(
+            AppImagePathPlan plan, string expectedPackageAttribute,
+            string expectedBuilderRepository = "") {
+        AppImageRuntimeOwnershipLease ownership =
+            AppImageRuntimeOwnershipLease();
+        string builderRepository = expectedBuilderRepository.isEmpty()
+            ? plan.repoRoot : expectedBuilderRepository;
+        string cacheRoot = PathTools.dirname(plan.runtimePublication);
+        string generationRoot = PathTools.dirname(plan.runtimeRoot);
+        string relativeGenerationRoot = generationRoot.equals(
+                PathTools.join(cacheRoot, "generations"))
+            ? "generations"
+            : generationRoot.equals(PathTools.join(
+                cacheRoot, "linux-case-sensitive/generations"))
+                ? "linux-case-sensitive/generations" : "";
+        string markerRootRelative = "metadata/generations";
+        string markerRoot = PathTools.join(
+            cacheRoot, markerRootRelative);
+        string cacheMarkerName = ".semu-appimage-runtime-cache-v1";
+        string generationMarkerName =
+            PathTools.basename(plan.runtimeRoot) + ".owner";
+        string nixProofName =
+            PathTools.basename(plan.runtimeRoot) + ".nix-proof.json";
+        string cacheName = PathTools.basename(cacheRoot);
+        int cacheParentDescriptor = relativeGenerationRoot.isEmpty()
+            || cacheName.isEmpty() ? -1
+            : UnixFileSystem.openDirectoryNoFollow(
+                PathTools.dirname(cacheRoot));
+        int cacheDescriptor = cacheParentDescriptor >= 0
+            ? AppImageDescriptorTree.openBelow(
+                cacheParentDescriptor, cacheName, true) : -1;
+        int generationRootDescriptor = cacheDescriptor >= 0
+            ? AppImageDescriptorTree.openBelow(
+                cacheDescriptor, relativeGenerationRoot, true) : -1;
+        int markerRootDescriptor = cacheDescriptor >= 0
+            ? AppImageDescriptorTree.openBelow(
+                cacheDescriptor, markerRootRelative, true) : -1;
+        int cacheMarkerDescriptor = cacheDescriptor >= 0
+            ? AppImageDescriptorTree.openBelow(
+                cacheDescriptor, cacheMarkerName, false) : -1;
+        int generationMarkerDescriptor = markerRootDescriptor >= 0
+            ? AppImageDescriptorTree.openBelow(
+                markerRootDescriptor, generationMarkerName, false) : -1;
+        int nixProofDescriptor = markerRootDescriptor >= 0
+            ? AppImageDescriptorTree.openBelow(
+                markerRootDescriptor, nixProofName, false) : -1;
+        struct stat cacheParentStatus;
+        struct stat cacheStatus;
+        struct stat generationRootStatus;
+        struct stat markerRootStatus;
+        struct stat cacheMarkerStatus;
+        struct stat generationMarkerStatus;
+        struct stat nixProofStatus;
+        string cacheText = cacheMarkerDescriptor >= 0
+            ? SemuOwnedFileContent.text(cacheMarkerDescriptor) : "";
+        string generationText = generationMarkerDescriptor >= 0
+            ? SemuOwnedFileContent.text(generationMarkerDescriptor) : "";
+        string cacheDigest = cacheMarkerDescriptor >= 0
+            ? SemuOwnedFileDigest.descriptor(cacheMarkerDescriptor) : "";
+        string generationDigest = generationMarkerDescriptor >= 0
+            ? SemuOwnedFileDigest.descriptor(
+                generationMarkerDescriptor) : "";
+        string nixProofDigest = nixProofDescriptor >= 0
+            ? SemuOwnedFileDigest.descriptor(nixProofDescriptor) : "";
+        bool captured = cacheParentDescriptor >= 0
+            && cacheDescriptor >= 0
+            && generationRootDescriptor >= 0
+            && markerRootDescriptor >= 0
+            && fstat(cacheParentDescriptor, &cacheParentStatus) == 0
+            && fstat(cacheDescriptor, &cacheStatus) == 0
+            && fstat(generationRootDescriptor,
+                &generationRootStatus) == 0
+            && fstat(markerRootDescriptor, &markerRootStatus) == 0
+            && S_ISDIR(cacheParentStatus.st_mode) != 0
+            && S_ISDIR(cacheStatus.st_mode) != 0
+            && S_ISDIR(generationRootStatus.st_mode) != 0
+            && S_ISDIR(markerRootStatus.st_mode) != 0
+            && AppImageRuntimeOwnershipLease.regularDescriptor(
+                cacheMarkerDescriptor, &cacheMarkerStatus, 384) // 0600
+            && AppImageRuntimeOwnershipLease.regularDescriptor(
+                generationMarkerDescriptor,
+                &generationMarkerStatus, 384) // 0600
+            && AppImageRuntimeOwnershipLease.regularDescriptor(
+                nixProofDescriptor, &nixProofStatus, 292) // 0444
+            && cacheText.equals(
+                AppImageRuntimeOwnershipLease.cacheDocument(
+                    cacheRoot, builderRepository,
+                    expectedPackageAttribute))
+            && generationText.equals(
+                AppImageRuntimeOwnershipLease.generationDocument(
+                    cacheRoot, plan.runtimeRoot, builderRepository,
+                    expectedPackageAttribute))
+            && AppImageRuntimeOwnershipLease.lowerSha256(cacheDigest)
+            && AppImageRuntimeOwnershipLease.lowerSha256(generationDigest)
+            && AppImageRuntimeOwnershipLease.lowerSha256(nixProofDigest)
+            && UnixFileSystem.realPath(cacheRoot).equals(cacheRoot)
+            && UnixFileSystem.realPath(generationRoot).equals(
+                generationRoot)
+            && UnixFileSystem.realPath(markerRoot).equals(markerRoot)
+            && PathTools.dirname(plan.runtimeRoot).equals(
+                generationRoot);
+        if (!captured) {
+            if (nixProofDescriptor >= 0) {
+                close(nixProofDescriptor);
+            }
+            if (generationMarkerDescriptor >= 0) {
+                close(generationMarkerDescriptor);
+            }
+            if (cacheMarkerDescriptor >= 0) {
+                close(cacheMarkerDescriptor);
+            }
+            if (markerRootDescriptor >= 0) {
+                close(markerRootDescriptor);
+            }
+            if (generationRootDescriptor >= 0) {
+                close(generationRootDescriptor);
+            }
+            if (cacheDescriptor >= 0) { close(cacheDescriptor); }
+            if (cacheParentDescriptor >= 0) {
+                close(cacheParentDescriptor);
+            }
+            ownership.error =
+                "runtime publication is not owned by its declared builder generation";
+            return ownership;
+        }
+        ownership.cacheRoot = cacheRoot;
+        ownership.cacheName = cacheName;
+        ownership.generationRoot = generationRoot;
+        ownership.generationRootRelative = relativeGenerationRoot;
+        ownership.markerRoot = markerRoot;
+        ownership.markerRootRelative = markerRootRelative;
+        ownership.cacheMarkerName = cacheMarkerName;
+        ownership.generationMarkerName = generationMarkerName;
+        ownership.nixProofName = nixProofName;
+        ownership.cacheMarkerDigest = cacheDigest;
+        ownership.generationMarkerDigest = generationDigest;
+        ownership.nixProofDigest = nixProofDigest;
+        ownership.cacheParentDescriptor = cacheParentDescriptor;
+        ownership.cacheDescriptor = cacheDescriptor;
+        ownership.generationRootDescriptor = generationRootDescriptor;
+        ownership.markerRootDescriptor = markerRootDescriptor;
+        ownership.cacheMarkerDescriptor = cacheMarkerDescriptor;
+        ownership.generationMarkerDescriptor = generationMarkerDescriptor;
+        ownership.nixProofDescriptor = nixProofDescriptor;
+        ownership.cacheParentDevice =
+            (unsigned long long)cacheParentStatus.st_dev;
+        ownership.cacheParentInode =
+            (unsigned long long)cacheParentStatus.st_ino;
+        ownership.cacheDevice = (unsigned long long)cacheStatus.st_dev;
+        ownership.cacheInode = (unsigned long long)cacheStatus.st_ino;
+        ownership.generationRootDevice =
+            (unsigned long long)generationRootStatus.st_dev;
+        ownership.generationRootInode =
+            (unsigned long long)generationRootStatus.st_ino;
+        ownership.markerRootDevice =
+            (unsigned long long)markerRootStatus.st_dev;
+        ownership.markerRootInode =
+            (unsigned long long)markerRootStatus.st_ino;
+        ownership.cacheMarkerDevice =
+            (unsigned long long)cacheMarkerStatus.st_dev;
+        ownership.cacheMarkerInode =
+            (unsigned long long)cacheMarkerStatus.st_ino;
+        ownership.generationMarkerDevice =
+            (unsigned long long)generationMarkerStatus.st_dev;
+        ownership.generationMarkerInode =
+            (unsigned long long)generationMarkerStatus.st_ino;
+        ownership.nixProofDevice =
+            (unsigned long long)nixProofStatus.st_dev;
+        ownership.nixProofInode =
+            (unsigned long long)nixProofStatus.st_ino;
+        ownership.valid = true;
+        return ownership;
+    }
+
+    class bool sameDescriptor(
+            int descriptor, unsigned long long device,
+            unsigned long long inode, bool directory) {
+        struct stat status;
+        if (descriptor < 0 || fstat(descriptor, &status) != 0) {
+            return false;
+        }
+        bool correctKind = false;
+        if (directory) {
+            correctKind = S_ISDIR(status.st_mode) != 0;
+        } else {
+            correctKind = S_ISREG(status.st_mode) != 0;
+        }
+        return correctKind
+            && (unsigned long long)status.st_dev == device
+            && (unsigned long long)status.st_ino == inode;
+    }
+
+    class bool sameChild(
+            int parentDescriptor, string relative, int descriptor,
+            unsigned long long device, unsigned long long inode,
+            bool directory) {
+        int reopened = AppImageDescriptorTree.openBelow(
+            parentDescriptor, relative, directory);
+        struct stat held;
+        struct stat current;
+        bool same = descriptor >= 0 && reopened >= 0
+            && fstat(descriptor, &held) == 0
+            && fstat(reopened, &current) == 0
+            && AppImageWorkSession.sameObject(&held, &current)
+            && (unsigned long long)held.st_dev == device
+            && (unsigned long long)held.st_ino == inode;
+        if (reopened >= 0) { close(reopened); }
+        return same;
+    }
+
+    public bool stillBound() {
+        if (!self.valid
+                || !AppImageRuntimeOwnershipLease.sameDescriptor(
+                    self.cacheParentDescriptor,
+                    self.cacheParentDevice, self.cacheParentInode, true)
+                || !AppImageRuntimeOwnershipLease.sameChild(
+                    self.cacheParentDescriptor, self.cacheName,
+                    self.cacheDescriptor, self.cacheDevice,
+                    self.cacheInode, true)
+                || !AppImageRuntimeOwnershipLease.sameDescriptor(
+                    self.cacheDescriptor, self.cacheDevice,
+                    self.cacheInode, true)
+                || !AppImageRuntimeOwnershipLease.sameChild(
+                    self.cacheDescriptor, self.generationRootRelative,
+                    self.generationRootDescriptor,
+                    self.generationRootDevice,
+                    self.generationRootInode, true)
+                || !AppImageRuntimeOwnershipLease.sameChild(
+                    self.cacheDescriptor, self.markerRootRelative,
+                    self.markerRootDescriptor, self.markerRootDevice,
+                    self.markerRootInode, true)
+                || !AppImageRuntimeOwnershipLease.sameChild(
+                    self.cacheDescriptor, self.cacheMarkerName,
+                    self.cacheMarkerDescriptor,
+                    self.cacheMarkerDevice, self.cacheMarkerInode,
+                    false)
+                || !AppImageRuntimeOwnershipLease.sameChild(
+                    self.markerRootDescriptor,
+                    self.generationMarkerName,
+                    self.generationMarkerDescriptor,
+                    self.generationMarkerDevice,
+                    self.generationMarkerInode, false)) {
+            return false;
+        }
+        if (!AppImageRuntimeOwnershipLease.sameChild(
+                self.markerRootDescriptor, self.nixProofName,
+                self.nixProofDescriptor, self.nixProofDevice,
+                self.nixProofInode, false)) {
+            return false;
+        }
+        return SemuOwnedFileDigest.descriptor(
+                self.cacheMarkerDescriptor).equals(
+                    self.cacheMarkerDigest)
+            && SemuOwnedFileDigest.descriptor(
+                self.generationMarkerDescriptor).equals(
+                    self.generationMarkerDigest)
+            && SemuOwnedFileDigest.descriptor(
+                self.nixProofDescriptor).equals(
+                    self.nixProofDigest)
+            && UnixFileSystem.realPath(self.cacheRoot)
+                .equals(self.cacheRoot)
+            && UnixFileSystem.realPath(self.generationRoot)
+                .equals(self.generationRoot)
+            && UnixFileSystem.realPath(self.markerRoot)
+                .equals(self.markerRoot);
+    }
+
+    public void closeDescriptors() {
+        if (self.nixProofDescriptor >= 0) {
+            close(self.nixProofDescriptor);
+        }
+        if (self.generationMarkerDescriptor >= 0) {
+            close(self.generationMarkerDescriptor);
+        }
+        if (self.cacheMarkerDescriptor >= 0) {
+            close(self.cacheMarkerDescriptor);
+        }
+        if (self.markerRootDescriptor >= 0) {
+            close(self.markerRootDescriptor);
+        }
+        if (self.generationRootDescriptor >= 0) {
+            close(self.generationRootDescriptor);
+        }
+        if (self.cacheDescriptor >= 0) { close(self.cacheDescriptor); }
+        if (self.cacheParentDescriptor >= 0) {
+            close(self.cacheParentDescriptor);
+        }
+        self.generationMarkerDescriptor = -1;
+        self.nixProofDescriptor = -1;
+        self.cacheMarkerDescriptor = -1;
+        self.markerRootDescriptor = -1;
+        self.generationRootDescriptor = -1;
+        self.cacheDescriptor = -1;
+        self.cacheParentDescriptor = -1;
+        self.valid = false;
+    }
+}
+
+class AppImageRuntimeLease {
+    public bool valid;
+    public string builderRepository;
+    public string runtimeRoot;
+    public string runtimePublication;
+    public string lockName;
+    public string rootName;
+    public string releaseIdentity;
+    public string provenanceDigest;
+    public string inventoryDigest;
+    public string prefixDigest;
+    public string coreDirectory;
+    public AppImageReleaseInventory inventory;
+    public AppImageNixReleaseProof nixProof;
+    public AppImageRuntimeExportContract exportContract;
+    public AppImageRuntimeOwnershipLease ownership;
+    public AppImageHeldFileLease releaseMarker;
+    public AppImageHeldFileLease exportContractFile;
+    public AppImageHeldFileLease storeExportContractFile;
+    public AppImageHeldFileLease verifier;
+    public AppImageRuntimeNodeLease packaging;
+    public Vector<AppImageRuntimeNodeLease> nodes;
+    public long long prefixBytes;
+    public int lockParentDescriptor;
+    public int lockDescriptor;
+    public int rootParentDescriptor;
+    public int rootDescriptor;
+    public int configDescriptor;
+    public int provenanceDescriptor;
+    public int inventoryDescriptor;
+    public int prefixDescriptor;
+    public unsigned long long lockDevice;
+    public unsigned long long lockInode;
+    public unsigned long long rootDevice;
+    public unsigned long long rootInode;
+    public unsigned long long configDevice;
+    public unsigned long long configInode;
+    public unsigned long long provenanceDevice;
+    public unsigned long long provenanceInode;
+    public unsigned long long provenanceSize;
+    public int provenanceMode;
+    public unsigned long long inventoryDevice;
+    public unsigned long long inventoryInode;
+    public unsigned long long inventorySize;
+    public int inventoryMode;
+    public unsigned long long prefixDevice;
+    public unsigned long long prefixInode;
+    public unsigned long long prefixSize;
+    public int prefixMode;
+    public string error;
+
+    public AppImageRuntimeLease() {
+        self.valid = false;
+        self.builderRepository = "";
+        self.runtimeRoot = "";
+        self.runtimePublication = "";
+        self.lockName = "";
+        self.rootName = "";
+        self.releaseIdentity = "";
+        self.provenanceDigest = "";
+        self.inventoryDigest = "";
+        self.prefixDigest = "";
+        self.coreDirectory = "";
+        self.inventory = AppImageReleaseInventory();
+        self.nixProof = AppImageNixReleaseProof();
+        self.exportContract = AppImageRuntimeExportContract();
+        self.ownership = AppImageRuntimeOwnershipLease();
+        self.releaseMarker = AppImageHeldFileLease();
+        self.exportContractFile = AppImageHeldFileLease();
+        self.storeExportContractFile = AppImageHeldFileLease();
+        self.verifier = AppImageHeldFileLease();
+        self.packaging = AppImageRuntimeNodeLease();
+        self.nodes = [];
+        self.prefixBytes = 0LL;
+        self.lockParentDescriptor = -1;
+        self.lockDescriptor = -1;
+        self.rootParentDescriptor = -1;
+        self.rootDescriptor = -1;
+        self.configDescriptor = -1;
+        self.provenanceDescriptor = -1;
+        self.inventoryDescriptor = -1;
+        self.prefixDescriptor = -1;
+        self.lockDevice = 0ULL;
+        self.lockInode = 0ULL;
+        self.rootDevice = 0ULL;
+        self.rootInode = 0ULL;
+        self.configDevice = 0ULL;
+        self.configInode = 0ULL;
+        self.provenanceDevice = 0ULL;
+        self.provenanceInode = 0ULL;
+        self.provenanceSize = 0ULL;
+        self.provenanceMode = 0;
+        self.inventoryDevice = 0ULL;
+        self.inventoryInode = 0ULL;
+        self.inventorySize = 0ULL;
+        self.inventoryMode = 0;
+        self.prefixDevice = 0ULL;
+        self.prefixInode = 0ULL;
+        self.prefixSize = 0ULL;
+        self.prefixMode = 0;
+        self.error = "";
+    }
+
+    public bool ok() { return self.valid; }
+
+    class bool lowerSha256(string digest) {
+        if (digest.len() != 64) { return false; }
+        for character in digest {
+            bool decimal = character >= '0' && character <= '9';
+            bool hexadecimal = character >= 'a' && character <= 'f';
+            if (!decimal && !hexadecimal) { return false; }
+        }
+        return true;
+    }
+
+    class string assemblyAuthorityValues(
+            string packageAttribute, string releaseIdentity,
+            string provenanceDigest, string inventoryDigest,
+            string prefixDigest, string nixProofDigest,
+            string closureDigest, string sourceStorePath,
+            string targetStorePath) {
+        if (!AppImageNixReleaseProof.packageName(packageAttribute)
+                || !AppImageRuntimeLease.lowerSha256(releaseIdentity)
+                || !AppImageRuntimeLease.lowerSha256(provenanceDigest)
+                || !AppImageRuntimeLease.lowerSha256(inventoryDigest)
+                || !AppImageRuntimeLease.lowerSha256(prefixDigest)
+                || !AppImageRuntimeLease.lowerSha256(nixProofDigest)
+                || !AppImageRuntimeLease.lowerSha256(closureDigest)
+                || !AppImageNixReleaseProof.storePath(sourceStorePath)
+                || !AppImageNixReleaseProof.storePath(targetStorePath)) {
+            return "";
+        }
+        JsonValue authority = JsonValue.makeObject();
+        authority.set("schema_version", JsonValue.makeInt(1));
+        authority.set("package_attribute",
+            JsonValue.makeString(packageAttribute));
+        authority.set("release_identity_sha256",
+            JsonValue.makeString(releaseIdentity));
+        authority.set("provenance_sha256",
+            JsonValue.makeString(provenanceDigest));
+        authority.set("inventory_sha256",
+            JsonValue.makeString(inventoryDigest));
+        authority.set("runtime_prefix_sha256",
+            JsonValue.makeString(prefixDigest));
+        authority.set("nix_proof_sha256",
+            JsonValue.makeString(nixProofDigest));
+        authority.set("closure_sha256",
+            JsonValue.makeString(closureDigest));
+        authority.set("source_store_path",
+            JsonValue.makeString(sourceStorePath));
+        authority.set("target_store_path",
+            JsonValue.makeString(targetStorePath));
+        return SemuOwnedFileDigest.text(authority.document());
+    }
+
+    public string assemblyAuthority() {
+        return self.valid ? AppImageRuntimeLease.assemblyAuthorityValues(
+            self.nixProof.packageAttribute, self.releaseIdentity,
+            self.provenanceDigest, self.inventoryDigest,
+            self.prefixDigest, self.ownership.nixProofDigest,
+            self.nixProof.closureDigest, self.nixProof.sourceStorePath,
+            self.nixProof.targetStorePath) : "";
+    }
+
+    class string descriptorDigest(JsonValue entries, string path) {
+        if (!entries.isArray()) { return ""; }
+        string digest = "";
+        for (int index = 0; index < entries.size(); index++) {
+            JsonValue entry = entries.at(index);
+            if (!AppImageRuntimeProvenance.exactKeys(
+                    entry, ["path", "sha256"])
+                    || !entry.get("path").isString()
+                    || !entry.get("sha256").isString()) {
+                return "";
+            }
+            if (entry.get("path").asString().equals(path)) {
+                if (!digest.isEmpty()) { return ""; }
+                digest = entry.get("sha256").asString();
+            }
+        }
+        return AppImageRuntimeLease.lowerSha256(digest) ? digest : "";
+    }
+
+    class string releaseDigest(JsonValue provenance) {
+        if (!AppImageRuntimeProvenance.exactKeys(
+                provenance, ["schema_version", "release_identity_sha256",
+                    "source", "runtime"])
+                || !provenance.get("schema_version").isInt()
+                || provenance.get("schema_version").asInt() != 6
+                || !provenance.get("source").isObject()
+                || !provenance.get("runtime").isObject()) {
+            return "";
+        }
+        JsonValue identity = JsonValue.makeObject();
+        identity.set("schema_version", JsonValue.makeInt(6));
+        identity.set("source", provenance.get("source"));
+        identity.set("runtime", provenance.get("runtime"));
+        return SemuOwnedFileDigest.text(identity.document());
+    }
+
+    class int openBelow(int rootDescriptor, string relative, bool directory) {
+        return AppImageDescriptorTree.openBelow(
+            rootDescriptor, relative, directory);
+    }
+
+    class bool sameEntry(int parent, string name, int descriptor,
+                         unsigned long long device,
+                         unsigned long long inode, bool directory) {
+        if (parent < 0 || descriptor < 0 || name.isEmpty()) { return false; }
+        struct stat inspected;
+        struct stat opened;
+        bool correctKind = false;
+        if (fstat(descriptor, &opened) == 0) {
+            if (directory) {
+                correctKind = S_ISDIR(opened.st_mode) != 0;
+            } else {
+                correctKind = S_ISREG(opened.st_mode) != 0;
+            }
+        }
+        return fstatat(parent, name, &inspected, AT_SYMLINK_NOFOLLOW) == 0
+            && fstat(descriptor, &opened) == 0
+            && correctKind
+            && AppImageWorkSession.sameObject(&inspected, &opened)
+            && (unsigned long long)opened.st_dev == device
+            && (unsigned long long)opened.st_ino == inode;
+    }
+
+    class bool sameRelative(
+            AppImageRuntimeLease lease, string relative, int descriptor,
+            unsigned long long device, unsigned long long inode,
+            bool directory) {
+        int reopened = AppImageRuntimeLease.openBelow(
+            lease.rootDescriptor, relative, directory);
+        struct stat held;
+        struct stat current;
+        bool same = descriptor >= 0 && reopened >= 0
+            && fstat(descriptor, &held) == 0
+            && fstat(reopened, &current) == 0
+            && AppImageWorkSession.sameObject(&held, &current)
+            && (unsigned long long)held.st_dev == device
+            && (unsigned long long)held.st_ino == inode;
+        if (reopened >= 0) { close(reopened); }
+        return same;
+    }
+
+    class void closeDescriptors(AppImageRuntimeLease lease, bool unlock) {
+        if (unlock && lease.lockDescriptor >= 0) {
+            semuAppImageRuntimeLeaseLock(
+                lease.lockDescriptor, (int)LOCK_UN);
+        }
+        for node in lease.nodes { node.closeDescriptor(); }
+        lease.nodes = [];
+        lease.packaging.closeDescriptor();
+        lease.verifier.closeDescriptors();
+        lease.storeExportContractFile.closeDescriptors();
+        lease.exportContractFile.closeDescriptors();
+        lease.releaseMarker.closeDescriptors();
+        lease.ownership.closeDescriptors();
+        if (lease.prefixDescriptor >= 0) {
+            close(lease.prefixDescriptor);
+        }
+        if (lease.provenanceDescriptor >= 0) {
+            close(lease.provenanceDescriptor);
+        }
+        if (lease.inventoryDescriptor >= 0) {
+            close(lease.inventoryDescriptor);
+        }
+        if (lease.configDescriptor >= 0) {
+            close(lease.configDescriptor);
+        }
+        if (lease.rootDescriptor >= 0) {
+            close(lease.rootDescriptor);
+        }
+        if (lease.rootParentDescriptor >= 0) {
+            close(lease.rootParentDescriptor);
+        }
+        if (lease.lockDescriptor >= 0) {
+            close(lease.lockDescriptor);
+        }
+        if (lease.lockParentDescriptor >= 0) {
+            close(lease.lockParentDescriptor);
+        }
+        lease.prefixDescriptor = -1;
+        lease.provenanceDescriptor = -1;
+        lease.inventoryDescriptor = -1;
+        lease.configDescriptor = -1;
+        lease.rootDescriptor = -1;
+        lease.rootParentDescriptor = -1;
+        lease.lockDescriptor = -1;
+        lease.lockParentDescriptor = -1;
+    }
+
+    class AppImageRuntimeLease acquire(
+            string repoRoot, string runtimePublication,
+            string expectedPackageAttribute,
+            bool verifyExternalNix = true,
+            string expectedAssemblyAuthority = "",
+            string expectedBuilderRepository = "") {
+        AppImageRuntimeLease lease = AppImageRuntimeLease();
+        string repository = UnixFileSystem.realPath(repoRoot);
+        string publication =
+            SemuOwnedPaths.normalized(runtimePublication);
+        string cacheRoot = UnixFileSystem.realPath(
+            PathTools.dirname(publication));
+        string runtime = UnixFileSystem.realPath(publication);
+        if (repository.isEmpty() || publication.isEmpty()
+                || cacheRoot.isEmpty() || runtime.isEmpty()
+                || !expectedPackageAttribute.startsWith(
+                    "steamdeck-runtime")
+                || !PathTools.basename(publication).equals("runtime-root")
+                || !FileStatus(publication).isSymlink()
+                || !AppImagePathContract.realDirectory(repository)
+                || !AppImagePathContract.realDirectory(cacheRoot)
+                || !AppImagePathContract.realDirectory(runtime)) {
+            lease.error =
+                "runtime lease requires an owned runtime-root publication";
+            return lease;
+        }
+        string lock = PathTools.join(cacheRoot, "build.lock");
+        FileStatus lockStatus = FileStatus(lock);
+        if (!lockStatus.isFile() || lockStatus.isSymlink()) {
+            lease.error = "runtime builder lock is absent or unsafe";
+            return lease;
+        }
+        AppImagePathPlan plan = AppImagePathPlan();
+        plan.valid = true;
+        plan.repoRoot = repository;
+        plan.runtimeRoot = runtime;
+        plan.runtimePublication = publication;
+        plan.runtimeLock = lock;
+        return AppImageRuntimeLease.acquirePlan(
+            plan, expectedPackageAttribute, verifyExternalNix,
+            expectedAssemblyAuthority, expectedBuilderRepository);
+    }
+
+    class AppImageRuntimeLease acquirePlan(
+            AppImagePathPlan plan, string expectedPackageAttribute,
+            bool verifyExternalNix = true,
+            string expectedAssemblyAuthority = "",
+            string expectedBuilderRepository = "") {
+        AppImageRuntimeLease lease = AppImageRuntimeLease();
+        if (!plan.ok() || plan.runtimeRoot.isEmpty()
+                || plan.runtimePublication.isEmpty()
+                || plan.runtimeLock.isEmpty()) {
+            lease.error = "cannot lease an incomplete AppImage runtime plan";
+            return lease;
+        }
+
+        string lockName = PathTools.basename(plan.runtimeLock);
+        int lockParent = UnixFileSystem.openDirectoryNoFollow(
+            PathTools.dirname(plan.runtimeLock));
+        struct stat lockInspected;
+        int lockDescriptor = lockParent >= 0
+                && fstatat(lockParent, lockName, &lockInspected,
+                    AT_SYMLINK_NOFOLLOW) == 0
+                && S_ISREG(lockInspected.st_mode)
+            ? openat(lockParent, lockName,
+                (int)O_RDONLY | (int)O_NOFOLLOW | (int)O_CLOEXEC)
+            : -1;
+        struct stat lockStatus;
+        bool locked = lockDescriptor >= 0
+            && fstat(lockDescriptor, &lockStatus) == 0
+            && S_ISREG(lockStatus.st_mode)
+            && AppImageWorkSession.sameObject(
+                &lockInspected, &lockStatus)
+            && lockStatus.st_nlink == (nlink_t)1
+            && semuAppImageRuntimeLeaseLock(
+                lockDescriptor, (int)LOCK_SH | (int)LOCK_NB) == 0;
+        if (!locked) {
+            if (lockDescriptor >= 0) { close(lockDescriptor); }
+            if (lockParent >= 0) { close(lockParent); }
+            lease.error = "runtime builder is active or its lock is unsafe";
+            return lease;
+        }
+
+        AppImageRuntimeOwnershipLease ownership =
+            AppImageRuntimeOwnershipLease.acquire(
+                plan, expectedPackageAttribute,
+                expectedBuilderRepository);
+        if (!ownership.ok()) {
+            semuAppImageRuntimeLeaseLock(
+                lockDescriptor, (int)LOCK_UN);
+            close(lockDescriptor);
+            close(lockParent);
+            lease.error = ownership.error;
+            return lease;
+        }
+
+        string rootName = PathTools.basename(plan.runtimeRoot);
+        int rootParent = UnixFileSystem.openDirectoryNoFollow(
+            PathTools.dirname(plan.runtimeRoot));
+        struct stat rootInspected;
+        int rootDescriptor = rootParent >= 0
+                && fstatat(rootParent, rootName, &rootInspected,
+                    AT_SYMLINK_NOFOLLOW) == 0
+                && S_ISDIR(rootInspected.st_mode)
+            ? openat(rootParent, rootName,
+                (int)O_RDONLY | (int)O_DIRECTORY
+                    | (int)O_NOFOLLOW | (int)O_CLOEXEC)
+            : -1;
+        struct stat rootStatus;
+        bool rootBound = rootDescriptor >= 0
+            && fstat(rootDescriptor, &rootStatus) == 0
+            && S_ISDIR(rootStatus.st_mode)
+            && AppImageWorkSession.sameObject(
+                &rootInspected, &rootStatus)
+            && FileStatus(plan.runtimePublication).isSymlink()
+            && UnixFileSystem.realPath(plan.runtimePublication)
+                .equals(plan.runtimeRoot);
+
+        int configDescriptor = rootBound
+            ? AppImageRuntimeLease.openBelow(
+                rootDescriptor, "share/semu/config", true) : -1;
+        int provenanceDescriptor = rootBound
+            ? AppImageRuntimeLease.openBelow(rootDescriptor,
+                "share/semu/appimage-runtime-provenance.json", false) : -1;
+        int inventoryDescriptor = rootBound
+            ? AppImageRuntimeLease.openBelow(rootDescriptor,
+                "share/semu/appimage-release-inventory.json", false) : -1;
+        int prefixDescriptor = rootBound
+            ? AppImageRuntimeLease.openBelow(rootDescriptor,
+                "share/semu/appimage/runtime-x86_64", false) : -1;
+        struct stat configStatus;
+        struct stat provenanceStatus;
+        struct stat inventoryStatus;
+        struct stat prefixStatus;
+        Type2AppImageOffset prefix = prefixDescriptor >= 0
+            ? Type2AppImage.parseBareRuntimeDescriptor(prefixDescriptor)
+            : Type2AppImageOffset.failure(
+                "runtime prefix descriptor is absent");
+        string provenanceDigest = provenanceDescriptor >= 0
+            ? SemuOwnedFileDigest.descriptor(provenanceDescriptor) : "";
+        string inventoryDigest = inventoryDescriptor >= 0
+            ? SemuOwnedFileDigest.descriptor(inventoryDescriptor) : "";
+        string prefixDigest = prefixDescriptor >= 0
+            ? SemuOwnedFileDigest.descriptor(prefixDescriptor) : "";
+        string provenanceText = provenanceDescriptor >= 0
+            ? SemuOwnedFileContent.text(provenanceDescriptor) : "";
+        string inventoryText = inventoryDescriptor >= 0
+            ? SemuOwnedFileContent.text(inventoryDescriptor) : "";
+        JsonValue provenanceDocument = JsonValue.parse(provenanceText);
+        JsonValue inventoryDocument = JsonValue.parse(inventoryText);
+        AppImageReleaseInventoryResult releaseInventory =
+            AppImageReleaseInventoryLoader.parse(
+                inventoryDocument, inventoryText);
+        AppImageProvenanceJson sourceContract = releaseInventory.ok()
+            ? AppImageRuntimeProvenance.sourceContractForRelease(
+                plan.repoRoot, releaseInventory.inventory)
+            : AppImageProvenanceJson.failure(releaseInventory.error);
+        JsonValue releaseValue = provenanceDocument.get(
+            "release_identity_sha256");
+        string releaseDigest =
+            AppImageRuntimeLease.releaseDigest(provenanceDocument);
+        string nixProofText = ownership.nixProofDescriptor >= 0
+            ? SemuOwnedFileContent.text(
+                ownership.nixProofDescriptor) : "";
+        AppImageNixReleaseProof nixProof =
+            AppImageNixReleaseProof.parse(
+                nixProofText, expectedPackageAttribute,
+                provenanceDigest, releaseDigest);
+        string exportContractRelative =
+            "share/semu/runtime-export-contract.json";
+        string storeExportContractRelative = nixProof.ok()
+            ? "nix/store/" + PathTools.basename(nixProof.targetStorePath)
+                + "/share/semu/runtime-export-contract.json"
+            : "";
+        AppImageHeldFileLease releaseMarker = rootBound
+            ? AppImageHeldFileLease.captureRelative(rootDescriptor,
+                "share/semu/release-store-path.txt")
+            : AppImageHeldFileLease();
+        AppImageHeldFileLease exportContractFile = rootBound
+            ? AppImageHeldFileLease.captureRelative(
+                rootDescriptor, exportContractRelative)
+            : AppImageHeldFileLease();
+        AppImageHeldFileLease storeExportContractFile = rootBound
+                && !storeExportContractRelative.isEmpty()
+            ? AppImageHeldFileLease.captureRelative(
+                rootDescriptor, storeExportContractRelative)
+            : AppImageHeldFileLease();
+        AppImageHeldFileLease verifier = rootBound
+            ? AppImageHeldFileLease.captureRelative(
+                rootDescriptor, "lib/semu/semu-btrc", true)
+            : AppImageHeldFileLease();
+        string exportContractText = exportContractFile.ok()
+            ? SemuOwnedFileContent.text(exportContractFile.descriptor) : "";
+        string storeExportContractText = storeExportContractFile.ok()
+            ? SemuOwnedFileContent.text(
+                storeExportContractFile.descriptor) : "";
+        AppImageRuntimeExportContract exportContract =
+            exportContractText.equals(storeExportContractText)
+                ? AppImageRuntimeExportContract.parse(exportContractText)
+                : AppImageRuntimeExportContract();
+        AppImageProvenanceJson stagedClosure = nixProof.ok()
+            ? AppImageRuntimeProvenance.runtimeStoreEntries(
+                plan.runtimeRoot, nixProof.targetStorePath)
+            : AppImageProvenanceJson.failure(
+                "runtime Nix release proof is unavailable");
+        string stagedClosureDigest = stagedClosure.ok()
+            ? SemuOwnedFileDigest.text(
+                stagedClosure.value.document()) : "";
+        JsonValue coreDirectoryValue = provenanceDocument.get("runtime")
+            .get("selected_cores").get("directory");
+        string coreDirectory = coreDirectoryValue.isString()
+            ? coreDirectoryValue.asString() : "";
+        Vector<AppImageRuntimeNodeLease> nodes = [];
+        if (rootBound && AppImageRuntimeInventory.safeRelative(coreDirectory)) {
+            for relative in [
+                    "bin", "lib", "share", "nix/store", coreDirectory] {
+                Vector<string> excluded = [];
+                if (relative.equals("share")) {
+                    excluded = [
+                        "semu/appimage-runtime-provenance.json",
+                        "semu/release-store-path.txt",
+                        "semu/runtime-export-contract.json"
+                    ];
+                }
+                AppImageRuntimeNodeLease node =
+                    AppImageRuntimeNodeLease.captureFiltered(
+                        rootDescriptor, relative, excluded);
+                if (!node.ok()) {
+                    for capturedNode in nodes {
+                        capturedNode.closeDescriptor();
+                    }
+                    nodes = [];
+                    coreDirectory = "";
+                    break;
+                }
+                nodes.push(node);
+            }
+        }
+        AppImageRuntimeNodeLease packaging = rootBound
+            ? AppImageRuntimeNodeLease.capture(
+                rootDescriptor, "share/semu/appimage-packaging")
+            : AppImageRuntimeNodeLease();
+        JsonValue descriptorTree = provenanceDocument.get("runtime")
+            .get("descriptor_tree");
+        bool exactNodes = descriptorTree.isArray()
+            && descriptorTree.size() == nodes.size();
+        bool exactExportNodes = exportContract.ok();
+        for node in nodes {
+            exactNodes = exactNodes
+                && node.digest.equals(
+                    AppImageRuntimeLease.descriptorDigest(
+                        descriptorTree, node.relative));
+            string exportDigest = exportContract.digestFor(node.relative);
+            if (!exportDigest.isEmpty()) {
+                exactExportNodes = exactExportNodes
+                    && node.digest.equals(exportDigest);
+            }
+        }
+        JsonValue prefixEvidence = provenanceDocument.get("runtime")
+            .get("appimage_runtime").get("runtime_file").get("sha256");
+        bool captured = ownership.stillBound() && sourceContract.ok()
+            && releaseInventory.ok() && prefix.ok()
+            && releaseInventory.inventory.packageAttribute.equals(
+                expectedPackageAttribute)
+            && fstat(configDescriptor, &configStatus) == 0
+            && fstat(provenanceDescriptor, &provenanceStatus) == 0
+            && fstat(inventoryDescriptor, &inventoryStatus) == 0
+            && fstat(prefixDescriptor, &prefixStatus) == 0
+            && S_ISDIR(configStatus.st_mode)
+            && S_ISREG(provenanceStatus.st_mode)
+            && S_ISREG(inventoryStatus.st_mode)
+            && S_ISREG(prefixStatus.st_mode)
+            && provenanceStatus.st_nlink == (nlink_t)1
+            && inventoryStatus.st_nlink == (nlink_t)1
+            && prefixStatus.st_nlink == (nlink_t)1
+            && provenanceText.equals(provenanceDocument.document())
+            && provenanceDocument.get("source").document()
+                .equals(sourceContract.value.document())
+            && provenanceDocument.get("source")
+                .get("release_inventory").document()
+                .equals(releaseInventory.inventory.json().document())
+            && releaseValue.isString()
+            && AppImageRuntimeLease.lowerSha256(releaseValue.asString())
+            && releaseValue.asString().equals(releaseDigest)
+            && AppImageRuntimeLease.lowerSha256(provenanceDigest)
+            && AppImageRuntimeLease.lowerSha256(inventoryDigest)
+            && AppImageRuntimeLease.lowerSha256(prefixDigest)
+            && prefixEvidence.isString()
+            && prefixEvidence.asString().equals(prefixDigest)
+            && prefix.offset == (long long)prefixStatus.st_size
+            && !coreDirectory.isEmpty() && nodes.size() == 5
+            && exactNodes && exactExportNodes && nixProof.ok()
+            && releaseMarker.ok() && exportContractFile.ok()
+            && storeExportContractFile.ok() && verifier.ok()
+            && packaging.ok() && exportContract.ok()
+            && SemuOwnedFileContent.text(releaseMarker.descriptor)
+                .equals(nixProof.targetStorePath + "\n")
+            && exportContractFile.digest.equals(
+                storeExportContractFile.digest)
+            && stagedClosure.ok()
+            && stagedClosureDigest.equals(nixProof.closureDigest)
+            && stagedClosure.value.document().equals(
+                provenanceDocument.get("runtime")
+                    .get("nix_store_closure").document())
+            && nixProof.targetStorePath.equals(
+                provenanceDocument.get("source")
+                    .get("target_output_store_path").asString());
+        string assemblyAuthority = captured
+            ? AppImageRuntimeLease.assemblyAuthorityValues(
+                expectedPackageAttribute, releaseDigest,
+                provenanceDigest, inventoryDigest, prefixDigest,
+                ownership.nixProofDigest, nixProof.closureDigest,
+                nixProof.sourceStorePath, nixProof.targetStorePath)
+            : "";
+        bool authorityValid = false;
+        if (verifyExternalNix) {
+            authorityValid = expectedAssemblyAuthority.isEmpty();
+        } else {
+            authorityValid = AppImageRuntimeLease.lowerSha256(
+                    expectedAssemblyAuthority)
+                && expectedAssemblyAuthority.equals(assemblyAuthority);
+        }
+        string captureError = "";
+        if (!captured) {
+            if (!ownership.stillBound()) {
+                captureError = "runtime ownership markers changed while leasing";
+            } else if (!sourceContract.ok()) {
+                captureError = sourceContract.error;
+            } else if (!releaseInventory.ok()) {
+                captureError = releaseInventory.error;
+            } else if (!prefix.ok()) {
+                captureError = prefix.error;
+            } else if (!nixProof.ok()) {
+                captureError = nixProof.error;
+            } else if (!provenanceText.equals(
+                    provenanceDocument.document())) {
+                captureError = "runtime provenance JSON is not canonical";
+            } else if (!provenanceDocument.get("source").document()
+                    .equals(sourceContract.value.document())) {
+                captureError = "runtime provenance differs from its frozen source contract";
+            } else if (!provenanceDocument.get("source")
+                    .get("release_inventory").document()
+                    .equals(releaseInventory.inventory.json().document())) {
+                captureError = "runtime provenance differs from its release inventory";
+            } else if (!releaseMarker.ok() || !exportContractFile.ok()
+                    || !storeExportContractFile.ok() || !verifier.ok()
+                    || !packaging.ok()) {
+                captureError = "runtime release files are absent or unsafe";
+            } else if (!exportContract.ok()) {
+                captureError = exportContract.error.isEmpty()
+                    ? "runtime export contract is invalid"
+                    : exportContract.error;
+            } else if (nodes.size() != 5) {
+                captureError = "runtime payload lease did not capture five required nodes";
+            } else if (!exactNodes) {
+                captureError = "runtime payload differs from its provenance descriptor tree";
+            } else if (!exactExportNodes) {
+                captureError = "runtime payload differs from its Nix export contract";
+            } else if (!stagedClosure.ok()) {
+                captureError = stagedClosure.error;
+            } else if (!stagedClosureDigest.equals(nixProof.closureDigest)
+                    || !stagedClosure.value.document().equals(
+                        provenanceDocument.get("runtime")
+                            .get("nix_store_closure").document())) {
+                captureError = "runtime staged closure differs from its Nix proof";
+            } else {
+                captureError = "runtime descriptor metadata failed exact lease checks";
+            }
+        }
+        AppImageNixProofResult nixVerified = !captured
+            ? AppImageNixProofResult.failure(captureError)
+            : !authorityValid
+                ? AppImageNixProofResult.failure(
+                    "native AppImage worker authority disagrees with the host lease")
+                : verifyExternalNix ? nixProof.verify()
+                    : AppImageNixProofResult.success();
+        captured = captured && nixVerified.ok()
+            && ownership.stillBound()
+            && packaging.contentsStillBound(rootDescriptor)
+            && releaseMarker.stillBound(rootDescriptor)
+            && exportContractFile.stillBound(rootDescriptor)
+            && storeExportContractFile.stillBound(rootDescriptor)
+            && verifier.stillBound(rootDescriptor);
+        if (!captured) {
+            for node in nodes { node.closeDescriptor(); }
+            packaging.closeDescriptor();
+            verifier.closeDescriptors();
+            storeExportContractFile.closeDescriptors();
+            exportContractFile.closeDescriptors();
+            releaseMarker.closeDescriptors();
+            if (prefixDescriptor >= 0) { close(prefixDescriptor); }
+            if (inventoryDescriptor >= 0) { close(inventoryDescriptor); }
+            if (provenanceDescriptor >= 0) { close(provenanceDescriptor); }
+            if (configDescriptor >= 0) { close(configDescriptor); }
+            if (rootDescriptor >= 0) { close(rootDescriptor); }
+            if (rootParent >= 0) { close(rootParent); }
+            ownership.closeDescriptors();
+            semuAppImageRuntimeLeaseLock(
+                lockDescriptor, (int)LOCK_UN);
+            close(lockDescriptor);
+            close(lockParent);
+            lease.error = sourceContract.ok()
+                ? !nixVerified.ok() ? nixVerified.error
+                    : "runtime lease could not bind its exact generation inputs"
+                : sourceContract.error;
+            return lease;
+        }
+
+        lease.builderRepository = expectedBuilderRepository.isEmpty()
+            ? plan.repoRoot : expectedBuilderRepository;
+        lease.runtimeRoot = plan.runtimeRoot;
+        lease.runtimePublication = plan.runtimePublication;
+        lease.lockName = lockName;
+        lease.rootName = rootName;
+        lease.releaseIdentity = releaseValue.asString();
+        lease.provenanceDigest = provenanceDigest;
+        lease.inventoryDigest = inventoryDigest;
+        lease.prefixDigest = prefixDigest;
+        lease.coreDirectory = coreDirectory;
+        lease.inventory = releaseInventory.inventory;
+        lease.nixProof = nixProof;
+        lease.exportContract = exportContract;
+        lease.ownership = ownership;
+        lease.releaseMarker = releaseMarker;
+        lease.exportContractFile = exportContractFile;
+        lease.storeExportContractFile = storeExportContractFile;
+        lease.verifier = verifier;
+        lease.packaging = packaging;
+        lease.nodes = nodes;
+        lease.prefixBytes = prefix.offset;
+        lease.lockParentDescriptor = lockParent;
+        lease.lockDescriptor = lockDescriptor;
+        lease.rootParentDescriptor = rootParent;
+        lease.rootDescriptor = rootDescriptor;
+        lease.configDescriptor = configDescriptor;
+        lease.provenanceDescriptor = provenanceDescriptor;
+        lease.inventoryDescriptor = inventoryDescriptor;
+        lease.prefixDescriptor = prefixDescriptor;
+        lease.lockDevice = (unsigned long long)lockStatus.st_dev;
+        lease.lockInode = (unsigned long long)lockStatus.st_ino;
+        lease.rootDevice = (unsigned long long)rootStatus.st_dev;
+        lease.rootInode = (unsigned long long)rootStatus.st_ino;
+        lease.configDevice = (unsigned long long)configStatus.st_dev;
+        lease.configInode = (unsigned long long)configStatus.st_ino;
+        lease.provenanceDevice =
+            (unsigned long long)provenanceStatus.st_dev;
+        lease.provenanceInode =
+            (unsigned long long)provenanceStatus.st_ino;
+        lease.provenanceSize =
+            (unsigned long long)provenanceStatus.st_size;
+        lease.provenanceMode = SemuOwnedPaths.permissions(provenanceStatus.st_mode);
+        lease.inventoryDevice =
+            (unsigned long long)inventoryStatus.st_dev;
+        lease.inventoryInode =
+            (unsigned long long)inventoryStatus.st_ino;
+        lease.inventorySize =
+            (unsigned long long)inventoryStatus.st_size;
+        lease.inventoryMode = SemuOwnedPaths.permissions(inventoryStatus.st_mode);
+        lease.prefixDevice = (unsigned long long)prefixStatus.st_dev;
+        lease.prefixInode = (unsigned long long)prefixStatus.st_ino;
+        lease.prefixSize = (unsigned long long)prefixStatus.st_size;
+        lease.prefixMode = SemuOwnedPaths.permissions(prefixStatus.st_mode);
+        lease.valid = true;
+        return lease;
+    }
+
+    public bool stillBound() {
+        if (!self.valid || self.builderRepository.isEmpty()
+                || !self.ownership.stillBound()
+                || !self.releaseMarker.stillBound(self.rootDescriptor)
+                || !self.exportContractFile.stillBound(self.rootDescriptor)
+                || !self.storeExportContractFile.stillBound(
+                    self.rootDescriptor)
+                || !self.verifier.stillBound(self.rootDescriptor)
+                || !self.packaging.contentsStillBound(self.rootDescriptor)
+                || self.lockDescriptor < 0
+                || self.rootDescriptor < 0
+                || self.configDescriptor < 0
+                || self.provenanceDescriptor < 0
+                || self.inventoryDescriptor < 0
+                || self.prefixDescriptor < 0
+                || !FileStatus(self.runtimePublication).isSymlink()
+                || !UnixFileSystem.realPath(self.runtimePublication)
+                    .equals(self.runtimeRoot)
+                || !AppImageRuntimeLease.sameEntry(
+                    self.lockParentDescriptor, self.lockName,
+                    self.lockDescriptor, self.lockDevice,
+                    self.lockInode, false)
+                || !AppImageRuntimeLease.sameEntry(
+                    self.rootParentDescriptor, self.rootName,
+                    self.rootDescriptor, self.rootDevice,
+                    self.rootInode, true)
+                || !AppImageRuntimeLease.sameRelative(
+                    self, "share/semu/config", self.configDescriptor,
+                    self.configDevice, self.configInode, true)
+                || !AppImageRuntimeLease.sameRelative(
+                    self, "share/semu/appimage-runtime-provenance.json",
+                    self.provenanceDescriptor, self.provenanceDevice,
+                    self.provenanceInode, false)
+                || !AppImageRuntimeLease.sameRelative(
+                    self, "share/semu/appimage-release-inventory.json",
+                    self.inventoryDescriptor, self.inventoryDevice,
+                    self.inventoryInode, false)
+                || !AppImageRuntimeLease.sameRelative(
+                    self, "share/semu/appimage/runtime-x86_64",
+                    self.prefixDescriptor, self.prefixDevice,
+                    self.prefixInode, false)) {
+            return false;
+        }
+        for node in self.nodes {
+            if (!node.stillBound(self.rootDescriptor)) { return false; }
+        }
+        struct stat provenanceStatus;
+        struct stat inventoryStatus;
+        struct stat prefixStatus;
+        Type2AppImageOffset prefix =
+            Type2AppImage.parseBareRuntimeDescriptor(
+                self.prefixDescriptor);
+        return fstat(self.provenanceDescriptor, &provenanceStatus) == 0
+            && fstat(self.inventoryDescriptor, &inventoryStatus) == 0
+            && fstat(self.prefixDescriptor, &prefixStatus) == 0
+            && (unsigned long long)provenanceStatus.st_size
+                == self.provenanceSize
+            && SemuOwnedPaths.permissions(provenanceStatus.st_mode) == self.provenanceMode
+            && (unsigned long long)inventoryStatus.st_size
+                == self.inventorySize
+            && SemuOwnedPaths.permissions(inventoryStatus.st_mode) == self.inventoryMode
+            && (unsigned long long)prefixStatus.st_size == self.prefixSize
+            && SemuOwnedPaths.permissions(prefixStatus.st_mode) == self.prefixMode
+            && prefix.ok() && prefix.offset == self.prefixBytes
+            && SemuOwnedFileDigest.descriptor(
+                self.provenanceDescriptor).equals(self.provenanceDigest)
+            && SemuOwnedFileDigest.descriptor(
+                self.inventoryDescriptor).equals(self.inventoryDigest)
+            && SemuOwnedFileDigest.descriptor(
+                self.prefixDescriptor).equals(self.prefixDigest);
+    }
+
+    public SemuInstallResult importNode(
+            string relative, int destinationRootDescriptor,
+            string destinationRelative) {
+        if (!self.stillBound()
+                || !SemuOwnedPaths.safeRelativePath(destinationRelative)) {
+            return SemuInstallResult.failure(
+                "runtime lease is not bound for descriptor import");
+        }
+        int destination = AppImageDescriptorTree.openBelow(
+            destinationRootDescriptor, destinationRelative, true);
+        if (destination < 0) {
+            return SemuInstallResult.failure(
+                "runtime import destination is not descriptor-bound: "
+                    + destinationRelative);
+        }
+        SemuInstallResult imported = SemuInstallResult.failure(
+            "runtime node is not part of the lease: " + relative);
+        for node in self.nodes {
+            if (node.relative.equals(relative)) {
+                imported = node.importTo(destination);
+            }
+        }
+        bool closed = close(destination) == 0;
+        return imported.ok() && closed && self.stillBound()
+            ? imported : SemuInstallResult.failure(!imported.ok()
+                ? imported.error
+                : !closed ? "runtime import destination could not be closed"
+                : "runtime lease changed while importing " + relative);
+    }
+
+    public string packagingPath() {
+        return PathTools.join(self.runtimeRoot, self.packaging.relative);
+    }
+
+    public SemuInstallResult importPackagingFile(
+            string sourceRelative, int destinationRootDescriptor,
+            string destinationRelative) {
+        string packagingPrefix = self.packaging.relative + "/";
+        if (!self.stillBound()
+                || !sourceRelative.startsWith(packagingPrefix)
+                || !SemuOwnedPaths.safeRelativePath(sourceRelative)
+                || !SemuOwnedPaths.safeRelativePath(destinationRelative)) {
+            return SemuInstallResult.failure(
+                "runtime packaging lease is not bound for file import");
+        }
+        AppImageHeldFileLease source =
+            AppImageHeldFileLease.captureRelative(
+                self.rootDescriptor, sourceRelative);
+        bool anchored = source.ok()
+            && self.packaging.contentsStillBound(self.rootDescriptor);
+        SemuInstallResult imported = anchored
+            ? source.copyTo(destinationRootDescriptor,
+                destinationRelative, self.rootDescriptor)
+            : SemuInstallResult.failure(source.ok()
+                ? "runtime packaging changed before file import"
+                : source.error);
+        bool remainedBound = imported.ok()
+            && source.stillBound(self.rootDescriptor)
+            && self.packaging.contentsStillBound(self.rootDescriptor)
+            && self.stillBound();
+        source.closeDescriptors();
+        return remainedBound ? imported
+            : SemuInstallResult.failure(!imported.ok() ? imported.error
+                : "runtime packaging changed while importing "
+                    + sourceRelative);
+    }
+
+    public SemuInstallResult importTree(
+            string sourceRelative, int destinationRootDescriptor,
+            string destinationRelative) {
+        if (!self.stillBound()
+                || !sourceRelative.equals(self.packaging.relative)
+                || !SemuOwnedPaths.safeRelativePath(destinationRelative)) {
+            return SemuInstallResult.failure(
+                "runtime lease is not bound for subtree import");
+        }
+        int destination = AppImageDescriptorTree.openBelow(
+            destinationRootDescriptor, destinationRelative, true);
+        bool anchored = self.packaging.contentsStillBound(self.rootDescriptor);
+        SemuInstallResult imported = anchored && destination >= 0
+            ? self.packaging.importTo(destination)
+            : SemuInstallResult.failure(!anchored
+                ? "runtime packaging changed before subtree import"
+                : "runtime subtree destination is not descriptor-bound: "
+                    + destinationRelative);
+        bool destinationClosed = destination < 0 || close(destination) == 0;
+        return imported.ok() && destinationClosed
+                && self.packaging.contentsStillBound(self.rootDescriptor)
+                && self.stillBound()
+            ? imported : SemuInstallResult.failure(!imported.ok()
+                ? imported.error
+                : !destinationClosed
+                    ? "runtime subtree destination could not be closed"
+                    : "runtime lease changed while importing "
+                        + sourceRelative);
+    }
+
+    public AppImageContractResult finish() {
+        if (!self.valid) {
+            return AppImageContractResult.failure(
+                "AppImage runtime lease is not held");
+        }
+        bool bound = self.stillBound();
+        bool unlocked = self.lockDescriptor >= 0
+            && semuAppImageRuntimeLeaseLock(
+                self.lockDescriptor, (int)LOCK_UN) == 0;
+        AppImageRuntimeLease.closeDescriptors(self, false);
+        self.valid = false;
+        return bound && unlocked
+            ? AppImageContractResult.success()
+            : AppImageContractResult.failure(
+                "AppImage runtime lease changed or could not be released");
+    }
+}
+
+class AppImageVerificationSnapshot {
+    public bool valid;
+    public string sourcePath;
+    public string sourceName;
+    public string directory;
+    public string path;
+    public string digest;
+    public int sourceParentDescriptor;
+    public int sourceDescriptor;
+    public int directoryDescriptor;
+    public int descriptor;
+    public unsigned long long sourceDevice;
+    public unsigned long long sourceInode;
+    public unsigned long long sourceSize;
+    public int sourceMode;
+    public unsigned long long device;
+    public unsigned long long inode;
+    public unsigned long long size;
+    public int mode;
+    public string error;
+
+    public AppImageVerificationSnapshot() {
+        self.valid = false;
+        self.sourcePath = "";
+        self.sourceName = "";
+        self.directory = "";
+        self.path = "";
+        self.digest = "";
+        self.sourceParentDescriptor = -1;
+        self.sourceDescriptor = -1;
+        self.directoryDescriptor = -1;
+        self.descriptor = -1;
+        self.sourceDevice = 0ULL;
+        self.sourceInode = 0ULL;
+        self.sourceSize = 0ULL;
+        self.sourceMode = 0;
+        self.device = 0ULL;
+        self.inode = 0ULL;
+        self.size = 0ULL;
+        self.mode = 0;
+        self.error = "";
+    }
+
+    public bool ok() { return self.valid; }
+
+    class void closeDescriptors(AppImageVerificationSnapshot snapshot) {
+        if (snapshot.descriptor >= 0) {
+            close(snapshot.descriptor);
+            snapshot.descriptor = -1;
+        }
+        if (snapshot.directoryDescriptor >= 0) {
+            close(snapshot.directoryDescriptor);
+            snapshot.directoryDescriptor = -1;
+        }
+        if (snapshot.sourceDescriptor >= 0) {
+            close(snapshot.sourceDescriptor);
+            snapshot.sourceDescriptor = -1;
+        }
+        if (snapshot.sourceParentDescriptor >= 0) {
+            close(snapshot.sourceParentDescriptor);
+            snapshot.sourceParentDescriptor = -1;
+        }
+    }
+
+    class AppImageVerificationSnapshot capture(
+            AppImageWorkSession session, string sourcePath) {
+        AppImageVerificationSnapshot snapshot =
+            AppImageVerificationSnapshot();
+        string source = SemuOwnedPaths.normalized(sourcePath);
+        if (!session.ok() || !session.stillBound() || source.isEmpty()) {
+            snapshot.error = "cannot snapshot an invalid AppImage source/session";
+            return snapshot;
+        }
+
+        string sourceName = PathTools.basename(source);
+        int sourceParent = UnixFileSystem.openDirectoryNoFollow(
+            PathTools.dirname(source));
+        struct stat inspected;
+        int sourceDescriptor = sourceParent < 0 ? -1 : openat(
+            sourceParent, sourceName,
+            (int)O_RDONLY | (int)O_NOFOLLOW
+                | (int)O_NONBLOCK | (int)O_CLOEXEC);
+        struct stat sourceStatus;
+        bool sourceValid = sourceParent >= 0 && sourceDescriptor >= 0
+            && fstatat(sourceParent, sourceName, &inspected,
+                AT_SYMLINK_NOFOLLOW) == 0
+            && fstat(sourceDescriptor, &sourceStatus) == 0
+            && S_ISREG(inspected.st_mode) && S_ISREG(sourceStatus.st_mode)
+            && AppImageWorkSession.sameObject(&inspected, &sourceStatus)
+            && sourceStatus.st_size > (off_t)0
+            && (sourceStatus.st_mode & 73) != 0 // at least one executable bit
+            && sourceStatus.st_nlink == (nlink_t)1;
+        if (!sourceValid) {
+            if (sourceDescriptor >= 0) { close(sourceDescriptor); }
+            if (sourceParent >= 0) { close(sourceParent); }
+            snapshot.error = "AppImage source is not one bound executable regular inode";
+            return snapshot;
+        }
+
+        string directoryName = "artifact-snapshot";
+        bool directoryCreated = semuAppImageMkdirAt(
+            session.rootDescriptor, directoryName, 448) == 0; // 0700
+        int directoryDescriptor = directoryCreated ? openat(
+            session.rootDescriptor, directoryName,
+            (int)O_RDONLY | (int)O_DIRECTORY
+                | (int)O_NOFOLLOW | (int)O_CLOEXEC) : -1;
+        int destination = directoryDescriptor < 0 ? -1 : openat(
+            directoryDescriptor, "Semu.AppImage",
+            (int)O_RDWR | (int)O_CREAT | (int)O_EXCL
+                | (int)O_NOFOLLOW | (int)O_CLOEXEC,
+            (mode_t)320); // 0500
+        if (destination < 0) {
+            if (directoryDescriptor >= 0) { close(directoryDescriptor); }
+            close(sourceDescriptor);
+            close(sourceParent);
+            snapshot.error = "cannot create a private AppImage verification snapshot";
+            return snapshot;
+        }
+
+        string sourceDigest = SemuOwnedFileDigest.descriptor(sourceDescriptor);
+        bool copied = !sourceDigest.isEmpty()
+            && SemuOwnedFileImport.copy(sourceDescriptor, destination)
+            && fsync(destination) == 0
+            && fchmod(destination, (mode_t)320) == 0;
+        struct stat sourceAfter;
+        struct stat destinationStatus;
+        string sourceAfterDigest = copied
+            ? SemuOwnedFileDigest.descriptor(sourceDescriptor) : "";
+        string destinationDigest = copied
+            ? SemuOwnedFileDigest.descriptor(destination) : "";
+        copied = copied && fstat(sourceDescriptor, &sourceAfter) == 0
+            && fstat(destination, &destinationStatus) == 0
+            && AppImageWorkSession.sameObject(&sourceStatus, &sourceAfter)
+            && sourceStatus.st_size == sourceAfter.st_size
+            && S_ISREG(destinationStatus.st_mode)
+            && destinationStatus.st_size == sourceStatus.st_size
+            && destinationStatus.st_nlink == (nlink_t)1
+            && SemuOwnedPaths.permissions(destinationStatus.st_mode) == 320
+            && sourceDigest.equals(sourceAfterDigest)
+            && sourceDigest.equals(destinationDigest)
+            && fchmod(directoryDescriptor, (mode_t)320) == 0; // 0500
+        if (!copied) {
+            close(destination);
+            close(directoryDescriptor);
+            close(sourceDescriptor);
+            close(sourceParent);
+            snapshot.error = "AppImage verification snapshot differs from its source inode";
+            return snapshot;
+        }
+        close(destination);
+        int sealedDescriptor = openat(directoryDescriptor, "Semu.AppImage",
+            (int)O_RDONLY | (int)O_NOFOLLOW | (int)O_CLOEXEC);
+        struct stat sealedStatus;
+        string sealedDigest = sealedDescriptor >= 0
+            ? SemuOwnedFileDigest.descriptor(sealedDescriptor) : "";
+        if (sealedDescriptor < 0 || fstat(sealedDescriptor, &sealedStatus) != 0
+                || !AppImageWorkSession.sameObject(
+                    &destinationStatus, &sealedStatus)
+                || sealedStatus.st_size != destinationStatus.st_size
+                || SemuOwnedPaths.permissions(sealedStatus.st_mode) != 320
+                || !sealedDigest.equals(destinationDigest)) {
+            if (sealedDescriptor >= 0) { close(sealedDescriptor); }
+            close(directoryDescriptor);
+            close(sourceDescriptor);
+            close(sourceParent);
+            snapshot.error = "sealed AppImage snapshot could not be reopened read-only";
+            return snapshot;
+        }
+
+        snapshot.sourcePath = source;
+        snapshot.sourceName = sourceName;
+        snapshot.directory = PathTools.join(session.path, directoryName);
+        snapshot.path = PathTools.join(snapshot.directory, "Semu.AppImage");
+        snapshot.digest = destinationDigest;
+        snapshot.sourceParentDescriptor = sourceParent;
+        snapshot.sourceDescriptor = sourceDescriptor;
+        snapshot.directoryDescriptor = directoryDescriptor;
+        snapshot.descriptor = sealedDescriptor;
+        snapshot.sourceDevice = (unsigned long long)sourceStatus.st_dev;
+        snapshot.sourceInode = (unsigned long long)sourceStatus.st_ino;
+        snapshot.sourceSize = (unsigned long long)sourceStatus.st_size;
+        snapshot.sourceMode = SemuOwnedPaths.permissions(sourceStatus.st_mode);
+        snapshot.device = (unsigned long long)destinationStatus.st_dev;
+        snapshot.inode = (unsigned long long)destinationStatus.st_ino;
+        snapshot.size = (unsigned long long)destinationStatus.st_size;
+        snapshot.mode = SemuOwnedPaths.permissions(destinationStatus.st_mode);
+        snapshot.valid = true;
+        return snapshot;
+    }
+
+    public bool sourceStillBound() {
+        if (!self.valid || self.sourceParentDescriptor < 0
+                || self.sourceDescriptor < 0) {
+            return false;
+        }
+        struct stat opened;
+        struct stat inspected;
+        string digest = SemuOwnedFileDigest.descriptor(self.sourceDescriptor);
+        return fstat(self.sourceDescriptor, &opened) == 0
+            && fstatat(self.sourceParentDescriptor, self.sourceName, &inspected,
+                AT_SYMLINK_NOFOLLOW) == 0
+            && S_ISREG(opened.st_mode) && S_ISREG(inspected.st_mode)
+            && AppImageWorkSession.sameObject(&opened, &inspected)
+            && (unsigned long long)opened.st_dev == self.sourceDevice
+            && (unsigned long long)opened.st_ino == self.sourceInode
+            && (unsigned long long)opened.st_size == self.sourceSize
+            && SemuOwnedPaths.permissions(opened.st_mode) == self.sourceMode
+            && opened.st_nlink == (nlink_t)1
+            && digest.equals(self.digest);
+    }
+
+    public bool snapshotStillBound() {
+        if (!self.valid || self.directoryDescriptor < 0
+                || self.descriptor < 0) {
+            return false;
+        }
+        struct stat opened;
+        struct stat inspected;
+        string digest = SemuOwnedFileDigest.descriptor(self.descriptor);
+        return fstat(self.descriptor, &opened) == 0
+            && fstatat(self.directoryDescriptor, "Semu.AppImage", &inspected,
+                AT_SYMLINK_NOFOLLOW) == 0
+            && S_ISREG(opened.st_mode) && S_ISREG(inspected.st_mode)
+            && AppImageWorkSession.sameObject(&opened, &inspected)
+            && (unsigned long long)opened.st_dev == self.device
+            && (unsigned long long)opened.st_ino == self.inode
+            && (unsigned long long)opened.st_size == self.size
+            && SemuOwnedPaths.permissions(opened.st_mode) == self.mode
+            && opened.st_nlink == (nlink_t)1
+            && digest.equals(self.digest);
+    }
+
+    public AppImageContractResult finish() {
+        if (!self.valid) {
+            return AppImageContractResult.failure(
+                "AppImage verification snapshot is not held");
+        }
+        bool bound = self.snapshotStillBound();
+        bool writable = self.directoryDescriptor >= 0
+            && fchmod(self.directoryDescriptor, (mode_t)448) == 0; // 0700
+        AppImageVerificationSnapshot.closeDescriptors(self);
+        self.valid = false;
+        return bound && writable ? AppImageContractResult.success()
+            : AppImageContractResult.failure(
+                "AppImage verification snapshot changed before release");
+    }
+}

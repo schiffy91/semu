@@ -55,13 +55,40 @@ forAllSystems (
     semuRenderer = pkgs.callPackage ../renderer.nix {
       inherit btrcpy repositoryRoot;
     };
+    appImageAssemblyTools =
+      if isLinux then
+        pkgs.symlinkJoin {
+          name = "semu-appimage-assembly-tools";
+          paths = [
+            pkgs.squashfsTools
+          ];
+        }
+      else
+        null;
+    appImageWorker =
+      if isLinux then
+        pkgs.symlinkJoin {
+          name = "semu-appimage-worker";
+          paths = [
+            semuProgram
+            appImageAssemblyTools
+          ];
+          postBuild = ''
+            mkdir -p "$out/bin"
+            ln -s ../lib/semu/semu-btrc "$out/bin/semu-btrc"
+          '';
+          meta.mainProgram = "semu-btrc";
+        }
+      else
+        null;
     semuEmulators = pkgs.callPackage ../emulators.nix {
-      inherit semuRenderer;
+      inherit btrcpy semuRenderer;
     };
 
-    steamDeck =
-      if isSteamDeckBuild then
-        import ./steam-deck-package.nix {
+    steamDeckPackage =
+      options:
+      import ./steam-deck-package.nix (
+        {
           inherit
             pkgs
             lib
@@ -76,6 +103,22 @@ forAllSystems (
             ;
           semuBezels = visualAssets.bezels;
           semuShaders = visualAssets.shaders;
+        }
+        // options
+      );
+
+    steamDeck =
+      if isSteamDeckBuild then
+        steamDeckPackage { }
+      else
+        null;
+
+    steamDeckRetroarch =
+      if isSteamDeckBuild then
+        steamDeckPackage {
+          selectedEmulatorIds = [ "retroarch" ];
+          packageAttribute = "steamdeck-runtime-retroarch";
+          releaseKind = "emulator-slice";
         }
       else
         null;
@@ -124,9 +167,14 @@ forAllSystems (
     semu-shaders = visualAssets.shaders;
     visual-assets = visualAssets.combined;
   }
+  // lib.optionalAttrs isLinux {
+    appimage-assembly-tools = appImageAssemblyTools;
+    appimage-worker = appImageWorker;
+  }
   // lib.optionalAttrs (esDe != null) { es-de = esDe; }
   // lib.optionalAttrs (steamDeck != null) {
     steamdeck-runtime = steamDeck.runtime;
+    steamdeck-runtime-retroarch = steamDeckRetroarch.runtime;
   }
   // lib.optionalAttrs isSteamDeckBuild (
     lib.mapAttrs' (

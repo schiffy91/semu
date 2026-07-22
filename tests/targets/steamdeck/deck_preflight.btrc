@@ -45,19 +45,24 @@ class DeckPreflight {
     public DeckHarnessOptions options;
     public DeckAcceptancePlan plan;
     public DeckTransport transport;
+    public string harnessRevision;
 
     public DeckPreflight(DeckHarnessOptions options,
                          DeckAcceptancePlan plan,
-                         DeckTransport transport) {
+                         DeckTransport transport,
+                         string harnessRevision) {
         self.options = options;
         self.plan = plan;
         self.transport = transport;
+        self.harnessRevision = harnessRevision;
     }
 
     public DeckGameModeRequest base(string operation) {
         DeckGameModeRequest request = DeckGameModeRequest();
         request.operation = operation;
         request.scenario = operation;
+        request.harnessRevision = self.harnessRevision;
+        request.releaseSha256 = DeckHostDigest.file(self.options.artifact);
         request.projectRoot = self.options.remoteProject;
         request.esDeHome = self.options.esDeHome;
         request.steamRoot = self.options.steamRoot;

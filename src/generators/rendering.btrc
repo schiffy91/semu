@@ -71,6 +71,145 @@ class SemuRenderingAssets {
 }
 
 class SemuRenderingCompiler {
+    class bool shaderDeclared(JsonValue shaders, string logicalPath) {
+        return SemuRenderingDefinition.shaderDeclared(shaders, logicalPath);
+    }
+
+    class bool bezelDeclared(JsonValue bezels, string variantId) {
+        return variantId.equals("none")
+            || SemuRenderingDefinition.variant(bezels, variantId).isObject();
+    }
+
+    class bool layoutDeclared(JsonValue bezels, string layout) {
+        return layout.equals("auto")
+            || SemuRenderingDefinition.variant(bezels, layout).isObject();
+    }
+
+    class void emitCaptureFrame(SemuRenderingEnvironment environment,
+                                SemuSystemSource system,
+                                CompilerDiagnostics diagnostics) {
+        JsonValue captureFrame = system.definition.get("verification")
+            .get("capture_frame");
+        if (!captureFrame.isInt() || captureFrame.asInt() < 1
+                || captureFrame.asInt() > 900) {
+            diagnostics.add(system.file, "verification.capture_frame",
+                "expected an integer from 1 through 900");
+            return;
+        }
+        environment.set(
+            "SEMU_RENDER_CAPTURE_FRAME", f"{captureFrame.asInt()}");
+    }
+
+    class string surfaceKey(int index, string field) {
+        return f"SEMU_RENDER_SURFACE_{index}_{field}";
+    }
+
+    class JsonValue surfaceMode(SemuCompilerModel model, string emulatorId,
+                                int screenCount, string arrangement) {
+        JsonValue modes = model.emulatorById(emulatorId)
+            .rendering.get("surface_modes");
+        if (!modes.isArray()) { return JsonValue.makeNull(); }
+        for (int index = 0; index < modes.size(); index++) {
+            JsonValue mode = modes.at(index);
+            JsonValue match = mode.get("match");
+            if (match.get("screen_count").isInt()
+                    && match.get("screen_count").asInt() == screenCount
+                    && (screenCount == 1
+                        || (match.get("arrangement").isString()
+                            && match.get("arrangement").asString()
+                                .equals(arrangement)))) {
+                return mode;
+            }
+        }
+        return JsonValue.makeNull();
+    }
+
+    class void emitSurfaceContract(SemuRenderingEnvironment environment,
+                                   SemuCompilerModel model,
+                                   SemuSystemSource system, string emulatorId,
+                                   CompilerDiagnostics diagnostics) {
+        JsonValue display = system.definition.get("display");
+        JsonValue screens = display.get("screens");
+        if (!screens.isArray() || screens.size() < 1 || screens.size() > 2) {
+            diagnostics.add(system.file, "display.screens",
+                "renderer ABI requires one or two declared game surfaces");
+            return;
+        }
+
+        string arrangement = screens.size() == 1 ? "single"
+            : (display.get("arrangement").isString()
+                ? display.get("arrangement").asString() : "");
+        if (!["single", "horizontal", "vertical"].contains(arrangement)
+                || (screens.size() == 1 && !arrangement.equals("single"))
+                || (screens.size() == 2 && arrangement.equals("single"))) {
+            diagnostics.add(system.file, "display.arrangement",
+                "surface arrangement does not match the declared screen count");
+            return;
+        }
+
+        environment.set("SEMU_RENDER_SURFACE_COUNT", f"{screens.size()}");
+        environment.set("SEMU_RENDER_SURFACE_LAYOUT", arrangement);
+        JsonValue modes = model.emulatorById(emulatorId)
+            .rendering.get("surface_modes");
+        JsonValue mode = SemuRenderingCompiler.surfaceMode(
+            model, emulatorId, screens.size(), arrangement);
+        if (modes.isArray() && !mode.isObject()) {
+            diagnostics.add(model.emulatorById(emulatorId).renderingFile,
+                "surface_modes", "no mode matches the active system display");
+            return;
+        }
+        JsonValue validation = mode.get("validation");
+        if (validation.isObject()) {
+            string liveGeometry = display.get("source_geometry").isString()
+                ? display.get("source_geometry").asString()
+                : validation.get("live_geometry").asString();
+            if (!["positive", "uniform_integer_scale", "exact_native"]
+                    .contains(liveGeometry)
+                    || (screens.size() != 1
+                        && liveGeometry.equals("exact_native"))) {
+                diagnostics.add(system.file, "display.source_geometry",
+                    "source geometry policy is incompatible with the declared surfaces");
+                return;
+            }
+            environment.set("SEMU_RENDER_SURFACE_NATIVE_WIDTH_POLICY",
+                validation.get("native_widths").asString());
+            environment.set("SEMU_RENDER_SURFACE_GEOMETRY_POLICY",
+                liveGeometry);
+        }
+        Vector<string> ids = [];
+        for (int index = 0; index < screens.size(); index++) {
+            JsonValue screen = screens.at(index);
+            string id = screen.get("id").isString()
+                ? screen.get("id").asString() : "";
+            JsonValue native = screen.get("native");
+            int width = native.get("w").isInt() ? native.get("w").asInt() : 0;
+            int height = native.get("h").isInt() ? native.get("h").asInt() : 0;
+            if (id.isEmpty() || ids.contains(id) || width < 1 || height < 1) {
+                diagnostics.add(system.file, f"display.screens[{index}]",
+                    "surface requires a unique id and positive native size");
+                return;
+            }
+            ids.push(id);
+            environment.set(SemuRenderingCompiler.surfaceKey(index, "ID"), id);
+            environment.set(SemuRenderingCompiler.surfaceKey(index, "NATIVE"),
+                f"{width}x{height}");
+        }
+
+        JsonValue mapping = display.get("surface_mapping");
+        if (!mapping.isObject() || !mapping.get("touch_screen").isString()) {
+            return;
+        }
+        string touch = mapping.get("touch_screen").asString();
+        int touchIndex = ids.indexOf(touch);
+        if (touchIndex < 0) {
+            diagnostics.add(system.file, "display.surface_mapping.touch_screen",
+                "touch surface is not one of the declared screens");
+            return;
+        }
+        environment.set("SEMU_RENDER_TOUCH_SURFACE_ID", touch);
+        environment.set("SEMU_RENDER_TOUCH_SURFACE_INDEX", f"{touchIndex}");
+    }
+
     class string suffix(int index) {
         Vector<string> suffixes = ["", "_B", "_C", "_D"];
         return index >= 0 && index < suffixes.size()
@@ -98,6 +237,17 @@ class SemuRenderingCompiler {
             return;
         }
         environment.set("SEMU_RENDER_ART" + suffix, art);
+        if (variant.has("canvas")) {
+            string canvas = SemuRenderingDefinition.canvas(
+                variant.get("canvas"));
+            if (canvas.isEmpty()) {
+                diagnostics.add(system.bezelsFile,
+                    "variants." + variantId + ".canvas",
+                    "declared bezel canvas policy is invalid");
+            } else {
+                environment.set("SEMU_RENDER_CANVAS" + suffix, canvas);
+            }
+        }
         if (variant.get("glass").isString()) {
             string glass = SemuRenderingAssets.image(model.projectRoot,
                 assetRoot, variant.get("glass").asString());
@@ -154,53 +304,75 @@ class SemuRenderingCompiler {
         SemuRenderingEnvironment environment = SemuRenderingEnvironment();
         string logicalShader = SemuRenderingDefinition.text(settings,
             "visual.systems." + system.id + ".shader_file",
-            system.shaders.get("screen").isString()
-                ? system.shaders.get("screen").asString() : "none");
+            SemuRenderingDefinition.defaultShaderScreen(system.shaders));
+        bool declaredShader = SemuRenderingCompiler.shaderDeclared(
+            system.shaders, logicalShader);
+        if (!declaredShader) {
+            diagnostics.add(system.file,
+                "visual.systems." + system.id + ".shader_file",
+                "resolved shader is not declared for this system");
+        }
         bool requestedShaders = system.shaders.get("enabled").isBool()
             && system.shaders.get("enabled").asBool() != 0
             && SemuRenderingDefinition.boolean(
                 settings, "visual.crt_shaders", true)
             && SemuRenderingDefinition.boolean(settings,
                 "visual.systems." + system.id + ".shaders", true);
-        bool shaders = requestedShaders && !logicalShader.equals("none");
+        bool shaders = requestedShaders && declaredShader
+            && !logicalShader.equals("none");
         string defaultVariant = SemuRenderingDefinition.text(settings,
             "visual.systems." + system.id + ".bezel_variant",
             system.bezels.get("default_variant").isString()
                 ? system.bezels.get("default_variant").asString() : "none");
+        bool declaredBezel = SemuRenderingCompiler.bezelDeclared(
+            system.bezels, defaultVariant);
+        if (!declaredBezel) {
+            diagnostics.add(system.file,
+                "visual.systems." + system.id + ".bezel_variant",
+                "resolved bezel variant is not declared for this system");
+        }
         bool requestedBezels = system.bezels.get("enabled").isBool()
             && system.bezels.get("enabled").asBool() != 0
             && SemuRenderingDefinition.boolean(settings, "visual.bezels", true)
             && SemuRenderingDefinition.boolean(settings,
                 "visual.systems." + system.id + ".bezels", true);
-        bool bezels = requestedBezels && !defaultVariant.equals("none");
+        bool bezels = requestedBezels && declaredBezel
+            && !defaultVariant.equals("none");
+        string layout = SemuRenderingDefinition.text(settings,
+            "visual.systems." + system.id + ".layout", "auto");
+        bool declaredLayout = SemuRenderingCompiler.layoutDeclared(
+            system.bezels, layout);
+        if (!declaredLayout) {
+            diagnostics.add(system.file,
+                "visual.systems." + system.id + ".layout",
+                "resolved layout is not declared for this system");
+        }
+        string resolvedLayout = declaredLayout ? layout : "auto";
         environment.set("SEMU_RENDER_SYSTEM_ID", system.id);
         environment.set("SEMU_RENDER_EMULATOR_ID", emulatorId);
         environment.set("SEMU_RENDER_STATE_DIR", stateRoot);
         environment.set("SEMU_RENDER_SHADERS", shaders ? "1" : "0");
         environment.set("SEMU_RENDER_BEZELS", bezels ? "1" : "0");
+        environment.set("SEMU_RENDER_SHADER_VARIANT",
+            SemuRenderingDefinition.shaderVariantId(
+                system.shaders, logicalShader));
+        environment.set("SEMU_RENDER_BEZEL_VARIANT", defaultVariant);
+        environment.set("SEMU_RENDER_LAYOUT", resolvedLayout);
         environment.set("SEMU_RENDER_INTEGER_SCALE",
             SemuRenderingDefinition.boolean(
                 settings, "visual.integer_scaling", true) ? "1" : "0");
+        SemuRenderingCompiler.emitSurfaceContract(
+            environment, model, system, emulatorId, diagnostics);
+        SemuRenderingCompiler.emitCaptureFrame(
+            environment, system, diagnostics);
 
         JsonValue render = system.definition.get("render");
         JsonValue display = system.definition.get("display");
-        string layout = SemuRenderingDefinition.text(settings,
-            "visual.systems." + system.id + ".layout", "auto");
-        if (bezels && !SemuRenderingDefinition.variant(
-                system.bezels, defaultVariant).isObject()) {
-            diagnostics.add(system.bezelsFile, "default_variant",
-                "resolved bezel variant is not declared");
-        }
-        if (!layout.equals("auto") && !SemuRenderingDefinition.variant(
-                system.bezels, layout).isObject()) {
-            diagnostics.add(system.bezelsFile, "variants",
-                "resolved layout is not a declared presentation variant");
-        }
         string style = render.get("style").isString()
             ? render.get("style").asString() : "";
         JsonValue screens = display.get("screens");
-        string selectedLayout = layout.equals("auto")
-            ? defaultVariant : layout;
+        string selectedLayout = resolvedLayout.equals("auto")
+            ? defaultVariant : resolvedLayout;
         if (screens.isArray() && screens.size() == 2
                 && selectedLayout.contains("horizontal")) {
             style = "horizontal";
@@ -234,7 +406,7 @@ class SemuRenderingCompiler {
         }
         if (bezels || shaders) {
             SemuRenderingCompiler.emitResolvedVariants(environment, model,
-                system, assetRoot, layout, defaultVariant, shaderPath,
+                system, assetRoot, resolvedLayout, defaultVariant, shaderPath,
                 diagnostics);
         }
         return environment;

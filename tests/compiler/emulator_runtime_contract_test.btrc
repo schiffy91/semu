@@ -10,7 +10,7 @@ import ../../src/generators/emulator_runtime.btrc
 import ../../src/generators/emulators.btrc
 import ../../src/generators/input/action_abi.btrc
 import ../../src/generators/steam_input.btrc
-import ../../src/lib/json_format.btrc
+import ../../src/lib/rendering_definition.btrc
 
 class EmulatorRuntimeContractTest {
     class int fail(string message) {
@@ -78,7 +78,7 @@ class EmulatorRuntimeContractTest {
             }
         }
         return Path.writeAll(destination,
-            SemuJsonFormat.document(definition));
+            definition.document());
     }
 
     class JsonValue capturedEnvironment(string file) {
@@ -455,7 +455,7 @@ class EmulatorRuntimeContractTest {
         string pcsx2 = Path.readAll(PathTools.join(
             profiles, "PCSX2/config/inputprofiles/Steam Deck.ini"));
         if (ryujinx.isError()
-                || !ryujinxText.equals(SemuJsonFormat.document(ryujinx))
+                || !ryujinxText.equals(ryujinx.document())
                 || !retroarch.contains(
                     "input_toggle_fast_forward = \"add\"")
                 || !dolphin.contains(
@@ -496,7 +496,9 @@ class EmulatorRuntimeContractTest {
         string shader = PathTools.join(scratch,
             "share/libretro/shaders/semu/gb/screen.slangp");
         string bezel = PathTools.join(scratch,
-            "share/semu/assets/bezels/gb/classic.png");
+            "share/semu/assets/bezels/gb/dmg.png");
+        string glass = PathTools.join(scratch,
+            "share/semu/assets/bezels/gb/reflection.png");
         string biosRoot = PathTools.join(scratch, "read-only-bios");
         string biosMarker = PathTools.join(biosRoot, "marker.bin");
         FileSystem.mkdirp(PathTools.dirname(rom));
@@ -517,6 +519,7 @@ command -p env > \"$SEMU_TEST_SUPERVISOR_CAPTURE\"
         FileSystem.chmod(supervisor, 493); // 0755
         Path.writeAll(shader, "fixture");
         Path.writeAll(bezel, "fixture");
+        Path.writeAll(glass, "fixture");
         Path.writeAll(biosMarker, "read-only-fixture");
         string cardRoot = PathTools.join(scratch, "card");
         string discoveredRoms = PathTools.join(
@@ -580,6 +583,16 @@ command -p env > \"$SEMU_TEST_SUPERVISOR_CAPTURE\"
         }
         SemuLaunchPlan launch = SemuEmulatorRuntime.plan(
             model, build, "retroarch", "gb", "gambatte", rom, diagnostics);
+        SemuSystemSource gameBoy = model.systemById("gb");
+        string defaultBezelId = SemuJsonPath.text(
+            gameBoy.bezels.get("default_variant"));
+        JsonValue defaultBezel = SemuRenderingDefinition.variant(
+            gameBoy.bezels, defaultBezelId);
+        string expectedScreen = SemuRenderingDefinition.rect(
+            defaultBezel.get("hole"));
+        string retroarchProfile = PathTools.join(scratch,
+            "build/runtime/state/retroarch/config/retroarch/retroarch.cfg");
+        string retroarchProfileText = Path.readAll(retroarchProfile);
         if (!diagnostics.ok() || !launch.error.isEmpty()
                 || !EmulatorRuntimeContractTest.containsArgument(launch, "-f")
                 || !EmulatorRuntimeContractTest.containsArgument(launch, "-L")
@@ -597,8 +610,10 @@ command -p env > \"$SEMU_TEST_SUPERVISOR_CAPTURE\"
                     launch, "SEMU_RENDER_ART").equals(
                         UnixFileSystem.realPath(bezel))
                 || !EmulatorRuntimeContractTest.environment(
-                    launch, "SEMU_RENDER_SCREEN").contains(
-                        "0.24225")
+                    launch, "SEMU_RENDER_CAPTURE_FRAME").equals("180")
+                || expectedScreen.isEmpty()
+                || !EmulatorRuntimeContractTest.environment(
+                    launch, "SEMU_RENDER_SCREEN").equals(expectedScreen)
                 || !EmulatorRuntimeContractTest.environment(
                     launch, "SEMU_QUIT_CHORD_WINDOW_MS").equals("250")
                 || !EmulatorRuntimeContractTest.environment(
@@ -622,8 +637,16 @@ command -p env > \"$SEMU_TEST_SUPERVISOR_CAPTURE\"
                     launch.json().get("environment"), expectedAdmission)
                 || !launch.backend.equals("bwrap")
                 || !launch.requiresSandbox
-                || !FileSystem.isFile(PathTools.join(scratch,
-                    "build/runtime/state/retroarch/config/retroarch/retroarch.cfg"))
+                || !FileSystem.isFile(retroarchProfile)
+                || !retroarchProfileText.contains(
+                    "joypad_autoconfig_dir = \""
+                        + runtimeContext.assetRoot
+                        + "/share/libretro/autoconfig\"")
+                || !retroarchProfileText.contains(
+                    "notification_show_autoconfig = \"false\"")
+                || !retroarchProfileText.contains(
+                    "notification_show_autoconfig_fails = \"false\"")
+                || retroarchProfileText.contains("input_menu_toggle")
                 || !Path.readAll(biosMarker).equals("read-only-fixture")) {
             for error in diagnostics.errors { print("  " + error); }
             print("  launch plan: " + launch.json().stringify());
@@ -635,16 +658,25 @@ command -p env > \"$SEMU_TEST_SUPERVISOR_CAPTURE\"
             scratch, "supervisor-environment.txt");
         launch.environment(
             "SEMU_TEST_SUPERVISOR_CAPTURE", supervisorCapture);
-        launch.requiresSandbox = false;
+        string previousStoreMarker = Environment.get(
+            "SEMU_NIX_STORE_MOUNTED", "");
+        unsetenv("SEMU_NIX_STORE_MOUNTED");
+        int rejectedOutsideAppImage = SemuEmulatorRuntime.execute(launch);
+        setenv("SEMU_NIX_STORE_MOUNTED", "1", 1);
         int supervisorExit = SemuEmulatorRuntime.execute(launch);
+        if (previousStoreMarker.isEmpty()) {
+            unsetenv("SEMU_NIX_STORE_MOUNTED");
+        } else {
+            setenv("SEMU_NIX_STORE_MOUNTED", previousStoreMarker, 1);
+        }
         JsonValue capturedSupervisorEnvironment =
             EmulatorRuntimeContractTest.capturedEnvironment(
                 supervisorCapture);
-        if (supervisorExit != 0
+        if (rejectedOutsideAppImage == 0 || supervisorExit != 0
                 || !EmulatorRuntimeContractTest.containsEnvironment(
                     capturedSupervisorEnvironment, expectedAdmission)) {
             failures += EmulatorRuntimeContractTest.fail(
-                "launch execution did not pass all nine generated admission variables to the supervisor process");
+                "launch execution bypassed AppImage admission or omitted generated supervisor variables");
         }
 
         string supervisorEnvironmentFile =

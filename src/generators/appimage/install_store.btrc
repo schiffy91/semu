@@ -1,7 +1,49 @@
 // install_store.btrc - safe release storage and transactional file updates.
 
 import std.{bytes, fs, platform, process, strings, vector}
+import ../../lib/owned_paths.btrc
 import ./install_policy.btrc
+
+#include <dirent.h>
+#include <fcntl.h>
+#include <limits.h>
+#include <string.h>
+#include <sys/stat.h>
+#include <unistd.h>
+
+long long semuInstallReadLinkAt(
+        int parent, string name, char* buffer, size_t capacity) {
+    if (name.isEmpty() || name.len() > 255 || buffer == NULL
+            || capacity < (size_t)2) {
+        return -1LL;
+    }
+    char nameBuffer[256];
+    memcpy(nameBuffer, name, (size_t)name.len());
+    nameBuffer[name.len()] = 0;
+    return (long long)readlinkat(
+        parent, nameBuffer, buffer, capacity - (size_t)1);
+}
+
+int semuInstallMkdirAt(int parent, string name, int mode) {
+    if (name.isEmpty() || name.len() > 255) { return -1; }
+    char nameBuffer[256];
+    memcpy(nameBuffer, name, (size_t)name.len());
+    nameBuffer[name.len()] = 0;
+    return mkdirat(parent, nameBuffer, (mode_t)mode);
+}
+
+int semuInstallSymlinkAt(string target, int parent, string name) {
+    if (target.len() > PATH_MAX || name.isEmpty() || name.len() > 255) {
+        return -1;
+    }
+    char targetBuffer[PATH_MAX + 1];
+    char nameBuffer[256];
+    memcpy(targetBuffer, target, (size_t)target.len());
+    targetBuffer[target.len()] = 0;
+    memcpy(nameBuffer, name, (size_t)name.len());
+    nameBuffer[name.len()] = 0;
+    return symlinkat(targetBuffer, parent, nameBuffer);
+}
 
 class SemuInstallHost {
     class bool sameBytes(Bytes left, Bytes right) {
@@ -183,80 +225,571 @@ class SemuInstallHost {
 }
 
 class SemuInstallTree {
-    class string entry(string root, string relative,
-                       SemuInstallResult status) {
+    class bool sameObject(struct stat* left, struct stat* right) {
+        return left->st_dev == right->st_dev
+            && left->st_ino == right->st_ino;
+    }
+
+    class Vector<string> names(
+            int descriptor, SemuInstallResult status) {
+        Vector<string> names = [];
+        int duplicate = openat(descriptor, ".",
+            (int)O_RDONLY | (int)O_DIRECTORY
+                | (int)O_NOFOLLOW | (int)O_CLOEXEC);
+        struct stat held;
+        struct stat opened;
+        bool bound = descriptor >= 0 && duplicate >= 0
+            && fstat(descriptor, &held) == 0
+            && fstat(duplicate, &opened) == 0
+            && S_ISDIR(held.st_mode) != 0
+            && S_ISDIR(opened.st_mode) != 0
+            && SemuInstallTree.sameObject(&held, &opened);
+        DIR* directory = bound ? fdopendir(duplicate) : NULL;
+        if (directory == NULL) {
+            if (duplicate >= 0) { close(duplicate); }
+            status.valid = false;
+            status.error = "cannot enumerate descriptor-bound release directory";
+            return names;
+        }
+        errno = 0;
+        struct dirent* entry = readdir(directory);
+        while (entry != NULL) {
+            string name = Strings.copy(entry->d_name);
+            if (!name.equals(".") && !name.equals("..")) {
+                names.push(name);
+            }
+            errno = 0;
+            entry = readdir(directory);
+        }
+        if (errno != 0 || closedir(directory) != 0) {
+            status.valid = false;
+            status.error = "cannot complete descriptor-bound release enumeration";
+            Vector<string> empty = [];
+            return empty;
+        }
+        names.sort();
+        return names;
+    }
+
+    class string symlinkTarget(
+            int parent, string name, string relative,
+            SemuInstallResult status) {
+        char buffer[PATH_MAX + 1];
+        long long count = semuInstallReadLinkAt(
+            parent, name, buffer, (size_t)PATH_MAX + (size_t)1);
+        if (count < 0LL || count >= (long long)PATH_MAX) {
+            status.valid = false;
+            status.error = "cannot read release link: " + relative;
+            return "";
+        }
+        buffer[(int)count] = 0;
+        string target = Strings.copy(buffer);
+        if (target.contains("\n") || target.contains("\r")) {
+            status.valid = false;
+            status.error =
+                "release link contains a line separator: " + relative;
+            return "";
+        }
+        return target;
+    }
+
+    class void appendUnsigned64(Bytes output, unsigned long long value) {
+        for (int shift = 56; shift >= 0; shift -= 8) {
+            output.append((int)(
+                (value >> (unsigned int)shift) & 255ULL));
+        }
+    }
+
+    class Bytes unsigned64(unsigned long long value) {
+        Bytes encoded = Bytes();
+        SemuInstallTree.appendUnsigned64(encoded, value);
+        return encoded;
+    }
+
+    class void appendField(Bytes record, int tag, Bytes value) {
+        record.append(tag);
+        SemuInstallTree.appendUnsigned64(
+            record, (unsigned long long)value.length());
+        record.appendBytes(value);
+    }
+
+    class void appendTextField(Bytes record, int tag, string value) {
+        SemuInstallTree.appendField(
+            record, tag, Bytes.fromString(value));
+    }
+
+    class void appendIntegerField(
+            Bytes record, int tag, unsigned long long value) {
+        SemuInstallTree.appendField(
+            record, tag, SemuInstallTree.unsigned64(value));
+    }
+
+    class void appendEntryRecord(
+            Bytes records, int kind, int mode, string relative,
+            string fileDigest = "", unsigned long long fileSize = 0ULL,
+            string symlinkTarget = "") {
+        Bytes record = Bytes();
+        Bytes kindValue = Bytes();
+        kindValue.append(kind);
+        SemuInstallTree.appendField(record, 1, kindValue);
+        SemuInstallTree.appendIntegerField(
+            record, 2, (unsigned long long)mode);
+        SemuInstallTree.appendTextField(record, 3, relative);
+        if (kind == (int)'F') {
+            SemuInstallTree.appendTextField(record, 4, fileDigest);
+            SemuInstallTree.appendIntegerField(record, 5, fileSize);
+        } else if (kind == (int)'L') {
+            SemuInstallTree.appendTextField(record, 6, symlinkTarget);
+        }
+        SemuInstallTree.appendUnsigned64(
+            records, (unsigned long long)record.length());
+        records.appendBytes(record);
+    }
+
+    class string digestRecords(Bytes records) {
+        struct SemuOwnedSha256State state;
+        SemuOwnedFileDigest.initialize(&state);
+        if (!records.isEmpty()) {
+            SemuOwnedFileDigest.update(&state,
+                (unsigned char*)records.data, (size_t)records.length());
+        }
+        unsigned char digest[32];
+        SemuOwnedFileDigest.finish(&state, digest);
+        char digits[17] = "0123456789abcdef";
+        char output[65];
+        for (int index = 0; index < 32; index++) {
+            output[index * 2] = digits[digest[index] >> 4];
+            output[index * 2 + 1] = digits[digest[index] & 15u];
+        }
+        output[64] = 0;
+        return Strings.copy(output);
+    }
+
+    class bool appendEntryAtFiltered(
+            Bytes records, int parent, string name, string relative,
+            Vector<string> excluded, SemuInstallResult status) {
+        if (excluded.contains(relative)) { return true; }
         if (relative.contains("\n") || relative.contains("\r")) {
             status.valid = false;
             status.error = "release path contains a line separator: " + relative;
-            return "";
+            return false;
         }
-        string path = PathTools.join(root, relative);
-        FileStatus file = FileStatus(path);
-        int mode = (file.isSymlink() ? file.linkMode : file.mode) & 4095;
-        if (file.isSymlink()) {
-            string target = FileSystem.readLink(path);
-            if (target.contains("\n") || target.contains("\r")) {
+        struct stat inspected;
+        if (parent < 0 || name.isEmpty()
+                || fstatat(parent, name, &inspected,
+                    AT_SYMLINK_NOFOLLOW) != 0) {
+            status.valid = false;
+            status.error = "cannot inspect release entry: " + relative;
+            return false;
+        }
+        int mode = SemuOwnedPaths.permissions(inspected.st_mode);
+        if (S_ISLNK(inspected.st_mode) != 0) {
+            string target = SemuInstallTree.symlinkTarget(
+                parent, name, relative, status);
+            if (!status.ok()) { return false; }
+            struct stat after;
+            if (fstatat(parent, name, &after, AT_SYMLINK_NOFOLLOW) != 0
+                    || S_ISLNK(after.st_mode) == 0
+                    || !SemuInstallTree.sameObject(&inspected, &after)
+                    || after.st_mode != inspected.st_mode) {
                 status.valid = false;
-                status.error = "release link contains a line separator: " + relative;
-                return "";
+                status.error = "release link changed while hashing: " + relative;
+                return false;
             }
-            return f"L {mode} {relative} {target}\n";
+            SemuInstallTree.appendEntryRecord(
+                records, (int)'L', mode, relative, "", 0ULL, target);
+            return true;
         }
-        if (file.isFile()) {
-            string digest = SemuInstallHost.sha256File(path);
-            if (digest.isEmpty()) {
+        if (S_ISREG(inspected.st_mode) != 0) {
+            int descriptor = openat(parent, name,
+                (int)O_RDONLY | (int)O_NOFOLLOW | (int)O_CLOEXEC
+                    | (int)O_NONBLOCK);
+            struct stat opened;
+            bool bound = descriptor >= 0
+                && fstat(descriptor, &opened) == 0
+                && S_ISREG(opened.st_mode) != 0
+                && SemuInstallTree.sameObject(&inspected, &opened);
+            string digest = bound
+                ? SemuOwnedFileDigest.descriptor(descriptor) : "";
+            struct stat after;
+            bool stable = bound && !digest.isEmpty()
+                && SemuInstallPolicy.validDigest(digest)
+                && opened.st_size >= (off_t)0
+                && fstat(descriptor, &after) == 0
+                && SemuInstallTree.sameObject(&opened, &after)
+                && after.st_size == opened.st_size
+                && after.st_mode == opened.st_mode;
+            if (descriptor >= 0) { close(descriptor); }
+            if (!stable) {
                 status.valid = false;
                 status.error = "cannot hash release file: " + relative;
-                return "";
+                return false;
             }
-            return f"F {mode} {relative} {digest}\n";
+            SemuInstallTree.appendEntryRecord(
+                records, (int)'F', mode, relative, digest,
+                (unsigned long long)opened.st_size);
+            return true;
         }
-        if (!file.isDir()) {
+        if (S_ISDIR(inspected.st_mode) == 0) {
             status.valid = false;
             status.error = "release entry has unsupported type: " + relative;
-            return "";
+            return false;
         }
-        string manifest = f"D {mode} {relative}\n";
-        Vector<string> names = Directory(path).entries();
-        names.sort();
-        for name in names {
+        int descriptor = openat(parent, name,
+            (int)O_RDONLY | (int)O_DIRECTORY
+                | (int)O_NOFOLLOW | (int)O_CLOEXEC);
+        struct stat opened;
+        bool bound = descriptor >= 0
+            && fstat(descriptor, &opened) == 0
+            && S_ISDIR(opened.st_mode) != 0
+            && SemuInstallTree.sameObject(&inspected, &opened);
+        if (!bound) {
+            if (descriptor >= 0) { close(descriptor); }
+            status.valid = false;
+            status.error = "cannot bind release directory: " + relative;
+            return false;
+        }
+        SemuInstallTree.appendEntryRecord(
+            records, (int)'D', mode, relative);
+        Vector<string> children = SemuInstallTree.names(descriptor, status);
+        for childName in children {
             string child = relative.isEmpty()
-                ? name : relative + "/" + name;
-            manifest += SemuInstallTree.entry(root, child, status);
-            if (!status.ok()) { return ""; }
+                ? childName : relative + "/" + childName;
+            if (!SemuInstallTree.appendEntryAtFiltered(
+                    records, descriptor, childName, child, excluded, status)) {
+                close(descriptor);
+                return false;
+            }
         }
-        return manifest;
+        struct stat after;
+        bool stable = status.ok() && fstat(descriptor, &after) == 0
+            && SemuInstallTree.sameObject(&opened, &after)
+            && after.st_mode == opened.st_mode;
+        close(descriptor);
+        if (!stable) {
+            status.valid = false;
+            status.error = "release directory changed while hashing: " + relative;
+            return false;
+        }
+        return true;
     }
 
-    class SemuInstallResult digest(string root) {
-        if (!SemuInstallHost.realDirectory(root)) {
+    class SemuInstallResult digestDescriptorExcluding(
+            int rootDescriptor, Vector<string> excluded) {
+        struct stat opened;
+        if (rootDescriptor < 0 || fstat(rootDescriptor, &opened) != 0
+                || S_ISDIR(opened.st_mode) == 0) {
             return SemuInstallResult.failure(
-                "release tree is not a real directory: " + root);
+                "release tree descriptor is not a directory");
         }
         SemuInstallResult traversal = SemuInstallResult.success();
-        Vector<string> names = Directory(root).entries();
-        names.sort();
-        string manifest = "";
+        Vector<string> names =
+            SemuInstallTree.names(rootDescriptor, traversal);
+        Bytes records = Bytes.fromString("SEMU-DESCRIPTOR-TREE");
+        records.append(1);
+        SemuInstallTree.appendEntryRecord(
+            records, (int)'D', SemuOwnedPaths.permissions(opened.st_mode), ".");
         for name in names {
-            manifest += SemuInstallTree.entry(root, name, traversal);
-            if (!traversal.ok()) { return traversal; }
+            if (!SemuInstallTree.appendEntryAtFiltered(
+                    records, rootDescriptor, name, name,
+                    excluded, traversal)) {
+                return traversal;
+            }
         }
-        string digest = SemuInstallHost.sha256Text(manifest);
+        struct stat after;
+        bool stable = fstat(rootDescriptor, &after) == 0
+            && SemuInstallTree.sameObject(&opened, &after)
+            && after.st_mode == opened.st_mode;
+        if (!stable) {
+            return SemuInstallResult.failure(
+                "release tree root changed while hashing");
+        }
+        string digest = SemuInstallTree.digestRecords(records);
         return digest.isEmpty()
             ? SemuInstallResult.failure("cannot hash release tree manifest")
             : SemuInstallResult.success(digest);
     }
 
+    class SemuInstallResult digestDescriptor(int rootDescriptor) {
+        Vector<string> excluded = [];
+        return SemuInstallTree.digestDescriptorExcluding(
+            rootDescriptor, excluded);
+    }
+
+    class bool exactNames(Vector<string> left, Vector<string> right) {
+        if (left.size() != right.size()) { return false; }
+        for (int index = 0; index < left.size(); index++) {
+            if (!left.get(index).equals(right.get(index))) { return false; }
+        }
+        return true;
+    }
+
+    class bool copyEntry(int sourceParent, int destinationParent,
+                         string name, string relative,
+                         SemuInstallResult status) {
+        if (!status.ok() || name.isEmpty() || name.equals(".")
+                || name.equals("..") || name.contains("/")
+                || relative.contains("\n") || relative.contains("\r")) {
+            status.valid = false;
+            status.error = "runtime import has an invalid entry: " + relative;
+            return false;
+        }
+        struct stat destinationStatus;
+        if (fstatat(destinationParent, name, &destinationStatus,
+                AT_SYMLINK_NOFOLLOW) == 0 || errno != ENOENT) {
+            status.valid = false;
+            status.error = "runtime import destination is not fresh: " + relative;
+            return false;
+        }
+
+        struct stat inspected;
+        if (fstatat(sourceParent, name, &inspected,
+                AT_SYMLINK_NOFOLLOW) != 0) {
+            status.valid = false;
+            status.error = "cannot inspect runtime import source: " + relative;
+            return false;
+        }
+        int mode = SemuOwnedPaths.permissions(inspected.st_mode);
+        if (S_ISLNK(inspected.st_mode) != 0) {
+            string target = SemuInstallTree.symlinkTarget(
+                sourceParent, name, relative, status);
+            bool linked = status.ok()
+                && semuInstallSymlinkAt(
+                    target, destinationParent, name) == 0;
+            struct stat sourceAfter;
+            struct stat destinationAfter;
+            string copiedTarget = linked
+                ? SemuInstallTree.symlinkTarget(
+                    destinationParent, name, relative, status) : "";
+            bool exact = linked && status.ok()
+                && fstatat(sourceParent, name, &sourceAfter,
+                    AT_SYMLINK_NOFOLLOW) == 0
+                && fstatat(destinationParent, name, &destinationAfter,
+                    AT_SYMLINK_NOFOLLOW) == 0
+                && S_ISLNK(sourceAfter.st_mode) != 0
+                && S_ISLNK(destinationAfter.st_mode) != 0
+                && SemuInstallTree.sameObject(&inspected, &sourceAfter)
+                && sourceAfter.st_mode == inspected.st_mode
+                && SemuOwnedPaths.permissions(destinationAfter.st_mode) == mode
+                && copiedTarget.equals(target);
+            if (!exact) {
+                status.valid = false;
+                status.error = "runtime link changed while importing: " + relative;
+            }
+            return exact;
+        }
+        if (S_ISREG(inspected.st_mode) != 0) {
+            int source = openat(sourceParent, name,
+                (int)O_RDONLY | (int)O_NOFOLLOW | (int)O_CLOEXEC
+                    | (int)O_NONBLOCK);
+            struct stat sourceOpened;
+            bool sourceBound = source >= 0
+                && fstat(source, &sourceOpened) == 0
+                && S_ISREG(sourceOpened.st_mode) != 0
+                && SemuInstallTree.sameObject(&inspected, &sourceOpened);
+            int destination = sourceBound ? openat(destinationParent, name,
+                (int)O_RDWR | (int)O_CREAT | (int)O_EXCL
+                    | (int)O_NOFOLLOW | (int)O_CLOEXEC,
+                (mode_t)384) : -1; // 0600 until fully copied
+            string sourceDigest = sourceBound
+                ? SemuOwnedFileDigest.descriptor(source) : "";
+            bool copied = destination >= 0 && !sourceDigest.isEmpty()
+                && SemuOwnedFileImport.copy(source, destination)
+                && fchmod(destination, (mode_t)mode) == 0
+                && fsync(destination) == 0;
+            struct stat sourceAfter;
+            struct stat destinationAfter;
+            string sourceAfterDigest = copied
+                ? SemuOwnedFileDigest.descriptor(source) : "";
+            string destinationDigest = copied
+                ? SemuOwnedFileDigest.descriptor(destination) : "";
+            bool exact = copied
+                && fstat(source, &sourceAfter) == 0
+                && fstat(destination, &destinationAfter) == 0
+                && SemuInstallTree.sameObject(&sourceOpened, &sourceAfter)
+                && sourceOpened.st_size == sourceAfter.st_size
+                && sourceOpened.st_mode == sourceAfter.st_mode
+                && S_ISREG(destinationAfter.st_mode) != 0
+                && destinationAfter.st_size == sourceOpened.st_size
+                && SemuOwnedPaths.permissions(destinationAfter.st_mode) == mode
+                && sourceDigest.equals(sourceAfterDigest)
+                && sourceDigest.equals(destinationDigest);
+            if (destination >= 0) { close(destination); }
+            if (source >= 0) { close(source); }
+            if (!exact) {
+                status.valid = false;
+                status.error = "runtime file changed while importing: " + relative;
+            }
+            return exact;
+        }
+        if (S_ISDIR(inspected.st_mode) == 0
+                || semuInstallMkdirAt(
+                    destinationParent, name, 448) != 0) {
+            status.valid = false;
+            status.error = "runtime import contains an unsupported node: "
+                + relative;
+            return false;
+        }
+
+        int source = openat(sourceParent, name,
+            (int)O_RDONLY | (int)O_DIRECTORY
+                | (int)O_NOFOLLOW | (int)O_CLOEXEC);
+        int destination = openat(destinationParent, name,
+            (int)O_RDONLY | (int)O_DIRECTORY
+                | (int)O_NOFOLLOW | (int)O_CLOEXEC);
+        struct stat sourceOpened;
+        bool bound = source >= 0 && destination >= 0
+            && fstat(source, &sourceOpened) == 0
+            && S_ISDIR(sourceOpened.st_mode) != 0
+            && SemuInstallTree.sameObject(&inspected, &sourceOpened);
+        Vector<string> before = [];
+        if (bound) { before = SemuInstallTree.names(source, status); }
+        for child in before {
+            if (!SemuInstallTree.copyEntry(source, destination, child,
+                    relative + "/" + child, status)) {
+                break;
+            }
+        }
+        Vector<string> after = [];
+        Vector<string> copiedNames = [];
+        if (status.ok()) {
+            after = SemuInstallTree.names(source, status);
+        }
+        if (status.ok()) {
+            copiedNames = SemuInstallTree.names(destination, status);
+        }
+        struct stat sourceAfter;
+        struct stat destinationAfter;
+        bool exact = bound && status.ok()
+            && SemuInstallTree.exactNames(before, after)
+            && SemuInstallTree.exactNames(before, copiedNames)
+            && fchmod(destination, (mode_t)mode) == 0
+            && fsync(destination) == 0
+            && fstat(source, &sourceAfter) == 0
+            && fstat(destination, &destinationAfter) == 0
+            && SemuInstallTree.sameObject(&sourceOpened, &sourceAfter)
+            && sourceOpened.st_mode == sourceAfter.st_mode
+            && S_ISDIR(destinationAfter.st_mode) != 0
+            && SemuOwnedPaths.permissions(destinationAfter.st_mode) == mode;
+        if (destination >= 0) { close(destination); }
+        if (source >= 0) { close(source); }
+        if (!exact) {
+            status.valid = false;
+            status.error = "runtime directory changed while importing: "
+                + relative;
+        }
+        return exact;
+    }
+
+    class SemuInstallResult copyDescriptorExcluding(
+            int sourceRoot, int destinationRoot,
+            string expectedDigest, Vector<string> excluded) {
+        struct stat sourceStatus;
+        struct stat destinationStatus;
+        if (sourceRoot < 0 || destinationRoot < 0
+                || fstat(sourceRoot, &sourceStatus) != 0
+                || fstat(destinationRoot, &destinationStatus) != 0
+                || S_ISDIR(sourceStatus.st_mode) == 0
+                || S_ISDIR(destinationStatus.st_mode) == 0) {
+            return SemuInstallResult.failure(
+                "runtime import roots are not descriptor-bound directories");
+        }
+        SemuInstallResult initial =
+            SemuInstallTree.digestDescriptorExcluding(
+                sourceRoot, excluded);
+        SemuInstallResult enumeration = SemuInstallResult.success();
+        Vector<string> sourceNames = [];
+        Vector<string> destinationNames = [];
+        if (initial.ok()) {
+            sourceNames = SemuInstallTree.names(sourceRoot, enumeration);
+        }
+        if (enumeration.ok()) {
+            destinationNames = SemuInstallTree.names(
+                destinationRoot, enumeration);
+        }
+        if (!initial.ok() || !enumeration.ok()
+                || (!expectedDigest.isEmpty()
+                    && !initial.document.equals(expectedDigest))
+                || !destinationNames.isEmpty()) {
+            return SemuInstallResult.failure(!initial.ok() ? initial.error
+                : !enumeration.ok() ? enumeration.error
+                : !destinationNames.isEmpty()
+                    ? "runtime import destination is not empty"
+                    : "runtime import source differs from its leased identity");
+        }
+        for name in sourceNames {
+            if (!SemuInstallTree.copyEntry(
+                    sourceRoot, destinationRoot, name, name, enumeration)) {
+                return enumeration;
+            }
+        }
+        int sourceMode = SemuOwnedPaths.permissions(sourceStatus.st_mode);
+        bool rootMode = fchmod(destinationRoot, (mode_t)sourceMode) == 0
+            && fsync(destinationRoot) == 0;
+        SemuInstallResult sourceAfter = rootMode
+            ? SemuInstallTree.digestDescriptorExcluding(
+                sourceRoot, excluded)
+            : SemuInstallResult.failure(
+                "cannot preserve imported runtime root mode");
+        SemuInstallResult destinationAfter = sourceAfter.ok()
+            ? SemuInstallTree.digestDescriptorExcluding(
+                destinationRoot, excluded)
+            : SemuInstallResult.failure(sourceAfter.error);
+        string exactDigest = expectedDigest.isEmpty()
+            ? initial.document : expectedDigest;
+        return sourceAfter.ok() && destinationAfter.ok()
+                && initial.document.equals(exactDigest)
+                && sourceAfter.document.equals(exactDigest)
+                && destinationAfter.document.equals(exactDigest)
+            ? SemuInstallResult.success(exactDigest)
+            : SemuInstallResult.failure(!sourceAfter.ok() ? sourceAfter.error
+                : !destinationAfter.ok() ? destinationAfter.error
+                : "runtime import changed between lease and destination");
+    }
+
+    class SemuInstallResult copyDescriptor(
+            int sourceRoot, int destinationRoot,
+            string expectedDigest = "") {
+        Vector<string> excluded = [];
+        return SemuInstallTree.copyDescriptorExcluding(
+            sourceRoot, destinationRoot, expectedDigest, excluded);
+    }
+
+    class SemuInstallResult digest(string root) {
+        string canonical = UnixFileSystem.realPath(root);
+        int rootDescriptor = canonical.isEmpty() ? -1
+            : open(canonical, (int)O_RDONLY | (int)O_DIRECTORY
+                | (int)O_NOFOLLOW | (int)O_CLOEXEC);
+        struct stat opened;
+        struct stat inspected;
+        bool bound = rootDescriptor >= 0
+            && lstat(canonical, &inspected) == 0
+            && fstat(rootDescriptor, &opened) == 0
+            && S_ISDIR(inspected.st_mode) != 0
+            && S_ISDIR(opened.st_mode) != 0
+            && SemuInstallTree.sameObject(&inspected, &opened)
+            && canonical.equals(root);
+        if (!bound) {
+            if (rootDescriptor >= 0) { close(rootDescriptor); }
+            return SemuInstallResult.failure(
+                "release tree is not a real directory: " + root);
+        }
+        SemuInstallResult digest =
+            SemuInstallTree.digestDescriptor(rootDescriptor);
+        close(rootDescriptor);
+        return digest;
+    }
+
     class bool readOnly(string root) {
         FileStatus base = FileStatus(root);
-        if (!base.isDir() || base.isSymlink() || (base.mode & 18) != 0) {
+        if (!base.isDir() || base.isSymlink() || (base.mode & 146) != 0) {
             return false;
         }
         for name in Directory(root).entries() {
             string path = PathTools.join(root, name);
             FileStatus status = FileStatus(path);
             if (status.isSymlink()) { continue; }
-            if ((status.mode & 18) != 0) { return false; }
+            if ((status.mode & 146) != 0) { return false; }
             if (status.isDir() && !SemuInstallTree.readOnly(path)) {
                 return false;
             }

@@ -5,6 +5,10 @@ import ../runtime_inventory.btrc
 import ./support.btrc
 
 class AppImageRenderHookProvenance {
+    class bool supportedAbi(int abi) {
+        return abi == 2 || abi == 3;
+    }
+
     class bool validPatch(JsonValue patch) {
         if (!AppImageProvenanceSupport.exactKeys(
                 patch, ["kind", "name", "sha256", "urls"])) {
@@ -128,7 +132,8 @@ class AppImageRenderHookProvenance {
             JsonValue hook, AppImageRuntimeSlice slice) {
         JsonValue phases = hook.get("phases");
         if (!hook.isObject() || !hook.get("abi").isInt()
-                || hook.get("abi").asInt() != 2
+                || !AppImageRenderHookProvenance.supportedAbi(
+                    hook.get("abi").asInt())
                 || !hook.get("api").isString()
                 || !hook.get("api").asString().equals("semu-renderer")
                 || !hook.get("linkage").isString()

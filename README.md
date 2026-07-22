@@ -12,14 +12,15 @@ Steam Deck evidence; the required device behavior is tracked in
 
 ## Current Status
 
-Audited 2026-07-19:
+Audited 2026-07-21:
 
 - A forced `make -B btrc-build` passes strict production compilation, and
   `make test` passes the aggregate host contracts.
-- The local 17-system Deck harness dry run and installer lifecycle fixture pass
-  as part of that aggregate test.
-- `nix flake check path:. --no-build` still fails while evaluating visual-asset
-  and emulator package inputs with invalid Nix store source/patch paths.
+- The local 17-system Deck harness and installer lifecycle fixture pass. The
+  generated Game Boy plan contains the exact 18-case shader/bezel/integer-scale
+  matrix derived from owned rendering definitions.
+- `nix flake check . --no-build --all-systems` evaluates every declared package,
+  app, shell, and check. This is evaluation evidence, not package realization.
 - `build/Semu-x86_64.AppImage` is absent, and no physical acceptance receipts
   are retained. Do not deploy or claim a system accepted from this tree yet.
 
@@ -72,7 +73,7 @@ The Deck harness `test` target compiles strict BTRC entrypoints, exercises 17
 fixture descriptors, writes an acceptance plan, and prints commands. It does
 not run SSH, launch a ROM, inspect pixels, or prove controls.
 
-After flake evaluation is fixed, continue with:
+The remaining production build gates are:
 
 ```sh
 nix flake check path:.

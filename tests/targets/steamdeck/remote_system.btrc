@@ -4,6 +4,7 @@
 
 import std.{bytes, fs, io, process, strings, vector}
 import ./game_mode.btrc
+import ./run_evidence.btrc
 import ./steam_shortcuts.btrc
 
 #include <errno.h>
@@ -13,6 +14,16 @@ import ./steam_shortcuts.btrc
 #include <unistd.h>
 
 class DeckRemoteClock {
+    class string realtimeNanos() {
+        struct timespec stamp;
+        if (clock_gettime(CLOCK_REALTIME, &stamp) != 0) { return ""; }
+        long long value = (long long)stamp.tv_sec * 1000000000LL
+            + (long long)stamp.tv_nsec;
+        char buffer[32];
+        snprintf(buffer, 32, "%lld", value);
+        return Strings.copy(buffer);
+    }
+
     class bool sleep(int milliseconds) {
         if (milliseconds < 0 || milliseconds > 30000) { return false; }
         struct timespec delay;
@@ -105,6 +116,30 @@ class DeckRemoteFile {
         struct stat status;
         return stat(path, &status) == 0 && S_ISREG(status.st_mode)
             ? (long long)status.st_size : -1LL;
+    }
+
+    class string modifiedNanos(string path) {
+        struct stat status;
+        if (lstat(path, &status) != 0 || !S_ISREG(status.st_mode)
+                || FileSystem.isSymlink(path)) {
+            return "";
+        }
+        long long value = (long long)status.st_mtim.tv_sec * 1000000000LL
+            + (long long)status.st_mtim.tv_nsec;
+        return DeckRemoteFile.number(value);
+    }
+
+    class bool fresh(string path, string startedNs) {
+        return FileSystem.isFile(path) && !FileSystem.isSymlink(path)
+            && DeckRunEvidence.notBefore(
+                DeckRemoteFile.modifiedNanos(path), startedNs);
+    }
+
+    class bool removeRegular(string path) {
+        if (FileSystem.isSymlink(path)) { return false; }
+        if (!FileSystem.exists(path)) { return true; }
+        return FileSystem.isFile(path) && unlink(path) == 0
+            && !FileSystem.exists(path) && !FileSystem.isSymlink(path);
     }
 
     class string tail(string path, long long opening) {

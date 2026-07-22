@@ -1,13 +1,51 @@
 // runtime_contract.btrc - staged runtime tree, payload, package, and core contract.
 
 import std.{fs, json, process, strings, vector}
-import ../../../lib/json_format.btrc
+import ../install_store.btrc
 import ../runtime_inventory.btrc
 import ./render_hooks.btrc
 import ./source_contract.btrc
 import ./support.btrc
 
+#include <fcntl.h>
+#include <unistd.h>
+
 class AppImageRuntimeContractProvenance {
+    class AppImageProvenanceInternalJson descriptorTree(
+            string runtimeRoot, string coreDirectory) {
+        if (!AppImageRuntimeInventory.safeRelative(coreDirectory)) {
+            return AppImageProvenanceInternalJson.failure(
+                "selected-core descriptor-tree path is invalid");
+        }
+        JsonValue entries = JsonValue.makeArray();
+        for relative in ["bin", "lib", "share", "nix/store", coreDirectory] {
+            string path = PathTools.join(runtimeRoot, relative);
+            int descriptor = open(path,
+                (int)O_RDONLY | (int)O_DIRECTORY
+                    | (int)O_NOFOLLOW | (int)O_CLOEXEC);
+            Vector<string> excluded = [];
+            if (relative.equals("share")) {
+                excluded = [
+                    "semu/appimage-runtime-provenance.json",
+                    "semu/release-store-path.txt",
+                    "semu/runtime-export-contract.json"
+                ];
+            }
+            SemuInstallResult digest = descriptor >= 0
+                ? SemuInstallTree.digestDescriptorExcluding(
+                    descriptor, excluded)
+                : SemuInstallResult.failure(
+                    "runtime descriptor tree is absent: " + relative);
+            if (descriptor >= 0) { close(descriptor); }
+            if (!digest.ok()) {
+                return AppImageProvenanceInternalJson.failure(digest.error);
+            }
+            entries.push(AppImageProvenanceSupport.digestEntry(
+                relative, digest.document));
+        }
+        return AppImageProvenanceInternalJson.success(entries);
+    }
+
     class AppImageProvenanceInternalJson runtimeAssets(
             string repoRoot, string runtimeRoot) {
         AppImageProvenanceInternalJson declared =
@@ -198,7 +236,7 @@ class AppImageRuntimeContractProvenance {
         for relative in actual {
             if (!relative.equals(AppImageProvenanceSupport.relativePath())
                     && !relative.equals(
-                        "share/semu/steamdeck-runtime-store-path.txt")) {
+                        "share/semu/release-store-path.txt")) {
                 filtered.push(relative);
             }
         }
@@ -235,12 +273,20 @@ class AppImageRuntimeContractProvenance {
         }
         JsonValue roots = JsonValue.makeArray();
         for root in ["bin", "lib", "share"] {
+            AppImageProvenanceInternalPath source =
+                AppImageProvenanceSupport.resolveStorePath(
+                    runtimeRoot, targetStorePath, root);
             AppImageProvenanceInternalDigest digest =
-                AppImageProvenanceSupport.hashDirectory(
-                    PathTools.join(runtimeRoot, root));
-            if (!digest.ok()) {
-                return AppImageProvenanceInternalJson.failure(digest.error);
+                source.ok()
+                    ? AppImageProvenanceSupport.hashDirectory(source.value)
+                    : AppImageProvenanceInternalDigest.failure(source.error);
+            if (!source.ok() || !digest.ok()) {
+                return AppImageProvenanceInternalJson.failure(
+                    source.ok() ? digest.error : source.error);
             }
+            // The exact inventory and byte comparison above bind the staged
+            // payload. Hash its immutable Nix source so provenance written
+            // under share/semu cannot make the payload identity recursive.
             roots.push(AppImageProvenanceSupport.digestEntry(
                 root, digest.value));
         }
@@ -302,7 +348,7 @@ class AppImageRuntimeContractProvenance {
     class AppImageProvenanceInternalJson runtimeStoreEntries(
             string runtimeRoot, string targetStorePath) {
         string markerRelative =
-            "share/semu/steamdeck-runtime-store-path.txt";
+            "share/semu/release-store-path.txt";
         if (!AppImageProvenanceSupport.safeRegularFile(
                 runtimeRoot, markerRelative)) {
             return AppImageProvenanceInternalJson.failure(
@@ -324,7 +370,7 @@ class AppImageRuntimeContractProvenance {
         string storeUrl = "local?root=" + runtimeRoot;
         ExecResult queryResult = AppImageProvenanceSupport.process("nix", [
             "--extra-experimental-features", "nix-command flakes",
-            "path-info", "--json", "--json-format", "1", "--recursive",
+            "path-info", "--json", "--recursive",
             "--store", storeUrl, targetStorePath
         ]);
         JsonValue closure = JsonValue.parse(queryResult.stdout());
@@ -426,7 +472,8 @@ class AppImageRuntimeContractProvenance {
 
     class AppImageProvenanceInternalJson runtimeBuildContracts(
             string runtimeRoot, Vector<AppImageRuntimeSlice> slices,
-            JsonValue builds) {
+            JsonValue builds, JsonValue coreRuntime,
+            JsonValue selectedCoreBuilds) {
         Vector<string> expectedPaths = [
             "share/semu/es-de-build-contract.json"
         ];
@@ -435,15 +482,36 @@ class AppImageRuntimeContractProvenance {
                 expectedPaths.push(slice.buildContract);
             }
         }
+        JsonValue corePathValue = coreRuntime.get("build_contract");
+        if (!corePathValue.isString()
+                || !AppImageRuntimeInventory.safeRelative(
+                    corePathValue.asString())
+                || !corePathValue.asString()
+                    .endsWith("-build-contract.json")
+                || expectedPaths.contains(corePathValue.asString())
+                || !selectedCoreBuilds.isObject()) {
+            return AppImageProvenanceInternalJson.failure(
+                "selected-core build contract path/content is invalid");
+        }
+        string corePath = corePathValue.asString();
+        expectedPaths.push(corePath);
         expectedPaths = AppImageRuntimeInventory.sorted(expectedPaths);
         JsonValue expected = JsonValue.makeArray();
         for path in expectedPaths { expected.push(JsonValue.makeString(path)); }
 
-        string share = PathTools.join(runtimeRoot, "share/semu");
+        Vector<string> discovered = [];
+        Vector<string> discoveryErrors = [];
+        AppImageProvenanceSupport.collectRegularFiles(
+            runtimeRoot, "share/semu", discovered, discoveryErrors);
+        if (!discoveryErrors.isEmpty()) {
+            return AppImageProvenanceInternalJson.failure(
+                discoveryErrors.join("; "));
+        }
+        discovered = AppImageRuntimeInventory.sorted(discovered);
         JsonValue actual = JsonValue.makeArray();
-        for name in AppImageRuntimeInventory.sorted(FileSystem.listDir(share)) {
-            if (name.endsWith("-build-contract.json")) {
-                actual.push(JsonValue.makeString("share/semu/" + name));
+        for path in discovered {
+            if (path.endsWith("-build-contract.json")) {
+                actual.push(JsonValue.makeString(path));
             }
         }
         AppImageProvenanceInternalResult exact =
@@ -479,6 +547,14 @@ class AppImageRuntimeContractProvenance {
                             expected.get("source_sha256").asString())) {
                     return AppImageProvenanceInternalJson.failure(
                         "runtime ES-DE build contract disagrees with its source package");
+                }
+            } else if (hash.get("path").asString().equals(corePath)) {
+                if (!AppImageProvenanceSupport.canonicalJson(contract).equals(
+                        AppImageProvenanceSupport.canonicalJson(
+                            selectedCoreBuilds))) {
+                    return AppImageProvenanceInternalJson.failure(
+                        "runtime selected-core build contract disagrees "
+                        + "with its exact Nix package contract");
                 }
             } else {
                 bool matched = false;
@@ -704,12 +780,26 @@ class AppImageRuntimeContractProvenance {
                 "Nix target output has no direct component references");
         }
         Vector<string> componentPaths = [targetPath.asString()];
+        bool targetReference = false;
         for (int index = 0; index < references.size(); index++) {
             JsonValue reference = references.at(index);
             if (!reference.isString()
-                    || componentPaths.contains(reference.asString())) {
+                    || !AppImageProvenanceSupport.validStorePath(
+                        reference.asString())) {
                 return AppImageProvenanceInternalJson.failure(
                     "Nix target has an invalid direct component reference");
+            }
+            if (reference.asString().equals(targetPath.asString())) {
+                if (targetReference) {
+                    return AppImageProvenanceInternalJson.failure(
+                        "Nix target repeats its self reference");
+                }
+                targetReference = true;
+                continue;
+            }
+            if (componentPaths.contains(reference.asString())) {
+                return AppImageProvenanceInternalJson.failure(
+                    "Nix target repeats a direct component reference");
             }
             componentPaths.push(reference.asString());
         }
@@ -798,13 +888,12 @@ class AppImageRuntimeContractProvenance {
 
     class AppImageProvenanceInternalJson runtimeSnapshot(
             string repoRoot, string runtimeRoot, JsonValue builds,
-            Vector<AppImageRuntimeSlice> slices, JsonValue selectedCores,
+            AppImageRuntimeInventoryResult inventory, JsonValue selectedCores,
             JsonValue selectedCoreBuilds, JsonValue coreRuntime,
             JsonValue appImageRuntime,
             string targetStorePath) {
         AppImageRuntimeInventoryResult validated =
-            AppImageRuntimeInventory.validate(
-                PathTools.join(repoRoot, "config"), runtimeRoot);
+            AppImageRuntimeInventory.validateSlices(runtimeRoot, inventory);
         if (!validated.ok()) {
             return AppImageProvenanceInternalJson.failure(validated.error);
         }
@@ -825,11 +914,12 @@ class AppImageRuntimeContractProvenance {
         if (!executables.ok()) { return executables; }
         AppImageProvenanceInternalJson contracts =
             AppImageRuntimeContractProvenance.runtimeBuildContracts(
-                runtimeRoot, slices, builds);
+                runtimeRoot, validated.slices, builds, coreRuntime,
+                selectedCoreBuilds);
         if (!contracts.ok()) { return contracts; }
         AppImageProvenanceInternalJson packages =
             AppImageRuntimeContractProvenance.runtimePackages(
-                repoRoot, runtimeRoot, builds, slices);
+                repoRoot, runtimeRoot, builds, validated.slices);
         if (!packages.ok()) { return packages; }
         AppImageProvenanceInternalJson cores =
             AppImageRuntimeContractProvenance.runtimeCores(
@@ -838,6 +928,15 @@ class AppImageRuntimeContractProvenance {
         AppImageProvenanceInternalJson components =
             AppImageRuntimeContractProvenance.runtimeComponents(store.value);
         if (!components.ok()) { return components; }
+        JsonValue coreDirectory = cores.value.get("directory");
+        if (!coreDirectory.isString()) {
+            return AppImageProvenanceInternalJson.failure(
+                "selected-core runtime has no descriptor-tree directory");
+        }
+        AppImageProvenanceInternalJson descriptorTree =
+            AppImageRuntimeContractProvenance.descriptorTree(
+                runtimeRoot, coreDirectory.asString());
+        if (!descriptorTree.ok()) { return descriptorTree; }
         AppImageProvenanceInternalJson prefix =
             AppImageRuntimeContractProvenance.runtimePrefix(
                 runtimeRoot, appImageRuntime);
@@ -847,6 +946,7 @@ class AppImageRuntimeContractProvenance {
         if (!assets.ok()) { return assets; }
         JsonValue snapshot = JsonValue.makeObject();
         snapshot.set("tree", tree.value);
+        snapshot.set("descriptor_tree", descriptorTree.value);
         snapshot.set("target_payload", payload.value);
         snapshot.set("executables", executables.value);
         snapshot.set("nix_store_closure", store.value);

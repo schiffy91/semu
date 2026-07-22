@@ -1,4 +1,4 @@
-// json_format_contract_test.btrc - canonical generated JSON document proof.
+// json_document_contract_test.btrc - canonical generated JSON document proof.
 
 import std.{fs, io, json}
 import ../../src/compiler/checker.btrc
@@ -8,9 +8,8 @@ import ../../src/compiler/parser.btrc
 import ../../src/compiler/resolver.btrc
 import ../../src/generators/appimage.btrc
 import ../../src/generators/emulator_profiles.btrc
-import ../../src/lib/json_format.btrc
 
-class JsonFormatContractTest {
+class JsonDocumentContractTest {
     class int fail(string message) {
         print("  FAIL JSON format: " + message);
         return 1;
@@ -25,7 +24,7 @@ class JsonFormatContractTest {
         }
         JsonValue value = JsonValue.parse(text);
         return !value.isError()
-            && SemuJsonFormat.document(value).equals(text);
+            && value.document().equals(text);
     }
 
     class int checkFormatter() {
@@ -45,8 +44,8 @@ class JsonFormatContractTest {
         source.set("alpha", nested);
         source.set(escapedKey, JsonValue.makeArray());
 
-        string formatted = SemuJsonFormat.value(source);
-        string document = SemuJsonFormat.document(source);
+        string formatted = source.stringifyPretty();
+        string document = source.document();
         JsonValue parsed = JsonValue.parse(document);
         if (formatted.endsWith("\n")
                 || !document.equals(formatted + "\n")
@@ -58,13 +57,13 @@ class JsonFormatContractTest {
                 || formatted.indexOf("\"zeta\"")
                     >= formatted.indexOf("\"alpha\"")
                 || !formatted.contains("\n  \"alpha\": {\n    \"array\": [\n")) {
-            return JsonFormatContractTest.fail(
+            return JsonDocumentContractTest.fail(
                 "nested values, escaping, order, or indentation changed");
         }
 
         string scratch = FileSystem.tempDir("semu-json-format-boundary");
         if (scratch.isEmpty()) {
-            return JsonFormatContractTest.fail(
+            return JsonDocumentContractTest.fail(
                 "could not create document-boundary scratch root");
         }
         string canonical = PathTools.join(scratch, "canonical.json");
@@ -72,11 +71,11 @@ class JsonFormatContractTest {
         bool wrote = FileSystem.writeText(canonical, document)
             && FileSystem.writeText(unterminated, formatted);
         bool validBoundary = wrote
-            && JsonFormatContractTest.canonicalFile(canonical)
-            && !JsonFormatContractTest.canonicalFile(unterminated);
+            && JsonDocumentContractTest.canonicalFile(canonical)
+            && !JsonDocumentContractTest.canonicalFile(unterminated);
         FileSystem.removeRecursive(scratch);
         if (!validBoundary) {
-            return JsonFormatContractTest.fail(
+            return JsonDocumentContractTest.fail(
                 "file-boundary validation accepted missing final newline");
         }
         return 0;
@@ -94,7 +93,7 @@ class JsonFormatContractTest {
     class int checkGeneratedDocuments(string project) {
         string scratch = FileSystem.tempDir("semu-json-generation");
         if (scratch.isEmpty()) {
-            return JsonFormatContractTest.fail(
+            return JsonDocumentContractTest.fail(
                 "could not create generation scratch root");
         }
 
@@ -107,7 +106,7 @@ class JsonFormatContractTest {
         configRequest.outputRoot = PathTools.join(scratch, "configs");
         SemuCompilerModel configModel = SemuCompilerParser.parse(
             project, configRequest.target, configDiagnostics);
-        SemuBuildPlan configPlan = JsonFormatContractTest.compile(
+        SemuBuildPlan configPlan = JsonDocumentContractTest.compile(
             configModel, configRequest, configDiagnostics);
         string buildPlan = configDiagnostics.ok()
             ? SemuCompilerGenerator.emit(configPlan, configDiagnostics) : "";
@@ -126,7 +125,7 @@ class JsonFormatContractTest {
         appImageRequest.outputRoot = PathTools.join(scratch, "appimage");
         SemuCompilerModel appImageModel = SemuCompilerParser.parse(
             project, appImageRequest.target, appImageDiagnostics);
-        SemuBuildPlan appImagePlan = JsonFormatContractTest.compile(
+        SemuBuildPlan appImagePlan = JsonDocumentContractTest.compile(
             appImageModel, appImageRequest, appImageDiagnostics);
         string appImageBuildPlan = appImageDiagnostics.ok()
             ? SemuCompilerGenerator.emit(
@@ -137,17 +136,17 @@ class JsonFormatContractTest {
 
         int failures = 0;
         if (!configDiagnostics.ok()
-                || !JsonFormatContractTest.canonicalFile(buildPlan)
-                || !JsonFormatContractTest.canonicalFile(profile)) {
+                || !JsonDocumentContractTest.canonicalFile(buildPlan)
+                || !JsonDocumentContractTest.canonicalFile(profile)) {
             for error in configDiagnostics.errors { print("  " + error); }
-            failures += JsonFormatContractTest.fail(
+            failures += JsonDocumentContractTest.fail(
                 "build plan or emulator profile is not canonical pretty JSON");
         }
         if (!appImageDiagnostics.ok()
-                || !JsonFormatContractTest.canonicalFile(appImageBuildPlan)
-                || !JsonFormatContractTest.canonicalFile(appImageFile)) {
+                || !JsonDocumentContractTest.canonicalFile(appImageBuildPlan)
+                || !JsonDocumentContractTest.canonicalFile(appImageFile)) {
             for error in appImageDiagnostics.errors { print("  " + error); }
-            failures += JsonFormatContractTest.fail(
+            failures += JsonDocumentContractTest.fail(
                 "AppImage plan is not canonical pretty JSON");
         }
         FileSystem.removeRecursive(scratch);
@@ -155,8 +154,8 @@ class JsonFormatContractTest {
     }
 
     class int run(string project) {
-        int failures = JsonFormatContractTest.checkFormatter();
-        failures += JsonFormatContractTest.checkGeneratedDocuments(project);
+        int failures = JsonDocumentContractTest.checkFormatter();
+        failures += JsonDocumentContractTest.checkGeneratedDocuments(project);
         if (failures == 0) {
             print("JSON format contract: canonical generated documents valid");
         }

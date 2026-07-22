@@ -1,0 +1,197 @@
+// Immutable release selection and declarative runtime projection contracts.
+
+import std.{fs, json, vector}
+import ../../src/generators/appimage/release_inventory.btrc
+
+class ReleaseInventoryContractTest {
+    class int fail(string message) {
+        print("  FAIL release inventory: " + message);
+        return 1;
+    }
+
+    class JsonValue document(string kind, string packageAttribute,
+                             Vector<string> emulatorIds) {
+        JsonValue ids = JsonValue.makeArray();
+        for id in emulatorIds { ids.push(JsonValue.makeString(id)); }
+        JsonValue document = JsonValue.makeObject();
+        document.set("schema_version", JsonValue.makeInt(1));
+        document.set("kind", JsonValue.makeString(kind));
+        document.set("target", JsonValue.makeString("steam-deck"));
+        document.set("platform", JsonValue.makeString("linux"));
+        document.set("nix_system", JsonValue.makeString("x86_64-linux"));
+        document.set("package_attribute",
+            JsonValue.makeString(packageAttribute));
+        document.set("emulator_ids", ids);
+        return document;
+    }
+
+    class bool write(string root, JsonValue document, bool canonical = true) {
+        string file = PathTools.join(root,
+            AppImageReleaseInventoryLoader.relativePath());
+        return FileSystem.mkdirp(PathTools.dirname(file)) == 0
+            && Path.writeAll(file, canonical
+                ? document.document() : document.stringify());
+    }
+
+    class Vector<string> sliceIds(
+            Vector<AppImageRuntimeSlice> slices) {
+        Vector<string> ids = [];
+        for slice in slices { ids.push(slice.id); }
+        return ids;
+    }
+
+    class bool same(Vector<string> actual, Vector<string> expected) {
+        return actual.join("\n").equals(expected.join("\n"));
+    }
+
+    class int rejects(string root, JsonValue document, string label,
+                      bool canonical = true) {
+        if (!ReleaseInventoryContractTest.write(root, document, canonical)) {
+            return ReleaseInventoryContractTest.fail(
+                "could not write " + label + " fixture");
+        }
+        AppImageReleaseInventoryResult loaded =
+            AppImageReleaseInventoryLoader.load(root);
+        return loaded.ok()
+            ? ReleaseInventoryContractTest.fail(label + " was accepted") : 0;
+    }
+
+    class int run(string project) {
+        string root = FileSystem.tempDir("semu-release-inventory");
+        if (root.isEmpty()) {
+            return ReleaseInventoryContractTest.fail(
+                "could not create a runtime fixture");
+        }
+        int failures = 0;
+        Vector<string> retroarch = ["retroarch"];
+        JsonValue sliceDocument = ReleaseInventoryContractTest.document(
+            "emulator-slice", "steamdeck-runtime-retroarch", retroarch);
+        if (!ReleaseInventoryContractTest.write(root, sliceDocument)) {
+            FileSystem.removeRecursive(root);
+            return ReleaseInventoryContractTest.fail(
+                "could not write the valid slice fixture");
+        }
+        AppImageReleaseInventoryResult loaded =
+            AppImageReleaseInventoryLoader.load(root);
+        AppImageRuntimeInventoryResult selection = loaded.ok()
+            ? loaded.inventory.select(PathTools.join(project, "config"))
+            : AppImageRuntimeInventoryResult.failure(loaded.error);
+        Vector<string> expectedSystems = [
+            "gb", "gba", "gbc", "genesis", "n64", "nds", "nes", "psx",
+            "snes"
+        ];
+        Vector<string> expectedCores = [
+            "desmume", "gambatte", "genesis_plus_gx", "mednafen_psx",
+            "mesen", "mgba", "mupen64plus_next", "snes9x"
+        ];
+        if (!loaded.ok() || !selection.ok()
+                || !loaded.inventory.matchesPackageSelection(
+                    "steam-deck", "")
+                || !loaded.inventory.matchesPackageSelection(
+                    "steam-deck", "retroarch")
+                || loaded.inventory.matchesPackageSelection(
+                    "steam-deck", "dolphin")
+                || loaded.inventory.matchesPackageSelection("bazzite", "")
+                || !loaded.inventory.packageEmulator("")
+                    .equals("retroarch")
+                || !ReleaseInventoryContractTest.same(
+                    ReleaseInventoryContractTest.sliceIds(selection.slices),
+                    retroarch)
+                || !ReleaseInventoryContractTest.same(
+                    selection.systems, expectedSystems)
+                || !ReleaseInventoryContractTest.same(
+                    selection.cores, expectedCores)) {
+            failures += ReleaseInventoryContractTest.fail(
+                loaded.ok() ? selection.error : loaded.error);
+        }
+
+        Vector<string> aggregateIds = [
+            "azahar", "cemu", "dolphin", "flycast", "melonds", "pcsx2",
+            "ppsspp", "retroarch", "ryujinx"
+        ];
+        JsonValue aggregateDocument = ReleaseInventoryContractTest.document(
+            "aggregate", "steamdeck-runtime", aggregateIds);
+        if (!ReleaseInventoryContractTest.write(root, aggregateDocument)) {
+            failures += ReleaseInventoryContractTest.fail(
+                "could not write the aggregate fixture");
+        } else {
+            AppImageReleaseInventoryResult aggregate =
+                AppImageReleaseInventoryLoader.load(root);
+            AppImageRuntimeInventoryResult aggregateSelection = aggregate.ok()
+                ? aggregate.inventory.select(PathTools.join(project, "config"))
+                : AppImageRuntimeInventoryResult.failure(aggregate.error);
+            if (!aggregate.ok() || !aggregateSelection.ok()
+                    || !aggregate.inventory.matchesPackageSelection(
+                        "steam-deck", "")
+                    || aggregate.inventory.matchesPackageSelection(
+                        "steam-deck", "retroarch")
+                    || !aggregate.inventory.packageEmulator("").isEmpty()
+                    || aggregateSelection.slices.size() != aggregateIds.size()
+                    || aggregateSelection.systems.size() != 17) {
+                failures += ReleaseInventoryContractTest.fail(
+                    aggregate.ok() ? aggregateSelection.error : aggregate.error);
+            }
+        }
+
+        JsonValue extra = ReleaseInventoryContractTest.document(
+            "emulator-slice", "steamdeck-runtime-retroarch", retroarch);
+        extra.set("unexpected", JsonValue.makeBool(true));
+        failures += ReleaseInventoryContractTest.rejects(
+            root, extra, "extra manifest field");
+        failures += ReleaseInventoryContractTest.rejects(
+            root, ReleaseInventoryContractTest.document(
+                "emulator-slice", "steamdeck-runtime-retroarch",
+                ["retroarch", "retroarch"]),
+            "duplicate emulator selection");
+        failures += ReleaseInventoryContractTest.rejects(
+            root, sliceDocument, "noncanonical manifest", false);
+
+        JsonValue wrongTarget = ReleaseInventoryContractTest.document(
+            "emulator-slice", "steamdeck-runtime-retroarch", retroarch);
+        wrongTarget.set("target", JsonValue.makeString("bazzite"));
+        failures += ReleaseInventoryContractTest.rejects(
+            root, wrongTarget, "wrong release target");
+
+        JsonValue unknown = ReleaseInventoryContractTest.document(
+            "emulator-slice", "steamdeck-runtime-missing", ["missing"]);
+        if (!ReleaseInventoryContractTest.write(root, unknown)) {
+            failures += ReleaseInventoryContractTest.fail(
+                "could not write unknown-emulator fixture");
+        } else {
+            AppImageReleaseInventoryResult unknownLoaded =
+                AppImageReleaseInventoryLoader.load(root);
+            if (!unknownLoaded.ok()
+                    || unknownLoaded.inventory.select(
+                        PathTools.join(project, "config")).ok()) {
+                if (!unknownLoaded.ok()) {
+                    failures += ReleaseInventoryContractTest.fail(
+                        "well-formed unknown-emulator fixture did not reach projection");
+                } else {
+                    failures += ReleaseInventoryContractTest.fail(
+                        "unknown emulator projection was accepted");
+                }
+            }
+        }
+
+        JsonValue incompleteAggregate = ReleaseInventoryContractTest.document(
+            "aggregate", "steamdeck-runtime", retroarch);
+        if (!ReleaseInventoryContractTest.write(root, incompleteAggregate)) {
+            failures += ReleaseInventoryContractTest.fail(
+                "could not write incomplete aggregate fixture");
+        } else {
+            AppImageReleaseInventoryResult incomplete =
+                AppImageReleaseInventoryLoader.load(root);
+            if (!incomplete.ok()
+                    || incomplete.inventory.select(
+                        PathTools.join(project, "config")).ok()) {
+                failures += ReleaseInventoryContractTest.fail(
+                    "incomplete aggregate inventory was accepted");
+            }
+        }
+        FileSystem.removeRecursive(root);
+        if (failures == 0) {
+            print("release inventory contract: exact slice + aggregate projection valid");
+        }
+        return failures;
+    }
+}

@@ -8,6 +8,7 @@ import ../../src/compiler/resolver.btrc
 import ../../src/generators/rendering.btrc
 import ../../src/lib/merge.btrc
 import ../../src/lib/rendering_definition.btrc
+import ../../src/lib/rendering_settings.btrc
 
 class RenderingExpectations {
     class Vector<string> systems() {
@@ -34,7 +35,7 @@ class RenderingExpectations {
     }
 
     class string defaultBezel(string id) {
-        if (id.equals("gb")) { return "classic"; }
+        if (id.equals("gb")) { return "dmg"; }
         if (id.equals("gbc")) { return "frost_purple"; }
         if (id.equals("gba")) { return "indigo_wide"; }
         if (id.equals("nds")) { return "horizontal"; }
@@ -393,11 +394,24 @@ class RenderingDeclarationAudit {
                 || !system.shaders.get("renderer").asBool()) {
             return false;
         }
-        if (!enabled) { return !system.shaders.get("screen").isString(); }
+        if (!enabled) {
+            return SemuRenderingDefinition.shaderScreens(system.shaders)
+                .isEmpty();
+        }
         string expected = RenderingExpectations.shader(system.id);
-        return system.shaders.get("screen").isString()
-            && system.shaders.get("screen").asString().equals(expected)
-            && model.assets.shaders.get("assets").has(expected);
+        Vector<string> screens =
+            SemuRenderingDefinition.shaderScreens(system.shaders);
+        if (!SemuRenderingDefinition.defaultShaderScreen(system.shaders)
+                .equals(expected) || !screens.contains(expected)) {
+            return false;
+        }
+        for screen in screens {
+            if (!screen.equals("none")
+                    && !model.assets.shaders.get("assets").has(screen)) {
+                return false;
+            }
+        }
+        return true;
     }
 
     class bool bezel(SemuCompilerModel model, SemuSystemSource system) {
@@ -499,6 +513,84 @@ class RenderingContractTest {
         return 1;
     }
 
+    class bool surfaceEnvironment(SemuRenderingEnvironment environment,
+                                  SemuSystemSource system) {
+        JsonValue display = system.definition.get("display");
+        JsonValue screens = display.get("screens");
+        if (!screens.isArray() || screens.size() < 1 || screens.size() > 2) {
+            return false;
+        }
+        string layout = screens.size() == 1 ? "single"
+            : (display.get("arrangement").isString()
+                ? display.get("arrangement").asString() : "");
+        if (!environment.get("SEMU_RENDER_SURFACE_COUNT")
+                .equals(f"{screens.size()}")
+                || !environment.get("SEMU_RENDER_SURFACE_LAYOUT")
+                    .equals(layout)) {
+            return false;
+        }
+        int touchIndex = -1;
+        string touch = display.get("surface_mapping").get("touch_screen")
+                .isString()
+            ? display.get("surface_mapping").get("touch_screen").asString()
+            : "";
+        for (int index = 0; index < screens.size(); index++) {
+            JsonValue screen = screens.at(index);
+            string id = screen.get("id").asString();
+            JsonValue native = screen.get("native");
+            if (!environment.get(f"SEMU_RENDER_SURFACE_{index}_ID").equals(id)
+                    || !environment.get(
+                        f"SEMU_RENDER_SURFACE_{index}_NATIVE")
+                        .equals(f"{native.get("w").asInt()}x{native.get("h").asInt()}")) {
+                return false;
+            }
+            if (id.equals(touch)) { touchIndex = index; }
+        }
+        if (touch.isEmpty()) {
+            return environment.get("SEMU_RENDER_TOUCH_SURFACE_ID").isEmpty()
+                && environment.get("SEMU_RENDER_TOUCH_SURFACE_INDEX").isEmpty();
+        }
+        return touchIndex >= 0
+            && environment.get("SEMU_RENDER_TOUCH_SURFACE_ID").equals(touch)
+            && environment.get("SEMU_RENDER_TOUCH_SURFACE_INDEX")
+                .equals(f"{touchIndex}");
+    }
+
+    class JsonValue settingField(JsonValue definition, string key) {
+        JsonValue sections = definition.get("menu").get("sections");
+        if (!sections.isArray()) { return JsonValue.makeNull(); }
+        for (int sectionIndex = 0;
+             sectionIndex < sections.size(); sectionIndex++) {
+            JsonValue fields = sections.at(sectionIndex).get("fields");
+            if (!fields.isArray()) { continue; }
+            for (int fieldIndex = 0;
+                 fieldIndex < fields.size(); fieldIndex++) {
+                JsonValue field = fields.at(fieldIndex);
+                if (field.get("key").isString()
+                        && field.get("key").asString().equals(key)) {
+                    return field;
+                }
+            }
+        }
+        return JsonValue.makeNull();
+    }
+
+    class bool exactChoices(JsonValue field, Vector<string> expected) {
+        JsonValue choices = field.get("choices");
+        if (!field.isObject() || !choices.isArray()
+                || choices.size() != expected.size()) {
+            return false;
+        }
+        for (int index = 0; index < expected.size(); index++) {
+            if (!choices.at(index).isString()
+                    || !choices.at(index).asString()
+                        .equals(expected.get(index))) {
+                return false;
+            }
+        }
+        return true;
+    }
+
     class string shaderPath(string root, string logical) {
         string prefix = "assets/shaders/";
         return PathTools.join(root, "share/libretro/shaders/semu/"
@@ -533,26 +625,36 @@ class RenderingContractTest {
         return true;
     }
 
-    class JsonValue presentationLayer(string gbShader, string gcLayout,
-                                      string ndsLayout) {
+    class JsonValue presentationLayer(string systemId, string shader,
+                                      string bezel, string layout) {
         JsonValue root = JsonValue.makeObject();
         JsonValue visual = JsonValue.makeObject();
         JsonValue systems = JsonValue.makeObject();
-        if (!gbShader.isEmpty()) {
-            JsonValue gb = JsonValue.makeObject();
-            gb.set("shader_file", JsonValue.makeString(gbShader));
-            systems.set("gb", gb);
+        JsonValue system = JsonValue.makeObject();
+        if (!shader.isEmpty()) {
+            system.set("shader_file", JsonValue.makeString(shader));
         }
-        if (!gcLayout.isEmpty()) {
-            JsonValue gc = JsonValue.makeObject();
-            gc.set("layout", JsonValue.makeString(gcLayout));
-            systems.set("gc", gc);
+        if (!bezel.isEmpty()) {
+            system.set("bezel_variant", JsonValue.makeString(bezel));
         }
-        if (!ndsLayout.isEmpty()) {
-            JsonValue nds = JsonValue.makeObject();
-            nds.set("layout", JsonValue.makeString(ndsLayout));
-            systems.set("nds", nds);
+        if (!layout.isEmpty()) {
+            system.set("layout", JsonValue.makeString(layout));
         }
+        systems.set(systemId, system);
+        visual.set("systems", systems);
+        root.set("schema_version", JsonValue.makeInt(1));
+        root.set("visual", visual);
+        return root;
+    }
+
+    class JsonValue disabledEffectsLayer(string systemId) {
+        JsonValue root = JsonValue.makeObject();
+        JsonValue visual = JsonValue.makeObject();
+        JsonValue systems = JsonValue.makeObject();
+        JsonValue system = JsonValue.makeObject();
+        system.set("shaders", JsonValue.makeBool(false));
+        system.set("bezels", JsonValue.makeBool(false));
+        systems.set(systemId, system);
         visual.set("systems", systems);
         root.set("schema_version", JsonValue.makeInt(1));
         root.set("visual", visual);
@@ -580,6 +682,29 @@ class RenderingContractTest {
         JsonValue settings = JsonValue.readFile(
             PathTools.join(project, "config/settings/defaults.json"));
         int failures = 0;
+        JsonValue settingsDefinition =
+            SemuRenderingSettingsDefinitions.expand(
+                settings, PathTools.join(project, "config"));
+        JsonValue gbShaderField = RenderingContractTest.settingField(
+            settingsDefinition, "visual.systems.gb.shader_file");
+        JsonValue gcBezelField = RenderingContractTest.settingField(
+            settingsDefinition, "visual.systems.gc.bezel_variant");
+        JsonValue gcLayoutField = RenderingContractTest.settingField(
+            settingsDefinition, "visual.systems.gc.layout");
+        if (settingsDefinition.isError()
+                || !RenderingContractTest.exactChoices(gbShaderField, [
+                    "none", "assets/shaders/gb/screen.slangp",
+                    "assets/shaders/gb/pocket.slangp"
+                ])
+                || !RenderingContractTest.exactChoices(gcBezelField, [
+                    "crt_4x3", "crt_16x9"
+                ])
+                || !RenderingContractTest.exactChoices(gcLayoutField, [
+                    "auto", "crt_4x3", "crt_16x9"
+                ])) {
+            failures += RenderingContractTest.fail(
+                "settings choices escaped their selected system declarations");
+        }
         if (!RenderingDeclarationAudit.completeSystemSet(model)) {
             failures += RenderingContractTest.fail(
                 "configured systems differ from the exact 17-system matrix");
@@ -611,6 +736,11 @@ class RenderingContractTest {
                 system.bezels, defaultVariant);
             string defaultArt = defaultPresentation.get("art").isString()
                 ? defaultPresentation.get("art").asString() : "";
+            string defaultCanvas = defaultPresentation.has("canvas")
+                ? SemuRenderingDefinition.canvas(
+                    defaultPresentation.get("canvas")) : "";
+            JsonValue captureFrame = system.definition.get("verification")
+                .get("capture_frame");
             if (!systemDiagnostics.ok()
                     || !environment.get("SEMU_RENDER_SYSTEM_ID").equals(system.id)
                     || !environment.get("SEMU_RENDER_EMULATOR_ID")
@@ -620,12 +750,20 @@ class RenderingContractTest {
                     || !environment.get("SEMU_RENDER_BEZELS")
                         .equals(bezelEnabled ? "1" : "0")
                     || !environment.get("SEMU_RENDER_INTEGER_SCALE").equals("1")
+                    || !RenderingContractTest.surfaceEnvironment(
+                        environment, system)
+                    || !captureFrame.isInt()
+                    || !environment.get("SEMU_RENDER_CAPTURE_FRAME")
+                        .equals(f"{captureFrame.asInt()}")
                     || (shaderEnabled
                         && environment.get("SEMU_RENDER_SHADER_PRESET").isEmpty())
                     || (bezelEnabled
                         && (environment.get("SEMU_RENDER_ART").isEmpty()
                             || !environment.get("SEMU_RENDER_ART")
-                                .endsWith("/" + defaultArt)))) {
+                                .endsWith("/" + defaultArt)))
+                    || (!defaultCanvas.isEmpty()
+                        && !environment.get("SEMU_RENDER_CANVAS")
+                            .equals(defaultCanvas))) {
                 for error in systemDiagnostics.errors { print("  " + error); }
                 failures += RenderingContractTest.fail(
                     system.id + " did not compile its declared presentation");
@@ -666,10 +804,22 @@ class RenderingContractTest {
         string semuHome = PathTools.join(scratch, "settings");
         string overrides = PathTools.join(semuHome, "overrides");
         UnixFileSystem.mkdirp(overrides);
-        JsonValue userLayer = RenderingContractTest.presentationLayer(
-            "assets/shaders/gbc/screen.slangp", "crt_4x3", "vertical");
-        JsonValue overrideLayer = RenderingContractTest.presentationLayer(
-            "assets/shaders/gba/screen.slangp", "crt_16x9", "big_screen");
+        JsonValue userLayer = JsonMerge.recursive(
+            RenderingContractTest.presentationLayer(
+                "gb", "none", "", ""),
+            JsonMerge.recursive(
+                RenderingContractTest.presentationLayer(
+                    "gc", "", "", "crt_4x3"),
+                RenderingContractTest.presentationLayer(
+                    "nds", "", "", "vertical")));
+        JsonValue overrideLayer = JsonMerge.recursive(
+            RenderingContractTest.presentationLayer(
+                "gb", "assets/shaders/gb/screen.slangp", "", ""),
+            JsonMerge.recursive(
+                RenderingContractTest.presentationLayer(
+                    "gc", "", "", "crt_16x9"),
+                RenderingContractTest.presentationLayer(
+                    "nds", "", "", "big_screen")));
         Path.writeAll(PathTools.join(semuHome, "semu.json"),
             userLayer.stringify() + "\n");
         Path.writeAll(PathTools.join(overrides, "90-presentation.json"),
@@ -682,7 +832,7 @@ class RenderingContractTest {
         request.outputRoot = PathTools.join(scratch, "output");
         request.commandLineSettings =
             RenderingContractTest.presentationLayer(
-                "assets/shaders/nes/screen.slangp", "", "");
+                "gb", "assets/shaders/gb/screen.slangp", "", "");
         CompilerDiagnostics resolvedDiagnostics = CompilerDiagnostics();
         SemuBuildPlan resolved = SemuBuildResolver.resolve(
             model, request, resolvedDiagnostics);
@@ -704,23 +854,103 @@ class RenderingContractTest {
             resolvedDiagnostics);
         JsonValue noneSettings = JsonMerge.recursive(
             resolved.settings,
-            RenderingContractTest.presentationLayer("none", "", ""));
+            RenderingContractTest.presentationLayer(
+                "gb", "none", "", ""));
         CompilerDiagnostics noneDiagnostics = CompilerDiagnostics();
-        SemuRenderingEnvironment disabledHandheld =
+        SemuRenderingEnvironment shaderDisabledHandheld =
             SemuRenderingCompiler.compile(
                 model, model.systemById("gb"), "retroarch", scratch,
                 PathTools.join(scratch, "state/gb-none"), noneSettings,
                 noneDiagnostics);
+        JsonValue disabledSettings = JsonMerge.recursive(
+            resolved.settings,
+            RenderingContractTest.disabledEffectsLayer("gb"));
+        CompilerDiagnostics disabledDiagnostics = CompilerDiagnostics();
+        SemuRenderingEnvironment disabledHandheld =
+            SemuRenderingCompiler.compile(
+                model, model.systemById("gb"), "retroarch", scratch,
+                PathTools.join(scratch, "state/gb-disabled"),
+                disabledSettings, disabledDiagnostics);
         JsonValue fixedFourThreeSettings = JsonMerge.recursive(
             resolved.settings,
             RenderingContractTest.presentationLayer(
-                "", "crt_4x3", ""));
+                "gc", "", "", "crt_4x3"));
         CompilerDiagnostics fixedFourThreeDiagnostics = CompilerDiagnostics();
         SemuRenderingEnvironment fixedFourThree =
             SemuRenderingCompiler.compile(
                 model, model.systemById("gc"), "dolphin", scratch,
                 PathTools.join(scratch, "state/gc-4x3"),
                 fixedFourThreeSettings, fixedFourThreeDiagnostics);
+
+        string foreignShader =
+            model.systemById("gbc").shaders.get("screen").asString();
+        JsonValue foreignBezelDefinition = SemuRenderingDefinition.variant(
+            model.systemById("gbc").bezels, "frost_purple");
+        string foreignBezelArt = foreignBezelDefinition.get("art").isString()
+            ? foreignBezelDefinition.get("art").asString() : "";
+        bool foreignAssetsExist = SemuRenderingDefinition.assetDeclared(
+                model.assets.shaders, foreignShader)
+            && SemuRenderingDefinition.assetDeclared(
+                model.assets.bezels, foreignBezelArt);
+
+        JsonValue foreignShaderSettings = JsonMerge.recursive(
+            disabledSettings,
+            RenderingContractTest.presentationLayer(
+                "gb", foreignShader, "", ""));
+        CompilerDiagnostics foreignShaderDiagnostics = CompilerDiagnostics();
+        SemuRenderingEnvironment rejectedShader =
+            SemuRenderingCompiler.compile(
+                model, model.systemById("gb"), "retroarch", scratch,
+                PathTools.join(scratch, "state/gb-foreign-shader"),
+                foreignShaderSettings, foreignShaderDiagnostics);
+
+        JsonValue foreignBezelSettings = JsonMerge.recursive(
+            disabledSettings,
+            RenderingContractTest.presentationLayer(
+                "gb", "", "frost_purple", ""));
+        CompilerDiagnostics foreignBezelDiagnostics = CompilerDiagnostics();
+        SemuRenderingEnvironment rejectedBezel =
+            SemuRenderingCompiler.compile(
+                model, model.systemById("gb"), "retroarch", scratch,
+                PathTools.join(scratch, "state/gb-foreign-bezel"),
+                foreignBezelSettings, foreignBezelDiagnostics);
+
+        JsonValue foreignLayoutSettings = JsonMerge.recursive(
+            resolved.settings,
+            RenderingContractTest.presentationLayer(
+                "gb", "", "", "crt_4x3"));
+        CompilerDiagnostics foreignLayoutDiagnostics = CompilerDiagnostics();
+        SemuRenderingEnvironment rejectedLayout =
+            SemuRenderingCompiler.compile(
+                model, model.systemById("gb"), "retroarch", scratch,
+                PathTools.join(scratch, "state/gb-foreign-layout"),
+                foreignLayoutSettings, foreignLayoutDiagnostics);
+
+        SemuSystemSource zeroCaptureSystem = model.systemById("gb");
+        zeroCaptureSystem.definition = JsonValue.parse(
+            zeroCaptureSystem.definition.stringify());
+        JsonValue zeroVerification =
+            zeroCaptureSystem.definition.get("verification");
+        zeroVerification.set("capture_frame", JsonValue.makeInt(0));
+        zeroCaptureSystem.definition.set("verification", zeroVerification);
+        CompilerDiagnostics zeroCaptureDiagnostics = CompilerDiagnostics();
+        SemuRenderingEnvironment zeroCapture = SemuRenderingCompiler.compile(
+            model, zeroCaptureSystem, "retroarch", scratch,
+            PathTools.join(scratch, "state/gb-zero-capture"), settings,
+            zeroCaptureDiagnostics);
+
+        SemuSystemSource highCaptureSystem = model.systemById("gb");
+        highCaptureSystem.definition = JsonValue.parse(
+            highCaptureSystem.definition.stringify());
+        JsonValue highVerification =
+            highCaptureSystem.definition.get("verification");
+        highVerification.set("capture_frame", JsonValue.makeInt(901));
+        highCaptureSystem.definition.set("verification", highVerification);
+        CompilerDiagnostics highCaptureDiagnostics = CompilerDiagnostics();
+        SemuRenderingEnvironment highCapture = SemuRenderingCompiler.compile(
+            model, highCaptureSystem, "retroarch", scratch,
+            PathTools.join(scratch, "state/gb-high-capture"), settings,
+            highCaptureDiagnostics);
         string resolvedShader = SemuRenderingDefinition.text(resolved.settings,
             "visual.systems.gb.shader_file");
         string resolvedGcLayout = SemuRenderingDefinition.text(resolved.settings,
@@ -733,10 +963,24 @@ class RenderingContractTest {
             "visual.systems.switch.bezel_variant");
         string modernLayout = SemuRenderingDefinition.text(resolved.settings,
             "visual.systems.switch.layout");
+        SemuSystemSource gameBoy = model.systemById("gb");
+        string defaultGameBoyBezelId =
+            gameBoy.bezels.get("default_variant").isString()
+                ? gameBoy.bezels.get("default_variant").asString() : "";
+        JsonValue defaultGameBoyBezel = SemuRenderingDefinition.variant(
+            gameBoy.bezels, defaultGameBoyBezelId);
+        string expectedGameBoyCanvas = SemuRenderingDefinition.canvas(
+            defaultGameBoyBezel.get("canvas"));
         if (!resolvedDiagnostics.ok()
-                || !resolvedShader.equals("assets/shaders/nes/screen.slangp")
+                || !resolvedShader.equals("assets/shaders/gb/screen.slangp")
                 || !handheld.get("SEMU_RENDER_SHADER_PRESET")
-                    .endsWith("/nes/screen.slangp")
+                    .endsWith("/gb/screen.slangp")
+                || !handheld.get("SEMU_RENDER_ART")
+                    .endsWith("/assets/bezels/gb/dmg.png")
+                || expectedGameBoyCanvas.isEmpty()
+                || !handheld.get("SEMU_RENDER_CANVAS")
+                    .equals(expectedGameBoyCanvas)
+                || !handheld.get("SEMU_RENDER_CAPTURE_FRAME").equals("180")
                 || !resolvedGcLayout.equals("crt_16x9")
                 || !widescreen.get("SEMU_RENDER_ART")
                     .endsWith("/assets/bezels/tv/crt-16x9.png")
@@ -760,12 +1004,26 @@ class RenderingContractTest {
                 || !modernLayout.equals("auto")
                 || !modern.get("SEMU_RENDER_SHADERS").equals("0")
                 || !modern.get("SEMU_RENDER_BEZELS").equals("0")
-                || !modern.get("SEMU_RENDER_ART").isEmpty()
-                || !noneDiagnostics.ok()
+                || !modern.get("SEMU_RENDER_ART").isEmpty()) {
+            for error in resolvedDiagnostics.errors { print("  " + error); }
+            failures += RenderingContractTest.fail(
+                "declared defaults and per-system variants did not resolve");
+        }
+        if (!noneDiagnostics.ok()
+                || !shaderDisabledHandheld.get("SEMU_RENDER_SHADERS")
+                    .equals("0")
+                || !shaderDisabledHandheld.get(
+                    "SEMU_RENDER_SHADER_PRESET").isEmpty()
+                || !disabledDiagnostics.ok()
                 || !disabledHandheld.get("SEMU_RENDER_SHADERS").equals("0")
+                || !disabledHandheld.get("SEMU_RENDER_BEZELS").equals("0")
                 || !disabledHandheld.get(
                     "SEMU_RENDER_SHADER_PRESET").isEmpty()
-                || !fixedFourThreeDiagnostics.ok()
+                || !disabledHandheld.get("SEMU_RENDER_ART").isEmpty()) {
+            failures += RenderingContractTest.fail(
+                "declared shader and bezel disable states did not resolve");
+        }
+        if (!fixedFourThreeDiagnostics.ok()
                 || !fixedFourThree.get("SEMU_RENDER_ART")
                     .endsWith("/assets/bezels/tv/crt-4x3.png")
                 || !fixedFourThree.get("SEMU_RENDER_ART_B").equals(
@@ -774,9 +1032,26 @@ class RenderingContractTest {
                     fixedFourThree.get("SEMU_RENDER_ART"))
                 || !fixedFourThree.get("SEMU_RENDER_ART_D").equals(
                     fixedFourThree.get("SEMU_RENDER_ART"))) {
-            for error in resolvedDiagnostics.errors { print("  " + error); }
             failures += RenderingContractTest.fail(
-                "per-system precedence did not reach handheld, widescreen, dual-screen, and modern generation");
+                "another system's declared presentation variant stopped working");
+        }
+        if (!foreignAssetsExist || foreignShaderDiagnostics.ok()
+                || foreignBezelDiagnostics.ok()
+                || foreignLayoutDiagnostics.ok()
+                || !rejectedShader.get("SEMU_RENDER_SHADERS").equals("0")
+                || !rejectedShader.get("SEMU_RENDER_SHADER_PRESET").isEmpty()
+                || !rejectedBezel.get("SEMU_RENDER_BEZELS").equals("0")
+                || !rejectedBezel.get("SEMU_RENDER_ART").isEmpty()
+                || rejectedLayout.get("SEMU_RENDER_ART")
+                    .endsWith("/assets/bezels/tv/crt-4x3.png")) {
+            failures += RenderingContractTest.fail(
+                "GB accepted a globally valid asset declared by another system");
+        }
+        if (zeroCaptureDiagnostics.ok() || highCaptureDiagnostics.ok()
+                || !zeroCapture.get("SEMU_RENDER_CAPTURE_FRAME").isEmpty()
+                || !highCapture.get("SEMU_RENDER_CAPTURE_FRAME").isEmpty()) {
+            failures += RenderingContractTest.fail(
+                "capture frame accepted a non-positive or out-of-range value");
         }
         FileSystem.removeRecursive(scratch);
         if (failures == 0) {

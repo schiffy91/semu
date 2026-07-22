@@ -6,9 +6,14 @@ import ./compiler/pipeline.btrc
 import ./generators/appimage.btrc
 import ./generators/appimage/app_runtime.btrc
 import ./generators/appimage/assembler.btrc
+import ./generators/appimage/assembly_tools.btrc
 import ./generators/appimage/installed_launcher.btrc
 import ./generators/appimage/installer.btrc
+import ./generators/appimage/install_store.btrc
+import ./generators/appimage/linux_worker.btrc
 import ./generators/appimage/provenance.btrc
+import ./generators/appimage/release_inventory.btrc
+import ./generators/appimage/work_session.btrc
 import ./generators/emulator_profiles.btrc
 import ./generators/emulator_runtime.btrc
 import ./generators/esde.btrc
@@ -108,7 +113,16 @@ class SemuCli {
             string target = command.option("--target", "");
             if (target.isEmpty()) { return SemuCli.usage(1); }
             return SemuCli.compile(
-                SemuCli.request(command, "configs", target, "", diagnostics),
+                SemuCli.request(command, "configs", target,
+                    command.option("--emulator", ""), diagnostics),
+                diagnostics);
+        }
+        if (kind.equals("package")) {
+            string target = command.option("--target", "");
+            if (target.isEmpty()) { return SemuCli.usage(1); }
+            return SemuCli.compile(
+                SemuCli.request(command, "package", target,
+                    command.option("--emulator", ""), diagnostics),
                 diagnostics);
         }
         return SemuCli.usage(1);
@@ -120,6 +134,19 @@ class SemuCli {
             return SemuCli.usage(1);
         }
         string mode = command.operand(1);
+        if (mode.equals("worker")) {
+            return SemuCli.runAppImageWorker(command);
+        }
+        if (mode.equals("payload-identity")) {
+            string root = command.option("--root", "");
+            SemuInstallResult identity = SemuInstallTree.digest(root);
+            if (!identity.ok()) {
+                print("appimage payload identity: " + identity.error);
+                return 2;
+            }
+            print(identity.document);
+            return 0;
+        }
         string project = SemuOwnedPaths.projectRoot(
             command.option("--project", ""));
         string runtimeRoot = command.option("--runtime-root", "");
@@ -147,23 +174,164 @@ class SemuCli {
         if (target.isEmpty() || runtimeRoot.isEmpty()) {
             return SemuCli.usage(1);
         }
-        CompilerDiagnostics diagnostics = CompilerDiagnostics();
-        string operation = mode.equals("verify") ? "verify" : "package";
-        SemuBuildRequest request = SemuCli.request(
-            command, operation, target, "", diagnostics, "--plan-output");
-        int compiled = SemuCli.compile(request, diagnostics);
-        if (compiled != 0) { return compiled; }
+        string requestedEmulator = command.option("--emulator", "");
+        string expectedPackageAttribute = requestedEmulator.isEmpty()
+            ? "steamdeck-runtime"
+            : "steamdeck-runtime-" + requestedEmulator;
+        string runtimeBuilderRepository = SemuOwnedPaths.projectRoot(
+            command.option("--runtime-builder-repository", project));
+        AppImageRuntimeLease runtime =
+            AppImageRuntimeLease.acquire(
+                project, runtimeRoot, expectedPackageAttribute,
+                true, "", runtimeBuilderRepository);
+        if (!runtime.ok()) {
+            print("appimage release: " + runtime.error);
+            return 2;
+        }
+        AppImageReleaseInventoryResult releaseResult =
+            AppImageReleaseInventoryResult.success(runtime.inventory);
+        if (!releaseResult.ok()
+                || !releaseResult.inventory.matchesPackageSelection(
+                    target, requestedEmulator)) {
+            AppImageContractResult released = runtime.finish();
+            print("appimage release: " + (releaseResult.ok()
+                ? "compiler selection disagrees with immutable runtime inventory"
+                : releaseResult.error)
+                + (released.ok() ? "" : "; " + released.error));
+            return 2;
+        }
         string workRoot = command.option("--work-root", "");
+        if (!workRoot.isEmpty()) {
+            AppImageContractResult released = runtime.finish();
+            print("appimage worker: host work paths are unsupported; "
+                + "native Linux work uses its owned volume"
+                + (released.ok() ? "" : "; " + released.error));
+            return 2;
+        }
         if (mode.equals("verify")) {
             string artifact = command.option("--artifact", "");
-            if (artifact.isEmpty()) { return SemuCli.usage(1); }
-            return AppImageAssembler.verify(project, runtimeRoot, artifact,
-                workRoot, command.flag("--print-sha256"));
+            if (artifact.isEmpty()) {
+                AppImageContractResult released = runtime.finish();
+                if (!released.ok()) {
+                    print("appimage release: " + released.error);
+                    return 2;
+                }
+                return SemuCli.usage(1);
+            }
+            return AppImageLinuxWorker.run(
+                runtime, runtimeBuilderRepository, runtimeRoot, target,
+                requestedEmulator, artifact, true,
+                command.flag("--print-sha256"));
         }
         string output = command.option("--output", "");
-        if (output.isEmpty()) { return SemuCli.usage(1); }
-        return AppImageAssembler.assemble(
-            project, runtimeRoot, output, workRoot);
+        if (output.isEmpty()) {
+            AppImageContractResult released = runtime.finish();
+            if (!released.ok()) {
+                print("appimage release: " + released.error);
+                return 2;
+            }
+            return SemuCli.usage(1);
+        }
+        return AppImageLinuxWorker.run(
+            runtime, runtimeBuilderRepository, runtimeRoot, target,
+            requestedEmulator, output, false, false);
+    }
+
+    class int runAppImageWorker(CliCommandLine command) {
+        string operation = command.operand(2);
+        bool verify = operation.equals("verify");
+        if (!operation.isEmpty() && !verify) { return SemuCli.usage(1); }
+        string project = SemuOwnedPaths.projectRoot(
+            command.option("--project", ""));
+        string runtimeRoot = command.option("--runtime-root", "");
+        string target = command.option("--target", "");
+        string emulator = command.option("--emulator", "");
+        string authority = command.option("--runtime-authority", "");
+        string toolsRoot = command.option("--assembly-tools-root", "");
+        string workRoot = command.option("--work-root", "");
+        string outputRoot = command.option("--output-root", "");
+        string receiptPath = command.option("--receipt", "");
+        string workerStoreRoot = command.option("--worker-store-root", "");
+        string workerSystem = command.option("--worker-system", "");
+        string runtimeOwner = command.option("--runtime-owner", "");
+        string artifact = command.option(
+            verify ? "--artifact" : "--output", "");
+        if (project.isEmpty() || runtimeRoot.isEmpty() || target.isEmpty()
+                || authority.isEmpty() || toolsRoot.isEmpty()
+                || workRoot.isEmpty() || outputRoot.isEmpty()
+                || receiptPath.isEmpty() || workerStoreRoot.isEmpty()
+                || workerSystem.isEmpty() || runtimeOwner.isEmpty()
+                || artifact.isEmpty()
+                || !toolsRoot.equals(workerStoreRoot)
+                || !PathTools.join(outputRoot, "receipt.json")
+                    .equals(receiptPath)) {
+            return SemuCli.usage(1);
+        }
+        string packageAttribute = emulator.isEmpty()
+            ? "steamdeck-runtime" : "steamdeck-runtime-" + emulator;
+        AppImageRuntimeLease runtime = AppImageRuntimeLease.acquire(
+            project, runtimeRoot, packageAttribute, false, authority,
+            runtimeOwner);
+        if (!runtime.ok()) {
+            print("appimage worker: " + runtime.error);
+            return 2;
+        }
+        if (!runtime.inventory.matchesPackageSelection(target, emulator)) {
+            AppImageContractResult released = runtime.finish();
+            print("appimage worker: compiler selection disagrees with "
+                + "the immutable runtime inventory"
+                + (released.ok() ? "" : "; " + released.error));
+            return 2;
+        }
+        AppImageAssemblyTools tools =
+            AppImageAssemblyTools.acquire(toolsRoot);
+        if (!tools.ok()) {
+            AppImageContractResult released = runtime.finish();
+            print("appimage worker: " + tools.error
+                + (released.ok() ? "" : "; " + released.error));
+            return 2;
+        }
+        AppImageWorkerReceipt receipt = AppImageWorkerReceipt.capture(
+            verify ? "verify" : "build", target, emulator, runtime,
+            workerSystem, workerStoreRoot, tools);
+        if (!receipt.ok()) {
+            AppImageContractResult toolsReleased = tools.finish();
+            AppImageContractResult runtimeReleased = runtime.finish();
+            string error = receipt.error;
+            if (!toolsReleased.ok()) {
+                error += "; " + toolsReleased.error;
+            }
+            if (!runtimeReleased.ok()) {
+                error += "; " + runtimeReleased.error;
+            }
+            print("appimage worker: " + error);
+            return 2;
+        }
+        AppImageAssemblyResult result = verify
+            ? AppImageAssembler.verify(
+                project, runtimeRoot, artifact, runtime, tools,
+                workRoot, outputRoot)
+            : AppImageAssembler.assemble(
+                project, runtimeRoot, artifact, runtime, tools,
+                workRoot, outputRoot);
+        AppImageContractResult receiptWritten = result.ok()
+                && tools.stillBound()
+            ? receipt.complete(result).write(receiptPath)
+            : AppImageContractResult.failure(result.ok()
+                ? "AppImage assembly tools changed before receipt sealing"
+                : result.error);
+        AppImageContractResult toolsReleased = tools.finish();
+        string error = !result.ok() ? result.error
+            : !receiptWritten.ok() ? receiptWritten.error : "";
+        if (!toolsReleased.ok()) {
+            error = error.isEmpty() ? toolsReleased.error
+                : error + "; " + toolsReleased.error;
+        }
+        if (!error.isEmpty()) {
+            print("appimage worker: " + error);
+            return 2;
+        }
+        return 0;
     }
 
     class int runVerify(CliArgs arguments) {
@@ -175,7 +343,8 @@ class SemuCli {
         if (target.isEmpty()) { return SemuCli.usage(1); }
         CompilerDiagnostics diagnostics = CompilerDiagnostics();
         return SemuCli.compile(
-            SemuCli.request(command, "verify", target, "", diagnostics),
+            SemuCli.request(command, "verify", target,
+                command.option("--emulator", ""), diagnostics),
             diagnostics);
     }
 
@@ -196,6 +365,7 @@ class SemuCli {
         SemuBuildRequest request = SemuBuildRequest();
         request.operation = "configs";
         request.target = target;
+        request.emulator = emulatorId;
         request.projectRoot = project;
         request.semuHome = semuHome;
         SemuCompilation compilation = SemuCompiler.check(
@@ -244,6 +414,7 @@ class SemuCli {
             SemuBuildRequest request = SemuBuildRequest();
             request.operation = "configs";
             request.target = targetId;
+            request.emulator = command.option("--emulator", "");
             request.projectRoot = store.projectRoot;
             request.semuHome = store.semuHome;
             if (SemuCli.compile(request, diagnostics) != 0) { return 1; }
@@ -285,6 +456,7 @@ class SemuCli {
         SemuBuildRequest request = SemuBuildRequest();
         request.operation = "configs";
         request.target = target;
+        request.emulator = command.option("--emulator", "");
         request.projectRoot = store.projectRoot;
         request.semuHome = store.semuHome;
         request.outputRoot = command.option("--output", "");
@@ -444,17 +616,18 @@ class SemuCli {
         print("usage: semu <command>");
         print("  build target TARGET [--output PATH]");
         print("  build emulator ID --target TARGET [--output PATH]");
-        print("  build configs --target TARGET [--output PATH]");
-        print("  package appimage --target TARGET --runtime-root PATH --output PATH");
-        print("      [--plan-output PATH] [--work-root PATH]");
-        print("  package appimage verify --target TARGET --runtime-root PATH");
-        print("      --artifact PATH [--plan-output PATH] [--work-root PATH]");
+        print("  build configs --target TARGET [--emulator ID] [--output PATH]");
+        print("  build package --target TARGET [--emulator ID] [--output PATH]");
+        print("  package appimage --target TARGET [--emulator ID] --runtime-root PATH --output PATH");
+        print("      [--runtime-builder-repository PATH]");
+        print("  package appimage verify --target TARGET [--emulator ID] --runtime-root PATH");
+        print("      --artifact PATH [--runtime-builder-repository PATH]");
         print("  package appimage provenance (--write | --validate)");
         print("      --runtime-root PATH [--project PATH]");
-        print("  verify target TARGET [--output PATH]");
+        print("  verify target TARGET [--emulator ID] [--output PATH]");
         print("  launcher EMULATOR --target TARGET --system SYSTEM --rom PATH");
         print("      [--core CORE] [--print-plan] [--project PATH]");
-        print("  settings prepare --target TARGET [--es-de-home PATH]");
+        print("  settings prepare --target TARGET [--emulator ID] [--es-de-home PATH]");
         print("      [--project PATH] [--semu-home PATH] [--output PATH]");
         print("  settings ui|get PATH|put PATH JSON_VALUE [--apply]");
         print("      [--target TARGET] [--project PATH] [--semu-home PATH]");

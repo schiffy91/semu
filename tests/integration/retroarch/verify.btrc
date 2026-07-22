@@ -1,0 +1,791 @@
+// Machine-verifies artifacts emitted by the real RetroArch process.
+
+import std.{fs, json, strings}
+import ../../../src/lib/owned_paths.btrc
+
+#include <ctype.h>
+#include <math.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+struct IntegrationBytes {
+    unsigned char* value;
+    size_t length;
+};
+
+struct IntegrationImage {
+    int width;
+    int height;
+    unsigned char* pixels;
+};
+
+struct IntegrationRect {
+    int x;
+    int y;
+    int width;
+    int height;
+};
+
+class IntegrationFiles {
+    class struct IntegrationBytes read(string path) {
+        struct IntegrationBytes bytes;
+        memset(&bytes, 0, sizeof(bytes));
+        FILE* file = fopen(path, "rb");
+        if (file == null || fseek(file, 0L, SEEK_END) != 0) {
+            if (file != null) { fclose(file); }
+            return bytes;
+        }
+        long length = ftell(file);
+        if (length < 0 || fseek(file, 0L, SEEK_SET) != 0) {
+            fclose(file);
+            return bytes;
+        }
+        bytes.value = (unsigned char*)malloc(
+            (size_t)length + (size_t)1);
+        if (bytes.value == null) {
+            fclose(file);
+            return bytes;
+        }
+        bytes.length = fread(bytes.value, 1, (size_t)length, file);
+        fclose(file);
+        if (bytes.length != (size_t)length) {
+            free(bytes.value);
+            memset(&bytes, 0, sizeof(bytes));
+            return bytes;
+        }
+        bytes.value[bytes.length] = 0;
+        return bytes;
+    }
+
+    class string path(char* root, char* name) {
+        size_t rootLength = strlen(root);
+        size_t nameLength = strlen(name);
+        char* value = (char*)malloc(rootLength + nameLength + (size_t)2);
+        if (value == null) { return ""; }
+        snprintf(value, rootLength + nameLength + (size_t)2,
+            "%s/%s", root, name);
+        return __btrc_str_track(value);
+    }
+}
+
+class IntegrationPpm {
+    class bool token(struct IntegrationBytes* bytes, size_t* offset,
+                     char* output, size_t capacity) {
+        if (bytes == null || offset == null || output == null
+                || capacity < (size_t)2) { return false; }
+        while (*offset < bytes->length) {
+            unsigned char value = bytes->value[*offset];
+            if (isspace(value)) {
+                (*offset)++;
+                continue;
+            }
+            if (value == '#') {
+                while (*offset < bytes->length
+                        && bytes->value[*offset] != '\n') {
+                    (*offset)++;
+                }
+                continue;
+            }
+            break;
+        }
+        size_t length = 0;
+        while (*offset < bytes->length
+                && !isspace(bytes->value[*offset])
+                && bytes->value[*offset] != '#') {
+            if (length + (size_t)1 >= capacity) { return false; }
+            output[length++] = (char)bytes->value[(*offset)++];
+        }
+        output[length] = 0;
+        return length > (size_t)0;
+    }
+
+    class struct IntegrationImage read(string path) {
+        struct IntegrationImage image;
+        memset(&image, 0, sizeof(image));
+        struct IntegrationBytes bytes = IntegrationFiles.read(path);
+        size_t offset = 0;
+        char token[64];
+        bool valid = bytes.value != null
+            && IntegrationPpm.token(&bytes, &offset, token, sizeof(token))
+            && strcmp(token, "P6") == 0
+            && IntegrationPpm.token(&bytes, &offset, token, sizeof(token));
+        if (valid) { image.width = atoi(token); }
+        valid = valid
+            && IntegrationPpm.token(&bytes, &offset, token, sizeof(token));
+        if (valid) { image.height = atoi(token); }
+        valid = valid
+            && IntegrationPpm.token(&bytes, &offset, token, sizeof(token))
+            && atoi(token) == 255;
+        while (valid && offset < bytes.length
+                && isspace(bytes.value[offset])) { offset++; }
+        size_t count = image.width > 0 && image.height > 0
+            ? (size_t)image.width * (size_t)image.height * (size_t)3
+            : (size_t)0;
+        valid = valid && count > (size_t)0
+            && offset + count == bytes.length;
+        if (valid) {
+            image.pixels = (unsigned char*)malloc(count);
+            valid = image.pixels != null;
+        }
+        if (valid) { memcpy(image.pixels, bytes.value + offset, count); }
+        free(bytes.value);
+        if (!valid) {
+            free(image.pixels);
+            memset(&image, 0, sizeof(image));
+        }
+        return image;
+    }
+
+    class void average(struct IntegrationImage* image,
+                       struct IntegrationRect* rect, double* red,
+                       double* green, double* blue) {
+        *red = 0.0;
+        *green = 0.0;
+        *blue = 0.0;
+        if (image == null || rect == null || image->pixels == null) { return; }
+        int insetX = rect->width / 4;
+        int insetY = rect->height / 4;
+        int firstX = rect->x + insetX;
+        int lastX = rect->x + rect->width - insetX;
+        int firstY = image->height - (rect->y + rect->height - insetY);
+        int lastY = image->height - (rect->y + insetY);
+        if (firstX < 0) { firstX = 0; }
+        if (firstY < 0) { firstY = 0; }
+        if (lastX > image->width) { lastX = image->width; }
+        if (lastY > image->height) { lastY = image->height; }
+        size_t samples = 0;
+        for (int y = firstY; y < lastY; y += 3) {
+            for (int x = firstX; x < lastX; x += 3) {
+                size_t offset = ((size_t)y * (size_t)image->width
+                    + (size_t)x) * (size_t)3;
+                *red += image->pixels[offset];
+                *green += image->pixels[offset + (size_t)1];
+                *blue += image->pixels[offset + (size_t)2];
+                samples++;
+            }
+        }
+        if (samples > (size_t)0) {
+            *red /= (double)samples;
+            *green /= (double)samples;
+            *blue /= (double)samples;
+        }
+    }
+
+    class double difference(struct IntegrationImage* left,
+                            struct IntegrationImage* right) {
+        if (left == null || right == null || left->pixels == null
+                || right->pixels == null || left->width != right->width
+                || left->height != right->height) { return -1.0; }
+        size_t count = (size_t)left->width * (size_t)left->height
+            * (size_t)3;
+        double difference = 0.0;
+        for (size_t index = 0; index < count; index += (size_t)11) {
+            int delta = (int)left->pixels[index]
+                - (int)right->pixels[index];
+            difference += delta < 0 ? -delta : delta;
+        }
+        return difference / (double)(
+            (count + (size_t)10) / (size_t)11);
+    }
+}
+
+class IntegrationEvidence {
+    class bool latestRects(char* evidence,
+                           struct IntegrationRect* top,
+                           struct IntegrationRect* bottom) {
+        char* topText = null;
+        char* bottomText = null;
+        char* cursor = evidence;
+        while (cursor != null) {
+            char* next = strstr(cursor, "surface0_content=");
+            if (next == null) { break; }
+            topText = next;
+            cursor = next + 1;
+        }
+        cursor = evidence;
+        while (cursor != null) {
+            char* next = strstr(cursor, "surface1_content=");
+            if (next == null) { break; }
+            bottomText = next;
+            cursor = next + 1;
+        }
+        return topText != null && bottomText != null
+            && sscanf(topText, "surface0_content=%d,%d,%d,%d",
+                &top->x, &top->y, &top->width, &top->height) == 4
+            && sscanf(bottomText, "surface1_content=%d,%d,%d,%d",
+                &bottom->x, &bottom->y,
+                &bottom->width, &bottom->height) == 4;
+    }
+
+    class int contextCount(char* evidence) {
+        unsigned long long values[16];
+        int count = 0;
+        char* cursor = evidence;
+        while ((cursor = strstr(cursor, "context_generation=")) != null) {
+            cursor = cursor + (int)strlen("context_generation=");
+            unsigned long long value = strtoull(cursor, null, 10);
+            bool found = false;
+            for (int index = 0; index < count; index++) {
+                if (values[index] == value) { found = true; }
+            }
+            if (!found && value > 0ULL && count < 16) {
+                values[count++] = value;
+            }
+        }
+        return count;
+    }
+
+    class int captures(char* evidence) {
+        int count = 0;
+        char* cursor = evidence;
+        while ((cursor = strstr(cursor, "capture_result=written")) != null) {
+            count++;
+            cursor++;
+        }
+        return count;
+    }
+}
+
+class IntegrationChecks {
+    class bool require(bool condition, char* message) {
+        if (condition) { return true; }
+        fprintf(stderr, "FAIL: %s\n", message);
+        return false;
+    }
+
+    class bool frame(string path, struct IntegrationRect* top,
+                     struct IntegrationRect* bottom) {
+        struct IntegrationImage image = IntegrationPpm.read(path);
+        double topRed;
+        double topGreen;
+        double topBlue;
+        double bottomRed;
+        double bottomGreen;
+        double bottomBlue;
+        IntegrationPpm.average(&image, top,
+            &topRed, &topGreen, &topBlue);
+        IntegrationPpm.average(&image, bottom,
+            &bottomRed, &bottomGreen, &bottomBlue);
+        bool passed = IntegrationChecks.require(image.pixels != null,
+            "renderer frame is a valid 8-bit PPM")
+            && IntegrationChecks.require(
+                topRed > topBlue * 2.0 && topRed > topGreen * 2.0,
+                "semantic top surface is red and not inverted")
+            && IntegrationChecks.require(
+                bottomBlue > bottomRed * 2.0
+                    && bottomBlue > bottomGreen * 2.0,
+                "semantic bottom surface is blue and not inverted");
+        fprintf(stdout,
+            "frame=%s size=%dx%d top=%.1f,%.1f,%.1f bottom=%.1f,%.1f,%.1f\n",
+            path, image.width, image.height,
+            topRed, topGreen, topBlue,
+            bottomRed, bottomGreen, bottomBlue);
+        free(image.pixels);
+        return passed;
+    }
+
+    class bool pointer(char* coreLog) {
+        bool allConsistent = strstr(coreLog, "consistent=0") == null;
+        bool hasConsistent = strstr(coreLog, "consistent=1") != null;
+        bool pressed = false;
+        bool pressedInsideSurface = false;
+        bool rawPressed = false;
+        char* cursor = coreLog;
+        while ((cursor = strstr(cursor, " p0=")) != null) {
+            int x;
+            int y;
+            int down;
+            if (sscanf(cursor, " p0=%d,%d,%d", &x, &y, &down) == 3
+                    && down == 1) {
+                pressed = true;
+                pressedInsideSurface = x != 0 && y != 0;
+                break;
+            }
+            cursor++;
+        }
+        cursor = coreLog;
+        while ((cursor = strstr(cursor, " raw=")) != null) {
+            int x;
+            int y;
+            int down;
+            if (sscanf(cursor, " raw=%d,%d,%d", &x, &y, &down) == 3
+                    && down == 1) {
+                rawPressed = true;
+                break;
+            }
+            cursor++;
+        }
+        bool permutations = true;
+        for (int index = 0; index < 6; index++) {
+            char name[16];
+            snprintf(name, sizeof(name), " p%d=", index);
+            permutations = permutations && strstr(coreLog, name) != null;
+        }
+        return IntegrationChecks.require(allConsistent && hasConsistent,
+                "all pointer permutations share one immutable poll tuple")
+            && IntegrationChecks.require(permutations,
+                "all six pointer query orders executed")
+            && IntegrationChecks.require(rawPressed,
+                "real X pointer press reached RetroArch's raw mouse path")
+            && IntegrationChecks.require(pressed,
+                "Semu-mapped pointer press reached the libretro core")
+            && IntegrationChecks.require(pressedInsideSurface,
+                "mapped press carries nonzero lower-surface coordinates");
+    }
+}
+
+class IntegrationGlassPixels {
+    class JsonValue variant(JsonValue bezels, string id) {
+        JsonValue variants = bezels.get("variants");
+        if (!variants.isArray()) { return JsonValue.makeNull(); }
+        for (int index = 0; index < variants.size(); index++) {
+            JsonValue candidate = variants.at(index);
+            if (candidate.get("id").isString()
+                    && candidate.get("id").asString().equals(id)) {
+                return candidate;
+            }
+        }
+        return JsonValue.makeNull();
+    }
+
+    class int delta(struct IntegrationImage* left,
+                    struct IntegrationImage* right, int x, int y) {
+        if (left == null || right == null || left->pixels == null
+                || right->pixels == null || x < 0 || y < 0
+                || x >= left->width || y >= left->height
+                || left->width != right->width
+                || left->height != right->height) { return -1; }
+        size_t offset = ((size_t)y * (size_t)left->width
+            + (size_t)x) * (size_t)3;
+        int difference = 0;
+        for (int channel = 0; channel < 3; channel++) {
+            int value = (int)left->pixels[offset + (size_t)channel]
+                - (int)right->pixels[offset + (size_t)channel];
+            difference += value < 0 ? -value : value;
+        }
+        return difference;
+    }
+
+    class bool inside(struct IntegrationImage* image,
+                      struct IntegrationRect* rect, int x, int y) {
+        if (image == null || rect == null) { return false; }
+        int glY = image->height - 1 - y;
+        return x >= rect->x && x < rect->x + rect->width
+            && glY >= rect->y && glY < rect->y + rect->height;
+    }
+
+    class int bin(struct IntegrationImage* image,
+                  struct IntegrationRect* rect, int x, int y) {
+        int glY = image->height - 1 - y;
+        int localX = x - rect->x;
+        int localY = glY - rect->y;
+        int binX = localX * 8 / rect->width;
+        int binY = localY * 8 / rect->height;
+        if (binX < 0) { binX = 0; }
+        if (binX > 7) { binX = 7; }
+        if (binY < 0) { binY = 0; }
+        if (binY > 7) { binY = 7; }
+        return binY * 8 + binX;
+    }
+
+    class double correlation(double* first, double* second, int count) {
+        double firstMean = 0.0;
+        double secondMean = 0.0;
+        for (int index = 0; index < count; index++) {
+            firstMean += first[index];
+            secondMean += second[index];
+        }
+        firstMean /= (double)count;
+        secondMean /= (double)count;
+        double numerator = 0.0;
+        double firstVariance = 0.0;
+        double secondVariance = 0.0;
+        for (int index = 0; index < count; index++) {
+            double firstDelta = first[index] - firstMean;
+            double secondDelta = second[index] - secondMean;
+            numerator += firstDelta * secondDelta;
+            firstVariance += firstDelta * firstDelta;
+            secondVariance += secondDelta * secondDelta;
+        }
+        if (firstVariance <= 0.0 || secondVariance <= 0.0) { return -1.0; }
+        return numerator / sqrt(firstVariance * secondVariance);
+    }
+
+    class bool verify(char* root) {
+        JsonValue declaration = JsonValue.readFile(
+            IntegrationFiles.path(root, "declaration.json"));
+        struct IntegrationBytes controlEvidence = IntegrationFiles.read(
+            IntegrationFiles.path(root,
+                "control/semu-render-evidence.log"));
+        struct IntegrationBytes treatmentEvidence = IntegrationFiles.read(
+            IntegrationFiles.path(root,
+                "treatment/semu-render-evidence.log"));
+        struct IntegrationImage controlGame = IntegrationPpm.read(
+            IntegrationFiles.path(root, "control/game.ppm"));
+        struct IntegrationImage treatmentGame = IntegrationPpm.read(
+            IntegrationFiles.path(root, "treatment/game.ppm"));
+        struct IntegrationImage controlMenu = IntegrationPpm.read(
+            IntegrationFiles.path(root, "control/menu.ppm"));
+        struct IntegrationImage treatmentMenu = IntegrationPpm.read(
+            IntegrationFiles.path(root, "treatment/menu.ppm"));
+        bool passed = IntegrationChecks.require(!declaration.isError()
+                    && declaration.isObject()
+                    && declaration.get("schema_version").isInt()
+                    && declaration.get("schema_version").asInt() == 1
+                    && declaration.get("admitted").isBool()
+                    && declaration.get("admitted").asBool(),
+                "canonical admitted GB glass declaration exists")
+            && IntegrationChecks.require(controlEvidence.value != null
+                    && treatmentEvidence.value != null,
+                "paired renderer evidence exists")
+            && IntegrationChecks.require(controlGame.pixels != null
+                    && treatmentGame.pixels != null
+                    && controlMenu.pixels != null
+                    && treatmentMenu.pixels != null,
+                "paired game and native-menu captures are valid PPM images");
+        if (!passed) { return false; }
+
+        JsonValue systemReceipt = declaration.get("system");
+        JsonValue manifestReceipt = declaration.get("asset_manifest");
+        JsonValue sourceReceipt = declaration.get("source_descriptor");
+        JsonValue admittedReceipt = declaration.get("admitted_descriptor");
+        JsonValue fixtureReceipt = declaration.get("test_fixture");
+        bool receiptShape = systemReceipt.isObject()
+            && manifestReceipt.isObject() && sourceReceipt.isObject()
+            && admittedReceipt.isObject() && fixtureReceipt.isObject()
+            && systemReceipt.get("definition_path").isString()
+            && systemReceipt.get("bezels_path").isString()
+            && systemReceipt.get("variant_id").isString()
+            && systemReceipt.get("glass_logical_path").isString()
+            && systemReceipt.get("declared_reflect").isNumber()
+            && manifestReceipt.get("path").isString()
+            && manifestReceipt.get("logical_path").isString()
+            && manifestReceipt.get("expected_sha256").isString()
+            && sourceReceipt.get("path").isString()
+            && sourceReceipt.get("actual_sha256").isString()
+            && admittedReceipt.get("path").isString()
+            && admittedReceipt.get("actual_sha256").isString()
+            && fixtureReceipt.get("reflection_strength").isNumber()
+            && fixtureReceipt.get("reflection_strength").asFloat() == 1.0;
+        passed = IntegrationChecks.require(receiptShape,
+            "GB glass declaration has the canonical trust-chain schema")
+            && passed;
+        if (!receiptShape) { return false; }
+
+        string systemPath = systemReceipt.get("definition_path").asString();
+        string bezelsPath = systemReceipt.get("bezels_path").asString();
+        string variantId = systemReceipt.get("variant_id").asString();
+        string logical = systemReceipt.get("glass_logical_path").asString();
+        string manifestPath = manifestReceipt.get("path").asString();
+        string expected = manifestReceipt.get("expected_sha256").asString();
+        string sourcePath = sourceReceipt.get("path").asString();
+        string admittedPath = admittedReceipt.get("path").asString();
+        string repository = PathTools.dirname(
+            PathTools.dirname(PathTools.dirname(manifestPath)));
+        JsonValue systemDefinition = JsonValue.readFile(systemPath);
+        JsonValue bezelsDefinition = JsonValue.readFile(bezelsPath);
+        JsonValue manifestDefinition = JsonValue.readFile(manifestPath);
+        JsonValue selected = IntegrationGlassPixels.variant(
+            bezelsDefinition, variantId);
+        JsonValue recipe = manifestDefinition.get("assets").get(logical);
+        JsonValue manifestOutput = recipe.get("output");
+        bool definitionChain = !systemDefinition.isError()
+            && !bezelsDefinition.isError() && !manifestDefinition.isError()
+            && systemPath.equals(PathTools.join(
+                repository, "config/systems/gb/system.json"))
+            && bezelsPath.equals(PathTools.join(
+                repository, "config/systems/gb/bezels.json"))
+            && bezelsDefinition.get("default_variant").isString()
+            && bezelsDefinition.get("default_variant").asString()
+                .equals(variantId)
+            && selected.isObject() && selected.get("glass").isString()
+            && selected.get("glass").asString().equals(logical)
+            && manifestReceipt.get("logical_path").asString().equals(logical)
+            && recipe.isObject() && recipe.get("type").isString()
+            && recipe.get("type").asString().equals("local")
+            && recipe.get("path").isString()
+            && recipe.get("path").asString().equals("config/" + logical)
+            && sourcePath.equals(PathTools.join(
+                repository, recipe.get("path").asString()))
+            && manifestOutput.isObject()
+            && manifestOutput.get("sha256").isString()
+            && manifestOutput.get("sha256").asString().equals(expected)
+            && systemDefinition.get("render").get("reflect").isNumber()
+            && systemDefinition.get("render").get("reflect").asFloat()
+                == systemReceipt.get("declared_reflect").asFloat();
+        passed = IntegrationChecks.require(definitionChain,
+            "system default variant resolves through the asset manifest")
+            && passed;
+
+        string sourceDigest = SemuOwnedFileDigest.file(sourcePath);
+        string admittedDigest = SemuOwnedFileDigest.file(admittedPath);
+        bool descriptorChain = !expected.isEmpty()
+            && sourceDigest.equals(expected)
+            && admittedDigest.equals(expected)
+            && sourceReceipt.get("actual_sha256").asString().equals(expected)
+            && admittedReceipt.get("actual_sha256").asString().equals(expected);
+        passed = IntegrationChecks.require(descriptorChain,
+            "manifest expected SHA admits source and staged descriptor bytes")
+            && passed;
+
+        string controlEvidenceText = Strings.copy(
+            (char*)controlEvidence.value);
+        string treatmentEvidenceText = Strings.copy(
+            (char*)treatmentEvidence.value);
+        string pathNeedle = "glass_art=" + admittedPath;
+        string hashNeedle = "glass_art_sha256=" + expected;
+        passed = IntegrationChecks.require(
+                controlEvidenceText.contains("glass_art=none"),
+                "control run has no reflection texture")
+            && IntegrationChecks.require(
+                    treatmentEvidenceText.contains(pathNeedle)
+                    && treatmentEvidenceText.contains(hashNeedle),
+                "treatment run loads the exact declared GB reflection bytes")
+            && IntegrationChecks.require(
+                    controlEvidenceText.contains("bezel_actual=1")
+                    && treatmentEvidenceText.contains("bezel_actual=1"),
+                "both paired runs use identical bezel composition")
+            && passed;
+
+        struct IntegrationRect controlTop;
+        struct IntegrationRect controlBottom;
+        struct IntegrationRect treatmentTop;
+        struct IntegrationRect treatmentBottom;
+        passed = IntegrationChecks.require(IntegrationEvidence.latestRects(
+                (char*)controlEvidence.value, &controlTop, &controlBottom)
+                && IntegrationEvidence.latestRects(
+                    (char*)treatmentEvidence.value,
+                    &treatmentTop, &treatmentBottom),
+                "paired evidence reports both game rectangles") && passed;
+        bool sameGeometry = memcmp(&controlTop, &treatmentTop,
+                sizeof(controlTop)) == 0
+            && memcmp(&controlBottom, &treatmentBottom,
+                sizeof(controlBottom)) == 0
+            && controlGame.width == treatmentGame.width
+            && controlGame.height == treatmentGame.height;
+        passed = IntegrationChecks.require(sameGeometry,
+            "control and treatment geometry is identical") && passed;
+
+        double topSignature[64];
+        double bottomSignature[64];
+        int topSamples[64];
+        int bottomSamples[64];
+        memset(topSignature, 0, sizeof(topSignature));
+        memset(bottomSignature, 0, sizeof(bottomSignature));
+        memset(topSamples, 0, sizeof(topSamples));
+        memset(bottomSamples, 0, sizeof(bottomSamples));
+        int topPixels = 0;
+        int bottomPixels = 0;
+        int topChanged = 0;
+        int bottomChanged = 0;
+        int outsideChanged = 0;
+        for (int y = 0; y < controlGame.height; y++) {
+            for (int x = 0; x < controlGame.width; x++) {
+                int difference = IntegrationGlassPixels.delta(
+                    &controlGame, &treatmentGame, x, y);
+                bool inTop = IntegrationGlassPixels.inside(
+                    &controlGame, &controlTop, x, y);
+                bool inBottom = IntegrationGlassPixels.inside(
+                    &controlGame, &controlBottom, x, y);
+                if (inTop) {
+                    int index = IntegrationGlassPixels.bin(
+                        &controlGame, &controlTop, x, y);
+                    topSignature[index] += (double)difference;
+                    topSamples[index]++;
+                    topPixels++;
+                    if (difference >= 3) { topChanged++; }
+                } else if (inBottom) {
+                    int index = IntegrationGlassPixels.bin(
+                        &controlGame, &controlBottom, x, y);
+                    bottomSignature[index] += (double)difference;
+                    bottomSamples[index]++;
+                    bottomPixels++;
+                    if (difference >= 3) { bottomChanged++; }
+                } else if (difference != 0) {
+                    outsideChanged++;
+                }
+            }
+        }
+        for (int index = 0; index < 64; index++) {
+            if (topSamples[index] > 0) {
+                topSignature[index] /= (double)topSamples[index];
+            }
+            if (bottomSamples[index] > 0) {
+                bottomSignature[index] /= (double)bottomSamples[index];
+            }
+        }
+        double signatureCorrelation = IntegrationGlassPixels.correlation(
+            topSignature, bottomSignature, 64);
+        passed = IntegrationChecks.require(topChanged > topPixels / 100,
+                "declared reflection contributes visible top-surface pixels")
+            && IntegrationChecks.require(bottomChanged > bottomPixels / 100,
+                "declared reflection contributes visible bottom-surface pixels")
+            && IntegrationChecks.require(signatureCorrelation > 0.85,
+                "reflection UVs restart independently for each game surface")
+            && IntegrationChecks.require(outsideChanged == 0,
+                "reflection changes no bezel or non-game pixel")
+            && passed;
+
+        int nativeCandidates = 0;
+        int nativeStable = 0;
+        int menuOutsideChanged = 0;
+        for (int y = 0; y < controlGame.height; y++) {
+            for (int x = 0; x < controlGame.width; x++) {
+                bool gamePixel = IntegrationGlassPixels.inside(
+                        &controlGame, &controlTop, x, y)
+                    || IntegrationGlassPixels.inside(
+                        &controlGame, &controlBottom, x, y);
+                int menuDifference = IntegrationGlassPixels.delta(
+                    &controlMenu, &treatmentMenu, x, y);
+                if (!gamePixel) {
+                    if (menuDifference != 0) { menuOutsideChanged++; }
+                    continue;
+                }
+                int gameDifference = IntegrationGlassPixels.delta(
+                    &controlGame, &treatmentGame, x, y);
+                if (gameDifference < 3) { continue; }
+                int controlUi = IntegrationGlassPixels.delta(
+                    &controlGame, &controlMenu, x, y);
+                int treatmentUi = IntegrationGlassPixels.delta(
+                    &treatmentGame, &treatmentMenu, x, y);
+                if (controlUi > 24 && treatmentUi > 24) {
+                    nativeCandidates++;
+                    if (menuDifference <= 3) {
+                        nativeStable++;
+                    }
+                }
+            }
+        }
+        passed = IntegrationChecks.require(nativeCandidates > 1000,
+                "native menu visibly owns pixels above treated game content")
+            && IntegrationChecks.require(nativeStable > 1000,
+                "opaque native-menu-owned pixels ignore the glass treatment")
+            && IntegrationChecks.require(menuOutsideChanged == 0,
+                "glass changes no native-UI or bezel pixel outside game rectangles")
+            && passed;
+        fprintf(stdout,
+            "glass_top_changed=%d/%d glass_bottom_changed=%d/%d outside_changed=%d local_uv_correlation=%.4f native_stable=%d/%d menu_outside_changed=%d status=%s\n",
+            topChanged, topPixels, bottomChanged, bottomPixels,
+            outsideChanged, signatureCorrelation, nativeStable,
+            nativeCandidates, menuOutsideChanged,
+            passed ? "pass" : "fail");
+
+        free(controlEvidence.value);
+        free(treatmentEvidence.value);
+        free(controlGame.pixels);
+        free(treatmentGame.pixels);
+        free(controlMenu.pixels);
+        free(treatmentMenu.pixels);
+        return passed;
+    }
+}
+
+int main(int argc, char** argv) {
+    if (argc == 3 && strcmp(argv[1], "glass") == 0) {
+        return IntegrationGlassPixels.verify(argv[2]) ? 0 : 1;
+    }
+    if (argc != 2) {
+        fprintf(stderr,
+            "usage: semu-retroarch-verify [glass] <results-dir>\n");
+        return 2;
+    }
+    char* root = argv[1];
+    struct IntegrationBytes evidence = IntegrationFiles.read(
+        IntegrationFiles.path(root, "semu-render-evidence.log"));
+    struct IntegrationBytes scenario = IntegrationFiles.read(
+        IntegrationFiles.path(root, "scenario.log"));
+    struct IntegrationBytes core = IntegrationFiles.read(
+        IntegrationFiles.path(root, "synthetic-core.log"));
+    struct IntegrationBytes package = IntegrationFiles.read(
+        IntegrationFiles.path(root, "package.log"));
+    bool passed = IntegrationChecks.require(evidence.value != null,
+            "renderer evidence exists")
+        && IntegrationChecks.require(scenario.value != null,
+            "scenario evidence exists")
+        && IntegrationChecks.require(core.value != null,
+            "synthetic core evidence exists")
+        && IntegrationChecks.require(package.value != null,
+            "package evidence exists");
+    if (!passed) { return 1; }
+
+    char* evidenceText = (char*)evidence.value;
+    char* scenarioText = (char*)scenario.value;
+    char* coreText = (char*)core.value;
+    char* packageText = (char*)package.value;
+    struct IntegrationRect top;
+    struct IntegrationRect bottom;
+    passed = IntegrationChecks.require(
+        IntegrationEvidence.latestRects(evidenceText, &top, &bottom),
+        "renderer reports two semantic content rectangles") && passed;
+    passed = IntegrationChecks.require(
+        strstr(evidenceText, "surface_count=2") != null
+            && strstr(evidenceText, "status=1") != null
+            && strstr(evidenceText, "nonblank=1") != null,
+        "renderer applied a nonblank dual-surface frame") && passed;
+    passed = IntegrationChecks.require(
+        IntegrationEvidence.contextCount(evidenceText) >= 2,
+        "renderer observed a recreated GL context generation") && passed;
+    passed = IntegrationChecks.require(
+        IntegrationEvidence.captures(evidenceText) >= 4,
+        "renderer captured pre-menu, native-menu, post-menu, and post-reinit frames")
+        && passed;
+    passed = IntegrationChecks.require(
+        strstr(scenarioText, "video_threaded=false") != null
+            && strstr(scenarioText, "glx_shutdown_clean=true") != null
+            && strstr(scenarioText, "menu_before=false") != null
+            && strstr(scenarioText, "menu_open=true") != null
+            && strstr(scenarioText, "menu_closed=false") != null
+            && strstr(scenarioText, "menu_renderer_capture=true") != null
+            && strstr(scenarioText, "menu_resume=true") != null,
+        "single-owner GL treated the game beneath native menu UI, closed it, and resumed rendering")
+        && passed;
+    passed = IntegrationChecks.require(
+        strstr(packageText, "renderer=llvmpipe") != null
+            && strstr(packageText, "retroarch_store=/nix/store/") != null
+            && strstr(packageText, "libsemurenderer.so") != null,
+        "real source-patched RetroArch runs through llvmpipe and linked renderer")
+        && passed;
+    passed = IntegrationChecks.pointer(coreText) && passed;
+
+    if (top.width > 0 && bottom.width > 0) {
+        passed = IntegrationChecks.frame(
+            IntegrationFiles.path(root, "frame-before-menu.ppm"),
+            &top, &bottom) && passed;
+        passed = IntegrationChecks.frame(
+            IntegrationFiles.path(root, "frame-after-menu.ppm"),
+            &top, &bottom) && passed;
+        passed = IntegrationChecks.frame(
+            IntegrationFiles.path(root, "frame-after-reinit.ppm"),
+            &top, &bottom) && passed;
+    }
+
+    struct IntegrationImage game = IntegrationPpm.read(
+        IntegrationFiles.path(root, "frame-before-menu.ppm"));
+    struct IntegrationImage menu = IntegrationPpm.read(
+        IntegrationFiles.path(root, "native-menu.ppm"));
+    struct IntegrationImage renderedMenu = IntegrationPpm.read(
+        IntegrationFiles.path(root, "frame-under-menu.ppm"));
+    double menuDifference = IntegrationPpm.difference(&game, &menu);
+    double renderedMenuDifference = IntegrationPpm.difference(
+        &game, &renderedMenu);
+    passed = IntegrationChecks.require(menuDifference > 12.0,
+        "native menu frame is visibly distinct from gameplay") && passed;
+    passed = IntegrationChecks.require(renderedMenuDifference > 12.0,
+        "renderer post-ui capture includes the native menu above gameplay")
+        && passed;
+    fprintf(stdout,
+        "contexts=%d captures=%d menu_difference=%.2f renderer_menu_difference=%.2f status=%s\n",
+        IntegrationEvidence.contextCount(evidenceText),
+        IntegrationEvidence.captures(evidenceText), menuDifference,
+        renderedMenuDifference,
+        passed ? "pass" : "fail");
+    free(game.pixels);
+    free(menu.pixels);
+    free(renderedMenu.pixels);
+    free(evidence.value);
+    free(scenario.value);
+    free(core.value);
+    free(package.value);
+    return passed ? 0 : 1;
+}

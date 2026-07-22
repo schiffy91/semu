@@ -1,6 +1,7 @@
 // provenance.btrc - stable facade for exact source/runtime provenance.
 
 import std.{fs, json, process, strings, vector}
+import ./release_inventory.btrc
 import ./runtime_inventory.btrc
 import ./provenance/document.btrc
 import ./provenance/render_hooks.btrc
@@ -231,10 +232,9 @@ class AppImageRuntimeProvenance {
             AppImageSourceProvenance.productionSourceFiles(repoRoot));
     }
 
-    class AppImageProvenanceDigest hashText(
-            string directory, string content) {
+    class AppImageProvenanceDigest hashText(string content) {
         return AppImageProvenanceFacadeConversion.digest(
-            AppImageProvenanceSupport.hashText(directory, content));
+            AppImageProvenanceSupport.hashText(content));
     }
 
     class AppImageProvenanceResult exactInventory(
@@ -433,9 +433,12 @@ class AppImageRuntimeProvenance {
 
     class AppImageProvenanceJson runtimeBuildContracts(
             string runtimeRoot, Vector<AppImageRuntimeSlice> slices,
-            JsonValue builds) {
+            JsonValue builds, JsonValue coreRuntime,
+            JsonValue selectedCoreBuilds) {
         return AppImageProvenanceFacadeConversion.json(
-            AppImageRuntimeContractProvenance.runtimeBuildContracts(runtimeRoot, slices, builds));
+            AppImageRuntimeContractProvenance.runtimeBuildContracts(
+                runtimeRoot, slices, builds, coreRuntime,
+                selectedCoreBuilds));
     }
 
     class bool hookContractMatches(
@@ -532,17 +535,24 @@ class AppImageRuntimeProvenance {
 
     class AppImageProvenanceJson runtimeSnapshot(
             string repoRoot, string runtimeRoot, JsonValue builds,
-            Vector<AppImageRuntimeSlice> slices, JsonValue selectedCores,
+            AppImageRuntimeInventoryResult inventory, JsonValue selectedCores,
             JsonValue selectedCoreBuilds, JsonValue coreRuntime,
             JsonValue appImageRuntime,
             string targetStorePath) {
         return AppImageProvenanceFacadeConversion.json(
-            AppImageRuntimeContractProvenance.runtimeSnapshot(repoRoot, runtimeRoot, builds, slices, selectedCores, selectedCoreBuilds, coreRuntime, appImageRuntime, targetStorePath));
+            AppImageRuntimeContractProvenance.runtimeSnapshot(repoRoot, runtimeRoot, builds, inventory, selectedCores, selectedCoreBuilds, coreRuntime, appImageRuntime, targetStorePath));
     }
 
     class AppImageProvenanceJson sourceContract(string repoRoot) {
         return AppImageProvenanceFacadeConversion.json(
             AppImageSourceProvenance.sourceContract(repoRoot));
+    }
+
+    class AppImageProvenanceJson sourceContractForRelease(
+            string repoRoot, AppImageReleaseInventory inventory) {
+        return AppImageProvenanceFacadeConversion.json(
+            AppImageSourceProvenance.sourceContractForRelease(
+                repoRoot, inventory));
     }
 
     class AppImageProvenanceJson document(

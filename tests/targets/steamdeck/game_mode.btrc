@@ -3,6 +3,7 @@
 
 import std.{json, strings, vector}
 import ./evidence.btrc
+import ./run_evidence.btrc
 import ./steam_shortcuts.btrc
 
 class DeckProtectedInput {
@@ -136,6 +137,9 @@ class DeckExpectedShortcut {
 class DeckGameModeRequest {
     public string operation;
     public string scenario;
+    public string runId;
+    public string harnessRevision;
+    public string documentSha256;
     public string runRoot;
     public string projectRoot;
     public string esDeHome;
@@ -172,6 +176,9 @@ class DeckGameModeRequest {
     public DeckGameModeRequest() {
         self.operation = "";
         self.scenario = "";
+        self.runId = "";
+        self.harnessRevision = "";
+        self.documentSha256 = "";
         self.runRoot = "";
         self.projectRoot = "";
         self.esDeHome = "";
@@ -221,11 +228,14 @@ class DeckGameModeRequest {
         DeckGameModeRequest request = DeckGameModeRequest();
         JsonValue root = JsonValue.readFile(path);
         if (!root.isObject() || !root.get("schema_version").isInt()
-                || root.get("schema_version").asInt() != 1) {
+                || root.get("schema_version").asInt() != 2) {
             return request;
         }
         request.operation = DeckGameModeContract.text(root, "operation");
         request.scenario = DeckGameModeContract.text(root, "scenario");
+        request.runId = DeckGameModeContract.text(root, "run_id");
+        request.harnessRevision = DeckGameModeContract.text(
+            root, "harness_revision");
         request.runRoot = DeckGameModeContract.text(root, "run_root");
         request.projectRoot = DeckGameModeContract.text(root, "project_root");
         request.esDeHome = DeckGameModeContract.text(root, "es_de_home");
@@ -290,9 +300,12 @@ class DeckGameModeRequest {
 
     public JsonValue json() {
         JsonValue root = JsonValue.makeObject();
-        root.set("schema_version", JsonValue.makeInt(1));
+        root.set("schema_version", JsonValue.makeInt(2));
         root.set("operation", JsonValue.makeString(self.operation));
         root.set("scenario", JsonValue.makeString(self.scenario));
+        root.set("run_id", JsonValue.makeString(self.runId));
+        root.set("harness_revision",
+            JsonValue.makeString(self.harnessRevision));
         root.set("run_root", JsonValue.makeString(self.runRoot));
         root.set("project_root", JsonValue.makeString(self.projectRoot));
         root.set("es_de_home", JsonValue.makeString(self.esDeHome));
@@ -350,10 +363,13 @@ class DeckGameModeRequest {
         if (!["inspect", "inspect-inputs", "preflight", "batch-begin", "batch-end",
               "frontend", "automated-game-mode", "operator-start-select",
               "operator-radial"].contains(self.operation)
+                || !DeckRunEvidence.lowerHex(self.runId, 32)
+                || !DeckRunEvidence.lowerHex(self.harnessRevision, 40)
+                || !DeckGameModeContract.sha256(self.releaseSha256)
                 || !DeckGameModeContract.absolute(self.projectRoot)
                 || !DeckGameModeContract.absolute(self.runRoot)
-                || !self.runRoot.startsWith(self.projectRoot
-                    + "/build/verification/steamdeck/")
+                || !self.runRoot.equals(self.projectRoot
+                    + "/build/verification/steamdeck/runs/" + self.runId)
                 || !DeckGameModeContract.absolute(self.esDeHome)
                 || !DeckGameModeContract.absolute(self.steamRoot)) {
             return false;
@@ -499,6 +515,8 @@ class DeckGameModeReceiptPolicy {
             + DeckGameModeContract.text(evidence, "class")
             + " input_origin="
             + DeckGameModeContract.text(evidence, "input_origin")
+            + " proof_mode="
+            + DeckGameModeContract.text(evidence, "proof_mode")
             + " synthetic_input="
             + (DeckGameModeReceiptPolicy.flag(
                 root, "evidence", "synthetic_input") ? "1" : "0")
@@ -527,6 +545,179 @@ class DeckGameModeReceiptPolicy {
             && actual.executable.equals(request.shortcut.executable)
             && actual.executableSha256.equals(
                 request.shortcut.executableSha256);
+    }
+
+    class string installed(JsonValue root, DeckGameModeRequest request) {
+        JsonValue installed = root.get("installed");
+        string launcherSha256 = DeckGameModeContract.text(
+            installed, "launcher_sha256");
+        string expectedLauncher = request.shortcut.executableSha256;
+        if (expectedLauncher.isEmpty()) {
+            expectedLauncher = DeckGameModeContract.text(
+                root.get("shortcut"), "executable_sha256");
+        }
+        if (!installed.isObject()
+                || !DeckGameModeContract.text(
+                    installed, "artifact_sha256").equals(
+                        request.releaseSha256)
+                || !DeckGameModeContract.text(
+                    installed, "current_release").equals(
+                        request.releaseSha256)
+                || !DeckGameModeContract.text(
+                    installed, "release_root").endsWith(
+                        "/releases/" + request.releaseSha256)
+                || !DeckGameModeContract.text(
+                    installed, "launcher_path").equals(
+                        request.shortcut.executable)
+                || !DeckGameModeContract.sha256(launcherSha256)
+                || (!expectedLauncher.isEmpty()
+                    && !launcherSha256.equals(expectedLauncher))) {
+            return "receipt is not bound to the exact installed artifact/release";
+        }
+        return "";
+    }
+
+    class Vector<string> requiredArtifacts(DeckGameModeRequest request) {
+        if (request.operation.equals("frontend")) {
+            return ["frontend-game-mode.png"];
+        }
+        Vector<string> result = [
+            "frontend-game-mode.png", "game-running.png", "esde-return.png",
+            "runtime/semu-input-evidence.log",
+            "runtime/semu-emulator-evidence.log"
+        ];
+        if (!request.operation.equals("operator-start-select")) {
+            result.extend([
+                "runtime/semu-render-evidence.log",
+                "runtime/semu-render-final.ppm"
+            ]);
+        }
+        if (request.wiiExpected) {
+            result.push("runtime/semu-wii-controller-evidence.log");
+        }
+        if (request.operation.equals("automated-game-mode")) {
+            for name in ["navigation-uinput.log", "actions-uinput.log",
+                         "start-select-uinput.log",
+                         "start-select-reverse-uinput.log",
+                         "relaunch-1.log", "relaunch-2.log"] {
+                result.push(name);
+            }
+        }
+        return result;
+    }
+
+    class string artifactPhases(JsonValue root,
+                                DeckGameModeRequest request) {
+        JsonValue phases = root.get("phases");
+        JsonValue launch = phases.get("launch");
+        JsonValue gameplay = phases.get("gameplay");
+        JsonValue state = phases.get("state");
+        JsonValue quit = phases.get("quit");
+        JsonValue returned = phases.get("es_de_return");
+        string frontend = DeckRunEvidence.artifactDigest(
+            root, "frontend-game-mode.png");
+        string game = DeckRunEvidence.artifactDigest(
+            root, "game-running.png");
+        string returnImage = DeckRunEvidence.artifactDigest(
+            root, "esde-return.png");
+        string renderer = DeckRunEvidence.artifactDigest(
+            root, "runtime/semu-render-evidence.log");
+        string frame = DeckRunEvidence.artifactDigest(
+            root, "runtime/semu-render-final.ppm");
+        string input = DeckRunEvidence.artifactDigest(
+            root, "runtime/semu-input-evidence.log");
+        string emulator = DeckRunEvidence.artifactDigest(
+            root, "runtime/semu-emulator-evidence.log");
+        bool stateRequired = request.savestateExpected
+            && !request.operation.equals("operator-start-select");
+        bool renderingRequired = !request.operation.equals(
+            "operator-start-select");
+        bool radialRequired = !request.operation.equals(
+            "operator-start-select");
+        bool startSelectRequired = !request.operation.equals(
+            "operator-radial");
+        if (!launch.get("steam_pid").isInt()
+                || launch.get("steam_pid").asInt() < 2
+                || !launch.get("es_de_pid").isInt()
+                || launch.get("es_de_pid").asInt() < 2
+                || DeckGameModeContract.text(
+                    launch, "es_de_start").isEmpty()
+                || DeckGameModeContract.text(
+                    launch, "es_de_session").isEmpty()
+                || !DeckGameModeContract.text(
+                launch, "screenshot_sha256").equals(frontend)
+                || !gameplay.get("game_pid").isInt()
+                || gameplay.get("game_pid").asInt() < 2
+                || DeckGameModeContract.text(
+                    gameplay, "game_start").isEmpty()
+                || !DeckGameModeContract.text(
+                    gameplay, "screenshot_sha256").equals(game)
+                || (renderingRequired
+                    && (!DeckGameModeContract.text(
+                        gameplay, "renderer_log_sha256").equals(renderer)
+                        || !DeckGameModeContract.text(
+                            gameplay, "renderer_frame_sha256").equals(frame)))
+                || (!renderingRequired
+                    && (!renderer.isEmpty() || !frame.isEmpty()
+                        || !DeckGameModeContract.text(
+                            gameplay, "renderer_log_sha256").isEmpty()
+                        || !DeckGameModeContract.text(
+                            gameplay, "renderer_frame_sha256").isEmpty()))
+                || !DeckGameModeContract.text(
+                    gameplay, "emulator_log_sha256").equals(emulator)
+                || !DeckGameModeContract.text(
+                    gameplay, "executable_sha256").equals(
+                        request.expectedExecutableSha256)
+                || !DeckGameModeContract.text(
+                    state, "evidence_sha256").equals(emulator)
+                || !state.get("required").isBool()
+                || state.get("required").asBool() != stateRequired
+                || !state.get("observed").isBool()
+                || state.get("observed").asBool() != stateRequired
+                || !DeckGameModeContract.text(
+                    quit, "evidence_sha256").equals(input)
+                || !quit.get("radial").isBool()
+                || quit.get("radial").asBool() != radialRequired
+                || !quit.get("start_select").isBool()
+                || quit.get("start_select").asBool() != startSelectRequired
+                || !quit.get("process_exited").isBool()
+                || !quit.get("process_exited").asBool()
+                || !DeckGameModeContract.text(
+                    returned, "screenshot_sha256").equals(returnImage)
+                || !returned.get("same_es_de_session").isBool()
+                || !returned.get("same_es_de_session").asBool()
+                || !returned.get("game_process_absent").isBool()
+                || !returned.get("game_process_absent").asBool()) {
+            return "run phases do not reference the exact collected launch/gameplay/state/quit/return evidence";
+        }
+        return "";
+    }
+
+    class string observation(JsonValue root, DeckGameModeRequest request) {
+        JsonValue observation = root.get("observation");
+        bool automated = request.operation.equals("automated-game-mode");
+        bool physicalStartSelect = request.operation.equals(
+            "operator-start-select");
+        bool physicalRadial = request.operation.equals("operator-radial");
+        if (!observation.isObject()
+                || !DeckGameModeContract.text(
+                    observation, "run_challenge").equals(request.runId)
+                || !DeckGameModeContract.text(
+                    observation, "proof_mode").equals(
+                        DeckEvidenceClass.proofMode(request.scenario))
+                || !observation.get("virtual_input_only").isBool()
+                || observation.get("virtual_input_only").asBool()
+                    != automated
+                || !observation.get("physical_start_select_observed").isBool()
+                || observation.get(
+                    "physical_start_select_observed").asBool()
+                    != physicalStartSelect
+                || !observation.get("physical_radial_observed").isBool()
+                || observation.get("physical_radial_observed").asBool()
+                    != physicalRadial) {
+            return "operator/virtual observation is absent, cross-run, or overclaimed";
+        }
+        return "";
     }
 
     class string generatedInputs(JsonValue root,
@@ -580,11 +771,17 @@ class DeckGameModeReceiptPolicy {
 
     class string verify(JsonValue root, DeckGameModeRequest request) {
         if (!root.isObject() || !root.get("schema_version").isInt()
-                || root.get("schema_version").asInt() != 1
+                || root.get("schema_version").asInt() != 2
                 || !DeckGameModeReceiptPolicy.text(
                     root, "", "operation").equals(request.operation)) {
             return "acceptance receipt has the wrong schema or operation";
         }
+        string run = DeckRunEvidence.verifyBinding(root, request.runId,
+            request.harnessRevision, request.releaseSha256,
+            request.documentSha256);
+        if (!run.isEmpty()) { return run; }
+        string installed = DeckGameModeReceiptPolicy.installed(root, request);
+        if (!installed.isEmpty()) { return installed; }
         if (request.operation.equals("inspect")) {
             return DeckExpectedShortcut.parse(root.get("shortcut")).valid()
                 ? "" : "shortcut inspection receipt is invalid";
@@ -646,7 +843,31 @@ class DeckGameModeReceiptPolicy {
                 || media.get("external_content_bytes_hashed").asInt() != 0) {
             return "Game Mode launch/session/media evidence is incomplete";
         }
-        if (request.operation.equals("frontend")) { return ""; }
+        if (request.operation.equals("frontend")) {
+            string artifacts = DeckRunEvidence.verifyArtifacts(root,
+                request.runId,
+                DeckGameModeReceiptPolicy.requiredArtifacts(request), false);
+            if (!artifacts.isEmpty()) { return artifacts; }
+            JsonValue launchPhase = root.get("phases").get("launch");
+            string observed = DeckRunEvidence.phaseTime(root.get("phases"),
+                "launch", request.runId, DeckRunEvidence.started(root));
+            if (observed.isEmpty()
+                    || !launchPhase.get("steam_pid").isInt()
+                    || launchPhase.get("steam_pid").asInt() < 2
+                    || !launchPhase.get("es_de_pid").isInt()
+                    || launchPhase.get("es_de_pid").asInt() < 2
+                    || DeckGameModeContract.text(
+                        launchPhase, "es_de_start").isEmpty()
+                    || DeckGameModeContract.text(
+                        launchPhase, "es_de_session").isEmpty()
+                    || !DeckGameModeContract.text(
+                        launchPhase, "screenshot_sha256").equals(
+                            DeckRunEvidence.artifactDigest(
+                                root, "frontend-game-mode.png"))) {
+                return "frontend launch phase is not run/screenshot-bound";
+            }
+            return "";
+        }
         if (!DeckGameModeReceiptPolicy.flag(root, "launch", "through_es_de")
                 || !DeckGameModeReceiptPolicy.flag(
                     root, "launch", "same_es_de_session")
@@ -681,6 +902,18 @@ class DeckGameModeReceiptPolicy {
         string generatedInputs = DeckGameModeReceiptPolicy.generatedInputs(
             root, request, "scenario");
         if (!generatedInputs.isEmpty()) { return generatedInputs; }
+        string artifacts = DeckRunEvidence.verifyArtifacts(root,
+            request.runId,
+            DeckGameModeReceiptPolicy.requiredArtifacts(request),
+            request.operation.equals("operator-radial"));
+        if (!artifacts.isEmpty()) { return artifacts; }
+        string phases = DeckRunEvidence.verifyPhases(root, request.runId);
+        if (!phases.isEmpty()) { return phases; }
+        phases = DeckGameModeReceiptPolicy.artifactPhases(root, request);
+        if (!phases.isEmpty()) { return phases; }
+        string observation = DeckGameModeReceiptPolicy.observation(
+            root, request);
+        if (!observation.isEmpty()) { return observation; }
         if (request.operation.equals("automated-game-mode")
                 && (DeckGameModeReceiptPolicy.flag(
                     root, "input", "steam_radial_ui_proven")
@@ -697,7 +930,22 @@ class DeckGameModeReceiptPolicy {
             ? 0 : request.wiiModeSlots;
         int expectedOrders = request.operation.equals("operator-radial")
             ? 0 : 2;
-        if (!input.get("quick_radial_slots").isInt()
+        bool automated = request.operation.equals("automated-game-mode");
+        if (!input.get("gameplay_injected").isBool()
+                || input.get("gameplay_injected").asBool() != automated
+                || !DeckGameModeReceiptPolicy.flag(
+                    root, "input", "gameplay_consumed")
+                || !DeckGameModeReceiptPolicy.flag(
+                    root, "input", "quick_radial_consumed")
+                || !DeckGameModeReceiptPolicy.flag(
+                    root, "input", "menu_radial_consumed")
+                || !DeckGameModeReceiptPolicy.flag(
+                    root, "input", "radial_quit_immediate")
+                || !DeckGameModeReceiptPolicy.flag(
+                    root, "input", "save_load_consumed")
+                || !DeckGameModeReceiptPolicy.flag(
+                    root, "input", "wii_modes_consumed")
+                || !input.get("quick_radial_slots").isInt()
                 || input.get("quick_radial_slots").asInt()
                     != expectedQuick
                 || !input.get("menu_radial_slots").isInt()
@@ -708,7 +956,13 @@ class DeckGameModeReceiptPolicy {
                     != expectedWii
                 || !input.get("start_select_orders").isInt()
                 || input.get("start_select_orders").asInt()
-                    != expectedOrders) {
+                    != expectedOrders
+                || !input.get("physical_start_select_proven").isBool()
+                || input.get("physical_start_select_proven").asBool()
+                    != (request.operation.equals("operator-start-select"))
+                || !input.get("steam_radial_ui_proven").isBool()
+                || input.get("steam_radial_ui_proven").asBool()
+                    != (request.operation.equals("operator-radial"))) {
             return "input evidence does not cover every declared slot/order";
         }
         return "";

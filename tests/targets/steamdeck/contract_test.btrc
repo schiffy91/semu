@@ -6,6 +6,7 @@ import ./acceptance_plan.btrc
 import ./evidence.btrc
 import ./game_mode.btrc
 import ./input_automation.btrc
+import ./presentation_matrix.btrc
 import ./run_evidence.btrc
 import ./steam_shortcuts.btrc
 
@@ -640,11 +641,11 @@ class DeckHarnessContractTest {
         gameplay.set("screenshot_sha256", JsonValue.makeString(
             DeckHarnessContractTest.artifactDigest("game-running.png")));
         gameplay.set("renderer_log_sha256", JsonValue.makeString(
-            DeckHarnessContractTest.artifactDigest(
-                "runtime/semu-render-evidence.log")));
+            radialRequired ? DeckHarnessContractTest.artifactDigest(
+                "runtime/semu-render-evidence.log") : ""));
         gameplay.set("renderer_frame_sha256", JsonValue.makeString(
-            DeckHarnessContractTest.artifactDigest(
-                "runtime/semu-render-final.ppm")));
+            radialRequired ? DeckHarnessContractTest.artifactDigest(
+                "runtime/semu-render-final.ppm") : ""));
         gameplay.set("emulator_log_sha256", JsonValue.makeString(
             DeckHarnessContractTest.artifactDigest(
                 "runtime/semu-emulator-evidence.log")));
@@ -1185,6 +1186,29 @@ class DeckHarnessContractTest {
             && !input.contains("class string invocation(");
     }
 
+    class bool presentationContracts(DeckAcceptancePlan plan) {
+        for system in plan.systems {
+            if (!DeckPresentationMatrix.exactCases(
+                    system.presentationCases,
+                    system.presentationCatalog)
+                    || DeckPresentationMatrix.find(
+                        system.presentationCases, "id",
+                        system.presentationDefaultId).isError()) {
+                return false;
+            }
+        }
+        DeckSystemCase gameBoy = plan.system("gb");
+        return gameBoy.presentationCatalog.get("shaders").isArray()
+            && gameBoy.presentationCatalog.get("shaders").size() == 3
+            && gameBoy.presentationCatalog.get("bezels").isArray()
+            && gameBoy.presentationCatalog.get("bezels").size() == 3
+            && gameBoy.presentationCatalog.get("integer_scaling").isArray()
+            && gameBoy.presentationCatalog.get("integer_scaling").size() == 2
+            && gameBoy.presentationCases.size() == 18
+            && gameBoy.presentationDefaultId.equals(
+                "shader-dmg__bezel-dmg__integer-on");
+    }
+
     class int run(string project, string fixturePath) {
         JsonValue fixture = JsonValue.readFile(fixturePath);
         DeckAcceptancePlan plan = DeckAcceptancePlan.load(project);
@@ -1269,6 +1293,10 @@ class DeckHarnessContractTest {
         if (!DeckHarnessContractTest.inputContracts(plan)) {
             failures += DeckHarnessContractTest.fail(
                 "gameplay/state/radial/Wii input plan regressed");
+        }
+        if (!DeckHarnessContractTest.presentationContracts(plan)) {
+            failures += DeckHarnessContractTest.fail(
+                "declarative physical presentation matrix regressed");
         }
         if (!DeckHarnessContractTest.latencyContracts(project)) {
             failures += DeckHarnessContractTest.fail(

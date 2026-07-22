@@ -8,7 +8,7 @@ import ./renderer_gl_api.btrc
 import ./renderer_compositor.btrc
 import ./renderer_post_ui.btrc
 
-int semu_render_map_pointer_abi2(struct SemuRenderPointerMap* map,
+int semu_render_map_pointer_abi3(struct SemuRenderPointerMap* map,
                                  struct SemuRenderPointerQuery* query,
                                  struct SemuRenderPointerResult* result) {
     return RendererPointerContract.map(map, query, result);
@@ -17,7 +17,7 @@ int semu_render_map_pointer_abi2(struct SemuRenderPointerMap* map,
 struct SemuRendererRuntime {
     int initialized;
     int gl_loaded;
-    void* owner_context;
+    unsigned long long owner_context_generation;
     unsigned long long last_frame_id;
     int game_failure_status;
     int post_failure_status;
@@ -34,23 +34,38 @@ struct SemuRendererRuntime {
 struct SemuRendererRuntime SemuRenderer;
 
 class SemuRendererLifecycle {
-    class void activate(void* context, unsigned long long frameId) {
-        if (RendererContextContract.changed(SemuRenderer.owner_context, context,
-                SemuRenderer.last_frame_id, frameId)) {
+    class void reset(bool contextIsCurrent,
+                     unsigned long long contextGeneration) {
+        if (contextIsCurrent) {
+            RendererResources.releaseCurrentContext(&SemuRenderer.gl,
+                &SemuRenderer.resources, contextGeneration);
+        } else {
             RendererResources.abandonDestroyedContext(&SemuRenderer.resources);
-            SemuRenderer.gl_loaded = 0;
-            memset(&SemuRenderer.gl, 0, sizeof(struct RendererGlApi));
-            memset(&SemuRenderer.game_state, 0, sizeof(struct RendererGlState));
-            memset(&SemuRenderer.post_state, 0, sizeof(struct RendererGlState));
-            memset(&SemuRenderer.config, 0, sizeof(struct RendererConfig));
-            memset(&SemuRenderer.geometry, 0,
-                sizeof(struct RendererCompositionGeometry));
-            RendererPhaseOwnership.clear(&SemuRenderer.pending);
-            SemuRenderer.post_ui.next_action_frame = 0ULL;
-            SemuRenderer.game_failure_status = 0;
-            SemuRenderer.post_failure_status = 0;
         }
-        SemuRenderer.owner_context = context;
+        SemuRenderer.gl_loaded = 0;
+        SemuRenderer.owner_context_generation = 0ULL;
+        SemuRenderer.last_frame_id = 0ULL;
+        memset(&SemuRenderer.gl, 0, sizeof(struct RendererGlApi));
+        memset(&SemuRenderer.game_state, 0, sizeof(struct RendererGlState));
+        memset(&SemuRenderer.post_state, 0, sizeof(struct RendererGlState));
+        memset(&SemuRenderer.config, 0, sizeof(struct RendererConfig));
+        memset(&SemuRenderer.geometry, 0,
+            sizeof(struct RendererCompositionGeometry));
+        memset(&SemuRenderer.post_ui, 0, sizeof(struct RendererPostUiState));
+        RendererPhaseOwnership.clear(&SemuRenderer.pending);
+        SemuRenderer.game_failure_status = 0;
+        SemuRenderer.post_failure_status = 0;
+    }
+
+    class void activate(unsigned long long contextGeneration,
+                        unsigned long long frameId) {
+        if (RendererContextContract.changed(
+                SemuRenderer.owner_context_generation, contextGeneration,
+                SemuRenderer.last_frame_id, frameId)) {
+            SemuRendererLifecycle.reset(false,
+                SemuRenderer.owner_context_generation);
+        }
+        SemuRenderer.owner_context_generation = contextGeneration;
         SemuRenderer.last_frame_id = frameId;
     }
 }
@@ -76,16 +91,25 @@ class SemuRendererCalls {
         RendererPhaseOwnership.clear(&SemuRenderer.pending);
     }
 
-    class int prepare(struct SemuRenderFrameGl* frame, void** context) {
+    class int prepare(struct SemuRenderFrameGl* frame,
+                      unsigned long long* contextGeneration) {
         SemuRendererCalls.initialize();
         if (!RendererFrameContract.valid(frame)) { return SEMU_RENDER_INVALID_FRAME; }
-        *context = frame->current_context();
-        if (*context == null) { return SEMU_RENDER_NO_CONTEXT; }
-        SemuRendererLifecycle.activate(*context, frame->frame_id);
+        *contextGeneration = frame->context_generation;
+        if (*contextGeneration == 0ULL) { return SEMU_RENDER_NO_CONTEXT; }
+        SemuRendererLifecycle.activate(*contextGeneration, frame->frame_id);
         if (SemuRenderer.gl_loaded != 0 && SemuRenderer.resources.ready != 0
                 && !RendererResources.current(&SemuRenderer.gl,
-                    &SemuRenderer.resources, *context)) {
-            RendererResources.abandonDestroyedContext(&SemuRenderer.resources);
+                    &SemuRenderer.resources, *contextGeneration)) {
+            bool released = SemuRenderer.resources.owner_context_generation
+                    == *contextGeneration
+                && RendererResources.releaseCurrentContext(
+                    &SemuRenderer.gl, &SemuRenderer.resources,
+                    *contextGeneration);
+            if (!released) {
+                RendererResources.abandonDestroyedContext(
+                    &SemuRenderer.resources);
+            }
             SemuRenderer.gl_loaded = 0;
             memset(&SemuRenderer.gl, 0, sizeof(struct RendererGlApi));
         }
@@ -100,27 +124,37 @@ class SemuRendererCalls {
     }
 }
 
+void semu_render_context_invalidate_gl(
+        unsigned long long contextGeneration) {
+    SemuRendererCalls.initialize();
+    if (contextGeneration == 0ULL
+            || SemuRenderer.owner_context_generation
+                != contextGeneration) { return; }
+    SemuRendererLifecycle.reset(true, contextGeneration);
+}
+
 int semu_render_game_gl(struct SemuRenderFrameGl* frame) {
     SemuRendererCalls.initialize();
     if (!RendererFrameContract.compatible(frame)) {
         RendererPhaseOwnership.clear(&SemuRenderer.pending);
         if (SemuRendererReceipts.failureTransition(SEMU_RENDER_INVALID_FRAME,
                 &SemuRenderer.game_failure_status)) {
-            RendererStateFiles.appendReceipt("game", null, null, 0,
+            RendererStateFiles.appendReceipt("game", null, 0ULL, 0,
                 SEMU_RENDER_INVALID_FRAME, 0, 0ULL, -1,
                 null, null, null, null);
         }
         return SEMU_RENDER_INVALID_FRAME;
     }
     RendererPointerContract.clearMap(&frame->pointer_map);
-    frame->map_pointer = semu_render_map_pointer_abi2;
-    void* context = null;
-    int prepared = SemuRendererCalls.prepare(frame, &context);
+    frame->map_pointer = semu_render_map_pointer_abi3;
+    unsigned long long contextGeneration = 0ULL;
+    int prepared = SemuRendererCalls.prepare(frame, &contextGeneration);
     if (prepared != SEMU_RENDER_APPLIED) {
         RendererPhaseOwnership.clear(&SemuRenderer.pending);
         if (SemuRendererReceipts.failureTransition(prepared,
                 &SemuRenderer.game_failure_status)) {
-            RendererStateFiles.appendReceipt("game", frame, context, 0,
+            RendererStateFiles.appendReceipt("game", frame,
+                contextGeneration, 0,
                 prepared, 0, 0ULL, -1, null, null, null, null);
         }
         return prepared;
@@ -130,7 +164,8 @@ int semu_render_game_gl(struct SemuRenderFrameGl* frame) {
         RendererPhaseOwnership.clear(&SemuRenderer.pending);
         if (SemuRendererReceipts.failureTransition(SEMU_RENDER_GL_UNAVAILABLE,
                 &SemuRenderer.game_failure_status)) {
-            RendererStateFiles.appendReceipt("game", frame, context, 0,
+            RendererStateFiles.appendReceipt("game", frame,
+                contextGeneration, 0,
                 SEMU_RENDER_GL_UNAVAILABLE, 0, 0ULL, -1,
                 &SemuRenderer.config, &SemuRenderer.resources, null, null);
         }
@@ -140,7 +175,8 @@ int semu_render_game_gl(struct SemuRenderFrameGl* frame) {
     RendererConfiguration.select(&SemuRenderer.config, frame);
     int status = SEMU_RENDER_APPLIED;
     if (!RendererResources.initialize(&SemuRenderer.gl,
-            &SemuRenderer.resources, &SemuRenderer.config, context)) {
+            &SemuRenderer.resources, &SemuRenderer.config,
+            contextGeneration)) {
         status = RendererResourceFailure.set(&SemuRenderer.resources,
             SEMU_RENDER_PIPELINE_FAILED, "resource_initialization_failed");
     } else if (!RendererGeometry.resolve(frame, &SemuRenderer.config,
@@ -157,7 +193,8 @@ int semu_render_game_gl(struct SemuRenderFrameGl* frame) {
         RendererPhaseOwnership.clear(&SemuRenderer.pending);
         if (SemuRendererReceipts.failureTransition(status,
                 &SemuRenderer.game_failure_status)) {
-            RendererStateFiles.appendReceipt("game", frame, context, 1,
+            RendererStateFiles.appendReceipt("game", frame,
+                contextGeneration, 1,
                 status, 0, 0ULL, -1, &SemuRenderer.config,
                 &SemuRenderer.resources, &SemuRenderer.geometry, null);
         }
@@ -168,16 +205,17 @@ int semu_render_game_gl(struct SemuRenderFrameGl* frame) {
         &SemuRenderer.game_failure_status);
     RendererPointerContract.publish(frame, &SemuRenderer.geometry,
         &frame->pointer_map);
-    RendererPhaseOwnership.acceptGame(&SemuRenderer.pending, frame, context);
+    RendererPhaseOwnership.acceptGame(&SemuRenderer.pending, frame,
+        contextGeneration);
     return SEMU_RENDER_APPLIED;
 }
 
 int semu_render_post_ui_gl(struct SemuRenderFrameGl* frame) {
     SemuRendererCalls.initialize();
     if (!RendererFrameContract.valid(frame)) { return SEMU_RENDER_INVALID_FRAME; }
-    void* context = frame->current_context();
+    unsigned long long contextGeneration = frame->context_generation;
     if (!RendererPhaseOwnership.matchesPost(&SemuRenderer.pending,
-            frame, context)) {
+            frame, contextGeneration)) {
         return SEMU_RENDER_PASSTHROUGH;
     }
 
@@ -192,13 +230,14 @@ int semu_render_post_ui_gl(struct SemuRenderFrameGl* frame) {
     }
     if (SemuRenderer.gl_loaded == 0
             || !RendererResources.current(&SemuRenderer.gl,
-                &SemuRenderer.resources, context)
+                &SemuRenderer.resources, contextGeneration)
             || !RendererGlStateGuard.save(&SemuRenderer.gl,
                 &SemuRenderer.post_state)) {
         RendererPhaseOwnership.clear(&SemuRenderer.pending);
         if (SemuRendererReceipts.failureTransition(SEMU_RENDER_GL_UNAVAILABLE,
                 &SemuRenderer.post_failure_status)) {
-            RendererStateFiles.appendReceipt("post_ui", frame, context, 1,
+            RendererStateFiles.appendReceipt("post_ui", frame,
+                contextGeneration, 1,
                 SEMU_RENDER_GL_UNAVAILABLE, consumed, 0ULL, -1,
                 &SemuRenderer.config, &SemuRenderer.resources,
                 &SemuRenderer.geometry, &SemuRenderer.post_ui);
@@ -218,7 +257,8 @@ int semu_render_post_ui_gl(struct SemuRenderFrameGl* frame) {
         &SemuRenderer.post_failure_status);
     if (failureReceipt
             || SemuRenderer.post_ui.capture_outcome != SEMU_RENDER_CAPTURE_NONE) {
-        RendererStateFiles.appendReceipt("post_ui", frame, context, 1,
+        RendererStateFiles.appendReceipt("post_ui", frame,
+            contextGeneration, 1,
             status, consumed, hash, nonblank,
             &SemuRenderer.config, &SemuRenderer.resources,
             &SemuRenderer.geometry, &SemuRenderer.post_ui);

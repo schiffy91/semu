@@ -1,0 +1,1006 @@
+// Focused contracts for independently anchored AppImage release trust.
+
+import std.{fs, io, json, process, vector}
+import ../../src/generators/appimage/contract.btrc
+import ../../src/generators/appimage/linux_worker.btrc
+import ../../src/generators/appimage/nix_release_proof.btrc
+import ../../src/generators/appimage/work_session.btrc
+
+class AppImageTrustContractTest {
+    class string packageAttribute() {
+        return "steamdeck-runtime-retroarch";
+    }
+
+    class string sourceStorePath() {
+        return "/nix/store/00000000000000000000000000000000-semu-source";
+    }
+
+    class string targetStorePath() {
+        return "/nix/store/11111111111111111111111111111111-semu-runtime";
+    }
+
+    class string closureDigest() {
+        return "3333333333333333333333333333333333333333333333333333333333333333";
+    }
+
+    class string provenanceDigest() {
+        return "4444444444444444444444444444444444444444444444444444444444444444";
+    }
+
+    class string releaseIdentity() {
+        return "5555555555555555555555555555555555555555555555555555555555555555";
+    }
+
+    class string containerId() {
+        return "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+    }
+
+    class string alternateContainerId() {
+        return "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+    }
+
+    class string foreignContainerId() {
+        return "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc";
+    }
+
+    class JsonValue proofDocument(bool includeSystem = true) {
+        JsonValue document = JsonValue.makeObject();
+        document.set("schema_version", JsonValue.makeInt(3));
+        if (includeSystem) {
+            document.set("nix_system", JsonValue.makeString(
+                AppImageNixReleaseProof.requiredSystem()));
+        }
+        document.set("package_attribute", JsonValue.makeString(
+            AppImageTrustContractTest.packageAttribute()));
+        document.set("source_store_path", JsonValue.makeString(
+            AppImageTrustContractTest.sourceStorePath()));
+        document.set("target_store_path", JsonValue.makeString(
+            AppImageTrustContractTest.targetStorePath()));
+        document.set("closure_sha256", JsonValue.makeString(
+            AppImageTrustContractTest.closureDigest()));
+        document.set("provenance_sha256", JsonValue.makeString(
+            AppImageTrustContractTest.provenanceDigest()));
+        document.set("release_identity_sha256", JsonValue.makeString(
+            AppImageTrustContractTest.releaseIdentity()));
+        return document;
+    }
+
+    class AppImageNixReleaseProof parse(JsonValue document,
+                                        string expectedPackage = "",
+                                        string expectedProvenance = "",
+                                        string expectedRelease = "") {
+        return AppImageNixReleaseProof.parse(
+            document.document(),
+            expectedPackage.isEmpty()
+                ? AppImageTrustContractTest.packageAttribute()
+                : expectedPackage,
+            expectedProvenance.isEmpty()
+                ? AppImageTrustContractTest.provenanceDigest()
+                : expectedProvenance,
+            expectedRelease.isEmpty()
+                ? AppImageTrustContractTest.releaseIdentity()
+                : expectedRelease);
+    }
+
+    class bool canonicalReleaseProof() {
+        JsonValue document = AppImageTrustContractTest.proofDocument();
+        string canonical = document.document();
+        AppImageNixReleaseProof proof = AppImageTrustContractTest.parse(
+            document);
+        JsonValue roundTrip = proof.ok()
+            ? AppImageNixReleaseProof.json(
+                proof.packageAttribute,
+                proof.sourceStorePath, proof.targetStorePath,
+                proof.closureDigest,
+                proof.provenanceDigest, proof.releaseIdentity)
+            : JsonValue.makeObject();
+        if (!proof.ok() || !roundTrip.document().equals(canonical)) {
+            return false;
+        }
+
+        JsonValue extra = AppImageTrustContractTest.proofDocument();
+        extra.set("unexpected", JsonValue.makeBool(true));
+        JsonValue missing = AppImageTrustContractTest.proofDocument(false);
+        if (AppImageTrustContractTest.parse(extra).ok()
+                || AppImageTrustContractTest.parse(missing).ok()) {
+            return false;
+        }
+
+        JsonValue wrongPackage = AppImageTrustContractTest.proofDocument();
+        JsonValue wrongSource = AppImageTrustContractTest.proofDocument();
+        JsonValue wrongTarget = AppImageTrustContractTest.proofDocument();
+        JsonValue wrongClosure = AppImageTrustContractTest.proofDocument();
+        JsonValue wrongSystem = AppImageTrustContractTest.proofDocument();
+        wrongSource.set("source_store_path",
+            JsonValue.makeString("/nix/store/not-a-store-path"));
+        wrongTarget.set("target_store_path",
+            JsonValue.makeString("/nix/store/not-a-store-path"));
+        wrongClosure.set("closure_sha256",
+            JsonValue.makeString("not-a-sha256"));
+        wrongSystem.set("nix_system",
+            JsonValue.makeString("aarch64-darwin"));
+
+        string otherDigest =
+            "6666666666666666666666666666666666666666666666666666666666666666";
+        return !AppImageTrustContractTest.parse(
+                wrongPackage, "steamdeck-runtime-dolphin").ok()
+            && !AppImageTrustContractTest.parse(wrongSource).ok()
+            && !AppImageTrustContractTest.parse(wrongTarget).ok()
+            && !AppImageTrustContractTest.parse(wrongClosure).ok()
+            && !AppImageTrustContractTest.parse(
+                AppImageTrustContractTest.proofDocument(), "",
+                otherDigest).ok()
+            && !AppImageTrustContractTest.parse(
+                AppImageTrustContractTest.proofDocument(), "", "",
+                otherDigest).ok()
+            && !AppImageTrustContractTest.parse(wrongSystem).ok();
+    }
+
+    class bool exactCommand(Vector<string> actual,
+                            Vector<string> expected) {
+        return actual.join("\n").equals(expected.join("\n"));
+    }
+
+    class string imageInspection(
+            string operatingSystem = "linux",
+            string architecture = "amd64") {
+        JsonValue image = JsonValue.makeObject();
+        image.set("Os", JsonValue.makeString(operatingSystem));
+        image.set("Architecture", JsonValue.makeString(architecture));
+        JsonValue result = JsonValue.makeArray();
+        result.push(image);
+        return result.document();
+    }
+
+    class AppImageLinuxWorkerPlatform workerPlatform() {
+        return AppImageLinuxWorkerPlatform.fromImageInspection(
+            AppImageTrustContractTest.imageInspection());
+    }
+
+    class bool exactHostNixArgv() {
+        AppImageNixReleaseProof proof = AppImageTrustContractTest.parse(
+            AppImageTrustContractTest.proofDocument());
+        if (!proof.ok()) { return false; }
+        string reference = AppImageNixReleaseProof.outputReference(
+            proof.sourceStorePath, proof.packageAttribute, proof.nixSystem);
+        Vector<string> expectedVerification = [
+            "--extra-experimental-features", "nix-command flakes",
+            "store", "verify", "--recursive", "--no-trust",
+            AppImageTrustContractTest.sourceStorePath()
+        ];
+        Vector<string> expectedEvaluation = [
+            "--extra-experimental-features", "nix-command flakes",
+            "--offline",
+            "--option", "allow-import-from-derivation", "false",
+            "eval", "--no-write-lock-file", "--raw", reference
+        ];
+        Vector<string> verification =
+            AppImageNixReleaseProof.sourceVerificationArguments(
+                proof.sourceStorePath);
+        Vector<string> evaluation =
+            AppImageNixReleaseProof.evaluationArguments(proof);
+        ExecResult warning = ExecResult(
+            0, AppImageTrustContractTest.targetStorePath() + "\n",
+            "warning: offline mode\n", "nix");
+        ExecResult multiple = ExecResult(
+            0, AppImageTrustContractTest.targetStorePath() + "\nextra\n",
+            "", "nix");
+        ExecResult failed = ExecResult(
+            1, AppImageTrustContractTest.targetStorePath() + "\n",
+            "failure\n", "nix");
+        ExecResult stdoutFailure = ExecResult(
+            1, "stdout diagnostic\n", "", "nix");
+        return !reference.isEmpty()
+            && AppImageTrustContractTest.exactCommand(
+                verification, expectedVerification)
+            && AppImageTrustContractTest.exactCommand(
+                evaluation, expectedEvaluation)
+            && AppImageNixReleaseProof.successfulSingleLine(warning)
+                .equals(AppImageTrustContractTest.targetStorePath())
+            && AppImageNixReleaseProof.successfulSingleLine(multiple).isEmpty()
+            && AppImageNixReleaseProof.successfulSingleLine(failed).isEmpty()
+            && AppImageNixReleaseProof.failureDetail(failed)
+                .equals("failure")
+            && AppImageNixReleaseProof.failureDetail(stdoutFailure)
+                .equals("stdout diagnostic")
+            && !evaluation.contains("build")
+            && !evaluation.contains("path-info")
+            && !evaluation.contains("podman")
+            && !evaluation.contains("--no-check-sigs");
+    }
+
+    class AppImagePathPlan ownershipPlan(string repository,
+                                         string cacheRoot,
+                                         string generation) {
+        AppImagePathPlan plan = AppImagePathPlan();
+        plan.valid = true;
+        plan.repoRoot = repository;
+        plan.runtimeRoot = generation;
+        plan.runtimePublication = PathTools.join(cacheRoot, "runtime-root");
+        return plan;
+    }
+
+    class bool writeOwnershipFixture(string scratch, string defect) {
+        string repository = PathTools.join(scratch, "frozen-source");
+        string builderRepository = PathTools.join(scratch, "builder-repo");
+        string markerRepository = defect.equals("wrong-builder-owner")
+            ? repository : builderRepository;
+        string cacheRoot = PathTools.join(scratch, "cache");
+        string generation = PathTools.join(
+            cacheRoot, "generations/runtime.fixture");
+        string markerRoot = PathTools.join(
+            cacheRoot, "metadata/generations");
+        string cacheMarker = PathTools.join(
+            cacheRoot, ".semu-appimage-runtime-cache-v1");
+        string owner = PathTools.join(markerRoot, "runtime.fixture.owner");
+        string proof = PathTools.join(
+            markerRoot, "runtime.fixture.nix-proof.json");
+        string packageAttribute = AppImageTrustContractTest.packageAttribute();
+        string ownerPackage = defect.equals("wrong-package-owner")
+            ? "steamdeck-runtime-dolphin" : packageAttribute;
+        JsonValue proofDocument =
+            AppImageTrustContractTest.proofDocument();
+        if (defect.equals("wrong-package-proof")) {
+            proofDocument.set("package_attribute",
+                JsonValue.makeString("steamdeck-runtime-dolphin"));
+        }
+        bool prepared = FileSystem.mkdirp(repository) == 0
+            && FileSystem.mkdirp(builderRepository) == 0
+            && FileSystem.mkdirp(generation) == 0
+            && FileSystem.mkdirp(markerRoot) == 0
+            && FileSystem.writeText(cacheMarker,
+                AppImageRuntimeOwnershipLease.cacheDocument(
+                    cacheRoot, markerRepository, packageAttribute))
+            && FileSystem.writeText(owner,
+                AppImageRuntimeOwnershipLease.generationDocument(
+                    cacheRoot, generation, markerRepository, ownerPackage))
+            && FileSystem.writeText(
+                proof, proofDocument.document())
+            && FileSystem.chmod(cacheMarker, 384) == 0
+            && FileSystem.chmod(owner,
+                defect.equals("wrong-mode-owner") ? 420 : 384) == 0
+            && FileSystem.chmod(proof,
+                defect.equals("wrong-mode-proof") ? 384 : 292) == 0;
+        if (!prepared) { return false; }
+
+        string selected = defect.endsWith("-proof") ? proof : owner;
+        if (defect.startsWith("absent-")) {
+            prepared = FileSystem.removeRecursive(selected) == 0;
+        } else if (defect.startsWith("symlinked-")) {
+            string outside = PathTools.join(scratch, "outside-marker");
+            prepared = FileSystem.writeText(outside, "outside\n")
+                && FileSystem.removeRecursive(selected) == 0
+                && FileSystem.symlink(outside, selected) == 0;
+        }
+        if (!prepared) { return false; }
+
+        AppImageRuntimeOwnershipLease ownership =
+            AppImageRuntimeOwnershipLease.acquire(
+                AppImageTrustContractTest.ownershipPlan(
+                    repository, cacheRoot, generation), packageAttribute,
+                builderRepository);
+        AppImageNixReleaseProof releaseProof = ownership.ok()
+            ? AppImageNixReleaseProof.parse(
+                SemuOwnedFileContent.text(ownership.nixProofDescriptor),
+                packageAttribute,
+                AppImageTrustContractTest.provenanceDigest(),
+                AppImageTrustContractTest.releaseIdentity())
+            : AppImageNixReleaseProof();
+        bool expectedValid = defect.equals("valid");
+        bool accepted = ownership.ok() && ownership.stillBound()
+            && releaseProof.ok();
+        ownership.closeDescriptors();
+        return accepted == expectedValid;
+    }
+
+    class bool generationOwnership() {
+        Vector<string> defects = [
+            "valid", "absent-owner", "absent-proof",
+            "symlinked-owner", "symlinked-proof",
+            "wrong-mode-owner", "wrong-mode-proof",
+            "wrong-package-owner", "wrong-package-proof",
+            "wrong-builder-owner"
+        ];
+        for defect in defects {
+            string scratch = FileSystem.tempDir(
+                "semu-appimage-trust-" + defect);
+            bool passed = !scratch.isEmpty()
+                && AppImageTrustContractTest.writeOwnershipFixture(
+                    scratch, defect);
+            if (!scratch.isEmpty()) {
+                FileSystem.removeRecursive(scratch);
+            }
+            if (!passed) {
+                print("ownership fixture failed: " + defect);
+                return false;
+            }
+        }
+        return true;
+    }
+
+    class bool nativeWorkerArgv() {
+        AppImageLinuxWorkerPlatform platform =
+            AppImageTrustContractTest.workerPlatform();
+        string cidfile = "/private/control/source-import.cid";
+        string containerId = AppImageTrustContractTest.containerId();
+        Vector<string> sourceImport = AppImageLinuxWorker.nixContainer(
+            platform, cidfile, containerId,
+            requiresChown=true, offline=true,
+            sourceCache="/private/source-cache");
+        Vector<string> sourceVerify = AppImageLinuxWorker.nixContainer(
+            platform, "/private/control/source-verify.cid", containerId,
+            requiresChown=false, offline=true);
+        Vector<string> workerBuild = AppImageLinuxWorker.nixContainer(
+            platform, "/private/control/worker-build.cid", containerId,
+            requiresChown=true, offline=false);
+        Vector<string> workerVerify = AppImageLinuxWorker.nixContainer(
+            platform, "/private/control/worker-verify.cid", containerId,
+            requiresChown=false, offline=true);
+        Vector<string> store = AppImageWorkerStoreLease.command(
+            platform, "/private/control/nix-store.cid");
+        string importJoined = sourceImport.join("\n");
+        string verifyJoined = sourceVerify.join("\n")
+            + "\n" + workerVerify.join("\n");
+        string buildJoined = workerBuild.join("\n");
+        string storeJoined = store.join("\n");
+        string privateCache = "/nix/var/cache:rw,nosuid,nodev,mode=0700";
+        return platform.imageVerified() && sourceImport.size() > 0
+            && sourceImport.contains("--rm")
+            && AppImageWorkerContainer.hasPair(
+                sourceImport, "--cidfile", cidfile)
+            && AppImageWorkerContainer.hasPair(
+                sourceImport, "--volumes-from", containerId + ":rw")
+            && AppImageWorkerContainer.hasPair(
+                sourceImport, "--cap-add", "CHOWN")
+            && AppImageWorkerContainer.hasPair(
+                workerBuild, "--cap-add", "CHOWN")
+            && AppImageWorkerContainer.hasPair(
+                sourceImport, "--cap-drop", "ALL")
+            && AppImageWorkerContainer.hasPair(
+                workerBuild, "--cap-drop", "ALL")
+            && sourceImport.contains("--network")
+            && sourceImport.contains("none")
+            && sourceImport.contains("--read-only")
+            && workerBuild.contains("--read-only")
+            && !workerBuild.contains("--network")
+            && sourceImport.contains("--entrypoint")
+            && sourceImport.contains("/root/.nix-profile/bin/nix")
+            && sourceImport.contains(AppImageNixReleaseProof.pinnedImage())
+            && sourceImport.contains("type=bind,source="
+                + "/private/source-cache,target=/source-cache,readonly")
+            && sourceImport.contains("--offline")
+            && sourceImport.contains(privateCache)
+            && workerBuild.contains(privateCache)
+            && AppImageWorkerContainer.hasPair(
+                sourceVerify, "--volumes-from", containerId + ":rw")
+            && AppImageWorkerContainer.hasPair(
+                workerVerify, "--volumes-from", containerId + ":rw")
+            && AppImageWorkerContainer.hasPair(
+                sourceVerify, "--cap-drop", "ALL")
+            && AppImageWorkerContainer.hasPair(
+                workerVerify, "--cap-drop", "ALL")
+            && sourceVerify.contains(privateCache)
+            && workerVerify.contains(privateCache)
+            && !verifyJoined.contains("--cap-add")
+            && !verifyJoined.contains("CHOWN")
+            && store.size() > 0 && store.get(0).equals("create")
+            && AppImageWorkerContainer.hasPair(store, "--cidfile",
+                "/private/control/nix-store.cid")
+            && store.contains("type=volume,target=/nix")
+            && AppImageWorkerContainer.hasPair(store, "--cap-drop", "ALL")
+            && !storeJoined.contains("--cap-add")
+            && !storeJoined.contains("CHOWN")
+            && AppImageLinuxWorker.workerReference(
+                platform, AppImageTrustContractTest.sourceStorePath())
+                .equals("path:"
+                    + AppImageTrustContractTest.sourceStorePath()
+                    + "#packages.x86_64-linux.appimage-worker")
+            && !importJoined.contains("target=/src")
+            && !importJoined.contains("type=volume,source=")
+            && !buildJoined.contains("type=volume,source=")
+            && !storeJoined.contains("type=volume,source=")
+            && !sourceImport.contains("--name")
+            && !store.contains("--name") && !store.contains("--rm")
+            && !sourceImport.contains("sh")
+            && !sourceImport.contains("bash")
+            && !sourceImport.contains("-c")
+            && !sourceImport.contains("-ceu");
+    }
+
+    class bool executionWorkerArgv() {
+        AppImageLinuxWorkerPlatform platform =
+            AppImageTrustContractTest.workerPlatform();
+        AppImageRuntimeLease runtime = AppImageRuntimeLease();
+        runtime.ownership.cacheRoot = "/private/runtime-cache";
+        AppImageLinuxWorkerHandoff handoff =
+            AppImageLinuxWorkerHandoff();
+        handoff.exchange = "/private/exchange";
+        string worker =
+            "/nix/store/22222222222222222222222222222222-semu-worker";
+        string cidfile = "/private/control/execute.cid";
+        string containerId = AppImageTrustContractTest.containerId();
+        Vector<string> command = AppImageLinuxWorker.executionContainer(
+            platform, cidfile, containerId,
+            runtime, handoff, worker);
+        string joined = command.join("\n");
+        return command.contains("--rm")
+            && AppImageWorkerContainer.hasPair(
+                command, "--cidfile", cidfile)
+            && AppImageWorkerContainer.hasPair(
+                command, "--volumes-from", containerId + ":ro")
+            && command.contains("--network") && command.contains("none")
+            && command.contains("--read-only")
+            && command.contains("--userns")
+            && command.contains("keep-id")
+            && command.contains("type=volume,target=/work")
+            && command.contains("type=bind,source=/private/runtime-cache"
+                + ",target=/private/runtime-cache,readonly")
+            && command.contains("type=bind,source=/private/exchange"
+                + ",target=/exchange,rw")
+            && command.contains(worker + "/bin/semu-btrc")
+            && AppImageWorkerContainer.hasPair(
+                command, "--cap-drop", "ALL")
+            && !command.contains("--cap-add") && !joined.contains("CHOWN")
+            && !joined.contains("/nix/var/cache")
+            && !joined.contains("target=/input")
+            && !joined.contains("type=volume,source=")
+            && !command.contains("--name")
+            && !command.contains("sh") && !command.contains("bash")
+            && !command.contains("-c") && !command.contains("-ceu");
+    }
+
+    class bool nativeEngineArchitecture() {
+        AppImageLinuxWorkerPlatform releasePlatform =
+            AppImageLinuxWorkerPlatform.releaseContract();
+        AppImageLinuxWorkerPlatform observed =
+            AppImageTrustContractTest.workerPlatform();
+        AppImageLinuxWorkerPlatform armImage =
+            AppImageLinuxWorkerPlatform.fromImageInspection(
+                AppImageTrustContractTest.imageInspection(
+                    architecture="arm64"));
+        AppImageLinuxWorkerPlatform darwinImage =
+            AppImageLinuxWorkerPlatform.fromImageInspection(
+                AppImageTrustContractTest.imageInspection(
+                    operatingSystem="darwin"));
+        JsonValue multiple = JsonValue.parse(
+            AppImageTrustContractTest.imageInspection());
+        multiple.push(multiple.at(0));
+        AppImageLinuxWorkerPlatform forged =
+            AppImageLinuxWorkerPlatform();
+        forged.valid = true;
+        forged.podmanPlatform = "linux/arm64";
+        forged.nixSystem = "x86_64-linux";
+        return releasePlatform.ok() && releasePlatform.releaseBound()
+            && !releasePlatform.imageVerified()
+            && releasePlatform.podmanPlatform.equals("linux/amd64")
+            && releasePlatform.nixSystem.equals("x86_64-linux")
+            && observed.imageVerified()
+            && observed.imageArchitecture.equals("amd64")
+            && !armImage.ok() && armImage.error.contains("arm64")
+            && !darwinImage.ok() && darwinImage.error.contains("darwin")
+            && !AppImageLinuxWorkerPlatform.fromImageInspection(
+                multiple.document()).ok()
+            && !AppImageLinuxWorkerPlatform.fromImageInspection("{}").ok()
+            && AppImageTrustContractTest.exactCommand(
+                AppImageLinuxWorker.imagePullArguments(releasePlatform), [
+                    "pull", "--platform", "linux/amd64",
+                    AppImageNixReleaseProof.pinnedImage()
+                ])
+            && AppImageTrustContractTest.exactCommand(
+                AppImageLinuxWorker.imageInspectionArguments(), [
+                    "image", "inspect", "--format", "json",
+                    AppImageNixReleaseProof.pinnedImage()
+                ])
+            && AppImageLinuxWorker.imagePullArguments(forged).size() == 0;
+    }
+
+    class string fakePodman() {
+        return """#!/usr/bin/env sh
+set -u
+{
+    printf 'CALL\n'
+    for argument in \"$@\"; do
+        printf '%s\n' \"$argument\"
+    done
+    printf 'END\n'
+} >> \"$SEMU_TEST_PODMAN_LOG\"
+
+command=$1
+shift
+scenario=$SEMU_TEST_PODMAN_SCENARIO
+cid=$SEMU_TEST_PODMAN_CID
+alternate=$SEMU_TEST_PODMAN_ALTERNATE_CID
+state=$SEMU_TEST_PODMAN_STATE
+
+if [ \"$command\" = \"rm\" ]; then
+    identifier=
+    for argument in \"$@\"; do
+        identifier=$argument
+    done
+    if [ \"$scenario\" = \"run-cleanup-fail\" ] || [ \"$scenario\" = \"store-cleanup-fail\" ] || [ \"$scenario\" = \"create-cleanup-fail\" ]; then
+        printf '%s\n' 'fixture cleanup failure' >&2
+        exit 45
+    fi
+    if [ \"$identifier\" != \"$cid\" ]; then
+        printf '%s\n' 'fixture received a non-owned CID' >&2
+        exit 46
+    fi
+    /bin/rm -f \"$state/$identifier\"
+    exit 0
+fi
+
+cidfile=
+waiting=0
+for argument in \"$@\"; do
+    if [ \"$waiting\" = \"1\" ]; then
+        cidfile=$argument
+        waiting=0
+    elif [ \"$argument\" = \"--cidfile\" ]; then
+        waiting=1
+    fi
+done
+
+publish() {
+    if [ -z \"$cidfile\" ]; then
+        exit 90
+    fi
+    printf '%s' \"$cid\" > \"$cidfile\"
+    : > \"$state/$cid\"
+}
+
+if [ \"$command\" = \"create\" ]; then
+    if [ \"$scenario\" = \"create-before\" ]; then
+        printf '%s\n' 'fixture create failure before publication' >&2
+        exit 41
+    fi
+    publish
+    if [ \"$scenario\" = \"create-disagree\" ]; then
+        printf '%s' \"$alternate\" > \"$cidfile\"
+        printf '%s\n' \"$cid\"
+        exit 0
+    fi
+    printf '%s\n' \"$cid\"
+    if [ \"$scenario\" = \"create-after\" ] || [ \"$scenario\" = \"create-cleanup-fail\" ]; then
+        printf '%s\n' 'fixture create failure after publication' >&2
+        exit 42
+    fi
+    exit 0
+fi
+
+if [ \"$scenario\" = \"run-before\" ]; then
+    printf '%s\n' 'fixture run failure before publication' >&2
+    exit 43
+fi
+if [ \"$scenario\" = \"run-malformed\" ]; then
+    printf '%s' 'not-a-container-id' > \"$cidfile\"
+    : > \"$state/$cid\"
+    exit 44
+fi
+publish
+if [ \"$scenario\" = \"run-timeout\" ]; then
+    /bin/sleep 30
+fi
+if [ \"$scenario\" = \"run-after\" ] || [ \"$scenario\" = \"run-cleanup-fail\" ]; then
+    printf '%s\n' 'fixture run failure after publication' >&2
+    exit 44
+fi
+if [ \"$scenario\" = \"run-exit\" ]; then
+    /bin/rm -f \"$cidfile\" \"$state/$cid\"
+    exit 37
+fi
+/bin/rm -f \"$cidfile\" \"$state/$cid\"
+printf '%s\n' 'fixture success'
+exit 0
+""";
+    }
+
+    class Vector<string> podmanEnvironmentNames() {
+        return [
+            "PATH", "SEMU_TEST_PODMAN_LOG",
+            "SEMU_TEST_PODMAN_STATE",
+            "SEMU_TEST_PODMAN_SCENARIO",
+            "SEMU_TEST_PODMAN_CID",
+            "SEMU_TEST_PODMAN_ALTERNATE_CID"
+        ];
+    }
+
+    class Vector<string> saveEnvironment(Vector<string> names) {
+        Vector<string> values = [];
+        for name in names {
+            values.push(Environment.get(name, ""));
+        }
+        return values;
+    }
+
+    class void restoreEnvironment(
+            Vector<string> names, Vector<string> values) {
+        for (int index = 0; index < names.size(); index++) {
+            if (values.get(index).isEmpty()) {
+                unsetenv(names.get(index));
+            } else {
+                setenv(names.get(index), values.get(index), 1);
+            }
+        }
+    }
+
+    class bool preparePodmanFixture(string scratch) {
+        string bin = PathTools.join(scratch, "bin");
+        string state = PathTools.join(scratch, "state");
+        string podman = PathTools.join(bin, "podman");
+        string foreign = PathTools.join(
+            state, AppImageTrustContractTest.foreignContainerId());
+        return FileSystem.mkdirp(bin) == 0
+            && FileSystem.mkdirp(state) == 0
+            && FileSystem.writeText(
+                podman, AppImageTrustContractTest.fakePodman())
+            && FileSystem.chmod(podman, 448) == 0
+            && FileSystem.writeText(foreign, "foreign\n");
+    }
+
+    class bool activatePodmanFixture(
+            string scratch, string scenario, string previousPath) {
+        return setenv("PATH", PathTools.join(scratch, "bin")
+                + (previousPath.isEmpty() ? "" : ":" + previousPath), 1) == 0
+            && setenv("SEMU_TEST_PODMAN_LOG",
+                PathTools.join(scratch, "podman.log"), 1) == 0
+            && setenv("SEMU_TEST_PODMAN_STATE",
+                PathTools.join(scratch, "state"), 1) == 0
+            && setenv("SEMU_TEST_PODMAN_SCENARIO", scenario, 1) == 0
+            && setenv("SEMU_TEST_PODMAN_CID",
+                AppImageTrustContractTest.containerId(), 1) == 0
+            && setenv("SEMU_TEST_PODMAN_ALTERNATE_CID",
+                AppImageTrustContractTest.alternateContainerId(), 1) == 0;
+    }
+
+    class AppImageWorkSession podmanSession(string scratch) {
+        string sessions = PathTools.join(scratch, "sessions");
+        if (FileSystem.mkdirp(sessions) != 0) {
+            return AppImageWorkSession();
+        }
+        AppImagePathPlan plan = AppImagePathPlan();
+        plan.valid = true;
+        plan.workBase = sessions;
+        AppImageWorkSession session = AppImageWorkSession.create(plan);
+        if (!session.ok()) { return session; }
+        if (semuAppImageMkdirAt(
+                session.rootDescriptor, "control", 448) != 0) {
+            session.cleanup();
+            return AppImageWorkSession();
+        }
+        return session;
+    }
+
+    class bool exactRemoval(
+            string log, string identifier, bool volumes) {
+        string expected = "CALL\nrm\n--force\n--time\n0\n--ignore\n"
+            + (volumes ? "--volumes\n" : "")
+            + identifier + "\nEND\n";
+        return log.contains(expected)
+            && !log.contains(AppImageTrustContractTest.foreignContainerId())
+            && !log.contains("--latest") && !log.contains("--all")
+            && !log.contains("--name") && !log.contains("--replace")
+            && !log.contains("\ncontainer\n")
+            && !log.contains("\nvolume\n");
+    }
+
+    class bool runLifecycleCase(string scenario) {
+        string scratch = FileSystem.tempDir(
+            "semu-appimage-podman-" + scenario);
+        AppImageWorkSession session = !scratch.isEmpty()
+            && AppImageTrustContractTest.preparePodmanFixture(scratch)
+            ? AppImageTrustContractTest.podmanSession(scratch)
+            : AppImageWorkSession();
+        if (!session.ok()) {
+            if (!scratch.isEmpty()) { FileSystem.removeRecursive(scratch); }
+            return false;
+        }
+        string cidfile = PathTools.join(
+            session.path, "control/execute.cid");
+        bool fixtureReady = true;
+        if (scenario.equals("run-preexisting")) {
+            fixtureReady = FileSystem.writeText(cidfile,
+                AppImageTrustContractTest.foreignContainerId() + "\n");
+        } else if (scenario.equals("run-symlink")) {
+            fixtureReady = FileSystem.symlink(PathTools.join(
+                scratch, "state/"
+                    + AppImageTrustContractTest.foreignContainerId()),
+                cidfile) == 0;
+        }
+
+        Vector<string> names =
+            AppImageTrustContractTest.podmanEnvironmentNames();
+        Vector<string> previous =
+            AppImageTrustContractTest.saveEnvironment(names);
+        bool active = fixtureReady
+            && AppImageTrustContractTest.activatePodmanFixture(
+                scratch, scenario, previous.get(0));
+        Vector<string> command =
+            AppImageWorkerContainer.runPrefix(cidfile);
+        command.push("fixture-image");
+        ExecResult result = active
+            ? AppImageWorkerContainer.run(
+                session, "execute", command,
+                scenario.equals("run-timeout") ? 1000 : 5000,
+                false, true)
+            : ExecResult(125, "", "fixture activation failed", "podman");
+        AppImageTrustContractTest.restoreEnvironment(names, previous);
+
+        string logPath = PathTools.join(scratch, "podman.log");
+        string log = FileSystem.exists(logPath) ? Path.readAll(logPath) : "";
+        bool manualCleanup = scenario.equals("run-after")
+            || scenario.equals("run-timeout")
+            || scenario.equals("run-cleanup-fail");
+        bool expectedResult = result.code == 125;
+        if (scenario.equals("run-success")) {
+            expectedResult = result.ok()
+                && result.stdout().trim().equals("fixture success");
+        } else if (scenario.equals("run-exit")) {
+            expectedResult = result.code == 37;
+        } else if (scenario.equals("run-before")) {
+            expectedResult = result.code == 43;
+        } else if (scenario.equals("run-after")) {
+            expectedResult = result.code == 44;
+        } else if (scenario.equals("run-timeout")) {
+            expectedResult = result.code == 124;
+        }
+        bool expectedLog = log.contains("CALL\nrun\n--rm\n--cidfile\n"
+            + cidfile + "\n");
+        if (scenario.equals("run-preexisting")
+                || scenario.equals("run-symlink")) {
+            expectedLog = log.isEmpty();
+        }
+        bool exactCleanup = !log.contains("CALL\nrm\n");
+        if (manualCleanup) {
+            exactCleanup = AppImageTrustContractTest.exactRemoval(
+                log, AppImageTrustContractTest.containerId(), true);
+        }
+        bool ownPresent = FileSystem.exists(PathTools.join(
+            scratch, "state/" + AppImageTrustContractTest.containerId()));
+        bool expectOwnPresent = scenario.equals("run-cleanup-fail")
+            || scenario.equals("run-malformed");
+        bool foreignPreserved = FileSystem.exists(PathTools.join(
+            scratch, "state/"
+                + AppImageTrustContractTest.foreignContainerId()));
+        bool diagnostics = !scenario.equals("run-cleanup-fail")
+            || result.stderr().contains("exact container cleanup failed");
+        bool passed = active && expectedResult && expectedLog
+            && exactCleanup && ownPresent == expectOwnPresent
+            && foreignPreserved && diagnostics
+            && !log.contains("semu-test-container")
+            && !log.contains("semu-work-volume");
+        AppImageContractResult cleaned = session.cleanup();
+        bool scratchCleaned = FileSystem.removeRecursive(scratch) == 0;
+        if (!passed) {
+            print(f"Podman run fixture failed: {scenario}"
+                + f" code={result.code} log={log}"
+                + f" stderr={result.stderr()}");
+        }
+        return passed && cleaned.ok() && scratchCleaned;
+    }
+
+    class bool storeLifecycleCase(string scenario) {
+        string scratch = FileSystem.tempDir(
+            "semu-appimage-store-" + scenario);
+        AppImageWorkSession session = !scratch.isEmpty()
+            && AppImageTrustContractTest.preparePodmanFixture(scratch)
+            ? AppImageTrustContractTest.podmanSession(scratch)
+            : AppImageWorkSession();
+        if (!session.ok()) {
+            if (!scratch.isEmpty()) { FileSystem.removeRecursive(scratch); }
+            return false;
+        }
+        AppImageLinuxWorkerHandoff handoff =
+            AppImageLinuxWorkerHandoff();
+        handoff.valid = true;
+        handoff.session = session;
+        handoff.control = PathTools.join(session.path, "control");
+        string cidfile = handoff.cidfile("nix-store");
+        bool fixtureReady = !cidfile.isEmpty();
+        if (scenario.equals("create-preexisting")) {
+            fixtureReady = fixtureReady && FileSystem.writeText(cidfile,
+                AppImageTrustContractTest.foreignContainerId() + "\n");
+        }
+
+        AppImageLinuxWorkerPlatform platform =
+            AppImageTrustContractTest.workerPlatform();
+        Vector<string> names =
+            AppImageTrustContractTest.podmanEnvironmentNames();
+        Vector<string> previous =
+            AppImageTrustContractTest.saveEnvironment(names);
+        bool active = fixtureReady
+            && AppImageTrustContractTest.activatePodmanFixture(
+                scratch, scenario, previous.get(0));
+        AppImageWorkerStoreLease store = active
+            ? AppImageWorkerStoreLease.acquire(platform, handoff)
+            : AppImageWorkerStoreLease();
+        string acquisitionError = store.error;
+        AppImageContractResult released = store.ok()
+            ? store.finish() : AppImageContractResult.success();
+        AppImageTrustContractTest.restoreEnvironment(names, previous);
+
+        string logPath = PathTools.join(scratch, "podman.log");
+        string log = FileSystem.exists(logPath) ? Path.readAll(logPath) : "";
+        bool shouldRemove = scenario.equals("create-after")
+            || scenario.equals("create-cleanup-fail")
+            || scenario.equals("create-success")
+            || scenario.equals("store-cleanup-fail");
+        bool acquireExpected = scenario.equals("create-success")
+            || scenario.equals("store-cleanup-fail");
+        bool expectedAcquire = acquireExpected
+            == acquisitionError.isEmpty();
+        bool expectedRelease = released.ok();
+        if (scenario.equals("store-cleanup-fail")) {
+            expectedRelease = !released.ok();
+        }
+        bool expectedCreate = log.contains(
+            "CALL\ncreate\n--cidfile\n" + cidfile + "\n");
+        if (scenario.equals("create-preexisting")) {
+            expectedCreate = log.isEmpty();
+        }
+        bool exactCleanup = !log.contains("CALL\nrm\n");
+        if (shouldRemove) {
+            exactCleanup = AppImageTrustContractTest.exactRemoval(
+                log, AppImageTrustContractTest.containerId(), true);
+        }
+        bool ownPresent = FileSystem.exists(PathTools.join(
+            scratch, "state/" + AppImageTrustContractTest.containerId()));
+        bool expectOwnPresent = scenario.equals("create-disagree")
+            || scenario.equals("create-cleanup-fail")
+            || scenario.equals("store-cleanup-fail");
+        bool foreignPreserved = FileSystem.exists(PathTools.join(
+            scratch, "state/"
+                + AppImageTrustContractTest.foreignContainerId()));
+        bool diagnostics = !scenario.equals("create-disagree")
+                || acquisitionError.contains("identity channels disagree");
+        diagnostics = diagnostics
+            && (!scenario.equals("create-cleanup-fail")
+                || acquisitionError.contains(
+                    "exact container cleanup failed"));
+        bool passed = active && expectedAcquire && expectedRelease
+            && expectedCreate && exactCleanup
+            && ownPresent == expectOwnPresent
+            && foreignPreserved && diagnostics
+            && !log.contains("semu-test-container")
+            && !log.contains("semu-work-volume");
+        AppImageContractResult cleaned = session.cleanup();
+        bool scratchCleaned = FileSystem.removeRecursive(scratch) == 0;
+        if (!passed) {
+            print(f"Podman store fixture failed: {scenario}"
+                + f" error={acquisitionError} log={log}"
+                + f" cleanup={released.error}");
+        }
+        return passed && cleaned.ok() && scratchCleaned;
+    }
+
+    class bool immutablePodmanLifecycle() {
+        AppImageContractResult invalidCleanup =
+            AppImageWorkerContainer.removeExact("foreign-name", true);
+        if (invalidCleanup.ok()) { return false; }
+        for scenario in [
+                "run-success", "run-exit", "run-before", "run-after",
+                "run-timeout", "run-cleanup-fail", "run-malformed",
+                "run-preexisting", "run-symlink"] {
+            if (!AppImageTrustContractTest.runLifecycleCase(scenario)) {
+                return false;
+            }
+        }
+        for scenario in [
+                "create-success", "create-before", "create-after",
+                "create-cleanup-fail", "create-disagree",
+                "create-preexisting", "store-cleanup-fail"] {
+            if (!AppImageTrustContractTest.storeLifecycleCase(scenario)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    class JsonValue receiptDocument(bool includeArtifact = true) {
+        JsonValue receipt = JsonValue.makeObject();
+        receipt.set("schema_version", JsonValue.makeInt(1));
+        receipt.set("operation", JsonValue.makeString("build"));
+        receipt.set("target", JsonValue.makeString("steam-deck"));
+        receipt.set("emulator", JsonValue.makeString("retroarch"));
+        receipt.set("package_attribute", JsonValue.makeString(
+            AppImageTrustContractTest.packageAttribute()));
+        string digest = AppImageTrustContractTest.releaseIdentity();
+        for name in [
+                "runtime_authority_sha256", "release_identity_sha256",
+                "provenance_sha256", "inventory_sha256",
+                "runtime_prefix_sha256", "nix_proof_sha256",
+                "closure_sha256", "mksquashfs_sha256",
+                "unsquashfs_sha256", "payload_tree_sha256"] {
+            receipt.set(name, JsonValue.makeString(digest));
+        }
+        if (includeArtifact) {
+            receipt.set("artifact_sha256", JsonValue.makeString(digest));
+        }
+        receipt.set("source_store_path", JsonValue.makeString(
+            AppImageTrustContractTest.sourceStorePath()));
+        receipt.set("target_store_path", JsonValue.makeString(
+            AppImageTrustContractTest.targetStorePath()));
+        receipt.set("worker_system", JsonValue.makeString("x86_64-linux"));
+        receipt.set("worker_store_path", JsonValue.makeString(
+            "/nix/store/22222222222222222222222222222222-semu-worker"));
+        return receipt;
+    }
+
+    class bool exactWorkerReceipt() {
+        JsonValue canonical =
+            AppImageTrustContractTest.receiptDocument();
+        AppImageWorkerReceipt receipt =
+            AppImageWorkerReceipt.parse(canonical.document());
+        JsonValue extra = AppImageTrustContractTest.receiptDocument();
+        extra.set("unexpected", JsonValue.makeBool(true));
+        JsonValue wrongSystem =
+            AppImageTrustContractTest.receiptDocument();
+        wrongSystem.set("worker_system", JsonValue.makeString(
+            "aarch64-linux"));
+        JsonValue wrongStore =
+            AppImageTrustContractTest.receiptDocument();
+        wrongStore.set("worker_store_path",
+            JsonValue.makeString("/tmp/not-a-store-path"));
+        bool canonicalParsed = receipt.ok();
+        bool roundTrip = canonicalParsed
+            && AppImageWorkerReceipt.parse(receipt.document()).ok();
+        bool extraRejected =
+            !AppImageWorkerReceipt.parse(extra.document()).ok();
+        bool missingRejected = !AppImageWorkerReceipt.parse(
+            AppImageTrustContractTest.receiptDocument(false)
+                .document()).ok();
+        bool systemRejected =
+            !AppImageWorkerReceipt.parse(wrongSystem.document()).ok();
+        bool storeRejected =
+            !AppImageWorkerReceipt.parse(wrongStore.document()).ok();
+        if (!canonicalParsed || !roundTrip || !extraRejected
+                || !missingRejected || !systemRejected || !storeRejected) {
+            print(f"worker receipt detail: parsed={canonicalParsed}"
+                + f" round_trip={roundTrip} extra={extraRejected}"
+                + f" missing={missingRejected} system={systemRejected}"
+                + f" store={storeRejected} error={receipt.error}");
+        }
+        return canonicalParsed && roundTrip && extraRejected
+            && missingRejected && systemRejected && storeRejected;
+    }
+
+    class int run() {
+        if (!AppImageTrustContractTest.canonicalReleaseProof()) {
+            print("appimage trust contract: release proof rejected its contract");
+            return 1;
+        }
+        if (!AppImageTrustContractTest.exactHostNixArgv()) {
+            print("appimage trust contract: host Nix argv policy regressed");
+            return 1;
+        }
+        if (!AppImageTrustContractTest.generationOwnership()) {
+            print("appimage trust contract: generation ownership regressed");
+            return 1;
+        }
+        if (!AppImageTrustContractTest.nativeWorkerArgv()) {
+            print("appimage trust contract: native worker policy regressed");
+            return 1;
+        }
+        if (!AppImageTrustContractTest.executionWorkerArgv()) {
+            print("appimage trust contract: execution worker policy regressed");
+            return 1;
+        }
+        if (!AppImageTrustContractTest.nativeEngineArchitecture()) {
+            print("appimage trust contract: Podman engine architecture regressed");
+            return 1;
+        }
+        if (!AppImageTrustContractTest.immutablePodmanLifecycle()) {
+            print("appimage trust contract: immutable Podman lifecycle regressed");
+            return 1;
+        }
+        if (!AppImageTrustContractTest.exactWorkerReceipt()) {
+            print("appimage trust contract: native worker receipt regressed");
+            return 1;
+        }
+        print("appimage trust contract: PASS");
+        return 0;
+    }
+}
+
+int main() {
+    return AppImageTrustContractTest.run();
+}

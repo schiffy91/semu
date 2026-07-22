@@ -1,0 +1,388 @@
+// nix_release_proof.btrc - independent Nix-store anchor for a runtime generation.
+
+import std.{fs, json, process, strings, vector}
+import ../../lib/owned_paths.btrc
+
+class AppImageNixProofResult {
+    public bool valid;
+    public string error;
+
+    public AppImageNixProofResult(bool valid, string error = "") {
+        self.valid = valid;
+        self.error = error;
+    }
+
+    class AppImageNixProofResult success() {
+        return AppImageNixProofResult(true);
+    }
+
+    class AppImageNixProofResult failure(string error) {
+        return AppImageNixProofResult(false, error);
+    }
+
+    public bool ok() { return self.valid; }
+}
+
+class AppImageNixReleaseProof {
+    public bool valid;
+    public string nixSystem;
+    public string packageAttribute;
+    public string sourceStorePath;
+    public string targetStorePath;
+    public string closureDigest;
+    public string provenanceDigest;
+    public string releaseIdentity;
+    public string error;
+
+    public AppImageNixReleaseProof() {
+        self.valid = false;
+        self.nixSystem = "";
+        self.packageAttribute = "";
+        self.sourceStorePath = "";
+        self.targetStorePath = "";
+        self.closureDigest = "";
+        self.provenanceDigest = "";
+        self.releaseIdentity = "";
+        self.error = "";
+    }
+
+    public bool ok() { return self.valid; }
+
+    class string pinnedImage() {
+        return "docker.io/nixos/nix@sha256:29fc5fe207f159ceb0143c25c19c774062fee02ce5eda118f3067547b3054894";
+    }
+
+    class string relativePath(string generationName) {
+        return "metadata/generations/" + generationName
+            + ".nix-proof.json";
+    }
+
+    class bool digest(string value) {
+        if (value.len() != 64) { return false; }
+        for character in value {
+            bool decimal = character >= '0' && character <= '9';
+            bool hexadecimal = character >= 'a' && character <= 'f';
+            if (!decimal && !hexadecimal) { return false; }
+        }
+        return true;
+    }
+
+    class bool storePath(string value) {
+        if (!value.startsWith("/nix/store/")
+                || value.contains("\n") || value.contains("\r")) {
+            return false;
+        }
+        string name = PathTools.basename(value);
+        if (name.len() < 34 || name.charAt(32) != '-') { return false; }
+        string alphabet = "0123456789abcdfghijklmnpqrsvwxyz";
+        for (int index = 0; index < 32; index++) {
+            if (!alphabet.contains(f"{name.charAt(index)}")) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    class bool sriSha256(string value) {
+        if (!value.startsWith("sha256-") || value.len() != 51) {
+            return false;
+        }
+        string payload = value.substring(7, 44);
+        for (int index = 0; index < payload.len(); index++) {
+            char character = payload.charAt(index);
+            bool alphaNumeric = (character >= 'a' && character <= 'z')
+                || (character >= 'A' && character <= 'Z')
+                || (character >= '0' && character <= '9');
+            bool finalPadding = character == '=' && index == 43;
+            if (!alphaNumeric && character != '+' && character != '/'
+                    && !finalPadding) {
+                return false;
+            }
+        }
+        return payload.charAt(43) == '=';
+    }
+
+    class JsonValue canonicalClosure(
+            JsonValue closure, string targetStorePath) {
+        if (!closure.isObject()
+                || !AppImageNixReleaseProof.storePath(targetStorePath)
+                || !closure.get(targetStorePath).isObject()) {
+            return JsonValue.makeError();
+        }
+        Vector<string> paths = closure.keys();
+        paths.sort();
+        JsonValue entries = JsonValue.makeArray();
+        for path in paths {
+            JsonValue metadata = closure.get(path);
+            JsonValue narHash = metadata.get("narHash");
+            JsonValue narSize = metadata.get("narSize");
+            JsonValue references = metadata.get("references");
+            if (!AppImageNixReleaseProof.storePath(path)
+                    || !metadata.isObject() || !narHash.isString()
+                    || !AppImageNixReleaseProof.sriSha256(
+                        narHash.asString())
+                    || !narSize.isInt() || narSize.asInt() < 1
+                    || !references.isArray()) {
+                return JsonValue.makeError();
+            }
+            Vector<string> sortedReferences = [];
+            for (int index = 0; index < references.size(); index++) {
+                JsonValue reference = references.at(index);
+                if (!reference.isString()
+                        || !paths.contains(reference.asString())
+                        || sortedReferences.contains(reference.asString())) {
+                    return JsonValue.makeError();
+                }
+                sortedReferences.push(reference.asString());
+            }
+            sortedReferences.sort();
+            JsonValue canonicalReferences = JsonValue.makeArray();
+            for reference in sortedReferences {
+                canonicalReferences.push(JsonValue.makeString(reference));
+            }
+            JsonValue entry = JsonValue.makeObject();
+            entry.set("path", JsonValue.makeString(path));
+            entry.set("nar_sha256", narHash);
+            entry.set("nar_size", narSize);
+            entry.set("references", canonicalReferences);
+            entries.push(entry);
+        }
+        JsonValue result = JsonValue.makeObject();
+        result.set("target_store_path",
+            JsonValue.makeString(targetStorePath));
+        result.set("paths", entries);
+        return result;
+    }
+
+    class string canonicalClosureDigest(
+            JsonValue closure, string targetStorePath) {
+        JsonValue canonical = AppImageNixReleaseProof.canonicalClosure(
+            closure, targetStorePath);
+        return canonical.isError() ? ""
+            : SemuOwnedFileDigest.text(canonical.stringify());
+    }
+
+    class bool packageName(string value) {
+        if (!value.startsWith("steamdeck-runtime")
+                || value.contains("\n") || value.contains("\r")) {
+            return false;
+        }
+        for character in value {
+            bool alphaNumeric = (character >= 'a' && character <= 'z')
+                || (character >= '0' && character <= '9');
+            if (!alphaNumeric && character != '-') { return false; }
+        }
+        return true;
+    }
+
+    class string requiredSystem() { return "x86_64-linux"; }
+
+    class string outputReference(
+            string sourceStorePath, string packageAttribute,
+            string nixSystem = "x86_64-linux") {
+        if (!AppImageNixReleaseProof.storePath(sourceStorePath)
+                || !AppImageNixReleaseProof.packageName(packageAttribute)
+                || !nixSystem.equals(
+                    AppImageNixReleaseProof.requiredSystem())) {
+            return "";
+        }
+        return "path:" + sourceStorePath + "#packages."
+            + nixSystem + "." + packageAttribute + ".outPath";
+    }
+
+    class JsonValue json(
+            string packageAttribute,
+            string sourceStorePath, string targetStorePath,
+            string closureDigest, string provenanceDigest,
+            string releaseIdentity) {
+        JsonValue document = JsonValue.makeObject();
+        document.set("schema_version", JsonValue.makeInt(3));
+        document.set("nix_system", JsonValue.makeString(
+            AppImageNixReleaseProof.requiredSystem()));
+        document.set("package_attribute",
+            JsonValue.makeString(packageAttribute));
+        document.set("source_store_path",
+            JsonValue.makeString(sourceStorePath));
+        document.set("target_store_path",
+            JsonValue.makeString(targetStorePath));
+        document.set("closure_sha256",
+            JsonValue.makeString(closureDigest));
+        document.set("provenance_sha256",
+            JsonValue.makeString(provenanceDigest));
+        document.set("release_identity_sha256",
+            JsonValue.makeString(releaseIdentity));
+        return document;
+    }
+
+    class AppImageNixReleaseProof parse(
+            string canonicalDocument, string expectedPackageAttribute,
+            string expectedProvenanceDigest,
+            string expectedReleaseIdentity) {
+        AppImageNixReleaseProof proof = AppImageNixReleaseProof();
+        JsonValue document = JsonValue.parse(canonicalDocument);
+        Vector<string> expectedKeys = [
+            "closure_sha256", "nix_system", "package_attribute",
+            "provenance_sha256", "release_identity_sha256",
+            "schema_version", "source_store_path",
+            "target_store_path"
+        ];
+        Vector<string> keys = document.keys();
+        keys.sort();
+        bool exactKeys = keys.size() == expectedKeys.size();
+        for (int index = 0; exactKeys && index < keys.size(); index++) {
+            exactKeys = keys.get(index).equals(expectedKeys.get(index));
+        }
+        JsonValue nixSystem = document.get("nix_system");
+        JsonValue packageAttribute = document.get("package_attribute");
+        JsonValue sourceStorePath = document.get("source_store_path");
+        JsonValue targetStorePath = document.get("target_store_path");
+        JsonValue closureDigest = document.get("closure_sha256");
+        JsonValue provenanceDigest = document.get("provenance_sha256");
+        JsonValue releaseIdentity =
+            document.get("release_identity_sha256");
+        bool valid = document.isObject() && exactKeys
+            && document.get("schema_version").isInt()
+            && document.get("schema_version").asInt() == 3
+            && nixSystem.isString()
+            && nixSystem.asString().equals(
+                AppImageNixReleaseProof.requiredSystem())
+            && packageAttribute.isString()
+            && packageAttribute.asString().equals(
+                expectedPackageAttribute)
+            && AppImageNixReleaseProof.packageName(
+                packageAttribute.asString())
+            && sourceStorePath.isString()
+            && AppImageNixReleaseProof.storePath(
+                sourceStorePath.asString())
+            && targetStorePath.isString()
+            && AppImageNixReleaseProof.storePath(
+                targetStorePath.asString())
+            && closureDigest.isString()
+            && AppImageNixReleaseProof.digest(
+                closureDigest.asString())
+            && provenanceDigest.isString()
+            && provenanceDigest.asString().equals(
+                expectedProvenanceDigest)
+            && AppImageNixReleaseProof.digest(
+                provenanceDigest.asString())
+            && releaseIdentity.isString()
+            && releaseIdentity.asString().equals(
+                expectedReleaseIdentity)
+            && AppImageNixReleaseProof.digest(
+                releaseIdentity.asString())
+            && canonicalDocument.equals(document.document());
+        if (!valid) {
+            proof.error = "runtime Nix release proof is malformed or disagrees with its lease";
+            return proof;
+        }
+        proof.nixSystem = nixSystem.asString();
+        proof.packageAttribute = packageAttribute.asString();
+        proof.sourceStorePath = sourceStorePath.asString();
+        proof.targetStorePath = targetStorePath.asString();
+        proof.closureDigest = closureDigest.asString();
+        proof.provenanceDigest = provenanceDigest.asString();
+        proof.releaseIdentity = releaseIdentity.asString();
+        proof.valid = true;
+        return proof;
+    }
+
+    class string successfulSingleLine(ExecResult result) {
+        if (!result.ok()) { return ""; }
+        string output = result.stdout();
+        if (output.endsWith("\n")) {
+            output = output.substring(0, output.len() - 1);
+        }
+        return output.isEmpty() || output.contains("\n")
+                || output.contains("\r")
+            ? "" : output;
+    }
+
+    class string failureDetail(ExecResult result) {
+        string detail = result.stderr().trim();
+        if (detail.isEmpty()) { detail = result.stdout().trim(); }
+        if (detail.isEmpty()) { return "no command output"; }
+        return detail.len() <= 4096
+            ? detail : detail.substring(0, 4096) + "...";
+    }
+
+    class Vector<string> sourceVerificationArguments(string sourceStorePath) {
+        Vector<string> empty = [];
+        if (!AppImageNixReleaseProof.storePath(sourceStorePath)) {
+            return empty;
+        }
+        return [
+            "--extra-experimental-features", "nix-command flakes",
+            "store", "verify", "--recursive", "--no-trust",
+            sourceStorePath
+        ];
+    }
+
+    class Vector<string> evaluationArguments(
+            AppImageNixReleaseProof proof) {
+        Vector<string> empty = [];
+        string reference = AppImageNixReleaseProof.outputReference(
+            proof.sourceStorePath, proof.packageAttribute,
+            proof.nixSystem);
+        if (!proof.ok() || reference.isEmpty()) { return empty; }
+        return [
+            "--extra-experimental-features", "nix-command flakes",
+            "--offline",
+            "--option", "allow-import-from-derivation", "false",
+            "eval", "--no-write-lock-file", "--raw",
+            reference
+        ];
+    }
+
+    class ExecResult hostRun(
+            Vector<string> arguments, int timeout = 1800000) {
+        return ChildProcess.run("nix", arguments,
+            timeoutMilliseconds=timeout,
+            maxStdoutBytes=67108864,
+            maxStderrBytes=67108864,
+            stdout=CommandOutput.collect(),
+            stderr=CommandOutput.collect());
+    }
+
+    public AppImageNixProofResult verify() {
+        if (!self.ok()) {
+            return AppImageNixProofResult.failure(
+                "runtime Nix release proof is not loaded");
+        }
+        Vector<string> verificationArguments =
+            AppImageNixReleaseProof.sourceVerificationArguments(
+                self.sourceStorePath);
+        Vector<string> evaluationArguments =
+            AppImageNixReleaseProof.evaluationArguments(self);
+        if (verificationArguments.isEmpty()
+                || evaluationArguments.isEmpty()) {
+            return AppImageNixProofResult.failure(
+                "runtime Nix release proof cannot form host checks");
+        }
+        ExecResult hostVerified = AppImageNixReleaseProof.hostRun(
+            verificationArguments);
+        if (!hostVerified.ok()) {
+            return AppImageNixProofResult.failure(
+                f"frozen AppImage source failed host Nix-store verification (exit {hostVerified.code}): "
+                    + AppImageNixReleaseProof.failureDetail(hostVerified));
+        }
+        ExecResult evaluated = AppImageNixReleaseProof.hostRun(
+            evaluationArguments);
+        if (!evaluated.ok()) {
+            return AppImageNixProofResult.failure(
+                f"pinned Nix runtime evaluation failed (exit {evaluated.code}): "
+                    + AppImageNixReleaseProof.failureDetail(evaluated));
+        }
+        string evaluatedTarget =
+            AppImageNixReleaseProof.successfulSingleLine(evaluated);
+        if (!AppImageNixReleaseProof.storePath(evaluatedTarget)) {
+            return AppImageNixProofResult.failure(
+                "pinned Nix source evaluation returned a malformed outPath");
+        }
+        if (!evaluatedTarget.equals(self.targetStorePath)) {
+            return AppImageNixProofResult.failure(
+                "pinned Nix source does not evaluate to the leased runtime package: expected "
+                    + self.targetStorePath + ", got " + evaluatedTarget);
+        }
+        return AppImageNixProofResult.success();
+    }
+}

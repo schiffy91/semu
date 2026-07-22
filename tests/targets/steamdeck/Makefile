@@ -11,16 +11,20 @@ HARNESS_MODULES := $(DECK_DIR)/steamdeck_harness.btrc \
 	$(DECK_DIR)/acceptance_plan.btrc $(DECK_DIR)/acceptance_evidence.btrc \
 	$(DECK_DIR)/deck_transport.btrc $(DECK_DIR)/deck_preflight.btrc \
 	$(DECK_DIR)/deck_deploy.btrc $(DECK_DIR)/game_mode.btrc \
-	$(DECK_DIR)/evidence.btrc $(DECK_DIR)/input_automation.btrc \
+	$(DECK_DIR)/evidence.btrc $(DECK_DIR)/run_evidence.btrc \
+	$(DECK_DIR)/input_automation.btrc \
 	$(DECK_DIR)/steam_shortcuts.btrc
 REMOTE_HELPER_SOURCE := $(DECK_DIR)/remote_helper.btrc
 REMOTE_HELPER_MODULES := $(DECK_DIR)/remote_system.btrc \
 	$(DECK_DIR)/game_mode.btrc $(DECK_DIR)/evidence.btrc \
+	$(DECK_DIR)/run_evidence.btrc \
 	$(DECK_DIR)/steam_shortcuts.btrc
 UINPUT_SOURCE := $(DECK_DIR)/uinput_driver.btrc
 INSTALLER_CONTRACT_SOURCE := $(DECK_DIR)/installer_contract_main.btrc
 CONTRACT_SOURCE := $(DECK_DIR)/contract_test.btrc
+DEPLOY_CONTRACT_SOURCE := $(DECK_DIR)/deck_deploy_contract_test.btrc
 FIXTURE := $(DECK_DIR)/fixture.json
+SCREENSHOT_DECODER := src/generators/rendering/native/stb_image.h
 
 HARNESS_C := build/tests/steamdeck-harness.c
 HARNESS_BIN := build/tests/steamdeck-harness
@@ -31,6 +35,8 @@ UINPUT_BIN := build/tests/semu-deck-uinput-x86_64-linux
 INSTALLER_CONTRACT_C := build/tests/appimage-installer-contract.c
 CONTRACT_C := build/tests/steamdeck-harness-contract.c
 CONTRACT_BIN := build/tests/steamdeck-harness-contract
+DEPLOY_CONTRACT_C := build/tests/deck-deploy-contract.c
+DEPLOY_CONTRACT_BIN := build/tests/deck-deploy-contract
 
 SEMU_DECK_HOST ?= deck@steamdeck.local
 SEMU_DECK_SSH_OPTS ?= -o ConnectTimeout=5 -o BatchMode=yes
@@ -63,10 +69,10 @@ HUMAN_ARG = $(if $(filter 1,$(HUMAN_OBSERVED)),--human-observed,)
 
 build: $(HARNESS_BIN) $(CONTRACT_BIN) helpers
 
-$(HARNESS_BIN): $(HARNESS_SOURCE) $(HARNESS_MODULES) $(shell find src/compiler src/lib -name '*.btrc' -print) $(shell find config -type f -print)
+$(HARNESS_BIN): $(HARNESS_SOURCE) $(HARNESS_MODULES) $(SCREENSHOT_DECODER) $(shell find src/compiler src/lib -name '*.btrc' -print) $(shell find config -type f -print)
 	@mkdir -p "$(dir $@)"
 	$(BTRC_TRANSPILE) "$<" -o "$(HARNESS_C)" --strict-imports --no-cache --no-stdlib
-	$(CC) "$(HARNESS_C)" -std=c11 -o "$@" -lm
+	$(CC) "$(HARNESS_C)" -std=c11 -Isrc/generators/rendering/native -o "$@" -lm
 
 $(REMOTE_HELPER_C): $(REMOTE_HELPER_SOURCE) $(REMOTE_HELPER_MODULES)
 	@mkdir -p "$(dir $@)"
@@ -87,13 +93,22 @@ $(UINPUT_BIN): $(UINPUT_C)
 helpers: $(REMOTE_HELPER_BIN) $(UINPUT_BIN)
 
 $(CONTRACT_BIN): $(CONTRACT_SOURCE) $(HARNESS_MODULES) $(REMOTE_HELPER_SOURCE) \
-	$(REMOTE_HELPER_MODULES) $(UINPUT_SOURCE) $(FIXTURE)
+	$(REMOTE_HELPER_MODULES) $(UINPUT_SOURCE) $(FIXTURE) $(SCREENSHOT_DECODER)
 	@mkdir -p "$(dir $@)"
 	$(BTRC_TRANSPILE) "$<" -o "$(CONTRACT_C)" --strict-imports --no-cache --no-stdlib
-	$(CC) "$(CONTRACT_C)" -std=c11 -o "$@" -lm
+	$(CC) "$(CONTRACT_C)" -std=c11 -Isrc/generators/rendering/native -o "$@" -lm
 
-contract-test: $(CONTRACT_BIN)
+
+$(DEPLOY_CONTRACT_BIN): $(DEPLOY_CONTRACT_SOURCE) $(DECK_DIR)/deck_deploy.btrc \
+	$(DECK_DIR)/acceptance_plan.btrc $(DECK_DIR)/deck_transport.btrc \
+	$(shell find src/generators/appimage src/lib -name '*.btrc' -print)
+	@mkdir -p "$(dir $@)"
+	$(BTRC_TRANSPILE) "$<" -o "$(DEPLOY_CONTRACT_C)" --strict-imports --no-cache --no-stdlib
+	$(CC) "$(DEPLOY_CONTRACT_C)" -std=c11 -o "$@" -lm
+
+contract-test: $(CONTRACT_BIN) $(DEPLOY_CONTRACT_BIN)
 	"$(CONTRACT_BIN)" --project "$(CURDIR)" --fixture "$(FIXTURE)"
+	"$(DEPLOY_CONTRACT_BIN)"
 
 $(INSTALLER_CONTRACT_C): $(INSTALLER_CONTRACT_SOURCE) \
 	$(shell find src/generators/appimage -name '*.btrc' -print) \

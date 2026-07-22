@@ -19,7 +19,7 @@ class TreeAuditFixture {
         if (root.isEmpty()) { return ""; }
         Vector<string> directories = [
             "config/settings", "docs", "packaging/install", "src/compiler",
-            "tests/targets/steamdeck"
+            "tests/integration/retroarch", "tests/targets/steamdeck"
         ];
         for relative in directories {
             if (!TreeAuditFixture.directory(root, relative)) {
@@ -27,13 +27,16 @@ class TreeAuditFixture {
                 return "";
             }
         }
-        if (!TreeAuditFixture.file(root, "README.md", "# Fixture\n")
+        if (!TreeAuditFixture.file(root, "AGENTS.md", "# Fixture contract\n")
+                || !TreeAuditFixture.file(root, "README.md", "# Fixture\n")
                 || !TreeAuditFixture.file(root, "config/settings/defaults.json", "{}\n")
                 || !TreeAuditFixture.file(root,
                     "config/assets/esde/templates/command.xml", "<command />\n")
                 || !TreeAuditFixture.file(root, "docs/README.md", "# Fixture\n")
                 || !TreeAuditFixture.file(root, "src/main.btrc", "int main() { return 0; }\n")
                 || !TreeAuditFixture.file(root, "tests/Makefile", "test:\n\t@true\n")
+                || !TreeAuditFixture.file(root,
+                    "tests/integration/retroarch/Containerfile", "FROM scratch\n")
                 || !TreeAuditFixture.file(root, "packaging/install/runner",
                     "#!/bin/sh\nexit 0\n")) {
             FileSystem.removeRecursive(root);
@@ -156,7 +159,7 @@ class TreeAuditContractTest {
             "unexpected source root", "src/legacy", "module.btrc",
             "unexpected path under src");
         failures += TreeAuditContractTest.rejectsDirectory(
-            "unexpected test family", "tests/integration", "case.btrc",
+            "unexpected test family", "tests/manual", "case.btrc",
             "unexpected test family");
         failures += TreeAuditContractTest.rejectsDirectory(
             "unexpected test target", "tests/targets/linux", "case.btrc",
@@ -193,6 +196,10 @@ class TreeAuditContractTest {
             "test extension", "tests/core/case.py", "pass\n",
             "unexpected test file type");
         failures += TreeAuditContractTest.rejectsFile(
+            "Containerfile outside integration tests",
+            "tests/core/Containerfile", "FROM scratch\n",
+            "unexpected test file type");
+        failures += TreeAuditContractTest.rejectsFile(
             "root test file", "tests/orphan.btrc", "class Orphan {}\n",
             "test files must live in an approved test family");
         failures += TreeAuditContractTest.rejectsFile(
@@ -201,7 +208,7 @@ class TreeAuditContractTest {
         failures += TreeAuditContractTest.rejectsEmptyConfigDirectory();
         failures += TreeAuditContractTest.rejectsMissingTargetsRoot();
         if (failures == 0) {
-            Console.log("OK tree-audit contracts (21 rejection cases)");
+            Console.log("OK tree-audit contracts (22 rejection cases)");
         }
         return failures;
     }

@@ -36,12 +36,13 @@
       "sha256": "sha256-T6Q12aEYcrYuz2tbRGU8r5kDjYmmpZYM5KhYoqTSp1g="
     },
     "status_null_safety": {
-      "kind": "url_exact",
-      "sha256": "sha256-dXlaIwU8L2XPJtTRq6BFuzsWooSvRJ8isPL4W4Cw/nY=",
-      "url": "https://github.com/libretro/RetroArch/commit/68e8274a31bce913950cfb0fa5f82646d3661015.patch"
+      "file": "retroarch_get_status_null_safety.patch",
+      "kind": "local_exact",
+      "sha256": "sha256-VFwauov45Fd/HGiJfdFdp2XyWiE4FN4xQPerrMOZ31A="
     }
   },
   "core_runtime": {
+    "build_contract": "share/semu/core-host-build-contract.json",
     "selection_source": "config/systems/*/system.json",
     "directory": "lib/retroarch/cores",
     "exact_selection": true,
@@ -71,6 +72,6 @@
   },
   "doc": {
     "macos": "The macOS source build uses Metal and is outside this OpenGL renderer integration.",
-    "rendering": "The Linux GL2 and GL3 drivers call the directly linked renderer after the upright game viewport is complete and again after all RetroArch UI immediately before swap. No menu state suppresses either boundary and no inactive report exists."
+    "rendering": "The forced Linux glcore driver exposes minimal GL 3.3 / GLSL 330 taps around the directly linked ABI-3 renderer boundaries. Strict BTRC loads compiler-generated semantic surface identities and native geometry, validates live content without selecting by pixel dimensions, and publishes one query-order-independent pointer snapshot per input poll. RetroArch menus and settings bypass rendering and require a physical pointer release before gameplay resumes."
   }
 }

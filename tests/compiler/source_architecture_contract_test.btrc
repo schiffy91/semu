@@ -123,7 +123,9 @@ class SourceArchitectureContractTest {
             PathTools.join(sourceRoot,
                 "generators/input/linux_supervisor.btrc"),
             PathTools.join(sourceRoot,
-                "generators/rendering/native/libsemurenderer.btrc")
+                "generators/rendering/native/libsemurenderer.btrc"),
+            PathTools.join(sourceRoot,
+                "generators/rendering/retroarch/runtime_bridge.btrc")
         ];
         for root in roots {
             SourceArchitectureContractTest.visit(
@@ -204,7 +206,7 @@ class SourceArchitectureContractTest {
         string runtimeTest = PathTools.join(
             project, "tests/compiler/emulator_runtime_contract_test.btrc");
         string jsonTest = PathTools.join(
-            project, "tests/compiler/json_format_contract_test.btrc");
+            project, "tests/compiler/json_document_contract_test.btrc");
 
         if (SourceArchitectureContractTest.imports(layout, profiles)
                 || SourceArchitectureContractTest.imports(layout, runtime)
@@ -343,8 +345,8 @@ class SourceArchitectureContractTest {
 
     class int checkAppImageProcessBoundary(string project) {
         for relative in [
-                "src/generators/appimage/assembler.btrc",
-                "src/generators/appimage/no_fuse_verifier.btrc"] {
+                "src/generators/appimage/assembly_tools.btrc",
+                "src/generators/appimage/linux_worker.btrc"] {
             string source = Path.readAll(PathTools.join(project, relative));
             if (!source.contains("ChildProcess.run")
                     || source.contains("fork(")
@@ -353,6 +355,52 @@ class SourceArchitectureContractTest {
                     || source.contains("pipe(")) {
                 return SourceArchitectureContractTest.fail(
                     "AppImage process boundary bypasses bounded stdlib APIs: "
+                    + relative);
+            }
+        }
+        string tools = Path.readAll(PathTools.join(project,
+            "src/generators/appimage/assembly_tools.btrc"));
+        string assembler = Path.readAll(PathTools.join(project,
+            "src/generators/appimage/assembler.btrc"));
+        string verifier = Path.readAll(PathTools.join(project,
+            "src/generators/appimage/no_fuse_verifier.btrc"));
+        string appRuntime = Path.readAll(PathTools.join(project,
+            "src/generators/appimage/app_runtime.btrc"));
+        if (!tools.contains("descriptorMappings=descriptorMappings")
+                || !tools.contains(
+                    "workingDirectoryDescriptor=workingDirectoryDescriptor")
+                || !assembler.contains("\"/proc/self/fd/40\"")
+                || !assembler.contains("\"/proc/self/fd/41\"")
+                || !assembler.contains(
+                    "ChildDescriptorMapping(appDirDescriptor, 40)")
+                || !assembler.contains(
+                    "ChildDescriptorMapping(outputDescriptor, 41)")
+                || !verifier.contains(
+                    "ChildDescriptorMapping(snapshot.descriptor, 40)")
+                || !verifier.contains("\"/proc/self/fd/40\"")
+                || verifier.contains("snapshot.path")) {
+            return SourceArchitectureContractTest.fail(
+                "AppImage filesystem tools are not descriptor-authoritative");
+        }
+        if (!appRuntime.contains(
+                "\"--ro-bind\", sandbox + \"/nix/store\", \"/nix/store\"")
+                || !appRuntime.contains(
+                    "\"--setenv\", \"SEMU_NIX_STORE_MOUNTED\", \"1\"")) {
+            return SourceArchitectureContractTest.fail(
+                "AppImage sandbox does not bind and admit its exact Nix store");
+        }
+        for relative in [
+                "src/generators/appimage/assembler.btrc",
+                "src/generators/appimage/no_fuse_verifier.btrc"] {
+            string source = Path.readAll(PathTools.join(project, relative));
+            if (!source.contains("AppImageLeasedExecutable.run(")
+                    || source.contains("ChildProcess.run(")
+                    || source.contains("fork(")
+                    || source.contains("execvp(")
+                    || source.contains("waitpid(")
+                    || source.contains("pipe(")) {
+                return SourceArchitectureContractTest.fail(
+                    "AppImage operation bypasses its leased executable owner: "
                     + relative);
             }
         }

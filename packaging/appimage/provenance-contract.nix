@@ -1,6 +1,10 @@
+{ packageAttribute ? "steamdeck-runtime" }:
+
 let
   flake = builtins.getFlake (toString ../..);
   packages = flake.packages.x86_64-linux;
+  releasePackage = builtins.getAttr packageAttribute packages;
+  releaseInventory = releasePackage.semuReleaseInventory;
   emulatorRoot = flake.outPath + "/config/emulators";
   entries = builtins.readDir emulatorRoot;
   definition = id: builtins.fromJSON
@@ -19,7 +23,8 @@ let
         || (!(package ? platforms)
           && package.outputs ? linux_main_program)
       );
-  ids = builtins.filter isLinux (builtins.attrNames entries);
+  linuxIds = builtins.filter isLinux (builtins.attrNames entries);
+  ids = releaseInventory.emulator_ids;
   localName = value:
     let
       base = builtins.baseNameOf value;
@@ -53,7 +58,10 @@ let
       patches = map patch (package.patches or [ ]);
     };
   esDe = packages.es-de.semuSettings;
-in {
+in
+assert ids != [ ];
+assert builtins.all (id: builtins.elem id linuxIds) ids;
+{
   es_de = {
     recipe_sha256 = builtins.hashFile "sha256"
       (flake.outPath + "/packaging/esde/package.nix");

@@ -2,7 +2,6 @@
 
 import std.{fs, json, vector}
 import ../compiler/model.btrc
-import ../lib/json_format.btrc
 import ../lib/owned_paths.btrc
 import ./emulators.btrc
 
@@ -526,8 +525,8 @@ class SemuProfileCompiler {
                 : SemuOwnedPaths.relativeFile(outputRoot, declared);
             string text = linesFile
                 ? SemuTokenResolver.resolve(lines.join("\n") + "\n", context)
-                : SemuJsonFormat.document(SemuProfileCompiler.renderJson(
-                    sourceJson, bindings, context));
+                : SemuProfileCompiler.renderJson(
+                    sourceJson, bindings, context).document();
             string ownedRoot = installRuntime
                 ? context.stateRoot : outputRoot;
             if (destination.isEmpty() || text.contains("${")

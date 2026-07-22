@@ -1,5 +1,5 @@
 // Strict-BTRC ownership adapter for librashader's ABI-2 OpenGL C API.
-// The caller supplies emulator-owned GL and current-context callbacks.
+// The caller supplies an emulator-owned GL loader and context generation.
 
 #define LIBRA_RUNTIME_OPENGL 1
 #include <librashader/librashader.h>
@@ -10,7 +10,6 @@ int SEMU_LIBRASHADER_RENDERED = 1;
 
 int SEMU_LIBRASHADER_FAILURE_NONE = 0;
 int SEMU_LIBRASHADER_FAILURE_INVALID_ARGUMENT = 1;
-int SEMU_LIBRASHADER_FAILURE_NO_CURRENT_CONTEXT = 2;
 int SEMU_LIBRASHADER_FAILURE_WRONG_CONTEXT = 3;
 int SEMU_LIBRASHADER_FAILURE_ALREADY_ACTIVE = 4;
 int SEMU_LIBRASHADER_FAILURE_NOT_ACTIVE = 5;
@@ -103,27 +102,20 @@ class SemuLibrashaderPreset {
     }
 }
 
-void* semuLibrashaderCurrentContext(void* callback) {
-    __fn_ptr<void*> currentContext = (__fn_ptr<void*>)callback;
-    return currentContext();
-}
-
 // One object owns one filter chain and therefore one temporal-history lane.
 // A failed render returns PASSTHROUGH and leaves presentation to the caller.
 class SemuLibrashaderOpenGLChain {
     private libra_gl_filter_chain_t handle;
     private void* loader;
-    private void* currentContext;
-    private void* ownerContext;
+    private unsigned long long contextGeneration;
     private SemuLibrashaderError error;
     private int failure;
 
     public SemuLibrashaderOpenGLChain(
-        void* loader, void* currentContext) {
+        void* loader, unsigned long long contextGeneration) {
         self.handle = (libra_gl_filter_chain_t)0;
         self.loader = loader;
-        self.currentContext = currentContext;
-        self.ownerContext = (void*)0;
+        self.contextGeneration = contextGeneration;
         self.error = new SemuLibrashaderError();
         self.failure = SEMU_LIBRASHADER_FAILURE_NONE;
     }
@@ -133,10 +125,9 @@ class SemuLibrashaderOpenGLChain {
         self.failure = SEMU_LIBRASHADER_FAILURE_NONE;
     }
 
-    private bool onOwnerContext() {
-        return self.currentContext != (void*)0
-            && self.ownerContext != (void*)0
-            && semuLibrashaderCurrentContext(self.currentContext) == self.ownerContext;
+    private bool onGeneration(unsigned long long contextGeneration) {
+        return self.contextGeneration != 0ULL
+            && self.contextGeneration == contextGeneration;
     }
 
     public bool create(const char* presetPath, unsigned int glslVersion,
@@ -148,28 +139,15 @@ class SemuLibrashaderOpenGLChain {
             return false;
         }
         if (presetPath == (const char*)0 || self.loader == (void*)0
-            || self.currentContext == (void*)0) {
+            || self.contextGeneration == 0ULL) {
             self.failure = SEMU_LIBRASHADER_FAILURE_INVALID_ARGUMENT;
-            return false;
-        }
-
-        self.ownerContext = semuLibrashaderCurrentContext(self.currentContext);
-        if (self.ownerContext == (void*)0) {
-            self.failure = SEMU_LIBRASHADER_FAILURE_NO_CURRENT_CONTEXT;
             return false;
         }
 
         SemuLibrashaderPreset preset = new SemuLibrashaderPreset();
         if (!preset.load(presetPath, originalAspectUniforms,
                          frametimeUniforms, self.error)) {
-            self.ownerContext = (void*)0;
             self.failure = SEMU_LIBRASHADER_FAILURE_LIBRARY;
-            delete preset;
-            return false;
-        }
-        if (!self.onOwnerContext()) {
-            self.ownerContext = (void*)0;
-            self.failure = SEMU_LIBRASHADER_FAILURE_WRONG_CONTEXT;
             delete preset;
             return false;
         }
@@ -186,7 +164,6 @@ class SemuLibrashaderOpenGLChain {
             self.loader, &options, &self.handle, self.error);
         delete preset;
         if (!created) {
-            self.ownerContext = (void*)0;
             self.failure = SEMU_LIBRASHADER_FAILURE_LIBRARY;
             return false;
         }
@@ -199,13 +176,14 @@ class SemuLibrashaderOpenGLChain {
                       unsigned int outputWidth, unsigned int outputHeight,
                       size_t frameCount, bool clearHistory, int frameDirection,
                       unsigned int rotation, float aspectRatio,
-                      float framesPerSecond, unsigned int frametimeDeltaMs) {
+                      float framesPerSecond, unsigned int frametimeDeltaMs,
+                      unsigned long long contextGeneration) {
         self.beginCall();
         if ((void*)self.handle == (void*)0) {
             self.failure = SEMU_LIBRASHADER_FAILURE_NOT_ACTIVE;
             return SEMU_LIBRASHADER_PASSTHROUGH;
         }
-        if (!self.onOwnerContext()) {
+        if (!self.onGeneration(contextGeneration)) {
             self.failure = SEMU_LIBRASHADER_FAILURE_WRONG_CONTEXT;
             return SEMU_LIBRASHADER_PASSTHROUGH;
         }
@@ -274,13 +252,13 @@ class SemuLibrashaderOpenGLChain {
 
     // A wrong-context call is non-destructive: the owner can restore its GL
     // context and retry. The destructor obeys the same guard.
-    public bool close() {
+    public bool close(unsigned long long contextGeneration) {
         self.beginCall();
         if ((void*)self.handle == (void*)0) {
-            self.ownerContext = (void*)0;
+            self.contextGeneration = 0ULL;
             return true;
         }
-        if (!self.onOwnerContext()) {
+        if (!self.onGeneration(contextGeneration)) {
             self.failure = SEMU_LIBRASHADER_FAILURE_WRONG_CONTEXT;
             return false;
         }
@@ -288,7 +266,7 @@ class SemuLibrashaderOpenGLChain {
             self.failure = SEMU_LIBRASHADER_FAILURE_LIBRARY;
             return false;
         }
-        self.ownerContext = (void*)0;
+        self.contextGeneration = 0ULL;
         return true;
     }
 
@@ -299,8 +277,7 @@ class SemuLibrashaderOpenGLChain {
         self.error.clear();
         self.handle = (libra_gl_filter_chain_t)0;
         self.loader = (void*)0;
-        self.currentContext = (void*)0;
-        self.ownerContext = (void*)0;
+        self.contextGeneration = 0ULL;
         self.failure = SEMU_LIBRASHADER_FAILURE_NONE;
     }
 
@@ -308,8 +285,8 @@ class SemuLibrashaderOpenGLChain {
         return (void*)self.handle != (void*)0;
     }
 
-    public bool ownsCurrentContext() {
-        return self.onOwnerContext();
+    public bool ownsGeneration(unsigned long long contextGeneration) {
+        return self.onGeneration(contextGeneration);
     }
 
     public int lastFailure() {
@@ -329,6 +306,6 @@ class SemuLibrashaderOpenGLChain {
     }
 
     public void __del__() {
-        self.close();
+        self.abandonDestroyedContext();
     }
 }

@@ -2,7 +2,6 @@
 
 import std.{cli, fs, io, json, process, strings, vector}
 import ../../src/generators/settings.btrc
-import ../../src/lib/json_format.btrc
 import ../../src/lib/rendering_settings.btrc
 
 class DynamicSystemSettingsContract {
@@ -436,7 +435,7 @@ class ExposedSettingsEffectContract {
 
         string overlayError = SemuOwnedDocument.write(
             home, SemuConfigPaths.userFile(home),
-            SemuJsonFormat.document(overlay), 384); // 0600
+            overlay.document(), 384); // 0600
         SemuSettingsCompileResult after = overlayError.isEmpty()
             ? SemuSettingsCompiler.emit(store)
             : SemuSettingsCompileResult();

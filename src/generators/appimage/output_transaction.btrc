@@ -1,0 +1,797 @@
+// output_transaction.btrc - recoverable publication of one verified AppImage.
+
+import std.{fs, json, strings, vector}
+import ../../lib/owned_paths.btrc
+import ./contract.btrc
+import ./install_policy.btrc
+import ./install_store.btrc
+import ./nix_release_proof.btrc
+import ./work_session.btrc
+
+#include <errno.h>
+#include <fcntl.h>
+#include <string.h>
+#include <sys/file.h>
+#include <sys/stat.h>
+#include <unistd.h>
+
+int semuAppImageWriteAll(int descriptor, string content) {
+    char* bytes = Strings.copy(content);
+    if (bytes == NULL) { return -1; }
+    size_t offset = 0;
+    size_t size = (size_t)content.len();
+    while (offset < size) {
+        ssize_t count = write(descriptor, bytes + offset, size - offset);
+        if (count < (ssize_t)0 && errno == EINTR) { continue; }
+        if (count <= (ssize_t)0) { return -1; }
+        offset += (size_t)count;
+    }
+    return 0;
+}
+
+class AppImageOutputJournal {
+    public bool valid;
+    public string state;
+    public bool priorPresent;
+    public string priorDigest;
+    public int priorMode;
+    public string candidateDigest;
+    public int candidateMode;
+    public string error;
+
+    public AppImageOutputJournal() {
+        self.valid = false;
+        self.state = "";
+        self.priorPresent = false;
+        self.priorDigest = "";
+        self.priorMode = 0;
+        self.candidateDigest = "";
+        self.candidateMode = 0;
+        self.error = "";
+    }
+
+    public bool ok() { return self.valid; }
+
+    class JsonValue json(string state, bool priorPresent,
+                         string priorDigest, int priorMode,
+                         string candidateDigest, int candidateMode) {
+        JsonValue document = JsonValue.makeObject();
+        document.set("schema_version", JsonValue.makeInt(2));
+        document.set("state", JsonValue.makeString(state));
+        document.set("prior_present", JsonValue.makeBool(priorPresent));
+        document.set("prior_sha256", JsonValue.makeString(priorDigest));
+        document.set("prior_mode", JsonValue.makeInt(priorMode));
+        document.set("candidate_sha256",
+            JsonValue.makeString(candidateDigest));
+        document.set("candidate_mode", JsonValue.makeInt(candidateMode));
+        return document;
+    }
+
+    class string document(string state, bool priorPresent,
+                          string priorDigest, int priorMode,
+                          string candidateDigest, int candidateMode) {
+        return AppImageOutputJournal.json(
+            state, priorPresent, priorDigest, priorMode, candidateDigest,
+            candidateMode).document();
+    }
+
+    class AppImageOutputJournal parse(string text) {
+        AppImageOutputJournal journal = AppImageOutputJournal();
+        JsonValue document = JsonValue.parse(text);
+        Vector<string> expected = ["candidate_mode", "candidate_sha256",
+            "prior_mode", "prior_present", "prior_sha256",
+            "schema_version", "state"];
+        Vector<string> keys = [];
+        if (document.isObject()) { keys = document.keys(); }
+        bool exact = keys.size() == expected.size();
+        for key in keys { exact = exact && expected.contains(key); }
+        JsonValue schema = document.get("schema_version");
+        JsonValue state = document.get("state");
+        JsonValue prior = document.get("prior_present");
+        JsonValue priorDigest = document.get("prior_sha256");
+        JsonValue priorMode = document.get("prior_mode");
+        JsonValue candidateDigest = document.get("candidate_sha256");
+        JsonValue candidateMode = document.get("candidate_mode");
+        bool validState = state.isString()
+            && (state.asString().equals("prepared")
+                || state.asString().equals("renamed")
+                || state.asString().equals("committed"));
+        bool schemaValid = schema.isInt() && schema.asInt() == 2;
+        bool candidateValid = candidateDigest.isString()
+            && candidateMode.isInt()
+            && AppImageNixReleaseProof.digest(candidateDigest.asString())
+            && candidateMode.asInt() > 0
+            && candidateMode.asInt() <= 4095;
+        bool priorValid = false;
+        if (prior.isBool() && priorDigest.isString() && priorMode.isInt()) {
+            if (prior.asBool() != 0) {
+                priorValid = AppImageNixReleaseProof.digest(
+                        priorDigest.asString())
+                    && priorMode.asInt() > 0
+                    && priorMode.asInt() <= 4095;
+            } else {
+                priorValid = priorDigest.asString().isEmpty()
+                    && priorMode.asInt() == 0;
+            }
+        }
+        bool canonical = text.equals(document.document());
+        bool parsed = exact && schemaValid && validState
+            && candidateValid && priorValid && canonical;
+        if (!parsed) {
+            journal.error = "AppImage publication journal is malformed";
+            return journal;
+        }
+        journal.state = state.asString();
+        journal.priorPresent = prior.asBool() != 0;
+        journal.priorDigest = priorDigest.asString();
+        journal.priorMode = priorMode.asInt();
+        journal.candidateDigest = candidateDigest.asString();
+        journal.candidateMode = candidateMode.asInt();
+        journal.valid = true;
+        return journal;
+    }
+}
+
+class AppImageOutputFiles {
+    class bool absent(int parentDescriptor, string name) {
+        struct stat status;
+        errno = 0;
+        return parentDescriptor >= 0 && !name.isEmpty()
+            && fstatat(parentDescriptor, name, &status,
+                AT_SYMLINK_NOFOLLOW) != 0
+            && errno == ENOENT;
+    }
+
+    class int openRegular(int parentDescriptor, string name) {
+        struct stat inspected;
+        if (parentDescriptor < 0 || name.isEmpty()
+                || fstatat(parentDescriptor, name, &inspected,
+                    AT_SYMLINK_NOFOLLOW) != 0
+                || S_ISREG(inspected.st_mode) == 0) {
+            return -1;
+        }
+        int descriptor = openat(parentDescriptor, name,
+            (int)O_RDONLY | (int)O_NONBLOCK | (int)O_NOFOLLOW
+                | (int)O_CLOEXEC);
+        struct stat opened;
+        bool exact = descriptor >= 0
+            && fstat(descriptor, &opened) == 0
+            && S_ISREG(opened.st_mode) != 0
+            && opened.st_nlink == (nlink_t)1
+            && AppImageWorkSession.sameObject(&inspected, &opened);
+        if (!exact && descriptor >= 0) { close(descriptor); }
+        return exact ? descriptor : -1;
+    }
+
+    class bool matches(int parentDescriptor, string name, string digest,
+                       int mode = -1) {
+        int descriptor = AppImageOutputFiles.openRegular(
+            parentDescriptor, name);
+        struct stat status;
+        bool matched = descriptor >= 0
+            && AppImageNixReleaseProof.digest(digest)
+            && fstat(descriptor, &status) == 0
+            && (mode < 0 || SemuOwnedPaths.permissions(status.st_mode) == mode)
+            && SemuOwnedFileDigest.descriptor(descriptor).equals(digest);
+        if (descriptor >= 0) { close(descriptor); }
+        return matched;
+    }
+
+    class bool removeExact(int parentDescriptor, string name,
+                           string digest, int mode = -1) {
+        return AppImageOutputFiles.absent(parentDescriptor, name)
+            || (AppImageOutputFiles.matches(
+                    parentDescriptor, name, digest, mode)
+                && unlinkat(parentDescriptor, name, 0) == 0);
+    }
+
+    class bool removeOwnedMetadata(int parentDescriptor, string name) {
+        if (AppImageOutputFiles.absent(parentDescriptor, name)) {
+            return true;
+        }
+        int descriptor = AppImageOutputFiles.openRegular(
+            parentDescriptor, name);
+        struct stat status;
+        bool owned = descriptor >= 0 && fstat(descriptor, &status) == 0
+            && SemuOwnedPaths.permissions(status.st_mode) == 384; // 0600
+        if (descriptor >= 0) { close(descriptor); }
+        return owned && unlinkat(parentDescriptor, name, 0) == 0;
+    }
+
+    class string readOwnedMetadata(int parentDescriptor, string name) {
+        int descriptor = AppImageOutputFiles.openRegular(
+            parentDescriptor, name);
+        struct stat status;
+        string text = descriptor >= 0 && fstat(descriptor, &status) == 0
+                && SemuOwnedPaths.permissions(status.st_mode) == 384
+            ? SemuOwnedFileContent.text(descriptor) : "";
+        if (descriptor >= 0) { close(descriptor); }
+        return text;
+    }
+
+    class bool writeOwnedMetadata(int parentDescriptor, string name,
+                                  string temporaryName, string text) {
+        if (parentDescriptor < 0 || name.isEmpty()
+                || temporaryName.isEmpty()
+                || !AppImageOutputFiles.absent(
+                    parentDescriptor, temporaryName)) {
+            return false;
+        }
+        int descriptor = openat(parentDescriptor, temporaryName,
+            (int)O_RDWR | (int)O_CREAT | (int)O_EXCL
+                | (int)O_NOFOLLOW | (int)O_CLOEXEC,
+            (mode_t)384); // 0600
+        bool written = descriptor >= 0
+            && semuAppImageWriteAll(descriptor, text) == 0
+            && fchmod(descriptor, (mode_t)384) == 0
+            && fsync(descriptor) == 0;
+        bool closed = descriptor < 0 || close(descriptor) == 0;
+        if (!written || !closed || renameat(parentDescriptor,
+                temporaryName, parentDescriptor, name) != 0
+                || fsync(parentDescriptor) != 0) {
+            unlinkat(parentDescriptor, temporaryName, 0);
+            return false;
+        }
+        return true;
+    }
+}
+
+class AppImageAssemblyLock {
+    public bool valid;
+    public string outputParentPath;
+    public string outputName;
+    public string lockName;
+    public string journalName;
+    public string journalTemporaryName;
+    public string candidateName;
+    public string previousName;
+    public string outputIdentity;
+    public int parentDescriptor;
+    public int descriptor;
+    public int outputDescriptor;
+    public unsigned long long parentDevice;
+    public unsigned long long parentInode;
+    public unsigned long long device;
+    public unsigned long long inode;
+    public int mode;
+    public bool outputPresent;
+    public unsigned long long outputDevice;
+    public unsigned long long outputInode;
+    public unsigned long long outputSize;
+    public int outputMode;
+    public string outputDigest;
+    public string error;
+
+    public AppImageAssemblyLock() {
+        self.valid = false;
+        self.outputParentPath = "";
+        self.outputName = "";
+        self.lockName = "";
+        self.journalName = "";
+        self.journalTemporaryName = "";
+        self.candidateName = "";
+        self.previousName = "";
+        self.outputIdentity = "";
+        self.parentDescriptor = -1;
+        self.descriptor = -1;
+        self.outputDescriptor = -1;
+        self.parentDevice = 0ULL;
+        self.parentInode = 0ULL;
+        self.device = 0ULL;
+        self.inode = 0ULL;
+        self.mode = 0;
+        self.outputPresent = false;
+        self.outputDevice = 0ULL;
+        self.outputInode = 0ULL;
+        self.outputSize = 0ULL;
+        self.outputMode = 0;
+        self.outputDigest = "";
+        self.error = "";
+    }
+
+    public bool ok() { return self.valid; }
+
+    class string path(AppImagePathPlan plan) {
+        string identity = SemuOwnedFileDigest.text(plan.outputPath);
+        return PathTools.join(PathTools.dirname(plan.outputPath),
+            ".semu-appimage-output-" + identity + ".lock");
+    }
+
+    class bool set(int descriptor, short lockType) {
+        int operation = lockType == (short)F_UNLCK
+            ? (int)LOCK_UN : ((int)LOCK_EX | (int)LOCK_NB);
+        return flock(descriptor, operation) == 0;
+    }
+
+    class bool captureOutput(AppImageAssemblyLock lock) {
+        struct stat inspected;
+        errno = 0;
+        bool absent = fstatat(lock.parentDescriptor, lock.outputName,
+            &inspected, AT_SYMLINK_NOFOLLOW) != 0 && errno == ENOENT;
+        if (absent) {
+            lock.outputPresent = false;
+            lock.outputDescriptor = -1;
+            lock.outputDigest = "";
+            return true;
+        }
+        int descriptor = AppImageOutputFiles.openRegular(
+            lock.parentDescriptor, lock.outputName);
+        struct stat status;
+        string digest = descriptor >= 0
+            ? SemuOwnedFileDigest.descriptor(descriptor) : "";
+        bool captured = descriptor >= 0 && fstat(descriptor, &status) == 0
+            && AppImageNixReleaseProof.digest(digest);
+        if (!captured) {
+            if (descriptor >= 0) { close(descriptor); }
+            return false;
+        }
+        lock.outputPresent = true;
+        lock.outputDescriptor = descriptor;
+        lock.outputDevice = (unsigned long long)status.st_dev;
+        lock.outputInode = (unsigned long long)status.st_ino;
+        lock.outputSize = (unsigned long long)status.st_size;
+        lock.outputMode = SemuOwnedPaths.permissions(status.st_mode);
+        lock.outputDigest = digest;
+        return true;
+    }
+
+    class AppImageAssemblyLock acquire(AppImagePathPlan plan) {
+        AppImageAssemblyLock lock = AppImageAssemblyLock();
+        string parentPath = PathTools.dirname(plan.outputPath);
+        string outputName = PathTools.basename(plan.outputPath);
+        string outputIdentity = SemuOwnedFileDigest.text(plan.outputPath);
+        if (!plan.ok() || outputName.isEmpty()
+                || !AppImagePathContract.realDirectory(parentPath)
+                || !AppImageNixReleaseProof.digest(outputIdentity)) {
+            lock.error = "cannot lock an invalid AppImage output";
+            return lock;
+        }
+        string prefix = ".semu-appimage-output-" + outputIdentity;
+        string lockName = prefix + ".lock";
+        int parentDescriptor = UnixFileSystem.openDirectoryNoFollow(
+            parentPath);
+        int descriptor = parentDescriptor >= 0
+            ? openat(parentDescriptor, lockName,
+                (int)O_CREAT | (int)O_RDWR | (int)O_CLOEXEC
+                    | (int)O_NOFOLLOW,
+                384) // 0600
+            : -1;
+        struct stat parentStatus;
+        struct stat parentPathStatus;
+        struct stat inspected;
+        struct stat status;
+        bool bound = parentDescriptor >= 0 && descriptor >= 0
+            && fstat(parentDescriptor, &parentStatus) == 0
+            && stat(parentPath, &parentPathStatus) == 0
+            && AppImageWorkSession.sameObject(
+                &parentStatus, &parentPathStatus)
+            && fstatat(parentDescriptor, lockName, &inspected,
+                AT_SYMLINK_NOFOLLOW) == 0
+            && fstat(descriptor, &status) == 0
+            && S_ISDIR(parentStatus.st_mode) != 0
+            && S_ISREG(inspected.st_mode) != 0
+            && S_ISREG(status.st_mode) != 0
+            && AppImageWorkSession.sameObject(&inspected, &status)
+            && status.st_nlink == (nlink_t)1
+            && SemuOwnedPaths.permissions(status.st_mode) == 384
+            && AppImageAssemblyLock.set(descriptor, (short)F_WRLCK);
+        if (!bound) {
+            if (descriptor >= 0) { close(descriptor); }
+            if (parentDescriptor >= 0) { close(parentDescriptor); }
+            lock.error = "another AppImage operation owns output "
+                + plan.outputPath;
+            return lock;
+        }
+        lock.outputParentPath = parentPath;
+        lock.outputName = outputName;
+        lock.lockName = lockName;
+        lock.journalName = prefix + ".journal";
+        lock.journalTemporaryName = prefix + ".journal.next";
+        lock.candidateName = prefix + ".candidate";
+        lock.previousName = prefix + ".previous";
+        lock.outputIdentity = outputIdentity;
+        lock.parentDescriptor = parentDescriptor;
+        lock.descriptor = descriptor;
+        lock.parentDevice = (unsigned long long)parentStatus.st_dev;
+        lock.parentInode = (unsigned long long)parentStatus.st_ino;
+        lock.device = (unsigned long long)status.st_dev;
+        lock.inode = (unsigned long long)status.st_ino;
+        lock.mode = SemuOwnedPaths.permissions(status.st_mode);
+        lock.valid = true;
+        AppImageContractResult recovered =
+            AppImageOutputTransaction.recoverPending(lock);
+        bool captured = recovered.ok()
+            && AppImageAssemblyLock.captureOutput(lock);
+        if (!captured) {
+            lock.error = recovered.ok()
+                ? "cannot bind the current AppImage output"
+                : recovered.error;
+            AppImageAssemblyLock.set(descriptor, (short)F_UNLCK);
+            close(descriptor);
+            close(parentDescriptor);
+            lock.descriptor = -1;
+            lock.parentDescriptor = -1;
+            lock.valid = false;
+        }
+        return lock;
+    }
+
+    public bool lockStillBound() {
+        if (!self.valid || self.parentDescriptor < 0
+                || self.descriptor < 0 || self.lockName.isEmpty()) {
+            return false;
+        }
+        struct stat parent;
+        struct stat parentPath;
+        struct stat inspected;
+        struct stat held;
+        return fstat(self.parentDescriptor, &parent) == 0
+            && stat(self.outputParentPath, &parentPath) == 0
+            && fstatat(self.parentDescriptor, self.lockName, &inspected,
+                AT_SYMLINK_NOFOLLOW) == 0
+            && fstat(self.descriptor, &held) == 0
+            && S_ISDIR(parent.st_mode) != 0
+            && S_ISREG(inspected.st_mode) != 0
+            && S_ISREG(held.st_mode) != 0
+            && AppImageWorkSession.sameObject(&parent, &parentPath)
+            && AppImageWorkSession.sameObject(&inspected, &held)
+            && (unsigned long long)parent.st_dev == self.parentDevice
+            && (unsigned long long)parent.st_ino == self.parentInode
+            && (unsigned long long)held.st_dev == self.device
+            && (unsigned long long)held.st_ino == self.inode
+            && held.st_nlink == (nlink_t)1
+            && SemuOwnedPaths.permissions(held.st_mode) == self.mode;
+    }
+
+    public bool outputStillBound() {
+        if (!self.valid) { return false; }
+        if (!self.outputPresent) {
+            return AppImageOutputFiles.absent(
+                self.parentDescriptor, self.outputName);
+        }
+        int reopened = AppImageOutputFiles.openRegular(
+            self.parentDescriptor, self.outputName);
+        struct stat held;
+        struct stat current;
+        bool bound = reopened >= 0 && self.outputDescriptor >= 0
+            && fstat(self.outputDescriptor, &held) == 0
+            && fstat(reopened, &current) == 0
+            && AppImageWorkSession.sameObject(&held, &current)
+            && (unsigned long long)held.st_dev == self.outputDevice
+            && (unsigned long long)held.st_ino == self.outputInode
+            && (unsigned long long)held.st_size == self.outputSize
+            && SemuOwnedPaths.permissions(held.st_mode) == self.outputMode
+            && SemuOwnedFileDigest.descriptor(
+                self.outputDescriptor).equals(self.outputDigest);
+        if (reopened >= 0) { close(reopened); }
+        return bound;
+    }
+
+    public bool stillBound() {
+        return self.lockStillBound() && self.outputStillBound();
+    }
+
+    public bool adoptPublished(int candidateDescriptor, string digest,
+                               int mode) {
+        int held = candidateDescriptor >= 0 ? dup(candidateDescriptor) : -1;
+        int reopened = AppImageOutputFiles.openRegular(
+            self.parentDescriptor, self.outputName);
+        struct stat status;
+        struct stat current;
+        bool exact = held >= 0 && reopened >= 0
+            && fstat(held, &status) == 0 && fstat(reopened, &current) == 0
+            && AppImageWorkSession.sameObject(&status, &current)
+            && SemuOwnedPaths.permissions(status.st_mode) == mode
+            && SemuOwnedFileDigest.descriptor(held).equals(digest);
+        if (reopened >= 0) { close(reopened); }
+        if (!exact) {
+            if (held >= 0) { close(held); }
+            return false;
+        }
+        if (self.outputDescriptor >= 0) { close(self.outputDescriptor); }
+        self.outputPresent = true;
+        self.outputDescriptor = held;
+        self.outputDevice = (unsigned long long)status.st_dev;
+        self.outputInode = (unsigned long long)status.st_ino;
+        self.outputSize = (unsigned long long)status.st_size;
+        self.outputMode = SemuOwnedPaths.permissions(status.st_mode);
+        self.outputDigest = digest;
+        return self.stillBound();
+    }
+
+    public AppImageContractResult unlock() {
+        if (!self.valid || self.descriptor < 0) {
+            return AppImageContractResult.failure(
+                "AppImage assembly lock is not held");
+        }
+        bool bound = self.stillBound();
+        bool unlocked = bound && AppImageAssemblyLock.set(
+            self.descriptor, (short)F_UNLCK);
+        if (self.outputDescriptor >= 0) { close(self.outputDescriptor); }
+        int closed = close(self.descriptor);
+        int parentClosed = close(self.parentDescriptor);
+        self.outputDescriptor = -1;
+        self.descriptor = -1;
+        self.parentDescriptor = -1;
+        self.valid = false;
+        return unlocked && closed == 0 && parentClosed == 0
+            ? AppImageContractResult.success()
+            : AppImageContractResult.failure(
+                "cannot release AppImage assembly lock");
+    }
+}
+
+class AppImageOutputTransaction {
+    class bool writeJournal(AppImageAssemblyLock lock, string state,
+                            string candidateDigest, int candidateMode) {
+        return AppImageOutputFiles.writeOwnedMetadata(
+            lock.parentDescriptor, lock.journalName,
+            lock.journalTemporaryName,
+            AppImageOutputJournal.document(state, lock.outputPresent,
+                lock.outputDigest, lock.outputMode,
+                candidateDigest, candidateMode));
+    }
+
+    class AppImageContractResult recoverPending(
+            AppImageAssemblyLock lock) {
+        if (!lock.ok() || !lock.lockStillBound()) {
+            return AppImageContractResult.failure(
+                "cannot recover without the canonical output lock");
+        }
+        bool journalPresent = !AppImageOutputFiles.absent(
+            lock.parentDescriptor, lock.journalName);
+        bool journalTemporaryPresent = !AppImageOutputFiles.absent(
+            lock.parentDescriptor, lock.journalTemporaryName);
+        if (!journalPresent && journalTemporaryPresent) {
+            string pending = AppImageOutputFiles.readOwnedMetadata(
+                lock.parentDescriptor, lock.journalTemporaryName);
+            AppImageOutputJournal parsed =
+                AppImageOutputJournal.parse(pending);
+            if (!parsed.ok() || renameat(lock.parentDescriptor,
+                    lock.journalTemporaryName, lock.parentDescriptor,
+                    lock.journalName) != 0
+                    || fsync(lock.parentDescriptor) != 0) {
+                return AppImageContractResult.failure(
+                    "incomplete AppImage journal cannot be recovered");
+            }
+            journalPresent = true;
+            journalTemporaryPresent = false;
+        }
+        if (!journalPresent) {
+            bool previousAbsent = AppImageOutputFiles.absent(
+                lock.parentDescriptor, lock.previousName);
+            if (!previousAbsent) {
+                return AppImageContractResult.failure(
+                    "orphaned AppImage rollback inode requires recovery");
+            }
+            if (!AppImageOutputFiles.absent(
+                    lock.parentDescriptor, lock.candidateName)) {
+                int candidate = AppImageOutputFiles.openRegular(
+                    lock.parentDescriptor, lock.candidateName);
+                bool removed = candidate >= 0;
+                if (candidate >= 0) { close(candidate); }
+                removed = removed && unlinkat(lock.parentDescriptor,
+                    lock.candidateName, 0) == 0
+                    && fsync(lock.parentDescriptor) == 0;
+                if (!removed) {
+                    return AppImageContractResult.failure(
+                        "orphaned AppImage candidate cannot be removed");
+                }
+            }
+            return AppImageContractResult.success();
+        }
+
+        string document = AppImageOutputFiles.readOwnedMetadata(
+            lock.parentDescriptor, lock.journalName);
+        AppImageOutputJournal journal =
+            AppImageOutputJournal.parse(document);
+        if (!journal.ok()) {
+            return AppImageContractResult.failure(journal.error);
+        }
+        bool outputAbsent = AppImageOutputFiles.absent(
+            lock.parentDescriptor, lock.outputName);
+        bool outputCandidate = !outputAbsent
+            && AppImageOutputFiles.matches(lock.parentDescriptor,
+                lock.outputName, journal.candidateDigest,
+                journal.candidateMode);
+        bool previousAbsent = AppImageOutputFiles.absent(
+            lock.parentDescriptor, lock.previousName);
+        bool previousExact = !previousAbsent && journal.priorPresent
+            && AppImageOutputFiles.matches(lock.parentDescriptor,
+                lock.previousName, journal.priorDigest, journal.priorMode);
+        bool candidateRemoved = AppImageOutputFiles.removeExact(
+            lock.parentDescriptor, lock.candidateName,
+            journal.candidateDigest, journal.candidateMode);
+        if (!candidateRemoved) {
+            return AppImageContractResult.failure(
+                "AppImage recovery candidate differs from its journal");
+        }
+
+        bool recovered = false;
+        if (journal.state.equals("committed")) {
+            recovered = outputCandidate
+                && (!journal.priorPresent || previousAbsent || previousExact)
+                && (!journal.priorPresent || previousAbsent || unlinkat(
+                    lock.parentDescriptor, lock.previousName, 0) == 0);
+        } else if (journal.priorPresent) {
+            if (previousExact) {
+                bool removedOutput = outputAbsent
+                    || (outputCandidate && unlinkat(lock.parentDescriptor,
+                        lock.outputName, 0) == 0);
+                recovered = removedOutput && renameat(
+                    lock.parentDescriptor, lock.previousName,
+                    lock.parentDescriptor, lock.outputName) == 0;
+            } else {
+                recovered = AppImageOutputFiles.matches(
+                    lock.parentDescriptor, lock.outputName,
+                    journal.priorDigest, journal.priorMode);
+            }
+        } else {
+            recovered = outputAbsent
+                || (outputCandidate && unlinkat(lock.parentDescriptor,
+                    lock.outputName, 0) == 0);
+        }
+        recovered = recovered
+            && AppImageOutputFiles.removeOwnedMetadata(
+                lock.parentDescriptor, lock.journalTemporaryName)
+            && AppImageOutputFiles.removeOwnedMetadata(
+                lock.parentDescriptor, lock.journalName)
+            && fsync(lock.parentDescriptor) == 0
+            && lock.lockStillBound();
+        return recovered ? AppImageContractResult.success()
+            : AppImageContractResult.failure(
+                "AppImage publication recovery could not restore a complete state");
+    }
+
+    class AppImageContractResult rollback(
+            AppImageAssemblyLock lock, bool priorMoved,
+            bool candidatePublished, string candidateDigest,
+            int candidateMode, string priorDigest, int priorMode,
+            string cause) {
+        bool restored = lock.ok() && lock.lockStillBound();
+        if (restored && priorMoved) {
+            restored = AppImageOutputFiles.matches(
+                lock.parentDescriptor, lock.previousName,
+                priorDigest, priorMode);
+        }
+        if (restored && candidatePublished) {
+            restored = AppImageOutputFiles.removeExact(
+                lock.parentDescriptor, lock.outputName,
+                candidateDigest, candidateMode);
+        }
+        if (restored && priorMoved) {
+            restored = renameat(lock.parentDescriptor, lock.previousName,
+                    lock.parentDescriptor, lock.outputName) == 0;
+        }
+        restored = restored && AppImageOutputFiles.removeExact(
+            lock.parentDescriptor, lock.candidateName,
+            candidateDigest, candidateMode);
+        restored = restored
+            && AppImageOutputFiles.removeOwnedMetadata(
+                lock.parentDescriptor, lock.journalTemporaryName)
+            && AppImageOutputFiles.removeOwnedMetadata(
+                lock.parentDescriptor, lock.journalName)
+            && fsync(lock.parentDescriptor) == 0
+            && lock.stillBound();
+        return AppImageContractResult.failure(cause + (restored
+            ? "; AppImage publication rolled back"
+            : "; AppImage output recovery required"));
+    }
+
+    class AppImageContractResult publish(
+            AppImageVerificationSnapshot snapshot,
+            AppImageAssemblyLock lock, int mode,
+            bool failAfterRename = false) {
+        if (!snapshot.ok() || !snapshot.snapshotStillBound()
+                || !lock.ok() || !lock.stillBound()
+                || !AppImageNixReleaseProof.digest(snapshot.digest)
+                || !AppImageOutputFiles.absent(
+                    lock.parentDescriptor, lock.candidateName)
+                || !AppImageOutputFiles.absent(
+                    lock.parentDescriptor, lock.previousName)
+                || !AppImageOutputFiles.absent(
+                    lock.parentDescriptor, lock.journalName)
+                || !AppImageOutputFiles.absent(
+                    lock.parentDescriptor, lock.journalTemporaryName)) {
+            return AppImageContractResult.failure(
+                "verified AppImage snapshot is not bound for publication");
+        }
+        int candidate = openat(lock.parentDescriptor, lock.candidateName,
+            (int)O_RDWR | (int)O_CREAT | (int)O_EXCL
+                | (int)O_NOFOLLOW | (int)O_CLOEXEC,
+            (mode_t)384); // 0600
+        bool staged = candidate >= 0
+            && SemuOwnedFileImport.copy(snapshot.descriptor, candidate)
+            && fchmod(candidate, (mode_t)mode) == 0
+            && fsync(candidate) == 0;
+        string candidateDigest = staged
+            ? SemuOwnedFileDigest.descriptor(candidate) : "";
+        staged = staged && candidateDigest.equals(snapshot.digest)
+            && snapshot.snapshotStillBound() && lock.stillBound();
+        if (!staged) {
+            if (candidate >= 0) { close(candidate); }
+            unlinkat(lock.parentDescriptor, lock.candidateName, 0);
+            return AppImageContractResult.failure(
+                "descriptor-backed AppImage candidate staging failed");
+        }
+        if (!AppImageOutputTransaction.writeJournal(
+                lock, "prepared", candidateDigest, mode)) {
+            close(candidate);
+            unlinkat(lock.parentDescriptor, lock.candidateName, 0);
+            return AppImageContractResult.failure(
+                "cannot persist AppImage publication intent");
+        }
+
+        bool priorPresent = lock.outputPresent;
+        string priorDigest = lock.outputDigest;
+        bool priorMoved = !priorPresent
+            || renameat(lock.parentDescriptor, lock.outputName,
+                lock.parentDescriptor, lock.previousName) == 0;
+        if (!priorMoved || (priorPresent
+                && !AppImageOutputFiles.matches(lock.parentDescriptor,
+                    lock.previousName, priorDigest))) {
+            AppImageContractResult rolled =
+                AppImageOutputTransaction.rollback(
+                    lock, priorMoved && priorPresent, false,
+                    candidateDigest, mode, priorDigest, lock.outputMode,
+                    "cannot retain the prior AppImage output");
+            close(candidate);
+            return rolled;
+        }
+        bool candidatePublished = renameat(lock.parentDescriptor,
+            lock.candidateName, lock.parentDescriptor,
+            lock.outputName) == 0;
+        if (!candidatePublished
+                || !AppImageOutputTransaction.writeJournal(
+                    lock, "renamed", candidateDigest, mode)) {
+            AppImageContractResult rolled =
+                AppImageOutputTransaction.rollback(
+                    lock, priorPresent, candidatePublished,
+                    candidateDigest, mode, priorDigest, lock.outputMode,
+                    "cannot atomically rename the AppImage candidate");
+            close(candidate);
+            return rolled;
+        }
+        bool verified = !failAfterRename
+            && AppImageOutputFiles.matches(lock.parentDescriptor,
+                lock.outputName, candidateDigest, mode)
+            && snapshot.snapshotStillBound()
+            && lock.lockStillBound()
+            && fsync(lock.parentDescriptor) == 0;
+        if (!verified) {
+            AppImageContractResult rolled =
+                AppImageOutputTransaction.rollback(
+                    lock, priorPresent, true,
+                    candidateDigest, mode, priorDigest, lock.outputMode,
+                    "published AppImage failed post-rename verification");
+            close(candidate);
+            return rolled;
+        }
+        if (!AppImageOutputTransaction.writeJournal(
+                lock, "committed", candidateDigest, mode)) {
+            AppImageContractResult rolled =
+                AppImageOutputTransaction.rollback(
+                    lock, priorPresent, true,
+                    candidateDigest, mode, priorDigest, lock.outputMode,
+                    "published AppImage could not be committed");
+            close(candidate);
+            return rolled;
+        }
+        if (!lock.adoptPublished(candidate, candidateDigest, mode)) {
+            close(candidate);
+            return AppImageContractResult.failure(
+                "AppImage was committed but its output lease requires recovery");
+        }
+        bool cleaned = (!priorPresent
+                || AppImageOutputFiles.removeExact(lock.parentDescriptor,
+                    lock.previousName, priorDigest))
+            && AppImageOutputFiles.removeOwnedMetadata(
+                lock.parentDescriptor, lock.journalName)
+            && fsync(lock.parentDescriptor) == 0
+            && lock.stillBound();
+        bool closed = close(candidate) == 0;
+        return cleaned && closed ? AppImageContractResult.success()
+            : AppImageContractResult.failure(
+                "AppImage was committed but publication cleanup requires recovery");
+    }
+}

@@ -1,0 +1,226 @@
+// Run-bound evidence atoms shared by the host verifier and Deck helper.
+
+import std.{json, vector}
+
+class DeckRunEvidence {
+    class bool lowerHex(string value, int length) {
+        if (value.len() != length) { return false; }
+        for character in value {
+            bool digit = character >= '0' && character <= '9';
+            bool lower = character >= 'a' && character <= 'f';
+            if (!digit && !lower) { return false; }
+        }
+        return true;
+    }
+
+    class bool decimal(string value) {
+        if (value.isEmpty() || (value.len() > 1 && value.startsWith("0"))) {
+            return false;
+        }
+        for character in value {
+            if (character < '0' || character > '9') { return false; }
+        }
+        return true;
+    }
+
+    class bool positiveDecimal(string value) {
+        return DeckRunEvidence.decimal(value) && !value.equals("0");
+    }
+
+    class bool notBefore(string value, string minimum) {
+        if (!DeckRunEvidence.decimal(value)
+                || !DeckRunEvidence.decimal(minimum)) {
+            return false;
+        }
+        if (value.len() != minimum.len()) {
+            return value.len() > minimum.len();
+        }
+        return value >= minimum;
+    }
+
+    class bool safeRelative(string value) {
+        return !value.isEmpty() && !value.startsWith("/")
+            && !value.startsWith("../") && !value.contains("/../")
+            && !value.endsWith("/..") && !value.contains("\n")
+            && !value.contains("\r");
+    }
+
+    class JsonValue binding(string runId, string harnessRevision,
+                            string artifactSha256, string requestSha256,
+                            string startedNs) {
+        JsonValue result = JsonValue.makeObject();
+        result.set("id", JsonValue.makeString(runId));
+        result.set("harness_revision",
+            JsonValue.makeString(harnessRevision));
+        result.set("artifact_sha256",
+            JsonValue.makeString(artifactSha256));
+        result.set("request_sha256", JsonValue.makeString(requestSha256));
+        result.set("started_ns", JsonValue.makeString(startedNs));
+        return result;
+    }
+
+    class string text(JsonValue value, string name) {
+        return value.get(name).isString()
+            ? value.get(name).asString() : "";
+    }
+
+    class string started(JsonValue receipt) {
+        return DeckRunEvidence.text(receipt.get("run"), "started_ns");
+    }
+
+    class string verifyBinding(JsonValue receipt, string runId,
+                               string harnessRevision,
+                               string artifactSha256,
+                               string requestSha256) {
+        JsonValue run = receipt.get("run");
+        if (!run.isObject()
+                || !DeckRunEvidence.lowerHex(runId, 32)
+                || !DeckRunEvidence.lowerHex(harnessRevision, 40)
+                || !DeckRunEvidence.lowerHex(artifactSha256, 64)
+                || !DeckRunEvidence.lowerHex(requestSha256, 64)
+                || !DeckRunEvidence.text(run, "id").equals(runId)
+                || !DeckRunEvidence.text(
+                    run, "harness_revision").equals(harnessRevision)
+                || !DeckRunEvidence.text(
+                    run, "artifact_sha256").equals(artifactSha256)
+                || !DeckRunEvidence.text(
+                    run, "request_sha256").equals(requestSha256)
+                || !DeckRunEvidence.positiveDecimal(
+                    DeckRunEvidence.text(run, "started_ns"))) {
+            return "receipt is not bound to the exact acceptance run/request/revision/artifact";
+        }
+        return "";
+    }
+
+    class JsonValue artifact(string runId, string name, string sha256,
+                             string bytes, string modifiedNs) {
+        JsonValue result = JsonValue.makeObject();
+        result.set("run_id", JsonValue.makeString(runId));
+        result.set("name", JsonValue.makeString(name));
+        result.set("sha256", JsonValue.makeString(sha256));
+        result.set("bytes", JsonValue.makeString(bytes));
+        result.set("modified_ns", JsonValue.makeString(modifiedNs));
+        return result;
+    }
+
+    class JsonValue findArtifact(JsonValue receipt, string name) {
+        JsonValue artifacts = receipt.get("artifacts");
+        if (!artifacts.isArray()) { return JsonValue.makeNull(); }
+        for (int index = 0; index < artifacts.size(); index++) {
+            JsonValue artifact = artifacts.at(index);
+            if (DeckRunEvidence.text(artifact, "name").equals(name)) {
+                return artifact;
+            }
+        }
+        return JsonValue.makeNull();
+    }
+
+    class string artifactDigest(JsonValue receipt, string name) {
+        return DeckRunEvidence.text(
+            DeckRunEvidence.findArtifact(receipt, name), "sha256");
+    }
+
+    class bool operatorScreenshot(string name) {
+        if (!name.startsWith("operator-radial-")
+                || !name.endsWith(".png")) {
+            return false;
+        }
+        string index = name.substring(
+            "operator-radial-".len(), name.len()
+                - "operator-radial-".len() - ".png".len());
+        return DeckRunEvidence.decimal(index);
+    }
+
+    class string verifyArtifacts(JsonValue receipt, string runId,
+                                 Vector<string> required,
+                                 bool allowOperatorScreenshots) {
+        JsonValue artifacts = receipt.get("artifacts");
+        string startedNs = DeckRunEvidence.started(receipt);
+        if (!artifacts.isArray() || artifacts.size() == 0) {
+            return "run artifact manifest is missing";
+        }
+        Vector<string> found = [];
+        int operatorScreenshots = 0;
+        for (int index = 0; index < artifacts.size(); index++) {
+            JsonValue artifact = artifacts.at(index);
+            string artifactRun = DeckRunEvidence.text(artifact, "run_id");
+            string name = DeckRunEvidence.text(artifact, "name");
+            string sha256 = DeckRunEvidence.text(artifact, "sha256");
+            string bytes = DeckRunEvidence.text(artifact, "bytes");
+            string modifiedNs = DeckRunEvidence.text(
+                artifact, "modified_ns");
+            bool expected = required.contains(name);
+            bool operatorScreenshot = allowOperatorScreenshots
+                && DeckRunEvidence.operatorScreenshot(name);
+            if (!artifact.isObject() || !artifactRun.equals(runId)
+                    || !DeckRunEvidence.safeRelative(name)
+                    || !DeckRunEvidence.lowerHex(sha256, 64)
+                    || !DeckRunEvidence.positiveDecimal(bytes)
+                    || !DeckRunEvidence.notBefore(modifiedNs, startedNs)
+                    || (!expected && !operatorScreenshot)
+                    || found.contains(name)) {
+                return "run artifact manifest contains stale, duplicate, or foreign evidence";
+            }
+            found.push(name);
+            if (operatorScreenshot) { operatorScreenshots++; }
+        }
+        for name in required {
+            if (!found.contains(name)) {
+                return "run artifact manifest is missing required evidence: "
+                    + name;
+            }
+        }
+        if (allowOperatorScreenshots && operatorScreenshots < 1) {
+            return "physical radial run has no run-bound operator screenshot";
+        }
+        return "";
+    }
+
+    class JsonValue phase(string runId, string observedNs) {
+        JsonValue result = JsonValue.makeObject();
+        result.set("run_id", JsonValue.makeString(runId));
+        result.set("observed_ns", JsonValue.makeString(observedNs));
+        return result;
+    }
+
+    class string phaseTime(JsonValue phases, string name, string runId,
+                           string startedNs) {
+        JsonValue phase = phases.get(name);
+        string observedNs = DeckRunEvidence.text(phase, "observed_ns");
+        return phase.isObject()
+            && DeckRunEvidence.text(phase, "run_id").equals(runId)
+            && DeckRunEvidence.notBefore(observedNs, startedNs)
+            ? observedNs : "";
+    }
+
+    class string verifyPhases(JsonValue receipt, string runId) {
+        JsonValue phases = receipt.get("phases");
+        string startedNs = DeckRunEvidence.started(receipt);
+        string launch = DeckRunEvidence.phaseTime(
+            phases, "launch", runId, startedNs);
+        string gameplay = DeckRunEvidence.phaseTime(
+            phases, "gameplay", runId, startedNs);
+        string quit = DeckRunEvidence.phaseTime(
+            phases, "quit", runId, startedNs);
+        string returned = DeckRunEvidence.phaseTime(
+            phases, "es_de_return", runId, startedNs);
+        if (!phases.isObject() || launch.isEmpty() || gameplay.isEmpty()
+                || quit.isEmpty() || returned.isEmpty()
+                || !DeckRunEvidence.notBefore(gameplay, launch)
+                || !DeckRunEvidence.notBefore(quit, gameplay)
+                || !DeckRunEvidence.notBefore(returned, quit)) {
+            return "launch/gameplay/quit/ES-DE-return phases are missing, cross-run, or unordered";
+        }
+        JsonValue state = phases.get("state");
+        if (!state.isObject()
+                || !DeckRunEvidence.text(
+                    state, "run_id").equals(runId)
+                || !DeckRunEvidence.notBefore(
+                    DeckRunEvidence.text(state, "verified_ns"), startedNs)
+                || !state.get("required").isBool()
+                || !state.get("observed").isBool()) {
+            return "state evidence phase is missing or cross-run";
+        }
+        return "";
+    }
+}

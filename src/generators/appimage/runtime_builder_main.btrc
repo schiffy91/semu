@@ -7,16 +7,21 @@ int main(int argc, char** argv) {
     CliArgs arguments = CliArgs(argc, argv);
     string repo = arguments.valueAfter("--repo", "");
     string output = arguments.valueAfter("--output", "");
+    string cacheRoot = arguments.valueAfter("--cache-root", "");
+    string packageAttribute = arguments.valueAfter(
+        "--package", "steamdeck-runtime");
     AppImageRuntimeBuildPlan plan = AppImageRuntimeBuildPlan();
     AppImageRuntimeBuildResult loaded =
-        AppImageRuntimeBuildPlan.create(repo, output, plan);
+        AppImageRuntimeBuildPlan.create(
+            repo, output, plan, cacheRoot, packageAttribute);
     if (!loaded.ok()) {
         print("Semu AppImage runtime: " + loaded.error);
         return 2;
     }
     if (arguments.has("--plan")) {
         print(plan.snapshot + "\n" + plan.exportRoot + "\n"
-            + plan.output + "\n" + plan.image + "\n" + plan.volume);
+            + plan.output + "\n" + plan.image + "\n"
+            + plan.packageAttribute);
         return 0;
     }
     AppImageRuntimeBuildResult built = AppImageRuntimeBuilder(plan).run();

@@ -1,0 +1,247 @@
+// Adversarial contract for runtime-builder Podman container ownership.
+
+import std.{fs, io, platform, strings, vector}
+import ../../src/generators/appimage/runtime_builder.btrc
+
+class AppImageRuntimeBuilderLifecycleContract {
+    class string fullContainerId() {
+        return "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+    }
+
+    class bool containsPair(
+            Vector<string> arguments, string option, string value) {
+        for (int index = 0; index + 1 < arguments.size(); index++) {
+            if (arguments.get(index).equals(option)
+                    && arguments.get(index + 1).equals(value)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    class bool contains(Vector<string> arguments, string value) {
+        for argument in arguments {
+            if (argument.equals(value)) { return true; }
+        }
+        return false;
+    }
+
+    class int occurrences(Vector<string> arguments, string value) {
+        int count = 0;
+        for argument in arguments {
+            if (argument.equals(value)) { count++; }
+        }
+        return count;
+    }
+
+    class bool exact(
+            Vector<string> arguments, Vector<string> expected) {
+        if (arguments.size() != expected.size()) { return false; }
+        for (int index = 0; index < arguments.size(); index++) {
+            if (!arguments.get(index).equals(expected.get(index))) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    class bool identifierPolicy() {
+        string valid =
+            AppImageRuntimeBuilderLifecycleContract.fullContainerId();
+        return AppImagePodmanContainerId.valid(valid)
+            && !AppImagePodmanContainerId.valid(valid.substring(0, 63))
+            && !AppImagePodmanContainerId.valid(valid + "0")
+            && !AppImagePodmanContainerId.valid(
+                "A" + valid.substring(1, 63))
+            && !AppImagePodmanContainerId.valid(
+                valid.substring(0, 63) + "g")
+            && !AppImagePodmanContainerId.valid(valid + "\n")
+            && !AppImagePodmanContainerId.valid("");
+    }
+
+    class bool generatedArguments() {
+        AppImageRuntimeBuildPlan plan = AppImageRuntimeBuildPlan();
+        string ownerCidfile = "/owned/private/store-owner.cid";
+        string phaseCidfile = "/owned/private/phase-1.cid";
+        string ownerId =
+            AppImageRuntimeBuilderLifecycleContract.fullContainerId();
+        Vector<string> owner =
+            AppImageRuntimePodmanLifecycle.ownerArguments(
+                plan, ownerCidfile);
+        Vector<string> phase =
+            AppImageRuntimePodmanLifecycle.phaseArguments(
+                ownerId, phaseCidfile, [
+                    "--entrypoint", "/bin/sh", plan.image,
+                    "-c", "exit 0"
+                ]);
+        Vector<string> start =
+            AppImageRuntimePodmanLifecycle.startArguments(ownerId);
+        Vector<string> ownerCleanup =
+            AppImageRuntimePodmanLifecycle.cleanupArguments(ownerId);
+        Vector<string> phaseCleanup =
+            AppImageRuntimePodmanLifecycle.cleanupArguments(ownerId, true);
+        Vector<string> emptyArguments = [];
+        return owner.size() > 0 && owner.get(0).equals("create")
+            && AppImageRuntimeBuilderLifecycleContract.containsPair(
+                owner, "--cidfile", ownerCidfile)
+            && AppImageRuntimeBuilderLifecycleContract.containsPair(
+                owner, "--platform", "linux/amd64")
+            && AppImageRuntimeBuilderLifecycleContract.containsPair(
+                owner, "--mount", "type=volume,destination=/nix,rw")
+            && !AppImageRuntimeBuilderLifecycleContract.contains(
+                owner, "--rm")
+            && phase.size() > 0 && phase.get(0).equals("create")
+            && AppImageRuntimeBuilderLifecycleContract.contains(
+                phase, "--rm")
+            && AppImageRuntimeBuilderLifecycleContract.containsPair(
+                phase, "--cidfile", phaseCidfile)
+            && AppImageRuntimeBuilderLifecycleContract.containsPair(
+                phase, "--volumes-from", ownerId)
+            && AppImageRuntimeBuilderLifecycleContract.occurrences(
+                phase, "--volumes-from") == 1
+            && AppImageRuntimeBuilderLifecycleContract.exact(
+                start, ["start", "--attach", ownerId])
+            && !ownerCidfile.equals(phaseCidfile)
+            && AppImageRuntimeBuilderLifecycleContract.exact(
+                ownerCleanup, [
+                    "rm", "--force", "--volumes", ownerId
+                ])
+            && AppImageRuntimeBuilderLifecycleContract.exact(
+                phaseCleanup, [
+                    "rm", "--force", "--volumes", "--ignore", ownerId
+                ])
+            && AppImageRuntimePodmanLifecycle.phaseArguments(
+                ownerId.substring(0, 63), phaseCidfile,
+                emptyArguments).isEmpty()
+            && AppImageRuntimePodmanLifecycle.cleanupArguments(
+                ownerId.substring(0, 63)).isEmpty()
+            && AppImageRuntimePodmanLifecycle.ownerArguments(
+                plan, "").isEmpty();
+    }
+
+    class bool sourcePolicy() {
+        string source = FileSystem.readText(
+            "src/generators/appimage/runtime_builder.btrc");
+        return !source.isEmpty()
+            && !source.contains("\"--name\"")
+            && !source.contains("SEMU_APPIMAGE_NIX_VOLUME")
+            && !source.contains("volume exists")
+            && !source.contains("volume rm")
+            && !source.contains("container exists")
+            && !source.contains("type=volume,source=")
+            && !source.contains("public string volume")
+            && !source.contains("plan.volume + \":/nix\"")
+            && Strings.split(source, "--no-check-sigs").size() == 2
+            && AppImageRuntimeExporter.containerProgram().contains(
+                "--no-check-sigs --to \"local?root=/export\"")
+            && source.contains("\"--cidfile\"")
+            && source.contains("\"--volumes-from\"")
+            && source.contains("type=volume,destination=/nix,rw")
+            && source.contains("\"--delete-excluded\"")
+            && source.contains("hash path --type sha256 --base16 /src")
+            && !source.contains("for relative in flake.nix flake.lock")
+            && source.contains("AppImagePodmanContainerId.valid")
+            && source.contains("phase.completeRemoval()")
+            && source.contains("self.owner.completeRemoval()");
+    }
+
+    class bool heldCidfileRejectsReplacement() {
+        string root = FileSystem.tempDir(
+            "semu-runtime-builder-cidfile");
+        if (root.isEmpty()) { return false; }
+        string cidfile = PathTools.join(root, "owner.cid");
+        string displaced = PathTools.join(root, "owner.displaced");
+        string containerId =
+            AppImageRuntimeBuilderLifecycleContract.fullContainerId();
+        bool prepared = FileSystem.chmod(root, 448) == 0
+            && FileSystem.writeText(cidfile, containerId + "\n")
+            && FileSystem.chmod(cidfile, 420) == 0; // 0644
+        int parentDescriptor = prepared
+            ? UnixFileSystem.openDirectoryNoFollow(root) : -1;
+        AppImagePodmanContainerIdLease lease = parentDescriptor >= 0
+            ? AppImagePodmanContainerIdLease.capture(
+                parentDescriptor, "owner.cid")
+            : AppImagePodmanContainerIdLease();
+        bool replaced = lease.ok()
+            && rename(cidfile, displaced) == 0
+            && FileSystem.writeText(cidfile, containerId + "\n")
+            && FileSystem.chmod(cidfile, 420) == 0;
+        AppImageRuntimeBuildResult rejected = replaced
+            ? lease.completeRemoval()
+            : AppImageRuntimeBuildResult.success();
+        bool replacementPreserved = replaced
+            && FileSystem.readText(cidfile).equals(containerId + "\n");
+        if (parentDescriptor >= 0) { close(parentDescriptor); }
+        FileSystem.removeRecursive(root);
+        return replaced && !rejected.ok() && replacementPreserved;
+    }
+
+    class bool livePodmanLifecycle() {
+        string root = FileSystem.tempDir(
+            "semu-runtime-builder-podman");
+        if (root.isEmpty()) { return false; }
+        AppImageRuntimeBuildPlan plan = AppImageRuntimeBuildPlan();
+        plan.cacheRoot = root;
+        AppImageRuntimePodmanLifecycle containers =
+            AppImageRuntimePodmanLifecycle();
+        AppImageRuntimeBuildResult started = containers.start(plan);
+        AppImageRuntimeBuildResult written = started.ok()
+            ? containers.runPhase("write anonymous Nix-store probe", [
+                "--network", "none",
+                "--entrypoint", "/bin/sh", plan.image,
+                "-euc", "printf ok > /nix/semu-lifecycle-probe"
+            ]) : started;
+        AppImageRuntimeBuildResult read = written.ok()
+            ? containers.runPhase("read inherited Nix-store probe", [
+                "--network", "none",
+                "--entrypoint", "/bin/sh", plan.image,
+                "-euc",
+                "test \"$(cat /nix/semu-lifecycle-probe)\" = ok"
+            ]) : written;
+        string handoffPath = containers.handoffPath;
+        AppImageRuntimeBuildResult closed = containers.handoffReady
+            ? containers.close() : AppImageRuntimeBuildResult.success();
+        bool passed = read.ok() && closed.ok()
+            && !FileStatus(handoffPath).linkFound;
+        if (!passed) {
+            print("runtime builder lifecycle live detail: start="
+                + started.error + " write=" + written.error
+                + " read=" + read.error + " close=" + closed.error);
+        }
+        FileSystem.removeRecursive(root);
+        return passed;
+    }
+
+    class int run() {
+        if (!AppImageRuntimeBuilderLifecycleContract.identifierPolicy()) {
+            print("runtime builder lifecycle: CID policy regressed");
+            return 1;
+        }
+        if (!AppImageRuntimeBuilderLifecycleContract.generatedArguments()) {
+            print("runtime builder lifecycle: generated argv regressed");
+            return 1;
+        }
+        if (!AppImageRuntimeBuilderLifecycleContract.sourcePolicy()) {
+            print("runtime builder lifecycle: source policy regressed");
+            return 1;
+        }
+        if (!AppImageRuntimeBuilderLifecycleContract
+                .heldCidfileRejectsReplacement()) {
+            print("runtime builder lifecycle: cidfile replacement was accepted");
+            return 1;
+        }
+        if (Environment.get(
+                "SEMU_RUNTIME_BUILDER_LIVE_PODMAN", "0").equals("1")
+                && !AppImageRuntimeBuilderLifecycleContract
+                    .livePodmanLifecycle()) {
+            print("runtime builder lifecycle: live Podman contract failed");
+            return 1;
+        }
+        print("runtime builder lifecycle contract: PASS");
+        return 0;
+    }
+}
+
+int main() {
+    return AppImageRuntimeBuilderLifecycleContract.run();
+}

@@ -10,24 +10,8 @@ import ./renderer_gl_api.btrc
 import ./librashader_gl.btrc
 import ./renderer_file_hash.btrc
 
-int RGL_RGBA = 0x1908;
-int RGL_RGBA8 = 0x8058;
-int RGL_UNSIGNED_BYTE = 0x1401;
-int RGL_TEXTURE_MIN_FILTER = 0x2801;
-int RGL_TEXTURE_MAG_FILTER = 0x2800;
-int RGL_TEXTURE_BASE_LEVEL = 0x813C;
-int RGL_TEXTURE_MAX_LEVEL = 0x813D;
-int RGL_TEXTURE_WRAP_S = 0x2802;
-int RGL_TEXTURE_WRAP_T = 0x2803;
-int RGL_LINEAR = 0x2601;
-int RGL_NEAREST = 0x2600;
-int RGL_CLAMP_TO_EDGE = 0x812F;
-int RGL_FRAMEBUFFER_COMPLETE = 0x8CD5;
-int RGL_COLOR_ATTACHMENT0 = 0x8CE0;
-int RGL_COLOR_BUFFER_BIT = 0x00004000;
 int RGL_VERTEX_SHADER = 0x8B31;
 int RGL_FRAGMENT_SHADER = 0x8B30;
-int RGL_COMPILE_STATUS = 0x8B81;
 int RGL_LINK_STATUS = 0x8B82;
 int RGL_TRIANGLES = 0x0004;
 int RGL_SRC_ALPHA = 0x0302;
@@ -46,11 +30,19 @@ struct RendererNormalizedHole {
     float height;
 };
 
+struct RendererCanvasPolicy {
+    int minimum_aperture;
+    int min_integer_scale;
+    float max_width;
+    float max_height;
+};
+
 struct RendererVariantConfig {
     int declared;
     struct RendererPath shader_preset;
     struct RendererPath art;
     struct RendererPath glass;
+    struct RendererCanvasPolicy canvas;
     struct RendererNormalizedHole screen;
     struct RendererNormalizedHole primary;
     struct RendererNormalizedHole secondary;
@@ -78,10 +70,11 @@ struct RendererConfig {
 
 struct RendererGlResources {
     int ready;
-    void* owner_context;
+    unsigned long long owner_context_generation;
     unsigned int program;
     unsigned int vertex_array;
     unsigned int extraction_framebuffer;
+    struct RendererGlAtomicTarget composition;
     unsigned int raw_textures[2];
     unsigned int shader_textures[2];
     unsigned int bezel_textures[4];
@@ -146,7 +139,7 @@ void main(){
  if(uPass<1.5){bool a=inside(p,uRect);bool b=uDual>0.5&&inside(p,uRect2);if(!a&&!b)discard;
   vec2 q=a?rotatedUv(uv(p,uRect),uRotation):rotatedUv(uv(p,uRect2),uRotation2);
   vec3 c=a?texture(uGame,q).rgb:texture(uGame2,q).rgb;
-  if(uHasGlass>0.5&&inside(p,uBezelRect)){vec4 g=texture(uGlass,artUv(p));c=1.0-(1.0-c)*(1.0-g.rgb*g.a*clamp(uReflect,0.0,1.0));}
+  if(uHasGlass>0.5){vec2 gq=a?uv(p,uRect):uv(p,uRect2);gq.y=1.0-gq.y;vec4 g=texture(uGlass,gq);c=1.0-(1.0-c)*(1.0-g.rgb*g.a*clamp(uReflect,0.0,1.0));}
   frag=vec4(c,1.0);return;}
  if(uPass<2.5){if(uHasArt<0.5||!inside(p,uBezelRect)||inside(p,uRect)||(uDual>0.5&&inside(p,uRect2)))discard;frag=texture(uBezel,artUv(p));return;}
  if(uMenuOn<0.5||!inside(p,uMenuRect))discard;vec2 q=uv(p,uMenuRect);q.y=1.0-q.y;frag=texture(uMenu,q);
@@ -177,6 +170,25 @@ class RendererConfiguration {
         }
     }
 
+    class void parseCanvas(struct RendererCanvasPolicy* canvas, char* name) {
+        if (canvas == null) { return; }
+        memset(canvas, 0, sizeof(struct RendererCanvasPolicy));
+        char* value = getenv(name);
+        char mode[32];
+        memset(mode, 0, sizeof(mode));
+        if (value != null
+                && sscanf(value, "%31[^,],%d,%f,%f", mode,
+                    &canvas->min_integer_scale, &canvas->max_width,
+                    &canvas->max_height) == 4
+                && strcmp(mode, "minimum_aperture") == 0
+                && canvas->min_integer_scale > 0
+                && canvas->min_integer_scale <= 16
+                && canvas->max_width >= 1.0f && canvas->max_width <= 2.0f
+                && canvas->max_height >= 1.0f && canvas->max_height <= 2.0f) {
+            canvas->minimum_aperture = 1;
+        }
+    }
+
     class void loadVariant(struct RendererVariantConfig* variant, char* suffix) {
         char name[128];
         snprintf(name, sizeof(name), "SEMU_RENDER_SHADER_PRESET%s", suffix);
@@ -185,6 +197,8 @@ class RendererConfiguration {
         RendererConfiguration.copyEnvironment(&variant->art, name);
         snprintf(name, sizeof(name), "SEMU_RENDER_GLASS%s", suffix);
         RendererConfiguration.copyEnvironment(&variant->glass, name);
+        snprintf(name, sizeof(name), "SEMU_RENDER_CANVAS%s", suffix);
+        RendererConfiguration.parseCanvas(&variant->canvas, name);
         snprintf(name, sizeof(name), "SEMU_RENDER_SCREEN%s", suffix);
         RendererConfiguration.parseHole(&variant->screen, name);
         snprintf(name, sizeof(name), "SEMU_RENDER_SCREEN_PRI%s", suffix);
@@ -368,6 +382,22 @@ class RendererGeometry {
             RendererCompositionContract.contain(areaWidth, areaHeight,
                 resources->art_width[variantIndex],
                 resources->art_height[variantIndex], &canvas);
+            if (frame->surface_count == 1
+                    && variant->screen.set != 0
+                    && variant->canvas.minimum_aperture != 0
+                    && !RendererCompositionContract.minimumApertureCanvas(
+                    areaWidth, areaHeight,
+                    resources->art_width[variantIndex],
+                    resources->art_height[variantIndex],
+                    variant->screen.width, variant->screen.height,
+                    geometry->lanes[0].native_width,
+                    geometry->lanes[0].native_height,
+                    geometry->lanes[0].rotation,
+                    variant->canvas.min_integer_scale,
+                    variant->canvas.max_width,
+                    variant->canvas.max_height, &canvas)) {
+                return false;
+            }
             geometry->bezel_x = canvas.x;
             geometry->bezel_y = canvas.y;
             geometry->bezel_width = canvas.width;
@@ -442,6 +472,47 @@ class RendererResourceFailure {
 }
 
 class RendererResources {
+    class bool releaseCurrentContext(struct RendererGlApi* gl,
+                                     struct RendererGlResources* resources,
+                                     unsigned long long contextGeneration) {
+        if (gl == null || resources == null || contextGeneration == 0ULL
+                || (resources->owner_context_generation != 0ULL
+                    && resources->owner_context_generation
+                        != contextGeneration)) { return false; }
+        for (int index = 0; index < 2; index++) {
+            SemuLibrashaderOpenGLChain chain = index == 0
+                ? RendererShaderLane0 : RendererShaderLane1;
+            if (chain != null) {
+                if (!chain.close(contextGeneration)) {
+                    chain.abandonDestroyedContext();
+                }
+                delete chain;
+            }
+            if (index == 0) { RendererShaderLane0 = null; }
+            else { RendererShaderLane1 = null; }
+        }
+        if (gl->delete_textures != null) {
+            gl->delete_textures(2, resources->raw_textures);
+            gl->delete_textures(2, resources->shader_textures);
+            gl->delete_textures(4, resources->bezel_textures);
+            gl->delete_textures(4, resources->glass_textures);
+            gl->delete_textures(1, &resources->menu_texture);
+            gl->delete_textures(1, &resources->composition.texture);
+        }
+        if (gl->delete_framebuffers != null) {
+            gl->delete_framebuffers(1, &resources->extraction_framebuffer);
+            gl->delete_framebuffers(1, &resources->composition.framebuffer);
+        }
+        if (gl->delete_vertex_arrays != null) {
+            gl->delete_vertex_arrays(1, &resources->vertex_array);
+        }
+        if (gl->delete_program != null && resources->program != 0u) {
+            gl->delete_program(resources->program);
+        }
+        memset(resources, 0, sizeof(struct RendererGlResources));
+        return true;
+    }
+
     class void abandonDestroyedContext(struct RendererGlResources* resources) {
         if (resources == null) { return; }
         for (int index = 0; index < 2; index++) {
@@ -459,16 +530,15 @@ class RendererResources {
 
     class bool current(struct RendererGlApi* gl,
                        struct RendererGlResources* resources,
-                       void* context) {
+                       unsigned long long contextGeneration) {
         if (gl == null || gl->is_program == null || resources == null) {
             return false;
         }
-        // glIsProgram catches same-address context recreation, where comparing
-        // only the emulator's opaque context token cannot detect stale objects.
         bool programAlive = resources->program != 0u
             && gl->is_program(resources->program) != 0;
         return RendererContextContract.resourcesCurrent(
-            resources->owner_context, context, resources->ready,
+            resources->owner_context_generation, contextGeneration,
+            resources->ready,
             resources->program, programAlive);
     }
 
@@ -501,17 +571,6 @@ class RendererResources {
             (unsigned int)RGL_TEXTURE_WRAP_T, RGL_CLAMP_TO_EDGE);
     }
 
-    class unsigned int compile(struct RendererGlApi* gl, unsigned int kind,
-                               const char* source) {
-        unsigned int shader = gl->create_shader(kind);
-        char* text = (char*)source;
-        gl->shader_source(shader, 1, &text, null);
-        gl->compile_shader(shader);
-        int compiled = 0;
-        gl->get_shader_integer(shader, (unsigned int)RGL_COMPILE_STATUS, &compiled);
-        return compiled != 0 ? shader : 0;
-    }
-
     class bool loadImage(struct RendererGlApi* gl, char* path,
                          unsigned int* texture, int* width, int* height) {
         if (path == null || path[0] == 0) { return false; }
@@ -522,49 +581,114 @@ class RendererResources {
             stbi_image_free((void*)pixels);
             return false;
         }
+        *texture = 0u;
+        RendererGlErrors.clear(gl);
         gl->gen_textures(1, texture);
+        bool textureAllocated = *texture != 0u;
+        bool textureAllocationErrorFree = RendererGlErrors.none(gl);
+        if (!textureAllocated || !textureAllocationErrorFree) {
+            if (*texture != 0u) { gl->delete_textures(1, texture); }
+            *texture = 0u;
+            stbi_image_free((void*)pixels);
+            return false;
+        }
+        RendererGlErrors.clear(gl);
         RendererResources.configureTexture(gl, *texture, RGL_LINEAR);
         RendererResources.normalizeUnpack(gl);
-        RendererGlErrors.clear(gl);
         gl->texture_image_2d((unsigned int)RGL_TEXTURE_2D, 0, RGL_RGBA8,
             *width, *height, 0, (unsigned int)RGL_RGBA,
             (unsigned int)RGL_UNSIGNED_BYTE, pixels);
         bool uploaded = RendererGlErrors.none(gl);
         stbi_image_free((void*)pixels);
-        if (!uploaded) { *texture = 0; }
+        if (!uploaded) {
+            gl->delete_textures(1, texture);
+            *texture = 0u;
+        }
         return uploaded;
     }
 
     class bool initialize(struct RendererGlApi* gl,
                           struct RendererGlResources* resources,
                           struct RendererConfig* config,
-                          void* context) {
-        if (gl == null || resources == null || config == null || context == null) {
+                          unsigned long long contextGeneration) {
+        if (gl == null || resources == null || config == null
+                || contextGeneration == 0ULL) {
             return false;
         }
+        if (resources->ready != 0 && RendererResources.current(
+                gl, resources, contextGeneration)) { return true; }
+        if (!RendererGlCapabilities.supported(gl)) { return false; }
         if (resources->ready != 0) {
-            if (RendererResources.current(gl, resources, context)) { return true; }
-            RendererResources.abandonDestroyedContext(resources);
+            bool released = resources->owner_context_generation
+                    == contextGeneration
+                && RendererResources.releaseCurrentContext(
+                    gl, resources, contextGeneration);
+            if (!released) {
+                RendererResources.abandonDestroyedContext(resources);
+            }
         }
-        resources->owner_context = context;
+        resources->owner_context_generation = contextGeneration;
+        RendererGlErrors.clear(gl);
         gl->gen_textures(2, resources->raw_textures);
         gl->gen_textures(2, resources->shader_textures);
         gl->gen_textures(1, &resources->menu_texture);
+        gl->gen_textures(1, &resources->composition.texture);
         gl->gen_framebuffers(1, &resources->extraction_framebuffer);
+        gl->gen_framebuffers(1, &resources->composition.framebuffer);
         gl->gen_vertex_arrays(1, &resources->vertex_array);
-        unsigned int vertex = RendererResources.compile(gl,
+        bool allocated = resources->raw_textures[0] != 0u
+            && resources->raw_textures[1] != 0u
+            && resources->shader_textures[0] != 0u
+            && resources->shader_textures[1] != 0u
+            && resources->menu_texture != 0u
+            && RendererGlAtomicComposition.allocated(&resources->composition)
+            && resources->extraction_framebuffer != 0u
+            && resources->vertex_array != 0u;
+        bool allocationErrorFree = RendererGlErrors.none(gl);
+        if (!allocated || !allocationErrorFree) {
+            RendererResources.releaseCurrentContext(gl, resources,
+                contextGeneration);
+            return false;
+        }
+        unsigned int vertex = RendererGlShader.compile(gl,
             (unsigned int)RGL_VERTEX_SHADER, SEMU_RENDER_VERTEX_SHADER);
-        unsigned int fragment = RendererResources.compile(gl,
+        if (vertex == 0u) {
+            RendererResources.releaseCurrentContext(gl, resources,
+                contextGeneration);
+            return false;
+        }
+        unsigned int fragment = RendererGlShader.compile(gl,
             (unsigned int)RGL_FRAGMENT_SHADER, SEMU_RENDER_FRAGMENT_SHADER);
-        if (vertex == 0 || fragment == 0) { return false; }
+        if (fragment == 0u) {
+            gl->delete_shader(vertex);
+            RendererResources.releaseCurrentContext(gl, resources,
+                contextGeneration);
+            return false;
+        }
         resources->program = gl->create_program();
+        bool programAllocated = resources->program != 0u;
+        bool programAllocationErrorFree = RendererGlErrors.none(gl);
+        if (!programAllocated || !programAllocationErrorFree) {
+            gl->delete_shader(vertex);
+            gl->delete_shader(fragment);
+            RendererResources.releaseCurrentContext(gl, resources,
+                contextGeneration);
+            return false;
+        }
+        RendererGlErrors.clear(gl);
         gl->attach_shader(resources->program, vertex);
         gl->attach_shader(resources->program, fragment);
         gl->link_program(resources->program);
+        gl->delete_shader(vertex);
+        gl->delete_shader(fragment);
         int linked = 0;
         gl->get_program_integer(resources->program,
             (unsigned int)RGL_LINK_STATUS, &linked);
-        if (linked == 0) { return false; }
+        if (linked == 0 || !RendererGlErrors.none(gl)) {
+            RendererResources.releaseCurrentContext(gl, resources,
+                contextGeneration);
+            return false;
+        }
 
         resources->uniform_game = gl->uniform_location(resources->program, "uGame");
         resources->uniform_game2 = gl->uniform_location(resources->program, "uGame2");
@@ -594,6 +718,11 @@ class RendererResources {
         if (resources->uniform_bezel >= 0) { gl->uniform_1i(resources->uniform_bezel, 1); }
         if (resources->uniform_glass >= 0) { gl->uniform_1i(resources->uniform_glass, 2); }
         if (resources->uniform_menu >= 0) { gl->uniform_1i(resources->uniform_menu, 3); }
+        if (!RendererGlErrors.none(gl)) {
+            RendererResources.releaseCurrentContext(gl, resources,
+                contextGeneration);
+            return false;
+        }
         for (int variantIndex = 0; variantIndex < 4; variantIndex++) {
             struct RendererVariantConfig* variant = &config->variants[variantIndex];
             gl->active_texture((unsigned int)(RGL_TEXTURE0 + 1));
@@ -609,6 +738,11 @@ class RendererResources {
                 &glassWidth, &glassHeight) ? 1 : 0;
         }
         gl->active_texture((unsigned int)RGL_TEXTURE0);
+        if (!RendererGlErrors.none(gl)) {
+            RendererResources.releaseCurrentContext(gl, resources,
+                contextGeneration);
+            return false;
+        }
         resources->ready = 1;
         return true;
     }
@@ -624,9 +758,15 @@ class RendererShaderPasses {
         else { RendererShaderLane1 = lane; }
     }
 
-    class void resetLane(int index, struct RendererGlResources* resources) {
+    class void resetLane(int index, struct RendererGlResources* resources,
+                         unsigned long long contextGeneration) {
         SemuLibrashaderOpenGLChain chain = RendererShaderPasses.lane(index);
-        if (chain != null) { delete chain; }
+        if (chain != null) {
+            if (!chain.close(contextGeneration)) {
+                chain.abandonDestroyedContext();
+            }
+            delete chain;
+        }
         RendererShaderPasses.setLane(index, null);
         resources->lane_history[index] = 0;
         resources->lane_shader_presets[index].value[0] = 0;
@@ -642,16 +782,15 @@ class RendererShaderPasses {
 
     class bool prepareTexture(struct RendererGlApi* gl, unsigned int texture,
                               int width, int height, bool resize) {
+        RendererGlErrors.clear(gl);
         RendererResources.configureTexture(gl, texture, RGL_NEAREST);
         if (resize) {
             RendererResources.normalizeUnpack(gl);
-            RendererGlErrors.clear(gl);
             gl->texture_image_2d((unsigned int)RGL_TEXTURE_2D, 0, RGL_RGBA8,
                 width, height, 0, (unsigned int)RGL_RGBA,
                 (unsigned int)RGL_UNSIGNED_BYTE, null);
-            if (!RendererGlErrors.none(gl)) { return false; }
         }
-        return true;
+        return RendererGlErrors.none(gl);
     }
 
     class bool extract(struct RendererGlApi* gl,
@@ -721,12 +860,13 @@ class RendererShaderPasses {
                 || resources->lane_shader_output_height[index]
                     != lane->output_height);
         if (presetChanged || dimensionsChanged) {
-            RendererShaderPasses.resetLane(index, resources);
+            RendererShaderPasses.resetLane(index, resources,
+                frame->context_generation);
             chain = null;
         }
         if (chain == null) {
             chain = new SemuLibrashaderOpenGLChain(
-                (void*)frame->get_proc, (void*)frame->current_context);
+                (void*)frame->get_proc, frame->context_generation);
             if (!chain.create(preset, 330, false, false,
                     true, true, true)) {
                 delete chain;
@@ -744,10 +884,12 @@ class RendererShaderPasses {
             resources->shader_textures[index], RGL_RGBA8,
             (unsigned int)lane->output_width, (unsigned int)lane->output_height,
             (size_t)resources->lane_history[index], false, 1, rotation, aspect,
-            config->frames_per_second, config->frame_delta_ms);
+            config->frames_per_second, config->frame_delta_ms,
+            frame->context_generation);
         if (result != SEMU_LIBRASHADER_RENDERED
                 || !RendererGlErrors.none(gl)) {
-            RendererShaderPasses.resetLane(index, resources);
+            RendererShaderPasses.resetLane(index, resources,
+                frame->context_generation);
             return false;
         }
         resources->lane_shader_native_width[index] = lane->native_width;
@@ -871,6 +1013,14 @@ class RendererCompositor {
         }
         resources->shader_actual = shaderRequested ? 1 : 0;
 
+        if (!RendererGlAtomicComposition.prepare(gl, &resources->composition,
+                frame->framebuffer_width, frame->framebuffer_height)) {
+            resources->shader_actual = 0;
+            return RendererResourceFailure.set(resources,
+                SEMU_RENDER_PIPELINE_FAILED, "composition_target_failed");
+        }
+
+        RendererGlErrors.clear(gl);
         gl->active_texture((unsigned int)RGL_TEXTURE0);
         gl->bind_sampler(0, 0);
         gl->bind_texture((unsigned int)RGL_TEXTURE_2D, filtered[0] != 0
@@ -889,8 +1039,6 @@ class RendererCompositor {
         gl->bind_texture((unsigned int)RGL_TEXTURE_2D,
             resources->glass_textures[config->active_variant]);
 
-        gl->bind_framebuffer((unsigned int)RGL_DRAW_FRAMEBUFFER, frame->framebuffer);
-        gl->draw_buffer(frame->color_buffer);
         gl->disable((unsigned int)RGL_DEPTH_TEST);
         gl->disable((unsigned int)RGL_SCISSOR_TEST);
         gl->disable((unsigned int)RGL_CULL_FACE);
@@ -949,7 +1097,6 @@ class RendererCompositor {
         if (resources->uniform_menu_on >= 0) {
             gl->uniform_1f(resources->uniform_menu_on, 0.0f);
         }
-        RendererGlErrors.clear(gl);
         RendererCompositor.drawPass(gl, resources,
             SEMU_RENDER_PASS_BACKGROUND, false);
         RendererCompositor.drawPass(gl, resources,
@@ -964,6 +1111,14 @@ class RendererCompositor {
             resources->bezel_actual = 0;
             return RendererResourceFailure.set(resources,
                 SEMU_RENDER_PIPELINE_FAILED, "composition_draw_failed");
+        }
+        if (!RendererGlAtomicComposition.commit(gl, &resources->composition,
+                frame->framebuffer, frame->color_buffer,
+                frame->framebuffer_width, frame->framebuffer_height)) {
+            resources->shader_actual = 0;
+            resources->bezel_actual = 0;
+            return RendererResourceFailure.set(resources,
+                SEMU_RENDER_PIPELINE_FAILED, "composition_commit_failed");
         }
         return SEMU_RENDER_APPLIED;
     }

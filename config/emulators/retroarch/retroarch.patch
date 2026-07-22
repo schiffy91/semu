@@ -1,103 +1,27 @@
---- a/gfx/drivers/gl2.c
-+++ b/gfx/drivers/gl2.c
-@@ -86,6 +86,30 @@
- #endif
- #ifdef HAVE_GFX_WIDGETS
- #include "../gfx_widgets.h"
-+#endif
-+
-+#ifdef HAVE_SEMU_RENDERER
-+#include <semu_renderer.h>
-+
-+static const gfx_ctx_driver_t *semu_gl2_context_driver;
-+static void *semu_gl2_context_data;
-+
-+static void *semu_gl2_get_proc(const char *name)
-+{
-+   if (!semu_gl2_context_driver || !semu_gl2_context_driver->get_proc_address)
-+      return NULL;
-+   return (void*)semu_gl2_context_driver->get_proc_address(name);
-+}
-+
-+static void *semu_gl2_current_context(void)
-+{
-+   void *context = NULL;
-+   if (!semu_gl2_context_driver)
-+      return NULL;
-+   if (semu_gl2_context_driver->get_context_data)
-+      context = semu_gl2_context_driver->get_context_data(semu_gl2_context_data);
-+   return context ? context : semu_gl2_context_data;
-+}
- #endif
- 
- #ifndef GL_UNSIGNED_INT_8_8_8_8_REV
-@@ -3595,6 +3619,41 @@
-    /* Set prev textures. */
-    gl2_renderchain_bind_prev_texture(gl,
-          chain, &gl->tex_info);
-+
-+#ifdef HAVE_SEMU_RENDERER
-+   struct SemuRenderFrameGl semu_frame = {0};
-+   bool semu_frame_ready = video_info->libretro_running
-+      && frame_width > 0 && frame_height > 0
-+      && gl->vp.width > 0 && gl->vp.height > 0;
-+   semu_gl2_context_driver                = gl->ctx_driver;
-+   semu_gl2_context_data                  = gl->ctx_data;
-+   semu_frame.abi                         = SEMU_RENDER_ABI_GL;
-+   semu_frame.struct_size                 = sizeof(semu_frame);
-+   semu_frame.frame_id                    = (unsigned long long)frame_count + 1;
-+   semu_frame.framebuffer                 = 0;
-+   semu_frame.color_buffer                = GL_BACK;
-+   semu_frame.framebuffer_width           = (int)gl->video_width;
-+   semu_frame.framebuffer_height          = (int)gl->video_height;
-+   semu_frame.presentation_aspect          = gl->vp.height > 0
-+      ? (float)gl->vp.width / (float)gl->vp.height : 0.0f;
-+   semu_frame.layout_variant               = SEMU_RENDER_LAYOUT_AUTO;
-+   semu_frame.surface_count               = 1;
-+   semu_frame.surfaces[0].x               = (int)gl->vp.x;
-+   semu_frame.surfaces[0].y               = (int)gl->vp.y;
-+   semu_frame.surfaces[0].width           = (int)gl->vp.width;
-+   semu_frame.surfaces[0].height          = (int)gl->vp.height;
-+   semu_frame.surfaces[0].native_width    = frame_width > 0
-+      ? (int)frame_width : (int)gl->vp.width;
-+   semu_frame.surfaces[0].native_height   = frame_height > 0
-+      ? (int)frame_height : (int)gl->vp.height;
-+   /* The final viewport, including N64 cores, is upright in bottom-left GL space. */
-+   semu_frame.surfaces[0].rotation        = 0;
-+   semu_frame.surfaces[0].origin          = SEMU_RENDER_ORIGIN_BOTTOM_LEFT;
-+   semu_frame.get_proc                    = semu_gl2_get_proc;
-+   semu_frame.current_context             = semu_gl2_current_context;
-+   if (semu_frame_ready)
-+      semu_render_game_gl(&semu_frame);
-+#endif
- 
- #ifdef HAVE_OVERLAY
-    if ((gl->flags & GL2_FLAG_OVERLAY_ENABLE) && overlay_behind_menu)
-@@ -3658,6 +3717,11 @@
-          if (!(gl->flags & GL2_FLAG_MENU_TEXTURE_ENABLE))
- #endif
-             gl2_pbo_async_readback(gl);
-+
-+#ifdef HAVE_SEMU_RENDERER
-+   if (semu_frame_ready)
-+      semu_render_post_ui_gl(&semu_frame);
-+#endif
- 
-     if (gl->ctx_driver->swap_buffers)
-         gl->ctx_driver->swap_buffers(gl->ctx_data);
+diff --git a/Makefile.common b/Makefile.common
+index 57dabf5..e52d260 100644
+--- a/Makefile.common
++++ b/Makefile.common
+@@ -340,6 +340,7 @@ OBJ += \
+        input/common/input_hid_common.o \
+        led/led_driver.o \
+        gfx/video_driver.o \
++       gfx/semu_retroarch.o \
+        gfx/gfx_display.o \
+        gfx/gfx_animation.o \
+        configuration.o \
+diff --git a/gfx/drivers/gl3.c b/gfx/drivers/gl3.c
+index 6c88ce0..e429723 100644
 --- a/gfx/drivers/gl3.c
 +++ b/gfx/drivers/gl3.c
-@@ -61,6 +61,30 @@
- #endif
- #ifdef HAVE_GFX_WIDGETS
+@@ -63,6 +63,19 @@
  #include "../gfx_widgets.h"
-+#endif
-+
+ #endif
+ 
 +#ifdef HAVE_SEMU_RENDERER
 +#include <semu_renderer.h>
 +
 +static const gfx_ctx_driver_t *semu_gl3_context_driver;
-+static void *semu_gl3_context_data;
 +
 +static void *semu_gl3_get_proc(const char *name)
 +{
@@ -105,70 +29,287 @@
 +      return NULL;
 +   return (void*)semu_gl3_context_driver->get_proc_address(name);
 +}
++#endif
 +
-+static void *semu_gl3_current_context(void)
-+{
-+   void *context = NULL;
-+   if (!semu_gl3_context_driver)
-+      return NULL;
-+   if (semu_gl3_context_driver->get_context_data)
-+      context = semu_gl3_context_driver->get_context_data(semu_gl3_context_data);
-+   return context ? context : semu_gl3_context_data;
-+}
- #endif
- 
  #define GL3_SET_TEXTURE_COORDS(coords, xamt, yamt) \
-@@ -4108,6 +4132,41 @@
-       gl3_filter_chain_end_frame(filter_chain);
+    coords[2] = xamt; \
+    coords[6] = xamt; \
+@@ -99,6 +112,10 @@ typedef struct gl3
+    GLuint menu_texture;
+    GLuint pbo_readback[GL_CORE_NUM_PBOS];
+ 
++#ifdef HAVE_SEMU_RENDERER
++   uint64_t semu_context_generation;
++#endif
++
+    /* Render chain for non-Slang shaders only. */
+    struct
+    {
+@@ -1847,8 +1864,16 @@ static const gfx_ctx_driver_t *gl3_get_context(gl3_t *gl)
+    if (ctx_data)
+       gl->ctx_data = ctx_data;
+ 
++#ifdef HAVE_SEMU_RENDERER
++   if (gfx_ctx)
++   {
++      semu_gl3_context_driver = gfx_ctx;
++      gl->semu_context_generation = video_driver_semu_context_created();
++   }
++#endif
++
+    /* Need to force here since video_context_driver_init also checks for global option. */
+-   if (gfx_ctx->bind_hw_render)
++   if (gfx_ctx && gfx_ctx->bind_hw_render)
+       gfx_ctx->bind_hw_render(ctx_data, (gl->flags & GL3_FLAG_USE_SHARED_CONTEXT) ? true : false);
+    return gfx_ctx;
+ }
+@@ -3211,6 +3236,11 @@ static void gl3_free(void *data)
+       gl->ctx_driver->bind_hw_render(gl->ctx_data, false);
++#ifdef HAVE_SEMU_RENDERER
++   video_driver_semu_context_destroying(gl->semu_context_generation);
++   gl->semu_context_generation = 0;
++   semu_gl3_context_driver = NULL;
++#endif
+    font_driver_free_osd();
+    gl3_destroy_resources(gl);
+    if (gl->ctx_driver && gl->ctx_driver->destroy)
+       gl->ctx_driver->destroy(gl->ctx_data);
+    video_context_driver_free();
+@@ -4109,6 +4139,28 @@ static bool gl3_frame(void *data, const void *frame,
     }
  #endif /* HAVE_SLANG */
-+
+ 
 +#ifdef HAVE_SEMU_RENDERER
 +   struct SemuRenderFrameGl semu_frame = {0};
-+   bool semu_frame_ready = video_info->libretro_running
-+      && frame_width > 0 && frame_height > 0
-+      && gl->vp.width > 0 && gl->vp.height > 0;
-+   semu_gl3_context_driver                = gl->ctx_driver;
-+   semu_gl3_context_data                  = gl->ctx_data;
-+   semu_frame.abi                         = SEMU_RENDER_ABI_GL;
-+   semu_frame.struct_size                 = sizeof(semu_frame);
-+   semu_frame.frame_id                    = (unsigned long long)frame_count + 1;
-+   semu_frame.framebuffer                 = 0;
-+   semu_frame.color_buffer                = GL_BACK;
-+   semu_frame.framebuffer_width           = (int)gl->video_width;
-+   semu_frame.framebuffer_height          = (int)gl->video_height;
-+   semu_frame.presentation_aspect          = gl->vp.height > 0
-+      ? (float)gl->vp.width / (float)gl->vp.height : 0.0f;
-+   semu_frame.layout_variant               = SEMU_RENDER_LAYOUT_AUTO;
-+   semu_frame.surface_count               = 1;
-+   semu_frame.surfaces[0].x               = (int)gl->vp.x;
-+   semu_frame.surfaces[0].y               = (int)gl->vp.y;
-+   semu_frame.surfaces[0].width           = (int)gl->vp.width;
-+   semu_frame.surfaces[0].height          = (int)gl->vp.height;
-+   semu_frame.surfaces[0].native_width    = frame_width > 0
-+      ? (int)frame_width : (int)gl->vp.width;
-+   semu_frame.surfaces[0].native_height   = frame_height > 0
-+      ? (int)frame_height : (int)gl->vp.height;
-+   /* The final viewport, including N64 cores, is upright in bottom-left GL space. */
-+   semu_frame.surfaces[0].rotation        = 0;
-+   semu_frame.surfaces[0].origin          = SEMU_RENDER_ORIGIN_BOTTOM_LEFT;
-+   semu_frame.get_proc                    = semu_gl3_get_proc;
-+   semu_frame.current_context             = semu_gl3_current_context;
-+   if (semu_frame_ready)
-+      semu_render_game_gl(&semu_frame);
++   int semu_game_status = SEMU_RENDER_PASSTHROUGH;
++   bool semu_frame_ready;
++
++   semu_gl3_context_driver = gl->ctx_driver;
++   semu_frame_ready = video_driver_semu_build_frame_gl(&semu_frame,
++         frame_count + 1u, 0, GL_BACK,
++         (int)gl->video_width, (int)gl->video_height,
++         (int)gl->vp.x, (int)gl->vp.y,
++         (int)gl->vp.width, (int)gl->vp.height,
++         frame_width, frame_height, video_info->libretro_running,
++#ifdef HAVE_MENU
++         menu_is_alive,
++#else
++         false,
 +#endif
- 
++         semu_gl3_get_proc, gl->semu_context_generation);
++   if (semu_frame_ready)
++      semu_game_status = semu_render_game_gl(&semu_frame);
++#endif
++
  #ifdef HAVE_OVERLAY
     if ((gl->flags & GL3_FLAG_OVERLAY_ENABLE) && overlay_behind_menu)
-@@ -4176,6 +4235,11 @@
- #endif
+       gl3_render_overlay(gl, width, height);
+@@ -4177,6 +4229,17 @@ static bool gl3_frame(void *data, const void *frame,
           gl3_pbo_async_readback(gl);
     }
-+
+ 
 +#ifdef HAVE_SEMU_RENDERER
 +   if (semu_frame_ready)
-+      semu_render_post_ui_gl(&semu_frame);
++      (void)semu_render_post_ui_gl(&semu_frame);
++   video_driver_semu_publish_pointer(semu_frame_ready ? &semu_frame : NULL,
++         semu_game_status == SEMU_RENDER_APPLIED
++#ifdef HAVE_MENU
++         && !menu_is_alive
 +#endif
- 
++         );
++#endif
++
     if (gl->ctx_driver->swap_buffers)
        gl->ctx_driver->swap_buffers(gl->ctx_data);
+ 
+diff --git a/gfx/video_driver.h b/gfx/video_driver.h
+index ca6434c..19c6772 100644
+--- a/gfx/video_driver.h
++++ b/gfx/video_driver.h
+@@ -27,6 +27,10 @@
+ #include "../config.h"
+ #endif
+ 
++#ifdef HAVE_SEMU_RENDERER
++#include <semu_renderer.h>
++#endif
++
+ #ifdef HAVE_THREADS
+ #include <rthreads/rthreads.h>
+ #endif
+@@ -981,6 +985,46 @@ void *video_driver_get_ptr(void);
+ 
+ video_driver_state_t *video_state_get_ptr(void);
+ 
++#ifdef HAVE_SEMU_RENDERER
++uint64_t video_driver_semu_context_created(void);
++
++void video_driver_semu_context_destroying(uint64_t context_generation);
++
++bool video_driver_semu_build_frame_gl(
++      SemuRenderFrameGl *frame,
++      uint64_t frame_id,
++      unsigned framebuffer,
++      unsigned color_buffer,
++      int framebuffer_width,
++      int framebuffer_height,
++      int viewport_x,
++      int viewport_y,
++      int viewport_width,
++      int viewport_height,
++      unsigned frame_width,
++      unsigned frame_height,
++      bool libretro_running,
++      bool menu_is_alive,
++      SemuRenderGetProc get_proc,
++      uint64_t context_generation);
++
++void video_driver_semu_publish_pointer(
++      SemuRenderFrameGl *frame,
++      bool applied);
++
++void video_driver_semu_pointer_clear(bool require_release);
++
++void video_driver_semu_pointer_sample(
++      int16_t screen_x,
++      int16_t screen_y,
++      bool pressed,
++      bool allowed);
++
++bool video_driver_semu_pointer_snapshot(
++      unsigned id,
++      int16_t *value);
++#endif
++
+ bool video_driver_set_rotation(unsigned rotation);
+ 
+ bool video_driver_set_video_mode(unsigned width,
+diff --git a/input/input_driver.c b/input/input_driver.c
+index beba85e..d4a5b5e 100644
+--- a/input/input_driver.c
++++ b/input/input_driver.c
+@@ -65,6 +65,10 @@
+ #include "../tasks/tasks_internal.h"
+ #include "../verbosity.h"
+ 
++#ifdef HAVE_SEMU_RENDERER
++#include "../gfx/video_driver.h"
++#endif
++
+ #include "../ai/game_ai.h"
+ 
+ #define HOLD_BTN_DELAY_SEC 2
+@@ -6013,6 +6017,54 @@ static void input_keys_pressed(
+       input_st->input_hotkey_block_counter = 0;
+ }
+ 
++#ifdef HAVE_SEMU_RENDERER
++static void input_driver_semu_poll_pointer(
++      input_driver_state_t *input_st,
++      settings_t *settings,
++      const input_device_driver_t *joypad,
++      const input_device_driver_t *sec_joypad)
++{
++   rarch_joypad_info_t joypad_info;
++   bool allowed = input_st->current_driver
++      && !(input_st->flags
++         & (INP_FLAG_BLOCK_LIBRETRO_INPUT | INP_FLAG_BLOCK_POINTER_INPUT));
++#ifdef HAVE_MENU
++   struct menu_state *menu_st = menu_state_get_ptr();
++   allowed = allowed
++      && menu_st->input_driver_flushing_input == 0
++      && !(menu_st->flags & MENU_ST_FLAG_ALIVE);
++#endif
++   if (!allowed)
++   {
++      video_driver_semu_pointer_sample(0, 0, false, false);
++      return;
++   }
++
++   joypad_info.joy_idx        = settings->uints.input_joypad_index[0];
++   joypad_info.auto_binds     = input_autoconf_binds[joypad_info.joy_idx];
++   joypad_info.axis_threshold = settings->floats.input_axis_threshold;
++   int16_t screen_x = (int16_t)input_state_wrap(input_st->current_driver,
++         input_st->current_data, joypad, sec_joypad, &joypad_info,
++         (*input_st->libretro_input_binds),
++         (input_st->flags & INP_FLAG_KB_MAPPING_BLOCKED) ? true : false,
++         0, RARCH_DEVICE_MOUSE_SCREEN, 0,
++         RETRO_DEVICE_ID_MOUSE_X);
++   int16_t screen_y = (int16_t)input_state_wrap(input_st->current_driver,
++         input_st->current_data, joypad, sec_joypad, &joypad_info,
++         (*input_st->libretro_input_binds),
++         (input_st->flags & INP_FLAG_KB_MAPPING_BLOCKED) ? true : false,
++         0, RARCH_DEVICE_MOUSE_SCREEN, 0,
++         RETRO_DEVICE_ID_MOUSE_Y);
++   bool pressed = input_state_wrap(input_st->current_driver,
++         input_st->current_data, joypad, sec_joypad, &joypad_info,
++         (*input_st->libretro_input_binds),
++         (input_st->flags & INP_FLAG_KB_MAPPING_BLOCKED) ? true : false,
++         0, RARCH_DEVICE_MOUSE_SCREEN, 0,
++         RETRO_DEVICE_ID_MOUSE_LEFT) != 0;
++   video_driver_semu_pointer_sample(screen_x, screen_y, pressed, true);
++}
++#endif
++
+ void input_driver_poll(void)
+ {
+    size_t i, j;
+@@ -6040,6 +6092,11 @@ void input_driver_poll(void)
+          && input_st->current_driver->poll)
+       input_st->current_driver->poll(input_st->current_data);
+ 
++#ifdef HAVE_SEMU_RENDERER
++   input_driver_semu_poll_pointer(
++         input_st, settings, joypad, sec_joypad);
++#endif
++
+ #ifdef HAVE_OVERLAY
+    if (      input_st->overlay_ptr
+          && (input_st->overlay_ptr->flags & INPUT_OVERLAY_ALIVE))
+@@ -6494,6 +6551,12 @@ int16_t input_driver_state_wrapper(unsigned port, unsigned device,
+    /* Read input state */
+    result = input_state_internal(input_st, settings, port, device, idx, id);
+ 
++#ifdef HAVE_SEMU_RENDERER
++   if (port == 0 && idx == 0
++         && (device & RETRO_DEVICE_MASK) == RETRO_DEVICE_POINTER)
++      video_driver_semu_pointer_snapshot(id, &result);
++#endif
++
+    /* Register any analog stick input requests for
+     * this 'virtual' (core) port */
+    if (     (device == RETRO_DEVICE_ANALOG)
+diff --git a/menu/menu_driver.c b/menu/menu_driver.c
+index a4b23c1..eb1b816 100644
+--- a/menu/menu_driver.c
++++ b/menu/menu_driver.c
+@@ -67,6 +67,9 @@
+ #endif
+ 
+ #include "../gfx/gfx_animation.h"
++#ifdef HAVE_SEMU_RENDERER
++#include "../gfx/video_driver.h"
++#endif
+ #include "../input/input_driver.h"
+ #include "../input/input_remapping.h"
+ #include "../performance_counters.h"
+@@ -6626,6 +6629,9 @@ void retroarch_menu_running(void)
+          menu->driver_ctx->toggle(menu->userdata, true);
+ 
+       menu_st->flags |= MENU_ST_FLAG_ALIVE;
++#ifdef HAVE_SEMU_RENDERER
++      video_driver_semu_pointer_clear(true);
++#endif
+       menu_driver_toggle(
+             video_st->current_video,
+             video_st->data,
+@@ -6699,6 +6705,9 @@ void retroarch_menu_running_finished(bool quit)
+          menu->driver_ctx->toggle(menu->userdata, false);
+ 
+       menu_st->flags &= ~MENU_ST_FLAG_ALIVE;
++#ifdef HAVE_SEMU_RENDERER
++      video_driver_semu_pointer_clear(true);
++#endif
+       menu_driver_toggle(
+             video_st->current_video,
+             video_st->data,

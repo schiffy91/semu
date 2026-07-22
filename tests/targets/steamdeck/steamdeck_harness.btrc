@@ -10,6 +10,7 @@ import ./deck_preflight.btrc
 import ./deck_transport.btrc
 import ./game_mode.btrc
 import ./input_automation.btrc
+import ./run_evidence.btrc
 
 class DeckPhysicalHarness {
     public DeckHarnessOptions options;
@@ -17,12 +18,15 @@ class DeckPhysicalHarness {
     public DeckTransport transport;
     public DeckPreflight preflightGate;
     public DeckDeployment deployment;
+    public string harnessRevision;
 
     public DeckPhysicalHarness(DeckHarnessOptions options) {
         self.options = options;
+        self.harnessRevision = DeckHostRevision.current(options.project);
         self.plan = DeckAcceptancePlan.load(options.project);
         self.transport = DeckTransport(options);
-        self.preflightGate = DeckPreflight(options, self.plan, self.transport);
+        self.preflightGate = DeckPreflight(
+            options, self.plan, self.transport, self.harnessRevision);
         self.deployment = DeckDeployment(options, self.transport);
     }
 
@@ -30,6 +34,11 @@ class DeckPhysicalHarness {
         DeckHarnessResult optionsStatus = self.options.validateLocal(
             requireHelpers);
         if (!optionsStatus.ok()) { return optionsStatus; }
+        if (requireHelpers && !DeckHostRevision.exactClean(
+                self.options.project, self.harnessRevision)) {
+            return DeckHarnessResult.failure(
+                "physical evidence requires a clean exact harness Git revision");
+        }
         return self.plan.ok()
             ? DeckHarnessResult.success()
             : DeckHarnessResult.failure(self.plan.errors.join("; "));
@@ -76,7 +85,10 @@ class DeckPhysicalHarness {
         print("steamdeck harness: exact installed shortcut, Game Mode ancestry, keepawake, uinput, and compiler-generated ES-DE inputs verified");
         print("steamdeck harness: app_id=" + shortcut.appId
             + " game_id=" + shortcut.gameId
-            + " launcher_sha256=" + shortcut.executableSha256);
+            + " launcher_sha256=" + shortcut.executableSha256
+            + " harness_revision=" + self.harnessRevision
+            + " artifact_sha256="
+            + DeckHostDigest.file(self.options.artifact));
         return 0;
     }
 
@@ -207,9 +219,19 @@ class DeckPhysicalHarness {
             .get("screenshot_sha256").isString()
             ? receipt.document.get("launch")
                 .get("screenshot_sha256").asString() : "";
-        if (!DeckHostDigest.file(screenshot).equals(expected)) {
+        Vector<DeckEvidenceRectangle> regions = [];
+        DeckScreenshotProbe probe = DeckScreenshotProbe.load(
+            screenshot, regions);
+        DeckHarnessResult artifacts = DeckAcceptanceEvidence.artifacts(
+            receipt.document, receipt.localRoot);
+        if (!artifacts.ok()
+                || !DeckHostDigest.file(screenshot).equals(expected)
+                || !DeckRunEvidence.artifactDigest(
+                    receipt.document, "frontend-game-mode.png").equals(
+                        expected)
+                || !probe.valid || probe.width < 640 || probe.height < 400) {
             return self.fail(DeckHarnessResult.failure(
-                "frontend Game Mode screenshot is not digest-bound"));
+                "frontend Game Mode screenshot is not run-bound and nonblank"));
         }
         print("steamdeck harness: installed Semu shortcut launched inside Steam Game Mode; evidence is automated and not physical radial proof");
         return 0;
@@ -247,8 +269,15 @@ class DeckPhysicalHarness {
         }
         DeckTransportReceipt collected = self.transport.invoke(
             request, identity);
-        return DeckAcceptanceEvidence.verify(
+        DeckHarnessResult verified = DeckAcceptanceEvidence.verify(
             system, self.plan, request, collected);
+        if (verified.ok()) {
+            print("steamdeck harness: run_id=" + identity
+                + " harness_revision=" + self.harnessRevision
+                + " artifact_sha256=" + releaseDigest
+                + " evidence=" + collected.localRoot);
+        }
+        return verified;
     }
 
     public int runScenario(string operation) {

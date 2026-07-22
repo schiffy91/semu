@@ -40,12 +40,9 @@
     ],
     "es_de_home": "ES-DE",
     "cli_commands": [
-      "build",
-      "package",
       "launcher",
       "settings",
-      "sync",
-      "verify"
+      "sync"
     ],
     "es_de_writable_directories": [
       "settings",

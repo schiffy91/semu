@@ -20,6 +20,7 @@ class AppImageRuntimeSlice {
     public string hookLibrary;
     public string hookPatch;
     public JsonValue renderHook;
+    public bool coreHost;
 
     public AppImageRuntimeSlice() {
         self.id = "";
@@ -37,6 +38,7 @@ class AppImageRuntimeSlice {
         self.hookLibrary = "";
         self.hookPatch = "";
         self.renderHook = JsonValue.makeObject();
+        self.coreHost = false;
     }
 }
 
@@ -44,22 +46,26 @@ class AppImageRuntimeInventoryResult {
     public bool valid;
     public Vector<AppImageRuntimeSlice> slices;
     public Vector<string> cores;
+    public Vector<string> systems;
     public string error;
 
     public AppImageRuntimeInventoryResult() {
         self.valid = false;
         self.slices = [];
         self.cores = [];
+        self.systems = [];
         self.error = "";
     }
 
     class AppImageRuntimeInventoryResult success(
-            Vector<AppImageRuntimeSlice> slices, Vector<string> cores) {
+            Vector<AppImageRuntimeSlice> slices, Vector<string> cores,
+            Vector<string> systems) {
         AppImageRuntimeInventoryResult result =
             AppImageRuntimeInventoryResult();
         result.valid = true;
         result.slices = slices;
         result.cores = cores;
+        result.systems = systems;
         return result;
     }
 
@@ -262,6 +268,7 @@ class AppImageRuntimeInventory {
         }
         Vector<string> required = [];
         Vector<string> cores = [];
+        Vector<string> systems = [];
         Vector<string> selectedCoreHosts = [];
         for systemName in AppImageRuntimeInventory.sorted(
                 FileSystem.listDir(systemsRoot)) {
@@ -275,6 +282,7 @@ class AppImageRuntimeInventory {
             JsonValue system = JsonValue.readFile(
                 PathTools.join(directory, "system.json"));
             JsonValue bindings = system.get("emulators");
+            bool selectedSystem = false;
             if (!directoryStatus.isDir() || directoryStatus.isSymlink()
                     || system.isError() || !system.isObject()
                     || !bindings.isArray() || bindings.size() == 0) {
@@ -310,6 +318,7 @@ class AppImageRuntimeInventory {
                     continue;
                 }
                 if (!required.contains(id)) { required.push(id); }
+                selectedSystem = true;
                 JsonValue core = binding.get("core");
                 if (coreHosts.contains(id)) {
                     if (!core.isString()
@@ -331,6 +340,7 @@ class AppImageRuntimeInventory {
                         + systemName);
                 }
             }
+            if (selectedSystem) { systems.push(systemName); }
         }
         required = AppImageRuntimeInventory.sorted(required);
         cores = AppImageRuntimeInventory.sorted(cores);
@@ -356,7 +366,7 @@ class AppImageRuntimeInventory {
         }
         Vector<AppImageRuntimeSlice> noSlices = [];
         AppImageRuntimeInventoryResult result =
-            AppImageRuntimeInventoryResult.success(noSlices, cores);
+            AppImageRuntimeInventoryResult.success(noSlices, cores, systems);
         return result;
     }
 
@@ -427,9 +437,9 @@ class AppImageRuntimeInventory {
                 emulator.get("platforms").get(platform);
             if (!targetPlatform.isObject()) { continue; }
             JsonValue coreLoader = targetPlatform.get("core_loader");
-            if (!coreLoader.isNull()
-                    && !AppImageRuntimeInventory.validCoreLoader(
-                        targetPlatform)) {
+            bool coreHost = !coreLoader.isNull();
+            if (coreHost && !AppImageRuntimeInventory.validCoreLoader(
+                    targetPlatform)) {
                 return AppImageRuntimeInventoryResult.failure(
                     "emulator core-loader capability is malformed: " + name);
             }
@@ -550,6 +560,7 @@ class AppImageRuntimeInventory {
                 slice.renderHook = integration;
                 slice.renderHook.set("phases", rendering.get("phases"));
             }
+            slice.coreHost = coreHost;
             JsonValue activation = rendering.get("activation");
             if (!activation.get("package_ready").isBool()
                     || !activation.get("package_ready").asBool()
@@ -565,7 +576,7 @@ class AppImageRuntimeInventory {
             }
             slices.push(slice);
             supported.push(name);
-            if (AppImageRuntimeInventory.validCoreLoader(targetPlatform)) {
+            if (coreHost) {
                 coreHosts.push(name);
             }
         }
@@ -577,7 +588,99 @@ class AppImageRuntimeInventory {
             AppImageRuntimeInventory.declaredBindings(
                 sourceRoot, platform, names, supported, coreHosts);
         if (!bindings.ok()) { return bindings; }
-        return AppImageRuntimeInventoryResult.success(slices, bindings.cores);
+        return AppImageRuntimeInventoryResult.success(
+            slices, bindings.cores, bindings.systems);
+    }
+
+    class AppImageRuntimeInventoryResult project(
+            string sourceRoot, string platform, string nixSystem,
+            Vector<string> selectedIds) {
+        AppImageRuntimeInventoryResult complete =
+            AppImageRuntimeInventory.loadForTarget(
+                sourceRoot, platform, nixSystem);
+        if (!complete.ok()) { return complete; }
+        Vector<string> selected = AppImageRuntimeInventory.sorted(selectedIds);
+        if (selected.isEmpty()) {
+            return AppImageRuntimeInventoryResult.failure(
+                "release emulator selection is empty or duplicated");
+        }
+        for (int index = 1; index < selected.size(); index++) {
+            if (selected.get(index).equals(selected.get(index - 1))) {
+                return AppImageRuntimeInventoryResult.failure(
+                    "release emulator selection is empty or duplicated");
+            }
+        }
+
+        Vector<AppImageRuntimeSlice> slices = [];
+        Vector<string> coreHosts = [];
+        for id in selected {
+            bool found = false;
+            for slice in complete.slices {
+                if (!slice.id.equals(id)) { continue; }
+                slices.push(slice);
+                if (slice.coreHost) { coreHosts.push(id); }
+                found = true;
+                break;
+            }
+            if (!found) {
+                return AppImageRuntimeInventoryResult.failure(
+                    "release selects an unavailable emulator slice: " + id);
+            }
+        }
+
+        Vector<string> systems = [];
+        Vector<string> cores = [];
+        Vector<string> used = [];
+        string systemsRoot = PathTools.join(sourceRoot, "systems");
+        for systemName in AppImageRuntimeInventory.sorted(
+                FileSystem.listDir(systemsRoot)) {
+            JsonValue system = JsonValue.readFile(PathTools.join(
+                systemsRoot, systemName + "/system.json"));
+            JsonValue bindings = system.get("emulators");
+            bool selectedSystem = false;
+            for (int index = 0; index < bindings.size(); index++) {
+                JsonValue binding = bindings.at(index);
+                JsonValue emulator = binding.get("emulator");
+                JsonValue platforms = binding.get("platforms");
+                bool applies = !platforms.isArray()
+                    || AppImageRuntimeInventory.arrayContains(
+                        platforms, platform);
+                if (!applies || !emulator.isString()
+                        || !selected.contains(emulator.asString())) {
+                    continue;
+                }
+                string id = emulator.asString();
+                selectedSystem = true;
+                if (!used.contains(id)) { used.push(id); }
+                if (coreHosts.contains(id)) {
+                    JsonValue core = binding.get("core");
+                    if (!core.isString()
+                            || !AppImageRuntimeInventory.coreIdentifier(
+                                core.asString())) {
+                        return AppImageRuntimeInventoryResult.failure(
+                            "selected core-host binding is malformed: "
+                            + systemName);
+                    }
+                    if (!cores.contains(core.asString())) {
+                        cores.push(core.asString());
+                    }
+                }
+            }
+            if (selectedSystem) { systems.push(systemName); }
+        }
+        used = AppImageRuntimeInventory.sorted(used);
+        if (used.size() != selected.size()) {
+            return AppImageRuntimeInventoryResult.failure(
+                "release emulator selection has no target system binding");
+        }
+        for (int index = 0; index < used.size(); index++) {
+            if (!used.get(index).equals(selected.get(index))) {
+                return AppImageRuntimeInventoryResult.failure(
+                    "release emulator selection differs from target bindings");
+            }
+        }
+        return AppImageRuntimeInventoryResult.success(
+            slices, AppImageRuntimeInventory.sorted(cores), systems);
     }
 
     class AppImageRuntimeInventoryResult load(string sourceRoot) {
@@ -603,10 +706,8 @@ class AppImageRuntimeInventory {
         return !executable || (status.st_mode & 73) != 0; // 0111
     }
 
-    class AppImageRuntimeInventoryResult validate(
-            string sourceRoot, string runtimeRoot) {
-        AppImageRuntimeInventoryResult inventory =
-            AppImageRuntimeInventory.load(sourceRoot);
+    class AppImageRuntimeInventoryResult validateSlices(
+            string runtimeRoot, AppImageRuntimeInventoryResult inventory) {
         if (!inventory.ok()) { return inventory; }
         for slice in inventory.slices {
             for executable in slice.packagedExecutables {
@@ -639,6 +740,12 @@ class AppImageRuntimeInventory {
             }
         }
         return inventory;
+    }
+
+    class AppImageRuntimeInventoryResult validate(
+            string sourceRoot, string runtimeRoot) {
+        return AppImageRuntimeInventory.validateSlices(
+            runtimeRoot, AppImageRuntimeInventory.load(sourceRoot));
     }
 
     class JsonValue manifest(Vector<AppImageRuntimeSlice> slices) {

@@ -3,7 +3,6 @@
 import std.{datetime, fs, io, json, platform, process, strings, vector}
 import ../../src/generators/appimage/installer.btrc
 import ../../src/generators/sync.btrc
-import ../../src/lib/json_format.btrc
 
 class SyncProcessAudit {
     class bool digits(string value) {
@@ -570,7 +569,7 @@ class SyncContractTest {
                 || !desired.get("semu_home").asString()
                     .equals(FileSystem.absolutePath(home))
                 || !desired.get("platform").asString().equals("linux")
-                || !desiredBefore.equals(SemuJsonFormat.document(desired))
+                || !desiredBefore.equals(desired.document())
                 || !desiredBefore.equals(Path.readAll(second.desiredFile))
                 || !serviceBefore.equals(Path.readAll(second.serviceFile))
                 || writeLine.contains(saves.path)
@@ -1031,7 +1030,7 @@ class SyncContractTest {
         JsonValue policies = defaults.get("menu").get("sync_folders");
         JsonValue unsafePolicy = policies.at(0);
         unsafePolicy.set("relative_path", JsonValue.makeString("../../escape"));
-        Path.writeAll(defaultsFile, SemuJsonFormat.document(defaults));
+        Path.writeAll(defaultsFile, defaults.document());
         SemuSyncPlan rejected = SemuSyncPolicy.resolve(store, "linux");
         if (rejected.ok() || FileSystem.exists(PathTools.join(scratch, "escape"))) {
             failures += SyncContractTest.fail(

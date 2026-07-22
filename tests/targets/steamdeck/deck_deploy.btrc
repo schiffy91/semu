@@ -1,9 +1,817 @@
-// Digest-bound AppImage deployment and compiler-generated settings prepare.
-// The existing product installer owns release lifecycle policy.
+// Descriptor-bound deployment of one compiler-described emulator slice.
 
-import std.{fs, process, vector}
+import std.{fs, json, process, vector}
+import ../../../src/generators/appimage/nix_release_proof.btrc
+import ../../../src/generators/appimage/provenance/document.btrc
+import ../../../src/generators/appimage/release_proof_bundle.btrc
+import ../../../src/generators/appimage/release_inventory.btrc
+import ../../../src/generators/appimage/runtime_inventory.btrc
+import ../../../src/generators/appimage/work_session.btrc
+import ../../../src/lib/owned_paths.btrc
 import ./acceptance_plan.btrc
 import ./deck_transport.btrc
+
+class DeckReleaseProofLease {
+    public bool valid;
+    public string name;
+    public string path;
+    public string content;
+    public JsonValue document;
+    public AppImageHeldFileLease source;
+    public AppImageHeldFileLease staged;
+    public string error;
+
+    public DeckReleaseProofLease() {
+        self.valid = false;
+        self.name = "";
+        self.path = "";
+        self.content = "";
+        self.document = JsonValue.makeError();
+        self.source = AppImageHeldFileLease();
+        self.staged = AppImageHeldFileLease();
+        self.error = "";
+    }
+
+    public bool ok() { return self.valid; }
+
+    class bool exactKeys(JsonValue value, Vector<string> expected) {
+        if (!value.isObject()) { return false; }
+        Vector<string> actual = value.keys();
+        actual.sort();
+        expected.sort();
+        if (actual.size() != expected.size()) { return false; }
+        for (int index = 0; index < actual.size(); index++) {
+            if (!actual.get(index).equals(expected.get(index))) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    class bool stringField(
+            JsonValue value, string field, string expected) {
+        JsonValue member = value.get(field);
+        return member.isString() && member.asString().equals(expected);
+    }
+
+    class bool canonicalEqual(JsonValue left, JsonValue right) {
+        return !left.isError() && !right.isError()
+            && left.document().equals(right.document());
+    }
+
+    class JsonValue heldJson(int descriptor, string digest) {
+        string content = descriptor >= 0
+            ? SemuOwnedFileContent.text(descriptor) : "";
+        JsonValue document = JsonValue.parse(content);
+        return AppImageNixReleaseProof.digest(digest)
+                && SemuOwnedFileDigest.descriptor(descriptor).equals(digest)
+                && document.isObject()
+                && content.equals(document.document())
+            ? document : JsonValue.makeError();
+    }
+
+    class string siblingName(string artifactName, string artifactDigest) {
+        return AppImageReleaseProofBundle.fileName(
+            artifactName, artifactDigest);
+    }
+
+    class string siblingPath(AppImageVerificationSnapshot artifact) {
+        string name = DeckReleaseProofLease.siblingName(
+            artifact.sourceName, artifact.digest);
+        return artifact.ok() && !name.isEmpty()
+            ? PathTools.join(PathTools.dirname(artifact.sourcePath), name)
+            : "";
+    }
+
+    class bool exactFile(string path, string digest, int mode) {
+        AppImageHeldFileLease file =
+            AppImageHeldFileLease.capturePath(path);
+        bool exact = file.ok() && file.digest.equals(digest)
+            && file.mode == mode && file.stillBound();
+        file.closeDescriptors();
+        return exact;
+    }
+
+    class string workerError(
+            JsonValue worker, AppImageRuntimeLease runtime,
+            string target, string emulator, string artifactDigest) {
+        Vector<string> keys = [
+            "artifact_sha256", "closure_sha256", "emulator",
+            "inventory_sha256", "mksquashfs_sha256", "nix_proof_sha256",
+            "operation", "package_attribute", "payload_tree_sha256",
+            "provenance_sha256", "release_identity_sha256",
+            "runtime_authority_sha256", "runtime_prefix_sha256",
+            "schema_version", "source_store_path", "target",
+            "target_store_path", "unsquashfs_sha256",
+            "worker_store_path", "worker_system"
+        ];
+        if (!DeckReleaseProofLease.exactKeys(worker, keys)
+                || !worker.get("schema_version").isInt()
+                || worker.get("schema_version").asInt() != 1
+                || !DeckReleaseProofLease.stringField(
+                    worker, "operation", "build")
+                || !DeckReleaseProofLease.stringField(
+                    worker, "target", target)
+                || !DeckReleaseProofLease.stringField(
+                    worker, "emulator", emulator)
+                || !DeckReleaseProofLease.stringField(worker,
+                    "package_attribute", runtime.nixProof.packageAttribute)
+                || !DeckReleaseProofLease.stringField(worker,
+                    "runtime_authority_sha256", runtime.assemblyAuthority())
+                || !DeckReleaseProofLease.stringField(worker,
+                    "release_identity_sha256", runtime.releaseIdentity)
+                || !DeckReleaseProofLease.stringField(worker,
+                    "provenance_sha256", runtime.provenanceDigest)
+                || !DeckReleaseProofLease.stringField(worker,
+                    "inventory_sha256", runtime.inventoryDigest)
+                || !DeckReleaseProofLease.stringField(worker,
+                    "runtime_prefix_sha256", runtime.prefixDigest)
+                || !DeckReleaseProofLease.stringField(worker,
+                    "nix_proof_sha256", runtime.ownership.nixProofDigest)
+                || !DeckReleaseProofLease.stringField(worker,
+                    "closure_sha256", runtime.nixProof.closureDigest)
+                || !DeckReleaseProofLease.stringField(worker,
+                    "source_store_path", runtime.nixProof.sourceStorePath)
+                || !DeckReleaseProofLease.stringField(worker,
+                    "target_store_path", runtime.nixProof.targetStorePath)
+                || !DeckReleaseProofLease.stringField(worker,
+                    "worker_system", runtime.nixProof.nixSystem)
+                || !DeckReleaseProofLease.stringField(worker,
+                    "artifact_sha256", artifactDigest)) {
+            return "release proof worker receipt disagrees with the held release";
+        }
+        for field in ["mksquashfs_sha256", "unsquashfs_sha256",
+                      "payload_tree_sha256"] {
+            JsonValue digest = worker.get(field);
+            if (!digest.isString()
+                    || !AppImageNixReleaseProof.digest(digest.asString())) {
+                return "release proof worker receipt has an invalid " + field;
+            }
+        }
+        JsonValue workerStore = worker.get("worker_store_path");
+        return workerStore.isString()
+                && AppImageNixReleaseProof.storePath(workerStore.asString())
+            ? "" : "release proof worker receipt has an invalid worker store";
+    }
+
+    class string documentError(
+            string canonicalDocument, JsonValue proof,
+            string sourceRevision, string artifactName,
+            string artifactDigest, string target, string emulator,
+            AppImageRuntimeLease runtime, JsonValue provenance,
+            JsonValue inventory, JsonValue nixProof,
+            JsonValue exportContract, JsonValue storeExportContract) {
+        Vector<string> topKeys = ["artifact", "host_hashes", "release",
+            "runtime_proof", "schema_version", "source",
+            "worker_diagnostics", "worker_receipt"];
+        if (canonicalDocument.isEmpty() || !proof.isObject()
+                || !canonicalDocument.equals(proof.document())
+                || !DeckReleaseProofLease.exactKeys(proof, topKeys)
+                || !proof.get("schema_version").isInt()
+                || proof.get("schema_version").asInt() != 1) {
+            return "AppImage release proof is not exact canonical schema 1 JSON";
+        }
+
+        JsonValue source = proof.get("source");
+        JsonValue releaseRecord = proof.get("release");
+        JsonValue artifact = proof.get("artifact");
+        JsonValue hashes = proof.get("host_hashes");
+        JsonValue runtimeProof = proof.get("runtime_proof");
+        JsonValue worker = proof.get("worker_receipt");
+        JsonValue diagnostics = proof.get("worker_diagnostics");
+        if (!DeckReleaseProofLease.exactKeys(source,
+                    ["nix_source_store_path", "revision", "upstream_revision"])
+                || !DeckReleaseProofLease.stringField(
+                    source, "revision", sourceRevision)
+                || !DeckReleaseProofLease.stringField(
+                    source, "upstream_revision", sourceRevision)
+                || !DeckReleaseProofLease.stringField(source,
+                    "nix_source_store_path", runtime.nixProof.sourceStorePath)) {
+            return "release proof source revision/upstream is not the deployed revision";
+        }
+        if (!DeckReleaseProofLease.exactKeys(releaseRecord,
+                    ["assembly_authority_sha256", "emulator", "nix_system",
+                     "package_attribute", "release_identity_sha256", "target"])
+                || !DeckReleaseProofLease.stringField(
+                    releaseRecord, "target", target)
+                || !DeckReleaseProofLease.stringField(
+                    releaseRecord, "emulator", emulator)
+                || !DeckReleaseProofLease.stringField(releaseRecord,
+                    "nix_system", runtime.nixProof.nixSystem)
+                || !DeckReleaseProofLease.stringField(releaseRecord,
+                    "package_attribute", runtime.nixProof.packageAttribute)
+                || !DeckReleaseProofLease.stringField(releaseRecord,
+                    "release_identity_sha256", runtime.releaseIdentity)
+                || !DeckReleaseProofLease.stringField(releaseRecord,
+                    "assembly_authority_sha256", runtime.assemblyAuthority())) {
+            return "release proof target/package identity disagrees with the runtime lease";
+        }
+        if (!DeckReleaseProofLease.exactKeys(
+                    artifact, ["host_sha256", "name", "sha256"])
+                || !DeckReleaseProofLease.stringField(
+                    artifact, "name", artifactName)
+                || !DeckReleaseProofLease.stringField(
+                    artifact, "sha256", artifactDigest)
+                || !DeckReleaseProofLease.stringField(
+                    artifact, "host_sha256", artifactDigest)) {
+            return "release proof names different AppImage bytes";
+        }
+
+        Vector<string> hashKeys = ["artifact_sha256",
+            "nix_release_proof_sha256", "release_inventory_sha256",
+            "runtime_export_contract_sha256", "runtime_prefix_sha256",
+            "runtime_provenance_sha256", "store_export_contract_sha256",
+            "worker_receipt_sha256"];
+        if (!DeckReleaseProofLease.exactKeys(hashes, hashKeys)
+                || !DeckReleaseProofLease.stringField(
+                    hashes, "artifact_sha256", artifactDigest)
+                || !DeckReleaseProofLease.stringField(hashes,
+                    "nix_release_proof_sha256",
+                    runtime.ownership.nixProofDigest)
+                || !DeckReleaseProofLease.stringField(hashes,
+                    "release_inventory_sha256", runtime.inventoryDigest)
+                || !DeckReleaseProofLease.stringField(hashes,
+                    "runtime_export_contract_sha256",
+                    runtime.exportContractFile.digest)
+                || !DeckReleaseProofLease.stringField(hashes,
+                    "runtime_prefix_sha256", runtime.prefixDigest)
+                || !DeckReleaseProofLease.stringField(hashes,
+                    "runtime_provenance_sha256", runtime.provenanceDigest)
+                || !DeckReleaseProofLease.stringField(hashes,
+                    "store_export_contract_sha256",
+                    runtime.storeExportContractFile.digest)) {
+            return "release proof host hashes disagree with the held runtime";
+        }
+        if (!DeckReleaseProofLease.exactKeys(runtimeProof,
+                    ["nix_release_proof", "release_inventory",
+                     "runtime_export_contract", "runtime_provenance",
+                     "store_export_contract"])
+                || !DeckReleaseProofLease.canonicalEqual(
+                    runtimeProof.get("runtime_provenance"), provenance)
+                || !DeckReleaseProofLease.canonicalEqual(
+                    runtimeProof.get("release_inventory"), inventory)
+                || !DeckReleaseProofLease.canonicalEqual(
+                    runtimeProof.get("nix_release_proof"), nixProof)
+                || !DeckReleaseProofLease.canonicalEqual(
+                    runtimeProof.get("runtime_export_contract"), exportContract)
+                || !DeckReleaseProofLease.canonicalEqual(
+                    runtimeProof.get("store_export_contract"),
+                    storeExportContract)) {
+            return "release proof embeds foreign or stale runtime documents";
+        }
+        string workerError = DeckReleaseProofLease.workerError(
+            worker, runtime, target, emulator, artifactDigest);
+        if (!workerError.isEmpty()) { return workerError; }
+        if (!DeckReleaseProofLease.stringField(hashes,
+                "worker_receipt_sha256",
+                SemuOwnedFileDigest.text(worker.document()))) {
+            return "release proof worker receipt hash is not bound to its bytes";
+        }
+        if (!DeckReleaseProofLease.exactKeys(diagnostics,
+                    ["exit_code", "stderr_sha256", "stderr_tail",
+                     "stdout_sha256", "stdout_tail"])
+                || !diagnostics.get("exit_code").isInt()
+                || diagnostics.get("exit_code").asInt() != 0
+                || !diagnostics.get("stdout_sha256").isString()
+                || !AppImageNixReleaseProof.digest(
+                    diagnostics.get("stdout_sha256").asString())
+                || !diagnostics.get("stderr_sha256").isString()
+                || !AppImageNixReleaseProof.digest(
+                    diagnostics.get("stderr_sha256").asString())
+                || !diagnostics.get("stdout_tail").isString()
+                || !diagnostics.get("stderr_tail").isString()) {
+            return "release proof worker diagnostics are malformed";
+        }
+        return "";
+    }
+
+    class DeckReleaseProofLease bindBytes(
+            string path, string name, AppImageWorkSession session) {
+        DeckReleaseProofLease proof = DeckReleaseProofLease();
+        proof.name = name;
+        proof.path = path;
+        bool exactName = !name.isEmpty()
+            && PathTools.basename(path).equals(name);
+        proof.source = exactName
+            ? AppImageHeldFileLease.capturePath(path)
+            : AppImageHeldFileLease();
+        proof.staged = proof.source.ok() ? proof.source.copyLeaseTo(
+            session.rootDescriptor, "appimage-release-proof.json")
+            : AppImageHeldFileLease();
+        proof.content = proof.staged.ok()
+            ? SemuOwnedFileContent.text(proof.staged.descriptor) : "";
+        proof.document = JsonValue.parse(proof.content);
+        if (!exactName) {
+            proof.error = "AppImage release proof is not the exact sibling name";
+        } else if (!proof.source.ok()) {
+            proof.error = proof.source.error;
+        } else if (!proof.staged.ok()) {
+            proof.error = proof.staged.error;
+        } else if (!proof.source.digest.equals(proof.staged.digest)) {
+            proof.error = "AppImage release proof copy digest changed";
+        } else if (!proof.source.stillBound()) {
+            proof.error = "AppImage release proof source was rebound";
+        } else if (!proof.staged.stillBound(session.rootDescriptor)) {
+            proof.error = "private AppImage release proof copy was rebound";
+        } else if (!proof.document.isObject()
+                || !proof.content.equals(proof.document.document())) {
+            proof.error = "AppImage release proof is not canonical JSON";
+        } else if (!proof.content.equals(
+                SemuOwnedFileContent.text(proof.staged.descriptor))) {
+            proof.error = "AppImage release proof changed while parsing";
+        } else {
+            proof.valid = true;
+        }
+        return proof;
+    }
+
+    class DeckReleaseProofLease capture(
+            AppImageVerificationSnapshot artifact,
+            AppImageRuntimeLease runtime, AppImageWorkSession session,
+            string sourceRevision, string target, string emulator,
+            string artifactName) {
+        string name = DeckReleaseProofLease.siblingName(
+            artifact.sourceName, artifact.digest);
+        string path = DeckReleaseProofLease.siblingPath(artifact);
+        DeckReleaseProofLease proof = path.isEmpty()
+            ? DeckReleaseProofLease()
+            : DeckReleaseProofLease.bindBytes(path, name, session);
+        if (path.isEmpty()) {
+            proof.error = "cannot derive the exact AppImage release proof sibling";
+            return proof;
+        }
+        if (!proof.ok()) { return proof; }
+
+        JsonValue provenance = DeckReleaseProofLease.heldJson(
+            runtime.provenanceDescriptor, runtime.provenanceDigest);
+        JsonValue inventory = DeckReleaseProofLease.heldJson(
+            runtime.inventoryDescriptor, runtime.inventoryDigest);
+        JsonValue nixProof = DeckReleaseProofLease.heldJson(
+            runtime.ownership.nixProofDescriptor,
+            runtime.ownership.nixProofDigest);
+        JsonValue exportContract = DeckReleaseProofLease.heldJson(
+            runtime.exportContractFile.descriptor,
+            runtime.exportContractFile.digest);
+        JsonValue storeExportContract = DeckReleaseProofLease.heldJson(
+            runtime.storeExportContractFile.descriptor,
+            runtime.storeExportContractFile.digest);
+        if (provenance.isError() || inventory.isError()
+                || nixProof.isError() || exportContract.isError()
+                || storeExportContract.isError()) {
+            proof.valid = false;
+            proof.error = "held runtime documents are not exact canonical JSON";
+            return proof;
+        }
+        string error = DeckReleaseProofLease.documentError(
+            proof.content, proof.document, sourceRevision,
+            artifactName, artifact.digest, target, emulator, runtime,
+            provenance, inventory, nixProof,
+            exportContract, storeExportContract);
+        if (!error.isEmpty()) {
+            proof.valid = false;
+            proof.error = error;
+        }
+        return proof;
+    }
+
+    public bool stillBound(int sessionRootDescriptor) {
+        return self.valid && self.source.ok() && self.source.stillBound()
+            && self.staged.ok()
+            && self.staged.stillBound(sessionRootDescriptor)
+            && self.source.digest.equals(self.staged.digest)
+            && self.content.equals(
+                SemuOwnedFileContent.text(self.staged.descriptor))
+            && self.content.equals(self.document.document());
+    }
+
+    public void closeDescriptors() {
+        self.staged.closeDescriptors();
+        self.source.closeDescriptors();
+        self.valid = false;
+    }
+}
+
+class DeckDeploymentTransaction {
+    public bool valid;
+    public DeckHarnessOptions options;
+    public AppImageRuntimeLease runtime;
+    public AppImageWorkSession session;
+    public AppImageVerificationSnapshot artifact;
+    public AppImageHeldFileLease verifier;
+    public AppImageHeldFileLease installer;
+    public DeckReleaseProofLease releaseProof;
+    public AppImageSourceRevision source;
+    public string sourceRevision;
+    public string error;
+
+    public DeckDeploymentTransaction() {
+        self.valid = false;
+        self.options = DeckHarnessOptions();
+        self.runtime = AppImageRuntimeLease();
+        self.session = AppImageWorkSession();
+        self.artifact = AppImageVerificationSnapshot();
+        self.verifier = AppImageHeldFileLease();
+        self.installer = AppImageHeldFileLease();
+        self.releaseProof = DeckReleaseProofLease();
+        self.source = AppImageSourceRevision();
+        self.sourceRevision = "";
+        self.error = "";
+    }
+
+    public bool ok() { return self.valid; }
+    class int verificationTimeoutMilliseconds() { return 43200000; }
+
+    class string sliceEmulator(AppImageReleaseInventory inventory) {
+        if (!inventory.kind.equals("emulator-slice")
+                || !AppImageRuntimeInventory.identifier(inventory.target)
+                || inventory.packageAttribute.isEmpty()
+                || inventory.emulatorIds.size() != 1
+                || !AppImageRuntimeInventory.identifier(
+                    inventory.emulatorIds.get(0))) {
+            return "";
+        }
+        return inventory.emulatorIds.get(0);
+    }
+
+    public string emulator() {
+        return DeckDeploymentTransaction.sliceEmulator(
+            self.runtime.inventory);
+    }
+
+    public string artifactName() {
+        string emulator = self.emulator();
+        return emulator.isEmpty()
+            ? "" : "Semu-" + emulator + "-x86_64.AppImage";
+    }
+
+    public bool artifactMatches(string path) {
+        string expected = self.artifactName();
+        return !expected.isEmpty()
+            && PathTools.basename(path).equals(expected);
+    }
+
+    public Vector<string> verifierArguments() {
+        return [
+            "package", "appimage", "verify",
+            "--target", self.runtime.inventory.target,
+            "--emulator", self.emulator(),
+            "--runtime-root", self.options.runtimeRoot,
+            "--artifact", self.artifact.path,
+            "--project", self.options.project,
+            "--print-sha256"
+        ];
+    }
+
+    public string remoteArtifactName() {
+        string basename = self.artifactName();
+        return basename.isEmpty() ? ""
+            : basename.substring(0, basename.len() - ".AppImage".len())
+                + "." + self.artifact.digest + ".AppImage";
+    }
+
+    public string proofRoot() {
+        string emulator = self.emulator();
+        return emulator.isEmpty() ? "" : PathTools.join(
+            self.options.evidenceRoot,
+            "releases/" + self.runtime.releaseIdentity + "/"
+                + self.runtime.inventory.target + "/" + emulator + "/"
+                + self.artifact.digest);
+    }
+
+    class DeckDeploymentTransaction open(DeckHarnessOptions options) {
+        DeckDeploymentTransaction transaction = DeckDeploymentTransaction();
+        transaction.options = options;
+        transaction.sourceRevision = DeckHostRevision.current(options.project);
+        transaction.source = AppImageSourceRevision.capture(options.project);
+        if (!DeckHostRevision.exactClean(
+                options.project, transaction.sourceRevision)
+                || !transaction.source.ok()
+                || !transaction.source.revision.equals(
+                    transaction.sourceRevision)
+                || !transaction.source.upstreamRevision.equals(
+                    transaction.sourceRevision)) {
+            transaction.error =
+                "deployment requires one clean exact pushed source revision";
+            return transaction;
+        }
+
+        // acquire() needs a selector before it can bind the inventory. The
+        // resulting lease remains the sole authority for deployment facts.
+        AppImageReleaseInventoryResult candidate =
+            AppImageReleaseInventoryLoader.load(options.runtimeRoot);
+        if (!candidate.ok()
+                || DeckDeploymentTransaction.sliceEmulator(
+                    candidate.inventory).isEmpty()) {
+            transaction.error = candidate.ok()
+                ? "deployment requires one emulator-slice inventory"
+                : candidate.error;
+            return transaction;
+        }
+        transaction.runtime = AppImageRuntimeLease.acquire(
+            options.project, options.runtimeRoot,
+            candidate.inventory.packageAttribute);
+        if (!transaction.runtime.ok()) {
+            transaction.error = transaction.runtime.error;
+            return transaction;
+        }
+        if (transaction.emulator().isEmpty()
+                || !transaction.artifactMatches(options.artifact)) {
+            transaction.error =
+                "artifact identity disagrees with held emulator-slice inventory";
+            transaction.finish(false);
+            return transaction;
+        }
+
+        AppImagePathPlan plan = AppImagePathPlan();
+        plan.valid = true;
+        plan.workBase = UnixFileSystem.realPath(
+            Environment.get("TMPDIR", "/tmp"));
+        if (plan.workBase.isEmpty()) {
+            plan.workBase = UnixFileSystem.realPath("/tmp");
+        }
+        transaction.session = AppImageWorkSession.create(plan);
+        if (!transaction.session.ok()) {
+            transaction.error = transaction.session.error;
+            transaction.finish(false);
+            return transaction;
+        }
+
+        transaction.artifact = AppImageVerificationSnapshot.capture(
+            transaction.session, options.artifact);
+        transaction.verifier = transaction.runtime.verifier.copyLeaseTo(
+            transaction.session.rootDescriptor, "semu-verifier",
+            transaction.runtime.rootDescriptor, true);
+        AppImageHeldFileLease source =
+            AppImageHeldFileLease.capturePath(options.installer, true);
+        transaction.installer = source.ok() ? source.copyLeaseTo(
+            transaction.session.rootDescriptor, "installer.sh", -1, true)
+            : AppImageHeldFileLease();
+        string sourceError = source.error;
+        source.closeDescriptors();
+        transaction.releaseProof = transaction.artifact.ok()
+            ? DeckReleaseProofLease.capture(
+                transaction.artifact, transaction.runtime,
+                transaction.session, transaction.sourceRevision,
+                transaction.runtime.inventory.target,
+                transaction.emulator(), transaction.artifactName())
+            : DeckReleaseProofLease();
+        if (!transaction.resourcesBound()) {
+            transaction.error = !transaction.artifact.ok()
+                ? transaction.artifact.error
+                : !transaction.verifier.ok() ? transaction.verifier.error
+                : !sourceError.isEmpty() ? sourceError
+                : !transaction.installer.ok() ? transaction.installer.error
+                : !transaction.releaseProof.ok()
+                    ? transaction.releaseProof.error
+                : "private deployment inputs are not descriptor-bound";
+            transaction.finish(false);
+            return transaction;
+        }
+        transaction.valid = true;
+        return transaction;
+    }
+
+    public bool resourcesBound() {
+        return !self.emulator().isEmpty()
+            && self.runtime.ok() && self.runtime.stillBound()
+            && self.session.ok() && self.session.stillBound()
+            && self.artifact.ok() && self.artifact.sourceStillBound()
+            && self.artifact.snapshotStillBound()
+            && self.verifier.ok()
+            && self.verifier.stillBound(self.session.rootDescriptor)
+            && self.installer.ok()
+            && self.installer.stillBound(self.session.rootDescriptor)
+            && self.releaseProof.ok()
+            && self.releaseProof.stillBound(self.session.rootDescriptor)
+            && self.source.ok() && self.source.stillExact()
+            && DeckHostRevision.exactClean(
+                self.options.project, self.sourceRevision);
+    }
+
+    public DeckHarnessResult finish(bool requireExact = true) {
+        bool exact = !requireExact || (self.valid && self.resourcesBound());
+        self.verifier.closeDescriptors();
+        self.installer.closeDescriptors();
+        self.releaseProof.closeDescriptors();
+        AppImageContractResult artifactClosed = self.artifact.ok()
+            ? self.artifact.finish() : AppImageContractResult.success();
+        AppImageContractResult sessionClosed = self.session.ok()
+            ? self.session.cleanup() : AppImageContractResult.success();
+        AppImageContractResult runtimeClosed = self.runtime.ok()
+            ? self.runtime.finish() : AppImageContractResult.success();
+        self.valid = false;
+        return exact && artifactClosed.ok()
+                && sessionClosed.ok() && runtimeClosed.ok()
+            ? DeckHarnessResult.success()
+            : DeckHarnessResult.failure(
+                "deployment transaction changed or could not be released");
+    }
+
+    public DeckHarnessResult verify(DeckTransport transport) {
+        if (!self.valid || !self.resourcesBound()) {
+            return DeckHarnessResult.failure(
+                "deployment transaction is not exact and bound");
+        }
+        ExecResult execution = ChildProcess.run(
+            PathTools.join(self.session.path, "semu-verifier"),
+            self.verifierArguments(), "", CommandEnvironment.empty(),
+            CommandEnvironment.empty(),
+            DeckDeploymentTransaction.verificationTimeoutMilliseconds(),
+            8388608, 67108864, "", CommandOutput.collect(),
+            CommandOutput.stream());
+        DeckHarnessResult status = transport.checked(
+            execution, "verify exact emulator-slice AppImage contract");
+        if (!status.ok()) { return status; }
+        return DeckHostDigest.parse(execution).equals(self.artifact.digest)
+                && self.resourcesBound()
+            ? DeckHarnessResult.success()
+            : DeckHarnessResult.failure(
+                "AppImage verifier disagrees with held artifact bytes");
+    }
+
+    public JsonValue proof() {
+        JsonValue binding = JsonValue.makeObject();
+        binding.set("source_revision", JsonValue.makeString(
+            self.sourceRevision));
+        binding.set("release_identity_sha256", JsonValue.makeString(
+            self.runtime.releaseIdentity));
+        binding.set("runtime_provenance_sha256", JsonValue.makeString(
+            self.runtime.provenanceDigest));
+        binding.set("release_inventory_sha256", JsonValue.makeString(
+            self.runtime.inventoryDigest));
+        binding.set("nix_release_proof_sha256", JsonValue.makeString(
+            self.runtime.ownership.nixProofDigest));
+        binding.set("artifact_sha256", JsonValue.makeString(
+            self.artifact.digest));
+        binding.set("artifact_size_bytes", JsonValue.makeString(
+            f"{self.artifact.size}"));
+        binding.set("source_device_inode", JsonValue.makeString(
+            f"{self.artifact.sourceDevice}:{self.artifact.sourceInode}"));
+        binding.set("snapshot_device_inode", JsonValue.makeString(
+            f"{self.artifact.device}:{self.artifact.inode}"));
+        binding.set("verifier_sha256",
+            JsonValue.makeString(self.verifier.digest));
+        binding.set("installer_sha256",
+            JsonValue.makeString(self.installer.digest));
+        binding.set("appimage_release_proof_name",
+            JsonValue.makeString(self.releaseProof.name));
+        binding.set("appimage_release_proof_sha256",
+            JsonValue.makeString(self.releaseProof.staged.digest));
+        binding.set("appimage_release_proof_source_device_inode",
+            JsonValue.makeString(f"{self.releaseProof.source.device}:"
+                + f"{self.releaseProof.source.inode}"));
+        binding.set("appimage_release_proof_snapshot_device_inode",
+            JsonValue.makeString(f"{self.releaseProof.staged.device}:"
+                + f"{self.releaseProof.staged.inode}"));
+        binding.set("verification_timeout_ms", JsonValue.makeInt(
+            DeckDeploymentTransaction.verificationTimeoutMilliseconds()));
+
+        JsonValue document = JsonValue.makeObject();
+        document.set("schema_version", JsonValue.makeInt(1));
+        document.set("operation", JsonValue.makeString("deck-deployment"));
+        document.set("binding", binding);
+        document.set("release_inventory", self.runtime.inventory.json());
+        document.set("runtime_provenance", JsonValue.parse(
+            SemuOwnedFileContent.text(self.runtime.provenanceDescriptor)));
+        document.set("nix_release_proof", JsonValue.parse(
+            SemuOwnedFileContent.text(
+                self.runtime.ownership.nixProofDescriptor)));
+        document.set("appimage_release_proof", self.releaseProof.document);
+        return document;
+    }
+
+    public DeckHarnessResult retainProof() {
+        string root = self.proofRoot();
+        if (!self.valid || !self.resourcesBound() || root.isEmpty()
+                || FileSystem.mkdirp(root) != 0 || !FileSystem.isDir(root)
+                || FileSystem.isSymlink(root)
+                || !UnixFileSystem.realPath(root).equals(root)) {
+            return DeckHarnessResult.failure(
+                "cannot retain an exact post-build proof bundle");
+        }
+        string output = PathTools.join(root, "deployment-proof.json");
+        string releaseOutput = PathTools.join(
+            root, self.releaseProof.name);
+        string existingReleaseDigest = FileSystem.exists(releaseOutput)
+            ? DeckHostDigest.file(releaseOutput) : self.releaseProof.staged.digest;
+        AppImageProvenanceInternalResult releaseSealed =
+            FileSystem.exists(releaseOutput)
+            ? (existingReleaseDigest.equals(self.releaseProof.staged.digest)
+                ? AppImageProvenanceInternalResult.success()
+                : AppImageProvenanceInternalResult.failure(
+                    "retained AppImage release proof has foreign bytes"))
+            : AppImageProvenanceDocument.seal(
+                releaseOutput, self.releaseProof.content);
+        AppImageProvenanceInternalResult sealed = releaseSealed;
+        if (releaseSealed.ok()) {
+            sealed = AppImageProvenanceDocument.seal(
+                output, self.proof().document() + "\n");
+        }
+        return sealed.ok()
+                && DeckReleaseProofLease.exactFile(
+                    releaseOutput, self.releaseProof.staged.digest,
+                    AppImageProvenanceDocument.canonicalMode())
+                && !DeckHostDigest.file(output).isEmpty()
+                && self.resourcesBound()
+            ? DeckHarnessResult.success()
+            : DeckHarnessResult.failure(
+                "post-build proof bundle is incomplete or changed");
+    }
+
+    public DeckHarnessResult prepareSettings(DeckTransport transport) {
+        string launcher = DeckHarnessOptions.installedLauncher();
+        Vector<string> arguments = [
+            "SEMU_ENTRYPOINT=" + launcher,
+            "SEMU_ROMS_ROOT=" + self.options.romsRoot,
+            launcher, "settings", "prepare",
+            "--target", self.runtime.inventory.target,
+            "--emulator", self.emulator(),
+            "--project", self.options.remoteProject,
+            "--semu-home", PathTools.join(
+                self.options.remoteProject, "settings"),
+            "--es-de-home", self.options.esDeHome,
+            "--output", PathTools.join(self.options.remoteProject,
+                "build/configs/" + self.runtime.inventory.target)
+        ];
+        return self.valid && self.resourcesBound()
+            ? transport.checked(transport.remote(
+                "/usr/bin/env", arguments, true, 900000),
+                "compile/install Semu-owned settings and ES-DE outputs")
+            : DeckHarnessResult.failure(
+                "settings require a bound emulator-slice transaction");
+    }
+
+    public DeckHarnessResult install(DeckTransport transport) {
+        string stage = PathTools.join(
+            self.options.remoteHarnessRoot(), "deploy");
+        string remoteArtifact = PathTools.join(
+            stage, self.remoteArtifactName());
+        string remoteInstaller = PathTools.join(
+            stage, "installer." + self.installer.digest + ".sh");
+        string remoteReleaseProof = PathTools.join(
+            stage, self.releaseProof.name);
+        DeckHarnessResult result = self.valid && self.resourcesBound()
+            ? transport.checked(transport.remote(
+                "/usr/bin/mkdir", ["-p", "--", stage]),
+                "create remote deployment staging root")
+            : DeckHarnessResult.failure(
+                "install requires a bound emulator-slice transaction");
+        bool stageCreated = result.ok();
+        if (result.ok()) {
+            result = transport.checked(transport.rsync(
+                self.artifact.path, remoteArtifact, true),
+                "stage exact emulator-slice AppImage");
+        }
+        if (result.ok()) {
+            result = transport.checked(transport.rsync(
+                PathTools.join(self.session.path, "installer.sh"),
+                remoteInstaller, true), "stage exact installer");
+        }
+        if (result.ok()) {
+            result = transport.checked(transport.rsync(
+                PathTools.join(self.session.path,
+                    "appimage-release-proof.json"),
+                remoteReleaseProof, true),
+                "stage exact AppImage release proof");
+        }
+        if (result.ok()
+                && (!self.resourcesBound()
+                    || !transport.remoteHash(remoteArtifact).equals(
+                        self.artifact.digest)
+                    || !transport.remoteHash(remoteInstaller).equals(
+                        self.installer.digest)
+                    || !transport.remoteHash(remoteReleaseProof).equals(
+                        self.releaseProof.staged.digest))) {
+            result = DeckHarnessResult.failure(
+                "remote staging bytes differ from held host bytes");
+        }
+        if (result.ok()) {
+            result = transport.checked(transport.remote(
+                "/usr/bin/bash",
+                [remoteInstaller, "install", "--artifact", remoteArtifact,
+                 "--sha256", self.artifact.digest,
+                 "--install-root", DeckHarnessOptions.installRoot(),
+                 "--project", self.options.remoteProject,
+                 "--roms", self.options.romsRoot], true, 900000),
+                "install digest-bound emulator-slice release");
+        }
+        if (result.ok()
+                && (!self.resourcesBound()
+                    || !transport.remoteHash(
+                        DeckHarnessOptions.installedAppImage()).equals(
+                            self.artifact.digest))) {
+            result = DeckHarnessResult.failure(
+                "installed AppImage differs from held host bytes");
+        }
+        DeckHarnessResult cleanup = stageCreated
+            ? transport.checked(transport.remote("/usr/bin/rm",
+                ["-f", "--", remoteArtifact, remoteInstaller,
+                 remoteReleaseProof]),
+                "remove exact deployment staging files")
+            : DeckHarnessResult.success();
+        return result.ok() && !cleanup.ok() ? cleanup : result;
+    }
+}
 
 class DeckDeployment {
     public DeckHarnessOptions options;
@@ -14,95 +822,33 @@ class DeckDeployment {
         self.transport = transport;
     }
 
-    public DeckHarnessResult verifyArtifact() {
-        string semu = PathTools.join(self.options.project, "build/semu");
-        if (!FileSystem.isFile(semu) || FileSystem.isSymlink(semu)
-                || !FileSystem.isFile(self.options.artifact)
-                || FileSystem.isSymlink(self.options.artifact)
-                || !FileSystem.isFile(self.options.installer)
-                || FileSystem.isSymlink(self.options.installer)) {
-            return DeckHarnessResult.failure(
-                "artifact, installer, or strict Semu verifier is absent");
+    public DeckHarnessResult execute(
+            bool verify, bool install, bool settings) {
+        DeckDeploymentTransaction transaction =
+            DeckDeploymentTransaction.open(self.options);
+        if (!transaction.ok()) {
+            return DeckHarnessResult.failure(transaction.error);
         }
-        ExecResult verified = ChildProcess.run(semu,
-            ["package", "appimage", "verify", "--target", "steam-deck",
-             "--runtime-root", self.options.runtimeRoot,
-             "--artifact", self.options.artifact,
-             "--project", self.options.project], "",
-            CommandEnvironment.empty(), CommandEnvironment.empty(), 900000,
-            8388608, 8388608, "", CommandOutput.stream(),
-            CommandOutput.stream());
-        return self.transport.checked(verified, "verify host AppImage contract");
+        DeckHarnessResult result = DeckHarnessResult.success();
+        if (verify) { result = transaction.verify(self.transport); }
+        if (result.ok() && verify) { result = transaction.retainProof(); }
+        if (result.ok() && install) { result = transaction.install(self.transport); }
+        if (result.ok() && settings) {
+            result = transaction.prepareSettings(self.transport);
+        }
+        DeckHarnessResult closed = transaction.finish();
+        return result.ok() && !closed.ok() ? closed : result;
+    }
+
+    public DeckHarnessResult verifyArtifact() {
+        return self.execute(true, false, false);
     }
 
     public DeckHarnessResult prepareSettings() {
-        string launcher = DeckHarnessOptions.installedLauncher();
-        Vector<string> arguments = [
-            "SEMU_ENTRYPOINT=" + launcher,
-            "SEMU_ROMS_ROOT=" + self.options.romsRoot,
-            launcher, "settings", "prepare", "--target", "steam-deck",
-            "--project", self.options.remoteProject,
-            "--semu-home", PathTools.join(self.options.remoteProject, "settings"),
-            "--es-de-home", self.options.esDeHome,
-            "--output", PathTools.join(self.options.remoteProject,
-                "build/configs/steam-deck")
-        ];
-        return self.transport.checked(self.transport.remote(
-            "/usr/bin/env", arguments, true, 900000),
-            "compile/install Semu-owned settings and ES-DE outputs");
+        return self.execute(false, false, true);
     }
 
     public DeckHarnessResult deploy() {
-        DeckHarnessResult verified = self.verifyArtifact();
-        if (!verified.ok()) { return verified; }
-        string artifactSha256 = DeckHostDigest.file(self.options.artifact);
-        string installerSha256 = DeckHostDigest.file(self.options.installer);
-        if (artifactSha256.isEmpty() || installerSha256.isEmpty()) {
-            return DeckHarnessResult.failure(
-                "host artifact or installer digest is invalid");
-        }
-        string stage = PathTools.join(
-            self.options.remoteHarnessRoot(), "deploy");
-        DeckHarnessResult directory = self.transport.checked(
-            self.transport.remote("/usr/bin/mkdir", ["-p", "--", stage]),
-            "create remote deployment staging root");
-        if (!directory.ok()) { return directory; }
-        string remoteArtifact = PathTools.join(stage,
-            "Semu-x86_64." + artifactSha256 + ".AppImage");
-        string remoteInstaller = PathTools.join(stage,
-            "installer." + installerSha256 + ".sh");
-        DeckHarnessResult artifact = self.transport.checked(
-            self.transport.rsync(self.options.artifact, remoteArtifact, true),
-            "stage AppImage");
-        if (!artifact.ok()) { return artifact; }
-        DeckHarnessResult installer = self.transport.checked(
-            self.transport.rsync(self.options.installer, remoteInstaller, true),
-            "stage installer");
-        if (!installer.ok()) { return installer; }
-        if (!self.transport.remoteHash(remoteArtifact).equals(artifactSha256)
-                || !self.transport.remoteHash(
-                    remoteInstaller).equals(installerSha256)) {
-            return DeckHarnessResult.failure(
-                "remote deployment staging bytes differ from host bytes");
-        }
-        DeckHarnessResult installed = self.transport.checked(
-            self.transport.remote("/usr/bin/bash",
-                [remoteInstaller, "install", "--artifact", remoteArtifact,
-                 "--sha256", artifactSha256,
-                 "--install-root", DeckHarnessOptions.installRoot(),
-                 "--project", self.options.remoteProject,
-                 "--roms", self.options.romsRoot], true, 900000),
-            "install digest-bound AppImage release");
-        if (!installed.ok()) { return installed; }
-        if (!self.transport.remoteHash(
-                DeckHarnessOptions.installedAppImage()).equals(artifactSha256)) {
-            return DeckHarnessResult.failure(
-                "installed AppImage bytes differ from verified host bytes");
-        }
-        DeckHarnessResult prepared = self.prepareSettings();
-        if (!prepared.ok()) { return prepared; }
-        self.transport.remote(
-            "/usr/bin/rm", ["-f", "--", remoteArtifact, remoteInstaller]);
-        return DeckHarnessResult.success();
+        return self.execute(true, true, true);
     }
 }

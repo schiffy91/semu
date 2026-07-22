@@ -1,0 +1,8 @@
+--- a/cmake/SearchForStuff.cmake
++++ b/cmake/SearchForStuff.cmake
+@@ -105,3 +105,2 @@
+-add_subdirectory(3rdparty/cubeb EXCLUDE_FROM_ALL)
+-disable_compiler_warnings_for_target(cubeb)
+-disable_compiler_warnings_for_target(speex)
++find_package(cubeb REQUIRED GLOBAL)
++add_library(cubeb ALIAS cubeb::cubeb)

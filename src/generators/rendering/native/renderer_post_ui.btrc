@@ -131,7 +131,8 @@ class RendererStateFiles {
     }
 
     class void appendReceipt(char* phase, struct SemuRenderFrameGl* frame,
-                             void* context, int matched, int status,
+                             unsigned long long contextGeneration,
+                             int matched, int status,
                              int actions, unsigned long long hash,
                              int nonblank, struct RendererConfig* config,
                              struct RendererGlResources* resources,
@@ -143,9 +144,9 @@ class RendererStateFiles {
         FILE* file = fopen(path, "a");
         if (file == null) { return; }
         fprintf(file,
-            "schema=2 phase=%s frame_id=%llu context=%p framebuffer=%u color_buffer=%u matched=%d status=%d actions=%d frame_hash=%016llx nonblank=%d",
+            "schema=3 phase=%s frame_id=%llu context_generation=%llu framebuffer=%u color_buffer=%u matched=%d status=%d actions=%d frame_hash=%016llx nonblank=%d",
             phase == null ? "unknown" : phase,
-            frame == null ? 0ULL : frame->frame_id, context,
+            frame == null ? 0ULL : frame->frame_id, contextGeneration,
             frame == null ? 0u : frame->framebuffer,
             frame == null ? 0u : frame->color_buffer,
             matched, status, actions, hash, nonblank);

@@ -20,6 +20,10 @@ forAllSystems (
     };
     productionPackages = self.packages.x86_64-linux;
     steamDeckBootstrapCli = productionPackages.steamdeck-runtime.semuBootstrapCli;
+    aggregateReleaseInventory =
+      productionPackages.steamdeck-runtime.semuReleaseInventory;
+    retroarchReleaseInventory =
+      productionPackages.steamdeck-runtime-retroarch.semuReleaseInventory;
     bootstrapContract = steamDeckBootstrapCli.bootstrapContract;
     expectedRuntimeNames = map (id: "${id}-runtime") architectureContract.linuxEmulatorIds;
     actualRuntimeNames = lib.filter (
@@ -32,6 +36,28 @@ forAllSystems (
       assert lib.assertMsg (
         productionPackages.default.outPath == productionPackages.steamdeck-runtime.outPath
       ) "the default x86_64-linux package must be the exact Steam Deck runtime";
+      assert lib.assertMsg (
+        aggregateReleaseInventory == {
+          schema_version = 1;
+          kind = "aggregate";
+          target = "steam-deck";
+          platform = "linux";
+          nix_system = "x86_64-linux";
+          package_attribute = "steamdeck-runtime";
+          emulator_ids = architectureContract.linuxEmulatorIds;
+        }
+      ) "the aggregate Steam Deck release inventory is not exact";
+      assert lib.assertMsg (
+        retroarchReleaseInventory == {
+          schema_version = 1;
+          kind = "emulator-slice";
+          target = "steam-deck";
+          platform = "linux";
+          nix_system = "x86_64-linux";
+          package_attribute = "steamdeck-runtime-retroarch";
+          emulator_ids = [ "retroarch" ];
+        }
+      ) "the RetroArch release inventory is not exact";
       assert lib.assertMsg (
         steamDeckBootstrapCli.outPath == productionPackages.semu-program.outPath
       ) "the canonical Steam Deck runtime must expose its exact Semu bootstrap CLI";
@@ -52,6 +78,8 @@ forAllSystems (
       {
         production_default = "steamdeck-runtime";
         emulator_runtime_packages = expectedRuntimeNames;
+        aggregate_release = aggregateReleaseInventory;
+        retroarch_release = retroarchReleaseInventory;
       };
     nixContract = architectureContract // {
       package_surface = publicPackageContract;
@@ -206,6 +234,27 @@ forAllSystems (
             CC="${pkgs.stdenv.cc}/bin/cc" \
             SHELL="${pkgs.bash}/bin/bash" \
             tree-audit
+          touch "$out"
+        '';
+
+  }
+  // lib.optionalAttrs pkgs.stdenv.hostPlatform.isLinux {
+    appimage-worker =
+      pkgs.runCommand "semu-appimage-worker-check"
+        {
+          nativeBuildInputs = [
+            self.packages.${system}.appimage-worker
+          ];
+        }
+        ''
+          command -v semu-btrc >/dev/null
+          command -v mksquashfs >/dev/null
+          command -v unsquashfs >/dev/null
+          test -x "$(command -v semu-btrc)"
+          mksquashfs -version > mksquashfs.version
+          unsquashfs -version > unsquashfs.version
+          grep -Fq 'mksquashfs version' mksquashfs.version
+          grep -Fq 'unsquashfs version' unsquashfs.version
           touch "$out"
         '';
   }

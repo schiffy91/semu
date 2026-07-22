@@ -1,21 +1,64 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "enabled": true,
-  "default_variant": "classic",
-  "hole": {
-    "x": 0.2422535211,
-    "y": 0.1760324983,
-    "w": 0.5577464789,
-    "h": 0.3619498984
-  },
+  "disabled_variant": "none",
+  "default_variant": "dmg",
   "variants": [
     {
-      "id": "classic",
-      "label": "Classic Grey",
-      "art": "assets/bezels/gb/classic.png"
+      "id": "dmg",
+      "label": "DMG-01 Gray",
+      "art": "assets/bezels/gb/dmg.png",
+      "glass": "assets/bezels/gb/reflection.png",
+      "canvas": {
+        "mode": "minimum_aperture",
+        "min_integer_scale": 2,
+        "max_width": 1.0,
+        "max_height": 1.0
+      },
+      "hole": {
+        "x": 0.2,
+        "y": 0.125,
+        "w": 0.6,
+        "h": 0.36
+      }
+    },
+    {
+      "id": "studio",
+      "label": "Studio Gray",
+      "art": "assets/bezels/gb/classic.png",
+      "canvas": {
+        "mode": "minimum_aperture",
+        "min_integer_scale": 2,
+        "max_width": 1.0,
+        "max_height": 1.0
+      },
+      "hole": {
+        "x": 0.2422535211,
+        "y": 0.1760324983,
+        "w": 0.5577464789,
+        "h": 0.3619498984
+      }
     }
   ],
+  "compatibility": {
+    "surfaces": [
+      "main"
+    ],
+    "native": {
+      "w": 160,
+      "h": 144
+    },
+    "aspect": {
+      "w": 10,
+      "h": 9
+    },
+    "fit": "contain",
+    "scaling": {
+      "mode": "integer_preferred",
+      "fallback": "fractional_downscale"
+    }
+  },
   "doc": {
-    "hole": "The Semu-owned 1065x1477 product render has one continuous charcoal lens. Declarative aperture pixels are 594x534.6 at (258,260), exactly 10:9. At 1280x800 the contain-fit leaves 321.733x289.560 pixels, selecting centered 320x288 (2x native) content without making raster art the geometry authority."
+    "variants": "DMG-01 Gray is the Semu-owned production default with an original shell and spatially varying glass reflection. Its curated 614.4x552.96 source-pixel 10:9 game region sits within the charcoal lens surround and yields an exact 320x288 aperture when the complete 1024x1536 art is contained on the Deck's 1280x800 display. Studio Gray is the materially distinct Semu-owned alternative. Both declare a minimum 2x aperture without allowing the art canvas to exceed the live viewport. The policy applies whether integer snapping is enabled or disabled. Disabled is an explicit settings choice rather than an empty art variant."
   }
 }

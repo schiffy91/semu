@@ -12,7 +12,7 @@ writeText "semu_renderer.h" ''
   extern "C" {
   #endif
 
-  #define SEMU_RENDER_ABI_GL 2u
+  #define SEMU_RENDER_ABI_GL 3u
   #define SEMU_RENDER_MAX_SURFACES 2
   #define SEMU_RENDER_ORIGIN_BOTTOM_LEFT 0
   #define SEMU_RENDER_ORIGIN_TOP_LEFT 1
@@ -35,7 +35,6 @@ writeText "semu_renderer.h" ''
   #define SEMU_RENDER_POINTER_STALE (-3)
 
   typedef void* (*SemuRenderGetProc)(const char* name);
-  typedef void* (*SemuRenderCurrentContext)(void);
 
   typedef struct SemuRenderSurfaceGl {
       int x;
@@ -114,11 +113,12 @@ writeText "semu_renderer.h" ''
       int surface_count;
       SemuRenderSurfaceGl surfaces[SEMU_RENDER_MAX_SURFACES];
       SemuRenderGetProc get_proc;
-      SemuRenderCurrentContext current_context;
+      uint64_t context_generation;
       SemuRenderPointerMap pointer_map;
       SemuRenderMapPointer map_pointer;
   } SemuRenderFrameGl;
 
+  void semu_render_context_invalidate_gl(uint64_t context_generation);
   int semu_render_game_gl(SemuRenderFrameGl* frame);
   int semu_render_post_ui_gl(SemuRenderFrameGl* frame);
 

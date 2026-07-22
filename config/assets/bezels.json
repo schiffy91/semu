@@ -75,9 +75,41 @@
           }
         }
       },
+      "gb_dmg_gray": {
+        "label": "DMG-01 Gray",
+        "art": "assets/bezels/gb/dmg.png",
+        "glass": "assets/bezels/gb/reflection.png",
+        "aspect": {
+          "w": 10,
+          "h": 9
+        },
+        "hole": {
+          "x": 0.2,
+          "y": 0.125,
+          "w": 0.6,
+          "h": 0.36
+        },
+        "geometry": {
+          "method": "curated_centered_10x9_region_within_lens_surround",
+          "canvas": {
+            "w": 1024,
+            "h": 1536
+          },
+          "source_pixels": {
+            "x": 204.8,
+            "y": 192,
+            "w": 614.4,
+            "h": 552.96
+          }
+        }
+      },
       "gb_classic_gray": {
         "label": "Classic Gray",
         "art": "assets/bezels/gb/classic.png",
+        "aspect": {
+          "w": 10,
+          "h": 9
+        },
         "hole": {
           "x": 0.2422535211,
           "y": 0.1760324983,
@@ -470,11 +502,14 @@
         "alternatives": []
       },
       "gb": {
-        "default_variant": "gb_classic_gray",
+        "default_variant": "gb_dmg_gray",
         "variants": {
-          "classic": "gb_classic_gray"
+          "dmg": "gb_dmg_gray",
+          "studio": "gb_classic_gray"
         },
-        "alternatives": []
+        "alternatives": [
+          "gb_classic_gray"
+        ]
       },
       "gbc": {
         "default_variant": "gbc_frost_purple",
@@ -614,6 +649,34 @@
         "bit_depth": 16,
         "color_type": 6,
         "sha256": "b48f80d1ec9e71cf36bff09ca4995511eb1f3f10603703b53dfd1d453a89fab2"
+      }
+    },
+    "assets/bezels/gb/dmg.png": {
+      "type": "local",
+      "path": "config/assets/bezels/gb/dmg.png",
+      "output": {
+        "width": 1024,
+        "height": 1536,
+        "bit_depth": 8,
+        "color_type": 6,
+        "sha256": "973c7381c44c3c4a97186c2dfbcf6695296e8196d598d3a30110f72d45330a6c"
+      },
+      "doc": {
+        "provenance": "Original Semu-owned generic gray handheld product render generated for this project on 2026-07-21, with no third-party logo or trademark. The flat chroma background and lens were converted to alpha with the bundled image-generation helper."
+      }
+    },
+    "assets/bezels/gb/reflection.png": {
+      "type": "local",
+      "path": "config/assets/bezels/gb/reflection.png",
+      "output": {
+        "width": 1672,
+        "height": 941,
+        "bit_depth": 8,
+        "color_type": 6,
+        "sha256": "289924361e3b8a809f0c4958fe117b849c302a993f3bed5f6465ae92fdff4d73"
+      },
+      "doc": {
+        "provenance": "Original Semu-owned sparse coated-glass reflection map generated for this project on 2026-07-21. The compositor maps its RGB and alpha only over game pixels through the declared reflection coefficient."
       }
     },
     "assets/bezels/gb/classic.png": {

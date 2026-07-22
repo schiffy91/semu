@@ -4,6 +4,7 @@ import std.{fs, platform, strings, vector}
 
 #include <errno.h>
 #include <fcntl.h>
+#include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
 #include <unistd.h>
@@ -34,6 +35,10 @@ int semuOwnedLinkNoReplace(int parentDescriptor,
 }
 
 class SemuOwnedPaths {
+    class int permissions(mode_t mode) {
+        return (int)(mode & (mode_t)4095);
+    }
+
     class bool hasControl(string path) {
         for value in path {
             if (value < 32 || value == 127) { return true; }
@@ -435,6 +440,23 @@ class SemuOwnedFileDigest {
         return Strings.copy(output);
     }
 
+    class string text(string content) {
+        struct SemuOwnedSha256State state;
+        SemuOwnedFileDigest.initialize(&state);
+        SemuOwnedFileDigest.update(
+            &state, (unsigned char*)content, (size_t)content.len());
+        unsigned char digest[32];
+        SemuOwnedFileDigest.finish(&state, digest);
+        char digits[17] = "0123456789abcdef";
+        char output[65];
+        for (int index = 0; index < 32; index++) {
+            output[index * 2] = digits[digest[index] >> 4];
+            output[index * 2 + 1] = digits[digest[index] & 15u];
+        }
+        output[64] = 0;
+        return Strings.copy(output);
+    }
+
     class string file(string path) {
         string absolute = SemuOwnedPaths.normalized(path);
         if (absolute.isEmpty()) { return ""; }
@@ -452,6 +474,51 @@ class SemuOwnedFileDigest {
             ? SemuOwnedFileDigest.descriptor(descriptor) : "";
         close(descriptor);
         return digest;
+    }
+}
+
+class SemuOwnedFileContent {
+    class string text(int descriptor, int maximumBytes = 16777216) {
+        struct stat before;
+        if (descriptor < 0 || maximumBytes < 1
+                || fstat(descriptor, &before) != 0
+                || !S_ISREG(before.st_mode)
+                || before.st_size < (off_t)0
+                || before.st_size > (off_t)maximumBytes
+                || lseek(descriptor, (off_t)0, SEEK_SET) < (off_t)0) {
+            return "";
+        }
+        size_t size = (size_t)before.st_size;
+        char* buffer = (char*)malloc(size + (size_t)1);
+        if (buffer == NULL) { return ""; }
+        size_t offset = (size_t)0;
+        bool valid = true;
+        while (valid && offset < size) {
+            long long count = (long long)read(
+                descriptor, buffer + offset, size - offset);
+            if (count > 0LL) {
+                offset += (size_t)count;
+            } else if (count < 0LL && errno == EINTR) {
+                continue;
+            } else {
+                valid = false;
+            }
+        }
+        for (size_t index = (size_t)0; valid && index < size; index++) {
+            if (buffer[index] == 0) { valid = false; }
+        }
+        buffer[size] = 0;
+        struct stat after;
+        valid = valid && offset == size
+            && fstat(descriptor, &after) == 0
+            && before.st_dev == after.st_dev
+            && before.st_ino == after.st_ino
+            && before.st_size == after.st_size
+            && before.st_mode == after.st_mode
+            && lseek(descriptor, (off_t)0, SEEK_SET) >= (off_t)0;
+        string content = valid ? Strings.copy(buffer) : "";
+        free(buffer);
+        return content;
     }
 }
 

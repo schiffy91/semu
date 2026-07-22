@@ -5,9 +5,9 @@ import std.{console, fs, vector}
 class TreeAuditPolicy {
     class Vector<string> topLevelPaths() {
         return [
-            ".git", ".gitattributes", ".gitignore", "Makefile", "README.md", "build",
-            "config", "docs", "flake.lock", "flake.nix", "packaging", "src",
-            "tests"
+            ".git", ".gitattributes", ".gitignore", "AGENTS.md", "Makefile",
+            "README.md", "build", "config", "docs", "flake.lock", "flake.nix",
+            "packaging", "src", "tests"
         ];
     }
 
@@ -24,7 +24,7 @@ class TreeAuditPolicy {
     }
 
     class Vector<string> testFamilies() {
-        return ["compiler", "core", "fixtures", "targets"];
+        return ["compiler", "core", "fixtures", "integration", "targets"];
     }
 
     class Vector<string> testTargets() {
@@ -260,6 +260,10 @@ class TreeAuditor {
         for node in nodes {
             if (!node.isFile()) { continue; }
             if (allowSpecial && node.name.equals("Makefile")) { continue; }
+            if (label.equals("test") && node.name.equals("Containerfile")
+                    && node.relativePath.startsWith("tests/integration/")) {
+                continue;
+            }
             if (!node.name.contains(".")) {
                 if (allowSpecial && TreeAuditor.executableScript(node)) { continue; }
                 result.add(f"unexpected {label} file type: {node.relativePath}");

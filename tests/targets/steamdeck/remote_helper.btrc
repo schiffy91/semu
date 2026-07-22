@@ -1273,21 +1273,26 @@ class DeckRemoteRunner {
             stateRoot, "semu-render-evidence.log");
         string frameSource = PathTools.join(
             stateRoot, "semu-render-final.ppm");
-        if (!DeckRemoteFile.fresh(rendererSource, startedNs)
-                || !DeckRemoteFile.fresh(frameSource, startedNs)) {
+        bool renderingRequired = !self.request.operation.equals(
+            "operator-start-select");
+        if (renderingRequired
+                && (!DeckRemoteFile.fresh(rendererSource, startedNs)
+                    || !DeckRemoteFile.fresh(frameSource, startedNs))) {
             return false;
         }
-        string renderer = DeckRemoteEvidence.bind(
-            FileSystem.readText(rendererSource), self.request);
+        string renderer = renderingRequired ? DeckRemoteEvidence.bind(
+            FileSystem.readText(rendererSource), self.request) : "";
         string input = DeckRemoteEvidence.bind(inputLog, self.request);
         string emulator = DeckRemoteEvidence.bind(emulatorLog, self.request);
         string wii = self.request.wiiExpected
             ? DeckRemoteEvidence.bind(wiiLog, self.request) : "";
-        return !renderer.isEmpty() && !input.isEmpty() && !emulator.isEmpty()
-            && DeckRemoteFile.copy(frameSource, PathTools.join(
-                destination, "semu-render-final.ppm"))
-            && FileSystem.writeText(PathTools.join(
-                destination, "semu-render-evidence.log"), renderer)
+        return (!renderingRequired || !renderer.isEmpty())
+            && !input.isEmpty() && !emulator.isEmpty()
+            && (!renderingRequired
+                || (DeckRemoteFile.copy(frameSource, PathTools.join(
+                        destination, "semu-render-final.ppm"))
+                    && FileSystem.writeText(PathTools.join(
+                        destination, "semu-render-evidence.log"), renderer)))
             && FileSystem.writeText(PathTools.join(
                 destination, "semu-input-evidence.log"), input)
             && FileSystem.writeText(PathTools.join(

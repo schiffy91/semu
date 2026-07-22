@@ -5,6 +5,84 @@ Every row is open. The repository currently retains only a generated acceptance
 plan: there is no production AppImage and no per-system runtime, screenshot, or
 operator evidence under `build/verification/steamdeck`.
 
+The active row is **Game Boy through RetroArch/Gambatte**. It remains active
+until the exact deployed release has one accepted run-bound bundle covering the
+complete declaratively enumerated settings cross-product, gameplay input,
+save/load, actual radial actions, both quit orders, and ES-DE return.
+
+## Row State And Evidence Rule
+
+A row has only three meaningful states: open, active, or accepted. Exactly one
+system row may be active. A row becomes accepted only when one run-bound bundle
+from the exact deployed artifact proves every requirement in its table row and
+the full per-system transaction in `production-goal.md`. Package builds,
+generated mappings, dry runs, synthetic frames, old screenshots, and evidence
+from another release do not change a row's physical status.
+
+For each row, the harness must enumerate variants from the resolved Semu system
+definition rather than from a second hard-coded list. Every exposed shader,
+bezel, layout, aspect, and controller choice must be exercised. Each visual
+choice needs an inspected physical Deck screenshot; each gameplay, radial,
+save/load, and quit choice needs a real Game Mode observation plus independently
+measured process, frame, or state evidence. Unattended input may originate from
+a truthfully labelled synthetic-uinput controller only when it enters before
+Steam Input and is observed through the physical Deck's exact target-declared
+virtual gamepad identity;
+direct emulator injection and desktop keystrokes are inadmissible. Settings that
+are not implemented and physically usable must not appear as choices.
+
+Before launching the first visual run, the evidence manifest must record the
+resolved choice sets and exact permitted cross-product count. Acceptance fails
+if the retained run IDs do not cover that complete set exactly, if a screenshot
+or renderer receipt identifies a different combination, or if an untested
+choice remains exposed in the settings UI.
+
+Every non-modern presentation must expose a curated disabled state, production
+default, and at least one materially distinct high-quality alternative for each
+applicable shader and bezel dimension. Acceptance covers every combination the
+owned settings UI permits, identified in both the screenshot and renderer
+receipt rather than inferred from filenames.
+
+## Required Run-Bound Record
+
+Each system's accepted evidence bundle must contain one manifest that binds all
+of the following to the same release, system, ROM, Game Mode session, and run ID:
+
+1. Clean pushed source revision, Nix derivations and closure, package slice,
+   AppImage SHA-256, installed release identity, and stable-launcher target.
+2. Physical Deck/SteamOS/GPU identity, ES-DE launch identity, emulator process
+   group, bounded startup timing, and final ES-DE foreground state.
+3. Real ROM identity and hashes before and after the run, plus bounded BIOS,
+   key, firmware, and existing-save hashes where applicable.
+4. One result for every declaratively required gameplay action, observed from
+   the target-declared Steam Input virtual gamepad output and corroborated by a
+   game-frame or game-state
+   response, with the original hardware or synthetic-uinput source identified.
+   Each action uses a declared restore/control/inject differential probe; an
+   unrelated animation or generic frame difference is not consumption evidence.
+5. The resolved shader, bezel, layout, aspect, integer-scale, and controller
+   choice matrix; every UI-permitted combination must have its own renderer
+   receipt and inspected physical screenshot. Disabled choices are tested too.
+6. Native game rectangles, output dimensions, orientation, nonblank pixel
+   bounds, clipping checks, game-only treatment, and emulator-UI-above-game
+   layering for each visual run.
+7. Save/load state-byte and visible-frame restoration, or an explicit declared
+   and verified unsupported-capability record.
+8. Actual left-trackpad radial screenshots and execution results for quit, save,
+   load, menu, and every system-specific action, with semantic icon identities.
+9. Separate Start-then-Select and Select-then-Start launches with event order,
+   timing, distinct process identities, whole-process-group exit, and ES-DE
+   return.
+10. Human inspection verdicts for every screenshot and a final rejection or
+    acceptance decision. File existence and automated pixel metrics alone are
+    insufficient visual review.
+
+Missing, stale, synthetic, cross-run, or cross-release evidence fails the row.
+The harness must reject the bundle rather than infer success.
+Receipt fields cannot reduce the request-side matrix, radial, save/load, or quit
+requirements. Failed runs must retain a failure receipt only after the complete
+emulator process group is reaped and Semu-owned settings are restored.
+
 ## Frontend
 
 | Status | Surface | User-observed failure | Required physical evidence |
@@ -15,7 +93,7 @@ operator evidence under `build/verification/steamdeck`.
 
 | Status | System | Emulator path | User-observed failure | Required physical evidence |
 | --- | --- | --- | --- | --- |
-| [ ] | Game Boy | RetroArch / Gambatte | Gameplay input failed; an Xbox-controller toast appeared; shader resembled a scarf; bezel quality was poor. | Steam Virtual Gamepad gameplay with no autoconfig toast; restrained DMG LCD/ghosting; realistic gray DMG shell; fullscreen; save/load restoration; Start+Select and radial quit; ES-DE return. |
+| [ ] | Game Boy | RetroArch / Gambatte | Gameplay input failed; an Xbox-controller toast appeared; shader resembled a scarf; bezel quality was poor. | Gameplay through the target-declared Steam Input virtual output with no autoconfig toast; restrained DMG LCD/ghosting; realistic gray DMG shell; fullscreen; save/load restoration; Start+Select and radial quit; ES-DE return. |
 | [ ] | Game Boy Color | RetroArch / Gambatte | Same input, notification, shader, and bezel failures as Game Boy. | Working gameplay input; authentic reflective GBC LCD; realistic frost/grape-purple GBC shell; fullscreen; save/load restoration; both quit paths; ES-DE return. |
 | [ ] | Game Boy Advance | RetroArch / mGBA | Same input, notification, shader, and bezel failures as Game Boy. | Working gameplay input; authentic AGB-001 LCD; realistic indigo/purple wide GBA shell; fullscreen; save/load restoration; both quit paths; ES-DE return. |
 | [ ] | NES | RetroArch / Mesen | RetroArch input, shader, and bezel failures. | Gameplay input; composite 240p CRT treatment; measured high-quality 4:3 CRT bezel; fullscreen; save/load restoration; both quit paths; ES-DE return. |
@@ -53,9 +131,9 @@ The following passed during the 2026-07-19 documentation audit:
 
 These checks do not build a current production artifact, execute emulator hooks,
 load shader resources, launch a real ROM, inspect a Deck screenshot, or observe
-physical controls. Forced strict production compilation and `make test` pass,
-but flake evaluation still fails as recorded in `README.md`; package and
-AppImage verification are therefore open.
+physical controls. Forced strict production compilation, `make test`, and
+all-system no-build flake evaluation pass; realized package and AppImage
+verification remain open.
 
 ## Evidence Required Per System
 
@@ -64,7 +142,11 @@ device identity, ROM/core/BIOS/key/firmware receipts, before/after external-medi
 hashes, a frame-bound screenshot and game rectangle, renderer layer receipts,
 gameplay-input evidence, save/load outcome where supported, immediate
 process-group quit, physical radial action, and post-quit ES-DE foreground
-receipt.
+receipt. Evidence must cover the declared default and every exposed selectable
+shader, bezel, layout, aspect, and controller variant for that system; a config
+value or generated file is not proof that the variant renders or controls
+correctly. Visual variants require inspected screenshots, while input and quit
+variants require real Game Mode controller observations plus process receipts.
 
 Acceptance proceeds through RetroArch systems, Dolphin, then each standalone
 emulator. Bazzite must not run until every row above passes on the physical Deck.

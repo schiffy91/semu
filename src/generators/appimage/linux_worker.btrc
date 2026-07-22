@@ -1,0 +1,1302 @@
+// linux_worker.btrc - native Linux assembly with exact host handoff receipts.
+
+import std.{fs, json, process, vector}
+import ../../lib/owned_paths.btrc
+import ./assembler.btrc
+import ./assembly_tools.btrc
+import ./contract.btrc
+import ./nix_release_proof.btrc
+import ./output_transaction.btrc
+import ./release_proof_bundle.btrc
+import ./provenance/document.btrc
+import ./provenance/support.btrc
+import ./work_session.btrc
+
+#include <fcntl.h>
+#include <errno.h>
+#include <sys/stat.h>
+#include <unistd.h>
+
+class AppImageWorkerReceipt {
+    public bool valid;
+    public string operation;
+    public string target;
+    public string emulator;
+    public string packageAttribute;
+    public string runtimeAuthority;
+    public string releaseIdentity;
+    public string provenanceDigest;
+    public string inventoryDigest;
+    public string prefixDigest;
+    public string nixProofDigest;
+    public string closureDigest;
+    public string sourceStorePath;
+    public string targetStorePath;
+    public string workerSystem;
+    public string workerStorePath;
+    public string mksquashfsDigest;
+    public string unsquashfsDigest;
+    public string payloadTreeDigest;
+    public string artifactDigest;
+    public string error;
+
+    public AppImageWorkerReceipt() {
+        self.valid = false;
+        self.operation = "";
+        self.target = "";
+        self.emulator = "";
+        self.packageAttribute = "";
+        self.runtimeAuthority = "";
+        self.releaseIdentity = "";
+        self.provenanceDigest = "";
+        self.inventoryDigest = "";
+        self.prefixDigest = "";
+        self.nixProofDigest = "";
+        self.closureDigest = "";
+        self.sourceStorePath = "";
+        self.targetStorePath = "";
+        self.workerSystem = "";
+        self.workerStorePath = "";
+        self.mksquashfsDigest = "";
+        self.unsquashfsDigest = "";
+        self.payloadTreeDigest = "";
+        self.artifactDigest = "";
+        self.error = "";
+    }
+
+    public bool ok() { return self.valid; }
+
+    class bool exactKeys(JsonValue value, Vector<string> expected) {
+        if (!value.isObject()) { return false; }
+        Vector<string> actual = value.keys();
+        actual.sort();
+        expected.sort();
+        if (actual.size() != expected.size()) { return false; }
+        for (int index = 0; index < actual.size(); index++) {
+            if (!actual.get(index).equals(expected.get(index))) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    class AppImageWorkerReceipt capture(
+            string operation, string target, string emulator,
+            AppImageRuntimeLease runtime, string workerSystem,
+            string workerStorePath, AppImageAssemblyTools tools) {
+        AppImageWorkerReceipt receipt = AppImageWorkerReceipt();
+        if ((!operation.equals("build") && !operation.equals("verify"))
+                || target.isEmpty() || !runtime.ok()
+                || !runtime.stillBound() || !tools.ok()
+                || !tools.stillBound()
+                || !AppImageNixReleaseProof.storePath(workerStorePath)
+                || !workerSystem.equals(
+                    AppImageNixReleaseProof.requiredSystem())) {
+            receipt.error = "worker receipt inputs are not exact and bound";
+            return receipt;
+        }
+        receipt.operation = operation;
+        receipt.target = target;
+        receipt.emulator = emulator;
+        receipt.packageAttribute = runtime.nixProof.packageAttribute;
+        receipt.runtimeAuthority = runtime.assemblyAuthority();
+        receipt.releaseIdentity = runtime.releaseIdentity;
+        receipt.provenanceDigest = runtime.provenanceDigest;
+        receipt.inventoryDigest = runtime.inventoryDigest;
+        receipt.prefixDigest = runtime.prefixDigest;
+        receipt.nixProofDigest = runtime.ownership.nixProofDigest;
+        receipt.closureDigest = runtime.nixProof.closureDigest;
+        receipt.sourceStorePath = runtime.nixProof.sourceStorePath;
+        receipt.targetStorePath = runtime.nixProof.targetStorePath;
+        receipt.workerSystem = workerSystem;
+        receipt.workerStorePath = workerStorePath;
+        receipt.mksquashfsDigest = tools.mksquashfs.digest;
+        receipt.unsquashfsDigest = tools.unsquashfs.digest;
+        receipt.valid = AppImageNixReleaseProof.digest(
+                receipt.runtimeAuthority)
+            && AppImageNixReleaseProof.digest(receipt.releaseIdentity)
+            && AppImageNixReleaseProof.digest(receipt.provenanceDigest)
+            && AppImageNixReleaseProof.digest(receipt.inventoryDigest)
+            && AppImageNixReleaseProof.digest(receipt.prefixDigest)
+            && AppImageNixReleaseProof.digest(receipt.nixProofDigest)
+            && AppImageNixReleaseProof.digest(receipt.closureDigest)
+            && AppImageNixReleaseProof.digest(receipt.mksquashfsDigest)
+            && AppImageNixReleaseProof.digest(receipt.unsquashfsDigest);
+        if (!receipt.valid) {
+            receipt.error = "worker receipt identity is incomplete";
+        }
+        return receipt;
+    }
+
+    public AppImageWorkerReceipt complete(AppImageAssemblyResult result) {
+        if (!self.valid || !result.ok()
+                || !AppImageNixReleaseProof.digest(result.artifactDigest)
+                || !AppImageNixReleaseProof.digest(
+                    result.payloadTreeDigest)) {
+            self.valid = false;
+            self.error = result.ok()
+                ? "worker result has invalid artifact identities"
+                : result.error;
+            return self;
+        }
+        self.artifactDigest = result.artifactDigest;
+        self.payloadTreeDigest = result.payloadTreeDigest;
+        return self;
+    }
+
+    public JsonValue value() {
+        JsonValue value = JsonValue.makeObject();
+        value.set("schema_version", JsonValue.makeInt(1));
+        value.set("operation", JsonValue.makeString(self.operation));
+        value.set("target", JsonValue.makeString(self.target));
+        value.set("emulator", JsonValue.makeString(self.emulator));
+        value.set("package_attribute",
+            JsonValue.makeString(self.packageAttribute));
+        value.set("runtime_authority_sha256",
+            JsonValue.makeString(self.runtimeAuthority));
+        value.set("release_identity_sha256",
+            JsonValue.makeString(self.releaseIdentity));
+        value.set("provenance_sha256",
+            JsonValue.makeString(self.provenanceDigest));
+        value.set("inventory_sha256",
+            JsonValue.makeString(self.inventoryDigest));
+        value.set("runtime_prefix_sha256",
+            JsonValue.makeString(self.prefixDigest));
+        value.set("nix_proof_sha256",
+            JsonValue.makeString(self.nixProofDigest));
+        value.set("closure_sha256",
+            JsonValue.makeString(self.closureDigest));
+        value.set("source_store_path",
+            JsonValue.makeString(self.sourceStorePath));
+        value.set("target_store_path",
+            JsonValue.makeString(self.targetStorePath));
+        value.set("worker_system", JsonValue.makeString(self.workerSystem));
+        value.set("worker_store_path",
+            JsonValue.makeString(self.workerStorePath));
+        value.set("mksquashfs_sha256",
+            JsonValue.makeString(self.mksquashfsDigest));
+        value.set("unsquashfs_sha256",
+            JsonValue.makeString(self.unsquashfsDigest));
+        value.set("payload_tree_sha256",
+            JsonValue.makeString(self.payloadTreeDigest));
+        value.set("artifact_sha256",
+            JsonValue.makeString(self.artifactDigest));
+        return value;
+    }
+
+    public string document() {
+        return self.valid
+            && AppImageNixReleaseProof.digest(self.payloadTreeDigest)
+            && AppImageNixReleaseProof.digest(self.artifactDigest)
+            ? AppImageProvenanceSupport.canonicalJson(self.value()) + "\n"
+            : "";
+    }
+
+    public AppImageContractResult write(string path) {
+        string document = self.document();
+        if (document.isEmpty() || FileStatus(path).linkFound) {
+            return AppImageContractResult.failure(
+                "worker receipt is invalid or its destination is not fresh");
+        }
+        AppImageProvenanceInternalResult written =
+            AppImageProvenanceDocument.seal(path, document);
+        return written.ok() ? AppImageContractResult.success()
+            : AppImageContractResult.failure(written.error);
+    }
+
+    class string member(JsonValue value, string name) {
+        JsonValue member = value.get(name);
+        return member.isString() ? member.asString() : "";
+    }
+
+    class AppImageWorkerReceipt parse(string document) {
+        AppImageWorkerReceipt receipt = AppImageWorkerReceipt();
+        JsonValue value = JsonValue.parse(document);
+        Vector<string> expected = [
+            "artifact_sha256", "closure_sha256", "emulator",
+            "inventory_sha256", "mksquashfs_sha256", "nix_proof_sha256",
+            "operation", "package_attribute", "payload_tree_sha256",
+            "provenance_sha256", "release_identity_sha256",
+            "runtime_authority_sha256", "runtime_prefix_sha256",
+            "schema_version", "source_store_path", "target",
+            "target_store_path", "unsquashfs_sha256",
+            "worker_store_path", "worker_system"
+        ];
+        if (!AppImageWorkerReceipt.exactKeys(value, expected)
+                || !value.get("schema_version").isInt()
+                || value.get("schema_version").asInt() != 1) {
+            receipt.error = "worker receipt schema is not exact";
+            return receipt;
+        }
+        receipt.operation = AppImageWorkerReceipt.member(value, "operation");
+        receipt.target = AppImageWorkerReceipt.member(value, "target");
+        receipt.emulator = AppImageWorkerReceipt.member(value, "emulator");
+        receipt.packageAttribute =
+            AppImageWorkerReceipt.member(value, "package_attribute");
+        receipt.runtimeAuthority =
+            AppImageWorkerReceipt.member(value, "runtime_authority_sha256");
+        receipt.releaseIdentity =
+            AppImageWorkerReceipt.member(value, "release_identity_sha256");
+        receipt.provenanceDigest =
+            AppImageWorkerReceipt.member(value, "provenance_sha256");
+        receipt.inventoryDigest =
+            AppImageWorkerReceipt.member(value, "inventory_sha256");
+        receipt.prefixDigest =
+            AppImageWorkerReceipt.member(value, "runtime_prefix_sha256");
+        receipt.nixProofDigest =
+            AppImageWorkerReceipt.member(value, "nix_proof_sha256");
+        receipt.closureDigest =
+            AppImageWorkerReceipt.member(value, "closure_sha256");
+        receipt.sourceStorePath =
+            AppImageWorkerReceipt.member(value, "source_store_path");
+        receipt.targetStorePath =
+            AppImageWorkerReceipt.member(value, "target_store_path");
+        receipt.workerSystem =
+            AppImageWorkerReceipt.member(value, "worker_system");
+        receipt.workerStorePath =
+            AppImageWorkerReceipt.member(value, "worker_store_path");
+        receipt.mksquashfsDigest =
+            AppImageWorkerReceipt.member(value, "mksquashfs_sha256");
+        receipt.unsquashfsDigest =
+            AppImageWorkerReceipt.member(value, "unsquashfs_sha256");
+        receipt.payloadTreeDigest =
+            AppImageWorkerReceipt.member(value, "payload_tree_sha256");
+        receipt.artifactDigest =
+            AppImageWorkerReceipt.member(value, "artifact_sha256");
+        receipt.valid = (receipt.operation.equals("build")
+                || receipt.operation.equals("verify"))
+            && !receipt.target.isEmpty()
+            && AppImageNixReleaseProof.packageName(
+                receipt.packageAttribute)
+            && AppImageNixReleaseProof.digest(receipt.runtimeAuthority)
+            && AppImageNixReleaseProof.digest(receipt.releaseIdentity)
+            && AppImageNixReleaseProof.digest(receipt.provenanceDigest)
+            && AppImageNixReleaseProof.digest(receipt.inventoryDigest)
+            && AppImageNixReleaseProof.digest(receipt.prefixDigest)
+            && AppImageNixReleaseProof.digest(receipt.nixProofDigest)
+            && AppImageNixReleaseProof.digest(receipt.closureDigest)
+            && AppImageNixReleaseProof.storePath(receipt.sourceStorePath)
+            && AppImageNixReleaseProof.storePath(receipt.targetStorePath)
+            && AppImageNixReleaseProof.storePath(receipt.workerStorePath)
+            && receipt.workerSystem.equals(
+                AppImageNixReleaseProof.requiredSystem())
+            && AppImageNixReleaseProof.digest(receipt.mksquashfsDigest)
+            && AppImageNixReleaseProof.digest(receipt.unsquashfsDigest)
+            && AppImageNixReleaseProof.digest(receipt.payloadTreeDigest)
+            && AppImageNixReleaseProof.digest(receipt.artifactDigest);
+        if (!receipt.valid) {
+            receipt.error = "worker receipt values are invalid";
+        }
+        return receipt;
+    }
+
+    public bool matches(
+            string operation, string target, string emulator,
+            AppImageRuntimeLease runtime, string workerSystem,
+            string workerStorePath, string artifactDigest) {
+        return self.valid && runtime.ok() && runtime.stillBound()
+            && self.operation.equals(operation)
+            && self.target.equals(target) && self.emulator.equals(emulator)
+            && self.packageAttribute.equals(
+                runtime.nixProof.packageAttribute)
+            && self.runtimeAuthority.equals(runtime.assemblyAuthority())
+            && self.releaseIdentity.equals(runtime.releaseIdentity)
+            && self.provenanceDigest.equals(runtime.provenanceDigest)
+            && self.inventoryDigest.equals(runtime.inventoryDigest)
+            && self.prefixDigest.equals(runtime.prefixDigest)
+            && self.nixProofDigest.equals(
+                runtime.ownership.nixProofDigest)
+            && self.closureDigest.equals(runtime.nixProof.closureDigest)
+            && self.sourceStorePath.equals(
+                runtime.nixProof.sourceStorePath)
+            && self.targetStorePath.equals(
+                runtime.nixProof.targetStorePath)
+            && self.workerSystem.equals(workerSystem)
+            && self.workerStorePath.equals(workerStorePath)
+            && self.artifactDigest.equals(artifactDigest);
+    }
+}
+
+class AppImageLinuxWorkerPlatform {
+    public bool valid;
+    public string podmanPlatform;
+    public string nixSystem;
+    public string imageArchitecture;
+    public string error;
+
+    public AppImageLinuxWorkerPlatform() {
+        self.valid = false;
+        self.podmanPlatform = "";
+        self.nixSystem = "";
+        self.imageArchitecture = "";
+        self.error = "";
+    }
+
+    public bool ok() { return self.valid; }
+
+    public bool releaseBound() {
+        return self.valid && self.podmanPlatform.equals("linux/amd64")
+            && self.nixSystem.equals(
+                AppImageNixReleaseProof.requiredSystem());
+    }
+
+    public bool imageVerified() {
+        return self.releaseBound()
+            && self.imageArchitecture.equals("amd64");
+    }
+
+    class AppImageLinuxWorkerPlatform releaseContract() {
+        AppImageLinuxWorkerPlatform platform =
+            AppImageLinuxWorkerPlatform();
+        if (!AppImageNixReleaseProof.requiredSystem().equals(
+                "x86_64-linux")) {
+            platform.error = "pinned worker release is not x86_64-linux";
+            return platform;
+        }
+        platform.podmanPlatform = "linux/amd64";
+        platform.nixSystem = AppImageNixReleaseProof.requiredSystem();
+        platform.valid = true;
+        return platform;
+    }
+
+    class AppImageLinuxWorkerPlatform fromImageInspection(
+            string document) {
+        AppImageLinuxWorkerPlatform platform =
+            AppImageLinuxWorkerPlatform.releaseContract();
+        JsonValue root = JsonValue.parse(document);
+        JsonValue image = root.isArray() && root.size() == 1
+            ? root.at(0) : JsonValue.makeError();
+        string operatingSystem = image.get("Os").isString()
+            ? image.get("Os").asString().toLower() : "";
+        string architecture = image.get("Architecture").isString()
+            ? image.get("Architecture").asString().toLower() : "";
+        if (!platform.ok() || !image.isObject()
+                || !operatingSystem.equals("linux")
+                || !architecture.equals("amd64")) {
+            platform.valid = false;
+            platform.imageArchitecture = "";
+            platform.error = "pinned worker image architecture does not match "
+                + "linux/amd64: os=" + operatingSystem
+                + " architecture=" + architecture;
+            return platform;
+        }
+        platform.imageArchitecture = architecture;
+        return platform;
+    }
+}
+
+class AppImageLinuxWorkerHandoff {
+    public bool valid;
+    public AppImageWorkSession session;
+    public string sourceCache;
+    public string exchange;
+    public string control;
+    public string error;
+
+    public AppImageLinuxWorkerHandoff() {
+        self.valid = false;
+        self.session = AppImageWorkSession();
+        self.sourceCache = "";
+        self.exchange = "";
+        self.control = "";
+        self.error = "";
+    }
+
+    public bool ok() { return self.valid; }
+
+    public AppImageContractResult stageVerificationArtifact(
+            AppImageVerificationSnapshot input) {
+        if (!self.valid || !self.session.stillBound()
+                || !input.ok() || !input.sourceStillBound()
+                || !input.snapshotStillBound()) {
+            return AppImageContractResult.failure(
+                "verification artifact handoff is not exact and bound");
+        }
+        int exchangeDescriptor = AppImageRuntimeLease.openBelow(
+            self.session.rootDescriptor, "exchange", true);
+        int artifactDescriptor = exchangeDescriptor >= 0
+            ? openat(exchangeDescriptor, "Semu.AppImage",
+                (int)O_RDWR | (int)O_CREAT | (int)O_EXCL
+                    | (int)O_NOFOLLOW | (int)O_CLOEXEC,
+                (mode_t)320) // 0500
+            : -1;
+        bool copied = artifactDescriptor >= 0
+            && SemuOwnedFileImport.copy(
+                input.descriptor, artifactDescriptor)
+            && fchmod(artifactDescriptor, (mode_t)320) == 0
+            && fsync(artifactDescriptor) == 0;
+        struct stat status;
+        copied = copied && fstat(artifactDescriptor, &status) == 0
+            && S_ISREG(status.st_mode) && status.st_nlink == (nlink_t)1
+            && (unsigned long long)status.st_size == input.size
+            && SemuOwnedPaths.permissions(status.st_mode) == 320
+            && SemuOwnedFileDigest.descriptor(artifactDescriptor)
+                .equals(input.digest)
+            && input.sourceStillBound() && input.snapshotStillBound()
+            && self.session.stillBound();
+        bool artifactClosed = artifactDescriptor < 0
+            || close(artifactDescriptor) == 0;
+        bool durable = exchangeDescriptor >= 0
+            && fsync(exchangeDescriptor) == 0;
+        bool exchangeClosed = exchangeDescriptor < 0
+            || close(exchangeDescriptor) == 0;
+        return copied && artifactClosed && durable && exchangeClosed
+            ? AppImageContractResult.success()
+            : AppImageContractResult.failure(
+                "cannot transfer the held artifact into the private exchange");
+    }
+
+    public string identity() {
+        string prefix = ".semu-appimage-session.";
+        return self.session.name.startsWith(prefix)
+            ? self.session.name.substring(prefix.len(),
+                self.session.name.len() - prefix.len())
+            : "";
+    }
+
+    class AppImageLinuxWorkerHandoff acquire(
+            string repository, string runtimeRoot, string artifact) {
+        AppImageLinuxWorkerHandoff handoff =
+            AppImageLinuxWorkerHandoff();
+        string home = Environment.get("HOME", "");
+        string cache = Environment.get("XDG_CACHE_HOME",
+            home.isEmpty() ? "" : PathTools.join(home, ".cache"));
+        string base = cache.isEmpty()
+            ? "" : PathTools.join(cache, "semu/appimage-worker");
+        bool prepared = !base.isEmpty()
+            && FileSystem.mkdirp(base) == 0
+            && FileSystem.chmod(base, 448) == 0;
+        string canonical = prepared ? UnixFileSystem.realPath(base) : "";
+        if (!prepared || canonical.isEmpty() || !canonical.equals(base)
+                || !AppImagePathContract.realDirectory(base)) {
+            handoff.error =
+                "cannot create a private local AppImage worker handoff";
+            return handoff;
+        }
+        AppImagePathPlan plan = AppImagePathPlan();
+        plan.valid = true;
+        plan.workBase = base;
+        plan.repoRoot = repository;
+        plan.sourceRoot = PathTools.join(repository, "config");
+        plan.packagingRoot = PathTools.join(repository, "packaging");
+        plan.runtimeRoot = runtimeRoot;
+        plan.outputPath = artifact;
+        AppImageWorkSession session = AppImageWorkSession.create(plan);
+        bool children = session.ok()
+            && semuAppImageMkdirAt(
+                session.rootDescriptor, "source-cache", 448) == 0
+            && semuAppImageMkdirAt(
+                session.rootDescriptor, "exchange", 448) == 0
+            && semuAppImageMkdirAt(
+                session.rootDescriptor, "control", 448) == 0;
+        string sourceCache = children
+            ? PathTools.join(session.path, "source-cache") : "";
+        string exchange = children
+            ? PathTools.join(session.path, "exchange") : "";
+        string control = children
+            ? PathTools.join(session.path, "control") : "";
+        children = children
+            && AppImagePathContract.realDirectory(sourceCache)
+            && AppImagePathContract.realDirectory(exchange)
+            && AppImagePathContract.realDirectory(control);
+        if (!children) {
+            AppImageContractResult cleaned = session.ok()
+                ? session.cleanup() : AppImageContractResult.success();
+            handoff.error = session.ok()
+                ? "cannot create the worker's private exchange"
+                    + (cleaned.ok() ? "" : "; " + cleaned.error)
+                : session.error;
+            return handoff;
+        }
+        handoff.session = session;
+        handoff.sourceCache = sourceCache;
+        handoff.exchange = exchange;
+        handoff.control = control;
+        handoff.valid = true;
+        return handoff;
+    }
+
+    public string cidfile(string role) {
+        Vector<string> roles = [
+            "nix-store", "source-import", "source-verify",
+            "worker-build", "worker-verify", "execute"
+        ];
+        return self.valid && self.session.stillBound()
+                && roles.contains(role)
+            ? PathTools.join(self.control, role + ".cid") : "";
+    }
+
+    public AppImageContractResult finish() {
+        if (!self.valid) {
+            return AppImageContractResult.failure(
+                "AppImage worker handoff is not held");
+        }
+        self.valid = false;
+        return self.session.cleanup();
+    }
+}
+
+class AppImageWorkerContainerId {
+    public bool valid;
+    public bool present;
+    public string value;
+    public string error;
+
+    public AppImageWorkerContainerId() {
+        self.valid = false;
+        self.present = false;
+        self.value = "";
+        self.error = "";
+    }
+
+    public bool ok() { return self.valid; }
+
+    class bool exactDocument(string document, string identifier) {
+        return AppImageNixReleaseProof.digest(identifier)
+            && (document.equals(identifier)
+                || document.equals(identifier + "\n"));
+    }
+
+    class AppImageWorkerContainerId capture(
+            AppImageWorkSession session, string role) {
+        AppImageWorkerContainerId identifier = AppImageWorkerContainerId();
+        Vector<string> roles = [
+            "nix-store", "source-import", "source-verify",
+            "worker-build", "worker-verify", "execute"
+        ];
+        if (!session.ok() || !session.stillBound()
+                || !roles.contains(role)) {
+            identifier.error = "container identity location is not bound";
+            return identifier;
+        }
+        int controlDescriptor = AppImageRuntimeLease.openBelow(
+            session.rootDescriptor, "control", true);
+        if (controlDescriptor < 0) {
+            identifier.error = "container identity directory is not bound";
+            return identifier;
+        }
+        string name = role + ".cid";
+        struct stat inspected;
+        errno = 0;
+        int inspectedResult = fstatat(
+            controlDescriptor, name, &inspected, AT_SYMLINK_NOFOLLOW);
+        int inspectedError = errno;
+        if (inspectedResult != 0) {
+            bool absent = inspectedError == ENOENT;
+            bool closed = close(controlDescriptor) == 0;
+            if (absent && closed && session.stillBound()) {
+                identifier.valid = true;
+                return identifier;
+            }
+            identifier.error =
+                "container identity could not be inspected safely";
+            return identifier;
+        }
+        identifier.present = true;
+        int descriptor = S_ISREG(inspected.st_mode)
+            ? openat(controlDescriptor, name,
+                (int)O_RDONLY | (int)O_NOFOLLOW | (int)O_CLOEXEC)
+            : -1;
+        struct stat opened;
+        string document = descriptor >= 0
+            ? SemuOwnedFileContent.text(descriptor) : "";
+        string value = document.endsWith("\n")
+            ? document.substring(0, document.len() - 1) : document;
+        bool exact = descriptor >= 0 && fstat(descriptor, &opened) == 0
+            && S_ISREG(opened.st_mode) && opened.st_nlink == (nlink_t)1
+            && AppImageWorkSession.sameObject(&inspected, &opened)
+            && (opened.st_size == (off_t)64
+                || opened.st_size == (off_t)65)
+            && AppImageWorkerContainerId.exactDocument(document, value)
+            && session.stillBound();
+        bool descriptorClosed = descriptor < 0 || close(descriptor) == 0;
+        bool controlClosed = close(controlDescriptor) == 0;
+        if (!exact || !descriptorClosed || !controlClosed) {
+            identifier.error =
+                "container identity is malformed or not descriptor-bound";
+            return identifier;
+        }
+        identifier.value = value;
+        identifier.valid = true;
+        return identifier;
+    }
+}
+
+class AppImageWorkerContainer {
+    class string detail(ExecResult result) {
+        string detail = result.stderr().trim();
+        if (detail.isEmpty()) { detail = result.stdout().trim(); }
+        if (detail.isEmpty()) { detail = "no command output"; }
+        return detail.len() <= 4096
+            ? detail : detail.substring(0, 4096) + "...";
+    }
+
+    class Vector<string> runPrefix(string cidfile) {
+        Vector<string> arguments = [];
+        if (!cidfile.isEmpty()) {
+            arguments = ["run", "--rm", "--cidfile", cidfile];
+        }
+        return arguments;
+    }
+
+    class bool hasPair(
+            Vector<string> arguments, string option, string value) {
+        for (int index = 0; index + 1 < arguments.size(); index++) {
+            if (arguments.get(index).equals(option)
+                    && arguments.get(index + 1).equals(value)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    class AppImageContractResult removeExact(
+            string identifier, bool volumes) {
+        if (!AppImageNixReleaseProof.digest(identifier)) {
+            return AppImageContractResult.failure(
+                "refusing to remove a container without an exact CID");
+        }
+        Vector<string> arguments = [
+            "rm", "--force", "--time", "0", "--ignore"
+        ];
+        if (volumes) { arguments.push("--volumes"); }
+        arguments.push(identifier);
+        ExecResult removed = ChildProcess.run("podman", arguments,
+            timeoutMilliseconds=60000,
+            maxStdoutBytes=131072,
+            maxStderrBytes=131072,
+            stdout=CommandOutput.collect(),
+            stderr=CommandOutput.collect());
+        return removed.ok() ? AppImageContractResult.success()
+            : AppImageContractResult.failure(
+                "exact container cleanup failed for " + identifier
+                    + ": " + AppImageWorkerContainer.detail(removed));
+    }
+
+    class ExecResult run(
+            AppImageWorkSession session, string role,
+            Vector<string> arguments, long long timeoutMilliseconds,
+            bool streamStderr = false, bool removeVolumes = false) {
+        string cidfile = session.ok()
+            ? PathTools.join(session.path, "control/" + role + ".cid") : "";
+        AppImageWorkerContainerId before =
+            AppImageWorkerContainerId.capture(session, role);
+        bool exactCommand = before.ok() && !before.present
+            && arguments.size() > 0 && arguments.get(0).equals("run")
+            && arguments.contains("--rm")
+            && AppImageWorkerContainer.hasPair(
+                arguments, "--cidfile", cidfile)
+            && !arguments.contains("--name")
+            && !arguments.contains("--replace");
+        if (!exactCommand) {
+            return ExecResult(125, "",
+                before.ok()
+                    ? "native worker container command is not identity-safe"
+                    : before.error,
+                role);
+        }
+        ExecResult result = ChildProcess.run("podman", arguments,
+            timeoutMilliseconds=timeoutMilliseconds,
+            maxStdoutBytes=1048576,
+            maxStderrBytes=67108864,
+            stdout=CommandOutput.collect(),
+            stderr=streamStderr
+                ? CommandOutput.stream() : CommandOutput.collect());
+        AppImageWorkerContainerId after =
+            AppImageWorkerContainerId.capture(session, role);
+        AppImageContractResult cleanup = !after.ok()
+            ? AppImageContractResult.failure(after.error)
+            : after.present
+                ? AppImageWorkerContainer.removeExact(
+                    after.value, removeVolumes)
+                : AppImageContractResult.success();
+        if (cleanup.ok()) { return result; }
+        string executionError = result.ok()
+            ? "" : AppImageWorkerContainer.detail(result);
+        return ExecResult(125, result.stdout(),
+            executionError.isEmpty() ? cleanup.error
+                : executionError + "; " + cleanup.error,
+            role);
+    }
+}
+
+class AppImageWorkerStoreLease {
+    public bool valid;
+    public string containerId;
+    public string error;
+
+    public AppImageWorkerStoreLease() {
+        self.valid = false;
+        self.containerId = "";
+        self.error = "";
+    }
+
+    public bool ok() { return self.valid; }
+
+    class Vector<string> command(
+            AppImageLinuxWorkerPlatform platform, string cidfile) {
+        if (!platform.imageVerified() || cidfile.isEmpty()) {
+            Vector<string> empty = [];
+            return empty;
+        }
+        return [
+            "create", "--cidfile", cidfile, "--pull=never",
+            "--platform", platform.podmanPlatform,
+            "--network", "none", "--read-only",
+            "--cap-drop", "ALL",
+            "--security-opt", "no-new-privileges",
+            "--mount", "type=volume,target=/nix",
+            "--entrypoint", "/bin/true",
+            AppImageNixReleaseProof.pinnedImage()
+        ];
+    }
+
+    class AppImageWorkerStoreLease acquire(
+            AppImageLinuxWorkerPlatform platform,
+            AppImageLinuxWorkerHandoff handoff) {
+        AppImageWorkerStoreLease lease = AppImageWorkerStoreLease();
+        string cidfile = handoff.cidfile("nix-store");
+        AppImageWorkerContainerId before =
+            AppImageWorkerContainerId.capture(
+                handoff.session, "nix-store");
+        if (!platform.imageVerified() || cidfile.isEmpty()
+                || !before.ok() || before.present) {
+            lease.error = before.ok()
+                ? "native Nix store identity location is not fresh"
+                : before.error;
+            return lease;
+        }
+        ExecResult created = ChildProcess.run("podman",
+            AppImageWorkerStoreLease.command(platform, cidfile),
+            timeoutMilliseconds=60000,
+            maxStdoutBytes=131072,
+            maxStderrBytes=131072,
+            stdout=CommandOutput.collect(),
+            stderr=CommandOutput.collect());
+        AppImageWorkerContainerId captured =
+            AppImageWorkerContainerId.capture(
+                handoff.session, "nix-store");
+        string printed = created.stdout().endsWith("\n")
+            ? created.stdout().substring(0, created.stdout().len() - 1)
+            : created.stdout();
+        bool printedExact =
+            AppImageWorkerContainerId.exactDocument(
+                created.stdout(), printed);
+        bool agrees = captured.ok() && captured.present
+            && printedExact && captured.value.equals(printed);
+        if (created.ok() && agrees) {
+            lease.containerId = captured.value;
+            lease.valid = true;
+            return lease;
+        }
+        bool disagree = captured.ok() && captured.present
+            && printedExact && !captured.value.equals(printed);
+        string cleanupId = disagree ? ""
+            : captured.ok() && captured.present ? captured.value
+                : printedExact ? printed : "";
+        AppImageContractResult cleanup = cleanupId.isEmpty()
+            ? AppImageContractResult.success()
+            : AppImageWorkerContainer.removeExact(cleanupId, true);
+        string cause = !created.ok()
+            ? AppImageWorkerContainer.detail(created)
+            : disagree ? "container identity channels disagree"
+                : captured.ok()
+                    ? "container identity was not published exactly"
+                    : captured.error;
+        lease.error = "native Nix store container could not be created: "
+            + cause + (cleanup.ok() ? "" : "; " + cleanup.error);
+        return lease;
+    }
+
+    public AppImageContractResult finish() {
+        if (!self.valid
+                || !AppImageNixReleaseProof.digest(self.containerId)) {
+            return AppImageContractResult.failure(
+                "native Nix store container is not held");
+        }
+        string identifier = self.containerId;
+        AppImageContractResult removed =
+            AppImageWorkerContainer.removeExact(identifier, true);
+        self.valid = false;
+        self.containerId = "";
+        return removed;
+    }
+}
+
+class AppImageLinuxWorker {
+    class string detail(ExecResult result) {
+        return AppImageWorkerContainer.detail(result);
+    }
+
+    class string cleanupError(
+            string error, AppImageContractResult cleanup) {
+        if (cleanup.ok()) { return error; }
+        return error.isEmpty() ? cleanup.error
+            : error + "; " + cleanup.error;
+    }
+
+    class Vector<string> nixContainer(
+            AppImageLinuxWorkerPlatform platform, string cidfile,
+            string storeContainerId, bool requiresChown, bool offline,
+            string sourceCache = "") {
+        if (!platform.imageVerified() || cidfile.isEmpty()
+                || !AppImageNixReleaseProof.digest(storeContainerId)) {
+            Vector<string> empty = [];
+            return empty;
+        }
+        Vector<string> arguments =
+            AppImageWorkerContainer.runPrefix(cidfile);
+        arguments.extend([
+            "--pull=never",
+            "--platform", platform.podmanPlatform,
+            "--cap-drop", "ALL",
+            "--security-opt", "no-new-privileges",
+            "--tmpfs", "/tmp:rw,nosuid,nodev,mode=1777",
+            "--tmpfs", "/nix/var/cache:rw,nosuid,nodev,mode=0700",
+            "--volumes-from", storeContainerId + ":rw",
+            "--env", "XDG_CACHE_HOME=/nix/var/cache",
+            "--entrypoint", "/root/.nix-profile/bin/nix"
+        ]);
+        if (requiresChown) {
+            arguments.extend(["--cap-add", "CHOWN"]);
+        }
+        if (!sourceCache.isEmpty()) {
+            arguments.extend([
+                "--mount", "type=bind,source=" + sourceCache
+                    + ",target=/source-cache,readonly"
+            ]);
+        }
+        arguments.push("--read-only");
+        if (offline) { arguments.extend(["--network", "none"]); }
+        arguments.push(AppImageNixReleaseProof.pinnedImage());
+        arguments.extend([
+            "--option", "sandbox", "false",
+            "--option", "filter-syscalls", "false",
+            "--extra-experimental-features", "nix-command flakes"
+        ]);
+        if (offline) { arguments.push("--offline"); }
+        return arguments;
+    }
+
+    class AppImageLinuxWorkerPlatform ensureImage(
+            AppImageLinuxWorkerPlatform platform) {
+        if (!platform.releaseBound()) {
+            AppImageLinuxWorkerPlatform failure =
+                AppImageLinuxWorkerPlatform();
+            failure.error = "worker image request is not release-bound";
+            return failure;
+        }
+        ExecResult pulled = ChildProcess.run("podman",
+            AppImageLinuxWorker.imagePullArguments(platform),
+            timeoutMilliseconds=3600000,
+            maxStdoutBytes=1048576,
+            maxStderrBytes=67108864,
+            stdout=CommandOutput.collect(),
+            stderr=CommandOutput.stream());
+        if (!pulled.ok()) {
+            AppImageLinuxWorkerPlatform failure =
+                AppImageLinuxWorkerPlatform();
+            failure.error = "pinned native Nix image could not be pulled";
+            return failure;
+        }
+        ExecResult inspected = ChildProcess.run("podman",
+            AppImageLinuxWorker.imageInspectionArguments(),
+            timeoutMilliseconds=30000,
+            maxStdoutBytes=4194304,
+            maxStderrBytes=131072,
+            stdout=CommandOutput.collect(),
+            stderr=CommandOutput.collect());
+        if (!inspected.ok()) {
+            AppImageLinuxWorkerPlatform failure =
+                AppImageLinuxWorkerPlatform();
+            failure.error = "pinned native Nix image could not be inspected";
+            return failure;
+        }
+        return AppImageLinuxWorkerPlatform.fromImageInspection(
+            inspected.stdout());
+    }
+
+    class Vector<string> imagePullArguments(
+            AppImageLinuxWorkerPlatform platform) {
+        if (!platform.releaseBound()) {
+            Vector<string> empty = [];
+            return empty;
+        }
+        return [
+            "pull", "--platform", platform.podmanPlatform,
+            AppImageNixReleaseProof.pinnedImage()
+        ];
+    }
+
+    class Vector<string> imageInspectionArguments() {
+        return [
+            "image", "inspect", "--format", "json",
+            AppImageNixReleaseProof.pinnedImage()
+        ];
+    }
+
+    class string workerReference(
+            AppImageLinuxWorkerPlatform platform,
+            string sourceStorePath) {
+        return platform.imageVerified()
+                && AppImageNixReleaseProof.storePath(sourceStorePath)
+            ? "path:" + sourceStorePath + "#packages."
+                + platform.nixSystem + ".appimage-worker"
+            : "";
+    }
+
+    class bool exportSource(
+            AppImageRuntimeLease runtime,
+            AppImageLinuxWorkerHandoff handoff) {
+        ExecResult copied = ChildProcess.run("nix", [
+            "copy", "--to", "file://" + handoff.sourceCache,
+            runtime.nixProof.sourceStorePath
+        ], timeoutMilliseconds=3600000,
+            maxStdoutBytes=1048576,
+            maxStderrBytes=67108864,
+            stdout=CommandOutput.collect(),
+            stderr=CommandOutput.stream());
+        return copied.ok() && runtime.stillBound()
+            && handoff.ok() && handoff.session.stillBound();
+    }
+
+    class string buildWorker(
+            AppImageLinuxWorkerPlatform platform,
+            AppImageLinuxWorkerHandoff handoff,
+            string storeContainerId, string sourceStorePath) {
+        string identity = handoff.identity();
+        if (identity.isEmpty()
+                || !AppImageNixReleaseProof.digest(storeContainerId)) {
+            return "";
+        }
+
+        Vector<string> importArguments = AppImageLinuxWorker.nixContainer(
+            platform, handoff.cidfile("source-import"),
+            storeContainerId, requiresChown=true, offline=true,
+            sourceCache=handoff.sourceCache);
+        importArguments.extend([
+            "copy", "--from", "file:///source-cache", sourceStorePath
+        ]);
+        ExecResult imported = AppImageWorkerContainer.run(
+            handoff.session, "source-import",
+            importArguments, 3600000);
+        if (!imported.ok()) {
+            print("appimage worker: source import failed: "
+                + AppImageLinuxWorker.detail(imported));
+            return "";
+        }
+
+        Vector<string> sourceVerify = AppImageLinuxWorker.nixContainer(
+            platform, handoff.cidfile("source-verify"),
+            storeContainerId, requiresChown=false, offline=true);
+        sourceVerify.extend([
+            "store", "verify", "--recursive", "--no-trust",
+            sourceStorePath
+        ]);
+        ExecResult sourceVerified = AppImageWorkerContainer.run(
+            handoff.session, "source-verify",
+            sourceVerify, 3600000);
+        if (!sourceVerified.ok()) {
+            print("appimage worker: imported source verification failed: "
+                + AppImageLinuxWorker.detail(sourceVerified));
+            return "";
+        }
+
+        Vector<string> buildArguments = AppImageLinuxWorker.nixContainer(
+            platform, handoff.cidfile("worker-build"),
+            storeContainerId, requiresChown=true, offline=false);
+        buildArguments.extend([
+            "build", AppImageLinuxWorker.workerReference(
+                platform, sourceStorePath),
+            "--no-link", "--print-out-paths", "-L"
+        ]);
+        ExecResult built = AppImageWorkerContainer.run(
+            handoff.session, "worker-build",
+            buildArguments, 43200000, true);
+        string worker = built.ok() ? built.stdout().trim() : "";
+        if (!built.ok() || worker.contains("\n")
+                || !AppImageNixReleaseProof.storePath(worker)) {
+            print("appimage worker: native Nix build failed: "
+                + AppImageLinuxWorker.detail(built));
+            return "";
+        }
+
+        Vector<string> verifyArguments = AppImageLinuxWorker.nixContainer(
+            platform, handoff.cidfile("worker-verify"),
+            storeContainerId, requiresChown=false, offline=true);
+        verifyArguments.extend([
+            "store", "verify", "--recursive", "--no-trust", worker
+        ]);
+        ExecResult verified = AppImageWorkerContainer.run(
+            handoff.session, "worker-verify",
+            verifyArguments, 3600000);
+        if (!verified.ok()) {
+            print("appimage worker: native Nix store verification failed: "
+                + AppImageLinuxWorker.detail(verified));
+            return "";
+        }
+        return worker;
+    }
+
+    class Vector<string> executionContainer(
+            AppImageLinuxWorkerPlatform platform, string cidfile,
+            string storeContainerId,
+            AppImageRuntimeLease runtime,
+            AppImageLinuxWorkerHandoff handoff,
+            string worker) {
+        if (!platform.imageVerified() || cidfile.isEmpty()
+                || !AppImageNixReleaseProof.digest(storeContainerId)) {
+            Vector<string> empty = [];
+            return empty;
+        }
+        Vector<string> arguments =
+            AppImageWorkerContainer.runPrefix(cidfile);
+        arguments.extend([
+            "--pull=never",
+            "--platform", platform.podmanPlatform,
+            "--network", "none", "--read-only",
+            "--userns", "keep-id",
+            "--cap-drop", "ALL",
+            "--security-opt", "no-new-privileges",
+            "--tmpfs", "/tmp:rw,nosuid,nodev,mode=1777",
+            "--volumes-from", storeContainerId + ":ro",
+            "--mount", "type=volume,target=/work",
+            "--mount", "type=bind,source=" + runtime.ownership.cacheRoot
+                + ",target=" + runtime.ownership.cacheRoot + ",readonly",
+            "--mount", "type=bind,source=" + handoff.exchange
+                + ",target=/exchange,rw"
+        ]);
+        arguments.extend([
+            "--env", "HOME=/nonexistent",
+            "--env", "TMPDIR=/tmp",
+            "--entrypoint", worker + "/bin/semu-btrc",
+            AppImageNixReleaseProof.pinnedImage()
+        ]);
+        return arguments;
+    }
+
+    class int fail(AppImageRuntimeLease runtime, string error) {
+        AppImageContractResult released = runtime.ok()
+            ? runtime.finish() : AppImageContractResult.success();
+        print("appimage worker: " + error
+            + (released.ok() ? "" : "; " + released.error));
+        return 2;
+    }
+
+    class int run(
+            AppImageRuntimeLease runtime, string builderRepository,
+            string runtimePublication, string target, string emulator,
+            string artifact, bool verify, bool digestOnly) {
+        AppImagePathPlan outputPlan = AppImagePathContract.plan(
+            builderRepository, runtimePublication, artifact);
+        AppImageLinuxWorkerPlatform platform =
+            AppImageLinuxWorkerPlatform.releaseContract();
+        AppImageSourceRevision sourceRevision =
+            AppImageSourceRevision.capture(builderRepository);
+        string authority = runtime.assemblyAuthority();
+        if (!runtime.ok() || !runtime.stillBound()
+                || !builderRepository.equals(runtime.builderRepository)
+                || !outputPlan.ok() || !platform.ok()
+                || !sourceRevision.ok() || authority.isEmpty()) {
+            return AppImageLinuxWorker.fail(runtime,
+                !builderRepository.equals(runtime.builderRepository)
+                    ? "host builder repository differs from the runtime owner"
+                    : !outputPlan.ok()
+                ? outputPlan.error : platform.ok()
+                    ? !sourceRevision.ok() ? sourceRevision.error
+                        : "host runtime authority is invalid"
+                    : platform.error);
+        }
+
+        AppImageAssemblyLock outputLock =
+            AppImageAssemblyLock.acquire(outputPlan);
+        if (!outputLock.ok()) {
+            return AppImageLinuxWorker.fail(runtime, outputLock.error);
+        }
+        AppImageLinuxWorkerHandoff handoff =
+            AppImageLinuxWorkerHandoff.acquire(
+                builderRepository, runtime.runtimeRoot, artifact);
+        AppImageVerificationSnapshot input = verify && handoff.ok()
+            ? AppImageVerificationSnapshot.capture(
+                handoff.session, artifact)
+            : AppImageVerificationSnapshot();
+        string error = !handoff.ok() ? handoff.error
+            : verify && !input.ok() ? input.error : "";
+        AppImageContractResult inputStaged =
+            verify && error.isEmpty()
+            ? handoff.stageVerificationArtifact(input)
+            : AppImageContractResult.success();
+        if (error.isEmpty() && !inputStaged.ok()) {
+            error = inputStaged.error;
+        }
+
+        if (error.isEmpty()) {
+            platform = AppImageLinuxWorker.ensureImage(platform);
+        }
+        if (error.isEmpty() && !platform.imageVerified()) {
+            error = platform.error.isEmpty()
+                ? "pinned native Nix image is unavailable"
+                : platform.error;
+        }
+        bool sourceExported = error.isEmpty()
+            && AppImageLinuxWorker.exportSource(runtime, handoff);
+        if (error.isEmpty() && !sourceExported) {
+            error = "exact frozen source could not be exported";
+        }
+        AppImageWorkerStoreLease store = error.isEmpty()
+            ? AppImageWorkerStoreLease.acquire(platform, handoff)
+            : AppImageWorkerStoreLease();
+        if (error.isEmpty() && !store.ok()) {
+            error = store.error;
+        }
+        string worker = error.isEmpty()
+            ? AppImageLinuxWorker.buildWorker(
+                platform, handoff, store.containerId,
+                runtime.nixProof.sourceStorePath)
+            : "";
+        if (error.isEmpty() && worker.isEmpty()) {
+            error = "native worker could not be built";
+        }
+
+        Vector<string> command = [];
+        if (error.isEmpty()) {
+            command = AppImageLinuxWorker.executionContainer(
+                platform, handoff.cidfile("execute"),
+                store.containerId, runtime, handoff, worker);
+        }
+        if (error.isEmpty()) {
+            command.extend(["package", "appimage", "worker"]);
+            if (verify) { command.push("verify"); }
+            command.extend([
+                "--target", target,
+                "--project", runtime.nixProof.sourceStorePath,
+                "--runtime-root", runtimePublication,
+                "--work-root", "/work",
+                "--output-root", "/exchange",
+                "--assembly-tools-root", worker,
+                "--runtime-authority", authority,
+                "--runtime-owner", runtime.builderRepository,
+                "--worker-store-root", worker,
+                "--worker-system", platform.nixSystem,
+                "--receipt", "/exchange/receipt.json"
+            ]);
+            if (!emulator.isEmpty()) {
+                command.extend(["--emulator", emulator]);
+            }
+            command.extend([verify ? "--artifact" : "--output",
+                "/exchange/Semu.AppImage"]);
+        }
+        ExecResult executed = error.isEmpty()
+            ? AppImageWorkerContainer.run(
+                handoff.session, "execute",
+                command, 43200000, true, true)
+            : ExecResult(2, "", error, "semu-appimage-worker");
+        if (error.isEmpty() && !executed.ok()) {
+            error = AppImageLinuxWorker.detail(executed);
+        }
+        AppImageContractResult storeReleased = store.ok()
+            ? store.finish() : AppImageContractResult.success();
+        error = AppImageLinuxWorker.cleanupError(error, storeReleased);
+
+        AppImageHeldFileLease receiptFile = error.isEmpty()
+            ? AppImageHeldFileLease.captureRelative(
+                handoff.session.rootDescriptor,
+                "exchange/receipt.json")
+            : AppImageHeldFileLease();
+        AppImageWorkerReceipt receipt = receiptFile.ok()
+            ? AppImageWorkerReceipt.parse(
+                SemuOwnedFileContent.text(receiptFile.descriptor))
+            : AppImageWorkerReceipt();
+        AppImageHeldFileLease verifiedArtifact =
+            verify && error.isEmpty()
+            ? AppImageHeldFileLease.captureRelative(
+                handoff.session.rootDescriptor,
+                "exchange/Semu.AppImage")
+            : AppImageHeldFileLease();
+        AppImageVerificationSnapshot builtArtifact =
+            !verify && error.isEmpty()
+            ? AppImageVerificationSnapshot.capture(
+                handoff.session,
+                PathTools.join(handoff.exchange, "Semu.AppImage"))
+            : AppImageVerificationSnapshot();
+        string artifactDigest = verify && input.ok()
+            ? input.digest : builtArtifact.ok()
+                ? builtArtifact.digest : "";
+        bool verifiedArtifactExact = !verify
+            || (verifiedArtifact.ok()
+                && verifiedArtifact.mode == 320
+                && verifiedArtifact.digest.equals(input.digest)
+                && verifiedArtifact.stillBound(
+                    handoff.session.rootDescriptor));
+        bool receiptExact = error.isEmpty() && receiptFile.ok()
+            && verifiedArtifactExact
+            && receiptFile.mode
+                == AppImageProvenanceDocument.canonicalMode()
+            && receipt.matches(verify ? "verify" : "build",
+                target, emulator, runtime, platform.nixSystem,
+                worker, artifactDigest)
+            && receiptFile.stillBound(
+                handoff.session.rootDescriptor);
+        if (error.isEmpty() && !receiptExact) {
+            error = "native worker receipt is absent or disagrees with held bytes";
+        }
+
+        string proofDocument = !verify && error.isEmpty()
+            ? AppImageReleaseProofBundle.document(
+                runtime, receiptFile, sourceRevision, executed,
+                target, emulator, outputLock.outputName, artifactDigest)
+            : "";
+        AppImageReleaseProofBundleResult proof =
+            !verify && error.isEmpty() && !proofDocument.isEmpty()
+            ? AppImageReleaseProofBundle.publish(
+                outputLock, artifactDigest, proofDocument)
+            : AppImageReleaseProofBundleResult();
+        if (!verify && error.isEmpty() && !proof.ok()) {
+            error = proofDocument.isEmpty()
+                ? "release proof document is invalid"
+                : proof.error;
+        }
+
+        AppImageContractResult published = !verify && error.isEmpty()
+            && builtArtifact.snapshotStillBound()
+            ? AppImageOutputTransaction.publish(
+                builtArtifact, outputLock, 493)
+            : AppImageContractResult.success();
+        if (error.isEmpty() && !published.ok()) {
+            error = published.error;
+        }
+        if (error.isEmpty() && verify
+                && (!input.sourceStillBound()
+                    || !input.snapshotStillBound()
+                    || !verifiedArtifact.stillBound(
+                        handoff.session.rootDescriptor))) {
+            error = "verified host artifact changed during native verification";
+        }
+
+        receiptFile.closeDescriptors();
+        verifiedArtifact.closeDescriptors();
+        AppImageContractResult builtReleased = builtArtifact.ok()
+            ? builtArtifact.finish() : AppImageContractResult.success();
+        AppImageContractResult inputReleased = input.ok()
+            ? input.finish() : AppImageContractResult.success();
+        AppImageContractResult handoffReleased = handoff.ok()
+            ? handoff.finish() : AppImageContractResult.success();
+        AppImageContractResult lockReleased = outputLock.unlock();
+        AppImageContractResult runtimeReleased = runtime.finish();
+        error = AppImageLinuxWorker.cleanupError(error, builtReleased);
+        error = AppImageLinuxWorker.cleanupError(error, inputReleased);
+        error = AppImageLinuxWorker.cleanupError(error, handoffReleased);
+        error = AppImageLinuxWorker.cleanupError(error, lockReleased);
+        error = AppImageLinuxWorker.cleanupError(error, runtimeReleased);
+        if (!error.isEmpty()) {
+            print("appimage worker: " + error);
+            return 2;
+        }
+        print(digestOnly ? artifactDigest
+            : (verify ? "appimage: verified " : "appimage: wrote ")
+                + artifact + " sha256=" + artifactDigest
+                + (verify ? "" : " proof=" + proof.path
+                    + " proof_sha256=" + proof.digest));
+        return 0;
+    }
+}

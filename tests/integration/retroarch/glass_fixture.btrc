@@ -1,0 +1,293 @@
+// Admits the declared GB reflection and emits deterministic test fixtures.
+
+import std.{bytes, fs, io, json, strings}
+import ../../../src/lib/owned_paths.btrc
+
+class RetroArchGlassFixture {
+    class bool lowerSha256(string value) {
+        if (value.len() != 64) { return false; }
+        for character in value {
+            bool decimal = character >= '0' && character <= '9';
+            bool hexadecimal = character >= 'a' && character <= 'f';
+            if (!decimal && !hexadecimal) { return false; }
+        }
+        return true;
+    }
+
+    class JsonValue defaultVariant(JsonValue bezels) {
+        JsonValue selected = bezels.get("default_variant");
+        JsonValue variants = bezels.get("variants");
+        if (!selected.isString() || !variants.isArray()) {
+            return JsonValue.makeNull();
+        }
+        for (int index = 0; index < variants.size(); index++) {
+            JsonValue variant = variants.at(index);
+            if (variant.get("id").isString()
+                    && variant.get("id").asString()
+                        .equals(selected.asString())) {
+                return variant;
+            }
+        }
+        return JsonValue.makeNull();
+    }
+
+    class bool copy(string source, string destination) {
+        File input = File(source, "rb");
+        if (!input.ok()) { return false; }
+        Bytes bytes = input.readBytes();
+        bool read = !input.failed() && bytes.length() > 0;
+        input.close();
+        if (!read) { return false; }
+        File output = File(destination, "wb");
+        bool wrote = output.ok() && output.writeBytes(bytes);
+        output.close();
+        return wrote;
+    }
+
+    class void appendBigEndian(Bytes output, unsigned int value) {
+        output.append((int)((value >> 24) & 255u));
+        output.append((int)((value >> 16) & 255u));
+        output.append((int)((value >> 8) & 255u));
+        output.append((int)(value & 255u));
+    }
+
+    class unsigned int crcByte(unsigned int crc, int value) {
+        crc = crc ^ (unsigned int)value;
+        for (int bit = 0; bit < 8; bit++) {
+            crc = (crc & 1u) != 0u
+                ? (crc >> 1) ^ 0xedb88320u : crc >> 1;
+        }
+        return crc;
+    }
+
+    class void chunk(Bytes output, string type, Bytes payload) {
+        RetroArchGlassFixture.appendBigEndian(
+            output, (unsigned int)payload.length());
+        unsigned int crc = 0xffffffffu;
+        for (int index = 0; index < type.len(); index++) {
+            output.append((int)type[index]);
+            crc = RetroArchGlassFixture.crcByte(crc, (int)type[index]);
+        }
+        for (int index = 0; index < payload.length(); index++) {
+            int value = payload.get(index);
+            output.append(value);
+            crc = RetroArchGlassFixture.crcByte(crc, value);
+        }
+        RetroArchGlassFixture.appendBigEndian(output, crc ^ 0xffffffffu);
+    }
+
+    class Bytes testBezelPixels() {
+        Bytes pixels = Bytes();
+        for (int y = 0; y < 5; y++) {
+            pixels.append(0);
+            for (int x = 0; x < 8; x++) {
+                if (y == 0) {
+                    pixels.append(48);
+                    pixels.append(56);
+                    pixels.append(64);
+                } else if (y == 4) {
+                    pixels.append(18);
+                    pixels.append(22);
+                    pixels.append(26);
+                } else {
+                    pixels.append(31);
+                    pixels.append(37);
+                    pixels.append(43);
+                }
+            }
+        }
+        return pixels;
+    }
+
+    class Bytes zlibStore(Bytes source) {
+        Bytes encoded = Bytes();
+        encoded.append(0x78);
+        encoded.append(0x01);
+        encoded.append(0x01);
+        int length = source.length();
+        int inverse = 65535 - length;
+        encoded.append(length & 255);
+        encoded.append((length >> 8) & 255);
+        encoded.append(inverse & 255);
+        encoded.append((inverse >> 8) & 255);
+        encoded.appendBytes(source);
+        unsigned int first = 1u;
+        unsigned int second = 0u;
+        for (int index = 0; index < source.length(); index++) {
+            first = (first + (unsigned int)source.get(index)) % 65521u;
+            second = (second + first) % 65521u;
+        }
+        RetroArchGlassFixture.appendBigEndian(
+            encoded, (second << 16) | first);
+        return encoded;
+    }
+
+    class Bytes testBezel() {
+        Bytes png = Bytes();
+        int signature[8] = {137, 80, 78, 71, 13, 10, 26, 10};
+        for (int index = 0; index < 8; index++) { png.append(signature[index]); }
+        Bytes header = Bytes();
+        RetroArchGlassFixture.appendBigEndian(header, 8u);
+        RetroArchGlassFixture.appendBigEndian(header, 5u);
+        header.append(8);
+        header.append(2);
+        header.append(0);
+        header.append(0);
+        header.append(0);
+        RetroArchGlassFixture.chunk(png, "IHDR", header);
+        RetroArchGlassFixture.chunk(png, "IDAT",
+            RetroArchGlassFixture.zlibStore(
+                RetroArchGlassFixture.testBezelPixels()));
+        RetroArchGlassFixture.chunk(png, "IEND", Bytes());
+        return png;
+    }
+
+    class bool write(string path, Bytes bytes) {
+        File output = File(path, "wb");
+        bool wrote = output.ok() && output.writeBytes(bytes);
+        output.close();
+        return wrote;
+    }
+
+    class bool prepareCase(string outputRoot, string name) {
+        string state = PathTools.join(outputRoot, name);
+        string config = """config_save_on_exit = \"false\"
+audio_driver = \"null\"
+audio_sync = \"false\"
+input_driver = \"x\"
+input_joypad_driver = \"null\"
+input_menu_toggle = \"f1\"
+input_exit_emulator = \"escape\"
+menu_driver = \"rgui\"
+menu_pause_libretro = \"false\"
+network_cmd_enable = \"true\"
+network_cmd_port = \"55356\"
+video_driver = \"glcore\"
+video_context_driver = \"x\"
+video_fullscreen = \"true\"
+video_windowed_fullscreen = \"false\"
+video_threaded = \"false\"
+video_vsync = \"false\"
+video_smooth = \"false\"
+video_shader_enable = \"false\"
+video_scale_integer = \"false\"
+input_overlay_enable = \"false\"
+savestate_directory = \"@STATE@/states\"
+savefile_directory = \"@STATE@/saves\"
+screenshot_directory = \"@STATE@/screenshots\"
+""".replace("@STATE@", state);
+        return FileSystem.mkdirp(PathTools.join(state, "states")) == 0
+            && FileSystem.mkdirp(PathTools.join(state, "saves")) == 0
+            && FileSystem.mkdirp(PathTools.join(state, "screenshots")) == 0
+            && FileSystem.writeText(
+                PathTools.join(state, "retroarch.cfg"), config)
+            && FileSystem.writeText(
+                PathTools.join(state, "content.semu"), "synthetic\n");
+    }
+
+    class string prepare(string repository, string outputRoot) {
+        string systemPath = PathTools.join(
+            repository, "config/systems/gb/system.json");
+        string bezelsPath = PathTools.join(
+            repository, "config/systems/gb/bezels.json");
+        string manifestPath = PathTools.join(
+            repository, "config/assets/bezels.json");
+        JsonValue system = JsonValue.readFile(systemPath);
+        JsonValue bezels = JsonValue.readFile(bezelsPath);
+        JsonValue manifest = JsonValue.readFile(manifestPath);
+        JsonValue variant = RetroArchGlassFixture.defaultVariant(bezels);
+        JsonValue reflect = system.get("render").get("reflect");
+        if (system.isError() || bezels.isError() || manifest.isError()
+                || !variant.isObject() || !reflect.isNumber()
+                || !variant.get("id").isString()
+                || !variant.get("glass").isString()) {
+            return "";
+        }
+
+        string logical = variant.get("glass").asString();
+        JsonValue assets = manifest.get("assets");
+        JsonValue recipe = assets.get(logical);
+        JsonValue output = recipe.get("output");
+        if (!logical.startsWith("assets/bezels/") || logical.contains("..")
+                || !assets.isObject() || !recipe.isObject()
+                || !recipe.get("type").isString()
+                || !recipe.get("type").asString().equals("local")
+                || !recipe.get("path").isString()
+                || !recipe.get("path").asString().equals("config/" + logical)
+                || !output.isObject() || !output.get("sha256").isString()
+                || !RetroArchGlassFixture.lowerSha256(
+                    output.get("sha256").asString())) {
+            return "";
+        }
+
+        string source = PathTools.join(
+            repository, recipe.get("path").asString());
+        string expected = output.get("sha256").asString();
+        string sourceDigest = SemuOwnedFileDigest.file(source);
+        string admitted = PathTools.join(outputRoot, "admitted-reflection.png");
+        string bezel = PathTools.join(outputRoot, "test-bezel.png");
+        if (!sourceDigest.equals(expected)
+                || FileSystem.mkdirp(outputRoot) != 0
+                || !RetroArchGlassFixture.copy(source, admitted)
+                || !SemuOwnedFileDigest.file(admitted).equals(expected)
+                || !RetroArchGlassFixture.write(
+                    bezel, RetroArchGlassFixture.testBezel())
+                || !RetroArchGlassFixture.prepareCase(outputRoot, "control")
+                || !RetroArchGlassFixture.prepareCase(
+                    outputRoot, "treatment")) {
+            return "";
+        }
+
+        JsonValue systemReceipt = JsonValue.makeObject();
+        systemReceipt.set("definition_path", JsonValue.makeString(systemPath));
+        systemReceipt.set("bezels_path", JsonValue.makeString(bezelsPath));
+        systemReceipt.set("variant_id",
+            JsonValue.makeString(variant.get("id").asString()));
+        systemReceipt.set("glass_logical_path", JsonValue.makeString(logical));
+        systemReceipt.set("declared_reflect",
+            JsonValue.makeFloat(reflect.asFloat()));
+
+        JsonValue manifestReceipt = JsonValue.makeObject();
+        manifestReceipt.set("path", JsonValue.makeString(manifestPath));
+        manifestReceipt.set("logical_path", JsonValue.makeString(logical));
+        manifestReceipt.set("expected_sha256", JsonValue.makeString(expected));
+
+        JsonValue sourceReceipt = JsonValue.makeObject();
+        sourceReceipt.set("path", JsonValue.makeString(source));
+        sourceReceipt.set("actual_sha256", JsonValue.makeString(sourceDigest));
+
+        JsonValue admittedReceipt = JsonValue.makeObject();
+        admittedReceipt.set("path", JsonValue.makeString(admitted));
+        admittedReceipt.set("actual_sha256", JsonValue.makeString(expected));
+
+        JsonValue fixtureReceipt = JsonValue.makeObject();
+        fixtureReceipt.set("bezel_path", JsonValue.makeString(bezel));
+        fixtureReceipt.set("reflection_strength", JsonValue.makeFloat(1.0));
+
+        JsonValue receipt = JsonValue.makeObject();
+        receipt.set("schema_version", JsonValue.makeInt(1));
+        receipt.set("system", systemReceipt);
+        receipt.set("asset_manifest", manifestReceipt);
+        receipt.set("source_descriptor", sourceReceipt);
+        receipt.set("admitted_descriptor", admittedReceipt);
+        receipt.set("test_fixture", fixtureReceipt);
+        receipt.set("admitted", JsonValue.makeBool(true));
+        string receiptPath = PathTools.join(outputRoot, "declaration.json");
+        return FileSystem.writeText(receiptPath, receipt.stringify() + "\n")
+            ? admitted : "";
+    }
+}
+
+int main(int argc, char** argv) {
+    if (argc != 3) {
+        print("usage: semu-retroarch-glass-fixture <repository> <output>");
+        return 2;
+    }
+    string admitted = RetroArchGlassFixture.prepare(argv[1], argv[2]);
+    if (admitted.isEmpty()) {
+        print("GB glass fixture admission failed");
+        return 1;
+    }
+    print(admitted);
+    return 0;
+}

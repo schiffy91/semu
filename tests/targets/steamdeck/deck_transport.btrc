@@ -4,6 +4,7 @@
 import std.{fs, json, process, random, strings, vector}
 import ./acceptance_plan.btrc
 import ./game_mode.btrc
+import ./run_evidence.btrc
 
 class DeckHostDigest {
     class string parse(ExecResult result) {
@@ -22,6 +23,27 @@ class DeckHostDigest {
         return DeckHostDigest.parse(ChildProcess.run(
             "/usr/bin/shasum", ["-a", "256", "--", path], "",
             CommandEnvironment.empty(), CommandEnvironment.empty(), 300000));
+    }
+}
+
+class DeckHostRevision {
+    class string current(string project) {
+        ExecResult result = ChildProcess.run("/usr/bin/git",
+            ["-C", project, "rev-parse", "--verify", "HEAD"], "",
+            CommandEnvironment.empty(), CommandEnvironment.empty(), 30000);
+        string revision = result.ok() ? result.stdout().trim() : "";
+        return DeckRunEvidence.lowerHex(revision, 40) ? revision : "";
+    }
+
+    class bool exactClean(string project, string expected) {
+        if (!DeckRunEvidence.lowerHex(expected, 40)
+                || !DeckHostRevision.current(project).equals(expected)) {
+            return false;
+        }
+        ExecResult status = ChildProcess.run("/usr/bin/git",
+            ["-C", project, "status", "--porcelain"], "",
+            CommandEnvironment.empty(), CommandEnvironment.empty(), 30000);
+        return status.ok() && status.stdout().trim().isEmpty();
     }
 }
 
@@ -277,6 +299,7 @@ class DeckTransport {
         string remoteRequest = self.remoteRequestPath(requestIdentity);
         string localRoot = self.localRunRoot(selectedRun);
         string remoteRoot = self.remoteRunRoot(selectedRun);
+        request.runId = selectedRun;
         request.runRoot = remoteRoot;
         if (!request.valid()
                 || !DeckHarnessStrings.lowerHex(requestIdentity, 32)
@@ -294,10 +317,18 @@ class DeckTransport {
             result.error = "could not create local request/evidence paths";
             return result;
         }
+        request.documentSha256 = DeckHostDigest.file(localRequest);
+        if (request.documentSha256.isEmpty()) {
+            result.error = "could not digest the typed helper request";
+            return result;
+        }
         DeckHarnessResult requestCopy = self.checked(self.rsync(
             localRequest, remoteRequest, true), "stage typed helper request");
-        if (!requestCopy.ok()) {
-            result.error = requestCopy.error;
+        if (!requestCopy.ok()
+                || !self.remoteHash(remoteRequest).equals(
+                    request.documentSha256)) {
+            result.error = requestCopy.ok()
+                ? "staged helper request digest mismatch" : requestCopy.error;
             return result;
         }
         ExecResult executed = self.remote(self.options.remoteHelper(),

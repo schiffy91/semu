@@ -1,7 +1,6 @@
 // generator.btrc - deterministic serialization and emission of checked plans.
 
 import std.{fs, json, vector}
-import ../lib/json_format.btrc
 import ../lib/owned_paths.btrc
 import ./model.btrc
 
@@ -50,7 +49,7 @@ class SemuCompilerGenerator {
     }
 
     class string planText(SemuBuildPlan plan) {
-        return SemuJsonFormat.document(SemuCompilerGenerator.planJson(plan));
+        return SemuCompilerGenerator.planJson(plan).document();
     }
 
     class string emit(SemuBuildPlan plan, CompilerDiagnostics diagnostics) {

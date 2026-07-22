@@ -1,7 +1,6 @@
 // sync.btrc - Semu-owned Syncthing desired state and user-service lifecycle.
 
 import std.{datetime, fs, http_framing, io, json, platform, process, strings, vector}
-import ../lib/json_format.btrc
 import ../lib/owned_paths.btrc
 import ./emulators.btrc
 import ./settings.btrc
@@ -647,7 +646,7 @@ class SemuSyncGenerator {
         result.configFile = SemuSyncPaths.configFile(plan.semuHome);
         string ownedRoot = SemuOwnedPaths.normalized(plan.semuHome);
         result.error = SemuOwnedDocument.write(ownedRoot, result.desiredFile,
-            SemuJsonFormat.document(plan.json()), 384); // 0600
+            plan.json().document(), 384); // 0600
         if (result.error.isEmpty()) {
             result.error = SemuOwnedDocument.write(
                 ownedRoot, result.serviceFile, service, 384); // 0600
@@ -701,7 +700,7 @@ class SemuSyncSidecar {
                 || !value.get("semu_home").asString().equals(plan.semuHome)
                 || !value.get("platform").isString()
                 || !value.get("platform").asString().equals(platformId)
-                || !encoded.equals(SemuJsonFormat.document(value))) {
+                || !encoded.equals(value.document())) {
             plan.error = "synchronization sidecar is invalid";
             return plan;
         }
@@ -1068,7 +1067,7 @@ class SemuSyncApi {
             configured.set("fsWatcherEnabled", JsonValue.makeBool(folder.watch));
             configured.set("paused", JsonValue.makeBool(false));
             SemuLoopbackHttpResponse written = SemuLoopbackHttpClient.request(
-                "PUT", endpoint, headers, SemuJsonFormat.value(configured));
+                "PUT", endpoint, headers, configured.stringifyPretty());
             if (!written.ok()) {
                 return "could not configure Syncthing folder: " + folder.id;
             }
@@ -1079,7 +1078,7 @@ class SemuSyncApi {
         gui.set("address", JsonValue.makeString(plan.guiAddress));
         SemuLoopbackHttpResponse guiResult = SemuLoopbackHttpClient.request(
             "PATCH", baseUrl + "/rest/config/gui", headers,
-            SemuJsonFormat.value(gui));
+            gui.stringifyPretty());
         return guiResult.ok() ? "" : "could not constrain Syncthing to loopback";
     }
 }
@@ -1308,7 +1307,7 @@ class SemuSyncProduct {
         SemuSyncPlan sidecar = SemuSyncSidecar.load(
             store.projectRoot, store.semuHome, platformId);
         if (!sidecar.ok()) { result.error = sidecar.error; return result; }
-        result.document = SemuJsonFormat.document(sidecar.json());
+        result.document = sidecar.json().document();
         return result;
     }
 
@@ -1325,7 +1324,7 @@ class SemuSyncProduct {
         result.error = platformId.equals("linux")
             ? SemuSyncService.apply(sidecar, options, generated) : "";
         if (result.error.isEmpty()) {
-            result.document = SemuJsonFormat.document(sidecar.json());
+            result.document = sidecar.json().document();
         }
         return result;
     }
@@ -1443,7 +1442,7 @@ class SemuSyncProduct {
         service.set("ui_url", JsonValue.makeString(
             SemuSyncEndpoint.uiUrl(plan.guiAddress)));
         status.set("service", service);
-        result.document = SemuJsonFormat.document(status);
+        result.document = status.document();
         return result;
     }
 

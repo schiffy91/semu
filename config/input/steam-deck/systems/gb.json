@@ -1,0 +1,35 @@
+{
+  "schema_version": 1,
+  "system": "gb",
+  "device": "steam-deck",
+  "gameplay": {
+    "profile": "retroarch_autoconfig",
+    "required_bindings": [
+      "input_up_btn",
+      "input_down_btn",
+      "input_left_btn",
+      "input_right_btn",
+      "input_b_btn",
+      "input_a_btn",
+      "input_start_btn",
+      "input_select_btn"
+    ]
+  },
+  "actions": {
+    "source": "emulator",
+    "exclude": [
+      "screen.swap"
+    ]
+  },
+  "radial": {
+    "required_actions": [
+      "state.save",
+      "state.load",
+      "app.quit",
+      "ui.menu",
+      "ui.screenshot"
+    ],
+    "system_actions": []
+  },
+  "doc": "The GB surface inherits its selected emulator's capabilities and applies this system-specific exclusion. screen.swap remains in the shared vocabulary for multi-screen systems but cannot resolve for GB."
+}

@@ -46,6 +46,31 @@ class SemuRenderingDefinition {
             + f"{value.get("w").asFloat()},{value.get("h").asFloat()}";
     }
 
+    class bool validCanvas(JsonValue value) {
+        if (!value.isObject()
+                || !value.get("mode").isString()
+                || !value.get("mode").asString().equals("minimum_aperture")
+                || !value.get("min_integer_scale").isInt()
+                || !value.get("max_width").isNumber()
+                || !value.get("max_height").isNumber()) {
+            return false;
+        }
+        int minimumScale = value.get("min_integer_scale").asInt();
+        double maxWidth = value.get("max_width").asFloat();
+        double maxHeight = value.get("max_height").asFloat();
+        return minimumScale > 0 && minimumScale <= 16
+            && maxWidth >= 1.0 && maxWidth <= 2.0
+            && maxHeight >= 1.0 && maxHeight <= 2.0;
+    }
+
+    class string canvas(JsonValue value) {
+        if (!SemuRenderingDefinition.validCanvas(value)) { return ""; }
+        return value.get("mode").asString()
+            + f",{value.get("min_integer_scale").asInt()}"
+            + f",{value.get("max_width").asFloat()}"
+            + f",{value.get("max_height").asFloat()}";
+    }
+
     class JsonValue variant(JsonValue bezel, string id) {
         JsonValue variants = bezel.get("variants");
         if (!variants.isArray()) { return JsonValue.makeNull(); }
@@ -57,6 +82,72 @@ class SemuRenderingDefinition {
             }
         }
         return JsonValue.makeNull();
+    }
+
+    class bool explicitDisabled(JsonValue definition) {
+        return definition.get("disabled_variant").isString()
+            && definition.get("disabled_variant").asString().equals("none");
+    }
+
+    class string defaultShaderScreen(JsonValue shaders) {
+        if (shaders.get("screen").isString()) {
+            return shaders.get("screen").asString();
+        }
+        string id = shaders.get("default_variant").isString()
+            ? shaders.get("default_variant").asString() : "";
+        JsonValue selected = SemuRenderingDefinition.variant(shaders, id);
+        return selected.get("screen").isString()
+            ? selected.get("screen").asString() : "none";
+    }
+
+    class Vector<string> shaderScreens(JsonValue shaders) {
+        Vector<string> screens = [];
+        if (SemuRenderingDefinition.explicitDisabled(shaders)) {
+            screens.push("none");
+        }
+        if (shaders.get("screen").isString()) {
+            string screen = shaders.get("screen").asString();
+            if (!screen.isEmpty() && !screens.contains(screen)) {
+                screens.push(screen);
+            }
+            return screens;
+        }
+        JsonValue variants = shaders.get("variants");
+        if (!variants.isArray()) { return screens; }
+        for (int index = 0; index < variants.size(); index++) {
+            JsonValue variant = variants.at(index);
+            string screen = variant.get("screen").isString()
+                ? variant.get("screen").asString() : "";
+            if (!screen.isEmpty() && !screens.contains(screen)) {
+                screens.push(screen);
+            }
+        }
+        return screens;
+    }
+
+    class bool shaderDeclared(JsonValue shaders, string logicalPath) {
+        if (logicalPath.equals("none")) { return true; }
+        return SemuRenderingDefinition.shaderScreens(shaders)
+            .contains(logicalPath);
+    }
+
+    class string shaderVariantId(JsonValue shaders, string logicalPath) {
+        if (logicalPath.equals("none")) { return "none"; }
+        JsonValue variants = shaders.get("variants");
+        if (!variants.isArray()) {
+            return shaders.get("screen").isString()
+                    && shaders.get("screen").asString().equals(logicalPath)
+                ? "default" : "";
+        }
+        for (int index = 0; index < variants.size(); index++) {
+            JsonValue variant = variants.at(index);
+            if (variant.get("id").isString()
+                    && variant.get("screen").isString()
+                    && variant.get("screen").asString().equals(logicalPath)) {
+                return variant.get("id").asString();
+            }
+        }
+        return "";
     }
 
     class bool assetDeclared(JsonValue manifest, string logicalPath) {

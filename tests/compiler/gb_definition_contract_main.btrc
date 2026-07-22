@@ -1,0 +1,482 @@
+// gb_definition_contract_main.btrc - isolated Game Boy definition contract.
+
+import std.{cli, fs, io, json, process, strings, vector}
+
+class GbDefinitionContract {
+    class int fail(string message) {
+        print("  FAIL Game Boy definition: " + message);
+        return 1;
+    }
+
+    class bool digest(string value) {
+        if (value.len() != 64) { return false; }
+        for character in value {
+            bool decimal = character >= '0' && character <= '9';
+            bool hexadecimal = character >= 'a' && character <= 'f';
+            if (!decimal && !hexadecimal) { return false; }
+        }
+        return true;
+    }
+
+    class string sha256(string path) {
+        bool shasum = FileSystem.isFile("/usr/bin/shasum");
+        string executable = shasum ? "/usr/bin/shasum" : "sha256sum";
+        Vector<string> arguments = shasum ? ["-a", "256", path] : [path];
+        ExecResult result = UnixShell().run(
+            Command(executable).args(arguments).render(),
+            CommandOutput.collect(), CommandOutput.collect(), false, false);
+        if (!result.ok() || result.trimmed().len() < 64) { return ""; }
+        string value = result.trimmed().substring(0, 64).toLower();
+        return GbDefinitionContract.digest(value) ? value : "";
+    }
+
+    class int unsigned32(Bytes bytes, int offset) {
+        return bytes.get(offset) * 16777216
+            + bytes.get(offset + 1) * 65536
+            + bytes.get(offset + 2) * 256
+            + bytes.get(offset + 3);
+    }
+
+    class bool png(string project, string logical, JsonValue recipe) {
+        JsonValue output = recipe.get("output");
+        string path = PathTools.join(project, "config/" + logical);
+        if (!output.isObject() || !output.get("width").isInt()
+                || !output.get("height").isInt()
+                || !output.get("bit_depth").isInt()
+                || !output.get("color_type").isInt()
+                || !output.get("sha256").isString()
+                || !GbDefinitionContract.digest(
+                    output.get("sha256").asString())) {
+            return false;
+        }
+        File file = File(path, "rb");
+        if (!file.ok()) { return false; }
+        Bytes bytes = file.readBytes();
+        file.close();
+        return bytes.length() >= 26
+            && bytes.get(0) == 137 && bytes.get(1) == 80
+            && bytes.get(2) == 78 && bytes.get(3) == 71
+            && bytes.get(4) == 13 && bytes.get(5) == 10
+            && bytes.get(6) == 26 && bytes.get(7) == 10
+            && GbDefinitionContract.unsigned32(bytes, 16)
+                == output.get("width").asInt()
+            && GbDefinitionContract.unsigned32(bytes, 20)
+                == output.get("height").asInt()
+            && bytes.get(24) == output.get("bit_depth").asInt()
+            && bytes.get(25) == output.get("color_type").asInt()
+            && GbDefinitionContract.sha256(path)
+                .equals(output.get("sha256").asString());
+    }
+
+    class bool close(double left, double right) {
+        double difference = left - right;
+        if (difference < 0.0) { difference = 0.0 - difference; }
+        return difference < 0.0000001;
+    }
+
+    class bool exactStrings(JsonValue values, Vector<string> expected) {
+        if (!values.isArray() || values.size() != expected.size()) {
+            return false;
+        }
+        for (int index = 0; index < expected.size(); index++) {
+            if (!values.at(index).isString()
+                    || !values.at(index).asString().equals(
+                        expected.get(index))) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    class bool contains(JsonValue values, string expected) {
+        if (!values.isArray()) { return false; }
+        for (int index = 0; index < values.size(); index++) {
+            if (values.at(index).isString()
+                    && values.at(index).asString().equals(expected)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    class JsonValue variant(JsonValue definition, string id) {
+        JsonValue variants = definition.get("variants");
+        if (!variants.isArray()) { return JsonValue.makeNull(); }
+        for (int index = 0; index < variants.size(); index++) {
+            JsonValue candidate = variants.at(index);
+            if (candidate.get("id").isString()
+                    && candidate.get("id").asString().equals(id)) {
+                return candidate;
+            }
+        }
+        return JsonValue.makeNull();
+    }
+
+    class bool display(JsonValue system) {
+        JsonValue display = system.get("display");
+        JsonValue screens = display.get("screens");
+        JsonValue aspect = display.get("aspect");
+        JsonValue scaling = display.get("scaling");
+        return screens.isArray() && screens.size() == 1
+            && screens.at(0).get("id").asString().equals("main")
+            && screens.at(0).get("native").get("w").asInt() == 160
+            && screens.at(0).get("native").get("h").asInt() == 144
+            && aspect.get("w").asInt() == 10
+            && aspect.get("h").asInt() == 9
+            && scaling.get("mode").asString().equals("integer_preferred")
+            && scaling.get("basis").asString()
+                .equals("native_game_surface")
+            && scaling.get("fit").asString().equals("contain")
+            && scaling.get("fallback").asString()
+                .equals("fractional_downscale")
+            && system.get("render").get("reflect").isNumber()
+            && GbDefinitionContract.close(
+                system.get("render").get("reflect").asFloat(), 0.04);
+    }
+
+    class bool gameplayControls(JsonValue system) {
+        return GbDefinitionContract.exactStrings(
+            system.get("verification").get("gameplay_controls"),
+            ["dpad-up", "dpad-down", "dpad-left", "dpad-right",
+             "a", "b", "start", "select"]);
+    }
+
+    class bool compatibility(JsonValue value) {
+        JsonValue scaling = value.get("scaling");
+        return GbDefinitionContract.exactStrings(
+                value.get("surfaces"), ["main"])
+            && value.get("native").get("w").asInt() == 160
+            && value.get("native").get("h").asInt() == 144
+            && value.get("aspect").get("w").asInt() == 10
+            && value.get("aspect").get("h").asInt() == 9
+            && value.get("fit").asString().equals("contain")
+            && scaling.get("mode").asString().equals("integer_preferred")
+            && scaling.get("fallback").asString()
+                .equals("fractional_downscale");
+    }
+
+    class bool shaderRecipe(JsonValue recipe, string sourcePath,
+                            string sourceHash, string outputHash) {
+        return recipe.get("type").asString().equals("slang_wrapper")
+            && recipe.get("reference").get("tree").asString()
+                .equals("shaders_slang")
+            && recipe.get("reference").get("path").asString()
+                .equals(sourcePath)
+            && recipe.get("reference").get("sha256").asString()
+                .equals(sourceHash)
+            && GbDefinitionContract.digest(sourceHash)
+            && recipe.get("output").get("sha256").asString()
+                .equals(outputHash)
+            && GbDefinitionContract.digest(outputHash);
+    }
+
+    class bool wrapperHash(JsonValue recipe, string text) {
+        string scratch = FileSystem.tempDir("semu-gb-shader-wrapper");
+        if (scratch.isEmpty()) { return false; }
+        string path = PathTools.join(scratch, "screen.slangp");
+        bool valid = FileSystem.writeText(path, text)
+            && GbDefinitionContract.sha256(path).equals(
+                recipe.get("output").get("sha256").asString());
+        FileSystem.removeRecursive(scratch);
+        return valid;
+    }
+
+    class bool shaders(JsonValue definition, JsonValue manifest) {
+        JsonValue variants = definition.get("variants");
+        JsonValue dmg = GbDefinitionContract.variant(definition, "dmg");
+        JsonValue pocket = GbDefinitionContract.variant(definition, "pocket");
+        JsonValue assets = manifest.get("assets");
+        JsonValue dmgRecipe = assets.get("assets/shaders/gb/screen.slangp");
+        JsonValue pocketRecipe = assets.get("assets/shaders/gb/pocket.slangp");
+        string dmgWrapper = "#reference \"../../shaders_slang/handheld/gameboy.slangp\"\n"
+            + "adjacent_texel_alpha_blending = \"0.35\"\n"
+            + "contrast = \"0.9\"\n"
+            + "palette = \"4\"\n"
+            + "pixel_opacity = \"0.9\"\n"
+            + "pixel_size = \"1.1\"\n"
+            + "pixel_softness = \"5\"\n"
+            + "response_time = \"0.333\"\n"
+            + "screen_light = \"1.15\"\n"
+            + "shadow_enable = \"0\"\n"
+            + "sharp_mode = \"1\"\n";
+        string pocketWrapper =
+            "#reference \"../../shaders_slang/handheld/gameboy-pocket.slangp\"\n";
+        return definition.get("schema_version").asInt() == 3
+            && definition.get("enabled").asBool()
+            && definition.get("renderer").asBool()
+            && definition.get("disabled_variant").asString().equals("none")
+            && definition.get("default_variant").asString().equals("dmg")
+            && variants.isArray() && variants.size() == 2
+            && variants.at(0).get("id").asString().equals("dmg")
+            && variants.at(1).get("id").asString().equals("pocket")
+            && dmg.get("screen").asString()
+                .equals("assets/shaders/gb/screen.slangp")
+            && pocket.get("screen").asString()
+                .equals("assets/shaders/gb/pocket.slangp")
+            && !dmg.get("screen").asString().equals(
+                pocket.get("screen").asString())
+            && GbDefinitionContract.compatibility(
+                definition.get("compatibility"))
+            && GbDefinitionContract.shaderRecipe(dmgRecipe,
+                "handheld/gameboy.slangp",
+                "0aeebf5dcc15a8a3e5a3aa5c0a2a6f66cf13eb15aec890b483424d23bce9f4e7",
+                "9808224c81dc56182101e38b05eda50bd28f2fc197a2f59d2347e2610490c48c")
+            && dmgRecipe.get("params").get("palette").asInt() == 4
+            && GbDefinitionContract.close(
+                dmgRecipe.get("params").get("response_time").asFloat(), 0.333)
+            && GbDefinitionContract.shaderRecipe(pocketRecipe,
+                "handheld/gameboy-pocket.slangp",
+                "77359eb26be0a1a7c8a77df217918144b2438d633c2009d781415d10086a56c8",
+                "77ef8fee4364c45af1bcc1b557e1817a3cfe7f61ae6ca9df9b63200eb5bed51f")
+            && GbDefinitionContract.wrapperHash(dmgRecipe, dmgWrapper)
+            && GbDefinitionContract.wrapperHash(pocketRecipe, pocketWrapper);
+    }
+
+    class bool normalized(JsonValue hole, JsonValue pixels,
+                          int width, int height) {
+        return GbDefinitionContract.close(
+                hole.get("x").asFloat(), pixels.get("x").asFloat() / width)
+            && GbDefinitionContract.close(
+                hole.get("y").asFloat(), pixels.get("y").asFloat() / height)
+            && GbDefinitionContract.close(
+                hole.get("w").asFloat(), pixels.get("w").asFloat() / width)
+            && GbDefinitionContract.close(
+                hole.get("h").asFloat(), pixels.get("h").asFloat() / height);
+    }
+
+    class bool aperture(JsonValue presentation) {
+        JsonValue hole = presentation.get("hole");
+        JsonValue geometry = presentation.get("geometry");
+        JsonValue canvas = geometry.get("canvas");
+        JsonValue pixels = geometry.get("source_pixels");
+        double ratio = pixels.get("w").asFloat()
+            / pixels.get("h").asFloat();
+        double scaleX = 1280.0 / canvas.get("w").asInt();
+        double scaleY = 800.0 / canvas.get("h").asInt();
+        double scale = scaleX < scaleY ? scaleX : scaleY;
+        double widthScale = pixels.get("w").asFloat() * scale / 160.0;
+        double heightScale = pixels.get("h").asFloat() * scale / 144.0;
+        return hole.get("x").asFloat() >= 0.0
+            && hole.get("y").asFloat() >= 0.0
+            && hole.get("x").asFloat() + hole.get("w").asFloat() <= 1.0
+            && hole.get("y").asFloat() + hole.get("h").asFloat() <= 1.0
+            && presentation.get("aspect").get("w").asInt() == 10
+            && presentation.get("aspect").get("h").asInt() == 9
+            && GbDefinitionContract.close(ratio, 10.0 / 9.0)
+            && GbDefinitionContract.normalized(hole, pixels,
+                canvas.get("w").asInt(), canvas.get("h").asInt())
+            && widthScale >= 2.0 && heightScale >= 2.0;
+    }
+
+    class bool exactGeometry(JsonValue presentation, int canvasWidth,
+                             int canvasHeight, double x, double y,
+                             double width, double height) {
+        JsonValue geometry = presentation.get("geometry");
+        JsonValue canvas = geometry.get("canvas");
+        JsonValue pixels = geometry.get("source_pixels");
+        return canvas.get("w").asInt() == canvasWidth
+            && canvas.get("h").asInt() == canvasHeight
+            && GbDefinitionContract.close(pixels.get("x").asFloat(), x)
+            && GbDefinitionContract.close(pixels.get("y").asFloat(), y)
+            && GbDefinitionContract.close(pixels.get("w").asFloat(), width)
+            && GbDefinitionContract.close(pixels.get("h").asFloat(), height);
+    }
+
+    class bool bezelVariant(JsonValue variant, JsonValue presentation) {
+        return variant.get("art").asString().equals(
+                presentation.get("art").asString())
+            && variant.get("hole").stringify().equals(
+                presentation.get("hole").stringify());
+    }
+
+    class bool canvasPolicy(JsonValue variant) {
+        JsonValue canvas = variant.get("canvas");
+        return canvas.isObject() && canvas.size() == 4
+            && canvas.get("mode").isString()
+            && canvas.get("mode").asString().equals("minimum_aperture")
+            && canvas.get("min_integer_scale").asInt() == 2
+            && GbDefinitionContract.close(
+                canvas.get("max_width").asFloat(), 1.0)
+            && GbDefinitionContract.close(
+                canvas.get("max_height").asFloat(), 1.0);
+    }
+
+    class bool bezels(string project, JsonValue definition,
+                      JsonValue manifest) {
+        JsonValue variants = definition.get("variants");
+        JsonValue dmg = GbDefinitionContract.variant(definition, "dmg");
+        JsonValue studio = GbDefinitionContract.variant(definition, "studio");
+        JsonValue policy = manifest.get("policy");
+        JsonValue presentations = policy.get("presentations");
+        JsonValue dmgPresentation = presentations.get("gb_dmg_gray");
+        JsonValue studioPresentation = presentations.get("gb_classic_gray");
+        JsonValue assets = manifest.get("assets");
+        JsonValue dmgAsset = assets.get("assets/bezels/gb/dmg.png");
+        JsonValue glassAsset = assets.get("assets/bezels/gb/reflection.png");
+        JsonValue studioAsset = assets.get("assets/bezels/gb/classic.png");
+        JsonValue gbPolicy = policy.get("systems").get("gb");
+        return definition.get("schema_version").asInt() == 2
+            && definition.get("enabled").asBool()
+            && definition.get("disabled_variant").asString().equals("none")
+            && definition.get("default_variant").asString().equals("dmg")
+            && variants.isArray() && variants.size() == 2
+            && variants.at(0).get("id").asString().equals("dmg")
+            && variants.at(1).get("id").asString().equals("studio")
+            && dmg.get("glass").asString()
+                .equals("assets/bezels/gb/reflection.png")
+            && !studio.has("glass")
+            && GbDefinitionContract.compatibility(
+                definition.get("compatibility"))
+            && GbDefinitionContract.bezelVariant(dmg, dmgPresentation)
+            && GbDefinitionContract.bezelVariant(studio, studioPresentation)
+            && GbDefinitionContract.canvasPolicy(dmg)
+            && GbDefinitionContract.canvasPolicy(studio)
+            && dmgPresentation.get("glass").asString().equals(
+                dmg.get("glass").asString())
+            && GbDefinitionContract.aperture(dmgPresentation)
+            && GbDefinitionContract.aperture(studioPresentation)
+            && GbDefinitionContract.exactGeometry(
+                dmgPresentation, 1024, 1536,
+                204.8, 192.0, 614.4, 552.96)
+            && GbDefinitionContract.exactGeometry(
+                studioPresentation, 1065, 1477,
+                258.0, 260.0, 594.0, 534.6)
+            && gbPolicy.get("default_variant").asString()
+                .equals("gb_dmg_gray")
+            && gbPolicy.get("variants").get("dmg").asString()
+                .equals("gb_dmg_gray")
+            && gbPolicy.get("variants").get("studio").asString()
+                .equals("gb_classic_gray")
+            && GbDefinitionContract.exactStrings(
+                gbPolicy.get("alternatives"), ["gb_classic_gray"])
+            && dmgAsset.get("type").asString().equals("local")
+            && dmgAsset.get("path").asString().equals(
+                "config/assets/bezels/gb/dmg.png")
+            && dmgAsset.get("output").get("sha256").asString().equals(
+                "973c7381c44c3c4a97186c2dfbcf6695296e8196d598d3a30110f72d45330a6c")
+            && glassAsset.get("type").asString().equals("local")
+            && glassAsset.get("path").asString()
+                .equals("config/assets/bezels/gb/reflection.png")
+            && glassAsset.get("output").get("sha256").asString().equals(
+                "289924361e3b8a809f0c4958fe117b849c302a993f3bed5f6465ae92fdff4d73")
+            && studioAsset.get("output").get("sha256").asString().equals(
+                "0196da73be03748301247b562a107ebcbdc5e5555426311c63ad02e4bdf86c64")
+            && !dmgAsset.get("output").get("sha256").asString().equals(
+                glassAsset.get("output").get("sha256").asString())
+            && GbDefinitionContract.png(
+                project, "assets/bezels/gb/dmg.png", dmgAsset)
+            && GbDefinitionContract.png(
+                project, "assets/bezels/gb/reflection.png", glassAsset)
+            && GbDefinitionContract.png(
+                project, "assets/bezels/gb/classic.png", studioAsset);
+    }
+
+    class bool input(JsonValue definition, JsonValue globalInput,
+                     JsonValue autoconfig, JsonValue retroarch) {
+        Vector<string> actions = ["ui.pause", "ui.screenshot", "ui.fullscreen",
+            "ui.menu", "ui.escape", "app.quit", "state.prev", "state.next",
+            "state.load", "state.save", "speed.rewind", "speed.fast"];
+        Vector<string> bindings = ["input_up_btn", "input_down_btn",
+            "input_left_btn", "input_right_btn", "input_b_btn", "input_a_btn",
+            "input_start_btn", "input_select_btn"];
+        Vector<string> radial = ["state.save", "state.load", "app.quit",
+            "ui.menu", "ui.screenshot"];
+        JsonValue emulatorActions = retroarch.get("input").get("actions");
+        JsonValue excluded = definition.get("actions").get("exclude");
+        JsonValue requiredBindings =
+            definition.get("gameplay").get("required_bindings");
+        JsonValue requiredRadial =
+            definition.get("radial").get("required_actions");
+        if (definition.get("schema_version").asInt() != 1
+                || !definition.get("system").asString().equals("gb")
+                || !definition.get("device").asString().equals("steam-deck")
+                || !definition.get("actions").get("source").asString()
+                    .equals("emulator")
+                || !GbDefinitionContract.exactStrings(excluded, ["screen.swap"])
+                || !GbDefinitionContract.exactStrings(requiredBindings, bindings)
+                || !GbDefinitionContract.exactStrings(requiredRadial, radial)
+                || definition.get("radial").get("system_actions").size() != 0
+                || !GbDefinitionContract.exactStrings(emulatorActions, actions)
+                || GbDefinitionContract.contains(emulatorActions, "screen.swap")) {
+            return false;
+        }
+        for action in actions {
+            if (!globalInput.get("actions").has(action)) { return false; }
+        }
+        for action in radial {
+            if (!GbDefinitionContract.contains(emulatorActions, action)) {
+                return false;
+            }
+        }
+        for binding in bindings {
+            JsonValue value = autoconfig.get("contract")
+                .get("gameplay_mapping").get(binding);
+            if (!value.isString() || value.asString().isEmpty()
+                    || value.asString().equals("nul")) {
+                return false;
+            }
+        }
+        return globalInput.get("actions").has("screen.swap");
+    }
+
+    class int run(string project) {
+        string gbRoot = PathTools.join(project, "config/systems/gb");
+        JsonValue system = JsonValue.readFile(PathTools.join(gbRoot, "system.json"));
+        JsonValue shaders = JsonValue.readFile(PathTools.join(gbRoot, "shaders.json"));
+        JsonValue bezels = JsonValue.readFile(PathTools.join(gbRoot, "bezels.json"));
+        JsonValue shaderAssets = JsonValue.readFile(
+            PathTools.join(project, "config/assets/shaders.json"));
+        JsonValue bezelAssets = JsonValue.readFile(
+            PathTools.join(project, "config/assets/bezels.json"));
+        JsonValue input = JsonValue.readFile(PathTools.join(
+            project, "config/input/steam-deck/systems/gb.json"));
+        JsonValue globalInput = JsonValue.readFile(PathTools.join(
+            project, "config/input/steam-deck/steam_input.json"));
+        JsonValue autoconfig = JsonValue.readFile(PathTools.join(
+            project, "config/input/steam-deck/retroarch_autoconfig.json"));
+        JsonValue retroarch = JsonValue.readFile(PathTools.join(
+            project, "config/emulators/retroarch/emulator.json"));
+        int failures = 0;
+        if (!GbDefinitionContract.display(system)) {
+            failures += GbDefinitionContract.fail(
+                "160x144, 10:9, integer-preferred display geometry changed");
+        }
+        if (!GbDefinitionContract.gameplayControls(system)) {
+            failures += GbDefinitionContract.fail(
+                "verification gameplay controls changed or contain duplicates");
+        }
+        if (!GbDefinitionContract.shaders(shaders, shaderAssets)) {
+            failures += GbDefinitionContract.fail(
+                "shader inventory, compatibility, or pinned hashes changed");
+        }
+        if (!GbDefinitionContract.bezels(project, bezels, bezelAssets)) {
+            failures += GbDefinitionContract.fail(
+                "bezel inventory, glass, geometry, or committed hashes changed");
+        }
+        if (!GbDefinitionContract.input(
+                input, globalInput, autoconfig, retroarch)) {
+            failures += GbDefinitionContract.fail(
+                "GB input surface contains a dead action or misses gameplay input");
+        }
+        int matrixSize = (shaders.get("variants").size() + 1)
+            * (bezels.get("variants").size() + 1) * 2;
+        if (matrixSize != 18) {
+            failures += GbDefinitionContract.fail(
+                "visual settings matrix must contain exactly 18 canonical combinations");
+        }
+        if (failures == 0) {
+            print("Game Boy definition contract: 2 shaders + disabled, "
+                + "2 bezels + disabled, 2 integer states, 18 combinations, "
+                + "8 gameplay controls, "
+                + "exact assets/input valid");
+        }
+        return failures;
+    }
+}
+
+int main(int argc, char** argv) {
+    CliArgs arguments = CliArgs(argc, argv);
+    string project = arguments.valueAfter(
+        "--project", FileSystem.currentDirectory());
+    return GbDefinitionContract.run(project) == 0 ? 0 : 1;
+}

@@ -1,13 +1,208 @@
 // document.btrc - provenance document composition, persistence, and validation.
 
 import std.{fs, json, strings, vector}
-import ../../../lib/json_format.btrc
+import ../../../lib/owned_paths.btrc
+import ../release_inventory.btrc
 import ../runtime_inventory.btrc
 import ./runtime_contract.btrc
 import ./source_contract.btrc
 import ./support.btrc
 
+#include <errno.h>
+#include <fcntl.h>
+#include <sys/stat.h>
+#include <unistd.h>
+
+int semuProvenanceFchmod(int descriptor, int mode) {
+    return fchmod(descriptor, (mode_t)mode);
+}
+
 class AppImageProvenanceDocument {
+    class int canonicalMode() { return 292; } // 0444
+
+    class bool sameObject(struct stat* left, struct stat* right) {
+        return left->st_dev == right->st_dev
+            && left->st_ino == right->st_ino;
+    }
+
+    class bool writeContent(int descriptor, string content) {
+        size_t length = (size_t)content.len();
+        size_t offset = (size_t)0;
+        while (offset < length) {
+            ssize_t count = write(descriptor,
+                ((unsigned char*)content) + offset, length - offset);
+            if (count > (ssize_t)0) {
+                offset += (size_t)count;
+            } else if (count < (ssize_t)0 && errno == EINTR) {
+                continue;
+            } else {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    class bool boundRegular(
+            int parent, string name, struct stat* descriptorStatus) {
+        struct stat namedStatus;
+        return fstatat(parent, name, &namedStatus,
+                AT_SYMLINK_NOFOLLOW) == 0
+            && S_ISREG(namedStatus.st_mode) != 0
+            && namedStatus.st_nlink == (nlink_t)1
+            && AppImageProvenanceDocument.sameObject(
+                descriptorStatus, &namedStatus);
+    }
+
+    class int destinationKind(int parent, string name) {
+        struct stat status;
+        if (fstatat(parent, name, &status, AT_SYMLINK_NOFOLLOW) == 0) {
+            return S_ISREG(status.st_mode) != 0 ? 1 : -1;
+        }
+        return errno == ENOENT ? 0 : -1;
+    }
+
+    class void removeBoundTemporary(
+            int parent, string name, struct stat* descriptorStatus) {
+        if (AppImageProvenanceDocument.boundRegular(
+                parent, name, descriptorStatus)) {
+            unlinkat(parent, name, 0);
+            fsync(parent);
+        }
+    }
+
+    class bool canonicalFile(string path) {
+        FileStatus status = FileStatus(path);
+        return status.isFile() && !status.isSymlink()
+            && (status.mode & 4095)
+                == AppImageProvenanceDocument.canonicalMode();
+    }
+
+    class AppImageProvenanceInternalResult seal(
+            string output, string content) {
+        string parent = PathTools.dirname(output);
+        string outputName = PathTools.basename(output);
+        if (outputName.isEmpty() || outputName.equals(".")
+                || outputName.equals("..")
+                || !PathTools.join(parent, outputName).equals(output)
+                || !UnixFileSystem.realPath(parent).equals(parent)) {
+            return AppImageProvenanceInternalResult.failure(
+                "runtime provenance destination is unsafe: " + output);
+        }
+
+        int parentDescriptor = UnixFileSystem.openDirectoryNoFollow(parent);
+        struct stat parentStatus;
+        struct stat parentPathStatus;
+        bool parentBound = parentDescriptor >= 0
+            && fstat(parentDescriptor, &parentStatus) == 0
+            && S_ISDIR(parentStatus.st_mode) != 0
+            && lstat(parent, &parentPathStatus) == 0
+            && S_ISDIR(parentPathStatus.st_mode) != 0
+            && AppImageProvenanceDocument.sameObject(
+                &parentStatus, &parentPathStatus)
+            && AppImageProvenanceDocument.destinationKind(
+                parentDescriptor, outputName) >= 0;
+        if (!parentBound) {
+            if (parentDescriptor >= 0) { close(parentDescriptor); }
+            return AppImageProvenanceInternalResult.failure(
+                "runtime provenance destination is unsafe: " + output);
+        }
+
+        string templatePath = PathTools.join(
+            parent, ".appimage-runtime-provenance.XXXXXX");
+        char* raw = Strings.copy(templatePath);
+        int descriptor = raw == NULL ? -1 : mkstemp(raw);
+        string temporary = descriptor < 0 ? "" : Strings.copy(raw);
+        if (descriptor < 0) {
+            close(parentDescriptor);
+            return AppImageProvenanceInternalResult.failure(
+                "cannot create runtime provenance temporary: " + output);
+        }
+
+        string temporaryName = PathTools.basename(temporary);
+        off_t contentSize = (off_t)content.len();
+        int canonicalMode = AppImageProvenanceDocument.canonicalMode();
+        struct stat temporaryStatus;
+        bool temporaryBound = !temporaryName.isEmpty()
+            && PathTools.dirname(temporary).equals(parent)
+            && fstat(descriptor, &temporaryStatus) == 0
+            && S_ISREG(temporaryStatus.st_mode) != 0
+            && temporaryStatus.st_nlink == (nlink_t)1
+            && AppImageProvenanceDocument.boundRegular(
+                parentDescriptor, temporaryName, &temporaryStatus);
+        string expectedDigest = temporaryBound
+            ? SemuOwnedFileDigest.text(content) : "";
+        bool written = temporaryBound && !expectedDigest.isEmpty()
+            && AppImageProvenanceDocument.writeContent(descriptor, content);
+        struct stat writtenStatus;
+        string writtenDigest = written
+            ? SemuOwnedFileDigest.descriptor(descriptor) : "";
+        written = written
+            && fstat(descriptor, &writtenStatus) == 0
+            && S_ISREG(writtenStatus.st_mode) != 0
+            && writtenStatus.st_nlink == (nlink_t)1
+            && writtenStatus.st_size == contentSize
+            && writtenDigest.equals(expectedDigest);
+        bool sealed = written
+            && semuProvenanceFchmod(descriptor, canonicalMode) == 0
+            && fsync(descriptor) == 0;
+        struct stat sealedStatus;
+        string sealedDigest = sealed
+            ? SemuOwnedFileDigest.descriptor(descriptor) : "";
+        sealed = sealed
+            && fstat(descriptor, &sealedStatus) == 0
+            && S_ISREG(sealedStatus.st_mode) != 0
+            && sealedStatus.st_nlink == (nlink_t)1
+            && sealedStatus.st_size == contentSize
+            && SemuOwnedPaths.permissions(sealedStatus.st_mode)
+                == AppImageProvenanceDocument.canonicalMode()
+            && sealedDigest.equals(expectedDigest)
+            && AppImageProvenanceDocument.boundRegular(
+                parentDescriptor, temporaryName, &sealedStatus)
+            && AppImageProvenanceDocument.destinationKind(
+                parentDescriptor, outputName) >= 0;
+        if (!sealed || renameat(parentDescriptor, temporaryName,
+                parentDescriptor, outputName) != 0) {
+            struct stat cleanupStatus;
+            if (fstat(descriptor, &cleanupStatus) == 0) {
+                AppImageProvenanceDocument.removeBoundTemporary(
+                    parentDescriptor, temporaryName, &cleanupStatus);
+            }
+            close(descriptor);
+            close(parentDescriptor);
+            return AppImageProvenanceInternalResult.failure(
+                "cannot atomically seal runtime provenance: " + output);
+        }
+
+        struct stat publishedStatus;
+        struct stat parentAfter;
+        struct stat parentPathAfter;
+        bool published = fstatat(parentDescriptor, outputName,
+                &publishedStatus, AT_SYMLINK_NOFOLLOW) == 0
+            && S_ISREG(publishedStatus.st_mode) != 0
+            && publishedStatus.st_nlink == (nlink_t)1
+            && AppImageProvenanceDocument.sameObject(
+                &sealedStatus, &publishedStatus)
+            && publishedStatus.st_size == sealedStatus.st_size
+            && publishedStatus.st_mode == sealedStatus.st_mode
+            && SemuOwnedFileDigest.descriptor(descriptor).equals(
+                expectedDigest)
+            && fstat(parentDescriptor, &parentAfter) == 0
+            && AppImageProvenanceDocument.sameObject(
+                &parentStatus, &parentAfter)
+            && lstat(parent, &parentPathAfter) == 0
+            && S_ISDIR(parentPathAfter.st_mode) != 0
+            && AppImageProvenanceDocument.sameObject(
+                &parentStatus, &parentPathAfter)
+            && fsync(parentDescriptor) == 0;
+        bool closedDescriptor = close(descriptor) == 0;
+        bool closedParent = close(parentDescriptor) == 0;
+        return published && closedDescriptor && closedParent
+            ? AppImageProvenanceInternalResult.success()
+            : AppImageProvenanceInternalResult.failure(
+                "published runtime provenance could not be durably verified: "
+                    + output);
+    }
+
     class AppImageProvenanceInternalJson document(
             string repoRoot, string runtimeRoot) {
         string repo = UnixFileSystem.realPath(repoRoot);
@@ -16,8 +211,15 @@ class AppImageProvenanceDocument {
             return AppImageProvenanceInternalJson.failure(
                 "provenance roots must be existing real directories");
         }
+        AppImageReleaseInventoryResult releaseInventory =
+            AppImageReleaseInventoryLoader.load(runtime);
+        if (!releaseInventory.ok()) {
+            return AppImageProvenanceInternalJson.failure(
+                releaseInventory.error);
+        }
         AppImageProvenanceInternalJson source =
-            AppImageSourceProvenance.sourceContract(repo);
+            AppImageSourceProvenance.sourceContractForRelease(
+                repo, releaseInventory.inventory);
         if (!source.ok()) { return source; }
         JsonValue selected = source.value.get("deployment_target")
             .get("selected").get("definition");
@@ -29,15 +231,14 @@ class AppImageProvenanceDocument {
                 "source provenance lost its target platform identity");
         }
         AppImageRuntimeInventoryResult inventory =
-            AppImageRuntimeInventory.loadForTarget(
-                PathTools.join(repo, "config"), platform.asString(),
-                nixSystems.at(0).asString());
+            releaseInventory.inventory.select(
+                PathTools.join(repo, "config"));
         if (!inventory.ok()) {
             return AppImageProvenanceInternalJson.failure(inventory.error);
         }
         AppImageProvenanceInternalJson snapshot =
             AppImageRuntimeContractProvenance.runtimeSnapshot(repo, runtime,
-                source.value.get("build_contracts"), inventory.slices,
+                source.value.get("build_contracts"), inventory,
                 source.value.get("selected_cores"),
                 source.value.get("selected_core_builds"),
                 source.value.get("core_runtime"),
@@ -45,16 +246,17 @@ class AppImageProvenanceDocument {
                 source.value.get("target_output_store_path").asString());
         if (!snapshot.ok()) { return snapshot; }
         JsonValue identity = JsonValue.makeObject();
-        identity.set("schema_version", JsonValue.makeInt(4));
+        identity.set("schema_version", JsonValue.makeInt(6));
         identity.set("source", source.value);
         identity.set("runtime", snapshot.value);
-        AppImageProvenanceInternalDigest digest = AppImageProvenanceSupport.hashText(
-            runtime, SemuJsonFormat.document(identity));
+        AppImageProvenanceInternalDigest digest =
+            AppImageProvenanceSupport.hashText(
+                identity.document());
         if (!digest.ok()) {
             return AppImageProvenanceInternalJson.failure(digest.error);
         }
         JsonValue document = JsonValue.makeObject();
-        document.set("schema_version", JsonValue.makeInt(4));
+        document.set("schema_version", JsonValue.makeInt(6));
         document.set("release_identity_sha256",
             JsonValue.makeString(digest.value));
         document.set("source", source.value);
@@ -76,21 +278,8 @@ class AppImageProvenanceDocument {
             return AppImageProvenanceInternalResult.failure(document.error);
         }
         string output = AppImageProvenanceSupport.path(runtime);
-        string parent = PathTools.dirname(output);
-        FileStatus parentStatus = FileStatus(parent);
-        FileStatus outputStatus = FileStatus(output);
-        if (!parentStatus.isDir() || parentStatus.isSymlink()
-            || (outputStatus.linkFound
-                && (!outputStatus.isFile() || outputStatus.isSymlink()))) {
-            return AppImageProvenanceInternalResult.failure(
-                "runtime provenance destination is unsafe: " + output);
-        }
-        if (!Path.writeAll(output,
-                SemuJsonFormat.document(document.value))) {
-            return AppImageProvenanceInternalResult.failure(
-                "cannot write runtime provenance: " + output);
-        }
-        return AppImageProvenanceInternalResult.success();
+        return AppImageProvenanceDocument.seal(
+            output, document.value.document());
     }
 
     class AppImageProvenanceInternalResult validate(
@@ -103,7 +292,8 @@ class AppImageProvenanceDocument {
         }
         string provenancePath = AppImageProvenanceSupport.path(runtime);
         if (!AppImageProvenanceSupport.safeRegularFile(
-                runtime, AppImageProvenanceSupport.relativePath())) {
+                runtime, AppImageProvenanceSupport.relativePath())
+            || !AppImageProvenanceDocument.canonicalFile(provenancePath)) {
             return AppImageProvenanceInternalResult.failure(
                 "runtime provenance is missing or unsafe: " + provenancePath);
         }
@@ -113,7 +303,7 @@ class AppImageProvenanceDocument {
                 recorded, ["schema_version", "release_identity_sha256",
                     "source", "runtime"])
             || !recorded.get("schema_version").isInt()
-            || recorded.get("schema_version").asInt() != 4
+            || recorded.get("schema_version").asInt() != 6
             || !recorded.get("release_identity_sha256").isString()
             || !AppImageProvenanceSupport.lowerHex(
                 recorded.get("release_identity_sha256").asString(), 64)) {
@@ -125,17 +315,13 @@ class AppImageProvenanceDocument {
         if (!expected.ok()) {
             return AppImageProvenanceInternalResult.failure(expected.error);
         }
-        if (!SemuJsonFormat.document(
-                recorded.get("source")).equals(
-                SemuJsonFormat.document(
-                    expected.value.get("source")))) {
+        if (!recorded.get("source").document().equals(
+                expected.value.get("source").document())) {
             return AppImageProvenanceInternalResult.failure(
                 "runtime provenance is stale for the live source/build snapshot");
         }
-        if (!SemuJsonFormat.document(
-                recorded.get("runtime")).equals(
-                SemuJsonFormat.document(
-                    expected.value.get("runtime")))) {
+        if (!recorded.get("runtime").document().equals(
+                expected.value.get("runtime").document())) {
             return AppImageProvenanceInternalResult.failure(
                 "staged runtime closure differs from its release provenance");
         }

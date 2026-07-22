@@ -610,6 +610,16 @@ class StandaloneEmulatorProductionContractTest {
         JsonValue pcsx2Profile = JsonValue.readFile(
             StandaloneEmulatorProductionContractTest.path(
                 project, "pcsx2", "profile.json"));
+        JsonValue pcsx2Package = JsonValue.readFile(
+            StandaloneEmulatorProductionContractTest.path(
+                project, "pcsx2", "package.json"));
+        JsonValue pcsx2PackagePatches = pcsx2Package.get("patches");
+        string pcsx2PackageNix = FileSystem.readText(
+            StandaloneEmulatorProductionContractTest.path(
+                project, "pcsx2", "package.nix"));
+        string pcsx2SystemCubebPatch = FileSystem.readText(
+            StandaloneEmulatorProductionContractTest.path(
+                project, "pcsx2", "system-cubeb.patch"));
         if (!pcsx2.get("platforms").get("linux").get("input")
                     .get("primary_device").asString().equals("SDL-0")
                 || !pcsx2.get("platforms").get("linux").get("input")
@@ -625,6 +635,20 @@ class StandaloneEmulatorProductionContractTest {
                     .contains("SDL-1")) {
             failures += StandaloneEmulatorProductionContractTest.fail(
                 "pcsx2", "Pad1 is not bound to the first packaged SDL gamepad");
+        }
+        if (!pcsx2PackagePatches.isArray()
+                || pcsx2PackagePatches.size() != 1
+                || !pcsx2PackagePatches.at(0).get("file").asString().equals(
+                    "system-cubeb.patch")
+                || pcsx2PackagePatches.at(0).get("sha256").asString().len()
+                    != 64
+                || !pcsx2SystemCubebPatch.contains(
+                    "find_package(cubeb REQUIRED GLOBAL)")
+                || !pcsx2PackageNix.contains(
+                    "patches = [ systemCubebPatch semuPatch ];")
+                || pcsx2PackageNix.contains("previous.patches")) {
+            failures += StandaloneEmulatorProductionContractTest.fail(
+                "pcsx2", "package patches are not exact JSON-owned inputs");
         }
 
         JsonValue ryujinx = JsonValue.readFile(

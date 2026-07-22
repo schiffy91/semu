@@ -1,0 +1,498 @@
+// RetroArch bridge emitted into the source-built renderer integration.
+
+#include <math.h>
+#include <stdint.h>
+#include <string.h>
+
+#include "video_driver.h"
+
+import ./surface_contract.btrc
+
+#define semuRetroArchGeometry() (&video_state_get_ptr()->av_info.geometry)
+
+void semuRetroArchDisplayLock(video_driver_state_t* video) {
+    if (video != null && video->display_lock != null) {
+        slock_lock(video->display_lock);
+    }
+}
+
+void semuRetroArchDisplayUnlock(video_driver_state_t* video) {
+    if (video != null && video->display_lock != null) {
+        slock_unlock(video->display_lock);
+    }
+}
+
+void semuRetroArchContextLock(video_driver_state_t* video) {
+    if (video != null && video->context_lock != null) {
+        slock_lock(video->context_lock);
+    }
+}
+
+void semuRetroArchContextUnlock(video_driver_state_t* video) {
+    if (video != null && video->context_lock != null) {
+        slock_unlock(video->context_lock);
+    }
+}
+
+struct SemuRetroArchPointerRuntime {
+    struct SemuRenderPointerMap map;
+    __fn_ptr<int, struct SemuRenderPointerMap*,
+        struct SemuRenderPointerQuery*,
+        struct SemuRenderPointerResult*> map_pointer;
+    unsigned long long map_generation;
+    unsigned long long context_generation;
+    int touch_index;
+    int snapshot_valid;
+    unsigned long long snapshot_generation;
+    int captured;
+    int down;
+    int release_required;
+    int16_t x;
+    int16_t y;
+    int16_t pressed;
+    int16_t count;
+    int16_t offscreen;
+};
+
+struct SemuRetroArchSurfaceContract SemuRetroArchSurfaces;
+struct SemuRetroArchPointerRuntime SemuRetroArchPointer;
+unsigned long long SemuRetroArchNextContextGeneration;
+unsigned long long SemuRetroArchActiveContextGeneration;
+
+class SemuRetroArchGeneration {
+    class unsigned long long next(unsigned long long generation) {
+        generation = generation + 1ULL;
+        return generation == 0ULL ? 1ULL : generation;
+    }
+
+    class uint64_t create() {
+        SemuRetroArchSurfaceModel.load(&SemuRetroArchSurfaces);
+        semuRetroArchContextLock(video_state_get_ptr());
+        SemuRetroArchNextContextGeneration =
+            SemuRetroArchGeneration.next(
+                SemuRetroArchNextContextGeneration);
+        SemuRetroArchActiveContextGeneration =
+            SemuRetroArchNextContextGeneration;
+        uint64_t generation =
+            (uint64_t)SemuRetroArchActiveContextGeneration;
+        semuRetroArchContextUnlock(video_state_get_ptr());
+        return generation;
+    }
+
+    class bool active(uint64_t generation) {
+        if (!SemuRetroArchGeneration.lockActive(generation)) { return false; }
+        SemuRetroArchGeneration.unlockActive();
+        return true;
+    }
+
+    class bool lockActive(uint64_t generation) {
+        semuRetroArchContextLock(video_state_get_ptr());
+        bool active = generation != 0u
+            && SemuRetroArchActiveContextGeneration
+                == (unsigned long long)generation;
+        if (!active) { semuRetroArchContextUnlock(video_state_get_ptr()); }
+        return active;
+    }
+
+    class void unlockActive() {
+        semuRetroArchContextUnlock(video_state_get_ptr());
+    }
+
+    class void retire(uint64_t generation) {
+        semuRetroArchContextLock(video_state_get_ptr());
+        if (SemuRetroArchActiveContextGeneration
+                == (unsigned long long)generation) {
+            SemuRetroArchActiveContextGeneration = 0ULL;
+        }
+        semuRetroArchContextUnlock(video_state_get_ptr());
+    }
+}
+
+class SemuRetroArchFrameBridge {
+    class bool build(struct SemuRenderFrameGl* frame,
+                     uint64_t frameId, unsigned int framebuffer,
+                     unsigned int colorBuffer, int framebufferWidth,
+                     int framebufferHeight, int viewportX, int viewportY,
+                     int viewportWidth, int viewportHeight,
+                     unsigned int frameWidth, unsigned int frameHeight,
+                     bool libretroRunning, bool menuAlive,
+                     __fn_ptr<void*, const char*> getProc,
+                     uint64_t contextGeneration) {
+        if (frame == null) { return false; }
+        memset(frame, 0, sizeof(struct SemuRenderFrameGl));
+        (void)menuAlive;
+        if (!libretroRunning || frameId == 0u
+                || framebufferWidth < 1 || framebufferHeight < 1
+                || viewportX < 0 || viewportY < 0
+                || viewportWidth < 1 || viewportHeight < 1
+                || viewportWidth > framebufferWidth
+                || viewportHeight > framebufferHeight
+                || viewportX > framebufferWidth - viewportWidth
+                || viewportY > framebufferHeight - viewportHeight
+                || frameWidth < 1u || frameHeight < 1u
+                || (void*)getProc == null
+                || !SemuRetroArchGeneration.active(contextGeneration)
+                || !SemuRetroArchSurfaceModel.load(
+                    &SemuRetroArchSurfaces)) { return false; }
+
+        frame->abi = SEMU_RENDER_ABI_GL;
+        frame->struct_size = sizeof(struct SemuRenderFrameGl);
+        frame->frame_id = frameId;
+        frame->framebuffer = framebuffer;
+        frame->color_buffer = colorBuffer;
+        frame->framebuffer_width = framebufferWidth;
+        frame->framebuffer_height = framebufferHeight;
+        frame->presentation_aspect =
+            (float)viewportWidth / (float)viewportHeight;
+        frame->layout_variant = SEMU_RENDER_LAYOUT_AUTO;
+        frame->get_proc = getProc;
+        frame->context_generation = contextGeneration;
+        return SemuRetroArchSurfaceModel.partition(
+            &SemuRetroArchSurfaces, frame, semuRetroArchGeometry(),
+            viewportX, viewportY, viewportWidth, viewportHeight,
+            frameWidth, frameHeight);
+    }
+}
+
+class SemuRetroArchPointerBridge {
+    class bool sameSurface(struct SemuRenderPointerSurface* first,
+                           struct SemuRenderPointerSurface* second) {
+        return first != null && second != null
+            && first->x == second->x && first->y == second->y
+            && first->width == second->width
+            && first->height == second->height
+            && first->native_width == second->native_width
+            && first->native_height == second->native_height
+            && first->rotation == second->rotation
+            && first->origin == second->origin;
+    }
+
+    class bool sameMap(struct SemuRenderPointerMap* first,
+                       struct SemuRenderPointerMap* second) {
+        if (first == null || second == null
+                || first->abi != second->abi
+                || first->struct_size != second->struct_size
+                || first->framebuffer_width != second->framebuffer_width
+                || first->framebuffer_height != second->framebuffer_height
+                || first->surface_count != second->surface_count) {
+            return false;
+        }
+        for (int index = 0; index < first->surface_count; index++) {
+            if (!SemuRetroArchPointerBridge.sameSurface(
+                    &first->surfaces[index],
+                    &second->surfaces[index])) { return false; }
+        }
+        return true;
+    }
+
+    class void clear(bool requireRelease) {
+        semuRetroArchDisplayLock(video_state_get_ptr());
+        if ((void*)SemuRetroArchPointer.map_pointer != null
+                || SemuRetroArchPointer.captured != 0
+                || SemuRetroArchPointer.down != 0
+                || (SemuRetroArchPointer.release_required == 0
+                    && requireRelease)) {
+            SemuRetroArchPointer.map_generation =
+                SemuRetroArchGeneration.next(
+                    SemuRetroArchPointer.map_generation);
+        }
+        memset(&SemuRetroArchPointer.map, 0,
+            sizeof(struct SemuRenderPointerMap));
+        SemuRetroArchPointer.map_pointer =
+            (__fn_ptr<int, struct SemuRenderPointerMap*,
+            struct SemuRenderPointerQuery*,
+            struct SemuRenderPointerResult*>)0;
+        SemuRetroArchPointer.context_generation = 0ULL;
+        SemuRetroArchPointer.touch_index = -1;
+        SemuRetroArchPointer.captured = 0;
+        SemuRetroArchPointer.release_required =
+            (SemuRetroArchPointer.release_required != 0
+                || requireRelease || SemuRetroArchPointer.down != 0) ? 1 : 0;
+        SemuRetroArchPointer.down = 0;
+        semuRetroArchDisplayUnlock(video_state_get_ptr());
+    }
+
+    class bool valid(struct SemuRenderFrameGl* frame, bool applied) {
+        if (!applied || frame == null || (void*)frame->map_pointer == null
+                || !SemuRetroArchSurfaceModel.load(&SemuRetroArchSurfaces)
+                || SemuRetroArchSurfaces.touch_index < 0
+                || (unsigned int)frame->pointer_map.abi
+                    != (unsigned int)SEMU_RENDER_ABI_GL
+                || frame->pointer_map.frame_id != frame->frame_id
+                || frame->pointer_map.surface_count
+                    != SemuRetroArchSurfaces.count) { return false; }
+        for (int index = 0; index < SemuRetroArchSurfaces.count; index++) {
+            if (frame->pointer_map.surfaces[index].native_width
+                        != (int)SemuRetroArchSurfaces.surfaces[index].native_width
+                    || frame->pointer_map.surfaces[index].native_height
+                        != (int)SemuRetroArchSurfaces.surfaces[index].native_height) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    class void publish(struct SemuRenderFrameGl* frame, bool applied) {
+        if (!SemuRetroArchPointerBridge.valid(frame, applied)) {
+            SemuRetroArchPointerBridge.clear(false);
+            return;
+        }
+        if (!SemuRetroArchGeneration.lockActive(
+                frame->context_generation)) {
+            SemuRetroArchPointerBridge.clear(false);
+            return;
+        }
+
+        semuRetroArchDisplayLock(video_state_get_ptr());
+        bool changed = (void*)SemuRetroArchPointer.map_pointer
+                != (void*)frame->map_pointer
+            || SemuRetroArchPointer.context_generation
+                != frame->context_generation
+            || SemuRetroArchPointer.touch_index
+                != SemuRetroArchSurfaces.touch_index
+            || !SemuRetroArchPointerBridge.sameMap(
+                &SemuRetroArchPointer.map, &frame->pointer_map);
+        if (changed) {
+            SemuRetroArchPointer.map_generation =
+                SemuRetroArchGeneration.next(
+                    SemuRetroArchPointer.map_generation);
+            if (SemuRetroArchPointer.down != 0) {
+                SemuRetroArchPointer.release_required = 1;
+            }
+            SemuRetroArchPointer.captured = 0;
+            SemuRetroArchPointer.down = 0;
+        }
+        memcpy(&SemuRetroArchPointer.map, &frame->pointer_map,
+            sizeof(struct SemuRenderPointerMap));
+        SemuRetroArchPointer.map_pointer = frame->map_pointer;
+        SemuRetroArchPointer.context_generation =
+            frame->context_generation;
+        SemuRetroArchPointer.touch_index =
+            SemuRetroArchSurfaces.touch_index;
+        semuRetroArchDisplayUnlock(video_state_get_ptr());
+        SemuRetroArchGeneration.unlockActive();
+    }
+
+    class bool screenPixel(int16_t coordinate, int extent, float* pixel) {
+        if (pixel == null || extent < 1
+                || coordinate < 0 || coordinate >= extent) {
+            return false;
+        }
+        *pixel = (float)coordinate;
+        return true;
+    }
+
+    class int16_t libretroCoordinate(float normalized) {
+        if (normalized < 0.0f) { normalized = 0.0f; }
+        else if (normalized > 1.0f) { normalized = 1.0f; }
+        return (int16_t)lroundf(normalized * 65534.0f - 32767.0f);
+    }
+
+    class void sample(int16_t screenX, int16_t screenY,
+                      bool pressed, bool allowed) {
+        if (!allowed) {
+            SemuRetroArchPointerBridge.clear(true);
+            pressed = false;
+        }
+
+        struct SemuRenderPointerMap map;
+        memset(&map, 0, sizeof(struct SemuRenderPointerMap));
+        __fn_ptr<int, struct SemuRenderPointerMap*,
+            struct SemuRenderPointerQuery*,
+            struct SemuRenderPointerResult*> mapPointer =
+                (__fn_ptr<int, struct SemuRenderPointerMap*,
+                struct SemuRenderPointerQuery*,
+                struct SemuRenderPointerResult*>)0;
+        unsigned long long mapGeneration = 0ULL;
+        unsigned long long contextGeneration = 0ULL;
+        int touchIndex = -1;
+        int wasCaptured = 0;
+        int wasDown = 0;
+        int releaseRequired = 0;
+
+        semuRetroArchDisplayLock(video_state_get_ptr());
+        mapPointer = SemuRetroArchPointer.map_pointer;
+        memcpy(&map, &SemuRetroArchPointer.map,
+            sizeof(struct SemuRenderPointerMap));
+        mapGeneration = SemuRetroArchPointer.map_generation;
+        contextGeneration = SemuRetroArchPointer.context_generation;
+        touchIndex = SemuRetroArchPointer.touch_index;
+        wasCaptured = SemuRetroArchPointer.captured;
+        wasDown = SemuRetroArchPointer.down;
+        releaseRequired = SemuRetroArchPointer.release_required;
+        semuRetroArchDisplayUnlock(video_state_get_ptr());
+
+        struct SemuRenderPointerResult result;
+        memset(&result, 0, sizeof(struct SemuRenderPointerResult));
+        bool mapped = false;
+        bool mapAvailable = allowed && (void*)mapPointer != null
+            && touchIndex >= 0 && touchIndex < map.surface_count
+            && SemuRetroArchGeneration.active(contextGeneration);
+        if (mapAvailable && pressed && releaseRequired == 0) {
+            struct SemuRenderPointerQuery query;
+            memset(&query, 0, sizeof(struct SemuRenderPointerQuery));
+            query.abi = SEMU_RENDER_ABI_GL;
+            query.struct_size = sizeof(struct SemuRenderPointerQuery);
+            query.frame_id = map.frame_id;
+            query.viewport_width = map.framebuffer_width;
+            query.viewport_height = map.framebuffer_height;
+            query.origin = SEMU_RENDER_ORIGIN_TOP_LEFT;
+            query.surface_index = touchIndex;
+            query.clamp = wasCaptured != 0 ? 1 : 0;
+            mapped = SemuRetroArchPointerBridge.screenPixel(
+                    screenX, query.viewport_width, &query.x)
+                && SemuRetroArchPointerBridge.screenPixel(
+                    screenY, query.viewport_height, &query.y)
+                && mapPointer(&map, &query, &result)
+                    == SEMU_RENDER_POINTER_MAPPED
+                && result.surface_index == touchIndex
+                && result.native_width
+                    == map.surfaces[touchIndex].native_width
+                && result.native_height
+                    == map.surfaces[touchIndex].native_height;
+        }
+
+        int nextCaptured = wasCaptured;
+        int nextDown = wasDown;
+        int nextReleaseRequired = releaseRequired;
+        if (releaseRequired != 0) {
+            if (!pressed) {
+                nextReleaseRequired = 0;
+                nextCaptured = 0;
+                nextDown = 0;
+            }
+        } else if (!pressed) {
+            nextCaptured = 0;
+            nextDown = 0;
+        } else if (wasDown == 0) {
+            nextDown = 1;
+            nextCaptured = mapped ? 1 : 0;
+        } else if (wasCaptured != 0 && !mapped) {
+            nextCaptured = 0;
+        }
+
+        int16_t x = 0;
+        int16_t y = 0;
+        int16_t isPressed = 0;
+        int16_t count = 0;
+        int16_t offscreen = 1;
+        if (pressed && nextCaptured != 0 && mapped) {
+            x = SemuRetroArchPointerBridge.libretroCoordinate(
+                SemuRetroArchSurfaceModel.coreX(
+                    &SemuRetroArchSurfaces, &result));
+            y = SemuRetroArchPointerBridge.libretroCoordinate(
+                SemuRetroArchSurfaceModel.coreY(
+                    &SemuRetroArchSurfaces, &result));
+            isPressed = 1;
+            count = 1;
+            offscreen = 0;
+        }
+
+        bool contextLocked = contextGeneration != 0ULL
+            && SemuRetroArchGeneration.lockActive(contextGeneration);
+        semuRetroArchDisplayLock(video_state_get_ptr());
+        bool stable = contextLocked
+            && SemuRetroArchPointer.map_generation == mapGeneration
+                && (void*)SemuRetroArchPointer.map_pointer
+                    == (void*)mapPointer
+                && SemuRetroArchPointer.context_generation
+                    == contextGeneration;
+        SemuRetroArchPointer.snapshot_generation =
+            SemuRetroArchGeneration.next(
+                SemuRetroArchPointer.snapshot_generation);
+        SemuRetroArchPointer.snapshot_valid =
+            SemuRetroArchSurfaces.loaded != 0
+                && SemuRetroArchSurfaces.valid != 0
+                && SemuRetroArchSurfaces.touch_index >= 0 ? 1 : 0;
+        SemuRetroArchPointer.x = 0;
+        SemuRetroArchPointer.y = 0;
+        SemuRetroArchPointer.pressed = 0;
+        SemuRetroArchPointer.count = 0;
+        SemuRetroArchPointer.offscreen = 1;
+        if (stable) {
+            SemuRetroArchPointer.captured = nextCaptured;
+            SemuRetroArchPointer.down = nextDown;
+            SemuRetroArchPointer.release_required = nextReleaseRequired;
+            SemuRetroArchPointer.x = x;
+            SemuRetroArchPointer.y = y;
+            SemuRetroArchPointer.pressed = isPressed;
+            SemuRetroArchPointer.count = count;
+            SemuRetroArchPointer.offscreen = offscreen;
+        } else {
+            SemuRetroArchPointer.captured = 0;
+            SemuRetroArchPointer.down = 0;
+        }
+        semuRetroArchDisplayUnlock(video_state_get_ptr());
+        if (contextLocked) { SemuRetroArchGeneration.unlockActive(); }
+    }
+
+    class bool snapshot(unsigned int id, int16_t* value) {
+        if (value == null) { return false; }
+        semuRetroArchDisplayLock(video_state_get_ptr());
+        bool available = SemuRetroArchPointer.snapshot_valid != 0;
+        if (available) {
+            if (id == RETRO_DEVICE_ID_POINTER_X) {
+                *value = SemuRetroArchPointer.x;
+            } else if (id == RETRO_DEVICE_ID_POINTER_Y) {
+                *value = SemuRetroArchPointer.y;
+            } else if (id == RETRO_DEVICE_ID_POINTER_PRESSED) {
+                *value = SemuRetroArchPointer.pressed;
+            } else if (id == RETRO_DEVICE_ID_POINTER_COUNT) {
+                *value = SemuRetroArchPointer.count;
+            } else if (id == RETRO_DEVICE_ID_POINTER_IS_OFFSCREEN) {
+                *value = SemuRetroArchPointer.offscreen;
+            } else {
+                available = false;
+            }
+        }
+        semuRetroArchDisplayUnlock(video_state_get_ptr());
+        return available;
+    }
+}
+
+uint64_t video_driver_semu_context_created() {
+    return SemuRetroArchGeneration.create();
+}
+
+void video_driver_semu_context_destroying(uint64_t contextGeneration) {
+    if (contextGeneration == 0u) { return; }
+    SemuRetroArchGeneration.retire(contextGeneration);
+    semu_render_context_invalidate_gl(contextGeneration);
+    SemuRetroArchPointerBridge.clear(true);
+}
+
+bool video_driver_semu_build_frame_gl(
+        struct SemuRenderFrameGl* frame, uint64_t frameId,
+        unsigned int framebuffer, unsigned int colorBuffer,
+        int framebufferWidth, int framebufferHeight,
+        int viewportX, int viewportY, int viewportWidth, int viewportHeight,
+        unsigned int frameWidth, unsigned int frameHeight,
+        bool libretroRunning, bool menuAlive,
+        __fn_ptr<void*, const char*> getProc,
+        uint64_t contextGeneration) {
+    return SemuRetroArchFrameBridge.build(frame, frameId,
+        framebuffer, colorBuffer, framebufferWidth, framebufferHeight,
+        viewportX, viewportY, viewportWidth, viewportHeight,
+        frameWidth, frameHeight, libretroRunning, menuAlive,
+        getProc, contextGeneration);
+}
+
+void video_driver_semu_publish_pointer(
+        struct SemuRenderFrameGl* frame, bool applied) {
+    SemuRetroArchPointerBridge.publish(frame, applied);
+}
+
+void video_driver_semu_pointer_clear(bool requireRelease) {
+    SemuRetroArchPointerBridge.clear(requireRelease);
+}
+
+void video_driver_semu_pointer_sample(int16_t screenX, int16_t screenY,
+        bool pressed, bool allowed) {
+    SemuRetroArchPointerBridge.sample(
+        screenX, screenY, pressed, allowed);
+}
+
+bool video_driver_semu_pointer_snapshot(
+        unsigned int id, int16_t* value) {
+    return SemuRetroArchPointerBridge.snapshot(id, value);
+}
