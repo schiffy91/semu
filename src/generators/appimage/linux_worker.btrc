@@ -1084,6 +1084,9 @@ class AppImageLinuxWorker {
         arguments.extend([
             "--env", "HOME=/nonexistent",
             "--env", "TMPDIR=/tmp",
+            "--env", "NIX_REMOTE=local?read-only=true",
+            "--env", "NIX_CONFIG=experimental-features = "
+                + "nix-command flakes read-only-local-store",
             "--entrypoint", worker + "/bin/semu-btrc",
             AppImageNixReleaseProof.pinnedImage()
         ]);

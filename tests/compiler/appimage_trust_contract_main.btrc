@@ -456,6 +456,11 @@ class AppImageTrustContractTest {
             && command.contains("type=bind,source=/private/exchange"
                 + ",target=/exchange,rw")
             && command.contains(worker + "/bin/semu-btrc")
+            && AppImageWorkerContainer.hasPair(command, "--env",
+                "NIX_REMOTE=local?read-only=true")
+            && AppImageWorkerContainer.hasPair(command, "--env",
+                "NIX_CONFIG=experimental-features = nix-command flakes "
+                    + "read-only-local-store")
             && AppImageWorkerContainer.hasPair(
                 command, "--cap-drop", "ALL")
             && !command.contains("--cap-add") && !joined.contains("CHOWN")
