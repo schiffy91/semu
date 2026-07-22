@@ -16,6 +16,34 @@ passes. A system is accepted only after the physical evidence required by
 > Continue through every row and then rerun the entire matrix on one clean
 > pushed aggregate release.
 
+## Imperative-First Bring-Up
+
+The active system must work on the physical Steam Deck before Semu generalizes
+or formalizes it. For Game Boy, use direct SSH commands, direct process launch,
+temporary Semu-owned configuration, synthetic input, logs, and type-3 Deck
+screenshots as needed to reach a correct real-ROM result quickly. Do not wait
+for a complete generic acceptance framework before running the artifact.
+
+The required order for every system is:
+
+1. Build and deploy the smallest exact emulator slice.
+2. Launch a deterministic real ROM directly and through ES-DE.
+3. Imperatively fix startup, pixels, fullscreen geometry, controls, save/load,
+   quit, radial behavior, and each shader/bezel variant on the Deck.
+4. Capture and inspect screenshots and program receipts while iterating.
+5. Once the physical behavior works, migrate those exact known-working values
+   and commands into Semu-owned declarations and generators.
+6. Rebuild and rerun the same physical checks through the declarative path.
+7. Accept the row, then move to the next system and reuse only the abstractions
+   that the working systems have actually justified.
+
+Diagnostic imperative work never weakens final acceptance or permits direct
+mutation of protected ROM, BIOS, key, or save media. It exists to prevent
+architecture and test-harness work from delaying the first real working loop.
+No generalized harness, refactor, cross-emulator abstraction, or Bazzite work
+may precede the active system's physical bring-up unless it is the concrete
+blocker to building, deploying, or launching that system.
+
 ## Authoritative Outcome
 
 Iteratively make every declared emulator and every served system work on the
