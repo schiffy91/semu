@@ -466,7 +466,12 @@ class AppImageTrustContractTest {
             && !joined.contains("read-only-local-store")
             && AppImageWorkerContainer.hasPair(
                 command, "--cap-drop", "ALL")
-            && !command.contains("--cap-add") && !joined.contains("CHOWN")
+            && AppImageWorkerContainer.hasPair(
+                command, "--cap-add", "CHOWN")
+            && !joined.contains("DAC_OVERRIDE")
+            && !joined.contains("FOWNER") && !joined.contains("KILL")
+            && !joined.contains("SETGID") && !joined.contains("SETUID")
+            && !joined.contains("SYS_CHROOT")
             && !joined.contains("/nix/var/cache")
             && !joined.contains("target=/input")
             && !joined.contains("type=volume,source=")

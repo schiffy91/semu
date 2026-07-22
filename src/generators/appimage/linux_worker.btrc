@@ -1072,6 +1072,7 @@ class AppImageLinuxWorker {
             "--network", "none", "--read-only",
             "--userns", "keep-id",
             "--cap-drop", "ALL",
+            "--cap-add", "CHOWN",
             "--security-opt", "no-new-privileges",
             "--tmpfs", "/tmp:rw,nosuid,nodev,mode=1777",
             "--volumes-from", storeContainerId + ":rw",
