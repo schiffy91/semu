@@ -192,11 +192,16 @@ class AppImageNixReleaseProofContract {
         closure.set(source, sourceMetadata);
         string digest = AppImageNixReleaseProof.canonicalClosureDigest(
             closure, target);
+        JsonValue canonical = AppImageNixReleaseProof.canonicalClosure(
+            closure, target);
+        string documentDigest =
+            AppImageNixReleaseProof.closureDocumentDigest(canonical);
         targetMetadata.set("narSize", JsonValue.makeInt(257));
         closure.set(target, targetMetadata);
         string changed = AppImageNixReleaseProof.canonicalClosureDigest(
             closure, target);
         return AppImageNixReleaseProof.digest(digest)
+            && digest.equals(documentDigest)
             && AppImageNixReleaseProof.digest(changed)
             && !digest.equals(changed);
     }

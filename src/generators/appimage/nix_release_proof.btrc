@@ -158,8 +158,12 @@ class AppImageNixReleaseProof {
             JsonValue closure, string targetStorePath) {
         JsonValue canonical = AppImageNixReleaseProof.canonicalClosure(
             closure, targetStorePath);
-        return canonical.isError() ? ""
-            : SemuOwnedFileDigest.text(canonical.stringify());
+        return AppImageNixReleaseProof.closureDocumentDigest(canonical);
+    }
+
+    class string closureDocumentDigest(JsonValue closure) {
+        return closure.isObject()
+            ? SemuOwnedFileDigest.text(closure.stringify()) : "";
     }
 
     class bool packageName(string value) {
