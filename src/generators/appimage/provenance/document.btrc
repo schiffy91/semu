@@ -17,6 +17,10 @@ int semuProvenanceFchmod(int descriptor, int mode) {
     return fchmod(descriptor, (mode_t)mode);
 }
 
+int semuProvenanceOwnedByCurrentUser(uid_t owner) {
+    return owner == geteuid() ? 1 : 0;
+}
+
 class AppImageProvenanceDocument {
     class int canonicalMode() { return 292; } // 0444
 
@@ -107,12 +111,28 @@ class AppImageProvenanceDocument {
                 "runtime provenance destination is unsafe: " + output);
         }
 
+        int parentMode = SemuOwnedPaths.permissions(parentStatus.st_mode);
+        bool parentModeChanged = (parentMode & 128) == 0; // 0200
+        bool parentWritable = !parentModeChanged
+            || (semuProvenanceOwnedByCurrentUser(parentStatus.st_uid) != 0
+                && semuProvenanceFchmod(
+                    parentDescriptor, parentMode | 128) == 0);
+        if (!parentWritable) {
+            close(parentDescriptor);
+            return AppImageProvenanceInternalResult.failure(
+                "runtime provenance destination is not owner-writable: "
+                    + output);
+        }
+
         string templatePath = PathTools.join(
             parent, ".appimage-runtime-provenance.XXXXXX");
         char* raw = Strings.copy(templatePath);
         int descriptor = raw == NULL ? -1 : mkstemp(raw);
         string temporary = descriptor < 0 ? "" : Strings.copy(raw);
         if (descriptor < 0) {
+            if (parentModeChanged) {
+                semuProvenanceFchmod(parentDescriptor, parentMode);
+            }
             close(parentDescriptor);
             return AppImageProvenanceInternalResult.failure(
                 "cannot create runtime provenance temporary: " + output);
@@ -167,16 +187,23 @@ class AppImageProvenanceDocument {
                 AppImageProvenanceDocument.removeBoundTemporary(
                     parentDescriptor, temporaryName, &cleanupStatus);
             }
+            if (parentModeChanged) {
+                semuProvenanceFchmod(parentDescriptor, parentMode);
+            }
             close(descriptor);
             close(parentDescriptor);
             return AppImageProvenanceInternalResult.failure(
                 "cannot atomically seal runtime provenance: " + output);
         }
 
+        bool parentRestored = !parentModeChanged
+            || semuProvenanceFchmod(parentDescriptor, parentMode) == 0;
+
         struct stat publishedStatus;
         struct stat parentAfter;
         struct stat parentPathAfter;
-        bool published = fstatat(parentDescriptor, outputName,
+        bool published = parentRestored
+            && fstatat(parentDescriptor, outputName,
                 &publishedStatus, AT_SYMLINK_NOFOLLOW) == 0
             && S_ISREG(publishedStatus.st_mode) != 0
             && publishedStatus.st_nlink == (nlink_t)1
@@ -189,10 +216,13 @@ class AppImageProvenanceDocument {
             && fstat(parentDescriptor, &parentAfter) == 0
             && AppImageProvenanceDocument.sameObject(
                 &parentStatus, &parentAfter)
+            && SemuOwnedPaths.permissions(parentAfter.st_mode) == parentMode
             && lstat(parent, &parentPathAfter) == 0
             && S_ISDIR(parentPathAfter.st_mode) != 0
             && AppImageProvenanceDocument.sameObject(
                 &parentStatus, &parentPathAfter)
+            && SemuOwnedPaths.permissions(parentPathAfter.st_mode)
+                == parentMode
             && fsync(parentDescriptor) == 0;
         bool closedDescriptor = close(descriptor) == 0;
         bool closedParent = close(parentDescriptor) == 0;

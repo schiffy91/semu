@@ -13,6 +13,11 @@ from one verified release proves it.
 - Active row: **RetroArch / Game Boy**.
 - Verified and deployed artifact for the active row: **none**.
 - Accepted aggregate release: **none**.
+- Active execution directive: get Game Boy working imperatively on the physical
+  Deck first. Build, deploy, direct-launch Tetris, inspect type-3 screenshots,
+  exercise input/save/load/quit and visual variants, and fix the product before
+  doing more generic harness or compiler architecture work. After it works,
+  encode the proven commands and values declaratively and rerun them.
 - Durable directive refreshed 2026-07-21: do not advance from the active row
   until its real-ROM Game Mode transaction proves every required control,
   shader/bezel/layout/aspect/integer-scale combination, save/load path, radial

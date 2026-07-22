@@ -431,12 +431,14 @@ class AppImageProvenanceContractTest {
         }
         bool locked = noTemporary
             && FileSystem.chmod(scratch, 365) == 0; // 0555
-        AppImageProvenanceInternalResult failed = locked
+        AppImageProvenanceInternalResult sealedReadOnly = locked
             ? AppImageProvenanceDocument.seal(output, "third\n")
-            : AppImageProvenanceInternalResult.success();
-        bool preserved = locked && !failed.ok()
-            && Path.readAll(output).equals("second\n")
-            && AppImageProvenanceDocument.canonicalFile(output);
+            : AppImageProvenanceInternalResult.failure("fixture failed");
+        FileStatus parentAfter = FileStatus(scratch);
+        bool preserved = locked && sealedReadOnly.ok()
+            && Path.readAll(output).equals("third\n")
+            && AppImageProvenanceDocument.canonicalFile(output)
+            && SemuOwnedPaths.permissions(parentAfter.mode) == 365;
         FileSystem.chmod(scratch, 448); // 0700
         FileSystem.removeRecursive(scratch);
         if (!repeatable || !symlinkRejected || !parentLinkRejected

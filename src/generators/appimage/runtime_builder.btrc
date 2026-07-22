@@ -1905,6 +1905,7 @@ nix --option sandbox false --option filter-syscalls false \
   path-info --json --recursive \"$out\" \
   > /metadata/target-closure.json
 printf \"%s\\n\" \"$actual_source_identity\" > /metadata/source-snapshot-identity
+chmod a-w /export/share/semu
 """;
     }
 
