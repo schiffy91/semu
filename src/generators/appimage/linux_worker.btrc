@@ -1082,7 +1082,8 @@ class AppImageLinuxWorker {
                 + ",target=/exchange,rw"
         ]);
         arguments.extend([
-            "--env", "HOME=/nonexistent",
+            "--env", "HOME=/tmp/home",
+            "--env", "XDG_CACHE_HOME=/tmp/cache",
             "--env", "TMPDIR=/tmp",
             "--env", "NIX_REMOTE=local?read-only=true",
             "--env", "NIX_CONFIG=experimental-features = "

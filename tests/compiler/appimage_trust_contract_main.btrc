@@ -456,6 +456,10 @@ class AppImageTrustContractTest {
             && command.contains("type=bind,source=/private/exchange"
                 + ",target=/exchange,rw")
             && command.contains(worker + "/bin/semu-btrc")
+            && AppImageWorkerContainer.hasPair(
+                command, "--env", "HOME=/tmp/home")
+            && AppImageWorkerContainer.hasPair(
+                command, "--env", "XDG_CACHE_HOME=/tmp/cache")
             && AppImageWorkerContainer.hasPair(command, "--env",
                 "NIX_REMOTE=local?read-only=true")
             && AppImageWorkerContainer.hasPair(command, "--env",
