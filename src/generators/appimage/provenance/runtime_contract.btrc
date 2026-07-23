@@ -367,9 +367,11 @@ class AppImageRuntimeContractProvenance {
             return AppImageProvenanceInternalJson.failure(
                 "staged Nix store is absent or unsafe");
         }
-        string storeUrl = "local?root=" + runtimeRoot;
+        string storeUrl = "local?root=" + runtimeRoot
+            + "&read-only=true";
         ExecResult queryResult = AppImageProvenanceSupport.process("nix", [
-            "--extra-experimental-features", "nix-command flakes",
+            "--extra-experimental-features",
+            "nix-command flakes read-only-local-store",
             "path-info", "--json", "--recursive",
             "--store", storeUrl, targetStorePath
         ]);
