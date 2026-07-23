@@ -1102,6 +1102,9 @@ class AppImageProvenanceContractTest {
             project, "src/generators/appimage/assembly_tools.btrc"));
         string linuxWorker = Path.readAll(PathTools.join(
             project, "src/generators/appimage/linux_worker.btrc"));
+        string runtimeContract = Path.readAll(PathTools.join(
+            project,
+            "src/generators/appimage/provenance/runtime_contract.btrc"));
         if (!packageWiring.contains("pkgs.pkgsStatic.callPackage")
                 || !packageWiring.contains("requireStaticBootstrap = true")
                 || !steamDeckPackage.contains(
@@ -1175,6 +1178,11 @@ class AppImageProvenanceContractTest {
                 || !checks.contains("command -v unsquashfs")) {
             return AppImageProvenanceContractTest.fail(
                 "AppImage assembly tools are not supplied by the repository's pinned flake");
+        }
+        if (!runtimeContract.contains("&read-only=true")
+                || !runtimeContract.contains("read-only-local-store")) {
+            return AppImageProvenanceContractTest.fail(
+                "offline closure verification is not explicitly read-only");
         }
 
         AppImageRuntimeInventoryResult mac =
