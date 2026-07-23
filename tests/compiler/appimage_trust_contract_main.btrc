@@ -448,8 +448,9 @@ class AppImageTrustContractTest {
                 command, "--volumes-from", containerId + ":rw")
             && command.contains("--network") && command.contains("none")
             && command.contains("--read-only")
-            && command.contains("--userns")
-            && command.contains("keep-id")
+            && AppImageWorkerContainer.hasPair(command, "--user", "0:0")
+            && !command.contains("--userns")
+            && !command.contains("keep-id")
             && command.contains("type=volume,target=/work")
             && command.contains("type=bind,source=/private/runtime-cache"
                 + ",target=/private/runtime-cache,readonly")
@@ -466,8 +467,8 @@ class AppImageTrustContractTest {
             && !joined.contains("read-only-local-store")
             && AppImageWorkerContainer.hasPair(
                 command, "--cap-drop", "ALL")
-            && AppImageWorkerContainer.hasPair(
-                command, "--cap-add", "CHOWN")
+            && !joined.contains("--cap-add")
+            && !joined.contains("CHOWN")
             && !joined.contains("DAC_OVERRIDE")
             && !joined.contains("FOWNER") && !joined.contains("KILL")
             && !joined.contains("SETGID") && !joined.contains("SETUID")
