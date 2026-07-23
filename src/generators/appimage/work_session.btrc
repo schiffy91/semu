@@ -139,13 +139,15 @@ class AppImageWorkSession {
             session.error = "cannot generate a private AppImage session identity";
             return session;
         }
-        char digits[17] = "0123456789abcdef";
+        string digits = "0123456789abcdef";
         char randomName[56];
-        char prefix[24] = ".semu-appimage-session.";
-        memcpy(randomName, prefix, (size_t)23);
+        string prefix = ".semu-appimage-session.";
+        memcpy(randomName, (char*)prefix, (size_t)23);
         for (int index = 0; index < 16; index++) {
-            randomName[23 + index * 2] = digits[randomBytes[index] >> 4];
-            randomName[24 + index * 2] = digits[randomBytes[index] & 15u];
+            randomName[23 + index * 2] =
+                digits.charAt(randomBytes[index] >> 4);
+            randomName[24 + index * 2] =
+                digits.charAt(randomBytes[index] & 15u);
         }
         randomName[55] = 0;
         string name = Strings.copy(randomName);
@@ -1278,6 +1280,109 @@ class AppImageRuntimeLease {
         return true;
     }
 
+    class bool frozenRuntimeSlicesMatch(
+            JsonValue slices, AppImageReleaseInventory inventory) {
+        if (!slices.isArray()
+                || slices.size() != inventory.emulatorIds.size()) {
+            return false;
+        }
+        for (int index = 0; index < slices.size(); index++) {
+            JsonValue id = slices.at(index).get("id");
+            if (!id.isString()
+                    || !id.asString().equals(
+                        inventory.emulatorIds.get(index))) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    class AppImageProvenanceJson sourceContractForLease(
+            string repoRoot, AppImageReleaseInventoryResult releaseInventory,
+            JsonValue provenanceDocument, bool verifyExternalNix,
+            string expectedAssemblyAuthority) {
+        if (!releaseInventory.ok()) {
+            return AppImageProvenanceJson.failure(releaseInventory.error);
+        }
+        if (verifyExternalNix) {
+            return AppImageRuntimeProvenance.sourceContractForRelease(
+                repoRoot, releaseInventory.inventory);
+        }
+
+        JsonValue source = provenanceDocument.get("source");
+        Vector<string> keys = [
+            "appimage_runtime", "btrc_revision", "build_contracts",
+            "core_runtime", "deployment_target", "flake_inputs",
+            "flake_lock_sha256", "flake_nix_sha256", "input_files",
+            "package_definitions", "package_recipes",
+            "production_source_files", "production_source_roots",
+            "release_inventory", "rendering_assets", "runtime_slices",
+            "selected_core_builds", "selected_cores", "selected_systems",
+            "settings", "systems", "target_output_store_path"
+        ];
+        JsonValue selected = source.get("deployment_target")
+            .get("selected").get("definition");
+        JsonValue nixSystems = selected.get("nix_systems");
+        JsonValue targetOutput = source.get("target_output_store_path");
+        bool exact = AppImageRuntimeLease.lowerSha256(
+                expectedAssemblyAuthority)
+            && AppImageRuntimeProvenance.exactKeys(source, keys)
+            && source.get("release_inventory").document().equals(
+                releaseInventory.inventory.json().document())
+            && selected.get("id").isString()
+            && selected.get("id").asString().equals(
+                releaseInventory.inventory.target)
+            && selected.get("platform").isString()
+            && selected.get("platform").asString().equals(
+                releaseInventory.inventory.platform)
+            && nixSystems.isArray() && nixSystems.size() == 1
+            && nixSystems.at(0).isString()
+            && nixSystems.at(0).asString().equals(
+                releaseInventory.inventory.nixSystem)
+            && targetOutput.isString()
+            && AppImageRuntimeProvenance.validStorePath(
+                targetOutput.asString())
+            && AppImageRuntimeLease.frozenRuntimeSlicesMatch(
+                source.get("runtime_slices"), releaseInventory.inventory)
+            && source.get("production_source_roots").isArray()
+            && source.get("production_source_roots").size() == 3
+            && source.get("production_source_files").isArray()
+            && source.get("production_source_files").size() > 0
+            && source.get("flake_nix_sha256").isString()
+            && AppImageRuntimeLease.lowerSha256(
+                source.get("flake_nix_sha256").asString())
+            && source.get("flake_lock_sha256").isString()
+            && AppImageRuntimeLease.lowerSha256(
+                source.get("flake_lock_sha256").asString())
+            && source.get("btrc_revision").isString()
+            && AppImageRuntimeProvenance.lowerHex(
+                source.get("btrc_revision").asString(), 40)
+            && source.get("flake_inputs").isArray()
+            && source.get("flake_inputs").size() > 0
+            && source.get("package_definitions").isArray()
+            && source.get("package_definitions").size() > 0
+            && source.get("package_recipes").isArray()
+            && source.get("package_recipes").size() > 0
+            && source.get("appimage_runtime").isObject()
+            && source.get("build_contracts").isObject()
+            && source.get("core_runtime").isObject()
+            && source.get("systems").isArray()
+            && source.get("systems").size() > 0
+            && source.get("selected_systems").isArray()
+            && source.get("selected_systems").size() > 0
+            && source.get("selected_cores").isArray()
+            && source.get("selected_cores").size() > 0
+            && source.get("selected_core_builds").isObject()
+            && source.get("rendering_assets").isArray()
+            && source.get("rendering_assets").size() > 0
+            && source.get("input_files").isArray()
+            && source.get("input_files").size() > 0
+            && source.get("settings").isObject();
+        return exact ? AppImageProvenanceJson.success(source)
+            : AppImageProvenanceJson.failure(
+                "native AppImage worker source contract is not bound to host authority");
+    }
+
     class string assemblyAuthorityValues(
             string packageAttribute, string releaseIdentity,
             string provenanceDigest, string inventoryDigest,
@@ -1608,10 +1713,10 @@ class AppImageRuntimeLease {
         AppImageReleaseInventoryResult releaseInventory =
             AppImageReleaseInventoryLoader.parse(
                 inventoryDocument, inventoryText);
-        AppImageProvenanceJson sourceContract = releaseInventory.ok()
-            ? AppImageRuntimeProvenance.sourceContractForRelease(
-                plan.repoRoot, releaseInventory.inventory)
-            : AppImageProvenanceJson.failure(releaseInventory.error);
+        AppImageProvenanceJson sourceContract =
+            AppImageRuntimeLease.sourceContractForLease(
+                plan.repoRoot, releaseInventory, provenanceDocument,
+                verifyExternalNix, expectedAssemblyAuthority);
         JsonValue releaseValue = provenanceDocument.get(
             "release_identity_sha256");
         string releaseDigest =

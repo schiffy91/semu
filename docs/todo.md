@@ -34,20 +34,17 @@ from one verified release proves it.
   run must first wake/focus the real Game Mode surface through the admitted
   input path, then require a fresh nonblack renderer-bound screenshot.
 
-- Current build checkpoint (2026-07-21): the prior x86_64 RetroArch runtime is
-  intentionally rejected because its finalized payload modes disagree with its
-  export contract; no AppImage is deployable. The replacement build reached the
-  final `semu-app` derivation after the strict CLI, renderer, RetroArch, cores,
-  and ES-DE built, then exposed one cleanup defect: its private immutable-mode
-  digest copy could not be removed. Cleanup now restores owner write permission
-  only on that temporary copy. The host worker also keeps the Git-free frozen
-  project identity separate from the clean builder repository through output,
-  Git revision, and native-worker handoff. Strict compiler, full AppImage trust/
-  transaction/assembly, flake no-build, repository-tree, generated-config, Deck
-  harness, deployment, and installer contracts now pass. The Deck plan derives
-  Game Boy's 18 shader/bezel/integer-scale combinations from owned definitions.
-  A clean pushed checkpoint, fresh runtime rebuild, exact artifact verification,
-  and the complete physical Game Boy transaction remain pending.
+- Current build checkpoint (2026-07-23): BTRC is pinned to `964ffe7`. The
+  source-patched RetroArch/renderer integration, strict compiler suite, full
+  AppImage trust/transaction/assembly contracts, Deck harness/deployment
+  contracts, and real Linux installer transaction pass against the current
+  tree. The native offline worker now admits only the host-sealed source
+  contract whose release inventory, target, platform, Nix system, runtime
+  slices, store path, and assembly authority agree; it no longer attempts an
+  impossible networked Nix re-evaluation inside the offline worker. No current
+  AppImage is deployable. A clean pushed checkpoint, fresh x86_64 RetroArch
+  runtime build, exact artifact verification, and the complete physical Game
+  Boy transaction remain pending.
 
 Keep these counts synchronized with `acceptance-matrix.md`. A row may advance
 only in this order: implemented, focused contracts passed, exact x86_64 artifact

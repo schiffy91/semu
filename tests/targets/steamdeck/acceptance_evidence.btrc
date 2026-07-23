@@ -4,6 +4,13 @@
 
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
+#include <limits.h>
+#include <string.h>
+
+extern unsigned char* stbi_load(const char* filename, int* width,
+                                int* height, int* channels,
+                                int requestedChannels);
+extern void stbi_image_free(void* pixels);
 
 import std.{fs, image, json, strings, vector}
 import ../../../src/generators/input/action_abi.btrc
@@ -11,6 +18,20 @@ import ./acceptance_plan.btrc
 import ./deck_transport.btrc
 import ./game_mode.btrc
 import ./run_evidence.btrc
+
+class DeckScreenshotDecoder {
+    class unsigned char* load(string path, int* width, int* height,
+                              int* channels) {
+        if (path.isEmpty() || path.len() >= PATH_MAX
+                || width == null || height == null || channels == null) {
+            return null;
+        }
+        char nativePath[PATH_MAX];
+        memcpy(nativePath, path, (size_t)path.len());
+        nativePath[path.len()] = 0;
+        return stbi_load(nativePath, width, height, channels, 4);
+    }
+}
 
 class DeckEvidenceRectangle {
     public int x;
@@ -136,9 +157,13 @@ class DeckScreenshotProbe {
         if (!FileSystem.isFile(path) || FileSystem.isSymlink(path)) {
             return result;
         }
+        int width = 0;
+        int height = 0;
         int channels = 0;
-        unsigned char* pixels = stbi_load(
-            path, &result.width, &result.height, &channels, 4);
+        unsigned char* pixels = DeckScreenshotDecoder.load(
+            path, &width, &height, &channels);
+        result.width = width;
+        result.height = height;
         if (pixels == null || result.width < 1 || result.height < 1) {
             if (pixels != null) { stbi_image_free((void*)pixels); }
             return result;
@@ -180,12 +205,12 @@ class DeckScreenshotProbe {
         int candidateWidth = 0;
         int candidateHeight = 0;
         int candidateChannels = 0;
-        unsigned char* baseline = stbi_load(
+        unsigned char* baseline = DeckScreenshotDecoder.load(
             baselinePath, &baselineWidth, &baselineHeight,
-            &baselineChannels, 4);
-        unsigned char* candidate = stbi_load(
+            &baselineChannels);
+        unsigned char* candidate = DeckScreenshotDecoder.load(
             candidatePath, &candidateWidth, &candidateHeight,
-            &candidateChannels, 4);
+            &candidateChannels);
         if (baseline == null || candidate == null
                 || baselineWidth != candidateWidth
                 || baselineHeight != candidateHeight

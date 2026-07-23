@@ -160,13 +160,23 @@ class SemuLibrashaderOpenGLChain {
         options.force_no_mipmaps = forceNoMipmaps;
         options.disable_cache = disableCache;
 
+        libra_gl_filter_chain_t createdHandle =
+            (libra_gl_filter_chain_t)0;
         bool created = preset.consumeIntoOpenGL(
-            self.loader, &options, &self.handle, self.error);
+            self.loader, &options, &createdHandle, self.error);
         delete preset;
         if (!created) {
+            if ((void*)createdHandle != (void*)0) {
+                libra_error_t closeError =
+                    libra_gl_filter_chain_free(&createdHandle);
+                if ((void*)closeError != (void*)0) {
+                    libra_error_free(&closeError);
+                }
+            }
             self.failure = SEMU_LIBRASHADER_FAILURE_LIBRARY;
             return false;
         }
+        self.handle = createdHandle;
         return true;
     }
 

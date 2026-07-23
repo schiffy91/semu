@@ -43,6 +43,97 @@ class AppImageTrustContractTest {
         return "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc";
     }
 
+    class AppImageReleaseInventory releaseInventory() {
+        AppImageReleaseInventory inventory = AppImageReleaseInventory();
+        inventory.kind = "emulator-slice";
+        inventory.target = "steam-deck";
+        inventory.platform = "linux";
+        inventory.nixSystem = "x86_64-linux";
+        inventory.packageAttribute =
+            AppImageTrustContractTest.packageAttribute();
+        inventory.emulatorIds = ["retroarch"];
+        return inventory;
+    }
+
+    class JsonValue frozenSource() {
+        JsonValue source = JsonValue.makeObject();
+        JsonValue one = JsonValue.makeArray();
+        one.push(JsonValue.makeObject());
+        for name in [
+                "flake_inputs", "input_files", "package_definitions",
+                "package_recipes", "production_source_files",
+                "rendering_assets", "selected_cores", "selected_systems",
+                "systems"] {
+            source.set(name, JsonValue.parse(one.document()));
+        }
+        JsonValue roots = JsonValue.makeArray();
+        roots.push(JsonValue.makeObject());
+        roots.push(JsonValue.makeObject());
+        roots.push(JsonValue.makeObject());
+        source.set("production_source_roots", roots);
+        JsonValue slices = JsonValue.makeArray();
+        JsonValue slice = JsonValue.makeObject();
+        slice.set("id", JsonValue.makeString("retroarch"));
+        slices.push(slice);
+        source.set("runtime_slices", slices);
+        for name in [
+                "appimage_runtime", "build_contracts", "core_runtime",
+                "selected_core_builds", "settings"] {
+            source.set(name, JsonValue.makeObject());
+        }
+        JsonValue definition = JsonValue.makeObject();
+        definition.set("id", JsonValue.makeString("steam-deck"));
+        definition.set("platform", JsonValue.makeString("linux"));
+        JsonValue systems = JsonValue.makeArray();
+        systems.push(JsonValue.makeString("x86_64-linux"));
+        definition.set("nix_systems", systems);
+        JsonValue selected = JsonValue.makeObject();
+        selected.set("definition", definition);
+        JsonValue deployment = JsonValue.makeObject();
+        deployment.set("selected", selected);
+        source.set("deployment_target", deployment);
+        source.set("release_inventory",
+            AppImageTrustContractTest.releaseInventory().json());
+        source.set("target_output_store_path", JsonValue.makeString(
+            AppImageTrustContractTest.targetStorePath()));
+        source.set("flake_nix_sha256", JsonValue.makeString(
+            AppImageTrustContractTest.provenanceDigest()));
+        source.set("flake_lock_sha256", JsonValue.makeString(
+            AppImageTrustContractTest.provenanceDigest()));
+        source.set("btrc_revision", JsonValue.makeString(
+            "0123456789abcdef0123456789abcdef01234567"));
+        return source;
+    }
+
+    class bool frozenWorkerSourceAuthority() {
+        AppImageReleaseInventory inventory =
+            AppImageTrustContractTest.releaseInventory();
+        AppImageReleaseInventoryResult inventoryResult =
+            AppImageReleaseInventoryResult.success(inventory);
+        JsonValue provenance = JsonValue.makeObject();
+        provenance.set("source", AppImageTrustContractTest.frozenSource());
+        string authority = AppImageTrustContractTest.provenanceDigest();
+        AppImageProvenanceJson accepted =
+            AppImageRuntimeLease.sourceContractForLease(
+                "/path-that-must-not-be-read-by-the-offline-worker",
+                inventoryResult, provenance, false, authority);
+        AppImageProvenanceJson missingAuthority =
+            AppImageRuntimeLease.sourceContractForLease(
+                "/path-that-must-not-be-read-by-the-offline-worker",
+                inventoryResult, provenance, false, "");
+        JsonValue wrongSlice = JsonValue.parse(provenance.document());
+        wrongSlice.get("source").get("runtime_slices")
+            .at(0).set("id", JsonValue.makeString("dolphin"));
+        AppImageProvenanceJson mismatched =
+            AppImageRuntimeLease.sourceContractForLease(
+                "/path-that-must-not-be-read-by-the-offline-worker",
+                inventoryResult, wrongSlice, false, authority);
+        return accepted.ok()
+            && accepted.value.document().equals(
+                provenance.get("source").document())
+            && !missingAuthority.ok() && !mismatched.ok();
+    }
+
     class JsonValue proofDocument(bool includeSystem = true) {
         JsonValue document = JsonValue.makeObject();
         document.set("schema_version", JsonValue.makeInt(3));
@@ -1014,6 +1105,10 @@ exit 0
         }
         if (!AppImageTrustContractTest.executionWorkerArgv()) {
             print("appimage trust contract: execution worker policy regressed");
+            return 1;
+        }
+        if (!AppImageTrustContractTest.frozenWorkerSourceAuthority()) {
+            print("appimage trust contract: offline source authority regressed");
             return 1;
         }
         if (!AppImageTrustContractTest.nativeEngineArchitecture()) {
