@@ -355,14 +355,7 @@ class SemuInstallTree {
         }
         unsigned char digest[32];
         SemuOwnedFileDigest.finish(&state, digest);
-        char digits[17] = "0123456789abcdef";
-        char output[65];
-        for (int index = 0; index < 32; index++) {
-            output[index * 2] = digits[digest[index] >> 4];
-            output[index * 2 + 1] = digits[digest[index] & 15u];
-        }
-        output[64] = 0;
-        return Strings.copy(output);
+        return SemuOwnedFileDigest.hexadecimal(digest);
     }
 
     class bool appendEntryAtFiltered(

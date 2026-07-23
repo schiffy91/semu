@@ -96,7 +96,8 @@ class SyntheticPointer {
         for (int position = 0; position < 3; position++) {
             int id = SyntheticPointer.id(permutation, position);
             int16_t value = SyntheticInputState(
-                0, RETRO_DEVICE_POINTER, 0, (unsigned int)id);
+                0u, (unsigned int)RETRO_DEVICE_POINTER,
+                0u, (unsigned int)id);
             if (id == RETRO_DEVICE_ID_POINTER_X) { tuple.x = value; }
             if (id == RETRO_DEVICE_ID_POINTER_Y) { tuple.y = value; }
             if (id == RETRO_DEVICE_ID_POINTER_PRESSED) {
@@ -117,11 +118,14 @@ class SyntheticPointer {
             tuples[permutation] = SyntheticPointer.sample(permutation);
         }
         int16_t rawX = SyntheticInputState(
-            0, RETRO_DEVICE_MOUSE, 0, RETRO_DEVICE_ID_MOUSE_X);
+            0u, (unsigned int)RETRO_DEVICE_MOUSE, 0u,
+            (unsigned int)RETRO_DEVICE_ID_MOUSE_X);
         int16_t rawY = SyntheticInputState(
-            0, RETRO_DEVICE_MOUSE, 0, RETRO_DEVICE_ID_MOUSE_Y);
+            0u, (unsigned int)RETRO_DEVICE_MOUSE, 0u,
+            (unsigned int)RETRO_DEVICE_ID_MOUSE_Y);
         int16_t rawPressed = SyntheticInputState(
-            0, RETRO_DEVICE_MOUSE, 0, RETRO_DEVICE_ID_MOUSE_LEFT);
+            0u, (unsigned int)RETRO_DEVICE_MOUSE, 0u,
+            (unsigned int)RETRO_DEVICE_ID_MOUSE_LEFT);
         bool consistent = true;
         for (int permutation = 1; permutation < 6; permutation++) {
             consistent = consistent
@@ -247,12 +251,14 @@ bool retro_load_game(const struct retro_game_info* game) {
     enum retro_pixel_format format = RETRO_PIXEL_FORMAT_XRGB8888;
     if ((void*)SyntheticEnvironment == null
             || !SyntheticEnvironment(
-                RETRO_ENVIRONMENT_SET_PIXEL_FORMAT, &format)) {
+                (unsigned int)RETRO_ENVIRONMENT_SET_PIXEL_FORMAT,
+                &format)) {
         return false;
     }
     bool supportsNoGame = true;
     SyntheticEnvironment(
-        RETRO_ENVIRONMENT_SET_SUPPORT_NO_GAME, &supportsNoGame);
+        (unsigned int)RETRO_ENVIRONMENT_SET_SUPPORT_NO_GAME,
+        &supportsNoGame);
     return true;
 }
 

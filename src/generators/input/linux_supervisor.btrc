@@ -161,6 +161,55 @@ class SemuInputClock {
     }
 }
 
+class SemuInputPrivateDirectory {
+    class bool random(unsigned char* output, size_t length) {
+        if (output == null || length == (size_t)0) { return false; }
+        int descriptor = open("/dev/urandom",
+            (int)O_RDONLY | (int)O_CLOEXEC | (int)O_NOFOLLOW);
+        if (descriptor < 0) { return false; }
+        size_t offset = (size_t)0;
+        while (offset < length) {
+            ssize_t count = read(descriptor, output + offset,
+                length - offset);
+            if (count > (ssize_t)0) {
+                offset += (size_t)count;
+            } else if (count < (ssize_t)0 && errno == EINTR) {
+                continue;
+            } else {
+                close(descriptor);
+                return false;
+            }
+        }
+        return close(descriptor) == 0;
+    }
+
+    class bool create(char* output, size_t capacity) {
+        if (output == null || capacity < (size_t)64) { return false; }
+        string digits = "0123456789abcdef";
+        for (int attempt = 0; attempt < 8; attempt++) {
+            unsigned char randomBytes[16];
+            if (!SemuInputPrivateDirectory.random(
+                    randomBytes, sizeof(randomBytes))) {
+                return false;
+            }
+            char identity[33];
+            for (int index = 0; index < 16; index++) {
+                identity[index * 2] =
+                    digits.charAt(randomBytes[index] >> 4);
+                identity[index * 2 + 1] =
+                    digits.charAt(randomBytes[index] & 15u);
+            }
+            identity[32] = 0;
+            int length = snprintf(output, capacity,
+                "/tmp/semu-input-self-test-%s", identity);
+            if (length <= 0 || (size_t)length >= capacity) { return false; }
+            if (mkdir(output, (mode_t)0700) == 0) { return true; }
+            if (errno != EEXIST) { return false; }
+        }
+        return false;
+    }
+}
+
 class SemuInputEventIdentity {
     class bool next(unsigned long long* output) {
         if (output == null || SemuInputEventSequence == ULLONG_MAX) {
@@ -422,6 +471,24 @@ class SemuInputStateFiles {
         return true;
     }
 
+    class bool writeAll(
+            int descriptor, unsigned char* bytes, size_t length) {
+        if (descriptor < 0 || bytes == null) { return false; }
+        size_t offset = (size_t)0;
+        while (offset < length) {
+            ssize_t count = write(
+                descriptor, bytes + offset, length - offset);
+            if (count > (ssize_t)0) {
+                offset += (size_t)count;
+            } else if (count < (ssize_t)0 && errno == EINTR) {
+                continue;
+            } else {
+                return false;
+            }
+        }
+        return true;
+    }
+
     class bool storeSequence(unsigned long long value) {
         char path[PATH_MAX];
         if (!SemuInputStateFiles.path(path, sizeof(path),
@@ -436,22 +503,9 @@ class SemuInputStateFiles {
             (int)O_WRONLY | (int)O_CREAT | (int)O_EXCL | (int)O_CLOEXEC,
             (mode_t)0600);
         if (descriptor < 0) { return false; }
-        unsigned char* bytes = (unsigned char*)&value;
-        size_t offset = (size_t)0;
-        while (offset < sizeof(value)) {
-            ssize_t count = write(descriptor, bytes + offset,
-                sizeof(value) - offset);
-            if (count > (ssize_t)0) {
-                offset += (size_t)count;
-            } else if (count < (ssize_t)0 && errno == EINTR) {
-                continue;
-            } else {
-                close(descriptor);
-                unlink(temporary);
-                return false;
-            }
-        }
-        bool synced = fsync(descriptor) == 0;
+        bool stored = SemuInputStateFiles.writeAll(
+            descriptor, (unsigned char*)&value, sizeof(value));
+        bool synced = stored && fsync(descriptor) == 0;
         bool closed = close(descriptor) == 0;
         bool ready = synced && closed;
         if (!ready || rename(temporary, path) != 0) {
@@ -507,14 +561,21 @@ class SemuInputStateFiles {
             return false;
         }
         if (SemuInputStateFiles.journalAtCapacity(path)) { return false; }
-        FILE* file = fopen(path, "ab");
-        if (file == null) { return false; }
+        int descriptor = open(path,
+            (int)O_WRONLY | (int)O_APPEND | (int)O_CLOEXEC
+                | (int)O_NOFOLLOW);
+        struct stat status;
+        if (descriptor < 0 || fstat(descriptor, &status) != 0
+                || !S_ISREG(status.st_mode)) {
+            if (descriptor >= 0) { close(descriptor); }
+            return false;
+        }
         struct SemuActionRecord record;
         memset(&record, 0, sizeof(record));
         record.abi = (unsigned int)RendererActionJournal.abi();
         record.size = (unsigned int)sizeof(struct SemuActionRecord);
         if (!SemuInputStateFiles.reserveSequence(&record.sequence)) {
-            fclose(file);
+            close(descriptor);
             return false;
         }
         record.monotonic_ms = monotonicMilliseconds;
@@ -523,9 +584,10 @@ class SemuInputStateFiles {
         record.slot = slot;
         snprintf(record.source, sizeof(record.source), "%s",
             source == null ? "unknown" : source);
-        bool wrote = fwrite(&record, sizeof(record), 1, file) == (size_t)1
-            && fflush(file) == 0 && fsync(fileno(file)) == 0;
-        bool closed = fclose(file) == 0;
+        bool wrote = SemuInputStateFiles.writeAll(
+                descriptor, (unsigned char*)&record, sizeof(record))
+            && fsync(descriptor) == 0;
+        bool closed = close(descriptor) == 0;
         return wrote && closed;
     }
 
@@ -1517,39 +1579,65 @@ class SemuLinuxInputDevices {
         char commandName[128];
         char commandPhysical[256];
         char commandUnique[256];
+        char* gamepadNameSource = (char*)"missing";
+        char* gamepadPhysicalSource = (char*)"empty";
+        char* gamepadUniqueSource = (char*)"empty";
+        char* gamepadPath = (char*)"missing";
+        char* commandNameSource = (char*)"missing";
+        char* commandPhysicalSource = (char*)"empty";
+        char* commandUniqueSource = (char*)"empty";
+        char* commandPath = (char*)"missing";
+        if (gamepad != null) {
+            gamepadNameSource = gamepad->name;
+            gamepadPath = gamepad->path;
+            if (gamepad->physical[0] != 0) {
+                gamepadPhysicalSource = gamepad->physical;
+            }
+            if (gamepad->unique[0] != 0) {
+                gamepadUniqueSource = gamepad->unique;
+            }
+        }
+        if (command != null) {
+            commandNameSource = command->name;
+            commandPath = command->path;
+            if (command->physical[0] != 0) {
+                commandPhysicalSource = command->physical;
+            }
+            if (command->unique[0] != 0) {
+                commandUniqueSource = command->unique;
+            }
+        }
         SemuLinuxInputDevices.evidenceToken(
-            gamepad == null ? (char*)"missing" : gamepad->name,
+            gamepadNameSource,
             gamepadName, sizeof(gamepadName));
         SemuLinuxInputDevices.evidenceToken(
-            gamepad == null || gamepad->physical[0] == 0
-                ? (char*)"empty" : gamepad->physical,
+            gamepadPhysicalSource,
             gamepadPhysical, sizeof(gamepadPhysical));
         SemuLinuxInputDevices.evidenceToken(
-            gamepad == null || gamepad->unique[0] == 0
-                ? (char*)"empty" : gamepad->unique,
+            gamepadUniqueSource,
             gamepadUnique, sizeof(gamepadUnique));
         SemuLinuxInputDevices.evidenceToken(
-            command == null ? (char*)"missing" : command->name,
+            commandNameSource,
             commandName, sizeof(commandName));
         SemuLinuxInputDevices.evidenceToken(
-            command == null || command->physical[0] == 0
-                ? (char*)"empty" : command->physical,
+            commandPhysicalSource,
             commandPhysical, sizeof(commandPhysical));
         SemuLinuxInputDevices.evidenceToken(
-            command == null || command->unique[0] == 0
-                ? (char*)"empty" : command->unique,
+            commandUniqueSource,
             commandUnique, sizeof(commandUnique));
         char detail[2048];
+        char* pairMode = (char*)"none";
+        if (state->pair_mode[0] != 0) { pairMode = state->pair_mode; }
         snprintf(detail, sizeof(detail),
             "generation=%llu authorized=%d mode=%s reason=%s gamepad_candidates=%d command_candidates=%d cryptographic_identity=0 gamepad_path=%s gamepad_name=%s gamepad_physical=%s gamepad_uniq=%s command_path=%s command_name=%s command_physical=%s command_uniq=%s",
             state->pair_generation,
             strcmp(eventName, "input-pair-admit") == 0 ? 1 : 0,
-            state->pair_mode[0] == 0 ? "none" : state->pair_mode,
+            pairMode,
             reason, state->pair_gamepad_candidates,
             state->pair_command_candidates,
-            gamepad == null ? "missing" : gamepad->path,
+            gamepadPath,
             gamepadName, gamepadPhysical, gamepadUnique,
-            command == null ? "missing" : command->path,
+            commandPath,
             commandName, commandPhysical, commandUnique);
         SemuInputStateFiles.evidence(eventName, detail);
     }
@@ -1576,9 +1664,10 @@ class SemuLinuxInputDevices {
             }
         }
         bool unique = gamepadCandidates == 1 && commandCandidates == 1;
-        char* mode = unique
-            ? SemuLinuxInputDevices.pairMode(gamepad, command)
-            : (char*)"none";
+        char* mode = (char*)"none";
+        if (unique) {
+            mode = SemuLinuxInputDevices.pairMode(gamepad, command);
+        }
         bool unchanged = unique
             && SemuLinuxInputDevices.sameAuthorizedPair(
                 state, gamepad, command, mode);
@@ -1611,13 +1700,17 @@ class SemuLinuxInputDevices {
         SemuLinuxInputDevices.clearPairIdentity(state);
         if (!unique) {
             if (previouslyAuthorized || countsChanged) {
-                char* reason = gamepadCandidates > 1 || commandCandidates > 1
-                    ? (char*)"ambiguous-policy-match"
-                    : (char*)"incomplete-policy-pair";
+                char* reason = (char*)"incomplete-policy-pair";
+                if (gamepadCandidates > 1 || commandCandidates > 1) {
+                    reason = (char*)"ambiguous-policy-match";
+                }
+                struct SemuInputDevice* rejectedGamepad = null;
+                struct SemuInputDevice* rejectedCommand = null;
+                if (gamepadCandidates == 1) { rejectedGamepad = gamepad; }
+                if (commandCandidates == 1) { rejectedCommand = command; }
                 SemuLinuxInputDevices.pairEvidence(
                     state, (char*)"input-pair-reject", reason,
-                    gamepadCandidates == 1 ? gamepad : null,
-                    commandCandidates == 1 ? command : null);
+                    rejectedGamepad, rejectedCommand);
             }
             return false;
         }
@@ -1635,29 +1728,46 @@ class SemuLinuxInputDevices {
             sizeof(state->pair_gamepad_path), "%s", gamepad->path);
         snprintf(state->pair_gamepad_name,
             sizeof(state->pair_gamepad_name), "%s", gamepad->name);
+        char* gamepadPhysical = (char*)"empty";
+        char* gamepadUnique = (char*)"empty";
+        char* commandPhysical = (char*)"empty";
+        char* commandUnique = (char*)"empty";
+        if (gamepad->physical[0] != 0) {
+            gamepadPhysical = gamepad->physical;
+        }
+        if (gamepad->unique[0] != 0) {
+            gamepadUnique = gamepad->unique;
+        }
+        if (command->physical[0] != 0) {
+            commandPhysical = command->physical;
+        }
+        if (command->unique[0] != 0) {
+            commandUnique = command->unique;
+        }
         snprintf(state->pair_gamepad_physical,
             sizeof(state->pair_gamepad_physical), "%s",
-            gamepad->physical[0] == 0 ? "empty" : gamepad->physical);
+            gamepadPhysical);
         snprintf(state->pair_gamepad_unique,
             sizeof(state->pair_gamepad_unique), "%s",
-            gamepad->unique[0] == 0 ? "empty" : gamepad->unique);
+            gamepadUnique);
         snprintf(state->pair_command_path,
             sizeof(state->pair_command_path), "%s", command->path);
         snprintf(state->pair_command_name,
             sizeof(state->pair_command_name), "%s", command->name);
         snprintf(state->pair_command_physical,
             sizeof(state->pair_command_physical), "%s",
-            command->physical[0] == 0 ? "empty" : command->physical);
+            commandPhysical);
         snprintf(state->pair_command_unique,
             sizeof(state->pair_command_unique), "%s",
-            command->unique[0] == 0 ? "empty" : command->unique);
+            commandUnique);
         gamepad->authorized = true;
         command->authorized = true;
+        char* admissionReason = (char*)"single-gamepad-single-command";
+        if (SemuLinuxInputDevices.sameStableIdentity(gamepad, command)) {
+            admissionReason = (char*)"shared-stable-identity";
+        }
         SemuLinuxInputDevices.pairEvidence(state,
-            (char*)"input-pair-admit",
-            SemuLinuxInputDevices.sameStableIdentity(gamepad, command)
-                ? (char*)"shared-stable-identity"
-                : (char*)"single-gamepad-single-command",
+            (char*)"input-pair-admit", admissionReason,
             gamepad, command);
         return true;
     }
@@ -1731,23 +1841,32 @@ class SemuLinuxInputDevices {
                         char evidenceName[128];
                         char evidencePhysical[256];
                         char evidenceUnique[256];
+                        char* physicalEvidenceSource = (char*)"empty";
+                        char* uniqueEvidenceSource = (char*)"empty";
+                        char* controllerRootEvidence = (char*)"empty";
+                        if (device->physical[0] != 0) {
+                            physicalEvidenceSource = device->physical;
+                        }
+                        if (device->unique[0] != 0) {
+                            uniqueEvidenceSource = device->unique;
+                        }
+                        if (device->controller_root[0] != 0) {
+                            controllerRootEvidence = device->controller_root;
+                        }
                         SemuLinuxInputDevices.evidenceToken(
                             device->name, evidenceName, sizeof(evidenceName));
                         SemuLinuxInputDevices.evidenceToken(
-                            device->physical[0] == 0
-                                ? (char*)"empty" : device->physical,
+                            physicalEvidenceSource,
                             evidencePhysical, sizeof(evidencePhysical));
                         SemuLinuxInputDevices.evidenceToken(
-                            device->unique[0] == 0
-                                ? (char*)"empty" : device->unique,
+                            uniqueEvidenceSource,
                             evidenceUnique, sizeof(evidenceUnique));
                         char detail[1024];
                         snprintf(detail, sizeof(detail),
                             "path=%s source=%s physical=%s uniq=%s controller_root=%s id=%04x:%04x gamepad=%d commands=%d extensions=%d authorized=0 name=%s",
                             device->path, device->source,
                             evidencePhysical, evidenceUnique,
-                            device->controller_root[0] == 0
-                                ? "empty" : device->controller_root,
+                            controllerRootEvidence,
                             (unsigned int)device->vendor,
                             (unsigned int)device->product,
                             device->gamepad ? 1 : 0,
@@ -1791,8 +1910,12 @@ class SemuLinuxInputDevices {
                 device->name);
             snprintf(state->quit_source, sizeof(state->quit_source), "%s",
                 device->source);
+            char* quitPhysical = (char*)"empty";
+            if (device->physical[0] != 0) {
+                quitPhysical = device->physical;
+            }
             snprintf(state->quit_physical, sizeof(state->quit_physical), "%s",
-                device->physical[0] == 0 ? "empty" : device->physical);
+                quitPhysical);
             state->quit_vendor = device->vendor;
             state->quit_product = device->product;
             state->quit_action = decision->action;
@@ -1805,15 +1928,19 @@ class SemuLinuxInputDevices {
         bool persisted = SemuInputStateFiles.action(decision->action,
             decision->radial, decision->slot, device->source, at);
         char detail[512];
+        char* decisionReason = (char*)"none";
+        if (decision->reason[0] != 0) {
+            decisionReason = decision->reason;
+        }
         snprintf(detail, sizeof(detail),
             "path=%s source=%s action=%d radial=%d slot=%d quit=%d reason=%s chord_sequence=%llu",
             device->path, device->source, decision->action, decision->radial,
             decision->slot, decision->quit,
-            decision->reason[0] == 0 ? "none" : decision->reason,
+            decisionReason,
             decision->quit_chord.sequence);
-        SemuInputStateFiles.evidence(
-            persisted ? (char*)"action-edge" : (char*)"action-journal-failure",
-            detail);
+        char* eventName = (char*)"action-journal-failure";
+        if (persisted) { eventName = (char*)"action-edge"; }
+        SemuInputStateFiles.evidence(eventName, detail);
         return false;
     }
 
@@ -3152,10 +3279,13 @@ class SemuInputSupervisor {
             return 5;
         }
 
-        char stateRoot[] = "/tmp/semu-input-self-test-XXXXXX";
-        char* stateDirectory = mkdtemp(stateRoot);
-        if (stateDirectory == null
-                || !SemuInputSupervisor.journalSelfTest(stateDirectory)) {
+        char stateRoot[96];
+        bool stateRootCreated = SemuInputPrivateDirectory.create(
+            stateRoot, sizeof(stateRoot));
+        char* stateDirectory = stateRoot;
+        if (!stateRootCreated) { return 6; }
+        if (!SemuInputSupervisor.journalSelfTest(stateDirectory)) {
+            rmdir(stateDirectory);
             return 6;
         }
         if (!SemuInputSupervisor.capabilitySelfTest(
@@ -3393,17 +3523,23 @@ class SemuInputSupervisor {
                 bool formatted = SemuInputTerminationEvidence.format(
                     detail, sizeof(detail), &state, getpid(), child,
                     &termination);
+                char* terminationDetail =
+                    (char*)"reason=evidence-format-failure reaped=0";
+                if (formatted) { terminationDetail = detail; }
                 SemuInputStateFiles.evidence("process-group-terminate",
-                    formatted ? detail
-                        : (char*)"reason=evidence-format-failure reaped=0");
+                    terminationDetail);
                 char actionDetail[512];
                 bool actionFormatted = SemuInputTerminationEvidence.action(
                     actionDetail, sizeof(actionDetail), &state);
+                char* actionEvent = (char*)"action-evidence-failure";
+                char* actionEvidence =
+                    (char*)"quit=1 reason=evidence-format-failure";
+                if (actionFormatted) {
+                    actionEvent = (char*)"action-edge";
+                    actionEvidence = actionDetail;
+                }
                 SemuInputStateFiles.evidence(
-                    actionFormatted ? (char*)"action-edge"
-                        : (char*)"action-evidence-failure",
-                    actionFormatted ? actionDetail
-                        : (char*)"quit=1 reason=evidence-format-failure");
+                    actionEvent, actionEvidence);
                 SemuLinuxInputDevices.closeAll(&state);
                 SemuInputStateFiles.releaseSession();
                 return reaped && formatted && actionFormatted ? 0 : 70;

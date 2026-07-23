@@ -109,14 +109,14 @@ class RendererStateFiles {
             fputs("none", file);
             return;
         }
-        char digits[17] = "0123456789ABCDEF";
+        string digits = "0123456789ABCDEF";
         for (size_t index = 0; value[index] != 0; index++) {
             unsigned char byte = (unsigned char)value[index];
             if (byte <= 32u || byte == (unsigned char)'%'
                     || byte == (unsigned char)'=') {
                 fputc('%', file);
-                fputc(digits[byte >> 4], file);
-                fputc(digits[byte & 15u], file);
+                fputc(digits.charAt(byte >> 4), file);
+                fputc(digits.charAt(byte & 15u), file);
             } else {
                 fputc((int)byte, file);
             }
