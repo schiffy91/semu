@@ -63,6 +63,8 @@ class DeckSyntheticKeys {
         if (strcmp(token, "o") == 0) { return KEY_O; }
         if (strcmp(token, "p") == 0) { return KEY_P; }
         if (strcmp(token, "q") == 0) { return KEY_Q; }
+        if (strcmp(token, "left") == 0) { return KEY_LEFT; }
+        if (strcmp(token, "right") == 0) { return KEY_RIGHT; }
         if (strcmp(token, "s") == 0) { return KEY_S; }
         if (strcmp(token, "space") == 0) { return KEY_SPACE; }
         if (strcmp(token, "tab") == 0) { return KEY_TAB; }
@@ -144,9 +146,10 @@ class DeckSyntheticDeviceIo {
         }
         int keys[] = {KEY_LEFTCTRL, KEY_LEFTALT, KEY_LEFTSHIFT, KEY_LEFTMETA,
             KEY_A, KEY_BACKSPACE, KEY_DOWN, KEY_ENTER, KEY_ESC, KEY_J, KEY_K,
-            KEY_M, KEY_O, KEY_P, KEY_Q, KEY_S, KEY_SPACE, KEY_TAB, KEY_UP,
-            KEY_X, KEY_MINUS, KEY_KPPLUS, KEY_KPDOT, KEY_KP0, KEY_KP1,
-            KEY_KP2, KEY_KP3, KEY_KP4, KEY_KP5, KEY_KP6, KEY_KP7, KEY_KP8,
+            KEY_M, KEY_O, KEY_P, KEY_Q, KEY_LEFT, KEY_RIGHT, KEY_S, KEY_SPACE,
+            KEY_TAB, KEY_UP, KEY_X, KEY_MINUS, KEY_KPPLUS, KEY_KPDOT, KEY_KP0,
+            KEY_KP1, KEY_KP2, KEY_KP3, KEY_KP4, KEY_KP5, KEY_KP6, KEY_KP7,
+            KEY_KP8,
             KEY_KP9, KEY_F9, KEY_F10, KEY_F11, KEY_F12, KEY_F13, KEY_F14,
             KEY_F15, KEY_F16};
         for (size_t index = 0; index < sizeof(keys) / sizeof(int); index++) {

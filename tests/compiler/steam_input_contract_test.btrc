@@ -303,15 +303,17 @@ class SteamInputContractTest {
                     names, "Steam Virtual Gamepad")
                 || !SteamInputContractTest.stringValue(
                     names, "Microsoft X-Box 360 pad 0")
-                || !profiles.isArray() || profiles.size() != 2
-                || !SteamInputContractTest.retroarchProfile(profiles.at(0),
-                    contract.get("gameplay_mapping"),
-                    contract.get("gameplay_labels"))
-                || !SteamInputContractTest.retroarchProfile(profiles.at(1),
-                    contract.get("gameplay_mapping"),
-                    contract.get("gameplay_labels"))) {
+                || !profiles.isArray() || profiles.size() != 2) {
             return SteamInputContractTest.fail(
                 "RetroArch SDL index-0/autoconfig declaration is stale or incomplete");
+        }
+        for (int index = 0; index < profiles.size(); index++) {
+            if (!SteamInputContractTest.retroarchProfile(profiles.at(index),
+                    contract.get("gameplay_mapping"),
+                    contract.get("gameplay_labels"))) {
+                return SteamInputContractTest.fail(
+                    "RetroArch SDL index-0/autoconfig profile is incomplete");
+            }
         }
         return 0;
     }
@@ -355,20 +357,20 @@ class SteamInputContractTest {
             emitted, "semu-input-supervisor.env"));
         string vdf = FileSystem.readText(fullPath);
         Vector<string> semanticBindings = [
-            "Save State, semu-save.png #232323 #FFFFFF",
-            "Load State, semu-load.png #232323 #FFFFFF",
-            "Quit Emulator, semu-quit.png #232323 #FFFFFF",
-            "Open Menu, semu-menu.png #232323 #FFFFFF",
-            "Take Screenshot, semu-screenshot.png #232323 #FFFFFF",
-            "Escape, semu-back.png #232323 #FFFFFF",
-            "Menu Up, semu-up.png #232323 #FFFFFF",
-            "Menu Down, semu-down.png #232323 #FFFFFF",
-            "Menu Confirm, semu-confirm.png #232323 #FFFFFF",
-            "Menu Back, semu-back.png #232323 #FFFFFF",
-            "Wiimote, semu-wiimote.png #232323 #FFFFFF",
-            "Wiimote + Nunchuk, semu-wiimote-nunchuk.png #232323 #FFFFFF",
-            "Classic Controller, semu-classic-controller.png #232323 #FFFFFF",
-            "GameCube Controller, semu-gamecube-controller.png #232323 #FFFFFF"
+            "Save State, semu-save.png, #232323 #FFFFFF",
+            "Load State, semu-load.png, #232323 #FFFFFF",
+            "Quit Emulator, semu-quit.png, #232323 #FFFFFF",
+            "Open Menu, semu-menu.png, #232323 #FFFFFF",
+            "Take Screenshot, semu-screenshot.png, #232323 #FFFFFF",
+            "Escape, semu-back.png, #232323 #FFFFFF",
+            "Menu Up, semu-up.png, #232323 #FFFFFF",
+            "Menu Down, semu-down.png, #232323 #FFFFFF",
+            "Menu Confirm, semu-confirm.png, #232323 #FFFFFF",
+            "Menu Back, semu-back.png, #232323 #FFFFFF",
+            "Wiimote, semu-wiimote.png, #232323 #FFFFFF",
+            "Wiimote + Nunchuk, semu-wiimote-nunchuk.png, #232323 #FFFFFF",
+            "Classic Controller, semu-classic-controller.png, #232323 #FFFFFF",
+            "GameCube Controller, semu-gamecube-controller.png, #232323 #FFFFFF"
         ];
         for binding in semanticBindings {
             if (!vdf.contains(binding)) {
@@ -379,10 +381,14 @@ class SteamInputContractTest {
         if (!FileSystem.isFile(fullPath) || !FileSystem.isFile(simplePath)
                 || !vdf.contains("\"controller_type\"\t\t\"controller_neptune\"")
                 || !vdf.contains("\"touch_menu_show_labels\" \"0\"")
-                || !vdf.contains("Save State, semu-save.png #232323 #FFFFFF")
-                || !vdf.contains("Load State, semu-load.png #232323 #FFFFFF")
-                || !vdf.contains("Open Menu, semu-menu.png #232323 #FFFFFF")
-                || !vdf.contains("Quit Emulator, semu-quit.png #232323 #FFFFFF")
+                || !vdf.contains("Save State, semu-save.png, #232323 #FFFFFF")
+                || !vdf.contains("Load State, semu-load.png, #232323 #FFFFFF")
+                || !vdf.contains("Open Menu, semu-menu.png, #232323 #FFFFFF")
+                || !vdf.contains("Quit Emulator, semu-quit.png, #232323 #FFFFFF")
+                || !vdf.contains("key_press UP_ARROW, Menu Up")
+                || !vdf.contains("key_press DOWN_ARROW, Menu Down")
+                || vdf.contains("key_press UP, Menu Up")
+                || vdf.contains("key_press DOWN, Menu Down")
                 || vdf.contains(", Ctrl,") || vdf.contains(", Control,")
                 || vdf.contains(", LEFT_CONTROL,")) {
             failures += SteamInputContractTest.fail(
@@ -447,23 +453,23 @@ class SteamInputContractTest {
                 "quit actions do not converge on the declarative supervisor chord");
         }
         string saveMarkerFirst =
-            "key_press KEYPAD_0, Save State, semu-save.png #232323 #FFFFFF\" "
+            "key_press KEYPAD_0, Save State, semu-save.png, #232323 #FFFFFF\" "
             + "\"binding\" \"key_press LEFT_CONTROL, Save State";
         string menuMarkerFirst =
-            "key_press KEYPAD_6, Open Menu, semu-menu.png #232323 #FFFFFF\" "
+            "key_press KEYPAD_6, Open Menu, semu-menu.png, #232323 #FFFFFF\" "
             + "\"binding\" \"key_press LEFT_CONTROL, Open Menu";
         if (!vdf.contains(saveMarkerFirst) || !vdf.contains(menuMarkerFirst)) {
             failures += SteamInputContractTest.fail(
                 "radial evidence marker must precede its action chord");
         }
         if (!vdf.contains("Wii Controller Mode")
-                || !vdf.contains("Wiimote, semu-wiimote.png #232323 #FFFFFF")
+                || !vdf.contains("Wiimote, semu-wiimote.png, #232323 #FFFFFF")
                 || !vdf.contains(
-                    "Wiimote + Nunchuk, semu-wiimote-nunchuk.png #232323 #FFFFFF")
+                    "Wiimote + Nunchuk, semu-wiimote-nunchuk.png, #232323 #FFFFFF")
                 || !vdf.contains(
-                    "Classic Controller, semu-classic-controller.png #232323 #FFFFFF")
+                    "Classic Controller, semu-classic-controller.png, #232323 #FFFFFF")
                 || !vdf.contains(
-                    "GameCube Controller, semu-gamecube-controller.png #232323 #FFFFFF")
+                    "GameCube Controller, semu-gamecube-controller.png, #232323 #FFFFFF")
                 || !vdf.contains("key_press F9") || !vdf.contains("key_press F10")
                 || !vdf.contains("key_press F11") || !vdf.contains("key_press F12")
                 || RendererActionJournal.systemRadial() != 3) {
