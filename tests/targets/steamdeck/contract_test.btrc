@@ -1178,6 +1178,8 @@ class DeckHarnessContractTest {
             && remote.contains("SteamAppId")
             && remote.contains("SteamGameId")
             && remote.contains("/usr/bin/gamescopectl")
+            && remote.contains("[\"screenshot\", path, \"3\"]")
+            && remote.contains("DeckRemoteFile.size(path)")
             && helper.contains("build/runtime/state")
             && helper.contains("DeckRemoteFile.removeRegular")
             && helper.contains("UnixFileSystem.realPath")

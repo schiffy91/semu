@@ -692,7 +692,7 @@ class RetroArchProductionContractTest {
                     "notification_show_autoconfig_fails = \"false\"")
                 || !RetroArchProductionContractTest.nativeGamepadVdf(project)) {
             failures += RetroArchProductionContractTest.fail(
-                "SDL port-1 autoconfiguration or native VDF gamepad output is incomplete");
+                "RetroArch Port 1 / SDL index-0 autoconfiguration or native VDF gamepad output is incomplete");
         }
 
         JsonValue quit = deckInput.get("quit_chord");

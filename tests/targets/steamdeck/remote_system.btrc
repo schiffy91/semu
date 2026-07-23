@@ -501,11 +501,31 @@ class DeckRemoteGameMode {
         if (session.esDe < 2 || !DeckRemoteProcess.alive(session.esDe)
                 || FileSystem.exists(path)) { return ""; }
         ExecResult result = ChildProcess.run("/usr/bin/gamescopectl",
-            ["screenshot", path], "",
+            ["screenshot", path, "3"], "",
             DeckRemoteProcess.sessionEnvironment(session.esDe),
             CommandEnvironment.empty(), 30000,
             65536, 65536);
-        return result.ok() ? DeckRemoteHash.file(path) : "";
+        if (!result.ok()) { return ""; }
+
+        long long previousSize = -1LL;
+        int stableSamples = 0;
+        for (int attempt = 0; attempt < 300; attempt++) {
+            long long currentSize = FileSystem.isSymlink(path)
+                ? -1LL : DeckRemoteFile.size(path);
+            stableSamples = currentSize > 8LL && currentSize == previousSize
+                ? stableSamples + 1 : 0;
+            if (stableSamples >= 2) {
+                string digest = DeckRemoteHash.file(path);
+                if (!digest.isEmpty() && DeckRemoteClock.sleep(100)
+                        && DeckRemoteFile.size(path) == currentSize
+                        && DeckRemoteHash.file(path).equals(digest)) {
+                    return digest;
+                }
+            }
+            previousSize = currentSize;
+            if (!DeckRemoteClock.sleep(100)) { return ""; }
+        }
+        return "";
     }
 }
 

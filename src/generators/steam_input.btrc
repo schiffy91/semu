@@ -1159,7 +1159,7 @@ class SteamInputVdf {
                                string actionId) {
         SteamInputAction action = definition.action(actionId);
         return "\"binding\" \"" + command + ", " + action.label + ", "
-            + action.icon + " " + definition.iconColors + "\"";
+            + action.icon + ", " + definition.iconColors + "\"";
     }
 
     class string keyBindings(SteamInputDefinition definition, string chord,
