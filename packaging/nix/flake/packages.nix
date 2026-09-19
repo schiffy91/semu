@@ -22,8 +22,9 @@ forAllSystems (system:
       emulatorPackages = lib.attrValues emulators.packages;
       extraPackages = [ pkgs.retroarch-joypad-autoconfig ];
     };
+    release = pkgs.callPackage ../release.nix { inherit semu repositoryRoot; };
   in {
-    inherit btrcpy retroarch semu;
+    inherit btrcpy retroarch semu release;
     default = semu;
     semu-program = semuProgram;
     semu-source = semuSource;
