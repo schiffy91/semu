@@ -16,6 +16,7 @@ import ./emit/settings_ui.btrc;
 import ./launch/plan.btrc;
 import ./launch/process.btrc;
 import ./sync/syncthing.btrc;
+import ./steam/shortcuts.btrc;
 
 class SemuCli {
     public CLIArgs args;
@@ -39,6 +40,7 @@ class SemuCli {
         help.item("path NAME --target T", "Print one resolved path (roms, bios, esde_home, state_root, ...).");
         help.item("settings get PATH | put PATH VALUE [--apply] | ui | reset", "Read, write, describe (ES-DE menu document) or reset $SEMU_HOME/semu.json.");
         help.item("sync start | stop | run | status | device-id | enabled", "Syncthing for saves: detach, run in the foreground, inspect, print this device's id.");
+        help.item("steam shortcuts [--steam-root DIR] [--force] | status", "Add or refresh the Semu non-Steam shortcut in every Steam profile.");
         help.item("version", "Print the Semu version.");
         help.section("Common options");
         help.item("--target T", "Target id (default: $SEMU_TARGET or linux-desktop).");
@@ -210,6 +212,18 @@ class SemuCli {
         return self.usage(64);
     }
 
+    public int steam() {
+        string action = self.line.operand(1, "");
+        SemuDiagnostics diagnostics = SemuDiagnostics();
+        SemuModel model = SemuModel.load(self.configRoot(), diagnostics);
+        SemuPlan plan = self.resolve(model, diagnostics);
+        if (plan == null) { return self.fail(diagnostics); }
+        string root = self.option("steam-root", "");
+        if (action.equals("shortcuts")) { return SteamShortcuts.install(plan, root, self.line.has("--force")); }
+        if (action.equals("status")) { return SteamShortcuts.status(plan, root); }
+        return self.usage(64);
+    }
+
     public int doctor() {
         SemuDiagnostics diagnostics = SemuDiagnostics();
         SemuModel model = SemuModel.load(self.configRoot(), diagnostics);
@@ -251,6 +265,7 @@ class SemuCli {
         if (command.equals("path")) { return self.path(); }
         if (command.equals("settings")) { return self.settings(); }
         if (command.equals("sync")) { return self.sync(); }
+        if (command.equals("steam")) { return self.steam(); }
         if (command.equals("version")) {
             Console.log(SemuCli.version());
             return 0;

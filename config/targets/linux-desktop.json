@@ -20,5 +20,10 @@
     "ui": {
       "display_index": 0
     }
+  },
+  "steam": {
+    "name": "Semu",
+    "launcher": "/run/current-system/sw/bin/semu-es-de",
+    "start_dir": "${home}"
   }
 }
