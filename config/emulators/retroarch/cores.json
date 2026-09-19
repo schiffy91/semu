@@ -23,6 +23,10 @@
           "aarch64-darwin": "sha256-TuTvmuGizfJOWZsHQlxz94MEPwyuJRYFRYbA0AzR6dk=",
           "x86_64-darwin": "sha256-gkfOWwTl5B8Ht1g2V11GBLp3JqjECm8OFzGbZ3Cdahk="
         }
+      },
+      "linux": {
+        "kind": "nixpkgs_libretro",
+        "package_attribute": "flycast"
       }
     },
     "gambatte": {
@@ -111,6 +115,10 @@
           "aarch64-darwin": "sha256-ozmQ8SXcDj5hQys30C2iVneyEzKXQuy6m7c3leh+ygM=",
           "x86_64-darwin": "sha256-UC9bTtDXEE24SI3XBMuvbGcAZNF/SDkxlDPyt7Hyxg4="
         }
+      },
+      "linux": {
+        "kind": "nixpkgs_libretro",
+        "package_attribute": "ppsspp"
       }
     },
     "snes9x": {
