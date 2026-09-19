@@ -29,6 +29,23 @@ struct SemuPadState {
     long long select_at;
 };
 
+volatile sig_atomic_t semuStopSignal = 0;
+
+void semuOnStopSignal(int signo) { semuStopSignal = signo; }
+
+class SemuStopSignals {
+    class void install() {  // a killed launcher must take its emulator with it
+        int term = SIGTERM;
+        int interrupt = SIGINT;
+        int hangup = SIGHUP;
+        signal(term, semuOnStopSignal);
+        signal(interrupt, semuOnStopSignal);
+        signal(hangup, semuOnStopSignal);
+    }
+
+    class int pending() { return (int)semuStopSignal; }
+}
+
 class SemuClock {
     class long long milliseconds() {
         struct timespec now;
@@ -192,9 +209,15 @@ class SemuQuitChord {
         struct pollfd polls[SEMU_MAX_PADS];
         int exitCode = 0;
         bool exited = false;
+        SemuStopSignals.install();
         while (true) {
             exitCode = SemuProcessGroup.reap(child, &exited);
             if (exited) { break; }
+            if (SemuStopSignals.pending() != 0) {
+                SemuProcessGroup.terminate(child);
+                exitCode = 128 + SemuStopSignals.pending();
+                break;
+            }
             for (int index = 0; index < count; index++) {
                 polls[index].fd = pads[index].fd;
                 polls[index].events = POLLIN;
