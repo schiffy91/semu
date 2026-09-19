@@ -16,6 +16,7 @@ import ../../src/launch/plan.btrc;
 import ../../src/emit/rendering.btrc;
 import ../../src/emit/settings_ui.btrc;
 import ../../src/sync/syncthing.btrc;
+import ../../src/steam/shortcuts.btrc;
 import ../../src/cli.btrc;
 
 class Contract {
@@ -397,11 +398,38 @@ class SyncContract {  // the Syncthing config Semu owns: one folder for content_
     }
 }
 
+class SteamContract {  // the binary VDF Steam reads: our entry exact, everything else preserved
+    class void run(Contract contract) {
+        contract.expect(SteamShortcuts.appid("\"/x/semu-es-de\"", "Semu") == 4175107067L, "non-Steam appid matches Steam's crc32 seed");
+        Fixture fixture = Fixture("linux-desktop");
+        string root = PathTools.join(fixture.scratch, "steam");
+        string file = PathTools.join(root, "userdata/1234/config/shortcuts.vdf");
+        SemuPaths.removeFile(file);
+        string error = "";
+        SteamShortcut other = SteamShortcuts.upsert(file, "Other Game", "/opt/other/run", "/opt/other", &error);
+        contract.expect(other != null && error.isEmpty(), "shortcut written into an absent file: " + error);
+        SteamShortcut ours = SteamShortcuts.upsert(file, "Semu", "/run/current-system/sw/bin/semu-es-de", "/home/u", &error);
+        contract.expect(ours != null && ours.launchUrl().startsWith("steam://rungameid/"), "semu shortcut appended");
+        SteamShortcutsFile parsed = SteamShortcutsFile.read(file);
+        contract.expect(parsed.valid && parsed.entries.size() == 2, f"two entries survive a rewrite ({parsed.entries.size()})");
+        contract.expect(parsed.entries.get(0).appName.equals("Other Game") && parsed.entries.get(0).exe.equals("\"/opt/other/run\""), "foreign entry preserved byte for byte");
+        contract.expect(parsed.entries.get(1).appName.equals("Semu") && parsed.entries.get(1).startDir.equals("\"/home/u\"") && parsed.entries.get(1).appid == ours.appid, "semu entry parsed back");
+        SteamShortcuts.upsert(file, "Semu", "/run/current-system/sw/bin/semu-es-de", "/home/u", &error);
+        SteamShortcutsFile again = SteamShortcutsFile.read(file);
+        contract.expect(again.entries.size() == 2, "a second upsert replaces instead of duplicating");
+        contract.expect(SteamShortcuts.shortcutFiles(root).size() == 1 && SteamShortcuts.shortcutFiles(root).get(0).equals(file), "profile discovery finds userdata/<id>/config");
+        contract.expect(SteamShortcuts.launcher(fixture.plan).equals("/run/current-system/sw/bin/semu-es-de"), "desktop target names the stable launcher");
+        Fixture deck = Fixture("steam-deck");
+        contract.expect(SteamShortcuts.launcher(deck.plan).endsWith("/Applications/Semu/bin/semu-deck"), "deck target names the installed launcher");
+    }
+}
+
 int main() {
     Contract contract = Contract();
     SettingsWriteContract.run(contract);
     SettingsUiContract.run(contract);
     SyncContract.run(contract);
+    SteamContract.run(contract);
     RenderingContract.run(contract);
     ModelContract.run(contract);
     SettingsLadderContract.run(contract);

@@ -20,5 +20,10 @@
     "ui": {
       "display_index": 0
     }
+  },
+  "steam": {
+    "name": "Semu",
+    "launcher": "${home}/Applications/Semu/bin/semu-deck",
+    "start_dir": "${home}"
   }
 }

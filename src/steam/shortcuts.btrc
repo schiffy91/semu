@@ -1,0 +1,395 @@
+import Library.Console;
+import Library.FileSystem;
+import Library.JSON;
+import Library.Strings;
+import Library.Vector;
+import ../lib/json.btrc;
+import ../lib/paths.btrc;
+import ../model.btrc;
+import ../resolve.btrc;
+
+#include <fcntl.h>
+#include <stdio.h>
+#include <signal.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+
+class SteamBytes {  // growable buffer for Steam's binary VDF
+    public unsigned char* data;
+    public int size;
+    public int capacity;
+
+    public SteamBytes() {
+        self.capacity = 4096;
+        self.data = (unsigned char*)malloc((size_t)self.capacity);
+        self.size = 0;
+    }
+
+    public void byte(int value) {
+        if (self.size + 1 > self.capacity) {
+            self.capacity = self.capacity * 2;
+            self.data = (unsigned char*)realloc(self.data, (size_t)self.capacity);
+        }
+        self.data[self.size] = (unsigned char)(value & 255);
+        self.size++;
+    }
+
+    public void raw(unsigned char* source, int count) { for (int index = 0; index < count; index++) { self.byte((int)source[index]); } }
+
+    public void text(string value) {  // NUL terminated
+        for (int index = 0; index < value.len(); index++) { self.byte(((int)value.charAt(index)) & 255); }
+        self.byte(0);
+    }
+
+    public void u32(long value) { for (int index = 0; index < 4; index++) { self.byte((int)((value >> (8 * index)) & 255)); } }
+
+    public void field(string key, string value) {
+        self.byte(1);
+        self.text(key);
+        self.text(value);
+    }
+
+    public void number(string key, long value) {
+        self.byte(2);
+        self.text(key);
+        self.u32(value);
+    }
+
+    public bool write(string path) {
+        int flags = (int)O_WRONLY | (int)O_CREAT | (int)O_TRUNC;
+        int handle = open(path, flags, 0644);
+        if (handle < 0) { return false; }
+        int written = 0;
+        while (written < self.size) {
+            long count = write(handle, self.data + written, (size_t)(self.size - written));
+            if (count <= 0) {
+                close(handle);
+                return false;
+            }
+            written = written + (int)count;
+        }
+        close(handle);
+        return true;
+    }
+}
+
+class SteamShortcut {
+    public string appName;
+    public string exe;
+    public string startDir;
+    public long appid;
+    public int contentBegin;  // first field byte inside the entry
+    public int contentEnd;  // just past the entry's closing 0x08
+
+    public SteamShortcut() {
+        self.appName = "";
+        self.exe = "";
+        self.startDir = "";
+        self.appid = 0;
+        self.contentBegin = 0;
+        self.contentEnd = 0;
+    }
+
+    public string launchUrl() {  // Steam's 64-bit shortcut id: appid in the high word plus the non-Steam flag
+        char* buffer = (char*)malloc(48);
+        snprintf(buffer, 48, "steam://rungameid/%llu", (unsigned long long)(((unsigned long long)self.appid << 32) | 0x02000000ULL));
+        return __btrc_str_track(buffer);
+    }
+}
+
+class SteamShortcutsFile {
+    public unsigned char* data;
+    public int size;
+    public Vector<SteamShortcut> entries;
+    public bool valid;
+
+    public SteamShortcutsFile() {
+        self.data = null;
+        self.size = 0;
+        self.entries = [];
+        self.valid = true;
+    }
+
+    public string cstring(int offset) {
+        if (offset < 0 || offset >= self.size) { return ""; }
+        int end = offset;
+        while (end < self.size && self.data[end] != 0) { end++; }
+        if (end >= self.size) { return ""; }
+        char* copy = strdup((char*)(self.data + offset));
+        return __btrc_str_track(copy);
+    }
+
+    public long u32(int offset) {
+        if (offset + 4 > self.size) { return 0; }
+        long value = 0;
+        for (int index = 3; index >= 0; index--) { value = (value << 8) | (long)self.data[offset + index]; }
+        return value;
+    }
+
+    public int walk(int offset, SteamShortcut shortcut) {  // returns the offset after the object's closing 0x08, or -1
+        while (offset < self.size) {
+            int type = (int)self.data[offset];
+            offset++;
+            if (type == 8) { return offset; }
+            string key = self.cstring(offset);
+            if (key.isEmpty() && (offset >= self.size || self.data[offset] != 0)) { return -1; }
+            offset = offset + key.len() + 1;
+            if (type == 0) {
+                offset = self.walk(offset, null);
+                if (offset < 0) { return -1; }
+            } else if (type == 1) {
+                string value = self.cstring(offset);
+                if (shortcut != null) {
+                    if (key.toLower().equals("appname")) { shortcut.appName = value; }
+                    if (key.toLower().equals("exe")) { shortcut.exe = value; }
+                    if (key.toLower().equals("startdir")) { shortcut.startDir = value; }
+                }
+                offset = offset + value.len() + 1;
+            } else if (type == 2 || type == 3 || type == 6) {
+                if (shortcut != null && type == 2 && key.toLower().equals("appid")) { shortcut.appid = self.u32(offset); }
+                offset = offset + 4;
+            } else if (type == 7) {
+                offset = offset + 8;
+            } else {
+                return -1;  // wide strings and unknown types: refuse to rewrite what we cannot walk
+            }
+        }
+        return -1;
+    }
+
+    public bool parse() {
+        self.entries = [];
+        if (self.size == 0) { return true; }  // no file yet
+        if (self.size < 12 || self.data[0] != 0 || !self.cstring(1).toLower().equals("shortcuts")) {
+            self.valid = false;
+            return false;
+        }
+        int offset = 1 + 9 + 1;
+        while (offset < self.size) {
+            int type = (int)self.data[offset];
+            offset++;
+            if (type == 8) { return true; }
+            string key = self.cstring(offset);
+            offset = offset + key.len() + 1;
+            if (type != 0) {
+                self.valid = false;
+                return false;
+            }
+            SteamShortcut entry = SteamShortcut();
+            entry.contentBegin = offset;
+            offset = self.walk(offset, entry);
+            if (offset < 0) {
+                self.valid = false;
+                return false;
+            }
+            entry.contentEnd = offset;
+            self.entries.push(entry);
+        }
+        self.valid = false;
+        return false;
+    }
+
+    class SteamShortcutsFile read(string path) {
+        SteamShortcutsFile file = SteamShortcutsFile();
+        if (!FileSystem.isFile(path)) { return file; }
+        int flags = (int)O_RDONLY;
+        int handle = open(path, flags);
+        if (handle < 0) {
+            file.valid = false;
+            return file;
+        }
+        long length = lseek(handle, 0, SEEK_END);
+        lseek(handle, 0, SEEK_SET);
+        if (length < 0 || length > 16 * 1024 * 1024) {
+            close(handle);
+            file.valid = false;
+            return file;
+        }
+        file.data = (unsigned char*)malloc((size_t)(length + 1));
+        int total = 0;
+        while (total < (int)length) {
+            long count = read(handle, file.data + total, (size_t)((int)length - total));
+            if (count <= 0) { break; }
+            total = total + (int)count;
+        }
+        close(handle);
+        file.size = total;
+        file.data[total] = 0;
+        file.parse();
+        return file;
+    }
+}
+
+class SteamShortcuts {
+    class long crc32(string text) {  // Steam's non-Steam appid seed: crc32 of quoted exe + app name
+        long crc = 0xFFFFFFFFL;
+        for (int index = 0; index < text.len(); index++) {
+            crc = crc ^ (long)(((int)text.charAt(index)) & 255);
+            for (int bit = 0; bit < 8; bit++) { crc = (crc & 1) != 0 ? ((crc >> 1) ^ 0xEDB88320L) : (crc >> 1); }
+        }
+        return (crc ^ 0xFFFFFFFFL) & 0xFFFFFFFFL;
+    }
+
+    class long appid(string quotedExe, string name) { return SteamShortcuts.crc32(quotedExe + name) | 0x80000000L; }
+
+    class string quote(string value) { return "\"" + value + "\""; }
+
+    class SteamShortcut find(SteamShortcutsFile file, string name, string quotedExe) {
+        for entry in file.entries {
+            if (entry.appName.equals(name) || entry.exe.equals(quotedExe)) { return entry; }
+        }
+        return null;
+    }
+
+    class SteamShortcut upsert(string path, string name, string exe, string startDir, string* error) {  // keeps every other entry byte for byte
+        SteamShortcutsFile file = SteamShortcutsFile.read(path);
+        if (!file.valid) {
+            *error = "cannot walk " + path + " (unknown VDF content); not rewriting it";
+            return null;
+        }
+        string quotedExe = SteamShortcuts.quote(exe);
+        string quotedDir = SteamShortcuts.quote(startDir);
+        SteamBytes output = SteamBytes();
+        output.byte(0);
+        output.text("shortcuts");
+        int index = 0;
+        for entry in file.entries {
+            if (entry.appName.equals(name) || entry.exe.equals(quotedExe)) { continue; }  // replaced below
+            output.byte(0);
+            output.text(Strings.fromInt(index));
+            output.raw(file.data + entry.contentBegin, entry.contentEnd - entry.contentBegin);
+            index++;
+        }
+        SteamShortcut ours = SteamShortcut();
+        ours.appName = name;
+        ours.exe = quotedExe;
+        ours.startDir = quotedDir;
+        ours.appid = SteamShortcuts.appid(quotedExe, name);
+        output.byte(0);
+        output.text(Strings.fromInt(index));
+        output.number("appid", ours.appid);
+        output.field("AppName", name);
+        output.field("Exe", quotedExe);
+        output.field("StartDir", quotedDir);
+        output.field("icon", "");
+        output.field("ShortcutPath", "");
+        output.field("LaunchOptions", "");
+        output.number("IsHidden", 0);
+        output.number("AllowDesktopConfig", 1);
+        output.number("AllowOverlay", 1);
+        output.number("OpenVR", 0);
+        output.number("Devkit", 0);
+        output.field("DevkitGameID", "");
+        output.number("DevkitOverrideAppID", 0);
+        output.number("LastPlayTime", 0);
+        output.field("FlatpakAppID", "");
+        output.byte(0);
+        output.text("tags");
+        output.byte(8);
+        output.byte(8);
+        output.byte(8);
+        output.byte(8);
+        SemuPaths.prepareDirectory(PathTools.dirname(path));
+        if (!output.write(path)) {
+            *error = "could not write " + path;
+            return null;
+        }
+        return ours;
+    }
+
+    class Vector<string> steamRoots(string steamRoot) {
+        Vector<string> roots = [];
+        if (!steamRoot.isEmpty()) {
+            roots.push(steamRoot);
+            return roots;
+        }
+        string home = SemuPaths.home();
+        for candidate in [".steam/steam", ".local/share/Steam", ".var/app/com.valvesoftware.Steam/.local/share/Steam"] {
+            string root = PathTools.join(home, candidate);
+            string real = UnixFileSystem.realPath(root);
+            if (!real.isEmpty() && FileSystem.isDir(PathTools.join(real, "userdata")) && !roots.contains(real)) { roots.push(real); }
+        }
+        return roots;
+    }
+
+    class Vector<string> shortcutFiles(string steamRoot) {  // one per Steam user profile
+        Vector<string> files = [];
+        for root in SteamShortcuts.steamRoots(steamRoot) {
+            for user in SemuModel.sortedEntries(PathTools.join(root, "userdata")) {
+                if (user.equals("0") || user.equals("anonymous") || !FileSystem.isDir(PathTools.join(root, "userdata/" + user + "/config"))) { continue; }
+                files.push(PathTools.join(root, "userdata/" + user + "/config/shortcuts.vdf"));
+            }
+        }
+        return files;
+    }
+
+    class bool steamRunning() {  // Steam rewrites shortcuts.vdf when it exits
+        string pidFile = PathTools.join(SemuPaths.home(), ".steam/steam.pid");
+        if (!FileSystem.isFile(pidFile)) { return false; }
+        int pid = Strings.toInt(FileSystem.readText(pidFile).trim());
+        return pid > 1 && kill((pid_t)pid, 0) == 0;
+    }
+
+    class JSONValue definition(SemuPlan plan) { return SemuJson.get(plan.target.definition, "steam"); }
+
+    class string name(SemuPlan plan) {
+        string name = SemuJson.textAt(SteamShortcuts.definition(plan), "name");
+        return name.isEmpty() ? "Semu" : name;
+    }
+
+    class string launcher(SemuPlan plan) { return plan.tokens.resolve(SemuJson.textAt(SteamShortcuts.definition(plan), "launcher")); }
+
+    class string startDir(SemuPlan plan) {
+        string directory = plan.tokens.resolve(SemuJson.textAt(SteamShortcuts.definition(plan), "start_dir"));
+        return directory.isEmpty() ? SemuPaths.home() : directory;
+    }
+
+    class int install(SemuPlan plan, string steamRoot, bool force) {
+        string launcher = SteamShortcuts.launcher(plan);
+        if (launcher.isEmpty() || launcher.contains("${")) {
+            Console.error("semu: target " + plan.target.id + " declares no steam.launcher");
+            return 1;
+        }
+        Vector<string> files = SteamShortcuts.shortcutFiles(steamRoot);
+        if (files.isEmpty()) {
+            Console.error("semu: no Steam user profile found (userdata/<id>/config); log into Steam once first");
+            return 1;
+        }
+        if (steamRoot.isEmpty() && !force && SteamShortcuts.steamRunning()) {
+            Console.error("semu: Steam is running and would overwrite the shortcut on exit; quit Steam first or pass --force");
+            return 1;
+        }
+        for file in files {
+            string error = "";
+            SteamShortcut entry = SteamShortcuts.upsert(file, SteamShortcuts.name(plan), launcher, SteamShortcuts.startDir(plan), &error);
+            if (entry == null) {
+                Console.error("semu: " + error);
+                return 1;
+            }
+            Console.log(f"{file}: {entry.appName} -> {entry.exe} ({entry.launchUrl()})");
+        }
+        return 0;
+    }
+
+    class int status(SemuPlan plan, string steamRoot) {
+        string quotedExe = SteamShortcuts.quote(SteamShortcuts.launcher(plan));
+        Vector<string> files = SteamShortcuts.shortcutFiles(steamRoot);
+        if (files.isEmpty()) {
+            Console.log("no Steam user profile found");
+            return 1;
+        }
+        int missing = 0;
+        for file in files {
+            SteamShortcutsFile parsed = SteamShortcutsFile.read(file);
+            SteamShortcut entry = parsed.valid ? SteamShortcuts.find(parsed, SteamShortcuts.name(plan), quotedExe) : null;
+            if (entry == null) {
+                missing++;
+                Console.log(f"{file}: {parsed.valid ? "no Semu shortcut" : "unreadable"} ({parsed.entries.size()} entries)");
+            } else {
+                Console.log(f"{file}: {entry.appName} -> {entry.exe} ({entry.launchUrl()})");
+            }
+        }
+        return missing == 0 ? 0 : 1;
+    }
+}
