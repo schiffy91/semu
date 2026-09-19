@@ -31,6 +31,9 @@ let
       btrcpy ${bridgeSource}/src/renderer/retroarch/runtime_bridge.btrc -o gfx/semu_retroarch.c \
         --strict-imports --no-cache --no-stdlib --no-dce
       test -s gfx/semu_retroarch.c
+      # Software cores get a 3.2 core context by default; the renderer and librashader need 3.3 / GLSL 330.
+      sed -i '/major = 3;/{n;s/minor = 2;/minor = 3;/}' gfx/drivers/gl3.c
+      grep -Fq 'minor = 3;' gfx/drivers/gl3.c
     '';
     env = (previous.env or { }) // {
       NIX_CFLAGS_COMPILE = (previous.env.NIX_CFLAGS_COMPILE or "") + " -DHAVE_SEMU_RENDERER -I${semuRenderer}/include";
