@@ -34,6 +34,9 @@ let
       # Software cores get a 3.2 core context by default; the renderer and librashader need 3.3 / GLSL 330.
       sed -i '/major = 3;/{n;s/minor = 2;/minor = 3;/}' gfx/drivers/gl3.c
       grep -Fq 'minor = 3;' gfx/drivers/gl3.c
+      # Cores with version-gated loaders (Citra's glad) see only 3.3 entry points in a 3.3 context; give core-profile requests 4.6.
+      sed -i '/gl_query_core_context_set(hwr->context_type == RETRO_HW_CONTEXT_OPENGL_CORE);/a\      if (hwr->context_type == RETRO_HW_CONTEXT_OPENGL_CORE \&\& major == 3) { major = 4; minor = 6; }' gfx/drivers/gl3.c
+      grep -Fq 'major = 4; minor = 6;' gfx/drivers/gl3.c
     '';
     env = (previous.env or { }) // {
       NIX_CFLAGS_COMPILE = (previous.env.NIX_CFLAGS_COMPILE or "") + " -DHAVE_SEMU_RENDERER -I${semuRenderer}/include";

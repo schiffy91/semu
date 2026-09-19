@@ -1,6 +1,12 @@
 {
   "schema_version": 1,
   "implementations": {
+    "citra": {
+      "linux": {
+        "kind": "nixpkgs_libretro",
+        "package_attribute": "citra"
+      }
+    },
     "desmume": {
       "linux": {
         "kind": "nixpkgs_libretro",
