@@ -131,6 +131,11 @@
           "${bios}/wiiu",
           "${bios}"
         ]
+      },
+      "env": {
+        "set": {
+          "GDK_BACKEND": "x11"
+        }
       }
     }
   },
@@ -140,6 +145,7 @@
     "input": "controllerProfiles/controller0.xml is Cemu's automatically loaded player-one profile. It pins the Steam Virtual Gamepad through SDL and maps the complete Wii U GamePad surface. Ctrl+Q quits and Ctrl+Tab swaps the selected TV/GamePad view. Upstream Cemu 2.6 has no savestate implementation, so state.save and state.load are declared unsupported in profile.json rather than mapped to inert chords.",
     "rendering": "OpenGL is forced through settings.xml and the package build. The direct ABI 2 game phase runs only for the selected main-window TV image after DrawBackbufferQuad; the post-UI phase runs immediately before Cemu's owned swap. The separate pad window never creates a renderer frame.",
     "readiness": "A failed -g quick launch exits with status 74 instead of leaving Cemu's deliberately empty quick-launch window blocked behind a modal dialog. Successful readiness still requires a frame-bound shared renderer receipt; process survival alone is never success.",
-    "sandbox": "The package closure, ROM library, configured BIOS root, and external Cemu data are read-only. Cemu can write only its isolated state root."
+    "sandbox": "The package closure, ROM library, configured BIOS root, and external Cemu data are read-only. Cemu can write only its isolated state root.",
+    "display": "Cemu's wx/GTK window is blank under GDK's Wayland backend; GDK_BACKEND=x11 runs it on XWayland, where it renders."
   }
 }

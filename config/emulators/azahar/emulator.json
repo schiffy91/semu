@@ -131,6 +131,11 @@
           "${bios}/n3ds",
           "${bios}"
         ]
+      },
+      "env": {
+        "set": {
+          "QT_QPA_PLATFORM": "xcb"
+        }
       }
     }
   },
@@ -138,6 +143,7 @@
     "launch": "The source-built Azahar binary consumes --fullscreen followed by one positional ROM path. There is no libretro core, host Flatpak, or prebuilt-AppImage fallback.",
     "state": "Azahar reads configuration from $XDG_CONFIG_HOME/azahar-emu and keeps NAND, SDMC saves, save states, cache, and logs below the isolated $XDG_DATA_HOME/$XDG_CACHE_HOME state roots. Named key files are first-run copies; external sources are never modified.",
     "sandbox": "The package closure, ROM library, shared Emulation tree, and BIOS/key roots are read-only. Azahar can write only its isolated state root.",
-    "rendering": "OpenGL is pinned in the managed profile. The source-built package directly links libsemurenderer, submits display-upright semantic top/bottom regions from TryPresent, copies the resulting immutable pointer map into GRenderWindow, then submits completed frontend rendering immediately before SwapBuffers. Bottom-screen touch uses ABI-native coordinates and bypasses Azahar's framebuffer-layout transform. Both lanes use zero rotation, with no deactivate or display/session path."
+    "rendering": "OpenGL is pinned in the managed profile. The source-built package directly links libsemurenderer, submits display-upright semantic top/bottom regions from TryPresent, copies the resulting immutable pointer map into GRenderWindow, then submits completed frontend rendering immediately before SwapBuffers. Bottom-screen touch uses ABI-native coordinates and bypasses Azahar's framebuffer-layout transform. Both lanes use zero rotation, with no deactivate or display/session path.",
+    "display": "Azahar's Qt window refuses shared OpenGL contexts on the Wayland platform plugin; QT_QPA_PLATFORM=xcb runs it on XWayland."
   }
 }
