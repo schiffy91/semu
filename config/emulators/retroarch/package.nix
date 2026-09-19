@@ -1,12 +1,14 @@
 # RetroArch built from the nixpkgs recipe with Semu's render hook: gl3 calls the
 # shared renderer after the game draw and before present. Cores come from
 # nixpkgs and are selected from the linux system bindings.
-{ lib, pkgs, callPackage, retroarch-bare, libretro, makeBinaryWrapper, writeText, symlinkJoin, btrcpy, semuRenderer, retroarch-assets, retroarch-joypad-autoconfig, libretro-core-info }:
+{ lib, pkgs, callPackage, fetchFromGitHub, fetchFromForgejo, retroarch-bare, libretro, makeBinaryWrapper, writeText, symlinkJoin, btrcpy, semuRenderer, retroarch-assets, retroarch-joypad-autoconfig, libretro-core-info }:
 
 let
   repositoryRoot = ../../..;
   systemsDir = repositoryRoot + "/config/systems";
   coreManifest = lib.importJSON ./cores.json;
+  packageContract = lib.importJSON ./package.json;
+  pinned = import ../../../packaging/nix/pinned_source.nix { inherit lib fetchFromGitHub fetchFromForgejo; };
   systemIds = lib.attrNames (lib.filterAttrs (_: type: type == "directory") (builtins.readDir systemsDir));
   systemContracts = map (id: lib.importJSON (systemsDir + "/${id}/system.json")) systemIds;
   linuxBinding = entry: (entry.emulator or "") == "retroarch" && entry ? core && lib.elem "linux" (entry.platforms or [ "linux" ]);
@@ -16,14 +18,20 @@ let
       implementation = coreManifest.implementations.${core}.linux or (throw "retroarch: core '${core}' has no linux implementation in cores.json");
       attribute = implementation.package_attribute;
     in
-    assert lib.assertMsg (implementation.kind == "nixpkgs_libretro") "retroarch: core '${core}' is not a nixpkgs libretro core";
-    libretro.${attribute} or (throw "retroarch: nixpkgs libretro has no '${attribute}' for core '${core}'");
+    assert lib.assertMsg (implementation.kind == "pinned_source") "retroarch: core '${core}' must be a pinned source build";
+    (libretro.${attribute} or (throw "retroarch: nixpkgs libretro has no recipe '${attribute}' for core '${core}'")).overrideAttrs (previous: {
+      src = pinned implementation.source;  # Semu's pin, nixpkgs' build wiring
+      allowSubstitutes = false;  # never a cache binary
+    });
   bridgeSource = lib.fileset.toSource {
     root = repositoryRoot;
     fileset = repositoryRoot + "/src/renderer/retroarch";
   };
   hooked = retroarch-bare.overrideAttrs (previous: {
     pname = "retroarch-semu";
+    version = packageContract.version;
+    src = pinned packageContract.source;
+    allowSubstitutes = false;  # never a cache binary
     patches = (previous.patches or [ ]) ++ [ ./retroarch.patch ./retroarch_commands.patch ./retroarch_get_status_null_safety.patch ];
     nativeBuildInputs = (previous.nativeBuildInputs or [ ]) ++ [ btrcpy ];
     buildInputs = (previous.buildInputs or [ ]) ++ [ semuRenderer ];

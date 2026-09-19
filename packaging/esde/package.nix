@@ -16,7 +16,8 @@ esDePackages.emulationstation-de.overrideAttrs (previous: {
     hash = sourceHash;
   };
 
-  patches = (previous.patches or [ ]) ++ [ ./settings-menu.patch ];  # SEMU SETTINGS entry in the main menu
+  patches = (previous.patches or [ ]) ++ [ ./settings-menu.patch ];
+  allowSubstitutes = false;  # never a cache binary  # SEMU SETTINGS entry in the main menu
 
   cmakeFlags = (previous.cmakeFlags or [ ]) ++ [ (esDePackages.lib.cmakeBool "APPLICATION_UPDATER" false) ];
 

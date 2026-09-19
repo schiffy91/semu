@@ -7,7 +7,7 @@
     "kind": "github",
     "owner": "libretro",
     "repo": "RetroArch",
-    "revision": "69a4f0ea1e8aaf442ae4858f2e7f2b31a1776576",
+    "tag": "v1.22.2",
     "sha256": "sha256-+3jgoh6OVbPzW5/nCvpB1CRgkMTBxLkYMm6UV16/cfU="
   },
   "platforms": [
@@ -73,5 +73,6 @@
   "doc": {
     "macos": "The macOS source build uses Metal and is outside this OpenGL renderer integration.",
     "rendering": "The forced Linux glcore driver exposes minimal GL 3.3 / GLSL 330 taps around the directly linked ABI-3 renderer boundaries. Strict BTRC loads compiler-generated semantic surface identities and native geometry, validates live content without selecting by pixel dimensions, and publishes one query-order-independent pointer snapshot per input poll. RetroArch menus and settings bypass rendering and require a physical pointer release before gameplay resumes."
-  }
+  },
+  "nixpkgs_recipe": "retroarch-bare"
 }

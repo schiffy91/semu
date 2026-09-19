@@ -20,6 +20,13 @@ is "linux". Every emulator is built by Nix from a pinned source revision.
 
 ## Standing directives
 
+- Every emulator, every libretro core, RetroArch and ES-DE are compiled by
+  Nix from a source pin Semu owns (`config/emulators/<id>/package.json`
+  `source`, `cores.json` `source`, `packaging/esde/package.nix`). Nixpkgs
+  only lends build wiring. `allowSubstitutes = false` everywhere and
+  `packaging/nix/emulators.nix` refuses a substitutable emulator at
+  evaluation time. A nixpkgs package used as-is is a regression.
+
 These come from the owner and do not change without an explicit new message:
 
 - One emulator at a time. Get one working end to end, then the next.

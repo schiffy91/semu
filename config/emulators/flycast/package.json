@@ -1,15 +1,14 @@
 {
   "schema_version": 1,
   "id": "flycast",
-  "version": "2.6",
+  "version": "2.7",
   "build_kind": "source",
   "source": {
     "kind": "github",
     "owner": "flyinghead",
     "repo": "flycast",
-    "tag": "v2.6",
-    "revision": "392a429e8b040b3e5bf6696cb4f984274fc44123",
-    "sha256": "sha256-Lq6Oj+U4mpwNlL/t3ZB9gjE5NAVQyhdvBwLUGu1C+j0=",
+    "tag": "v2.7",
+    "sha256": "sha256-8qGAoMQ7hF1HFx7m+CuhxX+IG7L4fk1XQkKUYZODGmA=",
     "fetch_submodules": true
   },
   "platforms": [
@@ -39,5 +38,6 @@
     "source": "The Steam Deck payload is the immutable Flycast v2.6 commit with the complete hash-pinned upstream submodule tree. Nix replaces the older nixpkgs source and carries no host, Flatpak, libretro, or binary fallback.",
     "platforms": "Only x86_64-linux is an owned package target. Other hosts fail at Nix evaluation.",
     "rendering": "The directly linked game phase receives the final upright windowbox before Flycast draws OSD or routes video. The post-UI phase runs immediately before imguiDriver presents. UI, failure, and teardown paths emit no inactive reports."
-  }
+  },
+  "nixpkgs_recipe": "flycast"
 }
