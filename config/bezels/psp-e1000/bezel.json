@@ -1,0 +1,68 @@
+{
+  "schema_version": 1,
+  "id": "psp-e1000",
+  "label": "PSP E1000",
+  "family": "handheld",
+  "layout": "fixed",
+  "art": "assets/bezels/psp/classic.png",
+  "background": "assets/bezels/backgrounds/desk-night.png",
+  "frame": {
+    "width": 0.035,
+    "radius": 0.02,
+    "color": "#0c0c0c"
+  },
+  "canvas": {
+    "w": 5335,
+    "h": 2160
+  },
+  "screens": [
+    {
+      "id": "main",
+      "tube": {
+        "x": 1406,
+        "y": 419,
+        "w": 2523,
+        "h": 1420
+      },
+      "fit": "aspect",
+      "inset": 0.0,
+      "shape": {
+        "kind": "rounded",
+        "radius": 0.0099,
+        "exponent": 4.0
+      },
+      "surround": "#101010",
+      "curvature": 0.0,
+      "vignette": 0.06,
+      "bloom": 0.0,
+      "glow": 0.08,
+      "glass": {
+        "asset": "assets/bezels/tv/tube-reflection.png",
+        "reflect": 0.18
+      },
+      "shader": null,
+      "measurement": {
+        "tool": "physical_proportions",
+        "device_bbox": {
+          "x": 186,
+          "y": 30,
+          "w": 4963,
+          "h": 2106
+        },
+        "device_mm": {
+          "w": 172,
+          "h": 73
+        },
+        "screen_mm": {
+          "w": 95.2,
+          "h": 53.6
+        },
+        "screen_center": {
+          "x": 0.5,
+          "y": 0.48
+        },
+        "note": "PSP-E1000 art has no drawn screen edge; the panel is placed from the device's real proportions between the controls"
+      }
+    }
+  ]
+}

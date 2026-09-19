@@ -1,0 +1,76 @@
+{
+  "schema_version": 1,
+  "id": "n3ds-vertical-shell",
+  "label": "3DS vertical shell",
+  "family": "dual",
+  "layout": "fixed",
+  "art": "assets/bezels/n3ds/vertical.png",
+  "background": "assets/bezels/backgrounds/desk-night.png",
+  "frame": null,
+  "canvas": {
+    "w": 2560,
+    "h": 1600
+  },
+  "screens": [
+    {
+      "id": "top",
+      "tube": {
+        "x": 741,
+        "y": 76,
+        "w": 1078,
+        "h": 645
+      },
+      "fit": "aspect",
+      "inset": 0.0,
+      "shape": {
+        "kind": "rounded",
+        "radius": 0.0186,
+        "exponent": 4.0
+      },
+      "surround": "#101010",
+      "curvature": 0.0,
+      "vignette": 0.05,
+      "bloom": 0.0,
+      "glow": 0.1,
+      "glass": {
+        "asset": "assets/bezels/tv/tube-reflection.png",
+        "reflect": 0.1
+      },
+      "shader": null,
+      "measurement": {
+        "tool": "legacy",
+        "mode": "measured_dark_display_openings"
+      }
+    },
+    {
+      "id": "bottom",
+      "tube": {
+        "x": 856,
+        "y": 898,
+        "w": 848,
+        "h": 632
+      },
+      "fit": "aspect",
+      "inset": 0.0,
+      "shape": {
+        "kind": "rounded",
+        "radius": 0.019,
+        "exponent": 4.0
+      },
+      "surround": "#101010",
+      "curvature": 0.0,
+      "vignette": 0.05,
+      "bloom": 0.0,
+      "glow": 0.1,
+      "glass": {
+        "asset": "assets/bezels/tv/tube-reflection.png",
+        "reflect": 0.1
+      },
+      "shader": null,
+      "measurement": {
+        "tool": "legacy",
+        "mode": "measured_dark_display_openings"
+      }
+    }
+  ]
+}

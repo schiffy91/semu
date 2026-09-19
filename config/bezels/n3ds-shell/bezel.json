@@ -1,0 +1,84 @@
+{
+  "schema_version": 1,
+  "id": "n3ds-shell",
+  "label": "3DS shell",
+  "family": "dual",
+  "layout": "fixed",
+  "art": "assets/bezels/n3ds/shell.png",
+  "background": "assets/bezels/backgrounds/desk-night.png",
+  "frame": {
+    "width": 0.03,
+    "radius": 0.02,
+    "color": "#0e0e0e"
+  },
+  "canvas": {
+    "w": 3840,
+    "h": 2160
+  },
+  "screens": [
+    {
+      "id": "top",
+      "tube": {
+        "x": 36,
+        "y": 377,
+        "w": 2628,
+        "h": 1641
+      },
+      "fit": "aspect",
+      "inset": 0.0,
+      "shape": {
+        "kind": "rounded",
+        "radius": 0.0119,
+        "exponent": 4.0
+      },
+      "surround": "#151515",
+      "curvature": 0.0,
+      "vignette": 0.05,
+      "bloom": 0.0,
+      "glow": 0.1,
+      "glass": {
+        "asset": "assets/bezels/tv/tube-reflection.png",
+        "reflect": 0.1
+      },
+      "shader": null,
+      "measurement": {
+        "tool": "tools/bezel-measure.py",
+        "mode": "raycast",
+        "smooth": 15,
+        "threshold": 3
+      }
+    },
+    {
+      "id": "bottom",
+      "tube": {
+        "x": 2785,
+        "y": 1086,
+        "w": 1012,
+        "h": 764
+      },
+      "fit": "aspect",
+      "inset": 0.0,
+      "shape": {
+        "kind": "rounded",
+        "radius": 0.0228,
+        "exponent": 4.0
+      },
+      "surround": "#151515",
+      "curvature": 0.0,
+      "vignette": 0.05,
+      "bloom": 0.0,
+      "glow": 0.1,
+      "glass": {
+        "asset": "assets/bezels/tv/tube-reflection.png",
+        "reflect": 0.1
+      },
+      "shader": null,
+      "measurement": {
+        "tool": "tools/bezel-measure.py",
+        "mode": "raycast",
+        "smooth": 15,
+        "threshold": 3
+      }
+    }
+  ]
+}

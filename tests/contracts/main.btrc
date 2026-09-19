@@ -277,11 +277,25 @@ class RenderingContract {
         FileSystem.mkdirp(PathTools.join(assets, "share/libretro/shaders/semu/gb"));
         FileSystem.writeText(PathTools.join(assets, "share/libretro/shaders/semu/gb/screen.slangp"), "#reference x\n");
         FileSystem.mkdirp(PathTools.join(assets, "share/semu/assets/bezels/gb"));
-        FileSystem.writeText(PathTools.join(assets, "share/semu/assets/bezels/gb/dmg.png"), "png");
-        FileSystem.writeText(PathTools.join(assets, "share/semu/assets/bezels/gb/reflection.png"), "png");
+        FileSystem.mkdirp(PathTools.join(assets, "share/semu/assets/bezels/backgrounds"));
+        FileSystem.writeText(PathTools.join(assets, "share/semu/assets/bezels/gb/dmg-shell.png"), "png");
+        FileSystem.writeText(PathTools.join(assets, "share/semu/assets/bezels/gb/dmg-glass.png"), "png");
+        FileSystem.writeText(PathTools.join(assets, "share/semu/assets/bezels/backgrounds/desk-night.png"), "png");
         SemuSystem nes = fixture.model.system("nes");
         Vector<string> nesBare = SemuRenderEnvironment.compile(fixture.plan, nes, "retroarch", "/state/retroarch", fixture.diagnostics);
-        contract.expect(nesBare.contains("SEMU_RENDER_CURVATURE=0.04") && nesBare.contains("SEMU_RENDER_CORNER_RADIUS=0.045") && nesBare.contains("SEMU_RENDER_GLOW=0.18") && nesBare.contains("SEMU_RENDER_BLOOM=0.2") && nesBare.contains("SEMU_RENDER_VIGNETTE=0.22"), "the CRT look parameters reach the compositor");
+        contract.expect(nesBare.contains("SEMU_RENDER_BEZELS=1") && nesBare.contains("SEMU_RENDER_ART=" + PathTools.join(fixture.plan.configRoot, "assets/bezels/tv/soqueroeu/nes.png")), "the repository's own plate serves when the asset root lacks it");
+        FileSystem.mkdirp(PathTools.join(assets, "share/semu/assets/bezels/tv/soqueroeu"));
+        FileSystem.writeText(PathTools.join(assets, "share/semu/assets/bezels/tv/soqueroeu/nes.png"), "png");
+        FileSystem.writeText(PathTools.join(assets, "share/semu/assets/bezels/tv/tube-reflection.png"), "png");
+        Vector<string> nesTv = SemuRenderEnvironment.compile(fixture.plan, nes, "retroarch", "/state/retroarch", fixture.diagnostics);
+        contract.expect(nesTv.contains("SEMU_RENDER_BEZELS=1") && nesTv.contains("SEMU_RENDER_BEZEL_ID=tv-soqueroeu-nes") && nesTv.contains("SEMU_RENDER_LAYOUT=fixed"), "the NES default bezel is the living-room TV package");
+        bool nesLook = false;
+        bool nesTube = false;
+        for entry in nesTv {
+            if (entry.startsWith("SEMU_RENDER_SCREEN_0_LOOK=1,0.006")) { nesLook = true; }  // rounded tube, radius 8.9px of 1419
+            if (entry.startsWith("SEMU_RENDER_SCREEN_0=0.242969,0.0939815,0.514323,0.656944")) { nesTube = true; }  // 933,203,1975,1419 of 3840x2160
+        }
+        contract.expect(nesLook && nesTube, "the measured NES tube and its look reach the compositor per screen");
         FileSystem.mkdirp(PathTools.join(assets, "share/libretro/shaders/semu/nes"));
         FileSystem.writeText(PathTools.join(assets, "share/libretro/shaders/semu/nes/screen.slangp"), "#reference x\n");
         Vector<string> nesFull = SemuRenderEnvironment.compile(fixture.plan, nes, "retroarch", "/state/retroarch", fixture.diagnostics);
@@ -289,15 +303,17 @@ class RenderingContract {
         Vector<string> full = SemuRenderEnvironment.compile(fixture.plan, gb, "retroarch", "/state/retroarch", fixture.diagnostics);
         contract.expect(full.contains("SEMU_RENDER_SHADERS=1") && full.contains("SEMU_RENDER_BEZELS=1"), "assets present enables shaders and bezels");
         contract.expect(full.contains("SEMU_RENDER_SHADER_PRESET=" + assets + "/share/libretro/shaders/semu/gb/screen.slangp"), "shader preset path");
-        contract.expect(full.contains("SEMU_RENDER_ART=" + assets + "/share/semu/assets/bezels/gb/dmg.png"), "bezel art path");
+        contract.expect(full.contains("SEMU_RENDER_ART=" + assets + "/share/semu/assets/bezels/gb/dmg-shell.png"), "bezel art path");
+        contract.expect(full.contains("SEMU_RENDER_BACKGROUND=" + assets + "/share/semu/assets/bezels/backgrounds/desk-night.png"), "the package background plate");
+        contract.expect(full.contains("SEMU_RENDER_SCREEN_0_GLASS=" + assets + "/share/semu/assets/bezels/gb/dmg-glass.png"), "the lens glass plate is per screen");
         bool hole = false;
-        bool canvas = false;
+        bool surround = false;
         for entry in full {
-            if (entry.startsWith("SEMU_RENDER_SCREEN=0.2")) { hole = true; }
-            if (entry.startsWith("SEMU_RENDER_CANVAS=minimum_aperture,2,1")) { canvas = true; }
+            if (entry.startsWith("SEMU_RENDER_SCREEN_0=0.1875,0.213737,0.625,0.268029")) { hole = true; }  // 645,1307,2150,1639 of 3440x6115
+            if (entry.startsWith("SEMU_RENDER_SCREEN_0_SURROUND=0.309804,0.352941,0.227451")) { surround = true; }  // #4f5a3a
         }
-        contract.expect(hole, "bezel hole rectangle");
-        contract.expect(canvas, "canvas policy");
+        contract.expect(hole, "the measured lens rectangle");
+        contract.expect(surround, "the olive DMG surround color");
         SemuDiagnostics diagnostics = SemuDiagnostics();
         SemuPlan off = SemuResolver.plan(fixture.model, "linux-desktop", fixture.plan.semuHome, assets, "{\"visual\":{\"crt_shaders\":false,\"bezels\":false}}", diagnostics);
         Vector<string> disabled = SemuRenderEnvironment.compile(off, gb, "retroarch", "/state/retroarch", diagnostics);
@@ -305,6 +321,13 @@ class RenderingContract {
         SemuSystem nds = fixture.model.system("nds");
         Vector<string> dual = SemuRenderEnvironment.compile(fixture.plan, nds, "retroarch", "/state/retroarch", fixture.diagnostics);
         contract.expect(dual.contains("SEMU_RENDER_SURFACE_COUNT=2"), "nds has two surfaces");
+        contract.expect(dual.contains("SEMU_RENDER_BEZELS=1") && dual.contains("SEMU_RENDER_LAYOUT=main_right") && dual.contains("SEMU_RENDER_BEZEL_ID=dual-main-right"), "the DS default is the computed main-right layout, which needs no plate");
+        bool frame = false;
+        for entry in dual { if (entry.startsWith("SEMU_RENDER_FRAME=0.05,0.03,")) { frame = true; } }
+        contract.expect(frame, "computed layouts draw a frame around each screen");
+        SemuPlan shell = SemuResolver.plan(fixture.model, "linux-desktop", fixture.plan.semuHome, assets, "{\"visual\":{\"systems\":{\"nds\":{\"bezel_variant\":\"shell\"}}}}", diagnostics);
+        Vector<string> shellEnv = SemuRenderEnvironment.compile(shell, nds, "retroarch", "/state/retroarch", diagnostics);
+        contract.expect(shellEnv.contains("SEMU_RENDER_BEZEL_ID=nds-shell") && shellEnv.contains("SEMU_RENDER_LAYOUT=fixed") && shellEnv.contains("SEMU_RENDER_SCREEN_1=0.710417,0.518519,0.286458,0.291667"), "the DS shell alternate is a fixed package with two measured openings");
         contract.expect(fixture.diagnostics.ok(), "rendering emitter has no diagnostics: " + fixture.diagnostics.render());
     }
 }

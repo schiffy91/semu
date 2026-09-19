@@ -1,0 +1,46 @@
+{
+  "schema_version": 1,
+  "id": "crt-premium-16x9",
+  "label": "Premium 16:9 CRT",
+  "family": "tv",
+  "layout": "fixed",
+  "art": "assets/bezels/tv/crt-16x9.png",
+  "background": "assets/bezels/backgrounds/desk-night.png",
+  "frame": null,
+  "canvas": {
+    "w": 1280,
+    "h": 800
+  },
+  "screens": [
+    {
+      "id": "main",
+      "tube": {
+        "x": 176,
+        "y": 105,
+        "w": 928,
+        "h": 522
+      },
+      "fit": "aspect",
+      "inset": 0.0,
+      "shape": {
+        "kind": "rounded",
+        "radius": 0.045,
+        "exponent": 4.0
+      },
+      "surround": "#000000",
+      "curvature": 0.035,
+      "vignette": 0.2,
+      "bloom": 0.18,
+      "glow": 0.2,
+      "glass": {
+        "asset": "assets/bezels/tv/tube-reflection.png",
+        "reflect": 0.12
+      },
+      "shader": null,
+      "measurement": {
+        "tool": "legacy",
+        "mode": "measured_continuous_opening"
+      }
+    }
+  ]
+}

@@ -1,80 +1,38 @@
 {
-  "schema_version": 1,
+  "schema_version": 4,
   "enabled": true,
-  "default_variant": "vertical",
-  "hole": {
-    "x": 0.289453125,
-    "y": 0.0475,
-    "w": 0.42109375,
-    "h": 0.90875
-  },
-  "screen_holes": {
-    "top": {
-      "x": 0.289453125,
-      "y": 0.0475,
-      "w": 0.42109375,
-      "h": 0.403125
-    },
-    "bottom": {
-      "x": 0.334375,
-      "y": 0.56125,
-      "w": 0.33125,
-      "h": 0.395
-    }
-  },
+  "default_variant": "main_right",
+  "widescreen_variant": "",
   "variants": [
     {
-      "id": "vertical",
-      "label": "3DS Vertical",
-      "art": "assets/bezels/n3ds/vertical.png",
-      "screen_holes": {
-        "top": {
-          "x": 0.289453125,
-          "y": 0.0475,
-          "w": 0.42109375,
-          "h": 0.403125
-        },
-        "bottom": {
-          "x": 0.334375,
-          "y": 0.56125,
-          "w": 0.33125,
-          "h": 0.395
-        }
-      },
-      "hole": {
-        "x": 0.289453125,
-        "y": 0.0475,
-        "w": 0.42109375,
-        "h": 0.90875
-      }
+      "id": "main_right",
+      "label": "Main centered, second right",
+      "bezel": "dual-main-right"
     },
     {
-      "id": "horizontal",
-      "label": "Side by Side",
-      "art": "assets/bezels/n3ds/horizontal.png",
-      "hole": {
-        "x": 0.04921875,
-        "y": 0.25375,
-        "w": 0.914453125,
-        "h": 0.585625
-      },
-      "screen_holes": {
-        "top": {
-          "x": 0.04921875,
-          "y": 0.25375,
-          "w": 0.611328125,
-          "h": 0.585625
-        },
-        "bottom": {
-          "x": 0.731640625,
-          "y": 0.519375,
-          "w": 0.23203125,
-          "h": 0.27625
-        }
-      }
+      "id": "main_left",
+      "label": "Main centered, second left",
+      "bezel": "dual-main-left"
+    },
+    {
+      "id": "side_by_side",
+      "label": "Side by side",
+      "bezel": "dual-side-by-side"
+    },
+    {
+      "id": "stacked",
+      "label": "Stacked",
+      "bezel": "dual-stacked"
+    },
+    {
+      "id": "shell",
+      "label": "3DS shell",
+      "bezel": "n3ds-shell"
+    },
+    {
+      "id": "vertical",
+      "label": "3DS vertical shell",
+      "bezel": "n3ds-vertical-shell"
     }
-  ],
-  "doc": {
-    "note": "The vertical shell is the Steam Deck default because both 400x240 and 320x240 surfaces fit at native integer scale on 1280x800. Horizontal remains a top-screen-priority alternative and may fractionally downscale the touch surface. Rectangles target measured dark display openings, and both variants consume Azahar's separate ABI2 surfaces."
-  }
+  ]
 }

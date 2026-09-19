@@ -27,7 +27,9 @@
   },
   "emulators": [
     {
-      "emulator": "melonds",
+      "emulator": "retroarch",
+      "label": "melonDS (libretro)",
+      "core": "melonds",
       "platforms": [
         "linux"
       ]
@@ -39,6 +41,12 @@
       "platforms": [
         "linux",
         "macos"
+      ]
+    },
+    {
+      "emulator": "melonds",
+      "platforms": [
+        "linux"
       ]
     }
   ],
@@ -87,9 +95,9 @@
     "priority": "bezel",
     "kind": "dual",
     "corner_radius": 0.05,
-    "lcd_grid": 0.20,
+    "lcd_grid": 0.2,
     "lcd_subpixel": 0.25,
-    "lcd_wash": 0.10,
+    "lcd_wash": 0.1,
     "shell_tint": {
       "r": 0.82,
       "g": 0.82,
@@ -98,6 +106,7 @@
   },
   "doc": {
     "hardware": "dual 256x192 resistive LCDs",
-    "intent": "Expose both screens with independent LCD processing; Semu owns the dual-screen presentation contract."
+    "intent": "Expose both screens with independent LCD processing; Semu owns the dual-screen presentation contract.",
+    "core": "RetroArch cores are hooked by the Semu renderer, so the default is the libretro melonDS build; standalone melonDS stays as an unhooked alternate."
   }
 }

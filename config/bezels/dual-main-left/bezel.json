@@ -1,0 +1,62 @@
+{
+  "schema_version": 1,
+  "id": "dual-main-left",
+  "label": "Main screen centered, second screen left",
+  "family": "dual",
+  "layout": "main_left",
+  "art": null,
+  "background": "assets/bezels/backgrounds/desk-night.png",
+  "frame": {
+    "width": 0.05,
+    "radius": 0.03,
+    "color": "#121212"
+  },
+  "canvas": null,
+  "screens": [
+    {
+      "id": "top",
+      "tube": null,
+      "fit": "aspect",
+      "inset": 0.0,
+      "shape": {
+        "kind": "rounded",
+        "radius": 0.02,
+        "exponent": 4.0
+      },
+      "surround": "#000000",
+      "curvature": 0.0,
+      "vignette": 0.05,
+      "bloom": 0.0,
+      "glow": 0.1,
+      "glass": {
+        "asset": "assets/bezels/tv/tube-reflection.png",
+        "reflect": 0.1
+      },
+      "shader": null
+    },
+    {
+      "id": "bottom",
+      "tube": null,
+      "fit": "aspect",
+      "inset": 0.0,
+      "shape": {
+        "kind": "rounded",
+        "radius": 0.02,
+        "exponent": 4.0
+      },
+      "surround": "#000000",
+      "curvature": 0.0,
+      "vignette": 0.05,
+      "bloom": 0.0,
+      "glow": 0.1,
+      "glass": {
+        "asset": "assets/bezels/tv/tube-reflection.png",
+        "reflect": 0.1
+      },
+      "shader": null
+    }
+  ],
+  "doc": {
+    "layout": "computed: the main screen takes the largest integer scale that still leaves the second screen at least 1x beside it; each screen gets a drawn frame"
+  }
+}

@@ -1,41 +1,23 @@
 {
-  "schema_version": 1,
+  "schema_version": 4,
   "enabled": true,
-  "default_variant": "crt_4x3",
-  "widescreen_variant": "crt_16x9",
+  "default_variant": "tv",
+  "widescreen_variant": "",
   "variants": [
     {
-      "id": "crt_4x3",
+      "id": "tv",
+      "label": "Living room CRT",
+      "bezel": "tv-soqueroeu-ps2"
+    },
+    {
+      "id": "premium",
       "label": "Premium 4:3 CRT",
-      "art": "assets/bezels/tv/crt-4x3.png",
-      "hole": {
-        "x": 0.25,
-        "y": 0.1616161616161616,
-        "w": 0.5,
-        "h": 0.6
-      }
+      "bezel": "crt-premium-4x3"
     },
     {
-      "id": "crt_16x9",
-      "label": "Premium 16:9 CRT",
-      "art": "assets/bezels/tv/crt-16x9.png",
-      "hole": {
-        "x": 0.1375,
-        "y": 0.13125,
-        "w": 0.725,
-        "h": 0.6525
-      }
-    },
-    {
-      "id": "silver_4x3",
+      "id": "silver",
       "label": "Silver 4:3 CRT",
-      "art": "assets/bezels/tv/crt-4x3-silver.png",
-      "hole": {
-        "x": 0.25,
-        "y": 0.1616161616161616,
-        "w": 0.5,
-        "h": 0.6
-      }
+      "bezel": "crt-silver-4x3"
     }
   ]
 }

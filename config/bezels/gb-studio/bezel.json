@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "id": "gb-studio",
+  "label": "Studio Gray",
+  "family": "handheld",
+  "layout": "fixed",
+  "art": "assets/bezels/gb/classic.png",
+  "background": "assets/bezels/backgrounds/desk-night.png",
+  "frame": null,
+  "canvas": {
+    "w": 1065,
+    "h": 1477
+  },
+  "screens": [
+    {
+      "id": "main",
+      "tube": {
+        "x": 258,
+        "y": 260,
+        "w": 594,
+        "h": 535
+      },
+      "fit": "aspect",
+      "inset": 0.0,
+      "shape": {
+        "kind": "rounded",
+        "radius": 0.0336,
+        "exponent": 4.0
+      },
+      "surround": "#3c4632",
+      "curvature": 0.0,
+      "vignette": 0.06,
+      "bloom": 0.0,
+      "glow": 0.08,
+      "glass": null,
+      "shader": null,
+      "measurement": {
+        "tool": "legacy",
+        "mode": "aspect_constrained_lens_fit"
+      }
+    }
+  ]
+}

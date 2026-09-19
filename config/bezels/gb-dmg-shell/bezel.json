@@ -1,0 +1,51 @@
+{
+  "schema_version": 1,
+  "id": "gb-dmg-shell",
+  "label": "Game Boy DMG-01",
+  "family": "handheld",
+  "layout": "fixed",
+  "art": "assets/bezels/gb/dmg-shell.png",
+  "background": "assets/bezels/backgrounds/desk-night.png",
+  "frame": null,
+  "canvas": {
+    "w": 3440,
+    "h": 6115
+  },
+  "screens": [
+    {
+      "id": "main",
+      "tube": {
+        "x": 645,
+        "y": 1307,
+        "w": 2150,
+        "h": 1639
+      },
+      "fit": "aspect",
+      "inset": 0.03,
+      "shape": {
+        "kind": "rounded",
+        "radius": 0.054,
+        "exponent": 4.0
+      },
+      "surround": "#4f5a3a",
+      "curvature": 0.0,
+      "vignette": 0.06,
+      "bloom": 0.0,
+      "glow": 0.08,
+      "glass": {
+        "asset": "assets/bezels/gb/dmg-glass.png",
+        "reflect": 0.3
+      },
+      "shader": null,
+      "measurement": {
+        "tool": "tools/bezel-measure.py",
+        "mode": "opaque",
+        "layer": "Gameboy_DMG01_Glass.png",
+        "corner_radius_px": 88.5
+      }
+    }
+  ],
+  "doc": {
+    "lens": "the glass plate's opaque bounds are the lens; the 10:9 LCD sits centered inside on the olive surround"
+  }
+}

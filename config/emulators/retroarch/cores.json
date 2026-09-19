@@ -140,6 +140,18 @@
           "x86_64-darwin": "sha256-PeDlLkHfCFx0yNrd8mwds1N5q0QZnDcAZwz7LGBhjs0="
         }
       }
+    },
+    "azahar": {
+      "linux": {
+        "kind": "flake",
+        "flake": "cores/azahar"
+      }
+    },
+    "melonds": {
+      "linux": {
+        "kind": "flake",
+        "flake": "cores/melonds"
+      }
     }
   }
 }

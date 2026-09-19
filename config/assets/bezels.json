@@ -3,7 +3,8 @@
   "doc": {
     "purpose": "Global bezel manifest: central selection policy, generic fallbacks, and deterministic bezel-art recipes.",
     "provenance": "Semu-owned originals carry exact output metadata. Remaining upstream assets are explicitly pinned for handheld and dual-screen presentations only.",
-    "shared_pins": "Upstreams named in both this file and shaders.json must carry identical rev/nar_hash pins; NixPackageContract enforces agreement."
+    "shared_pins": "Upstreams named in both this file and shaders.json must carry identical rev/nar_hash pins; NixPackageContract enforces agreement.",
+    "scenes": "scene recipes flatten pinned upstream layers, multiply an ambient lighting plate over them (the late-night room), and downscale; bezel packages under config/bezels measure their screens on the upstream canvas."
   },
   "upstreams": {
     "duimon_mega_bezel": {
@@ -12,560 +13,13 @@
       "repo": "Duimon-Mega-Bezel",
       "rev": "d03dabf6e6b190dbf9b692efd492d8edd21abbb9",
       "nar_hash": "sha256-EvWkMiw5ne0Im43404NVTJiQO5mWhMVNEk7fdpgb5rY="
-    }
-  },
-  "policy": {
-    "doc": {
-      "purpose": "Central bezel selection policy. Presentations own asset paths and source-pixel geometry without putting path policy in BTRC.",
-      "geometry": "Each presentation binds normalized runtime rectangles to explicit source-pixel apertures. The 4:3 and 16:9 CRTs are shared across systems so aspect substitution changes geometry and art together.",
-      "quality": "Asset identity and geometry are machine-verifiable. Visual realism remains a physical screenshot acceptance gate."
     },
-    "presentations": {
-      "crt_4x3": {
-        "label": "Premium 4:3 CRT",
-        "art": "assets/bezels/tv/crt-4x3.png",
-        "aspect": {
-          "w": 4,
-          "h": 3
-        },
-        "hole": {
-          "x": 0.25,
-          "y": 0.1616161616161616,
-          "w": 0.5,
-          "h": 0.6
-        },
-        "geometry": {
-          "method": "measured_continuous_opening",
-          "canvas": {
-            "w": 1584,
-            "h": 990
-          },
-          "source_pixels": {
-            "x": 396,
-            "y": 160,
-            "w": 792,
-            "h": 594
-          }
-        }
-      },
-      "crt_16x9": {
-        "label": "Premium 16:9 CRT",
-        "art": "assets/bezels/tv/crt-16x9.png",
-        "aspect": {
-          "w": 16,
-          "h": 9
-        },
-        "hole": {
-          "x": 0.1375,
-          "y": 0.13125,
-          "w": 0.725,
-          "h": 0.6525
-        },
-        "geometry": {
-          "method": "measured_continuous_opening",
-          "canvas": {
-            "w": 1280,
-            "h": 800
-          },
-          "source_pixels": {
-            "x": 176,
-            "y": 105,
-            "w": 928,
-            "h": 522
-          }
-        }
-      },
-      "gb_dmg_gray": {
-        "label": "DMG-01 Gray",
-        "art": "assets/bezels/gb/dmg.png",
-        "glass": "assets/bezels/gb/reflection.png",
-        "aspect": {
-          "w": 10,
-          "h": 9
-        },
-        "hole": {
-          "x": 0.2,
-          "y": 0.125,
-          "w": 0.6,
-          "h": 0.36
-        },
-        "geometry": {
-          "method": "curated_centered_10x9_region_within_lens_surround",
-          "canvas": {
-            "w": 1024,
-            "h": 1536
-          },
-          "source_pixels": {
-            "x": 204.8,
-            "y": 192,
-            "w": 614.4,
-            "h": 552.96
-          }
-        }
-      },
-      "gb_classic_gray": {
-        "label": "Classic Gray",
-        "art": "assets/bezels/gb/classic.png",
-        "aspect": {
-          "w": 10,
-          "h": 9
-        },
-        "hole": {
-          "x": 0.2422535211,
-          "y": 0.1760324983,
-          "w": 0.5577464789,
-          "h": 0.3619498984
-        },
-        "geometry": {
-          "method": "aspect_constrained_lens_fit",
-          "canvas": {
-            "w": 1065,
-            "h": 1477
-          },
-          "source_pixels": {
-            "x": 258,
-            "y": 260,
-            "w": 594,
-            "h": 534.6
-          }
-        }
-      },
-      "gbc_frost_purple": {
-        "label": "Frost Purple",
-        "art": "assets/bezels/gbc/frost-purple.png",
-        "hole": {
-          "x": 0.3409090909,
-          "y": 0.1303030303,
-          "w": 0.3207070707,
-          "h": 0.4050505051
-        },
-        "geometry": {
-          "method": "measured_continuous_lens",
-          "canvas": {
-            "w": 1584,
-            "h": 990
-          },
-          "source_pixels": {
-            "x": 540,
-            "y": 129,
-            "w": 508,
-            "h": 401
-          }
-        }
-      },
-      "gba_indigo_wide": {
-        "label": "Indigo Wide",
-        "art": "assets/bezels/gba/indigo-wide.png",
-        "hole": {
-          "x": 0.3025477707,
-          "y": 0.2697302697,
-          "w": 0.3949044586,
-          "h": 0.4145854146
-        },
-        "geometry": {
-          "method": "measured_continuous_lens",
-          "canvas": {
-            "w": 1570,
-            "h": 1001
-          },
-          "source_pixels": {
-            "x": 475,
-            "y": 270,
-            "w": 620,
-            "h": 415
-          }
-        }
-      },
-      "nds_vertical_shell": {
-        "label": "DS Vertical",
-        "art": "assets/bezels/nds/vertical.png",
-        "hole": {
-          "x": 0.340234375,
-          "y": 0.04,
-          "w": 0.31953125,
-          "h": 0.911875
-        },
-        "screen_holes": {
-          "top": {
-            "x": 0.340234375,
-            "y": 0.04,
-            "w": 0.31953125,
-            "h": 0.3825
-          },
-          "bottom": {
-            "x": 0.340234375,
-            "y": 0.56875,
-            "w": 0.31953125,
-            "h": 0.383125
-          }
-        },
-        "geometry": {
-          "method": "measured_dark_display_openings",
-          "canvas": {
-            "w": 2560,
-            "h": 1600
-          },
-          "screen_pixels": {
-            "top": {
-              "x": 871,
-              "y": 64,
-              "w": 818,
-              "h": 612
-            },
-            "bottom": {
-              "x": 871,
-              "y": 910,
-              "w": 818,
-              "h": 613
-            }
-          }
-        }
-      },
-      "nds_horizontal_shell": {
-        "label": "DS Side by Side",
-        "art": "assets/bezels/nds/horizontal.png",
-        "hole": {
-          "x": 0.044140625,
-          "y": 0.2025,
-          "w": 0.91171875,
-          "h": 0.519375
-        },
-        "screen_holes": {
-          "top": {
-            "x": 0.044140625,
-            "y": 0.2025,
-            "w": 0.43203125,
-            "h": 0.519375
-          },
-          "bottom": {
-            "x": 0.523828125,
-            "y": 0.2025,
-            "w": 0.43203125,
-            "h": 0.519375
-          }
-        },
-        "geometry": {
-          "method": "measured_dark_display_openings",
-          "canvas": {
-            "w": 2560,
-            "h": 1600
-          },
-          "screen_pixels": {
-            "top": {
-              "x": 113,
-              "y": 324,
-              "w": 1106,
-              "h": 831
-            },
-            "bottom": {
-              "x": 1341,
-              "y": 324,
-              "w": 1106,
-              "h": 831
-            }
-          }
-        }
-      },
-      "nds_big_screen": {
-        "label": "DS Big Screen",
-        "art": "assets/bezels/nds/big_screen.png",
-        "hole": {
-          "x": 0.17109375,
-          "y": 0.274375,
-          "w": 0.66796875,
-          "h": 0.515625
-        },
-        "screen_holes": {
-          "top": {
-            "x": 0.17109375,
-            "y": 0.274375,
-            "w": 0.412890625,
-            "h": 0.495625
-          },
-          "bottom": {
-            "x": 0.6578125,
-            "y": 0.5725,
-            "w": 0.18125,
-            "h": 0.2175
-          }
-        },
-        "geometry": {
-          "method": "measured_dark_display_openings",
-          "canvas": {
-            "w": 2560,
-            "h": 1600
-          },
-          "screen_pixels": {
-            "top": {
-              "x": 438,
-              "y": 439,
-              "w": 1057,
-              "h": 793
-            },
-            "bottom": {
-              "x": 1684,
-              "y": 916,
-              "w": 464,
-              "h": 348
-            }
-          }
-        }
-      },
-      "n3ds_vertical_shell": {
-        "label": "3DS Vertical",
-        "art": "assets/bezels/n3ds/vertical.png",
-        "hole": {
-          "x": 0.289453125,
-          "y": 0.0475,
-          "w": 0.42109375,
-          "h": 0.90875
-        },
-        "screen_holes": {
-          "top": {
-            "x": 0.289453125,
-            "y": 0.0475,
-            "w": 0.42109375,
-            "h": 0.403125
-          },
-          "bottom": {
-            "x": 0.334375,
-            "y": 0.56125,
-            "w": 0.33125,
-            "h": 0.395
-          }
-        },
-        "geometry": {
-          "method": "measured_dark_display_openings",
-          "canvas": {
-            "w": 2560,
-            "h": 1600
-          },
-          "screen_pixels": {
-            "top": {
-              "x": 741,
-              "y": 76,
-              "w": 1078,
-              "h": 645
-            },
-            "bottom": {
-              "x": 856,
-              "y": 898,
-              "w": 848,
-              "h": 632
-            }
-          }
-        }
-      },
-      "n3ds_horizontal_shell": {
-        "label": "3DS Side by Side",
-        "art": "assets/bezels/n3ds/horizontal.png",
-        "hole": {
-          "x": 0.04921875,
-          "y": 0.25375,
-          "w": 0.914453125,
-          "h": 0.585625
-        },
-        "screen_holes": {
-          "top": {
-            "x": 0.04921875,
-            "y": 0.25375,
-            "w": 0.611328125,
-            "h": 0.585625
-          },
-          "bottom": {
-            "x": 0.731640625,
-            "y": 0.519375,
-            "w": 0.23203125,
-            "h": 0.27625
-          }
-        },
-        "geometry": {
-          "method": "measured_dark_display_openings",
-          "canvas": {
-            "w": 2560,
-            "h": 1600
-          },
-          "screen_pixels": {
-            "top": {
-              "x": 126,
-              "y": 406,
-              "w": 1565,
-              "h": 937
-            },
-            "bottom": {
-              "x": 1873,
-              "y": 831,
-              "w": 594,
-              "h": 442
-            }
-          }
-        }
-      },
-      "psp_classic": {
-        "label": "Classic Black",
-        "art": "assets/bezels/psp/classic.png",
-        "hole": {
-          "x": 0.24,
-          "y": 0.11,
-          "w": 0.52,
-          "h": 0.728
-        },
-        "geometry": {
-          "method": "declared_safe_aperture",
-          "canvas": {
-            "w": 5335,
-            "h": 2160
-          },
-          "source_pixels": {
-            "x": 1280.4,
-            "y": 237.6,
-            "w": 2774.2,
-            "h": 1572.48
-          }
-        }
-      }
-    },
-    "systems": {
-      "nes": {
-        "default_variant": "crt_4x3",
-        "variants": {
-          "crt_4x3": "crt_4x3"
-        },
-        "alternatives": []
-      },
-      "snes": {
-        "default_variant": "crt_4x3",
-        "variants": {
-          "crt_4x3": "crt_4x3"
-        },
-        "alternatives": []
-      },
-      "genesis": {
-        "default_variant": "crt_4x3",
-        "variants": {
-          "crt_4x3": "crt_4x3"
-        },
-        "alternatives": []
-      },
-      "n64": {
-        "default_variant": "crt_4x3",
-        "widescreen_variant": "crt_16x9",
-        "variants": {
-          "crt_4x3": "crt_4x3",
-          "crt_16x9": "crt_16x9"
-        },
-        "alternatives": []
-      },
-      "psx": {
-        "default_variant": "crt_4x3",
-        "widescreen_variant": "crt_16x9",
-        "variants": {
-          "crt_4x3": "crt_4x3",
-          "crt_16x9": "crt_16x9"
-        },
-        "alternatives": []
-      },
-      "dreamcast": {
-        "default_variant": "crt_4x3",
-        "widescreen_variant": "crt_16x9",
-        "variants": {
-          "crt_4x3": "crt_4x3",
-          "crt_16x9": "crt_16x9"
-        },
-        "alternatives": []
-      },
-      "gc": {
-        "default_variant": "crt_4x3",
-        "widescreen_variant": "crt_16x9",
-        "variants": {
-          "crt_4x3": "crt_4x3",
-          "crt_16x9": "crt_16x9"
-        },
-        "alternatives": []
-      },
-      "wii": {
-        "default_variant": "crt_4x3",
-        "widescreen_variant": "crt_16x9",
-        "variants": {
-          "crt_4x3": "crt_4x3",
-          "crt_16x9": "crt_16x9"
-        },
-        "alternatives": []
-      },
-      "ps2": {
-        "default_variant": "crt_4x3",
-        "widescreen_variant": "crt_16x9",
-        "variants": {
-          "crt_4x3": "crt_4x3",
-          "crt_16x9": "crt_16x9"
-        },
-        "alternatives": []
-      },
-      "gb": {
-        "default_variant": "gb_dmg_gray",
-        "variants": {
-          "dmg": "gb_dmg_gray",
-          "studio": "gb_classic_gray"
-        },
-        "alternatives": [
-          "gb_classic_gray"
-        ]
-      },
-      "gbc": {
-        "default_variant": "gbc_frost_purple",
-        "variants": {
-          "frost_purple": "gbc_frost_purple"
-        },
-        "alternatives": []
-      },
-      "gba": {
-        "default_variant": "gba_indigo_wide",
-        "variants": {
-          "indigo_wide": "gba_indigo_wide"
-        },
-        "alternatives": []
-      },
-      "nds": {
-        "default_variant": "nds_horizontal_shell",
-        "variants": {
-          "vertical": "nds_vertical_shell",
-          "horizontal": "nds_horizontal_shell",
-          "big_screen": "nds_big_screen"
-        },
-        "alternatives": [
-          "nds_vertical_shell",
-          "nds_big_screen"
-        ]
-      },
-      "n3ds": {
-        "default_variant": "n3ds_vertical_shell",
-        "variants": {
-          "vertical": "n3ds_vertical_shell",
-          "horizontal": "n3ds_horizontal_shell"
-        },
-        "alternatives": [
-          "n3ds_horizontal_shell"
-        ]
-      },
-      "psp": {
-        "default_variant": "psp_classic",
-        "variants": {
-          "classic": "psp_classic"
-        },
-        "alternatives": []
-      },
-      "switch": {
-        "enabled": false,
-        "default_variant": "",
-        "variants": {},
-        "alternatives": []
-      },
-      "wiiu": {
-        "enabled": false,
-        "default_variant": "",
-        "variants": {},
-        "alternatives": []
-      }
+    "soqueroeu_tv": {
+      "kind": "github",
+      "owner": "soqueroeu",
+      "repo": "Soqueroeu-TV-Backgrounds_V2.0",
+      "rev": "52bc4588d88c7bd319f922659d3ba74ed81ce959",
+      "nar_hash": "sha256-8IoaMLw7i4TttFR08Ycji6COuaxaeNeBwPCLyfyTD90="
     }
   },
   "generic": {
@@ -640,45 +94,6 @@
         "provenance": "Semu-owned charcoal 16:9 CRT render. The continuous 928x522 source-pixel opening is declared by the central policy and widescreen-capable CRT systems."
       }
     },
-    "assets/bezels/generic/bezel-3ds.png": {
-      "type": "local",
-      "path": "config/assets/bezels/generic/bezel-3ds.png",
-      "output": {
-        "width": 1280,
-        "height": 800,
-        "bit_depth": 16,
-        "color_type": 6,
-        "sha256": "b48f80d1ec9e71cf36bff09ca4995511eb1f3f10603703b53dfd1d453a89fab2"
-      }
-    },
-    "assets/bezels/gb/dmg.png": {
-      "type": "local",
-      "path": "config/assets/bezels/gb/dmg.png",
-      "output": {
-        "width": 1024,
-        "height": 1536,
-        "bit_depth": 8,
-        "color_type": 6,
-        "sha256": "973c7381c44c3c4a97186c2dfbcf6695296e8196d598d3a30110f72d45330a6c"
-      },
-      "doc": {
-        "provenance": "Original Semu-owned generic gray handheld product render generated for this project on 2026-07-21, with no third-party logo or trademark. The flat chroma background and lens were converted to alpha with the bundled image-generation helper."
-      }
-    },
-    "assets/bezels/gb/reflection.png": {
-      "type": "local",
-      "path": "config/assets/bezels/gb/reflection.png",
-      "output": {
-        "width": 1672,
-        "height": 941,
-        "bit_depth": 8,
-        "color_type": 6,
-        "sha256": "289924361e3b8a809f0c4958fe117b849c302a993f3bed5f6465ae92fdff4d73"
-      },
-      "doc": {
-        "provenance": "Original Semu-owned sparse coated-glass reflection map generated for this project on 2026-07-21. The compositor maps its RGB and alpha only over game pixels through the declared reflection coefficient."
-      }
-    },
     "assets/bezels/gb/classic.png": {
       "type": "local",
       "path": "config/assets/bezels/gb/classic.png",
@@ -691,34 +106,6 @@
       },
       "doc": {
         "provenance": "Semu-owned complete-console product render. The raster carries the continuous lens; systems/gb/bezels.json owns the game aperture."
-      }
-    },
-    "assets/bezels/gbc/frost-purple.png": {
-      "type": "local",
-      "path": "config/assets/bezels/gbc/frost-purple.png",
-      "output": {
-        "width": 1584,
-        "height": 990,
-        "bit_depth": 8,
-        "color_type": 2,
-        "sha256": "72d31045e3d1cd423d492b8c3dc7579e4743ace26daba22bb69cb35f8a1c8da2"
-      },
-      "doc": {
-        "provenance": "Semu-owned frost-purple Game Boy Color render. The continuous 508x401 source-pixel lens is declared by systems/gbc/bezels.json."
-      }
-    },
-    "assets/bezels/gba/indigo-wide.png": {
-      "type": "local",
-      "path": "config/assets/bezels/gba/indigo-wide.png",
-      "output": {
-        "width": 1570,
-        "height": 1001,
-        "bit_depth": 8,
-        "color_type": 2,
-        "sha256": "dfd0b5d1b6313109e6d243328e532c68745f5f39bd934baf91a6fac6a5144646"
-      },
-      "doc": {
-        "provenance": "Semu-owned indigo wide Game Boy Advance render. The continuous 620x415 source-pixel lens is declared by systems/gba/bezels.json."
       }
     },
     "assets/fonts/menu-font.png": {
@@ -769,20 +156,6 @@
         "provenance": "Committed source (un-fetchable): originally baked from Duimon NDS_Vertical_Alt-[ADV]-[Guest].slangp via bake_bezels.sh (librashader, day variant, intro off). Lives in-tree at its final bezels/ path; bake-bezels round-trips it identically."
       }
     },
-    "assets/bezels/nds/horizontal.png": {
-      "type": "local",
-      "path": "config/assets/bezels/nds/horizontal.png",
-      "output": {
-        "width": 2560,
-        "height": 1600,
-        "bit_depth": 8,
-        "color_type": 6,
-        "sha256": "a52537d848bee36f14f72de5fecbdecef7213f68809db9dbfd52bc550f488b56"
-      },
-      "doc": {
-        "provenance": "Committed source (un-fetchable): originally baked from Duimon NDS-[ADV]-[Guest].slangp via bake_bezels.sh (librashader, day variant, intro off). Lives in-tree at its final bezels/ path; bake-bezels round-trips it identically."
-      }
-    },
     "assets/bezels/n3ds/vertical.png": {
       "type": "local",
       "path": "config/assets/bezels/n3ds/vertical.png",
@@ -795,34 +168,6 @@
       },
       "doc": {
         "provenance": "Committed source (un-fetchable): originally baked from Duimon 3DS_Vertical_Alt-[ADV]-[Guest].slangp via bake_bezels.sh (librashader, day variant, intro off). Lives in-tree at its final bezels/ path; bake-bezels round-trips it identically."
-      }
-    },
-    "assets/bezels/n3ds/horizontal.png": {
-      "type": "local",
-      "path": "config/assets/bezels/n3ds/horizontal.png",
-      "output": {
-        "width": 2560,
-        "height": 1600,
-        "bit_depth": 8,
-        "color_type": 6,
-        "sha256": "4a709ce9a895a1d326d2b96681caf61d50c8e6c5dcb65e969d6b2d5c1c570f23"
-      },
-      "doc": {
-        "provenance": "Committed source (un-fetchable): originally baked from Duimon 3DS-[ADV]-[Guest].slangp via bake_bezels.sh (librashader, day variant, intro off). Lives in-tree at its final bezels/ path; bake-bezels round-trips it identically."
-      }
-    },
-    "assets/bezels/nds/big_screen.png": {
-      "type": "local",
-      "path": "config/assets/bezels/nds/big_screen.png",
-      "output": {
-        "width": 2560,
-        "height": 1600,
-        "bit_depth": 8,
-        "color_type": 6,
-        "sha256": "3848df6572b465e4dcd5c1f97e53e9c8233dc8835381b81c1dcda662252c4daa"
-      },
-      "doc": {
-        "provenance": "Committed source (un-fetchable): originally baked from Duimon NDS_Hybrid-[ADV]-[Guest].slangp via bake_bezels.sh (librashader, day variant, intro off). Lives in-tree at its final bezels/ path; bake-bezels round-trips it identically."
       }
     },
     "assets/bezels/tv/crt-4x3-silver.png": {
@@ -843,34 +188,29 @@
     },
     "assets/bezels/gbc/berry.png": {
       "type": "recolor",
-      "base": "assets/bezels/gbc/frost-purple.png",
+      "base": "assets/bezels/gbc/shell.png",
       "color": "#e0457b",
       "brightness": 125,
-      "doc": {
-        "provenance": "Semu-owned berry recolor of the frost-purple GBC shell; identical lens geometry."
-      },
+      "overlay_asset": "assets/bezels/gbc/glass.png",
       "output": {
-        "width": 1584,
-        "height": 990,
+        "width": 1152,
+        "height": 2048,
         "bit_depth": 8,
         "color_type": 6,
-        "sha256": "d94d7831fc3ba8d7a183a545e00434816548c4e788252b8936951d20bc0a9c80"
+        "sha256": "96c25c459bbe25717e63ddfc3e5c5c9ea7d7bd5428577f76cce58929ac4079da"
       }
     },
     "assets/bezels/gba/arctic.png": {
       "type": "recolor",
-      "base": "assets/bezels/gba/indigo-wide.png",
+      "base": "assets/bezels/gba/shell.png",
       "color": "#eef1f4",
       "brightness": 190,
-      "doc": {
-        "provenance": "Semu-owned arctic-white recolor of the indigo GBA shell; identical lens geometry."
-      },
       "output": {
-        "width": 1570,
-        "height": 1001,
+        "width": 2048,
+        "height": 1182,
         "bit_depth": 8,
         "color_type": 6,
-        "sha256": "16bf63076b8c58ac097b0c14195320d05553ca2b2dfe8f015d50161b559fe422"
+        "sha256": "ca07e8d599c6f830dcd4ad0b3a8668f9392442b100b4e69340ed25d8cd84e7f9"
       }
     },
     "assets/bezels/psp/red.png": {
@@ -878,15 +218,386 @@
       "base": "assets/bezels/psp/classic.png",
       "color": "#a3161c",
       "brightness": 210,
-      "doc": {
-        "provenance": "Semu-owned deep-red recolor of the black PSP shell; identical lens geometry."
-      },
       "output": {
         "width": 5335,
         "height": 2160,
         "bit_depth": 8,
         "color_type": 6,
         "sha256": "fcf6476e833030bcbe09001fa05193a2baa370b050b03545c3cfc254010b0f51"
+      }
+    },
+    "assets/bezels/tv/soqueroeu/n64.png": {
+      "type": "scene",
+      "from": "soqueroeu_tv",
+      "layers": [
+        "img/Nintendo_N64/N64.png"
+      ],
+      "resize": "2560x1440",
+      "ambient": {
+        "from": "duimon_mega_bezel",
+        "path": "Graphics/_Night/NightLighting_1920x1080.png",
+        "opacity": 0.8
+      },
+      "doc": {
+        "why": "Soqueroeu living-room CRT scene with the manufacturer's badge, lit for late night"
+      },
+      "output": {
+        "width": 2560,
+        "height": 1440,
+        "bit_depth": 8,
+        "color_type": 6,
+        "sha256": "62048db16cc9583d11a83b9e245f671b023dc91246438b778b4a6624839cc6b8"
+      }
+    },
+    "assets/bezels/tv/soqueroeu/nes.png": {
+      "type": "scene",
+      "from": "soqueroeu_tv",
+      "layers": [
+        "img/Nintendo_NES/NES.png"
+      ],
+      "resize": "2560x1440",
+      "ambient": {
+        "from": "duimon_mega_bezel",
+        "path": "Graphics/_Night/NightLighting_1920x1080.png",
+        "opacity": 0.8
+      },
+      "doc": {
+        "why": "Soqueroeu living-room CRT scene with the manufacturer's badge, lit for late night"
+      },
+      "output": {
+        "width": 2560,
+        "height": 1440,
+        "bit_depth": 8,
+        "color_type": 6,
+        "sha256": "36be3fc7d070d163600d152a1d8100475e526a6f0fe44bd10140008fb9318f70"
+      }
+    },
+    "assets/bezels/tv/soqueroeu/snes.png": {
+      "type": "scene",
+      "from": "soqueroeu_tv",
+      "layers": [
+        "img/Nintendo_SuperNintendo/SuperNES.png"
+      ],
+      "resize": "2560x1440",
+      "ambient": {
+        "from": "duimon_mega_bezel",
+        "path": "Graphics/_Night/NightLighting_1920x1080.png",
+        "opacity": 0.8
+      },
+      "doc": {
+        "why": "Soqueroeu living-room CRT scene with the manufacturer's badge, lit for late night"
+      },
+      "output": {
+        "width": 2560,
+        "height": 1440,
+        "bit_depth": 8,
+        "color_type": 6,
+        "sha256": "0fadf7fb26f06399e013ccfe3739c99d91d1a20de581086f10d4a08dfa458a73"
+      }
+    },
+    "assets/bezels/tv/soqueroeu/genesis.png": {
+      "type": "scene",
+      "from": "soqueroeu_tv",
+      "layers": [
+        "img/Sega_Genesis/Sega_Genesis.png"
+      ],
+      "resize": "2560x1440",
+      "ambient": {
+        "from": "duimon_mega_bezel",
+        "path": "Graphics/_Night/NightLighting_1920x1080.png",
+        "opacity": 0.8
+      },
+      "doc": {
+        "why": "Soqueroeu living-room CRT scene with the manufacturer's badge, lit for late night"
+      },
+      "output": {
+        "width": 2560,
+        "height": 1440,
+        "bit_depth": 8,
+        "color_type": 6,
+        "sha256": "dbe7929ed11c8ac89ce33c505b068527e94f4153267c637e5a7213a8aec586e1"
+      }
+    },
+    "assets/bezels/tv/soqueroeu/psx.png": {
+      "type": "scene",
+      "from": "soqueroeu_tv",
+      "layers": [
+        "img/Sony_Playstation/PSX.png"
+      ],
+      "resize": "2560x1440",
+      "ambient": {
+        "from": "duimon_mega_bezel",
+        "path": "Graphics/_Night/NightLighting_1920x1080.png",
+        "opacity": 0.8
+      },
+      "doc": {
+        "why": "Soqueroeu living-room CRT scene with the manufacturer's badge, lit for late night"
+      },
+      "output": {
+        "width": 2560,
+        "height": 1440,
+        "bit_depth": 8,
+        "color_type": 6,
+        "sha256": "37335c5f3a0a56a822d71174b90087d9bc9290897c9693e20c9a75ab8593684c"
+      }
+    },
+    "assets/bezels/tv/soqueroeu/ps2.png": {
+      "type": "scene",
+      "from": "soqueroeu_tv",
+      "layers": [
+        "img/Sony_Playstation2/PS2.png"
+      ],
+      "resize": "2560x1440",
+      "ambient": {
+        "from": "duimon_mega_bezel",
+        "path": "Graphics/_Night/NightLighting_1920x1080.png",
+        "opacity": 0.8
+      },
+      "doc": {
+        "why": "Soqueroeu living-room CRT scene with the manufacturer's badge, lit for late night"
+      },
+      "output": {
+        "width": 2560,
+        "height": 1440,
+        "bit_depth": 8,
+        "color_type": 6,
+        "sha256": "9da4afd75cabc0e87b1e50444909da82c8e54e92c55be2c39ec079b1a7861b63"
+      }
+    },
+    "assets/bezels/tv/soqueroeu/gc.png": {
+      "type": "scene",
+      "from": "soqueroeu_tv",
+      "layers": [
+        "img/Nintendo_GameCube/GameCube.png"
+      ],
+      "resize": "2560x1440",
+      "ambient": {
+        "from": "duimon_mega_bezel",
+        "path": "Graphics/_Night/NightLighting_1920x1080.png",
+        "opacity": 0.8
+      },
+      "doc": {
+        "why": "Soqueroeu living-room CRT scene with the manufacturer's badge, lit for late night"
+      },
+      "output": {
+        "width": 2560,
+        "height": 1440,
+        "bit_depth": 8,
+        "color_type": 6,
+        "sha256": "86d829670a217b0d2541fd88d4b11a6acdd16fd0452b57b23e74f4bbf9d94172"
+      }
+    },
+    "assets/bezels/tv/soqueroeu/wii.png": {
+      "type": "scene",
+      "from": "soqueroeu_tv",
+      "layers": [
+        "img/Nintendo_Wii/Wii_4x3.png"
+      ],
+      "resize": "2560x1440",
+      "ambient": {
+        "from": "duimon_mega_bezel",
+        "path": "Graphics/_Night/NightLighting_1920x1080.png",
+        "opacity": 0.8
+      },
+      "doc": {
+        "why": "Soqueroeu living-room CRT scene with the manufacturer's badge, lit for late night"
+      },
+      "output": {
+        "width": 2560,
+        "height": 1440,
+        "bit_depth": 8,
+        "color_type": 6,
+        "sha256": "d7685d3205de268c754378c6a004add8f8882bbe7f3e5def8b7f323f96fe25ee"
+      }
+    },
+    "assets/bezels/tv/soqueroeu/wii-16x9.png": {
+      "type": "scene",
+      "from": "soqueroeu_tv",
+      "layers": [
+        "img/Nintendo_Wii/Wii_16x9.png"
+      ],
+      "resize": "2560x1440",
+      "ambient": {
+        "from": "duimon_mega_bezel",
+        "path": "Graphics/_Night/NightLighting_1920x1080.png",
+        "opacity": 0.8
+      },
+      "doc": {
+        "why": "Soqueroeu living-room CRT scene with the manufacturer's badge, lit for late night"
+      },
+      "output": {
+        "width": 2560,
+        "height": 1440,
+        "bit_depth": 8,
+        "color_type": 6,
+        "sha256": "cc4dac274a71b6d2b3fcb55c332562885e54c2edd4424104b652d8fe28c69a19"
+      }
+    },
+    "assets/bezels/tv/soqueroeu/dreamcast.png": {
+      "type": "scene",
+      "from": "soqueroeu_tv",
+      "layers": [
+        "img/Sega_Dreamcast/Dreamcast.png"
+      ],
+      "resize": "2560x1440",
+      "ambient": {
+        "from": "duimon_mega_bezel",
+        "path": "Graphics/_Night/NightLighting_1920x1080.png",
+        "opacity": 0.8
+      },
+      "doc": {
+        "why": "Soqueroeu living-room CRT scene with the manufacturer's badge, lit for late night"
+      },
+      "output": {
+        "width": 2560,
+        "height": 1440,
+        "bit_depth": 8,
+        "color_type": 6,
+        "sha256": "cabf80e7b2e687814a891779b5346fe39b869c94bc170e5c4ba130b1123d3cf6"
+      }
+    },
+    "assets/bezels/backgrounds/desk-night.png": {
+      "type": "scene",
+      "from": "duimon_mega_bezel",
+      "layers": [
+        "Graphics/_Backgrounds/dark_wood1.jpg"
+      ],
+      "resize": "2560x1440",
+      "ambient": {
+        "from": "duimon_mega_bezel",
+        "path": "Graphics/_Night/NightLighting_1920x1080.png",
+        "opacity": 0.45
+      },
+      "doc": {
+        "why": "dark wooden desk under two lamps: the global background behind handheld shells and computed layouts"
+      },
+      "output": {
+        "width": 2560,
+        "height": 1440,
+        "bit_depth": 8,
+        "color_type": 6,
+        "sha256": "4331a7126b5e06471a3742dfdd50bf0e78292a644c65a4542f8153744eb3348c"
+      }
+    },
+    "assets/bezels/gb/dmg-shell.png": {
+      "type": "flatten",
+      "from": "duimon_mega_bezel",
+      "layers": [
+        "Graphics/Nintendo_Game_Boy/Gameboy_DMG01_Device.png",
+        "Graphics/Nintendo_Game_Boy/Gameboy_DMG01_Decal.png",
+        "Graphics/Nintendo_Game_Boy/Gameboy_DMG01_Top.png"
+      ],
+      "doc": {
+        "why": "Duimon DMG-01 device, decal and top plates flattened; the lens is left to the glass layer"
+      },
+      "output": {
+        "width": 1152,
+        "height": 2048,
+        "bit_depth": 8,
+        "color_type": 6,
+        "sha256": "24008cfbb6223b9f0fc0a3d98debc621fbcc443c85193c4ed87d619649ac8573"
+      }
+    },
+    "assets/bezels/gb/dmg-glass.png": {
+      "type": "glass",
+      "from": "duimon_mega_bezel",
+      "path": "Graphics/Nintendo_Game_Boy/Gameboy_DMG01_Glass.png",
+      "output": {
+        "width": 1152,
+        "height": 2048,
+        "bit_depth": 8,
+        "color_type": 6,
+        "sha256": "a5e0b1b26ca682308b11ca81250723cbe1681e3067bf7d4199e085e714cec899"
+      }
+    },
+    "assets/bezels/gbc/shell.png": {
+      "type": "flatten",
+      "from": "duimon_mega_bezel",
+      "layers": [
+        "Graphics/Nintendo_Game_Boy_Color/GBC_Device.png",
+        "Graphics/Nintendo_Game_Boy_Color/GBC_Device_LED.png",
+        "Graphics/Nintendo_Game_Boy_Color/GBC_Decal.png",
+        "Graphics/Nintendo_Game_Boy_Color/GBC_Top.png"
+      ],
+      "doc": {
+        "why": "Duimon Game Boy Color device, button plate, decal and top plates flattened"
+      },
+      "output": {
+        "width": 1152,
+        "height": 2048,
+        "bit_depth": 8,
+        "color_type": 6,
+        "sha256": "e6602622b7b8a183ea543ad5b12093b5c094fe00b05db21055a2de7efabca651"
+      }
+    },
+    "assets/bezels/gbc/glass.png": {
+      "type": "glass",
+      "from": "duimon_mega_bezel",
+      "path": "Graphics/Nintendo_Game_Boy_Color/GBC_Glass.png",
+      "output": {
+        "width": 1152,
+        "height": 2048,
+        "bit_depth": 8,
+        "color_type": 6,
+        "sha256": "172dc6678ef4e7ea4d695487f94d7ba16735e5ad4231e0b9c45a6f8eeeaa5b72"
+      }
+    },
+    "assets/bezels/gba/shell.png": {
+      "type": "flatten",
+      "from": "duimon_mega_bezel",
+      "layers": [
+        "Graphics/Nintendo_GBA/GBA_Device.png",
+        "Graphics/Nintendo_GBA/GBA_Decal.png",
+        "Graphics/Nintendo_GBA/GBA_Top.png"
+      ],
+      "doc": {
+        "why": "Duimon AGB-001 device, decal and top plates flattened"
+      },
+      "output": {
+        "width": 2048,
+        "height": 1182,
+        "bit_depth": 8,
+        "color_type": 6,
+        "sha256": "9c0412e6fdfd2160dd47939f55e2fb7ba6561141204e98d6c6b62804ba2d05ef"
+      }
+    },
+    "assets/bezels/gba/glass.png": {
+      "type": "glass",
+      "from": "duimon_mega_bezel",
+      "path": "Graphics/Nintendo_GBA/GBA_Glass.png",
+      "output": {
+        "width": 2048,
+        "height": 1182,
+        "bit_depth": 8,
+        "color_type": 6,
+        "sha256": "f6ce310e4d48e112dc7cd3ce021e2bf32efeb2ffad1600995386c4bd63bcf760"
+      }
+    },
+    "assets/bezels/n3ds/shell.png": {
+      "type": "copy",
+      "from": "duimon_mega_bezel",
+      "path": "Graphics/Nintendo_3DS/3DS.png",
+      "file_sha256": "d0127d6966ffda8c792752cbcd2b064bb555302c114d1edecc501b10bd398cb0"
+    },
+    "assets/bezels/nds/shell.png": {
+      "type": "copy",
+      "from": "duimon_mega_bezel",
+      "path": "Graphics/Nintendo_NDS/NDS.png",
+      "file_sha256": "a7f88dd5ffe8a8ab17abe7f752333e1da8d32e1e786ee5cbdb38b0cb120b1edb"
+    },
+    "assets/bezels/tv/tube-reflection.png": {
+      "type": "glass",
+      "from": "duimon_mega_bezel",
+      "path": "Graphics/_Common/Tube_Reflection_01.png",
+      "doc": {
+        "why": "Duimon's static tube reflection plate, blended over every CRT tube and the PSP panel"
+      },
+      "output": {
+        "width": 1440,
+        "height": 1080,
+        "bit_depth": 8,
+        "color_type": 6,
+        "sha256": "27feaf28197ddaad8b7e4a6d4ef36e0d9ed603c3c73217e0c92c2406df156cab"
       }
     }
   },

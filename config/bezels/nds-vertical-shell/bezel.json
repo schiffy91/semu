@@ -1,0 +1,76 @@
+{
+  "schema_version": 1,
+  "id": "nds-vertical-shell",
+  "label": "DS vertical shell",
+  "family": "dual",
+  "layout": "fixed",
+  "art": "assets/bezels/nds/vertical.png",
+  "background": "assets/bezels/backgrounds/desk-night.png",
+  "frame": null,
+  "canvas": {
+    "w": 2560,
+    "h": 1600
+  },
+  "screens": [
+    {
+      "id": "top",
+      "tube": {
+        "x": 871,
+        "y": 64,
+        "w": 818,
+        "h": 612
+      },
+      "fit": "aspect",
+      "inset": 0.0,
+      "shape": {
+        "kind": "rounded",
+        "radius": 0.0196,
+        "exponent": 4.0
+      },
+      "surround": "#101010",
+      "curvature": 0.0,
+      "vignette": 0.05,
+      "bloom": 0.0,
+      "glow": 0.1,
+      "glass": {
+        "asset": "assets/bezels/tv/tube-reflection.png",
+        "reflect": 0.1
+      },
+      "shader": null,
+      "measurement": {
+        "tool": "legacy",
+        "mode": "measured_dark_display_openings"
+      }
+    },
+    {
+      "id": "bottom",
+      "tube": {
+        "x": 871,
+        "y": 910,
+        "w": 818,
+        "h": 613
+      },
+      "fit": "aspect",
+      "inset": 0.0,
+      "shape": {
+        "kind": "rounded",
+        "radius": 0.0196,
+        "exponent": 4.0
+      },
+      "surround": "#101010",
+      "curvature": 0.0,
+      "vignette": 0.05,
+      "bloom": 0.0,
+      "glow": 0.1,
+      "glass": {
+        "asset": "assets/bezels/tv/tube-reflection.png",
+        "reflect": 0.1
+      },
+      "shader": null,
+      "measurement": {
+        "tool": "legacy",
+        "mode": "measured_dark_display_openings"
+      }
+    }
+  ]
+}
