@@ -39,6 +39,7 @@ install_release() {
   prune
   install_desktop_entry
   echo "installed $actual -> $root/current"
+  echo "add to Steam: quit Steam, then run $root/bin/semu-deck-cli steam shortcuts"
 }
 
 prune() {  # keep only current and previous
