@@ -1,0 +1,230 @@
+import Library.FileSystem;
+import Library.JSON;
+import Library.Map;
+import Library.Strings;
+import Library.Vector;
+import ./lib/json.btrc;
+
+class SemuDiagnostics {
+    public Vector<string> errors;
+
+    public SemuDiagnostics() { self.errors = []; }
+
+    public void add(string file, string field, string message) {
+        string line = f"{file}: {field}: {message}";
+        if (!self.errors.contains(line)) { self.errors.push(line); }
+    }
+
+    public bool ok() { return self.errors.isEmpty(); }
+
+    public string render() { return self.errors.join("\n"); }
+}
+
+class SemuTarget {
+    public string id;
+    public string platform;
+    public string inherits;
+    public string backend;
+    public string input;
+    public JSONValue settings;
+    public JSONValue definition;
+
+    public SemuTarget(string id, JSONValue definition) {
+        self.id = id;
+        self.definition = definition;
+        self.platform = SemuJson.textAt(definition, "platform");
+        self.inherits = SemuJson.textAt(definition, "inherits");
+        self.backend = SemuJson.textAt(definition, "backend");
+        self.input = SemuJson.textAt(definition, "input");
+        JSONValue settings = definition.get("settings");
+        self.settings = settings == null || !settings.isObject() ? JSONValue.makeObject() : settings;
+    }
+}
+
+class SemuSystemBinding {
+    public string emulator;
+    public string label;
+    public string core;
+    public Vector<string> platforms;
+    public Vector<string> arguments;
+
+    public SemuSystemBinding(JSONValue definition) {
+        self.emulator = SemuJson.textAt(definition, "emulator");
+        self.label = SemuJson.textAt(definition, "label");
+        self.core = SemuJson.textAt(definition, "core");
+        self.platforms = SemuJson.strings(definition.get("platforms"));
+        self.arguments = SemuJson.strings(definition.get("args"));
+    }
+
+    public bool supports(string platform) { return self.platforms.isEmpty() || self.platforms.contains(platform); }
+}
+
+class SemuSystem {
+    public string id;
+    public string name;
+    public string theme;
+    public string romDir;
+    public Vector<string> esPlatforms;
+    public Vector<string> extensions;
+    public Vector<SemuSystemBinding> bindings;
+    public JSONValue definition;
+    public string file;
+
+    public SemuSystem(string id, string file, JSONValue definition) {
+        self.id = id;
+        self.file = file;
+        self.definition = definition;
+        self.name = SemuJson.textAt(definition, "name");
+        self.theme = SemuJson.textAt(definition, "es_de.theme");
+        self.romDir = SemuJson.textAt(definition, "rom.dir");
+        self.esPlatforms = SemuJson.strings(SemuJson.get(definition, "es_de.platforms"));
+        self.extensions = SemuJson.strings(SemuJson.get(definition, "rom.extensions"));
+        self.bindings = [];
+        JSONValue emulators = definition.get("emulators");
+        if (emulators != null && emulators.isArray()) {
+            for (int index = 0; index < emulators.size(); index++) { self.bindings.push(SemuSystemBinding(emulators.at(index))); }
+        }
+    }
+
+    public Vector<SemuSystemBinding> bindingsFor(string platform) {
+        Vector<SemuSystemBinding> result = [];
+        for binding in self.bindings { if (binding.supports(platform)) { result.push(binding); } }
+        return result;
+    }
+
+    public SemuSystemBinding bindingFor(string platform, string emulator, string core) {
+        for binding in self.bindingsFor(platform) {
+            if (binding.emulator.equals(emulator) && (core.isEmpty() || binding.core.equals(core))) { return binding; }
+        }
+        return null;
+    }
+}
+
+class SemuEmulator {
+    public string id;
+    public string name;
+    public JSONValue definition;
+    public JSONValue profile;
+    public Vector<string> actions;
+    public string directory;
+    public string profileFile;
+
+    public SemuEmulator(string id, string directory, JSONValue definition, JSONValue profile) {
+        self.id = id;
+        self.directory = directory;
+        self.definition = definition;
+        self.profile = profile;
+        self.profileFile = PathTools.join(directory, "profile.json");
+        self.name = SemuJson.textAt(definition, "name");
+        self.actions = SemuJson.strings(SemuJson.get(definition, "input.actions"));
+    }
+
+    public JSONValue platform(string platform) { return SemuJson.get(self.definition, "platforms." + platform); }
+
+    public bool supports(string platform) { return self.platform(platform).isObject(); }
+}
+
+class SemuInput {
+    public string id;
+    public JSONValue definition;
+
+    public SemuInput(string id, JSONValue definition) {
+        self.id = id;
+        self.definition = definition;
+    }
+
+    public string chord(string action) {  // action ids contain dots, so index directly
+        JSONValue actions = self.definition.get("actions");
+        if (actions == null || !actions.isObject() || !actions.has(action)) { return ""; }
+        return SemuJson.textAt(actions.get(action), "chord");
+    }
+
+    public Vector<string> quitChord() { return SemuJson.strings(SemuJson.get(self.definition, "quit_chord.buttons")); }
+
+    public int chordWindowMs() { return SemuJson.intAt(self.definition, "quit_chord.window_ms", 250); }
+}
+
+class SemuModel {
+    public string configRoot;
+    public Map<string, SemuTarget> targets;
+    public Map<string, SemuSystem> systems;
+    public Map<string, SemuEmulator> emulators;
+    public Map<string, SemuInput> inputs;
+    public JSONValue defaults;
+
+    public SemuModel(string configRoot) {
+        self.configRoot = configRoot;
+        self.targets = {};
+        self.systems = {};
+        self.emulators = {};
+        self.inputs = {};
+        self.defaults = JSONValue.makeObject();
+    }
+
+    class Vector<string> sortedEntries(string directory) {
+        Vector<string> result = [];
+        if (!FileSystem.isDir(directory)) { return result; }
+        for name in FileSystem.listDir(directory) { if (!name.startsWith(".")) { result.push(name); } }
+        result.sort();
+        return result;
+    }
+
+    class JSONValue readObject(string path, SemuDiagnostics diagnostics) {
+        if (!FileSystem.isFile(path)) {
+            diagnostics.add(path, "file", "definition is missing");
+            return JSONValue.makeObject();
+        }
+        JSONValue value = SemuJson.readFile(path);
+        if (value.isError() || !value.isObject()) {
+            diagnostics.add(path, "json", "definition is not a JSON object");
+            return JSONValue.makeObject();
+        }
+        return value;
+    }
+
+    class SemuModel load(string configRoot, SemuDiagnostics diagnostics) {
+        SemuModel model = SemuModel(configRoot);
+        if (!FileSystem.isDir(configRoot)) {
+            diagnostics.add(configRoot, "config", "config root is not a directory");
+            return model;
+        }
+        string targetsDir = PathTools.join(configRoot, "targets");
+        for name in SemuModel.sortedEntries(targetsDir) {
+            if (!name.endsWith(".json")) { continue; }
+            string id = name.substring(0, name.len() - 5);
+            model.targets.put(id, SemuTarget(id, SemuModel.readObject(PathTools.join(targetsDir, name), diagnostics)));
+        }
+        string systemsDir = PathTools.join(configRoot, "systems");
+        for id in SemuModel.sortedEntries(systemsDir) {
+            string file = PathTools.join(PathTools.join(systemsDir, id), "system.json");
+            if (FileSystem.isFile(file)) { model.systems.put(id, SemuSystem(id, file, SemuModel.readObject(file, diagnostics))); }
+        }
+        string emulatorsDir = PathTools.join(configRoot, "emulators");
+        for id in SemuModel.sortedEntries(emulatorsDir) {
+            string directory = PathTools.join(emulatorsDir, id);
+            string file = PathTools.join(directory, "emulator.json");
+            if (!FileSystem.isFile(file)) { continue; }
+            JSONValue profile = SemuModel.readObject(PathTools.join(directory, "profile.json"), diagnostics);
+            model.emulators.put(id, SemuEmulator(id, directory, SemuModel.readObject(file, diagnostics), profile));
+        }
+        string inputsDir = PathTools.join(configRoot, "input");
+        for id in SemuModel.sortedEntries(inputsDir) {
+            string file = PathTools.join(PathTools.join(inputsDir, id), "input.json");
+            if (FileSystem.isFile(file)) { model.inputs.put(id, SemuInput(id, SemuModel.readObject(file, diagnostics))); }
+        }
+        model.defaults = SemuModel.readObject(PathTools.join(configRoot, "settings/defaults.json"), diagnostics);
+        return model;
+    }
+
+    public SemuTarget target(string id) { return self.targets.has(id) ? self.targets.get(id) : null; }
+
+    public SemuSystem system(string id) { return self.systems.has(id) ? self.systems.get(id) : null; }
+
+    public SemuEmulator emulator(string id) { return self.emulators.has(id) ? self.emulators.get(id) : null; }
+
+    public SemuInput input(string id) { return self.inputs.has(id) ? self.inputs.get(id) : null; }
+
+    public Vector<string> systemIds() { return self.systems.keys().sorted(); }
+
+    public Vector<string> emulatorIds() { return self.emulators.keys().sorted(); }
+}

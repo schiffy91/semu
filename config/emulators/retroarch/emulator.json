@@ -19,55 +19,11 @@
   },
   "platforms": {
     "linux": {
-      "backend": "bwrap",
-      "executable": "${asset_root}/bin/retroarch-semu",
+      "backend": "native",
+      "executable": "${asset_root}/bin/retroarch",
       "args": [
         "-f"
       ],
-      "gl_wrapper": "${asset_root}/bin/nixGL",
-      "sandbox": {
-        "sockets": [
-          "pulseaudio"
-        ],
-        "filesystems": [
-          {
-            "path": "${project}",
-            "mode": "ro"
-          },
-          {
-            "path": "${asset_root}",
-            "mode": "ro"
-          },
-          {
-            "path": "${emulation_root}",
-            "mode": "ro"
-          },
-          {
-            "path": "${roms}",
-            "mode": "ro"
-          },
-          {
-            "path": "${bios}",
-            "mode": "ro"
-          },
-          {
-            "path": "${state_root}",
-            "mode": "create"
-          },
-          {
-            "path": "${paths.project_saves}",
-            "mode": "create"
-          },
-          {
-            "path": "${paths.project_states}",
-            "mode": "create"
-          },
-          {
-            "path": "${paths.project_screenshots}",
-            "mode": "create"
-          }
-        ]
-      },
       "state": {
         "data_home": "xdg"
       },

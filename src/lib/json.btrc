@@ -1,0 +1,71 @@
+import Library.JSON;
+import Library.Strings;
+import Library.Vector;
+
+class SemuJson {
+    class string text(JSONValue value) {
+        if (value == null) { return ""; }
+        if (value.isString()) { return value.asString(); }
+        if (value.isBool()) { return value.asBool() ? "true" : "false"; }
+        if (value.isInt()) { return Strings.fromInt(value.asInt()); }
+        if (value.isNumber()) { return value.stringify(); }
+        return "";
+    }
+
+    class JSONValue get(JSONValue root, string path) {
+        JSONValue current = root;
+        if (path.isEmpty()) { return current; }
+        for segment in Strings.split(path, ".") {
+            if (current == null) { return JSONValue.makeNull(); }
+            if (current.isObject()) {
+                current = current.get(segment);
+            } else if (current.isArray() && Strings.isDigitStr(segment)) {
+                current = current.at(Strings.toInt(segment));
+            } else {
+                return JSONValue.makeNull();
+            }
+        }
+        return current == null ? JSONValue.makeNull() : current;
+    }
+
+    class string textAt(JSONValue root, string path) { return SemuJson.text(SemuJson.get(root, path)); }
+
+    class bool boolAt(JSONValue root, string path, bool fallback) {
+        JSONValue value = SemuJson.get(root, path);
+        if (value.isBool()) { return value.asBool(); }
+        return fallback;
+    }
+
+    class int intAt(JSONValue root, string path, int fallback) {
+        JSONValue value = SemuJson.get(root, path);
+        return value.isInt() ? value.asInt() : fallback;
+    }
+
+    class Vector<string> strings(JSONValue value) {
+        Vector<string> result = [];
+        if (value == null || !value.isArray()) { return result; }
+        for (int index = 0; index < value.size(); index++) {
+            string item = SemuJson.text(value.at(index));
+            if (!item.isEmpty()) { result.push(item); }
+        }
+        return result;
+    }
+
+    class string csv(JSONValue value) { return SemuJson.strings(value).join(","); }
+
+    class JSONValue merge(JSONValue base, JSONValue overlay) {  // deep merge, overlay wins
+        if (overlay == null || overlay.isNull()) { return base; }
+        if (base == null || !base.isObject() || !overlay.isObject()) { return overlay; }
+        JSONValue result = JSONValue.makeObject();
+        for key in base.keys() { result.set(key, base.get(key)); }
+        for key in overlay.keys() {
+            result.set(key, base.has(key) ? SemuJson.merge(base.get(key), overlay.get(key)) : overlay.get(key));
+        }
+        return result;
+    }
+
+    class JSONValue readFile(string path) {
+        JSONValue value = JSONValue.readFile(path);
+        return value == null ? JSONValue.makeError() : value;
+    }
+}
