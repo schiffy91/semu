@@ -40,6 +40,7 @@
       "label": "PPSSPP (Libretro)",
       "core": "ppsspp",
       "platforms": [
+        "linux",
         "macos"
       ]
     }
@@ -74,7 +75,7 @@
     "priority": "game",
     "corner_radius": 0.045,
     "lcd_grid": 0.15,
-    "lcd_subpixel": 0.20
+    "lcd_subpixel": 0.2
   },
   "doc": {
     "hardware": "480x272 PSP LCD",

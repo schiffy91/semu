@@ -291,7 +291,16 @@ Update this block whenever a milestone criterion changes state.
   seconds with 79 checks; `build configs --target linux-desktop` emits ES-DE
   and RetroArch files with no Deck path; `nix flake check --no-build` passes;
   commit eb909a7)
-- M2 Game Boy on desktop: in progress
+- M2 Game Boy on desktop: verified 2026-09-19 except the reboot, which the
+  unattended session could not perform without killing itself. Observed on
+  FRACTAL-NORTH: `nixos-rebuild switch` installed the bundle (semu, semu-es-de,
+  semu-retroarch on PATH, semu.desktop in the app menu, persist mounts for
+  ~/ES-DE, ~/.config/semu, ~/.local/share/semu); `semu launch retroarch
+  --system gb` showed Tetris fullscreen (screenshot inspected); ES-DE started
+  from the bundle with all 17 systems and the existing gamelists and media, no
+  warnings; killing the launcher stops RetroArch. Not yet observed: Xbox pad
+  input, Start+Select quit and save/load on hardware (no controller was
+  connected during the session), and survival across a reboot.
 - M3 RetroArch systems on desktop: 0 of 11
 - M4 native emulators on desktop: 0 of 8
 - M5 Steam Deck: 0 of 17 systems
