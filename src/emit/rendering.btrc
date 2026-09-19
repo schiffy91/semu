@@ -6,6 +6,9 @@ import ../lib/json.btrc;
 import ../model.btrc;
 import ../resolve.btrc;
 
+#include <stdio.h>
+#include <stdlib.h>
+
 class SemuRenderAssets {
     class string shader(SemuPlan plan, string logical) {  // assets/shaders/x -> share/libretro/shaders/semu/x
         string prefix = "assets/shaders/";
@@ -30,7 +33,13 @@ class SemuRenderEnvironment {
 
     public void set(string name, string value) { if (!value.isEmpty()) { self.entries.push(name + "=" + value); } }
 
-    class string number(JSONValue value) { return value == null || !value.isNumber() ? "" : value.stringify(); }
+    class string number(JSONValue value) {  // shortest round-trip text: 0.04, not 0.040000000000000001
+        if (value == null || !value.isNumber()) { return ""; }
+        double parsed = atof(value.stringify());
+        char* buffer = (char*)malloc(32);
+        snprintf(buffer, 32, "%.6g", parsed);
+        return __btrc_str_track(buffer);
+    }
 
     class string rect(JSONValue value) {
         if (value == null || !value.isObject()) { return ""; }
@@ -121,6 +130,8 @@ class SemuRenderEnvironment {
         if (wantShaders && !shaderId.isEmpty() && !shaderId.equals("none")) {
             JSONValue variant = SemuRenderEnvironment.findVariant(system.shaders, shaderId);
             shaderPath = SemuRenderAssets.shader(plan, SemuJson.textAt(variant, "screen"));  // empty when the bundle lacks the preset
+        } else if (wantShaders && shaderId.isEmpty()) {
+            shaderPath = SemuRenderAssets.shader(plan, SemuJson.textAt(system.shaders, "screen"));  // single-preset manifests name the screen directly
         }
         bool bezels = wantBezels && !bezelId.isEmpty() && !bezelId.equals("none")
             && !SemuRenderAssets.image(plan, SemuJson.textAt(SemuRenderEnvironment.findVariant(system.bezels, bezelId), "art")).isEmpty();
@@ -139,6 +150,9 @@ class SemuRenderEnvironment {
         int aspectH = SemuJson.intAt(display, "aspect.h", 0);
         if (aspectW > 0 && aspectH > 0) { env.set("SEMU_RENDER_ASPECT", f"{aspectW}:{aspectH}"); }
         env.set("SEMU_RENDER_REFLECT", SemuRenderEnvironment.number(render == null ? null : render.get("reflect")));
+        for name in ["corner_radius", "curvature", "glow", "bloom", "vignette"] {  // the compositor's look, from config/systems/<id>/system.json render
+            env.set("SEMU_RENDER_" + name.toUpper(), SemuRenderEnvironment.number(render == null ? null : render.get(name)));
+        }
         SemuRenderEnvironment.surfaces(env, system, diagnostics);
         if (bezels || !shaderPath.isEmpty()) {
             SemuRenderEnvironment.variant(env, plan, system, "", bezels ? bezelId : "", shaderPath, diagnostics);

@@ -52,6 +52,21 @@ make nix             # build the bundle (CLI, ES-DE, emulators) at build/nix/res
 make doctor          # show resolved paths and what is missing
 ```
 
+## Visual checks without touching the desktop
+
+```sh
+nix shell nixpkgs#xorg.xorgserver nixpkgs#xorg.xwd nixpkgs#imagemagick -c \
+  env SEMU=build/semu SEMU_ASSET_ROOT=build/nix/result SEMU_SOURCE_ROOT=config \
+  tests/visual/capture.sh out.png retroarch --system snes --rom "Super Mario Kart (USA).zip"
+```
+
+`tests/visual/capture.sh` launches through Semu on a private Xvfb display and
+captures the composited frame, so bezels, shaders, curvature, corner masks,
+bloom, vignette and the halo on the bezel can be inspected while the real
+desktop stays untouched. `SEMU_CAPTURE_WAIT` sets the boot wait (NES needs
+about 25 s), `SEMU_CAPTURE_DISPLAY` picks the display number so captures can
+run in parallel.
+
 ## Steam Deck release
 
 ```sh
