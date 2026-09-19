@@ -1,9 +1,23 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "enabled": true,
   "renderer": true,
   "screen": "assets/shaders/psx/screen.slangp",
   "doc": {
     "intent": "PS1 240p/480i CRT with analog softness"
-  }
+  },
+  "variants": [
+    {
+      "id": "default",
+      "label": "CRT Royale",
+      "screen": "assets/shaders/psx/screen.slangp"
+    },
+    {
+      "id": "sharp",
+      "label": "Sharp CRT (easymode + halation)",
+      "screen": "assets/shaders/psx/sharp.slangp"
+    }
+  ],
+  "default_variant": "default",
+  "disabled_variant": "none"
 }

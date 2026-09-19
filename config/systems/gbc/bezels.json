@@ -13,6 +13,11 @@
       "id": "frost_purple",
       "label": "Frost Purple",
       "art": "assets/bezels/gbc/frost-purple.png"
+    },
+    {
+      "id": "berry",
+      "label": "Berry",
+      "art": "assets/bezels/gbc/berry.png"
     }
   ],
   "doc": {

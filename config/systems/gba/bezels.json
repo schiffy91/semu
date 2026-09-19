@@ -13,6 +13,11 @@
       "id": "indigo_wide",
       "label": "Indigo Wide",
       "art": "assets/bezels/gba/indigo-wide.png"
+    },
+    {
+      "id": "arctic",
+      "label": "Arctic White",
+      "art": "assets/bezels/gba/arctic.png"
     }
   ],
   "doc": {

@@ -19,6 +19,7 @@ import ../../src/sync/syncthing.btrc;
 import ../../src/steam/shortcuts.btrc;
 import ../../src/cli.btrc;
 import ../../src/launch/supervisor.btrc;
+import ../../src/steam/input_template.btrc;
 
 class Contract {
     public int failures;
@@ -471,6 +472,27 @@ class UnifiedInputContract {  // one action vocabulary: chords parse, routes are
     }
 }
 
+class SteamInputContract {  // the Deck template Steam loads: radials carry the semantic icons and the action chords
+    class void run(Contract contract) {
+        Fixture fixture = Fixture("steam-deck");
+        JSONValue root = SemuJson.readFile(SteamInputTemplates.source(fixture.plan));
+        contract.expect(!root.isError(), "steam-deck target has a Steam Input definition");
+        SteamInputDocument document = SteamInputDocument(root);
+        JSONValue template = root.get("templates").at(1);
+        string vdf = SteamInputVdf.render(document, template);
+        contract.contains(vdf, "\"controller_type\"\t\t\"controller_neptune\"", "template targets the Deck controller");
+        contract.contains(vdf, "\"mode\" \"radial_menu\"", "the left trackpad hosts a radial menu");
+        contract.contains(vdf, "key_press LEFT_CONTROL, Save State, semu-save.png, #232323 #FFFFFF", "save state slot presses the Ctrl chord with its icon");
+        contract.contains(vdf, "key_press S, Save State, semu-save.png, #232323 #FFFFFF", "save state chord ends in S");
+        contract.contains(vdf, "key_press UP_ARROW, Menu Up", "menu radial navigates the native menu");
+        contract.contains(vdf, "xinput_button START, Quit Emulator", "quit carries the Start+Select gamepad fallback");
+        contract.contains(vdf, "\"touch_menu_show_labels\" \"0\"", "radials show icons, not labels");
+        string out = PathTools.join(fixture.scratch, "steam-templates");
+        contract.expect(SteamInputTemplates.publish(fixture.plan, out, PathTools.join(out, "icons")) == 0, "templates publish into a directory");
+        contract.expect(FileSystem.isFile(PathTools.join(out, "neptune-full.vdf")) && FileSystem.isFile(PathTools.join(out, "icons/semu-save.png")), "the full template and its icons are written");
+    }
+}
+
 int main() {
     Contract contract = Contract();
     SettingsWriteContract.run(contract);
@@ -478,6 +500,7 @@ int main() {
     SyncContract.run(contract);
     SteamContract.run(contract);
     UnifiedInputContract.run(contract);
+    SteamInputContract.run(contract);
     RenderingContract.run(contract);
     ModelContract.run(contract);
     SettingsLadderContract.run(contract);

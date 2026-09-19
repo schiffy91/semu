@@ -19,6 +19,7 @@ import ./launch/process.btrc;
 import ./launch/supervisor.btrc;
 import ./sync/syncthing.btrc;
 import ./steam/shortcuts.btrc;
+import ./steam/input_template.btrc;
 
 class SemuCli {
     public CLIArgs args;
@@ -43,6 +44,7 @@ class SemuCli {
         help.item("settings get PATH | put PATH VALUE [--apply] | ui | reset", "Read, write, describe (ES-DE menu document) or reset $SEMU_HOME/semu.json.");
         help.item("sync start | stop | run | status | device-id | enabled", "Syncthing for saves: detach, run in the foreground, inspect, print this device's id.");
         help.item("steam shortcuts [--steam-root DIR] [--force] | status", "Add or refresh the Semu non-Steam shortcut in every Steam profile.");
+        help.item("steam input [--output DIR] [--icons DIR]", "Write the target's Steam Input templates (Deck trackpad radials) and their icons.");
         help.item("version", "Print the Semu version.");
         help.section("Common options");
         help.item("--target T", "Target id (default: $SEMU_TARGET or linux-desktop).");
@@ -209,6 +211,12 @@ class SemuCli {
         string root = self.option("steam-root", "");
         if (action.equals("shortcuts")) { return SteamShortcuts.install(plan, root, self.line.has("--force")); }
         if (action.equals("status")) { return SteamShortcuts.status(plan, root); }
+        if (action.equals("input")) {
+            string home = SemuPaths.home();
+            string output = self.option("output", PathTools.join(home, ".local/share/Steam/controller_base/templates"));
+            string icons = self.option("icons", PathTools.join(home, ".local/share/Steam/tenfoot/resource/images/library/controller/binding_icons"));
+            return SteamInputTemplates.publish(plan, SemuPaths.expandHome(output), SemuPaths.expandHome(icons));
+        }
         return self.usage(64);
     }
 

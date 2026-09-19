@@ -824,6 +824,70 @@
       "doc": {
         "provenance": "Committed source (un-fetchable): originally baked from Duimon NDS_Hybrid-[ADV]-[Guest].slangp via bake_bezels.sh (librashader, day variant, intro off). Lives in-tree at its final bezels/ path; bake-bezels round-trips it identically."
       }
+    },
+    "assets/bezels/tv/crt-4x3-silver.png": {
+      "type": "recolor",
+      "base": "assets/bezels/tv/crt-4x3.png",
+      "color": "#d9d9d9",
+      "brightness": 320,
+      "doc": {
+        "provenance": "Semu-owned recolor of the charcoal 4:3 CRT: a silver consumer set with the same lens geometry."
+      },
+      "output": {
+        "width": 1584,
+        "height": 990,
+        "bit_depth": 8,
+        "color_type": 6,
+        "sha256": "3eb49e7e9e2b24c00bb876c58a6fca58776f40a732403cebb3d2f2e2fa561960"
+      }
+    },
+    "assets/bezels/gbc/berry.png": {
+      "type": "recolor",
+      "base": "assets/bezels/gbc/frost-purple.png",
+      "color": "#e0457b",
+      "brightness": 125,
+      "doc": {
+        "provenance": "Semu-owned berry recolor of the frost-purple GBC shell; identical lens geometry."
+      },
+      "output": {
+        "width": 1584,
+        "height": 990,
+        "bit_depth": 8,
+        "color_type": 6,
+        "sha256": "d94d7831fc3ba8d7a183a545e00434816548c4e788252b8936951d20bc0a9c80"
+      }
+    },
+    "assets/bezels/gba/arctic.png": {
+      "type": "recolor",
+      "base": "assets/bezels/gba/indigo-wide.png",
+      "color": "#eef1f4",
+      "brightness": 190,
+      "doc": {
+        "provenance": "Semu-owned arctic-white recolor of the indigo GBA shell; identical lens geometry."
+      },
+      "output": {
+        "width": 1570,
+        "height": 1001,
+        "bit_depth": 8,
+        "color_type": 6,
+        "sha256": "16bf63076b8c58ac097b0c14195320d05553ca2b2dfe8f015d50161b559fe422"
+      }
+    },
+    "assets/bezels/psp/red.png": {
+      "type": "recolor",
+      "base": "assets/bezels/psp/classic.png",
+      "color": "#a3161c",
+      "brightness": 210,
+      "doc": {
+        "provenance": "Semu-owned deep-red recolor of the black PSP shell; identical lens geometry."
+      },
+      "output": {
+        "width": 5335,
+        "height": 2160,
+        "bit_depth": 8,
+        "color_type": 6,
+        "sha256": "fcf6476e833030bcbe09001fa05193a2baa370b050b03545c3cfc254010b0f51"
+      }
     }
   },
   "staging": [

@@ -360,6 +360,244 @@
       "doc": {
         "why": "Generic LCD grid for the 3DS panels (no 3DS-tuned edition upstream; lcd1x matches the nds/psp family)."
       }
+    },
+    "assets/shaders/nes/sharp.slangp": {
+      "type": "slang_wrapper",
+      "reference": {
+        "tree": "shaders_slang",
+        "path": "crt/crt-easymode-halation.slangp",
+        "sha256": "6523d1b38d37a1e6891529b286fd4ca290c2e65ab35028b8a50bbe660cca8625"
+      },
+      "requires": [
+        "shaders_slang"
+      ],
+      "output": {
+        "sha256": "1ad465d55c0862bd8e85ecf9bff149a5aa0e5d613540bf0472c2b4e96f2bd3d2"
+      },
+      "doc": {
+        "why": "Materially different pinned alternate for nes: Sharp CRT (easymode + halation)."
+      }
+    },
+    "assets/shaders/snes/sharp.slangp": {
+      "type": "slang_wrapper",
+      "reference": {
+        "tree": "shaders_slang",
+        "path": "crt/crt-easymode-halation.slangp",
+        "sha256": "6523d1b38d37a1e6891529b286fd4ca290c2e65ab35028b8a50bbe660cca8625"
+      },
+      "requires": [
+        "shaders_slang"
+      ],
+      "output": {
+        "sha256": "1ad465d55c0862bd8e85ecf9bff149a5aa0e5d613540bf0472c2b4e96f2bd3d2"
+      },
+      "doc": {
+        "why": "Materially different pinned alternate for snes: Sharp CRT (easymode + halation)."
+      }
+    },
+    "assets/shaders/genesis/sharp.slangp": {
+      "type": "slang_wrapper",
+      "reference": {
+        "tree": "shaders_slang",
+        "path": "crt/crt-easymode-halation.slangp",
+        "sha256": "6523d1b38d37a1e6891529b286fd4ca290c2e65ab35028b8a50bbe660cca8625"
+      },
+      "requires": [
+        "shaders_slang"
+      ],
+      "output": {
+        "sha256": "1ad465d55c0862bd8e85ecf9bff149a5aa0e5d613540bf0472c2b4e96f2bd3d2"
+      },
+      "doc": {
+        "why": "Materially different pinned alternate for genesis: Sharp CRT (easymode + halation)."
+      }
+    },
+    "assets/shaders/n64/sharp.slangp": {
+      "type": "slang_wrapper",
+      "reference": {
+        "tree": "shaders_slang",
+        "path": "crt/crt-easymode-halation.slangp",
+        "sha256": "6523d1b38d37a1e6891529b286fd4ca290c2e65ab35028b8a50bbe660cca8625"
+      },
+      "requires": [
+        "shaders_slang"
+      ],
+      "output": {
+        "sha256": "1ad465d55c0862bd8e85ecf9bff149a5aa0e5d613540bf0472c2b4e96f2bd3d2"
+      },
+      "doc": {
+        "why": "Materially different pinned alternate for n64: Sharp CRT (easymode + halation)."
+      }
+    },
+    "assets/shaders/psx/sharp.slangp": {
+      "type": "slang_wrapper",
+      "reference": {
+        "tree": "shaders_slang",
+        "path": "crt/crt-easymode-halation.slangp",
+        "sha256": "6523d1b38d37a1e6891529b286fd4ca290c2e65ab35028b8a50bbe660cca8625"
+      },
+      "requires": [
+        "shaders_slang"
+      ],
+      "output": {
+        "sha256": "1ad465d55c0862bd8e85ecf9bff149a5aa0e5d613540bf0472c2b4e96f2bd3d2"
+      },
+      "doc": {
+        "why": "Materially different pinned alternate for psx: Sharp CRT (easymode + halation)."
+      }
+    },
+    "assets/shaders/dreamcast/sharp.slangp": {
+      "type": "slang_wrapper",
+      "reference": {
+        "tree": "shaders_slang",
+        "path": "crt/crt-easymode-halation.slangp",
+        "sha256": "6523d1b38d37a1e6891529b286fd4ca290c2e65ab35028b8a50bbe660cca8625"
+      },
+      "requires": [
+        "shaders_slang"
+      ],
+      "output": {
+        "sha256": "1ad465d55c0862bd8e85ecf9bff149a5aa0e5d613540bf0472c2b4e96f2bd3d2"
+      },
+      "doc": {
+        "why": "Materially different pinned alternate for dreamcast: Sharp CRT (easymode + halation)."
+      }
+    },
+    "assets/shaders/gc/sharp.slangp": {
+      "type": "slang_wrapper",
+      "reference": {
+        "tree": "shaders_slang",
+        "path": "crt/crt-easymode-halation.slangp",
+        "sha256": "6523d1b38d37a1e6891529b286fd4ca290c2e65ab35028b8a50bbe660cca8625"
+      },
+      "requires": [
+        "shaders_slang"
+      ],
+      "output": {
+        "sha256": "1ad465d55c0862bd8e85ecf9bff149a5aa0e5d613540bf0472c2b4e96f2bd3d2"
+      },
+      "doc": {
+        "why": "Materially different pinned alternate for gc: Sharp CRT (easymode + halation)."
+      }
+    },
+    "assets/shaders/wii/sharp.slangp": {
+      "type": "slang_wrapper",
+      "reference": {
+        "tree": "shaders_slang",
+        "path": "crt/crt-easymode-halation.slangp",
+        "sha256": "6523d1b38d37a1e6891529b286fd4ca290c2e65ab35028b8a50bbe660cca8625"
+      },
+      "requires": [
+        "shaders_slang"
+      ],
+      "output": {
+        "sha256": "1ad465d55c0862bd8e85ecf9bff149a5aa0e5d613540bf0472c2b4e96f2bd3d2"
+      },
+      "doc": {
+        "why": "Materially different pinned alternate for wii: Sharp CRT (easymode + halation)."
+      }
+    },
+    "assets/shaders/ps2/sharp.slangp": {
+      "type": "slang_wrapper",
+      "reference": {
+        "tree": "shaders_slang",
+        "path": "crt/crt-easymode-halation.slangp",
+        "sha256": "6523d1b38d37a1e6891529b286fd4ca290c2e65ab35028b8a50bbe660cca8625"
+      },
+      "requires": [
+        "shaders_slang"
+      ],
+      "output": {
+        "sha256": "1ad465d55c0862bd8e85ecf9bff149a5aa0e5d613540bf0472c2b4e96f2bd3d2"
+      },
+      "doc": {
+        "why": "Materially different pinned alternate for ps2: Sharp CRT (easymode + halation)."
+      }
+    },
+    "assets/shaders/gbc/authentic.slangp": {
+      "type": "slang_wrapper",
+      "reference": {
+        "tree": "shaders_slang",
+        "path": "handheld/authentic_gbc.slangp",
+        "sha256": "b8c0f7e63f8ee0232b77dd02cca99452db6f4bc44cedb7b77b1707c423e4eaa6"
+      },
+      "requires": [
+        "shaders_slang"
+      ],
+      "output": {
+        "sha256": "7f7be37d53d9c7839e4ef687425f995f874ecfa033b3273e336ed0c368625e3e"
+      },
+      "doc": {
+        "why": "Materially different pinned alternate for gbc: Authentic GBC LCD."
+      }
+    },
+    "assets/shaders/gba/agb001.slangp": {
+      "type": "slang_wrapper",
+      "reference": {
+        "tree": "shaders_slang",
+        "path": "handheld/agb001.slangp",
+        "sha256": "8701c0b7971d0b52ef9d45c3b1bf820e428fdffe1fd07874b9a6e1707038cda6"
+      },
+      "requires": [
+        "shaders_slang"
+      ],
+      "output": {
+        "sha256": "c79cba792b2f64137fe340775e6e38338f3ef17eb8f73f7d67fd2677da2893af"
+      },
+      "doc": {
+        "why": "Materially different pinned alternate for gba: AGB-001 LCD."
+      }
+    },
+    "assets/shaders/psp/lcd3x.slangp": {
+      "type": "slang_wrapper",
+      "reference": {
+        "tree": "shaders_slang",
+        "path": "handheld/lcd3x.slangp",
+        "sha256": "73aad2f4b1b548d9ea566cd3c72dbad433594235aed00115013b1ec46bf4c2d9"
+      },
+      "requires": [
+        "shaders_slang"
+      ],
+      "output": {
+        "sha256": "437455c9d61283650c9e13aad85d6bf241488351e776e8f4d4ef7b1756855ccf"
+      },
+      "doc": {
+        "why": "Materially different pinned alternate for psp: LCD 3x."
+      }
+    },
+    "assets/shaders/nds/grid.slangp": {
+      "type": "slang_wrapper",
+      "reference": {
+        "tree": "shaders_slang",
+        "path": "handheld/nds-lcd-grid-v2.slangp",
+        "sha256": "b4fe31fd646e5efe100a3d1fdec6e28db39ffe03c5d83a60f973420916800df3"
+      },
+      "requires": [
+        "shaders_slang"
+      ],
+      "output": {
+        "sha256": "1729f6ebd2b010d5b312fec3cfc9dd44d0b379561910eb302798771a3612fb7e"
+      },
+      "doc": {
+        "why": "Materially different pinned alternate for nds: LCD grid v2."
+      }
+    },
+    "assets/shaders/n3ds/grid.slangp": {
+      "type": "slang_wrapper",
+      "reference": {
+        "tree": "shaders_slang",
+        "path": "handheld/3ds-lcd-grid-v2.slangp",
+        "sha256": "3279060091649ed3735e6f4c82b0ea3ba3467191138596c4531454accb9b80c3"
+      },
+      "requires": [
+        "shaders_slang"
+      ],
+      "output": {
+        "sha256": "40e4157fe8b685605a12e54815be28ecf0a8bbb1d758b160b45599a124dcd5dc"
+      },
+      "doc": {
+        "why": "Materially different pinned alternate for n3ds: LCD grid v2."
+      }
     }
   }
 }

@@ -1,9 +1,23 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "enabled": true,
   "renderer": true,
   "screen": "assets/shaders/nes/screen.slangp",
   "doc": {
     "intent": "NES composite artifacting, phosphor mask, scanlines"
-  }
+  },
+  "variants": [
+    {
+      "id": "default",
+      "label": "NTSC composite",
+      "screen": "assets/shaders/nes/screen.slangp"
+    },
+    {
+      "id": "sharp",
+      "label": "Sharp CRT (easymode + halation)",
+      "screen": "assets/shaders/nes/sharp.slangp"
+    }
+  ],
+  "default_variant": "default",
+  "disabled_variant": "none"
 }

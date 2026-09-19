@@ -1,9 +1,23 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "enabled": true,
   "renderer": true,
   "screen": "assets/shaders/gbc/screen.slangp",
   "doc": {
     "intent": "GBC color response and panel persistence without a magnified RGB grid"
-  }
+  },
+  "variants": [
+    {
+      "id": "default",
+      "label": "GBC color LCD",
+      "screen": "assets/shaders/gbc/screen.slangp"
+    },
+    {
+      "id": "authentic",
+      "label": "Authentic GBC LCD",
+      "screen": "assets/shaders/gbc/authentic.slangp"
+    }
+  ],
+  "default_variant": "default",
+  "disabled_variant": "none"
 }
