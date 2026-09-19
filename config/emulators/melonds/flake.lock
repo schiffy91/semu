@@ -1,0 +1,45 @@
+{
+  "nodes": {
+    "nixpkgs": {
+      "locked": {
+        "lastModified": 1789684949,
+        "narHash": "sha256-ZKhUe/2IJUq1JhKxKMu8rbkgSGmPP2ZCqlIPn40aGCM=",
+        "owner": "NixOS",
+        "repo": "nixpkgs",
+        "rev": "e554fab72f81915600f3f449b786fd9af40439a5",
+        "type": "github"
+      },
+      "original": {
+        "owner": "NixOS",
+        "repo": "nixpkgs",
+        "rev": "e554fab72f81915600f3f449b786fd9af40439a5",
+        "type": "github"
+      }
+    },
+    "root": {
+      "inputs": {
+        "nixpkgs": "nixpkgs",
+        "source": "source"
+      }
+    },
+    "source": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1787524141,
+        "narHash": "sha256-hJFzH7qPk2NIXl9OQQyqSId6uofJ//FoslmbyX5ZjUk=",
+        "owner": "melonDS-emu",
+        "repo": "melonDS",
+        "rev": "906e9ebb27da8c6a715cd7abab4abfe8a8d29427",
+        "type": "github"
+      },
+      "original": {
+        "owner": "melonDS-emu",
+        "repo": "melonDS",
+        "rev": "906e9ebb27da8c6a715cd7abab4abfe8a8d29427",
+        "type": "github"
+      }
+    }
+  },
+  "root": "root",
+  "version": 7
+}

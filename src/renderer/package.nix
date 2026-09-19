@@ -1,10 +1,9 @@
 # The shared renderer every hooked emulator links: shaders through librashader, bezels, the Semu overlay.
-{ lib, stdenv, btrcpy, librashader, writeText, repositoryRoot }:
+{ lib, stdenv, btrcpy, librashader, writeText, rendererRoot }:
 
 let
-  rendererRoot = repositoryRoot + "/src/renderer";
   rendererSource = lib.fileset.toSource {
-    root = repositoryRoot;
+    root = rendererRoot;
     fileset = rendererRoot;
   };
   rendererHeader = import (rendererRoot + "/semu_render_header.nix") { inherit writeText; };
@@ -14,12 +13,12 @@ stdenv.mkDerivation {
   version = "3";
   src = rendererSource;
   dontConfigure = true;
+  allowSubstitutes = false;  # compiled by Semu, never a cache binary
   strictDeps = true;
   nativeBuildInputs = [ btrcpy ];
   buildInputs = [ librashader ];
 
   buildPhase = ''
-    cd src/renderer
     btrcpy libsemurenderer.btrc -o semu_renderer.c --strict-imports --no-cache --no-stdlib --no-dce
     $CC -c semu_renderer.c -o semu_renderer.o -std=c11 -O2 -fPIC -Wall -Wno-unused-function \
       -DLIBRA_RUNTIME_OPENGL=1 -DSTB_IMAGE_IMPLEMENTATION -DSTBI_ONLY_PNG -I${librashader}/include -I.

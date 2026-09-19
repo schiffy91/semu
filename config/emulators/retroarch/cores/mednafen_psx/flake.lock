@@ -1,0 +1,45 @@
+{
+  "nodes": {
+    "nixpkgs": {
+      "locked": {
+        "lastModified": 1789684949,
+        "narHash": "sha256-ZKhUe/2IJUq1JhKxKMu8rbkgSGmPP2ZCqlIPn40aGCM=",
+        "owner": "NixOS",
+        "repo": "nixpkgs",
+        "rev": "e554fab72f81915600f3f449b786fd9af40439a5",
+        "type": "github"
+      },
+      "original": {
+        "owner": "NixOS",
+        "repo": "nixpkgs",
+        "rev": "e554fab72f81915600f3f449b786fd9af40439a5",
+        "type": "github"
+      }
+    },
+    "root": {
+      "inputs": {
+        "nixpkgs": "nixpkgs",
+        "source": "source"
+      }
+    },
+    "source": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1788753721,
+        "narHash": "sha256-CtYOhTHnG5l5Pl67p2T5JDO7oV9qHYgBrnUBMYsh5Eo=",
+        "owner": "libretro",
+        "repo": "beetle-psx-libretro",
+        "rev": "82d8e051d1c7741a18d930be90e458b48abaa9a1",
+        "type": "github"
+      },
+      "original": {
+        "owner": "libretro",
+        "repo": "beetle-psx-libretro",
+        "rev": "82d8e051d1c7741a18d930be90e458b48abaa9a1",
+        "type": "github"
+      }
+    }
+  },
+  "root": "root",
+  "version": 7
+}

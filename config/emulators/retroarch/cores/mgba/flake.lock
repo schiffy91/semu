@@ -1,0 +1,45 @@
+{
+  "nodes": {
+    "nixpkgs": {
+      "locked": {
+        "lastModified": 1789684949,
+        "narHash": "sha256-ZKhUe/2IJUq1JhKxKMu8rbkgSGmPP2ZCqlIPn40aGCM=",
+        "owner": "NixOS",
+        "repo": "nixpkgs",
+        "rev": "e554fab72f81915600f3f449b786fd9af40439a5",
+        "type": "github"
+      },
+      "original": {
+        "owner": "NixOS",
+        "repo": "nixpkgs",
+        "rev": "e554fab72f81915600f3f449b786fd9af40439a5",
+        "type": "github"
+      }
+    },
+    "root": {
+      "inputs": {
+        "nixpkgs": "nixpkgs",
+        "source": "source"
+      }
+    },
+    "source": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1785201686,
+        "narHash": "sha256-Wz2qr657sF7D9R2jkHJLLs1BHkoKxYXd2rUAbroY5Rw=",
+        "owner": "libretro",
+        "repo": "mgba",
+        "rev": "32de792178a3662cd0402c8568fccfaad4a764a1",
+        "type": "github"
+      },
+      "original": {
+        "owner": "libretro",
+        "repo": "mgba",
+        "rev": "32de792178a3662cd0402c8568fccfaad4a764a1",
+        "type": "github"
+      }
+    }
+  },
+  "root": "root",
+  "version": 7
+}

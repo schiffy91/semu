@@ -23,16 +23,24 @@ tests/        contracts/ (run by make test), spec/ (reference fixtures),
 build/        ignored build output
 ```
 
-## Every emulator is compiled here
+## One flake per emulator and core
 
-Semu never ships a cache binary. Each emulator directory carries a
-`package.json` whose `source` block pins one upstream revision or release tag
-plus its content hash, and `package.nix` builds that pin with the build wiring
-nixpkgs already knows (dependencies, cmake flags, wrappers). `cores.json` pins
-every libretro core the same way, and ES-DE and RetroArch are pinned sources
-with Semu's patches on top. All of these set `allowSubstitutes = false`, and
-`packaging/nix/emulators.nix` refuses at evaluation time any emulator that
-could be substituted. Bumping an emulator means editing its `source` block.
+Every emulator, every libretro core, RetroArch, ES-DE and the renderer is its
+own flake: `config/emulators/<id>/flake.nix`,
+`config/emulators/retroarch/cores/<core>/flake.nix`,
+`config/emulators/retroarch/flake.nix`, `packaging/esde/flake.nix` and
+`src/renderer/flake.nix`. Each pins its upstream source as a non-flake input
+(revision plus content hash in its own `flake.lock`), borrows only build
+wiring from nixpkgs, sets `allowSubstitutes = false` so the binary is always
+compiled by us, and declares `semu.platforms = { linux; macos; windows; }`.
+Linux and macOS packages exist wherever the recipe builds there; Windows is
+declared `"planned"` everywhere until a port lands. Each flake builds alone
+(`nix build ./config/emulators/dolphin`), and the root flake composes them
+through relative path inputs with `nixpkgs` shared by `follows`. The
+`platform-matrix` flake check evaluates every flake's Linux and macOS
+derivations and refuses one that could be substituted or that mislabels a
+platform. Bumping an emulator: edit its flake's `source` input, run
+`nix flake lock` in that directory, then at the root.
 
 ## Build and test
 

@@ -1,0 +1,45 @@
+{
+  "nodes": {
+    "nixpkgs": {
+      "locked": {
+        "lastModified": 1789684949,
+        "narHash": "sha256-ZKhUe/2IJUq1JhKxKMu8rbkgSGmPP2ZCqlIPn40aGCM=",
+        "owner": "NixOS",
+        "repo": "nixpkgs",
+        "rev": "e554fab72f81915600f3f449b786fd9af40439a5",
+        "type": "github"
+      },
+      "original": {
+        "owner": "NixOS",
+        "repo": "nixpkgs",
+        "rev": "e554fab72f81915600f3f449b786fd9af40439a5",
+        "type": "github"
+      }
+    },
+    "root": {
+      "inputs": {
+        "nixpkgs": "nixpkgs",
+        "source": "source"
+      }
+    },
+    "source": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1787859289,
+        "narHash": "sha256-2Ps/NM94/WkN5QuxXr85YCldoa7nrQMTG4+laCrGkqc=",
+        "owner": "snes9xgit",
+        "repo": "snes9x",
+        "rev": "a0420aef6a5df627c1ddd00495f3eb32b6ef8aa3",
+        "type": "github"
+      },
+      "original": {
+        "owner": "snes9xgit",
+        "repo": "snes9x",
+        "rev": "a0420aef6a5df627c1ddd00495f3eb32b6ef8aa3",
+        "type": "github"
+      }
+    }
+  },
+  "root": "root",
+  "version": 7
+}

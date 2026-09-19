@@ -1,17 +1,6 @@
 {
   "schema_version": 1,
   "id": "dolphin-emu",
-  "version": "2606a",
-  "build_kind": "source",
-  "source": {
-    "kind": "github",
-    "owner": "dolphin-emu",
-    "repo": "dolphin",
-    "tag": "2606a",
-    "sha256": "sha256-TAIxBEGbbYvoOi+dukr2Hij0J/NL9Iy6pcgf2bhEgI8=",
-    "fetch_submodules": true,
-    "leave_dot_git": true
-  },
   "platforms": [
     "x86_64-linux",
     "aarch64-darwin",
@@ -41,5 +30,5 @@
   "doc": {
     "rendering": "Every presented XFB reports current output/native geometry and the live VI/XFB presentation aspect. Dolphin's frame-updated WidescreenManager selects the 4:3 default or 16:9 variant; no launch-time aspect probe controls renderer layout."
   },
-  "nixpkgs_recipe": "dolphin-emu"
+  "flake": "flake.nix"
 }
