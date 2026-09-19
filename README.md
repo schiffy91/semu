@@ -16,7 +16,7 @@ Targets:
 
 ```text
 src/          BTRC: model, resolve, check, emit (ES-DE, profiles), launch, cli
-config/       targets, systems, emulators, input, assets, settings defaults
+config/       targets, systems, emulators, input, bezels (packages), assets, settings defaults
 packaging/    Nix packages and the flake helpers
 tests/        contracts/ (run by make test), spec/ (reference fixtures),
               integration/ (real emulator runs)
@@ -116,10 +116,13 @@ emulators link directly (RetroArch's gl3 driver calls it after the game draw
 and before present). Native OpenGL emulators that cannot be patched get the
 same renderer through `libsemupreload.so`, an LD_PRELOAD shim that composes
 at their swap call (`render_preload` in `config/emulators/<id>/emulator.json`;
-Flycast, PPSSPP and Dolphin today). The launcher passes the system's shader preset, bezel
-art, hole and canvas policy through `SEMU_RENDER_*` from
-`config/systems/<id>/{shaders,bezels}.json`. Switch variants without a
-rebuild:
+Flycast, PPSSPP and Dolphin today). The launcher passes the system's shader preset and the
+selected bezel package (`config/bezels/<id>/bezel.json`: plate, background,
+layout, frame and per-screen tube, shape, look, glass and shader) through
+`SEMU_RENDER_*`, bound by `config/systems/<id>/{shaders,bezels}.json`.
+Screen openings are measured with `tools/bezel-measure.py`; art is rendered
+from pinned upstream layers by `nix build .#bezel-generate` and baked into
+`config/assets`. Switch variants without a rebuild:
 
 ```sh
 semu settings put visual.systems.gb.bezel_variant studio
