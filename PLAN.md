@@ -298,9 +298,11 @@ Update this block whenever a milestone criterion changes state.
   ~/ES-DE, ~/.config/semu, ~/.local/share/semu); `semu launch retroarch
   --system gb` showed Tetris fullscreen (screenshot inspected); ES-DE started
   from the bundle with all 17 systems and the existing gamelists and media, no
-  warnings; killing the launcher stops RetroArch. Not yet observed: Xbox pad
-  input, Start+Select quit and save/load on hardware (no controller was
-  connected during the session), and survival across a reboot.
+  warnings; killing the launcher stops RetroArch; SAVE_STATE over the command
+  port wrote `Semu/states/Gambatte/Tetris (World) (Rev 1).state` and
+  LOAD_STATE left RetroArch playing. Not yet observed: Xbox pad input and
+  Start+Select quit on hardware (no controller was connected during the
+  session), and survival across a reboot.
 - M3 RetroArch systems on desktop: 11 of 11 launched on FRACTAL-NORTH on
   2026-09-19 with an inspected screenshot each (gb, gbc, gba, nes, snes,
   genesis, n64, psx, nds, psp, dreamcast; psx needs about 20 s to boot; psp
@@ -323,7 +325,18 @@ Update this block whenever a milestone criterion changes state.
   observed: pad input, save and load, Start+Select on hardware. Pushes to
   GitHub are blocked behind a 1Password SSH authorization prompt on screen;
   the host was switched with `--override-input semu git+file://...`.
-- M5 Steam Deck: 0 of 17 systems
+- M5 Steam Deck: delivery built and verified on the desktop, 0 of 17 systems
+  accepted on hardware (no Deck was reachable from the session on
+  2026-09-19). `nix build .#release` produces `Semu-x86_64.tar.zst` (about
+  1.3 GB, the bundle's whole closure), its digest and `install.sh`. The
+  installer's digest gate, digest-named releases, stable launchers, previous
+  release, rollback and pruning are covered by the `installer` flake check.
+  On FRACTAL-NORTH the installed release ran the CLI and launched Tetris
+  through the bubblewrap launcher with the release mounted at /nix (screenshot
+  inspected; the host's GPU driver closure is bound in because NixOS keeps it
+  under its own store). `tests/deck/deploy.sh` copies, installs, prepares and
+  screenshots over SSH once `DECK_HOST` is set. Steam Input publication and
+  Steam shortcuts are not done.
 - M6 renderer: not started
 - M7 extras: not started
 - Active milestone: M1
