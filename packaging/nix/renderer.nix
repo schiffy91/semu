@@ -28,12 +28,22 @@ stdenv.mkDerivation {
     MAP
     $CC -shared -Wl,-z,defs -Wl,-soname,libsemurenderer.so -Wl,--version-script=exports.map \
       semu_renderer.o -L${librashader}/lib -Wl,-rpath,${librashader}/lib -lrashader -lm -o libsemurenderer.so
+    # LD_PRELOAD shim for SDL2 + OpenGL emulators: composes at SDL_GL_SwapWindow.
+    cp ${rendererHeader} semu_renderer.h
+    btrcpy preload/semu_preload.btrc -o semu_preload.c --strict-imports --no-cache --no-stdlib --no-dce
+    $CC -c semu_preload.c -o semu_preload.o -std=c11 -O2 -fPIC -Wall -Wno-unused-function -D_GNU_SOURCE -I.
+    cat > preload.map <<'MAP'
+    { global: SDL_GL_SwapWindow; local: *; };
+    MAP
+    $CC -shared -Wl,-soname,libsemupreload.so -Wl,--version-script=preload.map \
+      semu_preload.o -L. -Wl,-rpath,$out/lib -lsemurenderer -ldl -o libsemupreload.so
   '';
 
   installPhase = ''
     mkdir -p "$out/include" "$out/lib"
     cp ${rendererHeader} "$out/include/semu_renderer.h"
     cp libsemurenderer.so "$out/lib/libsemurenderer.so"
+    cp libsemupreload.so "$out/lib/libsemupreload.so"
   '';
 
   doInstallCheck = true;

@@ -227,6 +227,12 @@ class LaunchPlanContract {
         contract.expect(FileSystem.isFile(cfg), "profile written into the state root before launch");
         contract.expect(FileSystem.isFile(PathTools.join(fixture.plan.stateRoot(), "retroarch/retroarch-core-options.cfg")), "core options written next to the config");
         FileSystem.writeText(PathTools.join(assets, "lib/retroarch/cores/ppsspp_libretro.so"), "");
+        FileSystem.mkdirp(PathTools.join(roms, "dreamcast"));
+        FileSystem.writeText(PathTools.join(roms, "dreamcast/Taxi.chd"), "");
+        FileSystem.writeText(PathTools.join(assets, "bin/flycast"), "");
+        SemuLaunchPlan flycast = SemuLauncher.plan(fixture.model, fixture.plan, "flycast", "dreamcast", "", "Taxi.chd", SemuDiagnostics());
+        contract.expect(flycast.ok(), "flycast launch plan resolves: " + flycast.error);
+        contract.expect(flycast.environment.contains("SEMU_RENDER_SYSTEM_ID=dreamcast") && flycast.environment.contains("SEMU_RENDER_ASPECT=4:3"), "render_preload emits the SEMU_RENDER_* environment for flycast");
         FileSystem.mkdirp(PathTools.join(roms, "psp"));
         FileSystem.writeText(PathTools.join(roms, "psp/Lumines.iso"), "");
         SemuLaunchPlan psp = SemuLauncher.plan(fixture.model, fixture.plan, "retroarch", "psp", "ppsspp", "Lumines.iso", SemuDiagnostics());

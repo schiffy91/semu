@@ -219,8 +219,11 @@ class SemuLauncher {
         }
         launch.argv.push(selectedRom);
         SemuLauncher.stateEnvironment(launch, plan, emulator, platform);
-        if (SemuJson.boolAt(platform, "render_hook", false)) {  // the emulator links libsemurenderer and reads SEMU_RENDER_*
+        bool preload = SemuJson.boolAt(platform, "render_preload", false);  // GL emulator hooked at its SDL swap by libsemupreload
+        if (SemuJson.boolAt(platform, "render_hook", false) || preload) {  // the emulator links libsemurenderer and reads SEMU_RENDER_*
             for entry in SemuRenderEnvironment.compile(plan, system, emulatorId, stateRoot, diagnostics) { launch.environment.push(entry); }
+            string shim = PathTools.join(plan.assetRoot, "lib/libsemupreload.so");
+            if (preload && FileSystem.isFile(shim)) { launch.environment.push("LD_PRELOAD=" + shim); }
             if (!diagnostics.ok()) {
                 launch.error = "rendering configuration failed: " + diagnostics.render();
                 return launch;

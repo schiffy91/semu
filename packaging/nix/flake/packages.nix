@@ -22,7 +22,7 @@ forAllSystems (system:
     semu = pkgs.callPackage ../semu_bundle.nix {
       inherit semuCli esDe repositoryRoot;
       emulatorPackages = lib.attrValues emulators.packages;
-      extraPackages = [ pkgs.retroarch-joypad-autoconfig pkgs.syncthing visualAssets.combined ];
+      extraPackages = [ pkgs.retroarch-joypad-autoconfig pkgs.syncthing semuRenderer visualAssets.combined ];
     };
     release = pkgs.callPackage ../release.nix { inherit semu repositoryRoot; };
   in {
