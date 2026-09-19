@@ -370,7 +370,7 @@
               "key": "melonds_opengl_renderer",
               "source": {
                 "kind": "literal",
-                "value": "enabled"
+                "value": "disabled"
               }
             },
             {
@@ -645,7 +645,7 @@
               "key": "melonds_opengl_renderer",
               "source": {
                 "kind": "literal",
-                "value": "enabled"
+                "value": "disabled"
               }
             },
             {
