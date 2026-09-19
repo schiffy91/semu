@@ -169,25 +169,25 @@ class RetroArchProfileContract {
 class NativeProfilesContract {
     class void run(Contract contract) {
         Fixture fixture = Fixture("linux-desktop");
-        string dolphin = fixture.profile("dolphin", "config/Hotkeys.ini");
+        string dolphin = fixture.profile("dolphin", "dolphin-user/Config/Hotkeys.ini");
         contract.contains(dolphin, "Save State/Save State Slot 1 = @(Ctrl+S)", "dolphin save state chord");
         contract.contains(dolphin, "Load State/Load State Slot 1 = @(Ctrl+A)", "dolphin load state chord");
-        string dolphinMain = fixture.profile("dolphin", "config/Dolphin.ini");
+        string dolphinMain = fixture.profile("dolphin", "dolphin-user/Config/Dolphin.ini");
         contract.contains(dolphinMain, "[Core]", "dolphin core section");
-        string pcsx2 = fixture.profile("pcsx2", "config/inis/PCSX2.ini");
+        string pcsx2 = fixture.profile("pcsx2", "config/PCSX2/inis/PCSX2.ini");
         contract.contains(pcsx2, "StartFullscreen = true", "pcsx2 starts fullscreen");
         contract.contains(pcsx2, "Bios = " + fixture.plan.path("emulation_root") + "/PCSX2/config/bios", "pcsx2 BIOS directory resolves to the existing firmware folder");
-        string ppsspp = fixture.profile("ppsspp", "config/PSP/SYSTEM/ppsspp.ini");
+        string ppsspp = fixture.profile("ppsspp", "config/ppsspp/PSP/SYSTEM/ppsspp.ini");
         contract.expect(!ppsspp.isEmpty(), "ppsspp.ini renders");
-        string melonds = fixture.profile("melonds", "config/melonDS.toml");
+        string melonds = fixture.profile("melonds", "config/melonDS/melonDS.toml");
         contract.expect(!melonds.isEmpty(), "melonDS.toml renders");
-        string cemu = fixture.profile("cemu", "config/settings.xml");
+        string cemu = fixture.profile("cemu", "config/Cemu/settings.xml");
         contract.expect(!cemu.isEmpty(), "cemu settings.xml renders");
-        string flycast = fixture.profile("flycast", "config/emu.cfg");
+        string flycast = fixture.profile("flycast", "config/flycast/emu.cfg");
         contract.expect(!flycast.isEmpty(), "flycast emu.cfg renders");
-        string azahar = fixture.profile("azahar", "config/qt-config.ini");
+        string azahar = fixture.profile("azahar", "config/azahar-emu/qt-config.ini");
         contract.expect(!azahar.isEmpty(), "azahar qt-config.ini renders");
-        string ryujinx = fixture.profile("ryujinx", "config/Config.json");
+        string ryujinx = fixture.profile("ryujinx", "config/Ryujinx/Config.json");
         contract.expect(!ryujinx.isEmpty(), "ryujinx Config.json renders");
         contract.expect(fixture.diagnostics.ok(), "native profiles have no diagnostics: " + fixture.diagnostics.render());
     }

@@ -1,5 +1,6 @@
 import Library.FileSystem;
 import Library.JSON;
+import Library.Process;
 import Library.Strings;
 import Library.Vector;
 import ../lib/json.btrc;
@@ -92,10 +93,34 @@ class SemuLauncher {
         return lines.join("\n") + "\n";
     }
 
+    class bool seed(SemuPlan plan, JSONValue platform, SemuLaunchPlan launch) {  // copy keys and firmware into state once, never overwrite
+        JSONValue seeds = SemuJson.get(platform, "state.seeds");
+        if (seeds == null || !seeds.isArray()) { return true; }
+        for (int index = 0; index < seeds.size(); index++) {
+            JSONValue seed = seeds.at(index);
+            string target = plan.tokens.resolve(SemuJson.textAt(seed, "target"));
+            if (target.isEmpty() || FileSystem.exists(target)) { continue; }
+            for source in SemuJson.strings(seed.get("sources")) {
+                string candidate = plan.tokens.resolve(source);
+                if (!FileSystem.exists(candidate)) { continue; }
+                SemuPaths.prepareDirectory(PathTools.dirname(target));
+                ExecResult copy = ChildProcess.run("cp", ["-rn", candidate, target]);
+                if (!copy.ok()) {
+                    launch.error = f"could not seed {target} from {candidate}: {copy.stderr()}";
+                    return false;
+                }
+                break;
+            }
+        }
+        return true;
+    }
+
     class void stateEnvironment(SemuLaunchPlan launch, SemuPlan plan, SemuEmulator emulator, JSONValue platform) {
         string stateRoot = PathTools.join(plan.stateRoot(), emulator.id);
-        if (SemuJson.textAt(platform, "state.data_home").equals("xdg")) {
-            launch.environment.push("XDG_CONFIG_HOME=" + PathTools.join(stateRoot, "config"));
+        bool xdgConfig = SemuJson.textAt(platform, "state.config_home").equals("xdg");
+        bool xdgData = SemuJson.textAt(platform, "state.data_home").equals("xdg");
+        if (xdgConfig || xdgData) { launch.environment.push("XDG_CONFIG_HOME=" + PathTools.join(stateRoot, "config")); }
+        if (xdgData) {
             launch.environment.push("XDG_DATA_HOME=" + PathTools.join(stateRoot, "data"));
             launch.environment.push("XDG_CACHE_HOME=" + PathTools.join(stateRoot, "cache"));
             launch.environment.push("XDG_STATE_HOME=" + PathTools.join(stateRoot, "state"));
@@ -151,6 +176,7 @@ class SemuLauncher {
             plan.tokens.put("core_file", coreFile);
         }
         string stateRoot = PathTools.join(plan.stateRoot(), emulatorId);
+        plan.tokens.put("state_root", stateRoot);
         for name in ["config", "data", "cache", "state"] {
             if (!SemuPaths.prepareDirectory(PathTools.join(stateRoot, name))) {
                 launch.error = "could not create state directory " + stateRoot;
@@ -163,7 +189,9 @@ class SemuLauncher {
             launch.error = "profile generation failed: " + diagnostics.render();
             return launch;
         }
+        if (!SemuLauncher.seed(plan, platform, launch)) { return launch; }
         launch.argv.push(executable);
+        for argument in SemuJson.strings(SemuJson.get(platform, "state.extra_args")) { launch.argv.push(plan.tokens.resolve(argument)); }
         for argument in SemuJson.strings(platform.get("args")) { launch.argv.push(plan.tokens.resolve(argument)); }
         if (SemuJson.get(platform, "retroarch").isObject()) {
             string config = PathTools.join(stateRoot, "retroarch.cfg");

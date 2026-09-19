@@ -35,6 +35,7 @@ class SemuPlan {
     public string configRoot;
     public string semuHome;
     public string assetRoot;
+    public string stateRootPath;
     public JSONValue settings;
     public SemuTokens tokens;
     public SemuInput input;
@@ -47,6 +48,7 @@ class SemuPlan {
         self.configRoot = configRoot;
         self.semuHome = "";
         self.assetRoot = "";
+        self.stateRootPath = "";
         self.settings = JSONValue.makeObject();
         self.tokens = SemuTokens();
         self.input = null;
@@ -56,7 +58,7 @@ class SemuPlan {
 
     public string path(string name) { return self.tokens.get(name); }
 
-    public string stateRoot() { return self.path("state_root"); }
+    public string stateRoot() { return self.stateRootPath; }  // the global root; ${state_root} is rebound per emulator
 
     public string romsRoot() { return self.path("roms"); }
 }
@@ -141,6 +143,7 @@ class SemuResolver {
                 plan.tokens.put("paths." + key, value);
             }
         }
+        plan.stateRootPath = plan.path("state_root");
         for name in ["roms", "bios", "emulation_root", "state_root", "content_root"] {
             if (plan.path(name).isEmpty()) { diagnostics.add(target.id, "settings.paths." + name, "must be set"); }
         }
