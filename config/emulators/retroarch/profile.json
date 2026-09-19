@@ -50,6 +50,12 @@
       },
       "hotkey_screenshot_btn": {
         "source": "input.retroarch_hotkeys.screenshot_btn"
+      },
+      "video_driver": {
+        "source": "platform.retroarch.video_driver"
+      },
+      "bios_directory": {
+        "source": "runtime.bios_directory"
       }
     },
     "line_groups": {
@@ -125,6 +131,8 @@
       "path": "${profile_name}/retroarch.cfg",
       "lines": [
         "config_save_on_exit = \"false\"",
+        "global_core_options = \"true\"",
+        "quit_press_twice = \"false\"",
         {
           "if": "audio_driver",
           "line": "audio_driver = \"${audio_driver}\""
@@ -142,9 +150,11 @@
         "network_cmd_enable = \"true\"",
         "network_cmd_port = \"55355\"",
         "input_remap_binds_enable = \"true\"",
+        "system_directory = \"${bios_directory}\"",
         "savestate_directory = \"${content_root}/states\"",
         "savefile_directory = \"${content_root}/saves\"",
         "screenshot_directory = \"${content_root}/screenshots\"",
+        "video_driver = \"${video_driver}\"",
         "video_fullscreen = \"true\"",
         "video_threaded = \"false\"",
         "video_scale_integer = \"true\"",

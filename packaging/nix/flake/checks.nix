@@ -1,15 +1,17 @@
-# Flake checks: every package evaluates and the contract tests pass.
-{ self, btrc, forAllSystems, mkPkgs, ... }:
+# Flake checks: every package evaluates, the contract tests pass, and real RetroArch runs headless.
+{ self, forAllSystems, mkPkgs, ... }:
 
 forAllSystems (system:
   let
     pkgs = mkPkgs system;
+    lib = pkgs.lib;
     packages = self.packages.${system};
+    repositoryRoot = ../../..;
     contracts = pkgs.stdenv.mkDerivation {
       name = "semu-contracts";
-      src = pkgs.lib.fileset.toSource {
-        root = ../../..;
-        fileset = pkgs.lib.fileset.unions [ ../../../src ../../../tests/contracts ../../../config ];
+      src = lib.fileset.toSource {
+        root = repositoryRoot;
+        fileset = lib.fileset.unions [ ../../../src ../../../tests/contracts ../../../config ];
       };
       nativeBuildInputs = [ packages.btrcpy ];
       dontConfigure = true;
@@ -24,8 +26,47 @@ forAllSystems (system:
         touch "$out"
       '';
     };
+    syntheticCore = pkgs.stdenv.mkDerivation {
+      name = "semu-synthetic-libretro";
+      src = lib.fileset.toSource {
+        root = repositoryRoot;
+        fileset = ../../../tests/integration/synthetic_core.btrc;
+      };
+      nativeBuildInputs = [ packages.btrcpy ];
+      dontConfigure = true;
+      buildPhase = ''
+        btrcpy tests/integration/synthetic_core.btrc -o core.c --strict-imports --no-cache --no-stdlib --no-dce
+        $CC core.c -std=gnu11 -O2 -shared -fPIC -I${pkgs.retroarch-bare.src}/libretro-common/include -o synthetic_libretro.so
+      '';
+      installPhase = ''
+        install -Dm644 synthetic_libretro.so "$out/lib/retroarch/cores/synthetic_libretro.so"
+      '';
+    };
+    retroarchHeadless = pkgs.stdenv.mkDerivation {
+      name = "semu-retroarch-headless";
+      src = lib.fileset.toSource {
+        root = repositoryRoot;
+        fileset = ../../../tests/integration/retroarch-headless.sh;
+      };
+      nativeBuildInputs = [ pkgs.xvfb-run pkgs.python3 pkgs.imagemagick pkgs.mesa pkgs.findutils pkgs.gawk ];
+      dontConfigure = true;
+      dontBuild = true;
+      installPhase = ''
+        export SEMU_CLI="${packages.semu-cli}/bin/semu"
+        export RETROARCH="${packages.retroarch}/bin/retroarch"
+        export CORE="${syntheticCore}/lib/retroarch/cores/synthetic_libretro.so"
+        export LIBGL_DRIVERS_PATH="${pkgs.mesa}/lib/dri"
+        export __EGL_VENDOR_LIBRARY_DIRS="${pkgs.mesa}/share/glvnd/egl_vendor.d"
+        export __GLX_VENDOR_LIBRARY_NAME=mesa
+        export LD_LIBRARY_PATH="${pkgs.mesa}/lib"
+        xvfb-run --auto-servernum --server-args="-screen 0 1280x800x24" sh tests/integration/retroarch-headless.sh
+        touch "$out"
+      '';
+    };
   in {
     inherit contracts;
+    synthetic-core = syntheticCore;
+    retroarch-headless = retroarchHeadless;
     semu = packages.semu;
     retroarch = packages.retroarch;
     es-de = packages.es-de;

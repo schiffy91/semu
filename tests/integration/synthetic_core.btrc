@@ -1,0 +1,105 @@
+// A content-free libretro core that draws a fixed pattern, so RetroArch can run headless without a ROM.
+
+#include <libretro.h>
+#include <stdbool.h>
+#include <stdint.h>
+#include <string.h>
+
+__fn_ptr<bool, unsigned int, void*> SyntheticEnvironment;
+__fn_ptr<void, const void*, unsigned int, unsigned int, size_t> SyntheticVideo;
+__fn_ptr<void, int16_t, int16_t> SyntheticAudio;
+__fn_ptr<size_t, const int16_t*, size_t> SyntheticAudioBatch;
+__fn_ptr<void> SyntheticInputPoll;
+__fn_ptr<int16_t, unsigned int, unsigned int, unsigned int, unsigned int> SyntheticInputState;
+uint32_t SyntheticPixels[256 * 240];
+unsigned long long SyntheticFrame;
+
+class SyntheticPattern {
+    class uint32_t color(int red, int green, int blue) {
+        return 0xff000000u | ((uint32_t)red << 16) | ((uint32_t)green << 8) | (uint32_t)blue;
+    }
+
+    class void fill() {
+        uint32_t sky = SyntheticPattern.color(48, 96, 224);
+        uint32_t ground = SyntheticPattern.color(48, 200, 64);
+        uint32_t marker = SyntheticPattern.color(240, 224, 24);
+        for (int y = 0; y < 240; y++) {
+            for (int x = 0; x < 256; x++) { SyntheticPixels[y * 256 + x] = y < 160 ? sky : ground; }
+        }
+        int tick = (int)(SyntheticFrame % 200ULL);
+        for (int y = 100; y < 132; y++) {
+            for (int x = tick; x < tick + 32 && x < 256; x++) { SyntheticPixels[y * 256 + x] = marker; }
+        }
+    }
+}
+
+void retro_init() { SyntheticFrame = 0ULL; }
+void retro_deinit() {}
+unsigned int retro_api_version() { return RETRO_API_VERSION; }
+void retro_set_environment(__fn_ptr<bool, unsigned int, void*> callback) { SyntheticEnvironment = callback; }
+void retro_set_video_refresh(__fn_ptr<void, const void*, unsigned int, unsigned int, size_t> callback) { SyntheticVideo = callback; }
+void retro_set_audio_sample(__fn_ptr<void, int16_t, int16_t> callback) { SyntheticAudio = callback; }
+void retro_set_audio_sample_batch(__fn_ptr<size_t, const int16_t*, size_t> callback) { SyntheticAudioBatch = callback; }
+void retro_set_input_poll(__fn_ptr<void> callback) { SyntheticInputPoll = callback; }
+void retro_set_input_state(__fn_ptr<int16_t, unsigned int, unsigned int, unsigned int, unsigned int> callback) { SyntheticInputState = callback; }
+
+void retro_get_system_info(struct retro_system_info* info) {
+    memset(info, 0, sizeof(*info));
+    info->library_name = "Semu Synthetic";
+    info->library_version = "1";
+    info->valid_extensions = "semu";
+    info->need_fullpath = false;
+    info->block_extract = false;
+}
+
+void retro_get_system_av_info(struct retro_system_av_info* info) {
+    memset(info, 0, sizeof(*info));
+    info->geometry.base_width = 256;
+    info->geometry.base_height = 240;
+    info->geometry.max_width = 256;
+    info->geometry.max_height = 240;
+    info->geometry.aspect_ratio = 4.0f / 3.0f;
+    info->timing.fps = 60.0;
+    info->timing.sample_rate = 48000.0;
+}
+
+void retro_set_controller_port_device(unsigned int port, unsigned int device) { (void)port; (void)device; }
+void retro_reset() { SyntheticFrame = 0ULL; }
+
+bool retro_load_game(const struct retro_game_info* game) {
+    (void)game;
+    enum retro_pixel_format format = RETRO_PIXEL_FORMAT_XRGB8888;
+    unsigned int setFormat = RETRO_ENVIRONMENT_SET_PIXEL_FORMAT;
+    if (SyntheticEnvironment == null || !SyntheticEnvironment(setFormat, &format)) { return false; }
+    bool supportsNoGame = true;
+    unsigned int setNoGame = RETRO_ENVIRONMENT_SET_SUPPORT_NO_GAME;
+    SyntheticEnvironment(setNoGame, &supportsNoGame);
+    return true;
+}
+
+void retro_unload_game() {}
+unsigned int retro_get_region() { return RETRO_REGION_NTSC; }
+size_t retro_serialize_size() { return sizeof(SyntheticFrame); }
+bool retro_serialize(void* data, size_t size) {
+    if (size < sizeof(SyntheticFrame)) { return false; }
+    memcpy(data, &SyntheticFrame, sizeof(SyntheticFrame));
+    return true;
+}
+bool retro_unserialize(const void* data, size_t size) {
+    if (size < sizeof(SyntheticFrame)) { return false; }
+    memcpy(&SyntheticFrame, data, sizeof(SyntheticFrame));
+    return true;
+}
+void* retro_get_memory_data(unsigned int id) { (void)id; return null; }
+size_t retro_get_memory_size(unsigned int id) { (void)id; return 0; }
+void retro_cheat_reset() {}
+void retro_cheat_set(unsigned int index, bool enabled, const char* code) { (void)index; (void)enabled; (void)code; }
+bool retro_load_game_special(unsigned int type, const struct retro_game_info* info, size_t count) { (void)type; (void)info; (void)count; return false; }
+
+void retro_run() {
+    SyntheticFrame++;
+    if (SyntheticInputPoll != null) { SyntheticInputPoll(); }
+    SyntheticPattern.fill();
+    size_t pitch = (size_t)256 * sizeof(uint32_t);
+    if (SyntheticVideo != null) { SyntheticVideo(SyntheticPixels, 256u, 240u, pitch); }
+}
