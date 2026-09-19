@@ -2,20 +2,21 @@
   "schema_version": 3,
   "enabled": true,
   "renderer": true,
-  "screen": "assets/shaders/gc/screen.slangp",
+  "screen": "assets/shaders/gc/sharp.slangp",
   "doc": {
-    "note": "Standalone Dolphin reports game-only geometry to the shared Semu CRT pipeline; bezels.json resolves 4:3 or 16:9 art independently."
+    "note": "Standalone Dolphin reports game-only geometry to the shared Semu CRT pipeline; bezels.json resolves 4:3 or 16:9 art independently.",
+    "default": "480-line systems fill their tube at about 2x, where the royale slot mask aliases; easymode with halation is the default and royale the alternate"
   },
   "variants": [
     {
       "id": "default",
-      "label": "CRT Royale",
-      "screen": "assets/shaders/gc/screen.slangp"
-    },
-    {
-      "id": "sharp",
       "label": "Sharp CRT (easymode + halation)",
       "screen": "assets/shaders/gc/sharp.slangp"
+    },
+    {
+      "id": "royale",
+      "label": "CRT Royale",
+      "screen": "assets/shaders/gc/screen.slangp"
     }
   ],
   "default_variant": "default",
