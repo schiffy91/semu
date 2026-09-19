@@ -139,12 +139,29 @@
       },
       "parent": []
     },
-    "core-mesen": {
+    "core-melonds": {
       "inputs": {
         "nixpkgs": [
           "nixpkgs"
         ],
         "source": "source_8"
+      },
+      "locked": {
+        "path": "./config/emulators/retroarch/cores/melonds",
+        "type": "path"
+      },
+      "original": {
+        "path": "./config/emulators/retroarch/cores/melonds",
+        "type": "path"
+      },
+      "parent": []
+    },
+    "core-mesen": {
+      "inputs": {
+        "nixpkgs": [
+          "nixpkgs"
+        ],
+        "source": "source_9"
       },
       "locked": {
         "path": "./config/emulators/retroarch/cores/mesen",
@@ -161,7 +178,7 @@
         "nixpkgs": [
           "nixpkgs"
         ],
-        "source": "source_9"
+        "source": "source_10"
       },
       "locked": {
         "path": "./config/emulators/retroarch/cores/mgba",
@@ -178,7 +195,7 @@
         "nixpkgs": [
           "nixpkgs"
         ],
-        "source": "source_10"
+        "source": "source_11"
       },
       "locked": {
         "path": "./config/emulators/retroarch/cores/mupen64plus_next",
@@ -195,7 +212,7 @@
         "nixpkgs": [
           "nixpkgs"
         ],
-        "source": "source_11"
+        "source": "source_12"
       },
       "locked": {
         "path": "./config/emulators/retroarch/cores/ppsspp",
@@ -212,7 +229,7 @@
         "nixpkgs": [
           "nixpkgs"
         ],
-        "source": "source_12"
+        "source": "source_13"
       },
       "locked": {
         "path": "./config/emulators/retroarch/cores/snes9x",
@@ -229,7 +246,7 @@
         "nixpkgs": [
           "nixpkgs"
         ],
-        "source": "source_13"
+        "source": "source_14"
       },
       "locked": {
         "path": "./config/emulators/azahar",
@@ -246,7 +263,7 @@
         "nixpkgs": [
           "nixpkgs"
         ],
-        "source": "source_14"
+        "source": "source_15"
       },
       "locked": {
         "path": "./config/emulators/cemu",
@@ -263,7 +280,7 @@
         "nixpkgs": [
           "nixpkgs"
         ],
-        "source": "source_15"
+        "source": "source_16"
       },
       "locked": {
         "path": "./config/emulators/dolphin",
@@ -280,7 +297,7 @@
         "nixpkgs": [
           "nixpkgs"
         ],
-        "source": "source_16"
+        "source": "source_17"
       },
       "locked": {
         "path": "./config/emulators/flycast",
@@ -297,7 +314,7 @@
         "nixpkgs": [
           "nixpkgs"
         ],
-        "source": "source_17"
+        "source": "source_18"
       },
       "locked": {
         "path": "./config/emulators/melonds",
@@ -314,7 +331,7 @@
         "nixpkgs": [
           "nixpkgs"
         ],
-        "source": "source_18"
+        "source": "source_19"
       },
       "locked": {
         "path": "./config/emulators/pcsx2",
@@ -331,7 +348,7 @@
         "nixpkgs": [
           "nixpkgs"
         ],
-        "source": "source_19"
+        "source": "source_20"
       },
       "locked": {
         "path": "./config/emulators/ppsspp",
@@ -348,7 +365,7 @@
         "nixpkgs": [
           "nixpkgs"
         ],
-        "source": "source_20"
+        "source": "source_21"
       },
       "locked": {
         "path": "./config/emulators/ryujinx",
@@ -363,7 +380,7 @@
     "esde": {
       "inputs": {
         "nixpkgs": "nixpkgs",
-        "source": "source_21"
+        "source": "source_22"
       },
       "locked": {
         "path": "./packaging/esde",
@@ -437,7 +454,7 @@
         "renderer": [
           "renderer"
         ],
-        "source": "source_22"
+        "source": "source_23"
       },
       "locked": {
         "path": "./config/emulators/retroarch",
@@ -459,6 +476,7 @@
         "core-gambatte": "core-gambatte",
         "core-genesis_plus_gx": "core-genesis_plus_gx",
         "core-mednafen_psx": "core-mednafen_psx",
+        "core-melonds": "core-melonds",
         "core-mesen": "core-mesen",
         "core-mgba": "core-mgba",
         "core-mupen64plus_next": "core-mupen64plus_next",
@@ -500,6 +518,23 @@
     "source_10": {
       "flake": false,
       "locked": {
+        "lastModified": 1785201686,
+        "narHash": "sha256-Wz2qr657sF7D9R2jkHJLLs1BHkoKxYXd2rUAbroY5Rw=",
+        "owner": "libretro",
+        "repo": "mgba",
+        "rev": "32de792178a3662cd0402c8568fccfaad4a764a1",
+        "type": "github"
+      },
+      "original": {
+        "owner": "libretro",
+        "repo": "mgba",
+        "rev": "32de792178a3662cd0402c8568fccfaad4a764a1",
+        "type": "github"
+      }
+    },
+    "source_11": {
+      "flake": false,
+      "locked": {
         "lastModified": 1786022851,
         "narHash": "sha256-lnX/W6tIOJY7bA7a5KFN3FUYS+o24bsyGSeTCOwubCs=",
         "owner": "libretro",
@@ -514,7 +549,7 @@
         "type": "github"
       }
     },
-    "source_11": {
+    "source_12": {
       "flake": false,
       "locked": {
         "lastModified": 1788258691,
@@ -533,7 +568,7 @@
         "url": "https://github.com/hrydgard/ppsspp"
       }
     },
-    "source_12": {
+    "source_13": {
       "flake": false,
       "locked": {
         "lastModified": 1787859289,
@@ -550,7 +585,7 @@
         "type": "github"
       }
     },
-    "source_13": {
+    "source_14": {
       "flake": false,
       "locked": {
         "lastModified": 1786373588,
@@ -569,7 +604,7 @@
         "url": "https://github.com/azahar-emu/azahar"
       }
     },
-    "source_14": {
+    "source_15": {
       "flake": false,
       "locked": {
         "lastModified": 1738662993,
@@ -586,7 +621,7 @@
         "type": "github"
       }
     },
-    "source_15": {
+    "source_16": {
       "flake": false,
       "locked": {
         "lastModified": 1786416872,
@@ -605,7 +640,7 @@
         "url": "https://github.com/dolphin-emu/dolphin"
       }
     },
-    "source_16": {
+    "source_17": {
       "flake": false,
       "locked": {
         "lastModified": 1786747058,
@@ -624,7 +659,7 @@
         "url": "https://github.com/flyinghead/flycast"
       }
     },
-    "source_17": {
+    "source_18": {
       "flake": false,
       "locked": {
         "lastModified": 1787524141,
@@ -641,7 +676,7 @@
         "type": "github"
       }
     },
-    "source_18": {
+    "source_19": {
       "flake": false,
       "locked": {
         "lastModified": 1769618187,
@@ -656,25 +691,6 @@
         "ref": "v2.6.3",
         "repo": "pcsx2",
         "type": "github"
-      }
-    },
-    "source_19": {
-      "flake": false,
-      "locked": {
-        "lastModified": 1778934711,
-        "narHash": "sha256-F3MKth+eb/Ehoa2jcS0DIDt5LSRgznR+J00y1TEVBl4=",
-        "ref": "refs/tags/v1.20.4",
-        "rev": "fa50bb1976065c4f8b1b47af227d367fe9771555",
-        "revCount": 45868,
-        "submodules": true,
-        "type": "git",
-        "url": "https://github.com/hrydgard/ppsspp"
-      },
-      "original": {
-        "ref": "refs/tags/v1.20.4",
-        "submodules": true,
-        "type": "git",
-        "url": "https://github.com/hrydgard/ppsspp"
       }
     },
     "source_2": {
@@ -699,6 +715,25 @@
     "source_20": {
       "flake": false,
       "locked": {
+        "lastModified": 1778934711,
+        "narHash": "sha256-F3MKth+eb/Ehoa2jcS0DIDt5LSRgznR+J00y1TEVBl4=",
+        "ref": "refs/tags/v1.20.4",
+        "rev": "fa50bb1976065c4f8b1b47af227d367fe9771555",
+        "revCount": 45868,
+        "submodules": true,
+        "type": "git",
+        "url": "https://github.com/hrydgard/ppsspp"
+      },
+      "original": {
+        "ref": "refs/tags/v1.20.4",
+        "submodules": true,
+        "type": "git",
+        "url": "https://github.com/hrydgard/ppsspp"
+      }
+    },
+    "source_21": {
+      "flake": false,
+      "locked": {
         "lastModified": 1760166699,
         "narHash": "sha256-LhQaXxmj5HIgfmrsDN8GhhVXlXHpDO2Q8JtNLaCq0mk=",
         "ref": "refs/tags/1.3.3",
@@ -713,7 +748,7 @@
         "url": "https://git.ryujinx.app/projects/Ryubing"
       }
     },
-    "source_21": {
+    "source_22": {
       "flake": false,
       "locked": {
         "lastModified": 1762528822,
@@ -730,7 +765,7 @@
         "type": "gitlab"
       }
     },
-    "source_22": {
+    "source_23": {
       "flake": false,
       "locked": {
         "lastModified": 1763597828,
@@ -837,6 +872,23 @@
     "source_8": {
       "flake": false,
       "locked": {
+        "lastModified": 1784487518,
+        "narHash": "sha256-nQvnXoB8UeaSr6QfYwn18Y18KyLyWvcv/Q3L3SHvaNU=",
+        "owner": "libretro",
+        "repo": "melonds",
+        "rev": "66b5d2634cd0a79030562811e6e05f5532f800ba",
+        "type": "github"
+      },
+      "original": {
+        "owner": "libretro",
+        "repo": "melonds",
+        "rev": "66b5d2634cd0a79030562811e6e05f5532f800ba",
+        "type": "github"
+      }
+    },
+    "source_9": {
+      "flake": false,
+      "locked": {
         "lastModified": 1776706287,
         "narHash": "sha256-fDGG6U+yhpbcvKuSN30F0dM+NCXlPTPULNEqTZTL/Vc=",
         "owner": "libretro",
@@ -848,23 +900,6 @@
         "owner": "libretro",
         "repo": "mesen",
         "rev": "0102910c39ad1a62bc3f784466f3f67ca9eae335",
-        "type": "github"
-      }
-    },
-    "source_9": {
-      "flake": false,
-      "locked": {
-        "lastModified": 1785201686,
-        "narHash": "sha256-Wz2qr657sF7D9R2jkHJLLs1BHkoKxYXd2rUAbroY5Rw=",
-        "owner": "libretro",
-        "repo": "mgba",
-        "rev": "32de792178a3662cd0402c8568fccfaad4a764a1",
-        "type": "github"
-      },
-      "original": {
-        "owner": "libretro",
-        "repo": "mgba",
-        "rev": "32de792178a3662cd0402c8568fccfaad4a764a1",
         "type": "github"
       }
     }

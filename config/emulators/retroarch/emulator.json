@@ -350,6 +350,36 @@
                 "value": "disabled"
               }
             }
+          ],
+          "melonds": [
+            {
+              "key": "melonds_screen_layout",
+              "source": {
+                "kind": "literal",
+                "value": "Top/Bottom"
+              }
+            },
+            {
+              "key": "melonds_screen_gap",
+              "source": {
+                "kind": "literal",
+                "value": "0"
+              }
+            },
+            {
+              "key": "melonds_opengl_renderer",
+              "source": {
+                "kind": "literal",
+                "value": "enabled"
+              }
+            },
+            {
+              "key": "melonds_touch_mode",
+              "source": {
+                "kind": "literal",
+                "value": "Touch"
+              }
+            }
           ]
         },
         "core_overrides": {
@@ -593,6 +623,36 @@
                 "basis": "combined",
                 "display_aspect": "native",
                 "anchor": "width"
+              }
+            }
+          ],
+          "melonds": [
+            {
+              "key": "melonds_screen_layout",
+              "source": {
+                "kind": "literal",
+                "value": "Top/Bottom"
+              }
+            },
+            {
+              "key": "melonds_screen_gap",
+              "source": {
+                "kind": "literal",
+                "value": "0"
+              }
+            },
+            {
+              "key": "melonds_opengl_renderer",
+              "source": {
+                "kind": "literal",
+                "value": "enabled"
+              }
+            },
+            {
+              "key": "melonds_touch_mode",
+              "source": {
+                "kind": "literal",
+                "value": "Touch"
               }
             }
           ]
