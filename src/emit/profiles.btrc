@@ -130,6 +130,7 @@ class SemuProfileContext {
         self.emulator = emulator;
         self.platform = emulator.platform(plan.platform);
         self.diagnostics = diagnostics;
+        plan.tokens.put("state_root", self.stateRoot());  // ${state_root} means this emulator's state while rendering
     }
 
     public string stateRoot() { return PathTools.join(self.plan.stateRoot(), self.emulator.id); }
@@ -297,10 +298,28 @@ class SemuProfileFile {
 }
 
 class SemuProfiles {
-    class string relativePath(SemuEmulator emulator, string declared, SemuBindings bindings) {  // strip the "<Emulator name>/" prefix
+    class string relativePath(SemuProfileContext context, string declared, SemuBindings bindings) {  // path under the emulator state root
         string rendered = bindings.render(declared);
-        string prefix = emulator.name + "/";
-        return rendered.startsWith(prefix) ? rendered.substring(prefix.len(), rendered.len() - prefix.len()) : rendered;
+        string prefix = context.emulator.name + "/";
+        string relative = rendered.startsWith(prefix) ? rendered.substring(prefix.len(), rendered.len() - prefix.len()) : rendered;
+        JSONValue state = context.platform.get("state");
+        string stateRoot = context.stateRoot();
+        if (relative.startsWith("config/")) {
+            string suffix = relative.substring(7, relative.len() - 7);
+            string exact = context.plan.tokens.resolve(SemuJson.textAt(state, "profile_config_dir"));
+            string subdir = SemuJson.textAt(state, "config_subdir");
+            if (!exact.isEmpty()) {
+                if (!SemuPaths.inside(stateRoot, exact)) { return ""; }
+                return PathTools.join(exact.substring(stateRoot.len() + 1, exact.len() - stateRoot.len() - 1), suffix);
+            }
+            return PathTools.join("config/" + (subdir.isEmpty() ? context.emulator.id : subdir), suffix);
+        }
+        if (relative.startsWith("data/")) {
+            string suffix = relative.substring(5, relative.len() - 5);
+            string subdir = SemuJson.textAt(state, "data_subdir");
+            return PathTools.join("data/" + (subdir.isEmpty() ? context.emulator.id : subdir), suffix);
+        }
+        return relative;
     }
 
     class Vector<SemuProfileFile> render(SemuModel model, SemuPlan plan, SemuEmulator emulator, SemuDiagnostics diagnostics) {
@@ -316,7 +335,7 @@ class SemuProfiles {
         if (files == null || !files.isArray()) { return result; }
         for (int index = 0; index < files.size(); index++) {
             JSONValue file = files.at(index);
-            string relative = SemuProfiles.relativePath(emulator, SemuJson.textAt(file, "path"), bindings);
+            string relative = SemuProfiles.relativePath(context, SemuJson.textAt(file, "path"), bindings);
             if (relative.isEmpty() || relative.contains("${") || relative.startsWith("/") || relative.contains("..")) {
                 diagnostics.add(emulator.profileFile, f"files.{index}.path", "did not resolve to a contained relative path");
                 continue;

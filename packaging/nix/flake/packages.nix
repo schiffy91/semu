@@ -14,11 +14,12 @@ forAllSystems (system:
     semuProgram = pkgs.callPackage ../semu_program.nix { inherit btrcpy; };
     semuSource = pkgs.callPackage ../semu_source.nix { };
     semuCli = pkgs.callPackage ../semu_cli.nix { inherit semuProgram semuSource; };
-    retroarch = pkgs.callPackage ../retroarch.nix { inherit repositoryRoot; };
+    emulators = pkgs.callPackage ../emulators.nix { inherit repositoryRoot; };
+    retroarch = emulators.packages.retroarch;
     esDe = pkgs.callPackage (repositoryRoot + "/packaging/esde/package.nix") { esDePackages = esDePkgs; };
     semu = pkgs.callPackage ../semu_bundle.nix {
       inherit semuCli esDe repositoryRoot;
-      emulatorPackages = [ retroarch ];
+      emulatorPackages = lib.attrValues emulators.packages;
       extraPackages = [ pkgs.retroarch-joypad-autoconfig ];
     };
   in {
@@ -28,4 +29,4 @@ forAllSystems (system:
     semu-source = semuSource;
     semu-cli = semuCli;
     es-de = esDe;
-  })
+  } // lib.mapAttrs' (id: package: lib.nameValuePair "emulator-${id}" package) emulators.packages)
