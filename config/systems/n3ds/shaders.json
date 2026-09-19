@@ -1,10 +1,24 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "enabled": true,
   "renderer": true,
   "screen": "assets/shaders/n3ds/screen.slangp",
   "doc": {
     "intent": "The production preset is a neutral two-panel LCD treatment without CRT scanlines.",
     "activation": "The source-built Azahar package reports separate 400x240 and 320x240 ABI2 game surfaces. The generic Semu tap applies this neutral LCD preset to those surfaces before composing the selected shell."
-  }
+  },
+  "variants": [
+    {
+      "id": "default",
+      "label": "3DS LCD",
+      "screen": "assets/shaders/n3ds/screen.slangp"
+    },
+    {
+      "id": "grid",
+      "label": "LCD grid v2",
+      "screen": "assets/shaders/n3ds/grid.slangp"
+    }
+  ],
+  "default_variant": "default",
+  "disabled_variant": "none"
 }

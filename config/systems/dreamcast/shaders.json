@@ -1,9 +1,23 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "enabled": true,
   "renderer": true,
   "screen": "assets/shaders/dreamcast/screen.slangp",
   "doc": {
     "intent": "480i/480p era CRT or VGA softness"
-  }
+  },
+  "variants": [
+    {
+      "id": "default",
+      "label": "CRT Royale",
+      "screen": "assets/shaders/dreamcast/screen.slangp"
+    },
+    {
+      "id": "sharp",
+      "label": "Sharp CRT (easymode + halation)",
+      "screen": "assets/shaders/dreamcast/sharp.slangp"
+    }
+  ],
+  "default_variant": "default",
+  "disabled_variant": "none"
 }

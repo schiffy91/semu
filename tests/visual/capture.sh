@@ -10,7 +10,14 @@ trap 'kill "$xvfb" 2>/dev/null || true' EXIT
 sleep 1
 DISPLAY="$display" WAYLAND_DISPLAY= LIBGL_ALWAYS_SOFTWARE=1 SDL_VIDEODRIVER=x11 QT_QPA_PLATFORM=xcb \
   "${SEMU:-semu}" launch "$@" >"${SEMU_CAPTURE_LOG:-/dev/null}" 2>&1 & pid=$!
-sleep "${SEMU_CAPTURE_WAIT:-15}"
+wait="${SEMU_CAPTURE_WAIT:-15}"
+sleep $((wait / 2))
+if command -v xdotool >/dev/null 2>&1; then  # no window manager on Xvfb: native emulators keep their default window size unless we maximize
+  for window in $(DISPLAY="$display" xdotool search --onlyvisible --name '.' 2>/dev/null); do
+    DISPLAY="$display" xdotool windowmove "$window" 0 0 windowsize "$window" 100% 100% 2>/dev/null || true
+  done
+fi
+sleep $((wait - wait / 2))
 xwd -root -silent -display "$display" | convert xwd:- "$out"
 kill -TERM "$pid" 2>/dev/null || true
 wait "$pid" 2>/dev/null || true

@@ -1,9 +1,23 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "enabled": true,
   "renderer": true,
   "screen": "assets/shaders/nds/screen.slangp",
   "doc": {
     "intent": "Nintendo DS LCD pixel structure and panel color response; each screen receives an independent shader instance"
-  }
+  },
+  "variants": [
+    {
+      "id": "default",
+      "label": "DS LCD",
+      "screen": "assets/shaders/nds/screen.slangp"
+    },
+    {
+      "id": "grid",
+      "label": "LCD grid v2",
+      "screen": "assets/shaders/nds/grid.slangp"
+    }
+  ],
+  "default_variant": "default",
+  "disabled_variant": "none"
 }

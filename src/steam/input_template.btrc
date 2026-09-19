@@ -1,0 +1,361 @@
+import Library.Console;
+import Library.FileSystem;
+import Library.JSON;
+import Library.Strings;
+import Library.Vector;
+import ../lib/json.btrc;
+import ../lib/paths.btrc;
+import ../model.btrc;
+import ../resolve.btrc;
+
+class SteamInputDocument {  // the Deck's Steam Input template, rendered from config/input/steam-deck/steam_input.json
+    public JSONValue root;
+    public string iconColors;
+    public Vector<string> quitButtons;
+
+    public SteamInputDocument(JSONValue root) {
+        self.root = root;
+        self.iconColors = "#232323 #FFFFFF";
+        self.quitButtons = SemuJson.strings(SemuJson.get(root, "quit_chord.buttons"));
+        if (self.quitButtons.isEmpty()) { self.quitButtons = ["start", "select"]; }
+    }
+
+    public JSONValue action(string id) {
+        JSONValue actions = self.root.get("actions");
+        return actions != null && actions.isObject() && actions.has(id) ? actions.get(id) : JSONValue.makeObject();
+    }
+
+    public string label(string id) { return SemuJson.textAt(self.action(id), "label"); }
+    public string icon(string id) { return SemuJson.textAt(self.action(id), "icon"); }
+    public string chord(string id) { return SemuJson.textAt(self.action(id), "chord"); }
+
+    public string hotkeyAction(string button) {
+        JSONValue bindings = self.root.get("hotkey_bindings");
+        if (bindings == null || !bindings.isArray()) { return ""; }
+        for (int index = 0; index < bindings.size(); index++) {
+            if (SemuJson.textAt(bindings.at(index), "button").equals(button)) { return SemuJson.textAt(bindings.at(index), "action"); }
+        }
+        return "";
+    }
+
+    public Vector<string> slots(string name) { return SemuJson.strings(SemuJson.get(self.root, "radial." + name)); }
+    public JSONValue layers() { return SemuJson.get(self.root, "radial.system_layers"); }
+    public bool showLabels() { return SemuJson.boolAt(self.root, "radial.show_labels", false); }
+}
+
+class SteamInputChordNames {  // Semu chord text -> Steam key_press names
+    class string key(string name) {
+        string lower = name.toLower();
+        if (lower.len() == 1 && lower.charAt(0) >= 'a' && lower.charAt(0) <= 'z') { return name.toUpper(); }
+        if (lower.len() == 1 && lower.charAt(0) >= '0' && lower.charAt(0) <= '9') { return name; }
+        if (lower.equals("up")) { return "UP_ARROW"; }
+        if (lower.equals("down")) { return "DOWN_ARROW"; }
+        if (lower.equals("left")) { return "LEFT_ARROW"; }
+        if (lower.equals("right")) { return "RIGHT_ARROW"; }
+        if (lower.equals("enter") || lower.equals("return")) { return "RETURN"; }
+        if (lower.equals("space")) { return "SPACE"; }
+        if (lower.equals("backspace")) { return "BACKSPACE"; }
+        if (lower.equals("esc") || lower.equals("escape")) { return "ESCAPE"; }
+        if (lower.equals("tab")) { return "TAB"; }
+        if (lower.equals("+")) { return "KEYPAD_PLUS"; }
+        if (lower.equals("-")) { return "DASH"; }
+        if (lower.startsWith("f") && lower.len() <= 3) { return name.toUpper(); }
+        return name.toUpper();
+    }
+
+    class string modifier(string name) {
+        string lower = name.toLower();
+        if (lower.equals("ctrl")) { return "LEFT_CONTROL"; }
+        if (lower.equals("shift")) { return "LEFT_SHIFT"; }
+        if (lower.equals("alt")) { return "LEFT_ALT"; }
+        if (lower.equals("meta")) { return "LEFT_WINDOWS"; }
+        return "";
+    }
+
+    class Vector<string> keys(string chord) {  // Steam presses every listed key together
+        Vector<string> parts = Strings.split(chord, "+");
+        if (chord.endsWith("++")) { parts = Strings.split(chord.substring(0, chord.len() - 2), "+"); parts.push("+"); }
+        Vector<string> keys = [];
+        for (int index = 0; index < parts.size(); index++) {
+            string part = parts.get(index).trim();
+            if (part.isEmpty()) { continue; }
+            if (index < parts.size() - 1) {
+                string modifier = SteamInputChordNames.modifier(part);
+                if (!modifier.isEmpty()) { keys.push(modifier); continue; }
+            }
+            keys.push(SteamInputChordNames.key(part));
+        }
+        return keys;
+    }
+}
+
+class SteamInputVdf {  // the controller_mappings document Steam loads as a Neptune template
+    class string binding(SteamInputDocument document, string command, string action) {
+        return "\"binding\" \"" + command + ", " + document.label(action) + ", " + document.icon(action) + ", " + document.iconColors + "\"";
+    }
+
+    class string keyBindings(SteamInputDocument document, string chord, string action) {
+        Vector<string> parts = [];
+        for key in SteamInputChordNames.keys(chord) { parts.push(SteamInputVdf.binding(document, "key_press " + key, action)); }
+        return parts.join(" ");
+    }
+
+    class string xinput(string button) { return "\"binding\" \"xinput_button " + button + ", , \""; }
+
+    class string actionBindings(SteamInputDocument document, string action) {
+        string bindings = SteamInputVdf.keyBindings(document, document.chord(action), action);
+        if (!action.equals("app.quit")) { return bindings; }
+        for button in document.quitButtons { bindings = bindings + " " + SteamInputVdf.binding(document, "xinput_button " + button.toUpper(), action); }
+        return bindings;
+    }
+
+    class string input(string name, string activator, string bindings) {
+        return "\t\t\t\"" + name + "\" { \"activators\" { \"" + activator + "\" { \"bindings\" { " + bindings + " } } } }";
+    }
+
+    class void groupHead(Vector<string> lines, string id, string mode) {
+        lines.push("\t\"group\"");
+        lines.push("\t{");
+        lines.push("\t\t\"id\" \"" + id + "\"");
+        lines.push("\t\t\"mode\" \"" + mode + "\"");
+        lines.push("\t\t\"inputs\"");
+        lines.push("\t\t{");
+    }
+
+    class void groupTail(Vector<string> lines) {
+        lines.push("\t\t}");
+        lines.push("\t}");
+    }
+
+    class string singleGroup(string id, string mode, string name, string bindings) {
+        return "\t\"group\" { \"id\" \"" + id + "\" \"mode\" \"" + mode + "\" \"inputs\" { \"" + name
+            + "\" { \"activators\" { \"Full_Press\" { \"bindings\" { " + bindings + " } } } } } }";
+    }
+
+    class string hotkeyPreset() { return "\"binding\" \"controller_action CHANGE_PRESET 2 0 0, Hotkey, , \""; }
+    class string defaultPreset() { return "\"binding\" \"controller_action CHANGE_PRESET 1 0 0, , \""; }
+    class string layerPreset(int preset, string label) { return "\"binding\" \"controller_action CHANGE_PRESET " + Strings.fromInt(preset + 1) + " 0 0, " + label + ", , \""; }
+
+    class string layerActivator(string activator) {
+        if (activator.equals("left_lower_grip")) { return "button_back_left_lower"; }
+        if (activator.equals("right_lower_grip")) { return "button_back_right_lower"; }
+        return "";
+    }
+
+    class void gamepadGroups(Vector<string> lines, SteamInputDocument document) {
+        SteamInputVdf.groupHead(lines, "0", "four_buttons");
+        lines.push(SteamInputVdf.input("button_a", "Full_Press", SteamInputVdf.xinput("A")));
+        lines.push(SteamInputVdf.input("button_b", "Full_Press", SteamInputVdf.xinput("B")));
+        lines.push(SteamInputVdf.input("button_x", "Full_Press", SteamInputVdf.xinput("X")));
+        lines.push(SteamInputVdf.input("button_y", "Full_Press", SteamInputVdf.xinput("Y")));
+        SteamInputVdf.groupTail(lines);
+        SteamInputVdf.groupHead(lines, "1", "dpad");
+        lines.push(SteamInputVdf.input("dpad_north", "Full_Press", SteamInputVdf.xinput("DPAD_UP")));
+        lines.push(SteamInputVdf.input("dpad_south", "Full_Press", SteamInputVdf.xinput("DPAD_DOWN")));
+        lines.push(SteamInputVdf.input("dpad_east", "Full_Press", SteamInputVdf.xinput("DPAD_RIGHT")));
+        lines.push(SteamInputVdf.input("dpad_west", "Full_Press", SteamInputVdf.xinput("DPAD_LEFT")));
+        SteamInputVdf.groupTail(lines);
+        lines.push(SteamInputVdf.singleGroup("2", "joystick_move", "click", SteamInputVdf.xinput("JOYSTICK_LEFT")));
+        lines.push(SteamInputVdf.singleGroup("3", "joystick_move", "click", SteamInputVdf.xinput("JOYSTICK_RIGHT")));
+        lines.push(SteamInputVdf.singleGroup("4", "trigger", "click", SteamInputVdf.xinput("TRIGGER_LEFT")));
+        lines.push(SteamInputVdf.singleGroup("5", "trigger", "click", SteamInputVdf.xinput("TRIGGER_RIGHT")));
+        lines.push("\t\"group\" { \"id\" \"6\" \"mode\" \"absolute_mouse\" \"inputs\" { \"click\" { \"activators\" { \"Soft_Press\" { \"bindings\" { \"binding\" \"mouse_button LEFT, , \" } } } } } }");
+        SteamInputVdf.groupHead(lines, "7", "switches");
+        lines.push(SteamInputVdf.input("button_escape", "Full_Press", SteamInputVdf.xinput("START")));
+        lines.push("\t\t\t\"button_menu\" { \"activators\" { \"Full_Press\" { \"bindings\" { " + SteamInputVdf.xinput("SELECT")
+            + " } } \"Long_Press\" { \"bindings\" { " + SteamInputVdf.hotkeyPreset() + " } } } }");
+        lines.push(SteamInputVdf.input("left_bumper", "Full_Press", SteamInputVdf.xinput("SHOULDER_LEFT")));
+        lines.push(SteamInputVdf.input("right_bumper", "Full_Press", SteamInputVdf.xinput("SHOULDER_RIGHT")));
+        lines.push(SteamInputVdf.input("button_back_left_upper", "Full_Press", SteamInputVdf.hotkeyPreset()));
+        lines.push(SteamInputVdf.input("button_back_right_upper", "Full_Press", SteamInputVdf.hotkeyPreset()));
+        JSONValue layers = document.layers();
+        if (layers != null && layers.isArray()) {
+            for (int index = 0; index < layers.size(); index++) {
+                JSONValue layer = layers.at(index);
+                for activator in SemuJson.strings(layer.get("activators")) {
+                    lines.push(SteamInputVdf.input(SteamInputVdf.layerActivator(activator), "Full_Press", SteamInputVdf.layerPreset(index + 2, SemuJson.textAt(layer, "name"))));
+                }
+            }
+        }
+        SteamInputVdf.groupTail(lines);
+    }
+
+    class void boundInput(Vector<string> lines, SteamInputDocument document, string button, string inputName) {
+        string action = document.hotkeyAction(button);
+        if (!action.isEmpty()) { lines.push(SteamInputVdf.input(inputName, "Full_Press", SteamInputVdf.actionBindings(document, action))); }
+    }
+
+    class bool anyHotkey(SteamInputDocument document, Vector<string> buttons) {
+        for button in buttons { if (!document.hotkeyAction(button).isEmpty()) { return true; } }
+        return false;
+    }
+
+    class void hotkeyGroups(Vector<string> lines, SteamInputDocument document) {
+        Vector<string> face = ["A", "B", "X", "Y"];
+        if (SteamInputVdf.anyHotkey(document, face)) {
+            SteamInputVdf.groupHead(lines, "10", "four_buttons");
+            SteamInputVdf.boundInput(lines, document, "A", "button_a");
+            SteamInputVdf.boundInput(lines, document, "B", "button_b");
+            SteamInputVdf.boundInput(lines, document, "X", "button_x");
+            SteamInputVdf.boundInput(lines, document, "Y", "button_y");
+            SteamInputVdf.groupTail(lines);
+        }
+        if (!document.hotkeyAction("L2").isEmpty()) { lines.push(SteamInputVdf.singleGroup("11", "trigger", "click", SteamInputVdf.actionBindings(document, document.hotkeyAction("L2")))); }
+        if (!document.hotkeyAction("R2").isEmpty()) { lines.push(SteamInputVdf.singleGroup("12", "trigger", "click", SteamInputVdf.actionBindings(document, document.hotkeyAction("R2")))); }
+        Vector<string> dpad = ["D-Pad Up", "D-Pad Down", "D-Pad Left", "D-Pad Right"];
+        if (SteamInputVdf.anyHotkey(document, dpad)) {
+            SteamInputVdf.groupHead(lines, "13", "dpad");
+            SteamInputVdf.boundInput(lines, document, "D-Pad Up", "dpad_north");
+            SteamInputVdf.boundInput(lines, document, "D-Pad Down", "dpad_south");
+            SteamInputVdf.boundInput(lines, document, "D-Pad Right", "dpad_east");
+            SteamInputVdf.boundInput(lines, document, "D-Pad Left", "dpad_west");
+            SteamInputVdf.groupTail(lines);
+        }
+        SteamInputVdf.groupHead(lines, "14", "switches");
+        SteamInputVdf.boundInput(lines, document, "Start", "button_escape");
+        lines.push(SteamInputVdf.input("button_menu", "release", SteamInputVdf.defaultPreset()));
+        SteamInputVdf.boundInput(lines, document, "L1", "left_bumper");
+        SteamInputVdf.boundInput(lines, document, "R1", "right_bumper");
+        lines.push(SteamInputVdf.input("button_back_left_upper", "release", SteamInputVdf.defaultPreset()));
+        lines.push(SteamInputVdf.input("button_back_right_upper", "release", SteamInputVdf.defaultPreset()));
+        SteamInputVdf.groupTail(lines);
+        if (!document.hotkeyAction("L3").isEmpty()) { lines.push(SteamInputVdf.singleGroup("15", "joystick_move", "click", SteamInputVdf.actionBindings(document, document.hotkeyAction("L3")))); }
+        if (!document.hotkeyAction("R3").isEmpty()) { lines.push(SteamInputVdf.singleGroup("16", "joystick_move", "click", SteamInputVdf.actionBindings(document, document.hotkeyAction("R3")))); }
+    }
+
+    class void radial(Vector<string> lines, SteamInputDocument document, string id, Vector<string> slots, string name) {
+        lines.push("\t\"group\"");
+        lines.push("\t{");
+        lines.push("\t\t\"id\" \"" + id + "\"");
+        lines.push("\t\t\"mode\" \"radial_menu\"");
+        lines.push("\t\t\"name\" \"" + name + "\"");
+        lines.push("\t\t\"inputs\"");
+        lines.push("\t\t{");
+        for (int index = 0; index < slots.size(); index++) {
+            lines.push(SteamInputVdf.input("touch_menu_button_" + Strings.fromInt(index), "Full_Press", SteamInputVdf.actionBindings(document, slots.get(index))));
+        }
+        lines.push("\t\t}");
+        lines.push("\t\t\"settings\"");
+        lines.push("\t\t{");
+        lines.push("\t\t\t\"touchmenu_button_fire_type\" \"1\"");
+        lines.push("\t\t\t\"touch_menu_show_labels\" \"" + (document.showLabels() ? "1" : "0") + "\"");
+        lines.push("\t\t}");
+        lines.push("\t}");
+    }
+
+    class void systemSwitch(Vector<string> lines, JSONValue layer, string id) {
+        SteamInputVdf.groupHead(lines, id, "switches");
+        lines.push(SteamInputVdf.input("button_escape", "Full_Press", SteamInputVdf.xinput("START")));
+        lines.push(SteamInputVdf.input("button_menu", "Full_Press", SteamInputVdf.xinput("SELECT")));
+        lines.push(SteamInputVdf.input("left_bumper", "Full_Press", SteamInputVdf.xinput("SHOULDER_LEFT")));
+        lines.push(SteamInputVdf.input("right_bumper", "Full_Press", SteamInputVdf.xinput("SHOULDER_RIGHT")));
+        for activator in SemuJson.strings(layer.get("activators")) {
+            lines.push(SteamInputVdf.input(SteamInputVdf.layerActivator(activator), "release", SteamInputVdf.defaultPreset()));
+        }
+        SteamInputVdf.groupTail(lines);
+    }
+
+    class Vector<string> hotkeyGroupIds(SteamInputDocument document) {
+        Vector<string> face = ["A", "B", "X", "Y"];
+        Vector<string> dpad = ["D-Pad Up", "D-Pad Down", "D-Pad Left", "D-Pad Right"];
+        return [SteamInputVdf.anyHotkey(document, face) ? "10" : "0",
+                SteamInputVdf.anyHotkey(document, dpad) ? "13" : "1",
+                document.hotkeyAction("L3").isEmpty() ? "2" : "15",
+                document.hotkeyAction("R3").isEmpty() ? "3" : "16",
+                document.hotkeyAction("L2").isEmpty() ? "4" : "11",
+                document.hotkeyAction("R2").isEmpty() ? "5" : "12", "14"];
+    }
+
+    class string preset(string id, string name, Vector<string> groups, string leftTrackpad) {
+        string bindings = "\"" + groups.get(0) + "\" \"button_diamond active\"" + " \"" + groups.get(1) + "\" \"dpad active\""
+            + " \"" + groups.get(2) + "\" \"joystick active\"" + " \"" + groups.get(3) + "\" \"right_joystick active\""
+            + " \"" + groups.get(4) + "\" \"left_trigger active\"" + " \"" + groups.get(5) + "\" \"right_trigger active\""
+            + " \"6\" \"right_trackpad active\"" + " \"" + groups.get(6) + "\" \"switch active\""
+            + " \"" + leftTrackpad + "\" \"left_trackpad active\"";
+        return "\t\"preset\" { \"id\" \"" + id + "\" \"name\" \"" + name + "\" \"group_source_bindings\" { " + bindings + " } }";
+    }
+
+    class string render(SteamInputDocument document, JSONValue template) {
+        Vector<string> lines = [];
+        lines.push("\"controller_mappings\"");
+        lines.push("{");
+        lines.push("\t\"version\"\t\t\"3\"");
+        lines.push("\t\"revision\"\t\t\"1\"");
+        lines.push("\t\"title\"\t\t\"" + SemuJson.textAt(template, "title") + "\"");
+        lines.push("\t\"description\"\t\t\"Semu gamepad, radial actions, and Start+Select quit.\"");
+        lines.push("\t\"creator\"\t\t\"Semu\"");
+        lines.push("\t\"controller_type\"\t\t\"controller_neptune\"");
+        lines.push("\t\"actions\"");
+        lines.push("\t{");
+        lines.push("\t\t\"Default\" { \"title\" \"Gamepad\" \"legacy_set\" \"1\" }");
+        lines.push("\t\t\"Preset_1000001\" { \"title\" \"Hotkeys\" \"legacy_set\" \"1\" }");
+        JSONValue layers = document.layers();
+        int layerCount = layers != null && layers.isArray() ? layers.size() : 0;
+        for (int index = 0; index < layerCount; index++) {
+            lines.push("\t\t\"Preset_" + Strings.fromInt(1000002 + index) + "\" { \"title\" \"" + SemuJson.textAt(layers.at(index), "name") + "\" \"legacy_set\" \"1\" }");
+        }
+        lines.push("\t}");
+        SteamInputVdf.gamepadGroups(lines, document);
+        SteamInputVdf.hotkeyGroups(lines, document);
+        for (int index = 0; index < layerCount; index++) { SteamInputVdf.systemSwitch(lines, layers.at(index), Strings.fromInt(30 + index)); }
+        SteamInputVdf.radial(lines, document, "20", document.slots("quick_slots"), SemuJson.textAt(template, "quick_radial_name"));
+        SteamInputVdf.radial(lines, document, "21", document.slots("menu_slots"), SemuJson.textAt(template, "menu_radial_name"));
+        for (int index = 0; index < layerCount; index++) {
+            JSONValue layer = layers.at(index);
+            SteamInputVdf.radial(lines, document, Strings.fromInt(22 + index), SemuJson.strings(layer.get("slots")), SemuJson.textAt(layer, "name"));
+        }
+        Vector<string> defaults = ["0", "1", "2", "3", "4", "5", "7"];
+        lines.push(SteamInputVdf.preset("0", "Default", defaults, "20"));
+        lines.push(SteamInputVdf.preset("1", "Preset_1000001", SteamInputVdf.hotkeyGroupIds(document), "21"));
+        for (int index = 0; index < layerCount; index++) {
+            Vector<string> groups = ["0", "1", "2", "3", "4", "5", Strings.fromInt(30 + index)];
+            lines.push(SteamInputVdf.preset(Strings.fromInt(index + 2), "Preset_" + Strings.fromInt(1000002 + index), groups, Strings.fromInt(22 + index)));
+        }
+        lines.push("\t\"settings\" { \"left_trackpad_mode\" \"0\" \"right_trackpad_mode\" \"0\" }");
+        lines.push("}");
+        return lines.join("\n") + "\n";
+    }
+}
+
+class SteamInputTemplates {  // semu steam input: write every declared Neptune template plus the semantic icons
+    class string source(SemuPlan plan) { return PathTools.join(plan.configRoot, "input/" + plan.target.input + "/steam_input.json"); }
+
+    class int publish(SemuPlan plan, string outputDirectory, string iconDirectory) {
+        string source = SteamInputTemplates.source(plan);
+        if (!FileSystem.isFile(source)) {
+            Console.error("semu: target " + plan.target.id + " has no Steam Input definition (" + source + ")");
+            return 1;
+        }
+        JSONValue root = SemuJson.readFile(source);
+        if (root.isError()) {
+            Console.error("semu: cannot parse " + source);
+            return 1;
+        }
+        SteamInputDocument document = SteamInputDocument(root);
+        JSONValue templates = root.get("templates");
+        if (templates == null || !templates.isArray() || templates.size() == 0) {
+            Console.error("semu: no templates declared in " + source);
+            return 1;
+        }
+        SemuPaths.prepareDirectory(outputDirectory);
+        for (int index = 0; index < templates.size(); index++) {
+            JSONValue template = templates.at(index);
+            string file = PathTools.join(outputDirectory, SemuJson.textAt(template, "output"));
+            if (!SemuPaths.writeOwned(outputDirectory, file, SteamInputVdf.render(document, template))) {
+                Console.error("semu: could not write " + file);
+                return 1;
+            }
+            Console.log(file);
+        }
+        string icons = PathTools.join(PathTools.dirname(source), "icons");
+        if (!iconDirectory.isEmpty() && FileSystem.isDir(icons)) {
+            SemuPaths.prepareDirectory(iconDirectory);
+            for name in SemuModel.sortedEntries(icons) {
+                if (!name.endsWith(".png")) { continue; }
+                FileSystem.writeText(PathTools.join(iconDirectory, name), FileSystem.readText(PathTools.join(icons, name)));
+            }
+            Console.log(iconDirectory + " (icons)");
+        }
+        return 0;
+    }
+}

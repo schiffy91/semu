@@ -25,6 +25,7 @@ forAllSystems (system:
     retroarch = emulators.packages.retroarch;
     semu-renderer = semuRenderer;
     visual-assets = visualAssets.combined;
+    bezel-generate = visualAssets.bezels.generate;  # re-renders recipe bezels with imagemagick; copy the output back into config/assets
     default = semu;
     semu-program = semuProgram;
     semu-source = semuSource;

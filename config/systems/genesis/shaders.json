@@ -1,9 +1,23 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "enabled": true,
   "renderer": true,
   "screen": "assets/shaders/genesis/screen.slangp",
   "doc": {
     "intent": "Genesis dithering blended by analog CRT video"
-  }
+  },
+  "variants": [
+    {
+      "id": "default",
+      "label": "Composite CRT (Genesis rainbow)",
+      "screen": "assets/shaders/genesis/screen.slangp"
+    },
+    {
+      "id": "sharp",
+      "label": "Sharp CRT (easymode + halation)",
+      "screen": "assets/shaders/genesis/sharp.slangp"
+    }
+  ],
+  "default_variant": "default",
+  "disabled_variant": "none"
 }

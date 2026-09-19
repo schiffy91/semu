@@ -1,9 +1,23 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "enabled": true,
   "renderer": true,
   "screen": "assets/shaders/n64/screen.slangp",
   "doc": {
     "intent": "late-90s CRT with N64 VI softness and scanlines"
-  }
+  },
+  "variants": [
+    {
+      "id": "default",
+      "label": "Hyllian CRT",
+      "screen": "assets/shaders/n64/screen.slangp"
+    },
+    {
+      "id": "sharp",
+      "label": "Sharp CRT (easymode + halation)",
+      "screen": "assets/shaders/n64/sharp.slangp"
+    }
+  ],
+  "default_variant": "default",
+  "disabled_variant": "none"
 }

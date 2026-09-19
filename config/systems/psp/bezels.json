@@ -13,6 +13,11 @@
       "id": "classic",
       "label": "Classic",
       "art": "assets/bezels/psp/classic.png"
+    },
+    {
+      "id": "red",
+      "label": "Deep Red",
+      "art": "assets/bezels/psp/red.png"
     }
   ],
   "doc": {

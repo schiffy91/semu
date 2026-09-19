@@ -1,9 +1,23 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "enabled": true,
   "renderer": true,
   "screen": "assets/shaders/gba/screen.slangp",
   "doc": {
     "intent": "Readable AGB-001 reflected color response and LCD persistence without a magnified RGB textile pattern"
-  }
+  },
+  "variants": [
+    {
+      "id": "default",
+      "label": "GBA color LCD",
+      "screen": "assets/shaders/gba/screen.slangp"
+    },
+    {
+      "id": "agb001",
+      "label": "AGB-001 LCD",
+      "screen": "assets/shaders/gba/agb001.slangp"
+    }
+  ],
+  "default_variant": "default",
+  "disabled_variant": "none"
 }

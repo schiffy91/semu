@@ -1,9 +1,23 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "enabled": true,
   "renderer": true,
   "screen": "assets/shaders/ps2/screen.slangp",
   "doc": {
     "note": "Standalone PCSX2 reports game-only geometry to the shared Semu CRT pipeline; bezels.json resolves 4:3 or 16:9 art independently."
-  }
+  },
+  "variants": [
+    {
+      "id": "default",
+      "label": "CRT Royale",
+      "screen": "assets/shaders/ps2/screen.slangp"
+    },
+    {
+      "id": "sharp",
+      "label": "Sharp CRT (easymode + halation)",
+      "screen": "assets/shaders/ps2/sharp.slangp"
+    }
+  ],
+  "default_variant": "default",
+  "disabled_variant": "none"
 }
