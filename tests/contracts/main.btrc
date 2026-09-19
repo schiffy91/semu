@@ -81,6 +81,7 @@ class ModelContract {
         contract.expect(!fixture.plan.emulators.contains("ares"), "ares is macOS only and not selected");
         contract.lacks(fixture.plan.romsRoot(), "/run/media/deck", "desktop ROM root is not the Deck SD card");
         contract.contains(fixture.plan.romsRoot(), "Games/Emulation/ES-DE/ES-DE/ROMs", "desktop ROM root follows the Emulation layout");
+        contract.contains(fixture.plan.path("esde_home"), "Games/Emulation/ES-DE", "ES-DE home is the existing data directory so gamelists and media carry over");
         Fixture deck = Fixture("steam-deck");
         contract.contains(deck.plan.romsRoot(), "/run/media/deck/SD/Emulation/ES-DE/ES-DE/ROMs", "deck ROM root is the SD card");
         contract.expect(deck.plan.input != null && deck.plan.input.id.equals("steam-deck"), "deck uses its own input definition");

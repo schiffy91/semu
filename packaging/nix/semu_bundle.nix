@@ -1,5 +1,5 @@
 # The composed bundle: CLI, ES-DE, emulators, launcher shims. Its root is SEMU_ASSET_ROOT.
-{ lib, symlinkJoin, makeWrapper, writeShellScript, semuCli, esDe, emulatorPackages ? [ ], extraPackages ? [ ], repositoryRoot }:
+{ lib, symlinkJoin, makeWrapper, semuCli, esDe, emulatorPackages ? [ ], extraPackages ? [ ], repositoryRoot }:
 
 let
   systemsDir = repositoryRoot + "/config/systems";
@@ -31,8 +31,10 @@ symlinkJoin {
 
     cat > "$out/bin/semu-es-de" <<LAUNCHER
     #!/bin/sh
-    "$out/bin/semu" prepare --target "\''${SEMU_TARGET:-linux-desktop}" || exit 1
-    exec "$out/bin/es-de" "\$@"
+    target="\''${SEMU_TARGET:-linux-desktop}"
+    "$out/bin/semu" prepare --target "\$target" || exit 1
+    home="\$("$out/bin/semu" path esde_home --target "\$target")" || exit 1
+    exec "$out/bin/es-de" --home "\$home" "\$@"
     LAUNCHER
     chmod +x "$out/bin/semu-es-de"
 

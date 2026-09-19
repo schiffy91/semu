@@ -14,7 +14,8 @@
       "media": "/run/media/deck/SD/Emulation/ES-DE/ES-DE/downloaded_media",
       "bios": "/run/media/deck/SD/Emulation/RetroArch/config/system",
       "content_root": "/run/media/deck/SD/Emulation/Semu",
-      "state_root": "${home}/.local/share/semu"
+      "state_root": "${home}/.local/share/semu",
+      "esde_home": "/run/media/deck/SD/Emulation/ES-DE"
     },
     "ui": {
       "display_index": 0

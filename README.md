@@ -37,7 +37,8 @@ make doctor          # show resolved paths and what is missing
 
 ```sh
 semu build configs --target linux-desktop [--output DIR]
-semu prepare --target linux-desktop [--es-de-home ~/ES-DE]
+semu prepare --target linux-desktop [--es-de-home DIR]   # default: <esde_home>/ES-DE
+semu path esde_home --target linux-desktop
 semu launch retroarch --system gb --core gambatte --rom "Tetris (World) (Rev 1).zip"
 semu doctor --target linux-desktop
 ```

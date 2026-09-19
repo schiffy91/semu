@@ -6,7 +6,8 @@
     "media": "${home}/Games/Emulation/ES-DE/ES-DE/downloaded_media",
     "bios": "${home}/Games/Emulation/RetroArch/config/system",
     "content_root": "${home}/Games/Emulation/Semu",
-    "state_root": "${home}/.local/share/semu"
+    "state_root": "${home}/.local/share/semu",
+    "esde_home": "${home}/Games/Emulation/ES-DE"
   },
   "visual": {
     "crt_shaders": true,
