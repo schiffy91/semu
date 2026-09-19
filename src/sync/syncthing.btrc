@@ -1,0 +1,227 @@
+import Library.Console;
+import Library.FileSystem;
+import Library.JSON;
+import Library.Process;
+import Library.Strings;
+import Library.Vector;
+import ../lib/json.btrc;
+import ../lib/paths.btrc;
+import ../model.btrc;
+import ../resolve.btrc;
+import ../launch/process.btrc;
+
+#include <arpa/inet.h>
+#include <fcntl.h>
+#include <netinet/in.h>
+#include <stdlib.h>
+#include <signal.h>
+#include <string.h>
+#include <sys/socket.h>
+#include <unistd.h>
+
+class SemuSync {  // Semu-owned Syncthing home sharing content_root (saves, states, screenshots)
+    class string folderId() { return "semu-saves"; }
+    class string executable(SemuPlan plan) { return PathTools.join(plan.assetRoot, "bin/syncthing"); }
+    class string home(SemuPlan plan) { return PathTools.join(plan.stateRoot(), "syncthing"); }
+    class string configFile(SemuPlan plan) { return PathTools.join(SemuSync.home(plan), "config.xml"); }
+    class string logFile(SemuPlan plan) { return PathTools.join(SemuSync.home(plan), "semu-sync.log"); }
+    class string pidFile(SemuPlan plan) { return PathTools.join(SemuSync.home(plan), "semu-sync.pid"); }
+    class bool enabled(SemuPlan plan) { return SemuJson.boolAt(plan.settings, "sync.enabled", false); }
+
+    class string guiAddress(SemuPlan plan) {
+        string address = SemuJson.textAt(plan.settings, "sync.gui_address");
+        return address.isEmpty() ? "127.0.0.1:8384" : address;
+    }
+
+    class Vector<string> peers(SemuPlan plan) {  // sync.peer_device_ids: comma or space separated Syncthing device ids
+        Vector<string> result = [];
+        string raw = SemuJson.textAt(plan.settings, "sync.peer_device_ids").replace(",", " ").replace("\n", " ");
+        for token in Strings.split(raw, " ") {
+            string id = token.trim().toUpper();
+            if (!id.isEmpty() && !result.contains(id)) { result.push(id); }
+        }
+        return result;
+    }
+
+    class string sharedDevice(string id) { return f"<device id=\"{id}\" introducedBy=\"\"></device>"; }
+
+    class string folderXml(string path, Vector<string> peers) {
+        Vector<string> lines = [];
+        lines.push(f"<folder id=\"{SemuSync.folderId()}\" label=\"Semu saves\" path=\"{path}\" type=\"sendreceive\" rescanIntervalS=\"3600\" fsWatcherEnabled=\"true\" fsWatcherDelayS=\"10\" ignorePerms=\"false\" autoNormalize=\"true\">");
+        for peer in peers { lines.push("    " + SemuSync.sharedDevice(peer)); }
+        lines.push("</folder>");
+        return lines.join("\n");
+    }
+
+    class string deviceXml(string id) {
+        return f"<device id=\"{id}\" name=\"{id.substring(0, 7)}\" compression=\"metadata\" introducer=\"false\" paused=\"false\" autoAcceptFolders=\"false\"><address>dynamic</address></device>";
+    }
+
+    class int indexOf(string haystack, string needle, int from) {  // -1 when absent; documents are small
+        if (from < 0 || needle.isEmpty()) { return -1; }
+        for (int index = from; index + needle.len() <= haystack.len(); index++) {
+            if (haystack.substring(index, needle.len()).equals(needle)) { return index; }
+        }
+        return -1;
+    }
+
+    class string insertBefore(string document, string marker, string fragment) {
+        int at = SemuSync.indexOf(document, marker, 0);
+        if (at < 0) { return document + "\n" + fragment + "\n"; }
+        return document.substring(0, at) + fragment + "\n" + document.substring(at, document.len() - at);
+    }
+
+    class string configure(string document, string path, Vector<string> peers) {  // idempotent: adds what is missing, keeps the rest
+        string result = document;
+        string folderMarker = f"<folder id=\"{SemuSync.folderId()}\"";
+        if (!result.contains(folderMarker)) {
+            result = SemuSync.insertBefore(result, "</configuration>", SemuSync.folderXml(path, peers));
+        }
+        for peer in peers {
+            if (!result.contains(f"<device id=\"{peer}\" name=")) { result = SemuSync.insertBefore(result, "</configuration>", SemuSync.deviceXml(peer)); }
+            int folderStart = SemuSync.indexOf(result, folderMarker, 0);
+            int folderEnd = SemuSync.indexOf(result, "</folder>", folderStart);
+            if (folderStart < 0 || folderEnd < 0) { continue; }
+            string folder = result.substring(folderStart, folderEnd - folderStart);
+            if (folder.contains(f"<device id=\"{peer}\"")) { continue; }
+            result = result.substring(0, folderEnd) + "    " + SemuSync.sharedDevice(peer) + "\n" + result.substring(folderEnd, result.len() - folderEnd);
+        }
+        return result;
+    }
+
+    class bool listening(string address) {  // true when something answers on the loopback GUI port
+        int colon = SemuSync.indexOf(address, ":", 0);
+        if (colon < 0) { return false; }
+        int port = Strings.toInt(address.substring(colon + 1, address.len() - colon - 1));
+        if (port <= 0 || port > 65535) { return false; }
+        int handle = socket(AF_INET, SOCK_STREAM, 0);
+        if (handle < 0) { return false; }
+        struct sockaddr_in target;
+        memset(&target, 0, sizeof(target));
+        target.sin_family = AF_INET;
+        target.sin_port = htons((unsigned short)port);
+        target.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+        bool open = connect(handle, (struct sockaddr*)&target, sizeof(target)) == 0;
+        close(handle);
+        return open;
+    }
+
+    class bool prepare(SemuPlan plan, string* error) {  // keys and config on first use, then the Semu folder and peers
+        string executable = SemuSync.executable(plan);
+        if (!FileSystem.isFile(executable)) {
+            *error = "syncthing is not in the asset root: " + executable;
+            return false;
+        }
+        string home = SemuSync.home(plan);
+        string config = SemuSync.configFile(plan);
+        if (!SemuPaths.prepareDirectory(home)) {
+            *error = "could not create " + home;
+            return false;
+        }
+        if (!FileSystem.isFile(config)) {
+            setenv("STNODEFAULTFOLDER", "1", 1);  // Syncthing 2.x: no "Default Folder" in the generated config
+            ExecResult generated = ChildProcess.run(executable, ["generate", "--home", home, "--no-port-probing"]);
+            if (!generated.ok() || !FileSystem.isFile(config)) {
+                *error = "syncthing generate failed: " + generated.stderr().trim();
+                return false;
+            }
+        }
+        string document = FileSystem.readText(config);
+        string updated = SemuSync.configure(document, plan.path("content_root"), SemuSync.peers(plan));
+        if (!updated.equals(document) && !SemuPaths.writeOwned(home, config, updated)) {
+            *error = "could not write " + config;
+            return false;
+        }
+        return true;
+    }
+
+    class string deviceId(SemuPlan plan) {
+        string error = "";
+        if (!SemuSync.prepare(plan, &error)) { return ""; }
+        ExecResult result = ChildProcess.run(SemuSync.executable(plan), ["device-id", "--home", SemuSync.home(plan)]);
+        return result.ok() ? result.stdout().trim() : "";
+    }
+
+    class Vector<string> serveArgv(SemuPlan plan) {
+        return [SemuSync.executable(plan), "serve", "--home", SemuSync.home(plan), "--no-browser", "--no-restart", "--no-upgrade", "--gui-address", SemuSync.guiAddress(plan)];
+    }
+
+    class int run(SemuPlan plan) {  // foreground: for a systemd user service or a terminal
+        string error = "";
+        if (!SemuSync.prepare(plan, &error)) {
+            Console.error("semu: " + error);
+            return 1;
+        }
+        Vector<string> environment = [];
+        int child = SemuProcessGroup.start(SemuSync.serveArgv(plan), environment);
+        if (child < 0) {
+            Console.error("semu: could not start syncthing");
+            return 1;
+        }
+        return SemuQuitChord.supervise(child, 0, false);
+    }
+
+    class int start(SemuPlan plan) {  // detached, only when enabled and not already listening
+        if (!SemuSync.enabled(plan)) {
+            Console.log("sync is disabled (semu settings put sync.enabled true)");
+            return 0;
+        }
+        string address = SemuSync.guiAddress(plan);
+        if (SemuSync.listening(address)) {
+            Console.log("sync is already running on " + address);
+            return 0;
+        }
+        string error = "";
+        if (!SemuSync.prepare(plan, &error)) {
+            Console.error("semu: " + error);
+            return 1;
+        }
+        char** arguments = SemuProcessGroup.cStrings(SemuSync.serveArgv(plan));
+        string log = SemuSync.logFile(plan);
+        int child = (int)fork();
+        if (child < 0) { return 1; }
+        if (child == 0) {
+            setsid();
+            int flags = (int)O_WRONLY | (int)O_CREAT | (int)O_APPEND;
+            int output = open(log, flags, 0600);
+            if (output >= 0) {
+                dup2(output, 1);
+                dup2(output, 2);
+                close(output);
+            }
+            char* program = arguments[0];
+            execvp(program, arguments);
+            _exit(127);
+        }
+        SemuPaths.writeOwned(SemuSync.home(plan), SemuSync.pidFile(plan), Strings.fromInt(child) + "\n");
+        Console.log(f"sync started on {address} (log: {log})");
+        return 0;
+    }
+
+    class int stop(SemuPlan plan) {  // ends the detached instance started by 'sync start'
+        string pidFile = SemuSync.pidFile(plan);
+        int pid = FileSystem.isFile(pidFile) ? Strings.toInt(FileSystem.readText(pidFile).trim()) : 0;
+        if (pid <= 1) {
+            Console.log("sync is not running under semu");
+            return 0;
+        }
+        kill((pid_t)(-pid), SIGTERM);  // the detached instance leads its own session: monitor and worker
+        kill((pid_t)pid, SIGTERM);
+        for (int attempt = 0; attempt < 50 && SemuSync.listening(SemuSync.guiAddress(plan)); attempt++) { usleep(100000); }
+        SemuPaths.removeFile(pidFile);
+        Console.log("sync stopped");
+        return 0;
+    }
+
+    class int status(SemuPlan plan) {
+        string address = SemuSync.guiAddress(plan);
+        Console.log(f"enabled: {SemuSync.enabled(plan) ? "yes" : "no"}");
+        Console.log(f"running: {SemuSync.listening(address) ? "yes" : "no"} ({address})");
+        Console.log("home: " + SemuSync.home(plan));
+        Console.log("folder: " + plan.path("content_root"));
+        Console.log("peers: " + SemuSync.peers(plan).join(" "));
+        string id = FileSystem.isFile(SemuSync.configFile(plan)) ? SemuSync.deviceId(plan) : "";
+        Console.log("device id: " + (id.isEmpty() ? "(not generated yet)" : id));
+        return 0;
+    }
+}

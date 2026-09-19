@@ -138,11 +138,22 @@ class SemuSettingsUi {  // the semu-settings-v2 document ES-DE renders as SEMU S
             input.push(SemuSettingsUi.choice(settings, "input.systems.wii.controller_mode", "WII CONTROLLER", modes, "nunchuk"));
             sections.push(SemuSettingsUi.page("input", "INPUT", input));
         }
+        JSONValue syncFields = JSONValue.makeArray();
+        syncFields.push(SemuSettingsUi.boolean(settings, "sync.enabled", "SYNC SAVES WITH SYNCTHING", false));
+        syncFields.push(SemuSettingsUi.field("sync.peer_device_ids", "PEER DEVICE IDS", "string", JSONValue.makeString(SemuJson.textAt(settings, "sync.peer_device_ids"))));
+        JSONValue sync = SemuSettingsUi.page("sync", "SAVE SYNC", syncFields);
+        JSONValue syncCommands = JSONValue.makeArray();
+        syncCommands.push(SemuSettingsUi.command("show-device-id", "SHOW THIS DEVICE ID", ["sync", "device-id"]));
+        sync.set("commands", syncCommands);
+        sections.push(sync);
         JSONValue general = SemuSettingsUi.page("interface", "INTERFACE", interfaceFields);
-        JSONValue commands = JSONValue.makeArray();
-        commands.push(SemuSettingsUi.command("reset-settings", "RESET ALL SETTINGS", ["settings", "reset"]));
-        general.set("commands", commands);
+        JSONValue generalCommands = JSONValue.makeArray();
+        generalCommands.push(SemuSettingsUi.command("reset-settings", "RESET ALL SETTINGS", ["settings", "reset"]));
+        general.set("commands", generalCommands);
         sections.push(general);
+        JSONValue commands = JSONValue.makeArray();
+        commands.push(syncCommands.at(0));
+        commands.push(generalCommands.at(0));
         JSONValue save = JSONValue.makeObject();
         save.set("strategy", JSONValue.makeString("apply_last_changed_write"));
         save.set("write_argv", SemuSettingsUi.strings(["settings", "put"]));
@@ -169,6 +180,7 @@ class SemuSettingsUi {  // the semu-settings-v2 document ES-DE renders as SEMU S
         actions.set("read", SemuSettingsUi.strings(["settings", "ui"]));
         actions.set("write", SemuSettingsUi.strings(["settings", "put"]));
         JSONValue commands = JSONValue.makeArray();
+        commands.push(SemuSettingsUi.strings(["sync", "device-id"]));
         commands.push(SemuSettingsUi.strings(["settings", "reset"]));
         actions.set("commands", commands);
         JSONValue entry = JSONValue.makeObject();

@@ -33,6 +33,7 @@ symlinkJoin {
     #!/bin/sh
     target="\''${SEMU_TARGET:-linux-desktop}"
     "$out/bin/semu" prepare --target "\$target" || exit 1
+    "$out/bin/semu" sync start --target "\$target" >/dev/null 2>&1 || true
     home="\$("$out/bin/semu" path esde_home --target "\$target")" || exit 1
     exec "$out/bin/es-de" --home "\$home" "\$@"
     LAUNCHER

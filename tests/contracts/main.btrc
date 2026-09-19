@@ -15,6 +15,7 @@ import ../../src/emit/profiles.btrc;
 import ../../src/launch/plan.btrc;
 import ../../src/emit/rendering.btrc;
 import ../../src/emit/settings_ui.btrc;
+import ../../src/sync/syncthing.btrc;
 import ../../src/cli.btrc;
 
 class Contract {
@@ -371,10 +372,36 @@ class SettingsUiContract {  // the document ES-DE's SEMU SETTINGS menu validates
     }
 }
 
+class SyncContract {  // the Syncthing config Semu owns: one folder for content_root, peers shared on it
+    class void run(Contract contract) {
+        string base = "<configuration version=\"37\">\n    <device id=\"OWN\" name=\"desk\"></device>\n    <gui enabled=\"true\"></gui>\n</configuration>\n";
+        Vector<string> peers = ["PEER-ONE"];
+        string once = SemuSync.configure(base, "/home/u/Games/Emulation/Semu", peers);
+        contract.contains(once, "<folder id=\"semu-saves\" label=\"Semu saves\" path=\"/home/u/Games/Emulation/Semu\"", "sync folder targets content_root");
+        contract.contains(once, "<device id=\"PEER-ONE\" name=\"PEER-ON\"", "peer device is declared");
+        contract.contains(once, "    <device id=\"PEER-ONE\" introducedBy=\"\"></device>\n</folder>", "peer shares the folder");
+        contract.expect(once.endsWith("</configuration>\n"), "configuration root is kept");
+        contract.expect(SemuSync.configure(once, "/home/u/Games/Emulation/Semu", peers).equals(once), "configure is idempotent");
+        Vector<string> more = ["PEER-ONE", "PEER-TWO"];
+        string twice = SemuSync.configure(once, "/home/u/Games/Emulation/Semu", more);
+        contract.contains(twice, "<device id=\"PEER-TWO\" name=", "a later peer is added");
+        contract.contains(twice, "<device id=\"PEER-TWO\" introducedBy=\"\"></device>", "a later peer shares the existing folder");
+        contract.expect(SemuSync.indexOf("abcabc", "ca", 0) == 2 && SemuSync.indexOf("abcabc", "ca", 3) == -1 && SemuSync.indexOf("abc", "zz", 0) == -1, "indexOf finds and misses");
+        contract.expect(!SemuSync.listening("127.0.0.1:1"), "a closed port is not listening");
+        Fixture fixture = Fixture("linux-desktop");
+        contract.expect(!SemuSync.enabled(fixture.plan), "sync is off by default");
+        contract.expect(SemuSync.guiAddress(fixture.plan).equals("127.0.0.1:8384"), "default gui address");
+        contract.expect(SemuSync.home(fixture.plan).endsWith("/state/syncthing"), "sync home lives in the state root");
+        JSONValue ui = SemuSettingsUi.document(fixture.model, fixture.plan);
+        contract.contains(ui.stringify(), "\"key\":\"sync.enabled\"", "settings ui exposes sync");
+    }
+}
+
 int main() {
     Contract contract = Contract();
     SettingsWriteContract.run(contract);
     SettingsUiContract.run(contract);
+    SyncContract.run(contract);
     RenderingContract.run(contract);
     ModelContract.run(contract);
     SettingsLadderContract.run(contract);

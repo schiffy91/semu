@@ -24,5 +24,10 @@
         "controller_mode": "nunchuk"
       }
     }
+  },
+  "sync": {
+    "enabled": false,
+    "gui_address": "127.0.0.1:8384",
+    "peer_device_ids": ""
   }
 }
