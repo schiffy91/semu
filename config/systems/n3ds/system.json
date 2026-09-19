@@ -34,6 +34,14 @@
   },
   "emulators": [
     {
+      "emulator": "retroarch",
+      "label": "Citra (Libretro)",
+      "core": "citra",
+      "platforms": [
+        "linux"
+      ]
+    },
+    {
       "emulator": "azahar",
       "platforms": [
         "linux"
@@ -87,7 +95,7 @@
     "kind": "dual",
     "corner_radius": 0.09,
     "lcd_grid": 0.12,
-    "lcd_subpixel": 0.20,
+    "lcd_subpixel": 0.2,
     "shell_tint": {
       "r": 0.82,
       "g": 0.82,
@@ -96,6 +104,6 @@
   },
   "doc": {
     "hardware": "dual LCDs, 400x240 top and 320x240 bottom",
-    "intent": "The n3ds system launches only file formats accepted by the standalone source-built Azahar executable. It never resolves through RetroArch, a libretro core, or generic archive extraction. Semu owns the dual-screen presentation contract; rendering activation remains fail-closed until Azahar reports both asymmetric game surfaces through the declared hook ABI."
+    "intent": "The n3ds system launches through RetroArch's Citra core by default (top/bottom layout, hardware shaders) with the standalone Azahar build as the alternate emulator. Semu owns the dual-screen presentation contract: the core stacks the 400x240 top and 320x240 bottom screens into one frame and the renderer partitions it by the declared native sizes."
   }
 }

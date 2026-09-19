@@ -90,7 +90,8 @@ class SemuRenderEnvironment {
         if (screens.size() == 2 && !arrangement.equals("horizontal") && !arrangement.equals("vertical")) { arrangement = "vertical"; }
         env.set("SEMU_RENDER_SURFACE_COUNT", Strings.fromInt(screens.size()));
         env.set("SEMU_RENDER_SURFACE_LAYOUT", arrangement);
-        env.set("SEMU_RENDER_SURFACE_NATIVE_WIDTH_POLICY", screens.size() == 1 ? "independent" : "equal");
+        bool equalWidths = screens.size() == 2 && SemuJson.intAt(screens.at(0), "native.w", 0) == SemuJson.intAt(screens.at(1), "native.w", 0);
+        env.set("SEMU_RENDER_SURFACE_NATIVE_WIDTH_POLICY", equalWidths ? "equal" : "independent");  // 3DS stacks 400 over 320
         string geometry = SemuJson.textAt(display, "source_geometry");
         env.set("SEMU_RENDER_SURFACE_GEOMETRY_POLICY", geometry.isEmpty() ? (screens.size() == 1 ? "positive" : "uniform_integer_scale") : geometry);
         for (int index = 0; index < screens.size(); index++) {
