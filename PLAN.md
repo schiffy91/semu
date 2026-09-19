@@ -412,6 +412,15 @@ Update this block whenever a milestone criterion changes state.
 - Active milestone: M5/M6 hardware acceptance once a Deck is reachable
   (`DECK_HOST=deck tests/deck/deploy.sh install`), then the native-emulator
   render hook.
+- Build structure (2026-09-19 evening): 22 flakes, one per emulator (8),
+  per core (11), RetroArch, ES-DE and the renderer, each with its own
+  pinned source input and lock, composed by the root flake through path
+  inputs. Every binary in the bundle is compiled here (checked against
+  cache.nixos.org for each emulator and core), `nix flake check` passes
+  including the `platform-matrix` check that evaluates the Linux and macOS
+  derivations of all 22 (macOS: 5 emulators, 10 cores; Windows declared
+  planned everywhere), and the host runs that bundle. Built-on-macOS is
+  unverified: no Darwin builder here.
 - Last observed result: 2026-09-19 session. Every one of the 17 systems
   launched a real ROM fullscreen on FRACTAL-NORTH through `semu launch` (11
   through RetroArch, 8 native), the RetroArch systems now render through the
