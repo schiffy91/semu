@@ -1,6 +1,8 @@
 // Direct emulator-owned OpenGL renderer. Render entrypoints publish an
 // immutable pointer-map callback; no display discovery or input polling exists.
 
+#include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 import ./renderer_abi.btrc;
@@ -189,6 +191,9 @@ int semu_render_game_gl(struct SemuRenderFrameGl* frame) {
     }
     RendererGlStateGuard.restore(&SemuRenderer.gl, &SemuRenderer.game_state);
     if (status != SEMU_RENDER_APPLIED) {
+        if (getenv("SEMU_RENDER_DEBUG") != null && SemuRenderer.game_failure_status != status) {
+            fprintf(stderr, "semu-renderer: game phase status %d (%s)\n", status, SemuRenderer.resources.failure_reason);
+        }
         RendererPhaseOwnership.clear(&SemuRenderer.pending);
         if (SemuRendererReceipts.failureTransition(status,
                 &SemuRenderer.game_failure_status)) {
