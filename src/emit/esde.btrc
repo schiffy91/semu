@@ -70,9 +70,13 @@ class SemuEsDeDocuments {
     class string systemEntry(SemuModel model, SemuPlan plan, SemuSystem system, SemuEsDeTemplates templates) {
         string commands = "";
         for binding in system.bindingsFor(plan.platform) {
-            commands = commands + templates.complete("command", templates.read("command")
-                .replace("${LABEL}", SemuXml.escape(SemuEsDeDocuments.label(model, binding)))
-                .replace("${COMMAND}", SemuXml.escape(SemuEsDeDocuments.command(system, binding))));
+            Vector<string> labels = [SemuEsDeDocuments.label(model, binding)];
+            for alias in binding.labelAliases { if (!labels.contains(alias)) { labels.push(alias); } }  // gamelists may pin an alias
+            for label in labels {
+                commands = commands + templates.complete("command", templates.read("command")
+                    .replace("${LABEL}", SemuXml.escape(label))
+                    .replace("${COMMAND}", SemuXml.escape(SemuEsDeDocuments.command(system, binding))));
+            }
         }
         return templates.complete("es_system", templates.read("es_system")
             .replace("${NAME}", SemuXml.escape(system.id))
