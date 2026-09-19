@@ -144,6 +144,10 @@ class RetroArchProfileContract {
         contract.contains(cfg, "network_cmd_port = \"55355\"", "network command port");
         contract.contains(cfg, "video_shader_enable = \"false\"", "native shaders disabled");
         contract.contains(cfg, "input_save_state = \"s\"", "save state hotkey");
+        contract.contains(cfg, "input_enable_hotkey_btn = \"4\"", "select is the gamepad hotkey modifier");
+        contract.contains(cfg, "input_save_state_btn = \"10\"", "select plus RB saves state");
+        contract.contains(cfg, "input_load_state_btn = \"9\"", "select plus LB loads state");
+        contract.contains(cfg, "input_menu_toggle_btn = \"3\"", "select plus Y opens the menu");
         contract.contains(cfg, "input_load_state = \"a\"", "load state hotkey");
         contract.contains(cfg, "input_pause_toggle = \"p\"", "pause hotkey");
         contract.contains(cfg, "input_exit_emulator = \"escape\"", "escape hotkey");

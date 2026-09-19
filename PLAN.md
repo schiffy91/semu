@@ -287,8 +287,11 @@ None may block M1 to M6.
 
 Update this block whenever a milestone criterion changes state.
 
-- M1 reset: not started
-- M2 Game Boy on desktop: not started
+- M1 reset: done 2026-09-19 (`make build && make test` pass in about ten
+  seconds with 79 checks; `build configs --target linux-desktop` emits ES-DE
+  and RetroArch files with no Deck path; `nix flake check --no-build` passes;
+  commit eb909a7)
+- M2 Game Boy on desktop: in progress
 - M3 RetroArch systems on desktop: 0 of 11
 - M4 native emulators on desktop: 0 of 8
 - M5 Steam Deck: 0 of 17 systems
