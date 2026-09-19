@@ -33,6 +33,24 @@ make nix             # build the bundle (CLI, ES-DE, emulators) at build/nix/res
 make doctor          # show resolved paths and what is missing
 ```
 
+## Steam Deck release
+
+```sh
+nix build .#release --out-link build/release     # Semu-x86_64.tar.zst, its .sha256, install.sh
+sh build/release/install.sh install build/release/Semu-x86_64.tar.zst   # on the Deck (or any Linux host)
+~/Applications/Semu/bin/semu-deck                  # ES-DE with every emulator, target steam-deck
+~/Applications/Semu/bin/semu-deck-cli doctor       # the semu CLI inside the release
+sh build/release/install.sh rollback               # back to the previous release
+DECK_HOST=deck tests/deck/deploy.sh install        # copy, install and report over SSH
+```
+
+The tarball holds the bundle's whole Nix closure under `nix/store`. The
+launcher runs programs through bubblewrap with that tree mounted read-only at
+`/nix`, so the Deck needs no Nix installation and no FUSE. The installer
+verifies the digest, installs into `~/Applications/Semu/releases/<digest>`,
+switches the `current` symlink, keeps one `previous` release, and writes a
+desktop entry.
+
 ## Commands
 
 ```sh
