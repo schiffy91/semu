@@ -14,17 +14,21 @@ forAllSystems (system:
     semuProgram = pkgs.callPackage ../semu_program.nix { inherit btrcpy; };
     semuSource = pkgs.callPackage ../semu_source.nix { };
     semuCli = pkgs.callPackage ../semu_cli.nix { inherit semuProgram semuSource; };
-    emulators = pkgs.callPackage ../emulators.nix { inherit repositoryRoot; };
+    semuRenderer = pkgs.callPackage ../renderer.nix { inherit btrcpy repositoryRoot; };
+    visualAssets = import ./visual-assets.nix { inherit pkgs lib repositoryRoot; };
+    emulators = pkgs.callPackage ../emulators.nix { inherit repositoryRoot semuRenderer btrcpy; };
     retroarch = emulators.packages.retroarch;
     esDe = pkgs.callPackage (repositoryRoot + "/packaging/esde/package.nix") { esDePackages = esDePkgs; };
     semu = pkgs.callPackage ../semu_bundle.nix {
       inherit semuCli esDe repositoryRoot;
       emulatorPackages = lib.attrValues emulators.packages;
-      extraPackages = [ pkgs.retroarch-joypad-autoconfig ];
+      extraPackages = [ pkgs.retroarch-joypad-autoconfig visualAssets.combined ];
     };
     release = pkgs.callPackage ../release.nix { inherit semu repositoryRoot; };
   in {
     inherit btrcpy retroarch semu release;
+    semu-renderer = semuRenderer;
+    visual-assets = visualAssets.combined;
     default = semu;
     semu-program = semuProgram;
     semu-source = semuSource;

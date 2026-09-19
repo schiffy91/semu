@@ -137,7 +137,7 @@
         {
           "tree": "shaders_slang",
           "path": "handheld/shaders/color/NSO-gba-color.slang",
-          "sha256": "05d899f0b4d80ed1a3a551c6a082b442c77761eccd75dd2582de52d8f94a00f8",
+          "sha256": "e6d1917e9b72b5535f9bf523a518e62bfb3f19f3f819e994fe585dda985385e2",
           "filter_linear": true,
           "scale_type": "viewport",
           "scale": 1

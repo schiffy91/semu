@@ -1,5 +1,5 @@
 # Every emulator the linux system bindings select, built through config/emulators/<id>/package.nix.
-{ lib, callPackage, repositoryRoot }:
+{ lib, callPackage, repositoryRoot, semuRenderer, btrcpy }:
 
 let
   systemsDir = repositoryRoot + "/config/systems";
@@ -11,7 +11,7 @@ let
   ) systemContracts);
   recipe = id:
     let path = emulatorsDir + "/${id}/package.nix";
-    in if builtins.pathExists path then callPackage path { } else throw "emulators.nix: config/emulators/${id}/package.nix is missing";
+    in if builtins.pathExists path then callPackage path { inherit semuRenderer btrcpy; } else throw "emulators.nix: config/emulators/${id}/package.nix is missing";
 in {
   ids = linuxEmulators;
   packages = lib.genAttrs linuxEmulators recipe;

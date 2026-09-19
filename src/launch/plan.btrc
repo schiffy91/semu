@@ -8,6 +8,7 @@ import ../lib/paths.btrc;
 import ../model.btrc;
 import ../resolve.btrc;
 import ../emit/profiles.btrc;
+import ../emit/rendering.btrc;
 
 class SemuLaunchPlan {
     public Vector<string> argv;
@@ -218,6 +219,13 @@ class SemuLauncher {
         }
         launch.argv.push(selectedRom);
         SemuLauncher.stateEnvironment(launch, plan, emulator, platform);
+        if (SemuJson.boolAt(platform, "render_hook", false)) {  // the emulator links libsemurenderer and reads SEMU_RENDER_*
+            for entry in SemuRenderEnvironment.compile(plan, system, emulatorId, stateRoot, diagnostics) { launch.environment.push(entry); }
+            if (!diagnostics.ok()) {
+                launch.error = "rendering configuration failed: " + diagnostics.render();
+                return launch;
+            }
+        }
         launch.chordWindowMs = plan.input == null ? 250 : plan.input.chordWindowMs();
         for argument in launch.argv {
             if (argument.contains("${")) { launch.error = "unresolved token in launch arguments: " + argument; }
