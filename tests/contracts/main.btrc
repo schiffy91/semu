@@ -18,6 +18,7 @@ import ../../src/emit/settings_ui.btrc;
 import ../../src/sync/syncthing.btrc;
 import ../../src/steam/shortcuts.btrc;
 import ../../src/cli.btrc;
+import ../../src/launch/supervisor.btrc;
 
 class Contract {
     public int failures;
@@ -155,10 +156,10 @@ class RetroArchProfileContract {
         contract.contains(cfg, "video_driver = \"glcore\"", "core-profile GL so hardware-rendered cores initialise");
         contract.contains(cfg, "system_directory = \"" + fixture.plan.path("emulation_root") + "/RetroArch/config/system\"", "BIOS and core assets come from the existing RetroArch system directory");
         contract.contains(cfg, "input_save_state = \"s\"", "save state hotkey");
-        contract.contains(cfg, "input_enable_hotkey_btn = \"4\"", "select is the gamepad hotkey modifier");
-        contract.contains(cfg, "input_save_state_btn = \"10\"", "select plus RB saves state");
-        contract.contains(cfg, "input_load_state_btn = \"9\"", "select plus LB loads state");
-        contract.contains(cfg, "input_menu_toggle_btn = \"3\"", "select plus Y opens the menu");
+        contract.contains(cfg, "input_enable_hotkey_btn = \"nul\"", "RetroArch gamepad hotkeys are unbound: the supervisor owns Select chords");
+        contract.contains(cfg, "input_save_state_btn = \"nul\"", "save state is not a RetroArch pad hotkey");
+        contract.contains(cfg, "input_load_state_btn = \"nul\"", "load state is not a RetroArch pad hotkey");
+        contract.contains(cfg, "input_menu_toggle_btn = \"nul\"", "menu toggle is not a RetroArch pad hotkey");
         contract.contains(cfg, "input_load_state = \"a\"", "load state hotkey");
         contract.contains(cfg, "input_pause_toggle = \"p\"", "pause hotkey");
         contract.contains(cfg, "input_exit_emulator = \"escape\"", "escape hotkey");
@@ -437,12 +438,46 @@ class SteamContract {  // the binary VDF Steam reads: our entry exact, everythin
     }
 }
 
+class UnifiedInputContract {  // one action vocabulary: chords parse, routes are explicit, the menu reaches both the renderer and the supervisor
+    class void run(Contract contract) {
+        Vector<int> save = SemuKeyNames.chord("Ctrl+S");
+        contract.expect(save.size() == 2 && save.get(0) == KEY_LEFTCTRL && save.get(1) == KEY_S, "Ctrl+S parses to left control then S");
+        Vector<int> wii = SemuKeyNames.chord("Ctrl+Shift+F9");
+        contract.expect(wii.size() == 3 && wii.get(2) == KEY_F9, "Ctrl+Shift+F9 parses with two modifiers");
+        contract.expect(SemuKeyNames.chord("Ctrl++").size() == 2 && SemuKeyNames.chord("Ctrl+Bogus").isEmpty(), "plus is a key and unknown keys reject the chord");
+        contract.expect(SemuKeyNames.button("north") == BTN_NORTH && SemuKeyNames.button("select") == BTN_SELECT && SemuKeyNames.button("dpad_left") == BTN_DPAD_LEFT, "gamepad button names map to evdev codes");
+        contract.expect(SemuActionRouter.route("state.save", true, true).equals("udp:SAVE_STATE"), "RetroArch actions go through the command port even from a keyboard chord");
+        contract.expect(SemuActionRouter.route("state.save", false, false).equals("inject"), "native emulators get the chord typed for a gamepad chord");
+        contract.expect(SemuActionRouter.route("state.save", false, true).equals("none"), "a keyboard chord already reached a native emulator");
+        contract.expect(SemuActionRouter.route("ui.menu", false, false).equals("semu") && SemuActionRouter.route("visual.bezels.toggle", true, true).equals("semu"), "menu and visual toggles are Semu's own");
+        contract.expect(SemuActions.code("visual.bezels.toggle") == SemuActions.bezelsToggle() && SemuActions.id(SemuActions.shadersToggle()).equals("visual.shaders.toggle"), "visual toggles have journal codes");
+        Fixture fixture = Fixture("linux-desktop");
+        string assets = fixture.plan.assetRoot;
+        string roms = PathTools.join(fixture.scratch, "roms");
+        FileSystem.mkdirp(PathTools.join(roms, "gb"));
+        FileSystem.writeText(PathTools.join(roms, "gb/Tetris.zip"), "");
+        FileSystem.mkdirp(PathTools.join(assets, "bin"));
+        FileSystem.writeText(PathTools.join(assets, "bin/retroarch"), "#!/bin/sh\n");
+        FileSystem.mkdirp(PathTools.join(assets, "lib/retroarch/cores"));
+        FileSystem.writeText(PathTools.join(assets, "lib/retroarch/cores/gambatte_libretro.so"), "");
+        fixture.plan.tokens.put("roms", roms);
+        SemuLaunchPlan launch = SemuLauncher.plan(fixture.model, fixture.plan, "retroarch", "gb", "", "Tetris.zip", fixture.diagnostics);
+        contract.expect(launch.ok(), "launch plan for the input contract resolves: " + launch.error);
+        contract.expect(launch.menuLabels.size() == 7 && launch.menuActions.get(0).equals("ui.menu.back") && launch.menuActions.get(6).equals("app.quit"), "menu items reach the supervisor in order");
+        contract.expect(launch.environment.contains("SEMU_MENU_ITEMS=" + launch.menuLabels.join("|")), "menu labels reach the renderer");
+        contract.expect(launch.chordModifier.equals("select") && launch.chordButtons.contains("north") && launch.chordActions.get(launch.chordButtons.indexOf("north")).equals("ui.menu"), "Select+Y opens the Semu menu");
+        contract.expect(launch.actionChords.contains("state.save=Ctrl+S") && launch.pauseAction.equals("ui.pause"), "action chords and the pause action are carried");
+        contract.expect(launch.retroarchPort == 55355 && launch.stateDir.endsWith("/retroarch"), "RetroArch launches know the command port and the journal directory");
+    }
+}
+
 int main() {
     Contract contract = Contract();
     SettingsWriteContract.run(contract);
     SettingsUiContract.run(contract);
     SyncContract.run(contract);
     SteamContract.run(contract);
+    UnifiedInputContract.run(contract);
     RenderingContract.run(contract);
     ModelContract.run(contract);
     SettingsLadderContract.run(contract);

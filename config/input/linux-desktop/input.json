@@ -88,6 +88,14 @@
     "ui.escape": {
       "label": "Escape",
       "chord": "Esc"
+    },
+    "visual.bezels.toggle": {
+      "label": "Bezel On/Off",
+      "chord": "Ctrl+B"
+    },
+    "visual.shaders.toggle": {
+      "label": "Shader On/Off",
+      "chord": "Ctrl+H"
     }
   },
   "quit_chord": {
@@ -111,12 +119,58 @@
     "ryujinx_controller_id": "0-00000000-045e-0000-ea02-000000000000"
   },
   "retroarch_hotkeys": {
-    "enable_hotkey_btn": "4",
-    "save_state_btn": "10",
-    "load_state_btn": "9",
-    "menu_toggle_btn": "3",
-    "toggle_fast_forward_btn": "1",
-    "rewind_btn": "0",
-    "screenshot_btn": "2"
+    "enable_hotkey_btn": "nul",
+    "save_state_btn": "nul",
+    "load_state_btn": "nul",
+    "menu_toggle_btn": "nul",
+    "toggle_fast_forward_btn": "nul",
+    "rewind_btn": "nul",
+    "screenshot_btn": "nul"
+  },
+  "menu": {
+    "items": [
+      {
+        "label": "RESUME",
+        "action": "ui.menu.back"
+      },
+      {
+        "label": "SAVE STATE",
+        "action": "state.save"
+      },
+      {
+        "label": "LOAD STATE",
+        "action": "state.load"
+      },
+      {
+        "label": "SCREENSHOT",
+        "action": "ui.screenshot"
+      },
+      {
+        "label": "BEZEL ON/OFF",
+        "action": "visual.bezels.toggle"
+      },
+      {
+        "label": "SHADER ON/OFF",
+        "action": "visual.shaders.toggle"
+      },
+      {
+        "label": "QUIT GAME",
+        "action": "app.quit"
+      }
+    ],
+    "pause_action": "ui.pause",
+    "doc": "The native Semu menu the renderer draws over any emulator. The supervisor mirrors this list: the same journal drives the drawn selection and the executed action."
+  },
+  "gamepad_chords": {
+    "modifier": "select",
+    "bindings": {
+      "north": "ui.menu",
+      "east": "ui.screenshot",
+      "tr": "state.save",
+      "tl": "state.load",
+      "dpad_left": "state.prev",
+      "dpad_right": "state.next"
+    },
+    "doc": "The plain-controller paradigm: hold Select and press a button. Start+Select stays the quit chord. On the Deck the trackpad radial emits the keyboard chords instead; both paths produce the same actions."
   }
 }
