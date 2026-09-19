@@ -47,10 +47,12 @@ class SemuSystemBinding {
     public string core;
     public Vector<string> platforms;
     public Vector<string> arguments;
+    public Vector<string> labelAliases;
 
     public SemuSystemBinding(JSONValue definition) {
         self.emulator = SemuJson.textAt(definition, "emulator");
         self.label = SemuJson.textAt(definition, "label");
+        self.labelAliases = SemuJson.strings(definition.get("label_aliases"));
         self.core = SemuJson.textAt(definition, "core");
         self.platforms = SemuJson.strings(definition.get("platforms"));
         self.arguments = SemuJson.strings(definition.get("args"));
