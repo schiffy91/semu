@@ -6,6 +6,7 @@ import ../lib/json.btrc;
 import ../lib/paths.btrc;
 import ../model.btrc;
 import ../resolve.btrc;
+import ./settings_ui.btrc;
 
 class SemuXml {
     class string escape(string value) {
@@ -159,6 +160,12 @@ class SemuEsDeDocuments {
             diagnostics.add(esDeHome, "install", "could not write into the ES-DE home");
             return false;
         }
-        return true;
+        string launcher = SemuSettingsUi.launcher(plan);
+        string manifest = PathTools.join(esDeHome, "settings/semu_settings.json");
+        if (launcher.isEmpty()) {  // no trusted CLI in this asset root: ES-DE hides the menu entry
+            SemuPaths.removeFile(manifest);
+            return true;
+        }
+        return SemuPaths.writeOwned(esDeHome, manifest, SemuSettingsUi.manifest(launcher).stringifyPretty(2) + "\n");
     }
 }

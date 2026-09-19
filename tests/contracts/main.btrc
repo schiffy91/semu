@@ -14,6 +14,7 @@ import ../../src/emit/esde.btrc;
 import ../../src/emit/profiles.btrc;
 import ../../src/launch/plan.btrc;
 import ../../src/emit/rendering.btrc;
+import ../../src/emit/settings_ui.btrc;
 import ../../src/cli.btrc;
 
 class Contract {
@@ -303,9 +304,77 @@ class SettingsWriteContract {
     }
 }
 
+class SettingsUiContract {  // the document ES-DE's SEMU SETTINGS menu validates before rendering
+    class bool validKey(string key) {
+        if (key.isEmpty() || key.startsWith(".") || key.endsWith(".") || key.contains("..")) { return false; }
+        for (int index = 0; index < key.len(); index++) {
+            char character = key.charAt(index);
+            bool ok = (character >= 'a' && character <= 'z') || (character >= '0' && character <= '9') || character == '_' || character == '.';
+            if (!ok) { return false; }
+        }
+        return true;
+    }
+
+    class void page(Contract contract, JSONValue page, Vector<string> keys, Vector<string> commands) {
+        contract.expect(page.get("fields").isArray() && page.get("fields").size() > 0, "page " + SemuJson.textAt(page, "id") + " has fields");
+        contract.expect(page.size() == (page.has("commands") ? 5 : 4), "page " + SemuJson.textAt(page, "id") + " has exact members");
+        JSONValue fields = page.get("fields");
+        for (int index = 0; index < fields.size(); index++) {
+            JSONValue field = fields.at(index);
+            string key = SemuJson.textAt(field, "key");
+            string type = SemuJson.textAt(field, "type");
+            contract.expect(SettingsUiContract.validKey(key) && !keys.contains(key), "field key is valid and unique: " + key);
+            keys.push(key);
+            contract.expect(field.size() == (type.equals("choice") ? 5 : 4), "field has exact members: " + key);
+            if (type.equals("boolean")) { contract.expect(field.get("value").isBool(), "boolean value: " + key); }
+            if (type.equals("integer")) { contract.expect(field.get("value").isNumber(), "integer value: " + key); }
+            if (type.equals("choice")) {
+                contract.expect(SemuJson.strings(field.get("choices")).contains(SemuJson.text(field.get("value"))), "choice value is declared: " + key);
+            }
+        }
+        if (!page.has("commands")) { return; }
+        JSONValue declared = page.get("commands");
+        for (int index = 0; index < declared.size(); index++) {
+            string id = SemuJson.textAt(declared.at(index), "id");
+            contract.expect(!commands.contains(id), "command placed once: " + id);
+            commands.push(id);
+        }
+    }
+
+    class void run(Contract contract) {
+        Fixture fixture = Fixture("linux-desktop");
+        JSONValue document = SemuSettingsUi.document(fixture.model, fixture.plan);
+        contract.expect(document.size() == 7, "settings ui document has exactly seven members");
+        contract.expect(SemuJson.textAt(document, "protocol").equals("semu-settings-v2"), "settings ui protocol");
+        contract.expect(SemuJson.textAt(document, "title").equals(SemuSettingsUi.title()), "settings ui title matches the manifest label");
+        contract.expect(SemuJson.textAt(document, "save.strategy").equals("apply_last_changed_write") && SemuJson.textAt(document, "save.apply_flag").equals("--apply"), "save protocol");
+        Vector<string> keys = [];
+        Vector<string> placed = [];
+        JSONValue sections = document.get("sections");
+        contract.expect(sections.isArray() && sections.size() >= 3, "settings ui has visuals, per-system and interface sections");
+        for (int index = 0; index < sections.size(); index++) {
+            JSONValue section = sections.at(index);
+            if (SemuJson.textAt(section, "kind").equals("page")) {
+                SettingsUiContract.page(contract, section, keys, placed);
+                continue;
+            }
+            contract.expect(section.size() == 4 && section.get("sections").isArray() && section.get("sections").size() > 0, "menu " + SemuJson.textAt(section, "id") + " has pages");
+            JSONValue pages = section.get("sections");
+            for (int page = 0; page < pages.size(); page++) { SettingsUiContract.page(contract, pages.at(page), keys, placed); }
+        }
+        contract.expect(keys.contains("visual.bezels") && keys.contains("visual.systems.gb.bezel_variant") && keys.contains("ui.theme"), "settings ui exposes bezels, the gb variant and the theme");
+        contract.expect(placed.size() == document.get("commands").size() && placed.contains("reset-settings"), "every declared command is placed exactly once");
+        JSONValue manifest = SemuSettingsUi.manifest("/nix/store/x-semu/bin/semu");
+        contract.expect(manifest.size() == 2 && manifest.get("entry").size() == 5 && manifest.get("entry").get("actions").size() == 3, "manifest has the exact member counts ES-DE checks");
+        contract.expect(SemuJson.textAt(manifest, "entry.label").equals(SemuJson.textAt(document, "title")), "manifest label equals the document title");
+        contract.expect(SemuSettingsUi.upper("Nintendo Game Boy").equals("NINTENDO GAME BOY"), "labels are uppercased");
+    }
+}
+
 int main() {
     Contract contract = Contract();
     SettingsWriteContract.run(contract);
+    SettingsUiContract.run(contract);
     RenderingContract.run(contract);
     ModelContract.run(contract);
     SettingsLadderContract.run(contract);

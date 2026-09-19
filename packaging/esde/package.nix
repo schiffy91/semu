@@ -16,11 +16,14 @@ esDePackages.emulationstation-de.overrideAttrs (previous: {
     hash = sourceHash;
   };
 
+  patches = (previous.patches or [ ]) ++ [ ./settings-menu.patch ];  # SEMU SETTINGS entry in the main menu
+
   cmakeFlags = (previous.cmakeFlags or [ ]) ++ [ (esDePackages.lib.cmakeBool "APPLICATION_UPDATER" false) ];
 
   doInstallCheck = true;
   installCheckPhase = ''
     test -x "$out/bin/es-de"
+    grep -Fq 'semu-settings-v2' "$out/bin/es-de"
     for theme in slate-es-de linear-es-de modern-es-de; do
       test -s "$out/share/es-de/themes/$theme/theme.xml"
     done
