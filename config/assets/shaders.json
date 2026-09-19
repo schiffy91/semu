@@ -656,9 +656,9 @@
       "passes": [
         {
           "tree": "shaders_slang",
-          "path": "handheld/shaders/lcd1x.slang",
-          "sha256": "63c8dd3726c853feb12c8593cd192dfa3fb881449fd5dc672852f8024d511c82",
-          "filter_linear": false,
+          "path": "misc/shaders/image-adjustment.slang",
+          "sha256": "e608b1dd71d660d2ce8a77ee3e3a62ad5047d50a75adc8db7b4a1b7c1be83e2d",
+          "filter_linear": true,
           "scale_type": "viewport",
           "scale": 1
         }
@@ -667,14 +667,59 @@
         "shaders_slang"
       ],
       "params": {
-        "BRIGHTEN_SCANLINES": 12.0,
-        "BRIGHTEN_LCD": 3.0
+        "ia_luminance": 0.92,
+        "ia_saturation": 0.95,
+        "ia_black_level": 0.02
       },
       "doc": {
-        "why": "3DS bottom screen: the resistive touch layer dims and softens the grid slightly"
+        "why": "3DS bottom screen: the resistive touch layer reads matte and a touch dimmer; no pixel grid, since the second screen scales fractionally in the computed layouts and a grid would alias"
       },
       "output": {
-        "sha256": "09b06fdb9952605128136e655f709f359a0f0c04fcbe3627d70f76dc1f49338d"
+        "sha256": "42880bb4532833d2b9c8b6374e3e15e740290bec541854c165e62d24e3fb1d7f"
+      }
+    },
+    "assets/shaders/nds/top.slangp": {
+      "type": "slang_wrapper",
+      "reference": {
+        "tree": "shaders_slang",
+        "path": "handheld/lcd1x_nds.slangp",
+        "sha256": "e665adcb83e51ca2b1e54a618cd33a54c45cb55ded21b00f5b92bb51ded22e9f"
+      },
+      "requires": [
+        "shaders_slang"
+      ],
+      "doc": {
+        "why": "DS main screen: the NDS-tuned lcd1x grid at integer scale"
+      },
+      "output": {
+        "sha256": "41a305a4d8b792b7f0d5c196198842ab0aaf38afa37a0f1722f8ae5e14f8ca99"
+      }
+    },
+    "assets/shaders/nds/bottom.slangp": {
+      "type": "slang_pipeline",
+      "passes": [
+        {
+          "tree": "shaders_slang",
+          "path": "misc/shaders/image-adjustment.slang",
+          "sha256": "e608b1dd71d660d2ce8a77ee3e3a62ad5047d50a75adc8db7b4a1b7c1be83e2d",
+          "filter_linear": true,
+          "scale_type": "viewport",
+          "scale": 1
+        }
+      ],
+      "requires": [
+        "shaders_slang"
+      ],
+      "params": {
+        "ia_luminance": 0.92,
+        "ia_saturation": 0.95,
+        "ia_black_level": 0.02
+      },
+      "doc": {
+        "why": "DS touch screen: matte, no grid, since it scales fractionally beside the main screen"
+      },
+      "output": {
+        "sha256": "42880bb4532833d2b9c8b6374e3e15e740290bec541854c165e62d24e3fb1d7f"
       }
     }
   }

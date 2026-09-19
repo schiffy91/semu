@@ -4,13 +4,18 @@
   "renderer": true,
   "screen": "assets/shaders/nds/screen.slangp",
   "doc": {
-    "intent": "Nintendo DS LCD pixel structure and panel color response; each screen receives an independent shader instance"
+    "intent": "Nintendo DS LCD pixel structure and panel color response; each screen receives an independent shader instance",
+    "screens": "the default names a preset per screen: grid on the integer-scaled main screen, matte on the fractional touch screen"
   },
   "variants": [
     {
       "id": "default",
       "label": "DS LCD",
-      "screen": "assets/shaders/nds/screen.slangp"
+      "screen": "assets/shaders/nds/screen.slangp",
+      "screens": {
+        "top": "assets/shaders/nds/top.slangp",
+        "bottom": "assets/shaders/nds/bottom.slangp"
+      }
     },
     {
       "id": "grid",

@@ -499,8 +499,8 @@ class RendererGeometry {
         int secondHeight = RendererGeometry.rotatedHeight(second);
         int scale = (areaHeight - 2 * frame) / mainHeight;
         int side = 0;
-        while (scale >= 1) {
-            side = (areaWidth - scale * mainWidth) / 2 - 2 * frame - gap;
+        while (scale >= 1) {  // room beside the centered main: its frame, the gap, the second screen's frame and an outer margin
+            side = (areaWidth - scale * mainWidth) / 2 - 3 * frame - 2 * gap;
             if (side >= secondWidth) { break; }
             scale--;
         }
