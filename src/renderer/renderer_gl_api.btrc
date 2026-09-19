@@ -1,3 +1,5 @@
+#include <stdio.h>
+#include <stdlib.h>
 // OpenGL procedure loading and complete caller-state preservation. Every
 // symbol comes from the emulator-provided callback in SemuRenderFrameGl.
 
@@ -211,6 +213,10 @@ class RendererGlCapabilities {
             gl->get_string((unsigned int)RGL_VERSION));
         int shadingLanguage = RendererGlCapabilities.parseVersion(
             gl->get_string((unsigned int)RGL_SHADING_LANGUAGE_VERSION));
+        if (getenv("SEMU_RENDER_DEBUG") != null) {
+            fprintf(stderr, "semu-renderer: GL %d GLSL %d version '%s' glsl '%s'\n", openGl, shadingLanguage,
+                (char*)gl->get_string((unsigned int)RGL_VERSION), (char*)gl->get_string((unsigned int)RGL_SHADING_LANGUAGE_VERSION));
+        }
         return openGl >= 330 && shadingLanguage >= 330;
     }
 }
@@ -223,6 +229,7 @@ class RendererGlProcedures {
 
     class void bind(void* slot, struct SemuRenderFrameGl* frame, const char* name) {  // C11 forbids casting void* to a function pointer
         void* procedure = RendererGlProcedures.resolve(frame, name);
+        if (procedure == null && getenv("SEMU_RENDER_DEBUG") != null) { fprintf(stderr, "semu-renderer: get_proc(%s) is null\n", name); }
         memcpy(slot, &procedure, sizeof(procedure));
     }
 

@@ -148,7 +148,7 @@ class SemuLibrashaderOpenGLChain {
         if (!preset.load(presetPath, originalAspectUniforms,
                          frametimeUniforms, self.error)) {
             self.failure = SEMU_LIBRASHADER_FAILURE_LIBRARY;
-            delete preset;
+            preset = null;  // ARC releases the last reference
             return false;
         }
 
@@ -164,7 +164,7 @@ class SemuLibrashaderOpenGLChain {
             (libra_gl_filter_chain_t)0;
         bool created = preset.consumeIntoOpenGL(
             self.loader, &options, &createdHandle, self.error);
-        delete preset;
+        preset = null;  // ARC releases the last reference
         if (!created) {
             if ((void*)createdHandle != (void*)0) {
                 libra_error_t closeError =

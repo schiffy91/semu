@@ -485,7 +485,7 @@ class RendererResources {
                 if (!chain.close(contextGeneration)) {
                     chain.abandonDestroyedContext();
                 }
-                delete chain;
+                chain = null;  // ARC releases the last reference
             }
             if (index == 0) { RendererShaderLane0 = null; }
             else { RendererShaderLane1 = null; }
@@ -519,7 +519,7 @@ class RendererResources {
                 ? RendererShaderLane0 : RendererShaderLane1;
             if (chain != null) {
                 chain.abandonDestroyedContext();
-                delete chain;
+                chain = null;  // ARC releases the last reference
             }
             if (index == 0) { RendererShaderLane0 = null; }
             else { RendererShaderLane1 = null; }
@@ -764,7 +764,7 @@ class RendererShaderPasses {
             if (!chain.close(contextGeneration)) {
                 chain.abandonDestroyedContext();
             }
-            delete chain;
+            chain = null;  // ARC releases the last reference
         }
         RendererShaderPasses.setLane(index, null);
         resources->lane_history[index] = 0;
@@ -869,7 +869,11 @@ class RendererShaderPasses {
             chain = new SemuLibrashaderOpenGLChain(loader, frame->context_generation);
             if (!chain.create(preset, 330, false, false,
                     true, true, true)) {
-                delete chain;
+                if (getenv("SEMU_RENDER_DEBUG") != null) {
+                    fprintf(stderr, "semu-renderer: shader chain failed for %s (failure %d, library %d)\n", preset, chain.lastFailure(), chain.lastLibraryErrorCode());
+                    chain.printLibraryError();
+                }
+                chain = null;  // ARC releases the last reference
                 return false;
             }
             RendererShaderPasses.setLane(index, chain);
