@@ -358,10 +358,19 @@ Update this block whenever a milestone criterion changes state.
   `shader_variant pocket` switched to the alternate look, and
   `visual.bezels false` plus `visual.crt_shaders false` gave the raw frame,
   all without a rebuild. NES, SNES, N64 and PSX render inside the CRT bezel,
-  NDS renders both screens inside the DS shell. Not done: the hook in the
-  native emulators (Dolphin, PCSX2, PPSSPP, Flycast, melonDS, Azahar, Cemu,
-  Ryujinx still draw without bezels or shaders) and the Deck half of the
-  criterion.
+  NDS renders both screens inside the DS shell. Native emulators: the
+  bundle ships `libsemupreload.so`, an LD_PRELOAD shim that composes through
+  the same renderer at SDL_GL_SwapWindow, eglSwapBuffers and glXSwapBuffers
+  (`render_preload` in emulator.json adds it to the launch environment).
+  Observed with inspected screenshots: Flycast (Crazy Taxi), PPSSPP (Ape
+  Escape) and Dolphin (Super Monkey Ball) draw inside their bezels. PCSX2
+  and melonDS never reach an interposable swap (their frames stayed raw), so
+  they are not opted in. Azahar and Cemu could not be judged: by the end of
+  the session Azahar reported "OpenGL shared contexts are not supported" and
+  Cemu showed a white window even when launched directly from the bundle
+  without Semu, with the same packages that ran fine during M4; treat that
+  as machine state to recheck after a reboot before blaming Semu. Ryujinx is
+  Vulkan and stays unhooked. Not done: the Deck half of the criterion.
 - M7 extras: all three delivered on the desktop 2026-09-19.
   ES-DE settings menu: ES-DE 3.4.0 carries the settings-menu patch; the
   SEMU SETTINGS entry renders the document `semu settings ui` returns and
@@ -390,10 +399,13 @@ Update this block whenever a milestone criterion changes state.
   through RetroArch, 8 native), the RetroArch systems now render through the
   shared renderer with bezels and shaders switchable from settings, ES-DE
   runs with the existing gamelists and a working SEMU SETTINGS menu, save
-  states work, Syncthing save sync and the Steam shortcut writer work from
-  the CLI, `make test` passes 228 contract checks, `nix flake check` passes
+  states work, Flycast, PPSSPP and Dolphin composite through the preload
+  shim, Syncthing save sync and the Steam shortcut writer work from the CLI,
+  `make test` passes 230 contract checks, `nix flake check` passes
   (contracts, headless RetroArch, installer), and a relocatable release runs
   through bubblewrap. Unverified: gamepad input, Start+Select chord, reboot
-  survival, native-emulator bezels, anything on a physical Deck. Commits
+  survival, bezels on PCSX2, melonDS, Azahar, Cemu and Ryujinx, anything on
+  a physical Deck. Azahar and Cemu stopped creating GL contexts late in the
+  session even outside Semu (see M6); recheck after a reboot. Commits
   after `52d60cf` are not pushed yet: GitHub SSH is waiting on the 1Password
   authorization prompt on the desktop.

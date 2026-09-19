@@ -79,7 +79,10 @@ returns to ES-DE.
 
 Shaders and bezels come from one renderer, `libsemurenderer`, that hooked
 emulators link directly (RetroArch's gl3 driver calls it after the game draw
-and before present). The launcher passes the system's shader preset, bezel
+and before present). Native OpenGL emulators that cannot be patched get the
+same renderer through `libsemupreload.so`, an LD_PRELOAD shim that composes
+at their swap call (`render_preload` in `config/emulators/<id>/emulator.json`;
+Flycast, PPSSPP and Dolphin today). The launcher passes the system's shader preset, bezel
 art, hole and canvas policy through `SEMU_RENDER_*` from
 `config/systems/<id>/{shaders,bezels}.json`. Switch variants without a
 rebuild:
