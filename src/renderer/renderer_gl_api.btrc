@@ -152,8 +152,8 @@ struct RendererGlState {
     int program;
     int vertex_array;
     int active_texture;
-    int textures[5];
-    int samplers[5];
+    int textures[8];  // at least SEMU_RENDER_TEXTURE_UNITS
+    int samplers[8];
     int viewport[4];
     int scissor[4];
     int draw_framebuffer;
