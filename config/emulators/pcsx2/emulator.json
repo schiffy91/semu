@@ -126,13 +126,14 @@
         "fallback_dirs": [
           "${bios}/ps2"
         ]
-      }
+      },
+      "render_hook": true
     }
   },
   "doc": {
     "runtime": "Linux executes the exact pinned, source-patched PCSX2 package from the AppImage asset root inside bubblewrap. No host executable, Flatpak runtime, or prebuilt Linux binary participates.",
     "state": "PCSX2 2.6.3 reads $XDG_CONFIG_HOME/PCSX2; Semu maps that to the per-emulator state root. Settings, memory cards, save states, snapshots, cache, logs, and textures remain Semu-owned generated/runtime state.",
-    "graphics": "[EmuCore/GS] Renderer = 12 forces OpenGL in the generated profile. The direct ABI 2 hook runs after the final upright GS draw, then after PCSX2 UI immediately before the emulator-owned swap.",
+    "graphics": "[EmuCore/GS] Renderer = 12 forces OpenGL in the generated profile. The source-built package carries semu_render_hook.patch: GSDeviceOGL publishes the presented frame to libsemurenderer (ABI 3) after the final upright present draw, then runs the post-UI pass after PCSX2's ImGui immediately before the emulator-owned swap.",
     "firmware": "The configured PS2 BIOS root is mounted read-only. ROM, BIOS, and external emulation roots are never writable from the PCSX2 sandbox.",
     "input": "The packaged Game Mode process binds Pad1 to its first SDL gamepad, SDL-0. The profile compiler reads this Linux platform declaration directly; it does not inherit a stale host enumeration index.",
     "platforms": "PCSX2 is intentionally Linux-only until a reproducible source-built Darwin slice exists. An upstream application archive is not a production fallback."
