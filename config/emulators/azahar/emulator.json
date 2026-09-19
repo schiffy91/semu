@@ -19,7 +19,7 @@
       "backend": "bwrap",
       "executable": "${asset_root}/bin/azahar",
       "args": [
-        "--fullscreen"
+        "-f"
       ],
       "gl_wrapper": "${asset_root}/bin/nixGL",
       "sandbox": {

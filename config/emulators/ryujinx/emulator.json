@@ -86,6 +86,17 @@
               "${emulation_root}/Ryujinx/config/system/title.keys",
               "${bios}/switch/title.keys"
             ]
+          },
+          {
+            "purpose": "switch_firmware",
+            "target": "${state_root}/config/Ryujinx/bis",
+            "copy": "once_if_target_absent",
+            "source_access": "read_only",
+            "overwrite": false,
+            "sources": [
+              "${emulation_root}/Ryujinx/config/bis",
+              "${bios}/switch/bis"
+            ]
           }
         ]
       },

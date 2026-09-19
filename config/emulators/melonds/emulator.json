@@ -60,13 +60,13 @@
         "section": "3D",
         "key": "Renderer",
         "values": {
-          "opengl": "1"
+          "opengl": "0"
         },
         "extra_pins": [
           {
             "section": "Screen",
             "key": "UseGL",
-            "value": "true"
+            "value": "false"
           },
           {
             "section": "Screen",
@@ -123,6 +123,11 @@
               "${bios}/firmware.bin"
             ]
           }
+        ],
+        "create_dirs": [
+          "${state_root}/data/melonDS/saves",
+          "${state_root}/data/melonDS/states",
+          "${state_root}/data/melonDS/cheats"
         ]
       },
       "firmware": {
