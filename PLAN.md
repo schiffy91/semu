@@ -467,6 +467,39 @@ Update this block whenever a milestone criterion changes state.
   independent Python parse read the entry back. Not observed: Steam itself
   launching the shortcut (Steam was running, so the live profile was left
   alone), and anything on a Deck.
+- M8 unified input and native menu: done on the desktop 2026-09-19 (late).
+  The supervisor in `src/launch/supervisor.btrc` reads gamepads and
+  keyboards through evdev, turns Select-modifier chords and keyboard chords
+  into the one action vocabulary, writes the renderer's action journal,
+  executes RetroArch actions over its command port and types the chord into
+  native emulators through a virtual keyboard. Observed headlessly
+  (`tests/visual/menu-e2e.sh`, virtual gamepad, real RetroArch, captures
+  inspected): Select+Y opened the Semu menu over the paused Game Boy, D-pad
+  plus A saved a state (RetroArch's own toast and the state file), BEZEL
+  ON/OFF removed the bezel live and persisted `visual.bezels=false`,
+  Start+Select ended the session. Flycast: Select+R1 routed to a typed
+  Ctrl+S and Flycast's compiled binding wrote its state file when the chord
+  arrived (the virtual-keyboard hop itself cannot reach an app on bare Xvfb,
+  so that last hop is proven only by the route log). `semu steam input`
+  renders the Deck's Neptune templates (gamepad set, hotkey set, quick and
+  menu trackpad radials with semantic icons, Wii controller layer) and
+  copies the icons, covered by a contract test; not yet loaded on a Deck.
+- M9 bezel and shader fidelity: done on the desktop 2026-09-19 (late) for
+  every capturable non-modern system. gb, gbc, gba, nes, snes, genesis,
+  n64, psx, nds, psp, dreamcast, gc, wii, ps2 and n3ds each declare a
+  default and a materially different alternate for both shader and bezel
+  (Sharp CRT via easymode-halation for the CRT systems; authentic GBC,
+  AGB-001, LCD 3x and LCD-grid presets for handhelds; silver 4:3 CRT, berry
+  GBC, arctic GBA and deep-red PSP shells from the recolor recipes in
+  `config/assets/bezels.json`, committed with output hashes).
+  `tests/visual/matrix.sh` captured default, alternate shader, alternate
+  bezel and disabled for 12 systems (48 cells, sheets inspected): distinct
+  and correctly framed. Caveats: Flycast keeps a 640x480 window on bare
+  Xvfb so its CRT mask aliases there (its fullscreen desktop run was
+  inspected earlier); Dolphin's disabled cell caught a white transition
+  frame; wii, ps2 and n3ds were not captured (no Wii title run, PCSX2
+  unhooked, Azahar broken this session); the widescreen switch (variant B
+  above 1.55) is implemented but not exercised with a 16:9 title.
 - Active milestone: M5/M6 hardware acceptance once a Deck is reachable
   (`DECK_HOST=deck tests/deck/deploy.sh install`), then the native-emulator
   render hook.
