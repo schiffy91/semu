@@ -34,6 +34,7 @@ class SemuCli {
         help.item("prepare --target T [--es-de-home DIR]", "Install ES-DE documents and settings into the ES-DE home.");
         help.item("launch EMULATOR --system S --rom PATH [--core C] [--print-plan]", "Launch a ROM with the Start+Select quit chord.");
         help.item("doctor --target T", "Show resolved paths and what is missing.");
+        help.item("path NAME --target T", "Print one resolved path (roms, bios, esde_home, state_root, ...).");
         help.item("version", "Print the Semu version.");
         help.section("Common options");
         help.item("--target T", "Target id (default: $SEMU_TARGET or linux-desktop).");
@@ -81,7 +82,7 @@ class SemuCli {
         SemuModel model = SemuModel.load(self.configRoot(), diagnostics);
         SemuPlan plan = self.resolve(model, diagnostics);
         if (!SemuChecker.check(model, plan, diagnostics)) { return self.fail(diagnostics); }
-        string esDeHome = SemuPaths.expandHome(self.option("es-de-home", Environment.get("SEMU_ES_DE_HOME", "${home}/ES-DE")));
+        string esDeHome = SemuPaths.expandHome(self.option("es-de-home", Environment.get("SEMU_ES_DE_HOME", PathTools.join(plan.path("esde_home"), "ES-DE"))));
         if (!SemuEsDeDocuments.install(model, plan, esDeHome, diagnostics)) { return self.fail(diagnostics); }
         for name in ["saves", "states", "screenshots"] { SemuPaths.prepareDirectory(PathTools.join(plan.path("content_root"), name)); }
         SemuPaths.prepareDirectory(plan.stateRoot());
@@ -110,6 +111,20 @@ class SemuCli {
             return 1;
         }
         return SemuQuitChord.supervise(child, launch.chordWindowMs, launch.watchPads);
+    }
+
+    public int path() {  // print one resolved path token, for shell wrappers
+        SemuDiagnostics diagnostics = SemuDiagnostics();
+        SemuModel model = SemuModel.load(self.configRoot(), diagnostics);
+        SemuPlan plan = self.resolve(model, diagnostics);
+        if (plan == null) { return self.fail(diagnostics); }
+        string value = plan.path(self.line.operand(1, ""));
+        if (value.isEmpty()) {
+            Console.error("semu: unknown path " + self.line.operand(1, ""));
+            return 1;
+        }
+        Console.log(value);
+        return 0;
     }
 
     public int doctor() {
@@ -150,6 +165,7 @@ class SemuCli {
         if (command.equals("prepare")) { return self.prepare(); }
         if (command.equals("launch")) { return self.launch(); }
         if (command.equals("doctor")) { return self.doctor(); }
+        if (command.equals("path")) { return self.path(); }
         if (command.equals("version")) {
             Console.log(SemuCli.version());
             return 0;
