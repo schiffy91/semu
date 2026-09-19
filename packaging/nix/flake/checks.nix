@@ -63,8 +63,22 @@ forAllSystems (system:
         touch "$out"
       '';
     };
+    installer = pkgs.stdenv.mkDerivation {
+      name = "semu-installer-contract";
+      src = lib.fileset.toSource {
+        root = repositoryRoot;
+        fileset = lib.fileset.unions [ ../../../tests/integration/installer.sh ../../../packaging/deck/install.sh ];
+      };
+      nativeBuildInputs = [ pkgs.zstd pkgs.gnutar ];
+      dontConfigure = true;
+      dontBuild = true;
+      installPhase = ''
+        INSTALLER="$PWD/packaging/deck/install.sh" sh tests/integration/installer.sh
+        touch "$out"
+      '';
+    };
   in {
-    inherit contracts;
+    inherit contracts installer;
     synthetic-core = syntheticCore;
     retroarch-headless = retroarchHeadless;
     semu = packages.semu;
