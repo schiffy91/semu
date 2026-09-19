@@ -305,7 +305,7 @@
               "key": "citra_layout_option",
               "source": {
                 "kind": "literal",
-                "value": "Default Top-Bottom Screen"
+                "value": "default"
               }
             },
             {
@@ -313,20 +313,6 @@
               "source": {
                 "kind": "literal",
                 "value": "disabled"
-              }
-            },
-            {
-              "key": "citra_use_hw_shaders",
-              "source": {
-                "kind": "literal",
-                "value": "enabled"
-              }
-            },
-            {
-              "key": "citra_use_hw_shader_cache",
-              "source": {
-                "kind": "literal",
-                "value": "enabled"
               }
             },
             {
@@ -344,7 +330,21 @@
               }
             },
             {
-              "key": "citra_mouse_touchscreen",
+              "key": "citra_use_hw_shader",
+              "source": {
+                "kind": "literal",
+                "value": "enabled"
+              }
+            },
+            {
+              "key": "citra_use_disk_shader_cache",
+              "source": {
+                "kind": "literal",
+                "value": "enabled"
+              }
+            },
+            {
+              "key": "citra_enable_mouse_touchscreen",
               "source": {
                 "kind": "literal",
                 "value": "disabled"
