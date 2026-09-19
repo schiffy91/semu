@@ -341,6 +341,12 @@ Update this block whenever a milestone criterion changes state.
 - M6 renderer: not started; the plan gates it on M5 hardware acceptance
 - M7 extras: not started
 - Active milestone: M5 (hardware acceptance once a Deck is reachable)
-- Last observed result: 2026-09-19 audit. Old tree ports to current BTRC with
-  the port recipe and emits configs; no ROM has ever launched through Semu on
-  any target.
+- Last observed result: 2026-09-19 session. Every one of the 17 systems
+  launched a real ROM fullscreen on FRACTAL-NORTH through `semu launch` (11
+  through RetroArch, 8 native emulators), ES-DE runs with the existing
+  gamelists, save states work, `nix flake check` passes (contracts,
+  headless RetroArch, installer), the host runs the bundle, and a 1.3 GB
+  relocatable release was installed and run locally. Unverified: gamepad
+  input, Start+Select chord, reboot survival, anything on a physical Deck.
+  Commits after `52d60cf` are not pushed yet: GitHub SSH is waiting on the
+  1Password authorization prompt on the desktop.
