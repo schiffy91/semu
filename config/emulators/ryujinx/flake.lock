@@ -1,0 +1,45 @@
+{
+  "nodes": {
+    "nixpkgs": {
+      "locked": {
+        "lastModified": 1789684949,
+        "narHash": "sha256-ZKhUe/2IJUq1JhKxKMu8rbkgSGmPP2ZCqlIPn40aGCM=",
+        "owner": "NixOS",
+        "repo": "nixpkgs",
+        "rev": "e554fab72f81915600f3f449b786fd9af40439a5",
+        "type": "github"
+      },
+      "original": {
+        "owner": "NixOS",
+        "repo": "nixpkgs",
+        "rev": "e554fab72f81915600f3f449b786fd9af40439a5",
+        "type": "github"
+      }
+    },
+    "root": {
+      "inputs": {
+        "nixpkgs": "nixpkgs",
+        "source": "source"
+      }
+    },
+    "source": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1760166699,
+        "narHash": "sha256-LhQaXxmj5HIgfmrsDN8GhhVXlXHpDO2Q8JtNLaCq0mk=",
+        "ref": "refs/tags/1.3.3",
+        "rev": "e2143d43bcb6762340d8a01f20e7b5fdf104f02f",
+        "revCount": 4542,
+        "type": "git",
+        "url": "https://git.ryujinx.app/projects/Ryubing"
+      },
+      "original": {
+        "ref": "refs/tags/1.3.3",
+        "type": "git",
+        "url": "https://git.ryujinx.app/projects/Ryubing"
+      }
+    }
+  },
+  "root": "root",
+  "version": 7
+}

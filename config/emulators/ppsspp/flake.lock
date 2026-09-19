@@ -1,0 +1,47 @@
+{
+  "nodes": {
+    "nixpkgs": {
+      "locked": {
+        "lastModified": 1789684949,
+        "narHash": "sha256-ZKhUe/2IJUq1JhKxKMu8rbkgSGmPP2ZCqlIPn40aGCM=",
+        "owner": "NixOS",
+        "repo": "nixpkgs",
+        "rev": "e554fab72f81915600f3f449b786fd9af40439a5",
+        "type": "github"
+      },
+      "original": {
+        "owner": "NixOS",
+        "repo": "nixpkgs",
+        "rev": "e554fab72f81915600f3f449b786fd9af40439a5",
+        "type": "github"
+      }
+    },
+    "root": {
+      "inputs": {
+        "nixpkgs": "nixpkgs",
+        "source": "source"
+      }
+    },
+    "source": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1778934711,
+        "narHash": "sha256-F3MKth+eb/Ehoa2jcS0DIDt5LSRgznR+J00y1TEVBl4=",
+        "ref": "refs/tags/v1.20.4",
+        "rev": "fa50bb1976065c4f8b1b47af227d367fe9771555",
+        "revCount": 45868,
+        "submodules": true,
+        "type": "git",
+        "url": "https://github.com/hrydgard/ppsspp"
+      },
+      "original": {
+        "ref": "refs/tags/v1.20.4",
+        "submodules": true,
+        "type": "git",
+        "url": "https://github.com/hrydgard/ppsspp"
+      }
+    }
+  },
+  "root": "root",
+  "version": 7
+}

@@ -1,5 +1,5 @@
 # Flake checks: every package evaluates, the contract tests pass, and real RetroArch runs headless.
-{ self, forAllSystems, mkPkgs, ... }:
+{ self, forAllSystems, mkPkgs, renderer, retroarch, esde, emulatorFlakes, coreFlakes, ... }:
 
 forAllSystems (system:
   let
@@ -36,7 +36,7 @@ forAllSystems (system:
       dontConfigure = true;
       buildPhase = ''
         btrcpy tests/integration/synthetic_core.btrc -o core.c --strict-imports --no-cache --no-stdlib --no-dce
-        $CC core.c -std=gnu11 -O2 -shared -fPIC -I${pkgs.retroarch-bare.src}/libretro-common/include -o synthetic_libretro.so
+        $CC core.c -std=gnu11 -O2 -shared -fPIC -I${retroarch.sourceTree}/libretro-common/include -o synthetic_libretro.so
       '';
       installPhase = ''
         install -Dm644 synthetic_libretro.so "$out/lib/retroarch/cores/synthetic_libretro.so"
@@ -77,8 +77,27 @@ forAllSystems (system:
         touch "$out"
       '';
     };
+    platformMatrix =  # every sub-flake declares linux, macos and windows; linux and macos packages must evaluate
+      let
+        flakes = { inherit renderer retroarch esde; }
+          // lib.mapAttrs' (id: flake: lib.nameValuePair "emulator-${id}" flake) emulatorFlakes
+          // lib.mapAttrs' (id: flake: lib.nameValuePair "core-${id}" flake) coreFlakes;
+        row = name: flake:
+          let meta = flake.semu; linux = flake.packages.x86_64-linux.default; inner = linux.passthru.unwrapped or linux; in
+          assert lib.assertMsg (meta.platforms.linux == true && flake.packages ? x86_64-linux) "${name}: needs a linux package";
+          assert lib.assertMsg (meta.platforms.windows == "planned") "${name}: windows must be declared as planned until it is built";
+          assert lib.assertMsg (meta.platforms.macos == (flake.packages ? aarch64-darwin)) "${name}: the macos flag must match its aarch64-darwin package";
+          assert lib.assertMsg ((inner.allowSubstitutes or true) == false) "${name}: must be compiled here, never substituted";
+          {
+            inherit (meta) platforms;
+            linux = builtins.unsafeDiscardStringContext linux.drvPath;  # evaluation is the proof; the check must not build Darwin here
+            macos = if meta.platforms.macos then builtins.unsafeDiscardStringContext flake.packages.aarch64-darwin.default.drvPath else null;
+            source = meta.source or null;
+          };
+      in pkgs.writeText "semu-platform-matrix.json" (builtins.toJSON (lib.mapAttrs row flakes));
   in {
     inherit contracts installer;
+    platform-matrix = platformMatrix;
     synthetic-core = syntheticCore;
     retroarch-headless = retroarchHeadless;
     semu = packages.semu;

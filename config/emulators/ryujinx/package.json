@@ -1,16 +1,6 @@
 {
   "schema_version": 1,
   "id": "ryujinx",
-  "version": "1.3.3",
-  "build_kind": "source",
-  "source": {
-    "kind": "forgejo",
-    "domain": "git.ryujinx.app",
-    "owner": "projects",
-    "repo": "Ryubing",
-    "tag": "1.3.3",
-    "sha256": "sha256-LhQaXxmj5HIgfmrsDN8GhhVXlXHpDO2Q8JtNLaCq0mk="
-  },
   "build": {
     "project_file": "src/Ryujinx/Ryujinx.csproj",
     "dotnet_sdk": "sdk_9_0",
@@ -74,5 +64,5 @@
     "build": "The pinned source declares .NET SDK 9.0.100 with latestFeature roll-forward and builds src/Ryujinx/Ryujinx.csproj. Its retired updater NuGet feed is removed declaratively and the updater is compiled out.",
     "rendering": "The Linux managed OpenGL path uses static named P/Invoke into libsemurenderer: game rendering runs after the final guest blit, and post-UI rendering runs immediately before the embedded window's owned swap. Settings and loading views never create a renderer frame."
   },
-  "nixpkgs_recipe": "ryubing"
+  "flake": "flake.nix"
 }

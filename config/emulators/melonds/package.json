@@ -1,15 +1,6 @@
 {
   "schema_version": 1,
   "id": "melonds",
-  "version": "1.1-unstable-2026-08-24",
-  "build_kind": "source",
-  "source": {
-    "kind": "github",
-    "owner": "melonDS-emu",
-    "repo": "melonDS",
-    "revision": "906e9ebb27da8c6a715cd7abab4abfe8a8d29427",
-    "sha256": "sha256-hJFzH7qPk2NIXl9OQQyqSId6uofJ//FoslmbyX5ZjUk="
-  },
   "platforms": [
     "x86_64-linux"
   ],
@@ -56,5 +47,5 @@
     "touch": "The Qt input consumer snapshots ABI 2 pointer geometry only after both phases succeed, maps mouse/tablet/touch input through semantic bottom surface 1, rejects bezel presses, clamps captured motion, and sends returned native pixels directly to melonDS.",
     "states": "The pinned frontend supports native savestate slots. Semu remaps only slot 1 to its global Ctrl+S and Ctrl+A action ABI while preserving the upstream shortcuts for slots 2 through 8."
   },
-  "nixpkgs_recipe": "melonds"
+  "flake": "flake.nix"
 }

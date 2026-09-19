@@ -1,0 +1,45 @@
+{
+  "nodes": {
+    "nixpkgs": {
+      "locked": {
+        "lastModified": 1789684949,
+        "narHash": "sha256-ZKhUe/2IJUq1JhKxKMu8rbkgSGmPP2ZCqlIPn40aGCM=",
+        "owner": "NixOS",
+        "repo": "nixpkgs",
+        "rev": "e554fab72f81915600f3f449b786fd9af40439a5",
+        "type": "github"
+      },
+      "original": {
+        "owner": "NixOS",
+        "repo": "nixpkgs",
+        "rev": "e554fab72f81915600f3f449b786fd9af40439a5",
+        "type": "github"
+      }
+    },
+    "root": {
+      "inputs": {
+        "nixpkgs": "nixpkgs",
+        "source": "source"
+      }
+    },
+    "source": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1769618187,
+        "narHash": "sha256-85PZ7ZDoannmwoFeKM7hm7fQS1X2MPxAwm6k+Sa+bGc=",
+        "owner": "PCSX2",
+        "repo": "pcsx2",
+        "rev": "bc8151d2a46d4aba039ea5580afbfc7bfcf6d730",
+        "type": "github"
+      },
+      "original": {
+        "owner": "PCSX2",
+        "ref": "v2.6.3",
+        "repo": "pcsx2",
+        "type": "github"
+      }
+    }
+  },
+  "root": "root",
+  "version": 7
+}

@@ -1,16 +1,6 @@
 {
   "schema_version": 1,
   "id": "ppsspp",
-  "version": "1.20.4",
-  "build_kind": "source",
-  "source": {
-    "kind": "github",
-    "owner": "hrydgard",
-    "repo": "ppsspp",
-    "tag": "v1.20.4",
-    "sha256": "sha256-SWGlclmKXLLMYMmdfXyp4/g/mB4KKSIJdB5M9GW9HzI=",
-    "fetch_submodules": true
-  },
   "platforms": [
     "x86_64-linux"
   ],
@@ -39,5 +29,5 @@
     "platforms": "Only the Steam Deck x86_64-linux closure is declared. Evaluation fails on other hosts instead of selecting an alternate package or frontend.",
     "rendering": "PPSSPP queues the directly linked renderer's game phase after the final PSP image draw, executes normal PPSSPP UI, then queues the post-UI phase from Present immediately before the real swap task. No inactive report or runtime symbol lookup exists."
   },
-  "nixpkgs_recipe": "ppsspp"
+  "flake": "flake.nix"
 }

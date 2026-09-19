@@ -3,30 +3,14 @@
   "implementations": {
     "citra": {
       "linux": {
-        "kind": "pinned_source",
-        "package_attribute": "citra",
-        "source": {
-          "kind": "github",
-          "owner": "libretro",
-          "repo": "citra",
-          "revision": "e4cbe379bfa8990af706977d699e16a618523778",
-          "sha256": "sha256-rROcJpctx73DI4AGU7QBaFkPAmsCDNQnj8WRynTC9Fk=",
-          "fetch_submodules": true
-        }
+        "kind": "flake",
+        "flake": "cores/citra"
       }
     },
     "desmume": {
       "linux": {
-        "kind": "pinned_source",
-        "package_attribute": "desmume",
-        "source": {
-          "kind": "github",
-          "owner": "libretro",
-          "repo": "desmume",
-          "revision": "8f6b32cb9a5e310bd38520e7087ce7fa14765f15",
-          "sha256": "sha256-u1YTW7thPzmcse0XDs7WOu3foL7kf+urplOufQqawW8=",
-          "fetch_submodules": false
-        }
+        "kind": "flake",
+        "flake": "cores/desmume"
       },
       "macos": {
         "artifact": "desmume",
@@ -47,30 +31,14 @@
         }
       },
       "linux": {
-        "kind": "pinned_source",
-        "package_attribute": "flycast",
-        "source": {
-          "kind": "github",
-          "owner": "flyinghead",
-          "repo": "flycast",
-          "revision": "d8a76809e57027da36d88bafb670983541de5ba1",
-          "sha256": "sha256-YMwaZwMac6mBRcZ//3gXnirewzPRbksFFBb51BkSAWY=",
-          "fetch_submodules": true
-        }
+        "kind": "flake",
+        "flake": "cores/flycast"
       }
     },
     "gambatte": {
       "linux": {
-        "kind": "pinned_source",
-        "package_attribute": "gambatte",
-        "source": {
-          "kind": "github",
-          "owner": "libretro",
-          "repo": "gambatte-libretro",
-          "revision": "d9d6cd06382d1ced30de34d56d3609452323dab1",
-          "sha256": "sha256-9+llRkHhmaIeExUigY7/Ed+/hBshU+Qda5ykxoXLT+w=",
-          "fetch_submodules": false
-        }
+        "kind": "flake",
+        "flake": "cores/gambatte"
       },
       "macos": {
         "artifact": "gambatte",
@@ -83,16 +51,8 @@
     },
     "genesis_plus_gx": {
       "linux": {
-        "kind": "pinned_source",
-        "package_attribute": "genesis-plus-gx",
-        "source": {
-          "kind": "github",
-          "owner": "libretro",
-          "repo": "Genesis-Plus-GX",
-          "revision": "c2838c7dc4236fc2fe94e5dbd08b41486067918e",
-          "sha256": "sha256-sqic7mFeuhmW8fPB2WaEE1CJxSxB0pgFzoWX+DPirqM=",
-          "fetch_submodules": false
-        }
+        "kind": "flake",
+        "flake": "cores/genesis_plus_gx"
       },
       "macos": {
         "artifact": "genesis_plus_gx",
@@ -105,16 +65,8 @@
     },
     "mednafen_psx": {
       "linux": {
-        "kind": "pinned_source",
-        "package_attribute": "beetle-psx",
-        "source": {
-          "kind": "github",
-          "owner": "libretro",
-          "repo": "beetle-psx-libretro",
-          "revision": "82d8e051d1c7741a18d930be90e458b48abaa9a1",
-          "sha256": "sha256-CtYOhTHnG5l5Pl67p2T5JDO7oV9qHYgBrnUBMYsh5Eo=",
-          "fetch_submodules": false
-        }
+        "kind": "flake",
+        "flake": "cores/mednafen_psx"
       }
     },
     "mednafen_psx_hw": {
@@ -129,16 +81,8 @@
     },
     "mesen": {
       "linux": {
-        "kind": "pinned_source",
-        "package_attribute": "mesen",
-        "source": {
-          "kind": "github",
-          "owner": "libretro",
-          "repo": "mesen",
-          "revision": "0102910c39ad1a62bc3f784466f3f67ca9eae335",
-          "sha256": "sha256-fDGG6U+yhpbcvKuSN30F0dM+NCXlPTPULNEqTZTL/Vc=",
-          "fetch_submodules": false
-        }
+        "kind": "flake",
+        "flake": "cores/mesen"
       },
       "macos": {
         "artifact": "mesen",
@@ -151,16 +95,8 @@
     },
     "mgba": {
       "linux": {
-        "kind": "pinned_source",
-        "package_attribute": "mgba",
-        "source": {
-          "kind": "github",
-          "owner": "libretro",
-          "repo": "mgba",
-          "revision": "32de792178a3662cd0402c8568fccfaad4a764a1",
-          "sha256": "sha256-Wz2qr657sF7D9R2jkHJLLs1BHkoKxYXd2rUAbroY5Rw=",
-          "fetch_submodules": false
-        }
+        "kind": "flake",
+        "flake": "cores/mgba"
       },
       "macos": {
         "artifact": "mgba",
@@ -173,16 +109,8 @@
     },
     "mupen64plus_next": {
       "linux": {
-        "kind": "pinned_source",
-        "package_attribute": "mupen64plus",
-        "source": {
-          "kind": "github",
-          "owner": "libretro",
-          "repo": "mupen64plus-libretro-nx",
-          "revision": "f275caf4b2bfa1e6d1c51636746ea793f3d80320",
-          "sha256": "sha256-lnX/W6tIOJY7bA7a5KFN3FUYS+o24bsyGSeTCOwubCs=",
-          "fetch_submodules": false
-        }
+        "kind": "flake",
+        "flake": "cores/mupen64plus_next"
       }
     },
     "ppsspp": {
@@ -195,30 +123,14 @@
         }
       },
       "linux": {
-        "kind": "pinned_source",
-        "package_attribute": "ppsspp",
-        "source": {
-          "kind": "github",
-          "owner": "hrydgard",
-          "repo": "ppsspp",
-          "revision": "a39983225d061697bfd4efae4ea1d43b65dc95b8",
-          "sha256": "sha256-NzD3Sxs4utRTKxw5H478AtZxkOgOs+dKU/H/Gvx5M0s=",
-          "fetch_submodules": true
-        }
+        "kind": "flake",
+        "flake": "cores/ppsspp"
       }
     },
     "snes9x": {
       "linux": {
-        "kind": "pinned_source",
-        "package_attribute": "snes9x",
-        "source": {
-          "kind": "github",
-          "owner": "snes9xgit",
-          "repo": "snes9x",
-          "revision": "a0420aef6a5df627c1ddd00495f3eb32b6ef8aa3",
-          "sha256": "sha256-2Ps/NM94/WkN5QuxXr85YCldoa7nrQMTG4+laCrGkqc=",
-          "fetch_submodules": false
-        }
+        "kind": "flake",
+        "flake": "cores/snes9x"
       },
       "macos": {
         "artifact": "snes9x",

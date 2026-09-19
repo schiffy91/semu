@@ -1,0 +1,45 @@
+{
+  "nodes": {
+    "nixpkgs": {
+      "locked": {
+        "lastModified": 1789684949,
+        "narHash": "sha256-ZKhUe/2IJUq1JhKxKMu8rbkgSGmPP2ZCqlIPn40aGCM=",
+        "owner": "NixOS",
+        "repo": "nixpkgs",
+        "rev": "e554fab72f81915600f3f449b786fd9af40439a5",
+        "type": "github"
+      },
+      "original": {
+        "owner": "NixOS",
+        "repo": "nixpkgs",
+        "rev": "e554fab72f81915600f3f449b786fd9af40439a5",
+        "type": "github"
+      }
+    },
+    "root": {
+      "inputs": {
+        "nixpkgs": "nixpkgs",
+        "source": "source"
+      }
+    },
+    "source": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1787470077,
+        "narHash": "sha256-u1YTW7thPzmcse0XDs7WOu3foL7kf+urplOufQqawW8=",
+        "owner": "libretro",
+        "repo": "desmume",
+        "rev": "8f6b32cb9a5e310bd38520e7087ce7fa14765f15",
+        "type": "github"
+      },
+      "original": {
+        "owner": "libretro",
+        "repo": "desmume",
+        "rev": "8f6b32cb9a5e310bd38520e7087ce7fa14765f15",
+        "type": "github"
+      }
+    }
+  },
+  "root": "root",
+  "version": 7
+}

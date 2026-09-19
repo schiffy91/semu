@@ -1,15 +1,6 @@
 {
   "schema_version": 1,
   "id": "pcsx2",
-  "version": "2.6.3",
-  "build_kind": "source",
-  "source": {
-    "kind": "github",
-    "owner": "PCSX2",
-    "repo": "pcsx2",
-    "tag": "v2.6.3",
-    "sha256": "sha256-85PZ7ZDoannmwoFeKM7hm7fQS1X2MPxAwm6k+Sa+bGc="
-  },
   "platforms": [
     "x86_64-linux"
   ],
@@ -37,5 +28,5 @@
     "platforms": "Only x86_64-linux is declared. Darwin remains unsupported until PCSX2 can be built reproducibly from this source contract; no application archive is substituted.",
     "rendering": "The OpenGL device directly calls the shared ABI 2 renderer after the final upright GS draw, then calls its post-UI phase after FullscreenUI, OSD, and ImGui immediately before the emulator-owned swap."
   },
-  "nixpkgs_recipe": "pcsx2"
+  "flake": "flake.nix"
 }

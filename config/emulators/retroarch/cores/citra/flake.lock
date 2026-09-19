@@ -1,0 +1,47 @@
+{
+  "nodes": {
+    "nixpkgs": {
+      "locked": {
+        "lastModified": 1789684949,
+        "narHash": "sha256-ZKhUe/2IJUq1JhKxKMu8rbkgSGmPP2ZCqlIPn40aGCM=",
+        "owner": "NixOS",
+        "repo": "nixpkgs",
+        "rev": "e554fab72f81915600f3f449b786fd9af40439a5",
+        "type": "github"
+      },
+      "original": {
+        "owner": "NixOS",
+        "repo": "nixpkgs",
+        "rev": "e554fab72f81915600f3f449b786fd9af40439a5",
+        "type": "github"
+      }
+    },
+    "root": {
+      "inputs": {
+        "nixpkgs": "nixpkgs",
+        "source": "source"
+      }
+    },
+    "source": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1788554174,
+        "narHash": "sha256-ZoaGFvUuWBMMt3fEMQMWWsCz+jEyjm7zC+TreCndQ7I=",
+        "ref": "refs/heads/master",
+        "rev": "e4cbe379bfa8990af706977d699e16a618523778",
+        "revCount": 10181,
+        "submodules": true,
+        "type": "git",
+        "url": "https://github.com/libretro/citra"
+      },
+      "original": {
+        "rev": "e4cbe379bfa8990af706977d699e16a618523778",
+        "submodules": true,
+        "type": "git",
+        "url": "https://github.com/libretro/citra"
+      }
+    }
+  },
+  "root": "root",
+  "version": 7
+}

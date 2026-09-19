@@ -1,0 +1,105 @@
+{
+  "nodes": {
+    "btrc": {
+      "inputs": {
+        "nixpkgs": [
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "lastModified": 1789806178,
+        "narHash": "sha256-JFQ1uEmZlR7W+Q9qx/kHCC/jZ5VKm2G5om2WWX4tsJE=",
+        "owner": "schiffy91",
+        "repo": "btrc",
+        "rev": "fad4b470817f73f551ebb20ff3ecbb6d7f895a73",
+        "type": "github"
+      },
+      "original": {
+        "owner": "schiffy91",
+        "repo": "btrc",
+        "type": "github"
+      }
+    },
+    "btrc_2": {
+      "inputs": {
+        "nixpkgs": [
+          "renderer",
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "lastModified": 1789806178,
+        "narHash": "sha256-JFQ1uEmZlR7W+Q9qx/kHCC/jZ5VKm2G5om2WWX4tsJE=",
+        "owner": "schiffy91",
+        "repo": "btrc",
+        "rev": "fad4b470817f73f551ebb20ff3ecbb6d7f895a73",
+        "type": "github"
+      },
+      "original": {
+        "owner": "schiffy91",
+        "repo": "btrc",
+        "type": "github"
+      }
+    },
+    "nixpkgs": {
+      "locked": {
+        "lastModified": 1789684949,
+        "narHash": "sha256-ZKhUe/2IJUq1JhKxKMu8rbkgSGmPP2ZCqlIPn40aGCM=",
+        "owner": "NixOS",
+        "repo": "nixpkgs",
+        "rev": "e554fab72f81915600f3f449b786fd9af40439a5",
+        "type": "github"
+      },
+      "original": {
+        "owner": "NixOS",
+        "repo": "nixpkgs",
+        "rev": "e554fab72f81915600f3f449b786fd9af40439a5",
+        "type": "github"
+      }
+    },
+    "renderer": {
+      "inputs": {
+        "btrc": "btrc_2",
+        "nixpkgs": [
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "path": "../../../src/renderer",
+        "type": "path"
+      },
+      "original": {
+        "path": "../../../src/renderer",
+        "type": "path"
+      },
+      "parent": []
+    },
+    "root": {
+      "inputs": {
+        "btrc": "btrc",
+        "nixpkgs": "nixpkgs",
+        "renderer": "renderer",
+        "source": "source"
+      }
+    },
+    "source": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1763597828,
+        "narHash": "sha256-+3jgoh6OVbPzW5/nCvpB1CRgkMTBxLkYMm6UV16/cfU=",
+        "owner": "libretro",
+        "repo": "RetroArch",
+        "rev": "69a4f0ea1e8aaf442ae4858f2e7f2b31a1776576",
+        "type": "github"
+      },
+      "original": {
+        "owner": "libretro",
+        "ref": "v1.22.2",
+        "repo": "RetroArch",
+        "type": "github"
+      }
+    }
+  },
+  "root": "root",
+  "version": 7
+}
