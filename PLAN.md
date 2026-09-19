@@ -311,7 +311,18 @@ Update this block whenever a milestone criterion changes state.
   save and load, and the Start+Select chord on hardware (no controller was
   connected). RetroArch 1.22 segfaults on GET_STATUS when the loaded core has
   no core-info entry, so the check uses VERSION.
-- M4 native emulators on desktop: 0 of 8
+- M4 native emulators on desktop: 8 of 8 launched a real ROM fullscreen on
+  FRACTAL-NORTH on 2026-09-19 with an inspected screenshot each (dolphin gc
+  and wii, pcsx2, ppsspp, flycast, melonds, azahar, cemu, ryujinx). All come
+  from nixpkgs through thin `config/emulators/<id>/package.nix` recipes.
+  Findings: Azahar takes `-f`; melonDS's GL display path leaves its window
+  unmapped on Wayland+NVIDIA so it runs the software renderer; Ryujinx needs
+  the firmware seeded from the existing `Ryujinx/config/bis` tree and then
+  reaches the controller applet (no pad connected); Cemu uses a fresh mlc01
+  under the state root, so old Wii U saves are not visible yet. Not yet
+  observed: pad input, save and load, Start+Select on hardware. Pushes to
+  GitHub are blocked behind a 1Password SSH authorization prompt on screen;
+  the host was switched with `--override-input semu git+file://...`.
 - M5 Steam Deck: 0 of 17 systems
 - M6 renderer: not started
 - M7 extras: not started
