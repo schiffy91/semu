@@ -18,9 +18,7 @@
           src = source;
           allowSubstitutes = false;  # compiled by Semu, never a cache binary
           includeRetroArch = false;  # Semu wraps RetroArch itself; the nixpkgs launcher would drag in a Darwin-broken RetroArch
-          postFixup = (previous.postFixup or "") + ''
-            for core in "$out"/lib/retroarch/cores/*.so; do patchelf --clear-execstack "$core"; done  # the JIT marks PT_GNU_STACK executable; dlopen refuses that on hardened glibc
-          '';
+          env = (previous.env or { }) // { NIX_LDFLAGS = (previous.env.NIX_LDFLAGS or "") + " -z noexecstack"; };  # an assembly object lacks .note.GNU-stack; glibc refuses to dlopen an executable-stack core
         });
     in {
       semu = {
