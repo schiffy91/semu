@@ -109,5 +109,14 @@
     "cemu_display_name": "Steam Virtual Gamepad",
     "cemu_profile": "SteamInput-P1",
     "ryujinx_controller_id": "0-f7390003-28de-0000-ff11-000001000000"
+  },
+  "retroarch_hotkeys": {
+    "enable_hotkey_btn": "4",
+    "save_state_btn": "10",
+    "load_state_btn": "9",
+    "menu_toggle_btn": "3",
+    "toggle_fast_forward_btn": "1",
+    "rewind_btn": "0",
+    "screenshot_btn": "2"
   }
 }

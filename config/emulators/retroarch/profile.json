@@ -29,6 +29,27 @@
       },
       "content_root": {
         "source": "runtime.content_root"
+      },
+      "hotkey_enable_hotkey_btn": {
+        "source": "input.retroarch_hotkeys.enable_hotkey_btn"
+      },
+      "hotkey_save_state_btn": {
+        "source": "input.retroarch_hotkeys.save_state_btn"
+      },
+      "hotkey_load_state_btn": {
+        "source": "input.retroarch_hotkeys.load_state_btn"
+      },
+      "hotkey_menu_toggle_btn": {
+        "source": "input.retroarch_hotkeys.menu_toggle_btn"
+      },
+      "hotkey_toggle_fast_forward_btn": {
+        "source": "input.retroarch_hotkeys.toggle_fast_forward_btn"
+      },
+      "hotkey_rewind_btn": {
+        "source": "input.retroarch_hotkeys.rewind_btn"
+      },
+      "hotkey_screenshot_btn": {
+        "source": "input.retroarch_hotkeys.screenshot_btn"
       }
     },
     "line_groups": {
@@ -136,6 +157,13 @@
         "savestate_auto_save = \"false\"",
         "savestate_auto_load = \"false\"",
         "savestate_thumbnail_enable = \"false\"",
+        "input_enable_hotkey_btn = \"${hotkey_enable_hotkey_btn}\"",
+        "input_save_state_btn = \"${hotkey_save_state_btn}\"",
+        "input_load_state_btn = \"${hotkey_load_state_btn}\"",
+        "input_menu_toggle_btn = \"${hotkey_menu_toggle_btn}\"",
+        "input_toggle_fast_forward_btn = \"${hotkey_toggle_fast_forward_btn}\"",
+        "input_rewind_btn = \"${hotkey_rewind_btn}\"",
+        "input_screenshot_btn = \"${hotkey_screenshot_btn}\"",
         "@lines:keymap_hotkeys"
       ]
     }
