@@ -97,6 +97,28 @@
         "managed_profile_files": [
           "config/inis/PCSX2.ini",
           "config/inputprofiles/Steam Deck.ini"
+        ],
+        "seeds": [
+          {
+            "purpose": "memory_cards",
+            "target": "${state_root}/config/PCSX2/memcards",
+            "copy": "once_if_target_absent",
+            "source_access": "read_only",
+            "overwrite": false,
+            "sources": [
+              "${emulation_root}/PCSX2/config/memcards"
+            ]
+          },
+          {
+            "purpose": "save_states",
+            "target": "${state_root}/config/PCSX2/sstates",
+            "copy": "once_if_target_absent",
+            "source_access": "read_only",
+            "overwrite": false,
+            "sources": [
+              "${emulation_root}/PCSX2/config/sstates"
+            ]
+          }
         ]
       },
       "firmware": {

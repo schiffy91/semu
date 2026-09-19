@@ -102,6 +102,28 @@
           "config/Profiles/Wiimote/Semu Wiimote.ini",
           "config/Profiles/Wiimote/Semu Nunchuk.ini",
           "config/Profiles/Wiimote/Semu Classic.ini"
+        ],
+        "seeds": [
+          {
+            "purpose": "gamecube_saves",
+            "target": "${state_root}/dolphin-user/GC",
+            "copy": "once_if_target_absent",
+            "source_access": "read_only",
+            "overwrite": false,
+            "sources": [
+              "${emulation_root}/Dolphin/data/GC"
+            ]
+          },
+          {
+            "purpose": "wii_nand",
+            "target": "${state_root}/dolphin-user/Wii",
+            "copy": "once_if_target_absent",
+            "source_access": "read_only",
+            "overwrite": false,
+            "sources": [
+              "${emulation_root}/Dolphin/data/Wii"
+            ]
+          }
         ]
       }
     },

@@ -112,6 +112,16 @@
               "${bios}/wiiu/keys.txt",
               "${bios}/keys.txt"
             ]
+          },
+          {
+            "purpose": "mlc01",
+            "target": "${state_root}/data/Cemu/mlc01",
+            "copy": "once_if_target_absent",
+            "source_access": "read_only",
+            "overwrite": false,
+            "sources": [
+              "${emulation_root}/Cemu/data/mlc01"
+            ]
           }
         ]
       },
