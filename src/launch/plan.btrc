@@ -84,6 +84,14 @@ class SemuLauncher {
         return lines.join("\n") + "\n";
     }
 
+    class string coreOverrides(SemuPlan plan, JSONValue platform, string core) {
+        JSONValue overrides = SemuJson.get(platform, "retroarch.core_overrides." + core);
+        if (overrides == null || !overrides.isObject()) { return ""; }
+        Vector<string> lines = [];
+        for key in overrides.keys().sorted() { lines.push(f"{key} = \"{plan.tokens.resolve(SemuJson.text(overrides.get(key)))}\""); }
+        return lines.join("\n") + "\n";
+    }
+
     class void stateEnvironment(SemuLaunchPlan launch, SemuPlan plan, SemuEmulator emulator, JSONValue platform) {
         string stateRoot = PathTools.join(plan.stateRoot(), emulator.id);
         if (SemuJson.textAt(platform, "state.data_home").equals("xdg")) {
@@ -164,6 +172,13 @@ class SemuLauncher {
             launch.argv.push(config);
             SemuPaths.writeOwned(stateRoot, PathTools.join(PathTools.dirname(config), "retroarch-core-options.cfg"),
                 SemuLauncher.coreOptions(plan, platform, binding.core));
+            string overrides = SemuLauncher.coreOverrides(plan, platform, binding.core);
+            if (!overrides.isEmpty()) {  // per-core retroarch.cfg keys, e.g. a different video driver
+                string overrideFile = PathTools.join(PathTools.dirname(config), "core-" + binding.core + ".cfg");
+                SemuPaths.writeOwned(stateRoot, overrideFile, overrides);
+                launch.argv.push("--appendconfig");
+                launch.argv.push(overrideFile);
+            }
         }
         for argument in binding.arguments { launch.argv.push(plan.tokens.resolve(argument)); }
         if (loader != null && loader.isObject()) {

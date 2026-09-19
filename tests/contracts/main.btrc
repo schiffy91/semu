@@ -145,6 +145,10 @@ class RetroArchProfileContract {
         contract.contains(cfg, "network_cmd_enable = \"true\"", "network commands enabled");
         contract.contains(cfg, "network_cmd_port = \"55355\"", "network command port");
         contract.contains(cfg, "video_shader_enable = \"false\"", "native shaders disabled");
+        contract.contains(cfg, "global_core_options = \"true\"", "core options come from the generated global file");
+        contract.contains(cfg, "quit_press_twice = \"false\"", "a single QUIT command exits");
+        contract.contains(cfg, "video_driver = \"glcore\"", "core-profile GL so hardware-rendered cores initialise");
+        contract.contains(cfg, "system_directory = \"" + fixture.plan.path("emulation_root") + "/RetroArch/config/system\"", "BIOS and core assets come from the existing RetroArch system directory");
         contract.contains(cfg, "input_save_state = \"s\"", "save state hotkey");
         contract.contains(cfg, "input_enable_hotkey_btn = \"4\"", "select is the gamepad hotkey modifier");
         contract.contains(cfg, "input_save_state_btn = \"10\"", "select plus RB saves state");
@@ -217,6 +221,15 @@ class LaunchPlanContract {
         string cfg = PathTools.join(fixture.plan.stateRoot(), "retroarch/retroarch.cfg");
         contract.expect(FileSystem.isFile(cfg), "profile written into the state root before launch");
         contract.expect(FileSystem.isFile(PathTools.join(fixture.plan.stateRoot(), "retroarch/retroarch-core-options.cfg")), "core options written next to the config");
+        FileSystem.writeText(PathTools.join(assets, "lib/retroarch/cores/ppsspp_libretro.so"), "");
+        FileSystem.mkdirp(PathTools.join(roms, "psp"));
+        FileSystem.writeText(PathTools.join(roms, "psp/Lumines.iso"), "");
+        SemuLaunchPlan psp = SemuLauncher.plan(fixture.model, fixture.plan, "retroarch", "psp", "ppsspp", "Lumines.iso", SemuDiagnostics());
+        contract.expect(psp.ok(), "psp fallback core launches: " + psp.error);
+        contract.expect(psp.argv.contains("--appendconfig"), "per-core overrides are appended for ppsspp");
+        string overrides = FileSystem.readText(PathTools.join(fixture.plan.stateRoot(), "retroarch/core-ppsspp.cfg"));
+        contract.contains(overrides, "video_driver = \"vulkan\"", "ppsspp override selects vulkan");
+        contract.expect(!launch.argv.contains("--appendconfig"), "gambatte has no overrides");
         SemuLaunchPlan outside = SemuLauncher.plan(fixture.model, fixture.plan, "retroarch", "gb", "", PathTools.join(fixture.scratch, "outside.zip"), SemuDiagnostics());
         contract.expect(!outside.ok(), "ROM outside the system directory is rejected");
         SemuLaunchPlan wrongCore = SemuLauncher.plan(fixture.model, fixture.plan, "retroarch", "gb", "mgba", "Tetris.zip", SemuDiagnostics());

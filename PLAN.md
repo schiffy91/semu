@@ -301,7 +301,16 @@ Update this block whenever a milestone criterion changes state.
   warnings; killing the launcher stops RetroArch. Not yet observed: Xbox pad
   input, Start+Select quit and save/load on hardware (no controller was
   connected during the session), and survival across a reboot.
-- M3 RetroArch systems on desktop: 0 of 11
+- M3 RetroArch systems on desktop: 11 of 11 launched on FRACTAL-NORTH on
+  2026-09-19 with an inspected screenshot each (gb, gbc, gba, nes, snes,
+  genesis, n64, psx, nds, psp, dreamcast; psx needs about 20 s to boot; psp
+  needs the vulkan per-core override because the PPSSPP core segfaults under
+  glcore). `nix flake check` runs the contract tests and a sandboxed headless
+  RetroArch run (Xvfb, llvmpipe, synthetic core) that must answer VERSION,
+  write a non-blank screenshot and exit on QUIT. Not yet observed: pad input,
+  save and load, and the Start+Select chord on hardware (no controller was
+  connected). RetroArch 1.22 segfaults on GET_STATUS when the loaded core has
+  no core-info entry, so the check uses VERSION.
 - M4 native emulators on desktop: 0 of 8
 - M5 Steam Deck: 0 of 17 systems
 - M6 renderer: not started
