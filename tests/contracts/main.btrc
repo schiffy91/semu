@@ -13,6 +13,7 @@ import ../../src/check.btrc;
 import ../../src/emit/esde.btrc;
 import ../../src/emit/profiles.btrc;
 import ../../src/launch/plan.btrc;
+import ../../src/emit/rendering.btrc;
 
 class Contract {
     public int failures;
@@ -250,8 +251,48 @@ class LaunchPlanContract {
     }
 }
 
+class RenderingContract {
+    class void run(Contract contract) {
+        Fixture fixture = Fixture("linux-desktop");
+        string assets = fixture.plan.assetRoot;
+        SemuSystem gb = fixture.model.system("gb");
+        Vector<string> bare = SemuRenderEnvironment.compile(fixture.plan, gb, "retroarch", "/state/retroarch", fixture.diagnostics);
+        contract.expect(bare.contains("SEMU_RENDER_SYSTEM_ID=gb"), "renderer knows the system");
+        contract.expect(bare.contains("SEMU_RENDER_SURFACE_COUNT=1"), "gb has one surface");
+        contract.expect(bare.contains("SEMU_RENDER_SURFACE_0_NATIVE=160x144"), "gb native size");
+        contract.expect(bare.contains("SEMU_RENDER_ASPECT=10:9"), "gb aspect");
+        contract.expect(bare.contains("SEMU_RENDER_SHADERS=0"), "without a bundled preset the shader passes through");
+        FileSystem.mkdirp(PathTools.join(assets, "share/libretro/shaders/semu/gb"));
+        FileSystem.writeText(PathTools.join(assets, "share/libretro/shaders/semu/gb/screen.slangp"), "#reference x\n");
+        FileSystem.mkdirp(PathTools.join(assets, "share/semu/assets/bezels/gb"));
+        FileSystem.writeText(PathTools.join(assets, "share/semu/assets/bezels/gb/dmg.png"), "png");
+        FileSystem.writeText(PathTools.join(assets, "share/semu/assets/bezels/gb/reflection.png"), "png");
+        Vector<string> full = SemuRenderEnvironment.compile(fixture.plan, gb, "retroarch", "/state/retroarch", fixture.diagnostics);
+        contract.expect(full.contains("SEMU_RENDER_SHADERS=1") && full.contains("SEMU_RENDER_BEZELS=1"), "assets present enables shaders and bezels");
+        contract.expect(full.contains("SEMU_RENDER_SHADER_PRESET=" + assets + "/share/libretro/shaders/semu/gb/screen.slangp"), "shader preset path");
+        contract.expect(full.contains("SEMU_RENDER_ART=" + assets + "/share/semu/assets/bezels/gb/dmg.png"), "bezel art path");
+        bool hole = false;
+        bool canvas = false;
+        for entry in full {
+            if (entry.startsWith("SEMU_RENDER_SCREEN=0.2")) { hole = true; }
+            if (entry.startsWith("SEMU_RENDER_CANVAS=minimum_aperture,2,1")) { canvas = true; }
+        }
+        contract.expect(hole, "bezel hole rectangle");
+        contract.expect(canvas, "canvas policy");
+        SemuDiagnostics diagnostics = SemuDiagnostics();
+        SemuPlan off = SemuResolver.plan(fixture.model, "linux-desktop", fixture.plan.semuHome, assets, "{\"visual\":{\"crt_shaders\":false,\"bezels\":false}}", diagnostics);
+        Vector<string> disabled = SemuRenderEnvironment.compile(off, gb, "retroarch", "/state/retroarch", diagnostics);
+        contract.expect(disabled.contains("SEMU_RENDER_SHADERS=0") && disabled.contains("SEMU_RENDER_BEZELS=0"), "settings can disable shaders and bezels");
+        SemuSystem nds = fixture.model.system("nds");
+        Vector<string> dual = SemuRenderEnvironment.compile(fixture.plan, nds, "retroarch", "/state/retroarch", fixture.diagnostics);
+        contract.expect(dual.contains("SEMU_RENDER_SURFACE_COUNT=2"), "nds has two surfaces");
+        contract.expect(fixture.diagnostics.ok(), "rendering emitter has no diagnostics: " + fixture.diagnostics.render());
+    }
+}
+
 int main() {
     Contract contract = Contract();
+    RenderingContract.run(contract);
     ModelContract.run(contract);
     SettingsLadderContract.run(contract);
     EsDeContract.run(contract);

@@ -70,12 +70,16 @@ class SemuSystem {
     public Vector<string> extensions;
     public Vector<SemuSystemBinding> bindings;
     public JSONValue definition;
+    public JSONValue shaders;
+    public JSONValue bezels;
     public string file;
 
     public SemuSystem(string id, string file, JSONValue definition) {
         self.id = id;
         self.file = file;
         self.definition = definition;
+        self.shaders = JSONValue.makeObject();
+        self.bezels = JSONValue.makeObject();
         self.name = SemuJson.textAt(definition, "name");
         self.theme = SemuJson.textAt(definition, "es_de.theme");
         self.romDir = SemuJson.textAt(definition, "rom.dir");
@@ -198,8 +202,17 @@ class SemuModel {
         }
         string systemsDir = PathTools.join(configRoot, "systems");
         for id in SemuModel.sortedEntries(systemsDir) {
-            string file = PathTools.join(PathTools.join(systemsDir, id), "system.json");
-            if (FileSystem.isFile(file)) { model.systems.put(id, SemuSystem(id, file, SemuModel.readObject(file, diagnostics))); }
+            string directory = PathTools.join(systemsDir, id);
+            string file = PathTools.join(directory, "system.json");
+            if (!FileSystem.isFile(file)) { continue; }
+            SemuSystem system = SemuSystem(id, file, SemuModel.readObject(file, diagnostics));
+            for name in ["shaders", "bezels"] {  // optional rendering declarations beside system.json
+                string manifest = PathTools.join(directory, name + ".json");
+                if (!FileSystem.isFile(manifest)) { continue; }
+                JSONValue value = SemuModel.readObject(manifest, diagnostics);
+                if (name.equals("shaders")) { system.shaders = value; } else { system.bezels = value; }
+            }
+            model.systems.put(id, system);
         }
         string emulatorsDir = PathTools.join(configRoot, "emulators");
         for id in SemuModel.sortedEntries(emulatorsDir) {

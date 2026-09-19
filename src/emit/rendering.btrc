@@ -1,0 +1,151 @@
+import Library.FileSystem;
+import Library.JSON;
+import Library.Strings;
+import Library.Vector;
+import ../lib/json.btrc;
+import ../model.btrc;
+import ../resolve.btrc;
+
+class SemuRenderAssets {
+    class string shader(SemuPlan plan, string logical) {  // assets/shaders/x -> share/libretro/shaders/semu/x
+        string prefix = "assets/shaders/";
+        if (!logical.startsWith(prefix)) { return ""; }
+        string path = PathTools.join(plan.assetRoot, "share/libretro/shaders/semu/" + logical.substring(prefix.len(), logical.len() - prefix.len()));
+        return FileSystem.isFile(path) ? path : "";
+    }
+
+    class string image(SemuPlan plan, string logical) {  // assets/bezels/x -> share/semu/assets/bezels/x
+        if (!logical.startsWith("assets/")) { return ""; }
+        string path = PathTools.join(plan.assetRoot, "share/semu/" + logical);
+        if (FileSystem.isFile(path)) { return path; }
+        string source = PathTools.join(plan.configRoot, logical);
+        return FileSystem.isFile(source) ? source : "";
+    }
+}
+
+class SemuRenderEnvironment {
+    public Vector<string> entries;
+
+    public SemuRenderEnvironment() { self.entries = []; }
+
+    public void set(string name, string value) { if (!value.isEmpty()) { self.entries.push(name + "=" + value); } }
+
+    class string number(JSONValue value) { return value == null || !value.isNumber() ? "" : value.stringify(); }
+
+    class string rect(JSONValue value) {
+        if (value == null || !value.isObject()) { return ""; }
+        string x = SemuRenderEnvironment.number(value.get("x"));
+        string y = SemuRenderEnvironment.number(value.get("y"));
+        string w = SemuRenderEnvironment.number(value.get("w"));
+        string h = SemuRenderEnvironment.number(value.get("h"));
+        if (x.isEmpty() || y.isEmpty() || w.isEmpty() || h.isEmpty()) { return ""; }
+        return f"{x},{y},{w},{h}";
+    }
+
+    class string canvas(JSONValue value) {
+        if (value == null || !value.isObject() || !SemuJson.textAt(value, "mode").equals("minimum_aperture")) { return ""; }
+        string scale = SemuRenderEnvironment.number(value.get("min_integer_scale"));
+        string width = SemuRenderEnvironment.number(value.get("max_width"));
+        string height = SemuRenderEnvironment.number(value.get("max_height"));
+        if (scale.isEmpty() || width.isEmpty() || height.isEmpty()) { return ""; }
+        return f"minimum_aperture,{scale},{width},{height}";
+    }
+
+    class JSONValue findVariant(JSONValue manifest, string id) {
+        JSONValue variants = manifest == null ? null : manifest.get("variants");
+        if (variants == null || !variants.isArray()) { return JSONValue.makeNull(); }
+        for (int index = 0; index < variants.size(); index++) {
+            if (SemuJson.textAt(variants.at(index), "id").equals(id)) { return variants.at(index); }
+        }
+        return JSONValue.makeNull();
+    }
+
+    class void variant(SemuRenderEnvironment env, SemuPlan plan, SemuSystem system, string suffix, string bezelId, string shaderPath, SemuDiagnostics diagnostics) {
+        if (!shaderPath.isEmpty()) { env.set("SEMU_RENDER_SHADER_PRESET" + suffix, shaderPath); }
+        JSONValue variant = SemuRenderEnvironment.findVariant(system.bezels, bezelId);
+        if (!variant.isObject()) { return; }
+        string art = SemuRenderAssets.image(plan, SemuJson.textAt(variant, "art"));
+        if (art.isEmpty()) { return; }  // no art in this asset root: the renderer passes the frame through
+        env.set("SEMU_RENDER_ART" + suffix, art);
+        env.set("SEMU_RENDER_CANVAS" + suffix, SemuRenderEnvironment.canvas(variant.get("canvas")));
+        string glass = SemuJson.textAt(variant, "glass");
+        if (!glass.isEmpty()) { env.set("SEMU_RENDER_GLASS" + suffix, SemuRenderAssets.image(plan, glass)); }
+        JSONValue holes = variant.has("screen_holes") ? variant.get("screen_holes") : system.bezels.get("screen_holes");
+        if (holes != null && holes.isObject()) {
+            env.set("SEMU_RENDER_SCREEN_PRI" + suffix, SemuRenderEnvironment.rect(holes.get("top")));
+            env.set("SEMU_RENDER_SCREEN_SEC" + suffix, SemuRenderEnvironment.rect(holes.get("bottom")));
+        } else {
+            env.set("SEMU_RENDER_SCREEN" + suffix, SemuRenderEnvironment.rect(variant.has("hole") ? variant.get("hole") : system.bezels.get("hole")));
+        }
+    }
+
+    class void surfaces(SemuRenderEnvironment env, SemuSystem system, SemuDiagnostics diagnostics) {
+        JSONValue display = system.definition.get("display");
+        JSONValue screens = display == null ? null : display.get("screens");
+        if (screens == null || !screens.isArray() || screens.size() < 1 || screens.size() > 2) {
+            diagnostics.add(system.file, "display.screens", "renderer needs one or two declared screens");
+            return;
+        }
+        string arrangement = screens.size() == 1 ? "single" : SemuJson.textAt(display, "arrangement");
+        if (screens.size() == 2 && !arrangement.equals("horizontal") && !arrangement.equals("vertical")) { arrangement = "vertical"; }
+        env.set("SEMU_RENDER_SURFACE_COUNT", Strings.fromInt(screens.size()));
+        env.set("SEMU_RENDER_SURFACE_LAYOUT", arrangement);
+        env.set("SEMU_RENDER_SURFACE_NATIVE_WIDTH_POLICY", screens.size() == 1 ? "independent" : "equal");
+        string geometry = SemuJson.textAt(display, "source_geometry");
+        env.set("SEMU_RENDER_SURFACE_GEOMETRY_POLICY", geometry.isEmpty() ? (screens.size() == 1 ? "positive" : "uniform_integer_scale") : geometry);
+        for (int index = 0; index < screens.size(); index++) {
+            JSONValue screen = screens.at(index);
+            env.set(f"SEMU_RENDER_SURFACE_{index}_ID", SemuJson.textAt(screen, "id"));
+            env.set(f"SEMU_RENDER_SURFACE_{index}_NATIVE", f"{SemuJson.intAt(screen, "native.w", 0)}x{SemuJson.intAt(screen, "native.h", 0)}");
+        }
+        string touch = SemuJson.textAt(display, "surface_mapping.touch_screen");
+        for (int index = 0; index < screens.size(); index++) {
+            if (!touch.isEmpty() && SemuJson.textAt(screens.at(index), "id").equals(touch)) {
+                env.set("SEMU_RENDER_TOUCH_SURFACE_ID", touch);
+                env.set("SEMU_RENDER_TOUCH_SURFACE_INDEX", Strings.fromInt(index));
+            }
+        }
+    }
+
+    class Vector<string> compile(SemuPlan plan, SemuSystem system, string emulatorId, string stateRoot, SemuDiagnostics diagnostics) {
+        SemuRenderEnvironment env = SemuRenderEnvironment();
+        JSONValue settings = plan.settings;
+        bool wantShaders = SemuJson.boolAt(settings, "visual.crt_shaders", true) && SemuJson.boolAt(system.shaders, "enabled", false);
+        bool wantBezels = SemuJson.boolAt(settings, "visual.bezels", true) && SemuJson.boolAt(system.bezels, "enabled", false);
+        string shaderId = SemuJson.textAt(settings, "visual.systems." + system.id + ".shader_variant");
+        if (shaderId.isEmpty()) { shaderId = SemuJson.textAt(system.shaders, "default_variant"); }
+        string bezelId = SemuJson.textAt(settings, "visual.systems." + system.id + ".bezel_variant");
+        if (bezelId.isEmpty()) { bezelId = SemuJson.textAt(system.bezels, "default_variant"); }
+        string shaderPath = "";
+        if (wantShaders && !shaderId.isEmpty() && !shaderId.equals("none")) {
+            JSONValue variant = SemuRenderEnvironment.findVariant(system.shaders, shaderId);
+            shaderPath = SemuRenderAssets.shader(plan, SemuJson.textAt(variant, "screen"));  // empty when the bundle lacks the preset
+        }
+        bool bezels = wantBezels && !bezelId.isEmpty() && !bezelId.equals("none")
+            && !SemuRenderAssets.image(plan, SemuJson.textAt(SemuRenderEnvironment.findVariant(system.bezels, bezelId), "art")).isEmpty();
+        env.set("SEMU_RENDER_SYSTEM_ID", system.id);
+        env.set("SEMU_RENDER_EMULATOR_ID", emulatorId);
+        env.set("SEMU_RENDER_STATE_DIR", stateRoot);
+        env.set("SEMU_RENDER_SHADERS", shaderPath.isEmpty() ? "0" : "1");
+        env.set("SEMU_RENDER_BEZELS", bezels ? "1" : "0");
+        env.set("SEMU_RENDER_INTEGER_SCALE", SemuJson.boolAt(settings, "visual.integer_scaling", true) ? "1" : "0");
+        JSONValue display = system.definition.get("display");
+        JSONValue render = system.definition.get("render");
+        string style = SemuJson.textAt(render, "style");
+        if (SemuJson.textAt(display, "arrangement").equals("horizontal")) { style = "horizontal"; }
+        env.set("SEMU_RENDER_STYLE", style);
+        int aspectW = SemuJson.intAt(display, "aspect.w", 0);
+        int aspectH = SemuJson.intAt(display, "aspect.h", 0);
+        if (aspectW > 0 && aspectH > 0) { env.set("SEMU_RENDER_ASPECT", f"{aspectW}:{aspectH}"); }
+        env.set("SEMU_RENDER_REFLECT", SemuRenderEnvironment.number(render == null ? null : render.get("reflect")));
+        SemuRenderEnvironment.surfaces(env, system, diagnostics);
+        if (bezels || !shaderPath.isEmpty()) {
+            SemuRenderEnvironment.variant(env, plan, system, "", bezels ? bezelId : "", shaderPath, diagnostics);
+            string widescreen = SemuJson.textAt(system.bezels, "widescreen_variant");
+            if (bezels && !widescreen.isEmpty() && !widescreen.equals(bezelId)) {
+                SemuRenderEnvironment.variant(env, plan, system, "_B", widescreen, shaderPath, diagnostics);
+            }
+        }
+        return env.entries;
+    }
+}

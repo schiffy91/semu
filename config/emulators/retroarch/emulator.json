@@ -255,7 +255,8 @@
             "video_driver": "vulkan"
           }
         }
-      }
+      },
+      "render_hook": true
     },
     "macos": {
       "backend": "nix",

@@ -1,0 +1,285 @@
+// Declarative game-surface contract compiled into RetroArch.
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+#include <libretro.h>
+#include <semu_renderer.h>
+
+int SEMU_RETROARCH_LAYOUT_SINGLE = 1;
+int SEMU_RETROARCH_LAYOUT_VERTICAL = 2;
+int SEMU_RETROARCH_WIDTHS_INDEPENDENT = 1;
+int SEMU_RETROARCH_WIDTHS_EQUAL = 2;
+int SEMU_RETROARCH_GEOMETRY_POSITIVE = 1;
+int SEMU_RETROARCH_GEOMETRY_UNIFORM_INTEGER_SCALE = 2;
+int SEMU_RETROARCH_GEOMETRY_EXACT_NATIVE = 3;
+
+struct SemuRetroArchSurface {
+    char id[64];
+    unsigned int native_width;
+    unsigned int native_height;
+};
+
+struct SemuRetroArchSurfaceContract {
+    int loaded;
+    int valid;
+    int count;
+    int layout;
+    int native_width_policy;
+    int geometry_policy;
+    int touch_index;
+    struct SemuRetroArchSurface surfaces[2];
+};
+
+class SemuRetroArchSurfaceModel {
+    class bool parseNative(char* value, unsigned int* width,
+                           unsigned int* height) {
+        char trailing = 0;
+        if (value == null || width == null || height == null
+                || sscanf(value, "%ux%u%c", width, height, &trailing) != 2) {
+            return false;
+        }
+        return *width > 0u && *height > 0u
+            && *width <= 16384u && *height <= 16384u;
+    }
+
+    class bool copyId(char* output, size_t capacity, char* value) {
+        if (output == null || capacity < (size_t)2 || value == null
+                || value[0] == 0 || strlen(value) >= capacity) { return false; }
+        snprintf(output, capacity, "%s", value);
+        return true;
+    }
+
+    class bool load(struct SemuRetroArchSurfaceContract* contract) {
+        if (contract == null) { return false; }
+        if (contract->loaded != 0) { return contract->valid != 0; }
+
+        memset(contract, 0, sizeof(struct SemuRetroArchSurfaceContract));
+        contract->loaded = 1;
+        contract->touch_index = -1;
+
+        char* count = getenv("SEMU_RENDER_SURFACE_COUNT");
+        char* layout = getenv("SEMU_RENDER_SURFACE_LAYOUT");
+        char* widths = getenv("SEMU_RENDER_SURFACE_NATIVE_WIDTH_POLICY");
+        char* geometry = getenv("SEMU_RENDER_SURFACE_GEOMETRY_POLICY");
+        if (count == null || layout == null || widths == null
+                || geometry == null) { return false; }
+        if (strcmp(count, "1") == 0 && strcmp(layout, "single") == 0) {
+            contract->count = 1;
+            contract->layout = SEMU_RETROARCH_LAYOUT_SINGLE;
+        } else if (strcmp(count, "2") == 0
+                && strcmp(layout, "vertical") == 0) {
+            contract->count = 2;
+            contract->layout = SEMU_RETROARCH_LAYOUT_VERTICAL;
+        } else {
+            return false;
+        }
+        contract->native_width_policy = strcmp(widths, "independent") == 0
+            ? SEMU_RETROARCH_WIDTHS_INDEPENDENT
+            : (strcmp(widths, "equal") == 0
+                ? SEMU_RETROARCH_WIDTHS_EQUAL : 0);
+        contract->geometry_policy = strcmp(geometry, "positive") == 0
+            ? SEMU_RETROARCH_GEOMETRY_POSITIVE
+            : (strcmp(geometry, "uniform_integer_scale") == 0
+                ? SEMU_RETROARCH_GEOMETRY_UNIFORM_INTEGER_SCALE
+                : (strcmp(geometry, "exact_native") == 0
+                    ? SEMU_RETROARCH_GEOMETRY_EXACT_NATIVE : 0));
+        if (contract->native_width_policy == 0
+                || contract->geometry_policy == 0) { return false; }
+
+        for (int index = 0; index < contract->count; index++) {
+            char idName[64];
+            char nativeName[64];
+            snprintf(idName, sizeof(idName),
+                "SEMU_RENDER_SURFACE_%d_ID", index);
+            snprintf(nativeName, sizeof(nativeName),
+                "SEMU_RENDER_SURFACE_%d_NATIVE", index);
+            if (!SemuRetroArchSurfaceModel.copyId(
+                    contract->surfaces[index].id,
+                    sizeof(contract->surfaces[index].id), getenv(idName))
+                    || !SemuRetroArchSurfaceModel.parseNative(
+                        getenv(nativeName),
+                        &contract->surfaces[index].native_width,
+                        &contract->surfaces[index].native_height)) {
+                return false;
+            }
+        }
+        if (contract->count == 2
+                && (strcmp(contract->surfaces[0].id,
+                        contract->surfaces[1].id) == 0
+                    || (contract->native_width_policy
+                            == SEMU_RETROARCH_WIDTHS_EQUAL
+                        && contract->surfaces[0].native_width
+                            != contract->surfaces[1].native_width))) {
+            return false;
+        }
+
+        char* touchId = getenv("SEMU_RENDER_TOUCH_SURFACE_ID");
+        char* touchIndex = getenv("SEMU_RENDER_TOUCH_SURFACE_INDEX");
+        if ((touchId == null) != (touchIndex == null)) { return false; }
+        if (touchId != null) {
+            int index = strcmp(touchIndex, "0") == 0 ? 0
+                : (strcmp(touchIndex, "1") == 0 ? 1 : -1);
+            if (index < 0 || index >= contract->count
+                    || strcmp(touchId, contract->surfaces[index].id) != 0) {
+                return false;
+            }
+            contract->touch_index = index;
+        }
+
+        contract->valid = 1;
+        return true;
+    }
+
+    class unsigned int compositeWidth(
+            struct SemuRetroArchSurfaceContract* contract) {
+        if (contract == null || contract->count < 1) { return 0u; }
+        if (contract->count == 1
+                || contract->surfaces[0].native_width
+                    >= contract->surfaces[1].native_width) {
+            return contract->surfaces[0].native_width;
+        }
+        return contract->surfaces[1].native_width;
+    }
+
+    class unsigned int compositeHeight(
+            struct SemuRetroArchSurfaceContract* contract) {
+        if (contract == null || contract->count < 1) { return 0u; }
+        if (contract->count == 1) {
+            return contract->surfaces[0].native_height;
+        }
+        return contract->surfaces[0].native_height
+            + contract->surfaces[1].native_height;
+    }
+
+    class bool scaledPair(unsigned int width, unsigned int height,
+                          unsigned int nativeWidth,
+                          unsigned int nativeHeight) {
+        return nativeWidth > 0u && nativeHeight > 0u
+            && width >= nativeWidth && height >= nativeHeight
+            && width % nativeWidth == 0u
+            && height % nativeHeight == 0u
+            && width / nativeWidth == height / nativeHeight;
+    }
+
+    class bool validatesDual(
+            struct SemuRetroArchSurfaceContract* contract,
+            struct retro_game_geometry* geometry,
+            unsigned int frameWidth, unsigned int frameHeight) {
+        if (contract == null || geometry == null || contract->count != 2
+                || contract->layout != SEMU_RETROARCH_LAYOUT_VERTICAL) {
+            return false;
+        }
+        unsigned int width = SemuRetroArchSurfaceModel.compositeWidth(contract);
+        unsigned int height = SemuRetroArchSurfaceModel.compositeHeight(contract);
+        if (contract->geometry_policy
+                == SEMU_RETROARCH_GEOMETRY_POSITIVE) {
+            return geometry->base_width > 0u && geometry->base_height > 0u
+                && frameWidth > 0u && frameHeight > 0u;
+        }
+        if (contract->geometry_policy
+                != SEMU_RETROARCH_GEOMETRY_UNIFORM_INTEGER_SCALE) {
+            return false;
+        }
+        return SemuRetroArchSurfaceModel.scaledPair(
+                geometry->base_width, geometry->base_height, width, height)
+            && SemuRetroArchSurfaceModel.scaledPair(
+                frameWidth, frameHeight, width, height);
+    }
+
+    class void fill(struct SemuRenderSurfaceGl* surface, int x, int y,
+                    int width, int height, int nativeWidth,
+                    int nativeHeight, int origin) {
+        surface->x = x;
+        surface->y = y;
+        surface->width = width;
+        surface->height = height;
+        surface->native_width = nativeWidth;
+        surface->native_height = nativeHeight;
+        surface->rotation = 0;
+        surface->origin = origin;
+    }
+
+    class bool partition(struct SemuRetroArchSurfaceContract* contract,
+                         struct SemuRenderFrameGl* frame,
+                         struct retro_game_geometry* geometry,
+                         int viewportX, int viewportY,
+                         int viewportWidth, int viewportHeight,
+                         unsigned int frameWidth,
+                         unsigned int frameHeight) {
+        if (contract == null || frame == null || geometry == null) {
+            return false;
+        }
+        if (contract->count == 1) {
+            if (contract->geometry_policy
+                    == SEMU_RETROARCH_GEOMETRY_EXACT_NATIVE
+                    && (frameWidth != contract->surfaces[0].native_width
+                        || frameHeight != contract->surfaces[0].native_height
+                        || geometry->base_width
+                            != contract->surfaces[0].native_width
+                        || geometry->base_height
+                            != contract->surfaces[0].native_height)) {
+                return false;
+            }
+            frame->surface_count = 1;
+            int nativeWidth = contract->geometry_policy
+                    == SEMU_RETROARCH_GEOMETRY_EXACT_NATIVE
+                ? (int)contract->surfaces[0].native_width : (int)frameWidth;
+            int nativeHeight = contract->geometry_policy
+                    == SEMU_RETROARCH_GEOMETRY_EXACT_NATIVE
+                ? (int)contract->surfaces[0].native_height : (int)frameHeight;
+            SemuRetroArchSurfaceModel.fill(&frame->surfaces[0],
+                viewportX, viewportY, viewportWidth, viewportHeight,
+                nativeWidth, nativeHeight,
+                SEMU_RENDER_ORIGIN_BOTTOM_LEFT);
+            return true;
+        }
+        if (!SemuRetroArchSurfaceModel.validatesDual(contract, geometry,
+                frameWidth, frameHeight)) { return false; }
+
+        unsigned int totalHeight =
+            SemuRetroArchSurfaceModel.compositeHeight(contract);
+        int firstHeight = (int)((unsigned long long)viewportHeight
+            * (unsigned long long)contract->surfaces[0].native_height
+            / (unsigned long long)totalHeight);
+        int secondHeight = viewportHeight - firstHeight;
+        if (firstHeight < 1 || secondHeight < 1) { return false; }
+
+        int top = frame->framebuffer_height - viewportY - viewportHeight;
+        frame->surface_count = 2;
+        SemuRetroArchSurfaceModel.fill(&frame->surfaces[0],
+            viewportX, top, viewportWidth, firstHeight,
+            (int)contract->surfaces[0].native_width,
+            (int)contract->surfaces[0].native_height,
+            SEMU_RENDER_ORIGIN_TOP_LEFT);
+        SemuRetroArchSurfaceModel.fill(&frame->surfaces[1],
+            viewportX, top + firstHeight, viewportWidth, secondHeight,
+            (int)contract->surfaces[1].native_width,
+            (int)contract->surfaces[1].native_height,
+            SEMU_RENDER_ORIGIN_TOP_LEFT);
+        return true;
+    }
+
+    class float coreX(struct SemuRetroArchSurfaceContract* contract,
+                      struct SemuRenderPointerResult* result) {
+        if (contract == null || result == null) { return 0.0f; }
+        return result->normalized_x;
+    }
+
+    class float coreY(struct SemuRetroArchSurfaceContract* contract,
+                      struct SemuRenderPointerResult* result) {
+        if (contract == null || result == null || contract->count < 1) {
+            return 0.0f;
+        }
+        unsigned int before = 0u;
+        for (int index = 0; index < result->surface_index; index++) {
+            before = before + contract->surfaces[index].native_height;
+        }
+        unsigned int total =
+            SemuRetroArchSurfaceModel.compositeHeight(contract);
+        return ((float)before + result->normalized_y
+            * (float)contract->surfaces[result->surface_index].native_height)
+            / (float)total;
+    }
+}
