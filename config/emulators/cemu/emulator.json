@@ -131,7 +131,8 @@
           "${bios}/wiiu",
           "${bios}"
         ]
-      }
+      },
+      "render_preload": true
     }
   },
   "doc": {

@@ -16,6 +16,12 @@ struct SemuPreloadState {
     __fn_ptr<void, void*> swap;
     __fn_ptr<void, void*, int*, int*> drawable;
     __fn_ptr<void*, const char*> get_proc;
+    __fn_ptr<unsigned int, void*, void*> egl_swap;
+    __fn_ptr<unsigned int, void*, void*, int, int*> egl_query;
+    __fn_ptr<void*, const char*> egl_get_proc;
+    __fn_ptr<void, void*, unsigned long> glx_swap;
+    __fn_ptr<void, void*, unsigned long, int, unsigned int*> glx_query;
+    __fn_ptr<void*, const unsigned char*> glx_get_proc;
     unsigned long long frame_id;
     float aspect;
     int native_width;
@@ -38,6 +44,12 @@ class SemuPreloadHooks {
         SemuPreloadHooks.bind(&SemuPreload.swap, next, "SDL_GL_SwapWindow");
         SemuPreloadHooks.bind(&SemuPreload.drawable, any, "SDL_GL_GetDrawableSize");
         SemuPreloadHooks.bind(&SemuPreload.get_proc, any, "SDL_GL_GetProcAddress");
+        SemuPreloadHooks.bind(&SemuPreload.egl_swap, next, "eglSwapBuffers");
+        SemuPreloadHooks.bind(&SemuPreload.egl_query, any, "eglQuerySurface");
+        SemuPreloadHooks.bind(&SemuPreload.egl_get_proc, any, "eglGetProcAddress");
+        SemuPreloadHooks.bind(&SemuPreload.glx_swap, next, "glXSwapBuffers");
+        SemuPreloadHooks.bind(&SemuPreload.glx_query, any, "glXQueryDrawable");
+        SemuPreloadHooks.bind(&SemuPreload.glx_get_proc, any, "glXGetProcAddressARB");
         int aspectWidth = 0;
         int aspectHeight = 0;
         char* aspect = getenv("SEMU_RENDER_ASPECT");
@@ -51,20 +63,27 @@ class SemuPreloadHooks {
             SemuPreload.native_width = nativeWidth;
             SemuPreload.native_height = nativeHeight;
         }
-        SemuPreload.enabled = getenv("SEMU_RENDER_SYSTEM_ID") != null && SemuPreload.swap != null
-            && SemuPreload.drawable != null && SemuPreload.get_proc != null ? 1 : 0;
+        SemuPreload.enabled = getenv("SEMU_RENDER_SYSTEM_ID") != null ? 1 : 0;
         if (getenv("SEMU_RENDER_DEBUG") != null) {
-            fprintf(stderr, "semu-preload: %s (aspect %.3f, native %dx%d)\n",
-                SemuPreload.enabled ? "hooked SDL_GL_SwapWindow" : "inactive", SemuPreload.aspect,
-                SemuPreload.native_width, SemuPreload.native_height);
+            fprintf(stderr, "semu-preload: %s (aspect %.3f, native %dx%d, sdl=%d egl=%d glx=%d)\n",
+                SemuPreload.enabled ? "active" : "inactive", SemuPreload.aspect,
+                SemuPreload.native_width, SemuPreload.native_height,
+                SemuPreload.swap != null ? 1 : 0, SemuPreload.egl_swap != null ? 1 : 0, SemuPreload.glx_swap != null ? 1 : 0);
         }
     }
 
-    class void compose(void* window) {  // the emulator letterboxes itself: the game sits centered at the system aspect
-        int width = 0;
-        int height = 0;
-        SemuPreload.drawable(window, &width, &height);
-        if (width < 1 || height < 1) { return; }
+    class void rebind() {  // libEGL/libGLX may be dlopened after the first swap of another API
+        void* any = RTLD_DEFAULT;
+        if (SemuPreload.egl_query == null) { SemuPreloadHooks.bind(&SemuPreload.egl_query, any, "eglQuerySurface"); }
+        if (SemuPreload.egl_get_proc == null) { SemuPreloadHooks.bind(&SemuPreload.egl_get_proc, any, "eglGetProcAddress"); }
+        if (SemuPreload.glx_query == null) { SemuPreloadHooks.bind(&SemuPreload.glx_query, any, "glXQueryDrawable"); }
+        if (SemuPreload.glx_get_proc == null) { SemuPreloadHooks.bind(&SemuPreload.glx_get_proc, any, "glXGetProcAddressARB"); }
+        if (SemuPreload.drawable == null) { SemuPreloadHooks.bind(&SemuPreload.drawable, any, "SDL_GL_GetDrawableSize"); }
+        if (SemuPreload.get_proc == null) { SemuPreloadHooks.bind(&SemuPreload.get_proc, any, "SDL_GL_GetProcAddress"); }
+    }
+
+    class void compose(int width, int height, __fn_ptr<void*, const char*> getProc) {  // the emulator letterboxes itself: the game sits centered at the system aspect
+        if (width < 1 || height < 1 || getProc == null) { return; }
         int surfaceWidth = width;
         int surfaceHeight = height;
         int surfaceX = 0;
@@ -101,7 +120,7 @@ class SemuPreloadHooks {
         frame.surfaces[0].native_height = SemuPreload.native_height > 0 ? SemuPreload.native_height : surfaceHeight;
         frame.surfaces[0].rotation = 0;
         frame.surfaces[0].origin = SEMU_RENDER_ORIGIN_BOTTOM_LEFT;
-        frame.get_proc = SemuPreload.get_proc;
+        frame.get_proc = getProc;
         frame.context_generation = 1ULL;
         int status = semu_render_game_gl(&frame);
         int post = status == SEMU_RENDER_INVALID_FRAME ? status : semu_render_post_ui_gl(&frame);
@@ -115,6 +134,40 @@ class SemuPreloadHooks {
 
 void SDL_GL_SwapWindow(void* window) {
     SemuPreloadHooks.initialize();
-    if (SemuPreload.enabled) { SemuPreloadHooks.compose(window); }
+    SemuPreloadHooks.rebind();
+    if (SemuPreload.enabled != 0 && SemuPreload.drawable != null) {
+        int width = 0;
+        int height = 0;
+        SemuPreload.drawable(window, &width, &height);
+        SemuPreloadHooks.compose(width, height, SemuPreload.get_proc);
+    }
     if (SemuPreload.swap != null) { SemuPreload.swap(window); }
+}
+
+unsigned int eglSwapBuffers(void* display, void* surface) {
+    SemuPreloadHooks.initialize();
+    SemuPreloadHooks.rebind();
+    if (SemuPreload.enabled != 0 && SemuPreload.egl_query != null) {
+        int width = 0;
+        int height = 0;
+        SemuPreload.egl_query(display, surface, 0x3057, &width);  // EGL_WIDTH
+        SemuPreload.egl_query(display, surface, 0x3056, &height);  // EGL_HEIGHT
+        SemuPreloadHooks.compose(width, height, SemuPreload.egl_get_proc);
+    }
+    return SemuPreload.egl_swap != null ? SemuPreload.egl_swap(display, surface) : 0u;
+}
+
+void glXSwapBuffers(void* display, unsigned long drawable) {
+    SemuPreloadHooks.initialize();
+    SemuPreloadHooks.rebind();
+    if (SemuPreload.enabled != 0 && SemuPreload.glx_query != null) {
+        unsigned int width = 0;
+        unsigned int height = 0;
+        SemuPreload.glx_query(display, drawable, 0x801D, &width);  // GLX_WIDTH
+        SemuPreload.glx_query(display, drawable, 0x801E, &height);  // GLX_HEIGHT
+        __fn_ptr<void*, const char*> getProc;
+        memcpy(&getProc, &SemuPreload.glx_get_proc, sizeof(getProc));  // same ABI, different declared parameter type
+        SemuPreloadHooks.compose((int)width, (int)height, getProc);
+    }
+    if (SemuPreload.glx_swap != null) { SemuPreload.glx_swap(display, drawable); }
 }
