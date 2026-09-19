@@ -531,6 +531,30 @@ Update this block whenever a milestone criterion changes state.
   frame; wii, ps2 and n3ds were not captured (no Wii title run, PCSX2
   unhooked, Azahar broken this session); the widescreen switch (variant B
   above 1.55) is implemented but not exercised with a 16:9 title.
+- M10 bezel packages (2026-09-19 afternoon): 29 packages under
+  `config/bezels` (10 Soqueroeu living-room TVs lit for night with the
+  manufacturer badges, 3 Semu CRTs, DMG-01 / GBC / AGB-001 Duimon shells with
+  their glass lenses, PSP E1000 with a drawn frame, 4 computed dual layouts,
+  DS and 3DS Duimon shells plus the vertical shells). Every screen opening is
+  measured by `tools/bezel-measure.py` and recorded with its method. The
+  compositor takes per-screen tube, shape (rounded / squircle), fit, inset,
+  surround, curvature, vignette, bloom, glow, glass and shader; draw order is
+  background plate, chrome (art, drawn frames, glow, masked out of the tubes),
+  game, menu. Headless captures (Xvfb, real GPU) inspected for nes, snes,
+  genesis, n64, psx, gb, gbc, gba, nds, n3ds, psp, gc, wii, dreamcast and ps2:
+  the game sits inside the measured tube at the system aspect on every TV
+  scene, the handheld LCDs sit inside their lenses on the desk, the 3DS runs
+  Semu's Azahar libretro core with its top screen centered at 2x and the
+  touch screen at 1x beside it (both framed), PCSX2 is hooked directly through
+  `semu_render_hook.patch` and shows in the Sony TV, and Cemu renders once
+  pinned to XWayland (its GTK Wayland backend is the white window). Fixed on
+  the way: the GL state guard overflowed when the texture-unit count grew
+  (every frame black), the melonDS core needed its executable-stack flag
+  cleared to load, and high-resolution emulators are blitted with linear
+  filtering before the shader chain. Known limits: Flycast on bare Xvfb keeps
+  a 640x480 window so its CRT mask aliases there; Wii U stays unframed
+  (Cemu is unhooked); the PSP panel is placed from the device's physical
+  proportions because the Duimon art has no drawn screen edge.
 - Active milestone: M5/M6 hardware acceptance once a Deck is reachable
   (`DECK_HOST=deck tests/deck/deploy.sh install`), then the native-emulator
   render hook.
