@@ -20,6 +20,28 @@
         "type": "github"
       }
     },
+    "btrc_2": {
+      "inputs": {
+        "nixpkgs": [
+          "emulator-pcsx2",
+          "renderer",
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "lastModified": 1789806178,
+        "narHash": "sha256-JFQ1uEmZlR7W+Q9qx/kHCC/jZ5VKm2G5om2WWX4tsJE=",
+        "owner": "schiffy91",
+        "repo": "btrc",
+        "rev": "fad4b470817f73f551ebb20ff3ecbb6d7f895a73",
+        "type": "github"
+      },
+      "original": {
+        "owner": "schiffy91",
+        "repo": "btrc",
+        "type": "github"
+      }
+    },
     "core-azahar": {
       "inputs": {
         "nixpkgs": [
@@ -331,6 +353,7 @@
         "nixpkgs": [
           "nixpkgs"
         ],
+        "renderer": "renderer",
         "source": "source_19"
       },
       "locked": {
@@ -426,6 +449,26 @@
     },
     "renderer": {
       "inputs": {
+        "btrc": "btrc_2",
+        "nixpkgs": [
+          "emulator-pcsx2",
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "path": "../../../src/renderer",
+        "type": "path"
+      },
+      "original": {
+        "path": "../../../src/renderer",
+        "type": "path"
+      },
+      "parent": [
+        "emulator-pcsx2"
+      ]
+    },
+    "renderer_2": {
+      "inputs": {
         "btrc": [
           "btrc"
         ],
@@ -492,7 +535,7 @@
         "emulator-ryujinx": "emulator-ryujinx",
         "esde": "esde",
         "nixpkgs": "nixpkgs_2",
-        "renderer": "renderer",
+        "renderer": "renderer_2",
         "retroarch": "retroarch"
       }
     },

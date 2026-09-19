@@ -1373,6 +1373,16 @@ class RendererCompositor {
         RendererCompositor.drawPass(gl, resources,
             SEMU_RENDER_PASS_GAME, true);  // alpha carries the screen shape mask
         bool drew = RendererGlErrors.none(gl);
+        if (getenv("SEMU_RENDER_DEBUG") != null && (frame->frame_id % 120ULL) == 1ULL) {
+            struct RendererLaneGeometry* lane0 = &geometry->lanes[0];
+            fprintf(stderr, "semu-renderer: frame %llu fb %dx%d lane0 out %d,%d %dx%d tube %d,%d %dx%d native %dx%d art=%d bg=%d framed=%d bezelrect %.0f,%.0f %.0fx%.0f shaders=%d drew=%d\n",
+                frame->frame_id, frame->framebuffer_width, frame->framebuffer_height,
+                lane0->output_x, lane0->output_y, lane0->output_width, lane0->output_height,
+                lane0->tube_x, lane0->tube_y, lane0->tube_width, lane0->tube_height,
+                lane0->native_width, lane0->native_height, art ? 1 : 0, background ? 1 : 0, framed ? 1 : 0,
+                geometry->bezel_x, geometry->bezel_y, geometry->bezel_width, geometry->bezel_height,
+                resources->shader_actual, drew ? 1 : 0);
+        }
         if (!drew) {
             resources->shader_actual = 0;
             resources->bezel_actual = 0;
