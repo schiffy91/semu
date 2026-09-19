@@ -277,6 +277,13 @@ class RenderingContract {
         FileSystem.mkdirp(PathTools.join(assets, "share/semu/assets/bezels/gb"));
         FileSystem.writeText(PathTools.join(assets, "share/semu/assets/bezels/gb/dmg.png"), "png");
         FileSystem.writeText(PathTools.join(assets, "share/semu/assets/bezels/gb/reflection.png"), "png");
+        SemuSystem nes = fixture.model.system("nes");
+        Vector<string> nesBare = SemuRenderEnvironment.compile(fixture.plan, nes, "retroarch", "/state/retroarch", fixture.diagnostics);
+        contract.expect(nesBare.contains("SEMU_RENDER_CURVATURE=0.04") && nesBare.contains("SEMU_RENDER_CORNER_RADIUS=0.045") && nesBare.contains("SEMU_RENDER_GLOW=0.18") && nesBare.contains("SEMU_RENDER_BLOOM=0.2") && nesBare.contains("SEMU_RENDER_VIGNETTE=0.22"), "the CRT look parameters reach the compositor");
+        FileSystem.mkdirp(PathTools.join(assets, "share/libretro/shaders/semu/nes"));
+        FileSystem.writeText(PathTools.join(assets, "share/libretro/shaders/semu/nes/screen.slangp"), "#reference x\n");
+        Vector<string> nesFull = SemuRenderEnvironment.compile(fixture.plan, nes, "retroarch", "/state/retroarch", fixture.diagnostics);
+        contract.expect(nesFull.contains("SEMU_RENDER_SHADERS=1") && nesFull.contains("SEMU_RENDER_SHADER_PRESET=" + assets + "/share/libretro/shaders/semu/nes/screen.slangp"), "a single-preset shader manifest selects its screen preset");
         Vector<string> full = SemuRenderEnvironment.compile(fixture.plan, gb, "retroarch", "/state/retroarch", fixture.diagnostics);
         contract.expect(full.contains("SEMU_RENDER_SHADERS=1") && full.contains("SEMU_RENDER_BEZELS=1"), "assets present enables shaders and bezels");
         contract.expect(full.contains("SEMU_RENDER_SHADER_PRESET=" + assets + "/share/libretro/shaders/semu/gb/screen.slangp"), "shader preset path");

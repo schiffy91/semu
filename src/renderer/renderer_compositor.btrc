@@ -60,6 +60,11 @@ struct RendererConfig {
     int active_variant;
     float display_aspect;
     float reflect;
+    float corner_radius;
+    float curvature;
+    float glow;
+    float bloom;
+    float vignette;
     float frames_per_second;
     unsigned int frame_delta_ms;
     struct RendererPath system_id;
@@ -110,6 +115,11 @@ struct RendererGlResources {
     int uniform_has_glass;
     int uniform_menu_on;
     int uniform_reflect;
+    int uniform_corner;
+    int uniform_curve;
+    int uniform_glow;
+    int uniform_bloom;
+    int uniform_vignette;
     int uniform_pass;
     int uniform_rotation;
     int uniform_rotation2;
@@ -128,19 +138,32 @@ uniform sampler2D uGlass;uniform sampler2D uMenu;
 uniform vec4 uRect;uniform vec4 uRect2;uniform vec4 uBezelRect;uniform vec4 uMenuRect;
 uniform float uDual;uniform float uHasArt;uniform float uHasGlass;uniform float uMenuOn;
  uniform float uReflect;uniform float uPass;uniform float uRotation;uniform float uRotation2;
+ uniform float uCorner;uniform float uCurve;uniform float uGlow;uniform float uBloom;uniform float uVignette;
  bool inside(vec2 p,vec4 r){return p.x>=r.x&&p.x<=r.x+r.z&&p.y>=r.y&&p.y<=r.y+r.w;}
  vec2 uv(vec2 p,vec4 r){return(p-r.xy)/r.zw;}
  vec2 rotatedUv(vec2 q,float r){if(r<0.5)return q;if(r<1.5)return vec2(1.0-q.y,q.x);if(r<2.5)return vec2(1.0-q.x,1.0-q.y);return vec2(q.y,1.0-q.x);}
  vec2 artUv(vec2 p){return vec2((p.x-uBezelRect.x)/uBezelRect.z,1.0-(p.y-uBezelRect.y)/uBezelRect.w);}
+ vec2 curved(vec2 q){vec2 c=q*2.0-1.0;c*=(1.0+uCurve*dot(c,c))/(1.0+uCurve);return c*0.5+0.5;}
+ float cornerMask(vec2 p,vec4 r){vec2 h=r.zw*0.5;float rad=uCorner*min(r.z,r.w);vec2 d=abs(p-(r.xy+h))-(h-rad);float sd=length(max(d,0.0))-rad;return 1.0-smoothstep(-0.75,0.75,sd);}
+ vec3 blurred(sampler2D t,vec2 q){vec3 s=vec3(0.0);float o=0.035;for(int y=-1;y<=1;y++)for(int x=-1;x<=1;x++)s+=texture(t,clamp(q+vec2(float(x),float(y))*o,0.0,1.0)).rgb;return s/9.0;}
+ vec3 screenColor(sampler2D t,vec2 q0,float rot){vec2 q1=curved(q0);bool on=q1.x>=0.0&&q1.x<=1.0&&q1.y>=0.0&&q1.y<=1.0;vec2 q=rotatedUv(clamp(q1,0.0,1.0),rot);vec3 c=on?texture(t,q).rgb:vec3(0.0);
+  if(uBloom>0.0&&on){vec3 b=blurred(t,q);c+=uBloom*max(b-0.4,0.0)*1.3;}
+  vec2 cc=q1*2.0-1.0;c*=1.0-uVignette*smoothstep(0.45,1.7,dot(cc,cc));return c;}
+ float halo(vec2 p,vec4 r,out vec2 q){q=clamp(uv(p,r),0.0,1.0);vec2 n=r.xy+q*r.zw;float d=length(p-n);float band=0.16*min(r.z,r.w);float k=1.0-clamp(d/band,0.0,1.0);return k*k;}
 void main(){
  vec2 p=gl_FragCoord.xy;
  if(uPass<0.5){if(uHasArt>0.5&&inside(p,uBezelRect)){frag=texture(uBezel,artUv(p));return;}frag=vec4(0.0,0.0,0.0,1.0);return;}
  if(uPass<1.5){bool a=inside(p,uRect);bool b=uDual>0.5&&inside(p,uRect2);if(!a&&!b)discard;
-  vec2 q=a?rotatedUv(uv(p,uRect),uRotation):rotatedUv(uv(p,uRect2),uRotation2);
-  vec3 c=a?texture(uGame,q).rgb:texture(uGame2,q).rgb;
-  if(uHasGlass>0.5){vec2 gq=a?uv(p,uRect):uv(p,uRect2);gq.y=1.0-gq.y;vec4 g=texture(uGlass,gq);c=1.0-(1.0-c)*(1.0-g.rgb*g.a*clamp(uReflect,0.0,1.0));}
-  frag=vec4(c,1.0);return;}
- if(uPass<2.5){if(uHasArt<0.5||!inside(p,uBezelRect)||inside(p,uRect)||(uDual>0.5&&inside(p,uRect2)))discard;frag=texture(uBezel,artUv(p));return;}
+  vec4 r=a?uRect:uRect2;vec2 q0=uv(p,r);
+  vec3 c=a?screenColor(uGame,q0,uRotation):screenColor(uGame2,q0,uRotation2);
+  if(uHasGlass>0.5){vec2 gq=q0;gq.y=1.0-gq.y;vec4 g=texture(uGlass,gq);c=1.0-(1.0-c)*(1.0-g.rgb*g.a*clamp(uReflect,0.0,1.0));}
+  frag=vec4(c,cornerMask(p,r));return;}
+ if(uPass<2.5){if(uHasArt<0.5||!inside(p,uBezelRect)||inside(p,uRect)||(uDual>0.5&&inside(p,uRect2)))discard;
+  vec4 art=texture(uBezel,artUv(p));
+  if(uGlow>0.0){vec2 q;float k=halo(p,uRect,q);vec3 g=blurred(uGame,rotatedUv(q,uRotation))*k;
+   if(uDual>0.5){vec2 q2;float k2=halo(p,uRect2,q2);g=max(g,blurred(uGame2,rotatedUv(q2,uRotation2))*k2);}
+   art.rgb=1.0-(1.0-art.rgb)*(1.0-g*uGlow);}
+  frag=art;return;}
  if(uMenuOn<0.5||!inside(p,uMenuRect))discard;vec2 q=uv(p,uMenuRect);q.y=1.0-q.y;frag=texture(uMenu,q);
 }""";
 
@@ -289,6 +312,16 @@ class RendererConfiguration {
         }
         value = getenv("SEMU_RENDER_REFLECT");
         if (value != null) { config->reflect = (float)atof(value); }
+        value = getenv("SEMU_RENDER_CORNER_RADIUS");
+        if (value != null) { config->corner_radius = (float)atof(value); }
+        value = getenv("SEMU_RENDER_CURVATURE");
+        if (value != null) { config->curvature = (float)atof(value); }
+        value = getenv("SEMU_RENDER_GLOW");
+        if (value != null) { config->glow = (float)atof(value); }
+        value = getenv("SEMU_RENDER_BLOOM");
+        if (value != null) { config->bloom = (float)atof(value); }
+        value = getenv("SEMU_RENDER_VIGNETTE");
+        if (value != null) { config->vignette = (float)atof(value); }
         value = getenv("SEMU_RENDER_FPS");
         if (value != null && atof(value) > 0.0) {
             config->frames_per_second = (float)atof(value);
@@ -376,6 +409,7 @@ class RendererGeometry {
         bool bezel = config->bezels_enabled != 0
             && resources->art_loaded[variantIndex] != 0
             && (variant->screen.set != 0 || hasLaneHoles);
+        int scaling = bezel ? 0 : config->integer_scaling;  // a framed screen fills its hole; integer steps only without a bezel
         if (bezel) {
             struct RendererCanvasRect canvas;
             RendererCompositionContract.contain(areaWidth, areaHeight,
@@ -403,9 +437,9 @@ class RendererGeometry {
             geometry->bezel_height = canvas.height;
             if (hasLaneHoles) {
                 RendererGeometry.fitHole(&variant->primary, geometry,
-                    config->integer_scaling, &geometry->lanes[0]);
+                    scaling, &geometry->lanes[0]);
                 RendererGeometry.fitHole(&variant->secondary, geometry,
-                    config->integer_scaling, &geometry->lanes[1]);
+                    scaling, &geometry->lanes[1]);
                 return true;
             }
             struct RendererPixelRect aperture;
@@ -423,7 +457,7 @@ class RendererGeometry {
                 geometry->lanes[0].native_width, geometry->lanes[0].native_height,
                 frame->presentation_aspect > 0.01f
                     ? frame->presentation_aspect : config->display_aspect,
-                config->integer_scaling,
+                scaling,
                 &geometry->lanes[0]);
             return true;
         }
@@ -433,21 +467,21 @@ class RendererGeometry {
             int laneWidth = (areaWidth - gap) / 2;
             RendererGeometry.fit(areaX, areaY, laneWidth, areaHeight,
                 geometry->lanes[0].native_width, geometry->lanes[0].native_height,
-                0.0f, config->integer_scaling, &geometry->lanes[0]);
+                0.0f, scaling, &geometry->lanes[0]);
             RendererGeometry.fit(areaX + laneWidth + gap, areaY, laneWidth,
                 areaHeight, geometry->lanes[1].native_width,
                 geometry->lanes[1].native_height, 0.0f,
-                config->integer_scaling, &geometry->lanes[1]);
+                scaling, &geometry->lanes[1]);
         } else {
             int laneHeight = (areaHeight - gap) / 2;
             RendererGeometry.fit(areaX, areaY + laneHeight + gap, areaWidth,
                 laneHeight, geometry->lanes[0].native_width,
                 geometry->lanes[0].native_height, 0.0f,
-                config->integer_scaling, &geometry->lanes[0]);
+                scaling, &geometry->lanes[0]);
             RendererGeometry.fit(areaX, areaY, areaWidth, laneHeight,
                 geometry->lanes[1].native_width,
                 geometry->lanes[1].native_height, 0.0f,
-                config->integer_scaling, &geometry->lanes[1]);
+                scaling, &geometry->lanes[1]);
         }
         return true;
     }
@@ -706,6 +740,11 @@ class RendererResources {
             "uHasGlass");
         resources->uniform_menu_on = gl->uniform_location(resources->program, "uMenuOn");
         resources->uniform_reflect = gl->uniform_location(resources->program, "uReflect");
+        resources->uniform_corner = gl->uniform_location(resources->program, "uCorner");
+        resources->uniform_curve = gl->uniform_location(resources->program, "uCurve");
+        resources->uniform_glow = gl->uniform_location(resources->program, "uGlow");
+        resources->uniform_bloom = gl->uniform_location(resources->program, "uBloom");
+        resources->uniform_vignette = gl->uniform_location(resources->program, "uVignette");
         resources->uniform_pass = gl->uniform_location(resources->program, "uPass");
         resources->uniform_rotation = gl->uniform_location(
             resources->program, "uRotation");
@@ -1098,13 +1137,18 @@ class RendererCompositor {
             gl->uniform_1f(resources->uniform_reflect,
                 glass ? config->reflect : 0.0f);
         }
+        if (resources->uniform_corner >= 0) { gl->uniform_1f(resources->uniform_corner, config->corner_radius); }
+        if (resources->uniform_curve >= 0) { gl->uniform_1f(resources->uniform_curve, config->curvature); }
+        if (resources->uniform_glow >= 0) { gl->uniform_1f(resources->uniform_glow, art ? config->glow : 0.0f); }
+        if (resources->uniform_bloom >= 0) { gl->uniform_1f(resources->uniform_bloom, config->bloom); }
+        if (resources->uniform_vignette >= 0) { gl->uniform_1f(resources->uniform_vignette, config->vignette); }
         if (resources->uniform_menu_on >= 0) {
             gl->uniform_1f(resources->uniform_menu_on, 0.0f);
         }
         RendererCompositor.drawPass(gl, resources,
             SEMU_RENDER_PASS_BACKGROUND, false);
         RendererCompositor.drawPass(gl, resources,
-            SEMU_RENDER_PASS_GAME, false);
+            SEMU_RENDER_PASS_GAME, true);  // alpha carries the rounded-corner mask
         if (art) {
             RendererCompositor.drawPass(gl, resources,
                 SEMU_RENDER_PASS_CHROME, true);

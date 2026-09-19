@@ -389,7 +389,21 @@ Update this block whenever a milestone criterion changes state.
   (Switch) have no libretro core at all; Dolphin (GC/Wii) and PCSX2 (PS2)
   keep their standalone builds because the nixpkgs libretro forks of both
   trail upstream. Not done: the Deck half of the criterion.
-- M7 extras: all three delivered on the desktop 2026-09-19.
+- M6 look (2026-09-19 evening): audited after the first captures looked
+  flat. Three defects fixed in one pass: CRT systems declared a single
+  `screen` preset the launcher never read (no shader at all on NES, SNES,
+  N64, PSX, Genesis, Dreamcast), the hole fit applied integer scaling so the
+  game sat inside the bezel with black margins, and the composite shader had
+  no curvature, corner mask, vignette, bloom or halo although every
+  `system.json` declared them. Now the launcher passes `corner_radius`,
+  `curvature`, `glow`, `bloom` and `vignette`, a framed screen fills its
+  hole fractionally, the shader curves the tube (edge midpoints stay on the
+  hole edge, corners recede), rounds the corners over the bezel art, adds
+  vignette and a bloom on highlights, and screens a blurred halo of the game
+  onto the bezel around the hole. Verified headlessly with
+  `tests/visual/capture.sh` (Xvfb, real GPU): NES with NTSC composite, SNES,
+  N64, PSX, Game Boy DMG, DS dual-screen and Dreamcast through the preload
+  all inspected.
   ES-DE settings menu: ES-DE 3.4.0 carries the settings-menu patch; the
   SEMU SETTINGS entry renders the document `semu settings ui` returns and
   saves through `semu settings put`. Observed: virtual-keyboard drive of the
