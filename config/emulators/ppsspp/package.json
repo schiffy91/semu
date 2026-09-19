@@ -1,16 +1,15 @@
 {
   "schema_version": 1,
   "id": "ppsspp",
-  "version": "1.19.3",
+  "version": "1.20.4",
   "build_kind": "source",
   "source": {
-    "kind": "github_revision_with_submodules",
+    "kind": "github",
     "owner": "hrydgard",
     "repo": "ppsspp",
-    "tag": "v1.19.3",
-    "revision": "e49c0bd8836a8a8f678565357773386f1174d3f5",
-    "fetch_submodules": true,
-    "sha256": "sha256-71oIjUXYGFNyhcXQP65Bd2gYF6golrPR4USwS7bTxFQ="
+    "tag": "v1.20.4",
+    "sha256": "sha256-SWGlclmKXLLMYMmdfXyp4/g/mB4KKSIJdB5M9GW9HzI=",
+    "fetch_submodules": true
   },
   "platforms": [
     "x86_64-linux"
@@ -39,5 +38,6 @@
     "source": "Nix fetches the immutable upstream 1.19.3 commit with all declared submodules and verifies the recursive source hash before applying the Semu patch.",
     "platforms": "Only the Steam Deck x86_64-linux closure is declared. Evaluation fails on other hosts instead of selecting an alternate package or frontend.",
     "rendering": "PPSSPP queues the directly linked renderer's game phase after the final PSP image draw, executes normal PPSSPP UI, then queues the post-UI phase from Present immediately before the real swap task. No inactive report or runtime symbol lookup exists."
-  }
+  },
+  "nixpkgs_recipe": "ppsspp"
 }

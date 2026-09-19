@@ -1,20 +1,14 @@
 {
   "schema_version": 1,
   "id": "azahar",
-  "version": "2125.1.3",
+  "version": "2126.0",
   "build_kind": "source",
   "source": {
-    "kind": "upstream_release_archive",
+    "kind": "github",
     "owner": "azahar-emu",
     "repo": "azahar",
-    "tag": "2125.1.3",
-    "revision": "b42d0916ba9799297ae0e27c07d56801da1b5de5",
-    "url": "https://github.com/azahar-emu/azahar/releases/download/2125.1.3/azahar-unified-source-2125.1.3.tar.xz",
-    "sha256": "sha256-4mUCsD4XyKJh3LSAnUGCVQiycHPCtA+RvoP+NZQkXeA=",
-    "identity_files": {
-      "tag": "GIT-TAG",
-      "revision": "GIT-COMMIT"
-    }
+    "tag": "2126.0",
+    "sha256": "sha256-/ON5YbwIHZmstjt3zAbw/uns9DVicjyJD3eDcY6JX24="
   },
   "platforms": [
     "x86_64-linux"
@@ -43,5 +37,6 @@
     "source": "The immutable upstream unified-source release is hash-pinned and carries GIT-TAG/GIT-COMMIT identity files. Nix verifies both files against this contract before configuration.",
     "platforms": "Only the Steam Deck's x86_64-linux closure is declared. Other hosts fail during Nix evaluation.",
     "rendering": "The directly linked game phase receives semantic top and bottom regions after TryPresent's final blit. OpenGLRenderWidget copies the ABI 2 frame pointer map into GRenderWindow before the post-UI phase and SwapBuffers. Mouse and touch events map only through bottom surface 1 and enter the native-coordinate touch path. Render-target release emits no inactive report."
-  }
+  },
+  "nixpkgs_recipe": "azahar"
 }

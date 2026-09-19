@@ -23,6 +23,17 @@ tests/        contracts/ (run by make test), spec/ (reference fixtures),
 build/        ignored build output
 ```
 
+## Every emulator is compiled here
+
+Semu never ships a cache binary. Each emulator directory carries a
+`package.json` whose `source` block pins one upstream revision or release tag
+plus its content hash, and `package.nix` builds that pin with the build wiring
+nixpkgs already knows (dependencies, cmake flags, wrappers). `cores.json` pins
+every libretro core the same way, and ES-DE and RetroArch are pinned sources
+with Semu's patches on top. All of these set `allowSubstitutes = false`, and
+`packaging/nix/emulators.nix` refuses at evaluation time any emulator that
+could be substituted. Bumping an emulator means editing its `source` block.
+
 ## Build and test
 
 ```sh

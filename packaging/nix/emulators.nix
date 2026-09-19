@@ -9,10 +9,13 @@ let
   linuxEmulators = lib.unique (lib.concatMap (system:
     map (entry: entry.emulator) (lib.filter (entry: entry ? emulator && lib.elem "linux" (entry.platforms or [ "linux" ])) (system.emulators or [ ]))
   ) systemContracts);
+  builtOnlyHere = id: package:  # every emulator is compiled from Semu's pin, never substituted
+    assert lib.assertMsg ((package.allowSubstitutes or true) == false) "emulators.nix: ${id} would be substituted from a cache; set allowSubstitutes = false";
+    package;
   recipe = id:
     let path = emulatorsDir + "/${id}/package.nix";
     in if builtins.pathExists path
-       then callPackage path (lib.intersectAttrs (lib.functionArgs (import path)) { inherit semuRenderer btrcpy; })  # recipes take only what they declare
+       then builtOnlyHere id (callPackage path (lib.intersectAttrs (lib.functionArgs (import path)) { inherit semuRenderer btrcpy; }))  # recipes take only what they declare
        else throw "emulators.nix: config/emulators/${id}/package.nix is missing";
 in {
   ids = linuxEmulators;
