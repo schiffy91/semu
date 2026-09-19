@@ -129,7 +129,7 @@ class SemuRetroArchFrameBridge {
                 || viewportX > framebufferWidth - viewportWidth
                 || viewportY > framebufferHeight - viewportHeight
                 || frameWidth < 1u || frameHeight < 1u
-                || (void*)getProc == null
+                || getProc == null
                 || !SemuRetroArchGeneration.active(contextGeneration)
                 || !SemuRetroArchSurfaceModel.load(
                     &SemuRetroArchSurfaces)) { return false; }
@@ -186,7 +186,7 @@ class SemuRetroArchPointerBridge {
 
     class void clear(bool requireRelease) {
         semuRetroArchDisplayLock(video_state_get_ptr());
-        if ((void*)SemuRetroArchPointer.map_pointer != null
+        if (SemuRetroArchPointer.map_pointer != null
                 || SemuRetroArchPointer.captured != 0
                 || SemuRetroArchPointer.down != 0
                 || (SemuRetroArchPointer.release_required == 0
@@ -243,8 +243,7 @@ class SemuRetroArchPointerBridge {
         }
 
         semuRetroArchDisplayLock(video_state_get_ptr());
-        bool changed = (void*)SemuRetroArchPointer.map_pointer
-                != (void*)frame->map_pointer
+        bool changed = SemuRetroArchPointer.map_pointer != frame->map_pointer
             || SemuRetroArchPointer.context_generation
                 != frame->context_generation
             || SemuRetroArchPointer.touch_index
@@ -324,7 +323,7 @@ class SemuRetroArchPointerBridge {
         struct SemuRenderPointerResult result;
         memset(&result, 0, sizeof(struct SemuRenderPointerResult));
         bool mapped = false;
-        bool mapAvailable = allowed && (void*)mapPointer != null
+        bool mapAvailable = allowed && mapPointer != null
             && touchIndex >= 0 && touchIndex < map.surface_count
             && SemuRetroArchGeneration.active(contextGeneration);
         if (mapAvailable && pressed && releaseRequired == 0) {
@@ -392,8 +391,7 @@ class SemuRetroArchPointerBridge {
         semuRetroArchDisplayLock(video_state_get_ptr());
         bool stable = contextLocked
             && SemuRetroArchPointer.map_generation == mapGeneration
-                && (void*)SemuRetroArchPointer.map_pointer
-                    == (void*)mapPointer
+                && SemuRetroArchPointer.map_pointer == mapPointer
                 && SemuRetroArchPointer.context_generation
                     == contextGeneration;
         SemuRetroArchPointer.snapshot_generation =
