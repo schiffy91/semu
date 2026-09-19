@@ -1073,11 +1073,12 @@ class RendererShaderPasses {
         }
         gl->disable((unsigned int)RGL_SCISSOR_TEST);
         RendererGlErrors.clear(gl);
+        bool downscale = lane->source_width > lane->native_width || lane->source_height > lane->native_height;  // high-resolution emulators: average, never decimate
         gl->blit_framebuffer(lane->source_x, lane->source_y,
             lane->source_x + lane->source_width,
             lane->source_y + lane->source_height, 0, 0,
             lane->native_width, lane->native_height,
-            (unsigned int)RGL_COLOR_BUFFER_BIT, (unsigned int)RGL_NEAREST);
+            (unsigned int)RGL_COLOR_BUFFER_BIT, (unsigned int)(downscale ? RGL_LINEAR : RGL_NEAREST));
         return RendererGlErrors.none(gl);
     }
 
