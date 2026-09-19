@@ -1,22 +1,6 @@
-# semu_cli.nix - combine the independently built program and runtime source.
-{ lib, symlinkJoin, makeWrapper
-, semuProgram
-, semuSource
-, syncthing ? null
-, syncthingtray ? null
-, curl ? null
-, bubblewrap ? null
-}:
+# The semu CLI: the compiled program plus its configuration payload.
+{ lib, symlinkJoin, makeWrapper, semuProgram, semuSource }:
 
-let
-  runtimeTools = lib.filter (tool: tool != null) [
-    syncthing
-    syncthingtray
-    curl
-    bubblewrap
-  ];
-  runtimePath = lib.makeBinPath runtimeTools;
-in
 symlinkJoin {
   name = "semu-cli";
   paths = [ semuProgram semuSource ];
@@ -25,14 +9,12 @@ symlinkJoin {
   postBuild = ''
     mkdir -p "$out/bin"
     makeWrapper "$out/lib/semu/semu-btrc" "$out/bin/semu" \
-      --set SEMU_ASSET_ROOT "$out" \
-      --set SEMU_BIN "$out/bin/semu" \
-      --set SEMU_SOURCE_ROOT "$out/share/semu/config" \
-      --prefix PATH : ${lib.escapeShellArg runtimePath}
+      --set SEMU_SOURCE_ROOT "$out/share/semu/config"
   '';
 
   meta = {
-    description = "Semu BTRC runtime CLI";
+    description = "Semu CLI";
     license = lib.licenses.mit;
+    mainProgram = "semu";
   };
 }

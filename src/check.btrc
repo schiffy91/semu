@@ -1,0 +1,71 @@
+import Library.JSON;
+import Library.Strings;
+import Library.Vector;
+import ./lib/json.btrc;
+import ./model.btrc;
+import ./resolve.btrc;
+
+class SemuChecker {
+    class bool validId(string id) {
+        if (id.isEmpty()) { return false; }
+        for (int index = 0; index < id.len(); index++) {
+            int value = id.charAt(index);
+            bool lower = value >= 97 && value <= 122;
+            bool digit = value >= 48 && value <= 57;
+            if (!lower && !digit && value != 45 && value != 95) { return false; }
+        }
+        return true;
+    }
+
+    class void checkSystem(SemuModel model, SemuPlan plan, SemuSystem system, SemuDiagnostics diagnostics) {
+        if (!SemuChecker.validId(system.id)) { diagnostics.add(system.file, "id", "system id must be lowercase"); }
+        if (system.name.isEmpty()) { diagnostics.add(system.file, "name", "missing"); }
+        if (system.romDir.isEmpty()) { diagnostics.add(system.file, "rom.dir", "missing"); }
+        if (system.extensions.isEmpty()) { diagnostics.add(system.file, "rom.extensions", "missing"); }
+        if (system.esPlatforms.isEmpty()) { diagnostics.add(system.file, "es_de.platforms", "missing"); }
+        if (system.theme.isEmpty()) { diagnostics.add(system.file, "es_de.theme", "missing"); }
+        for binding in system.bindingsFor(plan.platform) {
+            SemuEmulator emulator = model.emulator(binding.emulator);
+            if (emulator == null) {
+                diagnostics.add(system.file, "emulators", "unknown emulator " + binding.emulator);
+                continue;
+            }
+            if (!emulator.supports(plan.platform)) {
+                diagnostics.add(system.file, "emulators", f"{binding.emulator} has no {plan.platform} platform slice");
+            }
+            JSONValue loader = SemuJson.get(emulator.platform(plan.platform), "core_loader");
+            if (loader.isObject() && binding.core.isEmpty()) {
+                diagnostics.add(system.file, "emulators", f"{binding.emulator} binding needs a core");
+            }
+        }
+    }
+
+    class void checkEmulator(SemuPlan plan, SemuEmulator emulator, SemuDiagnostics diagnostics) {
+        string file = PathTools.join(emulator.directory, "emulator.json");
+        if (emulator.name.isEmpty()) { diagnostics.add(file, "name", "missing"); }
+        JSONValue platform = emulator.platform(plan.platform);
+        if (!platform.isObject()) {
+            diagnostics.add(file, "platforms." + plan.platform, "missing");
+            return;
+        }
+        string executable = SemuJson.textAt(platform, "executable");
+        if (executable.isEmpty()) { diagnostics.add(file, "platforms." + plan.platform + ".executable", "missing"); }
+        JSONValue files = emulator.profile.get("files");
+        if (files == null || !files.isArray()) { diagnostics.add(emulator.profileFile, "files", "must be an array"); }
+        JSONValue compiler = emulator.profile.get("compiler");
+        if (compiler == null || !compiler.isObject()) { diagnostics.add(emulator.profileFile, "compiler", "must be an object"); }
+    }
+
+    class bool check(SemuModel model, SemuPlan plan, SemuDiagnostics diagnostics) {
+        if (plan == null) { return false; }
+        if (!plan.platform.equals("linux")) { diagnostics.add(plan.target.id, "platform", "only linux targets are supported"); }
+        if (plan.assetRoot.isEmpty()) { diagnostics.add(plan.target.id, "asset_root", "SEMU_ASSET_ROOT or --asset-root is required"); }
+        if (plan.systems.isEmpty()) { diagnostics.add(plan.target.id, "systems", "no system serves this platform"); }
+        for systemId in plan.systems { SemuChecker.checkSystem(model, plan, model.system(systemId), diagnostics); }
+        for emulatorId in plan.emulators {
+            SemuEmulator emulator = model.emulator(emulatorId);
+            if (emulator != null) { SemuChecker.checkEmulator(plan, emulator, diagnostics); }
+        }
+        return diagnostics.ok();
+    }
+}

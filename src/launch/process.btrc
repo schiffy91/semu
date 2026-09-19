@@ -1,0 +1,226 @@
+// Process-group spawning and the evdev Start+Select quit chord.
+
+#include <dirent.h>
+#include <errno.h>
+#include <fcntl.h>
+#include <poll.h>
+#include <signal.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/ioctl.h>
+#include <sys/types.h>
+#include <sys/wait.h>
+#include <time.h>
+#include <unistd.h>
+#include <linux/input.h>
+
+import Library.Console;
+import Library.Strings;
+import Library.Vector;
+
+#define SEMU_MAX_PADS 32
+#define SEMU_POLL_MS 10
+#define SEMU_BIT_WORDS 16
+
+struct SemuPadState {
+    int fd;
+    long long start_at;
+    long long select_at;
+};
+
+class SemuClock {
+    class long long milliseconds() {
+        struct timespec now;
+        clock_gettime(CLOCK_MONOTONIC, &now);
+        return (long long)now.tv_sec * 1000LL + (long long)(now.tv_nsec / 1000000L);
+    }
+}
+
+class SemuProcessGroup {
+    class char** cStrings(Vector<string> values) {
+        int slots = values.size() + 1;
+        char** result = (char**)calloc((size_t)slots, sizeof(char*));
+        for (int index = 0; index < values.size(); index++) {
+            string value = values.get(index);
+            result[index] = strdup(value);
+        }
+        return result;
+    }
+
+    class int start(Vector<string> argv, Vector<string> environment) {  // child leads its own process group
+        char** arguments = SemuProcessGroup.cStrings(argv);
+        int child = (int)fork();
+        if (child < 0) { return -1; }
+        if (child == 0) {
+            setpgid(0, 0);
+            for (int index = 0; index < environment.size(); index++) {
+                string assignment = environment.get(index);
+                char* copy = strdup(assignment);
+                putenv(copy);
+            }
+            char* program = arguments[0];
+            execvp(program, arguments);
+            _exit(127);
+        }
+        pid_t pid = (pid_t)child;
+        setpgid(pid, pid);
+        return child;
+    }
+
+    class int reap(int child, bool* exited) {  // returns exit status once the child is gone
+        int status = 0;
+        pid_t pid = (pid_t)child;
+        pid_t waited = waitpid(pid, &status, WNOHANG);
+        if (waited == pid) {
+            *exited = true;
+            if (WIFEXITED(status)) { return WEXITSTATUS(status); }
+            if (WIFSIGNALED(status)) { return 128 + WTERMSIG(status); }
+            return 1;
+        }
+        *exited = false;
+        return 0;
+    }
+
+    class bool groupAlive(int child) {
+        pid_t group = (pid_t)(-child);
+        return !(kill(group, 0) != 0 && errno == ESRCH);
+    }
+
+    class void reapGroup(int child) {
+        int status = 0;
+        pid_t group = (pid_t)(-child);
+        pid_t reaped = waitpid(group, &status, WNOHANG);
+        while (reaped > (pid_t)0) { reaped = waitpid(group, &status, WNOHANG); }
+    }
+
+    class void terminate(int child) {  // TERM the group, KILL whatever survives 250 ms
+        pid_t group = (pid_t)(-child);
+        kill(group, SIGTERM);
+        long long deadline = SemuClock.milliseconds() + 250LL;
+        while (SemuClock.milliseconds() < deadline) {
+            SemuProcessGroup.reapGroup(child);
+            if (!SemuProcessGroup.groupAlive(child)) { break; }
+            usleep(10000);
+        }
+        kill(group, SIGKILL);
+        SemuProcessGroup.reapGroup(child);
+    }
+}
+
+class SemuQuitChord {
+    class bool bit(unsigned long* bits, int code) {
+        int word = code / 64;
+        int offset = code % 64;
+        if (word >= SEMU_BIT_WORDS) { return false; }
+        return ((bits[word] >> offset) & 1UL) != 0UL;
+    }
+
+    class bool isGamepad(int fd) {
+        unsigned long eventBits[SEMU_BIT_WORDS];
+        unsigned long keyBits[SEMU_BIT_WORDS];
+        memset(eventBits, 0, sizeof(eventBits));
+        memset(keyBits, 0, sizeof(keyBits));
+        unsigned long eventRequest = (unsigned long)EVIOCGBIT(0, sizeof(eventBits));
+        unsigned long keyRequest = (unsigned long)EVIOCGBIT(EV_KEY, sizeof(keyBits));
+        if (ioctl(fd, eventRequest, eventBits) < 0) { return false; }
+        if (!SemuQuitChord.bit(eventBits, EV_KEY)) { return false; }
+        if (ioctl(fd, keyRequest, keyBits) < 0) { return false; }
+        return SemuQuitChord.bit(keyBits, BTN_SOUTH) && SemuQuitChord.bit(keyBits, BTN_START);
+    }
+
+    class int openPads(struct SemuPadState* pads) {
+        int count = 0;
+        DIR* directory = opendir("/dev/input");
+        if (directory == null) { return 0; }
+        struct dirent* entry = readdir(directory);
+        while (entry != null && count < SEMU_MAX_PADS) {
+            char* name = entry->d_name;
+            if (strncmp(name, "event", 5) == 0) {
+                char path[300];
+                size_t capacity = sizeof(path);
+                snprintf(path, capacity, "/dev/input/%s", name);
+                int flags = (int)O_RDONLY | (int)O_NONBLOCK | (int)O_CLOEXEC;
+                int fd = open(path, flags);
+                if (fd >= 0) {
+                    if (SemuQuitChord.isGamepad(fd)) {
+                        pads[count].fd = fd;
+                        pads[count].start_at = 0LL;
+                        pads[count].select_at = 0LL;
+                        count++;
+                    } else {
+                        close(fd);
+                    }
+                }
+            }
+            entry = readdir(directory);
+        }
+        closedir(directory);
+        return count;
+    }
+
+    class bool chordHit(struct SemuPadState* pad, int windowMs) {
+        if (pad->start_at == 0LL || pad->select_at == 0LL) { return false; }
+        long long delta = pad->start_at - pad->select_at;
+        if (delta < 0LL) { delta = -delta; }
+        return delta <= (long long)windowMs;
+    }
+
+    class bool drain(struct SemuPadState* pad, int windowMs) {  // true when the chord fired on this pad
+        struct input_event events[32];
+        while (true) {
+            int fd = pad->fd;
+            ssize_t got = read(fd, events, sizeof(events));
+            if (got <= (ssize_t)0) { return false; }
+            size_t total = (size_t)got;
+            size_t count = total / sizeof(struct input_event);
+            long long now = SemuClock.milliseconds();
+            for (size_t index = (size_t)0; index < count; index++) {
+                if ((int)events[index].type != EV_KEY) { continue; }
+                if ((int)events[index].code == BTN_START) { pad->start_at = events[index].value != 0 ? now : 0LL; }
+                if ((int)events[index].code == BTN_SELECT) { pad->select_at = events[index].value != 0 ? now : 0LL; }
+                if (SemuQuitChord.chordHit(pad, windowMs)) { return true; }
+            }
+        }
+        return false;
+    }
+
+    class int supervise(int child, int windowMs, bool watchPads) {  // waits for exit or the quit chord
+        struct SemuPadState pads[SEMU_MAX_PADS];
+        int count = watchPads ? SemuQuitChord.openPads(pads) : 0;
+        if (watchPads && count == 0) { Console.error("semu: no gamepad found for the Start+Select quit chord"); }
+        struct pollfd polls[SEMU_MAX_PADS];
+        int exitCode = 0;
+        bool exited = false;
+        while (true) {
+            exitCode = SemuProcessGroup.reap(child, &exited);
+            if (exited) { break; }
+            for (int index = 0; index < count; index++) {
+                polls[index].fd = pads[index].fd;
+                polls[index].events = POLLIN;
+                polls[index].revents = 0;
+            }
+            int ready = 0;
+            nfds_t total = (nfds_t)count;
+            if (count > 0) { ready = poll(polls, total, SEMU_POLL_MS); }
+            if (count == 0) { usleep(SEMU_POLL_MS * 1000); }
+            if (ready <= 0) { continue; }
+            bool quit = false;
+            for (int index = 0; index < count; index++) {
+                int revents = (int)polls[index].revents;
+                struct SemuPadState* pad = &pads[index];
+                if ((revents & (int)POLLIN) != 0 && SemuQuitChord.drain(pad, windowMs)) { quit = true; }
+                if ((revents & ((int)POLLERR | (int)POLLHUP)) != 0) { close(pad->fd); pad->fd = -1; }
+            }
+            if (quit) {
+                Console.error("semu: Start+Select quit");
+                SemuProcessGroup.terminate(child);
+                exitCode = 0;
+                break;
+            }
+        }
+        SemuProcessGroup.reapGroup(child);
+        for (int index = 0; index < count; index++) { if (pads[index].fd >= 0) { close(pads[index].fd); } }
+        return exitCode;
+    }
+}

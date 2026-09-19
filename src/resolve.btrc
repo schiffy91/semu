@@ -1,0 +1,161 @@
+import Library.FileSystem;
+import Library.JSON;
+import Library.Map;
+import Library.Platform;
+import Library.Strings;
+import Library.Vector;
+import ./lib/json.btrc;
+import ./lib/paths.btrc;
+import ./model.btrc;
+
+class SemuTokens {
+    public Map<string, string> values;
+
+    public SemuTokens() { self.values = {}; }
+
+    public void put(string name, string value) { self.values.put(name, value); }
+
+    public string get(string name) { return self.values.getOrDefault(name, ""); }
+
+    public string resolve(string source) {  // expands ${name} for every known token, then ${home}
+        if (source == null || !source.contains("${")) { return source; }
+        string result = source;
+        for name in self.values.keys() {
+            result = result.replace("${" + name + "}", self.values.get(name));
+        }
+        return SemuPaths.expandHome(result);
+    }
+
+    public bool resolved(string value) { return value != null && !value.contains("${"); }
+}
+
+class SemuPlan {
+    public SemuTarget target;
+    public string platform;
+    public string configRoot;
+    public string semuHome;
+    public string assetRoot;
+    public JSONValue settings;
+    public SemuTokens tokens;
+    public SemuInput input;
+    public Vector<string> systems;
+    public Vector<string> emulators;
+
+    public SemuPlan(SemuTarget target, string configRoot) {
+        self.target = target;
+        self.platform = target.platform;
+        self.configRoot = configRoot;
+        self.semuHome = "";
+        self.assetRoot = "";
+        self.settings = JSONValue.makeObject();
+        self.tokens = SemuTokens();
+        self.input = null;
+        self.systems = [];
+        self.emulators = [];
+    }
+
+    public string path(string name) { return self.tokens.get(name); }
+
+    public string stateRoot() { return self.path("state_root"); }
+
+    public string romsRoot() { return self.path("roms"); }
+}
+
+class SemuResolver {
+    class JSONValue readOptional(string path) {
+        if (!FileSystem.isFile(path)) { return JSONValue.makeNull(); }
+        JSONValue value = SemuJson.readFile(path);
+        return value.isError() ? JSONValue.makeNull() : value;
+    }
+
+    class JSONValue overrides(string semuHome) {  // $SEMU_HOME/overrides/**/*.json in sorted order
+        JSONValue result = JSONValue.makeObject();
+        string root = PathTools.join(semuHome, "overrides");
+        if (!FileSystem.isDir(root)) { return result; }
+        Vector<string> pending = [root];
+        Vector<string> files = [];
+        while (!pending.isEmpty()) {
+            string directory = pending.pop();
+            for name in FileSystem.listDir(directory).sorted() {
+                string path = PathTools.join(directory, name);
+                if (FileSystem.isDir(path)) { pending.push(path); }
+                else if (name.endsWith(".json")) { files.push(path); }
+            }
+        }
+        files.sort();
+        for file in files { result = SemuJson.merge(result, SemuResolver.readOptional(file)); }
+        return result;
+    }
+
+    class JSONValue targetSettings(SemuModel model, SemuTarget target, SemuDiagnostics diagnostics) {
+        Vector<string> seen = [];
+        Vector<SemuTarget> chain = [];
+        SemuTarget current = target;
+        while (current != null) {
+            if (seen.contains(current.id)) {
+                diagnostics.add(current.id, "inherits", "target inheritance cycle");
+                break;
+            }
+            seen.push(current.id);
+            chain.push(current);
+            current = current.inherits.isEmpty() ? null : model.target(current.inherits);
+            if (current == null && !chain.last().inherits.isEmpty()) {
+                diagnostics.add(chain.last().id, "inherits", "unknown parent target " + chain.last().inherits);
+            }
+        }
+        JSONValue result = JSONValue.makeObject();
+        for (int index = chain.size() - 1; index >= 0; index--) { result = SemuJson.merge(result, chain.get(index).settings); }
+        return result;
+    }
+
+    class SemuPlan plan(SemuModel model, string targetId, string semuHome, string assetRoot, string settingsJson, SemuDiagnostics diagnostics) {
+        SemuTarget target = model.target(targetId);
+        if (target == null) {
+            diagnostics.add(model.configRoot, "target", "unknown target " + targetId);
+            return null;
+        }
+        SemuPlan plan = SemuPlan(target, model.configRoot);
+        plan.semuHome = SemuPaths.expandHome(semuHome.isEmpty() ? Environment.get("SEMU_HOME", "${home}/.config/semu") : semuHome);
+        plan.assetRoot = assetRoot.isEmpty() ? Environment.get("SEMU_ASSET_ROOT", "") : assetRoot;
+        JSONValue settings = SemuJson.merge(model.defaults, SemuResolver.targetSettings(model, target, diagnostics));
+        settings = SemuJson.merge(settings, SemuResolver.readOptional(PathTools.join(plan.semuHome, "semu.json")));
+        settings = SemuJson.merge(settings, SemuResolver.overrides(plan.semuHome));
+        if (!settingsJson.isEmpty()) {
+            JSONValue extra = JSONValue.parse(settingsJson);
+            if (extra == null || extra.isError() || !extra.isObject()) { diagnostics.add("--settings-json", "json", "must be a JSON object"); }
+            else { settings = SemuJson.merge(settings, extra); }
+        }
+        plan.settings = settings;
+        plan.tokens.put("home", SemuPaths.home());
+        plan.tokens.put("config_root", model.configRoot);
+        plan.tokens.put("project", PathTools.dirname(model.configRoot));
+        plan.tokens.put("asset_root", plan.assetRoot);
+        plan.tokens.put("semu_home", plan.semuHome);
+        plan.tokens.put("target", target.id);
+        JSONValue paths = settings.get("paths");
+        if (paths == null || !paths.isObject()) { diagnostics.add(model.configRoot, "settings.paths", "missing paths"); }
+        else {
+            for key in paths.keys().sorted() {
+                string value = SemuPaths.expandHome(SemuJson.text(paths.get(key)));
+                plan.tokens.put(key, value);
+                plan.tokens.put("paths." + key, value);
+            }
+        }
+        for name in ["roms", "bios", "emulation_root", "state_root", "content_root"] {
+            if (plan.path(name).isEmpty()) { diagnostics.add(target.id, "settings.paths." + name, "must be set"); }
+        }
+        plan.input = model.input(target.input);
+        if (plan.input == null) { diagnostics.add(target.id, "input", "unknown input definition " + target.input); }
+        for systemId in model.systemIds() {
+            SemuSystem system = model.system(systemId);
+            Vector<SemuSystemBinding> bindings = system.bindingsFor(plan.platform);
+            if (bindings.isEmpty()) { continue; }
+            plan.systems.push(systemId);
+            for binding in bindings {
+                if (!plan.emulators.contains(binding.emulator)) { plan.emulators.push(binding.emulator); }
+            }
+        }
+        plan.emulators.sort();
+        return plan;
+    }
+}

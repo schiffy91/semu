@@ -1,25 +1,23 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "id": "steam-deck",
   "platform": "linux",
   "nix_systems": [
     "x86_64-linux"
   ],
-  "deployment_target": true,
-  "backends": [
-    "bwrap"
-  ],
-  "artifact": "appimage",
-  "input": "input/steam-deck",
-  "validation": {
-    "kind": "physical",
-    "harness": "tests/targets/steamdeck",
-    "viewport": {
-      "width": 1280,
-      "height": 800
+  "backend": "native",
+  "input": "steam-deck",
+  "settings": {
+    "paths": {
+      "emulation_root": "/run/media/deck/SD/Emulation",
+      "roms": "/run/media/deck/SD/Emulation/ES-DE/ES-DE/ROMs",
+      "media": "/run/media/deck/SD/Emulation/ES-DE/ES-DE/downloaded_media",
+      "bios": "/run/media/deck/SD/Emulation/RetroArch/config/system",
+      "content_root": "/run/media/deck/SD/Emulation/Semu",
+      "state_root": "${home}/.local/share/semu"
     },
-    "must_complete_before": [
-      "bazzite"
-    ]
+    "ui": {
+      "display_index": 0
+    }
   }
 }

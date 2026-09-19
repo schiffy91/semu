@@ -1,0 +1,237 @@
+// Contract tests: generated documents must carry the exact keys a user would notice.
+
+import Library.Console;
+import Library.FileSystem;
+import Library.JSON;
+import Library.Platform;
+import Library.Strings;
+import Library.Vector;
+import ../../src/lib/json.btrc;
+import ../../src/model.btrc;
+import ../../src/resolve.btrc;
+import ../../src/check.btrc;
+import ../../src/emit/esde.btrc;
+import ../../src/emit/profiles.btrc;
+import ../../src/launch/plan.btrc;
+
+class Contract {
+    public int failures;
+    public int checks;
+
+    public Contract() {
+        self.failures = 0;
+        self.checks = 0;
+    }
+
+    public void expect(bool condition, string message) {
+        self.checks++;
+        if (!condition) {
+            self.failures++;
+            Console.error("FAIL: " + message);
+        }
+    }
+
+    public void contains(string haystack, string needle, string message) {
+        self.expect(haystack.contains(needle), f"{message}: missing '{needle}'");
+    }
+
+    public void lacks(string haystack, string needle, string message) {
+        self.expect(!haystack.contains(needle), f"{message}: unexpected '{needle}'");
+    }
+}
+
+class Fixture {
+    public string project;
+    public string scratch;
+    public SemuDiagnostics diagnostics;
+    public SemuModel model;
+    public SemuPlan plan;
+
+    public Fixture(string target) {
+        self.project = Environment.get("SEMU_PROJECT", FileSystem.currentDirectory());
+        self.scratch = FileSystem.tempDir("semu-contract");
+        self.diagnostics = SemuDiagnostics();
+        self.model = SemuModel.load(PathTools.join(self.project, "config"), self.diagnostics);
+        string assets = PathTools.join(self.scratch, "assets");
+        FileSystem.mkdirp(PathTools.join(assets, "bin"));
+        string home = PathTools.join(self.scratch, "semu-home");
+        string overlay = "{\"paths\":{\"state_root\":\"" + PathTools.join(self.scratch, "state") + "\",\"content_root\":\"" + PathTools.join(self.scratch, "content") + "\"}}";
+        self.plan = SemuResolver.plan(self.model, target, home, assets, overlay, self.diagnostics);
+    }
+
+    public string profile(string emulatorId, string relative) {
+        SemuEmulator emulator = self.model.emulator(emulatorId);
+        for file in SemuProfiles.render(self.model, self.plan, emulator, self.diagnostics) {
+            if (file.path.equals(relative)) { return file.content; }
+        }
+        return "";
+    }
+}
+
+class ModelContract {
+    class void run(Contract contract) {
+        Fixture fixture = Fixture("linux-desktop");
+        contract.expect(fixture.diagnostics.ok(), "model loads without diagnostics: " + fixture.diagnostics.render());
+        contract.expect(fixture.model.systemIds().size() == 17, "seventeen systems are declared");
+        contract.expect(fixture.model.target("steam-deck") != null, "steam-deck target exists");
+        contract.expect(fixture.model.target("linux-desktop") != null, "linux-desktop target exists");
+        contract.expect(SemuChecker.check(fixture.model, fixture.plan, fixture.diagnostics), "checker passes: " + fixture.diagnostics.render());
+        contract.expect(fixture.plan.systems.size() == 17, "every system serves linux");
+        contract.expect(fixture.plan.emulators.contains("retroarch"), "retroarch is selected");
+        contract.expect(!fixture.plan.emulators.contains("ares"), "ares is macOS only and not selected");
+        contract.lacks(fixture.plan.romsRoot(), "/run/media/deck", "desktop ROM root is not the Deck SD card");
+        contract.contains(fixture.plan.romsRoot(), "Games/Emulation/ES-DE/ES-DE/ROMs", "desktop ROM root follows the Emulation layout");
+        Fixture deck = Fixture("steam-deck");
+        contract.contains(deck.plan.romsRoot(), "/run/media/deck/SD/Emulation/ES-DE/ES-DE/ROMs", "deck ROM root is the SD card");
+        contract.expect(deck.plan.input != null && deck.plan.input.id.equals("steam-deck"), "deck uses its own input definition");
+    }
+}
+
+class SettingsLadderContract {
+    class void run(Contract contract) {
+        Fixture fixture = Fixture("linux-desktop");
+        string home = fixture.plan.semuHome;
+        FileSystem.mkdirp(PathTools.join(home, "overrides/visual"));
+        FileSystem.writeText(PathTools.join(home, "semu.json"), "{\"ui\":{\"theme\":\"linear-es-de\"},\"visual\":{\"bezels\":false}}");
+        FileSystem.writeText(PathTools.join(home, "overrides/visual/bezels.json"), "{\"visual\":{\"bezels\":true}}");
+        SemuDiagnostics diagnostics = SemuDiagnostics();
+        SemuPlan plan = SemuResolver.plan(fixture.model, "linux-desktop", home, fixture.plan.assetRoot, "{\"ui\":{\"display_index\":2}}", diagnostics);
+        contract.expect(SemuJson.textAt(plan.settings, "ui.theme").equals("linear-es-de"), "semu.json overrides defaults");
+        contract.expect(SemuJson.boolAt(plan.settings, "visual.bezels", false), "overrides beat semu.json");
+        contract.expect(SemuJson.intAt(plan.settings, "ui.display_index", 0) == 2, "--settings-json beats everything");
+        contract.expect(SemuJson.boolAt(plan.settings, "visual.integer_scaling", false), "untouched defaults survive");
+    }
+}
+
+class EsDeContract {
+    class void run(Contract contract) {
+        Fixture fixture = Fixture("linux-desktop");
+        string systems = SemuEsDeDocuments.systems(fixture.model, fixture.plan, fixture.diagnostics);
+        contract.contains(systems, "<name>gb</name>", "es_systems declares gb");
+        contract.contains(systems, "<extension>.bin .BIN .dmg .DMG .gb .GB .gbs .GBS .7z .7Z .zip .ZIP</extension>", "gb extensions in both cases");
+        contract.contains(systems, "<command label=\"Gambatte\">%EMULATOR_RETROARCH% --system gb --core gambatte --rom %ROM%</command>", "gb launches through the retroarch shim");
+        contract.contains(systems, "<command label=\"Dolphin\">%EMULATOR_DOLPHIN% --system gc --rom %ROM%</command>", "gc launches through the dolphin shim");
+        contract.contains(systems, "<platform>genesis, megadrive</platform>", "multiple ES-DE platforms are joined");
+        contract.lacks(systems, "${", "no unresolved tokens in es_systems");
+        contract.lacks(systems, "\n\n", "no blank lines between commands");
+        string rules = SemuEsDeDocuments.findRules(fixture.plan, fixture.diagnostics);
+        contract.contains(rules, "<emulator name=\"RETROARCH\">", "find rules name RETROARCH");
+        contract.contains(rules, "<entry>semu-retroarch</entry>", "find rules point at the semu shim");
+        contract.lacks(rules, "ARES", "no macOS-only emulator in linux find rules");
+        string settings = SemuEsDeDocuments.settings("", fixture.plan);
+        contract.contains(settings, "<string name=\"ROMDirectory\" value=\"" + fixture.plan.romsRoot() + "\" />", "es_settings ROM directory");
+        contract.contains(settings, "<bool name=\"CreatePlaceholderSystemDirectories\" value=\"false\" />", "no placeholder directories");
+        contract.contains(settings, "<string name=\"Theme\" value=\"slate-es-de\" />", "default theme");
+        string merged = SemuEsDeDocuments.settings("<?xml version=\"1.0\"?>\n<string name=\"ROMDirectory\" value=\"/old\" />\n<bool name=\"ShowHiddenFiles\" value=\"true\" />\n", fixture.plan);
+        contract.lacks(merged, "/old", "existing ROM directory is replaced");
+        contract.contains(merged, "<bool name=\"ShowHiddenFiles\" value=\"true\" />", "unrelated settings survive a merge");
+        contract.expect(fixture.diagnostics.ok(), "ES-DE emit has no diagnostics: " + fixture.diagnostics.render());
+    }
+}
+
+class RetroArchProfileContract {
+    class void run(Contract contract) {
+        Fixture fixture = Fixture("linux-desktop");
+        string cfg = fixture.profile("retroarch", "retroarch.cfg");
+        contract.expect(!cfg.isEmpty(), "retroarch.cfg renders");
+        contract.contains(cfg, "video_fullscreen = \"true\"", "fullscreen");
+        contract.contains(cfg, "input_driver = \"sdl2\"", "sdl2 input driver");
+        contract.contains(cfg, "input_joypad_driver = \"sdl2\"", "sdl2 joypad driver");
+        contract.contains(cfg, "input_player1_joypad_index = \"0\"", "player one is joypad 0");
+        contract.contains(cfg, "input_quit_gamepad_combo = \"0\"", "native quit combo disabled, semu owns Start+Select");
+        contract.contains(cfg, "notification_show_autoconfig = \"false\"", "autoconfig toast suppressed");
+        contract.contains(cfg, "network_cmd_enable = \"true\"", "network commands enabled");
+        contract.contains(cfg, "network_cmd_port = \"55355\"", "network command port");
+        contract.contains(cfg, "video_shader_enable = \"false\"", "native shaders disabled");
+        contract.contains(cfg, "input_save_state = \"s\"", "save state hotkey");
+        contract.contains(cfg, "input_load_state = \"a\"", "load state hotkey");
+        contract.contains(cfg, "input_pause_toggle = \"p\"", "pause hotkey");
+        contract.contains(cfg, "input_exit_emulator = \"escape\"", "escape hotkey");
+        contract.contains(cfg, "savefile_directory = \"" + fixture.plan.path("content_root") + "/saves\"", "saves under the content root");
+        contract.contains(cfg, "savestate_directory = \"" + fixture.plan.path("content_root") + "/states\"", "states under the content root");
+        contract.contains(cfg, "joypad_autoconfig_dir = \"" + fixture.plan.assetRoot + "/share/libretro/autoconfig\"", "autoconfig from the bundle");
+        contract.lacks(cfg, "${", "no unresolved tokens");
+        contract.lacks(cfg, "/run/media/deck", "no Deck path on the desktop");
+        contract.expect(fixture.diagnostics.ok(), "retroarch profile has no diagnostics: " + fixture.diagnostics.render());
+    }
+}
+
+class NativeProfilesContract {
+    class void run(Contract contract) {
+        Fixture fixture = Fixture("linux-desktop");
+        string dolphin = fixture.profile("dolphin", "config/Hotkeys.ini");
+        contract.contains(dolphin, "Save State/Save State Slot 1 = @(Ctrl+S)", "dolphin save state chord");
+        contract.contains(dolphin, "Load State/Load State Slot 1 = @(Ctrl+A)", "dolphin load state chord");
+        string dolphinMain = fixture.profile("dolphin", "config/Dolphin.ini");
+        contract.contains(dolphinMain, "[Core]", "dolphin core section");
+        string pcsx2 = fixture.profile("pcsx2", "config/inis/PCSX2.ini");
+        contract.contains(pcsx2, "StartFullscreen = true", "pcsx2 starts fullscreen");
+        contract.contains(pcsx2, "Bios = " + fixture.plan.path("emulation_root") + "/PCSX2/config/bios", "pcsx2 BIOS directory resolves to the existing firmware folder");
+        string ppsspp = fixture.profile("ppsspp", "config/PSP/SYSTEM/ppsspp.ini");
+        contract.expect(!ppsspp.isEmpty(), "ppsspp.ini renders");
+        string melonds = fixture.profile("melonds", "config/melonDS.toml");
+        contract.expect(!melonds.isEmpty(), "melonDS.toml renders");
+        string cemu = fixture.profile("cemu", "config/settings.xml");
+        contract.expect(!cemu.isEmpty(), "cemu settings.xml renders");
+        string flycast = fixture.profile("flycast", "config/emu.cfg");
+        contract.expect(!flycast.isEmpty(), "flycast emu.cfg renders");
+        string azahar = fixture.profile("azahar", "config/qt-config.ini");
+        contract.expect(!azahar.isEmpty(), "azahar qt-config.ini renders");
+        string ryujinx = fixture.profile("ryujinx", "config/Config.json");
+        contract.expect(!ryujinx.isEmpty(), "ryujinx Config.json renders");
+        contract.expect(fixture.diagnostics.ok(), "native profiles have no diagnostics: " + fixture.diagnostics.render());
+    }
+}
+
+class LaunchPlanContract {
+    class void run(Contract contract) {
+        Fixture fixture = Fixture("linux-desktop");
+        string assets = fixture.plan.assetRoot;
+        FileSystem.mkdirp(PathTools.join(assets, "lib/retroarch/cores"));
+        FileSystem.writeText(PathTools.join(assets, "bin/retroarch"), "#!/bin/sh\n");
+        FileSystem.writeText(PathTools.join(assets, "lib/retroarch/cores/gambatte_libretro.so"), "");
+        string roms = PathTools.join(fixture.scratch, "roms");
+        FileSystem.mkdirp(PathTools.join(roms, "gb"));
+        FileSystem.writeText(PathTools.join(roms, "gb/Tetris.zip"), "");
+        FileSystem.writeText(PathTools.join(fixture.scratch, "outside.zip"), "");
+        fixture.plan.tokens.put("roms", roms);
+        SemuLaunchPlan launch = SemuLauncher.plan(fixture.model, fixture.plan, "retroarch", "gb", "", "Tetris.zip", fixture.diagnostics);
+        contract.expect(launch.ok(), "launch plan resolves: " + launch.error);
+        contract.expect(launch.argv.size() > 0 && launch.argv.get(0).equals(PathTools.join(assets, "bin/retroarch")), "argv starts with the bundled retroarch");
+        contract.expect(launch.argv.contains("-f"), "fullscreen flag");
+        contract.expect(launch.argv.contains("--config"), "explicit config file");
+        contract.expect(launch.argv.contains("-L"), "core loader flag");
+        contract.expect(launch.argv.contains(PathTools.join(assets, "lib/retroarch/cores/gambatte_libretro.so")), "core path");
+        contract.expect(launch.argv.last().equals(PathTools.join(roms, "gb/Tetris.zip")), "ROM is the last argument");
+        contract.expect(launch.core.equals("gambatte"), "core comes from the system binding");
+        contract.expect(launch.chordWindowMs == 250, "quit chord window is 250 ms");
+        bool xdg = false;
+        for entry in launch.environment { if (entry.startsWith("XDG_CONFIG_HOME=" + fixture.plan.stateRoot())) { xdg = true; } }
+        contract.expect(xdg, "XDG config home lives under the state root");
+        string cfg = PathTools.join(fixture.plan.stateRoot(), "retroarch/retroarch.cfg");
+        contract.expect(FileSystem.isFile(cfg), "profile written into the state root before launch");
+        contract.expect(FileSystem.isFile(PathTools.join(fixture.plan.stateRoot(), "retroarch/retroarch-core-options.cfg")), "core options written next to the config");
+        SemuLaunchPlan outside = SemuLauncher.plan(fixture.model, fixture.plan, "retroarch", "gb", "", PathTools.join(fixture.scratch, "outside.zip"), SemuDiagnostics());
+        contract.expect(!outside.ok(), "ROM outside the system directory is rejected");
+        SemuLaunchPlan wrongCore = SemuLauncher.plan(fixture.model, fixture.plan, "retroarch", "gb", "mgba", "Tetris.zip", SemuDiagnostics());
+        contract.expect(!wrongCore.ok(), "core that the system does not bind is rejected");
+        SemuLaunchPlan wrongEmulator = SemuLauncher.plan(fixture.model, fixture.plan, "dolphin", "gb", "", "Tetris.zip", SemuDiagnostics());
+        contract.expect(!wrongEmulator.ok(), "emulator that the system does not bind is rejected");
+    }
+}
+
+int main() {
+    Contract contract = Contract();
+    ModelContract.run(contract);
+    SettingsLadderContract.run(contract);
+    EsDeContract.run(contract);
+    RetroArchProfileContract.run(contract);
+    NativeProfilesContract.run(contract);
+    LaunchPlanContract.run(contract);
+    if (contract.failures > 0) {
+        Console.error(f"FAILED: {contract.failures} of {contract.checks} checks");
+        return 1;
+    }
+    Console.log(f"PASS: {contract.checks} checks");
+    return 0;
+}

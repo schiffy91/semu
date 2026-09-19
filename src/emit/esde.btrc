@@ -1,0 +1,160 @@
+import Library.FileSystem;
+import Library.JSON;
+import Library.Strings;
+import Library.Vector;
+import ../lib/json.btrc;
+import ../lib/paths.btrc;
+import ../model.btrc;
+import ../resolve.btrc;
+
+class SemuXml {
+    class string escape(string value) {
+        return value.replace("&", "&amp;").replace("\"", "&quot;").replace("<", "&lt;").replace(">", "&gt;");
+    }
+
+    class string extensions(Vector<string> values) {  // ES-DE matches case-sensitively, so emit both cases
+        Vector<string> result = [];
+        for value in values {
+            string lower = value.toLower();
+            string upper = value.toUpper();
+            if (!result.contains(lower)) { result.push(lower); }
+            if (!result.contains(upper)) { result.push(upper); }
+        }
+        return result.join(" ");
+    }
+}
+
+class SemuEsDeTemplates {
+    public string root;
+    public SemuDiagnostics diagnostics;
+
+    public SemuEsDeTemplates(string configRoot, SemuDiagnostics diagnostics) {
+        self.root = PathTools.join(configRoot, "assets/esde/templates");
+        self.diagnostics = diagnostics;
+    }
+
+    public string read(string name) {
+        string path = PathTools.join(self.root, name + ".xml");
+        string source = FileSystem.isFile(path) ? FileSystem.readText(path) : "";
+        if (source.isEmpty()) { self.diagnostics.add(path, "template", "ES-DE template is absent or empty"); }
+        return source;
+    }
+
+    public string complete(string name, string rendered) {
+        if (rendered.contains("${")) {
+            self.diagnostics.add(name, "template", "unresolved token in ES-DE template");
+            return "";
+        }
+        return rendered;
+    }
+}
+
+class SemuEsDeDocuments {
+    public Vector<string> commands;
+
+    public SemuEsDeDocuments() { self.commands = []; }
+
+    class string shim(string emulatorId) { return "semu-" + emulatorId; }
+
+    class string command(SemuSystem system, SemuSystemBinding binding) {
+        string core = binding.core.isEmpty() ? "" : " --core " + binding.core;
+        return f"%EMULATOR_{binding.emulator.toUpper()}% --system {system.id}{core} --rom %ROM%";
+    }
+
+    class string label(SemuModel model, SemuSystemBinding binding) {
+        if (!binding.label.isEmpty()) { return binding.label; }
+        SemuEmulator emulator = model.emulator(binding.emulator);
+        return emulator == null ? binding.emulator : emulator.name;
+    }
+
+    class string systemEntry(SemuModel model, SemuPlan plan, SemuSystem system, SemuEsDeTemplates templates) {
+        string commands = "";
+        for binding in system.bindingsFor(plan.platform) {
+            commands = commands + templates.complete("command", templates.read("command")
+                .replace("${LABEL}", SemuXml.escape(SemuEsDeDocuments.label(model, binding)))
+                .replace("${COMMAND}", SemuXml.escape(SemuEsDeDocuments.command(system, binding))));
+        }
+        return templates.complete("es_system", templates.read("es_system")
+            .replace("${NAME}", SemuXml.escape(system.id))
+            .replace("${FULLNAME}", SemuXml.escape(system.name))
+            .replace("${ROM_DIRECTORY}", SemuXml.escape(system.romDir))
+            .replace("${EXTENSIONS}", SemuXml.escape(SemuXml.extensions(system.extensions)))
+            .replace("${COMMANDS}", commands)
+            .replace("${PLATFORMS}", SemuXml.escape(system.esPlatforms.join(", ")))
+            .replace("${THEME}", SemuXml.escape(system.theme)));
+    }
+
+    class string systems(SemuModel model, SemuPlan plan, SemuDiagnostics diagnostics) {
+        SemuEsDeTemplates templates = SemuEsDeTemplates(plan.configRoot, diagnostics);
+        string entries = "";
+        for systemId in plan.systems { entries = entries + SemuEsDeDocuments.systemEntry(model, plan, model.system(systemId), templates); }
+        return templates.complete("es_systems", templates.read("es_systems").replace("${SYSTEMS}", entries));
+    }
+
+    class string findRules(SemuPlan plan, SemuDiagnostics diagnostics) {
+        SemuEsDeTemplates templates = SemuEsDeTemplates(plan.configRoot, diagnostics);
+        string rules = "";
+        for emulatorId in plan.emulators {
+            rules = rules + templates.complete("es_find_rule", templates.read("es_find_rule")
+                .replace("${NAME}", SemuXml.escape(emulatorId.toUpper()))
+                .replace("${SHIM}", SemuXml.escape(SemuEsDeDocuments.shim(emulatorId))));
+        }
+        return templates.complete("es_find_rules", templates.read("es_find_rules").replace("${RULES}", rules));
+    }
+
+    class string upsert(string document, string kind, string name, string value) {  // replace or append one ES-DE setting
+        string marker = f"name=\"{name}\"";
+        string replacement = f"<{kind} name=\"{name}\" value=\"{SemuXml.escape(value)}\" />";
+        Vector<string> result = [];
+        bool replaced = false;
+        for line in Strings.split(document, "\n") {
+            if (line.contains(marker)) {
+                if (!replaced) { result.push(replacement); replaced = true; }
+            } else if (!line.trim().isEmpty()) {
+                result.push(line);
+            }
+        }
+        if (!replaced) { result.push(replacement); }
+        return result.join("\n") + "\n";
+    }
+
+    class string settings(string existing, SemuPlan plan) {
+        string result = existing.trim().isEmpty() ? "<?xml version=\"1.0\"?>\n" : existing;
+        result = SemuEsDeDocuments.upsert(result, "string", "ROMDirectory", plan.romsRoot());
+        result = SemuEsDeDocuments.upsert(result, "bool", "CreatePlaceholderSystemDirectories", "false");
+        string theme = SemuJson.textAt(plan.settings, "ui.theme");
+        if (!theme.isEmpty()) { result = SemuEsDeDocuments.upsert(result, "string", "Theme", theme); }
+        string media = plan.path("media");
+        if (!media.isEmpty()) { result = SemuEsDeDocuments.upsert(result, "string", "MediaDirectory", media); }
+        return SemuEsDeDocuments.upsert(result, "int", "DisplayIndex", Strings.fromInt(SemuJson.intAt(plan.settings, "ui.display_index", 0)));
+    }
+
+    class bool emit(SemuModel model, SemuPlan plan, string outputRoot, SemuDiagnostics diagnostics) {
+        string systems = SemuEsDeDocuments.systems(model, plan, diagnostics);
+        string rules = SemuEsDeDocuments.findRules(plan, diagnostics);
+        if (systems.isEmpty() || rules.isEmpty()) { return false; }
+        string directory = PathTools.join(outputRoot, "es-de/custom_systems");
+        if (!SemuPaths.writeOwned(outputRoot, PathTools.join(directory, "es_systems.xml"), systems)
+                || !SemuPaths.writeOwned(outputRoot, PathTools.join(directory, "es_find_rules.xml"), rules)) {
+            diagnostics.add(directory, "output", "could not write ES-DE documents");
+            return false;
+        }
+        return true;
+    }
+
+    class bool install(SemuModel model, SemuPlan plan, string esDeHome, SemuDiagnostics diagnostics) {  // ~/ES-DE
+        string systems = SemuEsDeDocuments.systems(model, plan, diagnostics);
+        string rules = SemuEsDeDocuments.findRules(plan, diagnostics);
+        if (systems.isEmpty() || rules.isEmpty()) { return false; }
+        string custom = PathTools.join(esDeHome, "custom_systems");
+        string settingsFile = PathTools.join(esDeHome, "settings/es_settings.xml");
+        string existing = FileSystem.isFile(settingsFile) ? FileSystem.readText(settingsFile) : "";
+        if (!SemuPaths.writeOwned(esDeHome, PathTools.join(custom, "es_systems.xml"), systems)
+                || !SemuPaths.writeOwned(esDeHome, PathTools.join(custom, "es_find_rules.xml"), rules)
+                || !SemuPaths.writeOwned(esDeHome, settingsFile, SemuEsDeDocuments.settings(existing, plan))) {
+            diagnostics.add(esDeHome, "install", "could not write into the ES-DE home");
+            return false;
+        }
+        return true;
+    }
+}

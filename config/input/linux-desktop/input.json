@@ -1,0 +1,113 @@
+{
+  "schema_version": 1,
+  "actions": {
+    "ui.open": {
+      "label": "Open",
+      "chord": "Ctrl+O"
+    },
+    "ui.pause": {
+      "label": "Pause / Resume",
+      "chord": "Ctrl+P"
+    },
+    "ui.screenshot": {
+      "label": "Take Screenshot",
+      "chord": "Ctrl+X"
+    },
+    "ui.fullscreen": {
+      "label": "Toggle Fullscreen",
+      "chord": "Ctrl+Enter"
+    },
+    "ui.menu": {
+      "label": "Open Menu",
+      "chord": "Ctrl+M"
+    },
+    "ui.menu.up": {
+      "label": "Menu Up",
+      "chord": "Ctrl+Up"
+    },
+    "ui.menu.down": {
+      "label": "Menu Down",
+      "chord": "Ctrl+Down"
+    },
+    "ui.menu.confirm": {
+      "label": "Menu Confirm",
+      "chord": "Ctrl+Space"
+    },
+    "ui.menu.back": {
+      "label": "Menu Back",
+      "chord": "Ctrl+Backspace"
+    },
+    "app.quit": {
+      "label": "Quit Emulator",
+      "chord": "Ctrl+Q"
+    },
+    "state.prev": {
+      "label": "Previous State Slot",
+      "chord": "Ctrl+J"
+    },
+    "state.next": {
+      "label": "Next State Slot",
+      "chord": "Ctrl+K"
+    },
+    "state.load": {
+      "label": "Load State",
+      "chord": "Ctrl+A"
+    },
+    "state.save": {
+      "label": "Save State",
+      "chord": "Ctrl+S"
+    },
+    "speed.rewind": {
+      "label": "Rewind",
+      "chord": "Ctrl+-"
+    },
+    "speed.fast": {
+      "label": "Fast Forward",
+      "chord": "Ctrl++"
+    },
+    "screen.swap": {
+      "label": "Swap Screens",
+      "chord": "Ctrl+Tab"
+    },
+    "wii.controller.wiimote": {
+      "label": "Wiimote",
+      "chord": "Ctrl+Shift+F9"
+    },
+    "wii.controller.nunchuk": {
+      "label": "Wiimote + Nunchuk",
+      "chord": "Ctrl+Shift+F10"
+    },
+    "wii.controller.classic": {
+      "label": "Classic Controller",
+      "chord": "Ctrl+Shift+F11"
+    },
+    "wii.controller.gamecube": {
+      "label": "GameCube Controller",
+      "chord": "Ctrl+Shift+F12"
+    },
+    "ui.escape": {
+      "label": "Escape",
+      "chord": "Esc"
+    }
+  },
+  "quit_chord": {
+    "buttons": [
+      "start",
+      "select"
+    ],
+    "window_ms": 250
+  },
+  "device": "xbox",
+  "device_identities": {
+    "retroarch_input_driver": "sdl2",
+    "azahar_controller_guid": "030000005e040000ea02000000000000",
+    "dolphin_pad": "SDL/0/Xbox Controller",
+    "dolphin_wiimote": "SDL/0/Xbox Controller",
+    "dolphin_pointer": "XInput2/0/Virtual core pointer",
+    "pcsx2_pad": "SDL-0",
+    "cemu_api": "SDLController",
+    "cemu_display_name": "Xbox Controller",
+    "cemu_profile": "Xbox",
+    "ryujinx_controller_id": "0-00000000-045e-0000-ea02-000000000000"
+  }
+}

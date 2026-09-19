@@ -1,130 +1,60 @@
-SHELL := /bin/bash
+SHELL := /bin/sh
+BTRC ?= $(shell command -v btrcpy 2>/dev/null || echo "nix run --no-warn-dirty .\#btrcpy --")
+CC ?= cc
+CFLAGS ?= -std=c11 -O1
+LIBS ?= -lm
+TRANSPILE := $(BTRC) --strict-imports --no-cache --no-stdlib
 
-BTRC_TRANSPILE := nix run .\#btrcpy --
+BUILD := build
+SOURCES := $(shell find src tests -name '*.btrc' | sort)
+CONFIG := $(shell find config -type f | sort)
+SEMU_BIN := $(BUILD)/semu
+CONTRACTS_BIN := $(BUILD)/contracts
+TARGET ?= linux-desktop
+ASSET_ROOT ?= $(BUILD)/nix/result
 
-TARGET ?= steam-deck
-EMULATOR ?=
-ACTION ?= help
+.PHONY: all build test configs nix nix-check prepare doctor clean help
 
-SEMU_SOURCE := src/main.btrc
-SEMU_SOURCES := $(SEMU_SOURCE) src/cli.btrc $(shell find src/compiler src/generators src/lib -name '*.btrc' -print 2>/dev/null)
-SEMU_CONFIG := $(shell find config -type f -print 2>/dev/null)
-SEMU_C := build/semu.c
-SEMU_BIN := build/semu
-NIX_RESULT := build/nix/result
+all: build ## Build the semu CLI
 
-.PHONY: btrc-build cross-linux nix-build target configs emulator \
-	appimage-runtime appimage-build appimage-verify \
-	appimage-emulator-runtime appimage-emulator-build \
-	appimage-emulator-verify steamdeck steamdeck-emulator bazzite help
+build: $(SEMU_BIN)
 
-btrc-build: $(SEMU_BIN) ## Build the BTRC semu CLI
+$(BUILD)/semu.c: $(SOURCES)
+	@mkdir -p "$(BUILD)"
+	$(TRANSPILE) "$(CURDIR)/src/semu.btrc" -o "$(CURDIR)/$@"
 
-$(SEMU_BIN): $(SEMU_SOURCES) $(SEMU_CONFIG) flake.nix flake.lock Makefile
-	@mkdir -p "$(dir $(SEMU_C))" "$(dir $(SEMU_BIN))"
-	$(BTRC_TRANSPILE) "$(CURDIR)/$(SEMU_SOURCE)" -o "$(CURDIR)/$(SEMU_C)" --strict-imports --no-cache --no-stdlib
-	perl -0pi -e 's/\n+\z/\n/' "$(SEMU_C)"
-	$(CC) "$(SEMU_C)" -std=c11 -o "$@" -lm
-# Static x86_64-linux CLI and input supervisor for immutable Linux targets.
-cross-linux: $(SEMU_BIN) ## Cross-build build/semu-linux-x64 (static musl)
-	nix shell nixpkgs\#zig --command zig cc -target x86_64-linux-musl -std=c11 \
-		"$(SEMU_C)" -o build/semu-linux-x64 -lm
-	@file build/semu-linux-x64 | grep -q "ELF 64-bit" || \
-		{ echo "cross-linux did not produce an x86_64 ELF"; exit 2; }
-	@mkdir -p build/steamdeck/input
-	$(BTRC_TRANSPILE) src/generators/input/linux_supervisor.btrc \
-		-o build/steamdeck/input/linux_supervisor.c \
-		--strict-imports --no-cache --no-stdlib
-	nix shell nixpkgs\#zig --command zig cc -target x86_64-linux-gnu -O2 -std=c11 \
-		build/steamdeck/input/linux_supervisor.c \
-		-o build/steamdeck/input/semu-input-supervisor
+$(SEMU_BIN): $(BUILD)/semu.c
+	$(CC) $(CFLAGS) "$(CURDIR)/$<" -o "$(CURDIR)/$@" $(LIBS)
 
-nix-build: ## Build the composed Nix package
-	@mkdir -p "$(dir $(NIX_RESULT))"
-	nix build --out-link "$(NIX_RESULT)" .\#default
+$(BUILD)/contracts.c: $(SOURCES)
+	@mkdir -p "$(BUILD)"
+	$(TRANSPILE) "$(CURDIR)/tests/contracts/main.btrc" -o "$(CURDIR)/$@"
 
-target: $(SEMU_BIN) ## Compile TARGET (default: steam-deck)
-	$(SEMU_BIN) build target "$(TARGET)" --project "$(CURDIR)"
+$(CONTRACTS_BIN): $(BUILD)/contracts.c
+	$(CC) $(CFLAGS) "$(CURDIR)/$<" -o "$(CURDIR)/$@" $(LIBS)
 
-configs: $(SEMU_BIN) ## Compile generated configs for TARGET (default: steam-deck)
-	$(SEMU_BIN) build configs --target "$(TARGET)" --project "$(CURDIR)"
+test: $(CONTRACTS_BIN) $(SEMU_BIN) ## Run the contract tests against the real config tree
+	SEMU_PROJECT="$(CURDIR)" "$(CURDIR)/$(CONTRACTS_BIN)"
 
-emulator: $(SEMU_BIN) ## Compile EMULATOR for TARGET
-	@test -n "$(EMULATOR)" || { echo "EMULATOR is required" >&2; exit 64; }
-	$(SEMU_BIN) build emulator "$(EMULATOR)" --target "$(TARGET)" \
-		--project "$(CURDIR)"
+configs: $(SEMU_BIN) ## Emit ES-DE documents and emulator profiles for TARGET
+	"$(CURDIR)/$(SEMU_BIN)" build configs --target "$(TARGET)" --project "$(CURDIR)" \
+		--asset-root "$(abspath $(ASSET_ROOT))" --output "$(CURDIR)/$(BUILD)/targets/$(TARGET)"
 
-# The shippable x86_64 AppImage is assembled by the compiler from an immutable
-# runtime root; packaging policy remains in BTRC and Nix.
-APPIMAGE_PACKAGE_ATTRIBUTE ?= steamdeck-runtime
-APPIMAGE_EMULATOR ?=
-APPIMAGE_OUTPUT ?= $(CURDIR)/build/Semu-x86_64.AppImage
-APPIMAGE_EMULATOR_OPTION = $(if $(strip $(APPIMAGE_EMULATOR)),--emulator "$(APPIMAGE_EMULATOR)",)
-APPIMAGE_WORK_OPTION = $(if $(strip $(SEMU_APPIMAGE_WORK_ROOT)),--work-root "$(SEMU_APPIMAGE_WORK_ROOT)",)
-ifeq ($(origin SEMU_APPIMAGE_RUNTIME_ROOT),undefined)
-SEMU_APPIMAGE_RUNTIME_ROOT = $(HOME)/.cache/semu/appimage-runtime/$(APPIMAGE_PACKAGE_ATTRIBUTE)/runtime-root
-SEMU_APPIMAGE_SOURCE_ROOT = $(HOME)/.cache/semu/appimage-runtime/$(APPIMAGE_PACKAGE_ATTRIBUTE)/source
-APPIMAGE_RUNTIME_COMMAND = packaging/appimage/build_runtime.sh \
-	"$(SEMU_APPIMAGE_RUNTIME_ROOT)" "$(APPIMAGE_PACKAGE_ATTRIBUTE)"
-else
-SEMU_APPIMAGE_SOURCE_ROOT ?= $(dir $(SEMU_APPIMAGE_RUNTIME_ROOT))source
-APPIMAGE_RUNTIME_COMMAND = test -d "$(SEMU_APPIMAGE_RUNTIME_ROOT)" || { \
-		echo "runtime root does not exist: $(SEMU_APPIMAGE_RUNTIME_ROOT)" >&2; exit 2; }
-endif
-appimage-runtime: ## Build or validate the pinned x86_64 Deck runtime root
-	$(APPIMAGE_RUNTIME_COMMAND)
+nix: ## Build the composed bundle (CLI, ES-DE, emulators) at build/nix/result
+	@mkdir -p "$(BUILD)/nix"
+	nix build --no-warn-dirty --out-link "$(BUILD)/nix/result" ".#semu"
 
-appimage-build: $(SEMU_BIN) appimage-runtime ## Assemble and verify the AppImage without deploying it
-	$(SEMU_BIN) package appimage --target steam-deck \
-		--project "$(SEMU_APPIMAGE_SOURCE_ROOT)" \
-		--runtime-builder-repository "$(CURDIR)" \
-		--runtime-root "$(SEMU_APPIMAGE_RUNTIME_ROOT)" $(APPIMAGE_WORK_OPTION) \
-		$(APPIMAGE_EMULATOR_OPTION) --output "$(APPIMAGE_OUTPUT)"
+nix-check: ## Evaluate every flake output
+	nix flake check --no-warn-dirty --no-build
 
-appimage-verify: $(SEMU_BIN) ## Verify exact existing AppImage bytes without rebuilding
-	@test -x "$(APPIMAGE_OUTPUT)" || \
-		{ echo "missing AppImage; run 'make appimage-build' first" >&2; exit 2; }
-	$(SEMU_BIN) package appimage verify --target steam-deck \
-		--project "$(SEMU_APPIMAGE_SOURCE_ROOT)" \
-		--runtime-builder-repository "$(CURDIR)" \
-		--runtime-root "$(SEMU_APPIMAGE_RUNTIME_ROOT)" $(APPIMAGE_WORK_OPTION) \
-		$(APPIMAGE_EMULATOR_OPTION) --artifact "$(APPIMAGE_OUTPUT)"
+prepare: nix ## Install ES-DE documents and settings for TARGET using the built bundle
+	"$(CURDIR)/$(BUILD)/nix/result/bin/semu" prepare --target "$(TARGET)"
 
-appimage-emulator-runtime: ## Build one exact emulator release runtime
-	@test -n "$(EMULATOR)" || { echo "EMULATOR is required" >&2; exit 64; }
-	$(MAKE) appimage-runtime \
-		APPIMAGE_PACKAGE_ATTRIBUTE=steamdeck-runtime-$(EMULATOR)
+doctor: $(SEMU_BIN) ## Show resolved paths and what is missing for TARGET
+	"$(CURDIR)/$(SEMU_BIN)" doctor --target "$(TARGET)" --project "$(CURDIR)" --asset-root "$(abspath $(ASSET_ROOT))"
 
-appimage-emulator-build: ## Assemble one exact emulator release AppImage
-	@test -n "$(EMULATOR)" || { echo "EMULATOR is required" >&2; exit 64; }
-	$(MAKE) appimage-build \
-		APPIMAGE_PACKAGE_ATTRIBUTE=steamdeck-runtime-$(EMULATOR) \
-		APPIMAGE_EMULATOR=$(EMULATOR) \
-		APPIMAGE_OUTPUT="$(CURDIR)/build/Semu-$(EMULATOR)-x86_64.AppImage"
+clean:
+	rm -rf "$(BUILD)"
 
-appimage-emulator-verify: ## Verify one exact emulator release AppImage
-	@test -n "$(EMULATOR)" || { echo "EMULATOR is required" >&2; exit 64; }
-	$(MAKE) appimage-verify \
-		APPIMAGE_PACKAGE_ATTRIBUTE=steamdeck-runtime-$(EMULATOR) \
-		APPIMAGE_EMULATOR=$(EMULATOR) \
-		APPIMAGE_OUTPUT="$(CURDIR)/build/Semu-$(EMULATOR)-x86_64.AppImage"
-
-steamdeck: ## Delegate ACTION=<target> to the Steam Deck harness
-	$(MAKE) -f tests/targets/steamdeck/Makefile "$(ACTION)"
-
-steamdeck-emulator: ## Run ACTION for one exact emulator slice on the Deck
-	@test -n "$(EMULATOR)" || { echo "EMULATOR is required" >&2; exit 64; }
-	$(MAKE) -f tests/targets/steamdeck/Makefile "$(ACTION)" \
-		SEMU_DECK_APPIMAGE="$(CURDIR)/build/Semu-$(EMULATOR)-x86_64.AppImage" \
-		SEMU_APPIMAGE_RUNTIME_ROOT="$(HOME)/.cache/semu/appimage-runtime/steamdeck-runtime-$(EMULATOR)/runtime-root"
-
-bazzite: ## Delegate ACTION=<target> after physical Deck acceptance
-	$(MAKE) -f tests/targets/bazzite/Makefile "$(ACTION)"
-
-include tests/Makefile
-
-help: ## Show available targets
-	@grep -hE '^[a-zA-Z0-9_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | \
-		awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-26s\033[0m %s\n", $$1, $$2}'
-
-.DEFAULT_GOAL := help
+help:
+	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  %-12s %s\n", $$1, $$2}'

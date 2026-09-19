@@ -1,0 +1,365 @@
+import Library.FileSystem;
+import Library.JSON;
+import Library.Map;
+import Library.Strings;
+import Library.Vector;
+import ../lib/json.btrc;
+import ../lib/paths.btrc;
+import ../model.btrc;
+import ../resolve.btrc;
+
+class SemuChords {
+    class Vector<string> known() { return ["Ctrl", "Alt", "Shift", "Meta"]; }
+
+    class string key(string chord) {
+        string remaining = chord;
+        bool consumed = true;
+        while (consumed) {
+            consumed = false;
+            for modifier in SemuChords.known() {
+                string prefix = modifier + "+";
+                if (remaining.startsWith(prefix) && remaining.len() > prefix.len()) {
+                    remaining = remaining.substring(prefix.len(), remaining.len() - prefix.len());
+                    consumed = true;
+                }
+            }
+        }
+        return remaining;
+    }
+
+    class Vector<string> modifiers(string chord) {
+        Vector<string> result = [];
+        string remaining = chord;
+        bool consumed = true;
+        while (consumed) {
+            consumed = false;
+            for modifier in SemuChords.known() {
+                string prefix = modifier + "+";
+                if (remaining.startsWith(prefix) && remaining.len() > prefix.len()) {
+                    result.push(modifier);
+                    remaining = remaining.substring(prefix.len(), remaining.len() - prefix.len());
+                    consumed = true;
+                }
+            }
+        }
+        return result;
+    }
+
+    class string mapped(JSONValue values, string token, bool required) {
+        if (values != null && values.isObject() && values.has(token)) { return SemuJson.text(values.get(token)); }
+        return required ? "" : token;
+    }
+
+    class string formatted(string format, string value) { return format.isEmpty() ? value : format.replace("${value}", value); }
+
+    class string joined(JSONValue encoding, string chord) {
+        JSONValue whole = encoding.get("whole");
+        if (whole != null && whole.isObject() && whole.has(chord)) { return SemuJson.text(whole.get(chord)); }
+        bool requireModifiers = SemuJson.boolAt(encoding, "require_modifier_map", false);
+        bool requireKeys = SemuJson.boolAt(encoding, "require_key_map", false);
+        bool ignoreModifiers = SemuJson.boolAt(encoding, "ignore_modifiers", false);
+        Vector<string> parts = [];
+        if (!ignoreModifiers) {
+            for modifier in SemuChords.modifiers(chord) {
+                string value = SemuChords.mapped(encoding.get("modifiers"), modifier, requireModifiers);
+                if (value.isEmpty()) { return ""; }
+                parts.push(SemuChords.formatted(SemuJson.textAt(encoding, "modifier_format"), value));
+            }
+        }
+        string key = SemuChords.mapped(encoding.get("keys"), SemuChords.key(chord), requireKeys);
+        if (key.isEmpty()) { return ""; }
+        if (SemuJson.textAt(encoding, "key_case").equals("lower")) { key = key.toLower(); }
+        parts.push(SemuChords.formatted(SemuJson.textAt(encoding, "key_format"), key));
+        return SemuChords.formatted(SemuJson.textAt(encoding, "format"), parts.join(SemuJson.textAt(encoding, "separator")));
+    }
+
+    class string sum(JSONValue encoding, string chord) {
+        JSONValue modifiers = encoding.get("modifiers");
+        JSONValue keys = encoding.get("keys");
+        string key = SemuChords.key(chord);
+        if (keys == null || !keys.isObject() || !keys.get(key).isInt()) { return ""; }
+        int result = keys.get(key).asInt();
+        for modifier in SemuChords.modifiers(chord) {
+            if (modifiers == null || !modifiers.isObject() || !modifiers.get(modifier).isInt()) { return ""; }
+            result += modifiers.get(modifier).asInt();
+        }
+        return Strings.fromInt(result);
+    }
+
+    class string compile(JSONValue encoding, string chord) {
+        if (encoding == null || !encoding.isObject()) { return chord; }
+        string mode = SemuJson.textAt(encoding, "mode");
+        if (mode.equals("joined")) { return SemuChords.joined(encoding, chord); }
+        if (mode.equals("sum")) { return SemuChords.sum(encoding, chord); }
+        return "";
+    }
+}
+
+class SemuBindings {
+    public Map<string, string> values;
+
+    public SemuBindings() { self.values = {}; }
+
+    public SemuBindings copy() {
+        SemuBindings result = SemuBindings();
+        for name in self.values.keys() { result.put(name, self.values.get(name)); }
+        return result;
+    }
+
+    public void put(string name, string value) { self.values.put(name, value); }
+
+    public string get(string name) { return self.values.getOrDefault(name, ""); }
+
+    public string render(string source) {
+        string result = source;
+        for name in self.values.keys() { result = result.replace("${" + name + "}", self.values.get(name)); }
+        return result;
+    }
+}
+
+class SemuProfileContext {
+    public SemuModel model;
+    public SemuPlan plan;
+    public SemuEmulator emulator;
+    public JSONValue platform;
+    public SemuDiagnostics diagnostics;
+
+    public SemuProfileContext(SemuModel model, SemuPlan plan, SemuEmulator emulator, SemuDiagnostics diagnostics) {
+        self.model = model;
+        self.plan = plan;
+        self.emulator = emulator;
+        self.platform = emulator.platform(plan.platform);
+        self.diagnostics = diagnostics;
+    }
+
+    public string stateRoot() { return PathTools.join(self.plan.stateRoot(), self.emulator.id); }
+
+    public string firmwareDirectory() {
+        string declared = self.plan.tokens.resolve(SemuJson.textAt(self.platform, "firmware.dir"));
+        if (!declared.isEmpty() && FileSystem.isDir(declared)) { return declared; }
+        for fallback in SemuJson.strings(SemuJson.get(self.platform, "firmware.fallback_dirs")) {
+            string candidate = self.plan.tokens.resolve(fallback);
+            if (FileSystem.isDir(candidate)) { return candidate; }
+        }
+        return declared.isEmpty() ? self.plan.path("bios") : declared;
+    }
+
+    public JSONValue sourceRoot(string namespaceName) {
+        if (namespaceName.equals("emulator")) { return self.emulator.definition; }
+        if (namespaceName.equals("platform")) { return self.platform; }
+        if (namespaceName.equals("input")) { return self.plan.input == null ? JSONValue.makeObject() : self.plan.input.definition; }
+        if (namespaceName.equals("profile")) { return self.emulator.profile; }
+        if (namespaceName.equals("settings")) { return self.plan.settings; }
+        JSONValue runtime = JSONValue.makeObject();
+        runtime.set("state_root", JSONValue.makeString(self.stateRoot()));
+        runtime.set("content_root", JSONValue.makeString(self.plan.path("content_root")));
+        runtime.set("bios_directory", JSONValue.makeString(self.firmwareDirectory()));
+        runtime.set("asset_root", JSONValue.makeString(self.plan.assetRoot));
+        return runtime;
+    }
+
+    public string bindingValue(JSONValue spec) {
+        string value = spec.has("literal") ? SemuJson.text(spec.get("literal")) : "";
+        string source = SemuJson.textAt(spec, "source");
+        if (!source.isEmpty()) {
+            int separator = source.indexOf(".");
+            string namespaceName = separator < 0 ? source : source.substring(0, separator);
+            string path = separator < 0 ? "" : source.substring(separator + 1, source.len() - separator - 1);
+            value = SemuJson.textAt(self.sourceRoot(namespaceName), path);
+        }
+        if (spec.has("map")) {
+            JSONValue mapped = SemuJson.get(spec.get("map"), value);
+            value = mapped.isString() ? mapped.asString() : "";
+        }
+        if (SemuJson.textAt(spec, "transform").equals("lower")) { value = value.toLower(); }
+        return self.plan.tokens.resolve(value);
+    }
+
+    public SemuBindings bindings() {
+        SemuBindings result = SemuBindings();
+        result.put("state_root", self.stateRoot());
+        result.put("asset_root", self.plan.assetRoot);
+        result.put("content_root", self.plan.path("content_root"));
+        JSONValue definitions = SemuJson.get(self.emulator.profile, "compiler.bindings");
+        if (!definitions.isObject()) { return result; }
+        for name in definitions.keys().sorted() {
+            JSONValue spec = definitions.get(name);
+            if (!spec.isObject()) {
+                self.diagnostics.add(self.emulator.profileFile, "compiler.bindings." + name, "expected object");
+                continue;
+            }
+            string value = self.bindingValue(spec);
+            if (value.isEmpty() || value.contains("${")) {
+                self.diagnostics.add(self.emulator.profileFile, "compiler.bindings." + name, "did not resolve to a concrete value");
+            } else {
+                result.put(name, value);
+            }
+        }
+        return result;
+    }
+
+    public string chord(JSONValue row) {
+        string action = SemuJson.textAt(row, "action");
+        if (action.isEmpty() || self.plan.input == null) { return ""; }
+        return self.plan.input.chord(action);
+    }
+
+    public string renderRow(string format, JSONValue row, int index, JSONValue encoding, SemuBindings base) {
+        SemuBindings bindings = base.copy();
+        bindings.put("index", Strings.fromInt(index));
+        if (row.isObject()) {
+            for key in row.keys() {
+                JSONValue value = row.get(key);
+                bindings.put(key, value.isArray() ? SemuJson.csv(value) : SemuJson.text(value));
+                if (value.isArray()) { bindings.put(key + "_csv", SemuJson.csv(value)); }
+            }
+        }
+        string chord = self.chord(row);
+        if (!chord.isEmpty()) { bindings.put("chord", SemuChords.compile(encoding, chord)); }
+        return bindings.render(format);
+    }
+
+    public SemuBindings lineGroups(SemuBindings bindings) {
+        SemuBindings result = SemuBindings();
+        JSONValue groups = SemuJson.get(self.emulator.profile, "compiler.line_groups");
+        if (!groups.isObject()) { return result; }
+        for name in groups.keys().sorted() {
+            JSONValue spec = groups.get(name);
+            string format = SemuJson.textAt(spec, "format");
+            JSONValue rows = SemuJson.get(self.emulator.profile, SemuJson.textAt(spec, "rows"));
+            Vector<string> lines = [];
+            for prefix in SemuJson.strings(spec.get("prefix")) { lines.push(bindings.render(prefix)); }
+            if (!rows.isArray() || format.isEmpty()) {
+                self.diagnostics.add(self.emulator.profileFile, "compiler.line_groups." + name, "rows must be an array and format non-empty");
+            } else {
+                for (int index = 0; index < rows.size(); index++) {
+                    JSONValue row = rows.at(index);
+                    string action = SemuJson.textAt(row, "action");
+                    if (!action.isEmpty() && !self.emulator.actions.contains(action)) { continue; }
+                    string line = self.renderRow(format, row, index, spec.get("chord_encoding"), bindings);
+                    if (line.isEmpty() || line.contains("${")) {
+                        self.diagnostics.add(self.emulator.profileFile, "compiler.line_groups." + name, f"row {index} did not resolve");
+                    } else {
+                        lines.push(line);
+                    }
+                }
+            }
+            result.put(name, lines.join("\n"));
+        }
+        return result;
+    }
+
+    public void renderLine(Vector<string> output, JSONValue value, SemuBindings bindings, SemuBindings groups) {
+        if (value.isObject()) {
+            if (!bindings.get(SemuJson.textAt(value, "if")).isEmpty()) { output.push(bindings.render(SemuJson.textAt(value, "line"))); }
+            return;
+        }
+        string line = SemuJson.text(value);
+        if (line.startsWith("@block:")) {
+            JSONValue block = SemuJson.get(self.emulator.profile, "blocks." + line.substring(7, line.len() - 7));
+            if (block.isArray()) {
+                for (int index = 0; index < block.size(); index++) { self.renderLine(output, block.at(index), bindings, groups); }
+            }
+            return;
+        }
+        if (line.startsWith("@lines:")) {
+            string group = groups.get(line.substring(7, line.len() - 7));
+            if (!group.isEmpty()) { output.push(group); }
+            return;
+        }
+        output.push(bindings.render(line));
+    }
+
+    public JSONValue renderJson(JSONValue value, SemuBindings bindings) {
+        if (value.isObject()) {
+            JSONValue result = JSONValue.makeObject();
+            for key in value.keys() { result.set(key, self.renderJson(value.get(key), bindings)); }
+            return result;
+        }
+        if (value.isArray()) {
+            JSONValue result = JSONValue.makeArray();
+            for (int index = 0; index < value.size(); index++) { result.push(self.renderJson(value.at(index), bindings)); }
+            return result;
+        }
+        if (value.isString()) { return JSONValue.makeString(self.plan.tokens.resolve(bindings.render(value.asString()))); }
+        return value;
+    }
+}
+
+class SemuProfileFile {
+    public string path;
+    public string content;
+
+    public SemuProfileFile(string path, string content) {
+        self.path = path;
+        self.content = content;
+    }
+}
+
+class SemuProfiles {
+    class string relativePath(SemuEmulator emulator, string declared, SemuBindings bindings) {  // strip the "<Emulator name>/" prefix
+        string rendered = bindings.render(declared);
+        string prefix = emulator.name + "/";
+        return rendered.startsWith(prefix) ? rendered.substring(prefix.len(), rendered.len() - prefix.len()) : rendered;
+    }
+
+    class Vector<SemuProfileFile> render(SemuModel model, SemuPlan plan, SemuEmulator emulator, SemuDiagnostics diagnostics) {
+        Vector<SemuProfileFile> result = [];
+        SemuProfileContext context = SemuProfileContext(model, plan, emulator, diagnostics);
+        if (!context.platform.isObject()) {
+            diagnostics.add(emulator.profileFile, "platform", f"no {plan.platform} slice");
+            return result;
+        }
+        SemuBindings bindings = context.bindings();
+        SemuBindings groups = context.lineGroups(bindings);
+        JSONValue files = emulator.profile.get("files");
+        if (files == null || !files.isArray()) { return result; }
+        for (int index = 0; index < files.size(); index++) {
+            JSONValue file = files.at(index);
+            string relative = SemuProfiles.relativePath(emulator, SemuJson.textAt(file, "path"), bindings);
+            if (relative.isEmpty() || relative.contains("${") || relative.startsWith("/") || relative.contains("..")) {
+                diagnostics.add(emulator.profileFile, f"files.{index}.path", "did not resolve to a contained relative path");
+                continue;
+            }
+            string content = "";
+            if (file.has("json")) {
+                content = context.renderJson(file.get("json"), bindings).stringifyPretty(2) + "\n";
+            } else {
+                Vector<string> lines = [];
+                JSONValue declared = file.get("lines");
+                if (declared != null && declared.isArray()) {
+                    for (int line = 0; line < declared.size(); line++) { context.renderLine(lines, declared.at(line), bindings, groups); }
+                }
+                content = lines.join("\n") + "\n";
+            }
+            content = plan.tokens.resolve(content);
+            if (content.contains("${")) {
+                diagnostics.add(emulator.profileFile, f"files.{index}", "rendered content has an unresolved token");
+                continue;
+            }
+            result.push(SemuProfileFile(relative, content));
+        }
+        return result;
+    }
+
+    class bool write(string root, Vector<SemuProfileFile> files, SemuDiagnostics diagnostics) {
+        for file in files {
+            string path = PathTools.join(root, file.path);
+            if (!SemuPaths.writeOwned(root, path, file.content)) {
+                diagnostics.add(path, "output", "could not write profile file");
+                return false;
+            }
+        }
+        return true;
+    }
+
+    class bool emit(SemuModel model, SemuPlan plan, string outputRoot, SemuDiagnostics diagnostics) {
+        for emulatorId in plan.emulators {
+            SemuEmulator emulator = model.emulator(emulatorId);
+            if (emulator == null) { continue; }
+            Vector<SemuProfileFile> files = SemuProfiles.render(model, plan, emulator, diagnostics);
+            if (!SemuProfiles.write(PathTools.join(PathTools.join(outputRoot, "profiles"), emulatorId), files, diagnostics)) { return false; }
+        }
+        return diagnostics.ok();
+    }
+}

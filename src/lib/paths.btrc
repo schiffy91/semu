@@ -1,0 +1,43 @@
+import Library.FileSystem;
+import Library.Platform;
+import Library.Strings;
+import Library.Vector;
+
+class SemuPaths {
+    class string home() { return Environment.get("HOME", ""); }
+
+    class string expandHome(string path) {
+        if (path.startsWith("~/")) { return PathTools.join(SemuPaths.home(), path.substring(2, path.len() - 2)); }
+        return path.replace("${home}", SemuPaths.home());
+    }
+
+    class bool inside(string root, string path) {
+        string base = root.endsWith("/") ? root : root + "/";
+        return path.equals(root) || path.startsWith(base);
+    }
+
+    class bool ancestorsAreRealDirectories(string root, string path) {  // no symlink may sit between root and path
+        string current = PathTools.dirname(path);
+        while (current.len() > root.len() && SemuPaths.inside(root, current)) {
+            if (FileSystem.isSymlink(current)) { return false; }
+            current = PathTools.dirname(current);
+        }
+        return !FileSystem.isSymlink(root);
+    }
+
+    class bool prepareDirectory(string path) {
+        if (FileSystem.isSymlink(path)) { return false; }
+        if (FileSystem.isDir(path)) { return true; }
+        return FileSystem.mkdirp(path) == 0 && FileSystem.isDir(path);
+    }
+
+    class bool writeOwned(string root, string path, string content) {  // refuse escapes and symlinked ancestors
+        if (root.isEmpty() || !PathTools.isAbsolute(root) || !SemuPaths.inside(root, path)) { return false; }
+        if (!SemuPaths.prepareDirectory(root) || !SemuPaths.ancestorsAreRealDirectories(root, path)) { return false; }
+        if (FileSystem.isSymlink(path) || FileSystem.isDir(path)) { return false; }
+        if (!SemuPaths.prepareDirectory(PathTools.dirname(path))) { return false; }
+        return FileSystem.writeText(path, content);
+    }
+
+    class string join(string left, string right) { return PathTools.join(left, right); }
+}

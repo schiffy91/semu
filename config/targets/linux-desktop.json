@@ -1,0 +1,23 @@
+{
+  "schema_version": 2,
+  "id": "linux-desktop",
+  "platform": "linux",
+  "nix_systems": [
+    "x86_64-linux"
+  ],
+  "backend": "native",
+  "input": "linux-desktop",
+  "settings": {
+    "paths": {
+      "emulation_root": "${home}/Games/Emulation",
+      "roms": "${home}/Games/Emulation/ES-DE/ES-DE/ROMs",
+      "media": "${home}/Games/Emulation/ES-DE/ES-DE/downloaded_media",
+      "bios": "${home}/Games/Emulation/RetroArch/config/system",
+      "content_root": "${home}/Games/Emulation/Semu",
+      "state_root": "${home}/.local/share/semu"
+    },
+    "ui": {
+      "display_index": 0
+    }
+  }
+}

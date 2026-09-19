@@ -1,0 +1,180 @@
+import Library.FileSystem;
+import Library.JSON;
+import Library.Strings;
+import Library.Vector;
+import ../lib/json.btrc;
+import ../lib/paths.btrc;
+import ../model.btrc;
+import ../resolve.btrc;
+import ../emit/profiles.btrc;
+
+class SemuLaunchPlan {
+    public Vector<string> argv;
+    public Vector<string> environment;
+    public string error;
+    public string emulator;
+    public string system;
+    public string core;
+    public string rom;
+    public bool watchPads;
+    public int chordWindowMs;
+
+    public SemuLaunchPlan() {
+        self.argv = [];
+        self.environment = [];
+        self.error = "";
+        self.emulator = "";
+        self.system = "";
+        self.core = "";
+        self.rom = "";
+        self.watchPads = true;
+        self.chordWindowMs = 250;
+    }
+
+    public bool ok() { return self.error.isEmpty() && !self.argv.isEmpty(); }
+
+    public string json() {
+        JSONValue result = JSONValue.makeObject();
+        JSONValue argv = JSONValue.makeArray();
+        for value in self.argv { argv.push(JSONValue.makeString(value)); }
+        JSONValue environment = JSONValue.makeArray();
+        for value in self.environment { environment.push(JSONValue.makeString(value)); }
+        result.set("argv", argv);
+        result.set("environment", environment);
+        result.set("emulator", JSONValue.makeString(self.emulator));
+        result.set("system", JSONValue.makeString(self.system));
+        result.set("core", JSONValue.makeString(self.core));
+        result.set("rom", JSONValue.makeString(self.rom));
+        result.set("quit_chord_window_ms", JSONValue.makeInt(self.chordWindowMs));
+        result.set("error", JSONValue.makeString(self.error));
+        return result.stringifyPretty(2);
+    }
+}
+
+class SemuLauncher {
+    class string romPath(SemuPlan plan, SemuSystem system, string rom) {  // ROM must live inside the system's ROM directory
+        string root = PathTools.join(plan.romsRoot(), system.romDir);
+        string path = PathTools.isAbsolute(rom) ? rom : PathTools.join(root, rom);
+        string realRoot = UnixFileSystem.realPath(root);
+        string realPath = UnixFileSystem.realPath(path);
+        if (realRoot.isEmpty() || realPath.isEmpty() || !SemuPaths.inside(realRoot, realPath)) { return ""; }
+        return FileSystem.isFile(realPath) ? path : "";
+    }
+
+    class string coreFile(SemuPlan plan, JSONValue loader, string core) {
+        string filename = plan.tokens.resolve(SemuJson.textAt(loader, "filename").replace("${core}", core));
+        for directory in SemuJson.strings(loader.get("directories")) {
+            string candidate = PathTools.join(plan.tokens.resolve(directory), filename);
+            if (FileSystem.isFile(candidate)) { return candidate; }
+        }
+        return "";
+    }
+
+    class string coreOptions(SemuPlan plan, JSONValue platform, string core) {  // literal core options only
+        Vector<string> lines = [];
+        JSONValue options = SemuJson.get(platform, "retroarch.core_options." + core);
+        if (options != null && options.isArray()) {
+            for (int index = 0; index < options.size(); index++) {
+                JSONValue option = options.at(index);
+                if (!SemuJson.textAt(option, "source.kind").equals("literal")) { continue; }
+                if (option.has("aspect") && !SemuJson.textAt(option, "aspect").equals("standard")) { continue; }
+                lines.push(f"{SemuJson.textAt(option, "key")} = \"{SemuJson.textAt(option, "source.value")}\"");
+            }
+        }
+        return lines.join("\n") + "\n";
+    }
+
+    class void stateEnvironment(SemuLaunchPlan launch, SemuPlan plan, SemuEmulator emulator, JSONValue platform) {
+        string stateRoot = PathTools.join(plan.stateRoot(), emulator.id);
+        if (SemuJson.textAt(platform, "state.data_home").equals("xdg")) {
+            launch.environment.push("XDG_CONFIG_HOME=" + PathTools.join(stateRoot, "config"));
+            launch.environment.push("XDG_DATA_HOME=" + PathTools.join(stateRoot, "data"));
+            launch.environment.push("XDG_CACHE_HOME=" + PathTools.join(stateRoot, "cache"));
+            launch.environment.push("XDG_STATE_HOME=" + PathTools.join(stateRoot, "state"));
+        }
+        JSONValue set = SemuJson.get(platform, "env.set");
+        if (set.isObject()) {
+            for key in set.keys().sorted() { launch.environment.push(key + "=" + plan.tokens.resolve(SemuJson.text(set.get(key)))); }
+        }
+        launch.environment.push("SEMU_STATE_ROOT=" + stateRoot);
+        launch.environment.push("SEMU_TARGET=" + plan.target.id);
+    }
+
+    class SemuLaunchPlan plan(SemuModel model, SemuPlan plan, string emulatorId, string systemId, string core, string rom, SemuDiagnostics diagnostics) {
+        SemuLaunchPlan launch = SemuLaunchPlan();
+        launch.emulator = emulatorId;
+        launch.system = systemId;
+        SemuEmulator emulator = model.emulator(emulatorId);
+        SemuSystem system = model.system(systemId);
+        if (emulator == null || system == null) {
+            launch.error = "unknown emulator or system";
+            return launch;
+        }
+        SemuSystemBinding binding = system.bindingFor(plan.platform, emulatorId, core);
+        if (binding == null || !plan.systems.contains(systemId) || !plan.emulators.contains(emulatorId)) {
+            launch.error = f"{systemId} does not bind {emulatorId} on target {plan.target.id}";
+            return launch;
+        }
+        launch.core = binding.core;
+        JSONValue platform = emulator.platform(plan.platform);
+        plan.tokens.put("emulator", emulatorId);
+        plan.tokens.put("system", systemId);
+        plan.tokens.put("core", binding.core);
+        string executable = plan.tokens.resolve(SemuJson.textAt(platform, "executable"));
+        if (executable.contains("${") || !FileSystem.isFile(executable)) {
+            launch.error = "emulator executable is unavailable: " + executable;
+            return launch;
+        }
+        string selectedRom = SemuLauncher.romPath(plan, system, rom);
+        if (selectedRom.isEmpty()) {
+            launch.error = "ROM is not a file inside the system ROM directory: " + rom;
+            return launch;
+        }
+        launch.rom = selectedRom;
+        plan.tokens.put("rom", selectedRom);
+        JSONValue loader = platform.get("core_loader");
+        string coreFile = "";
+        if (loader != null && loader.isObject()) {
+            coreFile = SemuLauncher.coreFile(plan, loader, binding.core);
+            if (coreFile.isEmpty()) {
+                launch.error = "core is unavailable: " + binding.core;
+                return launch;
+            }
+            plan.tokens.put("core_file", coreFile);
+        }
+        string stateRoot = PathTools.join(plan.stateRoot(), emulatorId);
+        for name in ["config", "data", "cache", "state"] {
+            if (!SemuPaths.prepareDirectory(PathTools.join(stateRoot, name))) {
+                launch.error = "could not create state directory " + stateRoot;
+                return launch;
+            }
+        }
+        for name in ["saves", "states", "screenshots"] { SemuPaths.prepareDirectory(PathTools.join(plan.path("content_root"), name)); }
+        Vector<SemuProfileFile> files = SemuProfiles.render(model, plan, emulator, diagnostics);
+        if (!diagnostics.ok() || !SemuProfiles.write(stateRoot, files, diagnostics)) {
+            launch.error = "profile generation failed: " + diagnostics.render();
+            return launch;
+        }
+        launch.argv.push(executable);
+        for argument in SemuJson.strings(platform.get("args")) { launch.argv.push(plan.tokens.resolve(argument)); }
+        if (SemuJson.get(platform, "retroarch").isObject()) {
+            string config = PathTools.join(stateRoot, "retroarch.cfg");
+            for file in files { if (file.path.endsWith("retroarch.cfg")) { config = PathTools.join(stateRoot, file.path); } }
+            launch.argv.push("--config");
+            launch.argv.push(config);
+            SemuPaths.writeOwned(stateRoot, PathTools.join(PathTools.dirname(config), "retroarch-core-options.cfg"),
+                SemuLauncher.coreOptions(plan, platform, binding.core));
+        }
+        for argument in binding.arguments { launch.argv.push(plan.tokens.resolve(argument)); }
+        if (loader != null && loader.isObject()) {
+            for argument in SemuJson.strings(loader.get("args")) { launch.argv.push(plan.tokens.resolve(argument)); }
+        }
+        launch.argv.push(selectedRom);
+        SemuLauncher.stateEnvironment(launch, plan, emulator, platform);
+        launch.chordWindowMs = plan.input == null ? 250 : plan.input.chordWindowMs();
+        for argument in launch.argv {
+            if (argument.contains("${")) { launch.error = "unresolved token in launch arguments: " + argument; }
+        }
+        return launch;
+    }
+}
