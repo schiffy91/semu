@@ -549,9 +549,11 @@ Update this block whenever a milestone criterion changes state.
   `semu_render_hook.patch` and shows in the Sony TV, and Cemu renders once
   pinned to XWayland (its GTK Wayland backend is the white window). Fixed on
   the way: the GL state guard overflowed when the texture-unit count grew
-  (every frame black), the melonDS core needed its executable-stack flag
-  cleared to load, and high-resolution emulators are blitted with linear
-  filtering before the shader chain. Known limits: Flycast on bare Xvfb keeps
+  (every frame black), the melonDS core needed a non-executable stack
+  (`-z noexecstack`) before glibc would dlopen it, and high-resolution emulators are blitted with linear
+  filtering before the shader chain. The DS runs the libretro melonDS build in the main-right
+  layout (main screen at 3x, touch screen at 1x beside it, matte preset).
+  Known limits: Flycast on bare Xvfb keeps
   a 640x480 window so its CRT mask aliases there; Wii U stays unframed
   (Cemu is unhooked); the PSP panel is placed from the device's physical
   proportions because the Duimon art has no drawn screen edge.
