@@ -35,6 +35,7 @@ class SemuCli {
         help.item("launch EMULATOR --system S --rom PATH [--core C] [--print-plan]", "Launch a ROM with the Start+Select quit chord.");
         help.item("doctor --target T", "Show resolved paths and what is missing.");
         help.item("path NAME --target T", "Print one resolved path (roms, bios, esde_home, state_root, ...).");
+        help.item("settings get PATH | put PATH VALUE", "Read a resolved setting or write one to $SEMU_HOME/semu.json.");
         help.item("version", "Print the Semu version.");
         help.section("Common options");
         help.item("--target T", "Target id (default: $SEMU_TARGET or linux-desktop).");
@@ -127,6 +128,46 @@ class SemuCli {
         return 0;
     }
 
+    class JSONValue withPath(JSONValue root, Vector<string> path, int index, JSONValue value) {  // immutable deep set
+        JSONValue result = JSONValue.makeObject();
+        if (root != null && root.isObject()) { for key in root.keys() { result.set(key, root.get(key)); } }
+        if (index == path.size() - 1) {
+            result.set(path.get(index), value);
+            return result;
+        }
+        JSONValue child = result.has(path.get(index)) ? result.get(path.get(index)) : JSONValue.makeObject();
+        result.set(path.get(index), SemuCli.withPath(child.isObject() ? child : JSONValue.makeObject(), path, index + 1, value));
+        return result;
+    }
+
+    public int settings() {  // settings get PATH | settings put PATH JSON
+        string action = self.line.operand(1, "");
+        string path = self.line.operand(2, "");
+        SemuDiagnostics diagnostics = SemuDiagnostics();
+        SemuModel model = SemuModel.load(self.configRoot(), diagnostics);
+        SemuPlan plan = self.resolve(model, diagnostics);
+        if (plan == null || path.isEmpty()) { return plan == null ? self.fail(diagnostics) : self.usage(64); }
+        if (action.equals("get")) {
+            JSONValue value = SemuJson.get(plan.settings, path);
+            Console.log(value == null || value.isNull() ? "null" : value.stringify());
+            return 0;
+        }
+        if (!action.equals("put")) { return self.usage(64); }
+        string raw = self.line.operand(3, "");
+        JSONValue value = JSONValue.parse(raw);
+        if (raw.isEmpty() || value == null || value.isError()) { value = JSONValue.makeString(raw); }  // bare words are strings
+        string file = PathTools.join(plan.semuHome, "semu.json");
+        JSONValue current = FileSystem.isFile(file) ? SemuJson.readFile(file) : JSONValue.makeObject();
+        if (current.isError() || !current.isObject()) { current = JSONValue.makeObject(); }
+        JSONValue updated = SemuCli.withPath(current, Strings.split(path, "."), 0, value);
+        if (!SemuPaths.writeOwned(plan.semuHome, file, updated.stringifyPretty(2) + "\n")) {
+            Console.error("semu: could not write " + file);
+            return 1;
+        }
+        Console.log(f"{path} = {value.stringify()}");
+        return 0;
+    }
+
     public int doctor() {
         SemuDiagnostics diagnostics = SemuDiagnostics();
         SemuModel model = SemuModel.load(self.configRoot(), diagnostics);
@@ -166,6 +207,7 @@ class SemuCli {
         if (command.equals("launch")) { return self.launch(); }
         if (command.equals("doctor")) { return self.doctor(); }
         if (command.equals("path")) { return self.path(); }
+        if (command.equals("settings")) { return self.settings(); }
         if (command.equals("version")) {
             Console.log(SemuCli.version());
             return 0;

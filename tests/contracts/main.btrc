@@ -14,6 +14,7 @@ import ../../src/emit/esde.btrc;
 import ../../src/emit/profiles.btrc;
 import ../../src/launch/plan.btrc;
 import ../../src/emit/rendering.btrc;
+import ../../src/cli.btrc;
 
 class Contract {
     public int failures;
@@ -290,8 +291,21 @@ class RenderingContract {
     }
 }
 
+class SettingsWriteContract {
+    class void run(Contract contract) {
+        JSONValue current = JSONValue.parse("{\"visual\":{\"bezels\":true},\"ui\":{\"theme\":\"slate-es-de\"}}");
+        JSONValue updated = SemuCli.withPath(current, ["visual", "systems", "gb", "bezel_variant"], 0, JSONValue.makeString("studio"));
+        contract.expect(SemuJson.textAt(updated, "visual.systems.gb.bezel_variant").equals("studio"), "deep put creates intermediate objects");
+        contract.expect(SemuJson.boolAt(updated, "visual.bezels", false), "deep put keeps sibling keys");
+        contract.expect(SemuJson.textAt(updated, "ui.theme").equals("slate-es-de"), "deep put keeps unrelated sections");
+        JSONValue replaced = SemuCli.withPath(updated, ["visual", "bezels"], 0, JSONValue.makeBool(false));
+        contract.expect(!SemuJson.boolAt(replaced, "visual.bezels", true), "deep put overwrites a leaf");
+    }
+}
+
 int main() {
     Contract contract = Contract();
+    SettingsWriteContract.run(contract);
     RenderingContract.run(contract);
     ModelContract.run(contract);
     SettingsLadderContract.run(contract);

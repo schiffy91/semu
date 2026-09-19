@@ -66,6 +66,20 @@ emulator in its own process group, and watches every gamepad for Start+Select
 within 250 ms in either order. The chord terminates the whole process group and
 returns to ES-DE.
 
+Shaders and bezels come from one renderer, `libsemurenderer`, that hooked
+emulators link directly (RetroArch's gl3 driver calls it after the game draw
+and before present). The launcher passes the system's shader preset, bezel
+art, hole and canvas policy through `SEMU_RENDER_*` from
+`config/systems/<id>/{shaders,bezels}.json`. Switch variants without a
+rebuild:
+
+```sh
+semu settings put visual.systems.gb.bezel_variant studio
+semu settings put visual.systems.gb.shader_variant pocket
+semu settings put visual.bezels false
+semu settings get visual.integer_scaling
+```
+
 Settings precedence:
 
 ```text

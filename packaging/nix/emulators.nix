@@ -11,7 +11,9 @@ let
   ) systemContracts);
   recipe = id:
     let path = emulatorsDir + "/${id}/package.nix";
-    in if builtins.pathExists path then callPackage path { inherit semuRenderer btrcpy; } else throw "emulators.nix: config/emulators/${id}/package.nix is missing";
+    in if builtins.pathExists path
+       then callPackage path (lib.intersectAttrs (lib.functionArgs (import path)) { inherit semuRenderer btrcpy; })  # recipes take only what they declare
+       else throw "emulators.nix: config/emulators/${id}/package.nix is missing";
 in {
   ids = linuxEmulators;
   packages = lib.genAttrs linuxEmulators recipe;
