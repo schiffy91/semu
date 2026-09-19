@@ -190,10 +190,11 @@ class RendererStateFiles {
             RendererStateFiles.writeValue(file, variant->art.value);
             fprintf(file, " bezel_art_sha256=");
             RendererStateFiles.writeValue(file, variant->art_sha256);
+            fprintf(file, " background_art=");
+            RendererStateFiles.writeValue(file, variant->background.value);
             fprintf(file, " glass_art=");
-            RendererStateFiles.writeValue(file, variant->glass.value);
-            fprintf(file, " glass_art_sha256=");
-            RendererStateFiles.writeValue(file, variant->glass_sha256);
+            RendererStateFiles.writeValue(file, variant->screens[0].glass.value);
+            fprintf(file, " layout=%d framed=%d", variant->layout, variant->frame_set);
             fprintf(file, " shader_actual=%d bezel_actual=%d",
                 resources->shader_actual, resources->bezel_actual);
             fprintf(file, " failure_reason=");

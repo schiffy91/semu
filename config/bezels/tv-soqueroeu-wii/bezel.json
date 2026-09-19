@@ -1,0 +1,54 @@
+{
+  "schema_version": 1,
+  "id": "tv-soqueroeu-wii",
+  "label": "Living room CRT \u00b7 Wii",
+  "family": "tv",
+  "layout": "fixed",
+  "art": "assets/bezels/tv/soqueroeu/wii.png",
+  "background": null,
+  "frame": null,
+  "canvas": {
+    "w": 3840,
+    "h": 2160
+  },
+  "screens": [
+    {
+      "id": "main",
+      "tube": {
+        "x": 991,
+        "y": 264,
+        "w": 1858,
+        "h": 1391
+      },
+      "fit": "aspect",
+      "inset": 0.0,
+      "shape": {
+        "kind": "rounded",
+        "radius": 0.0139,
+        "exponent": 4.0
+      },
+      "surround": "#000000",
+      "curvature": 0.035,
+      "vignette": 0.2,
+      "bloom": 0.18,
+      "glow": 0.2,
+      "glass": {
+        "asset": "assets/bezels/tv/tube-reflection.png",
+        "reflect": 0.12
+      },
+      "shader": null,
+      "measurement": {
+        "tool": "tools/bezel-measure.py",
+        "mode": "seed",
+        "threshold": 14,
+        "min_fill": 0.97,
+        "corner_radius_px": 19.4,
+        "source": "upstream scene at 3840x2160"
+      }
+    }
+  ],
+  "doc": {
+    "scene": "Soqueroeu TV background with the manufacturer's badge, lit for late night by the Duimon ambient plate at build time",
+    "tube": "the measured phosphor opening; the game sits inside at the system aspect and the rest of the tube stays dark glass"
+  }
+}

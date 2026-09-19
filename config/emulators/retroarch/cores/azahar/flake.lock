@@ -1,0 +1,47 @@
+{
+  "nodes": {
+    "nixpkgs": {
+      "locked": {
+        "lastModified": 1789684949,
+        "narHash": "sha256-ZKhUe/2IJUq1JhKxKMu8rbkgSGmPP2ZCqlIPn40aGCM=",
+        "owner": "NixOS",
+        "repo": "nixpkgs",
+        "rev": "e554fab72f81915600f3f449b786fd9af40439a5",
+        "type": "github"
+      },
+      "original": {
+        "owner": "NixOS",
+        "repo": "nixpkgs",
+        "rev": "e554fab72f81915600f3f449b786fd9af40439a5",
+        "type": "github"
+      }
+    },
+    "root": {
+      "inputs": {
+        "nixpkgs": "nixpkgs",
+        "source": "source"
+      }
+    },
+    "source": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1786373588,
+        "narHash": "sha256-dcGHHkkosmjQ/6QIWwMZOZ79bxb1RMAP/BSwWAsaj80=",
+        "ref": "refs/tags/2126.0",
+        "rev": "fbd3fb02f71e5f9ed5134037fd59bad96c7d2b8a",
+        "revCount": 11082,
+        "submodules": true,
+        "type": "git",
+        "url": "https://github.com/azahar-emu/azahar"
+      },
+      "original": {
+        "ref": "refs/tags/2126.0",
+        "submodules": true,
+        "type": "git",
+        "url": "https://github.com/azahar-emu/azahar"
+      }
+    }
+  },
+  "root": "root",
+  "version": 7
+}

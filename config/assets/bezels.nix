@@ -54,7 +54,7 @@ let
     })
     (lib.filterAttrs (_: spec: spec.kind == "url") sources.upstreams);
 
-  imageTypes = [ "copy" "local" "flatten" "recolor" "glass" "panel" "shell" "photo" ];
+  imageTypes = [ "copy" "local" "flatten" "recolor" "glass" "panel" "shell" "photo" "scene" ];
   imageAssets = lib.filterAttrs (_: recipe: lib.elem recipe.type imageTypes)
     sources.assets;
 
@@ -223,6 +223,21 @@ let
           magick ${lib.concatMapStringsSep " " (layer: treeFile recipe layer) recipe.layers} \
             -background none -flatten -resize '2048x2048>' ${outFile key}
         '';
+      # scene: flatten pinned layers, multiply the ambient lighting plate over
+      # them (opacity blends the plate toward white first, so 1.0 is the full
+      # late-night darkening and 0.0 is daylight), then downscale.
+      scene = let
+        ambient = recipe.ambient or null;
+        ambientFile = ''"${githubTrees.${ambient.from}}/${ambient.path}"'';
+        lift = toString (builtins.floor ((1.0 - (ambient.opacity or 1.0)) * 100.0 + 0.5));
+      in ''
+        magick ${lib.concatMapStringsSep " " (layer: treeFile recipe layer) recipe.layers} \
+          -background none -flatten "PNG32:$TMPDIR/scene.png"
+        sceneDims=$(magick identify -format "%wx%h" "$TMPDIR/scene.png")
+        magick "$TMPDIR/scene.png" ${lib.optionalString (ambient != null)
+          ''\( ${ambientFile} -resize "$sceneDims!" -fill white -colorize ${lift}% \) -compose Multiply -composite ''} \
+          ${lib.optionalString (recipe ? resize) "-resize '${recipe.resize}' "}"PNG32:$out/share/semu/${key}"
+      '';
       # glass keeps the live cutout mask in .a and reflections in .rgb;
       # PNG32 forces RGBA to survive the downscale.
       glass = ''

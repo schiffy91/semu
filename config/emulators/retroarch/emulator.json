@@ -299,6 +299,57 @@
                 "value": "disabled"
               }
             }
+          ],
+          "azahar": [
+            {
+              "key": "citra_layout_option",
+              "source": {
+                "kind": "literal",
+                "value": "Default Top-Bottom Screen"
+              }
+            },
+            {
+              "key": "citra_swap_screen",
+              "source": {
+                "kind": "literal",
+                "value": "disabled"
+              }
+            },
+            {
+              "key": "citra_use_hw_shaders",
+              "source": {
+                "kind": "literal",
+                "value": "enabled"
+              }
+            },
+            {
+              "key": "citra_use_hw_shader_cache",
+              "source": {
+                "kind": "literal",
+                "value": "enabled"
+              }
+            },
+            {
+              "key": "citra_resolution_factor",
+              "source": {
+                "kind": "literal",
+                "value": "1x"
+              }
+            },
+            {
+              "key": "citra_use_libretro_save_path",
+              "source": {
+                "kind": "literal",
+                "value": "LibRetro Default"
+              }
+            },
+            {
+              "key": "citra_mouse_touchscreen",
+              "source": {
+                "kind": "literal",
+                "value": "disabled"
+              }
+            }
           ]
         },
         "core_overrides": {

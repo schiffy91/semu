@@ -20,12 +20,29 @@
         "type": "github"
       }
     },
-    "core-citra": {
+    "core-azahar": {
       "inputs": {
         "nixpkgs": [
           "nixpkgs"
         ],
         "source": "source"
+      },
+      "locked": {
+        "path": "./config/emulators/retroarch/cores/azahar",
+        "type": "path"
+      },
+      "original": {
+        "path": "./config/emulators/retroarch/cores/azahar",
+        "type": "path"
+      },
+      "parent": []
+    },
+    "core-citra": {
+      "inputs": {
+        "nixpkgs": [
+          "nixpkgs"
+        ],
+        "source": "source_2"
       },
       "locked": {
         "path": "./config/emulators/retroarch/cores/citra",
@@ -42,7 +59,7 @@
         "nixpkgs": [
           "nixpkgs"
         ],
-        "source": "source_2"
+        "source": "source_3"
       },
       "locked": {
         "path": "./config/emulators/retroarch/cores/desmume",
@@ -59,7 +76,7 @@
         "nixpkgs": [
           "nixpkgs"
         ],
-        "source": "source_3"
+        "source": "source_4"
       },
       "locked": {
         "path": "./config/emulators/retroarch/cores/flycast",
@@ -76,7 +93,7 @@
         "nixpkgs": [
           "nixpkgs"
         ],
-        "source": "source_4"
+        "source": "source_5"
       },
       "locked": {
         "path": "./config/emulators/retroarch/cores/gambatte",
@@ -93,7 +110,7 @@
         "nixpkgs": [
           "nixpkgs"
         ],
-        "source": "source_5"
+        "source": "source_6"
       },
       "locked": {
         "path": "./config/emulators/retroarch/cores/genesis_plus_gx",
@@ -110,7 +127,7 @@
         "nixpkgs": [
           "nixpkgs"
         ],
-        "source": "source_6"
+        "source": "source_7"
       },
       "locked": {
         "path": "./config/emulators/retroarch/cores/mednafen_psx",
@@ -127,7 +144,7 @@
         "nixpkgs": [
           "nixpkgs"
         ],
-        "source": "source_7"
+        "source": "source_8"
       },
       "locked": {
         "path": "./config/emulators/retroarch/cores/mesen",
@@ -144,7 +161,7 @@
         "nixpkgs": [
           "nixpkgs"
         ],
-        "source": "source_8"
+        "source": "source_9"
       },
       "locked": {
         "path": "./config/emulators/retroarch/cores/mgba",
@@ -161,7 +178,7 @@
         "nixpkgs": [
           "nixpkgs"
         ],
-        "source": "source_9"
+        "source": "source_10"
       },
       "locked": {
         "path": "./config/emulators/retroarch/cores/mupen64plus_next",
@@ -178,7 +195,7 @@
         "nixpkgs": [
           "nixpkgs"
         ],
-        "source": "source_10"
+        "source": "source_11"
       },
       "locked": {
         "path": "./config/emulators/retroarch/cores/ppsspp",
@@ -195,7 +212,7 @@
         "nixpkgs": [
           "nixpkgs"
         ],
-        "source": "source_11"
+        "source": "source_12"
       },
       "locked": {
         "path": "./config/emulators/retroarch/cores/snes9x",
@@ -212,7 +229,7 @@
         "nixpkgs": [
           "nixpkgs"
         ],
-        "source": "source_12"
+        "source": "source_13"
       },
       "locked": {
         "path": "./config/emulators/azahar",
@@ -229,7 +246,7 @@
         "nixpkgs": [
           "nixpkgs"
         ],
-        "source": "source_13"
+        "source": "source_14"
       },
       "locked": {
         "path": "./config/emulators/cemu",
@@ -246,7 +263,7 @@
         "nixpkgs": [
           "nixpkgs"
         ],
-        "source": "source_14"
+        "source": "source_15"
       },
       "locked": {
         "path": "./config/emulators/dolphin",
@@ -263,7 +280,7 @@
         "nixpkgs": [
           "nixpkgs"
         ],
-        "source": "source_15"
+        "source": "source_16"
       },
       "locked": {
         "path": "./config/emulators/flycast",
@@ -280,7 +297,7 @@
         "nixpkgs": [
           "nixpkgs"
         ],
-        "source": "source_16"
+        "source": "source_17"
       },
       "locked": {
         "path": "./config/emulators/melonds",
@@ -297,7 +314,7 @@
         "nixpkgs": [
           "nixpkgs"
         ],
-        "source": "source_17"
+        "source": "source_18"
       },
       "locked": {
         "path": "./config/emulators/pcsx2",
@@ -314,7 +331,7 @@
         "nixpkgs": [
           "nixpkgs"
         ],
-        "source": "source_18"
+        "source": "source_19"
       },
       "locked": {
         "path": "./config/emulators/ppsspp",
@@ -331,7 +348,7 @@
         "nixpkgs": [
           "nixpkgs"
         ],
-        "source": "source_19"
+        "source": "source_20"
       },
       "locked": {
         "path": "./config/emulators/ryujinx",
@@ -346,7 +363,7 @@
     "esde": {
       "inputs": {
         "nixpkgs": "nixpkgs",
-        "source": "source_20"
+        "source": "source_21"
       },
       "locked": {
         "path": "./packaging/esde",
@@ -420,7 +437,7 @@
         "renderer": [
           "renderer"
         ],
-        "source": "source_21"
+        "source": "source_22"
       },
       "locked": {
         "path": "./config/emulators/retroarch",
@@ -435,6 +452,7 @@
     "root": {
       "inputs": {
         "btrc": "btrc",
+        "core-azahar": "core-azahar",
         "core-citra": "core-citra",
         "core-desmume": "core-desmume",
         "core-flycast": "core-flycast",
@@ -463,23 +481,40 @@
     "source": {
       "flake": false,
       "locked": {
-        "lastModified": 1788554174,
-        "narHash": "sha256-ZoaGFvUuWBMMt3fEMQMWWsCz+jEyjm7zC+TreCndQ7I=",
-        "ref": "refs/heads/master",
-        "rev": "e4cbe379bfa8990af706977d699e16a618523778",
-        "revCount": 10181,
+        "lastModified": 1786373588,
+        "narHash": "sha256-dcGHHkkosmjQ/6QIWwMZOZ79bxb1RMAP/BSwWAsaj80=",
+        "ref": "refs/tags/2126.0",
+        "rev": "fbd3fb02f71e5f9ed5134037fd59bad96c7d2b8a",
+        "revCount": 11082,
         "submodules": true,
         "type": "git",
-        "url": "https://github.com/libretro/citra"
+        "url": "https://github.com/azahar-emu/azahar"
       },
       "original": {
-        "rev": "e4cbe379bfa8990af706977d699e16a618523778",
+        "ref": "refs/tags/2126.0",
         "submodules": true,
         "type": "git",
-        "url": "https://github.com/libretro/citra"
+        "url": "https://github.com/azahar-emu/azahar"
       }
     },
     "source_10": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1786022851,
+        "narHash": "sha256-lnX/W6tIOJY7bA7a5KFN3FUYS+o24bsyGSeTCOwubCs=",
+        "owner": "libretro",
+        "repo": "mupen64plus-libretro-nx",
+        "rev": "f275caf4b2bfa1e6d1c51636746ea793f3d80320",
+        "type": "github"
+      },
+      "original": {
+        "owner": "libretro",
+        "repo": "mupen64plus-libretro-nx",
+        "rev": "f275caf4b2bfa1e6d1c51636746ea793f3d80320",
+        "type": "github"
+      }
+    },
+    "source_11": {
       "flake": false,
       "locked": {
         "lastModified": 1788258691,
@@ -498,7 +533,7 @@
         "url": "https://github.com/hrydgard/ppsspp"
       }
     },
-    "source_11": {
+    "source_12": {
       "flake": false,
       "locked": {
         "lastModified": 1787859289,
@@ -515,7 +550,7 @@
         "type": "github"
       }
     },
-    "source_12": {
+    "source_13": {
       "flake": false,
       "locked": {
         "lastModified": 1786373588,
@@ -534,7 +569,7 @@
         "url": "https://github.com/azahar-emu/azahar"
       }
     },
-    "source_13": {
+    "source_14": {
       "flake": false,
       "locked": {
         "lastModified": 1738662993,
@@ -551,7 +586,7 @@
         "type": "github"
       }
     },
-    "source_14": {
+    "source_15": {
       "flake": false,
       "locked": {
         "lastModified": 1786416872,
@@ -570,7 +605,7 @@
         "url": "https://github.com/dolphin-emu/dolphin"
       }
     },
-    "source_15": {
+    "source_16": {
       "flake": false,
       "locked": {
         "lastModified": 1786747058,
@@ -589,7 +624,7 @@
         "url": "https://github.com/flyinghead/flycast"
       }
     },
-    "source_16": {
+    "source_17": {
       "flake": false,
       "locked": {
         "lastModified": 1787524141,
@@ -606,7 +641,7 @@
         "type": "github"
       }
     },
-    "source_17": {
+    "source_18": {
       "flake": false,
       "locked": {
         "lastModified": 1769618187,
@@ -623,7 +658,7 @@
         "type": "github"
       }
     },
-    "source_18": {
+    "source_19": {
       "flake": false,
       "locked": {
         "lastModified": 1778934711,
@@ -642,7 +677,26 @@
         "url": "https://github.com/hrydgard/ppsspp"
       }
     },
-    "source_19": {
+    "source_2": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1788554174,
+        "narHash": "sha256-ZoaGFvUuWBMMt3fEMQMWWsCz+jEyjm7zC+TreCndQ7I=",
+        "ref": "refs/heads/master",
+        "rev": "e4cbe379bfa8990af706977d699e16a618523778",
+        "revCount": 10181,
+        "submodules": true,
+        "type": "git",
+        "url": "https://github.com/libretro/citra"
+      },
+      "original": {
+        "rev": "e4cbe379bfa8990af706977d699e16a618523778",
+        "submodules": true,
+        "type": "git",
+        "url": "https://github.com/libretro/citra"
+      }
+    },
+    "source_20": {
       "flake": false,
       "locked": {
         "lastModified": 1760166699,
@@ -659,24 +713,7 @@
         "url": "https://git.ryujinx.app/projects/Ryubing"
       }
     },
-    "source_2": {
-      "flake": false,
-      "locked": {
-        "lastModified": 1787470077,
-        "narHash": "sha256-u1YTW7thPzmcse0XDs7WOu3foL7kf+urplOufQqawW8=",
-        "owner": "libretro",
-        "repo": "desmume",
-        "rev": "8f6b32cb9a5e310bd38520e7087ce7fa14765f15",
-        "type": "github"
-      },
-      "original": {
-        "owner": "libretro",
-        "repo": "desmume",
-        "rev": "8f6b32cb9a5e310bd38520e7087ce7fa14765f15",
-        "type": "github"
-      }
-    },
-    "source_20": {
+    "source_21": {
       "flake": false,
       "locked": {
         "lastModified": 1762528822,
@@ -693,7 +730,7 @@
         "type": "gitlab"
       }
     },
-    "source_21": {
+    "source_22": {
       "flake": false,
       "locked": {
         "lastModified": 1763597828,
@@ -713,6 +750,23 @@
     "source_3": {
       "flake": false,
       "locked": {
+        "lastModified": 1787470077,
+        "narHash": "sha256-u1YTW7thPzmcse0XDs7WOu3foL7kf+urplOufQqawW8=",
+        "owner": "libretro",
+        "repo": "desmume",
+        "rev": "8f6b32cb9a5e310bd38520e7087ce7fa14765f15",
+        "type": "github"
+      },
+      "original": {
+        "owner": "libretro",
+        "repo": "desmume",
+        "rev": "8f6b32cb9a5e310bd38520e7087ce7fa14765f15",
+        "type": "github"
+      }
+    },
+    "source_4": {
+      "flake": false,
+      "locked": {
         "lastModified": 1788508127,
         "narHash": "sha256-QqlC+4DQK2E2rQYG3cMNdwK1zyQTN6TG4dVh8mbYttc=",
         "ref": "refs/heads/master",
@@ -729,7 +783,7 @@
         "url": "https://github.com/flyinghead/flycast"
       }
     },
-    "source_4": {
+    "source_5": {
       "flake": false,
       "locked": {
         "lastModified": 1787309948,
@@ -746,7 +800,7 @@
         "type": "github"
       }
     },
-    "source_5": {
+    "source_6": {
       "flake": false,
       "locked": {
         "lastModified": 1789172715,
@@ -763,7 +817,7 @@
         "type": "github"
       }
     },
-    "source_6": {
+    "source_7": {
       "flake": false,
       "locked": {
         "lastModified": 1788753721,
@@ -780,7 +834,7 @@
         "type": "github"
       }
     },
-    "source_7": {
+    "source_8": {
       "flake": false,
       "locked": {
         "lastModified": 1776706287,
@@ -797,7 +851,7 @@
         "type": "github"
       }
     },
-    "source_8": {
+    "source_9": {
       "flake": false,
       "locked": {
         "lastModified": 1785201686,
@@ -811,23 +865,6 @@
         "owner": "libretro",
         "repo": "mgba",
         "rev": "32de792178a3662cd0402c8568fccfaad4a764a1",
-        "type": "github"
-      }
-    },
-    "source_9": {
-      "flake": false,
-      "locked": {
-        "lastModified": 1786022851,
-        "narHash": "sha256-lnX/W6tIOJY7bA7a5KFN3FUYS+o24bsyGSeTCOwubCs=",
-        "owner": "libretro",
-        "repo": "mupen64plus-libretro-nx",
-        "rev": "f275caf4b2bfa1e6d1c51636746ea793f3d80320",
-        "type": "github"
-      },
-      "original": {
-        "owner": "libretro",
-        "repo": "mupen64plus-libretro-nx",
-        "rev": "f275caf4b2bfa1e6d1c51636746ea793f3d80320",
         "type": "github"
       }
     }

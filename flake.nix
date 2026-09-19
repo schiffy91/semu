@@ -26,12 +26,14 @@
     emulator-pcsx2 = { url = "path:./config/emulators/pcsx2"; inputs.nixpkgs.follows = "nixpkgs"; };
     emulator-ppsspp = { url = "path:./config/emulators/ppsspp"; inputs.nixpkgs.follows = "nixpkgs"; };
     emulator-ryujinx = { url = "path:./config/emulators/ryujinx"; inputs.nixpkgs.follows = "nixpkgs"; };
+    core-azahar = { url = "path:./config/emulators/retroarch/cores/azahar"; inputs.nixpkgs.follows = "nixpkgs"; };
     core-citra = { url = "path:./config/emulators/retroarch/cores/citra"; inputs.nixpkgs.follows = "nixpkgs"; };
     core-desmume = { url = "path:./config/emulators/retroarch/cores/desmume"; inputs.nixpkgs.follows = "nixpkgs"; };
     core-flycast = { url = "path:./config/emulators/retroarch/cores/flycast"; inputs.nixpkgs.follows = "nixpkgs"; };
     core-gambatte = { url = "path:./config/emulators/retroarch/cores/gambatte"; inputs.nixpkgs.follows = "nixpkgs"; };
     core-genesis_plus_gx = { url = "path:./config/emulators/retroarch/cores/genesis_plus_gx"; inputs.nixpkgs.follows = "nixpkgs"; };
     core-mednafen_psx = { url = "path:./config/emulators/retroarch/cores/mednafen_psx"; inputs.nixpkgs.follows = "nixpkgs"; };
+    core-melonds = { url = "path:./config/emulators/retroarch/cores/melonds"; inputs.nixpkgs.follows = "nixpkgs"; };
     core-mesen = { url = "path:./config/emulators/retroarch/cores/mesen"; inputs.nixpkgs.follows = "nixpkgs"; };
     core-mgba = { url = "path:./config/emulators/retroarch/cores/mgba"; inputs.nixpkgs.follows = "nixpkgs"; };
     core-mupen64plus_next = { url = "path:./config/emulators/retroarch/cores/mupen64plus_next"; inputs.nixpkgs.follows = "nixpkgs"; };

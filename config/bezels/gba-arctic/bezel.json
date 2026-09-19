@@ -1,0 +1,51 @@
+{
+  "schema_version": 1,
+  "id": "gba-arctic",
+  "label": "Game Boy Advance \u00b7 Arctic",
+  "family": "handheld",
+  "layout": "fixed",
+  "art": "assets/bezels/gba/arctic.png",
+  "background": "assets/bezels/backgrounds/desk-night.png",
+  "frame": null,
+  "canvas": {
+    "w": 4400,
+    "h": 2540
+  },
+  "screens": [
+    {
+      "id": "main",
+      "tube": {
+        "x": 1095,
+        "y": 308,
+        "w": 2210,
+        "h": 1890
+      },
+      "fit": "aspect",
+      "inset": 0.11,
+      "shape": {
+        "kind": "squircle",
+        "radius": 0.2939,
+        "exponent": 4.0
+      },
+      "surround": "#26264a",
+      "curvature": 0.0,
+      "vignette": 0.06,
+      "bloom": 0.0,
+      "glow": 0.08,
+      "glass": {
+        "asset": "assets/bezels/gba/glass.png",
+        "reflect": 0.3
+      },
+      "shader": null,
+      "measurement": {
+        "tool": "tools/bezel-measure.py",
+        "mode": "opaque",
+        "layer": "GBA_Glass.png",
+        "corner_radius_px": 555.4
+      }
+    }
+  ],
+  "doc": {
+    "lens": "the AGB-001 lens is a squircle; the 3:2 LCD sits inside it with the measured surround margin"
+  }
+}

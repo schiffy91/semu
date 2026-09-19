@@ -102,6 +102,14 @@
           "filter_linear": true,
           "scale_type": "viewport",
           "scale": 1
+        },
+        {
+          "tree": "shaders_slang",
+          "path": "handheld/shaders/lcd-cgwg/lcd-grid-v2.slang",
+          "sha256": "dc77b29530e5b771f12a5a2dd68c390805139bc25d84a30dead021fd38e581c5",
+          "filter_linear": false,
+          "scale_type": "viewport",
+          "scale": 1
         }
       ],
       "requires": [
@@ -114,13 +122,18 @@
         "ia_saturation": 1,
         "lighten_screen": 0.15,
         "mode": 1,
-        "response_time": 0.222
-      },
-      "output": {
-        "sha256": "e07b4a7584c41179ae5ab93765b5fa2586062dcedf6fa2e1e99bd63478fc3011"
+        "response_time": 0.222,
+        "gain": 1.35,
+        "gamma": 2.2,
+        "blacklevel": 0.02,
+        "ambient": 0.08,
+        "BGR": 0
       },
       "doc": {
-        "why": "GBC color response and persistence without a magnified RGB textile pattern. Paired brightness and black-level values expose the reflective panel while preserving true black; the chain passes direct EGL readback, while real-ROM appearance remains a physical acceptance gate."
+        "why": "GBC response and color, luminance, then the cgwg subpixel grid so the panel reads as a GBC LCD"
+      },
+      "output": {
+        "sha256": "19637d96c6802ea92f796d34b57709c74c67fa1fe3e154a682523080fdd2b5d7"
       }
     },
     "assets/shaders/gba/screen.slangp": {
@@ -149,6 +162,14 @@
           "filter_linear": true,
           "scale_type": "viewport",
           "scale": 1
+        },
+        {
+          "tree": "shaders_slang",
+          "path": "handheld/shaders/lcd-cgwg/lcd-grid-v2.slang",
+          "sha256": "dc77b29530e5b771f12a5a2dd68c390805139bc25d84a30dead021fd38e581c5",
+          "filter_linear": false,
+          "scale_type": "viewport",
+          "scale": 1
         }
       ],
       "requires": [
@@ -160,13 +181,18 @@
         "ia_luminance": 1.5,
         "ia_saturation": 1,
         "mode": 1,
-        "response_time": 0.222
-      },
-      "output": {
-        "sha256": "d166f663906daebe92dde76229f0138a147fb7365e0421c9690581c7a8c663ec"
+        "response_time": 0.222,
+        "gain": 1.35,
+        "gamma": 2.2,
+        "blacklevel": 0.02,
+        "ambient": 0.08,
+        "BGR": 0
       },
       "doc": {
-        "why": "GBA response and persistence without a magnified RGB textile pattern. The positive-coefficient NSO color matrix avoids undefined fractional powers from the legacy GBA matrix, while the bounded luminance pass preserves readable reflected color; the exact chain must pass nonuniform direct EGL readback."
+        "why": "GBA response, NSO color matrix, luminance, then the cgwg subpixel grid so the panel reads as an AGB-001 LCD"
+      },
+      "output": {
+        "sha256": "65c10589642cf63383ba24c7ea03051632fd902f786b2e74a7c48c891a6bde8d"
       }
     },
     "assets/shaders/nes/screen.slangp": {
@@ -597,6 +623,58 @@
       },
       "doc": {
         "why": "Materially different pinned alternate for n3ds: LCD grid v2."
+      }
+    },
+    "assets/shaders/n3ds/top.slangp": {
+      "type": "slang_pipeline",
+      "passes": [
+        {
+          "tree": "shaders_slang",
+          "path": "handheld/shaders/lcd1x.slang",
+          "sha256": "63c8dd3726c853feb12c8593cd192dfa3fb881449fd5dc672852f8024d511c82",
+          "filter_linear": false,
+          "scale_type": "viewport",
+          "scale": 1
+        }
+      ],
+      "requires": [
+        "shaders_slang"
+      ],
+      "params": {
+        "BRIGHTEN_SCANLINES": 16.0,
+        "BRIGHTEN_LCD": 4.0
+      },
+      "doc": {
+        "why": "3DS top screen: the crisp lcd1x grid at its brightest, the parallax-barrier panel reads sharper than the touch panel"
+      },
+      "output": {
+        "sha256": "89136a8350725a81271ee4e457e938f2ca41bb865066dcd1ccb9a22fabd27766"
+      }
+    },
+    "assets/shaders/n3ds/bottom.slangp": {
+      "type": "slang_pipeline",
+      "passes": [
+        {
+          "tree": "shaders_slang",
+          "path": "handheld/shaders/lcd1x.slang",
+          "sha256": "63c8dd3726c853feb12c8593cd192dfa3fb881449fd5dc672852f8024d511c82",
+          "filter_linear": false,
+          "scale_type": "viewport",
+          "scale": 1
+        }
+      ],
+      "requires": [
+        "shaders_slang"
+      ],
+      "params": {
+        "BRIGHTEN_SCANLINES": 12.0,
+        "BRIGHTEN_LCD": 3.0
+      },
+      "doc": {
+        "why": "3DS bottom screen: the resistive touch layer dims and softens the grid slightly"
+      },
+      "output": {
+        "sha256": "09b06fdb9952605128136e655f709f359a0f0c04fcbe3627d70f76dc1f49338d"
       }
     }
   }

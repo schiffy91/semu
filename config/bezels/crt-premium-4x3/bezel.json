@@ -1,0 +1,46 @@
+{
+  "schema_version": 1,
+  "id": "crt-premium-4x3",
+  "label": "Premium 4:3 CRT",
+  "family": "tv",
+  "layout": "fixed",
+  "art": "assets/bezels/tv/crt-4x3.png",
+  "background": "assets/bezels/backgrounds/desk-night.png",
+  "frame": null,
+  "canvas": {
+    "w": 1584,
+    "h": 990
+  },
+  "screens": [
+    {
+      "id": "main",
+      "tube": {
+        "x": 396,
+        "y": 160,
+        "w": 792,
+        "h": 594
+      },
+      "fit": "aspect",
+      "inset": 0.0,
+      "shape": {
+        "kind": "rounded",
+        "radius": 0.045,
+        "exponent": 4.0
+      },
+      "surround": "#000000",
+      "curvature": 0.035,
+      "vignette": 0.2,
+      "bloom": 0.18,
+      "glow": 0.2,
+      "glass": {
+        "asset": "assets/bezels/tv/tube-reflection.png",
+        "reflect": 0.12
+      },
+      "shader": null,
+      "measurement": {
+        "tool": "legacy",
+        "mode": "measured_continuous_opening"
+      }
+    }
+  ]
+}

@@ -1,0 +1,80 @@
+{
+  "schema_version": 1,
+  "id": "nds-shell",
+  "label": "DS shell",
+  "family": "dual",
+  "layout": "fixed",
+  "art": "assets/bezels/nds/shell.png",
+  "background": "assets/bezels/backgrounds/desk-night.png",
+  "frame": {
+    "width": 0.03,
+    "radius": 0.02,
+    "color": "#0e0e0e"
+  },
+  "canvas": {
+    "w": 3840,
+    "h": 2160
+  },
+  "screens": [
+    {
+      "id": "top",
+      "tube": {
+        "x": 11,
+        "y": 235,
+        "w": 2650,
+        "h": 1502
+      },
+      "fit": "aspect",
+      "inset": 0.0,
+      "shape": {
+        "kind": "rounded",
+        "radius": 0.0067,
+        "exponent": 4.0
+      },
+      "surround": "#151515",
+      "curvature": 0.0,
+      "vignette": 0.05,
+      "bloom": 0.0,
+      "glow": 0.1,
+      "glass": {
+        "asset": "assets/bezels/tv/tube-reflection.png",
+        "reflect": 0.1
+      },
+      "shader": null,
+      "measurement": {
+        "tool": "luma_profile",
+        "note": "dark outline minima at x=7, y=231, y=1740; the right edge has no drawn line and mirrors the left margin"
+      }
+    },
+    {
+      "id": "bottom",
+      "tube": {
+        "x": 2728,
+        "y": 1120,
+        "w": 1100,
+        "h": 630
+      },
+      "fit": "aspect",
+      "inset": 0.0,
+      "shape": {
+        "kind": "rounded",
+        "radius": 0.0127,
+        "exponent": 4.0
+      },
+      "surround": "#151515",
+      "curvature": 0.0,
+      "vignette": 0.05,
+      "bloom": 0.0,
+      "glow": 0.1,
+      "glass": {
+        "asset": "assets/bezels/tv/tube-reflection.png",
+        "reflect": 0.1
+      },
+      "shader": null,
+      "measurement": {
+        "tool": "luma_profile",
+        "note": "outline minima at x=2724, x=3832, y=1116, y=1753"
+      }
+    }
+  ]
+}

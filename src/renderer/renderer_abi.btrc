@@ -137,6 +137,10 @@ struct RendererLaneGeometry {
     int output_y;
     int output_width;
     int output_height;
+    int tube_x;  // the screen opening the game sits in; equals the output rect without a bezel
+    int tube_y;
+    int tube_width;
+    int tube_height;
     int rotation;
     int origin;
 };
@@ -148,6 +152,12 @@ struct RendererCompositionGeometry {
     float bezel_y;
     float bezel_width;
     float bezel_height;
+    float background_x;  // cover-fit rectangle of the background plate
+    float background_y;
+    float background_width;
+    float background_height;
+    float frame_width;  // drawn frame ring around each tube, in pixels (0 = none)
+    int framed;
 };
 
 struct SemuRenderPendingFrame {

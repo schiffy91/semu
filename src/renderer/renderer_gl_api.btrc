@@ -84,7 +84,7 @@ int RGL_COMPILE_STATUS = 0x8B81;
 int RGL_FRONT = 0x0404;
 int RGL_BACK = 0x0405;
 int RGL_NO_ERROR = 0;
-int SEMU_RENDER_TEXTURE_UNITS = 5;
+int SEMU_RENDER_TEXTURE_UNITS = 7;  // game, art, glass, menu, game2, glass2, background
 
 struct RendererGlApi {
     __fn_ptr<void, unsigned int, int*> get_integer;

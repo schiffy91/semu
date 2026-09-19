@@ -35,7 +35,15 @@
   "emulators": [
     {
       "emulator": "retroarch",
-      "label": "Citra (Libretro)",
+      "label": "Azahar (libretro)",
+      "core": "azahar",
+      "platforms": [
+        "linux"
+      ]
+    },
+    {
+      "emulator": "retroarch",
+      "label": "Citra (libretro)",
       "core": "citra",
       "platforms": [
         "linux"
@@ -104,6 +112,7 @@
   },
   "doc": {
     "hardware": "dual LCDs, 400x240 top and 320x240 bottom",
-    "intent": "The n3ds system launches through RetroArch's Citra core by default (top/bottom layout, hardware shaders) with the standalone Azahar build as the alternate emulator. Semu owns the dual-screen presentation contract: the core stacks the 400x240 top and 320x240 bottom screens into one frame and the renderer partitions it by the declared native sizes."
+    "intent": "The n3ds system launches through RetroArch's Citra core by default (top/bottom layout, hardware shaders) with the standalone Azahar build as the alternate emulator. Semu owns the dual-screen presentation contract: the core stacks the 400x240 top and 320x240 bottom screens into one frame and the renderer partitions it by the declared native sizes.",
+    "core": "The default core is Semu's own build of the Azahar tree's libretro target (config/emulators/retroarch/cores/azahar); its options keep the citra_ prefix upstream."
   }
 }

@@ -1,0 +1,48 @@
+{
+  "schema_version": 1,
+  "id": "gbc-berry",
+  "label": "Game Boy Color \u00b7 Berry",
+  "family": "handheld",
+  "layout": "fixed",
+  "art": "assets/bezels/gbc/berry.png",
+  "background": "assets/bezels/backgrounds/desk-night.png",
+  "frame": null,
+  "canvas": {
+    "w": 3440,
+    "h": 6116
+  },
+  "screens": [
+    {
+      "id": "main",
+      "tube": {
+        "x": 651,
+        "y": 1181,
+        "w": 2138,
+        "h": 1675
+      },
+      "fit": "aspect",
+      "inset": 0.03,
+      "shape": {
+        "kind": "rounded",
+        "radius": 0.0494,
+        "exponent": 4.0
+      },
+      "surround": "#141414",
+      "curvature": 0.0,
+      "vignette": 0.06,
+      "bloom": 0.0,
+      "glow": 0.08,
+      "glass": {
+        "asset": "assets/bezels/gbc/glass.png",
+        "reflect": 0.3
+      },
+      "shader": null,
+      "measurement": {
+        "tool": "tools/bezel-measure.py",
+        "mode": "opaque",
+        "layer": "GBC_Glass.png",
+        "corner_radius_px": 82.8
+      }
+    }
+  ]
+}
