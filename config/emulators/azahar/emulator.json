@@ -102,6 +102,26 @@
               "${bios}/n3ds/seeddb.bin",
               "${bios}/seeddb.bin"
             ]
+          },
+          {
+            "purpose": "nand",
+            "target": "${state_root}/data/azahar-emu/nand",
+            "copy": "once_if_target_absent",
+            "source_access": "read_only",
+            "overwrite": false,
+            "sources": [
+              "${emulation_root}/Azahar/data/nand"
+            ]
+          },
+          {
+            "purpose": "sdmc",
+            "target": "${state_root}/data/azahar-emu/sdmc",
+            "copy": "once_if_target_absent",
+            "source_access": "read_only",
+            "overwrite": false,
+            "sources": [
+              "${emulation_root}/Azahar/data/sdmc"
+            ]
           }
         ]
       },

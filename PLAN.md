@@ -320,8 +320,9 @@ Update this block whenever a milestone criterion changes state.
   Findings: Azahar takes `-f`; melonDS's GL display path leaves its window
   unmapped on Wayland+NVIDIA so it runs the software renderer; Ryujinx needs
   the firmware seeded from the existing `Ryujinx/config/bis` tree and then
-  reaches the controller applet (no pad connected); Cemu uses a fresh mlc01
-  under the state root, so old Wii U saves are not visible yet. Not yet
+  reaches the controller applet (no pad connected). Existing saves are
+  copied once into the state root on first launch (GameCube memory cards,
+  Wii NAND, PS2 memory cards and states, Cemu mlc01, Azahar nand and sdmc). Not yet
   observed: pad input, save and load, Start+Select on hardware. Pushes to
   GitHub are blocked behind a 1Password SSH authorization prompt on screen;
   the host was switched with `--override-input semu git+file://...`.
@@ -337,9 +338,9 @@ Update this block whenever a milestone criterion changes state.
   under its own store). `tests/deck/deploy.sh` copies, installs, prepares and
   screenshots over SSH once `DECK_HOST` is set. Steam Input publication and
   Steam shortcuts are not done.
-- M6 renderer: not started
+- M6 renderer: not started; the plan gates it on M5 hardware acceptance
 - M7 extras: not started
-- Active milestone: M1
+- Active milestone: M5 (hardware acceptance once a Deck is reachable)
 - Last observed result: 2026-09-19 audit. Old tree ports to current BTRC with
   the port recipe and emits configs; no ROM has ever launched through Semu on
   any target.

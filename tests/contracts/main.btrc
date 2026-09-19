@@ -230,6 +230,17 @@ class LaunchPlanContract {
         string overrides = FileSystem.readText(PathTools.join(fixture.plan.stateRoot(), "retroarch/core-ppsspp.cfg"));
         contract.contains(overrides, "video_driver = \"vulkan\"", "ppsspp override selects vulkan");
         contract.expect(!launch.argv.contains("--appendconfig"), "gambatte has no overrides");
+        string emulation = PathTools.join(fixture.scratch, "emulation");
+        FileSystem.mkdirp(PathTools.join(emulation, "Dolphin/data/GC"));
+        FileSystem.writeText(PathTools.join(emulation, "Dolphin/data/GC/MemoryCardA.USA.raw"), "card");
+        FileSystem.mkdirp(PathTools.join(roms, "gc"));
+        FileSystem.writeText(PathTools.join(roms, "gc/Monkey.rvz"), "");
+        FileSystem.writeText(PathTools.join(assets, "bin/dolphin-emu"), "#!/bin/sh\n");
+        fixture.plan.tokens.put("emulation_root", emulation);
+        SemuLaunchPlan gc = SemuLauncher.plan(fixture.model, fixture.plan, "dolphin", "gc", "", "Monkey.rvz", SemuDiagnostics());
+        contract.expect(gc.ok(), "dolphin launches: " + gc.error);
+        contract.expect(FileSystem.isFile(PathTools.join(fixture.plan.stateRoot(), "dolphin/dolphin-user/GC/MemoryCardA.USA.raw")), "existing GameCube saves are seeded into the state root once");
+        contract.expect(FileSystem.isFile(PathTools.join(fixture.plan.stateRoot(), "dolphin/dolphin-user/Config/Dolphin.ini")), "dolphin profile lands in its user directory");
         SemuLaunchPlan outside = SemuLauncher.plan(fixture.model, fixture.plan, "retroarch", "gb", "", PathTools.join(fixture.scratch, "outside.zip"), SemuDiagnostics());
         contract.expect(!outside.ok(), "ROM outside the system directory is rejected");
         SemuLaunchPlan wrongCore = SemuLauncher.plan(fixture.model, fixture.plan, "retroarch", "gb", "mgba", "Tetris.zip", SemuDiagnostics());
