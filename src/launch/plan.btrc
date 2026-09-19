@@ -189,6 +189,10 @@ class SemuLauncher {
             launch.error = "profile generation failed: " + diagnostics.render();
             return launch;
         }
+        for directory in SemuJson.strings(SemuJson.get(platform, "state.create_dirs")) {  // emulator-written dirs the profile points at
+            string resolved = plan.tokens.resolve(directory);
+            if (SemuPaths.inside(stateRoot, resolved)) { SemuPaths.prepareDirectory(resolved); }
+        }
         if (!SemuLauncher.seed(plan, platform, launch)) { return launch; }
         launch.argv.push(executable);
         for argument in SemuJson.strings(SemuJson.get(platform, "state.extra_args")) { launch.argv.push(plan.tokens.resolve(argument)); }
