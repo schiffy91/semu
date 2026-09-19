@@ -370,7 +370,16 @@ Update this block whenever a milestone criterion changes state.
   Cemu showed a white window even when launched directly from the bundle
   without Semu, with the same packages that ran fine during M4; treat that
   as machine state to recheck after a reboot before blaming Semu. Ryujinx is
-  Vulkan and stays unhooked. Not done: the Deck half of the criterion.
+  Vulkan and stays unhooked. n3ds moved to RetroArch's citra core (nixpkgs
+  builds libretro/citra; the Azahar core exists upstream but is not
+  packaged) with Azahar as the alternate: BOXBOY! renders both screens
+  inside the 3DS shell (screenshot inspected). glcore now hands
+  core-profile cores a 4.6 context because Citra's version-gated GL loader
+  crashed on a null 4.x entry point in a 3.3 context; N64 re-verified under
+  it. Standalone emulators that remain required: Cemu (Wii U) and Ryujinx
+  (Switch) have no libretro core at all; Dolphin (GC/Wii) and PCSX2 (PS2)
+  keep their standalone builds because the nixpkgs libretro forks of both
+  trail upstream. Not done: the Deck half of the criterion.
 - M7 extras: all three delivered on the desktop 2026-09-19.
   ES-DE settings menu: ES-DE 3.4.0 carries the settings-menu patch; the
   SEMU SETTINGS entry renders the document `semu settings ui` returns and
