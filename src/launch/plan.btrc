@@ -20,6 +20,18 @@ class SemuLaunchPlan {
     public string rom;
     public bool watchPads;
     public int chordWindowMs;
+    public Vector<string> menuLabels;
+    public Vector<string> menuActions;
+    public string pauseAction;
+    public string chordModifier;
+    public Vector<string> chordButtons;
+    public Vector<string> chordActions;
+    public Vector<string> actionChords;  // "action=Ctrl+S" for every action with a keyboard chord
+    public int retroarchPort;
+    public string stateDir;
+    public string semuHome;
+    public bool bezelsOn;
+    public bool shadersOn;
 
     public SemuLaunchPlan() {
         self.argv = [];
@@ -31,6 +43,18 @@ class SemuLaunchPlan {
         self.rom = "";
         self.watchPads = true;
         self.chordWindowMs = 250;
+        self.menuLabels = [];
+        self.menuActions = [];
+        self.pauseAction = "";
+        self.chordModifier = "";
+        self.chordButtons = [];
+        self.chordActions = [];
+        self.actionChords = [];
+        self.retroarchPort = 0;
+        self.stateDir = "";
+        self.semuHome = "";
+        self.bezelsOn = true;
+        self.shadersOn = true;
     }
 
     public bool ok() { return self.error.isEmpty() && !self.argv.isEmpty(); }
@@ -134,6 +158,40 @@ class SemuLauncher {
         launch.environment.push("SEMU_TARGET=" + plan.target.id);
     }
 
+    class void inputContracts(SemuLaunchPlan launch, SemuPlan plan, JSONValue platform, string stateRoot) {  // what the supervisor mirrors from config/input
+        launch.stateDir = stateRoot;
+        launch.semuHome = plan.semuHome;
+        launch.bezelsOn = SemuJson.boolAt(plan.settings, "visual.bezels", true);
+        launch.shadersOn = SemuJson.boolAt(plan.settings, "visual.crt_shaders", true);
+        if (SemuJson.get(platform, "retroarch").isObject()) { launch.retroarchPort = 55355; }
+        if (plan.input == null) { return; }
+        JSONValue definition = plan.input.definition;
+        JSONValue items = SemuJson.get(definition, "menu.items");
+        if (items != null && items.isArray()) {
+            for (int index = 0; index < items.size(); index++) {
+                launch.menuLabels.push(SemuJson.textAt(items.at(index), "label"));
+                launch.menuActions.push(SemuJson.textAt(items.at(index), "action"));
+            }
+        }
+        launch.pauseAction = SemuJson.textAt(definition, "menu.pause_action");
+        launch.chordModifier = SemuJson.textAt(definition, "gamepad_chords.modifier");
+        JSONValue bindings = SemuJson.get(definition, "gamepad_chords.bindings");
+        if (bindings != null && bindings.isObject()) {
+            for button in bindings.keys().sorted() {
+                launch.chordButtons.push(button);
+                launch.chordActions.push(SemuJson.text(bindings.get(button)));
+            }
+        }
+        JSONValue actions = definition.get("actions");
+        if (actions != null && actions.isObject()) {
+            for action in actions.keys().sorted() {
+                string chord = SemuJson.textAt(actions.get(action), "chord");
+                if (!chord.isEmpty()) { launch.actionChords.push(action + "=" + chord); }
+            }
+        }
+        if (!launch.menuLabels.isEmpty()) { launch.environment.push("SEMU_MENU_ITEMS=" + launch.menuLabels.join("|")); }
+    }
+
     class SemuLaunchPlan plan(SemuModel model, SemuPlan plan, string emulatorId, string systemId, string core, string rom, SemuDiagnostics diagnostics) {
         SemuLaunchPlan launch = SemuLaunchPlan();
         launch.emulator = emulatorId;
@@ -230,6 +288,7 @@ class SemuLauncher {
             }
         }
         launch.chordWindowMs = plan.input == null ? 250 : plan.input.chordWindowMs();
+        SemuLauncher.inputContracts(launch, plan, platform, stateRoot);
         for argument in launch.argv {
             if (argument.contains("${")) { launch.error = "unresolved token in launch arguments: " + argument; }
         }

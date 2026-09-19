@@ -142,6 +142,18 @@
       "label": "Escape",
       "icon": "semu-back.png",
       "chord": "Esc"
+    },
+    "visual.bezels.toggle": {
+      "alias": "bezels_toggle",
+      "label": "Bezel On/Off",
+      "icon": "semu-menu.png",
+      "chord": "Ctrl+B"
+    },
+    "visual.shaders.toggle": {
+      "alias": "shaders_toggle",
+      "label": "Shader On/Off",
+      "icon": "semu-menu.png",
+      "chord": "Ctrl+H"
     }
   },
   "hotkey_bindings": [

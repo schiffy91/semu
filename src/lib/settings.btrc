@@ -1,0 +1,28 @@
+import Library.FileSystem;
+import Library.JSON;
+import Library.Strings;
+import Library.Vector;
+import ./json.btrc;
+import ./paths.btrc;
+
+class SemuSettingsStore {  // $SEMU_HOME/semu.json: the one user-owned settings file
+    class JSONValue withPath(JSONValue root, Vector<string> path, int index, JSONValue value) {  // immutable deep set
+        JSONValue result = JSONValue.makeObject();
+        if (root != null && root.isObject()) { for key in root.keys() { result.set(key, root.get(key)); } }
+        if (index == path.size() - 1) {
+            result.set(path.get(index), value);
+            return result;
+        }
+        JSONValue child = result.has(path.get(index)) ? result.get(path.get(index)) : JSONValue.makeObject();
+        result.set(path.get(index), SemuSettingsStore.withPath(child.isObject() ? child : JSONValue.makeObject(), path, index + 1, value));
+        return result;
+    }
+
+    class bool put(string semuHome, string path, JSONValue value) {
+        string file = PathTools.join(semuHome, "semu.json");
+        JSONValue current = FileSystem.isFile(file) ? SemuJson.readFile(file) : JSONValue.makeObject();
+        if (current.isError() || !current.isObject()) { current = JSONValue.makeObject(); }
+        JSONValue updated = SemuSettingsStore.withPath(current, Strings.split(path, "."), 0, value);
+        return SemuPaths.writeOwned(semuHome, file, updated.stringifyPretty(2) + "\n");
+    }
+}

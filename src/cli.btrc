@@ -7,6 +7,7 @@ import Library.Strings;
 import Library.Vector;
 import ./lib/json.btrc;
 import ./lib/paths.btrc;
+import ./lib/settings.btrc;
 import ./model.btrc;
 import ./resolve.btrc;
 import ./check.btrc;
@@ -15,6 +16,7 @@ import ./emit/profiles.btrc;
 import ./emit/settings_ui.btrc;
 import ./launch/plan.btrc;
 import ./launch/process.btrc;
+import ./launch/supervisor.btrc;
 import ./sync/syncthing.btrc;
 import ./steam/shortcuts.btrc;
 
@@ -116,7 +118,7 @@ class SemuCli {
             Console.error("semu: could not start " + launch.argv.get(0));
             return 1;
         }
-        return SemuQuitChord.supervise(child, launch.chordWindowMs, launch.watchPads);
+        return SemuSupervisor.run(child, launch);
     }
 
     public int path() {  // print one resolved path token, for shell wrappers
@@ -133,17 +135,7 @@ class SemuCli {
         return 0;
     }
 
-    class JSONValue withPath(JSONValue root, Vector<string> path, int index, JSONValue value) {  // immutable deep set
-        JSONValue result = JSONValue.makeObject();
-        if (root != null && root.isObject()) { for key in root.keys() { result.set(key, root.get(key)); } }
-        if (index == path.size() - 1) {
-            result.set(path.get(index), value);
-            return result;
-        }
-        JSONValue child = result.has(path.get(index)) ? result.get(path.get(index)) : JSONValue.makeObject();
-        result.set(path.get(index), SemuCli.withPath(child.isObject() ? child : JSONValue.makeObject(), path, index + 1, value));
-        return result;
-    }
+    class JSONValue withPath(JSONValue root, Vector<string> path, int index, JSONValue value) { return SemuSettingsStore.withPath(root, path, index, value); }
 
     public int settingsReset(SemuPlan plan) {  // drop the user file; defaults and target settings remain
         string file = PathTools.join(plan.semuHome, "semu.json");
@@ -177,12 +169,8 @@ class SemuCli {
         string raw = self.line.operand(3, "");
         JSONValue value = JSONValue.parse(raw);
         if (raw.isEmpty() || value == null || value.isError()) { value = JSONValue.makeString(raw); }  // bare words are strings
-        string file = PathTools.join(plan.semuHome, "semu.json");
-        JSONValue current = FileSystem.isFile(file) ? SemuJson.readFile(file) : JSONValue.makeObject();
-        if (current.isError() || !current.isObject()) { current = JSONValue.makeObject(); }
-        JSONValue updated = SemuCli.withPath(current, Strings.split(path, "."), 0, value);
-        if (!SemuPaths.writeOwned(plan.semuHome, file, updated.stringifyPretty(2) + "\n")) {
-            Console.error("semu: could not write " + file);
+        if (!SemuSettingsStore.put(plan.semuHome, path, value)) {
+            Console.error("semu: could not write " + PathTools.join(plan.semuHome, "semu.json"));
             return 1;
         }
         Console.log(f"{path} = {value.stringify()}");

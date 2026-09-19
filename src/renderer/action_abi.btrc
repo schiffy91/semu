@@ -40,7 +40,9 @@ class SemuActions {
     class int appQuit() { return 8; }
     class int screenshot() { return 9; }
     class int escape() { return 10; }
-    class int extensionBase() { return 11; }
+    class int bezelsToggle() { return 11; }
+    class int shadersToggle() { return 12; }
+    class int extensionBase() { return 13; }
     class int extensionCapacity() { return SEMU_ACTION_EXTENSION_CAPACITY; }
 
     class void resetExtensions() {
@@ -78,6 +80,8 @@ class SemuActions {
 
     class int code(string actionId) {
         if (actionId.equals("ui.menu")) { return SemuActions.menuToggle(); }
+        if (actionId.equals("visual.bezels.toggle")) { return SemuActions.bezelsToggle(); }
+        if (actionId.equals("visual.shaders.toggle")) { return SemuActions.shadersToggle(); }
         if (actionId.equals("ui.menu.up")) { return SemuActions.menuUp(); }
         if (actionId.equals("ui.menu.down")) { return SemuActions.menuDown(); }
         if (actionId.equals("ui.menu.confirm")) { return SemuActions.menuConfirm(); }
@@ -92,6 +96,8 @@ class SemuActions {
 
     class string id(int action) {
         if (action == SemuActions.menuToggle()) { return "ui.menu"; }
+        if (action == SemuActions.bezelsToggle()) { return "visual.bezels.toggle"; }
+        if (action == SemuActions.shadersToggle()) { return "visual.shaders.toggle"; }
         if (action == SemuActions.menuUp()) { return "ui.menu.up"; }
         if (action == SemuActions.menuDown()) { return "ui.menu.down"; }
         if (action == SemuActions.menuConfirm()) { return "ui.menu.confirm"; }
@@ -126,7 +132,9 @@ class SemuActions {
             || action == SemuActions.menuBack()
             || action == SemuActions.stateSave()
             || action == SemuActions.stateLoad()
-            || action == SemuActions.screenshot();
+            || action == SemuActions.screenshot()
+            || action == SemuActions.bezelsToggle()
+            || action == SemuActions.shadersToggle();
     }
 }
 

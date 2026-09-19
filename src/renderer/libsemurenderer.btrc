@@ -221,6 +221,14 @@ int semu_render_post_ui_gl(struct SemuRenderFrameGl* frame) {
     int consumed = 0;
     bool needsGl = RendererPostUiPhase.prepare(&SemuRenderer.post_ui,
         frame, &consumed);
+    if ((SemuRenderer.post_ui.bezels_toggles & 1) != 0) {  // menu toggles flip the live config; odd counts flip
+        SemuRenderer.config.bezels_enabled = SemuRenderer.config.bezels_enabled != 0 ? 0 : 1;
+    }
+    if ((SemuRenderer.post_ui.shaders_toggles & 1) != 0) {
+        SemuRenderer.config.shaders_enabled = SemuRenderer.config.shaders_enabled != 0 ? 0 : 1;
+    }
+    SemuRenderer.post_ui.bezels_toggles = 0;
+    SemuRenderer.post_ui.shaders_toggles = 0;
     if (!needsGl) {
         RendererPhaseOwnership.clear(&SemuRenderer.pending);
         SemuRendererReceipts.failureTransition(SEMU_RENDER_APPLIED,
