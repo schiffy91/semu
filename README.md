@@ -59,7 +59,18 @@ semu prepare --target linux-desktop [--es-de-home DIR]   # default: <esde_home>/
 semu path esde_home --target linux-desktop
 semu launch retroarch --system gb --core gambatte --rom "Tetris (World) (Rev 1).zip"
 semu doctor --target linux-desktop
+semu settings ui                    # the document ES-DE renders under SEMU SETTINGS
+semu sync start | stop | status | device-id   # Syncthing for saves (sync.enabled, sync.peer_device_ids)
+semu steam shortcuts [--steam-root DIR] [--force] | status   # the Semu non-Steam shortcut
 ```
+
+ES-DE's main menu carries a SEMU SETTINGS entry (an ES-DE patch that only
+renders the document `semu settings ui` returns and saves through
+`semu settings put`). Save sync runs Syncthing from the bundle with a Semu-owned
+home under the state root sharing `paths.content_root` as `semu-saves`; enable
+it in the menu, read this device's id there, and paste the other device's id
+into PEER DEVICE IDS on both sides. The ES-DE launcher starts sync when enabled;
+on NixOS the `semu-sync` user service also runs it.
 
 `launch` regenerates the emulator's profile under the state root, starts the
 emulator in its own process group, and watches every gamepad for Start+Select
