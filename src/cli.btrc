@@ -15,6 +15,7 @@ import ./emit/profiles.btrc;
 import ./emit/settings_ui.btrc;
 import ./launch/plan.btrc;
 import ./launch/process.btrc;
+import ./sync/syncthing.btrc;
 
 class SemuCli {
     public CLIArgs args;
@@ -37,6 +38,7 @@ class SemuCli {
         help.item("doctor --target T", "Show resolved paths and what is missing.");
         help.item("path NAME --target T", "Print one resolved path (roms, bios, esde_home, state_root, ...).");
         help.item("settings get PATH | put PATH VALUE [--apply] | ui | reset", "Read, write, describe (ES-DE menu document) or reset $SEMU_HOME/semu.json.");
+        help.item("sync start | stop | run | status | device-id | enabled", "Syncthing for saves: detach, run in the foreground, inspect, print this device's id.");
         help.item("version", "Print the Semu version.");
         help.section("Common options");
         help.item("--target T", "Target id (default: $SEMU_TARGET or linux-desktop).");
@@ -185,6 +187,29 @@ class SemuCli {
         return self.line.has("--apply") ? self.prepare() : 0;  // --apply refreshes the ES-DE documents
     }
 
+    public int sync() {
+        string action = self.line.operand(1, "");
+        SemuDiagnostics diagnostics = SemuDiagnostics();
+        SemuModel model = SemuModel.load(self.configRoot(), diagnostics);
+        SemuPlan plan = self.resolve(model, diagnostics);
+        if (plan == null) { return self.fail(diagnostics); }
+        if (action.equals("start")) { return SemuSync.start(plan); }
+        if (action.equals("run")) { return SemuSync.run(plan); }
+        if (action.equals("stop")) { return SemuSync.stop(plan); }
+        if (action.equals("status")) { return SemuSync.status(plan); }
+        if (action.equals("enabled")) { return SemuSync.enabled(plan) ? 0 : 1; }  // for ExecCondition
+        if (action.equals("device-id")) {
+            string id = SemuSync.deviceId(plan);
+            if (id.isEmpty()) {
+                Console.error("semu: could not determine the Syncthing device id");
+                return 1;
+            }
+            Console.log(id);
+            return 0;
+        }
+        return self.usage(64);
+    }
+
     public int doctor() {
         SemuDiagnostics diagnostics = SemuDiagnostics();
         SemuModel model = SemuModel.load(self.configRoot(), diagnostics);
@@ -225,6 +250,7 @@ class SemuCli {
         if (command.equals("doctor")) { return self.doctor(); }
         if (command.equals("path")) { return self.path(); }
         if (command.equals("settings")) { return self.settings(); }
+        if (command.equals("sync")) { return self.sync(); }
         if (command.equals("version")) {
             Console.log(SemuCli.version());
             return 0;
