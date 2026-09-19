@@ -83,7 +83,8 @@
           "config/PSP/SYSTEM/ppsspp.ini",
           "config/PSP/SYSTEM/controls.ini"
         ]
-      }
+      },
+      "render_preload": true
     }
   },
   "doc": {

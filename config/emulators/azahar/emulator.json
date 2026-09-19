@@ -131,7 +131,8 @@
           "${bios}/n3ds",
           "${bios}"
         ]
-      }
+      },
+      "render_preload": true
     }
   },
   "doc": {

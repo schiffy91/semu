@@ -33,7 +33,7 @@ stdenv.mkDerivation {
     btrcpy preload/semu_preload.btrc -o semu_preload.c --strict-imports --no-cache --no-stdlib --no-dce
     $CC -c semu_preload.c -o semu_preload.o -std=c11 -O2 -fPIC -Wall -Wno-unused-function -D_GNU_SOURCE -I.
     cat > preload.map <<'MAP'
-    { global: SDL_GL_SwapWindow; local: *; };
+    { global: SDL_GL_SwapWindow; eglSwapBuffers; glXSwapBuffers; local: *; };
     MAP
     $CC -shared -Wl,-soname,libsemupreload.so -Wl,--version-script=preload.map \
       semu_preload.o -L. -Wl,-rpath,$out/lib -lsemurenderer -ldl -o libsemupreload.so

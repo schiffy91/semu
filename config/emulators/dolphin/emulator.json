@@ -125,7 +125,8 @@
             ]
           }
         ]
-      }
+      },
+      "render_preload": true
     },
     "macos": {
       "backend": "native",
