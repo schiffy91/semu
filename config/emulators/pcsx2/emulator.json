@@ -126,8 +126,7 @@
         "fallback_dirs": [
           "${bios}/ps2"
         ]
-      },
-      "render_preload": true
+      }
     }
   },
   "doc": {

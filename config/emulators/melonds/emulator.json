@@ -136,8 +136,7 @@
           "${bios}/nds",
           "${bios}"
         ]
-      },
-      "render_preload": true
+      }
     }
   },
   "doc": {
